@@ -21,3 +21,9 @@ docker-data/
 
 # 学习参考资料
 study/
+
+# Local UI verification screenshots (keep docs images under screenshots/)
+/*.png
+
+# Local browser/agent verification artifacts
+.playwright-mcp/
