@@ -1415,7 +1415,20 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   padding: 0.25rem;
   color: var(--app-text-muted);
   box-shadow: none;
-  transition: background 160ms ease, color 160ms ease, opacity 160ms ease, transform 160ms ease;
+  isolation: isolate;
+  transition: color 160ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+.automation-sequence-item::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  content: '';
+  pointer-events: none;
+  transition: background 160ms ease, box-shadow 160ms ease;
 }
 
 .automation-sequence-item:not(:last-child)::after {
@@ -1431,17 +1444,30 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   transform-origin: bottom;
 }
 
-.automation-sequence-item:hover {
+.automation-sequence-item:not(.is-selected):not(.is-current):hover::before {
   background: color-mix(in srgb, var(--app-surface-solid) 52%, transparent);
 }
 
 .automation-sequence-item.is-selected {
-  background: color-mix(in srgb, var(--app-accent) 10%, var(--app-surface-muted));
   color: var(--app-text);
 }
 
-.automation-sequence-item.is-current {
-  background: color-mix(in srgb, var(--app-accent) 14%, var(--app-surface-muted));
+.automation-sequence-item.is-selected::before {
+  inset: 0.125rem 0;
+  border-radius: var(--app-continuous-radius-compact);
+  background: color-mix(in srgb, var(--app-text) 5%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, black 6%, transparent);
+}
+
+.automation-sequence-item.is-current:not(.is-selected) {
+  color: var(--app-text);
+}
+
+.automation-sequence-item.is-current:not(.is-selected)::before {
+  inset: 0.125rem 0;
+  border-radius: var(--app-continuous-radius-compact);
+  background: color-mix(in srgb, var(--app-accent) 7%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--app-accent) 8%, transparent);
 }
 
 .automation-sequence-item.is-completed {
@@ -1450,6 +1476,10 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
 
 .automation-sequence-item.is-disabled {
   opacity: 0.52;
+}
+
+.automation-sequence-item.is-current.is-disabled {
+  opacity: 1;
 }
 
 .automation-sequence-item.is-dragging {
@@ -1545,32 +1575,34 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   transition: background 180ms ease;
 }
 
-.automation-sequence-item.is-completed .automation-sequence-node,
 .automation-sequence-item.is-current .automation-sequence-node {
   background: var(--app-accent);
   color: white;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, white 16%, transparent);
 }
 
+.automation-sequence-item.is-completed .automation-sequence-node {
+  background: var(--app-success);
+  color: white;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 18%, transparent);
+}
+
 .automation-sequence-item.is-completed .automation-sequence-node::after {
-  background: color-mix(in srgb, var(--app-accent) 68%, var(--app-border));
+  background: color-mix(in srgb, var(--app-success) 68%, var(--app-border));
 }
 
-.automation-sequence-item.is-current .automation-sequence-node {
-  animation: automation-node-pulse 1.8s ease-out infinite;
+.automation-sequence-progress {
+  animation: automation-progress-spin 0.9s linear infinite;
 }
 
-@keyframes automation-node-pulse {
-  0%, 100% {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, white 16%, transparent), 0 0 0 0 color-mix(in srgb, var(--app-accent) 22%, transparent);
-  }
-  50% {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, white 16%, transparent), 0 0 0 0.25rem transparent;
+@keyframes automation-progress-spin {
+  to {
+    transform: rotate(1turn);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .automation-sequence-item.is-current .automation-sequence-node {
+  .automation-sequence-progress {
     animation: none;
   }
 }
@@ -1583,9 +1615,9 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   justify-content: center;
   justify-self: center;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--app-accent) 11%, var(--app-surface-solid));
-  color: var(--app-accent-strong);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+  background: color-mix(in srgb, var(--app-success) 11%, var(--app-surface-solid));
+  color: var(--app-success-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-success) 22%, var(--app-border));
 }
 
 .automation-sequence-copy {
@@ -2017,8 +2049,17 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
 }
 
 .automation-schedule-list-heading small {
-  color: var(--app-accent);
+  display: inline-flex;
+  min-width: 2.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-pill);
+  padding: 0 0.5rem;
+  background: var(--app-surface-muted);
+  color: var(--app-text-muted);
   font-size: var(--app-font-meta);
+  font-weight: 600;
 }
 
 .automation-schedule-times {
@@ -2026,25 +2067,30 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   gap: 0;
   overflow: hidden;
   border-radius: var(--app-continuous-radius-compact);
-  background: color-mix(in srgb, var(--app-surface-muted) 88%, transparent);
+  background: color-mix(in srgb, var(--app-surface-muted) 92%, transparent);
 }
 
 .automation-schedule-time-row {
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: 3rem;
-  grid-template-columns: 1.5rem minmax(0, 1fr) 2.75rem;
+  min-height: 3.5rem;
+  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 0 0 0.75rem;
+  gap: 0.25rem;
+  padding: 0.375rem;
+  transition: background 160ms ease;
+}
+
+.automation-schedule-time-row:focus-within {
+  background: color-mix(in srgb, var(--app-accent) 7%, transparent);
 }
 
 .automation-schedule-time-row + .automation-schedule-time-row::before {
   position: absolute;
   top: 0;
   right: 3.25rem;
-  left: 2.75rem;
+  left: 3.25rem;
   height: 1px;
   background: var(--app-border);
   content: '';
@@ -2053,59 +2099,100 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   transform-origin: top;
 }
 
-.automation-schedule-time-row > span:first-child {
-  color: var(--app-accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.5625rem;
-  font-weight: 700;
-}
-
-.automation-schedule-time-control {
-  position: relative;
-  display: grid;
+.automation-schedule-time-copy {
+  display: flex;
   min-width: 0;
-  width: 7rem;
-  height: 2.75rem;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-self: start;
-  isolation: isolate;
+  justify-content: center;
 }
 
-.automation-schedule-time-control::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0.25rem 0;
-  border-radius: var(--app-radius-sm);
-  background: color-mix(in srgb, var(--app-surface-solid) 78%, transparent);
-  box-shadow: inset 0 0 0 1px var(--automation-hairline, var(--app-border));
-  content: '';
-  transition: background 160ms ease, box-shadow 160ms ease;
+.automation-schedule-time-input-shell {
+  position: relative;
+  width: 6.75rem;
+  height: 2.75rem;
 }
 
-.automation-schedule-time-control select {
+.automation-schedule-frequency {
+  display: flex;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  color: var(--app-text-soft);
+  font-size: var(--app-font-meta);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.automation-schedule-time-input[type="time"] {
+  position: relative;
   min-width: 0;
+  width: 100%;
   height: 2.75rem;
   border: 0;
-  padding: 0 0.125rem;
-  background-color: transparent;
-  background-image: none;
+  border-radius: var(--app-radius-sm);
+  padding: 0 1.75rem 0 0;
+  background: transparent;
   color: var(--app-text);
-  font-size: 0.875rem;
-  font-weight: 700;
-  text-align: center;
-  outline: 0;
-}
-
-.automation-schedule-time-control:focus-within::before {
-  background: var(--app-surface-solid);
-  box-shadow: inset 0 0 0 1px var(--app-accent), 0 0 0 2px var(--app-accent-soft);
-}
-
-.automation-schedule-time-control strong {
-  color: var(--app-text-muted);
-  font-size: 0.875rem;
+  font-family: ui-rounded, "SF Pro Rounded", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  outline: 0;
+  color-scheme: light;
+  cursor: pointer;
+}
+
+.dark .automation-schedule-time-input[type="time"] {
+  background: transparent;
+  color-scheme: dark;
+}
+
+.automation-schedule-time-input[type="time"]:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.automation-schedule-time-input[type="time"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.automation-schedule-time-input[type="time"]::-webkit-date-and-time-value {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  align-items: center;
+  padding: 0;
+  text-align: left;
+}
+
+.automation-schedule-time-input[type="time"]::-webkit-datetime-edit {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0;
+}
+
+.automation-schedule-time-input[type="time"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.automation-schedule-time-picker-icon {
+  position: absolute;
+  top: 50%;
+  right: 0.125rem;
+  color: var(--app-text);
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .automation-schedule-remove,
@@ -2120,6 +2207,17 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   color: var(--app-danger);
   box-shadow: none;
   transition: background 120ms ease, color 120ms ease, transform 100ms ease;
+}
+
+.automation-schedule-remove-glyph {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--app-danger);
+  color: white;
 }
 
 .automation-schedule-remove:hover {
@@ -2140,20 +2238,37 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
 
 .automation-schedule-add {
   display: flex;
-  width: auto;
-  min-height: 2.75rem;
+  width: 100%;
+  min-height: 3.25rem;
   align-items: center;
   justify-content: flex-start;
   gap: 0.5rem;
-  margin-top: 0.5rem;
-  border-radius: var(--app-radius-sm);
-  padding: 0 0.5rem;
+  margin: 0;
+  border-radius: 0;
+  padding: 0 1rem;
   color: var(--app-accent);
   background: transparent;
   box-shadow: none;
   font-size: var(--app-font-caption);
   font-weight: 600;
   transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.automation-schedule-times > .automation-schedule-add::before {
+  position: absolute;
+  top: 0;
+  right: 1rem;
+  left: 1rem;
+  height: 1px;
+  background: var(--app-border);
+  content: '';
+  opacity: 0.72;
+  transform: scaleY(0.5);
+  transform-origin: top;
+}
+
+.automation-schedule-times > .automation-schedule-add {
+  position: relative;
 }
 
 .automation-schedule-add:hover {
@@ -3104,8 +3219,7 @@ input.automation-stage-name-input:disabled,
   .automation-text-control,
   .automation-select-control select,
   .automation-task-editor .number-input-wrapper,
-  .automation-composite-control,
-  .automation-schedule-time-control select {
+  .automation-composite-control {
     min-height: 2.75rem;
     height: 2.75rem;
   }
@@ -3230,7 +3344,6 @@ input.automation-stage-name-input:disabled,
   .automation-flow-summary,
   .automation-editor-heading > span,
   .automation-schedule-list-heading small,
-  .automation-schedule-time-row > span:first-child,
   .automation-sequence-node
 ) {
   font-variant-numeric: tabular-nums;
@@ -3241,8 +3354,7 @@ input.automation-stage-name-input:disabled,
   color: var(--app-text-muted);
 }
 
-[data-automation-tasks] .automation-schedule-list-heading small,
-[data-automation-tasks] .automation-schedule-time-row > span:first-child {
+[data-automation-tasks] .automation-schedule-list-heading small {
   color: var(--app-text-muted);
 }
 
@@ -3257,16 +3369,38 @@ input.automation-stage-name-input:disabled,
   opacity: 1;
 }
 
+[data-automation-tasks] .automation-sequence-item:is(.is-selected, .is-current)::after,
+[data-automation-tasks] .automation-sequence-item:has(+ :is(.is-selected, .is-current))::after {
+  opacity: 0;
+}
+
 [data-automation-tasks] .automation-sequence-node {
   background: var(--app-surface-solid);
   color: var(--app-text-soft);
   box-shadow: inset 0 0 0 1px var(--automation-hairline);
 }
 
-[data-automation-tasks] .automation-sequence-item:is(.is-selected, .is-current, .is-completed) .automation-sequence-node {
+[data-automation-tasks] .automation-sequence-item.is-selected:not(.is-current, .is-completed) .automation-sequence-node {
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+  box-shadow: none;
+}
+
+[data-automation-tasks] .automation-sequence-item.is-current .automation-sequence-node {
   background: var(--app-accent);
   color: #fff;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 16%, transparent);
+}
+
+[data-automation-tasks] .automation-sequence-item.is-current .automation-sequence-copy small {
+  color: var(--app-accent-strong);
+  font-weight: 600;
+}
+
+[data-automation-tasks] .automation-sequence-item.is-completed .automation-sequence-node {
+  background: var(--app-success);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 18%, transparent);
 }
 
 [data-automation-tasks] :is(
@@ -3278,6 +3412,12 @@ input.automation-stage-name-input:disabled,
   .automation-notification-buttons button
 ) {
   border-radius: var(--app-radius-pill);
+}
+
+[data-automation-tasks] .automation-schedule-times > .automation-schedule-add {
+  min-height: 3.25rem;
+  border-radius: 0;
+  padding: 0 1rem;
 }
 
 [data-automation-tasks] :is(
@@ -3977,6 +4117,12 @@ svg.w-5.h-5 {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-success) 24%, transparent);
   }
 
+  .dashboard-flow-status.is-checking {
+    background: color-mix(in srgb, var(--app-info) 11%, transparent);
+    color: var(--app-info);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-info) 22%, transparent);
+  }
+
   .dashboard-flow-status-dot {
     width: 0.375rem;
     height: 0.375rem;
@@ -3987,6 +4133,11 @@ svg.w-5.h-5 {
   .dashboard-flow-status.is-running .dashboard-flow-status-dot {
     background: var(--app-success);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-success) 14%, transparent);
+  }
+
+  .dashboard-flow-status.is-checking .dashboard-flow-status-dot {
+    background: var(--app-info);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-info) 13%, transparent);
   }
 
   .dashboard-flow-command {
@@ -4040,6 +4191,11 @@ svg.w-5.h-5 {
   .dashboard-flow-activity-action:not(:disabled):hover {
     background: color-mix(in srgb, var(--app-accent-soft) 88%, var(--app-surface));
     box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent), 0 8px 18px color-mix(in srgb, var(--app-accent) 16%, transparent);
+  }
+
+  .dashboard-flow-activity-action:active:not(:disabled) {
+    transform: scale(0.98);
+    transition-duration: 100ms;
   }
 
   .dashboard-flow-activity-completed-label,
@@ -4111,6 +4267,10 @@ svg.w-5.h-5 {
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .dashboard-flow-activity-action:active:not(:disabled) {
+      transform: none;
+    }
+
     .dashboard-flow-shining-action::before {
       display: none;
     }
@@ -4225,9 +4385,39 @@ svg.w-5.h-5 {
   }
 
   .dashboard-flow-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
     padding: 0.625rem 1rem;
-    border-top: 1px solid var(--app-border);
+    border-bottom: 1px solid var(--app-border);
     background: color-mix(in srgb, var(--app-surface-muted) 72%, transparent);
+    color: var(--app-text-muted);
+    line-height: 1.45;
+  }
+
+  .dashboard-flow-message-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    flex: 0 0 auto;
+    margin-top: 0.3125rem;
+    border-radius: 50%;
+    background: var(--app-text-soft);
+  }
+
+  .dashboard-flow-message.is-info .dashboard-flow-message-dot {
+    background: var(--app-info);
+  }
+
+  .dashboard-flow-message.is-success .dashboard-flow-message-dot {
+    background: var(--app-success);
+  }
+
+  .dashboard-flow-message.is-warning .dashboard-flow-message-dot {
+    background: var(--app-warning);
+  }
+
+  .dashboard-flow-message.is-error .dashboard-flow-message-dot {
+    background: var(--app-danger);
   }
 
   .dashboard-summary-grid {

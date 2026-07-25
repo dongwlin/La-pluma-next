@@ -127,6 +127,7 @@ describe('ConfigManager layout surfaces', () => {
 
     const page = container.querySelector('.ios-workspace-page')
     expect(page).not.toBeNull()
+    expect(page?.classList.contains('ios-borderless-cards')).toBe(true)
     expect(page?.querySelector('.app-page-header')?.classList.contains('is-mobile-inline')).toBe(true)
     expect(page?.querySelector('.app-page-header-icon')).toBeNull()
 
@@ -162,6 +163,9 @@ describe('ConfigManager layout surfaces', () => {
     const autoUpdateTrack = autoUpdateToggle?.nextElementSibling
     expect(autoUpdateToggle?.getAttribute('role')).toBe('switch')
     expect(autoUpdateTrack?.classList.contains('app-switch-track')).toBe(true)
+    const reconnectRow = page?.querySelector('.config-reconnect-row')
+    expect(reconnectRow).not.toBeNull()
+    expect(reconnectRow?.classList.contains('surface-soft')).toBe(false)
 
     const configPath = Array.from(page?.querySelectorAll('p') ?? []).find(element => element.textContent === '/tmp/la-pluma')
     expect(configPath?.classList.contains('break-all')).toBe(false)

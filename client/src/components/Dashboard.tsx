@@ -13,6 +13,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useStatusStore } from '../store/statusStore'
 import { useDashboardStore, type DashboardBusinessSnapshot } from '../store/dashboardStore'
 import { probeBackendAvailability } from '../hooks/useBackendStatusMonitor'
+import type { StatusMessageType } from '../utils/statusMessage'
 
 const sectionTitleClass = 'text-base font-bold text-primary'
 const labelClass = 'text-secondary'
@@ -271,7 +272,12 @@ function refreshDashboardData(force = false): Promise<void> {
 
 export default function Dashboard() {
   const setActiveTab = useUIStore(state => state.setActiveTab)
-  const { backendStatus, backendMessage } = useStatusStore()
+  const {
+    backendStatus,
+    backendMessage,
+    setMessage: setStatusMessage,
+    setActive: setStatusActive,
+  } = useStatusStore()
   const isOnline = useOnlineStatus()
   const openAutomation = useCallback(() => setActiveTab('automation'), [setActiveTab])
   const hasLoaded = useDashboardStore(state => state.hasLoaded)
@@ -289,6 +295,7 @@ export default function Dashboard() {
   const [quickStartLoading, setQuickStartLoading] = useState(false)
   const [activityPreflightLoading, setActivityPreflightLoading] = useState(false)
   const [quickStartMessage, setQuickStartMessage] = useState('')
+  const [quickStartMessageType, setQuickStartMessageType] = useState<StatusMessageType>('default')
 
   const serviceStatus = isOnline ? backendStatus : 'offline'
   const automationAvailable = serviceStatus === 'available'
@@ -359,15 +366,18 @@ export default function Dashboard() {
   const runTodayFlow = async () => {
     if (!automationAvailable) {
       setQuickStartMessage(serviceStatus === 'offline' ? '当前网络已断开，恢复连接后再试。' : '后端服务暂不可用，请重试连接。')
+      setQuickStartMessageType('warning')
       return
     }
     setQuickStartLoading(true)
     setQuickStartMessage('')
+    setQuickStartMessageType('info')
     try {
       const configResult = await maaApi.loadUserConfig('automation-tasks')
       const savedFlow = Array.isArray(configResult?.data?.taskFlow) ? configResult.data.taskFlow : []
       if (!configResult.success || savedFlow.length === 0) {
         setQuickStartMessage('还没有配置今日流程，先去自动化页保存任务流。')
+        setQuickStartMessageType('warning')
         setActiveTab('automation')
         return
       }
@@ -375,12 +385,15 @@ export default function Dashboard() {
       const result = await maaApi.executeScheduleNow('dashboard-quick-start', savedFlow)
       if (result.success) {
         setQuickStartMessage(result.message || '今日流程已开始执行')
+        setQuickStartMessageType('success')
         await loadDashboardData()
       } else {
         setQuickStartMessage(result.message || '今日流程启动失败')
+        setQuickStartMessageType('error')
       }
     } catch (error: any) {
       setQuickStartMessage(error?.message || '今日流程启动失败')
+      setQuickStartMessageType('error')
     } finally {
       setQuickStartLoading(false)
     }
@@ -388,25 +401,44 @@ export default function Dashboard() {
 
   const runCurrentActivity = async () => {
     if (!automationAvailable) {
-      setQuickStartMessage(serviceStatus === 'offline' ? '当前网络已断开，恢复连接后再试。' : '后端服务暂不可用，请重试连接。')
+      const unavailableMessage = serviceStatus === 'offline'
+        ? '当前网络已断开，恢复连接后再试。'
+        : '后端服务暂不可用，请重试连接。'
+      setQuickStartMessage(unavailableMessage)
+      setQuickStartMessageType('warning')
+      setStatusMessage(unavailableMessage, 'warning')
       return
     }
+    const checkingMessage = '正在检查当前活动是否可以执行…'
     setActivityPreflightLoading(true)
-    setQuickStartMessage('')
+    setQuickStartMessage(checkingMessage)
+    setQuickStartMessageType('info')
+    setStatusActive(true)
+    setStatusMessage(checkingMessage, 'info')
     try {
       const runResult = await maaApi.runCurrentActivity()
       const runData = runResult.data as { executed?: boolean; plan?: { reason?: string }; execution?: { results?: unknown[] } } | undefined
       if (runResult.success && runData?.executed) {
         const completedCount = Array.isArray(runData.execution?.results) ? runData.execution.results.length : 0
-        setQuickStartMessage(completedCount > 0 ? `当前活动作业已完成 ${completedCount} 项。` : '当前活动作业已完成。')
+        const completedMessage = completedCount > 0 ? `当前活动作业已完成 ${completedCount} 项。` : '当前活动作业已完成。'
         await loadDashboardData()
+        setQuickStartMessage(completedMessage)
+        setQuickStartMessageType('success')
+        setStatusMessage(completedMessage, 'success')
       } else {
-        setQuickStartMessage(runData?.plan?.reason || maaApi.getErrorMessage(runResult) || '当前活动暂未准备就绪。')
+        const blockedMessage = runData?.plan?.reason || maaApi.getErrorMessage(runResult) || '当前活动暂未准备就绪。'
+        setQuickStartMessage(blockedMessage)
+        setQuickStartMessageType('warning')
+        setStatusMessage(blockedMessage, 'warning')
       }
     } catch (error: any) {
-      setQuickStartMessage(error?.message || '当前活动预检失败')
+      const errorMessage = error?.message || '当前活动检查失败'
+      setQuickStartMessage(errorMessage)
+      setQuickStartMessageType('error')
+      setStatusMessage(errorMessage, 'error')
     } finally {
       setActivityPreflightLoading(false)
+      setStatusActive(false)
     }
   }
 
@@ -428,21 +460,33 @@ export default function Dashboard() {
       : '正在确认自动化服务状态'
   const flowCommandTitle = !automationAvailable
     ? connectionTitle
-    : flowIsRunning
-      ? (scheduleSummary.currentTask || '流程执行中')
-      : '准备就绪'
+    : activityPreflightLoading
+      ? '正在检查当前活动'
+      : quickStartLoading
+        ? '正在启动今日流程'
+        : flowIsRunning
+          ? (scheduleSummary.currentTask || '流程执行中')
+          : '准备就绪'
   const flowCommandDescription = !automationAvailable
     ? connectionDescription
-    : flowIsRunning
-      ? (scheduleSummary.message || '自动化任务正在按计划推进')
-      : (scheduleSummary.message || '设备待命，可以开始今天的自动化任务')
+    : activityPreflightLoading
+      ? '正在确认当前活动与可用作业'
+      : quickStartLoading
+        ? '正在读取任务配置并提交执行'
+        : flowIsRunning
+          ? (scheduleSummary.message || '自动化任务正在按计划推进')
+          : (scheduleSummary.message || '设备待命，可以开始今天的自动化任务')
   const flowStatusLabel = serviceStatus === 'offline'
     ? '网络离线'
     : serviceStatus === 'unavailable'
       ? '服务不可用'
       : serviceStatus === 'checking' || serviceStatus === 'unknown'
         ? '检查中'
-        : flowIsRunning ? '执行中' : '待命'
+        : activityPreflightLoading
+          ? '检查中'
+          : quickStartLoading
+            ? '启动中'
+            : flowIsRunning ? '执行中' : '待命'
   const activityCompleted = activitySummary.completion?.complete === true
 
   return (
@@ -495,8 +539,8 @@ export default function Dashboard() {
         >
           <div ref={flowCardRef} className="min-w-0">
             <div
-              className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || flowIsRunning ? 'is-active' : ''}`}
-              aria-busy={quickStartLoading || flowIsRunning}
+              className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || activityPreflightLoading || flowIsRunning ? 'is-active' : ''}`}
+              aria-busy={quickStartLoading || activityPreflightLoading || flowIsRunning}
             >
               <Card animated={shouldAnimateCardsRef.current} delay={0.18} smoothCorners className="dashboard-flow-card !p-0">
               <div className="dashboard-flow-header">
@@ -510,7 +554,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="dashboard-flow-meta flex shrink-0 items-center gap-2">
-                  <div className={`dashboard-flow-status ${automationAvailable && flowIsRunning ? 'is-running' : ''} ${serviceStatus === 'offline' ? 'status-warning' : serviceStatus === 'unavailable' ? 'status-danger' : ''}`}>
+                  <div className={`dashboard-flow-status ${automationAvailable && flowIsRunning ? 'is-running' : ''} ${automationAvailable && (activityPreflightLoading || quickStartLoading) ? 'is-checking' : ''} ${serviceStatus === 'offline' ? 'status-warning' : serviceStatus === 'unavailable' ? 'status-danger' : ''}`}>
                     <span className="dashboard-flow-status-dot" />
                     {flowStatusLabel}
                   </div>
@@ -532,7 +576,13 @@ export default function Dashboard() {
                           : <Play className="ml-0.5 h-5 w-5" strokeWidth={1.9} />}
                   </div>
                   <div className="min-w-0">
-                    <div className={`text-xs font-medium ${labelClass}`}>{automationAvailable && flowIsRunning ? '当前任务' : '运行状态'}</div>
+                    <div className={`text-xs font-medium ${labelClass}`}>
+                      {automationAvailable && flowIsRunning
+                        ? '当前任务'
+                        : activityPreflightLoading || quickStartLoading
+                          ? '当前操作'
+                          : '运行状态'}
+                    </div>
                     <div className="mt-0.5 truncate text-xl font-bold text-primary">{flowCommandTitle}</div>
                     <div className={`mt-1 truncate text-xs ${labelClass}`}>{flowCommandDescription}</div>
                   </div>
@@ -544,7 +594,7 @@ export default function Dashboard() {
                       variant="secondary"
                       disabled={quickStartLoading || activityPreflightLoading || flowIsRunning || !automationAvailable}
                       loading={activityPreflightLoading}
-                      loadingText="执行中"
+                      loadingText="检查中"
                       statusKey={activityPreflightLoading ? 'running' : 'ready'}
                       className={`dashboard-flow-activity-action justify-center whitespace-nowrap ${activityCompleted ? 'is-completed' : ''}`}
                       title={activityCompleted ? '重新执行当前活动' : '检查活动导航并执行已保存偏好的活动作业'}
@@ -575,6 +625,16 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </div>
+
+              {quickStartMessage && (
+                <div
+                  className={`dashboard-flow-message is-${quickStartMessageType} text-xs`}
+                  data-dashboard-flow-feedback
+                >
+                  <span className="dashboard-flow-message-dot" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">{quickStartMessage}</span>
+                </div>
+              )}
 
               <div className="dashboard-flow-metrics">
                 {[
@@ -648,9 +708,6 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
-              {quickStartMessage && (
-                <div className={`dashboard-flow-message text-xs ${labelClass}`}>{quickStartMessage}</div>
-              )}
               </Card>
             </div>
           </div>

@@ -67,6 +67,8 @@ describe('common form controls', () => {
     expect(hint?.textContent).toBe('可随时切换')
     expect(select?.classList.contains('app-native-control')).toBe(true)
     expect(select?.classList.contains('control-surface')).toBe(true)
+    expect(select?.classList.contains('app-select-control')).toBe(true)
+    expect(container.querySelector('.app-select-shell .app-select-trailing-icon')?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('reserves leading space when an input has an icon', async () => {

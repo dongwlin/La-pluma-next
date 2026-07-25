@@ -169,7 +169,9 @@ describe('OperatorTraining async interactions', () => {
 
     await renderComponent()
 
-    expect(container.querySelector('.ios-workspace-page[data-page="training"]')).not.toBeNull()
+    const page = container.querySelector('.ios-workspace-page[data-page="training"]')
+    expect(page).not.toBeNull()
+    expect(page?.classList.contains('ios-borderless-cards')).toBe(true)
     expect(container.querySelector('.app-page-header.is-mobile-inline')).not.toBeNull()
     expect(container.querySelector('.training-operator-column')).not.toBeNull()
     expect(container.querySelector('.training-support-column')).not.toBeNull()

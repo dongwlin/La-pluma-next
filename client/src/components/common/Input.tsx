@@ -1,4 +1,5 @@
 import { useId, type InputHTMLAttributes, type SelectHTMLAttributes, type ReactNode, type ChangeEvent } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 /**
  * 输入框组件 Props
@@ -154,23 +155,31 @@ export function Select({
         </label>
       )}
       
-      <select
-        id={selectId}
-        value={value}
-        onChange={(e: ChangeEvent<HTMLSelectElement>) => onChange(e.target.value)}
-        disabled={disabled}
-        aria-invalid={error ? true : ariaInvalid}
-        aria-describedby={describedBy}
-        aria-errormessage={error ? (ariaErrorMessage ?? errorId) : ariaErrorMessage}
-        className={`${baseStyles} ${error ? errorStyles : ''}`}
-        {...props}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div className="app-select-shell relative">
+        <select
+          id={selectId}
+          value={value}
+          onChange={(e: ChangeEvent<HTMLSelectElement>) => onChange(e.target.value)}
+          disabled={disabled}
+          aria-invalid={error ? true : ariaInvalid}
+          aria-describedby={describedBy}
+          aria-errormessage={error ? (ariaErrorMessage ?? errorId) : ariaErrorMessage}
+          className={`${baseStyles} app-select-control ${error ? errorStyles : ''}`}
+          {...props}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <span
+          className={`app-select-trailing-icon ${disabled ? 'is-disabled' : ''}`}
+          aria-hidden="true"
+        >
+          <ChevronDown className="h-4 w-4" strokeWidth={1.9} />
+        </span>
+      </div>
       
       {error && (
         <p id={errorId} className="form-error-text mt-2 text-xs" role="alert">

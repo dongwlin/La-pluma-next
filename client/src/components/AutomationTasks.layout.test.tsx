@@ -376,6 +376,73 @@ describe('AutomationTasks layout surfaces', () => {
     expect(mocks.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' })
   })
 
+  it('keeps the editing selection distinct from the running workflow step', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    mocks.getScheduleExecutionStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isRunning: true,
+        currentTaskId: 'fight-1',
+        currentTask: '理智作战',
+        message: '正在执行: 理智作战',
+      },
+    })
+
+    await act(async () => root.render(<AutomationTasks />))
+    await flush()
+    await flush()
+
+    const selectedButton = await clickSequenceTask('自动公招')
+    const runningButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.automation-sequence-select'))
+      .find(button => button.textContent?.includes('理智作战'))
+    const selectedItem = selectedButton?.closest('.automation-sequence-item')
+    const runningItem = runningButton?.closest('.automation-sequence-item')
+
+    expect(selectedButton?.getAttribute('aria-pressed')).toBe('true')
+    expect(selectedButton?.hasAttribute('aria-current')).toBe(false)
+    expect(selectedItem?.getAttribute('data-selected')).toBe('true')
+    expect(selectedItem?.getAttribute('data-execution-state')).toBe('idle')
+    expect(selectedItem?.classList.contains('is-current')).toBe(false)
+
+    expect(runningButton?.getAttribute('aria-pressed')).toBe('false')
+    expect(runningButton?.getAttribute('aria-current')).toBe('step')
+    expect(runningItem?.getAttribute('data-selected')).toBe('false')
+    expect(runningItem?.getAttribute('data-execution-state')).toBe('running')
+    expect(runningItem?.classList.contains('is-selected')).toBe(false)
+    expect(runningItem?.querySelector('.automation-sequence-progress')).not.toBeNull()
+    expect(runningItem?.textContent).toContain('正在执行')
+  })
+
+  it('preserves editing selection when the selected task is also running', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    mocks.getScheduleExecutionStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isRunning: true,
+        currentTaskId: 'startup-1',
+        currentTask: '启动游戏',
+        message: '正在执行: 启动游戏',
+      },
+    })
+
+    await act(async () => root.render(<AutomationTasks />))
+    await flush()
+    await flush()
+
+    const runningButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.automation-sequence-select'))
+      .find(button => button.textContent?.includes('启动游戏'))
+    const runningItem = runningButton?.closest('.automation-sequence-item')
+
+    expect(runningButton?.getAttribute('aria-pressed')).toBe('true')
+    expect(runningButton?.getAttribute('aria-current')).toBe('step')
+    expect(runningItem?.classList.contains('is-selected')).toBe(true)
+    expect(runningItem?.classList.contains('is-current')).toBe(true)
+    expect(runningItem?.getAttribute('data-selected')).toBe('true')
+    expect(runningItem?.getAttribute('data-execution-state')).toBe('running')
+    expect(runningItem?.querySelector('.automation-sequence-progress')).not.toBeNull()
+    expect(runningItem?.textContent).toContain('正在执行')
+  })
+
   it('associates dynamic labels and names compact destructive controls', async () => {
     mocks.loadUserConfig.mockResolvedValue({
       success: true,
@@ -404,27 +471,41 @@ describe('AutomationTasks layout surfaces', () => {
       expect(button.classList.contains('min-w-11')).toBe(true)
     })
 
-    const hourSelect = container.querySelector<HTMLSelectElement>('[aria-label="第 1 个执行时间的小时"]')
-    const minuteSelect = container.querySelector<HTMLSelectElement>('[aria-label="第 1 个执行时间的分钟"]')
-    expect(hourSelect?.classList.contains('min-h-11')).toBe(true)
-    expect(minuteSelect?.classList.contains('min-h-11')).toBe(true)
+    const firstTimeInput = container.querySelector<HTMLInputElement>('#automation-schedule-time-0')
+    expect(firstTimeInput?.type).toBe('time')
+    expect(firstTimeInput?.value).toBe('08:30')
+    expect(firstTimeInput?.classList.contains('min-h-11')).toBe(true)
+    expect(container.querySelector<HTMLLabelElement>('label[for="automation-schedule-time-0"]')?.textContent).toContain('第 1 个执行时间')
+    expect(firstTimeInput?.closest('.automation-schedule-time-input-shell')?.querySelector('.automation-schedule-time-picker-icon')).not.toBeNull()
 
     const deleteTimeButton = container.querySelector<HTMLButtonElement>('[aria-label="删除第 1 个时间点"]')
     expect(deleteTimeButton?.classList.contains('min-h-11')).toBe(true)
     expect(deleteTimeButton?.classList.contains('min-w-11')).toBe(true)
-    const firstTimeRow = hourSelect?.closest('.automation-schedule-time-row')
+    const firstTimeRow = firstTimeInput?.closest('.automation-schedule-time-row')
     expect(firstTimeRow).not.toBeNull()
-    expect(minuteSelect?.closest('.automation-schedule-time-row')).toBe(firstTimeRow)
     expect(deleteTimeButton?.closest('.automation-schedule-time-row')).toBe(firstTimeRow)
+    expect(container.querySelector('.automation-schedule-times > .automation-schedule-add')?.textContent).toContain('添加执行时间')
     expect(container.querySelector('[aria-label="定时执行"]')?.closest('.automation-schedule-actions')).not.toBeNull()
     expect(container.querySelector('[aria-label="定时执行"]')?.closest('.app-switch')?.classList.contains('automation-section-switch')).toBe(true)
+
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      inputValueSetter?.call(firstTimeInput, '09:15')
+      firstTimeInput?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('09:15')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toEqual({
+      enabled: true,
+      times: ['09:15', '12:45'],
+    })
 
     await act(async () => deleteTimeButton?.click())
     await flush()
 
     expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(1)
-    expect(container.querySelector<HTMLSelectElement>('[aria-label="第 1 个执行时间的小时"]')?.value).toBe('12')
-    expect(container.querySelector<HTMLSelectElement>('[aria-label="第 1 个执行时间的分钟"]')?.value).toBe('45')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('12:45')
     expect(container.querySelector('[aria-label^="删除第 "]')).toBeNull()
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toEqual({
       enabled: true,

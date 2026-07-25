@@ -116,6 +116,8 @@ describe('Dashboard connectivity state', () => {
     apiMocks.getTodayDrops.mockResolvedValue({ success: true, data: [] })
     apiMocks.getOpenTodayStages.mockResolvedValue({ success: true, data: { open: [], closed: [] } })
     useDashboardStore.getState().reset()
+    useStatusStore.getState().clearMessage()
+    useStatusStore.getState().setActive(false)
     useStatusStore.getState().setBackendStatus('unknown')
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -126,6 +128,8 @@ describe('Dashboard connectivity state', () => {
     await act(async () => root.unmount())
     container.remove()
     useDashboardStore.getState().reset()
+    useStatusStore.getState().clearMessage()
+    useStatusStore.getState().setActive(false)
     useStatusStore.getState().setBackendStatus('unknown')
     vi.clearAllMocks()
   })
@@ -317,5 +321,72 @@ describe('Dashboard connectivity state', () => {
     expect(flow?.classList.contains('status-border-beam')).toBe(true)
     expect(flow?.classList.contains('is-active')).toBe(true)
     expect(flow?.getAttribute('aria-busy')).toBe('true')
+  })
+
+  it('shows immediate preflight feedback while checking the current activity', async () => {
+    let resolveRun: ((value: {
+      success: boolean
+      data: { executed: boolean; plan: { reason: string } }
+    }) => void) | undefined
+    apiMocks.runCurrentActivity.mockReturnValueOnce(new Promise(resolve => {
+      resolveRun = resolve
+    }))
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    const activityButton = container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')
+    await act(async () => {
+      activityButton?.click()
+      await Promise.resolve()
+    })
+
+    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const status = useStatusStore.getState()
+    expect(apiMocks.runCurrentActivity).toHaveBeenCalledTimes(1)
+    expect(activityButton?.disabled).toBe(true)
+    expect(activityButton?.textContent).toContain('检查中')
+    expect(flow?.classList.contains('is-active')).toBe(true)
+    expect(flow?.getAttribute('aria-busy')).toBe('true')
+    expect(status.isActive).toBe(true)
+    expect(status.message).toContain('当前活动')
+    expect(status.messageType).toBe('info')
+
+    await act(async () => resolveRun?.({
+      success: true,
+      data: {
+        executed: false,
+        plan: { reason: '测试结束' },
+      },
+    }))
+    await flushDashboard()
+  })
+
+  it('surfaces the exact activity preflight blocker as a warning and leaves the active state', async () => {
+    const blocker = 'AD「红丝绒」的资源未包含从主页进入活动关卡的完整导航链。'
+    apiMocks.runCurrentActivity.mockResolvedValueOnce({
+      success: true,
+      data: {
+        executed: false,
+        plan: { reason: blocker },
+      },
+    })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')?.click()
+    })
+    await flushDashboard()
+
+    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const feedback = container.querySelector('[data-dashboard-flow-feedback]')
+    const status = useStatusStore.getState()
+    expect(feedback?.textContent).toBe(blocker)
+    expect(status.message).toBe(blocker)
+    expect(status.messageType).toBe('warning')
+    expect(status.isActive).toBe(false)
+    expect(flow?.classList.contains('is-active')).toBe(false)
+    expect(flow?.getAttribute('aria-busy')).toBe('false')
   })
 })

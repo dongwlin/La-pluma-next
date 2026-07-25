@@ -1,7 +1,7 @@
 import { useState, useEffect, useEffectEvent, useRef } from 'react'
 import { generateTrainingPlan, maaApi } from '../services/api'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
+import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
 import Icons from './Icons'
 import ScreenMonitor from './ScreenMonitor'
 import NotificationSettings from './NotificationSettings'
@@ -1995,79 +1995,81 @@ export default function AutomationTasks() {
         {scheduleEnabled ? (
           <motion.div
             className="automation-schedule-body"
-            initial={{ opacity: 0 }}
+            initial={shouldReduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
           >
             <div className="automation-schedule-list-heading">
               <span>执行时间</span>
-              <small>{scheduleTimes.length}/6</small>
+              <small aria-label={`已设置 ${scheduleTimes.length} 个执行时间`}>
+                {scheduleTimes.length} 个
+              </small>
             </div>
             <div className="automation-schedule-times">
               {scheduleTimes.map((time, index) => {
-                const [hour, minute] = time.split(':')
+                const inputId = `automation-schedule-time-${index}`
 
                 return (
-                  <div key={`${time}-${index}`} className="automation-schedule-time-row">
-                    <span>{String(index + 1).padStart(2, '0')}</span>
-                    <div className="automation-schedule-time-control">
-                      <select
-                        value={hour}
-                        onChange={(e) => {
-                          updateScheduleTime(index, `${e.target.value.padStart(2, '0')}:${minute}`)
-                        }}
-                        disabled={isRunning}
-                        aria-label={`第 ${index + 1} 个执行时间的小时`}
-                        className="min-h-11"
-                      >
-                        {Array.from({ length: 24 }, (_, i) => {
-                          const value = i.toString().padStart(2, '0')
-                          return <option key={value} value={value}>{value}</option>
-                        })}
-                      </select>
-                      <strong>:</strong>
-                      <select
-                        value={minute}
-                        onChange={(e) => {
-                          updateScheduleTime(index, `${hour}:${e.target.value.padStart(2, '0')}`)
-                        }}
-                        disabled={isRunning}
-                        aria-label={`第 ${index + 1} 个执行时间的分钟`}
-                        className="min-h-11"
-                      >
-                        {Array.from({ length: 60 }, (_, i) => {
-                          const value = i.toString().padStart(2, '0')
-                          return <option key={value} value={value}>{value}</option>
-                        })}
-                      </select>
+                  <div key={`schedule-time-${index}`} className="automation-schedule-time-row">
+                    <span className="automation-schedule-frequency">每天</span>
+                    <div className="automation-schedule-time-copy">
+                      <label htmlFor={inputId} className="sr-only">
+                        第 {index + 1} 个执行时间
+                      </label>
+                      <div className="automation-schedule-time-input-shell">
+                        <input
+                          id={inputId}
+                          type="time"
+                          value={time}
+                          step={60}
+                          onChange={(event) => {
+                            if (scheduleTimePattern.test(event.target.value)) {
+                              updateScheduleTime(index, event.target.value)
+                            }
+                          }}
+                          disabled={isRunning}
+                          className="automation-schedule-time-input min-h-11"
+                        />
+                        <Clock3
+                          className="automation-schedule-time-picker-icon"
+                          size={17}
+                          strokeWidth={1.9}
+                          aria-hidden="true"
+                        />
+                      </div>
                     </div>
                     {scheduleTimes.length > 1 ? (
-                      <button
-                        type="button"
+                      <IconButton
+                        icon={(
+                          <span className="automation-schedule-remove-glyph" aria-hidden="true">
+                            <Minus size={12} strokeWidth={2.6} />
+                          </span>
+                        )}
+                        variant="ghost"
+                        size="md"
                         onClick={() => removeScheduleTime(index)}
                         disabled={isRunning}
                         className="automation-schedule-remove min-h-11 min-w-11"
                         title="删除时间点"
                         aria-label={`删除第 ${index + 1} 个时间点`}
-                      >
-                        <CircleMinus size={19} strokeWidth={1.8} aria-hidden="true" />
-                      </button>
+                      />
                     ) : <span className="automation-schedule-remove-placeholder" />}
                   </div>
                 )
               })}
+              {scheduleTimes.length < 6 && (
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={addScheduleTime}
+                  disabled={isRunning}
+                  className="automation-schedule-add"
+                  icon={<CirclePlus size={18} strokeWidth={1.8} aria-hidden="true" />}
+                >
+                  添加执行时间
+                </Button>
+              )}
             </div>
-            {scheduleTimes.length < 6 && (
-              <button
-                type="button"
-                onClick={addScheduleTime}
-                disabled={isRunning}
-                className="automation-schedule-add"
-              >
-                <CirclePlus size={18} strokeWidth={1.8} aria-hidden="true" />
-                <span>添加时间点</span>
-              </button>
-            )}
           </motion.div>
         ) : (
           <div className="automation-schedule-empty">
@@ -2132,8 +2134,9 @@ export default function AutomationTasks() {
               ) : (
                 <div className="automation-sequence-list">
                   {taskFlow.map((task, index) => {
-                    const isCurrentStep = currentStep === index
+                    const isCurrentStep = isRunning && currentStep === index
                     const isCompletedStep = isRunning && task.enabled && currentStep > index
+                    const isSelectedTask = activeTaskId === task.id
 
                     return (
                       <motion.div
@@ -2143,7 +2146,9 @@ export default function AutomationTasks() {
                           if (node) sequenceItemRefs.current.set(task.id, node)
                           else sequenceItemRefs.current.delete(task.id)
                         }}
-                        className={`automation-sequence-item${activeTaskId === task.id ? ' is-selected' : ''}${isCurrentStep ? ' is-current' : ''}${isCompletedStep ? ' is-completed' : ''}${!task.enabled ? ' is-disabled' : ''}${draggedIndex === index ? ' is-dragging' : ''}`}
+                        className={`automation-sequence-item${isSelectedTask ? ' is-selected' : ''}${isCurrentStep ? ' is-current' : ''}${isCompletedStep ? ' is-completed' : ''}${!task.enabled ? ' is-disabled' : ''}${draggedIndex === index ? ' is-dragging' : ''}`}
+                        data-selected={isSelectedTask ? 'true' : 'false'}
+                        data-execution-state={isCurrentStep ? 'running' : isCompletedStep ? 'completed' : 'idle'}
                       >
                       <button
                         type="button"
@@ -2165,7 +2170,8 @@ export default function AutomationTasks() {
                         className="automation-sequence-select"
                         onClick={() => selectTaskForEditing(task.id)}
                         aria-controls="automation-task-editor"
-                        aria-pressed={activeTaskId === task.id}
+                        aria-pressed={isSelectedTask}
+                        aria-current={isCurrentStep ? 'step' : undefined}
                       >
                         <span className="automation-sequence-node" aria-hidden="true">
                           <AnimatePresence initial={false} mode="wait">
@@ -2178,6 +2184,8 @@ export default function AutomationTasks() {
                             >
                               {isCompletedStep
                                 ? <Check size={11} strokeWidth={2.8} />
+                                : isCurrentStep
+                                  ? <LoaderCircle className="automation-sequence-progress" size={13} strokeWidth={2.3} />
                                 : String(index + 1).padStart(2, '0')}
                             </motion.span>
                           </AnimatePresence>

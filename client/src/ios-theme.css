@@ -78,6 +78,46 @@
   --la-pluma-navbar-fade-color: #ffffff;
   --la-pluma-sidebar-width: 17rem;
   --la-pluma-sidebar-bg: #efeff4;
+  --la-pluma-sidebar-frame-fill: rgba(244, 245, 248, 0.62);
+  --la-pluma-sidebar-frame-inner-edge: rgba(255, 255, 255, 0.42);
+  --la-pluma-sidebar-frame-sheen: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(255, 255, 255, 0.36) 38%,
+    rgba(255, 255, 255, 0) 72%
+  );
+  --la-pluma-sidebar-frame-top-refraction: linear-gradient(
+    to bottom,
+    rgba(177, 192, 218, 0.3) 0%,
+    rgba(204, 216, 235, 0.16) 22%,
+    rgba(222, 231, 246, 0) 42%
+  );
+  --la-pluma-sidebar-frame-bottom-refraction: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.46) 24%,
+    rgba(255, 255, 255, 0) 54%
+  );
+  --la-pluma-sidebar-frame-shadow: 0 0.875rem 2.625rem rgba(60, 60, 67, 0.17);
+  --la-pluma-sidebar-frame-edge: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(255, 255, 255, 0.72) 26%,
+    rgba(60, 60, 67, 0.16) 58%,
+    rgba(60, 60, 67, 0.06) 100%
+  );
+  --la-pluma-sidebar-frame-corner-glow: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0) 72%,
+    rgba(255, 255, 255, 0.68) 100%
+  );
+  --la-pluma-sidebar-frame-bottom-edge: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.92) 0,
+    rgba(255, 255, 255, 0.92) 1px,
+    rgba(255, 255, 255, 0) 1px
+  );
   --la-pluma-sidebar-search-bg: rgba(118, 118, 128, 0.12);
   --la-pluma-sidebar-selection: #007aff;
   --la-pluma-liquid-surface-lift: rgba(255, 255, 255, 0.04);
@@ -159,6 +199,46 @@ html.dark,
   --la-pluma-tabbar-fade-color: #000000;
   --la-pluma-navbar-fade-color: #000000;
   --la-pluma-sidebar-bg: #1c1c1e;
+  --la-pluma-sidebar-frame-fill: rgba(28, 28, 30, 0.78);
+  --la-pluma-sidebar-frame-inner-edge: rgba(255, 255, 255, 0.14);
+  --la-pluma-sidebar-frame-sheen: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.018) 38%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+  --la-pluma-sidebar-frame-top-refraction: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.026) 0%,
+    rgba(255, 255, 255, 0.009) 22%,
+    rgba(255, 255, 255, 0) 42%
+  );
+  --la-pluma-sidebar-frame-bottom-refraction: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.026) 0%,
+    rgba(255, 255, 255, 0.009) 22%,
+    rgba(255, 255, 255, 0) 42%
+  );
+  --la-pluma-sidebar-frame-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.08);
+  --la-pluma-sidebar-frame-edge: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.1) 25%,
+    rgba(235, 235, 245, 0.05) 56%,
+    rgba(235, 235, 245, 0.016) 100%
+  );
+  --la-pluma-sidebar-frame-corner-glow: linear-gradient(
+    135deg,
+    rgba(235, 235, 245, 0) 0%,
+    rgba(235, 235, 245, 0) 72%,
+    rgba(235, 235, 245, 0.1) 100%
+  );
+  --la-pluma-sidebar-frame-bottom-edge: linear-gradient(
+    to top,
+    rgba(235, 235, 245, 0.12) 0,
+    rgba(235, 235, 245, 0.12) 1px,
+    rgba(235, 235, 245, 0) 1px
+  );
   --la-pluma-sidebar-search-bg: rgba(118, 118, 128, 0.2);
   --la-pluma-sidebar-selection: #0a84ff;
   --la-pluma-liquid-surface-lift: rgba(255, 255, 255, 0.05);
@@ -423,17 +503,28 @@ body {
   .la-pluma-app .la-pluma-sidebar-frame {
     display: block;
     position: fixed;
-    z-index: 0;
+    /* The frame stays below sidebar content but above the page-level fade. */
+    z-index: 1;
     top: 0.75rem;
     bottom: 0.75rem;
     left: 0.75rem;
     width: calc(var(--la-pluma-sidebar-width) - 1.5rem);
-    border: 1px solid var(--app-border-strong);
+    border: 1px solid transparent;
     border-radius: 1.625rem;
-    background: var(--la-pluma-sidebar-bg);
-    box-shadow: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    background:
+      var(--la-pluma-sidebar-frame-bottom-edge) padding-box,
+      var(--la-pluma-sidebar-frame-top-refraction) padding-box,
+      var(--la-pluma-sidebar-frame-bottom-refraction) padding-box,
+      var(--la-pluma-sidebar-frame-sheen) padding-box,
+      linear-gradient(var(--la-pluma-sidebar-frame-fill), var(--la-pluma-sidebar-frame-fill)) padding-box,
+      var(--la-pluma-sidebar-frame-corner-glow) border-box,
+      var(--la-pluma-sidebar-frame-edge) border-box;
+    box-shadow:
+      inset 0 1px 0 var(--la-pluma-sidebar-frame-inner-edge),
+      inset 0 -1px 0 rgba(60, 60, 67, 0.1),
+      var(--la-pluma-sidebar-frame-shadow);
+    -webkit-backdrop-filter: blur(28px) saturate(165%);
+    backdrop-filter: blur(28px) saturate(165%);
     pointer-events: none;
   }
 
@@ -448,6 +539,9 @@ body {
     right: 0;
     left: 0;
     width: 100%;
+    /* Avoid a desktop-wide stacking context: the fade must stay below the
+       sidebar material while the actual toolbar controls remain above it. */
+    z-index: auto;
     background: transparent;
     box-shadow: none;
     -webkit-backdrop-filter: none;
@@ -475,7 +569,10 @@ body {
     z-index: 0;
     top: 0;
     right: 0;
-    left: calc(var(--la-pluma-sidebar-width) - 0.75rem);
+    /* The top fade is one page-level background, not a workspace-only band.
+       Keep it behind the desktop sidebar frame so the material never meets a
+       differently colored strip at the workspace boundary. */
+    left: 0;
     height: 100%;
     background: linear-gradient(
       to bottom,
@@ -487,8 +584,9 @@ body {
   }
 
   .la-pluma-app .la-pluma-navbar .navbar-inner {
-    z-index: 1;
-    padding-left: calc(var(--la-pluma-sidebar-width) + 2rem);
+    z-index: 2;
+    padding-right: 2rem;
+    padding-left: calc(var(--la-pluma-sidebar-width) + 1.25rem);
   }
 
   .la-pluma-app .la-pluma-page-body {
@@ -1737,7 +1835,8 @@ body {
   .la-pluma-app .la-pluma-content {
     max-width: 112rem;
     padding-right: 2rem;
-    padding-left: 2rem;
+    /* The visible sidebar frame ends 0.75rem before the workspace column. */
+    padding-left: 1.25rem;
   }
 }
 
@@ -1875,6 +1974,54 @@ body {
   .dark .la-pluma-app .ios-workspace-page .smooth-panel-shell[data-smooth-corners='true'] {
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
   }
+}
+
+/* These secondary workspaces use the same borderless grouped-card material as
+   the dashboard. Controls, status outlines, and internal dividers stay intact. */
+.la-pluma-app .ios-borderless-cards :is(
+  .app-card[data-smooth-corners='true'],
+  .smooth-panel-shell[data-smooth-corners='true']
+) {
+  border: 0 !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.1);
+}
+
+.la-pluma-app .ios-borderless-cards :is(
+  .app-card-smooth-surface,
+  .smooth-panel-surface
+) {
+  border: 0;
+}
+
+.la-pluma-app .ios-borderless-cards .surface-soft {
+  box-shadow: none;
+}
+
+.la-pluma-app .ios-borderless-cards .app-info-card:not(
+  .status-info,
+  .status-warning,
+  .status-danger,
+  .status-success
+) {
+  border: 0;
+}
+
+.la-pluma-app .ios-borderless-cards :is(
+  .log-console,
+  .config-device-list
+) {
+  box-shadow: none;
+}
+
+.la-pluma-app .ios-borderless-cards .data-statistics-kpi-grid {
+  padding: 0;
+}
+
+.dark .la-pluma-app .ios-borderless-cards :is(
+  .app-card[data-smooth-corners='true'],
+  .smooth-panel-shell[data-smooth-corners='true']
+) {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
 }
 
 /* Dashboard cards use one continuous, softly lifted material at every width.
@@ -2174,6 +2321,31 @@ body {
   padding-right: 2.5rem;
 }
 
+.la-pluma-app .la-pluma-content select.app-select-control {
+  background-image: none;
+  padding-right: 3rem;
+}
+
+.la-pluma-app .la-pluma-content .app-select-trailing-icon {
+  position: absolute;
+  top: 50%;
+  right: 0.375rem;
+  display: flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--app-text-soft);
+  transform: translateY(-50%);
+  transition: color 160ms ease, background-color 160ms ease;
+  pointer-events: none;
+}
+
+.la-pluma-app .la-pluma-content .app-select-trailing-icon.is-disabled {
+  opacity: 0.5;
+}
+
 .la-pluma-app .la-pluma-content .app-native-control:focus-visible {
   outline: none;
   border-color: var(--app-accent);
@@ -2251,6 +2423,130 @@ html.dark .la-pluma-app .la-pluma-content .app-native-control,
     height: var(--app-control-height-md);
     min-height: var(--app-control-height-md) !important;
   }
+}
+
+/* Borderless workspaces distinguish fields with a quiet filled surface. Focus
+   remains explicit without bringing back a permanent control outline. */
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-native-control:not(.form-error-surface) {
+  border: 0;
+  background-color: var(--app-surface-muted);
+  box-shadow: none;
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-native-control:not(.form-error-surface):hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--app-accent-soft) 16%, var(--app-surface-muted));
+  box-shadow: none;
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-native-control:not(.form-error-surface):focus,
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-native-control:not(.form-error-surface):focus-visible {
+  border: 0;
+  background-color: color-mix(in srgb, var(--app-accent-soft) 22%, var(--app-surface-muted));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) select.app-native-control:not(.form-error-surface) {
+  background-color: color-mix(in srgb, var(--app-accent-soft) 12%, var(--app-surface-muted));
+  color: var(--app-text);
+  font-weight: 500;
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) select.app-native-control:not(.form-error-surface):hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--app-accent-soft) 22%, var(--app-surface-muted));
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) select.app-native-control:not(.form-error-surface):focus,
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) select.app-native-control:not(.form-error-surface):focus-visible {
+  background-color: color-mix(in srgb, var(--app-accent-soft) 28%, var(--app-surface-muted));
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-select-trailing-icon {
+  background: color-mix(in srgb, var(--app-accent) 10%, transparent);
+  color: var(--app-accent);
+}
+
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-select-shell:hover .app-select-trailing-icon,
+.la-pluma-app .la-pluma-content :is(
+  .ios-borderless-cards,
+  [data-automation-tasks],
+  [data-workbench-tasks]
+) .app-select-shell:focus-within .app-select-trailing-icon {
+  background: color-mix(in srgb, var(--app-accent) 16%, transparent);
+}
+
+/* Automation owns a few compact field implementations instead of the shared
+   Input component. Keep their filled grouping while removing the permanent
+   hairlines used by the former desktop control treatment. */
+.la-pluma-app [data-automation-tasks] :is(
+  .automation-select-control select,
+  .automation-task-editor .automation-text-control,
+  .automation-task-editor .number-input-wrapper,
+  .automation-composite-control,
+  .automation-notification-field input
+) {
+  border: 0;
+  box-shadow: none;
+}
+
+.la-pluma-app [data-automation-tasks] :is(
+  .automation-select-control:hover select,
+  .automation-task-editor .automation-text-control:hover,
+  .automation-task-editor .number-input-wrapper:hover,
+  .automation-composite-control:hover
+) {
+  box-shadow: none;
+}
+
+.la-pluma-app [data-automation-tasks] .automation-composite-control.is-accented {
+  box-shadow: none;
+}
+
+.la-pluma-app [data-automation-tasks] .automation-notification-field input:focus,
+.la-pluma-app [data-automation-tasks] .automation-select-control:has(select:focus) select,
+.la-pluma-app [data-automation-tasks] .automation-task-editor .automation-text-control:focus,
+.la-pluma-app [data-automation-tasks] .automation-task-editor .number-input-wrapper:has(input:focus),
+.la-pluma-app [data-automation-tasks] .automation-composite-control:has(input:focus) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
 }
 
 /* Apple Liquid Glass keeps ordinary Automation content solid. The preview

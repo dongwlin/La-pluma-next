@@ -630,7 +630,7 @@ export default function ConfigManager() {
   ] satisfies Array<ConfigSection & { description: string }>
 
   return (
-    <div className="app-page app-stack-section ios-workspace-page" data-page="config">
+    <div className="app-page app-stack-section ios-workspace-page ios-borderless-cards" data-page="config">
       <PageHeader
         title="配置"
         subtitle="连接设备、管理运行选项与组件更新"
@@ -817,7 +817,7 @@ export default function ConfigManager() {
                 )}
 
                 {discoveredDevices.length > 0 && (
-                  <div className="mt-3 divide-y divide-[var(--app-border)] overflow-hidden rounded-[var(--app-radius-md)] bg-[var(--app-surface)] shadow-[inset_0_0_0_1px_var(--app-border)]">
+                  <div className="config-device-list mt-3 divide-y divide-[var(--app-border)] overflow-hidden rounded-[var(--app-radius-md)] bg-[var(--app-surface)] shadow-[inset_0_0_0_1px_var(--app-border)]">
                     {discoveredDevices.map(device => {
                       const selectable = device.state === 'device' || device.state === 'candidate'
                       const stateLabel = device.state === 'device'
@@ -873,7 +873,7 @@ export default function ConfigManager() {
                   ]}
                   hint="选择与服务器系统匹配的平台预设"
                 />
-                <div className="surface-soft flex min-h-20 items-center justify-between gap-3 rounded-[var(--app-radius-lg)] px-4 py-3">
+                <div className="config-reconnect-row flex min-h-[3.5rem] items-center justify-between gap-3 py-1">
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-primary">自动重连</div>
                     <div className="mt-1 text-xs leading-5 text-tertiary">连接中断后自动尝试恢复</div>

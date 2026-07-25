@@ -931,7 +931,7 @@ export default function DataStatistics() {
   }
 
   return (
-    <div className="app-page ios-workspace-page data-statistics-page">
+    <div className="app-page ios-workspace-page ios-borderless-cards data-statistics-page">
       <div className="app-stack-section">
         {/* 页面标题 */}
         <PageHeader

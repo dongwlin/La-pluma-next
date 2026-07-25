@@ -151,6 +151,7 @@ describe('DataStatistics layout surfaces', () => {
 
     const page = container.querySelector('.data-statistics-page')
     expect(page?.classList.contains('ios-workspace-page')).toBe(true)
+    expect(page?.classList.contains('ios-borderless-cards')).toBe(true)
     expect(page?.querySelector('.app-page-header')?.classList.contains('is-mobile-inline')).toBe(true)
     expect(page?.querySelector('.app-page-title')?.textContent).toBe('数据')
 

@@ -516,7 +516,7 @@ export default function LogViewer() {
   }
 
   return (
-    <div className="app-page log-viewer ios-workspace-page">
+    <div className="app-page log-viewer ios-workspace-page ios-borderless-cards">
       <div className="app-stack-section">
         <PageHeader
           title="日志"
@@ -607,7 +607,7 @@ export default function LogViewer() {
         <Card className="log-card log-toolbar-card !p-0" animated delay={0.1} smoothCorners>
           <CardContent className="log-toolbar">
             <div className="log-toolbar-controls">
-              <div className={`surface-soft flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-xl px-3 ${viewingHistory ? 'opacity-50' : ''}`}>
+              <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3 ${viewingHistory ? 'opacity-50' : ''}`}>
                 <span className="truncate text-xs font-medium text-secondary">自动滚动</span>
                 <Switch
                   compact
@@ -617,7 +617,7 @@ export default function LogViewer() {
                   disabled={viewingHistory}
                 />
               </div>
-              <div className="surface-soft flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-xl px-3">
+              <div className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3">
                 <span className="truncate text-xs font-medium text-secondary">折叠重复</span>
                 <Switch
                   compact

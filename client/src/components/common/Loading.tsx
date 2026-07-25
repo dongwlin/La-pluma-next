@@ -499,7 +499,7 @@ function LogsSkeleton() {
         <div className="app-card-content log-toolbar">
           <div className="log-toolbar-controls">
             {[1, 2].map(item => (
-              <div key={item} className="flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-xl px-3 surface-soft">
+              <div key={item} className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3">
                 <Skeleton variant="text" className="h-3 w-14" />
                 <Skeleton variant="rect" className="h-5 w-8 rounded-full" />
               </div>
@@ -653,7 +653,7 @@ function ConfigSkeleton() {
               <Skeleton variant="rect" className="h-11 w-full rounded-xl" />
               <Skeleton variant="text" className="h-2.5 w-48 max-w-full" />
             </div>
-            <div className="flex min-h-20 items-center justify-between gap-3 rounded-xl px-4 py-3 surface-soft">
+            <div className="config-reconnect-row flex min-h-[3.5rem] items-center justify-between gap-3 py-1">
               <div className="space-y-2">
                 <Skeleton variant="text" className="h-3 w-20" />
                 <Skeleton variant="text" className="h-2.5 w-36 max-w-full" />
@@ -720,6 +720,7 @@ export function PageSkeleton({ variant }: { variant: string }) {
   const pageClassNames = [
     'app-page',
     'ios-workspace-page',
+    ['training', 'logs', 'statistics', 'config'].includes(variant) ? 'ios-borderless-cards' : '',
     variant === 'combat' ? 'combat-page' : '',
     variant === 'roguelike' ? 'roguelike-page' : '',
     variant === 'logs' ? 'log-viewer' : '',

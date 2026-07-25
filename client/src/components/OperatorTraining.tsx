@@ -914,7 +914,7 @@ export default function OperatorTraining() {
       })()
     : null;
   return (
-    <div className="app-page ios-workspace-page" data-page="training">
+    <div className="app-page ios-workspace-page ios-borderless-cards" data-page="training">
       <div className="app-stack-section">
         {/* 页面标题 */}
         <PageHeader
