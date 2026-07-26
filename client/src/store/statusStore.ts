@@ -18,7 +18,7 @@ const cancelDismissTimer = () => {
   dismissTimer = null
 }
 
-export interface StatusState {
+interface StatusState {
   message: string
   messageType: StatusMessageType | null
   isActive: boolean

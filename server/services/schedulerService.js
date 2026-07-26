@@ -15,6 +15,7 @@ import { createLogger } from '../utils/logger.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';
+import { DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 
 const execAsync = promisify(exec);
 
@@ -23,8 +24,7 @@ const logger = createLogger('Scheduler');
 const commaSeparatedArrayKeys = new Set(['buy_first', 'blacklist', 'first_tags', 'preserve_tags']);
 
 // MAA CLI 路径
-// Docker 环境使用完整路径，本地环境使用 'maa' 依赖 PATH
-const MAA_CLI_PATH = process.env.MAA_CLI_PATH || (process.env.DOCKER_ENV ? '/usr/local/bin/maa' : 'maa');
+const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 
 // 存储所有定时任务
 const scheduledJobs = new Map();
@@ -179,7 +179,7 @@ function updateScheduleStatus(updates) {
 }
 
 // 构建 MAA 命令
-export function buildScheduledTaskCommand(task, connectionDefaults = {}) {
+function buildScheduledTaskCommand(task, connectionDefaults = {}) {
   if (task.taskType) {
     // MaaCore 内置任务类型
     const params = { ...(task.params || {}) };
@@ -242,7 +242,7 @@ export function buildScheduledTaskCommand(task, connectionDefaults = {}) {
   let extraArgs = [];
   
   if (commandId === 'startup' || commandId === 'closedown') {
-    params = task.params.clientType || 'Official';
+    params = task.params.clientType || DEFAULT_CLIENT_TYPE;
     const address = connectionDefaults.address;
     if (address) {
       extraArgs.push(`-a ${address}`);
@@ -699,7 +699,7 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
             const gameState = await getGameClientState(
               adbConfig.adbPath,
               adbConfig.address,
-              task.params.clientType || 'Official'
+              task.params.clientType || DEFAULT_CLIENT_TYPE
             );
             if (!gameState.running) {
               throw new Error(`游戏未在前台，当前应用：${gameState.foregroundPackage || '未知'}`);
@@ -949,7 +949,7 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
         // 如果是 fight 命令，处理多个关卡
         if (command === 'fight' && args.length > 0) {
           const stageInput = args[0];
-          const clientType = task.params.clientType || 'Official';
+          const clientType = task.params.clientType || DEFAULT_CLIENT_TYPE;
           
           // 解析关卡列表，格式：stage1:times1,stage2:times2 或 stage1,stage2
           const stageEntries = stageInput.split(',').map(s => {

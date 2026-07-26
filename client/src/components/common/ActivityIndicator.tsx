@@ -1,4 +1,4 @@
-export interface ActivityIndicatorProps {
+interface ActivityIndicatorProps {
   size?: 'xs' | 'sm' | 'md' | 'lg'
   className?: string
 }

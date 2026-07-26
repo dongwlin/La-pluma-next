@@ -51,6 +51,44 @@ const fpsOptions = [30, 60, 90, 120] as const
 type QualityPreset = keyof typeof qualityPresets
 type QualitySelection = QualityPreset | 'custom'
 
+const deviceNavigationActions = [
+  { label: '返回', command: 'input keyevent 4', Icon: ArrowLeft },
+  { label: 'Home', command: 'input keyevent 3', Icon: Home },
+  { label: '后台任务', command: 'input keyevent 187', Icon: PanelsTopLeft },
+] as const
+
+function DeviceNavigationButtons({
+  connected,
+  automationAvailable,
+  automationUnavailableMessage,
+  immersive = false,
+  compact = false,
+  onCommand,
+}: {
+  connected: boolean
+  automationAvailable: boolean
+  automationUnavailableMessage: string
+  immersive?: boolean
+  compact?: boolean
+  onCommand: (command: string) => void
+}) {
+  return deviceNavigationActions.map(({ label, command, Icon }) => (
+    <button
+      key={label}
+      type="button"
+      onClick={() => onCommand(command)}
+      disabled={!connected || !automationAvailable}
+      title={!automationAvailable ? automationUnavailableMessage : label}
+      aria-label={label}
+      className={immersive
+        ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
+        : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'automation-preview-glass-button' : ''}`}
+    >
+      <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+    </button>
+  ))
+}
+
 interface TrackedPointer {
   clientX: number
   clientY: number
@@ -526,41 +564,13 @@ export default function ScrcpyDeviceView({
           )}
         </div>
         <div className="scrcpy-preview-toolbar flex items-center justify-center gap-2 bg-transparent px-2 py-1" role="toolbar" aria-label="模拟器导航">
-          {[
-            {
-              label: '返回',
-              disabled: webrtc.status !== 'connected',
-              onClick: () => sendDeviceCommand('input keyevent 4'),
-              requiresAutomation: true,
-              icon: <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-            },
-            {
-              label: 'Home',
-              disabled: webrtc.status !== 'connected',
-              onClick: () => sendDeviceCommand('input keyevent 3'),
-              requiresAutomation: true,
-              icon: <Home className="h-3.5 w-3.5" strokeWidth={1.8} />
-            },
-            {
-              label: '后台任务',
-              disabled: webrtc.status !== 'connected',
-              onClick: () => sendDeviceCommand('input keyevent 187'),
-              requiresAutomation: true,
-              icon: <PanelsTopLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-            }
-          ].map(action => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={action.onClick}
-              disabled={action.disabled || (action.requiresAutomation && !automationAvailable)}
-              title={action.requiresAutomation && !automationAvailable ? automationUnavailableMessage : action.label}
-              aria-label={action.label}
-              className={`control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-35 ${isCompact ? 'automation-preview-glass-button' : ''}`}
-            >
-              {action.icon}
-            </button>
-          ))}
+          <DeviceNavigationButtons
+            connected={webrtc.status === 'connected'}
+            automationAvailable={automationAvailable}
+            automationUnavailableMessage={automationUnavailableMessage}
+            compact={isCompact}
+            onCommand={sendDeviceCommand}
+          />
           <button
             type="button"
             onClick={fullscreen}
@@ -794,41 +804,13 @@ export default function ScrcpyDeviceView({
           )}
         </div>
         <div className="flex shrink-0 items-center justify-center gap-2 landscape:flex-col" role="toolbar" aria-label="沉浸预览控制">
-          {[
-            {
-              label: '返回',
-              disabled: webrtc.status !== 'connected',
-              onClick: () => sendDeviceCommand('input keyevent 4'),
-              requiresAutomation: true,
-              icon: <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-            },
-            {
-              label: 'Home',
-              disabled: webrtc.status !== 'connected',
-              onClick: () => sendDeviceCommand('input keyevent 3'),
-              requiresAutomation: true,
-              icon: <Home className="h-3.5 w-3.5" strokeWidth={1.8} />
-            },
-            {
-              label: '后台任务',
-              disabled: webrtc.status !== 'connected',
-              onClick: () => sendDeviceCommand('input keyevent 187'),
-              requiresAutomation: true,
-              icon: <PanelsTopLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-            }
-          ].map(action => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={action.onClick}
-              disabled={action.disabled || (action.requiresAutomation && !automationAvailable)}
-              title={action.requiresAutomation && !automationAvailable ? automationUnavailableMessage : action.label}
-              aria-label={action.label}
-              className="group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:opacity-35 disabled:cursor-not-allowed"
-            >
-              {action.icon}
-            </button>
-          ))}
+          <DeviceNavigationButtons
+            connected={webrtc.status === 'connected'}
+            automationAvailable={automationAvailable}
+            automationUnavailableMessage={automationUnavailableMessage}
+            immersive
+            onCommand={sendDeviceCommand}
+          />
           <button
             type="button"
             onClick={exitImmersive}

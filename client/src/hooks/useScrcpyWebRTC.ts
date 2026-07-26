@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchWithAuth } from '../services/api'
 
-export type WebRTCStatus = 'idle' | 'connecting' | 'signaling' | 'waiting_offer' | 'connecting_webrtc' | 'connected' | 'disconnected' | 'error'
+type WebRTCStatus = 'idle' | 'connecting' | 'signaling' | 'waiting_offer' | 'connecting_webrtc' | 'connected' | 'disconnected' | 'error'
 
 interface ScrcpyOptions {
   max_fps?: number
@@ -29,7 +29,7 @@ interface UseScrcpyWebRTCOptions {
   scrcpyOptions?: ScrcpyOptions
 }
 
-export interface VideoStats {
+interface VideoStats {
   fps: string | number
   bitrate: string | number
   rtt: string | number

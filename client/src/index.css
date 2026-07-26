@@ -129,10 +129,6 @@
     color: var(--app-text);
   }
 
-  .nav-shell {
-    padding-top: env(safe-area-inset-top, 0px);
-  }
-
   body {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
@@ -314,8 +310,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-spinner,
-  .app-activity-indicator .preloader-inner,
   .app-activity-indicator-fallback {
     animation: none !important;
   }
@@ -392,14 +386,12 @@
   }
 
   .surface-panel,
-  .nav-shell,
   .app-modal-backdrop {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  .surface-panel,
-  .nav-shell {
+  .surface-panel {
     background: var(--app-surface-solid) !important;
   }
 
@@ -463,31 +455,6 @@
   }
 }
 
-/* Automation task builder */
-.automation-builder-grid {
-  display: grid;
-  grid-template-columns: minmax(15.5rem, 0.72fr) minmax(0, 1.75fr);
-  align-items: start;
-}
-
-.automation-available-column,
-.automation-flow-column {
-  min-width: 0;
-}
-
-.automation-available-panel,
-.automation-flow-panel {
-  overflow: hidden;
-  border-radius: var(--app-radius-lg);
-  box-shadow: inset 0 0 0 1px var(--app-border);
-}
-
-.automation-available-panel {
-  position: sticky;
-  top: 1rem;
-}
-
-.automation-panel-header,
 .automation-flow-header {
   display: flex;
   align-items: center;
@@ -498,7 +465,6 @@
   border-bottom: 1px solid var(--app-border);
 }
 
-.automation-panel-header h3,
 .automation-flow-header h3 {
   display: flex;
   align-items: center;
@@ -508,14 +474,12 @@
   font-weight: 600;
 }
 
-.automation-panel-header h3 svg,
 .automation-flow-header h3 svg {
   width: 1.05rem;
   height: 1.05rem;
   color: var(--app-accent);
 }
 
-.automation-panel-header p,
 .automation-flow-header p {
   margin-top: 0.25rem;
   color: var(--app-text-soft);
@@ -535,7 +499,6 @@
   font-weight: 500;
 }
 
-.automation-panel-count,
 .automation-flow-summary {
   display: inline-flex;
   flex: 0 0 auto;
@@ -551,175 +514,17 @@
   font-weight: 700;
 }
 
-.automation-task-library {
-  padding: 0.5rem;
-}
-
-.automation-task-option {
-  position: relative;
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: 2.25rem minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 0.625rem;
-  border-radius: var(--app-radius-md);
-  padding: 0.625rem;
-  color: var(--app-text-muted);
-  text-align: left;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
-}
-
-.automation-task-option + .automation-task-option {
-  border-top: 1px solid var(--app-border);
-}
-
-.automation-task-option:hover {
-  z-index: 1;
-  background: var(--app-accent-soft);
-  color: var(--app-text);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 22%, transparent);
-}
-
-.automation-task-option:focus-visible,
-.automation-delete-task:focus-visible,
-.automation-drag-handle:focus-visible {
+.automation-delete-task:focus-visible {
   outline: 2px solid var(--app-accent);
   outline-offset: 2px;
 }
 
-.automation-task-option:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.automation-task-option-icon,
-.automation-flow-task-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--app-accent);
-}
-
-.automation-task-option-icon {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: var(--app-radius-md);
-  background: var(--app-accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 15%, transparent);
-}
-
-.automation-task-option-icon svg,
 .automation-flow-task-icon svg {
   width: 1rem;
   height: 1rem;
 }
 
-.automation-task-option-copy,
-.automation-task-option-title,
-.automation-flow-task-name {
-  min-width: 0;
-}
-
-.automation-task-option-copy {
-  display: grid;
-  gap: 0.125rem;
-  overflow: hidden;
-  color: var(--app-text-soft);
-  font-size: var(--app-font-caption);
-  line-height: 1.45;
-}
-
-.automation-task-option-copy > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.automation-task-option-title {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.automation-task-option-title strong {
-  overflow: hidden;
-  color: var(--app-text);
-  font-size: var(--app-font-body);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.automation-task-option-title small {
-  overflow: hidden;
-  color: var(--app-text-soft);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: var(--app-font-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.automation-task-added-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 999px;
-  background: var(--app-accent);
-  color: white;
-  font-size: var(--app-font-meta);
-  font-weight: 700;
-}
-
-.automation-task-add,
-.automation-delete-task {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 1.875rem;
-  height: 1.875rem;
-  border-radius: var(--app-radius-md);
-}
-
-.automation-task-add {
-  color: var(--app-text-soft);
-  box-shadow: inset 0 0 0 1px var(--app-border);
-  transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-}
-
-.automation-task-option:hover .automation-task-add {
-  background: var(--app-accent);
-  color: white;
-  box-shadow: inset 0 0 0 1px var(--app-accent);
-}
-
-.automation-flow-header {
-  align-items: center;
-}
-
-.automation-flow-actions,
-.automation-flow-buttons {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.625rem;
-}
-
-.automation-flow-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0.75rem;
-}
-
 @media (min-width: 1200px) {
-  .automation-flow-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .automation-flow-card-header {
     align-items: flex-start;
     flex-direction: column;
@@ -802,37 +607,20 @@
   font-weight: 700;
 }
 
-.automation-drag-handle {
+.automation-flow-task-icon {
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--app-radius-md);
-  color: var(--app-text-soft);
-  cursor: grab;
-  transition: color 160ms ease, background 160ms ease;
-}
-
-.automation-drag-handle:hover {
-  background: var(--app-accent-soft);
-  color: var(--app-accent);
-}
-
-.automation-drag-handle:active {
-  cursor: grabbing;
-}
-
-.automation-flow-task-icon {
   width: 2rem;
   height: 2rem;
   flex: 0 0 auto;
   border-radius: var(--app-radius-md);
   background: var(--app-accent-soft);
+  color: var(--app-accent);
 }
 
 .automation-flow-task-name {
+  min-width: 0;
   display: grid;
   gap: 0.125rem;
 }
@@ -855,17 +643,14 @@
   white-space: nowrap;
 }
 
-.automation-enabled-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--app-text-muted);
-  font-size: var(--app-font-caption);
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .automation-delete-task {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: var(--app-radius-md);
   color: var(--app-text-soft);
   box-shadow: inset 0 0 0 1px var(--app-border);
   transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
@@ -882,103 +667,12 @@
   opacity: 0.35;
 }
 
-.automation-empty-state {
-  display: flex;
-  min-height: 18rem;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  padding: 2rem;
-  text-align: center;
-}
-
-.automation-empty-state > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  margin-bottom: 0.875rem;
-  border-radius: var(--app-radius-lg);
-  background: var(--app-accent-soft);
-  color: var(--app-accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 18%, transparent);
-}
-
-.automation-empty-state strong {
-  color: var(--app-text);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.automation-empty-state p {
-  max-width: 20rem;
-  margin-top: 0.375rem;
-  color: var(--app-text-soft);
-  font-size: var(--app-font-caption);
-  line-height: 1.6;
-}
-
-@media (max-width: 1023px) {
-  .automation-builder-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .automation-available-panel {
-    position: static;
-  }
-
-  .automation-task-library {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.375rem;
-  }
-
-  .automation-task-option + .automation-task-option {
-    border-top: 0;
-  }
-}
-
 @media (max-width: 639px) {
-  .automation-builder-grid {
-    gap: 1rem;
-  }
-
-  .automation-panel-header,
   .automation-flow-header {
     min-height: 0;
-    padding: 0.875rem;
-  }
-
-  .automation-task-library {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .automation-flow-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .automation-flow-actions,
-  .automation-flow-buttons {
-    width: 100%;
-  }
-
-  .automation-flow-actions {
-    justify-content: space-between;
-  }
-
-  .automation-flow-buttons {
-    flex: 1;
-  }
-
-  .automation-flow-buttons .app-button {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .automation-flow-grid {
-    padding: 0.625rem;
+    padding: 0.875rem;
   }
 
   .automation-flow-card {
@@ -1316,24 +1010,6 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-areas: "sequence editor support";
   }
-}
-
-.automation-builder-grid {
-  grid-template-columns: minmax(16rem, 0.62fr) minmax(0, 1.75fr);
-  gap: var(--app-space-section);
-}
-
-.automation-available-column,
-.automation-sequence-column,
-.automation-editor-column,
-.automation-schedule-column {
-  min-width: 0;
-}
-
-.automation-available-panel {
-  overflow: hidden;
-  border-radius: var(--app-radius-lg);
-  box-shadow: inset 0 0 0 1px var(--app-border);
 }
 
 .automation-sequence-panel {
@@ -2007,33 +1683,6 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   transform: translateX(1rem) scale(0.94);
 }
 
-.automation-schedule-notification,
-.automation-schedule-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--app-radius-md);
-  color: var(--app-text-soft);
-  box-shadow: inset 0 0 0 1px var(--app-border);
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
-}
-
-.automation-schedule-notification {
-  width: 1.875rem;
-  height: 1.875rem;
-}
-
-.automation-schedule-notification svg {
-  width: 0.9375rem;
-  height: 0.9375rem;
-}
-
-.automation-schedule-notification:hover {
-  background: var(--app-accent-soft);
-  color: var(--app-accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 24%, transparent);
-}
-
 .automation-schedule-body {
   padding: 0.875rem 1rem 1rem;
 }
@@ -2202,6 +1851,9 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
 }
 
 .automation-schedule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   background: transparent;
   color: var(--app-danger);
@@ -2518,8 +2170,7 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   padding-left: 0;
 }
 
-.automation-task-editor .automation-flow-sequence,
-.automation-task-editor .automation-drag-handle {
+.automation-task-editor .automation-flow-sequence {
   display: none;
 }
 
@@ -2796,11 +2447,6 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
 
 .automation-composite-control {
   overflow: hidden;
-}
-
-.automation-composite-control.is-accented {
-  background: var(--app-accent-soft);
-  box-shadow: inset 0 0 0 1px var(--app-accent);
 }
 
 .automation-composite-control > input[type="text"],
@@ -3193,18 +2839,7 @@ input.automation-stage-name-input:disabled,
   }
 }
 
-@media (min-width: 900px) and (max-width: 1199px) {
-  .automation-builder-grid {
-    grid-template-columns: minmax(18rem, 0.75fr) minmax(0, 1.5fr);
-  }
-}
-
 @media (max-width: 899px) {
-  .automation-builder-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .automation-available-panel,
   .automation-sequence-panel,
   .automation-editor-panel,
   .automation-schedule-panel {
@@ -3646,40 +3281,6 @@ svg.w-5.h-5 {
 }
 
 
-/* 主题通用类 */
-.theme-card {
-  @apply bg-white dark:bg-[rgba(15,15,15,0.6)] border-gray-200 dark:border-white/10;
-}
-
-.theme-card-solid {
-  @apply bg-gray-50 dark:bg-[rgba(20,20,20,0.6)] border-gray-200 dark:border-white/10;
-}
-
-.theme-text {
-  @apply text-gray-900 dark:text-white;
-}
-
-.theme-text-secondary {
-  @apply text-gray-600 dark:text-gray-400;
-}
-
-.theme-text-muted {
-  @apply text-gray-500 dark:text-gray-500;
-}
-
-.theme-input-bg {
-  @apply bg-white dark:bg-[#070707];
-}
-
-.theme-button-bg {
-  @apply bg-gray-100 dark:bg-white/5;
-}
-
-.theme-button-hover {
-  @apply hover:bg-gray-200 dark:hover:bg-white/10;
-}
-
-
 @layer components {
   .text-primary {
     color: var(--app-text);
@@ -3699,10 +3300,6 @@ svg.w-5.h-5 {
 
   .dark .brand-text {
     color: var(--app-accent-strong);
-  }
-
-  .brand-border {
-    border-color: color-mix(in srgb, var(--app-accent) 28%, transparent);
   }
 
   .status-border-beam {
@@ -5034,10 +4631,6 @@ svg.w-5.h-5 {
     transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
   }
 
-  .app-spinner {
-    animation: spin 1s linear infinite;
-  }
-
   .app-activity-indicator {
     display: inline-flex;
     flex: 0 0 auto;
@@ -5412,44 +5005,6 @@ svg.w-5.h-5 {
     color: #071014;
   }
 
-  .nav-shell {
-    background: color-mix(in srgb, var(--app-surface-solid) 72%, transparent);
-    box-shadow:
-      0 1px 0 var(--app-border),
-      0 18px 46px rgba(15, 23, 42, 0.05);
-    backdrop-filter: blur(24px) saturate(140%);
-    -webkit-backdrop-filter: blur(24px) saturate(140%);
-  }
-
-  .dark .nav-shell {
-    background: color-mix(in srgb, var(--app-bg-soft) 70%, transparent);
-    box-shadow:
-      0 1px 0 var(--app-border),
-      0 18px 46px rgba(0, 0, 0, 0.28);
-  }
-
-  .nav-item-active {
-    background: var(--app-surface-solid);
-    color: var(--app-accent-strong);
-    box-shadow:
-      0 6px 16px color-mix(in srgb, var(--app-accent) 10%, transparent),
-      inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 16%, transparent);
-  }
-
-  .dark .nav-item-active {
-    background: var(--app-accent-soft);
-    color: var(--app-text);
-  }
-
-  .nav-item-idle {
-    color: var(--app-text-muted);
-  }
-
-  .nav-item-idle:hover {
-    background: var(--app-surface-muted);
-    color: var(--app-text);
-  }
-
   .icon-well {
     background: color-mix(in srgb, var(--app-surface-solid) 70%, transparent);
     color: var(--app-accent);
@@ -5606,21 +5161,6 @@ svg.w-5.h-5 {
   .log-console-heading-actions {
     flex: none;
     gap: 0.5rem;
-  }
-
-  .log-filter {
-    width: 8.5rem;
-  }
-
-  .log-filter .app-input,
-  .log-search .app-input {
-    min-height: 2.25rem;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-  }
-
-  .log-search {
-    width: min(18rem, 100%);
   }
 
   .log-count {
@@ -6977,12 +6517,6 @@ svg.w-5.h-5 {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.75rem;
-    }
-
-    .log-filter,
-    .log-search {
-      width: 100%;
-      grid-column: 1 / -1;
     }
 
     .log-toolbar-actions > .app-button {

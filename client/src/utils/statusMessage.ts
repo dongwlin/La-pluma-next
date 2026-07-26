@@ -1,6 +1,6 @@
 export type StatusMessageType = 'success' | 'error' | 'warning' | 'info' | 'default'
 
-export interface StatusVisualConfig {
+interface StatusVisualConfig {
   className: string
   dotColor: string
   pulseRgb: string

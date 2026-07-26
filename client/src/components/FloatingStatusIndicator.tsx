@@ -1,61 +1,17 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse } from '../services/api'
+import {
+  DEFAULT_RANDOM_OPERATOR_QUOTE,
+  loadRandomOperatorQuote,
+  type OperatorQuote,
+} from '../services/operatorQuotes'
 import { useStatusStore } from '../store/statusStore'
 import { detectStatusMessageType, getStatusVisualConfig } from '../utils/statusMessage'
 import { useEffect, useState } from 'react'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 
-interface OperatorQuote {
-  operator: string
-  quote: string
-}
-
 interface FloatingStatusIndicatorProps {
   className?: string
   textClassName?: string
-}
-
-const defaultReadyQuote: OperatorQuote = { operator: '博士', quote: '准备就绪' }
-
-const fallbackReadyQuotes: OperatorQuote[] = [
-  defaultReadyQuote,
-  { operator: '阿米娅', quote: '今天也请多指教' },
-  { operator: '凯尔希', quote: '作战记录已归档' },
-  { operator: '陈', quote: '任务简报已经确认' },
-  { operator: '能天使', quote: '补给检查完成' },
-  { operator: '艾雅法拉', quote: '数据采集稳定' },
-  { operator: '塞雷娅', quote: '防护流程正常' },
-  { operator: '澄闪', quote: '信号稳定，可以开始' }
-]
-
-const getFallbackReadyQuote = () =>
-  fallbackReadyQuotes[Math.floor(Math.random() * fallbackReadyQuotes.length)] ?? defaultReadyQuote
-
-const sessionFallbackQuote = getFallbackReadyQuote()
-let cachedReadyQuote: OperatorQuote | null = null
-let readyQuoteRequest: Promise<OperatorQuote> | null = null
-
-const loadReadyQuote = () => {
-  if (cachedReadyQuote) return Promise.resolve(cachedReadyQuote)
-  if (readyQuoteRequest) return readyQuoteRequest
-
-  readyQuoteRequest = fetchWithAuth(`${API_BASE_URL}/operator-quotes/random`)
-    .then(async response => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = await parseJsonResponse<OperatorQuote>(response)
-      if (!data?.operator || !data?.quote) throw new Error('Invalid quote payload')
-      return { operator: String(data.operator), quote: String(data.quote) }
-    })
-    .catch(() => sessionFallbackQuote)
-    .then(quote => {
-      cachedReadyQuote = quote
-      return quote
-    })
-    .finally(() => {
-      readyQuoteRequest = null
-    })
-
-  return readyQuoteRequest
 }
 
 /**
@@ -67,12 +23,12 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
   const { message, messageType, isActive, backendStatus, backendMessage } = useStatusStore()
   const isOnline = useOnlineStatus()
   const shouldReduceMotion = useReducedMotion()
-  const [dailyQuote, setDailyQuote] = useState<OperatorQuote>(() => cachedReadyQuote ?? sessionFallbackQuote)
+  const [readyQuote, setReadyQuote] = useState<OperatorQuote>(DEFAULT_RANDOM_OPERATOR_QUOTE)
 
   useEffect(() => {
     let subscribed = true
-    void loadReadyQuote().then(quote => {
-      if (subscribed) setDailyQuote(quote)
+    void loadRandomOperatorQuote().then(quote => {
+      if (subscribed) setReadyQuote(quote)
     })
     return () => {
       subscribed = false
@@ -88,7 +44,7 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
       : backendStatus === 'unavailable'
         ? (backendMessage || '无法连接后端服务，请确认服务已启动')
         : ''
-  const displayText = connectionMessage || message || (isActive ? '任务执行中' : `${dailyQuote.operator}：${dailyQuote.quote}`)
+  const displayText = connectionMessage || message || (isActive ? '任务执行中' : `${readyQuote.operator}：${readyQuote.quote}`)
   const isReady = !connectionMessage && !message && !isActive
 
   const detectedType = isBackendChecking
@@ -120,8 +76,8 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
       >
         {isReady ? (
           <>
-            <span className="opacity-70">{dailyQuote.operator}：</span>
-            <span>{dailyQuote.quote}</span>
+            <span className="opacity-70">{readyQuote.operator}：</span>
+            <span>{readyQuote.quote}</span>
           </>
         ) : (
           displayText

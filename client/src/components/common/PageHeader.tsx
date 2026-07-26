@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 /**
  * 页面标题组件 Props
  */
-export interface PageHeaderProps {
+interface PageHeaderProps {
   icon?: ReactNode
   title: string
   subtitle?: string

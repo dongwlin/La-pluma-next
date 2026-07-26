@@ -40,7 +40,7 @@ export function normalizeBasePath(value = '/') {
   return `${withLeadingSlash.replace(/\/+$/, '')}/`;
 }
 
-export function createOptionalApiAuth(apiToken = '') {
+function createOptionalApiAuth(apiToken = '') {
   return function optionalApiAuth(req, res, next) {
     if (!apiToken) return next();
 
@@ -124,7 +124,7 @@ export function loadHttpsOptions(env = process.env, readFile = readFileSync) {
   };
 }
 
-export function createLaPlumaTransportServer({
+function createLaPlumaTransportServer({
   app,
   signalingGateway,
   env = process.env,

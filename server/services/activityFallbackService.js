@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
 const PENGUIN_API_BASE = 'https://penguin-stats.io/PenguinStats/api/v2';
 const CACHE_TTL = 30 * 60 * 1000;
@@ -78,7 +79,7 @@ async function fetchJson(url) {
   return response.json();
 }
 
-export async function getFallbackActivity(clientType = 'Official') {
+export async function getFallbackActivity(clientType = DEFAULT_CLIENT_TYPE) {
   const server = CLIENT_SERVERS[clientType];
   if (!server) return null;
 

@@ -1,11 +1,8 @@
 import { getConfig, validateMaaProfileName } from './maaService.js'
 import { agentError } from '../utils/apiHelper.js'
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js'
 
-export const DEFAULT_CONNECTION_PROFILE = 'default'
-
-const DEFAULT_ADB_PATH = process.env.ADB_PATH || '/opt/homebrew/bin/adb'
-const DEFAULT_ADB_ADDRESS = process.env.ADB_ADDRESS || '127.0.0.1:16384'
-const DEFAULT_CLIENT_TYPE = process.env.MAA_CLIENT_TYPE || 'Official'
+const DEFAULT_CONNECTION_PROFILE = 'default'
 
 export async function resolveConnection(profileId = DEFAULT_CONNECTION_PROFILE) {
   const normalizedProfileId = String(profileId ?? DEFAULT_CONNECTION_PROFILE).trim()

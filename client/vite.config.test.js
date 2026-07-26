@@ -4,10 +4,17 @@ import {
   createDevServiceWorkerCleanupPlugin,
   createDevServiceWorkerCleanupScript,
   createNavigateFallbackDenylist,
+  createWorkboxConfig,
   normalizeBasePath,
 } from './vite.config.js'
 
 describe('PWA base path configuration', () => {
+  const matchesWorkboxRegExpRoute = (pattern, input, origin = 'https://la-pluma.test') => {
+    const url = new URL(input, origin)
+    const result = pattern.exec(url.href)
+    return Boolean(result && (url.origin === origin || result.index === 0))
+  }
+
   it('normalizes a configured deployment path', () => {
     expect(normalizeBasePath()).toBe('/')
     expect(normalizeBasePath('la-pluma')).toBe('/la-pluma/')
@@ -28,6 +35,33 @@ describe('PWA base path configuration', () => {
     expect(isDenied('/la-pluma/health?probe=1')).toBe(true)
     expect(isDenied('/la-pluma/webrtc-signaling/socket')).toBe(true)
     expect(isDenied('/la-pluma/automation')).toBe(false)
+  })
+
+  it('precaches only the app shell and caches page chunks after use', () => {
+    const workbox = createWorkboxConfig('/la-pluma/')
+    const pageChunkCache = workbox.runtimeCaching[0]
+
+    expect(workbox.cleanupOutdatedCaches).toBe(true)
+    expect(workbox.globPatterns).toContain('assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js')
+    expect(workbox.globPatterns).not.toContain('**/*.{js,css,html,ico,png,svg,woff,woff2}')
+    expect(matchesWorkboxRegExpRoute(
+      pageChunkCache.urlPattern,
+      'https://la-pluma.test/la-pluma/assets/AutomationTasks-abc123.js',
+    )).toBe(true)
+    expect(matchesWorkboxRegExpRoute(
+      pageChunkCache.urlPattern,
+      'https://la-pluma.test/la-pluma/assets/AutomationTasks-abc123.js?reload=1',
+    )).toBe(true)
+    expect(matchesWorkboxRegExpRoute(
+      pageChunkCache.urlPattern,
+      'https://la-pluma.test/assets/AutomationTasks-abc123.js',
+    )).toBe(false)
+    expect(matchesWorkboxRegExpRoute(
+      pageChunkCache.urlPattern,
+      'https://cdn.example.com/la-pluma/assets/AutomationTasks-abc123.js',
+    )).toBe(false)
+    expect(pageChunkCache.handler).toBe('CacheFirst')
+    expect(pageChunkCache.options.cacheName).toBe('la-pluma-page-chunks')
   })
 
   it('serves a no-store cleanup worker before the development SPA fallback', () => {
@@ -91,6 +125,7 @@ describe('PWA base path configuration', () => {
     expect(script).toContain('self.skipWaiting()')
     expect(script).toContain("cacheName.startsWith('workbox-')")
     expect(script).toContain("cacheName === 'google-fonts-cache'")
+    expect(script).toContain("cacheName === 'la-pluma-page-chunks'")
     expect(script).toContain('self.registration.unregister()')
     expect(script).toContain('client.navigate(client.url)')
   })
@@ -117,6 +152,7 @@ describe('PWA base path configuration', () => {
       keys: vi.fn().mockResolvedValue([
         'workbox-precache-v2-http://localhost:5173/',
         'google-fonts-cache',
+        'la-pluma-page-chunks',
         'unrelated-cache',
       ]),
       delete: deleteCache,
@@ -147,6 +183,7 @@ describe('PWA base path configuration', () => {
     expect(deleteCache.mock.calls.map(([cacheName]) => cacheName)).toEqual([
       'workbox-precache-v2-http://localhost:5173/',
       'google-fonts-cache',
+      'la-pluma-page-chunks',
     ])
     expect(claim).toHaveBeenCalledOnce()
     expect(unregister).toHaveBeenCalledOnce()

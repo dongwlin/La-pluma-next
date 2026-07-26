@@ -1,4 +1,5 @@
 import { getActivityRunPreflight } from './activityNavigationService.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
 const PRTS_QUERY_URL = 'https://prts.maa.plus/copilot/query';
 const MAX_STAGES = 12;
@@ -62,7 +63,7 @@ async function fetchCopilotContent(id) {
   throw new Error(`作业读取失败: ${lastError?.message || '网络异常'}`);
 }
 
-export async function findMatchingCopilotSet(activity, stages) {
+async function findMatchingCopilotSet(activity, stages) {
   const keyword = activity.name || activity.code;
   const response = await fetch('https://prts.maa.plus/set/query', {
     method: 'POST',
@@ -157,7 +158,7 @@ export function canUseCurrentMapFallback(preflight) {
     Array.isArray(preflight?.activity?.stages) && preflight.activity.stages.length > 0;
 }
 
-export async function findActivityCopilotCandidates(clientType = 'Official', { allowCurrentMap = false } = {}) {
+export async function findActivityCopilotCandidates(clientType = DEFAULT_CLIENT_TYPE, { allowCurrentMap = false } = {}) {
   const preflight = await getActivityRunPreflight(clientType);
   const base = {
     execution: { mode: 'manual-selection-required', executable: false },

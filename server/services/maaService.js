@@ -9,6 +9,7 @@ import { createLogger } from '../utils/logger.js';
 import { getFallbackActivity } from './activityFallbackService.js';
 import { acquireMaaExecutionLease } from './executionCoordinatorService.js';
 import { loadUserConfig, saveUserConfig } from './configStorageService.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 
 const execFilePromise = promisify(execFile);
 
@@ -16,8 +17,7 @@ const execFilePromise = promisify(execFile);
 const logger = createLogger('MaaService');
 
 // MAA CLI 路径
-// Docker 环境使用完整路径，本地环境使用 'maa' 依赖 PATH
-const MAA_CLI_PATH = process.env.MAA_CLI_PATH || (process.env.DOCKER_ENV ? '/usr/local/bin/maa' : 'maa');
+const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 const MAX_REALTIME_LOGS = Number(process.env.LA_PLUMA_MAX_REALTIME_LOGS || 5000);
 const LOCAL_EMULATOR_ADDRESSES = [
   '127.0.0.1:16384',
@@ -58,8 +58,10 @@ const taskStatus = {
  * 获取当前任务执行状态
  */
 export function getTaskStatus() {
-  const { process, forceKillTimer, ...status } = taskStatus; // 不返回进程和定时器对象
-  return { ...status };
+  const status = { ...taskStatus };
+  delete status.process;
+  delete status.forceKillTimer;
+  return status;
 }
 
 /**
@@ -232,7 +234,7 @@ async function execMaaCommandUnlocked(command, args = [], taskName = null, taskT
   
   // 如果有任务名称且不需要等待完成，使用后台异步执行
   if (taskName && !waitForCompletion) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       // 使用 spawn 而不是 exec，这样可以独立运行
       const childProcess = spawn(MAA_CLI_PATH, [command, ...finalArgs], {
         detached: process.platform !== 'win32',
@@ -598,8 +600,8 @@ export async function getConfig(profileName = 'default') {
   } catch {
     logger.debug('配置文件不存在，返回环境默认配置');
     return {
-      adb_path: process.env.ADB_PATH || '/opt/homebrew/bin/adb',
-      address: process.env.ADB_ADDRESS || '127.0.0.1:16384',
+      adb_path: DEFAULT_ADB_PATH,
+      address: DEFAULT_ADB_ADDRESS,
       config: 'CompatMac',
     };
   }
@@ -767,7 +769,7 @@ function formatTomlValue(value) {
   throw new TypeError(`不支持的 TOML 参数类型: ${typeof value}`);
 }
 
-export function generateTaskToml(taskConfig) {
+function generateTaskToml(taskConfig) {
   let toml = '[[tasks]]\n';
   toml += `name = ${formatTomlValue(taskConfig.name)}\n`;
   toml += `type = ${formatTomlValue(taskConfig.type)}\n`;
@@ -1001,7 +1003,7 @@ function mergeDiscoveredDevices(...deviceGroups) {
  * On Windows, also locates ADB executables bundled with running emulators.
  * Candidates are not connected automatically; callers must confirm them.
  */
-export async function discoverAdbDevices(adbPath = '/opt/homebrew/bin/adb') {
+export async function discoverAdbDevices(adbPath = DEFAULT_ADB_PATH) {
   let configuredAdbAvailable = true;
   try {
     await adbExec(adbPath, ['version']);
@@ -1070,9 +1072,9 @@ export async function discoverAdbDevices(adbPath = '/opt/homebrew/bin/adb') {
 }
 
 export async function getGameClientState(
-  adbPath = '/opt/homebrew/bin/adb',
-  address = '127.0.0.1:16384',
-  clientType = 'Official'
+  adbPath = DEFAULT_ADB_PATH,
+  address = DEFAULT_ADB_ADDRESS,
+  clientType = DEFAULT_CLIENT_TYPE
 ) {
   validateAdbPath(adbPath);
   validateAdbAddress(address);
@@ -1100,7 +1102,7 @@ export function parseForegroundPackage(output = '') {
 /**
  * 测试 ADB 连接
  */
-export async function testAdbConnection(adbPath = '/opt/homebrew/bin/adb', address = '127.0.0.1:16384') {
+export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
   try {
     // 检查 ADB 是否可用
     try {
@@ -1184,7 +1186,7 @@ export async function testAdbConnection(adbPath = '/opt/homebrew/bin/adb', addre
 /**
  * 通过 ADB 截取模拟器屏幕
  */
-export async function captureScreen(adbPath = '/opt/homebrew/bin/adb', address = '127.0.0.1:16384') {
+export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
   try {
     validateAdbPath(adbPath);
     validateAdbAddress(address);
@@ -1260,7 +1262,7 @@ function getValidCachedActivity(clientType, cachedActivity, now = Date.now()) {
 /**
  * 获取当前活动代号和名称
  */
-export async function getCurrentActivity(clientType = 'Official') {
+export async function getCurrentActivity(clientType = DEFAULT_CLIENT_TYPE) {
   const now = Date.now();
   const cachedActivity = activityCache.get(clientType);
   const cached = getValidCachedActivity(clientType, cachedActivity, now);
@@ -1356,7 +1358,7 @@ export async function getCurrentActivity(clientType = 'Official') {
 /**
  * 替换关卡代号中的 hd 为实际活动代号
  */
-export async function replaceActivityCode(stage, clientType = 'Official') {
+export async function replaceActivityCode(stage, clientType = DEFAULT_CLIENT_TYPE) {
   if (!stage || typeof stage !== 'string') {
     return stage;
   }
@@ -1446,13 +1448,39 @@ export function stopCurrentTask() {
 /**
  * 获取 MAA 日志目录
  */
-export async function getMaaLogDir() {
+async function getMaaLogDir() {
   try {
     const result = await execMaaCommand('dir', ['log'], null, null, false, true);
     return result.stdout.trim();
   } catch (error) {
     throw new Error(`获取日志目录失败: ${error.message}`);
   }
+}
+
+async function collectMaaLogFiles(logDir) {
+  const files = [];
+
+  async function scanDir(dir, prefix = '') {
+    const entries = await readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await scanDir(fullPath, prefix ? `${prefix}/${entry.name}` : entry.name);
+      } else if (entry.name.endsWith('.log')) {
+        const stats = await stat(fullPath);
+        files.push({
+          name: prefix ? `${prefix}/${entry.name}` : entry.name,
+          path: fullPath,
+          size: stats.size,
+          modified: stats.mtime.toISOString()
+        });
+      }
+    }
+  }
+
+  await scanDir(logDir);
+  return files;
 }
 
 export async function createMaaLogCheckpoint() {
@@ -1496,31 +1524,7 @@ export async function readMaaLogSince(checkpoint, maxBytes = 2 * 1024 * 1024) {
 export async function getLogFiles() {
   try {
     const logDir = await getMaaLogDir();
-    
-    // 递归读取日志目录
-    const files = [];
-    
-    async function scanDir(dir, prefix = '') {
-      const entries = await readdir(dir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await scanDir(fullPath, prefix ? `${prefix}/${entry.name}` : entry.name);
-        } else if (entry.name.endsWith('.log')) {
-          const stats = await stat(fullPath);
-          files.push({
-            name: prefix ? `${prefix}/${entry.name}` : entry.name,
-            path: fullPath,
-            size: stats.size,
-            modified: stats.mtime.toISOString()
-          });
-        }
-      }
-    }
-    
-    await scanDir(logDir);
-    
+    const files = await collectMaaLogFiles(logDir);
     // 按修改时间倒序排序
     files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
     
@@ -1542,28 +1546,7 @@ export async function cleanupLogs(maxSizeMB = 10) {
     }
 
     const logDir = await getMaaLogDir();
-    const files = [];
-    
-    async function scanDir(dir, prefix = '') {
-      const entries = await readdir(dir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await scanDir(fullPath, prefix ? `${prefix}/${entry.name}` : entry.name);
-        } else if (entry.name.endsWith('.log')) {
-          const stats = await stat(fullPath);
-          files.push({
-            name: prefix ? `${prefix}/${entry.name}` : entry.name,
-            path: fullPath,
-            size: stats.size,
-            modified: stats.mtime.toISOString()
-          });
-        }
-      }
-    }
-    
-    await scanDir(logDir);
+    const files = await collectMaaLogFiles(logDir);
     files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
     
     const maxSize = sizeLimit * 1024 * 1024;

@@ -1,29 +1,4 @@
-function parseCallbackEvents(logOutput) {
-  const marker = 'Assistant::append_callback | ';
-  const events = [];
-
-  for (const line of String(logOutput || '').split('\n')) {
-    if (!line.includes('"taskchain":"Recruit"')) continue;
-    const markerIndex = line.indexOf(marker);
-    if (markerIndex === -1) continue;
-
-    const callback = line.slice(markerIndex + marker.length);
-    const jsonIndex = callback.indexOf('{');
-    if (jsonIndex === -1) continue;
-
-    try {
-      const event = JSON.parse(callback.slice(jsonIndex));
-      events.push({
-        callback: callback.slice(0, jsonIndex).trim(),
-        ...event
-      });
-    } catch {
-      // Ignore incomplete lines when the log checkpoint starts mid-event.
-    }
-  }
-
-  return events;
-}
+import { parseMaaCallbackEvents } from './maaCallbackService.js';
 
 function normalizePreserveTags(value) {
   if (Array.isArray(value)) return value.map(String).map(tag => tag.trim()).filter(Boolean);
@@ -35,7 +10,7 @@ function uniqueStrings(values) {
 }
 
 export function parseRecruitExecutionAction(taskName, params = {}, logOutput = '') {
-  const events = parseCallbackEvents(logOutput);
+  const events = parseMaaCallbackEvents(logOutput, 'Recruit');
   if (events.length === 0) {
     return {
       task: taskName,

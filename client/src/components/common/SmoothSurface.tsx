@@ -4,7 +4,7 @@ import { useMemo, useRef, type HTMLAttributes } from 'react'
 const IOS_CONTINUOUS_RADIUS = 20
 const IOS_CONTINUOUS_SMOOTHING = 0.8
 
-export interface SmoothSurfaceProps extends HTMLAttributes<HTMLDivElement> {
+interface SmoothSurfaceProps extends HTMLAttributes<HTMLDivElement> {
   radius?: number
   smoothing?: number
 }

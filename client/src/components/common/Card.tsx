@@ -4,7 +4,7 @@ import SmoothSurface from './SmoothSurface'
 /**
  * 卡片容器组件 Props
  */
-export interface CardProps {
+interface CardProps {
   children: ReactNode
   className?: string
   animated?: boolean
@@ -15,7 +15,7 @@ export interface CardProps {
 /**
  * 卡片标题组件 Props
  */
-export interface CardHeaderProps {
+interface CardHeaderProps {
   icon?: ReactNode
   title: string
   actions?: ReactNode
@@ -24,17 +24,8 @@ export interface CardHeaderProps {
 /**
  * 卡片内容组件 Props
  */
-export interface CardContentProps {
+interface CardContentProps {
   children: ReactNode
-  className?: string
-}
-
-/**
- * 信息卡片组件 Props
- */
-export interface InfoCardProps {
-  children: ReactNode
-  type?: 'info' | 'warning' | 'error' | 'success'
   className?: string
 }
 
@@ -96,22 +87,4 @@ export function CardHeader({ icon, title, actions }: CardHeaderProps) {
  */
 export function CardContent({ children, className = '' }: CardContentProps) {
   return <div className={`app-card-content ${className}`}>{children}</div>
-}
-
-/**
- * 信息卡片组件（带边框和背景色）
- */
-export function InfoCard({ children, type = 'info', className = '' }: InfoCardProps) {
-  const typeStyles: Record<string, string> = {
-    info: 'status-info',
-    warning: 'status-warning',
-    error: 'status-danger',
-    success: 'status-success',
-  }
-
-  return (
-    <div className={`app-info-card ${typeStyles[type]} ${className}`}>
-      {children}
-    </div>
-  )
 }

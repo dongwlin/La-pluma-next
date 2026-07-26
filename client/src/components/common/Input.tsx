@@ -4,7 +4,7 @@ import { ChevronDown } from 'lucide-react'
 /**
  * 输入框组件 Props
  */
-export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   label?: string
   placeholder?: string
   value: string | number
@@ -20,7 +20,7 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 /**
  * 选择框组件 Props
  */
-export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
   label?: string
   value: string | number
   onChange: (value: string) => void
@@ -34,7 +34,7 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
 /**
  * 复选框组件 Props
  */
-export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
+interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
   label?: string
   checked: boolean
   onChange: (checked: boolean) => void

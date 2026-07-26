@@ -10,6 +10,27 @@ import { createLogger } from '../utils/logger.js';
 // 创建日志记录器
 const logger = createLogger('Notification');
 
+const TELEGRAM_LEVEL_EMOJIS = {
+  info: 'ℹ️',
+  success: '✅',
+  warning: '⚠️',
+  error: '❌'
+};
+
+export function formatTelegramMessage(title, content, level = 'info', data, now = new Date()) {
+  const emoji = TELEGRAM_LEVEL_EMOJIS[level] || TELEGRAM_LEVEL_EMOJIS.info;
+  let text = `${emoji} *${title}*\n\n${content}`;
+
+  if (data) {
+    text += '\n\n📊 *详细信息*';
+    Object.entries(data).forEach(([key, value]) => {
+      text += `\n• ${key}: ${value}`;
+    });
+  }
+
+  return `${text}\n\n🕐 ${now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+}
+
 // 日常关卡开放时间表。days: 0=周日, 1=周一, ..., 6=周六
 const RESOURCE_STAGES = {
   'CE-6': { name: '龙门币', days: [0, 2, 4, 6] }, // 周日、周二、周四、周六
@@ -162,29 +183,7 @@ class TelegramChannel extends NotificationChannel {
       return await this.sendPhoto(title, content, level, data, image);
     }
     
-    // 根据级别选择 emoji
-    const levelEmojis = {
-      info: 'ℹ️',
-      success: '✅',
-      warning: '⚠️',
-      error: '❌'
-    };
-    
-    const emoji = levelEmojis[level] || 'ℹ️';
-    
-    // 构建消息文本
-    let text = `${emoji} *${title}*\n\n${content}`;
-    
-    // 如果有额外数据，添加到消息中
-    if (data) {
-      text += '\n\n📊 *详细信息*';
-      Object.entries(data).forEach(([key, value]) => {
-        text += `\n• ${key}: ${value}`;
-      });
-    }
-    
-    // 添加时间戳
-    text += `\n\n🕐 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+    const text = formatTelegramMessage(title, content, level, data);
     
     const url = `https://api.telegram.org/bot${this.config.botToken}/sendMessage`;
     
@@ -210,27 +209,7 @@ class TelegramChannel extends NotificationChannel {
   }
 
   async sendPhoto(title, content, level, data, imageBase64) {
-    const levelEmojis = {
-      info: 'ℹ️',
-      success: '✅',
-      warning: '⚠️',
-      error: '❌'
-    };
-    
-    const emoji = levelEmojis[level] || 'ℹ️';
-    
-    // 构建图片说明文本
-    let caption = `${emoji} *${title}*\n\n${content}`;
-    
-    // 如果有额外数据，添加到消息中
-    if (data) {
-      caption += '\n\n📊 *详细信息*';
-      Object.entries(data).forEach(([key, value]) => {
-        caption += `\n• ${key}: ${value}`;
-      });
-    }
-    
-    caption += `\n\n🕐 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+    const caption = formatTelegramMessage(title, content, level, data);
     
     const url = `https://api.telegram.org/bot${this.config.botToken}/sendPhoto`;
     

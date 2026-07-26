@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 
-export interface FluidTabRect {
+interface FluidTabRect {
   x: number
   y: number
   width: number

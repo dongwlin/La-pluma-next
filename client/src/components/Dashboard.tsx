@@ -688,11 +688,11 @@ export default function Dashboard() {
               </div>
 
               <div className="dashboard-flow-shortcuts" aria-label="快捷入口">
-                {[
+                {([
                   { label: '自动化', tab: 'automation', Icon: Bot },
                   { label: '作业', tab: 'combat', Icon: Activity },
                   { label: '养成', tab: 'training', Icon: Target },
-                ].map(({ label, tab, Icon }) => (
+                ] as const).map(({ label, tab, Icon }) => (
                   <button
                     key={tab}
                     type="button"

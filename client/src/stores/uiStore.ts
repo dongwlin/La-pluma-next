@@ -1,12 +1,11 @@
 /**
- * UI Store - 管理主题、模态框等 UI 状态
+ * UI Store - 管理主题与当前工作区
  */
 
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import type { UIState } from '@/types/store'
 
-export const APP_TABS = [
+const APP_TABS = [
   'dashboard',
   'automation',
   'combat',
@@ -19,7 +18,15 @@ export const APP_TABS = [
 
 export type AppTab = typeof APP_TABS[number]
 
-type ThemeMode = UIState['theme']
+type ThemeMode = 'light' | 'dark' | 'system'
+
+interface UIState {
+  theme: ThemeMode
+  activeTab: AppTab
+  setTheme: (theme: ThemeMode) => void
+  setActiveTab: (tab: AppTab) => void
+}
+
 type ThemeRuntimeWindow = Window & {
   __LA_PLUMA_APPLY_THEME__?: (theme: ThemeMode) => void
 }
@@ -82,26 +89,15 @@ export const useUIStore = create<UIState>()(
   devtools(
     persist(
       (set) => ({
-        // State
         theme: 'dark',
         activeTab: initialAppTab(),
-        modals: {},
-        
-        // Actions
+
         setTheme: (theme) => {
           set({ theme })
           applyThemePreference(theme)
         },
-        
+
         setActiveTab: (tab) => set({ activeTab: tab }),
-        
-        openModal: (modalId) => set((state) => ({
-          modals: { ...state.modals, [modalId]: true }
-        })),
-        
-        closeModal: (modalId) => set((state) => ({
-          modals: { ...state.modals, [modalId]: false }
-        }))
       }),
       {
         name: 'ui-storage',

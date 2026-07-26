@@ -7,7 +7,7 @@ import ActivityIndicator from './ActivityIndicator'
 /**
  * 加载动画组件 Props
  */
-export interface LoadingProps {
+interface LoadingProps {
   size?: 'sm' | 'md' | 'lg'
   text?: string
 }

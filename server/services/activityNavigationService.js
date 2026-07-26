@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 import { execMaaCommand, getCurrentActivity } from './maaService.js';
 
 function toArray(value) {
@@ -90,7 +91,7 @@ async function loadActivityStageTasks(code) {
   return JSON.parse(await readFile(stageFile, 'utf8'));
 }
 
-export async function getActivityRunPreflight(clientType = 'Official') {
+export async function getActivityRunPreflight(clientType = DEFAULT_CLIENT_TYPE) {
   const activity = await getCurrentActivity(clientType);
   if (!activity?.code) return assessActivityNavigation(activity, null);
 

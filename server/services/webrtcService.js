@@ -3,14 +3,16 @@ import { closeSync, openSync } from 'fs'
 import { promisify } from 'util'
 import path from 'path'
 import { setTimeout as delay } from 'timers/promises'
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js'
 
 const execFileAsync = promisify(execFile)
 
-export const WEBRTC_DIR = process.env.LA_PLUMA_WEBRTC_DIR || `${process.env.HOME || ''}/ScrcpyOverWebRTC`
+export { DEFAULT_ADB_PATH }
+
+const WEBRTC_DIR = process.env.LA_PLUMA_WEBRTC_DIR || `${process.env.HOME || ''}/ScrcpyOverWebRTC`
 export const WEBRTC_PORT = Number(process.env.LA_PLUMA_WEBRTC_PORT || 8443)
-export const WEBRTC_TURN_PORT = Number(process.env.LA_PLUMA_WEBRTC_TURN_PORT || 3478)
-export const DEFAULT_DEVICE_ADDRESS = process.env.ADB_ADDRESS || '127.0.0.1:16384'
-export const DEFAULT_ADB_PATH = process.env.ADB_PATH || '/opt/homebrew/bin/adb'
+const WEBRTC_TURN_PORT = Number(process.env.LA_PLUMA_WEBRTC_TURN_PORT || 3478)
+export const DEFAULT_DEVICE_ADDRESS = DEFAULT_ADB_ADDRESS
 export const DEFAULT_DEVICE_ID = 'mumu-la-pluma'
 
 const WEBRTC_REQUEST_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS, 1500)
@@ -221,7 +223,7 @@ export async function pathExists(filePath) {
   }
 }
 
-export async function getWebrtcBinaryPath() {
+async function getWebrtcBinaryPath() {
   const arch = process.arch === 'arm64' ? 'darwin_arm64' : 'darwin_amd64'
   return path.join(WEBRTC_DIR, 'bin', arch, 'webrtc-signaling')
 }
@@ -236,7 +238,7 @@ export async function getWebrtcAssetsPath() {
   return null
 }
 
-export async function getMacLanIp() {
+async function getMacLanIp() {
   const interfaces = ['en0', 'en1']
   for (const name of interfaces) {
     try {
@@ -394,7 +396,7 @@ async function waitForWebrtcDeviceUnavailable(deviceId, {
   })
 }
 
-export async function isDeviceAgentRunning(address = DEFAULT_DEVICE_ADDRESS, adbPath = DEFAULT_ADB_PATH) {
+async function isDeviceAgentRunning(address = DEFAULT_DEVICE_ADDRESS, adbPath = DEFAULT_ADB_PATH) {
   try {
     const { stdout } = await execFileAsync(adbPath, ['-s', address, 'shell', 'ps | grep cloudphone-agent || true'], { timeout: 5000 })
     return stdout.includes('cloudphone-agent')
@@ -403,7 +405,7 @@ export async function isDeviceAgentRunning(address = DEFAULT_DEVICE_ADDRESS, adb
   }
 }
 
-export async function getIceServersConfig() {
+async function getIceServersConfig() {
   const lanIp = await getMacLanIp()
   return `turn:cloudphone_user:cloudphone_secure_password@${lanIp}:${WEBRTC_TURN_PORT}?transport=udp,stun:${lanIp}:${WEBRTC_TURN_PORT}`
 }

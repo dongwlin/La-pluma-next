@@ -31,6 +31,37 @@ export const createNavigateFallbackDenylist = (basePath) => {
   return denylist
 }
 
+export const createWorkboxConfig = (basePath) => {
+  const escapedBasePath = basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  return {
+    cleanupOutdatedCaches: true,
+    globPatterns: [
+      '**/*.{css,html,ico,png,svg,woff,woff2}',
+      'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js',
+    ],
+    navigateFallbackDenylist: createNavigateFallbackDenylist(basePath),
+    runtimeCaching: [
+      {
+        // Workbox matches RegExp routes against the full URL. Leaving the
+        // pattern unanchored also lets RegExpRoute reject partial cross-origin matches.
+        urlPattern: new RegExp(`${escapedBasePath}assets/.*\\.js(?:\\?.*)?$`),
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'la-pluma-page-chunks',
+          expiration: {
+            maxEntries: 40,
+            maxAgeSeconds: 60 * 60 * 24 * 30,
+          },
+          cacheableResponse: {
+            statuses: [0, 200],
+          },
+        },
+      },
+    ],
+  }
+}
+
 export const createDevServiceWorkerCleanupScript = () => `
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting())
@@ -40,7 +71,9 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const cacheNames = await caches.keys()
     const appCacheNames = cacheNames.filter((cacheName) =>
-      cacheName.startsWith('workbox-') || cacheName === 'google-fonts-cache')
+      cacheName.startsWith('workbox-')
+      || cacheName === 'google-fonts-cache'
+      || cacheName === 'la-pluma-page-chunks')
     await Promise.all(appCacheNames.map((cacheName) => caches.delete(cacheName)))
 
     await self.clients.claim()
@@ -91,13 +124,7 @@ export const createViteConfig = (basePath) => ({
   base: basePath,
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@components': path.resolve(__dirname, './src/components'),
-      '@hooks': path.resolve(__dirname, './src/hooks'),
-      '@services': path.resolve(__dirname, './src/services'),
-      '@utils': path.resolve(__dirname, './src/utils'),
-      '@stores': path.resolve(__dirname, './src/stores'),
-      '@types': path.resolve(__dirname, './src/types')
+      '@': path.resolve(__dirname, './src')
     }
   },
   plugins: [
@@ -138,28 +165,20 @@ export const createViteConfig = (basePath) => ({
           }
         ]
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        navigateFallbackDenylist: createNavigateFallbackDenylist(basePath),
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          }
-        ]
-      }
+      workbox: createWorkboxConfig(basePath)
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react-vendor'
+          if (/node_modules\/(framer-motion|motion-dom|motion-utils)\//.test(id)) return 'motion-vendor'
+          return undefined
+        }
+      }
+    }
+  },
   server: {
     host: '0.0.0.0', // 监听所有网络接口，允许局域网访问
     port: 5173,

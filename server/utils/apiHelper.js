@@ -6,7 +6,7 @@ function getRequestId(req) {
   return req?.headers?.['x-request-id'] || req?.id || null;
 }
 
-export function responseMeta(req = null, extra = {}) {
+function responseMeta(req = null, extra = {}) {
   return {
     requestId: getRequestId(req),
     dryRun: false,

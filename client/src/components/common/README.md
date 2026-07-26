@@ -68,7 +68,7 @@
 
 能用组件时优先用组件；特殊结构再使用语义类。
 
-- 卡片：`Card`、`CardHeader`、`CardContent`、`InfoCard`，或 `app-card surface-panel`。
+- 卡片：`Card`、`CardHeader`、`CardContent`，或 `app-card surface-panel`。
 - 按钮：`Button`、`IconButton`，或 `app-button` / `app-icon-button`。
 - 输入：`Input`、`Select`、`Checkbox`、`Switch`，或 `app-input control-surface`；多行文本使用同一语义类的原生 `textarea`。
 
@@ -112,7 +112,7 @@ Props：
 统一的卡片容器样式，支持动画和自定义样式。
 
 ```tsx
-import { Card, CardHeader, CardContent, InfoCard } from '@/components/common'
+import { Card, CardHeader, CardContent } from '@/components/common'
 
 <Card animated delay={0.1}>
   <CardHeader
@@ -125,9 +125,6 @@ import { Card, CardHeader, CardContent, InfoCard } from '@/components/common'
   </CardContent>
 </Card>
 
-<InfoCard type="warning">
-  <p>需要用户注意的信息。</p>
-</InfoCard>
 ```
 
 Card Props：
@@ -138,7 +135,7 @@ Card Props：
 - `delay` (number) - 动画延迟，默认 `0`
 - `smoothCorners` (boolean) - 使用 Lisse 连续曲率；仅在内容允许增加内部表面层时显式开启，外层继续承担布局、动画和阴影
 
-`CardHeader` 支持 `icon`、`title`、`actions`；`CardContent` 和 `InfoCard` 均支持 `className`。
+`CardHeader` 支持 `icon`、`title`、`actions`；`CardContent` 支持 `className`。
 
 需要让非 `Card` 面板使用同一连续曲率时，优先使用 `SmoothPanel`。它由未裁切的阴影外壳和 Lisse 内表面组成；常规面板为 `20px / 80%`，短小信息卡传入 `cornerSize="compact"` 使用 `16px / 80%`。只有本身没有外阴影的圆角矩形才直接使用 `SmoothSurface`，因为它的 `clip-path` 会裁掉外阴影。
 
@@ -152,10 +149,11 @@ Card Props：
 
 ```tsx
 import { Button, IconButton } from '@/components/common'
+import { RefreshCw, Save } from 'lucide-react'
 
-<Button variant="primary" icon={<Icons.SaveIcon />}>保存</Button>
+<Button variant="primary" icon={<Save />}>保存</Button>
 <Button variant="danger" loading={deleting}>删除</Button>
-<IconButton icon={<Icons.RefreshIcon />} title="刷新" />
+<IconButton icon={<RefreshCw />} title="刷新" />
 ```
 
 `Button` 变体：
@@ -238,13 +236,13 @@ Props：
 
 ---
 
-### ConfirmDialog / Loading / ActivityIndicator - 反馈组件
+### ConfirmDialog / Loading - 反馈组件
 
-`ConfirmDialog`、`Loading` 和 `ActivityIndicator` 从 common 导出。
+`ConfirmDialog` 和 `Loading` 从 common 导出。
 
 - `ConfirmDialog`：删除、清空等不可逆操作的确认弹窗。异步 `onConfirm` 返回 `false` 或抛出错误时会保持打开并就地显示失败原因。
 - `Loading`：短时局部等待状态。
-- `ActivityIndicator`：按钮或紧凑状态行中的 iOS 活动指示器，支持 `xs`、`sm`、`md`、`lg` 四档；同一区域只保留一个动态指示器。
+- `ActivityIndicator`：供 `Button` 和 `Loading` 内部复用的 iOS 活动指示器；页面不要直接调用或叠加第二个动态指示器。
 - `DashboardSkeleton`：控制台专用骨架，由 `Dashboard` 直接从 `Loading.tsx` 引入，不属于 common 的公共导出。
 
 ## 重构建议

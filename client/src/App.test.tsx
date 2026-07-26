@@ -126,6 +126,7 @@ describe('App motion preferences', () => {
     expect(draft.value).toBe('未保存的连接地址')
     expect(appMocks.dashboardEffectStarts).toBe(1)
     expect(appMocks.automationEffectStarts).toBe(0)
+    expect(container.textContent).not.toContain('automation')
 
     await act(async () => appMocks.navigate?.('automation'))
     expect(appMocks.dashboardEffectStops).toBe(1)
@@ -158,18 +159,20 @@ describe('App motion preferences', () => {
     appMocks.automationShouldThrow = true
 
     await act(async () => root.render(<App />))
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await act(async () => { await Promise.resolve() })
 
     expect(container.querySelector('[aria-label="控制台草稿"]')).not.toBeNull()
+    expect(container.textContent).not.toContain('automation render failed')
+
+    await act(async () => appMocks.navigate?.('automation'))
+    expect(container.textContent).toContain('页面渲染失败：automation render failed')
+
+    await act(async () => appMocks.navigate?.('dashboard'))
     const hiddenError = Array.from(container.querySelectorAll<HTMLElement>('.p-6'))
       .find(element => element.textContent?.includes('automation render failed'))
     expect(hiddenError?.style.display).toBe('none')
 
     await act(async () => appMocks.navigate?.('automation'))
-    expect(container.textContent).toContain('页面渲染失败：automation render failed')
     expect(hiddenError?.style.display).not.toBe('none')
     consoleError.mockRestore()
   })

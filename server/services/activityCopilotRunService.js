@@ -3,6 +3,7 @@ import { findActivityCopilotCandidates } from './activityCopilotDiscoveryService
 import { buildCopilotPlan, ensureCurrentMapActivityResource, executeCopilotPlan, executeSelectedCopilotEntries } from './copilotPlanService.js';
 import { getMaaConfigDir } from './maaService.js';
 import { updateMaaResources } from './resourceUpdateService.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
@@ -135,7 +136,7 @@ export function buildActivityCopilotRunPlan(candidatePlan, preferences = {}) {
   };
 }
 
-export async function runCurrentActivityCopilots(clientType = 'Official', lifecycle = {}) {
+export async function runCurrentActivityCopilots(clientType = DEFAULT_CLIENT_TYPE, lifecycle = {}) {
   let candidates = await findActivityCopilotCandidates(clientType, { allowCurrentMap: true });
   let resourceRefresh = null;
   const activityCode = String(candidates.preflight?.activity?.code || '').toUpperCase();

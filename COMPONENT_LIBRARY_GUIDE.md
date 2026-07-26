@@ -119,7 +119,7 @@ Tailwind 中 `rounded-xl`、`rounded-2xl`、`rounded-3xl` 已统一映射到 `--
 
 通用组件优先级：
 
-1. 能用 `Card`、`CardHeader`、`CardContent`、`InfoCard` 时优先使用组件。
+1. 能用 `Card`、`CardHeader`、`CardContent`、`SmoothPanel` 时优先使用组件。
 2. 特殊布局不适合组件时，使用语义类：`app-card surface-panel`、`app-card surface-soft`、`app-info-card`。
 3. 不要把页面区块都做成层层嵌套卡片；只有真正需要框住的内容才使用卡片。
 
@@ -230,7 +230,7 @@ import FloatingStatusIndicator from '@/components/FloatingStatusIndicator'
 **适用场景**：主要面板、信息卡片、带标题的内容区域。
 
 ```tsx
-import { Card, CardHeader, CardContent, InfoCard } from '@/components/common'
+import { Card, CardHeader, CardContent } from '@/components/common'
 
 <Card animated delay={0.1}>
   <CardHeader
@@ -242,12 +242,12 @@ import { Card, CardHeader, CardContent, InfoCard } from '@/components/common'
   </CardContent>
 </Card>
 
-<InfoCard type="warning">
+<div className="app-info-card status-warning">
   <p>需要用户注意的信息。</p>
-</InfoCard>
+</div>
 ```
 
-`Card` 支持 `animated`、`delay`、`className` 和显式的 `smoothCorners`。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局、动画和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。非 `Card` 面板使用 `SmoothPanel`，大面板为 `20px / 80%`，紧凑信息卡通过 `cornerSize="compact"` 使用 `16px / 80%`。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 与 `InfoCard` 均支持 `className`。
+`Card` 支持 `animated`、`delay`、`className` 和显式的 `smoothCorners`。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局、动画和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。非 `Card` 面板使用 `SmoothPanel`，大面板为 `20px / 80%`，紧凑信息卡通过 `cornerSize="compact"` 使用 `16px / 80%`。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 支持 `className`；紧凑提示容器使用语义类 `app-info-card` 配合对应状态类。
 
 控制台同类功能页在根节点添加 `ios-workspace-page`，并显式给 `PageHeader` 传 `mobileLayout="inline"`。手机端只有 `Card smoothCorners` 和 `SmoothPanel` 会获得无外描边的柔和阴影；不要给卡内 `surface-soft`、菜单、输入或列表项添加该页面级材质。
 
@@ -259,10 +259,11 @@ import { Card, CardHeader, CardContent, InfoCard } from '@/components/common'
 
 ```tsx
 import { Button, IconButton } from '@/components/common'
+import { RefreshCw } from 'lucide-react'
 
 <Button variant="primary" size="md">保存</Button>
 <Button variant="danger" loading={deleting}>删除</Button>
-<IconButton icon={<Icons.RefreshCw />} title="刷新" />
+<IconButton icon={<RefreshCw />} title="刷新" />
 ```
 
 `Button` 支持 `primary`、`secondary`、`outline`、`success`、`danger`、`ghost`。`IconButton` 仅支持 `primary`、`secondary`、`danger`、`ghost`。新增按钮优先走 `variant`，不要在页面里手写一套按钮颜色、阴影和圆角。

@@ -60,6 +60,7 @@ import {
 import { createLogger } from '../utils/logger.js'
 import { resolveConnectionInput } from '../services/connectionService.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js'
 import { API_VERSION, buildAgentManifest, buildOpenApiSpec } from './agentContract.js';
 import {
   getWebrtcStatus,
@@ -81,9 +82,6 @@ const router = express.Router();
 const execFileAsync = promisify(execFile);
 const logger = createLogger('AgentRoutes');
 
-const DEFAULT_ADB_PATH = process.env.ADB_PATH || '/opt/homebrew/bin/adb';
-const DEFAULT_ADB_ADDRESS = process.env.ADB_ADDRESS || '127.0.0.1:16384';
-const DEFAULT_CLIENT_TYPE = process.env.MAA_CLIENT_TYPE || 'Official';
 const ACTIVE_RUN_STATES = new Set(['accepted', 'running', 'stopping']);
 const TERMINAL_RUN_STATES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
 
@@ -1474,7 +1472,7 @@ router.post('/actions/update-cli', asyncHandler(async (req, res) => {
   const { promisify } = await import('util');
   const os = await import('os');
   const execAsync = promisify(exec);
-  const MAA_CLI_PATH = process.env.MAA_CLI_PATH || (process.env.DOCKER_ENV ? '/usr/local/bin/maa' : 'maa');
+  const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
   const isDocker = process.env.NODE_ENV === 'production' && await execAsync('test -f /.dockerenv').then(() => true).catch(() => false);
   const command = isDocker ? `${MAA_CLI_PATH} self update` : (os.platform() === 'darwin' ? 'brew upgrade maa-cli' : `${MAA_CLI_PATH} self update`);
   const plan = { action: 'update-cli', command };
@@ -1596,7 +1594,8 @@ router.post('/actions/run-daily-flow', asyncHandler(async (req, res) => {
 router.post('/actions/fight', asyncHandler(async (req, res) => {
   const { dryRun = false, ...requestOptions } = req.body || {};
   const waitForCompletion = parseWaitForCompletion(requestOptions.waitForCompletion);
-  const { waitForCompletion: _ignoredWait, ...fightOptions } = requestOptions;
+  const fightOptions = { ...requestOptions };
+  delete fightOptions.waitForCompletion;
   const args = buildFightArgs(fightOptions);
   if (!args.length) {
     return sendError(res, req, agentError('AGENT_VALIDATION_MISSING_STAGES', '至少需要一个有效关卡', {

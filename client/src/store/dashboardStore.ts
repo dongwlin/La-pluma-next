@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
-export const DASHBOARD_CACHE_STORAGE_KEY = 'la-pluma-dashboard-cache'
-export const DASHBOARD_CACHE_VERSION = 1
+const DASHBOARD_CACHE_STORAGE_KEY = 'la-pluma-dashboard-cache'
+const DASHBOARD_CACHE_VERSION = 1
 export const DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS = 60_000
 
 const MAX_COMPLETED_STAGES = 500
@@ -10,7 +10,7 @@ const MAX_RECENT_DROPS = 50
 const MAX_OPEN_STAGE_ITEMS = 100
 const MAX_TEMPERATURE_SAMPLES = 36
 
-export interface ActivitySummary {
+interface ActivitySummary {
   available: boolean
   code?: string
   name?: string
@@ -23,7 +23,7 @@ export interface ActivitySummary {
   }
 }
 
-export interface ScheduleSummary {
+interface ScheduleSummary {
   isRunning: boolean
   currentTask?: string
   message?: string
@@ -31,12 +31,12 @@ export interface ScheduleSummary {
   lastResult?: string
 }
 
-export interface TrainingSummary {
+interface TrainingSummary {
   count: number
   topNames: string[]
 }
 
-export interface DropSummary {
+interface DropSummary {
   count: number
   recent: Array<{
     stage: string
@@ -44,12 +44,12 @@ export interface DropSummary {
   }>
 }
 
-export interface OpenStageSummary {
+interface OpenStageSummary {
   open: Array<{ stage: string; name: string }>
   closed: Array<{ stage: string; name: string }>
 }
 
-export interface DeviceStats {
+interface DeviceStats {
   cpuPct?: number | null
   load1m?: number | null
   memPct?: number | null
@@ -61,7 +61,7 @@ export interface DeviceStats {
   temp?: number | null
 }
 
-export interface DashboardSnapshot {
+interface DashboardSnapshot {
   activitySummary: ActivitySummary
   scheduleSummary: ScheduleSummary
   trainingSummary: TrainingSummary
@@ -72,7 +72,7 @@ export interface DashboardSnapshot {
   lastUpdate: number | null
 }
 
-export type DashboardSnapshotData = Omit<DashboardSnapshot, 'lastUpdate'>
+type DashboardSnapshotData = Omit<DashboardSnapshot, 'lastUpdate'>
 export type DashboardBusinessSnapshot = Pick<
   DashboardSnapshotData,
   'activitySummary' | 'scheduleSummary' | 'trainingSummary' | 'dropSummary' | 'openStageSummary'

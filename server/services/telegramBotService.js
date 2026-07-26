@@ -7,6 +7,7 @@ import { executeScheduleNow } from './schedulerService.js';
 import { execMaaCommand, getTaskStatus, stopCurrentTask, captureScreen } from './maaService.js';
 import { resolveConnection } from './connectionService.js';
 import { createLogger } from '../utils/logger.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
 const logger = createLogger('TelegramBot');
 
@@ -15,8 +16,8 @@ let botConfig = {
   botToken: '',
   chatId: '',
   allowedUserIds: [], // 新增：允许的用户 ID 列表
-  adbPath: '/opt/homebrew/bin/adb',
-  adbAddress: '127.0.0.1:16384',
+  adbPath: DEFAULT_ADB_PATH,
+  adbAddress: DEFAULT_ADB_ADDRESS,
   allowedCommands: ['start', 'stop', 'status', 'fight', 'roguelike', 'copilot', 'startup', 'closedown', 'screenshot', 'help']
 };
 
@@ -270,12 +271,12 @@ async function handleCommand(chatId, command, args) {
         break;
         
       case 'startup':
-        const clientType = args[0] || 'Official';
+        const clientType = args[0] || DEFAULT_CLIENT_TYPE;
         response = await executeStartup(clientType);
         break;
         
       case 'closedown':
-        const closeClient = args[0] || 'Official';
+        const closeClient = args[0] || DEFAULT_CLIENT_TYPE;
         response = await executeClosedown(closeClient);
         break;
         
@@ -678,18 +679,13 @@ async function getStageInfoFromCopilot(uri) {
 /**
  * 执行定时任务
  */
-async function executeScheduleTask(scheduleId) {
-  try {
-    // 注意：这里需要传入 taskFlow，但 Bot 无法获取
-    // 建议用户通过 WebUI 配置定时任务，Bot 只用于执行预定义任务
-    return `❌ 暂不支持通过 Bot 执行定时任务
+function executeScheduleTask() {
+  // Bot 无法取得 WebUI 中保存的 taskFlow，只提供明确的替代入口。
+  return `❌ 暂不支持通过 Bot 执行定时任务
 
 请使用以下命令：
 /fight <关卡> - 执行理智作战
 /roguelike [主题] - 执行肉鸽任务`;
-  } catch (error) {
-    throw new Error(`执行失败: ${error.message}`);
-  }
 }
 
 /**

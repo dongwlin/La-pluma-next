@@ -3,7 +3,7 @@
  * 提供结构化的日志记录和管理
  */
 
-export class Logger {
+class Logger {
   constructor(name, options = {}) {
     this.name = name;
     this.logs = [];
@@ -133,13 +133,6 @@ class LoggerManager {
       this.loggers.set(name, new Logger(name, options));
     }
     return this.loggers.get(name);
-  }
-
-  /**
-   * 获取所有 Logger
-   */
-  getAllLoggers() {
-    return Array.from(this.loggers.values());
   }
 
   /**

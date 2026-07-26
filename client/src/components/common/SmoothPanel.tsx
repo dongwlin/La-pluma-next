@@ -6,7 +6,7 @@ const PANEL_RADII = {
   compact: 16,
 } as const
 
-export interface SmoothPanelProps extends HTMLAttributes<HTMLDivElement> {
+interface SmoothPanelProps extends HTMLAttributes<HTMLDivElement> {
   cornerSize?: keyof typeof PANEL_RADII
   surfaceClassName?: string
 }

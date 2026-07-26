@@ -1,4 +1,4 @@
-import React, { Activity, lazy, Suspense, useEffect } from 'react'
+import React, { Activity, lazy, Suspense, useState, useEffect } from 'react'
 import { MotionConfig } from 'framer-motion'
 import Dashboard from './components/Dashboard'
 import Layout from './components/Layout'
@@ -35,6 +35,8 @@ const appPages = [
   { id: 'statistics', Component: DataStatistics },
   { id: 'config', Component: ConfigManager },
 ] as const
+
+const BACKGROUND_PRELOAD_DELAY = 2000
 
 interface PageErrorBoundaryProps {
   activeKey: string
@@ -82,6 +84,22 @@ class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, { hasErr
   }
 }
 
+function VisitedWorkspaces({ activeTab }: { activeTab: string }) {
+  const [visitedPages] = useState(() => new Set([activeTab]))
+  // The active tab prop already drives renders; keep history mutable to avoid a second render on navigation.
+  visitedPages.add(activeTab)
+
+  return appPages
+    .filter(({ id }) => id === activeTab || visitedPages.has(id))
+    .map(({ id, Component }) => (
+      <PageErrorBoundary key={id} activeKey={activeTab} pageKey={id}>
+        <Suspense fallback={<PageSkeleton variant={id} />}>
+          <Component />
+        </Suspense>
+      </PageErrorBoundary>
+    ))
+}
+
 function App() {
   useBackendStatusMonitor()
   const theme = useUIStore(state => state.theme)
@@ -93,34 +111,57 @@ function App() {
   }, [isDark])
 
   useEffect(() => {
-    const preloadPages = () => {
-      void Promise.allSettled(Object.values(pageLoaders).map(loadPage => loadPage()))
-    }
+    const connection = (navigator as Navigator & {
+      connection?: { effectiveType?: string; saveData?: boolean }
+    }).connection
+    if (connection?.saveData || connection?.effectiveType?.includes('2g')) return undefined
+
+    const loaders = Object.values(pageLoaders)
     const idleWindow = window as unknown as {
       requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
       cancelIdleCallback?: (handle: number) => void
     }
 
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      const idleId = idleWindow.requestIdleCallback(preloadPages, { timeout: 2000 })
-      return () => idleWindow.cancelIdleCallback?.(idleId)
+    let cancelled = false
+    let nextLoader = 0
+    let idleId: number | undefined
+    let fallbackTimer: number | undefined
+
+    const scheduleNext = () => {
+      if (cancelled || nextLoader >= loaders.length) return
+
+      const preloadNext = () => {
+        idleId = undefined
+        fallbackTimer = undefined
+        if (cancelled) return
+
+        const loadPage = loaders[nextLoader]
+        nextLoader += 1
+        if (!loadPage) return
+        void loadPage().catch(() => undefined).finally(scheduleNext)
+      }
+
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleId = idleWindow.requestIdleCallback(preloadNext, { timeout: 1000 })
+      } else {
+        fallbackTimer = window.setTimeout(preloadNext, 0)
+      }
     }
 
-    const timer = window.setTimeout(preloadPages, 600)
-    return () => window.clearTimeout(timer)
+    const startTimer = window.setTimeout(scheduleNext, BACKGROUND_PRELOAD_DELAY)
+    return () => {
+      cancelled = true
+      window.clearTimeout(startTimer)
+      if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId)
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer)
+    }
   }, [])
 
   return (
     <div id="app-root" className="la-pluma-app">
       <MotionConfig reducedMotion="user">
         <Layout>
-          {({ activeTab }) => appPages.map(({ id, Component }) => (
-            <PageErrorBoundary key={id} activeKey={activeTab} pageKey={id}>
-                <Suspense fallback={<PageSkeleton variant={id} />}>
-                  <Component />
-                </Suspense>
-            </PageErrorBoundary>
-          ))}
+          {({ activeTab }) => <VisitedWorkspaces activeTab={activeTab} />}
         </Layout>
         <PWAInstallPrompt />
       </MotionConfig>

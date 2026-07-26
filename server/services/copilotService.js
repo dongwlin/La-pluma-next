@@ -1,4 +1,4 @@
-export function normalizeStageIdForPrts(stageId = '') {
+function normalizeStageIdForPrts(stageId = '') {
   return String(stageId).replace(/#[fn]#/g, '')
 }
 

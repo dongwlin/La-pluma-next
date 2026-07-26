@@ -187,7 +187,7 @@ export async function ensureCurrentMapActivityResource(configDir, activityCode, 
   return { stageFile: join(stagesDir, `${code}.json`), stages: Object.keys(tasks) };
 }
 
-export async function ensurePresetFormationResource(configDir) {
+async function ensurePresetFormationResource(configDir) {
   const installedResource = (await execMaaCommand('dir', ['resource'], null, null, false, true)).stdout.trim();
   const installedTasks = JSON.parse(await readFile(join(installedResource, 'tasks', 'tasks.json'), 'utf8'));
   const userTasksDir = join(configDir, 'resource', 'tasks');
@@ -212,7 +212,7 @@ export function buildCopilotTaskParams(list, presetFormation, options = {}) {
   };
 }
 
-export function normalizeCopilotLoopTimes(value) {
+function normalizeCopilotLoopTimes(value) {
   return Math.max(1, Math.min(99, Number.parseInt(String(value || 1), 10) || 1));
 }
 

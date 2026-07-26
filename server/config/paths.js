@@ -117,7 +117,7 @@ export function getBattleDataPath() {
 /**
  * 获取当前操作系统类型
  */
-export function getOSType() {
+function getOSType() {
   const os = platform();
   switch (os) {
     case 'darwin':

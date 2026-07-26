@@ -558,9 +558,6 @@ export interface TrainingFilters {
 // 计划模式
 export type TrainingPlanMode = 'current' | 'all'
 
-// 打开的菜单
-export type TrainingOpenMenu = 'rarity' | null
-
 // 材料层级节点组件 Props
 export interface MaterialHierarchyNodeProps {
   node: MaterialNode

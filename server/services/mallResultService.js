@@ -1,28 +1,4 @@
-function parseCallbackEvents(logOutput) {
-  const marker = 'Assistant::append_callback | ';
-  const events = [];
-
-  for (const line of String(logOutput || '').split('\n')) {
-    if (!line.includes('"taskchain":"Mall"')) continue;
-    const markerIndex = line.indexOf(marker);
-    if (markerIndex === -1) continue;
-
-    const callback = line.slice(markerIndex + marker.length);
-    const jsonIndex = callback.indexOf('{');
-    if (jsonIndex === -1) continue;
-
-    try {
-      events.push({
-        callback: callback.slice(0, jsonIndex).trim(),
-        ...JSON.parse(callback.slice(jsonIndex))
-      });
-    } catch {
-      // Ignore an incomplete first line from an incremental log segment.
-    }
-  }
-
-  return events;
-}
+import { parseMaaCallbackEvents } from './maaCallbackService.js';
 
 function isMallDisabled(params) {
   return params.visit_friends === false
@@ -46,7 +22,7 @@ export function parseMallExecutionAction(taskName, params = {}, logOutput = '') 
     };
   }
 
-  const events = parseCallbackEvents(logOutput);
+  const events = parseMaaCallbackEvents(logOutput, 'Mall');
   if (events.length === 0) {
     return {
       task: taskName,

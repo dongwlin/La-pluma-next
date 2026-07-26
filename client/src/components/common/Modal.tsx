@@ -25,7 +25,7 @@ interface ModalProps {
   ariaLabel?: string
 }
 
-export interface ConfirmDialogProps {
+interface ConfirmDialogProps {
   isOpen: boolean
   onClose: () => void
   onConfirm: () => void | boolean | Promise<void | boolean>
@@ -277,7 +277,7 @@ function ModalLayer({
   )
 }
 
-export function Modal({ isOpen, ...props }: ModalProps) {
+function Modal({ isOpen, ...props }: ModalProps) {
   const generatedId = useId().replace(/:/g, '')
   if (typeof document === 'undefined') return null
 

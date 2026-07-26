@@ -1,6 +1,6 @@
 import { useId, type ChangeEvent, type InputHTMLAttributes } from 'react'
 
-export interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
+interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
   checked: boolean
   label: string
   onChange: (checked: boolean) => void
