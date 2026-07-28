@@ -1900,7 +1900,7 @@ export default function CombatTasks() {
                             const nextIndex = copilotSetInfo.copilots.findIndex((_, idx) => selectedCopilotIndexes.has(idx))
                             const nextCopilot = nextIndex >= 0 ? copilotSetInfo.copilots[nextIndex] : null
                             return (
-                              <div className="mb-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
+                              <div className="mb-3 border-y border-[var(--app-border)] py-3">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                   <div className="min-w-0">
                                     <div className="text-xs font-medium text-tertiary">续跑进度</div>
@@ -1925,13 +1925,13 @@ export default function CombatTasks() {
                                     />
                                   </div>
                                   {nextCopilot ? (
-                                    <div className="mt-2 flex min-w-0 items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs">
+                                    <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-[var(--app-border)] pt-2 text-xs">
                                       <span className="shrink-0 text-tertiary">续跑目标</span>
                                       <span className="font-mono brand-text">maa://{nextCopilot.id}</span>
                                       <span className="min-w-0 truncate text-secondary">{nextCopilot.stage || nextCopilot.name || `第 ${nextIndex + 1} 关`}</span>
                                     </div>
                                   ) : (
-                                    <div className="mt-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs text-tertiary">
+                                    <div className="mt-2 border-t border-[var(--app-border)] pt-2 text-xs text-tertiary">
                                       需要重打时点击“重置进度”。
                                     </div>
                                   )}
@@ -1978,7 +1978,7 @@ export default function CombatTasks() {
                           })()}
 
                           {/* 作业列表 */}
-                          <div className="flex-1 space-y-1 overflow-y-auto pr-1">
+                          <div className="flex-1 divide-y divide-[var(--app-border)] overflow-hidden overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)]">
                             {copilotSetInfo.copilots.map((copilot, idx) => {
                               const isCompleted = copilotSetResults.some(r => r.index === idx)
                               const isSuccess = copilotSetResults.find(r => r.index === idx)?.success
@@ -2004,11 +2004,11 @@ export default function CombatTasks() {
                               }
 
                               return (
-                                <div key={`${copilot.id}-${idx}`} className={`flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2 text-xs transition-colors ${
-                                  isCurrent ? 'brand-action-subtle border-[var(--app-accent)]' :
-                                  isCompleted ? (isSuccess ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-rose-500/25 bg-rose-500/10') :
-                                  isPersistedDone ? 'border-[var(--app-border)] bg-black/[0.025] opacity-70 dark:bg-white/[0.035]' :
-                                  'border-[var(--app-border)] bg-[var(--app-surface)] hover:border-[var(--app-border-strong)]'
+                                <div key={`${copilot.id}-${idx}`} className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
+                                  isCurrent ? 'bg-[var(--app-accent-soft)]' :
+                                  isCompleted ? (isSuccess ? 'bg-emerald-500/10' : 'bg-rose-500/10') :
+                                  isPersistedDone ? 'bg-black/[0.025] opacity-70 dark:bg-white/[0.035]' :
+                                  'hover:bg-[var(--app-surface-muted)]'
                                 }`}>
                                   <div className="flex min-w-0 items-center space-x-2">
                                     {/* 勾选框 */}
@@ -2072,7 +2072,7 @@ export default function CombatTasks() {
                           </div>
                         </>
                       ) : copilotSetInfo?.type === 'single' ? (
-                        <div className="flex-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3">
+                        <div className="flex-1 border-y border-[var(--app-border)] py-3">
                           <div className="flex items-center space-x-2 mb-1">
                             <span className="rounded-md px-2 py-0.5 text-xs font-medium brand-chip">单个作业</span>
                             <span className="text-xs text-tertiary">ID: {copilotSetInfo.id}</span>
@@ -2202,7 +2202,7 @@ export default function CombatTasks() {
 
                                   {/* 当前作业详情 */}
                                   {currentCopilot && (
-                                    <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2">
+                                    <div className="border-t border-[var(--app-border)] pt-2">
                                       <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs text-tertiary">
                                           {isRunning ? '当前作业' : '下一作业'}
@@ -2425,7 +2425,7 @@ export default function CombatTasks() {
                                 <span className="font-medium brand-text">{paradoxSearchResult.operator}</span>
                                 <span className="text-tertiary">{paradoxSearchResult.copilots.length} 个作业</span>
                               </div>
-                              <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+                              <div className="max-h-56 divide-y divide-[var(--app-border)] overflow-hidden overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)]">
                                 {paradoxSearchResult.copilots.slice(0, 6).map((copilot, idx) => {
                                   const stars = Math.min(5, Math.max(1, Math.ceil(copilot.hotScore)))
 
@@ -2435,7 +2435,7 @@ export default function CombatTasks() {
                                       onClick={() => {
                                         setTaskInputs({ ...taskInputs, paradoxcopilot: copilot.uri })
                                       }}
-                                      className="min-h-11 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-left text-xs transition-all hover:border-[var(--app-accent)]"
+                                      className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--app-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)]"
                                     >
                                       <div className="flex min-w-0 items-center justify-between gap-2">
                                         <span className="truncate font-mono brand-text">{copilot.uri}</span>
@@ -2464,12 +2464,12 @@ export default function CombatTasks() {
                       ) : (
                         <div className="combat-workspace-section">
                           <h5 className="mb-3 text-sm font-semibold text-primary">执行概览</h5>
-                          <div className="space-y-2 text-xs">
-                            <div className="flex items-center justify-between rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2">
+                          <div className="divide-y divide-[var(--app-border)] overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)] text-xs">
+                            <div className="flex items-center justify-between px-3 py-2">
                               <span className="text-tertiary">作业数量</span>
                               <span className={taskUris.length > 1 ? 'text-rose-500 dark:text-rose-300' : 'text-primary'}>{taskUris.length || 0}</span>
                             </div>
-                            <div className="flex items-center justify-between rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2">
+                            <div className="flex items-center justify-between px-3 py-2">
                               <span className="text-tertiary">循环次数</span>
                               <span className="text-primary">{advancedParams.ssscopilot?.loopTimes || '1'}</span>
                             </div>

@@ -203,7 +203,6 @@ iOS 风格三档 `Button` 高度由 `app-button-size-sm`、`app-button-size-md`�
   title: string
   subtitle?: string
   actions?: ReactNode
-  animated?: boolean
   mobileLayout?: 'stack' | 'inline'
 }
 ```
@@ -232,7 +231,7 @@ import FloatingStatusIndicator from '@/components/FloatingStatusIndicator'
 ```tsx
 import { Card, CardHeader, CardContent } from '@/components/common'
 
-<Card animated delay={0.1}>
+<Card smoothCorners>
   <CardHeader
     icon={<Icons.Package />}
     title="材料掉落统计"
@@ -247,7 +246,7 @@ import { Card, CardHeader, CardContent } from '@/components/common'
 </div>
 ```
 
-`Card` 支持 `animated`、`delay`、`className` 和显式的 `smoothCorners`。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局、动画和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。非 `Card` 面板使用 `SmoothPanel`，大面板为 `20px / 80%`，紧凑信息卡通过 `cornerSize="compact"` 使用 `16px / 80%`。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 支持 `className`；紧凑提示容器使用语义类 `app-info-card` 配合对应状态类。
+`Card` 支持 `className` 和显式的 `smoothCorners`。静态内容直接渲染，不提供整卡进场动画。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。非 `Card` 面板使用 `SmoothPanel`，大面板为 `20px / 80%`，紧凑信息卡通过 `cornerSize="compact"` 使用 `16px / 80%`。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 支持 `className`；紧凑提示容器使用语义类 `app-info-card` 配合对应状态类。
 
 控制台同类功能页在根节点添加 `ios-workspace-page`，并显式给 `PageHeader` 传 `mobileLayout="inline"`。手机端只有 `Card smoothCorners` 和 `SmoothPanel` 会获得无外描边的柔和阴影；不要给卡内 `surface-soft`、菜单、输入或列表项添加该页面级材质。
 

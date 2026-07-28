@@ -1691,24 +1691,40 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 0.625rem;
   color: var(--app-text-muted);
   font-size: var(--app-font-caption);
   font-weight: 700;
 }
 
+.automation-schedule-list-heading-actions {
+  display: inline-flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .automation-schedule-list-heading small {
   display: inline-flex;
   min-width: 2.5rem;
-  height: 1.5rem;
+  height: 1.75rem;
   align-items: center;
   justify-content: center;
-  border-radius: var(--app-radius-pill);
-  padding: 0 0.5rem;
-  background: var(--app-surface-muted);
+  border-radius: 999px;
+  padding: 0 0.625rem;
+  background: rgba(118, 118, 128, 0.16);
   color: var(--app-text-muted);
-  font-size: var(--app-font-meta);
+  font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1;
+}
+
+.dark .automation-schedule-list-heading small,
+html.dark .automation-schedule-list-heading small {
+  background: rgba(118, 118, 128, 0.28);
+  color: rgba(235, 235, 245, 0.66);
 }
 
 .automation-schedule-times {
@@ -1716,30 +1732,29 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   gap: 0;
   overflow: hidden;
   border-radius: var(--app-continuous-radius-compact);
-  background: color-mix(in srgb, var(--app-surface-muted) 92%, transparent);
+  background: transparent;
 }
 
 .automation-schedule-time-row {
   position: relative;
-  display: grid;
+  display: flex;
   min-width: 0;
-  min-height: 3.5rem;
-  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+  min-height: 3.25rem;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.375rem;
-  transition: background 160ms ease;
+  gap: 0.625rem;
+  padding: 0.5rem 0.125rem;
+  transition: opacity 160ms ease;
 }
 
-.automation-schedule-time-row:focus-within {
-  background: color-mix(in srgb, var(--app-accent) 7%, transparent);
+.automation-schedule-time-row.is-disabled {
+  opacity: 0.55;
 }
 
 .automation-schedule-time-row + .automation-schedule-time-row::before {
   position: absolute;
   top: 0;
-  right: 3.25rem;
-  left: 3.25rem;
+  right: 0.125rem;
+  left: 0.125rem;
   height: 1px;
   background: var(--app-border);
   content: '';
@@ -1748,106 +1763,135 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   transform-origin: top;
 }
 
-.automation-schedule-time-copy {
+.automation-schedule-time-fields {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  gap: 0.5rem;
 }
 
-.automation-schedule-time-input-shell {
-  position: relative;
-  width: 6.75rem;
-  height: 2.75rem;
-}
-
-.automation-schedule-frequency {
-  display: flex;
-  height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-  justify-self: center;
-  color: var(--app-text-soft);
-  font-size: var(--app-font-meta);
+.automation-schedule-time-unit {
+  flex: none;
+  color: var(--app-text);
+  font-size: 0.9375rem;
   font-weight: 500;
   line-height: 1;
 }
 
-.automation-schedule-time-input[type="time"] {
-  position: relative;
+.automation-schedule-stepper {
+  display: inline-flex;
+  min-width: 3.75rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  gap: 0.125rem;
+  border-radius: 0.55rem;
+  padding: 0 0.2rem 0 0.55rem;
+  background: color-mix(in srgb, var(--app-surface-muted) 88%, var(--app-text) 12%);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--app-border) 70%, transparent);
+}
+
+/* Beat the global input[type="text"] solid surface so only the stepper shell shows fill. */
+.automation-schedule-stepper input.automation-schedule-stepper-input[type="text"] {
+  width: 1.5rem;
   min-width: 0;
-  width: 100%;
-  height: 2.75rem;
+  min-height: 0;
+  height: 100%;
   border: 0;
-  border-radius: var(--app-radius-sm);
-  padding: 0 1.75rem 0 0;
+  border-radius: 0;
+  padding: 0;
   background: transparent;
+  background-color: transparent;
+  box-shadow: none;
   color: var(--app-text);
   font-family: ui-rounded, "SF Pro Rounded", ui-sans-serif, system-ui, sans-serif;
-  font-size: 1.25rem;
+  font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  letter-spacing: 0;
   line-height: 1;
+  text-align: center;
   outline: 0;
-  color-scheme: light;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.automation-schedule-stepper input.automation-schedule-stepper-input[type="text"]:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.automation-schedule-stepper:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 55%, transparent),
+    0 0 0 3px var(--app-accent-soft);
+}
+
+.automation-schedule-stepper input.automation-schedule-stepper-input[type="text"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: transparent;
+  background-color: transparent;
+}
+
+.automation-schedule-stepper-controls {
+  display: inline-flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+}
+
+.automation-schedule-stepper-button {
+  display: inline-flex;
+  width: 1.15rem;
+  height: 0.85rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.25rem;
+  padding: 0;
+  background: transparent;
+  color: var(--app-text-muted);
   cursor: pointer;
 }
 
-.dark .automation-schedule-time-input[type="time"] {
-  background: transparent;
-  color-scheme: dark;
+.automation-schedule-stepper-button:hover:not(:disabled) {
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-surface-solid) 45%, transparent);
 }
 
-.automation-schedule-time-input[type="time"]:focus-visible {
-  outline: 2px solid var(--app-accent);
-  outline-offset: 2px;
-}
-
-.automation-schedule-time-input[type="time"]:disabled {
+.automation-schedule-stepper-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
-.automation-schedule-time-input[type="time"]::-webkit-date-and-time-value {
-  display: flex;
-  height: 100%;
-  min-height: 0;
+.automation-schedule-time-enable {
+  display: inline-flex;
+  margin-left: auto;
+  flex: none;
   align-items: center;
-  padding: 0;
-  text-align: left;
+  gap: 0.5rem;
 }
 
-.automation-schedule-time-input[type="time"]::-webkit-datetime-edit {
-  display: flex;
-  height: 100%;
-  align-items: center;
-  padding: 0;
-}
-
-.automation-schedule-time-input[type="time"]::-webkit-calendar-picker-indicator {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.automation-schedule-time-picker-icon {
-  position: absolute;
-  top: 50%;
-  right: 0.125rem;
+.automation-schedule-time-enable-label {
   color: var(--app-text);
-  pointer-events: none;
-  transform: translateY(-50%);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.automation-schedule-time-switch {
+  flex: none;
 }
 
 .automation-schedule-remove,
 .automation-schedule-remove-placeholder {
   width: 2.75rem;
   height: 2.75rem;
+  flex: none;
 }
 
 .automation-schedule-remove {
@@ -1859,17 +1903,6 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   color: var(--app-danger);
   box-shadow: none;
   transition: background 120ms ease, color 120ms ease, transform 100ms ease;
-}
-
-.automation-schedule-remove-glyph {
-  display: inline-flex;
-  width: 1.25rem;
-  height: 1.25rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--app-danger);
-  color: white;
 }
 
 .automation-schedule-remove:hover {
@@ -1888,46 +1921,84 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   opacity: 0.4;
 }
 
-.automation-schedule-add {
-  display: flex;
-  width: 100%;
-  min-height: 3.25rem;
+button.automation-schedule-add {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  min-height: 1.75rem;
+  height: 1.75rem;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 0.2rem;
   margin: 0;
-  border-radius: 0;
-  padding: 0 1rem;
-  color: var(--app-accent);
-  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 0.625rem;
+  color: var(--app-text-muted);
+  background: rgba(118, 118, 128, 0.16);
   box-shadow: none;
-  font-size: var(--app-font-caption);
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 600;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 160ms ease, color 160ms ease, transform 100ms ease, opacity 160ms ease;
 }
 
-.automation-schedule-times > .automation-schedule-add::before {
-  position: absolute;
-  top: 0;
-  right: 1rem;
-  left: 1rem;
-  height: 1px;
-  background: var(--app-border);
-  content: '';
-  opacity: 0.72;
-  transform: scaleY(0.5);
-  transform-origin: top;
+button.automation-schedule-add .automation-schedule-add-plus,
+button.automation-schedule-add .automation-schedule-add-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
-.automation-schedule-times > .automation-schedule-add {
+button.automation-schedule-add .automation-schedule-add-plus {
+  width: 0.7rem;
+  flex: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.dark button.automation-schedule-add,
+html.dark button.automation-schedule-add {
+  color: rgba(235, 235, 245, 0.78);
+  background: rgba(118, 118, 128, 0.28);
+}
+
+.automation-schedule-list-heading-actions > button.automation-schedule-add {
   position: relative;
+  flex: none;
 }
 
-.automation-schedule-add:hover {
-  background: var(--app-accent-soft);
-  color: var(--app-accent);
-  box-shadow: none;
+button.automation-schedule-add:hover:not(:disabled) {
+  color: var(--app-text);
+  background: rgba(118, 118, 128, 0.28);
 }
+
+.dark button.automation-schedule-add:hover:not(:disabled),
+html.dark button.automation-schedule-add:hover:not(:disabled) {
+  color: rgba(235, 235, 245, 0.92);
+  background: rgba(118, 118, 128, 0.38);
+}
+
+button.automation-schedule-add:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+button.automation-schedule-add:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+button.automation-schedule-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 
 .automation-schedule-empty {
   display: grid;
@@ -3049,10 +3120,12 @@ input.automation-stage-name-input:disabled,
   border-radius: var(--app-radius-pill);
 }
 
-[data-automation-tasks] .automation-schedule-times > .automation-schedule-add {
-  min-height: 3.25rem;
-  border-radius: 0;
-  padding: 0 1rem;
+[data-automation-tasks] .automation-schedule-list-heading-actions > button.automation-schedule-add {
+  min-height: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  padding: 0 0.625rem;
+  font-size: 0.8125rem;
 }
 
 [data-automation-tasks] :is(
@@ -3413,13 +3486,13 @@ svg.w-5.h-5 {
   }
 
   .surface-panel {
-    background: var(--app-surface);
+    background: var(--app-surface-solid);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.78),
       0 0 0 1px var(--app-border),
-      0 12px 32px rgba(15, 23, 42, 0.055);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+      0 1px 3px rgba(15, 23, 42, 0.05),
+      0 14px 40px rgba(15, 23, 42, 0.05);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .dark .surface-panel {
@@ -3457,9 +3530,9 @@ svg.w-5.h-5 {
     overflow: hidden;
     border: 1px solid var(--app-border);
     border-radius: inherit;
-    background: var(--app-surface);
-    backdrop-filter: blur(20px) saturate(145%);
-    -webkit-backdrop-filter: blur(20px) saturate(145%);
+    background: var(--app-surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .surface-soft {

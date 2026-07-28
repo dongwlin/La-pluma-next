@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import { Package as PackageIcon } from 'lucide-react'
 import Icons from './Icons'
 import { getItemIconUrl } from '../services/api'
@@ -18,7 +17,7 @@ interface DropRecordsErrorProps {
 
 function DropRecordsError({ description, onRetry }: DropRecordsErrorProps) {
   return (
-    <Card animated smoothCorners className="drop-records-panel !p-0">
+    <Card smoothCorners className="drop-records-panel !p-0">
       <div className="drop-records-panel-content">
         <div className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
@@ -52,7 +51,7 @@ export default function DropRecords({
 
   if (isLoading && !dropStatistics && !error) {
     return (
-      <Card animated smoothCorners className="drop-records-panel !p-0">
+      <Card smoothCorners className="drop-records-panel !p-0">
         <div className="drop-records-panel-content py-12">
           <Loading text="正在读取掉落记录..." />
         </div>
@@ -66,7 +65,7 @@ export default function DropRecords({
 
   if (!dropStatistics) {
     return (
-      <Card animated smoothCorners className="drop-records-panel !p-0">
+      <Card smoothCorners className="drop-records-panel !p-0">
         <div className="drop-records-panel-content">
           <EmptyState
             className="py-12"
@@ -124,13 +123,9 @@ export default function DropRecords({
       )}
 
       {/* 顶部统计卡片 */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="app-grid-card grid-cols-2 md:grid-cols-4"
-      >
+      <div className="drop-records-metric-panel grid grid-cols-2 overflow-hidden rounded-[var(--app-radius-lg)] surface-soft md:grid-cols-4">
         {metricCards.map((metric) => (
-          <div key={metric.label} className="min-w-0 surface-soft app-info-card">
+          <div key={metric.label} className="drop-records-metric-row min-w-0 p-4">
             <div className="mb-2 flex items-center justify-between text-secondary">
               <p className="text-xs">{metric.label}</p>
               <span className="brand-text">{metric.icon}</span>
@@ -143,15 +138,10 @@ export default function DropRecords({
             </p>
           </div>
         ))}
-      </motion.div>
+      </div>
 
       {/* 天数选择器 */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center"
-      >
+      <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-sm text-secondary">统计周期</span>
           <div className="grid w-full grid-cols-4 gap-1 sm:inline-grid sm:w-auto" role="group" aria-label="统计周期">
@@ -185,15 +175,10 @@ export default function DropRecords({
         >
           刷新
         </Button>
-      </motion.div>
+      </div>
 
       {/* 材料掉落统计 */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="min-w-0"
-      >
+      <div className="min-w-0">
         <Card smoothCorners className="drop-records-panel !p-0">
           <div className="drop-records-panel-content">
         <h3 className="mb-4 flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold text-primary">
@@ -213,18 +198,15 @@ export default function DropRecords({
             description="切换统计周期或完成作战后再查看。"
           />
         ) : (
-        <div className="app-grid-card min-w-0 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {sortedItems.slice(0, 20).map(([itemName, itemData], idx) => (
-            <motion.div
+        <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-[var(--app-radius-lg)] surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {sortedItems.slice(0, 20).map(([itemName, itemData]) => (
+            <div
               key={itemName}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: idx * 0.02 }}
-              className="group surface-soft app-info-card flex min-w-0 items-center gap-3 p-3 transition-colors hover:border-[color-mix(in_srgb,var(--app-accent)_42%,var(--app-border))] hover:bg-[var(--app-accent-soft)]"
+              className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-[var(--app-surface-muted)]"
             >
               {/* 物品图标 */}
               {itemData.iconId && (
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl surface-soft">
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
                   {failedItemImages[itemName] ? (
                     <span role="img" aria-label={`${itemName}图标不可用`}>
                       <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
@@ -251,7 +233,7 @@ export default function DropRecords({
                   </span>
                 </div>
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
         )}
@@ -263,15 +245,10 @@ export default function DropRecords({
         )}
           </div>
         </Card>
-      </motion.div>
+      </div>
 
       {/* 关卡统计 */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="min-w-0"
-      >
+      <div className="min-w-0">
         <Card smoothCorners className="drop-records-panel !p-0">
           <div className="drop-records-panel-content">
         <h3 className="mb-4 flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold text-primary">
@@ -291,14 +268,11 @@ export default function DropRecords({
             description="切换统计周期或完成作战后再查看。"
           />
         ) : (
-        <div className="min-w-0 space-y-3">
-          {sortedStages.map(([stageName, stageData], idx) => (
-            <motion.div
+        <div className="drop-records-stage-list min-w-0 overflow-hidden rounded-[var(--app-radius-lg)] surface-soft">
+          {sortedStages.map(([stageName, stageData]) => (
+            <div
               key={stageName}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              className="min-w-0 surface-soft app-info-card"
+              className="drop-records-stage-row min-w-0 p-4"
             >
               <div className="mb-3 min-w-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -328,13 +302,13 @@ export default function DropRecords({
                   </span>
                 ))}
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
         )}
           </div>
         </Card>
-      </motion.div>
+      </div>
 
       {/* 日期范围提示 */}
       {dateRange.start && dateRange.end && (

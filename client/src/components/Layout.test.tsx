@@ -60,9 +60,9 @@ let currentScrollY = 0
 let availableScroll = Number.POSITIVE_INFINITY
 let scrollToMock: ReturnType<typeof vi.fn>
 
-function mediaQueryList(query: string): MediaQueryList {
+function mediaQueryList(query: string, matches = false): MediaQueryList {
   return {
-    matches: false,
+    matches,
     media: query,
     onchange: null,
     addListener: vi.fn(),
@@ -98,11 +98,11 @@ async function renderLayout() {
 }
 
 function desktopLink(tab: string) {
-  return container.querySelector<HTMLAnchorElement>(`.la-pluma-sidebar-nav a[href="/app/${tab}"]`)!
+  return container.querySelector<HTMLButtonElement>(`.la-pluma-sidebar-nav button[data-app-tab="${tab}"]`)!
 }
 
 function mobileMoreTrigger() {
-  return container.querySelector<HTMLAnchorElement>('.la-pluma-tabbar a[aria-label="更多页面"]')!
+  return container.querySelector<HTMLButtonElement>('.la-pluma-tabbar button[aria-label="更多页面"]')!
 }
 
 describe('top-level application navigation', () => {
@@ -171,6 +171,29 @@ describe('top-level application navigation', () => {
     expect(getScrollHost().scrollTop).toBe(510)
   })
 
+  it('keeps the installed-app URL stable while restoring tabs from history state', async () => {
+    window.matchMedia = vi.fn((query: string) => mediaQueryList(
+      query,
+      query === '(display-mode: standalone)',
+    ))
+    await renderLayout()
+
+    await act(async () => desktopLink('automation').click())
+
+    expect(window.location.pathname).toBe('/app/dashboard')
+    expect(window.history.state.laPlumaTab).toBe('automation')
+    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('automation')
+
+    await act(async () => {
+      const state = { ...window.history.state, laPlumaTab: 'dashboard' }
+      window.history.replaceState(state, '', '/app/dashboard')
+      window.dispatchEvent(new PopStateEvent('popstate', { state }))
+    })
+
+    expect(window.location.pathname).toBe('/app/dashboard')
+    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('dashboard')
+  })
+
   it('retries scroll restoration when lazy content grows after navigation', async () => {
     availableScroll = 1000
     let resizeCallback: ResizeObserverCallback | null = null
@@ -228,18 +251,21 @@ describe('top-level application navigation', () => {
       '任务与执行',
       '记录与设置',
     ])
-    expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav a')).toHaveLength(8)
+    expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
     expect(sidebar.querySelectorAll('.la-pluma-sidebar-icon > svg[aria-hidden="true"]')).toHaveLength(8)
 
-    const mobileDestinations = [...container.querySelectorAll<HTMLAnchorElement>('.la-pluma-tabbar-pill a')]
-      .map(link => link.getAttribute('href'))
+    const mobileDestinations = [...container.querySelectorAll<HTMLButtonElement>('.la-pluma-tabbar-pill button[data-app-tab]')]
+      .map(button => button.dataset.appTab)
+    const dashboardIcon = container.querySelector('.la-pluma-tabbar-pill button[data-app-tab="dashboard"] svg')
     expect(container.querySelector('.la-pluma-tabbar-pill')?.classList.contains('app-liquid-tab-pill')).toBe(true)
+    expect(dashboardIcon?.classList.contains('lucide-layout-grid')).toBe(true)
     expect(mobileDestinations).toEqual([
-      '/app/dashboard',
-      '/app/automation',
-      '/app/combat',
-      '/app/config',
+      'dashboard',
+      'automation',
+      'combat',
+      'config',
     ])
+    expect(container.querySelectorAll('a[href^="/app/"]')).toHaveLength(0)
 
     const search = sidebar.querySelector<HTMLInputElement>('input[aria-label="搜索工作区"]')!
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
@@ -248,18 +274,18 @@ describe('top-level application navigation', () => {
       search.dispatchEvent(new Event('input', { bubbles: true }))
     })
 
-    const filteredLinks = [...sidebar.querySelectorAll<HTMLAnchorElement>('.la-pluma-sidebar-nav a')]
-    expect(filteredLinks.map(link => link.getAttribute('href'))).toEqual(['/app/statistics'])
+    const filteredLinks = [...sidebar.querySelectorAll<HTMLButtonElement>('.la-pluma-sidebar-nav button[data-app-tab]')]
+    expect(filteredLinks.map(button => button.dataset.appTab)).toEqual(['statistics'])
     expect(mobileDestinations).toHaveLength(4)
 
     await act(async () => filteredLinks[0]?.click())
     expect(sidebar.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
-    expect(sidebar.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe('/app/statistics')
+    expect(sidebar.querySelector<HTMLElement>('[aria-current="page"]')?.dataset.appTab).toBe('statistics')
 
     await act(async () => {
       sidebar.querySelector<HTMLButtonElement>('button[aria-label="清除搜索"]')?.click()
     })
-    expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav a')).toHaveLength(8)
+    expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
   })
 
   it('shows the daily operator portrait, name, and quote in the desktop identity area', async () => {
@@ -338,7 +364,7 @@ describe('top-level application navigation', () => {
 
     await act(async () => trigger.click())
     sheet = container.querySelector<HTMLElement>('#la-pluma-more-sheet')
-    const overflowLink = sheet?.querySelector<HTMLAnchorElement>('a[href="/app/roguelike"]')
+    const overflowLink = sheet?.querySelector<HTMLButtonElement>('button[data-app-tab="roguelike"]')
     expect(overflowLink).toBeTruthy()
 
     await act(async () => overflowLink?.click())

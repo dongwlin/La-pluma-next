@@ -225,11 +225,19 @@ export default function PWAInstallPrompt() {
             role="region"
             aria-labelledby="pwa-prompt-title"
             aria-busy={showUpdateCard && isUpdating}
-            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 }}
-            transition={{ duration: shouldReduceMotion ? 0.08 : 0.18, ease: 'easeOut' }}
-            className="pwa-install-prompt surface-panel fixed z-50 rounded-xl p-4 shadow-xl sm:w-96"
+            initial={shouldReduceMotion
+              ? { opacity: 0 }
+              : { opacity: 0, y: 24, scale: 0.98, backdropFilter: 'blur(0px) saturate(100%)' }}
+            animate={shouldReduceMotion
+              ? { opacity: 1 }
+              : { opacity: 1, y: 0, scale: 1, backdropFilter: 'blur(24px) saturate(165%)' }}
+            exit={shouldReduceMotion
+              ? { opacity: 0 }
+              : { opacity: 0, y: 16, scale: 0.98, backdropFilter: 'blur(0px) saturate(100%)' }}
+            transition={shouldReduceMotion
+              ? { duration: 0.08 }
+              : { type: 'spring', stiffness: 390, damping: 35, mass: 0.8 }}
+            className="pwa-install-prompt surface-panel fixed z-50 rounded-xl p-4 sm:w-96"
           >
             <div className="flex items-start gap-3">
               <img

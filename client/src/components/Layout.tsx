@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { BarChart3, Bot, Dices, Ellipsis, FileText, GraduationCap, LayoutDashboard, Search, Settings2, Swords, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { BarChart3, Bot, Dices, Ellipsis, FileText, GraduationCap, LayoutGrid, Search, Settings2, Swords, X } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import { useUIStore } from '@/stores'
 import { appTabFromPath, appTabPath, isAppTab, type AppTab } from '@/stores/uiStore'
@@ -24,7 +24,7 @@ interface LayoutProps {
 }
 
 const tabs = [
-  { id: 'dashboard', name: '控制台', icon: LayoutDashboard },
+  { id: 'dashboard', name: '控制台', icon: LayoutGrid },
   { id: 'automation', name: '自动化', icon: Bot },
   { id: 'combat', name: '作业', icon: Swords },
   { id: 'roguelike', name: '肉鸽', icon: Dices },
@@ -32,7 +32,7 @@ const tabs = [
   { id: 'logs', name: '日志', icon: FileText },
   { id: 'statistics', name: '数据', icon: BarChart3 },
   { id: 'config', name: '配置', icon: Settings2 },
-] satisfies Array<{ id: AppTab; name: string; icon: typeof LayoutDashboard }>
+] satisfies Array<{ id: AppTab; name: string; icon: typeof LayoutGrid }>
 
 const desktopTabGroups = [
   {
@@ -69,6 +69,20 @@ function setScrollTop(top: number) {
   window.scrollTo({ top, left: 0, behavior: 'auto' })
 }
 
+function isStandaloneWebApp() {
+  const standaloneNavigator = window.navigator as Navigator & { standalone?: boolean }
+  return document.documentElement.classList.contains('la-pluma-standalone')
+    || window.matchMedia?.('(display-mode: standalone)').matches === true
+    || window.matchMedia?.('(display-mode: fullscreen)').matches === true
+    || standaloneNavigator.standalone === true
+}
+
+function appTabFromHistoryState(state: unknown): AppTab | null {
+  if (!state || typeof state !== 'object') return null
+  const tab = (state as { laPlumaTab?: unknown }).laPlumaTab
+  return typeof tab === 'string' && isAppTab(tab) ? tab : null
+}
+
 function TabIcon({ tab, size = 'h-4 w-4' }: { tab: typeof tabs[number]; size?: string }) {
   const Icon = tab.icon
   return <Icon className={size} strokeWidth={1.9} aria-hidden="true" />
@@ -90,7 +104,7 @@ function TabLink({
 }: {
   tab: typeof tabs[number]
   active: boolean
-  onNavigate: (event: ReactMouseEvent<HTMLAnchorElement>, tab: AppTab, mobile?: boolean) => void
+  onNavigate: (tab: AppTab, mobile?: boolean) => void
   mobile?: boolean
 }) {
   const frameworkClasses = mobile
@@ -98,10 +112,11 @@ function TabLink({
     : 'link'
 
   return (
-    <a
-      href={appTabPath(tab.id)}
+    <button
+      type="button"
+      data-app-tab={tab.id}
       aria-current={active ? 'page' : undefined}
-      onClick={(event) => onNavigate(event, tab.id, mobile)}
+      onClick={() => onNavigate(tab.id, mobile)}
       className={`la-pluma-tab-link ${frameworkClasses} ${active ? 'is-active' : ''} ${mobile ? 'is-mobile-tab' : 'is-desktop-tab'}`}
     >
       {mobile ? (
@@ -112,7 +127,7 @@ function TabLink({
         </span>
       )}
       <span className={mobile ? 'tabbar-label' : 'la-pluma-sidebar-label'}>{tab.name}</span>
-    </a>
+    </button>
   )
 }
 
@@ -124,7 +139,7 @@ export default function Layout({ children }: LayoutProps) {
   const [sidebarQuery, setSidebarQuery] = useState('')
   const [sidebarIdentity, setSidebarIdentity] = useState(DEFAULT_OPERATOR_QUOTE)
   const shouldReduceMotion = useReducedMotion()
-  const moreTriggerRef = useRef<HTMLAnchorElement>(null)
+  const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const scrollPositions = useRef(new Map<AppTab, number>())
   const previousTab = useRef<AppTab>(activeTab)
   const navigationSource = useRef<'initial' | 'store' | 'link' | 'popstate'>('initial')
@@ -290,13 +305,18 @@ export default function Layout({ children }: LayoutProps) {
     const previousScrollRestoration = window.history.scrollRestoration
     const savedScrollPositions = scrollPositions.current
     window.history.scrollRestoration = 'manual'
-    const handlePopState = () => {
-      const nextTab = appTabFromPath(window.location.pathname) ?? 'dashboard'
+    const handlePopState = (event: PopStateEvent) => {
+      const standalone = isStandaloneWebApp()
+      const pathTab = appTabFromPath(window.location.pathname)
+      const historyTab = standalone ? appTabFromHistoryState(event.state) : null
+      const nextTab = historyTab ?? pathTab ?? 'dashboard'
       if (nextTab !== previousTab.current) {
         savedScrollPositions.set(previousTab.current, getScrollTop())
       }
       navigationSource.current = 'popstate'
-      if (!appTabFromPath(window.location.pathname)) {
+      if (standalone && !historyTab) {
+        window.history.replaceState({ ...window.history.state, laPlumaTab: nextTab }, '')
+      } else if (!standalone && !pathTab) {
         window.history.replaceState({ ...window.history.state, laPlumaTab: nextTab }, '', appTabPath(nextTab))
       }
       if (nextTab === useUIStore.getState().activeTab) {
@@ -329,8 +349,14 @@ export default function Layout({ children }: LayoutProps) {
     }
 
     const targetPath = appTabPath(activeTab)
-    if (window.location.pathname !== targetPath) {
-      const state = { ...window.history.state, laPlumaTab: activeTab }
+    const state = { ...window.history.state, laPlumaTab: activeTab }
+    if (isStandaloneWebApp()) {
+      if (isInitial || source === 'popstate' || previousTab.current === activeTab) {
+        window.history.replaceState(state, '')
+      } else {
+        window.history.pushState(state, '')
+      }
+    } else if (window.location.pathname !== targetPath) {
       if (isInitial || source === 'popstate') window.history.replaceState(state, '', targetPath)
       else window.history.pushState(state, '', targetPath)
     }
@@ -340,9 +366,7 @@ export default function Layout({ children }: LayoutProps) {
     restoreScroll(activeTab)
   }, [activeTab, restoreScroll, setActiveTab, storedActiveTab])
 
-  const navigateToTab = (event: ReactMouseEvent<HTMLAnchorElement>, tab: AppTab, mobile = false) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-    event.preventDefault()
+  const navigateToTab = (tab: AppTab, mobile = false) => {
     if (mobile) setMoreOpen(false)
     if (tab !== activeTab) {
       scrollPositions.current.set(activeTab, getScrollTop())
@@ -373,10 +397,10 @@ export default function Layout({ children }: LayoutProps) {
           <div className="navbar-inner">
             <div className="left">
               <div className="la-pluma-navbar-left">
-                <a href={appTabPath('dashboard')} className="link la-pluma-brand" aria-label="La Pluma 控制台" onClick={(event) => navigateToTab(event, 'dashboard')}>
+                <button type="button" className="link la-pluma-brand" aria-label="La Pluma 控制台" onClick={() => navigateToTab('dashboard')}>
                   <img src={`${import.meta.env.BASE_URL}logo-graphite.svg?v=1`} alt="" className="la-pluma-brand-mark" />
                   <span>La Pluma</span>
-                </a>
+                </button>
               </div>
             </div>
             <div className="title">
@@ -488,21 +512,18 @@ export default function Layout({ children }: LayoutProps) {
                 <TabLink key={tab.id} tab={tab} active={activeTab === tab.id} onNavigate={navigateToTab} mobile />
               ))}
             </nav>
-            <a
+            <button
+              type="button"
               ref={moreTriggerRef}
-              href="#la-pluma-more-sheet"
               aria-haspopup="dialog"
               aria-expanded={moreOpen}
               aria-controls="la-pluma-more-sheet"
-              onClick={(event) => {
-                event.preventDefault()
-                setMoreOpen(true)
-              }}
+              onClick={() => setMoreOpen(true)}
               className={`tab-link la-pluma-tabbar-search ${isOverflowActive || moreOpen ? 'is-active tab-link-active' : ''}`}
               aria-label="更多页面"
             >
               <Ellipsis className="la-pluma-tabbar-search-icon" strokeWidth={2.1} aria-hidden="true" />
-            </a>
+            </button>
           </div>
         </footer>
 

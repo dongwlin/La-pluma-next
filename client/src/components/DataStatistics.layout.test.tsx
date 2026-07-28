@@ -178,8 +178,10 @@ describe('DataStatistics layout surfaces', () => {
     expect(operatorCard?.getAttribute('data-smooth-corners')).toBe('true')
     expect(operatorCard?.querySelector(':scope > .app-card-smooth-surface')).not.toBeNull()
     expect(operatorCard?.querySelectorAll('.data-statistics-kpi')).toHaveLength(4)
+    const operatorGrid = operatorCard?.querySelector('.data-statistics-item-grid')
+    expect(operatorGrid?.classList.contains('surface-soft')).toBe(true)
     const operatorItem = operatorCard?.querySelector('.data-statistics-operator-item')
-    expect(operatorItem?.classList.contains('surface-soft')).toBe(true)
+    expect(operatorItem?.classList.contains('surface-soft')).toBe(false)
     expect(operatorItem?.classList.contains('border')).toBe(false)
 
     const depotTab = tabs.find(tab => tab.textContent?.includes('仓库识别'))
@@ -198,8 +200,10 @@ describe('DataStatistics layout surfaces', () => {
     expect(kpis).toHaveLength(6)
     expect(kpis.every(kpi => !kpi.classList.contains('surface-soft'))).toBe(true)
     expect(kpis.every(kpi => !kpi.classList.contains('border'))).toBe(true)
+    const depotGrid = page?.querySelector('.data-statistics-item-grid')
+    expect(depotGrid?.classList.contains('surface-soft')).toBe(true)
     const depotItem = page?.querySelector('.data-statistics-depot-item')
-    expect(depotItem?.classList.contains('surface-soft')).toBe(true)
+    expect(depotItem?.classList.contains('surface-soft')).toBe(false)
     expect(depotItem?.classList.contains('border')).toBe(false)
   })
 

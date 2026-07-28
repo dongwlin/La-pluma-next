@@ -289,7 +289,6 @@ export default function Dashboard() {
   const openStageSummary = useDashboardStore(state => state.openStageSummary)
   const deviceStats = useDashboardStore(state => state.deviceStats)
   const temperatureHistory = useDashboardStore(state => state.temperatureHistory)
-  const shouldAnimateCardsRef = useRef(!hasLoaded)
   const wasOnlineRef = useRef(isOnline)
   const { flowGridRef, flowCardRef, flowPreviewRef, flowGridStyle } = useDashboardFlowLayout(hasLoaded)
   const [quickStartLoading, setQuickStartLoading] = useState(false)
@@ -542,7 +541,7 @@ export default function Dashboard() {
               className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || activityPreflightLoading || flowIsRunning ? 'is-active' : ''}`}
               aria-busy={quickStartLoading || activityPreflightLoading || flowIsRunning}
             >
-              <Card animated={shouldAnimateCardsRef.current} delay={0.18} smoothCorners className="dashboard-flow-card !p-0">
+              <Card smoothCorners className="dashboard-flow-card !p-0">
               <div className="dashboard-flow-header">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="dashboard-flow-mark" aria-hidden="true">
@@ -739,7 +738,7 @@ export default function Dashboard() {
                     surfaceClassName="dashboard-device-card"
                   >
                     <div className="flex items-center gap-2.5 mb-3">
-                      <div className="shrink-0 h-8 w-8 rounded-lg surface-soft flex items-center justify-center">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center text-tertiary">
                         <Icon className={`h-4 w-4 ${labelClass}`} strokeWidth={1.5} />
                       </div>
                       <div className="min-w-0">
@@ -771,7 +770,7 @@ export default function Dashboard() {
         )}
 
         <div className="dashboard-summary-grid">
-          <Card animated={shouldAnimateCardsRef.current} delay={0.23} smoothCorners className="dashboard-summary-card is-status !p-0">
+          <Card smoothCorners className="dashboard-summary-card is-status !p-0">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
                 <span className="dashboard-summary-icon" aria-hidden="true">
@@ -803,7 +802,7 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card animated={shouldAnimateCardsRef.current} delay={0.24} smoothCorners className="dashboard-summary-card is-stages !p-0">
+          <Card smoothCorners className="dashboard-summary-card is-stages !p-0">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
                 <span className="dashboard-summary-icon" aria-hidden="true">
@@ -850,7 +849,7 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card animated={shouldAnimateCardsRef.current} delay={0.24} smoothCorners className="dashboard-summary-card is-training !p-0">
+          <Card smoothCorners className="dashboard-summary-card is-training !p-0">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
                 <span className="dashboard-summary-icon" aria-hidden="true">
@@ -901,7 +900,7 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card animated={shouldAnimateCardsRef.current} delay={0.26} smoothCorners className="dashboard-summary-card is-drops !p-0">
+          <Card smoothCorners className="dashboard-summary-card is-drops !p-0">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
                 <span className="dashboard-summary-icon" aria-hidden="true">

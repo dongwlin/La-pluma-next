@@ -1,7 +1,7 @@
 import { useState, useEffect, useEffectEvent, useRef } from 'react'
 import { generateTrainingPlan, maaApi } from '../services/api'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
+import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, ChevronUp, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
 import Icons from './Icons'
 import ScreenMonitor from './ScreenMonitor'
 import NotificationSettings from './NotificationSettings'
@@ -18,6 +18,83 @@ import { formatExecutionActionSummary } from '../utils/executionSummary'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
 
 const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+const normalizeScheduleTimes = (times: string[]) => (
+  [...new Set(times.filter(time => scheduleTimePattern.test(time)))]
+)
+
+interface ScheduleTimeEntry {
+  time: string
+  enabled: boolean
+}
+
+const DEFAULT_SCHEDULE_ENTRIES: ScheduleTimeEntry[] = [
+  { time: '08:00', enabled: true },
+  { time: '14:00', enabled: true },
+  { time: '20:00', enabled: true },
+]
+
+const formatScheduleTime = (hour: number, minute: number) => (
+  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+)
+
+const parseScheduleTime = (time: string) => {
+  const [hourText = '0', minuteText = '0'] = time.split(':')
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  return {
+    hour: Number.isFinite(hour) ? Math.min(23, Math.max(0, hour)) : 0,
+    minute: Number.isFinite(minute) ? Math.min(59, Math.max(0, minute)) : 0,
+  }
+}
+
+const normalizeScheduleEntries = (entries: ScheduleTimeEntry[]) => {
+  const normalized: ScheduleTimeEntry[] = []
+  const seen = new Set<string>()
+
+  for (const entry of entries) {
+    if (!scheduleTimePattern.test(entry.time) || seen.has(entry.time)) continue
+    seen.add(entry.time)
+    normalized.push({ time: entry.time, enabled: entry.enabled !== false })
+  }
+
+  return normalized
+}
+
+const scheduleEntriesFromTimes = (times: string[]) => (
+  normalizeScheduleEntries(
+    normalizeScheduleTimes(times).map(time => ({ time, enabled: true })),
+  )
+)
+
+const activeScheduleTimes = (entries: ScheduleTimeEntry[]) => (
+  entries.filter(entry => entry.enabled).map(entry => entry.time)
+)
+
+const readScheduleEntries = (schedule: { times?: unknown, entries?: unknown } | null | undefined) => {
+  if (Array.isArray(schedule?.entries)) {
+    const fromEntries = normalizeScheduleEntries(
+      schedule.entries
+        .map((entry: unknown) => {
+          if (typeof entry === 'string') return { time: entry, enabled: true }
+          if (!entry || typeof entry !== 'object') return null
+          const record = entry as { time?: unknown, enabled?: unknown }
+          if (typeof record.time !== 'string') return null
+          return { time: record.time, enabled: record.enabled !== false }
+        })
+        .filter((entry): entry is ScheduleTimeEntry => Boolean(entry)),
+    )
+    if (fromEntries.length > 0) return fromEntries
+  }
+
+  if (Array.isArray(schedule?.times)) {
+    return scheduleEntriesFromTimes(
+      schedule.times.filter((time): time is string => typeof time === 'string'),
+    )
+  }
+
+  return []
+}
+
 const RECOVERY_STATUS_POLL_MS = 1000
 const RECOVERY_STATUS_TIMEOUT_MS = 30 * 60 * 1000
 const POINTER_SORT_ACTIVATION_PX = 10
@@ -88,8 +165,6 @@ export const placeClosedownLast = <T extends { id: string; commandId?: string },
   ...tasks.filter(task => task.commandId === 'closedown' || task.id.startsWith('closedown-'))
 ]
 
-const normalizeScheduleTimes = (times: string[]) =>
-  [...new Set(times.filter(time => scheduleTimePattern.test(time)))]
 
 const commaSeparatedArrayKeys = new Set(['buy_first', 'blacklist', 'first_tags', 'preserve_tags'])
 
@@ -608,7 +683,7 @@ export default function AutomationTasks() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [taskPickerOpen, setTaskPickerOpen] = useState(false)
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
-  const [scheduleTimes, setScheduleTimes] = useState<string[]>(['08:00', '14:00', '20:00'])
+  const [scheduleEntries, setScheduleEntries] = useState<ScheduleTimeEntry[]>(DEFAULT_SCHEDULE_ENTRIES)
   const [currentStep, setCurrentStep] = useState(-1)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [lastDeletedTask, setLastDeletedTask] = useState<DeletedTaskSnapshot | null>(null)
@@ -1016,7 +1091,7 @@ export default function AutomationTasks() {
     setTaskFlow(newFlow)
     setSelectedTaskId(newTask.id)
     setTaskPickerOpen(false)
-    autoSave(newFlow, scheduleEnabled, scheduleTimes)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   const removeTaskFromFlow = (index: number) => {
@@ -1029,7 +1104,7 @@ export default function AutomationTasks() {
     setLastDeletedTask({ task: removedTask, index })
     setTaskFlow(newFlow)
     taskFlowRef.current = newFlow
-    autoSave(newFlow, scheduleEnabled, scheduleTimes)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   const restoreDeletedTask = () => {
@@ -1042,7 +1117,7 @@ export default function AutomationTasks() {
     taskFlowRef.current = newFlow
     setSelectedTaskId(lastDeletedTask.task.id)
     setLastDeletedTask(null)
-    autoSave(newFlow, scheduleEnabled, scheduleTimes)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   const toggleTaskEnabled = (index: number) => {
@@ -1051,7 +1126,7 @@ export default function AutomationTasks() {
     if (task) {
       task.enabled = !task.enabled
       setTaskFlow(newFlow)
-      autoSave(newFlow, scheduleEnabled, scheduleTimes)
+      autoSave(newFlow, scheduleEnabled, scheduleEntries)
     }
   }
 
@@ -1121,7 +1196,7 @@ export default function AutomationTasks() {
       const committedFlow = taskFlowRef.current
       const committedIndex = committedFlow.findIndex(task => task.id === session.itemId)
       setSortAnnouncement(`${committedFlow[committedIndex]?.name || '任务'}已移动到第 ${committedIndex + 1} 位`)
-      autoSave(committedFlow, scheduleEnabled, scheduleTimes)
+      autoSave(committedFlow, scheduleEnabled, scheduleEntries)
     }
     try {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
@@ -1146,7 +1221,7 @@ export default function AutomationTasks() {
     setTaskFlow(newFlow)
     taskFlowRef.current = newFlow
     setSortAnnouncement(`${newFlow[targetIndex]?.name || '任务'}已移动到第 ${targetIndex + 1} 位`)
-    autoSave(newFlow, scheduleEnabled, scheduleTimes)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   useEffect(() => {
@@ -1216,7 +1291,7 @@ export default function AutomationTasks() {
     }
 
     setTaskFlow(newFlow)
-    autoSave(newFlow, scheduleEnabled, scheduleTimes)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   const testConnection = async (taskId: string) => {
@@ -1271,12 +1346,13 @@ export default function AutomationTasks() {
     }
   }
 
-  const autoSave = (flow: TaskFlowItem[], enabled: boolean, times: string[]) => {
+  const autoSave = (flow: TaskFlowItem[], enabled: boolean, entries: ScheduleTimeEntry[]) => {
     const taskFlowToSave = flow.map(task => {
       const { icon, paramFields, ...rest } = task
       return rest
     })
-    const normalizedTimes = normalizeScheduleTimes(times)
+    const normalizedEntries = normalizeScheduleEntries(entries)
+    const normalizedTimes = activeScheduleTimes(normalizedEntries)
     const revision = ++autoSaveRevisionRef.current
     const syncToken = createAutomationConfigSyncToken()
     const isCurrentSave = () => (
@@ -1286,7 +1362,11 @@ export default function AutomationTasks() {
 
     // 保存到 localStorage（快速访问）
     localStorage.setItem('maa-task-flow', JSON.stringify(taskFlowToSave))
-    localStorage.setItem('maa-schedule', JSON.stringify({ enabled, times: normalizedTimes }))
+    localStorage.setItem('maa-schedule', JSON.stringify({
+      enabled,
+      times: normalizedTimes,
+      entries: normalizedEntries,
+    }))
     localStorage.setItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY, syncToken)
 
     autoSaveQueueRef.current = autoSaveQueueRef.current
@@ -1321,16 +1401,49 @@ export default function AutomationTasks() {
       })
   }
 
-  const updateScheduleTime = (index: number, nextTime: string) => {
-    if (scheduleTimes.some((time, itemIndex) => itemIndex !== index && time === nextTime)) {
-      void showError('该执行时间已经存在')
-      return
-    }
+  const commitScheduleEntries = (entries: ScheduleTimeEntry[]) => {
+    const normalizedEntries = normalizeScheduleEntries(entries)
+    setScheduleEntries(normalizedEntries)
+    autoSave(taskFlow, scheduleEnabled, normalizedEntries)
+  }
 
-    const newTimes = [...scheduleTimes]
-    newTimes[index] = nextTime
-    setScheduleTimes(newTimes)
-    autoSave(taskFlow, scheduleEnabled, newTimes)
+  const updateScheduleTimePart = (index: number, part: 'hour' | 'minute', rawValue: number) => {
+    setScheduleEntries(currentEntries => {
+      const current = currentEntries[index]
+      if (!current) return currentEntries
+
+      const parsed = parseScheduleTime(current.time)
+      const nextHour = part === 'hour' ? rawValue : parsed.hour
+      const nextMinute = part === 'minute' ? rawValue : parsed.minute
+      const clampedHour = ((nextHour % 24) + 24) % 24
+      const clampedMinute = ((nextMinute % 60) + 60) % 60
+      const nextTime = formatScheduleTime(clampedHour, clampedMinute)
+
+      if (currentEntries.some((entry, itemIndex) => itemIndex !== index && entry.time === nextTime)) {
+        void showError('该执行时间已经存在')
+        return currentEntries
+      }
+
+      const newEntries = normalizeScheduleEntries(
+        currentEntries.map((entry, itemIndex) => (
+          itemIndex === index ? { ...entry, time: nextTime } : entry
+        )),
+      )
+      autoSave(taskFlow, scheduleEnabled, newEntries)
+      return newEntries
+    })
+  }
+
+  const updateScheduleTimeEnabled = (index: number, enabled: boolean) => {
+    setScheduleEntries(currentEntries => {
+      const newEntries = normalizeScheduleEntries(
+        currentEntries.map((entry, itemIndex) => (
+          itemIndex === index ? { ...entry, enabled } : entry
+        )),
+      )
+      autoSave(taskFlow, scheduleEnabled, newEntries)
+      return newEntries
+    })
   }
 
   const buildCommand = (task: TaskFlowItem) => {
@@ -1563,10 +1676,10 @@ export default function AutomationTasks() {
       }
 
       if (schedule) {
-        const { enabled, times } = schedule
-        const normalizedTimes = normalizeScheduleTimes(Array.isArray(times) ? times : [])
+        const { enabled } = schedule
+        const normalizedEntries = readScheduleEntries(schedule)
         setScheduleEnabled(Boolean(enabled))
-        if (normalizedTimes.length > 0) setScheduleTimes(normalizedTimes)
+        if (normalizedEntries.length > 0) setScheduleEntries(normalizedEntries)
       }
 
       return loadedTasks
@@ -1615,8 +1728,13 @@ export default function AutomationTasks() {
         const loadedTasks = applyLoadedConfig(savedTasks, schedule)
         if (loadedTasks) localStorage.setItem('maa-task-flow', JSON.stringify(loadedTasks))
         if (schedule) {
-          const normalizedTimes = normalizeScheduleTimes(Array.isArray(schedule.times) ? schedule.times : [])
-          localStorage.setItem('maa-schedule', JSON.stringify({ ...schedule, times: normalizedTimes }))
+          const normalizedEntries = readScheduleEntries(schedule)
+          const normalizedTimes = activeScheduleTimes(normalizedEntries)
+          localStorage.setItem('maa-schedule', JSON.stringify({
+            ...schedule,
+            times: normalizedTimes,
+            entries: normalizedEntries.length > 0 ? normalizedEntries : undefined,
+          }))
         }
 
         taskFlowHydratedRef.current = true
@@ -1635,32 +1753,27 @@ export default function AutomationTasks() {
     taskFlowHydratedRef.current = true
   })
 
-  // updateScheduleTime 函数已被内联处理替代，已移除
-
   const handleScheduleEnabledChange = (enabled: boolean) => {
     setScheduleEnabled(enabled)
-    autoSave(taskFlow, enabled, scheduleTimes)
+    autoSave(taskFlow, enabled, scheduleEntries)
   }
 
   const addScheduleTime = () => {
+    const existingTimes = new Set(scheduleEntries.map(entry => entry.time))
     const candidates = Array.from({ length: 24 }, (_, offset) =>
       `${String((12 + offset) % 24).padStart(2, '0')}:00`
     )
-    const nextTime = candidates.find(time => !scheduleTimes.includes(time))
+    const nextTime = candidates.find(time => !existingTimes.has(time))
     if (!nextTime) {
       void showError('没有可添加的执行时间')
       return
     }
 
-    const newTimes = [...scheduleTimes, nextTime]
-    setScheduleTimes(newTimes)
-    autoSave(taskFlow, scheduleEnabled, newTimes)
+    commitScheduleEntries([...scheduleEntries, { time: nextTime, enabled: true }])
   }
 
   const removeScheduleTime = (index: number) => {
-    const newTimes = scheduleTimes.filter((_, i) => i !== index)
-    setScheduleTimes(newTimes)
-    autoSave(taskFlow, scheduleEnabled, newTimes)
+    commitScheduleEntries(scheduleEntries.filter((_, itemIndex) => itemIndex !== index))
   }
 
   useEffect(() => {
@@ -2001,50 +2114,39 @@ export default function AutomationTasks() {
           >
             <div className="automation-schedule-list-heading">
               <span>执行时间</span>
-              <small aria-label={`已设置 ${scheduleTimes.length} 个执行时间`}>
-                {scheduleTimes.length} 个
-              </small>
+              <div className="automation-schedule-list-heading-actions">
+                <small aria-label={`已设置 ${scheduleEntries.length} 个执行时间`}>
+                  {scheduleEntries.length} 个
+                </small>
+                {scheduleEntries.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={addScheduleTime}
+                    disabled={isRunning}
+                    className="automation-schedule-add"
+                  >
+                    <span className="automation-schedule-add-plus" aria-hidden="true">+</span>
+                    <span className="automation-schedule-add-text">新增定时</span>
+                  </button>
+                )}
+              </div>
             </div>
             <div className="automation-schedule-times">
-              {scheduleTimes.map((time, index) => {
-                const inputId = `automation-schedule-time-${index}`
+              {scheduleEntries.map((entry, index) => {
+                const { hour, minute } = parseScheduleTime(entry.time)
+                const hourId = `automation-schedule-hour-${index}`
+                const minuteId = `automation-schedule-minute-${index}`
+                const hourDisplay = String(hour)
+                const minuteDisplay = String(minute).padStart(2, '0')
 
                 return (
-                  <div key={`schedule-time-${index}`} className="automation-schedule-time-row">
-                    <span className="automation-schedule-frequency">每天</span>
-                    <div className="automation-schedule-time-copy">
-                      <label htmlFor={inputId} className="sr-only">
-                        第 {index + 1} 个执行时间
-                      </label>
-                      <div className="automation-schedule-time-input-shell">
-                        <input
-                          id={inputId}
-                          type="time"
-                          value={time}
-                          step={60}
-                          onChange={(event) => {
-                            if (scheduleTimePattern.test(event.target.value)) {
-                              updateScheduleTime(index, event.target.value)
-                            }
-                          }}
-                          disabled={isRunning}
-                          className="automation-schedule-time-input min-h-11"
-                        />
-                        <Clock3
-                          className="automation-schedule-time-picker-icon"
-                          size={17}
-                          strokeWidth={1.9}
-                          aria-hidden="true"
-                        />
-                      </div>
-                    </div>
-                    {scheduleTimes.length > 1 ? (
+                  <div
+                    key={`schedule-time-${index}`}
+                    className={`automation-schedule-time-row${entry.enabled ? '' : ' is-disabled'}`}
+                  >
+                    {scheduleEntries.length > 1 ? (
                       <IconButton
-                        icon={(
-                          <span className="automation-schedule-remove-glyph" aria-hidden="true">
-                            <Minus size={12} strokeWidth={2.6} />
-                          </span>
-                        )}
+                        icon={<CircleMinus size={22} strokeWidth={1.8} aria-hidden="true" />}
                         variant="ghost"
                         size="md"
                         onClick={() => removeScheduleTime(index)}
@@ -2053,22 +2155,102 @@ export default function AutomationTasks() {
                         title="删除时间点"
                         aria-label={`删除第 ${index + 1} 个时间点`}
                       />
-                    ) : <span className="automation-schedule-remove-placeholder" />}
+                    ) : <span className="automation-schedule-remove-placeholder" aria-hidden="true" />}
+
+                    <div className="automation-schedule-time-fields" role="group" aria-label={`第 ${index + 1} 个执行时间`}>
+                      <span className="automation-schedule-time-unit" aria-hidden="true">时</span>
+                      <div className="automation-schedule-stepper">
+                        <label htmlFor={hourId} className="sr-only">第 {index + 1} 个执行时间的小时</label>
+                        <input
+                          id={hourId}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={hourDisplay}
+                          disabled={isRunning}
+                          className="automation-schedule-stepper-input"
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, '').slice(0, 2)
+                            if (digits === '') return
+                            updateScheduleTimePart(index, 'hour', Number(digits))
+                          }}
+                        />
+                        <div className="automation-schedule-stepper-controls">
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的小时增加 1`}
+                            onClick={() => updateScheduleTimePart(index, 'hour', hour + 1)}
+                          >
+                            <ChevronUp size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的小时减少 1`}
+                            onClick={() => updateScheduleTimePart(index, 'hour', hour - 1)}
+                          >
+                            <ChevronDown size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <span className="automation-schedule-time-unit" aria-hidden="true">分</span>
+                      <div className="automation-schedule-stepper">
+                        <label htmlFor={minuteId} className="sr-only">第 {index + 1} 个执行时间的分钟</label>
+                        <input
+                          id={minuteId}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={minuteDisplay}
+                          disabled={isRunning}
+                          className="automation-schedule-stepper-input"
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, '').slice(0, 2)
+                            if (digits === '') return
+                            updateScheduleTimePart(index, 'minute', Number(digits))
+                          }}
+                        />
+                        <div className="automation-schedule-stepper-controls">
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的分钟增加 1`}
+                            onClick={() => updateScheduleTimePart(index, 'minute', minute + 1)}
+                          >
+                            <ChevronUp size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的分钟减少 1`}
+                            onClick={() => updateScheduleTimePart(index, 'minute', minute - 1)}
+                          >
+                            <ChevronDown size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="automation-schedule-time-enable">
+                      <span className="automation-schedule-time-enable-label" aria-hidden="true">开启</span>
+                      <Switch
+                        checked={entry.enabled}
+                        onChange={(enabled) => updateScheduleTimeEnabled(index, enabled)}
+                        disabled={isRunning}
+                        label={`第 ${index + 1} 个执行时间开启`}
+                        compact
+                        className="automation-schedule-time-switch"
+                      />
+                    </div>
                   </div>
                 )
               })}
-              {scheduleTimes.length < 6 && (
-                <Button
-                  variant="ghost"
-                  size="md"
-                  onClick={addScheduleTime}
-                  disabled={isRunning}
-                  className="automation-schedule-add"
-                  icon={<CirclePlus size={18} strokeWidth={1.8} aria-hidden="true" />}
-                >
-                  添加执行时间
-                </Button>
-              )}
             </div>
           </motion.div>
         ) : (

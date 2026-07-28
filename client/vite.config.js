@@ -93,16 +93,62 @@ self.addEventListener('activate', (event) => {
 })
 `.trimStart()
 
-export const createDevServiceWorkerCleanupPlugin = (basePath) => {
+export const createWebManifest = (basePath) => ({
+  name: 'La Pluma - MAA WebUI',
+  short_name: 'La Pluma',
+  description: 'MAA CLI 的现代化 Web 界面',
+  lang: 'zh-CN',
+  theme_color: '#05090c',
+  background_color: '#05090c',
+  display: 'standalone',
+  scope: basePath,
+  start_url: basePath,
+  icons: [
+    {
+      src: 'pwa-graphite-192x192.png',
+      sizes: '192x192',
+      type: 'image/png'
+    },
+    {
+      src: 'pwa-graphite-512x512.png',
+      sizes: '512x512',
+      type: 'image/png'
+    },
+    {
+      src: 'pwa-maskable-512x512.png',
+      sizes: '512x512',
+      type: 'image/png',
+      purpose: 'maskable'
+    }
+  ]
+})
+
+export const createDevPwaSupportPlugin = (basePath) => {
   const serviceWorkerPath = `${basePath}sw.js`
+  const manifestPath = `${basePath}manifest.webmanifest`
   const cleanupScript = createDevServiceWorkerCleanupScript()
+  const manifest = createWebManifest(basePath)
 
   return {
-    name: 'la-pluma-dev-service-worker-cleanup',
+    name: 'la-pluma-dev-pwa-support',
     apply: 'serve',
+    transformIndexHtml() {
+      return [{
+        tag: 'link',
+        attrs: { rel: 'manifest', href: manifestPath },
+        injectTo: 'head',
+      }]
+    },
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
         const requestUrl = new URL(request.url || '/', 'http://localhost')
+        if (requestUrl.pathname === manifestPath) {
+          response.statusCode = 200
+          response.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+          response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+          response.end(request.method === 'HEAD' ? undefined : JSON.stringify(manifest))
+          return
+        }
         if (requestUrl.pathname !== serviceWorkerPath) {
           next()
           return
@@ -128,7 +174,7 @@ export const createViteConfig = (basePath) => ({
     }
   },
   plugins: [
-    createDevServiceWorkerCleanupPlugin(basePath),
+    createDevPwaSupportPlugin(basePath),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -136,35 +182,7 @@ export const createViteConfig = (basePath) => ({
         enabled: false // 开发模式下禁用 Service Worker
       },
       includeAssets: ['favicon-graphite.png', 'apple-touch-icon-graphite.png'],
-      manifest: {
-        name: 'La Pluma - MAA WebUI',
-        short_name: 'La Pluma',
-        description: 'MAA CLI 的现代化 Web 界面',
-        lang: 'zh-CN',
-        theme_color: '#05090c',
-        background_color: '#05090c',
-        display: 'standalone',
-        scope: basePath,
-        start_url: basePath,
-        icons: [
-          {
-            src: 'pwa-graphite-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-graphite-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-maskable-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          }
-        ]
-      },
+      manifest: createWebManifest(basePath),
       workbox: createWorkboxConfig(basePath)
     })
   ],

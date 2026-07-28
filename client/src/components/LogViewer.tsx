@@ -604,7 +604,7 @@ export default function LogViewer() {
           </div>
         </div>
 
-        <Card className="log-card log-toolbar-card !p-0" animated delay={0.1} smoothCorners>
+        <Card className="log-card log-toolbar-card !p-0" smoothCorners>
           <CardContent className="log-toolbar">
             <div className="log-toolbar-controls">
               <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3 ${viewingHistory ? 'opacity-50' : ''}`}>
@@ -673,7 +673,7 @@ export default function LogViewer() {
           </CardContent>
         </Card>
 
-        <Card className="log-card min-w-0 !p-0" animated delay={0.16} smoothCorners>
+        <Card className="log-card min-w-0 !p-0" smoothCorners>
           <CardHeader
             title={viewingHistory ? '历史日志' : '实时日志'}
             actions={
@@ -772,7 +772,7 @@ export default function LogViewer() {
           </CardContent>
         </Card>
 
-        <Card className="log-card log-history-card min-w-0 !p-0" animated delay={0.22} smoothCorners>
+        <Card className="log-card log-history-card min-w-0 !p-0" smoothCorners>
           <CardHeader
             title="历史日志文件"
             actions={

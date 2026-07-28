@@ -471,32 +471,37 @@ describe('AutomationTasks layout surfaces', () => {
       expect(button.classList.contains('min-w-11')).toBe(true)
     })
 
-    const firstTimeInput = container.querySelector<HTMLInputElement>('#automation-schedule-time-0')
-    expect(firstTimeInput?.type).toBe('time')
-    expect(firstTimeInput?.value).toBe('08:30')
-    expect(firstTimeInput?.classList.contains('min-h-11')).toBe(true)
-    expect(container.querySelector<HTMLLabelElement>('label[for="automation-schedule-time-0"]')?.textContent).toContain('第 1 个执行时间')
-    expect(firstTimeInput?.closest('.automation-schedule-time-input-shell')?.querySelector('.automation-schedule-time-picker-icon')).not.toBeNull()
+    const firstHourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')
+    const firstMinuteInput = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')
+    expect(firstHourInput?.value).toBe('8')
+    expect(firstMinuteInput?.value).toBe('30')
+    expect(container.querySelector<HTMLLabelElement>('label[for="automation-schedule-hour-0"]')?.textContent).toContain('第 1 个执行时间的小时')
+    expect(container.querySelector<HTMLLabelElement>('label[for="automation-schedule-minute-0"]')?.textContent).toContain('第 1 个执行时间的分钟')
+    expect(container.querySelector('[aria-label="第 1 个执行时间开启"]')).not.toBeNull()
 
     const deleteTimeButton = container.querySelector<HTMLButtonElement>('[aria-label="删除第 1 个时间点"]')
     expect(deleteTimeButton?.classList.contains('min-h-11')).toBe(true)
     expect(deleteTimeButton?.classList.contains('min-w-11')).toBe(true)
-    const firstTimeRow = firstTimeInput?.closest('.automation-schedule-time-row')
+    const firstTimeRow = firstHourInput?.closest('.automation-schedule-time-row')
     expect(firstTimeRow).not.toBeNull()
+    expect(firstTimeRow?.querySelector('.automation-schedule-time-unit')?.textContent).toContain('时')
     expect(deleteTimeButton?.closest('.automation-schedule-time-row')).toBe(firstTimeRow)
-    expect(container.querySelector('.automation-schedule-times > .automation-schedule-add')?.textContent).toContain('添加执行时间')
+    expect(container.querySelector('.automation-schedule-list-heading-actions > .automation-schedule-add')?.textContent).toContain('新增定时')
     expect(container.querySelector('[aria-label="定时执行"]')?.closest('.automation-schedule-actions')).not.toBeNull()
     expect(container.querySelector('[aria-label="定时执行"]')?.closest('.app-switch')?.classList.contains('automation-section-switch')).toBe(true)
 
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     await act(async () => {
-      inputValueSetter?.call(firstTimeInput, '09:15')
-      firstTimeInput?.dispatchEvent(new Event('input', { bubbles: true }))
+      inputValueSetter?.call(firstHourInput, '9')
+      firstHourInput?.dispatchEvent(new Event('input', { bubbles: true }))
+      inputValueSetter?.call(firstMinuteInput, '15')
+      firstMinuteInput?.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await flush()
 
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('09:15')
-    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toEqual({
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('9')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('15')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       times: ['09:15', '12:45'],
     })
@@ -505,9 +510,10 @@ describe('AutomationTasks layout surfaces', () => {
     await flush()
 
     expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(1)
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('12:45')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('12')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('45')
     expect(container.querySelector('[aria-label^="删除第 "]')).toBeNull()
-    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toEqual({
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       times: ['12:45'],
     })

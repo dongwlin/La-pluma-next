@@ -697,7 +697,7 @@ export default function ConfigManager() {
 
       <div className="config-workspace-grid grid min-w-0 gap-[var(--app-space-section)] xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
         <div className="config-workspace-primary app-stack-section min-w-0">
-      <Card animated delay={0.08} smoothCorners className="config-editor-card !p-0">
+      <Card smoothCorners className="config-editor-card !p-0">
         <CardHeader
           title={configSections.find(section => section.id === configType)?.name || '配置'}
           actions={configType === 'connection' ? (
@@ -916,7 +916,7 @@ export default function ConfigManager() {
         </CardContent>
       </Card>
 
-      <Card animated delay={0.12} smoothCorners className="config-directory-card !p-0">
+      <Card smoothCorners className="config-directory-card !p-0">
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
@@ -963,7 +963,7 @@ export default function ConfigManager() {
         </div>
 
         <div className="config-workspace-secondary app-stack-section min-w-0">
-      <Card animated delay={0.16} smoothCorners className="config-update-card !p-0">
+      <Card smoothCorners className="config-update-card !p-0">
         <CardHeader title="组件更新" />
         <CardContent className="app-stack-card">
           <section className="surface-soft rounded-[var(--app-radius-lg)] p-[var(--app-space-panel)]">

@@ -68,7 +68,7 @@ vi.mock('./common/Loading', () => ({
 }))
 vi.mock('./common', () => ({
   PageHeader: ({ title, actions }: { title: string; actions?: React.ReactNode }) => <header><h1>{title}</h1>{actions}</header>,
-  Card: ({ children, animated }: { children: React.ReactNode; animated?: boolean }) => <section data-animated={animated ? 'true' : undefined}>{children}</section>,
+  Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
   SmoothPanel: ({
     children,
     className = '',
@@ -152,14 +152,13 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('首次活动')
   })
 
-  it('restores a fresh dashboard cache immediately without replaying its entrance animation', async () => {
+  it('restores a fresh dashboard cache immediately without returning to the skeleton', async () => {
     apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
 
     await act(async () => root.render(<Dashboard />))
     await flushDashboard()
 
     expect(container.textContent).toContain('缓存活动')
-    expect(container.querySelector('section[data-animated="true"]')).toBeTruthy()
     const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
 
     await act(async () => root.render(<div>其他页面</div>))
@@ -170,7 +169,6 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).not.toContain('loading')
     expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
     expect(apiMocks.getActivity).not.toHaveBeenCalled()
-    expect(container.querySelector('section[data-animated="true"]')).toBeNull()
   })
 
   it('keeps stale content visible while refreshing it in the background', async () => {

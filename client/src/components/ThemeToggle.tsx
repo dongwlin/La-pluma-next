@@ -160,11 +160,19 @@ export default function ThemeToggle() {
               id={mobileMenuId}
               role="menu"
               aria-label="选择界面主题"
-              initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
-              transition={{ duration: shouldReduceMotion ? 0.08 : 0.16, ease: 'easeOut' }}
-              className="theme-menu-popover surface-panel absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-40 origin-top-right rounded-xl p-1.5 shadow-xl"
+              initial={shouldReduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, y: -4, scale: 0.98, backdropFilter: 'blur(0px) saturate(100%)' }}
+              animate={shouldReduceMotion
+                ? { opacity: 1 }
+                : { opacity: 1, y: 0, scale: 1, backdropFilter: 'blur(24px) saturate(165%)' }}
+              exit={shouldReduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, y: -4, scale: 0.98, backdropFilter: 'blur(0px) saturate(100%)' }}
+              transition={shouldReduceMotion
+                ? { duration: 0.08 }
+                : { type: 'spring', stiffness: 440, damping: 38, mass: 0.7 }}
+              className="theme-menu-popover surface-panel absolute right-0 top-[calc(100%+0.5rem)] z-[60] w-40 origin-top-right rounded-xl p-1.5"
             >
               {themeOptions.map(option => {
                 const ThemeIcon = option.icon

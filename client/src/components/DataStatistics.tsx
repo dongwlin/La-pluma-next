@@ -73,7 +73,7 @@ const filterButtonClass = (isActive: boolean) =>
       : 'control-surface text-secondary'
   }`
 
-const menuSurfaceClass = 'fixed z-[2000] overflow-y-auto overscroll-contain rounded-xl py-1 surface-panel'
+const menuSurfaceClass = 'data-statistics-menu-surface fixed z-[2000] overflow-y-auto overscroll-contain rounded-xl py-1 surface-panel'
 
 const menuOptionClass = (isActive: boolean) =>
   `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)] ${
@@ -1089,12 +1089,7 @@ export default function DataStatistics() {
               />
             )}
             {operBoxData && operBoxData.data && operBoxData.data.length > 0 && (
-              <motion.div
-                initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 38, mass: 0.72 }}
-                className="app-stack-card"
-              >
+              <div className="app-stack-card">
                 <div
                   className="data-statistics-kpi-grid grid grid-cols-2 lg:grid-cols-4"
                   aria-label="干员数据概览"
@@ -1240,8 +1235,8 @@ export default function DataStatistics() {
                     ) : undefined}
                   />
                 ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {getFilteredAndSortedOperators.map((oper, idx) => {
+                <div className="data-statistics-item-grid grid grid-cols-2 overflow-hidden rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                  {getFilteredAndSortedOperators.map((oper) => {
                     // 判断是否拥有该干员
                     const ownedIds = new Set((operBoxData?.data || []).map(op => op.id))
                     
@@ -1256,14 +1251,9 @@ export default function DataStatistics() {
                     const imageLoaded = loadedImages[oper.id] || false;
                     
                     return (
-                      <motion.div
+                      <div
                         key={oper.id}
-                        initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={shouldReduceMotion
-                          ? { duration: 0 }
-                          : { duration: 0.2, delay: Math.min(idx, 10) * 0.01 }}
-                        className={`data-statistics-operator-item relative overflow-hidden rounded-xl p-3 surface-soft ${
+                        className={`data-statistics-operator-item relative overflow-hidden p-3 ${
                           isOwned
                             ? ''
                             : 'opacity-70 grayscale-[0.15]'
@@ -1348,12 +1338,12 @@ export default function DataStatistics() {
                             </>
                           )}
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
                 </div>
                 )}
-                  </motion.div>
+                  </div>
                 )}
               </div>
             </Card>
@@ -1494,20 +1484,15 @@ export default function DataStatistics() {
 
                 {/* 物品卡片网格 */}
                 {depotData.items && depotData.items.length > 0 && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-                    {depotData.items.map((item, idx) => {
+                  <div className="data-statistics-item-grid grid grid-cols-1 overflow-hidden rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                    {depotData.items.map((item) => {
                       const itemKey = item.id || item.iconId
                       const imageKey = `${itemKey}:${item.iconId}`
 
                       return (
-                        <motion.div
+                        <div
                           key={itemKey}
-                          initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.98 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={shouldReduceMotion
-                            ? { duration: 0 }
-                            : { duration: 0.2, delay: Math.min(idx, 10) * 0.01 }}
-                          className="data-statistics-depot-item flex min-w-0 items-center gap-3 rounded-xl p-3 surface-soft"
+                          className="data-statistics-depot-item flex min-w-0 items-center gap-3 p-3"
                         >
                           {/* 物品图标 */}
                           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
@@ -1543,7 +1528,7 @@ export default function DataStatistics() {
                               </span>
                             </div>
                           </div>
-                        </motion.div>
+                        </div>
                       )
                     })}
                   </div>

@@ -39,7 +39,6 @@ const TRAINING_STATUS_OPTIONS: Array<{
 
 // 材料层级节点组件
 function MaterialHierarchyNode({ node, depth = 0 }: MaterialHierarchyNodeProps) {
-  const shouldReduceMotion = useReducedMotion();
   const hasChildren = node.children && node.children.length > 0;
   
   const getColorByDepth = (_d: number): string => 'bg-[var(--app-accent)] text-white';
@@ -49,12 +48,7 @@ function MaterialHierarchyNode({ node, depth = 0 }: MaterialHierarchyNodeProps) 
   // 只有顶层材料才返回完整的卡片结构
   if (depth === 0) {
     return (
-      <motion.div
-        initial={shouldReduceMotion ? false : { opacity: 0, y: 5 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: shouldReduceMotion ? 0 : 0.18 }}
-        className="space-y-3 rounded-xl p-3 surface-soft"
-      >
+      <div className="space-y-3 rounded-xl p-3 surface-soft">
         {/* 顶层材料 */}
         <div className="rounded-xl p-1">
           <div className="flex items-center gap-3">
@@ -142,7 +136,7 @@ function MaterialHierarchyNode({ node, depth = 0 }: MaterialHierarchyNodeProps) 
             ))}
           </div>
         )}
-      </motion.div>
+      </div>
     );
   }
   
@@ -292,6 +286,8 @@ interface OperatorEmptyStateProps {
 function OperatorEmptyState({ title, description }: OperatorEmptyStateProps) {
   return (
     <EmptyState
+      compact
+      className="py-8"
       icon={<UserRoundSearch size={21} strokeWidth={1.8} />}
       title={title}
       description={description}
@@ -935,11 +931,7 @@ export default function OperatorTraining() {
                 队列 {queue.length} · 今日计划 {openStageCount} 个关卡
               </div>
             </div>
-        <motion.div
-          initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
-        >
+        <div className="space-y-4">
           {/* 搜索和过滤 */}
           <div className="flex flex-col gap-3">
             <div className="app-workspace-segments app-liquid-tab-pill training-status-shell">
@@ -1053,7 +1045,7 @@ export default function OperatorTraining() {
             <OperatorEmptyState {...operatorEmptyState} />
           ) : (
             <div className="min-h-[260px]">
-              <div className="training-operator-grid grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-4 2xl:grid-cols-6">
+              <div className="training-operator-grid grid grid-cols-3 overflow-hidden rounded-xl surface-soft sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-4 2xl:grid-cols-6">
                 {visibleOperators.map((operator, idx) => {
                   const isInQueue = queue.some(q => q.operatorId === operator.id);
                   const imageLoaded = loadedImages[operator.id] || false;
@@ -1071,12 +1063,9 @@ export default function OperatorTraining() {
                           : '添加';
 
                   return (
-                    <motion.div
+                    <div
                       key={operator.id}
-                      initial={shouldReduceMotion ? false : { opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={shouldReduceMotion ? { duration: 0 } : { delay: Math.min(idx, 24) * 0.004 }}
-                      className={`relative overflow-hidden rounded-xl p-2.5 surface-soft ${!isOwned ? 'opacity-75' : ''}`}
+                      className={`training-operator-item relative overflow-hidden p-2.5 ${!isOwned ? 'opacity-75' : ''}`}
                     >
                     {/* 干员头像 */}
                     <div className="relative mb-2.5 aspect-square w-full overflow-hidden rounded-xl surface-panel">
@@ -1154,7 +1143,7 @@ export default function OperatorTraining() {
                         {actionLabel}
                       </Button>
                     </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>
@@ -1175,15 +1164,11 @@ export default function OperatorTraining() {
               )}
             </div>
           )}
-        </motion.div>
+        </div>
           </section>
 
           <aside className={`training-support-column min-w-0 space-y-4 xl:sticky xl:top-4 ${currentTarget ? 'order-1 xl:order-2' : 'order-2'}`}>
-        <motion.div
-          initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
-        >
+        <div className="space-y-4">
           {currentTarget && (
             <Card smoothCorners className="training-current-card !p-0">
               <div className="px-4 py-4">
@@ -1343,11 +1328,8 @@ export default function OperatorTraining() {
               ) : (
                 <div className="divide-y divide-[var(--app-border)]">
                   {upcomingQueue.map((item, index) => (
-                    <motion.div
+                    <div
                       key={item.operatorId}
-                      initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={shouldReduceMotion ? { duration: 0 } : { delay: index * 0.04 }}
                       className="px-4 py-3 transition-colors hover:bg-[var(--app-surface-muted)]"
                     >
                       <div className="flex items-center gap-3">
@@ -1390,18 +1372,14 @@ export default function OperatorTraining() {
                           }
                         />
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}
             </Card>
           )}
-        </motion.div>
-        <motion.div
-          initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
-        >
+        </div>
+        <div className="space-y-4">
           {!plan ? (
             <SmoothPanel className="training-plan-empty" surfaceClassName="px-4 py-6">
               <EmptyState
@@ -1535,11 +1513,8 @@ export default function OperatorTraining() {
                       <h3 className="text-lg font-bold text-primary">完整关卡列表</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {plan.stages.map((stage, idx) => (
-                          <motion.div
+                          <div
                             key={`${stage.stage}-${idx}`}
-                            initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={shouldReduceMotion ? { duration: 0 } : { delay: idx * 0.05 }}
                             className="relative overflow-hidden rounded-xl p-4 surface-soft"
                           >
                             <div className="relative">
@@ -1566,7 +1541,7 @@ export default function OperatorTraining() {
                                 </div>
                               )}
                             </div>
-                          </motion.div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1576,7 +1551,7 @@ export default function OperatorTraining() {
               </SmoothPanel>
             </>
           )}
-        </motion.div>
+        </div>
           </aside>
         </div>
       </div>

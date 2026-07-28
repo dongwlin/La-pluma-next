@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import SmoothSurface from './SmoothSurface'
 
 /**
@@ -7,8 +7,6 @@ import SmoothSurface from './SmoothSurface'
 interface CardProps {
   children: ReactNode
   className?: string
-  animated?: boolean
-  delay?: number
   smoothCorners?: boolean
 }
 
@@ -39,28 +37,20 @@ function SmoothCardSurface({ children }: { children: ReactNode }) {
 
 /**
  * 卡片容器组件
- * 统一的卡片样式，支持动画和自定义样式
+ * 统一的卡片样式，支持连续圆角和自定义样式
  */
 export function Card({
   children,
   className = '',
-  animated = false,
-  delay = 0,
   smoothCorners = false,
 }: CardProps) {
   const cardClassName = `app-card surface-panel ${className}`
   const cardContent = smoothCorners ? <SmoothCardSurface>{children}</SmoothCardSurface> : children
-  const animationStyle = animated
-    ? { '--app-card-animation-delay': `${delay}s` } as CSSProperties
-    : undefined
 
   return (
     <div
       className={cardClassName}
-      data-animated={animated ? 'true' : undefined}
-      data-animation-delay={animated ? delay : undefined}
       data-smooth-corners={smoothCorners ? 'true' : undefined}
-      style={animationStyle}
     >
       {cardContent}
     </div>

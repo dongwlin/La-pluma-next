@@ -100,7 +100,6 @@ Props：
 - `title` (string, required) - 主标题
 - `subtitle` (string) - 副标题
 - `actions` (ReactNode) - 右侧操作区域
-- `animated` (boolean) - 是否启用动画，默认 `true`
 - `mobileLayout` (`stack` | `inline`) - 手机端操作布局；默认 `stack`，仅标题和操作足够紧凑时使用 `inline`
 
 页面标题统一使用全局品牌色，不再按页面传入独立渐变。
@@ -109,12 +108,12 @@ Props：
 
 ### Card - 卡片组件
 
-统一的卡片容器样式，支持动画和自定义样式。
+统一的卡片容器样式，支持连续圆角和自定义样式。静态卡片直接渲染，不使用整卡进场动画。
 
 ```tsx
 import { Card, CardHeader, CardContent } from '@/components/common'
 
-<Card animated delay={0.1}>
+<Card smoothCorners>
   <CardHeader
     icon={<Icons.Package />}
     title="材料掉落统计"
@@ -131,9 +130,7 @@ Card Props：
 
 - `children` (ReactNode, required) - 卡片内容
 - `className` (string) - 额外类名
-- `animated` (boolean) - 是否启用动画，默认 `true`
-- `delay` (number) - 动画延迟，默认 `0`
-- `smoothCorners` (boolean) - 使用 Lisse 连续曲率；仅在内容允许增加内部表面层时显式开启，外层继续承担布局、动画和阴影
+- `smoothCorners` (boolean) - 使用 Lisse 连续曲率；仅在内容允许增加内部表面层时显式开启，外层继续承担布局和阴影
 
 `CardHeader` 支持 `icon`、`title`、`actions`；`CardContent` 支持 `className`。
 

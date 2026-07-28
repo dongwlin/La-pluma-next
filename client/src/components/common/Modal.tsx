@@ -219,7 +219,7 @@ function ModalLayer({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: shouldReduceMotion ? 0 : 0.16 }}
+        transition={{ duration: shouldReduceMotion ? 0 : 0.22, ease: 'easeOut' }}
         onClick={closeOnOverlay && dismissible ? onClose : undefined}
         className="app-modal-backdrop pointer-events-auto absolute inset-0"
         aria-hidden="true"
@@ -235,12 +235,18 @@ function ModalLayer({
           aria-describedby={descriptionId}
           tabIndex={-1}
           onKeyDown={handleDialogKeyDown}
-          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 8 }}
+          initial={shouldReduceMotion
+            ? { opacity: 0 }
+            : { opacity: 0, scale: 0.97, y: 12, backdropFilter: 'blur(0px) saturate(100%)' }}
+          animate={shouldReduceMotion
+            ? { opacity: 1 }
+            : { opacity: 1, scale: 1, y: 0, backdropFilter: 'blur(24px) saturate(165%)' }}
+          exit={shouldReduceMotion
+            ? { opacity: 0 }
+            : { opacity: 0, scale: 0.98, y: 8, backdropFilter: 'blur(0px) saturate(100%)' }}
           transition={shouldReduceMotion
             ? { duration: 0 }
-            : { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 }}
+            : { type: 'spring', stiffness: 380, damping: 34, mass: 0.82 }}
           className={`surface-panel pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl ${sizeStyles[size]}`}
         >
           {(title || showClose) && (

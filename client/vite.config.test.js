@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import vm from 'node:vm'
 import {
-  createDevServiceWorkerCleanupPlugin,
+  createDevPwaSupportPlugin,
   createDevServiceWorkerCleanupScript,
   createNavigateFallbackDenylist,
+  createWebManifest,
   createWorkboxConfig,
   normalizeBasePath,
 } from './vite.config.js'
@@ -66,7 +67,7 @@ describe('PWA base path configuration', () => {
 
   it('serves a no-store cleanup worker before the development SPA fallback', () => {
     let middleware
-    const plugin = createDevServiceWorkerCleanupPlugin('/la-pluma/')
+    const plugin = createDevPwaSupportPlugin('/la-pluma/')
     plugin.configureServer({
       middlewares: {
         use: (handler) => {
@@ -99,7 +100,7 @@ describe('PWA base path configuration', () => {
 
   it('lets unrelated development requests continue through Vite', () => {
     let middleware
-    const plugin = createDevServiceWorkerCleanupPlugin('/')
+    const plugin = createDevPwaSupportPlugin('/')
     plugin.configureServer({
       middlewares: {
         use: (handler) => {
@@ -116,6 +117,43 @@ describe('PWA base path configuration', () => {
     )
 
     expect(next).toHaveBeenCalledOnce()
+  })
+
+  it('exposes the install manifest in development without enabling a caching worker', () => {
+    let middleware
+    const plugin = createDevPwaSupportPlugin('/la-pluma/')
+    plugin.configureServer({
+      middlewares: {
+        use: (handler) => {
+          middleware = handler
+        },
+      },
+    })
+
+    expect(plugin.transformIndexHtml()).toEqual([{
+      tag: 'link',
+      attrs: { rel: 'manifest', href: '/la-pluma/manifest.webmanifest' },
+      injectTo: 'head',
+    }])
+
+    const headers = new Map()
+    const response = {
+      statusCode: 0,
+      setHeader: (name, value) => headers.set(name, value),
+      end: vi.fn(),
+    }
+    const next = vi.fn()
+    middleware(
+      { method: 'GET', url: '/la-pluma/manifest.webmanifest?install=1' },
+      response,
+      next,
+    )
+
+    expect(next).not.toHaveBeenCalled()
+    expect(response.statusCode).toBe(200)
+    expect(headers.get('Content-Type')).toBe('application/manifest+json; charset=utf-8')
+    expect(headers.get('Cache-Control')).toContain('no-store')
+    expect(JSON.parse(response.end.mock.calls[0][0])).toEqual(createWebManifest('/la-pluma/'))
   })
 
   it('builds a worker that clears app caches, unregisters, and refreshes clients', () => {
