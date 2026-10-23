@@ -855,12 +855,6 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* 最后更新时间 */}
-        {lastUpdateDate && (
-          <div className={`text-center text-sm ${labelClass}`}>
-            最后更新: {lastUpdateDate.toLocaleString('zh-CN')}
-          </div>
-        )}
       </div>
     </div>
   )
