@@ -535,8 +535,7 @@ export default function Dashboard() {
                     <Activity className="h-4 w-4" strokeWidth={1.8} />
                   </div>
                   <div className="min-w-0">
-                    <div className="dashboard-flow-eyebrow text-[11px] font-semibold uppercase text-[var(--app-accent-strong)]">Daily operations</div>
-                    <div className="dashboard-flow-title mt-0.5 text-base font-bold text-primary">今日流程</div>
+                    <div className="dashboard-flow-title text-base font-bold text-primary">今日流程</div>
                   </div>
                 </div>
               </div>

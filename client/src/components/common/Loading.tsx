@@ -837,10 +837,7 @@ export function DashboardSkeleton() {
                 <div className="dashboard-flow-header">
                   <div className="flex items-center gap-3">
                     <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
-                    <div className="space-y-1.5">
-                      <Skeleton variant="text" className="h-2.5 w-24" />
-                      <Skeleton variant="title" className="h-4 w-20" />
-                    </div>
+                    <Skeleton variant="title" className="h-4 w-20" />
                   </div>
                 </div>
 
