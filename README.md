@@ -164,6 +164,7 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 - **操作系统**: macOS / Linux
 - **Node.js** 22.12+
+- **pnpm** 12.6.0（仓库通过 `packageManager` 固定版本，执行 `corepack enable` 会自动切换；也可 `npm install -g pnpm@12.6.0`）
 - **MAA CLI** 已安装
   - macOS: `brew install MaaAssistantArknights/tap/maa-cli`
   - Linux: 参考 [MAA CLI 文档](https://maa.plus/docs/manual/cli/)
@@ -194,19 +195,19 @@ cd La-pluma-next
 #### 2. 安装依赖
 
 ```bash
-# 安装所有依赖（根目录、前端、后端）
-npm run install:all
+# 安装前端与后端依赖（在仓库根目录执行一次即可）
+pnpm install
 ```
 
 #### 3. 启动服务
 
 ```bash
 # 同时启动前端和后端
-npm run dev
+pnpm dev
 
 # 或分别启动
-npm run dev:client  # 前端: http://localhost:5173
-npm run dev:server  # 后端: http://localhost:3000
+pnpm dev:client  # 前端: http://localhost:5173
+pnpm dev:server  # 后端: http://localhost:3000
 ```
 
 #### 4. 访问应用
@@ -267,17 +268,17 @@ docker run -d \
 
 PWA 的 Service Worker 只会在 HTTPS 或浏览器认可的本机 `localhost` 安全上下文中启用。生产构建在电脑本机通过 `http://localhost:*` 打开时可以安装；手机通过 `http://192.168.x.x:*` 访问时不能安装，也不会获得离线界面缓存。Vite 开发模式默认不注册 Service Worker。
 
-不要把 `5173` 的 Vite 开发服务器作为手机主屏幕或公网长期入口。开发服务器的 HMR 连接在 iOS 后台挂起后可能触发整页重载；手机入口应使用 `npm run build --prefix client` 生成的正式资源，并由下方的生产服务或可信 HTTPS 反向代理提供。
+不要把 `5173` 的 Vite 开发服务器作为手机主屏幕或公网长期入口。开发服务器的 HMR 连接在 iOS 后台挂起后可能触发整页重载；手机入口应使用 `pnpm --filter la-pluma-next-client build` 生成的正式资源，并由下方的生产服务或可信 HTTPS 反向代理提供。
 
 La Pluma Next 可以直接使用可信证书启动 HTTPS：
 
 ```bash
-npm run build --prefix client
+pnpm --filter la-pluma-next-client build
 
 NODE_ENV=production \
 LA_PLUMA_HTTPS_CERT_PATH=/path/to/fullchain.pem \
 LA_PLUMA_HTTPS_KEY_PATH=/path/to/privkey.pem \
-npm run start --prefix server
+pnpm start
 ```
 
 Docker 部署时把证书只读挂载到容器，并同时设置这两个变量：
@@ -305,11 +306,11 @@ PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，�
 部署到 `/la-pluma-next/` 等子路径时，需要在构建前设置：
 
 ```bash
-VITE_BASE_PATH=/la-pluma-next/ npm run build --prefix client
+VITE_BASE_PATH=/la-pluma-next/ pnpm --filter la-pluma-next-client build
 
 NODE_ENV=production \
 LA_PLUMA_BASE_PATH=/la-pluma-next/ \
-npm run start --prefix server
+pnpm start
 
 # Docker 本地构建
 docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
@@ -395,7 +396,9 @@ La-pluma-next/
 │   ├── data/                  # 用户配置数据
 │   │   └── user-configs/      # 任务配置 JSON 文件
 │   └── server.js              # 服务器入口
-├── package.json               # 根目录脚本
+├── pnpm-workspace.yaml        # pnpm 工作区配置
+├── pnpm-lock.yaml             # 统一依赖锁文件
+├── package.json               # 根目录脚本（pnpm workspace 入口）
 └── README.md                  # 项目文档
 ```
 
@@ -508,10 +511,10 @@ La-pluma-next/
 
 ```bash
 # 前端类型检查和构建
-cd client && npm run build
+pnpm --filter la-pluma-next-client build
 
 # 后端语法检查
-cd server && npm run check
+pnpm --filter la-pluma-next-server check
 ```
 
 ## 🤝 贡献

@@ -11,20 +11,25 @@ FROM node:22-alpine AS frontend-builder
 ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
-WORKDIR /app/client
+# 安装 pnpm（版本与 package.json 的 packageManager 保持一致）
+RUN npm install -g pnpm@12.6.0 --registry=https://registry.npmmirror.com
 
-# 复制前端依赖文件
-COPY client/package*.json ./
+WORKDIR /app
+
+# 复制工作区依赖清单，充分利用 Docker 层缓存
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY client/package.json ./client/
+COPY server/package.json ./server/
 
 # 安装前端依赖（使用国内镜像加速）
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm ci
+RUN pnpm install --frozen-lockfile --filter la-pluma-next-client... \
+    --registry=https://registry.npmmirror.com
 
 # 复制前端源代码
-COPY client/ ./
+COPY client/ ./client/
 
 # 构建前端
-RUN npm run build
+RUN pnpm --filter la-pluma-next-client build
 
 # ============================================
 # 阶段 2: 后端运行环境 + MAA CLI
@@ -41,6 +46,9 @@ LABEL org.opencontainers.image.title="La Pluma Next" \
       org.opencontainers.image.revision="${BUILD_REVISION}"
 
 WORKDIR /app
+
+# 安装 pnpm（版本与 package.json 的 packageManager 保持一致）
+RUN npm install -g pnpm@12.6.0 --registry=https://registry.npmmirror.com
 
 # 安装必要的系统依赖
 RUN apt-get update && \
@@ -65,18 +73,16 @@ RUN wget -qO- https://raw.githubusercontent.com/MaaAssistantArknights/maa-cli/ma
 # 创建 MAA 配置目录
 RUN mkdir -p /root/.config/maa
 
-# 复制后端依赖文件
-COPY server/package*.json ./server/
+# 复制工作区依赖清单
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY client/package.json ./client/
+COPY server/package.json ./server/
 
-# 安装后端依赖（使用国内镜像加速）
-WORKDIR /app/server
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm ci --omit=dev
+# 安装后端生产依赖（使用国内镜像加速）
+RUN pnpm install --frozen-lockfile --prod --filter la-pluma-next-server... \
+    --registry=https://registry.npmmirror.com
 
 # 复制后端源代码
-WORKDIR /app
 COPY server/ ./server/
 
 # 从构建阶段复制前端构建产物

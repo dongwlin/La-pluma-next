@@ -14,8 +14,7 @@
 ### 使用方法
 
 ```bash
-cd server
-npm run fetch-materials
+pnpm --filter la-pluma-next-server fetch-materials
 ```
 
 ### 输出

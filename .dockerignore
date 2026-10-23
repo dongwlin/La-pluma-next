@@ -10,6 +10,7 @@ client/.vite/
 # 日志
 *.log
 npm-debug.log*
+pnpm-debug.log*
 logs/
 
 # 环境变量

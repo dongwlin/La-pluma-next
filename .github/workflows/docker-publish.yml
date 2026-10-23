@@ -23,29 +23,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            client/package-lock.json
-            server/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Use npm 12
-        run: npm install -g npm@12
-
-      - name: Install client dependencies
-        run: npm ci --prefix client
-
-      - name: Install server dependencies
-        run: npm ci --prefix server
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Verify client
-        run: npm run verify --prefix client
+        run: pnpm --filter la-pluma-next-client verify
 
       - name: Verify server
-        run: npm run verify --prefix server
+        run: pnpm --filter la-pluma-next-server verify
 
   build-and-push:
     needs: verify

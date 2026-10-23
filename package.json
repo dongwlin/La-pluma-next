@@ -13,16 +13,18 @@
   "bugs": {
     "url": "https://github.com/dongwlin/La-pluma-next/issues"
   },
+  "packageManager": "pnpm@12.6.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0",
+    "pnpm": ">=12.6.0"
   },
   "scripts": {
-    "dev": "npm run dev:server & npm run dev:client",
-    "dev:client": "cd client && npm run dev",
-    "dev:server": "cd server && npm run dev",
-    "install:all": "npm install && npm install --prefix client && npm install --prefix server",
-    "build": "npm run build --prefix client && npm run build --prefix server",
-    "test": "npm run test --prefix client && npm run test --prefix server",
-    "verify": "npm run verify --prefix client && npm run verify --prefix server"
+    "dev": "pnpm -r --parallel --stream dev",
+    "dev:client": "pnpm --filter la-pluma-next-client dev",
+    "dev:server": "pnpm --filter la-pluma-next-server dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "verify": "pnpm -r verify",
+    "start": "pnpm --filter la-pluma-next-server start"
   }
 }
