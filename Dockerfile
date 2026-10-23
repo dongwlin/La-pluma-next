@@ -1,5 +1,5 @@
 # ============================================
-# 用于 Docker Hub 发布的 Dockerfile
+# 用于 GHCR 发布的 Dockerfile
 # 在镜像内构建前端，不依赖本地环境
 # ============================================
 
@@ -32,6 +32,13 @@ RUN npm run build
 FROM node:22-slim
 
 ARG VITE_BASE_PATH=/
+ARG BUILD_REVISION=unknown
+
+LABEL org.opencontainers.image.title="La Pluma Next" \
+      org.opencontainers.image.description="MAA CLI 的现代化 WebUI 与本地 Agent 控制台" \
+      org.opencontainers.image.source="https://github.com/dongwlin/La-pluma-next" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${BUILD_REVISION}"
 
 WORKDIR /app
 
