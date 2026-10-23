@@ -467,7 +467,7 @@ describe('ScrcpyDeviceView automation availability', () => {
   it('exposes shared mode controls in compact view while startup is busy', async () => {
     usePreviewStore.getState().setMode('live')
     await act(async () => root.render(<ScrcpyDeviceView enabled variant="compact" infrastructureLoading="preview" onStartInfrastructure={() => new Promise(() => {})} />))
-    const modes = container.querySelector('[role="group"][aria-label="预览模式"]')!
+    const modes = container.querySelector('[role="radiogroup"][aria-label="预览模式"]')!
     const off = Array.from(modes.querySelectorAll('button')).find(button => button.textContent === '关闭')!
     expect(off.disabled).toBe(false)
     await act(async () => off.click())

@@ -2,14 +2,14 @@ import { memo } from 'react'
 import { Monitor } from 'lucide-react'
 import { Button, SmoothPanel } from './common'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
-import { PreviewModeSelect } from './PreviewModeControls'
+import { PreviewModeSegmented } from './PreviewModeControls'
 
 interface DashboardPreviewEntryProps {
   onOpen: () => void
 }
 
 const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: DashboardPreviewEntryProps) {
-  const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, statusText, error, retry } = useDashboardPreview()
+  const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, connectionState, statusText, error, retry, available = true } = useDashboardPreview()
 
   return (
     <SmoothPanel
@@ -17,12 +17,18 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
       className={`status-border-beam ${isConnecting ? 'is-active' : ''}`}
       aria-busy={isConnecting}
     >
-      <div className="dashboard-preview-header flex items-center justify-between gap-3 px-4 py-2.5 border-b border-[var(--app-border)]">
-        <div className="flex items-center gap-2">
-          <div className={`h-1.5 w-1.5 rounded-full ${showLivePreview ? 'bg-[var(--app-success)]' : 'bg-[var(--app-accent)]'}`} />
-          <span className="text-xs font-medium text-secondary">模拟器预览</span>
+      <div className="dashboard-preview-header flex items-center justify-between gap-3 px-4 py-2 border-b border-[var(--app-border)]">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`preview-status-light is-${connectionState}`}
+            data-preview-status={connectionState}
+            role="img"
+            aria-label={statusText}
+            title={statusText}
+          />
+          <span className="truncate text-xs font-medium text-secondary">模拟器预览</span>
         </div>
-        <PreviewModeSelect />
+        <PreviewModeSegmented unavailable={!available} />
       </div>
       <div
         data-dashboard-preview-frame

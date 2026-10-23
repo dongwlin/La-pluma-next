@@ -4,13 +4,17 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DashboardPreviewEntry from './DashboardPreviewEntry'
+import { usePreviewStore } from '../stores/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const preview = vi.hoisted(() => ({
-  fallbackSnapshot: 'data:image/png;base64,c25hcHNob3Q=',
+  fallbackSnapshot: 'data:image/png;base64,c25hcHNob3Q=' as string | null,
   showLivePreview: false,
   isConnecting: false,
+  connectionState: 'snapshot' as 'off' | 'connecting' | 'snapshot' | 'live' | 'idle' | 'error',
+  statusText: '快照可用',
+  available: true,
 }))
 
 vi.mock('../hooks/useDashboardPreview', () => ({
@@ -19,8 +23,12 @@ vi.mock('../hooks/useDashboardPreview', () => ({
     fallbackSnapshot: preview.fallbackSnapshot,
     showLivePreview: preview.showLivePreview,
     isConnecting: preview.isConnecting,
-    statusText: '快照可用',
+    connectionState: preview.connectionState,
+    statusText: preview.statusText,
     headerStatusText: '已连接',
+    retry: vi.fn(),
+    error: null,
+    available: preview.available,
   }),
 }))
 
@@ -46,6 +54,10 @@ describe('DashboardPreviewEntry', () => {
     preview.fallbackSnapshot = 'data:image/png;base64,c25hcHNob3Q='
     preview.showLivePreview = false
     preview.isConnecting = false
+    preview.connectionState = 'snapshot'
+    preview.statusText = '快照可用'
+    preview.available = true
+    usePreviewStore.setState({ mode: 'off' })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -88,5 +100,50 @@ describe('DashboardPreviewEntry', () => {
 
     expect(card?.classList.contains('is-active')).toBe(false)
     expect(card?.getAttribute('aria-busy')).toBe('false')
+  })
+
+  it('uses the status light for connection state instead of preview mode', async () => {
+    preview.fallbackSnapshot = null
+    preview.connectionState = 'off'
+    preview.statusText = '预览已关闭'
+    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+
+    const offLight = container.querySelector('[data-preview-status="off"]')
+    expect(offLight?.classList.contains('preview-status-light')).toBe(true)
+    expect(offLight?.classList.contains('is-off')).toBe(true)
+
+    preview.connectionState = 'live'
+    preview.statusText = '实时画面'
+    preview.showLivePreview = true
+    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+
+    const liveLight = container.querySelector('[data-preview-status="live"]')
+    expect(liveLight?.classList.contains('is-live')).toBe(true)
+    expect(liveLight?.getAttribute('aria-label')).toBe('实时画面')
+  })
+
+  it('switches preview mode through the compact segmented control', async () => {
+    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+
+    const group = container.querySelector('[role="radiogroup"][aria-label="预览模式"]')
+    expect(group).not.toBeNull()
+    expect(group?.getAttribute('data-active-index')).toBe('0')
+    const live = Array.from(group?.querySelectorAll('button') || []).find(button => button.textContent === '实时')
+    expect(live?.getAttribute('aria-checked')).toBe('false')
+
+    await act(async () => live?.click())
+
+    expect(usePreviewStore.getState().mode).toBe('live')
+    expect(group?.getAttribute('data-active-index')).toBe('2')
+  })
+
+  it('disables snapshot and live modes while automation is unavailable', async () => {
+    preview.available = false
+    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
+    expect(buttons.find(button => button.textContent === '关闭')?.disabled).toBe(false)
+    expect(buttons.find(button => button.textContent === '快照')?.disabled).toBe(true)
+    expect(buttons.find(button => button.textContent === '实时')?.disabled).toBe(true)
   })
 })

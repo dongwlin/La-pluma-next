@@ -1,5 +1,5 @@
+import { useRef, type KeyboardEvent } from 'react'
 import { usePreviewStore, type PreviewMode } from '../stores/previewStore'
-import { Select } from './common/Input'
 
 const modes: { value: PreviewMode; label: string }[] = [
   { value: 'off', label: '关闭' },
@@ -7,41 +7,83 @@ const modes: { value: PreviewMode; label: string }[] = [
   { value: 'live', label: '实时' },
 ]
 
-export function PreviewModeSelect() {
+interface PreviewModeSegmentedProps {
+  unavailable?: boolean
+}
+
+export function PreviewModeSegmented({ unavailable = false }: PreviewModeSegmentedProps) {
   const mode = usePreviewStore(state => state.mode)
   const setMode = usePreviewStore(state => state.setMode)
+  const groupRef = useRef<HTMLDivElement | null>(null)
+  const activeIndex = Math.max(0, modes.findIndex(option => option.value === mode))
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    let nextIndex: number
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        nextIndex = (activeIndex - 1 + modes.length) % modes.length
+        break
+      case 'ArrowRight':
+      case 'ArrowDown':
+        nextIndex = (activeIndex + 1) % modes.length
+        break
+      case 'Home':
+        nextIndex = 0
+        break
+      case 'End':
+        nextIndex = modes.length - 1
+        break
+      default:
+        return
+    }
+
+    event.preventDefault()
+    const next = modes[nextIndex]
+    if (!next || (unavailable && next.value !== 'off')) return
+    setMode(next.value)
+    groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[nextIndex]?.focus()
+  }
 
   return (
-    <Select
+    <div
+      ref={groupRef}
+      className="preview-mode-segmented"
+      role="radiogroup"
       aria-label="预览模式"
-      value={mode}
-      onChange={value => setMode(value as PreviewMode)}
-      options={modes}
-      className="w-24 shrink-0 text-xs"
-    />
+      data-active-index={activeIndex}
+      onKeyDown={handleKeyDown}
+    >
+      <span className="preview-mode-segmented-thumb" aria-hidden="true" />
+      {modes.map(option => {
+        const selected = mode === option.value
+        const disabled = unavailable && option.value !== 'off' && !selected
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            disabled={disabled}
+            title={disabled ? '自动化服务不可用' : undefined}
+            onClick={() => setMode(option.value)}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
 export default function PreviewModeControls({ unavailable = false, showAutoStart = false }: { unavailable?: boolean; showAutoStart?: boolean }) {
-  const mode = usePreviewStore(state => state.mode)
-  const setMode = usePreviewStore(state => state.setMode)
   const autoStart = usePreviewStore(state => state.autoStart)
   const setAutoStart = usePreviewStore(state => state.setAutoStart)
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="flex flex-wrap gap-1" role="group" aria-label="预览模式">
-        {modes.map(option => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={mode === option.value}
-            disabled={unavailable && option.value !== 'off'}
-            onClick={() => setMode(option.value)}
-            className={`min-h-11 rounded-md px-3 text-xs font-medium disabled:opacity-50 ${mode === option.value ? 'control-active' : 'control-surface text-secondary'}`}
-          >{option.label}</button>
-        ))}
-      </div>
+      <PreviewModeSegmented unavailable={unavailable} />
       {showAutoStart && (
         <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-secondary">
           <input type="checkbox" checked={autoStart} onChange={event => setAutoStart(event.target.checked)} />

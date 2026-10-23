@@ -42,8 +42,8 @@ vi.mock('./useScrcpyWebRTC', () => ({
 }))
 
 function PreviewHarness() {
-  const { videoRef, statusText } = useDashboardPreview()
-  return <video ref={videoRef} data-preview-status={statusText} />
+  const { videoRef, statusText, connectionState } = useDashboardPreview()
+  return <video ref={videoRef} data-preview-status={statusText} data-preview-connection={connectionState} />
 }
 
 describe('useDashboardPreview Activity lifecycle', () => {
@@ -100,6 +100,15 @@ describe('useDashboardPreview Activity lifecycle', () => {
     expect(mocks.connect).not.toHaveBeenCalled()
     expect(mocks.captureScreen).not.toHaveBeenCalled()
     expect(container.querySelector('video')?.dataset.previewStatus).toBe('预览已关闭')
+    expect(container.querySelector('video')?.dataset.previewConnection).toBe('off')
+  })
+
+  it('reports a connecting state while the first snapshot is pending', async () => {
+    mocks.captureScreen.mockReturnValue(new Promise(() => {}))
+    usePreviewStore.getState().setMode('snapshot')
+    await renderMode('visible')
+
+    expect(container.querySelector('video')?.dataset.previewConnection).toBe('connecting')
   })
 
   it('stays off after the user closes preview and changes workspaces', async () => {
