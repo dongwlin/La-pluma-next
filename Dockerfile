@@ -6,7 +6,7 @@
 # ============================================
 # 阶段 1: 构建前端
 # ============================================
-FROM node:22-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
@@ -34,7 +34,7 @@ RUN pnpm --filter la-pluma-next-client build
 # ============================================
 # 阶段 2: 后端运行环境 + MAA CLI
 # ============================================
-FROM node:22-slim
+FROM node:24-slim
 
 ARG VITE_BASE_PATH=/
 ARG BUILD_REVISION=unknown

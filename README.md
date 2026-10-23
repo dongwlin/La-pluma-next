@@ -163,7 +163,7 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 ## 📋 前置要求
 
 - **操作系统**: macOS / Linux
-- **Node.js** 22.12+
+- **Node.js** 24+
 - **pnpm** 12.6.0（仓库通过 `packageManager` 固定版本，执行 `corepack enable` 会自动切换；也可 `npm install -g pnpm@12.6.0`）
 - **MAA CLI** 已安装
   - macOS: `brew install MaaAssistantArknights/tap/maa-cli`
