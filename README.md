@@ -519,7 +519,7 @@ pnpm --filter la-pluma-next-server check
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！分支管理、发布流程和兼容性约定见 [MAINTAINING.md](MAINTAINING.md)。
+欢迎提交 Issue 和 Pull Request！分支管理、发布流程和兼容性约定见 [维护说明](docs/maintaining.md)。
 
 ## 📄 许可证
 

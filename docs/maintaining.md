@@ -1,5 +1,7 @@
 # 维护说明
 
+> [← 返回 README](../README.md)
+
 La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游分支。
 
 ## 分支与合并

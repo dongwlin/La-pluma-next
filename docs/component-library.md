@@ -1,5 +1,7 @@
 # 通用组件库与设计规范
 
+> [← 返回 README](../README.md)
+
 ## 概述
 
 为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件和语义设计 token。通用组件位于 `client/src/components/common/*.tsx`，通过 `client/src/components/common/index.ts` 统一导出。
