@@ -1,9 +1,6 @@
 export function parseCopilotUri(uri: string): { id: string; isSet: boolean } | null {
   const current = uri.match(/^prts:\/\/(s?)(\d+)$/i)
-  if (current) return { id: current[2]!, isSet: Boolean(current[1]) }
-
-  const legacy = uri.match(/^maa:\/\/(\d+)(s?)$/i)
-  return legacy ? { id: legacy[1]!, isSet: Boolean(legacy[2]) } : null
+  return current ? { id: current[2]!, isSet: Boolean(current[1]) } : null
 }
 
 export function normalizeCopilotUri(uri: string): string {

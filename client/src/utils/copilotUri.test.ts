@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeCopilotInput, normalizeCopilotUri, parseCopilotUri, splitCopilotInputToArgs } from './copilotUri'
 
-describe('copilot URI migration', () => {
+describe('copilot URI handling', () => {
   it.each([
-    ['maa://1234', 'prts://1234', false],
-    ['maa://1234s', 'prts://s1234', true],
     ['prts://1234', 'prts://1234', false],
     ['PRTS://S1234', 'prts://s1234', true],
     ['https://prts.plus/?op=1234', 'prts://1234', false],
@@ -16,14 +14,14 @@ describe('copilot URI migration', () => {
   })
 
   it('keeps local file arguments with spaces and converts multiple URIs', () => {
-    expect(splitCopilotInputToArgs('maa://12 maa://34s\nprts://s56 "/tmp/local copilot.json"')).toEqual([
+    expect(splitCopilotInputToArgs('prts://12 prts://s34\nprts://s56 "/tmp/local copilot.json"')).toEqual([
       'prts://12', 'prts://s34', 'prts://s56', '/tmp/local copilot.json',
     ])
-    expect(normalizeCopilotInput(' maa://12\n\nmaa://34s ')).toBe('prts://12 prts://s34')
+    expect(normalizeCopilotInput(' prts://12\n\nprts://s34 ')).toBe('prts://12 prts://s34')
   })
 
-  it.each(['prts://1234s', 'prts://s', 'maa://s1234', '/tmp/copilot.json', 'file:///tmp/copilot.json'])(
-    'does not rewrite non-URI input %s', input => {
+  it.each(['prts://1234s', 'prts://s', 'maa://1234', 'maa://1234s', '/tmp/copilot.json', 'file:///tmp/copilot.json'])(
+    'does not rewrite unsupported input %s', input => {
       expect(parseCopilotUri(input)).toBeNull()
       expect(normalizeCopilotUri(input)).toBe(input)
     },

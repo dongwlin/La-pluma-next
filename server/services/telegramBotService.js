@@ -141,7 +141,7 @@ async function handleUpdate(update) {
   
   const text = message.text.trim();
   
-  // 检查作业 URI（兼容旧链接）
+  // 检查作业 URI
   if (parseCopilotUri(text)) {
     logger.debug('检测到作业 URI', { uri: text });
     await handleCommand(chatId, 'copilot', [text]);
