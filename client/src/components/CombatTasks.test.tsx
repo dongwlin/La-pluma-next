@@ -181,6 +181,12 @@ describe('CombatTasks execution recovery', () => {
     expect(container.textContent).toContain('PRTS 单作业')
   })
 
+  it('links to the prts.plus copilot station', async () => {
+    await renderComponent()
+    const link = container.querySelector<HTMLAnchorElement>('a[href="https://prts.plus/"]')
+    expect(link?.textContent).toBe('prts.plus')
+  })
+
   it.each(['prts://s48990', 'PRTS://S48990'])(
     'previews %s as a set and executes its selected item using PRTS', async uri => {
       mocks.getCopilotSetPlan.mockResolvedValue({

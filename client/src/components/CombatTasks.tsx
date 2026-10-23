@@ -1779,7 +1779,7 @@ export default function CombatTasks() {
                         <details className="group relative shrink-0">
                           <summary className="inline-flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center brand-text hover:underline">说明</summary>
                           <div className="absolute right-0 z-20 mt-2 hidden w-[min(18rem,calc(100vw_-_3rem))] space-y-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)] p-3 text-left shadow-lg group-open:block">
-                            <p>• 在 <a href="https://zoot.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">zoot.plus</a> 获取作业链接</p>
+                            <p>• 在 <a href="https://prts.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">prts.plus</a> 获取作业链接</p>
                             <p>• 单作业：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">prts://1234</code>；作业集：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">prts://s1234</code></p>
                             <p>• 作业站链接会自动识别，也可导入远程或本地作业文件</p>
                           </div>

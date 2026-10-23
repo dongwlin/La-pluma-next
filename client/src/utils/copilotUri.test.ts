@@ -6,8 +6,10 @@ describe('copilot URI handling', () => {
     ['prts://1234', 'prts://1234', false],
     ['PRTS://S1234', 'prts://s1234', true],
     ['https://prts.plus/?op=1234', 'prts://1234', false],
-    ['https://zoot.plus/copilot/1234', 'prts://1234', false],
-    ['https://zoot.plus/set/1234', 'prts://s1234', true],
+    ['https://prts.plus/?op=s1234', 'prts://s1234', true],
+    ['https://prts.plus/?op=106833&opset=1234', 'prts://s1234', true],
+    ['https://prts.plus/?op=1234&comment=99', 'prts://1234', false],
+    ['https://prts.plus/copilot/1234', 'prts://1234', false],
   ])('normalizes %s', (input, expected, isSet) => {
     expect(normalizeCopilotUri(input)).toBe(expected)
     expect(parseCopilotUri(expected)).toEqual({ id: '1234', isSet })

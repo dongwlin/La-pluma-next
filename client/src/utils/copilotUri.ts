@@ -3,6 +3,16 @@ export function parseCopilotUri(uri: string): { id: string; isSet: boolean } | n
   return current ? { id: current[2]!, isSet: Boolean(current[1]) } : null
 }
 
+function parseCopilotSiteLink(url: URL): { id: string; isSet: boolean } | null {
+  if (!/(^|\.)prts\.plus$/i.test(url.hostname)) return null
+
+  const set = url.searchParams.get('opset')
+  if (set && /^\d+$/.test(set)) return { id: set, isSet: true }
+
+  const op = url.searchParams.get('op')?.match(/^(s?)(\d+)$/i)
+  return op ? { id: op[2]!, isSet: Boolean(op[1]) } : null
+}
+
 export function normalizeCopilotUri(uri: string): string {
   const parsed = parseCopilotUri(uri)
   if (parsed) return `prts://${parsed.isSet ? 's' : ''}${parsed.id}`
@@ -10,6 +20,9 @@ export function normalizeCopilotUri(uri: string): string {
 
   try {
     const url = new URL(uri)
+    const siteLink = parseCopilotSiteLink(url)
+    if (siteLink) return `prts://${siteLink.isSet ? 's' : ''}${siteLink.id}`
+
     const idMatch = `${url.pathname} ${url.search}`.match(/(\d+)(s?)(?!.*\d)/)
     const isSet = /set|collection|合集|作业集/i.test(url.pathname + url.search)
     if (idMatch) return `prts://${isSet || idMatch[2] === 's' ? 's' : ''}${idMatch[1]}`
