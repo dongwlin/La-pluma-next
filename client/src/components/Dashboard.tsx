@@ -455,7 +455,7 @@ export default function Dashboard() {
   const connectionDescription = serviceStatus === 'offline'
     ? '恢复网络连接后会自动重新检查服务'
     : serviceStatus === 'unavailable'
-      ? (backendMessage || '确认 La Pluma 服务已启动后重试')
+      ? (backendMessage || '确认 La Pluma Next 服务已启动后重试')
       : '正在确认自动化服务状态'
   const flowCommandTitle = !automationAvailable
     ? connectionTitle

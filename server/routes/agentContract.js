@@ -125,7 +125,7 @@ export const AGENT_OPERATIONS = Object.freeze([
     id: 'get_status',
     method: 'GET',
     path: '/api/agent/status',
-    description: 'Return a compact, AI-readable summary of La Pluma, MAA, ADB, WebRTC, and recent logs.',
+    description: 'Return a compact, AI-readable summary of La Pluma Next, MAA, ADB, WebRTC, and recent logs.',
     tags: ['Status'],
     safety: lowRiskWrite(['adb_connect'], { idempotent: true }),
     query_schema: {
@@ -330,7 +330,7 @@ export const AGENT_OPERATIONS = Object.freeze([
             },
             { type: 'string', description: 'A JSON-encoded task configuration object.' }
           ],
-          description: 'When supplied, La Pluma writes a validated temporary MAA task and executes it.'
+          description: 'When supplied, La Pluma Next writes a validated temporary MAA task and executes it.'
         },
         taskName: { type: 'string', maxLength: 160, description: 'Human-readable task name exposed through task status.' },
         taskType: { type: 'string', maxLength: 64, description: 'Caller-defined task category exposed through task status.' },
@@ -485,7 +485,7 @@ export const AGENT_OPERATIONS = Object.freeze([
     id: 'webrtc_stop',
     method: 'POST',
     path: '/api/agent/webrtc/stop',
-    description: 'Stop MuMu agent and signaling/TURN managed by La Pluma.',
+    description: 'Stop MuMu agent and signaling/TURN managed by La Pluma Next.',
     tags: ['Preview'],
     safety: lowRiskWrite(['stop_local_webrtc_services'], { mutatesDevice: true, idempotent: true }),
     body_schema: {
@@ -595,10 +595,10 @@ function manifestAction(definition, defaults) {
 export function buildAgentManifest(defaults = {}) {
   const resolvedDefaults = normalizeDefaults(defaults);
   return {
-    name: 'La Pluma Agent API',
+    name: 'La Pluma Next Agent API',
     id: 'la-pluma-agent-api',
     version: API_VERSION,
-    description: 'AI-readable control surface for MAA / Arknights automation through La Pluma.',
+    description: 'AI-readable control surface for MAA / Arknights automation through La Pluma Next.',
     auth: {
       type: 'optional-bearer-or-x-la-pluma-token',
       requiredWhen: 'LA_PLUMA_TOKEN is set on the backend',
@@ -687,7 +687,7 @@ function openApiOperation(definition, defaults) {
     'x-la-pluma-execution': item.execution,
     responses: {
       200: {
-        description: item.responseKind === 'openapi' ? 'OpenAPI 3.1 document' : 'Successful La Pluma API response',
+        description: item.responseKind === 'openapi' ? 'OpenAPI 3.1 document' : 'Successful La Pluma Next API response',
         ...(runHeaders ? { headers: runHeaders } : {}),
         content: {
           'application/json': { schema: successSchema }
@@ -757,9 +757,9 @@ export function buildOpenApiSpec(defaults = {}) {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'La Pluma Agent API',
+      title: 'La Pluma Next Agent API',
       version: API_VERSION,
-      description: 'AI-friendly action and status surface for La Pluma / maa-cli automation.'
+      description: 'AI-friendly action and status surface for La Pluma Next / maa-cli automation.'
     },
     servers: [{ url: '/' }],
     security: [
@@ -783,7 +783,7 @@ export function buildOpenApiSpec(defaults = {}) {
           name: 'Idempotency-Key',
           in: 'header',
           required: false,
-          description: 'Deduplicates one logical execution within the same operation on this local La Pluma instance across normal process restarts. Records are retained for up to 24 hours and may be evicted sooner when the 500-terminal-run cap is exceeded. Active runs restored after a restart become interrupted and are not resumed.',
+          description: 'Deduplicates one logical execution within the same operation on this local La Pluma Next instance across normal process restarts. Records are retained for up to 24 hours and may be evicted sooner when the 500-terminal-run cap is exceeded. Active runs restored after a restart become interrupted and are not resumed.',
           schema: idempotencyKeyProperty
         }
       },

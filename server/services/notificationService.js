@@ -291,7 +291,7 @@ class TelegramChannel extends NotificationChannel {
     try {
       await this.send({
         title: '测试通知',
-        content: 'La Pluma 通知系统测试成功！',
+        content: 'La Pluma Next 通知系统测试成功！',
         level: 'info',
       });
       return { success: true, message: '测试消息已发送' };

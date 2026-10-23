@@ -1,15 +1,16 @@
-# La Pluma
+# La Pluma Next
 
 <div align="center">
-  <img src="client/public/logo-graphite.svg" alt="La Pluma Logo" width="120" />
+  <img src="client/public/logo-graphite.svg" alt="La Pluma Next Logo" width="120" />
   <p><em>MAA CLI 的现代化 WebUI 与本地 Agent 控制台</em></p>
   
-  [![Docker Pulls](https://img.shields.io/docker/pulls/miaona/la-pluma)](https://hub.docker.com/r/miaona/la-pluma)
-  [![Docker Image Size](https://img.shields.io/docker/image-size/miaona/la-pluma/latest)](https://hub.docker.com/r/miaona/la-pluma)
-  [![GitHub Actions](https://github.com/mps233/La-pluma/workflows/Docker%20Build%20and%20Push/badge.svg)](https://github.com/mps233/La-pluma/actions)
+  [![Build and Publish GHCR Image](https://github.com/dongwlin/La-pluma-next/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/dongwlin/La-pluma-next/actions/workflows/docker-publish.yml)
+  [![GHCR](https://img.shields.io/badge/GHCR-la--pluma--next-2496ED?logo=github)](https://github.com/dongwlin/La-pluma-next/pkgs/container/la-pluma-next)
 </div>
 
-> **项目名称由来**：La Pluma（羽毛笔）是《明日方舟》中的五星近卫干员，本项目以此命名，致敬这位优雅的女士。
+> **维护说明**：本项目是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新。上游作者：miaopasi、mps233。
+
+> **项目名称由来**：La Pluma（羽毛笔）是《明日方舟》中的五星近卫干员，原项目以此命名。本仓库是 La Pluma 的社区维护分支，继续以 La Pluma Next 的名义维护。
 
 ## ✨ 特性
 
@@ -47,7 +48,7 @@
 
 ## 🧭 当前架构
 
-La Pluma 是一个面向《明日方舟》自动化的本地 Web 控制台。前端负责配置、编排和可视化；后端负责调用 `maa` CLI、ADB、ScrcpyOverWebRTC 和本地 JSON 配置。
+La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台。前端负责配置、编排和可视化；后端负责调用 `maa` CLI、ADB、ScrcpyOverWebRTC 和本地 JSON 配置。
 
 当前后端入口主要挂载两类 API：
 
@@ -58,7 +59,7 @@ La Pluma 是一个面向《明日方舟》自动化的本地 Web 控制台。前
 
 ### 前端 UI 与响应式壳层
 
-前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 common 组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；项目语义 token 与 `ios-theme.css` 统一 iOS 26 风格、La Pluma 品牌色和信息密度。
+前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 common 组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；项目语义 token 与 `ios-theme.css` 统一 iOS 26 风格、La Pluma Next 品牌色和信息密度。
 
 - 桌面端使用左侧工作台导航；移动端使用悬浮的 iOS 风格底部胶囊导航，右侧搜索/更多入口承载次要页面。两端共享同一套 URL 路由和页面状态。
 - 主题由 `useUIStore` 管理，`light`、`dark`、`system` 会同步到文档根节点和 `.la-pluma-app`。页面组件不要自行切换 `.dark` 或另建主题状态。
@@ -69,7 +70,7 @@ La Pluma 是一个面向《明日方舟》自动化的本地 Web 控制台。前
 
 ## 🤖 Agent API
 
-La Pluma 提供一层给 AI/Agent 使用的轻量控制接口。它不是前端内部 API 的简单暴露，而是更语义化的 manifest/status/actions 层，方便 Agent 或自定义自动化发现能力、读取状态和执行动作。Manifest 与 OpenAPI 由同一份能力清单生成，并公开每个动作的风险、dry-run、轮询和停止方式。
+La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口。它不是前端内部 API 的简单暴露，而是更语义化的 manifest/status/actions 层，方便 Agent 或自定义自动化发现能力、读取状态和执行动作。Manifest 与 OpenAPI 由同一份能力清单生成，并公开每个动作的风险、dry-run、轮询和停止方式。
 
 ### 发现能力
 
@@ -139,7 +140,7 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
 
 `Idempotency-Key` 是可选请求头，适用于活动作业、启动游戏、理智作战、通用任务和今日流程。幂等键按执行动作分区；同一动作使用相同 key 和相同请求参数重试时不会再次启动，而是返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。相同 key 搭配不同输入会返回 `AGENT_IDEMPOTENCY_KEY_REUSED`。Run 与幂等记录默认持久化到 `server/data/agent-runs.json`，正常重启后仍会保留；重启时尚未结束的 run 会变为不可自动重试的 `interrupted`，且不会自动续跑。终态最多保留 24 小时和 500 条，达到数量上限时可能提前淘汰。
 
-当前持久化保证以单个 La Pluma 服务实例为边界。不要让多个 Node.js 进程同时读写同一个 Run 存储文件；需要修改路径时可设置 `LA_PLUMA_AGENT_RUN_STORE`。
+当前持久化保证以单个 La Pluma Next 服务实例为边界。不要让多个 Node.js 进程同时读写同一个 Run 存储文件；需要修改路径时可设置 `LA_PLUMA_AGENT_RUN_STORE`。
 
 ### 通用任务
 
@@ -170,7 +171,7 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 ## 🖥️ 跨平台支持
 
-La Pluma 支持 macOS 和 Linux 系统。项目会自动检测操作系统并使用对应的配置路径：
+La Pluma Next 支持 macOS 和 Linux 系统。项目会自动检测操作系统并使用对应的配置路径：
 
 ### 配置文件路径
 
@@ -186,8 +187,8 @@ La Pluma 支持 macOS 和 Linux 系统。项目会自动检测操作系统并使
 #### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/mps233/La-pluma.git
-cd La-pluma
+git clone https://github.com/dongwlin/La-pluma-next.git
+cd La-pluma-next
 ```
 
 #### 2. 安装依赖
@@ -214,23 +215,23 @@ npm run dev:server  # 后端: http://localhost:3000
 
 ### 方式 2: Docker 部署
 
-> ✨ **推荐方式**：使用 Docker Hub 预构建镜像，开箱即用！
+> ✨ **推荐方式**：使用 GHCR 预构建镜像，开箱即用！
 
-#### 使用 Docker Hub 镜像（推荐）
+#### 使用 GHCR 镜像（推荐）
 
 ```bash
 # 拉取最新镜像
-docker pull miaona/la-pluma:latest
+docker pull ghcr.io/dongwlin/la-pluma-next:latest
 
 # 运行容器
 docker run -d \
-  --name la-pluma \
+  --name la-pluma-next \
   -p 3055:3000 \
   -v /path/to/data:/app/server/data \
   -v /path/to/config:/root/.config/maa \
   -v /path/to/maacore:/root/.local/share/maa \
   -e ADB_ADDRESS=192.168.x.x:5555 \
-  miaona/la-pluma:latest
+  ghcr.io/dongwlin/la-pluma-next:latest
 
 # 如需开启 API 鉴权，把下面一行插入到镜像名前：
 #   -e LA_PLUMA_TOKEN=change-me \
@@ -238,6 +239,8 @@ docker run -d \
 # 访问应用
 # 浏览器打开 http://localhost:3055
 ```
+
+> 首次发布后请在 GitHub Package settings 中把 `la-pluma-next` 镜像设为 Public；如果保持私有，拉取前需要先执行 `docker login ghcr.io`。
 
 可选环境变量：
 
@@ -266,7 +269,7 @@ PWA 的 Service Worker 只会在 HTTPS 或浏览器认可的本机 `localhost` �
 
 不要把 `5173` 的 Vite 开发服务器作为手机主屏幕或公网长期入口。开发服务器的 HMR 连接在 iOS 后台挂起后可能触发整页重载；手机入口应使用 `npm run build --prefix client` 生成的正式资源，并由下方的生产服务或可信 HTTPS 反向代理提供。
 
-La Pluma 可以直接使用可信证书启动 HTTPS：
+La Pluma Next 可以直接使用可信证书启动 HTTPS：
 
 ```bash
 npm run build --prefix client
@@ -281,45 +284,45 @@ Docker 部署时把证书只读挂载到容器，并同时设置这两个变量�
 
 ```bash
 docker run -d \
-  --name la-pluma \
+  --name la-pluma-next \
   -p 3055:3000 \
   -v /path/to/certs:/app/certs:ro \
   -v /path/to/data:/app/server/data \
   -e LA_PLUMA_HTTPS_CERT_PATH=/app/certs/fullchain.pem \
   -e LA_PLUMA_HTTPS_KEY_PATH=/app/certs/privkey.pem \
   -e LA_PLUMA_TOKEN=change-me \
-  miaona/la-pluma:latest
+  ghcr.io/dongwlin/la-pluma-next:latest
 ```
 
 证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问建议始终配置 `LA_PLUMA_TOKEN`。
 
-HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health` 和 `/webrtc-signaling` 一并转发到 La Pluma，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
+HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
 
-PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，但 MAA、ADB、实时预览、状态读取和所有自动化操作仍需要连接 La Pluma 后端；页面会持续显示断连状态并禁用控制台执行入口。
+PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，但 MAA、ADB、实时预览、状态读取和所有自动化操作仍需要连接 La Pluma Next 后端；页面会持续显示断连状态并禁用控制台执行入口。
 
 ##### 子路径部署
 
-部署到 `/la-pluma/` 等子路径时，需要在构建前设置：
+部署到 `/la-pluma-next/` 等子路径时，需要在构建前设置：
 
 ```bash
-VITE_BASE_PATH=/la-pluma/ npm run build --prefix client
+VITE_BASE_PATH=/la-pluma-next/ npm run build --prefix client
 
 NODE_ENV=production \
-LA_PLUMA_BASE_PATH=/la-pluma/ \
+LA_PLUMA_BASE_PATH=/la-pluma-next/ \
 npm run start --prefix server
 
 # Docker 本地构建
-docker build --build-arg VITE_BASE_PATH=/la-pluma/ -t la-pluma:local .
+docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
 ```
 
-本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma/` 前缀转发，同时继续同源转发根路径 `/api`、`/health` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
+本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
 
 #### 使用 Docker Compose（推荐）
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/mps233/La-pluma.git
-cd La-pluma
+git clone https://github.com/dongwlin/La-pluma-next.git
+cd La-pluma-next
 
 # 2. 编辑 docker-compose.yml，修改 volumes 和 ADB_ADDRESS
 nano docker-compose.yml
@@ -337,7 +340,7 @@ docker-compose logs -f
 
 ```bash
 # 编辑 docker-compose.yml
-# 注释掉: image: miaona/la-pluma:latest
+# 注释掉: image: ghcr.io/dongwlin/la-pluma-next:latest
 # 取消注释: build 部分
 
 # 构建并启动
@@ -346,7 +349,7 @@ docker-compose up -d --build
 
 **配置说明**：
 - 宿主机端口：`3055`，容器内端口：`3000`
-- 数据持久化：`./docker-data/` 和 `./server/data/`
+- 数据持久化：`./docker-data/server/`、`./docker-data/maa-config/`、`./docker-data/maa-core/`
 - ADB 连接：在 WebUI 中配置设备地址（如 `127.0.0.1:5555`）
 - 首次启动会自动下载 MaaCore（约 5-10 分钟）
 
@@ -357,7 +360,7 @@ docker-compose up -d --build
 ## 📦 项目结构
 
 ```
-la-pluma/
+La-pluma-next/
 ├── client/                    # 前端 (React + TypeScript + Vite + Tailwind CSS + Framer Motion)
 │   ├── src/
 │   │   ├── components/        # UI 组件
@@ -513,13 +516,14 @@ cd server && npm run check
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 和 Pull Request！分支管理、发布流程和兼容性约定见 [MAINTAINING.md](MAINTAINING.md)。
 
 ## 📄 许可证
 
-MIT License
+本项目基于 La Pluma 开发，采用 [MIT License](LICENSE) 发布，保留上游作者的版权声明。
 
 ## 🙏 致谢
 
+- [La Pluma 原项目](https://github.com/mps233/La-pluma) - 本项目的前身
 - [MAA (MaaAssistantArknights)](https://github.com/MaaAssistantArknights/MaaAssistantArknights) - 明日方舟游戏助手
 - [maa-cli](https://github.com/MaaAssistantArknights/maa-cli) - MAA 命令行工具

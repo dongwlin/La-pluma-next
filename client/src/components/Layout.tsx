@@ -397,9 +397,9 @@ export default function Layout({ children }: LayoutProps) {
           <div className="navbar-inner">
             <div className="left">
               <div className="la-pluma-navbar-left">
-                <button type="button" className="link la-pluma-brand" aria-label="La Pluma 控制台" onClick={() => navigateToTab('dashboard')}>
+                <button type="button" className="link la-pluma-brand" aria-label="La Pluma Next 控制台" onClick={() => navigateToTab('dashboard')}>
                   <img src={`${import.meta.env.BASE_URL}logo-graphite.svg?v=1`} alt="" className="la-pluma-brand-mark" />
-                  <span>La Pluma</span>
+                  <span>La Pluma Next</span>
                 </button>
               </div>
             </div>
@@ -410,7 +410,7 @@ export default function Layout({ children }: LayoutProps) {
               <div className="la-pluma-navbar-actions">
                 <ThemeToggle />
                 <a
-                  href="https://github.com/mps233/La-pluma"
+                  href="https://github.com/dongwlin/La-pluma-next"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="link la-pluma-github-link"
@@ -573,7 +573,7 @@ export default function Layout({ children }: LayoutProps) {
                   <div className="la-pluma-sheet-grabber" aria-hidden="true" />
                   <div className="la-pluma-sheet-heading">
                     <div>
-                      <span className="la-pluma-eyebrow">LA PLUMA</span>
+                      <span className="la-pluma-eyebrow">LA PLUMA NEXT</span>
                       <h2 id="la-pluma-more-sheet-title">更多工作区</h2>
                     </div>
                     <button

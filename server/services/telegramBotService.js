@@ -342,7 +342,7 @@ async function handleCommand(chatId, command, args) {
  * 获取帮助信息
  */
 function getHelpMessage() {
-  return `🤖 La Pluma Bot 命令列表
+  return `🤖 La Pluma Next Bot 命令列表
 
 📋 基础命令：
 /help 或 帮助 - 显示此帮助信息

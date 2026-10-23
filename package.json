@@ -1,7 +1,21 @@
 {
-  "name": "maa-prts",
+  "name": "la-pluma-next",
   "version": "1.0.0",
   "private": true,
+  "description": "La Pluma Next - MAA CLI 的现代化 WebUI 与本地 Agent 控制台",
+  "license": "MIT",
+  "author": "dongwlin and contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dongwlin/La-pluma-next.git"
+  },
+  "homepage": "https://github.com/dongwlin/La-pluma-next#readme",
+  "bugs": {
+    "url": "https://github.com/dongwlin/La-pluma-next/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "npm run dev:server & npm run dev:client",
     "dev:client": "cd client && npm run dev",

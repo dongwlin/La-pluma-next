@@ -94,8 +94,8 @@ self.addEventListener('activate', (event) => {
 `.trimStart()
 
 export const createWebManifest = (basePath) => ({
-  name: 'La Pluma - MAA WebUI',
-  short_name: 'La Pluma',
+  name: 'La Pluma Next - MAA WebUI',
+  short_name: 'La Pluma Next',
   description: 'MAA CLI 的现代化 Web 界面',
   lang: 'zh-CN',
   theme_color: '#05090c',

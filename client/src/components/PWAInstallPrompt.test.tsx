@@ -104,7 +104,7 @@ describe('PWAInstallPrompt', () => {
     const installEvent = createInstallPromptEvent()
 
     act(() => window.dispatchEvent(installEvent))
-    expect(container.textContent).toContain('安装 La Pluma')
+    expect(container.textContent).toContain('安装 La Pluma Next')
 
     await clickButton('安装')
     expect(installEvent.prompt).toHaveBeenCalledOnce()
@@ -125,7 +125,7 @@ describe('PWAInstallPrompt', () => {
 
     await renderPrompt()
 
-    const installEntry = container.querySelector<HTMLButtonElement>('[aria-label="安装 La Pluma"]')
+    const installEntry = container.querySelector<HTMLButtonElement>('[aria-label="安装 La Pluma Next"]')
     expect(installEntry).not.toBeNull()
     expect(installEntry?.classList.contains('pwa-install-entry-button')).toBe(true)
     expect(installEntry?.classList.contains('app-icon-button-size-md')).toBe(true)
@@ -134,7 +134,7 @@ describe('PWAInstallPrompt', () => {
     expect(container.querySelector('.pwa-install-prompt')).toBeNull()
     expect(container.textContent).not.toContain('在 Safari 工具栏中点击“分享”')
 
-    await clickButton('安装 La Pluma')
+    await clickButton('安装 La Pluma Next')
 
     expect(container.querySelector('.pwa-install-entry')).toBeNull()
     expect(container.querySelector('.pwa-install-prompt')).not.toBeNull()
@@ -155,14 +155,14 @@ describe('PWAInstallPrompt', () => {
     root = createRoot(container)
     await renderPrompt()
     act(() => window.dispatchEvent(createInstallPromptEvent()))
-    expect(container.textContent).not.toContain('安装 La Pluma')
+    expect(container.textContent).not.toContain('安装 La Pluma Next')
 
     await act(async () => root.unmount())
     root = createRoot(container)
     vi.advanceTimersByTime(7 * 24 * 60 * 60 * 1000)
     await renderPrompt()
     act(() => window.dispatchEvent(createInstallPromptEvent()))
-    expect(container.textContent).toContain('安装 La Pluma')
+    expect(container.textContent).toContain('安装 La Pluma Next')
   })
 
   it('keeps a deferred update recoverable after collapsing it', async () => {

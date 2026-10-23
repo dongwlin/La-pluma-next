@@ -323,7 +323,7 @@ describe('top-level application navigation', () => {
 
     const githubLink = container.querySelector<HTMLAnchorElement>('.la-pluma-github-link')!
     expect(githubLink.getAttribute('aria-label')).toBe('打开 GitHub 仓库')
-    expect(githubLink.getAttribute('href')).toBe('https://github.com/mps233/La-pluma')
+    expect(githubLink.getAttribute('href')).toBe('https://github.com/dongwlin/La-pluma-next')
     expect(githubLink.getAttribute('target')).toBe('_blank')
     expect(githubLink.getAttribute('rel')?.split(/\s+/).sort()).toEqual(['noopener', 'noreferrer'])
     expect(githubLink.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1)
