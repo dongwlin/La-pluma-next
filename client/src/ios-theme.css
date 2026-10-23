@@ -624,6 +624,7 @@ html.la-pluma-standalone #app-root .page {
     padding-right: 2rem;
     /* The visible sidebar frame ends 0.75rem before the workspace column. */
     padding-left: 1.25rem;
+    padding-bottom: var(--app-space-3);
   }
 
   .la-pluma-app .la-pluma-navbar-actions {
@@ -1329,7 +1330,8 @@ html.la-pluma-standalone #app-root .page {
 }
 
 .la-pluma-app .app-page {
-  padding-top: 0;
+  /* Layout owns page-edge spacing; nested pages must not add it again. */
+  padding-block: 0;
 }
 
 .la-pluma-app .app-page-header {
