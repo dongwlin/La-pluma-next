@@ -281,7 +281,6 @@ export default function Dashboard() {
   const isOnline = useOnlineStatus()
   const openAutomation = useCallback(() => setActiveTab('automation'), [setActiveTab])
   const hasLoaded = useDashboardStore(state => state.hasLoaded)
-  const lastUpdate = useDashboardStore(state => state.lastUpdate)
   const activitySummary = useDashboardStore(state => state.activitySummary)
   const scheduleSummary = useDashboardStore(state => state.scheduleSummary)
   const trainingSummary = useDashboardStore(state => state.trainingSummary)
@@ -445,7 +444,6 @@ export default function Dashboard() {
     return <DashboardSkeleton />
   }
 
-  const lastUpdateDate = lastUpdate ? new Date(lastUpdate) : null
   const flowIsRunning = scheduleSummary.isRunning
   const connectionTitle = serviceStatus === 'offline'
     ? '当前网络离线'
@@ -475,17 +473,6 @@ export default function Dashboard() {
         : flowIsRunning
           ? (scheduleSummary.message || '自动化任务正在按计划推进')
           : (scheduleSummary.message || '设备待命，可以开始今天的自动化任务')
-  const flowStatusLabel = serviceStatus === 'offline'
-    ? '网络离线'
-    : serviceStatus === 'unavailable'
-      ? '服务不可用'
-      : serviceStatus === 'checking' || serviceStatus === 'unknown'
-        ? '检查中'
-        : activityPreflightLoading
-          ? '检查中'
-          : quickStartLoading
-            ? '启动中'
-            : flowIsRunning ? '执行中' : '待命'
   const activityCompleted = activitySummary.completion?.complete === true
 
   return (
@@ -551,15 +538,6 @@ export default function Dashboard() {
                     <div className="dashboard-flow-eyebrow text-[11px] font-semibold uppercase text-[var(--app-accent-strong)]">Daily operations</div>
                     <div className="dashboard-flow-title mt-0.5 text-base font-bold text-primary">今日流程</div>
                   </div>
-                </div>
-                <div className="dashboard-flow-meta flex shrink-0 items-center gap-2">
-                  <div className={`dashboard-flow-status ${automationAvailable && flowIsRunning ? 'is-running' : ''} ${automationAvailable && (activityPreflightLoading || quickStartLoading) ? 'is-checking' : ''} ${serviceStatus === 'offline' ? 'status-warning' : serviceStatus === 'unavailable' ? 'status-danger' : ''}`}>
-                    <span className="dashboard-flow-status-dot" />
-                    {flowStatusLabel}
-                  </div>
-                  <span className={`whitespace-nowrap text-[11px] ${labelClass}`}>
-                    {lastUpdateDate ? lastUpdateDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '--:--'} 更新
-                  </span>
                 </div>
               </div>
 

@@ -842,10 +842,6 @@ export function DashboardSkeleton() {
                       <Skeleton variant="title" className="h-4 w-20" />
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Skeleton variant="rect" className="ml-auto h-5 w-12 rounded-full" />
-                    <Skeleton variant="text" className="h-2 w-14" />
-                  </div>
                 </div>
 
                 <div className="dashboard-flow-command">
