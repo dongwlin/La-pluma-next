@@ -254,6 +254,9 @@ docker run -d \
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
 | `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC` |
 | `LA_PLUMA_WEBRTC_PORT` | ScrcpyOverWebRTC 本地端口 | `8443` |
+| `LA_PLUMA_WEBRTC_HOST_IP` | 向设备公布的宿主机 IPv4 地址；默认优先选择与目标 ADB 地址同网段的网卡 | 自动检测 |
+| `LA_PLUMA_WEBRTC_ICE_SERVERS` | 自定义 STUN/TURN 列表；未设置且无本地 TURN 时使用局域网直连 | 自动检测 |
+| `LA_PLUMA_WEBRTC_ARCHIVE` | 安装时使用的本地官方 `cloudphone-v0.4.1.zip`，同样校验 SHA-256 | 自动下载 |
 | `LA_PLUMA_HTTPS_CERT_PATH` | 可选 HTTPS 证书链路径，必须与私钥同时配置 | 空，使用 HTTP |
 | `LA_PLUMA_HTTPS_KEY_PATH` | 可选 HTTPS 私钥路径，必须与证书同时配置 | 空，使用 HTTP |
 

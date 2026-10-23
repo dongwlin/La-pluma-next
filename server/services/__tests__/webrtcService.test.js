@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { chmod, mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { arch, tmpdir } from 'node:os'
+import { arch, platform, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 
@@ -67,7 +67,7 @@ describe('WebRTC startup readiness', () => {
 
   before(async () => {
     fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-'))
-    const binaryDir = join(fixtureDir, 'bin', arch() === 'arm64' ? 'darwin_arm64' : 'darwin_amd64')
+    const binaryDir = join(fixtureDir, 'bin', `${platform()}_${arch() === 'arm64' ? 'arm64' : 'amd64'}`)
     const assetsDir = join(fixtureDir, 'assets', 'v1')
     const agentDir = join(fixtureDir, 'agentd')
     await Promise.all([
@@ -145,7 +145,7 @@ if [[ "$*" == *"pkill -f cloudphone-agent"* ]]; then
   printf '[]' > "$TEST_WEBRTC_DEVICES_FILE"
   exit 0
 fi
-if [[ "$*" == *"ps | grep cloudphone-agent"* ]] && ! grep -q '^\\[\\]$' "$TEST_WEBRTC_DEVICES_FILE"; then
+if [[ "$*" == *"ps -A | grep cloudphone-agent"* ]] && ! grep -q '^\\[\\]$' "$TEST_WEBRTC_DEVICES_FILE"; then
   echo cloudphone-agent
 fi
 `)

@@ -4,6 +4,7 @@ import { promisify } from 'util'
 import path from 'path'
 import { setTimeout as delay } from 'timers/promises'
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js'
+import { getWebrtcHostIp, getWebrtcRuntimeBinary, installWebrtcRelease } from './webrtcRuntime.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -200,7 +201,7 @@ export async function waitForAdbDeviceReady(address, adbPath, {
 }
 
 async function getListeningPidsOnTcpPort(port) {
-  const { stdout } = await execFileQuiet('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'])
+  const { stdout } = await execFileQuiet('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'])
   return stdout.trim().split(/\s+/).filter(Boolean)
 }
 
@@ -224,8 +225,7 @@ export async function pathExists(filePath) {
 }
 
 async function getWebrtcBinaryPath() {
-  const arch = process.arch === 'arm64' ? 'darwin_arm64' : 'darwin_amd64'
-  return path.join(WEBRTC_DIR, 'bin', arch, 'webrtc-signaling')
+  return getWebrtcRuntimeBinary(WEBRTC_DIR)
 }
 
 export async function getWebrtcAssetsPath() {
@@ -236,20 +236,6 @@ export async function getWebrtcAssetsPath() {
   if (await pathExists(path.join(releaseAssetsPath, 'index.html'))) return releaseAssetsPath
 
   return null
-}
-
-async function getMacLanIp() {
-  const interfaces = ['en0', 'en1']
-  for (const name of interfaces) {
-    try {
-      const { stdout } = await execFileAsync('ipconfig', ['getifaddr', name], { timeout: 2000 })
-      const ip = stdout.trim()
-      if (ip) return ip
-    } catch {
-      // try next interface
-    }
-  }
-  return '127.0.0.1'
 }
 
 export async function getWebrtcLogPaths() {
@@ -398,15 +384,17 @@ async function waitForWebrtcDeviceUnavailable(deviceId, {
 
 async function isDeviceAgentRunning(address = DEFAULT_DEVICE_ADDRESS, adbPath = DEFAULT_ADB_PATH) {
   try {
-    const { stdout } = await execFileAsync(adbPath, ['-s', address, 'shell', 'ps | grep cloudphone-agent || true'], { timeout: 5000 })
+    const { stdout } = await execFileAsync(adbPath, ['-s', address, 'shell', 'ps -A | grep cloudphone-agent || true'], { timeout: 5000 })
     return stdout.includes('cloudphone-agent')
   } catch {
     return false
   }
 }
 
-async function getIceServersConfig() {
-  const lanIp = await getMacLanIp()
+async function getIceServersConfig(address = DEFAULT_DEVICE_ADDRESS) {
+  if (process.env.LA_PLUMA_WEBRTC_ICE_SERVERS !== undefined) return process.env.LA_PLUMA_WEBRTC_ICE_SERVERS
+  if (!await isProcessListeningOnTcpPort(WEBRTC_TURN_PORT)) return ''
+  const lanIp = getWebrtcHostIp(address)
   return `turn:cloudphone_user:cloudphone_secure_password@${lanIp}:${WEBRTC_TURN_PORT}?transport=udp,stun:${lanIp}:${WEBRTC_TURN_PORT}`
 }
 
@@ -416,16 +404,24 @@ function isSameAgentOwner(owner, address, deviceId) {
 
 async function stopRemoteWebrtcAgent(address, adbPath) {
   await execFileAsync(adbPath, ['-s', address, 'shell', 'pkill -f cloudphone-agent || true'], { timeout: 5000 }).catch(() => {})
+  await execFileAsync(adbPath, ['-s', address, 'shell', 'pkill -f com.android.helper.CoreService || true'], { timeout: 5000 }).catch(() => {})
   await execFileAsync(adbPath, ['-s', address, 'shell', 'pkill -f scrcpy.Server || true'], { timeout: 5000 }).catch(() => {})
 }
 
 async function startLocalTurnServerUnlocked() {
   if (webrtcTurnProcess && !webrtcTurnProcess.killed) return
   if (await isProcessListeningOnTcpPort(WEBRTC_TURN_PORT)) return
-  const turnserver = '/opt/homebrew/bin/turnserver'
-  if (!await pathExists(turnserver)) return
+  const turnserver = ['/usr/bin/turnserver', '/usr/local/bin/turnserver', '/opt/homebrew/bin/turnserver']
+  let turnserverPath = null
+  for (const candidate of turnserver) {
+    if (await pathExists(candidate)) {
+      turnserverPath = candidate
+      break
+    }
+  }
+  if (!turnserverPath) return
   const { turnLog } = await getWebrtcLogPaths()
-  const child = spawnWithLog(turnserver, [
+  const child = spawnWithLog(turnserverPath, [
     '-n',
     '--no-cli',
     '--no-tls',
@@ -463,7 +459,7 @@ async function killLocalWebrtcInfrastructureUnlocked(address, adbPath) {
 export async function getWebrtcStatus(address = DEFAULT_DEVICE_ADDRESS, adbPath = DEFAULT_ADB_PATH) {
   const binaryPath = await getWebrtcBinaryPath()
   const assetsPath = await getWebrtcAssetsPath()
-  const lanIp = await getMacLanIp()
+  const lanIp = getWebrtcHostIp(address)
   const logPaths = await getWebrtcLogPaths()
   const serverReachable = await isWebrtcServerReachable()
   const deviceAgentRunning = await isDeviceAgentRunning(address, adbPath)
@@ -477,7 +473,7 @@ export async function getWebrtcStatus(address = DEFAULT_DEVICE_ADDRESS, adbPath 
     signalingUrl: '/webrtc-signaling',
     directSignalingUrl: `ws://${lanIp}:${WEBRTC_PORT}`,
     turnRunning: !!webrtcTurnProcess && !webrtcTurnProcess.killed,
-    iceServers: await getIceServersConfig(),
+    iceServers: await getIceServersConfig(address),
     serverRunning: (!!webrtcServerProcess && !webrtcServerProcess.killed) || serverReachable,
     agentRunning: (!!webrtcAgentProcess && !webrtcAgentProcess.killed) || deviceAgentRunning,
     deviceAddress: address,
@@ -485,33 +481,21 @@ export async function getWebrtcStatus(address = DEFAULT_DEVICE_ADDRESS, adbPath 
   }
 }
 
-export async function installWebrtc() {
+async function installWebrtcUnlocked() {
   const fs = await import('fs/promises')
-  const parentDir = path.dirname(WEBRTC_DIR) || (process.env.HOME || process.cwd())
-
-  if (!await pathExists(WEBRTC_DIR)) {
-    await new Promise((resolve, reject) => {
-      const child = spawn('git', ['clone', 'https://github.com/hqw700/ScrcpyOverWebRTC.git', WEBRTC_DIR], {
-        cwd: parentDir,
-        stdio: 'ignore'
-      })
-      child.on('close', code => code === 0 ? resolve() : reject(new Error(`git clone 失败: ${code}`)))
-      child.on('error', reject)
-    })
-  }
 
   const binaryPath = await getWebrtcBinaryPath()
   const assetsPath = await getWebrtcAssetsPath()
-  if (await pathExists(binaryPath) && assetsPath) {
+  if (await pathExists(binaryPath) && assetsPath && await pathExists(path.join(WEBRTC_DIR, 'agentd', 'run.sh'))) {
     return getWebrtcStatus()
   }
 
   const buildScript = path.join(WEBRTC_DIR, 'build.sh')
   if (!await pathExists(buildScript)) {
-    const error = new Error('WebRTC 组件目录不完整，且缺少 build.sh；请重新安装二进制发布包')
-    error.code = 'WEBRTC_BUILD_SCRIPT_MISSING'
-    error.retryable = false
-    throw error
+    await installWebrtcRelease(WEBRTC_DIR)
+    const status = await getWebrtcStatus()
+    if (!status.built) throw new Error('WebRTC 发布包安装完成，但运行资源不完整')
+    return status
   }
 
   await fs.chmod(buildScript, 0o755)
@@ -548,6 +532,10 @@ export async function installWebrtc() {
   return status
 }
 
+export async function installWebrtc() {
+  return enqueueLifecycle(installWebrtcUnlocked)
+}
+
 async function startWebrtcServerUnlocked(address, adbPath) {
   if (await isWebrtcServerReachable()) {
     return getWebrtcStatus(address, adbPath)
@@ -564,7 +552,7 @@ async function startWebrtcServerUnlocked(address, adbPath) {
 
     await startLocalTurnServerUnlocked()
     const { serverLog } = await getWebrtcLogPaths()
-    const iceServers = await getIceServersConfig()
+    const iceServers = await getIceServersConfig(address)
     child = spawnWithLog(binaryPath, ['-host', '0.0.0.0', '-port', String(WEBRTC_PORT), '-assets', assetsPath, '-ice_servers', iceServers, '-tls=false'], serverLog, {
       cwd: WEBRTC_DIR,
       detached: false,
@@ -625,12 +613,12 @@ async function startWebrtcAgentUnlocked(address, deviceId, adbPath) {
   }
 
   const { agentLog } = await getWebrtcLogPaths()
-  const lanIp = await getMacLanIp()
-  const iceServers = await getIceServersConfig()
+  const lanIp = getWebrtcHostIp(address)
+  const iceServers = await getIceServersConfig(address)
   const child = spawnWithLog('bash', [runScript, address, '-id', deviceId, '-signaling', `ws://${lanIp}:${WEBRTC_PORT}`, '-ice-servers', iceServers, '-webrtc-port', '50000'], agentLog, {
     cwd: path.join(WEBRTC_DIR, 'agentd'),
     detached: true,
-    env: { ...process.env, ADB_PATH: adbPath, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}` }
+    env: { ...process.env, ADB_PATH: adbPath, PATH: `${path.dirname(adbPath)}:${process.env.PATH || ''}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin` }
   })
   webrtcAgentProcess = trackManagedProcess(child, 'agent')
   try {
