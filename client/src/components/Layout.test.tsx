@@ -242,14 +242,21 @@ describe('top-level application navigation', () => {
     unsubscribe()
   })
 
-  it('groups desktop workspaces and keeps all navigation destinations available', async () => {
+  it('keeps all desktop workspaces in one flat navigation list', async () => {
     await renderLayout()
 
     const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
-    const groups = [...sidebar.querySelectorAll<HTMLElement>('[role="group"]')]
-    expect(groups.map(group => group.getAttribute('aria-label'))).toEqual([
-      '任务与执行',
-      '记录与设置',
+    const sidebarNav = sidebar.querySelector<HTMLElement>('.la-pluma-sidebar-nav')!
+    expect(sidebarNav.querySelector('[role="group"]')).toBeNull()
+    expect([...sidebarNav.children].map(child => (child as HTMLElement).dataset.appTab)).toEqual([
+      'dashboard',
+      'automation',
+      'combat',
+      'roguelike',
+      'training',
+      'logs',
+      'statistics',
+      'config',
     ])
     expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
     expect(sidebar.querySelectorAll('.la-pluma-sidebar-icon > svg[aria-hidden="true"]')).toHaveLength(8)

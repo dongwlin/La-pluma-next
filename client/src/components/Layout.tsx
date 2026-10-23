@@ -34,19 +34,6 @@ const tabs = [
   { id: 'config', name: '配置', icon: Settings2 },
 ] satisfies Array<{ id: AppTab; name: string; icon: typeof LayoutGrid }>
 
-const desktopTabGroups = [
-  {
-    id: 'tasks',
-    label: '任务与执行',
-    tabs: tabs.filter(tab => ['dashboard', 'automation', 'combat', 'roguelike', 'training'].includes(tab.id)),
-  },
-  {
-    id: 'library',
-    label: '记录与设置',
-    tabs: tabs.filter(tab => ['logs', 'statistics', 'config'].includes(tab.id)),
-  },
-]
-
 // Keep the compact mobile rail focused on the four destinations used most often.
 // The remaining workspaces stay available from the adjacent more control.
 const mobileTabs = tabs.filter(tab => ['dashboard', 'automation', 'combat', 'config'].includes(tab.id))
@@ -415,17 +402,8 @@ export default function Layout({ children }: LayoutProps) {
 
           <aside className="la-pluma-sidebar" aria-label="主要功能">
             <nav className="la-pluma-sidebar-nav" aria-label="工作台">
-              {desktopTabGroups.map(group => (
-                <div
-                  key={group.id}
-                  className="la-pluma-sidebar-nav-group"
-                  role="group"
-                  aria-label={group.label}
-                >
-                  {group.tabs.map(tab => (
-                    <TabLink key={tab.id} tab={tab} active={activeTab === tab.id} onNavigate={navigateToTab} />
-                  ))}
-                </div>
+              {tabs.map(tab => (
+                <TabLink key={tab.id} tab={tab} active={activeTab === tab.id} onNavigate={navigateToTab} />
               ))}
             </nav>
 

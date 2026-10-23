@@ -874,16 +874,6 @@ html.la-pluma-standalone #app-root .page {
   line-height: 1.35;
 }
 
-.la-pluma-sidebar-nav {
-  gap: 0.75rem;
-}
-
-.la-pluma-sidebar-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1875rem;
-}
-
 .la-pluma-tab-link {
   color: var(--app-text-muted) !important;
   text-decoration: none;
