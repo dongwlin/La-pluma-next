@@ -826,7 +826,7 @@ export function DashboardSkeleton() {
   const { flowGridRef, flowCardRef, flowPreviewRef, flowGridStyle } = useDashboardFlowLayout()
 
   return (
-    <div className="app-page dashboard-page" data-page="dashboard" aria-busy="true" aria-label="控制台加载中">
+    <div className="app-page dashboard-page" data-page="dashboard" aria-busy="true" aria-label="概览加载中">
       <div className="app-stack-section">
         <PageHeaderSkeleton dashboard />
 

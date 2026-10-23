@@ -24,7 +24,7 @@ interface LayoutProps {
 }
 
 const tabs = [
-  { id: 'dashboard', name: '控制台', icon: LayoutGrid },
+  { id: 'dashboard', name: '概览', icon: LayoutGrid },
   { id: 'automation', name: '自动化', icon: Bot },
   { id: 'combat', name: '作业', icon: Swords },
   { id: 'roguelike', name: '肉鸽', icon: Dices },
@@ -385,7 +385,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="navbar-inner">
             <div className="left">
               <div className="la-pluma-navbar-left">
-                <button type="button" className="link la-pluma-brand" aria-label="La Pluma Next 控制台" onClick={() => navigateToTab('dashboard')}>
+                <button type="button" className="link la-pluma-brand" aria-label="La Pluma Next 概览" onClick={() => navigateToTab('dashboard')}>
                   <img src={`${import.meta.env.BASE_URL}logo-graphite.svg?v=1`} alt="" className="la-pluma-brand-mark" />
                   <span>La Pluma Next</span>
                 </button>

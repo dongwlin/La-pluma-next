@@ -72,7 +72,7 @@ describe('PageSkeleton', () => {
   it('keeps dashboard material styling while data is loading', async () => {
     await renderSkeleton('dashboard')
 
-    const page = container.querySelector('[aria-label="控制台加载中"]')
+    const page = container.querySelector('[aria-label="概览加载中"]')
     expect(page?.classList.contains('dashboard-page')).toBe(true)
     expectCurrentPageHeader()
     expect(page?.querySelector('.dashboard-flow-card')).not.toBeNull()

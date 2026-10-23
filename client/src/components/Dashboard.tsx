@@ -492,7 +492,7 @@ export default function Dashboard() {
     <div className="app-page dashboard-page" data-page="dashboard">
       <div className="app-stack-section">
         <PageHeader
-          title="控制台"
+          title="概览"
           subtitle="当前活动、自动化进度、养成与掉落总览"
           mobileLayout="inline"
           actions={
