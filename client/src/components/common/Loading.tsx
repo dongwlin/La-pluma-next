@@ -288,7 +288,7 @@ function CombatSkeleton() {
               <Skeleton variant="rect" className="combat-task-run-button h-11 w-28 shrink-0 rounded-xl" />
             </div>
             <div className="combat-copilot-layout">
-              <div className="space-y-3 xl:sticky xl:top-24">
+              <div className="space-y-3 xl:sticky xl:top-4">
                 <div className="combat-workspace-section space-y-3">
                   <Skeleton variant="text" className="h-3.5 w-24" />
                   {[1, 2, 3, 4].map(item => <Skeleton key={item} variant="rect" className="h-11 rounded-xl" />)}

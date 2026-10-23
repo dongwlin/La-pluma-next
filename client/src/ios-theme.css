@@ -530,18 +530,20 @@ html.la-pluma-standalone #app-root .page {
   }
 
   .la-pluma-app .la-pluma-sidebar {
+    grid-area: sidebar;
     top: 0.75rem;
     height: calc(var(--la-pluma-viewport-height) - 1.5rem);
   }
 
   .la-pluma-app .la-pluma-navbar {
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
+    /* The brand entry lives in the workspace top bar, in the header cell to
+       the right of the sidebar; it must never enter the rounded glass area. */
+    grid-area: header;
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
     width: 100%;
-    /* Avoid a desktop-wide stacking context: the fade must stay below the
-       sidebar material while the actual toolbar controls remain above it. */
     z-index: auto;
     background: transparent;
     box-shadow: none;
@@ -569,58 +571,41 @@ html.la-pluma-standalone #app-root .page {
   }
 
   .la-pluma-app .la-pluma-navbar::before {
-    display: block;
-    position: absolute;
-    z-index: 0;
-    top: 0;
-    right: 0;
-    /* The top fade is one page-level background, not a workspace-only band.
-       Keep it behind the desktop sidebar frame so the material never meets a
-       differently colored strip at the workspace boundary. */
-    left: 0;
-    height: 100%;
-    background: linear-gradient(
-      to bottom,
-      var(--la-pluma-navbar-fade-color) 0%,
-      transparent 100%
-    );
-    content: '';
-    pointer-events: none;
+    /* Content no longer scrolls under the header on desktop: the scroll host
+       lives in its own grid cell below the header row, so the page-level top
+       fade would only tint the workspace top bar. */
+    display: none;
+    content: none;
   }
 
   .la-pluma-app .la-pluma-navbar .navbar-inner {
     z-index: 2;
     padding-right: 2rem;
-    padding-left: calc(var(--la-pluma-sidebar-width) + 1.25rem);
+    padding-left: 1.25rem;
   }
 
   .la-pluma-app .la-pluma-page-body {
+    display: grid;
     height: var(--la-pluma-viewport-height);
     min-height: var(--la-pluma-viewport-height);
+    grid-template-areas:
+      'sidebar header'
+      'sidebar main';
+    grid-template-columns: var(--la-pluma-sidebar-width) minmax(0, 1fr);
+    grid-template-rows: calc(var(--app-navbar-height) + var(--app-safe-area-top)) minmax(0, 1fr);
   }
 
   .la-pluma-app .la-pluma-scroll-host {
-    height: var(--la-pluma-viewport-height);
-    min-height: var(--la-pluma-viewport-height);
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      transparent 0,
-      #000 calc(var(--app-safe-area-top) + var(--app-navbar-height)),
-      #000 100%
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      transparent 0,
-      #000 calc(var(--app-safe-area-top) + var(--app-navbar-height)),
-      #000 100%
-    );
+    grid-area: main;
+    height: 100%;
+    min-height: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   .la-pluma-app .la-pluma-content {
     max-width: 112rem;
-    padding-top: calc(
-      var(--app-navbar-height) + var(--app-safe-area-top) + var(--app-space-page)
-    );
+    padding-top: var(--app-space-page);
     padding-right: 2rem;
     /* The visible sidebar frame ends 0.75rem before the workspace column. */
     padding-left: 1.25rem;

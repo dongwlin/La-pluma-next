@@ -1656,7 +1656,7 @@ export default function CombatTasks() {
                 {/* 作业配置区 */}
                 <div className="combat-copilot-layout">
                   {/* 左栏：设置项 */}
-                  <div className="space-y-3 xl:sticky xl:top-24">
+                  <div className="space-y-3 xl:sticky xl:top-4">
                     <div className="combat-workspace-section">
                       <h5 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-primary">
                         <svg className="w-4 h-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2066,7 +2066,7 @@ export default function CombatTasks() {
                   </div>
 
                   {/* 右栏：搜索框 + 作业介绍 */}
-                  <div className="space-y-3 xl:sticky xl:top-24">
+                  <div className="space-y-3 xl:sticky xl:top-4">
                     {/* 搜索框 */}
                     <div className="combat-workspace-section">
                       <h5 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-primary">
@@ -2348,7 +2348,7 @@ export default function CombatTasks() {
                       )}
                     </div>
 
-                    <div className="space-y-3 xl:sticky xl:top-24">
+                    <div className="space-y-3 xl:sticky xl:top-4">
                       {isParadox ? (
                         <div className="combat-workspace-section">
                           <h5 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-primary">

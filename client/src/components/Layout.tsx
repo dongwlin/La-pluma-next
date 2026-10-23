@@ -380,38 +380,39 @@ export default function Layout({ children }: LayoutProps) {
     <div className="view view-main la-pluma-view">
       <div className="page no-swipeback la-pluma-page" data-name="la-pluma">
         <div className="la-pluma-sidebar-frame" aria-hidden="true" />
-        <header className="navbar la-pluma-navbar">
-          <div className="navbar-bg" aria-hidden="true" />
-          <div className="navbar-inner">
-            <div className="left">
-              <div className="la-pluma-navbar-left">
-                <button type="button" className="link la-pluma-brand" aria-label="La Pluma Next 概览" onClick={() => navigateToTab('dashboard')}>
-                  <img src={`${import.meta.env.BASE_URL}logo-graphite.svg?v=1`} alt="" className="la-pluma-brand-mark" />
-                  <span>La Pluma Next</span>
-                </button>
-              </div>
-            </div>
-            <div className="title">
-              <div className="la-pluma-navbar-title">{tabs.find(tab => tab.id === activeTab)?.name}</div>
-            </div>
-            <div className="right">
-              <div className="la-pluma-navbar-actions">
-                <ThemeToggle />
-                <a
-                  href="https://github.com/dongwlin/La-pluma-next"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link la-pluma-github-link"
-                  aria-label="打开 GitHub 仓库"
-                >
-                  <GitHubMark />
-                </a>
-              </div>
-            </div>
-          </div>
-        </header>
 
         <div className="la-pluma-page-body">
+          <header className="navbar la-pluma-navbar">
+            <div className="navbar-bg" aria-hidden="true" />
+            <div className="navbar-inner">
+              <div className="left">
+                <div className="la-pluma-navbar-left">
+                  <button type="button" className="link la-pluma-brand" aria-label="La Pluma Next 概览" onClick={() => navigateToTab('dashboard')}>
+                    <img src={`${import.meta.env.BASE_URL}logo-graphite.svg?v=1`} alt="" className="la-pluma-brand-mark" />
+                    <span>La Pluma Next</span>
+                  </button>
+                </div>
+              </div>
+              <div className="title">
+                <div className="la-pluma-navbar-title">{tabs.find(tab => tab.id === activeTab)?.name}</div>
+              </div>
+              <div className="right">
+                <div className="la-pluma-navbar-actions">
+                  <ThemeToggle />
+                  <a
+                    href="https://github.com/dongwlin/La-pluma-next"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link la-pluma-github-link"
+                    aria-label="打开 GitHub 仓库"
+                  >
+                    <GitHubMark />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </header>
+
           <aside className="la-pluma-sidebar" aria-label="主要功能">
             <nav className="la-pluma-sidebar-nav" aria-label="工作台">
               {desktopTabGroups.map(group => (
