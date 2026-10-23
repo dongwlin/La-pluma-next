@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import { executeScheduleNow } from './schedulerService.js';
 import { execMaaCommand, getTaskStatus, stopCurrentTask, captureScreen } from './maaService.js';
 import { resolveConnection } from './connectionService.js';
+import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.js';
 import { createLogger } from '../utils/logger.js';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
@@ -140,8 +141,8 @@ async function handleUpdate(update) {
   
   const text = message.text.trim();
   
-  // 检查是否是 maa:// URI（直接发送作业链接）
-  if (text.startsWith('maa://')) {
+  // 检查作业 URI（兼容旧链接）
+  if (parseCopilotUri(text)) {
     logger.debug('检测到作业 URI', { uri: text });
     await handleCommand(chatId, 'copilot', [text]);
     return;
@@ -304,7 +305,7 @@ async function handleCommand(chatId, command, args) {
         
       case 'copilot':
         if (args.length === 0) {
-          response = '❌ 请指定作业 URI，例如：/copilot maa://12345';
+          response = '❌ 请指定作业 URI，例如：/copilot prts://12345';
         } else {
           response = await executeCopilot(args[0]);
         }
@@ -361,8 +362,8 @@ function getHelpMessage() {
   例如：刷 1-7 或 /fight 1-7
   
 /copilot URI - 执行抄作业（自动导航）
-  例如：/copilot maa://12345
-  或直接发送：maa://12345
+  例如：/copilot prts://12345
+  或直接发送：prts://12345
   ✨ 会自动导航到关卡界面
   
 /roguelike 主题 或 肉鸽 主题 - 执行肉鸽任务
@@ -382,7 +383,7 @@ function getHelpMessage() {
 - 所有命令都支持中文关键词，更方便输入
 - 执行任务前需要先"启动"游戏
 - 任务完成后建议"关闭"游戏
-- 可以直接发送 maa://12345 快速抄作业
+- 可以直接发送 prts://12345 快速抄作业
 - 可以直接发送"截图"快速截图
 - 任务执行完成后会自动发送通知
 
@@ -526,6 +527,7 @@ async function executeRoguelike(theme) {
  * 执行抄作业
  */
 async function executeCopilot(uri) {
+  uri = normalizeCopilotUri(uri);
   try {
     // 1. 获取关卡信息
     const stageInfo = await getStageInfoFromCopilot(uri);
@@ -590,8 +592,9 @@ const STAGE_NAME_MAP = {
  */
 async function getStageInfoFromCopilot(uri) {
   try {
-    if (uri.startsWith('maa://')) {
-      const code = uri.replace('maa://', '').replace(/s$/, '');
+    const parsed = parseCopilotUri(uri);
+    if (parsed && !parsed.isSet) {
+      const code = parsed.id;
       const apiUrl = `https://prts.maa.plus/copilot/get/${code}`;
       
       const response = await fetch(apiUrl);

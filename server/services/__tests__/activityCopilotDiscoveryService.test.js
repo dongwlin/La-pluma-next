@@ -11,6 +11,7 @@ test('activity candidate ranking keeps only exact current-stage titles', () => {
   ], 'BD-4');
 
   assert.deepEqual(candidates.map(candidate => candidate.id), [1, 2]);
+  assert.deepEqual(candidates.map(candidate => candidate.uri), ['prts://1', 'prts://2']);
   assert.ok(candidates.every(candidate => candidate.stage === 'BD-4'));
 });
 

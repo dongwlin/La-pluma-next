@@ -7,6 +7,7 @@ import { randomBytes } from 'crypto';
 import TOML from '@iarna/toml';
 import { createLogger } from '../utils/logger.js';
 import { getFallbackActivity } from './activityFallbackService.js';
+import { normalizeCopilotCommandArgs } from './copilotUri.js';
 import { acquireMaaExecutionLease } from './executionCoordinatorService.js';
 import { loadUserConfig, saveUserConfig } from './configStorageService.js';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
@@ -222,15 +223,13 @@ function createCommandOutcome({ code = null, signal = null, stdout = '', stderr 
  * 执行 MAA CLI 命令（支持后台异步执行）
  */
 async function execMaaCommandUnlocked(command, args = [], taskName = null, taskType = null, waitForCompletion = false, silent = false, onSettled = null, lifecycle = {}) {
-  const fullCommand = `${MAA_CLI_PATH} ${command} ${args.join(' ')}`;
+  const finalArgs = normalizeCopilotCommandArgs(command, args);
+  const fullCommand = `${MAA_CLI_PATH} ${command} ${finalArgs.join(' ')}`;
   
   // 静默模式下不输出日志（用于健康检查等频繁调用）
   if (!silent) {
     addLog('INFO', `执行命令: ${fullCommand}, 等待完成: ${waitForCompletion}`);
   }
-  
-  // 准备最终的参数列表
-  let finalArgs = [...args];
   
   // 如果有任务名称且不需要等待完成，使用后台异步执行
   if (taskName && !waitForCompletion) {

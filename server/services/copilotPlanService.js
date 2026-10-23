@@ -107,7 +107,7 @@ export async function buildCopilotPlan(setId, raid = 'normal') {
     return {
       id: Number(id),
       stageId: content.stage_name || '',
-      stage: stageCodes.get(content.stage_name)?.code || getNavigationStage(content) || `maa://${id}`,
+      stage: stageCodes.get(content.stage_name)?.code || getNavigationStage(content) || `prts://${id}`,
       apCost: stageCodes.get(content.stage_name)?.apCost || 0,
       presetFormation: isPresetFormationCopilot(content),
       supportsRaid: !isPresetFormationCopilot(content),

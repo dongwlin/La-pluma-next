@@ -164,6 +164,51 @@ describe('CombatTasks execution recovery', () => {
     vi.restoreAllMocks()
   })
 
+  it('previews an explicit PRTS single code without guessing a set with the same id', async () => {
+    mocks.getCopilotInfo.mockResolvedValue({ status_code: 200, data: { content: JSON.stringify({
+      stage_name: 'test_1', doc: { title: 'PRTS 单作业' },
+    }) } })
+    await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'prts://1234')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await click(buttonsByText('预览')[0]!)
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1234')
+    expect(mocks.getCopilotSet).not.toHaveBeenCalled()
+    expect(mocks.getCopilotSetPlan).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('PRTS 单作业')
+  })
+
+  it.each(['prts://s48990', 'maa://48990s'])(
+    'previews %s as a set and executes its selected item using PRTS', async uri => {
+      mocks.getCopilotSetPlan.mockResolvedValue({
+        success: true,
+        data: { items: [{ id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true }], entries: [] },
+      })
+      await renderComponent()
+      const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, uri)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await click(buttonsByText('预览')[0]!)
+      expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
+      expect(mocks.getCopilotInfo).not.toHaveBeenCalled()
+      const executionMode = Array.from(container.querySelectorAll('select'))
+        .find(select => Array.from(select.options).some(option => option.value === 'manual'))!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(executionMode, 'manual')
+        executionMode.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      await click(buttonsByText('立即执行')[0]!)
+      expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
+        'copilot', expect.arrayContaining(['prts://101', '--formation']), null, null, '自动战斗作业', 'combat', true,
+      )
+    },
+  )
+
   it('keeps each active task in the shared continuous-corner card', async () => {
     await renderComponent()
 
@@ -572,7 +617,7 @@ describe('CombatTasks execution recovery', () => {
 
     expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
       'copilot',
-      expect.any(Array),
+      expect.arrayContaining(['prts://1234']),
       null,
       null,
       '自动战斗作业',
