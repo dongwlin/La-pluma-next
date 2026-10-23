@@ -10,7 +10,7 @@
 
 La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台：前端负责配置、编排和可视化，后端负责调用 `maa` CLI、ADB、ScrcpyOverWebRTC 和本地 JSON 配置，把日常任务集中到一个页面里完成。
 
-项目主要面向 macOS 与 Linux 的本地部署：既可以直接运行源码，也可以使用 Docker 镜像；架构、功能、部署与配置等详细说明见下方文档索引。
+项目主要面向 macOS 与 Linux 的本地部署：既可以直接运行源码，也可以使用 Docker 镜像；架构、设计、功能、部署与配置等说明见下方文档索引。
 
 ## ✨ 特性
 
@@ -134,7 +134,7 @@ La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent
 
 ## 📚 文档
 
-详细说明已拆分到 `docs/` 目录。完整索引见 [文档索引](docs/README.md)，常用文档如下：
+完整索引见 [文档索引](docs/README.md)，常用文档如下：
 
 | 文档 | 内容 |
 | --- | --- |
@@ -144,7 +144,8 @@ La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent
 | [部署指南](docs/deployment.md) | Docker 镜像、环境变量、HTTPS/PWA、子路径与 Compose |
 | [配置与跨平台支持](docs/configuration.md) | 运行平台、ADB 连接、Telegram 通知与 Bot 命令 |
 | [开发文档](docs/development.md) | 主要技术点与常用检查命令 |
-| [通用组件库与设计规范](docs/component-library.md) | 语义 token、通用组件用法与页面重构约定 |
+| [设计规范](docs/design.md) | 设计原则、语义 token、布局、响应式与交互状态 |
+| [通用组件库](docs/component-library.md) | 通用组件 API、用法与页面重构清单 |
 | [维护说明](docs/maintaining.md) | 分支与合并、发布流程、容器镜像与兼容性标识 |
 
 ## 🤝 贡献

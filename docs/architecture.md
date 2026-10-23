@@ -15,14 +15,9 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ### 前端 UI 与响应式壳层
 
-前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 common 组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；项目语义 token 与 `ios-theme.css` 统一 iOS 26 风格、La Pluma Next 品牌色和信息密度。
+前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 common 组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
 
-- 桌面端使用左侧工作台导航；移动端使用悬浮的 iOS 风格底部胶囊导航，右侧搜索/更多入口承载次要页面。两端共享同一套 URL 路由和页面状态。
-- 主题由 `useUIStore` 管理，`light`、`dark`、`system` 会同步到文档根节点和 `.la-pluma-app`。页面组件不要自行切换 `.dark` 或另建主题状态。
-- 页面启用 `viewport-fit=cover`。`Layout` 通过统一的安全区 token 管理 navbar、移动 tabbar 和页面内容；自定义固定层只有在不属于应用 chrome 时才补充 `env(safe-area-inset-*)`，避免重复留白。
-- `Button`、`Card`、`Loading`、`Switch` 等通用组件使用原生语义元素，在浏览器、测试、SSR 和嵌入式渲染中保持同一套 DOM 与行为。
-
-新增页面应复用现有 Layout、common 组件和语义 token；不要重复创建桌面侧栏、移动 tabbar 或页面级安全区计算。
+桌面与移动导航、主题、安全区、响应式断点等界面规则以 [设计规范](design.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、common 组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
 
 ## 技术栈
 
@@ -61,7 +56,7 @@ La-pluma-next/
 │   │   ├── hooks/             # 预览、API 请求等 Hook
 │   │   └── utils/             # 工具函数
 │   └── public/                # 静态资源（Logo、图标）
-├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
+├── docs/                      # 项目文档（架构、设计规范、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
 │   │   ├── agent.js           # 主 Agent API
