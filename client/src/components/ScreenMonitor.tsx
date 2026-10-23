@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { maaApi, type WebrtcStatusData } from '../services/api'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
+import { usePreviewStore } from '../stores/previewStore'
+import { usePageVisible } from '../hooks/usePageVisible'
 
 interface ScreenMonitorProps {
   variant?: 'full' | 'compact'
@@ -14,6 +16,8 @@ interface ScreenMonitorProps {
 
 export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) {
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
+  const previewMode = usePreviewStore(state => state.mode)
+  const pageVisible = usePageVisible()
   const [webrtcStatus, setWebrtcStatus] = useState<WebrtcStatusData | null>(null)
   const [webrtcStatusState, setWebrtcStatusState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [webrtcLoading, setWebrtcLoading] = useState<string | null>(null)
@@ -21,6 +25,7 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
   const operationInFlightRef = useRef<string | null>(null)
   const statusRequestRevisionRef = useRef(0)
   const mountedRef = useRef(true)
+  const actionRevisionRef = useRef(0)
 
   const refreshWebrtcStatus = useCallback(async () => {
     const revision = ++statusRequestRevisionRef.current
@@ -41,12 +46,27 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
 
   useEffect(() => {
     mountedRef.current = true
-    void refreshWebrtcStatus()
+    if (!operationInFlightRef.current) {
+      setWebrtcLoading(null)
+      void refreshWebrtcStatus()
+    }
     return () => {
       mountedRef.current = false
       statusRequestRevisionRef.current += 1
+      actionRevisionRef.current += 1
+      operationInFlightRef.current = null
     }
   }, [refreshWebrtcStatus])
+
+  useEffect(() => {
+    if (!pageVisible || previewMode === 'live' || !webrtcStatus?.agentRunning) return
+    // Reconcile the service badge after idle cleanup, without permanent polling.
+    const refreshWhenIdle = () => {
+      if (!operationInFlightRef.current) void refreshWebrtcStatus()
+    }
+    const timers = [4000, 18000].map(delay => setTimeout(refreshWhenIdle, delay))
+    return () => timers.forEach(clearTimeout)
+  }, [pageVisible, previewMode, webrtcStatus?.agentRunning, refreshWebrtcStatus])
 
   const runWebrtcAction = async (action: string, fn: () => Promise<any>, allowWhenUnavailable = false) => {
     if (operationInFlightRef.current) return
@@ -54,6 +74,7 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
       setWebrtcActionError(unavailableMessage)
       return
     }
+    const actionRevision = ++actionRevisionRef.current
     operationInFlightRef.current = action
     statusRequestRevisionRef.current += 1
     setWebrtcLoading(action)
@@ -61,47 +82,62 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
     try {
       const result = await fn()
       if (result?.success === false) throw new Error(maaApi.getErrorMessage(result))
-      if (!mountedRef.current) return
+      if (!mountedRef.current || actionRevision !== actionRevisionRef.current) return
       if (result?.data) {
         setWebrtcStatus(result.data)
         setWebrtcStatusState('ready')
       }
       await refreshWebrtcStatus()
     } catch (error) {
-      if (!mountedRef.current) return
+      if (!mountedRef.current || actionRevision !== actionRevisionRef.current) return
       setWebrtcActionError(error instanceof Error ? error.message : '预览操作失败')
     } finally {
-      operationInFlightRef.current = null
-      if (mountedRef.current) setWebrtcLoading(null)
+      if (actionRevision === actionRevisionRef.current) {
+        operationInFlightRef.current = null
+        if (mountedRef.current) setWebrtcLoading(null)
+      }
     }
   }
 
-  const startWebrtcInfrastructure = async (): Promise<string | undefined> => {
+  const cancelWebrtcStartup = useCallback(() => {
+    if (operationInFlightRef.current !== 'preview') return
+    actionRevisionRef.current += 1
+    statusRequestRevisionRef.current += 1
+    operationInFlightRef.current = null
+    if (mountedRef.current) setWebrtcLoading(null)
+  }, [])
+
+  const startWebrtcInfrastructure = async (signal?: AbortSignal): Promise<string | undefined> => {
     if (operationInFlightRef.current) return undefined
     if (!automationAvailable) {
       setWebrtcActionError(unavailableMessage)
       return undefined
     }
+    const actionRevision = ++actionRevisionRef.current
     operationInFlightRef.current = 'preview'
     statusRequestRevisionRef.current += 1
     setWebrtcLoading('preview')
     setWebrtcActionError(null)
     try {
-      const result = await maaApi.startWebrtc()
+      const result = await maaApi.startWebrtc('default', 'mumu-la-pluma', signal)
       if (!result.success) throw new Error(maaApi.getErrorMessage(result))
       if (!result.data?.signalingUrl) throw new Error('预览服务未返回信令地址')
-      if (!mountedRef.current) return undefined
+      if (!mountedRef.current || signal?.aborted || actionRevision !== actionRevisionRef.current) return undefined
+      statusRequestRevisionRef.current += 1
       setWebrtcStatus(result.data)
       setWebrtcStatusState('ready')
       return result.data.signalingUrl
     } catch (error) {
-      if (!mountedRef.current) return undefined
+      if (!mountedRef.current || signal?.aborted || actionRevision !== actionRevisionRef.current) return undefined
+      statusRequestRevisionRef.current += 1
       setWebrtcStatusState('error')
       setWebrtcActionError(error instanceof Error ? error.message : '无法启动实时预览')
       throw error
     } finally {
-      operationInFlightRef.current = null
-      if (mountedRef.current) setWebrtcLoading(null)
+      if (actionRevision === actionRevisionRef.current) {
+        operationInFlightRef.current = null
+        if (mountedRef.current) setWebrtcLoading(null)
+      }
     }
   }
 
@@ -113,8 +149,9 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
         automationAvailable={automationAvailable}
         automationUnavailableMessage={unavailableMessage}
         deviceId="mumu-la-pluma"
-        signalingUrl={webrtcStatus?.signalingUrl || 'ws://127.0.0.1:8443'}
+        signalingUrl={webrtcStatus?.signalingUrl || '/webrtc-signaling'}
         onStartInfrastructure={startWebrtcInfrastructure}
+        onCancelInfrastructure={cancelWebrtcStartup}
         infrastructureStatus={webrtcStatus}
         infrastructureStatusState={webrtcStatusState}
         infrastructureLoading={webrtcLoading}
@@ -122,12 +159,24 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
         onInstall={() => runWebrtcAction('install', () => maaApi.installWebrtc())}
         onToggleServer={() => runWebrtcAction(
           'server',
-          () => webrtcStatus?.serverRunning ? maaApi.stopWebrtcServer() : maaApi.startWebrtcServer(),
+          () => {
+            if (webrtcStatus?.serverRunning) {
+              usePreviewStore.getState().setMode('off')
+              return maaApi.stopWebrtcServer()
+            }
+            return maaApi.startWebrtcServer()
+          },
           !!webrtcStatus?.serverRunning
         )}
         onToggleAgent={() => runWebrtcAction(
           'agent',
-          () => webrtcStatus?.agentRunning ? maaApi.stopWebrtcAgent() : maaApi.startWebrtcAgent(),
+          () => {
+            if (webrtcStatus?.agentRunning) {
+              usePreviewStore.getState().setMode('off')
+              return maaApi.stopWebrtcAgent()
+            }
+            return maaApi.startWebrtcAgent()
+          },
           !!webrtcStatus?.agentRunning
         )}
       />

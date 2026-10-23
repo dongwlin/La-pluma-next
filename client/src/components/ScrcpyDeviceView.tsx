@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, Gauge, Home, Maximize2, Minimize2, Package, PanelsTopLeft, Plug, RotateCw, Server, SlidersHorizontal, Smartphone, Unplug } from 'lucide-react'
 import { Button } from './common'
-import { useScrcpyWebRTC } from '../hooks/useScrcpyWebRTC'
+import { usePreviewSession } from '../hooks/usePreviewSession'
+import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
+import { usePreviewStore, qualityPresets, fpsOptions, type QualityPreset } from '../stores/previewStore'
+import PreviewModeControls from './PreviewModeControls'
 
 interface ScrcpyDeviceViewProps {
   enabled: boolean
@@ -11,7 +14,8 @@ interface ScrcpyDeviceViewProps {
   variant?: 'full' | 'compact'
   deviceId?: string
   signalingUrl?: string
-  onStartInfrastructure?: () => Promise<string | undefined> | string | undefined
+  onStartInfrastructure?: (signal?: AbortSignal) => Promise<string | undefined> | string | undefined
+  onCancelInfrastructure?: () => void
   autoConnect?: boolean
   onStatusChange?: (status: string, stats: any, error: string | null) => void
   infrastructureStatus?: {
@@ -38,18 +42,6 @@ const statusLabel: Record<string, string> = {
   disconnected: '已断开',
   error: '连接失败'
 }
-
-const qualityPresets = {
-  smooth: { label: '流畅', fps: 30, maxSize: 960, bitrateMbps: 4, maxBitrateMbps: 8 },
-  balanced: { label: '均衡', fps: 45, maxSize: 1280, bitrateMbps: 8, maxBitrateMbps: 16 },
-  crisp: { label: '清晰', fps: 60, maxSize: 1600, bitrateMbps: 14, maxBitrateMbps: 24 },
-  ultra: { label: '超清', fps: 60, maxSize: 1920, bitrateMbps: 20, maxBitrateMbps: 32 }
-} as const
-
-const fpsOptions = [30, 60, 90, 120] as const
-
-type QualityPreset = keyof typeof qualityPresets
-type QualitySelection = QualityPreset | 'custom'
 
 const deviceNavigationActions = [
   { label: '返回', command: 'input keyevent 4', Icon: ArrowLeft },
@@ -96,14 +88,13 @@ interface TrackedPointer {
 }
 
 export default function ScrcpyDeviceView({
-  enabled,
   automationAvailable = true,
   automationUnavailableMessage = '后端服务暂不可用，请稍后重试',
   variant = 'full',
   deviceId = 'mumu-la-pluma',
-  signalingUrl = 'ws://127.0.0.1:8443',
+  signalingUrl = '/webrtc-signaling',
   onStartInfrastructure,
-  autoConnect = false,
+  onCancelInfrastructure,
   onStatusChange,
   infrastructureStatus,
   infrastructureStatusState,
@@ -122,51 +113,44 @@ export default function ScrcpyDeviceView({
   const trackedPointersRef = useRef(new Map<number, TrackedPointer>())
   const pendingPointerMovesRef = useRef(new Map<number, TrackedPointer>())
   const pointerMoveFrameRef = useRef<number | null>(null)
-  const autoConnectStartedRef = useRef(false)
-  const connectRequestGenerationRef = useRef(0)
-  const [quality, setQuality] = useState<QualitySelection>('smooth')
-  const [customFps, setCustomFps] = useState<number>(qualityPresets.smooth.fps)
-  const [customMaxSize, setCustomMaxSize] = useState<number>(qualityPresets.smooth.maxSize)
-  const [customBitrateMbps, setCustomBitrateMbps] = useState<number>(qualityPresets.smooth.bitrateMbps)
+  const quality = usePreviewStore(state => state.quality)
+  const customFps = usePreviewStore(state => state.fps)
+  const customMaxSize = usePreviewStore(state => state.maxSize)
+  const customBitrateMbps = usePreviewStore(state => state.bitrateMbps)
+  const setQuality = usePreviewStore(state => state.setQuality)
+  const setCustomFps = usePreviewStore(state => state.setCustomFps)
+  const setCustomMaxSize = usePreviewStore(state => state.setCustomMaxSize)
+  const setCustomBitrateMbps = usePreviewStore(state => state.setCustomBitrateMbps)
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [immersiveMode, setImmersiveMode] = useState(false)
   const [compactControlsOpen, setCompactControlsOpen] = useState(false)
   const compactControlsId = `scrcpy-controls-${useId().replace(/:/g, '')}`
-  const bitrateProgress = ((customBitrateMbps - 2) / (32 - 2)) * 100
-  const selectedPreset = quality === 'custom' ? null : qualityPresets[quality]
-  const scrcpyOptions = useMemo(() => ({
-    max_fps: customFps,
-    max_size: customMaxSize,
-    bitrate: customBitrateMbps * 1000000,
-    min_bitrate: Math.max(1000000, Math.round(customBitrateMbps * 0.35 * 1000000)),
-    max_bitrate: Math.max(customBitrateMbps, selectedPreset?.maxBitrateMbps ?? customBitrateMbps) * 1000000,
-    bwe: true,
-    audio: false,
-    snapshot_interval: 10
-  }), [customBitrateMbps, customFps, customMaxSize, selectedPreset?.maxBitrateMbps])
-  const webrtc = useScrcpyWebRTC({
+  const bitrateProgress = ((customBitrateMbps - 1) / (32 - 1)) * 100
+  const webrtc = usePreviewSession({
     deviceId,
     signalingUrl,
     videoRef,
+    automationAvailable,
+    onStartInfrastructure,
+    onCancelInfrastructure,
     connectionPath: 'auto',
     ipPreference: 'ipv4',
-    scrcpyOptions
   })
-  const connectWebrtc = webrtc.connect
+  const snapshot = usePreviewSnapshot(automationAvailable)
   const sendTouchRef = useRef(webrtc.sendTouch)
   useEffect(() => {
     sendTouchRef.current = webrtc.sendTouch
   }, [webrtc.sendTouch])
   const isCompact = variant === 'compact'
-  const connectingStatuses = ['connecting', 'signaling', 'waiting_offer', 'connecting_webrtc']
-  const isConnecting = connectingStatuses.includes(webrtc.status)
+  const isConnecting = webrtc.isConnecting
   const previewBusy = infrastructureLoading === 'preview' || isConnecting
-  const canDisconnect = !['idle', 'disconnected'].includes(webrtc.status)
+  const canDisconnect = webrtc.mode !== 'off' || previewBusy || !['idle', 'disconnected'].includes(webrtc.status)
   const resolvedInfrastructureState = infrastructureStatusState || (infrastructureStatus ? 'ready' : 'loading')
   const infrastructureKnown = infrastructureStatus !== null && infrastructureStatus !== undefined
   const infrastructureBusy = infrastructureLoading !== null && infrastructureLoading !== undefined
   const needsInstall = infrastructureKnown && (!infrastructureStatus.installed || !infrastructureStatus.built)
-  const visibleError = webrtc.error || infrastructureError
+  const visibleError = (webrtc.mode === 'live' ? webrtc.error : snapshot.error) || infrastructureError
+  const previewStatusLabel = webrtc.mode === 'off' ? '预览已关闭' : webrtc.paused ? '后台已暂停' : webrtc.mode === 'snapshot' ? '画面快照 · 10s' : webrtc.starting ? '正在启动' : statusLabel[webrtc.status] || webrtc.status
   const statusDotClass = visibleError
     ? 'bg-red-400'
     : webrtc.status === 'connected'
@@ -176,31 +160,14 @@ export default function ScrcpyDeviceView({
         : 'bg-gray-400'
 
   const applyPreset = (preset: QualityPreset) => {
-    const next = qualityPresets[preset]
     setQuality(preset)
-    setCustomFps(next.fps)
-    setCustomMaxSize(next.maxSize)
-    setCustomBitrateMbps(next.bitrateMbps)
     setSettingsDirty(true)
   }
 
-  const connect = useCallback(async () => {
-    if (!automationAvailable) return false
-    const requestGeneration = ++connectRequestGenerationRef.current
-    try {
-      const freshSignalingUrl = await onStartInfrastructure?.()
-      if (requestGeneration !== connectRequestGenerationRef.current) return false
-      if (onStartInfrastructure && !freshSignalingUrl) return false
-      connectWebrtc(freshSignalingUrl)
-      return true
-    } catch {
-      // 基础设施错误由 ScreenMonitor 显示，连接流程到此停止。
-      return false
-    }
-  }, [automationAvailable, connectWebrtc, onStartInfrastructure])
-
-  const connectFromControl = async () => {
-    if (await connect()) setSettingsDirty(false)
+  const connectFromControl = () => {
+    if (!automationAvailable) return
+    webrtc.connect()
+    setSettingsDirty(false)
   }
 
   const runInfrastructureAction = (
@@ -219,21 +186,6 @@ export default function ScrcpyDeviceView({
   useEffect(() => {
     onStatusChange?.(webrtc.status, webrtc.stats, webrtc.error)
   }, [onStatusChange, webrtc.error, webrtc.stats, webrtc.status])
-
-  useEffect(() => {
-    if (!autoConnect) {
-      autoConnectStartedRef.current = false
-      return
-    }
-    if (!enabled || !automationAvailable || autoConnectStartedRef.current) return
-    autoConnectStartedRef.current = true
-    void connect().then(started => {
-      if (!started) autoConnectStartedRef.current = false
-    })
-    return () => {
-      autoConnectStartedRef.current = false
-    }
-  }, [autoConnect, automationAvailable, connect, enabled])
 
   const flushPointerMoves = useCallback(() => {
     pointerMoveFrameRef.current = null
@@ -299,7 +251,6 @@ export default function ScrcpyDeviceView({
   }
 
   useEffect(() => () => {
-    connectRequestGenerationRef.current += 1
     if (pointerMoveFrameRef.current !== null) window.cancelAnimationFrame(pointerMoveFrameRef.current)
     pointerMoveFrameRef.current = null
     pendingPointerMovesRef.current.clear()
@@ -443,7 +394,7 @@ export default function ScrcpyDeviceView({
               <span className={`scrcpy-view-status-dot h-2 w-2 rounded-full ${statusDotClass}`} />
               <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white">{isCompact ? '模拟器画面' : '模拟器实时预览'}</span>
               <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
-                {statusLabel[webrtc.status] || webrtc.status}
+                {previewStatusLabel}
               </span>
             </div>
 
@@ -474,6 +425,11 @@ export default function ScrcpyDeviceView({
             )}
           </div>}
         </div>
+
+        <div className={isCompact ? 'px-4' : ''}>
+          <PreviewModeControls unavailable={!automationAvailable} showAutoStart />
+        </div>
+        <p className={`text-xs leading-5 text-secondary ${isCompact ? 'px-4' : ''}`}>概览与日常共用设置；后台暂停，关闭后释放无人观看的串流。</p>
 
         {!isCompact && <div className="scrcpy-status-grid">
           {statusCards.map(([label, value]) => (
@@ -508,6 +464,7 @@ export default function ScrcpyDeviceView({
             onPointerCancel={(event) => finishPointer(event, true)}
             onLostPointerCapture={onLostPointerCapture}
           />
+          {snapshot.image && <img src={snapshot.image} alt="模拟器画面快照" className="pointer-events-none absolute inset-0 h-full w-full object-contain" />}
           {webrtc.status === 'connected' && !webrtc.inputReady && (
             <div
               className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-white/90"
@@ -517,7 +474,7 @@ export default function ScrcpyDeviceView({
               触控连接中，画面暂不可操作
             </div>
           )}
-          {webrtc.status !== 'connected' && (
+          {webrtc.status !== 'connected' && !snapshot.image && (
             <div
               className="scrcpy-empty-state absolute inset-0 flex items-center justify-center px-6 text-center"
               role={visibleError ? 'alert' : 'status'}
@@ -528,16 +485,16 @@ export default function ScrcpyDeviceView({
                   <Smartphone className="h-5 w-5" strokeWidth={1.6} aria-hidden="true" />
                 </div>
                 <div className="scrcpy-empty-title mb-1 text-sm font-semibold text-primary">
-                  {visibleError ? '预览启动失败' : '等待实时画面'}
+                  {webrtc.mode === 'off' ? '预览已关闭' : visibleError ? '预览启动失败' : previewBusy ? '正在连接实时画面' : webrtc.mode === 'snapshot' ? '正在获取快照' : '等待实时画面'}
                 </div>
                 <div className="scrcpy-empty-description mx-auto max-w-md text-xs leading-5 text-secondary">
                   {visibleError || (!automationAvailable
                     ? automationUnavailableMessage
                     : isCompact
-                    ? '预览服务尚未连接。'
-                    : '点击“启动实时预览”后，La-pluma 会自动启动服务、连接 MuMu 并显示实时画面。')}
+                    ? '选择快照或实时，也可以点击下方按钮启动。'
+                    : '选择快照每 10 秒查看画面，或启动实时预览以操作模拟器。')}
                 </div>
-                <div className="scrcpy-empty-actions mt-4 flex justify-center">
+                <div className="scrcpy-empty-actions mt-4 flex flex-wrap justify-center gap-2">
                   <Button
                     size="sm"
                     variant="primary"
@@ -558,6 +515,7 @@ export default function ScrcpyDeviceView({
                         ? '重试预览'
                         : '启动预览'}
                   </Button>
+                  {(webrtc.mode !== 'off' || previewBusy) && <Button size="sm" variant="secondary" onClick={webrtc.disconnect}>{previewBusy ? '取消启动' : '关闭预览'}</Button>}
                 </div>
               </div>
             </div>
@@ -607,9 +565,11 @@ export default function ScrcpyDeviceView({
             </div>
             <span className="scrcpy-inline-status" role="status" aria-live="polite">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDotClass}`} />
-              {statusLabel[webrtc.status] || webrtc.status}
+              {previewStatusLabel}
             </span>
           </div>
+
+          <p className="text-xs leading-5 text-secondary">停止服务或 Agent 会断开其他观看者。</p>
 
           {webrtc.status === 'connected' && (
             <Button
@@ -653,11 +613,11 @@ export default function ScrcpyDeviceView({
             <button
               type="button"
               onClick={webrtc.disconnect}
-              disabled={webrtc.status === 'idle' || webrtc.status === 'disconnected'}
+              disabled={!canDisconnect}
               className="scrcpy-utility-action min-h-11"
             >
               <Unplug className="h-3.5 w-3.5" strokeWidth={1.8} />
-              <span>断开</span>
+              <span>{previewBusy ? '取消启动' : '断开'}</span>
             </button>
             <button
               type="button"
@@ -724,6 +684,16 @@ export default function ScrcpyDeviceView({
                 </div>
               </div>
 
+              <label className="scrcpy-setting-group text-xs text-secondary">
+                最长边
+                <select aria-label="视频最长边" value={customMaxSize} className="control-surface min-h-11 rounded-md px-3 text-primary" onChange={event => {
+                  setCustomMaxSize(Number(event.target.value))
+                  setSettingsDirty(true)
+                }}>
+                  {[640, 960, 1280, 1600, 1920].map(size => <option key={size} value={size}>{size}px</option>)}
+                </select>
+              </label>
+
               <div className="scrcpy-bitrate-control">
                 <div className="scrcpy-bitrate-header">
                   <span className="scrcpy-bitrate-label">
@@ -745,9 +715,9 @@ export default function ScrcpyDeviceView({
                   <input
                     id="scrcpy-bitrate"
                     type="range"
-                    min={2}
+                    min={1}
                     max={32}
-                    step={1}
+                    step={0.5}
                     value={customBitrateMbps}
                     aria-label="视频码率"
                     onChange={(event) => {

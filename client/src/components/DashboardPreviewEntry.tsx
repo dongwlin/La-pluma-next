@@ -2,13 +2,14 @@ import { memo } from 'react'
 import { Monitor } from 'lucide-react'
 import { Button, SmoothPanel } from './common'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
+import PreviewModeControls from './PreviewModeControls'
 
 interface DashboardPreviewEntryProps {
   onOpen: () => void
 }
 
 const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: DashboardPreviewEntryProps) {
-  const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, statusText, headerStatusText } = useDashboardPreview()
+  const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, statusText, headerStatusText, error, retry } = useDashboardPreview()
 
   return (
     <SmoothPanel
@@ -19,12 +20,16 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
       <div className="dashboard-preview-header flex items-center justify-between gap-3 px-4 py-2.5 border-b border-[var(--app-border)]">
         <div className="flex items-center gap-2">
           <div className={`h-1.5 w-1.5 rounded-full ${showLivePreview ? 'bg-[var(--app-success)]' : 'bg-[var(--app-accent)]'}`} />
-          <span className="text-xs font-medium text-secondary">模拟器实时预览</span>
+          <span className="text-xs font-medium text-secondary">模拟器预览</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden sm:inline text-[10px] text-secondary">{headerStatusText}</span>
+          <span className="hidden sm:inline text-xs text-secondary">{headerStatusText}</span>
           <Button onClick={onOpen} variant="ghost" size="sm" className="min-h-11 sm:min-h-9">打开</Button>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-border)] px-4 py-2">
+        <PreviewModeControls />
+        {error && <Button onClick={retry} variant="ghost" size="sm">重试实时预览</Button>}
       </div>
       <div
         data-dashboard-preview-frame
@@ -57,12 +62,12 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
               <div className="device-preview-empty-icon mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg">
                 <Monitor size={17} strokeWidth={2} />
               </div>
-              <div className="text-sm font-semibold text-primary">等待 Live 画面</div>
+              <div className="text-sm font-semibold text-primary">{statusText}</div>
               <div className="mt-1 text-xs text-secondary">点击进入完整控制台</div>
             </div>
           )}
         </button>
-        <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-[var(--app-border)] bg-[color-mix(in_srgb,var(--app-bg)_55%,transparent)] px-2 py-1 text-[10px] text-primary">
+        <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-[var(--app-border)] bg-[color-mix(in_srgb,var(--app-bg)_55%,transparent)] px-2 py-1 text-xs text-primary">
           {statusText}
         </div>
       </div>

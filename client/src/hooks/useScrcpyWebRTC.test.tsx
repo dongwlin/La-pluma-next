@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, useEffect, useRef } from 'react'
+import { Activity, act, useEffect, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -51,6 +51,49 @@ class MockWebSocket {
   }
 }
 
+class MockMediaStream {
+  private tracks: MediaStreamTrack[] = []
+  getTracks() { return this.tracks }
+  getVideoTracks() { return this.tracks.filter(track => track.kind === 'video') }
+  addTrack(track: MediaStreamTrack) { this.tracks.push(track) }
+}
+
+class MockMediaTrack extends EventTarget {
+  readonly id = 'video-track'
+  readonly kind = 'video'
+  readyState: MediaStreamTrackState = 'live'
+  muted = false
+  stop = vi.fn(() => { this.readyState = 'ended' })
+}
+
+class MockPeerConnection extends EventTarget {
+  static instances: MockPeerConnection[] = []
+  localDescription: RTCSessionDescription | null = null
+  iceConnectionState: RTCIceConnectionState = 'new'
+  connectionState: RTCPeerConnectionState = 'new'
+  signalingState: RTCSignalingState = 'stable'
+  iceGatheringState: RTCIceGatheringState = 'complete'
+  ontrack: ((event: RTCTrackEvent) => void) | null = null
+  onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null
+  ondatachannel: ((event: RTCDataChannelEvent) => void) | null = null
+  oniceconnectionstatechange: (() => void) | null = null
+  onconnectionstatechange: (() => void) | null = null
+  setRemoteDescription = vi.fn(async (_description: RTCSessionDescriptionInit) => {})
+  createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'v=0\r\n' }))
+  setLocalDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
+    this.localDescription = description as RTCSessionDescription
+  })
+  addIceCandidate = vi.fn(async () => {})
+  getReceivers = vi.fn((): RTCRtpReceiver[] => [])
+  close = vi.fn(() => { this.connectionState = 'closed' })
+  getStats = vi.fn(async () => new Map())
+
+  constructor() {
+    super()
+    MockPeerConnection.instances.push(this)
+  }
+}
+
 type WebrtcHook = ReturnType<typeof useScrcpyWebRTC>
 
 let hook: WebrtcHook | null = null
@@ -74,11 +117,49 @@ async function flushAsyncWork() {
   })
 }
 
+function sendSocketMessage(message: unknown, socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!) {
+  act(() => socket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) })))
+}
+
+async function openSignalingConnection() {
+  act(() => hook!.connect())
+  await flushAsyncWork()
+  act(() => MockWebSocket.instances[MockWebSocket.instances.length - 1]!.open())
+}
+
+async function receiveOffer() {
+  sendSocketMessage({ message_type: 'device_msg', payload: { type: 'offer', sdp: 'v=0\r\n' } })
+  await flushAsyncWork()
+  return MockPeerConnection.instances[MockPeerConnection.instances.length - 1]!
+}
+
+function receiveTrack(pc: MockPeerConnection, track = new MockMediaTrack()) {
+  act(() => pc.ontrack?.({ track } as unknown as RTCTrackEvent))
+  return track
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 describe('useScrcpyWebRTC startup', () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     MockWebSocket.instances = []
+    MockPeerConnection.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket)
+    vi.stubGlobal('MediaStream', MockMediaStream)
+    vi.stubGlobal('RTCPeerConnection', MockPeerConnection)
+    vi.stubGlobal('RTCSessionDescription', class {
+      constructor(init: RTCSessionDescriptionInit) { Object.assign(this, init) }
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -88,7 +169,7 @@ describe('useScrcpyWebRTC startup', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
-    await act(async () => root.render(<Harness />))
+    await act(async () => root.render(<Activity mode="visible"><Harness /></Activity>))
   })
 
   afterEach(async () => {
@@ -96,6 +177,7 @@ describe('useScrcpyWebRTC startup', () => {
     container.remove()
     hook = null
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -127,7 +209,7 @@ describe('useScrcpyWebRTC startup', () => {
     const headers = new Headers(init?.headers)
     expect(url).toBe('http://localhost:3000/webrtc-signaling/api/login')
     expect(headers.get('Authorization')).toBe('Bearer la-pluma-secret')
-    expect(MockWebSocket.instances[0]!.url).toBe('ws://localhost:3000/webrtc-signaling/connect_client?token=fresh-token')
+    expect(MockWebSocket.instances[0]!.url).toBe('ws://localhost:3000/webrtc-signaling/connect_client?token=fresh-token&deviceId=mumu-la-pluma')
   })
 
   it('retries one transient startup failure without creating duplicate sockets', async () => {
@@ -247,6 +329,252 @@ describe('useScrcpyWebRTC startup', () => {
     expect(hook!.error).toBeNull()
   })
 
+  it('ignores token responses that arrive after cancelling a connection', async () => {
+    const response = deferred<Response>()
+    vi.mocked(fetch).mockReturnValue(response.promise)
+    act(() => hook!.connect())
+    const signal = vi.mocked(fetch).mock.calls[0]![1]!.signal
+
+    act(() => hook!.disconnect())
+    await act(async () => response.resolve({
+      ok: true,
+      json: async () => ({ token: 'cancelled-token' })
+    } as Response))
+    await flushAsyncWork()
+
+    expect(signal?.aborted).toBe(true)
+    expect(MockWebSocket.instances).toHaveLength(0)
+    expect(window.localStorage.getItem('scrcpy_webrtc_auth_token')).toBeNull()
+    expect(hook!.status).toBe('disconnected')
+  })
+
+  it('ignores queued events from a cancelled socket after another preview starts', async () => {
+    act(() => hook!.connect())
+    await flushAsyncWork()
+    const oldSocket = MockWebSocket.instances[0]!
+    const queuedOpen = oldSocket.onopen!
+    const queuedMessage = oldSocket.onmessage!
+    act(() => hook!.disconnect())
+    await openSignalingConnection()
+
+    act(() => {
+      queuedOpen(new Event('open'))
+      queuedMessage(new MessageEvent('message', {
+        data: JSON.stringify({ message_type: 'device_msg', payload: { type: 'offer', sdp: 'v=0\r\n' } })
+      }))
+    })
+
+    expect(oldSocket.send).not.toHaveBeenCalled()
+    expect(MockPeerConnection.instances).toHaveLength(0)
+    expect(hook!.status).toBe('signaling')
+  })
+
+  it('does not continue an old offer after disconnect while remote SDP is pending', async () => {
+    const remoteDescription = deferred<void>()
+    vi.stubGlobal('RTCPeerConnection', class extends MockPeerConnection {
+      override setRemoteDescription = vi.fn(() => remoteDescription.promise)
+    })
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+
+    act(() => hook!.disconnect())
+    await act(async () => remoteDescription.resolve())
+    await flushAsyncWork()
+
+    expect(pc.createAnswer).not.toHaveBeenCalled()
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(hook!.status).toBe('disconnected')
+  })
+
+  it('stops a queued remote video track after disconnect without attaching it', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const queuedTrack = pc.ontrack!
+    act(() => hook!.disconnect())
+    const track = new MockMediaTrack()
+
+    act(() => queuedTrack({ track } as unknown as RTCTrackEvent))
+
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(container.querySelector('video')!.srcObject).toBeNull()
+    expect(hook!.mediaStream).toBeNull()
+    expect(hook!.status).toBe('disconnected')
+  })
+
+  it('stops receiver tracks even when their ontrack event has not arrived', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const track = new MockMediaTrack()
+    pc.getReceivers.mockReturnValue([{ track } as unknown as RTCRtpReceiver])
+
+    act(() => hook!.disconnect())
+
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(pc.close).toHaveBeenCalledOnce()
+  })
+
+  it('closes transport and input resources when SDP negotiation fails', async () => {
+    const remoteDescription = deferred<void>()
+    vi.stubGlobal('RTCPeerConnection', class extends MockPeerConnection {
+      override setRemoteDescription = vi.fn(() => remoteDescription.promise)
+    })
+    await openSignalingConnection()
+    const socket = MockWebSocket.instances[0]!
+    const pc = await receiveOffer()
+    const track = receiveTrack(pc)
+    const channel = {
+      label: 'input-channel', readyState: 'open', close: vi.fn(),
+      onopen: null, onclose: null, onerror: null,
+    }
+    act(() => pc.ondatachannel?.({ channel } as unknown as RTCDataChannelEvent))
+    expect(hook!.inputReady).toBe(true)
+
+    await act(async () => remoteDescription.reject(new Error('invalid SDP')))
+    await flushAsyncWork()
+
+    expect(hook!.status).toBe('error')
+    expect(hook!.error).toBe('SDP 处理失败: invalid SDP')
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(channel.close).toHaveBeenCalledOnce()
+    expect(channel.onopen).toBeNull()
+    expect(hook!.inputReady).toBe(false)
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED)
+    expect(socket.onmessage).toBeNull()
+    expect(container.querySelector('video')!.srcObject).toBeNull()
+    expect(hook!.mediaStream).toBeNull()
+  })
+
+  it.each([
+    'invalid message', 'signaling error', 'socket error', 'socket close', 'ICE failure', 'peer failure', 'track ended'
+  ])('releases live transport resources after %s', async failure => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const track = receiveTrack(pc)
+    const socket = MockWebSocket.instances[0]!
+    act(() => {
+      if (failure === 'invalid message') socket.onmessage?.(new MessageEvent('message', { data: 'broken' }))
+      if (failure === 'signaling error') socket.onmessage?.(new MessageEvent('message', {
+        data: JSON.stringify({ message_type: 'error', error: 'device unavailable' })
+      }))
+      if (failure === 'socket error') socket.onerror?.(new Event('error'))
+      if (failure === 'socket close') socket.onclose?.(new CloseEvent('close', { code: 1006 }))
+      if (failure === 'ICE failure') {
+        pc.iceConnectionState = 'failed'
+        pc.oniceconnectionstatechange?.()
+      }
+      if (failure === 'peer failure') {
+        pc.connectionState = 'failed'
+        pc.onconnectionstatechange?.()
+      }
+      if (failure === 'track ended') track.dispatchEvent(new Event('ended'))
+    })
+
+    expect(hook!.status).toBe('error')
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED)
+    expect(hook!.mediaStream).toBeNull()
+    expect(container.querySelector('video')!.srcObject).toBeNull()
+  })
+
+  it('times out an open socket that never sends signaling configuration', async () => {
+    await openSignalingConnection()
+    await act(async () => vi.advanceTimersByTimeAsync(12000))
+
+    expect(hook!.status).toBe('error')
+    expect(hook!.error).toContain('等待信令配置超时')
+    expect(MockWebSocket.instances[0]!.readyState).toBe(MockWebSocket.CLOSED)
+  })
+
+  it('times out waiting for an offer with a new deadline after configuration', async () => {
+    await openSignalingConnection()
+    await act(async () => vi.advanceTimersByTimeAsync(10000))
+    sendSocketMessage({ message_type: 'config', ice_servers: [] })
+    await act(async () => vi.advanceTimersByTimeAsync(11999))
+    expect(hook!.status).toBe('waiting_offer')
+
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(hook!.status).toBe('error')
+    expect(hook!.error).toContain('等待设备预览响应超时')
+  })
+
+  it('times out a connected peer that never receives video', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    act(() => {
+      pc.connectionState = 'connected'
+      pc.onconnectionstatechange?.()
+    })
+    expect(hook!.status).toBe('connecting_webrtc')
+
+    await act(async () => vi.advanceTimersByTimeAsync(20000))
+
+    expect(hook!.status).toBe('error')
+    expect(hook!.error).toContain('建立预览视频连接超时')
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(MockWebSocket.instances[0]!.readyState).toBe(MockWebSocket.CLOSED)
+  })
+
+  it('times out a stalled answer and ignores its eventual result', async () => {
+    const answer = deferred<{ type: 'answer'; sdp: string }>()
+    vi.stubGlobal('RTCPeerConnection', class extends MockPeerConnection {
+      override createAnswer = vi.fn(() => answer.promise)
+    })
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    expect(pc.createAnswer).toHaveBeenCalledOnce()
+
+    await act(async () => vi.advanceTimersByTimeAsync(20000))
+    await act(async () => answer.resolve({ type: 'answer', sdp: 'v=0\r\n' }))
+    await flushAsyncWork()
+
+    expect(hook!.status).toBe('error')
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(pc.setLocalDescription).not.toHaveBeenCalled()
+  })
+
+  it('finishes connecting when the remote video becomes live and clears its deadline', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const track = new MockMediaTrack()
+    track.muted = true
+    receiveTrack(pc, track)
+    act(() => {
+      pc.connectionState = 'connected'
+      pc.onconnectionstatechange?.()
+    })
+    expect(hook!.status).toBe('connecting_webrtc')
+
+    act(() => {
+      track.muted = false
+      track.dispatchEvent(new Event('unmute'))
+    })
+    expect(hook!.status).toBe('connected')
+    await act(async () => vi.advanceTimersByTimeAsync(21000))
+    expect(hook!.status).toBe('connected')
+    expect(pc.close).not.toHaveBeenCalled()
+  })
+
+  it('tears down a hidden React Activity and does not resume its preview on reveal', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const track = receiveTrack(pc)
+    const video = container.querySelector('video')!
+
+    await act(async () => root.render(<Activity mode="hidden"><Harness /></Activity>))
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(MockWebSocket.instances[0]!.readyState).toBe(MockWebSocket.CLOSED)
+    expect(video.srcObject).toBeNull()
+
+    await act(async () => root.render(<Activity mode="visible"><Harness /></Activity>))
+    await act(async () => vi.advanceTimersByTimeAsync(21000))
+    expect(hook!.status).toBe('disconnected')
+    expect(hook!.mediaStream).toBeNull()
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
   it('ignores stale SDP failures after disconnecting the old connection', async () => {
     let rejectRemoteDescription: ((reason?: unknown) => void) | undefined
     class MockMediaStream {
@@ -272,6 +600,7 @@ describe('useScrcpyWebRTC startup', () => {
       createAnswer = vi.fn()
       setLocalDescription = vi.fn()
       addIceCandidate = vi.fn()
+      getReceivers = vi.fn(() => [])
       addEventListener = vi.fn()
       removeEventListener = vi.fn()
       close = vi.fn()

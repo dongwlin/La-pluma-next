@@ -49,6 +49,8 @@ const SIGNALING_TOKEN_KEY = 'scrcpy_webrtc_auth_token'
 const DEFAULT_SIGNALING_PATH = '/webrtc-signaling'
 const SIGNALING_RETRY_DELAYS_MS = [300, 800]
 const SIGNALING_ATTEMPT_TIMEOUT_MS = 4000
+const SIGNALING_PHASE_TIMEOUT_MS = 12000
+const WEBRTC_MEDIA_TIMEOUT_MS = 20000
 const INPUT_CHANNEL_BACKPRESSURE_BYTES = 64 * 1024
 
 interface SignalingEndpoints {
@@ -151,15 +153,18 @@ export function resolveSignalingEndpoints(
   }
 }
 
+function usesSameOriginGateway(httpBase: string) {
+  return new URL(`${httpBase}/api/login`).toString()
+    === new URL(`${DEFAULT_SIGNALING_PATH}/api/login`, window.location.href).toString()
+}
+
 async function getSignalingToken(httpBase: string, signal: AbortSignal) {
   // The signaling server can restart between previews, invalidating its old token.
   window.localStorage.removeItem(SIGNALING_TOKEN_KEY)
   const loginUrl = `${httpBase}/api/login`
-  const gatewayLoginUrl = new URL(`${DEFAULT_SIGNALING_PATH}/api/login`, window.location.href).toString()
-  const usesSameOriginGateway = new URL(loginUrl).toString() === gatewayLoginUrl
   let response: Response
   try {
-    response = usesSameOriginGateway
+    response = usesSameOriginGateway(httpBase)
       ? await fetchWithAuth(loginUrl, {
           method: 'POST',
           cache: 'no-store',
@@ -177,13 +182,15 @@ async function getSignalingToken(httpBase: string, signal: AbortSignal) {
   }
   if (!response.ok) throw new Error(`信令服务登录失败 (HTTP ${response.status})`)
   const data = await response.json().catch(() => null)
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
   if (typeof data?.token !== 'string' || !data.token.trim()) throw new Error('信令服务返回了无效凭证')
   window.localStorage.setItem(SIGNALING_TOKEN_KEY, data.token)
   return data.token as string
 }
 
-function normalizeSignalingUrl(websocketBase: string, token: string) {
-  return `${websocketBase}/connect_client?token=${encodeURIComponent(token)}`
+function normalizeSignalingUrl(websocketBase: string, token: string, deviceId?: string) {
+  const deviceQuery = deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ''
+  return `${websocketBase}/connect_client?token=${encodeURIComponent(token)}${deviceQuery}`
 }
 
 function candidateHasIpv6(candidate: string) {
@@ -227,11 +234,14 @@ export function useScrcpyWebRTC({
   const inputChannelRef = useRef<RTCDataChannel | null>(null)
   const inputChannelCleanupRef = useRef<(() => void) | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const attachedVideoRef = useRef<HTMLVideoElement | null>(null)
+  const trackCleanupRef = useRef<(() => void)[]>([])
   const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }])
   const touchSeqRef = useRef(0)
   const connectionGenerationRef = useRef(0)
   const retryTimerRef = useRef<number | null>(null)
   const attemptTimeoutRef = useRef<number | null>(null)
+  const connectionTimeoutRef = useRef<number | null>(null)
   const authAbortControllerRef = useRef<AbortController | null>(null)
   const iceGatheringCleanupRef = useRef<(() => void) | null>(null)
   const prevStatsRef = useRef({ timestamp: 0, bytesReceived: 0, framesDecoded: 0 })
@@ -239,8 +249,14 @@ export function useScrcpyWebRTC({
   const sendForward = useCallback((payload: unknown) => {
     const ws = wsRef.current
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ message_type: 'forward', device_id: deviceId, payload }))
+      try {
+        ws.send(JSON.stringify({ message_type: 'forward', device_id: deviceId, payload }))
+        return true
+      } catch {
+        return false
+      }
     }
+    return false
   }, [deviceId])
 
   const filterSdpCandidates = useCallback((sdp: string) => {
@@ -250,85 +266,10 @@ export function useScrcpyWebRTC({
     }).join('\r\n')
   }, [connectionPath, ipPreference])
 
-  const sendAnswer = useCallback(() => {
-    const pc = pcRef.current
-    if (!pc?.localDescription) return
-    sendForward({ type: 'answer', sdp: filterSdpCandidates(pc.localDescription.sdp || '') })
+  const sendAnswer = useCallback((pc: RTCPeerConnection) => {
+    if (pcRef.current !== pc || !pc.localDescription) return false
+    return sendForward({ type: 'answer', sdp: filterSdpCandidates(pc.localDescription.sdp || '') })
   }, [filterSdpCandidates, sendForward])
-
-  const createPeerConnection = useCallback(() => {
-    if (pcRef.current) return pcRef.current
-    const pc = new RTCPeerConnection({
-      iceServers: iceServersRef.current,
-      iceTransportPolicy: connectionPath === 'relay' ? 'relay' : 'all'
-    })
-    pcRef.current = pc
-    const stream = new MediaStream()
-    streamRef.current = stream
-    setMediaStream(stream)
-
-    pc.ontrack = evt => {
-      if (pcRef.current !== pc) return
-      if (evt.track.kind !== 'video') return
-      const stream = streamRef.current || new MediaStream()
-      streamRef.current = stream
-      if (!stream.getTracks().some(track => track.id === evt.track.id)) stream.addTrack(evt.track)
-      const video = videoRef.current
-      if (video) {
-        video.srcObject = stream
-        void video.play().catch(() => {})
-      }
-    }
-
-    pc.onicecandidate = evt => {
-      if (pcRef.current !== pc) return
-      if (!evt.candidate) return
-      const candidate = evt.candidate.candidate
-      if (!shouldKeepCandidate(candidate, connectionPath, ipPreference)) return
-      sendForward({
-        type: 'ice-candidate',
-        candidate: {
-          candidate,
-          sdpMid: evt.candidate.sdpMid,
-          sdpMLineIndex: evt.candidate.sdpMLineIndex
-        }
-      })
-    }
-
-    pc.ondatachannel = evt => {
-      if (pcRef.current !== pc) return
-      if (evt.channel.label !== 'input-channel') return
-
-      const channel = evt.channel
-      inputChannelCleanupRef.current?.()
-      inputChannelRef.current = channel
-      inputChannelCleanupRef.current = bindInputChannelReadiness(channel, ready => {
-        if (inputChannelRef.current !== channel) return
-        setInputReady(ready)
-      })
-    }
-
-    pc.oniceconnectionstatechange = () => {
-      if (pcRef.current !== pc) return
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') setStatus('connected')
-      if (pc.iceConnectionState === 'failed') {
-        setError('ICE connection failed')
-        setStatus('error')
-      }
-    }
-
-    pc.onconnectionstatechange = () => {
-      if (pcRef.current !== pc) return
-      if (pc.connectionState === 'connected') setStatus('connected')
-      if (pc.connectionState === 'failed') {
-        setError('WebRTC connection failed')
-        setStatus('error')
-      }
-      if (pc.connectionState === 'closed' || pc.connectionState === 'disconnected') setStatus('disconnected')
-    }
-
-    return pc
-  }, [connectionPath, ipPreference, sendForward, videoRef])
 
   const teardownConnection = useCallback(() => {
     if (retryTimerRef.current !== null) {
@@ -339,31 +280,167 @@ export function useScrcpyWebRTC({
       window.clearTimeout(attemptTimeoutRef.current)
       attemptTimeoutRef.current = null
     }
+    if (connectionTimeoutRef.current !== null) {
+      window.clearTimeout(connectionTimeoutRef.current)
+      connectionTimeoutRef.current = null
+    }
     authAbortControllerRef.current?.abort()
     authAbortControllerRef.current = null
     iceGatheringCleanupRef.current?.()
     iceGatheringCleanupRef.current = null
-    inputChannelRef.current = null
     inputChannelCleanupRef.current?.()
     inputChannelCleanupRef.current = null
+    const channel = inputChannelRef.current
+    inputChannelRef.current = null
+    channel?.close()
     setInputReady(false)
+    trackCleanupRef.current.forEach(cleanup => cleanup())
+    trackCleanupRef.current = []
     const pc = pcRef.current
     pcRef.current = null
+    const tracks = new Set(streamRef.current?.getTracks())
     if (pc) {
+      pc.ontrack = null
+      pc.onicecandidate = null
+      pc.ondatachannel = null
       pc.oniceconnectionstatechange = null
       pc.onconnectionstatechange = null
+      pc.getReceivers().forEach(receiver => {
+        if (receiver.track) tracks.add(receiver.track)
+      })
       pc.close()
     }
     const ws = wsRef.current
     wsRef.current = null
-    if (ws && ws.readyState < WebSocket.CLOSING) ws.close()
-    streamRef.current?.getTracks().forEach(track => track.stop())
+    if (ws) {
+      ws.onopen = null
+      ws.onmessage = null
+      ws.onerror = null
+      ws.onclose = null
+      if (ws.readyState < WebSocket.CLOSING) ws.close()
+    }
+    tracks.forEach(track => track.stop())
     streamRef.current = null
     setMediaStream(null)
+    if (attachedVideoRef.current) attachedVideoRef.current.srcObject = null
+    attachedVideoRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     prevStatsRef.current = { timestamp: 0, bytesReceived: 0, framesDecoded: 0 }
     setStats(null)
   }, [videoRef])
+
+  const finishConnection = useCallback((generation: number, nextStatus: 'error' | 'disconnected', message: string | null) => {
+    if (connectionGenerationRef.current !== generation) return
+    connectionGenerationRef.current += 1
+    teardownConnection()
+    setError(message)
+    setStatus(nextStatus)
+  }, [teardownConnection])
+
+  const armConnectionTimeout = useCallback((generation: number, delay: number, message: string) => {
+    if (connectionTimeoutRef.current !== null) window.clearTimeout(connectionTimeoutRef.current)
+    connectionTimeoutRef.current = window.setTimeout(() => {
+      connectionTimeoutRef.current = null
+      finishConnection(generation, 'error', message)
+    }, delay)
+  }, [finishConnection])
+
+  const createPeerConnection = useCallback((generation: number) => {
+    if (pcRef.current) return pcRef.current
+    const pc = new RTCPeerConnection({
+      iceServers: iceServersRef.current,
+      iceTransportPolicy: connectionPath === 'relay' ? 'relay' : 'all'
+    })
+    pcRef.current = pc
+    const stream = new MediaStream()
+    streamRef.current = stream
+    setMediaStream(stream)
+    const isCurrentConnection = () => connectionGenerationRef.current === generation && pcRef.current === pc
+    const markConnected = () => {
+      if (!isCurrentConnection()) return
+      const peerConnected = pc.connectionState === 'connected' || ['connected', 'completed'].includes(pc.iceConnectionState)
+      const hasLiveVideo = stream.getVideoTracks().some(track => track.readyState === 'live' && !track.muted)
+      if (!peerConnected || !hasLiveVideo) return
+      if (connectionTimeoutRef.current !== null) window.clearTimeout(connectionTimeoutRef.current)
+      connectionTimeoutRef.current = null
+      setStatus('connected')
+    }
+
+    pc.ontrack = evt => {
+      if (!isCurrentConnection() || evt.track.kind !== 'video') {
+        evt.track.stop()
+        return
+      }
+      if (!stream.getTracks().some(track => track.id === evt.track.id)) {
+        stream.addTrack(evt.track)
+        const onEnded = () => finishConnection(generation, 'error', '预览视频流已中断，请重新启动预览')
+        evt.track.addEventListener('unmute', markConnected)
+        evt.track.addEventListener('ended', onEnded)
+        trackCleanupRef.current.push(() => {
+          evt.track.removeEventListener('unmute', markConnected)
+          evt.track.removeEventListener('ended', onEnded)
+        })
+      }
+      const video = videoRef.current
+      if (video) {
+        attachedVideoRef.current = video
+        video.srcObject = stream
+        void video.play().catch(() => {})
+      }
+      markConnected()
+    }
+
+    pc.onicecandidate = evt => {
+      if (!isCurrentConnection() || !evt.candidate) return
+      const candidate = evt.candidate.candidate
+      if (!shouldKeepCandidate(candidate, connectionPath, ipPreference)) return
+      if (!sendForward({
+        type: 'ice-candidate',
+        candidate: {
+          candidate,
+          sdpMid: evt.candidate.sdpMid,
+          sdpMLineIndex: evt.candidate.sdpMLineIndex
+        }
+      })) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
+    }
+
+    pc.ondatachannel = evt => {
+      if (!isCurrentConnection() || evt.channel.label !== 'input-channel') {
+        evt.channel.close()
+        return
+      }
+      const channel = evt.channel
+      inputChannelCleanupRef.current?.()
+      if (inputChannelRef.current !== channel) inputChannelRef.current?.close()
+      inputChannelRef.current = channel
+      inputChannelCleanupRef.current = bindInputChannelReadiness(channel, ready => {
+        if (!isCurrentConnection() || inputChannelRef.current !== channel) return
+        setInputReady(ready)
+      })
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      if (!isCurrentConnection()) return
+      if (pc.iceConnectionState === 'failed') {
+        finishConnection(generation, 'error', 'ICE connection failed')
+        return
+      }
+      markConnected()
+    }
+    pc.onconnectionstatechange = () => {
+      if (!isCurrentConnection()) return
+      if (pc.connectionState === 'failed') {
+        finishConnection(generation, 'error', 'WebRTC connection failed')
+        return
+      }
+      if (pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
+        finishConnection(generation, 'disconnected', null)
+        return
+      }
+      markConnected()
+    }
+    return pc
+  }, [connectionPath, finishConnection, ipPreference, sendForward, videoRef])
 
   const disconnect = useCallback(() => {
     connectionGenerationRef.current += 1
@@ -424,8 +501,7 @@ export function useScrcpyWebRTC({
           return
         }
 
-        setError(reason instanceof Error ? reason.message : '信令服务暂时不可用，请稍后重试')
-        setStatus('error')
+        finishConnection(generation, 'error', reason instanceof Error ? reason.message : '信令服务暂时不可用，请稍后重试')
       }
 
       attemptTimeout = window.setTimeout(() => {
@@ -436,13 +512,18 @@ export function useScrcpyWebRTC({
       void getSignalingToken(signalingEndpoints.httpBase, authAbortController.signal)
         .then(token => {
           if (attemptFinished || connectionGenerationRef.current !== generation) return
-          const ws = new WebSocket(normalizeSignalingUrl(signalingEndpoints.websocketBase, token))
+          const ws = new WebSocket(normalizeSignalingUrl(
+            signalingEndpoints.websocketBase,
+            token,
+            usesSameOriginGateway(signalingEndpoints.httpBase) ? deviceId : undefined
+          ))
           socket = ws
           wsRef.current = ws
           let opened = false
+          const isCurrentSocket = () => connectionGenerationRef.current === generation && wsRef.current === ws
 
           ws.onopen = () => {
-            if (connectionGenerationRef.current !== generation) {
+            if (attemptFinished || !isCurrentSocket()) {
               ws.close()
               return
             }
@@ -451,24 +532,30 @@ export function useScrcpyWebRTC({
             clearAttemptResources()
             setError(null)
             setStatus('signaling')
-            ws.send(JSON.stringify({ message_type: 'connect', device_id: deviceId }))
+            armConnectionTimeout(generation, SIGNALING_PHASE_TIMEOUT_MS, '等待信令配置超时，请重新启动预览')
+            try {
+              ws.send(JSON.stringify({ message_type: 'connect', device_id: deviceId }))
+            } catch {
+              finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
+            }
           }
 
           ws.onmessage = event => {
-            if (connectionGenerationRef.current !== generation) return
+            if (!opened || !isCurrentSocket()) return
             let msg: any
             try {
               msg = JSON.parse(event.data)
+              if (!msg || typeof msg !== 'object') throw new Error('Invalid signaling message')
             } catch {
-              setError('收到无效的信令消息')
-              setStatus('error')
+              finishConnection(generation, 'error', '收到无效的信令消息')
               return
             }
             const type = msg.message_type || msg.type
             if (type === 'config') {
               if (Array.isArray(msg.ice_servers) && msg.ice_servers.length > 0) iceServersRef.current = msg.ice_servers
               setStatus('waiting_offer')
-              sendForward({
+              armConnectionTimeout(generation, SIGNALING_PHASE_TIMEOUT_MS, '等待设备预览响应超时，请重新启动预览')
+              if (!sendForward({
                 type: 'request-offer',
                 ip_preference: ipPreference,
                 scrcpy_options: {
@@ -482,7 +569,7 @@ export function useScrcpyWebRTC({
                   snapshot_interval: 10,
                   ...scrcpyOptionsRef.current
                 }
-              })
+              })) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
               return
             }
             if (type === 'device_info' && msg.device_info?.displays?.[0]) {
@@ -491,15 +578,21 @@ export function useScrcpyWebRTC({
               return
             }
             if (type === 'error') {
-              setError(msg.error || '信令服务返回错误')
-              setStatus('error')
+              finishConnection(generation, 'error', msg.error || '信令服务返回错误')
               return
             }
             if (type !== 'device_msg' || !msg.payload?.type) return
             const payload = msg.payload
             if (payload.type === 'offer') {
               setStatus('connecting_webrtc')
-              const pc = createPeerConnection()
+              armConnectionTimeout(generation, WEBRTC_MEDIA_TIMEOUT_MS, '建立预览视频连接超时，请重新启动预览')
+              let pc: RTCPeerConnection
+              try {
+                pc = createPeerConnection(generation)
+              } catch (err) {
+                finishConnection(generation, 'error', `无法创建 WebRTC 连接: ${err instanceof Error ? err.message : String(err)}`)
+                return
+              }
               const isCurrentConnection = () => connectionGenerationRef.current === generation && pcRef.current === pc
 
               void (async () => {
@@ -514,7 +607,7 @@ export function useScrcpyWebRTC({
                   await pc.setLocalDescription(new RTCSessionDescription({ type: 'answer', sdp }))
                   if (!isCurrentConnection()) return
                   if (pc.iceGatheringState === 'complete') {
-                    sendAnswer()
+                    if (!sendAnswer(pc)) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
                     return
                   }
 
@@ -534,15 +627,14 @@ export function useScrcpyWebRTC({
                     if (sent) return
                     sent = true
                     cleanup()
-                    if (isCurrentConnection()) sendAnswer()
+                    if (isCurrentConnection() && !sendAnswer(pc)) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
                   }
                   pc.addEventListener('icegatheringstatechange', handleGatheringChange)
                   timeoutId = window.setTimeout(finish, 2000)
                   iceGatheringCleanupRef.current = cleanup
                 } catch (err) {
                   if (!isCurrentConnection()) return
-                  setError(`SDP 处理失败: ${err instanceof Error ? err.message : String(err)}`)
-                  setStatus('error')
+                  finishConnection(generation, 'error', `SDP 处理失败: ${err instanceof Error ? err.message : String(err)}`)
                 }
               })()
             } else if (payload.type === 'ice-candidate' && payload.candidate) {
@@ -553,21 +645,20 @@ export function useScrcpyWebRTC({
           }
 
           ws.onerror = () => {
+            if (!isCurrentSocket()) return
             if (!opened) finishStartupFailure(new Error('信令连接暂时不可用，请稍后重试'))
+            else finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
           }
           ws.onclose = event => {
-            if (connectionGenerationRef.current !== generation) return
+            if (!isCurrentSocket()) return
             if (!opened) {
               finishStartupFailure(new Error(event.code === 1008 ? '信令认证失败，请稍后重试' : '信令连接暂时不可用，请稍后重试'))
               return
             }
-            if (wsRef.current === ws) wsRef.current = null
             if (event.code === 1000) {
-              setError(null)
-              setStatus('disconnected')
+              finishConnection(generation, 'disconnected', null)
             } else {
-              setError('信令连接已中断，请重新启动预览')
-              setStatus('error')
+              finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
             }
           }
         })
@@ -575,7 +666,7 @@ export function useScrcpyWebRTC({
     }
 
     attemptConnection(0)
-  }, [connectionPath, createPeerConnection, deviceId, filterSdpCandidates, ipPreference, sendAnswer, sendForward, signalingUrl, teardownConnection])
+  }, [armConnectionTimeout, connectionPath, createPeerConnection, deviceId, filterSdpCandidates, finishConnection, ipPreference, sendAnswer, sendForward, signalingUrl, teardownConnection])
 
   const sendTouch = useCallback((action: number, clientX: number, clientY: number, id = 0, targetVideo?: HTMLVideoElement | null) => {
     const channel = inputChannelRef.current
@@ -629,8 +720,12 @@ export function useScrcpyWebRTC({
   const sendCommand = useCallback((command: string) => {
     const ws = wsRef.current
     if (ws?.readyState !== WebSocket.OPEN) return false
-    ws.send(JSON.stringify({ message_type: 'command', device_id: deviceId, request_id: Math.random().toString(36).slice(2), command }))
-    return true
+    try {
+      ws.send(JSON.stringify({ message_type: 'command', device_id: deviceId, request_id: Math.random().toString(36).slice(2), command }))
+      return true
+    } catch {
+      return false
+    }
   }, [deviceId])
 
   useEffect(() => {
@@ -638,7 +733,7 @@ export function useScrcpyWebRTC({
       const pc = pcRef.current
       if (!pc) return
       const reports = await pc.getStats().catch(() => null)
-      if (!reports) return
+      if (!reports || pcRef.current !== pc) return
       let rtt = 0
       let connectionType = 'UDP p2p'
       for (const report of reports.values()) {

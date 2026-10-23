@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { act } from 'react'
+import { Activity, act, useEffect, useEffectEvent } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScreenMonitor from './ScreenMonitor'
+import { usePreviewStore } from '../stores/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -22,6 +23,8 @@ const apiMocks = vi.hoisted(() => ({
   stopWebrtcAgent: vi.fn(),
 }))
 
+const deviceViewBehavior = vi.hoisted(() => ({ startLiveOnMount: false }))
+
 vi.mock('../hooks/useBackendStatusMonitor', () => ({
   useAutomationAvailability: () => availabilityMock,
 }))
@@ -36,18 +39,29 @@ vi.mock('../services/api', () => ({
 interface MockDeviceViewProps {
   automationAvailable?: boolean
   automationUnavailableMessage?: string
-  onStartInfrastructure?: () => Promise<string | undefined> | string | undefined
+  onStartInfrastructure?: (signal?: AbortSignal) => Promise<string | undefined> | string | undefined
+  onCancelInfrastructure?: () => void
   onInstall?: () => Promise<void> | void
   onToggleServer?: () => Promise<void> | void
   onToggleAgent?: () => Promise<void> | void
-  infrastructureStatus?: { serverRunning?: boolean } | null
+  infrastructureStatus?: { serverRunning?: boolean; agentRunning?: boolean } | null
   infrastructureStatusState?: string
   infrastructureLoading?: string | null
   infrastructureError?: string | null
 }
 
+let latestDeviceViewProps: MockDeviceViewProps | null = null
+
 vi.mock('./ScrcpyDeviceView', () => ({
-  default: (props: MockDeviceViewProps) => (
+  default: function MockDeviceView(props: MockDeviceViewProps) {
+    const startInfrastructure = useEffectEvent(() => props.onStartInfrastructure?.())
+    useEffect(() => { latestDeviceViewProps = props })
+    useEffect(() => {
+      if (deviceViewBehavior.startLiveOnMount && usePreviewStore.getState().mode === 'live') {
+        void startInfrastructure()
+      }
+    }, [])
+    return (
     <div
       data-available={String(props.automationAvailable)}
       data-message={props.automationUnavailableMessage}
@@ -56,13 +70,15 @@ vi.mock('./ScrcpyDeviceView', () => ({
       data-error={props.infrastructureError || ''}
       data-has-status={String(Boolean(props.infrastructureStatus))}
       data-server-running={String(Boolean(props.infrastructureStatus?.serverRunning))}
+      data-agent-running={String(Boolean(props.infrastructureStatus?.agentRunning))}
     >
       <button type="button" onClick={() => void props.onStartInfrastructure?.()}>start</button>
       <button type="button" onClick={() => void props.onInstall?.()}>install</button>
       <button type="button" onClick={() => void props.onToggleServer?.()}>server</button>
       <button type="button" onClick={() => void props.onToggleAgent?.()}>agent</button>
     </div>
-  ),
+    )
+  },
 }))
 
 let container: HTMLDivElement
@@ -81,8 +97,16 @@ const flush = async () => {
   })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(resolvePromise => { resolve = resolvePromise })
+  return { promise, resolve }
+}
+
 describe('ScreenMonitor automation availability guard', () => {
   beforeEach(() => {
+    deviceViewBehavior.startLiveOnMount = false
+    usePreviewStore.getState().setMode('off')
     availabilityMock.isAvailable = false
     availabilityMock.unavailableMessage = '正在检查后端服务，请稍候'
     apiMocks.getWebrtcStatus.mockResolvedValue({
@@ -96,6 +120,7 @@ describe('ScreenMonitor automation availability guard', () => {
     apiMocks.startWebrtcAgent.mockResolvedValue({ success: true })
     apiMocks.stopWebrtcAgent.mockResolvedValue({ success: true })
     vi.clearAllMocks()
+    latestDeviceViewProps = null
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -104,6 +129,7 @@ describe('ScreenMonitor automation availability guard', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.useRealTimers()
   })
 
   it.each([
@@ -226,5 +252,122 @@ describe('ScreenMonitor automation availability guard', () => {
     await flush()
 
     expect(container.firstElementChild?.firstElementChild?.getAttribute('data-server-running')).toBe('true')
+  })
+
+  it('does not read stopped status concurrently when an already-live child starts before its parent effect', async () => {
+    availabilityMock.isAvailable = true
+    deviceViewBehavior.startLiveOnMount = true
+    usePreviewStore.getState().setMode('live')
+    const pending = deferred<{
+      success: boolean
+      data: { signalingUrl: string; serverRunning: boolean; agentRunning: boolean }
+    }>()
+    apiMocks.startWebrtc.mockReturnValueOnce(pending.promise)
+
+    await act(async () => root.render(<ScreenMonitor />))
+    await flush()
+    expect(apiMocks.startWebrtc).toHaveBeenCalledOnce()
+    expect(apiMocks.getWebrtcStatus).not.toHaveBeenCalled()
+
+    await act(async () => pending.resolve({
+      success: true,
+      data: { signalingUrl: '/webrtc-signaling', serverRunning: true, agentRunning: true },
+    }))
+    await flush()
+    expect(latestDeviceViewProps?.infrastructureStatus).toMatchObject({ serverRunning: true, agentRunning: true })
+    expect(latestDeviceViewProps?.infrastructureStatusState).toBe('ready')
+    expect(apiMocks.getWebrtcStatus).not.toHaveBeenCalled()
+  })
+
+  it('clears pending preview startup across an Activity hide and ignores its hidden response', async () => {
+    availabilityMock.isAvailable = true
+    const pending = deferred<{ success: boolean; data: { signalingUrl: string; serverRunning: boolean } }>()
+    apiMocks.startWebrtc.mockReturnValueOnce(pending.promise)
+    await act(async () => root.render(<Activity mode="visible"><ScreenMonitor /></Activity>))
+    await flush()
+    let result: ReturnType<NonNullable<MockDeviceViewProps['onStartInfrastructure']>>
+    act(() => { result = latestDeviceViewProps!.onStartInfrastructure!() })
+    expect(latestDeviceViewProps!.infrastructureLoading).toBe('preview')
+
+    await act(async () => root.render(<Activity mode="hidden"><ScreenMonitor /></Activity>))
+    await act(async () => pending.resolve({
+      success: true,
+      data: { signalingUrl: 'ws://stale-hidden-start', serverRunning: true },
+    }))
+    expect(await result!).toBeUndefined()
+
+    await act(async () => root.render(<Activity mode="visible"><ScreenMonitor /></Activity>))
+    await flush()
+    expect(latestDeviceViewProps!.infrastructureLoading).toBeNull()
+    expect(latestDeviceViewProps!.infrastructureStatus?.serverRunning).toBe(false)
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+
+    await click('start')
+    await flush()
+    expect(apiMocks.startWebrtc).toHaveBeenCalledTimes(2)
+    expect(latestDeviceViewProps!.infrastructureLoading).toBeNull()
+  })
+
+  it('cancels startup immediately and prevents an old response from replacing a new preview', async () => {
+    availabilityMock.isAvailable = true
+    const pending = deferred<{ success: boolean; data: { signalingUrl: string; serverRunning: boolean } }>()
+    apiMocks.startWebrtc.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({
+      success: true,
+      data: { signalingUrl: 'ws://new-preview', serverRunning: true },
+    })
+    await act(async () => root.render(<ScreenMonitor />))
+    await flush()
+    const controller = new AbortController()
+    let cancelledResult: ReturnType<NonNullable<MockDeviceViewProps['onStartInfrastructure']>>
+    act(() => { cancelledResult = latestDeviceViewProps!.onStartInfrastructure!(controller.signal) })
+    expect(apiMocks.startWebrtc).toHaveBeenCalledWith('default', 'mumu-la-pluma', controller.signal)
+    expect(latestDeviceViewProps!.infrastructureLoading).toBe('preview')
+
+    act(() => latestDeviceViewProps!.onCancelInfrastructure!())
+    expect(latestDeviceViewProps!.infrastructureLoading).toBeNull()
+    let newResult: string | undefined
+    await act(async () => { newResult = await latestDeviceViewProps!.onStartInfrastructure!() })
+    expect(newResult!).toBe('ws://new-preview')
+
+    await act(async () => pending.resolve({
+      success: true,
+      data: { signalingUrl: 'ws://cancelled-preview', serverRunning: false },
+    }))
+    expect(await cancelledResult!).toBeUndefined()
+    expect(latestDeviceViewProps!.infrastructureStatus?.serverRunning).toBe(true)
+    expect(latestDeviceViewProps!.infrastructureLoading).toBeNull()
+    expect(latestDeviceViewProps!.infrastructureError).toBeNull()
+  })
+
+  it('refreshes the agent badge after live preview closes without starting infrastructure', async () => {
+    vi.useFakeTimers()
+    availabilityMock.isAvailable = true
+    usePreviewStore.getState().setMode('live')
+    apiMocks.getWebrtcStatus.mockResolvedValueOnce({
+      success: true,
+      data: { serverRunning: true, agentRunning: true },
+    }).mockResolvedValue({
+      success: true,
+      data: { serverRunning: true, agentRunning: false },
+    })
+    await act(async () => root.render(<ScreenMonitor />))
+    await flush()
+    const view = container.firstElementChild?.firstElementChild
+    expect(view?.getAttribute('data-agent-running')).toBe('true')
+    await act(async () => vi.advanceTimersByTimeAsync(20000))
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledOnce()
+
+    act(() => usePreviewStore.getState().setMode('off'))
+    await act(async () => vi.advanceTimersByTimeAsync(4000))
+    await flush()
+
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+    expect(view?.getAttribute('data-agent-running')).toBe('false')
+    expect(view?.getAttribute('data-server-running')).toBe('true')
+    await act(async () => vi.advanceTimersByTimeAsync(18000))
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+    expect(apiMocks.startWebrtc).not.toHaveBeenCalled()
+    expect(apiMocks.startWebrtcServer).not.toHaveBeenCalled()
+    expect(apiMocks.startWebrtcAgent).not.toHaveBeenCalled()
   })
 })

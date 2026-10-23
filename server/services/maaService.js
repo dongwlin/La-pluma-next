@@ -1227,17 +1227,29 @@ export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DE
  * 通过 ADB 截取模拟器屏幕
  */
 export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
+  let step = '检查设备';
+  let timeoutMs = 3000;
   try {
     validateAdbPath(adbPath);
     validateAdbAddress(address);
 
     // 先检查设备是否已连接
-    const { stdout: devicesOutput } = await adbExec(adbPath, ['devices']);
+    const { stdout: devicesOutput } = await adbExec(adbPath, ['devices'], {
+      timeout: timeoutMs,
+      killSignal: 'SIGKILL',
+      windowsHide: true
+    });
     const isConnected = devicesOutput.includes(address);
     
     if (!isConnected) {
       logger.debug('设备未连接，尝试连接', { address });
-      const { stdout: connectOutput, stderr: connectError } = await adbExec(adbPath, ['connect', address]);
+      step = '连接设备';
+      timeoutMs = 5000;
+      const { stdout: connectOutput, stderr: connectError } = await adbExec(adbPath, ['connect', address], {
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+        windowsHide: true
+      });
       logger.debug('连接结果', { output: connectOutput });
       
       if (connectError) {
@@ -1248,8 +1260,13 @@ export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAUL
     }
     
     logger.debug('执行截图命令', { adbPath, address });
+    step = '读取屏幕画面';
+    timeoutMs = 8000;
     const { stdout, stderr } = await adbExec(adbPath, ['-s', address, 'exec-out', 'screencap', '-p'], {
-      encoding: 'buffer'
+      encoding: 'buffer',
+      timeout: timeoutMs,
+      killSignal: 'SIGKILL',
+      windowsHide: true
     });
     
     if (stderr && stderr.length) {
@@ -1261,6 +1278,9 @@ export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAUL
       timestamp: new Date().toISOString()
     };
   } catch (error) {
+    if (error.killed && error.signal === 'SIGKILL') {
+      throw new Error(`截图失败: ${step}超时（${timeoutMs}ms）`, { cause: error });
+    }
     throw new Error(`截图失败: ${error.message}`);
   }
 }

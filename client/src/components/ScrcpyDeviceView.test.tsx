@@ -5,6 +5,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
+import { usePreviewStore } from '../stores/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -60,6 +61,7 @@ const findButton = (label: string) => Array.from(container.querySelectorAll('but
 
 describe('ScrcpyDeviceView automation availability', () => {
   beforeEach(() => {
+    usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5, autoStart: false })
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     webrtcMock.status = 'idle'
     webrtcMock.error = null
@@ -118,7 +120,8 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(webrtcMock.sendTouch).not.toHaveBeenCalled()
   })
 
-  it('restarts auto-connect after an Activity workspace is restored', async () => {
+  it('resumes selected live mode after an Activity workspace is restored', async () => {
+    usePreviewStore.getState().setMode('live')
     const onStartInfrastructure = vi.fn().mockResolvedValue('/webrtc-signaling')
     const renderMode = async (mode: 'visible' | 'hidden') => {
       await act(async () => {
@@ -447,4 +450,28 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(immersiveVideo?.srcObject).toBe(lateStream)
     await act(async () => document.body.querySelector<HTMLButtonElement>('[aria-label="退出全屏"]')?.click())
   })
+  it('can cancel startup before infrastructure responds and ignores the late result', async () => {
+    let resolveStart: ((value: string) => void) | undefined
+    const onStartInfrastructure = vi.fn(() => new Promise<string>(resolve => { resolveStart = resolve }))
+    const onCancelInfrastructure = vi.fn()
+    await act(async () => root.render(<ScrcpyDeviceView enabled={false} onStartInfrastructure={onStartInfrastructure} onCancelInfrastructure={onCancelInfrastructure} />))
+    await act(async () => findButton('启动预览')?.click())
+    expect(findButton('取消启动')?.disabled).toBe(false)
+    await act(async () => findButton('取消启动')?.click())
+    await act(async () => resolveStart?.('/webrtc-signaling'))
+    expect(usePreviewStore.getState().mode).toBe('off')
+    expect(onCancelInfrastructure).toHaveBeenCalled()
+    expect(webrtcMock.connect).not.toHaveBeenCalled()
+  })
+
+  it('exposes shared mode controls in compact view while startup is busy', async () => {
+    usePreviewStore.getState().setMode('live')
+    await act(async () => root.render(<ScrcpyDeviceView enabled variant="compact" infrastructureLoading="preview" onStartInfrastructure={() => new Promise(() => {})} />))
+    const modes = container.querySelector('[role="group"][aria-label="预览模式"]')!
+    const off = Array.from(modes.querySelectorAll('button')).find(button => button.textContent === '关闭')!
+    expect(off.disabled).toBe(false)
+    await act(async () => off.click())
+    expect(usePreviewStore.getState().mode).toBe('off')
+  })
+
 })

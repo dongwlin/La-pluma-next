@@ -376,11 +376,12 @@ export const maaApi = {
     return parseJsonResponse(response)
   },
 
-  async startWebrtc(profileId: string = 'default', deviceId: string = 'mumu-la-pluma'): Promise<ApiResponse<WebrtcStatusData>> {
+  async startWebrtc(profileId: string = 'default', deviceId: string = 'mumu-la-pluma', signal?: AbortSignal): Promise<ApiResponse<WebrtcStatusData>> {
     const response = await fetchWithAuth(`${API_BASE_URL}/agent/webrtc/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId, deviceId })
+      body: JSON.stringify({ profileId, deviceId }),
+      signal
     })
     return parseJsonResponse(response)
   },
@@ -414,11 +415,12 @@ export const maaApi = {
     return parseJsonResponse(response)
   },
 
-  async captureScreen(profileId: string = 'default'): Promise<ApiResponse> {
+  async captureScreen(profileId: string = 'default', signal?: AbortSignal): Promise<ApiResponse> {
     const response = await fetchWithAuth(`${API_BASE_URL}/agent/screen/screenshot`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId })
+      body: JSON.stringify({ profileId }),
+      signal
     })
     return parseJsonResponse(response)
   },
