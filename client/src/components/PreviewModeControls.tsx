@@ -1,10 +1,26 @@
 import { usePreviewStore, type PreviewMode } from '../stores/previewStore'
+import { Select } from './common/Input'
 
 const modes: { value: PreviewMode; label: string }[] = [
   { value: 'off', label: '关闭' },
   { value: 'snapshot', label: '快照' },
   { value: 'live', label: '实时' },
 ]
+
+export function PreviewModeSelect() {
+  const mode = usePreviewStore(state => state.mode)
+  const setMode = usePreviewStore(state => state.setMode)
+
+  return (
+    <Select
+      aria-label="预览模式"
+      value={mode}
+      onChange={value => setMode(value as PreviewMode)}
+      options={modes}
+      className="w-24 shrink-0 text-xs"
+    />
+  )
+}
 
 export default function PreviewModeControls({ unavailable = false, showAutoStart = false }: { unavailable?: boolean; showAutoStart?: boolean }) {
   const mode = usePreviewStore(state => state.mode)

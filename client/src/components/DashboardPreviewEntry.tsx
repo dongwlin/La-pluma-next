@@ -2,14 +2,14 @@ import { memo } from 'react'
 import { Monitor } from 'lucide-react'
 import { Button, SmoothPanel } from './common'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
-import PreviewModeControls from './PreviewModeControls'
+import { PreviewModeSelect } from './PreviewModeControls'
 
 interface DashboardPreviewEntryProps {
   onOpen: () => void
 }
 
 const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: DashboardPreviewEntryProps) {
-  const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, statusText, headerStatusText, error, retry } = useDashboardPreview()
+  const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, statusText, error, retry } = useDashboardPreview()
 
   return (
     <SmoothPanel
@@ -22,14 +22,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
           <div className={`h-1.5 w-1.5 rounded-full ${showLivePreview ? 'bg-[var(--app-success)]' : 'bg-[var(--app-accent)]'}`} />
           <span className="text-xs font-medium text-secondary">模拟器预览</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:inline text-xs text-secondary">{headerStatusText}</span>
-          <Button onClick={onOpen} variant="ghost" size="sm" className="min-h-11 sm:min-h-9">打开</Button>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-border)] px-4 py-2">
-        <PreviewModeControls />
-        {error && <Button onClick={retry} variant="ghost" size="sm">重试实时预览</Button>}
+        <PreviewModeSelect />
       </div>
       <div
         data-dashboard-preview-frame
@@ -67,9 +60,11 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
             </div>
           )}
         </button>
-        <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-[var(--app-border)] bg-[color-mix(in_srgb,var(--app-bg)_55%,transparent)] px-2 py-1 text-xs text-primary">
-          {statusText}
-        </div>
+        {error && (
+          <Button onClick={retry} variant="secondary" size="sm" className="absolute bottom-2 right-2">
+            重试实时预览
+          </Button>
+        )}
       </div>
     </SmoothPanel>
   )

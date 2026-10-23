@@ -895,14 +895,10 @@ export function DashboardSkeleton() {
                   <Skeleton variant="circle" className="h-1.5 w-1.5" />
                   <Skeleton variant="text" className="h-3 w-28" />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Skeleton variant="text" className="hidden h-2.5 w-14 sm:block" />
-                  <Skeleton variant="rect" className="h-11 w-14 rounded-xl sm:h-9" />
-                </div>
+                <Skeleton variant="rect" className="h-11 w-24 rounded-xl" />
               </div>
               <div data-dashboard-preview-frame className="dashboard-preview-frame relative aspect-video w-full overflow-hidden bg-black">
                 <Skeleton variant="rect" className="absolute inset-[12%] h-auto w-auto rounded-xl opacity-60" />
-                <Skeleton variant="rect" className="absolute left-2 top-2 h-6 w-16 rounded-lg" />
               </div>
             </SmoothPanel>
           </div>
