@@ -11,17 +11,22 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 ## 发布流程
 
-1. 更新根目录及各子包的 `version`。
-2. 提交版本变更。
-3. 创建并推送 tag：
+1. 在 `main` 上提升版本。该命令会同时创建提交和 `v` 前缀的 annotated tag，只修改根目录 `package.json`（子包不参与发布，保持 `0.0.0`），并要求工作区干净：
 
    ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
+   pnpm version patch -m "chore(release): v%s"
    ```
 
-4. GitHub Actions 会构建并推送 GHCR 镜像的 semver 标签和 `latest`。
-5. 在 GitHub Releases 中补充变更说明。
+   首个版本用显式版本号（`pnpm version 0.0.1`），之后用 `patch` / `minor` / `major`。
+
+2. 推送提交与 tag：
+
+   ```bash
+   git push --follow-tags origin main
+   ```
+
+3. GitHub Actions 的 `verify` 通过后，构建并推送 GHCR 镜像的 semver 标签（如 `0.0.1`、`0.0`、`0`）。`latest` 只在推送到默认分支时更新，推送 tag 不会改动它。
+4. 在 GitHub Releases 中补充变更说明。
 
 ## 容器镜像
 
