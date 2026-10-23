@@ -29,8 +29,8 @@ const tabs = [
   { id: 'combat', name: '作业', icon: Swords },
   { id: 'roguelike', name: '肉鸽', icon: Dices },
   { id: 'training', name: '养成', icon: GraduationCap },
-  { id: 'logs', name: '日志', icon: FileText },
   { id: 'statistics', name: '数据', icon: BarChart3 },
+  { id: 'logs', name: '日志', icon: FileText },
   { id: 'config', name: '配置', icon: Settings2 },
 ] satisfies Array<{ id: AppTab; name: string; icon: typeof LayoutGrid }>
 

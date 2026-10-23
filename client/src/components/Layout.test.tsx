@@ -254,8 +254,8 @@ describe('top-level application navigation', () => {
       'combat',
       'roguelike',
       'training',
-      'logs',
       'statistics',
+      'logs',
       'config',
     ])
     expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
