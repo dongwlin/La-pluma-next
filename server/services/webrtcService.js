@@ -19,6 +19,7 @@ export const DEFAULT_DEVICE_ID = 'mumu-la-pluma'
 const WEBRTC_REQUEST_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS, 1500)
 const WEBRTC_SERVER_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS, 15000)
 const WEBRTC_AGENT_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS, 20000)
+const WEBRTC_TURN_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_TURN_START_TIMEOUT_MS, 5000)
 const WEBRTC_START_POLL_INTERVAL_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS, 250)
 const WEBRTC_USERNAME = process.env.LA_PLUMA_WEBRTC_USERNAME || 'admin'
 const WEBRTC_PASSWORD = process.env.LA_PLUMA_WEBRTC_PASSWORD || 'admin123'
@@ -323,6 +324,24 @@ export async function waitForWebrtcServerReady({
   })
 }
 
+export async function waitForTurnServerReady({
+  timeoutMs = WEBRTC_TURN_START_TIMEOUT_MS,
+  pollIntervalMs = WEBRTC_START_POLL_INTERVAL_MS,
+  isListening = () => isProcessListeningOnTcpPort(WEBRTC_TURN_PORT),
+  childProcess = null
+} = {}) {
+  return waitForCondition(async () => {
+    const failure = processStartupFailure(childProcess, 'TURN 服务')
+    if (failure) throw failure
+    return isListening()
+  }, {
+    timeoutMs,
+    pollIntervalMs,
+    timeoutMessage: `TURN 服务启动超时（${timeoutMs}ms）：127.0.0.1:${WEBRTC_TURN_PORT} 未监听`,
+    timeoutCode: 'WEBRTC_TURN_START_TIMEOUT'
+  })
+}
+
 async function waitForWebrtcDevicesApi({
   timeoutMs = WEBRTC_SERVER_START_TIMEOUT_MS,
   pollIntervalMs = WEBRTC_START_POLL_INTERVAL_MS
@@ -409,33 +428,45 @@ async function stopRemoteWebrtcAgent(address, adbPath) {
 }
 
 async function startLocalTurnServerUnlocked() {
-  if (webrtcTurnProcess && !webrtcTurnProcess.killed) return
   if (await isProcessListeningOnTcpPort(WEBRTC_TURN_PORT)) return
-  const turnserver = ['/usr/bin/turnserver', '/usr/local/bin/turnserver', '/opt/homebrew/bin/turnserver']
-  let turnserverPath = null
-  for (const candidate of turnserver) {
-    if (await pathExists(candidate)) {
-      turnserverPath = candidate
-      break
+  let child = isChildProcessRunning(webrtcTurnProcess) ? webrtcTurnProcess : null
+  if (!child) {
+    const configuredTurnServer = process.env.LA_PLUMA_WEBRTC_TURN_SERVER_PATH?.trim()
+    const turnserver = configuredTurnServer
+      ? [configuredTurnServer]
+      : ['/usr/bin/turnserver', '/usr/local/bin/turnserver', '/opt/homebrew/bin/turnserver']
+    let turnserverPath = null
+    for (const candidate of turnserver) {
+      if (await pathExists(candidate)) {
+        turnserverPath = candidate
+        break
+      }
     }
+    if (!turnserverPath) return
+    const { turnLog } = await getWebrtcLogPaths()
+    child = spawnWithLog(turnserverPath, [
+      '-n',
+      '--no-cli',
+      '--no-tls',
+      '--no-dtls',
+      '-L', '0.0.0.0',
+      '-p', String(WEBRTC_TURN_PORT),
+      '-a',
+      '-u', 'cloudphone_user:cloudphone_secure_password',
+      '-r', 'cloudphone'
+    ], turnLog, {
+      cwd: WEBRTC_DIR,
+      detached: false
+    })
+    webrtcTurnProcess = trackManagedProcess(child, 'turn')
   }
-  if (!turnserverPath) return
-  const { turnLog } = await getWebrtcLogPaths()
-  const child = spawnWithLog(turnserverPath, [
-    '-n',
-    '--no-cli',
-    '--no-tls',
-    '--no-dtls',
-    '-L', '0.0.0.0',
-    '-p', String(WEBRTC_TURN_PORT),
-    '-a',
-    '-u', 'cloudphone_user:cloudphone_secure_password',
-    '-r', 'cloudphone'
-  ], turnLog, {
-    cwd: WEBRTC_DIR,
-    detached: false
-  })
-  webrtcTurnProcess = trackManagedProcess(child, 'turn')
+  try {
+    await waitForTurnServerReady({ childProcess: child })
+  } catch (error) {
+    if (isChildProcessRunning(child)) child.kill('SIGTERM')
+    clearManagedProcess('turn', child)
+    throw error
+  }
 }
 
 async function killLocalWebrtcInfrastructureUnlocked(address, adbPath) {

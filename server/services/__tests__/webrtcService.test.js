@@ -9,6 +9,7 @@ const ENV_KEYS = [
   'LA_PLUMA_WEBRTC_DIR',
   'LA_PLUMA_WEBRTC_PORT',
   'LA_PLUMA_WEBRTC_TURN_PORT',
+  'LA_PLUMA_WEBRTC_TURN_SERVER_PATH',
   'LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS',
   'LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS',
   'LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS',
@@ -18,7 +19,8 @@ const ENV_KEYS = [
   'TEST_WEBRTC_SERVER_ARGS_FILE',
   'TEST_WEBRTC_AGENT_COUNT_FILE',
   'TEST_WEBRTC_AGENT_PID_FILE',
-  'TEST_WEBRTC_SERVER_PID_FILE'
+  'TEST_WEBRTC_SERVER_PID_FILE',
+  'TEST_WEBRTC_TURN_PID_FILE'
 ]
 
 async function getAvailablePort() {
@@ -61,6 +63,8 @@ describe('WebRTC startup readiness', () => {
   let agentCountFile
   let agentPidFile
   let serverPidFile
+  let turnPidFile
+  let turnPort
   let fakeAdbPath
   let service
   const previousEnv = new Map()
@@ -82,6 +86,7 @@ describe('WebRTC startup readiness', () => {
     agentCountFile = join(fixtureDir, 'agent-count.log')
     agentPidFile = join(fixtureDir, 'agent.pid')
     serverPidFile = join(fixtureDir, 'server.pid')
+    turnPidFile = join(fixtureDir, 'turn.pid')
     fakeAdbPath = join(fixtureDir, 'adb')
     await writeFile(devicesFile, '[]')
 
@@ -121,6 +126,20 @@ process.on('SIGTERM', () => {
 })
 `)
 
+    const turnServerPath = join(fixtureDir, 'turnserver')
+    await writeFile(turnServerPath, `#!/usr/bin/env node
+const fs = require('node:fs')
+const net = require('node:net')
+
+fs.writeFileSync(process.env.TEST_WEBRTC_TURN_PID_FILE, String(process.pid))
+const port = Number(process.argv[process.argv.indexOf('-p') + 1])
+setTimeout(() => {
+  const server = net.createServer(socket => socket.end())
+  server.listen(port, '0.0.0.0')
+}, 120)
+process.on('SIGTERM', () => process.exit(0))
+`)
+
     const runScript = join(agentDir, 'run.sh')
     await writeFile(runScript, `#!/bin/bash
 printf 'spawn\\n' >> "$TEST_WEBRTC_AGENT_COUNT_FILE"
@@ -149,15 +168,16 @@ if [[ "$*" == *"ps -A | grep cloudphone-agent"* ]] && ! grep -q '^\\[\\]$' "$TES
   echo cloudphone-agent
 fi
 `)
-    await Promise.all([chmod(signalingPath, 0o755), chmod(runScript, 0o755), chmod(fakeAdbPath, 0o755)])
+    await Promise.all([chmod(signalingPath, 0o755), chmod(runScript, 0o755), chmod(turnServerPath, 0o755), chmod(fakeAdbPath, 0o755)])
 
     for (const key of ENV_KEYS) previousEnv.set(key, process.env[key])
     const port = await getAvailablePort()
-    const turnPort = await getAvailablePort()
+    turnPort = await getAvailablePort()
     Object.assign(process.env, {
       LA_PLUMA_WEBRTC_DIR: fixtureDir,
       LA_PLUMA_WEBRTC_PORT: String(port),
       LA_PLUMA_WEBRTC_TURN_PORT: String(turnPort),
+      LA_PLUMA_WEBRTC_TURN_SERVER_PATH: turnServerPath,
       LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS: '200',
       LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS: '3000',
       LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS: '1000',
@@ -167,17 +187,20 @@ fi
       TEST_WEBRTC_SERVER_ARGS_FILE: serverArgsFile,
       TEST_WEBRTC_AGENT_COUNT_FILE: agentCountFile,
       TEST_WEBRTC_AGENT_PID_FILE: agentPidFile,
-      TEST_WEBRTC_SERVER_PID_FILE: serverPidFile
+      TEST_WEBRTC_SERVER_PID_FILE: serverPidFile,
+      TEST_WEBRTC_TURN_PID_FILE: turnPidFile
     })
     service = await import(`../webrtcService.js?webrtc-test=${Date.now()}`)
   })
 
   after(async () => {
-    try {
-      const pid = Number(await readFile(serverPidFile, 'utf8'))
-      if (Number.isInteger(pid)) process.kill(pid, 'SIGTERM')
-    } catch {
-      // The fixture server may not have started when an earlier assertion failed.
+    for (const pidFile of [serverPidFile, turnPidFile]) {
+      try {
+        const pid = Number(await readFile(pidFile, 'utf8'))
+        if (Number.isInteger(pid)) process.kill(pid, 'SIGTERM')
+      } catch {
+        // The fixture process may not have started when an earlier assertion failed.
+      }
     }
     for (const [key, value] of previousEnv) {
       if (value === undefined) delete process.env[key]
@@ -205,6 +228,34 @@ fi
       error => error.code === 'WEBRTC_AGENT_START_TIMEOUT'
         && error.message.includes('missing-device')
         && error.message.includes('/devices')
+    )
+  })
+
+  it('polls the TURN port and reports startup failures', async () => {
+    let attempts = 0
+    const ready = await service.waitForTurnServerReady({
+      timeoutMs: 200,
+      pollIntervalMs: 5,
+      isListening: async () => ++attempts === 3
+    })
+    assert.equal(ready, true)
+    assert.equal(attempts, 3)
+
+    await assert.rejects(
+      service.waitForTurnServerReady({
+        timeoutMs: 20,
+        pollIntervalMs: 5,
+        isListening: async () => false
+      }),
+      error => error.code === 'WEBRTC_TURN_START_TIMEOUT'
+    )
+
+    await assert.rejects(
+      service.waitForTurnServerReady({
+        childProcess: { exitCode: 1, signalCode: null, killed: false },
+        isListening: async () => false
+      }),
+      error => error.code === 'WEBRTC_PROCESS_EXITED'
     )
   })
 
@@ -286,6 +337,10 @@ fi
       '-assets',
       join(fixtureDir, 'assets', 'v1')
     ])
+    const iceIndex = serverArgs.indexOf('-ice_servers')
+    assert.notEqual(iceIndex, -1)
+    assert.match(serverArgs[iceIndex + 1], new RegExp(`^turn:cloudphone_user:cloudphone_secure_password@.+:${turnPort}\\?transport=udp,stun:.+:${turnPort}$`))
+    assert.match(first.iceServers, new RegExp(`:${turnPort}\\?transport=udp`))
 
     await service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath)
     assert.equal(await countLines(serverCountFile), 1)
