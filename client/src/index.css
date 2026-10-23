@@ -3772,6 +3772,7 @@ svg.w-5.h-5 {
     justify-content: space-between;
     gap: 1rem;
     padding: 0.875rem 1rem 0.75rem;
+    border-bottom: 1px solid var(--app-border);
   }
 
   .dashboard-flow-mark {
@@ -3836,7 +3837,7 @@ svg.w-5.h-5 {
     gap: 1rem;
     min-height: 6.25rem;
     padding: 1rem;
-    background: color-mix(in srgb, var(--app-surface-muted) 72%, transparent);
+    background: transparent;
     box-shadow: inset 0 -1px 0 var(--app-border);
   }
 
@@ -4138,7 +4139,7 @@ svg.w-5.h-5 {
     min-height: 2.875rem;
     padding: 0.625rem 1rem;
     border-top: 1px solid var(--app-border);
-    background: color-mix(in srgb, var(--app-surface-muted) 72%, transparent);
+    background: transparent;
   }
 
   .dashboard-summary-footer .dashboard-stage-list {
