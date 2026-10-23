@@ -1129,25 +1129,30 @@ export default function CombatTasks() {
 
   // 获取作业集详情（包含所有作业列表）
   const fetchCopilotSetDetails = async (setId: string): Promise<CopilotSetItem[]> => {
+    let plan: any = null
     try {
       const planResponse = await maaApi.getCopilotSetPlan(setId, normalizeRaidValue(advancedParams.copilot?.raid))
-      const plan = unwrapApiPayload(planResponse)
-      if (Array.isArray(plan?.items) && plan.items.length > 0) {
-        return plan.items.map((item: any, itemIndex: number) => ({
-          id: Number(item.id),
-          name: item.stage || `作业 #${item.id}`,
-          stage: item.stage,
-          stageId: item.stageId,
-          presetFormation: Boolean(item.presetFormation),
-          supportsRaid: item.supportsRaid !== false,
-          completedModes: Array.isArray(plan.entries)
-            ? plan.entries
-                .filter((entry: any) => entry.itemIndex === itemIndex && entry.completed)
-                .map((entry: any) => entry.mode as 'normal' | 'raid')
-            : [],
-          uri: `prts://${item.id}`
-        }))
-      }
+      plan = unwrapApiPayload(planResponse)
+    } catch {
+      // 计划接口失败时继续尝试集合列表，避免丢弃仍可执行的作业
+    }
+    if (Array.isArray(plan?.items) && plan.items.length > 0) {
+      return plan.items.map((item: any, itemIndex: number) => ({
+        id: Number(item.id),
+        name: item.stage || `作业 #${item.id}`,
+        stage: item.stage,
+        stageId: item.stageId,
+        presetFormation: Boolean(item.presetFormation),
+        supportsRaid: item.supportsRaid !== false,
+        completedModes: Array.isArray(plan.entries)
+          ? plan.entries
+              .filter((entry: any) => entry.itemIndex === itemIndex && entry.completed)
+              .map((entry: any) => entry.mode as 'normal' | 'raid')
+          : [],
+        uri: `prts://${item.id}`
+      }))
+    }
+    try {
       const data = await maaApi.getCopilotSet(setId)
       const copilotIds = getCopilotSetIds(data)
       if (copilotIds.length > 0) {
@@ -1156,7 +1161,7 @@ export default function CombatTasks() {
         return details.filter((item): item is CopilotSetItem => item !== null)
       }
     } catch {
-      // 忽略错误
+      // 忽略集合列表获取错误
     }
     return []
   }

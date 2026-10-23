@@ -209,6 +209,32 @@ describe('CombatTasks execution recovery', () => {
     },
   )
 
+  it('falls back to the set list when the plan request fails', async () => {
+    mocks.getCopilotSetPlan.mockRejectedValue(new Error('plan unavailable'))
+    mocks.getCopilotSet.mockResolvedValue({
+      success: true,
+      data: { status_code: 200, data: { copilot_ids: [101] } },
+    })
+    mocks.getCopilotInfo.mockResolvedValue({ status_code: 200, data: { content: JSON.stringify({
+      stage_name: 'TEST-1', doc: { title: '兜底作业' },
+    }) } })
+
+    await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'prts://s48990')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await click(buttonsByText('预览')[0]!)
+    await flush()
+
+    expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
+    expect(mocks.getCopilotSet).toHaveBeenCalledWith('48990')
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('101')
+    expect(container.textContent).toContain('共 1 个作业')
+    expect(container.textContent).toContain('兜底作业')
+  })
+
   it('keeps each active task in the shared continuous-corner card', async () => {
     await renderComponent()
 
