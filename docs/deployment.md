@@ -48,6 +48,8 @@ docker run -d \
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
 | `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC` |
 | `LA_PLUMA_WEBRTC_PORT` | ScrcpyOverWebRTC 本地端口 | `8443` |
+| `LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS` | 最后一位观看者退出后释放设备 Agent 的等待时间（毫秒） | `3000` |
+| `LA_PLUMA_WEBRTC_VIEWER_STARTUP_GRACE_MS` | Agent 启动后无人观看时的等待时间（毫秒） | `15000` |
 | `LA_PLUMA_WEBRTC_HOST_IP` | 向设备公布的宿主机 IPv4 地址；默认优先选择与目标 ADB 地址同网段的网卡 | 自动检测 |
 | `LA_PLUMA_WEBRTC_TURN_SERVER_PATH` | 本地 `turnserver` 可执行文件路径；默认探测常见安装位置 | 自动检测 |
 | `LA_PLUMA_WEBRTC_ICE_SERVERS` | 自定义 STUN/TURN 列表；未设置且无本地 TURN 时使用局域网直连 | 自动检测 |
@@ -56,6 +58,8 @@ docker run -d \
 | `LA_PLUMA_HTTPS_KEY_PATH` | 可选 HTTPS 私钥路径，必须与证书同时配置 | 空，使用 HTTP |
 
 ### PWA、HTTPS 与实时预览
+
+概览和日常的预览默认关闭，需手动选择快照或实时。自动回收通过同源 `/webrtc-signaling` 网关统计观看者，并在释放前核对上游设备的 `client_count` / `clients`。旧版上游若仅返回设备 ID 字符串，只能根据网关观看者判断；未携带设备 ID 的旧网关连接会保守阻止自动回收。项目仍使用单个受管设备 Agent，自动回收仅停止匹配的设备，不关闭信令和 TURN 服务。
 
 PWA 的 Service Worker 只会在 HTTPS 或浏览器认可的本机 `localhost` 安全上下文中启用。生产构建在电脑本机通过 `http://localhost:*` 打开时可以安装；手机通过 `http://192.168.x.x:*` 访问时不能安装，也不会获得离线界面缓存。Vite 开发模式默认不注册 Service Worker。
 

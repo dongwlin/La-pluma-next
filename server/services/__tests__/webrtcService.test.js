@@ -14,11 +14,13 @@ const ENV_KEYS = [
   'LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS',
   'LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS',
   'LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS',
+  'LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS',
   'TEST_WEBRTC_DEVICES_FILE',
   'TEST_WEBRTC_SERVER_COUNT_FILE',
   'TEST_WEBRTC_SERVER_ARGS_FILE',
   'TEST_WEBRTC_AGENT_COUNT_FILE',
   'TEST_WEBRTC_AGENT_PID_FILE',
+  'TEST_WEBRTC_STOP_STARTED_FILE',
   'TEST_WEBRTC_SERVER_PID_FILE',
   'TEST_WEBRTC_TURN_PID_FILE'
 ]
@@ -161,6 +163,10 @@ if [ "$1" = "devices" ]; then
   exit 0
 fi
 if [[ "$*" == *"pkill -f cloudphone-agent"* ]]; then
+  if [ -n "$TEST_WEBRTC_STOP_STARTED_FILE" ]; then
+    printf started > "$TEST_WEBRTC_STOP_STARTED_FILE"
+    sleep 0.1
+  fi
   printf '[]' > "$TEST_WEBRTC_DEVICES_FILE"
   exit 0
 fi
@@ -182,6 +188,7 @@ fi
       LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS: '3000',
       LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS: '1000',
       LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS: '20',
+      LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS: '30',
       TEST_WEBRTC_DEVICES_FILE: devicesFile,
       TEST_WEBRTC_SERVER_COUNT_FILE: serverCountFile,
       TEST_WEBRTC_SERVER_ARGS_FILE: serverArgsFile,
@@ -359,6 +366,53 @@ fi
 
     await service.startWebrtcAgent('second-address', 'preview-device', fakeAdbPath)
     assert.equal(await countLines(agentCountFile), beforeSwitch + 1)
+  })
+
+  it('retains direct viewers, releases the idle agent, and restores it before a new viewer connects', async () => {
+    const beforeRelease = await countLines(agentCountFile)
+    const first = service.registerWebrtcViewer('preview-device')
+    const second = service.registerWebrtcViewer('preview-device')
+    await Promise.all([first.ready, second.ready])
+    first.release()
+    await new Promise(resolve => setTimeout(resolve, 80))
+    assert.equal((await service.getWebrtcStatus('second-address', fakeAdbPath)).agentRunning, true)
+
+    await writeFile(devicesFile, JSON.stringify([{ device_id: 'preview-device', client_count: 1 }]))
+    second.release()
+    await new Promise(resolve => setTimeout(resolve, 80))
+    assert.equal((await service.getWebrtcStatus('second-address', fakeAdbPath)).agentRunning, true)
+
+    await writeFile(devicesFile, JSON.stringify([{ device_id: 'preview-device', client_count: 0 }]))
+    await service.waitForCondition(async () => !(await service.getWebrtcStatus('second-address', fakeAdbPath)).agentRunning, {
+      timeoutMs: 1000,
+      pollIntervalMs: 10,
+      timeoutMessage: 'idle agent did not stop'
+    })
+    assert.equal(await service.isWebrtcServerReachable(), true)
+    assert.equal(await countLines(agentCountFile), beforeRelease)
+
+    const resumed = service.registerWebrtcViewer('preview-device')
+    await resumed.ready
+    assert.equal((await service.getWebrtcStatus('second-address', fakeAdbPath)).agentRunning, true)
+    assert.equal(await countLines(agentCountFile), beforeRelease + 1)
+
+    const stopStartedFile = join(fixtureDir, 'idle-stop-started')
+    process.env.TEST_WEBRTC_STOP_STARTED_FILE = stopStartedFile
+    try {
+      resumed.release()
+      await service.waitForCondition(() => service.pathExists(stopStartedFile), {
+        timeoutMs: 1000,
+        pollIntervalMs: 5,
+        timeoutMessage: 'idle stop did not begin'
+      })
+      const racingViewer = service.registerWebrtcViewer('preview-device')
+      await racingViewer.ready
+      assert.equal((await service.getWebrtcStatus('second-address', fakeAdbPath)).agentRunning, true)
+      assert.equal(await countLines(agentCountFile), beforeRelease + 2)
+      racingViewer.release()
+    } finally {
+      delete process.env.TEST_WEBRTC_STOP_STARTED_FILE
+    }
   })
 
   it('rejects a nonzero agent deployment and cleans up the target address', async () => {

@@ -21,6 +21,8 @@ const WEBRTC_SERVER_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_
 const WEBRTC_AGENT_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS, 20000)
 const WEBRTC_TURN_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_TURN_START_TIMEOUT_MS, 5000)
 const WEBRTC_START_POLL_INTERVAL_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS, 250)
+const WEBRTC_VIEWER_IDLE_GRACE_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS, 3000)
+const WEBRTC_VIEWER_STARTUP_GRACE_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_VIEWER_STARTUP_GRACE_MS, 15000)
 const WEBRTC_USERNAME = process.env.LA_PLUMA_WEBRTC_USERNAME || 'admin'
 const WEBRTC_PASSWORD = process.env.LA_PLUMA_WEBRTC_PASSWORD || 'admin123'
 
@@ -29,7 +31,112 @@ let webrtcAgentProcess = null
 let webrtcTurnProcess = null
 let webrtcLifecycleQueue = Promise.resolve()
 let registeredAgentOwner = null
+let idleStoppedAgentOwner = null
+let agentGeneration = 0
 const processStartupErrors = new WeakMap()
+
+// Register before waiting on the lifecycle queue so a new browser prevents a
+// queued idle stop. If stopping has already begun, its upgrade waits for restore.
+const viewerLifecycle = createWebrtcViewerLifecycle({
+  idleGraceMs: WEBRTC_VIEWER_IDLE_GRACE_MS,
+  startupGraceMs: WEBRTC_VIEWER_STARTUP_GRACE_MS,
+  releaseIdle: (deviceId, generation, isIdle) => enqueueLifecycle(
+    () => stopIdleWebrtcAgentUnlocked(deviceId, generation, isIdle)
+  ),
+  restore: deviceId => enqueueLifecycle(async () => {
+    const owner = idleStoppedAgentOwner
+    if (!owner || owner.deviceId !== deviceId) return
+    if (registeredAgentOwner) return
+    await startWebrtcAgentUnlocked(owner.address, owner.deviceId, owner.adbPath)
+  })
+})
+
+export function createWebrtcViewerLifecycle({
+  idleGraceMs = 3000,
+  startupGraceMs = 15000,
+  releaseIdle,
+  restore = async () => {},
+  onError = error => console.warn('[WebRTC] Idle preview cleanup failed:', error.message)
+}) {
+  const devices = new Map()
+  const unscopedViewers = new Set()
+
+  function getDevice(deviceId) {
+    if (!devices.has(deviceId)) devices.set(deviceId, { viewers: new Set(), generation: null, timer: null })
+    return devices.get(deviceId)
+  }
+
+  function cancelIdle(device) {
+    if (device.timer) clearTimeout(device.timer)
+    device.timer = null
+  }
+
+  function scheduleIdle(deviceId, device, graceMs) {
+    cancelIdle(device)
+    if (device.generation === null) {
+      if (!device.viewers.size && devices.get(deviceId) === device) devices.delete(deviceId)
+      return
+    }
+    if (device.viewers.size || unscopedViewers.size) return
+    const generation = device.generation
+    const isIdle = () => devices.get(deviceId) === device && device.generation === generation
+      && !device.viewers.size && !unscopedViewers.size
+    device.timer = setTimeout(() => {
+      device.timer = null
+      if (!isIdle()) return
+      Promise.resolve().then(() => releaseIdle(deviceId, generation, isIdle)).then(result => {
+        if (isIdle() && result?.retry) scheduleIdle(deviceId, device, idleGraceMs)
+      }).catch(error => {
+        onError(error)
+        if (isIdle()) scheduleIdle(deviceId, device, idleGraceMs)
+      })
+    }, graceMs)
+    device.timer.unref?.()
+  }
+
+  return {
+    started(deviceId, generation) {
+      const device = getDevice(deviceId)
+      device.generation = generation
+      scheduleIdle(deviceId, device, startupGraceMs)
+    },
+    stopped(deviceId) {
+      const device = devices.get(deviceId)
+      if (!device) return
+      cancelIdle(device)
+      device.generation = null
+      if (!device.viewers.size) devices.delete(deviceId)
+    },
+    retain(deviceId) {
+      const token = {}
+      const device = deviceId ? getDevice(deviceId) : null
+      const viewers = device?.viewers || unscopedViewers
+      viewers.add(token)
+      if (device) cancelIdle(device)
+      else for (const entry of devices.values()) cancelIdle(entry)
+      let released = false
+      return {
+        ready: deviceId ? restore(deviceId) : Promise.resolve(),
+        release() {
+          if (released) return
+          released = true
+          viewers.delete(token)
+          if (device) scheduleIdle(deviceId, device, idleGraceMs)
+          else for (const [id, entry] of devices) scheduleIdle(id, entry, idleGraceMs)
+        }
+      }
+    },
+    close() {
+      for (const device of devices.values()) cancelIdle(device)
+      devices.clear()
+      unscopedViewers.clear()
+    }
+  }
+}
+
+export function registerWebrtcViewer(deviceId) {
+  return viewerLifecycle.retain(deviceId)
+}
 
 function readPositiveInteger(value, fallback) {
   const parsed = Number(value)
@@ -289,17 +396,21 @@ function normalizeDeviceIds(data) {
     .filter(Boolean)
 }
 
+async function requestWebrtcDeviceDetails() {
+  const token = await requestWebrtcAuthToken()
+  const response = await fetch(`http://127.0.0.1:${WEBRTC_PORT}/devices`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(WEBRTC_REQUEST_TIMEOUT_MS)
+  })
+  if (!response.ok) throw new Error(`WebRTC 设备列表请求失败（HTTP ${response.status}）`)
+  const data = await response.json()
+  if (!Array.isArray(data)) throw new Error('WebRTC /devices 响应格式无效')
+  return data
+}
+
 export async function getWebrtcDevices({ throwOnError = false } = {}) {
   try {
-    const token = await requestWebrtcAuthToken()
-    const response = await fetch(`http://127.0.0.1:${WEBRTC_PORT}/devices`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(WEBRTC_REQUEST_TIMEOUT_MS)
-    })
-    if (!response.ok) {
-      throw new Error(`WebRTC 设备列表请求失败（HTTP ${response.status}）`)
-    }
-    return normalizeDeviceIds(await response.json())
+    return normalizeDeviceIds(await requestWebrtcDeviceDetails())
   } catch (error) {
     if (throwOnError) throw error
     return []
@@ -471,6 +582,8 @@ async function startLocalTurnServerUnlocked() {
 
 async function killLocalWebrtcInfrastructureUnlocked(address, adbPath) {
   const owner = registeredAgentOwner
+  idleStoppedAgentOwner = null
+  if (owner) viewerLifecycle.stopped(owner.deviceId)
   terminateAgentDeployment(webrtcAgentProcess)
   if (webrtcServerProcess && !webrtcServerProcess.killed) webrtcServerProcess.kill('SIGTERM')
   if (webrtcTurnProcess && !webrtcTurnProcess.killed) webrtcTurnProcess.kill('SIGTERM')
@@ -617,13 +730,15 @@ export async function stopWebrtcServer(address = DEFAULT_DEVICE_ADDRESS, adbPath
 }
 
 async function startWebrtcAgentUnlocked(address, deviceId, adbPath) {
+  idleStoppedAgentOwner = null
   await waitForWebrtcServerReady()
   const onlineDevices = await waitForWebrtcDevicesApi()
   const currentOwner = registeredAgentOwner
   if (isSameAgentOwner(currentOwner, address, deviceId)
     && onlineDevices.includes(deviceId)
     && await isDeviceAgentRunning(address, adbPath)) {
-    registeredAgentOwner = { address, deviceId, adbPath }
+    registeredAgentOwner = { address, deviceId, adbPath, generation: ++agentGeneration }
+    viewerLifecycle.started(deviceId, registeredAgentOwner.generation)
     return { ...await getWebrtcStatus(address, adbPath), agentRunning: true }
   }
 
@@ -634,6 +749,7 @@ async function startWebrtcAgentUnlocked(address, deviceId, adbPath) {
 
   if (currentOwner) {
     registeredAgentOwner = null
+    viewerLifecycle.stopped(currentOwner.deviceId)
     await stopRemoteWebrtcAgent(currentOwner.address, currentOwner.adbPath)
     await waitForWebrtcDeviceUnavailable(currentOwner.deviceId)
   }
@@ -657,7 +773,8 @@ async function startWebrtcAgentUnlocked(address, deviceId, adbPath) {
       childProcess: child,
       isAgentRunning: () => isDeviceAgentRunning(address, adbPath)
     })
-    registeredAgentOwner = { address, deviceId, adbPath }
+    registeredAgentOwner = { address, deviceId, adbPath, generation: ++agentGeneration }
+    viewerLifecycle.started(deviceId, registeredAgentOwner.generation)
     return { ...await getWebrtcStatus(address, adbPath), agentRunning: true }
   } catch (error) {
     terminateAgentDeployment(child)
@@ -674,6 +791,8 @@ export async function startWebrtcAgent(address = DEFAULT_DEVICE_ADDRESS, deviceI
 
 async function stopWebrtcAgentUnlocked(address, adbPath) {
   const owner = registeredAgentOwner
+  idleStoppedAgentOwner = null
+  if (owner) viewerLifecycle.stopped(owner.deviceId)
   terminateAgentDeployment(webrtcAgentProcess)
   webrtcAgentProcess = null
   registeredAgentOwner = null
@@ -686,6 +805,27 @@ async function stopWebrtcAgentUnlocked(address, adbPath) {
 
 export async function stopWebrtcAgent(address = DEFAULT_DEVICE_ADDRESS, adbPath = DEFAULT_ADB_PATH) {
   return enqueueLifecycle(() => stopWebrtcAgentUnlocked(address, adbPath))
+}
+
+async function stopIdleWebrtcAgentUnlocked(deviceId, generation, isIdle) {
+  const owner = registeredAgentOwner
+  if (!owner || owner.deviceId !== deviceId || owner.generation !== generation || !isIdle()) return
+
+  // The upstream service also knows about viewers connected directly to its
+  // listener. Older releases return string IDs only; those use gateway counts.
+  const devices = await requestWebrtcDeviceDetails()
+  const device = devices.find(entry => entry && typeof entry === 'object'
+    && (entry.device_id || entry.id) === deviceId)
+  if (device && (Number(device.client_count) > 0 || device.clients?.length > 0)) return { retry: true }
+  if (!isIdle() || registeredAgentOwner !== owner) return
+
+  terminateAgentDeployment(webrtcAgentProcess)
+  webrtcAgentProcess = null
+  await stopRemoteWebrtcAgent(owner.address, owner.adbPath)
+  if (registeredAgentOwner === owner) registeredAgentOwner = null
+  idleStoppedAgentOwner = owner
+  viewerLifecycle.stopped(deviceId)
+  return { stopped: true }
 }
 
 export async function startWebrtc(address = DEFAULT_DEVICE_ADDRESS, deviceId = DEFAULT_DEVICE_ID, adbPath = DEFAULT_ADB_PATH) {

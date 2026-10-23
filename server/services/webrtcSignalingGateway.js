@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { connect as connectTcp } from 'node:net'
-import { getWebrtcAuthToken, WEBRTC_PORT } from './webrtcService.js'
+import { getWebrtcAuthToken, registerWebrtcViewer, WEBRTC_PORT } from './webrtcService.js'
 
 export const WEBRTC_SIGNALING_PATH = '/webrtc-signaling'
 
@@ -55,7 +55,8 @@ function parseClientUpgrade(request, proxyPath) {
 
   if (url.pathname !== `${proxyPath}/connect_client`) return null
   const ticket = url.searchParams.get('token')?.trim()
-  return ticket ? { ticket } : null
+  const deviceId = url.searchParams.get('deviceId')?.trim() || null
+  return ticket && (!deviceId || deviceId.length <= 256) ? { ticket, deviceId } : null
 }
 
 export function createWebrtcSignalingGateway({
@@ -68,6 +69,7 @@ export function createWebrtcSignalingGateway({
   now = () => Date.now(),
   createTicket = () => randomUUID(),
   getUpstreamToken = () => getWebrtcAuthToken({ throwOnError: true }),
+  registerViewer = registerWebrtcViewer,
   connect = connectTcp
 } = {}) {
   const tickets = new Map()
@@ -113,7 +115,7 @@ export function createWebrtcSignalingGateway({
     return entry.upstreamToken
   }
 
-  function handleUpgrade(request, clientSocket, head) {
+  async function handleUpgrade(request, clientSocket, head) {
     const parsed = parseClientUpgrade(request, proxyPath)
     if (!parsed) {
       writeUpgradeError(clientSocket, 404, 'Not Found')
@@ -126,21 +128,38 @@ export function createWebrtcSignalingGateway({
       return
     }
 
+    let viewer
+    let upstreamSocket = null
+    activeSockets.add(clientSocket)
+    clientSocket.once('error', () => upstreamSocket?.destroy())
+    clientSocket.once('close', () => {
+      activeSockets.delete(clientSocket)
+      upstreamSocket?.destroy()
+      viewer?.release()
+    })
+    try {
+      viewer = registerViewer(parsed.deviceId)
+      await viewer.ready
+      if (clientSocket.destroyed) {
+        viewer.release()
+        return
+      }
+      upstreamSocket = connect({ host: targetHost, port: targetPort })
+    } catch {
+      viewer?.release()
+      writeUpgradeError(clientSocket, 503, 'Service Unavailable')
+      return
+    }
+
     const targetAuthority = `${targetHost}:${targetPort}`
     const upstreamPath = `/connect_client?token=${encodeURIComponent(upstreamToken)}`
-    const upstreamSocket = connect({ host: targetHost, port: targetPort })
     let connected = false
     let failedBeforeConnect = false
 
-    activeSockets.add(clientSocket)
     activeSockets.add(upstreamSocket)
-    const forgetClient = () => activeSockets.delete(clientSocket)
     const forgetUpstream = () => activeSockets.delete(upstreamSocket)
-    clientSocket.once('close', forgetClient)
     upstreamSocket.once('close', forgetUpstream)
 
-    clientSocket.once('error', () => upstreamSocket.destroy())
-    clientSocket.once('close', () => upstreamSocket.destroy())
     const failBeforeConnect = (statusCode, statusText) => {
       if (failedBeforeConnect) return
       failedBeforeConnect = true

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer as createHttpServer } from 'node:http'
 import { connect, createServer as createTcpServer } from 'node:net'
 import express from 'express'
+import { setTimeout as delay } from 'node:timers/promises'
 import { afterEach, describe, it } from 'node:test'
 import {
   createWebrtcSignalingGateway,
@@ -55,7 +56,15 @@ function openUpgrade(port, path) {
   })
 }
 
-async function createFixture({ now = () => Date.now(), ticketTtlMs } = {}) {
+async function waitUntil(check) {
+  const deadline = Date.now() + 1000
+  while (!check()) {
+    assert.ok(Date.now() < deadline, 'signaling viewer did not settle')
+    await delay(5)
+  }
+}
+
+async function createFixture({ now = () => Date.now(), ticketTtlMs, registerViewer = () => ({ ready: Promise.resolve(), release() {} }) } = {}) {
   const upstreamRequests = []
   const upstream = createTcpServer(socket => {
     let request = ''
@@ -78,6 +87,7 @@ async function createFixture({ now = () => Date.now(), ticketTtlMs } = {}) {
     targetPort: upstreamPort,
     now,
     ticketTtlMs,
+    registerViewer,
     createTicket: () => `proxy-ticket-${++ticketSequence}`,
     getUpstreamToken: async () => 'upstream-secret'
   })
@@ -156,5 +166,43 @@ describe('WebRTC same-origin signaling gateway', () => {
     assert.match(forbidden.response, /^HTTP\/1\.1 404 Not Found/)
     forbidden.socket.destroy()
     assert.equal(fixture.upstreamRequests.length, 0)
+  })
+
+  it('registers authenticated per-device viewers and waits for an in-flight idle cleanup', async () => {
+    const registered = []
+    const released = []
+    let ready
+    const fixture = await createFixture({
+      registerViewer: deviceId => {
+        registered.push(deviceId)
+        return {
+          ready: new Promise(resolve => { ready = resolve }),
+          release: () => released.push(deviceId)
+        }
+      }
+    })
+    const login = await fetch(`http://127.0.0.1:${fixture.port}${WEBRTC_SIGNALING_PATH}/api/login`, { method: 'POST' })
+    const { token } = await login.json()
+    const pendingUpgrade = openUpgrade(
+      fixture.port,
+      `${WEBRTC_SIGNALING_PATH}/connect_client?token=${token}&deviceId=preview-device`
+    )
+    await waitUntil(() => Boolean(ready))
+    assert.deepEqual(registered, ['preview-device'])
+    assert.equal(fixture.upstreamRequests.length, 0)
+    ready()
+    const viewer = await pendingUpgrade
+    assert.match(viewer.response, /^HTTP\/1\.1 101 Switching Protocols/)
+    assert.doesNotMatch(fixture.upstreamRequests[0], /deviceId=/)
+    viewer.socket.destroy()
+    await waitUntil(() => released.length > 0)
+    assert.deepEqual(released, ['preview-device'])
+
+    const rejected = await openUpgrade(
+      fixture.port,
+      `${WEBRTC_SIGNALING_PATH}/connect_client?token=invalid&deviceId=preview-device`
+    )
+    rejected.socket.destroy()
+    assert.deepEqual(registered, ['preview-device'])
   })
 })
