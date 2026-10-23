@@ -752,11 +752,14 @@
 
 .automation-monitor-surface .scrcpy-view-header.is-compact {
   min-height: 3.25rem;
-  padding: 0.75rem 1rem;
-  padding-right: 1rem;
+  padding: 0.625rem 1rem;
 }
 
-.automation-monitor-surface .scrcpy-view-header.is-compact > .min-w-0,
+.automation-monitor-surface .scrcpy-view-header.is-compact > .min-w-0 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .automation-monitor-surface .scrcpy-view-title-row {
   width: 100%;
   min-width: 0;
@@ -788,14 +791,6 @@
   font-size: 0.6875rem;
   font-weight: 500;
   line-height: 1rem;
-}
-
-.automation-monitor-surface .scrcpy-view-header.is-compact:has(.scrcpy-compact-disconnect) {
-  padding-right: 3.75rem;
-}
-
-.automation-monitor-surface .scrcpy-view-header.is-compact .scrcpy-compact-disconnect {
-  right: 0.75rem;
 }
 
 .automation-monitor-surface .task-monitor-panel.is-compact .scrcpy-video-frame {
@@ -6020,24 +6015,10 @@ svg.w-5.h-5 {
 
   .scrcpy-view-header.is-compact {
     position: relative;
-    min-height: 1.75rem;
-    padding-right: 2.25rem;
+    min-height: 3.25rem;
+    padding: 0.625rem 1rem;
     align-items: center;
     flex-wrap: nowrap;
-  }
-
-  .scrcpy-compact-disconnect {
-    position: absolute;
-    top: 50%;
-    right: 0;
-    flex: none;
-    transform: translateY(-50%);
-  }
-
-  .scrcpy-compact-disconnect::before {
-    content: '';
-    position: absolute;
-    inset: -0.25rem;
   }
 
   .task-monitor-panel.is-compact .scrcpy-device-layout.is-compact > .space-y-3 > :not([hidden]) ~ :not([hidden]) {

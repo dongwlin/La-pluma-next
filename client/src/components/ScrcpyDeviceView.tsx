@@ -5,7 +5,7 @@ import { Button } from './common'
 import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
 import { usePreviewStore, qualityPresets, fpsOptions, type QualityPreset } from '../stores/previewStore'
-import PreviewModeControls from './PreviewModeControls'
+import PreviewModeControls, { PreviewAutoStartSetting, PreviewModeSegmented } from './PreviewModeControls'
 
 interface ScrcpyDeviceViewProps {
   enabled: boolean
@@ -388,47 +388,44 @@ export default function ScrcpyDeviceView({
     <>
     <div className={`scrcpy-device-layout ${isCompact ? 'is-compact' : ''}`}>
       <div className="space-y-3 min-w-0">
-        <div className={`scrcpy-view-header flex items-start justify-between gap-3 flex-wrap ${isCompact ? 'is-compact' : ''}`}>
+        <div className={`scrcpy-view-header flex items-center justify-between gap-3 ${isCompact ? 'is-compact' : 'flex-wrap'}`}>
           <div className="min-w-0">
             <div className="scrcpy-view-title-row flex items-center gap-2">
-              <span className={`scrcpy-view-status-dot h-2 w-2 rounded-full ${statusDotClass}`} />
+              <span
+                className={`scrcpy-view-status-dot h-2 w-2 rounded-full ${statusDotClass}`}
+                role="img"
+                aria-label={previewStatusLabel}
+                title={previewStatusLabel}
+              />
               <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white">{isCompact ? '模拟器画面' : '模拟器实时预览'}</span>
-              <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
-                {previewStatusLabel}
-              </span>
+              {!isCompact && (
+                <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
+                  {previewStatusLabel}
+                </span>
+              )}
             </div>
-
           </div>
-          {isCompact && canDisconnect && (
-            <button
-              type="button"
-              onClick={webrtc.disconnect}
-              title="断开预览"
-              aria-label="断开预览"
-              className="scrcpy-compact-disconnect control-surface flex h-7 min-h-11 w-7 min-w-11 items-center justify-center rounded-md text-secondary transition-colors hover:text-primary"
-            >
-              <Unplug className="h-4 w-4" strokeWidth={1.8} />
-            </button>
+          {isCompact ? (
+            <PreviewModeSegmented unavailable={!automationAvailable} />
+          ) : (
+            <div className="flex flex-wrap gap-2 text-xs justify-end">
+              <span className="surface-soft rounded-full px-2 py-1 text-secondary">
+                组件：{componentStatusLabel}
+              </span>
+              <span className="surface-soft rounded-full px-2 py-1 text-secondary">
+                服务：{serverStatusLabel}
+              </span>
+              <span className="surface-soft rounded-full px-2 py-1 text-secondary">
+                Agent：{agentStatusLabel}
+              </span>
+              {visibleError && (
+                <span className="px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/10 dark:text-red-300 text-red-600">{visibleError}</span>
+              )}
+            </div>
           )}
-          {!isCompact && <div className="flex flex-wrap gap-2 text-xs justify-end">
-            <span className="surface-soft rounded-full px-2 py-1 text-secondary">
-              组件：{componentStatusLabel}
-            </span>
-            <span className="surface-soft rounded-full px-2 py-1 text-secondary">
-              服务：{serverStatusLabel}
-            </span>
-            <span className="surface-soft rounded-full px-2 py-1 text-secondary">
-              Agent：{agentStatusLabel}
-            </span>
-            {visibleError && (
-              <span className="px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/10 dark:text-red-300 text-red-600">{visibleError}</span>
-            )}
-          </div>}
         </div>
 
-        <div className={isCompact ? 'px-4' : ''}>
-          <PreviewModeControls unavailable={!automationAvailable} showAutoStart />
-        </div>
+        {!isCompact && <PreviewModeControls unavailable={!automationAvailable} />}
 
         {!isCompact && <div className="scrcpy-status-grid">
           {statusCards.map(([label, value]) => (
@@ -731,6 +728,18 @@ export default function ScrcpyDeviceView({
                 {settingsDirty ? '画质已修改，重连预览后生效' : '画质调整会在下次连接时生效'}
               </p>
             </div>
+          </div>
+        </section>
+
+        <section className="scrcpy-control-section">
+          <div className="scrcpy-control-header">
+            <div className="scrcpy-control-title">
+              <RotateCw className="h-4 w-4" strokeWidth={1.8} />
+              <span>启动行为</span>
+            </div>
+          </div>
+          <div className="pt-3">
+            <PreviewAutoStartSetting />
           </div>
         </section>
       </aside>}

@@ -1,5 +1,6 @@
-import { useRef, type KeyboardEvent } from 'react'
+import { useId, useRef, type KeyboardEvent } from 'react'
 import { usePreviewStore, type PreviewMode } from '../stores/previewStore'
+import { Switch } from './common'
 
 const modes: { value: PreviewMode; label: string }[] = [
   { value: 'off', label: '关闭' },
@@ -77,19 +78,32 @@ export function PreviewModeSegmented({ unavailable = false }: PreviewModeSegment
   )
 }
 
-export default function PreviewModeControls({ unavailable = false, showAutoStart = false }: { unavailable?: boolean; showAutoStart?: boolean }) {
+export function PreviewAutoStartSetting() {
   const autoStart = usePreviewStore(state => state.autoStart)
   const setAutoStart = usePreviewStore(state => state.setAutoStart)
+  const inputId = `preview-auto-start-${useId().replace(/:/g, '')}`
 
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <label htmlFor={inputId} className="min-w-0 cursor-pointer">
+        <span className="block text-xs font-medium text-primary">重新打开时恢复预览</span>
+        <span className="mt-0.5 block text-xs leading-5 text-secondary">仅在重新打开应用后生效</span>
+      </label>
+      <Switch
+        id={inputId}
+        compact
+        label="重新打开时恢复预览"
+        checked={autoStart}
+        onChange={setAutoStart}
+      />
+    </div>
+  )
+}
+
+export default function PreviewModeControls({ unavailable = false }: { unavailable?: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <PreviewModeSegmented unavailable={unavailable} />
-      {showAutoStart && (
-        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-secondary">
-          <input type="checkbox" checked={autoStart} onChange={event => setAutoStart(event.target.checked)} />
-          重新打开时恢复预览
-        </label>
-      )}
     </div>
   )
 }

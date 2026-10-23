@@ -35,6 +35,13 @@ interface MockButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   statusKey?: string | number
 }
 
+interface MockSwitchProps {
+  checked: boolean
+  label: string
+  disabled?: boolean
+  onChange: (checked: boolean) => void
+}
+
 vi.mock('./common', () => ({
   Button: ({
     children,
@@ -50,6 +57,16 @@ vi.mock('./common', () => ({
     <button {...props} disabled={props.disabled || loading}>
       {loading ? loadingText : children}
     </button>
+  ),
+  Switch: ({ checked, label, disabled, onChange }: MockSwitchProps) => (
+    <input
+      type="checkbox"
+      role="switch"
+      aria-label={label}
+      checked={checked}
+      disabled={disabled}
+      onChange={event => onChange(event.target.checked)}
+    />
   ),
 }))
 
@@ -189,6 +206,8 @@ describe('ScrcpyDeviceView automation availability', () => {
     const toolbar = container.querySelector('.scrcpy-preview-toolbar')
     const openSettings = findButton('打开预览设置')
 
+    expect(container.querySelector('.scrcpy-view-header [role="radiogroup"][aria-label="预览模式"]')).not.toBeNull()
+    expect(container.querySelector('.scrcpy-view-header .scrcpy-view-status')).toBeNull()
     expect(frame?.nextElementSibling).toBe(toolbar)
     expect(toolbar?.contains(frame)).toBe(false)
     expect(container.querySelector('.scrcpy-control-rail')).toBeNull()
@@ -205,6 +224,12 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(toolbar?.parentElement?.nextElementSibling).toBe(rail)
     expect(findButton('收起预览设置')?.getAttribute('aria-expanded')).toBe('true')
     expect(findButton('收起预览设置')?.getAttribute('aria-controls')).toBe(rail?.id)
+
+    const autoStart = container.querySelector<HTMLInputElement>('input[role="switch"][aria-label="重新打开时恢复预览"]')
+    expect(autoStart).not.toBeNull()
+    expect(autoStart?.checked).toBe(false)
+    await act(async () => autoStart?.click())
+    expect(usePreviewStore.getState().autoStart).toBe(true)
   })
 
   it('keeps recovery controls available while blocking new device actions', async () => {
