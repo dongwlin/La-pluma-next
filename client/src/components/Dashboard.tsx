@@ -702,7 +702,6 @@ export default function Dashboard() {
                 </span>
                 <div className="min-w-0">
                   <div className={sectionTitleClass}>养成摘要</div>
-                  <div className={`mt-0.5 text-xs ${labelClass}`}>当前优先培养的干员目标</div>
                 </div>
               </div>
               <IconButton
@@ -753,7 +752,6 @@ export default function Dashboard() {
                 </span>
                 <div className="min-w-0">
                   <div className={sectionTitleClass}>今日掉落摘要</div>
-                  <div className={`mt-0.5 text-xs ${labelClass}`}>最近作战产出</div>
                 </div>
               </div>
               <IconButton

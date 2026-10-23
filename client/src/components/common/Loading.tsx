@@ -761,10 +761,7 @@ function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }
       <div className="dashboard-summary-header">
         <div className="dashboard-summary-heading">
           <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
-          <div className="space-y-1.5">
-            <Skeleton variant="text" className="h-4 w-24" />
-            <Skeleton variant="text" className="h-2.5 w-36" />
-          </div>
+          <Skeleton variant="title" className="h-4 w-24" />
         </div>
         <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
       </div>
