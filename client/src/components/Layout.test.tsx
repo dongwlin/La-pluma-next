@@ -281,8 +281,11 @@ describe('top-level application navigation', () => {
     })
 
     const identity = container.querySelector<HTMLElement>('.la-pluma-sidebar-identity')!
+    const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
     const avatar = identity.querySelector<HTMLImageElement>('.la-pluma-sidebar-avatar img')!
     expect(mocks.loadDailyOperatorQuote).toHaveBeenCalledTimes(1)
+    expect(sidebar.firstElementChild?.classList.contains('la-pluma-sidebar-nav')).toBe(true)
+    expect(sidebar.lastElementChild).toBe(identity)
     expect(identity.getAttribute('aria-label')).toBe('银灰：战术安排已就绪')
     expect(identity.querySelector('strong')?.textContent).toBe('银灰')
     expect(identity.querySelector('small')?.textContent).toBe('战术安排已就绪')

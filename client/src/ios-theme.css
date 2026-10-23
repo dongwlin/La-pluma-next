@@ -835,8 +835,10 @@ html.la-pluma-standalone #app-root .page {
   display: flex;
   min-width: 0;
   min-height: 3.75rem;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.75rem;
+  margin-top: auto;
   padding: 0 0.625rem;
 }
 

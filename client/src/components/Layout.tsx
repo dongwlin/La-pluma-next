@@ -413,6 +413,21 @@ export default function Layout({ children }: LayoutProps) {
 
         <div className="la-pluma-page-body">
           <aside className="la-pluma-sidebar" aria-label="主要功能">
+            <nav className="la-pluma-sidebar-nav" aria-label="工作台">
+              {desktopTabGroups.map(group => (
+                <div
+                  key={group.id}
+                  className="la-pluma-sidebar-nav-group"
+                  role="group"
+                  aria-label={group.label}
+                >
+                  {group.tabs.map(tab => (
+                    <TabLink key={tab.id} tab={tab} active={activeTab === tab.id} onNavigate={navigateToTab} />
+                  ))}
+                </div>
+              ))}
+            </nav>
+
             <div
               className="la-pluma-sidebar-identity"
               aria-label={`${sidebarIdentity.operator}：${sidebarIdentity.quote}`}
@@ -436,21 +451,6 @@ export default function Layout({ children }: LayoutProps) {
                 <small title={sidebarIdentity.quote}>{sidebarIdentity.quote}</small>
               </span>
             </div>
-
-            <nav className="la-pluma-sidebar-nav" aria-label="工作台">
-              {desktopTabGroups.map(group => (
-                <div
-                  key={group.id}
-                  className="la-pluma-sidebar-nav-group"
-                  role="group"
-                  aria-label={group.label}
-                >
-                  {group.tabs.map(tab => (
-                    <TabLink key={tab.id} tab={tab} active={activeTab === tab.id} onNavigate={navigateToTab} />
-                  ))}
-                </div>
-              ))}
-            </nav>
           </aside>
 
           <main className="la-pluma-scroll-host">

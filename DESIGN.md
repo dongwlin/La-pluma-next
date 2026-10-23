@@ -228,7 +228,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 应用使用原生 `.la-pluma-app` 根节点。Navbar、页面区域、移动 tabbar 和 Sheet 等 chrome 与交互统一由 `Layout` 及 common 组件提供；`ios-theme.css` 负责 iOS 26 材质、应用 chrome、安全区和品牌适配，不要在页面中另起一套导航或 modal 基础样式。
 
-- 桌面端（`lg` 及以上）显示 `17rem` 左侧工作台导航：一条跨越顶栏与导航区的连续圆角玻璃边界、可用搜索、分组导航和 28px 语义色图标底座。当前项使用整行系统强调色和白色文字；品牌入口属于侧栏右侧的工作区顶栏，不能进入或遮挡侧栏圆角区。
+- 桌面端（`lg` 及以上）显示 `17rem` 左侧工作台导航：一条跨越顶栏与导航区的连续圆角玻璃边界、可用搜索、分组导航和 28px 语义色图标底座；导航项从面板顶部开始排列，干员身份区固定在面板底部。当前项使用整行系统强调色和白色文字；品牌入口属于侧栏右侧的工作区顶栏，不能进入或遮挡侧栏圆角区。
 - 移动端使用悬浮的 iOS 风格底部胶囊导航，右侧搜索/更多入口承载次要页面。两端必须复用 `Layout` 的 URL 路由和 active 状态，不要按 viewport 建立第二份导航状态。
 - 主题由 `useUIStore` 的 `light`、`dark`、`system` 管理，并同步到文档根节点和 `.la-pluma-app`。组件或页面不要直接操作 `.dark`，也不要创建局部主题开关。
 - `client/index.html` 使用 `viewport-fit=cover`。`Layout` 通过统一 token 管理 navbar、移动 tabbar 和对应安全区高度；自定义 fixed/sticky 层只有在不属于这些 chrome 时才使用 `env(safe-area-inset-*)`，内容区不要重复叠加顶部或底部 inset。
@@ -298,7 +298,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 通用组件优先级：能用 `Card`、`CardHeader`、`CardContent`、`SmoothPanel` 时优先使用组件；特殊布局使用 `app-card surface-panel`、`app-card surface-soft`、`app-info-card`；不要把页面区块做成层层嵌套卡片。
 
 ### Navigation
-- **Desktop:** 固定 17rem 侧栏，0.75rem 内缩的连续圆角玻璃框（`blur(28px) saturate(165%)`），干员身份区、分组导航和 28px 语义色图标底座；当前项为整行系统蓝和白色文字。
+- **Desktop:** 固定 17rem 侧栏，0.75rem 内缩的连续圆角玻璃框（`blur(28px) saturate(165%)`），分组导航、底部干员身份区和 28px 语义色图标底座；当前项为整行系统蓝和白色文字。
 - **Mobile:** 悬浮 4rem 胶囊 tabbar，底部安全区由 `--la-pluma-tabbar-*` token 统一管理；右侧搜索/更多入口承载次要页面。
 - **Shared State:** 两端复用 `Layout` 的 URL 路由和 active 状态；不要按 viewport 维护第二套导航状态，也不要让桌面侧栏样式扩散到移动底栏或“更多”Sheet。
 
