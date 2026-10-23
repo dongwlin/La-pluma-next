@@ -72,7 +72,7 @@ describe('PageSkeleton', () => {
   it('keeps dashboard material styling while data is loading', async () => {
     await renderSkeleton('dashboard')
 
-    const page = container.querySelector('[aria-label="控制台加载中"]')
+    const page = container.querySelector('[aria-label="概览加载中"]')
     expect(page?.classList.contains('dashboard-page')).toBe(true)
     expectCurrentPageHeader()
     expect(page?.querySelector('.dashboard-flow-card')).not.toBeNull()
@@ -80,9 +80,7 @@ describe('PageSkeleton', () => {
     expect(page?.querySelector('[data-dashboard-preview-card].status-border-beam')).not.toBeNull()
     expect(page?.querySelectorAll('.dashboard-device-card-shell')).toHaveLength(4)
     expect(page?.querySelectorAll('.dashboard-temperature-skeleton')).toHaveLength(1)
-    expect(page?.querySelectorAll('.dashboard-summary-card')).toHaveLength(4)
-    expect(page?.querySelector('.dashboard-summary-card.is-status')).not.toBeNull()
-    expect(page?.querySelector('.dashboard-summary-card.is-stages')).not.toBeNull()
+    expect(page?.querySelectorAll('.dashboard-summary-card')).toHaveLength(2)
     expect(page?.querySelector('.dashboard-summary-card.is-training')).not.toBeNull()
     expect(page?.querySelector('.dashboard-summary-card.is-drops')).not.toBeNull()
   })

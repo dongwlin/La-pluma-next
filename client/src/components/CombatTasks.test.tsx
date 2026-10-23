@@ -164,6 +164,77 @@ describe('CombatTasks execution recovery', () => {
     vi.restoreAllMocks()
   })
 
+  it('previews an explicit PRTS single code without guessing a set with the same id', async () => {
+    mocks.getCopilotInfo.mockResolvedValue({ status_code: 200, data: { content: JSON.stringify({
+      stage_name: 'test_1', doc: { title: 'PRTS 单作业' },
+    }) } })
+    await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'prts://1234')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await click(buttonsByText('预览')[0]!)
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1234')
+    expect(mocks.getCopilotSet).not.toHaveBeenCalled()
+    expect(mocks.getCopilotSetPlan).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('PRTS 单作业')
+  })
+
+  it.each(['prts://s48990', 'PRTS://S48990'])(
+    'previews %s as a set and executes its selected item using PRTS', async uri => {
+      mocks.getCopilotSetPlan.mockResolvedValue({
+        success: true,
+        data: { items: [{ id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true }], entries: [] },
+      })
+      await renderComponent()
+      const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, uri)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await click(buttonsByText('预览')[0]!)
+      expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
+      expect(mocks.getCopilotInfo).not.toHaveBeenCalled()
+      const executionMode = Array.from(container.querySelectorAll('select'))
+        .find(select => Array.from(select.options).some(option => option.value === 'manual'))!
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(executionMode, 'manual')
+        executionMode.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      await click(buttonsByText('立即执行')[0]!)
+      expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
+        'copilot', expect.arrayContaining(['prts://101', '--formation']), null, null, '自动战斗作业', 'combat', true,
+      )
+    },
+  )
+
+  it('falls back to the set list when the plan request fails', async () => {
+    mocks.getCopilotSetPlan.mockRejectedValue(new Error('plan unavailable'))
+    mocks.getCopilotSet.mockResolvedValue({
+      success: true,
+      data: { status_code: 200, data: { copilot_ids: [101] } },
+    })
+    mocks.getCopilotInfo.mockResolvedValue({ status_code: 200, data: { content: JSON.stringify({
+      stage_name: 'TEST-1', doc: { title: '兜底作业' },
+    }) } })
+
+    await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'prts://s48990')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await click(buttonsByText('预览')[0]!)
+    await flush()
+
+    expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
+    expect(mocks.getCopilotSet).toHaveBeenCalledWith('48990')
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('101')
+    expect(container.textContent).toContain('共 1 个作业')
+    expect(container.textContent).toContain('兜底作业')
+  })
+
   it('keeps each active task in the shared continuous-corner card', async () => {
     await renderComponent()
 
@@ -229,14 +300,14 @@ describe('CombatTasks execution recovery', () => {
     const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://24680')
+      valueSetter?.call(input, 'prts://24680')
       input?.dispatchEvent(new Event('input', { bubbles: true }))
       await vi.advanceTimersByTimeAsync(300)
     })
     await flush()
 
     expect(localStorage.getItem('combatConfigSyncPending')).not.toBeNull()
-    expect(JSON.parse(localStorage.getItem('combatTaskInputs') || '{}')).toMatchObject({ copilot: 'maa://24680' })
+    expect(JSON.parse(localStorage.getItem('combatTaskInputs') || '{}')).toMatchObject({ copilot: 'prts://24680' })
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('配置存储暂不可用')
 
     await act(async () => root.unmount())
@@ -245,7 +316,7 @@ describe('CombatTasks execution recovery', () => {
     await renderComponent()
 
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
-    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value).toBe('maa://24680')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value).toBe('prts://24680')
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
 
     await click(buttonsByText('重新同步')[0]!)
@@ -269,7 +340,7 @@ describe('CombatTasks execution recovery', () => {
     let input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://10001')
+      valueSetter?.call(input, 'prts://10001')
       input?.dispatchEvent(new Event('input', { bubbles: true }))
       await vi.advanceTimersByTimeAsync(300)
     })
@@ -280,7 +351,7 @@ describe('CombatTasks execution recovery', () => {
     input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://10002')
+      valueSetter?.call(input, 'prts://10002')
       input?.dispatchEvent(new Event('input', { bubbles: true }))
       await vi.advanceTimersByTimeAsync(300)
     })
@@ -291,10 +362,10 @@ describe('CombatTasks execution recovery', () => {
     await flush()
     expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.saveUserConfig.mock.calls[1]?.[1]).toMatchObject({
-      taskInputs: { copilot: 'maa://10002' },
+      taskInputs: { copilot: 'prts://10002' },
     })
     expect(localStorage.getItem('combatConfigSyncPending')).toBe(newerSyncToken)
-    expect(JSON.parse(localStorage.getItem('combatTaskInputs') || '{}')).toMatchObject({ copilot: 'maa://10002' })
+    expect(JSON.parse(localStorage.getItem('combatTaskInputs') || '{}')).toMatchObject({ copilot: 'prts://10002' })
 
     await act(async () => newerSave.resolve({ success: true }))
     await flush()
@@ -305,14 +376,14 @@ describe('CombatTasks execution recovery', () => {
     vi.useFakeTimers()
     mocks.loadUserConfig.mockResolvedValueOnce({
       success: true,
-      data: { taskInputs: { copilot: 'maa://server' } },
+      data: { taskInputs: { copilot: 'prts://server' } },
     })
 
     await renderActivityMode('visible')
     const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://draft')
+      valueSetter?.call(input, 'prts://draft')
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
 
@@ -322,7 +393,7 @@ describe('CombatTasks execution recovery', () => {
     await flush()
 
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
-    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value).toBe('maa://draft')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value).toBe('prts://draft')
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
 
     await renderActivityMode('hidden')
@@ -343,7 +414,7 @@ describe('CombatTasks execution recovery', () => {
     const previewInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(previewInput, 'maa://1234')
+      valueSetter?.call(previewInput, 'prts://1234')
       previewInput.dispatchEvent(new Event('input', { bubbles: true }))
     })
     const previewButton = previewInput.parentElement?.querySelector<HTMLButtonElement>('button')
@@ -428,14 +499,14 @@ describe('CombatTasks execution recovery', () => {
 
     await act(async () => newerSearch.resolve({
       success: true,
-      data: { copilots: [{ id: 2, uri: 'maa://2', title: '新作业' }] },
+      data: { copilots: [{ id: 2, uri: 'prts://2', title: '新作业' }] },
     }))
     await flush()
     expect(container.textContent).toContain('新作业')
 
     await act(async () => olderSearch.resolve({
       success: true,
-      data: { copilots: [{ id: 1, uri: 'maa://1', title: '旧作业' }] },
+      data: { copilots: [{ id: 1, uri: 'prts://1', title: '旧作业' }] },
     }))
     await flush()
     expect(container.textContent).toContain('新作业')
@@ -459,9 +530,9 @@ describe('CombatTasks execution recovery', () => {
         input.dispatchEvent(new Event('input', { bubbles: true }))
       })
     }
-    await setUri('maa://1')
+    await setUri('prts://1')
     await click(buttonsByText('预览')[0]!)
-    await setUri('maa://2')
+    await setUri('prts://2')
     await click(buttonsByText('预览')[0]!)
 
     const previewResponse = (title: string, stage: string) => ({
@@ -540,7 +611,7 @@ describe('CombatTasks execution recovery', () => {
     expect(input).not.toBeNull()
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://48990s')
+      valueSetter?.call(input, 'prts://s48990')
       input?.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await click(buttonsByText('预览')[0]!)
@@ -565,14 +636,14 @@ describe('CombatTasks execution recovery', () => {
     const input = document.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://1234')
+      valueSetter?.call(input, 'prts://1234')
       input?.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await click(buttonsByText('立即执行')[0]!)
 
     expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
       'copilot',
-      expect.any(Array),
+      expect.arrayContaining(['prts://1234']),
       null,
       null,
       '自动战斗作业',
@@ -604,7 +675,7 @@ describe('CombatTasks execution recovery', () => {
     const input = document.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'maa://48990s')
+      valueSetter?.call(input, 'prts://s48990')
       input?.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await click(buttonsByText('预览')[0]!)

@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-23T15:59:33+08:00",
+  "title": "Design System: La Pluma Next",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "System Blue",
+        "canonical": "#007aff",
+        "tonalRamp": [
+          "#002f66",
+          "#004a99",
+          "#0062cc",
+          "#007aff",
+          "#3395ff",
+          "#66b0ff",
+          "#99caff",
+          "#cce5ff"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Graphite Ink",
+        "canonical": "#1c1c1e",
+        "tonalRamp": [
+          "#000000",
+          "#0e0e0f",
+          "#1c1c1e",
+          "#3a3a3c",
+          "#58585a",
+          "#767678",
+          "#949496",
+          "#b2b2b4"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Cupertino Paper",
+        "canonical": "#f2f2f7",
+        "tonalRamp": [
+          "#6b6b73",
+          "#8e8e93",
+          "#aeaeb2",
+          "#c7c7cc",
+          "#d1d1d6",
+          "#e5e5ea",
+          "#f2f2f7",
+          "#ffffff"
+        ]
+      },
+      "surface-solid": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#6b6b70",
+          "#8e8e93",
+          "#aeaeb2",
+          "#c7c7cc",
+          "#d1d1d6",
+          "#e5e5ea",
+          "#f2f2f7",
+          "#ffffff"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Status Green",
+        "canonical": "#34c759",
+        "tonalRamp": [
+          "#0b3d1b",
+          "#166b2e",
+          "#229a41",
+          "#34c759",
+          "#5dd47a",
+          "#85df9b",
+          "#aeeabc",
+          "#d6f5de"
+        ]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Status Amber",
+        "canonical": "#ff9500",
+        "tonalRamp": [
+          "#4d2d00",
+          "#804b00",
+          "#b36900",
+          "#ff9500",
+          "#ffaa33",
+          "#ffbf66",
+          "#ffd499",
+          "#ffeacc"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Status Red",
+        "canonical": "#ff3b30",
+        "tonalRamp": [
+          "#4d0f0c",
+          "#801a15",
+          "#b3261e",
+          "#ff3b30",
+          "#ff6b62",
+          "#ff9a94",
+          "#ffc2be",
+          "#ffe5e3"
+        ]
+      },
+      "info": {
+        "role": "secondary",
+        "displayName": "Status Indigo",
+        "canonical": "#5856d6",
+        "tonalRamp": [
+          "#1a1940",
+          "#2b2a6b",
+          "#3f3d99",
+          "#5856d6",
+          "#7977de",
+          "#9b99e6",
+          "#bdbcef",
+          "#dedef7"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page Title",
+        "purpose": "Only the main title inside PageHeader."
+      },
+      "section-title": {
+        "displayName": "Section Title",
+        "purpose": "CardHeader and primary content-section headings."
+      },
+      "card-title": {
+        "displayName": "Card Title",
+        "purpose": "Compact blocks and card-internal headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Descriptions, form labels, normal buttons and table cells."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Metadata, hints and filter labels."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Order numbers, timestamps, short IDs and monospace log metadata."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel-rest-light",
+        "value": "0 0 0 1px rgba(60, 60, 67, 0.18), 0 1px 3px rgba(15, 23, 42, 0.05), 0 14px 40px rgba(15, 23, 42, 0.05)",
+        "purpose": "Default surface-panel elevation in light mode."
+      },
+      {
+        "name": "panel-rest-dark",
+        "value": "inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(235, 235, 245, 0.18), 0 16px 40px rgba(0, 0, 0, 0.28)",
+        "purpose": "Equivalent surface-panel elevation in dark mode."
+      },
+      {
+        "name": "glass-chrome",
+        "value": "0 12px 32px rgba(60, 60, 67, 0.12)",
+        "purpose": "Sidebar frame, floating tabbar and chrome shells."
+      },
+      {
+        "name": "summoned-layer",
+        "value": "0 2px 8px rgba(0, 0, 0, 0.1), 0 30px 80px rgba(0, 0, 0, 0.24)",
+        "purpose": "Modals, theme menus, PWA prompts and other summoned overlays."
+      },
+      {
+        "name": "control-rest",
+        "value": "inset 0 0 0 1px rgba(60, 60, 67, 0.28), 0 1px 2px rgba(15, 23, 42, 0.025)",
+        "purpose": "Inputs, selects and secondary buttons at rest."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": "160ms ease",
+        "purpose": "Color, background, border and shadow changes on ordinary controls."
+      },
+      {
+        "name": "surface-transition",
+        "value": "180ms ease",
+        "purpose": "Card hover, button press and panel elevation changes."
+      },
+      {
+        "name": "switch-spring",
+        "value": "240ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Switch thumb travel; compress to near-zero under reduced motion."
+      },
+      {
+        "name": "status-beam",
+        "value": "2.8s linear infinite",
+        "purpose": "Only for active startup, connection or execution status; hidden under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single blue action on a surface: start, save or confirm.",
+      "html": "<button class=\"ds-btn ds-btn-primary\" type=\"button\">立即执行</button>",
+      "css": ".ds-btn { border: 0; border-radius: var(--app-radius-lg, 16px); height: 44px; padding: 0 16px; font: 600 14px/1.25 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; cursor: pointer; transition: background 180ms ease, box-shadow 180ms ease; } .ds-btn-primary { background: var(--app-accent-action, #0066cc); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 5px 14px rgba(0,102,204,.18); } .ds-btn-primary:hover { background: var(--app-accent-action-pressed, #0055b3); } .ds-btn-primary:focus-visible { outline: 2px solid color-mix(in srgb, var(--app-accent, #007aff) 62%, transparent); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral companion action that must not compete with the primary blue.",
+      "html": "<button class=\"ds-btn ds-btn-secondary\" type=\"button\">测试连接</button>",
+      "css": ".ds-btn { border: 0; border-radius: var(--app-radius-lg, 16px); height: 44px; padding: 0 16px; font: 600 14px/1.25 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; cursor: pointer; transition: background 180ms ease, box-shadow 180ms ease; } .ds-btn-secondary { background: var(--app-surface-muted, rgba(118,118,128,.12)); color: var(--app-text, #1c1c1e); box-shadow: none; } .ds-btn-secondary:hover { background: color-mix(in srgb, var(--app-accent-soft, rgba(0,122,255,.12)) 24%, var(--app-surface-solid, #fff)); } .ds-btn-secondary:focus-visible { outline: 2px solid color-mix(in srgb, var(--app-accent, #007aff) 62%, transparent); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "44px iOS-style field with a hairline ring and a focused blue halo.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">设备地址</span><input class=\"ds-input\" type=\"text\" value=\"127.0.0.1:5555\"></label>",
+      "css": ".ds-field { display: grid; gap: 8px; color: var(--app-text, #1c1c1e); font: 500 14px/1.4 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; } .ds-field-label { font-weight: 500; } .ds-input { box-sizing: border-box; width: 100%; height: 44px; border: 0; border-radius: var(--app-radius-lg, 16px); padding: 0 12px; background: var(--app-surface-solid, #fff); color: var(--app-text, #1c1c1e); font: 500 14px/1.25 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; box-shadow: inset 0 0 0 1px var(--app-border-strong, rgba(60,60,67,.28)), 0 1px 2px rgba(15,23,42,.025); outline: none; transition: box-shadow 160ms ease, background 160ms ease; } .ds-input:focus { box-shadow: inset 0 0 0 1px var(--app-accent, #007aff), 0 0 0 3px var(--app-accent-soft, rgba(0,122,255,.12)); }"
+    },
+    {
+      "name": "Surface Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Opaque content card with a continuous 16px corner, 20px padding and a ring-based shadow.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-card-header\"><h3>任务流程</h3><span>3/6</span></header><div class=\"ds-card-body\"><p>按顺序执行，可拖拽调整。</p></div></section>",
+      "css": ".ds-card { overflow: hidden; border-radius: var(--app-radius-lg, 16px); background: var(--app-surface-solid, #fff); color: var(--app-text, #1c1c1e); box-shadow: 0 0 0 1px var(--app-border, rgba(60,60,67,.18)), 0 1px 3px rgba(15,23,42,.05), 0 14px 40px rgba(15,23,42,.05); font: 400 14px/1.5 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; } .ds-card-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; box-shadow: inset 0 -1px 0 var(--app-border, rgba(60,60,67,.18)); } .ds-card-header h3 { margin: 0; color: var(--app-text, #1c1c1e); font-size: 18px; font-weight: 600; line-height: 1.45; } .ds-card-header span { color: var(--app-text-soft, #8e8e93); font-size: 12px; } .ds-card-body { padding: 16px; } .ds-card-body p { margin: 0; color: var(--app-text-muted, #636366); }"
+    },
+    {
+      "name": "Workspace Navigation",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "Desktop sidebar group with a full-row blue active item and white label.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"工作区\"><a class=\"ds-nav-item ds-nav-item-active\" href=\"#\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1.5\" fill=\"currentColor\"/><rect x=\"11\" y=\"3\" width=\"6\" height=\"6\" rx=\"1.5\" fill=\"currentColor\"/><rect x=\"3\" y=\"11\" width=\"6\" height=\"6\" rx=\"1.5\" fill=\"currentColor\"/><rect x=\"11\" y=\"11\" width=\"6\" height=\"6\" rx=\"1.5\" fill=\"currentColor\"/></svg>自动化</a><a class=\"ds-nav-item\" href=\"#\"><span class=\"ds-nav-dot\"></span>作业</a><a class=\"ds-nav-item\" href=\"#\"><span class=\"ds-nav-dot\"></span>配置</a></nav>",
+      "css": ".ds-nav { display: grid; gap: 4px; width: 240px; padding: 10px; border-radius: 20px; background: var(--app-surface, rgba(255,255,255,.72)); font: 500 14px/1 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255,255,255,.72), 0 0 0 1px var(--app-glass-border, rgba(60,60,67,.18)), 0 12px 32px rgba(60,60,67,.12); } .ds-nav-item { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: var(--app-radius-md, 13px); color: var(--app-text-muted, #636366); text-decoration: none; transition: background 160ms ease, color 160ms ease; } .ds-nav-item:hover { background: var(--app-surface-muted, rgba(118,118,128,.12)); } .ds-nav-item-active { background: var(--app-accent, #007aff); color: #fff; box-shadow: inset 0 .5px 0 rgba(255,255,255,.48), inset 0 -.5px 0 rgba(0,0,0,.16), 0 2px 6px rgba(0,122,255,.24); } .ds-nav-icon { width: 18px; height: 18px; flex: none; } .ds-nav-dot { width: 18px; height: 18px; border-radius: 6px; background: var(--app-accent-soft, rgba(0,122,255,.12)); }"
+    },
+    {
+      "name": "Switch",
+      "kind": "custom",
+      "description": "51x31 iOS switch with a 27px thumb and a 44px invisible hit target.",
+      "html": "<label class=\"ds-switch\"><input class=\"ds-switch-input\" type=\"checkbox\" checked><span class=\"ds-switch-track\"><span class=\"ds-switch-thumb\"></span></span><span class=\"ds-switch-label\">自动运行</span></label>",
+      "css": ".ds-switch { position: relative; display: inline-flex; align-items: center; gap: 10px; color: var(--app-text, #1c1c1e); font: 500 14px/1.4 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; cursor: pointer; } .ds-switch-input { position: absolute; left: 0; top: 50%; width: 51px; height: 44px; margin: 0; opacity: 0; transform: translateY(-50%); cursor: pointer; z-index: 2; } .ds-switch-track { position: relative; display: block; width: 51px; height: 31px; flex: none; border-radius: 9999px; background: rgba(142,142,147,.28); box-shadow: inset 0 0 0 1px rgba(142,142,147,.12); transition: background 220ms ease, box-shadow 220ms ease; } .ds-switch-thumb { position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,.24), 0 0 0 .5px rgba(0,0,0,.04); transition: transform 240ms cubic-bezier(.22,1,.36,1); } .ds-switch-input:checked + .ds-switch-track { background: var(--app-accent, #007aff); } .ds-switch-input:checked + .ds-switch-track .ds-switch-thumb { transform: translateX(20px); } .ds-switch-input:focus-visible + .ds-switch-track { outline: 2px solid var(--app-accent, #007aff); outline-offset: 3px; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "description": "Tinted semantic pill for connected, warning and error states.",
+      "html": "<span class=\"ds-chip ds-chip-success\">已连接</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 9999px; color: var(--app-success-text, #1f7a36); background: color-mix(in srgb, var(--app-success, #34c759) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-success, #34c759) 22%, transparent); font: 600 12px/1 -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Precision Workbench",
+    "overview": "La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面。它的界面首先是一张工作台：macOS 风格的固定侧栏负责工作区导航，中央区域承载任务编排、日志、数据和设备预览，移动端则退化为悬浮的 iOS 26 胶囊导航。所有控件都应当像加工过的系统控件：尺寸精确、反馈短促、层级清楚，不靠装饰制造存在感。\n\n浅色主题读起来像冷调纸面与磨砂玻璃，深色主题则是近黑石墨与同一支蓝色信号。密度是刻意保留的：信息可以很满，但层级必须由字重、1px 发丝线和间距 token 建立，而不是由彩色卡片、渐变或投影堆出来。强调色是稀缺资源，只出现在当前导航项、主操作、焦点和运行中的状态上。",
+    "keyCharacteristics": [
+      "原生语义优先：Button、Card、Input、Switch 等 common 组件使用真实语义元素，浏览器、jsdom、SSR 和嵌入式场景渲染一致。",
+      "单强调色：系统蓝承担品牌、主操作、焦点和选中态；状态色只表达成功、警告、危险和信息。",
+      "分层而不炫技：普通内容面保持平整，只有 chrome、弹层和可点击卡片使用玻璃、抬升或 hover 阴影。",
+      "4px 节奏：所有间距回到 --app-space-*；圆角回到 --app-radius-*。",
+      "移动优先：断点从内容需要出发，不复制桌面布局，也不建立第二套导航状态。"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "系统蓝是唯一的品牌强调色。任一屏幕中，实心蓝色面积应保持克制；如果所有按钮、图标和标题都在抢蓝色，先删掉装饰性的那些。",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Surface Rule",
+        "body": "页面通过 surface-panel、surface-soft、control-surface、control-active、brand-action、brand-text、status-*、form-error-* 使用颜色，不直接写 from-violet-*、text-orange-*、bg-cyan-* 这类页面级色板。",
+        "section": "colors"
+      },
+      {
+        "name": "The Dark Mirror Rule",
+        "body": "深色主题不是浅色的机械反转：页面变为近黑石墨，文字变为暖白，蓝色略微提亮，但语义关系和强调色的稀缺性保持不变。不要在页面里另建一套深色 token。",
+        "section": "colors"
+      },
+      {
+        "name": "The Four-Weight Rule",
+        "body": "只使用 400、500、600、700。不要使用依赖系统字体插值的 650、750、780；需要更强层级时先检查字号和颜色，而不是继续加粗。",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Tracking Rule",
+        "body": "中文标题、正文和按钮不新增 letter spacing；只有英文全大写微标签可以使用更宽字距。",
+        "section": "typography"
+      },
+      {
+        "name": "The 11px Floor Rule",
+        "body": "8px 至 10px 不得承载中文正文、操作名或重要状态；11px 仅用于序号、时间戳和短元数据。",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "普通卡片、列表和页面区块在静止状态保持平整。阴影只用于表达层级、可点击性或状态，不要给静态内容卡片加投影闪动或位移。",
+        "section": "elevation"
+      },
+      {
+        "name": "The Liquid Glass Exception",
+        "body": "只有 chrome、Modal、主题菜单、PWA 提示和明确的浮层可以使用 backdrop-filter 与深阴影。普通卡片保持不透明，避免整页都是玻璃导致可读性下降。",
+        "section": "elevation"
+      },
+      {
+        "name": "The Single Beam Rule",
+        "body": "status-border-beam 仅用于启动、连接或执行中的局部状态反馈，并通过 is-active 控制；完成、空闲和静态卡片不得常驻光效，也不要叠加第二条可见边框。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 先读 client/src/index.css 和 client/src/ios-theme.css，再用语义类实现界面；新页面优先使用 Layout、PageHeader、Card、Button、Input 等现有组件。",
+      "Do 把间距回到 --app-space-*、圆角回到 --app-radius-*，保持 4px 基线和 1px 发丝线。",
+      "Do 让系统蓝保持稀缺：只用于当前项、主操作、焦点和运行中状态；状态色只表达语义。",
+      "Do 在手机和粗指针设备上保证至少 44px 的点击区域，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。",
+      "Do 在 viewport-fit=cover 的安全区设备上确认 chrome 与页面内容没有双重留白。",
+      "Do 为所有可点击元素提供 focus-visible 状态，装饰图标加 aria-hidden=\"true\"。"
+    ],
+    "donts": [
+      "Don't 新增页面级颜色主题或 from-violet-*、text-orange-*、bg-cyan-* 这类随手写的色板；需要新语义时先在 index.css 增加 token 或语义类。",
+      "Don't 使用 rounded-2xl、rounded-3xl 或任意更大的圆角突破 --app-radius-lg；需要特殊造型时先确认是否应成为新的语义 token。",
+      "Don't 给卡片、输入框、分段控件和普通信息容器使用 border-2 或重色描边；2px 只留给复选框、引导线和加载圈。",
+      "Don't 在页面里重建导航壳层、主题开关、modal 基础样式或第二套组件 DOM。",
+      "Don't 给普通按钮增加亮色渐变、强光晕或重投影；hover 只做主题色压暗或弱背景。",
+      "Don't 把静态内容卡片做成层层嵌套，或为了填满留白硬塞第二张卡；独立工作区、弹窗、空状态和设备预览属于合理例外。",
+      "Don't 使用 window.confirm、8px–10px 的中文正文，或 899px、1023px 这类页面级断点。",
+      "Don't 让 status-border-beam 在完成、空闲或静态卡片上常驻，也不要叠加第二条可见边框。"
+    ]
+  }
+}

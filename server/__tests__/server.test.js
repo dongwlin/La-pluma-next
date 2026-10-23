@@ -35,7 +35,7 @@ afterEach(async () => {
   while (tempDirs.length) await rm(tempDirs.pop(), { recursive: true, force: true })
 })
 
-describe('La Pluma transport configuration', () => {
+describe('La Pluma Next transport configuration', () => {
   it('normalizes the production application base path', () => {
     assert.equal(normalizeBasePath(), '/')
     assert.equal(normalizeBasePath('la-pluma'), '/la-pluma/')
@@ -96,7 +96,7 @@ describe('La Pluma transport configuration', () => {
     const clientDistPath = await mkdtemp(join(tmpdir(), 'la-pluma-client-'))
     tempDirs.push(clientDistPath)
     await mkdir(join(clientDistPath, 'assets'))
-    await writeFile(join(clientDistPath, 'index.html'), '<!doctype html><title>La Pluma fixture</title>')
+    await writeFile(join(clientDistPath, 'index.html'), '<!doctype html><title>La Pluma Next fixture</title>')
     await writeFile(join(clientDistPath, 'assets', 'app.js'), 'globalThis.fixtureLoaded = true')
 
     const signalingGateway = {
@@ -115,7 +115,7 @@ describe('La Pluma transport configuration', () => {
 
     const shell = await fetch(`${origin}/la-pluma/automation`)
     assert.equal(shell.status, 200)
-    assert.match(await shell.text(), /La Pluma fixture/)
+    assert.match(await shell.text(), /La Pluma Next fixture/)
 
     const asset = await fetch(`${origin}/la-pluma/assets/app.js`)
     assert.equal(asset.status, 200)
@@ -131,7 +131,7 @@ describe('La Pluma transport configuration', () => {
     for (const reservedPath of ['api', 'health', 'webrtc-signaling']) {
       const reservedResponse = await fetch(`${origin}/la-pluma/${reservedPath}`)
       assert.equal(reservedResponse.status, 404)
-      assert.doesNotMatch(await reservedResponse.text(), /La Pluma fixture/)
+      assert.doesNotMatch(await reservedResponse.text(), /La Pluma Next fixture/)
     }
   })
 

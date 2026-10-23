@@ -157,7 +157,7 @@ export default function PWAInstallPrompt() {
       setDeferredPrompt(null)
       setShowInstallPrompt(false)
       setIsInstallExpanded(false)
-      setStatusMessage('La Pluma 已安装', 'success')
+      setStatusMessage('La Pluma Next 已安装', 'success')
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
@@ -208,7 +208,7 @@ export default function PWAInstallPrompt() {
   const announcement = showUpdateCard
     ? '发现新版本，可以立即更新'
     : showInstallPrompt
-      ? (isIos ? '可以将 La Pluma 添加到主屏幕' : '可以安装 La Pluma')
+      ? (isIos ? '可以将 La Pluma Next 添加到主屏幕' : '可以安装 La Pluma Next')
       : ''
   const logoUrl = `${import.meta.env.BASE_URL}logo-graphite.svg?v=1`
 
@@ -248,7 +248,7 @@ export default function PWAInstallPrompt() {
               />
               <div className="min-w-0 flex-1">
                 <h2 id="pwa-prompt-title" className="text-base font-semibold text-primary">
-                  {showUpdateCard ? '发现新版本' : '安装 La Pluma'}
+                  {showUpdateCard ? '发现新版本' : '安装 La Pluma Next'}
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-secondary">
                   {showUpdateCard
@@ -316,8 +316,8 @@ export default function PWAInstallPrompt() {
             icon={<SquarePlus className="h-5 w-5" aria-hidden="true" />}
             onClick={() => setIsInstallExpanded(true)}
             className="pwa-install-entry-button"
-            title="安装 La Pluma"
-            aria-label="安装 La Pluma"
+            title="安装 La Pluma Next"
+            aria-label="安装 La Pluma Next"
             aria-expanded="false"
           />
         </motion.div>

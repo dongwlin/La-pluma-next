@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, Bot, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
+import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
 import { getOpenTodayStages, getTodayDrops, getTrainingQueue, maaApi } from '../services/api'
 import Icons from './Icons'
 import { PageHeader, Card, Button, IconButton, SmoothPanel } from './common'
@@ -375,7 +375,7 @@ export default function Dashboard() {
       const configResult = await maaApi.loadUserConfig('automation-tasks')
       const savedFlow = Array.isArray(configResult?.data?.taskFlow) ? configResult.data.taskFlow : []
       if (!configResult.success || savedFlow.length === 0) {
-        setQuickStartMessage('还没有配置今日流程，先去自动化页保存任务流。')
+        setQuickStartMessage('还没有配置今日流程，先去日常页保存任务流。')
         setQuickStartMessageType('warning')
         setActiveTab('automation')
         return
@@ -455,7 +455,7 @@ export default function Dashboard() {
   const connectionDescription = serviceStatus === 'offline'
     ? '恢复网络连接后会自动重新检查服务'
     : serviceStatus === 'unavailable'
-      ? (backendMessage || '确认 La Pluma 服务已启动后重试')
+      ? (backendMessage || '确认 La Pluma Next 服务已启动后重试')
       : '正在确认自动化服务状态'
   const flowCommandTitle = !automationAvailable
     ? connectionTitle
@@ -492,7 +492,7 @@ export default function Dashboard() {
     <div className="app-page dashboard-page" data-page="dashboard">
       <div className="app-stack-section">
         <PageHeader
-          title="控制台"
+          title="概览"
           subtitle="当前活动、自动化进度、养成与掉落总览"
           mobileLayout="inline"
           actions={
@@ -564,27 +564,16 @@ export default function Dashboard() {
               </div>
 
               <div className="dashboard-flow-command">
-                <div className="flex min-w-0 items-center gap-3.5">
-                  <div className={`dashboard-flow-command-icon ${automationAvailable && flowIsRunning ? 'is-running' : ''}`}>
-                    {serviceStatus === 'offline'
-                      ? <WifiOff className="h-5 w-5" strokeWidth={1.8} />
-                      : serviceStatus === 'unavailable'
-                        ? <ServerOff className="h-5 w-5" strokeWidth={1.8} />
-                        : flowIsRunning
-                          ? <Activity className="h-5 w-5" strokeWidth={1.8} />
-                          : <Play className="ml-0.5 h-5 w-5" strokeWidth={1.9} />}
+                <div className="min-w-0">
+                  <div className={`text-xs font-medium ${labelClass}`}>
+                    {automationAvailable && flowIsRunning
+                      ? '当前任务'
+                      : activityPreflightLoading || quickStartLoading
+                        ? '当前操作'
+                        : '运行状态'}
                   </div>
-                  <div className="min-w-0">
-                    <div className={`text-xs font-medium ${labelClass}`}>
-                      {automationAvailable && flowIsRunning
-                        ? '当前任务'
-                        : activityPreflightLoading || quickStartLoading
-                          ? '当前操作'
-                          : '运行状态'}
-                    </div>
-                    <div className="mt-0.5 truncate text-xl font-bold text-primary">{flowCommandTitle}</div>
-                    <div className={`mt-1 truncate text-xs ${labelClass}`}>{flowCommandDescription}</div>
-                  </div>
+                  <div className="mt-0.5 truncate text-xl font-bold text-primary">{flowCommandTitle}</div>
+                  <div className={`mt-1 truncate text-xs ${labelClass}`}>{flowCommandDescription}</div>
                 </div>
                 <div className="dashboard-flow-actions">
                   {activitySummary.available && (
@@ -635,36 +624,15 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="dashboard-flow-metrics">
-                {[
-                  {
-                    label: '当前活动',
-                    value: activitySummary.available ? (activitySummary.name || activitySummary.code || '进行中') : '暂无活动',
-                    sub: activitySummary.tip || '等待活动数据',
-                    Icon: CalendarDays,
-                  },
-                  {
-                    label: '养成目标',
-                    value: `${trainingSummary.count} 项`,
-                    sub: trainingSummary.topNames.length > 0 ? trainingSummary.topNames.join('、') : '尚未添加目标',
-                    Icon: Target,
-                  },
-                  {
-                    label: '今日掉落',
-                    value: `${dropSummary.count} 条`,
-                    sub: dropSummary.recent[0]?.items || '作战后自动汇总',
-                    Icon: PackageOpen,
-                  },
-                ].map(({ Icon, ...item }) => (
-                  <div key={item.label} className="dashboard-flow-metric">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-3.5 w-3.5 text-[var(--app-accent-strong)]" strokeWidth={1.8} />
-                      <span className={`text-xs font-medium ${labelClass}`}>{item.label}</span>
-                    </div>
-                    <div className="mt-2 truncate text-sm font-bold text-primary">{item.value}</div>
-                    <div className={`mt-0.5 truncate text-xs ${labelClass}`}>{item.sub}</div>
-                  </div>
-                ))}
+              <div className="dashboard-flow-activity">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-3.5 w-3.5 text-[var(--app-accent-strong)]" strokeWidth={1.8} aria-hidden="true" />
+                  <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
+                </div>
+                <div className="mt-2 break-words text-sm font-bold text-primary">
+                  {activitySummary.available ? (activitySummary.name || activitySummary.code || '进行中') : '暂无活动'}
+                </div>
+                <div className={`mt-0.5 break-words text-xs ${labelClass}`}>{activitySummary.tip || '等待活动数据'}</div>
               </div>
 
               <div className="dashboard-flow-stages">
@@ -686,27 +654,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="dashboard-flow-shortcuts" aria-label="快捷入口">
-                {([
-                  { label: '自动化', tab: 'automation', Icon: Bot },
-                  { label: '作业', tab: 'combat', Icon: Activity },
-                  { label: '养成', tab: 'training', Icon: Target },
-                ] as const).map(({ label, tab, Icon }) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className="dashboard-flow-shortcut"
-                    aria-label={`打开${label}`}
-                  >
-                    <span className="dashboard-flow-shortcut-icon" aria-hidden="true">
-                      <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-                    </span>
-                    <span className="truncate">{label}</span>
-                    <ChevronRight className="dashboard-flow-shortcut-arrow" aria-hidden="true" />
-                  </button>
-                ))}
-              </div>
               </Card>
             </div>
           </div>
@@ -770,85 +717,6 @@ export default function Dashboard() {
         )}
 
         <div className="dashboard-summary-grid">
-          <Card smoothCorners className="dashboard-summary-card is-status !p-0">
-            <div className="dashboard-summary-header">
-              <div className="dashboard-summary-heading">
-                <span className="dashboard-summary-icon" aria-hidden="true">
-                  <Activity className="h-4 w-4" strokeWidth={1.8} />
-                </span>
-                <div className="min-w-0">
-                  <div className={sectionTitleClass}>执行状态</div>
-                  <div className={`mt-0.5 text-xs ${labelClass}`}>当前进度与最近一次结果</div>
-                </div>
-              </div>
-            </div>
-            <div className="dashboard-status-grid">
-              <div className="dashboard-status-block">
-                <div className="dashboard-summary-label">
-                  <span className={`dashboard-summary-dot ${scheduleSummary.isRunning ? 'is-active' : ''}`} />
-                  当前执行
-                </div>
-                <div className="dashboard-summary-value">{automationAvailable ? (scheduleSummary.isRunning ? '执行中' : '空闲中') : '状态不可用'}</div>
-                <div className="dashboard-summary-detail">{automationAvailable ? (scheduleSummary.currentTask || scheduleSummary.message || '暂无进行中的流程') : connectionDescription}</div>
-              </div>
-              <div className="dashboard-status-block">
-                <div className="dashboard-summary-label">
-                  <span className="dashboard-summary-dot is-muted" />
-                  最近结果
-                </div>
-                <div className="dashboard-summary-value">{scheduleSummary.lastTask || '暂无记录'}</div>
-                <div className="dashboard-summary-detail">{scheduleSummary.lastResult || '执行一次自动化流程后显示'}</div>
-              </div>
-            </div>
-          </Card>
-
-          <Card smoothCorners className="dashboard-summary-card is-stages !p-0">
-            <div className="dashboard-summary-header">
-              <div className="dashboard-summary-heading">
-                <span className="dashboard-summary-icon" aria-hidden="true">
-                  <CalendarDays className="h-4 w-4" strokeWidth={1.8} />
-                </span>
-                <div className="min-w-0">
-                  <div className={sectionTitleClass}>今日开放关卡</div>
-                  <div className={`mt-0.5 text-xs ${labelClass}`}>资源本与芯片本开放情况</div>
-                </div>
-              </div>
-              <span className="dashboard-summary-count">{openStageSummary.open.length} 开放</span>
-            </div>
-            <div className="dashboard-stage-groups">
-              <div className="dashboard-stage-group">
-                <div className="dashboard-stage-group-heading">
-                  <span className="dashboard-summary-label"><span className="dashboard-summary-dot is-active" />开放</span>
-                  <span className="dashboard-stage-count">{openStageSummary.open.length}</span>
-                </div>
-                <div className="dashboard-stage-list">
-                  {openStageSummary.open.length > 0 ? (
-                    openStageSummary.open.map(item => (
-                      <span key={item.stage} className="dashboard-stage-chip is-open">{item.stage} · {item.name}</span>
-                    ))
-                  ) : (
-                    <span className="dashboard-stage-chip is-empty">暂无开放数据</span>
-                  )}
-                </div>
-              </div>
-              <div className="dashboard-stage-group">
-                <div className="dashboard-stage-group-heading">
-                  <span className="dashboard-summary-label"><span className="dashboard-summary-dot is-muted" />未开放</span>
-                  <span className="dashboard-stage-count">{openStageSummary.closed.length}</span>
-                </div>
-                <div className="dashboard-stage-list">
-                  {openStageSummary.closed.length > 0 ? (
-                    openStageSummary.closed.map(item => (
-                      <span key={item.stage} className="dashboard-stage-chip">{item.stage} · {item.name}</span>
-                    ))
-                  ) : (
-                    <span className="dashboard-stage-chip is-empty">暂无未开放数据</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Card>
-
           <Card smoothCorners className="dashboard-summary-card is-training !p-0">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
@@ -955,12 +823,6 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* 最后更新时间 */}
-        {lastUpdateDate && (
-          <div className={`text-center text-sm ${labelClass}`}>
-            最后更新: {lastUpdateDate.toLocaleString('zh-CN')}
-          </div>
-        )}
       </div>
     </div>
   )

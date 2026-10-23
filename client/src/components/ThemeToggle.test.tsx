@@ -120,7 +120,7 @@ describe('ThemeToggle mobile menu', () => {
     await act(async () => root.render(
       <div className="la-pluma-navbar-actions">
         <ThemeToggle />
-        <a href="https://github.com/mps233/La-pluma" className="la-pluma-github-link">GitHub</a>
+        <a href="https://github.com/dongwlin/La-pluma-next" className="la-pluma-github-link">GitHub</a>
       </div>,
     ))
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!

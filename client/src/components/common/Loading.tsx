@@ -755,7 +755,7 @@ export function PageSkeleton({ variant }: { variant: string }) {
   )
 }
 
-function DashboardSummarySkeleton({ variant }: { variant: 'status' | 'stages' | 'training' | 'drops' }) {
+function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }) {
   return (
     <Card smoothCorners className={`dashboard-summary-card dashboard-summary-skeleton is-${variant} !p-0`}>
       <div className="dashboard-summary-header">
@@ -766,41 +766,8 @@ function DashboardSummarySkeleton({ variant }: { variant: 'status' | 'stages' | 
             <Skeleton variant="text" className="h-2.5 w-36" />
           </div>
         </div>
-        {variant === 'stages' && <Skeleton variant="rect" className="h-7 w-14 rounded-lg" />}
-        {(variant === 'training' || variant === 'drops') && (
-          <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
-        )}
+        <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
       </div>
-
-      {variant === 'status' && (
-        <div className="dashboard-status-grid">
-          {[1, 2].map(item => (
-            <div key={item} className="dashboard-status-block space-y-2.5">
-              <Skeleton variant="text" className="h-2.5 w-16" />
-              <Skeleton variant="title" className="h-5 w-24" />
-              <Skeleton variant="text" className="h-2.5 w-32 max-w-full" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {variant === 'stages' && (
-        <div className="dashboard-stage-groups">
-          {[1, 2].map(group => (
-            <div key={group} className="dashboard-stage-group">
-              <div className="dashboard-stage-group-heading">
-                <Skeleton variant="text" className="h-2.5 w-14" />
-                <Skeleton variant="text" className="h-2.5 w-4" />
-              </div>
-                <div className="dashboard-stage-list">
-                  {[20, 24, 28, 22].map((width, index) => (
-                  <Skeleton key={index} variant="rect" className="h-6 rounded-lg" style={{ width: `${width / 4}rem` }} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {variant === 'training' && (
         <div className="dashboard-summary-body">
@@ -859,7 +826,7 @@ export function DashboardSkeleton() {
   const { flowGridRef, flowCardRef, flowPreviewRef, flowGridStyle } = useDashboardFlowLayout()
 
   return (
-    <div className="app-page dashboard-page" data-page="dashboard" aria-busy="true" aria-label="控制台加载中">
+    <div className="app-page dashboard-page" data-page="dashboard" aria-busy="true" aria-label="概览加载中">
       <div className="app-stack-section">
         <PageHeaderSkeleton dashboard />
 
@@ -882,13 +849,10 @@ export function DashboardSkeleton() {
                 </div>
 
                 <div className="dashboard-flow-command">
-                  <div className="flex min-w-0 items-center gap-3.5">
-                    <Skeleton variant="rect" className="h-11 w-11 shrink-0 rounded-xl" />
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <Skeleton variant="text" className="h-2.5 w-16" />
-                      <Skeleton variant="title" className="h-6 w-36 max-w-full" />
-                      <Skeleton variant="text" className="h-2.5 w-52 max-w-full" />
-                    </div>
+                  <div className="min-w-0 space-y-2">
+                    <Skeleton variant="text" className="h-2.5 w-16" />
+                    <Skeleton variant="title" className="h-6 w-36 max-w-full" />
+                    <Skeleton variant="text" className="h-2.5 w-52 max-w-full" />
                   </div>
                   <div className="dashboard-flow-actions">
                     <Skeleton variant="rect" className="dashboard-flow-activity-action h-11 rounded-xl" />
@@ -896,17 +860,13 @@ export function DashboardSkeleton() {
                   </div>
                 </div>
 
-                <div className="dashboard-flow-metrics">
-                  {[1, 2, 3].map(item => (
-                    <div key={item} className="dashboard-flow-metric space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Skeleton variant="circle" className="h-3.5 w-3.5 shrink-0" />
-                        <Skeleton variant="text" className="h-2.5 w-16 max-w-full" />
-                      </div>
-                      <Skeleton variant="text" className="h-4 w-20 max-w-full" />
-                      <Skeleton variant="text" className="h-2 w-24 max-w-full" />
-                    </div>
-                  ))}
+                <div className="dashboard-flow-activity space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton variant="circle" className="h-3.5 w-3.5 shrink-0" />
+                    <Skeleton variant="text" className="h-2.5 w-16 max-w-full" />
+                  </div>
+                  <Skeleton variant="text" className="h-4 w-36 max-w-full" />
+                  <Skeleton variant="text" className="h-2 w-52 max-w-full" />
                 </div>
 
                 <div className="dashboard-flow-stages">
@@ -924,15 +884,6 @@ export function DashboardSkeleton() {
                   </div>
                 </div>
 
-                <div className="dashboard-flow-shortcuts">
-                  {[1, 2, 3].map(item => (
-                    <div key={item} className="dashboard-flow-shortcut pointer-events-none">
-                      <Skeleton variant="rect" className="h-7 w-7 rounded-lg" />
-                      <Skeleton variant="text" className="h-3 w-10" />
-                      <Skeleton variant="rect" className="h-3.5 w-3.5 rounded" />
-                    </div>
-                  ))}
-                </div>
               </Card>
             </div>
           </div>
@@ -1002,8 +953,6 @@ export function DashboardSkeleton() {
         </div>
 
         <div className="dashboard-summary-grid">
-          <DashboardSummarySkeleton variant="status" />
-          <DashboardSummarySkeleton variant="stages" />
           <DashboardSummarySkeleton variant="training" />
           <DashboardSummarySkeleton variant="drops" />
         </div>

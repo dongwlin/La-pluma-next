@@ -242,7 +242,7 @@ describe('top-level application navigation', () => {
     unsubscribe()
   })
 
-  it('groups and filters desktop workspaces without changing the mobile destinations', async () => {
+  it('groups desktop workspaces and keeps all navigation destinations available', async () => {
     await renderLayout()
 
     const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
@@ -267,24 +267,10 @@ describe('top-level application navigation', () => {
     ])
     expect(container.querySelectorAll('a[href^="/app/"]')).toHaveLength(0)
 
-    const search = sidebar.querySelector<HTMLInputElement>('input[aria-label="搜索工作区"]')!
-    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    await act(async () => {
-      setInputValue?.call(search, '数据')
-      search.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-
-    const filteredLinks = [...sidebar.querySelectorAll<HTMLButtonElement>('.la-pluma-sidebar-nav button[data-app-tab]')]
-    expect(filteredLinks.map(button => button.dataset.appTab)).toEqual(['statistics'])
-    expect(mobileDestinations).toHaveLength(4)
-
-    await act(async () => filteredLinks[0]?.click())
+    await act(async () => desktopLink('statistics').click())
     expect(sidebar.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
     expect(sidebar.querySelector<HTMLElement>('[aria-current="page"]')?.dataset.appTab).toBe('statistics')
 
-    await act(async () => {
-      sidebar.querySelector<HTMLButtonElement>('button[aria-label="清除搜索"]')?.click()
-    })
     expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
   })
 
@@ -295,8 +281,11 @@ describe('top-level application navigation', () => {
     })
 
     const identity = container.querySelector<HTMLElement>('.la-pluma-sidebar-identity')!
+    const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
     const avatar = identity.querySelector<HTMLImageElement>('.la-pluma-sidebar-avatar img')!
     expect(mocks.loadDailyOperatorQuote).toHaveBeenCalledTimes(1)
+    expect(sidebar.firstElementChild?.classList.contains('la-pluma-sidebar-nav')).toBe(true)
+    expect(sidebar.lastElementChild).toBe(identity)
     expect(identity.getAttribute('aria-label')).toBe('银灰：战术安排已就绪')
     expect(identity.querySelector('strong')?.textContent).toBe('银灰')
     expect(identity.querySelector('small')?.textContent).toBe('战术安排已就绪')
@@ -323,7 +312,7 @@ describe('top-level application navigation', () => {
 
     const githubLink = container.querySelector<HTMLAnchorElement>('.la-pluma-github-link')!
     expect(githubLink.getAttribute('aria-label')).toBe('打开 GitHub 仓库')
-    expect(githubLink.getAttribute('href')).toBe('https://github.com/mps233/La-pluma')
+    expect(githubLink.getAttribute('href')).toBe('https://github.com/dongwlin/La-pluma-next')
     expect(githubLink.getAttribute('target')).toBe('_blank')
     expect(githubLink.getAttribute('rel')?.split(/\s+/).sort()).toEqual(['noopener', 'noreferrer'])
     expect(githubLink.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1)

@@ -3640,18 +3640,13 @@ svg.w-5.h-5 {
     height: auto;
   }
 
-  .dashboard-flow-skeleton .dashboard-flow-metrics {
+  .dashboard-flow-skeleton .dashboard-flow-activity {
     height: 82.5px;
   }
 
   .dashboard-flow-skeleton .dashboard-flow-stages {
     height: 101px;
     overflow: hidden;
-  }
-
-  .dashboard-flow-skeleton .dashboard-flow-shortcuts {
-    min-height: 51px;
-    height: auto;
   }
 
   .dashboard-device-skeleton {
@@ -3671,10 +3666,34 @@ svg.w-5.h-5 {
 
   @media (min-width: 1280px) {
     .dashboard-flow-layout {
+      align-items: stretch;
       grid-template-columns: var(
         --dashboard-flow-columns,
         minmax(0, 0.78fr) minmax(0, 1.22fr)
       );
+    }
+
+    .dashboard-flow-layout > div,
+    .dashboard-flow-glow-shell {
+      display: flex;
+    }
+
+    .dashboard-flow-glow-shell,
+    .dashboard-flow-card,
+    .dashboard-flow-layout [data-dashboard-preview-card] {
+      flex: 1;
+    }
+
+    .dashboard-flow-card > .app-card-smooth-surface,
+    .dashboard-flow-layout [data-dashboard-preview-card] > .smooth-panel-surface {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Let the stage summary absorb extra height without stretching the controls. */
+    .dashboard-flow-stages,
+    .dashboard-flow-layout [data-dashboard-preview-frame] {
+      flex: 1 0 auto;
     }
   }
 
@@ -3821,24 +3840,6 @@ svg.w-5.h-5 {
     box-shadow: inset 0 -1px 0 var(--app-border);
   }
 
-  .dashboard-flow-command-icon {
-    display: flex;
-    width: 2.75rem;
-    height: 2.75rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--app-radius-lg);
-    background: var(--app-accent);
-    color: white;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--app-accent) 28%, transparent);
-  }
-
-  .dashboard-flow-command-icon.is-running {
-    background: var(--app-success);
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--app-success) 22%, transparent);
-  }
-
   .dashboard-flow-primary-action {
     min-width: 8.75rem;
   }
@@ -3950,19 +3951,10 @@ svg.w-5.h-5 {
     }
   }
 
-  .dashboard-flow-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    border-bottom: 1px solid var(--app-border);
-  }
-
-  .dashboard-flow-metric {
+  .dashboard-flow-activity {
     min-width: 0;
     padding: 0.75rem 1rem;
-  }
-
-  .dashboard-flow-metric + .dashboard-flow-metric {
-    border-left: 1px solid var(--app-border);
+    border-bottom: 1px solid var(--app-border);
   }
 
   .dashboard-flow-stages {
@@ -3982,76 +3974,6 @@ svg.w-5.h-5 {
     border-radius: 50%;
     background: var(--app-accent);
     box-shadow: 0 0 0 3px var(--app-accent-soft);
-  }
-
-  .dashboard-flow-shortcuts {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    border-top: 1px solid var(--app-border);
-    background: var(--app-border);
-  }
-
-  .dashboard-flow-shortcut {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-    min-height: 3.125rem;
-    padding: 0.5rem 0.75rem;
-    background: color-mix(in srgb, var(--app-surface-solid) 78%, var(--app-surface-muted));
-    color: var(--app-text-muted);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-align: left;
-    transition: color 180ms ease, background 180ms ease;
-  }
-
-  .dashboard-flow-shortcut + .dashboard-flow-shortcut {
-    border-left: 1px solid var(--app-border);
-  }
-
-  .dashboard-flow-shortcut:hover {
-    background: color-mix(in srgb, var(--app-surface-muted) 76%, var(--app-surface));
-    color: var(--app-text);
-  }
-
-  .dashboard-flow-shortcut:focus-visible {
-    position: relative;
-    z-index: 1;
-    outline: 2px solid var(--app-accent);
-    outline-offset: -2px;
-  }
-
-  .dashboard-flow-shortcut-icon {
-    display: flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--app-radius-md);
-    background: var(--app-surface-muted);
-    color: var(--app-accent-strong);
-    box-shadow: inset 0 0 0 1px var(--app-border);
-    transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-  }
-
-  .dashboard-flow-shortcut:hover .dashboard-flow-shortcut-icon {
-    background: color-mix(in srgb, var(--app-surface-muted) 82%, var(--app-surface-solid));
-    color: var(--app-accent);
-    box-shadow: inset 0 0 0 1px var(--app-border-strong);
-  }
-
-  .dashboard-flow-shortcut-arrow {
-    width: 0.75rem;
-    height: 0.75rem;
-    color: var(--app-text-soft);
-    transition: color 180ms ease, transform 180ms ease;
-  }
-
-  .dashboard-flow-shortcut:hover .dashboard-flow-shortcut-arrow {
-    color: var(--app-accent-strong);
-    transform: translateX(1px);
   }
 
   .dashboard-flow-message {
@@ -4140,76 +4062,6 @@ svg.w-5.h-5 {
     color: color-mix(in srgb, var(--summary-accent) 72%, var(--app-text-muted));
   }
 
-  .dashboard-summary-count {
-    display: inline-flex;
-    min-width: 3.75rem;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--app-radius-pill);
-    padding: 0.3rem 0.625rem;
-    background: color-mix(in srgb, var(--app-surface-muted) 82%, transparent);
-    color: var(--app-text-muted);
-    box-shadow: none;
-    font-size: var(--app-font-meta);
-    font-weight: 700;
-  }
-
-  .dashboard-status-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    min-height: 7.5rem;
-  }
-
-  .dashboard-status-block {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    justify-content: center;
-    padding: 1rem;
-  }
-
-  .dashboard-status-block + .dashboard-status-block {
-    border-left: 1px solid var(--app-border);
-  }
-
-  .dashboard-summary-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: var(--app-text-muted);
-    font-size: var(--app-font-caption);
-    font-weight: 600;
-  }
-
-  .dashboard-summary-dot {
-    width: 0.375rem;
-    height: 0.375rem;
-    flex: none;
-    border-radius: 50%;
-    background: var(--app-text-soft);
-  }
-
-  .dashboard-summary-dot.is-active {
-    background: var(--summary-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--summary-accent) 12%, transparent);
-  }
-
-  .dashboard-summary-dot.is-muted {
-    background: color-mix(in srgb, var(--app-text-soft) 72%, transparent);
-  }
-
-  .dashboard-summary-value {
-    margin-top: 0.625rem;
-    overflow: hidden;
-    color: var(--app-text);
-    font-size: 1.125rem;
-    font-weight: 700;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .dashboard-summary-detail {
     margin-top: 0.35rem;
     overflow: hidden;
@@ -4218,32 +4070,6 @@ svg.w-5.h-5 {
     line-height: 1.45;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .dashboard-stage-groups {
-    min-height: 7.5rem;
-    padding: 0 1rem;
-  }
-
-  .dashboard-stage-group {
-    padding: 0.75rem 0;
-  }
-
-  .dashboard-stage-group + .dashboard-stage-group {
-    border-top: 1px solid var(--app-border);
-  }
-
-  .dashboard-stage-group-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .dashboard-stage-count {
-    color: var(--app-text-soft);
-    font-size: var(--app-font-meta);
-    font-variant-numeric: tabular-nums;
   }
 
   .dashboard-stage-list {
@@ -4267,20 +4093,10 @@ svg.w-5.h-5 {
     line-height: 1.2;
   }
 
-  .dashboard-stage-chip.is-open {
-    background: color-mix(in srgb, var(--app-accent) 11%, var(--app-surface-solid));
-    color: var(--app-accent);
-    box-shadow: none;
-  }
-
   .dashboard-stage-chip.is-accent {
     background: color-mix(in srgb, var(--app-surface-muted) 82%, transparent);
     color: var(--app-text);
     box-shadow: none;
-  }
-
-  .dashboard-stage-chip.is-empty {
-    color: var(--app-text-soft);
   }
 
   .dashboard-summary-body {
@@ -4387,25 +4203,14 @@ svg.w-5.h-5 {
 
   @media (max-width: 639px) {
     .dashboard-summary-header,
-    .dashboard-status-block,
     .dashboard-summary-statline {
       padding-right: 0.875rem;
       padding-left: 0.875rem;
     }
 
-    .dashboard-stage-groups,
     .dashboard-summary-footer {
       padding-right: 0.875rem;
       padding-left: 0.875rem;
-    }
-
-    .dashboard-status-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .dashboard-status-block + .dashboard-status-block {
-      border-top: 1px solid var(--app-border);
-      border-left: 0;
     }
   }
 
@@ -4929,11 +4734,6 @@ svg.w-5.h-5 {
       height: 131px;
     }
 
-    .dashboard-flow-skeleton .dashboard-flow-shortcuts {
-      min-height: 45px;
-      height: auto;
-    }
-
     .dashboard-flow-header {
       padding: 0.875rem 0.875rem 0.75rem;
     }
@@ -4960,17 +4760,12 @@ svg.w-5.h-5 {
       min-width: 0;
     }
 
-    .dashboard-flow-metric {
-      padding: 0.75rem 0.625rem;
+    .dashboard-flow-activity {
+      padding: 0.75rem 0.875rem;
     }
 
     .dashboard-flow-stages {
       padding: 0.75rem 0.875rem;
-    }
-
-    .dashboard-flow-shortcut {
-      gap: 0.375rem;
-      padding: 0.5rem 0.625rem;
     }
 
     .app-card-header,

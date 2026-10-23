@@ -109,7 +109,7 @@ export function rankActivityCopilots(items, stage) {
       const content = parseContent(item);
       return {
         id: Number(item.id),
-        uri: `maa://${item.id}`,
+        uri: `prts://${item.id}`,
         stage,
         title: String(content.doc?.title || item.doc?.title || '').trim(),
         stageName: String(content.stage_name || '').trim(),

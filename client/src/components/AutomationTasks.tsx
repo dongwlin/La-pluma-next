@@ -2271,8 +2271,8 @@ export default function AutomationTasks() {
         <div className="app-stack-section">
         {/* 页面标题 */}
         <PageHeader
-          title="自动化任务"
-          subtitle="编排日常任务流程，一键执行或定时运行"
+          title="日常任务"
+          subtitle="安排日常流程，一键执行或定时运行"
           mobileLayout="inline"
           actions={<FloatingStatusIndicator />}
         />
