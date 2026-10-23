@@ -82,4 +82,4 @@ La-pluma-next/
 └── README.md                  # 项目入口与快速开始
 ```
 
-开发流程与常用检查见 [开发指南](development.md)。
+开发流程与常用检查见 [开发文档](development.md)。
