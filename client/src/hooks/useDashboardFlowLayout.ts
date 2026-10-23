@@ -50,6 +50,19 @@ export function useDashboardFlowLayout(enabled = true) {
         const previewFrameRect = previewFrame.getBoundingClientRect()
         const feedbackRow = flowCard.querySelector<HTMLElement>('[data-dashboard-flow-feedback]')
         const feedbackRowHeight = feedbackRow?.getBoundingClientRect().height ?? 0
+        const stages = flowCard.querySelector<HTMLElement>('.dashboard-flow-stages')
+        const stagesContent = stages?.lastElementChild
+        let stagesExtraHeight = 0
+
+        if (stages && stagesContent) {
+          const stagesStyle = window.getComputedStyle(stages)
+          const bottomInset = (Number.parseFloat(stagesStyle.paddingBottom) || 0)
+            + (Number.parseFloat(stagesStyle.borderBottomWidth) || 0)
+          stagesExtraHeight = Math.max(
+            0,
+            stages.getBoundingClientRect().bottom - stagesContent.getBoundingClientRect().bottom - bottomInset,
+          )
+        }
 
         if (
           gridRect.width <= 0 ||
@@ -64,8 +77,9 @@ export function useDashboardFlowLayout(enabled = true) {
         const columnGap = Number.parseFloat(gridStyle.columnGap) || 20
         const previewChromeHeight = Math.max(0, previewCardRect.height - previewFrameRect.height)
         const previewChromeWidth = Math.max(0, previewCardRect.width - previewFrameRect.width)
-        // Feedback appears and disappears around async actions; it must not resize both columns.
-        const stableFlowHeight = Math.max(0, flowRect.height - feedbackRowHeight)
+        // Ignore transient feedback and the stage section's empty stretch space.
+        // Column sizing must use content height so equal-height cards cannot resize themselves.
+        const stableFlowHeight = Math.max(0, flowRect.height - feedbackRowHeight - stagesExtraHeight)
         const targetFrameHeight = Math.max(180, stableFlowHeight - previewChromeHeight)
         const desiredPreviewWidth = targetFrameHeight * PREVIEW_ASPECT_RATIO + previewChromeWidth
         const minLeftWidth = Math.min(420, Math.max(GRID_MIN_LEFT_WIDTH, gridRect.width * 0.32))
