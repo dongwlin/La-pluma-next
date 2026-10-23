@@ -9,6 +9,7 @@ import { createLogger } from '../utils/logger.js';
 import { getFallbackActivity } from './activityFallbackService.js';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
 import { acquireMaaExecutionLease } from './executionCoordinatorService.js';
+import { prepareMaaTaskCache } from './maaTaskCacheService.js';
 import { loadUserConfig, saveUserConfig } from './configStorageService.js';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 
@@ -223,6 +224,43 @@ function createCommandOutcome({ code = null, signal = null, stdout = '', stderr 
  * 执行 MAA CLI 命令（支持后台异步执行）
  */
 async function execMaaCommandUnlocked(command, args = [], taskName = null, taskType = null, waitForCompletion = false, silent = false, onSettled = null, lifecycle = {}) {
+  const taskCache = await prepareMaaTaskCache(command);
+  if (!taskCache) {
+    return execMaaCommandWithEnv(command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle, process.env);
+  }
+  const cleanup = async () => {
+    try {
+      await taskCache.cleanup();
+    } catch (error) {
+      logger.warn('清理 MAA 任务缓存失败', { error: error.message });
+    }
+  };
+  let cleanupOnReturn = true;
+  try {
+    let settledCallback = onSettled;
+    let processLifecycle = lifecycle;
+    if (taskName && !waitForCompletion) {
+      const { onSettled: lifecycleOnSettled, ...startedLifecycle } = lifecycle;
+      processLifecycle = startedLifecycle;
+      settledCallback = async outcome => {
+        await cleanup();
+        await onSettled?.(outcome);
+        await lifecycleOnSettled?.(outcome);
+      };
+    }
+
+    const result = await execMaaCommandWithEnv(
+      command, args, taskName, taskType, waitForCompletion, silent,
+      settledCallback, processLifecycle, taskCache.env
+    );
+    if (taskName && !waitForCompletion) cleanupOnReturn = false;
+    return result;
+  } finally {
+    if (cleanupOnReturn) await cleanup();
+  }
+}
+
+async function execMaaCommandWithEnv(command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle, env) {
   const finalArgs = normalizeCopilotCommandArgs(command, args);
   const fullCommand = `${MAA_CLI_PATH} ${command} ${finalArgs.join(' ')}`;
   
@@ -236,6 +274,7 @@ async function execMaaCommandUnlocked(command, args = [], taskName = null, taskT
     return new Promise((resolve) => {
       // 使用 spawn 而不是 exec，这样可以独立运行
       const childProcess = spawn(MAA_CLI_PATH, [command, ...finalArgs], {
+        env,
         detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -318,6 +357,7 @@ async function execMaaCommandUnlocked(command, args = [], taskName = null, taskT
   else if (taskName && waitForCompletion) {
     return new Promise((resolve, reject) => {
       const childProcess = spawn(MAA_CLI_PATH, [command, ...finalArgs], {
+        env,
         detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -405,6 +445,7 @@ async function execMaaCommandUnlocked(command, args = [], taskName = null, taskT
   else {
     try {
       const { stdout, stderr } = await execFilePromise(MAA_CLI_PATH, [command, ...finalArgs], {
+        env,
         maxBuffer: 10 * 1024 * 1024
       });
       
