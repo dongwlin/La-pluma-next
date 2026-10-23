@@ -564,27 +564,16 @@ export default function Dashboard() {
               </div>
 
               <div className="dashboard-flow-command">
-                <div className="flex min-w-0 items-center gap-3.5">
-                  <div className={`dashboard-flow-command-icon ${automationAvailable && flowIsRunning ? 'is-running' : ''}`}>
-                    {serviceStatus === 'offline'
-                      ? <WifiOff className="h-5 w-5" strokeWidth={1.8} />
-                      : serviceStatus === 'unavailable'
-                        ? <ServerOff className="h-5 w-5" strokeWidth={1.8} />
-                        : flowIsRunning
-                          ? <Activity className="h-5 w-5" strokeWidth={1.8} />
-                          : <Play className="ml-0.5 h-5 w-5" strokeWidth={1.9} />}
+                <div className="min-w-0">
+                  <div className={`text-xs font-medium ${labelClass}`}>
+                    {automationAvailable && flowIsRunning
+                      ? '当前任务'
+                      : activityPreflightLoading || quickStartLoading
+                        ? '当前操作'
+                        : '运行状态'}
                   </div>
-                  <div className="min-w-0">
-                    <div className={`text-xs font-medium ${labelClass}`}>
-                      {automationAvailable && flowIsRunning
-                        ? '当前任务'
-                        : activityPreflightLoading || quickStartLoading
-                          ? '当前操作'
-                          : '运行状态'}
-                    </div>
-                    <div className="mt-0.5 truncate text-xl font-bold text-primary">{flowCommandTitle}</div>
-                    <div className={`mt-1 truncate text-xs ${labelClass}`}>{flowCommandDescription}</div>
-                  </div>
+                  <div className="mt-0.5 truncate text-xl font-bold text-primary">{flowCommandTitle}</div>
+                  <div className={`mt-1 truncate text-xs ${labelClass}`}>{flowCommandDescription}</div>
                 </div>
                 <div className="dashboard-flow-actions">
                   {activitySummary.available && (
@@ -635,36 +624,15 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="dashboard-flow-metrics">
-                {[
-                  {
-                    label: '当前活动',
-                    value: activitySummary.available ? (activitySummary.name || activitySummary.code || '进行中') : '暂无活动',
-                    sub: activitySummary.tip || '等待活动数据',
-                    Icon: CalendarDays,
-                  },
-                  {
-                    label: '养成目标',
-                    value: `${trainingSummary.count} 项`,
-                    sub: trainingSummary.topNames.length > 0 ? trainingSummary.topNames.join('、') : '尚未添加目标',
-                    Icon: Target,
-                  },
-                  {
-                    label: '今日掉落',
-                    value: `${dropSummary.count} 条`,
-                    sub: dropSummary.recent[0]?.items || '作战后自动汇总',
-                    Icon: PackageOpen,
-                  },
-                ].map(({ Icon, ...item }) => (
-                  <div key={item.label} className="dashboard-flow-metric">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-3.5 w-3.5 text-[var(--app-accent-strong)]" strokeWidth={1.8} />
-                      <span className={`text-xs font-medium ${labelClass}`}>{item.label}</span>
-                    </div>
-                    <div className="mt-2 truncate text-sm font-bold text-primary">{item.value}</div>
-                    <div className={`mt-0.5 truncate text-xs ${labelClass}`}>{item.sub}</div>
-                  </div>
-                ))}
+              <div className="dashboard-flow-activity">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-3.5 w-3.5 text-[var(--app-accent-strong)]" strokeWidth={1.8} aria-hidden="true" />
+                  <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
+                </div>
+                <div className="mt-2 break-words text-sm font-bold text-primary">
+                  {activitySummary.available ? (activitySummary.name || activitySummary.code || '进行中') : '暂无活动'}
+                </div>
+                <div className={`mt-0.5 break-words text-xs ${labelClass}`}>{activitySummary.tip || '等待活动数据'}</div>
               </div>
 
               <div className="dashboard-flow-stages">

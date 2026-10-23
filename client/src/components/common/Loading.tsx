@@ -849,13 +849,10 @@ export function DashboardSkeleton() {
                 </div>
 
                 <div className="dashboard-flow-command">
-                  <div className="flex min-w-0 items-center gap-3.5">
-                    <Skeleton variant="rect" className="h-11 w-11 shrink-0 rounded-xl" />
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <Skeleton variant="text" className="h-2.5 w-16" />
-                      <Skeleton variant="title" className="h-6 w-36 max-w-full" />
-                      <Skeleton variant="text" className="h-2.5 w-52 max-w-full" />
-                    </div>
+                  <div className="min-w-0 space-y-2">
+                    <Skeleton variant="text" className="h-2.5 w-16" />
+                    <Skeleton variant="title" className="h-6 w-36 max-w-full" />
+                    <Skeleton variant="text" className="h-2.5 w-52 max-w-full" />
                   </div>
                   <div className="dashboard-flow-actions">
                     <Skeleton variant="rect" className="dashboard-flow-activity-action h-11 rounded-xl" />
@@ -863,17 +860,13 @@ export function DashboardSkeleton() {
                   </div>
                 </div>
 
-                <div className="dashboard-flow-metrics">
-                  {[1, 2, 3].map(item => (
-                    <div key={item} className="dashboard-flow-metric space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Skeleton variant="circle" className="h-3.5 w-3.5 shrink-0" />
-                        <Skeleton variant="text" className="h-2.5 w-16 max-w-full" />
-                      </div>
-                      <Skeleton variant="text" className="h-4 w-20 max-w-full" />
-                      <Skeleton variant="text" className="h-2 w-24 max-w-full" />
-                    </div>
-                  ))}
+                <div className="dashboard-flow-activity space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton variant="circle" className="h-3.5 w-3.5 shrink-0" />
+                    <Skeleton variant="text" className="h-2.5 w-16 max-w-full" />
+                  </div>
+                  <Skeleton variant="text" className="h-4 w-36 max-w-full" />
+                  <Skeleton variant="text" className="h-2 w-52 max-w-full" />
                 </div>
 
                 <div className="dashboard-flow-stages">
