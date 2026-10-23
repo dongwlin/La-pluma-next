@@ -41,7 +41,7 @@ La-pluma-next/
 │   ├── src/
 │   │   ├── components/        # UI 组件
 │   │   │   ├── Dashboard.tsx          # 控制台总览
-│   │   │   ├── AutomationTasks.tsx    # 自动化任务流程
+│   │   │   ├── AutomationTasks.tsx    # 日常任务流程
 │   │   │   ├── CombatTasks.tsx        # 作业、SSS、悖论模拟
 │   │   │   ├── RoguelikeTasks.tsx     # 肉鸽模式
 │   │   │   ├── OperatorTraining.tsx   # 干员养成计划

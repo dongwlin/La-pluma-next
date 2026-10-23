@@ -17,7 +17,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 以下是最常用的能力，完整功能列表见 [功能概览](docs/features.md)。
 
 - 🧭 **控制台总览** - 汇总今日活动、任务状态、实时预览和掉落信息
-- 🎮 **自动化任务流程** - 启动游戏、理智作战、基建换班、自动公招、信用收支、领取奖励、关闭游戏
+- 🎮 **日常任务流程** - 启动游戏、理智作战、基建换班、自动公招、信用收支、领取奖励、关闭游戏
 - 🎯 **多关卡支持** - 每个关卡独立设置次数，支持活动关卡代号自动替换（HD-X → OR-X）
 - 🧠 **智能检测** - 日常/芯片本开放日检测、理智耗尽自动停止、游戏状态监控
 - ⏰ **定时任务** - 支持多个定时任务，实时显示执行状态和进度
@@ -34,17 +34,17 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 ### Web 端
 
 <p align="center">
-  <img src="screenshots/automation-web-theme-split.png" alt="自动化任务桌面端" width="92%" />
+  <img src="screenshots/automation-web-theme-split.png" alt="日常任务桌面端" width="92%" />
   <br />
-  <em>自动化任务桌面端</em>
+  <em>日常任务桌面端</em>
 </p>
 
 ### 移动端
 
 <p align="center">
-  <img src="screenshots/automation-mobile-theme-split.png" alt="自动化任务移动端" width="36%" />
+  <img src="screenshots/automation-mobile-theme-split.png" alt="日常任务移动端" width="36%" />
   <br />
-  <em>自动化任务移动端</em>
+  <em>日常任务移动端</em>
 </p>
 
 ## 📋 前置要求
@@ -115,7 +115,7 @@ docker run -d \
 
 ### ADB 连接
 
-在「自动化任务」页面配置 ADB 连接：
+在「日常」页面配置 ADB 连接：
 
 - **ADB 路径**：默认 `/opt/homebrew/bin/adb`
 - **设备地址**：本地模拟器填 `emulator-5554` 或 `127.0.0.1:5555`；远程设备填 `192.168.x.x:16384`（需要开启网络 ADB）

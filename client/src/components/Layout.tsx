@@ -25,7 +25,7 @@ interface LayoutProps {
 
 const tabs = [
   { id: 'dashboard', name: '概览', icon: LayoutGrid },
-  { id: 'automation', name: '自动化', icon: Bot },
+  { id: 'automation', name: '日常', icon: Bot },
   { id: 'combat', name: '作业', icon: Swords },
   { id: 'roguelike', name: '肉鸽', icon: Dices },
   { id: 'training', name: '养成', icon: GraduationCap },

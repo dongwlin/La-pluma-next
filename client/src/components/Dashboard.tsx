@@ -375,7 +375,7 @@ export default function Dashboard() {
       const configResult = await maaApi.loadUserConfig('automation-tasks')
       const savedFlow = Array.isArray(configResult?.data?.taskFlow) ? configResult.data.taskFlow : []
       if (!configResult.success || savedFlow.length === 0) {
-        setQuickStartMessage('还没有配置今日流程，先去自动化页保存任务流。')
+        setQuickStartMessage('还没有配置今日流程，先去日常页保存任务流。')
         setQuickStartMessageType('warning')
         setActiveTab('automation')
         return

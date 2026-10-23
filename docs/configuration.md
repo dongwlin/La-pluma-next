@@ -17,7 +17,7 @@ La Pluma Next 支持 macOS 和 Linux 系统。项目会自动检测操作系统�
 
 ### ADB 连接配置
 
-在"自动化任务"页面配置 ADB 连接：
+在「日常」页面配置 ADB 连接：
 
 - **ADB 路径**：默认 `/opt/homebrew/bin/adb`
 - **设备地址**：
