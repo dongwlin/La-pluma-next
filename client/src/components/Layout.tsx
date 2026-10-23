@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { BarChart3, Bot, Dices, Ellipsis, FileText, GraduationCap, LayoutGrid, Search, Settings2, Swords, X } from 'lucide-react'
+import { BarChart3, Bot, Dices, Ellipsis, FileText, GraduationCap, LayoutGrid, Settings2, Swords, X } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import { useUIStore } from '@/stores'
 import { appTabFromPath, appTabPath, isAppTab, type AppTab } from '@/stores/uiStore'
@@ -136,7 +136,6 @@ export default function Layout({ children }: LayoutProps) {
   const setActiveTab = useUIStore(state => state.setActiveTab)
   const activeTab: AppTab = isAppTab(storedActiveTab) ? storedActiveTab : 'dashboard'
   const [moreOpen, setMoreOpen] = useState(false)
-  const [sidebarQuery, setSidebarQuery] = useState('')
   const [sidebarIdentity, setSidebarIdentity] = useState(DEFAULT_OPERATOR_QUOTE)
   const shouldReduceMotion = useReducedMotion()
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
@@ -376,17 +375,6 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   const isOverflowActive = overflowTabs.some(tab => tab.id === activeTab)
-  const normalizedSidebarQuery = sidebarQuery.trim().toLocaleLowerCase()
-  const visibleDesktopGroups = desktopTabGroups
-    .map(group => ({
-      ...group,
-      tabs: group.tabs.filter(tab => (
-        !normalizedSidebarQuery
-        || `${tab.name} ${tab.id}`.toLocaleLowerCase().includes(normalizedSidebarQuery)
-      )),
-    }))
-    .filter(group => group.tabs.length > 0)
-  const visibleDesktopTabCount = visibleDesktopGroups.reduce((count, group) => count + group.tabs.length, 0)
 
   return (
     <div className="view view-main la-pluma-view">
@@ -425,36 +413,6 @@ export default function Layout({ children }: LayoutProps) {
 
         <div className="la-pluma-page-body">
           <aside className="la-pluma-sidebar" aria-label="主要功能">
-            <div className="la-pluma-sidebar-search" role="search">
-              <Search size={17} strokeWidth={2} aria-hidden="true" />
-              <input
-                type="search"
-                value={sidebarQuery}
-                onChange={(event) => setSidebarQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape' && sidebarQuery) {
-                    event.preventDefault()
-                    setSidebarQuery('')
-                  }
-                }}
-                placeholder="搜索工作区"
-                aria-label="搜索工作区"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {sidebarQuery && (
-                <button
-                  type="button"
-                  className="la-pluma-sidebar-search-clear"
-                  onClick={() => setSidebarQuery('')}
-                  title="清除搜索"
-                  aria-label="清除搜索"
-                >
-                  <X size={13} strokeWidth={2.2} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-
             <div
               className="la-pluma-sidebar-identity"
               aria-label={`${sidebarIdentity.operator}：${sidebarIdentity.quote}`}
@@ -480,7 +438,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             <nav className="la-pluma-sidebar-nav" aria-label="工作台">
-              {visibleDesktopGroups.map(group => (
+              {desktopTabGroups.map(group => (
                 <div
                   key={group.id}
                   className="la-pluma-sidebar-nav-group"
@@ -492,9 +450,6 @@ export default function Layout({ children }: LayoutProps) {
                   ))}
                 </div>
               ))}
-              {visibleDesktopTabCount === 0 && (
-                <p className="la-pluma-sidebar-empty" role="status">没有匹配的工作区</p>
-              )}
             </nav>
           </aside>
 

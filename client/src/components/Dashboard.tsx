@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, Bot, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
+import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
 import { getOpenTodayStages, getTodayDrops, getTrainingQueue, maaApi } from '../services/api'
 import Icons from './Icons'
 import { PageHeader, Card, Button, IconButton, SmoothPanel } from './common'
@@ -686,27 +686,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="dashboard-flow-shortcuts" aria-label="快捷入口">
-                {([
-                  { label: '自动化', tab: 'automation', Icon: Bot },
-                  { label: '作业', tab: 'combat', Icon: Activity },
-                  { label: '养成', tab: 'training', Icon: Target },
-                ] as const).map(({ label, tab, Icon }) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className="dashboard-flow-shortcut"
-                    aria-label={`打开${label}`}
-                  >
-                    <span className="dashboard-flow-shortcut-icon" aria-hidden="true">
-                      <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-                    </span>
-                    <span className="truncate">{label}</span>
-                    <ChevronRight className="dashboard-flow-shortcut-arrow" aria-hidden="true" />
-                  </button>
-                ))}
-              </div>
               </Card>
             </div>
           </div>
@@ -770,85 +749,6 @@ export default function Dashboard() {
         )}
 
         <div className="dashboard-summary-grid">
-          <Card smoothCorners className="dashboard-summary-card is-status !p-0">
-            <div className="dashboard-summary-header">
-              <div className="dashboard-summary-heading">
-                <span className="dashboard-summary-icon" aria-hidden="true">
-                  <Activity className="h-4 w-4" strokeWidth={1.8} />
-                </span>
-                <div className="min-w-0">
-                  <div className={sectionTitleClass}>执行状态</div>
-                  <div className={`mt-0.5 text-xs ${labelClass}`}>当前进度与最近一次结果</div>
-                </div>
-              </div>
-            </div>
-            <div className="dashboard-status-grid">
-              <div className="dashboard-status-block">
-                <div className="dashboard-summary-label">
-                  <span className={`dashboard-summary-dot ${scheduleSummary.isRunning ? 'is-active' : ''}`} />
-                  当前执行
-                </div>
-                <div className="dashboard-summary-value">{automationAvailable ? (scheduleSummary.isRunning ? '执行中' : '空闲中') : '状态不可用'}</div>
-                <div className="dashboard-summary-detail">{automationAvailable ? (scheduleSummary.currentTask || scheduleSummary.message || '暂无进行中的流程') : connectionDescription}</div>
-              </div>
-              <div className="dashboard-status-block">
-                <div className="dashboard-summary-label">
-                  <span className="dashboard-summary-dot is-muted" />
-                  最近结果
-                </div>
-                <div className="dashboard-summary-value">{scheduleSummary.lastTask || '暂无记录'}</div>
-                <div className="dashboard-summary-detail">{scheduleSummary.lastResult || '执行一次自动化流程后显示'}</div>
-              </div>
-            </div>
-          </Card>
-
-          <Card smoothCorners className="dashboard-summary-card is-stages !p-0">
-            <div className="dashboard-summary-header">
-              <div className="dashboard-summary-heading">
-                <span className="dashboard-summary-icon" aria-hidden="true">
-                  <CalendarDays className="h-4 w-4" strokeWidth={1.8} />
-                </span>
-                <div className="min-w-0">
-                  <div className={sectionTitleClass}>今日开放关卡</div>
-                  <div className={`mt-0.5 text-xs ${labelClass}`}>资源本与芯片本开放情况</div>
-                </div>
-              </div>
-              <span className="dashboard-summary-count">{openStageSummary.open.length} 开放</span>
-            </div>
-            <div className="dashboard-stage-groups">
-              <div className="dashboard-stage-group">
-                <div className="dashboard-stage-group-heading">
-                  <span className="dashboard-summary-label"><span className="dashboard-summary-dot is-active" />开放</span>
-                  <span className="dashboard-stage-count">{openStageSummary.open.length}</span>
-                </div>
-                <div className="dashboard-stage-list">
-                  {openStageSummary.open.length > 0 ? (
-                    openStageSummary.open.map(item => (
-                      <span key={item.stage} className="dashboard-stage-chip is-open">{item.stage} · {item.name}</span>
-                    ))
-                  ) : (
-                    <span className="dashboard-stage-chip is-empty">暂无开放数据</span>
-                  )}
-                </div>
-              </div>
-              <div className="dashboard-stage-group">
-                <div className="dashboard-stage-group-heading">
-                  <span className="dashboard-summary-label"><span className="dashboard-summary-dot is-muted" />未开放</span>
-                  <span className="dashboard-stage-count">{openStageSummary.closed.length}</span>
-                </div>
-                <div className="dashboard-stage-list">
-                  {openStageSummary.closed.length > 0 ? (
-                    openStageSummary.closed.map(item => (
-                      <span key={item.stage} className="dashboard-stage-chip">{item.stage} · {item.name}</span>
-                    ))
-                  ) : (
-                    <span className="dashboard-stage-chip is-empty">暂无未开放数据</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Card>
-
           <Card smoothCorners className="dashboard-summary-card is-training !p-0">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">

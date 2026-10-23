@@ -242,7 +242,7 @@ describe('top-level application navigation', () => {
     unsubscribe()
   })
 
-  it('groups and filters desktop workspaces without changing the mobile destinations', async () => {
+  it('groups desktop workspaces and keeps all navigation destinations available', async () => {
     await renderLayout()
 
     const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
@@ -267,24 +267,10 @@ describe('top-level application navigation', () => {
     ])
     expect(container.querySelectorAll('a[href^="/app/"]')).toHaveLength(0)
 
-    const search = sidebar.querySelector<HTMLInputElement>('input[aria-label="搜索工作区"]')!
-    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    await act(async () => {
-      setInputValue?.call(search, '数据')
-      search.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-
-    const filteredLinks = [...sidebar.querySelectorAll<HTMLButtonElement>('.la-pluma-sidebar-nav button[data-app-tab]')]
-    expect(filteredLinks.map(button => button.dataset.appTab)).toEqual(['statistics'])
-    expect(mobileDestinations).toHaveLength(4)
-
-    await act(async () => filteredLinks[0]?.click())
+    await act(async () => desktopLink('statistics').click())
     expect(sidebar.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
     expect(sidebar.querySelector<HTMLElement>('[aria-current="page"]')?.dataset.appTab).toBe('statistics')
 
-    await act(async () => {
-      sidebar.querySelector<HTMLButtonElement>('button[aria-label="清除搜索"]')?.click()
-    })
     expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
   })
 

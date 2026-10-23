@@ -297,7 +297,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 - 通用组件优先级：能用 `Card`、`CardHeader`、`CardContent`、`SmoothPanel` 时优先使用组件；特殊布局使用 `app-card surface-panel`、`app-card surface-soft`、`app-info-card`；不要把页面区块做成层层嵌套卡片。
 
 ### Navigation
-- **Desktop:** 固定 17rem 侧栏，0.75rem 内缩的连续圆角玻璃框（`blur(28px) saturate(165%)`），分组导航、搜索框和 28px 语义色图标底座；当前项为整行系统蓝和白色文字。
+- **Desktop:** 固定 17rem 侧栏，0.75rem 内缩的连续圆角玻璃框（`blur(28px) saturate(165%)`），干员身份区、分组导航和 28px 语义色图标底座；当前项为整行系统蓝和白色文字。
 - **Mobile:** 悬浮 4rem 胶囊 tabbar，底部安全区由 `--la-pluma-tabbar-*` token 统一管理；右侧搜索/更多入口承载次要页面。
 - **Shared State:** 两端复用 `Layout` 的 URL 路由和 active 状态；不要按 viewport 维护第二套导航状态，也不要让桌面侧栏样式扩散到移动底栏或“更多”Sheet。
 
