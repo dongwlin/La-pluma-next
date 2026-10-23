@@ -429,7 +429,6 @@ export default function ScrcpyDeviceView({
         <div className={isCompact ? 'px-4' : ''}>
           <PreviewModeControls unavailable={!automationAvailable} showAutoStart />
         </div>
-        <p className={`text-xs leading-5 text-secondary ${isCompact ? 'px-4' : ''}`}>概览与日常共用设置；后台暂停，关闭后释放无人观看的串流。</p>
 
         {!isCompact && <div className="scrcpy-status-grid">
           {statusCards.map(([label, value]) => (
