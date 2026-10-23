@@ -8,7 +8,6 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 - `main` 是集成分支，已开启分支保护，要求 `Build and Publish GHCR Image` 的 `verify` 任务通过，并禁止 force push 和删除。
 - 日常改动使用主题分支，通过 Pull Request 合并。
-- 当前 `refactor/dongwlin` 是前期开发分支，稳定后合并回 `main`。
 
 ## 发布流程
 
