@@ -17,7 +17,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 common 组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
 
-桌面与移动导航、主题、安全区、响应式断点等界面规则以 [设计规范](design.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、common 组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
+桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、common 组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
 
 ## 技术栈
 
@@ -36,6 +36,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ```
 La-pluma-next/
+├── DESIGN.md                  # UI 设计规范（开发者与 Agent 的唯一来源）
 ├── client/                    # 前端 (React + TypeScript + Vite + Tailwind CSS + Framer Motion)
 │   ├── src/
 │   │   ├── components/        # UI 组件
@@ -56,7 +57,7 @@ La-pluma-next/
 │   │   ├── hooks/             # 预览、API 请求等 Hook
 │   │   └── utils/             # 工具函数
 │   └── public/                # 静态资源（Logo、图标）
-├── docs/                      # 项目文档（架构、设计规范、Agent API、功能、配置、部署、开发、组件库、维护）
+├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
 │   │   ├── agent.js           # 主 Agent API

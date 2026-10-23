@@ -2,7 +2,7 @@
 
 > [← 返回 README](../README.md)
 >
-> 视觉与交互规则以 [设计规范](design.md) 为唯一来源；本文件只记录组件 API、用法与页面落地清单。
+> 视觉与交互规则以根目录 [设计规范](../DESIGN.md) 为唯一来源；本文件只记录组件 API、用法与页面落地清单。
 
 ## 概述
 
@@ -234,7 +234,7 @@ const { containerRef, activeRect, setTabRef } = useFluidTabIndicator(activeTab)
 6. 动态分段标签优先使用 `useFluidTabIndicator`，不要复制测量逻辑。
 7. 页面全局执行状态使用 `FloatingStatusIndicator`；局部状态使用既有 `status-*` 语义类并紧邻相关操作。
 8. 操作用 `Button`、`IconButton`。
-9. 如果出现新的颜色、圆角、间距需求，先按 [设计规范](design.md) 判断是否应抽成 token 或语义类。
+9. 如果出现新的颜色、圆角、间距需求，先按根目录 [设计规范](../DESIGN.md) 判断是否应抽成 token 或语义类。
 
 ### Tailwind 动态类名
 

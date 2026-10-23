@@ -13,7 +13,7 @@
 - **定时任务**: 使用 node-cron 实现任务调度
 - **通知服务**: Telegram Bot API + 任务完成通知
 
-前端 UI 的具体规则见 [设计规范](design.md)，组件 API 见 [通用组件库](component-library.md)。
+前端 UI 的具体规则见根目录 [设计规范](../DESIGN.md)，组件 API 见 [通用组件库](component-library.md)。
 
 ## 常用检查
 

@@ -144,7 +144,7 @@ La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent
 | [部署指南](docs/deployment.md) | Docker 镜像、环境变量、HTTPS/PWA、子路径与 Compose |
 | [配置与跨平台支持](docs/configuration.md) | 运行平台、ADB 连接、Telegram 通知与 Bot 命令 |
 | [开发文档](docs/development.md) | 主要技术点与常用检查命令 |
-| [设计规范](docs/design.md) | 设计原则、语义 token、布局、响应式与交互状态 |
+| [设计规范](DESIGN.md) | 设计原则、语义 token、布局、响应式与交互状态 |
 | [通用组件库](docs/component-library.md) | 通用组件 API、用法与页面重构清单 |
 | [维护说明](docs/maintaining.md) | 分支与合并、发布流程、容器镜像与兼容性标识 |
 
