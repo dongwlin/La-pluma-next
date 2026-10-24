@@ -8,7 +8,7 @@ import {
   DEFAULT_OPERATOR_QUOTE,
   getOperatorAvatarUrl,
   loadDailyOperatorQuote,
-} from '@/services/operatorQuotes'
+} from '@/features/operator-quotes'
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',

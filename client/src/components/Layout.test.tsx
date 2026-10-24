@@ -43,7 +43,7 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('./ThemeToggle', () => ({ default: () => <button type="button">主题</button> }))
-vi.mock('@/services/operatorQuotes', () => ({
+vi.mock('@/features/operator-quotes', () => ({
   DEFAULT_OPERATOR_QUOTE: {
     operatorId: 'char_002_amiya',
     operator: '阿米娅',

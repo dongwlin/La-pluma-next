@@ -1,0 +1,393 @@
+// @vitest-environment jsdom
+
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useDashboardStore } from '../store/dashboardStore'
+import { useStatusStore } from '@/features/runtime-status'
+import Dashboard, { DASHBOARD_REFRESH_INTERVAL_MS } from './Dashboard'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+const apiMocks = vi.hoisted(() => ({
+  getTaskStatus: vi.fn(),
+  getDeviceStats: vi.fn(),
+  getActivity: vi.fn(),
+  getScheduleExecutionStatus: vi.fn(),
+  loadUserConfig: vi.fn(),
+  executeScheduleNow: vi.fn(),
+  runCurrentActivity: vi.fn(),
+  getTrainingQueue: vi.fn(),
+  getTodayDrops: vi.fn(),
+  getOpenTodayStages: vi.fn(),
+}))
+const renderSpies = vi.hoisted(() => ({
+  dashboardSkeleton: vi.fn(),
+}))
+
+vi.mock('@/shared/api', () => ({
+  maaApi: {
+    getTaskStatus: apiMocks.getTaskStatus,
+    getDeviceStats: apiMocks.getDeviceStats,
+    getActivity: apiMocks.getActivity,
+    getScheduleExecutionStatus: apiMocks.getScheduleExecutionStatus,
+    loadUserConfig: apiMocks.loadUserConfig,
+    executeScheduleNow: apiMocks.executeScheduleNow,
+    runCurrentActivity: apiMocks.runCurrentActivity,
+    getErrorMessage: (result?: { message?: string; error?: string }) => result?.message || result?.error || '未知错误',
+  },
+  getTrainingQueue: apiMocks.getTrainingQueue,
+  getTodayDrops: apiMocks.getTodayDrops,
+  getOpenTodayStages: apiMocks.getOpenTodayStages,
+}))
+
+vi.mock('@/shared/stores', () => ({
+  useUIStore: (selector: (state: { setActiveTab: () => void }) => unknown) => selector({ setActiveTab: vi.fn() }),
+}))
+
+vi.mock('../hooks/useDashboardFlowLayout', () => ({
+  useDashboardFlowLayout: () => ({
+    flowGridRef: { current: null },
+    flowCardRef: { current: null },
+    flowPreviewRef: { current: null },
+    flowGridStyle: undefined,
+  }),
+}))
+
+vi.mock('../components/DashboardPreviewEntry', () => ({ default: () => <div>preview</div> }))
+vi.mock('@/features/runtime-status', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/runtime-status')>()
+  return { ...actual, FloatingStatusIndicator: () => null }
+})
+vi.mock('@/shared/ui/Icons', () => {
+  const Icon = () => null
+  return { default: new Proxy({}, { get: () => Icon }) }
+})
+vi.mock('../components/skeletons', () => ({
+  DashboardSkeleton: () => {
+    renderSpies.dashboardSkeleton()
+    return <div>loading</div>
+  },
+}))
+vi.mock('@/shared/ui', () => ({
+  PageHeader: ({ title, actions }: { title: string; actions?: React.ReactNode }) => <header><h1>{title}</h1>{actions}</header>,
+  Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+  SmoothPanel: ({
+    children,
+    className = '',
+    cornerSize: _cornerSize,
+    surfaceClassName = '',
+    ...props
+  }: React.HTMLAttributes<HTMLDivElement> & { cornerSize?: string; surfaceClassName?: string }) => (
+    <div className={`smooth-panel-shell ${className}`} {...props}>
+      <div className={`smooth-panel-surface ${surfaceClassName}`}>{children}</div>
+    </div>
+  ),
+  Button: ({ children, icon: _icon, loading, loadingText, statusKey: _statusKey, variant: _variant, size: _size, className: _className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean; loadingText?: React.ReactNode; statusKey?: string; variant?: string; size?: string; icon?: React.ReactNode }) => (
+    <button {...props}>{loading ? loadingText : children}</button>
+  ),
+  IconButton: ({ icon: _icon, variant: _variant, size: _size, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: React.ReactNode; variant?: string; size?: string }) => <button {...props} />,
+}))
+
+let online = true
+let container: HTMLDivElement
+let root: Root
+
+const findButton = (text: string) => Array.from(container.querySelectorAll('button'))
+  .find(button => button.textContent?.includes(text))
+
+async function flushDashboard() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+describe('Dashboard connectivity state', () => {
+  beforeEach(() => {
+    online = true
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      get: () => online,
+    })
+    apiMocks.getTaskStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
+    apiMocks.getDeviceStats.mockResolvedValue({ success: false })
+    apiMocks.getActivity.mockResolvedValue({ success: true, data: { available: true, name: '测试活动' } })
+    apiMocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
+    apiMocks.getTrainingQueue.mockResolvedValue({ success: true, data: { queue: [] } })
+    apiMocks.getTodayDrops.mockResolvedValue({ success: true, data: [] })
+    apiMocks.getOpenTodayStages.mockResolvedValue({ success: true, data: { open: [], closed: [] } })
+    useDashboardStore.getState().reset()
+    useStatusStore.getState().clearMessage()
+    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().setBackendStatus('unknown')
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+    useDashboardStore.getState().reset()
+    useStatusStore.getState().clearMessage()
+    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().setBackendStatus('unknown')
+    vi.clearAllMocks()
+  })
+
+  it('uses the full dashboard skeleton only for the first uncached load', async () => {
+    let resolveActivity: ((value: { success: boolean; data: { available: boolean; name: string } }) => void) | undefined
+    apiMocks.getActivity.mockReturnValueOnce(new Promise(resolve => {
+      resolveActivity = resolve
+    }))
+
+    await act(async () => root.render(<Dashboard />))
+
+    expect(container.textContent).toContain('loading')
+    expect(renderSpies.dashboardSkeleton).toHaveBeenCalled()
+
+    await act(async () => resolveActivity?.({ success: true, data: { available: true, name: '首次活动' } }))
+    await flushDashboard()
+
+    expect(container.textContent).not.toContain('loading')
+    expect(container.textContent).toContain('首次活动')
+  })
+
+  it('restores a fresh dashboard cache immediately without returning to the skeleton', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    expect(container.textContent).toContain('缓存活动')
+    const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
+
+    await act(async () => root.render(<div>其他页面</div>))
+    apiMocks.getActivity.mockClear()
+    await act(async () => root.render(<Dashboard />))
+
+    expect(container.textContent).toContain('缓存活动')
+    expect(container.textContent).not.toContain('loading')
+    expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
+    expect(apiMocks.getActivity).not.toHaveBeenCalled()
+  })
+
+  it('keeps stale content visible while refreshing it in the background', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+    useDashboardStore.setState({
+      lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
+    })
+
+    let resolveActivity: ((value: { success: boolean; data: { available: boolean; name: string } }) => void) | undefined
+    apiMocks.getActivity.mockReturnValueOnce(new Promise(resolve => {
+      resolveActivity = resolve
+    }))
+    const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
+
+    await act(async () => root.render(<div>其他页面</div>))
+    await act(async () => root.render(<Dashboard />))
+
+    expect(container.textContent).toContain('缓存活动')
+    expect(container.textContent).not.toContain('loading')
+    expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
+    expect(apiMocks.getActivity).toHaveBeenCalledTimes(2)
+
+    await act(async () => resolveActivity?.({ success: true, data: { available: true, name: '更新活动' } }))
+    await flushDashboard()
+
+    expect(container.textContent).toContain('更新活动')
+  })
+
+  it('keeps the last complete snapshot when one background request fails', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '已确认活动' } })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+    const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
+    const persistedSnapshot = window.localStorage.getItem('la-pluma-dashboard-cache')
+    useDashboardStore.setState({
+      lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
+    })
+
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '未确认活动' } })
+    apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
+
+    await act(async () => root.render(<div>其他页面</div>))
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    expect(container.textContent).toContain('已确认活动')
+    expect(container.textContent).not.toContain('未确认活动')
+    expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
+    expect(window.localStorage.getItem('la-pluma-dashboard-cache')).toBe(persistedSnapshot)
+  })
+
+  it('keeps the last complete snapshot when a successful response has malformed data', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '稳定活动' } })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+    const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
+    const persistedSnapshot = window.localStorage.getItem('la-pluma-dashboard-cache')
+    useDashboardStore.setState({
+      lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
+    })
+
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '异常活动' } })
+    apiMocks.getOpenTodayStages.mockResolvedValueOnce({ success: true, data: undefined })
+
+    await act(async () => root.render(<div>其他页面</div>))
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    expect(container.textContent).toContain('稳定活动')
+    expect(container.textContent).not.toContain('异常活动')
+    expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
+    expect(window.localStorage.getItem('la-pluma-dashboard-cache')).toBe(persistedSnapshot)
+  })
+
+  it('disables execution actions as soon as the browser goes offline', async () => {
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    expect(container.textContent).toContain('准备就绪')
+    expect(findButton('开始今日流程')?.disabled).toBe(false)
+    expect(findButton('打当前活动')?.disabled).toBe(false)
+
+    online = false
+    act(() => window.dispatchEvent(new Event('offline')))
+
+    expect(container.textContent).toContain('当前网络离线')
+    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('打当前活动')?.disabled).toBe(true)
+  })
+
+  it('shows a retry action and recovers after the backend becomes available', async () => {
+    apiMocks.getTaskStatus.mockRejectedValueOnce(new Error('无法连接后端服务，请确认服务已启动'))
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    expect(container.textContent).toContain('后端服务不可用')
+    expect(container.textContent).toContain('测试活动')
+    expect(useDashboardStore.getState().lastUpdate).not.toBeNull()
+    expect(findButton('重试连接')).toBeDefined()
+    expect(findButton('开始今日流程')?.disabled).toBe(true)
+    expect(findButton('打当前活动')?.disabled).toBe(true)
+
+    await act(async () => findButton('重试连接')?.click())
+    await flushDashboard()
+
+    expect(container.textContent).toContain('准备就绪')
+    expect(findButton('开始今日流程')?.disabled).toBe(false)
+    expect(findButton('打当前活动')?.disabled).toBe(false)
+  })
+
+  it('omits redundant manual refresh controls', async () => {
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    expect(findButton('刷新数据')).toBeUndefined()
+    expect(container.querySelector('.dashboard-mobile-refresh')).toBeNull()
+    expect(container.querySelector('button[aria-label="刷新执行状态"]')).toBeNull()
+  })
+
+  it('keeps empty summary actions at the iOS touch target size', async () => {
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    const emptyActions = [findButton('添加首个培养目标'), findButton('查看掉落数据')]
+    emptyActions.forEach(action => {
+      expect(action?.classList.contains('dashboard-summary-link')).toBe(true)
+      expect(action?.classList.contains('min-h-11')).toBe(true)
+      expect(action?.closest('.dashboard-summary-footer')?.classList.contains('is-action')).toBe(true)
+    })
+  })
+
+  it('activates the status beam while the daily flow is running', async () => {
+    apiMocks.getScheduleExecutionStatus.mockResolvedValueOnce({
+      success: true,
+      data: { isRunning: true, currentTask: '收取信用' },
+    })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    expect(flow?.classList.contains('status-border-beam')).toBe(true)
+    expect(flow?.classList.contains('is-active')).toBe(true)
+    expect(flow?.getAttribute('aria-busy')).toBe('true')
+  })
+
+  it('shows immediate preflight feedback while checking the current activity', async () => {
+    let resolveRun: ((value: {
+      success: boolean
+      data: { executed: boolean; plan: { reason: string } }
+    }) => void) | undefined
+    apiMocks.runCurrentActivity.mockReturnValueOnce(new Promise(resolve => {
+      resolveRun = resolve
+    }))
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+
+    const activityButton = container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')
+    await act(async () => {
+      activityButton?.click()
+      await Promise.resolve()
+    })
+
+    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const status = useStatusStore.getState()
+    expect(apiMocks.runCurrentActivity).toHaveBeenCalledTimes(1)
+    expect(activityButton?.disabled).toBe(true)
+    expect(activityButton?.textContent).toContain('检查中')
+    expect(flow?.classList.contains('is-active')).toBe(true)
+    expect(flow?.getAttribute('aria-busy')).toBe('true')
+    expect(status.isActive).toBe(true)
+    expect(status.message).toContain('当前活动')
+    expect(status.messageType).toBe('info')
+
+    await act(async () => resolveRun?.({
+      success: true,
+      data: {
+        executed: false,
+        plan: { reason: '测试结束' },
+      },
+    }))
+    await flushDashboard()
+  })
+
+  it('surfaces the exact activity preflight blocker as a warning and leaves the active state', async () => {
+    const blocker = 'AD「红丝绒」的资源未包含从主页进入活动关卡的完整导航链。'
+    apiMocks.runCurrentActivity.mockResolvedValueOnce({
+      success: true,
+      data: {
+        executed: false,
+        plan: { reason: blocker },
+      },
+    })
+
+    await act(async () => root.render(<Dashboard />))
+    await flushDashboard()
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')?.click()
+    })
+    await flushDashboard()
+
+    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const feedback = container.querySelector('[data-dashboard-flow-feedback]')
+    const status = useStatusStore.getState()
+    expect(feedback?.textContent).toBe(blocker)
+    expect(status.message).toBe(blocker)
+    expect(status.messageType).toBe('warning')
+    expect(status.isActive).toBe(false)
+    expect(flow?.classList.contains('is-active')).toBe(false)
+    expect(flow?.getAttribute('aria-busy')).toBe('false')
+  })
+})

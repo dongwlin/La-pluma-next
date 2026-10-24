@@ -1,0 +1,3344 @@
+import { useState, useEffect, useEffectEvent, useRef } from 'react'
+import { generateTrainingPlan, maaApi } from '@/shared/api'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, ChevronUp, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
+import Icons from '@/shared/ui/Icons'
+import { ScreenMonitor } from '@/features/device-mirror'
+import NotificationSettings from '../components/NotificationSettings'
+import { EmptyState, PageHeader, Button, IconButton, SmoothPanel, Switch } from '@/shared/ui'
+import { FloatingStatusIndicator, useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
+import type {
+  AutomationAvailableTask,
+  TaskFlowItem,
+  ConnectionTestStatus,
+  StageConfig
+} from '@/shared/types/components'
+import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
+import { taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
+
+const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+const normalizeScheduleTimes = (times: string[]) => (
+  [...new Set(times.filter(time => scheduleTimePattern.test(time)))]
+)
+
+interface ScheduleTimeEntry {
+  time: string
+  enabled: boolean
+}
+
+const DEFAULT_SCHEDULE_ENTRIES: ScheduleTimeEntry[] = [
+  { time: '08:00', enabled: true },
+  { time: '14:00', enabled: true },
+  { time: '20:00', enabled: true },
+]
+
+const formatScheduleTime = (hour: number, minute: number) => (
+  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+)
+
+const parseScheduleTime = (time: string) => {
+  const [hourText = '0', minuteText = '0'] = time.split(':')
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  return {
+    hour: Number.isFinite(hour) ? Math.min(23, Math.max(0, hour)) : 0,
+    minute: Number.isFinite(minute) ? Math.min(59, Math.max(0, minute)) : 0,
+  }
+}
+
+const normalizeScheduleEntries = (entries: ScheduleTimeEntry[]) => {
+  const normalized: ScheduleTimeEntry[] = []
+  const seen = new Set<string>()
+
+  for (const entry of entries) {
+    if (!scheduleTimePattern.test(entry.time) || seen.has(entry.time)) continue
+    seen.add(entry.time)
+    normalized.push({ time: entry.time, enabled: entry.enabled !== false })
+  }
+
+  return normalized
+}
+
+const scheduleEntriesFromTimes = (times: string[]) => (
+  normalizeScheduleEntries(
+    normalizeScheduleTimes(times).map(time => ({ time, enabled: true })),
+  )
+)
+
+const activeScheduleTimes = (entries: ScheduleTimeEntry[]) => (
+  entries.filter(entry => entry.enabled).map(entry => entry.time)
+)
+
+const readScheduleEntries = (schedule: { times?: unknown, entries?: unknown } | null | undefined) => {
+  if (Array.isArray(schedule?.entries)) {
+    const fromEntries = normalizeScheduleEntries(
+      schedule.entries
+        .map((entry: unknown) => {
+          if (typeof entry === 'string') return { time: entry, enabled: true }
+          if (!entry || typeof entry !== 'object') return null
+          const record = entry as { time?: unknown, enabled?: unknown }
+          if (typeof record.time !== 'string') return null
+          return { time: record.time, enabled: record.enabled !== false }
+        })
+        .filter((entry): entry is ScheduleTimeEntry => Boolean(entry)),
+    )
+    if (fromEntries.length > 0) return fromEntries
+  }
+
+  if (Array.isArray(schedule?.times)) {
+    return scheduleEntriesFromTimes(
+      schedule.times.filter((time): time is string => typeof time === 'string'),
+    )
+  }
+
+  return []
+}
+
+const RECOVERY_STATUS_POLL_MS = 1000
+const RECOVERY_STATUS_TIMEOUT_MS = 30 * 60 * 1000
+const POINTER_SORT_ACTIVATION_PX = 10
+const AUTOMATION_CONFIG_SYNC_PENDING_KEY = 'automationConfigSyncPending'
+let automationConfigSyncSequence = 0
+
+const createAutomationConfigSyncToken = () => `${Date.now()}-${++automationConfigSyncSequence}`
+
+type RecoveryWaitResult = 'completed' | 'timeout' | 'cancelled'
+
+interface PointerSortSession {
+  pointerId: number
+  startX: number
+  startY: number
+  itemId: string
+  originalFlow: TaskFlowItem[]
+  activated: boolean
+  changed: boolean
+}
+
+interface DeletedTaskSnapshot {
+  task: TaskFlowItem
+  index: number
+}
+
+// Exported for focused ordering tests; this component intentionally keeps the small reducer local.
+// eslint-disable-next-line react-refresh/only-export-components
+export const moveTaskFlowItem = (flow: TaskFlowItem[], fromIndex: number, toIndex: number) => {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= flow.length || toIndex >= flow.length) return flow
+  const nextFlow = [...flow]
+  const [movedTask] = nextFlow.splice(fromIndex, 1)
+  if (!movedTask) return flow
+  nextFlow.splice(toIndex, 0, movedTask)
+  return nextFlow
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const hasPointerSortActivated = (startX: number, startY: number, clientX: number, clientY: number) =>
+  Math.hypot(clientX - startX, clientY - startY) >= POINTER_SORT_ACTIVATION_PX
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const getPointerSortTargetIndex = (
+  flow: TaskFlowItem[],
+  itemId: string,
+  clientY: number,
+  getItemMidpoint: (taskId: string) => number | null
+) => {
+  const currentIndex = flow.findIndex(task => task.id === itemId)
+  if (currentIndex < 0) return -1
+
+  const remainingTasks = flow.filter(task => task.id !== itemId)
+  let insertionIndex = remainingTasks.length
+  for (let index = 0; index < remainingTasks.length; index += 1) {
+    const task = remainingTasks[index]
+    if (!task) continue
+    const midpoint = getItemMidpoint(task.id)
+    if (midpoint !== null && clientY < midpoint) {
+      insertionIndex = index
+      break
+    }
+  }
+  return insertionIndex
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const placeClosedownLast = <T extends { id: string; commandId?: string },>(tasks: T[]) => [
+  ...tasks.filter(task => task.commandId !== 'closedown' && !task.id.startsWith('closedown-')),
+  ...tasks.filter(task => task.commandId === 'closedown' || task.id.startsWith('closedown-'))
+]
+
+
+const commaSeparatedArrayKeys = new Set(['buy_first', 'blacklist', 'first_tags', 'preserve_tags'])
+
+const parseDropTargetEntries = (value: unknown): string[] | null => {
+  if (value === undefined || value === null || value === '') return []
+
+  const rawEntries = typeof value === 'object' && !Array.isArray(value)
+    ? Object.entries(value as Record<string, unknown>).map(([itemId, count]) => `${itemId}=${count}`)
+    : String(value).split(',').map(entry => entry.trim()).filter(Boolean)
+
+  const normalizedEntries: string[] = []
+  for (const entry of rawEntries) {
+    const match = entry.match(/^([A-Za-z0-9_-]+)\s*=\s*(\d+)$/)
+    if (!match || Number(match[2]) <= 0) return null
+    normalizedEntries.push(`${match[1]}=${Number(match[2])}`)
+  }
+  return normalizedEntries
+}
+
+interface AutomationExecutionSummary {
+  taskResults?: TaskExecutionResult[]
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  durationMs: number
+  summaries: Array<{
+    task: string
+    stage?: string
+    times?: string
+    drops?: string
+    duration?: string
+  }>
+  reports: Array<{
+    provider: 'penguin' | 'yituliu'
+    stage?: string
+    status: 'success' | 'failed'
+    message: string
+  }>
+  actions: Array<{
+    task: string
+    action: 'startup' | 'closedown' | 'depot' | 'award' | 'recruit' | 'infrast' | 'mall' | 'fight'
+    status: 'success' | 'skipped' | 'failed'
+    message: string
+    startedCount?: number
+    collectedCount?: number
+    expeditedCount?: number
+    refreshCount?: number
+    highestLevel?: number
+    detectedTags?: string[]
+    finalTags?: string[]
+    preservedTags?: string[]
+    configuredFacilities?: string[]
+    observedFacilities?: string[]
+    rewardCollected?: boolean
+    rotationApplied?: boolean
+    droneUsed?: boolean
+    cluesReceived?: number
+    cluesSent?: number
+    clueExchange?: boolean
+    trainingContinued?: boolean
+    trainingCompleted?: boolean
+    trainingProcessing?: boolean
+    visitedCount?: number
+    creditCollected?: boolean
+    purchasedCount?: number
+    noMoney?: boolean
+    visitLimited?: boolean
+    noFriends?: boolean
+    stage?: string
+    times?: number
+    dropCount?: number
+    drops?: string
+    medicine?: number
+    stone?: number
+    duration?: string
+    sanityDepleted?: boolean
+  }>
+  errors: Array<string | { task: string; error: string }>
+  warnings: string[]
+}
+
+const executionSummaryHasFailure = (summary: AutomationExecutionSummary) => Boolean(
+  summary.failedCount > 0
+  || summary.errors?.length
+  || summary.actions?.some(action => action.status === 'failed')
+  || summary.reports?.some(report => report.status === 'failed')
+)
+
+const migrateTaskParams = (task: any) => {
+  const commandId = task.commandId || String(task.id || '').split('-')[0]
+  if (!task.params) return task
+
+  const params = { ...task.params }
+  if (commandId === 'startup' || commandId === 'closedown') {
+    delete params.adbPath
+    delete params.address
+  }
+  if (commandId === 'fight') {
+    params.drops ??= ''
+    params.clientType ??= ''
+    params.DrGrandet ??= false
+    params.report_to_penguin ??= false
+    params.penguin_id ??= ''
+    params.report_to_yituliu ??= false
+    params.yituliu_id ??= ''
+  } else if (commandId === 'closedown') {
+    params.recognizeDepotBeforeClose ??= true
+  } else if (commandId === 'recruit') {
+    if (params.preserve_tags === undefined && params.skip_robot === true) {
+      params.preserve_tags = '支援机械'
+    }
+    params.force_refresh ??= true
+    params.first_tags ??= ''
+    params.extra_tags_mode ??= 0
+    params.recruitment_time ??= { '3': 540, '4': 540 }
+    delete params.skip_robot
+  } else if (commandId === 'infrast') {
+    params.filename ??= ''
+    params.plan_index ??= 0
+    params.continue_training ??= false
+    params.dorm_notstationed_enabled ??= false
+    params.dorm_trust_enabled ??= false
+    params.reception_message_board ??= true
+    params.reception_clue_exchange ??= true
+    params.reception_send_clue ??= true
+  } else if (commandId === 'mall') {
+    params.visit_friends ??= true
+    params.shopping ??= true
+    params.buy_first ??= ''
+    params.blacklist ??= ''
+    params.force_shopping_if_credit_full ??= false
+    params.only_buy_discount ??= false
+    params.reserve_max_credit ??= false
+    params.credit_fight ??= false
+    params.formation_index ??= 0
+  }
+  return { ...task, params }
+}
+
+const synchronizeConnectionParams = (tasks: any[]) => {
+  const startupTask = tasks.find(task => (task.commandId || String(task.id || '').split('-')[0]) === 'startup')
+  if (!startupTask?.params) return tasks
+
+  return tasks.map(task => {
+    const commandId = task.commandId || String(task.id || '').split('-')[0]
+    if (commandId !== 'closedown') return task
+    return {
+      ...task,
+      params: {
+        ...task.params,
+        clientType: startupTask.params.clientType || task.params?.clientType || 'Official'
+      }
+    }
+  })
+}
+
+const stageSuggestions = [
+  ['1-7', '固源岩'],
+  ['4-6', '酮凝集'],
+  ['S4-1', '聚酸酯'],
+  ['S5-9', '异铁'],
+  ['CE-6', '龙门币'],
+  ['LS-6', '作战记录'],
+  ['AP-5', '采购凭证'],
+  ['CA-5', '技巧概要'],
+  ['SK-5', '碳'],
+  ['PR-A-2', '重装/医疗芯片组'],
+  ['PR-B-2', '狙击/术师芯片组'],
+  ['PR-C-2', '先锋/辅助芯片组'],
+  ['PR-D-2', '近卫/特种芯片组'],
+  ['Annihilation', '剿灭'],
+  ...Array.from({ length: 10 }, (_, index) => [`HD-${index + 1}`, '活动']),
+] as const
+
+interface AutomationStageEditorProps {
+  field: TaskFlowItem['paramFields'][number]
+  fieldId: string
+  task: TaskFlowItem
+  taskIndex: number
+  isRunning: boolean
+  onUpdate: (taskIndex: number, key: string, value: Array<string | StageConfig>) => void
+  onSuccess: (message: string) => void
+  onError: (message: string) => void
+}
+
+function AutomationStageEditor({
+  field,
+  fieldId,
+  task,
+  taskIndex,
+  isRunning,
+  onUpdate,
+  onSuccess,
+  onError,
+}: AutomationStageEditorProps) {
+  const [isSmartStageLoading, setIsSmartStageLoading] = useState(false)
+  const stages = task.params.stages || [{ stage: '', times: '' }]
+  const controlsDisabled = isRunning || !task.enabled
+  const stageControlsDisabled = controlsDisabled || isSmartStageLoading
+  const smartStages = stages.filter((stage): stage is StageConfig => (
+    typeof stage === 'object' && stage.smart === true
+  ))
+  const hasSmartStages = smartStages.length > 0
+  const validStageCount = stages.filter(stage => (
+    typeof stage === 'string' ? stage.trim() : stage.stage?.trim()
+  )).length
+  const trainingOperators = [...smartStages]
+    .reverse()
+    .find(stage => stage.trainingOperators && stage.trainingOperators.length > 0)
+    ?.trainingOperators || []
+  const smartStageDescription = hasSmartStages
+    ? trainingOperators.length > 0
+      ? `正在养成：${trainingOperators.join('、')}`
+      : `已加入 ${smartStages.length} 个关卡`
+    : '根据养成队列自动生成刷取关卡'
+
+  const updateStages = (nextStages: Array<string | StageConfig>) => {
+    onUpdate(taskIndex, 'stages', nextStages)
+  }
+
+  const togglePinned = (stageIndex: number) => {
+    const currentStage = stages[stageIndex]
+    if (!currentStage || (typeof currentStage === 'object' && currentStage.smart)) return
+
+    const nextStages = [...stages]
+    nextStages[stageIndex] = typeof currentStage === 'string'
+      ? { stage: currentStage, times: '', pinned: true }
+      : { ...currentStage, pinned: !currentStage.pinned }
+    updateStages(nextStages)
+  }
+
+  const updateStageName = (stageIndex: number, stage: string) => {
+    const nextStages = [...stages]
+    const currentStage = nextStages[stageIndex]
+    if (typeof currentStage === 'string') {
+      nextStages[stageIndex] = { stage, times: '' }
+    } else if (currentStage) {
+      nextStages[stageIndex] = { ...currentStage, stage }
+    }
+    updateStages(nextStages)
+  }
+
+  const updateStageTimes = (stageIndex: number, times: string) => {
+    const nextStages = [...stages]
+    const currentStage = nextStages[stageIndex]
+    if (typeof currentStage === 'string') {
+      nextStages[stageIndex] = { stage: currentStage, times }
+    } else if (currentStage) {
+      nextStages[stageIndex] = { ...currentStage, times }
+    }
+    updateStages(nextStages)
+  }
+
+  const adjustStageTimes = (stageIndex: number, delta: number) => {
+    const currentStage = stages[stageIndex]
+    if (!currentStage || (typeof currentStage === 'object' && currentStage.smart)) return
+
+    const currentValue = typeof currentStage === 'string' ? 0 : (Number(currentStage.times) || 0)
+    const nextValue = Math.max(0, currentValue + delta)
+    updateStageTimes(stageIndex, nextValue.toString())
+  }
+
+  const deleteStage = (stageIndex: number) => {
+    const nextStages = stages.filter((_, index) => index !== stageIndex)
+    updateStages(nextStages.length > 0 ? nextStages : [{ stage: '', times: '' }])
+  }
+
+  const toggleSmartStages = async () => {
+    if (isSmartStageLoading) return
+    setIsSmartStageLoading(true)
+
+    try {
+      if (hasSmartStages) {
+        const pinnedStages = stages.filter((stage): stage is StageConfig => (
+          typeof stage === 'object'
+          && stage.pinned === true
+          && Boolean(stage.stage?.trim())
+        ))
+        const normalStages = stages.filter(stage => (
+          (typeof stage === 'string' && Boolean(stage.trim()))
+          || (
+            typeof stage === 'object'
+            && !stage.pinned
+            && !stage.smart
+            && Boolean(stage.stage?.trim())
+          )
+        ))
+        const nextStages = [...pinnedStages, ...normalStages]
+        updateStages(nextStages.length > 0 ? nextStages : [{ stage: '', times: '' }])
+        onSuccess('已移除智能养成关卡')
+        return
+      }
+
+      const queueResult = await maaApi.loadUserConfig('training-queue')
+      if (!queueResult.success || !queueResult.data?.queue?.length) {
+        onError('智能养成队列为空，请先添加干员')
+        return
+      }
+
+      const planResult = await generateTrainingPlan({ mode: 'current' })
+      if (!planResult.success || !planResult.data) {
+        onError('生成刷取计划失败')
+        return
+      }
+
+      const plan = planResult.data
+      if (!plan.stages?.length) {
+        onSuccess('当前干员材料已集齐！')
+        return
+      }
+
+      const operatorNames = plan.operators?.map((operator: { name: string }) => operator.name) || []
+      const generatedStages: StageConfig[] = plan.stages.map((stage: { stage: string; totalTimes: number }) => ({
+        stage: stage.stage,
+        times: stage.totalTimes.toString(),
+        smart: true,
+        trainingOperators: operatorNames,
+      }))
+      const pinnedStages = stages.filter((stage): stage is StageConfig => (
+        typeof stage === 'object'
+        && stage.pinned === true
+        && Boolean(stage.stage?.trim())
+      ))
+      const normalStages = stages.filter(stage => (
+        (typeof stage === 'string' && Boolean(stage.trim()))
+        || (
+          typeof stage === 'object'
+          && !stage.pinned
+          && !stage.smart
+          && Boolean(stage.stage?.trim())
+        )
+      ))
+
+      updateStages([...pinnedStages, ...generatedStages, ...normalStages])
+      onSuccess(`已添加智能养成计划：${generatedStages.length} 个关卡`)
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误'
+      onError(`操作失败: ${errorMessage}`)
+    } finally {
+      setIsSmartStageLoading(false)
+    }
+  }
+
+  return (
+    <fieldset className="automation-stage-editor">
+      <legend className="sr-only">{field.label}计划</legend>
+      <div className="automation-stage-editor-header">
+        <div className="automation-stage-editor-title">
+          <label htmlFor={`${fieldId}-0`}>{field.label}计划</label>
+          <span>{validStageCount > 0 ? `${validStageCount} 个关卡` : '尚未配置'}</span>
+        </div>
+      </div>
+
+      <div className="automation-stage-list">
+        {stages.map((stageItem, stageIndex) => {
+          const isSmartStage = typeof stageItem === 'object' && stageItem.smart === true
+          const isPinnedStage = typeof stageItem === 'object' && stageItem.pinned === true
+          const stageName = typeof stageItem === 'string' ? stageItem : stageItem.stage
+          const stageTimes = typeof stageItem === 'string' ? '' : (stageItem.times || '')
+          const canDeleteStage = stages.length > 1 && !isSmartStage
+          const suggestionsId = `${fieldId}-${stageIndex}-suggestions`
+
+          return (
+            <div
+              key={stageIndex}
+              className={`automation-stage-item${isSmartStage ? ' is-smart' : ''}${isPinnedStage ? ' is-pinned' : ''}`}
+            >
+              <div className="automation-stage-row">
+                {isSmartStage ? (
+                  <span className="automation-stage-kind" title="智能养成关卡" aria-label={`智能养成关卡：${field.label} ${stageIndex + 1}`}>
+                    <GraduationCap size={17} strokeWidth={1.9} aria-hidden="true" />
+                  </span>
+                ) : (
+                  <IconButton
+                    icon={<Pin size={16} strokeWidth={1.9} aria-hidden="true" />}
+                    variant="ghost"
+                    size="md"
+                    onClick={() => togglePinned(stageIndex)}
+                    disabled={stageControlsDisabled}
+                    className={`automation-stage-pin min-h-11 min-w-11${isPinnedStage ? ' is-active' : ''}`}
+                    title={isPinnedStage ? '取消置顶' : '置顶'}
+                    aria-label={`${isPinnedStage ? '取消置顶' : '置顶'}：${field.label} ${stageIndex + 1}`}
+                  />
+                )}
+
+                <input
+                  id={`${fieldId}-${stageIndex}`}
+                  type="text"
+                  list={suggestionsId}
+                  aria-label={stageIndex === 0 ? undefined : `${field.label} ${stageIndex + 1}`}
+                  value={stageName}
+                  onChange={event => updateStageName(stageIndex, event.target.value)}
+                  placeholder={field.placeholder}
+                  disabled={stageControlsDisabled || isSmartStage}
+                  className="automation-stage-name-input"
+                />
+                <datalist id={suggestionsId}>
+                  {stageSuggestions.map(([value, description]) => (
+                    <option key={value} value={value}>{`${value} (${description})`}</option>
+                  ))}
+                </datalist>
+
+                <div className="automation-stage-times">
+                  <input
+                    id={`${fieldId}-${stageIndex}-times`}
+                    type="number"
+                    aria-label={`${field.label} ${stageIndex + 1} 执行次数`}
+                    value={stageTimes}
+                    onChange={event => updateStageTimes(stageIndex, event.target.value)}
+                    placeholder="0"
+                    disabled={stageControlsDisabled || isSmartStage}
+                    min="0"
+                  />
+                  <span aria-hidden="true">次</span>
+                </div>
+
+                {!isSmartStage && (
+                  <div className="automation-stage-stepper hidden min-[900px]:flex">
+                    <button
+                      type="button"
+                      onClick={() => adjustStageTimes(stageIndex, -1)}
+                      disabled={stageControlsDisabled || Number(stageTimes) <= 0}
+                      aria-label={`减少${field.label} ${stageIndex + 1} 的执行次数`}
+                    >
+                      <Minus size={14} strokeWidth={2.1} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustStageTimes(stageIndex, 1)}
+                      disabled={stageControlsDisabled}
+                      aria-label={`增加${field.label} ${stageIndex + 1} 的执行次数`}
+                    >
+                      <Plus size={14} strokeWidth={2.1} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
+                {canDeleteStage && (
+                  <IconButton
+                    icon={<Trash2 size={16} strokeWidth={1.9} aria-hidden="true" />}
+                    variant="ghost"
+                    size="md"
+                    onClick={() => deleteStage(stageIndex)}
+                    disabled={stageControlsDisabled}
+                    className="automation-stage-delete min-h-11 min-w-11"
+                    title="删除此关卡"
+                    aria-label={`删除${field.label} ${stageIndex + 1}`}
+                  />
+                )}
+              </div>
+            </div>
+          )
+        })}
+
+        <Button
+          variant="ghost"
+          size="md"
+          fullWidth
+          icon={<ListPlus size={17} strokeWidth={1.9} aria-hidden="true" />}
+          onClick={() => updateStages([...stages, { stage: '', times: '' }])}
+          disabled={stageControlsDisabled}
+          className="automation-stage-add"
+        >
+          添加关卡
+        </Button>
+      </div>
+
+      <div className={`automation-smart-stage-entry${hasSmartStages ? ' is-active' : ''}`}>
+        <span className="automation-smart-stage-icon" aria-hidden="true">
+          <GraduationCap size={19} strokeWidth={1.8} />
+        </span>
+        <div className="automation-smart-stage-copy">
+          <strong>智能养成关卡</strong>
+          <span title={smartStageDescription}>{smartStageDescription}</span>
+        </div>
+        <Button
+          variant={hasSmartStages ? 'ghost' : 'secondary'}
+          size="md"
+          icon={hasSmartStages
+            ? <CircleMinus size={16} strokeWidth={1.9} aria-hidden="true" />
+            : <CirclePlus size={16} strokeWidth={1.9} aria-hidden="true" />}
+          onClick={() => void toggleSmartStages()}
+          disabled={controlsDisabled}
+          loading={isSmartStageLoading}
+          loadingText={hasSmartStages ? '移除中' : '同步中'}
+          aria-pressed={hasSmartStages}
+          aria-label={hasSmartStages ? '移除智能养成关卡' : '加入智能养成关卡'}
+          className="automation-smart-stage-action"
+        >
+          {hasSmartStages ? '移除' : '加入'}
+        </Button>
+      </div>
+    </fieldset>
+  )
+}
+
+export default function AutomationTasks() {
+  const shouldReduceMotion = useReducedMotion()
+  const { setMessage: setStatusMessage, setActive: setIsActiveStatus } = useStatusStore()
+  const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
+
+  // 辅助函数：显示消息
+  const showSuccess = (msg: string) => {
+    setStatusMessage(msg, 'success')
+  }
+  const showError = (msg: string) => {
+    setStatusMessage(msg, 'error')
+  }
+  const showInfo = (msg: string) => {
+    setStatusMessage(msg, 'info')
+  }
+
+  const [isRunning, setIsRunning] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
+  const [taskFlow, setTaskFlow] = useState<TaskFlowItem[]>([])
+  const taskFlowRef = useRef<TaskFlowItem[]>([])
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false)
+  const [scheduleEnabled, setScheduleEnabled] = useState(false)
+  const [scheduleEntries, setScheduleEntries] = useState<ScheduleTimeEntry[]>(DEFAULT_SCHEDULE_ENTRIES)
+  const [currentStep, setCurrentStep] = useState(-1)
+  const [taskResults, setTaskResults] = useState<TaskExecutionResult[]>([])
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [lastDeletedTask, setLastDeletedTask] = useState<DeletedTaskSnapshot | null>(null)
+  const [sortAnnouncement, setSortAnnouncement] = useState('')
+  const [currentActivity, setCurrentActivity] = useState<any>(null)
+  const [activityName, setActivityName] = useState<string | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<Record<string, ConnectionTestStatus>>({})
+  const [testingConnectionTaskId, setTestingConnectionTaskId] = useState<string | null>(null)
+  const [lastExecutionSummary, setLastExecutionSummary] = useState<AutomationExecutionSummary | null>(null)
+  const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false)
+  const autoSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const autoSaveRevisionRef = useRef(0)
+  const taskFlowHydratedRef = useRef(false)
+  const taskFlowLoadRequestRef = useRef(0)
+  const taskFlowLoadAbortRef = useRef<AbortController | null>(null)
+  const scheduleWasRunningRef = useRef(false)
+  const executionRevisionRef = useRef(0)
+  const manualExecutionInFlightRef = useRef(false)
+  const stopRequestInFlightRef = useRef(false)
+  const connectionTestInFlightRef = useRef(false)
+  const connectionTestAbortRef = useRef<AbortController | null>(null)
+  const connectionTestMountedRef = useRef(true)
+  const lastExecutionFingerprintRef = useRef('')
+  const pointerSortRef = useRef<PointerSortSession | null>(null)
+  const sequenceItemRefs = useRef(new Map<string, HTMLDivElement>())
+  const editorColumnRef = useRef<HTMLDivElement>(null)
+  const taskPickerRegionRef = useRef<HTMLDivElement>(null)
+  const taskPickerButtonRef = useRef<HTMLButtonElement>(null)
+  const activeTaskId = selectedTaskId && taskFlow.some(task => task.id === selectedTaskId)
+    ? selectedTaskId
+    : taskFlow[0]?.id ?? null
+
+  const taskExecutionState = (task: TaskFlowItem, index: number) => {
+    if (!task.enabled) return 'idle'
+    const result = taskResults.find(result => result.taskId === task.id)
+    if (result) return result.status === 'running' && !isRunning ? 'stopped' : result.status
+    if (!isRunning) return 'idle'
+    return currentStep === index ? 'running' : currentStep > index ? 'success' : 'pending'
+  }
+  const executionLabel = (state: ReturnType<typeof taskExecutionState>) => ({
+    idle: '', pending: isRunning ? '等待执行' : '未执行', running: '正在执行',
+    success: '已完成', failed: '执行失败', skipped: '已跳过', stopped: '已终止',
+  }[state])
+
+  const selectTaskForEditing = (taskId: string) => {
+    setSelectedTaskId(taskId)
+    if (!window.matchMedia?.('(max-width: 899px)').matches) return
+
+    window.requestAnimationFrame(() => {
+      editorColumnRef.current?.scrollIntoView({
+        behavior: shouldReduceMotion ? 'auto' : 'smooth',
+        block: 'start',
+      })
+    })
+  }
+
+  useEffect(() => {
+    if (!taskPickerOpen) return
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!taskPickerRegionRef.current?.contains(event.target as Node)) {
+        setTaskPickerOpen(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setTaskPickerOpen(false)
+      taskPickerButtonRef.current?.focus()
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePress)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [taskPickerOpen])
+
+  useEffect(() => {
+    if (isRunning) setTaskPickerOpen(false)
+  }, [isRunning])
+
+  useEffect(() => {
+    taskFlowRef.current = taskFlow
+  }, [taskFlow])
+
+  const applyExecutionSummary = (summary: AutomationExecutionSummary) => {
+    setTaskResults(taskResultsFromSummary(summary, taskFlowRef.current))
+    const fingerprint = JSON.stringify(summary)
+    if (lastExecutionFingerprintRef.current === fingerprint) return
+
+    lastExecutionFingerprintRef.current = fingerprint
+    setLastExecutionSummary(summary)
+    setExecutionDetailsOpen(executionSummaryHasFailure(summary))
+  }
+
+  useEffect(() => {
+    connectionTestMountedRef.current = true
+    setTestingConnectionTaskId(null)
+    return () => {
+      connectionTestMountedRef.current = false
+      const connectionController = connectionTestAbortRef.current
+      connectionController?.abort()
+      if (connectionTestAbortRef.current === connectionController) {
+        connectionTestAbortRef.current = null
+        connectionTestInFlightRef.current = false
+      }
+      taskFlowLoadRequestRef.current += 1
+      taskFlowLoadAbortRef.current?.abort()
+      taskFlowLoadAbortRef.current = null
+    }
+  }, [])
+
+  // 轮询定时任务执行状态
+  useEffect(() => {
+    let intervalId = null
+    let isSubscribed = true // 用于防止组件卸载后的状态更新
+    let requestInFlight = false
+
+    const checkScheduleStatus = async () => {
+      if (!isSubscribed || requestInFlight) return
+      requestInFlight = true
+      const revision = executionRevisionRef.current
+
+      try {
+        const result = await maaApi.getScheduleExecutionStatus()
+        if (!isSubscribed || revision !== executionRevisionRef.current) return
+
+        if (result.success && result.data) {
+          const status = result.data
+
+          // 如果定时任务正在运行，更新 UI 状态
+          if (status.isRunning) {
+            setTaskResults(status.taskResults || [])
+            scheduleWasRunningRef.current = true
+            setIsRunning(true)
+            if (String(status.message || '').includes('正在终止')) {
+              stopRequestInFlightRef.current = true
+              setIsStopping(true)
+            }
+            setIsActiveStatus(true)
+
+            // 根据任务 ID 找到在 taskFlow 中的实际索引
+            if (status.currentTaskId) {
+              setCurrentStep(taskFlow.findIndex(task => task.id === status.currentTaskId))
+            } else {
+              const enabledTask = taskFlow.filter(task => task.enabled)[status.currentStep]
+              setCurrentStep(enabledTask ? taskFlow.findIndex(task => task.id === enabledTask.id) : -1)
+            }
+
+            setStatusMessage(status.message || `正在执行: ${status.currentTask}`, 'info')
+          } else {
+            // A manual request may still be starting when an earlier idle poll arrives.
+            if (manualExecutionInFlightRef.current && !scheduleWasRunningRef.current) return
+            const justFinished = scheduleWasRunningRef.current
+            scheduleWasRunningRef.current = false
+            setIsRunning(false)
+            setCurrentStep(-1)
+            setIsStopping(false)
+            stopRequestInFlightRef.current = false
+            if (status.lastResult) {
+              applyExecutionSummary(status.lastResult as AutomationExecutionSummary)
+            }
+            if (Array.isArray(status.taskResults)) setTaskResults(status.taskResults)
+
+            if (justFinished) {
+              const completionMessage = status.message || '任务流程执行完成'
+              const completionType = /终止|取消|失败/.test(completionMessage) ? 'warning' : 'success'
+              setStatusMessage(completionMessage, completionType)
+            }
+          }
+        }
+      } catch (error) {
+        // 静默失败，不影响用户体验
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    // 每秒检查一次
+    intervalId = setInterval(checkScheduleStatus, 1000)
+    checkScheduleStatus() // 立即执行一次
+
+    return () => {
+      isSubscribed = false
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [setIsActiveStatus, setStatusMessage, taskFlow])
+
+  // 可用的任务列表
+  const availableTasks: AutomationAvailableTask[] = [
+    {
+      id: 'startup' as const,
+      name: '启动游戏',
+      icon: <Icons.Play />,
+      description: '启动游戏并进入主界面',
+      defaultParams: {
+        clientType: 'Official',
+        accountName: ''
+      },
+      paramFields: [
+        { key: 'clientType', label: '客户端类型', type: 'select', options: [
+          { value: 'Official', label: '官服' },
+          { value: 'Bilibili', label: 'B服' },
+          { value: 'YoStarEN', label: '美服' },
+          { value: 'YoStarJP', label: '日服' },
+          { value: 'YoStarKR', label: '韩服' },
+          { value: 'Txwy', label: '繁中服' }
+        ]},
+        { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"' }
+      ]
+    },
+    {
+      id: 'fight' as const,
+      name: '理智作战',
+      icon: <Icons.Sword />,
+      description: '自动刷关卡消耗理智',
+      defaultParams: {
+        stage: '1-7',
+        stages: [{ stage: '1-7', times: '' }],
+        medicine: 0,
+        expiringMedicine: 0,
+        stone: 0,
+        series: '1',
+        drops: '',
+        clientType: '',
+        DrGrandet: false,
+        report_to_penguin: false,
+        penguin_id: '',
+        report_to_yituliu: false,
+        yituliu_id: ''
+      },
+      paramFields: [
+        { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行' },
+        { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
+        { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
+        { key: 'expiringMedicine', label: '临期药数量', type: 'number', placeholder: '0', helper: '按瓶数设置可使用的临期理智药' },
+        { key: 'stone', label: '源石', type: 'number', placeholder: '0', helper: '使用源石数量' },
+        { key: 'series', label: '连战', type: 'select', options: [
+          { value: '-1', label: '禁用' },
+          { value: '0', label: '自动' },
+          { value: '1', label: '1次' },
+          { value: '2', label: '2次' },
+          { value: '3', label: '3次' },
+          { value: '4', label: '4次' },
+          { value: '5', label: '5次' },
+          { value: '6', label: '6次' }
+        ], helper: '单次代理作战重复次数（需要游戏支持）' },
+      ]
+    },
+    {
+      id: 'infrast' as const,
+      name: '基建换班',
+      icon: <Icons.Building />,
+      description: '自动基建换班收菜',
+      defaultParams: {
+        mode: '0',
+        facility: ['Mfg', 'Trade', 'Power', 'Control', 'Reception', 'Office', 'Dorm'],
+        drones: 'Money',
+        threshold: '0.3',
+        replenish: false,
+        filename: '',
+        plan_index: 0,
+        continue_training: false,
+        dorm_notstationed_enabled: false,
+        dorm_trust_enabled: false,
+        reception_message_board: true,
+        reception_clue_exchange: true,
+        reception_send_clue: true
+      },
+      paramFields: [
+        { key: 'mode', label: '换班模式', type: 'select', options: [
+          { value: '0', label: '默认换班' },
+          { value: '10000', label: '自定义换班' },
+          { value: '20000', label: '一键轮换' }
+        ], helper: '一键轮换使用游戏内队列，并保留无人机、会客室等基础操作' },
+        { key: 'facility', label: '设施选择', type: 'facility-select', helper: '选择要换班的设施' },
+        { key: 'drones', label: '无人机用途', type: 'select', options: [
+          { value: '_NotUse', label: '不使用无人机' },
+          { value: 'Money', label: '龙门币' },
+          { value: 'SyntheticJade', label: '合成玉' },
+          { value: 'CombatRecord', label: '作战记录' },
+          { value: 'PureGold', label: '赤金' },
+          { value: 'OriginStone', label: '源石碎片' },
+          { value: 'Chip', label: '芯片' }
+        ], hiddenWhen: { key: 'mode', value: '10000' } },
+        { key: 'threshold', label: '心情阈值', type: 'number', placeholder: '0.3', step: '0.1', min: '0', max: '1' },
+        { key: 'replenish', label: '自动补货', type: 'checkbox' },
+        { key: 'filename', label: '排班文件', type: 'text', placeholder: 'schedules/base.json', helper: '自定义换班使用的排班配置文件路径', visibleWhen: { key: 'mode', value: '10000' } },
+        { key: 'plan_index', label: '方案序号', type: 'number', placeholder: '0', min: '0', helper: '配置文件中的方案序号，从 0 开始', visibleWhen: { key: 'mode', value: '10000' } },
+      ],
+      taskType: 'Infrast'
+    },
+    {
+      id: 'recruit' as const,
+      name: '自动公招',
+      icon: <Icons.Users />,
+      description: '自动公开招募',
+      defaultParams: {
+        refresh: true,
+        force_refresh: true,
+        select: [4, 5, 6],
+        confirm: [3, 4],
+        first_tags: '',
+        extra_tags_mode: 0,
+        times: '4',
+        set_time: true,
+        expedite: false,
+        expedite_times: 0,
+        preserve_tags: '支援机械',
+        recruitment_time: { '3': 540, '4': 540 }
+      },
+      paramFields: [
+        { key: 'refresh', label: '刷新标签', type: 'checkbox' },
+        { key: 'force_refresh', label: '无许可时仍刷新', type: 'checkbox', helper: '招聘许可耗尽后，仍会使用可用刷新次数', visibleWhen: { key: 'refresh', value: true } },
+        { key: 'select', label: '招募星级', type: 'star-select', helper: '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合' },
+        { key: 'confirm', label: '确认星级', type: 'star-select', helper: '建议至少保留 5/6 星确认，避免高价值标签被跳过' },
+        { key: 'times', label: '招募次数', type: 'number', placeholder: '4' },
+        { key: 'set_time', label: '设置时间', type: 'checkbox' },
+        { key: 'expedite', label: '使用加急', type: 'checkbox' },
+        { key: 'expedite_times', label: '加急次数', type: 'number', placeholder: '0', visibleWhen: { key: 'expedite', value: true } },
+        { key: 'preserve_tags', label: '保留标签', type: 'text', placeholder: '支援机械,高级资深干员', helper: '识别到任一标签时保留该公招槽位，多个标签用逗号分隔' },
+      ],
+      taskType: 'Recruit'
+    },
+    {
+      id: 'mall' as const,
+      name: '信用收支',
+      icon: <Icons.Cash />,
+      description: '访问好友、收取信用',
+      defaultParams: {
+        visit_friends: true,
+        shopping: true,
+        buy_first: '',
+        blacklist: '',
+        force_shopping_if_credit_full: false,
+        only_buy_discount: false,
+        reserve_max_credit: false,
+        credit_fight: false,
+        formation_index: 0
+      },
+      paramFields: [
+        { key: 'visit_friends', label: '访问好友', type: 'checkbox' },
+        { key: 'shopping', label: '自动购物', type: 'checkbox' },
+        { key: 'buy_first', label: '优先购买', type: 'text', placeholder: '招聘许可,龙门币（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
+        { key: 'blacklist', label: '黑名单', type: 'text', placeholder: '家具零件,碳（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
+        { key: 'only_buy_discount', label: '只买折扣商品', type: 'checkbox', helper: '仅影响优先购买之外的普通购物', visibleWhen: { key: 'shopping', value: true } },
+        { key: 'reserve_max_credit', label: '保留 300 信用', type: 'checkbox', helper: '普通购物时信用低于 300 就停止购买', visibleWhen: { key: 'shopping', value: true } },
+        { key: 'force_shopping_if_credit_full', label: '信用溢出时无视黑名单', type: 'checkbox', visibleWhen: { key: 'shopping', value: true } },
+        { key: 'credit_fight', label: '信用助战', type: 'checkbox', helper: '借助战完成一次 OF-1，以便次日获得更多信用' },
+        { key: 'formation_index', label: '助战编队', type: 'select', options: [
+          { value: '0', label: '当前编队' },
+          { value: '1', label: '编队 1' },
+          { value: '2', label: '编队 2' },
+          { value: '3', label: '编队 3' },
+          { value: '4', label: '编队 4' }
+        ], visibleWhen: { key: 'credit_fight', value: true } },
+      ],
+      taskType: 'Mall'
+    },
+    {
+      id: 'award' as const,
+      name: '领取奖励',
+      icon: <Icons.Gift />,
+      description: '领取每日/每周奖励',
+      defaultParams: {
+        award: true,
+        mail: true,
+        recruit: false,
+        orundum: false,
+        mining: false,
+        specialaccess: false
+      },
+      paramFields: [
+        { key: 'award', label: '每日奖励', type: 'checkbox' },
+        { key: 'mail', label: '邮件奖励', type: 'checkbox' },
+        { key: 'recruit', label: '公招奖励', type: 'checkbox' },
+        { key: 'orundum', label: '合成玉奖励', type: 'checkbox' },
+        { key: 'mining', label: '采矿奖励', type: 'checkbox' },
+        { key: 'specialaccess', label: '特别通行证', type: 'checkbox' },
+      ],
+      taskType: 'Award'
+    },
+    {
+      id: 'closedown' as const,
+      name: '关闭游戏',
+      icon: <Icons.Stop />,
+      description: '关闭游戏客户端',
+      defaultParams: {
+        clientType: 'Official',
+        recognizeDepotBeforeClose: false
+      },
+      paramFields: [
+        { key: 'clientType', label: '客户端类型', type: 'select', options: [
+          { value: 'Official', label: '官服' },
+          { value: 'Bilibili', label: 'B服' },
+          { value: 'YoStarEN', label: '美服' },
+          { value: 'YoStarJP', label: '日服' },
+          { value: 'YoStarKR', label: '韩服' },
+          { value: 'Txwy', label: '繁中服' }
+        ]},
+        { key: 'recognizeDepotBeforeClose', label: '关闭前识别仓库', type: 'checkbox', helper: '启用后会先识别并保存仓库数据，再关闭游戏客户端' }
+      ]
+    },
+  ]
+
+  const addTaskToFlow = (task: AutomationAvailableTask) => {
+    const newTask: TaskFlowItem = {
+      ...task,
+      params: { ...task.defaultParams },
+      enabled: true,
+      commandId: task.id,
+      id: `${task.id}-${Date.now()}`
+    }
+    if (task.id === 'closedown') {
+      const startupTask = taskFlow.find(flowTask => flowTask.commandId === 'startup')
+      if (startupTask) {
+        newTask.params.clientType = startupTask.params.clientType || 'Official'
+      }
+    }
+    const newFlow = task.id === 'closedown'
+      ? [...taskFlow, newTask]
+      : placeClosedownLast([...taskFlow, newTask])
+
+    setTaskFlow(newFlow)
+    setSelectedTaskId(newTask.id)
+    setTaskPickerOpen(false)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+  }
+
+  const removeTaskFromFlow = (index: number) => {
+    const removedTask = taskFlow[index]
+    if (!removedTask) return
+    const newFlow = taskFlow.filter((_, i) => i !== index)
+    if (removedTask.id === activeTaskId) {
+      setSelectedTaskId(newFlow[Math.min(index, newFlow.length - 1)]?.id ?? null)
+    }
+    setLastDeletedTask({ task: removedTask, index })
+    setTaskFlow(newFlow)
+    taskFlowRef.current = newFlow
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+  }
+
+  const restoreDeletedTask = () => {
+    if (!lastDeletedTask || isRunning) return
+    const insertionIndex = Math.min(lastDeletedTask.index, taskFlow.length)
+    const restoredFlow = [...taskFlow]
+    restoredFlow.splice(insertionIndex, 0, lastDeletedTask.task)
+    const newFlow = placeClosedownLast(restoredFlow)
+    setTaskFlow(newFlow)
+    taskFlowRef.current = newFlow
+    setSelectedTaskId(lastDeletedTask.task.id)
+    setLastDeletedTask(null)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+  }
+
+  const toggleTaskEnabled = (index: number) => {
+    const newFlow = [...taskFlow]
+    const task = newFlow[index]
+    if (task) {
+      task.enabled = !task.enabled
+      setTaskFlow(newFlow)
+      autoSave(newFlow, scheduleEnabled, scheduleEntries)
+    }
+  }
+
+  const restorePointerSort = () => {
+    const session = pointerSortRef.current
+    if (!session) return
+    pointerSortRef.current = null
+    setDraggedIndex(null)
+    if (session.changed) {
+      taskFlowRef.current = session.originalFlow
+      setTaskFlow(session.originalFlow)
+      setSortAnnouncement('已取消排序')
+    }
+  }
+
+  const handleSortPointerDown = (event: React.PointerEvent<HTMLButtonElement>, taskId: string) => {
+    if (isRunning || event.button !== 0 || pointerSortRef.current) return
+    pointerSortRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      itemId: taskId,
+      originalFlow: [...taskFlowRef.current],
+      activated: false,
+      changed: false
+    }
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Capture can fail if the pointer already ended.
+    }
+  }
+
+  const handleSortPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const session = pointerSortRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+
+    if (!session.activated) {
+      if (!hasPointerSortActivated(session.startX, session.startY, event.clientX, event.clientY)) return
+      session.activated = true
+    }
+
+    const currentFlow = taskFlowRef.current
+    const currentIndex = currentFlow.findIndex(task => task.id === session.itemId)
+    if (currentIndex < 0) return
+    setDraggedIndex(currentIndex)
+
+    const targetIndex = getPointerSortTargetIndex(currentFlow, session.itemId, event.clientY, taskId => {
+      const rect = sequenceItemRefs.current.get(taskId)?.getBoundingClientRect()
+      return rect ? rect.top + rect.height / 2 : null
+    })
+    if (targetIndex === currentIndex) return
+
+    const newFlow = moveTaskFlowItem(currentFlow, currentIndex, targetIndex)
+    taskFlowRef.current = newFlow
+    session.changed = true
+    setTaskFlow(newFlow)
+    setDraggedIndex(targetIndex)
+  }
+
+  const handleSortPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const session = pointerSortRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+    pointerSortRef.current = null
+    setDraggedIndex(null)
+    if (session.activated && session.changed) {
+      const committedFlow = taskFlowRef.current
+      const committedIndex = committedFlow.findIndex(task => task.id === session.itemId)
+      setSortAnnouncement(`${committedFlow[committedIndex]?.name || '任务'}已移动到第 ${committedIndex + 1} 位`)
+      autoSave(committedFlow, scheduleEnabled, scheduleEntries)
+    }
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // The browser may have released capture before this handler runs.
+    }
+  }
+
+  const handleSortPointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const session = pointerSortRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+    restorePointerSort()
+  }
+
+  const handleSortKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, taskId: string) => {
+    if (isRunning || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+    event.preventDefault()
+    const currentIndex = taskFlow.findIndex(task => task.id === taskId)
+    const targetIndex = event.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1
+    const newFlow = moveTaskFlowItem(taskFlow, currentIndex, targetIndex)
+    if (newFlow === taskFlow) return
+    setTaskFlow(newFlow)
+    taskFlowRef.current = newFlow
+    setSortAnnouncement(`${newFlow[targetIndex]?.name || '任务'}已移动到第 ${targetIndex + 1} 位`)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+  }
+
+  useEffect(() => {
+    const cancelSortOnEscape = (event: KeyboardEvent) => {
+      const session = pointerSortRef.current
+      if (event.key !== 'Escape' || !session) return
+      event.preventDefault()
+      pointerSortRef.current = null
+      setDraggedIndex(null)
+      if (session.changed) {
+        taskFlowRef.current = session.originalFlow
+        setTaskFlow(session.originalFlow)
+        setSortAnnouncement('已取消排序')
+      }
+    }
+    window.addEventListener('keydown', cancelSortOnEscape)
+    return () => window.removeEventListener('keydown', cancelSortOnEscape)
+  }, [])
+
+  const updateTaskParam = (index: number, key: string, value: any) => {
+    const newFlow = [...taskFlow]
+    const currentTask = newFlow[index]
+    if (!currentTask) return
+
+    // 如果修改的是 stages 参数，需要对关卡进行排序，但保留空白行用于继续输入。
+    // 之前这里会把 { stage: '', times: '' } 过滤掉，导致“添加关卡”点击后看起来没反应。
+    if (key === 'stages' && Array.isArray(value)) {
+      const hasStageText = (s: string | StageConfig) =>
+        typeof s === 'string' ? s.trim() !== '' : !!s.stage && s.stage.trim() !== '';
+
+      const pinnedStages = value.filter((s): s is StageConfig =>
+        typeof s === 'object' && s.pinned === true && hasStageText(s)
+      );
+      const smartStages = value.filter((s): s is StageConfig =>
+        typeof s === 'object' && s.smart === true && hasStageText(s)
+      );
+      const normalStages = value.filter((s): s is string | StageConfig =>
+        hasStageText(s) && (
+          typeof s === 'string' ||
+          (typeof s === 'object' && !s.pinned && !s.smart)
+        )
+      );
+      const blankStages = value.filter((s): s is string | StageConfig => !hasStageText(s));
+
+      // 重新组合：置顶 -> 智能养成 -> 普通 -> 空白输入行
+      currentTask.params[key] = [...pinnedStages, ...smartStages, ...normalStages, ...blankStages];
+    } else {
+      currentTask.params[key] = value;
+    }
+
+    // 如果修改的是启动游戏的客户端类型，同步到关闭游戏
+    const connectionKeys = new Set(['clientType'])
+    if (currentTask.commandId === 'startup' && connectionKeys.has(key)) {
+      newFlow.forEach((task, i) => {
+        if (task.commandId === 'closedown' && newFlow[i]) {
+          newFlow[i]!.params.clientType = value
+        }
+      })
+    }
+    // 如果修改的是关闭游戏的客户端类型，同步到启动游戏
+    else if (currentTask.commandId === 'closedown' && connectionKeys.has(key)) {
+      newFlow.forEach((task, i) => {
+        if (task.commandId === 'startup' && newFlow[i]) {
+          newFlow[i]!.params.clientType = value
+        }
+      })
+    }
+
+    setTaskFlow(newFlow)
+    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+  }
+
+  const testConnection = async (taskId: string) => {
+    if (connectionTestInFlightRef.current) return
+
+    const controller = new AbortController()
+    const startedAt = Date.now()
+    const waitForStableFeedback = async () => {
+      const remaining = 450 - (Date.now() - startedAt)
+      if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining))
+    }
+    connectionTestInFlightRef.current = true
+    connectionTestAbortRef.current = controller
+    setTestingConnectionTaskId(taskId)
+    setConnectionStatus(prev => {
+      const next = { ...prev }
+      delete next[taskId]
+      return next
+    })
+
+    try {
+      const result = await maaApi.testConnection(undefined, undefined, controller.signal)
+      await waitForStableFeedback()
+      if (controller.signal.aborted) return
+      const payload = result.data as ConnectionTestStatus | undefined
+      const success = Boolean(result.success && payload?.success)
+      setConnectionStatus(prev => ({
+        ...prev,
+        [taskId]: {
+          success,
+          message: payload?.message || maaApi.getErrorMessage(result),
+        },
+      }))
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') return
+      await waitForStableFeedback()
+      if (controller.signal.aborted) return
+      const errorMessage = error instanceof Error ? error.message : '未知错误'
+      setConnectionStatus(prev => ({
+        ...prev,
+        [taskId]: {
+          success: false,
+          message: errorMessage,
+        }
+      }))
+    } finally {
+      if (connectionTestAbortRef.current === controller) {
+        connectionTestInFlightRef.current = false
+        connectionTestAbortRef.current = null
+        if (connectionTestMountedRef.current) setTestingConnectionTaskId(null)
+      }
+    }
+  }
+
+  const autoSave = (flow: TaskFlowItem[], enabled: boolean, entries: ScheduleTimeEntry[]) => {
+    const taskFlowToSave = flow.map(task => {
+      const { icon, paramFields, ...rest } = task
+      return rest
+    })
+    const normalizedEntries = normalizeScheduleEntries(entries)
+    const normalizedTimes = activeScheduleTimes(normalizedEntries)
+    const revision = ++autoSaveRevisionRef.current
+    const syncToken = createAutomationConfigSyncToken()
+    const isCurrentSave = () => (
+      revision === autoSaveRevisionRef.current
+      && localStorage.getItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY) === syncToken
+    )
+
+    // 保存到 localStorage（快速访问）
+    localStorage.setItem('maa-task-flow', JSON.stringify(taskFlowToSave))
+    localStorage.setItem('maa-schedule', JSON.stringify({
+      enabled,
+      times: normalizedTimes,
+      entries: normalizedEntries,
+    }))
+    localStorage.setItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY, syncToken)
+
+    autoSaveQueueRef.current = autoSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        // 连续编辑时只提交队列中最新的一版，避免旧请求覆盖新配置。
+        if (!isCurrentSave()) return
+
+        const saveResult = await maaApi.saveUserConfig('automation-tasks', {
+          taskFlow: taskFlowToSave,
+          schedule: { enabled, times: normalizedTimes }
+        })
+        if (!saveResult.success) {
+          throw new Error(maaApi.getErrorMessage(saveResult))
+        }
+
+        if (!isCurrentSave()) return
+
+        const scheduleResult = enabled && normalizedTimes.length > 0
+          ? await maaApi.setupSchedule('default', normalizedTimes, taskFlowToSave)
+          : await maaApi.stopSchedule('default')
+
+        if (!scheduleResult.success) {
+          throw new Error(maaApi.getErrorMessage(scheduleResult))
+        }
+        if (isCurrentSave()) localStorage.removeItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)
+      })
+      .catch((error: unknown) => {
+        if (!isCurrentSave()) return
+        const message = error instanceof Error ? error.message : '未知错误'
+        void showError(`配置同步失败: ${message}`)
+      })
+  }
+
+  const commitScheduleEntries = (entries: ScheduleTimeEntry[]) => {
+    const normalizedEntries = normalizeScheduleEntries(entries)
+    setScheduleEntries(normalizedEntries)
+    autoSave(taskFlow, scheduleEnabled, normalizedEntries)
+  }
+
+  const updateScheduleTimePart = (index: number, part: 'hour' | 'minute', rawValue: number) => {
+    setScheduleEntries(currentEntries => {
+      const current = currentEntries[index]
+      if (!current) return currentEntries
+
+      const parsed = parseScheduleTime(current.time)
+      const nextHour = part === 'hour' ? rawValue : parsed.hour
+      const nextMinute = part === 'minute' ? rawValue : parsed.minute
+      const clampedHour = ((nextHour % 24) + 24) % 24
+      const clampedMinute = ((nextMinute % 60) + 60) % 60
+      const nextTime = formatScheduleTime(clampedHour, clampedMinute)
+
+      if (currentEntries.some((entry, itemIndex) => itemIndex !== index && entry.time === nextTime)) {
+        void showError('该执行时间已经存在')
+        return currentEntries
+      }
+
+      const newEntries = normalizeScheduleEntries(
+        currentEntries.map((entry, itemIndex) => (
+          itemIndex === index ? { ...entry, time: nextTime } : entry
+        )),
+      )
+      autoSave(taskFlow, scheduleEnabled, newEntries)
+      return newEntries
+    })
+  }
+
+  const updateScheduleTimeEnabled = (index: number, enabled: boolean) => {
+    setScheduleEntries(currentEntries => {
+      const newEntries = normalizeScheduleEntries(
+        currentEntries.map((entry, itemIndex) => (
+          itemIndex === index ? { ...entry, enabled } : entry
+        )),
+      )
+      autoSave(taskFlow, scheduleEnabled, newEntries)
+      return newEntries
+    })
+  }
+
+  const buildCommand = (task: TaskFlowItem) => {
+    if (task.taskType) {
+      const params = task.params || {}
+      const taskConfig: any = {
+        name: task.name,
+        type: task.taskType,
+        params: {}
+      }
+
+      Object.keys(params).forEach(key => {
+        const value = params[key]
+        if (value === undefined || value === '' || value === null) return
+
+        if (typeof value === 'boolean') {
+          taskConfig.params[key] = value
+        }
+        else if (Array.isArray(value)) {
+          if (value.length > 0) {
+            taskConfig.params[key] = value
+          }
+        }
+        else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
+          taskConfig.params[key] = value.trim()
+        }
+        else if (typeof value === 'string' && (commaSeparatedArrayKeys.has(key) || (value.includes(',') && !value.includes('[')))) {
+          taskConfig.params[key] = value.split(',').map(v => v.trim()).filter(v => v)
+        }
+        else if (typeof value === 'number') {
+          taskConfig.params[key] = value
+        }
+        else if (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '') {
+          taskConfig.params[key] = Number(value)
+        }
+        else if (value) {
+          taskConfig.params[key] = value
+        }
+      })
+
+      return {
+        command: 'run',
+        params: task.commandId || task.id,
+        taskConfig: JSON.stringify(taskConfig)
+      }
+    }
+
+    const commandId = task.commandId || task.id.split('-')[0]
+    let params = ''
+    const extraArgs: string[] = []
+
+    if (commandId === 'startup' || commandId === 'closedown') {
+      params = task.params?.clientType || 'Official'
+      if (commandId === 'startup' && task.params?.accountName?.trim()) {
+        extraArgs.push(`--account-name ${task.params.accountName.trim()}`)
+      }
+    } else if (commandId === 'fight') {
+      const stages = task.params?.stages || [{ stage: task.params?.stage || '', times: task.params?.times || '' }]
+      params = stages
+        .map(stageConfig => typeof stageConfig === 'string'
+          ? { stage: stageConfig, times: '' }
+          : stageConfig)
+        .filter(stageConfig => stageConfig.stage?.trim())
+        .map(stageConfig => `${stageConfig.stage.trim()}${stageConfig.times ? `:${stageConfig.times}` : ''}`)
+        .join(',')
+      if (task.params?.medicine !== undefined && task.params.medicine !== '' && task.params.medicine !== null) {
+        params += ` -m ${task.params.medicine}`
+      }
+      if (task.params?.expiringMedicine !== undefined && task.params.expiringMedicine !== '' && task.params.expiringMedicine !== null) {
+        params += ` --expiring-medicine ${task.params.expiringMedicine}`
+      }
+      if (task.params?.stone !== undefined && task.params.stone !== '' && task.params.stone !== null) {
+        params += ` --stone ${task.params.stone}`
+      }
+      if (task.params?.series !== undefined && task.params.series !== '' && String(task.params.series) !== '1') {
+        params += ` --series ${task.params.series}`
+      }
+      const dropTargets = parseDropTargetEntries(task.params?.drops)
+      if (dropTargets === null) {
+        throw new Error('掉落目标格式应为物品 ID=数量，多个目标用逗号分隔')
+      }
+      dropTargets.forEach(target => {
+        params += ` -D${target}`
+      })
+      if (task.params?.clientType) params += ` --client-type ${task.params.clientType}`
+      if (task.params?.DrGrandet) params += ' --dr-grandet'
+      if (task.params?.report_to_penguin) {
+        params += ' --report-to-penguin'
+        if (task.params.penguin_id?.trim()) params += ` --penguin-id ${task.params.penguin_id.trim()}`
+      }
+      if (task.params?.report_to_yituliu) {
+        params += ' --report-to-yituliu'
+        if (task.params.yituliu_id?.trim()) params += ` --yituliu-id ${task.params.yituliu_id.trim()}`
+      }
+    }
+
+    if (extraArgs.length > 0) {
+      params = `${extraArgs.join(' ')} ${params}`
+    }
+
+    return { command: commandId, params }
+  }
+
+  const executeTaskFlow = async () => {
+    if (!automationAvailable) {
+      void showError(unavailableMessage)
+      return
+    }
+
+    const invalidTask = taskFlow.find(task =>
+      task.enabled &&
+      task.taskType === 'Infrast' &&
+      Number(task.params.mode) === 10000 &&
+      !String(task.params.filename || '').trim()
+    )
+    if (invalidTask) {
+      setSelectedTaskId(invalidTask.id)
+      void showError('自定义换班需要填写排班文件路径')
+      return
+    }
+
+    const invalidFightDrops = taskFlow.find(task => {
+      const commandId = task.commandId || task.id.split('-')[0]
+      return task.enabled && commandId === 'fight' && parseDropTargetEntries(task.params.drops) === null
+    })
+    if (invalidFightDrops) {
+      setSelectedTaskId(invalidFightDrops.id)
+      void showError('掉落目标格式应为物品 ID=数量，多个目标用逗号分隔')
+      return
+    }
+
+    stopRequestInFlightRef.current = false
+    manualExecutionInFlightRef.current = true
+    executionRevisionRef.current += 1
+    scheduleWasRunningRef.current = false
+    lastExecutionFingerprintRef.current = ''
+    setTaskResults([])
+    setIsStopping(false)
+    setIsRunning(true)
+    setCurrentStep(-1)
+    showInfo('开始执行任务流程...')
+
+    try {
+      // 清理 taskFlow，移除不能序列化的字段（如 React 组件）
+      const cleanTaskFlow = taskFlow.map(task => ({
+        id: task.id,
+        name: task.name,
+        commandId: task.commandId,
+        taskType: task.taskType,
+        params: task.params,
+        enabled: task.enabled
+      }))
+
+      // 直接调用后端的定时任务执行接口，复用所有逻辑
+      const result = await maaApi.executeScheduleNow('manual', cleanTaskFlow)
+      const executionSummary = result.data?.summary as AutomationExecutionSummary | undefined
+      if (executionSummary) {
+        applyExecutionSummary(executionSummary)
+      }
+
+      if (result.success && result.data?.stopped) {
+        setStatusMessage(result.message || '任务流程已终止', 'warning')
+      } else if (result.success) {
+        const hasWarnings = Boolean(executionSummary?.warnings?.length || executionSummary?.reports?.some(report => report.status === 'failed'))
+        setStatusMessage(result.message || '任务流程执行完成', hasWarnings ? 'warning' : 'success')
+      } else {
+        showError(`任务流程执行失败: ${result.message || '未知错误'}`)
+      }
+    } catch (error: any) {
+      showError(`执行失败: ${error.message}`)
+    } finally {
+      manualExecutionInFlightRef.current = false
+      executionRevisionRef.current += 1
+      stopRequestInFlightRef.current = false
+      setIsStopping(false)
+      setIsRunning(false)
+      setCurrentStep(-1)
+    }
+  }
+
+  const stopTaskFlow = async () => {
+    if (stopRequestInFlightRef.current) return
+
+    stopRequestInFlightRef.current = true
+    setIsStopping(true)
+    showInfo('正在终止任务流程...')
+
+    // 调用后端 API 终止任务
+    try {
+      const result = await maaApi.stopTask()
+      const taskStopped = Boolean(result.data?.task?.success)
+      const scheduleStopRequested = Boolean(result.data?.scheduleStopped)
+
+      if (!result.success || (!taskStopped && !scheduleStopRequested)) {
+        const detail = result.data?.task?.message || result.message || '当前没有可终止的任务'
+        stopRequestInFlightRef.current = false
+        setIsStopping(false)
+        void showError(`终止失败: ${detail}`)
+        return
+      }
+
+      setStatusMessage('正在终止任务流程...', 'warning')
+    } catch (error) {
+      stopRequestInFlightRef.current = false
+      setIsStopping(false)
+      void showError('终止任务失败')
+    }
+
+    localStorage.removeItem('maa-task-flow-execution')
+  }
+
+  useEffect(() => {
+    if (isRunning) return
+    stopRequestInFlightRef.current = false
+    setIsStopping(false)
+  }, [isRunning])
+
+  const loadTaskFlow = useEffectEvent(async (force = false) => {
+    if (taskFlowHydratedRef.current && !force) return
+
+    const applyLoadedConfig = (savedTasks: any[] | null | undefined, schedule: any) => {
+      const loadedTasks = savedTasks
+        ? placeClosedownLast(synchronizeConnectionParams(savedTasks.map(migrateTaskParams)))
+        : savedTasks
+
+      if (loadedTasks) {
+        const restoredTasks = loadedTasks.map((task: any) => {
+          const originalTask = availableTasks.find(t => t.id === task.commandId || t.id === task.id.split('-')[0])
+          return {
+            ...task,
+            icon: originalTask?.icon,
+            paramFields: originalTask?.paramFields
+          }
+        })
+        taskFlowRef.current = restoredTasks
+        setTaskFlow(restoredTasks)
+      }
+
+      if (schedule) {
+        const { enabled } = schedule
+        const normalizedEntries = readScheduleEntries(schedule)
+        setScheduleEnabled(Boolean(enabled))
+        if (normalizedEntries.length > 0) setScheduleEntries(normalizedEntries)
+      }
+
+      return loadedTasks
+    }
+
+    const loadLocalConfig = () => {
+      try {
+        const savedTasks = localStorage.getItem('maa-task-flow')
+        const savedSchedule = localStorage.getItem('maa-schedule')
+        applyLoadedConfig(
+          savedTasks ? JSON.parse(savedTasks) : null,
+          savedSchedule ? JSON.parse(savedSchedule) : null,
+        )
+      } catch {
+        localStorage.removeItem('maa-task-flow')
+        localStorage.removeItem('maa-schedule')
+      }
+    }
+
+    if (localStorage.getItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)) {
+      loadLocalConfig()
+      taskFlowHydratedRef.current = true
+      return
+    }
+
+    taskFlowLoadAbortRef.current?.abort()
+    const controller = new AbortController()
+    const requestId = ++taskFlowLoadRequestRef.current
+    const startingRevision = autoSaveRevisionRef.current
+    taskFlowLoadAbortRef.current = controller
+    const isCurrentLoad = () => (
+      taskFlowLoadRequestRef.current === requestId
+      && !controller.signal.aborted
+      && autoSaveRevisionRef.current === startingRevision
+      && !localStorage.getItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)
+    )
+
+    try {
+      // 优先从服务器加载配置
+      const serverConfig = await maaApi.loadUserConfig('automation-tasks', controller.signal)
+      if (!isCurrentLoad()) return
+
+      if (serverConfig.success && serverConfig.data) {
+        // 服务器有配置，使用服务器配置
+        const { taskFlow: savedTasks, schedule } = serverConfig.data
+        const loadedTasks = applyLoadedConfig(savedTasks, schedule)
+        if (loadedTasks) localStorage.setItem('maa-task-flow', JSON.stringify(loadedTasks))
+        if (schedule) {
+          const normalizedEntries = readScheduleEntries(schedule)
+          const normalizedTimes = activeScheduleTimes(normalizedEntries)
+          localStorage.setItem('maa-schedule', JSON.stringify({
+            ...schedule,
+            times: normalizedTimes,
+            entries: normalizedEntries.length > 0 ? normalizedEntries : undefined,
+          }))
+        }
+
+        taskFlowHydratedRef.current = true
+        return
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return
+      // 静默失败，尝试从 localStorage 加载
+    } finally {
+      if (taskFlowLoadAbortRef.current === controller) taskFlowLoadAbortRef.current = null
+    }
+
+    if (!isCurrentLoad()) return
+    // 服务器加载失败，从 localStorage 加载
+    loadLocalConfig()
+    taskFlowHydratedRef.current = true
+  })
+
+  const handleScheduleEnabledChange = (enabled: boolean) => {
+    setScheduleEnabled(enabled)
+    autoSave(taskFlow, enabled, scheduleEntries)
+  }
+
+  const addScheduleTime = () => {
+    const existingTimes = new Set(scheduleEntries.map(entry => entry.time))
+    const candidates = Array.from({ length: 24 }, (_, offset) =>
+      `${String((12 + offset) % 24).padStart(2, '0')}:00`
+    )
+    const nextTime = candidates.find(time => !existingTimes.has(time))
+    if (!nextTime) {
+      void showError('没有可添加的执行时间')
+      return
+    }
+
+    commitScheduleEntries([...scheduleEntries, { time: nextTime, enabled: true }])
+  }
+
+  const removeScheduleTime = (index: number) => {
+    commitScheduleEntries(scheduleEntries.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const cancellationHandlers = new Set<() => void>()
+
+    const cancelRecoveryWork = () => {
+      cancelled = true
+      controller.abort()
+      Array.from(cancellationHandlers).forEach(cancel => cancel())
+      cancellationHandlers.clear()
+    }
+
+    const waitForDelay = (durationMs: number) => new Promise<boolean>((resolve) => {
+      if (cancelled) {
+        resolve(false)
+        return
+      }
+
+      let settled = false
+      const timer = window.setTimeout(() => finish(true), durationMs)
+      const finish = (completed: boolean) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timer)
+        cancellationHandlers.delete(cancel)
+        resolve(completed)
+      }
+      const cancel = () => finish(false)
+      cancellationHandlers.add(cancel)
+    })
+
+    const waitForTaskCompletion = () => new Promise<RecoveryWaitResult>((resolve) => {
+      if (cancelled) {
+        resolve('cancelled')
+        return
+      }
+
+      let settled = false
+      let requestInFlight = false
+      let intervalId: number | null = null
+      let timeoutId: number | null = null
+
+      const finish = (result: RecoveryWaitResult) => {
+        if (settled) return
+        settled = true
+        if (intervalId !== null) window.clearInterval(intervalId)
+        if (timeoutId !== null) window.clearTimeout(timeoutId)
+        cancellationHandlers.delete(cancel)
+        resolve(result)
+      }
+      const cancel = () => finish('cancelled')
+      const checkStatus = async () => {
+        if (cancelled || requestInFlight || settled) return
+        requestInFlight = true
+        try {
+          const statusResult = await maaApi.getTaskStatus(controller.signal)
+          if (cancelled) {
+            finish('cancelled')
+          } else if (statusResult.success && statusResult.data?.isRunning === false) {
+            finish('completed')
+          }
+        } catch (error) {
+          if (cancelled || (error instanceof Error && error.name === 'AbortError')) {
+            finish('cancelled')
+          }
+        } finally {
+          requestInFlight = false
+        }
+      }
+
+      cancellationHandlers.add(cancel)
+      intervalId = window.setInterval(() => void checkStatus(), RECOVERY_STATUS_POLL_MS)
+      timeoutId = window.setTimeout(() => finish('timeout'), RECOVERY_STATUS_TIMEOUT_MS)
+      void checkStatus()
+    })
+
+    const reportWaitTimeout = (taskName: string) => {
+      setStatusMessage(`${taskName} 状态等待超时，已停止前端续跑，请检查后端任务状态`, 'warning')
+    }
+
+    // 先加载任务流程
+    const initializeAndRestore = async () => {
+      // 1. 先加载任务流程
+      await loadTaskFlow()
+      if (cancelled) return
+
+      // 2. 获取当前活动信息
+      try {
+        const activityResult = await maaApi.getActivity('Official')
+        if (cancelled) return
+        if (activityResult.success && activityResult.data?.code) {
+          setCurrentActivity(activityResult.data.code)
+          setActivityName(activityResult.data.name)
+        }
+      } catch (error) {
+        // 静默失败，不影响用户体验
+      }
+
+      // 3. 然后检查是否需要恢复执行
+      try {
+        const result = await maaApi.getTaskStatus(controller.signal)
+        if (cancelled) return
+
+        // 检查是否有任务流程正在执行
+        const flowExecution = localStorage.getItem('maa-task-flow-execution')
+
+        if (flowExecution) {
+          const { isExecuting, tasks, currentIndex } = JSON.parse(flowExecution)
+          const restoredTasks = Array.isArray(tasks) ? tasks : []
+          const restoredCurrentIndex = Number.isInteger(currentIndex) ? currentIndex : -1
+
+          if (isExecuting && restoredTasks.length > 0) {
+            setIsRunning(true)
+            showInfo(`恢复任务流程执行...`)
+
+            const continueTaskFlow = async () => {
+              // 从 localStorage 加载任务流程，找到当前执行的任务
+              const savedTaskFlow = localStorage.getItem('maa-task-flow')
+              if (!savedTaskFlow) {
+                setStatusMessage('无法恢复任务流程', 'error')
+                setIsRunning(false)
+                setCurrentStep(-1)
+                localStorage.removeItem('maa-task-flow-execution')
+                return
+              }
+
+              const parsedTasks = JSON.parse(savedTaskFlow)
+              const loadedTasks = Array.isArray(parsedTasks) ? parsedTasks : []
+              if (cancelled) return
+
+              const currentRun = result.data
+              if (result.success && currentRun?.isRunning) {
+                const currentTaskInfo = restoredTasks[restoredCurrentIndex]
+                if (currentTaskInfo) {
+                  // 找到当前任务在 taskFlow 中的索引
+                  const currentTask = loadedTasks.find((t: any) => {
+                    const tCommandId = t.commandId || t.id.split('-')[0]
+                    return tCommandId === currentTaskInfo.commandId
+                  })
+
+                  if (currentTask) {
+                    const actualIndex = loadedTasks.findIndex((t: any) => t.id === currentTask.id)
+                    setCurrentStep(actualIndex)
+                  }
+                }
+
+                showInfo(`正在执行: ${currentRun.taskName}`)
+
+                // 等待当前任务完成
+                const waitResult = await waitForTaskCompletion()
+                if (waitResult === 'cancelled') return
+                if (waitResult === 'timeout') {
+                  reportWaitTimeout(currentRun.taskName || '当前任务')
+                  return
+                }
+              }
+
+              // 继续执行剩余任务
+              const remainingTasks = restoredTasks.slice(restoredCurrentIndex + 1)
+
+              if (remainingTasks.length > 0) {
+                for (let i = 0; i < remainingTasks.length; i++) {
+                  const taskInfo = remainingTasks[i]
+                  if (cancelled || !taskInfo) return
+
+                  // 使用 commandId 匹配任务
+                  const task = loadedTasks.find((t: any) => {
+                    const tCommandId = t.commandId || t.id.split('-')[0]
+                    return tCommandId === taskInfo.commandId && t.enabled
+                  })
+
+                  if (!task) {
+                    continue
+                  }
+
+                  const actualIndex = loadedTasks.findIndex((t: any) => t.id === task.id)
+                  setCurrentStep(actualIndex)
+                  showInfo(`正在执行: ${task.name}`)
+
+                  localStorage.setItem('maa-task-flow-execution', JSON.stringify({
+                    isExecuting: true,
+                    tasks: restoredTasks,
+                    currentIndex: restoredCurrentIndex + i + 1,
+                    startTime: Date.now()
+                  }))
+
+                  try {
+                    const { command, params, taskConfig } = buildCommand(task)
+                    const result = await maaApi.executePredefinedTask(
+                      command,
+                      params,
+                      taskConfig as any,
+                      controller.signal,
+                      task.name,
+                      'automation',
+                      false
+                    )
+                    if (cancelled) return
+
+                    if (!result.success) {
+                      setStatusMessage(`${task.name} 提交失败: ${maaApi.getErrorMessage(result)}`, 'error')
+                      setIsRunning(false)
+                      setCurrentStep(-1)
+                      localStorage.removeItem('maa-task-flow-execution')
+                      return
+                    }
+
+                    const waitResult = await waitForTaskCompletion()
+                    if (waitResult === 'cancelled') return
+                    if (waitResult === 'timeout') {
+                      reportWaitTimeout(task.name)
+                      return
+                    }
+
+                    // 任务完成后的延迟时间
+                    // 启动游戏需要更长的等待时间，确保游戏完全启动
+                    const commandId = task.commandId || task.id.split('-')[0]
+                    const delayTime = commandId === 'startup' ? 15000 : commandId === 'closedown' ? 3000 : 2000
+
+                    showInfo(`${task.name} 完成，等待 ${delayTime / 1000} 秒后继续...`)
+                    if (!await waitForDelay(delayTime)) return
+                  } catch (error) {
+                    if (cancelled || (error instanceof Error && error.name === 'AbortError')) return
+                    setStatusMessage(`${task.name} 恢复执行失败`, 'error')
+                    setIsRunning(false)
+                    setCurrentStep(-1)
+                    localStorage.removeItem('maa-task-flow-execution')
+                    return
+                  }
+                }
+              }
+
+              if (cancelled) return
+              setStatusMessage('所有任务执行完成！', 'success')
+              setIsRunning(false)
+              setCurrentStep(-1)
+              localStorage.removeItem('maa-task-flow-execution')
+            }
+
+            await continueTaskFlow()
+            return
+          }
+        }
+
+        const currentRun = result.data
+        if (result.success && currentRun?.isRunning) {
+          const { taskName, startTime, taskType } = currentRun
+
+          if (taskType === 'automation') {
+            const elapsedMinutes = (Date.now() - startTime) / 1000 / 60
+            setIsRunning(true)
+            setCurrentStep(0)
+            if (elapsedMinutes > 5) {
+              showInfo(`${taskName} 可能已完成（已运行 ${Math.floor(elapsedMinutes)} 分钟）`)
+            } else {
+              showInfo(`正在执行: ${taskName}`)
+            }
+
+            const waitResult = await waitForTaskCompletion()
+            if (waitResult === 'completed' && !cancelled) {
+              setIsRunning(false)
+              setCurrentStep(-1)
+              setStatusMessage('任务已完成', 'success')
+            } else if (waitResult === 'timeout' && !cancelled) {
+              reportWaitTimeout(taskName || '当前任务')
+            }
+          }
+        }
+      } catch (error) {
+        // 静默失败，不影响用户体验
+      }
+    }
+
+    void initializeAndRestore()
+
+    return cancelRecoveryWork
+    // Recovery is mount-scoped; rerunning it would create a second task runner.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 监听养成计划应用事件，自动刷新任务流程
+  useEffect(() => {
+    const handleTrainingPlanApplied = async (event: any) => {
+      await loadTaskFlow(true)
+      setStatusMessage(`智能养成计划已更新：${event.detail?.stageCount || 0} 个关卡`, 'success')
+    }
+
+    window.addEventListener('training-plan-applied', handleTrainingPlanApplied)
+
+    return () => {
+      window.removeEventListener('training-plan-applied', handleTrainingPlanApplied)
+    }
+  }, [setStatusMessage])
+
+  // 监听页面可见性变化，切换回来时自动刷新
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (!document.hidden) {
+        // 页面重新可见时，重新加载任务流程
+        await loadTaskFlow()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  const schedulePanel = (
+    <div className="automation-schedule-column">
+      <SmoothPanel className="automation-schedule-panel">
+        <div className="automation-schedule-heading">
+          <div>
+            <h3><Clock3 size={16} strokeWidth={1.8} aria-hidden="true" /><span>定时与通知</span></h3>
+            <p>自动运行与结果推送</p>
+          </div>
+          <div className="automation-schedule-actions">
+            <Switch
+              checked={scheduleEnabled}
+              onChange={handleScheduleEnabledChange}
+              disabled={isRunning}
+              label="定时执行"
+              className="automation-section-switch"
+            />
+          </div>
+        </div>
+
+        {scheduleEnabled ? (
+          <motion.div
+            className="automation-schedule-body"
+            initial={shouldReduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
+          >
+            <div className="automation-schedule-list-heading">
+              <span>执行时间</span>
+              <div className="automation-schedule-list-heading-actions">
+                <small aria-label={`已设置 ${scheduleEntries.length} 个执行时间`}>
+                  {scheduleEntries.length} 个
+                </small>
+                {scheduleEntries.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={addScheduleTime}
+                    disabled={isRunning}
+                    className="automation-schedule-add"
+                  >
+                    <span className="automation-schedule-add-plus" aria-hidden="true">+</span>
+                    <span className="automation-schedule-add-text">新增定时</span>
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="automation-schedule-times">
+              {scheduleEntries.map((entry, index) => {
+                const { hour, minute } = parseScheduleTime(entry.time)
+                const hourId = `automation-schedule-hour-${index}`
+                const minuteId = `automation-schedule-minute-${index}`
+                const hourDisplay = String(hour)
+                const minuteDisplay = String(minute).padStart(2, '0')
+
+                return (
+                  <div
+                    key={`schedule-time-${index}`}
+                    className={`automation-schedule-time-row${entry.enabled ? '' : ' is-disabled'}`}
+                  >
+                    {scheduleEntries.length > 1 ? (
+                      <IconButton
+                        icon={<CircleMinus size={22} strokeWidth={1.8} aria-hidden="true" />}
+                        variant="ghost"
+                        size="md"
+                        onClick={() => removeScheduleTime(index)}
+                        disabled={isRunning}
+                        className="automation-schedule-remove min-h-11 min-w-11"
+                        title="删除时间点"
+                        aria-label={`删除第 ${index + 1} 个时间点`}
+                      />
+                    ) : <span className="automation-schedule-remove-placeholder" aria-hidden="true" />}
+
+                    <div className="automation-schedule-time-fields" role="group" aria-label={`第 ${index + 1} 个执行时间`}>
+                      <span className="automation-schedule-time-unit" aria-hidden="true">时</span>
+                      <div className="automation-schedule-stepper">
+                        <label htmlFor={hourId} className="sr-only">第 {index + 1} 个执行时间的小时</label>
+                        <input
+                          id={hourId}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={hourDisplay}
+                          disabled={isRunning}
+                          className="automation-schedule-stepper-input"
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, '').slice(0, 2)
+                            if (digits === '') return
+                            updateScheduleTimePart(index, 'hour', Number(digits))
+                          }}
+                        />
+                        <div className="automation-schedule-stepper-controls">
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的小时增加 1`}
+                            onClick={() => updateScheduleTimePart(index, 'hour', hour + 1)}
+                          >
+                            <ChevronUp size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的小时减少 1`}
+                            onClick={() => updateScheduleTimePart(index, 'hour', hour - 1)}
+                          >
+                            <ChevronDown size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <span className="automation-schedule-time-unit" aria-hidden="true">分</span>
+                      <div className="automation-schedule-stepper">
+                        <label htmlFor={minuteId} className="sr-only">第 {index + 1} 个执行时间的分钟</label>
+                        <input
+                          id={minuteId}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={minuteDisplay}
+                          disabled={isRunning}
+                          className="automation-schedule-stepper-input"
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, '').slice(0, 2)
+                            if (digits === '') return
+                            updateScheduleTimePart(index, 'minute', Number(digits))
+                          }}
+                        />
+                        <div className="automation-schedule-stepper-controls">
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的分钟增加 1`}
+                            onClick={() => updateScheduleTimePart(index, 'minute', minute + 1)}
+                          >
+                            <ChevronUp size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="automation-schedule-stepper-button"
+                            disabled={isRunning}
+                            aria-label={`将第 ${index + 1} 个执行时间的分钟减少 1`}
+                            onClick={() => updateScheduleTimePart(index, 'minute', minute - 1)}
+                          >
+                            <ChevronDown size={11} strokeWidth={2.4} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="automation-schedule-time-enable">
+                      <span className="automation-schedule-time-enable-label" aria-hidden="true">开启</span>
+                      <Switch
+                        checked={entry.enabled}
+                        onChange={(enabled) => updateScheduleTimeEnabled(index, enabled)}
+                        disabled={isRunning}
+                        label={`第 ${index + 1} 个执行时间开启`}
+                        compact
+                        className="automation-schedule-time-switch"
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        ) : (
+          <div className="automation-schedule-empty">
+            <strong>定时运行已关闭</strong>
+            <p>打开右上角开关后设置执行时间</p>
+          </div>
+        )}
+
+        <NotificationSettings />
+      </SmoothPanel>
+    </div>
+  )
+
+  return (
+    <>
+      <div className="app-page ios-workspace-page" data-automation-tasks>
+        <div className="app-stack-section">
+        {/* 页面标题 */}
+        <PageHeader
+          title="日常任务"
+          subtitle="安排日常流程，一键执行或定时运行"
+          mobileLayout="inline"
+          actions={<FloatingStatusIndicator />}
+        />
+
+        <div className="automation-workspace-grid">
+          {/* 紧凑流程顺序 */}
+          <div className="automation-sequence-column">
+            <SmoothPanel
+              className="automation-sequence-panel"
+              surfaceClassName="automation-sequence-surface"
+            >
+              <div className="automation-flow-header">
+                <div className="min-w-0">
+                  <h3>
+                    <ClipboardList size={16} strokeWidth={1.8} aria-hidden="true" />
+                    <span>任务流程</span>
+                  </h3>
+                  <p className="automation-flow-meta">
+                    <span>按顺序执行，可拖拽调整</span>
+                    {currentActivity && (
+                      <span className="automation-flow-activity">
+                        当前活动 · {activityName || currentActivity}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <span className="automation-flow-summary">
+                  {taskFlow.filter(t => t.enabled).length}/{taskFlow.length}
+                </span>
+                <span className="sr-only" aria-live="polite">{sortAnnouncement}</span>
+              </div>
+
+              {taskFlow.length === 0 ? (
+                <EmptyState
+                  className="automation-sequence-empty"
+                  compact
+                  icon={<ListPlus size={20} strokeWidth={1.8} />}
+                  title="流程为空"
+                  description="使用下方入口添加任务"
+                />
+              ) : (
+                <div className="automation-sequence-list">
+                  {taskFlow.map((task, index) => {
+                    const executionState = taskExecutionState(task, index)
+                    const isCurrentStep = executionState === 'running'
+                    const isCompletedStep = executionState === 'success'
+                    const isSelectedTask = activeTaskId === task.id
+
+                    return (
+                      <motion.div
+                        key={task.id}
+                        layout={!shouldReduceMotion}
+                        ref={(node) => {
+                          if (node) sequenceItemRefs.current.set(task.id, node)
+                          else sequenceItemRefs.current.delete(task.id)
+                        }}
+                        className={`automation-sequence-item${isSelectedTask ? ' is-selected' : ''}${isCurrentStep ? ' is-current' : ''}${isCompletedStep ? ' is-completed' : ''}${executionState === 'failed' ? ' is-failed' : ''}${executionState === 'skipped' || executionState === 'stopped' ? ' is-skipped' : ''}${!task.enabled ? ' is-disabled' : ''}${draggedIndex === index ? ' is-dragging' : ''}`}
+                        data-selected={isSelectedTask ? 'true' : 'false'}
+                        data-execution-state={isCompletedStep ? 'completed' : executionState === 'pending' && isRunning ? 'idle' : executionState}
+                      >
+                      <button
+                        type="button"
+                        onPointerDown={(event) => handleSortPointerDown(event, task.id)}
+                        onPointerMove={handleSortPointerMove}
+                        onPointerUp={handleSortPointerUp}
+                        onPointerCancel={handleSortPointerCancel}
+                        onLostPointerCapture={handleSortPointerCancel}
+                        onKeyDown={(event) => handleSortKeyDown(event, task.id)}
+                        className={`automation-sequence-drag min-h-11 min-w-11 touch-none${isRunning ? ' is-placeholder' : ''}`}
+                        title={isRunning ? '执行期间不能排序' : '拖动排序，或使用上下方向键调整'}
+                        aria-label={`调整${task.name}顺序，当前第 ${index + 1} 位`}
+                        disabled={isRunning}
+                      >
+                        <GripVertical size={16} strokeWidth={1.8} />
+                      </button>
+                      <button
+                        type="button"
+                        className="automation-sequence-select"
+                        onClick={() => selectTaskForEditing(task.id)}
+                        aria-controls="automation-task-editor"
+                        aria-pressed={isSelectedTask}
+                        aria-current={isCurrentStep ? 'step' : undefined}
+                      >
+                        <span className="automation-sequence-node" aria-hidden="true">
+                          <span>
+                              {isCompletedStep
+                                ? <Check size={11} strokeWidth={2.8} />
+                                : isCurrentStep
+                                  ? <LoaderCircle className="automation-sequence-progress" size={13} strokeWidth={2.3} />
+                                : executionState === 'failed'
+                                  ? <AlertTriangle size={12} strokeWidth={2} />
+                                : executionState === 'skipped' || executionState === 'stopped'
+                                  ? <Minus size={12} strokeWidth={2} />
+                                : String(index + 1).padStart(2, '0')}
+                          </span>
+                        </span>
+                        <span className="automation-sequence-copy">
+                          <strong>{task.name}</strong>
+                          <small>{executionLabel(executionState) || task.description}</small>
+                        </span>
+                      </button>
+                      <span className="automation-sequence-enabled">
+                        <Switch
+                          compact
+                          checked={task.enabled}
+                          onChange={() => toggleTaskEnabled(index)}
+                          disabled={isRunning}
+                          label={`${task.name}启用状态`}
+                        />
+                      </span>
+                      {isRunning && isCompletedStep ? (
+                        <span className="automation-completed-mark" role="img" aria-label="已完成" title="已完成">
+                          <Check size={13} strokeWidth={2.6} aria-hidden="true" />
+                        </span>
+                      ) : !isCurrentStep ? (
+                        <button
+                          type="button"
+                          onClick={() => removeTaskFromFlow(index)}
+                          disabled={isRunning}
+                          className="automation-sequence-delete min-h-11 min-w-11"
+                          title="删除任务"
+                          aria-label={`删除${task.name}`}
+                        >
+                          <Trash2 size={14} strokeWidth={1.9} />
+                        </button>
+                      ) : null}
+                      </motion.div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {lastDeletedTask && (
+                <div className="mx-3.5 flex min-h-11 items-center justify-between gap-3 border-t border-[var(--app-border)] text-xs text-secondary sm:mx-4" role="status">
+                  <span className="min-w-0 truncate">已删除“{lastDeletedTask.task.name}”</span>
+                  <button
+                    type="button"
+                    onClick={restoreDeletedTask}
+                    disabled={isRunning}
+                    className="min-h-11 shrink-0 px-2 font-medium text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    恢复
+                  </button>
+                </div>
+              )}
+
+              <div ref={taskPickerRegionRef} className="automation-sequence-footer">
+                  <button
+                    ref={taskPickerButtonRef}
+                    type="button"
+                    className={`automation-task-picker-toggle${taskPickerOpen ? ' is-open' : ''}`}
+                    onClick={() => setTaskPickerOpen(open => !open)}
+                    disabled={isRunning}
+                    aria-expanded={taskPickerOpen}
+                    aria-haspopup="menu"
+                    aria-controls="automation-task-picker"
+                  >
+                    <Plus size={16} strokeWidth={2.1} />
+                    <span>添加任务</span>
+                    <small>{availableTasks.length}</small>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {taskPickerOpen && (
+                      <motion.div
+                        id="automation-task-picker"
+                        role="menu"
+                        aria-label="可添加任务"
+                        className="automation-task-picker"
+                        initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: shouldReduceMotion ? 0.12 : 0.32, ease: [0.32, 0.72, 0, 1] }}
+                      >
+                        {availableTasks.map(task => {
+                          const addedCount = taskFlow.filter(flowTask => flowTask.commandId === task.id).length
+
+                          return (
+                            <button
+                              key={task.id}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => addTaskToFlow(task)}
+                              className="automation-task-picker-option"
+                            >
+                              <span>{task.icon}</span>
+                              <strong>{task.name}</strong>
+                              {addedCount > 0 && <small>{addedCount}</small>}
+                              <Plus size={14} strokeWidth={2} />
+                            </button>
+                          )
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <Button
+                    onClick={executeTaskFlow}
+                    disabled={!automationAvailable || isRunning || taskFlow.filter(t => t.enabled).length === 0}
+                    title={!automationAvailable ? unavailableMessage : undefined}
+                    loading={isRunning}
+                    loadingText="执行中"
+                    statusKey={isRunning ? 'running' : 'ready'}
+                    variant="primary"
+                    className={`automation-run-button w-full justify-center whitespace-nowrap${isRunning ? ' is-running' : ''}`}
+                    icon={<Play size={16} fill="currentColor" aria-hidden="true" />}
+                  >
+                    立即执行
+                  </Button>
+                  {isRunning && (
+                    <Button
+                      onClick={stopTaskFlow}
+                      disabled={isStopping}
+                      loading={isStopping}
+                      loadingText="正在终止"
+                      statusKey={isStopping ? 'stopping' : 'stop-ready'}
+                      variant={isStopping ? 'secondary' : 'danger'}
+                      className={`automation-stop-button w-full justify-center${isStopping ? ' is-stopping' : ''}`}
+                      icon={<Square size={14} fill="currentColor" />}
+                    >
+                      终止执行
+                    </Button>
+                  )}
+              </div>
+
+              {lastExecutionSummary && (
+                <section className="border-t border-[var(--app-border)] px-3.5 py-3 sm:px-4" aria-label="最近执行结果">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200">最近执行</h4>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                      成功 {lastExecutionSummary.successCount}
+                      {lastExecutionSummary.failedCount > 0 && ` · 失败 ${lastExecutionSummary.failedCount}`}
+                      {lastExecutionSummary.skippedCount > 0 && ` · 跳过 ${lastExecutionSummary.skippedCount}`}
+                      {` · ${Math.max(1, Math.round(lastExecutionSummary.durationMs / 1000))} 秒`}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex min-w-0 items-center gap-2">
+                    {executionSummaryHasFailure(lastExecutionSummary)
+                      ? <AlertTriangle size={14} className="shrink-0 text-red-500" strokeWidth={2} />
+                      : lastExecutionSummary.skippedCount > 0 && lastExecutionSummary.successCount === 0
+                        ? <CircleMinus size={14} className="shrink-0 text-gray-400" strokeWidth={2} />
+                        : <CheckCircle2 size={14} className="shrink-0 text-emerald-500" strokeWidth={2} />}
+                    <span className="min-w-0 flex-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+                      {formatExecutionActionSummary(lastExecutionSummary.actions)
+                        || (lastExecutionSummary.failedCount > 0
+                          ? `${lastExecutionSummary.failedCount} 项任务执行失败`
+                          : lastExecutionSummary.skippedCount > 0
+                            ? `${lastExecutionSummary.skippedCount} 项任务已跳过`
+                            : '任务流程执行完成')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExecutionDetailsOpen(open => !open)}
+                      aria-expanded={executionDetailsOpen}
+                      aria-label={executionDetailsOpen ? '收起执行详情' : '展开执行详情'}
+                      title={executionDetailsOpen ? '收起详情' : '展开详情'}
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                    >
+                      <ChevronDown
+                        size={15}
+                        strokeWidth={2}
+                        className={`${shouldReduceMotion ? '' : 'transition-transform duration-200'} ${executionDetailsOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  </div>
+
+                  {executionDetailsOpen && (
+                    <motion.div
+                      initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }}
+                      className="overflow-hidden"
+                    >
+                      {lastExecutionSummary.summaries.some(summary => summary.stage || summary.drops) && (
+                        <div className="mt-2 space-y-2 border-t border-[var(--app-border)] pt-2">
+                          {lastExecutionSummary.summaries
+                            .filter(summary => summary.stage || summary.drops)
+                            .map((summary, summaryIndex) => (
+                              <div key={`${summary.task}-${summary.stage || summaryIndex}`} className="min-w-0 text-xs">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-gray-700 dark:text-gray-200">
+                                  <span className="font-semibold">{summary.stage || summary.task}</span>
+                                  {summary.times && <span className="text-gray-400">{summary.times} 次</span>}
+                                  {summary.duration && <span className="text-gray-400">{summary.duration}</span>}
+                                </div>
+                                {summary.drops && (
+                                  <p className="mt-1 break-words leading-5 text-gray-500 dark:text-gray-400">{summary.drops}</p>
+                                )}
+                              </div>
+                            ))}
+                        </div>
+                      )}
+
+                      {lastExecutionSummary.reports.length > 0 && (
+                        <div className="mt-2 space-y-1.5 border-t border-[var(--app-border)] pt-2">
+                          {lastExecutionSummary.reports.map((report, reportIndex) => (
+                            <div
+                              key={`${report.provider}-${report.stage || reportIndex}-${reportIndex}`}
+                              className={`flex min-w-0 items-start gap-2 text-xs ${report.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
+                            >
+                              {report.status === 'success'
+                                ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                                : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
+                              <span className="min-w-0 break-words">
+                                {report.message}{report.stage ? ` · ${report.stage}` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {lastExecutionSummary.actions?.length > 0 && (
+                        <div className="mt-2 space-y-1.5 border-t border-[var(--app-border)] pt-2">
+                          {lastExecutionSummary.actions.map((action, actionIndex) => (
+                            <div
+                              key={`${action.action}-${action.task}-${actionIndex}`}
+                              className={`flex min-w-0 items-start gap-2 text-xs ${action.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : action.status === 'skipped' ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}`}
+                            >
+                              {action.status === 'success'
+                                ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                                : action.status === 'skipped'
+                                  ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                                  : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
+                              <span className="min-w-0 break-words">{action.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {lastExecutionSummary.errors
+                        ?.filter(error => {
+                          const taskName = typeof error === 'string' ? error : error.task
+                          return !lastExecutionSummary.actions?.some(action => action.status === 'failed' && action.task === taskName)
+                        })
+                        .map((error, errorIndex) => (
+                          <p key={`${typeof error === 'string' ? error : error.task}-${errorIndex}`} className="mt-2 flex items-start gap-2 text-xs leading-5 text-red-600 dark:text-red-400">
+                            <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                            <span>{typeof error === 'string' ? error : `${error.task}：${error.error}`}</span>
+                          </p>
+                        ))}
+
+                      {lastExecutionSummary.warnings.map((warning, warningIndex) => (
+                        <p key={`${warning}-${warningIndex}`} className="mt-2 flex items-start gap-2 text-xs leading-5 text-amber-600 dark:text-amber-400">
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                          <span>{warning}</span>
+                        </p>
+                      ))}
+                    </motion.div>
+                  )}
+                </section>
+              )}
+            </SmoothPanel>
+          </div>
+
+          {/* 当前任务配置 */}
+          <div ref={editorColumnRef} id="automation-task-editor" className="automation-editor-column" tabIndex={-1}>
+            <SmoothPanel className="automation-editor-panel">
+              <div className="automation-editor-heading">
+                <div>
+                  <h3><SlidersHorizontal size={16} strokeWidth={1.8} aria-hidden="true" /><span>任务配置</span></h3>
+                  <p>选择流程步骤后调整参数</p>
+                </div>
+                {activeTaskId && (
+                  <span>{String(taskFlow.findIndex(task => task.id === activeTaskId) + 1).padStart(2, '0')}</span>
+                )}
+              </div>
+              {!activeTaskId ? (
+                <EmptyState
+                  className="automation-editor-empty"
+                  compact
+                  icon={<SlidersHorizontal size={22} strokeWidth={1.7} />}
+                  title="暂无可配置任务"
+                  description="先从任务流程中添加一个任务"
+                />
+              ) : (
+                <div className="automation-editor-content">
+                  {taskFlow.filter(task => task.id === activeTaskId).map((task) => {
+                    const index = taskFlow.findIndex(item => item.id === task.id)
+                    const isCurrentTask = taskExecutionState(task, index) === 'running'
+                    const connectionFeedback = connectionStatus[task.id]
+                    const isTestingConnection = testingConnectionTaskId === task.id
+                    const parameterFields = task.paramFields ?? []
+                    const usesGroupedParameterRows = parameterFields.length > 0 && parameterFields.every(field => (
+                      field.type === 'select' || field.type === 'text' || field.type === 'number'
+                    ))
+
+                    return (
+                    <div
+                      key={task.id}
+                      className={`automation-task-editor${isCurrentTask ? ' is-current' : ''}${!task.enabled ? ' is-disabled' : ''}`}
+                    >
+                      <div className="automation-flow-card-header">
+                        <div className="automation-flow-card-identity">
+                          <span className="automation-flow-sequence">{String(index + 1).padStart(2, '0')}</span>
+                          <span className="automation-flow-task-icon">{task.icon}</span>
+                          <span className="automation-flow-task-name">
+                            <strong>{task.name}</strong>
+                            <small>{isCurrentTask ? '正在执行' : task.taskType || task.commandId}</small>
+                          </span>
+                        </div>
+                        <div className="automation-flow-card-controls">
+                          <Switch
+                            checked={task.enabled}
+                            onChange={() => toggleTaskEnabled(index)}
+                            disabled={isRunning}
+                            label={`${task.name}启用状态`}
+                          />
+                          {!isCurrentTask && (
+                            <button
+                              type="button"
+                              onClick={() => removeTaskFromFlow(index)}
+                              disabled={isRunning}
+                              className="automation-delete-task min-h-11 min-w-11"
+                              title="删除任务"
+                              aria-label={`删除${task.name}`}
+                            >
+                              <Trash2 size={16} strokeWidth={1.9} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 参数配置区域 */}
+                      {task.paramFields && task.paramFields.length > 0 && (
+                        <div className={`automation-param-fields${usesGroupedParameterRows ? ' is-grouped' : ''}`}>
+                          {task.paramFields.map((field) => {
+                            if (field.visibleWhen && String(task.params[field.visibleWhen.key] ?? '') !== String(field.visibleWhen.value)) {
+                              return null
+                            }
+                            if (field.hiddenWhen && String(task.params[field.hiddenWhen.key] ?? '') === String(field.hiddenWhen.value)) {
+                              return null
+                            }
+                            const fieldId = `automation-${task.id}-${field.key}`
+                            return (
+                            <div key={field.key} className={`automation-param-field is-${field.type}`}>
+                              {field.type === 'checkbox' ? (
+                                <label htmlFor={fieldId} className="group flex min-h-11 cursor-pointer items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    id={fieldId}
+                                    type="checkbox"
+                                    checked={task.params[field.key] || false}
+                                    onChange={(e) => updateTaskParam(index, field.key, e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  <span className="group-hover:text-[var(--app-accent)] transition-colors">{field.label}</span>
+                                </label>
+                              ) : field.type === 'multi-stages' ? (
+                                <AutomationStageEditor
+                                  field={field}
+                                  fieldId={fieldId}
+                                  task={task}
+                                  taskIndex={index}
+                                  isRunning={isRunning}
+                                  onUpdate={updateTaskParam}
+                                  onSuccess={showSuccess}
+                                  onError={showError}
+                                />
+                              ) : field.type === 'stage-with-times' ? (
+                                <div className="flex items-center space-x-2">
+                                  <label htmlFor={fieldId} className="automation-field-label w-20 whitespace-nowrap">{field.label}</label>
+                                  <div className="automation-composite-control flex items-center flex-1 max-w-[280px]">
+                                    <input
+                                      id={fieldId}
+                                      type="text"
+                                      value={task.params[field.key] || ''}
+                                      onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
+                                      placeholder={field.placeholder}
+                                      disabled={isRunning || !task.enabled}
+                                      className="flex-1 px-3 py-2 bg-transparent text-sm text-gray-900 dark:text-gray-200 focus:outline-none min-w-0"
+                                    />
+                                    <div className="w-px h-6 bg-white/20"></div>
+                                    <input
+                                      id={`${fieldId}-times`}
+                                      type="number"
+                                      aria-label={`${field.label}执行次数`}
+                                      value={task.params.times || ''}
+                                      onChange={(e) => updateTaskParam(index, 'times', e.target.value)}
+                                      placeholder=""
+                                      disabled={isRunning || !task.enabled}
+                                      className="w-16 px-2 py-2 bg-transparent text-sm text-gray-900 dark:text-gray-200 text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      min="0"
+                                    />
+                                    <div className="hidden flex-col self-stretch overflow-hidden border-l border-white/10 min-[900px]:flex">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const currentValue = Number(task.params.times) || 0;
+                                          updateTaskParam(index, 'times', (currentValue + 1).toString());
+                                        }}
+                                        disabled={isRunning || !task.enabled}
+                                        className="flex-1 px-1.5 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center rounded-tr-xl"
+                                        aria-label={`增加${field.label}执行次数`}
+                                      >
+                                        <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                                        </svg>
+                                      </button>
+                                      <div className="w-full h-px bg-white/10"></div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const currentValue = Number(task.params.times) || 0;
+                                          if (currentValue > 0) {
+                                            updateTaskParam(index, 'times', (currentValue - 1).toString());
+                                          }
+                                        }}
+                                        disabled={isRunning || !task.enabled}
+                                        className="flex-1 px-1.5 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center rounded-br-xl"
+                                        aria-label={`减少${field.label}执行次数`}
+                                      >
+                                        <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : field.type === 'star-select' ? (
+                                <fieldset>
+                                  <legend className="automation-field-label mb-2 block">{field.label}</legend>
+                                  <div className="flex items-center space-x-2 flex-wrap">
+                                    {[3, 4, 5, 6].map(star => {
+                                      const currentValue = Array.isArray(task.params[field.key]) ? task.params[field.key] : [];
+                                      const isChecked = currentValue.includes(star);
+                                      const optionId = `${fieldId}-${star}`
+                                      return (
+                                        <label key={star} htmlFor={optionId} className="group flex min-h-11 cursor-pointer items-center space-x-1 text-sm text-gray-700 dark:text-gray-300">
+                                          <input
+                                            id={optionId}
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={(e) => {
+                                              const newValue = e.target.checked
+                                                ? [...currentValue, star].sort()
+                                                : currentValue.filter((s: number) => s !== star);
+                                              updateTaskParam(index, field.key, newValue);
+                                            }}
+                                            disabled={isRunning || !task.enabled}
+                                            className="custom-checkbox cursor-pointer"
+                                          />
+                                          <span className="group-hover:text-[var(--app-accent)] transition-colors flex items-center space-x-1">
+                                            <span>{star}</span>
+                                            <svg className="w-3.5 h-3.5 brand-text" fill="currentColor" viewBox="0 0 20 20">
+                                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                            </svg>
+                                          </span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                  {task.id === 'recruit' && field.key === 'select' && Array.isArray(task.params.select) && task.params.select.includes(6) && (
+                                    <div className="mt-2 rounded-xl px-3 py-2 text-xs brand-chip">
+                                      已开启 6 星自动公招：遇到高级资深干员等高价值标签时，会优先保留并自动选择。
+                                    </div>
+                                  )}
+                                </fieldset>
+                              ) : field.type === 'facility-select' ? (
+                                <fieldset>
+                                  <legend className="automation-field-label mb-2 block">{field.label}</legend>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                      { value: 'Mfg', label: '制造站' },
+                                      { value: 'Trade', label: '贸易站' },
+                                      { value: 'Power', label: '发电站' },
+                                      { value: 'Control', label: '控制中枢' },
+                                      { value: 'Reception', label: '会客室' },
+                                      { value: 'Office', label: '办公室' },
+                                      { value: 'Dorm', label: '宿舍' },
+                                      { value: 'Processing', label: '加工站' },
+                                      { value: 'Training', label: '训练室' }
+                                    ].map(facility => {
+                                      const currentValue = Array.isArray(task.params[field.key]) ? task.params[field.key] : [];
+                                      const isChecked = currentValue.includes(facility.value);
+                                      const optionId = `${fieldId}-${facility.value}`
+                                      return (
+                                        <label key={facility.value} htmlFor={optionId} className="group flex min-h-11 cursor-pointer items-center space-x-1 text-sm text-gray-700 dark:text-gray-300">
+                                          <input
+                                            id={optionId}
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={(e) => {
+                                              const newValue = e.target.checked
+                                                ? [...currentValue, facility.value]
+                                                : currentValue.filter((f: string) => f !== facility.value);
+                                              updateTaskParam(index, field.key, newValue);
+                                            }}
+                                            disabled={isRunning || !task.enabled}
+                                            className="custom-checkbox cursor-pointer"
+                                          />
+                                          <span className="group-hover:text-[var(--app-accent)] transition-colors">{facility.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </fieldset>
+                              ) : field.type === 'select' ? (
+                                <div className="automation-field-row">
+                                  <label htmlFor={fieldId} className="automation-field-label">{field.label}</label>
+                                  <div className="automation-select-control">
+                                    <select
+                                      id={fieldId}
+                                      value={task.params[field.key] || (Array.isArray(field.options) && field.options.length > 0 ? (typeof field.options[0] === 'object' ? field.options[0].value : field.options[0]) : '')}
+                                      onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
+                                      disabled={isRunning || !task.enabled}
+                                    >
+                                      {Array.isArray(field.options) && field.options.map((opt) => {
+                                        const value = typeof opt === 'object' ? opt.value : opt
+                                        const label = typeof opt === 'object' ? opt.label : opt
+                                        return <option key={String(value)} value={String(value)}>{label}</option>
+                                      })}
+                                    </select>
+                                    <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="automation-field-row">
+                                  <label htmlFor={fieldId} className="automation-field-label">{field.label}</label>
+                                  {field.type === 'number' ? (
+                                    <div className="number-input-wrapper flex-1">
+                                      <input
+                                        id={fieldId}
+                                        type="number"
+                                        value={task.params[field.key] || ''}
+                                        onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
+                                        placeholder={field.placeholder}
+                                        step={field.step}
+                                        min={field.min}
+                                        max={field.max}
+                                        disabled={isRunning || !task.enabled}
+                                        className="automation-number-control"
+                                      />
+                                      <div className="number-input-controls hidden min-[900px]:flex">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const currentValue = Number(task.params[field.key]) || 0;
+                                            const step = Number(field.step) || 1;
+                                            const min = field.min !== undefined ? Number(field.min) : -Infinity;
+                                            const newValue = Math.max(currentValue - step, min);
+                                            updateTaskParam(index, field.key, newValue.toString());
+                                          }}
+                                          disabled={isRunning || !task.enabled}
+                                          aria-label={`减少${field.label}`}
+                                        >
+                                          <Minus size={14} strokeWidth={2.2} aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const currentValue = Number(task.params[field.key]) || 0;
+                                            const step = Number(field.step) || 1;
+                                            const max = field.max !== undefined ? Number(field.max) : Infinity;
+                                            const newValue = Math.min(currentValue + step, max);
+                                            updateTaskParam(index, field.key, newValue.toString());
+                                          }}
+                                          disabled={isRunning || !task.enabled}
+                                          aria-label={`增加${field.label}`}
+                                        >
+                                          <Plus size={14} strokeWidth={2.2} aria-hidden="true" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <input
+                                      id={fieldId}
+                                      type={field.type}
+                                      value={task.params[field.key] || ''}
+                                      onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
+                                      placeholder={field.placeholder}
+                                      step={field.step}
+                                      min={field.min}
+                                      max={field.max}
+                                      disabled={isRunning || !task.enabled}
+                                      className="automation-text-control"
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              {field.helper && (
+                                <p className="automation-field-helper">
+                                  <Info size={13} strokeWidth={1.8} aria-hidden="true" />
+                                  <span>{field.helper}</span>
+                                </p>
+                              )}
+                            </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {task.commandId === 'fight' && (
+                        <details className="group mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
+                            <span className="flex items-center gap-2">
+                              <SlidersHorizontal size={15} strokeWidth={1.9} />
+                              高级设置
+                            </span>
+                            <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
+                          </summary>
+
+                          <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+                            <div className="flex items-center gap-2">
+                              <label htmlFor={`${task.id}-fight-client-type`} className="w-24 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">闪退重启:</label>
+                              <div className="automation-select-control min-w-0 flex-1">
+                                <select
+                                  id={`${task.id}-fight-client-type`}
+                                  value={task.params.clientType || ''}
+                                  onChange={(e) => updateTaskParam(index, 'clientType', e.target.value)}
+                                  disabled={isRunning || !task.enabled}
+                                >
+                                  <option value="">不启用</option>
+                                  <option value="Official">官服</option>
+                                  <option value="Bilibili">B服</option>
+                                  <option value="YoStarEN">美服</option>
+                                  <option value="YoStarJP">日服</option>
+                                  <option value="YoStarKR">韩服</option>
+                                  <option value="Txwy">繁中服</option>
+                                </select>
+                                <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">选择客户端后，游戏闪退时会自动重新启动。</p>
+
+                            <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(task.params.DrGrandet)}
+                                onChange={(e) => updateTaskParam(index, 'DrGrandet', e.target.checked)}
+                                disabled={isRunning || !task.enabled}
+                                className="custom-checkbox mt-0.5 cursor-pointer"
+                              />
+                              <span>
+                                <span className="block">葛朗台碎石模式</span>
+                                <span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">使用源石前等待自然恢复 1 点理智，尽量减少碎石浪费。</span>
+                              </span>
+                            </label>
+
+                            <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(task.params.report_to_penguin)}
+                                  onChange={(e) => updateTaskParam(index, 'report_to_penguin', e.target.checked)}
+                                  disabled={isRunning || !task.enabled}
+                                  className="custom-checkbox cursor-pointer"
+                                />
+                                汇报掉落至企鹅物流
+                              </label>
+                              {task.params.report_to_penguin && (
+                                <div className="flex items-center gap-2 pl-6">
+                                  <label htmlFor={`${task.id}-penguin-id`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">用户 ID:</label>
+                                  <input
+                                    id={`${task.id}-penguin-id`}
+                                    type="text"
+                                    value={task.params.penguin_id || ''}
+                                    onChange={(e) => updateTaskParam(index, 'penguin_id', e.target.value)}
+                                    placeholder="留空则匿名汇报"
+                                    disabled={isRunning || !task.enabled}
+                                    className="automation-text-control min-w-0 flex-1"
+                                  />
+                                </div>
+                              )}
+                            </section>
+
+                            <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(task.params.report_to_yituliu)}
+                                  onChange={(e) => updateTaskParam(index, 'report_to_yituliu', e.target.checked)}
+                                  disabled={isRunning || !task.enabled}
+                                  className="custom-checkbox cursor-pointer"
+                                />
+                                汇报掉落至一图流
+                              </label>
+                              {task.params.report_to_yituliu && (
+                                <div className="flex items-center gap-2 pl-6">
+                                  <label htmlFor={`${task.id}-yituliu-id`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">用户 ID:</label>
+                                  <input
+                                    id={`${task.id}-yituliu-id`}
+                                    type="text"
+                                    value={task.params.yituliu_id || ''}
+                                    onChange={(e) => updateTaskParam(index, 'yituliu_id', e.target.value)}
+                                    placeholder="留空则匿名汇报"
+                                    disabled={isRunning || !task.enabled}
+                                    className="automation-text-control min-w-0 flex-1"
+                                  />
+                                </div>
+                              )}
+                            </section>
+                          </div>
+                        </details>
+                      )}
+
+                      {task.commandId === 'infrast' && (
+                        <details className="group mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
+                            <span className="flex items-center gap-2">
+                              <SlidersHorizontal size={15} strokeWidth={1.9} />
+                              高级设置
+                            </span>
+                            <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
+                          </summary>
+
+                          <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+                            {Array.isArray(task.params.facility) && task.params.facility.includes('Dorm') && (
+                              <section className="space-y-2">
+                                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">宿舍</h4>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(task.params.dorm_notstationed_enabled)}
+                                    onChange={(e) => updateTaskParam(index, 'dorm_notstationed_enabled', e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  使用“未进驻”筛选
+                                </label>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(task.params.dorm_trust_enabled)}
+                                    onChange={(e) => updateTaskParam(index, 'dorm_trust_enabled', e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  空位补入未满信赖干员
+                                </label>
+                              </section>
+                            )}
+
+                            {Array.isArray(task.params.facility) && task.params.facility.includes('Reception') && (
+                              <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">会客室</h4>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(task.params.reception_message_board)}
+                                    onChange={(e) => updateTaskParam(index, 'reception_message_board', e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  领取信息板信用
+                                </label>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(task.params.reception_clue_exchange)}
+                                    onChange={(e) => updateTaskParam(index, 'reception_clue_exchange', e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  发起线索交流
+                                </label>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(task.params.reception_send_clue)}
+                                    onChange={(e) => updateTaskParam(index, 'reception_send_clue', e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  自动赠送线索
+                                </label>
+                              </section>
+                            )}
+
+                            {Array.isArray(task.params.facility) && task.params.facility.includes('Training') && (
+                              <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">训练室</h4>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(task.params.continue_training)}
+                                    onChange={(e) => updateTaskParam(index, 'continue_training', e.target.checked)}
+                                    disabled={isRunning || !task.enabled}
+                                    className="custom-checkbox cursor-pointer"
+                                  />
+                                  完成后继续专精
+                                </label>
+                              </section>
+                            )}
+                          </div>
+                        </details>
+                      )}
+
+                      {task.commandId === 'recruit' && (
+                        <details className="group mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
+                            <span className="flex items-center gap-2">
+                              <SlidersHorizontal size={15} strokeWidth={1.9} />
+                              高级设置
+                            </span>
+                            <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
+                          </summary>
+
+                          <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+                            <div className="flex items-center gap-2">
+                              <label htmlFor={`${task.id}-extra-tags-mode`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">额外标签:</label>
+                              <div className="automation-select-control min-w-0 flex-1">
+                                <select
+                                  id={`${task.id}-extra-tags-mode`}
+                                  value={String(task.params.extra_tags_mode ?? 0)}
+                                  onChange={(e) => updateTaskParam(index, 'extra_tags_mode', Number(e.target.value))}
+                                  disabled={isRunning || !task.enabled}
+                                >
+                                  <option value="0">标准选择</option>
+                                  <option value="1">选满 3 个标签</option>
+                                  <option value="2">尽量多选高星标签</option>
+                                </select>
+                                <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <label htmlFor={`${task.id}-first-tags`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">三星首选:</label>
+                              <input
+                                id={`${task.id}-first-tags`}
+                                type="text"
+                                value={Array.isArray(task.params.first_tags) ? task.params.first_tags.join(',') : (task.params.first_tags || '')}
+                                onChange={(e) => updateTaskParam(index, 'first_tags', e.target.value)}
+                                placeholder="近卫干员,治疗"
+                                disabled={isRunning || !task.enabled}
+                                className="automation-text-control min-w-0 flex-1"
+                              />
+                            </div>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">仅在三星组合中优先选择，多个标签用逗号分隔。</p>
+
+                            <fieldset>
+                              <legend className="mb-2 block text-sm text-gray-600 dark:text-gray-400">招募时长:</legend>
+                              <div className="automation-recruitment-time-list">
+                                {[3, 4].map(star => {
+                                  const key = String(star)
+                                  const recruitmentTimeId = `${task.id}-recruitment-time-${star}`
+                                  const recruitmentTime = task.params.recruitment_time || { '3': 540, '4': 540 }
+                                  return (
+                                    <label key={star} htmlFor={recruitmentTimeId} className="automation-recruitment-time-row">
+                                      <span className="shrink-0 text-sm font-medium text-gray-700 dark:text-gray-200">{star} 星</span>
+                                      <input
+                                        id={recruitmentTimeId}
+                                        type="number"
+                                        value={recruitmentTime[key] ?? 540}
+                                        onChange={(e) => updateTaskParam(index, 'recruitment_time', { ...recruitmentTime, [key]: e.target.value })}
+                                        onBlur={(e) => {
+                                          const rawValue = Number(e.target.value)
+                                          const normalizedValue = Number.isFinite(rawValue)
+                                            ? Math.min(540, Math.max(60, Math.round(rawValue / 10) * 10))
+                                            : 540
+                                          updateTaskParam(index, 'recruitment_time', { ...recruitmentTime, [key]: normalizedValue })
+                                        }}
+                                        min="60"
+                                        max="540"
+                                        step="10"
+                                        disabled={isRunning || !task.enabled}
+                                        className="min-w-0 flex-1 bg-transparent text-right text-sm text-gray-900 outline-none dark:text-gray-100"
+                                      />
+                                      <span className="shrink-0 text-xs text-gray-400">分钟</span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                              <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">可设置 60 至 540 分钟，按 10 分钟调整；五星和六星固定为 540 分钟。</p>
+                            </fieldset>
+                          </div>
+                        </details>
+                      )}
+
+                      {/* 启动游戏任务的测试连接按钮 */}
+                      {task.commandId === 'startup' && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
+                          <Button
+                            type="button"
+                            fullWidth
+                            size="md"
+                            variant="secondary"
+                            onClick={() => void testConnection(task.id)}
+                            disabled={isRunning || !task.enabled || testingConnectionTaskId !== null}
+                            loading={isTestingConnection}
+                            loadingText="正在检查"
+                            statusKey={isTestingConnection ? 'testing' : connectionFeedback?.success ? 'success' : connectionFeedback ? 'error' : 'idle'}
+                            icon={connectionFeedback?.success
+                              ? <CheckCircle2 size={16} strokeWidth={2.2} aria-hidden="true" />
+                              : connectionFeedback
+                                ? <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" />
+                                : <Cable size={16} strokeWidth={2.1} aria-hidden="true" />}
+                            aria-busy={isTestingConnection}
+                            className={`automation-test-connection${isTestingConnection ? ' is-testing' : ''}`}
+                          >
+                            {connectionFeedback ? '重新测试' : '测试连接'}
+                          </Button>
+
+                          {/* 连接状态显示 */}
+                          <AnimatePresence initial={false}>
+                            {connectionFeedback && (
+                              <motion.div
+                                key={task.id}
+                                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -6 }}
+                                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, height: 'auto', y: 0 }}
+                                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -4 }}
+                                transition={{ duration: shouldReduceMotion ? 0.08 : 0.18, ease: 'easeOut' }}
+                                className={`app-info-card mt-3 flex min-w-0 items-start gap-2 overflow-hidden text-sm ${connectionFeedback.success ? 'status-success' : 'status-danger'}`}
+                                role={connectionFeedback.success ? 'status' : 'alert'}
+                                aria-live={connectionFeedback.success ? 'polite' : undefined}
+                              >
+                                {connectionFeedback.success
+                                  ? <CheckCircle2 size={18} className="mt-0.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+                                  : <AlertTriangle size={18} className="mt-0.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />}
+                                <span className="min-w-0 break-words leading-5">{connectionFeedback.message}</span>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      )}
+                    </div>
+                    )
+                  })}
+                </div>
+              )}
+            </SmoothPanel>
+          </div>
+
+          <div className="automation-support-column">
+            <div className="automation-monitor-column">
+              <SmoothPanel
+                className="automation-monitor-panel"
+                surfaceClassName="automation-monitor-surface"
+              >
+                <div className="task-monitor-panel is-compact">
+                  <ScreenMonitor variant="compact" />
+                </div>
+              </SmoothPanel>
+            </div>
+
+            {schedulePanel}
+          </div>
+        </div>
+        </div>
+      </div>
+
+    </>
+  )
+}

@@ -35,8 +35,8 @@ vi.mock('./components/Layout', () => ({
   },
 }))
 vi.mock('./components/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('./hooks/useBackendStatusMonitor', () => ({ useBackendStatusMonitor: () => undefined }))
-vi.mock('./components/Dashboard', () => ({
+vi.mock('@/features/runtime-status', () => ({ useBackendStatusMonitor: () => undefined }))
+vi.mock('@/features/dashboard', () => ({
   default: function MockDashboard() {
     if (appMocks.dashboardShouldThrow) throw new Error('dashboard render failed')
     const [draft, setDraft] = useState('')
@@ -49,7 +49,7 @@ vi.mock('./components/Dashboard', () => ({
     return <input aria-label="控制台草稿" value={draft} onChange={event => setDraft(event.target.value)} />
   },
 }))
-vi.mock('./components/AutomationTasks', () => ({
+vi.mock('@/features/automation', () => ({
   default: function MockAutomationTasks() {
     if (appMocks.automationShouldThrow) throw new Error('automation render failed')
     useEffect(() => {
@@ -61,12 +61,12 @@ vi.mock('./components/AutomationTasks', () => ({
     return <div>automation</div>
   },
 }))
-vi.mock('./components/CombatTasks', () => ({ default: () => <div>combat</div> }))
-vi.mock('./components/RoguelikeTasks', () => ({ default: () => <div>roguelike</div> }))
-vi.mock('./components/OperatorTraining', () => ({ default: () => <div>training</div> }))
-vi.mock('./components/LogViewer', () => ({ default: () => <div>logs</div> }))
-vi.mock('./components/DataStatistics', () => ({ default: () => <div>statistics</div> }))
-vi.mock('./components/ConfigManager', () => ({ default: () => <div>config</div> }))
+vi.mock('@/features/combat', () => ({ default: () => <div>combat</div> }))
+vi.mock('@/features/roguelike', () => ({ default: () => <div>roguelike</div> }))
+vi.mock('@/features/training', () => ({ default: () => <div>training</div> }))
+vi.mock('@/features/logs', () => ({ default: () => <div>logs</div> }))
+vi.mock('@/features/statistics', () => ({ default: () => <div>statistics</div> }))
+vi.mock('@/features/settings', () => ({ default: () => <div>config</div> }))
 
 let container: HTMLDivElement
 let root: Root
