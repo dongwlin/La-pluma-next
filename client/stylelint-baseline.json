@@ -8,7 +8,7 @@
       "media-feature-range-notation": 3,
       "no-descending-specificity": 8
     },
-    "src/index.css": {
+    "src/styles/index.css": {
       "alpha-value-notation": 80,
       "color-function-alias-notation": 80,
       "color-function-notation": 83,
@@ -26,7 +26,7 @@
       "selector-not-notation": 1,
       "value-keyword-case": 2
     },
-    "src/ios-theme.css": {
+    "src/styles/ios-theme.css": {
       "alpha-value-notation": 105,
       "color-function-alias-notation": 105,
       "color-function-notation": 105,
