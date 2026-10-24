@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import vm from 'node:vm'
+import { readFileSync } from 'node:fs'
 import {
   createDevPwaSupportPlugin,
   createDevServiceWorkerCleanupScript,
@@ -10,12 +11,6 @@ import {
 } from './vite.config.js'
 
 describe('PWA base path configuration', () => {
-  const matchesWorkboxRegExpRoute = (pattern, input, origin = 'https://la-pluma.test') => {
-    const url = new URL(input, origin)
-    const result = pattern.exec(url.href)
-    return Boolean(result && (url.origin === origin || result.index === 0))
-  }
-
   it('normalizes a configured deployment path', () => {
     expect(normalizeBasePath()).toBe('/')
     expect(normalizeBasePath('la-pluma')).toBe('/la-pluma/')
@@ -38,31 +33,40 @@ describe('PWA base path configuration', () => {
     expect(isDenied('/la-pluma/automation')).toBe(false)
   })
 
-  it('precaches only the app shell and caches page chunks after use', () => {
+  it('precaches the full bundle without runtime page-chunk caching', () => {
     const workbox = createWorkboxConfig('/la-pluma/')
-    const pageChunkCache = workbox.runtimeCaching[0]
 
     expect(workbox.cleanupOutdatedCaches).toBe(true)
     expect(workbox.globPatterns).toContain('assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js')
     expect(workbox.globPatterns).not.toContain('**/*.{js,css,html,ico,png,svg,woff,woff2}')
-    expect(matchesWorkboxRegExpRoute(
-      pageChunkCache.urlPattern,
-      'https://la-pluma.test/la-pluma/assets/AutomationTasks-abc123.js',
-    )).toBe(true)
-    expect(matchesWorkboxRegExpRoute(
-      pageChunkCache.urlPattern,
-      'https://la-pluma.test/la-pluma/assets/AutomationTasks-abc123.js?reload=1',
-    )).toBe(true)
-    expect(matchesWorkboxRegExpRoute(
-      pageChunkCache.urlPattern,
-      'https://la-pluma.test/assets/AutomationTasks-abc123.js',
-    )).toBe(false)
-    expect(matchesWorkboxRegExpRoute(
-      pageChunkCache.urlPattern,
-      'https://cdn.example.com/la-pluma/assets/AutomationTasks-abc123.js',
-    )).toBe(false)
-    expect(pageChunkCache.handler).toBe('CacheFirst')
-    expect(pageChunkCache.options.cacheName).toBe('la-pluma-page-chunks')
+    expect(workbox.runtimeCaching).toBeUndefined()
+  })
+
+  it('purges the legacy page-chunk cache when the worker activates', async () => {
+    const workbox = createWorkboxConfig('/la-pluma/')
+    expect(workbox.importScripts).toEqual(['/la-pluma/legacy-page-cache-cleanup.js'])
+
+    const listeners = new Map()
+    const deleteCache = vi.fn().mockResolvedValue(true)
+    vm.runInNewContext(
+      readFileSync(new URL('./public/legacy-page-cache-cleanup.js', import.meta.url), 'utf8'),
+      {
+        self: {
+          addEventListener: (type, listener) => listeners.set(type, listener),
+        },
+        caches: { delete: deleteCache },
+      },
+    )
+
+    let activateWork
+    listeners.get('activate')({
+      waitUntil: (work) => {
+        activateWork = work
+      },
+    })
+    await activateWork
+
+    expect(deleteCache).toHaveBeenCalledWith('la-pluma-page-chunks')
   })
 
   it('serves a no-store cleanup worker before the development SPA fallback', () => {

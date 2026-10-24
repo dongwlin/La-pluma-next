@@ -31,36 +31,17 @@ export const createNavigateFallbackDenylist = (basePath) => {
   return denylist
 }
 
-export const createWorkboxConfig = (basePath) => {
-  const escapedBasePath = basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-  return {
-    cleanupOutdatedCaches: true,
-    globPatterns: [
-      '**/*.{css,html,ico,png,svg,woff,woff2}',
-      'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js',
-    ],
-    navigateFallbackDenylist: createNavigateFallbackDenylist(basePath),
-    runtimeCaching: [
-      {
-        // Workbox matches RegExp routes against the full URL. Leaving the
-        // pattern unanchored also lets RegExpRoute reject partial cross-origin matches.
-        urlPattern: new RegExp(`${escapedBasePath}assets/.*\\.js(?:\\?.*)?$`),
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'la-pluma-page-chunks',
-          expiration: {
-            maxEntries: 40,
-            maxAgeSeconds: 60 * 60 * 24 * 30,
-          },
-          cacheableResponse: {
-            statuses: [0, 200],
-          },
-        },
-      },
-    ],
-  }
-}
+export const createWorkboxConfig = (basePath) => ({
+  cleanupOutdatedCaches: true,
+  // All app code ships in the statically imported entry chunks, so this glob
+  // precaches every JS asset and the app stays fully usable offline.
+  globPatterns: [
+    '**/*.{css,html,ico,png,svg,woff,woff2}',
+    'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js',
+  ],
+  navigateFallbackDenylist: createNavigateFallbackDenylist(basePath),
+  importScripts: [`${basePath}legacy-page-cache-cleanup.js`],
+})
 
 export const createDevServiceWorkerCleanupScript = () => `
 self.addEventListener('install', (event) => {
