@@ -154,20 +154,37 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 ### Source of Truth
 
-- `client/src/styles/index.css`：基础颜色、圆角、间距、字号、语义类和通用控件样式。
-- `client/src/styles/ios-theme.css`：实际生效的 iOS 26 材质、系统色、chrome、安全区和品牌适配；它覆盖同名基础 token。
-- `client/tailwind.config.js`：把 `rounded-*`、`gap-*`、`space-*` 映射到统一 token，不新增平行尺度；S2 升级 v4 后经 `@config` 兼容挂载，映射继续生效，S3 迁入 `@theme` 后删除。
+- `client/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角映射、`gap-*` / `space-*` 定向 `@utility`、通用组件类与 page 层页面样式。
+- `client/src/styles/ios-theme.css`：只保留 iOS 26 独有的 chrome/材质 token（`--app-chrome-*`、`--app-glass-*`、安全区、导航/侧栏几何等）与对应样式；不再重定义语义 token。
 - `client/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
 
-本文件描述规则；token 的具体数值以 `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 为准，调整 token 时同步更新本文件的表格与说明。
+本文件描述规则；token 的具体数值以 `client/src/styles/index.css` 为准，调整 token 时同步更新本文件的表格与说明。
+
+## 层序与 token 单源（S3）
+
+`client/src/styles/index.css` 首行先声明完整层序，再导入 Tailwind：
+
+```css
+@layer theme, base, components, page, utilities;
+@import "tailwindcss";
+```
+
+- **utilities 永远赢**：`page` 位于 `components` 之后、`utilities` 之前；页面 CSS 可以覆盖 base/preflight 与 components，但普通声明不再压过 utilities。确实需要压过 utilities 的页面/组件规则使用 `!important` 并在原位注释原因。
+- **page 层**：`index.css` 中的 `.automation-*`、`.dashboard-*`、`.log-*`、`.combat-*`、`.roguelike-*`、`.scrcpy-*`、`.task-monitor-*`、`.data-statistics-*` 等页面选择器，`ios-theme.css` 的页面级覆盖，以及 `features/training/pages/OperatorTraining.css` 都收进 `@layer page`；通用组件类留在 `@layer components`。
+- **token 单源**：语义 token（颜色、圆角、间距、字号、控件高度等）只在 `index.css` 的 `:root` / `html.dark, #app-root.dark` / 媒体查询中定义一次。浅色、深色、`prefers-contrast`、`prefers-reduced-transparency` 的最终生效值都写在这里；`ios-theme.css` 不再出现同名重定义。
+- **深色切换**：主题仍同时给 `html` 与 `#app-root` 加 `.dark`；`html.dark` 与 `#app-root.dark` 都保留为有效选择器。
 
 ## 配置即规范（Tailwind 压缩映射）
 
-`client/tailwind.config.js` 不是透传 Tailwind 默认尺度，而是把 `rounded-*`、`gap-*`、`space-*` 压缩映射到 `--app-radius-*` / `--app-space-*` 语义 token。这些映射是**有意约束**，不是待清理的历史遗留：页面代码可以继续用 Tailwind 类名书写，但实际生效的档位由下面的映射表唯一决定；S3 把配置迁入 `@theme` 后，语义保持不变。Tailwind v4 升级（S2）通过 `@config` 挂载同一份 JS 配置，`rounded-*`、`gap-*`、`space-*` 的类名与生效值在 v4 下保持不变——不要按通用 v4 迁移指南改写这些类名。
+S3 删除了 `client/tailwind.config.js`，压缩映射改由 `index.css` 的 `@theme` 与定向 `@utility` 承担，语义与 v3/v4 过渡期保持一致。页面代码继续使用 Tailwind 类名，但实际生效的档位由下面的映射表唯一决定——不要按通用 v4 迁移指南改写这些类名。
+
+- **圆角**：`@theme` 的 `--radius-*` 映射到 `--app-radius-*`；`rounded`（DEFAULT）与 `rounded-sm` 都走 `--radius-sm → --app-radius-xs`，裸 `rounded` 由 `--radius` 承接。`rounded-xs` 保留 Tailwind 默认 2px，不属于应用语义档位；应用从 sm 起收口。
+- **gap/space**：v4 的 `gap-*` / `space-*` 与 `p-*` / `m-*` 共用全局 `--spacing` 尺度，直接改 `--spacing-3/4/5/6` 会连带改变 `p-3..6` / `m-3..6`。因此用 `@utility` 定向定义 `gap-3/4/5/6`、`gap-x/y-3/4/5/6`、`space-x/y-4/5/6`；`p-*` / `m-*` 仍保持 v4 默认 4px 节奏。gap 定向工具带 `!important`，用于压过 Tailwind 为同名类生成的默认 `calc(var(--spacing) * n)` 声明；space 定向工具沿用 v4 的 `& > :not(:last-child)` end-margin 语义。代价是 `gap-3/4/5/6` 不能被同元素的 `gap-[...]` 覆盖——需要任意值时改用组件类或显式样式。
+- **content 检测**：由 Tailwind v4 自动检测 `index.html` 与 `src/**` 取代原 `content` glob，无需额外配置。
 
 ### 圆角映射（rounded-*）
 
-| Tailwind 类 | 实际生效 token | 生效值（ios-theme 覆盖后） |
+| Tailwind 类 | 实际生效 token | 生效值 |
 | --- | --- | --- |
 | `rounded`（DEFAULT）、`rounded-sm` | `--app-radius-xs` | 6px |
 | `rounded-md` | `--app-radius-sm` | 10px |
@@ -181,17 +198,17 @@ Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl�
 
 | Tailwind 类 | 实际生效 token | 生效值 |
 | --- | --- | --- |
-| `gap-3`、`gap-4` | `--app-space-card` | 14px |
-| `gap-5`、`gap-6` | `--app-space-section` | 18px |
-| `space-4` | `--app-space-card` | 14px |
-| `space-5`、`space-6` | `--app-space-section` | 18px |
+| `gap-3`、`gap-4`、`gap-x/y-3/4` | `--app-space-card` | 14px |
+| `gap-5`、`gap-6`、`gap-x/y-5/6` | `--app-space-section` | 18px |
+| `space-x-4`、`space-y-4` | `--app-space-card` | 14px |
+| `space-x-5/6`、`space-y-5/6` | `--app-space-section` | 18px |
 
 `gap-3/4` 的差别与 `gap-5/6` 的差别被抹平：它们分别表示"卡片内间距"与"区块间距"两个语义档位。未列出的档位沿用 Tailwind 默认 spacing 尺度，与 4px 基线节奏一致；更精细的布局间距优先使用 `--app-space-1..6`。
 
 ### 冻结规则（全局样式入口）
 
-- `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**：页面级选择器不再新增进这两个文件，既有内容在样式轨道 S3/S4 之前保持原样。
-- 新样式随组件目录走：组件同名 CSS（如 `features/training/pages/OperatorTraining.css`）、组件内样式或按域样式文件，最终由 S4 的 `@layer page` 分层方案归位。
+- `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**：S3 已完成归层，页面级选择器仍不再新增进这两个文件。
+- 新样式随组件目录走：组件同名 CSS、组件内样式或按域样式文件；页面样式统一写进 `@layer page`（如 `features/training/pages/OperatorTraining.css`），由 S4 逐步把既有页面选择器下沉到各功能域。
 - 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development.md) 的「样式治理」一节。
 
 ## Colors

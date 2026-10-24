@@ -19,7 +19,7 @@
 
 ### 全局样式冻结
 
-`client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 不再新增页面级选择器；新样式随组件目录走（组件同名 CSS / 按域样式文件），最终由样式轨道 S4 的 `@layer page` 分层方案归位。完整规则见 [设计规范](../DESIGN.md) 的「配置即规范」一节。
+`client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 已完成 S3 分层，不再新增页面级选择器；新样式随组件目录走（组件同名 CSS / 按域样式文件），页面样式统一写进 `@layer page`，由样式轨道 S4 逐步下沉到各功能域。完整规则见 [设计规范](../DESIGN.md) 的「层序与 token 单源」「配置即规范」两节。
 
 ### stylelint 预算制（ratchet）
 
@@ -47,16 +47,25 @@ pnpm visual:update   # 有意的视觉改动后重新生成基线截图
 pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
 ```
 
-### Tailwind v4（S2 升级）
+### Tailwind v4 与 S3 分层
 
-样式轨道 S2 把 Tailwind CSS 从 v3 升级到 v4，构建链路与入口约定如下：
+样式轨道 S2 把 Tailwind CSS 从 v3 升级到 v4，S3 完成 token 单一化、cascade layer 与 CSS-first 配置迁移。当前约定：
 
 - **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `client/postcss.config.js` 已退役。PostCSS 链路不再参与前端构建。
-- **入口**：`client/src/styles/index.css` 首行必须是 `@import "tailwindcss";`（Tailwind 只解析字符串形式；stylelint 的 `import-notation` 在该行就地豁免）。随后用 `@config "../../tailwind.config.js";` 兼容挂载现有 JS 配置，并用 `@custom-variant dark (&:is(.dark *));` 保持 class 深色模式。S3 会把配置迁入 `@theme` 并删除 `tailwind.config.js`。
-- **压缩映射保持不变**：`@config` 兼容层完整保留 `rounded-*`、`gap-*`、`space-*` 映射，实测 `gap-3/4/5/6`、`space-4/5/6`、`rounded`–`rounded-3xl` 均仍指向 `--app-radius-*` / `--app-space-*`；不要按通用 v4 指南改写这些类名（例如 `rounded-sm→rounded-xs`）。
-- **v3 视觉基线**：升级按断代点迁移类名（`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`!` 前缀改后缀、`flex-shrink-0→shrink-0`）。注意 **`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**——那会改变阴影。`ring`、裸 `border`/`divide` 已全量审计并显式给色；`space-x/y` 选择器语义改为 `:not(:last-child)` 的 end margin，已逐元素审计，并对 combat 搜索行中 `sr-only` label 参与 `space-x` 计数的场景显式补回 v3 左间距，32 张基线比对通过。
-- **cascade layer**：v4 的 utilities 位于 layer 内，未分层页面 CSS 会压过 `dark:*` 等 utilities；升级中对依赖该覆盖的深色预览标题改用组件侧 `dark:text-white!` 保留 v3 颜色，S3 统一分层时再评估。
-- **默认色板**：v4 默认色板以 OKLCH 重新校准（灰度 ΔE < 1.5，`emerald-500` 约 ΔE 4.3）；语义 token 不受影响，精确对齐 v3 色值留待 S3。
+- **入口与层序**：`client/src/styles/index.css` 在最前声明完整层序：
+  ```css
+  @layer theme, base, components, page, utilities;
+  @import "tailwindcss";
+  ```
+  `@import "tailwindcss";` 必须是字符串形式（stylelint 的 `import-notation` 在该行就地豁免）。`@custom-variant dark (&:is(.dark *));` 保持 class 深色模式；不再有 `@config` 指令，也没有 `client/tailwind.config.js`。
+- **配置迁移**：`rounded-*` 由 `@theme` 的 `--radius-*` 映射到 `--app-radius-*`；`gap-*` / `space-*` 由 `@utility` 定向映射到 `--app-space-*`（v4 的 gap/space/p/m 共用 `--spacing`，不能直接改 `--spacing-3/4/5/6`，否则 `p-*` / `m-*` 会被连带改变）。gap 定向工具带 `!important`，用于压过 Tailwind 同名类生成的默认声明；p/m 仍为默认 4px 节奏。映射表见 [设计规范](../DESIGN.md)。
+- **content 检测**：v4 自动扫描 `index.html` 与 `src/**`，取代原 `content` glob。
+- **token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；`ios-theme.css` 只保留 chrome/材质独有 token，不再重定义同名语义 token。
+- **cascade layer**：`page` 位于 `components` 之后、`utilities` 之前——utilities 永远赢，页面 CSS 覆盖 base/preflight 与 components。页面/组件规则若确实要压过 utilities，使用带注释的 `!important`；不要再依赖未分层 CSS 或深选择器抢优先级。S2 期间为深色预览标题添加的 `dark:text-white!` 仍然有效。
+- **gap 覆盖限制**：`@utility` 的 `gap-3/4/5/6` 带 `!important`，同一元素不要再用 `gap-[...]` 或其他 gap 档位覆盖；需要任意值时改用组件类或显式样式。
+- **S3 验收记录**：32 张视觉基线比对通过、rect 0 diff；token 在 light/dark 与对比度/透明度媒体查询下的 computed 值等价。已知并接受：dashboard 运行态按钮与 combat 深色任务图标恢复 S1 基线色；约 28 个元素的 transition 属性/时序因层优先级变化（utilities 胜出或 page 覆盖 components）而变化；`background-position` 的 `0%`/`0px` 为等价序列化。`!important` 声明级 138→216（+83/-5），新增均用于压过工具类以保持既有视觉；stylelint 基线 890→856，其中 index 413→427（`no-descending-specificity` +22 为分层重排产物，已重生成基线），ios 397→349。S3 恢复 6 个页面 `@keyframes` 并修复深色 `html/body` 背景渐变。
+- **v3 视觉基线**：S2 已按断代点迁移类名（`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`!` 前缀改后缀、`flex-shrink-0→shrink-0`）。**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色；`space-x/y` 使用 `:not(:last-child)` 的 end margin 语义。
+- **默认色板**：v4 默认色板保留 OKLCH 校准值；项目语义 token 使用 `index.css` 中显式定义的颜色，不依赖默认色板。
 - **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor。`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
 - **浏览器下限**：Tailwind v4 依赖原生 cascade layers、`color-mix()`、OKLCH 与 `@property`，前端最低支持 **Safari 16.4+ / Chrome 111+ / Firefox 128+**。低于该下限的浏览器不再保证样式正确。
 
