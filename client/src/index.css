@@ -1107,7 +1107,7 @@ html.dark .la-pluma-app [data-automation-tasks] .automation-monitor-surface .aut
   position: absolute;
   right: 0.75rem;
   bottom: 0;
-  left: 3.25rem;
+  left: calc(5rem + var(--automation-sequence-gap));
   height: 1px;
   background: var(--app-border);
   content: '';
