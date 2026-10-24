@@ -1,11 +1,11 @@
 import { useState, useEffect, useEffectEvent, useRef } from 'react'
-import { generateTrainingPlan, maaApi } from '../services/api'
+import { generateTrainingPlan, maaApi } from '@/shared/api'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, ChevronUp, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
-import Icons from './Icons'
+import Icons from '@/shared/ui/Icons'
 import ScreenMonitor from './ScreenMonitor'
 import NotificationSettings from './NotificationSettings'
-import { EmptyState, PageHeader, Button, IconButton, SmoothPanel, Switch } from './common'
+import { EmptyState, PageHeader, Button, IconButton, SmoothPanel, Switch } from '@/shared/ui'
 import { useStatusStore } from '../store/statusStore'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
 import type {
@@ -13,8 +13,8 @@ import type {
   TaskFlowItem,
   ConnectionTestStatus,
   StageConfig
-} from '@/types/components'
-import { formatExecutionActionSummary } from '../utils/executionSummary'
+} from '@/shared/types/components'
+import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
 import { taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
 

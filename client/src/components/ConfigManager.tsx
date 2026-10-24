@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { maaApi } from '../services/api'
+import { maaApi } from '@/shared/api'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   Cable,
@@ -15,16 +15,16 @@ import {
   Search,
   SlidersHorizontal,
 } from 'lucide-react'
-import { PageHeader, Card, CardHeader, CardContent, Button, Input, Select, Checkbox, Switch } from './common'
+import { PageHeader, Card, CardHeader, CardContent, Button, Input, Select, Checkbox, Switch } from '@/shared/ui'
 import { useStatusStore } from '../store/statusStore'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
-import { useFluidTabIndicator } from '../hooks/useFluidTabIndicator'
+import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type {
   MaaConnectionConfig,
   AutoUpdateConfig,
   ConfigSection,
   UpdateStatus
-} from '@/types/components'
+} from '@/shared/types/components'
 
 interface MaaVersionInfo {
   cli: string

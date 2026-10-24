@@ -25,7 +25,7 @@ const renderSpies = vi.hoisted(() => ({
   dashboardSkeleton: vi.fn(),
 }))
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   maaApi: {
     getTaskStatus: apiMocks.getTaskStatus,
     getDeviceStats: apiMocks.getDeviceStats,
@@ -41,11 +41,11 @@ vi.mock('../services/api', () => ({
   getOpenTodayStages: apiMocks.getOpenTodayStages,
 }))
 
-vi.mock('@/stores', () => ({
+vi.mock('@/shared/stores', () => ({
   useUIStore: (selector: (state: { setActiveTab: () => void }) => unknown) => selector({ setActiveTab: vi.fn() }),
 }))
 
-vi.mock('../hooks/useDashboardFlowLayout', () => ({
+vi.mock('@/features/dashboard/hooks/useDashboardFlowLayout', () => ({
   useDashboardFlowLayout: () => ({
     flowGridRef: { current: null },
     flowCardRef: { current: null },
@@ -56,17 +56,17 @@ vi.mock('../hooks/useDashboardFlowLayout', () => ({
 
 vi.mock('./DashboardPreviewEntry', () => ({ default: () => <div>preview</div> }))
 vi.mock('./FloatingStatusIndicator', () => ({ default: () => null }))
-vi.mock('./Icons', () => {
+vi.mock('@/shared/ui/Icons', () => {
   const Icon = () => null
   return { default: new Proxy({}, { get: () => Icon }) }
 })
-vi.mock('./common/Loading', () => ({
+vi.mock('@/features/dashboard/components/skeletons', () => ({
   DashboardSkeleton: () => {
     renderSpies.dashboardSkeleton()
     return <div>loading</div>
   },
 }))
-vi.mock('./common', () => ({
+vi.mock('@/shared/ui', () => ({
   PageHeader: ({ title, actions }: { title: string; actions?: React.ReactNode }) => <header><h1>{title}</h1>{actions}</header>,
   Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
   SmoothPanel: ({

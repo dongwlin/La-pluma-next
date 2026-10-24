@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./useBackendStatusMonitor', () => ({ useAutomationAvailability: () => ({ isAvailable: true }) }))
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   maaApi: {
     getWebrtcStatus: mocks.getWebrtcStatus,
     startWebrtc: mocks.startWebrtc,

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { maaApi } from '../services/api'
+import { maaApi } from '@/shared/api'
 import { useStatusStore } from '../store/statusStore'
-import { useOnlineStatus } from './useOnlineStatus'
+import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 
 const BACKEND_PROBE_INTERVAL_MS = 30_000
 const ACTIVE_TASK_PROBE_INTERVAL_MS = 2_000

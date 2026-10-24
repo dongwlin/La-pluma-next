@@ -32,7 +32,7 @@ vi.mock('../hooks/useDashboardPreview', () => ({
   }),
 }))
 
-vi.mock('./common', () => ({
+vi.mock('@/shared/ui', () => ({
   Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
   SmoothPanel: ({
     children,

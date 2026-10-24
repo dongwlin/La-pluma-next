@@ -4,7 +4,7 @@ import { Activity, act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import AutomationTasks from './AutomationTasks'
-import type { TaskFlowItem } from '../types/components'
+import type { TaskFlowItem } from '@/shared/types/components'
 
 // Keep the real Framer Motion lifecycle: mocking AnimatePresence hides this regression.
 const mocks = vi.hoisted(() => ({ status: vi.fn(), execute: vi.fn() }))
@@ -16,7 +16,7 @@ const flow: TaskFlowItem[] = [
   icon: null, description: '任务说明', defaultParams: {}, paramFields: [], params: {}, enabled: true,
 }))
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   generateTrainingPlan: vi.fn(),
   maaApi: {
     getScheduleExecutionStatus: mocks.status,

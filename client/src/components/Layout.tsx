@@ -2,8 +2,8 @@ import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { BarChart3, Bot, Dices, Ellipsis, FileText, GraduationCap, LayoutGrid, Settings2, Swords, X } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
-import { useUIStore } from '@/stores'
-import { appTabFromPath, appTabPath, isAppTab, type AppTab } from '@/stores/uiStore'
+import { useUIStore } from '@/shared/stores'
+import { appTabFromPath, appTabPath, isAppTab, type AppTab } from '@/shared/stores'
 import {
   DEFAULT_OPERATOR_QUOTE,
   getOperatorAvatarUrl,

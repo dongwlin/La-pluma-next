@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bell, Save, Send } from 'lucide-react'
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse } from '@/services/api'
-import { Switch } from './common'
+import { API_BASE_URL, fetchWithAuth, parseJsonResponse } from '@/shared/api'
+import { Switch } from '@/shared/ui'
 
 interface TelegramConfig {
   enabled: boolean

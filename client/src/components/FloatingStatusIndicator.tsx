@@ -7,7 +7,7 @@ import {
 import { useStatusStore } from '../store/statusStore'
 import { detectStatusMessageType, getStatusVisualConfig } from '../utils/statusMessage'
 import { useEffect, useState } from 'react'
-import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 
 interface FloatingStatusIndicatorProps {
   className?: string

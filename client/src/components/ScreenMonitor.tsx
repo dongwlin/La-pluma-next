@@ -4,11 +4,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { maaApi, type WebrtcStatusData } from '../services/api'
+import { maaApi, type WebrtcStatusData } from '@/shared/api'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
 import { usePreviewStore } from '../stores/previewStore'
-import { usePageVisible } from '../hooks/usePageVisible'
+import { usePageVisible } from '@/shared/hooks/usePageVisible'
 
 interface ScreenMonitorProps {
   variant?: 'full' | 'compact'

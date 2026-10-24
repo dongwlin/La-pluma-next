@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Package as PackageIcon } from 'lucide-react'
-import Icons from './Icons'
-import { getItemIconUrl } from '../services/api'
-import type { DropRecordsProps } from '@/types/components'
-import { Button, Card, EmptyState, Loading } from './common'
+import Icons from '@/shared/ui/Icons'
+import { getItemIconUrl } from '@/shared/api'
+import type { DropRecordsProps } from '@/shared/types/components'
+import { Button, Card, EmptyState, Loading } from '@/shared/ui'
 
 interface DropRecordsViewProps extends DropRecordsProps {
   isLoading?: boolean

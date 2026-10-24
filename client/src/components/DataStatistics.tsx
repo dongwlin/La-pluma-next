@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { maaApi, getAllOperators, getDropStatistics, getItemIconUrl, getOperBoxData, fetchOperatorMaterials, getTrainingQueue } from '../services/api'
+import { maaApi, getAllOperators, getDropStatistics, getItemIconUrl, getOperBoxData, fetchOperatorMaterials, getTrainingQueue } from '@/shared/api'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   ChevronDown,
@@ -9,12 +9,12 @@ import {
   Play,
   RotateCcw,
 } from 'lucide-react'
-import Icons from './Icons'
+import Icons from '@/shared/ui/Icons'
 import DropRecords from './DropRecords'
-import { PageHeader, Button, Card, EmptyState, Loading } from './common'
+import { PageHeader, Button, Card, EmptyState, Loading } from '@/shared/ui'
 import { useStatusStore } from '../store/statusStore'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
-import { useFluidTabIndicator } from '../hooks/useFluidTabIndicator'
+import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type {
   DepotDataDetailed,
   OperBoxData,
@@ -29,7 +29,7 @@ import type {
   ActiveTab,
   OpenMenu,
   DropRecordsProps,
-} from '@/types/components'
+} from '@/shared/types/components'
 
 type FilterMenuKey = Exclude<OpenMenu, null>
 

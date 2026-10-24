@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Monitor } from 'lucide-react'
-import { Button, SmoothPanel } from './common'
+import { Button, SmoothPanel } from '@/shared/ui'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
 import { PreviewModeSegmented } from './PreviewModeControls'
 

@@ -35,7 +35,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   maaApi: {
     getTaskStatus: mocks.getTaskStatus,
     loadUserConfig: mocks.loadUserConfig,

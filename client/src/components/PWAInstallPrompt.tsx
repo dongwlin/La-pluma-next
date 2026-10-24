@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Download, RefreshCw, Share2, SquarePlus } from 'lucide-react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useStatusStore } from '@/store/statusStore'
-import { Button, IconButton } from '@/components/common'
+import { Button, IconButton } from '@/shared/ui'
 import { hasDocumentBuildChanged } from '@/utils/pwaUpdate'
 
 interface BeforeInstallPromptEvent extends Event {

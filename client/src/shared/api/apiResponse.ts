@@ -1,4 +1,4 @@
-import type { ApiErrorPayload, ApiResponse } from '@/types/api'
+import type { ApiErrorPayload, ApiResponse } from './types/api'
 
 const normalizeApiEnvelope = (value: unknown): unknown => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value

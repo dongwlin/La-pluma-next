@@ -29,7 +29,7 @@ vi.mock('../hooks/useBackendStatusMonitor', () => ({
   useAutomationAvailability: () => availabilityMock,
 }))
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   maaApi: {
     ...apiMocks,
     getErrorMessage: (result?: { message?: string }) => result?.message || '预览操作失败',

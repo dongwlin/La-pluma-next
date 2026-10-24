@@ -1,4 +1,4 @@
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse } from './api'
+import { API_BASE_URL, fetchWithAuth, parseJsonResponse } from '@/shared/api'
 
 export interface OperatorQuote {
   operatorId: string

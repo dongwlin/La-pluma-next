@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { maaApi, searchCopilot, searchParadoxCopilot } from '../services/api'
+import { maaApi, searchCopilot, searchParadoxCopilot } from '@/shared/api'
 import { motion, useReducedMotion } from 'framer-motion'
 import { FileText, Info, Play, Square } from 'lucide-react'
-import Icons from './Icons'
-import { PageHeader, Button, Card, ConfirmDialog, EmptyState, SmoothPanel } from './common'
+import Icons from '@/shared/ui/Icons'
+import { PageHeader, Button, Card, ConfirmDialog, EmptyState, SmoothPanel } from '@/shared/ui'
 import { useStatusStore } from '../store/statusStore'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
 import ScreenMonitor from './ScreenMonitor'
-import { useFluidTabIndicator } from '../hooks/useFluidTabIndicator'
-import { waitForTaskIdle } from '../utils/taskStatus'
+import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
+import { waitForTaskIdle } from '@/shared/utils/taskStatus'
 import { normalizeCopilotInput, parseCopilotUri, splitCopilotInputToArgs } from '../utils/copilotUri'
 import type {
   CombatTask,
@@ -21,7 +21,7 @@ import type {
   CopilotSearchResult,
   ParadoxSearchResult,
   CopilotSetItem
-} from '@/types/components'
+} from '@/shared/types/components'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
 
 type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'

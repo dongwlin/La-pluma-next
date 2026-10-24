@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { maaApi } from '../services/api'
+import { maaApi } from '@/shared/api'
 import { buildScrcpyOptions, usePreviewStore } from '../stores/previewStore'
-import { usePageVisible } from './usePageVisible'
+import { usePageVisible } from '@/shared/hooks/usePageVisible'
 import { useScrcpyWebRTC } from './useScrcpyWebRTC'
 
 type Options = Parameters<typeof useScrcpyWebRTC>[0] & {

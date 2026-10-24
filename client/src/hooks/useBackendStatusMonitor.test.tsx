@@ -17,7 +17,7 @@ const apiMocks = vi.hoisted(() => ({
   getTaskStatus: vi.fn(),
 }))
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   maaApi: {
     getTaskStatus: apiMocks.getTaskStatus,
     getErrorMessage: (result?: { message?: string; error?: string }) => result?.message || result?.error || '未知错误',
@@ -31,7 +31,7 @@ vi.mock('../components/Layout', () => ({
 }))
 
 vi.mock('../components/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('../components/common', () => ({ PageSkeleton: () => null }))
+vi.mock('@/shared/ui', () => ({ PageSkeleton: () => null }))
 vi.mock('../components/AutomationTasks', async () => {
   const { useStatusStore: useMockStatusStore } = await import('../store/statusStore')
 

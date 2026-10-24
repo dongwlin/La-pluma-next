@@ -29,7 +29,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   fetchOperatorMaterials: vi.fn(),
   getAllOperators: mocks.getAllOperators,
   getDropStatistics: mocks.getDropStatistics,

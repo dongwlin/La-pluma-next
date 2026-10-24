@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Check, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
-import { useUIStore } from '@/stores'
+import { useUIStore } from '@/shared/stores'
 
 type ThemeMode = 'light' | 'dark' | 'system'
 

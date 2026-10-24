@@ -1,4 +1,4 @@
-import type { TaskFlowItem } from '../types/components'
+import type { TaskFlowItem } from '@/shared/types/components'
 
 export type TaskExecutionState = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
 

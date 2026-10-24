@@ -42,7 +42,7 @@ interface MockSwitchProps {
   onChange: (checked: boolean) => void
 }
 
-vi.mock('./common', () => ({
+vi.mock('@/shared/ui', () => ({
   Button: ({
     children,
     icon: _icon,

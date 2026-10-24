@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   parseJsonResponse: vi.fn(),
 }))
 
-vi.mock('./api', () => ({
+vi.mock('@/shared/api', () => ({
   API_BASE_URL: '/api',
   fetchWithAuth: mocks.fetchWithAuth,
   parseJsonResponse: mocks.parseJsonResponse,

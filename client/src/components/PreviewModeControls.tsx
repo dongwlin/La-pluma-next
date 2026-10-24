@@ -1,6 +1,6 @@
 import { useId, useRef, type KeyboardEvent } from 'react'
 import { usePreviewStore, type PreviewMode } from '../stores/previewStore'
-import { Switch } from './common'
+import { Switch } from '@/shared/ui'
 
 const modes: { value: PreviewMode; label: string }[] = [
   { value: 'off', label: '关闭' },

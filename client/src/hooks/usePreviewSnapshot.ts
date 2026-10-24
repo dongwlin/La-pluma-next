@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { maaApi } from '../services/api'
+import { maaApi } from '@/shared/api'
 import { usePreviewStore } from '../stores/previewStore'
-import { usePageVisible } from './usePageVisible'
+import { usePageVisible } from '@/shared/hooks/usePageVisible'
 
 export function usePreviewSnapshot(available = true) {
   const mode = usePreviewStore(state => state.mode)

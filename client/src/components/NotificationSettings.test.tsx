@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   parseJsonResponse: vi.fn(async (response: unknown) => response),
 }))
 
-vi.mock('@/services/api', () => ({
+vi.mock('@/shared/api', () => ({
   API_BASE_URL: 'http://la-pluma.test/api',
   fetchWithAuth: mocks.fetchWithAuth,
   parseJsonResponse: mocks.parseJsonResponse,

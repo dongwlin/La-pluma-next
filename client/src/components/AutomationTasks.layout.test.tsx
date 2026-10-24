@@ -42,7 +42,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   generateTrainingPlan: mocks.generateTrainingPlan,
   maaApi: {
     getActivity: mocks.getActivity,

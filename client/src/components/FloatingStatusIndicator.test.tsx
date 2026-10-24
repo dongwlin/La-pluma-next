@@ -26,7 +26,7 @@ vi.mock('framer-motion', () => ({
   },
 }))
 
-vi.mock('../services/api', () => ({
+vi.mock('@/shared/api', () => ({
   API_BASE_URL: '/api',
   fetchWithAuth: mocks.fetchWithAuth,
   parseJsonResponse: mocks.parseJsonResponse,
@@ -42,12 +42,12 @@ vi.mock('../store/statusStore', () => ({
   }),
 }))
 
-vi.mock('../hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }))
+vi.mock('@/shared/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }))
 vi.mock('../utils/statusMessage', () => ({
   detectStatusMessageType: () => 'error',
   getStatusVisualConfig: () => ({ className: 'status-danger', dotColor: '#f00', pulseRgb: '255, 0, 0' }),
 }))
-vi.mock('./common', () => ({
+vi.mock('@/shared/ui', () => ({
   SmoothSurface: ({ children, ...props }: HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
 }))
 

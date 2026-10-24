@@ -23,7 +23,7 @@ vi.mock('framer-motion', () => ({
   ),
 }))
 
-vi.mock('./stores', () => ({
+vi.mock('@/shared/stores', () => ({
   useUIStore: (selector: (state: { theme: 'dark' }) => unknown) => selector({ theme: 'dark' }),
 }))
 

@@ -3,11 +3,11 @@
  * 提供与后端 API 交互的所有方法
  */
 
-import type { ApiResponse } from '@/types/api'
-import type { TrainingPlan, TrainingSettings } from '@/types/components'
-import { parseJsonResponse } from '@/utils/apiResponse'
+import type { ApiResponse } from './types/api'
+import type { TrainingPlan, TrainingSettings } from '@/shared/types/components'
+import { parseJsonResponse } from './apiResponse'
 
-export { parseJsonResponse } from '@/utils/apiResponse'
+export { parseJsonResponse } from './apiResponse'
 
 /**
  * 自动检测 API 地址

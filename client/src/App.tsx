@@ -11,7 +11,7 @@ import ConfigManager from './components/ConfigManager'
 import Layout from './components/Layout'
 import PWAInstallPrompt from './components/PWAInstallPrompt'
 import { useBackendStatusMonitor } from './hooks/useBackendStatusMonitor'
-import { useUIStore } from './stores'
+import { useUIStore } from '@/shared/stores'
 
 const appPages = [
   { id: 'dashboard', Component: Dashboard },

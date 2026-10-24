@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { maaApi } from '../services/api'
+import { maaApi } from '@/shared/api'
 import {
   PageHeader,
   Card,
@@ -26,10 +26,10 @@ import {
   ConfirmDialog,
   SmoothPanel,
   Switch,
-} from './common'
+} from '@/shared/ui'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
-import { useFluidTabIndicator } from '../hooks/useFluidTabIndicator'
-import type { LogEntry, LogFile } from '@/types/components'
+import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
+import type { LogEntry, LogFile } from '@/shared/types/components'
 
 type LogFilter = 'all' | LogEntry['level']
 type LogContentMode = 'summary' | 'raw'

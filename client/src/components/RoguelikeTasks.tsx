@@ -1,20 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Check, Play, Square } from 'lucide-react'
-import { maaApi } from '../services/api'
-import Icons from './Icons'
-import { PageHeader, Input, Select, Button, SmoothPanel, Switch } from './common'
+import { maaApi } from '@/shared/api'
+import Icons from '@/shared/ui/Icons'
+import { PageHeader, Input, Select, Button, SmoothPanel, Switch } from '@/shared/ui'
 import { useStatusStore } from '../store/statusStore'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
 import ScreenMonitor from './ScreenMonitor'
-import { useFluidTabIndicator } from '../hooks/useFluidTabIndicator'
-import { waitForTaskIdle } from '../utils/taskStatus'
+import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
+import { waitForTaskIdle } from '@/shared/utils/taskStatus'
 import type {
   RoguelikeTask,
   RoguelikeAdvancedOption,
   RoguelikeTaskInputs,
   RoguelikeAdvancedParams
-} from '@/types/components'
+} from '@/shared/types/components'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
 
 type RoguelikeMode = 'roguelike' | 'reclamation'
