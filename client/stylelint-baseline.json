@@ -2,7 +2,7 @@
   "_comment": "stylelint ratchet 基线：按文件记录存量违规数（文件 -> 规则 -> 数量）。禁止手工放宽，仅可通过 `pnpm --filter la-pluma-next-client stylelint:baseline` 在违规数下降或有意的重构后重新生成。",
   "_total": 890,
   "files": {
-    "src/components/OperatorTraining.css": {
+    "src/features/training/pages/OperatorTraining.css": {
       "at-rule-empty-line-before": 3,
       "declaration-block-single-line-max-declarations": 66,
       "media-feature-range-notation": 3,
