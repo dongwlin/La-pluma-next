@@ -27,14 +27,14 @@ vi.mock('@/shared/stores', () => ({
   useUIStore: (selector: (state: { theme: 'dark' }) => unknown) => selector({ theme: 'dark' }),
 }))
 
-vi.mock('./components/Layout', () => ({
+vi.mock('./layout/Layout', () => ({
   default: function MockLayout({ children }: { children: (props: { activeTab: string }) => ReactNode }) {
     const [activeTab, setActiveTab] = useState('dashboard')
     appMocks.navigate = setActiveTab
     return children({ activeTab })
   },
 }))
-vi.mock('./components/PWAInstallPrompt', () => ({ default: () => null }))
+vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
 vi.mock('@/features/runtime-status', () => ({ useBackendStatusMonitor: () => undefined }))
 vi.mock('@/features/dashboard', () => ({
   default: function MockDashboard() {

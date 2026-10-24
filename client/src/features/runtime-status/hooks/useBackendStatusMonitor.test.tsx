@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import App from '../../../App'
+import App from '../../../app/App'
 import { useStatusStore } from '../store/statusStore'
 import {
   invalidateBackendStatusProbe,
@@ -24,13 +24,13 @@ vi.mock('@/shared/api', () => ({
   },
 }))
 
-vi.mock('../../../components/Layout', () => ({
+vi.mock('@/app/layout/Layout', () => ({
   default: ({ children }: { children: (props: { activeTab: string }) => React.ReactNode }) => (
     <div>{children({ activeTab: 'automation' })}</div>
   ),
 }))
 
-vi.mock('../../../components/PWAInstallPrompt', () => ({ default: () => null }))
+vi.mock('@/app/layout/PWAInstallPrompt', () => ({ default: () => null }))
 vi.mock('@/features/automation', async () => {
   const { useStatusStore: useMockStatusStore } = await import('../store/statusStore')
 

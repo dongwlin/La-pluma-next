@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { hasDocumentBuildChanged } from '@/utils/pwaUpdate'
+import { hasDocumentBuildChanged } from './pwaUpdate'
 import PWAInstallPrompt from './PWAInstallPrompt'
 
 const swMock = vi.hoisted(() => ({
