@@ -93,7 +93,7 @@ describe('fetchOperatorMaterials', () => {
 });
 
 describe('expandMaterialTree', () => {
-  it('stops recursion on circular formulas and still accumulates farmable leaves', () => {
+  it('falls back to farming the root material itself when formulas are circular', () => {
     const materialsDb = {
       materials: {
         a: { id: 'a', name: '甲材料' },
@@ -107,9 +107,71 @@ describe('expandMaterialTree', () => {
     };
     const depot = { items: {} };
 
+    // a 的配方展开经 b 又回到 a（环）：整条转换链作废，回退为 a 本身直接刷取
     const result = expandMaterialTree('a', 1, depot, materialsDb, formulasDb);
 
-    assert.deepEqual(result, { c: 2 });
+    assert.deepEqual(result, { a: 1 });
+  });
+
+  it('falls back with the exact requested quantity for real chip conversion cycles', () => {
+    const materialsDb = {
+      materials: {
+        3241: { id: '3241', name: '狙击芯片' },
+        3251: { id: '3251', name: '术师芯片' },
+        32001: { id: '32001', name: '芯片助剂' }
+      }
+    };
+    const formulasDb = {
+      3241: { materials: { 3251: 3 } },
+      3251: { materials: { 3241: 3 } }
+    };
+    const depot = { items: {} };
+
+    // 与夜烟场景一致：需 3×术师芯片，仓库无芯片，互转配方 3:1 成环
+    const result = expandMaterialTree('3251', 3, depot, materialsDb, formulasDb);
+
+    assert.deepEqual(result, { 3251: 3 });
+  });
+
+  it('does not drop shared sub-materials across diamond-shaped formulas', () => {
+    const materialsDb = {
+      materials: {
+        a: { id: 'a', name: '甲材料' },
+        b: { id: 'b', name: '乙材料' },
+        c: { id: 'c', name: '丙材料' },
+        d: { id: 'd', name: '丁材料' }
+      }
+    };
+    const formulasDb = {
+      a: { materials: { b: 2, c: 1 } },
+      b: { materials: { d: 1 } },
+      c: { materials: { d: 2 } }
+    };
+    const depot = { items: {} };
+
+    // 路径级环阻断不应误伤菱形依赖中共享的 d：b 支路 2×1 + c 支路 1×2 = 4
+    const result = expandMaterialTree('a', 1, depot, materialsDb, formulasDb);
+
+    assert.deepEqual(result, { d: 4 });
+  });
+
+  it('returns an empty result without fallback when the depot already covers the formula', () => {
+    const materialsDb = {
+      materials: {
+        x: { id: 'x', name: '辅助双芯片' },
+        y: { id: 'y', name: '辅助芯片组' },
+        z: { id: 'z', name: '芯片助剂' }
+      }
+    };
+    const formulasDb = {
+      x: { materials: { y: 2, z: 1 } }
+    };
+    const depot = { items: { y: 100, z: 100 } };
+
+    // 展开结果为空是仓库已覆盖的合法结果，不应触发环回退
+    const result = expandMaterialTree('x', 4, depot, materialsDb, formulasDb);
+
+    assert.deepEqual(result, {});
   });
 
   it('treats chip packs as directly farmable without expanding their formula', () => {

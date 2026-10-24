@@ -696,26 +696,22 @@ async function updateSettings(settings) {
 }
 
 /**
- * 递归展开材料树，找到所有需要刷的原材料
+ * 展开单个材料支路，返回该支路的可刷取材料
  * @param {string} materialId - 材料ID
  * @param {number} needed - 需要数量
  * @param {object} depot - 仓库数据
  * @param {object} materialsDb - 材料数据库
  * @param {object} formulasDb - 合成配方数据库
- * @param {object} farmableMaterials - 累积的可刷取材料 {materialId: quantity}
- * @param {Set<string>} visiting - 当前递归路径上的材料ID，用于阻断配方循环引用
+ * @param {Set<string>} visiting - 当前递归路径上的材料ID，用于识别配方循环引用
+ * @returns {{ blocked: boolean, blockedMaterialName: string|null, farmable: object }}
+ *   blocked 为 true 表示该支路的配方展开被循环引用阻断（farmable 为空），
+ *   由上层放弃整条配方转换链并回退为「根材料本身直接刷取」
  */
-export function expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials = {}, visiting = new Set()) {
+function expandMaterialBranch(materialId, needed, depot, materialsDb, formulasDb, visiting) {
   const material = materialsDb.materials[materialId];
   if (!material) {
     logger.debug('材料不存在', { materialId });
-    return farmableMaterials;
-  }
-
-  // 配方数据可能存在循环引用（如芯片互转配方），跳过已在当前路径上的材料，避免无限递归
-  if (visiting.has(materialId)) {
-    logger.warn('材料配方存在循环引用，跳过重复展开', { materialName: material.name });
-    return farmableMaterials;
+    return { blocked: false, blockedMaterialName: null, farmable: {} };
   }
 
   // 检查仓库中的数量
@@ -724,51 +720,103 @@ export function expandMaterialTree(materialId, needed, depot, materialsDb, formu
 
   if (stillNeeded === 0) {
     logger.debug('材料仓库已足够', { materialName: material.name });
-    return farmableMaterials;
+    return { blocked: false, blockedMaterialName: null, farmable: {} };
   }
 
-  visiting.add(materialId);
+  // 环命中：不做任何产出，向上层报告阻断位置，由展开根回退为直接刷取
+  if (visiting.has(materialId)) {
+    logger.debug('材料配方存在循环引用，阻断该支路', { materialName: material.name });
+    return { blocked: true, blockedMaterialName: material.name, farmable: {} };
+  }
 
-  try {
-    // 芯片特殊处理：芯片组不展开，直接刷取；双芯片需要展开合成
-    const isChipPack = material.name.includes('芯片组'); // 芯片组（如辅助芯片组）
+  // 芯片特殊处理：芯片组不展开，直接刷取；双芯片需要展开合成
+  if (material.name.includes('芯片组')) { // 芯片组（如辅助芯片组）
+    // 芯片组直接刷芯片组关卡（PR-X-2），不展开合成
+    logger.debug('芯片组直接刷取', { materialName: material.name });
+    return { blocked: false, blockedMaterialName: null, farmable: { [materialId]: stillNeeded } };
+  }
 
-    if (isChipPack) {
-      // 芯片组直接刷芯片组关卡（PR-X-2），不展开合成
-      logger.debug('芯片组直接刷取', { materialName: material.name });
-      farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
-      return farmableMaterials;
-    }
+  // 双芯片需要展开合成配方（通常需要 2×芯片组 + 1×芯片助剂）
+  // 这样可以正确扣除仓库中已有的芯片组
 
-    // 双芯片需要展开合成配方（通常需要 2×芯片组 + 1×芯片助剂）
-    // 这样可以正确扣除仓库中已有的芯片组
+  // 检查是否有合成配方（配方直接在根对象下，不是在 formulas 属性下）
+  const formula = formulasDb[materialId];
 
-    // 检查是否有合成配方（配方直接在根对象下，不是在 formulas 属性下）
-    const formula = formulasDb[materialId];
+  if (formula && formula.materials && Object.keys(formula.materials).length > 0) {
+    // 有合成配方，递归展开子材料
+    logger.debug('材料需要合成，展开子材料', { materialName: material.name });
 
-    if (formula && formula.materials && Object.keys(formula.materials).length > 0) {
-      // 有合成配方，递归展开子材料
-      logger.debug('材料需要合成，展开子材料', { materialName: material.name });
+    const branchVisiting = new Set(visiting).add(materialId);
+    const branchFarmable = {};
+    let blockedMaterialName = null;
 
-      for (const [subMaterialId, subQuantity] of Object.entries(formula.materials)) {
-        const totalSubNeeded = subQuantity * stillNeeded;
-        logger.debug('展开子材料', {
-          subMaterialId,
-          subQuantity,
-          totalSubNeeded
-        });
-        expandMaterialTree(subMaterialId, totalSubNeeded, depot, materialsDb, formulasDb, farmableMaterials, visiting);
+    for (const [subMaterialId, subQuantity] of Object.entries(formula.materials)) {
+      const totalSubNeeded = subQuantity * stillNeeded;
+      logger.debug('展开子材料', {
+        subMaterialId,
+        subQuantity,
+        totalSubNeeded
+      });
+      const subResult = expandMaterialBranch(subMaterialId, totalSubNeeded, depot, materialsDb, formulasDb, branchVisiting);
+
+      if (subResult.blocked) {
+        // 子支路被环阻断：放弃本材料的整条配方转换链（连同已收集的子材料），
+        // 继续向上层报告，最终由展开根回退为直接刷取
+        blockedMaterialName = subResult.blockedMaterialName;
+        break;
       }
-    } else {
-      // 没有合成配方，这是可以直接刷的材料
-      logger.debug('可刷取材料', { materialName: material.name });
-      farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
+
+      for (const [id, count] of Object.entries(subResult.farmable)) {
+        branchFarmable[id] = (branchFarmable[id] || 0) + count;
+      }
     }
 
-    return farmableMaterials;
-  } finally {
-    visiting.delete(materialId);
+    if (blockedMaterialName) {
+      return { blocked: true, blockedMaterialName, farmable: {} };
+    }
+
+    return { blocked: false, blockedMaterialName: null, farmable: branchFarmable };
   }
+
+  // 没有合成配方，这是可以直接刷的材料
+  logger.debug('可刷取材料', { materialName: material.name });
+  return { blocked: false, blockedMaterialName: null, farmable: { [materialId]: stillNeeded } };
+}
+
+/**
+ * 递归展开材料树，找到所有需要刷的原材料
+ * 配方数据存在循环引用时（如芯片互转配方：狙击芯片 ↔ 术师芯片），
+ * 被阻断的转换链会整体作废，回退为「展开根材料本身直接刷取」，
+ * 由关卡映射（如 CHIP_STAGE_MAP）决定刷取关卡；仓库已覆盖的正常空结果不受影响
+ * @param {string} materialId - 材料ID
+ * @param {number} needed - 需要数量
+ * @param {object} depot - 仓库数据
+ * @param {object} materialsDb - 材料数据库
+ * @param {object} formulasDb - 合成配方数据库
+ * @param {object} farmableMaterials - 累积的可刷取材料 {materialId: quantity}
+ * @param {Set<string>} visiting - 展开起点使用的递归路径集合，一般无需传入
+ */
+export function expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials = {}, visiting = new Set()) {
+  const result = expandMaterialBranch(materialId, needed, depot, materialsDb, formulasDb, visiting);
+
+  if (result.blocked) {
+    // 配方展开遇环，回退为该材料本身直接刷取，避免整条支路被静默丢弃
+    logger.warn('材料配方展开遇环，回退为直接刷取', {
+      materialName: materialsDb.materials[materialId]?.name || materialId,
+      cycleMaterialName: result.blockedMaterialName
+    });
+    const stillNeeded = Math.max(0, needed - (depot.items?.[materialId] || 0));
+    if (stillNeeded > 0) {
+      farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
+    }
+    return farmableMaterials;
+  }
+
+  for (const [id, count] of Object.entries(result.farmable)) {
+    farmableMaterials[id] = (farmableMaterials[id] || 0) + count;
+  }
+
+  return farmableMaterials;
 }
 
 /**
@@ -1142,6 +1190,8 @@ async function runMaterialFetchScript({ name, script, output }) {
     const { stdout } = await promisify(execFile)(process.execPath, [scriptPath], {
       cwd: path.join(__dirname, '..'),
       timeout: FETCH_SCRIPT_TIMEOUT_MS,
+      // 脚本输出可能超出默认 1MiB，放宽缓冲避免以晦涩的错误失败
+      maxBuffer: 10 * 1024 * 1024,
       windowsHide: true
     });
     const durationMs = Date.now() - startedAt;
