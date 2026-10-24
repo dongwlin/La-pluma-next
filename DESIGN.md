@@ -161,6 +161,39 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 本文件描述规则；token 的具体数值以 `client/src/index.css` 与 `client/src/ios-theme.css` 为准，调整 token 时同步更新本文件的表格与说明。
 
+## 配置即规范（Tailwind 压缩映射）
+
+`client/tailwind.config.js` 不是透传 Tailwind 默认尺度，而是把 `rounded-*`、`gap-*`、`space-*` 压缩映射到 `--app-radius-*` / `--app-space-*` 语义 token。这些映射是**有意约束**，不是待清理的历史遗留：页面代码可以继续用 Tailwind 类名书写，但实际生效的档位由下面的映射表唯一决定；S3 把配置迁入 `@theme` 后，语义保持不变。
+
+### 圆角映射（rounded-*）
+
+| Tailwind 类 | 实际生效 token | 生效值（ios-theme 覆盖后） |
+| --- | --- | --- |
+| `rounded`（DEFAULT）、`rounded-sm` | `--app-radius-xs` | 6px |
+| `rounded-md` | `--app-radius-sm` | 10px |
+| `rounded-lg` | `--app-radius-md` | 13px |
+| `rounded-xl`、`rounded-2xl`、`rounded-3xl` | `--app-radius-lg` | 16px |
+| `rounded-full` | `--app-radius-pill` | 9999px |
+
+Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl→lg`、`rounded-3xl→lg` 是刻意收口——不存在比 16px 更圆的常规卡片圆角，需要 iOS 连续圆角视觉时使用 `SmoothPanel`（20px / 紧凑 16px）。sm、md、lg 三个常用圆角档位作为有意约束保留，不要"补全"被抹平的中间档位，也不要新增更大的档位。
+
+### 间距映射（gap-* / space-*）
+
+| Tailwind 类 | 实际生效 token | 生效值 |
+| --- | --- | --- |
+| `gap-3`、`gap-4` | `--app-space-card` | 14px |
+| `gap-5`、`gap-6` | `--app-space-section` | 18px |
+| `space-4` | `--app-space-card` | 14px |
+| `space-5`、`space-6` | `--app-space-section` | 18px |
+
+`gap-3/4` 的差别与 `gap-5/6` 的差别被抹平：它们分别表示"卡片内间距"与"区块间距"两个语义档位。未列出的档位沿用 Tailwind 默认 spacing 尺度，与 4px 基线节奏一致；更精细的布局间距优先使用 `--app-space-1..6`。
+
+### 冻结规则（全局样式入口）
+
+- `client/src/index.css` 与 `client/src/ios-theme.css` 是全局样式的**冻结入口**：页面级选择器不再新增进这两个文件，既有内容在样式轨道 S3/S4 之前保持原样。
+- 新样式随组件目录走：组件同名 CSS（如 `components/OperatorTraining.css`）、组件内样式或按域样式文件，最终由 S4 的 `@layer page` 分层方案归位。
+- 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development.md) 的「样式治理」一节。
+
 ## Colors
 
 整体调色板是 Apple 系统色在冷灰纸面上的克制组合：一个系统蓝强调色，一组石墨中性色，以及只用于状态反馈的语义色。
