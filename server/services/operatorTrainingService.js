@@ -760,8 +760,8 @@ function expandMaterialBranch(materialId, needed, depot, materialsDb, formulasDb
       const subResult = expandMaterialBranch(subMaterialId, totalSubNeeded, depot, materialsDb, formulasDb, branchVisiting);
 
       if (subResult.blocked) {
-        // 子支路被环阻断：放弃本材料的整条配方转换链（连同已收集的子材料），
-        // 继续向上层报告，最终由展开根回退为直接刷取
+        // 子支路被环阻断：放弃本材料的整条配方转换链，已收集的正常子材料一并作废——
+        // 它们的产出只为合成根材料，改为直接刷取后不再需要；继续向上层报告，最终由展开根回退
         blockedMaterialName = subResult.blockedMaterialName;
         break;
       }
@@ -794,10 +794,9 @@ function expandMaterialBranch(materialId, needed, depot, materialsDb, formulasDb
  * @param {object} materialsDb - 材料数据库
  * @param {object} formulasDb - 合成配方数据库
  * @param {object} farmableMaterials - 累积的可刷取材料 {materialId: quantity}
- * @param {Set<string>} visiting - 展开起点使用的递归路径集合，一般无需传入
  */
-export function expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials = {}, visiting = new Set()) {
-  const result = expandMaterialBranch(materialId, needed, depot, materialsDb, formulasDb, visiting);
+export function expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials = {}) {
+  const result = expandMaterialBranch(materialId, needed, depot, materialsDb, formulasDb, new Set());
 
   if (result.blocked) {
     // 配方展开遇环，回退为该材料本身直接刷取，避免整条支路被静默丢弃
