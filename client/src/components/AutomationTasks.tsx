@@ -16,6 +16,7 @@ import type {
 } from '@/types/components'
 import { formatExecutionActionSummary } from '../utils/executionSummary'
 import { useAutomationAvailability } from '../hooks/useBackendStatusMonitor'
+import { taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
 
 const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 const normalizeScheduleTimes = (times: string[]) => (
@@ -185,6 +186,7 @@ const parseDropTargetEntries = (value: unknown): string[] | null => {
 }
 
 interface AutomationExecutionSummary {
+  taskResults?: TaskExecutionResult[]
   successCount: number
   failedCount: number
   skippedCount: number
@@ -685,6 +687,7 @@ export default function AutomationTasks() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleTimeEntry[]>(DEFAULT_SCHEDULE_ENTRIES)
   const [currentStep, setCurrentStep] = useState(-1)
+  const [taskResults, setTaskResults] = useState<TaskExecutionResult[]>([])
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [lastDeletedTask, setLastDeletedTask] = useState<DeletedTaskSnapshot | null>(null)
   const [sortAnnouncement, setSortAnnouncement] = useState('')
@@ -700,6 +703,8 @@ export default function AutomationTasks() {
   const taskFlowLoadRequestRef = useRef(0)
   const taskFlowLoadAbortRef = useRef<AbortController | null>(null)
   const scheduleWasRunningRef = useRef(false)
+  const executionRevisionRef = useRef(0)
+  const manualExecutionInFlightRef = useRef(false)
   const stopRequestInFlightRef = useRef(false)
   const connectionTestInFlightRef = useRef(false)
   const connectionTestAbortRef = useRef<AbortController | null>(null)
@@ -713,6 +718,18 @@ export default function AutomationTasks() {
   const activeTaskId = selectedTaskId && taskFlow.some(task => task.id === selectedTaskId)
     ? selectedTaskId
     : taskFlow[0]?.id ?? null
+
+  const taskExecutionState = (task: TaskFlowItem, index: number) => {
+    if (!task.enabled) return 'idle'
+    const result = taskResults.find(result => result.taskId === task.id)
+    if (result) return result.status === 'running' && !isRunning ? 'stopped' : result.status
+    if (!isRunning) return 'idle'
+    return currentStep === index ? 'running' : currentStep > index ? 'success' : 'pending'
+  }
+  const executionLabel = (state: ReturnType<typeof taskExecutionState>) => ({
+    idle: '', pending: isRunning ? '等待执行' : '未执行', running: '正在执行',
+    success: '已完成', failed: '执行失败', skipped: '已跳过', stopped: '已终止',
+  }[state])
 
   const selectTaskForEditing = (taskId: string) => {
     setSelectedTaskId(taskId)
@@ -757,6 +774,7 @@ export default function AutomationTasks() {
   }, [taskFlow])
 
   const applyExecutionSummary = (summary: AutomationExecutionSummary) => {
+    setTaskResults(taskResultsFromSummary(summary, taskFlowRef.current))
     const fingerprint = JSON.stringify(summary)
     if (lastExecutionFingerprintRef.current === fingerprint) return
 
@@ -791,16 +809,18 @@ export default function AutomationTasks() {
     const checkScheduleStatus = async () => {
       if (!isSubscribed || requestInFlight) return
       requestInFlight = true
+      const revision = executionRevisionRef.current
 
       try {
         const result = await maaApi.getScheduleExecutionStatus()
-        if (!isSubscribed) return // 再次检查
+        if (!isSubscribed || revision !== executionRevisionRef.current) return
 
         if (result.success && result.data) {
           const status = result.data
 
           // 如果定时任务正在运行，更新 UI 状态
           if (status.isRunning) {
+            setTaskResults(status.taskResults || [])
             scheduleWasRunningRef.current = true
             setIsRunning(true)
             if (String(status.message || '').includes('正在终止')) {
@@ -811,25 +831,28 @@ export default function AutomationTasks() {
 
             // 根据任务 ID 找到在 taskFlow 中的实际索引
             if (status.currentTaskId) {
-              setCurrentStep(prev => {
-                const actualIndex = taskFlow.findIndex(t => t.id === status.currentTaskId)
-                return actualIndex !== -1 ? actualIndex : prev
-              })
+              setCurrentStep(taskFlow.findIndex(task => task.id === status.currentTaskId))
             } else {
-              setCurrentStep(status.currentStep)
+              const enabledTask = taskFlow.filter(task => task.enabled)[status.currentStep]
+              setCurrentStep(enabledTask ? taskFlow.findIndex(task => task.id === enabledTask.id) : -1)
             }
 
             setStatusMessage(status.message || `正在执行: ${status.currentTask}`, 'info')
           } else {
+            // A manual request may still be starting when an earlier idle poll arrives.
+            if (manualExecutionInFlightRef.current && !scheduleWasRunningRef.current) return
             const justFinished = scheduleWasRunningRef.current
             scheduleWasRunningRef.current = false
             setIsRunning(false)
+            setCurrentStep(-1)
+            setIsStopping(false)
+            stopRequestInFlightRef.current = false
             if (status.lastResult) {
               applyExecutionSummary(status.lastResult as AutomationExecutionSummary)
             }
+            if (Array.isArray(status.taskResults)) setTaskResults(status.taskResults)
 
             if (justFinished) {
-              setCurrentStep(-1)
               const completionMessage = status.message || '任务流程执行完成'
               const completionType = /终止|取消|失败/.test(completionMessage) ? 'warning' : 'success'
               setStatusMessage(completionMessage, completionType)
@@ -1576,6 +1599,11 @@ export default function AutomationTasks() {
     }
 
     stopRequestInFlightRef.current = false
+    manualExecutionInFlightRef.current = true
+    executionRevisionRef.current += 1
+    scheduleWasRunningRef.current = false
+    lastExecutionFingerprintRef.current = ''
+    setTaskResults([])
     setIsStopping(false)
     setIsRunning(true)
     setCurrentStep(-1)
@@ -1610,6 +1638,8 @@ export default function AutomationTasks() {
     } catch (error: any) {
       showError(`执行失败: ${error.message}`)
     } finally {
+      manualExecutionInFlightRef.current = false
+      executionRevisionRef.current += 1
       stopRequestInFlightRef.current = false
       setIsStopping(false)
       setIsRunning(false)
@@ -2316,8 +2346,9 @@ export default function AutomationTasks() {
               ) : (
                 <div className="automation-sequence-list">
                   {taskFlow.map((task, index) => {
-                    const isCurrentStep = isRunning && currentStep === index
-                    const isCompletedStep = isRunning && task.enabled && currentStep > index
+                    const executionState = taskExecutionState(task, index)
+                    const isCurrentStep = executionState === 'running'
+                    const isCompletedStep = executionState === 'success'
                     const isSelectedTask = activeTaskId === task.id
 
                     return (
@@ -2328,9 +2359,9 @@ export default function AutomationTasks() {
                           if (node) sequenceItemRefs.current.set(task.id, node)
                           else sequenceItemRefs.current.delete(task.id)
                         }}
-                        className={`automation-sequence-item${isSelectedTask ? ' is-selected' : ''}${isCurrentStep ? ' is-current' : ''}${isCompletedStep ? ' is-completed' : ''}${!task.enabled ? ' is-disabled' : ''}${draggedIndex === index ? ' is-dragging' : ''}`}
+                        className={`automation-sequence-item${isSelectedTask ? ' is-selected' : ''}${isCurrentStep ? ' is-current' : ''}${isCompletedStep ? ' is-completed' : ''}${executionState === 'failed' ? ' is-failed' : ''}${executionState === 'skipped' || executionState === 'stopped' ? ' is-skipped' : ''}${!task.enabled ? ' is-disabled' : ''}${draggedIndex === index ? ' is-dragging' : ''}`}
                         data-selected={isSelectedTask ? 'true' : 'false'}
-                        data-execution-state={isCurrentStep ? 'running' : isCompletedStep ? 'completed' : 'idle'}
+                        data-execution-state={isCompletedStep ? 'completed' : executionState === 'pending' && isRunning ? 'idle' : executionState}
                       >
                       <button
                         type="button"
@@ -2356,25 +2387,21 @@ export default function AutomationTasks() {
                         aria-current={isCurrentStep ? 'step' : undefined}
                       >
                         <span className="automation-sequence-node" aria-hidden="true">
-                          <AnimatePresence initial={false} mode="wait">
-                            <motion.span
-                              key={isCompletedStep ? 'completed' : isCurrentStep ? 'current' : 'pending'}
-                              initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
-                              transition={{ duration: shouldReduceMotion ? 0 : 0.16 }}
-                            >
+                          <span>
                               {isCompletedStep
                                 ? <Check size={11} strokeWidth={2.8} />
                                 : isCurrentStep
                                   ? <LoaderCircle className="automation-sequence-progress" size={13} strokeWidth={2.3} />
+                                : executionState === 'failed'
+                                  ? <AlertTriangle size={12} strokeWidth={2} />
+                                : executionState === 'skipped' || executionState === 'stopped'
+                                  ? <Minus size={12} strokeWidth={2} />
                                 : String(index + 1).padStart(2, '0')}
-                            </motion.span>
-                          </AnimatePresence>
+                          </span>
                         </span>
                         <span className="automation-sequence-copy">
                           <strong>{task.name}</strong>
-                          <small>{isCurrentStep ? '正在执行' : isCompletedStep ? '已完成' : task.description}</small>
+                          <small>{executionLabel(executionState) || task.description}</small>
                         </span>
                       </button>
                       <span className="automation-sequence-enabled">
@@ -2386,7 +2413,7 @@ export default function AutomationTasks() {
                           label={`${task.name}启用状态`}
                         />
                       </span>
-                      {isCompletedStep ? (
+                      {isRunning && isCompletedStep ? (
                         <span className="automation-completed-mark" role="img" aria-label="已完成" title="已完成">
                           <Check size={13} strokeWidth={2.6} aria-hidden="true" />
                         </span>
@@ -2652,6 +2679,7 @@ export default function AutomationTasks() {
                 <div className="automation-editor-content">
                   {taskFlow.filter(task => task.id === activeTaskId).map((task) => {
                     const index = taskFlow.findIndex(item => item.id === task.id)
+                    const isCurrentTask = taskExecutionState(task, index) === 'running'
                     const connectionFeedback = connectionStatus[task.id]
                     const isTestingConnection = testingConnectionTaskId === task.id
                     const parameterFields = task.paramFields ?? []
@@ -2662,7 +2690,7 @@ export default function AutomationTasks() {
                     return (
                     <div
                       key={task.id}
-                      className={`automation-task-editor${currentStep === index ? ' is-current' : ''}${!task.enabled ? ' is-disabled' : ''}`}
+                      className={`automation-task-editor${isCurrentTask ? ' is-current' : ''}${!task.enabled ? ' is-disabled' : ''}`}
                     >
                       <div className="automation-flow-card-header">
                         <div className="automation-flow-card-identity">
@@ -2670,7 +2698,7 @@ export default function AutomationTasks() {
                           <span className="automation-flow-task-icon">{task.icon}</span>
                           <span className="automation-flow-task-name">
                             <strong>{task.name}</strong>
-                            <small>{currentStep === index ? '正在执行' : task.taskType || task.commandId}</small>
+                            <small>{isCurrentTask ? '正在执行' : task.taskType || task.commandId}</small>
                           </span>
                         </div>
                         <div className="automation-flow-card-controls">
@@ -2680,7 +2708,7 @@ export default function AutomationTasks() {
                             disabled={isRunning}
                             label={`${task.name}启用状态`}
                           />
-                          {currentStep !== index && (
+                          {!isCurrentTask && (
                             <button
                               type="button"
                               onClick={() => removeTaskFromFlow(index)}
