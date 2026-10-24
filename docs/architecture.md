@@ -40,6 +40,8 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 - `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
 - `shared/`：与业务无关的横向下层（通用 UI、传输层底座、导航/全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
 
+业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
+
 已知接受项：`features/training` 与 `features/statistics` 通过各自 `index.ts` 互相消费域内 API（养成页面用统计域的干员仓库数据/图标端点，统计页面用养成域的队列/材料/名册端点），形成模块级引用环。两域不得在模块顶层读取对方的导出，跨域调用只允许发生在组件或函数运行时；新增此类跨域依赖时需在评审中确认。
 
 ```
@@ -66,6 +68,8 @@ La-pluma-next/
 │   │   │   ├── statistics/    # 仓库、干员和掉落数据
 │   │   │   ├── logs/          # 日志查看
 │   │   │   ├── settings/      # 配置管理
+│   │   │   ├── task-execution/   # 命令执行与任务状态控制（跨域微域，非页面域）
+│   │   │   ├── user-config/      # 用户任务配置读写（跨域微域，非页面域）
 │   │   │   ├── runtime-status/   # 后端连接与任务运行状态（非页面域）
 │   │   │   ├── device-mirror/    # 投屏/截图预览（非页面域）
 │   │   │   └── operator-quotes/  # 干员语录服务（非页面域）
@@ -73,7 +77,7 @@ La-pluma-next/
 │   │       ├── ui/            # 通用组件库（Button/Card/Modal/...）
 │   │       ├── stores/        # shared 自管的全局 store（uiStore）
 │   │       ├── api/           # 传输层底座：API_BASE_URL、fetchWithAuth、
-│   │       │                  # parseJsonResponse、maaApi 与响应类型
+│   │       │                  # parseJsonResponse、getErrorMessage 与响应类型
 │   │       ├── hooks/         # useFluidTabIndicator、useOnlineStatus、usePageVisible
 │   │       └── utils/         # executionSummary、taskStatus
 │   └── public/                # 静态资源（Logo、图标）

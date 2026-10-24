@@ -2,6 +2,7 @@
  * 投屏/截图预览域公开面
  */
 
+export { getDeviceStats } from './api'
 export { PreviewModeSegmented } from './components/PreviewModeControls'
 export { default as ScreenMonitor } from './components/ScreenMonitor'
 export { usePreviewSession } from './hooks/usePreviewSession'

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
+import { startWebrtc } from '../api'
 import { buildScrcpyOptions, usePreviewStore } from '../store/previewStore'
 import { usePageVisible } from '@/shared/hooks/usePageVisible'
 import { useScrcpyWebRTC } from './useScrcpyWebRTC'
@@ -35,8 +36,8 @@ export function usePreviewSession({ automationAvailable = true, onStartInfrastru
       if (onStartInfrastructure) {
         signalingUrl = await onStartInfrastructure(signal)
       } else {
-        const result = await maaApi.startWebrtc('default', options.deviceId, signal)
-        if (!result.success) throw new Error(maaApi.getErrorMessage(result))
+        const result = await startWebrtc('default', options.deviceId, signal)
+        if (!result.success) throw new Error(getErrorMessage(result))
         signalingUrl = result.data?.signalingUrl
       }
       if (signal.aborted) return

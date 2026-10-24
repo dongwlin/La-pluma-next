@@ -29,12 +29,7 @@ vi.mock('@/features/runtime-status', () => ({
   useAutomationAvailability: () => availabilityMock,
 }))
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    ...apiMocks,
-    getErrorMessage: (result?: { message?: string }) => result?.message || '预览操作失败',
-  },
-}))
+vi.mock('../api', () => apiMocks)
 
 interface MockDeviceViewProps {
   automationAvailable?: boolean

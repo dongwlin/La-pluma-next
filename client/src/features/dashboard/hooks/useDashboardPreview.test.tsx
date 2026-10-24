@@ -9,37 +9,47 @@ import { usePreviewStore } from '@/features/device-mirror'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => ({
-  getWebrtcStatus: vi.fn(),
-  startWebrtc: vi.fn(),
-  captureScreen: vi.fn(),
-  connect: vi.fn(),
-  disconnect: vi.fn(),
+  fetchWithAuth: vi.fn(),
 }))
+
+const signalingConnections: string[] = []
+let screenshotPending = false
+
+const jsonResponse = (payload: unknown) => ({ text: async () => JSON.stringify(payload) }) as Response
+const callsFor = (suffix: string) => mocks.fetchWithAuth.mock.calls
+  .filter(([input]) => String(input).endsWith(suffix))
+const startCalls = () => callsFor('/agent/webrtc/start')
+const screenshotCalls = () => callsFor('/agent/screen/screenshot')
+
+class MockWebSocket {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSING = 2
+  static readonly CLOSED = 3
+
+  readyState = MockWebSocket.CONNECTING
+  onopen: ((event: Event) => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  onerror: ((event: Event) => void) | null = null
+  onclose: ((event: CloseEvent) => void) | null = null
+
+  constructor(readonly url: string) {
+    signalingConnections.push(url)
+  }
+
+  send() {}
+
+  close() {
+    this.readyState = MockWebSocket.CLOSED
+  }
+}
 
 vi.mock('@/features/runtime-status', () => ({ useAutomationAvailability: () => ({ isAvailable: true }) }))
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getWebrtcStatus: mocks.getWebrtcStatus,
-    startWebrtc: mocks.startWebrtc,
-    getErrorMessage: () => '预览失败',
-    captureScreen: mocks.captureScreen,
-  },
-}))
-
-vi.mock('@/features/device-mirror/hooks/useScrcpyWebRTC', () => ({
-  useScrcpyWebRTC: () => ({
-    status: 'idle',
-    error: null,
-    stats: null,
-    inputReady: false,
-    mediaStream: null,
-    connect: mocks.connect,
-    disconnect: mocks.disconnect,
-    sendTouch: vi.fn(),
-    sendCommand: vi.fn(),
-  }),
-}))
+vi.mock('@/shared/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/api')>()
+  return { ...actual, fetchWithAuth: mocks.fetchWithAuth }
+})
 
 function PreviewHarness() {
   const { videoRef, statusText, connectionState } = useDashboardPreview()
@@ -52,14 +62,22 @@ describe('useDashboardPreview Activity lifecycle', () => {
 
   beforeEach(() => {
     usePreviewStore.setState({ mode: 'off', autoStart: false })
-    mocks.startWebrtc.mockReset().mockResolvedValue({ success: true, data: { signalingUrl: '/webrtc-signaling' } })
-    mocks.getWebrtcStatus.mockReset().mockResolvedValue({
-      success: true,
-      data: { serverRunning: true, agentRunning: true, signalingUrl: '/webrtc-signaling' },
+    signalingConnections.length = 0
+    screenshotPending = false
+    mocks.fetchWithAuth.mockReset().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/agent/webrtc/start')) {
+        return Promise.resolve(jsonResponse({ success: true, data: { signalingUrl: '/webrtc-signaling' } }))
+      }
+      if (url.endsWith('/api/login')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ token: 'test-token' }) })
+      }
+      if (url.endsWith('/agent/screen/screenshot')) {
+        return screenshotPending ? new Promise(() => {}) : Promise.resolve(jsonResponse({ success: false }))
+      }
+      return Promise.resolve(jsonResponse({ success: false }))
     })
-    mocks.captureScreen.mockReset().mockResolvedValue({ success: false })
-    mocks.connect.mockReset()
-    mocks.disconnect.mockReset()
+    vi.stubGlobal('WebSocket', MockWebSocket)
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => null)
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -69,6 +87,7 @@ describe('useDashboardPreview Activity lifecycle', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
@@ -81,30 +100,33 @@ describe('useDashboardPreview Activity lifecycle', () => {
       )
       await Promise.resolve()
       await Promise.resolve()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await Promise.resolve()
     })
   }
 
   it('resumes only the explicitly selected live mode when the dashboard returns', async () => {
     usePreviewStore.getState().setMode('live')
     await renderMode('visible')
-    expect(mocks.connect).toHaveBeenCalledOnce()
+    expect(signalingConnections).toHaveLength(1)
 
     await renderMode('hidden')
     await renderMode('visible')
 
-    expect(mocks.connect).toHaveBeenCalledTimes(2)
+    expect(signalingConnections).toHaveLength(2)
   })
+
   it('does not connect or capture a screenshot merely because the service is online', async () => {
     await renderMode('visible')
-    expect(mocks.startWebrtc).not.toHaveBeenCalled()
-    expect(mocks.connect).not.toHaveBeenCalled()
-    expect(mocks.captureScreen).not.toHaveBeenCalled()
+    expect(startCalls()).toHaveLength(0)
+    expect(signalingConnections).toHaveLength(0)
+    expect(screenshotCalls()).toHaveLength(0)
     expect(container.querySelector('video')?.dataset.previewStatus).toBe('预览已关闭')
     expect(container.querySelector('video')?.dataset.previewConnection).toBe('off')
   })
 
   it('reports a connecting state while the first snapshot is pending', async () => {
-    mocks.captureScreen.mockReturnValue(new Promise(() => {}))
+    screenshotPending = true
     usePreviewStore.getState().setMode('snapshot')
     await renderMode('visible')
 
@@ -117,8 +139,7 @@ describe('useDashboardPreview Activity lifecycle', () => {
     await act(async () => usePreviewStore.getState().setMode('off'))
     await renderMode('hidden')
     await renderMode('visible')
-    expect(mocks.connect).toHaveBeenCalledTimes(1)
-    expect(mocks.captureScreen).not.toHaveBeenCalled()
+    expect(signalingConnections).toHaveLength(1)
+    expect(screenshotCalls()).toHaveLength(0)
   })
-
 })

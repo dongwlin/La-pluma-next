@@ -16,15 +16,26 @@ const flow: TaskFlowItem[] = [
   icon: null, description: '任务说明', defaultParams: {}, paramFields: [], params: {}, enabled: true,
 }))
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getScheduleExecutionStatus: mocks.status,
-    executeScheduleNow: mocks.execute,
-    loadUserConfig: async () => ({ success: true, data: { taskFlow: flow } }),
-    getActivity: async () => ({ success: false }),
-    getTaskStatus: async () => ({ success: true, data: { isRunning: false } }),
-  },
+vi.mock('../api', () => ({
+  getActivity: async () => ({ success: false }),
+  getScheduleExecutionStatus: mocks.status,
+  executeScheduleNow: mocks.execute,
+  setupSchedule: vi.fn(),
+  stopSchedule: vi.fn(),
 }))
+
+vi.mock('@/features/task-execution', () => ({
+  executePredefinedTask: vi.fn(),
+  getTaskStatus: async () => ({ success: true, data: { isRunning: false } }),
+  stopTask: vi.fn(),
+}))
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: async () => ({ success: true, data: { taskFlow: flow } }),
+  saveUserConfig: vi.fn(),
+}))
+
+vi.mock('@/features/settings', () => ({ testConnection: vi.fn() }))
 vi.mock('@/features/training', () => ({
   generateTrainingPlan: vi.fn(),
 }))

@@ -41,20 +41,26 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getConfig: mocks.getConfig,
-    getConfigDir: mocks.getConfigDir,
-    getVersion: mocks.getVersion,
-    loadUserConfig: mocks.loadUserConfig,
-    openConfigDir: mocks.openConfigDir,
-    saveConfig: mocks.saveConfig,
-    saveUserConfig: mocks.saveUserConfig,
-    setupAutoUpdate: mocks.setupAutoUpdate,
-    updateMaaCore: mocks.updateMaaCore,
-    updateMaaCli: mocks.updateMaaCli,
-    hotUpdateResources: mocks.hotUpdateResources,
-    getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
-  },
+  getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
+}))
+
+vi.mock('../api', () => ({
+  discoverDevices: vi.fn(),
+  getConfig: mocks.getConfig,
+  getConfigDir: mocks.getConfigDir,
+  getVersion: mocks.getVersion,
+  hotUpdateResources: mocks.hotUpdateResources,
+  openConfigDir: mocks.openConfigDir,
+  saveConfig: mocks.saveConfig,
+  setupAutoUpdate: mocks.setupAutoUpdate,
+  testConnection: vi.fn(),
+  updateMaaCli: mocks.updateMaaCli,
+  updateMaaCore: mocks.updateMaaCore,
+}))
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: mocks.loadUserConfig,
+  saveUserConfig: mocks.saveUserConfig,
 }))
 
 vi.mock('@/features/runtime-status', () => ({

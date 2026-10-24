@@ -26,17 +26,23 @@ const renderSpies = vi.hoisted(() => ({
   dashboardSkeleton: vi.fn(),
 }))
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getTaskStatus: apiMocks.getTaskStatus,
-    getDeviceStats: apiMocks.getDeviceStats,
-    getActivity: apiMocks.getActivity,
-    getScheduleExecutionStatus: apiMocks.getScheduleExecutionStatus,
-    loadUserConfig: apiMocks.loadUserConfig,
-    executeScheduleNow: apiMocks.executeScheduleNow,
-    runCurrentActivity: apiMocks.runCurrentActivity,
-    getErrorMessage: (result?: { message?: string; error?: string }) => result?.message || result?.error || '未知错误',
-  },
+vi.mock('@/features/automation', () => ({
+  getActivity: apiMocks.getActivity,
+  getScheduleExecutionStatus: apiMocks.getScheduleExecutionStatus,
+  executeScheduleNow: apiMocks.executeScheduleNow,
+  runCurrentActivity: apiMocks.runCurrentActivity,
+}))
+
+vi.mock('@/features/device-mirror', () => ({
+  getDeviceStats: apiMocks.getDeviceStats,
+}))
+
+vi.mock('@/features/task-execution', () => ({
+  getTaskStatus: apiMocks.getTaskStatus,
+}))
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: apiMocks.loadUserConfig,
 }))
 
 vi.mock('@/features/statistics', () => ({

@@ -42,19 +42,27 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getActivity: mocks.getActivity,
-    getErrorMessage: () => '未知错误',
-    getScheduleExecutionStatus: mocks.getScheduleExecutionStatus,
-    getTaskStatus: mocks.getTaskStatus,
-    loadUserConfig: mocks.loadUserConfig,
-    saveUserConfig: mocks.saveUserConfig,
-    setupSchedule: mocks.setupSchedule,
-    stopSchedule: mocks.stopSchedule,
-    testConnection: mocks.testConnection,
-    executeScheduleNow: mocks.executeScheduleNow,
-  },
+vi.mock('../api', () => ({
+  getActivity: mocks.getActivity,
+  getScheduleExecutionStatus: mocks.getScheduleExecutionStatus,
+  setupSchedule: mocks.setupSchedule,
+  stopSchedule: mocks.stopSchedule,
+  executeScheduleNow: mocks.executeScheduleNow,
+}))
+
+vi.mock('@/features/task-execution', () => ({
+  executePredefinedTask: vi.fn(),
+  getTaskStatus: mocks.getTaskStatus,
+  stopTask: vi.fn(),
+}))
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: mocks.loadUserConfig,
+  saveUserConfig: mocks.saveUserConfig,
+}))
+
+vi.mock('@/features/settings', () => ({
+  testConnection: mocks.testConnection,
 }))
 
 vi.mock('@/features/training', () => ({

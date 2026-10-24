@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Check, Play, Square } from 'lucide-react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
 import Icons from '@/shared/ui/Icons'
 import { PageHeader, Input, Select, Button, SmoothPanel, Switch } from '@/shared/ui'
 import { FloatingStatusIndicator, useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
@@ -14,6 +14,8 @@ import type {
   RoguelikeTaskInputs,
   RoguelikeAdvancedParams
 } from '../types'
+import { executePredefinedTask, getTaskStatus, stopTask } from '@/features/task-execution'
+import { loadUserConfig, saveUserConfig } from '@/features/user-config'
 
 type RoguelikeMode = 'roguelike' | 'reclamation'
 type RoguelikeUserConfig = {
@@ -104,8 +106,8 @@ export default function RoguelikeTasks() {
     ) return false
 
     try {
-      const result = await maaApi.saveUserConfig('roguelike-tasks', config)
-      if (!result.success) throw new Error(maaApi.getErrorMessage(result))
+      const result = await saveUserConfig('roguelike-tasks', config)
+      if (!result.success) throw new Error(getErrorMessage(result))
       if (
         revision !== configRevisionRef.current
         || localStorage.getItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY) !== syncToken
@@ -144,7 +146,7 @@ export default function RoguelikeTasks() {
     // 从后端获取真实的任务执行状态
     const checkBackendStatus = async () => {
       try {
-        const result = await maaApi.getTaskStatus(controller.signal)
+        const result = await getTaskStatus(controller.signal)
         if (cancelled) return
         const taskStatus = result.data
         if (result.success) {
@@ -174,7 +176,7 @@ export default function RoguelikeTasks() {
               if (pollRequestInFlight) return
               pollRequestInFlight = true
               try {
-                const statusResult = await maaApi.getTaskStatus(controller.signal)
+                const statusResult = await getTaskStatus(controller.signal)
                 if (cancelled) return
                 if (statusResult.success) {
                   setIsActiveStatus(Boolean(statusResult.data?.isRunning))
@@ -247,7 +249,7 @@ export default function RoguelikeTasks() {
     // 加载保存的配置 - 优先从服务器加载
     const loadConfig = async () => {
       try {
-        const serverConfig = await maaApi.loadUserConfig('roguelike-tasks')
+        const serverConfig = await loadUserConfig('roguelike-tasks')
         if (cancelled) return
         if (serverConfig.success && serverConfig.data) {
           const { taskInputs: inputs, advancedParams: advanced } = serverConfig.data
@@ -409,13 +411,13 @@ export default function RoguelikeTasks() {
 
     try {
       const params = buildCommandParams(task)
-      const result = await maaApi.executePredefinedTask(task.command, params, null, null, task.name, 'roguelike', true)
+      const result = await executePredefinedTask(task.command, params, null, null, task.name, 'roguelike', true)
 
       if (!isCurrentExecution(generation)) return
       if (result.success) {
         setStatusMessage(`${task.name} 执行成功`, 'success')
       } else {
-        setStatusMessage(`执行失败: ${maaApi.getErrorMessage(result)}`, 'error')
+        setStatusMessage(`执行失败: ${getErrorMessage(result)}`, 'error')
       }
     } catch (error) {
       if (!isCurrentExecution(generation)) return
@@ -443,7 +445,7 @@ export default function RoguelikeTasks() {
     setStatusMessage('正在终止肉鸽任务...', 'warning')
 
     try {
-      const result = await maaApi.stopTask()
+      const result = await stopTask()
       if (executionGenerationRef.current !== activeGeneration) return
       const taskStopped = Boolean(result.data?.task?.success)
       if (!result.success || !taskStopped) {
@@ -455,7 +457,7 @@ export default function RoguelikeTasks() {
       stopWaitControllerRef.current?.abort()
       waitController = new AbortController()
       stopWaitControllerRef.current = waitController
-      const confirmedIdle = await waitForTaskIdle(maaApi.getTaskStatus.bind(maaApi), { signal: waitController.signal })
+      const confirmedIdle = await waitForTaskIdle(getTaskStatus, { signal: waitController.signal })
       if (waitController.signal.aborted || executionGenerationRef.current !== operationGeneration) return
       if (!confirmedIdle) {
         throw new Error('终止请求已发送，但尚未确认任务停止')

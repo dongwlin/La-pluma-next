@@ -1,5 +1,5 @@
 import { useState, useEffect, useEffectEvent, useRef } from 'react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
 import { generateTrainingPlan } from '@/features/training'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, ChevronUp, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
@@ -15,7 +15,17 @@ import type {
   StageConfig
 } from '../types'
 import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
+import {
+  executeScheduleNow,
+  getActivity,
+  getScheduleExecutionStatus,
+  setupSchedule,
+  stopSchedule,
+} from '../api'
 import { taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
+import { executePredefinedTask, getTaskStatus, stopTask } from '@/features/task-execution'
+import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import { testConnection as testAdbConnection } from '@/features/settings'
 
 const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 const normalizeScheduleTimes = (times: string[]) => (
@@ -458,7 +468,7 @@ function AutomationStageEditor({
         return
       }
 
-      const queueResult = await maaApi.loadUserConfig('training-queue')
+      const queueResult = await loadUserConfig('training-queue')
       if (!queueResult.success || !queueResult.data?.queue?.length) {
         onError('智能养成队列为空，请先添加干员')
         return
@@ -811,7 +821,7 @@ export default function AutomationTasks() {
       const revision = executionRevisionRef.current
 
       try {
-        const result = await maaApi.getScheduleExecutionStatus()
+        const result = await getScheduleExecutionStatus()
         if (!isSubscribed || revision !== executionRevisionRef.current) return
 
         if (result.success && result.data) {
@@ -1335,7 +1345,7 @@ export default function AutomationTasks() {
     })
 
     try {
-      const result = await maaApi.testConnection(undefined, undefined, controller.signal)
+      const result = await testAdbConnection(undefined, undefined, controller.signal)
       await waitForStableFeedback()
       if (controller.signal.aborted) return
       const payload = result.data as ConnectionTestStatus | undefined
@@ -1344,7 +1354,7 @@ export default function AutomationTasks() {
         ...prev,
         [taskId]: {
           success,
-          message: payload?.message || maaApi.getErrorMessage(result),
+          message: payload?.message || getErrorMessage(result),
         },
       }))
     } catch (error: unknown) {
@@ -1397,22 +1407,22 @@ export default function AutomationTasks() {
         // 连续编辑时只提交队列中最新的一版，避免旧请求覆盖新配置。
         if (!isCurrentSave()) return
 
-        const saveResult = await maaApi.saveUserConfig('automation-tasks', {
+        const saveResult = await saveUserConfig('automation-tasks', {
           taskFlow: taskFlowToSave,
           schedule: { enabled, times: normalizedTimes }
         })
         if (!saveResult.success) {
-          throw new Error(maaApi.getErrorMessage(saveResult))
+          throw new Error(getErrorMessage(saveResult))
         }
 
         if (!isCurrentSave()) return
 
         const scheduleResult = enabled && normalizedTimes.length > 0
-          ? await maaApi.setupSchedule('default', normalizedTimes, taskFlowToSave)
-          : await maaApi.stopSchedule('default')
+          ? await setupSchedule('default', normalizedTimes, taskFlowToSave)
+          : await stopSchedule('default')
 
         if (!scheduleResult.success) {
-          throw new Error(maaApi.getErrorMessage(scheduleResult))
+          throw new Error(getErrorMessage(scheduleResult))
         }
         if (isCurrentSave()) localStorage.removeItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)
       })
@@ -1620,7 +1630,7 @@ export default function AutomationTasks() {
       }))
 
       // 直接调用后端的定时任务执行接口，复用所有逻辑
-      const result = await maaApi.executeScheduleNow('manual', cleanTaskFlow)
+      const result = await executeScheduleNow('manual', cleanTaskFlow)
       const executionSummary = result.data?.summary as AutomationExecutionSummary | undefined
       if (executionSummary) {
         applyExecutionSummary(executionSummary)
@@ -1655,7 +1665,7 @@ export default function AutomationTasks() {
 
     // 调用后端 API 终止任务
     try {
-      const result = await maaApi.stopTask()
+      const result = await stopTask()
       const taskStopped = Boolean(result.data?.task?.success)
       const scheduleStopRequested = Boolean(result.data?.scheduleStopped)
 
@@ -1748,7 +1758,7 @@ export default function AutomationTasks() {
 
     try {
       // 优先从服务器加载配置
-      const serverConfig = await maaApi.loadUserConfig('automation-tasks', controller.signal)
+      const serverConfig = await loadUserConfig('automation-tasks', controller.signal)
       if (!isCurrentLoad()) return
 
       if (serverConfig.success && serverConfig.data) {
@@ -1860,7 +1870,7 @@ export default function AutomationTasks() {
         if (cancelled || requestInFlight || settled) return
         requestInFlight = true
         try {
-          const statusResult = await maaApi.getTaskStatus(controller.signal)
+          const statusResult = await getTaskStatus(controller.signal)
           if (cancelled) {
             finish('cancelled')
           } else if (statusResult.success && statusResult.data?.isRunning === false) {
@@ -1893,7 +1903,7 @@ export default function AutomationTasks() {
 
       // 2. 获取当前活动信息
       try {
-        const activityResult = await maaApi.getActivity('Official')
+        const activityResult = await getActivity('Official')
         if (cancelled) return
         if (activityResult.success && activityResult.data?.code) {
           setCurrentActivity(activityResult.data.code)
@@ -1905,7 +1915,7 @@ export default function AutomationTasks() {
 
       // 3. 然后检查是否需要恢复执行
       try {
-        const result = await maaApi.getTaskStatus(controller.signal)
+        const result = await getTaskStatus(controller.signal)
         if (cancelled) return
 
         // 检查是否有任务流程正在执行
@@ -1993,7 +2003,7 @@ export default function AutomationTasks() {
 
                   try {
                     const { command, params, taskConfig } = buildCommand(task)
-                    const result = await maaApi.executePredefinedTask(
+                    const result = await executePredefinedTask(
                       command,
                       params,
                       taskConfig as any,
@@ -2005,7 +2015,7 @@ export default function AutomationTasks() {
                     if (cancelled) return
 
                     if (!result.success) {
-                      setStatusMessage(`${task.name} 提交失败: ${maaApi.getErrorMessage(result)}`, 'error')
+                      setStatusMessage(`${task.name} 提交失败: ${getErrorMessage(result)}`, 'error')
                       setIsRunning(false)
                       setCurrentStep(-1)
                       localStorage.removeItem('maa-task-flow-execution')

@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { maaApi } from '@/shared/api'
-import { searchCopilot, searchParadoxCopilot } from '../api'
+import { getErrorMessage } from '@/shared/api'
+import {
+  executeCopilotSetPlan,
+  getCopilotInfo,
+  getCopilotSet,
+  getCopilotSetPlan,
+  resetCopilotSetProgress as resetCopilotSetProgressRequest,
+  searchCopilot,
+  searchParadoxCopilot,
+} from '../api'
 import { motion, useReducedMotion } from 'framer-motion'
 import { FileText, Info, Play, Square } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
@@ -22,6 +30,8 @@ import type {
   ParadoxSearchResult,
   CopilotSetItem
 } from '../types'
+import { executePredefinedTaskArgs, getTaskStatus, stopTask } from '@/features/task-execution'
+import { loadUserConfig, saveUserConfig } from '@/features/user-config'
 
 type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
 type CopilotSetSelections = Record<string, number[]>
@@ -174,8 +184,8 @@ export default function CombatTasks() {
     ) return false
 
     try {
-      const result = await maaApi.saveUserConfig('combat-tasks', config)
-      if (!result.success) throw new Error(maaApi.getErrorMessage(result))
+      const result = await saveUserConfig('combat-tasks', config)
+      if (!result.success) throw new Error(getErrorMessage(result))
       if (
         revision !== configRevisionRef.current
         || localStorage.getItem(COMBAT_CONFIG_SYNC_PENDING_KEY) !== syncToken
@@ -250,9 +260,9 @@ export default function CombatTasks() {
 
     setIsResettingProgress(true)
     try {
-      const result = await maaApi.resetCopilotSetProgress(copilotSetInfo.id)
+      const result = await resetCopilotSetProgressRequest(copilotSetInfo.id)
       if (!result.success) {
-        throw new Error(maaApi.getErrorMessage(result))
+        throw new Error(getErrorMessage(result))
       }
       applySelectedCopilotIndexes(new Set(copilotSetInfo.copilots.map((_, index) => index)), copilotSetInfo.id)
       setCopilotSetResults([])
@@ -284,7 +294,7 @@ export default function CombatTasks() {
     // 从后端获取真实的任务执行状态
     const checkBackendStatus = async () => {
       try {
-        const result = await maaApi.getTaskStatus(controller.signal)
+        const result = await getTaskStatus(controller.signal)
         if (cancelled) return
         const taskStatus = result.data
         if (result.success) {
@@ -314,7 +324,7 @@ export default function CombatTasks() {
               if (pollRequestInFlight) return
               pollRequestInFlight = true
               try {
-                const statusResult = await maaApi.getTaskStatus(controller.signal)
+                const statusResult = await getTaskStatus(controller.signal)
                 if (cancelled) return
                 if (statusResult.success) {
                   setIsActiveStatus(Boolean(statusResult.data?.isRunning))
@@ -396,7 +406,7 @@ export default function CombatTasks() {
     // 加载保存的配置 - 优先从服务器加载
     const loadConfig = async () => {
       try {
-        const serverConfig = await maaApi.loadUserConfig('combat-tasks')
+        const serverConfig = await loadUserConfig('combat-tasks')
         if (cancelled) return
         if (serverConfig.success && serverConfig.data) {
           const {
@@ -635,7 +645,7 @@ export default function CombatTasks() {
   // 执行单个作业（等待完成）
   const executeSingleCopilot = async (task: CombatTask, args: string[]): Promise<{ success: boolean; error?: string }> => {
     // waitForCompletion: true 表示等待命令执行完成后再返回
-    const result = await maaApi.executePredefinedTaskArgs(task.command, args, null, null, task.name, 'combat', true)
+    const result = await executePredefinedTaskArgs(task.command, args, null, null, task.name, 'combat', true)
     return result
   }
 
@@ -697,7 +707,7 @@ export default function CombatTasks() {
       if (!isCurrentExecution(generation)) return
       const result = await executeCopilotAtIndex(task, index)
       if (!isCurrentExecution(generation)) return
-      const errorMessage = result.error || maaApi.getErrorMessage({ message: result.error }) || '未知错误'
+      const errorMessage = result.error || getErrorMessage({ message: result.error }) || '未知错误'
       results.push({ index, success: result.success, error: errorMessage })
       setCopilotSetResults([...results])
 
@@ -741,7 +751,7 @@ export default function CombatTasks() {
     try {
       const raid = normalizeRaidValue(advancedParams.copilot?.raid)
       const result = copilotSetInfo?.type === 'set'
-        ? await maaApi.executeCopilotSetPlan(copilotSetInfo.id, {
+        ? await executeCopilotSetPlan(copilotSetInfo.id, {
             raid,
             selectedIndexes,
             options: {
@@ -755,7 +765,7 @@ export default function CombatTasks() {
               formationMode: getFormationMode(task.id)
             }
           })
-        : await maaApi.executePredefinedTaskArgs(task.command, buildCopilotSetCliArgs(task), null, null, task.name, 'combat', true)
+        : await executePredefinedTaskArgs(task.command, buildCopilotSetCliArgs(task), null, null, task.name, 'combat', true)
 
       if (!isCurrentExecution(generation)) return
       if (result.success) {
@@ -763,7 +773,7 @@ export default function CombatTasks() {
         applySelectedCopilotIndexes(pendingIndexes, copilotSetInfo?.id)
         setStatusMessage(pendingIndexes.size ? `作业集已完成部分关卡，剩余 ${pendingIndexes.size} 个待执行` : '作业集执行完成')
       } else {
-        setStatusMessage(`作业集执行失败: ${maaApi.getErrorMessage(result)}`)
+        setStatusMessage(`作业集执行失败: ${getErrorMessage(result)}`)
       }
     } catch (error) {
       if (!isCurrentExecution(generation)) return
@@ -793,7 +803,7 @@ export default function CombatTasks() {
 
     const result = await executeCopilotAtIndex(task, firstSelectedIndex)
     if (!isCurrentExecution(generation)) return
-    const errorMessage = result.error || maaApi.getErrorMessage({ message: result.error }) || '未知错误'
+    const errorMessage = result.error || getErrorMessage({ message: result.error }) || '未知错误'
     setCopilotSetResults([{ index: firstSelectedIndex, success: result.success, error: errorMessage }])
     const remainingIndexes = new Set(selectedCopilotIndexes)
     if (result.success) {
@@ -871,7 +881,7 @@ export default function CombatTasks() {
 
     const result = await executeCopilotAtIndex(currentCopilotTask, nextIndex)
     if (!isCurrentExecution(generation)) return
-    const nextErrorMessage = result.error || maaApi.getErrorMessage({ message: result.error }) || '未知错误'
+    const nextErrorMessage = result.error || getErrorMessage({ message: result.error }) || '未知错误'
     setCopilotSetResults(prev => [...prev, { index: nextIndex, success: result.success, error: nextErrorMessage }])
     const remainingIndexes = new Set(selectedCopilotIndexes)
     if (result.success) {
@@ -949,7 +959,7 @@ export default function CombatTasks() {
     setStatusMessage('正在终止自动战斗...', 'warning')
 
     try {
-      const result = await maaApi.stopTask()
+      const result = await stopTask()
       if (executionGenerationRef.current !== activeGeneration) return
       const taskStopped = Boolean(result.data?.task?.success)
       if (!result.success || !taskStopped) {
@@ -961,7 +971,7 @@ export default function CombatTasks() {
       stopWaitControllerRef.current?.abort()
       waitController = new AbortController()
       stopWaitControllerRef.current = waitController
-      const confirmedIdle = await waitForTaskIdle(maaApi.getTaskStatus.bind(maaApi), { signal: waitController.signal })
+      const confirmedIdle = await waitForTaskIdle(getTaskStatus, { signal: waitController.signal })
       if (waitController.signal.aborted || executionGenerationRef.current !== operationGeneration) return
       if (!confirmedIdle) {
         throw new Error('终止请求已发送，但尚未确认任务停止')
@@ -1031,13 +1041,13 @@ export default function CombatTasks() {
 
       try {
         const args = buildCommandArgs(task)
-        const result = await maaApi.executePredefinedTaskArgs(task.command, args, null, null, task.name, 'combat', true)
+        const result = await executePredefinedTaskArgs(task.command, args, null, null, task.name, 'combat', true)
 
         if (!isCurrentExecution(generation)) return
         if (result.success) {
           setStatusMessage(`${task.name} 执行成功`, 'success')
         } else {
-          setStatusMessage(`执行失败: ${maaApi.getErrorMessage(result)}`, 'error')
+          setStatusMessage(`执行失败: ${getErrorMessage(result)}`, 'error')
         }
       } catch (error) {
         if (!isCurrentExecution(generation)) return
@@ -1109,7 +1119,7 @@ export default function CombatTasks() {
 
   const fetchCopilotDetail = async (copilotId: number): Promise<CopilotSetItem | null> => {
     try {
-      const response = await maaApi.getCopilotInfo(String(copilotId))
+      const response = await getCopilotInfo(String(copilotId))
       const content = getCopilotContent(response)
       if (content) {
         return {
@@ -1130,7 +1140,7 @@ export default function CombatTasks() {
   const fetchCopilotSetDetails = async (setId: string): Promise<CopilotSetItem[]> => {
     let plan: any = null
     try {
-      const planResponse = await maaApi.getCopilotSetPlan(setId, normalizeRaidValue(advancedParams.copilot?.raid))
+      const planResponse = await getCopilotSetPlan(setId, normalizeRaidValue(advancedParams.copilot?.raid))
       plan = unwrapApiPayload(planResponse)
     } catch {
       // 计划接口失败时继续尝试集合列表，避免丢弃仍可执行的作业
@@ -1152,7 +1162,7 @@ export default function CombatTasks() {
       }))
     }
     try {
-      const data = await maaApi.getCopilotSet(setId)
+      const data = await getCopilotSet(setId)
       const copilotIds = getCopilotSetIds(data)
       if (copilotIds.length > 0) {
         // 并行获取所有作业详情
@@ -1198,7 +1208,7 @@ export default function CombatTasks() {
       // 根据用户选择或自动检测模式
       if (resolvedType === 'single') {
         // 强制单个作业模式
-        const copilotData = await maaApi.getCopilotInfo(copilotId)
+        const copilotData = await getCopilotInfo(copilotId)
         if (!isCurrentRequest()) return
         const content = getCopilotContent(copilotData)
         if (content) {
@@ -1235,8 +1245,8 @@ export default function CombatTasks() {
       } else {
         // 自动检测模式：同时请求两个接口，哪个成功就用哪个
         const [copilotResult, setResult] = await Promise.allSettled([
-          maaApi.getCopilotInfo(copilotId),
-          maaApi.getCopilotSet(copilotId)
+          getCopilotInfo(copilotId),
+          getCopilotSet(copilotId)
         ])
         if (!isCurrentRequest()) return
 

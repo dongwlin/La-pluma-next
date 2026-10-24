@@ -42,21 +42,26 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getTaskStatus: mocks.getTaskStatus,
-    loadUserConfig: mocks.loadUserConfig,
-    saveUserConfig: mocks.saveUserConfig,
-    stopTask: mocks.stopTask,
-    executePredefinedTaskArgs: mocks.executePredefinedTaskArgs,
-    getCopilotInfo: mocks.getCopilotInfo,
-    getCopilotSet: mocks.getCopilotSet,
-    getCopilotSetPlan: mocks.getCopilotSetPlan,
-    resetCopilotSetProgress: mocks.resetCopilotSetProgress,
-    getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
-  },
+  getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
+}))
+
+vi.mock('@/features/task-execution', () => ({
+  executePredefinedTaskArgs: mocks.executePredefinedTaskArgs,
+  getTaskStatus: mocks.getTaskStatus,
+  stopTask: mocks.stopTask,
+}))
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: mocks.loadUserConfig,
+  saveUserConfig: mocks.saveUserConfig,
 }))
 
 vi.mock('../api', () => ({
+  executeCopilotSetPlan: vi.fn(),
+  getCopilotInfo: mocks.getCopilotInfo,
+  getCopilotSet: mocks.getCopilotSet,
+  getCopilotSetPlan: mocks.getCopilotSetPlan,
+  resetCopilotSetProgress: mocks.resetCopilotSetProgress,
   searchCopilot: mocks.searchCopilot,
   searchParadoxCopilot: mocks.searchParadoxCopilot,
 }))

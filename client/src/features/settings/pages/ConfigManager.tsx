@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   Cable,
@@ -24,6 +24,20 @@ import type {
   ConfigSection,
   UpdateStatus
 } from '../types'
+import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import {
+  discoverDevices,
+  getConfig,
+  getConfigDir,
+  getVersion,
+  hotUpdateResources,
+  openConfigDir,
+  saveConfig,
+  setupAutoUpdate,
+  testConnection,
+  updateMaaCli,
+  updateMaaCore,
+} from '../api'
 
 interface MaaVersionInfo {
   cli: string
@@ -159,7 +173,7 @@ export default function ConfigManager() {
 
   const loadVersion = useCallback(async () => {
     try {
-      const result = await maaApi.getVersion()
+      const result = await getVersion()
       if (result.success && result.data) {
         setVersionInfo(result.data)
       }
@@ -172,7 +186,7 @@ export default function ConfigManager() {
     let serverError: string | null = null
 
     try {
-      const serverConfig = await maaApi.loadUserConfig('auto-update')
+      const serverConfig = await loadUserConfig('auto-update')
       const normalizedConfig = normalizeAutoUpdateConfig(serverConfig.data)
       if (serverConfig.success && normalizedConfig) {
         if (!autoUpdateTouchedRef.current) {
@@ -184,7 +198,7 @@ export default function ConfigManager() {
       }
 
       if (!serverConfig.success) {
-        serverError = `自动更新设置读取失败: ${maaApi.getErrorMessage(serverConfig)}`
+        serverError = `自动更新设置读取失败: ${getErrorMessage(serverConfig)}`
       }
     } catch (error) {
       serverError = `自动更新设置读取失败: ${(error as Error).message}`
@@ -237,15 +251,15 @@ export default function ConfigManager() {
     setStatusMessage('正在保存自动更新设置...', 'info')
 
     try {
-      const saveResult = await maaApi.saveUserConfig('auto-update', config)
+      const saveResult = await saveUserConfig('auto-update', config)
       if (!saveResult.success) {
-        const message = `自动更新设置保存失败: ${maaApi.getErrorMessage(saveResult)}`
+        const message = `自动更新设置保存失败: ${getErrorMessage(saveResult)}`
         setAutoUpdateFeedback({ type: 'error', message })
         setStatusMessage(message, 'error')
         return
       }
 
-      const result = await maaApi.setupAutoUpdate(config)
+      const result = await setupAutoUpdate(config)
       const schedulerResult = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
         ? result.data as { success?: boolean; message?: string }
         : null
@@ -264,7 +278,7 @@ export default function ConfigManager() {
           setStatusMessage(message, 'warning')
         }
       } else {
-        const message = `自动更新设置应用失败: ${schedulerResult?.message || maaApi.getErrorMessage(result)}`
+        const message = `自动更新设置应用失败: ${schedulerResult?.message || getErrorMessage(result)}`
         setAutoUpdateFeedback({ type: 'error', message })
         setStatusMessage(message, 'error')
       }
@@ -294,7 +308,7 @@ export default function ConfigManager() {
     setConfigDirStatus('loading')
     setConfigDirError(null)
     try {
-      const result = await maaApi.getConfigDir()
+      const result = await getConfigDir()
       if (result.success) {
         const nextConfigDir = typeof result.data === 'string'
           ? result.data
@@ -307,7 +321,7 @@ export default function ConfigManager() {
         return
       }
 
-      throw new Error(maaApi.getErrorMessage(result))
+      throw new Error(getErrorMessage(result))
     } catch (error) {
       const detail = error instanceof Error && error.message ? error.message : '暂时无法读取配置目录'
       setConfigDir('')
@@ -318,11 +332,11 @@ export default function ConfigManager() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const result = await maaApi.getConfig()
+      const result = await getConfig()
       if (result.success && result.data && connectionRevisionRef.current === 0) {
         setConfigData(result.data)
       } else if (!result.success) {
-        const message = `连接配置读取失败: ${maaApi.getErrorMessage(result)}`
+        const message = `连接配置读取失败: ${getErrorMessage(result)}`
         setConfigFeedback({ type: 'error', message })
         setStatusMessage(message, 'error')
       }
@@ -361,7 +375,7 @@ export default function ConfigManager() {
     setStatusMessage('正在保存配置...', 'info')
     
     try {
-      const result = await maaApi.saveConfig('default', { connection: configSnapshot })
+      const result = await saveConfig('default', { connection: configSnapshot })
 
       if (result.success) {
         if (savedRevision === connectionRevisionRef.current) {
@@ -374,7 +388,7 @@ export default function ConfigManager() {
           setStatusMessage(message, 'warning')
         }
       } else {
-        const message = `连接配置保存失败: ${maaApi.getErrorMessage(result)}`
+        const message = `连接配置保存失败: ${getErrorMessage(result)}`
         setConfigFeedback({ type: 'error', message })
         setStatusMessage(message, 'error')
       }
@@ -404,11 +418,11 @@ export default function ConfigManager() {
     setConnectionFeedback(null)
 
     try {
-      const result = await maaApi.discoverDevices(configData.adb_path)
+      const result = await discoverDevices(configData.adb_path)
       const discovery = result.data as DiscoveryResult | undefined
       const devices = discovery ? [...(discovery.devices || []), ...(discovery.candidates || [])] : []
       setDiscoveredDevices(devices)
-      setDiscoveryMessage(discovery?.message || maaApi.getErrorMessage(result))
+      setDiscoveryMessage(discovery?.message || getErrorMessage(result))
     } catch (error) {
       setDiscoveredDevices([])
       setDiscoveryMessage(`查找设备失败: ${(error as Error).message}`)
@@ -423,11 +437,11 @@ export default function ConfigManager() {
     setConnectionFeedback(null)
 
     try {
-      const result = await maaApi.testConnection(configData.adb_path, address)
+      const result = await testConnection(configData.adb_path, address)
       const feedback = result.data as ConnectionFeedback | undefined
       setConnectionFeedback({
         success: Boolean(result.success && feedback?.success),
-        message: feedback?.message || maaApi.getErrorMessage(result)
+        message: feedback?.message || getErrorMessage(result)
       })
     } catch (error) {
       setConnectionFeedback({ success: false, message: `连接测试失败: ${(error as Error).message}` })
@@ -443,11 +457,11 @@ export default function ConfigManager() {
     setConnectionFeedback(null)
 
     try {
-      const result = await maaApi.testConnection(adbPath, device.address)
+      const result = await testConnection(adbPath, device.address)
       const feedback = result.data as ConnectionFeedback | undefined
       setConnectionFeedback({
         success: Boolean(result.success && feedback?.success),
-        message: feedback?.message || maaApi.getErrorMessage(result)
+        message: feedback?.message || getErrorMessage(result)
       })
     } catch (error) {
       setConnectionFeedback({ success: false, message: `连接测试失败: ${(error as Error).message}` })
@@ -463,8 +477,8 @@ export default function ConfigManager() {
 
   const handleOpenConfigDir = async () => {
     try {
-      const result = await maaApi.openConfigDir()
-      setStatusMessage(result.success ? '已打开配置目录' : `打开失败: ${maaApi.getErrorMessage(result)}`)
+      const result = await openConfigDir()
+      setStatusMessage(result.success ? '已打开配置目录' : `打开失败: ${getErrorMessage(result)}`)
     } catch (error) {
       setStatusMessage(`打开失败: ${(error as Error).message}`)
     }
@@ -480,7 +494,7 @@ export default function ConfigManager() {
     try {
       // 更新到当前渠道的最新版本
       // 不传版本号，后端会使用 maa update 命令
-      const result = await maaApi.updateMaaCore()
+      const result = await updateMaaCore()
 
       if (result.success) {
         const message = result.message || 'MaaCore 和资源已更新'
@@ -490,7 +504,7 @@ export default function ConfigManager() {
         await loadVersion()
       } else {
         const details = (result as any).error?.details || result.errorInfo?.details || {}
-        const message = maaApi.getErrorMessage(result)
+        const message = getErrorMessage(result)
         setUpdateFeedback({
           type: 'error',
           message,
@@ -515,14 +529,14 @@ export default function ConfigManager() {
     setStatusMessage('正在更新 MAA CLI...')
 
     try {
-      const result = await maaApi.updateMaaCli()
+      const result = await updateMaaCli()
 
       if (result.success) {
         setStatusMessage('MAA CLI 更新成功')
         // 更新成功后重新加载版本信息
         await loadVersion()
       } else {
-        setStatusMessage(`更新失败: ${maaApi.getErrorMessage(result)}`)
+        setStatusMessage(`更新失败: ${getErrorMessage(result)}`)
       }
     } catch (error) {
       setStatusMessage(`网络错误: ${(error as Error).message}`)
@@ -547,7 +561,7 @@ export default function ConfigManager() {
     try {
       // 切换渠道并安装
       const versionToInstall = targetIsBeta ? 'beta' : 'stable'
-      const result = await maaApi.updateMaaCore(versionToInstall)
+      const result = await updateMaaCore(versionToInstall)
 
       if (result.success) {
         const message = `已切换到 ${targetChannel} 渠道并同步最新资源`
@@ -557,7 +571,7 @@ export default function ConfigManager() {
         await loadVersion()
       } else {
         const details = (result as any).error?.details || result.errorInfo?.details || {}
-        const message = maaApi.getErrorMessage(result)
+        const message = getErrorMessage(result)
         setUpdateFeedback({
           type: 'error',
           message,
@@ -583,7 +597,7 @@ export default function ConfigManager() {
     setStatusMessage('正在热更新资源文件...')
 
     try {
-      const result = await maaApi.hotUpdateResources()
+      const result = await hotUpdateResources()
 
       if (result.success) {
         const message = result.message || '资源文件更新成功'
@@ -591,7 +605,7 @@ export default function ConfigManager() {
         setStatusMessage(message)
         await loadVersion()
       } else {
-        const message = maaApi.getErrorMessage(result)
+        const message = getErrorMessage(result)
         setUpdateFeedback({ type: 'error', message, resourceRetry: true })
         setStatusMessage(message, 'error')
       }

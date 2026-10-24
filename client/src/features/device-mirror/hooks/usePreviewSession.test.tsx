@@ -16,11 +16,8 @@ const mocks = vi.hoisted(() => ({
   sendCommand: vi.fn(),
 }))
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    startWebrtc: mocks.startWebrtc,
-    getErrorMessage: () => '预览服务启动失败',
-  },
+vi.mock('../api', () => ({
+  startWebrtc: mocks.startWebrtc,
 }))
 
 vi.mock('./useScrcpyWebRTC', () => ({

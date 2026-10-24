@@ -11,10 +11,11 @@ import { usePreviewSnapshot } from './usePreviewSnapshot'
 const mocks = vi.hoisted(() => ({ captureScreen: vi.fn() }))
 
 vi.mock('@/shared/api', () => ({
-  maaApi: {
-    captureScreen: mocks.captureScreen,
-    getErrorMessage: () => '无法获取设备截图',
-  },
+  getErrorMessage: () => '无法获取设备截图',
+}))
+
+vi.mock('../api', () => ({
+  captureScreen: mocks.captureScreen,
 }))
 
 const captured = (image = 'fresh-image') => ({ success: true, data: { image } })

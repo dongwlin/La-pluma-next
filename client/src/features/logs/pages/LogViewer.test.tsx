@@ -29,9 +29,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/shared/api', () => ({
-  maaApi: mocks,
-}))
+vi.mock('../api', () => mocks)
 
 vi.mock('@/features/runtime-status', () => ({ FloatingStatusIndicator: () => null }))
 

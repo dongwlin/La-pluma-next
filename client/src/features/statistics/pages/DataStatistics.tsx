@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
 import { fetchOperatorMaterials, getAllOperators, getTrainingQueue } from '@/features/training'
-import { getDropStatistics, getItemIconUrl, getOperBoxData } from '../api'
+import {
+  getDepotData,
+  getDropStatistics,
+  getItemIconUrl,
+  getOperBoxData,
+  parseDepotData,
+  parseOperBoxData,
+} from '../api'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   ChevronDown,
@@ -31,6 +38,7 @@ import type {
   OpenMenu,
   DropRecordsProps,
 } from '../types'
+import { executeCommand } from '@/features/task-execution'
 
 type FilterMenuKey = Exclude<OpenMenu, null>
 
@@ -479,7 +487,7 @@ export default function DataStatistics() {
     setDepotDataLoading(true)
     setDepotDataError(null)
     try {
-      const depotResult = await maaApi.getDepotData()
+      const depotResult = await getDepotData()
       if (requestId !== depotRequestIdRef.current) return
       if (!depotResult.success) {
         setDepotDataError('暂时无法读取仓库数据，请检查服务连接后重试。')
@@ -791,7 +799,7 @@ export default function DataStatistics() {
         }
       }
       
-      const result = await maaApi.executeCommand('depot', [], taskConfig, null, '仓库识别', 'statistics', true)
+      const result = await executeCommand('depot', [], taskConfig, null, '仓库识别', 'statistics', true)
 
       if (result.success) {
         setStatusMessage('识别完成，正在解析数据...')
@@ -800,7 +808,7 @@ export default function DataStatistics() {
         await new Promise(resolve => setTimeout(resolve, 2000))
         
         // 解析并保存数据
-        const parseResult = await maaApi.parseDepotData()
+        const parseResult = await parseDepotData()
         
         if (parseResult.success) {
           setDepotDataError(null)
@@ -824,10 +832,10 @@ export default function DataStatistics() {
             setStatusMessage(`识别完成！共识别 ${parseResult.data.itemCount} 种物品`)
           }
         } else {
-          setStatusMessage(`识别完成，但数据解析失败: ${maaApi.getErrorMessage(parseResult)}`)
+          setStatusMessage(`识别完成，但数据解析失败: ${getErrorMessage(parseResult)}`)
         }
       } else {
-        setStatusMessage(`识别失败: ${maaApi.getErrorMessage(result)}`)
+        setStatusMessage(`识别失败: ${getErrorMessage(result)}`)
       }
     } catch (error: any) {
       setStatusMessage(`识别失败: ${error.message}`)
@@ -853,7 +861,7 @@ export default function DataStatistics() {
         // 重新加载干员列表以显示材料数据
         await loadAllOperators()
       } else {
-        setStatusMessage(`获取失败: ${maaApi.getErrorMessage(result)}`)
+        setStatusMessage(`获取失败: ${getErrorMessage(result)}`)
       }
     } catch (error: any) {
       setStatusMessage(`获取失败: ${error.message}`)
@@ -881,7 +889,7 @@ export default function DataStatistics() {
         }
       }
       
-      const result = await maaApi.executeCommand('operbox', [], taskConfig, null, '干员识别', 'statistics', true)
+      const result = await executeCommand('operbox', [], taskConfig, null, '干员识别', 'statistics', true)
 
       if (result.success) {
         setStatusMessage('识别完成，正在解析数据...')
@@ -890,7 +898,7 @@ export default function DataStatistics() {
         await new Promise(resolve => setTimeout(resolve, 2000))
 
         // 解析并保存数据
-        const parseResult = await maaApi.parseOperBoxData()
+        const parseResult = await parseOperBoxData()
 
         if (parseResult.success) {
           setOperBoxDataError(null)
@@ -902,10 +910,10 @@ export default function DataStatistics() {
             timestamp: new Date().toISOString()
           })
         } else {
-          setStatusMessage(`识别完成，但数据解析失败: ${maaApi.getErrorMessage(parseResult)}`)
+          setStatusMessage(`识别完成，但数据解析失败: ${getErrorMessage(parseResult)}`)
         }
       } else {
-        setStatusMessage(`识别失败: ${maaApi.getErrorMessage(result)}`)
+        setStatusMessage(`识别失败: ${getErrorMessage(result)}`)
       }
     } catch (error: any) {
       setStatusMessage(`识别失败: ${error.message}`)

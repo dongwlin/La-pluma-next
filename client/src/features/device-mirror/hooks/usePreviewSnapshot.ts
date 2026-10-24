@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
+import { captureScreen } from '../api'
 import { usePreviewStore } from '../store/previewStore'
 import { usePageVisible } from '@/shared/hooks/usePageVisible'
 
@@ -31,9 +32,9 @@ export function usePreviewSnapshot(available = true) {
             currentRequest.abort()
           }, 20000)
         })
-        const result = await Promise.race([maaApi.captureScreen('default', currentRequest.signal), aborted])
+        const result = await Promise.race([captureScreen('default', currentRequest.signal), aborted])
         if (controller.signal.aborted) return
-        if (!result.success || !result.data?.image) throw new Error(maaApi.getErrorMessage(result))
+        if (!result.success || !result.data?.image) throw new Error(getErrorMessage(result))
         setImage(`data:image/png;base64,${result.data.image}`)
         setError(null)
       } catch (error) {

@@ -30,9 +30,12 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('../api', () => ({
+  getDepotData: mocks.getDepotData,
   getDropStatistics: mocks.getDropStatistics,
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
   getOperBoxData: mocks.getOperBoxData,
+  parseDepotData: vi.fn(),
+  parseOperBoxData: vi.fn(),
 }))
 
 vi.mock('@/features/training', () => ({
@@ -42,10 +45,11 @@ vi.mock('@/features/training', () => ({
 }))
 
 vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getDepotData: mocks.getDepotData,
-    getErrorMessage: () => '未知错误',
-  },
+  getErrorMessage: () => '未知错误',
+}))
+
+vi.mock('@/features/task-execution', () => ({
+  executeCommand: vi.fn(),
 }))
 
 vi.mock('@/features/runtime-status', () => ({

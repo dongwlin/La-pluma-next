@@ -4,7 +4,17 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { maaApi, type WebrtcStatusData } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
+import {
+  getWebrtcStatus,
+  installWebrtc,
+  startWebrtc,
+  startWebrtcAgent,
+  startWebrtcServer,
+  stopWebrtcAgent,
+  stopWebrtcServer,
+} from '../api'
+import type { WebrtcStatusData } from '../types'
 import { useAutomationAvailability } from '@/features/runtime-status'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
 import { usePreviewStore } from '../store/previewStore'
@@ -30,8 +40,8 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
   const refreshWebrtcStatus = useCallback(async () => {
     const revision = ++statusRequestRevisionRef.current
     try {
-      const result = await maaApi.getWebrtcStatus()
-      if (!result.success || !result.data) throw new Error(maaApi.getErrorMessage(result))
+      const result = await getWebrtcStatus()
+      if (!result.success || !result.data) throw new Error(getErrorMessage(result))
       if (!mountedRef.current || revision !== statusRequestRevisionRef.current) return false
       setWebrtcStatus(result.data)
       setWebrtcStatusState('ready')
@@ -81,7 +91,7 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
     setWebrtcActionError(null)
     try {
       const result = await fn()
-      if (result?.success === false) throw new Error(maaApi.getErrorMessage(result))
+      if (result?.success === false) throw new Error(getErrorMessage(result))
       if (!mountedRef.current || actionRevision !== actionRevisionRef.current) return
       if (result?.data) {
         setWebrtcStatus(result.data)
@@ -119,8 +129,8 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
     setWebrtcLoading('preview')
     setWebrtcActionError(null)
     try {
-      const result = await maaApi.startWebrtc('default', 'mumu-la-pluma', signal)
-      if (!result.success) throw new Error(maaApi.getErrorMessage(result))
+      const result = await startWebrtc('default', 'mumu-la-pluma', signal)
+      if (!result.success) throw new Error(getErrorMessage(result))
       if (!result.data?.signalingUrl) throw new Error('预览服务未返回信令地址')
       if (!mountedRef.current || signal?.aborted || actionRevision !== actionRevisionRef.current) return undefined
       statusRequestRevisionRef.current += 1
@@ -156,15 +166,15 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
         infrastructureStatusState={webrtcStatusState}
         infrastructureLoading={webrtcLoading}
         infrastructureError={webrtcActionError}
-        onInstall={() => runWebrtcAction('install', () => maaApi.installWebrtc())}
+        onInstall={() => runWebrtcAction('install', () => installWebrtc())}
         onToggleServer={() => runWebrtcAction(
           'server',
           () => {
             if (webrtcStatus?.serverRunning) {
               usePreviewStore.getState().setMode('off')
-              return maaApi.stopWebrtcServer()
+              return stopWebrtcServer()
             }
-            return maaApi.startWebrtcServer()
+            return startWebrtcServer()
           },
           !!webrtcStatus?.serverRunning
         )}
@@ -173,9 +183,9 @@ export default function ScreenMonitor({ variant = 'full' }: ScreenMonitorProps) 
           () => {
             if (webrtcStatus?.agentRunning) {
               usePreviewStore.getState().setMode('off')
-              return maaApi.stopWebrtcAgent()
+              return stopWebrtcAgent()
             }
-            return maaApi.startWebrtcAgent()
+            return startWebrtcAgent()
           },
           !!webrtcStatus?.agentRunning
         )}

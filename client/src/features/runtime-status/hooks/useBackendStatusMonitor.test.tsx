@@ -16,11 +16,8 @@ const apiMocks = vi.hoisted(() => ({
   getTaskStatus: vi.fn(),
 }))
 
-vi.mock('@/shared/api', () => ({
-  maaApi: {
-    getTaskStatus: apiMocks.getTaskStatus,
-    getErrorMessage: (result?: { message?: string; error?: string }) => result?.message || result?.error || '未知错误',
-  },
+vi.mock('@/features/task-execution', () => ({
+  getTaskStatus: apiMocks.getTaskStatus,
 }))
 
 interface ProbeResult {

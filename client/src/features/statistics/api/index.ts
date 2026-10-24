@@ -9,6 +9,34 @@ export const getItemIconUrl = (iconId: string | number): string =>
   `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png`
 
 /**
+ * 解析并保存仓库数据
+ */
+export async function parseDepotData(): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/depot-recognition`, {
+    method: 'POST',
+  })
+  return parseJsonResponse(response)
+}
+
+/**
+ * 解析并保存干员数据
+ */
+export async function parseOperBoxData(): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/operbox-recognition`, {
+    method: 'POST',
+  })
+  return parseJsonResponse(response)
+}
+
+/**
+ * 获取已保存的仓库数据
+ */
+export async function getDepotData(): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/data/depot`)
+  return parseJsonResponse(response)
+}
+
+/**
  * 获取已识别的持有干员数据
  */
 export async function getOperBoxData(): Promise<ApiResponse> {

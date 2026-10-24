@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
 import { useStatusStore } from '../store/statusStore'
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
+import { getTaskStatus } from '@/features/task-execution'
 
 const BACKEND_PROBE_INTERVAL_MS = 30_000
 const ACTIVE_TASK_PROBE_INTERVAL_MS = 2_000
@@ -25,7 +26,7 @@ export async function probeBackendAvailability({
   if (showChecking) store.setBackendStatus('checking')
 
   try {
-    const result = await maaApi.getTaskStatus(signal)
+    const result = await getTaskStatus(signal)
     if (revision !== latestProbeRevision) {
       return useStatusStore.getState().backendStatus === 'available'
     }
@@ -36,7 +37,7 @@ export async function probeBackendAvailability({
       return true
     }
 
-    store.setBackendStatus('unavailable', maaApi.getErrorMessage(result) || '后端服务暂不可用，请确认服务已启动')
+    store.setBackendStatus('unavailable', getErrorMessage(result) || '后端服务暂不可用，请确认服务已启动')
     return false
   } catch (error) {
     if (revision !== latestProbeRevision || (error instanceof Error && error.name === 'AbortError')) {

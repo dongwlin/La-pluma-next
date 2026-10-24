@@ -12,7 +12,13 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { maaApi } from '@/shared/api'
+import {
+  cleanupLogs,
+  clearRealtimeLogs,
+  getLogFiles,
+  getRealtimeLogs,
+  readLogFile,
+} from '../api'
 import {
   PageHeader,
   Card,
@@ -306,7 +312,7 @@ export default function LogViewer() {
     realtimeAbortRef.current = controller
 
     try {
-      const result = await maaApi.getRealtimeLogs(200, controller.signal)
+      const result = await getRealtimeLogs(200, controller.signal)
       if (!result.success) throw new Error(result.message || '实时日志请求失败')
 
       if (
@@ -335,7 +341,7 @@ export default function LogViewer() {
 
   const loadHistoryFiles = useCallback(async () => {
     try {
-      const result = await maaApi.getLogFiles()
+      const result = await getLogFiles()
       if (!result.success) throw new Error(result.message || '历史日志请求失败')
       if (!mountedRef.current) return
 
@@ -366,7 +372,7 @@ export default function LogViewer() {
     setHistoryError(null)
 
     try {
-      const result = await maaApi.readLogFile(file.path, 1000)
+      const result = await readLogFile(file.path, 1000)
       if (!result.success) throw new Error(result.message || '读取日志文件失败')
       if (!mountedRef.current || !viewingHistoryRef.current || requestId !== historyRequestIdRef.current) return
 
@@ -458,7 +464,7 @@ export default function LogViewer() {
     setActionBusy(true)
     setNotice(null)
     try {
-      const result = await maaApi.clearRealtimeLogs()
+      const result = await clearRealtimeLogs()
       if (!result.success) throw new Error(result.message || '清空实时日志失败')
       setLogs([])
       setRealtimeError(null)
@@ -477,7 +483,7 @@ export default function LogViewer() {
     setActionBusy(true)
     setNotice(null)
     try {
-      const result = await maaApi.cleanupLogs(10)
+      const result = await cleanupLogs(10)
       if (!result.success) throw new Error(result.message || '清理历史日志失败')
       setNotice({ type: 'success', text: result.message || '历史日志清理完成' })
       await loadHistoryFiles()

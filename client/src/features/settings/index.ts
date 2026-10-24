@@ -3,3 +3,4 @@
  */
 
 export { default } from './pages/ConfigManager'
+export { testConnection } from './api'

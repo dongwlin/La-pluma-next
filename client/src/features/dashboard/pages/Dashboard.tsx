@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
-import { maaApi } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
+import { executeScheduleNow, getActivity, getScheduleExecutionStatus, runCurrentActivity as runActivityNow } from '@/features/automation'
 import { getOpenTodayStages, getTodayDrops } from '@/features/statistics'
 import { getTrainingQueue } from '@/features/training'
 import Icons from '@/shared/ui/Icons'
@@ -14,6 +15,8 @@ import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/exe
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 import { useDashboardStore, type DashboardBusinessSnapshot } from '../store/dashboardStore'
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
+import { getDeviceStats } from '@/features/device-mirror'
+import { loadUserConfig } from '@/features/user-config'
 
 const sectionTitleClass = 'text-base font-bold text-primary'
 const labelClass = 'text-secondary'
@@ -149,8 +152,8 @@ function refreshDashboardData(force = false): Promise<void> {
 
       const [, activityResult, scheduleResult, trainingResult, dropResult, openTodayResult] = await Promise.allSettled([
         probeBackendAvailability({ showChecking: useStatusStore.getState().backendStatus !== 'available' }),
-        maaApi.getActivity('Official'),
-        maaApi.getScheduleExecutionStatus(),
+        getActivity('Official'),
+        getScheduleExecutionStatus(),
         getTrainingQueue(),
         getTodayDrops(),
         getOpenTodayStages(),
@@ -304,7 +307,7 @@ export default function Dashboard() {
       if (requestInFlight) return
       requestInFlight = true
       try {
-        const result = await maaApi.getDeviceStats()
+        const result = await getDeviceStats()
         if (!disposed && result.success && result.data) {
           useDashboardStore.getState().updateDeviceStats(result.data)
         }
@@ -370,7 +373,7 @@ export default function Dashboard() {
     setQuickStartMessage('')
     setQuickStartMessageType('info')
     try {
-      const configResult = await maaApi.loadUserConfig('automation-tasks')
+      const configResult = await loadUserConfig('automation-tasks')
       const savedFlow = Array.isArray(configResult?.data?.taskFlow) ? configResult.data.taskFlow : []
       if (!configResult.success || savedFlow.length === 0) {
         setQuickStartMessage('还没有配置今日流程，先去日常页保存任务流。')
@@ -379,7 +382,7 @@ export default function Dashboard() {
         return
       }
 
-      const result = await maaApi.executeScheduleNow('dashboard-quick-start', savedFlow)
+      const result = await executeScheduleNow('dashboard-quick-start', savedFlow)
       if (result.success) {
         setQuickStartMessage(result.message || '今日流程已开始执行')
         setQuickStartMessageType('success')
@@ -413,7 +416,7 @@ export default function Dashboard() {
     setStatusActive(true)
     setStatusMessage(checkingMessage, 'info')
     try {
-      const runResult = await maaApi.runCurrentActivity()
+      const runResult = await runActivityNow()
       const runData = runResult.data as { executed?: boolean; plan?: { reason?: string }; execution?: { results?: unknown[] } } | undefined
       if (runResult.success && runData?.executed) {
         const completedCount = Array.isArray(runData.execution?.results) ? runData.execution.results.length : 0
@@ -423,7 +426,7 @@ export default function Dashboard() {
         setQuickStartMessageType('success')
         setStatusMessage(completedMessage, 'success')
       } else {
-        const blockedMessage = runData?.plan?.reason || maaApi.getErrorMessage(runResult) || '当前活动暂未准备就绪。'
+        const blockedMessage = runData?.plan?.reason || getErrorMessage(runResult) || '当前活动暂未准备就绪。'
         setQuickStartMessage(blockedMessage)
         setQuickStartMessageType('warning')
         setStatusMessage(blockedMessage, 'warning')
