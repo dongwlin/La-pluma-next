@@ -36,7 +36,6 @@ vi.mock('./components/Layout', () => ({
 }))
 vi.mock('./components/PWAInstallPrompt', () => ({ default: () => null }))
 vi.mock('./hooks/useBackendStatusMonitor', () => ({ useBackendStatusMonitor: () => undefined }))
-vi.mock('./components/common', () => ({ PageSkeleton: ({ variant }: { variant: string }) => <div>{variant} skeleton</div> }))
 vi.mock('./components/Dashboard', () => ({
   default: function MockDashboard() {
     if (appMocks.dashboardShouldThrow) throw new Error('dashboard render failed')
