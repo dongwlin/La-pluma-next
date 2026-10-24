@@ -12,6 +12,7 @@ import { readJsonFile, writeJsonFile } from '../utils/fileHelper.js';
 import { createLogger } from '../utils/logger.js';
 import { getTodayOpenStages, isStageOpenToday } from './notificationService.js';
 import { getAllOperators } from './dataParserService.js';
+import { loadPenguinDropData, findBestFarmStage, getStageEstimate } from './dropDataService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -31,6 +32,10 @@ const DEFAULT_TRAINING_SETTINGS = {
   useMedicine: 0,
   useStone: 0
 };
+
+// 经验估算兜底值：企鹅掉落数据不可用时沿用旧假设（掉率 50%、每关 18 理智）
+const FALLBACK_DROP_RATE = 0.5;
+const FALLBACK_SANITY_COST = 18;
 
 function normalizeTrainingSettings(settings = {}) {
   const normalized = { ...settings };
@@ -819,6 +824,74 @@ export function expandMaterialTree(materialId, needed, depot, materialsDb, formu
 }
 
 /**
+ * 将掉落数据服务的关卡查询结果转换为刷取估算结果
+ */
+function toEstimate(found) {
+  return {
+    stage: found.code,
+    stageId: found.stageId,
+    apCost: found.apCost,
+    expectedPerRun: found.expectedPerRun,
+    samples: found.samples,
+    dataSource: 'penguin-stats',
+    fallbackReason: null
+  };
+}
+
+/**
+ * 为单个材料选择刷取关卡并给出期望掉落与理智单价
+ *
+ * 数据来源：企鹅物流公开 API v2（server=CN），由 scripts/fetch-penguin-stats.js
+ * 抓取为 server/data/penguin-drop-data.json，数据版本见文件 metadata.fetchedAt：
+ * - 芯片类材料刷取关卡固定（CHIP_STAGE_MAP），期望掉落取该关卡的真实统计；
+ * - 其余材料在企鹅矩阵中按「期望理智消耗/个」（apCost / 期望掉落）反查最优永久关卡；
+ * - 掉落数据缺失、该材料无样本或无候选关卡时，回退经验估算：
+ *   掉率 50%、每关 18 理智（沿用 2026-10 之前的假设，误差大，仅保证计划不中断）。
+ *
+ * @returns {{ stage, stageId, apCost, expectedPerRun, samples, dataSource, fallbackReason }|null}
+ *   null 表示无任何可用关卡，调用方应 warn 并跳过该材料
+ */
+export function estimateMaterialFarming(material, dropData) {
+  const isChip = Boolean(CHIP_STAGE_MAP[material.name]);
+
+  if (isChip) {
+    const stageCode = CHIP_STAGE_MAP[material.name];
+    const found = getStageEstimate(stageCode, material.id, dropData);
+    if (found) {
+      return toEstimate(found);
+    }
+    return {
+      stage: stageCode,
+      stageId: null,
+      apCost: FALLBACK_SANITY_COST,
+      expectedPerRun: FALLBACK_DROP_RATE,
+      samples: null,
+      dataSource: 'experience',
+      fallbackReason: dropData ? '掉落数据中无该关卡统计' : '掉落数据未加载'
+    };
+  }
+
+  const found = findBestFarmStage(material.id, dropData);
+  if (found) {
+    return toEstimate(found);
+  }
+
+  // 回退：材料库的最优关卡（来自游戏数据 stageDropList，可能指向已过期活动关）
+  const rawStage = material.bestStage || (material.bestStages && material.bestStages[0]?.stage);
+  if (!rawStage) return null;
+
+  return {
+    stage: convertStageCode(rawStage),
+    stageId: rawStage,
+    apCost: FALLBACK_SANITY_COST,
+    expectedPerRun: FALLBACK_DROP_RATE,
+    samples: null,
+    dataSource: 'experience',
+    fallbackReason: dropData ? '掉落数据中无该材料的可刷关卡' : '掉落数据未加载'
+  };
+}
+
+/**
  * 生成养成计划（刷取计划）
  */
 async function generateTrainingPlan(mode = 'current') {
@@ -904,13 +977,22 @@ async function generateTrainingPlan(mode = 'current') {
   
   logger.info('材料树展开完成', { farmableMaterialCount: Object.keys(farmableMaterials).length });
   logger.debug('可刷取材料', { farmableMaterials });
-  
+
+  // 企鹅物流真实掉落数据：缺失时 estimateMaterialFarming 会自动回退经验估算
+  const dropData = await loadPenguinDropData();
+  if (dropData?.metadata) {
+    logger.info('掉落数据已加载', {
+      server: dropData.metadata.server,
+      fetchedAt: dropData.metadata.fetchedAt
+    });
+  }
+
   // 生成刷取计划
   const materialHierarchy = [];
   const stagesMap = new Map();
-  let totalSanity = 0;
   const warnings = [];
-  
+  const fallbackMaterials = [];
+
   // 为每个可刷取的材料生成关卡
   for (const [materialId, needed] of Object.entries(farmableMaterials)) {
     const material = materialsDb.materials[materialId];
@@ -918,9 +1000,9 @@ async function generateTrainingPlan(mode = 'current') {
       warnings.push(`材料 ${materialId} 在数据库中不存在`);
       continue;
     }
-    
+
     logger.debug('处理材料', { materialName: material.name, needed });
-    
+
     materialHierarchy.push({
       id: materialId,
       name: material.name,
@@ -930,68 +1012,65 @@ async function generateTrainingPlan(mode = 'current') {
       stillNeeded: needed,
       children: []
     });
-    
-    // 如果还需要刷取且有最优关卡
+
     if (needed > 0) {
-      let stage = null;
-      
-      // 芯片类材料特殊处理：使用 CHIP_STAGE_MAP
-      if (CHIP_STAGE_MAP[material.name]) {
-        stage = CHIP_STAGE_MAP[material.name];
-        logger.debug('使用芯片关卡映射', { materialName: material.name, stage });
-      } else if (material.bestStage || material.bestStages) {
-        // 非芯片材料：使用数据库中的最优关卡
-        const rawStage = material.bestStage || (material.bestStages && material.bestStages[0]?.stage);
-        
-        if (!rawStage) {
-          warnings.push(`材料 ${material.name} 没有最优关卡信息`);
-          logger.warn('材料没有最优关卡', { materialName: material.name });
-          continue;
-        }
-        
-        // 转换关卡代号为 MAA 可识别的格式
-        stage = convertStageCode(rawStage);
-        logger.debug('转换关卡代号', { materialName: material.name, rawStage, stage });
-      } else {
+      const estimate = estimateMaterialFarming(material, dropData);
+      if (!estimate) {
         warnings.push(`材料 ${material.name} 没有最优关卡信息`);
         logger.warn('材料没有最优关卡', { materialName: material.name });
         continue;
       }
-      
-      if (!stagesMap.has(stage)) {
-        stagesMap.set(stage, {
-          stage,
+
+      if (estimate.fallbackReason) {
+        fallbackMaterials.push(material.name);
+        logger.warn('材料回退经验估算', { materialName: material.name, reason: estimate.fallbackReason });
+      }
+
+      if (!stagesMap.has(estimate.stage)) {
+        stagesMap.set(estimate.stage, {
+          stage: estimate.stage,
+          stageId: estimate.stageId,
+          apCost: estimate.apCost,
+          dataSource: estimate.dataSource,
           materials: [],
-          totalTimes: 0,
-          sanity: 0,
+          // 该关卡需要产出的期望掉落总数（各材料 stillNeeded / 期望掉落 之和），最终向上取整为刷取次数
+          expectedDrops: 0,
           isOpen: true // 简化版本假设都开放
         });
       }
-      
-      const stageData = stagesMap.get(stage);
+
+      const stageData = stagesMap.get(estimate.stage);
       stageData.materials.push({
         id: materialId,
         name: material.name,
         count: needed
       });
-      
-      // 估算需要刷的次数（简化计算）
-      const dropRate = 0.5; // 假设50%掉落率
-      const timesNeeded = Math.ceil(needed / dropRate);
-      stageData.totalTimes += timesNeeded;
-      
-      // 估算理智消耗（假设每关卡平均18理智）
-      const sanityCost = 18;
-      stageData.sanity += timesNeeded * sanityCost;
-      totalSanity += timesNeeded * sanityCost;
+      stageData.expectedDrops += needed / estimate.expectedPerRun;
     }
   }
-  
-  const stages = Array.from(stagesMap.values()).map(stage => ({
-    ...stage,
-    // isStageOpenToday 返回 { isOpen, reason } 对象，这里取布尔值供客户端判断
-    isOpen: isStageOpenToday(stage.stage).isOpen
-  }));
+
+  if (fallbackMaterials.length > 0) {
+    warnings.push(
+      `企鹅物流掉落数据不可用，${fallbackMaterials.length} 种材料按经验估算（掉率 ${FALLBACK_DROP_RATE * 100}%、每关 ${FALLBACK_SANITY_COST} 理智）：${fallbackMaterials.join('、')}`
+    );
+  }
+
+  // 刷取次数 = 该关累计期望掉落向上取整；理智 = 次数 × 关卡真实理智消耗（企鹅物流 apCost）
+  const stages = Array.from(stagesMap.values()).map(stageData => {
+    const totalTimes = Math.ceil(stageData.expectedDrops);
+    return {
+      stage: stageData.stage,
+      stageId: stageData.stageId,
+      apCost: stageData.apCost,
+      dataSource: stageData.dataSource,
+      materials: stageData.materials,
+      totalTimes,
+      sanity: totalTimes * stageData.apCost,
+      // isStageOpenToday 返回 { isOpen, reason } 对象，这里取布尔值供客户端判断
+      isOpen: isStageOpenToday(stageData.stage).isOpen
+    };
+  });
+  const totalSanity = stages.reduce((sum, stage) => sum + stage.sanity, 0);
   const todayOpen = getTodayOpenStages();
   const openStages = stages.filter(stage => stage.isOpen !== false);
   const closedStages = stages.filter(stage => stage.isOpen === false);
@@ -1008,6 +1087,8 @@ async function generateTrainingPlan(mode = 'current') {
     estimatedTime: Math.ceil(totalSanity / 240 * 60), // 假设每天240理智，转换为分钟
     warnings,
     mode,
+    // 估算所用的企鹅物流掉落数据版本；null 表示本次生成全部回退经验估算
+    dropDataInfo: dropData?.metadata || null,
     summary: {
       backlogCount: Math.max(operators.length - 1, 0),
       openStageCount: openStages.length,
@@ -1154,12 +1235,14 @@ async function applyPlanToTasks(plan, settings = {}) {
  * 2. 生成 material-formulas.json（合成配方）
  * 3. 将配方合并进 materials.json
  * 4. 生成 operator-materials.json（干员精英化材料需求）
+ * 5. 生成 penguin-drop-data.json（企鹅物流真实掉落统计）
  */
 const MATERIAL_FETCH_SCRIPTS = [
   { name: 'fetch-all-materials', script: 'fetch-all-materials.js', output: 'materials.json' },
   { name: 'fetch-material-formulas', script: 'fetch-material-formulas.js', output: 'material-formulas.json' },
   { name: 'merge-formulas', script: 'merge-formulas.js', output: 'materials.json' },
-  { name: 'fetch-operator-materials', script: 'fetch-operator-materials.js', output: 'operator-materials.json' }
+  { name: 'fetch-operator-materials', script: 'fetch-operator-materials.js', output: 'operator-materials.json' },
+  { name: 'fetch-penguin-stats', script: 'fetch-penguin-stats.js', output: 'penguin-drop-data.json' }
 ];
 
 // 单个抓取脚本的超时时间（毫秒）

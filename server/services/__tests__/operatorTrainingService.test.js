@@ -17,9 +17,10 @@ childProcess.execFile = (file, args, options, callback) => {
 };
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const { default: operatorTrainingService, expandMaterialTree } = await import('../operatorTrainingService.js');
+const { default: operatorTrainingService, expandMaterialTree, estimateMaterialFarming } = await import('../operatorTrainingService.js');
 const { loggerManager } = await import('../../utils/logger.js');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
+loggerManager.getLogger('DropData').enableConsole = false;
 
 afterEach(() => {
   execFileOverride = null;
@@ -35,7 +36,7 @@ describe('fetchOperatorMaterials', () => {
 
     const summary = await operatorTrainingService.fetchOperatorMaterials();
 
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     assert.ok(calls.every(call => call.file === process.execPath));
     assert.match(calls[0].args[0], /scripts[\/\\]fetch-all-materials\.js$/);
     assert.equal(calls[0].options.cwd, serverDir);
@@ -45,13 +46,15 @@ describe('fetchOperatorMaterials', () => {
       'fetch-all-materials',
       'fetch-material-formulas',
       'merge-formulas',
-      'fetch-operator-materials'
+      'fetch-operator-materials',
+      'fetch-penguin-stats'
     ]);
     assert.deepEqual(summary.scripts.map(script => script.output), [
       'materials.json',
       'material-formulas.json',
       'materials.json',
-      'operator-materials.json'
+      'operator-materials.json',
+      'penguin-drop-data.json'
     ]);
     assert.ok(summary.scripts.every(script => script.success === true));
     assert.equal(summary.scripts.every(script => typeof script.entries === 'number' || script.entries === null), true);
@@ -77,7 +80,7 @@ describe('fetchOperatorMaterials', () => {
     };
 
     await assert.rejects(operatorTrainingService.fetchOperatorMaterials(), error => {
-      assert.match(error.message, /1\/4 个脚本失败/);
+      assert.match(error.message, /1\/5 个脚本失败/);
       assert.match(error.message, /fetch-material-formulas/);
       assert.match(error.message, /HTTP error! status: 404/);
       return true;
@@ -87,8 +90,90 @@ describe('fetchOperatorMaterials', () => {
       'fetch-all-materials.js',
       'fetch-material-formulas.js',
       'merge-formulas.js',
-      'fetch-operator-materials.js'
+      'fetch-operator-materials.js',
+      'fetch-penguin-stats.js'
     ]);
+  });
+});
+
+/**
+ * 企鹅物流掉落数据测试夹具：
+ * - act99side_01 为临时活动关，效率最优但应被排除（活动结束后无法执行）
+ * - main_01-01 样本数低于下限，统计不可信
+ */
+const TEST_DROP_DATA = {
+  metadata: { source: 'test', server: 'CN', fetchedAt: '2026-10-24T00:00:00.000Z' },
+  stages: {
+    pro_b_1: { code: 'PR-B-1', apCost: 18, zoneId: 'weekly_1', zoneType: 'WEEKLY' },
+    pro_b_2: { code: 'PR-B-2', apCost: 36, zoneId: 'weekly_1', zoneType: 'WEEKLY' },
+    pro_a_1: { code: 'PR-A-1', apCost: 18, zoneId: 'weekly_2', zoneType: 'WEEKLY' },
+    'main_01-07': { code: '1-7', apCost: 6, zoneId: 'main_1', zoneType: 'MAINLINE' },
+    'main_01-01': { code: '1-1', apCost: 6, zoneId: 'main_0', zoneType: 'MAINLINE' },
+    act99side_01: { code: 'XX-1', apCost: 9, zoneId: 'act99side_zone1', zoneType: 'ACTIVITY' }
+  },
+  dropMatrix: {
+    '3251': [{ stageId: 'pro_b_1', expected: 0.5, samples: 3831346 }],
+    '3252': [{ stageId: 'pro_b_2', expected: 0.5, samples: 8576774 }],
+    '30011': [
+      { stageId: 'main_01-07', expected: 1.245, samples: 2173917019 },
+      { stageId: 'main_01-01', expected: 0.1, samples: 30 },
+      { stageId: 'act99side_01', expected: 5, samples: 1000 }
+    ]
+  }
+};
+
+describe('estimateMaterialFarming', () => {
+  it('estimates chip farming with real penguin stats', () => {
+    const estimate = estimateMaterialFarming({ id: '3251', name: '术师芯片' }, TEST_DROP_DATA);
+
+    assert.equal(estimate.stage, 'PR-B-1');
+    assert.equal(estimate.stageId, 'pro_b_1');
+    assert.equal(estimate.apCost, 18);
+    assert.equal(estimate.expectedPerRun, 0.5);
+    assert.equal(estimate.dataSource, 'penguin-stats');
+    assert.equal(estimate.fallbackReason, null);
+  });
+
+  it('falls back to experience values for chips when drop data is unavailable', () => {
+    const estimate = estimateMaterialFarming({ id: '3251', name: '术师芯片' }, null);
+
+    assert.equal(estimate.stage, 'PR-B-1');
+    assert.equal(estimate.stageId, null);
+    assert.equal(estimate.apCost, 18);
+    assert.equal(estimate.expectedPerRun, 0.5);
+    assert.equal(estimate.dataSource, 'experience');
+    assert.match(estimate.fallbackReason, /未加载/);
+  });
+
+  it('selects the most sanity-efficient permanent stage for regular materials', () => {
+    const estimate = estimateMaterialFarming(
+      { id: '30011', name: '源岩', bestStages: [{ stage: 'act99side_01' }] },
+      TEST_DROP_DATA
+    );
+
+    // 临时活动关效率更优但被排除、main_01-01 样本不足，最终选 main_01-07
+    assert.equal(estimate.stage, '1-7');
+    assert.equal(estimate.stageId, 'main_01-07');
+    assert.equal(estimate.apCost, 6);
+    assert.equal(estimate.expectedPerRun, 1.245);
+    assert.equal(estimate.dataSource, 'penguin-stats');
+  });
+
+  it('falls back to the material database best stage when drop data is unavailable', () => {
+    const estimate = estimateMaterialFarming({ id: '30073', name: '扭转醇', bestStage: 'pro_a_1' }, null);
+
+    assert.equal(estimate.stage, 'PR-A-1');
+    assert.equal(estimate.stageId, 'pro_a_1');
+    assert.equal(estimate.apCost, 18);
+    assert.equal(estimate.expectedPerRun, 0.5);
+    assert.equal(estimate.dataSource, 'experience');
+    assert.match(estimate.fallbackReason, /未加载/);
+  });
+
+  it('returns null when neither drop data nor best stage exists', () => {
+    const estimate = estimateMaterialFarming({ id: '30125', name: '双极纳米片' }, null);
+
+    assert.equal(estimate, null);
   });
 });
 

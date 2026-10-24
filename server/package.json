@@ -14,6 +14,7 @@
     "fetch-materials": "node scripts/fetch-operator-materials.js",
     "fetch-formulas": "node scripts/fetch-material-formulas.js && node scripts/merge-formulas.js",
     "fetch-all-materials": "node scripts/fetch-all-materials.js",
+    "fetch-drop-data": "node scripts/fetch-penguin-stats.js",
     "fetch-stages": "node scripts/fetch-stage-data.js",
     "fetch-assets": "node scripts/fetch-game-assets.js",
     "fetch-paradox": "node scripts/fetch-paradox-operators.js",
