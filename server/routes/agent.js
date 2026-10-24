@@ -1134,17 +1134,17 @@ router.get('/training/queue', asyncHandler(async (req, res) => {
 }));
 
 router.post('/training/queue', asyncHandler(async (req, res) => {
-  const { operatorId, currentElite, targetElite } = req.body || {};
+  const { operatorId, currentElite, targetElite, position } = req.body || {};
   if (!operatorId) {
     return sendError(res, req, agentError('AGENT_VALIDATION_OPERATOR_ID_REQUIRED', '缺少 operatorId 参数', { statusCode: 400 }));
   }
-  const queueItem = await operatorTrainingService.addToQueue(operatorId, { currentElite, targetElite });
+  const queueItem = await operatorTrainingService.addToQueue(operatorId, { currentElite, targetElite, position });
   return sendSuccess(res, req, queueItem, '已添加到养成队列');
 }));
 
 router.delete('/training/queue/:operatorId', asyncHandler(async (req, res) => {
-  await operatorTrainingService.removeFromQueue(req.params.operatorId);
-  return sendSuccess(res, req, null, '已从养成队列中移除');
+  const result = await operatorTrainingService.removeFromQueue(req.params.operatorId);
+  return sendSuccess(res, req, result, '已从养成队列中移除');
 }));
 
 router.put('/training/queue/order', asyncHandler(async (req, res) => {
@@ -1152,8 +1152,13 @@ router.put('/training/queue/order', asyncHandler(async (req, res) => {
   if (!Array.isArray(operatorIds)) {
     return sendError(res, req, agentError('AGENT_VALIDATION_OPERATOR_IDS_REQUIRED', 'operatorIds 必须是数组', { statusCode: 400 }));
   }
-  await operatorTrainingService.updateQueueOrder(operatorIds);
-  return sendSuccess(res, req, null, '队列顺序已更新');
+  const result = await operatorTrainingService.updateQueueOrder(operatorIds);
+  return sendSuccess(res, req, result, '队列顺序已更新');
+}));
+
+router.post('/training/sync', asyncHandler(async (req, res) => {
+  const result = await operatorTrainingService.syncTrainingFlow();
+  return sendSuccess(res, req, result, result.flowSync.status === 'failed' ? '任务流程同步失败，可重试' : '任务流程同步状态已更新');
 }));
 
 router.put('/training/settings', asyncHandler(async (req, res) => {
@@ -1167,11 +1172,11 @@ router.post('/training/plan', asyncHandler(async (req, res) => {
 }));
 
 router.post('/actions/apply-training-plan', asyncHandler(async (req, res) => {
-  const { plan, settings, taskType = 'combat' } = req.body || {};
+  const { plan, settings } = req.body || {};
   if (!plan) {
     return sendError(res, req, agentError('AGENT_VALIDATION_PLAN_REQUIRED', '缺少 plan 参数', { statusCode: 400 }));
   }
-  const result = await operatorTrainingService.applyPlanToTasks(plan, settings, taskType);
+  const result = await operatorTrainingService.applyPlanToTasks(plan, settings);
   return sendSuccess(res, req, result, '养成计划已应用到任务流程');
 }));
 

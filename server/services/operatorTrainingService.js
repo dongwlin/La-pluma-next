@@ -8,7 +8,8 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readJsonFile, writeJsonFile } from '../utils/fileHelper.js';
+import { createHash } from 'node:crypto';
+import { readJsonFile, writeJsonFile, updateJsonFile } from '../utils/fileHelper.js';
 import { createLogger } from '../utils/logger.js';
 import { getTodayOpenStages, isStageOpenToday } from './notificationService.js';
 import { getAllOperators } from './dataParserService.js';
@@ -21,10 +22,60 @@ const __dirname = dirname(__filename);
 const logger = createLogger('OperatorTraining');
 
 // 配置文件路径
-const TRAINING_QUEUE_PATH = path.join(__dirname, '../data/user-configs/training-queue.json');
-const OPERATOR_MATERIALS_PATH = path.join(__dirname, '../data/operator-materials.json');
-const OPERBOX_PATH = path.join(__dirname, '../data/operbox.json');
-const DEPOT_PATH = path.join(__dirname, '../data/depot.json');
+const DATA_DIRECTORY = process.env.LA_PLUMA_TRAINING_DATA_DIR || path.join(__dirname, '../data');
+const TRAINING_QUEUE_PATH = path.join(DATA_DIRECTORY, 'user-configs/training-queue.json');
+const COMBAT_TASKS_PATH = path.join(DATA_DIRECTORY, 'user-configs/automation-tasks.json');
+const OPERATOR_MATERIALS_PATH = path.join(DATA_DIRECTORY, 'operator-materials.json');
+const OPERBOX_PATH = path.join(DATA_DIRECTORY, 'operbox.json');
+const DEPOT_PATH = path.join(DATA_DIRECTORY, 'depot.json');
+
+// Keep read-modify-write operations together, including the flow synchronization.
+let trainingMutation = Promise.resolve();
+function serializeTrainingMutation(operation) {
+  const current = trainingMutation.catch(() => undefined).then(operation);
+  trainingMutation = current;
+  return current;
+}
+
+function getQueueRevision(queueData) {
+  return createHash('sha256').update(JSON.stringify(queueData.queue.map(item => ({
+    operatorId: item.operatorId,
+    currentElite: item.currentElite ?? 0,
+    targetElite: item.targetElite ?? 2
+  })))).digest('hex');
+}
+
+function trainingError(message, statusCode = 400) {
+  return Object.assign(new Error(message), { statusCode });
+}
+
+async function getFlowTarget(queueData, config = null) {
+  config ??= await readJsonFile(COMBAT_TASKS_PATH, { taskFlow: [] });
+  const tasks = Array.isArray(config.taskFlow) ? config.taskFlow : [];
+  const binding = queueData.trainingFlow;
+  const boundTask = binding?.taskId ? tasks.find(task => task.id === binding.taskId && task.commandId === 'fight') : null;
+  const smartTask = tasks.find(task => task.commandId === 'fight' && task.params?.stages?.some(stage => stage?.smart));
+  const task = binding ? boundTask : smartTask || tasks.find(task => task.commandId === 'fight');
+  return {
+    config,
+    task,
+    taskIndex: tasks.indexOf(task),
+    applied: Boolean(binding || smartTask),
+    flowName: config.name || config.flowName || '自动任务',
+    taskName: task?.name || binding?.taskName || '理智作战'
+  };
+}
+
+function flowSyncStatus(queueData, target) {
+  return {
+    status: target.applied ? (queueData.trainingFlow?.status || 'synced') : 'not_applied',
+    flowName: target.flowName,
+    taskName: target.taskName,
+    mode: queueData.trainingFlow?.mode || 'current',
+    ...(queueData.trainingFlow?.error ? { error: queueData.trainingFlow.error } : {}),
+    ...(queueData.trainingFlow?.syncedRevision ? { syncedRevision: queueData.trainingFlow.syncedRevision } : {})
+  };
+}
 
 const DEFAULT_TRAINING_SETTINGS = {
   autoSwitch: true,
@@ -206,7 +257,7 @@ async function loadOperatorMaterials() {
  */
 async function loadMaterialsDatabase() {
   try {
-    const MATERIALS_DB_PATH = path.join(__dirname, '../data/materials.json');
+    const MATERIALS_DB_PATH = path.join(DATA_DIRECTORY, 'materials.json');
     return await readJsonFile(MATERIALS_DB_PATH, { materials: {}, recipes: {}, stageSchedule: {} });
   } catch (error) {
     logger.error('加载材料数据库失败', { error: error.message });
@@ -219,7 +270,7 @@ async function loadMaterialsDatabase() {
  */
 async function loadMaterialFormulas() {
   try {
-    const FORMULAS_PATH = path.join(__dirname, '../data/material-formulas.json');
+    const FORMULAS_PATH = path.join(DATA_DIRECTORY, 'material-formulas.json');
     return await readJsonFile(FORMULAS_PATH, {});
   } catch (error) {
     logger.error('加载材料合成配方失败', { error: error.message });
@@ -302,7 +353,7 @@ async function saveTrainingQueue(queueData) {
     return true;
   } catch (error) {
     logger.error('保存养成队列失败', { error: error.message });
-    return false;
+    throw error;
   }
 }
 
@@ -526,8 +577,69 @@ async function getTrainingQueue() {
   return {
     queue: enrichedQueue,
     settings: queueData.settings,
-    lastUpdated: queueData.lastUpdated
+    lastUpdated: queueData.lastUpdated,
+    revision: getQueueRevision(queueData),
+    flowSync: await getQueueFlowSync(queueData)
   };
+}
+
+async function getQueueFlowSync(queueData) {
+  try {
+    const target = await getFlowTarget(queueData);
+    if (target.applied && !target.task) {
+      return { ...flowSyncStatus(queueData, target), status: 'failed', error: '已应用的作战任务已被移除，请重新应用计划' };
+    }
+    if (queueData.flowSyncError) {
+      return { ...flowSyncStatus(queueData, target), status: 'failed', error: queueData.flowSyncError };
+    }
+    return flowSyncStatus(queueData, target);
+  } catch (error) {
+    return {
+      status: 'failed',
+      flowName: queueData.trainingFlow?.flowName || '自动任务',
+      taskName: queueData.trainingFlow?.taskName || '理智作战',
+      error: error.message
+    };
+  }
+}
+
+/** Synchronize only a flow the user has already applied training to. */
+async function syncTrainingFlow(queueData = null) {
+  queueData ??= await loadTrainingQueue();
+  const queueRevision = getQueueRevision(queueData);
+  try {
+    const target = await getFlowTarget(queueData);
+    if (!target.applied) {
+      if (queueData.flowSyncError) {
+        delete queueData.flowSyncError;
+        await saveTrainingQueue(queueData);
+      }
+      return { queueUpdated: false, queueRevision, flowSync: flowSyncStatus(queueData, target) };
+    }
+    if (!target.task) throw new Error('已应用的作战任务已被移除，请重新应用计划');
+    const mode = queueData.trainingFlow?.mode || 'current';
+    const plan = queueData.queue.length > 0
+      ? await generateTrainingPlan(mode)
+      : { operators: [], stages: [], queueRevision, mode };
+    const result = await applyPlanToTasks(plan, {}, { target, queueData, automatic: true });
+    return { ...result, queueUpdated: false, queueRevision };
+  } catch (error) {
+    logger.error('队列已保存，但任务流程同步失败', { error: error.message });
+    queueData.flowSyncError = error.message;
+    if (queueData.trainingFlow) queueData.trainingFlow.status = 'failed';
+    // The queue mutation is already committed. Failure to persist the diagnostic
+    // must not turn a recoverable flow failure into an apparent queue failure.
+    await saveTrainingQueue(queueData).catch(saveError => {
+      logger.error('保存流程同步状态失败', { error: saveError.message });
+    });
+    return { queueUpdated: false, queueRevision, flowSync: await getQueueFlowSync(queueData) };
+  }
+}
+
+async function finishQueueMutation(queueData, extra = {}) {
+  await saveTrainingQueue(queueData);
+  const result = await syncTrainingFlow(queueData);
+  return { ...extra, ...result, queueUpdated: true };
 }
 
 /**
@@ -561,7 +673,7 @@ async function addToQueue(operatorId, options = {}) {
   }
   
   // 从 OperBox 获取干员名称
-  const operBoxOp = operBoxData.data?.find(op => op.id === operatorId);
+  const operBoxOp = getOperBoxOperators(operBoxData).find(op => op.id === operatorId);
   const operatorName = operBoxOp?.name || opData.name;
   
   // 检查是否已在队列中
@@ -580,10 +692,13 @@ async function addToQueue(operatorId, options = {}) {
     addedAt: new Date().toISOString()
   };
   
-  queueData.queue.push(queueItem);
-  await saveTrainingQueue(queueData);
-  
-  return queueItem;
+  const position = options.position ?? queueData.queue.length;
+  if (!Number.isInteger(position) || position < 0 || position > queueData.queue.length) {
+    throw trainingError('position 必须是有效的队列位置');
+  }
+  queueData.queue.splice(position, 0, queueItem);
+  queueData.queue.forEach((item, index) => { item.priority = index + 1; });
+  return finishQueueMutation(queueData, queueItem);
 }
 
 /**
@@ -609,64 +724,8 @@ async function removeFromQueue(operatorId) {
     item.priority = idx + 1;
   });
   
-  await saveTrainingQueue(queueData);
-  
   logger.info('干员已从养成队列移除', { operatorName, remainingCount: queueData.queue.length });
-  
-  // 重新生成刷取计划并应用到任务流程
-  try {
-    if (queueData.queue.length > 0) {
-      // 还有其他干员，重新生成计划
-      logger.info('重新生成刷取计划', { remainingOperators: queueData.queue.length });
-      const plan = await generateTrainingPlan('current');
-      await applyPlanToTasks(plan, queueData.settings || {});
-      logger.success('刷取计划已更新');
-    } else {
-      // 队列为空，清除所有智能养成关卡
-      logger.info('养成队列已空，清除所有智能养成关卡');
-      await clearSmartTrainingStages();
-    }
-  } catch (error) {
-    logger.error('更新刷取计划失败', { error: error.message });
-    // 即使更新失败也不影响删除操作
-  }
-  
-  return true;
-}
-
-/**
- * 清除所有智能养成关卡
- */
-async function clearSmartTrainingStages() {
-  const COMBAT_TASKS_PATH = path.join(__dirname, '../data/user-configs/automation-tasks.json');
-  
-  try {
-    // 读取现有配置
-    const config = await readJsonFile(COMBAT_TASKS_PATH, { taskFlow: [], schedule: { enabled: false, times: [] } });
-    
-    // 查找 fight 任务
-    const fightTask = config.taskFlow?.find(t => t.commandId === 'fight');
-    
-    if (fightTask && fightTask.params.stages) {
-      // 过滤掉所有智能养成关卡
-      const existingStages = fightTask.params.stages || [];
-      const nonSmartStages = existingStages.filter(s => !s.smart);
-      
-      logger.info('清除智能关卡', { 
-        originalCount: existingStages.length, 
-        remainingCount: nonSmartStages.length 
-      });
-      
-      fightTask.params.stages = nonSmartStages;
-      
-      // 保存配置
-      await writeJsonFile(COMBAT_TASKS_PATH, config);
-      logger.success('智能关卡已清除');
-    }
-  } catch (error) {
-    logger.error('清除智能关卡失败', { error: error.message });
-    throw error;
-  }
+  return finishQueueMutation(queueData);
 }
 
 /**
@@ -674,7 +733,11 @@ async function clearSmartTrainingStages() {
  */
 async function updateQueueOrder(orderedOperatorIds) {
   const queueData = await loadTrainingQueue();
-  
+  const existingIds = queueData.queue.map(item => item.operatorId);
+  if (!Array.isArray(orderedOperatorIds) || orderedOperatorIds.length !== existingIds.length ||
+      new Set(orderedOperatorIds).size !== existingIds.length || orderedOperatorIds.some(id => !existingIds.includes(id))) {
+    throw trainingError('排序必须包含全部养成干员且不能重复');
+  }
   const newQueue = [];
   orderedOperatorIds.forEach((opId, index) => {
     const item = queueData.queue.find(q => q.operatorId === opId);
@@ -685,9 +748,7 @@ async function updateQueueOrder(orderedOperatorIds) {
   });
   
   queueData.queue = newQueue;
-  await saveTrainingQueue(queueData);
-  
-  return true;
+  return finishQueueMutation(queueData);
 }
 
 /**
@@ -895,6 +956,7 @@ export function estimateMaterialFarming(material, dropData) {
  * 生成养成计划（刷取计划）
  */
 async function generateTrainingPlan(mode = 'current') {
+  if (!['current', 'all'].includes(mode)) throw trainingError('计划模式必须为 current 或 all');
   const queueData = await loadTrainingQueue();
   const depot = await loadDepot();
   const operatorMaterialsData = await loadOperatorMaterials();
@@ -907,6 +969,7 @@ async function generateTrainingPlan(mode = 'current') {
   // 收集需要刷取的材料
   const materialNeeds = {};
   const operators = [];
+  let totalLmdNeeded = 0;
   
   // 根据模式决定处理哪些干员
   const operatorsToProcess = mode === 'current' 
@@ -931,6 +994,7 @@ async function generateTrainingPlan(mode = 'current') {
     };
     
     const materialCalc = calculateOperatorMaterials(operator, depot.items || {});
+    totalLmdNeeded += materialCalc.lmd.needed;
     
     // 只添加还需要材料的干员
     if (!materialCalc.isComplete) {
@@ -952,14 +1016,21 @@ async function generateTrainingPlan(mode = 'current') {
     }
   }
   
+  const missingLmd = Math.max(0, totalLmdNeeded - (depot.items?.['4001'] || 0));
+  const warnings = missingLmd > 0
+    ? [`尚缺 ${missingLmd} 龙门币；当前计划不包含龙门币刷取估算，请另行安排。`]
+    : [];
+
   if (Object.keys(materialNeeds).length === 0) {
     return {
+      queueRevision: getQueueRevision(queueData),
+      mode,
       operators,
       materials: [],
       materialHierarchy: [],
       stages: [],
       totalSanity: 0,
-      warnings: ['所有干员的材料已集齐！']
+      warnings: warnings.length > 0 ? warnings : ['所有干员的材料已集齐！']
     };
   }
   
@@ -990,7 +1061,6 @@ async function generateTrainingPlan(mode = 'current') {
   // 生成刷取计划
   const materialHierarchy = [];
   const stagesMap = new Map();
-  const warnings = [];
   const fallbackMaterials = [];
 
   // 为每个可刷取的材料生成关卡
@@ -1062,6 +1132,7 @@ async function generateTrainingPlan(mode = 'current') {
       stage: stageData.stage,
       stageId: stageData.stageId,
       apCost: stageData.apCost,
+      sanityPerRun: stageData.apCost,
       dataSource: stageData.dataSource,
       materials: stageData.materials,
       totalTimes,
@@ -1077,6 +1148,7 @@ async function generateTrainingPlan(mode = 'current') {
   const focusOperator = operators[0] || null;
   
   return {
+    queueRevision: getQueueRevision(queueData),
     operators,
     materialHierarchy,
     stages,
@@ -1102,8 +1174,11 @@ async function generateTrainingPlan(mode = 'current') {
 /**
  * 应用养成计划到任务流程
  */
-async function applyPlanToTasks(plan, settings = {}) {
-  const queueData = await loadTrainingQueue();
+async function applyPlanToTasks(plan, settings = {}, options = {}) {
+  const queueData = options.queueData || await loadTrainingQueue();
+  if (!plan.queueRevision || plan.queueRevision !== getQueueRevision(queueData)) {
+    throw trainingError('养成队列已变化，请重新生成计划后应用', 409);
+  }
   const effectiveSettings = normalizeTrainingSettings({ ...queueData.settings, ...settings });
   const applicableStages = getApplicableStages(plan);
 
@@ -1114,113 +1189,134 @@ async function applyPlanToTasks(plan, settings = {}) {
     operatorCount: plan.operators?.length || 0
   });
   
-  // 保存到作战任务配置
-  const COMBAT_TASKS_PATH = path.join(__dirname, '../data/user-configs/automation-tasks.json');
-  
   try {
-    // 读取现有配置
-    const config = await readJsonFile(COMBAT_TASKS_PATH, { 
-      taskFlow: [], 
-      schedule: { enabled: false, times: [] } 
-    });
-    
-    logger.debug('成功读取现有配置', { taskCount: config.taskFlow?.length || 0 });
-    
-    // 查找或创建 fight 任务
-    let fightTask = config.taskFlow.find(t => t.commandId === 'fight');
-    
-    if (!fightTask) {
-      fightTask = {
-        id: `fight-${Date.now()}`,
-        name: '理智作战',
-        description: '自动刷关卡消耗理智',
-        commandId: 'fight',
-        enabled: true,
-        params: {
-          stage: '1-7',
-          stages: [],
-          medicine: effectiveSettings.useMedicine || 0,
-          expiringMedicine: 0,
-          stone: effectiveSettings.useStone || 0,
-          series: 0
-        }
-      };
-      config.taskFlow.push(fightTask);
-      logger.info('创建了新的 fight 任务');
-    }
-    
-    // 获取现有的 stages，并分类
-    const existingStages = fightTask.params.stages || [];
-    const pinnedStages = existingStages.filter(s => s.pinned);
-    const normalStages = existingStages.filter(s => !s.pinned && !s.smart);
-    
-    logger.debug('现有关卡分类', { 
-      total: existingStages.length,
-      pinned: pinnedStages.length,
-      normal: normalStages.length
-    });
-    
-    // 构建新的智能养成关卡
-    const smartStages = [];
-    
-    // 获取正在养成的干员名称
-    let trainingOperatorNames = [];
-    if (plan.operators && plan.operators.length > 0) {
-      trainingOperatorNames = plan.operators.map(op => op.name);
-    }
-    
-    logger.debug('养成干员', { operators: trainingOperatorNames });
-    
-    if (applicableStages.length > 0) {
-      applicableStages.forEach(stage => {
+    let appliedResult;
+    await updateJsonFile(COMBAT_TASKS_PATH, async config => {
+
+      logger.debug('成功读取现有配置', { taskCount: config.taskFlow?.length || 0 });
+
+      // 查找或创建 fight 任务
+      config.taskFlow = Array.isArray(config.taskFlow) ? config.taskFlow : [];
+      let fightTask = options.automatic
+        ? (options.target.task.id
+            ? config.taskFlow.find(task => task.id === options.target.task.id && task.commandId === 'fight')
+            : config.taskFlow[options.target.taskIndex])
+        : (await getFlowTarget(queueData, config)).task;
+      if (options.automatic && (!fightTask || fightTask.commandId !== 'fight')) {
+        throw new Error('已应用的作战任务已被移除，请重新应用计划');
+      }
+
+      if (!fightTask) {
+        fightTask = {
+          id: `fight-${Date.now()}`,
+          name: queueData.trainingFlow?.taskName || '理智作战',
+          description: '自动刷关卡消耗理智',
+          commandId: 'fight',
+          enabled: true,
+          params: {
+            stage: '1-7',
+            stages: [],
+            medicine: effectiveSettings.useMedicine || 0,
+            expiringMedicine: 0,
+            stone: effectiveSettings.useStone || 0,
+            series: 0
+          }
+        };
+        config.taskFlow.push(fightTask);
+        logger.info('创建了新的 fight 任务');
+      }
+      fightTask.id ||= `fight-${Date.now()}`;
+      fightTask.params ||= {};
+
+      // 获取现有的 stages，并分类
+      const existingStages = fightTask.params.stages || [];
+      const pinnedStages = existingStages.filter(s => s?.pinned && !s.smart);
+      const normalStages = existingStages.filter(s => !s?.pinned && !s?.smart);
+
+      logger.debug('现有关卡分类', {
+        total: existingStages.length,
+        pinned: pinnedStages.length,
+        normal: normalStages.length
+      });
+
+      // 构建新的智能养成关卡
+      const smartStages = [];
+
+      // 获取正在养成的干员名称
+      let trainingOperatorNames = [];
+      if (plan.operators && plan.operators.length > 0) {
+        trainingOperatorNames = plan.operators.map(op => op.name);
+      }
+
+      logger.debug('养成干员', { operators: trainingOperatorNames });
+
+      if (applicableStages.length > 0) {
+        applicableStages.forEach(stage => {
+          smartStages.push({
+            stage: stage.stage,
+            times: String(stage.totalTimes ?? stage.times ?? 0),
+            smart: true,
+            trainingOperators: trainingOperatorNames
+          });
+        });
+        logger.info('生成智能关卡', { count: smartStages.length });
+      }
+
+      // 添加 fallback 关卡（理智用完后刷什么）
+      if (queueData.queue.length > 0 && effectiveSettings.fallbackStage && effectiveSettings.fallbackStage.trim()) {
         smartStages.push({
-          stage: stage.stage,
-          times: String(stage.totalTimes ?? stage.times ?? 0),
+          stage: effectiveSettings.fallbackStage.trim(),
+          times: (effectiveSettings.fallbackTimes || 999).toString(),
           smart: true,
           trainingOperators: trainingOperatorNames
         });
+        logger.debug('添加 fallback 关卡', { stage: effectiveSettings.fallbackStage });
+      }
+
+      // 重新组合关卡顺序：置顶 -> 智能 -> 普通
+      const newStages = [...pinnedStages, ...smartStages, ...normalStages];
+
+      logger.info('关卡重组完成', {
+        totalStages: newStages.length,
+        smartStages: smartStages.length
       });
-      logger.info('生成智能关卡', { count: smartStages.length });
-    }
-    
-    // 添加 fallback 关卡（理智用完后刷什么）
-    if (effectiveSettings.fallbackStage && effectiveSettings.fallbackStage.trim()) {
-      smartStages.push({
-        stage: effectiveSettings.fallbackStage.trim(),
-        times: (effectiveSettings.fallbackTimes || 999).toString(),
-        smart: true,
-        trainingOperators: trainingOperatorNames
-      });
-      logger.debug('添加 fallback 关卡', { stage: effectiveSettings.fallbackStage });
-    }
-    
-    // 重新组合关卡顺序：置顶 -> 智能 -> 普通
-    const newStages = [...pinnedStages, ...smartStages, ...normalStages];
-    
-    logger.info('关卡重组完成', { 
-      totalStages: newStages.length,
-      smartStages: smartStages.length
-    });
-    
-    // 更新任务参数
-    fightTask.params = {
-      ...fightTask.params,
-      stages: newStages,
-      medicine: effectiveSettings.useMedicine || 0,
-      expiringMedicine: 0,
-      stone: effectiveSettings.useStone || 0,
-      series: fightTask.params.series || 0
+
+      // 更新任务参数
+      fightTask.params = {
+        ...fightTask.params,
+        stages: newStages,
+        medicine: effectiveSettings.useMedicine || 0,
+        expiringMedicine: 0,
+        stone: effectiveSettings.useStone || 0,
+        series: fightTask.params.series || 0
+      };
+
+      appliedResult = { fightTask, smartStages, newStages, flowName: config.name || config.flowName || '自动任务' };
+      return config;
+    }, { taskFlow: [], schedule: { enabled: false, times: [] } });
+
+    const { fightTask, smartStages, newStages, flowName } = appliedResult;
+    queueData.settings = effectiveSettings;
+    queueData.trainingFlow = {
+      taskId: fightTask.id,
+      taskName: fightTask.name || '理智作战',
+      flowName,
+      mode: plan.mode === 'all' ? 'all' : 'current',
+      status: 'synced',
+      syncedRevision: getQueueRevision(queueData)
     };
-    
-    // 保存配置
-    await writeJsonFile(COMBAT_TASKS_PATH, config);
+    delete queueData.flowSyncError;
+    await saveTrainingQueue(queueData);
     logger.success('养成计划应用成功');
     
     return { 
       success: true, 
       stageCount: smartStages.length,
       totalStages: newStages.length,
-      hasFallback: !!effectiveSettings.fallbackStage
+      hasFallback: queueData.queue.length > 0 && !!effectiveSettings.fallbackStage,
+      flowName: queueData.trainingFlow.flowName,
+      taskName: queueData.trainingFlow.taskName,
+      flowSync: flowSyncStatus(queueData, { ...queueData.trainingFlow, applied: true })
     };
   } catch (error) {
     logger.error('应用任务流程失败', { error: error.message });
@@ -1330,12 +1426,13 @@ async function fetchOperatorMaterials() {
 export default {
   getOperatorList,
   getTrainingQueue,
-  addToQueue,
-  removeFromQueue,
-  updateQueueOrder,
-  updateSettings,
+  addToQueue: (...args) => serializeTrainingMutation(() => addToQueue(...args)),
+  removeFromQueue: (...args) => serializeTrainingMutation(() => removeFromQueue(...args)),
+  updateQueueOrder: (...args) => serializeTrainingMutation(() => updateQueueOrder(...args)),
+  updateSettings: (...args) => serializeTrainingMutation(() => updateSettings(...args)),
+  syncTrainingFlow: () => serializeTrainingMutation(() => syncTrainingFlow()),
   generateTrainingPlan,
-  applyPlanToTasks,
+  applyPlanToTasks: (...args) => serializeTrainingMutation(() => applyPlanToTasks(...args)),
   calculateOperatorMaterials,
   fetchOperatorMaterials
 };
