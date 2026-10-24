@@ -4,7 +4,7 @@ import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
 
 function DashboardSummarySkeleton({ variant }: { variant: 'training' | 'drops' }) {
   return (
-    <Card smoothCorners className={`dashboard-summary-card dashboard-summary-skeleton is-${variant} !p-0`}>
+    <Card smoothCorners className={`dashboard-summary-card dashboard-summary-skeleton is-${variant} p-0!`}>
       <div className="dashboard-summary-header">
         <div className="dashboard-summary-heading">
           <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />
@@ -77,7 +77,7 @@ export function DashboardSkeleton() {
         <div ref={flowGridRef} className="dashboard-flow-layout" style={flowGridStyle}>
           <div ref={flowCardRef} className="min-w-0">
             <div className="dashboard-flow-glow-shell status-border-beam">
-              <Card smoothCorners className="dashboard-flow-card dashboard-flow-skeleton !p-0">
+              <Card smoothCorners className="dashboard-flow-card dashboard-flow-skeleton p-0!">
                 <div className="dashboard-flow-header">
                   <div className="flex items-center gap-3">
                     <Skeleton variant="rect" className="h-8 w-8 rounded-lg" />

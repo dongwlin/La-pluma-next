@@ -15,14 +15,14 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ### 前端 UI 与响应式壳层
 
-前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 `shared/ui` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
+前端使用 React 19、Tailwind CSS v4（`@tailwindcss/vite`，`@config` 兼容挂载压缩映射，S3 迁 `@theme`）和 Framer Motion。`Layout` 与 `shared/ui` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
 
 桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、`shared/ui` 通用组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
 
 ## 技术栈
 
 - **前端框架**: React 19 + TypeScript + Vite
-- **UI 框架**: Tailwind CSS + Framer Motion + 项目语义组件与 `src/styles/ios-theme.css`
+- **UI 框架**: Tailwind CSS v4（`@tailwindcss/vite`）+ Framer Motion + 项目语义组件与 `src/styles/ios-theme.css`
 - **图标**: Lucide React
 - **状态管理**: Zustand
 - **后端**: Node.js + Express
@@ -47,7 +47,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 ```
 La-pluma-next/
 ├── DESIGN.md                  # UI 设计规范（开发者与 Agent 的唯一来源）
-├── client/                    # 前端 (React + TypeScript + Vite + Tailwind CSS + Framer Motion)
+├── client/                    # 前端 (React + TypeScript + Vite + Tailwind CSS v4 + Framer Motion)
 │   ├── src/
 │   │   ├── main.tsx           # 入口：import './styles' 并挂载 @/app/App
 │   │   ├── styles/            # 启动族全局样式资产（不参与三层分层）
@@ -80,6 +80,7 @@ La-pluma-next/
 │   │       │                  # parseJsonResponse、getErrorMessage 与响应类型
 │   │       ├── hooks/         # useFluidTabIndicator、useOnlineStatus、usePageVisible
 │   │       └── utils/         # executionSummary、taskStatus
+│   ├── tailwind.config.js     # 压缩映射；S2 经 @config 挂载，S3 迁 @theme 后删除
 │   └── public/                # 静态资源（Logo、图标）
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)

@@ -59,7 +59,7 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
       className={`floating-status-indicator inline-flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium sm:max-w-sm sm:px-4 sm:py-2 sm:text-sm ${config.className} ${className}`}
     >
       <motion.div
-        className="h-2 w-2 flex-shrink-0 rounded-full"
+        className="h-2 w-2 shrink-0 rounded-full"
         style={{ backgroundColor: config.dotColor }}
         animate={shouldReduceMotion ? { boxShadow: 'none' } : {
           boxShadow: [

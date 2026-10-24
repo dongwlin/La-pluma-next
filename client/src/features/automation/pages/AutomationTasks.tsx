@@ -2779,7 +2779,7 @@ export default function AutomationTasks() {
                                       onChange={(e) => updateTaskParam(index, field.key, e.target.value)}
                                       placeholder={field.placeholder}
                                       disabled={isRunning || !task.enabled}
-                                      className="flex-1 px-3 py-2 bg-transparent text-sm text-gray-900 dark:text-gray-200 focus:outline-none min-w-0"
+                                      className="flex-1 px-3 py-2 bg-transparent text-sm text-gray-900 dark:text-gray-200 focus:outline-hidden min-w-0"
                                     />
                                     <div className="w-px h-6 bg-white/20"></div>
                                     <input
@@ -2790,7 +2790,7 @@ export default function AutomationTasks() {
                                       onChange={(e) => updateTaskParam(index, 'times', e.target.value)}
                                       placeholder=""
                                       disabled={isRunning || !task.enabled}
-                                      className="w-16 px-2 py-2 bg-transparent text-sm text-gray-900 dark:text-gray-200 text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      className="w-16 px-2 py-2 bg-transparent text-sm text-gray-900 dark:text-gray-200 text-center focus:outline-hidden [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                       min="0"
                                     />
                                     <div className="hidden flex-col self-stretch overflow-hidden border-l border-white/10 min-[900px]:flex">
@@ -3265,7 +3265,7 @@ export default function AutomationTasks() {
                                         max="540"
                                         step="10"
                                         disabled={isRunning || !task.enabled}
-                                        className="min-w-0 flex-1 bg-transparent text-right text-sm text-gray-900 outline-none dark:text-gray-100"
+                                        className="min-w-0 flex-1 bg-transparent text-right text-sm text-gray-900 outline-hidden dark:text-gray-100"
                                       />
                                       <span className="shrink-0 text-xs text-gray-400">分钟</span>
                                     </label>

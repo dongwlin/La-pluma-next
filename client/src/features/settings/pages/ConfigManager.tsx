@@ -710,7 +710,7 @@ export default function ConfigManager() {
 
       <div className="config-workspace-grid grid min-w-0 gap-[var(--app-space-section)] xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
         <div className="config-workspace-primary app-stack-section min-w-0">
-      <Card smoothCorners className="config-editor-card !p-0">
+      <Card smoothCorners className="config-editor-card p-0!">
         <CardHeader
           title={configSections.find(section => section.id === configType)?.name || '配置'}
           actions={configType === 'connection' ? (
@@ -848,7 +848,7 @@ export default function ConfigManager() {
                           type="button"
                           disabled={!selectable || testingConnection}
                           onClick={() => void handleUseDiscoveredDevice(device)}
-                          className="flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--app-accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                          className="flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--app-accent-soft)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-medium text-primary">{device.address}</span>
@@ -929,7 +929,7 @@ export default function ConfigManager() {
         </CardContent>
       </Card>
 
-      <Card smoothCorners className="config-directory-card !p-0">
+      <Card smoothCorners className="config-directory-card p-0!">
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
@@ -976,7 +976,7 @@ export default function ConfigManager() {
         </div>
 
         <div className="config-workspace-secondary app-stack-section min-w-0">
-      <Card smoothCorners className="config-update-card !p-0">
+      <Card smoothCorners className="config-update-card p-0!">
         <CardHeader title="组件更新" />
         <CardContent className="app-stack-card">
           <section className="surface-soft rounded-[var(--app-radius-lg)] p-[var(--app-space-panel)]">
@@ -1159,7 +1159,7 @@ export default function ConfigManager() {
                     disabled={updateBusy}
                     variant="ghost"
                     size="sm"
-                    className="!min-h-11 lg:!min-h-0"
+                    className="min-h-11! lg:min-h-0!"
                     icon={<RefreshCw size={16} aria-hidden="true" />}
                   >
                     重试资源同步

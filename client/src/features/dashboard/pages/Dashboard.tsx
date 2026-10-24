@@ -530,7 +530,7 @@ export default function Dashboard() {
               className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || activityPreflightLoading || flowIsRunning ? 'is-active' : ''}`}
               aria-busy={quickStartLoading || activityPreflightLoading || flowIsRunning}
             >
-              <Card smoothCorners className="dashboard-flow-card !p-0">
+              <Card smoothCorners className="dashboard-flow-card p-0!">
               <div className="dashboard-flow-header">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="dashboard-flow-mark" aria-hidden="true">
@@ -696,7 +696,7 @@ export default function Dashboard() {
         )}
 
         <div className="dashboard-summary-grid">
-          <Card smoothCorners className="dashboard-summary-card is-training !p-0">
+          <Card smoothCorners className="dashboard-summary-card is-training p-0!">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
                 <span className="dashboard-summary-icon" aria-hidden="true">
@@ -746,7 +746,7 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card smoothCorners className="dashboard-summary-card is-drops !p-0">
+          <Card smoothCorners className="dashboard-summary-card is-drops p-0!">
             <div className="dashboard-summary-header">
               <div className="dashboard-summary-heading">
                 <span className="dashboard-summary-icon" aria-hidden="true">

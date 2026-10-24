@@ -17,7 +17,7 @@ interface DropRecordsErrorProps {
 
 function DropRecordsError({ description, onRetry }: DropRecordsErrorProps) {
   return (
-    <Card smoothCorners className="drop-records-panel !p-0">
+    <Card smoothCorners className="drop-records-panel p-0!">
       <div className="drop-records-panel-content">
         <div className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
@@ -51,7 +51,7 @@ export default function DropRecords({
 
   if (isLoading && !dropStatistics && !error) {
     return (
-      <Card smoothCorners className="drop-records-panel !p-0">
+      <Card smoothCorners className="drop-records-panel p-0!">
         <div className="drop-records-panel-content py-12">
           <Loading text="正在读取掉落记录..." />
         </div>
@@ -65,7 +65,7 @@ export default function DropRecords({
 
   if (!dropStatistics) {
     return (
-      <Card smoothCorners className="drop-records-panel !p-0">
+      <Card smoothCorners className="drop-records-panel p-0!">
         <div className="drop-records-panel-content">
           <EmptyState
             className="py-12"
@@ -179,7 +179,7 @@ export default function DropRecords({
 
       {/* 材料掉落统计 */}
       <div className="min-w-0">
-        <Card smoothCorners className="drop-records-panel !p-0">
+        <Card smoothCorners className="drop-records-panel p-0!">
           <div className="drop-records-panel-content">
         <h3 className="mb-4 flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold text-primary">
           <span className="shrink-0"><Icons.Package /></span>
@@ -206,7 +206,7 @@ export default function DropRecords({
             >
               {/* 物品图标 */}
               {itemData.iconId && (
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
                   {failedItemImages[itemName] ? (
                     <span role="img" aria-label={`${itemName}图标不可用`}>
                       <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
@@ -249,7 +249,7 @@ export default function DropRecords({
 
       {/* 关卡统计 */}
       <div className="min-w-0">
-        <Card smoothCorners className="drop-records-panel !p-0">
+        <Card smoothCorners className="drop-records-panel p-0!">
           <div className="drop-records-panel-content">
         <h3 className="mb-4 flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold text-primary">
           <span className="shrink-0"><Icons.Target /></span>

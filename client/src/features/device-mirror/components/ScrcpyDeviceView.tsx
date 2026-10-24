@@ -74,7 +74,7 @@ function DeviceNavigationButtons({
       title={!automationAvailable ? automationUnavailableMessage : label}
       aria-label={label}
       className={immersive
-        ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
+        ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
         : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'automation-preview-glass-button' : ''}`}
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -398,7 +398,7 @@ export default function ScrcpyDeviceView({
                 aria-label={previewStatusLabel}
                 title={previewStatusLabel}
               />
-              <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white">{isCompact ? '模拟器画面' : '模拟器实时预览'}</span>
+              <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white!">{isCompact ? '模拟器画面' : '模拟器实时预览'}</span>
               {!isCompact && (
                 <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                   {previewStatusLabel}
@@ -438,7 +438,7 @@ export default function ScrcpyDeviceView({
         </div>}
 
         <div
-          className={`scrcpy-video-frame status-border-beam relative aspect-video overflow-hidden flex items-center justify-center shadow-sm ${
+          className={`scrcpy-video-frame status-border-beam relative aspect-video overflow-hidden flex items-center justify-center shadow-xs ${
             previewBusy ? 'is-active ' : ''
           }${
             webrtc.status === 'connected'
@@ -673,7 +673,7 @@ export default function ScrcpyDeviceView({
                       }}
                       aria-pressed={customFps === fps}
                       aria-label={`${fps} FPS`}
-                      className={`${customFps === fps ? 'is-active ' : ''}!min-h-11`}
+                      className={`${customFps === fps ? 'is-active ' : ''}min-h-11!`}
                     >
                       {fps}
                     </button>
@@ -753,7 +753,7 @@ export default function ScrcpyDeviceView({
         aria-modal="true"
         aria-label="模拟器沉浸预览"
         tabIndex={-1}
-        className="fixed inset-0 z-[9999] bg-black flex flex-col landscape:flex-row items-center justify-center gap-2 outline-none"
+        className="fixed inset-0 z-[9999] bg-black flex flex-col landscape:flex-row items-center justify-center gap-2 outline-hidden"
         style={{
           paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
           paddingRight: 'max(0.5rem, env(safe-area-inset-right))',
@@ -795,7 +795,7 @@ export default function ScrcpyDeviceView({
             onClick={exitImmersive}
             title="退出全屏"
             aria-label="退出全屏"
-            className="group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:opacity-35 disabled:cursor-not-allowed"
+            className="group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:opacity-35 disabled:cursor-not-allowed"
           >
             <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>

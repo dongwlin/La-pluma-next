@@ -1621,7 +1621,7 @@ export default function CombatTasks() {
               <Card
                 key={task.id}
                 smoothCorners
-                className="combat-task-card !p-0"
+                className="combat-task-card p-0!"
               >
                 <div className="combat-task-heading flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-center gap-3">
@@ -2086,6 +2086,7 @@ export default function CombatTasks() {
                       </h5>
                       <div className="flex space-x-2">
                         <label htmlFor="combat-stage-search" className="sr-only">搜索关卡作业</label>
+                        {/* v4 的 space-x 只给非末子元素加 end margin；补回 sr-only label 参与计数时的 v3 左间距 */}
                         <input
                           id="combat-stage-search"
                           type="text"
@@ -2098,7 +2099,7 @@ export default function CombatTasks() {
                             e.preventDefault()
                             void handleSearchCopilot()
                           }}
-                          className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
+                          className="app-input app-native-control min-h-11 min-w-0 flex-1 ml-2 control-surface"
                         />
                         <Button
                           onClick={handleSearchCopilot}
@@ -2267,7 +2268,7 @@ export default function CombatTasks() {
                 <Card
                   key={task.id}
                   smoothCorners
-                  className="combat-task-card !p-0"
+                  className="combat-task-card p-0!"
                 >
                   <div className="combat-task-heading flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
@@ -2340,7 +2341,7 @@ export default function CombatTasks() {
                           value={taskInputs[task.id] || ''}
                           onChange={(e) => handleInputChange(task.id, e.target.value)}
                           rows={isSss ? 4 : 5}
-                          className="app-native-control w-full resize-none rounded-lg px-4 py-3 font-mono text-sm font-medium text-primary control-surface focus:outline-none focus:ring-2 focus:ring-[var(--app-accent-soft)]"
+                          className="app-native-control w-full resize-none rounded-lg px-4 py-3 font-mono text-sm font-medium text-primary control-surface focus:outline-hidden focus:ring-2 focus:ring-[var(--app-accent-soft)]"
                         />
                         {isSss && taskUris.length > 1 && (
                           <div className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-500 dark:text-rose-300">
@@ -2414,7 +2415,7 @@ export default function CombatTasks() {
                                       onClick={() => {
                                         setTaskInputs({ ...taskInputs, paradoxcopilot: copilot.uri })
                                       }}
-                                      className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--app-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)]"
+                                      className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--app-surface-muted)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)]"
                                     >
                                       <div className="flex min-w-0 items-center justify-between gap-2">
                                         <span className="truncate font-mono brand-text">{copilot.uri}</span>

@@ -6,7 +6,7 @@
 
 ## 主要技术点
 
-- **前端**: React Hooks 与原生语义组件实现页面壳层和响应式 chrome，Tailwind CSS/语义 token 负责业务布局，Framer Motion 负责物理动效，Zustand 管理跨页面状态
+- **前端**: React Hooks 与原生语义组件实现页面壳层和响应式 chrome，Tailwind CSS v4（`@tailwindcss/vite`）/语义 token 负责业务布局，Framer Motion 负责物理动效，Zustand 管理跨页面状态
 - **API**: 前端通过 `client/src/shared/api/` 的传输层底座（`API_BASE_URL`、`fetchWithAuth`、`parseJsonResponse`、`getErrorMessage`）访问 `/api/agent/*`；业务端点按语义归各 `features/<domain>/api/`，跨域共用的命令执行与用户配置端点在 `features/task-execution/`、`features/user-config/` 两个微域
 - **后端**: `server/server.js` 挂载 Agent API，并用 Socket.IO 推送运行状态
 - **MAA 集成**: 通过 Node.js 子进程调用 `maa` CLI 命令
@@ -15,7 +15,7 @@
 
 前端 UI 的具体规则见根目录 [设计规范](../DESIGN.md)，组件 API 见 [通用组件库](component-library.md)。
 
-## 样式治理（S1 护栏）
+## 样式治理
 
 ### 全局样式冻结
 
@@ -46,6 +46,19 @@ pnpm visual          # 比对模式：与入库基线比对，diff 非零即失�
 pnpm visual:update   # 有意的视觉改动后重新生成基线截图
 pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
 ```
+
+### Tailwind v4（S2 升级）
+
+样式轨道 S2 把 Tailwind CSS 从 v3 升级到 v4，构建链路与入口约定如下：
+
+- **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `client/postcss.config.js` 已退役。PostCSS 链路不再参与前端构建。
+- **入口**：`client/src/styles/index.css` 首行必须是 `@import "tailwindcss";`（Tailwind 只解析字符串形式；stylelint 的 `import-notation` 在该行就地豁免）。随后用 `@config "../../tailwind.config.js";` 兼容挂载现有 JS 配置，并用 `@custom-variant dark (&:is(.dark *));` 保持 class 深色模式。S3 会把配置迁入 `@theme` 并删除 `tailwind.config.js`。
+- **压缩映射保持不变**：`@config` 兼容层完整保留 `rounded-*`、`gap-*`、`space-*` 映射，实测 `gap-3/4/5/6`、`space-4/5/6`、`rounded`–`rounded-3xl` 均仍指向 `--app-radius-*` / `--app-space-*`；不要按通用 v4 指南改写这些类名（例如 `rounded-sm→rounded-xs`）。
+- **v3 视觉基线**：升级按断代点迁移类名（`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`!` 前缀改后缀、`flex-shrink-0→shrink-0`）。注意 **`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**——那会改变阴影。`ring`、裸 `border`/`divide` 已全量审计并显式给色；`space-x/y` 选择器语义改为 `:not(:last-child)` 的 end margin，已逐元素审计，并对 combat 搜索行中 `sr-only` label 参与 `space-x` 计数的场景显式补回 v3 左间距，32 张基线比对通过。
+- **cascade layer**：v4 的 utilities 位于 layer 内，未分层页面 CSS 会压过 `dark:*` 等 utilities；升级中对依赖该覆盖的深色预览标题改用组件侧 `dark:text-white!` 保留 v3 颜色，S3 统一分层时再评估。
+- **默认色板**：v4 默认色板以 OKLCH 重新校准（灰度 ΔE < 1.5，`emerald-500` 约 ΔE 4.3）；语义 token 不受影响，精确对齐 v3 色值留待 S3。
+- **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor。`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
+- **浏览器下限**：Tailwind v4 依赖原生 cascade layers、`color-mix()`、OKLCH 与 `@property`，前端最低支持 **Safari 16.4+ / Chrome 111+ / Firefox 128+**。低于该下限的浏览器不再保证样式正确。
 
 ## 常用检查
 

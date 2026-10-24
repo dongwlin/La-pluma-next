@@ -139,7 +139,7 @@ describe('ConfigManager layout surfaces', () => {
     const cards = page?.querySelectorAll('.app-card[data-smooth-corners="true"]') ?? []
     expect(cards).toHaveLength(3)
     cards.forEach((card) => {
-      expect(card.classList.contains('!p-0')).toBe(true)
+      expect(card.classList.contains('p-0!')).toBe(true)
       expect(card.querySelector(':scope > .app-card-smooth-surface')).not.toBeNull()
     })
     const workspace = page?.querySelector(':scope > .config-workspace-grid')
@@ -397,9 +397,9 @@ describe('ConfigManager layout surfaces', () => {
 
     const retryButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.trim() === '重试资源同步')
-    expect(retryButton?.classList.contains('!min-h-11')).toBe(true)
-    expect(retryButton?.classList.contains('lg:!min-h-0')).toBe(true)
-    expect(retryButton?.classList.contains('!min-h-0')).toBe(false)
+    expect(retryButton?.classList.contains('min-h-11!')).toBe(true)
+    expect(retryButton?.classList.contains('lg:min-h-0!')).toBe(true)
+    expect(retryButton?.classList.contains('min-h-0!')).toBe(false)
   })
 
   it('does not report success when the scheduler rejects an enabled setting', async () => {

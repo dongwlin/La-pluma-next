@@ -142,7 +142,7 @@ export default function ThemeToggle() {
           ref={mobileTriggerRef}
           type="button"
           onClick={() => setMobileMenuOpen(open => !open)}
-          className={`la-pluma-theme-trigger group text-secondary transition-colors hover:bg-[var(--app-surface-muted)] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)] ${mobileMenuOpen ? 'bg-[var(--app-surface-muted)]' : ''}`}
+          className={`la-pluma-theme-trigger group text-secondary transition-colors hover:bg-[var(--app-surface-muted)] hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--app-accent)] ${mobileMenuOpen ? 'bg-[var(--app-surface-muted)]' : ''}`}
           whileTap={shouldReduceMotion ? {} : { scale: 0.96 }}
           title={`主题：${currentTheme.label}`}
           aria-label={`切换界面主题，当前${currentTheme.label}`}
@@ -184,7 +184,7 @@ export default function ThemeToggle() {
                     role="menuitemradio"
                     aria-checked={selected}
                     onClick={() => handleThemeChange(option.value, true)}
-                    className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)] ${
+                    className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-sm transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--app-accent)] ${
                       selected ? 'brand-action-subtle' : 'text-secondary hover:bg-[var(--app-surface-muted)] hover:text-primary'
                     }`}
                   >

@@ -247,7 +247,7 @@ export default function NotificationSettings() {
       {loadError && (
         <div className="automation-notification-notice is-error flex min-h-11 flex-wrap items-center justify-between gap-2" role="alert">
           <span>{loadError}</span>
-          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]" onClick={() => void loadConfig(true)} disabled={loading}>
+          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]" onClick={() => void loadConfig(true)} disabled={loading}>
             重新加载
           </button>
         </div>

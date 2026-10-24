@@ -156,14 +156,14 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 - `client/src/styles/index.css`：基础颜色、圆角、间距、字号、语义类和通用控件样式。
 - `client/src/styles/ios-theme.css`：实际生效的 iOS 26 材质、系统色、chrome、安全区和品牌适配；它覆盖同名基础 token。
-- `client/tailwind.config.js`：把 `rounded-*`、`gap-*`、`space-*` 映射到统一 token，不新增平行尺度。
+- `client/tailwind.config.js`：把 `rounded-*`、`gap-*`、`space-*` 映射到统一 token，不新增平行尺度；S2 升级 v4 后经 `@config` 兼容挂载，映射继续生效，S3 迁入 `@theme` 后删除。
 - `client/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
 
 本文件描述规则；token 的具体数值以 `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 为准，调整 token 时同步更新本文件的表格与说明。
 
 ## 配置即规范（Tailwind 压缩映射）
 
-`client/tailwind.config.js` 不是透传 Tailwind 默认尺度，而是把 `rounded-*`、`gap-*`、`space-*` 压缩映射到 `--app-radius-*` / `--app-space-*` 语义 token。这些映射是**有意约束**，不是待清理的历史遗留：页面代码可以继续用 Tailwind 类名书写，但实际生效的档位由下面的映射表唯一决定；S3 把配置迁入 `@theme` 后，语义保持不变。
+`client/tailwind.config.js` 不是透传 Tailwind 默认尺度，而是把 `rounded-*`、`gap-*`、`space-*` 压缩映射到 `--app-radius-*` / `--app-space-*` 语义 token。这些映射是**有意约束**，不是待清理的历史遗留：页面代码可以继续用 Tailwind 类名书写，但实际生效的档位由下面的映射表唯一决定；S3 把配置迁入 `@theme` 后，语义保持不变。Tailwind v4 升级（S2）通过 `@config` 挂载同一份 JS 配置，`rounded-*`、`gap-*`、`space-*` 的类名与生效值在 v4 下保持不变——不要按通用 v4 迁移指南改写这些类名。
 
 ### 圆角映射（rounded-*）
 

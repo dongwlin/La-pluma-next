@@ -85,14 +85,14 @@ const filterButtonClass = (isActive: boolean) =>
 const menuSurfaceClass = 'data-statistics-menu-surface fixed z-[2000] overflow-y-auto overscroll-contain rounded-xl py-1 surface-panel'
 
 const menuOptionClass = (isActive: boolean) =>
-  `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)] ${
+  `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)] ${
     isActive
       ? 'brand-chip font-medium'
       : 'text-secondary hover:bg-[var(--app-surface-muted)] hover:text-primary'
   }`
 
 const taskPanelClass = (isActive: boolean) =>
-  `data-statistics-task-card !p-0${isActive ? ' is-active' : ''}`
+  `data-statistics-task-card p-0!${isActive ? ' is-active' : ''}`
 
 const statCardClass = 'data-statistics-kpi'
 const chipClass = 'control-surface rounded-full px-2 py-0.5 text-xs whitespace-nowrap'
@@ -1048,7 +1048,7 @@ export default function DataStatistics() {
                 </div>
               </div>
 
-              <div className="data-statistics-task-actions flex flex-shrink-0 items-center gap-2">
+              <div className="data-statistics-task-actions flex shrink-0 items-center gap-2">
                 <Button
                   onClick={handleFetchMaterials}
                   disabled={isRunning}
@@ -1388,7 +1388,7 @@ export default function DataStatistics() {
                 </div>
               </div>
 
-              <div className="data-statistics-task-actions flex-shrink-0">
+              <div className="data-statistics-task-actions shrink-0">
                 <Button
                   onClick={executeDepot}
                   disabled={isRunning}
@@ -1504,7 +1504,7 @@ export default function DataStatistics() {
                           className="data-statistics-depot-item flex min-w-0 items-center gap-3 p-3"
                         >
                           {/* 物品图标 */}
-                          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
                             {failedDepotImages[imageKey] ? (
                               <span role="img" aria-label={`${item.name}图标不可用`}>
                                 <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />

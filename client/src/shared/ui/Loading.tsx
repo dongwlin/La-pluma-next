@@ -275,7 +275,7 @@ function CombatSkeleton() {
       <div className="task-monitor-main">
         <ModeControlSkeleton variant="combat" />
         <div className="app-stack-section">
-          <Card smoothCorners className="combat-task-card combat-task-skeleton !p-0">
+          <Card smoothCorners className="combat-task-card combat-task-skeleton p-0!">
             <div className="combat-task-heading flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <Skeleton variant="rect" className="h-10 w-10 shrink-0 rounded-xl" />
@@ -449,7 +449,7 @@ function TrainingSkeleton() {
             </div>
           </div>
         </SmoothPanel>
-        <Card smoothCorners className="training-queue-card !p-0">
+        <Card smoothCorners className="training-queue-card p-0!">
           <CardHeaderSkeleton actionWidth="w-16" />
           <div className="divide-y divide-[var(--app-border)] px-4">
             {[1, 2, 3].map(item => (
@@ -494,7 +494,7 @@ function LogsSkeleton() {
           ))}
         </div>
       </div>
-      <Card smoothCorners className="log-card log-toolbar-card !p-0">
+      <Card smoothCorners className="log-card log-toolbar-card p-0!">
         <div className="app-card-content log-toolbar">
           <div className="log-toolbar-controls">
             {[1, 2].map(item => (
@@ -512,7 +512,7 @@ function LogsSkeleton() {
           </div>
         </div>
       </Card>
-      <Card smoothCorners className="log-card !p-0">
+      <Card smoothCorners className="log-card p-0!">
         <CardHeaderSkeleton actionWidth="w-14" />
         <div className="app-card-content log-console-content">
           <div className="log-console">
@@ -528,7 +528,7 @@ function LogsSkeleton() {
           </div>
         </div>
       </Card>
-      <Card smoothCorners className="log-card log-history-card !p-0">
+      <Card smoothCorners className="log-card log-history-card p-0!">
         <CardHeaderSkeleton actionWidth="w-28" />
         <div className="app-card-content log-history-content">
           <div className="log-history-list">
@@ -569,7 +569,7 @@ function StatisticsSkeleton() {
         </div>
       </div>
       <div className="min-w-0 app-stack-section">
-        <Card smoothCorners className="data-statistics-task-card !p-0">
+        <Card smoothCorners className="data-statistics-task-card p-0!">
           <div className="data-statistics-task-content">
             <div className="data-statistics-task-header mb-4 flex items-start gap-3">
               <div className="min-w-0 flex-1 space-y-2">
@@ -621,7 +621,7 @@ function ConfigSkeleton() {
       </div>
       <div className="config-workspace-grid grid min-w-0 gap-[var(--app-space-section)] xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
         <div className="config-workspace-primary app-stack-section min-w-0">
-      <Card smoothCorners className="config-editor-card !p-0">
+      <Card smoothCorners className="config-editor-card p-0!">
         <CardHeaderSkeleton actionWidth="w-36" />
         <div className="app-card-content app-stack-card">
           <div className="grid gap-[var(--app-space-card)] md:grid-cols-2">
@@ -662,7 +662,7 @@ function ConfigSkeleton() {
           </div>
         </div>
       </Card>
-      <Card smoothCorners className="config-directory-card !p-0">
+      <Card smoothCorners className="config-directory-card p-0!">
         <div className="app-card-content">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -678,7 +678,7 @@ function ConfigSkeleton() {
       </Card>
         </div>
         <div className="config-workspace-secondary app-stack-section min-w-0">
-      <Card smoothCorners className="config-update-card !p-0">
+      <Card smoothCorners className="config-update-card p-0!">
         <CardHeaderSkeleton actionWidth={null} />
         <div className="app-card-content app-stack-card">
           <section className="rounded-xl p-4 surface-soft">

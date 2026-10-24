@@ -610,7 +610,7 @@ export default function LogViewer() {
           </div>
         </div>
 
-        <Card className="log-card log-toolbar-card !p-0" smoothCorners>
+        <Card className="log-card log-toolbar-card p-0!" smoothCorners>
           <CardContent className="log-toolbar">
             <div className="log-toolbar-controls">
               <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3 ${viewingHistory ? 'opacity-50' : ''}`}>
@@ -679,7 +679,7 @@ export default function LogViewer() {
           </CardContent>
         </Card>
 
-        <Card className="log-card min-w-0 !p-0" smoothCorners>
+        <Card className="log-card min-w-0 p-0!" smoothCorners>
           <CardHeader
             title={viewingHistory ? '历史日志' : '实时日志'}
             actions={
@@ -728,7 +728,7 @@ export default function LogViewer() {
               >
                 {activeError && (
                   <div
-                    className={`log-console-state is-error flex-wrap ${logs.length > 0 ? 'status-danger m-3 !min-h-0 !justify-start !p-3 text-left font-sans text-sm' : ''}`}
+                    className={`log-console-state is-error flex-wrap ${logs.length > 0 ? 'status-danger m-3 min-h-0! justify-start! p-3! text-left font-sans text-sm' : ''}`}
                     role="alert"
                   >
                     <AlertCircle className="h-5 w-5" aria-hidden="true" />
@@ -778,7 +778,7 @@ export default function LogViewer() {
           </CardContent>
         </Card>
 
-        <Card className="log-card log-history-card min-w-0 !p-0" smoothCorners>
+        <Card className="log-card log-history-card min-w-0 p-0!" smoothCorners>
           <CardHeader
             title="历史日志文件"
             actions={

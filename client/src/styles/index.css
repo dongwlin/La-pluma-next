@@ -1,6 +1,40 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss"; /* stylelint-disable-line import-notation -- Tailwind v4 只解析字符串形式的入口 */
+
+@config "../../tailwind.config.js";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Tailwind v4 preflight 与 v3 对齐（S2 机械升级，视觉不变）：
+ * v4 移除了按钮 pointer 与 :disabled 的 default cursor，将 placeholder 改为
+ * currentColor/50%，并把默认 border-color 改为 currentColor。
+ * 这里在 base 层恢复 v3 的默认值；utilities / 未分层样式仍按原有优先级覆盖。
+ * S3 若要有意采用 v4 默认值，应作为独立视觉决策处理。
+ */
+@layer base {
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb;
+  }
+
+  button,
+  [role='button'] {
+    cursor: pointer;
+  }
+
+  :disabled {
+    cursor: default;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    opacity: 1;
+    color: #9ca3af;
+  }
+}
 
 @property --app-status-beam-angle {
   syntax: '<angle>';
@@ -5494,21 +5528,6 @@ svg.w-5.h-5 {
     color: inherit;
   }
 
-  .app-workspace-segment-icon > *,
-  .app-workspace-segment-icon > .icon-well {
-    width: 100% !important;
-    height: 100% !important;
-    border-radius: inherit;
-    background: transparent;
-    color: inherit;
-    box-shadow: none;
-  }
-
-  .app-workspace-segment-icon svg {
-    width: 1.5rem;
-    height: 1.5rem;
-  }
-
   .app-workspace-segment-copy {
     display: grid;
     min-width: 0;
@@ -6156,11 +6175,6 @@ svg.w-5.h-5 {
     box-shadow: none;
   }
 
-  .combat-task-icon svg {
-    width: 1.125rem;
-    height: 1.125rem;
-  }
-
   .combat-task-run-button {
     min-width: 7.5rem;
     flex: none;
@@ -6521,4 +6535,30 @@ svg.w-5.h-5 {
       padding: 0.75rem 0.875rem;
     }
   }
+}
+
+/*
+ * S2 Tailwind v4 兼容：v3 的 `@layer components` 不会生成原生 cascade layer，
+ * 组件选择器可以靠特异性压过 utilities；v4 的 components 层永远输给 utilities。
+ * 下面几条规则依赖这种特异性（segment / combat 图标需要覆盖 rounded-xl、
+ * w-3.5 / h-3.5），因此暂留在未分层作用域，待 S3 统一分层时随页面样式一起归位。
+ */
+.app-workspace-segment-icon > *,
+.app-workspace-segment-icon > .icon-well {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.app-workspace-segment-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.combat-task-icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
 }
