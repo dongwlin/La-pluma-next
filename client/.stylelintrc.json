@@ -1,0 +1,26 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "at-rule-no-unknown": [
+      true,
+      {
+        "ignoreAtRules": [
+          "tailwind",
+          "layer",
+          "apply",
+          "screen",
+          "theme",
+          "config",
+          "plugin",
+          "source",
+          "utility",
+          "variant",
+          "custom-variant",
+          "reference",
+          "property"
+        ]
+      }
+    ]
+  },
+  "defaultSeverity": "warning"
+}
