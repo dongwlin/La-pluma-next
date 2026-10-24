@@ -86,6 +86,7 @@ interface TrainingQueueData {
   currentElite?: number
   targetElite?: number
   priority?: number
+  position?: number
 }
 
 /**
@@ -713,6 +714,11 @@ export async function updateTrainingQueueOrder(operatorIds: string[]): Promise<A
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ operatorIds })
   })
+  return parseJsonResponse(response)
+}
+
+export async function retryTrainingSync(): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/sync`, { method: 'POST' })
   return parseJsonResponse(response)
 }
 

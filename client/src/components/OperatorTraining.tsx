@@ -1,281 +1,70 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import {
-  AlertCircle,
-  Check,
-  ClipboardList,
-  Filter,
-  Package,
-  Search,
-  Sparkles,
-  Trash2,
-  UserRoundSearch,
-} from 'lucide-react'
-import { getOperatorList, getAllOperators, getOperBoxData, getTrainingQueue, addToTrainingQueue, removeFromTrainingQueue, updateTrainingQueueOrder, updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, getItemIconUrl } from '../services/api'
-import { PageHeader, Card, SmoothPanel, Button, EmptyState, IconButton, Input, Loading, Select, Switch } from './common'
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpToLine, Check, ClipboardList, Filter, Package, Plus, Search, Sparkles, Trash2, UserRoundSearch, X } from 'lucide-react'
+import { getOperatorList, getAllOperators, getOperBoxData, getTrainingQueue, addToTrainingQueue, removeFromTrainingQueue, updateTrainingQueueOrder, updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync, getItemIconUrl } from '../services/api'
+import { PageHeader, Button, EmptyState, IconButton, Input, Loading, Select, Switch } from './common'
+import { Modal } from './common/Modal'
 import { useStatusStore } from '../store/statusStore'
 import FloatingStatusIndicator from './FloatingStatusIndicator'
 import { useFluidTabIndicator } from '../hooks/useFluidTabIndicator'
-import type {
-  MaterialHierarchyNodeProps,
-  TrainingOperator,
-  TrainingQueueItem,
-  TrainingSettings,
-  TrainingPlan,
-  MaterialNode,
-  TrainingFilters,
-  TrainingPlanMode,
-} from '@/types/components'
+import type { TrainingOperator, TrainingQueueItem, TrainingSettings, TrainingPlan, MaterialNode, TrainingFilters, TrainingPlanMode } from '@/types/components'
+import './OperatorTraining.css'
 
-const TRAINING_STATUS_OPTIONS: Array<{
-  value: TrainingFilters['status']
-  label: string
-  desc: string
-}> = [
+const TRAINING_STATUS_OPTIONS: Array<{ value: TrainingFilters['status']; label: string; desc: string }> = [
   { value: 'trainable', label: '可养成', desc: '可加入队列' },
   { value: 'owned', label: '已拥有', desc: '已识别干员' },
   { value: 'all', label: '全部', desc: '含未拥有' },
 ]
 
-// 材料层级节点组件
-function MaterialHierarchyNode({ node, depth = 0 }: MaterialHierarchyNodeProps) {
-  const hasChildren = node.children && node.children.length > 0;
-  
-  const getColorByDepth = (_d: number): string => 'bg-[var(--app-accent)] text-white';
-  
-  const getBgColorByDepth = (): string => 'surface-soft';
-  
-  // 只有顶层材料才返回完整的卡片结构
-  if (depth === 0) {
-    return (
-      <div className="space-y-3 rounded-xl p-3 surface-soft">
-        {/* 顶层材料 */}
-        <div className="rounded-xl p-1">
-          <div className="flex items-center gap-3">
-            {/* 材料图标 */}
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl surface-panel">
-              {node.iconId ? (
-                <img
-                  src={getItemIconUrl(node.iconId)}
-                  alt={node.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // 图标加载失败时，隐藏图片并显示默认图标
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent && !parent.querySelector('.default-icon')) {
-                      const iconDiv = document.createElement('div');
-                      iconDiv.className = `default-icon w-10 h-10 rounded-lg ${getColorByDepth(depth)} flex items-center justify-center`;
-                      iconDiv.innerHTML = hasChildren 
-                        ? '<svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>'
-                        : '<svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>';
-                      parent.appendChild(iconDiv);
-                    }
-                  }}
-                />
-              ) : (
-                <div className={`w-10 h-10 rounded-lg ${getColorByDepth(depth)} flex items-center justify-center`}>
-                  {hasChildren ? (
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                    </svg>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-2">
-                <span className="text-sm font-bold text-primary">
-                  {node.name}
-                </span>
-                {hasChildren && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium brand-chip">
-                    需合成
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs">
-                  <div>
-                    <span className="text-tertiary">拥有 </span>
-                    <span className="font-bold text-[var(--app-success)]">{node.have}</span>
-                  </div>
-                  <span className="text-tertiary">/</span>
-                  <div>
-                    <span className="text-tertiary">需要 </span>
-                    <span className="font-bold text-secondary">{node.needed}</span>
-                  </div>
-                </div>
-                
-                {node.stillNeeded > 0 ? (
-                  <div className="rounded-lg px-3 py-1 text-center brand-chip">
-                    <div className="text-xs font-bold">{hasChildren ? '还需合成' : '还需刷'} {node.stillNeeded}</div>
-                  </div>
-                ) : (
-                  <div className="px-3 py-1 rounded-lg status-success text-center">
-                    <div className="text-xs font-bold">✓ 已集齐</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* 子材料 */}
-        {hasChildren && node.children && (
-          <div className="space-y-2 border-l border-[var(--app-border)] pl-3">
-            {node.children.map((child, index) => (
-              <MaterialHierarchyNode key={`${child.id}-${index}`} node={child} depth={depth + 1} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-  
-  // 子材料的简化显示
-  return (
-    <div className={`rounded-lg p-2.5 ${getBgColorByDepth()}`}>
-      <div className="flex items-center gap-2">
-        {/* 材料图标 */}
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg surface-panel">
-          {node.iconId ? (
-            <img
-              src={getItemIconUrl(node.iconId)}
-              alt={node.name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                // 图标加载失败，显示默认图标
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                const parent = target.parentElement;
-                if (parent && !parent.querySelector('.fallback-icon')) {
-                  const fallbackDiv = document.createElement('div');
-                  fallbackDiv.className = `fallback-icon w-7 h-7 rounded-lg ${getColorByDepth(depth)} flex items-center justify-center`;
-                  fallbackDiv.innerHTML = hasChildren 
-                    ? '<svg class="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>'
-                    : '<svg class="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>';
-                  parent.appendChild(fallbackDiv);
-                }
-              }}
-            />
-          ) : (
-            <div className={`w-7 h-7 rounded-lg ${getColorByDepth(depth)} flex items-center justify-center`}>
-              {hasChildren ? (
-                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              )}
-            </div>
-          )}
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1">
-            <span className="truncate text-xs font-semibold text-primary">
-              {node.name}
-            </span>
-            {node.stillNeeded > 0 ? (
-              <span className="rounded px-2 py-0.5 text-xs font-bold brand-chip">
-                -{node.stillNeeded}
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded status-success font-bold text-xs">✓</span>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-tertiary">
-              <span className="font-semibold text-[var(--app-success)]">{node.have}</span> / {node.needed}
-            </span>
-          </div>
-        </div>
-      </div>
-      
-      {/* 递归子材料 */}
-      {hasChildren && node.children && (
-        <div className="mt-2 space-y-1.5 border-l border-[var(--app-border)] pl-3">
-          {node.children.map((child, index) => (
-            <MaterialHierarchyNode key={`${child.id}-${index}`} node={child} depth={depth + 1} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+interface TrainingFlowSync {
+  status: 'not_applied' | 'synced' | 'failed'
+  flowName: string
+  taskName?: string
+  error?: string
 }
 
-interface MaterialGapListProps {
-  materials?: MaterialNode[]
-  limit?: number
-  emptyText?: string
+function ResourceIcon({ id }: { id?: string | number }) {
+  return <span className="training-resource-icon"><Package size={18} aria-hidden="true" />{id && <img src={getItemIconUrl(id)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} />}</span>
 }
 
-function MaterialGapList({
-  materials = [],
-  limit = 8,
-  emptyText = '当前没有材料缺口'
-}: MaterialGapListProps) {
-  const missingMaterials = materials
-    .filter(material => material.stillNeeded > 0)
-    .sort((a, b) => b.stillNeeded - a.stillNeeded);
-  const visibleMaterials = missingMaterials.slice(0, limit);
-  const hiddenCount = Math.max(missingMaterials.length - visibleMaterials.length, 0);
+function MaterialTable({ materials }: { materials: MaterialNode[] }) {
+  return <div className="training-material-table" role="table" aria-label="材料筹备明细">
+    <div className="training-material-line training-material-labels" role="row"><span role="columnheader">材料</span><span role="columnheader">拥有</span><span role="columnheader">需要</span><span role="columnheader">缺口</span></div>
+    {materials.map(material => <div className="training-material-line" role="row" key={material.id}>
+      <span role="cell" className="training-material-name"><ResourceIcon id={material.iconId} /><span>{material.name}</span></span>
+      <span role="cell">{material.have}</span><span role="cell">{material.needed}</span>
+      <span role="cell" className={material.stillNeeded > 0 ? 'brand-text font-semibold' : 'text-secondary'}>{material.stillNeeded > 0 ? material.stillNeeded : '已齐'}</span>
+    </div>)}
+  </div>
+}
 
-  if (visibleMaterials.length === 0) {
-    return (
-      <div className="rounded-xl px-4 py-4 text-sm text-tertiary surface-soft">
-        {emptyText}
-      </div>
-    );
-  }
+function MaterialTree({ nodes }: { nodes: MaterialNode[] }) {
+  return <ul className="training-material-tree">{nodes.map(node => <li key={node.id}>
+    <div><ResourceIcon id={node.iconId} /><span className="min-w-0 flex-1">{node.name}</span><span className="text-secondary tabular-nums">{node.have} / {node.needed}</span><span className="brand-text">{node.stillNeeded > 0 ? `缺 ${node.stillNeeded}` : '已齐'}</span></div>
+    {node.children && node.children.length > 0 && <MaterialTree nodes={node.children} />}
+  </li>)}</ul>
+}
 
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {visibleMaterials.map((material) => (
-        <div
-          key={material.id}
-          className="flex min-h-[60px] items-center gap-3 rounded-xl px-3 py-2 surface-soft"
-        >
-          <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl surface-panel text-tertiary">
-            <Package size={16} strokeWidth={1.8} aria-hidden="true" />
-            {material.iconId && (
-              <img
-                src={getItemIconUrl(material.iconId)}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-                onError={(event) => {
-                  event.currentTarget.style.display = 'none';
-                }}
-              />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-primary">{material.name}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-tertiary">
-              <span>{material.have}/{material.needed}</span>
-              <span className="rounded-full px-1.5 py-0.5 font-semibold status-danger">缺 {material.stillNeeded}</span>
-            </div>
-          </div>
-        </div>
-      ))}
-      {hiddenCount > 0 && (
-        <div className="flex min-h-[60px] items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-tertiary surface-soft">
-          还有 {hiddenCount} 种材料
-        </div>
-      )}
-    </div>
-  );
+function getQueueMaterials(item: TrainingQueueItem): MaterialNode[] {
+  const materials = item.materials ?? []
+  return item.lmd ? [...materials, { id: '4001', name: '龙门币', iconId: '4001', count: item.lmd.needed, ...item.lmd }] : materials
+}
+
+function UndoToast({ name, pending, onUndo, onDismiss }: { name: string; pending: boolean; onUndo: () => void; onDismiss: () => void }) {
+  const [paused, setPaused] = useState(false)
+  const dismissRef = useRef(onDismiss)
+  useEffect(() => { dismissRef.current = onDismiss }, [onDismiss])
+  useEffect(() => {
+    if (paused || pending) return
+    const timeout = setTimeout(() => dismissRef.current(), 8000)
+    return () => clearTimeout(timeout)
+  }, [name, paused, pending])
+  return createPortal(<div className="training-undo-toast" role="status" aria-live="polite" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocusCapture={() => setPaused(true)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false) }}>
+    <Check size={18} aria-hidden="true" /><span className="min-w-0 flex-1">已移除 {name}</span>
+    <Button variant="ghost" onClick={onUndo} loading={pending} loadingText="恢复中">撤销</Button>
+    <IconButton variant="ghost" aria-label="关闭移除提示" disabled={pending} onClick={onDismiss} icon={<X size={17} />} />
+  </div>, document.body)
 }
 
 interface OperatorEmptyStateProps {
@@ -359,9 +148,6 @@ export default function OperatorTraining() {
   const showError = (msg: string) => {
     setStatusMessage(msg, 'error')
   }
-  const showInfo = (msg: string) => {
-    setStatusMessage(msg)
-  }
   
   const [operators, setOperators] = useState<TrainingOperator[]>([]);
   const [queue, setQueue] = useState<TrainingQueueItem[]>([]);
@@ -396,6 +182,15 @@ export default function OperatorTraining() {
   } = useFluidTabIndicator(filters.status);
   const [searchTerm, setSearchTerm] = useState('');
   const [planMode, setPlanMode] = useState<TrainingPlanMode>('current');
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [flowSync, setFlowSync] = useState<TrainingFlowSync>({ status: 'not_applied', flowName: '自动任务' });
+  const [refreshError, setRefreshError] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const planRequestRef = useRef(0);
+  const workInFlightRef = useRef(false);
+  const queueHeadingRef = useRef<HTMLHeadingElement>(null);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [visibleOperatorLimit, setVisibleOperatorLimit] = useState(OPERATOR_RENDER_BATCH_SIZE);
   const [pendingOperatorIds, setPendingOperatorIds] = useState<Set<string>>(new Set());
@@ -404,6 +199,7 @@ export default function OperatorTraining() {
   const statusCountsRequestRef = useRef(0);
   const settingsRequestRef = useRef(0);
   const queueRequestRef = useRef(0);
+  const queueRevisionRef = useRef<string | null>(null);
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const persistedSettingsRef = useRef(settings);
   const queueMutationInFlightRef = useRef(false);
@@ -573,7 +369,15 @@ export default function OperatorTraining() {
         throw new Error('养成队列数据格式不正确');
       }
       if (response.success && response.data?.queue) {
+        const revision = response.data.revision;
+        if (revision && queueRevisionRef.current && revision !== queueRevisionRef.current) {
+          planRequestRef.current += 1;
+          setPlan(null);
+        }
+        if (revision) queueRevisionRef.current = revision;
         setQueue(response.data.queue);
+        setRefreshError(false);
+        if (response.data.flowSync) setFlowSync(response.data.flowSync);
         setQueueError(null);
         if (syncSettings && settingsRevision === settingsRequestRef.current && response.data.settings) {
           persistedSettingsRef.current = response.data.settings;
@@ -582,6 +386,7 @@ export default function OperatorTraining() {
         return response.data;
       }
     } catch (error) {
+      if (requestId === queueRequestRef.current) setRefreshError(true);
       if (syncSettings && requestId === queueRequestRef.current) {
         setQueueError(error instanceof Error && error.message ? error.message : '养成队列加载失败，请稍后重试');
       }
@@ -600,237 +405,176 @@ export default function OperatorTraining() {
     });
   };
 
-  const handleAddToQueue = async (operator: TrainingOperator) => {
-    if (queueMutationInFlightRef.current) {
-      showInfo('养成队列正在更新，请稍候');
-      return;
-    }
+  const invalidatePlan = () => {
+    planRequestRef.current += 1;
+    setPlan(null);
+    setPlanError(null);
+  };
 
+  const beginMutation = (operatorId: string) => {
+    if (queueMutationInFlightRef.current || workInFlightRef.current) return false;
     queueMutationInFlightRef.current = true;
-    setOperatorPending(operator.id, true);
+    setOperatorPending(operatorId, true);
+    setOperationError(null);
+    invalidatePlan();
+    return true;
+  };
+
+  const finishMutation = (operatorId: string) => {
+    queueMutationInFlightRef.current = false;
+    setOperatorPending(operatorId, false);
+  };
+
+  const recordSync = (sync?: TrainingFlowSync) => {
+    if (!sync) return;
+    setFlowSync(sync);
+    if (sync.status === 'synced') window.dispatchEvent(new CustomEvent('training-plan-applied'));
+  };
+
+  const handleAddToQueue = async (operator: TrainingOperator) => {
+    if (queue.some(item => item.operatorId === operator.id) || !beginMutation(operator.id)) return;
     setRecentlyRemoved(null);
     try {
-      setStatusMessage('正在添加干员...');
-      
-      const response = await addToTrainingQueue({
-        operatorId: operator.id,
-        currentElite: operator.currentElite ?? 0,
-        targetElite: operator.targetElite ?? 2
-      });
-
-      if (response.success) {
-        const queueData = await loadQueue();
-        setPlan(null);
-
-        if (!queueData) {
-          const optimisticItem: TrainingQueueItem = {
-            operatorId: operator.id,
-            operator: {
-              name: operator.name,
-              rarity: operator.rarity,
-              profession: operator.profession
-            },
-            currentElite: operator.currentElite ?? 0,
-            targetElite: operator.targetElite ?? 2,
-            materials: [],
-            progress: 0
-          };
-          setQueue(current => current.some(item => item.operatorId === operator.id)
-            ? current
-            : [...current, optimisticItem]);
-          setStatusMessage(`${operator.name} 已添加，但队列刷新失败，请稍后重试`, 'warning');
-          return;
-        }
-
-        const addedIsCurrent = queueData?.queue?.[0]?.operatorId === operator.id;
-        if (!addedIsCurrent) {
-          setStatusMessage(`${operator.name} 已加入队列，将在当前目标完成后处理`, 'success');
-          return;
-        }
-
-        setStatusMessage('正在生成刷取计划...');
-
-        // 首个队列目标可以直接生成并加入今日流程。
-        try {
-          const planResponse = await generateTrainingPlan({ mode: 'current' });
-          if (planResponse.success && planResponse.data) {
-            const generatedPlan = planResponse.data;
-            setPlan(generatedPlan);
-
-            const todayPlan = getOpenStagePlan(generatedPlan);
-            if (!todayPlan.stages || todayPlan.stages.length === 0) {
-              setStatusMessage('今天没有可直接加入流程的开放关卡', 'warning');
-              return;
-            }
-
-            setStatusMessage('正在应用到作战任务...');
-
-            // 自动应用到作战任务
-            try {
-              const applyResponse = await applyTrainingPlan({
-                plan: todayPlan,
-                settings
-              });
-              if (applyResponse.success) {
-                window.dispatchEvent(new CustomEvent('training-plan-applied', {
-                  detail: { stageCount: applyResponse.data?.stageCount ?? todayPlan.stages.length }
-                }));
-                setStatusMessage('刷取计划已应用到作战任务！', 'success');
-              } else {
-                setStatusMessage('应用失败', 'error');
-              }
-            } catch (applyError) {
-              setStatusMessage('应用失败', 'error');
-            }
-          } else {
-            setStatusMessage('生成计划失败', 'error');
-          }
-        } catch (planError) {
-          setStatusMessage('生成计划失败', 'error');
-        }
-      } else {
-        setStatusMessage('添加失败', 'error');
+      const response = await addToTrainingQueue({ operatorId: operator.id, currentElite: operator.currentElite ?? 0, targetElite: operator.targetElite ?? 2 });
+      if (!response.success) throw new Error(response.message || '添加失败，请重试');
+      const queueData = await loadQueue();
+      if (!queueData) {
+        setQueue(current => [...current, { operatorId: operator.id, operator: { name: operator.name, rarity: operator.rarity, profession: operator.profession }, currentElite: operator.currentElite ?? 0, targetElite: operator.targetElite ?? 2, materials: [], progress: 0 }]);
       }
-    } catch (error: any) {
-      setStatusMessage('添加失败', 'error');
-    } finally {
-      queueMutationInFlightRef.current = false;
-      setOperatorPending(operator.id, false);
-    }
+      recordSync(queueData?.flowSync ?? response.data?.flowSync);
+      setStatusMessage(queueData ? `${operator.name} 已加入养成队列` : `${operator.name} 已添加，但队列刷新失败，请重试`, queueData ? 'success' : 'warning');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '添加失败，请重试';
+      setOperationError(message);
+      showError(message);
+    } finally { finishMutation(operator.id); }
   };
 
   const handleRemoveFromQueue = async (operatorId: string) => {
-    if (queueMutationInFlightRef.current) {
-      showInfo('养成队列正在更新，请稍候');
-      return;
-    }
-
-    const removedIndex = queue.findIndex(item => item.operatorId === operatorId);
-    const removedItem = removedIndex >= 0 ? queue[removedIndex] ?? null : null;
-    queueMutationInFlightRef.current = true;
-    setOperatorPending(operatorId, true);
+    const index = queue.findIndex(item => item.operatorId === operatorId);
+    const item = queue[index];
+    if (!item || !beginMutation(operatorId)) return;
     try {
-      setStatusMessage('正在删除...');
       const response = await removeFromTrainingQueue(operatorId);
-      if (response.success) {
-        const queueData = await loadQueue();
-        setPlan(null);
-        if (removedItem) setRecentlyRemoved({ item: removedItem, index: removedIndex });
-        if (!queueData) {
-          setQueue(current => current.filter(item => item.operatorId !== operatorId));
-          setStatusMessage('已移除，但队列刷新失败，请稍后重试', 'warning');
-        } else {
-          setStatusMessage('已从养成队列移除', 'success');
-        }
-      } else {
-        setStatusMessage('删除失败', 'error');
-      }
+      if (!response.success) throw new Error(response.message || '删除失败，请重试');
+      const queueData = await loadQueue();
+      if (!queueData) setQueue(current => current.filter(entry => entry.operatorId !== operatorId));
+      recordSync(queueData?.flowSync ?? response.data?.flowSync);
+      setRecentlyRemoved({ item, index });
+      queueHeadingRef.current?.focus({ preventScroll: true });
+      if (!queueData) setStatusMessage('已移除，但队列刷新失败，请重试', 'warning');
     } catch (error) {
-      setStatusMessage('删除失败', 'error');
-    } finally {
-      queueMutationInFlightRef.current = false;
-      setOperatorPending(operatorId, false);
-    }
+      const message = error instanceof Error ? error.message : '删除失败，请重试';
+      setOperationError(message);
+      showError(message);
+    } finally { finishMutation(operatorId); }
   };
 
   const handleUndoRemove = async () => {
     const snapshot = recentlyRemoved;
-    if (!snapshot || queueMutationInFlightRef.current) return;
-
-    queueMutationInFlightRef.current = true;
-    setOperatorPending(snapshot.item.operatorId, true);
-    let itemWasAdded = false;
+    if (!snapshot || !beginMutation(snapshot.item.operatorId)) return;
     try {
-      const response = await addToTrainingQueue({
-        operatorId: snapshot.item.operatorId,
-        currentElite: snapshot.item.currentElite,
-        targetElite: snapshot.item.targetElite
-      });
-      if (!response.success) throw new Error('恢复失败');
-      itemWasAdded = true;
-
-      const restoredQueue = queue.filter(item => item.operatorId !== snapshot.item.operatorId);
-      restoredQueue.splice(Math.min(snapshot.index, restoredQueue.length), 0, snapshot.item);
-      const orderResponse = await updateTrainingQueueOrder(restoredQueue.map(item => item.operatorId));
-      if (!orderResponse.success) throw new Error('顺序恢复失败');
-
+      const response = await addToTrainingQueue({ operatorId: snapshot.item.operatorId, currentElite: snapshot.item.currentElite, targetElite: snapshot.item.targetElite, position: snapshot.index });
+      if (!response.success) throw new Error(response.message || '撤销失败，请重试');
       const queueData = await loadQueue();
+      if (!queueData) setQueue(current => {
+        const restored = current.filter(item => item.operatorId !== snapshot.item.operatorId);
+        restored.splice(Math.min(snapshot.index, restored.length), 0, snapshot.item);
+        return restored;
+      });
+      recordSync(queueData?.flowSync ?? response.data?.flowSync);
       setRecentlyRemoved(null);
-      if (!queueData) {
-        setQueue(restoredQueue);
-        setStatusMessage(`${snapshot.item.operator.name} 已恢复，但队列刷新失败`, 'warning');
-      } else {
-        setStatusMessage(`${snapshot.item.operator.name} 已恢复到养成队列`, 'success');
-      }
+      queueHeadingRef.current?.focus({ preventScroll: true });
+      setStatusMessage(`${snapshot.item.operator.name} 已恢复${queueData ? '' : '，但队列刷新失败，请重试'}`, queueData ? 'success' : 'warning');
     } catch (error) {
-      if (itemWasAdded) {
-        const queueData = await loadQueue();
-        if (!queueData) {
-          setQueue(current => current.some(item => item.operatorId === snapshot.item.operatorId)
-            ? current
-            : [...current, snapshot.item]);
-        }
-        setRecentlyRemoved(null);
-        setStatusMessage('干员已恢复，但原队列顺序恢复失败', 'error');
-      } else {
-        setStatusMessage('撤销失败，请重新添加干员', 'error');
-      }
-    } finally {
-      queueMutationInFlightRef.current = false;
-      setOperatorPending(snapshot.item.operatorId, false);
-    }
+      const message = error instanceof Error ? error.message : '撤销失败，请重试';
+      setOperationError(message);
+      showError(message);
+    } finally { finishMutation(snapshot.item.operatorId); }
+  };
+
+  const handleReorder = async (operatorId: string, destination: number) => {
+    const index = queue.findIndex(item => item.operatorId === operatorId);
+    if (index < 0 || index === destination || destination < 0 || destination >= queue.length || !beginMutation(operatorId)) return;
+    const reordered = [...queue];
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(destination, 0, item!);
+    try {
+      const response = await updateTrainingQueueOrder(reordered.map(entry => entry.operatorId));
+      if (!response.success) throw new Error(response.message || '顺序更新失败，请重试');
+      const queueData = await loadQueue();
+      if (!queueData) setQueue(reordered);
+      setRecentlyRemoved(null);
+      recordSync(queueData?.flowSync ?? response.data?.flowSync);
+      queueHeadingRef.current?.focus({ preventScroll: true });
+      setStatusMessage(queueData ? '养成顺序已更新' : '顺序已更新，但队列刷新失败，请重试', queueData ? 'success' : 'warning');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '顺序更新失败，请重试';
+      setOperationError(message);
+      showError(message);
+    } finally { finishMutation(operatorId); }
   };
 
   const handleGeneratePlan = async () => {
-    if (queue.length === 0) {
-      showError('养成队列为空，请先添加干员');
-      return;
-    }
-    
+    if (queue.length === 0 || queueMutationInFlightRef.current || workInFlightRef.current || refreshError) return;
+    workInFlightRef.current = true;
+    let requestId = ++planRequestRef.current;
+    setLoading(true);
+    setPlan(null);
+    setPlanError(null);
     try {
-      setLoading(true);
-      showInfo('生成中...');
+      const freshQueue = await loadQueue();
+      if (!freshQueue) throw new Error('队列刷新失败，请重新加载后预览');
+      if (!freshQueue.queue.length) throw new Error('养成队列为空，请先添加干员');
+      requestId = ++planRequestRef.current;
       const response = await generateTrainingPlan({ mode: planMode });
-      if (response.success) {
-        setPlan(response.data);
-        showSuccess('刷取计划生成成功！');
+      if (requestId !== planRequestRef.current) return;
+      if (!response.success || !response.data) throw new Error(response.message || '生成计划失败，请重试');
+      if (response.data.queueRevision && queueRevisionRef.current && response.data.queueRevision !== queueRevisionRef.current) {
+        await loadQueue();
+        setPlanError('养成队列已变化，请重新预览计划');
+        return;
       }
-    } catch (error: any) {
-      showError(error.response?.data?.error || '生成计划失败');
+      setPlan(response.data);
+    } catch (error) {
+      if (requestId === planRequestRef.current) setPlanError(error instanceof Error ? error.message : '生成计划失败，请重试');
     } finally {
+      workInFlightRef.current = false;
       setLoading(false);
     }
   };
 
   const handleApplyPlan = async () => {
-    if (!plan) return;
+    if (!plan || queueMutationInFlightRef.current || workInFlightRef.current || refreshError) return;
     const todayPlan = getOpenStagePlan(plan);
-    if (!todayPlan.stages || todayPlan.stages.length === 0) {
-      showError('今天没有可加入流程的开放关卡');
-      return;
-    }
-    
+    if (!todayPlan.stages?.length) return;
+    workInFlightRef.current = true;
+    setLoading(true);
+    setPlanError(null);
     try {
-      setLoading(true);
-      showInfo('应用中...');
-      const response = await applyTrainingPlan({
-        plan: todayPlan,
-        settings
-      });
-      
-      if (response.success) {
-        showSuccess('养成计划已应用到作战任务流程！');
-        
-        // 触发事件通知其他组件重新加载配置
-        window.dispatchEvent(new CustomEvent('training-plan-applied', {
-          detail: { stageCount: response.data?.stageCount ?? todayPlan.stages.length }
-        }));
-      }
-    } catch (error: any) {
-      showError(error.response?.data?.error || '应用失败');
-    } finally {
-      setLoading(false);
-    }
+      const response = await applyTrainingPlan({ plan: todayPlan, settings });
+      if (!response.success) throw new Error(response.message || '应用失败，请重新预览后重试');
+      recordSync(response.data?.flowSync ?? { status: 'synced', flowName: response.data?.flowName || flowSync.flowName, taskName: response.data?.taskName });
+      showSuccess(`养成计划已应用到${response.data?.flowName || flowSync.flowName}`);
+    } catch (error) {
+      setPlanError(error instanceof Error ? error.message : '应用失败，请重新预览后重试');
+      setPlan(null);
+      await loadQueue();
+    } finally { workInFlightRef.current = false; setLoading(false); }
+  };
+
+  const handleRetrySync = async () => {
+    if (queueMutationInFlightRef.current || workInFlightRef.current) return;
+    workInFlightRef.current = true;
+    setSyncing(true);
+    try {
+      const response = await retryTrainingSync();
+      await loadQueue();
+      if (response.data?.flowSync) recordSync(response.data.flowSync);
+      else if (!response.success) throw new Error(response.message || '同步失败，请重试');
+    } catch (error) {
+      setFlowSync(current => ({ ...current, status: 'failed', error: error instanceof Error ? error.message : '同步失败，请重试' }));
+    } finally { workInFlightRef.current = false; setSyncing(false); }
   };
 
   const handleUpdateSettings = (newSettings: TrainingSettings) => {
@@ -869,17 +613,15 @@ export default function OperatorTraining() {
   const hiddenOperatorCount = Math.max(filteredOperators.length - visibleOperators.length, 0);
   const openStageCount = getOpenStageCount(plan);
   const currentTarget = queue[0] ?? null;
-  const backlogCount = Math.max(queue.length - 1, 0);
   const todayStages = plan ? getOpenStagePlan(plan).stages ?? [] : [];
   const todayRunCount = todayStages.reduce((sum, stage) => sum + Number(stage.totalTimes ?? 0), 0);
-  const currentMissingMaterials = currentTarget?.materials?.filter(material => material.stillNeeded > 0) ?? [];
-  const currentMissingPreview = currentMissingMaterials.slice(0, 3).map(material => material.name).join('、');
+  const currentMaterials = currentTarget ? getQueueMaterials(currentTarget) : [];
+  const currentMissingMaterials = currentMaterials.filter(material => material.stillNeeded > 0);
   const currentProgress = currentTarget?.progress ?? 0;
   const planFocusName = plan?.focusOperator?.name || plan?.operators?.[0]?.name || currentTarget?.operator.name || '未设置';
-  const upcomingQueue = currentTarget ? queue.slice(1) : queue;
-  const previewStages = todayStages.slice(0, 5);
-  const hiddenStageCount = Math.max(todayStages.length - previewStages.length, 0);
   const queueMutationPending = pendingOperatorIds.size > 0;
+  const busy = queueMutationPending || loading || syncing;
+  const todaySanity = todayStages.reduce((total, stage) => total + (plan?.stages?.find(entry => entry.stage === stage.stage)?.sanityPerRun ?? 0) * (stage.totalTimes ?? 0), 0);
   const operatorEmptyState: OperatorEmptyStateProps | null = !operatorsLoading && filteredOperators.length === 0
     ? (() => {
         if (normalizedSearchTerm || filters.rarity) {
@@ -909,28 +651,82 @@ export default function OperatorTraining() {
         };
       })()
     : null;
-  return (
-    <div className="app-page ios-workspace-page ios-borderless-cards" data-page="training">
-      <div className="app-stack-section">
-        {/* 页面标题 */}
-        <PageHeader
-          title="养成"
-          subtitle="整理干员目标、材料缺口与今日刷取流程"
-          mobileLayout="inline"
-          actions={<FloatingStatusIndicator />}
-        />
 
-        <div className="grid grid-cols-1 items-start gap-[var(--app-space-section)] xl:grid-cols-[minmax(0,1fr)_minmax(22rem,27rem)]">
-          <section className={`training-operator-column min-w-0 space-y-4 ${currentTarget ? 'order-2 xl:order-1' : 'order-1'}`}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-primary">添加干员</h2>
-                <p className="text-sm text-secondary">筛选并加入养成队列</p>
+  return (
+    <div className="app-page ios-workspace-page training-workspace" data-page="training">
+      <PageHeader title="养成" subtitle="管理目标，筹备材料，安排下一次作战" actions={<><FloatingStatusIndicator /><Button onClick={() => setSelectorOpen(true)} icon={<Plus size={17} />}>添加干员</Button></>} />
+      <div className="training-workspace-grid">
+        <section className="training-queue-section training-surface" aria-labelledby="training-queue-title">
+          <div className="training-section-heading">
+            <div><h2 ref={queueHeadingRef} tabIndex={-1} id="training-queue-title">养成队列 <span className="text-secondary font-normal">{queue.length}</span></h2><p>按顺序筹备，第一位是当前目标</p></div>
+            <ClipboardList size={20} className="text-tertiary" aria-hidden="true" />
+          </div>
+          {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
+          {refreshError && !queueError && <div role="alert" className="training-feedback status-warning"><span>队列已更新，但刷新失败。重新加载后再预览计划。</span><Button variant="ghost" onClick={() => { invalidatePlan(); void loadQueue(true); }} disabled={busy}>重新加载</Button></div>}
+          {queueLoading ? <div className="training-state"><Loading text="正在读取养成队列..." /></div> : queueError ? <TrainingLoadError title="养成队列加载失败" description={queueError} onRetry={() => void loadQueue(true)} /> : queue.length === 0 ? (
+            <div className="training-state"><EmptyState compact icon={<ClipboardList size={24} />} title="养成队列还是空的" description="添加需要筹备材料的干员，按目标安排刷图。" /><Button onClick={() => setSelectorOpen(true)} variant="secondary" icon={<Plus size={17} />}>选择干员</Button></div>
+          ) : <ol className="training-queue-list">
+            {queue.map((item, index) => <li key={item.operatorId} className={`training-queue-row ${index === 0 ? 'is-current' : ''}`}>
+              <div className="training-queue-identity">
+                <span className="training-queue-rank">{String(index + 1).padStart(2, '0')}</span>
+                <span className="training-avatar"><UserRoundSearch size={22} aria-hidden="true" /><img src={`https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${item.operatorId}.png`} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1"><h3 className="training-operator-name">{item.operator.name}</h3>{index === 0 && <span className="training-current-label">当前</span>}</div>
+                  <p className="training-queue-meta">精{item.currentElite} → 精{item.targetElite}<span>{getQueueMaterials(item).filter(material => material.stillNeeded > 0).length} 种缺口</span></p>
+                  <div className="training-row-progress"><span className="training-progress-track" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, item.progress ?? 0))}%` }} /></span><span>{item.progress ?? 0}%</span><span className="sr-only">材料筹备进度</span></div>
+                </div>
               </div>
-              <div className="rounded-full px-3 py-1 text-xs font-medium text-tertiary surface-soft">
-                队列 {queue.length} · 今日计划 {openStageCount} 个关卡
+              <div className="training-queue-actions">
+                {index > 0 && <Button variant="ghost" size="md" disabled={busy} onClick={() => void handleReorder(item.operatorId, 0)} aria-label={`将${item.operator.name}设为当前`} icon={<ArrowUpToLine size={15} />}>设为当前</Button>}
+                <div className="flex items-center">
+                  <IconButton variant="ghost" disabled={busy || index === 0} onClick={() => void handleReorder(item.operatorId, index - 1)} aria-label={`上移${item.operator.name}`} title="上移" icon={<ArrowUp size={16} />} />
+                  <IconButton variant="ghost" disabled={busy || index === queue.length - 1} onClick={() => void handleReorder(item.operatorId, index + 1)} aria-label={`下移${item.operator.name}`} title="下移" icon={<ArrowDown size={16} />} />
+                  <IconButton variant="ghost" disabled={busy} onClick={() => void handleRemoveFromQueue(item.operatorId)} aria-label={`移除${item.operator.name}`} title="移除" className="training-remove" icon={pendingOperatorIds.has(item.operatorId) ? <span className="h-4 w-4 motion-safe:animate-spin rounded-full border-2 border-current border-r-transparent" /> : <Trash2 size={16} />} />
+                </div>
               </div>
+            </li>)}
+          </ol>}
+          {queue.length > 0 && <div className="training-queue-footer"><span className="text-xs text-secondary">进度仅表示材料筹备情况</span><Button variant="ghost" onClick={() => setSelectorOpen(true)} icon={<Plus size={15} />}>继续添加</Button></div>}
+        </section>
+
+        <div className="training-detail-column">
+          <section className="training-surface" aria-labelledby="training-materials-title">
+            <div className="training-section-heading"><div><h2 id="training-materials-title">{currentTarget ? `${currentTarget.operator.name}的材料` : '材料筹备'}</h2><p>{currentTarget ? `精${currentTarget.currentElite} → 精${currentTarget.targetElite} · ${currentMissingMaterials.length > 0 ? `还缺 ${currentMissingMaterials.length} 种材料` : '材料已集齐'}` : '添加目标后查看材料缺口'}</p></div>{currentTarget && <span className="training-progress-value">{currentProgress}%<small>材料筹备进度</small></span>}</div>
+            {currentTarget ? <>
+              <div className="training-current-progress" role="progressbar" aria-label="当前目标材料筹备进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={currentProgress}><span style={{ width: `${Math.min(100, Math.max(0, currentProgress))}%` }} /></div>
+              {currentMissingMaterials.length > 0 ? <MaterialTable materials={currentMissingMaterials} /> : <p className="training-inline-empty"><Check size={18} />当前目标材料已集齐，可在游戏内完成养成。</p>}
+              {currentMaterials.length > 0 && <details className="training-disclosure"><summary>查看全部材料与合成需求</summary><MaterialTree nodes={currentMaterials} /></details>}
+            </> : <p className="training-inline-empty">还没有需要筹备的材料。</p>}
+          </section>
+
+          <section className="training-surface" aria-labelledby="training-plan-title">
+            <div className="training-section-heading"><div><h2 id="training-plan-title">刷图计划</h2><p>先预览，再应用到任务流程</p></div><Sparkles size={20} className="text-tertiary" aria-hidden="true" /></div>
+            <div className="training-plan-controls"><Select aria-label="计划范围" value={planMode} onChange={mode => { setPlanMode(mode as TrainingPlanMode); invalidatePlan(); }} disabled={busy} options={[{ value: 'current', label: '仅当前目标' }, { value: 'all', label: '全部队列' }]} /><Button onClick={handleGeneratePlan} disabled={!queue.length || busy || refreshError || !!queueError} loading={loading && !plan} loadingText="计算中" variant={plan ? 'secondary' : 'primary'} icon={<Sparkles size={16} />}>预览刷图计划</Button></div>
+            {planError && <div role="alert" className="training-feedback status-danger">{planError}</div>}
+            {plan ? <>
+              <div className="training-plan-overview"><div><h3>{planFocusName}</h3><p>今日可刷 {openStageCount} 个关卡 · {todayRunCount} 次{todaySanity > 0 ? ` · 约 ${todaySanity} 理智` : ''}</p><p>完整计划约 {plan.totalSanity ?? 0} 理智（含未开放关卡）</p></div></div>
+              {!!plan.warnings?.length && <div role="note" className="training-plan-warnings status-warning">{plan.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
+              {todayStages.length > 0 ? <div className="training-stage-list">{todayStages.map((stage, index) => <div key={`${stage.stage}-${index}`} className="training-stage-row"><div><strong>{stage.stage}</strong><p>{stage.materials?.map(material => `${material.name} ×${material.count ?? material.needed ?? 0}`).join('、') || '今日可直接推进'}</p></div><span className="tabular-nums font-semibold">×{stage.totalTimes ?? 0}</span></div>)}</div> : <p className="training-inline-empty">{currentMissingMaterials.length === 0 ? '当前材料已齐，无需刷取。' : '今天没有可直接推进的开放关卡，查看详情安排后续刷取。'}</p>}
+              <div className="training-apply"><Button onClick={handleApplyPlan} disabled={busy || !openStageCount || refreshError} loading={loading} loadingText="应用中" icon={<Check size={16} />} fullWidth>应用到{flowSync.flowName}</Button><p>写入{flowSync.taskName ? `「${flowSync.taskName}」` : '作战任务'}的智能养成关卡，保留普通关卡。</p></div>
+              <details className="training-disclosure"><summary>查看完整材料、未开放关卡与计算详情</summary>
+                {!!plan.closedStages?.length && <div className="training-closed-stages"><h3>今日未开放</h3>{plan.closedStages.map((stage, index) => <p key={`${stage.stage}-${index}`}><strong>{stage.stage}</strong><span>{stage.totalTimes ?? 0} 次 · 等待开放</span></p>)}</div>}
+                {!!plan.materialHierarchy?.length && <><h3 className="mt-4 font-semibold">计划材料需求</h3><MaterialTree nodes={plan.materialHierarchy} /></>}
+                {!!plan.stages?.length && <div className="training-closed-stages"><h3>完整关卡列表</h3>{plan.stages.map((stage, index) => <p key={`${stage.stage}-${index}`}><strong>{stage.stage}</strong><span>{stage.totalTimes ?? 0} 次 · {stage.isOpen === false ? '未开放' : '今日开放'}</span></p>)}</div>}
+              </details>
+            </> : !planError && <p className="training-plan-placeholder">{queue.length ? '队列变更后需重新预览，确保计划与当前目标一致。' : '选择养成目标后，即可计算材料缺口与推荐关卡。'}</p>}
+            <div className={`training-sync-status ${flowSync.status === 'failed' ? 'status-warning' : ''}`} role="status">
+              <div>{flowSync.status === 'failed' ? <><strong>队列已更新，任务流程同步失败</strong><p>{flowSync.error || '请重试同步，避免流程使用旧关卡。'}</p></> : flowSync.status === 'synced' ? <><strong>已同步到{flowSync.flowName}</strong><p>队列变更会自动同步智能养成关卡，删空后清理。</p></> : <p>尚未应用到{flowSync.flowName}。添加干员与预览不会修改流程。</p>}</div>
+              {flowSync.status === 'failed' && <Button variant="secondary" onClick={handleRetrySync} loading={syncing} loadingText="同步中" disabled={busy}>重试同步</Button>}
             </div>
+          </section>
+        </div>
+      </div>
+      <details className="training-surface training-settings"><summary>自动化设置<span>自动切换与完成通知</span></summary><div className="training-settings-grid">
+        <div><div><h3>自动切换</h3><p>当前目标材料齐备后，继续筹备下一位</p></div><Switch compact label="自动切换" checked={settings.autoSwitch} onChange={checked => handleUpdateSettings({ ...settings, autoSwitch: checked })} /></div>
+        <div><div><h3>完成通知</h3><p>目标材料筹备完成时发送通知</p></div><Switch compact label="完成通知" checked={settings.notifyOnComplete} onChange={checked => handleUpdateSettings({ ...settings, notifyOnComplete: checked })} /></div>
+      </div></details>
+      <Modal isOpen={selectorOpen} onClose={() => setSelectorOpen(false)} title="添加干员" size="xl" footer={<div className="flex w-full items-center justify-between gap-3"><span className="text-sm text-secondary">已加入 {queue.length} 名干员</span><Button onClick={() => setSelectorOpen(false)} variant="secondary">完成选择</Button></div>}>
+        {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
         <div className="space-y-4">
           {/* 搜索和过滤 */}
           <div className="flex flex-col gap-3">
@@ -1045,7 +841,7 @@ export default function OperatorTraining() {
             <OperatorEmptyState {...operatorEmptyState} />
           ) : (
             <div className="min-h-[260px]">
-              <div className="training-operator-grid grid grid-cols-3 overflow-hidden rounded-xl surface-soft sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-4 2xl:grid-cols-6">
+              <div className="training-operator-grid grid grid-cols-3 overflow-hidden rounded-xl surface-soft sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-5">
                 {visibleOperators.map((operator, idx) => {
                   const isInQueue = queue.some(q => q.operatorId === operator.id);
                   const imageLoaded = loadedImages[operator.id] || false;
@@ -1133,11 +929,12 @@ export default function OperatorTraining() {
                       {/* 添加按钮 */}
                       <Button
                         onClick={() => handleAddToQueue(operator)}
-                        disabled={!canAdd || (queueMutationPending && !pendingOperatorIds.has(operator.id))}
+                        aria-label={canAdd ? `添加${operator.name}` : undefined}
+                        disabled={!canAdd || busy}
                         loading={pendingOperatorIds.has(operator.id)}
                         loadingText="添加中"
-                        variant={canAdd ? 'primary' : 'secondary'}
-                        size="sm"
+                        variant='secondary'
+                        size="md"
                         fullWidth
                       >
                         {actionLabel}
@@ -1165,396 +962,8 @@ export default function OperatorTraining() {
             </div>
           )}
         </div>
-          </section>
-
-          <aside className={`training-support-column min-w-0 space-y-4 xl:sticky xl:top-4 ${currentTarget ? 'order-1 xl:order-2' : 'order-2'}`}>
-        <div className="space-y-4">
-          {currentTarget && (
-            <Card smoothCorners className="training-current-card !p-0">
-              <div className="px-4 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full px-2.5 py-1 text-xs font-semibold brand-chip">当前目标</span>
-                  <h3 className="min-w-0 flex-1 truncate text-xl font-semibold text-primary">{currentTarget.operator.name}</h3>
-                  <span className="rounded-full px-2 py-0.5 text-xs font-semibold surface-soft brand-text">
-                    {currentTarget.operator.rarity}★
-                  </span>
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <div className="h-2 overflow-hidden rounded-full surface-soft">
-                    <motion.div
-                      className="h-full rounded-full bg-[var(--app-accent)]"
-                      initial={shouldReduceMotion ? false : { width: 0 }}
-                      animate={{ width: `${currentProgress}%` }}
-                      transition={{ duration: shouldReduceMotion ? 0 : 0.6, ease: 'easeOut' }}
-                    />
-                  </div>
-                  <div className="text-sm font-bold brand-text">{currentProgress}%</div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 border-y border-[var(--app-border)]">
-                  <div className="min-w-0 px-2 py-3 text-center">
-                    <div className="text-xs font-medium text-tertiary">阶段</div>
-                    <div className="mt-1 text-sm font-semibold text-primary">精{currentTarget.currentElite} → 精{currentTarget.targetElite}</div>
-                  </div>
-                  <div className="min-w-0 border-l border-[var(--app-border)] px-2 py-3 text-center">
-                    <div className="text-xs font-medium text-tertiary">缺口</div>
-                    <div className="mt-1 text-sm font-semibold text-primary">{currentMissingMaterials.length} 种</div>
-                  </div>
-                  <div className="min-w-0 border-l border-[var(--app-border)] px-2 py-3 text-center">
-                    <div className="text-xs font-medium text-tertiary">后续</div>
-                    <div className="mt-1 text-sm font-semibold text-primary">{backlogCount} 个</div>
-                  </div>
-                </div>
-
-                <div className="mt-3 text-sm leading-6 text-secondary">
-                  {currentMissingPreview ? `优先补：${currentMissingPreview}` : '当前目标材料已接近完成'}
-                </div>
-
-                <div className="mt-4">
-                  <MaterialGapList materials={currentMissingMaterials} limit={3} emptyText="当前目标材料已集齐" />
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <Select
-                    aria-label="计划范围"
-                    value={planMode}
-                    onChange={(mode) => setPlanMode(mode as TrainingPlanMode)}
-                    options={[
-                      { value: 'current', label: '仅当前目标' },
-                      { value: 'all', label: '全部队列' },
-                    ]}
-                    className="min-w-0"
-                  />
-                  <Button
-                    onClick={handleGeneratePlan}
-                    disabled={loading}
-                    loading={loading}
-                    loadingText="生成中"
-                    variant="primary"
-                    size="md"
-                    icon={<Sparkles size={15} strokeWidth={1.9} aria-hidden="true" />}
-                  >
-                    生成计划
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* 设置 */}
-          <SmoothPanel cornerSize="compact" className="training-settings-panel">
-            <section className="w-full px-4 py-3" aria-labelledby="training-automation-settings-title">
-              <h3
-                id="training-automation-settings-title"
-                className="flex min-h-11 items-center text-sm font-semibold text-primary"
-              >
-                自动化设置
-              </h3>
-              <div className="mt-2 divide-y divide-[var(--app-border)]">
-                <div className="flex min-h-14 items-center justify-between gap-4 py-2.5">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-primary">自动切换</div>
-                    <p className="mt-0.5 text-xs text-tertiary">当前目标完成后继续下一个</p>
-                  </div>
-                  <Switch
-                    compact
-                    checked={settings.autoSwitch}
-                    onChange={(checked: boolean) => handleUpdateSettings({ ...settings, autoSwitch: checked })}
-                    label="自动切换"
-                  />
-                </div>
-                <div className="flex min-h-14 items-center justify-between gap-4 py-2.5">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-primary">完成通知</div>
-                    <p className="mt-0.5 text-xs text-tertiary">养成目标完成后发送通知</p>
-                  </div>
-                  <Switch
-                    compact
-                    checked={settings.notifyOnComplete}
-                    onChange={(checked: boolean) => handleUpdateSettings({ ...settings, notifyOnComplete: checked })}
-                    label="完成通知"
-                  />
-                </div>
-              </div>
-            </section>
-          </SmoothPanel>
-
-          {/* 队列列表 */}
-          {recentlyRemoved && (
-            <div className="flex min-h-11 items-center justify-between gap-3 rounded-xl px-3 py-2 status-info" role="status">
-              <span className="min-w-0 truncate text-sm">
-                已移除 {recentlyRemoved.item.operator.name}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleUndoRemove}
-                disabled={queueMutationPending}
-                className="shrink-0"
-              >
-                撤销
-              </Button>
-            </div>
-          )}
-          {queueLoading ? (
-            <SmoothPanel className="training-queue-loading" surfaceClassName="px-6 py-12">
-              <Loading text="正在读取养成队列..." />
-            </SmoothPanel>
-          ) : queueError ? (
-            <TrainingLoadError
-              title="养成队列加载失败"
-              description={queueError}
-              onRetry={() => void loadQueue(true)}
-            />
-          ) : queue.length === 0 ? (
-            <SmoothPanel className="training-queue-empty" surfaceClassName="px-4 py-6">
-              <EmptyState
-                compact
-                icon={<ClipboardList size={20} strokeWidth={1.8} />}
-                title="养成队列还是空的"
-                description="从干员列表添加目标后，这里会显示后续顺序"
-              />
-            </SmoothPanel>
-          ) : (
-            <Card smoothCorners className="training-queue-card !p-0">
-              <div className="flex items-center justify-between border-b border-[var(--app-border)] px-4 py-3">
-                <h3 className="text-sm font-bold text-primary">后续队列</h3>
-                <span className="text-xs text-tertiary">{upcomingQueue.length} 个待处理</span>
-              </div>
-              {upcomingQueue.length === 0 ? (
-                <div className="px-4 py-5 text-sm text-secondary">当前只有一个养成目标。</div>
-              ) : (
-                <div className="divide-y divide-[var(--app-border)]">
-                  {upcomingQueue.map((item, index) => (
-                    <div
-                      key={item.operatorId}
-                      className="px-4 py-3 transition-colors hover:bg-[var(--app-surface-muted)]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-xs font-semibold surface-soft text-secondary">
-                          #{index + 2}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="truncate text-sm font-bold text-primary">
-                              {item.operator.name}
-                            </h3>
-                            <span className="rounded-full px-2 py-0.5 text-xs font-bold brand-chip">
-                              {item.operator.rarity}★
-                            </span>
-                          </div>
-                          <div className="mt-2 h-1.5 overflow-hidden rounded-full surface-soft">
-                            <motion.div
-                              className="h-full rounded-full bg-[var(--app-accent)]"
-                              initial={shouldReduceMotion ? false : { width: 0 }}
-                              animate={{ width: `${item.progress}%` }}
-                              transition={{ duration: shouldReduceMotion ? 0 : 0.6, ease: 'easeOut' }}
-                            />
-                          </div>
-                        </div>
-                        <span className="w-9 text-right text-xs font-semibold brand-text">{item.progress}%</span>
-                        <IconButton
-                          onClick={() => handleRemoveFromQueue(item.operatorId)}
-                          disabled={queueMutationPending}
-                          variant="ghost"
-                          size="sm"
-                          title={pendingOperatorIds.has(item.operatorId) ? '正在移除' : '移除'}
-                          aria-label={pendingOperatorIds.has(item.operatorId) ? `正在移除${item.operator.name}` : `移除${item.operator.name}`}
-                          className="text-[var(--app-danger)]"
-                          icon={
-                            pendingOperatorIds.has(item.operatorId) ? (
-                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" />
-                            ) : (
-                              <Trash2 size={16} strokeWidth={1.9} aria-hidden="true" />
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          )}
-        </div>
-        <div className="space-y-4">
-          {!plan ? (
-            <SmoothPanel className="training-plan-empty" surfaceClassName="px-4 py-6">
-              <EmptyState
-                compact
-                icon={<Sparkles size={20} strokeWidth={1.8} />}
-                title="还没有刷取计划"
-                description="添加养成目标后生成计划，即可查看今日推荐关卡"
-              />
-            </SmoothPanel>
-          ) : (
-            <>
-              <Card smoothCorners className="training-plan-summary-card !p-0">
-                <div className="px-4 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="text-xs font-semibold uppercase brand-text">今日流程</div>
-                      <h3 className="mt-1 text-lg font-semibold text-primary">{planFocusName}</h3>
-                      <div className="mt-1 text-sm leading-6 text-secondary">
-                        可刷 {openStageCount} 个关卡 · 预计 {todayRunCount} 次 · 完整计划约 {plan.totalSanity || 0} 理智
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <Button
-                        onClick={handleApplyPlan}
-                        disabled={loading || openStageCount === 0}
-                        loading={loading}
-                        loadingText="应用中"
-                        variant="success"
-                        size="md"
-                        icon={<Check size={15} strokeWidth={2.2} aria-hidden="true" />}
-                      >
-                        加入今日流程
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              <Card smoothCorners className="training-stage-preview-card !p-0">
-                <div className="flex items-center justify-between border-b border-[var(--app-border)] px-4 py-3">
-                  <h3 className="text-base font-semibold text-primary">今日推荐刷图</h3>
-                  <span className="rounded-full px-2.5 py-1 text-xs font-semibold brand-chip">
-                    {previewStages.length} 个优先
-                  </span>
-                </div>
-                {previewStages.length > 0 ? (
-                  <div className="divide-y divide-[var(--app-border)]">
-                    {previewStages.map((stage, idx) => (
-                      <div key={`${stage.stage}-${idx}`} className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-[var(--app-surface-muted)]">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-xs font-semibold surface-soft text-secondary">
-                            {idx + 1}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-semibold text-primary">{stage.stage}</div>
-                            <div className="mt-1 truncate text-sm text-secondary">
-                              {stage.materials?.slice(0, 2).map((mat: any) => `${mat.name}×${mat.count}`).join('、') || '今日可直接推进'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 rounded-full px-2.5 py-1 text-sm font-bold brand-chip">×{stage.totalTimes || 0}</div>
-                      </div>
-                    ))}
-                    {hiddenStageCount > 0 && (
-                      <div className="px-4 py-3 text-sm text-secondary">
-                        还有 {hiddenStageCount} 个关卡，展开详情查看完整列表。
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="px-4 py-6 text-sm text-secondary">今天没有可直接推进的养成关卡。</div>
-                )}
-              </Card>
-
-              <SmoothPanel className="training-plan-details-panel">
-                <details className="w-full p-4">
-                  <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-primary marker:text-tertiary">查看材料、未开放关卡和计算详情</summary>
-                  <div className="mt-5 space-y-5">
-                  {plan.warnings && plan.warnings.length > 0 && (
-                    <div className="rounded-2xl p-4 status-warning">
-                      <h4 className="text-sm font-semibold mb-2">注意事项</h4>
-                      <ul className="space-y-1 text-sm">
-                        {plan.warnings.map((warning, index) => (
-                          <li key={index}>• {warning}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {plan.closedStages && plan.closedStages.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-bold text-primary">今日未开放</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {plan.closedStages.map((stage, idx) => (
-                          <div key={`${stage.stage}-${idx}`} className="rounded-xl px-3 py-2.5 surface-soft">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-bold text-primary">{stage.stage}</div>
-                                <div className="mt-1 text-xs text-tertiary">
-                                  {stage.materials?.slice(0, 2).map((mat: any) => `${mat.name}×${mat.count}`).join('、') || '等待开放后再推进'}
-                                </div>
-                              </div>
-                              <div className="text-xs font-semibold text-[var(--app-danger)]">未开放</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {plan.materialHierarchy && plan.materialHierarchy.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-bold text-primary">材料缺口</h3>
-                      <MaterialGapList materials={plan.materialHierarchy} limit={8} emptyText="计划内材料已集齐" />
-                    </div>
-                  )}
-
-                  {plan.materialHierarchy && plan.materialHierarchy.length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-bold text-primary">材料需求</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {plan.materialHierarchy.map((hierarchy, index) => (
-                          <MaterialHierarchyNode key={`${hierarchy.id}-${index}`} node={hierarchy} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {plan.stages && plan.stages.length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-bold text-primary">完整关卡列表</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {plan.stages.map((stage, idx) => (
-                          <div
-                            key={`${stage.stage}-${idx}`}
-                            className="relative overflow-hidden rounded-xl p-4 surface-soft"
-                          >
-                            <div className="relative">
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                  <div className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
-                                    stage.isOpen !== false
-                                      ? 'brand-chip'
-                                      : 'status-danger'
-                                  }`}>
-                                    {stage.stage}
-                                  </div>
-                                  {stage.isOpen === false && <div className="text-xs font-medium text-[var(--app-danger)]">未开放</div>}
-                                </div>
-                                <div className="rounded-full px-3 py-1.5 text-sm font-semibold brand-chip">×{stage.totalTimes || 0}</div>
-                              </div>
-                              {stage.materials && stage.materials.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                  {stage.materials.map((mat, matIdx) => (
-                                    <div key={matIdx} className="rounded-full px-3 py-1.5 text-xs font-medium surface-panel text-secondary">
-                                      {mat.name} ×{mat.count}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                </details>
-              </SmoothPanel>
-            </>
-          )}
-        </div>
-          </aside>
-        </div>
-      </div>
+      </Modal>
+      {recentlyRemoved && <UndoToast key={recentlyRemoved.item.operatorId} name={recentlyRemoved.item.operator.name} pending={queueMutationPending} onUndo={handleUndoRemove} onDismiss={() => setRecentlyRemoved(null)} />}
     </div>
   );
 }

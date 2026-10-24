@@ -464,6 +464,7 @@ export interface TrainingQueueItem {
   currentElite: number
   targetElite: number
   materials: MaterialNode[]
+  lmd?: { needed: number; have: number; stillNeeded: number }
   progress: number
   isComplete?: boolean
   settings?: {
@@ -484,6 +485,7 @@ export interface TrainingSettings {
 
 // 训练计划
 export interface TrainingPlan {
+  queueRevision?: string
   mode: 'current' | 'all'
   operators?: Array<{
     id: string

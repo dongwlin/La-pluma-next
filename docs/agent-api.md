@@ -91,3 +91,11 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 ```
 
 如果设置了 `LA_PLUMA_TOKEN`，Agent API、其它 `/api/*` 以及 WebRTC 同源网关的票据入口都需要 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`。未设置时认证关闭。
+
+## 养成队列与任务流程
+
+添加目标和生成预览不会首次应用任务流程。先调用 `POST /api/agent/training/plan`（`mode` 为 `current` 或 `all`），再将返回的计划原样放入 `POST /api/agent/actions/apply-training-plan` 的 `plan` 字段。必须保留 `queueRevision`；队列已变化或缺少版本时应用返回 HTTP `409`，需要重新预览。
+
+`GET /api/agent/training/queue` 返回队列 `revision` 和 `flowSync`。同步状态为 `not_applied`、`synced` 或 `failed`，并提供实际的 `flowName`、`taskName`。显式应用后，添加、移除和排序会按已应用的计划范围同步智能养成关卡；清空队列会移除智能关卡，保留普通关卡。
+
+队列变更响应中的 `queueUpdated: true` 表示队列已保存。即使请求成功，仍须检查 `flowSync.status`：`failed` 表示任务流程尚未同步，可调用 `POST /api/agent/training/sync` 重试，无需重复添加或删除。添加接口支持从零开始的 `position`，用于原位恢复；排序接口要求 `operatorIds` 包含全部队列项且不能重复。

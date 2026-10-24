@@ -2283,7 +2283,7 @@ html.la-pluma-standalone #app-root .page {
 /* Native business controls use the same iOS touch target and glass surface as
    the shared controls. Opt-in semantics keep compact, specialized controls
    (time pickers, sliders, and task editors) unchanged. */
-.la-pluma-app .la-pluma-content .app-native-control {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-native-control {
   box-sizing: border-box;
   min-height: var(--app-control-height-md);
   border: 1px solid var(--app-border-strong);
@@ -2296,15 +2296,15 @@ html.la-pluma-standalone #app-root .page {
   accent-color: var(--app-accent);
 }
 
-.la-pluma-app .la-pluma-content .app-native-control:not(textarea) {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-native-control:not(textarea) {
   padding: 0 var(--app-space-control-x);
 }
 
-.la-pluma-app .la-pluma-content input.app-native-control.app-input-has-icon {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) input.app-native-control.app-input-has-icon {
   padding-left: 2.5rem;
 }
 
-.la-pluma-app .la-pluma-content select.app-native-control {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) select.app-native-control {
   appearance: none;
   -webkit-appearance: none;
   background-image: var(--app-select-chevron);
@@ -2314,12 +2314,12 @@ html.la-pluma-standalone #app-root .page {
   padding-right: 2.5rem;
 }
 
-.la-pluma-app .la-pluma-content select.app-select-control {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) select.app-select-control {
   background-image: none;
   padding-right: 3rem;
 }
 
-.la-pluma-app .la-pluma-content .app-select-trailing-icon {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-select-trailing-icon {
   position: absolute;
   top: 50%;
   right: 0.375rem;
@@ -2335,22 +2335,22 @@ html.la-pluma-standalone #app-root .page {
   pointer-events: none;
 }
 
-.la-pluma-app .la-pluma-content .app-select-trailing-icon.is-disabled {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-select-trailing-icon.is-disabled {
   opacity: 0.5;
 }
 
-.la-pluma-app .la-pluma-content .app-native-control:focus-visible {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-native-control:focus-visible {
   outline: none;
   border-color: var(--app-accent);
   box-shadow: 0 0 0 3px var(--app-accent-soft);
 }
 
-.la-pluma-app .la-pluma-content .app-native-control:disabled {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-native-control:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-.la-pluma-app .la-pluma-content .app-native-control::placeholder {
+:is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-native-control::placeholder {
   color: var(--app-text-soft);
   opacity: 1;
 }
