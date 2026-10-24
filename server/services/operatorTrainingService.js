@@ -6,6 +6,8 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { readJsonFile, writeJsonFile } from '../utils/fileHelper.js';
 import { createLogger } from '../utils/logger.js';
 import { getTodayOpenStages, isStageOpenToday } from './notificationService.js';
@@ -701,66 +703,72 @@ async function updateSettings(settings) {
  * @param {object} materialsDb - 材料数据库
  * @param {object} formulasDb - 合成配方数据库
  * @param {object} farmableMaterials - 累积的可刷取材料 {materialId: quantity}
+ * @param {Set<string>} visiting - 当前递归路径上的材料ID，用于阻断配方循环引用
  */
-function expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials = {}) {
+export function expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials = {}, visiting = new Set()) {
   const material = materialsDb.materials[materialId];
   if (!material) {
     logger.debug('材料不存在', { materialId });
     return farmableMaterials;
   }
-  
+
+  // 配方数据可能存在循环引用（如芯片互转配方），跳过已在当前路径上的材料，避免无限递归
+  if (visiting.has(materialId)) {
+    logger.warn('材料配方存在循环引用，跳过重复展开', { materialName: material.name });
+    return farmableMaterials;
+  }
+
   // 检查仓库中的数量
   const have = depot.items?.[materialId] || 0;
   const stillNeeded = Math.max(0, needed - have);
-  
+
   if (stillNeeded === 0) {
     logger.debug('材料仓库已足够', { materialName: material.name });
     return farmableMaterials;
   }
-  
-  logger.debug('展开材料', { 
-    materialName: material.name, 
-    needed, 
-    have, 
-    stillNeeded 
-  });
-  
-  // 芯片特殊处理：芯片组不展开，直接刷取；双芯片需要展开合成
-  const isChipPack = material.name.includes('芯片组'); // 芯片组（如辅助芯片组）
-  
-  if (isChipPack) {
-    // 芯片组直接刷芯片组关卡（PR-X-2），不展开合成
-    logger.debug('芯片组直接刷取', { materialName: material.name });
-    farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
-    return farmableMaterials;
-  }
-  
-  // 双芯片需要展开合成配方（通常需要 2×芯片组 + 1×芯片助剂）
-  // 这样可以正确扣除仓库中已有的芯片组
-  
-  // 检查是否有合成配方（配方直接在根对象下，不是在 formulas 属性下）
-  const formula = formulasDb[materialId];
-  
-  if (formula && formula.materials && Object.keys(formula.materials).length > 0) {
-    // 有合成配方，递归展开子材料
-    logger.debug('材料需要合成，展开子材料', { materialName: material.name });
-    
-    for (const [subMaterialId, subQuantity] of Object.entries(formula.materials)) {
-      const totalSubNeeded = subQuantity * stillNeeded;
-      logger.debug('展开子材料', { 
-        subMaterialId, 
-        subQuantity, 
-        totalSubNeeded 
-      });
-      expandMaterialTree(subMaterialId, totalSubNeeded, depot, materialsDb, formulasDb, farmableMaterials);
+
+  visiting.add(materialId);
+
+  try {
+    // 芯片特殊处理：芯片组不展开，直接刷取；双芯片需要展开合成
+    const isChipPack = material.name.includes('芯片组'); // 芯片组（如辅助芯片组）
+
+    if (isChipPack) {
+      // 芯片组直接刷芯片组关卡（PR-X-2），不展开合成
+      logger.debug('芯片组直接刷取', { materialName: material.name });
+      farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
+      return farmableMaterials;
     }
-  } else {
-    // 没有合成配方，这是可以直接刷的材料
-    logger.debug('可刷取材料', { materialName: material.name });
-    farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
+
+    // 双芯片需要展开合成配方（通常需要 2×芯片组 + 1×芯片助剂）
+    // 这样可以正确扣除仓库中已有的芯片组
+
+    // 检查是否有合成配方（配方直接在根对象下，不是在 formulas 属性下）
+    const formula = formulasDb[materialId];
+
+    if (formula && formula.materials && Object.keys(formula.materials).length > 0) {
+      // 有合成配方，递归展开子材料
+      logger.debug('材料需要合成，展开子材料', { materialName: material.name });
+
+      for (const [subMaterialId, subQuantity] of Object.entries(formula.materials)) {
+        const totalSubNeeded = subQuantity * stillNeeded;
+        logger.debug('展开子材料', {
+          subMaterialId,
+          subQuantity,
+          totalSubNeeded
+        });
+        expandMaterialTree(subMaterialId, totalSubNeeded, depot, materialsDb, formulasDb, farmableMaterials, visiting);
+      }
+    } else {
+      // 没有合成配方，这是可以直接刷的材料
+      logger.debug('可刷取材料', { materialName: material.name });
+      farmableMaterials[materialId] = (farmableMaterials[materialId] || 0) + stillNeeded;
+    }
+
+    return farmableMaterials;
+  } finally {
+    visiting.delete(materialId);
   }
-  
-  return farmableMaterials;
 }
 
 /**
@@ -934,7 +942,8 @@ async function generateTrainingPlan(mode = 'current') {
   
   const stages = Array.from(stagesMap.values()).map(stage => ({
     ...stage,
-    isOpen: isStageOpenToday(stage.stage)
+    // isStageOpenToday 返回 { isOpen, reason } 对象，这里取布尔值供客户端判断
+    isOpen: isStageOpenToday(stage.stage).isOpen
   }));
   const todayOpen = getTodayOpenStages();
   const openStages = stages.filter(stage => stage.isOpen !== false);
@@ -1091,6 +1100,101 @@ async function applyPlanToTasks(plan, settings = {}) {
   }
 }
 
+/**
+ * 养成材料数据抓取脚本配置
+ * 依赖 scripts/ 中现成的抓取逻辑（保持单一事实来源），按顺序执行：
+ * 1. 生成 materials.json（材料表 + 最优关卡）
+ * 2. 生成 material-formulas.json（合成配方）
+ * 3. 将配方合并进 materials.json
+ * 4. 生成 operator-materials.json（干员精英化材料需求）
+ */
+const MATERIAL_FETCH_SCRIPTS = [
+  { name: 'fetch-all-materials', script: 'fetch-all-materials.js', output: 'materials.json' },
+  { name: 'fetch-material-formulas', script: 'fetch-material-formulas.js', output: 'material-formulas.json' },
+  { name: 'merge-formulas', script: 'merge-formulas.js', output: 'materials.json' },
+  { name: 'fetch-operator-materials', script: 'fetch-operator-materials.js', output: 'operator-materials.json' }
+];
+
+// 单个抓取脚本的超时时间（毫秒）
+const FETCH_SCRIPT_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * 统计数据文件中的条目数（文件缺失或解析失败时返回 null）
+ */
+async function countDataFileEntries(fileName) {
+  const data = await readJsonFile(path.join(__dirname, '../data', fileName), null);
+  if (!data || typeof data !== 'object') return null;
+  if (data.operators) return Object.keys(data.operators).length;
+  if (data.materials) return Object.keys(data.materials).length;
+  return Object.keys(data).length;
+}
+
+/**
+ * 执行单个数据抓取脚本
+ */
+async function runMaterialFetchScript({ name, script, output }) {
+  const scriptPath = path.join(__dirname, '../scripts', script);
+  const startedAt = Date.now();
+  logger.info('执行材料数据抓取脚本', { name, script });
+
+  try {
+    // promisify 在调用时包装，便于测试中通过 mock 替换 execFile
+    const { stdout } = await promisify(execFile)(process.execPath, [scriptPath], {
+      cwd: path.join(__dirname, '..'),
+      timeout: FETCH_SCRIPT_TIMEOUT_MS,
+      windowsHide: true
+    });
+    const durationMs = Date.now() - startedAt;
+    const entries = await countDataFileEntries(output);
+    logger.success('材料数据脚本执行成功', { name, durationMs, entries, stdout: stdout?.slice(0, 200) });
+    return { name, script, output, success: true, durationMs, entries };
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    // execFile 失败时错误对象带有 stderr，优先携带到错误信息中
+    const detail = (error.stderr && String(error.stderr).trim()) || error.message;
+    logger.error('材料数据脚本执行失败', { name, durationMs, error: detail });
+    return { name, script, output, success: false, durationMs, error: detail };
+  }
+}
+
+/**
+ * 抓取并更新养成材料数据
+ * 依次（串行，避免数据源限流）执行 scripts/ 下的抓取脚本，补齐三个数据文件；
+ * 单个脚本失败时记录错误并继续跑剩余脚本，最后若有失败则整体抛错
+ */
+async function fetchOperatorMaterials() {
+  logger.info('开始更新养成材料数据');
+
+  const results = [];
+  for (const scriptConfig of MATERIAL_FETCH_SCRIPTS) {
+    results.push(await runMaterialFetchScript(scriptConfig));
+  }
+
+  const failedScripts = results.filter(result => !result.success);
+  if (failedScripts.length > 0) {
+    const detail = failedScripts.map(result => `${result.name}: ${result.error}`).join('; ');
+    throw new Error(`养成材料数据更新失败（${failedScripts.length}/${results.length} 个脚本失败）: ${detail}`);
+  }
+
+  const operatorMaterialsData = await loadOperatorMaterials();
+  const materialsDb = await loadMaterialsDatabase();
+  const summary = {
+    scripts: results,
+    operatorCount: Object.keys(operatorMaterialsData.operators || {}).length,
+    materialCount: Object.keys(materialsDb.materials || {}).length,
+    recipeCount: Object.keys(materialsDb.recipes || {}).length,
+    lastUpdated: new Date().toISOString()
+  };
+
+  logger.success('养成材料数据更新完成', {
+    operatorCount: summary.operatorCount,
+    materialCount: summary.materialCount,
+    recipeCount: summary.recipeCount
+  });
+
+  return summary;
+}
+
 export default {
   getOperatorList,
   getTrainingQueue,
@@ -1100,5 +1204,6 @@ export default {
   updateSettings,
   generateTrainingPlan,
   applyPlanToTasks,
-  calculateOperatorMaterials
+  calculateOperatorMaterials,
+  fetchOperatorMaterials
 };
