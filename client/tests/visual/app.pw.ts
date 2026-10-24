@@ -42,7 +42,7 @@ const READY_MARKER: Record<string, { text?: string; input?: string }> = {
   config: { text: 'v5.12.3' },
 }
 
-/** 主题种子：与 stores/uiStore.ts 的 persist key/结构保持一致。 */
+/** 主题种子：与 shared/stores/uiStore.ts 的 persist key/结构保持一致。 */
 function themeSeedScript(theme: Theme) {
   return `
     localStorage.setItem('ui-storage', JSON.stringify({

@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PageSkeleton } from './skeletons'
+import { PageSkeleton } from './Loading'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -67,22 +67,6 @@ describe('PageSkeleton', () => {
     expect(container.querySelector('.automation-notification-panel')).not.toBeNull()
     expect(container.querySelector('.automation-monitor-panel .aspect-video')).not.toBeNull()
     expect(container.querySelectorAll('.automation-monitor-skeleton-toolbar .rounded-full')).toHaveLength(5)
-  })
-
-  it('keeps dashboard material styling while data is loading', async () => {
-    await renderSkeleton('dashboard')
-
-    const page = container.querySelector('[aria-label="概览加载中"]')
-    expect(page?.classList.contains('dashboard-page')).toBe(true)
-    expectCurrentPageHeader()
-    expect(page?.querySelector('.dashboard-flow-card')).not.toBeNull()
-    expect(page?.querySelectorAll('.dashboard-flow-actions > .app-skeleton')).toHaveLength(2)
-    expect(page?.querySelector('[data-dashboard-preview-card].status-border-beam')).not.toBeNull()
-    expect(page?.querySelectorAll('.dashboard-device-card-shell')).toHaveLength(4)
-    expect(page?.querySelectorAll('.dashboard-temperature-skeleton')).toHaveLength(1)
-    expect(page?.querySelectorAll('.dashboard-summary-card')).toHaveLength(2)
-    expect(page?.querySelector('.dashboard-summary-card.is-training')).not.toBeNull()
-    expect(page?.querySelector('.dashboard-summary-card.is-drops')).not.toBeNull()
   })
 
   it('keeps the device preview aspect ratio for execution pages', async () => {

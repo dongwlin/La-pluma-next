@@ -4,7 +4,6 @@
 
 export {
   useUIStore,
-  applyThemePreference,
   isAppTab,
   appTabFromPath,
   appTabPath,

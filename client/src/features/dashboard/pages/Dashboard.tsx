@@ -3,7 +3,7 @@ import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Dat
 import { getOpenTodayStages, getTodayDrops, getTrainingQueue, maaApi } from '@/shared/api'
 import Icons from '@/shared/ui/Icons'
 import { PageHeader, Card, Button, IconButton, SmoothPanel } from '@/shared/ui'
-import { DashboardSkeleton } from '../components/skeletons'
+import { DashboardSkeleton } from '../components/DashboardSkeleton'
 import { FloatingStatusIndicator, probeBackendAvailability, useStatusStore, type StatusMessageType } from '@/features/runtime-status'
 import { useUIStore } from '@/shared/stores'
 import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
