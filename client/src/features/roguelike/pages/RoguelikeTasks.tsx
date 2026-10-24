@@ -13,7 +13,7 @@ import type {
   RoguelikeAdvancedOption,
   RoguelikeTaskInputs,
   RoguelikeAdvancedParams
-} from '@/shared/types/components'
+} from '../types'
 
 type RoguelikeMode = 'roguelike' | 'reclamation'
 type RoguelikeUserConfig = {

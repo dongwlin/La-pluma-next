@@ -18,7 +18,7 @@ vi.mock('framer-motion', async () => {
   return { motion: { div: MotionDiv } }
 })
 
-vi.mock('@/shared/api', () => ({
+vi.mock('../api', () => ({
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
 }))
 

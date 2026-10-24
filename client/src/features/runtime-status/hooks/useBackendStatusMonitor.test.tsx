@@ -3,7 +3,6 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import App from '@/app/App'
 import { useStatusStore } from '../store/statusStore'
 import {
   invalidateBackendStatusProbe,
@@ -23,24 +22,6 @@ vi.mock('@/shared/api', () => ({
     getErrorMessage: (result?: { message?: string; error?: string }) => result?.message || result?.error || '未知错误',
   },
 }))
-
-vi.mock('@/app/layout/Layout', () => ({
-  default: ({ children }: { children: (props: { activeTab: string }) => React.ReactNode }) => (
-    <div>{children({ activeTab: 'automation' })}</div>
-  ),
-}))
-
-vi.mock('@/app/layout/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('@/features/automation', async () => {
-  const { useStatusStore: useMockStatusStore } = await import('../store/statusStore')
-
-  return {
-    default: function MockAutomationTasks() {
-      const backendStatus = useMockStatusStore(state => state.backendStatus)
-      return <button disabled={backendStatus !== 'available'}>非首页执行入口</button>
-    },
-  }
-})
 
 interface ProbeResult {
   success: boolean
@@ -166,26 +147,5 @@ describe('useBackendStatusMonitor', () => {
 
     await expect(probeBackendAvailability({ showChecking: false })).resolves.toBe(true)
     expect(useStatusStore.getState().isActive).toBe(false)
-  })
-
-  it('keeps a restored non-dashboard page blocked during the global startup probe', async () => {
-    const request = deferred<ProbeResult>()
-    apiMocks.getTaskStatus.mockReturnValueOnce(request.promise)
-
-    act(() => root.render(<App />))
-    await flushEffects()
-
-    const action = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent === '非首页执行入口')
-
-    expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(1)
-    expect(useStatusStore.getState().backendStatus).toBe('checking')
-    expect(action?.disabled).toBe(true)
-
-    request.reject(new Error('后端服务不可用'))
-    await flushEffects()
-
-    expect(useStatusStore.getState().backendStatus).toBe('unavailable')
-    expect(action?.disabled).toBe(true)
   })
 })

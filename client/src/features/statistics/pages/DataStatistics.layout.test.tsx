@@ -29,13 +29,19 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/shared/api', () => ({
-  fetchOperatorMaterials: vi.fn(),
-  getAllOperators: mocks.getAllOperators,
+vi.mock('../api', () => ({
   getDropStatistics: mocks.getDropStatistics,
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
   getOperBoxData: mocks.getOperBoxData,
+}))
+
+vi.mock('@/features/training', () => ({
+  fetchOperatorMaterials: vi.fn(),
+  getAllOperators: mocks.getAllOperators,
   getTrainingQueue: vi.fn(),
+}))
+
+vi.mock('@/shared/api', () => ({
   maaApi: {
     getDepotData: mocks.getDepotData,
     getErrorMessage: () => '未知错误',

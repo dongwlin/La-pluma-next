@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TaskFlowItem } from '@/shared/types/components'
+import type { TaskFlowItem } from '../types'
 import { taskResultsFromSummary } from './automationTaskProgress'
 
 const task = (id: string, name: string, commandId = 'fight') => ({

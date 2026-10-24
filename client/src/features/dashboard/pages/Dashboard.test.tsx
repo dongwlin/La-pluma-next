@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useStatusStore } from '@/features/runtime-status'
-import Dashboard, { DASHBOARD_REFRESH_INTERVAL_MS } from './Dashboard'
+import Dashboard from './Dashboard'
+import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -36,9 +37,15 @@ vi.mock('@/shared/api', () => ({
     runCurrentActivity: apiMocks.runCurrentActivity,
     getErrorMessage: (result?: { message?: string; error?: string }) => result?.message || result?.error || '未知错误',
   },
-  getTrainingQueue: apiMocks.getTrainingQueue,
+}))
+
+vi.mock('@/features/statistics', () => ({
   getTodayDrops: apiMocks.getTodayDrops,
   getOpenTodayStages: apiMocks.getOpenTodayStages,
+}))
+
+vi.mock('@/features/training', () => ({
+  getTrainingQueue: apiMocks.getTrainingQueue,
 }))
 
 vi.mock('@/shared/stores', () => ({

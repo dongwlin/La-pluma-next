@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest'
-import type { TaskFlowItem } from '@/shared/types/components'
+import type { TaskFlowItem } from '../types'
 import {
   getPointerSortTargetIndex,
   hasPointerSortActivated,

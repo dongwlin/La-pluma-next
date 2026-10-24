@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildScrcpyOptions, fpsOptions, qualityPresets, usePreviewStore } from './previewStore'
+import { buildScrcpyOptions, usePreviewStore } from './previewStore'
+import { fpsOptions, qualityPresets } from '../constants'
 
 const defaults = {
   mode: 'off' as const,

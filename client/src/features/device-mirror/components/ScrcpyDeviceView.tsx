@@ -4,7 +4,8 @@ import { ArrowLeft, Gauge, Home, Maximize2, Minimize2, Package, PanelsTopLeft, P
 import { Button } from '@/shared/ui'
 import { usePreviewSession } from '../hooks/usePreviewSession'
 import { usePreviewSnapshot } from '../hooks/usePreviewSnapshot'
-import { usePreviewStore, qualityPresets, fpsOptions, type QualityPreset } from '../store/previewStore'
+import { usePreviewStore } from '../store/previewStore'
+import { qualityPresets, fpsOptions, type QualityPreset } from '../constants'
 import PreviewModeControls, { PreviewAutoStartSetting, PreviewModeSegmented } from './PreviewModeControls'
 
 interface ScrcpyDeviceViewProps {

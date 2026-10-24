@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS } from '../constants'
 
 const STORAGE_KEY = 'la-pluma-dashboard-cache'
 
@@ -212,9 +213,9 @@ describe('dashboardStore persistence', () => {
 
   it('rejects timestamps beyond the clock-skew allowance', async () => {
     const now = Date.now()
-    const dashboardModule = await persistFixture(now)
+    await persistFixture(now)
     const persisted = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}')
-    persisted.savedAt = now + dashboardModule.DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS + 10_000
+    persisted.savedAt = now + DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS + 10_000
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted))
 
     vi.resetModules()

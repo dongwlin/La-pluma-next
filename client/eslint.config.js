@@ -57,4 +57,55 @@ export default defineConfig([
       }],
     },
   },
+  // 分层护栏：app → features → shared 只能单向依赖。
+  // flat config 中同一规则后置块会整体覆盖前置块，因此每个块都写全该目录需要的 patterns。
+  {
+    // 任何 src 文件都只能经 feature 的 index.ts 根 import，禁止 `@/features/<x>/...` 深路径。
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '^@/features/[^/]+/.+',
+          message: '功能域对外只有 index.ts 一个公开面，请改为 @/features/<domain> 根 import。',
+        }],
+      }],
+    },
+  },
+  {
+    // features/shared 不得反向依赖 app 层。
+    files: ['src/features/**/*.{ts,tsx}', 'src/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^@/features/[^/]+/.+',
+            message: '功能域对外只有 index.ts 一个公开面，请改为 @/features/<domain> 根 import。',
+          },
+          {
+            regex: '^@/app(?:/.*)?$',
+            message: 'app 是组装层，features/shared 不得反向依赖 @/app。',
+          },
+        ],
+      }],
+    },
+  },
+  {
+    // shared 不感知任何功能域。`^@/features(?:/.*)?$` 同时覆盖根 import 与深路径，
+    // 因此这里不再重复列深路径 pattern，避免同一处 import 报两条错误。
+    files: ['src/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^@/features(?:/.*)?$',
+            message: 'shared 不感知 features，请把跨域能力留在所属域内或上移到 shared 的通用能力。',
+          },
+          {
+            regex: '^@/app(?:/.*)?$',
+            message: 'app 是组装层，features/shared 不得反向依赖 @/app。',
+          },
+        ],
+      }],
+    },
+  },
 ])

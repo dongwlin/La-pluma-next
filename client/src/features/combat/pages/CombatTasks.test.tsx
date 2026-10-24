@@ -54,6 +54,9 @@ vi.mock('@/shared/api', () => ({
     resetCopilotSetProgress: mocks.resetCopilotSetProgress,
     getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
   },
+}))
+
+vi.mock('../api', () => ({
   searchCopilot: mocks.searchCopilot,
   searchParadoxCopilot: mocks.searchParadoxCopilot,
 }))

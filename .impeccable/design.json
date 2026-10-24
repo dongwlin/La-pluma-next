@@ -333,7 +333,7 @@
       }
     ],
     "dos": [
-      "Do 先读 client/src/index.css 和 client/src/ios-theme.css，再用语义类实现界面；新页面优先使用 Layout、PageHeader、Card、Button、Input 等现有组件。",
+      "Do 先读 client/src/styles/index.css 和 client/src/styles/ios-theme.css，再用语义类实现界面；新页面优先使用 Layout、PageHeader、Card、Button、Input 等现有组件。",
       "Do 把间距回到 --app-space-*、圆角回到 --app-radius-*，保持 4px 基线和 1px 发丝线。",
       "Do 让系统蓝保持稀缺：只用于当前项、主操作、焦点和运行中状态；状态色只表达语义。",
       "Do 在手机和粗指针设备上保证至少 44px 的点击区域，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。",
@@ -341,7 +341,7 @@
       "Do 为所有可点击元素提供 focus-visible 状态，装饰图标加 aria-hidden=\"true\"。"
     ],
     "donts": [
-      "Don't 新增页面级颜色主题或 from-violet-*、text-orange-*、bg-cyan-* 这类随手写的色板；需要新语义时先在 index.css 增加 token 或语义类。",
+      "Don't 新增页面级颜色主题或 from-violet-*、text-orange-*、bg-cyan-* 这类随手写的色板；需要新语义时先在 client/src/styles/index.css 增加 token 或语义类。",
       "Don't 使用 rounded-2xl、rounded-3xl 或任意更大的圆角突破 --app-radius-lg；需要特殊造型时先确认是否应成为新的语义 token。",
       "Don't 给卡片、输入框、分段控件和普通信息容器使用 border-2 或重色描边；2px 只留给复选框、引导线和加载圈。",
       "Don't 在页面里重建导航壳层、主题开关、modal 基础样式或第二套组件 DOM。",

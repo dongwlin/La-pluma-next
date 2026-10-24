@@ -43,7 +43,6 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('@/shared/api', () => ({
-  generateTrainingPlan: mocks.generateTrainingPlan,
   maaApi: {
     getActivity: mocks.getActivity,
     getErrorMessage: () => '未知错误',
@@ -56,6 +55,10 @@ vi.mock('@/shared/api', () => ({
     testConnection: mocks.testConnection,
     executeScheduleNow: mocks.executeScheduleNow,
   },
+}))
+
+vi.mock('@/features/training', () => ({
+  generateTrainingPlan: mocks.generateTrainingPlan,
 }))
 
 vi.mock('@/features/runtime-status', () => ({

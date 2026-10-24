@@ -3,7 +3,7 @@
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '@/shared/types/components'
+import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
 import OperatorTraining from './OperatorTraining'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -41,10 +41,9 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/shared/api', () => ({
+vi.mock('../api', () => ({
   getOperatorList: mocks.getOperatorList,
   getAllOperators: mocks.getAllOperators,
-  getOperBoxData: mocks.getOperBoxData,
   getTrainingQueue: mocks.getTrainingQueue,
   addToTrainingQueue: mocks.addToTrainingQueue,
   removeFromTrainingQueue: mocks.removeFromTrainingQueue,
@@ -53,6 +52,10 @@ vi.mock('@/shared/api', () => ({
   generateTrainingPlan: mocks.generateTrainingPlan,
   applyTrainingPlan: mocks.applyTrainingPlan,
   retryTrainingSync: mocks.retryTrainingSync,
+}))
+
+vi.mock('@/features/statistics', () => ({
+  getOperBoxData: mocks.getOperBoxData,
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
 }))
 

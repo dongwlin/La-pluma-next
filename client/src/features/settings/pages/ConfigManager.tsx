@@ -23,7 +23,7 @@ import type {
   AutoUpdateConfig,
   ConfigSection,
   UpdateStatus
-} from '@/shared/types/components'
+} from '../types'
 
 interface MaaVersionInfo {
   cli: string

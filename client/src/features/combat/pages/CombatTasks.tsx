@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { maaApi, searchCopilot, searchParadoxCopilot } from '@/shared/api'
+import { maaApi } from '@/shared/api'
+import { searchCopilot, searchParadoxCopilot } from '../api'
 import { motion, useReducedMotion } from 'framer-motion'
 import { FileText, Info, Play, Square } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
@@ -20,7 +21,7 @@ import type {
   CopilotSearchResult,
   ParadoxSearchResult,
   CopilotSetItem
-} from '@/shared/types/components'
+} from '../types'
 
 type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
 type CopilotSetSelections = Record<string, number[]>

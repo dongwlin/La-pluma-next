@@ -7,7 +7,7 @@
 ## 主要技术点
 
 - **前端**: React Hooks 与原生语义组件实现页面壳层和响应式 chrome，Tailwind CSS/语义 token 负责业务布局，Framer Motion 负责物理动效，Zustand 管理跨页面状态
-- **API**: 前端通过 `client/src/services/api.ts` 访问 `/api/agent/*`
+- **API**: 前端通过 `client/src/shared/api/` 的传输层底座（`fetchWithAuth`、`parseJsonResponse`、`maaApi`）访问 `/api/agent/*`；独立端点按业务域归各 `features/<domain>/api/`
 - **后端**: `server/server.js` 挂载 Agent API，并用 Socket.IO 推送运行状态
 - **MAA 集成**: 通过 Node.js 子进程调用 `maa` CLI 命令
 - **定时任务**: 使用 node-cron 实现任务调度
@@ -19,7 +19,7 @@
 
 ### 全局样式冻结
 
-`client/src/index.css` 与 `client/src/ios-theme.css` 不再新增页面级选择器；新样式随组件目录走（组件同名 CSS / 按域样式文件），最终由样式轨道 S4 的 `@layer page` 分层方案归位。完整规则见 [设计规范](../DESIGN.md) 的「配置即规范」一节。
+`client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 不再新增页面级选择器；新样式随组件目录走（组件同名 CSS / 按域样式文件），最终由样式轨道 S4 的 `@layer page` 分层方案归位。完整规则见 [设计规范](../DESIGN.md) 的「配置即规范」一节。
 
 ### stylelint 预算制（ratchet）
 

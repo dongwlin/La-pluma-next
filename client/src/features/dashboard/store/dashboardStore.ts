@@ -1,8 +1,8 @@
 import { create } from 'zustand'
+import { DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS } from '../constants'
 
 const DASHBOARD_CACHE_STORAGE_KEY = 'la-pluma-dashboard-cache'
 const DASHBOARD_CACHE_VERSION = 1
-export const DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS = 60_000
 
 const MAX_COMPLETED_STAGES = 500
 const MAX_TRAINING_NAMES = 10

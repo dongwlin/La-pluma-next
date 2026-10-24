@@ -15,14 +15,14 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ### 前端 UI 与响应式壳层
 
-前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 common 组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
+前端使用 React 19、Tailwind CSS 和 Framer Motion。`Layout` 与 `shared/ui` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
 
-桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、common 组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
+桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、`shared/ui` 通用组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
 
 ## 技术栈
 
 - **前端框架**: React 19 + TypeScript + Vite
-- **UI 框架**: Tailwind CSS + Framer Motion + 项目语义组件与 `ios-theme.css`
+- **UI 框架**: Tailwind CSS + Framer Motion + 项目语义组件与 `src/styles/ios-theme.css`
 - **图标**: Lucide React
 - **状态管理**: Zustand
 - **后端**: Node.js + Express
@@ -34,28 +34,48 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ## 项目结构
 
+前端按 `app → features → shared` 三层垂直切分（依赖只能单向向下）：
+
+- `app/`：应用组装——根组件、页面注册表、布局壳与 Provider，不含业务逻辑。
+- `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
+- `shared/`：与业务无关的横向下层（通用 UI、传输层底座、导航/全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
+
+已知接受项：`features/training` 与 `features/statistics` 通过各自 `index.ts` 互相消费域内 API（养成页面用统计域的干员仓库数据/图标端点，统计页面用养成域的队列/材料/名册端点），形成模块级引用环。两域不得在模块顶层读取对方的导出，跨域调用只允许发生在组件或函数运行时；新增此类跨域依赖时需在评审中确认。
+
 ```
 La-pluma-next/
 ├── DESIGN.md                  # UI 设计规范（开发者与 Agent 的唯一来源）
 ├── client/                    # 前端 (React + TypeScript + Vite + Tailwind CSS + Framer Motion)
 │   ├── src/
-│   │   ├── components/        # UI 组件
-│   │   │   ├── Dashboard.tsx          # 控制台总览
-│   │   │   ├── AutomationTasks.tsx    # 日常任务流程
-│   │   │   ├── CombatTasks.tsx        # 作业、SSS、悖论模拟
-│   │   │   ├── RoguelikeTasks.tsx     # 肉鸽模式
-│   │   │   ├── OperatorTraining.tsx   # 干员养成计划
-│   │   │   ├── DataStatistics.tsx     # 仓库、干员和掉落数据
-│   │   │   ├── LogViewer.tsx          # 日志查看
-│   │   │   ├── ConfigManager.tsx      # 配置管理
-│   │   │   ├── ScreenMonitor.tsx      # 截图与设备预览
-│   │   │   ├── ScrcpyDeviceView.tsx   # WebRTC 实时预览
-│   │   │   └── ...
-│   │   ├── services/          # API 调用
-│   │   │   └── api.ts         # /api/agent API 封装
-│   │   ├── stores/            # Zustand 状态管理
-│   │   ├── hooks/             # 预览、API 请求等 Hook
-│   │   └── utils/             # 工具函数
+│   │   ├── main.tsx           # 入口：import './styles' 并挂载 @/app/App
+│   │   ├── styles/            # 启动族全局样式资产（不参与三层分层）
+│   │   │   ├── index.ts       # side-effect 入口
+│   │   │   ├── index.css      # Tailwind 入口与语义 token
+│   │   │   └── ios-theme.css  # iOS 26 材质层
+│   │   ├── app/               # 应用组装层
+│   │   │   ├── App.tsx        # 根组件：Provider + Layout + 页面出口
+│   │   │   ├── router/        # tab 注册表与页面组件静态映射
+│   │   │   ├── layout/        # Layout、ThemeToggle、PWAInstallPrompt
+│   │   │   └── providers/     # MotionConfig、主题 dark-class 副作用
+│   │   ├── features/          # 功能域（对外只有 index.ts）
+│   │   │   ├── dashboard/     # 控制台总览
+│   │   │   ├── automation/    # 日常任务流程
+│   │   │   ├── combat/        # 作业、SSS、悖论模拟
+│   │   │   ├── roguelike/     # 肉鸽模式
+│   │   │   ├── training/      # 干员养成计划与养成端点
+│   │   │   ├── statistics/    # 仓库、干员和掉落数据
+│   │   │   ├── logs/          # 日志查看
+│   │   │   ├── settings/      # 配置管理
+│   │   │   ├── runtime-status/   # 后端连接与任务运行状态（非页面域）
+│   │   │   ├── device-mirror/    # 投屏/截图预览（非页面域）
+│   │   │   └── operator-quotes/  # 干员语录服务（非页面域）
+│   │   └── shared/            # 横向下层
+│   │       ├── ui/            # 通用组件库（Button/Card/Modal/...）
+│   │       ├── stores/        # shared 自管的全局 store（uiStore）
+│   │       ├── api/           # 传输层底座：API_BASE_URL、fetchWithAuth、
+│   │       │                  # parseJsonResponse、maaApi 与响应类型
+│   │       ├── hooks/         # useFluidTabIndicator、useOnlineStatus、usePageVisible
+│   │       └── utils/         # executionSummary、taskStatus
 │   └── public/                # 静态资源（Logo、图标）
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
@@ -77,5 +97,7 @@ La-pluma-next/
 ├── package.json               # 根目录脚本（pnpm workspace 入口）
 └── README.md                  # 项目入口与快速开始
 ```
+
+`shared/types/` 已在 Phase 2a 解散：域类型归各 `features/<domain>/types/`，该目录已删除。
 
 开发流程与常用检查见 [开发文档](development.md)。

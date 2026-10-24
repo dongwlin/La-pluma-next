@@ -1,7 +1,9 @@
 /**
  * Shared API 公开面
- * Phase 2a/2b 拆解期间 api.ts 为整体迁入的过渡态，消费方一律经此入口引用，
- * 后续按域拆分时只需调整此文件的 re-export。
+ * 只保留协议/传输层底座（API_BASE_URL、fetchWithAuth、parseJsonResponse）、
+ * maaApi 客户端与共享响应类型；各业务端点由各自 feature 的 api/ 目录持有。
  */
 
-export * from './api'
+export { API_BASE_URL, fetchWithAuth, maaApi, parseJsonResponse } from './api'
+export type { WebrtcStatusData } from './api'
+export type { ApiErrorPayload, ApiResponse } from './types/api'

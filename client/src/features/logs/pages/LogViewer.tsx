@@ -29,7 +29,7 @@ import {
 } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
-import type { LogEntry, LogFile } from '@/shared/types/components'
+import type { LogEntry, LogFile } from '../types'
 
 type LogFilter = 'all' | LogEntry['level']
 type LogContentMode = 'summary' | 'raw'

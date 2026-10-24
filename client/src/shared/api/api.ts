@@ -4,7 +4,6 @@
  */
 
 import type { ApiResponse } from './types/api'
-import type { TrainingPlan, TrainingSettings } from '@/shared/types/components'
 import { parseJsonResponse } from './apiResponse'
 
 export { parseJsonResponse } from './apiResponse'
@@ -19,9 +18,6 @@ const getApiBaseUrl = (): string => {
 }
 
 export const API_BASE_URL = getApiBaseUrl()
-
-export const getItemIconUrl = (iconId: string | number): string =>
-  `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png`
 
 const getStoredToken = (): string => {
   const rawToken = localStorage.getItem('laPlumaToken') || ''
@@ -71,33 +67,6 @@ interface AutoUpdateConfig {
   updateCli: boolean
 }
 
-/**
- * 养成计划选项
- */
-interface TrainingPlanOptions {
-  mode: 'current' | 'all'
-}
-
-/**
- * 养成队列数据
- */
-interface TrainingQueueData {
-  operatorId: string
-  currentElite?: number
-  targetElite?: number
-  priority?: number
-  position?: number
-}
-
-/**
- * 养成计划应用数据
- */
-interface ApplyTrainingPlanData {
-  plan: TrainingPlan
-  settings?: TrainingSettings
-  taskType?: 'combat'
-}
-
 export interface WebrtcStatusData {
   installed?: boolean
   built?: boolean
@@ -108,17 +77,6 @@ export interface WebrtcStatusData {
   deviceId?: string
   devices?: string[]
   [key: string]: any
-}
-
-/**
- * 干员筛选条件
- */
-interface OperatorFilters {
-  rarity?: number
-  profession?: string
-  owned?: boolean
-  needsElite2?: boolean
-  status?: 'trainable' | 'owned' | 'all'
 }
 
 /**
@@ -640,171 +598,4 @@ export const maaApi = {
     return parseJsonResponse(response)
   },
 
-}
-
-// ========== 干员养成相关 API（独立导出函数）==========
-
-/**
- * 获取干员列表
- */
-export async function getOperatorList(filters: OperatorFilters = {}): Promise<ApiResponse> {
-  const params = new URLSearchParams()
-  if (filters.rarity) params.append('rarity', filters.rarity.toString())
-  if (filters.profession) params.append('profession', filters.profession)
-  if (filters.owned !== undefined) params.append('owned', filters.owned.toString())
-  if (filters.needsElite2) params.append('needsElite2', 'true')
-  if (filters.status) params.append('status', filters.status)
-  
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/operators?${params}`)
-  return parseJsonResponse(response)
-}
-
-/**
- * 获取全量干员列表
- */
-export async function getAllOperators(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/data/operators`)
-  return parseJsonResponse(response)
-}
-
-/**
- * 获取已识别的持有干员数据
- */
-export async function getOperBoxData(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/data/operbox`)
-  return parseJsonResponse(response)
-}
-
-/**
- * 获取养成队列
- */
-export async function getTrainingQueue(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue`)
-  return parseJsonResponse(response)
-}
-
-/**
- * 添加干员到养成队列
- */
-export async function addToTrainingQueue(data: TrainingQueueData): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-  return parseJsonResponse(response)
-}
-
-/**
- * 从养成队列中移除干员
- */
-export async function removeFromTrainingQueue(operatorId: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue/${operatorId}`, {
-    method: 'DELETE'
-  })
-  return parseJsonResponse(response)
-}
-
-/**
- * 更新养成队列顺序
- */
-export async function updateTrainingQueueOrder(operatorIds: string[]): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue/order`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ operatorIds })
-  })
-  return parseJsonResponse(response)
-}
-
-export async function retryTrainingSync(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/sync`, { method: 'POST' })
-  return parseJsonResponse(response)
-}
-
-/**
- * 更新养成设置
- */
-export async function updateTrainingSettings(settings: TrainingSettings): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/settings`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings)
-  })
-  return parseJsonResponse(response)
-}
-
-/**
- * 生成养成计划
- */
-export async function generateTrainingPlan(options: TrainingPlanOptions): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(options)
-  })
-  return parseJsonResponse(response)
-}
-
-/**
- * 应用养成计划到任务流程
- */
-export async function applyTrainingPlan(data: ApplyTrainingPlanData): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/apply-training-plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-  return parseJsonResponse(response)
-}
-
-/**
- * 获取干员材料数据
- */
-export async function fetchOperatorMaterials(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/fetch-training-materials`, {
-    method: 'POST'
-  })
-  return parseJsonResponse(response)
-}
-
-// ========== 悖论模拟 API ==========
-
-/**
- * 搜索悖论模拟作业
- */
-export async function searchParadoxCopilot(operatorName: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/paradox/search?name=${encodeURIComponent(operatorName)}`)
-  return parseJsonResponse(response)
-}
-
-/**
- * 搜索普通关卡作业
- */
-export async function searchCopilot(stageName: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/copilot/search?stage=${encodeURIComponent(stageName)}`)
-  return parseJsonResponse(response)
-}
-
-// ==================== 掉落记录 API ====================
-
-/**
- * 获取今日掉落记录
- */
-export async function getTodayDrops(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/drops/today`)
-  return parseJsonResponse(response)
-}
-
-/**
- * 获取掉落统计数据
- */
-export async function getDropStatistics(days: number = 7): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/drops/statistics?days=${days}`)
-  return parseJsonResponse(response)
-}
-
-export async function getOpenTodayStages(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/stages/open-today`)
-  return parseJsonResponse(response)
 }

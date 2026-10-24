@@ -1,5 +1,6 @@
 import { useState, useEffect, useEffectEvent, useRef } from 'react'
-import { generateTrainingPlan, maaApi } from '@/shared/api'
+import { maaApi } from '@/shared/api'
+import { generateTrainingPlan } from '@/features/training'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, ChevronUp, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
@@ -12,7 +13,7 @@ import type {
   TaskFlowItem,
   ConnectionTestStatus,
   StageConfig
-} from '@/shared/types/components'
+} from '../types'
 import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
 import { taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
 

@@ -6,7 +6,7 @@
 
 ## 概述
 
-为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。组件位于 `client/src/components/common/*.tsx`，通过 `client/src/components/common/index.ts` 统一导出，页面中优先从 `@/components/common` 或相邻路径的 `./common` 引入。
+为了减少重复代码、统一视觉风格、提升开发效率，项目维护一套通用 UI 组件。组件位于 `client/src/shared/ui/*.tsx`，通过 `client/src/shared/ui/index.ts` 统一导出，页面中统一从 `@/shared/ui` 引入。
 
 新增或调整组件时，在本文件补充 API 与用法；颜色、字号、间距、圆角、交互状态等规则不要在组件文档里另写一份。
 
@@ -16,7 +16,7 @@
 
 ### PageHeader - 页面标题组件
 
-**文件位置**：`client/src/components/common/PageHeader.tsx`
+**文件位置**：`client/src/shared/ui/PageHeader.tsx`
 
 **适用场景**：所有页面的顶部标题区域。
 
@@ -31,8 +31,8 @@
 ```
 
 ```tsx
-import { PageHeader } from '@/components/common'
-import FloatingStatusIndicator from '@/components/FloatingStatusIndicator'
+import { PageHeader } from '@/shared/ui'
+import { FloatingStatusIndicator } from '@/features/runtime-status'
 
 <PageHeader
   title="自动战斗"
@@ -48,12 +48,12 @@ import FloatingStatusIndicator from '@/components/FloatingStatusIndicator'
 
 ### Card - 卡片组件系列
 
-**文件位置**：`client/src/components/common/Card.tsx`
+**文件位置**：`client/src/shared/ui/Card.tsx`
 
 **适用场景**：主要面板、信息卡片、带标题的内容区域。
 
 ```tsx
-import { Card, CardHeader, CardContent } from '@/components/common'
+import { Card, CardHeader, CardContent } from '@/shared/ui'
 
 <Card smoothCorners>
   <CardHeader
@@ -78,12 +78,12 @@ import { Card, CardHeader, CardContent } from '@/components/common'
 
 ### Button / IconButton
 
-**文件位置**：`client/src/components/common/Button.tsx`
+**文件位置**：`client/src/shared/ui/Button.tsx`
 
 **适用场景**：文本按钮、主要操作、危险操作、图标按钮。
 
 ```tsx
-import { Button, IconButton } from '@/components/common'
+import { Button, IconButton } from '@/shared/ui'
 import { RefreshCw, Save } from 'lucide-react'
 
 <Button variant="primary" icon={<Save />}>保存</Button>
@@ -99,12 +99,12 @@ import { RefreshCw, Save } from 'lucide-react'
 
 ### Input / Select / Checkbox / Switch
 
-**文件位置**：`client/src/components/common/Input.tsx`、`client/src/components/common/Switch.tsx`
+**文件位置**：`client/src/shared/ui/Input.tsx`、`client/src/shared/ui/Switch.tsx`
 
 **适用场景**：表单输入、选择、错误提示、说明文字与二元设置。
 
 ```tsx
-import { Input, Select, Checkbox, Switch } from '@/components/common'
+import { Input, Select, Checkbox, Switch } from '@/shared/ui'
 
 <Input
   label="ADB 路径"
@@ -139,12 +139,12 @@ import { Input, Select, Checkbox, Switch } from '@/components/common'
 
 ### EmptyState
 
-**文件位置**：`client/src/components/common/EmptyState.tsx`
+**文件位置**：`client/src/shared/ui/EmptyState.tsx`
 
-**适用场景**：流程、列表、统计区或数据面板暂时没有内容。通过 `index.ts` 导入，不要在页面中各自拼装“暂无数据”的图标、文案和间距。
+**适用场景**：流程、列表、统计区或数据面板暂时没有内容。通过 `@/shared/ui` 导入，不要在页面中各自拼装“暂无数据”的图标、文案和间距。
 
 ```tsx
-import { EmptyState, Button } from '@/components/common'
+import { EmptyState, Button } from '@/shared/ui'
 
 <EmptyState
   compact
@@ -170,12 +170,12 @@ Props：
 
 ### ConfirmDialog / Loading
 
-**文件位置**：`client/src/components/common/Modal.tsx`、`client/src/components/common/Loading.tsx`
+**文件位置**：`client/src/shared/ui/Modal.tsx`、`client/src/shared/ui/Loading.tsx`
 
-**适用场景**：需要确认的破坏性操作使用 `ConfirmDialog`；短时局部等待使用 `Loading`。两者都由 common 的 `index.ts` 导出。
+**适用场景**：需要确认的破坏性操作使用 `ConfirmDialog`；短时局部等待使用 `Loading`。两者都由 `shared/ui` 的 `index.ts` 导出。
 
 ```tsx
-import { ConfirmDialog, Loading } from '@/components/common'
+import { ConfirmDialog, Loading } from '@/shared/ui'
 
 {loading ? <Loading text="正在读取日志..." /> : content}
 <ConfirmDialog
@@ -189,13 +189,13 @@ import { ConfirmDialog, Loading } from '@/components/common'
 
 `ConfirmDialog.onConfirm` 可以返回 Promise：返回 `false` 或抛出错误时弹窗保持打开，并在弹窗内展示失败原因。
 
-`ActivityIndicator` 是供 `Button` 和 `Loading` 内部复用的 iOS 活动指示器，页面不要直接调用或叠加第二个动态指示器。`DashboardSkeleton` 是控制台专用骨架，由 `Dashboard` 直接从 `Loading.tsx` 引入，不属于 common 的公共导出。
+`ActivityIndicator` 是供 `Button` 和 `Loading` 内部复用的 iOS 活动指示器，页面不要直接调用或叠加第二个动态指示器。`DashboardSkeleton` 是控制台域专用骨架，位于 `features/dashboard/components/DashboardSkeleton.tsx`，不属于 `shared/ui` 的公共导出。
 
 ---
 
 ### useFluidTabIndicator
 
-**文件位置**：`client/src/hooks/useFluidTabIndicator.ts`
+**文件位置**：`client/src/shared/hooks/useFluidTabIndicator.ts`
 
 **适用场景**：带有 Framer Motion 高亮底层的分段标签。它会在切换、容器尺寸变化、标签内容变化和窗口缩放时，把高亮层对齐到当前按钮。不要在每个页面重复维护 `ResizeObserver`、元素 ref 和坐标计算。
 

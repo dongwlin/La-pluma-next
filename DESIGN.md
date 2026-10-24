@@ -146,7 +146,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 浅色主题读起来像冷调纸面与磨砂玻璃，深色主题则是近黑石墨与同一支蓝色信号。密度是刻意保留的：信息可以很满，但层级必须由字重、1px 发丝线和间距 token 建立，而不是由彩色卡片、渐变或投影堆出来。强调色是稀缺资源，只出现在当前导航项、主操作、焦点和运行中的状态上。
 
 **Key Characteristics:**
-- 原生语义优先：`Button`、`Card`、`Input`、`Switch` 等 common 组件使用真实语义元素，浏览器、jsdom、SSR 和嵌入式场景渲染一致。
+- 原生语义优先：`Button`、`Card`、`Input`、`Switch` 等 `shared/ui` 通用组件使用真实语义元素，浏览器、jsdom、SSR 和嵌入式场景渲染一致。
 - 单强调色：系统蓝承担品牌、主操作、焦点和选中态；状态色只表达成功、警告、危险和信息。
 - 分层而不炫技：普通内容面保持平整，只有 chrome、弹层和可点击卡片使用玻璃、抬升或 hover 阴影。
 - 4px 节奏：所有间距回到 `--app-space-*`；圆角回到 `--app-radius-*`。
@@ -154,12 +154,12 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 ### Source of Truth
 
-- `client/src/index.css`：基础颜色、圆角、间距、字号、语义类和通用控件样式。
-- `client/src/ios-theme.css`：实际生效的 iOS 26 材质、系统色、chrome、安全区和品牌适配；它覆盖同名基础 token。
+- `client/src/styles/index.css`：基础颜色、圆角、间距、字号、语义类和通用控件样式。
+- `client/src/styles/ios-theme.css`：实际生效的 iOS 26 材质、系统色、chrome、安全区和品牌适配；它覆盖同名基础 token。
 - `client/tailwind.config.js`：把 `rounded-*`、`gap-*`、`space-*` 映射到统一 token，不新增平行尺度。
-- `client/src/components/common`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
+- `client/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
 
-本文件描述规则；token 的具体数值以 `client/src/index.css` 与 `client/src/ios-theme.css` 为准，调整 token 时同步更新本文件的表格与说明。
+本文件描述规则；token 的具体数值以 `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 为准，调整 token 时同步更新本文件的表格与说明。
 
 ## 配置即规范（Tailwind 压缩映射）
 
@@ -190,8 +190,8 @@ Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl�
 
 ### 冻结规则（全局样式入口）
 
-- `client/src/index.css` 与 `client/src/ios-theme.css` 是全局样式的**冻结入口**：页面级选择器不再新增进这两个文件，既有内容在样式轨道 S3/S4 之前保持原样。
-- 新样式随组件目录走：组件同名 CSS（如 `components/OperatorTraining.css`）、组件内样式或按域样式文件，最终由 S4 的 `@layer page` 分层方案归位。
+- `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**：页面级选择器不再新增进这两个文件，既有内容在样式轨道 S3/S4 之前保持原样。
+- 新样式随组件目录走：组件同名 CSS（如 `features/training/pages/OperatorTraining.css`）、组件内样式或按域样式文件，最终由 S4 的 `@layer page` 分层方案归位。
 - 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development.md) 的「样式治理」一节。
 
 ## Colors
@@ -259,7 +259,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl�
 
 ### Responsive Shell
 
-应用使用原生 `.la-pluma-app` 根节点。Navbar、页面区域、移动 tabbar 和 Sheet 等 chrome 与交互统一由 `Layout` 及 common 组件提供；`ios-theme.css` 负责 iOS 26 材质、应用 chrome、安全区和品牌适配，不要在页面中另起一套导航或 modal 基础样式。
+应用使用原生 `.la-pluma-app` 根节点。Navbar、页面区域、移动 tabbar 和 Sheet 等 chrome 与交互统一由 `Layout` 及 `shared/ui` 通用组件提供；`styles/ios-theme.css` 负责 iOS 26 材质、应用 chrome、安全区和品牌适配，不要在页面中另起一套导航或 modal 基础样式。
 
 - 桌面端（`lg` 及以上）显示 `17rem` 左侧工作台导航：一条跨越顶栏与导航区的连续圆角玻璃边界、可用搜索、单列导航和 28px 语义色图标底座；导航项从面板顶部开始排列，干员身份区固定在面板底部。当前项使用整行系统强调色和白色文字；品牌入口属于侧栏右侧的工作区顶栏，不能进入或遮挡侧栏圆角区。
 - 移动端使用悬浮的 iOS 风格底部胶囊导航，右侧搜索/更多入口承载次要页面。两端必须复用 `Layout` 的 URL 路由和 active 状态，不要按 viewport 建立第二份导航状态。
@@ -365,7 +365,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl�
 ## Do's and Don'ts
 
 ### Do:
-- **Do** 先读 `client/src/index.css` 和 `client/src/ios-theme.css`，再用语义类实现界面；新页面优先使用 `Layout`、`PageHeader`、`Card`、`Button`、`Input` 等现有组件。
+- **Do** 先读 `client/src/styles/index.css` 和 `client/src/styles/ios-theme.css`，再用语义类实现界面；新页面优先使用 `Layout`、`PageHeader`、`Card`、`Button`、`Input` 等现有组件。
 - **Do** 把间距回到 `--app-space-*`、圆角回到 `--app-radius-*`，保持 4px 基线和 1px 发丝线。
 - **Do** 让系统蓝保持稀缺：只用于当前项、主操作、焦点和运行中状态；状态色只表达语义。
 - **Do** 在手机和粗指针设备上保证至少 44px 的点击区域，并检查 light/dark、loading、disabled、empty、error 以及长标题/长操作文案。
@@ -373,7 +373,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl�
 - **Do** 为所有可点击元素提供 `focus-visible` 状态，装饰图标加 `aria-hidden="true"`。
 
 ### Don't:
-- **Don't** 新增页面级颜色主题或 `from-violet-*`、`text-orange-*`、`bg-cyan-*` 这类随手写的色板；需要新语义时先在 `index.css` 增加 token 或语义类。
+- **Don't** 新增页面级颜色主题或 `from-violet-*`、`text-orange-*`、`bg-cyan-*` 这类随手写的色板；需要新语义时先在 `styles/index.css` 增加 token 或语义类。
 - **Don't** 使用 `rounded-2xl`、`rounded-3xl` 或任意更大的圆角突破 `--app-radius-lg`；需要特殊造型时先确认是否应成为新的语义 token。
 - **Don't** 给卡片、输入框、分段控件和普通信息容器使用 `border-2` 或重色描边；`2px` 只留给复选框、引导线和加载圈。
 - **Don't** 在页面里重建导航壳层、主题开关、modal 基础样式或第二套组件 DOM。

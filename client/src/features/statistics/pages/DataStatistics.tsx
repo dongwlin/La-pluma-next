@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { maaApi, getAllOperators, getDropStatistics, getItemIconUrl, getOperBoxData, fetchOperatorMaterials, getTrainingQueue } from '@/shared/api'
+import { maaApi } from '@/shared/api'
+import { fetchOperatorMaterials, getAllOperators, getTrainingQueue } from '@/features/training'
+import { getDropStatistics, getItemIconUrl, getOperBoxData } from '../api'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   ChevronDown,
@@ -28,7 +30,7 @@ import type {
   ActiveTab,
   OpenMenu,
   DropRecordsProps,
-} from '@/shared/types/components'
+} from '../types'
 
 type FilterMenuKey = Exclude<OpenMenu, null>
 

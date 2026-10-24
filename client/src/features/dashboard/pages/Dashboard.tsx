@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
-import { getOpenTodayStages, getTodayDrops, getTrainingQueue, maaApi } from '@/shared/api'
+import { maaApi } from '@/shared/api'
+import { getOpenTodayStages, getTodayDrops } from '@/features/statistics'
+import { getTrainingQueue } from '@/features/training'
 import Icons from '@/shared/ui/Icons'
 import { PageHeader, Card, Button, IconButton, SmoothPanel } from '@/shared/ui'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
@@ -11,13 +13,13 @@ import DashboardPreviewEntry from '../components/DashboardPreviewEntry'
 import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 import { useDashboardStore, type DashboardBusinessSnapshot } from '../store/dashboardStore'
+import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
 
 const sectionTitleClass = 'text-base font-bold text-primary'
 const labelClass = 'text-secondary'
 const progressTrackClass = 'h-1.5 rounded-full bg-[var(--app-surface-muted)] overflow-hidden'
 const dashboardChipClass = 'brand-chip rounded-lg px-2.5 py-1 text-xs font-medium'
 const mutedChipClass = 'rounded-lg px-2.5 py-1 surface-soft text-secondary text-xs'
-export const DASHBOARD_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
