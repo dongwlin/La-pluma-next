@@ -19,7 +19,7 @@
 
 ### 全局样式冻结
 
-`client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 已完成 S3 分层，不再新增页面级选择器；新样式随组件目录走（组件同名 CSS / 按域样式文件），页面样式统一写进 `@layer page`，由样式轨道 S4 逐步下沉到各功能域。完整规则见 [设计规范](../DESIGN.md) 的「层序与 token 单源」「配置即规范」两节。
+`client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 已完成分层，不再接受页面级选择器：页面样式由各功能域自持，写在 `features/<domain>/styles/<domain>.css` 并由该域 `index.ts` 导入，统一收进 `@layer page`；新样式按组件目录或功能域目录新增。完整规则见 [设计规范](../DESIGN.md) 的「层序与 token 单源」「配置即规范」两节。
 
 ### stylelint 预算制（ratchet）
 

@@ -9,7 +9,6 @@ import { Modal } from '@/shared/ui/Modal'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type { TrainingOperator, TrainingQueueItem, TrainingSettings, TrainingPlan, MaterialNode, TrainingFilters, TrainingPlanMode } from '../types'
-import './OperatorTraining.css'
 
 const TRAINING_STATUS_OPTIONS: Array<{ value: TrainingFilters['status']; label: string; desc: string }> = [
   { value: 'trainable', label: '可养成', desc: '可加入队列' },

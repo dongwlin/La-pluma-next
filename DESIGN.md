@@ -154,7 +154,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 ### Source of Truth
 
-- `client/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角映射、`gap-*` / `space-*` 定向 `@utility`、通用组件类与 page 层页面样式。
+- `client/src/styles/index.css`：语义 token 的**唯一来源**（base 层）、Tailwind 入口、`@theme` 圆角映射、`gap-*` / `space-*` 定向 `@utility`、通用组件类与跨域 keyframes；页面样式由各功能域自持。
 - `client/src/styles/ios-theme.css`：只保留 iOS 26 独有的 chrome/材质 token（`--app-chrome-*`、`--app-glass-*`、安全区、导航/侧栏几何等）与对应样式；不再重定义语义 token。
 - `client/src/shared/ui`：`Button`、`IconButton`、`Card`、`Input`、`Select`、`Checkbox`、`Switch`、`Modal`、`PageHeader`、`EmptyState`、`Loading` 等通用组件。
 
@@ -170,7 +170,8 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 ```
 
 - **utilities 永远赢**：`page` 位于 `components` 之后、`utilities` 之前；页面 CSS 可以覆盖 base/preflight 与 components，但普通声明不再压过 utilities。确实需要压过 utilities 的页面/组件规则使用 `!important` 并在原位注释原因。
-- **page 层**：`index.css` 中的 `.automation-*`、`.dashboard-*`、`.log-*`、`.combat-*`、`.roguelike-*`、`.scrcpy-*`、`.task-monitor-*`、`.data-statistics-*` 等页面选择器，`ios-theme.css` 的页面级覆盖，以及 `features/training/pages/OperatorTraining.css` 都收进 `@layer page`；通用组件类留在 `@layer components`。
+- **page 层**：每个功能域自持自己的页面样式，放在 `features/<domain>/styles/<domain>.css`，由该域 `index.ts` 导入一次，全部位于 `@layer page`；`index.css` 只保留跨域 keyframes，`ios-theme.css` 只保留 iOS 26 chrome 与跨域 page-kind 材质（`.ios-workspace-page`、`.ios-borderless-cards`、`[data-automation-tasks]` + `[data-workbench-tasks]` 组合、`.la-pluma-content` 控件、浮层）；通用组件类留在 `@layer components`。
+- **域内 CSS 按普通 CSS 处理**：功能域样式文件不经过 Tailwind 入口的编译与降级流水线，不要在其中使用 `@apply`/`@theme` 等 Tailwind 指令；需要厂商前缀的能力按现有写法显式补齐（如 `-webkit-backdrop-filter`），浏览器下限仍以 v4 目标为准。
 - **token 单源**：语义 token（颜色、圆角、间距、字号、控件高度等）只在 `index.css` 的 `:root` / `html.dark, #app-root.dark` / 媒体查询中定义一次。浅色、深色、`prefers-contrast`、`prefers-reduced-transparency` 的最终生效值都写在这里；`ios-theme.css` 不再出现同名重定义。
 - **深色切换**：主题仍同时给 `html` 与 `#app-root` 加 `.dark`；`html.dark` 与 `#app-root.dark` 都保留为有效选择器。
 
@@ -208,7 +209,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl�
 ### 冻结规则（全局样式入口）
 
 - `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**：S3 已完成归层，页面级选择器仍不再新增进这两个文件。
-- 新样式随组件目录走：组件同名 CSS、组件内样式或按域样式文件；页面样式统一写进 `@layer page`（如 `features/training/pages/OperatorTraining.css`），由 S4 逐步把既有页面选择器下沉到各功能域。
+- 页面选择器归 `features/<domain>/styles/`，由该域 `index.ts` 导入；两个全局入口对页面级选择器保持冻结，新样式按组件目录或功能域目录新增。
 - 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development.md) 的「样式治理」一节。
 
 ## Colors

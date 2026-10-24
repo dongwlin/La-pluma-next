@@ -3,6 +3,8 @@
  * 公开面保持克制：仅导出页面，以及被其他域消费的统计端点。
  */
 
+import './styles/statistics.css'
+
 export { default } from './pages/DataStatistics'
 export {
   getItemIconUrl,

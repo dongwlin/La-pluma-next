@@ -1990,86 +1990,12 @@
   /* Root/standalone height chain (S3: moved from base so the component
      page shell cannot override it; same cascade as the former unlayered rule). */
 @layer page {
-  /* Dense sibling data belongs to one grouped surface. The one-pixel grid gap
-     becomes the hairline, while each child stays on a solid content material. */
-  .la-pluma-app :is(
-    .data-statistics-item-grid,
-    .training-operator-grid,
-    .drop-records-metric-panel,
-    .drop-records-item-grid,
-    .drop-records-stage-list
-  ) {
-    gap: 1px;
-    background: var(--app-border);
-    box-shadow: inset 0 0 0 1px var(--app-border);
-  }
-
-  .la-pluma-app :is(
-    .data-statistics-operator-item,
-    .data-statistics-depot-item,
-    .training-operator-item,
-    .drop-records-metric-row,
-    .drop-records-item-row,
-    .drop-records-stage-row
-  ) {
-    background: var(--app-surface-solid);
-  }
-
-  .la-pluma-app :is(.config-editor-card, .config-update-card) section.surface-soft {
-    /* S3: 配置卡片内部分组使用直角，压过 rounded-[...] utilities。 */
-    border-radius: 0 !important;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .la-pluma-app .config-editor-card .app-card-content > section.surface-soft {
-    border-top: 1px solid var(--app-border);
-  }
-
-  .la-pluma-app .config-update-card .app-card-content {
-    /* S3: 配置更新卡内部使用 0 间距分组，需压过调用处的 gap-*。 */
-    gap: 0 !important;
-  }
-
-  .la-pluma-app .config-update-card .app-card-content > .grid {
-    gap: 0 !important;
-    border-top: 1px solid var(--app-border);
-  }
-
-  .la-pluma-app .config-update-card .app-card-content > .grid > section + section {
-    border-top: 1px solid var(--app-border);
-  }
-
-  .la-pluma-app :is(.config-editor-card, .config-directory-card, .config-update-card) .icon-well {
-    background: transparent;
-    color: var(--app-text-muted);
-    box-shadow: none;
-  }
-
-  .la-pluma-app :is(.dashboard-flow-mark, .dashboard-summary-icon) {
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .la-pluma-app .dashboard-summary-icon {
-    color: var(--app-text-muted);
-  }
-
-  @media (min-width: 768px) and (max-width: 1279px) {
-    .la-pluma-app .config-update-card .app-card-content > .grid > section + section {
-      border-top: 0;
-      border-left: 1px solid var(--app-border);
-    }
-  }
-
   /* Only summoned, overlapping layers receive Liquid Glass. Ordinary cards and
      grouped content remain opaque so the material hierarchy stays legible. */
   .la-pluma-app :is(
     .app-modal-layer .surface-panel,
     .theme-menu-popover,
-    .pwa-install-prompt,
-    .data-statistics-menu-surface
+    .pwa-install-prompt
   ) {
     border-color: color-mix(in srgb, var(--app-border-strong) 72%, transparent);
     background: color-mix(in srgb, var(--app-surface-solid) 78%, transparent);
@@ -2107,12 +2033,12 @@
 
     /* Keep workspace titles at the full iOS scale on narrow phones. The status
        chip yields its text space first and retains the compact dismiss target. */
-    .la-pluma-app :is(.dashboard-page, .ios-workspace-page) .app-page-header.is-mobile-inline .app-page-heading {
+    .la-pluma-app .ios-workspace-page .app-page-header.is-mobile-inline .app-page-heading {
       max-width: calc(100% - 3.25rem);
       flex: 0 0 auto;
     }
 
-    .la-pluma-app :is(.dashboard-page, .ios-workspace-page) .app-page-header.is-mobile-inline .app-page-actions {
+    .la-pluma-app .ios-workspace-page .app-page-header.is-mobile-inline .app-page-actions {
       max-width: 7.75rem;
       flex: 1 1 auto;
     }
@@ -2171,17 +2097,6 @@
     border: 0;
   }
 
-  .la-pluma-app .ios-borderless-cards :is(
-    .log-console,
-    .config-device-list
-  ) {
-    box-shadow: none;
-  }
-
-  .la-pluma-app .ios-borderless-cards .data-statistics-kpi-grid {
-    padding: 0;
-  }
-
   .dark .la-pluma-app .ios-borderless-cards :is(
     .app-card[data-smooth-corners='true'],
     .smooth-panel-shell[data-smooth-corners='true']
@@ -2189,204 +2104,11 @@
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
   }
 
-  /* Dashboard cards use one continuous, softly lifted material at every width.
-     Remove only the outer strokes; internal row and control separators remain. */
-  .la-pluma-app .dashboard-flow-glow-shell::before,
-  .la-pluma-app .dashboard-flow-glow-shell.status-border-beam::after,
-  .la-pluma-app .dashboard-flow-card::before,
-  .la-pluma-app .dashboard-flow-card > .app-card-smooth-surface::before {
-    display: none;
-  }
-
-  .la-pluma-app .dashboard-page .app-card,
-  .la-pluma-app .dashboard-page .surface-panel,
-  .la-pluma-app .dashboard-page .app-info-card {
-    border: 0 !important;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.1);
-  }
-
-  .la-pluma-app .dashboard-page .app-card-smooth-surface,
-  .la-pluma-app .dashboard-page .smooth-panel-surface {
-    border: 0;
-  }
-
-  /* Device and summary cards are grouped content, so give them the solid iOS
-     grouped surface. Their former translucent gray nearly matched the page and
-     made the top of summary cards disappear after the outer stroke was removed. */
-  .la-pluma-app .dashboard-page .dashboard-device-card,
-  .la-pluma-app .dashboard-page .dashboard-summary-card > .app-card-smooth-surface {
-    background: var(--app-surface-solid);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
-  .la-pluma-app .dashboard-page .dashboard-summary-header {
-    background: transparent;
-  }
-
-  .la-pluma-app .dashboard-page .app-info-card.status-warning {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--app-warning) 30%, transparent),
-      0 12px 30px rgba(15, 23, 42, 0.1);
-  }
-
-  .la-pluma-app .dashboard-page .app-info-card.status-danger {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--app-danger) 34%, transparent),
-      0 12px 30px rgba(15, 23, 42, 0.1);
-  }
-
-  .la-pluma-app .dashboard-page .status-border-beam::after {
-    display: none;
-  }
-
-  .la-pluma-app .dashboard-page .surface-panel-hover:hover:not(:disabled) {
-    transform: none;
-  }
-
-  .dark .la-pluma-app .dashboard-page .app-card,
-  .dark .la-pluma-app .dashboard-page .surface-panel,
-  .dark .la-pluma-app .dashboard-page .app-info-card {
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
-  }
-
-  .dark .la-pluma-app .dashboard-page .app-info-card.status-warning {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--app-warning) 38%, transparent),
-      0 16px 36px rgba(0, 0, 0, 0.28);
-  }
-
-  .dark .la-pluma-app .dashboard-page .app-info-card.status-danger {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--app-danger) 40%, transparent),
-      0 16px 36px rgba(0, 0, 0, 0.28);
-  }
-
-  /* Primary workspaces share the large title above. The rules below remain
-     dashboard-specific because its status slot and card flow are unique. */
-  @media (max-width: 639px) {
-    .la-pluma-app .dashboard-page {
-      --dashboard-card-gap: 1rem;
-      padding-top: 0;
-      margin-right: 0.125rem;
-      margin-left: 0.125rem;
-    }
-
-    .la-pluma-app .dashboard-page > .app-stack-section {
-      gap: var(--dashboard-card-gap);
-    }
-
-    /* Keep the dashboard title in the normal content flow. The translucent
-       gradient belongs to the top three-button Navbar, not this section. */
-    .la-pluma-app .dashboard-page .app-page-header {
-      box-sizing: border-box;
-      min-height: 0;
-      margin: 0;
-      padding: 0.25rem 0 1rem;
-      align-items: center;
-      flex-direction: row;
-      gap: 0.75rem;
-    }
-
-    .la-pluma-app .dashboard-page .app-page-heading {
-      display: flex;
-      flex: 1 1 auto;
-      min-width: 0;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .la-pluma-app .dashboard-page .app-page-header-icon {
-      display: flex;
-      width: 2.75rem;
-      height: 2.75rem;
-      flex: 0 0 2.75rem;
-    }
-
-    .la-pluma-app .dashboard-page .app-page-subtitle {
-      display: none;
-    }
-
-    .la-pluma-app .dashboard-page .app-page-title {
-      font-size: 2rem;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    .la-pluma-app .dashboard-page .app-page-actions {
-      width: auto;
-      min-width: 0;
-      min-height: 0;
-      justify-content: flex-end;
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-page-actions {
-      width: auto;
-      min-width: 0;
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-status-slot {
-      /* S3: 移动端状态槽按内容伸缩，压过 flex-1 的 0% basis。 */
-      flex: 1 1 auto !important;
-      min-width: 0;
-      max-width: 100%;
-      overflow: visible;
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-status-slot > * {
-      max-width: 100%;
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-status-indicator {
-      max-width: 100%;
-      overflow: hidden;
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-flow-layout {
-      margin-top: 0;
-      margin-bottom: 0;
-      gap: var(--dashboard-card-gap);
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-device-section,
-    .la-pluma-app .dashboard-page .dashboard-summary-grid {
-      margin-bottom: 0;
-    }
-
-    .la-pluma-app .dashboard-page .dashboard-device-grid,
-    .la-pluma-app .dashboard-page .dashboard-summary-grid {
-      gap: var(--dashboard-card-gap);
-    }
-
-    .la-pluma-app .dashboard-flow-header {
-      box-sizing: border-box;
-      height: 3.5rem;
-      padding: 0.75rem 1.25rem;
-      border-bottom: 1px solid var(--app-border);
-    }
-
-    .la-pluma-app .dashboard-flow-title {
-      /* S3: 移动端流程标题固定 18px/1.2，需压过 text-base 等排版 utilities。 */
-      margin-top: 0;
-      font-size: 1.125rem !important;
-      line-height: 1.2 !important;
-    }
-
-    .la-pluma-app .dashboard-flow-mark {
-      border-radius: 0;
-      background: transparent;
-      color: var(--app-accent-strong);
-      box-shadow: none;
-    }
-
-  }
-
   @media (prefers-contrast: more) {
     .la-pluma-app :is(
       .app-modal-layer .surface-panel,
       .theme-menu-popover,
-      .pwa-install-prompt,
-      .data-statistics-menu-surface
+      .pwa-install-prompt
     ) {
       border-color: var(--app-border-strong);
       background: var(--app-surface-solid);
@@ -2480,37 +2202,6 @@
     [data-workbench-tasks]
   ) .app-select-shell:focus-within .app-select-trailing-icon {
     background: color-mix(in srgb, var(--app-accent) 16%, transparent);
-  }
-
-  /* Automation owns a few compact field implementations instead of the shared
-     Input component. Keep their filled grouping while removing the permanent
-     hairlines used by the former desktop control treatment. */
-  .la-pluma-app [data-automation-tasks] :is(
-    .automation-select-control select,
-    .automation-task-editor .automation-text-control,
-    .automation-task-editor .number-input-wrapper,
-    .automation-composite-control,
-    .automation-notification-field input
-  ) {
-    border: 0;
-    box-shadow: none;
-  }
-
-  .la-pluma-app [data-automation-tasks] :is(
-    .automation-select-control:hover select,
-    .automation-task-editor .automation-text-control:hover,
-    .automation-task-editor .number-input-wrapper:hover,
-    .automation-composite-control:hover
-  ) {
-    box-shadow: none;
-  }
-
-  .la-pluma-app [data-automation-tasks] .automation-notification-field input:focus,
-  .la-pluma-app [data-automation-tasks] .automation-select-control:has(select:focus) select,
-  .la-pluma-app [data-automation-tasks] .automation-task-editor .automation-text-control:focus,
-  .la-pluma-app [data-automation-tasks] .automation-task-editor .number-input-wrapper:has(input:focus),
-  .la-pluma-app [data-automation-tasks] .automation-composite-control:has(input:focus) {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
   }
 
   /* Apple Liquid Glass keeps ordinary Automation content solid. The preview

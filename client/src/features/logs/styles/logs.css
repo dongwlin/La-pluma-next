@@ -1,0 +1,361 @@
+/* 页面级样式：随 logs 功能域维护，统一收进 page 层；utilities 仍然优先。 */
+@layer page {
+  .log-viewer {
+    --log-row-divider: color-mix(in srgb, var(--app-border) 72%, transparent);
+  }
+
+  .log-card {
+    overflow: visible;
+    padding: 0;
+  }
+
+  .log-notice {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.625rem;
+    border-radius: var(--app-radius-lg);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .log-notice.is-success {
+    background: color-mix(in srgb, var(--app-success) 9%, var(--app-surface));
+    color: var(--app-success);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-success) 22%, transparent);
+  }
+
+  .log-notice.is-error {
+    background: color-mix(in srgb, var(--app-danger) 9%, var(--app-surface));
+    color: var(--app-danger);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-danger) 22%, transparent);
+  }
+
+  .log-notice > span {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .log-notice button {
+    flex: none;
+    color: currentColor;
+    font-size: 0.6875rem;
+    opacity: 0.72;
+  }
+
+  .log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.875rem 1rem;
+  }
+
+  .log-toolbar-controls,
+  .log-toolbar-actions,
+  .log-console-heading-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .log-toolbar-controls {
+    min-width: 0;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+  }
+
+  .log-toolbar-actions,
+  .log-console-heading-actions {
+    flex: none;
+    gap: 0.5rem;
+  }
+
+  .log-count {
+    display: inline-flex;
+    min-height: 1.75rem;
+    align-items: center;
+    border-radius: var(--app-radius-pill);
+    padding: 0.25rem 0.625rem;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-console-content {
+    padding: 1rem;
+  }
+
+  .log-console {
+    height: clamp(20rem, 55dvh, 28rem);
+    overflow-y: auto;
+    border-radius: var(--app-radius-md);
+    background: var(--app-surface-muted);
+    box-shadow: inset 0 0 0 1px var(--app-border);
+    color: var(--app-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.75rem;
+    line-height: 1.55;
+  }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: 8.75rem minmax(0, 1fr);
+    gap: 0.875rem;
+    min-width: 0;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid var(--log-row-divider);
+  }
+
+  .log-row:last-child {
+    border-bottom: 0;
+  }
+
+  .log-row-meta {
+    display: grid;
+    grid-template-columns: 4.5rem 3.5rem;
+    align-items: start;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .log-row-meta time {
+    padding-top: 0.125rem;
+    color: var(--app-text-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-level {
+    display: inline-flex;
+    min-height: 1.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    padding: 0.125rem 0.35rem;
+    background: var(--app-surface-muted);
+    color: var(--app-text-muted);
+    box-shadow: inset 0 0 0 1px var(--app-border);
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .log-level.is-info {
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 22%, transparent);
+  }
+
+  .log-level.is-warn {
+    background: color-mix(in srgb, var(--app-warning) 10%, transparent);
+    color: var(--app-warning);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-warning) 22%, transparent);
+  }
+
+  .log-level.is-error {
+    background: color-mix(in srgb, var(--app-danger) 10%, transparent);
+    color: var(--app-danger);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-danger) 22%, transparent);
+  }
+
+  .log-message {
+    min-width: 0;
+    color: var(--app-text-muted);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .log-repeat {
+    display: inline-flex;
+    margin-left: 0.5rem;
+    border-radius: var(--app-radius-pill);
+    padding: 0.05rem 0.375rem;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+    font-size: 0.625rem;
+    font-weight: 700;
+  }
+
+  .log-console-state,
+  .log-history-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    color: var(--app-text-soft);
+    font-family: inherit;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .log-console-state {
+    min-height: 100%;
+    padding: 2rem;
+  }
+
+  .log-console-state.is-error,
+  .log-history-state.is-error {
+    color: var(--app-danger);
+  }
+
+  .log-history-content {
+    padding: 0;
+  }
+
+  .log-history-list {
+    display: grid;
+  }
+
+  .log-history-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-width: 0;
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--app-border);
+    color: var(--app-text-muted);
+    text-align: left;
+    transition: color 180ms ease, background 180ms ease;
+  }
+
+  .log-history-row:last-child {
+    border-bottom: 0;
+  }
+
+  .log-history-row:hover,
+  .log-history-row.is-active {
+    background: color-mix(in srgb, var(--app-accent-soft) 62%, transparent);
+    color: var(--app-accent-strong);
+  }
+
+  .log-history-row:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 2px solid var(--app-accent);
+    outline-offset: -2px;
+  }
+
+  .log-history-icon {
+    display: flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--app-radius-md);
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+  }
+
+  .log-history-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.2rem;
+  }
+
+  .log-history-copy strong,
+  .log-history-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .log-history-copy strong {
+    color: var(--app-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .log-history-copy small {
+    color: var(--app-text-soft);
+    font-size: 0.6875rem;
+  }
+
+  .log-history-state {
+    min-height: 7rem;
+    padding: 1.5rem;
+  }
+
+  .log-history-state p {
+    color: var(--app-text-muted);
+    font-weight: 600;
+  }
+
+  .log-history-state span {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.6875rem;
+  }
+
+  .log-mode-shell {
+    width: min(100%, 46rem);
+  }
+
+  .log-mode-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .log-mode-skeleton-highlight {
+    inset: 0 auto auto 0;
+    width: calc((100% - 0.125rem) / 2);
+  }
+
+  @media (max-width: 639px) {
+    .log-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+      padding: 0.875rem;
+    }
+
+    .log-toolbar-controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .log-toolbar-actions > .app-button {
+      flex: 1;
+    }
+
+    .log-console-heading-actions {
+      gap: 0.375rem;
+    }
+
+    .log-console-heading-actions .app-button {
+      padding-right: 0.625rem;
+      padding-left: 0.625rem;
+    }
+
+    .log-console-content {
+      padding: 0.75rem;
+    }
+
+    .log-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.375rem;
+      padding: 0.625rem 0.75rem;
+    }
+
+    .log-row-meta {
+      grid-template-columns: auto auto;
+      justify-content: start;
+    }
+
+    .log-message {
+      padding-left: 0;
+      color: var(--app-text);
+    }
+
+    .log-history-row {
+      padding: 0.75rem 0.875rem;
+    }
+  }
+
+  .la-pluma-app .ios-borderless-cards .log-console {
+    box-shadow: none;
+  }
+}

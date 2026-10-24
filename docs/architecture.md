@@ -37,7 +37,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 前端按 `app → features → shared` 三层垂直切分（依赖只能单向向下）：
 
 - `app/`：应用组装——根组件、页面注册表、布局壳与 Provider，不含业务逻辑。
-- `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
+- `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；页面级 CSS 同样由各域自持，放在 `features/<domain>/styles/` 并由该域 `index.ts` 导入（统一收进 `@layer page`）。对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
 - `shared/`：与业务无关的横向下层（通用 UI、传输层底座、导航/全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
 
 业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
@@ -52,8 +52,8 @@ La-pluma-next/
 │   │   ├── main.tsx           # 入口：import './styles' 并挂载 @/app/App
 │   │   ├── styles/            # 启动族全局样式资产（不参与三层分层）
 │   │   │   ├── index.ts       # side-effect 入口
-│   │   │   ├── index.css      # 层序 + Tailwind 入口、语义 token 单源、@theme/@utility
-│   │   │   └── ios-theme.css  # iOS 26 chrome/材质 token 与样式（分层后不再重定义语义 token）
+│   │   │   ├── index.css      # 层序 + Tailwind 入口、语义 token 单源、@theme/@utility、通用组件类、跨域 keyframes
+│   │   │   └── ios-theme.css  # iOS 26 chrome/材质 token 与样式、跨域 page-kind 材质（不再重定义语义 token）
 │   │   ├── app/               # 应用组装层
 │   │   │   ├── App.tsx        # 根组件：Provider + Layout + 页面出口
 │   │   │   ├── router/        # tab 注册表与页面组件静态映射

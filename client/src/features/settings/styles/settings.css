@@ -1,0 +1,44 @@
+/* 页面级样式：随 settings 功能域维护，统一收进 page 层；utilities 仍然优先。 */
+@layer page {
+  .la-pluma-app :is(.config-editor-card, .config-update-card) section.surface-soft {
+    /* S3: 配置卡片内部分组使用直角，压过 rounded-[...] utilities。 */
+    border-radius: 0 !important;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .la-pluma-app .config-editor-card .app-card-content > section.surface-soft {
+    border-top: 1px solid var(--app-border);
+  }
+
+  .la-pluma-app .config-update-card .app-card-content {
+    /* S3: 配置更新卡内部使用 0 间距分组，需压过调用处的 gap-*。 */
+    gap: 0 !important;
+  }
+
+  .la-pluma-app .config-update-card .app-card-content > .grid {
+    gap: 0 !important;
+    border-top: 1px solid var(--app-border);
+  }
+
+  .la-pluma-app .config-update-card .app-card-content > .grid > section + section {
+    border-top: 1px solid var(--app-border);
+  }
+
+  .la-pluma-app :is(.config-editor-card, .config-directory-card, .config-update-card) .icon-well {
+    background: transparent;
+    color: var(--app-text-muted);
+    box-shadow: none;
+  }
+
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .la-pluma-app .config-update-card .app-card-content > .grid > section + section {
+      border-top: 0;
+      border-left: 1px solid var(--app-border);
+    }
+  }
+
+  .la-pluma-app .ios-borderless-cards .config-device-list {
+    box-shadow: none;
+  }
+}

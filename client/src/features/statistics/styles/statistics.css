@@ -1,0 +1,104 @@
+/* 页面级样式：随 statistics 功能域维护，统一收进 page 层；utilities 仍然优先。 */
+@layer page {
+  .data-statistics-status {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .data-statistics-task-card > .app-card-smooth-surface {
+    transition: background 180ms ease, border-color 180ms ease;
+  }
+
+  .data-statistics-task-card.is-active > .app-card-smooth-surface {
+    border-color: color-mix(in srgb, var(--app-info) 28%, var(--app-border));
+    background: color-mix(in srgb, var(--app-info) 6%, var(--app-surface));
+  }
+
+  .data-statistics-task-content,
+  .drop-records-panel-content {
+    padding: var(--app-space-panel);
+  }
+
+  .data-statistics-kpi-grid {
+    gap: 1px;
+    overflow: hidden;
+    border-radius: var(--app-radius-lg);
+    padding: 1px;
+    background: var(--app-border);
+  }
+
+  .data-statistics-kpi {
+    min-width: 0;
+    padding: 0.75rem;
+    background: color-mix(in srgb, var(--app-surface-muted) 78%, var(--app-surface));
+  }
+
+  @media (max-width: 639px) {
+    .data-statistics-task-header {
+      flex-direction: column;
+    }
+
+    .data-statistics-task-actions {
+      display: flex;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .data-statistics-task-actions .app-button {
+      flex: 1 1 auto;
+    }
+  }
+
+  .data-statistics-mode-shell {
+    width: 100%;
+  }
+
+  .data-statistics-mode-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .data-statistics-mode-skeleton-highlight {
+    inset: 0 auto auto 0;
+    width: calc((100% - 0.25rem) / 3);
+  }
+
+  /* Dense sibling data belongs to one grouped surface. The one-pixel grid gap
+     becomes the hairline, while each child stays on a solid content material. */
+  .la-pluma-app .data-statistics-item-grid,
+  .la-pluma-app .drop-records-metric-panel,
+  .la-pluma-app .drop-records-item-grid,
+  .la-pluma-app .drop-records-stage-list {
+    gap: 1px;
+    background: var(--app-border);
+    box-shadow: inset 0 0 0 1px var(--app-border);
+  }
+
+  .la-pluma-app .data-statistics-operator-item,
+  .la-pluma-app .data-statistics-depot-item,
+  .la-pluma-app .drop-records-metric-row,
+  .la-pluma-app .drop-records-item-row,
+  .la-pluma-app .drop-records-stage-row {
+    background: var(--app-surface-solid);
+  }
+
+  .la-pluma-app .surface-panel.data-statistics-menu-surface {
+    border-color: color-mix(in srgb, var(--app-border-strong) 72%, transparent);
+    background: color-mix(in srgb, var(--app-surface-solid) 78%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(165%);
+    backdrop-filter: blur(24px) saturate(165%);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.1),
+      0 30px 80px rgba(0, 0, 0, 0.24);
+  }
+
+  .la-pluma-app .ios-borderless-cards .data-statistics-kpi-grid {
+    padding: 0;
+  }
+
+  @media (prefers-contrast: more) {
+    .la-pluma-app .surface-panel.data-statistics-menu-surface {
+      border-color: var(--app-border-strong);
+      background: var(--app-surface-solid);
+    }
+  }
+}

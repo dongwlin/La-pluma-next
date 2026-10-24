@@ -3,6 +3,8 @@
  * 公开面保持克制：仅导出页面，以及被其他域消费的养成端点。
  */
 
+import './styles/training.css'
+
 export { default } from './pages/OperatorTraining'
 export {
   fetchOperatorMaterials,
