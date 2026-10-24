@@ -41,6 +41,7 @@ test('unexpected execution errors always reset scheduler state', async () => {
   assert.equal(status.currentTask, null);
   assert.equal(status.shouldStop, false);
   assert.match(status.message, /任务流程异常终止/);
+  assert.equal(status.taskResults.some(task => task.status === 'running'), false);
 });
 
 test('cron execution catches rejected task flows and leaves the scheduler reusable', async () => {
@@ -49,4 +50,23 @@ test('cron execution catches rejected task flows and leaves the scheduler reusab
   assert.equal(result.success, false);
   assert.match(result.message, /split/);
   assert.equal(getScheduleExecutionStatus().isRunning, false);
+});
+
+test('completed flows return task ids and retain skipped results in the polling snapshot', async () => {
+  const taskFlow = [
+    { id: 'infrast-1', commandId: 'infrast', name: '基建换班', enabled: true, params: { facility: [] } },
+    { id: 'mall-disabled', commandId: 'mall', name: '信用收支', enabled: false, params: {} },
+    { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} },
+    { id: 'award-2', commandId: 'award', name: '领取奖励', enabled: true, params: {} },
+  ];
+  const result = await executeScheduleNow('task-progress', taskFlow);
+  const expected = taskFlow.filter(task => task.enabled).map(task => ({
+    taskId: task.id, task: task.name, status: 'skipped'
+  }));
+  assert.equal(result.success, true);
+  assert.deepEqual(result.summary.taskResults, expected);
+  const status = getScheduleExecutionStatus();
+  assert.equal(status.isRunning, false);
+  assert.deepEqual(status.taskResults, expected);
+  assert.deepEqual(status.lastResult.taskResults, expected);
 });

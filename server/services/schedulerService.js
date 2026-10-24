@@ -16,6 +16,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';
 import { DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
+import { createScheduleTaskProgress } from './scheduleTaskProgress.js';
 
 const execAsync = promisify(exec);
 
@@ -112,15 +113,18 @@ const scheduleExecutionStatus = {
   currentStep: -1,
   totalSteps: 0,
   currentTask: null,
+  currentTaskId: null,
   message: '',
   startTime: null,
   shouldStop: false,  // 添加停止标志
-  lastResult: null
+  lastResult: null,
+  taskResults: []
 };
 
 let cancelActiveScheduleDelay = null;
 let activeScheduleAbortController = null;
 let activeScheduleRunId = null;
+let activeScheduleTaskProgress = null;
 
 function waitForScheduleDelay(delayMs) {
   return new Promise((resolve) => {
@@ -434,10 +438,12 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     currentStep: -1,
     totalSteps: taskFlow.filter(t => t.enabled).length,
     currentTask: null,
+    currentTaskId: null,
     message: '开始执行任务流程',
     startTime: Date.now(),
     shouldStop: false,  // 重置停止标志
-    lastResult: null
+    lastResult: null,
+    taskResults: []
   });
   
   const startTime = Date.now();
@@ -465,6 +471,12 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     else skippedCount++;
   };
   let screenshot = null;
+  const taskProgress = createScheduleTaskProgress(
+    enabledTasks,
+    () => ({ successCount, failedCount, skippedCount }),
+    taskResults => updateScheduleStatus({ taskResults })
+  );
+  activeScheduleTaskProgress = taskProgress;
   const sharedConnection = await resolveConnection();
   const adbConfig = {
     adbPath: sharedConnection.adbPath,
@@ -472,6 +484,7 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
   };
   
   for (let i = 0; i < enabledTasks.length; i++) {
+    taskProgress.finish({ stopped: scheduleExecutionStatus.shouldStop });
     // 检查是否需要停止
     if (scheduleExecutionStatus.shouldStop) {
       logger.warn('检测到停止信号，终止任务流程', { scheduleId });
@@ -483,6 +496,7 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     
     const task = enabledTasks[i];
     const commandId = task.commandId || task.id.split('-')[0];
+    taskProgress.start(task.id);
     
     logger.info('执行任务', { 
       scheduleId,
@@ -1278,6 +1292,7 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     }
   }
   
+  taskProgress.finish({ stopped: scheduleExecutionStatus.shouldStop });
   const duration = Date.now() - startTime;
   const wasStopped = scheduleExecutionStatus.shouldStop;
   const reportFailureCount = reportResults.filter(report => report.status === 'failed').length;
@@ -1297,7 +1312,8 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     reports: reportResults,
     actions: actionResults,
     errors,
-    warnings: [...executionWarnings]
+    warnings: [...executionWarnings],
+    taskResults: taskProgress.results
   };
   logger.info(completionMessage, {
     scheduleId, 
@@ -1385,6 +1401,9 @@ async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
     throw error;
   } finally {
     const ownsActiveExecution = activeScheduleRunId === runId;
+    if (ownsActiveExecution) {
+      activeScheduleTaskProgress?.finish({ stopped: scheduleExecutionStatus.shouldStop });
+    }
     if (ownsActiveExecution && scheduleExecutionStatus.isRunning) {
       const wasStopped = scheduleExecutionStatus.shouldStop;
       const message = wasStopped
@@ -1412,6 +1431,7 @@ async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
     if (ownsActiveExecution || !scheduleExecutionStatus.isRunning) {
       cancelActiveScheduleDelay = null;
       activeScheduleAbortController = null;
+      activeScheduleTaskProgress = null;
       if (ownsActiveExecution) activeScheduleRunId = null;
     }
   }
