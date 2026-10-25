@@ -108,11 +108,13 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 
 3. 服务端确认后发布 `automation-config` / `automation-schedule` / `dashboard-snapshot`
    （`cause: 'plan-applied'`，`detail` 含关卡数、流程名与可选任务名），然后强制重读队列。
-4. 服务端会以更新后的 automation 配置重新注册已存在的默认定时任务；若注册失败，响应中的
-   `scheduleSync` 标记为 `attempted: true, success: false`，所有者保留已应用的计划并显示可重试
-   的部分成功提示。重读队列失败同样返回 `partial`，不会重复提交应用请求。
+4. 服务端会以更新后的 automation 配置重新注册已存在的默认定时任务；若注册失败（包括只有
+   部分时间点创建成功），响应中的 `scheduleSync` 标记为 `attempted: true, success: false`，
+   所有者保留已应用的计划并显示可重试的部分成功提示。重读队列失败同样返回 `partial`，
+   不会重复提交应用请求。
 
-显式“重新加载”会先作废旧预览；恢复后用户需要重新预览。应用成功后保留预览；应用失败则
+队列刷新失败警告中的“重新加载”会先作废旧预览；恢复后用户需要重新预览。部分成功提示中的
+“重新加载”只重读队列，不清除已应用计划或定时失败提示。应用成功后保留预览；应用失败则
 清空计划并重读队列。
 
 ## 5. 页面接线
@@ -123,8 +125,10 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 队列 revision、设置 revision、计划范围切换、撤销开始、外部 `training-plan` 失效都走同一
   `invalidate()`；渲染层用 `plan && basisCurrent` 决定是否展示详情与“应用到…”按钮。
 - 失效订阅忽略设置所有者自己的 `training-plan` 发布（`detail.source = 'training-settings-owner'`）；外部 `training-plan` 发布仍作废旧计划。
-- 队列命令同步 `flowSync` 后由所有者更新横幅；synced 时队列命令的失效发布额外包含
-  `automation-config` / `automation-schedule`，不再派发 `training-plan-applied` window 事件。
+- 队列命令同步 `flowSync` 后由所有者更新横幅；synced 时队列命令只发布 `automation-config`，
+  重试同步发布 `automation-config` / `dashboard-snapshot`。自动同步不重注册 cron，因此这两条
+  路径都不发布 `automation-schedule`；只有显式应用计划会发布它。`training-plan-applied`
+  window 事件已移除。
 - 部分成功（服务端 schedule 注册失败或应用后重读失败）使用页内 warning：读取失败可用“重新加载”，
   定时注册失败保留计划并可直接重试应用；失败不自动重试写请求。
 

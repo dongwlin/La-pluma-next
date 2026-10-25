@@ -79,8 +79,10 @@ reload() ─→ loaded / local-draft / skipped / stale / failed
 `UserConfigCoordinator.settle(keys)` 等待指定 key 已入队的提交全部结束，并返回仍未确认的
 `pendingKeys`。它用于一个域即将改写另一个域负责的服务端文件时先排空旧保存，例如 training
 应用养成计划前等待 `automation-tasks` 的保存。`settle` 不触发失败草稿的自动重试，也不创建
-尚未挂载的通道；调用方必须根据 `pendingKeys` 决定是否继续。key 常量由
-`USER_CONFIG_KEYS` 统一导出，避免各域复制字符串。
+尚未挂载的通道；除内存通道外，它还会按 `USER_CONFIG_PENDING_KEYS` 检查本地 pending token，
+因此上一次会话保存失败、当前页面未挂载的草稿同样会被报告。调用方必须根据 `pendingKeys`
+决定是否继续。key 与 pending 键常量由 `USER_CONFIG_KEYS` / `USER_CONFIG_PENDING_KEYS`
+统一导出，避免各域复制字符串。
 
 ## 3. 适配契约
 
@@ -245,7 +247,7 @@ function CombatTasks() {
 | 草稿等价 | 适配器 `fingerprint` 比较 task flow 与本地 `schedule.entries`，而不是只看 wire；编辑或删除禁用时间点仍会接受草稿、写回本地并触发提交，不会被协调器当成无变化而静默丢弃。wire 未变化时这次提交内容与上一次相同，属于幂等写入 |
 | 完整提交 | `saveUserConfig('automation-tasks', wire)` 成功后再执行 `setupSchedule('default', times, taskFlow)`（启用且存在时间点）或 `stopSchedule('default')`；任一步失败都返回 `ok: false`，协调器保留 pending 与“重新同步”入口，重试重跑整段提交 |
 | 过期提交保护 | 配置保存期间若协调器接受了更新的草稿，适配器在 schedule 步骤前比对最新 wire 指纹并跳过旧 schedule；即使旧提交已经写入配置，协调器也不会用它的结果确认新 revision |
-| 外部写入裁决 | training 应用计划前调用 `userConfigCoordinator.settle([USER_CONFIG_KEYS.automationTasks])`，等本设备已入队的保存落盘；仍有 pending 时拒绝应用。`automation-config`/`automation-schedule` 失效到达后，页面先 `flush()` 再 `reload({ force: true })`：`loaded` 采用服务端副本并提示更新，`local-draft`/`stale` 保留本地草稿并提示。采用服务端副本时保留本设备独有的禁用时间点（`mergeLocalScheduleEntries`），避免非冲突的本地 schedule 编辑丢失。跨客户端同时写入仍是最后写入生效 |
+| 外部写入裁决 | training 应用计划前调用 `userConfigCoordinator.settle([USER_CONFIG_KEYS.automationTasks])`，等本设备已入队的保存落盘，并按 `USER_CONFIG_PENDING_KEYS` 检查未挂载页面的持久化标记；仍有 pending 时拒绝应用。`automation-config`/`automation-schedule` 失效到达后，页面先 `flush()` 再 `reload({ force: true })`：`loaded` 采用服务端副本并提示更新，`local-draft`/`stale` 保留本地草稿并提示。采用服务端副本时保留本设备独有的禁用时间点（`mergeLocalScheduleEntries`），避免非冲突的本地 schedule 编辑丢失。跨客户端同时写入仍是最后写入生效 |
 | 页面派生 | task flow 的图标与参数表单由 `AVAILABLE_TASKS` 派生；schedule 的启用状态与条目都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动化配置已同步” |
 | 页面局部状态 | 拖拽中的顺序用本地预览渲染，松手时才作为一次编辑写入协调器；选中项、picker、撤销、执行详情、连接测试反馈仍是页面状态 |
 

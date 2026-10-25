@@ -81,7 +81,7 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 | `training-queue` | 队列成员、顺序、材料进度与服务端 revision 已变化 |
 | `materials` | 队列项的派生材料进度变化 |
 | `training-plan` | 已生成计划的队列前提变化 |
-| `automation-config`、`automation-schedule` | 写入响应确认任务流程 `synced` 时，automation 配置与定时任务已随智能关卡变化 |
+| `automation-config` | 写入响应确认任务流程 `synced` 时，automation 配置中的智能关卡已变化。自动同步不会重注册已存在的 cron，因此不发布 `automation-schedule` |
 | `dashboard-snapshot` | 总览快照包含队列与材料摘要 |
 
 发布参数为 `cause: 'training-queue'`，并携带 `detail: { source: 'training-queue-command' }`：
@@ -98,14 +98,14 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 - 真正卸载后重挂载：命令继续完成（请求没有 AbortController 绑定页面），新页面从 Query 缓存读取结果；pending 提示是否仍显示取决于命令是否完成，不再由旧页面闭包维护。
 - 页面首屏：`useTrainingPlan()` 把队列快照交给计划所有者，由其采用 `flowSync` 并把 `settings` 交给设置所有者 hydrate；若用户先编辑设置，则不采用迟到的首屏值。`TrainingPlanOwner` 的权威重读在读取期间本地设置未变化时采用服务端值（外部设置变化由此被发现）。
 - 生成计划前、应用后/失败后、重试同步后与显式“重新加载”都通过所有者强制重取队列；重读比较快照 revision 与设置版本，作废过期预览。
-- 队列命令在 `flowSync.status === 'synced'` 时随同一次发布携带 `automation-config`/`automation-schedule`；`training-plan-applied` window 事件已在 FPR-023 移除。计划应用/同步的发布由 `TrainingPlanOwner` 负责。
+- 队列命令在 `flowSync.status === 'synced'` 时随同一次发布携带 `automation-config`；自动同步不重注册 cron，因此不发布 `automation-schedule`。`training-plan-applied` window 事件已在 FPR-023 移除。显式应用计划仍由 `TrainingPlanOwner` 发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`。
 
 ## 7. 兼容与回滚
 
 - 端点、请求体、响应体、服务端存储与 `flowSync` / `revision` 形状均未改变；`getTrainingQueue`、`addToTrainingQueue`、`removeFromTrainingQueue`、`updateTrainingQueueOrder` 的位置参数与 `ApiResponse` 信封保持兼容。
 - 新增 `['training', 'queue']` Query key；回滚到页面本地队列时不需要服务端迁移，缓存按 `gcTime` 自然淘汰。
 - 新增的 `uncertain` 字段只存在于前端 Query 缓存，不写入服务端，也不进入任何持久化存储。
-- FPR-023 起 synced 队列写入额外发布 automation 作用域，并移除 window 事件；不需要服务端迁移，旧订阅者若仍在监听 window 事件会失去通知（本仓库内已全部迁移）。
+- FPR-023 起 synced 队列写入额外发布 `automation-config`（不含 `automation-schedule`），并移除 window 事件；不需要服务端迁移，旧订阅者若仍在监听 window 事件会失去通知（本仓库内已全部迁移）。
 - `detail.source` 是本任务声明的可选字段；不了解该字段的订阅者按普通 `training-queue` 发布处理，行为安全。
 - 独立回滚范围：页面与 `hooks/useTrainingQueueCommands.ts`、`model/queueCommands.ts`、`model/queries.ts` 的队列定义；不要求删除已有端点能力。
 

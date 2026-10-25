@@ -133,7 +133,7 @@ publishResourceInvalidation({
 | 仓库识别成功并解析完成 | `depot`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
 | 干员识别成功并解析完成 | `operbox`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
 | 材料刷新成功 | `materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
-| 队列增删/排序/撤销成功 | `training-queue`、`materials`、`training-plan`、`dashboard-snapshot`；任务流程确认 synced 时额外 `automation-config`、`automation-schedule` | FPR-021（已交付；automation 作用域由 FPR-023 补齐） |
+| 队列增删/排序/撤销成功 | `training-queue`、`materials`、`training-plan`、`dashboard-snapshot`；任务流程确认 synced 时额外 `automation-config`（自动同步不重注册 cron，不发布 `automation-schedule`） | FPR-021（已交付；automation 作用域由 FPR-023 补齐） |
 | 养成设置保存成功 | `training-plan`（设置值参与计划应用前提） | FPR-022（已交付） |
 | 应用养成计划成功 | `automation-config`、`automation-schedule`、`dashboard-snapshot` | FPR-023（已交付） |
 | 资源/热更新成功 | `catalog`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-026 |
@@ -149,7 +149,7 @@ publishResourceInvalidation({
 | `Dashboard` | `dashboard-snapshot` | 调用完整快照刷新（`force`），五项全部有效才提交；单路失败保留旧快照与 `lastUpdate` |
 | `DataStatistics` | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，解析成功后页面写入 Query 快照并发布作用域 |
 
-训练页的队列写入已由 FPR-021 改为领域命令与缓存协调：命令串行执行，写成功后刷新同一 `queue` key，并发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`；任务流程确认 synced 时同时发布 `automation-config`/`automation-schedule`。本页忽略自己的发布，外部发布仍按上表刷新。计划生成/应用/同步由 FPR-023 的 `TrainingPlanOwner` 持有，应用成功发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`。候选列表与计数由 FPR-044 改为 Query 观察者，Activity 隐藏时随 Effect 注销并在恢复时按新鲜度重取。
+训练页的队列写入已由 FPR-021 改为领域命令与缓存协调：命令串行执行，写成功后刷新同一 `queue` key，并发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`；任务流程确认 synced 时发布 `automation-config`（不发布 `automation-schedule`，因为自动同步不重注册 cron）。本页忽略自己的发布，外部发布仍按上表刷新。计划生成/应用/同步由 FPR-023 的 `TrainingPlanOwner` 持有，应用成功发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`。候选列表与计数由 FPR-044 改为 Query 观察者，Activity 隐藏时随 Effect 注销并在恢复时按新鲜度重取。
 
 Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新；恢复时 hook 补发一次合成事件，避免“隐藏期间资源已变化但页面仍显示旧值”。真正卸载后重挂载由页面首屏读取负责，不重放历史事件。
 
