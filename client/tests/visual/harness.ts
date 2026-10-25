@@ -149,7 +149,7 @@ export async function installDeterministicEnvironment(page: Page) {
 
 export async function waitForPageReady(page: Page, tab: string) {
   const marker = READY_MARKER[tab]
-  expect(marker, `缺少 ${tab} 的就绪标记`).toBeTruthy()
+  if (!marker) throw new Error(`缺少 ${tab} 的就绪标记`)
   if (marker.text) {
     await page.getByText(marker.text, { exact: false }).first().waitFor({ state: 'visible', timeout: 20_000 })
   } else if (marker.input) {

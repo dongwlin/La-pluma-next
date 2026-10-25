@@ -7,7 +7,9 @@ import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true
+// React 通过这个全局标记识别 act 环境；@types/react 未声明它。
+const reactGlobal = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+reactGlobal.IS_REACT_ACT_ENVIRONMENT = true
 
 const indexSource = readFileSync(resolve(cwd(), 'index.html'), 'utf8')
 const sourceDocument = new DOMParser().parseFromString(indexSource, 'text/html')
@@ -31,15 +33,16 @@ describe('PWA document boot shell', () => {
     const sourceRoot = sourceDocument.querySelector('#root')
     document.body.innerHTML = sourceRoot?.outerHTML ?? '<div id="root"></div>'
     const rootElement = document.getElementById('root')
-    expect(rootElement?.querySelector('.la-pluma-boot')).toBeTruthy()
+    if (!rootElement) throw new Error('index.html 缺少 #root 容器')
+    expect(rootElement.querySelector('.la-pluma-boot')).toBeTruthy()
 
     const reactRoot = createRoot(rootElement)
     await act(async () => {
       reactRoot.render(createElement('main', { 'data-react-ready': 'true' }, '已恢复'))
     })
 
-    expect(rootElement?.querySelector('.la-pluma-boot')).toBeNull()
-    expect(rootElement?.querySelector('[data-react-ready="true"]')?.textContent).toBe('已恢复')
+    expect(rootElement.querySelector('.la-pluma-boot')).toBeNull()
+    expect(rootElement.querySelector('[data-react-ready="true"]')?.textContent).toBe('已恢复')
 
     await act(async () => reactRoot.unmount())
   })

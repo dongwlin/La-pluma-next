@@ -1,23 +1,27 @@
 import { describe, expect, it, vi } from 'vitest'
-import vm from 'node:vm'
 import { readFileSync } from 'node:fs'
+import { runInNewContext } from 'node:vm'
 import {
-  createBootAssetsPlugin,
-  createDevPwaSupportPlugin,
+  createBootThemeTags,
+  createDevPwaMiddleware,
   createDevServiceWorkerCleanupScript,
+  createManifestLinkTag,
   createNavigateFallbackDenylist,
   createWebManifest,
   createWorkboxConfig,
   normalizeBasePath,
-} from './vite.config.js'
+} from './vite.config.ts'
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
+
+/** 服务 worker 脚本通过 self.addEventListener 注册；测试只关心 waitUntil 生命周期。 */
+type ServiceWorkerListener = (event: { waitUntil: (work: Promise<unknown>) => void }) => void
 
 describe('boot theme asset injection', () => {
   it('injects the boot metas before the generated boot script at the end of the document head', () => {
     // 必须是 'head'（追加到 head 末尾）而非 'head-prepend'：同一 injectTo 下
     // 数组顺序即输出顺序，两个 meta 必须排在脚本之前，首帧 applyTheme 才能
     // 覆写它们。初始值取深色，与 index.html 静态的 class="dark" 一致。
-    const tags = createBootAssetsPlugin().transformIndexHtml()
+    const tags = createBootThemeTags()
 
     expect(tags).toEqual([
       {
@@ -48,7 +52,7 @@ describe('PWA base path configuration', () => {
 
   it('keeps API and signaling routes out of the navigation fallback', () => {
     const denylist = createNavigateFallbackDenylist('/la-pluma/')
-    const isDenied = (url) => denylist.some(pattern => pattern.test(url))
+    const isDenied = (url: string) => denylist.some(pattern => pattern.test(url))
 
     expect(isDenied('/api/agent/manifest')).toBe(true)
     expect(isDenied('/api?format=json')).toBe(true)
@@ -63,33 +67,33 @@ describe('PWA base path configuration', () => {
   })
 
   it('cleans outdated caches without adding runtime caching routes', () => {
-    // "每个产物 chunk 都进 precache" 由构建期的 scripts/check-precache.mjs
+    // "每个产物 chunk 都进 precache" 由构建期的 scripts/check-precache.ts
     // 直接核对 dist/sw.js 保证；这里只守住配置层面仍需要的两个事实：
     // 陈旧 precache 会被清理，且不再引入运行时缓存路由。
     const workbox = createWorkboxConfig('/la-pluma/')
 
     expect(workbox.cleanupOutdatedCaches).toBe(true)
-    expect(workbox.runtimeCaching).toBeUndefined()
+    expect('runtimeCaching' in workbox).toBe(false)
   })
 
   it('purges the legacy page-chunk cache when the worker activates', async () => {
     const workbox = createWorkboxConfig('/la-pluma/')
     expect(workbox.importScripts).toEqual(['/la-pluma/legacy-page-cache-cleanup.js'])
 
-    const listeners = new Map()
+    const listeners = new Map<string, ServiceWorkerListener>()
     const deleteCache = vi.fn().mockResolvedValue(true)
-    vm.runInNewContext(
+    runInNewContext(
       readFileSync(new URL('./public/legacy-page-cache-cleanup.js', import.meta.url), 'utf8'),
       {
         self: {
-          addEventListener: (type, listener) => listeners.set(type, listener),
+          addEventListener: (type: string, listener: ServiceWorkerListener) => listeners.set(type, listener),
         },
         caches: { delete: deleteCache },
       },
     )
 
-    let activateWork
-    listeners.get('activate')({
+    let activateWork: Promise<unknown> | undefined
+    listeners.get('activate')!({
       waitUntil: (work) => {
         activateWork = work
       },
@@ -100,20 +104,12 @@ describe('PWA base path configuration', () => {
   })
 
   it('serves a no-store cleanup worker before the development SPA fallback', () => {
-    let middleware
-    const plugin = createDevPwaSupportPlugin('/la-pluma/')
-    plugin.configureServer({
-      middlewares: {
-        use: (handler) => {
-          middleware = handler
-        },
-      },
-    })
+    const middleware = createDevPwaMiddleware('/la-pluma/')
 
-    const headers = new Map()
+    const headers = new Map<string, string>()
     const response = {
       statusCode: 0,
-      setHeader: (name, value) => headers.set(name, value),
+      setHeader: (name: string, value: string) => headers.set(name, value),
       end: vi.fn(),
     }
     const next = vi.fn()
@@ -133,20 +129,12 @@ describe('PWA base path configuration', () => {
   })
 
   it('lets unrelated development requests continue through Vite', () => {
-    let middleware
-    const plugin = createDevPwaSupportPlugin('/')
-    plugin.configureServer({
-      middlewares: {
-        use: (handler) => {
-          middleware = handler
-        },
-      },
-    })
+    const middleware = createDevPwaMiddleware('/')
 
     const next = vi.fn()
     middleware(
       { method: 'GET', url: '/src/main.tsx' },
-      { setHeader: vi.fn(), end: vi.fn() },
+      { statusCode: 0, setHeader: vi.fn(), end: vi.fn() },
       next,
     )
 
@@ -154,26 +142,18 @@ describe('PWA base path configuration', () => {
   })
 
   it('exposes the install manifest in development without enabling a caching worker', () => {
-    let middleware
-    const plugin = createDevPwaSupportPlugin('/la-pluma/')
-    plugin.configureServer({
-      middlewares: {
-        use: (handler) => {
-          middleware = handler
-        },
-      },
-    })
+    const middleware = createDevPwaMiddleware('/la-pluma/')
 
-    expect(plugin.transformIndexHtml()).toEqual([{
+    expect(createManifestLinkTag('/la-pluma/')).toEqual({
       tag: 'link',
       attrs: { rel: 'manifest', href: '/la-pluma/manifest.webmanifest' },
       injectTo: 'head',
-    }])
+    })
 
-    const headers = new Map()
+    const headers = new Map<string, string>()
     const response = {
       statusCode: 0,
-      setHeader: (name, value) => headers.set(name, value),
+      setHeader: (name: string, value: string) => headers.set(name, value),
       end: vi.fn(),
     }
     const next = vi.fn()
@@ -187,18 +167,18 @@ describe('PWA base path configuration', () => {
     expect(response.statusCode).toBe(200)
     expect(headers.get('Content-Type')).toBe('application/manifest+json; charset=utf-8')
     expect(headers.get('Cache-Control')).toContain('no-store')
-    expect(JSON.parse(response.end.mock.calls[0][0])).toEqual(createWebManifest('/la-pluma/'))
+    expect(JSON.parse(response.end.mock.calls[0]![0] as string)).toEqual(createWebManifest('/la-pluma/'))
   })
 
   it('executes the complete cleanup worker lifecycle', async () => {
-    const listeners = new Map()
+    const listeners = new Map<string, ServiceWorkerListener>()
     const skipWaiting = vi.fn().mockResolvedValue(undefined)
     const claim = vi.fn().mockResolvedValue(undefined)
     const unregister = vi.fn().mockResolvedValue(true)
     const navigate = vi.fn().mockResolvedValue(undefined)
     const deleteCache = vi.fn().mockResolvedValue(true)
     const workerScope = {
-      addEventListener: (type, listener) => listeners.set(type, listener),
+      addEventListener: (type: string, listener: ServiceWorkerListener) => listeners.set(type, listener),
       skipWaiting,
       clients: {
         claim,
@@ -218,25 +198,27 @@ describe('PWA base path configuration', () => {
       delete: deleteCache,
     }
 
-    vm.runInNewContext(createDevServiceWorkerCleanupScript(), {
+    runInNewContext(createDevServiceWorkerCleanupScript(), {
       self: workerScope,
       caches: cacheStorage,
     })
 
-    let installWork
-    listeners.get('install')({
+    let installWork: Promise<unknown> | undefined
+    listeners.get('install')!({
       waitUntil: (work) => {
         installWork = work
       },
     })
+    expect(installWork).toBeDefined()
     await installWork
 
-    let activateWork
-    listeners.get('activate')({
+    let activateWork: Promise<unknown> | undefined
+    listeners.get('activate')!({
       waitUntil: (work) => {
         activateWork = work
       },
     })
+    expect(activateWork).toBeDefined()
     await activateWork
 
     expect(skipWaiting).toHaveBeenCalledOnce()

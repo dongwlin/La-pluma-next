@@ -5,15 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node scripts/check-precache.mjs",
+    "build": "tsc -b && vite build && node scripts/check-precache.ts",
     "lint": "eslint . --max-warnings 12",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc -b",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "stylelint": "stylelint \"src/**/*.css\"",
-    "stylelint:ratchet": "node scripts/stylelint-ratchet.mjs",
-    "stylelint:baseline": "node scripts/stylelint-ratchet.mjs --update-baseline",
+    "stylelint:ratchet": "node scripts/stylelint-ratchet.ts",
+    "stylelint:baseline": "node scripts/stylelint-ratchet.ts --update-baseline",
     "verify": "pnpm run lint && pnpm run type-check && pnpm run test && pnpm run build"
   },
   "dependencies": {

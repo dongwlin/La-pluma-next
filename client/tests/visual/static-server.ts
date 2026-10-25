@@ -14,7 +14,7 @@ const distDir = path.resolve(__dirname, '..', '..', 'dist')
 const port = Number(process.env.PORT || 4300)
 const host = process.env.HOST || '127.0.0.1'
 
-const MIME = {
+const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -30,10 +30,14 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? (error.stack ?? error.message) : String(error)
+}
+
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
-    let pathname = decodeURIComponent(url.pathname)
+    const pathname = decodeURIComponent(url.pathname)
 
     // Service worker 一律 404：基线环境必须无 SW 干预。
     if (pathname.endsWith('sw.js')) {
@@ -74,7 +78,7 @@ const server = createServer(async (request, response) => {
     response.end(body)
   } catch (error) {
     response.writeHead(500, { 'Content-Type': 'text/plain' })
-    response.end(String(error?.stack || error))
+    response.end(errorMessage(error))
   }
 })
 

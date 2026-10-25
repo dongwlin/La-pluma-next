@@ -38,7 +38,7 @@ export default defineConfig({
     trace: 'off',
   },
   webServer: {
-    command: `node static-server.mjs`,
+    command: `node static-server.ts`,
     cwd: __dirname,
     port: PORT,
     reuseExistingServer: false,

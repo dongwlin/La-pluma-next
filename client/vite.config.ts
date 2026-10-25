@@ -1,9 +1,11 @@
 import { defineConfig, loadEnv } from 'vite'
+import type { HtmlTagDescriptor, Plugin, UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import type { ManifestOptions } from 'vite-plugin-pwa'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
 // ES 模块中获取 __dirname
@@ -18,7 +20,7 @@ export const normalizeBasePath = (value = '/') => {
   return `${withLeadingSlash.replace(/\/+$/, '')}/`
 }
 
-export const createNavigateFallbackDenylist = (basePath) => {
+export const createNavigateFallbackDenylist = (basePath: string): RegExp[] => {
   const denylist = [
     /^\/api(?:[/?]|$)/,
     /^\/health(?:[/?]|$)/,
@@ -33,10 +35,17 @@ export const createNavigateFallbackDenylist = (basePath) => {
   return denylist
 }
 
-export const createWorkboxConfig = (basePath) => ({
-  cleanupOutdatedCaches: true,
+export interface WorkboxConfig {
+  cleanupOutdatedCaches: boolean
   // All app code ships in the statically imported entry chunks, so this glob
   // precaches every JS asset and the app stays fully usable offline.
+  globPatterns: string[]
+  navigateFallbackDenylist: RegExp[]
+  importScripts: string[]
+}
+
+export const createWorkboxConfig = (basePath: string): WorkboxConfig => ({
+  cleanupOutdatedCaches: true,
   globPatterns: [
     '**/*.{css,html,ico,png,svg,woff,woff2}',
     'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js',
@@ -76,7 +85,7 @@ self.addEventListener('activate', (event) => {
 })
 `.trimStart()
 
-export const createWebManifest = (basePath) => ({
+export const createWebManifest = (basePath: string): Partial<ManifestOptions> => ({
   name: 'La Pluma Next - MAA WebUI',
   short_name: 'La Pluma Next',
   description: 'MAA CLI 的现代化 Web 界面',
@@ -107,47 +116,72 @@ export const createWebManifest = (basePath) => ({
   ]
 })
 
-export const createDevPwaSupportPlugin = (basePath) => {
+/**
+ * dev 中间件只使用 request 的 method/url 和 response 的最小写入面，按结构声明，
+ * 测试即可直接构造替身，不必伪造整个 ViteDevServer。
+ */
+export interface DevPwaMiddlewareRequest {
+  method?: string
+  url?: string
+}
+
+export interface DevPwaMiddlewareResponse {
+  statusCode: number
+  setHeader(name: string, value: string): void
+  end(body?: string): void
+}
+
+export type DevPwaMiddleware = (
+  request: DevPwaMiddlewareRequest,
+  response: DevPwaMiddlewareResponse,
+  next: () => void,
+) => void
+
+export const createDevPwaMiddleware = (basePath: string): DevPwaMiddleware => {
   const serviceWorkerPath = `${basePath}sw.js`
   const manifestPath = `${basePath}manifest.webmanifest`
   const cleanupScript = createDevServiceWorkerCleanupScript()
   const manifest = createWebManifest(basePath)
 
-  return {
-    name: 'la-pluma-dev-pwa-support',
-    apply: 'serve',
-    transformIndexHtml() {
-      return [{
-        tag: 'link',
-        attrs: { rel: 'manifest', href: manifestPath },
-        injectTo: 'head',
-      }]
-    },
-    configureServer(server) {
-      server.middlewares.use((request, response, next) => {
-        const requestUrl = new URL(request.url || '/', 'http://localhost')
-        if (requestUrl.pathname === manifestPath) {
-          response.statusCode = 200
-          response.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
-          response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
-          response.end(request.method === 'HEAD' ? undefined : JSON.stringify(manifest))
-          return
-        }
-        if (requestUrl.pathname !== serviceWorkerPath) {
-          next()
-          return
-        }
-
-        response.statusCode = 200
-        response.setHeader('Content-Type', 'application/javascript; charset=utf-8')
-        response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
-        response.setHeader('Service-Worker-Allowed', basePath)
-        response.setHeader('X-La-Pluma-Dev-Service-Worker', 'cleanup')
-        response.end(request.method === 'HEAD' ? undefined : cleanupScript)
-      })
+  return (request, response, next) => {
+    const requestUrl = new URL(request.url || '/', 'http://localhost')
+    if (requestUrl.pathname === manifestPath) {
+      response.statusCode = 200
+      response.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+      response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+      response.end(request.method === 'HEAD' ? undefined : JSON.stringify(manifest))
+      return
     }
+    if (requestUrl.pathname !== serviceWorkerPath) {
+      next()
+      return
+    }
+
+    response.statusCode = 200
+    response.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+    response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+    response.setHeader('Service-Worker-Allowed', basePath)
+    response.setHeader('X-La-Pluma-Dev-Service-Worker', 'cleanup')
+    response.end(request.method === 'HEAD' ? undefined : cleanupScript)
   }
 }
+
+export const createManifestLinkTag = (basePath: string): HtmlTagDescriptor => ({
+  tag: 'link',
+  attrs: { rel: 'manifest', href: `${basePath}manifest.webmanifest` },
+  injectTo: 'head',
+})
+
+export const createDevPwaSupportPlugin = (basePath: string): Plugin => ({
+  name: 'la-pluma-dev-pwa-support',
+  apply: 'serve',
+  transformIndexHtml() {
+    return [createManifestLinkTag(basePath)]
+  },
+  configureServer(server) {
+    server.middlewares.use(createDevPwaMiddleware(basePath))
+  }
+})
 
 /**
  * 把首帧主题 meta 与脚本依次注入 index.html 的 head 末尾（dev 与 build 都生效）。
@@ -157,31 +191,33 @@ export const createDevPwaSupportPlugin = (basePath) => {
  * 脚本随后按 localStorage 中的偏好改写。meta content 与脚本内容都由
  * shared/theme/bootTheme.ts 单一生成，index.html 里不再内联副本。
  */
-export const createBootAssetsPlugin = () => ({
+export const createBootThemeTags = (): HtmlTagDescriptor[] => [
+  {
+    tag: 'meta',
+    attrs: { name: 'theme-color', content: BOOT_THEME_COLORS.dark.themeColor },
+    injectTo: 'head',
+  },
+  {
+    tag: 'meta',
+    attrs: { name: 'apple-mobile-web-app-status-bar-style', content: BOOT_THEME_COLORS.dark.statusBar },
+    injectTo: 'head',
+  },
+  {
+    tag: 'script',
+    children: createBootScript(),
+    injectTo: 'head',
+  },
+]
+
+export const createBootAssetsPlugin = (): Plugin => ({
   name: 'la-pluma-boot-assets',
   transformIndexHtml() {
-    return [
-      {
-        tag: 'meta',
-        attrs: { name: 'theme-color', content: BOOT_THEME_COLORS.dark.themeColor },
-        injectTo: 'head',
-      },
-      {
-        tag: 'meta',
-        attrs: { name: 'apple-mobile-web-app-status-bar-style', content: BOOT_THEME_COLORS.dark.statusBar },
-        injectTo: 'head',
-      },
-      {
-        tag: 'script',
-        children: createBootScript(),
-        injectTo: 'head',
-      },
-    ]
+    return createBootThemeTags()
   },
 })
 
 // https://vite.dev/config/
-export const createViteConfig = (basePath) => ({
+export const createViteConfig = (basePath: string): UserConfig => ({
   base: basePath,
   resolve: {
     alias: {
@@ -206,7 +242,7 @@ export const createViteConfig = (basePath) => ({
   build: {
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        manualChunks(id: string) {
           if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react-vendor'
           if (/node_modules\/(framer-motion|motion-dom|motion-utils)\//.test(id)) return 'motion-vendor'
           return undefined
