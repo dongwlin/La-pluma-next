@@ -11,3 +11,6 @@ export {
   getOpenTodayStages,
   getTodayDrops,
 } from './api'
+export { STATISTICS_DOMAIN, statisticsKeys } from './model/queryKeys'
+export { dropStatisticsQueryOptions } from './model/queries'
+export type { StatisticsResource } from './model/queryKeys'

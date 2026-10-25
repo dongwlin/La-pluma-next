@@ -5,5 +5,10 @@
 
 export { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from './api'
 export { GAME_DATA_DOMAIN, gameDataKeys } from './model/queryKeys'
+export {
+  depotQueryOptions,
+  operBoxQueryOptions,
+  operatorCatalogQueryOptions,
+} from './model/queries'
 export type { GameDataResource } from './model/queryKeys'
 export type { DepotDataDetailed, DepotItem, OperBoxData, OperatorDetailed } from './types'
