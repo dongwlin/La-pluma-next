@@ -7,11 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#05090c" />
     <meta name="description" content="MAA CLI 的现代化 Web 界面 - 自动化明日方舟游戏任务" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="La Pluma Next" />
     <style id="la-pluma-boot-style">
       :root {
@@ -89,7 +87,8 @@
         }
       }
     </style>
-    <!-- 首帧主题脚本由 vite.config.js 的 createBootAssetsPlugin 注入 -->
+    <!-- 首帧主题脚本与 theme-color / apple-mobile-web-app-status-bar-style 两个 meta
+         由 vite.config.js 的 createBootAssetsPlugin 从 BOOT_THEME_COLORS 注入 -->
 
     <title>La Pluma Next - MAA WebUI</title>
   </head>

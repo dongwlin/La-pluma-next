@@ -10,22 +10,32 @@ import {
   createWorkboxConfig,
   normalizeBasePath,
 } from './vite.config.js'
-import { createBootScript } from './src/shared/theme/bootTheme.ts'
+import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
 describe('boot theme asset injection', () => {
-  it('injects the generated boot script at the end of the document head', () => {
-    // 必须是 'head'（追加到 head 末尾）而非 'head-prepend'：脚本要排在
-    // theme-color 与 apple-mobile-web-app-status-bar-style 两个 meta 之后，
-    // 首帧 applyTheme 才能写这两个 meta；是否真的排在 meta 之后由
-    // dist/index.html 的构建产物顺序核对（见提交说明），这里不做脆弱的
-    // 字符串位置断言。'head' 同时保证脚本仍在 <body> 与启动壳之前执行。
+  it('injects the boot metas before the generated boot script at the end of the document head', () => {
+    // 必须是 'head'（追加到 head 末尾）而非 'head-prepend'：同一 injectTo 下
+    // 数组顺序即输出顺序，两个 meta 必须排在脚本之前，首帧 applyTheme 才能
+    // 覆写它们。初始值取深色，与 index.html 静态的 class="dark" 一致。
     const tags = createBootAssetsPlugin().transformIndexHtml()
 
-    expect(tags).toEqual([{
-      tag: 'script',
-      children: createBootScript(),
-      injectTo: 'head',
-    }])
+    expect(tags).toEqual([
+      {
+        tag: 'meta',
+        attrs: { name: 'theme-color', content: BOOT_THEME_COLORS.dark.themeColor },
+        injectTo: 'head',
+      },
+      {
+        tag: 'meta',
+        attrs: { name: 'apple-mobile-web-app-status-bar-style', content: BOOT_THEME_COLORS.dark.statusBar },
+        injectTo: 'head',
+      },
+      {
+        tag: 'script',
+        children: createBootScript(),
+        injectTo: 'head',
+      },
+    ])
   })
 })
 

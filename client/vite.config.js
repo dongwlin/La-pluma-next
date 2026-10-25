@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { createBootScript } from './src/shared/theme/bootTheme.ts'
+import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
 // ES 模块中获取 __dirname
 const __filename = fileURLToPath(import.meta.url)
@@ -81,7 +81,8 @@ export const createWebManifest = (basePath) => ({
   short_name: 'La Pluma Next',
   description: 'MAA CLI 的现代化 Web 界面',
   lang: 'zh-CN',
-  theme_color: '#05090c',
+  theme_color: BOOT_THEME_COLORS.dark.themeColor,
+  // 启动画面底色，与浏览器 chrome 的 theme-color 是两种语义，保持独立。
   background_color: '#05090c',
   display: 'standalone',
   scope: basePath,
@@ -149,20 +150,33 @@ export const createDevPwaSupportPlugin = (basePath) => {
 }
 
 /**
- * 把首帧主题脚本注入 index.html 的 head 末尾（dev 与 build 都生效）。
- * 用 'head' 而不是 'head-prepend'：脚本必须先于首帧执行，但也要排在
- * theme-color / apple-mobile-web-app-status-bar-style 两个 meta 之后，
- * 这样 applyTheme 才能在首次运行时写对状态栏与浏览器 chrome 颜色。
- * 脚本内容由 shared/theme/bootTheme.ts 单一生成，index.html 里不再内联副本。
+ * 把首帧主题 meta 与脚本依次注入 index.html 的 head 末尾（dev 与 build 都生效）。
+ * 用 'head' 而不是 'head-prepend'：同一 injectTo 下按数组顺序输出，因此两个
+ * meta 必然排在脚本之前，applyTheme 首次运行才能覆写它们。
+ * 初始值取深色：<html> 静态就是 class="dark"，index.html 的默认主题也是深色；
+ * 脚本随后按 localStorage 中的偏好改写。meta content 与脚本内容都由
+ * shared/theme/bootTheme.ts 单一生成，index.html 里不再内联副本。
  */
 export const createBootAssetsPlugin = () => ({
   name: 'la-pluma-boot-assets',
   transformIndexHtml() {
-    return [{
-      tag: 'script',
-      children: createBootScript(),
-      injectTo: 'head',
-    }]
+    return [
+      {
+        tag: 'meta',
+        attrs: { name: 'theme-color', content: BOOT_THEME_COLORS.dark.themeColor },
+        injectTo: 'head',
+      },
+      {
+        tag: 'meta',
+        attrs: { name: 'apple-mobile-web-app-status-bar-style', content: BOOT_THEME_COLORS.dark.statusBar },
+        injectTo: 'head',
+      },
+      {
+        tag: 'script',
+        children: createBootScript(),
+        injectTo: 'head',
+      },
+    ]
   },
 })
 
