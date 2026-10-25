@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getErrorMessage } from '@/shared/api'
-import { fetchOperatorMaterials, getTrainingQueue } from '@/features/training'
 import {
   depotQueryOptions,
   gameDataKeys,
@@ -11,7 +9,12 @@ import {
   operatorCatalogQueryOptions,
 } from '@/features/game-data'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
-import { parseDepotData, parseOperBoxData } from '../api'
+import {
+  isStatisticsCommandRunning,
+  statisticsCommandOwner,
+  type StatisticsCommandResult,
+} from '../model/commandOwner'
+import { useStatisticsCommandState } from '../hooks/useStatisticsCommand'
 import { dropStatisticsQueryOptions } from '../model/queries'
 import { statisticsKeys } from '../model/queryKeys'
 import {
@@ -42,15 +45,10 @@ import { PageHeader, Button, Card, EmptyState, Loading } from '@/shared/ui'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type {
-  DepotDataDetailed,
-  OperBoxData,
-} from '@/features/game-data'
-import type {
   ActiveTask,
   ActiveTab,
   OpenMenu,
 } from '../types'
-import { executeCommand } from '@/features/task-execution'
 
 const DEPOT_READ_ERROR = '暂时无法读取仓库数据，请检查服务连接后重试。'
 const OPER_BOX_READ_ERROR = '暂时无法读取干员识别结果，请检查服务连接后重试。'
@@ -448,10 +446,16 @@ function InlineDataError({ title, description, isRetrying, onRetry }: InlineData
 }
 
 export default function DataStatistics() {
-  const [isRunning, setIsRunning] = useState(false)
-  const [activeTask, setActiveTask] = useState<ActiveTask>(null)
   const { setMessage: setStatusMessage } = useStatusStore()
   const queryClient = useQueryClient()
+  // 启动、等待、解析与超时状态由领域命令所有者持有；页面与 Activity 生命周期
+  // 不创建第二份执行状态，也不会因重挂载重复提交设备命令。
+  const commandState = useStatisticsCommandState()
+  const isRunning = isStatisticsCommandRunning(commandState)
+  const activeTask: ActiveTask =
+    isRunning && (commandState.kind === 'depot' || commandState.kind === 'operbox')
+      ? commandState.kind
+      : null
   const depotQuery = useQuery(depotQueryOptions())
   const operBoxQuery = useQuery(operBoxQueryOptions())
   const operatorCatalogQuery = useQuery(operatorCatalogQueryOptions())
@@ -549,10 +553,12 @@ export default function DataStatistics() {
     void dropQuery.refetch()
   }
 
-  // 当筛选条件变化时，清理不再显示的干员图片加载状态
+  // 当筛选条件变化时，清理不再显示的干员图片加载状态。
+  // 这是有上限的缓存修剪，不是渲染循环；既有行为由 layout 测试覆盖。
   useEffect(() => {
     const currentOperIds = new Set(filteredOperators.map(op => op.id))
     
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 有界缓存清理
     setLoadedImages(prev => {
       const loadedIds = Object.keys(prev)
       
@@ -570,146 +576,47 @@ export default function DataStatistics() {
     })
   }, [filters, filteredOperators])
 
-  // 执行仓库识别
-  const executeDepot = async () => {
-    if (isRunning) return
-
-    setIsRunning(true)
-    setActiveTask('depot')
-    setStatusMessage('正在识别仓库物品...')
-
-    try {
-      // 使用动态任务配置
-      const taskConfig = {
-        name: '仓库识别',
-        type: 'Depot',
-        params: {
-          enable: true
-        }
+  // 解析结果是权威完整快照：写入该资源唯一的 Query 缓存，不另存页面副本。
+  // 跨域影响由命令所有者发布失效，本页不再自行读取 queue 或目录。
+  const applyCommandResult = (result: StatisticsCommandResult) => {
+    if (result.status === 'succeeded') {
+      if (result.kind === 'depot') {
+        queryClient.setQueryData(gameDataKeys.resource('depot'), result.depot)
+      } else if (result.kind === 'operbox') {
+        queryClient.setQueryData(gameDataKeys.resource('operbox'), result.operBox)
       }
-      
-      const result = await executeCommand('depot', [], taskConfig, null, '仓库识别', 'statistics', true)
-
-      if (result.success) {
-        setStatusMessage('识别完成，正在解析数据...')
-        
-        // 等待一下让 MAA 写入日志
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        // 解析并保存数据
-        const parseResult = await parseDepotData()
-        
-        if (parseResult.success) {
-          // 解析结果是权威完整快照：写入该资源唯一的 Query 缓存，不另存页面副本。
-          const nextDepot: DepotDataDetailed = {
-            itemCount: parseResult.data.itemCount,
-            items: parseResult.data.items || [],
-            path: parseResult.data.path,
-            timestamp: new Date().toISOString()
-          }
-          queryClient.setQueryData(gameDataKeys.resource('depot'), nextDepot)
-          
-          try {
-            setStatusMessage('正在更新智能养成系统...')
-            const queueResult = await getTrainingQueue()
-
-            if (queueResult.success && queueResult.data && queueResult.data.length > 0) {
-              setStatusMessage(`识别完成！共识别 ${parseResult.data.itemCount} 种物品，已更新养成进度`)
-            } else {
-              setStatusMessage(`识别完成！共识别 ${parseResult.data.itemCount} 种物品`)
-            }
-          } catch (error) {
-            setStatusMessage(`识别完成！共识别 ${parseResult.data.itemCount} 种物品`)
-          }
-        } else {
-          setStatusMessage(`识别完成，但数据解析失败: ${getErrorMessage(parseResult)}`)
-        }
-      } else {
-        setStatusMessage(`识别失败: ${getErrorMessage(result)}`)
-      }
-    } catch (error: any) {
-      setStatusMessage(`识别失败: ${error.message}`)
-    } finally {
-      setIsRunning(false)
-      setActiveTask(null)
+      return
+    }
+    if (result.status === 'busy' || result.status === 'idle') {
+      setStatusMessage(result.message)
     }
   }
 
-  // 获取干员材料数据
+  const runRecognition = async (kind: 'depot' | 'operbox') => {
+    applyCommandResult(await statisticsCommandOwner.run(kind, { onProgress: setStatusMessage }))
+  }
+
+  const continueRecognition = async () => {
+    applyCommandResult(await statisticsCommandOwner.resume({ onProgress: setStatusMessage }))
+  }
+
+  // 同一命令的超时/取消之后，按钮继续等待或重试确认；不会重新执行设备命令。
+  const startOrResumeRecognition = (kind: 'depot' | 'operbox') => {
+    if (commandState.kind === kind && commandState.resumeMode) {
+      void continueRecognition()
+      return
+    }
+    void runRecognition(kind)
+  }
+
+  const commandActionLabel = (kind: 'depot' | 'operbox') => {
+    if (isRunning || commandState.kind !== kind || !commandState.resumeMode) return '立即执行'
+    return commandState.resumeMode === 'parse' ? '继续解析' : '重试识别'
+  }
+
+  // 材料刷新是统计域持有的脚本命令，不进入 Query，也不读一次目录当作完成条件。
   const handleFetchMaterials = async () => {
-    if (isRunning) return
-
-    setIsRunning(true)
-    setStatusMessage('正在获取干员材料数据...')
-
-    try {
-      const result = await fetchOperatorMaterials()
-
-      if (result.success) {
-        setStatusMessage('干员材料数据获取成功！')
-
-        // 重新读取干员目录以显示材料数据
-        await operatorCatalogQuery.refetch()
-      } else {
-        setStatusMessage(`获取失败: ${getErrorMessage(result)}`)
-      }
-    } catch (error: any) {
-      setStatusMessage(`获取失败: ${error.message}`)
-    } finally {
-      setIsRunning(false)
-    }
-  }
-
-  // 执行干员识别
-  const executeOperBox = async () => {
-    if (isRunning) return
-
-    setIsRunning(true)
-    setActiveTask('operbox')
-    setStatusMessage('正在识别干员数据...')
-
-    try {
-      // 使用动态任务配置
-      const taskConfig = {
-        name: '干员识别',
-        type: 'OperBox',
-        params: {
-          enable: true
-        }
-      }
-      
-      const result = await executeCommand('operbox', [], taskConfig, null, '干员识别', 'statistics', true)
-
-      if (result.success) {
-        setStatusMessage('识别完成，正在解析数据...')
-        
-        // 等待一下让 MAA 写入日志
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        // 解析并保存数据
-        const parseResult = await parseOperBoxData()
-
-        if (parseResult.success) {
-          setStatusMessage(`识别完成！共识别 ${parseResult.data.operCount} 名干员`)
-          const nextOperBox: OperBoxData = {
-            operCount: parseResult.data.operCount,
-            data: parseResult.data.data || [],
-            path: parseResult.data.path,
-            timestamp: new Date().toISOString()
-          }
-          queryClient.setQueryData(gameDataKeys.resource('operbox'), nextOperBox)
-        } else {
-          setStatusMessage(`识别完成，但数据解析失败: ${getErrorMessage(parseResult)}`)
-        }
-      } else {
-        setStatusMessage(`识别失败: ${getErrorMessage(result)}`)
-      }
-    } catch (error: any) {
-      setStatusMessage(`识别失败: ${error.message}`)
-    } finally {
-      setIsRunning(false)
-      setActiveTask(null)
-    }
+    applyCommandResult(await statisticsCommandOwner.run('materials', { onProgress: setStatusMessage }))
   }
 
   const filtersActive = hasActiveOperatorFilters(filters)
@@ -831,7 +738,7 @@ export default function DataStatistics() {
                 <Button
                   onClick={handleFetchMaterials}
                   disabled={isRunning}
-                  loading={isRunning && activeTask === null}
+                  loading={commandState.kind === 'materials' && isRunning}
                   loadingText="正在获取"
                   variant="outline"
                   size="md"
@@ -840,15 +747,15 @@ export default function DataStatistics() {
                   获取材料数据
                 </Button>
                 <Button
-                  onClick={executeOperBox}
+                  onClick={() => startOrResumeRecognition('operbox')}
                   disabled={isRunning}
-                  loading={activeTask === 'operbox' && isRunning}
+                  loading={commandState.kind === 'operbox' && isRunning}
                   loadingText="正在执行"
                   variant="primary"
                   size="md"
                   icon={<Play size={15} fill="currentColor" aria-hidden="true" />}
                 >
-                  立即执行
+                  {commandActionLabel('operbox')}
                 </Button>
               </div>
             </div>
@@ -1159,15 +1066,15 @@ export default function DataStatistics() {
 
               <div className="data-statistics-task-actions shrink-0">
                 <Button
-                  onClick={executeDepot}
+                  onClick={() => startOrResumeRecognition('depot')}
                   disabled={isRunning}
-                  loading={activeTask === 'depot' && isRunning}
+                  loading={commandState.kind === 'depot' && isRunning}
                   loadingText="正在执行"
                   variant="primary"
                   size="md"
                   icon={<Play size={15} fill="currentColor" aria-hidden="true" />}
                 >
-                  立即执行
+                  {commandActionLabel('depot')}
                 </Button>
               </div>
             </div>
