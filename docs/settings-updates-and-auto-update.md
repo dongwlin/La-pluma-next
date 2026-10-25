@@ -153,7 +153,9 @@
 pnpm --filter la-pluma-next-client exec vitest run \
   src/features/settings/model/updateCommands.test.ts \
   src/features/settings/model/autoUpdateConfig.test.ts \
-  src/features/settings/pages/ConfigManager.layout.test.tsx
+  src/features/settings/pages/ConfigManager.layout.test.tsx \
+  src/features/game-data/model/itemIconCache.test.ts \
+  src/features/game-data/hooks/useItemIconCacheVersion.test.tsx
 ```
 
 完整 `pnpm --filter la-pluma-next-client verify` 与视觉比对由任务完成记录给出。
