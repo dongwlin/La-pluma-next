@@ -27,7 +27,8 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 - **UI 框架**: Tailwind CSS v4（`@tailwindcss/vite`，CSS-first 配置）+ Framer Motion + 项目语义组件与 `src/styles/ios-theme.css`
 - **图标**: Lucide React
 - **路由**: React Router 7（`BrowserRouter`，URL 即 tab 状态）
-- **状态管理**: Zustand
+- **状态管理**: Zustand（跨页客户端状态）
+- **服务端缓存**: TanStack Query 5（应用级 QueryClient，策略与键规范见 [Query 缓存与键规范](query-cache.md)）
 - **后端**: Node.js + Express
 - **实时通信**: HTTP 轮询（执行/日志状态）+ WebRTC 同源信令网关（浏览器实时预览）
 - **MAA 集成**: 通过子进程调用 `maa` CLI 命令
@@ -41,7 +42,7 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 
 - `app/`：应用组装——根组件、路由表与 URL 归一、布局壳与 Provider，不含业务逻辑。
 - `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；页面级 CSS 同样由各域自持，放在 `features/<domain>/styles/` 并由该域 `index.ts` 导入（统一收进 `@layer page`）。对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
-- `shared/`：与业务无关的横向下层（通用 UI、传输层底座、路由词汇与全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
+- `shared/`：与业务无关的横向下层（通用 UI、传输层底座、Query 缓存基础设施、路由词汇与全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
 
 业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
 
@@ -61,7 +62,7 @@ La-pluma-next/
 │   │   │   ├── App.tsx        # 根组件：BrowserRouter + Provider + Layout + 页面出口
 │   │   │   ├── router/        # tab 元数据、路由表、URL 归一与保活页面出口（react-router）
 │   │   │   ├── layout/        # Layout（导航壳与按 tab 滚动恢复）、ThemeToggle、PWAInstallPrompt
-│   │   │   └── providers/     # MotionConfig、主题 dark-class 副作用
+│   │   │   └── providers/     # QueryClient Provider、MotionConfig、主题 dark-class 副作用
 │   │   ├── features/          # 功能域（对外只有 index.ts）
 │   │   │   ├── dashboard/     # 控制台总览
 │   │   │   ├── automation/    # 日常任务流程
@@ -82,6 +83,7 @@ La-pluma-next/
 │   │       ├── stores/        # shared 自管的全局 store（uiStore：主题）
 │   │       ├── api/           # 传输层底座：API_BASE_URL、fetchWithAuth、
 │   │       │                  # parseJsonResponse、getErrorMessage 与响应类型
+│   │       ├── query/         # 应用级 QueryClient、默认策略与 key 工厂
 │   │       ├── hooks/         # useFluidTabIndicator、useOnlineStatus、usePageVisible
 │   │       └── utils/         # executionSummary、taskStatus
 │   └── public/                # 静态资源（Logo、图标）

@@ -47,7 +47,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 ## 八页职责矩阵
 
-路径下文均相对 `client/src`；每页条目覆盖页面以及经 feature 根调用的业务能力。“资源域”表示未来独立于页面的唯一资源所有者；当前没有 Query 缓存或统一失效总线。UI 状态保留策略另列在生命周期表。
+路径下文均相对 `client/src`；每页条目覆盖页面以及经 feature 根调用的业务能力。“资源域”表示未来独立于页面的唯一资源所有者；本基线采集时没有 Query 缓存或统一失效总线，FPR-017 已补应用级 Query 基础设施，页面读取迁移仍由后续任务完成（见 [Query 缓存与键规范](query-cache.md)）。UI 状态保留策略另列在生命周期表。
 
 ### Automation — `features/automation/pages/AutomationTasks.tsx`
 

@@ -11,7 +11,7 @@
 | `AbortSignal` → `fetch`、失败分类、领域载荷校验 | `shared/api/readApi.ts` | 业务端点、缓存键、重取策略 |
 | 端点路径、查询参数、领域载荷结构 | `features/<domain>/api/` | 页面生命周期、Query 缓存 |
 | 响应信封解析、旧格式兼容 | `shared/api/apiResponse.ts` | 只读请求的失败归类 |
-| Query 缓存、失效、重试 | FPR-017 及后续任务 | 本契约不引入 Query |
+| Query 缓存、失效、重试 | [Query 缓存与键规范](query-cache.md)（FPR-017 起） | 本契约不引入 Query |
 
 本契约只覆盖**只读资源读取**：`GET` 端点，以及返回资源快照的读取函数。执行命令、停止、配置提交、通知配置读写、截图等 `POST`/`PUT`/`DELETE` 不在范围内。运行快照（`runs/current`、按 `runId` 查询、`tasks/status`）属于执行控制器的事实读取，已有 signal 与控制器级处理，不按普通资源迁移。
 
@@ -149,7 +149,7 @@ const depot = unwrapApiResponse(result)
 
 ## 7. 后续迁移入口
 
-FPR-017 及资源任务应按以下方式接入：
+FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体约定见[Query 缓存与键规范](query-cache.md)。资源任务按以下方式接入：
 
 1. `queryFn: ({ signal }) => readApiData(...)`，或在保留旧端点函数时 `unwrapApiResponse(await getX(signal))`。
 2. 只对 `kind === 'transport'` 或 `kind === 'api' && retryable` 的失败启用自动重试；`contract` 失败不重试，`AbortError` 不计入失败。
