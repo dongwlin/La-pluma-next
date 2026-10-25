@@ -2,17 +2,21 @@
  * 组件更新命令的 React 适配层
  *
  * 命令状态由模块级 `SettingsUpdateOwner` 持有；本 hook 只订阅状态、转发动作，
- * 并在命令确认成功后执行两项跨域副作用：
+ * 并在命令确认成功后执行三项跨域副作用：
  *
+ * - 推进物品图标缓存 epoch，使同一路径的新图不再命中浏览器旧缓存；
  * - 发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` 失效，
  *   让资源读取方按实际影响范围刷新；CLI 更新不发布；
  * - 重取同一 `settings/version` 资源，使页面版本与资源状态同步。
  *
- * 失败只展示反馈，不自动重发命令；“重试资源同步”仍是用户显式动作。
- * Activity 隐藏或卸载不取消在途命令，也不清除已完成反馈。
+ * 完成提示在命令 HTTP 返回后立即发出，版本重取在后台继续；因此按钮恢复可点
+ * 早于版本刷新结束（迁移前 loading 会覆盖到版本重取完成）。失败只展示反馈，
+ * 不自动重发命令；“重试资源同步”仍是用户显式动作。Activity 隐藏或卸载不取消
+ * 在途命令，也不清除已完成反馈。
  */
 
 import { useCallback, useSyncExternalStore } from 'react'
+import { invalidateItemIconCache } from '@/features/game-data'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import {
   SETTINGS_UPDATE_RESOURCE_SCOPES,
@@ -57,24 +61,30 @@ export function useSettingsUpdates(
 
     const outcome = await action()
 
+    // 命令本身已结束：先给完成提示，再在后台推进资源/版本刷新。旧实现把
+    // loading 留到版本重取结束；现在 HTTP 返回即可再次发起命令。
+    if (outcome.message) {
+      if (outcome.messageType) notify(outcome.message, outcome.messageType)
+      else notify(outcome.message)
+    }
+
     if (outcome.status === 'succeeded') {
       if (outcome.resourcesChanged) {
+        // 图片 URL 与目录/材料数据是两套缓存：先推进图标 epoch，再发布
+        // 作用域，使接收方重新渲染时拿到新的 <img src>。
+        invalidateItemIconCache()
         publishResourceInvalidation({
           resources: SETTINGS_UPDATE_RESOURCE_SCOPES,
           cause: 'resource-update',
         })
       }
       if (outcome.versionChanged) {
-        // 版本资源自己决定失效方式：可见时立即重取，Activity 隐藏时保留
-        // 失效标记，恢复显示后重取，而不是被新鲜期挡住。
+        // 版本资源的失效在后台继续；Activity 隐藏时保留失效标记，
+        // 恢复显示后重取。
         await reloadVersion()
       }
     }
 
-    if (outcome.message) {
-      if (outcome.messageType) notify(outcome.message, outcome.messageType)
-      else notify(outcome.message)
-    }
     return outcome
   }, [notify, owner, reloadVersion])
 

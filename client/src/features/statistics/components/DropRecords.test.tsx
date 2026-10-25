@@ -20,6 +20,7 @@ vi.mock('framer-motion', async () => {
 
 vi.mock('@/features/game-data', () => ({
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
+  useItemIconCacheVersion: () => 0,
 }))
 
 let container: HTMLDivElement

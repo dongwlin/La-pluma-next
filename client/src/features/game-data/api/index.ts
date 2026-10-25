@@ -10,13 +10,18 @@ import {
   readApiResponse,
   type ApiResponse,
 } from '@/shared/api'
+import { getItemIconCacheVersion } from '../model/itemIconCache'
 
 /**
  * 物品图标来自外部静态资源仓库。函数只生成 URL，不发起请求；
- * 图片本身由浏览器 HTTP 缓存，不进入 Query 缓存。
+ * 图片本身由浏览器 HTTP 缓存，不进入 Query 缓存。`?v=` 使用资源更新成功后
+ * 推进的 epoch，避免同一路径的新图继续命中旧缓存。
  */
-export const getItemIconUrl = (iconId: string | number): string =>
-  `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png`
+export const getItemIconUrl = (
+  iconId: string | number,
+  version: number = getItemIconCacheVersion(),
+): string =>
+  `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png?v=${version}`
 
 const isDepotPayload = (payload: unknown): boolean =>
   payload === null || (isRecord(payload) && Array.isArray(payload.items))

@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
+import { getItemIconCacheVersion } from '@/features/game-data'
 import {
   subscribeResourceInvalidation,
   type ResourceInvalidation,
@@ -426,6 +427,7 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
+    const iconVersionBefore = getItemIconCacheVersion()
     const coreButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.trim() === '更新 MaaCore')!
     const cliButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
@@ -445,10 +447,43 @@ describe('ConfigManager layout surfaces', () => {
     expect(cliButton.disabled).toBe(false)
     expect(mocks.setMessage).toHaveBeenCalledWith('已更新')
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+    expect(getItemIconCacheVersion()).toBeGreaterThan(iconVersionBefore)
     expect(invalidationEvents).toEqual([{
       resources: ['catalog', 'materials', 'training-plan', 'dashboard-snapshot'],
       cause: 'resource-update',
     }])
+
+    const successCall = mocks.setMessage.mock.calls
+      .findIndex(([message]) => message === '已更新')
+    expect(successCall).toBeGreaterThanOrEqual(0)
+    expect(mocks.setMessage.mock.invocationCallOrder[successCall]!)
+      .toBeLessThan(mocks.getVersion.mock.invocationCallOrder[1]!)
+  })
+
+  it('reports success before the version refresh settles', async () => {
+    const pendingVersion = deferred<{
+      success: boolean
+      data: { cli: string; core: string; raw: string }
+    }>()
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    mocks.updateMaaCore.mockResolvedValueOnce({ success: true, message: '已更新' })
+    mocks.getVersion.mockReturnValueOnce(pendingVersion.promise)
+
+    await act(async () => buttonByText('更新 MaaCore')?.click())
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('已更新')
+    expect(buttonByText('更新 MaaCore')?.disabled).toBe(false)
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+
+    await act(async () => pendingVersion.resolve({
+      success: true,
+      data: { cli: '0.7.4', core: 'v5.0.1', raw: 'v5.0.1' },
+    }))
+    await settle()
   })
 
   it('offers a resource retry when a core update fails at the resource step', async () => {
@@ -498,6 +533,7 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
+    const iconVersionBefore = getItemIconCacheVersion()
     const cliButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.trim() === '更新 MAA CLI')!
     await act(async () => cliButton.click())
@@ -507,6 +543,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('MAA CLI 更新成功')
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
     expect(invalidationEvents).toEqual([])
+    expect(getItemIconCacheVersion()).toBe(iconVersionBefore)
   })
 
   it('does not retry or publish invalidation when a component update fails', async () => {
@@ -518,12 +555,14 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
+    const iconVersionBefore = getItemIconCacheVersion()
     await act(async () => buttonByText('更新 MaaCore')?.click())
     await flush()
 
     expect(mocks.updateMaaCore).toHaveBeenCalledOnce()
     expect(mocks.getVersion).toHaveBeenCalledOnce()
     expect(invalidationEvents).toEqual([])
+    expect(getItemIconCacheVersion()).toBe(iconVersionBefore)
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('下载失败')
     expect(buttonByText('重试资源同步')).toBeUndefined()
   })

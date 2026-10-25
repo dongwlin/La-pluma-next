@@ -69,6 +69,7 @@ vi.mock('@/features/game-data', () => ({
   getAllOperators: mocks.getAllOperators,
   getOperBoxData: mocks.getOperBoxData,
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
+  useItemIconCacheVersion: () => 0,
 }))
 
 vi.mock('@/features/runtime-status', () => ({

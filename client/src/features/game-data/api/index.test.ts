@@ -139,14 +139,14 @@ describe('game data resource reads', () => {
     expect(fetchCall().init.method).toBeUndefined()
   })
 
-  it('builds an encoded external item icon URL without fetching it', () => {
+  it('builds an encoded external item icon URL with the cache epoch without fetching it', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 
-    expect(getItemIconUrl('30011')).toBe(
-      'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/30011.png',
+    expect(getItemIconUrl('30011', 0)).toBe(
+      'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/30011.png?v=0',
     )
-    expect(getItemIconUrl(4001)).toContain('/item/4001.png')
-    expect(getItemIconUrl('a b')).toContain('/item/a%20b.png')
+    expect(getItemIconUrl(4001, 7)).toContain('/item/4001.png?v=7')
+    expect(getItemIconUrl('a b', 3)).toContain('/item/a%20b.png?v=3')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

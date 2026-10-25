@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Package as PackageIcon } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
-import { getItemIconUrl } from '@/features/game-data'
+import { getItemIconUrl, useItemIconCacheVersion } from '@/features/game-data'
 import type { DropRecordsProps } from '../types'
 import { Button, Card, EmptyState, Loading } from '@/shared/ui'
 
@@ -48,6 +48,7 @@ export default function DropRecords({
   error = null,
 }: DropRecordsViewProps) {
   const [failedItemImages, setFailedItemImages] = useState<Record<string, boolean>>({})
+  const itemIconVersion = useItemIconCacheVersion()
 
   if (isLoading && !dropStatistics && !error) {
     return (
@@ -213,7 +214,7 @@ export default function DropRecords({
                     </span>
                   ) : (
                     <img
-                      src={getItemIconUrl(itemData.iconId)}
+                      src={getItemIconUrl(itemData.iconId, itemIconVersion)}
                       alt={itemName}
                       className="h-full w-full object-cover"
                       onError={() => setFailedItemImages(previous => ({ ...previous, [itemName]: true }))}

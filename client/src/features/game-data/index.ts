@@ -4,6 +4,13 @@
  */
 
 export { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from './api'
+export { useItemIconCacheVersion } from './hooks/useItemIconCacheVersion'
+export {
+  ITEM_ICON_CACHE_STORAGE_KEY,
+  getItemIconCacheVersion,
+  invalidateItemIconCache,
+  subscribeItemIconCache,
+} from './model/itemIconCache'
 export { GAME_DATA_DOMAIN, gameDataKeys } from './model/queryKeys'
 export {
   depotQueryOptions,

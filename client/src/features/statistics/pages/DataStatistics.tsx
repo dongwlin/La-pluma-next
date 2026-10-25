@@ -7,6 +7,7 @@ import {
   getItemIconUrl,
   operBoxQueryOptions,
   operatorCatalogQueryOptions,
+  useItemIconCacheVersion,
 } from '@/features/game-data'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
 import {
@@ -448,6 +449,8 @@ function InlineDataError({ title, description, isRetrying, onRetry }: InlineData
 export default function DataStatistics() {
   const { setMessage: setStatusMessage } = useStatusStore()
   const queryClient = useQueryClient()
+  // 资源更新成功后推进，使同一图标的 `<img src>` 换到新的浏览器缓存身份。
+  const itemIconVersion = useItemIconCacheVersion()
   // 启动、等待、解析与超时状态由领域命令所有者持有；页面与 Activity 生命周期
   // 不创建第二份执行状态，也不会因重挂载重复提交设备命令。
   const commandState = useStatisticsCommandState()
@@ -1187,7 +1190,7 @@ export default function DataStatistics() {
                               </span>
                             ) : (
                               <img
-                                src={getItemIconUrl(item.iconId)}
+                                src={getItemIconUrl(item.iconId, itemIconVersion)}
                                 alt={item.name}
                                 className="w-full h-full object-cover"
                                 onError={() => {

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpToLine, Check, ClipboardList, Filter, Package, Plus, Search, Sparkles, Trash2, UserRoundSearch, X } from 'lucide-react'
-import { getItemIconUrl } from '@/features/game-data'
+import { getItemIconUrl, useItemIconCacheVersion } from '@/features/game-data'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
 import {
   trainingCandidatesQueryOptions,
@@ -40,7 +40,8 @@ const TRAINING_STATUS_OPTIONS: Array<{ value: TrainingFilters['status']; label: 
 ]
 
 function ResourceIcon({ id }: { id?: string | number }) {
-  return <span className="training-resource-icon"><Package size={18} aria-hidden="true" />{id && <img src={getItemIconUrl(id)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} />}</span>
+  const itemIconVersion = useItemIconCacheVersion()
+  return <span className="training-resource-icon"><Package size={18} aria-hidden="true" />{id && <img src={getItemIconUrl(id, itemIconVersion)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} />}</span>
 }
 
 function MaterialTable({ materials }: { materials: MaterialNode[] }) {
