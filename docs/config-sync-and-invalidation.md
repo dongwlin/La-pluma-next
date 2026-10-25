@@ -78,20 +78,20 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 
 | 触发 | 受影响资源或状态 | 必须保留的语义 | 现状与证据 |
 | --- | --- | --- | --- |
-| 仓库识别完成 | depot、持有干员、养成候选/计数、材料进度、总览 | 命令完成后协调刷新；命令本身不作为自动重试 query | 已由 FPR-020 交付：命令所有者提交 Run、等待解析；页面写入 depot 快照，命令所有者发布 `depot`/`materials`/`training-queue`/`dashboard-snapshot`（见[统计识别命令与失效联动](statistics-commands.md)） |
-| 干员识别完成 | 持有干员、养成候选/计数、材料进度、总览 | 同仓库识别 | 已由 FPR-020 交付：页面写入 operbox 快照，命令所有者发布 `operbox`/`materials`/`training-queue`/`dashboard-snapshot` |
-| 材料刷新完成 | 养成候选/计数、材料进度、总览 | 刷新成功才失效；不把脚本入口当作设备执行 | 已由 FPR-020 交付：发布 `materials`/`training-queue`/`dashboard-snapshot`；不再为提示重读训练队列 |
+| 仓库识别完成 | depot、持有干员、养成候选/计数、材料进度、总览 | 命令完成后协调刷新；命令本身不作为自动重试 query | 已由 FPR-020 交付：命令所有者提交 Run、等待解析；页面写入 depot 快照，命令所有者发布 `depot`/`materials`/`training-queue`/`dashboard-snapshot`（见[统计识别命令与失效联动](statistics-commands.md)）。FPR-044 起训练候选/计数 query 按 `depot`/`materials` 作用域失效 |
+| 干员识别完成 | 持有干员、养成候选/计数、材料进度、总览 | 同仓库识别 | 已由 FPR-020 交付：页面写入 operbox 快照，命令所有者发布 `operbox`/`materials`/`training-queue`/`dashboard-snapshot`。FPR-044 起候选/计数 query 按 `operbox`/`materials` 失效 |
+| 材料刷新完成 | 养成候选/计数、材料进度、总览 | 刷新成功才失效；不把脚本入口当作设备执行 | 已由 FPR-020 交付：发布 `materials`/`training-queue`/`dashboard-snapshot`；不再为提示重读训练队列。FPR-044 起候选/计数 query 按 `materials` 失效 |
 | 养成队列变更 | queue、材料进度、计划有效期、相关摘要 | 写成功而刷新失败保留可解释 fallback，禁用过期计划 | 成功后重读 queue；写操作开始即废弃旧计划；queue revision 变化时清空计划（已有测试） |
 | 养成设置变更 | 计划有效期 | 设置成功使旧计划失效 | 当前不清理已生成计划（见第 5 节） |
 | 生成计划 | 计划版本 | 旧版本不得应用；queue revision 不符时拒绝 | 生成前重读 queue，响应 revision 不符时拒绝并刷新重试（已有测试） |
 | 应用计划 | automation 配置/schedule、计划版本、总览 | 写入成功通知相关域；部分失败可识别；本地 pending 草稿不被外部副本覆盖 | 应用成功派发 `training-plan-applied`（无 detail）；automation 通过 `reload({ force: true })` 重读，有 pending 草稿或在途保存时保留本地并提示，否则采用服务端副本；Dashboard 等下一次定时刷新（见第 5 节） |
-| 搜索/预览切换 | 对应查询键与本地选择 | 旧响应不覆盖新选择 | request id/generation 丢弃旧响应（已有测试） |
+| 搜索/预览切换 | 对应查询键与本地选择 | 旧响应不覆盖新选择 | request id/generation 丢弃旧响应；FPR-044 候选 query 以筛选参数分 key，迟到响应只写旧 key，隐藏期间读取随 signal 取消（已有测试） |
 | Dashboard 刷新 | 完整业务快照、独立设备采样 | 业务数据全部有效才提交快照，采样失败保旧值 | 见第 4 节（已有测试） |
 | 资源/热更新成功 | 目录、图标/资源元数据、养成候选/计数、计划有效性、总览 | 先确定影响范围，不整体清空缓存 | 当前只重读版本，未发布资源失效（见第 5 节） |
 
 应用计划的跨页链路当前是“训练域派发 window 事件 → automation 监听后强制 `loadTaskFlow`”。事件不带 `stageCount`，automation 从 `event.detail` 读不到时提示 0 关；后续应由领域失效协议携带明确影响范围，而不是继续扩大 window 事件。
 
-FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`features/resource-invalidation` 提供显式作用域发布/订阅，`OperatorTraining` 与 `Dashboard` 已接入最小接收（总览仍走完整快照刷新）。FPR-020 已接入识别与材料刷新的发布端；队列、设置、计划应用与资源更新的**发布端**仍分别由 FPR-021/022/023/026 接入。`training-plan-applied` window 事件的替换也留给 FPR-023。
+FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`features/resource-invalidation` 提供显式作用域发布/订阅，`OperatorTraining` 与 `Dashboard` 已接入最小接收（总览仍走完整快照刷新）。FPR-020 已接入识别与材料刷新的发布端；FPR-044 把训练页的候选/计数改为领域 query，接收端口后按作用域失效，队列失效仍只重读队列。队列、设置、计划应用与资源更新的**发布端**仍分别由 FPR-021/022/023/026 接入。`training-plan-applied` window 事件的替换也留给 FPR-023。
 
 ## 4. Dashboard 完整快照规则
 
@@ -137,12 +137,14 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
 | `features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、日志解析等待、超时/取消/继续与失效发布 |
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 识别快照写入 Query 并发布作用域；按作用域失效；运行中不重复提交；超时后继续解析；各数据源独立错误与重试；Activity 恢复 |
-| `features/training/pages/OperatorTraining.test.tsx` | 队列变更废弃旧计划；queue revision 校验；设置写串行；应用计划事件；设置变更不失效计划的缺口 |
+| `features/training/pages/OperatorTraining.test.tsx` | 队列变更废弃旧计划；queue revision 校验；设置写串行；应用计划事件；设置变更不失效计划的缺口；FPR-044 候选/计数 Query、列表失败/计数保旧、筛选迟到响应与 Activity 恢复 |
+| `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
+| `features/training/model/queries.test.ts` | `candidates`/`counts` key、筛选参数、signal、失败信封与计数结构共享 |
 | `features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交；单请求失败/形状错误保旧；设备采样失败保旧；缓存恢复与后台刷新；FPR-018 资源失效触发完整刷新且单路失败保留旧快照 |
 | `features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/时钟偏差/语义边界校验；设备采样合并；失败刷新不覆盖成功缓存 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 失效作用域去重、revision、注销与监听器隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、Activity 隐藏/恢复补发与卸载注销 |
-| `features/training/pages/OperatorTraining.test.tsx` | 资源失效后重读共享读取/队列并作废旧计划预览 |
+| `features/training/pages/OperatorTraining.test.tsx` | 资源失效按作用域失效候选/计数或重读队列，并作废旧计划预览 |
 
 复现命令（仓库根目录）：
 

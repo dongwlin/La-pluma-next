@@ -110,14 +110,14 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 候选与计数 | GET `/agent/training/operators`（status/rarity/needsElite2）；all 空时 fallback allOperators + statistics 的 operBox；计数并发 trainable/owned 两次 operators + allOperators + operBox | training 候选/计数查询；共享目录/持有干员归资源域 |
+| 候选与计数 | `trainingCandidatesQueryOptions`（GET `/agent/training/operators`，status/rarity/needsElite2；all 空时在查询内用 `game-data` 目录 + 持有干员补齐）；`trainingStatusCountsQueryOptions` 并发 trainable/owned 端点与目录/持有快照；页面只读取 query 结果，失败语义见 `docs/query-cache.md` 第 10 节 | training 候选/计数查询；共享目录/持有干员归 `game-data` 公开端点 |
 | 队列写入 | GET `/agent/training/queue`（含 settings/revision/flowSync）；POST queue、DELETE queue/:id、PUT queue/order，随后重读；失败保可解释本地 fallback；beginMutation 防重入/废弃旧计划 | training 队列 mutation 用例和唯一 queue 资源 |
 | 设置 | PUT `/agent/training/settings`；页内 ref Promise 队列串行，只对最新失败回滚 persistedSettings；设置成功当前未主动清 plan | training 设置提交/计划有效期所有者 |
 | 计划 | generate 前重读 queue，POST `/agent/training/plan`，拒绝 queueRevision 不符；POST `/agent/actions/apply-training-plan` 仅应用当日开放关；失败清计划并重读；POST `/agent/training/sync` 后重读 | training 计划版本、生成/应用/同步用例 |
 | 通知 | `recordSync` 对 synced 派发 `training-plan-applied`，当前无 detail；automation 强制 load 并尝试读 stageCount（当前为 0） | 领域失效协议 + automation 配置冲突协调 |
 | UI | filters/search、selectorOpen、planMode、render limit=72、图片、pending ids、busy/error；UndoToast 8s，hover/focus/pending 暂停，cleanup 清 timer | 最近面板；撤销意图归队列用例、toast 呈现归组件 |
 
-无业务 localStorage；queue/settings/plan 当前完整保存在页面。候选/计数/queue 有 request id，但没有 AbortController 或 Effect cleanup 递增失效。没有外部 depot/operbox/material/resource 更新订阅；真正 remount 会丢失页内写队列所有权，旧 async 仍可能继续。
+无业务 localStorage；queue/settings/plan 当前完整保存在页面，待 FPR-021/022/023 迁移。候选与计数由 Query 持有：key 含筛选参数、signal 取消、列表失败清空/计数静默保旧；queue 仍有 request id，但没有 AbortController 或 Effect cleanup 递增失效。外部 depot/operbox/material/resource 更新经 resource-invalidation 端口到达，按作用域失效候选/计数或重读队列；真正 remount 会丢失页内写队列所有权，旧 queue async 仍可能继续。
 
 ### Settings — `features/settings/pages/ConfigManager.tsx`
 
@@ -165,7 +165,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Roguelike | 保留草稿/模式；清 status/stop 等待；show 查运行、跳过已 hydrated 配置 | 业务查询继续；预览暂停 | 配置/后端恢复，activeMode 回默认 |
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
-| Training | 保留 state/ref 写队列；在途读写继续；show 重读 queue/候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 丢失页面写队列，未完成 closure 不会自动取消 |
+| Training | 保留 state/ref 写队列；候选/计数 Query 观察者随 Effect 注销；show 重读 queue、按新鲜度重取候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 丢失页面写队列，未完成 closure 不会自动取消 |
 | Settings | didInitializeRef 阻止重复初始化；重建 section 监听；在途操作继续 | 无专门处理 | section/autoUpdate fallback 可恢复，其余重新初始化 |
 | Logs | 停 interval/监听并 abort realtime；show 重建，刷新文件列表及实时（历史模式不重读当前文件） | interval 保留但 guard 不发请求，abort 实时；可见立即取数 | 缓冲/选择/过滤全部重置 |
 

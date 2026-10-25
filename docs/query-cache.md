@@ -4,7 +4,7 @@
 
 本文描述 FPR-017 交付的应用级 TanStack Query 基础设施：客户端与 Provider 的创建位置、默认重取/重试策略、领域 query key 约定、失效方式，以及它与 Zustand、配置草稿、执行控制器和 Dashboard 完整快照的边界。
 
-当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移；其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
+当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询；其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
 
 ## 1. 定位与边界
 
@@ -114,9 +114,9 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 
 | 域 | 预留资源 | 归属任务 |
 | --- | --- | --- |
-| `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；statistics 页面读取由 FPR-019 迁移，training 由 FPR-044 迁移 |
+| `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；statistics 页面读取由 FPR-019 迁移；training 只在候选补齐/计数中读取公开端点，不复制 key |
 | `statistics` | `drops`（参数 `days`） | FPR-019 已迁移 |
-| `training` | `queue`、`candidates`、`counts` | FPR-021 / FPR-044 |
+| `training` | `queue`、`candidates`、`counts` | `candidates`/`counts` 由 FPR-044 迁移；`queue` 待 FPR-021 |
 | `settings` | `version`、`config-directory`、`maa-config`（参数 `profileName`） | FPR-024 |
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 |
 | `logs` | `files`、`file`（参数 `filePath`、`lines`） | FPR-028 |
@@ -210,7 +210,23 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 - 识别解析结果作为权威完整快照写入 Query 缓存；命令所有者（FPR-020）在解析成功后由 `resource-invalidation` 声明影响范围，页面按作用域失效，不建立第二份本地状态。识别命令本身不进入 Query，也不由 Query 自动重试；超时/取消后的继续方式见[统计识别命令与失效联动](statistics-commands.md)。
 - 切换掉落天数时使用 `keepPreviousData` 占位，旧周期内容在加载期间保持可见；新 key 首次失败只展示错误，不伪造上一个周期的数据。
 
-## 10. 回归证据
+## 10. 已迁移读取：养成候选与状态计数（FPR-044）
+
+`OperatorTraining` 的候选列表与三种状态计数由 training 领域 query 持有，页面只读取 query 结果；队列、设置与计划仍沿用页面状态（分别由 FPR-021/022/023 迁移）。
+
+| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
+| --- | --- | --- | --- | --- |
+| 候选列表 | `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | query error；页面清空列表并展示可重试错误 | 筛选切换使用独立 key；收到 `depot`/`operbox`/`catalog`/`materials` 失效后 `invalidateQueries`；重试按钮 `refetch` |
+| 三种计数 | `trainingStatusCountsQueryOptions(filters)` | `['training','counts',rarity,needsElite2]` | 不展示错误；同 key 失败保留上次成功值 | 同上作用域失效；`placeholderData: keepPreviousData` 让筛选切换期间保留旧计数 |
+
+规则：
+
+- 候选 `status=all` 且端点返回空列表时，沿用旧兼容补齐：在同一 queryFn 内读取 `game-data` 的目录与持有干员公开端点，不建立第二套 key；其它状态直接使用端点行。
+- 计数保持迁移前来源：`trainable`/`owned` 取候选端点行数，`owned` 为空时回退持有干员快照，`all` 取目录按稀有度过滤后的行数（不应用“未精二”）。计数为 0 的 `all` 不覆盖旧值，由 `structuralSharing` 调用 `mergeTrainingStatusCounts` 保持引用稳定，避免 `keepPreviousData` 占位反复通知。
+- 队列写入仍由页面 mutation 自己重读；`training-queue` 失效只重读队列，不重取候选/计数。`training-plan` 失效作废旧计划预览。
+- 筛选切换由 key 隔离，旧 key 的迟到响应只写入旧 key；Activity 隐藏会注销观察者并取消本地读取，恢复时按新鲜度重取。
+
+## 11. 回归证据
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -222,7 +238,9 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
 | `client/src/features/game-data/model/queries.test.ts` | 共享资源 key、空快照保留、载荷归一、失败转为 query 错误、signal 传递 |
 | `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、失败转为 query 错误、signal 传递 |
-| `client/src/features/statistics/model/operatorFilters.test.ts` | 阿米娅形态补齐、各视图过滤、星级钳制、排序与非拥有视图规则 |
+| `client/src/features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
+| `client/src/features/training/model/queries.test.ts` | `candidates`/`counts` key 与筛选参数、signal、失败信封、补齐读取与计数结构共享 |
+| `client/src/features/training/pages/OperatorTraining.test.tsx` | 计数展示、列表失败清空/计数保旧、筛选迟到响应、失效范围、Activity 隐藏恢复 |
 | `client/src/features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、解析等待、超时/取消/继续与失效发布；识别命令不进入 Query |
 | `client/src/features/statistics/pages/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
 | `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
@@ -241,6 +259,9 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/game-data/model/queries.test.ts \
   src/features/statistics/model/queries.test.ts \
   src/features/statistics/model/operatorFilters.test.ts \
+  src/features/training/model/candidates.test.ts \
+  src/features/training/model/queries.test.ts \
+  src/features/training/pages/OperatorTraining.test.tsx \
   src/features/statistics/pages/DataStatistics.layout.test.tsx \
   src/features/resource-invalidation/model/resourceInvalidation.test.ts \
   src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx

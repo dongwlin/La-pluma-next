@@ -22,7 +22,7 @@
 - **一个共享资源只有一份 API/类型/key 归属。** 页面不得各自声明同义端点或手写 key 数组。
 - **共享资源域不是通用后端层。** `game-data` 只收跨页面共享的读取；掉落、开放关卡、队列与计划仍归各自领域。
 - **失效端口不是 Query 总线。** 它不保存资源、不自动重取，也不向 `shared/query` 增加全局失效机制；订阅者自行决定刷新或失效范围。
-- **不在 Query 与页面状态中维护同一资源的双份可写真相。** 统计页已改由 Query 持有唯一缓存；training 与 Dashboard 仍用本地状态读取，由 FPR-044/030 迁移后再由 Query 接管。
+- **不在 Query 与页面状态中维护同一资源的双份可写真相。** 统计页已改由 Query 持有唯一缓存；training 的候选列表与状态计数已由 FPR-044 迁入领域 query（队列/设置/计划仍由页面持有，待 FPR-021/022/023），Dashboard 的完整快照仍待 FPR-030。
 
 ## 2. 资源与缓存策略
 
@@ -50,7 +50,7 @@ import {
 | 养成队列（含材料进度） | `/agent/training/queue` 等 | OperatorTraining、Dashboard 快照 | 归 `training`（FPR-021/044） | 仍由 training 领域策略持有；不复制进 `game-data`；识别命令不再为提示文案额外读取 |
 | 掉落/开放关卡 | `/agent/drops/*`、`/agent/stages/open-today` | DataStatistics、Dashboard 快照 | 归 `statistics`（`drops` 已由 FPR-019 迁移） | 不进入 `game-data`；Dashboard 只通过完整快照读取 |
 
-FPR-019 已把统计页的仓库、持有干员、目录与掉落读取迁入 Query；`game-data` 与 `statistics` 各自导出 query 定义，页面不再保存资源副本。FPR-020 已把识别/材料命令与发布端接入第 4 节的端口；training 与 Dashboard 的共享读取尚未迁移，其刷新仍由端口承接。识别命令与完成条件见[统计识别命令与失效联动](statistics-commands.md)。
+FPR-019 已把统计页的仓库、持有干员、目录与掉落读取迁入 Query；`game-data` 与 `statistics` 各自导出 query 定义，页面不再保存资源副本。FPR-020 已把识别/材料命令与发布端接入第 4 节的端口；FPR-044 把训练页的候选列表与三种状态计数迁入 `training` 领域 query，查询内部经 `game-data` 的公开端点读取目录与持有干员，不复制共享 key。Dashboard 的完整快照仍由 FPR-030 迁移。识别命令与完成条件见[统计识别命令与失效联动](statistics-commands.md)。
 
 ## 3. 公开面与依赖方向
 
@@ -144,11 +144,11 @@ publishResourceInvalidation({
 
 | 页面 | 订阅作用域 | 收到后的最小动作 |
 | --- | --- | --- |
-| `OperatorTraining` | `depot`、`operbox`、`catalog`、`materials`、`training-queue`、`training-plan` | 计划前提变化时作废本地预览；仓库/材料/队列变化时重读队列；仓库/持有干员/目录/材料变化时重读候选列表与三种计数 |
+| `OperatorTraining` | `depot`、`operbox`、`catalog`、`materials`、`training-queue`、`training-plan` | 计划前提变化时作废本地预览；仓库/材料/队列变化时重读队列；仓库/持有干员/目录/材料变化时失效 `training` 的 `candidates`/`counts` 领域 query（FPR-044）；队列失效不重取候选/计数 |
 | `Dashboard` | `dashboard-snapshot` | 调用完整快照刷新（`force`），五项全部有效才提交；单路失败保留旧快照与 `lastUpdate` |
 | `DataStatistics` | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，解析成功后页面写入 Query 快照并发布作用域 |
 
-训练页的队列写入目前仍由页面自身在 mutation 成功后重读，不依赖端口；FPR-021 迁移后改由领域命令与缓存协调持有。
+训练页的队列写入目前仍由页面自身在 mutation 成功后重读，不依赖端口；FPR-021 迁移后改由领域命令与缓存协调持有。候选列表与计数已由 FPR-044 改为 Query 观察者，Activity 隐藏时随 Effect 注销并在恢复时按新鲜度重取。
 
 Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新；恢复时 hook 补发一次合成事件，避免“隐藏期间资源已变化但页面仍显示旧值”。真正卸载后重挂载由页面首屏读取负责，不重放历史事件。
 
@@ -164,7 +164,9 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 统计页按作用域失效；独立错误边界、首屏并行、缓存复用、识别快照写入、命令状态与筛选状态生命周期 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 去重发布、空发布忽略、revision、注销、监听器异常隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、首挂载不补发、Activity 隐藏/恢复补发、卸载注销、最新 handler |
-| `features/training/pages/OperatorTraining.test.tsx` | 目录失效只刷共享读取；仓库失效重读队列；计划前提失效作废旧预览 |
+| `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、引用稳定 |
+| `features/training/model/queries.test.ts` | `candidates`/`counts` key、signal、失败信封、补齐读取与结构共享 |
+| `features/training/pages/OperatorTraining.test.tsx` | 目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧；筛选迟到响应与 Activity 恢复 |
 | `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照 |
 | `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 掉落/关卡、识别解析与材料刷新的端点、signal 与载荷校验 |
 
@@ -175,6 +177,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/game-data \
   src/features/resource-invalidation \
   src/features/statistics/model \
+  src/features/training/model \
   src/features/statistics/api/index.test.ts \
   src/features/training/api/index.test.ts \
   src/features/statistics/pages/DataStatistics.layout.test.tsx \
