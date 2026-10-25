@@ -1,6 +1,6 @@
 {
   "name": "la-pluma-next",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "description": "La Pluma Next - MAA CLI 的现代化 WebUI 与本地 Agent 控制台",
   "license": "MIT",
