@@ -138,7 +138,7 @@ publishResourceInvalidation({
 | 应用养成计划成功 | `automation-config`、`automation-schedule`、`dashboard-snapshot` | FPR-023 |
 | 资源/热更新成功 | `catalog`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-026 |
 
-`detail` 可选，例如应用计划时携带 `{ stageCount }`；接收方不得依赖未声明字段。队列命令的 `detail.source = 'training-queue-command'` 是本任务声明的字段，供本页忽略自己的发布；外部发布不需要携带它。
+`detail` 可选，例如应用计划时携带 `{ stageCount }`；接收方不得依赖未声明字段。队列命令的 `detail.source = 'training-queue-command'` 与设置所有者的 `detail.source = 'training-settings-owner'` 是各自任务声明的字段，供本页忽略自己的发布；外部发布不需要携带它。
 
 ## 6. 未迁移页面的最小接收
 

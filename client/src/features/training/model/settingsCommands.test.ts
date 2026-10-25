@@ -257,6 +257,7 @@ describe('training settings owner', () => {
     expect(publish).toHaveBeenCalledWith({
       resources: ['training-plan'],
       cause: 'training-settings',
+      detail: { source: 'training-settings-owner' },
     })
   })
 

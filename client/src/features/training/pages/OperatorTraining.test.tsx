@@ -1395,6 +1395,36 @@ describe('OperatorTraining queue workspace', () => {
     })
   })
 
+  it('keeps a preview generated while its settings write is still in flight', async () => {
+    const queued = [queueItem('char_current', '阿米娅')]
+    const serverSettings = { ...settings }
+    const writeRequest = deferred<{ success: boolean; data: TrainingSettings }>()
+    mocks.getTrainingQueue.mockImplementation(async () => queueResponse(queued, 'queue-1', serverSettings))
+    mocks.updateTrainingSettings.mockReturnValueOnce(writeRequest.promise)
+
+    await renderComponent()
+    await click(switchByLabel('自动切换')!)
+    expect(switchByLabel('自动切换')?.checked).toBe(false)
+
+    // 写入在途时重读到的服务端设置仍是旧值；所有者忽略它，并按本地 revision 生成预览。
+    await click(buttonWithText('预览刷图计划', container))
+    expect(buttonWithText('应用到自动任务', container)).toBeDefined()
+
+    Object.assign(serverSettings, { autoSwitch: false })
+    await act(async () => writeRequest.resolve({
+      success: true,
+      data: { ...settings, autoSwitch: false },
+    }))
+    await flush()
+
+    // 自己的设置发布不清掉期间重新生成的预览；应用提交已确认的设置。
+    expect(buttonWithText('应用到自动任务', container).disabled).toBe(false)
+    await click(buttonWithText('应用到自动任务', container))
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledWith(expect.objectContaining({
+      settings: { ...settings, autoSwitch: false },
+    }))
+  })
+
   it('restores the last saved settings and reports a failed write', async () => {
     mocks.updateTrainingSettings
       .mockResolvedValueOnce({ success: false, message: '设置服务不可用' })

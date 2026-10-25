@@ -20,7 +20,10 @@ import {
   isTrainingPlanBasisCurrent,
   type TrainingPlanBasis,
 } from '../model/planValidity'
-import { TRAINING_SETTINGS_FAILURE_MESSAGE } from '../model/settingsCommands'
+import {
+  TRAINING_SETTINGS_FAILURE_MESSAGE,
+  isTrainingSettingsInvalidation,
+} from '../model/settingsCommands'
 import { EMPTY_TRAINING_COUNTS } from '../model/statusCounts'
 import { useTrainingQueueCommands } from '../hooks/useTrainingQueueCommands'
 import { useTrainingSettings } from '../hooks/useTrainingSettings'
@@ -315,8 +318,8 @@ export default function OperatorTraining() {
     if (result.data.flowSync) setFlowSync(result.data.flowSync)
     const settingsAfter = readSettingsState()
     if (
-      settingsBefore.syncState === 'idle'
-      && settingsAfter.syncState === 'idle'
+      settingsBefore.syncState !== 'saving'
+      && settingsAfter.syncState !== 'saving'
       && settingsBefore.revision === settingsAfter.revision
     ) {
       adoptSettings(result.data.settings)
@@ -329,6 +332,9 @@ export default function OperatorTraining() {
   // 命令写入，因此忽略本页自己发布的队列失效。
   useResourceInvalidation(TRAINING_RESOURCE_SCOPES, invalidation => {
     if (isTrainingQueueMutationInvalidation(invalidation)) return
+    // 设置所有者已在编辑时按 revision 作废旧计划；它自己的成功发布不再重复
+    // 清空用户在该写入期间重新生成的预览。外部 `training-plan` 仍会作废。
+    if (isTrainingSettingsInvalidation(invalidation)) return
     const { resources } = invalidation
     const touchesPlan = resources.some(resource => (
       resource === 'depot' || resource === 'materials' || resource === 'training-plan'

@@ -14,7 +14,7 @@
  *   正常化差异不会把旧响应写回页面；旧响应失败也不会回滚新草稿。
  * - 首次成功快照负责 hydrate，之后普通队列刷新不覆盖本地设置；显式重载与
  *   权威队列重读在本地设置未变化时采用服务端值。写入失败回滚到最近确认值。
- * - 写入确认成功才发布 `training-plan` 失效；失败不发布。
+ * - 写入确认成功才发布 `training-plan` 失效（带 `detail.source`）；失败不发布。
  */
 
 import { isRecord, type ApiResponse } from '@/shared/api'
@@ -43,6 +43,21 @@ export const TRAINING_SETTINGS_FAILURE_MESSAGE = '设置保存失败，已恢复
 export const TRAINING_SETTINGS_MUTATION_SCOPES = [
   'training-plan',
 ] as const satisfies readonly ResourceScope[]
+
+/** 供本页忽略自己发布的设置失效；外部发布不需要携带该标记。 */
+export const TRAINING_SETTINGS_MUTATION_SOURCE = 'training-settings-owner'
+
+export interface TrainingSettingsMutationInvalidationDetail {
+  source: typeof TRAINING_SETTINGS_MUTATION_SOURCE
+}
+
+export function isTrainingSettingsInvalidation(
+  invalidation: ResourceInvalidation,
+): boolean {
+  if (invalidation.cause !== 'training-settings') return false
+  return isRecord(invalidation.detail)
+    && invalidation.detail.source === TRAINING_SETTINGS_MUTATION_SOURCE
+}
 
 export type TrainingSettingsSyncState = 'idle' | 'saving' | 'failed'
 
@@ -268,6 +283,7 @@ export class TrainingSettingsOwner {
         this.publishInvalidation({
           resources: TRAINING_SETTINGS_MUTATION_SCOPES,
           cause: 'training-settings',
+          detail: { source: TRAINING_SETTINGS_MUTATION_SOURCE },
         })
         this.notify()
         return { status: 'saved', settings: normalized, superseded: !latest }

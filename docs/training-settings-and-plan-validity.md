@@ -39,7 +39,7 @@
 
 `revision` 只表示可观察设置值变化，不表示请求次数；内容相同的编辑返回 `ignored`，不写请求、不递增。
 
-每次写入确认成功都发布一次 `{ resources: ['training-plan'], cause: 'training-settings' }`；失败不发布。本页的旧计划已由编辑与 revision 立即作废，该发布供同一应用内的其他订阅者使用。
+每次写入确认成功都发布一次 `{ resources: ['training-plan'], cause: 'training-settings', detail: { source: 'training-settings-owner' } }`；失败不发布。本页的旧计划已由编辑与 revision 立即作废，该发布供同一应用内的其他订阅者使用；本页忽略带该 `detail` 的发布，避免清空用户在写入期间重新生成的预览。
 
 写入失败时页面显示“设置保存失败，已恢复原设置”，不把失败静默成已保存。网络失败无法区分“服务端未写入”和“已写入但响应丢失”：当前先按未写入回滚，下一次权威队列读取若返回不同设置会采用服务端值并使计划失效。
 
@@ -100,6 +100,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 设置开关调用 `handleUpdateSettings`：先立即作废旧计划，再 `updateSettings`；失败且未被后续编辑取代时显示全局错误。
 - 队列快照 effect 只做首次 `hydrate` 与 `flowSync` 同步；`reloadQueue()` 负责受控采用服务端设置。
 - 队列 revision effect 与设置 revision effect 都调用同一 `invalidatePlan()`。
+- 失效订阅忽略设置所有者自己的 `training-plan` 发布（`detail.source = 'training-settings-owner'`）；外部 `training-plan` 发布仍作废旧计划。
 - 渲染层用 `plan && basisCurrent` 决定是否展示计划详情与“应用到…”按钮，避免 effect 清除前的空窗期仍显示可应用旧计划。
 
 ## 6. 兼容与回滚
@@ -107,7 +108,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 端点、请求体、响应体与服务端存储未改变；设置仍写入训练队列文件中的 `settings` 字段，`PUT /agent/training/settings` 的返回形状不变。
 - 未新增 localStorage、Query key 或持久化版本；设置 revision 只存在于模块内存，刷新页面随计划一起丢失。
 - 页面结构、DOM 与 CSS 未改变；按钮的可用/禁用状态由版本前提决定。
-- 新增的 `training-settings` 失效发布只使用既有 `training-plan` 作用域；不了解该 cause 的订阅者按普通 `training-plan` 事件处理，行为安全。它不跨浏览器标签页，也不替代服务端 revision。
+- 新增的 `training-settings` 失效发布只使用既有 `training-plan` 作用域与可选 `detail.source`；不了解该 cause/detail 的订阅者按普通 `training-plan` 事件处理，行为安全。它不跨浏览器标签页，也不替代服务端 revision。
 - 独立回滚范围：`model/settingsCommands.ts`、`model/planValidity.ts`、`hooks/useTrainingSettings.ts` 与 `OperatorTraining` 的设置/计划接线；回滚后恢复页面本地设置 state，不需要服务端迁移。
 
 ## 7. 回归证据
@@ -116,7 +117,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 | --- | --- |
 | `features/training/model/settingsCommands.test.ts` | 默认值；串行编辑与旧响应不覆盖新值；旧失败不打断新草稿；最新失败回滚；服务端归一化；缺省响应回退；等值编辑忽略；首次 hydrate 只采用一次；编辑后拒绝迟到快照；写入期间忽略快照、之后采用显式重载；reset 丢弃迟到写入；成功才发布 `training-plan`；失败原因兜底 |
 | `features/training/model/planValidity.test.ts` | basis 捕获与空 revision；队列/设置版本任一不符即失效；刷新失败、busy、无队列时禁止生成；版本失效、刷新失败、无计划时禁止应用 |
-| `features/training/pages/OperatorTraining.test.tsx` | 设置串行写入与旧响应；设置跨页面重挂载串行；设置失败回滚与重试；设置变化作废旧计划并按新设置重新预览/应用；权威重读采用外部设置并作废旧计划；队列刷新失败时禁用生成/应用、重载后重新预览恢复；目录失败清空候选并保留计数；仅计数失败时列表保留、计数保旧 |
+| `features/training/pages/OperatorTraining.test.tsx` | 设置串行写入与旧响应；设置跨页面重挂载串行；设置失败回滚与重试；设置变化作废旧计划并按新设置重新预览/应用；写入期间生成的预览不被自身发布清空；权威重读采用外部设置并作废旧计划；队列刷新失败时禁用生成/应用、重载后重新预览恢复；目录失败清空候选并保留计数；仅计数失败时列表保留、计数保旧 |
 
 针对性命令（仓库根目录）：
 
