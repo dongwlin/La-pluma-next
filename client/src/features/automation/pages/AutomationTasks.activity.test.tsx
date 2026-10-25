@@ -1,13 +1,27 @@
 // @vitest-environment jsdom
 
 import { Activity, act } from 'react'
-import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { ApiResponse } from '@/shared/api'
+import {
+  ExecutionController,
+  type AgentRun,
+  type RunSnapshot,
+  type StopRunResult,
+} from '@/features/task-execution'
 import AutomationTasks from './AutomationTasks'
 import type { TaskFlowItem } from '../types'
 
 // Keep the real Framer Motion lifecycle: mocking AnimatePresence hides this regression.
-const mocks = vi.hoisted(() => ({ status: vi.fn(), execute: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  controller: { current: null as unknown as ExecutionController },
+  getActivity: vi.fn(),
+  executeScheduleNow: vi.fn(),
+  status: vi.fn(),
+  setMessage: vi.fn(),
+}))
+
 const flow: TaskFlowItem[] = [
   ['startup', '启动游戏'], ['infrast', '基建换班'], ['fight', '理智作战'],
   ['recruit', '自动公招'], ['mall', '信用收支'], ['award', '领取奖励'],
@@ -17,18 +31,22 @@ const flow: TaskFlowItem[] = [
 }))
 
 vi.mock('../api', () => ({
-  getActivity: async () => ({ success: false }),
-  getScheduleExecutionStatus: mocks.status,
-  executeScheduleNow: mocks.execute,
+  getActivity: mocks.getActivity,
+  executeScheduleNow: mocks.executeScheduleNow,
   setupSchedule: vi.fn(),
   stopSchedule: vi.fn(),
 }))
 
-vi.mock('@/features/task-execution', () => ({
-  executePredefinedTask: vi.fn(),
-  getTaskStatus: async () => ({ success: true, data: { isRunning: false } }),
-  stopTask: vi.fn(),
-}))
+vi.mock('@/features/task-execution', async () => {
+  const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
+  return {
+    ...actual,
+    get executionController() {
+      return mocks.controller.current
+    },
+    useExecutionSnapshot: () => actual.useExecutionSnapshot(mocks.controller.current),
+  }
+})
 
 vi.mock('@/features/user-config', () => ({
   loadUserConfig: async () => ({ success: true, data: { taskFlow: flow } }),
@@ -39,56 +57,157 @@ vi.mock('@/features/settings', () => ({ testConnection: vi.fn() }))
 vi.mock('@/features/training', () => ({
   generateTrainingPlan: vi.fn(),
 }))
-vi.mock('@/features/runtime-status', () => {
-  const store = { setMessage: vi.fn(), setActive: vi.fn() }
-  return {
-    useStatusStore: () => store,
-    FloatingStatusIndicator: () => null,
-    useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
-  }
-})
+vi.mock('@/features/runtime-status', () => ({
+  useStatusStore: () => ({ setMessage: mocks.setMessage }),
+  FloatingStatusIndicator: () => null,
+  useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+}))
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => null }))
 vi.mock('../components/NotificationSettings', () => ({ default: () => null }))
 
-it('replaces the fight spinner and all later numbers after a six-task run finishes while hidden', async () => {
+const ok = <T,>(data: T): ApiResponse<T> => ({ success: true, data })
+
+function dailyRun(runId: string, state: AgentRun['state'], overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    runId,
+    operationId: 'run_daily_flow',
+    state,
+    acceptedAt: '2026-10-25T12:00:00.000Z',
+    links: {
+      self: `/api/agent/runs/${runId}`,
+      stop: `/api/agent/actions/stop?runId=${runId}`,
+    },
+    ...overrides,
+  }
+}
+
+function snapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
+  const activeRuns = overrides.activeRuns ?? []
+  const run = overrides.run ?? activeRuns[0] ?? null
+  return {
+    isRunning: activeRuns.length > 0,
+    run,
+    activeRuns,
+    lastRun: overrides.lastRun ?? null,
+    schedule: overrides.schedule ?? {},
+    occupancy: {
+      state: activeRuns.length ? 'run' : 'idle',
+      runId: run?.runId ?? null,
+      runState: run?.state ?? null,
+      sources: activeRuns.length ? ['run'] : [],
+      lease: { state: 'free', owner: null },
+      task: { isRunning: false, taskName: null, taskType: null, stopRequested: false },
+      schedule: {},
+    },
+    ...overrides,
+  }
+}
+
+const runningSnapshot = () => snapshot({
+  activeRuns: [dailyRun('run-1', 'running')],
+  schedule: {
+    isRunning: true,
+    runId: 'run-1',
+    currentStep: 2,
+    currentTaskId: 'fight-1',
+    taskResults: flow.map((task, index) => ({
+      taskId: task.id,
+      task: task.name,
+      status: index < 2 ? 'success' : index === 2 ? 'running' : 'pending',
+    })),
+  },
+})
+
+const summary = {
+  successCount: 6, failedCount: 0, skippedCount: 0, durationMs: 1000,
+  taskResults: flow.map(task => ({ taskId: task.id, task: task.name, status: 'success' })),
+  summaries: [], reports: [], actions: [], errors: [], warnings: [],
+}
+
+const finishedSnapshot = () => snapshot({
+  lastRun: dailyRun('run-1', 'succeeded', { result: { message: '任务流程执行完成', summary }, finishedAt: '2026-10-25T12:01:00.000Z' }),
+})
+
+function createApi() {
+  return {
+    fetchSnapshot: vi.fn<(signal?: AbortSignal) => Promise<ApiResponse<RunSnapshot>>>(),
+    fetchRun: vi.fn<(runId: string, signal?: AbortSignal) => Promise<ApiResponse<AgentRun>>>(),
+    stopRun: vi.fn<(runId: string) => Promise<ApiResponse<StopRunResult>>>(),
+  }
+}
+
+let api: ReturnType<typeof createApi>
+let releases: Array<() => void>
+let container: HTMLDivElement
+let root: Root
+
+const flush = async () => {
+  await act(async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve()
+  })
+}
+
+beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} })
-  vi.stubGlobal('matchMedia', () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }))
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+  }))
   localStorage.clear()
-  let finish!: (result: unknown) => void
-  mocks.execute.mockImplementation(() => new Promise(resolve => { finish = resolve }))
-  mocks.status.mockResolvedValue({ success: true, data: { isRunning: false } })
-  const container = document.createElement('div')
+  mocks.getActivity.mockReset().mockResolvedValue({ success: false })
+  mocks.setMessage.mockReset()
+  mocks.executeScheduleNow.mockReset().mockResolvedValue(ok({
+    accepted: true,
+    runId: 'run-1',
+    run: dailyRun('run-1', 'running'),
+  }))
+  api = createApi()
+  api.fetchSnapshot.mockResolvedValue(ok(runningSnapshot()))
+  api.fetchRun.mockResolvedValue({ success: false, errorInfo: { code: 'AGENT_RUN_NOT_FOUND' } })
+  api.stopRun.mockResolvedValue(ok({} as StopRunResult))
+  mocks.controller.current = new ExecutionController({
+    api,
+    storage: { read: () => null, write: () => undefined },
+    intervals: { active: 1_000, idle: 5_000, disconnected: 2_000 },
+  })
+  releases = []
+  const release = mocks.controller.current.start()
+  releases.push(release)
+  container = document.createElement('div')
   document.body.append(container)
-  const root = createRoot(container)
+  root = createRoot(container)
+})
+
+afterEach(async () => {
+  await act(async () => root.unmount())
+  container.remove()
+  releases.forEach(release => release())
+  vi.unstubAllGlobals()
+})
+
+it('keeps completed task marks after Activity hides a finishing run', async () => {
   const render = async (mode: 'visible' | 'hidden') => {
     await act(async () => root.render(<Activity mode={mode}><AutomationTasks /></Activity>))
+    await flush()
   }
-  try {
-    await render('visible')
-    await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
-    mocks.status.mockResolvedValue({ success: true, data: {
-      isRunning: true, currentTaskId: 'fight-1', taskResults: flow.map((task, index) => ({
-        taskId: task.id, task: task.name, status: index < 2 ? 'success' : index === 2 ? 'running' : 'pending',
-      })),
-    } })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)) })
-    expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(1)
-    await render('hidden')
-    const summary = {
-      successCount: 6, failedCount: 0, skippedCount: 0, durationMs: 1000,
-      taskResults: flow.map(task => ({ taskId: task.id, task: task.name, status: 'success' })),
-      summaries: [], reports: [], actions: [], errors: [], warnings: [],
-    }
-    mocks.status.mockResolvedValue({ success: true, data: { isRunning: false, lastResult: summary } })
-    await act(async () => finish({ success: true, data: { summary } }))
-    await render('visible')
-    expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(6)
-    expect(container.querySelectorAll('.automation-sequence-node .lucide-check')).toHaveLength(6)
-    expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
-  } finally {
-    await act(async () => root.unmount())
-    container.remove()
-    vi.unstubAllGlobals()
-  }
+
+  await render('visible')
+  await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
+  await flush()
+
+  expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(1)
+
+  await render('hidden')
+  api.fetchSnapshot.mockResolvedValue(ok(finishedSnapshot()))
+  await act(async () => {
+    await mocks.controller.current.refresh('poll')
+  })
+  await flush()
+  await render('visible')
+
+  expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(6)
+  expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
+  expect(container.querySelector('.automation-run-button')?.textContent).toContain('立即执行')
+  expect(api.stopRun).not.toHaveBeenCalled()
+  expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
 })

@@ -4,7 +4,6 @@ import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AutomationTasks from './AutomationTasks'
-import type { TaskExecutionResult } from '../utils/automationTaskProgress'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -50,11 +49,35 @@ vi.mock('../api', () => ({
   executeScheduleNow: mocks.executeScheduleNow,
 }))
 
-vi.mock('@/features/task-execution', () => ({
-  executePredefinedTask: vi.fn(),
-  getTaskStatus: mocks.getTaskStatus,
-  stopTask: vi.fn(),
-}))
+vi.mock('@/features/task-execution', async () => {
+  const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
+  const state = {
+    phase: 'live' as const,
+    identity: 'none' as const,
+    submission: 'idle' as const,
+    snapshot: null,
+    trackedRunId: null,
+    trackedScope: null,
+    trackedRun: null,
+    lastError: null,
+    lastSyncedAt: null,
+    hasActiveRun: false,
+    occupancy: null,
+  }
+  const controller = {
+    getState: () => state,
+    subscribe: () => () => {},
+    submitExecution: vi.fn(),
+    stopTrackedRun: vi.fn(),
+    observeRun: vi.fn(),
+    refresh: vi.fn(),
+  }
+  return {
+    ...actual,
+    executionController: controller,
+    useExecutionSnapshot: () => state,
+  }
+})
 
 vi.mock('@/features/user-config', () => ({
   loadUserConfig: mocks.loadUserConfig,
@@ -157,19 +180,6 @@ const deferred = <T,>() => {
   })
   return { promise, resolve }
 }
-
-const finishedSummary = (taskResults: TaskExecutionResult[]) => ({
-  taskResults,
-  successCount: taskResults.filter(task => task.status === 'success').length,
-  failedCount: taskResults.filter(task => task.status === 'failed').length,
-  skippedCount: taskResults.filter(task => task.status === 'skipped').length,
-  durationMs: 1000,
-  summaries: [], reports: [], actions: [], errors: [], warnings: [],
-})
-
-const successfulTaskResults = () => taskFlowFixture.map(task => ({
-  taskId: task.id, task: task.name, status: 'success' as const,
-}))
 
 const clickSequenceTask = async (taskName: string) => {
   const button = Array.from(container.querySelectorAll<HTMLButtonElement>('.automation-sequence-select'))
@@ -367,174 +377,6 @@ describe('AutomationTasks layout surfaces', () => {
     expect(selectedButton?.getAttribute('aria-pressed')).toBe('true')
     expect(editor?.textContent).toContain('理智作战')
     expect(mocks.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' })
-  })
-
-  it('keeps the editing selection distinct from the running workflow step', async () => {
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-    mocks.getScheduleExecutionStatus.mockResolvedValue({
-      success: true,
-      data: {
-        isRunning: true,
-        currentTaskId: 'fight-1',
-        currentTask: '理智作战',
-        message: '正在执行: 理智作战',
-      },
-    })
-
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
-    await flush()
-
-    const selectedButton = await clickSequenceTask('自动公招')
-    const runningButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.automation-sequence-select'))
-      .find(button => button.textContent?.includes('理智作战'))
-    const selectedItem = selectedButton?.closest('.automation-sequence-item')
-    const runningItem = runningButton?.closest('.automation-sequence-item')
-
-    expect(selectedButton?.getAttribute('aria-pressed')).toBe('true')
-    expect(selectedButton?.hasAttribute('aria-current')).toBe(false)
-    expect(selectedItem?.getAttribute('data-selected')).toBe('true')
-    expect(selectedItem?.getAttribute('data-execution-state')).toBe('idle')
-
-    expect(runningButton?.getAttribute('aria-pressed')).toBe('false')
-    expect(runningButton?.getAttribute('aria-current')).toBe('step')
-    expect(runningItem?.getAttribute('data-selected')).toBe('false')
-    expect(runningItem?.getAttribute('data-execution-state')).toBe('running')
-    expect(runningItem?.querySelector('.automation-sequence-progress')).not.toBeNull()
-    expect(runningItem?.textContent).toContain('正在执行')
-  })
-
-  it('preserves editing selection when the selected task is also running', async () => {
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-    mocks.getScheduleExecutionStatus.mockResolvedValue({
-      success: true,
-      data: {
-        isRunning: true,
-        currentTaskId: 'startup-1',
-        currentTask: '启动游戏',
-        message: '正在执行: 启动游戏',
-      },
-    })
-
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
-    await flush()
-
-    const runningButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.automation-sequence-select'))
-      .find(button => button.textContent?.includes('启动游戏'))
-    const runningItem = runningButton?.closest('.automation-sequence-item')
-
-    expect(runningButton?.getAttribute('aria-pressed')).toBe('true')
-    expect(runningButton?.getAttribute('aria-current')).toBe('step')
-    expect(runningItem?.getAttribute('data-selected')).toBe('true')
-    expect(runningItem?.getAttribute('data-execution-state')).toBe('running')
-    expect(runningItem?.querySelector('.automation-sequence-progress')).not.toBeNull()
-    expect(runningItem?.textContent).toContain('正在执行')
-  })
-
-  it('retains all completed task marks, including the last task, after Activity hides a finishing run', async () => {
-    vi.useFakeTimers()
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-    const execution = deferred<unknown>()
-    mocks.executeScheduleNow.mockReturnValue(execution.promise)
-    const renderMode = async (mode: 'visible' | 'hidden') => {
-      await act(async () => root.render(<Activity mode={mode}><AutomationTasks /></Activity>))
-      await flush()
-    }
-    await renderMode('visible')
-    await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
-
-    mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: {
-      isRunning: true, currentTaskId: 'fight-1', taskResults: [
-        { taskId: 'startup-1', task: '启动游戏', status: 'success' },
-        { taskId: 'fight-1', task: '理智作战', status: 'running' },
-        { taskId: 'recruit-1', task: '自动公招', status: 'pending' },
-      ],
-    } })
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(1)
-    await renderMode('hidden')
-    const summary = finishedSummary(successfulTaskResults())
-    await act(async () => execution.resolve({ success: true, data: { summary } }))
-    mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: false, lastResult: summary } })
-    await renderMode('visible')
-
-    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(3)
-    expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
-    expect(Array.from(container.querySelectorAll('.automation-sequence-copy small')).map(node => node.textContent))
-      .toEqual(['已完成', '已完成', '已完成'])
-    expect(container.querySelectorAll('.automation-sequence-delete')).toHaveLength(3)
-  })
-
-  it('preserves failed, skipped and unexecuted results without inventing successful steps', async () => {
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-    mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: {
-      isRunning: false, taskResults: [
-        { taskId: 'startup-1', task: '启动游戏', status: 'failed' },
-        { taskId: 'fight-1', task: '理智作战', status: 'skipped' },
-        { taskId: 'recruit-1', task: '自动公招', status: 'pending' },
-      ],
-    } })
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
-    expect(Array.from(container.querySelectorAll('.automation-sequence-copy small')).map(node => node.textContent))
-      .toEqual(['执行失败', '已跳过', '未执行'])
-    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(0)
-  })
-
-  it('ignores a running poll from before the manual completion response', async () => {
-    vi.useFakeTimers()
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-    const execution = deferred<unknown>()
-    mocks.executeScheduleNow.mockReturnValue(execution.promise)
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
-    await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
-    const poll = deferred<unknown>()
-    mocks.getScheduleExecutionStatus.mockReturnValue(poll.promise)
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    await act(async () => execution.resolve({ success: true, data: { summary: finishedSummary(successfulTaskResults()) } }))
-    await act(async () => poll.resolve({ success: true, data: { isRunning: true, currentTaskId: 'fight-1' } }))
-    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(3)
-    expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
-    expect(container.querySelector('.automation-run-button')?.textContent).toContain('立即执行')
-  })
-
-  it('clears the previous results when starting again and ignores idle polls while the request starts', async () => {
-    vi.useFakeTimers()
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-    const summary = finishedSummary(successfulTaskResults())
-    mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: false, lastResult: summary } })
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
-    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(3)
-    const execution = deferred<unknown>()
-    mocks.executeScheduleNow.mockReturnValue(execution.promise)
-    await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(0)
-    expect(container.querySelector('.automation-run-button')?.textContent).toContain('执行中')
-    await act(async () => execution.resolve({ success: true, data: { summary } }))
-  })
-
-  it('maps a legacy enabled-step index past disabled tasks and clears it at completion', async () => {
-    vi.useFakeTimers()
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: {
-      taskFlow: taskFlowFixture.map((task, index) => ({ ...task, enabled: index !== 0 })),
-    } })
-    mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: true, currentStep: 0 } })
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
-    expect(container.querySelector('.automation-sequence-item[data-execution-state="running"] strong')?.textContent).toBe('理智作战')
-    mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: {
-      isRunning: false, taskResults: [
-        { taskId: 'fight-1', task: '理智作战', status: 'stopped' },
-        { taskId: 'recruit-1', task: '自动公招', status: 'pending' },
-      ],
-    } })
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
-    expect(container.querySelectorAll('.automation-sequence-copy small')[1]?.textContent).toBe('已终止')
   })
 
   it('associates dynamic labels and names compact destructive controls', async () => {

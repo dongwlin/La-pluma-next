@@ -1,0 +1,661 @@
+// @vitest-environment jsdom
+
+import { Activity, act, type ReactNode } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ApiResponse } from '@/shared/api'
+import {
+  ExecutionController,
+  type AgentRun,
+  type RunProgress,
+  type RunSnapshot,
+  type RunTaskResult,
+  type StopRunResult,
+} from '@/features/task-execution'
+import AutomationTasks from './AutomationTasks'
+import type { TaskFlowItem } from '../types'
+import type { TaskExecutionState } from '../utils/automationTaskProgress'
+
+const mocks = vi.hoisted(() => ({
+  controller: { current: null as unknown as ExecutionController },
+  getActivity: vi.fn(),
+  executeScheduleNow: vi.fn(),
+  loadUserConfig: vi.fn(),
+  saveUserConfig: vi.fn(),
+  setupSchedule: vi.fn(),
+  stopSchedule: vi.fn(),
+  testConnection: vi.fn(),
+  generateTrainingPlan: vi.fn(),
+  setMessage: vi.fn(),
+}))
+
+vi.mock('framer-motion', async () => {
+  const React = await import('react')
+  type MotionTestProps = Record<string, unknown> & { children?: ReactNode }
+  const motionComponent = (tag: 'div' | 'span') => React.forwardRef<HTMLElement, MotionTestProps>(
+    ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, layout: _layout, ...props }, ref) =>
+      React.createElement(tag, { ...props, ref }, children as ReactNode),
+  )
+
+  return {
+    AnimatePresence: ({ children }: { children: ReactNode }) => children,
+    motion: {
+      div: motionComponent('div'),
+      span: motionComponent('span'),
+    },
+    useReducedMotion: () => true,
+  }
+})
+
+vi.mock('../api', () => ({
+  getActivity: mocks.getActivity,
+  executeScheduleNow: mocks.executeScheduleNow,
+  setupSchedule: mocks.setupSchedule,
+  stopSchedule: mocks.stopSchedule,
+}))
+
+vi.mock('@/features/task-execution', async () => {
+  const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
+  return {
+    ...actual,
+    get executionController() {
+      return mocks.controller.current
+    },
+    useExecutionSnapshot: () => actual.useExecutionSnapshot(mocks.controller.current),
+  }
+})
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: mocks.loadUserConfig,
+  saveUserConfig: mocks.saveUserConfig,
+}))
+
+vi.mock('@/features/settings', () => ({ testConnection: mocks.testConnection }))
+vi.mock('@/features/training', () => ({ generateTrainingPlan: mocks.generateTrainingPlan }))
+vi.mock('@/features/runtime-status', () => ({
+  useStatusStore: () => ({ setMessage: mocks.setMessage }),
+  FloatingStatusIndicator: () => null,
+  useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+}))
+vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => null }))
+vi.mock('../components/NotificationSettings', () => ({ default: () => null }))
+
+const CONTROLLER_INTERVALS = { active: 1_000, idle: 5_000, disconnected: 2_000 }
+const LEGACY_KEY = 'maa-task-flow-execution'
+
+const flow: TaskFlowItem[] = [
+  ['startup', '启动游戏'], ['fight', '理智作战'], ['recruit', '自动公招'],
+].map(([command, name]) => ({
+  id: `${command}-1`,
+  commandId: command as TaskFlowItem['commandId'],
+  name: name!,
+  icon: null,
+  description: `${name!}说明`,
+  defaultParams: {},
+  paramFields: [],
+  params: {},
+  enabled: true,
+}))
+
+const ok = <T,>(data: T): ApiResponse<T> => ({ success: true, data })
+const failed = (code: string, message: string): ApiResponse => ({
+  success: false,
+  error: message,
+  message,
+  errorInfo: { code, message },
+})
+
+function dailyRun(
+  runId: string,
+  state: AgentRun['state'],
+  overrides: Partial<AgentRun> = {},
+): AgentRun {
+  const terminal = state === 'succeeded' || state === 'failed' || state === 'stopped' || state === 'interrupted'
+  return {
+    runId,
+    operationId: 'run_daily_flow',
+    state,
+    acceptedAt: '2026-10-25T12:00:00.000Z',
+    startedAt: state === 'accepted' ? null : '2026-10-25T12:00:01.000Z',
+    finishedAt: terminal ? '2026-10-25T12:01:00.000Z' : null,
+    links: {
+      self: `/api/agent/runs/${runId}`,
+      stop: `/api/agent/actions/stop?runId=${runId}`,
+    },
+    ...overrides,
+  }
+}
+
+function snapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
+  const activeRuns = overrides.activeRuns ?? []
+  const run = overrides.run ?? activeRuns[0] ?? null
+  return {
+    isRunning: activeRuns.length > 0,
+    run,
+    activeRuns,
+    lastRun: overrides.lastRun ?? null,
+    schedule: overrides.schedule ?? {},
+    occupancy: {
+      state: activeRuns.length ? 'run' : 'idle',
+      runId: run?.runId ?? null,
+      runState: run?.state ?? null,
+      sources: activeRuns.length ? ['run'] : [],
+      lease: { state: 'free', owner: null },
+      task: { isRunning: false, taskName: null, taskType: null, stopRequested: false },
+      schedule: {},
+    },
+    ...overrides,
+  }
+}
+
+function taskResults(statuses: TaskExecutionState[]): RunTaskResult[] {
+  return flow.map((task, index) => ({
+    taskId: task.id,
+    task: task.name,
+    status: statuses[index] ?? 'pending',
+  }))
+}
+
+function summary(statuses: TaskExecutionState[], overrides: Record<string, unknown> = {}) {
+  const count = (status: TaskExecutionState) => statuses.filter(value => value === status).length
+  return {
+    successCount: count('success'),
+    failedCount: count('failed'),
+    skippedCount: count('skipped'),
+    durationMs: 60_000,
+    taskResults: taskResults(statuses),
+    summaries: [],
+    reports: [],
+    actions: [],
+    errors: statuses.includes('failed')
+      ? [{ task: '理智作战', error: '关卡不可用' }]
+      : [],
+    warnings: [],
+    ...overrides,
+  }
+}
+
+function activeSnapshot({
+  runId = 'run-1',
+  state = 'running',
+  progress = { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },
+  statuses = ['running', 'pending', 'pending'] as TaskExecutionState[],
+  scheduleRunId = runId,
+  scheduleOverrides = {},
+}: {
+  runId?: string
+  state?: AgentRun['state']
+  progress?: RunProgress
+  statuses?: TaskExecutionState[]
+  scheduleRunId?: string | null
+  scheduleOverrides?: Record<string, unknown>
+} = {}): RunSnapshot {
+  const run = dailyRun(runId, state, { progress })
+  return snapshot({
+    activeRuns: [run],
+    schedule: {
+      isRunning: true,
+      runId: scheduleRunId,
+      currentStep: progress.currentStep ?? null,
+      totalSteps: 3,
+      currentTaskId: flow[progress.currentStep ?? 0]?.id ?? null,
+      currentTask: progress.currentTask ?? null,
+      message: progress.message ?? undefined,
+      shouldStop: state === 'stopping',
+      taskResults: taskResults(statuses),
+      ...scheduleOverrides,
+    },
+  })
+}
+
+function terminalSnapshot(
+  state: 'succeeded' | 'failed' | 'stopped' | 'interrupted',
+  result: Record<string, unknown> | null,
+  error?: AgentRun['error'],
+): RunSnapshot {
+  return snapshot({ lastRun: dailyRun('run-1', state, {
+    ...(result ? { result } : {}),
+    ...(error ? { error } : {}),
+    finishedAt: '2026-10-25T12:01:00.000Z',
+  }) })
+}
+
+interface TestIdentity {
+  runId: string
+  operationId: string | null
+  scope?: string | null
+}
+
+function memoryStorage(initial: TestIdentity | null = null) {
+  let value = initial
+  return {
+    read: () => value,
+    write: (identity: TestIdentity | null) => {
+      value = identity
+    },
+    current: () => value,
+  }
+}
+
+function createApi() {
+  return {
+    fetchSnapshot: vi.fn<(signal?: AbortSignal) => Promise<ApiResponse<RunSnapshot>>>(),
+    fetchRun: vi.fn<(runId: string, signal?: AbortSignal) => Promise<ApiResponse<AgentRun>>>(),
+    stopRun: vi.fn<(runId: string) => Promise<ApiResponse<StopRunResult>>>(),
+  }
+}
+
+let api: ReturnType<typeof createApi>
+let storage: ReturnType<typeof memoryStorage>
+let releases: Array<() => void>
+let container: HTMLDivElement
+let root: Root
+
+const flush = async () => {
+  await act(async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve()
+  })
+}
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+const useIdentity = (identity: TestIdentity | null = null) => {
+  storage = memoryStorage(identity)
+  mocks.controller.current = new ExecutionController({
+    api,
+    storage,
+    intervals: CONTROLLER_INTERVALS,
+  })
+  const release = mocks.controller.current.start()
+  releases.push(release)
+}
+
+const renderPage = async () => {
+  await act(async () => root.render(<AutomationTasks />))
+  await flush()
+}
+
+const renderActivityMode = async (mode: 'visible' | 'hidden') => {
+  await act(async () => root.render(<Activity mode={mode}><AutomationTasks /></Activity>))
+  await flush()
+}
+
+const click = async (element: HTMLElement | null) => {
+  expect(element).not.toBeNull()
+  await act(async () => element?.click())
+  await flush()
+}
+
+const runButton = () => container.querySelector<HTMLButtonElement>('.automation-run-button')
+const stopButton = () => container.querySelector<HTMLButtonElement>('.automation-stop-button')
+const sequenceLabels = () => Array.from(container.querySelectorAll('.automation-sequence-copy small'))
+  .map(node => node.textContent)
+const completedItems = () => container.querySelectorAll('.automation-sequence-item.is-completed')
+const runningSpinners = () => container.querySelectorAll('.automation-sequence-progress')
+
+const refreshController = async (reason: 'poll' | 'reconnect' = 'poll') => {
+  await act(async () => {
+    await mocks.controller.current.refresh(reason)
+  })
+  await flush()
+}
+
+const legacyCheckpoint = (overrides: Record<string, unknown> = {}) => JSON.stringify({
+  isExecuting: true,
+  tasks: flow.map(task => ({ id: task.id, commandId: task.commandId, name: task.name })),
+  currentIndex: 1,
+  startTime: Date.now() - 60_000,
+  ...overrides,
+})
+
+beforeEach(() => {
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} })
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+  }))
+  localStorage.clear()
+  mocks.getActivity.mockReset().mockResolvedValue({ success: false })
+  mocks.loadUserConfig.mockReset().mockResolvedValue({ success: true, data: { taskFlow: flow } })
+  mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
+  mocks.setupSchedule.mockReset().mockResolvedValue({ success: true })
+  mocks.stopSchedule.mockReset().mockResolvedValue({ success: true })
+  mocks.testConnection.mockReset().mockResolvedValue({ success: true })
+  mocks.generateTrainingPlan.mockReset().mockResolvedValue({ success: false })
+  mocks.setMessage.mockReset()
+  mocks.executeScheduleNow.mockReset().mockResolvedValue(ok({
+    accepted: true,
+    runId: 'run-1',
+    run: dailyRun('run-1', 'running'),
+  }))
+
+  api = createApi()
+  api.fetchSnapshot.mockResolvedValue(ok(snapshot()))
+  api.fetchRun.mockResolvedValue(failed('AGENT_RUN_NOT_FOUND', '未找到 Agent run'))
+  api.stopRun.mockResolvedValue(ok({} as StopRunResult))
+  releases = []
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+})
+
+afterEach(async () => {
+  await act(async () => root.unmount())
+  container.remove()
+  releases.forEach(release => release())
+  vi.unstubAllGlobals()
+})
+
+describe('AutomationTasks execution', () => {
+  it('submits one background daily flow with an idempotency key', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },
+      statuses: ['running', 'pending', 'pending'],
+    })))
+    useIdentity()
+    await renderPage()
+
+    await click(runButton())
+
+    expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+    const [scheduleId, submittedFlow, options] = mocks.executeScheduleNow.mock.calls[0] as [
+      string,
+      TaskFlowItem[],
+      { waitForCompletion: boolean; idempotencyKey: string },
+    ]
+    expect(scheduleId).toBe('manual')
+    expect(submittedFlow.map(task => task.id)).toEqual(['startup-1', 'fight-1', 'recruit-1'])
+    expect(submittedFlow[0]).not.toHaveProperty('icon')
+    expect(submittedFlow[0]).not.toHaveProperty('paramFields')
+    expect(options.waitForCompletion).toBe(false)
+    expect(options.idempotencyKey).toMatch(/^run_daily_flow-/)
+    expect(stopButton()).not.toBeNull()
+
+    await click(runButton())
+    expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the run alive through the step delay and completes only on the terminal run', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },
+      statuses: ['running', 'pending', 'pending'],
+    })))
+    useIdentity()
+    await renderPage()
+    await click(runButton())
+
+    expect(runningSpinners()).toHaveLength(1)
+    expect(completedItems()).toHaveLength(0)
+    expect(stopButton()).not.toBeNull()
+
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 1, totalSteps: 3, currentTask: '理智作战', message: '正在执行: 理智作战' },
+      statuses: ['success', 'running', 'pending'],
+    })))
+    await refreshController()
+    expect(completedItems()).toHaveLength(1)
+    expect(runningSpinners()).toHaveLength(1)
+    expect(sequenceLabels()).toEqual(['已完成', '正在执行', '等待执行'])
+
+    // 第二项已完成、流程处于两项之间的延迟：Run 仍活动，不能提前标成完成。
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 1, totalSteps: 3, currentTask: '理智作战', message: '正在执行: 理智作战' },
+      statuses: ['success', 'success', 'pending'],
+    })))
+    await refreshController()
+    expect(completedItems()).toHaveLength(2)
+    expect(runningSpinners()).toHaveLength(0)
+    expect(sequenceLabels()).toEqual(['已完成', '已完成', '等待执行'])
+    expect(stopButton()).not.toBeNull()
+
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
+      message: '任务流程执行完成',
+      summary: summary(['success', 'success', 'success']),
+    })))
+    await refreshController()
+
+    expect(completedItems()).toHaveLength(3)
+    expect(runningSpinners()).toHaveLength(0)
+    expect(stopButton()).toBeNull()
+    expect(runButton()?.textContent).toContain('立即执行')
+    expect(container.textContent).toContain('最近执行')
+    expect(mocks.setMessage).toHaveBeenLastCalledWith('任务流程执行完成', 'success')
+  })
+
+  it('ignores a schedule projection owned by another run and restores observation without resubmitting', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '正在执行: 启动游戏' },
+      scheduleRunId: 'run-other',
+      statuses: ['success', 'success', 'success'],
+      scheduleOverrides: { currentStep: 2, currentTaskId: 'recruit-1' },
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'automation' })
+    await renderPage()
+
+    expect(stopButton()).not.toBeNull()
+    expect(completedItems()).toHaveLength(0)
+    expect(sequenceLabels()).toEqual(['正在执行', '等待执行', '等待执行'])
+
+    await refreshController()
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(stopButton()).not.toBeNull()
+  })
+
+  it('stops the tracked run by id and waits for the terminal state', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '正在执行: 启动游戏' },
+      statuses: ['running', 'pending', 'pending'],
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'automation' })
+    await renderPage()
+
+    api.stopRun.mockResolvedValue(ok({
+      stopRequested: true,
+      deviceStopRequested: true,
+      run: dailyRun('run-1', 'stopping'),
+    }))
+    api.fetchRun.mockResolvedValue(ok(dailyRun('run-1', 'stopping')))
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      state: 'stopping',
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '正在终止任务流程' },
+      statuses: ['stopped', 'pending', 'pending'],
+    })))
+    await click(stopButton())
+
+    expect(api.stopRun).toHaveBeenCalledWith('run-1')
+    expect(stopButton()?.textContent).toContain('正在终止')
+    expect(api.stopRun).toHaveBeenCalledOnce()
+
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('stopped', {
+      message: '任务流程已被用户终止',
+      summary: summary(['stopped', 'pending', 'pending']),
+    })))
+    await refreshController()
+
+    expect(stopButton()).toBeNull()
+    expect(mocks.setMessage).toHaveBeenLastCalledWith('任务流程已被用户终止', 'warning')
+    expect(sequenceLabels()).toEqual(['已终止', '未执行', '未执行'])
+  })
+
+  it('adopts a valid legacy checkpoint and never resubmits it', async () => {
+    localStorage.setItem(LEGACY_KEY, legacyCheckpoint())
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 1, totalSteps: 3, currentTask: '理智作战', message: '正在执行: 理智作战' },
+      statuses: ['success', 'running', 'pending'],
+    })))
+    useIdentity()
+    await renderPage()
+    await flush()
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull()
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(storage.current()).toEqual({
+      runId: 'run-1',
+      operationId: 'run_daily_flow',
+      scope: 'automation',
+    })
+    expect(stopButton()).not.toBeNull()
+    expect(mocks.setMessage).toHaveBeenCalledWith('已恢复上次任务流程，继续观察运行进度', 'info')
+  })
+
+  it('adopts a terminal legacy checkpoint for display without announcing a new run', async () => {
+    localStorage.setItem(LEGACY_KEY, legacyCheckpoint({
+      startTime: Date.parse('2026-10-25T12:00:30.000Z'),
+    }))
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
+      message: '任务流程执行完成',
+      summary: summary(['success', 'success', 'success']),
+    })))
+    useIdentity()
+    await renderPage()
+    await flush()
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull()
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(completedItems()).toHaveLength(3)
+    expect(container.textContent).toContain('最近执行')
+    expect(storage.current()).toBeNull()
+  })
+
+  it('clears malformed and expired checkpoints without starting a flow', async () => {
+    localStorage.setItem(LEGACY_KEY, '{')
+    useIdentity()
+    await renderPage()
+    await flush()
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull()
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('上次任务流程断点无法识别，已清理，请重新开始', 'warning')
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    localStorage.setItem(LEGACY_KEY, legacyCheckpoint({ startTime: Date.now() - 25 * 60 * 60 * 1000 }))
+    useIdentity()
+    await renderPage()
+    await flush()
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull()
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('上次任务流程断点已过期，未重新提交，请重新开始', 'warning')
+  })
+
+  it('discards a legacy checkpoint when another execution owns the device', async () => {
+    localStorage.setItem(LEGACY_KEY, legacyCheckpoint())
+    api.fetchSnapshot.mockResolvedValue(ok(snapshot({
+      activeRuns: [dailyRun('run-2', 'running', {
+        operationId: 'run_task',
+        progress: { currentStep: 0, totalSteps: 1, currentTask: '作业' },
+      })],
+    })))
+    useIdentity()
+    await renderPage()
+    await flush()
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull()
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(stopButton()).toBeNull()
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '检测到其他执行或本页已有运行身份，已清理上次任务流程断点',
+      'warning',
+    )
+  })
+
+  it('shows failed, skipped and unexecuted terminal results without inventing successes', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
+      message: '任务流程执行完成，1 项任务失败',
+      summary: summary(['failed', 'skipped', 'pending']),
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'automation' })
+    await renderPage()
+
+    expect(sequenceLabels()).toEqual(['执行失败', '已跳过', '未执行'])
+    expect(completedItems()).toHaveLength(0)
+    expect(container.textContent).toContain('最近执行')
+    expect(container.textContent).toContain('理智作战：关卡不可用')
+  })
+
+  it('keeps observing a finishing run while the page is hidden', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 2, totalSteps: 3, currentTask: '自动公招', message: '正在执行: 自动公招' },
+      statuses: ['success', 'success', 'running'],
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'automation' })
+    await renderActivityMode('visible')
+
+    expect(completedItems()).toHaveLength(2)
+    expect(runningSpinners()).toHaveLength(1)
+
+    await renderActivityMode('hidden')
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
+      message: '任务流程执行完成',
+      summary: summary(['success', 'success', 'success']),
+    })))
+    await refreshController()
+    await renderActivityMode('visible')
+
+    expect(completedItems()).toHaveLength(3)
+    expect(runningSpinners()).toHaveLength(0)
+    expect(api.stopRun).not.toHaveBeenCalled()
+  })
+
+  it('shows the server flow summary when the page does not own a run', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(snapshot({
+      schedule: {
+        isRunning: false,
+        lastResult: {
+          successCount: 6,
+          failedCount: 0,
+          skippedCount: 1,
+          durationMs: 952_000,
+        },
+      },
+    })))
+    useIdentity()
+    await renderPage()
+
+    expect(container.textContent).toContain('最近执行')
+    expect(container.textContent).toContain('成功 6')
+    expect(container.textContent).toContain('跳过 1')
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+  })
+
+  it('clears the previous results as soon as a new submission starts', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
+      message: '任务流程执行完成',
+      summary: summary(['success', 'success', 'success']),
+    })))
+    useIdentity({ runId: 'run-1', operationId: 'run_daily_flow', scope: 'automation' })
+    await renderPage()
+    expect(completedItems()).toHaveLength(3)
+
+    const submission = deferred<ApiResponse<Record<string, unknown>>>()
+    mocks.executeScheduleNow.mockReturnValue(submission.promise)
+    await click(runButton())
+
+    expect(completedItems()).toHaveLength(0)
+    expect(runButton()?.textContent).toContain('正在启动')
+
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      runId: 'run-2',
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },
+      statuses: ['running', 'pending', 'pending'],
+    })))
+    await act(async () => submission.resolve(ok({
+      accepted: true,
+      runId: 'run-2',
+      run: dailyRun('run-2', 'running'),
+    })))
+    await flush()
+
+    expect(stopButton()).not.toBeNull()
+    expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+  })
+})

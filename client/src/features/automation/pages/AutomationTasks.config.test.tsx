@@ -48,11 +48,35 @@ vi.mock('../api', () => ({
   executeScheduleNow: mocks.executeScheduleNow,
 }))
 
-vi.mock('@/features/task-execution', () => ({
-  executePredefinedTask: vi.fn(),
-  getTaskStatus: mocks.getTaskStatus,
-  stopTask: vi.fn(),
-}))
+vi.mock('@/features/task-execution', async () => {
+  const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
+  const state = {
+    phase: 'live' as const,
+    identity: 'none' as const,
+    submission: 'idle' as const,
+    snapshot: null,
+    trackedRunId: null,
+    trackedScope: null,
+    trackedRun: null,
+    lastError: null,
+    lastSyncedAt: null,
+    hasActiveRun: false,
+    occupancy: null,
+  }
+  const controller = {
+    getState: () => state,
+    subscribe: () => () => {},
+    submitExecution: vi.fn(),
+    stopTrackedRun: vi.fn(),
+    observeRun: vi.fn(),
+    refresh: vi.fn(),
+  }
+  return {
+    ...actual,
+    executionController: controller,
+    useExecutionSnapshot: () => state,
+  }
+})
 
 vi.mock('@/features/user-config', () => ({
   loadUserConfig: mocks.loadUserConfig,

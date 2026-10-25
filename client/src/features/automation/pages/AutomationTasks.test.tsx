@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { TaskFlowItem } from '../types'
+import { resolveExecutionStep } from '../utils/automationTaskProgress'
 import {
   getPointerSortTargetIndex,
   hasPointerSortActivated,
@@ -10,6 +11,26 @@ import {
 } from './AutomationTasks'
 
 const task = (id: string) => ({ id, name: id }) as TaskFlowItem
+
+describe('AutomationTasks execution step mapping', () => {
+  it('maps the enabled-step index past disabled tasks', () => {
+    const flow = [
+      { ...task('startup-1'), enabled: false },
+      { ...task('fight-1'), enabled: true },
+      { ...task('recruit-1'), enabled: true },
+    ]
+
+    expect(resolveExecutionStep(flow, { currentStep: 0, currentTaskId: null })).toBe(1)
+    expect(resolveExecutionStep(flow, { currentStep: 1, currentTaskId: null })).toBe(2)
+  })
+
+  it('prefers the task id when the server provides it', () => {
+    const flow = [task('startup-1'), task('fight-1'), task('recruit-1')]
+
+    expect(resolveExecutionStep(flow, { currentStep: 0, currentTaskId: 'recruit-1' })).toBe(2)
+    expect(resolveExecutionStep(flow, { currentStep: null, currentTaskId: 'missing' })).toBe(-1)
+  })
+})
 
 describe('AutomationTasks ordering', () => {
   it('waits for the full 10px pointer threshold', () => {
