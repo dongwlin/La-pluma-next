@@ -4,7 +4,7 @@
 
 本文描述 FPR-017 交付的应用级 TanStack Query 基础设施：客户端与 Provider 的创建位置、默认重取/重试策略、领域 query key 约定、失效方式，以及它与 Zustand、配置草稿、执行控制器和 Dashboard 完整快照的边界。
 
-当前只交付基础设施，页面读取尚未迁移；后续资源任务按本文接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
+当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移；其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
 
 ## 1. 定位与边界
 
@@ -114,8 +114,8 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 
 | 域 | 预留资源 | 归属任务 |
 | --- | --- | --- |
-| `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；页面读取由 FPR-019/044 迁移 |
-| `statistics` | `drops`（参数 `days`） | FPR-019 |
+| `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；statistics 页面读取由 FPR-019 迁移，training 由 FPR-044 迁移 |
+| `statistics` | `drops`（参数 `days`） | FPR-019 已迁移 |
 | `training` | `queue`、`candidates`、`counts` | FPR-021 / FPR-044 |
 | `settings` | `version`、`config-directory`、`maa-config`（参数 `profileName`） | FPR-024 |
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 |
@@ -188,12 +188,29 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 ```
 
 - `queryFn` 必须把 Query 的 `signal` 传到 `fetch`，不能只丢弃响应；取消、失败分类与载荷校验沿用[资源请求错误与取消契约](resource-requests.md)。
-- 页面现有的 request id/generation guard 保留到 Query 真正接管该读取；接管后只有在回归测试覆盖竞态与取消时才移除。
+- 页面现有的 request id/generation guard 保留到 Query 真正接管该读取；已迁移的读取（如数据统计页的四路 query）移除页面 guard，由 Query 的取消与 revert 负责竞态。未迁移页面继续保留，直到回归测试覆盖竞态与取消。
 - `enabled` 只表达“当前是否应读取该资源”（例如依赖参数或可见性），不用它替代权限、写入协调或运行状态。
 - 配置提交与执行命令继续使用 user-config 协调器和 task-execution 控制器，不新增 Query mutation 作为第二写入路径。
 - 迁移必须补充：同 key 共享缓存、失效范围、失败保留旧数据、Activity 隐藏/恢复与真正 remount 的回归。
 
-## 9. 回归证据
+## 9. 已迁移页面：数据统计（FPR-019）
+
+`DataStatistics` 是首个接入 Query 的页面。四路读取由领域 query 定义持有，页面不再保存资源副本、加载状态或 request id：
+
+| 资源 | query 定义 | 首屏启用 | 刷新方式 | 错误边界 |
+| --- | --- | --- | --- | --- |
+| 仓库快照 | `game-data` 的 `depotQueryOptions()` | 是 | 重试按钮 `refetch`；识别解析成功后 `setQueryData` 写入完整快照；收到 `depot` 失效 | 独立错误面板，不阻塞干员/掉落 |
+| 持有干员 | `operBoxQueryOptions()` | 是 | 重试 `refetch`；干员识别解析成功后 `setQueryData`；收到 `operbox` 失效 | 与目录错误合并为干员面板错误 |
+| 干员目录 | `operatorCatalogQueryOptions()` | 是 | 重试 `refetch`；材料刷新成功后 `refetch`；收到 `catalog` 失效 | 与持有干员错误合并为干员面板错误 |
+| 掉落统计 | `statistics` 的 `dropStatisticsQueryOptions(days)` | 是 | 天数切换使用独立 key；刷新/重试 `refetch`；收到 `drops` 失效 | 独立错误面板，刷新失败保留上次成功数据 |
+
+- 四路 query 在页面挂载时同时启用，不依赖当前 tab；切 tab 只改变渲染，不重建查询。
+- 缓存策略保持第 3 节默认值：30s 内页面重挂载或 Activity 恢复直接复用；过期后台重取；无观察者超过 5min 后重新加载。
+- 页面持有筛选与排序状态（一个 `OperatorFilters` 对象），不放在条件挂载的 tab 面板内，因此切 tab 不丢状态。筛选、排序与阿米娅形态规则由 `features/statistics/model/operatorFilters.ts` 纯函数实现并直接测试。
+- 识别解析结果作为权威完整快照写入 Query 缓存；FPR-020 接管命令后仍由 `resource-invalidation` 声明影响范围，页面按作用域失效，不建立第二份本地状态。
+- 切换掉落天数时使用 `keepPreviousData` 占位，旧周期内容在加载期间保持可见；新 key 首次失败只展示错误，不伪造上一个周期的数据。
+
+## 10. 回归证据
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -203,6 +220,10 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/app/providers/AppProviders.test.tsx` | 应用树注入应用级客户端 |
 | `client/src/app/App.test.tsx` | 应用级 hook 在 `AppProviders` 内运行并能拿到 Query 客户端 |
 | `client/src/features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
+| `client/src/features/game-data/model/queries.test.ts` | 共享资源 key、空快照保留、载荷归一、失败转为 query 错误、signal 传递 |
+| `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、失败转为 query 错误、signal 传递 |
+| `client/src/features/statistics/model/operatorFilters.test.ts` | 阿米娅形态补齐、各视图过滤、星级钳制、排序与非拥有视图规则 |
+| `client/src/features/statistics/pages/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
 | `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
 | `client/src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 订阅过滤、Activity 隐藏/恢复补发、卸载注销与最新 handler |
 
@@ -216,6 +237,10 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/app/providers/AppProviders.test.tsx \
   src/app/App.test.tsx \
   src/features/game-data/model/queryKeys.test.ts \
+  src/features/game-data/model/queries.test.ts \
+  src/features/statistics/model/queries.test.ts \
+  src/features/statistics/model/operatorFilters.test.ts \
+  src/features/statistics/pages/DataStatistics.layout.test.tsx \
   src/features/resource-invalidation/model/resourceInvalidation.test.ts \
   src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx
 ```
