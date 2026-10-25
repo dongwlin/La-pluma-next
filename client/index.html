@@ -89,37 +89,7 @@
         }
       }
     </style>
-    <script>
-      (() => {
-        const standalone = window.matchMedia?.('(display-mode: standalone)').matches
-          || window.matchMedia?.('(display-mode: fullscreen)').matches
-          || window.navigator.standalone === true
-        if (standalone) {
-          // Claim the full iOS standalone viewport while keeping status icons
-          // readable in both color schemes.
-          document.documentElement.classList.add('la-pluma-standalone', 'device-full-viewport')
-        }
-
-        const applyTheme = (theme) => {
-          const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches === true
-          const dark = theme === 'dark' || (theme === 'system' && prefersDark)
-          document.documentElement.classList.toggle('dark', dark)
-          document.getElementById('app-root')?.classList.toggle('dark', dark)
-          document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
-          document.documentElement.style.backgroundColor = dark ? '#000000' : '#f2f2f7'
-          document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#05090c' : '#f6f8fb')
-          document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.setAttribute('content', dark ? 'black-translucent' : 'default')
-        }
-        window.__LA_PLUMA_APPLY_THEME__ = applyTheme
-        try {
-          const stored = JSON.parse(localStorage.getItem('ui-storage') || '{}').state
-          const theme = ['light', 'dark', 'system'].includes(stored?.theme) ? stored.theme : 'dark'
-          applyTheme(theme)
-        } catch {
-          applyTheme('dark')
-        }
-      })()
-    </script>
+    <!-- 首帧主题脚本由 vite.config.js 的 createBootAssetsPlugin 注入 -->
 
     <title>La Pluma Next - MAA WebUI</title>
   </head>

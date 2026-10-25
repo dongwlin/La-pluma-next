@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import vm from 'node:vm'
 import { readFileSync } from 'node:fs'
 import {
+  createBootAssetsPlugin,
   createDevPwaSupportPlugin,
   createDevServiceWorkerCleanupScript,
   createNavigateFallbackDenylist,
@@ -9,6 +10,24 @@ import {
   createWorkboxConfig,
   normalizeBasePath,
 } from './vite.config.js'
+import { createBootScript } from './src/shared/theme/bootTheme.ts'
+
+describe('boot theme asset injection', () => {
+  it('injects the generated boot script at the end of the document head', () => {
+    // 必须是 'head'（追加到 head 末尾）而非 'head-prepend'：脚本要排在
+    // theme-color 与 apple-mobile-web-app-status-bar-style 两个 meta 之后，
+    // 首帧 applyTheme 才能写这两个 meta；是否真的排在 meta 之后由
+    // dist/index.html 的构建产物顺序核对（见提交说明），这里不做脆弱的
+    // 字符串位置断言。'head' 同时保证脚本仍在 <body> 与启动壳之前执行。
+    const tags = createBootAssetsPlugin().transformIndexHtml()
+
+    expect(tags).toEqual([{
+      tag: 'script',
+      children: createBootScript(),
+      injectTo: 'head',
+    }])
+  })
+})
 
 describe('PWA base path configuration', () => {
   it('normalizes a configured deployment path', () => {

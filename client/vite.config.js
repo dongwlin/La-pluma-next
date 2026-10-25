@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { createBootScript } from './src/shared/theme/bootTheme.ts'
 
 // ES 模块中获取 __dirname
 const __filename = fileURLToPath(import.meta.url)
@@ -147,6 +148,24 @@ export const createDevPwaSupportPlugin = (basePath) => {
   }
 }
 
+/**
+ * 把首帧主题脚本注入 index.html 的 head 末尾（dev 与 build 都生效）。
+ * 用 'head' 而不是 'head-prepend'：脚本必须先于首帧执行，但也要排在
+ * theme-color / apple-mobile-web-app-status-bar-style 两个 meta 之后，
+ * 这样 applyTheme 才能在首次运行时写对状态栏与浏览器 chrome 颜色。
+ * 脚本内容由 shared/theme/bootTheme.ts 单一生成，index.html 里不再内联副本。
+ */
+export const createBootAssetsPlugin = () => ({
+  name: 'la-pluma-boot-assets',
+  transformIndexHtml() {
+    return [{
+      tag: 'script',
+      children: createBootScript(),
+      injectTo: 'head',
+    }]
+  },
+})
+
 // https://vite.dev/config/
 export const createViteConfig = (basePath) => ({
   base: basePath,
@@ -157,6 +176,7 @@ export const createViteConfig = (basePath) => ({
   },
   plugins: [
     createDevPwaSupportPlugin(basePath),
+    createBootAssetsPlugin(),
     react(),
     tailwindcss(),
     VitePWA({

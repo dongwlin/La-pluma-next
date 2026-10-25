@@ -3,14 +3,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyThemePreference, useUIStore } from './uiStore'
 
-type ThemeWindow = Window & { __LA_PLUMA_APPLY_THEME__?: (theme: 'light' | 'dark' | 'system') => void }
-
 describe('UI theme state', () => {
   let systemDark = false
 
   beforeEach(() => {
     window.localStorage.clear()
-    delete (window as ThemeWindow).__LA_PLUMA_APPLY_THEME__
     systemDark = false
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-color-scheme: dark)' && systemDark,

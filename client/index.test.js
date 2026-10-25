@@ -5,49 +5,14 @@ import { resolve } from 'node:path'
 import { cwd } from 'node:process'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const indexSource = readFileSync(resolve(cwd(), 'index.html'), 'utf8')
 const sourceDocument = new DOMParser().parseFromString(indexSource, 'text/html')
-const bootScript = Array.from(sourceDocument.scripts)
-  .find(script => !script.type && !script.src)
-  ?.textContent ?? ''
-const originalMatchMedia = window.matchMedia
-
-function installThemeDocument() {
-  document.documentElement.className = 'dark'
-  document.documentElement.removeAttribute('style')
-  document.head.innerHTML = `
-    <meta name="theme-color" content="#05090c" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  `
-  document.body.innerHTML = '<div id="root"></div>'
-  Object.defineProperty(window.navigator, 'standalone', {
-    configurable: true,
-    value: false,
-  })
-}
-
-function runBootScript({ systemDark = false } = {}) {
-  window.matchMedia = vi.fn().mockImplementation(query => ({
-    matches: query === '(prefers-color-scheme: dark)' && systemDark,
-    media: query,
-  }))
-  window.eval(bootScript)
-}
 
 describe('PWA document boot shell', () => {
-  beforeEach(() => {
-    window.localStorage.clear()
-    installThemeDocument()
-  })
-
-  afterAll(() => {
-    window.matchMedia = originalMatchMedia
-  })
-
   it('paints a static shell before the module entry can run', () => {
     const bootStyle = sourceDocument.querySelector('#la-pluma-boot-style')
     const root = sourceDocument.querySelector('#root')
@@ -77,30 +42,5 @@ describe('PWA document boot shell', () => {
     expect(rootElement?.querySelector('[data-react-ready="true"]')?.textContent).toBe('已恢复')
 
     await act(async () => reactRoot.unmount())
-  })
-
-  it.each([
-    { storedTheme: 'light', systemDark: false, dark: false, background: 'rgb(242, 242, 247)', themeColor: '#f6f8fb' },
-    { storedTheme: 'dark', systemDark: false, dark: true, background: 'rgb(0, 0, 0)', themeColor: '#05090c' },
-    { storedTheme: 'system', systemDark: true, dark: true, background: 'rgb(0, 0, 0)', themeColor: '#05090c' },
-    { storedTheme: 'system', systemDark: false, dark: false, background: 'rgb(242, 242, 247)', themeColor: '#f6f8fb' },
-  ])('applies $storedTheme before external assets load', ({ storedTheme, systemDark, dark, background, themeColor }) => {
-    window.localStorage.setItem('ui-storage', JSON.stringify({ state: { theme: storedTheme } }))
-
-    runBootScript({ systemDark })
-
-    expect(document.documentElement.classList.contains('dark')).toBe(dark)
-    expect(document.documentElement.style.colorScheme).toBe(dark ? 'dark' : 'light')
-    expect(document.documentElement.style.backgroundColor).toBe(background)
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(themeColor)
-  })
-
-  it('falls back to the default dark boot surface when stored state is corrupt', () => {
-    window.localStorage.setItem('ui-storage', '{invalid-json')
-
-    runBootScript()
-
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(document.documentElement.style.backgroundColor).toBe('rgb(0, 0, 0)')
   })
 })

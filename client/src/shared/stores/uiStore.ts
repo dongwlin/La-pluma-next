@@ -4,39 +4,15 @@
 
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-
-type ThemeMode = 'light' | 'dark' | 'system'
+import { applyTheme, THEME_STORAGE_KEY, type ThemeMode } from '../theme/bootTheme'
 
 interface UIState {
   theme: ThemeMode
   setTheme: (theme: ThemeMode) => void
 }
 
-type ThemeRuntimeWindow = Window & {
-  __LA_PLUMA_APPLY_THEME__?: (theme: ThemeMode) => void
-}
-
 export function applyThemePreference(theme: ThemeMode) {
-  if (typeof document === 'undefined') return
-
-  const runtime = typeof window === 'undefined'
-    ? undefined
-    : (window as ThemeRuntimeWindow).__LA_PLUMA_APPLY_THEME__
-  if (runtime) {
-    runtime(theme)
-    return
-  }
-
-  const isDark = theme === 'dark'
-    || (theme === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-  const root = document.documentElement
-  root.classList.toggle('dark', isDark)
-  document.getElementById('app-root')?.classList.toggle('dark', isDark)
-  root.style.colorScheme = isDark ? 'dark' : 'light'
-  document.querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', isDark ? '#05090c' : '#f6f8fb')
-  document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
-    ?.setAttribute('content', isDark ? 'black-translucent' : 'default')
+  applyTheme(theme)
 }
 
 export const useUIStore = create<UIState>()(
@@ -51,7 +27,7 @@ export const useUIStore = create<UIState>()(
         },
       }),
       {
-        name: 'ui-storage',
+        name: THEME_STORAGE_KEY,
         partialize: (state) => ({
           theme: state.theme,
         }),
