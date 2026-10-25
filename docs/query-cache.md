@@ -201,13 +201,13 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | --- | --- | --- | --- | --- |
 | 仓库快照 | `game-data` 的 `depotQueryOptions()` | 是 | 重试按钮 `refetch`；识别解析成功后 `setQueryData` 写入完整快照；收到 `depot` 失效 | 独立错误面板，不阻塞干员/掉落 |
 | 持有干员 | `operBoxQueryOptions()` | 是 | 重试 `refetch`；干员识别解析成功后 `setQueryData`；收到 `operbox` 失效 | 与目录错误合并为干员面板错误 |
-| 干员目录 | `operatorCatalogQueryOptions()` | 是 | 重试 `refetch`；材料刷新成功后 `refetch`；收到 `catalog` 失效 | 与持有干员错误合并为干员面板错误 |
+| 干员目录 | `operatorCatalogQueryOptions()` | 是 | 重试 `refetch`；收到 `catalog` 失效（材料刷新不改变目录，不再额外重读） | 与持有干员错误合并为干员面板错误 |
 | 掉落统计 | `statistics` 的 `dropStatisticsQueryOptions(days)` | 是 | 天数切换使用独立 key；刷新/重试 `refetch`；收到 `drops` 失效 | 独立错误面板，刷新失败保留上次成功数据 |
 
 - 四路 query 在页面挂载时同时启用，不依赖当前 tab；切 tab 只改变渲染，不重建查询。
 - 缓存策略保持第 3 节默认值：30s 内页面重挂载或 Activity 恢复直接复用；过期后台重取；无观察者超过 5min 后重新加载。
 - 页面持有筛选与排序状态（一个 `OperatorFilters` 对象），不放在条件挂载的 tab 面板内，因此切 tab 不丢状态。筛选、排序与阿米娅形态规则由 `features/statistics/model/operatorFilters.ts` 纯函数实现并直接测试。
-- 识别解析结果作为权威完整快照写入 Query 缓存；FPR-020 接管命令后仍由 `resource-invalidation` 声明影响范围，页面按作用域失效，不建立第二份本地状态。
+- 识别解析结果作为权威完整快照写入 Query 缓存；命令所有者（FPR-020）在解析成功后由 `resource-invalidation` 声明影响范围，页面按作用域失效，不建立第二份本地状态。识别命令本身不进入 Query，也不由 Query 自动重试；超时/取消后的继续方式见[统计识别命令与失效联动](statistics-commands.md)。
 - 切换掉落天数时使用 `keepPreviousData` 占位，旧周期内容在加载期间保持可见；新 key 首次失败只展示错误，不伪造上一个周期的数据。
 
 ## 10. 回归证据
@@ -223,6 +223,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/game-data/model/queries.test.ts` | 共享资源 key、空快照保留、载荷归一、失败转为 query 错误、signal 传递 |
 | `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、失败转为 query 错误、signal 传递 |
 | `client/src/features/statistics/model/operatorFilters.test.ts` | 阿米娅形态补齐、各视图过滤、星级钳制、排序与非拥有视图规则 |
+| `client/src/features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、解析等待、超时/取消/继续与失效发布；识别命令不进入 Query |
 | `client/src/features/statistics/pages/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
 | `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
 | `client/src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 订阅过滤、Activity 隐藏/恢复补发、卸载注销与最新 handler |

@@ -46,7 +46,7 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 
 业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`、`game-data`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
 
-已知接受项（FPR-019 后）：仓库、持有干员与干员目录由非页面微域 `features/game-data` 统一持有，`training` 与 `statistics` 不再为共享资源互相 import；统计页的四路读取已由 Query 缓存持有，筛选、排序与阿米娅形态规则在 `features/statistics/model` 中脱离 React；`statistics` 仍单向依赖 `training` 的队列读取与材料刷新命令，`training` 与 `Dashboard` 的共享读取仍待 FPR-044/030 迁移。跨域写入后的刷新经 `features/resource-invalidation` 端口协调，不在页面之间新增轮询。详见[共享资源归属与失效端口](resource-ownership.md)与[Query 缓存与键规范](query-cache.md)。
+已知接受项（FPR-020 后）：仓库、持有干员与干员目录由非页面微域 `features/game-data` 统一持有，`training` 与 `statistics` 不再为共享资源互相 import；统计页的四路读取已由 Query 缓存持有，筛选、排序与阿米娅形态规则在 `features/statistics/model` 中脱离 React；识别与材料刷新命令由 `features/statistics/model/commandOwner.ts` 持有，经执行控制器提交并发布跨域失效，`statistics` 仅保留对 training 材料刷新端点的单向调用，`training` 与 `Dashboard` 的共享读取仍待 FPR-044/030 迁移。跨域写入后的刷新经 `features/resource-invalidation` 端口协调，不在页面之间新增轮询。详见[共享资源归属与失效端口](resource-ownership.md)、[统计识别命令与失效联动](statistics-commands.md)与[Query 缓存与键规范](query-cache.md)。
 
 ```
 La-pluma-next/

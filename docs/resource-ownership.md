@@ -13,8 +13,8 @@
 | 仓库、持有干员、干员目录的只读端点、载荷类型与 query key | `features/game-data` | 非页面微域；`shared/api` 不新增业务端点 |
 | 物品图标 URL | `features/game-data` | 纯 URL 构造，不发起请求、不进入 Query |
 | 跨域资源失效发布/订阅 | `features/resource-invalidation` | 只传资源作用域，不持有资源数据 |
-| 养成队列、设置、计划、材料刷新命令 | `features/training` | 队列/设置/计划的写入与领域语义仍归 training |
-| 掉落统计、今日掉落、今日开放关卡、识别解析命令 | `features/statistics` | 只读掉落/关卡供 Dashboard 使用；统计页读取已由 FPR-019 迁入 Query，识别命令由 FPR-020 迁移 |
+| 养成队列、设置、计划、材料刷新端点 | `features/training` | 队列/设置/计划的写入与领域语义仍归 training；材料刷新的命令编排归 statistics |
+| 掉落统计、今日掉落、今日开放关卡、识别/材料命令所有者 | `features/statistics` | 只读掉落/关卡供 Dashboard 使用；统计页读取已由 FPR-019 迁入 Query，识别/材料命令由 FPR-020 交付（见[统计识别命令与失效联动](statistics-commands.md)） |
 | Query 客户端、默认策略 | `shared/query` | 见 [Query 缓存与键规范](query-cache.md) |
 
 关键约束：
@@ -47,10 +47,10 @@ import {
 | 持有干员 | `GET /agent/data/operbox` | DataStatistics（FPR-019 已迁 Query）、OperatorTraining（FPR-044） | `gameDataKeys.resource('operbox')` | 同上；干员识别完成后失效 |
 | 干员目录 | `GET /agent/data/operators` | DataStatistics（FPR-019 已迁 Query）、OperatorTraining（FPR-044） | `gameDataKeys.resource('catalog')` | 同上；资源/热更新完成后失效 |
 | 物品图标 | 外部静态资源 URL | DataStatistics 仓库、掉落记录、养成材料 | 无 | 浏览器 HTTP/图片缓存；函数只拼 URL。资源更新若复用同一 URL，浏览器可能继续命中旧图，需要变更 URL（版本段）而不是建立 Query key |
-| 养成队列（含材料进度） | `/agent/training/queue` 等 | OperatorTraining、DataStatistics（识别提示）、Dashboard 快照 | 归 `training`（FPR-021/044） | 仍由 training 领域策略持有；不复制进 `game-data` |
+| 养成队列（含材料进度） | `/agent/training/queue` 等 | OperatorTraining、Dashboard 快照 | 归 `training`（FPR-021/044） | 仍由 training 领域策略持有；不复制进 `game-data`；识别命令不再为提示文案额外读取 |
 | 掉落/开放关卡 | `/agent/drops/*`、`/agent/stages/open-today` | DataStatistics、Dashboard 快照 | 归 `statistics`（`drops` 已由 FPR-019 迁移） | 不进入 `game-data`；Dashboard 只通过完整快照读取 |
 
-FPR-019 已把统计页的仓库、持有干员、目录与掉落读取迁入 Query；`game-data` 与 `statistics` 各自导出 query 定义，页面不再保存资源副本。training 与 Dashboard 的共享读取尚未迁移，识别/资源更新后的刷新仍由第 4 节的端口承接。
+FPR-019 已把统计页的仓库、持有干员、目录与掉落读取迁入 Query；`game-data` 与 `statistics` 各自导出 query 定义，页面不再保存资源副本。FPR-020 已把识别/材料命令与发布端接入第 4 节的端口；training 与 Dashboard 的共享读取尚未迁移，其刷新仍由端口承接。识别命令与完成条件见[统计识别命令与失效联动](statistics-commands.md)。
 
 ## 3. 公开面与依赖方向
 
@@ -126,13 +126,13 @@ publishResourceInvalidation({
 
 ## 5. 触发与影响映射
 
-后续任务按下表发布；表同时约束 `dashboard-snapshot` 必须随影响总览的写入一起发布。
+写入方按下表发布；表同时约束 `dashboard-snapshot` 必须随影响总览的写入一起发布。前三行已由 FPR-020 的命令所有者交付。
 
 | 触发 | 应发布作用域 | 归属任务 |
 | --- | --- | --- |
-| 仓库识别成功并解析完成 | `depot`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020 |
-| 干员识别成功并解析完成 | `operbox`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020 |
-| 材料刷新成功 | `materials`、`training-queue`、`dashboard-snapshot` | FPR-020 |
+| 仓库识别成功并解析完成 | `depot`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
+| 干员识别成功并解析完成 | `operbox`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
+| 材料刷新成功 | `materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
 | 队列增删/排序/撤销成功 | `training-queue`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-021 |
 | 养成设置保存成功 | `training-plan`（仅当设置影响计划前提） | FPR-022 |
 | 应用养成计划成功 | `automation-config`、`automation-schedule`、`dashboard-snapshot` | FPR-023 |
@@ -146,7 +146,7 @@ publishResourceInvalidation({
 | --- | --- | --- |
 | `OperatorTraining` | `depot`、`operbox`、`catalog`、`materials`、`training-queue`、`training-plan` | 计划前提变化时作废本地预览；仓库/材料/队列变化时重读队列；仓库/持有干员/目录/材料变化时重读候选列表与三种计数 |
 | `Dashboard` | `dashboard-snapshot` | 调用完整快照刷新（`force`），五项全部有效才提交；单路失败保留旧快照与 `lastUpdate` |
-| `DataStatistics` | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令仍由本页在解析成功后写入 Query 缓存，发布端由 FPR-020 接管 |
+| `DataStatistics` | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，解析成功后页面写入 Query 快照并发布作用域 |
 
 训练页的队列写入目前仍由页面自身在 mutation 成功后重读，不依赖端口；FPR-021 迁移后改由领域命令与缓存协调持有。
 
@@ -160,12 +160,13 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 | `features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
 | `features/game-data/model/queries.test.ts` | 共享读取的 query key、空快照、载荷归一、失败与 signal |
 | `features/statistics/model/queries.test.ts`、`features/statistics/model/operatorFilters.test.ts` | 掉落 `days` 缓存身份；筛选、排序与阿米娅形态纯规则 |
-| `features/statistics/pages/DataStatistics.layout.test.tsx` | 统计页按作用域失效；独立错误边界、首屏并行、缓存复用与筛选状态生命周期 |
+| `features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、日志解析等待、超时/取消/继续与失效发布 |
+| `features/statistics/pages/DataStatistics.layout.test.tsx` | 统计页按作用域失效；独立错误边界、首屏并行、缓存复用、识别快照写入、命令状态与筛选状态生命周期 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 去重发布、空发布忽略、revision、注销、监听器异常隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、首挂载不补发、Activity 隐藏/恢复补发、卸载注销、最新 handler |
 | `features/training/pages/OperatorTraining.test.tsx` | 目录失效只刷共享读取；仓库失效重读队列；计划前提失效作废旧预览 |
 | `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照 |
-| `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 迁移后各自保留的掉落/关卡与队列/候选读取 |
+| `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 掉落/关卡、识别解析与材料刷新的端点、signal 与载荷校验 |
 
 针对性命令（仓库根目录）：
 

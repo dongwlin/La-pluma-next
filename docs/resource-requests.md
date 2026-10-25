@@ -93,7 +93,7 @@ const depot = unwrapApiResponse(result)
 | `getDropStatistics(days?, signal?)` | `GET /agent/drops/statistics?days=` | `total`/`items`/`stages` 对象；`dailyTrend` 为可选数组；拒绝业务错误信封 |
 | `getOpenTodayStages(signal?)` | `GET /agent/stages/open-today` | `open`/`closed` 数组 |
 
-识别解析命令 `parseDepotData` / `parseOperBoxData` 仍是只写命令，留在 statistics，由 FPR-020 迁移命令所有者。
+识别解析命令 `parseDepotData(signal?)` / `parseOperBoxData(signal?)` 仍是只写命令，留在 statistics；启动、等待日志可解析、超时与取消由[统计识别命令与失效联动](statistics-commands.md)的命令所有者接线。取消只结束本地等待，不撤销服务端解析。
 
 ### Training（`features/training/api/index.ts`）
 
@@ -101,6 +101,7 @@ const depot = unwrapApiResponse(result)
 | --- | --- | --- |
 | `getOperatorList(filters?, signal?)` | `GET /agent/training/operators` | `operators` 数组，或旧版顶层数组 |
 | `getTrainingQueue(signal?)` | `GET /agent/training/queue` | `queue` 数组 |
+| `fetchOperatorMaterials(signal?)` | `POST /agent/actions/fetch-training-materials` | 脚本摘要对象；`signal` 只结束本地等待，不占设备租约 |
 
 ### Automation（`features/automation/api/index.ts`）
 

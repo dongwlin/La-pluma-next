@@ -98,12 +98,13 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 四类读取 | `loadDepotData/loadOperBoxData/loadAllOperators/loadDropData`：GET `/agent/data/depot`、`/agent/data/operbox`、经 training 的 `/agent/data/operators`、`/agent/drops/statistics?days=…`；独立 request id，cleanup 失效，无网络 abort | depot/持有干员/目录资源域；statistics 掉落查询 |
-| 识别命令 | `executeDepot/executeOperBox` POST run-task，Depot/OperBox，waitForCompletion=true；不可取消的 2s 等待后 POST `/agent/actions/depot-recognition` 或 `/operbox-recognition`；仓库解析后查 queue 只选提示 | statistics 识别用例 + task-execution 控制器 + 跨域失效 |
-| 材料获取/图片 | POST `/agent/actions/fetch-training-materials`，仅重读 allOperators；getItemIconUrl 生成 GitHub raw URL | 资源更新用例及图标元数据所有者 |
-| UI | activeTab、六项筛选/排序、openMenu、图片加载/失败、dropDays、四区 loading/error、activeTask；FilterMenu document pointerdown/focusin/keydown、window resize/捕获 scroll | 最近的统计面板/筛选模型；命令状态订阅执行所有者 |
+| 四类读取 | 四路领域 query：`depotQueryOptions`、`operBoxQueryOptions`、`operatorCatalogQueryOptions`、`dropStatisticsQueryOptions(days)`；首屏并行，按作用域失效，Query 负责 signal/竞态/失败重试 | depot/持有干员/目录资源域；statistics 掉落查询 |
+| 识别命令 | `statisticsCommandOwner.run('depot'/'operbox')`：控制器 intent + run-task（Depot/OperBox，waitForCompletion=true）；解析端点轮询到可用快照；超时/取消后继续等待或复用同一幂等键，不重新执行设备命令 | statistics 命令所有者 + task-execution 控制器 |
+| 材料获取/图片 | `statisticsCommandOwner.run('materials')` 调 training 的 POST `/agent/actions/fetch-training-materials`，成功发布 `materials`/`training-queue`/`dashboard-snapshot`；getItemIconUrl 生成 GitHub raw URL | 命令所有者；图标元数据所有者 |
+| 跨域失效 | 识别解析成功发布 `depot` 或 `operbox` + `materials`/`training-queue`/`dashboard-snapshot`；页面把解析快照写入 Query；材料刷新不重读目录 | `features/resource-invalidation` 端口 |
+| UI | activeTab、六项筛选/排序、openMenu、图片加载/失败、dropDays、四区 loading/error；命令按钮的 running/resume 状态来自 `useStatisticsCommandState()`；FilterMenu document pointerdown/focusin/keydown、window resize/捕获 scroll | 最近的统计面板/筛选模型；命令状态归 statistics 命令所有者 |
 
-无业务 localStorage。识别只刷新本页，尚未刷新训练候选/计数/材料和总览；材料下载也只刷新本页目录。识别事件处理器在 Activity hidden 后仍可能继续完成。
+无业务 localStorage（执行控制器持久化的是 Run 身份，不属于本页）。命令所有者是模块级单例，识别在 Activity hidden 后仍会继续完成并写入 Query 快照；重新显示时按失效 revision 补一次读取。
 
 ### Training — `features/training/pages/OperatorTraining.tsx`
 

@@ -16,6 +16,7 @@
 | [资源请求错误与取消契约](resource-requests.md) | 只读资源的 AbortSignal 传递、信封与领域载荷校验、失败分类、取消/停止/撤销边界、候选端点与 Query 迁移入口 | 迁移资源查询、缓存或处理请求失败的前端开发者 |
 | [Query 缓存与键规范](query-cache.md) | 应用级 Query 客户端、默认重取/重试/Activity 策略、领域 key 与失效规范、Dashboard 快照边界 | 迁移资源读取或实现缓存失效的前端开发者 |
 | [共享资源归属与失效端口](resource-ownership.md) | game-data 共享资源域、training/statistics 去环后的依赖方向、图标与资源缓存策略、跨域失效端口与未迁移页面接收 | 迁移共享资源、写入后失效或页面读取的前端开发者 |
+| [统计识别命令与失效联动](statistics-commands.md) | 识别/材料命令所有者、执行控制器与幂等回放、日志解析等待、超时/取消/继续、识别后作用域失效 | 迁移页面命令、处理识别结果或调整命令超时与失效联动的开发者 |
 | [架构与技术栈](architecture.md) | 整体架构、前后端边界、技术栈和项目结构 | 需要理解前后端边界与代码组织的新开发者 |
 | [Agent API 使用指南](agent-api.md) | manifest/status/actions、推荐执行流程、幂等、持久化与鉴权 | 对接 `/api/agent` 的 Agent、脚本与集成开发者 |
 | [功能概览](features.md) | 控制台、自动化流程、定时任务、作业与肉鸽、数据养成、Telegram 通知 | 新用户与需要确认能力范围的用户 |

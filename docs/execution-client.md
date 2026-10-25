@@ -144,7 +144,11 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 活动入口保留领域预检：仍同步调用 `POST /api/agent/activity/run`，服务端先检查导航链、活动作业候选与偏好，`executed=false` 时返回原因；响应中的 `runId` 由控制器采纳。该端点不支持 `waitForCompletion`，页面不据此假设执行会异步开始。
   - 两个入口的禁用与运行文案只来自共享投影：活动 run（含其它域发起的）和未纳管占用都会禁用启动；断线时显示“执行状态未知”并按最后已知活动 run 保留禁用。Dashboard 不再写 `statusStore.isActive`，也不再用 `schedules/execution.isRunning` 判断运行。
   - 本页发起的日常流程终态只在“实际观察过活动”后提示一次；其它域或未纳管执行不产生“今日流程完成”提示。页面隐藏/卸载不发送停止，控制器继续观察。
-- 三页（肉鸽、作业、自动化）与 Dashboard 的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，其它页面不会把它显示成自己的执行，但全局投影、浮动指示器和 Dashboard 会看到同一个活动 run。
+- 数据统计页已迁移到控制器（FPR-020），`scope: 'statistics'`：
+  - 仓库/干员识别通过 `beginExecutionIntent('run_task', { scope: 'statistics' })` 生成幂等键，以 `waitForCompletion=true` 提交；命令确认成功后才轮询解析端点等待 MAA 日志可解析。
+  - 命令超时或本地取消只结束本地等待，不调用停止；继续时复用同一幂等键确认已有 Run，已接受 Run 只读取终态，绝不产生第二个设备命令。Run 终态等待或解析超时后只继续等待/解析，不再提交 `run-task`。
+  - 识别成功由 `features/statistics/model/commandOwner.ts` 发布作用域失效；材料刷新是脚本入口，不产生 Run。命令状态归域内所有者，页面不再内联 `executeCommand`、固定延迟或读 queue 决定提示。详见[统计识别命令与失效联动](statistics-commands.md)。
+- 肉鸽、作业、自动化、Dashboard 与统计识别的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，统计识别带有 `scope: 'statistics'`，其它页面不会把它们显示成自己的执行，但全局投影、浮动指示器和 Dashboard 会看到同一个活动 run。
 
 ## 7. 回归清单
 
@@ -155,6 +159,8 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `roguelike/pages/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；按 `runId` 停止且确认中重复点击只发一次；Activity 隐藏/恢复不遗留锁定按钮；停止确认超时与拒绝后可重试；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
 | `combat/model/copilotSetRun.test.ts` | 活动 `progress` 与终态 `summary` 的投影；突袭/普通条目按作业折叠；等待态 `nextEntry`；缺失进度不伪造完成；终态通知文案 |
 | `combat/pages/CombatTasks.test.tsx` | 单作业 `run_task` 幂等提交（不等待完成）；作业集三模式映射（cli/app→`continuous`、`manual`）；提交在途重复点击只发一次；等待态“开始下一关”与 409 占用重试；失败汇总与失败数；按 `runId` 停止后不再提交；停止确认超时重试；Activity 隐藏/恢复不停止、不重提；断线保留运行态并在重连后恢复观察；刷新按身份恢复；其它 `scope`/其它作业集的 run 不显示为本页执行；未知身份不冒充完成 |
+| `statistics/model/commandOwner.test.ts` | 识别命令经 `beginExecutionIntent` 提交并携带 `scope: statistics`；超时/取消后复用同一幂等键确认已有 Run；Run 终态等待与解析超时不重提；材料刷新不产生 Run；成功后发布作用域失效 |
+| `statistics/pages/DataStatistics.layout.test.tsx` | 识别运行状态来自命令所有者；运行中不重复提交；超时后“继续解析”不重执行；识别快照写入 Query；按作用域失效 |
 | `automation/api/index.test.ts` | 旧同步调用不带 `waitForCompletion` 与幂等头；后台调用写入 `waitForCompletion=false`、`Idempotency-Key` 并转发 signal |
 | `automation/model/automationRun.test.ts` | 活动进度取 `run.progress` 与匹配 runId 的 `schedule`；其它 run 的逐项结果不被借用；不完整结果行被丢弃；终态摘要只来自 `succeeded`/`stopped`；成功/失败/停止/中断通知文案 |
 | `automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/时效校验；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 的冲突；所有分支删除旧键；删除失败仍只观察不重提 |
