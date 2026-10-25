@@ -302,7 +302,7 @@ describe('TrainingQueueCommandOwner', () => {
     expect(harness.publish).not.toHaveBeenCalled()
   })
 
-  it('cancels in-flight queue reads before issuing the write', async () => {
+  it('cancels in-flight queue reads before and after the write', async () => {
     const harness = createHarness([])
     harness.add.mockResolvedValueOnce(success({ queueRevision: 'revision-2' }))
 
@@ -311,6 +311,7 @@ describe('TrainingQueueCommandOwner', () => {
       harness.context,
     )
 
+    expect(harness.context.cancelReads).toHaveBeenCalledTimes(2)
     const cancelOrder = vi.mocked(harness.context.cancelReads!).mock.invocationCallOrder[0]!
     const writeOrder = harness.add.mock.invocationCallOrder[0]!
     expect(cancelOrder).toBeLessThan(writeOrder)

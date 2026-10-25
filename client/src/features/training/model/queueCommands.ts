@@ -8,8 +8,8 @@
  *   最新快照，因此前一条命令的排序/撤销结果不会被后一条基于旧快照的写入覆盖。
  * - 相同干员、相同类型的重复命令在 pending 期间被合并，双击添加/移除不会
  *   产生第二个请求。
- * - 写入前取消在途的队列读取；写入成功后重新读取权威队列并写入同一 Query key，
- *   避免“读取开始于写入之前，却在写入之后落盘”的旧快照覆盖新结果。
+ * - 写入前后各取消一次在途的队列读取；写入成功后重新读取权威队列并写入同一
+ *   Query key，避免“读取开始于写入之前，却在写入之后落盘”的旧快照覆盖新结果。
  * - 写入成功但刷新失败时，按命令效果在最新缓存上计算 fallback，并在快照上标记
  *   `uncertain`；不回滚已经成功的服务端写入。
  * - 只有写入确认成功才发布 `training-queue` / `materials` / `training-plan` /
@@ -487,6 +487,10 @@ export class TrainingQueueCommandOwner {
 
     const writeFlowSync = response.data?.flowSync
     const writeRevision = response.data?.queueRevision
+
+    // 写入期间外部失效可能又发起了一次读取；在读取权威快照前取消它们，
+    // 避免该读取以写入前的服务端状态覆盖本次结果。
+    await context.cancelReads?.()
 
     let refreshed: TrainingQueueSnapshot | null = null
     try {
