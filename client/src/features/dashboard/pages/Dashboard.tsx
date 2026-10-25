@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
-import { getErrorMessage } from '@/shared/api'
-import { executeScheduleNow, getActivity, getScheduleExecutionStatus, runCurrentActivity as runActivityNow } from '@/features/automation'
+import { getActivity, getScheduleExecutionStatus } from '@/features/automation'
 import { getOpenTodayStages, getTodayDrops } from '@/features/statistics'
 import { getTrainingQueue } from '@/features/training'
 import Icons from '@/shared/ui/Icons'
@@ -11,6 +10,7 @@ import { DashboardSkeleton } from '../components/DashboardSkeleton'
 import { FloatingStatusIndicator, probeBackendAvailability, useStatusStore, type StatusMessageType } from '@/features/runtime-status'
 import { appTabRoute } from '@/shared/navigation'
 import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
+import { useDashboardExecution } from '../hooks/useDashboardExecution'
 import DashboardPreviewEntry from '../components/DashboardPreviewEntry'
 import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
@@ -279,10 +279,16 @@ export default function Dashboard() {
     backendStatus,
     backendMessage,
     setMessage: setStatusMessage,
-    setActive: setStatusActive,
   } = useStatusStore()
   const isOnline = useOnlineStatus()
   const openAutomation = useCallback(() => navigate(appTabRoute('automation')), [navigate])
+  const {
+    status: runStatus,
+    isBusy: deviceBusy,
+    observationError,
+    startFlow,
+    runActivity,
+  } = useDashboardExecution({ notify: setStatusMessage })
   const hasLoaded = useDashboardStore(state => state.hasLoaded)
   const activitySummary = useDashboardStore(state => state.activitySummary)
   const scheduleSummary = useDashboardStore(state => state.scheduleSummary)
@@ -295,6 +301,9 @@ export default function Dashboard() {
   const { flowGridRef, flowCardRef, flowPreviewRef, flowGridStyle } = useDashboardFlowLayout(hasLoaded)
   const [quickStartLoading, setQuickStartLoading] = useState(false)
   const [activityPreflightLoading, setActivityPreflightLoading] = useState(false)
+  // 点击可能在重渲染前重复触发：执行意图只允许一个在途，避免第二个提交或提前解锁。
+  const quickStartInFlightRef = useRef(false)
+  const activityPreflightInFlightRef = useRef(false)
   const [quickStartMessage, setQuickStartMessage] = useState('')
   const [quickStartMessageType, setQuickStartMessageType] = useState<StatusMessageType>('default')
 
@@ -365,11 +374,13 @@ export default function Dashboard() {
   }, [isOnline])
 
   const runTodayFlow = async () => {
+    if (quickStartInFlightRef.current) return
     if (!automationAvailable) {
       setQuickStartMessage(serviceStatus === 'offline' ? '当前网络已断开，恢复连接后再试。' : '后端服务暂不可用，请重试连接。')
       setQuickStartMessageType('warning')
       return
     }
+    quickStartInFlightRef.current = true
     setQuickStartLoading(true)
     setQuickStartMessage('')
     setQuickStartMessageType('info')
@@ -383,24 +394,21 @@ export default function Dashboard() {
         return
       }
 
-      const result = await executeScheduleNow('dashboard-quick-start', savedFlow)
-      if (result.success) {
-        setQuickStartMessage(result.message || '今日流程已开始执行')
-        setQuickStartMessageType('success')
-        await loadDashboardData()
-      } else {
-        setQuickStartMessage(result.message || '今日流程启动失败')
-        setQuickStartMessageType('error')
-      }
+      const outcome = await startFlow(savedFlow)
+      setQuickStartMessage(outcome.message)
+      setQuickStartMessageType(outcome.type)
+      if (outcome.ok) await loadDashboardData()
     } catch (error: any) {
       setQuickStartMessage(error?.message || '今日流程启动失败')
       setQuickStartMessageType('error')
     } finally {
+      quickStartInFlightRef.current = false
       setQuickStartLoading(false)
     }
   }
 
   const runCurrentActivity = async () => {
+    if (activityPreflightInFlightRef.current) return
     if (!automationAvailable) {
       const unavailableMessage = serviceStatus === 'offline'
         ? '当前网络已断开，恢复连接后再试。'
@@ -411,35 +419,25 @@ export default function Dashboard() {
       return
     }
     const checkingMessage = '正在检查当前活动是否可以执行…'
+    activityPreflightInFlightRef.current = true
     setActivityPreflightLoading(true)
     setQuickStartMessage(checkingMessage)
     setQuickStartMessageType('info')
-    setStatusActive(true)
     setStatusMessage(checkingMessage, 'info')
     try {
-      const runResult = await runActivityNow()
-      const runData = runResult.data as { executed?: boolean; plan?: { reason?: string }; execution?: { results?: unknown[] } } | undefined
-      if (runResult.success && runData?.executed) {
-        const completedCount = Array.isArray(runData.execution?.results) ? runData.execution.results.length : 0
-        const completedMessage = completedCount > 0 ? `当前活动作业已完成 ${completedCount} 项。` : '当前活动作业已完成。'
-        await loadDashboardData()
-        setQuickStartMessage(completedMessage)
-        setQuickStartMessageType('success')
-        setStatusMessage(completedMessage, 'success')
-      } else {
-        const blockedMessage = runData?.plan?.reason || getErrorMessage(runResult) || '当前活动暂未准备就绪。'
-        setQuickStartMessage(blockedMessage)
-        setQuickStartMessageType('warning')
-        setStatusMessage(blockedMessage, 'warning')
-      }
+      const outcome = await runActivity()
+      if (outcome.executed) await loadDashboardData()
+      setQuickStartMessage(outcome.message)
+      setQuickStartMessageType(outcome.type)
+      setStatusMessage(outcome.message, outcome.type)
     } catch (error: any) {
       const errorMessage = error?.message || '当前活动检查失败'
       setQuickStartMessage(errorMessage)
       setQuickStartMessageType('error')
       setStatusMessage(errorMessage, 'error')
     } finally {
+      activityPreflightInFlightRef.current = false
       setActivityPreflightLoading(false)
-      setStatusActive(false)
     }
   }
 
@@ -447,7 +445,11 @@ export default function Dashboard() {
     return <DashboardSkeleton />
   }
 
-  const flowIsRunning = scheduleSummary.isRunning
+  const flowIsRunning = runStatus.phase === 'running' || runStatus.phase === 'waiting'
+  const flowControlsDisabled = quickStartLoading
+    || activityPreflightLoading
+    || deviceBusy
+    || !automationAvailable
   const connectionTitle = serviceStatus === 'offline'
     ? '当前网络离线'
     : serviceStatus === 'unavailable'
@@ -464,18 +466,30 @@ export default function Dashboard() {
       ? '正在检查当前活动'
       : quickStartLoading
         ? '正在启动今日流程'
-        : flowIsRunning
-          ? (scheduleSummary.currentTask || '流程执行中')
-          : '准备就绪'
+        : runStatus.phase === 'waiting'
+          ? '等待继续'
+          : runStatus.phase === 'running'
+            ? (runStatus.label || scheduleSummary.currentTask || '流程执行中')
+            : runStatus.phase === 'occupied'
+              ? '设备被其他任务占用'
+              : runStatus.phase === 'unknown'
+                ? '执行状态未知'
+                : '准备就绪'
   const flowCommandDescription = !automationAvailable
     ? connectionDescription
     : activityPreflightLoading
       ? '正在确认当前活动与可用作业'
       : quickStartLoading
         ? '正在读取任务配置并提交执行'
-        : flowIsRunning
-          ? (scheduleSummary.message || '自动化任务正在按计划推进')
-          : (scheduleSummary.message || '设备待命，可以开始今天的自动化任务')
+        : runStatus.phase === 'waiting'
+          ? '作业集等待下一关，请回到发起页面继续或停止'
+          : runStatus.phase === 'running'
+            ? (runStatus.detail || scheduleSummary.message || '自动化任务正在按计划推进')
+            : runStatus.phase === 'occupied'
+              ? '设备被未纳管的执行占用，等待结束后再开始'
+              : runStatus.phase === 'unknown'
+                ? (observationError || '暂时无法确认执行状态，恢复连接后会自动刷新')
+                : (scheduleSummary.message || '设备待命，可以开始今天的自动化任务')
   const activityCompleted = activitySummary.completion?.complete === true
 
   return (
@@ -560,7 +574,7 @@ export default function Dashboard() {
                     <Button
                       onClick={runCurrentActivity}
                       variant="secondary"
-                      disabled={quickStartLoading || activityPreflightLoading || flowIsRunning || !automationAvailable}
+                      disabled={flowControlsDisabled}
                       loading={activityPreflightLoading}
                       loadingText="检查中"
                       statusKey={activityPreflightLoading ? 'running' : 'ready'}
@@ -582,14 +596,14 @@ export default function Dashboard() {
                   <Button
                     onClick={runTodayFlow}
                     variant="primary"
-                    disabled={quickStartLoading || activityPreflightLoading || flowIsRunning || !automationAvailable}
+                    disabled={flowControlsDisabled}
                     loading={quickStartLoading}
                     loadingText="启动中"
                     statusKey={quickStartLoading ? 'starting' : flowIsRunning ? 'running' : 'ready'}
                     className="dashboard-flow-primary-action dashboard-flow-shining-action justify-center whitespace-nowrap"
                     icon={<Play className="h-4 w-4" strokeWidth={2} />}
                   >
-                    {flowIsRunning ? '正在运行' : '开始今日流程'}
+                    {runStatus.phase === 'waiting' ? '等待继续' : flowIsRunning ? '正在运行' : '开始今日流程'}
                   </Button>
                 </div>
               </div>

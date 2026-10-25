@@ -13,10 +13,26 @@ export async function getActivity(clientType: string = 'Official'): Promise<ApiR
   return parseJsonResponse(response)
 }
 
-export async function runCurrentActivity(): Promise<ApiResponse> {
+export interface ActivityRunOptions {
+  idempotencyKey?: string
+  signal?: AbortSignal
+}
+
+/**
+ * 执行当前活动作业。
+ *
+ * 该端点始终保持同步：服务端先做活动预检（导航链、活动作业候选与偏好），
+ * 预检不通过时直接返回 `executed=false` 与原因。`waitForCompletion` 不适用；
+ * 调用方在响应中拿到 `runId` 后交给执行控制器保存身份。
+ */
+export async function runCurrentActivity(options: ActivityRunOptions = {}): Promise<ApiResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey
+
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/activity/run`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    signal: options.signal,
   })
   return parseJsonResponse(response)
 }
