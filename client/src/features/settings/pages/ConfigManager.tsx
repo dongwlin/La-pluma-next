@@ -59,7 +59,10 @@ export default function ConfigManager() {
     loaded: connectionLoaded,
   } = useSettingsConnectionConfig()
   const connectionSaving = connectionSyncState === 'saving'
-  const { version: versionInfo } = useSettingsVersion()
+  const {
+    version: versionInfo,
+    reload: reloadVersion,
+  } = useSettingsVersion()
   const {
     path: configDir,
     status: configDirStatus,
@@ -99,7 +102,7 @@ export default function ConfigManager() {
     switchCoreChannel,
     updateCli,
     updateResources,
-  } = useSettingsUpdates(setStatusMessage)
+  } = useSettingsUpdates(setStatusMessage, reloadVersion)
   const updatingCore = updateOperation === 'core' || updateOperation === 'core-channel'
   const updatingCli = updateOperation === 'cli'
   const hotUpdating = updateOperation === 'resources'

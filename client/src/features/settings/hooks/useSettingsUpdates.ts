@@ -13,7 +13,6 @@
  */
 
 import { useCallback, useSyncExternalStore } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import {
   SETTINGS_UPDATE_RESOURCE_SCOPES,
@@ -24,7 +23,6 @@ import {
   type UpdateFeedback,
   type UpdateOperation,
 } from '../model/updateCommands'
-import { settingsKeys } from '../model/queryKeys'
 
 type SettingsNotify = (
   message: string,
@@ -45,10 +43,10 @@ export interface UseSettingsUpdatesResult {
 
 export function useSettingsUpdates(
   notify: SettingsNotify,
+  reloadVersion: () => Promise<void>,
   owner: SettingsUpdateOwner = settingsUpdateOwner,
 ): UseSettingsUpdatesResult {
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
-  const queryClient = useQueryClient()
 
   const run = useCallback(async (
     startMessage: string,
@@ -67,9 +65,9 @@ export function useSettingsUpdates(
         })
       }
       if (outcome.versionChanged) {
-        // Activity 隐藏时版本 Query 没有观察者；invalidate 会标记过期，
-        // 恢复显示后按 refetchOnMount 重新读取，而不是被新鲜期挡住。
-        await queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })
+        // 版本资源自己决定失效方式：可见时立即重取，Activity 隐藏时保留
+        // 失效标记，恢复显示后重取，而不是被新鲜期挡住。
+        await reloadVersion()
       }
     }
 
@@ -78,7 +76,7 @@ export function useSettingsUpdates(
       else notify(outcome.message)
     }
     return outcome
-  }, [notify, owner, queryClient])
+  }, [notify, owner, reloadVersion])
 
   const updateCore = useCallback(() => (
     run('正在更新 MaaCore 并同步最新资源...', () => owner.updateCore())

@@ -78,7 +78,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 ### 3.2 页面语义
 
-- 版本读取失败保持静默（迁移前行为）；页面继续渲染其余内容。更新成功后的版本同步由 FPR-026 的更新命令所有者 `invalidateQueries` 同一 `settings/version`，页面可见时立即重取，隐藏时恢复显示后重取，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
+- 版本读取失败保持静默（迁移前行为）；页面继续渲染其余内容。更新成功后的版本同步由 FPR-026 的更新命令调用 `useSettingsVersion().reload()`，其内部 `invalidateQueries` 同一 `settings/version`：页面可见时立即重取，隐藏时恢复显示后重取，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 - 配置目录首次读取中显示“正在读取目录...”；从未成功读取且失败时显示 `配置目录读取失败: <原因>` 与“重试”按钮，重试走 `refetchQueries` 同一 key。
 - 后台刷新失败保留最近一次成功路径；只有从未成功读取过才显示错误，避免 Activity 恢复后的后台失败清空可用路径。
 - 打开目录有两个原有入口：只读 section 的卡片头按钮与配置目录卡片按钮。两者都调用 `useSettingsConfigDirectory().open()`；成功提示“已打开配置目录”，失败提示 `打开失败: <原因>`，不触发 Query 重取。

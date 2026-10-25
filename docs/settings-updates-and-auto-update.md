@@ -9,7 +9,7 @@
 | 能力 | 唯一所有者 | 形态 | 不负责 |
 | --- | --- | --- | --- |
 | core 更新 / 渠道切换 / CLI 更新 / 资源热更新 | `features/settings/model/updateCommands.ts` 的 `SettingsUpdateOwner` | 显式 POST 命令；共用一条在途槽位；不进入 Query | 版本读取、跨域失效发布 |
-| 更新后的版本同步 | `features/settings/hooks/useSettingsUpdates.ts` | 成功确认后 `invalidateQueries` 同一 `settings/version` | 伪造版本快照 |
+| 更新后的版本同步 | `features/settings/hooks/useSettingsUpdates.ts` 调用 `useSettingsVersion().reload()` | 后者 `invalidateQueries` 同一 `settings/version` | 伪造版本快照 |
 | 更新后的跨域失效 | 同一 hook | 成功确认后发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`（`cause: resource-update`） | 清空 Query 缓存、轮询 |
 | 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
 | 自动更新归一化与时间校验 | `features/settings/model/configNormalization.ts` | 纯函数 | 草稿生命周期 |
@@ -56,7 +56,7 @@
 
 更新命令确认成功后，React 适配层执行两项副作用：
 
-1. **版本失效**：`queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被 30s 新鲜期挡住。
+1. **版本失效**：调用 `useSettingsVersion().reload()`，其内部 `queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被 30s 新鲜期挡住。
 2. **资源失效**：core 更新、渠道切换与资源热更新发布 `catalog`、`materials`、`training-plan`、`dashboard-snapshot`，`cause: 'resource-update'`。CLI 更新只改变 CLI 版本，不发布资源失效。
 
 影响范围与[资源归属与失效端口](resource-ownership.md)第 5 节一致：
