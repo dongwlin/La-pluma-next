@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, type ReactNode } from 'react'
+import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createQueryClient } from '@/shared/query'
 import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import OperatorTraining from './OperatorTraining'
@@ -65,6 +67,7 @@ vi.mock('@/features/runtime-status', () => ({
   FloatingStatusIndicator: () => null,
 }))
 
+let client: ReturnType<typeof createQueryClient>
 let container: HTMLDivElement
 let root: Root
 
@@ -99,7 +102,12 @@ const queueItem = (operatorId: string, name: string): TrainingQueueItem => ({
   progress: 25,
 })
 
-const deferred = <T,>() => {
+interface DeferredResult<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+}
+
+const deferred = <T,>(): DeferredResult<T> => {
   let resolve!: (value: T) => void
   const promise = new Promise<T>(resolvePromise => {
     resolve = resolvePromise
@@ -148,9 +156,15 @@ const mockMutableQueue = (initialQueue: TrainingQueueItem[]) => {
 
 const flush = async () => {
   await act(async () => {
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    if (vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+      return
+    }
+    // Query 的观察者通知走 setTimeout(0)，需要多个宏任务轮次才能稳定。
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
   })
 }
 
@@ -163,7 +177,24 @@ const click = async (element: HTMLElement) => {
 
 const renderComponent = async () => {
   await act(async () => {
-    root.render(<OperatorTraining />)
+    root.render(
+      <QueryClientProvider client={client}>
+        <OperatorTraining />
+      </QueryClientProvider>,
+    )
+  })
+  await flush()
+}
+
+const renderWithActivity = async (mode: 'visible' | 'hidden') => {
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <Activity mode={mode}>
+          <OperatorTraining />
+        </Activity>
+      </QueryClientProvider>,
+    )
   })
   await flush()
 }
@@ -187,6 +218,23 @@ const queueButton = (label: string) => {
 const queueOrder = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]'))
   .map(button => button.getAttribute('aria-label')?.replace(/^移除/, ''))
 
+const statusCount = (label: string) => {
+  const segment = Array.from(document.querySelectorAll<HTMLButtonElement>('.training-status-segment'))
+    .find(button => button.textContent?.includes(label))
+  expect(segment, `status segment "${label}"`).toBeDefined()
+  return segment!.querySelector('.training-status-count')?.textContent
+}
+
+const selectRarity = async (dialog: HTMLElement, value: string) => {
+  const select = dialog.querySelector<HTMLSelectElement>('select[aria-label="稀有度"]')
+  expect(select).not.toBeNull()
+  await act(async () => {
+    select!.value = value
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await flush()
+}
+
 const openPicker = async () => {
   const opener = buttonWithText('添加干员', container)
   opener.focus()
@@ -209,7 +257,7 @@ describe('OperatorTraining queue workspace', () => {
       dispatchEvent: vi.fn(),
     }))
     mocks.getOperatorList.mockReset().mockResolvedValue({ success: true, data: { operators: [] } })
-    mocks.getAllOperators.mockReset().mockResolvedValue({ success: true, data: { operators: [] } })
+    mocks.getAllOperators.mockReset().mockResolvedValue({ success: true, data: [] })
     mocks.getOperBoxData.mockReset().mockResolvedValue({ success: true, data: { data: [] } })
     mocks.getTrainingQueue.mockReset().mockResolvedValue(queueResponse([]))
     mocks.addToTrainingQueue.mockReset()
@@ -220,6 +268,7 @@ describe('OperatorTraining queue workspace', () => {
     mocks.applyTrainingPlan.mockReset().mockResolvedValue({ success: true, data: { stageCount: 1 } })
     mocks.retryTrainingSync.mockReset()
     mocks.setMessage.mockReset()
+    client = createQueryClient()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -227,6 +276,7 @@ describe('OperatorTraining queue workspace', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount())
+    client.clear()
     container.remove()
     vi.useRealTimers()
     vi.restoreAllMocks()
@@ -257,8 +307,11 @@ describe('OperatorTraining queue workspace', () => {
     expect(queueOrder()).toEqual(['阿米娅'])
   })
 
-  it('shows retryable errors instead of empty states when initial reads fail', async () => {
-    mocks.getOperatorList.mockRejectedValueOnce(new Error('干员服务暂不可用'))
+  it('shows retryable candidate and queue errors instead of empty states', async () => {
+    mocks.getOperatorList.mockImplementation(async (filters: { status?: string } = {}) => {
+      if (filters.status === 'trainable') throw new Error('干员服务暂不可用')
+      return { success: true, data: { operators: [] } }
+    })
     mocks.getTrainingQueue
       .mockRejectedValueOnce(new Error('队列服务暂不可用'))
       .mockResolvedValueOnce(queueResponse([]))
@@ -272,6 +325,15 @@ describe('OperatorTraining queue workspace', () => {
     expect(document.body.textContent).toContain('队列服务暂不可用')
     expect(document.body.textContent).not.toContain('没有可养成干员')
     expect(document.body.textContent).not.toContain('养成队列还是空的')
+
+    mocks.getOperatorList.mockResolvedValue({ success: true, data: { operators: [] } })
+    const listAlert = Array.from(document.querySelectorAll<HTMLElement>('[role="alert"]'))
+      .find(alert => alert.textContent?.includes('干员服务暂不可用'))
+    const listRetry = listAlert?.querySelector<HTMLButtonElement>('button')
+    expect(listRetry).not.toBeNull()
+    await click(listRetry!)
+    expect(document.body.textContent).not.toContain('干员服务暂不可用')
+    expect(document.body.textContent).toContain('没有可养成干员')
 
     const queueAlert = Array.from(container.querySelectorAll<HTMLElement>('[role="alert"]'))
       .find(alert => alert.textContent?.includes('队列服务暂不可用'))
@@ -433,6 +495,199 @@ describe('OperatorTraining queue workspace', () => {
 
     expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(1)
     expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes only the queue for a queue invalidation while candidate queries stay cached', async () => {
+    mocks.getTrainingQueue.mockResolvedValue(queueResponse([queueItem('char_current', '阿米娅')]))
+    await renderComponent()
+
+    mocks.getOperatorList.mockClear()
+    mocks.getAllOperators.mockClear()
+    mocks.getOperBoxData.mockClear()
+    mocks.getTrainingQueue.mockClear()
+
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['training-queue'], cause: 'training-queue' })
+    })
+    await flush()
+
+    expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperatorList).not.toHaveBeenCalled()
+    expect(mocks.getAllOperators).not.toHaveBeenCalled()
+    expect(mocks.getOperBoxData).not.toHaveBeenCalled()
+  })
+
+  it('shows trainable, owned, and full counts from the training queries', async () => {
+    mocks.getOperatorList.mockImplementation(async (filters: { status?: string } = {}) => {
+      if (filters.status === 'trainable') {
+        return {
+          success: true,
+          data: { operators: [operator('char_a', '能天使'), operator('char_b', '艾雅法拉')] },
+        }
+      }
+      if (filters.status === 'owned') {
+        return { success: true, data: { operators: [operator('char_a', '能天使')] } }
+      }
+      return { success: true, data: { operators: [] } }
+    })
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'char_a', name: '能天使', rarity: 6, profession: 'SNIPER', level: 0, elite: 0, potential: 0 },
+        { id: 'char_b', name: '艾雅法拉', rarity: 6, profession: 'CASTER', level: 0, elite: 0, potential: 0 },
+      ],
+    })
+
+    await renderComponent()
+    await openPicker()
+
+    expect(statusCount('可养成')).toBe('2')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
+  })
+
+  it('clears the candidate list on failure while keeping the last status counts', async () => {
+    let fail = false
+    mocks.getOperatorList.mockImplementation(async (filters: { status?: string } = {}) => {
+      if (fail) throw new Error('干员服务暂不可用')
+      if (filters.status === 'trainable') {
+        return { success: true, data: { operators: [operator('char_a', '阿米娅')] } }
+      }
+      if (filters.status === 'owned') {
+        return { success: true, data: { operators: [operator('char_a', '阿米娅')] } }
+      }
+      return { success: true, data: { operators: [] } }
+    })
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'char_a', name: '阿米娅', rarity: 6, profession: 'CASTER', level: 0, elite: 0, potential: 0 },
+        { id: 'char_b', name: '能天使', rarity: 6, profession: 'SNIPER', level: 0, elite: 0, potential: 0 },
+      ],
+    })
+
+    await renderComponent()
+    const { dialog } = await openPicker()
+    expect(dialog.textContent).toContain('阿米娅')
+    expect(statusCount('可养成')).toBe('1')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
+
+    fail = true
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['catalog'], cause: 'resource-update' })
+    })
+    await flush()
+
+    expect(dialog.textContent).toContain('干员列表加载失败')
+    expect(dialog.textContent).toContain('干员服务暂不可用')
+    expect(dialog.textContent).not.toContain('阿米娅')
+    expect(statusCount('可养成')).toBe('1')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
+  })
+
+  it('does not let a late candidate response overwrite a newer rarity filter', async () => {
+    const sixStarRequest = deferred<{ success: boolean; data: { operators: TrainingOperator[] } }>()
+    const fiveStarRequest = deferred<{ success: boolean; data: { operators: TrainingOperator[] } }>()
+    mocks.getOperatorList.mockImplementation(async (filters: { status?: string; rarity?: number } = {}) => {
+      if (filters.status === 'trainable' && filters.rarity === 6) return sixStarRequest.promise
+      if (filters.status === 'trainable' && filters.rarity === 5) return fiveStarRequest.promise
+      return { success: true, data: { operators: [] } }
+    })
+
+    await renderComponent()
+    const { dialog } = await openPicker()
+    await selectRarity(dialog, '6')
+    expect(dialog.textContent).toContain('正在读取干员')
+
+    await selectRarity(dialog, '5')
+    await act(async () => sixStarRequest.resolve({
+      success: true,
+      data: { operators: [operator('char_six', '六星干员')] },
+    }))
+    await flush()
+
+    expect(dialog.textContent).not.toContain('六星干员')
+
+    await act(async () => fiveStarRequest.resolve({
+      success: true,
+      data: { operators: [operator('char_five', '五星干员')] },
+    }))
+    await flush()
+
+    expect(dialog.textContent).toContain('五星干员')
+    expect(dialog.textContent).not.toContain('六星干员')
+  })
+
+  it('does not show stale candidate data across an Activity hide and restore cycle', async () => {
+    const operatorRequests: Array<DeferredResult<{ success: boolean; data: { operators: TrainingOperator[] } }>> = []
+    const catalogRequests: Array<DeferredResult<{ success: boolean; data: unknown[] }>> = []
+    const operBoxRequests: Array<DeferredResult<{ success: boolean; data: { data: unknown[] } }>> = []
+
+    mocks.getOperatorList.mockImplementation(async () => {
+      const request = deferred<{ success: boolean; data: { operators: TrainingOperator[] } }>()
+      operatorRequests.push(request)
+      return request.promise
+    })
+    mocks.getAllOperators.mockImplementation(async () => {
+      const request = deferred<{ success: boolean; data: unknown[] }>()
+      catalogRequests.push(request)
+      return request.promise
+    })
+    mocks.getOperBoxData.mockImplementation(async () => {
+      const request = deferred<{ success: boolean; data: { data: unknown[] } }>()
+      operBoxRequests.push(request)
+      return request.promise
+    })
+
+    await renderWithActivity('visible')
+    const initialOperatorCount = operatorRequests.length
+    const initialCatalogCount = catalogRequests.length
+    const initialOperBoxCount = operBoxRequests.length
+    expect(initialOperatorCount).toBeGreaterThan(0)
+
+    await renderWithActivity('hidden')
+    await renderWithActivity('visible')
+    expect(operatorRequests.length).toBeGreaterThan(initialOperatorCount)
+
+    await act(async () => {
+      operatorRequests.slice(0, initialOperatorCount).forEach(request => request.resolve({
+        success: true,
+        data: { operators: [operator('char_old', '旧干员')] },
+      }))
+      catalogRequests.slice(0, initialCatalogCount).forEach(request => request.resolve({
+        success: true,
+        data: [],
+      }))
+      operBoxRequests.slice(0, initialOperBoxCount).forEach(request => request.resolve({
+        success: true,
+        data: { data: [] },
+      }))
+    })
+    await flush()
+
+    const { dialog } = await openPicker()
+    expect(dialog.textContent).not.toContain('旧干员')
+
+    await act(async () => {
+      operatorRequests.slice(initialOperatorCount).forEach(request => request.resolve({
+        success: true,
+        data: { operators: [operator('char_new', '新干员')] },
+      }))
+      catalogRequests.slice(initialCatalogCount).forEach(request => request.resolve({
+        success: true,
+        data: [],
+      }))
+      operBoxRequests.slice(initialOperBoxCount).forEach(request => request.resolve({
+        success: true,
+        data: { data: [] },
+      }))
+    })
+    await flush()
+
+    expect(dialog.textContent).toContain('新干员')
+    expect(dialog.textContent).not.toContain('旧干员')
   })
 
   it('invalidates a previewed plan when resource invalidation reports a new plan basis', async () => {

@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpToLine, Check, ClipboardList, Filter, Package, Plus, Search, Sparkles, Trash2, UserRoundSearch, X } from 'lucide-react'
-import { getOperatorList, getTrainingQueue, addToTrainingQueue, removeFromTrainingQueue, updateTrainingQueueOrder, updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
-import { getAllOperators, getItemIconUrl, getOperBoxData } from '@/features/game-data'
+import { getTrainingQueue, addToTrainingQueue, removeFromTrainingQueue, updateTrainingQueueOrder, updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
+import { getItemIconUrl } from '@/features/game-data'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
+import { trainingCandidatesQueryOptions, trainingStatusCountsQueryOptions } from '../model/queries'
+import { trainingKeys } from '../model/queryKeys'
+import { EMPTY_TRAINING_COUNTS } from '../model/statusCounts'
 import { PageHeader, Button, EmptyState, IconButton, Input, Loading, Select, Switch } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
@@ -107,14 +111,6 @@ function TrainingLoadError({
   );
 }
 
-type FallbackOperatorRow = Partial<TrainingOperator> & {
-  elite?: number
-  level?: number
-  potential?: number
-  position?: string
-}
-
-type TrainingStatusCounts = Record<TrainingFilters['status'], number>
 const OPERATOR_RENDER_BATCH_SIZE = 72
 const TRAINING_RESOURCE_SCOPES = [
   'depot',
@@ -124,26 +120,6 @@ const TRAINING_RESOURCE_SCOPES = [
   'training-queue',
   'training-plan',
 ] as const
-
-const extractOperatorRows = (payload: unknown): FallbackOperatorRow[] => {
-  const data = payload as { operators?: FallbackOperatorRow[]; data?: FallbackOperatorRow[] } | FallbackOperatorRow[] | null | undefined;
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.operators)) return data.operators;
-  if (Array.isArray(data?.data)) return data.data;
-  return [];
-};
-
-const countOperatorsByCurrentMetaFilters = (
-  rows: FallbackOperatorRow[],
-  options: { rarity?: number; needsElite2?: boolean } = {}
-) => rows.filter(operator => {
-  if (options.rarity && operator.rarity !== options.rarity) return false;
-  if (options.needsElite2) {
-    const elite = operator.currentElite ?? operator.elite ?? 0;
-    if (elite >= 2) return false;
-  }
-  return true;
-}).length;
 
 export default function OperatorTraining() {
   const shouldReduceMotion = useReducedMotion();
@@ -157,7 +133,6 @@ export default function OperatorTraining() {
     setStatusMessage(msg, 'error')
   }
   
-  const [operators, setOperators] = useState<TrainingOperator[]>([]);
   const [queue, setQueue] = useState<TrainingQueueItem[]>([]);
   const [settings, setSettings] = useState<TrainingSettings>({
     useMedicine: 0,
@@ -167,16 +142,8 @@ export default function OperatorTraining() {
   });
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [loading, setLoading] = useState(false);
-  const [operatorsLoading, setOperatorsLoading] = useState(false);
-  const [operatorsError, setOperatorsError] = useState<string | null>(null);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
-  const [statusCountsLoading, setStatusCountsLoading] = useState(false);
-  const [trainingStatusCounts, setTrainingStatusCounts] = useState<TrainingStatusCounts>({
-    trainable: 0,
-    owned: 0,
-    all: 0
-  });
   const [filters, setFilters] = useState<TrainingFilters>({
     rarity: '',
     status: 'trainable',
@@ -188,6 +155,39 @@ export default function OperatorTraining() {
     setTabRef: setStatusTabRef,
     handleTabKeyDown: handleStatusKeyDown,
   } = useFluidTabIndicator(filters.status);
+
+  // 候选列表与三种状态计数由 training 领域 query 持有：页面不再保存请求 id、
+  // request 生命周期或资源副本；筛选切换按 key 隔离，取消由 Query signal 负责。
+  const queryClient = useQueryClient()
+  const rarityFilter = filters.rarity ? Number.parseInt(filters.rarity, 10) : null
+  const candidateOptions = useMemo(
+    () => trainingCandidatesQueryOptions({
+      status: filters.status,
+      rarity: rarityFilter,
+      needsElite2: filters.needsElite2,
+    }),
+    [filters.status, rarityFilter, filters.needsElite2],
+  )
+  const countsOptions = useMemo(
+    () => trainingStatusCountsQueryOptions({
+      rarity: rarityFilter,
+      needsElite2: filters.needsElite2,
+    }),
+    [rarityFilter, filters.needsElite2],
+  )
+  const candidatesQuery = useQuery(candidateOptions)
+  const countsQuery = useQuery(countsOptions)
+  const operators = candidatesQuery.data ?? []
+  const operatorsLoading = candidatesQuery.isPending
+  const operatorsError = candidatesQuery.isError
+    ? (candidatesQuery.error instanceof Error && candidatesQuery.error.message
+        ? candidatesQuery.error.message
+        : '干员列表加载失败，请稍后重试')
+    : null
+  const trainingStatusCounts = countsQuery.data ?? EMPTY_TRAINING_COUNTS
+  // 计数失败静默保留旧值；只有读取中且尚无计数时显示占位。
+  const statusCountsLoading = countsQuery.isFetching
+
   const [searchTerm, setSearchTerm] = useState('');
   const [planMode, setPlanMode] = useState<TrainingPlanMode>('current');
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -203,8 +203,6 @@ export default function OperatorTraining() {
   const [visibleOperatorLimit, setVisibleOperatorLimit] = useState(OPERATOR_RENDER_BATCH_SIZE);
   const [pendingOperatorIds, setPendingOperatorIds] = useState<Set<string>>(new Set());
   const [recentlyRemoved, setRecentlyRemoved] = useState<{ item: TrainingQueueItem; index: number } | null>(null);
-  const operatorsRequestRef = useRef(0);
-  const statusCountsRequestRef = useRef(0);
   const settingsRequestRef = useRef(0);
   const queueRequestRef = useRef(0);
   const queueRevisionRef = useRef<string | null>(null);
@@ -230,46 +228,6 @@ export default function OperatorTraining() {
     return sourcePlan.openStages?.length ?? sourcePlan.stages?.filter(stage => stage.isOpen !== false).length ?? 0;
   };
 
-  const loadTrainingStatusCounts = useCallback(async () => {
-    const requestId = ++statusCountsRequestRef.current;
-    const requestedRarity = filters.rarity;
-    const requestedNeedsElite2 = filters.needsElite2;
-    setStatusCountsLoading(true);
-    try {
-      const rarity = requestedRarity ? parseInt(requestedRarity) : undefined;
-      const [trainableResponse, ownedResponse, allOperatorsResponse, operBoxResponse] = await Promise.all([
-        getOperatorList({ status: 'trainable', rarity, needsElite2: requestedNeedsElite2 }),
-        getOperatorList({ status: 'owned', rarity, needsElite2: requestedNeedsElite2 }),
-        getAllOperators(),
-        getOperBoxData()
-      ]);
-
-      if (requestId !== statusCountsRequestRef.current) return;
-
-      const trainableRows = trainableResponse.success ? extractOperatorRows(trainableResponse.data) : [];
-      const ownedRows = ownedResponse.success ? extractOperatorRows(ownedResponse.data) : [];
-      const allRows = allOperatorsResponse.success ? extractOperatorRows(allOperatorsResponse.data) : [];
-      const operBoxRows = operBoxResponse.success ? extractOperatorRows(operBoxResponse.data) : [];
-
-      setTrainingStatusCounts(prev => {
-        const ownedCount = ownedRows.length > 0
-          ? ownedRows.length
-          : countOperatorsByCurrentMetaFilters(operBoxRows, { rarity, needsElite2: requestedNeedsElite2 });
-        const allCount = countOperatorsByCurrentMetaFilters(allRows, { rarity });
-
-        return {
-          trainable: trainableRows.length,
-          owned: ownedCount,
-          all: allCount > 0 ? allCount : prev.all
-        };
-      });
-    } catch (error) {
-      // 静默失败，保留上一次统计
-    } finally {
-      if (requestId === statusCountsRequestRef.current) setStatusCountsLoading(false);
-    }
-  }, [filters.rarity, filters.needsElite2]);
-
   useEffect(() => {
     setVisibleOperatorLimit(OPERATOR_RENDER_BATCH_SIZE);
   }, [filters.status, filters.rarity, filters.needsElite2, searchTerm]);
@@ -278,87 +236,6 @@ export default function OperatorTraining() {
   useEffect(() => {
     void loadQueue(true);
   }, []);
-
-  const loadOperators = useCallback(async () => {
-    const requestId = ++operatorsRequestRef.current;
-    const requestedFilters = { ...filters };
-    try {
-      setOperatorsLoading(true);
-      setOperatorsError(null);
-      const response = await getOperatorList({
-        ...requestedFilters,
-        rarity: requestedFilters.rarity ? parseInt(requestedFilters.rarity) : undefined
-      });
-      if (requestId !== operatorsRequestRef.current) return;
-      if (!response.success) {
-        throw new Error(response.message || response.errorInfo?.message || response.error || '干员列表加载失败');
-      }
-      if (response.success) {
-        // 适配新的响应格式：data.operators 是数组
-        let nextOperators: TrainingOperator[] = response.data.operators || response.data || [];
-
-        if (requestedFilters.status === 'all' && nextOperators.length === 0) {
-          const [allOperatorsResponse, operBoxResponse] = await Promise.all([
-            getAllOperators(),
-            getOperBoxData()
-          ]);
-
-          if (allOperatorsResponse.success) {
-            const allOperators: FallbackOperatorRow[] = allOperatorsResponse.data.operators || allOperatorsResponse.data || [];
-            const operBoxPayload = operBoxResponse.success ? operBoxResponse.data : null;
-            const ownedOperators: FallbackOperatorRow[] = operBoxPayload?.data || operBoxPayload?.operators || [];
-            const ownedMap = new Map(ownedOperators.map(operator => [operator.id, operator]));
-            if (requestId !== operatorsRequestRef.current) return;
-            const rarityFilter = requestedFilters.rarity ? parseInt(requestedFilters.rarity) : null;
-
-            nextOperators = allOperators
-              .filter(operator => !rarityFilter || operator.rarity === rarityFilter)
-              .map((operator) => {
-                const ownedOperator = ownedMap.get(operator.id);
-                const owned = Boolean(ownedOperator);
-                const disabledReason = owned ? 'missing_material_data' : 'unowned';
-
-                return {
-                  id: operator.id || '',
-                  name: ownedOperator?.name || operator.name || '未知干员',
-                  rarity: ownedOperator?.rarity ?? operator.rarity ?? 0,
-                  profession: operator.profession || ownedOperator?.profession || '未知',
-                  currentElite: owned ? (ownedOperator?.elite || 0) : 0,
-                  currentLevel: owned ? (ownedOperator?.level || 1) : 0,
-                  targetElite: 2,
-                  owned,
-                  potential: owned ? (ownedOperator?.potential || 1) : 0,
-                  hasMaterialData: false,
-                  canTrain: false,
-                  disabledReason,
-                  trainingStatus: disabledReason
-                };
-              });
-          } else {
-            throw new Error(allOperatorsResponse.message || allOperatorsResponse.errorInfo?.message || allOperatorsResponse.error || '完整干员列表加载失败');
-          }
-        }
-
-        if (requestId === operatorsRequestRef.current) setOperators(nextOperators);
-      }
-    } catch (error) {
-      if (requestId === operatorsRequestRef.current) {
-        setOperators([]);
-        setOperatorsError(error instanceof Error && error.message ? error.message : '干员列表加载失败，请稍后重试');
-      }
-    } finally {
-      if (requestId === operatorsRequestRef.current) setOperatorsLoading(false);
-    }
-  }, [filters]);
-
-  // 加载干员列表
-  useEffect(() => {
-    void loadOperators();
-  }, [loadOperators]);
-
-  useEffect(() => {
-    void loadTrainingStatusCounts();
-  }, [loadTrainingStatusCounts]);
 
   const loadQueue = async (syncSettings = false) => {
     const requestId = ++queueRequestRef.current;
@@ -419,8 +296,8 @@ export default function OperatorTraining() {
     setPlanError(null);
   };
 
-  // 识别、材料刷新与资源更新可能来自本页之外。只刷新受影响的读取，
-  // 并在计划前提变化时作废旧计划；队列写入仍由本页 mutation 自己刷新。
+  // 识别、材料刷新与资源更新可能来自本页之外。候选列表与计数按资源作用域
+  // 失效领域 query，计划前提变化时作废旧计划；队列写入仍由本页 mutation 自己刷新。
   useResourceInvalidation(TRAINING_RESOURCE_SCOPES, ({ resources }) => {
     const touchesPlan = resources.some(resource => (
       resource === 'depot' || resource === 'materials' || resource === 'training-plan'
@@ -435,8 +312,8 @@ export default function OperatorTraining() {
     if (touchesPlan) invalidatePlan()
     if (touchesQueue) void loadQueue()
     if (touchesOperators) {
-      void loadOperators()
-      void loadTrainingStatusCounts()
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('candidates') })
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('counts') })
     }
   });
 
@@ -864,7 +741,7 @@ export default function OperatorTraining() {
             <TrainingLoadError
               title="干员列表加载失败"
               description={operatorsError}
-              onRetry={() => void loadOperators()}
+              onRetry={() => void candidatesQuery.refetch()}
             />
           ) : operatorEmptyState ? (
             <OperatorEmptyState {...operatorEmptyState} />
