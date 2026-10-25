@@ -477,6 +477,23 @@ describe('settings device connection owner', () => {
     })
   })
 
+  it('keeps a discovered-device backfill when an earlier server read returns late', async () => {
+    const { owner, connection } = createOwner({
+      test: vi.fn<TestRequest>(async () => ok({ success: true, message: '已连接' })),
+    })
+    const readToken = connection.beginRead()
+
+    await owner.selectDiscoveredDevice(device({ address: '127.0.0.1:5555' }))
+
+    const adopted = connection.adoptServer({
+      config: { ...connection.getState().draft, address: '10.0.0.2:5555' },
+      readToken,
+    })
+
+    expect(adopted).toBe(false)
+    expect(connection.getState().draft.address).toBe('127.0.0.1:5555')
+  })
+
   it('uses the latest draft adb path when the discovered device has none', () => {
     const { owner, connection, test } = createOwner({
       test: vi.fn<TestRequest>(() => deferred<ApiResponse<unknown>>().promise),
