@@ -261,6 +261,28 @@ describe('SettingsUpdateOwner', () => {
     })
   })
 
+  it('tracks the running slot for CLI and resource commands', async () => {
+    const pendingCli = deferred<ApiResponse>()
+    const pendingResources = deferred<ApiResponse>()
+    const owner = new SettingsUpdateOwner({
+      updateCore: vi.fn(),
+      updateCli: () => pendingCli.promise,
+      updateResources: () => pendingResources.promise,
+    })
+
+    const cli = owner.updateCli()
+    expect(owner.getState().running).toBe('cli')
+    pendingCli.resolve({ success: true })
+    await cli
+    expect(owner.getState().running).toBeNull()
+
+    const resources = owner.updateResources()
+    expect(owner.getState().running).toBe('resources')
+    pendingResources.resolve({ success: true })
+    await resources
+    expect(owner.getState().running).toBeNull()
+  })
+
   it('shares one in-flight slot across all update commands', async () => {
     const pending = deferred<ApiResponse>()
     const { owner, mocks } = createOwner({ updateCore: pending.promise })

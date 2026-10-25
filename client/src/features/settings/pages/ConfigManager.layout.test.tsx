@@ -438,6 +438,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.updateMaaCore).toHaveBeenCalledOnce()
     expect(mocks.updateMaaCli).not.toHaveBeenCalled()
     expect(cliButton.disabled).toBe(true)
+    expect(mocks.setMessage).toHaveBeenCalledWith('正在更新 MaaCore 并同步最新资源...')
 
     await act(async () => pendingCoreUpdate.resolve({ success: true, message: '已更新' }))
     await settle()
@@ -476,6 +477,20 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => retryButton?.click())
     await flush()
     expect(mocks.hotUpdateResources).toHaveBeenCalledOnce()
+    expect(invalidationEvents).toHaveLength(1)
+  })
+
+  it('switches the core channel using the current version and publishes resources', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('切换测试版')?.click())
+    await flush()
+
+    expect(mocks.updateMaaCore).toHaveBeenCalledWith('beta')
+    expect(mocks.setMessage).toHaveBeenCalledWith('正在切换到 Beta 渠道...')
+    expect(container.textContent).toContain('已切换到 Beta 渠道并同步最新资源')
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
     expect(invalidationEvents).toHaveLength(1)
   })
 
