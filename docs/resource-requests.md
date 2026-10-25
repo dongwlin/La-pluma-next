@@ -130,6 +130,8 @@ const depot = unwrapApiResponse(result)
 | `getLogFiles(signal?)` | `GET /agent/logs/files` | 数组 |
 | `readLogFile(filePath, lines?, signal?)` | `GET /agent/logs/files/:path` | `content` 为字符串 |
 
+FPR-027 起实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`getRealtimeLogs` 的函数签名、端点与返回形状不变；缓冲是最近行快照而非 Query 资源。历史文件读取仍由页面协调（FPR-028）。完整生命周期见[实时日志流生命周期](logs-realtime-stream.md)。
+
 ### Combat（`features/combat/api/index.ts`）
 
 | 函数 | 端点 | 载荷校验 |
@@ -186,6 +188,9 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/features/settings/model/systemResources.test.ts` | `settings/version`/`settings/config-directory` 的 signal、版本与目录归一、空白路径 contract 失败 |
 | `client/src/features/settings/model/deviceConnection.test.ts` | 发现/连接测试的请求信号、取消与迟到响应、独立 loading 与失败映射 |
 | `client/src/features/logs/api/index.test.ts` | 实时轮询 signal、文件列表与内容 signal、坏内容、取消保持 `AbortError` |
+| `client/src/features/logs/model/logModel.test.ts` | 实时/历史解析、级别归一、摘要、过滤、折叠与空输入 |
+| `client/src/features/logs/model/realtimeLogStream.test.ts` | 1250ms/200 行轮询、单在途、旧响应与文档隐藏/暂停取消、失败保留缓冲 |
+| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | Activity/文档可见性恢复、慢请求不叠加、清空暂停与恢复立即重读 |
 | `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
 | `client/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
 

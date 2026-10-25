@@ -136,12 +136,12 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 实时会话 | GET `/agent/logs/recent?lines=200`，每 1250ms HTTP 轮询，AbortSignal + mounted/request id/paused 防竞态；每次替换最近 200 行，不是追加流 | logs 实时会话所有者 |
-| 历史查询 | GET `/agent/logs/files`；GET `/agent/logs/files/{encodedPath}?lines=1000`；历史文件 request id 防切换覆盖；文件列表无请求序号 | logs 历史查询协调器 |
-| 清空/清理 | POST `/agent/logs/recent/clear` 前暂停/abort，成功清本地，finally 恢复；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表 | logs 清理用例与实时/历史协调 |
-| 模型/展示 | parseHistoryLine/parseRealtimeLog/summarizeLog、折叠/过滤；summary/raw、level/search/collapse、autoScroll、history selection/mode、confirm/notice；scrollTop Effect；导出 Blob/objectURL/anchor，随后 revoke | 纯日志模型与最近面板；缓冲归会话 |
+| 实时会话 | GET `/agent/logs/recent?lines=200`，每 1250ms HTTP 轮询；`RealtimeLogStream` 单在途、请求身份与 AbortSignal 防慢请求重叠和旧响应覆盖；每次替换最近 200 行，不是追加流 | logs 实时流所有者（FPR-027） |
+| 历史查询 | GET `/agent/logs/files`；GET `/agent/logs/files/{encodedPath}?lines=1000`；历史文件 request id 防切换覆盖；文件列表无请求序号 | logs 历史查询协调器（FPR-028） |
+| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，finally 恢复并立即重读；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表 | logs 清理用例与实时/历史协调（FPR-028） |
+| 模型/展示 | `model/logModel.ts` 的 parseHistoryLine/parseRealtimeLog/summarize/过滤/折叠与 `buildLogView`；页面保留 summary/raw、level/search/collapse、autoScroll、history selection/mode、confirm/notice；scrollTop Effect；导出 Blob/objectURL/anchor，随后 revoke | 纯日志模型（FPR-027）；最近面板；缓冲归会话 |
 
-无业务存储，无 WebSocket/EventSource。历史请求在 Activity hidden 时完成会被 mounted guard 丢弃，finally 也不清 loading；restore 不自动重试当前历史文件，存在卡 loading 缺口。清理 handler 没有卸载取消。
+无业务存储，无 WebSocket/EventSource。实时流实例随页面真正挂载创建，Activity 隐藏时停止计时器并 abort 在途读取、保留缓冲，显示时立即重读；`document.hidden` 时计时器保留但守卫不发请求并 abort 在途，可见时立即重读；手动暂停不被可见性或 Activity 变化清除，恢复时立即重读（工具栏暂停按钮待 FPR-035 接线）。历史请求在 Activity hidden 时完成会被 mounted guard 丢弃，finally 也不清 loading；restore 不自动重试当前历史文件，存在卡 loading 缺口。清理 handler 没有卸载取消。完整生命周期约定见[实时日志流生命周期](logs-realtime-stream.md)。
 
 ## 共同副作用与状态生命期
 
@@ -168,7 +168,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
 | Training | 保留 filters/设置/计划/撤销 toast；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；未完成 closure 不会自动取消 |
 | Settings | 重建 section 监听；版本/目录 Query 观察者注销；abort 在途设备发现/连接测试并保留已完成结果；自动更新初始化标记阻止重复加载，更新命令与自动更新保存在隐藏期间继续完成 | 无专门处理 | section/autoUpdate fallback 可恢复；设备结果保留（未完成已取消），版本/目录按新鲜度重取；更新命令与自动更新反馈/草稿由模块级 owner 保留 |
-| Logs | 停 interval/监听并 abort realtime；show 重建，刷新文件列表及实时（历史模式不重读当前文件） | interval 保留但 guard 不发请求，abort 实时；可见立即取数 | 缓冲/选择/过滤全部重置 |
+| Logs | 停实时计时器并 abort 在途读取；show 重建，刷新文件列表并立即重读实时（历史模式不启动实时轮询） | 取消在途读取，计时器保留但守卫不发请求；可见立即重读 | 缓冲/选择/过滤全部重置，手动暂停状态随实例重置 |
 
 ## 性能对照入口与待验收边界
 

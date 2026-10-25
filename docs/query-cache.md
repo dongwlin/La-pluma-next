@@ -18,7 +18,7 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 | 运行身份、快照观察、停止与恢复 | `features/task-execution/` 控制器 | 不进入 Query；`runs/current`、`tasks/status` 不是普通资源 |
 | 跨页客户端状态（主题、连接健康、运行投影、预览偏好、面板选择） | 对应 Zustand store 或域内状态 | 不复制 Query 数据 |
 | Dashboard 完整业务快照 | Dashboard 刷新协调器 + `dashboardStore` | 可读取 Query，但只在完整快照通过校验后原子提交 |
-| 实时日志、WebRTC 信令等会话 | 对应会话所有者 | 不因接入 Query 改变暂停/恢复与取消语义 |
+| 实时日志、WebRTC 信令等会话 | 对应会话所有者（日志见[实时日志流生命周期](logs-realtime-stream.md)） | 不因接入 Query 改变暂停/恢复与取消语义 |
 
 关键约束：
 
