@@ -36,7 +36,7 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 | 执行身份与状态 | Run 记录；`GET /api/agent/runs/current`、`GET /api/agent/runs/{runId}` | 本次执行处于 accepted/running/stopping/终态 | 设备是否空闲、页面是否可见 |
 | 活动身份集合与设备占用 | `GET /api/agent/runs/current` 的 `run`、`activeRuns`、`lastRun`、`occupancy` | 当前唯一活动 run、其余 accepted 意图、最近终态，以及设备由 run 还是未纳管执行占用 | 执行结果；`occupancy` 也不能证明租约之外的直接设备使用 |
 | 当前 MAA 子进程 | `GET /api/agent/tasks/status`（`maaService.taskStatus`） | 当前是否有一个受管子进程在跑，及其 `taskName`/`stopRequested` | 整个流程是否完成；流程步间等待时它可以是 idle |
-| 流程步骤进度 | `GET /api/agent/schedules/execution`（`scheduleExecutionStatus`） | `isRunning`、`currentStep`、`totalSteps`、`currentTask`、`taskResults` | 执行身份；它也可能代表定时或未纳入 Run 的流程 |
+| 流程步骤进度 | `GET /api/agent/schedules/execution`（`scheduleExecutionStatus`） | `isRunning`、`currentStep`、`totalSteps`、`currentTask`、`taskResults`，以及当前流程的 `runId` | 看不到进度就推断未运行；`runId` 为空只表示该次流程没有 Run 身份（如 Telegram 等未纳管调用方） |
 | 执行租约 | `server/data/maa-execution.lock`；快照中的 `occupancy.lease` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
 | 连接健康 | 前端 runtime-status 监测 | 浏览器能否访问后端、当前是否 active | 执行成功、失败或已完成 |
 | 页面运行标记 | 页面状态与 `statusStore.isActive` | 当前页面的 UI 投影 | 后台任务所有权或终态 |
@@ -44,8 +44,8 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 规则：
 
 1. **Run 是身份与终态的唯一来源。** 进程 idle、流程 `isRunning=false`、页面卸载或轮询失败都不能直接写成“完成”。
-2. **进程 idle 不等于流程完成。** 定时/日常流程在步骤之间会释放子进程（等待、截图、仓库解析、汇报），此时 `tasks/status.isRunning=false`，但流程仍在进行；只有 Run 终态或流程结果才能确认完成。
-3. **流程进度是投影。** `schedules/execution` 与 Run 的 `progress` 来自同一流程状态，但本身没有 run 身份；未纳入 Run 的定时触发也能出现在这里。
+2. **进程 idle 不等于流程完成。** 定时/日常流程在步骤之间会释放子进程（等待、截图、仓库解析、汇报），此时 `tasks/status.isRunning=false`，但流程仍在进行；只有 Run 终态或流程结果才能确认完成。日常流程 Run 只有在自己持有 `schedule.runId` 时才投影步骤；`accepted` 尚未获得执行权、或 `schedule.runId` 指向别的流程时，`progress` 显示等待而不是借用他人的步骤。
+3. **流程进度是投影。** `schedules/execution` 与 Run 的 `progress` 来自同一流程状态；纳入 Run 的流程在 `scheduleExecutionStatus.runId` 中带上自己的 `runId`，本身仍不是执行身份。未纳入 Run 的调用（当前为 Telegram 等直接调用方）`runId` 为 `null`。
 4. **租约只做互斥。** 它防止协作进程同时操作设备，不记录业务结果；锁文件被回收只说明原持有进程已不存活。
 5. **页面不维护第二份运行状态机。** 页面可以缓存展示，但停止、完成、重连后的恢复必须以 Run 快照对账。当前页面与连接监测器仍会争写 `statusStore.isActive`，这是待统一的现状，不是契约。
 
@@ -60,7 +60,9 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 | `lastRun` | 按 `finishedAt` 取最近终态；只用于展示，不是调用方自己的身份 |
 | `occupancy` | 设备占用投影：`state`、`runId`、`runState`、`sources`、`lease`、`task`、`schedule` |
 | `isRunning`/`taskName`/`startTime`/`taskType`/`stopRequested`/`logs` | 旧客户端的任务进程字段，原样保留 |
-| `schedule`/`recentLogs` | 旧客户端的流程与日志字段，原样保留 |
+| `schedule`/`recentLogs` | 旧客户端的流程与日志字段，原样保留。`schedule.runId` 是该次流程的 Run 身份，未纳管调用为 `null` |
+
+`schedule` 是旧字段，现在也作为自检信息：当 `schedule.isRunning` 为真而 `schedule.runId` 为空时，说明设备被一个没有 Run 身份的流程占用，`occupancy.state` 会落在 `external`。
 
 `occupancy.state` 只描述“现在谁在变更设备”：
 
@@ -121,7 +123,7 @@ running ──exit──> succeeded / failed / stopped
 | 已停止 | 200 | 成功响应，`data.run.state=stopped` |
 | Run 持久化不可用 | 503 | `AGENT_RUN_PERSISTENCE_FAILED`（可重试）或 `AGENT_RUN_STORE_INVALID`（不可重试） |
 
-`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程读 `schedule.currentStep/totalSteps/currentTask/message`，其他执行读任务进程的 `taskName` 与 `stopRequested`。终态不追加进度。
+`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。其他执行读任务进程的 `taskName` 与 `stopRequested`。终态不追加进度。
 
 ### 幂等与重试
 
@@ -158,6 +160,24 @@ running ──exit──> succeeded / failed / stopped
 - 停止过程中若子进程/流程正常退出，run 进入 `stopped`；若以错误结束，当前实现按 `stopping` 优先记为 `stopped`。不要在停止请求后把“进程退出”直接当作成功完成。
 - 本地 `AbortController` 中止、页面卸载、浏览器断线都**不等于停止**；服务端会继续执行。页面关闭后任务继续运行是预期行为。
 
+### 4.1 日常流程提交与异步接受
+
+手动、Dashboard、cron 与 Agent 日常流程入口共用 `run_daily_flow` 一个执行动作和同一条 Run 生命周期；活动作业入口已有自己的 tracked 动作：
+
+| 入口 | 提交方式 | Run | 同步兼容 |
+| --- | --- | --- | --- |
+| `POST /api/agent/actions/run-daily-flow` | Agent API；`waitForCompletion` 默认 `true` | 是 | 默认同步返回整个流程结果 |
+| `POST /api/agent/schedules/{scheduleId}/execute` | Web UI 手动（`manual`）、Dashboard 快捷（`dashboard-quick-start`）及旧调用方 | 是 | 默认同步；响应保留原 `data` 字段并新增 `runId`/`run`/`pollUrl`/`stopUrl` |
+| 定时触发（cron） | `schedulerService.executeScheduledTaskFromCron` | 是 | 无 HTTP 调用方；Run 在流程开始前创建，完成后可从 `/runs/current` 的 `lastRun` 或保留记录查询 |
+| `POST /api/agent/activity/run` | 当前活动作业 | 是（`run_current_activity_copilots`） | 已有同步入口；`waitForCompletion` 不适用 |
+
+- `waitForCompletion=false` 时，入口在流程获得执行租约并通过 pre-start gate 后返回 HTTP 202；`data` 同时带 `accepted: true`、`scheduleId`、`totalSteps` 与 `runId`。需要计划内容的 Agent 调用还会返回 `plan`。在此之前发生的占用或校验失败仍同步返回 409/400，run 记为 `failed` 并释放幂等键。
+- 流程在步间等待（延迟、截图、解析）时子进程可以是 idle，Run 保持 `running`，`progress.currentStep/totalSteps` 来自 `scheduleExecutionStatus`；这不发布整个流程完成。
+- 停止按第 4 节执行：`accepted` 直接取消，`running` 转入 `stopping` 后由流程的 `shouldStop`/中止信号结束；停止后不得启动下一项，最终结果为 `stopped`，`result.summary.taskResults` 保留已完成项。
+- 首个请求的幂等键由 `Idempotency-Key` 提供，作用于 `run_daily_flow` 动作；相同 key、相同 `scheduleId` 与 `taskFlow` 重放同一 run。cron 触发没有幂等键，每次触发都是一次新的执行意图；并发触发由执行租约拒绝，被拒绝的触发会留下一个 `failed` 的 `run_daily_flow` 记录。
+- 不经过上述 Run 包装、直接调用 `executeScheduleNow` 的入口（当前为 Telegram）不会获得 `runId`；它以 `occupancy.state=external` 出现在快照中，不能当作本契约已覆盖。
+- 兼容细节：旧 `/schedules/{scheduleId}/execute` 曾把校验失败也报成 409 `AGENT_SCHEDULE_ALREADY_RUNNING`。现在占用仍保留该旧码，校验失败改为 400 `AGENT_DAILY_FLOW_REJECTED`；这修正了错误分类，未删除同步入口。
+
 
 ## 5. 边界契约
 
@@ -173,7 +193,7 @@ running ──exit──> succeeded / failed / stopped
 
 - 协作占用通过锁文件表达。提交执行时租约不可用会返回 409：通用执行是 `MAA_EXECUTION_BUSY`，日常流程入口包装为 `AGENT_EXECUTION_BUSY`，旧定时执行接口返回 `AGENT_SCHEDULE_ALREADY_RUNNING`。错误 `details.owner` 给出占用者元数据。
 - 对纳入 Run 的入口，占用属于执行前拒绝：run 为 `failed`，幂等键释放，调用方可用同键安全重试。
-- 未纳入 Run 的执行（定时流程、作业集 cli 模式、更新任务、Telegram 指令）也持有同一租约。此时 `runs/current.run` 为 `null`，`activeRuns` 为空，但 `occupancy.state` 为 `external`，`sources` 包含 `task`、`schedule` 或 `lease`。不能因为 Run 为空就认为设备空闲。
+- 未纳入 Run 的执行（作业集 cli 模式、更新任务、Telegram 指令、维护入口）也持有同一租约。此时 `runs/current.run` 为 `null`，`activeRuns` 为空，但 `occupancy.state` 为 `external`，`sources` 包含 `task`、`schedule` 或 `lease`。不能因为 Run 为空就认为设备空闲。定时日常流程已纳入 Run；若 `schedule.isRunning` 而 `schedule.runId` 为空，说明占用来自未纳管的直接调用方。
 - `occupancy.lease.state=held` 表示租约记录的 PID 仍存活；`stale` 表示锁文件可回收，不算占用；`unknown` 表示锁文件无法解释，必须按“未知”处理而不是空闲。
 - 租约只约束协作进程。用户或其他工具直接用 MAA/ADB 操作设备不会被检测，系统不提供对非协作占用的排他保证。
 - 锁文件只在持有进程 PID 不存活时回收；PID 存活即视为占用。服务异常退出后，旧 MAA 子进程可能仍在运行，回收租约不代表设备已释放。
@@ -241,10 +261,10 @@ running ──exit──> succeeded / failed / stopped
 | 启动游戏 | `POST /api/agent/actions/start-game` | 是（`start_game`） | 命令期间持有 | run 进度 | 支持 `waitForCompletion=false` |
 | 理智作战 | `POST /api/agent/actions/fight` | 是（`fight`） | 命令期间持有 | run 进度 | 支持 dry-run |
 | 单任务/通用任务 | `POST /api/agent/actions/run-task` | 是（`run_task`） | 命令期间持有 | run 进度 | Web UI 的单作业、肉鸽、仓库/干员识别都走这里 |
-| 日常流程（Agent API） | `POST /api/agent/actions/run-daily-flow` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影进 run 进度 | 同步；dry-run 不创建 run |
-| 日常流程（Web UI 手动） | `POST /api/agent/schedules/manual/execute` | 否 | 流程全程持有 | `schedules/execution` | 同步请求；等待步间延迟也算流程运行 |
-| 日常流程（Dashboard 快捷） | `POST /api/agent/schedules/dashboard-quick-start/execute` | 否 | 流程全程持有 | `schedules/execution` | 同上 |
-| 定时触发 | `schedulerService.executeScheduledTaskFromCron` | 否 | 流程全程持有 | `schedules/execution` | 无 HTTP 客户端；不产生 runId |
+| 日常流程（Agent API） | `POST /api/agent/actions/run-daily-flow` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影进 run 进度 | 默认同步；`waitForCompletion=false` 返回 202；dry-run 不创建 run |
+| 日常流程（Web UI 手动） | `POST /api/agent/schedules/manual/execute` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 默认同步兼容原响应；异步模式返回 202；重复提交可用幂等键 |
+| 日常流程（Dashboard 快捷） | `POST /api/agent/schedules/dashboard-quick-start/execute` | 是（`run_daily_flow`） | 流程全程持有 | 同上 | 同上 |
+| 定时触发 | `schedulerService.executeScheduledTaskFromCron` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 无 HTTP 客户端；无幂等键；Run 在开始前创建，供快照观察 |
 | 作业集（cli 模式） | `POST /api/agent/copilot-sets/:id/execute` | 否 | 集合全程持有 | 响应 `results`/`pending`；进度落 `copilot-progress.json` | 同步请求，无 runId |
 | 作业集（app 连续/manual） | `POST /api/agent/actions/run-task`（逐项） | 每项是；集合整体否 | 每项命令期间持有 | 每项 run + 页面状态 | 集合身份只在页面；manual 等待不持有租约 |
 | 旧断点续跑 | `run-task`（逐项） | 每项是；流程整体否 | 每项命令期间持有 | 每项 run + `tasks/status` 轮询 | 会重提，见 5.6 |
@@ -261,6 +281,8 @@ running ──exit──> succeeded / failed / stopped
 - `run-task` 的 `command=activity|list` 被强制为同步；其他命令可后台执行（202）。
 - WebRTC 启停、截图和连接测试只管理预览基础设施，不参与执行租约。
 - 只有 Agent API 的五个执行动作在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。
+- `POST /api/agent/schedules/{scheduleId}/execute` 未在 Agent manifest 中广告，但同样创建 `run_daily_flow`；它和 Agent 入口共享 OperationId 与幂等命名空间。
+- 定时流程与 HTTP 入口使用同一执行租约；同一时刻只有一个流程能进入 pre-start gate，第二个触发会得到占用失败而不是并行执行。
 
 ## 7. 兼容窗口与已知缺口
 
@@ -269,20 +291,21 @@ running ──exit──> succeeded / failed / stopped
 | Agent API 响应 | 原有 `data` 字段保留，新增 `runId`/`run`/`pollUrl`/`stopUrl` | 继续只增不减；旧客户端忽略新字段即可 | 契约演进 |
 | `/runs/current` | 保留 `task`、`schedule`、`recentLogs`；新增 `activeRuns` 与 `occupancy`，`run`/`lastRun` 语义不变 | 前端从同一快照派生全局运行展示 | 运行状态单源 |
 | 目标停止入口 | `links.stop` 与 `stopUrl` 指向 `?runId=<id>`；查询参数与请求体都接受 `runId` | 控制器始终按 `runId` 停止 | 前端执行客户端 |
-| 旧执行端点 | `schedules/:id/execute`、`copilot-sets/:id/execute` 保持同步响应和现有错误码 | 接入 Run 后仍保留同步兼容入口；新入口尽早返回身份 | 日常流程纳入 Run、作业集纳入 Run |
+| 旧执行端点 | 已交付：`schedules/:id/execute` 默认仍同步且保留原 `data`；`copilot-sets/:id/execute` 保持同步响应和现有错误码 | 日常流程新入口尽早返回身份；作业集迁移后仍保留同步兼容入口 | 日常流程纳入 Run（FPR-005）、作业集纳入 Run |
 | 幂等键 | 可选；服务端完整支持；Web UI 未发送 | 控制器为每次逻辑提交生成并持久化键 | 前端执行客户端 |
-| `runId` 使用 | Web UI 不保存、不查询，只看 `tasks/status` | 页面/控制器保存到终态并据此恢复 | 前端执行客户端、运行状态单源 |
+| `runId` 使用 | 日常流程所有 HTTP 与 cron 入口已产生 `runId`；Web UI 仍不保存、不查询，只看 `tasks/status` | 页面/控制器保存到终态并据此恢复 | 前端执行客户端、运行状态单源 |
 | accepted 并发的 `current` | 已交付：`activeRuns` 列出全部活动意图；`run` 按 stopping > running > accepted、同级取最新 | 调用方不再假定只有一个 accepted | 运行快照（FPR-004） |
 | accepted 的停止 | 已交付：取消为 `stopped`（`result.canceled=true`），不发设备命令；执行器 pre-start gate 放弃启动 | 保持；集合级停止阻止下一项由作业集迁移覆盖 | 运行快照（FPR-004） |
-| 忙碌错误码 | `MAA_EXECUTION_BUSY`、`AGENT_EXECUTION_BUSY`、`AGENT_SCHEDULE_ALREADY_RUNNING` 并存 | 统一为可识别的占用错误，保留旧码映射 | 日常流程纳入 Run |
+| 忙碌错误码 | 已交付：Agent 日常流程入口统一为 `AGENT_EXECUTION_BUSY`；`/schedules/:id/execute` 保留 `AGENT_SCHEDULE_ALREADY_RUNNING`；底层仍为 `MAA_EXECUTION_BUSY` | 调用方按 `retryable` 与 `details.owner` 重试；旧码继续映射 | 日常流程纳入 Run（FPR-005） |
+| 日常流程失败 | 已交付：占用/校验拒绝释放幂等键；流程已开始后的失败保留键，run 转为 `failed` 并带错误原因 | 调用方修正输入或换键重试 | 日常流程纳入 Run（FPR-005） |
 | manual 等待 | 页面状态；刷新丢失；等待不持租约 | 服务端集合身份 + 显式等待态；重获租约失败可重试 | 作业集纳入 Run |
 | 旧断点 | 刷新后逐项重提 | 一次性转换/失效，不重提 | 自动化执行迁移 |
 | 全局运行展示 | 快照已提供单一事实来源；页面与监测器仍争写 `statusStore.isActive` | 页面展示从快照派生，不再各自维护运行状态 | 运行状态单源 |
-| 定时/更新/Telegram 入口 | 未纳入 Run，但持有租约；快照以 `occupancy.state=external` 显式标注 | 定时日常纳入 Run；维护与外部入口至少显式标注占用 | 日常流程纳入 Run；综合验收 |
+| 定时/更新/Telegram 入口 | 定时日常已纳入 Run；更新、维护与 Telegram 仍持有租约但未纳管；快照以 `occupancy.state=external` 显式标注 | 维护与外部入口至少显式标注占用 | 日常流程纳入 Run（FPR-005）；综合验收 |
 | 服务重启 | 已交付：活动 run → `interrupted`；`recovery.deviceState=unknown`；不自动续跑 | 重连后先确认设备/连接再重新提交 | 运行快照（FPR-004） |
 | 实时性 | 无推送，HTTP 轮询 | 保持轮询契约；不得把推送当作既有前提 | 客户端实现 |
 
-回滚边界：前端回滚不要求删除服务端已发布的 Run 能力；新增状态、错误码和字段先向后兼容发布，再迁移消费者。Run 存储版本升级必须能读旧文件；不能为了回滚删除已持久化的终态记录。旧断点键在迁移验证完成前只读保留。FPR-004 的改动只增加响应字段、查询参数和预启动门禁；回退服务端代码后，旧客户端仍按通用停止工作。
+回滚边界：前端回滚不要求删除服务端已发布的 Run 能力；新增状态、错误码和字段先向后兼容发布，再迁移消费者。Run 存储版本升级必须能读旧文件；不能为了回滚删除已持久化的终态记录。旧断点键在迁移验证完成前只读保留。FPR-004 的改动只增加响应字段、查询参数和预启动门禁；回退服务端代码后，旧客户端仍按通用停止工作。FPR-005 在旧同步端点上增加 Run 身份与可选异步模式；回退该提交后，手动、Dashboard 与定时入口恢复为无 `runId` 的同步流程，响应中新增的 `runId`/`run` 字段消失，但旧客户端读取的 `data.success`/`summary`/`message` 不变。已运行过的 cron Run 记录可保留，新代码不再读取；不需要删除 `agent-runs.json`。
 
 ## 8. 契约测试清单
 
@@ -291,29 +314,29 @@ running ──exit──> succeeded / failed / stopped
 | 测试 | 固定的行为 |
 | --- | --- |
 | `server/services/__tests__/agentRunService.test.js` | 生命周期转换、终态幂等、幂等键分区/重用拒绝、500 条与 24 小时保留、缺失 run 错误、活动集合与最近终态排序、accepted 取消、pre-start 门禁 |
-| `server/services/__tests__/agentRunPersistence.test.js` | 重启后活动 run 变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、坏文件/坏版本 fail-closed、持久化失败可重试 |
-| `server/services/__tests__/runSnapshotService.test.js` | 快照 idle/pending/run/external/unknown、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度 |
-| `server/routes/__tests__/agentRoutes.test.js` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行 |
-| `server/routes/__tests__/agentContract.test.js` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举与错误结构、快照/占用/恢复/目标停止 schema |
+| `server/services/__tests__/agentRunPersistence.test.js` | 重启后活动 run 变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、坏文件/坏版本 fail-closed、持久化失败可重试、cron 日常流程的终态结果写回磁盘 |
+| `server/services/__tests__/runSnapshotService.test.js` | 快照 idle/pending/run/external/unknown、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度、日常流程只投影自己持有的 `schedule.runId` |
+| `server/routes/__tests__/agentRoutes.test.js` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行；日常流程同步响应带终态 run、异步 202、步间 idle 时 run 仍活动、停止后不启动下一项、幂等重放与占用错误码映射、cron/旧码兼容 |
+| `server/routes/__tests__/agentContract.test.js` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
 | `server/services/__tests__/executionCoordinatorService.test.js` | 租约互斥、同异步流重入、死进程锁回收 |
 | `server/services/__tests__/maaTaskExecution.test.js` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
-| `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程 |
+| `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
 | `client/src/features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 连接监测的 online/offline/focus 行为与 active 轮询 |
 | `client/src/features/automation/pages/AutomationTasks.*.test.tsx` | Activity 恢复、执行接线、停止与连接测试的现有页面行为 |
 | `client/src/features/combat/pages/CombatTasks.test.tsx` | 顺序作业集停止后不继续、manual 接线与停止确认 |
 | `client/src/features/roguelike/pages/RoguelikeTasks.test.tsx` | 运行观察、停止确认与提交接线 |
 
+日常流程的入口覆盖已由 `server/routes/__tests__/agentRoutes.test.js` 与 `server/services/__tests__/schedulerRecovery.test.js` 的新增用例固定：手动、Dashboard 快捷（同一端点）、cron 与 Agent 入口共用一个 `run_daily_flow` 和同一执行租约，旧同步端点保持可用。活动日常入口沿用 FPR-004 的 tracked 接线（`run_current_activity_copilots`），本项未改动其实现；它的端到端覆盖仍归 FPR-042。
+
 ### 后续必须补充的契约回归
 
 以下测试尚未存在，属于对应迁移任务的验收前置；在补上之前不能宣称契约已实现：
 
-1. **入口覆盖**：手动日常、Dashboard 快捷、定时触发、活动启动各自只产生一个执行归属和一个租约；旧同步端点仍可用。
-2. **步间等待**：流程在步骤延迟/截图/解析期间进程 idle，但 run 仍为活动；不得提前发布完成。
-3. **作业集模式**：app 连续、cli、manual 的模式映射明确；manual 等待不持租约；刷新后仍可观察；占用时继续可重试且不丢条目；停止阻止下一项。
-4. **旧断点**：有效/失效/冲突/版本不符的转换；恢复只观察不重提；旧键删除失败不导致新执行。
-5. **客户端恢复**：保存 `runId`、202 后转轮询、409 占用重试、断线未知不误判、重连对账、页面隐藏/刷新不重提。
-6. **全局单源**：页面与监测器不再各自写 `isActive`；全局展示从同一快照派生。
-7. **跨页一致性**：启动 → 切页 → 停止 → 断线重连 → 刷新后，所有页面显示同一 run 结果；日志/预览等非执行会话不干扰判定。
+1. **作业集模式**：app 连续、cli、manual 的模式映射明确；manual 等待不持租约；刷新后仍可观察；占用时继续可重试且不丢条目；停止阻止下一项。
+2. **旧断点**：有效/失效/冲突/版本不符的转换；恢复只观察不重提；旧键删除失败不导致新执行。
+3. **客户端恢复**：保存 `runId`、202 后转轮询、409 占用重试、断线未知不误判、重连对账、页面隐藏/刷新不重提。
+4. **全局单源**：页面与监测器不再各自写 `isActive`；全局展示从同一快照派生。
+5. **跨页一致性**：启动 → 切页 → 停止 → 断线重连 → 刷新后，所有页面显示同一 run 结果；日志/预览等非执行会话不干扰判定。
 
 ## 9. 本次核验
 
@@ -324,4 +347,4 @@ git diff --check
 pnpm --filter la-pluma-next-server verify
 ```
 
-文档中的“现行”结论来自 `a07933e` 的代码与上表测试；FPR-004 已把运行快照、目标停止、重启恢复边界和 pre-start 门禁写入生产实现，并由上表服务端测试固定。未纳入本项的前端控制器、页面迁移和作业集/日常流程纳管仍以“目标/归属”列标注，不代表已经实现。
+文档中的“现行”结论来自 `a07933e` 的代码与上表测试；FPR-004 已把运行快照、目标停止、重启恢复边界和 pre-start 门禁写入生产实现，FPR-005 已把手动、Dashboard、cron 与 Agent 日常流程统一到 `run_daily_flow` 并保留旧同步入口；两者均由上表服务端测试固定。未纳入的前端控制器、页面迁移和作业集纳管仍以“目标/归属”列标注，不代表已经实现。

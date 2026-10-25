@@ -190,14 +190,23 @@ describe('normalizeDailyFlowRequest', () => {
     assert.deepEqual(normalizeDailyFlowRequest({ scheduleId: '  morning  ', dryRun: true }), {
       dryRun: true,
       scheduleId: 'morning',
-      taskFlow: null
+      taskFlow: null,
+      waitForCompletion: true
     });
+    assert.deepEqual(
+      normalizeDailyFlowRequest({ waitForCompletion: false }).waitForCompletion,
+      false
+    );
   });
 
   it('rejects ambiguous daily flow input types', () => {
     assert.throws(
       () => normalizeDailyFlowRequest({ dryRun: 'false' }),
       error => error.code === 'AGENT_VALIDATION_DRY_RUN_INVALID'
+    );
+    assert.throws(
+      () => normalizeDailyFlowRequest({ waitForCompletion: 'false' }),
+      error => error.code === 'AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID'
     );
     assert.throws(
       () => normalizeDailyFlowRequest({ taskFlow: {} }),

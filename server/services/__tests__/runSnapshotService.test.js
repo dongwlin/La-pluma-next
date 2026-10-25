@@ -65,6 +65,21 @@ describe('run snapshot', () => {
     assert.equal(snapshot.occupancy.runState, 'running')
     assert.deepEqual(snapshot.occupancy.sources, ['run'])
     assert.ok(snapshot.run.progress)
+    assert.equal(snapshot.run.progress.currentStep, null)
+    assert.equal(snapshot.run.progress.message, '等待流程状态')
+  })
+
+  it('does not project another flow into a daily-flow run that does not own it', async () => {
+    const accepted = beginAgentRun({ operationId: 'run_daily_flow' }).run
+
+    const pendingSnapshot = await buildAgentRunSnapshot()
+    assert.equal(pendingSnapshot.run.progress.currentStep, null)
+    assert.equal(pendingSnapshot.run.progress.message, '等待执行权')
+
+    startAgentRun(accepted.runId)
+    const snapshot = await buildAgentRunSnapshot()
+    assert.equal(snapshot.run.progress.currentStep, null)
+    assert.equal(snapshot.run.progress.message, '等待流程状态')
   })
 
   it('reports a live lease without a run as external occupancy', async () => {

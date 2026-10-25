@@ -421,8 +421,9 @@ export const AGENT_OPERATIONS = Object.freeze([
     tags: ['Execution'],
     safety: consequential(['run_saved_automation_flow']),
     execution: execution({
-      mode: 'long-running',
+      mode: 'sync-or-background',
       dryRun: true,
+      waitForCompletion: true,
       pollAction: 'get_current_run',
       stopAction: 'stop_task',
       conflictsWith: ['maa-execution'],
@@ -434,7 +435,8 @@ export const AGENT_OPERATIONS = Object.freeze([
       properties: {
         dryRun: { type: 'boolean', default: false },
         scheduleId: { type: 'string', minLength: 1, maxLength: 128, default: 'agent-daily-flow' },
-        taskFlow: { type: 'array', items: { type: 'object' }, description: 'Optional task flow override; defaults to saved automation-tasks config.' }
+        taskFlow: { type: 'array', items: { type: 'object' }, description: 'Optional task flow override; defaults to saved automation-tasks config.' },
+        waitForCompletion: { type: 'boolean', default: true }
       }
     }
   }),
@@ -847,9 +849,11 @@ export function buildOpenApiSpec(defaults = {}) {
         RunProgress: {
           type: 'object',
           properties: {
+            scheduleId: { type: ['string', 'null'] },
             currentStep: { type: ['integer', 'null'], minimum: -1 },
             totalSteps: { type: ['integer', 'null'], minimum: 0 },
             currentTask: {},
+            shouldStop: { type: 'boolean' },
             message: { type: ['string', 'null'] }
           },
           additionalProperties: true
@@ -931,6 +935,7 @@ export function buildOpenApiSpec(defaults = {}) {
           properties: {
             isRunning: { type: 'boolean' },
             scheduleId: { type: ['string', 'null'] },
+            runId: { type: ['string', 'null'], format: 'uuid' },
             currentStep: { type: ['integer', 'null'], minimum: -1 },
             totalSteps: { type: 'integer', minimum: 0 },
             currentTask: { type: ['string', 'null'] },

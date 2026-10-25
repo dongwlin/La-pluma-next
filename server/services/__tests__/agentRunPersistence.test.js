@@ -18,6 +18,7 @@ import {
   shutdownAgentRunStoreForTests,
   startAgentRun
 } from '../agentRunService.js';
+import { executeScheduledTaskFromCron } from '../schedulerService.js';
 
 const quietLogger = {
   info() {},
@@ -478,6 +479,29 @@ describe('agent run persistence', () => {
       assert.notEqual(replacement.run.runId, expired.runId);
     } finally {
       Date.now = originalNow;
+    }
+  });
+
+  it('persists a cron daily-flow run with its scheduler outcome', async () => {
+    const previousLockFile = process.env.LA_PLUMA_MAA_LOCK_FILE;
+    process.env.LA_PLUMA_MAA_LOCK_FILE = join(testDir, 'maa-execution.lock');
+    try {
+      await initialize();
+      const result = await executeScheduledTaskFromCron([
+        { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} },
+        { id: 'infrast-1', commandId: 'infrast', name: '基建换班', enabled: true, params: { facility: [] } }
+      ], 'cron-persisted');
+
+      assert.equal(result.success, true);
+      const stored = (await readSnapshot()).runs.find(item => item.run.operationId === 'run_daily_flow');
+      assert.ok(stored, 'expected the cron flow to be persisted before it runs');
+      assert.equal(stored.run.status, 'succeeded');
+      assert.equal(stored.run.result.scheduleId, 'cron-persisted');
+      assert.equal(stored.run.result.totalSteps, 2);
+      assert.equal(stored.run.result.summary.skippedCount, 2);
+    } finally {
+      if (previousLockFile === undefined) delete process.env.LA_PLUMA_MAA_LOCK_FILE;
+      else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLockFile;
     }
   });
 });

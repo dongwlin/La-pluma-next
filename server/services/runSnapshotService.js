@@ -15,6 +15,8 @@ function normalizeLineCount(lines) {
 /**
  * Adds the process projection to an active run. Progress is read from the
  * current task/schedule, so it only describes the run that owns execution.
+ * A daily flow that has not published its schedule state yet is reported as
+ * waiting instead of borrowing another flow's steps.
  */
 export function enrichAgentRun(run) {
   if (!run || !ACTIVE_RUN_STATES.has(run.state)) return run;
@@ -22,12 +24,25 @@ export function enrichAgentRun(run) {
   const schedule = getScheduleExecutionStatus();
   const task = getTaskStatus();
   if (run.operationId === 'run_daily_flow') {
+    if (schedule.runId !== run.runId) {
+      return {
+        ...run,
+        progress: {
+          currentStep: null,
+          totalSteps: null,
+          currentTask: null,
+          message: run.state === 'accepted' ? '等待执行权' : '等待流程状态'
+        }
+      };
+    }
     return {
       ...run,
       progress: {
+        scheduleId: schedule.scheduleId,
         currentStep: schedule.currentStep,
         totalSteps: schedule.totalSteps,
         currentTask: schedule.currentTask,
+        shouldStop: schedule.shouldStop,
         message: schedule.message || (schedule.isRunning ? '今日流程执行中' : '今日流程正在收尾')
       }
     };
@@ -82,6 +97,7 @@ function describeOccupancy({ activeRuns, task, schedule, lease }) {
     schedule: {
       isRunning: Boolean(schedule.isRunning),
       scheduleId: schedule.scheduleId ?? null,
+      runId: schedule.runId ?? null,
       currentStep: schedule.currentStep ?? null,
       totalSteps: schedule.totalSteps ?? 0,
       currentTask: schedule.currentTask ?? null,

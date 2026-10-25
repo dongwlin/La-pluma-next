@@ -17,6 +17,16 @@ import { promisify } from 'util';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';
 import { DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 import { createScheduleTaskProgress } from './scheduleTaskProgress.js';
+import {
+  beginAgentRun,
+  completeAgentRun,
+  failAgentRun,
+  flushAgentRunStore,
+  getAgentRun,
+  startAgentRunForExecution,
+  stopAgentRun
+} from './agentRunService.js';
+import { createDailyFlowExecutionError } from './agentActionService.js';
 
 const execAsync = promisify(exec);
 
@@ -110,6 +120,7 @@ async function recordFightDrops(summary, scheduleId) {
 const scheduleExecutionStatus = {
   isRunning: false,
   scheduleId: null,
+  runId: null,
   currentStep: -1,
   totalSteps: 0,
   currentTask: null,
@@ -123,7 +134,7 @@ const scheduleExecutionStatus = {
 
 let cancelActiveScheduleDelay = null;
 let activeScheduleAbortController = null;
-let activeScheduleRunId = null;
+let activeScheduleExecutionToken = null;
 let activeScheduleTaskProgress = null;
 
 function waitForScheduleDelay(delayMs) {
@@ -410,7 +421,7 @@ export async function getScheduledTaskFlowPlan(taskFlow) {
 }
 
 // 执行任务流程
-async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = {}) {
+async function executeTaskFlowUnlocked(taskFlow, scheduleId, executionToken, lifecycle = {}, runId = null) {
   if (!Array.isArray(taskFlow)) {
     return { success: false, message: '任务流程格式无效' };
   }
@@ -426,14 +437,15 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
   const validation = validateScheduledTaskFlow(taskFlow);
   if (!validation.success) return validation;
 
-  logger.info('开始执行任务流程', { scheduleId });
-  activeScheduleRunId = runId;
+  logger.info('开始执行任务流程', { scheduleId, runId });
+  activeScheduleExecutionToken = executionToken;
   activeScheduleAbortController = new AbortController();
 
   // 更新状态：开始执行
   updateScheduleStatus({
     isRunning: true,
     scheduleId,
+    runId,
     currentStep: -1,
     totalSteps: taskFlow.filter(t => t.enabled).length,
     currentTask: null,
@@ -1333,13 +1345,14 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     currentStep: wasStopped ? scheduleExecutionStatus.currentStep : enabledTasks.length,
     message: completionMessage,
     scheduleId: null,
+    runId: null,
     currentTask: null,
     currentTaskId: null,
     shouldStop: false,
     lastResult: executionSummary
   });
   activeScheduleAbortController = null;
-  activeScheduleRunId = null;
+  activeScheduleExecutionToken = null;
 
   if (wasStopped) {
     return { success: true, stopped: true, message: completionMessage, summary: executionSummary };
@@ -1382,15 +1395,16 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
   return { success: true, stopped: false, message: completionMessage, summary: executionSummary };
 }
 
-async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
-  const runId = Symbol(scheduleId);
+async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}, options = {}) {
+  const executionToken = Symbol(scheduleId);
+  const runId = typeof options.runId === 'string' && options.runId.trim() ? options.runId : null;
   let unexpectedError = null;
   try {
     return await withMaaExecutionLease({
       source: 'schedule',
       taskName: `任务流程 ${scheduleId}`,
       command: 'schedule'
-    }, () => executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle));
+    }, () => executeTaskFlowUnlocked(taskFlow, scheduleId, executionToken, lifecycle, runId));
   } catch (error) {
     if (error?.code === 'MAA_EXECUTION_BUSY') {
       logger.warn('设备正被其他 MAA 任务占用，跳过任务流程', { scheduleId, owner: error.owner });
@@ -1408,7 +1422,7 @@ async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
     }
     throw error;
   } finally {
-    const ownsActiveExecution = activeScheduleRunId === runId;
+    const ownsActiveExecution = activeScheduleExecutionToken === executionToken;
     if (ownsActiveExecution) {
       activeScheduleTaskProgress?.finish({ stopped: scheduleExecutionStatus.shouldStop });
     }
@@ -1420,12 +1434,14 @@ async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
 
       logger.error('任务流程未正常收尾，已复位执行状态', {
         scheduleId,
+        runId,
         stopped: wasStopped,
         error: unexpectedError?.message || null
       });
       updateScheduleStatus({
         isRunning: false,
         scheduleId: null,
+        runId: null,
         currentStep: -1,
         totalSteps: 0,
         currentTask: null,
@@ -1440,16 +1456,88 @@ async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
       cancelActiveScheduleDelay = null;
       activeScheduleAbortController = null;
       activeScheduleTaskProgress = null;
-      if (ownsActiveExecution) activeScheduleRunId = null;
+      if (ownsActiveExecution) activeScheduleExecutionToken = null;
     }
   }
 }
 
-export async function executeScheduledTaskFromCron(taskFlow, scheduleId) {
+const ACTIVE_DAILY_FLOW_RUN_STATES = new Set(['accepted', 'running', 'stopping']);
+
+function settleDailyFlowRun(runId, result, error = null) {
   try {
-    return await executeTaskFlow(taskFlow, scheduleId);
+    const run = getAgentRun(runId);
+    if (!run || !ACTIVE_DAILY_FLOW_RUN_STATES.has(run.state)) return;
+
+    if (error) {
+      if (error.stopped || run.state === 'stopping') {
+        stopAgentRun(runId, { message: error.message || '任务流程已被终止' });
+      } else {
+        failAgentRun(runId, error);
+      }
+      return;
+    }
+    if (result?.stopped || run.state === 'stopping') {
+      stopAgentRun(runId, result);
+      return;
+    }
+    if (result?.success === false) {
+      failAgentRun(runId, createDailyFlowExecutionError(result) || new Error(result.message || '任务流程未能执行'));
+      return;
+    }
+    completeAgentRun(runId, result);
+  } catch (settleError) {
+    logger.error('定时流程终态写入失败', { runId, error: settleError.message });
+  }
+}
+
+async function flushDailyFlowRunStore(context, runId) {
+  try {
+    await flushAgentRunStore();
   } catch (error) {
-    logger.error('定时任务回调执行失败', { scheduleId, error: error.message });
+    logger.error(context, { runId, error: error.message });
+  }
+}
+
+export async function executeScheduledTaskFromCron(taskFlow, scheduleId) {
+  let runId;
+  try {
+    const reservation = beginAgentRun({
+      operationId: 'run_daily_flow',
+      input: { scheduleId, taskFlow },
+      metadata: {
+        taskName: `定时流程 ${scheduleId}`,
+        taskType: 'schedule',
+        scheduleId,
+        trigger: 'cron'
+      }
+    });
+    runId = reservation.run.runId;
+    await flushAgentRunStore();
+  } catch (error) {
+    logger.error('定时任务未能获得 Run 身份，已跳过执行', { scheduleId, error: error.message });
+    if (runId) {
+      try {
+        failAgentRun(runId, error);
+      } catch (settleError) {
+        logger.error('定时流程准入失败终态写入失败', { runId, error: settleError.message });
+      }
+      await flushDailyFlowRunStore('定时流程准入失败持久化失败', runId);
+    }
+    return { success: false, message: error.message };
+  }
+
+  try {
+    const result = await executeTaskFlow(taskFlow, scheduleId, {
+      onBeforeStart: () => startAgentRunForExecution(runId)
+    }, { runId });
+    const totalSteps = Array.isArray(taskFlow) ? taskFlow.filter(task => task?.enabled).length : 0;
+    settleDailyFlowRun(runId, { ...result, scheduleId, totalSteps });
+    await flushDailyFlowRunStore('定时流程终态持久化失败', runId);
+    return result;
+  } catch (error) {
+    settleDailyFlowRun(runId, null, error);
+    await flushDailyFlowRunStore('定时流程失败终态持久化失败', runId);
+    logger.error('定时任务回调执行失败', { scheduleId, runId, error: error.message });
     return { success: false, message: error.message };
   }
 }
@@ -1644,9 +1732,9 @@ export function getScheduleStatus() {
 }
 
 // 立即执行一次定时任务（用于测试）
-export async function executeScheduleNow(scheduleId, taskFlow, lifecycle = {}) {
-  logger.info('手动触发执行', { scheduleId });
-  return await executeTaskFlow(taskFlow, scheduleId, lifecycle);
+export async function executeScheduleNow(scheduleId, taskFlow, lifecycle = {}, options = {}) {
+  logger.info('手动触发执行', { scheduleId, runId: options.runId || null });
+  return await executeTaskFlow(taskFlow, scheduleId, lifecycle, options);
 }
 
 // 自动更新任务

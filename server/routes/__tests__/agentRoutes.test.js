@@ -14,10 +14,16 @@ import {
   getAgentRun,
   getCurrentAgentRun,
   initializeAgentRunStore,
+  listAgentRuns,
   resetAgentRunsForTests,
   shutdownAgentRunStoreForTests,
   startAgentRun
 } from '../../services/agentRunService.js'
+import {
+  getScheduleExecutionStatus,
+  stopScheduleExecution
+} from '../../services/schedulerService.js'
+import { getTodayOpenStages } from '../../services/notificationService.js'
 
 const quietLogger = {
   info() {},
@@ -1025,5 +1031,324 @@ describe('Agent daily flow route', () => {
     assert.equal(res.statusCode, 400)
     assert.equal(res.body.error.code, 'AGENT_DAILY_FLOW_REJECTED')
     assert.equal(res.body.error.details.result.details.index, 0)
+  })
+})
+
+async function waitForSnapshot(predicate, { timeout = 8000, interval = 20 } = {}) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const value = await predicate()
+    if (value) return value
+    await new Promise(resolve => setTimeout(resolve, interval))
+  }
+  throw new Error('condition not met before timeout')
+}
+
+function fastDailyFlow() {
+  return [
+    { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} },
+    { id: 'infrast-1', commandId: 'infrast', name: '基建换班', enabled: true, params: { facility: [] } }
+  ]
+}
+
+function interStepDailyFlow() {
+  const closed = getTodayOpenStages().closed[0]?.stage
+  assert.ok(closed, 'expected at least one closed resource stage today')
+  return [
+    { id: 'fight-closed-1', commandId: 'fight', name: '理智作战', enabled: true, params: { stage: closed } },
+    { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} }
+  ]
+}
+
+function scheduleExecuteRequest(body, headers = {}) {
+  return {
+    headers,
+    params: { scheduleId: 'manual' },
+    body
+  }
+}
+
+describe('Agent daily flow run coverage', () => {
+  beforeEach(async () => {
+    resetAgentRunsForTests()
+    await rm(lockFile, { force: true })
+    if (getTaskStatus().isRunning) setTaskStatus(false)
+  })
+
+  afterEach(async () => {
+    stopScheduleExecution()
+    await waitForSnapshot(() => !getScheduleExecutionStatus().isRunning, { timeout: 3000 })
+      .catch(() => {})
+    resetAgentRunsForTests()
+    await rm(lockFile, { force: true })
+    if (getTaskStatus().isRunning) setTaskStatus(false)
+  })
+
+  it('keeps the legacy synchronous response and adds a terminal run identity', async () => {
+    const res = createResponse()
+    const handler = findHandler('post', '/schedules/:scheduleId/execute')
+
+    await handler(scheduleExecuteRequest({ taskFlow: fastDailyFlow() }), res, () => {})
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.success, true)
+    assert.equal(res.body.data.success, true)
+    assert.equal(res.body.data.stopped, false)
+    assert.equal(res.body.data.scheduleId, 'manual')
+    assert.equal(res.body.data.totalSteps, 2)
+    assert.equal(res.body.data.summary.skippedCount, 2)
+    assert.ok(res.body.data.runId)
+    assert.equal(res.headers['X-La-Pluma-Run-Id'], res.body.data.runId)
+
+    const run = getAgentRun(res.body.data.runId)
+    assert.equal(run.operationId, 'run_daily_flow')
+    assert.equal(run.state, 'succeeded')
+    assert.equal(run.result.summary.taskResults.length, 2)
+    assert.equal(getScheduleExecutionStatus().runId, null)
+  })
+
+  it('accepts a background flow early and keeps progress queryable while it waits between steps', async () => {
+    const flow = interStepDailyFlow()
+    const res = createResponse()
+    const handler = findHandler('post', '/schedules/:scheduleId/execute')
+
+    await handler(scheduleExecuteRequest({ taskFlow: flow, waitForCompletion: false }), res, () => {})
+
+    assert.equal(res.statusCode, 202)
+    assert.equal(res.body.data.accepted, true)
+    assert.equal(res.body.data.scheduleId, 'manual')
+    assert.equal(res.body.data.totalSteps, 2)
+    assert.ok(res.body.data.runId)
+    assert.equal(res.headers.Location, `/api/agent/runs/${res.body.data.runId}`)
+    const runId = res.body.data.runId
+
+    await waitForSnapshot(() => {
+      const status = getScheduleExecutionStatus()
+      return status.isRunning && status.runId === runId && status.currentStep === 0
+    })
+    await new Promise(resolve => setTimeout(resolve, 150))
+
+    const waiting = getScheduleExecutionStatus()
+    assert.equal(waiting.isRunning, true)
+    assert.equal(waiting.runId, runId)
+    assert.equal(waiting.currentTaskId, 'fight-closed-1')
+    assert.equal(getTaskStatus().isRunning, false)
+
+    const run = getAgentRun(runId)
+    assert.equal(run.state, 'running')
+    assert.equal(run.progress, undefined)
+
+    const snapshotRes = createResponse()
+    await findHandler('get', '/runs/current')({ headers: {}, query: {} }, snapshotRes, () => {})
+
+    assert.equal(snapshotRes.body.data.run.runId, runId)
+    assert.equal(snapshotRes.body.data.run.state, 'running')
+    assert.equal(snapshotRes.body.data.run.progress.scheduleId, 'manual')
+    assert.equal(snapshotRes.body.data.run.progress.currentStep, 0)
+    assert.equal(snapshotRes.body.data.run.progress.totalSteps, 2)
+    assert.equal(snapshotRes.body.data.occupancy.state, 'run')
+    assert.equal(snapshotRes.body.data.occupancy.schedule.runId, runId)
+
+    const stopRes = createResponse()
+    await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopRes, () => {})
+
+    assert.equal(stopRes.statusCode, 200)
+    assert.equal(stopRes.body.data.run.state, 'stopping')
+
+    const terminal = await waitForSnapshot(() => {
+      const current = getAgentRun(runId)
+      return current && ['stopped', 'failed', 'succeeded'].includes(current.state) ? current : null
+    })
+
+    assert.equal(terminal.state, 'stopped')
+    assert.equal(terminal.result.stopped, true)
+    assert.equal(terminal.result.summary.taskResults[0].status, 'skipped')
+    assert.equal(terminal.result.summary.taskResults[1].status, 'pending')
+    assert.equal(getScheduleExecutionStatus().isRunning, false)
+    assert.equal(getScheduleExecutionStatus().runId, null)
+  })
+
+  it('reuses one run for an idempotent resubmission and rejects a changed input', async () => {
+    const headers = { 'idempotency-key': 'daily-flow:replay:1' }
+    const first = createResponse()
+    await findHandler('post', '/schedules/:scheduleId/execute')(
+      scheduleExecuteRequest({ taskFlow: fastDailyFlow(), waitForCompletion: false }, headers),
+      first,
+      () => {}
+    )
+
+    assert.equal(first.statusCode, 202)
+    const runId = first.body.data.runId
+
+    await waitForSnapshot(() => {
+      const run = getAgentRun(runId)
+      return run && run.state === 'succeeded' ? run : null
+    })
+
+    const replay = createResponse()
+    await findHandler('post', '/schedules/:scheduleId/execute')(
+      scheduleExecuteRequest({ taskFlow: fastDailyFlow(), waitForCompletion: false }, headers),
+      replay,
+      () => {}
+    )
+
+    assert.ok([200, 202].includes(replay.statusCode))
+    assert.equal(replay.body.data.runId, runId)
+    assert.equal(replay.headers['Idempotency-Replayed'], 'true')
+    assert.equal(listAgentRuns({ operationId: 'run_daily_flow' }).length, 1)
+
+    const conflict = createResponse()
+    await findHandler('post', '/schedules/:scheduleId/execute')(
+      scheduleExecuteRequest({
+        taskFlow: [{ id: 'award-2', commandId: 'award', name: '另一条流程', enabled: true, params: {} }]
+      }, headers),
+      conflict,
+      () => {}
+    )
+
+    assert.equal(conflict.statusCode, 409)
+    assert.equal(conflict.body.error.code, 'AGENT_IDEMPOTENCY_KEY_REUSED')
+  })
+
+  it('maps an occupied executor to the legacy code and releases the idempotency key', async () => {
+    const headers = { 'idempotency-key': 'daily-flow:busy:1' }
+    await writeFile(lockFile, JSON.stringify({
+      pid: process.pid,
+      source: 'test-owner',
+      taskName: '占用设备',
+      command: 'copilot',
+      startedAt: new Date().toISOString()
+    }))
+
+    const busy = createResponse()
+    await findHandler('post', '/schedules/:scheduleId/execute')(
+      scheduleExecuteRequest({ taskFlow: fastDailyFlow() }, headers),
+      busy,
+      () => {}
+    )
+
+    assert.equal(busy.statusCode, 409)
+    assert.equal(busy.body.error.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
+    assert.equal(busy.body.error.retryable, true)
+    const rejectedRun = getAgentRun(busy.body.error.details.runId)
+    assert.equal(rejectedRun.state, 'failed')
+    assert.equal(rejectedRun.error.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
+    assert.equal(getScheduleExecutionStatus().isRunning, false)
+
+    await rm(lockFile, { force: true })
+    const retry = createResponse()
+    await findHandler('post', '/schedules/:scheduleId/execute')(
+      scheduleExecuteRequest({ taskFlow: fastDailyFlow() }, headers),
+      retry,
+      () => {}
+    )
+
+    assert.equal(retry.statusCode, 200)
+    assert.notEqual(retry.body.data.runId, rejectedRun.runId)
+    assert.equal(getAgentRun(retry.body.data.runId).state, 'succeeded')
+  })
+
+  it('accepts the Agent daily-flow entry early and serves the final result by run id', async () => {
+    const res = createResponse()
+    const req = {
+      headers: { 'idempotency-key': 'daily-flow:agent:1' },
+      query: {},
+      body: {
+        dryRun: false,
+        scheduleId: 'agent-daily-flow',
+        taskFlow: fastDailyFlow(),
+        waitForCompletion: false
+      }
+    }
+
+    await findHandler('post', '/actions/run-daily-flow')(req, res, () => {})
+
+    assert.equal(res.statusCode, 202)
+    assert.equal(res.body.data.accepted, true)
+    assert.equal(res.body.data.totalSteps, 2)
+    assert.equal(res.body.data.plan.length, 2)
+    const runId = res.body.data.runId
+
+    const terminal = await waitForSnapshot(() => {
+      const run = getAgentRun(runId)
+      return run && run.state === 'succeeded' ? run : null
+    })
+
+    assert.equal(terminal.result.success, true)
+    assert.equal(terminal.result.plan[0].command, 'award')
+
+    const lookup = createResponse()
+    await findHandler('get', '/runs/:runId')({ headers: {}, params: { runId } }, lookup, () => {})
+
+    assert.equal(lookup.statusCode, 200)
+    assert.equal(lookup.body.data.runId, runId)
+    assert.equal(lookup.body.data.state, 'succeeded')
+    assert.equal(lookup.body.data.result.summary.taskResults.length, 2)
+  })
+
+  it('does not create a run for a dry-run plan', async () => {
+    const res = createResponse()
+    const req = {
+      headers: {},
+      query: {},
+      body: { dryRun: true, scheduleId: 'dry-run', taskFlow: fastDailyFlow() }
+    }
+
+    await findHandler('post', '/actions/run-daily-flow')(req, res, () => {})
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.meta.dryRun, true)
+    assert.deepEqual(listAgentRuns(), [])
+  })
+})
+
+describe('Agent daily flow concurrency', () => {
+  beforeEach(async () => {
+    resetAgentRunsForTests()
+    await rm(lockFile, { force: true })
+  })
+
+  afterEach(async () => {
+    stopScheduleExecution()
+    await waitForSnapshot(() => !getScheduleExecutionStatus().isRunning, { timeout: 3000 })
+      .catch(() => {})
+    resetAgentRunsForTests()
+    await rm(lockFile, { force: true })
+  })
+
+  it('rejects a second daily flow instead of sharing one execution lease', async () => {
+    const first = createResponse()
+    await findHandler('post', '/schedules/:scheduleId/execute')(
+      scheduleExecuteRequest({ taskFlow: interStepDailyFlow(), waitForCompletion: false }),
+      first,
+      () => {}
+    )
+
+    assert.equal(first.statusCode, 202)
+    const runId = first.body.data.runId
+    assert.equal(getAgentRun(runId).state, 'running')
+
+    const second = createResponse()
+    await findHandler('post', '/actions/run-daily-flow')({
+      headers: {},
+      query: {},
+      body: { dryRun: false, scheduleId: 'agent-daily-flow', taskFlow: fastDailyFlow() }
+    }, second, () => {})
+
+    assert.equal(second.statusCode, 409)
+    assert.equal(second.body.error.code, 'AGENT_EXECUTION_BUSY')
+    assert.equal(second.body.error.retryable, true)
+    assert.equal(getAgentRun(runId).state, 'running')
+    assert.equal(getScheduleExecutionStatus().runId, runId)
+
+    const stopRes = createResponse()
+    await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopRes, () => {})
+    assert.equal(stopRes.statusCode, 200)
+
+    const terminal = await waitForSnapshot(() => {
+      const run = getAgentRun(runId)
+      return run && run.state === 'stopped' ? run : null
+    })
+    assert.equal(terminal.state, 'stopped')
   })
 })

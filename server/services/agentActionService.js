@@ -119,6 +119,13 @@ export function normalizeDailyFlowRequest(input = {}) {
     });
   }
 
+  const waitForCompletion = input.waitForCompletion ?? true;
+  if (typeof waitForCompletion !== 'boolean') {
+    throw invalidRequest('AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID', 'waitForCompletion 必须是布尔值', {
+      receivedType: typeof waitForCompletion
+    });
+  }
+
   const scheduleId = normalizeOptionalLabel(input.scheduleId, 'scheduleId', 'agent-daily-flow', 128);
   const taskFlow = input.taskFlow ?? null;
   if (taskFlow !== null && !Array.isArray(taskFlow)) {
@@ -127,7 +134,7 @@ export function normalizeDailyFlowRequest(input = {}) {
     });
   }
 
-  return { dryRun, scheduleId, taskFlow };
+  return { dryRun, scheduleId, taskFlow, waitForCompletion };
 }
 
 /**

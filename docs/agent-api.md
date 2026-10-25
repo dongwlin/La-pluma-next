@@ -56,6 +56,17 @@ curl -X POST http://localhost:3000/api/agent/actions/run-daily-flow \
   -H 'Idempotency-Key: daily-flow-20260712-01' \
   -d '{"dryRun":false}'
 
+# 立即拿到 runId，稍后再查询终态（流程获得执行权后返回 202）
+curl -X POST http://localhost:3000/api/agent/actions/run-daily-flow \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: daily-flow-20260712-02' \
+  -d '{"dryRun":false,"waitForCompletion":false}'
+
+# Web UI 使用的同步入口；同样支持 waitForCompletion=false
+curl -X POST http://localhost:3000/api/agent/schedules/manual/execute \
+  -H 'Content-Type: application/json' \
+  -d '{"taskFlow":[...]}'
+
 # 轮询运行快照：当前 run、全部活动意图、最近终态与设备占用
 curl 'http://localhost:3000/api/agent/runs/current?lines=80'
 
@@ -68,13 +79,13 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
   -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
 ```
 
-所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](execution-lifecycle.md)。
+所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。日常流程的 Agent 入口和 `/api/agent/schedules/{scheduleId}/execute` 共用 `run_daily_flow`：默认同步等待整个流程；传 `waitForCompletion=false` 时在流程获得执行租约后返回 202，并在 `data` 中给出 `accepted: true`、`scheduleId`、`totalSteps` 和 `runId`。旧同步响应字段保持不变。执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](execution-lifecycle.md)。
 
-`runs/current` 返回运行快照：`run` 是当前活动 run，`activeRuns` 列出全部活动意图（多个 `accepted` 时不会只剩一个），`lastRun` 是最近终态，`occupancy` 说明设备由 `run` 还是未纳管执行（`external`）占用，或只是 `pending`、`idle`、`unknown`。`occupancy.lease` 给出协作租约的 `free`/`held`/`stale`/`unknown` 状态和占用者。旧字段 `isRunning`、`taskName`、`schedule`、`recentLogs` 保持原样。行为不变的部分：进程 idle 不代表流程完成，`lastRun` 也不是调用方自己的身份。
+`runs/current` 返回运行快照：`run` 是当前活动 run，`activeRuns` 列出全部活动意图（多个 `accepted` 时不会只剩一个），`lastRun` 是最近终态，`occupancy` 说明设备由 `run` 还是未纳管执行（`external`）占用，或只是 `pending`、`idle`、`unknown`。`occupancy.lease` 给出协作租约的 `free`/`held`/`stale`/`unknown` 状态和占用者。旧字段 `isRunning`、`taskName`、`schedule`、`recentLogs` 保持原样；`schedule.runId` 标识当前流程所属的 Run，为 `null` 表示该流程没有 Run 身份。`run.progress` 只在日常流程持有对应 `schedule.runId` 时给出步骤，否则显示等待。行为不变的部分：进程 idle 不代表流程完成，`lastRun` 也不是调用方自己的身份。
 
 目标停止按 `runId` 保护：`accepted` 会被直接取消（`result.canceled=true`，不发设备命令）；`running` 的当前 run 转入 `stopping` 并发送停止；旧终态 run 返回 `alreadyTerminal`，不会影响新执行；重复停止保持成功。响应中的 `stopRequested` 表示停止意图已记录，`deviceStopRequested` 表示是否真的发出了设备停止命令。
 
-`Idempotency-Key` 是可选请求头，适用于活动作业、启动游戏、理智作战、通用任务和今日流程。幂等键按执行动作分区；同一动作使用相同 key 和相同请求参数重试时不会再次启动，而是返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。相同 key 搭配不同输入会返回 `AGENT_IDEMPOTENCY_KEY_REUSED`。Run 与幂等记录默认持久化到 `server/data/agent-runs.json`，正常重启后仍会保留；重启时尚未结束的 run 会变为不可自动重试的 `interrupted`，返回 `recovery` 说明记录可读但执行未恢复、设备状态未知，且不会自动续跑。终态最多保留 24 小时和 500 条，达到数量上限时可能提前淘汰；被淘汰的 `runId` 查询返回 404。
+`Idempotency-Key` 是可选请求头，适用于活动作业、启动游戏、理智作战、通用任务、今日流程以及 `/api/agent/schedules/{scheduleId}/execute`。幂等键按 `operationId` 分区；日常流程的两个 HTTP 入口都使用 `run_daily_flow`，相同 key、相同 `scheduleId` 与 `taskFlow` 重试时不会再次启动，而是返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。相同 key 搭配不同输入会返回 `AGENT_IDEMPOTENCY_KEY_REUSED`。执行前被占用或校验拒绝会释放键，允许修正后用同键重试；执行开始后的失败保留键。cron 触发没有调用方幂等键，每次触发都是一次独立执行意图。Run 与幂等记录默认持久化到 `server/data/agent-runs.json`，正常重启后仍会保留；重启时尚未结束的 run 会变为不可自动重试的 `interrupted`，返回 `recovery` 说明记录可读但执行未恢复、设备状态未知，且不会自动续跑。终态最多保留 24 小时和 500 条，达到数量上限时可能提前淘汰；被淘汰的 `runId` 查询返回 404。
 
 
 当前持久化保证以单个 La Pluma Next 服务实例为边界。不要让多个 Node.js 进程同时读写同一个 Run 存储文件；需要修改路径时可设置 `LA_PLUMA_AGENT_RUN_STORE`。

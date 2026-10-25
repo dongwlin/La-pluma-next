@@ -386,6 +386,7 @@ describe('Agent OpenAPI generation', () => {
       schemas.RunOccupancy.properties.sources.items.enum,
       ['run', 'task', 'schedule', 'lease']
     );
+    assert.equal(schemas.ScheduleExecutionSnapshot.properties.runId.format, 'uuid');
 
     const guard = stop.parameters.find(item => item.name === 'runId');
     assert.equal(guard.in, 'query');
@@ -408,6 +409,12 @@ describe('Agent OpenAPI generation', () => {
     assert.equal(byId.get('fight').safety.readOnly, false);
     assert.equal(byId.get('fight').execution.dryRun.supported, true);
     assert.equal(byId.get('run_daily_flow').execution.supportsDryRun, true);
+    assert.equal(byId.get('run_daily_flow').execution.supportsWaitForCompletion, true);
+    assert.equal(
+      byId.get('run_daily_flow').body_schema.properties.waitForCompletion.default,
+      true
+    );
+    assert.equal(byId.get('run_daily_flow').execution.mode, 'sync-or-background');
     assert.equal(byId.get('preview_orientation').execution.dryRun.supported, true);
     assert.equal(byId.get('run_task').execution.dryRun.supported, false);
     assert.equal(byId.get('run_task').execution.pollAction, 'get_current_run');

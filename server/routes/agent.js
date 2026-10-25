@@ -172,9 +172,17 @@ function respondWithExistingRun(res, req, run, message = '返回已有执行') {
 }
 
 function isPreExecutionError(error) {
-  return error?.code === 'MAA_EXECUTION_BUSY'
-    || error?.code === 'AGENT_EXECUTION_BUSY'
-    || String(error?.code || '').startsWith('AGENT_VALIDATION_');
+  const code = error?.code || '';
+  return code === 'MAA_EXECUTION_BUSY'
+    || code === 'AGENT_EXECUTION_BUSY'
+    || code === 'AGENT_SCHEDULE_ALREADY_RUNNING'
+    || code === 'AGENT_DAILY_FLOW_REJECTED'
+    || code.startsWith('AGENT_VALIDATION_');
+}
+
+function resolveResponseMessage(message, result, fallback) {
+  const resolved = typeof message === 'function' ? message(result) : message;
+  return resolved || fallback;
 }
 
 async function settleBackgroundRun(runId, outcome) {
@@ -254,7 +262,8 @@ export async function executeTrackedAgentAction(req, res, {
   metadata = {},
   execute,
   successMessage = '操作成功',
-  acceptedMessage = '任务已接受'
+  acceptedMessage = '任务已接受',
+  stoppedMessage = '任务已终止'
 }) {
   const reservation = beginAgentRun({
     operationId,
@@ -317,7 +326,7 @@ export async function executeTrackedAgentAction(req, res, {
   };
 
   try {
-    const result = await execute(lifecycle);
+    const result = await execute(lifecycle, { runId });
     acceptedResult = result;
     hasAcceptedResult = true;
     if (pendingOutcome) {
@@ -330,7 +339,7 @@ export async function executeTrackedAgentAction(req, res, {
       run = setAgentRunAcceptedResult(runId, result);
     }
     if (waitForCompletion && !TERMINAL_RUN_STATES.has(run.state)) {
-      run = run.state === 'stopping'
+      run = run.state === 'stopping' || result?.stopped
         ? stopAgentRun(runId, result)
         : completeAgentRun(runId, result);
     }
@@ -345,11 +354,15 @@ export async function executeTrackedAgentAction(req, res, {
           return sendRunFailure(res, req, run);
         }
         if (run.state === 'stopped') {
-          return sendRunSuccess(res, req, run.result, run, { message: '任务已终止' });
+          return sendRunSuccess(res, req, run.result, run, {
+            message: resolveResponseMessage(stoppedMessage, run.result, '任务已终止')
+          });
         }
         const accepted = !waitForCompletion && ACTIVE_RUN_STATES.has(run.state);
         return sendRunSuccess(res, req, TERMINAL_RUN_STATES.has(run.state) ? run.result : result, run, {
-          message: accepted ? acceptedMessage : successMessage,
+          message: accepted
+            ? acceptedMessage
+            : resolveResponseMessage(successMessage, result, '操作成功'),
           accepted
         });
       }
@@ -365,7 +378,9 @@ export async function executeTrackedAgentAction(req, res, {
         persistedRun => {
           const terminalRun = persistedRun || current;
           if (terminalRun.state === 'stopped') {
-            return sendRunSuccess(res, req, terminalRun.result, terminalRun, { message: '任务已终止' });
+            return sendRunSuccess(res, req, terminalRun.result, terminalRun, {
+              message: resolveResponseMessage(stoppedMessage, terminalRun.result, '任务已终止')
+            });
           }
           return sendRunFailure(res, req, terminalRun);
         }
@@ -393,7 +408,9 @@ export async function executeTrackedAgentAction(req, res, {
       persistedRun => {
         const terminalRun = persistedRun || run;
         if (terminalRun.state === 'stopped') {
-          return sendRunSuccess(res, req, terminalRun.result, terminalRun, { message: '任务已终止' });
+          return sendRunSuccess(res, req, terminalRun.result, terminalRun, {
+            message: resolveResponseMessage(stoppedMessage, terminalRun.result, '任务已终止')
+          });
         }
         return sendRunFailure(res, req, terminalRun);
       }
@@ -411,6 +428,131 @@ function parseWaitForCompletion(value, defaultValue = true) {
     });
   }
   return normalized;
+}
+
+function mapLegacyBusyError(error, legacyCode) {
+  if (!error || !legacyCode || error.code !== 'AGENT_EXECUTION_BUSY') return error;
+  return agentError(legacyCode, error.message, {
+    statusCode: error.statusCode || 409,
+    details: error.details || {},
+    retryable: error.retryable ?? true
+  });
+}
+
+function toDailyFlowOutcome(result, legacyBusyCode) {
+  const error = createDailyFlowExecutionError(result);
+  if (error) return { ok: false, error: mapLegacyBusyError(error, legacyBusyCode) };
+  if (result?.stopped) return { stopped: true, result };
+  return { ok: true, result };
+}
+
+/**
+ * Starts a daily flow in the background and resolves once the flow owns the
+ * execution lease and has passed the pre-start gate. Failures before that
+ * point are reported synchronously; later failures settle the accepted run.
+ */
+function startDailyFlowBackground({
+  scheduleId,
+  taskFlow,
+  lifecycle,
+  runId,
+  legacyBusyCode,
+  acceptedResult
+}) {
+  if (typeof lifecycle.onSettled !== 'function') {
+    throw new Error('后台日常流程需要 onSettled 生命周期');
+  }
+
+  return new Promise((resolve, reject) => {
+    let started = false;
+    let settled = false;
+    const settle = outcome => {
+      if (settled) return;
+      settled = true;
+      Promise.resolve(lifecycle.onSettled(outcome)).catch(error => {
+        logger.error('后台日常流程终态处理失败', { scheduleId, runId, error: error.message });
+      });
+    };
+
+    let flow;
+    try {
+      flow = executeScheduleNow(scheduleId, taskFlow, {
+        onBeforeStart: () => lifecycle.onBeforeStart?.(),
+        onStarted: () => {
+          started = true;
+          lifecycle.onStarted?.();
+          resolve(acceptedResult);
+        }
+      }, { runId });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    flow.then(result => {
+      const outcome = toDailyFlowOutcome(result, legacyBusyCode);
+      if (!started) {
+        reject(outcome.error || new Error(outcome.result?.message || '任务流程未能开始'));
+        return;
+      }
+      settle(outcome);
+    }, error => {
+      if (!started) {
+        reject(mapLegacyBusyError(error, legacyBusyCode));
+        return;
+      }
+      settle({ ok: false, error });
+    });
+  });
+}
+
+function executeTrackedDailyFlow(req, res, {
+  scheduleId,
+  taskFlow,
+  waitForCompletion = true,
+  metadata,
+  legacyBusyCode = null,
+  successMessage = '任务流程执行完成',
+  acceptedMessage = '任务流程已接受',
+  stoppedMessage = result => result?.message || '任务流程已被终止',
+  extraResult = {}
+}) {
+  const totalSteps = taskFlow.filter(task => task?.enabled).length;
+
+  return executeTrackedAgentAction(req, res, {
+    operationId: 'run_daily_flow',
+    input: { scheduleId, taskFlow },
+    waitForCompletion,
+    metadata,
+    execute: async (lifecycle, { runId }) => {
+      if (waitForCompletion) {
+        const result = await executeScheduleNow(scheduleId, taskFlow, lifecycle, { runId });
+        const failure = createDailyFlowExecutionError(result);
+        if (failure) throw mapLegacyBusyError(failure, legacyBusyCode);
+        return { ...result, scheduleId, totalSteps, ...extraResult };
+      }
+
+      return startDailyFlowBackground({
+        scheduleId,
+        taskFlow,
+        lifecycle,
+        runId,
+        legacyBusyCode,
+        acceptedResult: {
+          success: true,
+          accepted: true,
+          stopped: false,
+          message: acceptedMessage,
+          scheduleId,
+          totalSteps,
+          ...extraResult
+        }
+      });
+    },
+    successMessage,
+    acceptedMessage,
+    stoppedMessage
+  });
 }
 
 function sendConfigStorageError(res, req, result, fallbackCode, fallbackMessage) {
@@ -1373,11 +1515,20 @@ router.post('/schedules/:scheduleId/execute', asyncHandler(async (req, res) => {
   if (!Array.isArray(taskFlow)) {
     return sendError(res, req, agentError('AGENT_VALIDATION_TASK_FLOW_INVALID', '任务流程格式无效', { statusCode: 400 }));
   }
-  const result = await executeScheduleNow(scheduleId, taskFlow);
-  if (!result.success) {
-    return sendError(res, req, agentError('AGENT_SCHEDULE_ALREADY_RUNNING', result.message, { statusCode: 409 }));
-  }
-  return sendSuccess(res, req, result, result.message);
+  const waitForCompletion = parseWaitForCompletion(req.body?.waitForCompletion);
+  return executeTrackedDailyFlow(req, res, {
+    scheduleId,
+    taskFlow,
+    waitForCompletion,
+    metadata: {
+      taskName: `任务流程 ${scheduleId}`,
+      taskType: 'schedule',
+      scheduleId,
+      trigger: 'schedule-api'
+    },
+    legacyBusyCode: 'AGENT_SCHEDULE_ALREADY_RUNNING',
+    successMessage: result => result?.message || '任务流程执行完成'
+  });
 }));
 
 router.post('/actions/configure-auto-update', asyncHandler(async (req, res) => {
@@ -1543,7 +1694,12 @@ router.post('/actions/start-game', asyncHandler(async (req, res) => {
 }));
 
 router.post('/actions/run-daily-flow', asyncHandler(async (req, res) => {
-  const { dryRun, scheduleId, taskFlow: overrideTaskFlow } = normalizeDailyFlowRequest(req.body || {});
+  const {
+    dryRun,
+    scheduleId,
+    taskFlow: overrideTaskFlow,
+    waitForCompletion
+  } = normalizeDailyFlowRequest(req.body || {});
   const taskFlow = await loadAutomationTaskFlow(overrideTaskFlow);
   const planResult = await getScheduledTaskFlowPlan(taskFlow);
   const planError = createDailyFlowExecutionError(planResult);
@@ -1569,17 +1725,19 @@ router.post('/actions/run-daily-flow', asyncHandler(async (req, res) => {
     }, 'Dry run only', { dryRun: true });
   }
 
-  return executeTrackedAgentAction(req, res, {
-    operationId: 'run_daily_flow',
-    input: { scheduleId, taskFlow },
-    metadata: { taskName: `今日流程 ${scheduleId}`, taskType: 'schedule' },
-    execute: async lifecycle => {
-      const result = await executeScheduleNow(scheduleId, taskFlow, lifecycle);
-      const executionError = createDailyFlowExecutionError(result);
-      if (executionError) throw executionError;
-      return { ...result, scheduleId, totalSteps: planResult.totalSteps, plan };
+  return executeTrackedDailyFlow(req, res, {
+    scheduleId,
+    taskFlow,
+    waitForCompletion,
+    metadata: {
+      taskName: `今日流程 ${scheduleId}`,
+      taskType: 'schedule',
+      scheduleId,
+      trigger: 'agent-api'
     },
-    successMessage: '今日流程执行完成'
+    successMessage: '今日流程执行完成',
+    acceptedMessage: '今日流程已接受',
+    extraResult: { plan }
   });
 }));
 
