@@ -14,9 +14,10 @@
 | 读取 `runs/current` / 按 `runId` 查询 | `api/runs.ts` | 判断“设备是否空闲”以外的业务含义 |
 | 保存调用方自己的 `runId` | `ExecutionController` | 持久化 Run 记录（服务端） |
 | 停止指定 run | `api/runs.ts#stopRun` + `stopTrackedRun` | 旧页面按 `tasks/status` 的停止确认 |
-| 连接健康与全局 `isActive` | `runtime-status` | 执行控制器不写 `statusStore` |
+| 连接健康 | `runtime-status` 的 `useBackendStatusMonitor` | 不从探针推断运行状态 |
+| 全局运行展示 | `runtime-status` 消费控制器的 `summarizeRunStatus` 投影 | 不复制 Run 记录，不由页面写运行字段 |
 
-控制器不反向依赖 `runtime-status`，也不新增可写业务真相：所有观察都来自服务端 Run 快照，控制器只保存调用方身份与最近一次快照。
+控制器不反向依赖 `runtime-status`，也不新增可写业务真相：所有观察都来自服务端 Run 快照，控制器只保存调用方身份与最近一次快照。`runtime-status` 只单向依赖控制器，把唯一快照投影成阶段、身份与一行标签。
 
 ## 2. 公开面
 
@@ -59,6 +60,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `abortObservation()` / `resumeObservation()` | 中止/恢复本地观察，不改变服务端执行 |
 | `useExecutionObservation()` | 应用级启动观察，通常在 `App` 中调用一次 |
 | `useExecutionSnapshot()` | 基于 `useSyncExternalStore` 的薄订阅，返回稳定快照 |
+| `summarizeRunStatus(state)` | 纯投影：把控制器状态归为 `running`/`waiting`/`occupied`/`unknown`/`idle`，附 `runId`、一行标签与进度说明 |
 
 控制器状态：
 
@@ -73,7 +75,21 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `hasActiveRun` | 快照 `activeRuns` 非空，或已跟踪的 run 仍处于活动状态 |
 | `occupancy` | 服务端设备占用投影，可直接展示但不能据此推断执行结果 |
 
-轮询间隔：有活动意图时 2s，空闲 30s，断线重试 10s。观察只走 HTTP 轮询；没有推送通道。
+轮询间隔：有活动意图或提交在途时 2s，空闲 30s，断线重试 10s。`beginExecutionIntent` 会立即刷新一次快照：同步提交（活动作业）在请求返回前拿不到 `runId`，但服务端可能已经创建 run，全局展示要尽早看到它。观察只走 HTTP 轮询；没有推送通道。
+
+### 全局运行状态投影
+
+`runtime-status/hooks/useRunStatusProjection` 在 `App` 中调用一次，订阅控制器并把 `summarizeRunStatus` 写进 `statusStore.runStatus`。它是唯一的运行状态写入者：
+
+| 投影阶段 | 条件 | 标签 | 设备是否忙 |
+| --- | --- | --- | --- |
+| `running` | 快照或已跟踪身份里有活动 run（`stopping` 显示“正在停止”） | `正在执行: <当前任务>` 或 `任务执行中` | 是 |
+| `waiting` | 唯一活动 run 是等待下一关的作业集 | `等待继续` | 是 |
+| `occupied` | 没有活动 run，但 `occupancy.state=external`（未纳管的更新、Telegram 或旧调用方） | `设备被其他任务占用` | 是 |
+| `unknown` | 观察断线（保留最后已知 `isRunning`），或 `occupancy.state=unknown` | `执行状态未知` | 按最后已知值 |
+| `idle` | 其余情况 | 无 | 否 |
+
+`statusStore` 只保留阶段、身份、标签和进度说明，不复制 `AgentRun`；相同投影重复写入会被忽略。`FloatingStatusIndicator` 的显示优先级是连接健康 > 临时消息 > 运行投影 > 干员台词。连接监测器只在投影进入忙态时把探针间隔调到 2s，并且只写 `backendStatus`/`backendMessage`，不再从 `tasks/status.isRunning` 推断运行状态。
 
 ## 3. 身份、幂等与旧响应
 
@@ -106,7 +122,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 ## 6. 生命周期与兼容
 
-- `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。
+- `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。`App` 同时调用 `useRunStatusProjection()`：它在 React 树外订阅控制器并写 `statusStore.runStatus`，所以页面切换、Activity 清理和组件卸载都不会让全局运行展示退回空闲。
 - Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。
 - 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染运行/停止按钮。停止走 `stopTrackedRun()`，确认期间由快照推进；停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面不再写 `statusStore.isActive`。
 - 作业页已迁移到控制器（FPR-009），`scope: 'combat'`：
@@ -121,9 +137,14 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 活动进度来自 `run.progress` 的 `currentStep`/`totalSteps`/`currentTask`/`message`；逐项结果只读取快照中 `schedule.runId === trackedRunId` 的 `taskResults`。流程步间延迟期间 run 仍为活动，页面不会提前标完成；终态摘要只来自 `run.result.summary`。空闲且本页没有持有 run 时，“最近执行”可回退展示快照的 `schedule.lastResult`；它只是旧字段的展示投影，不用于判断身份、完成或重提。
   - 停止走 `stopTrackedRun()`，确认期间由快照推进，15s 未确认解锁重试；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复观察且不重新提交。
   - 旧 `maa-task-flow-execution` 断点只在首次拿到 Run 快照时读取一次：能关联到活动或终态 `run_daily_flow` 时只观察该 run 并删除旧键；格式错误、版本不符、过期（24h）、没有可关联 run、或与其它活动执行冲突时删除旧键并提示重新开始。任何分支都不重提任务，旧键清理失败也不会触发新执行。
-  - 自动化页不再单独轮询 `schedules/execution`，也不写 `statusStore.isActive`；它只接管本页发起的 run，不把 cron、Dashboard 或 Telegram 发起的流程显示成自己的执行。跨页全局展示由运行状态单源任务统一处理。
+  - 自动化页不再单独轮询 `schedules/execution`，也不写 `statusStore.isActive`；它只接管本页发起的 run，不把 cron、Dashboard 或 Telegram 发起的流程显示成自己的执行。跨页全局展示由运行状态投影统一处理。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
-- Dashboard 日常入口仍走旧的同步 `executeScheduleNow`，不采纳 Run 身份，也不使用控制器的停止/观察；由运行状态单源任务迁移。旧响应字段、旧停止入口与旧同步提交保持可用；回退前端控制器不需要删除服务端 Run 能力，也不会让已持久化的终态记录失效。
+- Dashboard 已迁移到控制器（FPR-011），`scope: 'dashboard'`：
+  - 日常入口提交一次 `run_daily_flow`（`POST /api/agent/schedules/dashboard-quick-start/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后不再等待请求返回，卡片按共享快照显示运行或等待。
+  - 活动入口保留领域预检：仍同步调用 `POST /api/agent/activity/run`，服务端先检查导航链、活动作业候选与偏好，`executed=false` 时返回原因；响应中的 `runId` 由控制器采纳。该端点不支持 `waitForCompletion`，页面不据此假设执行会异步开始。
+  - 两个入口的禁用与运行文案只来自共享投影：活动 run（含其它域发起的）和未纳管占用都会禁用启动；断线时显示“执行状态未知”并按最后已知活动 run 保留禁用。Dashboard 不再写 `statusStore.isActive`，也不再用 `schedules/execution.isRunning` 判断运行。
+  - 本页发起的日常流程终态只在“实际观察过活动”后提示一次；其它域或未纳管执行不产生“今日流程完成”提示。页面隐藏/卸载不发送停止，控制器继续观察。
+- 三页（肉鸽、作业、自动化）与 Dashboard 的运行身份都来自同一控制器；Dashboard 启动的 run 带有 `scope: 'dashboard'`，其它页面不会把它显示成自己的执行，但全局投影、浮动指示器和 Dashboard 会看到同一个活动 run。
 
 ## 7. 回归清单
 
@@ -139,12 +160,18 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/时效校验；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 的冲突；所有分支删除旧键；删除失败仍只观察不重提 |
 | `automation/pages/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟期间不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影不被采用；Activity 隐藏/恢复保留终态标记；旧断点有效/终态/失效/过期/冲突分支；失败、跳过与未执行结果 |
 | `automation/pages/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
+| `runtime-status/hooks/useRunStatusProjection.test.tsx` | 空闲/运行/等待继续/正在停止/外部占用/未知占用/断线保留最后活动 run/终态才回到空闲 |
+| `runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 探针只写连接健康，不写运行状态；投影进入忙态后探针改按 2s 间隔 |
+| `runtime-status/components/FloatingStatusIndicator.test.tsx` | 连接健康 > 临时消息 > 运行投影（标签与颜色）> 干员台词；运行/等待为 info，占用/未知为 warning |
+| `runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；忙态保留消息，离开忙态才恢复自动消失；相同投影不重复通知；连接健康与消息互不影响 |
+| `dashboard/pages/Dashboard.test.tsx` | 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；在途重复点击不产生第二个提交；终态通知只宣告实际观察过的本页 run；其它域启动/停止不冒充本页执行但全局保持一致；外部占用与断线未知禁用启动入口；活动预检阻断保留领域原因 |
 
 ## 8. 尚未覆盖
 
-- Dashboard 日常快捷入口仍以同步方式提交 `run_daily_flow`，不保存 `runId`、不按目标停止，也不参与应用级运行展示；由运行状态单源任务迁移。
-- 自动化页只展示本页发起并持有的 run。cron、Dashboard 或 Telegram 发起的流程不会变成自动化页的 `trackedRun`；它们的跨页统一展示和全局入口由运行状态单源任务处理。
+- 自动化页只展示本页发起并持有的 run。cron、Dashboard 或 Telegram 发起的流程不会变成自动化页的 `trackedRun`；全局展示由运行状态投影提供，但各页的启动按钮仍只按本域身份禁用，跨页同时启动由服务端执行租约拒绝。
 - 旧断点支持窗口为 24 小时（与 Run 终态保留期一致），且要求服务端快照能给出匹配的 `run_daily_flow` 身份。旧服务端或未纳管的流程只删除断点并提示重新开始，不尝试恢复。
 - 作业页刷新后不会自动恢复作业集预览：需要用户重新预览对应作业集才能看到列表与“开始下一关”；`waiting` run 本身仍可观察且不会被重提。自动恢复预览可与作业搜索结果查询一并由资源任务处理。
-- 全局运行展示仍由连接监测器与页面争写 `statusStore.isActive`；肉鸽、作业与自动化页已停止写入，监测器写入与统一投影由运行状态单源任务处理。
-- 控制器轮询 `runs/current` 的读取成本（每次读取租约文件）由性能验证任务复核。
+- 活动作业入口始终保持同步，Dashboard 在响应返回前拿不到 `runId`；控制器在提交在途时按 2s 刷新快照，因此全局展示最迟约一个间隔后才能确认该活动 run。预检阻断原因只在同步响应里出现，不会写进 run 结果。
+- 作业集 `waiting` 在全局投影里按“设备忙、等待继续”处理，Dashboard 会禁用启动入口；是否允许在等待期间启动其它流程仍由服务端租约决定，界面暂不提供跨页继续入口。
+- Dashboard 完整业务快照与设备采样仍由页面编排（`schedules/execution` 只作展示回退）；搬移由总览快照任务处理。
+- 控制器轮询 `runs/current` 的读取成本（每次读取租约文件）由性能验证任务复核；提交在途的额外刷新也会计入。

@@ -143,9 +143,9 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 ## 共同副作用与状态生命期
 
-`FloatingStatusIndicator` 经 runtime-status 订阅全局 active/message 与 online/offline；`operator-quotes` 发 GET `/operator-quotes/random`，模块级去重/缓存。statusStore 的消息消失计时器：success 1.5s、warning/default 3s、info 10s，error 不自动消失。当前页面与监测器仍直接写共享 statusStore；目标是 runtime-status 消费唯一运行快照以派生连接健康和全局展示；operator-quotes 自管只读缓存。
+`FloatingStatusIndicator` 经 runtime-status 订阅全局 `runStatus`/message 与 online/offline；`operator-quotes` 发 GET `/operator-quotes/random`，模块级去重/缓存。statusStore 的消息消失计时器：success 1.5s、warning/default 3s、info 10s，error 不自动消失；设备忙（有活动 run 或未纳管占用）时暂停计时，离开忙态后重新开始。显示优先级为连接健康 > 临时消息 > 运行投影 > 干员台词。`statusStore.runStatus` 只由应用级 `useRunStatusProjection` 写入；页面与监测器都不再写运行字段（FPR-011）。
 
-应用级 `runtime-status/hooks/useBackendStatusMonitor` 独立 GET `/agent/tasks/status`：空闲每 30s、active 每 2s 串行 timeout；监听 online/offline/focus 与 statusStore 订阅，offline/cleanup abort 并使 revision 失效。成功同时写 backendStatus 和 isActive，因此当前仍可能与页面执行投影争写。连接监测归 runtime-status；运行身份的唯一所有者仍是待实现的 Run/执行控制器。
+应用级 `runtime-status/hooks/useBackendStatusMonitor` 独立 GET `/agent/tasks/status`：空闲每 30s、设备忙每 2s 串行 timeout；监听 online/offline/focus 与 `runStatus` 忙态变化。探针只写 `backendStatus`/`backendMessage`；`tasks/status.isRunning` 是旧进程投影，不再用于运行状态。连接监测归 runtime-status，运行身份的唯一所有者是应用级执行控制器。
 
 调用 `useFluidTabIndicator` 的页面使用 ResizeObserver、window resize 与测量，cleanup 撤销。Automation 的 `NotificationSettings` 当前直接使用 fetchWithAuth 调 GET/POST `/agent/notifications/config` 与 POST `/agent/actions/test-notification-channel`；模块 cache/pending 去重，草稿无 localStorage；revision 防载入盖编辑，cleanup abort 保存/测试并在恢复清 loading。目标由 notification 服务管理 API/cache，控制器管理草稿/保存/测试；独立于流程配置。Automation/Combat/Roguelike 及 Dashboard 使用 device-mirror 预览（见该域公开面和 `useDashboardPreview`），每实例会话/全局偏好、截图与 WebRTC 信令由 device-mirror 管理，按实际 tab/文档可见性暂停，不能归入运行停止语义。
 
