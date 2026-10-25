@@ -172,6 +172,6 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 四类交互的固定数据、步骤、采样、浏览器指标和网络请求见[性能采样说明](evidence/frontend-baseline/performance.md)。它们测量浏览器工作与 DOM 更新；普通生产包没有 React profiling，不能把 DOM mutation 当作 React commit 次数。后续必须在同一构建方式/数据量/设备采样，真实大队列与 React Profiler 的补测条件在说明中登记。
 
-尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、跨 remount 配置写入次序、automation schedule 半失败、应用计划与 pending 草稿冲突、共享资源去环与失效、训练设置改变后的计划有效期、历史日志隐藏恢复。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。
+尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、跨 remount 配置写入次序、automation schedule 半失败、应用计划与 pending 草稿冲突、共享资源去环与失效、训练设置改变后的计划有效期、历史日志隐藏恢复。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
 实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，当前处理器取消排序并还原原序，没有配置写入。性能文件记录真实路径和结果；这组数据不能冒充成功排序的耗时。成功排序须在自动化流程面板处理捕获生命周期后补测，并在最终性能对照时重采。它属于明确缺陷修复边界，现有取消行为不作为保留要求。

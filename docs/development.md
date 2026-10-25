@@ -101,6 +101,10 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 新增样式约束时先问：这条规则能不能被视觉基线捕获？能就补基线，不能才考虑写测试——且只断言结果（元素实际位置、可见性），不复述选择器。
 
+### 已知缺陷的预期失败标记
+
+表征测试需要记录当前确实不满足目标不变量时，用 `it.fails` 而不是删除断言或写下“当前错误行为正确”的断言：CI 保持绿色，场景仍可执行，修复落地后该用例会转为失败。承接修复的任务必须删除 `.fails` 标记、保留原断言，并把它作为新行为的回归测试。用例名与注释要写明缺失的不变量，不能只写“当前行为”。现有示例见 `features/combat/pages/CombatTasks.test.tsx`、`features/roguelike/pages/RoguelikeTasks.test.tsx`、`features/automation/pages/AutomationTasks.config.test.tsx` 与 `features/training/pages/OperatorTraining.test.tsx`；契约清单见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+
 ## 文件类型
 
 `client/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**` 和根级测试。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
