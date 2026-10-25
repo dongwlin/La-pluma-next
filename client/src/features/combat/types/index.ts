@@ -28,6 +28,12 @@ export interface CombatTaskInputs {
   [taskId: string]: string
 }
 
+/** 作业集执行方式；`app` 是旧值，仅在加载时迁移为 `cli`。 */
+export type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
+
+/** 每个作业集已保存的待执行索引。 */
+export type CopilotSetSelections = Record<string, number[]>
+
 export interface CombatAdvancedParams {
   [taskId: string]: {
     [key: string]: string | number | boolean
