@@ -758,6 +758,24 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
   })
 
+  it('prefers an unsynced local draft from a previous session without reading the server', async () => {
+    localStorage.setItem('roguelikeConfigSyncPending', 'previous-session-token')
+    localStorage.setItem('roguelikeTaskInputs', JSON.stringify({ roguelike: 'Sarkaz' }))
+    localStorage.setItem('roguelikeAdvancedParams', JSON.stringify({ roguelike: { mode: '1' } }))
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskInputs: { roguelike: 'Sami' }, advancedParams: {} },
+    })
+
+    await renderPage()
+
+    expect(mocks.loadUserConfig).not.toHaveBeenCalled()
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Sarkaz')
+    expect(container.querySelector<HTMLSelectElement>('select[name="maa-roguelike-mode"]')?.value).toBe('1')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
+  })
+
   it('drops a pending marker whose local draft is unreadable and falls back to the server', async () => {
     localStorage.setItem('roguelikeTaskInputs', '{not-json')
     localStorage.setItem('roguelikeConfigSyncPending', 'stale-token')
