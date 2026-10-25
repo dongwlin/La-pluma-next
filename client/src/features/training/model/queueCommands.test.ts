@@ -262,6 +262,32 @@ describe('TrainingQueueCommandOwner', () => {
     })
   })
 
+  it('applies a reorder to the latest cached queue when the refresh fails', async () => {
+    const harness = createHarness([
+      queueItem('char_a', '阿米娅'),
+      queueItem('char_b', '能天使'),
+      queueItem('char_c', '艾雅法拉'),
+    ])
+    harness.reorder.mockResolvedValueOnce(success({ queueRevision: 'revision-2' }))
+    harness.readQueue.mockRejectedValueOnce(new Error('队列服务暂不可用'))
+
+    const outcome = await harness.owner.run(
+      { type: 'reorder', operatorId: 'char_c', destination: 0 },
+      harness.context,
+    )
+
+    expect(outcome).toMatchObject({
+      status: 'uncertain',
+      message: '顺序已更新，但队列刷新失败，请重试',
+    })
+    if (outcome.status !== 'uncertain') return
+    expect(outcome.snapshot.queue.map(item => item.operatorId))
+      .toEqual(['char_c', 'char_a', 'char_b'])
+    expect(outcome.snapshot.revision).toBe('revision-2')
+    expect(outcome.snapshot.uncertain).toBe(TRAINING_QUEUE_UNCERTAIN_MESSAGE)
+    expect(harness.publish).toHaveBeenCalledOnce()
+  })
+
   it('keeps the cached queue untouched and publishes nothing when the write fails', async () => {
     const harness = createHarness([queueItem('char_a', '阿米娅')])
     const before = harness.getCommitted()
