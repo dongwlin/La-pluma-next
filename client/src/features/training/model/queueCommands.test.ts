@@ -179,6 +179,39 @@ describe('TrainingQueueCommandOwner', () => {
     expect(harness.owner.getState().pending).toEqual([])
   })
 
+  it('keeps both destinations when the same operator is reordered twice', async () => {
+    const harness = createHarness([
+      queueItem('char_a', '阿米娅'),
+      queueItem('char_b', '能天使'),
+      queueItem('char_c', '艾雅法拉'),
+    ])
+    const firstWrite = deferred<ApiResponse<TrainingQueueMutationData>>()
+    harness.reorder.mockImplementationOnce(async operatorIds => {
+      await firstWrite.promise
+      return harness.applyReorder(operatorIds)
+    })
+
+    const first = harness.owner.run(
+      { type: 'reorder', operatorId: 'char_a', destination: 2 },
+      harness.context,
+    )
+    const second = harness.owner.run(
+      { type: 'reorder', operatorId: 'char_a', destination: 0 },
+      harness.context,
+    )
+
+    expect(harness.owner.getState().pending).toHaveLength(2)
+    firstWrite.resolve(success({ queueUpdated: true, queueRevision: 'revision-2' }))
+    await Promise.all([first, second])
+
+    expect(harness.reorder.mock.calls.map(([ids]) => ids)).toEqual([
+      ['char_b', 'char_c', 'char_a'],
+      ['char_a', 'char_b', 'char_c'],
+    ])
+    expect(harness.getCommitted()?.queue.map(item => item.operatorId))
+      .toEqual(['char_a', 'char_b', 'char_c'])
+  })
+
   it('coalesces a duplicate add while the first request is pending', async () => {
     const harness = createHarness([])
     const write = deferred<ApiResponse<TrainingQueueMutationData>>()

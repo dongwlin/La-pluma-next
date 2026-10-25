@@ -6,8 +6,9 @@
  *
  * - 同一时刻只有一条命令执行，后续命令排在它之后；执行时读取 Query 缓存中的
  *   最新快照，因此前一条命令的排序/撤销结果不会被后一条基于旧快照的写入覆盖。
- * - 相同干员、相同类型的重复命令在 pending 期间被合并，双击添加/移除不会
- *   产生第二个请求。
+ * - 相同干员、相同类型的重复添加/移除/撤销命令在 pending 期间被合并，双击
+ *   不会产生第二个请求；排序命令总是串行执行，并在执行时按最新位置判断是否
+ *   仍需写入。
  * - 写入前后各取消一次在途的队列读取；写入成功后重新读取权威队列并写入同一
  *   Query key，避免“读取开始于写入之前，却在写入之后落盘”的旧快照覆盖新结果。
  * - 写入成功但刷新失败时，按命令效果在最新缓存上计算 fallback，并在快照上标记
@@ -283,6 +284,8 @@ export class TrainingQueueCommandOwner {
   }
 
   private isDuplicate(command: TrainingQueueCommand): boolean {
+    // 排序在执行时会按最新位置判断是否仍需要写入，同一干员的后续目标不应被丢弃。
+    if (command.type === 'reorder') return false
     const operatorId = operatorIdOf(command)
     return this.pending.some(entry => (
       entry.type === command.type && entry.operatorId === operatorId
