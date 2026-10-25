@@ -1,34 +1,34 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getActivity, getScheduleExecutionStatus, executeScheduleNow, runCurrentActivity } from './index'
 
-const mocks = vi.hoisted(() => ({
-  fetchWithAuth: vi.fn(),
-  parseJsonResponse: vi.fn(),
-}))
-
-vi.mock('@/shared/api', () => ({
-  API_BASE_URL: 'http://localhost:3000/api',
-  fetchWithAuth: mocks.fetchWithAuth,
-  parseJsonResponse: mocks.parseJsonResponse,
-}))
-
-import { executeScheduleNow, runCurrentActivity } from './index'
+const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { 'Content-Type': 'application/json' },
+})
 
 const readHeaders = (init: RequestInit) => new Headers(init.headers)
 
+const fetchCall = (index = 0) => {
+  const [input, init] = vi.mocked(globalThis.fetch).mock.calls[index]!
+  return { input, init: init as RequestInit }
+}
+
 describe('automation schedule execution api', () => {
   beforeEach(() => {
-    mocks.fetchWithAuth.mockReset().mockResolvedValue({ ok: true })
-    mocks.parseJsonResponse.mockReset().mockResolvedValue({ success: true })
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data: null }))
   })
 
   it('keeps the legacy synchronous call unchanged', async () => {
     await executeScheduleNow('default', [{ id: 'startup-1' }])
 
-    const [url, init] = mocks.fetchWithAuth.mock.calls[0]!
-    expect(url).toBe('http://localhost:3000/api/agent/schedules/default/execute')
-    expect(init.method).toBe('POST')
-    expect(readHeaders(init).get('Idempotency-Key')).toBeNull()
-    expect(JSON.parse(init.body)).toEqual({ taskFlow: [{ id: 'startup-1' }] })
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/schedules/default/execute')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(readHeaders(fetchCall().init).get('Idempotency-Key')).toBeNull()
+    expect(JSON.parse(fetchCall().init.body as string)).toEqual({ taskFlow: [{ id: 'startup-1' }] })
   })
 
   it('requests background execution with the controller idempotency key', async () => {
@@ -39,10 +39,9 @@ describe('automation schedule execution api', () => {
       signal,
     })
 
-    const [, init] = mocks.fetchWithAuth.mock.calls[0]!
-    expect(readHeaders(init).get('Idempotency-Key')).toBe('run_daily_flow-20261025-01')
-    expect(init.signal).toBe(signal)
-    expect(JSON.parse(init.body)).toEqual({
+    expect(readHeaders(fetchCall().init).get('Idempotency-Key')).toBe('run_daily_flow-20261025-01')
+    expect(fetchCall().init.signal).toBe(signal)
+    expect(JSON.parse(fetchCall().init.body as string)).toEqual({
       taskFlow: [{ id: 'startup-1' }],
       waitForCompletion: false,
     })
@@ -51,27 +50,95 @@ describe('automation schedule execution api', () => {
 
 describe('automation activity execution api', () => {
   beforeEach(() => {
-    mocks.fetchWithAuth.mockReset().mockResolvedValue({ ok: true })
-    mocks.parseJsonResponse.mockReset().mockResolvedValue({ success: true })
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data: null }))
   })
 
   it('keeps the synchronous activity run without a key by default', async () => {
     await runCurrentActivity()
 
-    const [url, init] = mocks.fetchWithAuth.mock.calls[0]!
-    expect(url).toBe('http://localhost:3000/api/agent/activity/run')
-    expect(init.method).toBe('POST')
-    expect(readHeaders(init).get('Idempotency-Key')).toBeNull()
-    expect(init.body).toBeUndefined()
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/activity/run')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(readHeaders(fetchCall().init).get('Idempotency-Key')).toBeNull()
+    expect(fetchCall().init.body).toBeUndefined()
   })
 
   it('forwards the controller idempotency key and abort signal', async () => {
     const signal = new AbortController().signal
     await runCurrentActivity({ idempotencyKey: 'run_current_activity_copilots-20261025-01', signal })
 
-    const [, init] = mocks.fetchWithAuth.mock.calls[0]!
-    expect(readHeaders(init).get('Idempotency-Key')).toBe('run_current_activity_copilots-20261025-01')
-    expect(init.signal).toBe(signal)
-    expect(init.body).toBeUndefined()
+    expect(readHeaders(fetchCall().init).get('Idempotency-Key')).toBe('run_current_activity_copilots-20261025-01')
+    expect(fetchCall().init.signal).toBe(signal)
+    expect(fetchCall().init.body).toBeUndefined()
+  })
+})
+
+describe('automation resource reads', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('passes the activity signal to fetch', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { code: 'ACT', name: '当前活动', available: true, stages: [] },
+    }))
+    const controller = new AbortController()
+
+    const result = await getActivity('Official', controller.signal)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/activity?clientType=Official')
+    expect(fetchCall().init.signal).toBe(controller.signal)
+    expect(result.success).toBe(true)
+    expect(result.data?.code).toBe('ACT')
+  })
+
+  it('turns a malformed activity payload into a domain failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: 'not-an-object',
+    }))
+
+    const result = await getActivity()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: '活动信息格式不正确',
+    })
+  })
+
+  it('passes the schedule status signal to fetch', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { isRunning: false, lastResult: 'success' },
+    }))
+    const controller = new AbortController()
+
+    const result = await getScheduleExecutionStatus(controller.signal)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/schedules/execution')
+    expect(fetchCall().init.signal).toBe(controller.signal)
+    expect(result.success).toBe(true)
+  })
+
+  it('keeps a server schedule failure as a typed failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: false,
+      message: '调度服务不可用',
+      error: { code: 'AGENT_SCHEDULE_UNAVAILABLE', retryable: true },
+    }, 503))
+
+    const result = await getScheduleExecutionStatus()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'AGENT_SCHEDULE_UNAVAILABLE',
+      kind: 'api',
+      status: 503,
+      retryable: true,
+    })
   })
 })

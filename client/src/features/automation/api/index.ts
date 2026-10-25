@@ -3,14 +3,28 @@
  * 当前活动信息与定时任务（调度）管理。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
+
+const isActivityPayload = (payload: unknown): boolean => isRecord(payload)
+
+const isScheduleExecutionPayload = (payload: unknown): boolean => isRecord(payload)
 
 /**
  * 获取当前活动信息
  */
-export async function getActivity(clientType: string = 'Official'): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/activity?clientType=${clientType}`)
-  return parseJsonResponse(response)
+export async function getActivity(clientType: string = 'Official', signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/activity?clientType=${clientType}`, {
+    signal,
+    validate: isActivityPayload,
+    invalidPayloadMessage: '活动信息格式不正确',
+  })
 }
 
 export interface ActivityRunOptions {
@@ -68,9 +82,12 @@ export async function stopSchedule(scheduleId: string = 'default'): Promise<ApiR
 /**
  * 获取定时任务执行状态
  */
-export async function getScheduleExecutionStatus(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/schedules/execution`)
-  return parseJsonResponse(response)
+export async function getScheduleExecutionStatus(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/schedules/execution`, {
+    signal,
+    validate: isScheduleExecutionPayload,
+    invalidPayloadMessage: '定时任务执行状态格式不正确',
+  })
 }
 
 /**

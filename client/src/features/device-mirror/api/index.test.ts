@@ -2,7 +2,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { API_BASE_URL } from '@/shared/api'
-import { startWebrtc } from './index'
+import { getDeviceStats, getWebrtcStatus, startWebrtc } from './index'
+
+const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { 'Content-Type': 'application/json' },
+})
 
 describe('device-mirror WebRTC preview', () => {
   beforeEach(() => {
@@ -30,5 +35,53 @@ describe('device-mirror WebRTC preview', () => {
       body: JSON.stringify({ profileId: 'default', deviceId: 'mumu-la-pluma' })
     }))
     expect(result.data?.signalingUrl).toBe('ws://192.168.1.2:8443')
+  })
+
+  it('forwards the signal when reading WebRTC status', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { serverRunning: false, agentRunning: false, signalingUrl: '/webrtc-signaling' },
+    }))
+    const controller = new AbortController()
+
+    const result = await getWebrtcStatus(controller.signal)
+
+    expect(fetchMock).toHaveBeenCalledWith(`${API_BASE_URL}/agent/webrtc/status`, expect.objectContaining({
+      signal: controller.signal,
+    }))
+    expect(result.success).toBe(true)
+    expect(result.data?.signalingUrl).toBe('/webrtc-signaling')
+  })
+
+  it('rejects a malformed WebRTC status payload', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: 'not-an-object',
+    }))
+
+    const result = await getWebrtcStatus()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: '预览服务状态格式不正确',
+    })
+  })
+
+  it('forwards the signal for device stats and keeps the null legacy payload', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: null,
+    }))
+    const controller = new AbortController()
+
+    const result = await getDeviceStats('127.0.0.1:5555', controller.signal)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE_URL}/agent/device-stats?address=127.0.0.1%3A5555`,
+      expect.objectContaining({ signal: controller.signal }),
+    )
+    expect(result.success).toBe(true)
+    expect(result.data).toBeNull()
   })
 })

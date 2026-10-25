@@ -3,7 +3,14 @@
  * 仓库/干员识别数据、掉落统计与今日开放关卡。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
 
 export const getItemIconUrl = (iconId: string | number): string =>
   `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png`
@@ -28,39 +35,79 @@ export async function parseOperBoxData(): Promise<ApiResponse> {
   return parseJsonResponse(response)
 }
 
+const isDepotPayload = (payload: unknown): boolean =>
+  payload === null || (isRecord(payload) && Array.isArray(payload.items))
+
+const isOperBoxPayload = (payload: unknown): boolean =>
+  payload === null || (isRecord(payload) && Array.isArray(payload.data))
+
+const isTodayDropsPayload = (payload: unknown): boolean =>
+  isRecord(payload)
+  && payload.success !== false
+  && Array.isArray(payload.records)
+  && isRecord(payload.summary)
+
+const isDropStatisticsPayload = (payload: unknown): boolean =>
+  isRecord(payload)
+  && payload.success !== false
+  && isRecord(payload.total)
+  && isRecord(payload.items)
+  && isRecord(payload.stages)
+  && Array.isArray(payload.dailyTrend)
+
+const isOpenTodayStagesPayload = (payload: unknown): boolean =>
+  isRecord(payload)
+  && Array.isArray(payload.open)
+  && Array.isArray(payload.closed)
+
 /**
  * 获取已保存的仓库数据
  */
-export async function getDepotData(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/data/depot`)
-  return parseJsonResponse(response)
+export async function getDepotData(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/data/depot`, {
+    signal,
+    validate: isDepotPayload,
+    invalidPayloadMessage: '仓库数据格式不正确',
+  })
 }
 
 /**
  * 获取已识别的持有干员数据
  */
-export async function getOperBoxData(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/data/operbox`)
-  return parseJsonResponse(response)
+export async function getOperBoxData(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/data/operbox`, {
+    signal,
+    validate: isOperBoxPayload,
+    invalidPayloadMessage: '干员识别结果格式不正确',
+  })
 }
 
 /**
  * 获取今日掉落记录
  */
-export async function getTodayDrops(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/drops/today`)
-  return parseJsonResponse(response)
+export async function getTodayDrops(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/drops/today`, {
+    signal,
+    validate: isTodayDropsPayload,
+    invalidPayloadMessage: '今日掉落记录格式不正确',
+  })
 }
 
 /**
  * 获取掉落统计数据
  */
-export async function getDropStatistics(days: number = 7): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/drops/statistics?days=${days}`)
-  return parseJsonResponse(response)
+export async function getDropStatistics(days: number = 7, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/drops/statistics?days=${days}`, {
+    signal,
+    validate: isDropStatisticsPayload,
+    invalidPayloadMessage: '掉落统计数据格式不正确',
+  })
 }
 
-export async function getOpenTodayStages(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/stages/open-today`)
-  return parseJsonResponse(response)
+export async function getOpenTodayStages(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/stages/open-today`, {
+    signal,
+    validate: isOpenTodayStagesPayload,
+    invalidPayloadMessage: '今日开放关卡数据格式不正确',
+  })
 }

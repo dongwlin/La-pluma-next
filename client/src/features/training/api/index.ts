@@ -3,7 +3,14 @@
  * 干员名册、养成队列、养成设置与养成计划相关的后端调用。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
 import type { TrainingPlan, TrainingSettings } from '../types'
 
 /**
@@ -44,10 +51,21 @@ interface ApplyTrainingPlanData {
   taskType?: 'combat'
 }
 
+const isOperatorListPayload = (payload: unknown): boolean =>
+  Array.isArray(payload) || (isRecord(payload) && Array.isArray(payload.operators))
+
+const isAllOperatorsPayload = (payload: unknown): boolean => Array.isArray(payload)
+
+const isTrainingQueuePayload = (payload: unknown): boolean =>
+  isRecord(payload) && Array.isArray(payload.queue)
+
 /**
  * 获取干员列表
  */
-export async function getOperatorList(filters: OperatorFilters = {}): Promise<ApiResponse> {
+export async function getOperatorList(
+  filters: OperatorFilters = {},
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
   const params = new URLSearchParams()
   if (filters.rarity) params.append('rarity', filters.rarity.toString())
   if (filters.profession) params.append('profession', filters.profession)
@@ -55,24 +73,33 @@ export async function getOperatorList(filters: OperatorFilters = {}): Promise<Ap
   if (filters.needsElite2) params.append('needsElite2', 'true')
   if (filters.status) params.append('status', filters.status)
 
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/operators?${params}`)
-  return parseJsonResponse(response)
+  return readApiResponse(`${API_BASE_URL}/agent/training/operators?${params}`, {
+    signal,
+    validate: isOperatorListPayload,
+    invalidPayloadMessage: '干员列表格式不正确',
+  })
 }
 
 /**
  * 获取全量干员列表
  */
-export async function getAllOperators(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/data/operators`)
-  return parseJsonResponse(response)
+export async function getAllOperators(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/data/operators`, {
+    signal,
+    validate: isAllOperatorsPayload,
+    invalidPayloadMessage: '全量干员列表格式不正确',
+  })
 }
 
 /**
  * 获取养成队列
  */
-export async function getTrainingQueue(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue`)
-  return parseJsonResponse(response)
+export async function getTrainingQueue(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/training/queue`, {
+    signal,
+    validate: isTrainingQueuePayload,
+    invalidPayloadMessage: '养成队列数据格式不正确',
+  })
 }
 
 /**

@@ -3,12 +3,26 @@
  * WebRTC 服务管理、组合启动、截图与设备状态。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
 import type { WebrtcStatusData } from '../types'
 
-export async function getWebrtcStatus(): Promise<ApiResponse<WebrtcStatusData>> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/webrtc/status`)
-  return parseJsonResponse(response)
+const isWebrtcStatusPayload = (payload: unknown): boolean => isRecord(payload)
+
+const isDeviceStatsPayload = (payload: unknown): boolean => payload === null || isRecord(payload)
+
+export async function getWebrtcStatus(signal?: AbortSignal): Promise<ApiResponse<WebrtcStatusData>> {
+  return readApiResponse<WebrtcStatusData>(`${API_BASE_URL}/agent/webrtc/status`, {
+    signal,
+    validate: isWebrtcStatusPayload,
+    invalidPayloadMessage: '预览服务状态格式不正确',
+  })
 }
 
 export async function startWebrtc(profileId: string = 'default', deviceId: string = 'mumu-la-pluma', signal?: AbortSignal): Promise<ApiResponse<WebrtcStatusData>> {
@@ -60,8 +74,11 @@ export async function captureScreen(profileId: string = 'default', signal?: Abor
   return parseJsonResponse(response)
 }
 
-export async function getDeviceStats(address?: string): Promise<ApiResponse> {
+export async function getDeviceStats(address?: string, signal?: AbortSignal): Promise<ApiResponse> {
   const qs = address ? `?address=${encodeURIComponent(address)}` : ''
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/device-stats${qs}`)
-  return parseJsonResponse(response)
+  return readApiResponse(`${API_BASE_URL}/agent/device-stats${qs}`, {
+    signal,
+    validate: isDeviceStatsPayload,
+    invalidPayloadMessage: '设备状态格式不正确',
+  })
 }

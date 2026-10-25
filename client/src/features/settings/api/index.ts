@@ -3,23 +3,51 @@
  * 版本、配置目录、MAA 配置、连接测试、设备发现与更新管理。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
 import type { AutoUpdateConfig } from '../types'
+
+const isVersionPayload = (payload: unknown): boolean =>
+  isRecord(payload)
+  && typeof payload.cli === 'string'
+  && typeof payload.core === 'string'
+  && typeof payload.raw === 'string'
+
+const isConfigDirectoryPayload = (payload: unknown): boolean =>
+  typeof payload === 'string'
+    ? payload.trim().length > 0
+    : isRecord(payload) && typeof payload.path === 'string' && payload.path.trim().length > 0
+
+const isConfigPayload = (payload: unknown): boolean => isRecord(payload)
+
+const isDeviceDiscoveryPayload = (payload: unknown): boolean => isRecord(payload)
 
 /**
  * 获取版本信息
  */
-export async function getVersion(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/version`)
-  return parseJsonResponse(response)
+export async function getVersion(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/version`, {
+    signal,
+    validate: isVersionPayload,
+    invalidPayloadMessage: '版本信息格式不正确',
+  })
 }
 
 /**
  * 获取配置目录
  */
-export async function getConfigDir(): Promise<ApiResponse<string>> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/config-directory`)
-  return parseJsonResponse(response)
+export async function getConfigDir(signal?: AbortSignal): Promise<ApiResponse<string>> {
+  return readApiResponse<string>(`${API_BASE_URL}/agent/config-directory`, {
+    signal,
+    validate: isConfigDirectoryPayload,
+    invalidPayloadMessage: '配置目录格式不正确',
+  })
 }
 
 /**
@@ -33,9 +61,12 @@ export async function openConfigDir(): Promise<ApiResponse> {
 /**
  * 获取配置
  */
-export async function getConfig(profileName: string = 'default'): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/config/maa/${profileName}`)
-  return parseJsonResponse(response)
+export async function getConfig(profileName: string = 'default', signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/config/maa/${profileName}`, {
+    signal,
+    validate: isConfigPayload,
+    invalidPayloadMessage: '连接配置格式不正确',
+  })
 }
 
 /**
@@ -67,9 +98,12 @@ export async function testConnection(adbPath?: string, address?: string, signal?
   return parseJsonResponse(response)
 }
 
-export async function discoverDevices(adbPath: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/discover-devices?adbPath=${encodeURIComponent(adbPath)}`)
-  return parseJsonResponse(response)
+export async function discoverDevices(adbPath: string, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/actions/discover-devices?adbPath=${encodeURIComponent(adbPath)}`, {
+    signal,
+    validate: isDeviceDiscoveryPayload,
+    invalidPayloadMessage: '设备发现结果格式不正确',
+  })
 }
 
 /**

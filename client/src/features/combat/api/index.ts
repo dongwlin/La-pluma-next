@@ -3,45 +3,79 @@
  * 普通关卡作业与悖论模拟作业搜索，以及作业集 Run 的提交与继续。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
 import type { AgentRequestOptions } from '@/features/task-execution'
+
+const isCopilotSearchPayload = (payload: unknown): boolean =>
+  isRecord(payload) && Array.isArray(payload.copilots)
+
+const isCopilotProxyPayload = (payload: unknown): boolean => isRecord(payload)
+
+const isCopilotSetPlanPayload = (payload: unknown): boolean =>
+  isRecord(payload) && Array.isArray(payload.items) && Array.isArray(payload.entries)
 
 /**
  * 搜索普通关卡作业
  */
-export async function searchCopilot(stageName: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/copilot/search?stage=${encodeURIComponent(stageName)}`)
-  return parseJsonResponse(response)
+export async function searchCopilot(stageName: string, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/copilot/search?stage=${encodeURIComponent(stageName)}`, {
+    signal,
+    validate: isCopilotSearchPayload,
+    invalidPayloadMessage: '作业搜索结果格式不正确',
+  })
 }
 
 /**
  * 搜索悖论模拟作业
  */
-export async function searchParadoxCopilot(operatorName: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/paradox/search?name=${encodeURIComponent(operatorName)}`)
-  return parseJsonResponse(response)
+export async function searchParadoxCopilot(operatorName: string, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/paradox/search?name=${encodeURIComponent(operatorName)}`, {
+    signal,
+    validate: isCopilotSearchPayload,
+    invalidPayloadMessage: '悖论模拟搜索结果格式不正确',
+  })
 }
 
 /**
  * 获取作业信息（通过后端代理，避免 CORS）
  * 响应为 PRTS 代理信封，具体内容由调用方按 status_code/data/content 解析。
  */
-export async function getCopilotInfo(copilotId: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/copilots/${copilotId}`)
-  return parseJsonResponse(response)
+export async function getCopilotInfo(copilotId: string, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/copilots/${copilotId}`, {
+    signal,
+    validate: isCopilotProxyPayload,
+    invalidPayloadMessage: '作业信息格式不正确',
+  })
 }
 
 /**
  * 获取作业集信息（通过后端代理，避免 CORS）
  */
-export async function getCopilotSet(copilotId: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/copilot-sets/${copilotId}`)
-  return parseJsonResponse(response)
+export async function getCopilotSet(copilotId: string, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/copilot-sets/${copilotId}`, {
+    signal,
+    validate: isCopilotProxyPayload,
+    invalidPayloadMessage: '作业集信息格式不正确',
+  })
 }
 
-export async function getCopilotSetPlan(copilotId: string, raid: 'normal' | 'raid' | 'both' = 'normal'): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/copilot-sets/${encodeURIComponent(copilotId)}/plan?raid=${raid}`)
-  return parseJsonResponse(response)
+export async function getCopilotSetPlan(
+  copilotId: string,
+  raid: 'normal' | 'raid' | 'both' = 'normal',
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/copilot-sets/${encodeURIComponent(copilotId)}/plan?raid=${raid}`, {
+    signal,
+    validate: isCopilotSetPlanPayload,
+    invalidPayloadMessage: '作业集计划格式不正确',
+  })
 }
 
 /**

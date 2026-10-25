@@ -3,14 +3,31 @@
  * 实时日志、日志文件列表与读取、手动清理。
  */
 
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
+import {
+  API_BASE_URL,
+  fetchWithAuth,
+  isRecord,
+  parseJsonResponse,
+  readApiResponse,
+  type ApiResponse,
+} from '@/shared/api'
+
+const isRealtimeLogsPayload = (payload: unknown): boolean => Array.isArray(payload)
+
+const isLogFilesPayload = (payload: unknown): boolean => Array.isArray(payload)
+
+const isLogFilePayload = (payload: unknown): boolean =>
+  isRecord(payload) && typeof payload.content === 'string'
 
 /**
  * 获取实时日志
  */
 export async function getRealtimeLogs(lines: number = 100, signal?: AbortSignal): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/logs/recent?lines=${lines}`, { signal })
-  return parseJsonResponse(response)
+  return readApiResponse(`${API_BASE_URL}/agent/logs/recent?lines=${lines}`, {
+    signal,
+    validate: isRealtimeLogsPayload,
+    invalidPayloadMessage: '实时日志格式不正确',
+  })
 }
 
 /**
@@ -26,18 +43,28 @@ export async function clearRealtimeLogs(): Promise<ApiResponse> {
 /**
  * 获取日志文件列表
  */
-export async function getLogFiles(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/logs/files`)
-  return parseJsonResponse(response)
+export async function getLogFiles(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/logs/files`, {
+    signal,
+    validate: isLogFilesPayload,
+    invalidPayloadMessage: '日志文件列表格式不正确',
+  })
 }
 
 /**
  * 读取日志文件内容
  */
-export async function readLogFile(filePath: string, lines: number = 1000): Promise<ApiResponse> {
+export async function readLogFile(
+  filePath: string,
+  lines: number = 1000,
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
   const encodedPath = encodeURIComponent(filePath)
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/logs/files/${encodedPath}?lines=${lines}`)
-  return parseJsonResponse(response)
+  return readApiResponse(`${API_BASE_URL}/agent/logs/files/${encodedPath}?lines=${lines}`, {
+    signal,
+    validate: isLogFilePayload,
+    invalidPayloadMessage: '日志文件内容格式不正确',
+  })
 }
 
 /**
