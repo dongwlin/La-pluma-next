@@ -4,7 +4,7 @@
 
 本文描述 FPR-017 交付的应用级 TanStack Query 基础设施：客户端与 Provider 的创建位置、默认重取/重试策略、领域 query key 约定、失效方式，以及它与 Zustand、配置草稿、执行控制器和 Dashboard 完整快照的边界。
 
-当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询、FPR-021 完成养成队列的读取与写入命令。其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
+当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询、FPR-021 完成养成队列的读取与写入命令、FPR-024 完成设置页 MAA connection 的读取。其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
 
 ## 1. 定位与边界
 
@@ -117,7 +117,8 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；statistics 页面读取由 FPR-019 迁移；training 只在候选补齐/计数中读取公开端点，不复制 key |
 | `statistics` | `drops`（参数 `days`） | FPR-019 已迁移 |
 | `training` | `queue`、`candidates`、`counts` | `queue` 由 FPR-021 迁移；`candidates`/`counts` 由 FPR-044 迁移 |
-| `settings` | `version`、`config-directory`、`maa-config`（参数 `profileName`） | FPR-024 |
+| `settings` | `maa-config`（参数 `profileName`） | FPR-024 已迁移，草稿仍归设置域 owner |
+| `settings` | `version`、`config-directory` | FPR-025 |
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 |
 | `logs` | `files`、`file`（参数 `filePath`、`lines`） | FPR-028 |
 | `device-mirror` | `webrtc-status`、`device-stats` | FPR-030 |
@@ -230,7 +231,23 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 - `training-queue` 失效只重读队列，不重取候选/计数；`training-plan` 失效作废旧计划预览。队列写入后不使候选/计数失效。
 - 筛选切换由 key 隔离，旧 key 的迟到响应只写入旧 key；Activity 隐藏会注销观察者并取消本地读取，恢复时按新鲜度重取。
 
-## 11. 回归证据
+## 11. 已迁移读取：设置 MAA profile（FPR-024）
+
+设置页的 MAA profile 只有 `connection` 段可编辑；配置读取由 `settings/maa-config` Query 持有，草稿与保存由 `features/settings/model/connectionConfig.ts` 的 `ConnectionConfigOwner` 持有。详细契约见[设置配置编辑与保存](settings-config-editing.md)。
+
+| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
+| --- | --- | --- | --- | --- |
+| MAA connection | `connectionConfigQueryOptions(profileName)` | `['settings','maa-config',profileName]` | `getConfig` 载荷校验失败为 `contract`，`success=false` 转为 Query 错误；初始失败显示页内与全局提示 | 默认新鲜度/重试；显式 `reload`、remount 或 Query 失效后重取；返回快照必须通过 owner 的读取令牌裁决 |
+
+规则：
+
+- Query 只保存服务端只读快照，不直接写表单。每条快照带读取开始时的 `{revision, dirty, saving}` 令牌；owner 只在读取开始后没有编辑/保存、当前也没有未保存草稿或保存在途时采用。
+- 初始加载期间的编辑、未保存草稿上的 refresh、保存前发出的读取和重置前发出的读取都会被丢弃；保存成功后 revision 推进，使旧读取失效。
+- 读取不是写路径：保存继续使用 `POST /agent/config/maa/:profileName`，不新增 Query mutation。保存成功后不伪造服务端 profile 回写。
+- `version` 与 `config-directory` 仍由 FPR-025 迁移，不得在页面内另建同名 Query key。
+- section 选择（`laPlumaConfigSection` / `la-pluma-config-section`）是纯客户端状态，不进入 Query；section 切换不卸载 connection Query、不重读服务端。
+
+## 12. 回归证据
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -251,6 +268,8 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/statistics/pages/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
 | `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
 | `client/src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 订阅过滤、Activity 隐藏/恢复补发、卸载注销与最新 handler |
+| `client/src/features/settings/model/connectionConfig.test.ts` | `settings/maa-config` key/profile/signal、读取令牌裁决、迟到读取与保存前读取失效、保存串行与失败重试、重置边界 |
+| `client/src/features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载/refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复、初始读取失败 |
 
 针对性复现命令（仓库根目录）：
 
@@ -273,7 +292,9 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/training/pages/OperatorTraining.test.tsx \
   src/features/statistics/pages/DataStatistics.layout.test.tsx \
   src/features/resource-invalidation/model/resourceInvalidation.test.ts \
-  src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx
+  src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx \
+  src/features/settings/model/connectionConfig.test.ts \
+  src/features/settings/pages/ConfigManager.layout.test.tsx
 ```
 
 完整 `pnpm verify` 与视觉比对由任务完成记录给出；本文件不重复声称未执行的验证。

@@ -13,6 +13,7 @@
 | [前端执行客户端与控制器](execution-client.md) | 应用级控制器的公开面、幂等键/runId、快照观察、断线重连、停止与本地中止、页面迁移边界 | 执行控制器与前端执行迁移的开发者 |
 | [配置同步与资源一致性契约](config-sync-and-invalidation.md) | 三页配置提交差异、pending/迟到加载/跨 remount 次序、跨页失效关系与 Dashboard 完整快照规则 | 修改配置持久化、缓存失效或 Dashboard 快照的开发者 |
 | [配置持久化协调器](config-persistence.md) | 按 key 串行的协调模型、适配契约（编解码/迁移/完整提交）、薄 hooks、刷新与冲突边界、三域接入清单 | 迁移页面配置持久化或实现域适配器的开发者 |
+| [设置配置编辑与保存](settings-config-editing.md) | MAA connection 的 Query 读取、草稿/revision、保存与重置边界、迟到读取裁决、section 存储/事件与清理 | 修改设置页配置表单、保存流程或 section 状态的开发者 |
 | [资源请求错误与取消契约](resource-requests.md) | 只读资源的 AbortSignal 传递、信封与领域载荷校验、失败分类、取消/停止/撤销边界、候选端点与 Query 迁移入口 | 迁移资源查询、缓存或处理请求失败的前端开发者 |
 | [Query 缓存与键规范](query-cache.md) | 应用级 Query 客户端、默认重取/重试/Activity 策略、领域 key 与失效规范、Dashboard 快照边界 | 迁移资源读取或实现缓存失效的前端开发者 |
 | [共享资源归属与失效端口](resource-ownership.md) | game-data 共享资源域、training/statistics 去环后的依赖方向、图标与资源缓存策略、跨域失效端口与未迁移页面接收 | 迁移共享资源、写入后失效或页面读取的前端开发者 |

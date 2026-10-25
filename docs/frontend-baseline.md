@@ -123,13 +123,13 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 配置读取/草稿/保存 | 初始化并发 GET `/agent/config-directory`、`/agent/config/maa/default`、user config `auto-update`、`/agent/version`；POST maa/default，wire `{connection: snapshot}`；revision 防初载盖编辑，并避免把旧保存误报成当前编辑已保存 | settings 配置编辑与持久化所有者 |
-| 自动更新 | POST user config auto-update 后 POST `/agent/actions/configure-auto-update`，两步成功才清 dirty；Touched/revision 防迟到加载/确认 | settings 完整提交适配器 |
-| 设备与连接 | GET `/agent/actions/discover-devices?adbPath=…`；POST `/agent/actions/test-connection`；页面未传 API 支持的 signal；POST `/agent/actions/open-config-directory` | 设备发现/连接测试用例 |
-| 版本/更新 | POST `/agent/actions/update-core`（普通更新不传 version，切渠道传 stable/beta）、`/agent/actions/update-cli`、`/agent/actions/hot-update-resources`；共用 updateInFlightRef 互斥；成功仅 reloadVersion | 更新用例与显式资源失效；版本/目录归资源域 |
-| 存储与 UI | `laPlumaConfigSection` 读写；`autoUpdateConfig` 成功加载/每次编辑/保存后写，服务端加载失败时读作 fallback；window `la-pluma-config-section` 监听/清理；section、设备列表/选中、busy/error | section 归设置面板；自动更新本地 fallback 归配置适配器 |
+| 配置读取/草稿/保存 | GET `/agent/config/maa/default` 由 `settings/maa-config` Query 读取（signal、载荷校验）；`ConnectionConfigOwner` 持有草稿/revision/dirty，POST maa/default wire `{connection: snapshot}`；读取令牌使初始加载与 refresh 不覆盖编辑或未保存草稿，旧保存不确认新草稿；重置只改草稿 | settings connection Query + 草稿所有者（FPR-024） |
+| 自动更新 | POST user config auto-update 后 POST `/agent/actions/configure-auto-update`，两步成功才清 dirty；Touched/revision 防迟到加载/确认；`DEFAULT_AUTO_UPDATE_CONFIG`/归一化/时间校验已移入 `model/configNormalization.ts` | settings 完整提交适配器（FPR-026） |
+| 设备与连接 | GET `/agent/actions/discover-devices?adbPath=…`；POST `/agent/actions/test-connection`；页面未传 API 支持的 signal；POST `/agent/actions/open-config-directory` | 设备发现/连接测试用例（FPR-025） |
+| 版本/更新 | POST `/agent/actions/update-core`（普通更新不传 version，切渠道传 stable/beta）、`/agent/actions/update-cli`、`/agent/actions/hot-update-resources`；共用 updateInFlightRef 互斥；成功仅 reloadVersion | 更新用例与显式资源失效；版本/目录归资源域（FPR-025/026） |
+| 存储与 UI | `laPlumaConfigSection` 读写与 window `la-pluma-config-section` 订阅由 `model/configSection.ts` + `useConfigSection` 拥有并在 Effect cleanup 注销；`autoUpdateConfig` 成功加载/每次编辑/保存后写，服务端加载失败时读作 fallback；section、设备列表/选中、busy/error | section 归设置 section owner（FPR-024）；自动更新本地 fallback 归配置适配器（FPR-026） |
 
-无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/cli/资源更新尚不刷新目录、图标、候选/计数、计划及总览。
+无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/cli/资源更新尚不刷新目录、图标、候选/计数、计划及总览。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。
 
 ### Logs — `features/logs/pages/LogViewer.tsx`
 

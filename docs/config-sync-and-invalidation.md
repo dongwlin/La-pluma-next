@@ -50,6 +50,7 @@ FPR-013/014/015 之后，表中三列描述的“模块级/实例级队列、页
 - Automation：协调器在加载返回时校验加载序号、AbortSignal、revision 与 pending 标记，编辑后的迟到响应返回 `stale`；FPR-015 已将原来的 stale pending `it.fails` 用例转为正常回归。
 - Roguelike：协调器在加载返回时校验加载序号、AbortSignal、revision 与 pending 标记，编辑后的迟到响应返回 `stale`；FPR-013 已把原来的 `it.fails` 用例转为正常回归。
 - Combat：协调器在加载返回时校验加载序号、AbortSignal、revision 与 pending 标记，编辑后的迟到响应返回 `stale`；FPR-014 已把原来的 `it.fails` 用例转为正常回归。
+- Settings：MAA profile 的 `connection` 不是 `user-config` key，读取走 `settings/maa-config` Query，草稿由 `ConnectionConfigOwner` 持有。每次读取携带开始时的 revision/dirty/saving 令牌，编辑、重置或保存后的迟到响应不会被采用；未保存草稿上的 refresh 同样不改页面值。详见[设置配置编辑与保存](settings-config-editing.md)。
 
 ### 2.4 Activity 隐藏/恢复
 
@@ -148,6 +149,8 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | `features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/时钟偏差/语义边界校验；设备采样合并；失败刷新不覆盖成功缓存 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 失效作用域去重、revision、注销与监听器隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、Activity 隐藏/恢复补发与卸载注销 |
+| `features/settings/model/connectionConfig.test.ts` | connection 读取令牌、编辑/重置/保存后的迟到响应丢弃、保存串行与失败重试 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载与 refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复 |
 
 复现命令（仓库根目录）：
 

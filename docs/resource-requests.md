@@ -116,7 +116,7 @@ const depot = unwrapApiResponse(result)
 | --- | --- | --- |
 | `getVersion(signal?)` | `GET /agent/version` | `cli`/`core`/`raw` 为字符串 |
 | `getConfigDir(signal?)` | `GET /agent/config-directory` | 非空字符串或含非空 `path` 的对象 |
-| `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | 对象 |
+| `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | 已知字段出现时为正确类型（`adb_path`/`address`/`config` 字符串，`auto_reconnect` 布尔）；缺失字段允许；保留未知字段 |
 | `discoverDevices(adbPath, signal?)` | `GET /agent/actions/discover-devices` | 对象（保留内层 `success=false` 的设备发现结果） |
 
 ### Logs（`features/logs/api/index.ts`）
@@ -179,7 +179,7 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/features/statistics/api/index.test.ts` | 掉落/开放关卡 signal、空值与坏载荷、路由误包错误信封、取消不追加停止请求 |
 | `client/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
 | `client/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |
-| `client/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝 |
+| `client/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝、connection 已知字段校验、缺失字段与未知字段保留 |
 | `client/src/features/logs/api/index.test.ts` | 实时轮询 signal、文件列表与内容 signal、坏内容、取消保持 `AbortError` |
 | `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
 | `client/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
