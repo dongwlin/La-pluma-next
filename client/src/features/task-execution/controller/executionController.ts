@@ -53,6 +53,11 @@ export interface ExecutionControllerState {
   readonly submission: ExecutionSubmissionState
   readonly snapshot: RunSnapshot | null
   readonly trackedRunId: string | null
+  /**
+   * 提交方自己声明的领域标签（如 `roguelike`）。它只用于客户端判断“这个 run 是不是我发起的”，
+   * 不参与服务端身份、幂等分区或幂等键格式；没有标签时为 null。
+   */
+  readonly trackedScope: string | null
   readonly trackedRun: AgentRun | null
   readonly lastError: string | null
   readonly lastSyncedAt: number | null
@@ -63,12 +68,14 @@ export interface ExecutionControllerState {
 export interface ExecutionIntent {
   readonly operationId: string
   readonly idempotencyKey: string
+  readonly scope: string | null
   readonly sequence: number
 }
 
 export interface ExecutionIdentity {
   runId: string
   operationId: string | null
+  scope?: string | null
 }
 
 export interface ExecutionIdentityStorage {
@@ -105,6 +112,7 @@ function createInitialState(): ExecutionControllerState {
     submission: 'idle' as const,
     snapshot: null,
     trackedRunId: null,
+    trackedScope: null,
     trackedRun: null,
     lastError: null,
     lastSyncedAt: null,
@@ -146,6 +154,7 @@ export function createExecutionIdentityStorage(
         return {
           runId: parsed.runId,
           operationId: typeof parsed.operationId === 'string' ? parsed.operationId : null,
+          scope: typeof parsed.scope === 'string' && parsed.scope.trim() ? parsed.scope : null,
         }
       } catch {
         return null
@@ -195,6 +204,7 @@ export class ExecutionController {
 
   private snapshot: RunSnapshot | null = null
   private trackedRunId: string | null = null
+  private trackedScope: string | null = null
   private trackedRun: AgentRun | null = null
   private identity: ExecutionIdentityState = 'none'
   private submission: ExecutionSubmissionState = 'idle'
@@ -271,10 +281,16 @@ export class ExecutionController {
 
   /**
    * 观察指定 run。传入 null 只解除本客户端的身份绑定，不停止任何执行。
+   * `scope` 是调用方自己的领域标签；重新绑定已持久化的身份时应显式传回原标签。
    */
-  observeRun(runId: string | null, operationId: string | null = null): void {
+  observeRun(
+    runId: string | null,
+    operationId: string | null = null,
+    scope: string | null = null,
+  ): void {
     if (!runId) {
       this.trackedRunId = null
+      this.trackedScope = null
       this.trackedRun = null
       this.identity = 'none'
       this.storage.write(null)
@@ -283,33 +299,36 @@ export class ExecutionController {
     }
 
     this.trackedRunId = runId
+    this.trackedScope = scope
     this.trackedRun = findRunById(this.snapshot, runId)
       ?? (this.trackedRun?.runId === runId ? this.trackedRun : null)
     this.identity = 'tracked'
     this.lastError = null
-    this.storage.write({ runId, operationId })
+    this.storage.write({ runId, operationId, scope })
     this.publish()
     this.requestRefresh('observation')
   }
 
   /**
    * 开始一次逻辑提交并分配幂等键。重试同一逻辑动作时必须复用返回的 intent。
+   * `scope` 只保存在客户端身份里，用于调用方判断 run 归属。
    */
   beginExecutionIntent(
     operationId: string,
-    options: { idempotencyKey?: string } = {},
+    options: { idempotencyKey?: string; scope?: string | null } = {},
   ): ExecutionIntent {
     const suppliedKey = options.idempotencyKey?.trim()
     const idempotencyKey = suppliedKey || createIdempotencyKey(operationId)
     if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
       throw new Error('幂等键格式不合法：只允许字母、数字和 . _ ~ : -，最长 128 个字符')
     }
+    const scope = options.scope?.trim() || null
 
     const sequence = ++this.intentSequence
     this.latestIntentSequence = sequence
     this.submission = 'pending'
     this.publish()
-    return { operationId, idempotencyKey, sequence }
+    return { operationId, idempotencyKey, scope, sequence }
   }
 
   /**
@@ -334,10 +353,11 @@ export class ExecutionController {
 
       this.submission = 'accepted'
       this.trackedRunId = runId
+      this.trackedScope = intent.scope
       this.trackedRun = readSubmittedRun(result.data, runId) ?? findRunById(this.snapshot, runId)
       this.identity = 'tracked'
       this.lastError = null
-      this.storage.write({ runId, operationId: intent.operationId })
+      this.storage.write({ runId, operationId: intent.operationId, scope: intent.scope })
       this.publish()
       this.requestRefresh('submission')
       return true
@@ -363,7 +383,11 @@ export class ExecutionController {
   /**
    * 为不走 intent 的执行端点（日常流程、作业集等）采纳响应中的 run 身份。
    */
-  adoptSubmission(result: ApiResponse<unknown>, operationId: string): string | null {
+  adoptSubmission(
+    result: ApiResponse<unknown>,
+    operationId: string,
+    options: { scope?: string | null } = {},
+  ): string | null {
     if (!result.success) {
       this.submission = 'rejected'
       this.lastError = getErrorMessage(result)
@@ -378,12 +402,14 @@ export class ExecutionController {
       return null
     }
 
+    const scope = options.scope?.trim() || null
     this.submission = 'accepted'
     this.trackedRunId = runId
+    this.trackedScope = scope
     this.trackedRun = readSubmittedRun(result.data, runId) ?? findRunById(this.snapshot, runId)
     this.identity = 'tracked'
     this.lastError = null
-    this.storage.write({ runId, operationId })
+    this.storage.write({ runId, operationId, scope })
     this.publish()
     this.requestRefresh('submission')
     return runId
@@ -396,7 +422,7 @@ export class ExecutionController {
   async submitExecution<Data = unknown>(
     operationId: string,
     request: (context: { idempotencyKey: string; signal?: AbortSignal }) => Promise<ApiResponse<Data>>,
-    options: { signal?: AbortSignal; idempotencyKey?: string } = {},
+    options: { signal?: AbortSignal; idempotencyKey?: string; scope?: string | null } = {},
   ): Promise<ApiResponse<Data>> {
     const intent = this.beginExecutionIntent(operationId, options)
     try {
@@ -472,6 +498,7 @@ export class ExecutionController {
       const stored = this.storage.read()
       if (stored) {
         this.trackedRunId = stored.runId
+        this.trackedScope = stored.scope ?? null
         this.identity = 'tracked'
         this.publish()
       }
@@ -599,11 +626,12 @@ export class ExecutionController {
     // 身份保留到看到终态为止；终态后不再写入新身份，但内存仍可供本次会话展示。
     this.storage.write(isTerminalRunState(run.state)
       ? null
-      : { runId: run.runId, operationId: run.operationId })
+      : { runId: run.runId, operationId: run.operationId, scope: this.trackedScope })
   }
 
   private markIdentityUnknown(): void {
     this.identity = 'unknown'
+    this.trackedScope = null
     this.storage.write(null)
     this.publish()
   }
@@ -632,6 +660,7 @@ export class ExecutionController {
       submission: this.submission,
       snapshot: this.snapshot,
       trackedRunId: this.trackedRunId,
+      trackedScope: this.trackedScope,
       trackedRun: this.trackedRun,
       lastError: this.lastError,
       lastSyncedAt: this.lastSyncedAt,

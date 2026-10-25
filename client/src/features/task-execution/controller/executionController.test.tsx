@@ -300,6 +300,60 @@ describe('execution controller identity', () => {
     expect(() => controller.beginExecutionIntent('run_task', { idempotencyKey: 'bad key' })).toThrow()
   })
 
+  it('keeps the caller scope with the submitted and persisted identity', () => {
+    const storage = memoryStorage()
+    controller = new ExecutionController({ api, storage })
+    const intent = controller.beginExecutionIntent('run_task', { scope: 'roguelike' })
+
+    expect(intent.scope).toBe('roguelike')
+    controller.settleExecutionIntent(intent, ok({ runId: 'run-1', run: activeRun('run-1') }))
+
+    expect(controller.getState().trackedRunId).toBe('run-1')
+    expect(controller.getState().trackedScope).toBe('roguelike')
+    expect(storage.current()).toEqual({
+      runId: 'run-1',
+      operationId: 'run_task',
+      scope: 'roguelike',
+    })
+  })
+
+  it('restores the caller scope from persisted identity on startup', async () => {
+    const storage = memoryStorage({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    controller = new ExecutionController({
+      api,
+      storage,
+      intervals: { active: 1_000, idle: 5_000, disconnected: 2_000 },
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+
+    start()
+    await flush()
+
+    expect(controller.getState().identity).toBe('tracked')
+    expect(controller.getState().trackedScope).toBe('roguelike')
+  })
+
+  it('binds an explicitly observed run to a scope and clears it on release', () => {
+    controller.observeRun('run-2', 'run_task', 'combat')
+
+    expect(controller.getState().trackedRunId).toBe('run-2')
+    expect(controller.getState().trackedScope).toBe('combat')
+
+    controller.observeRun(null)
+
+    expect(controller.getState().trackedRunId).toBeNull()
+    expect(controller.getState().trackedScope).toBeNull()
+  })
+
+  it('does not adopt a scope from a legacy response without a run id', () => {
+    const intent = controller.beginExecutionIntent('run_task', { scope: 'roguelike' })
+
+    controller.settleExecutionIntent(intent, ok({ success: true }))
+
+    expect(controller.getState().trackedRunId).toBeNull()
+    expect(controller.getState().trackedScope).toBeNull()
+  })
+
   it('forwards the generated idempotency key and adopts the submitted run', async () => {
     const request = vi.fn(async () => ok({ runId: 'run-9', run: activeRun('run-9') }))
 
@@ -353,7 +407,7 @@ describe('execution controller identity', () => {
   })
 
   it('marks identity unknown when the run id is no longer retained', async () => {
-    const storage = memoryStorage({ runId: 'run-gone', operationId: 'run_task' })
+    const storage = memoryStorage({ runId: 'run-gone', operationId: 'run_task', scope: 'roguelike' })
     controller = new ExecutionController({
       api,
       storage,
@@ -369,6 +423,7 @@ describe('execution controller identity', () => {
     expect(state.phase).toBe('live')
     expect(state.identity).toBe('unknown')
     expect(state.trackedRunId).toBe('run-gone')
+    expect(state.trackedScope).toBeNull()
     expect(state.hasActiveRun).toBe(false)
     expect(storage.current()).toBeNull()
   })

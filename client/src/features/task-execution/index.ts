@@ -16,6 +16,7 @@ export {
 export type { AgentRequestOptions, TaskConfig } from './api'
 
 export {
+  ExecutionController,
   executionController,
 } from './controller/executionController'
 export type {
