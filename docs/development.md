@@ -33,13 +33,13 @@ pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有�
 
 CI 中 `stylelint:ratchet` 随 `pnpm verify` 一起执行（见 `.github/workflows/ci.yml`）。
 
-### 视觉基线（8 tab + 3 弹层 × 深/浅主题 × 桌面/移动 = 44 张）
+### 视觉基线（8 tab + 3 弹层 × 深/浅主题 × 3 视口 = 66 张）
 
 视觉基线是样式轨道 S2/S3/S4 每一步“保留视觉”的验收手段，harness 在 `client/tests/visual/`，基线截图入库于 `client/tests/visual/__screenshots__/`。
 
 - **环境钉死**：截图生成与比对统一跑在 `mcr.microsoft.com/playwright` 官方镜像内（tag 自动取 client 实际安装的 `@playwright/test` 版本，如 `v1.64.1-noble`），字体与浏览器由此与 CI 完全一致。基线截图是 **Linux/Chromium 专属**：更换镜像、Playwright 版本或操作系统后，必须用 `pnpm visual:update` 重新生成并逐项评审 diff，不要试图跨环境复用。
 - **确定性**：`/api` 请求全部由 `client/tests/visual/fixtures.ts` 的固定数据应答（不依赖真实后端与 MAA 运行状态）；`page.clock` 固定到 2026-10-24 04:00（UTC+8），日期敏感内容（今日开放关卡、资源更新时间等）不随运行当天变化；`reducedMotion: 'reduce'` 加文档级样式禁用 CSS 动画/过渡；主题通过 zustand persist 的 `ui-storage` localStorage 预置，首帧即目标主题。公共部分集中在 `harness.ts`。
-- **桌面 1440×900、移动 390×844**，deviceScaleFactor 1。tab 基线（`app.pw.ts`）整页截图；弹层基线（`overlays.pw.ts`）为视口截图。
+- **三个视口**：桌面 1440×900、平板 820×1180、移动 390×844，deviceScaleFactor 1。tab 基线（`app.pw.ts`）整页截图；弹层基线（`overlays.pw.ts`）为视口截图。820 落在 640（`sm`）与 900（页面自持的 stepper 断点）之间，与桌面一起把 `min-[900px]` 两侧夹住，同时也是「无侧栏 + 内联页头」这个 390 与 1440 都覆盖不到的组合；1024 / 1200 两档只在桌面侧出现，改动时注意同步核对。
 - **弹层基线守 portal**：Modal、统计筛选菜单、PWA 安装提示都由 `createPortal` 渲染到 `document.body`，位于 `.la-pluma-app` 作用域之外，材质、遮罩与定位只由 portal 处的选择器决定。它们 `position: fixed` 按视口定位，`fullPage` 会把 fixed 元素拉到整页顶部，所以单独取视口。
 
 ```bash
@@ -84,7 +84,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 明确禁止：
 
 - **断言 CSS 类名**（`classList.contains('min-h-11')`、`toHaveClass('surface-soft')`）。Vitest 不做 CSS 处理，样式表根本不参与求值，这类断言只是在核对 JSX 里的字符串字面量：改类名就红，视觉零变化。点按区尺寸、断点显隐、材质层级、层级顺序由 `tests/visual/` 的像素基线守。唯一例外是 `<html>` 上的 `dark` 类——它是 Tailwind `@custom-variant dark` 的契约本体，不是样式细节。
-- **断言 DOM 形状**：子元素顺序、包裹层数量、`querySelectorAll(...).toHaveLength(n)`。等价重构（换包裹层、拆组件、调列表结构）都会误报，而它们不验证任何用户可感知的东西。
+- **断言 DOM 形状**：子元素顺序、包裹层数量、骨架屏占位块数量。这类断言把 JSX 结构写死在测试里，等价重构（换包裹层、拆组件、调列表结构）都会误报。**业务数量**可以断言（8 个导航目的地、3 个 Tab、2 个开关），但要用语义选择器数（`[role="tab"]`、`[data-app-tab]`、`[role="switch"]`），不要数 `.some-class`。
 - **枚举式 grep CSS 源文件**（“这几个 `@keyframes` 名字必须存在”）：删掉声明不会报错，但枚举清单会随重构腐烂。选择器是否被应用根作用域包住，只有浏览器能判定，交给弹层基线。唯一保留的是 `client/src/styles/animations.test.ts`：它机械核对「每个 `animation` 引用都能在全部样式表里找到对应 `@keyframes` 声明」，不枚举名字，补的是 stylelint `no-unknown-animations` 只解析单文件的缺口。
 
 ### 覆盖分工
