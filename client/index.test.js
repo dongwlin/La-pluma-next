@@ -62,19 +62,6 @@ describe('PWA document boot shell', () => {
     expect(bootShell?.getAttribute('aria-busy')).toBe('true')
   })
 
-  it('matches the live PWA viewport and safe-area rules', () => {
-    const bootCss = sourceDocument.querySelector('#la-pluma-boot-style')?.textContent ?? ''
-
-    expect(bootCss).toMatch(/--boot-viewport-height:\s*100dvh/)
-    expect(bootCss).toMatch(/display-mode:\s*standalone[\s\S]*--boot-viewport-height:\s*100lvh/)
-    expect(bootCss).toMatch(/html\.la-pluma-standalone\s*{[^}]*--boot-viewport-height:\s*100lvh/s)
-    expect(bootCss).toMatch(/@supports not \(height:\s*100lvh\)/)
-    expect(bootCss).toMatch(/--boot-bottom-clearance:\s*clamp\([\s\S]*?0\.5rem,[\s\S]*?safe-area-inset-bottom[\s\S]*?1\.25rem[\s\S]*?\)/)
-    expect(bootCss).toMatch(/right:\s*max\(0\.875rem,\s*env\(safe-area-inset-right/)
-    expect(bootCss).toMatch(/left:\s*max\(0\.875rem,\s*env\(safe-area-inset-left/)
-    expect(bootCss).toMatch(/bottom:\s*var\(--boot-bottom-clearance\)/)
-  })
-
   it('is replaced by the first React commit', async () => {
     const sourceRoot = sourceDocument.querySelector('#root')
     document.body.innerHTML = sourceRoot?.outerHTML ?? '<div id="root"></div>'

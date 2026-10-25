@@ -33,7 +33,7 @@ pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有�
 
 CI 中 `stylelint:ratchet` 随 `pnpm verify` 一起执行（见 `.github/workflows/ci.yml`）。
 
-### 视觉基线（8 tab + 3 弹层 × 深/浅主题 × 3 视口 = 66 张）
+### 视觉基线（8 tab + 3 弹层 + 启动壳 × 深/浅主题 × 3 视口 = 72 张）
 
 视觉基线是样式轨道 S2/S3/S4 每一步“保留视觉”的验收手段，harness 在 `client/tests/visual/`，基线截图入库于 `client/tests/visual/__screenshots__/`。
 
@@ -41,6 +41,7 @@ CI 中 `stylelint:ratchet` 随 `pnpm verify` 一起执行（见 `.github/workflo
 - **确定性**：`/api` 请求全部由 `client/tests/visual/fixtures.ts` 的固定数据应答（不依赖真实后端与 MAA 运行状态）；`page.clock` 固定到 2026-10-24 04:00（UTC+8），日期敏感内容（今日开放关卡、资源更新时间等）不随运行当天变化；`reducedMotion: 'reduce'` 加文档级样式禁用 CSS 动画/过渡；主题通过 zustand persist 的 `ui-storage` localStorage 预置，首帧即目标主题。公共部分集中在 `harness.ts`。
 - **三个视口**：桌面 1440×900、平板 820×1180、移动 390×844，deviceScaleFactor 1。tab 基线（`app.pw.ts`）整页截图；弹层基线（`overlays.pw.ts`）为视口截图。820 落在 640（`sm`）与 900（页面自持的 stepper 断点）之间，与桌面一起把 `min-[900px]` 两侧夹住，同时也是「无侧栏 + 内联页头」这个 390 与 1440 都覆盖不到的组合；1024 / 1200 两档只在桌面侧出现，改动时注意同步核对。
 - **弹层基线守 portal**：Modal、统计筛选菜单、PWA 安装提示都由 `createPortal` 渲染到 `document.body`，位于 `.la-pluma-app` 作用域之外，材质、遮罩与定位只由 portal 处的选择器决定。它们 `position: fixed` 按视口定位，`fullPage` 会把 fixed 元素拉到整页顶部，所以单独取视口。
+- **启动壳基线守首帧**：启动壳（`boot.pw.ts`）在 `installDeterministicEnvironment` 之后 abort `assets/index-*.js`，让 React 模块不执行、页面停在 `index.html` 的内联启动壳上；按视口截图验收 safe-area / dvh / standalone 的真实渲染。
 
 ```bash
 pnpm visual          # 比对模式：与入库基线比对，diff 非零即失败（CI 同款）
