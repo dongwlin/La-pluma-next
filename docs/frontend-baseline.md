@@ -53,15 +53,15 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 流程配置 | `loadTaskFlow` / `autoSave`：user-config `loadUserConfig/saveUserConfig('automation-tasks')`，GET/POST `/agent/config/user/automation-tasks`；pending 优先本地，否则服务端优先；revision、request id、AbortController 防迟到加载 | automation 配置适配器 + user-config 按 key 提交协调器 |
-| 定时完整提交 | 保存配置后 `setupSchedule('default')` / `stopSchedule('default')`，POST `/agent/schedules`、DELETE `/agent/schedules/default`；本地保留禁用项；user-config 的 schedule 子对象发 enabled/times，setupSchedule 发 `{scheduleId,times,taskFlow}`；Promise 保存队列在页面 | 同一 automation 配置所有者管理配置与 schedule 两步确认 |
+| 流程配置 | 适配器 `features/automation/model/automationConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/automation-tasks`；本地键与 `automationConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、`entries`/`times` 兼容与任务参数迁移、编辑即入队与跨 remount 串行队列由通道持有；页面只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | automation 配置适配器 + user-config 按 key 提交协调器（FPR-015 已接入） |
+| 定时完整提交 | 同一适配器在配置保存后 `setupSchedule('default')` / `stopSchedule('default')`，POST `/agent/schedules`、DELETE `/agent/schedules/default`；禁用项只留在本地 `maa-schedule.entries`；user-config 的 schedule 子对象发 enabled/times，setupSchedule 发 `{scheduleId,times,taskFlow}`；两步全成功才清 pending，半失败可用页内“重新同步”重跑 | 同一 automation 配置所有者管理配置与 schedule 两步确认 |
 | 执行与停止 | `executeTaskFlow` → POST `/agent/schedules/manual/execute`；`stopTaskFlow` → POST `/agent/actions/stop`；每 1s GET `/agent/schedules/execution`；初始化 GET `/agent/tasks/status` 与 `/agent/activity?clientType=Official` | task-execution 应用级控制器 + automation 执行适配器；服务端 Run 持有流程 |
 | 旧断点续跑 | `initializeAndRestore` 按旧 commandId 匹配 enabled 步骤，等后端 idle 后逐项 POST `/agent/actions/run-task`；1s 查询、30min 超时；启动/关闭/其他步间等待 15s/3s/2s；cleanup abort | 独立兼容迁移适配器；转换后仅观察身份，不重提 |
-| 智能养成阶段 | `AutomationStageEditor.toggleSmartStages` 读取 `training-queue` 配置并 POST `/agent/training/plan`；监听 `training-plan-applied` 强制 load；document 可见时正常 load（已 hydrated 则跳过） | training 计划用例 + automation 配置冲突协调 |
+| 智能养成阶段 | `AutomationStageEditor.toggleSmartStages` 读取 `training-queue` 配置并 POST `/agent/training/plan`；监听 `training-plan-applied` 后 `reload({ force: true })`；有 pending 草稿或在途保存时保留本地并提示，否则采用服务端副本；document 可见时正常 load（已 hydrated 则跳过） | training 计划用例 + automation 配置冲突协调 |
 | 连接测试 | POST `/agent/actions/test-connection`，带 signal；反馈至少 450ms | 设备连接用例 |
 | 纯编辑与布局 | `buildCommand`、时间/排序/掉落规则在页内；picker 的 document pointerdown/keydown；排序 Escape、pointer capture；小屏 rAF `scrollIntoView` | 纯模型 + 最近的流程/编辑面板；布局副作用归布局 hook |
 
-存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为 taskFlow/scheduleEntries/scheduleEnabled；picker/selectedTaskId/drag/撤销/公告/执行详情/连接反馈归局部 UI；running/stopping/currentStep/taskResults 是执行投影。
+存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为协调器中的 taskFlow/schedule；picker/selectedTaskId/拖拽预览/撤销/公告/执行详情/连接反馈归局部 UI；running/stopping/currentStep/taskResults 是执行投影。
 
 ### Combat — `features/combat/pages/CombatTasks.tsx`
 
@@ -172,6 +172,6 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 四类交互的固定数据、步骤、采样、浏览器指标和网络请求见[性能采样说明](evidence/frontend-baseline/performance.md)。它们测量浏览器工作与 DOM 更新；普通生产包没有 React profiling，不能把 DOM mutation 当作 React commit 次数。后续必须在同一构建方式/数据量/设备采样，真实大队列与 React Profiler 的补测条件在说明中登记。
 
-尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、跨 remount 配置写入次序、automation schedule 半失败、应用计划与 pending 草稿冲突、共享资源去环与失效、训练设置改变后的计划有效期、历史日志隐藏恢复。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、共享资源去环与失效、训练设置改变后的计划有效期、历史日志隐藏恢复。跨 remount 配置写入次序、automation schedule 半失败与应用计划/pending 草稿冲突已由 FPR-015 关闭。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
 实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，当前处理器取消排序并还原原序，没有配置写入。性能文件记录真实路径和结果；这组数据不能冒充成功排序的耗时。成功排序须在自动化流程面板处理捕获生命周期后补测，并在最终性能对照时重采。它属于明确缺陷修复边界，现有取消行为不作为保留要求。

@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。它是[配置同步与资源一致性契约](config-sync-and-invalidation.md)中“三页各自加载/保存”的迁移目标：协调器与竞态回归已在 FPR-012 交付；肉鸽已由 FPR-013 接入（`features/roguelike/model/roguelikeConfig.ts`），作业已由 FPR-014 接入（`features/combat/model/combatConfig.ts`），自动化仍待 FPR-015 接入。未接入的页面仍使用第 6 节列出的现有实现，本文的目标契约不能当成全站当前行为。
+本文描述 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。它是[配置同步与资源一致性契约](config-sync-and-invalidation.md)中“三页各自加载/保存”的迁移目标：协调器与竞态回归已在 FPR-012 交付；肉鸽已由 FPR-013 接入（`features/roguelike/model/roguelikeConfig.ts`），作业已由 FPR-014 接入（`features/combat/model/combatConfig.ts`），自动化已由 FPR-015 接入（`features/automation/model/automationConfig.ts`）。三页的配置加载、草稿、提交与重试现在都由协调器通道持有。
 
 验证入口见文末[回归证据](#7-回归证据)。
 
@@ -105,7 +105,7 @@ export interface ConfigPersistenceAdapter<TDraft, TWire = unknown> {
 | `fingerprint` | 可选；默认对 wire 做 JSON 序列化。用于跳过内容等价的编辑 |
 | `restoredMessage` / `formatFailure` | 可选文案钩子；默认文案见 `DEFAULT_RESTORED_MESSAGE` 与 `model/configCoordinator.ts` |
 
-完整提交的典型形态（以 automation 为例，真实实现由 FPR-015 交付）：
+完整提交的典型形态（automation 的真实实现见 6.3）：
 
 ```ts
 async commit(wire) {
@@ -162,7 +162,7 @@ function CombatTasks() {
 
 关键约束：
 
-- **未确认草稿优先**：`force` 也不覆盖它。外部写入（如养成计划应用）遇到 `local-draft` 或 `pending` 时应拒绝或合并冲突，而不是清掉本地编辑；该裁决由 FPR-015 在 automation 适配器中实现，协调器只提供明确的结果与状态。
+- **未确认草稿优先**：`force` 也不覆盖它。外部写入（如养成计划应用）遇到 `local-draft` 或 `pending` 时按协调器返回的 `local-draft`/`stale` 拒绝采用服务端副本，并提示本地编辑已保留；该裁决由 automation 页面在 `training-plan-applied` 处理中显式完成。
 - **迟到加载不写回**：加载返回时校验加载序号、`AbortSignal`、revision 与 pending 标记；任何一项变化都返回 `stale`。
 - **损坏草稿可回退**：单个损坏键由适配器清理；标记指向的草稿整体不可读时删除标记并读服务端，不会永久停在“本地优先”。
 - **读取失败会重试**：`failed` 不标记 `hydrated`，`Activity` 恢复或下次挂载会再次尝试；服务端失败且本地有草稿时静默回退，不打断编辑。
@@ -179,7 +179,7 @@ function CombatTasks() {
 | 提交时机 | 300ms 去抖 | 300ms 去抖 | 编辑即入队（事件触发） |
 | 加载迁移 | `app`→`cli`；raid `1`/`2`→`raid`/`both` | 无 | `times`→`entries` 兼容；禁用项只留在本地 |
 | 完整提交 | `saveUserConfig` | `saveUserConfig` | `saveUserConfig` + `setupSchedule`/`stopSchedule` |
-| 迁移任务 | FPR-014（已接入） | FPR-013（已接入） | FPR-015 |
+| 迁移任务 | FPR-014（已接入） | FPR-013（已接入） | FPR-015（已接入） |
 
 接入时的额外边界：
 
@@ -223,6 +223,27 @@ function CombatTasks() {
 
 兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化，页面接线可单独回滚到迁移前实现（适配器随即不再被引用），旧实现仍能读取同一份本地草稿与服务端配置；回滚不需要清理本地数据或回退服务端。服务端载荷校验比迁移前更严格：已知字段类型不合法时整份载荷回退本地草稿，而旧页面会采用部分/异常值；这是协调器要求的 payload 校验。
 
+### 6.3 自动化适配器（FPR-015 已接入）
+
+`features/automation/model/automationConfig.ts` 是 task flow 与 schedule 的唯一所有者，页面 `pages/AutomationTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。两个编辑模型共用同一通道，因此不会各自维护一份写入同份配置的队列或 token。
+
+| 项目 | 实现 |
+| --- | --- |
+| 身份 | key `automation-tasks`；pending 键 `automationConfigSyncPending` |
+| 本地草稿 | `maa-task-flow`（任务数组）与 `maa-schedule`（`{ enabled, times, entries }`）；单个键损坏清理后丢弃该部分，两个键都不可读才返回 null 并让协调器删除 pending 标记、改读服务端 |
+| wire | `{ taskFlow, schedule: { enabled, times } }`；task flow 去掉 `icon`/`paramFields` 等界面字段，其余旧字段（如 `name`、`description`、`defaultParams`、`taskType`）原样保留；`times` 只包含启用的时间点 |
+| 加载迁移 | 兼容 `maa-schedule.entries` 与旧 `times`；`times` 为空时保留默认执行时间（迁移前空数组不覆盖默认行）；任务参数迁移（`skip_robot`→`preserve_tags`、新旧字段补齐）、启动/关闭客户端类型同步、关闭游戏置底都在解码与本地读取时执行 |
+| 提交时机 | `commitDelayMs = 0`，每次编辑立即入队；同一 key 的提交仍串行 |
+| 完整提交 | `saveUserConfig('automation-tasks', wire)` 成功后再执行 `setupSchedule('default', times, taskFlow)`（启用且存在时间点）或 `stopSchedule('default')`；任一步失败都返回 `ok: false`，协调器保留 pending 与“重新同步”入口，重试重跑整段提交 |
+| 过期提交保护 | 配置保存期间若协调器接受了更新的草稿，适配器在 schedule 步骤前比对最新 wire 指纹并跳过旧 schedule；即使旧提交已经写入配置，协调器也不会用它的结果确认新 revision |
+| 外部写入裁决 | `training-plan-applied` 调用 `reload({ force: true })`；返回值 `loaded` 采用服务端副本并提示更新关卡数，`local-draft`/`stale` 保留本地草稿并提示“养成计划更新未覆盖本地配置”。在途保存期间 pending 标记仍在，因此同样走本地优先 |
+| 页面派生 | task flow 的图标与参数表单由 `AVAILABLE_TASKS` 派生；schedule 的启用状态与条目都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动化配置已同步” |
+| 页面局部状态 | 拖拽中的顺序用本地预览渲染，松手时才作为一次编辑写入协调器；选中项、picker、撤销、执行详情、连接测试反馈仍是页面状态 |
+
+页面原有的模块级 token 序列、`autoSaveQueueRef`、`autoSaveRevisionRef`、`taskFlowHydratedRef`、请求序号/AbortController 与 300ms 以外的本地 schedule 状态已移除。`config.test.tsx` 中的 `it.fails`（pending 标记没有本地草稿时永远不读服务端）随适配器落地转为正常回归。
+
+兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化；回滚到迁移前页面接线后仍能读取同一份本地草稿与服务端配置，回滚不需要清理本地数据或回退服务端。服务端载荷校验比迁移前更严格：已知字段类型不合法时整份载荷回退本地草稿。页面不再把保存失败写成全局错误消息，而是显示页内 alert 与“重新同步”；这是 FPR-014 已建立的失败反馈约定。跨会话恢复 pending 草稿时也会显示协调器的默认提示与重试入口，而迁移前只静默采用本地草稿；本地优先本身不变。默认渲染结构与配置成功路径的 DOM 未变化，视觉基线不因本任务更新。
+
 ## 7. 回归证据
 
 | 测试 | 覆盖 |
@@ -233,6 +254,10 @@ function CombatTasks() {
 | `features/roguelike/pages/RoguelikeTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、坏草稿回退服务端、迟到加载不覆盖编辑、Activity 隐藏/恢复 |
 | `features/combat/model/combatConfig.test.ts` | 作业适配器：原 key/pending/本地键/300ms、wire 形状、`app→cli` 与 raid `1`/`2` 迁移、缺省字段与非法载荷解码、本地键损坏清理、裸字符串执行方式、完整提交与读取失败信封 |
 | `features/combat/pages/CombatTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、迟到加载不覆盖编辑、坏草稿回退服务端、本地与服务端 `app→cli`/raid 迁移、set 模式与待执行索引回填、Activity 隐藏/恢复 |
+| `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交、wire 去掉界面字段、`entries`/`times` 兼容、任务参数迁移与客户端类型同步、非法载荷解码、本地键损坏清理、配置+schedule 完整提交、schedule 半失败、保存期间新草稿跳过旧 schedule、读取失败信封 |
+| `features/automation/pages/AutomationTasks.config.test.tsx` | 页面接线：配置/schedule 全成功才清 pending、保存失败不碰 schedule、半失败页内重试、禁用与全禁用 schedule、跨 remount 串行提交与旧响应保护、迟到加载、stale pending 回退服务端、training-plan-applied 强制重读及 pending 草稿冲突裁决 |
+| `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先、在途服务端响应不覆盖新草稿、hydrate 不重建 schedule、Activity 恢复、拖拽/表单接线 |
+| `features/automation/pages/AutomationTasks.execution.test.tsx` | Run 提交、停止、流程进度与旧断点只观察不重提 |
 
 复现命令（仓库根目录）：
 
@@ -240,7 +265,7 @@ function CombatTasks() {
 pnpm --filter la-pluma-next-client verify
 ```
 
-肉鸽与作业迁移均未改变渲染结构、DOM 或 CSS，配置 key、本地键与服务端 wire 也未变化，因此旧本地草稿不需要迁移；页面/视觉回归随各自迁移任务执行，自动化域的截图更新仍由 FPR-015 负责。
+三域迁移均未改变配置 key、本地键或服务端 wire；自动化额外保留 `entries`/`times` 双向兼容与任务参数迁移，因此旧本地草稿不需要手工迁移。默认渲染结构、DOM 与 CSS 未变化，只在同步失败时新增与 Combat/Roguelike 一致的 `role="alert"` 重试条；该条不在默认截图状态中，视觉基线不因本任务更新。
 
 ## 关联
 
