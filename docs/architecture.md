@@ -44,9 +44,9 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 - `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；页面级 CSS 同样由各域自持，放在 `features/<domain>/styles/` 并由该域 `index.ts` 导入（统一收进 `@layer page`）。对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
 - `shared/`：与业务无关的横向下层（通用 UI、传输层底座、Query 缓存基础设施、路由词汇与全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
 
-业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
+业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`、`game-data`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
 
-已知接受项：`features/training` 与 `features/statistics` 通过各自 `index.ts` 互相消费域内 API（养成页面用统计域的干员仓库数据/图标端点，统计页面用养成域的队列/材料/名册端点），形成模块级引用环。两域不得在模块顶层读取对方的导出，跨域调用只允许发生在组件或函数运行时；新增此类跨域依赖时需在评审中确认。
+已知接受项（FPR-018 后）：仓库、持有干员与干员目录由非页面微域 `features/game-data` 统一持有，`training` 与 `statistics` 不再为共享资源互相 import；`statistics` 仍单向依赖 `training` 的队列读取与材料刷新命令，`Dashboard` 仍直接读取 `training`/`statistics` 的队列与掉落/开放关卡，待资源读写任务迁移。跨域写入后的刷新经 `features/resource-invalidation` 端口协调，不在页面之间新增轮询。详见[共享资源归属与失效端口](resource-ownership.md)。
 
 ```
 La-pluma-next/
@@ -68,12 +68,14 @@ La-pluma-next/
 │   │   │   ├── automation/    # 日常任务流程
 │   │   │   ├── combat/        # 作业、SSS、悖论模拟
 │   │   │   ├── roguelike/     # 肉鸽模式
-│   │   │   ├── training/      # 干员养成计划与养成端点
-│   │   │   ├── statistics/    # 仓库、干员和掉落数据
+│   │   │   ├── training/      # 养成队列、设置、计划与候选/材料端点
+│   │   │   ├── statistics/    # 掉落、开放关卡与统计展示
 │   │   │   ├── logs/          # 日志查看
 │   │   │   ├── settings/      # 配置管理
 │   │   │   ├── task-execution/   # 命令执行、Run 观察与执行控制器（跨域微域，非页面域）
 │   │   │   ├── user-config/      # 用户任务配置读写与持久化协调器（跨域微域，非页面域）
+│   │   │   ├── game-data/        # 仓库、持有干员与干员目录共享读取（跨域微域，非页面域）
+│   │   │   ├── resource-invalidation/ # 跨域资源失效发布/订阅端口与 hook
 │   │   │   ├── runtime-status/   # 后端连接与任务运行状态（非页面域）
 │   │   │   ├── device-mirror/    # 投屏/截图预览（非页面域）
 │   │   │   └── operator-quotes/  # 干员语录服务（非页面域）

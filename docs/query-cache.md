@@ -114,7 +114,8 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 
 | 域 | 预留资源 | 归属任务 |
 | --- | --- | --- |
-| `statistics` | `depot`、`operbox`、`catalog`、`drops`（参数 `days`） | FPR-018 / FPR-019 |
+| `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；页面读取由 FPR-019/044 迁移 |
+| `statistics` | `drops`（参数 `days`） | FPR-019 |
 | `training` | `queue`、`candidates`、`counts` | FPR-021 / FPR-044 |
 | `settings` | `version`、`config-directory`、`maa-config`（参数 `profileName`） | FPR-024 |
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 |
@@ -139,7 +140,7 @@ await queryClient.invalidateQueries({ queryKey: statisticsKeys.all })
 
 1. **精确优先。** 能定位到资源时用 `keys.resource(...)`，不要用 `keys.all` 或 `queryClient.clear()` 代替。
 2. **写成功后失效。** 只有服务端写入确认成功才失效受影响 key；失败保留旧缓存，页面展示自己的错误。部分成功的域（如配置已保存、schedule 失败）只失效已确认的资源，并保留 pending 草稿。
-3. **跨域影响由领域端口发布。** 识别、应用计划、资源更新等跨域影响由 FPR-018 交付的失效发布/接收端协调，Query 层不增加全局失效总线或页面间轮询。
+3. **跨域影响由领域端口发布。** 识别、应用计划、资源更新等跨域影响由 `features/resource-invalidation` 的失效发布/接收端协调（FPR-018 交付，见[共享资源归属与失效端口](resource-ownership.md)），Query 层不增加全局失效总线或页面间轮询。
 4. **失效失败不阻塞写入。** `invalidateQueries` 的重取失败保留旧数据；页面需要区分“旧数据 + 重取失败”和“从未加载”。
 5. **不写入部分快照。** 只有响应是权威完整资源时才允许 `setQueryData`；不做覆盖多个 key 的逐块乐观写入。
 
@@ -201,6 +202,9 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
 | `client/src/app/providers/AppProviders.test.tsx` | 应用树注入应用级客户端 |
 | `client/src/app/App.test.tsx` | 应用级 hook 在 `AppProviders` 内运行并能拿到 Query 客户端 |
+| `client/src/features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
+| `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
+| `client/src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 订阅过滤、Activity 隐藏/恢复补发、卸载注销与最新 handler |
 
 针对性复现命令（仓库根目录）：
 
@@ -210,7 +214,10 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/shared/query/queryKeys.test.ts \
   src/app/providers/QueryProvider.test.tsx \
   src/app/providers/AppProviders.test.tsx \
-  src/app/App.test.tsx
+  src/app/App.test.tsx \
+  src/features/game-data/model/queryKeys.test.ts \
+  src/features/resource-invalidation/model/resourceInvalidation.test.ts \
+  src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx
 ```
 
 完整 `pnpm verify` 与视觉比对由任务完成记录给出；本文件不重复声称未执行的验证。

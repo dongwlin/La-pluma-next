@@ -74,22 +74,32 @@ const depot = unwrapApiResponse(result)
 
 以下端点已接入 signal 传递和领域载荷校验。所有函数保留原来的位置参数，只在末尾追加 `signal?: AbortSignal`，因此旧调用无需修改。
 
-### Statistics（`features/statistics/api/index.ts`）
+### Game data（`features/game-data/api/index.ts`）
+
+仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，FPR-018 起由该非页面微域唯一持有。物品图标不是端点：`getItemIconUrl` 只生成外部静态资源 URL，由浏览器缓存，不进入 Query。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
 | `getDepotData(signal?)` | `GET /agent/data/depot` | `null` 或 `items` 数组 |
 | `getOperBoxData(signal?)` | `GET /agent/data/operbox` | `null` 或 `data` 数组 |
+| `getAllOperators(signal?)` | `GET /agent/data/operators` | 数组 |
+| `getItemIconUrl(iconId)` | 无请求 | 只拼 URL 并编码 `iconId` |
+
+### Statistics（`features/statistics/api/index.ts`）
+
+| 函数 | 端点 | 载荷校验 |
+| --- | --- | --- |
 | `getTodayDrops(signal?)` | `GET /agent/drops/today` | 日记录对象（`records` 数组 + `summary` 对象）或旧版记录数组；拒绝业务错误信封 |
 | `getDropStatistics(days?, signal?)` | `GET /agent/drops/statistics?days=` | `total`/`items`/`stages` 对象；`dailyTrend` 为可选数组；拒绝业务错误信封 |
 | `getOpenTodayStages(signal?)` | `GET /agent/stages/open-today` | `open`/`closed` 数组 |
+
+识别解析命令 `parseDepotData` / `parseOperBoxData` 仍是只写命令，留在 statistics，由 FPR-020 迁移命令所有者。
 
 ### Training（`features/training/api/index.ts`）
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
 | `getOperatorList(filters?, signal?)` | `GET /agent/training/operators` | `operators` 数组，或旧版顶层数组 |
-| `getAllOperators(signal?)` | `GET /agent/data/operators` | 数组 |
 | `getTrainingQueue(signal?)` | `GET /agent/training/queue` | `queue` 数组 |
 
 ### Automation（`features/automation/api/index.ts`）
@@ -144,6 +154,7 @@ const depot = unwrapApiResponse(result)
 
 - `parseJsonResponse` 保持宽松：合法 JSON 即使不是 Agent 信封也会原样返回，operator-quotes、PRTS 代理等旧消费者不受影响。严格信封/载荷判断只在新只读入口中做。
 - 候选端点的函数名、位置参数和 `ApiResponse` 返回形状不变；`errorInfo.kind`/`status` 是新增字段，旧页面只读 `success`/`message`/`error`/`data` 时行为不变。
+- FPR-018 把 `getDepotData`/`getOperBoxData`/`getAllOperators` 的归属迁到 `features/game-data`，函数签名、端点与载荷校验不变；仓库内消费者全部改为经该域公开面导入后，statistics/training 不再转发这些函数。图标 helper 同域持有，但没有 Query key。
 - `fetchWithAuth` 现在按结构判断 `AbortError`，不再要求 `instanceof Error`。这修复了 `DOMException` 被改写成连接失败的问题；非取消路径不变。
 - 配置 key/格式、执行协议、存储与视觉均未改变。本契约可独立回滚：回滚后旧调用仍能读取同一端点，只是失去取消与领域校验。
 
@@ -154,7 +165,7 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 1. `queryFn: ({ signal }) => readApiData(...)`，或在保留旧端点函数时 `unwrapApiResponse(await getX(signal))`。
 2. 只对 `kind === 'transport'` 或 `kind === 'api' && retryable` 的失败启用自动重试；`contract` 失败不重试，`AbortError` 不计入失败。
 3. 页面现有的 request id / generation guard 可以保留到 Query 接管，但 Query 的 `signal` 必须真正取消网络，不能只丢弃响应。
-4. 失效与重取策略按[配置同步与资源一致性契约](config-sync-and-invalidation.md)执行，不在本层增加跨域失效。
+4. 失效与重取策略按[配置同步与资源一致性契约](config-sync-and-invalidation.md)执行；FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)，不在本层增加跨域失效。
 
 ## 8. 回归证据
 
@@ -163,7 +174,8 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/shared/api/readApi.test.ts` | signal 传到 fetch、`success=false`、坏载荷、非信封 JSON、2xx 以外状态、`HTTP_502` 描述、取消保持 `AbortError`、已取消不请求、传输失败分类、旧信封形状、`unwrapApiResponse` |
 | `client/src/shared/api/client.test.ts` | 离线/后端不可用文案；`DOMException` 取消不被改写 |
 | `client/src/shared/api/apiResponse.test.ts` | 空响应、非 JSON、结构化 Agent 错误；非信封原始载荷保持原样 |
-| `client/src/features/statistics/api/index.test.ts` | 仓库/掉落/开放关卡 signal、空值与坏载荷、路由误包错误信封、取消不追加停止请求 |
+| `client/src/features/game-data/api/index.test.ts` | 仓库/持有干员/目录 signal、旧空值、坏载荷、取消；图标 URL 编码且不发请求 |
+| `client/src/features/statistics/api/index.test.ts` | 掉落/开放关卡 signal、空值与坏载荷、路由误包错误信封、取消不追加停止请求 |
 | `client/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
 | `client/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |
 | `client/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝 |
