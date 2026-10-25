@@ -41,19 +41,27 @@ const isDepotPayload = (payload: unknown): boolean =>
 const isOperBoxPayload = (payload: unknown): boolean =>
   payload === null || (isRecord(payload) && Array.isArray(payload.data))
 
+/**
+ * 今日掉落有两条既有形状：`/drops/today` 的日记录对象，以及旧版/仪表盘消费的
+ * 记录数组。两者都是合法载荷；业务错误信封仍必须失败。
+ */
 const isTodayDropsPayload = (payload: unknown): boolean =>
-  isRecord(payload)
-  && payload.success !== false
-  && Array.isArray(payload.records)
-  && isRecord(payload.summary)
+  Array.isArray(payload)
+  || (isRecord(payload)
+    && payload.success !== false
+    && Array.isArray(payload.records)
+    && isRecord(payload.summary))
 
+/**
+ * `dailyTrend` 不由掉落面板消费；旧服务端/固定数据可能省略，不能据此判坏。
+ */
 const isDropStatisticsPayload = (payload: unknown): boolean =>
   isRecord(payload)
   && payload.success !== false
   && isRecord(payload.total)
   && isRecord(payload.items)
   && isRecord(payload.stages)
-  && Array.isArray(payload.dailyTrend)
+  && (payload.dailyTrend === undefined || Array.isArray(payload.dailyTrend))
 
 const isOpenTodayStagesPayload = (payload: unknown): boolean =>
   isRecord(payload)

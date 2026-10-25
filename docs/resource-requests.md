@@ -52,7 +52,7 @@ const depot = unwrapApiResponse(result)
 
 - **错误响应当失败，不当成功数据。** 2xx 但 `success=false` 的响应不会进入 `data`；部分路由把服务层错误信封包进 `success=true` 时，领域校验会把它识别为 `INVALID_DOMAIN_PAYLOAD`。
 - **`success=true` 但 HTTP 非 2xx 仍是失败。** HTTP 状态优先，避免代理或网关的 5xx 页面配错信封时被当成成功。
-- **载荷校验属于领域。** 每个端点只校验本域必需字段，允许既有空值和旧形状（如仓库/设备状态 `null`、配置目录字符串或 `{ path }`），但不接受明显错误的类型。
+- **载荷校验属于领域。** 每个端点只校验本域必需字段，允许既有空值和旧形状（如仓库/设备状态 `null`、配置目录字符串或 `{ path }`、今日掉落的记录数组、缺少 `dailyTrend` 的掉落统计），但不接受明显错误的类型。
 - **取消不展示为失败。** `readApiData` 与 `readApiResponse` 都把 `AbortError` 原样抛出；`fetchWithAuth` 也不能把取消改写成“无法连接后端服务”。
 
 ## 4. 取消、停止与撤销
@@ -80,8 +80,8 @@ const depot = unwrapApiResponse(result)
 | --- | --- | --- |
 | `getDepotData(signal?)` | `GET /agent/data/depot` | `null` 或 `items` 数组 |
 | `getOperBoxData(signal?)` | `GET /agent/data/operbox` | `null` 或 `data` 数组 |
-| `getTodayDrops(signal?)` | `GET /agent/drops/today` | `records` 数组 + `summary` 对象；拒绝业务错误信封 |
-| `getDropStatistics(days?, signal?)` | `GET /agent/drops/statistics?days=` | `total`/`items`/`stages` 对象 + `dailyTrend` 数组；拒绝业务错误信封 |
+| `getTodayDrops(signal?)` | `GET /agent/drops/today` | 日记录对象（`records` 数组 + `summary` 对象）或旧版记录数组；拒绝业务错误信封 |
+| `getDropStatistics(days?, signal?)` | `GET /agent/drops/statistics?days=` | `total`/`items`/`stages` 对象；`dailyTrend` 为可选数组；拒绝业务错误信封 |
 | `getOpenTodayStages(signal?)` | `GET /agent/stages/open-today` | `open`/`closed` 数组 |
 
 ### Training（`features/training/api/index.ts`）

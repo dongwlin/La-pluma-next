@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDepotData, getDropStatistics, getOpenTodayStages } from './index'
+import { getDepotData, getDropStatistics, getOpenTodayStages, getTodayDrops } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -79,6 +79,38 @@ describe('statistics resource reads', () => {
       status: 503,
       retryable: true,
     })
+  })
+
+  it('keeps the legacy today-drops array shape used by the dashboard', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: [{ stage: '1-7', stageName: '主线 1-7', drops: [{ name: '固源岩', count: 5 }] }],
+    }))
+    const controller = new AbortController()
+
+    const result = await getTodayDrops(controller.signal)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/drops/today')
+    expect(fetchCall().init.signal).toBe(controller.signal)
+    expect(result.success).toBe(true)
+    expect(result.data).toHaveLength(1)
+  })
+
+  it('keeps the legacy drop statistics payload without dailyTrend', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: {
+        total: { sanity: 2456, battles: 89 },
+        items: { 固源岩: { count: 145 } },
+        stages: { '1-7': { battles: 42 } },
+        dateRange: { start: '2026-10-18', end: '2026-10-24', days: 7 },
+      },
+    }))
+
+    const result = await getDropStatistics(7)
+
+    expect(result.success).toBe(true)
+    expect(result.data?.items).toEqual({ 固源岩: { count: 145 } })
   })
 
   it('rejects a service error envelope that the route wrapped as success data', async () => {
