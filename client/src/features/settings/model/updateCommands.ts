@@ -118,10 +118,6 @@ const initialState = (): SettingsUpdateState => ({
   feedback: null,
 })
 
-const describeRequestError = (error: unknown): string => (
-  `${(error as Error).message}`
-)
-
 /**
  * core 更新的失败详情可能来自当前信封的 `errorInfo.details`，也可能来自旧
  * 服务端/旧调用的 `error.details`；两种形状都读取，其余忽略。
@@ -303,7 +299,7 @@ export class SettingsUpdateOwner {
     try {
       execution = await execute()
     } catch (error) {
-      const message = `网络错误: ${describeRequestError(error)}`
+      const message = `网络错误: ${(error as Error).message}`
       execution = {
         status: 'failed',
         feedback: operation === 'cli'
