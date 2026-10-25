@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
 import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
 import { trainingQueueCommandOwner } from '../model/queueCommands'
+import { trainingSettingsOwner } from '../model/settingsCommands'
 import { publishResourceInvalidation, subscribeResourceInvalidation } from '@/features/resource-invalidation'
 import OperatorTraining from './OperatorTraining'
 
@@ -125,11 +126,15 @@ const plan = (): TrainingPlan & { queueRevision: string } => ({
   totalSanity: 30,
 })
 
-const queueResponse = (queue: TrainingQueueItem[], revision = 'queue-1') => ({
+const queueResponse = (
+  queue: TrainingQueueItem[],
+  revision = 'queue-1',
+  settingsValue: TrainingSettings = settings,
+) => ({
   success: true,
   data: {
     queue: [...queue],
-    settings,
+    settings: settingsValue,
     revision,
     flowSync: { status: 'not_applied', flowName: '自动任务', taskName: 'Fight' },
   },
@@ -248,6 +253,7 @@ const openPicker = async () => {
 describe('OperatorTraining queue workspace', () => {
   beforeEach(() => {
     trainingQueueCommandOwner.reset()
+    trainingSettingsOwner.reset()
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
       media: query,
@@ -1361,11 +1367,14 @@ describe('OperatorTraining queue workspace', () => {
     }
   })
 
-  // Defect reproduction: a settings change must invalidate the previewed plan.
-  // The training settings/plan-validity task owns converting this into a normal test.
-  it.fails('invalidates an existing preview when training settings change', async () => {
-    mockMutableQueue([queueItem('char_current', '阿米娅')])
-    mocks.updateTrainingSettings.mockResolvedValue({ success: true, data: settings })
+  it('invalidates an existing preview when training settings change and re-previews with the latest settings', async () => {
+    const queued = [queueItem('char_current', '阿米娅')]
+    const serverSettings = { ...settings }
+    mocks.getTrainingQueue.mockImplementation(async () => queueResponse(queued, 'queue-1', serverSettings))
+    mocks.updateTrainingSettings.mockImplementation(async (next: TrainingSettings) => {
+      Object.assign(serverSettings, next)
+      return { success: true, data: { ...serverSettings } }
+    })
 
     await renderComponent()
     await click(buttonWithText('预览刷图计划', container))
@@ -1373,7 +1382,201 @@ describe('OperatorTraining queue workspace', () => {
 
     await click(switchByLabel('自动切换')!)
 
+    expect(switchByLabel('自动切换')?.checked).toBe(false)
     expect(Array.from(container.querySelectorAll('button'))
       .some(button => button.textContent?.trim() === '应用到自动任务')).toBe(false)
+
+    await click(buttonWithText('预览刷图计划', container))
+    await click(buttonWithText('应用到自动任务', container))
+
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledWith({
+      plan: expect.objectContaining({ queueRevision: 'queue-1' }),
+      settings: { ...settings, autoSwitch: false },
+    })
+  })
+
+  it('restores the last saved settings and reports a failed write', async () => {
+    mocks.updateTrainingSettings
+      .mockResolvedValueOnce({ success: false, message: '设置服务不可用' })
+      .mockResolvedValueOnce({ success: true, data: { ...settings, autoSwitch: false } })
+
+    await renderComponent()
+    const autoSwitch = switchByLabel('自动切换')
+    expect(autoSwitch?.checked).toBe(true)
+
+    await click(autoSwitch!)
+    expect(autoSwitch?.checked).toBe(true)
+    expect(mocks.setMessage).toHaveBeenCalledWith('设置保存失败，已恢复原设置', 'error')
+
+    await click(switchByLabel('自动切换')!)
+    expect(switchByLabel('自动切换')?.checked).toBe(false)
+    expect(mocks.updateTrainingSettings).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps settings writes serialized across a page remount and ignores the older response', async () => {
+    const firstRequest = deferred<{ success: boolean; data: TrainingSettings }>()
+    mocks.updateTrainingSettings
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockResolvedValueOnce({ success: true, data: settings })
+
+    await renderComponent()
+    await click(switchByLabel('自动切换')!)
+    expect(switchByLabel('自动切换')?.checked).toBe(false)
+    expect(mocks.updateTrainingSettings).toHaveBeenCalledOnce()
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await renderComponent()
+    expect(switchByLabel('自动切换')?.checked).toBe(false)
+
+    await click(switchByLabel('自动切换')!)
+    expect(switchByLabel('自动切换')?.checked).toBe(true)
+    // 旧写入仍在途，新编辑必须排队而不是并发提交。
+    expect(mocks.updateTrainingSettings).toHaveBeenCalledOnce()
+
+    await act(async () => firstRequest.resolve({
+      success: true,
+      data: { ...settings, autoSwitch: false },
+    }))
+    await flush()
+
+    expect(mocks.updateTrainingSettings).toHaveBeenCalledTimes(2)
+    expect(mocks.updateTrainingSettings).toHaveBeenLastCalledWith(settings)
+    expect(switchByLabel('自动切换')?.checked).toBe(true)
+  })
+
+  it('adopts settings from an authoritative reload and invalidates the preview', async () => {
+    const queued = [queueItem('char_current', '阿米娅')]
+    const serverSettings = { ...settings }
+    mocks.getTrainingQueue.mockImplementation(async () => queueResponse(queued, 'queue-1', serverSettings))
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    expect(buttonWithText('应用到自动任务', container)).toBeDefined()
+
+    serverSettings.notifyOnComplete = false
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['training-queue'], cause: 'training-queue' })
+    })
+    await flush()
+
+    expect(switchByLabel('完成通知')?.checked).toBe(false)
+    expect(container.textContent).toContain('队列变更后需重新预览')
+    expect(Array.from(container.querySelectorAll('button'))
+      .some(button => button.textContent?.trim() === '应用到自动任务')).toBe(false)
+  })
+
+  it('blocks preview and apply while the queue refresh failed and recovers after reload', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    expect(buttonWithText('应用到自动任务', container).disabled).toBe(false)
+
+    mocks.getTrainingQueue.mockRejectedValueOnce(new Error('队列服务暂不可用'))
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['training-queue'], cause: 'training-queue' })
+    })
+    await flush()
+
+    expect(buttonWithText('预览刷图计划', container).disabled).toBe(true)
+    expect(buttonWithText('应用到自动任务', container).disabled).toBe(true)
+    const generateCalls = mocks.generateTrainingPlan.mock.calls.length
+    await click(buttonWithText('预览刷图计划', container))
+    await click(buttonWithText('应用到自动任务', container))
+    expect(mocks.generateTrainingPlan).toHaveBeenCalledTimes(generateCalls)
+    expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
+
+    await click(buttonWithText('重新加载', container))
+
+    // 显式重新加载会作废旧预览；恢复后必须重新预览才能应用。
+    expect(buttonWithText('预览刷图计划', container).disabled).toBe(false)
+    expect(Array.from(container.querySelectorAll('button'))
+      .some(button => button.textContent?.trim() === '应用到自动任务')).toBe(false)
+    await click(buttonWithText('预览刷图计划', container))
+    expect(buttonWithText('应用到自动任务', container).disabled).toBe(false)
+    await click(buttonWithText('应用到自动任务', container))
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
+  })
+
+  it('clears the candidate list on a shared catalogue failure while keeping the last counts', async () => {
+    let catalogFails = false
+    mocks.getOperatorList.mockImplementation(async (filters: { status?: string } = {}) => {
+      if (filters.status === 'trainable') {
+        return { success: true, data: { operators: [operator('char_a', '阿米娅')] } }
+      }
+      if (filters.status === 'owned') {
+        return { success: true, data: { operators: [operator('char_a', '阿米娅')] } }
+      }
+      return { success: true, data: { operators: [] } }
+    })
+    mocks.getAllOperators.mockImplementation(async () => {
+      if (catalogFails) return { success: false, message: '目录服务不可用' }
+      return {
+        success: true,
+        data: [
+          { id: 'char_a', name: '阿米娅', rarity: 6, profession: 'CASTER', level: 0, elite: 0, potential: 0 },
+          { id: 'char_b', name: '能天使', rarity: 6, profession: 'SNIPER', level: 0, elite: 0, potential: 0 },
+        ],
+      }
+    })
+
+    await renderComponent()
+    const { dialog } = await openPicker()
+    const allButton = Array.from(dialog.querySelectorAll<HTMLButtonElement>('.training-status-segment'))
+      .find(button => button.textContent?.includes('全部'))
+    await click(allButton!)
+
+    expect(dialog.textContent).toContain('能天使')
+    expect(statusCount('可养成')).toBe('1')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
+
+    catalogFails = true
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['catalog'], cause: 'resource-update' })
+    })
+    await flush()
+
+    expect(dialog.textContent).toContain('干员列表加载失败')
+    expect(dialog.textContent).toContain('目录服务不可用')
+    expect(dialog.textContent).not.toContain('能天使')
+    expect(statusCount('可养成')).toBe('1')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
+  })
+
+  it('keeps candidates and the last counts when only the counts reads fail', async () => {
+    let countsFail = false
+    mocks.getOperatorList.mockImplementation(async (filters: { status?: string } = {}) => {
+      if (countsFail && filters.status === 'owned') throw new Error('计数服务不可用')
+      return { success: true, data: { operators: [operator('char_a', '阿米娅')] } }
+    })
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'char_a', name: '阿米娅', rarity: 6, profession: 'CASTER', level: 0, elite: 0, potential: 0 },
+        { id: 'char_b', name: '能天使', rarity: 6, profession: 'SNIPER', level: 0, elite: 0, potential: 0 },
+      ],
+    })
+
+    await renderComponent()
+    const { dialog } = await openPicker()
+    expect(dialog.textContent).toContain('阿米娅')
+    expect(statusCount('可养成')).toBe('1')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
+
+    countsFail = true
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['operbox'], cause: 'recognition' })
+    })
+    await flush()
+
+    expect(dialog.textContent).toContain('阿米娅')
+    expect(dialog.textContent).not.toContain('干员列表加载失败')
+    expect(statusCount('可养成')).toBe('1')
+    expect(statusCount('已拥有')).toBe('1')
+    expect(statusCount('全部')).toBe('2')
   })
 })

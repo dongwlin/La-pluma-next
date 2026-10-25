@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpToLine, Check, ClipboardList, Filter, Package, Plus, Search, Sparkles, Trash2, UserRoundSearch, X } from 'lucide-react'
-import { updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
+import { generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
 import { getItemIconUrl } from '@/features/game-data'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
 import {
@@ -13,8 +13,17 @@ import {
 } from '../model/queries'
 import { trainingKeys } from '../model/queryKeys'
 import { isTrainingQueueMutationInvalidation } from '../model/queueCommands'
+import {
+  canApplyTrainingPlan,
+  canGenerateTrainingPlan,
+  captureTrainingPlanBasis,
+  isTrainingPlanBasisCurrent,
+  type TrainingPlanBasis,
+} from '../model/planValidity'
+import { TRAINING_SETTINGS_FAILURE_MESSAGE } from '../model/settingsCommands'
 import { EMPTY_TRAINING_COUNTS } from '../model/statusCounts'
 import { useTrainingQueueCommands } from '../hooks/useTrainingQueueCommands'
+import { useTrainingSettings } from '../hooks/useTrainingSettings'
 import { PageHeader, Button, EmptyState, IconButton, Input, Loading, Select, Switch } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
@@ -134,13 +143,18 @@ export default function OperatorTraining() {
     setStatusMessage(msg, 'error')
   }
   
-  const [settings, setSettings] = useState<TrainingSettings>({
-    useMedicine: 0,
-    useStone: 0,
-    autoSwitch: true,
-    notifyOnComplete: true
-  });
+  // 设置的读取、串行提交与本地 revision 由 training 领域所有者持有；
+  // 页面只显示当前值，并把要应用的设置交给 apply 请求。
+  const {
+    settings,
+    revision: settingsRevision,
+    update: updateSettings,
+    hydrate: hydrateSettings,
+    adopt: adoptSettings,
+    readState: readSettingsState,
+  } = useTrainingSettings()
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
+  const [planBasis, setPlanBasis] = useState<TrainingPlanBasis | null>(null);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<TrainingFilters>({
     rarity: '',
@@ -222,11 +236,6 @@ export default function OperatorTraining() {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [visibleOperatorLimit, setVisibleOperatorLimit] = useState(OPERATOR_RENDER_BATCH_SIZE);
   const [recentlyRemoved, setRecentlyRemoved] = useState<{ item: TrainingQueueItem; index: number } | null>(null);
-  const settingsRequestRef = useRef(0);
-  const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const persistedSettingsRef = useRef(settings);
-  const settingsHydrateBaselineRef = useRef(settingsRequestRef.current);
-  const settingsHydratedRef = useRef(false);
   const flowSyncHydratedRef = useRef(false);
   const queueRevisionRef = useRef<string | null>(null);
 
@@ -252,22 +261,25 @@ export default function OperatorTraining() {
     setVisibleOperatorLimit(OPERATOR_RENDER_BATCH_SIZE);
   }, [filters.status, filters.rarity, filters.needsElite2, searchTerm]);
 
-  // 首次成功的队列快照把服务端设置与任务流程同步状态同步到页面；
-  // 用户先编辑设置时不覆盖编辑草稿。
+  // 计划只在其生成时的队列/设置前提下有效；任何前提变化都同时清掉预览与
+  // 计划错误，避免旧计划继续显示“可应用”。
+  const invalidatePlan = useCallback(() => {
+    planRequestRef.current += 1;
+    setPlan(null);
+    setPlanBasis(null);
+    setPlanError(null);
+  }, []);
+
+  // 首次成功快照把服务端设置与任务流程同步状态同步到页面；用户先编辑设置时
+  // 所有者不再采用服务端值，避免迟到的首屏响应覆盖草稿。
   useEffect(() => {
     if (!queueSnapshot) return
-    if (!settingsHydratedRef.current && queueSnapshot.settings) {
-      settingsHydratedRef.current = true
-      if (settingsRequestRef.current === settingsHydrateBaselineRef.current) {
-        persistedSettingsRef.current = queueSnapshot.settings
-        setSettings(queueSnapshot.settings)
-      }
-    }
+    hydrateSettings(queueSnapshot.settings)
     if (!flowSyncHydratedRef.current && queueSnapshot.flowSync) {
       flowSyncHydratedRef.current = true
       setFlowSync(queueSnapshot.flowSync)
     }
-  }, [queueSnapshot])
+  }, [queueSnapshot, hydrateSettings])
 
   // 外部队列变化（识别、材料刷新、另一客户端）通过 revision 使旧计划失效。
   // 本页自己的写入在命令开始时已作废旧计划；此处只处理读取到的版本变化。
@@ -276,38 +288,41 @@ export default function OperatorTraining() {
     if (!revision) return
     const previous = queueRevisionRef.current
     queueRevisionRef.current = revision
-    if (previous && previous !== revision) {
-      planRequestRef.current += 1
-      setPlan(null)
-      setPlanError(null)
-    }
-  }, [queueSnapshot?.revision])
+    if (previous && previous !== revision) invalidatePlan()
+  }, [queueSnapshot?.revision, invalidatePlan])
 
-  // 强制读取最新队列；写后确认、生成计划前与外部失效都走同一入口。
-  const reloadQueue = async (syncSettings = false): Promise<TrainingQueueSnapshot | null> => {
-    const settingsRevision = settingsRequestRef.current
+  // 设置值变化同样作废旧计划：编辑、写入响应归一化、失败回滚与显式重载采用
+  // 服务端值都会让所有者的 revision 递增。
+  const previousSettingsRevisionRef = useRef(settingsRevision)
+  useEffect(() => {
+    if (previousSettingsRevisionRef.current === settingsRevision) return
+    previousSettingsRevisionRef.current = settingsRevision
+    invalidatePlan()
+  }, [settingsRevision, invalidatePlan])
+
+  // 强制读取最新队列；写后确认、生成计划前、显式“重新加载”与外部失效都走
+  // 同一入口。读取期间本地设置若发生编辑或写入完成，则本次快照的设置可能早于
+  // 本地值，不采用；否则采用服务端值（外部设置变化由此使旧计划失效）。
+  const reloadQueue = async (): Promise<TrainingQueueSnapshot | null> => {
+    const settingsBefore = readSettingsState()
     const result = await queueQuery.refetch({ cancelRefetch: true })
     if (result.isError || !result.data) return null
     const revision = result.data.revision
     if (revision && queueRevisionRef.current && revision !== queueRevisionRef.current) {
-      planRequestRef.current += 1
-      setPlan(null)
-      setPlanError(null)
+      invalidatePlan()
     }
     if (revision) queueRevisionRef.current = revision
     if (result.data.flowSync) setFlowSync(result.data.flowSync)
-    if (syncSettings && result.data.settings && settingsRevision === settingsRequestRef.current) {
-      persistedSettingsRef.current = result.data.settings
-      setSettings(result.data.settings)
+    const settingsAfter = readSettingsState()
+    if (
+      settingsBefore.syncState === 'idle'
+      && settingsAfter.syncState === 'idle'
+      && settingsBefore.revision === settingsAfter.revision
+    ) {
+      adoptSettings(result.data.settings)
     }
     return result.data
   }
-
-  const invalidatePlan = () => {
-    planRequestRef.current += 1;
-    setPlan(null);
-    setPlanError(null);
-  };
 
   // 识别、材料刷新与资源更新可能来自本页之外。候选列表与计数按资源作用域
   // 失效领域 query，计划前提变化时作废旧计划；队列写入的权威快照已由领域
@@ -411,16 +426,24 @@ export default function OperatorTraining() {
   };
 
   const handleGeneratePlan = async () => {
-    if (queue.length === 0 || queueMutationPending || workInFlightRef.current || refreshError) return;
+    if (!canGenerateTrainingPlan({
+      hasQueue: queue.length > 0 && !queueError,
+      busy: busy || workInFlightRef.current,
+      refreshFailed: refreshError,
+    })) return;
     workInFlightRef.current = true;
     let requestId = ++planRequestRef.current;
     setLoading(true);
     setPlan(null);
+    setPlanBasis(null);
     setPlanError(null);
     try {
+      // 生成前必须拿到权威队列；刷新失败时不生成依赖旧快照的计划。
       const freshQueue = await reloadQueue();
       if (!freshQueue) throw new Error('队列刷新失败，请重新加载后预览');
       if (!freshQueue.queue.length) throw new Error('养成队列为空，请先添加干员');
+      // 在生成请求发出前冻结版本前提；生成期间设置再变化会让 basis 失效。
+      const basis = captureTrainingPlanBasis(freshQueue.revision, readSettingsState().revision);
       requestId = ++planRequestRef.current;
       const response = await generateTrainingPlan({ mode: planMode });
       if (requestId !== planRequestRef.current) return;
@@ -430,6 +453,7 @@ export default function OperatorTraining() {
         setPlanError('养成队列已变化，请重新预览计划');
         return;
       }
+      setPlanBasis(basis);
       setPlan(response.data);
     } catch (error) {
       if (requestId === planRequestRef.current) setPlanError(error instanceof Error ? error.message : '生成计划失败，请重试');
@@ -440,20 +464,36 @@ export default function OperatorTraining() {
   };
 
   const handleApplyPlan = async () => {
-    if (!plan || queueMutationPending || workInFlightRef.current || refreshError) return;
+    if (!plan) return;
+    const currentBasis = {
+      queueRevision: queueSnapshot?.revision ?? null,
+      settingsRevision: readSettingsState().revision,
+    };
+    if (!canApplyTrainingPlan({
+      hasPlan: true,
+      busy: busy || workInFlightRef.current,
+      refreshFailed: refreshError,
+      basisCurrent: planBasis
+        ? isTrainingPlanBasisCurrent(planBasis, currentBasis)
+        : false,
+    })) return;
     const todayPlan = getOpenStagePlan(plan);
     if (!todayPlan.stages?.length) return;
     workInFlightRef.current = true;
     setLoading(true);
     setPlanError(null);
     try {
-      const response = await applyTrainingPlan({ plan: todayPlan, settings });
+      const response = await applyTrainingPlan({
+        plan: todayPlan,
+        settings: readSettingsState().settings,
+      });
       if (!response.success) throw new Error(response.message || '应用失败，请重新预览后重试');
       recordSync(response.data?.flowSync ?? { status: 'synced', flowName: response.data?.flowName || flowSync.flowName, taskName: response.data?.taskName });
       showSuccess(`养成计划已应用到${response.data?.flowName || flowSync.flowName}`);
     } catch (error) {
       setPlanError(error instanceof Error ? error.message : '应用失败，请重新预览后重试');
       setPlan(null);
+      setPlanBasis(null);
       await reloadQueue();
     } finally { workInFlightRef.current = false; setLoading(false); }
   };
@@ -473,25 +513,11 @@ export default function OperatorTraining() {
   };
 
   const handleUpdateSettings = (newSettings: TrainingSettings) => {
-    const requestId = ++settingsRequestRef.current;
-    setSettings(newSettings);
-
-    settingsWriteQueueRef.current = settingsWriteQueueRef.current.then(async () => {
-      try {
-        const response = await updateTrainingSettings(newSettings);
-        if (response.success) {
-          const savedSettings = response.data ?? newSettings;
-          persistedSettingsRef.current = savedSettings;
-          if (requestId === settingsRequestRef.current) setSettings(savedSettings);
-          return;
-        }
-      } catch (error) {
-        // The latest requested value is restored below when its write fails.
-      }
-
-      if (requestId === settingsRequestRef.current) {
-        setSettings(persistedSettingsRef.current);
-        showError('设置保存失败，已恢复原设置');
+    // 编辑立即作废旧计划：即使随后写入失败，旧计划也不能继续被应用。
+    invalidatePlan();
+    void updateSettings(newSettings).then(outcome => {
+      if (outcome.status === 'failed' && !outcome.superseded) {
+        showError(TRAINING_SETTINGS_FAILURE_MESSAGE);
       }
     });
   };
@@ -515,6 +541,22 @@ export default function OperatorTraining() {
   const currentProgress = currentTarget?.progress ?? 0;
   const planFocusName = plan?.focusOperator?.name || plan?.operators?.[0]?.name || currentTarget?.operator.name || '未设置';
   const busy = queueMutationPending || loading || syncing;
+  const planBasisCurrent = Boolean(plan && planBasis
+    && isTrainingPlanBasisCurrent(planBasis, {
+      queueRevision: queueSnapshot?.revision ?? null,
+      settingsRevision,
+    }));
+  const previewAvailable = canGenerateTrainingPlan({
+    hasQueue: queue.length > 0 && !queueError,
+    busy,
+    refreshFailed: refreshError,
+  });
+  const applyAvailable = canApplyTrainingPlan({
+    hasPlan: Boolean(plan),
+    busy,
+    refreshFailed: refreshError,
+    basisCurrent: planBasisCurrent,
+  });
   const todaySanity = todayStages.reduce((total, stage) => total + (plan?.stages?.find(entry => entry.stage === stage.stage)?.sanityPerRun ?? 0) * (stage.totalTimes ?? 0), 0);
   const operatorEmptyState: OperatorEmptyStateProps | null = !operatorsLoading && filteredOperators.length === 0
     ? (() => {
@@ -556,8 +598,8 @@ export default function OperatorTraining() {
             <ClipboardList size={20} className="text-tertiary" aria-hidden="true" />
           </div>
           {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
-          {refreshError && !queueError && <div role="alert" className="training-feedback status-warning"><span>{queueUncertain ?? '队列已更新，但刷新失败。重新加载后再预览计划。'}</span><Button variant="ghost" onClick={() => { invalidatePlan(); void reloadQueue(true); }} disabled={busy}>重新加载</Button></div>}
-          {queueLoading ? <div className="training-state"><Loading text="正在读取养成队列..." /></div> : queueError ? <TrainingLoadError title="养成队列加载失败" description={queueError} onRetry={() => void reloadQueue(true)} /> : queue.length === 0 ? (
+          {refreshError && !queueError && <div role="alert" className="training-feedback status-warning"><span>{queueUncertain ?? '队列已更新，但刷新失败。重新加载后再预览计划。'}</span><Button variant="ghost" onClick={() => { invalidatePlan(); void reloadQueue(); }} disabled={busy}>重新加载</Button></div>}
+          {queueLoading ? <div className="training-state"><Loading text="正在读取养成队列..." /></div> : queueError ? <TrainingLoadError title="养成队列加载失败" description={queueError} onRetry={() => void reloadQueue()} /> : queue.length === 0 ? (
             <div className="training-state"><EmptyState compact icon={<ClipboardList size={24} />} title="养成队列还是空的" description="添加需要筹备材料的干员，按目标安排刷图。" /><Button onClick={() => setSelectorOpen(true)} variant="secondary" icon={<Plus size={17} />}>选择干员</Button></div>
           ) : <ol className="training-queue-list">
             {queue.map((item, index) => <li key={item.operatorId} className={`training-queue-row ${index === 0 ? 'is-current' : ''}`}>
@@ -595,13 +637,13 @@ export default function OperatorTraining() {
 
           <section className="training-surface" aria-labelledby="training-plan-title">
             <div className="training-section-heading"><div><h2 id="training-plan-title">刷图计划</h2><p>先预览，再应用到任务流程</p></div><Sparkles size={20} className="text-tertiary" aria-hidden="true" /></div>
-            <div className="training-plan-controls"><Select aria-label="计划范围" value={planMode} onChange={mode => { setPlanMode(mode as TrainingPlanMode); invalidatePlan(); }} disabled={busy} options={[{ value: 'current', label: '仅当前目标' }, { value: 'all', label: '全部队列' }]} /><Button onClick={handleGeneratePlan} disabled={!queue.length || busy || refreshError || !!queueError} loading={loading && !plan} loadingText="计算中" variant={plan ? 'secondary' : 'primary'} icon={<Sparkles size={16} />}>预览刷图计划</Button></div>
+            <div className="training-plan-controls"><Select aria-label="计划范围" value={planMode} onChange={mode => { setPlanMode(mode as TrainingPlanMode); invalidatePlan(); }} disabled={busy} options={[{ value: 'current', label: '仅当前目标' }, { value: 'all', label: '全部队列' }]} /><Button onClick={handleGeneratePlan} disabled={!previewAvailable} loading={loading && !plan} loadingText="计算中" variant={plan && planBasisCurrent ? 'secondary' : 'primary'} icon={<Sparkles size={16} />}>预览刷图计划</Button></div>
             {planError && <div role="alert" className="training-feedback status-danger">{planError}</div>}
-            {plan ? <>
+            {plan && planBasisCurrent ? <>
               <div className="training-plan-overview"><div><h3>{planFocusName}</h3><p>今日可刷 {openStageCount} 个关卡 · {todayRunCount} 次{todaySanity > 0 ? ` · 约 ${todaySanity} 理智` : ''}</p><p>完整计划约 {plan.totalSanity ?? 0} 理智（含未开放关卡）</p></div></div>
               {!!plan.warnings?.length && <div role="note" className="training-plan-warnings status-warning">{plan.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
               {todayStages.length > 0 ? <div className="training-stage-list">{todayStages.map((stage, index) => <div key={`${stage.stage}-${index}`} className="training-stage-row"><div><strong>{stage.stage}</strong><p>{stage.materials?.map(material => `${material.name} ×${material.count ?? material.needed ?? 0}`).join('、') || '今日可直接推进'}</p></div><span className="tabular-nums font-semibold">×{stage.totalTimes ?? 0}</span></div>)}</div> : <p className="training-inline-empty">{currentMissingMaterials.length === 0 ? '当前材料已齐，无需刷取。' : '今天没有可直接推进的开放关卡，查看详情安排后续刷取。'}</p>}
-              <div className="training-apply"><Button onClick={handleApplyPlan} disabled={busy || !openStageCount || refreshError} loading={loading} loadingText="应用中" icon={<Check size={16} />} fullWidth>应用到{flowSync.flowName}</Button><p>写入{flowSync.taskName ? `「${flowSync.taskName}」` : '作战任务'}的智能养成关卡，保留普通关卡。</p></div>
+              <div className="training-apply"><Button onClick={handleApplyPlan} disabled={!applyAvailable || !openStageCount} loading={loading} loadingText="应用中" icon={<Check size={16} />} fullWidth>应用到{flowSync.flowName}</Button><p>写入{flowSync.taskName ? `「${flowSync.taskName}」` : '作战任务'}的智能养成关卡，保留普通关卡。</p></div>
               <details className="training-disclosure"><summary>查看完整材料、未开放关卡与计算详情</summary>
                 {!!plan.closedStages?.length && <div className="training-closed-stages"><h3>今日未开放</h3>{plan.closedStages.map((stage, index) => <p key={`${stage.stage}-${index}`}><strong>{stage.stage}</strong><span>{stage.totalTimes ?? 0} 次 · 等待开放</span></p>)}</div>}
                 {!!plan.materialHierarchy?.length && <><h3 className="mt-4 font-semibold">计划材料需求</h3><MaterialTree nodes={plan.materialHierarchy} /></>}
