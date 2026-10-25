@@ -753,7 +753,7 @@ export default function ConfigManager() {
             <div className="app-stack-card">
               {configFeedback && (
                 <div
-                  className={`rounded-(--app-radius-md) px-3 py-2.5 text-xs leading-5 ${
+                  className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${
                     configFeedback.type === 'success'
                       ? 'status-success'
                       : configFeedback.type === 'warning'
@@ -786,10 +786,10 @@ export default function ConfigManager() {
                 />
               </div>
 
-              <section className="surface-soft rounded-(--app-radius-lg) p-(--app-space-panel)" aria-label="模拟器查找与连接测试">
+              <section className="surface-soft rounded-xl p-(--app-space-panel)" aria-label="模拟器查找与连接测试">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-(--app-radius-md) brand-text">
+                    <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
                       <Cable size={18} aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
@@ -830,7 +830,7 @@ export default function ConfigManager() {
                 )}
 
                 {discoveredDevices.length > 0 && (
-                  <div className="config-device-list mt-3 divide-y divide-(--app-border) overflow-hidden rounded-(--app-radius-md) bg-(--app-surface) shadow-[inset_0_0_0_1px_var(--app-border)]">
+                  <div className="config-device-list mt-3 divide-y divide-(--app-border) overflow-hidden rounded-lg bg-(--app-surface) shadow-[inset_0_0_0_1px_var(--app-border)]">
                     {discoveredDevices.map(device => {
                       const selectable = device.state === 'device' || device.state === 'candidate'
                       const stateLabel = device.state === 'device'
@@ -854,7 +854,7 @@ export default function ConfigManager() {
                             <span className="block truncate text-sm font-medium text-primary">{device.address}</span>
                             <span className="mt-0.5 block truncate text-xs text-tertiary">{device.details || (device.source === 'adb' ? 'ADB 已识别设备' : device.source === 'emulator-adb' ? '模拟器内置 ADB' : '本机端口')}</span>
                           </span>
-                          <span className="shrink-0 rounded-(--app-radius-pill) bg-(--app-surface-muted) px-2 py-1 text-xs text-secondary">{stateLabel}</span>
+                          <span className="shrink-0 rounded-full bg-(--app-surface-muted) px-2 py-1 text-xs text-secondary">{stateLabel}</span>
                         </button>
                       )
                     })}
@@ -866,7 +866,7 @@ export default function ConfigManager() {
                 )}
 
                 {connectionFeedback && (
-                  <div className={`mt-3 rounded-(--app-radius-md) px-3 py-2.5 text-xs ${connectionFeedback.success ? 'status-success' : 'status-danger'}`} role={connectionFeedback.success ? 'status' : 'alert'}>
+                  <div className={`mt-3 rounded-lg px-3 py-2.5 text-xs ${connectionFeedback.success ? 'status-success' : 'status-danger'}`} role={connectionFeedback.success ? 'status' : 'alert'}>
                     {connectionFeedback.message}
                   </div>
                 )}
@@ -904,8 +904,8 @@ export default function ConfigManager() {
           )}
 
           {configType === 'resource' && (
-            <section className="surface-soft flex items-start gap-3 rounded-(--app-radius-lg) p-(--app-space-panel)" aria-labelledby="resource-config-readonly-title">
-              <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-(--app-radius-md) brand-text">
+            <section className="surface-soft flex items-start gap-3 rounded-xl p-(--app-space-panel)" aria-labelledby="resource-config-readonly-title">
+              <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
                 <LockKeyhole size={18} aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -916,8 +916,8 @@ export default function ConfigManager() {
           )}
 
           {configType === 'instance' && (
-            <section className="surface-soft flex items-start gap-3 rounded-(--app-radius-lg) p-(--app-space-panel)" aria-labelledby="instance-config-readonly-title">
-              <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-(--app-radius-md) brand-text">
+            <section className="surface-soft flex items-start gap-3 rounded-xl p-(--app-space-panel)" aria-labelledby="instance-config-readonly-title">
+              <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
                 <LockKeyhole size={18} aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -933,7 +933,7 @@ export default function ConfigManager() {
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="icon-well flex h-10 w-10 shrink-0 items-center justify-center rounded-(--app-radius-md) brand-text">
+              <span className="icon-well flex h-10 w-10 shrink-0 items-center justify-center rounded-lg brand-text">
                 <FolderOpen size={20} aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -979,10 +979,10 @@ export default function ConfigManager() {
       <Card smoothCorners className="config-update-card p-0!">
         <CardHeader title="组件更新" />
         <CardContent className="app-stack-card">
-          <section className="surface-soft rounded-(--app-radius-lg) p-(--app-space-panel)">
+          <section className="surface-soft rounded-xl p-(--app-space-panel)">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-start gap-3">
-                <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-(--app-radius-md) brand-text">
+                <span className="icon-well flex h-9 w-9 shrink-0 items-center justify-center rounded-lg brand-text">
                   <Clock3 size={18} aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
@@ -1032,7 +1032,7 @@ export default function ConfigManager() {
 
             {autoUpdateFeedback && (
               <div
-                className={`mt-4 rounded-(--app-radius-md) px-3 py-2.5 text-xs leading-5 ${
+                className={`mt-4 rounded-lg px-3 py-2.5 text-xs leading-5 ${
                   autoUpdateFeedback.type === 'success'
                     ? 'status-success'
                     : autoUpdateFeedback.type === 'warning'
@@ -1063,12 +1063,12 @@ export default function ConfigManager() {
           </section>
 
           <div className="grid gap-(--app-space-card) md:grid-cols-2 xl:grid-cols-1">
-            <section className="surface-soft flex min-w-0 flex-col rounded-(--app-radius-lg) p-(--app-space-panel)">
+            <section className="surface-soft flex min-w-0 flex-col rounded-xl p-(--app-space-panel)">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-primary">MaaCore</h3>
                 {versionInfo && <span className="text-sm brand-text">{versionInfo.core}</span>}
                 {versionInfo && (
-                  <span className={`rounded-(--app-radius-pill) px-2 py-1 text-xs ${versionInfo.core.includes('beta') || versionInfo.core.includes('alpha') ? 'status-warning' : 'status-success'}`}>
+                  <span className={`rounded-full px-2 py-1 text-xs ${versionInfo.core.includes('beta') || versionInfo.core.includes('alpha') ? 'status-warning' : 'status-success'}`}>
                     {versionInfo.core.includes('beta') || versionInfo.core.includes('alpha') ? '测试版' : '正式版'}
                   </span>
                 )}
@@ -1081,7 +1081,7 @@ export default function ConfigManager() {
                       ? new Date(versionInfo.resource.lastUpdated.replace(' ', 'T')).toLocaleString('zh-CN', { hour12: false })
                       : '未知'}
                   </span>
-                  <span className={`rounded-(--app-radius-pill) px-2 py-1 font-medium ${versionInfo.resource.status === 'current' ? 'status-success' : 'status-warning'}`}>
+                  <span className={`rounded-full px-2 py-1 font-medium ${versionInfo.resource.status === 'current' ? 'status-success' : 'status-warning'}`}>
                     {versionInfo.resource.status === 'current' ? '资源正常' : '需要同步'}
                   </span>
                 </div>
@@ -1125,11 +1125,11 @@ export default function ConfigManager() {
               </div>
             </section>
 
-            <section className="surface-soft flex min-w-0 flex-col rounded-(--app-radius-lg) p-(--app-space-panel)">
+            <section className="surface-soft flex min-w-0 flex-col rounded-xl p-(--app-space-panel)">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-primary">MAA CLI</h3>
                 {versionInfo && <span className="text-sm brand-text">{versionInfo.cli}</span>}
-                <span className="status-success rounded-(--app-radius-pill) px-2 py-1 text-xs">正式版</span>
+                <span className="status-success rounded-full px-2 py-1 text-xs">正式版</span>
               </div>
               <p className="mt-1 text-xs leading-5 text-secondary">命令行工具与任务运行入口</p>
               <div className="mt-auto pt-4">
@@ -1149,7 +1149,7 @@ export default function ConfigManager() {
           </div>
 
           {updateFeedback && (
-            <div className={`rounded-(--app-radius-md) px-3 py-2.5 text-xs leading-5 ${updateFeedback.type === 'success' ? 'status-success' : 'status-warning'}`} role={updateFeedback.type === 'error' ? 'alert' : 'status'}>
+            <div className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${updateFeedback.type === 'success' ? 'status-success' : 'status-warning'}`} role={updateFeedback.type === 'error' ? 'alert' : 'status'}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p>{updateFeedback.message}</p>
                 {updateFeedback.resourceRetry && (

@@ -1789,7 +1789,7 @@ export default function CombatTasks() {
                           <summary className="inline-flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center brand-text hover:underline">说明</summary>
                           <div className="absolute right-0 z-20 mt-2 hidden w-[min(18rem,calc(100vw-3rem))] space-y-1.5 rounded-lg border border-(--app-border) bg-(--app-surface-solid) p-3 text-left shadow-lg group-open:block">
                             <p>• 在 <a href="https://prts.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">prts.plus</a> 获取作业链接</p>
-                            <p>• 单作业：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">prts://1234</code>；作业集：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">prts://s1234</code></p>
+                            <p>• 单作业：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded-sm">prts://1234</code>；作业集：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded-sm">prts://s1234</code></p>
                             <p>• 作业站链接会自动识别，也可导入远程或本地作业文件</p>
                           </div>
                         </details>
@@ -1928,7 +1928,7 @@ export default function CombatTasks() {
                               <div className="mb-3 rounded-lg border border-(--app-accent) bg-(--app-accent-soft) p-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center space-x-2">
-                                    <span className="px-2 py-0.5 brand-action text-xs font-medium rounded">下一关</span>
+                                    <span className="px-2 py-0.5 brand-action text-xs font-medium rounded-sm">下一关</span>
                                     <span className="text-xs brand-text">第 {(copilotSetInfo.currentIndex ?? 0) + 1} / {copilotSetInfo.copilots.length} 关</span>
                                   </div>
                                   <span className="font-mono text-xs brand-text">prts://{currentCopilot.id}</span>
@@ -1999,7 +1999,7 @@ export default function CombatTasks() {
                                       aria-label={`${isSelected ? '取消选择' : '选择'}第 ${idx + 1} 个作业`}
                                       className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors ${isRunning ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-(--app-accent-soft)'}`}
                                     >
-                                      <span className={`flex h-4 w-4 items-center justify-center rounded border ${
+                                      <span className={`flex h-4 w-4 items-center justify-center rounded-sm border ${
                                           isSelected
                                             ? 'border-(--app-accent) bg-(--app-accent) text-white'
                                             : 'border-(--app-border-strong) bg-(--app-surface-solid)'
@@ -2023,10 +2023,10 @@ export default function CombatTasks() {
                                       <div className="flex min-w-0 items-center gap-1.5">
                                         <span className="truncate text-primary">{copilot.name || `作业 #${copilot.id}`}</span>
                                         {copilot.presetFormation && (
-                                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] brand-chip">预设编队 · 仅普通</span>
+                                          <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] brand-chip">预设编队 · 仅普通</span>
                                         )}
                                         {copilot.completedModes?.map(mode => (
-                                          <span key={mode} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                                          <span key={mode} className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
                                             {mode === 'raid' ? '突袭已完成' : '普通已完成'}
                                           </span>
                                         ))}

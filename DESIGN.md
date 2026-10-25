@@ -179,7 +179,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 S3 删除了 `client/tailwind.config.js`，压缩映射改由 `index.css` 的 `@theme` 与定向 `@utility` 承担，语义与 v3/v4 过渡期保持一致。页面代码继续使用 Tailwind 类名，但实际生效的档位由下面的映射表唯一决定——不要按通用 v4 迁移指南改写这些类名。
 
-- **圆角**：`@theme` 的 `--radius-*` 映射到 `--app-radius-*`；`rounded`（DEFAULT）与 `rounded-sm` 都走 `--radius-sm → --app-radius-xs`，裸 `rounded` 由 `--radius` 承接。`rounded-xs` 保留 Tailwind 默认 2px，不属于应用语义档位；应用从 sm 起收口。
+- **圆角**：`@theme` 先用 `--radius-*: initial` 清掉 Tailwind v4 默认档位，再把 `--radius-sm/md/lg/xl/full` 映射到 `--app-radius-*`。应用只使用这 5 个命名档位，裸 `rounded`、`rounded-xs`、`rounded-2xl/3xl` 都不再生成；`rounded-sm` 是应用最小档（6px），从 sm 起收口。
 - **gap/space**：v4 的 `gap-*` / `space-*` 与 `p-*` / `m-*` 共用全局 `--spacing` 尺度，直接改 `--spacing-3/4/5/6` 会连带改变 `p-3..6` / `m-3..6`。因此用 `@utility` 定向定义 `gap-3/4/5/6`、`gap-x/y-3/4/5/6`、`space-x/y-4/5/6`；`p-*` / `m-*` 仍保持 v4 默认 4px 节奏。gap 定向工具带 `!important`，用于压过 Tailwind 为同名类生成的默认 `calc(var(--spacing) * n)` 声明；space 定向工具沿用 v4 的 `& > :not(:last-child)` end-margin 语义。代价是 `gap-3/4/5/6` 不能被同元素的 `gap-[...]` 覆盖——需要任意值时改用组件类或显式样式。
 - **content 检测**：由 Tailwind v4 自动检测 `index.html` 与 `src/**` 取代原 `content` glob，无需额外配置。
 
@@ -187,13 +187,13 @@ S3 删除了 `client/tailwind.config.js`，压缩映射改由 `index.css` 的 `@
 
 | Tailwind 类 | 实际生效 token | 生效值 |
 | --- | --- | --- |
-| `rounded`（DEFAULT）、`rounded-sm` | `--app-radius-xs` | 6px |
+| `rounded-sm` | `--app-radius-xs` | 6px |
 | `rounded-md` | `--app-radius-sm` | 10px |
 | `rounded-lg` | `--app-radius-md` | 13px |
-| `rounded-xl`、`rounded-2xl`、`rounded-3xl` | `--app-radius-lg` | 16px |
+| `rounded-xl` | `--app-radius-lg` | 16px |
 | `rounded-full` | `--app-radius-pill` | 9999px |
 
-Tailwind 的 8 个圆角档位被压缩为应用的语义档位：`rounded-2xl→lg`、`rounded-3xl→lg` 是刻意收口——不存在比 16px 更圆的常规卡片圆角，需要 iOS 连续圆角视觉时使用 `SmoothPanel`（20px / 紧凑 16px）。sm、md、lg 三个常用圆角档位作为有意约束保留，不要"补全"被抹平的中间档位，也不要新增更大的档位。
+Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded-2xl` / `rounded-3xl` 与 `xl` 同为 16px，已随 `--radius-*: initial` 一起移除，避免同一值出现多个类名——不存在比 16px 更圆的常规卡片圆角，需要 iOS 连续圆角视觉时使用 `SmoothPanel`（20px / 紧凑 16px）。sm、md、lg、xl 四个常用档位作为有意约束保留，不要新增更大的档位，也不要恢复裸 `rounded`。
 
 ### 间距映射（gap-* / space-*）
 

@@ -6,18 +6,18 @@
 
 /*
  * 压缩映射（S3）：Tailwind 的圆角档位收口到 --app-radius-* 语义 token。
+ * --radius-*: initial 先清掉 v4 默认档位，只保留应用使用的 5 档；
+ * 裸 rounded、rounded-xs、rounded-2xl/3xl 不再生成，一个档位只有一个类名。
  * gap/space 不能走 --spacing 全局尺度（会连带改变 p-* / m-*），
  * 因此用 @utility 定向映射，p/m 继续使用 v4 默认 4px 节奏。
  */
 @theme {
-  --radius: var(--app-radius-xs);
-  --radius-xs: 0.125rem; /* v4 默认档位；应用语义档位从 sm 起映射到 --app-radius-xs */
+  /* stylelint-disable-next-line custom-property-pattern -- Tailwind v4 命名空间重置语法 */
+  --radius-*: initial;
   --radius-sm: var(--app-radius-xs);
   --radius-md: var(--app-radius-sm);
   --radius-lg: var(--app-radius-md);
   --radius-xl: var(--app-radius-lg);
-  --radius-2xl: var(--app-radius-lg);
-  --radius-3xl: var(--app-radius-lg);
   --radius-full: var(--app-radius-pill);
 }
 

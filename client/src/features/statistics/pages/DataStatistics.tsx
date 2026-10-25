@@ -405,7 +405,7 @@ function FilterMenu({
 function InlineDataError({ title, description, isRetrying, onRetry }: InlineDataErrorProps) {
   return (
     <div
-      className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between"
+      className="form-error-surface flex flex-col items-start gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between"
       role="alert"
     >
       <div className="min-w-0">

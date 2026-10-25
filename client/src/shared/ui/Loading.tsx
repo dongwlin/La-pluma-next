@@ -51,8 +51,8 @@ interface SkeletonProps {
  */
 export function Skeleton({ className = '', variant = 'text', style }: SkeletonProps) {
   const variantStyles: Record<string, string> = {
-    text: 'h-4 rounded',
-    title: 'h-6 rounded',
+    text: 'h-4 rounded-sm',
+    title: 'h-6 rounded-sm',
     circle: 'rounded-full',
     rect: 'rounded-xl',
   }
@@ -99,7 +99,7 @@ function PanelHeadingSkeleton({ className, showIcon = true }: { className: strin
     <div className={className}>
       <div className="min-w-0 space-y-2">
         <div className="flex items-center gap-2">
-          {showIcon && <Skeleton variant="rect" className="h-4 w-4 shrink-0 rounded" />}
+          {showIcon && <Skeleton variant="rect" className="h-4 w-4 shrink-0 rounded-sm" />}
           <Skeleton variant="text" className="h-4 w-24" />
         </div>
         <Skeleton variant="text" className="h-2.5 w-36 max-w-full" />
@@ -151,7 +151,7 @@ function AutomationSequenceSkeleton() {
       <div className="automation-sequence-list">
         {Array.from({ length: 5 }, (_, index) => (
           <div key={index} className="automation-sequence-item pointer-events-none">
-            <Skeleton variant="rect" className="h-4 w-3 justify-self-center rounded" />
+            <Skeleton variant="rect" className="h-4 w-3 justify-self-center rounded-sm" />
             <div className="flex min-w-0 items-center gap-2 px-1">
               <Skeleton variant="circle" className="h-6 w-6 shrink-0" />
               <div className="min-w-0 flex-1 space-y-1.5">
@@ -465,7 +465,7 @@ function TrainingSkeleton() {
           </div>
         </Card>
         <SmoothPanel className="training-plan-empty" surfaceClassName="px-6 py-8 text-center">
-          <Skeleton variant="rect" className="mx-auto h-12 w-12 rounded-2xl" />
+          <Skeleton variant="rect" className="mx-auto h-12 w-12 rounded-xl" />
           <Skeleton variant="title" className="mx-auto mt-4 h-5 w-36" />
           <Skeleton variant="text" className="mx-auto mt-3 h-3 w-64 max-w-full" />
           <Skeleton variant="text" className="mx-auto mt-2 h-3 w-48 max-w-full" />
@@ -520,7 +520,7 @@ function LogsSkeleton() {
               <div key={index} className="log-row">
                 <div className="log-row-meta">
                   <Skeleton variant="text" className="h-3 w-full" />
-                  <Skeleton variant="rect" className="h-5 w-full rounded" />
+                  <Skeleton variant="rect" className="h-5 w-full rounded-sm" />
                 </div>
                 <Skeleton variant="text" className="mt-1 h-3" style={{ width: `${58 + (index % 4) * 9}%` }} />
               </div>
@@ -539,7 +539,7 @@ function LogsSkeleton() {
                   <Skeleton variant="text" className="h-3 w-36 max-w-full" />
                   <Skeleton variant="text" className="h-2.5 w-52 max-w-full" />
                 </span>
-                <Skeleton variant="rect" className="h-4 w-4 rounded" />
+                <Skeleton variant="rect" className="h-4 w-4 rounded-sm" />
               </div>
             ))}
           </div>
@@ -587,7 +587,7 @@ function StatisticsSkeleton() {
             </div>
             <div className="data-statistics-result-grid grid grid-cols-3 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {Array.from({ length: 6 }, (_, index) => (
-                <div key={index} className="rounded-2xl border border-transparent p-3 surface-soft">
+                <div key={index} className="rounded-xl border border-transparent p-3 surface-soft">
                   <Skeleton variant="rect" className="aspect-square h-auto w-full rounded-xl" />
                   <Skeleton variant="text" className="mx-auto mt-3 h-3 w-16 max-w-full" />
                   <Skeleton variant="rect" className="mx-auto mt-2 h-5 w-12 rounded-full" />

@@ -19,7 +19,7 @@ function DropRecordsError({ description, onRetry }: DropRecordsErrorProps) {
   return (
     <Card smoothCorners className="drop-records-panel p-0!">
       <div className="drop-records-panel-content">
-        <div className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="form-error-surface flex flex-col items-start gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
             <p className="font-semibold text-primary">掉落记录读取失败</p>
             <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{description}</p>
@@ -105,7 +105,7 @@ export default function DropRecords({
   return (
     <div className="app-stack-section">
       {error && (
-        <div className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+        <div className="form-error-surface flex flex-col items-start gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
             <p className="font-semibold text-primary">掉落记录刷新失败</p>
             <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{error}</p>
@@ -123,7 +123,7 @@ export default function DropRecords({
       )}
 
       {/* 顶部统计卡片 */}
-      <div className="drop-records-metric-panel grid grid-cols-2 overflow-hidden rounded-(--app-radius-lg) surface-soft md:grid-cols-4">
+      <div className="drop-records-metric-panel grid grid-cols-2 overflow-hidden rounded-xl surface-soft md:grid-cols-4">
         {metricCards.map((metric) => (
           <div key={metric.label} className="drop-records-metric-row min-w-0 p-4">
             <div className="mb-2 flex items-center justify-between text-secondary">
@@ -198,7 +198,7 @@ export default function DropRecords({
             description="切换统计周期或完成作战后再查看。"
           />
         ) : (
-        <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-(--app-radius-lg) surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {sortedItems.slice(0, 20).map(([itemName, itemData]) => (
             <div
               key={itemName}
@@ -268,7 +268,7 @@ export default function DropRecords({
             description="切换统计周期或完成作战后再查看。"
           />
         ) : (
-        <div className="drop-records-stage-list min-w-0 overflow-hidden rounded-(--app-radius-lg) surface-soft">
+        <div className="drop-records-stage-list min-w-0 overflow-hidden rounded-xl surface-soft">
           {sortedStages.map(([stageName, stageData]) => (
             <div
               key={stageName}
@@ -296,7 +296,7 @@ export default function DropRecords({
                 {Object.entries(stageData.items).map(([itemName, count]) => (
                   <span
                     key={itemName}
-                    className="max-w-full wrap-break-word whitespace-normal control-surface rounded-(--app-radius-sm) px-2 py-1 text-xs text-secondary wrap-anywhere"
+                    className="max-w-full wrap-break-word whitespace-normal control-surface rounded-md px-2 py-1 text-xs text-secondary wrap-anywhere"
                   >
                     {itemName} ×{count}
                   </span>

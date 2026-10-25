@@ -60,7 +60,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
   @import "tailwindcss";
   ```
   `@import "tailwindcss";` 必须是字符串形式（stylelint 的 `import-notation` 在该行就地豁免）。`@custom-variant dark (&:is(.dark *));` 保持 class 深色模式；不再有 `@config` 指令，也没有 `client/tailwind.config.js`。
-- **配置迁移**：`rounded-*` 由 `@theme` 的 `--radius-*` 映射到 `--app-radius-*`；`gap-*` / `space-*` 由 `@utility` 定向映射到 `--app-space-*`（v4 的 gap/space/p/m 共用 `--spacing`，不能直接改 `--spacing-3/4/5/6`，否则 `p-*` / `m-*` 会被连带改变）。gap 定向工具带 `!important`，用于压过 Tailwind 同名类生成的默认声明；p/m 仍为默认 4px 节奏。映射表见 [设计规范](../DESIGN.md)。
+- **配置迁移**：`@theme` 先用 `--radius-*: initial` 清掉 v4 默认圆角档位，再只把 `--radius-sm/md/lg/xl/full` 映射到 `--app-radius-*`（裸 `rounded`、`rounded-xs`、`rounded-2xl/3xl` 不再生成）；`gap-*` / `space-*` 由 `@utility` 定向映射到 `--app-space-*`（v4 的 gap/space/p/m 共用 `--spacing`，不能直接改 `--spacing-3/4/5/6`，否则 `p-*` / `m-*` 会被连带改变）。gap 定向工具带 `!important`，用于压过 Tailwind 同名类生成的默认声明；p/m 仍为默认 4px 节奏。映射表见 [设计规范](../DESIGN.md)。
 - **content 检测**：v4 自动扫描 `index.html` 与 `src/**`，取代原 `content` glob。
 - **canonical 类名**：`eslint-plugin-tailwindcss` 的 `enforces-canonical-classname` 在 `client/eslint.config.js` 中对 `src/**/*.{ts,tsx}` 启用（只开这一条），由 `lint` 拦截非规范写法：CSS 变量写 `bg-(--app-surface-muted)` 而非 `bg-[var(--app-surface-muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
 - **token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；`ios-theme.css` 只保留 chrome/材质独有 token，不再重定义同名语义 token。
