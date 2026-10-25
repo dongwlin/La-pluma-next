@@ -29,7 +29,7 @@
 | `stopRun(runId)` | `POST /api/agent/actions/stop?runId=…`，只停止目标 run |
 | `executeCommand(..., options?)` | 通用 `run-task`，`options.idempotencyKey` 写入 `Idempotency-Key` |
 | `executePredefinedTask` / `executePredefinedTaskArgs` | 旧参数形式保持不变，末位新增可选 `AgentRequestOptions` |
-| `getTaskStatus` / `stopTask` | 旧进程投影与旧式停止，保留给尚未迁移的页面 |
+| `getTaskStatus` / `stopTask` | 旧进程投影与旧式停止；`getTaskStatus` 仍由连接监测器使用，`stopTask` 仅保留给旧调用方，页面不再调用 |
 
 ### 类型
 
@@ -116,9 +116,14 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 继续下一关返回可重试的 409 `MAA_EXECUTION_BUSY` 时保持等待态并允许重试；`AGENT_COPILOT_SET_SESSION_LOST` 提示重新提交；拒绝与传输失败之后都先重新读取快照，不凭页面状态推断结果。
   - 作业集终态后页面按服务端计划进度重建“待执行”选择（成功项移出、失败项保留）；计划读取失败只影响展示，不据此宣告完成。`失败后停止` 策略在 manual 等待态遇到失败项时结束集合 run，不再提供“开始下一关”。
   - 作业页同样不再写 `statusStore.isActive`；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复运行展示且不重提作业集。刷新后需要重新预览对应作业集才能恢复列表与“开始下一关”入口，`waiting` run 本身不会被重新提交。
-- 自动化与 Dashboard 仍走旧路径（`tasks/status` 轮询、旧 `stopTask`、页面内流程编排），本阶段不删除这些写入者。页面迁移分别由自动化执行迁移任务接入控制器的提交/停止/订阅，再由运行状态单源任务统一全局展示。
+- 自动化页已迁移到控制器（FPR-010），`scope: 'automation'`：
+  - 手动执行只提交一次 `run_daily_flow`（`POST /api/agent/schedules/manual/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后运行/停止按钮只由 `trackedRun` 决定。页面不再逐项提交 `run-task`，也不再保留第二套前端流程引擎。
+  - 活动进度来自 `run.progress` 的 `currentStep`/`totalSteps`/`currentTask`/`message`；逐项结果只读取快照中 `schedule.runId === trackedRunId` 的 `taskResults`。流程步间延迟期间 run 仍为活动，页面不会提前标完成；终态摘要只来自 `run.result.summary`。空闲且本页没有持有 run 时，“最近执行”可回退展示快照的 `schedule.lastResult`；它只是旧字段的展示投影，不用于判断身份、完成或重提。
+  - 停止走 `stopTrackedRun()`，确认期间由快照推进，15s 未确认解锁重试；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复观察且不重新提交。
+  - 旧 `maa-task-flow-execution` 断点只在首次拿到 Run 快照时读取一次：能关联到活动或终态 `run_daily_flow` 时只观察该 run 并删除旧键；格式错误、版本不符、过期（24h）、没有可关联 run、或与其它活动执行冲突时删除旧键并提示重新开始。任何分支都不重提任务，旧键清理失败也不会触发新执行。
+  - 自动化页不再单独轮询 `schedules/execution`，也不写 `statusStore.isActive`；它只接管本页发起的 run，不把 cron、Dashboard 或 Telegram 发起的流程显示成自己的执行。跨页全局展示由运行状态单源任务统一处理。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
-- 旧响应字段、旧停止入口与旧同步提交保持可用；回退前端控制器不需要删除服务端 Run 能力，也不会让已持久化的终态记录失效。
+- Dashboard 日常入口仍走旧的同步 `executeScheduleNow`，不采纳 Run 身份，也不使用控制器的停止/观察；由运行状态单源任务迁移。旧响应字段、旧停止入口与旧同步提交保持可用；回退前端控制器不需要删除服务端 Run 能力，也不会让已持久化的终态记录失效。
 
 ## 7. 回归清单
 
@@ -129,10 +134,17 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `roguelike/pages/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；按 `runId` 停止且确认中重复点击只发一次；Activity 隐藏/恢复不遗留锁定按钮；停止确认超时与拒绝后可重试；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
 | `combat/model/copilotSetRun.test.ts` | 活动 `progress` 与终态 `summary` 的投影；突袭/普通条目按作业折叠；等待态 `nextEntry`；缺失进度不伪造完成；终态通知文案 |
 | `combat/pages/CombatTasks.test.tsx` | 单作业 `run_task` 幂等提交（不等待完成）；作业集三模式映射（cli/app→`continuous`、`manual`）；提交在途重复点击只发一次；等待态“开始下一关”与 409 占用重试；失败汇总与失败数；按 `runId` 停止后不再提交；停止确认超时重试；Activity 隐藏/恢复不停止、不重提；断线保留运行态并在重连后恢复观察；刷新按身份恢复；其它 `scope`/其它作业集的 run 不显示为本页执行；未知身份不冒充完成 |
+| `automation/api/index.test.ts` | 旧同步调用不带 `waitForCompletion` 与幂等头；后台调用写入 `waitForCompletion=false`、`Idempotency-Key` 并转发 signal |
+| `automation/model/automationRun.test.ts` | 活动进度取 `run.progress` 与匹配 runId 的 `schedule`；其它 run 的逐项结果不被借用；不完整结果行被丢弃；终态摘要只来自 `succeeded`/`stopped`；成功/失败/停止/中断通知文案 |
+| `automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/时效校验；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 的冲突；所有分支删除旧键；删除失败仍只观察不重提 |
+| `automation/pages/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟期间不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影不被采用；Activity 隐藏/恢复保留终态标记；旧断点有效/终态/失效/过期/冲突分支；失败、跳过与未执行结果 |
+| `automation/pages/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
 
 ## 8. 尚未覆盖
 
-- 自动化页面的提交仍不传幂等键，旧断点仍可能重提；由自动化执行迁移与旧断点转换任务处理。
+- Dashboard 日常快捷入口仍以同步方式提交 `run_daily_flow`，不保存 `runId`、不按目标停止，也不参与应用级运行展示；由运行状态单源任务迁移。
+- 自动化页只展示本页发起并持有的 run。cron、Dashboard 或 Telegram 发起的流程不会变成自动化页的 `trackedRun`；它们的跨页统一展示和全局入口由运行状态单源任务处理。
+- 旧断点支持窗口为 24 小时（与 Run 终态保留期一致），且要求服务端快照能给出匹配的 `run_daily_flow` 身份。旧服务端或未纳管的流程只删除断点并提示重新开始，不尝试恢复。
 - 作业页刷新后不会自动恢复作业集预览：需要用户重新预览对应作业集才能看到列表与“开始下一关”；`waiting` run 本身仍可观察且不会被重提。自动恢复预览可与作业搜索结果查询一并由资源任务处理。
-- 全局运行展示仍由页面与连接监测器争写 `statusStore.isActive`；肉鸽与作业页已停止写入，其余写入者和统一投影由运行状态单源任务处理。
+- 全局运行展示仍由连接监测器与页面争写 `statusStore.isActive`；肉鸽、作业与自动化页已停止写入，监测器写入与统一投影由运行状态单源任务处理。
 - 控制器轮询 `runs/current` 的读取成本（每次读取租约文件）由性能验证任务复核。

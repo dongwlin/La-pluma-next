@@ -23,7 +23,7 @@
 | 完整成功条件 | `saveUserConfig` 成功 | `saveUserConfig` 成功 | `saveUserConfig` 成功且 `setupSchedule`/`stopSchedule` 成功 |
 | 加载时迁移 | `app` → `cli`；raid `1`/`2` → `raid`/`both` | 无 | schedule `entries`/`times` 兼容；禁用项只保留在本地 |
 
-实现位置：Combat 的模块队列与令牌见 `features/combat/pages/CombatTasks.tsx:47`，加载与迁移见 `:281`、`:385`、`:407`，自动保存见 `:467`；Roguelike 见 `features/roguelike/pages/RoguelikeTasks.tsx:25`、`:112`、`:188`、`:209`；Automation 的完整提交见 `features/automation/pages/AutomationTasks.tsx:1381`，加载见 `:1696`，schedule 编辑入口见 `:1436`、`:1795`。
+实现位置：Combat 的模块队列与令牌见 `features/combat/pages/CombatTasks.tsx:47`，加载与迁移见 `:281`、`:385`、`:407`，自动保存见 `:467`；Roguelike 见 `features/roguelike/pages/RoguelikeTasks.tsx:25`、`:112`、`:188`、`:209`；Automation 的完整提交见 `features/automation/pages/AutomationTasks.tsx:1242`，加载见 `:1374`，schedule 编辑入口见 `:1297`、`:1473`。
 
 三者共享的语义只有“pending 表示本设备有一份尚未确认写入服务端的草稿”。以下不属于共享规则：提交时机、队列寿命、完成条件、迁移与失败恢复——它们在三个域中分别成立，不能用一个通用 hook 抹平。
 

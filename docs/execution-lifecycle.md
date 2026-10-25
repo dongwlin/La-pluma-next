@@ -47,7 +47,7 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 2. **进程 idle 不等于流程完成。** 定时/日常流程在步骤之间会释放子进程（等待、截图、仓库解析、汇报），此时 `tasks/status.isRunning=false`，但流程仍在进行；只有 Run 终态或流程结果才能确认完成。日常流程 Run 只有在自己持有 `schedule.runId` 时才投影步骤；`accepted` 尚未获得执行权、或 `schedule.runId` 指向别的流程时，`progress` 显示等待而不是借用他人的步骤。
 3. **流程进度是投影。** `schedules/execution` 与 Run 的 `progress` 来自同一流程状态；纳入 Run 的流程在 `scheduleExecutionStatus.runId` 中带上自己的 `runId`，本身仍不是执行身份。未纳入 Run 的调用（当前为 Telegram 等直接调用方）`runId` 为 `null`。
 4. **租约只做互斥。** 它防止协作进程同时操作设备，不记录业务结果；锁文件被回收只说明原持有进程已不存活。
-5. **页面不维护第二份运行状态机。** 页面可以缓存展示，但停止、完成、重连后的恢复必须以 Run 快照对账。当前页面与连接监测器仍会争写 `statusStore.isActive`，这是待统一的现状，不是契约。
+5. **页面不维护第二份运行状态机。** 页面可以缓存展示，但停止、完成、重连后的恢复必须以 Run 快照对账。当前 `statusStore.isActive` 仍由连接监测器按 `tasks/status` 写入；肉鸽、作业与自动化页已停止写入，统一投影由运行状态单源任务处理。
 
 ### 2.1 运行快照
 
@@ -250,7 +250,7 @@ waiting ──stop──> stopped
 
 - 浏览器刷新会销毁页面状态，但服务端 run 继续。新页面实例必须按 `runId` 或 `runs/current` 重新观察，**不得因此重新提交任务**。
 - 真正卸载/重新挂载同样不改变所有权；页面内未完成的 Promise 不能作为恢复依据。
-- 现状缺口：Automation 的旧断点恢复会在刷新后重提剩余步骤；其他未迁移页面只恢复“后端是否 running”的展示，不恢复 run 身份。应用级控制器已交付 run 身份保存、快照观察与按 id 恢复；肉鸽页（FPR-008）与作业页（FPR-009）已接入并通过持久化身份在刷新后恢复观察、不重提任务。作业页在刷新后重新预览对应作业集即可恢复集合列表与“开始下一关”入口；`waiting` run 本身仍可观察，页面不会因刷新重新提交集合。
+- 现状缺口：Dashboard 等未迁移入口仍以同步方式提交日常流程，不保存 run 身份；它们只恢复“后端是否 running”的展示。应用级控制器已交付 run 身份保存、快照观察与按 id 恢复；肉鸽页（FPR-008）、作业页（FPR-009）与自动化页（FPR-010）已接入并通过持久化身份在刷新后恢复观察、不重提任务。自动化页的旧断点只关联已有 Run，不再逐项重提（见 5.6）。作业页在刷新后重新预览对应作业集即可恢复集合列表与“开始下一关”入口；`waiting` run 本身仍可观察，页面不会因刷新重新提交集合。
 
 ### 5.6 旧断点转换
 
@@ -262,9 +262,14 @@ waiting ──stop──> stopped
 2. 若能关联到匹配的活动/终态 Run，只观察该 Run 并删除旧键；不得重新提交。
 3. 无法关联、版本不符或已过期时，标记失效并删除，提示用户重新启动；不得自动续跑。
 4. 与活动 Run 冲突时以 Run 为准，不并行启动第二套流程。
-5. 在迁移验证通过前保留读取支持，不提前删除旧键；旧键清理失败不能导致新执行开始。
+5. 在迁移验证通过前保留读取支持，不提前删除旧键；旧键清理失败不能导致新执行开始。验证通过后（FPR-010），旧键在首次读取后即删除，页面不再写入新的执行断点。
 
-现状：旧断点恢复会等待后端 idle，然后逐项重新调用 `run-task`，因此刷新后可能重提任务。这是已知缺陷，不是兼容承诺。
+现状（FPR-010）：自动化页不再写这个键，也没有第二套前端流程引擎。页面在首次拿到 Run 快照时读取一次旧键，按 `snapshot.schedule.runId` 与 `activeRuns` 关联活动 `run_daily_flow`，或关联在旧键写入时已经活动、随后结束的 `lastRun`；关联成功只调用执行控制器 `observeRun(runId, 'run_daily_flow', 'automation')` 并删除旧键。
+
+- 格式错误、版本不符、超过 24 小时（与 Run 终态保留期一致）、没有可关联 Run 时，删除旧键并提示重新开始，不自动续跑。
+- 有其它活动 run，或流程正在运行但没有 Run 身份（未纳管调用方/旧服务端）时按冲突处理：删除旧键，不接管该流程，也不启动第二条流程。
+- 旧键删除失败只影响清理；页面从不根据旧键提交执行，下一次启动会再次检查。
+- 支持范围依赖服务端快照能给出 Run 身份（FPR-005 之后）。回退到旧服务端时旧断点无法关联，只会被清理并提示重新开始。
 
 ### 5.7 服务重启与持久化失败
 
@@ -287,13 +292,13 @@ waiting ──stop──> stopped
 | 理智作战 | `POST /api/agent/actions/fight` | 是（`fight`） | 命令期间持有 | run 进度 | 支持 dry-run |
 | 单任务/通用任务 | `POST /api/agent/actions/run-task` | 是（`run_task`） | 命令期间持有 | run 进度 | Web UI 的单作业、肉鸽、仓库/干员识别都走这里 |
 | 日常流程（Agent API） | `POST /api/agent/actions/run-daily-flow` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影进 run 进度 | 默认同步；`waitForCompletion=false` 返回 202；dry-run 不创建 run |
-| 日常流程（Web UI 手动） | `POST /api/agent/schedules/manual/execute` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 默认同步兼容原响应；异步模式返回 202；重复提交可用幂等键 |
+| 日常流程（Web UI 手动） | `POST /api/agent/schedules/manual/execute` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 默认同步兼容原响应；自动化页以 `waitForCompletion=false` 提交并观察 Run（FPR-010）；异步模式返回 202；重复提交可用幂等键 |
 | 日常流程（Dashboard 快捷） | `POST /api/agent/schedules/dashboard-quick-start/execute` | 是（`run_daily_flow`） | 流程全程持有 | 同上 | 同上 |
 | 定时触发 | `schedulerService.executeScheduledTaskFromCron` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 无 HTTP 客户端；无幂等键；Run 在开始前创建，供快照观察 |
 | 作业集（continuous，含旧 app/cli） | `POST /api/agent/copilot-sets/{setId}/execute` | 是（`run_copilot_set`） | 集合全程持有 | `run.progress` + 响应 `summary`；完成进度落 `copilot-progress.json` | 默认同步兼容原响应；`waitForCompletion=false` 返回 202 |
 | 作业集（manual） | `POST /api/agent/copilot-sets/{setId}/execute`（`mode=manual`）与 `POST /api/agent/actions/continue-copilot-set` | 是（`run_copilot_set`；集合级 `waiting`） | 仅单条目执行期间持有；等待释放 | `run.progress` 的 `waiting_for_next`/逐项结果 | 等待期间其他客户端可占用；继续失败可重试且不消耗条目 |
 | 逐项 `run-task`（通用入口） | `POST /api/agent/actions/run-task` | 每项是；集合整体否 | 每项命令期间持有 | 每项 run | 页面内的连续编排已退役（FPR-009）；其它调用方仍可逐项提交，但不构成集合身份 |
-| 旧断点续跑 | `run-task`（逐项） | 每项是；流程整体否 | 每项命令期间持有 | 每项 run + `tasks/status` 轮询 | 会重提，见 5.6 |
+| 旧断点迁移 | 页面启动读取 `maa-task-flow-execution` | 否（只关联已有 run） | 不获取 | 所关联 run 的 progress | 一次性；不重提，见 5.6 |
 | 仓库/干员识别 | `POST /api/agent/actions/run-task`（`depot`/`operbox`） | 是 | 命令期间持有 | run 进度 | 后续 `depot-recognition`/`operbox-recognition` 只解析本地日志，不是设备执行 |
 | 材料数据更新 | `POST /api/agent/actions/fetch-training-materials` | 否 | 不占设备租约 | 无 | 拉取数据脚本，不是设备自动化 |
 | 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 否 | 全程持有 | 无 | 维护入口；与自动化互斥 |
@@ -317,10 +322,10 @@ waiting ──stop──> stopped
 | --- | --- | --- | --- |
 | Agent API 响应 | 原有 `data` 字段保留，新增 `runId`/`run`/`pollUrl`/`stopUrl` | 继续只增不减；旧客户端忽略新字段即可 | 契约演进 |
 | `/runs/current` | 保留 `task`、`schedule`、`recentLogs`；新增 `activeRuns` 与 `occupancy`，`run`/`lastRun` 语义不变 | 前端从同一快照派生全局运行展示 | 运行状态单源 |
-| 目标停止入口 | `links.stop` 与 `stopUrl` 指向 `?runId=<id>`；查询参数与请求体都接受 `runId`；应用级控制器已按 `runId` 停止；肉鸽与作业页已统一按 `runId` 停止 | 自动化页迁移后也统一按 `runId` 停止 | 前端执行客户端（控制器）、自动化执行迁移 |
+| 目标停止入口 | `links.stop` 与 `stopUrl` 指向 `?runId=<id>`；查询参数与请求体都接受 `runId`；肉鸽、作业与自动化页已统一按 `runId` 停止 | 保持 | 前端执行客户端（控制器）、自动化执行迁移 |
 | 旧执行端点 | 已交付：`schedules/:id/execute` 默认仍同步且保留原 `data`；`copilot-sets/:id/execute` 默认仍同步，保留 `plan`/`results`/`completed`/`pending` 与 `COPILOT_PLAN_FAILED` | 日常流程与作业集新入口尽早返回身份；旧同步入口继续保持 | 日常流程纳入 Run（FPR-005）、作业集纳入 Run（FPR-006） |
-| 幂等键 | 可选；服务端完整支持；执行控制器为新提交生成并持久化键；肉鸽与作业页提交已复用控制器 intent，自动化页尚未接入 | 自动化页提交复用 intent，不重复生成键 | 前端执行客户端（控制器）、自动化执行迁移 |
-| `runId` 使用 | 日常流程与作业集所有 HTTP 入口已产生 `runId`；应用级控制器已保存、按 id 查询并恢复观察；肉鸽与作业页从控制器快照派生运行展示并在终态前保留身份，自动化页仍只看 `tasks/status` | 未迁移页面从控制器快照派生运行展示，并在终态前保留身份 | 前端执行客户端（控制器）、自动化执行迁移 |
+| 幂等键 | 可选；服务端完整支持；执行控制器为新提交生成并持久化键；肉鸽、作业与自动化页提交均复用控制器 intent | 保持 | 前端执行客户端（控制器）、自动化执行迁移 |
+| `runId` 使用 | 日常流程与作业集所有 HTTP 入口已产生 `runId`；应用级控制器已保存、按 id 查询并恢复观察；肉鸽、作业与自动化页从控制器快照派生运行展示并在终态前保留身份 | 保持；Dashboard 入口迁移后同样从快照派生 | 前端执行客户端（控制器）、自动化执行迁移、运行状态单源（FPR-011） |
 | accepted 并发的 `current` | 已交付：`activeRuns` 列出全部活动意图；`run` 按 stopping > running > accepted > waiting、同级取最新 | 调用方不再假定只有一个 accepted | 运行快照（FPR-004、FPR-006） |
 | accepted 的停止 | 已交付：取消为 `stopped`（`result.canceled=true`），不发设备命令；执行器 pre-start gate 放弃启动 | 保持；集合级停止阻止下一项已由作业集迁移覆盖 | 运行快照（FPR-004）、作业集纳入 Run（FPR-006） |
 | 作业集模式 | 已交付：app/cli 映射为 `continuous`，`manual` 使用服务端 `waiting` 会话；旧响应字段保留；作业页只通过集合 run 展示、继续与停止（FPR-009） | 保持 | 作业集纳入 Run（FPR-006）、作业执行迁移（FPR-009） |
@@ -328,13 +333,13 @@ waiting ──stop──> stopped
 | 忙碌错误码 | 已交付：Agent 日常流程入口统一为 `AGENT_EXECUTION_BUSY`；`/schedules/:id/execute` 保留 `AGENT_SCHEDULE_ALREADY_RUNNING`；作业集入口与继续下一关保留 `MAA_EXECUTION_BUSY`；底层仍为 `MAA_EXECUTION_BUSY` | 调用方按 `retryable` 与 `details.owner` 重试；旧码继续映射 | 日常流程纳入 Run（FPR-005）、作业集纳入 Run（FPR-006） |
 | 日常流程失败 | 已交付：占用/校验拒绝释放幂等键；流程已开始后的失败保留键，run 转为 `failed` 并带错误原因 | 调用方修正输入或换键重试 | 日常流程纳入 Run（FPR-005） |
 | manual 等待 | 已交付：服务端 `waiting` run 与显式 `waiting_for_next`；等待不持租约；继续失败可重试且不消耗条目；作业页以服务端 `nextEntry` 渲染“开始下一关”，继续走 `continue-copilot-set` | 保持 | 作业集纳入 Run（FPR-006）、作业执行迁移（FPR-009） |
-| 旧断点 | 刷新后逐项重提 | 一次性转换/失效，不重提 | 自动化执行迁移 |
-| 全局运行展示 | 快照已提供单一事实来源；肉鸽与作业页已停止写 `statusStore.isActive`，自动化页与连接监测器仍写入 | 页面展示从快照派生，不再各自维护运行状态 | 运行状态单源（FPR-011） |
+| 旧断点 | 已交付（FPR-010）：首次快照读取一次，关联活动/终态 `run_daily_flow` 时只观察；失效、过期、冲突与无法关联时删除并提示，从不重提 | 保持；支持窗口 24h，依赖服务端 Run 身份 | 自动化执行迁移 |
+| 全局运行展示 | 快照已提供单一事实来源；肉鸽、作业与自动化页已停止写 `statusStore.isActive`，连接监测器仍按 `tasks/status` 写入 | 页面展示从快照派生，不再各自维护运行状态 | 运行状态单源（FPR-011） |
 | 定时/更新/Telegram 入口 | 定时日常与作业集已纳入 Run；更新、维护与 Telegram 仍持有租约但未纳管；快照以 `occupancy.state=external` 显式标注 | 维护与外部入口至少显式标注占用 | 日常流程纳入 Run（FPR-005）、作业集纳入 Run（FPR-006）；综合验收 |
 | 服务重启 | 已交付：活动 run → `interrupted`；`recovery.deviceState=unknown`；不自动续跑 | 重连后先确认设备/连接再重新提交 | 运行快照（FPR-004） |
 | 实时性 | 无推送，HTTP 轮询 | 保持轮询契约；不得把推送当作既有前提 | 客户端实现 |
 
-回滚边界：前端回滚不要求删除服务端已发布的 Run 能力；新增状态、错误码和字段先向后兼容发布，再迁移消费者。Run 存储版本升级必须能读旧文件；不能为了回滚删除已持久化的终态记录。旧断点键在迁移验证完成前只读保留。FPR-004 的改动只增加响应字段、查询参数和预启动门禁；回退服务端代码后，旧客户端仍按通用停止工作。FPR-005 在旧同步端点上增加 Run 身份与可选异步模式；回退该提交后，手动、Dashboard 与定时入口恢复为无 `runId` 的同步流程，响应中新增的 `runId`/`run` 字段消失，但旧客户端读取的 `data.success`/`summary`/`message` 不变。FPR-006 在 `copilot-sets/:id/execute` 上增加 Run 身份、模式参数与 `continue-copilot-set`，并新增 `waiting` 状态和逐项 `summary`；回退后该端点恢复为无 `runId` 的同步连续执行，旧响应字段仍在。`waiting` 记录会随回退失去语义，但终态记录和 `agent-runs.json` 不需要删除。已运行过的 Run 记录可保留，新代码不再读取。
+回滚边界：前端回滚不要求删除服务端已发布的 Run 能力；新增状态、错误码和字段先向后兼容发布，再迁移消费者。Run 存储版本升级必须能读旧文件；不能为了回滚删除已持久化的终态记录。旧断点键在 FPR-010 迁移验证完成前只读保留；迁移验证后旧键已被删除，回退只恢复旧页面的逐项提交路径，不会恢复已清理的断点。FPR-004 的改动只增加响应字段、查询参数和预启动门禁；回退服务端代码后，旧客户端仍按通用停止工作。FPR-005 在旧同步端点上增加 Run 身份与可选异步模式；回退该提交后，手动、Dashboard 与定时入口恢复为无 `runId` 的同步流程，响应中新增的 `runId`/`run` 字段消失，但旧客户端读取的 `data.success`/`summary`/`message` 不变。FPR-006 在 `copilot-sets/:id/execute` 上增加 Run 身份、模式参数与 `continue-copilot-set`，并新增 `waiting` 状态和逐项 `summary`；回退后该端点恢复为无 `runId` 的同步连续执行，旧响应字段仍在。`waiting` 记录会随回退失去语义，但终态记录和 `agent-runs.json` 不需要删除。已运行过的 Run 记录可保留，新代码不再读取。FPR-010 只改前端提交/观察/停止与旧断点处理：回退页面迁移提交后，自动化页恢复同步 `schedules/manual/execute` 与 `tasks/status` 轮询，服务端 Run、幂等键与快照能力保持可用；`la-pluma-execution-identity-v1` 中的 `scope: 'automation'` 是附加字段，旧代码忽略未知字段。
 
 ## 8. 契约测试清单
 
@@ -353,23 +358,26 @@ waiting ──stop──> stopped
 | `server/services/__tests__/maaTaskExecution.test.js` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
 | `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
 | `client/src/features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 连接监测的 online/offline/focus 行为与 active 轮询 |
-| `client/src/features/automation/pages/AutomationTasks.*.test.tsx` | Activity 恢复、执行接线、停止与连接测试的现有页面行为 |
+| `client/src/features/automation/api/index.test.ts` | 旧同步调用不带 `waitForCompletion`/幂等头；后台日常流程写入 `waitForCompletion=false`、`Idempotency-Key` 并转发 signal |
+| `client/src/features/automation/model/automationRun.test.ts` | 活动进度取 `run.progress` 与匹配 runId 的 `schedule`；其它 run 的逐项结果不被借用；缺失/不完整结果不伪造状态；终态摘要只来自 `succeeded`/`stopped`；终态通知分类 |
+| `client/src/features/automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/24h 时效；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 冲突；删除旧键；删除失败不触发执行 |
+| `client/src/features/automation/pages/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影隔离；Activity 隐藏/恢复；旧断点有效/终态/失效/过期/冲突；失败、跳过与未执行结果 |
+| `client/src/features/automation/pages/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
 | `client/src/features/combat/model/copilotSetRun.test.ts` | 集合 run 投影：活动 `progress`、终态 `summary`、突袭/普通条目按作业折叠、等待态 `nextEntry`、缺失进度不伪造完成、终态文案 |
 | `client/src/features/combat/pages/CombatTasks.test.tsx` | 三模式映射（cli/app→continuous、manual）、幂等提交、等待态“开始下一关”与 409 占用重试、失败汇总、按 `runId` 停止后不续跑、停止确认超时重试、hide/show、断线重连、刷新按身份恢复、非本域/非当前集合 run 隔离、上一条记录不冒充完成 |
 | `client/src/features/roguelike/pages/RoguelikeTasks.test.tsx` | 单次幂等提交与命令语义、重复点击不并发、按 `runId` 停止、停止确认中 hide/show 与超时重试、卸载不停止、刷新按身份恢复、非本域 run 隔离、终态消息 |
 
 日常流程的入口覆盖已由 `server/routes/__tests__/agentRoutes.test.js` 与 `server/services/__tests__/schedulerRecovery.test.js` 的新增用例固定：手动、Dashboard 快捷（同一端点）、cron 与 Agent 入口共用一个 `run_daily_flow` 和同一执行租约，旧同步端点保持可用。活动日常入口沿用 FPR-004 的 tracked 接线（`run_current_activity_copilots`），未改动其实现；它的端到端覆盖仍归 FPR-042。
 
-作业集的入口覆盖由 `server/services/__tests__/copilotSetRunService.test.js` 与 `server/routes/__tests__/agentRoutes.test.js` 固定：`continuous`（含旧 app/cli）使用单个 `run_copilot_set` 和同一租约；`manual` 首项后转 `waiting`，等待期间租约自由，继续时重新获取；逐项结果与失败汇总写在 run 的 `summary`；停止后不再启动下一项。肉鸽页已通过 FPR-008 接入控制器并覆盖刷新恢复与停止确认；作业页已通过 FPR-009 接入集合 Run，覆盖三模式提交、manual 继续、失败汇总、停止不续跑与恢复路径；自动化迁移（FPR-010）尚未接入，因此 Automation 仍走旧的逐项 `run-task` 路径。
+作业集的入口覆盖由 `server/services/__tests__/copilotSetRunService.test.js` 与 `server/routes/__tests__/agentRoutes.test.js` 固定：`continuous`（含旧 app/cli）使用单个 `run_copilot_set` 和同一租约；`manual` 首项后转 `waiting`，等待期间租约自由，继续时重新获取；逐项结果与失败汇总写在 run 的 `summary`；停止后不再启动下一项。肉鸽页已通过 FPR-008 接入控制器并覆盖刷新恢复与停止确认；作业页已通过 FPR-009 接入集合 Run，覆盖三模式提交、manual 继续、失败汇总、停止不续跑与恢复路径；自动化页已通过 FPR-010 接入 `run_daily_flow`，覆盖单次幂等提交、步间延迟、按 `runId` 停止、刷新恢复与旧断点迁移，页面不再逐项提交 `run-task`。
 
 ### 后续必须补充的契约回归
 
 以下测试尚未存在，属于对应迁移任务的验收前置；在补上之前不能宣称契约已实现：
 
-1. **旧断点**：有效/失效/冲突/版本不符的转换；恢复只观察不重提；旧键删除失败不导致新执行。
-2. **客户端恢复**：保存 `runId`、断线未知不误判、重连对账、旧响应不覆盖新 run 已由应用级控制器交付；202 后转轮询与页面隐藏/刷新不重提已由肉鸽页接入验证，作业/自动化的对应验收仍随各自迁移任务完成；409 占用重试按域继续补齐。控制器契约见[前端执行客户端与控制器](execution-client.md)。
-3. **全局单源**：页面与监测器不再各自写 `isActive`；全局展示从同一快照派生。
-4. **跨页一致性**：启动 → 切页 → 停止 → 断线重连 → 刷新后，所有页面显示同一 run 结果；日志/预览等非执行会话不干扰判定。
+1. **客户端恢复**：保存 `runId`、断线未知不误判、重连对账、旧响应不覆盖新 run 已由应用级控制器交付；202 后转轮询与页面隐藏/刷新不重提已由肉鸽页、作业页与自动化页接入验证；Dashboard 入口的对应验收随 FPR-011 完成；409 占用重试按域继续补齐。控制器契约见[前端执行客户端与控制器](execution-client.md)。
+2. **全局单源**：页面与监测器不再各自写 `isActive`；全局展示从同一快照派生。
+3. **跨页一致性**：启动 → 切页 → 停止 → 断线重连 → 刷新后，所有页面显示同一 run 结果；日志/预览等非执行会话不干扰判定。
 
 ## 9. 本次核验
 
@@ -380,4 +388,4 @@ git diff --check
 pnpm --filter la-pluma-next-server verify
 ```
 
-文档中的“现行”结论来自 `a07933e` 的代码与上表测试；FPR-004 已把运行快照、目标停止、重启恢复边界和 pre-start 门禁写入生产实现，FPR-005 已把手动、Dashboard、cron 与 Agent 日常流程统一到 `run_daily_flow` 并保留旧同步入口，FPR-006 已把作业集 continuous/manual 纳入 `run_copilot_set` 并提供 `waiting` 与逐项汇总；三者均由上表服务端测试固定。FPR-007 已交付应用级执行控制器、`runId`/幂等键接线、快照观察与目标停止，由客户端 verify 与[前端执行客户端与控制器](execution-client.md)的回归清单固定；FPR-008 已把肉鸽页的提交、停止与观察接入该控制器，并由页面测试固定刷新恢复、停止确认和卸载边界；FPR-009 已把作业页的单作业与三种作业集模式接入同一控制器，manual 继续走 `continue-copilot-set`，逐项结果与失败汇总来自 `run_copilot_set` 的 `progress`/`summary`，页面不再持有连续执行状态机。其余页面迁移仍以“目标/归属”列标注，不代表已经实现。
+文档中的“现行”结论来自 `a07933e` 的代码与上表测试；FPR-004 已把运行快照、目标停止、重启恢复边界和 pre-start 门禁写入生产实现，FPR-005 已把手动、Dashboard、cron 与 Agent 日常流程统一到 `run_daily_flow` 并保留旧同步入口，FPR-006 已把作业集 continuous/manual 纳入 `run_copilot_set` 并提供 `waiting` 与逐项汇总；三者均由上表服务端测试固定。FPR-007 已交付应用级执行控制器、`runId`/幂等键接线、快照观察与目标停止，由客户端 verify 与[前端执行客户端与控制器](execution-client.md)的回归清单固定；FPR-008 已把肉鸽页的提交、停止与观察接入该控制器，并由页面测试固定刷新恢复、停止确认和卸载边界；FPR-009 已把作业页的单作业与三种作业集模式接入同一控制器；FPR-010 已把自动化页的单次日常流程提交、观察、按 `runId` 停止和旧断点一次性迁移接入控制器，页面不再逐项提交 `run-task`，也不再写 `statusStore.isActive`。其余页面迁移仍以“目标/归属”列标注，不代表已经实现。
