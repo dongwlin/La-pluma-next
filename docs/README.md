@@ -18,7 +18,7 @@
 | [共享资源归属与失效端口](resource-ownership.md) | game-data 共享资源域、training/statistics 去环后的依赖方向、图标与资源缓存策略、跨域失效端口与未迁移页面接收 | 迁移共享资源、写入后失效或页面读取的前端开发者 |
 | [统计识别命令与失效联动](statistics-commands.md) | 识别/材料命令所有者、执行控制器与幂等回放、日志解析等待、超时/取消/继续、识别后作用域失效 | 迁移页面命令、处理识别结果或调整命令超时与失效联动的开发者 |
 | [养成队列命令与写后刷新](training-queue-commands.md) | 队列增删排序撤销的串行命令、写后刷新与不确定 fallback、队列 revision、跨页失效与 Dashboard 联动 | 修改养成队列写入、撤销或队列缓存失效的开发者 |
-| [养成设置提交与计划有效期](training-settings-and-plan-validity.md) | 设置的串行提交与本地 revision、旧响应裁决、计划 basis 与刷新失败下的生成/应用门禁 | 修改养成设置、计划前提或相关页面接线的开发者 |
+| [养成设置提交与计划有效期](training-settings-and-plan-validity.md) | 设置的串行提交与本地 revision、旧响应裁决、计划 basis、生成/应用/同步所有者、配置写入屏障与跨页失效 | 修改养成设置、计划生成/应用或相关页面接线的开发者 |
 | [架构与技术栈](architecture.md) | 整体架构、前后端边界、技术栈和项目结构 | 需要理解前后端边界与代码组织的新开发者 |
 | [Agent API 使用指南](agent-api.md) | manifest/status/actions、推荐执行流程、幂等、持久化与鉴权 | 对接 `/api/agent` 的 Agent、脚本与集成开发者 |
 | [功能概览](features.md) | 控制台、自动化流程、定时任务、作业与肉鸽、数据养成、Telegram 通知 | 新用户与需要确认能力范围的用户 |

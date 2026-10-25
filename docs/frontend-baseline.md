@@ -57,7 +57,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 定时完整提交 | 同一适配器在配置保存后 `setupSchedule('default')` / `stopSchedule('default')`，POST `/agent/schedules`、DELETE `/agent/schedules/default`；禁用项只留在本地 `maa-schedule.entries`；user-config 的 schedule 子对象发 enabled/times，setupSchedule 发 `{scheduleId,times,taskFlow}`；两步全成功才清 pending，半失败可用页内“重新同步”重跑 | 同一 automation 配置所有者管理配置与 schedule 两步确认 |
 | 执行与停止 | `executeTaskFlow` → POST `/agent/schedules/manual/execute`；`stopTaskFlow` → POST `/agent/actions/stop`；每 1s GET `/agent/schedules/execution`；初始化 GET `/agent/tasks/status` 与 `/agent/activity?clientType=Official` | task-execution 应用级控制器 + automation 执行适配器；服务端 Run 持有流程 |
 | 旧断点续跑 | `initializeAndRestore` 按旧 commandId 匹配 enabled 步骤，等后端 idle 后逐项 POST `/agent/actions/run-task`；1s 查询、30min 超时；启动/关闭/其他步间等待 15s/3s/2s；cleanup abort | 独立兼容迁移适配器；转换后仅观察身份，不重提 |
-| 智能养成阶段 | `AutomationStageEditor.toggleSmartStages` 读取 `training-queue` 配置并 POST `/agent/training/plan`；监听 `training-plan-applied` 后 `reload({ force: true })`；有 pending 草稿或在途保存时保留本地并提示，否则采用服务端副本；document 可见时正常 load（已 hydrated 则跳过） | training 计划用例 + automation 配置冲突协调 |
+| 智能养成阶段 | `AutomationStageEditor.toggleSmartStages` 读取 `training-queue` 配置并 POST `/agent/training/plan`；订阅 `automation-config`/`automation-schedule` 失效后先 `flush()` 配置通道再 `reload({ force: true })`；有 pending 草稿时保留本地并提示，否则采用服务端副本并保留本地禁用时间点；document 可见时正常 load（已 hydrated 则跳过） | training 计划用例 + automation 配置冲突协调 |
 | 连接测试 | POST `/agent/actions/test-connection`，带 signal；反馈至少 450ms | 设备连接用例 |
 | 纯编辑与布局 | `buildCommand`、时间/排序/掉落规则在页内；picker 的 document pointerdown/keydown；排序 Escape、pointer capture；小屏 rAF `scrollIntoView` | 纯模型 + 最近的流程/编辑面板；布局副作用归布局 hook |
 
@@ -111,13 +111,13 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
 | 候选与计数 | `trainingCandidatesQueryOptions`（GET `/agent/training/operators`，status/rarity/needsElite2；all 空时在查询内用 `game-data` 目录 + 持有干员补齐）；`trainingStatusCountsQueryOptions` 并发 trainable/owned 端点与目录/持有快照；页面只读取 query 结果，失败语义见 `docs/query-cache.md` 第 10 节 | training 候选/计数查询；共享目录/持有干员归 `game-data` 公开端点 |
-| 队列 | `trainingQueueQueryOptions` 读取 GET `/agent/training/queue`（含 settings/revision/flowSync）；增删/排序/撤销由 `model/queueCommands.ts` 串行命令执行，写成功后重读权威队列并写入同一 `training/queue` key，失败保可解释 fallback 并标记 `uncertain`；命令发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot` | training 队列 query、串行命令与唯一 queue 资源（FPR-021） |
+| 队列 | `trainingQueueQueryOptions` 读取 GET `/agent/training/queue`（含 settings/revision/flowSync）；增删/排序/撤销由 `model/queueCommands.ts` 串行命令执行，写成功后重读权威队列并写入同一 `training/queue` key，失败保可解释 fallback 并标记 `uncertain`；命令发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`，流程确认 synced 时额外发布 `automation-config`/`automation-schedule` | training 队列 query、串行命令与唯一 queue 资源（FPR-021/023） |
 | 设置 | PUT `/agent/training/settings`；FPR-022 起由 `model/settingsCommands.ts` 的模块级所有者串行提交，只有最新响应能改变页面值，失败回滚到最近确认值；设置 revision 与队列 revision 共同决定计划是否可应用 | training 设置提交/计划有效期所有者（FPR-022 已接入） |
-| 计划 | generate 前重读 queue，冻结队列/设置版本，POST `/agent/training/plan`，拒绝 queueRevision 不符；队列或设置版本变化、刷新失败时禁用生成/应用；POST `/agent/actions/apply-training-plan` 仅应用当日开放关；失败清计划并重读；POST `/agent/training/sync` 后重读 | training 计划版本、生成/应用/同步用例 |
-| 通知 | `recordSync` 对 synced 派发 `training-plan-applied`，当前无 detail；automation 强制 load 并尝试读 stageCount（当前为 0） | 领域失效协议 + automation 配置冲突协调 |
+| 计划 | `model/planCommands.ts` 的 `TrainingPlanOwner`：生成前重读 queue，冻结队列/设置版本，POST `/agent/training/plan`，拒绝 queueRevision 不符与生成期间版本变化；队列或设置版本变化、刷新失败时禁用生成/应用；应用前经配置协调器排空 automation 在途保存，POST `/agent/actions/apply-training-plan` 仅应用当日开放关，随后发布 automation/schedule/总览失效并重读；schedule 注册失败或重读失败为部分成功，保留计划并给重试入口；`POST /agent/training/sync` 后重读 | training 计划版本、生成/应用/同步用例（FPR-023） |
+| 通知 | 应用/同步成功后由所有者发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`（`cause: plan-applied`，detail 含关卡数）；window `training-plan-applied` 已移除 | 领域失效协议 + automation 配置冲突协调 |
 | UI | filters/search、selectorOpen、planMode、render limit=72、图片、pending ids、busy/error；UndoToast 8s，hover/focus/pending 暂停，cleanup 清 timer | 最近面板；撤销意图归队列用例、toast 呈现归组件 |
 
-无业务 localStorage；queue 已由 FPR-021 迁入 `training/queue` Query 与串行领域命令，页面只读取快照并订阅 pending；设置已由 FPR-022 迁入 `model/settingsCommands.ts` 的模块级所有者（不进入 Query），计划编排仍保存在页面，待 FPR-023 迁移。候选与计数由 Query 持有：key 含筛选参数、signal 取消、列表失败清空/计数静默保旧。命令的串行链与 pending 状态是模块级所有者，Activity 隐藏/页面 remount 不重建；写后刷新失败时缓存保存带 `uncertain` 的本地 fallback，重新加载后清除。外部 depot/operbox/material/resource 更新经 resource-invalidation 端口到达，按作用域失效候选/计数或重读队列；本页忽略自己的队列发布。
+无业务 localStorage；queue 已由 FPR-021 迁入 `training/queue` Query 与串行领域命令，页面只读取快照并订阅 pending；设置已由 FPR-022 迁入 `model/settingsCommands.ts` 的模块级所有者（不进入 Query）；计划生成/应用/同步在 FPR-023 后由 `model/planCommands.ts` 的模块级所有者持有，页面只订阅状态并调用动作。候选与计数由 Query 持有：key 含筛选参数、signal 取消、列表失败清空/计数静默保旧。命令的串行链与 pending 状态是模块级所有者，Activity 隐藏/页面 remount 不重建；写后刷新失败时缓存保存带 `uncertain` 的本地 fallback，重新加载后清除。外部 depot/operbox/material/resource 更新经 resource-invalidation 端口到达，按作用域失效候选/计数或重读队列；本页忽略自己的队列发布。
 
 ### Settings — `features/settings/pages/ConfigManager.tsx`
 
@@ -165,7 +165,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Roguelike | 保留草稿/模式；清 status/stop 等待；show 查运行、跳过已 hydrated 配置 | 业务查询继续；预览暂停 | 配置/后端恢复，activeMode 回默认 |
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
-| Training | 保留 filters/设置/计划/撤销 toast；队列命令与 pending 归模块级所有者，候选/计数/队列 Query 观察者随 Effect 注销；show 重读 queue、按新鲜度重取候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 队列命令继续完成并写入应用级缓存；丢失页面写设置/计划例外，未完成 closure 不会自动取消 |
+| Training | 保留 filters/设置/计划/撤销 toast；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；未完成 closure 不会自动取消 |
 | Settings | didInitializeRef 阻止重复初始化；重建 section 监听；在途操作继续 | 无专门处理 | section/autoUpdate fallback 可恢复，其余重新初始化 |
 | Logs | 停 interval/监听并 abort realtime；show 重建，刷新文件列表及实时（历史模式不重读当前文件） | interval 保留但 guard 不发请求，abort 实时；可见立即取数 | 缓冲/选择/过滤全部重置 |
 
@@ -173,6 +173,6 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 四类交互的固定数据、步骤、采样、浏览器指标和网络请求见[性能采样说明](evidence/frontend-baseline/performance.md)。它们测量浏览器工作与 DOM 更新；普通生产包没有 React profiling，不能把 DOM mutation 当作 React commit 次数。后续必须在同一构建方式/数据量/设备采样，真实大队列与 React Profiler 的补测条件在说明中登记。
 
-尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、共享资源去环与失效、训练设置改变后的计划有效期、历史日志隐藏恢复。跨 remount 配置写入次序、automation schedule 半失败与应用计划/pending 草稿冲突已由 FPR-015 关闭。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、资源更新后的完整失效、历史日志隐藏恢复。跨 remount 配置写入次序、automation schedule 半失败、应用计划/pending 草稿冲突、训练设置改变后的计划有效期与计划应用跨页联动已由 FPR-015/022/023 关闭。计划已生成/计划过期仍未纳入 72 张默认态截图，FPR-023 未改变默认态 DOM/CSS，也未更新视觉基线。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
 实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，当前处理器取消排序并还原原序，没有配置写入。性能文件记录真实路径和结果；这组数据不能冒充成功排序的耗时。成功排序须在自动化流程面板处理捕获生命周期后补测，并在最终性能对照时重采。它属于明确缺陷修复边界，现有取消行为不作为保留要求。

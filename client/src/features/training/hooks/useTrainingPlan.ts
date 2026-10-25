@@ -107,7 +107,6 @@ export function useTrainingPlan(
     [owner],
   )
 
-
   return {
     ...state,
     generating: state.operation === 'generate',

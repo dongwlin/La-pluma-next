@@ -14,7 +14,7 @@
 | 队列增删、排序、撤销 | `features/training/model/queueCommands.ts` | 非 React 命令所有者；串行执行、写后刷新、fallback 与失效发布都在此 |
 | 页面 pending 标记与命令发起 | `features/training/hooks/useTrainingQueueCommands.ts` | 薄适配层，把应用级 QueryClient 注入命令上下文 |
 | 训练设置 | `features/training/model/settingsCommands.ts` | FPR-022 起设置提交、本地 revision 与旧响应裁决由领域所有者持有；队列命令不写设置。见[养成设置提交与计划有效期](training-settings-and-plan-validity.md) |
-| 训练计划 | 页面状态 | 版本前提已由 FPR-022 接入（队列 revision + 设置 revision）；生成/应用编排仍由页面持有，FPR-023 迁移 |
+| 训练计划 | `features/training/model/planCommands.ts` | FPR-023 起由模块级 `TrainingPlanOwner` 持有生成/应用/同步、版本前提与失效发布；页面只订阅 |
 | 跨域失效发布 | `features/resource-invalidation` | 命令写入成功后发布；失败不发布 |
 | 总览快照 | `features/dashboard` 的完整快照协调器 | 收到 `dashboard-snapshot` 后强制刷新，不复制队列缓存 |
 
@@ -81,6 +81,7 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 | `training-queue` | 队列成员、顺序、材料进度与服务端 revision 已变化 |
 | `materials` | 队列项的派生材料进度变化 |
 | `training-plan` | 已生成计划的队列前提变化 |
+| `automation-config`、`automation-schedule` | 写入响应确认任务流程 `synced` 时，automation 配置与定时任务已随智能关卡变化 |
 | `dashboard-snapshot` | 总览快照包含队列与材料摘要 |
 
 发布参数为 `cause: 'training-queue'`，并携带 `detail: { source: 'training-queue-command' }`：
@@ -88,22 +89,23 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 - `OperatorTraining` 忽略带该 `detail` 的发布，因为权威快照已写入同一 Query key；外部发布的 `training-queue`（不带该标记）仍会触发重读。
 - `Dashboard` 只订阅 `dashboard-snapshot`，收到后走完整快照刷新；五路读取全部有效才提交，单路失败保留旧快照。
 - 候选列表与状态计数不因队列写入而失效；材料刷新/识别命令仍按 `materials` / `operbox` / `depot` 作用域触发候选与计数重取。
-- 计划失效路径：命令开始时立即作废旧预览（即使用户随后取消或失败，见既有回归），读取到 revision 变化时作废，以及设置版本变化时作废（FPR-022）。前者保证“点击排序后旧计划按钮立即不可应用”，后两条覆盖识别、材料刷新、外部设置修改和另一客户端造成的队列变化。
+- 计划失效路径：命令开始时立即作废旧预览（包括撤销；即使用户随后取消或失败，见既有回归），读取到 revision 变化时作废，以及设置版本变化时作废（FPR-022）。前者保证“点击排序后旧计划按钮立即不可应用”，后两条覆盖识别、材料刷新、外部设置修改和另一客户端造成的队列变化。
 
 ## 6. 页面与生命周期
 
 - `OperatorTraining` 用 `useQuery(trainingQueueQueryOptions())` 读取队列，用 `useTrainingQueueCommands()` 发起命令并派生 `pendingOperatorIds` / `queueMutationPending`。
 - 队列命令所有者为模块级单例；Activity 隐藏只注销页面 Effect，不中断串行链与写后刷新。隐藏期间完成的命令仍会写入应用级 Query 缓存，恢复时按新鲜度使用。
 - 真正卸载后重挂载：命令继续完成（请求没有 AbortController 绑定页面），新页面从 Query 缓存读取结果；pending 提示是否仍显示取决于命令是否完成，不再由旧页面闭包维护。
-- 页面首屏：首次成功的队列快照把 `flowSync` 同步到页面状态，并把 `settings` 交给 FPR-022 的设置所有者 hydrate；若用户先编辑设置，则不采用迟到的首屏值。普通队列刷新不覆盖本地设置，`reloadQueue()` 在读取期间本地设置未变化时采用服务端值（外部设置变化由此被发现）。
-- 生成计划前、应用失败后、重试同步后与显式“重新加载”都通过 `reloadQueue()` 强制重取；`reloadQueue` 比较快照 revision 与设置版本，作废过期预览。
-- `recordSync` 在 `flowSync.status === 'synced'` 时继续派发 `training-plan-applied` window 事件，供 automation 兼容；FPR-023 将替换为领域失效协议。
+- 页面首屏：`useTrainingPlan()` 把队列快照交给计划所有者，由其采用 `flowSync` 并把 `settings` 交给设置所有者 hydrate；若用户先编辑设置，则不采用迟到的首屏值。`TrainingPlanOwner` 的权威重读在读取期间本地设置未变化时采用服务端值（外部设置变化由此被发现）。
+- 生成计划前、应用后/失败后、重试同步后与显式“重新加载”都通过所有者强制重取队列；重读比较快照 revision 与设置版本，作废过期预览。
+- 队列命令在 `flowSync.status === 'synced'` 时随同一次发布携带 `automation-config`/`automation-schedule`；`training-plan-applied` window 事件已在 FPR-023 移除。计划应用/同步的发布由 `TrainingPlanOwner` 负责。
 
 ## 7. 兼容与回滚
 
 - 端点、请求体、响应体、服务端存储与 `flowSync` / `revision` 形状均未改变；`getTrainingQueue`、`addToTrainingQueue`、`removeFromTrainingQueue`、`updateTrainingQueueOrder` 的位置参数与 `ApiResponse` 信封保持兼容。
 - 新增 `['training', 'queue']` Query key；回滚到页面本地队列时不需要服务端迁移，缓存按 `gcTime` 自然淘汰。
 - 新增的 `uncertain` 字段只存在于前端 Query 缓存，不写入服务端，也不进入任何持久化存储。
+- FPR-023 起 synced 队列写入额外发布 automation 作用域，并移除 window 事件；不需要服务端迁移，旧订阅者若仍在监听 window 事件会失去通知（本仓库内已全部迁移）。
 - `detail.source` 是本任务声明的可选字段；不了解该字段的订阅者按普通 `training-queue` 发布处理，行为安全。
 - 独立回滚范围：页面与 `hooks/useTrainingQueueCommands.ts`、`model/queueCommands.ts`、`model/queries.ts` 的队列定义；不要求删除已有端点能力。
 
@@ -113,7 +115,8 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 | --- | --- |
 | `features/training/model/queueCommands.test.ts` | 并发排序按最新快照串行、重复添加合并、写后刷新失败 fallback/`uncertain`、写入失败不提交不发布、移除后撤销按原索引恢复、目标干员消失时拒绝排序、写前取消读取 |
 | `features/training/model/queries.test.ts` | `queue` key、signal、快照元数据与失败信封 |
-| `features/training/pages/OperatorTraining.test.tsx` | 队列读取迁移后原有交互；移除进行中排队排序、写后刷新失败的 fallback/警告/重载、跨页失效作用域与自发布忽略、计划 revision 失效、Activity 隐藏恢复 |
+| `features/training/pages/OperatorTraining.test.tsx` | 队列读取迁移后原有交互；移除进行中排队排序、写后刷新失败的 fallback/警告/重载、跨页失效作用域与自发布忽略、计划 revision 失效、Activity 隐藏恢复；FPR-023 撤销开始作废旧计划 |
+| `features/training/model/planCommands.test.ts` | 计划生成/应用/同步的版本裁决、automation 配置写入屏障、部分成功与失效发布 |
 | `features/training/model/settingsCommands.test.ts`、`planValidity.test.ts` | 设置串行写入、旧响应裁决与计划版本前提（FPR-022，见[养成设置提交与计划有效期](training-settings-and-plan-validity.md)） |
 | `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 接收端完整刷新与单路失败保旧 |
 | `features/resource-invalidation/**` | 失效端口去重、revision、Activity 恢复补发 |

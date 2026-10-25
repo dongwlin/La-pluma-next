@@ -74,6 +74,14 @@ setDraft ─→ queued ─→ saving ─→ idle
 reload() ─→ loaded / local-draft / skipped / stale / failed
 ```
 
+### 2.5 跨域写入屏障
+
+`UserConfigCoordinator.settle(keys)` 等待指定 key 已入队的提交全部结束，并返回仍未确认的
+`pendingKeys`。它用于一个域即将改写另一个域负责的服务端文件时先排空旧保存，例如 training
+应用养成计划前等待 `automation-tasks` 的保存。`settle` 不触发失败草稿的自动重试，也不创建
+尚未挂载的通道；调用方必须根据 `pendingKeys` 决定是否继续。key 常量由
+`USER_CONFIG_KEYS` 统一导出，避免各域复制字符串。
+
 ## 3. 适配契约
 
 ```ts
@@ -162,7 +170,7 @@ function CombatTasks() {
 
 关键约束：
 
-- **未确认草稿优先**：`force` 也不覆盖它。外部写入（如养成计划应用）遇到 `local-draft` 或 `pending` 时按协调器返回的 `local-draft`/`stale` 拒绝采用服务端副本，并提示本地编辑已保留；该裁决由 automation 页面在 `training-plan-applied` 处理中显式完成。
+- **未确认草稿优先**：`force` 也不覆盖它。外部写入（如养成计划应用）在应用前通过 `UserConfigCoordinator.settle()` 排空本设备 automation 的在途保存；仍有未确认草稿时 training 拒绝应用。应用后的 `automation-config`/`automation-schedule` 失效由 automation 页面处理：先 `flush()` 通道，再 `reload({ force: true })`；返回 `local-draft`/`stale` 时保留本地并提示。
 - **迟到加载不写回**：加载返回时校验加载序号、`AbortSignal`、revision 与 pending 标记；任何一项变化都返回 `stale`。
 - **损坏草稿可回退**：单个损坏键由适配器清理；标记指向的草稿整体不可读时删除标记并读服务端，不会永久停在“本地优先”。
 - **读取失败会重试**：`failed` 不标记 `hydrated`，`Activity` 恢复或下次挂载会再次尝试；服务端失败且本地有草稿时静默回退，不打断编辑。
@@ -185,7 +193,7 @@ function CombatTasks() {
 
 - 页面不再自己维护 `configRevisionRef`、模块级 Promise 队列、`configHydratedRef` 或 `isRetryingConfigSave`；这些职责已由通道承担。
 - `Activity` 隐藏/恢复只影响 Effects；`hydrate()` 的已加载守卫保证恢复时不重读，pending 草稿仍优先。
-- automation 的 `training-plan-applied` 需通过 `reload({ force: true })` 重读；返回 `local-draft` 时不得丢弃本地编辑。
+- automation 订阅 `automation-config`/`automation-schedule` 失效后通过 `reload({ force: true })` 重读；返回 `local-draft` 时不得丢弃本地编辑。计划应用不再使用 window `training-plan-applied` 事件。
 - 状态消息（成功 toast）与页内错误文案由页面从 `syncState`/`error` 和 `retry()` 结果派生，协调器不直接写 `statusStore`。
 
 ### 6.1 肉鸽适配器（FPR-013 已接入）
@@ -237,7 +245,7 @@ function CombatTasks() {
 | 草稿等价 | 适配器 `fingerprint` 比较 task flow 与本地 `schedule.entries`，而不是只看 wire；编辑或删除禁用时间点仍会接受草稿、写回本地并触发提交，不会被协调器当成无变化而静默丢弃。wire 未变化时这次提交内容与上一次相同，属于幂等写入 |
 | 完整提交 | `saveUserConfig('automation-tasks', wire)` 成功后再执行 `setupSchedule('default', times, taskFlow)`（启用且存在时间点）或 `stopSchedule('default')`；任一步失败都返回 `ok: false`，协调器保留 pending 与“重新同步”入口，重试重跑整段提交 |
 | 过期提交保护 | 配置保存期间若协调器接受了更新的草稿，适配器在 schedule 步骤前比对最新 wire 指纹并跳过旧 schedule；即使旧提交已经写入配置，协调器也不会用它的结果确认新 revision |
-| 外部写入裁决 | `training-plan-applied` 调用 `reload({ force: true })`；返回值 `loaded` 采用服务端副本并提示更新关卡数，`local-draft`/`stale` 保留本地草稿并提示“养成计划更新未覆盖本地配置”。在途保存期间 pending 标记仍在，因此同样走本地优先。裁决规则是拒绝而非字段级合并：本地 pending 重试成功后仍会以整份 task flow 覆盖服务端那次外部写入，冲突不会被静默处理但也不保留外部改动 |
+| 外部写入裁决 | training 应用计划前调用 `userConfigCoordinator.settle([USER_CONFIG_KEYS.automationTasks])`，等本设备已入队的保存落盘；仍有 pending 时拒绝应用。`automation-config`/`automation-schedule` 失效到达后，页面先 `flush()` 再 `reload({ force: true })`：`loaded` 采用服务端副本并提示更新，`local-draft`/`stale` 保留本地草稿并提示。采用服务端副本时保留本设备独有的禁用时间点（`mergeLocalScheduleEntries`），避免非冲突的本地 schedule 编辑丢失。跨客户端同时写入仍是最后写入生效 |
 | 页面派生 | task flow 的图标与参数表单由 `AVAILABLE_TASKS` 派生；schedule 的启用状态与条目都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动化配置已同步” |
 | 页面局部状态 | 拖拽中的顺序用本地预览渲染，松手时才作为一次编辑写入协调器；选中项、picker、撤销、执行详情、连接测试反馈仍是页面状态 |
 
@@ -249,14 +257,14 @@ function CombatTasks() {
 
 | 测试 | 覆盖 |
 | --- | --- |
-| `features/user-config/model/configCoordinator.test.ts` | 非 React：服务端加载与迁移、未同步草稿优先、损坏草稿回退、迟到加载丢弃、强制刷新中止旧加载、提交串行与旧提交不确认新草稿、标记被外部替换、去抖合并、内容等价跳过、完整提交失败与重试防重入、编辑中断重试、跨重挂载队列与状态、异构适配器拒绝 |
+| `features/user-config/model/configCoordinator.test.ts` | 非 React：服务端加载与迁移、未同步草稿优先、损坏草稿回退、迟到加载丢弃、强制刷新中止旧加载、提交串行与旧提交不确认新草稿、标记被外部替换、去抖合并、内容等价跳过、完整提交失败与重试防重入、编辑中断重试、跨重挂载队列与状态、异构适配器拒绝、`settle` 写入屏障等待在途提交并报告失败草稿 |
 | `features/user-config/hooks/useUserConfig.test.tsx` | 首次加载与订阅渲染、编辑写回、`autoHydrate: false`、失败提示与重试后清空 |
 | `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状、缺省字段与非法载荷解码、本地键损坏清理、完整提交与读取失败信封 |
 | `features/roguelike/pages/RoguelikeTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、坏草稿回退服务端、迟到加载不覆盖编辑、Activity 隐藏/恢复 |
 | `features/combat/model/combatConfig.test.ts` | 作业适配器：原 key/pending/本地键/300ms、wire 形状、`app→cli` 与 raid `1`/`2` 迁移、缺省字段与非法载荷解码、本地键损坏清理、裸字符串执行方式、完整提交与读取失败信封 |
 | `features/combat/pages/CombatTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、迟到加载不覆盖编辑、坏草稿回退服务端、本地与服务端 `app→cli`/raid 迁移、set 模式与待执行索引回填、Activity 隐藏/恢复 |
 | `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交、wire 去掉界面字段、`entries`/`times` 兼容、任务参数迁移与客户端类型同步、非法载荷解码、本地键损坏清理、配置+schedule 完整提交、schedule 半失败、保存期间新草稿跳过旧 schedule、禁用项参与的本地草稿指纹、读取失败信封 |
-| `features/automation/pages/AutomationTasks.config.test.tsx` | 页面接线：配置/schedule 全成功才清 pending、保存失败不碰 schedule、半失败页内重试、禁用与全禁用 schedule、编辑/删除禁用时间点仍写回本地、跨 remount 串行提交与旧响应保护、迟到加载、stale pending 回退服务端、training-plan-applied 强制重读及 pending 草稿冲突裁决 |
+| `features/automation/pages/AutomationTasks.config.test.tsx` | 页面接线：配置/schedule 全成功才清 pending、保存失败不碰 schedule、半失败页内重试、禁用与全禁用 schedule、编辑/删除禁用时间点仍写回本地、跨 remount 串行提交与旧响应保护、迟到加载、stale pending 回退服务端、计划失效重读等待在途保存、Activity 恢复补发及本地禁用时间点保留 |
 | `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先、在途服务端响应不覆盖新草稿、hydrate 不重建 schedule、Activity 恢复、拖拽/表单接线 |
 | `features/automation/pages/AutomationTasks.execution.test.tsx` | Run 提交、停止、流程进度与旧断点只观察不重提 |
 

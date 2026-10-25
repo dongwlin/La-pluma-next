@@ -212,11 +212,11 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 ## 10. 已迁移读取：养成队列、候选与状态计数（FPR-021/044）
 
-`OperatorTraining` 的队列、候选列表与三种状态计数都由 training 领域 query 持有，页面只读取 query 结果。设置在 FPR-022 后由 `features/training/model/settingsCommands.ts` 的领域所有者持有（不进入 Query），计划仍沿用页面状态（FPR-023 迁移）；队列写入由 `queueCommands` 领域命令串行执行，写成功后把权威快照写入同一 `queue` key，见[养成队列命令与写后刷新](training-queue-commands.md)与[养成设置提交与计划有效期](training-settings-and-plan-validity.md)。
+`OperatorTraining` 的队列、候选列表与三种状态计数都由 training 领域 query 持有，页面只读取 query 结果。设置在 FPR-022 后由 `features/training/model/settingsCommands.ts` 的领域所有者持有（不进入 Query），计划在 FPR-023 后由 `model/planCommands.ts` 的领域所有者持有（也不进入 Query）；队列写入由 `queueCommands` 领域命令串行执行，写成功后把权威快照写入同一 `queue` key，见[养成队列命令与写后刷新](training-queue-commands.md)与[养成设置提交与计划有效期](training-settings-and-plan-validity.md)。
 
 | 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
 | --- | --- | --- | --- | --- |
-| 队列 | `trainingQueueQueryOptions()` | `['training','queue']` | query error；页面展示可重试错误；写入成功但写后刷新失败时保留带 `uncertain` 的本地 fallback | 首屏/remount 按默认策略；收到 `depot`/`operbox`/`materials`/`training-queue` 外部失效后重读；计划生成前、重试同步后与“重新加载”显式 `refetch`；队列命令自行做写后刷新 |
+| 队列 | `trainingQueueQueryOptions()` | `['training','queue']` | query error；页面展示可重试错误；写入成功但写后刷新失败时保留带 `uncertain` 的本地 fallback | 首屏/remount 按默认策略；收到 `depot`/`materials`/`training-queue` 外部失效后重读（`operbox` 识别同时发布 `materials`）；计划生成前、应用后/失败后、重试同步后与“重新加载”由计划所有者取消在途读取并以 `fetchQuery({ staleTime: 0 })` 强制读取；队列命令自行做写后刷新 |
 | 候选列表 | `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | query error；页面清空列表并展示可重试错误 | 筛选切换使用独立 key；收到 `depot`/`operbox`/`catalog`/`materials` 失效后 `invalidateQueries`；重试按钮 `refetch` |
 | 三种计数 | `trainingStatusCountsQueryOptions(filters)` | `['training','counts',rarity,needsElite2]` | 不展示错误；同 key 失败保留上次成功值 | 同上作用域失效；`placeholderData: keepPreviousData` 让筛选切换期间保留旧计数 |
 

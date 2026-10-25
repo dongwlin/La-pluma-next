@@ -84,14 +84,14 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 | 养成队列变更 | queue、材料进度、计划有效期、相关摘要 | 写成功而刷新失败保留可解释 fallback，禁用过期计划 | 已由 FPR-021 交付：队列是 `training/queue` 的 Query 唯一快照，增删/排序/撤销由串行领域命令执行；写后刷新成功提交权威快照，失败在最新缓存上回退并标记 `uncertain`；命令开始时作废旧计划，revision 变化时再次清空；发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`（见[养成队列命令与写后刷新](training-queue-commands.md)） |
 | 养成设置变更 | 计划有效期 | 设置成功使旧计划失效 | 已由 FPR-022 交付：设置由 `features/training/model/settingsCommands.ts` 串行提交并维护本地 revision，编辑/归一化/回滚/权威重读采用外部值都会作废旧计划；队列刷新失败时禁用计划预览与应用（见[养成设置提交与计划有效期](training-settings-and-plan-validity.md)） |
 | 生成计划 | 计划版本 | 旧版本不得应用；queue revision 不符时拒绝 | 生成前重读 queue，响应 revision 不符时拒绝并刷新重试（已有测试） |
-| 应用计划 | automation 配置/schedule、计划版本、总览 | 写入成功通知相关域；部分失败可识别；本地 pending 草稿不被外部副本覆盖 | 应用成功派发 `training-plan-applied`（无 detail）；automation 通过 `reload({ force: true })` 重读，有 pending 草稿或在途保存时保留本地并提示，否则采用服务端副本；Dashboard 等下一次定时刷新（见第 5 节） |
+| 应用计划 | automation 配置/schedule、计划版本、总览 | 写入成功通知相关域；部分失败可识别；本地 pending 草稿不被外部副本覆盖 | 已由 FPR-023 交付：`TrainingPlanOwner` 先经配置协调器排空本设备 automation 在途保存，再应用并发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`（`cause: plan-applied`，`detail` 含关卡数）；automation 等到通道空闲后强制重读，失败草稿保留本地并提示；服务端重新注册已存在的默认定时任务，失败以 `scheduleSync` 上报为部分成功；Dashboard 立即走完整快照刷新。window `training-plan-applied` 已移除 |
 | 搜索/预览切换 | 对应查询键与本地选择 | 旧响应不覆盖新选择 | request id/generation 丢弃旧响应；FPR-044 候选 query 以筛选参数分 key，迟到响应只写旧 key，隐藏期间读取随 signal 取消（已有测试） |
 | Dashboard 刷新 | 完整业务快照、独立设备采样 | 业务数据全部有效才提交快照，采样失败保旧值 | 见第 4 节（已有测试） |
 | 资源/热更新成功 | 目录、图标/资源元数据、养成候选/计数、计划有效性、总览 | 先确定影响范围，不整体清空缓存 | 当前只重读版本，未发布资源失效（见第 5 节） |
 
 应用计划的跨页链路当前是“训练域派发 window 事件 → automation 监听后强制 `loadTaskFlow`”。事件不带 `stageCount`，automation 从 `event.detail` 读不到时提示 0 关；后续应由领域失效协议携带明确影响范围，而不是继续扩大 window 事件。
 
-FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`features/resource-invalidation` 提供显式作用域发布/订阅，`OperatorTraining` 与 `Dashboard` 已接入最小接收（总览仍走完整快照刷新）。FPR-020 已接入识别与材料刷新的发布端；FPR-044 把训练页的候选/计数改为领域 query，接收端口后按作用域失效，队列失效仍只重读队列。FPR-021 已接入队列写入的发布端并让队列本身由 `training/queue` query 与串行命令持有；FPR-022 把设置提交集中在 `features/training/model/settingsCommands.ts`，设置变化通过本地 revision 与权威重读使旧计划失效，不新增跨页发布（服务端队列 revision 不含设置）。计划应用与资源更新的**发布端**仍分别由 FPR-023/026 接入。`training-plan-applied` window 事件的替换也留给 FPR-023。
+FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`features/resource-invalidation` 提供显式作用域发布/订阅，`OperatorTraining` 与 `Dashboard` 已接入最小接收（总览仍走完整快照刷新）。FPR-020 已接入识别与材料刷新的发布端；FPR-044 把训练页的候选/计数改为领域 query，接收端口后按作用域失效，队列失效仍只重读队列。FPR-021 已接入队列写入的发布端并让队列本身由 `training/queue` query 与串行命令持有；FPR-022 把设置提交集中在 `features/training/model/settingsCommands.ts`，设置变化通过本地 revision 与权威重读使旧计划失效（服务端队列 revision 不含设置）。FPR-023 把计划生成/应用/同步迁到 `features/training/model/planCommands.ts`，应用成功发布 automation 配置、定时与总览作用域，**取代** `training-plan-applied` window 事件；automation 页面改为订阅同一失效端口，并在处理前排空配置通道。资源更新的发布端仍由 FPR-026 接入。
 
 ## 4. Dashboard 完整快照规则
 
@@ -119,7 +119,7 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | 3 | ~~Automation 配置已保存但 schedule 失败时只有全局消息，没有页内重试~~ 已由 FPR-015 关闭：页内 alert + “重新同步”重跑整段提交 | `AutomationTasks.config.test.tsx` 的半失败重试用例 | 已完成 |
 | 4 | ~~养成设置保存成功后不使已生成计划失效~~ 已由 FPR-022 关闭：设置所有者维护本地 revision，编辑立即作废旧计划，成功/回滚/外部采用同步推进版本 | `OperatorTraining.test.tsx` 的设置作废旧计划用例；`settingsCommands.test.ts`、`planValidity.test.ts` | 已完成（[结论](training-settings-and-plan-validity.md)） |
 | 5 | ~~仓库/干员识别完成不发布跨页失效；训练候选/计数/材料与 Dashboard 不会自动刷新~~ 已由 FPR-020 关闭：命令所有者解析成功后才发布 `depot`/`operbox`/`materials`/`training-queue`/`dashboard-snapshot` | `statistics/model/commandOwner.test.ts` 的发布作用域用例与 `DataStatistics.layout.test.tsx` 的识别快照/失效用例 | 已完成（[统计识别命令与失效联动](statistics-commands.md)） |
-| 6 | 应用计划只触发 automation 重载；Dashboard 不立即失效，事件也不携带影响范围 | training 事件用例 + automation 重载/冲突用例；Dashboard 接收端已由 FPR-018 接入，发布端待 FPR-023 | 计划应用联动 + Dashboard 快照协调（FPR-023；automation 侧冲突裁决已由 FPR-015 完成） |
+| 6 | ~~应用计划只触发 automation 重载；Dashboard 不立即失效，事件也不携带影响范围~~ 已由 FPR-023 关闭：计划所有者发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`，automation 经端口重读，Dashboard 立即刷新 | `planCommands.test.ts`、`AutomationTasks.config.test.tsx`、`Dashboard.test.tsx` 的 plan-applied 用例 | 已完成（[计划编排与有效期](training-settings-and-plan-validity.md)） |
 | 7 | 资源/热更新成功后目录、图标、候选/计数与总览没有失效路径 | 仅重读版本，无事件；接收端已由 FPR-018 接入，发布端待 FPR-026 | 更新流程与资源失效（FPR-026） |
 
 预期失败用例使用 Vitest 的 `it.fails`：当前行为确实不满足断言，CI 保持绿色；修复落地后该用例会转为失败，承接任务必须删除 `.fails` 标记并保留断言，作为新行为的回归测试。不得用删除断言或改写预期来“修复”这些用例。FPR-015 已将 Automation 的 stale pending 用例转为正常回归。
@@ -137,8 +137,9 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
 | `features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、日志解析等待、超时/取消/继续与失效发布 |
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 识别快照写入 Query 并发布作用域；按作用域失效；运行中不重复提交；超时后继续解析；各数据源独立错误与重试；Activity 恢复 |
-| `features/training/pages/OperatorTraining.test.tsx` | FPR-021 队列命令接线、写后刷新失败 fallback/警告/重载、跨页失效与自发布忽略、并发排序；队列变更废弃旧计划；queue revision 校验；应用计划事件；FPR-044 候选/计数 Query、列表失败/计数保旧、目录失败与仅计数失败、筛选迟到响应与 Activity 恢复；FPR-022 设置串行/跨重挂载/失败回滚、设置变更作废旧计划、刷新失败禁用生成与应用 |
+| `features/training/pages/OperatorTraining.test.tsx` | FPR-021 队列命令接线、写后刷新失败 fallback/警告/重载、跨页失效与自发布忽略、并发排序；队列变更废弃旧计划；queue revision 校验；FPR-044 候选/计数 Query、列表失败/计数保旧、目录失败与仅计数失败、筛选迟到响应与 Activity 恢复；FPR-022 设置串行/跨重挂载/失败回滚、设置变更作废旧计划、刷新失败禁用生成与应用；FPR-023 计划编排迁移、生成期间版本变化、应用等待在途配置保存、部分成功重读、三类失效发布 |
 | `features/training/model/settingsCommands.test.ts` | 设置串行写入、旧响应不覆盖最新值、旧失败不打断新草稿、最新失败回滚、服务端归一化、hydrate 与显式重读、reset 丢弃迟到响应 |
+| `features/training/model/planCommands.test.ts` | 生成/应用版本裁决、重复触发合并、automation 配置写入屏障、应用后重读与 schedule 部分成功、失效发布 |
 | `features/training/model/planValidity.test.ts` | 计划 basis 捕获、队列/设置版本比较、刷新失败与版本失效下的生成/应用门禁 |
 | `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
 | `features/training/model/queueCommands.test.ts` | 队列命令串行、最新快照排序、重复命令合并、写后刷新失败与不确定状态、失败不提交不发布、撤销原索引 |
