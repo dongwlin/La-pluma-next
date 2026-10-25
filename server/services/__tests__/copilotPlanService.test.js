@@ -5,6 +5,7 @@ import {
   buildCurrentMapStageTasks,
   buildCopilotRepeatFiles,
   buildCopilotTaskParams,
+  classifyCopilotEntryOutcomes,
   extractLoadedCopilotFiles,
   getNavigationStage,
   isPresetFormationCopilot,
@@ -102,4 +103,50 @@ test('both mode skips raid for preset formation stages', async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('loaded files classify confirmed entries and stop the rest as pending', () => {
+  const entries = [
+    { key: 'a', itemIndex: 0 },
+    { key: 'b', itemIndex: 1 },
+    { key: 'c', itemIndex: 2 }
+  ];
+  const executionItems = [
+    { entry: entries[0], filename: '/tmp/0.json' },
+    { entry: entries[1], filename: '/tmp/1.json' },
+    { entry: entries[2], filename: '/tmp/2.json' }
+  ];
+
+  assert.deepEqual(
+    classifyCopilotEntryOutcomes({
+      entries,
+      executionItems,
+      currentIndex: 2,
+      stopped: true,
+      message: '已停止'
+    }).map(item => [item.entry.key, item.status]),
+    [['a', 'success'], ['b', 'success'], ['c', 'stopped']]
+  );
+
+  assert.deepEqual(
+    classifyCopilotEntryOutcomes({
+      entries,
+      executionItems,
+      currentIndex: 1,
+      stopped: false,
+      message: '失败'
+    }).map(item => [item.entry.key, item.status]),
+    [['a', 'success'], ['b', 'failed'], ['c', 'failed']]
+  );
+
+  assert.deepEqual(
+    classifyCopilotEntryOutcomes({
+      entries,
+      executionItems,
+      currentIndex: -1,
+      stopped: true,
+      message: '已停止'
+    }).map(item => [item.entry.key, item.status]),
+    [['a', 'pending'], ['b', 'pending'], ['c', 'pending']]
+  );
 });

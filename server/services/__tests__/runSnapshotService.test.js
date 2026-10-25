@@ -6,6 +6,7 @@ import { after, before, beforeEach, describe, it } from 'node:test'
 import {
   beginAgentRun,
   completeAgentRun,
+  markAgentRunWaiting,
   resetAgentRunsForTests,
   startAgentRun
 } from '../agentRunService.js'
@@ -131,6 +132,29 @@ describe('run snapshot', () => {
     assert.equal(snapshot.occupancy.lease.state, 'unknown')
     assert.equal(snapshot.occupancy.lease.owner, null)
     assert.equal(snapshot.occupancy.state, 'unknown')
+  })
+
+  it('reports a waiting manual set as a pending intent without device ownership', async () => {
+    const run = beginAgentRun({ operationId: 'run_copilot_set' }).run
+    startAgentRun(run.runId)
+    markAgentRunWaiting(run.runId)
+
+    const snapshot = await buildAgentRunSnapshot()
+
+    assert.equal(snapshot.run.runId, run.runId)
+    assert.equal(snapshot.run.state, 'waiting')
+    assert.equal(snapshot.run.progress.message, '等待开始下一关')
+    assert.equal(snapshot.occupancy.state, 'pending')
+    assert.equal(snapshot.occupancy.runState, 'waiting')
+    assert.deepEqual(snapshot.occupancy.sources, ['run'])
+
+    const newer = beginAgentRun({ operationId: 'run_task' }).run
+    const withIntent = await buildAgentRunSnapshot()
+    assert.equal(withIntent.run.runId, newer.runId)
+    const waitingEntry = withIntent.activeRuns.find(active => active.runId === run.runId)
+    assert.equal(waitingEntry.state, 'waiting')
+    assert.equal(waitingEntry.progress.message, '等待开始下一关')
+    assert.equal(withIntent.occupancy.state, 'pending')
   })
 
   it('keeps the latest terminal run without making it the current identity', async () => {

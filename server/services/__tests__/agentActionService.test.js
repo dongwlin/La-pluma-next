@@ -4,6 +4,8 @@ import {
   AGENT_TASK_COMMANDS,
   createDailyFlowExecutionError,
   executeAgentTask,
+  normalizeCopilotSetExecutionRequest,
+  normalizeCopilotSetMode,
   normalizeDailyFlowRequest
 } from '../agentActionService.js';
 
@@ -259,5 +261,47 @@ describe('createDailyFlowExecutionError', () => {
   it('returns null for successful or absent results', () => {
     assert.equal(createDailyFlowExecutionError({ success: true }), null);
     assert.equal(createDailyFlowExecutionError(null), null);
+  });
+});
+
+describe('normalizeCopilotSetExecutionRequest', () => {
+  it('maps the two legacy continuous modes to one server queue', () => {
+    assert.equal(normalizeCopilotSetMode('app'), 'continuous');
+    assert.equal(normalizeCopilotSetMode('cli'), 'continuous');
+    assert.equal(normalizeCopilotSetMode(undefined), 'continuous');
+    assert.equal(normalizeCopilotSetMode('manual'), 'manual');
+    assert.throws(
+      () => normalizeCopilotSetMode('auto'),
+      error => error.code === 'AGENT_VALIDATION_COPILOT_SET_MODE_INVALID' && error.statusCode === 400
+    );
+  });
+
+  it('normalizes selection and keeps the existing advanced options', () => {
+    const request = normalizeCopilotSetExecutionRequest({
+      mode: 'cli',
+      raid: 'both',
+      selectedIndexes: ['2', 0],
+      options: { loopTimes: 3, formationMode: 'off' }
+    });
+
+    assert.deepEqual(request, {
+      mode: 'continuous',
+      raid: 'both',
+      selectedIndexes: [2, 0],
+      options: { loopTimes: 3, formationMode: 'off' },
+      waitForCompletion: true
+    });
+  });
+
+  it('keeps the legacy unknown-raid fallback and rejects malformed selection or options', () => {
+    assert.equal(normalizeCopilotSetExecutionRequest({ raid: 'hard' }).raid, 'normal');
+    assert.throws(
+      () => normalizeCopilotSetExecutionRequest({ selectedIndexes: [-1] }),
+      error => error.code === 'AGENT_VALIDATION_COPILOT_SET_SELECTION_INVALID'
+    );
+    assert.throws(
+      () => normalizeCopilotSetExecutionRequest({ options: [] }),
+      error => error.code === 'AGENT_VALIDATION_COPILOT_SET_OPTIONS_INVALID'
+    );
   });
 });

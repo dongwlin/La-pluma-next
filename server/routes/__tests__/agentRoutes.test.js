@@ -23,6 +23,14 @@ import {
   getScheduleExecutionStatus,
   stopScheduleExecution
 } from '../../services/schedulerService.js'
+import {
+  configureCopilotSetRuntimeForTests,
+  resetCopilotSetRunStateForTests
+} from '../../services/copilotSetRunService.js'
+import {
+  getMaaExecutionLeaseSnapshot,
+  withMaaExecutionLease
+} from '../../services/executionCoordinatorService.js'
 import { getTodayOpenStages } from '../../services/notificationService.js'
 
 const quietLogger = {
@@ -1350,5 +1358,534 @@ describe('Agent daily flow concurrency', () => {
       return run && run.state === 'stopped' ? run : null
     })
     assert.equal(terminal.state, 'stopped')
+  })
+})
+
+function copilotSetPlan(count = 2) {
+  return {
+    setId: '42',
+    name: '测试作业集',
+    entries: Array.from({ length: count }, (_, index) => ({
+      key: `${index}:${100 + index}:normal`,
+      itemIndex: index,
+      copilotId: 100 + index,
+      stageId: `main_01-0${index + 1}`,
+      displayStage: `1-${index + 1}`,
+      apCost: 6,
+      mode: 'normal',
+      presetFormation: false,
+      completed: false
+    }))
+  }
+}
+
+function createCopilotSetExecutor(plan, { onExecute = null } = {}) {
+  const executed = []
+  return {
+    executed,
+    async execute({ entries, lifecycle }) {
+      const statusByKey = new Map(entries.map(entry => [entry.key, 'pending']))
+      let stopped = false
+      await withMaaExecutionLease({ source: 'copilot-set', taskName: '测试作业集', command: 'copilot-plan' }, async () => {
+        await lifecycle.onBeforeStart?.()
+        lifecycle.onStarted?.()
+        for (const entry of entries) {
+          if (await lifecycle.shouldStop?.()) {
+            stopped = true
+            break
+          }
+          lifecycle.onEntryStarted?.(entry, [entry])
+          executed.push(entry.key)
+          await onExecute?.(entry)
+          statusByKey.set(entry.key, 'success')
+          lifecycle.onEntrySettled?.(entry, 'success')
+        }
+      })
+      const taskResults = plan.entries
+        .filter(entry => statusByKey.has(entry.key))
+        .map(entry => ({
+          key: entry.key,
+          itemIndex: entry.itemIndex,
+          copilotId: entry.copilotId,
+          stageId: entry.stageId,
+          stage: entry.displayStage,
+          displayStage: entry.displayStage,
+          apCost: entry.apCost,
+          mode: entry.mode,
+          status: statusByKey.get(entry.key)
+        }))
+      const count = status => taskResults.filter(result => result.status === status).length
+      return {
+        success: count('failed') === 0,
+        stopped,
+        error: null,
+        results: [],
+        completed: taskResults.filter(result => result.status === 'success').map(result => result.key),
+        pending: entries.filter(entry => statusByKey.get(entry.key) !== 'success'),
+        loopTimes: 1,
+        summary: {
+          totalEntries: taskResults.length,
+          successCount: count('success'),
+          failedCount: count('failed'),
+          stoppedCount: count('stopped'),
+          pendingCount: count('pending'),
+          taskResults
+        }
+      }
+    }
+  }
+}
+
+function useCopilotSetRuntime(plan, executor) {
+  configureCopilotSetRuntimeForTests({
+    buildCopilotPlan: async () => plan,
+    executeCopilotEntries: executor.execute
+  })
+}
+
+function copilotSetRequest(body, headers = {}, id = '42') {
+  return { headers, params: { id }, body, query: {} }
+}
+
+function continueRequest(runId, body = {}) {
+  return { headers: {}, query: {}, body: { runId, ...body } }
+}
+
+describe('Agent copilot set routes', () => {
+  beforeEach(async () => {
+    resetAgentRunsForTests()
+    resetCopilotSetRunStateForTests()
+    await rm(lockFile, { force: true })
+  })
+
+  afterEach(async () => {
+    resetCopilotSetRunStateForTests()
+    resetAgentRunsForTests()
+    await rm(lockFile, { force: true })
+  })
+
+  it('keeps the synchronous continuous response and adds a terminal run identity', async () => {
+    const plan = copilotSetPlan(2)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    const res = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'cli', selectedIndexes: [] }),
+      res,
+      () => {}
+    )
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.success, true)
+    assert.equal(res.body.data.success, true)
+    assert.equal(res.body.data.mode, 'continuous')
+    assert.equal(res.body.data.setId, '42')
+    assert.equal(res.body.data.summary.successCount, 2)
+    assert.equal(res.body.data.plan.entries.length, 2)
+    assert.ok(res.body.data.runId)
+    assert.equal(res.headers['X-La-Pluma-Run-Id'], res.body.data.runId)
+
+    const run = getAgentRun(res.body.data.runId)
+    assert.equal(run.operationId, 'run_copilot_set')
+    assert.equal(run.state, 'succeeded')
+    assert.equal(run.result.summary.successCount, 2)
+    assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal'])
+    assert.deepEqual(await getMaaExecutionLeaseSnapshot(), { state: 'free', owner: null })
+  })
+
+  it('completes a set whose selected entries are already done without a device command', async () => {
+    const plan = copilotSetPlan(1)
+    plan.entries[0].completed = true
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    const res = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({}),
+      res,
+      () => {}
+    )
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.data.finished, true)
+    assert.equal(res.body.data.summary.totalEntries, 0)
+    assert.equal(res.body.data.summary.alreadyCompletedCount, 1)
+    assert.equal(getAgentRun(res.body.data.runId).state, 'succeeded')
+    assert.deepEqual(executor.executed, [])
+  })
+
+  it('maps the legacy app mode to the same continuous run', async () => {
+    const plan = copilotSetPlan(1)
+    useCopilotSetRuntime(plan, createCopilotSetExecutor(plan))
+
+    const res = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'app' }),
+      res,
+      () => {}
+    )
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.data.mode, 'continuous')
+    assert.equal(res.body.data.summary.successCount, 1)
+    assert.equal(getAgentRun(res.body.data.runId).state, 'succeeded')
+  })
+
+  it('rejects an unknown mode before creating a run', async () => {
+    const res = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'auto' }),
+      res,
+      () => {}
+    )
+
+    assert.equal(res.statusCode, 400)
+    assert.equal(res.body.error.code, 'AGENT_VALIDATION_COPILOT_SET_MODE_INVALID')
+    assert.deepEqual(listAgentRuns(), [])
+  })
+
+  it('accepts a continuous set in the background and reaches a terminal run', async () => {
+    const plan = copilotSetPlan(2)
+    useCopilotSetRuntime(plan, createCopilotSetExecutor(plan))
+
+    const res = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ waitForCompletion: false }),
+      res,
+      () => {}
+    )
+
+    assert.equal(res.statusCode, 202)
+    assert.equal(res.body.data.accepted, true)
+    assert.equal(res.body.data.mode, 'continuous')
+    assert.ok(res.body.data.runId)
+    assert.equal(res.headers.Location, `/api/agent/runs/${res.body.data.runId}`)
+
+    const terminal = await waitForSnapshot(() => {
+      const run = getAgentRun(res.body.data.runId)
+      return run && run.state === 'succeeded' ? run : null
+    })
+    assert.equal(terminal.result.summary.successCount, 2)
+  })
+
+  it('keeps a continuous set observable in the snapshot while it executes', async () => {
+    const plan = copilotSetPlan(2)
+    let releaseFirstEntry
+    const firstEntryGate = new Promise(resolve => {
+      releaseFirstEntry = resolve
+    })
+    let gated = false
+    const executor = createCopilotSetExecutor(plan, {
+      onExecute: async () => {
+        if (gated) return
+        gated = true
+        await firstEntryGate
+      }
+    })
+    useCopilotSetRuntime(plan, executor)
+
+    const res = createResponse()
+    const request = findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ waitForCompletion: false }),
+      res,
+      () => {}
+    )
+
+    const snapshot = await waitForSnapshot(async () => {
+      const current = createResponse()
+      await findHandler('get', '/runs/current')({ headers: {}, query: {} }, current, () => {})
+      return current.body?.data?.run?.progress?.phase === 'running' ? current : null
+    })
+
+    assert.equal(snapshot.body.data.run.operationId, 'run_copilot_set')
+    assert.equal(snapshot.body.data.run.state, 'running')
+    assert.equal(snapshot.body.data.run.progress.setId, '42')
+    assert.equal(snapshot.body.data.run.progress.currentEntry.key, '0:100:normal')
+    assert.equal(snapshot.body.data.run.progress.totalSteps, 2)
+    assert.equal(snapshot.body.data.occupancy.runId, snapshot.body.data.run.runId)
+
+    releaseFirstEntry()
+    await request
+    const terminal = await waitForSnapshot(() => {
+      const run = getAgentRun(res.body.data.runId)
+      return run && run.state === 'succeeded' ? run : null
+    })
+    assert.equal(terminal.result.summary.successCount, 2)
+  })
+
+  it('stops a running continuous set before the next entry starts', async () => {
+    const plan = copilotSetPlan(3)
+    let releaseFirstEntry
+    const firstEntryGate = new Promise(resolve => {
+      releaseFirstEntry = resolve
+    })
+    let gated = false
+    const executor = createCopilotSetExecutor(plan, {
+      onExecute: async () => {
+        if (gated) return
+        gated = true
+        await firstEntryGate
+      }
+    })
+    useCopilotSetRuntime(plan, executor)
+
+    const res = createResponse()
+    const request = findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ waitForCompletion: false }),
+      res,
+      () => {}
+    )
+    const snapshot = await waitForSnapshot(async () => {
+      const current = createResponse()
+      await findHandler('get', '/runs/current')({ headers: {}, query: {} }, current, () => {})
+      return current.body?.data?.run?.progress?.phase === 'running' ? current : null
+    })
+    const runId = snapshot.body.data.run.runId
+
+    const stopped = createResponse()
+    await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopped, () => {})
+    assert.equal(stopped.statusCode, 200)
+    assert.equal(stopped.body.data.run.state, 'stopping')
+
+    releaseFirstEntry()
+    await request
+    const terminal = await waitForSnapshot(() => {
+      const run = getAgentRun(runId)
+      return run && run.state === 'stopped' ? run : null
+    })
+
+    assert.equal(terminal.result.stopped, true)
+    assert.equal(terminal.result.summary.successCount, 1)
+    assert.equal(terminal.result.summary.pendingCount, 2)
+    assert.deepEqual(executor.executed, ['0:100:normal'])
+  })
+
+  it('replays an idempotent copilot set submission instead of executing twice', async () => {
+    const plan = copilotSetPlan(1)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+    const headers = { 'idempotency-key': 'copilot-set:replay:1' }
+
+    const first = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ selectedIndexes: [] }, headers),
+      first,
+      () => {}
+    )
+    assert.equal(first.statusCode, 200)
+
+    const replay = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ selectedIndexes: [] }, headers),
+      replay,
+      () => {}
+    )
+
+    assert.equal(replay.statusCode, 200)
+    assert.equal(replay.body.data.runId, first.body.data.runId)
+    assert.equal(replay.headers['Idempotency-Replayed'], 'true')
+    assert.equal(executor.executed.length, 1)
+  })
+
+  it('rejects a busy lease before execution and releases the idempotency key', async () => {
+    const plan = copilotSetPlan(1)
+    useCopilotSetRuntime(plan, createCopilotSetExecutor(plan))
+    await writeFile(lockFile, JSON.stringify({
+      pid: process.pid,
+      source: 'other-client',
+      taskName: '其他执行',
+      command: 'run',
+      startedAt: new Date().toISOString()
+    }))
+    const headers = { 'idempotency-key': 'copilot-set:busy:1' }
+
+    const busy = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({}, headers),
+      busy,
+      () => {}
+    )
+
+    assert.equal(busy.statusCode, 409)
+    assert.equal(busy.body.error.code, 'MAA_EXECUTION_BUSY')
+    assert.equal(busy.body.error.retryable, true)
+    assert.equal(getAgentRun(busy.body.error.details.runId).state, 'failed')
+
+    await rm(lockFile, { force: true })
+    const retry = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({}, headers),
+      retry,
+      () => {}
+    )
+
+    assert.equal(retry.statusCode, 200)
+    assert.notEqual(retry.body.data.runId, busy.body.error.details.runId)
+    assert.equal(getAgentRun(retry.body.data.runId).state, 'succeeded')
+  })
+
+  it('exposes a manual set waiting between entries and resumes it on demand', async () => {
+    const plan = copilotSetPlan(2)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    const started = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'manual' }),
+      started,
+      () => {}
+    )
+
+    assert.equal(started.statusCode, 200)
+    assert.equal(started.body.data.waitingForNext, true)
+    assert.equal(started.body.data.nextEntry.key, '1:101:normal')
+    assert.equal(started.body.data.summary.successCount, 1)
+    const runId = started.body.data.runId
+    assert.equal(getAgentRun(runId).state, 'waiting')
+    assert.deepEqual(await getMaaExecutionLeaseSnapshot(), { state: 'free', owner: null })
+
+    const snapshot = createResponse()
+    await findHandler('get', '/runs/current')({ headers: {}, query: {} }, snapshot, () => {})
+    assert.equal(snapshot.body.data.run.runId, runId)
+    assert.equal(snapshot.body.data.run.state, 'waiting')
+    assert.equal(snapshot.body.data.run.progress.phase, 'waiting_for_next')
+    assert.equal(snapshot.body.data.run.progress.pendingCount, 1)
+    assert.equal(snapshot.body.data.occupancy.state, 'pending')
+    assert.equal(snapshot.body.data.occupancy.runState, 'waiting')
+
+    const continued = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(
+      continueRequest(runId),
+      continued,
+      () => {}
+    )
+
+    assert.equal(continued.statusCode, 200)
+    assert.equal(continued.body.data.finished, true)
+    assert.equal(continued.body.data.waitingForNext, false)
+    assert.equal(continued.body.data.run.state, 'succeeded')
+    assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal'])
+    assert.equal(getAgentRun(runId).result.summary.successCount, 2)
+
+    const repeated = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(
+      continueRequest(runId),
+      repeated,
+      () => {}
+    )
+    assert.equal(repeated.statusCode, 200)
+    assert.equal(repeated.body.data.alreadyTerminal, true)
+  })
+
+  it('cycles a manual set through waiting until every selected entry is attempted', async () => {
+    const plan = copilotSetPlan(3)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    const started = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'manual' }),
+      started,
+      () => {}
+    )
+    const runId = started.body.data.runId
+    assert.equal(started.body.data.waitingForNext, true)
+    assert.equal(getAgentRun(runId).state, 'waiting')
+
+    const second = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(continueRequest(runId), second, () => {})
+    assert.equal(second.statusCode, 200)
+    assert.equal(second.body.data.waitingForNext, true)
+    assert.equal(second.body.data.nextEntry.key, '2:102:normal')
+    assert.equal(getAgentRun(runId).state, 'waiting')
+    assert.equal(getAgentRun(runId).result.summary.successCount, 2)
+
+    const third = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(continueRequest(runId), third, () => {})
+    assert.equal(third.statusCode, 200)
+    assert.equal(third.body.data.finished, true)
+    assert.equal(getAgentRun(runId).state, 'succeeded')
+    assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal', '2:102:normal'])
+  })
+
+  it('keeps the set waiting when the next entry cannot acquire the lease', async () => {
+    const plan = copilotSetPlan(2)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    const started = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'manual' }),
+      started,
+      () => {}
+    )
+    const runId = started.body.data.runId
+
+    await writeFile(lockFile, JSON.stringify({
+      pid: process.pid,
+      source: 'other-client',
+      taskName: '其他执行',
+      command: 'run',
+      startedAt: new Date().toISOString()
+    }))
+
+    const busy = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(
+      continueRequest(runId),
+      busy,
+      () => {}
+    )
+
+    assert.equal(busy.statusCode, 409)
+    assert.equal(busy.body.error.code, 'MAA_EXECUTION_BUSY')
+    assert.equal(busy.body.error.retryable, true)
+    assert.equal(getAgentRun(runId).state, 'waiting')
+    assert.equal(getAgentRun(runId).result.summary.pendingCount, 1)
+    assert.deepEqual(executor.executed, ['0:100:normal'])
+
+    await rm(lockFile, { force: true })
+    const continued = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(
+      continueRequest(runId),
+      continued,
+      () => {}
+    )
+    assert.equal(continued.statusCode, 200)
+    assert.equal(getAgentRun(runId).state, 'succeeded')
+  })
+
+  it('stops a waiting manual set and never starts the next entry', async () => {
+    const plan = copilotSetPlan(3)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    const started = createResponse()
+    await findHandler('post', '/copilot-sets/:id/execute')(
+      copilotSetRequest({ mode: 'manual' }),
+      started,
+      () => {}
+    )
+    const runId = started.body.data.runId
+
+    const stopped = createResponse()
+    await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopped, () => {})
+
+    assert.equal(stopped.statusCode, 200)
+    assert.equal(stopped.body.data.waitingRunStopped, true)
+    assert.equal(stopped.body.data.deviceStopRequested, false)
+    assert.equal(stopped.body.data.run.state, 'stopped')
+    assert.equal(stopped.body.data.run.result.summary.successCount, 1)
+    assert.equal(stopped.body.data.run.result.summary.pendingCount, 2)
+
+    const continued = createResponse()
+    await findHandler('post', '/actions/continue-copilot-set')(
+      continueRequest(runId),
+      continued,
+      () => {}
+    )
+    assert.equal(continued.statusCode, 200)
+    assert.equal(continued.body.data.alreadyTerminal, true)
+    assert.deepEqual(executor.executed, ['0:100:normal'])
   })
 })

@@ -13,6 +13,7 @@ import {
   getAgentRunStoreStatus,
   initializeAgentRunStore,
   markAgentRunStopping,
+  markAgentRunWaiting,
   releaseAgentRunIdempotency,
   setAgentRunAcceptedResult,
   shutdownAgentRunStoreForTests,
@@ -293,15 +294,22 @@ describe('agent run persistence', () => {
     }).run;
     startAgentRun(stopping.runId);
     markAgentRunStopping(stopping.runId);
+    const waiting = beginAgentRun({
+      operationId: 'waiting_operation',
+      idempotencyKey: 'active:waiting'
+    }).run;
+    startAgentRun(waiting.runId);
+    markAgentRunWaiting(waiting.runId);
     await flushAgentRunStore();
 
     const restored = await reload();
-    assert.equal(restored.interruptedRuns, 3);
+    assert.equal(restored.interruptedRuns, 4);
 
     for (const [runId, previousState] of [
       [accepted.runId, 'accepted'],
       [running.runId, 'running'],
-      [stopping.runId, 'stopping']
+      [stopping.runId, 'stopping'],
+      [waiting.runId, 'waiting']
     ]) {
       const run = getAgentRun(runId);
       assert.equal(run.state, 'interrupted');

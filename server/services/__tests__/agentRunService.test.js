@@ -12,6 +12,7 @@ import {
   getLatestTerminalAgentRun,
   listAgentRuns,
   markAgentRunStopping,
+  markAgentRunWaiting,
   releaseAgentRunIdempotency,
   requestAgentRunStop,
   resetAgentRunsForTests,
@@ -373,6 +374,29 @@ describe('agent run registry', () => {
       () => startAgentRunForExecution(stopping.runId),
       error => error.code === 'AGENT_RUN_STOPPED_BEFORE_START' && error.stopped === true
     );
+  });
+
+  it('keeps a waiting run active, resumes it and stops it without device rights', () => {
+    const run = beginAgentRun({ operationId: 'run_copilot_set' }).run;
+    startAgentRun(run.runId);
+    const waiting = markAgentRunWaiting(run.runId);
+    assert.equal(waiting.state, 'waiting');
+    assert.equal(waiting.finishedAt, null);
+    assert.deepEqual(
+      getActiveAgentRuns().map(active => [active.runId, active.state]),
+      [[run.runId, 'waiting']]
+    );
+
+    const resumed = startAgentRunForExecution(run.runId);
+    assert.equal(resumed.state, 'running');
+    assert.equal(resumed.startedAt, waiting.startedAt);
+    assert.equal(markAgentRunWaiting(run.runId).state, 'waiting');
+
+    const canceled = requestAgentRunStop(run.runId);
+    assert.equal(canceled.disposition, 'canceled');
+    assert.equal(canceled.run.state, 'stopped');
+    assert.deepEqual(canceled.run.result, { canceled: true, reason: 'stop_requested_while_waiting' });
+    assert.deepEqual(getActiveAgentRuns(), []);
   });
 
   it('lists every active run by stop priority and the latest terminal run by completion time', () => {
