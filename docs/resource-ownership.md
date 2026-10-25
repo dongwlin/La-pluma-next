@@ -11,7 +11,7 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 仓库、持有干员、干员目录的只读端点、载荷类型与 query key | `features/game-data` | 非页面微域；`shared/api` 不新增业务端点 |
-| 物品图标 URL | `features/game-data` | 纯 URL 构造，不发起请求、不进入 Query |
+| 物品图标 URL 与缓存版本 | `features/game-data` | 纯 URL 构造，不发起请求、不进入 Query；epoch 持久化在 localStorage，资源更新成功后推进 |
 | 跨域资源失效发布/订阅 | `features/resource-invalidation` | 只传资源作用域，不持有资源数据 |
 | 养成队列、设置、计划、材料刷新端点 | `features/training` | 队列/设置/计划的写入与领域语义仍归 training；材料刷新的命令编排归 statistics |
 | 掉落统计、今日掉落、今日开放关卡、识别/材料命令所有者 | `features/statistics` | 只读掉落/关卡供 Dashboard 使用；统计页读取已由 FPR-019 迁入 Query，识别/材料命令由 FPR-020 交付（见[统计识别命令与失效联动](statistics-commands.md)） |
@@ -46,7 +46,7 @@ import {
 | 仓库快照 | `GET /agent/data/depot` | DataStatistics（FPR-019 已迁 Query）；识别后影响养成与总览 | `gameDataKeys.resource('depot')` | Query 默认策略（30s stale、5min gc、可恢复失败重试）；不轮询，识别后显式失效；仅当资源更新重写已识别快照时才额外发布 `depot` |
 | 持有干员 | `GET /agent/data/operbox` | DataStatistics（FPR-019 已迁 Query）、OperatorTraining（FPR-044） | `gameDataKeys.resource('operbox')` | 同上；干员识别完成后失效 |
 | 干员目录 | `GET /agent/data/operators` | DataStatistics（FPR-019 已迁 Query）、OperatorTraining（FPR-044） | `gameDataKeys.resource('catalog')` | 同上；资源/热更新完成后失效 |
-| 物品图标 | 外部静态资源 URL | DataStatistics 仓库、掉落记录、养成材料 | 无 | 浏览器 HTTP/图片缓存；函数只拼 URL。资源更新若复用同一 URL，浏览器可能继续命中旧图，需要变更 URL（版本段）而不是建立 Query key |
+| 物品图标 | 外部静态资源 URL | DataStatistics 仓库、掉落记录、养成材料 | 无 | 浏览器 HTTP/图片缓存；`getItemIconUrl` 带 `?v=<epoch>`，epoch 由 FPR-026 在资源更新成功后推进并持久化到 `laPlumaItemIconVersion`，使用 `useItemIconCacheVersion()` 的页面随 epoch 重新渲染。不建立 Query key；干员头像仍是各页面直接构造的独立 URL，不在该 epoch 内 |
 | 养成队列（含材料进度） | `/agent/training/queue` 等 | OperatorTraining、Dashboard 快照 | `trainingKeys.resource('queue')` | 归 training；写后由命令刷新同一 key，不复制进 `game-data`；识别命令不再为提示文案额外读取 |
 | 掉落/开放关卡 | `/agent/drops/*`、`/agent/stages/open-today` | DataStatistics、Dashboard 快照 | 归 `statistics`（`drops` 已由 FPR-019 迁移） | 不进入 `game-data`；Dashboard 只通过完整快照读取 |
 
@@ -140,7 +140,7 @@ publishResourceInvalidation({
 
 `detail` 可选，例如应用计划时携带 `{ stageCount }`；接收方不得依赖未声明字段。队列命令的 `detail.source = 'training-queue-command'` 与设置所有者的 `detail.source = 'training-settings-owner'` 是各自任务声明的字段，供本页忽略自己的发布；外部发布不需要携带它。
 
-资源更新由 `features/settings` 的 `SettingsUpdateOwner` 在服务端确认成功后发布：core 更新与渠道切换在服务端同时同步资源，和“仅同步游戏资源”一样发布上表四个作用域；CLI 更新只改变 CLI 版本，不发布任何资源作用域。失败、取消与参数校验失败不发布。版本刷新由同一适配层失效 `settings/version`，不经过该端口。
+资源更新由 `features/settings` 的 `SettingsUpdateOwner` 在服务端确认成功后发布：core 更新与渠道切换在服务端同时同步资源，和“仅同步游戏资源”一样发布上表四个作用域，并推进物品图标缓存 epoch 使同一路径的新图换用新 URL；CLI 更新只改变 CLI 版本，不发布任何资源作用域，也不推进图标 epoch。失败、取消与参数校验失败不发布。版本刷新由同一适配层失效 `settings/version`，不经过该端口。
 
 ## 6. 未迁移页面的最小接收
 
@@ -159,7 +159,9 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `features/game-data/api/index.test.ts` | 仓库/持有干员/目录的 signal、旧空值、坏载荷、取消；图标 URL 编码且不发请求 |
+| `features/game-data/api/index.test.ts` | 仓库/持有干员/目录的 signal、旧空值、坏载荷、取消；图标 URL 编码、携带 epoch 查询参数且不发请求 |
+| `features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
+| `features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发订阅组件重渲染 |
 | `features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
 | `features/game-data/model/queries.test.ts` | 共享读取的 query key、空快照、载荷归一、失败与 signal |
 | `features/statistics/model/queries.test.ts`、`features/statistics/model/operatorFilters.test.ts` | 掉落 `days` 缓存身份；筛选、排序与阿米娅形态纯规则 |

@@ -76,14 +76,14 @@ const depot = unwrapApiResponse(result)
 
 ### Game data（`features/game-data/api/index.ts`）
 
-仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，FPR-018 起由该非页面微域唯一持有。物品图标不是端点：`getItemIconUrl` 只生成外部静态资源 URL，由浏览器缓存，不进入 Query。
+仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，FPR-018 起由该非页面微域唯一持有。物品图标不是端点：`getItemIconUrl` 只生成外部静态资源 URL，由浏览器缓存，不进入 Query；FPR-026 起 URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
 | `getDepotData(signal?)` | `GET /agent/data/depot` | `null` 或 `items` 数组 |
 | `getOperBoxData(signal?)` | `GET /agent/data/operbox` | `null` 或 `data` 数组 |
 | `getAllOperators(signal?)` | `GET /agent/data/operators` | 数组 |
-| `getItemIconUrl(iconId)` | 无请求 | 只拼 URL 并编码 `iconId` |
+| `getItemIconUrl(iconId, version?)` | 无请求 | 只拼 URL、编码 `iconId` 并附加图标缓存 epoch |
 
 ### Statistics（`features/statistics/api/index.ts`）
 
@@ -158,7 +158,7 @@ const depot = unwrapApiResponse(result)
 
 - `parseJsonResponse` 保持宽松：合法 JSON 即使不是 Agent 信封也会原样返回，operator-quotes、PRTS 代理等旧消费者不受影响。严格信封/载荷判断只在新只读入口中做。
 - 候选端点的函数名、位置参数和 `ApiResponse` 返回形状不变；`errorInfo.kind`/`status` 是新增字段，旧页面只读 `success`/`message`/`error`/`data` 时行为不变。
-- FPR-018 把 `getDepotData`/`getOperBoxData`/`getAllOperators` 的归属迁到 `features/game-data`，函数签名、端点与载荷校验不变；仓库内消费者全部改为经该域公开面导入后，statistics/training 不再转发这些函数。图标 helper 同域持有，但没有 Query key。
+- FPR-018 把 `getDepotData`/`getOperBoxData`/`getAllOperators` 的归属迁到 `features/game-data`，函数签名、端点与载荷校验不变；仓库内消费者全部改为经该域公开面导入后，statistics/training 不再转发这些函数。图标 helper 同域持有，没有 Query key；FPR-026 为其增加缓存 epoch 与订阅 hook，仍不发请求。
 - `fetchWithAuth` 现在按结构判断 `AbortError`，不再要求 `instanceof Error`。这修复了 `DOMException` 被改写成连接失败的问题；非取消路径不变。
 - 配置 key/格式、执行协议、存储与视觉均未改变。本契约可独立回滚：回滚后旧调用仍能读取同一端点，只是失去取消与领域校验。
 
@@ -178,7 +178,7 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/shared/api/readApi.test.ts` | signal 传到 fetch、`success=false`、坏载荷、非信封 JSON、2xx 以外状态、`HTTP_502` 描述、取消保持 `AbortError`、已取消不请求、传输失败分类、旧信封形状、`unwrapApiResponse` |
 | `client/src/shared/api/client.test.ts` | 离线/后端不可用文案；`DOMException` 取消不被改写 |
 | `client/src/shared/api/apiResponse.test.ts` | 空响应、非 JSON、结构化 Agent 错误；非信封原始载荷保持原样 |
-| `client/src/features/game-data/api/index.test.ts` | 仓库/持有干员/目录 signal、旧空值、坏载荷、取消；图标 URL 编码且不发请求 |
+| `client/src/features/game-data/api/index.test.ts` | 仓库/持有干员/目录 signal、旧空值、坏载荷、取消；图标 URL 编码、携带 epoch 且不发请求 |
 | `client/src/features/statistics/api/index.test.ts` | 掉落/开放关卡 signal、空值与坏载荷、路由误包错误信封、取消不追加停止请求 |
 | `client/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
 | `client/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |

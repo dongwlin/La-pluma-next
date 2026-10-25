@@ -135,7 +135,7 @@ section 只控制渲染哪个面板：connection 的 Query 在 section 分支之
 | `features/settings/model/configNormalization.test.ts` | connection 默认值与非法字段回退、未知字段保留、整份草稿比较；auto-update 归一化与 `HH:MM` 校验 |
 | `features/settings/model/connectionConfig.test.ts` | 初始状态、编辑 revision/dirty、服务端采用条件、编辑期间迟到读取、脏草稿读取、保存前读取失效、保存在途读取、保存串行、保存期间编辑、失败保留与重试、未知字段回写、重置边界与保存中忽略、`settings/maa-config` key/signal/contract 失败/信封失败 |
 | `features/settings/model/configSection.test.ts` | 存储键与事件名、非法存储回退、写入不抛错、可编辑能力、合法事件过滤与注销 |
-| `features/settings/model/autoUpdateConfig.test.ts` | 自动更新读取守卫、本地回退与完整提交（FPR-026） |
+| `features/settings/model/autoUpdateConfig.test.ts` | 自动更新读取守卫、确认保存后的服务端采用、本地回退与完整提交（FPR-026） |
 | `features/settings/api/index.test.ts` | `getConfig` signal、profile 载荷校验、非法已知字段拒绝与未知字段保留 |
 | `features/settings/pages/ConfigManager.layout.test.tsx` | section 导航与只读说明、初始读取失败、初始加载/refresh 不覆盖编辑、保存期间继续编辑与跨 section 保存、重置只改草稿、外部 section 事件/存储/监听清理、Activity 恢复保留草稿并重新订阅、自动更新保存边界、连接保存失败 |
 

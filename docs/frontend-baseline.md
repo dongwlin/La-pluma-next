@@ -100,7 +100,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | --- | --- | --- |
 | 四类读取 | 四路领域 query：`depotQueryOptions`、`operBoxQueryOptions`、`operatorCatalogQueryOptions`、`dropStatisticsQueryOptions(days)`；首屏并行，按作用域失效，Query 负责 signal/竞态/失败重试 | depot/持有干员/目录资源域；statistics 掉落查询 |
 | 识别命令 | `statisticsCommandOwner.run('depot'/'operbox')`：控制器 intent + run-task（Depot/OperBox，waitForCompletion=true）；解析端点轮询到可用快照；超时/取消后继续等待或复用同一幂等键，不重新执行设备命令 | statistics 命令所有者 + task-execution 控制器 |
-| 材料获取/图片 | `statisticsCommandOwner.run('materials')` 调 training 的 POST `/agent/actions/fetch-training-materials`，成功发布 `materials`/`training-queue`/`dashboard-snapshot`；getItemIconUrl 生成 GitHub raw URL | 命令所有者；图标元数据所有者 |
+| 材料获取/图片 | `statisticsCommandOwner.run('materials')` 调 training 的 POST `/agent/actions/fetch-training-materials`，成功发布 `materials`/`training-queue`/`dashboard-snapshot`；getItemIconUrl 生成带缓存 epoch 的 GitHub raw URL，资源更新成功后推进 epoch | 命令所有者；图标元数据所有者 |
 | 跨域失效 | 识别解析成功发布 `depot` 或 `operbox` + `materials`/`training-queue`/`dashboard-snapshot`；页面把解析快照写入 Query；材料刷新不重读目录 | `features/resource-invalidation` 端口 |
 | UI | activeTab、六项筛选/排序、openMenu、图片加载/失败、dropDays、四区 loading/error；命令按钮的 running/resume 状态来自 `useStatisticsCommandState()`；FilterMenu document pointerdown/focusin/keydown、window resize/捕获 scroll | 最近的统计面板/筛选模型；命令状态归 statistics 命令所有者 |
 
@@ -126,11 +126,11 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 配置读取/草稿/保存 | GET `/agent/config/maa/default` 由 `settings/maa-config` Query 读取（signal、载荷校验）；`ConnectionConfigOwner` 持有草稿/revision/dirty，POST maa/default wire `{connection: snapshot}`；读取令牌使初始加载与 refresh 不覆盖编辑或未保存草稿，旧保存不确认新草稿；重置只改草稿 | settings connection Query + 草稿所有者（FPR-024） |
 | 自动更新 | `model/autoUpdateConfig.ts` 的模块级 `AutoUpdateConfigOwner`：读取服务端 `auto-update` 并在失败时回退 `autoUpdateConfig` 本地草稿；touched/revision 防迟到读取与旧保存覆盖新编辑；保存 = user config + `/agent/actions/configure-auto-update`，两步成功才清 dirty；不自动重试、无 AbortSignal | settings 自动更新完整提交所有者（FPR-026） |
 | 设备与连接 | GET `/agent/actions/discover-devices?adbPath=…` 与 POST `/agent/actions/test-connection` 由 `model/deviceConnection.ts` 的模块级 `DeviceConnectionOwner` 持有：两条链独立 loading/error/取消，signal 到 fetch，Activity cleanup abort；选择设备以最新草稿 revision 回填 `adb_path`/`address` 后测试，响应不写草稿；POST `/agent/actions/open-config-directory` 由 `useSettingsConfigDirectory().open()` 执行 | 设备发现/连接测试所有者（FPR-025） |
-| 版本/更新 | 版本读取由 `settings/version` Query 持有（signal、归一化）；POST `/agent/actions/update-core`（普通更新不传 version，切渠道传 stable/beta）、`/agent/actions/update-cli`、`/agent/actions/hot-update-resources` 由 `model/updateCommands.ts` 的 `SettingsUpdateOwner` 持有，四条命令共用一条在途槽位；成功确认后失效同一版本 Query，core/渠道/资源更新额外发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` | 版本归资源域（FPR-025）；更新命令所有者与显式资源失效（FPR-026） |
+| 版本/更新 | 版本读取由 `settings/version` Query 持有（signal、归一化）；POST `/agent/actions/update-core`（普通更新不传 version，切渠道传 stable/beta）、`/agent/actions/update-cli`、`/agent/actions/hot-update-resources` 由 `model/updateCommands.ts` 的 `SettingsUpdateOwner` 持有，四条命令共用一条在途槽位；成功确认后失效同一版本 Query，core/渠道/资源更新额外发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` 并推进物品图标 epoch | 版本归资源域（FPR-025）；更新命令所有者与显式资源失效（FPR-026） |
 | 配置目录 | GET `/agent/config-directory` 由 `settings/config-directory` Query 持有（接受 `{path}` 与旧字符串）；失败重试走同一 key，后台刷新失败保留最近成功路径；两个“打开目录”入口调用同一命令 | 配置目录 Query（FPR-025） |
 | 存储与 UI | `laPlumaConfigSection` 读写与 window `la-pluma-config-section` 订阅由 `model/configSection.ts` + `useConfigSection` 拥有并在 Effect cleanup 注销；`autoUpdateConfig` 由自动更新所有者写入（成功加载/每次编辑/保存成功），服务端加载失败时读作 fallback；section 来自 section owner，设备/更新/自动更新反馈来自各自 owner | section 归设置 section owner（FPR-024）；设备/版本/目录归 FPR-025；更新与自动更新归 FPR-026 |
 
-无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/cli/资源更新成功后按作用域失效目录、材料、计划前提与总览；CLI 只失效版本，不发布资源作用域。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。设备发现/连接测试在 Activity 隐藏时取消本地等待，已完成结果保留；版本与配置目录 Query 随观察者注销/恢复；更新命令与自动更新保存不因 Activity 隐藏中断，反馈与草稿由模块级 owner 保留。
+无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/资源更新成功后按作用域失效目录、材料、计划前提与总览，并推进物品图标 epoch；CLI 只失效版本。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。设备发现/连接测试在 Activity 隐藏时取消本地等待，已完成结果保留；版本与配置目录 Query 随观察者注销/恢复；更新命令与自动更新保存不因 Activity 隐藏中断，反馈与草稿由模块级 owner 保留。
 
 ### Logs — `features/logs/pages/LogViewer.tsx`
 

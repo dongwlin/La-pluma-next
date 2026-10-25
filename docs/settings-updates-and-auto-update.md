@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | core 更新 / 渠道切换 / CLI 更新 / 资源热更新 | `features/settings/model/updateCommands.ts` 的 `SettingsUpdateOwner` | 显式 POST 命令；共用一条在途槽位；不进入 Query | 版本读取、跨域失效发布 |
 | 更新后的版本同步 | `features/settings/hooks/useSettingsUpdates.ts` 调用 `useSettingsVersion().reload()` | 后者 `invalidateQueries` 同一 `settings/version` | 伪造版本快照 |
-| 更新后的跨域失效 | 同一 hook | 成功确认后发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`（`cause: resource-update`） | 清空 Query 缓存、轮询 |
+| 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`（`cause: resource-update`） | 清空 Query 缓存、轮询 |
 | 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
 | 自动更新归一化与时间校验 | `features/settings/model/configNormalization.ts` | 纯函数 | 草稿生命周期 |
 | 页面反馈、按钮 loading、反馈渲染 | `pages/ConfigManager.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
@@ -54,10 +54,15 @@
 
 ## 3. 成功后的版本与资源失效
 
-更新命令确认成功后，React 适配层执行两项副作用：
+更新命令确认成功后，React 适配层执行三项副作用：
 
-1. **版本失效**：调用 `useSettingsVersion().reload()`，其内部 `queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被 30s 新鲜期挡住。
-2. **资源失效**：core 更新、渠道切换与资源热更新发布 `catalog`、`materials`、`training-plan`、`dashboard-snapshot`，`cause: 'resource-update'`。CLI 更新只改变 CLI 版本，不发布资源失效。
+1. **物品图标缓存版本**：资源变化成功后调用 `invalidateItemIconCache()`，推进并持久化 `laPlumaItemIconVersion`；`getItemIconUrl()` 使用 `?v=<epoch>`，训练/统计页通过 `useItemIconCacheVersion()` 重新渲染，避免浏览器继续命中同一路径的旧图。CLI 更新不推进。
+2. **版本失效**：调用 `useSettingsVersion().reload()`，其内部 `queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被 30s 新鲜期挡住。
+3. **资源失效**：core 更新、渠道切换与资源热更新发布 `catalog`、`materials`、`training-plan`、`dashboard-snapshot`，`cause: 'resource-update'`。CLI 更新只改变 CLI 版本，不发布资源失效，也不推进图标 epoch。
+
+完成提示（成功或失败）在命令 HTTP 返回后立即发出，资源失效与版本重取随后执行；按钮在命令返回时恢复可点，早于版本重取结束（迁移前的 loading 会覆盖到版本重取完成）。因此用户立即发起第二条命令时，其开始提示不会被第一条的成功提示覆盖。
+
+图标 epoch 由本客户端发起的手动更新推进；服务端定时自动更新或其他客户端触发的资源变化不会主动通知本标签页，需等待浏览器缓存过期或本客户端下一次手动更新。干员头像仍是各页面直接构造的独立 URL，不在该机制内。
 
 影响范围与[资源归属与失效端口](resource-ownership.md)第 5 节一致：
 
@@ -66,6 +71,7 @@
 | OperatorTraining | `catalog`/`materials` | 失效候选与计数 query；`training-plan` 作废旧计划预览 |
 | DataStatistics | `catalog` | 失效干员目录读取 |
 | Dashboard | `dashboard-snapshot` | 完整快照刷新，失败保留旧快照 |
+| 物品图标 | 本地 icon cache epoch | `useItemIconCacheVersion()` 触发重渲染，`<img src>` 换用 `?v=<epoch>` |
 | 其它资源（`depot`、`operbox`、`drops` 等） | 不发布 | 识别快照与掉落不由资源更新重写，保持缓存 |
 
 失败与取消不发布失效，也不重取版本以外的资源。失效只标记/重取明确受影响的 key，不调用 `queryClient.clear()`，不整体清空无关缓存。
@@ -81,7 +87,7 @@
 3. 本地 JSON 损坏时给出 `自动更新设置读取失败: <解析原因>`，不伪造草稿。
 4. 服务端成功但载荷不可归一化时按“无服务端错误”走本地回退；没有本地草稿且无服务端错误时保持默认值、不提示。
 
-读取守卫：读取期间出现任何编辑都会把 owner 标记为 touched；迟到响应不写草稿、不覆盖本地草稿。页面每次真正挂载读取一次；Activity 隐藏/恢复不重读（hook 的初始化标记随页面 state 保留），真正重挂载会重读，但 touched 仍阻止旧副本覆盖未保存草稿。
+读取守卫：`load()` 记录开始时的 revision 与 touched；读取期间出现编辑（revision 推进、touched=true）或确认保存（revision 推进）时，迟到响应不写草稿。页面每次真正挂载读取一次；Activity 隐藏/恢复不重读（hook 的初始化标记随页面 state 保留），真正重挂载会重读：未保存草稿不会被覆盖，确认保存后的读取可以重新采用服务端副本（例如其它客户端已更新）。
 
 ### 4.2 草稿与保存
 
@@ -96,7 +102,7 @@
 1. `enabled && time` 不是 `00:00–23:59` 的 `HH:MM` 时直接返回 `invalid`，不调用任何端点。
 2. `saveUserConfig('auto-update', config)`。失败返回 `failed`，不调用调度接口，保留草稿与 dirty。
 3. `setupAutoUpdate(config)`。`result.success` 且（禁用时或响应 data 的 `success !== false`）才算完整成功。
-4. 完整成功且 revision 未变：写本地 fallback、`dirty=false`、success 反馈（`自动更新已启用，每天 <time> 执行` / `自动更新已禁用`）。
+4. 完整成功且 revision 未变：写本地 fallback、清除 touched、推进 revision（使保存前发出的读取失效）、`dirty=false`、success 反馈（`自动更新已启用，每天 <time> 执行` / `自动更新已禁用`）。
 5. 完整成功但保存期间出现新编辑：返回 `superseded`，保留新草稿与 dirty，提示“此前设置已保存，当前更改尚未保存”。
 6. 配置已保存而调度失败：返回 `failed`，提示 `自动更新设置应用失败: <原因>`，配置不回滚，用户可再次保存重试。
 
@@ -120,22 +126,26 @@
 ## 6. 兼容与回滚
 
 - 端点、请求体、响应体未改变；未修改服务端。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
-- localStorage 键仍为 `autoUpdateConfig`，写入时机与内容不变（成功加载、每次编辑、保存成功）。
-- 无新增 localStorage；无 Query key 新增；版本继续复用 `settings/version`。
+- localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、每次编辑、保存成功）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
+- 无 Query key 新增；版本继续复用 `settings/version`；物品图标仍不进入 Query。
 - 行为差异：
   - 更新成功后新增 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` 失效发布，关闭 FPR-018 留下的发布端缺口。
+  - 资源变化后 `getItemIconUrl()` 从固定 URL 变为 `?v=<epoch>`；epoch 持久化，浏览器刷新后仍与更新前不同。干员头像仍是各页面直接构造的独立 URL，不在此机制内。
   - 版本同步由 `refetchQueries` 改为 `invalidateQueries`，活动页面立即重取，隐藏页面恢复后重取，不再因新鲜期保留旧版本。
-  - 更新/自动更新的反馈与草稿由模块级 owner 持有：Activity 隐藏与真正重挂载都不丢失；自动更新真正重挂载仍会重读服务端，但不会覆盖 touched 草稿。
+  - 更新命令完成提示在 HTTP 返回后立即发出，按钮同时恢复；版本重取在后台继续（迁移前 loading 会覆盖到版本重取结束）。
+  - 更新/自动更新的反馈与草稿由模块级 owner 持有：Activity 隐藏与真正重挂载都不丢失；自动更新真正重挂载仍会重读服务端，未保存草稿不会被覆盖；确认保存会清除 touched 并推进 revision，之后的重挂载读取可采用服务端副本。
   - 更新成功后仍不自动重试命令；版本读取沿用 Query 默认的可恢复失败重试。
-- 独立回滚范围：`model/updateCommands.ts`、`model/autoUpdateConfig.ts`、`hooks/useSettingsUpdates.ts`、`hooks/useSettingsAutoUpdate.ts` 与 `ConfigManager` 接线。回滚后恢复页面 state 与直连调用，不需要数据迁移。
+- 独立回滚范围：`model/updateCommands.ts`、`model/autoUpdateConfig.ts`、`hooks/useSettingsUpdates.ts`、`hooks/useSettingsAutoUpdate.ts`、`features/game-data/model/itemIconCache.ts`、`features/game-data/hooks/useItemIconCacheVersion.ts`、`features/game-data/api/index.ts` 的图标 URL、训练/统计页的图标接线与 `ConfigManager` 接线。回滚后恢复页面 state 与直连调用，不需要数据迁移；`laPlumaItemIconVersion` 可保留为无害的孤立键或手动清除。
 
 ## 7. 回归证据
 
 | 测试 | 覆盖 |
 | --- | --- |
 | `features/settings/model/updateCommands.test.ts` | 渠道目标策略、失败详情新/旧形状、资源重试条件、四条命令互斥与重复忽略、core/渠道/CLI/资源成功与失败文案、网络异常、CLI 不产生页内反馈、无自动重试、reset |
-| `features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、后续成功读取清空旧回退警告、迟到读取不覆盖编辑、服务端失败本地回退与无回退错误、坏服务端载荷与坏本地 JSON、编辑 dirty/revision/反馈清理、无效时间、保存 + 调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑为 `superseded`、保存互斥、抛错路径、reset |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试、CLI 成功只重取版本、core/热更新成功发布四类失效、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界 |
+| `features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、后续成功读取清空旧回退警告、迟到读取不覆盖编辑、保存前读取不覆盖已保存草稿、确认保存后重挂载采用服务端副本、服务端失败本地回退与无回退错误、坏服务端载荷与坏本地 JSON、编辑 dirty/revision/反馈清理、无效时间、保存 + 调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑为 `superseded`、保存互斥、抛错路径、reset |
+| `features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
+| `features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发使用图标的组件重渲染 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试/不推进图标 epoch、CLI 成功只重取版本且不推进图标 epoch、core/热更新成功发布四类失效并推进图标 epoch、成功提示先于版本重取、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界 |
 
 针对性命令（仓库根目录）：
 
