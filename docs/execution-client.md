@@ -50,11 +50,11 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | --- | --- |
 | `start()` | 引用计数启动；返回的释放函数只停止本地观察 |
 | `refresh(reason?)` | 读取快照；`reconnect`/`resume` 先按已知 `runId` 查询 |
-| `beginExecutionIntent(operationId, { idempotencyKey? })` | 生成一次逻辑提交的键；重试必须复用同一 intent |
-| `settleExecutionIntent(intent, response, error?)` | 收敛提交结果，只允许最新 intent 更新身份 |
-| `submitExecution(operationId, request, options?)` | 生成键、执行请求、收敛响应；本地 signal 中止不等于停止 |
-| `adoptSubmission(response, operationId)` | 为日常流程/作业集等域端点采纳响应中的 `runId` |
-| `observeRun(runId \| null)` | 绑定或解除调用方身份，不发送停止 |
+| `beginExecutionIntent(operationId, { idempotencyKey?, scope? })` | 生成一次逻辑提交的键与领域标签；重试必须复用同一 intent |
+| `settleExecutionIntent(intent, response, error?)` | 收敛提交结果，只允许最新 intent 更新身份，并保存 `scope` |
+| `submitExecution(operationId, request, options?)` | 生成键、执行请求、收敛响应；`options.scope` 标记调用方领域；本地 signal 中止不等于停止 |
+| `adoptSubmission(response, operationId, { scope? })` | 为日常流程/作业集等域端点采纳响应中的 `runId` |
+| `observeRun(runId \| null, operationId?, scope?)` | 绑定或解除调用方身份，不发送停止；重新绑定已持久化身份时应传回原 `scope` |
 | `stopTrackedRun()` | 按当前身份停止；没有身份时返回 `null`，不退化为旧式“停止当前任务” |
 | `abortObservation()` / `resumeObservation()` | 中止/恢复本地观察，不改变服务端执行 |
 | `useExecutionObservation()` | 应用级启动观察，通常在 `App` 中调用一次 |
@@ -69,6 +69,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `submission` | `idle`/`pending`/`accepted`/`rejected`/`unknown`；传输失败一律 `unknown` |
 | `snapshot` | 最近一次成功的 `RunSnapshot`，失败时不清空 |
 | `trackedRunId` / `trackedRun` | 调用方自己的身份与最近观察到的记录 |
+| `trackedScope` | 调用方提交时声明的领域标签（如 `roguelike`）；只用于客户端判断 run 归属 |
 | `hasActiveRun` | 快照 `activeRuns` 非空，或已跟踪的 run 仍处于活动状态 |
 | `occupancy` | 服务端设备占用投影，可直接展示但不能据此推断执行结果 |
 
@@ -79,8 +80,9 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 1. 每次逻辑提交用 `beginExecutionIntent` 取一个幂等键；同一次重试复用 intent，不能生成第二个键。键格式为 `[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}`，由服务端按 `operationId` 分区。
 2. 提交响应通过 `data.runId` 取得身份，`data.run` 可用时立即作为 `trackedRun`；没有 `runId` 的旧同步响应不会被伪造出身份。
 3. 身份写入 `localStorage['la-pluma-execution-identity-v1']`，保留到该 run 进入终态为止。终态后清除持久化身份，本次会话仍可展示最后记录。
-4. `settleExecutionIntent` 只接受最新 intent 的响应。较早的提交即使更晚返回，也不会覆盖新 run；较早的快照请求同理，晚到响应由序列号丢弃。
-5. `stopRun` 始终携带 `runId`；终态旧 run 只返回 `alreadyTerminal`，accepted 会被取消而不发设备命令，非当前活动 run 由服务端拒绝。
+4. `scope` 是调用方自己的领域标签，随身份一起持久化，只用于判断“这个 run 是不是本页面发起的”。它不是服务端字段，不参与身份、幂等分区或键格式；缺省为 `null`，旧记录可正常读取。一个域不应把其它域 `scope` 的 run 展示成自己的执行。
+5. `settleExecutionIntent` 只接受最新 intent 的响应。较早的提交即使更晚返回，也不会覆盖新 run；较早的快照请求同理，晚到响应由序列号丢弃。
+6. `stopRun` 始终携带 `runId`；终态旧 run 只返回 `alreadyTerminal`，accepted 会被取消而不发设备命令，非当前活动 run 由服务端拒绝。
 
 ## 4. 观察、断线与重连
 
@@ -106,7 +108,8 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 
 - `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。
 - Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。
-- 现有页面仍走旧路径（`tasks/status` 轮询、旧 `stopTask`、页面内作业集编排），本阶段不删除这些写入者。页面迁移分别由肉鸽、作业、自动化执行迁移任务接入控制器的提交/停止/订阅，再由运行状态单源任务统一全局展示。
+- 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染运行/停止按钮。停止走 `stopTrackedRun()`，确认期间由快照推进；停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面不再写 `statusStore.isActive`。
+- 作业、自动化与 Dashboard 仍走旧路径（`tasks/status` 轮询、旧 `stopTask`、页面内作业集编排），本阶段不删除这些写入者。页面迁移分别由作业、自动化执行迁移任务接入控制器的提交/停止/订阅，再由运行状态单源任务统一全局展示。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
 - 旧响应字段、旧停止入口与旧同步提交保持可用；回退前端控制器不需要删除服务端 Run 能力，也不会让已持久化的终态记录失效。
 
@@ -115,11 +118,12 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | 测试 | 固定行为 |
 | --- | --- |
 | `api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；旧 `tasks/status`、`stopTask` 仍可用 |
-| `controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
+| `controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 随身份提交/持久化/恢复，未知身份时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
+| `roguelike/pages/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；按 `runId` 停止且确认中重复点击只发一次；Activity 隐藏/恢复不遗留锁定按钮；停止确认超时与拒绝后可重试；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
 
 ## 8. 尚未覆盖
 
-- 页面提交仍不传幂等键，刷新后的旧断点仍可能重提；由自动化执行迁移与旧断点转换任务处理。
-- 202 后转轮询、409 占用重试、manual 作业集“下一关”与页面内停止确认仍属于各域迁移任务。
-- 全局运行展示仍由页面与连接监测器争写 `statusStore.isActive`，由运行状态单源任务统一从快照派生。
+- 作业与自动化页面的提交仍不传幂等键，旧断点仍可能重提；由作业执行迁移、自动化执行迁移与旧断点转换任务处理。
+- 409 占用重试、manual 作业集“下一关”与作业页的停止确认仍属于对应域迁移任务。
+- 全局运行展示仍由页面与连接监测器争写 `statusStore.isActive`；肉鸽页已停止写入，其余写入者和统一投影由运行状态单源任务处理。
 - 控制器轮询 `runs/current` 的读取成本（每次读取租约文件）由性能验证任务复核。

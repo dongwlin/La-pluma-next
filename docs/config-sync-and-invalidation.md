@@ -23,7 +23,7 @@
 | 完整成功条件 | `saveUserConfig` 成功 | `saveUserConfig` 成功 | `saveUserConfig` 成功且 `setupSchedule`/`stopSchedule` 成功 |
 | 加载时迁移 | `app` → `cli`；raid `1`/`2` → `raid`/`both` | 无 | schedule `entries`/`times` 兼容；禁用项只保留在本地 |
 
-实现位置：Combat 的模块队列与令牌见 `features/combat/pages/CombatTasks.tsx:47`，加载与迁移见 `:281`、`:385`、`:407`，自动保存见 `:467`；Roguelike 见 `features/roguelike/pages/RoguelikeTasks.tsx:26`、`:132`、`:237`、`:284`；Automation 的完整提交见 `features/automation/pages/AutomationTasks.tsx:1381`，加载见 `:1696`，schedule 编辑入口见 `:1436`、`:1795`。
+实现位置：Combat 的模块队列与令牌见 `features/combat/pages/CombatTasks.tsx:47`，加载与迁移见 `:281`、`:385`、`:407`，自动保存见 `:467`；Roguelike 见 `features/roguelike/pages/RoguelikeTasks.tsx:25`、`:112`、`:188`、`:209`；Automation 的完整提交见 `features/automation/pages/AutomationTasks.tsx:1381`，加载见 `:1696`，schedule 编辑入口见 `:1436`、`:1795`。
 
 三者共享的语义只有“pending 表示本设备有一份尚未确认写入服务端的草稿”。以下不属于共享规则：提交时机、队列寿命、完成条件、迁移与失败恢复——它们在三个域中分别成立，不能用一个通用 hook 抹平。
 
@@ -120,7 +120,7 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 | 测试文件 | 覆盖 |
 | --- | --- |
 | `features/combat/pages/CombatTasks.test.tsx` | pending 跨 remount + 手动重试；旧保存响应不清新令牌；`app→cli` 与 raid 迁移（服务端/本地）；迟到加载缺口；Activity 恢复；搜索/预览竞态 |
-| `features/roguelike/pages/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载缺口；Activity 恢复；执行状态观察 |
+| `features/roguelike/pages/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载缺口；Activity 恢复；另含 FPR-008 的执行接线用例（Run 提交/停止/恢复） |
 | `features/automation/pages/AutomationTasks.config.test.tsx` | 配置 + schedule 完整成功；保存失败不碰 schedule；schedule 半失败保留 pending；disabled/全禁用走 stop；跨 mount 旧响应保护；迟到加载保护；stale pending 缺口；应用计划事件重载 |
 | `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 识别完成只更新本页并读一次 queue；各数据源独立错误与重试；Activity 恢复 |
