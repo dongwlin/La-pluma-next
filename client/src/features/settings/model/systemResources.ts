@@ -12,7 +12,7 @@ import {
   isRecord,
   unwrapApiResponse,
 } from '@/shared/api'
-import { getConfigDir, getVersion, type ConfigDirectoryValue } from '../api'
+import { getConfigDir, getVersion } from '../api'
 import { settingsKeys } from './queryKeys'
 
 export interface MaaResourceInfo {
@@ -74,7 +74,7 @@ export const normalizeMaaVersionInfo = (value: unknown): MaaVersionInfo | null =
 /**
  * 兼容服务端当前的 `{ path }` 与旧的纯字符串；空白路径视为不可用。
  */
-export const normalizeConfigDirectoryPath = (value: ConfigDirectoryValue | unknown): string | null => {
+export const normalizeConfigDirectoryPath = (value: unknown): string | null => {
   if (typeof value === 'string') {
     return value.trim() ? value : null
   }

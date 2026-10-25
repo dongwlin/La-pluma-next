@@ -719,6 +719,25 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.textContent).toContain('已连接到 emulator-5554')
   })
 
+  it('shows a failed connection test without changing discovery results', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    mocks.testConnection.mockResolvedValueOnce({
+      success: true,
+      data: { success: false, message: '设备 emulator-5554 未授权，请在模拟器中允许 USB 调试' },
+    })
+    await act(async () => buttonByText('测试连接')?.click())
+    await flush()
+
+    const alert = container.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain('设备 emulator-5554 未授权')
+    expect(container.textContent).toContain('emulator-5554')
+    expect(buttonByText('测试连接')?.disabled).toBe(false)
+  })
+
   it('keeps discovery loading independent from connection testing', async () => {
     const pendingDiscovery = deferred<{ success: boolean; data: unknown }>()
     mocks.discoverDevices.mockReturnValueOnce(pendingDiscovery.promise)

@@ -311,6 +311,7 @@ export default function ConfigManager() {
   }
 
   const handleUseDiscoveredDevice = (device: DiscoveredDevice) => {
+    setConfigFeedback(null)
     selectDiscoveredDevice(device)
   }
 

@@ -55,9 +55,11 @@ export function useSettingsConfigDirectory(): UseSettingsConfigDirectoryResult {
   }, [])
 
   const loaded = query.data !== undefined
+  // 手动重试时 Query 仍可能保留上一次错误；只要在取数就回到 loading，
+  // 与迁移前“重试即显示正在读取目录”一致。
   const status: ConfigDirectoryStatus = loaded
     ? 'ready'
-    : query.isError ? 'error' : 'loading'
+    : query.isFetching ? 'loading' : query.isError ? 'error' : 'loading'
 
   return {
     path: query.data ?? '',
