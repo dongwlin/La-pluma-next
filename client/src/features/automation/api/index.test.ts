@@ -11,7 +11,7 @@ vi.mock('@/shared/api', () => ({
   parseJsonResponse: mocks.parseJsonResponse,
 }))
 
-import { executeScheduleNow } from './index'
+import { executeScheduleNow, runCurrentActivity } from './index'
 
 const readHeaders = (init: RequestInit) => new Headers(init.headers)
 
@@ -46,5 +46,32 @@ describe('automation schedule execution api', () => {
       taskFlow: [{ id: 'startup-1' }],
       waitForCompletion: false,
     })
+  })
+})
+
+describe('automation activity execution api', () => {
+  beforeEach(() => {
+    mocks.fetchWithAuth.mockReset().mockResolvedValue({ ok: true })
+    mocks.parseJsonResponse.mockReset().mockResolvedValue({ success: true })
+  })
+
+  it('keeps the synchronous activity run without a key by default', async () => {
+    await runCurrentActivity()
+
+    const [url, init] = mocks.fetchWithAuth.mock.calls[0]!
+    expect(url).toBe('http://localhost:3000/api/agent/activity/run')
+    expect(init.method).toBe('POST')
+    expect(readHeaders(init).get('Idempotency-Key')).toBeNull()
+    expect(init.body).toBeUndefined()
+  })
+
+  it('forwards the controller idempotency key and abort signal', async () => {
+    const signal = new AbortController().signal
+    await runCurrentActivity({ idempotencyKey: 'run_current_activity_copilots-20261025-01', signal })
+
+    const [, init] = mocks.fetchWithAuth.mock.calls[0]!
+    expect(readHeaders(init).get('Idempotency-Key')).toBe('run_current_activity_copilots-20261025-01')
+    expect(init.signal).toBe(signal)
+    expect(init.body).toBeUndefined()
   })
 })

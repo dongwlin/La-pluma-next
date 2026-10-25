@@ -1,16 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useStatusStore } from './statusStore'
+import type { GlobalRunStatus } from '@/features/task-execution'
+
+const IDLE: GlobalRunStatus = { phase: 'idle', isRunning: false, runId: null, label: null, detail: null }
+const RUNNING: GlobalRunStatus = {
+  phase: 'running',
+  isRunning: true,
+  runId: 'run-1',
+  label: '正在执行: 收取信用',
+  detail: '今日流程执行中',
+}
+const OCCUPIED: GlobalRunStatus = {
+  phase: 'occupied',
+  isRunning: false,
+  runId: null,
+  label: '设备被其他任务占用',
+  detail: null,
+}
 
 describe('statusStore', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     useStatusStore.getState().clearMessage()
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus(IDLE)
     useStatusStore.getState().setBackendStatus('unknown')
   })
 
   afterEach(() => {
     useStatusStore.getState().clearMessage()
+    useStatusStore.getState().applyRunStatus(IDLE)
     useStatusStore.getState().setBackendStatus('unknown')
     vi.useRealTimers()
   })
@@ -42,25 +60,45 @@ describe('statusStore', () => {
     expect(useStatusStore.getState().message).toBe('新提示')
   })
 
-  it('keeps active messages until execution becomes inactive', () => {
-    useStatusStore.getState().setActive(true)
+  it('keeps active messages until the projected run leaves the device busy', () => {
+    useStatusStore.getState().applyRunStatus(RUNNING)
     useStatusStore.getState().setMessage('正在执行任务', 'info')
     vi.advanceTimersByTime(20000)
 
     expect(useStatusStore.getState().message).toBe('正在执行任务')
+    expect(useStatusStore.getState().runStatus).toEqual(RUNNING)
 
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus(IDLE)
     vi.advanceTimersByTime(10000)
     expect(useStatusStore.getState().message).toBe('')
   })
 
-  it('does not postpone dismissal when inactive state is reported repeatedly', () => {
+  it('treats external occupancy as busy without claiming a run', () => {
+    useStatusStore.getState().applyRunStatus(OCCUPIED)
+    useStatusStore.getState().setMessage('正在检查更新', 'info')
+    vi.advanceTimersByTime(20000)
+
+    expect(useStatusStore.getState().message).toBe('正在检查更新')
+    expect(useStatusStore.getState().runStatus.phase).toBe('occupied')
+  })
+
+  it('does not postpone dismissal when an idle projection is reported repeatedly', () => {
     useStatusStore.getState().setMessage('配置已保存', 'success')
     vi.advanceTimersByTime(1000)
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus(IDLE)
     vi.advanceTimersByTime(500)
 
     expect(useStatusStore.getState().message).toBe('')
+  })
+
+  it('ignores a projection identical to the current one', () => {
+    useStatusStore.getState().applyRunStatus(RUNNING)
+    const subscriber = vi.fn()
+    const unsubscribe = useStatusStore.subscribe(subscriber)
+    useStatusStore.getState().applyRunStatus({ ...RUNNING })
+
+    expect(subscriber).not.toHaveBeenCalled()
+    unsubscribe()
   })
 
   it('keeps backend availability separate from temporary messages', () => {

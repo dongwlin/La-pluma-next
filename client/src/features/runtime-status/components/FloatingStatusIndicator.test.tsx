@@ -10,6 +10,20 @@ import FloatingStatusIndicator from './FloatingStatusIndicator'
 const mocks = vi.hoisted(() => ({
   fetchWithAuth: vi.fn(),
   parseJsonResponse: vi.fn(),
+  online: true,
+  store: {
+    message: '',
+    messageType: null as 'success' | 'error' | 'warning' | 'info' | 'default' | null,
+    runStatus: {
+      phase: 'idle' as 'idle' | 'running' | 'waiting' | 'occupied' | 'unknown',
+      isRunning: false,
+      runId: null as string | null,
+      label: null as string | null,
+      detail: null as string | null,
+    },
+    backendStatus: 'available' as 'unknown' | 'checking' | 'available' | 'unavailable',
+    backendMessage: '',
+  },
 }))
 
 vi.mock('framer-motion', () => ({
@@ -33,20 +47,14 @@ vi.mock('@/shared/api', () => ({
 }))
 
 vi.mock('../store/statusStore', () => ({
-  useStatusStore: () => ({
-    message: '保存失败，请重试',
-    messageType: 'error',
-    isActive: false,
-    backendStatus: 'available',
-    backendMessage: '',
-  }),
+  useStatusStore: () => mocks.store,
 }))
 
-vi.mock('@/shared/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }))
-vi.mock('../utils/statusMessage', () => ({
-  detectStatusMessageType: () => 'error',
-  getStatusVisualConfig: () => ({ className: 'status-danger', dotColor: '#f00', pulseRgb: '255, 0, 0' }),
-}))
+vi.mock('@/shared/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mocks.online }))
+vi.mock('../utils/statusMessage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/statusMessage')>()
+  return { ...actual, detectStatusMessageType: () => 'error' }
+})
 vi.mock('@/shared/ui', () => ({
   SmoothSurface: ({ children, ...props }: HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
 }))
@@ -55,8 +63,31 @@ let host: HTMLDivElement
 let container: HTMLDivElement
 let root: Root
 
+function resetStore() {
+  mocks.online = true
+  mocks.store.message = ''
+  mocks.store.messageType = null
+  mocks.store.runStatus = { phase: 'idle', isRunning: false, runId: null, label: null, detail: null }
+  mocks.store.backendStatus = 'available'
+  mocks.store.backendMessage = ''
+}
+
+async function renderIndicator() {
+  await act(async () => root.render(<FloatingStatusIndicator />))
+  await act(async () => { await Promise.resolve() })
+}
+
+function statusText() {
+  return container.querySelector<HTMLElement>('[role="status"]')?.textContent
+}
+
+function indicatorClass() {
+  return container.querySelector<HTMLElement>('.floating-status-indicator')?.className ?? ''
+}
+
 describe('FloatingStatusIndicator', () => {
   beforeEach(() => {
+    resetStore()
     mocks.fetchWithAuth.mockClear()
     mocks.parseJsonResponse.mockClear()
     mocks.fetchWithAuth.mockResolvedValue({ ok: true })
@@ -76,6 +107,9 @@ describe('FloatingStatusIndicator', () => {
   })
 
   it('reuses one anchored status pill without a dismissible control', async () => {
+    mocks.store.message = '保存失败，请重试'
+    mocks.store.messageType = 'error'
+
     await act(async () => root.render(
       <>
         <FloatingStatusIndicator />
@@ -90,5 +124,99 @@ describe('FloatingStatusIndicator', () => {
     expect(liveRegion?.getAttribute('aria-live')).toBe('polite')
     expect(container.querySelector('[title="保存失败，请重试"]')).not.toBeNull()
     expect(container.querySelector('button')).toBeNull()
+  })
+
+  it('shows the run label projected from the unique snapshot', async () => {
+    mocks.store.runStatus = {
+      phase: 'running',
+      isRunning: true,
+      runId: 'run-1',
+      label: '正在执行: 收取信用',
+      detail: null,
+    }
+
+    await renderIndicator()
+
+    expect(statusText()).toBe('正在执行: 收取信用')
+    expect(indicatorClass()).toContain('status-info')
+  })
+
+  it('keeps a waiting run visible without claiming completion', async () => {
+    mocks.store.runStatus = {
+      phase: 'waiting',
+      isRunning: true,
+      runId: 'run-1',
+      label: '等待继续',
+      detail: null,
+    }
+
+    await renderIndicator()
+
+    expect(statusText()).toBe('等待继续')
+    expect(indicatorClass()).toContain('status-info')
+  })
+
+  it('labels unmanaged device occupancy as a warning', async () => {
+    mocks.store.runStatus = {
+      phase: 'occupied',
+      isRunning: false,
+      runId: null,
+      label: '设备被其他任务占用',
+      detail: null,
+    }
+
+    await renderIndicator()
+
+    expect(statusText()).toBe('设备被其他任务占用')
+    expect(indicatorClass()).toContain('status-warning')
+  })
+
+  it('labels a disconnected observation as unknown instead of idle or complete', async () => {
+    mocks.store.runStatus = {
+      phase: 'unknown',
+      isRunning: true,
+      runId: 'run-1',
+      label: '执行状态未知',
+      detail: null,
+    }
+
+    await renderIndicator()
+
+    expect(statusText()).toBe('执行状态未知')
+    expect(indicatorClass()).toContain('status-warning')
+  })
+
+  it('keeps connection health ahead of messages and run state', async () => {
+    mocks.online = false
+    mocks.store.message = '正在执行任务'
+    mocks.store.messageType = 'info'
+    mocks.store.runStatus = {
+      phase: 'running',
+      isRunning: true,
+      runId: 'run-1',
+      label: '正在执行: 收取信用',
+      detail: null,
+    }
+
+    await renderIndicator()
+
+    expect(statusText()).toBe('网络连接已断开，页面控制暂不可用')
+    expect(indicatorClass()).toContain('status-warning')
+  })
+
+  it('keeps a temporary message ahead of the run label', async () => {
+    mocks.store.message = '正在检查当前活动是否可以执行…'
+    mocks.store.messageType = 'info'
+    mocks.store.runStatus = {
+      phase: 'running',
+      isRunning: true,
+      runId: 'run-1',
+      label: '正在执行: 收取信用',
+      detail: null,
+    }
+
+    await renderIndicator()
+
+    expect(statusText()).toBe('正在检查当前活动是否可以执行…')
   })
 })

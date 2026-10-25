@@ -40,7 +40,10 @@ vi.mock('./layout/Layout', async () => {
   }
 })
 vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('@/features/runtime-status', () => ({ useBackendStatusMonitor: () => undefined }))
+vi.mock('@/features/runtime-status', () => ({
+  useBackendStatusMonitor: () => undefined,
+  useRunStatusProjection: () => undefined,
+}))
 vi.mock('@/features/task-execution', () => ({ useExecutionObservation: () => undefined }))
 vi.mock('@/features/dashboard', () => ({
   default: function MockDashboard() {

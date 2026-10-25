@@ -3,6 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GlobalRunStatus } from '@/features/task-execution'
 import { useStatusStore } from '../store/statusStore'
 import {
   invalidateBackendStatusProbe,
@@ -16,14 +17,24 @@ const apiMocks = vi.hoisted(() => ({
   getTaskStatus: vi.fn(),
 }))
 
-vi.mock('@/features/task-execution', () => ({
-  getTaskStatus: apiMocks.getTaskStatus,
-}))
+vi.mock('@/features/task-execution', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/task-execution')>()
+  return { ...actual, getTaskStatus: apiMocks.getTaskStatus }
+})
 
 interface ProbeResult {
   success: boolean
   message?: string
   data?: { isRunning: boolean }
+}
+
+const IDLE: GlobalRunStatus = { phase: 'idle', isRunning: false, runId: null, label: null, detail: null }
+const RUNNING: GlobalRunStatus = {
+  phase: 'running',
+  isRunning: true,
+  runId: 'run-1',
+  label: '正在执行: 收取信用',
+  detail: '今日流程执行中',
 }
 
 function deferred<T>() {
@@ -62,7 +73,7 @@ describe('useBackendStatusMonitor', () => {
     })
     apiMocks.getTaskStatus.mockReset()
     useStatusStore.getState().setBackendStatus('unknown')
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus(IDLE)
     invalidateBackendStatusProbe()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -72,8 +83,9 @@ describe('useBackendStatusMonitor', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.useRealTimers()
     useStatusStore.getState().setBackendStatus('unknown')
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus(IDLE)
     invalidateBackendStatusProbe()
   })
 
@@ -134,15 +146,37 @@ describe('useBackendStatusMonitor', () => {
     expect(useStatusStore.getState().backendMessage).toBe('')
   })
 
-  it('publishes the backend task lifecycle to the global status store', async () => {
+  it('never writes run state from the legacy task probe', async () => {
+    useStatusStore.getState().applyRunStatus(RUNNING)
     apiMocks.getTaskStatus
-      .mockResolvedValueOnce({ success: true, data: { isRunning: true } })
       .mockResolvedValueOnce({ success: true, data: { isRunning: false } })
+      .mockResolvedValueOnce({ success: true, data: { isRunning: true } })
 
     await expect(probeBackendAvailability({ showChecking: false })).resolves.toBe(true)
-    expect(useStatusStore.getState().isActive).toBe(true)
+    expect(useStatusStore.getState().runStatus).toEqual(RUNNING)
 
     await expect(probeBackendAvailability({ showChecking: false })).resolves.toBe(true)
-    expect(useStatusStore.getState().isActive).toBe(false)
+    expect(useStatusStore.getState().runStatus).toEqual(RUNNING)
+    expect(useStatusStore.getState().backendStatus).toBe('available')
+  })
+
+  it('probes at the active cadence while the projected run keeps the device busy', async () => {
+    vi.useFakeTimers()
+    apiMocks.getTaskStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
+
+    act(() => root.render(<HookHarness />))
+    await flushEffects()
+    expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(2)
+
+    act(() => useStatusStore.getState().applyRunStatus(RUNNING))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+    expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(3)
   })
 })

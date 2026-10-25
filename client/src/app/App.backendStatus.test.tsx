@@ -12,10 +12,14 @@ const apiMocks = vi.hoisted(() => ({
   getTaskStatus: vi.fn(),
 }))
 
-vi.mock('@/features/task-execution', () => ({
-  getTaskStatus: apiMocks.getTaskStatus,
-  useExecutionObservation: () => undefined,
-}))
+vi.mock('@/features/task-execution', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/task-execution')>()
+  return {
+    ...actual,
+    getTaskStatus: apiMocks.getTaskStatus,
+    useExecutionObservation: () => undefined,
+  }
+})
 
 vi.mock('./layout/Layout', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -64,7 +68,7 @@ describe('App backend status gate', () => {
   beforeEach(() => {
     apiMocks.getTaskStatus.mockReset()
     useStatusStore.getState().setBackendStatus('unknown')
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus({ phase: 'idle', isRunning: false, runId: null, label: null, detail: null })
     window.history.replaceState({}, '', '/app/automation')
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -75,7 +79,7 @@ describe('App backend status gate', () => {
     await act(async () => root.unmount())
     container.remove()
     useStatusStore.getState().setBackendStatus('unknown')
-    useStatusStore.getState().setActive(false)
+    useStatusStore.getState().applyRunStatus({ phase: 'idle', isRunning: false, runId: null, label: null, detail: null })
   })
 
   it('keeps a restored non-dashboard page blocked during the global startup probe', async () => {

@@ -252,6 +252,25 @@ describe('execution controller observation', () => {
     expect(api.fetchSnapshot).toHaveBeenCalledTimes(2)
   })
 
+  it('refreshes immediately when a submission starts and polls at the active cadence while pending', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot()))
+    start()
+    await flush()
+    expect(api.fetchSnapshot).toHaveBeenCalledTimes(1)
+
+    // 同步提交（活动作业）在请求返回前没有 runId：意图开始时先读一次快照，
+    // 让服务端已经创建的 run 尽快进入全局观察。
+    controller.beginExecutionIntent('run_current_activity_copilots')
+    await flush()
+    expect(api.fetchSnapshot).toHaveBeenCalledTimes(2)
+    expect(controller.getState().submission).toBe('pending')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(api.fetchSnapshot).toHaveBeenCalledTimes(3)
+  })
+
   it('does not start observation from a snapshot subscriber', async () => {
     await mountHarness()
 
