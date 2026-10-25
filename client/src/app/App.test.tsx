@@ -172,12 +172,16 @@ describe('App motion preferences', () => {
     expect(container.textContent).toContain('页面渲染失败：automation render failed')
 
     await act(async () => appMocks.navigate?.('dashboard'))
-    const hiddenError = Array.from(container.querySelectorAll<HTMLElement>('.p-6'))
+    const findWorkspaceError = () => Array.from(container.querySelectorAll<HTMLElement>('.p-6'))
       .find(element => element.textContent?.includes('automation render failed'))
-    expect(hiddenError?.style.display).toBe('none')
+    expect(findWorkspaceError()?.style.display).toBe('none')
 
     await act(async () => appMocks.navigate?.('automation'))
-    expect(hiddenError?.style.display).not.toBe('none')
+    // React 19.3 重新显示 Activity 时会重建错误边界内的子树，隐藏期间拿到的
+    // 节点已从文档移除，因此这里重新查询而不是复用旧引用。
+    const visibleError = findWorkspaceError()
+    expect(visibleError).not.toBeNull()
+    expect(visibleError?.style.display).not.toBe('none')
     consoleError.mockRestore()
   })
 })

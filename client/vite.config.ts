@@ -48,7 +48,7 @@ export const createWorkboxConfig = (basePath: string): WorkboxConfig => ({
   cleanupOutdatedCaches: true,
   globPatterns: [
     '**/*.{css,html,ico,png,svg,woff,woff2}',
-    'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js',
+    'assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5,rolldown-runtime}-*.js',
   ],
   navigateFallbackDenylist: createNavigateFallbackDenylist(basePath),
   importScripts: [`${basePath}legacy-page-cache-cleanup.js`],
@@ -240,7 +240,7 @@ export const createViteConfig = (basePath: string): UserConfig => ({
     })
   ],
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         manualChunks(id: string) {
           if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react-vendor'

@@ -22,10 +22,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
 
-    /* Path mapping */
-    "baseUrl": ".",
+    /* 与 src 同项目的测试会读文件（node:fs 等）；TS 6 起不再自动收录 @types */
+    "types": ["node"],
+
+    /* Path mapping（paths 以 tsconfig 所在目录为基准，TS 6 起不再需要 baseUrl） */
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]
