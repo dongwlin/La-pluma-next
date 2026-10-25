@@ -111,7 +111,7 @@
 | `updating` / `hotUpdating` / `updateInFlightRef` | `SettingsUpdateOwner.running` |
 | `updateFeedback` 与资源重试条件 | `SettingsUpdateOwner.feedback` |
 | core/渠道/CLI/资源命令与开始/结束提示 | `useSettingsUpdates()` |
-| 更新成功后的版本重取 | `useSettingsUpdates()` 的 `invalidateQueries` |
+| 更新成功后的版本重取 | `useSettingsUpdates()` 调用 `useSettingsVersion().reload()`（`invalidateQueries`） |
 | 自动更新 `autoUpdate`/`dirty`/`saving`/`feedback`、touched/revision、本地回退、保存 + 调度 | `AutoUpdateConfigOwner` + `useSettingsAutoUpdate()` |
 | 自动更新页内/全局提示 | owner 反馈；hook 转发到全局状态 |
 
