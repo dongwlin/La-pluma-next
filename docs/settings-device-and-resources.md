@@ -42,7 +42,7 @@
 - 取消不展示为失败。`AbortError` 不写入 `message`/`error`；`phase` 变为 `cancelled`。
 - 取消查找不把 `searched` 置为 true；取消后恢复页面不会出现伪造的“未找到设备”。
 - 设备行只接受非空 `address`；未知 `state`/`source` 分别回退 `unknown`/`adb`，坏条目跳过，不再像迁移前那样在非数组载荷上抛错。
-- 内层 `success=false`（例如 ADB 不可用）是领域失败：`phase=failed`、`error`/`message` 取服务端文案、设备清空；HTTP/API 信封失败同样清空设备；传输失败使用 `查找设备失败: <原因>`。连接测试的请求失败使用 `连接测试失败: <原因>`。
+- 内层 `success=false`（例如 ADB 不可用）是领域失败：`phase=failed`、`error`/`message` 取服务端文案，载荷中归一后的设备仍会展示（服务端通常返回空数组）；HTTP/API 信封失败清空设备；传输失败使用 `查找设备失败: <原因>`。连接测试的请求失败使用 `连接测试失败: <原因>`。
 - 连接未建立（`success=false` 但请求完成）仍是已完成的测试结果：`phase=succeeded`、`test.success=false`，页面沿用 `status-danger` 反馈。
 
 ### 2.2 选择发现结果与草稿版本
@@ -118,7 +118,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | --- | --- |
 | `features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
 | `features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、失败后重试、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后重取同一版本 Query、目录失败重试 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找与连接测试失败后重试、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后重取同一版本 Query、目录失败重试 |
 
 复现命令（仓库根目录）：
 
