@@ -2,9 +2,9 @@
 
 > [← 返回文档索引](README.md)
 
-本记录描述 `a88628e` 上配置保存、跨页失效与 Dashboard 快照的实际行为，以及后续迁移必须保持或建立的不变量。它是本轮前端页面重构的表征基线：生产逻辑尚未迁移，文中标注为“缺口”的行为由后续配置持久化、资源失效与领域用例任务承接，不能把当前实现当成目标契约。
+本记录描述 `a88628e` 上配置保存、跨页失效与 Dashboard 快照的实际行为，以及后续迁移必须保持或建立的不变量。它是本轮前端页面重构的表征基线：肉鸽配置已由 FPR-013 按目标契约迁移（见[配置持久化协调器](config-persistence.md)第 6.1 节），其余生产逻辑尚未迁移；文中标注为“缺口”的行为由后续配置持久化、资源失效与领域用例任务承接，不能把当前实现当成目标契约。
 
-配置持久化的目标契约（按 key 串行的协调模型、适配器编解码/迁移/完整提交条件与薄 hooks）见[配置持久化协调器](config-persistence.md)。协调器与脱离 React 的竞态回归已交付为独立基础设施；三个页面尚未接入，因此本文件第 1–2 节描述的行为仍是当前实现。
+配置持久化的目标契约（按 key 串行的协调模型、适配器编解码/迁移/完整提交条件与薄 hooks）见[配置持久化协调器](config-persistence.md)。协调器与脱离 React 的竞态回归已交付；肉鸽已在 FPR-013 接入，作业与自动化仍使用本文件第 1–2 节描述的迁移前实现。
 
 验证入口见[回归证据](#6-回归证据)与[已知缺口](#5-已知缺口与归属)。文中路径均相对 `client/src`。
 
@@ -25,7 +25,9 @@
 | 完整成功条件 | `saveUserConfig` 成功 | `saveUserConfig` 成功 | `saveUserConfig` 成功且 `setupSchedule`/`stopSchedule` 成功 |
 | 加载时迁移 | `app` → `cli`；raid `1`/`2` → `raid`/`both` | 无 | schedule `entries`/`times` 兼容；禁用项只保留在本地 |
 
-实现位置：Combat 的模块队列与令牌见 `features/combat/pages/CombatTasks.tsx:47`，加载与迁移见 `:281`、`:385`、`:407`，自动保存见 `:467`；Roguelike 见 `features/roguelike/pages/RoguelikeTasks.tsx:25`、`:112`、`:188`、`:209`；Automation 的完整提交见 `features/automation/pages/AutomationTasks.tsx:1242`，加载见 `:1374`，schedule 编辑入口见 `:1297`、`:1473`。
+实现位置：Combat 的模块队列与令牌见 `features/combat/pages/CombatTasks.tsx:47`，加载与迁移见 `:281`、`:385`、`:407`，自动保存见 `:467`；Roguelike 的适配器见 `features/roguelike/model/roguelikeConfig.ts`，页面订阅与重试见 `features/roguelike/pages/RoguelikeTasks.tsx`；Automation 的完整提交见 `features/automation/pages/AutomationTasks.tsx:1242`，加载见 `:1374`，schedule 编辑入口见 `:1297`、`:1473`。
+
+FPR-013 之后，Roguelike 一列中的“模块级队列、页内 revision/token、300ms timer、`configHydratedRef`”已由 `features/user-config` 协调器通道接管，key、本地键、pending 键与 wire 形状不变；表中其余两列仍是迁移前实现。肉鸽现行语义见[配置持久化协调器](config-persistence.md)第 6.1 节。
 
 三者共享的语义只有“pending 表示本设备有一份尚未确认写入服务端的草稿”。以下不属于共享规则：提交时机、队列寿命、完成条件、迁移与失败恢复——它们在三个域中分别成立，不能用一个通用 hook 抹平。
 
@@ -35,26 +37,27 @@
 
 `pending` 令牌与 localStorage 草稿一起写入；保存成功后，只有在 revision 仍是当前值且令牌仍是当前令牌时才删除。旧请求的成功/失败回调不得删除新令牌，也不得把服务器旧副本写回页面。
 
-当前证据：Combat 与 Roguelike 的“旧保存响应不得清除重挂载后的新草稿”、Automation 的跨 mount 令牌测试。三者都成立。
+当前证据：Combat 与 Roguelike 的“旧保存响应不得清除重挂载后的新草稿”、Automation 的跨 mount 令牌测试。三者都成立；Roguelike 由协调器统一校验 revision 与 pending 令牌。
 
 ### 2.2 跨 remount 的提交次序
 
-页面卸载不会取消已发出的请求；`Activity` 隐藏只清理 Effects，不清理模块级队列。Combat/Roguelike 的队列位于模块作用域，因此重挂载后的新提交排在旧请求之后；Automation 的队列位于组件实例，重挂载后新实例可以立即发起提交，旧实例的请求仍可能后到并覆盖服务端文件。
+页面卸载不会取消已发出的请求；`Activity` 隐藏只清理 Effects，不清理模块级队列或协调器通道。Combat 的队列位于模块作用域，Roguelike 的队列由 `user-config` 通道持有，因此重挂载后的新提交都排在旧请求之后；Automation 的队列位于组件实例，重挂载后新实例可以立即发起提交，旧实例的请求仍可能后到并覆盖服务端文件（见第 5 节）。
 
 ### 2.3 迟到加载不得覆盖编辑
 
 服务端加载在途时用户仍可编辑。目标不变量是：一旦本地出现新草稿或新 revision，迟到的加载响应必须被丢弃。
 
 - Automation：`loadTaskFlow` 同时校验 request id、AbortSignal、`autoSaveRevisionRef` 与 pending 令牌；编辑触发 `autoSave` 后 revision 改变，迟到响应被丢弃。已有回归测试。
-- Combat/Roguelike：当前只在卸载时 `cancelled`，没有编辑 revision 校验；服务端响应会覆盖加载期间输入的值。已用预期失败测试记录，见第 5 节。
+- Roguelike：协调器在加载返回时校验加载序号、AbortSignal、revision 与 pending 标记，编辑后的迟到响应返回 `stale`；FPR-013 已把原来的 `it.fails` 用例转为正常回归。
+- Combat：当前只在卸载时 `cancelled`，没有编辑 revision 校验；服务端响应会覆盖加载期间输入的值。已用预期失败测试记录，见第 5 节。
 
 ### 2.4 Activity 隐藏/恢复
 
-已访问页面由 `Activity` 保活：隐藏保留 state/DOM，清理 Effects；恢复重建 Effects。各页都有 hydrated 标记阻止恢复时重复加载（Combat/Roguelike 为 `configHydratedRef`，Automation 为 `taskFlowHydratedRef`），pending 草稿优先。Combat/Roguelike 还会在恢复时清理被中断请求遗留的 loading 状态。现有测试覆盖配置 hydrate 不重载与请求 loading 清理。
+已访问页面由 `Activity` 保活：隐藏保留 state/DOM，清理 Effects；恢复重建 Effects。各页都有已加载守卫阻止恢复时重复加载（Combat 为 `configHydratedRef`，Roguelike 为协调器通道的 `hydrated` 标记，Automation 为 `taskFlowHydratedRef`），pending 草稿优先。Combat 还会在恢复时清理被中断请求遗留的 loading 状态。现有测试覆盖配置 hydrate 不重载；Roguelike 的 Activity 用例还覆盖隐藏期间提交队列不被页面挂载归属截断。
 
 ### 2.5 失败与重试
 
-保存失败时保留本地草稿与 pending，下一次挂载只读本地，不读取可能更旧的服务端副本。Combat/Roguelike 提供页内“重新同步”；Automation 只显示全局错误消息，失败后由下一次编辑重新触发完整提交，见第 5 节。
+保存失败时保留本地草稿与 pending，下一次挂载只读本地，不读取可能更旧的服务端副本。Combat 提供页内“重新同步”；Roguelike 的“重新同步”调用协调器 `retry()`，在途期间按钮保持 loading 且不会重复入队，成功提示只在用户主动重试确认后出现（FPR-013）；Automation 只显示全局错误消息，失败后由下一次编辑重新触发完整提交，见第 5 节。
 
 ### 2.6 Automation 的完整成功条件
 
@@ -106,7 +109,7 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 
 | # | 缺口 | 可复现证据 | 后续归属 |
 | --- | --- | --- | --- |
-| 1 | Combat/Roguelike 的迟到服务端加载覆盖加载期间的编辑 | 两页 `it.fails` 用例 | 配置持久化协调器 + 两个域适配器（[目标契约](config-persistence.md)） |
+| 1 | Combat 的迟到服务端加载覆盖加载期间的编辑（Roguelike 已由 FPR-013 修复） | `CombatTasks.test.tsx` 的 `it.fails` 用例；Roguelike 的对应用例已转为正常回归 | 配置持久化协调器 + combat 适配器（FPR-014，[目标契约](config-persistence.md)） |
 | 2 | Automation 只有 pending、没有本地草稿时永远不读服务端 | `AutomationTasks.config.test.tsx` 的 `it.fails` 用例 | automation 配置适配器 + 协调器（[目标契约](config-persistence.md)） |
 | 3 | Automation 提交队列是实例级，跨 remount 的旧请求可能后到覆盖服务端文件 | 代码结构；跨 mount 令牌测试只能证明旧响应不会清 pending | 配置持久化协调器（通道按 key 复用队列，[目标契约](config-persistence.md)） |
 | 4 | Automation 配置已保存但 schedule 失败时只有全局消息，没有页内重试；pending 只能靠下一次编辑解除 | 完整成功条件测试 | automation 配置适配器（完整提交条件 + `retry()`，[目标契约](config-persistence.md)） |
@@ -122,7 +125,8 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 | 测试文件 | 覆盖 |
 | --- | --- |
 | `features/combat/pages/CombatTasks.test.tsx` | pending 跨 remount + 手动重试；旧保存响应不清新令牌；`app→cli` 与 raid 迁移（服务端/本地）；迟到加载缺口；Activity 恢复；搜索/预览竞态 |
-| `features/roguelike/pages/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载缺口；Activity 恢复；另含 FPR-008 的执行接线用例（Run 提交/停止/恢复） |
+| `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状与解码校验、坏本地键清理、完整提交与读取失败信封 |
+| `features/roguelike/pages/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；重试防重入与成功提示；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载不覆盖编辑；Activity 恢复；另含 FPR-008 的执行接线用例（Run 提交/停止/恢复） |
 | `features/automation/pages/AutomationTasks.config.test.tsx` | 配置 + schedule 完整成功；保存失败不碰 schedule；schedule 半失败保留 pending；disabled/全禁用走 stop；跨 mount 旧响应保护；迟到加载保护；stale pending 缺口；应用计划事件重载 |
 | `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 识别完成只更新本页并读一次 queue；各数据源独立错误与重试；Activity 恢复 |

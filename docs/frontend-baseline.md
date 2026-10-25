@@ -79,7 +79,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 配置 | GET/POST `/agent/config/user/roguelike-tasks`；`roguelikeTaskInputs`、`roguelikeAdvancedParams` 读写；`roguelikeConfigSyncPending` 读写/成功删除；坏 JSON 删除；模块队列 + 页内 revision/token + 300ms debounce | roguelike 配置适配器 + 按 key 提交协调器 |
+| 配置 | 适配器 `features/roguelike/model/roguelikeConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/roguelike-tasks`；本地键 `roguelikeTaskInputs`、`roguelikeAdvancedParams` 与 `roguelikeConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、300ms 去抖与跨 remount 提交队列由通道持有；页面只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | roguelike 配置适配器 + 按 key 提交协调器（FPR-013 已接入） |
 | 命令 | `buildCommandParams` 字符串拼接；POST run-task，roguelike/reclamation、taskType=roguelike、waitForCompletion=true | roguelike 纯命令模型与执行适配器 |
 | 观察/停止 | 挂载 GET tasks/status；同类运行每 2s 单飞查询、三次失败警告；stop 后 400ms 查 idle，15s 超时；cleanup abort、generation 失效 | 应用级 task-execution 控制器 |
 | UI | activeMode、模式/高级字段、同步错误/重试、running/stopping | 模式/字段归面板；草稿归配置所有者，执行状态只订阅 |

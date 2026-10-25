@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。它是[配置同步与资源一致性契约](config-sync-and-invalidation.md)中“三页各自加载/保存”的迁移目标：协调器与竞态回归已在 FPR-012 交付，三个域接入由后续配置迁移任务完成（FPR-013 肉鸽、FPR-014 作业、FPR-015 自动化）。接入完成前页面仍使用第 6 节列出的现有实现，本文的目标契约不能当成当前行为。
+本文描述 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。它是[配置同步与资源一致性契约](config-sync-and-invalidation.md)中“三页各自加载/保存”的迁移目标：协调器与竞态回归已在 FPR-012 交付；肉鸽已由 FPR-013 接入（`features/roguelike/model/roguelikeConfig.ts`），作业与自动化仍待 FPR-014/015 接入。未接入的页面仍使用第 6 节列出的现有实现，本文的目标契约不能当成全站当前行为。
 
 验证入口见文末[回归证据](#7-回归证据)。
 
@@ -169,7 +169,7 @@ function CombatTasks() {
 
 ## 6. 三域适配边界
 
-协调器交付时页面尚未接入，以下清单是后续迁移必须保留的语义。接入任务只替换页面内的加载/保存/重试接线，不改变 key、本地格式或视觉。
+以下清单是各域迁移必须保留的语义。接入任务只替换页面内的加载/保存/重试接线，不改变 key、本地格式或视觉。
 
 | 项目 | Combat | Roguelike | Automation |
 | --- | --- | --- | --- |
@@ -179,7 +179,7 @@ function CombatTasks() {
 | 提交时机 | 300ms 去抖 | 300ms 去抖 | 编辑即入队（事件触发） |
 | 加载迁移 | `app`→`cli`；raid `1`/`2`→`raid`/`both` | 无 | `times`→`entries` 兼容；禁用项只留在本地 |
 | 完整提交 | `saveUserConfig` | `saveUserConfig` | `saveUserConfig` + `setupSchedule`/`stopSchedule` |
-| 迁移任务 | FPR-014 | FPR-013 | FPR-015 |
+| 迁移任务 | FPR-014 | FPR-013（已接入） | FPR-015 |
 
 接入时的额外边界：
 
@@ -188,12 +188,31 @@ function CombatTasks() {
 - automation 的 `training-plan-applied` 需通过 `reload({ force: true })` 重读；返回 `local-draft` 时不得丢弃本地编辑。
 - 状态消息（成功 toast）与页内错误文案由页面从 `syncState`/`error` 和 `retry()` 结果派生，协调器不直接写 `statusStore`。
 
+### 6.1 肉鸽适配器（FPR-013 已接入）
+
+`features/roguelike/model/roguelikeConfig.ts` 是肉鸽配置的唯一所有者，页面 `pages/RoguelikeTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。
+
+| 项目 | 实现 |
+| --- | --- |
+| 身份 | key `roguelike-tasks`；pending 键 `roguelikeConfigSyncPending` |
+| 本地草稿 | `roguelikeTaskInputs`、`roguelikeAdvancedParams`，逐字段写回原布局；单个损坏键清理后丢弃该字段，两个键都不可读才返回 null 并让协调器删除 pending 标记、改读服务端 |
+| wire | `{ taskInputs, advancedParams }`；解码时缺少字段按空草稿补齐，字段存在但类型不合法时整份载荷不可用并回退本地草稿 |
+| 提交时机 | `commitDelayMs = 300`，连续编辑只提交最后一次 |
+| 完整提交 | `saveUserConfig('roguelike-tasks', wire)` 成功即完成；失败或传输异常保留 pending 与重试入口 |
+| 页面派生 | `taskInputs`/`advancedParams` 从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“肉鸽配置已同步” |
+
+页面原有的模块级 Promise 队列、页内 revision/token、`configHydratedRef` 与 300ms `setTimeout` 已移除。迟到加载由协调器按 revision/pending 标记丢弃，编辑不再被服务端旧副本覆盖（原 `it.fails` 缺陷用例已转为正常回归）。
+
+兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化，回滚到迁移前的页面接线后仍能读取同一份本地草稿与服务端配置；适配器与页面接线可独立回滚，不需要清理本地数据或回退服务端。
+
 ## 7. 回归证据
 
 | 测试 | 覆盖 |
 | --- | --- |
 | `features/user-config/model/configCoordinator.test.ts` | 非 React：服务端加载与迁移、未同步草稿优先、损坏草稿回退、迟到加载丢弃、强制刷新中止旧加载、提交串行与旧提交不确认新草稿、标记被外部替换、去抖合并、内容等价跳过、完整提交失败与重试防重入、编辑中断重试、跨重挂载队列与状态、异构适配器拒绝 |
 | `features/user-config/hooks/useUserConfig.test.tsx` | 首次加载与订阅渲染、编辑写回、`autoHydrate: false`、失败提示与重试后清空 |
+| `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状、缺省字段与非法载荷解码、本地键损坏清理、完整提交与读取失败信封 |
+| `features/roguelike/pages/RoguelikeTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、坏草稿回退服务端、迟到加载不覆盖编辑、Activity 隐藏/恢复 |
 
 复现命令（仓库根目录）：
 
@@ -201,7 +220,7 @@ function CombatTasks() {
 pnpm --filter la-pluma-next-client verify
 ```
 
-本任务未修改页面、配置 key、本地存储格式或视觉基线，因此不需要更新截图；三域接线后的页面/视觉回归由各自迁移任务执行。
+肉鸽迁移未改变渲染结构、DOM 或 CSS，配置 key、本地键与服务端 wire 也未变化，因此旧本地草稿不需要迁移；页面/视觉回归随 FPR-013 执行，其他域的截图更新仍由各自迁移任务负责。
 
 ## 关联
 
