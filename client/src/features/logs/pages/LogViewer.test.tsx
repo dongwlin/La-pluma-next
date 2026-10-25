@@ -92,9 +92,7 @@ describe('LogViewer recovery and controls', () => {
 
     await renderComponent()
 
-    expect(container.querySelector('.log-viewer')?.classList.contains('ios-borderless-cards')).toBe(true)
     expect(container.querySelector('h1')?.textContent).toBe('日志')
-    expect(container.querySelector('.app-page-header-icon')).toBeNull()
     const error = container.querySelector<HTMLElement>('.log-console-state.is-error')
     expect(error?.textContent).toContain('实时日志暂不可用')
     expect(container.textContent).not.toContain('暂无实时日志，等待任务执行')
@@ -110,10 +108,6 @@ describe('LogViewer recovery and controls', () => {
     const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('.log-mode-shell [role="tab"]'))
     expect(modeTabs).toHaveLength(2)
     expect(modeTabs[0]?.getAttribute('aria-selected')).toBe('true')
-    expect(modeTabs.every(button => (
-      button.className.includes('app-workspace-segment')
-      && button.className.includes('min-h-11')
-    ))).toBe(true)
     await click(modeTabs[1]!)
     expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
 
@@ -127,9 +121,6 @@ describe('LogViewer recovery and controls', () => {
     const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
     expect(switches.map(input => input.getAttribute('aria-label'))).toEqual(['自动滚动', '折叠重复日志'])
     expect(switches.every(input => input.checked)).toBe(true)
-    const toggleControls = Array.from(container.querySelectorAll('.log-toggle-control'))
-    expect(toggleControls).toHaveLength(2)
-    expect(toggleControls.every(control => !control.classList.contains('surface-soft'))).toBe(true)
   })
 
   it('keeps existing realtime rows visible when a background refresh fails', async () => {

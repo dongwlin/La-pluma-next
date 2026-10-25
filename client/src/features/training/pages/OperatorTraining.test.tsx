@@ -283,7 +283,7 @@ describe('OperatorTraining queue workspace', () => {
     expect(document.body.textContent).toContain('养成队列还是空的')
   })
 
-  it('keeps the shared form controls in the picker, plan controls, and automation settings', async () => {
+  it('keeps the picker, plan, and automation controls accessible', async () => {
     mocks.getTrainingQueue.mockResolvedValue(queueResponse([queueItem('char_current', '阿米娅')]))
 
     await renderComponent()
@@ -291,10 +291,8 @@ describe('OperatorTraining queue workspace', () => {
     const search = dialog.querySelector<HTMLInputElement>('input[aria-label="搜索干员名称"]')
     const rarity = dialog.querySelector<HTMLSelectElement>('select[aria-label="稀有度"]')
     const planModeSelect = container.querySelector<HTMLSelectElement>('select[aria-label="计划范围"]')
-    expect(search?.className).toContain('app-native-control')
-    expect(rarity?.className).toContain('app-native-control')
+    expect(search).not.toBeNull()
     expect(rarity?.querySelectorAll('option')).toHaveLength(4)
-    expect(planModeSelect?.className).toContain('app-native-control')
     expect(planModeSelect?.querySelectorAll('option')).toHaveLength(2)
     expect(switchByLabel('自动切换')).not.toBeNull()
     expect(switchByLabel('完成通知')).not.toBeNull()

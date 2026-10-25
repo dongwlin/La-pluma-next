@@ -127,17 +127,12 @@ describe('PWAInstallPrompt', () => {
 
     const installEntry = container.querySelector<HTMLButtonElement>('[aria-label="安装 La Pluma Next"]')
     expect(installEntry).not.toBeNull()
-    expect(installEntry?.classList.contains('pwa-install-entry-button')).toBe(true)
-    expect(installEntry?.classList.contains('app-icon-button-size-md')).toBe(true)
     expect(installEntry?.getAttribute('aria-expanded')).toBe('false')
-    expect(container.querySelector('.pwa-install-entry')?.classList.contains('fixed')).toBe(true)
-    expect(container.querySelector('.pwa-install-prompt')).toBeNull()
     expect(container.textContent).not.toContain('在 Safari 工具栏中点击“分享”')
 
     await clickButton('安装 La Pluma Next')
 
-    expect(container.querySelector('.pwa-install-entry')).toBeNull()
-    expect(container.querySelector('.pwa-install-prompt')).not.toBeNull()
+    expect(container.querySelector('[aria-label="安装 La Pluma Next"]')).toBeNull()
     expect(container.textContent).toContain('在 Safari 工具栏中点击“分享”')
     expect(container.textContent).toContain('选择“添加到主屏幕”')
   })

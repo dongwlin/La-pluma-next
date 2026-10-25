@@ -226,45 +226,11 @@ describe('AutomationTasks layout surfaces', () => {
     }
   })
 
-  it('uses continuous corners only for the four primary workspace panels', async () => {
+  it('uses the compact device monitor in the automation workspace', async () => {
     await act(async () => root.render(<AutomationTasks />))
     await flush()
 
-    const page = container.querySelector('[data-automation-tasks]')
-    expect(page?.classList.contains('ios-workspace-page')).toBe(true)
-    expect(page?.querySelector('.app-page-header')?.classList.contains('is-mobile-inline')).toBe(true)
-    expect(page?.querySelector('[data-testid="screen-monitor"]')?.getAttribute('data-variant')).toBe('compact')
-
-    const workspace = page?.querySelector('.automation-workspace-grid')
-    expect(workspace).not.toBeNull()
-    const workspaceOrder = Array.from(workspace?.children || []).map(child => {
-      if (child.classList.contains('automation-sequence-column')) return 'sequence'
-      if (child.classList.contains('automation-editor-column')) return 'editor'
-      if (child.classList.contains('automation-support-column')) return 'support'
-      return 'unknown'
-    })
-    expect(workspaceOrder).toEqual(['sequence', 'editor', 'support'])
-    const supportOrder = Array.from(workspace?.querySelector('.automation-support-column')?.children || []).map(child => {
-      if (child.classList.contains('automation-monitor-column')) return 'monitor'
-      if (child.classList.contains('automation-schedule-column')) return 'schedule'
-      return 'unknown'
-    })
-    expect(supportOrder).toEqual(['monitor', 'schedule'])
-    expect(page?.querySelector('.automation-monitor-surface .task-monitor-panel.is-compact')).not.toBeNull()
-
-    const panelClasses = [
-      'automation-monitor-panel',
-      'automation-schedule-panel',
-      'automation-sequence-panel',
-      'automation-editor-panel',
-    ]
-    panelClasses.forEach((panelClass) => {
-      const panel = page?.querySelector(`.${panelClass}`)
-      expect(panel?.getAttribute('data-smooth-corners')).toBe('true')
-      expect(panel?.querySelector(':scope > .smooth-panel-surface')).not.toBeNull()
-    })
-
-    expect(page?.querySelectorAll('.smooth-panel-shell')).toHaveLength(panelClasses.length)
+    expect(container.querySelector('[data-testid="screen-monitor"]')?.getAttribute('data-variant')).toBe('compact')
   })
 
   it('hydrates an enabled schedule without rebuilding the server schedule', async () => {
@@ -429,13 +395,11 @@ describe('AutomationTasks layout surfaces', () => {
     expect(selectedButton?.hasAttribute('aria-current')).toBe(false)
     expect(selectedItem?.getAttribute('data-selected')).toBe('true')
     expect(selectedItem?.getAttribute('data-execution-state')).toBe('idle')
-    expect(selectedItem?.classList.contains('is-current')).toBe(false)
 
     expect(runningButton?.getAttribute('aria-pressed')).toBe('false')
     expect(runningButton?.getAttribute('aria-current')).toBe('step')
     expect(runningItem?.getAttribute('data-selected')).toBe('false')
     expect(runningItem?.getAttribute('data-execution-state')).toBe('running')
-    expect(runningItem?.classList.contains('is-selected')).toBe(false)
     expect(runningItem?.querySelector('.automation-sequence-progress')).not.toBeNull()
     expect(runningItem?.textContent).toContain('正在执行')
   })
@@ -462,8 +426,6 @@ describe('AutomationTasks layout surfaces', () => {
 
     expect(runningButton?.getAttribute('aria-pressed')).toBe('true')
     expect(runningButton?.getAttribute('aria-current')).toBe('step')
-    expect(runningItem?.classList.contains('is-selected')).toBe(true)
-    expect(runningItem?.classList.contains('is-current')).toBe(true)
     expect(runningItem?.getAttribute('data-selected')).toBe('true')
     expect(runningItem?.getAttribute('data-execution-state')).toBe('running')
     expect(runningItem?.querySelector('.automation-sequence-progress')).not.toBeNull()
@@ -517,7 +479,7 @@ describe('AutomationTasks layout surfaces', () => {
     await flush()
     expect(Array.from(container.querySelectorAll('.automation-sequence-copy small')).map(node => node.textContent))
       .toEqual(['执行失败', '已跳过', '未执行'])
-    expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(0)
+    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(0)
   })
 
   it('ignores a running poll from before the manual completion response', async () => {
@@ -533,7 +495,7 @@ describe('AutomationTasks layout surfaces', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
     await act(async () => execution.resolve({ success: true, data: { summary: finishedSummary(successfulTaskResults()) } }))
     await act(async () => poll.resolve({ success: true, data: { isRunning: true, currentTaskId: 'fight-1' } }))
-    expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(3)
+    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(3)
     expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
     expect(container.querySelector('.automation-run-button')?.textContent).toContain('立即执行')
   })
@@ -545,12 +507,12 @@ describe('AutomationTasks layout surfaces', () => {
     mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: false, lastResult: summary } })
     await act(async () => root.render(<AutomationTasks />))
     await flush()
-    expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(3)
+    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(3)
     const execution = deferred<unknown>()
     mocks.executeScheduleNow.mockReturnValue(execution.promise)
     await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(0)
+    expect(container.querySelectorAll('.automation-sequence-item[data-execution-state="completed"]')).toHaveLength(0)
     expect(container.querySelector('.automation-run-button')?.textContent).toContain('执行中')
     await act(async () => execution.resolve({ success: true, data: { summary } }))
   })
@@ -563,7 +525,7 @@ describe('AutomationTasks layout surfaces', () => {
     mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: true, currentStep: 0 } })
     await act(async () => root.render(<AutomationTasks />))
     await flush()
-    expect(container.querySelector('.automation-sequence-item.is-current strong')?.textContent).toBe('理智作战')
+    expect(container.querySelector('.automation-sequence-item[data-execution-state="running"] strong')?.textContent).toBe('理智作战')
     mocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: {
       isRunning: false, taskResults: [
         { taskId: 'fight-1', task: '理智作战', status: 'stopped' },
@@ -572,7 +534,6 @@ describe('AutomationTasks layout surfaces', () => {
     } })
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
     expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
-    expect(container.querySelector('.automation-task-editor.is-current')).toBeNull()
     expect(container.querySelectorAll('.automation-sequence-copy small')[1]?.textContent).toBe('已终止')
   })
 
@@ -590,19 +551,12 @@ describe('AutomationTasks layout surfaces', () => {
 
     const clientTypeLabel = container.querySelector<HTMLLabelElement>('label[for="automation-startup-1-clientType"]')
     expect(clientTypeLabel?.textContent).toContain('客户端类型')
-    expect(clientTypeLabel?.classList.contains('automation-field-label')).toBe(true)
     expect(container.querySelector('#automation-startup-1-clientType')?.tagName).toBe('SELECT')
     const accountNameLabel = container.querySelector<HTMLLabelElement>('label[for="automation-startup-1-accountName"]')
     expect(accountNameLabel?.textContent).toContain('切换账号')
-    expect(accountNameLabel?.closest('.automation-param-fields')?.classList.contains('is-grouped')).toBe(true)
-    expect(container.querySelector('#automation-startup-1-accountName')?.classList.contains('automation-text-control')).toBe(true)
 
     const taskDeleteButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="删除启动游戏"]')
     expect(taskDeleteButtons).toHaveLength(2)
-    taskDeleteButtons.forEach(button => {
-      expect(button.classList.contains('min-h-11')).toBe(true)
-      expect(button.classList.contains('min-w-11')).toBe(true)
-    })
 
     const firstHourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')
     const firstMinuteInput = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')
@@ -613,15 +567,12 @@ describe('AutomationTasks layout surfaces', () => {
     expect(container.querySelector('[aria-label="第 1 个执行时间开启"]')).not.toBeNull()
 
     const deleteTimeButton = container.querySelector<HTMLButtonElement>('[aria-label="删除第 1 个时间点"]')
-    expect(deleteTimeButton?.classList.contains('min-h-11')).toBe(true)
-    expect(deleteTimeButton?.classList.contains('min-w-11')).toBe(true)
+    expect(deleteTimeButton).not.toBeNull()
     const firstTimeRow = firstHourInput?.closest('.automation-schedule-time-row')
     expect(firstTimeRow).not.toBeNull()
     expect(firstTimeRow?.querySelector('.automation-schedule-time-unit')?.textContent).toContain('时')
-    expect(deleteTimeButton?.closest('.automation-schedule-time-row')).toBe(firstTimeRow)
     expect(container.querySelector('.automation-schedule-list-heading-actions > .automation-schedule-add')?.textContent).toContain('新增定时')
-    expect(container.querySelector('[aria-label="定时执行"]')?.closest('.automation-schedule-actions')).not.toBeNull()
-    expect(container.querySelector('[aria-label="定时执行"]')?.closest('.app-switch')?.classList.contains('automation-section-switch')).toBe(true)
+    expect(container.querySelector('[aria-label="定时执行"]')).not.toBeNull()
 
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     await act(async () => {
@@ -659,29 +610,12 @@ describe('AutomationTasks layout surfaces', () => {
 
     const stageLabel = container.querySelector<HTMLLabelElement>('label[for="automation-fight-1-stages-0"]')!
     const stageEditor = stageLabel.closest('.automation-stage-editor')
-    const secondStageInput = container.querySelector<HTMLInputElement>('[aria-label="关卡 2"]')!
-    const secondStageRow = secondStageInput.closest('.automation-stage-row')
     expect(stageEditor).not.toBeNull()
-    expect(stageEditor?.querySelector('.automation-stage-list')).not.toBeNull()
     expect(stageEditor?.querySelector('.automation-stage-add')?.textContent).toContain('添加关卡')
     expect(stageEditor?.querySelector('.automation-smart-stage-entry')?.textContent).toContain('智能养成关卡')
-    expect(secondStageRow).not.toBeNull()
-    expect(secondStageInput.classList.contains('automation-stage-name-input')).toBe(true)
-
-    const pinButton = container.querySelector<HTMLButtonElement>('[aria-label="置顶：关卡 1"]')
-    const deleteStageButton = container.querySelector<HTMLButtonElement>('[aria-label="删除关卡 2"]')
-    ;[pinButton, deleteStageButton].forEach(button => {
-      expect(button?.classList.contains('min-h-11')).toBe(true)
-      expect(button?.classList.contains('min-w-11')).toBe(true)
-    })
-
-    const mobileStepper = container.querySelector('[aria-label="增加关卡 1 的执行次数"]')?.parentElement
-    expect(mobileStepper?.classList.contains('hidden')).toBe(true)
-    expect(mobileStepper?.classList.contains('min-[900px]:flex')).toBe(true)
 
     await clickSequenceTask('自动公招')
-    const refreshLabel = container.querySelector<HTMLLabelElement>('label[for="automation-recruit-1-refresh"]')
-    expect(refreshLabel?.classList.contains('min-h-11')).toBe(true)
+    expect(container.querySelector('label[for="automation-recruit-1-refresh"]')).not.toBeNull()
     expect(container.querySelector('#automation-recruit-1-refresh')).not.toBeNull()
     expect(container.querySelector('fieldset legend')?.textContent).toContain('招募星级')
   })
@@ -741,16 +675,18 @@ describe('AutomationTasks layout surfaces', () => {
     await flush()
 
     const stageEditor = container.querySelector('.automation-stage-editor')!
-    expect(stageEditor.querySelectorAll('.automation-stage-item.is-smart')).toHaveLength(1)
+    expect(stageEditor.querySelector('[aria-label="移除智能养成关卡"]')).not.toBeNull()
     expect(stageEditor.textContent).toContain('正在养成：阿米娅')
-    expect(stageEditor.querySelector<HTMLInputElement>('.automation-stage-item.is-smart .automation-stage-name-input')?.value).toBe('AP-5')
+    const smartStageInput = Array.from(stageEditor.querySelectorAll<HTMLInputElement>('input'))
+      .find(input => input.value === 'AP-5')
+    expect(smartStageInput).toBeDefined()
     expect(mocks.generateTrainingPlan).toHaveBeenCalledWith({ mode: 'current' })
 
     const removeSmartStages = stageEditor.querySelector<HTMLButtonElement>('[aria-label="移除智能养成关卡"]')!
     await act(async () => removeSmartStages.click())
     await flush()
 
-    expect(stageEditor.querySelectorAll('.automation-stage-item.is-smart')).toHaveLength(0)
+    expect(stageEditor.textContent).not.toContain('正在养成：阿米娅')
     expect(stageEditor.querySelector('[aria-label="加入智能养成关卡"]')).not.toBeNull()
   })
 

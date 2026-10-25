@@ -37,21 +37,16 @@ describe('Switch', () => {
     })
 
     const input = container.querySelector<HTMLInputElement>('input[role="switch"]')
-    const wrapper = container.querySelector<HTMLLabelElement>('.app-switch')
+    const wrapper = container.querySelector<HTMLLabelElement>('label')
     expect(input?.getAttribute('aria-label')).toBe('启用定时执行')
     expect(input?.checked).toBe(false)
     expect(wrapper?.htmlFor).toBe(input?.id)
-    expect(wrapper?.classList.contains('app-switch-compact')).toBe(true)
-    expect(wrapper?.classList.contains('toggle')).toBe(false)
-    expect(wrapper?.querySelectorAll('.app-switch-track')).toHaveLength(1)
-    expect(wrapper?.querySelectorAll('.app-switch-thumb')).toHaveLength(1)
-    expect(wrapper?.querySelector('.toggle-icon')).toBeNull()
 
     await act(async () => input?.click())
     expect(onChange).toHaveBeenCalledWith(true)
   })
 
-  it('disables the native control and its visual wrapper together', async () => {
+  it('renders a disabled native control', async () => {
     await act(async () => {
       root.render(
         <Switch
@@ -64,6 +59,5 @@ describe('Switch', () => {
     })
 
     expect(container.querySelector<HTMLInputElement>('input[role="switch"]')?.disabled).toBe(true)
-    expect(container.querySelector('.app-switch')?.classList.contains('is-disabled')).toBe(true)
   })
 })

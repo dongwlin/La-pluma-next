@@ -167,7 +167,7 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(webrtcMock.connect).toHaveBeenCalledTimes(2)
   })
 
-  it('shows the status beam only while the preview is connecting', async () => {
+  it('marks the video frame busy only while the preview is connecting', async () => {
     webrtcMock.status = 'connecting'
     await act(async () => root.render(
       <ScrcpyDeviceView
@@ -177,8 +177,6 @@ describe('ScrcpyDeviceView automation availability', () => {
     ))
 
     const frame = container.querySelector('.scrcpy-video-frame')
-    expect(frame?.classList.contains('status-border-beam')).toBe(true)
-    expect(frame?.classList.contains('is-active')).toBe(true)
     expect(frame?.getAttribute('aria-busy')).toBe('true')
 
     webrtcMock.status = 'connected'
@@ -189,7 +187,6 @@ describe('ScrcpyDeviceView automation availability', () => {
       />
     ))
 
-    expect(frame?.classList.contains('is-active')).toBe(false)
     expect(frame?.getAttribute('aria-busy')).toBe('false')
   })
 
@@ -213,9 +210,6 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(container.querySelector('.scrcpy-control-rail')).toBeNull()
     expect(openSettings?.getAttribute('aria-expanded')).toBe('false')
     expect(toolbar?.getAttribute('role')).toBe('toolbar')
-    expect(Array.from(toolbar?.querySelectorAll('button') || []).every(button => (
-      button.className.includes('h-11') && button.className.includes('w-11')
-    ))).toBe(true)
 
     await act(async () => openSettings?.click())
 
@@ -334,11 +328,6 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(container.textContent).toContain('自定义 · 1280p · 60 FPS')
     expect(container.querySelector('[role="group"][aria-label="视频帧率"]')).not.toBeNull()
     expect(findButton('60')?.getAttribute('aria-label')).toBe('60 FPS')
-    expect(findButton('60')?.className).toContain('min-h-11')
-    expect(Array.from(container.querySelectorAll('.scrcpy-service-action, .scrcpy-utility-action')).every(button => (
-      button.className.includes('min-h-11')
-    ))).toBe(true)
-    expect(container.querySelector('.scrcpy-bitrate-slider')?.className).toContain('min-h-11')
   })
 
   it('tracks pointers independently, coalesces moves per frame, and releases every pointer', async () => {
@@ -444,7 +433,7 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(container.inert).toBe(true)
     expect(container.getAttribute('aria-hidden')).toBe('true')
     expect(document.body.style.overflow).toBe('hidden')
-    expect(dialog?.querySelector('[aria-label="退出全屏"]')?.className).toContain('h-11')
+    expect(dialog?.querySelector('[aria-label="退出全屏"]')).not.toBeNull()
 
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()

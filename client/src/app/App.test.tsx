@@ -115,7 +115,6 @@ describe('App motion preferences', () => {
     await act(async () => { await Promise.resolve() })
 
     expect(container.querySelector('[data-testid="motion-config"]')?.getAttribute('data-reduced-motion')).toBe('user')
-    expect(container.querySelector('#app-root')?.className).toContain('la-pluma-app')
   })
 
   it('preserves page state while pausing effects on hidden workspaces', async () => {

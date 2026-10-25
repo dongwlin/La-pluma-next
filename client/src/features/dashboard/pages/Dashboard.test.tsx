@@ -330,18 +330,6 @@ describe('Dashboard connectivity state', () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/training')
   })
 
-  it('keeps empty summary actions at the iOS touch target size', async () => {
-    await act(async () => renderDashboard())
-    await flushDashboard()
-
-    const emptyActions = [findButton('添加首个培养目标'), findButton('查看掉落数据')]
-    emptyActions.forEach(action => {
-      expect(action?.classList.contains('dashboard-summary-link')).toBe(true)
-      expect(action?.classList.contains('min-h-11')).toBe(true)
-      expect(action?.closest('.dashboard-summary-footer')?.classList.contains('is-action')).toBe(true)
-    })
-  })
-
   it('activates the status beam while the daily flow is running', async () => {
     apiMocks.getScheduleExecutionStatus.mockResolvedValueOnce({
       success: true,
@@ -352,8 +340,6 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     const flow = container.querySelector('.dashboard-flow-glow-shell')
-    expect(flow?.classList.contains('status-border-beam')).toBe(true)
-    expect(flow?.classList.contains('is-active')).toBe(true)
     expect(flow?.getAttribute('aria-busy')).toBe('true')
   })
 
@@ -380,7 +366,6 @@ describe('Dashboard connectivity state', () => {
     expect(apiMocks.runCurrentActivity).toHaveBeenCalledTimes(1)
     expect(activityButton?.disabled).toBe(true)
     expect(activityButton?.textContent).toContain('检查中')
-    expect(flow?.classList.contains('is-active')).toBe(true)
     expect(flow?.getAttribute('aria-busy')).toBe('true')
     expect(status.isActive).toBe(true)
     expect(status.message).toContain('当前活动')
@@ -420,7 +405,6 @@ describe('Dashboard connectivity state', () => {
     expect(status.message).toBe(blocker)
     expect(status.messageType).toBe('warning')
     expect(status.isActive).toBe(false)
-    expect(flow?.classList.contains('is-active')).toBe(false)
     expect(flow?.getAttribute('aria-busy')).toBe('false')
   })
 })

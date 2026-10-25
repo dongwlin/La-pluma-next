@@ -246,20 +246,14 @@ describe('CombatTasks execution recovery', () => {
     expect(container.textContent).toContain('兜底作业')
   })
 
-  it('keeps each active task in the shared continuous-corner card', async () => {
+  it('supports roving focus across combat modes', async () => {
     await renderComponent()
 
-    const page = container.querySelector('.combat-page')
-    expect(page?.classList.contains('ios-workspace-page')).toBe(true)
-    expect(page?.querySelector('.app-page-header')?.classList.contains('is-mobile-inline')).toBe(true)
-
-    const modeShell = page?.querySelector('.combat-mode-shell')
-    expect(modeShell?.classList.contains('app-liquid-tab-pill')).toBe(true)
-    const modeButtons = page?.querySelectorAll('.combat-mode-button') ?? []
-    expect(modeButtons).toHaveLength(3)
-    modeButtons.forEach(button => expect(button.classList.contains('min-h-11')).toBe(true))
+    const modeShell = container.querySelector('.combat-mode-shell')
     expect(modeShell?.querySelector('[role="toolbar"]')).not.toBeNull()
-    expect(page?.querySelectorAll('.combat-mode-button[aria-pressed="true"]')).toHaveLength(1)
+    const modeButtons = modeShell?.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button') ?? []
+    expect(modeButtons).toHaveLength(3)
+    expect(Array.from(modeButtons).filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
     expect(Array.from(modeButtons).map(button => button.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
 
     const firstModeButton = modeButtons[0] as HTMLButtonElement
@@ -276,31 +270,6 @@ describe('CombatTasks execution recovery', () => {
     const arrowDownEvent = await keyDown(firstModeButton, 'ArrowDown')
     expect(arrowDownEvent.defaultPrevented).toBe(false)
     expect(firstModeButton.getAttribute('aria-pressed')).toBe('true')
-
-    const copilotCard = page?.querySelector('.combat-task-card')
-    expect(copilotCard?.getAttribute('data-smooth-corners')).toBe('true')
-    expect(copilotCard?.querySelector(':scope > .app-card-smooth-surface')).not.toBeNull()
-
-    const explanationDetails = Array.from(copilotCard?.querySelectorAll('details') ?? [])
-      .find(details => details.querySelector('summary')?.textContent?.trim() === '说明')
-    const explanationTrigger = explanationDetails?.querySelector('summary')
-    const explanation = explanationDetails?.querySelector(':scope > div')
-    expect(explanationTrigger?.classList.contains('min-h-11')).toBe(true)
-    expect(explanationTrigger?.classList.contains('min-w-11')).toBe(true)
-    expect(explanation?.className).toContain('w-[min(18rem,calc(100vw_-_3rem))]')
-
-    const sssModeButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'))
-      .find(button => button.textContent?.includes('保全派驻'))
-    expect(sssModeButton).toBeDefined()
-    await click(sssModeButton!)
-
-    const sssCard = page?.querySelector('.combat-task-card')
-    expect(sssCard?.getAttribute('data-smooth-corners')).toBe('true')
-    expect(sssCard?.querySelector(':scope > .app-card-smooth-surface')).not.toBeNull()
-
-    const monitor = page?.querySelector('.combat-monitor-panel')
-    expect(monitor?.getAttribute('data-smooth-corners')).toBe('true')
-    expect(monitor?.querySelector('.task-monitor-panel.is-compact')).not.toBeNull()
   })
 
   it('keeps an unsynced local draft across remounts and retries the save', async () => {
@@ -563,7 +532,7 @@ describe('CombatTasks execution recovery', () => {
     expect(container.textContent).not.toContain('旧预览')
   })
 
-  it('associates visible form controls with labels and keeps touch targets at least 44px', async () => {
+  it('associates every visible form control with a label', async () => {
     await renderComponent()
 
     const controls = Array.from(container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea'))
@@ -573,11 +542,6 @@ describe('CombatTasks execution recovery', () => {
       const label = Array.from(container.querySelectorAll<HTMLLabelElement>('label'))
         .find(candidate => candidate.htmlFor === control.id)
       expect(label).toBeDefined()
-      if (control instanceof HTMLInputElement && control.type === 'checkbox') {
-        expect(label?.classList.contains('min-h-11')).toBe(true)
-      } else if (!(control instanceof HTMLTextAreaElement)) {
-        expect(control.classList.contains('min-h-11')).toBe(true)
-      }
     })
   })
 

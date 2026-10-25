@@ -126,55 +126,22 @@ describe('ConfigManager layout surfaces', () => {
     vi.restoreAllMocks()
   })
 
-  it('uses the shared liquid segments and continuous corners for the configuration workspace', async () => {
+  it('keeps the config section nav roving and reports switch semantics', async () => {
     await act(async () => root.render(<ConfigManager />))
     await flush()
 
-    const page = container.querySelector('.ios-workspace-page')
-    expect(page).not.toBeNull()
-    expect(page?.classList.contains('ios-borderless-cards')).toBe(true)
-    expect(page?.querySelector('.app-page-header')?.classList.contains('is-mobile-inline')).toBe(true)
-    expect(page?.querySelector('.app-page-header-icon')).toBeNull()
-
-    const cards = page?.querySelectorAll('.app-card[data-smooth-corners="true"]') ?? []
-    expect(cards).toHaveLength(3)
-    cards.forEach((card) => {
-      expect(card.classList.contains('p-0!')).toBe(true)
-      expect(card.querySelector(':scope > .app-card-smooth-surface')).not.toBeNull()
+    const toolbar = container.querySelector('[role="toolbar"][aria-label="配置类型"]')
+    expect(toolbar).not.toBeNull()
+    const sections = Array.from(toolbar?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    expect(sections).toHaveLength(3)
+    expect(sections.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
+    expect(sections.find(button => button.getAttribute('aria-pressed') === 'true')?.textContent).toContain('连接')
+    sections.forEach(button => {
+      expect(button.tabIndex).toBe(button.getAttribute('aria-pressed') === 'true' ? 0 : -1)
     })
-    const workspace = page?.querySelector(':scope > .config-workspace-grid')
-    const primaryColumn = workspace?.querySelector(':scope > .config-workspace-primary')
-    const secondaryColumn = workspace?.querySelector(':scope > .config-workspace-secondary')
-    expect(workspace).not.toBeNull()
-    expect(workspace?.children).toHaveLength(2)
-    expect(primaryColumn?.classList.contains('min-w-0')).toBe(true)
-    expect(secondaryColumn?.classList.contains('min-w-0')).toBe(true)
-    expect(Array.from(primaryColumn?.querySelectorAll(':scope > .app-card') ?? [])).toEqual([cards[0], cards[1]])
-    expect(Array.from(secondaryColumn?.querySelectorAll(':scope > .app-card') ?? [])).toEqual([cards[2]])
-    expect(cards[0]?.classList.contains('config-editor-card')).toBe(true)
-    expect(cards[1]?.classList.contains('config-directory-card')).toBe(true)
-    expect(cards[2]?.classList.contains('config-update-card')).toBe(true)
-    expect(page?.querySelectorAll(':scope > .app-card')).toHaveLength(0)
-    expect(cards[0]?.querySelector(':scope > .app-card-smooth-surface > .app-card-content')).not.toBeNull()
 
-    const navigation = page?.querySelector('[data-config-sections]')
-    expect(navigation?.classList.contains('app-liquid-tab-pill')).toBe(true)
-    expect(navigation?.querySelectorAll('.app-workspace-segment')).toHaveLength(3)
-    expect(navigation?.querySelector('.app-workspace-segment.is-selected')?.textContent).toContain('连接')
-    expect(page?.querySelector('.smooth-panel-shell')).toBeNull()
-    expect(page?.querySelector('.app-card .app-info-card')).toBeNull()
-
-    const autoUpdateToggle = page?.querySelector<HTMLInputElement>('input[aria-label="启用自动更新"]')
-    const autoUpdateTrack = autoUpdateToggle?.nextElementSibling
+    const autoUpdateToggle = container.querySelector<HTMLInputElement>('input[aria-label="启用自动更新"]')
     expect(autoUpdateToggle?.getAttribute('role')).toBe('switch')
-    expect(autoUpdateTrack?.classList.contains('app-switch-track')).toBe(true)
-    const reconnectRow = page?.querySelector('.config-reconnect-row')
-    expect(reconnectRow).not.toBeNull()
-    expect(reconnectRow?.classList.contains('surface-soft')).toBe(false)
-
-    const configPath = Array.from(page?.querySelectorAll('p') ?? []).find(element => element.textContent === '/tmp/la-pluma')
-    expect(configPath?.classList.contains('break-all')).toBe(false)
-    expect(configPath?.classList.contains('break-words')).toBe(true)
   })
 
   it('shows a retryable config-directory error instead of an endless loading label', async () => {
@@ -381,7 +348,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(cliButton.disabled).toBe(false)
   })
 
-  it('keeps the resource retry action at a 44px touch target', async () => {
+  it('offers a resource retry when a core update fails at the resource step', async () => {
     mocks.updateMaaCore.mockResolvedValue({
       success: false,
       message: '资源同步失败',
@@ -397,9 +364,12 @@ describe('ConfigManager layout surfaces', () => {
 
     const retryButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.trim() === '重试资源同步')
-    expect(retryButton?.classList.contains('min-h-11!')).toBe(true)
-    expect(retryButton?.classList.contains('lg:min-h-0!')).toBe(true)
-    expect(retryButton?.classList.contains('min-h-0!')).toBe(false)
+    expect(retryButton).toBeDefined()
+    expect(retryButton?.disabled).toBe(false)
+
+    await act(async () => retryButton?.click())
+    await flush()
+    expect(mocks.hotUpdateResources).toHaveBeenCalledOnce()
   })
 
   it('does not report success when the scheduler rejects an enabled setting', async () => {

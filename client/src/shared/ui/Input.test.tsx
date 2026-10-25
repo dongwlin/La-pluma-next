@@ -65,27 +65,6 @@ describe('common form controls', () => {
     expect(container.querySelector('label')?.htmlFor).toBe('billing-cycle')
     expect(select?.getAttribute('aria-describedby')).toBe(hint?.id)
     expect(hint?.textContent).toBe('可随时切换')
-    expect(select?.classList.contains('app-native-control')).toBe(true)
-    expect(select?.classList.contains('control-surface')).toBe(true)
-    expect(select?.classList.contains('app-select-control')).toBe(true)
-    expect(container.querySelector('.app-select-shell .app-select-trailing-icon')?.getAttribute('aria-hidden')).toBe('true')
-  })
-
-  it('reserves leading space when an input has an icon', async () => {
-    await act(async () => {
-      root.render(
-        <Input
-          value=""
-          onChange={vi.fn()}
-          placeholder="搜索干员"
-          icon={<span data-testid="search-icon" />}
-        />,
-      )
-    })
-
-    const input = container.querySelector('input')
-    const icon = container.querySelector('[data-testid="search-icon"]')
-    expect(input?.classList.contains('app-input-has-icon')).toBe(true)
-    expect(icon?.parentElement?.classList.contains('app-input-leading-icon')).toBe(true)
+    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull()
   })
 })

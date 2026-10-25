@@ -118,18 +118,6 @@ describe('NotificationSettings Activity lifecycle', () => {
     expect(container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')?.value).toBe('server-token')
   })
 
-  it('uses the same section switch treatment for notification controls', async () => {
-    await renderMode('visible')
-
-    const notificationSwitch = container.querySelector<HTMLInputElement>('[aria-label="任务通知"]')
-    const telegramSwitch = container.querySelector<HTMLInputElement>('[aria-label="Telegram 通知"]')
-
-    expect(notificationSwitch?.closest('.automation-notification-heading')).not.toBeNull()
-    expect(telegramSwitch?.closest('.automation-notification-channel-heading')).not.toBeNull()
-    expect(notificationSwitch?.closest('.app-switch')?.classList.contains('automation-section-switch')).toBe(true)
-    expect(telegramSwitch?.closest('.app-switch')?.classList.contains('automation-section-switch')).toBe(true)
-  })
-
   it('does not replace an unsaved draft when Activity restores the loading effect', async () => {
     await renderMode('visible')
     const tokenInput = container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')

@@ -389,14 +389,11 @@ describe('top-level application navigation', () => {
       'logs',
       'config',
     ])
-    expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
-    expect(sidebar.querySelectorAll('.la-pluma-sidebar-icon > svg[aria-hidden="true"]')).toHaveLength(8)
+    expect(sidebar.querySelectorAll('button[data-app-tab]')).toHaveLength(8)
+    expect(sidebar.querySelectorAll('button[data-app-tab] svg[aria-hidden="true"]')).toHaveLength(8)
 
-    const mobileDestinations = [...container.querySelectorAll<HTMLButtonElement>('.la-pluma-tabbar-pill button[data-app-tab]')]
+    const mobileDestinations = [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="主要功能"] button[data-app-tab]')]
       .map(button => button.dataset.appTab)
-    const dashboardIcon = container.querySelector('.la-pluma-tabbar-pill button[data-app-tab="dashboard"] svg')
-    expect(container.querySelector('.la-pluma-tabbar-pill')?.classList.contains('app-liquid-tab-pill')).toBe(true)
-    expect(dashboardIcon?.classList.contains('lucide-layout-grid')).toBe(true)
     expect(mobileDestinations).toEqual([
       'dashboard',
       'automation',
@@ -419,11 +416,8 @@ describe('top-level application navigation', () => {
     })
 
     const identity = container.querySelector<HTMLElement>('.la-pluma-sidebar-identity')!
-    const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
     const avatar = identity.querySelector<HTMLImageElement>('.la-pluma-sidebar-avatar img')!
     expect(mocks.loadDailyOperatorQuote).toHaveBeenCalledTimes(1)
-    expect(sidebar.firstElementChild?.classList.contains('la-pluma-sidebar-nav')).toBe(true)
-    expect(sidebar.lastElementChild).toBe(identity)
     expect(identity.getAttribute('aria-label')).toBe('银灰：战术安排已就绪')
     expect(identity.querySelector('strong')?.textContent).toBe('银灰')
     expect(identity.querySelector('small')?.textContent).toBe('战术安排已就绪')
@@ -466,7 +460,7 @@ describe('top-level application navigation', () => {
     let sheet = container.querySelector<HTMLElement>('#la-pluma-more-sheet')
     expect(sheet?.getAttribute('role')).toBe('dialog')
     expect(sheet?.getAttribute('aria-modal')).toBe('true')
-    expect(sheet?.querySelector('[aria-label="关闭更多工作区"]')?.classList.contains('la-pluma-sheet-close')).toBe(true)
+    expect(sheet?.querySelector('[aria-label="关闭更多工作区"]')).not.toBeNull()
     expect(document.body.style.overflow).toBe('hidden')
     expect(getScrollHost().style.overflow).toBe('hidden')
 

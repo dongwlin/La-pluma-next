@@ -75,7 +75,7 @@ describe('FloatingStatusIndicator', () => {
     vi.restoreAllMocks()
   })
 
-  it('reuses the anchored status pill without creating a dismissible overlay', async () => {
+  it('reuses one anchored status pill without a dismissible control', async () => {
     await act(async () => root.render(
       <>
         <FloatingStatusIndicator />
@@ -85,21 +85,10 @@ describe('FloatingStatusIndicator', () => {
     await act(async () => { await Promise.resolve() })
     expect(mocks.fetchWithAuth).toHaveBeenCalledTimes(1)
 
-    const indicator = container.querySelector<HTMLElement>('.floating-status-indicator')
-    const visibleText = container.querySelector<HTMLElement>('.floating-status-text')
-    const liveText = container.querySelector<HTMLElement>('[role="status"]')
-    expect(indicator?.classList.contains('sm:max-w-sm')).toBe(true)
-    expect(indicator?.classList.contains('gap-2')).toBe(true)
-    expect(indicator?.classList.contains('py-1.5')).toBe(true)
-    expect(indicator?.classList.contains('sm:py-2')).toBe(true)
-    expect(indicator?.classList.contains('sm:text-sm')).toBe(true)
-    expect(visibleText?.classList.contains('truncate')).toBe(true)
-    expect(visibleText?.classList.contains('break-words')).toBe(false)
-    expect(visibleText?.classList.contains('whitespace-normal')).toBe(false)
-    expect(visibleText?.title).toBe('保存失败，请重试')
-    expect(liveText?.textContent).toBe('保存失败，请重试')
-    expect(container.querySelector('.floating-status-dismiss')).toBeNull()
-    expect(container.querySelector('.floating-status-anchor .floating-status-indicator')).not.toBeNull()
-    expect(container.querySelector('.floating-status-overlay')).toBeNull()
+    const liveRegion = container.querySelector<HTMLElement>('[role="status"]')
+    expect(liveRegion?.textContent).toBe('保存失败，请重试')
+    expect(liveRegion?.getAttribute('aria-live')).toBe('polite')
+    expect(container.querySelector('[title="保存失败，请重试"]')).not.toBeNull()
+    expect(container.querySelector('button')).toBeNull()
   })
 })

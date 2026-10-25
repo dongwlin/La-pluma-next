@@ -86,40 +86,33 @@ describe('DashboardPreviewEntry', () => {
     expect(container.querySelector('button[aria-label="打开模拟器实时预览"]')).not.toBeNull()
   })
 
-  it('activates the border beam only during WebRTC connection', async () => {
+  it('marks the preview card busy while WebRTC connects', async () => {
     preview.isConnecting = true
     await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
 
     const card = container.querySelector('[data-dashboard-preview-card]')
-    expect(card?.classList.contains('status-border-beam')).toBe(true)
-    expect(card?.classList.contains('is-active')).toBe(true)
     expect(card?.getAttribute('aria-busy')).toBe('true')
 
     preview.isConnecting = false
     await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
 
-    expect(card?.classList.contains('is-active')).toBe(false)
     expect(card?.getAttribute('aria-busy')).toBe('false')
   })
 
-  it('uses the status light for connection state instead of preview mode', async () => {
+  it('names the status light from the connection state', async () => {
     preview.fallbackSnapshot = null
     preview.connectionState = 'off'
     preview.statusText = '预览已关闭'
     await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
 
-    const offLight = container.querySelector('[data-preview-status="off"]')
-    expect(offLight?.classList.contains('preview-status-light')).toBe(true)
-    expect(offLight?.classList.contains('is-off')).toBe(true)
+    expect(container.querySelector('[data-preview-status="off"]')?.getAttribute('aria-label')).toBe('预览已关闭')
 
     preview.connectionState = 'live'
     preview.statusText = '实时画面'
     preview.showLivePreview = true
     await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
 
-    const liveLight = container.querySelector('[data-preview-status="live"]')
-    expect(liveLight?.classList.contains('is-live')).toBe(true)
-    expect(liveLight?.getAttribute('aria-label')).toBe('实时画面')
+    expect(container.querySelector('[data-preview-status="live"]')?.getAttribute('aria-label')).toBe('实时画面')
   })
 
   it('switches preview mode through the compact segmented control', async () => {

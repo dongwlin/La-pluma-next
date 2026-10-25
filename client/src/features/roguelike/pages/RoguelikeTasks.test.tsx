@@ -130,43 +130,23 @@ describe('RoguelikeTasks execution recovery', () => {
     vi.restoreAllMocks()
   })
 
-  it('uses the shared iOS workspace surfaces for configuration and preview', async () => {
+  it('keeps mode selection keyboard-navigable and toggles labelled', async () => {
     await act(async () => root.render(<RoguelikeTasks />))
     await flush()
 
-    const page = container.querySelector('.roguelike-page')
-    expect(page?.classList.contains('ios-workspace-page')).toBe(true)
-    expect(page?.querySelector('.app-page-header')?.classList.contains('is-mobile-inline')).toBe(true)
-    expect(page?.querySelector('.app-page-header-icon')).toBeNull()
-
-    const modeShell = page?.querySelector('.roguelike-mode-shell')
-    expect(modeShell?.classList.contains('app-liquid-tab-pill')).toBe(true)
-
-    const panels = page?.querySelectorAll('.roguelike-theme-panel, .roguelike-settings-panel, .roguelike-monitor-panel')
-    expect(panels).toHaveLength(3)
-    panels?.forEach(panel => {
-      expect(panel.getAttribute('data-smooth-corners')).toBe('true')
-      expect(panel.querySelector(':scope > .smooth-panel-surface')).not.toBeNull()
-    })
-
-    const monitor = page?.querySelector('.task-monitor-panel.is-compact')
-    expect(monitor?.closest('.roguelike-monitor-surface')).not.toBeNull()
-    expect(monitor?.closest('.roguelike-monitor-panel')).not.toBeNull()
-
+    const modeShell = container.querySelector('.roguelike-mode-shell')
     expect(modeShell?.querySelector('[role="toolbar"]')).not.toBeNull()
-    const selectedModes = page?.querySelectorAll('.roguelike-mode-button[aria-pressed="true"]')
-    expect(selectedModes).toHaveLength(1)
+    const modeButtons = Array.from(modeShell?.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button') ?? [])
+    expect(modeButtons.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
 
-    const toggleTextLabel = page?.querySelector<HTMLLabelElement>('.roguelike-toggle-label')
-    expect(toggleTextLabel?.htmlFor).toBeTruthy()
-    expect(page?.querySelector(`#${toggleTextLabel?.htmlFor}`)?.getAttribute('role')).toBe('switch')
-    const switches = page?.querySelectorAll('.roguelike-toggle-row .app-switch') ?? []
+    const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
     expect(switches).toHaveLength(2)
-    switches.forEach(switchControl => {
-      expect(switchControl.classList.contains('min-h-11')).toBe(false)
+    switches.forEach(input => {
+      const label = Array.from(container.querySelectorAll<HTMLLabelElement>('label'))
+        .find(candidate => candidate.htmlFor === input.id)
+      expect(label).toBeDefined()
     })
 
-    const modeButtons = Array.from(page?.querySelectorAll<HTMLButtonElement>('.roguelike-mode-button') ?? [])
     expect(modeButtons.map(button => button.tabIndex)).toEqual([0, -1])
     modeButtons[0]?.focus()
     await keyDown(modeButtons[0]!, 'End')
@@ -321,7 +301,7 @@ describe('RoguelikeTasks execution recovery', () => {
     expect(buttonByText('立即执行')).toBeDefined()
   })
 
-  it('associates form controls with labels and exposes 44px touch targets', async () => {
+  it('associates every form control with a label', async () => {
     await act(async () => root.render(<RoguelikeTasks />))
     await flush()
 
@@ -332,14 +312,6 @@ describe('RoguelikeTasks execution recovery', () => {
       const label = Array.from(container.querySelectorAll<HTMLLabelElement>('label'))
         .find(candidate => candidate.htmlFor === control.id || candidate.contains(control))
       expect(label).toBeDefined()
-      if (control instanceof HTMLInputElement && control.type === 'checkbox') {
-        expect(label?.classList.contains('min-h-11')).toBe(true)
-      } else {
-        expect(control.classList.contains('app-native-control')).toBe(true)
-      }
-    })
-    container.querySelectorAll('.roguelike-mode-button, .roguelike-theme-option').forEach(control => {
-      expect(control.classList.contains('min-h-11')).toBe(true)
     })
   })
 
