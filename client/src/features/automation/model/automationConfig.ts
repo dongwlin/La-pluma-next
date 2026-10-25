@@ -119,6 +119,48 @@ export function activeScheduleTimes(entries: ScheduleTimeEntry[]): string[] {
 }
 
 /**
+ * 采用服务端 schedule 时保留本设备独有的禁用时间点。
+ *
+ * 禁用项按设计不进入 wire（`times` 只含启用项），因此服务端副本无法表达它们。
+ * 外部写入后强制重读时，若直接用服务端结果覆盖本地草稿，用户在本设备上编辑或
+ * 禁用的时间点会被静默丢弃。合并规则：
+ * - 服务端已启用的时间点优先（时间点不能同时启用与禁用）；
+ * - 本地禁用且服务端没有的时间点保留，并尽量保持本地顺序；
+ * - 其余按服务端顺序补入。
+ */
+export function mergeLocalScheduleEntries(
+  serverEntries: ScheduleTimeEntry[],
+  localEntries: ScheduleTimeEntry[],
+): ScheduleTimeEntry[] {
+  const serverTimes = new Set(serverEntries.map(entry => entry.time))
+  const merged: ScheduleTimeEntry[] = []
+  const seen = new Set<string>()
+
+  for (const entry of localEntries) {
+    if (seen.has(entry.time)) continue
+    if (!entry.enabled) {
+      if (!serverTimes.has(entry.time)) {
+        seen.add(entry.time)
+        merged.push({ ...entry })
+      }
+      continue
+    }
+    if (serverTimes.has(entry.time)) {
+      seen.add(entry.time)
+      merged.push({ time: entry.time, enabled: true })
+    }
+  }
+
+  for (const entry of serverEntries) {
+    if (seen.has(entry.time)) continue
+    seen.add(entry.time)
+    merged.push({ ...entry })
+  }
+
+  return merged
+}
+
+/**
  * 读取 schedule 的 `entries`/`times` 混合形状。
  * `entries` 优先（保留禁用项），为空时回退到旧 `times`（全部启用）。
  */
@@ -320,7 +362,17 @@ function decodeAutomationConfig(payload: unknown): AutomationConfigDraft | null 
   const schedule = payload.schedule === undefined ? defaults.schedule : parseSchedule(payload.schedule)
   if (taskFlow === null || schedule === null) return null
 
-  return { taskFlow, schedule }
+  // 禁用时间点只存在于本设备；采用服务端副本时保留，避免外部写入后的重读静默丢失。
+  const localSchedule = readLocalSection(AUTOMATION_SCHEDULE_KEY, parseSchedule)
+  return {
+    taskFlow,
+    schedule: localSchedule
+      ? {
+          ...schedule,
+          entries: mergeLocalScheduleEntries(schedule.entries, localSchedule.entries),
+        }
+      : schedule,
+  }
 }
 
 /** 读取单个 JSON 本地键；缺失返回 null，损坏或形状不合法时清理该键并返回 null。 */

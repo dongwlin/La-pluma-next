@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '@/shared/api'
 import {
+  TRAINING_QUEUE_FLOW_SYNC_SCOPES,
   TRAINING_QUEUE_MUTATION_SCOPES,
   TRAINING_QUEUE_MUTATION_SOURCE,
   TRAINING_QUEUE_UNCERTAIN_MESSAGE,
@@ -255,6 +256,26 @@ describe('TrainingQueueCommandOwner', () => {
     expect(outcome.flowSync).toMatchObject({ status: 'synced', flowName: '日常刷图' })
     expect(harness.getCommitted()).toBe(outcome.snapshot)
     expect(harness.publish).toHaveBeenCalledOnce()
+    expect(harness.publish).toHaveBeenCalledWith({
+      resources: [...TRAINING_QUEUE_MUTATION_SCOPES, ...TRAINING_QUEUE_FLOW_SYNC_SCOPES],
+      cause: 'training-queue',
+      detail: { source: TRAINING_QUEUE_MUTATION_SOURCE },
+    })
+  })
+
+  it('does not announce automation changes when the queue write could not sync the flow', async () => {
+    const harness = createHarness([queueItem('char_a', '阿米娅')])
+    harness.add.mockResolvedValueOnce(success({
+      queueRevision: 'revision-2',
+      flowSync: { status: 'failed', flowName: '日常刷图', taskName: 'Fight', error: '配置不可写' },
+    }))
+
+    const outcome = await harness.owner.run(
+      { type: 'add', operator: operator('char_added', '能天使') },
+      harness.context,
+    )
+
+    expect(outcome.status).toBe('applied')
     expect(harness.publish).toHaveBeenCalledWith({
       resources: [...TRAINING_QUEUE_MUTATION_SCOPES],
       cause: 'training-queue',

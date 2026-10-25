@@ -196,6 +196,29 @@ describe('automation config adapter', () => {
     expect(automationConfigAdapter.decodeDraft({})).toEqual(createDefaultAutomationDraft())
   })
 
+  it('preserves local-only disabled entries when adopting a server payload', () => {
+    localStorage.setItem(AUTOMATION_SCHEDULE_KEY, JSON.stringify({
+      enabled: true,
+      entries: [
+        { time: '08:00', enabled: true },
+        { time: '14:00', enabled: false },
+      ],
+    }))
+
+    const decoded = automationConfigAdapter.decodeDraft({
+      schedule: { enabled: true, times: ['08:00', '20:00'] },
+    })
+
+    expect(decoded!.schedule).toEqual({
+      enabled: true,
+      entries: [
+        { time: '08:00', enabled: true },
+        { time: '14:00', enabled: false },
+        { time: '20:00', enabled: true },
+      ],
+    })
+  })
+
   it('fingerprints local schedule entries so disabled-row edits are not treated as no-ops', () => {
     const base: AutomationConfigDraft = {
       ...draft,

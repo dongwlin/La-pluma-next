@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, type ReactNode } from 'react'
+import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userConfigCoordinator } from '@/features/user-config'
+import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import AutomationTasks from './AutomationTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -153,6 +154,25 @@ const pendingDraft = () => localStorage.getItem('automationConfigSyncPending')
 const renderAutomation = async () => {
   await act(async () => root.render(<AutomationTasks />))
   await settle()
+}
+
+const renderAutomationWithActivity = async (mode: 'visible' | 'hidden') => {
+  await act(async () => {
+    root.render(
+      <Activity mode={mode}>
+        <AutomationTasks />
+      </Activity>,
+    )
+  })
+  await settle()
+}
+
+const publishPlanApplied = (stageCount = 3) => {
+  publishResourceInvalidation({
+    resources: ['automation-config', 'automation-schedule', 'dashboard-snapshot'],
+    cause: 'plan-applied',
+    detail: { stageCount },
+  })
 }
 
 describe('AutomationTasks config persistence', () => {
@@ -521,36 +541,108 @@ describe('AutomationTasks config persistence', () => {
     expect(pendingDraft()).toBeNull()
   })
 
-  it('keeps an in-flight save and local draft when a training plan asks for a server reload', async () => {
+  it('waits for an in-flight save before adopting the applied plan and keeps the saved edit', async () => {
     const pendingSave = deferred<{ success: boolean }>()
-    mocks.loadUserConfig.mockResolvedValue({
+    const initialConfig = { taskFlow: taskFlowFixture, schedule: { enabled: false } }
+    let savedPayload: unknown = null
+    mocks.loadUserConfig.mockImplementation(async () => ({
       success: true,
-      data: { taskFlow: taskFlowFixture, schedule: { enabled: false } },
+      data: savedPayload ?? initialConfig,
+    }))
+    mocks.saveUserConfig.mockImplementationOnce(async (_key: string, payload: unknown) => {
+      savedPayload = payload
+      await pendingSave.promise
+      return { success: true }
     })
-    mocks.saveUserConfig.mockReturnValueOnce(pendingSave.promise)
 
     await renderAutomation()
     await click(scheduleSwitch())
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
     expect(pendingDraft()).not.toBeNull()
+    expect(scheduleSwitch().checked).toBe(true)
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('training-plan-applied', { detail: { stageCount: 3 } }))
+      publishPlanApplied()
     })
     await settle()
 
-    // pending 草稿/在途保存时强制重读返回 local-draft：不请求服务端，也不覆盖本地编辑。
+    // 同一配置协议：计划失效先等本页的在途保存落盘，不抢先读取更旧的服务端副本。
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
-    expect(container.textContent).toContain('理智作战')
-    expect(mocks.setMessage).toHaveBeenCalledWith(
-      '检测到本设备有未同步的流程编辑，已保留本地草稿；养成计划更新未覆盖本地配置',
-      'warning',
-    )
+    expect(pendingDraft()).not.toBeNull()
 
     await act(async () => pendingSave.resolve({ success: true }))
     await settle()
+
+    // 保存成功后强制重读服务端；刚保存的编辑（启用的定时）与新计划一起被采用。
+    expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.setupSchedule).toHaveBeenCalledOnce()
     expect(pendingDraft()).toBeNull()
+    expect(scheduleSwitch().checked).toBe(true)
+    expect(mocks.setMessage).toHaveBeenCalledWith('智能养成计划已更新：3 个关卡', 'success')
+  })
+
+  it('keeps local-only disabled schedule entries when adopting an applied plan', async () => {
+    localStorage.setItem('maa-schedule', JSON.stringify({
+      enabled: true,
+      entries: [
+        { time: '08:00', enabled: true },
+        { time: '14:00', enabled: false },
+      ],
+    }))
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskFlow: taskFlowFixture, schedule: { enabled: true, times: ['08:00'] } },
+    })
+
+    await renderAutomation()
+    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(2)
+    const disabledRow = container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
+    expect(disabledRow?.closest('.automation-schedule-time-row')?.classList.contains('is-disabled')).toBe(true)
+
+    await act(async () => {
+      publishPlanApplied()
+    })
+    await settle()
+
+    // 禁用项不进入 wire；外部计划重读后仍保留本设备独有的禁用时间点。
+    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(2)
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
+      ?.closest('.automation-schedule-time-row')?.classList.contains('is-disabled')).toBe(true)
+  })
+
+  it('applies a plan invalidation missed while the page is hidden after Activity resumes', async () => {
+    const updatedTaskFlow = [
+      ...taskFlowFixture,
+      {
+        id: 'mall-1',
+        commandId: 'mall',
+        name: '信用收支',
+        description: '访问好友、收取信用',
+        enabled: true,
+        params: { visit_friends: true, shopping: true },
+      },
+    ]
+    mocks.loadUserConfig
+      .mockResolvedValueOnce({ success: true, data: { taskFlow: taskFlowFixture, schedule: { enabled: false } } })
+      .mockResolvedValueOnce({ success: true, data: { taskFlow: updatedTaskFlow, schedule: { enabled: false } } })
+
+    await renderAutomationWithActivity('visible')
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+
+    await renderAutomationWithActivity('hidden')
+    await act(async () => {
+      publishPlanApplied()
+    })
+    await settle()
+    // 隐藏期间 Effect 已注销，不直接刷新。
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+
+    await renderAutomationWithActivity('visible')
+    await settle()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('信用收支')
+    expect(mocks.setMessage).toHaveBeenCalledWith('智能养成计划已更新', 'success')
   })
 
   it('refuses a forced server reload while a pending local draft is restored', async () => {
@@ -564,7 +656,7 @@ describe('AutomationTasks config persistence', () => {
     expect(container.textContent).toContain('理智作战')
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('training-plan-applied', { detail: { stageCount: 3 } }))
+      publishPlanApplied()
     })
     await settle()
 
@@ -597,7 +689,7 @@ describe('AutomationTasks config persistence', () => {
     expect(container.textContent).not.toContain('信用收支')
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('training-plan-applied', { detail: { stageCount: 3 } }))
+      publishPlanApplied()
     })
     await settle()
 

@@ -8,7 +8,14 @@ import { createQueryClient } from '@/shared/query'
 import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
 import { trainingQueueCommandOwner } from '../model/queueCommands'
 import { trainingSettingsOwner } from '../model/settingsCommands'
+import { trainingPlanOwner } from '../model/planCommands'
 import { publishResourceInvalidation, subscribeResourceInvalidation } from '@/features/resource-invalidation'
+import {
+  USER_CONFIG_KEYS,
+  userConfigCoordinator,
+  type ConfigCommitResult,
+  type ConfigPersistenceAdapter,
+} from '@/features/user-config'
 import OperatorTraining from './OperatorTraining'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -254,6 +261,9 @@ describe('OperatorTraining queue workspace', () => {
   beforeEach(() => {
     trainingQueueCommandOwner.reset()
     trainingSettingsOwner.reset()
+    trainingPlanOwner.reset()
+    userConfigCoordinator.dispose()
+    localStorage.removeItem('trainingPlanBarrierPending')
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
       media: query,
@@ -1227,16 +1237,26 @@ describe('OperatorTraining queue workspace', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith(expect.stringContaining('队列刷新失败'), 'warning')
   })
 
-  it('announces a synced plan application so other pages can refresh their copy', async () => {
+  it('publishes automation and dashboard invalidation after a synced plan application', async () => {
     mockMutableQueue([queueItem('char_current', '阿米娅')])
     mocks.applyTrainingPlan.mockResolvedValue({
       success: true,
       data: {
         stageCount: 1,
+        flowName: '日常刷图',
+        taskName: 'Fight',
         flowSync: { status: 'synced', flowName: '日常刷图', taskName: 'Fight' },
       },
     })
+    const invalidations: Array<{
+      resources: readonly string[]
+      cause: string
+      detail?: unknown
+    }> = []
     const onPlanApplied = vi.fn()
+    const unsubscribe = subscribeResourceInvalidation(event => {
+      invalidations.push(event)
+    })
     window.addEventListener('training-plan-applied', onPlanApplied)
 
     try {
@@ -1245,8 +1265,20 @@ describe('OperatorTraining queue workspace', () => {
       await click(buttonWithText('应用到自动任务', container))
 
       expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
-      expect(onPlanApplied).toHaveBeenCalledOnce()
+      expect(invalidations).toContainEqual({
+        resources: ['automation-config', 'automation-schedule', 'dashboard-snapshot'],
+        cause: 'plan-applied',
+        detail: {
+          stageCount: 1,
+          flowName: '日常刷图',
+          taskName: 'Fight',
+          source: 'training-plan-owner',
+        },
+      })
+      // 旧 window 事件不再是跨页一致性的唯一机制。
+      expect(onPlanApplied).not.toHaveBeenCalled()
     } finally {
+      unsubscribe()
       window.removeEventListener('training-plan-applied', onPlanApplied)
     }
   })
@@ -1608,5 +1640,112 @@ describe('OperatorTraining queue workspace', () => {
     expect(statusCount('可养成')).toBe('1')
     expect(statusCount('已拥有')).toBe('1')
     expect(statusCount('全部')).toBe('2')
+  })
+
+  it('waits for an in-flight automation config save before applying the plan', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    const commit = deferred<ConfigCommitResult>()
+    const adapter: ConfigPersistenceAdapter<{ value: string }, { value: string }> = {
+      key: USER_CONFIG_KEYS.automationTasks,
+      pendingKey: 'trainingPlanBarrierPending',
+      encodeDraft: draft => ({ ...draft }),
+      decodeDraft: payload => (
+        payload && typeof payload === 'object' ? payload as { value: string } : null
+      ),
+      readLocalDraft: () => null,
+      writeLocalDraft: () => undefined,
+      commit: () => commit.promise,
+      fetch: async () => ({ ok: true, payload: null }),
+    }
+    const channel = userConfigCoordinator.channel(adapter)
+    channel.setDraft({ value: 'draft' })
+    await flush()
+    expect(channel.getState().syncState).toBe('saving')
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    await click(buttonWithText('应用到自动任务', container))
+
+    // 同一配置协议要求旧保存在应用计划前落盘，避免旧保存后到覆盖新计划。
+    expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
+    expect(channel.getState().pending).toBe(true)
+
+    await act(async () => commit.resolve({ ok: true }))
+    await flush()
+
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
+    expect(channel.getState().pending).toBe(false)
+  })
+
+  it('keeps the applied plan and exposes a retry when the follow-up queue read fails', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    mocks.applyTrainingPlan.mockResolvedValue({
+      success: true,
+      data: {
+        stageCount: 1,
+        flowName: '日常刷图',
+        taskName: 'Fight',
+        flowSync: { status: 'synced', flowName: '日常刷图', taskName: 'Fight' },
+      },
+    })
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    mocks.getTrainingQueue.mockRejectedValueOnce(new Error('队列服务暂不可用'))
+    await click(buttonWithText('应用到自动任务', container))
+
+    const planSection = container.querySelector<HTMLElement>('[aria-labelledby="training-plan-title"]')
+    expect(planSection).not.toBeNull()
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
+    expect(planSection!.textContent).toContain('计划已应用，但读取最新队列失败')
+    expect(planSection!.textContent).toContain('1-7')
+
+    mocks.getTrainingQueue.mockResolvedValue(queueResponse([queueItem('char_current', '阿米娅')]))
+    await click(buttonWithText('重新加载', planSection!))
+
+    expect(planSection!.textContent).not.toContain('读取最新队列失败')
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
+  })
+
+  it('does not show a plan whose settings changed while it was generating', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    const generateRequest = deferred<{ success: boolean; data: TrainingPlan }>()
+    mocks.generateTrainingPlan.mockReturnValueOnce(generateRequest.promise)
+    mocks.updateTrainingSettings.mockResolvedValue({
+      success: true,
+      data: { ...settings, autoSwitch: false },
+    })
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    expect(mocks.generateTrainingPlan).toHaveBeenCalledOnce()
+
+    await click(switchByLabel('自动切换')!)
+    await act(async () => generateRequest.resolve({ success: true, data: plan() }))
+    await flush()
+
+    expect(container.querySelector('.training-plan-overview')).toBeNull()
+    expect(container.textContent).toContain('计划前提已变化，请重新预览计划')
+    expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
+  })
+
+  it('invalidates the current preview as soon as an undo request starts', async () => {
+    mockMutableQueue([queueItem('char_a', '阿米娅'), queueItem('char_b', '能天使')])
+
+    await renderComponent()
+    await click(queueButton('移除能天使'))
+    expect(document.body.textContent).toContain('已移除 能天使')
+
+    await click(buttonWithText('预览刷图计划', container))
+    expect(container.querySelector('.training-plan-overview')).not.toBeNull()
+
+    const undoRequest = deferred<{ success: boolean }>()
+    mocks.addToTrainingQueue.mockReturnValueOnce(undoRequest.promise)
+    await click(buttonWithText('撤销', document.body))
+
+    // 撤销与增删/排序一样在命令开始时作废旧预览，不等待写后 revision。
+    expect(container.querySelector('.training-plan-overview')).toBeNull()
+    await act(async () => undoRequest.resolve({ success: false }))
+    await flush()
   })
 })

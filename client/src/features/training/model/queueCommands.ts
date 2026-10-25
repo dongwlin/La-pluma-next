@@ -49,6 +49,12 @@ export const TRAINING_QUEUE_MUTATION_SCOPES = [
   'dashboard-snapshot',
 ] as const satisfies readonly ResourceScope[]
 
+/** 队列写入同步任务流程后，automation 配置与定时快照随之变化。 */
+export const TRAINING_QUEUE_FLOW_SYNC_SCOPES = [
+  'automation-config',
+  'automation-schedule',
+] as const satisfies readonly ResourceScope[]
+
 /** 用于让本页忽略自己发布的队列失效；外部发布不带该标记。 */
 export const TRAINING_QUEUE_MUTATION_SOURCE = 'training-queue-command'
 
@@ -505,7 +511,7 @@ export class TrainingQueueCommandOwner {
     if (refreshed) {
       // 服务端权威快照不带 `uncertain`，同时清除上一次 fallback 的不确定状态。
       context.commitSnapshot(refreshed)
-      this.publish()
+      this.publish(refreshed.flowSync ?? writeFlowSync)
       return {
         status: 'applied',
         type,
@@ -526,7 +532,7 @@ export class TrainingQueueCommandOwner {
       uncertain: TRAINING_QUEUE_UNCERTAIN_MESSAGE,
     }
     context.commitSnapshot(snapshot)
-    this.publish()
+    this.publish(snapshot.flowSync)
     return {
       status: 'uncertain',
       type,
@@ -538,9 +544,13 @@ export class TrainingQueueCommandOwner {
     }
   }
 
-  private publish(): void {
+  private publish(flowSync?: TrainingFlowSync): void {
+    // 队列写入会同步智能养成关卡；只有确认 synced 才声明 automation 配置变化。
+    const resources = flowSync?.status === 'synced'
+      ? [...TRAINING_QUEUE_MUTATION_SCOPES, ...TRAINING_QUEUE_FLOW_SYNC_SCOPES]
+      : TRAINING_QUEUE_MUTATION_SCOPES
     this.publishInvalidation({
-      resources: TRAINING_QUEUE_MUTATION_SCOPES,
+      resources,
       cause: 'training-queue',
       detail: { source: TRAINING_QUEUE_MUTATION_SOURCE },
     })

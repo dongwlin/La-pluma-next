@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getErrorMessage } from '@/shared/api'
+import { getErrorMessage, isRecord } from '@/shared/api'
 import { generateTrainingPlan } from '@/features/training'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, Cable, Check, CheckCircle2, ChevronDown, ChevronUp, CircleMinus, CirclePlus, ClipboardList, Clock3, GraduationCap, GripVertical, Info, ListPlus, LoaderCircle, Minus, Pin, Play, Plus, SlidersHorizontal, Square, Trash2 } from 'lucide-react'
@@ -35,9 +35,13 @@ import {
   type ScheduleTimeEntry,
 } from '../model/automationConfig'
 import { loadUserConfig, useUserConfig } from '@/features/user-config'
+import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
 import { testConnection as testAdbConnection } from '@/features/settings'
 
 const POINTER_SORT_ACTIVATION_PX = 10
+
+/** 养成为任务流程或定时配置发布失效；页面据此强制重读同一协调器通道。 */
+const AUTOMATION_RESOURCE_SCOPES = ['automation-config', 'automation-schedule'] as const
 
 interface PointerSortSession {
   pointerId: number
@@ -1232,25 +1236,33 @@ export default function AutomationTasks() {
     return () => { cancelled = true }
   }, [])
 
-  // 养成计划应用后强制重读；本设备有 pending 草稿或在途保存时协调器返回 local-draft，
-  // 本地编辑优先并明确提示，不静默采用可能更旧的外部副本。
-  useEffect(() => {
-    const handleTrainingPlanApplied = async (event: Event) => {
-      const detail = (event as CustomEvent<{ stageCount?: number }>).detail
-      const outcome = await reloadConfig({ force: true })
-      if (outcome.reason === 'loaded') {
-        setStatusMessage(`智能养成计划已更新：${detail?.stageCount || 0} 个关卡`, 'success')
-      } else if (outcome.reason === 'local-draft' || outcome.reason === 'stale') {
-        setStatusMessage('检测到本设备有未同步的流程编辑，已保留本地草稿；养成计划更新未覆盖本地配置', 'warning')
-      }
+  // 养成计划或队列同步成功后，经资源失效端口通知本页。应用计划前 training 已
+  // 通过同一配置协调协议排空本页的在途保存；这里再等到通道空闲后强制重读，
+  // 以免外部写入早于本页仍在途的旧保存。仍有 pending 失败草稿时保留本地并提示。
+  const handleAutomationInvalidation = async (invalidation: ResourceInvalidation) => {
+    const state = configChannel.getState()
+    if (state.pending) await configChannel.flush()
+    const outcome = await reloadConfig({ force: true })
+    const detail = isRecord(invalidation.detail) ? invalidation.detail : null
+    const stageCount = typeof detail?.stageCount === 'number' && Number.isFinite(detail.stageCount)
+      ? detail.stageCount
+      : null
+    if (outcome.reason === 'loaded') {
+      setStatusMessage(
+        stageCount === null ? '智能养成计划已更新' : `智能养成计划已更新：${stageCount} 个关卡`,
+        'success',
+      )
+    } else if (outcome.reason === 'local-draft' || outcome.reason === 'stale') {
+      setStatusMessage('检测到本设备有未同步的流程编辑，已保留本地草稿；养成计划更新未覆盖本地配置', 'warning')
+    } else if (outcome.reason === 'failed') {
+      setStatusMessage('自动化配置刷新失败，请稍后重试', 'warning')
     }
+  }
 
-    window.addEventListener('training-plan-applied', handleTrainingPlanApplied)
-
-    return () => {
-      window.removeEventListener('training-plan-applied', handleTrainingPlanApplied)
-    }
-  }, [reloadConfig, setStatusMessage])
+  // Effect 内订阅；Activity 隐藏时注销，恢复时由 hook 补发一次 activity-resume。
+  useResourceInvalidation(AUTOMATION_RESOURCE_SCOPES, invalidation => {
+    void handleAutomationInvalidation(invalidation)
+  })
 
   // 监听页面可见性变化，切换回来时重试尚未成功的加载（已加载时协调器直接跳过）。
   useEffect(() => {

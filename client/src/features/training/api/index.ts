@@ -33,7 +33,7 @@ interface OperatorFilters {
 /**
  * 养成计划选项
  */
-interface TrainingPlanOptions {
+export interface TrainingPlanOptions {
   mode: 'current' | 'all'
 }
 
@@ -50,7 +50,8 @@ interface TrainingQueueData {
 
 /**
  * 养成计划应用数据
- */interface ApplyTrainingPlanData {
+ */
+export interface ApplyTrainingPlanData {
   plan: TrainingPlan
   settings?: TrainingSettings
   taskType?: 'combat'
