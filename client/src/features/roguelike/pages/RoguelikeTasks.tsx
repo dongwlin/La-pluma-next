@@ -7,15 +7,14 @@ import { PageHeader, Input, Select, Button, SmoothPanel, Switch } from '@/shared
 import { FloatingStatusIndicator, useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { ScreenMonitor } from '@/features/device-mirror'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
-import { waitForTaskIdle } from '@/shared/utils/taskStatus'
 import type {
   RoguelikeTask,
   RoguelikeAdvancedOption,
   RoguelikeTaskInputs,
   RoguelikeAdvancedParams
 } from '../types'
-import { executePredefinedTask, getTaskStatus, stopTask } from '@/features/task-execution'
 import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
 
 type RoguelikeMode = 'roguelike' | 'reclamation'
 type RoguelikeUserConfig = {
@@ -49,14 +48,15 @@ const THEME_PRESETS: Record<RoguelikeMode, Array<{ value: string; label: string 
 
 export default function RoguelikeTasks() {
   const shouldReduceMotion = useReducedMotion()
-  const [isRunning, setIsRunning] = useState(false)
-  const [isStopping, setIsStopping] = useState(false)
-  const stopRequestInFlightRef = useRef(false)
-  const stopRequestedRef = useRef(false)
-  const executionGenerationRef = useRef(0)
-  const stopWaitControllerRef = useRef<AbortController | null>(null)
-  const { setMessage: setStatusMessage, setActive: setIsActiveStatus } = useStatusStore()
+  const { setMessage: setStatusMessage } = useStatusStore()
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
+  const {
+    isRunning,
+    isStopping,
+    isSubmitting,
+    execute,
+    stop,
+  } = useRoguelikeExecution({ notify: setStatusMessage })
   const [taskInputs, setTaskInputs] = useState<RoguelikeTaskInputs>({})
   const [advancedParams, setAdvancedParams] = useState<RoguelikeAdvancedParams>({})
   const [configLoaded, setConfigLoaded] = useState(false)
@@ -73,26 +73,6 @@ export default function RoguelikeTasks() {
     setTabRef: setModeTabRef,
     handleTabKeyDown: handleModeKeyDown,
   } = useFluidTabIndicator(activeMode)
-
-  useEffect(() => () => {
-    executionGenerationRef.current += 1
-    stopWaitControllerRef.current?.abort()
-  }, [])
-
-  const beginExecution = () => {
-    stopWaitControllerRef.current?.abort()
-    stopWaitControllerRef.current = null
-    stopRequestedRef.current = false
-    stopRequestInFlightRef.current = false
-    setIsStopping(false)
-    setIsRunning(true)
-    setIsActiveStatus(true)
-    executionGenerationRef.current += 1
-    return executionGenerationRef.current
-  }
-
-  const isCurrentExecution = (generation: number) =>
-    executionGenerationRef.current === generation && !stopRequestedRef.current
 
   const syncConfig = useCallback((
     config: RoguelikeUserConfig,
@@ -129,89 +109,13 @@ export default function RoguelikeTasks() {
     }
   }), [setStatusMessage])
 
-  // 页面加载时从服务器或 localStorage 加载配置和恢复执行状态
+  // 页面加载时从服务器或 localStorage 加载配置。
+  // 运行状态由应用级执行控制器按 Run 快照观察，页面不在挂载时恢复第二份执行状态。
   useEffect(() => {
     let cancelled = false
-    let pollInterval: ReturnType<typeof setInterval> | null = null
-    let pollFailures = 0
-    let pollRequestInFlight = false
-    const controller = new AbortController()
-
-    const stopStatusPolling = () => {
-      if (!pollInterval) return
-      clearInterval(pollInterval)
-      pollInterval = null
-    }
-
-    // 从后端获取真实的任务执行状态
-    const checkBackendStatus = async () => {
-      try {
-        const result = await getTaskStatus(controller.signal)
-        if (cancelled) return
-        const taskStatus = result.data
-        if (result.success) {
-          const backendRunning = Boolean(taskStatus?.isRunning)
-          setIsActiveStatus(backendRunning)
-
-          if (!backendRunning || taskStatus?.taskType !== 'roguelike') {
-            setIsRunning(false)
-            return
-          }
-
-          // 后端确实有任务在运行
-          const { taskName, startTime, taskType } = taskStatus
-          
-          // 只恢复属于肉鸽模式的任务
-          if (taskType === 'roguelike') {
-            const elapsedMinutes = (Date.now() - startTime) / 1000 / 60
-            setIsRunning(true)
-            if (elapsedMinutes > 5) {
-              setStatusMessage(`${taskName} 可能已完成（已运行 ${Math.floor(elapsedMinutes)} 分钟）`)
-            } else {
-              setStatusMessage(`正在执行: ${taskName}`)
-            }
-            
-            // 启动轮询，持续检查任务状态
-            pollInterval = setInterval(async () => {
-              if (pollRequestInFlight) return
-              pollRequestInFlight = true
-              try {
-                const statusResult = await getTaskStatus(controller.signal)
-                if (cancelled) return
-                if (statusResult.success) {
-                  setIsActiveStatus(Boolean(statusResult.data?.isRunning))
-                }
-                if (statusResult.success && !statusResult.data.isRunning) {
-                  // 任务已完成
-                  setIsRunning(false)
-                  setStatusMessage('任务已完成')
-                  stopStatusPolling()
-                } else if (statusResult.success) {
-                  pollFailures = 0
-                }
-              } catch (error) {
-                if (cancelled || (error instanceof Error && error.name === 'AbortError')) return
-                pollFailures += 1
-                if (pollFailures === 3) {
-                  setStatusMessage('暂时无法确认肉鸽任务状态，将继续重试；需要时可手动终止', 'warning')
-                }
-              } finally {
-                pollRequestInFlight = false
-              }
-            }, 2000) // 每2秒检查一次
-          }
-        }
-      } catch (error) {
-        // 静默失败，不影响用户体验
-      }
-    }
-    
-    void checkBackendStatus()
 
     const cleanup = () => {
       cancelled = true
-      controller.abort()
-      stopStatusPolling()
     }
 
     if (configHydratedRef.current) return cleanup
@@ -279,7 +183,7 @@ export default function RoguelikeTasks() {
     })
 
     return cleanup
-  }, [setIsActiveStatus, setStatusMessage])
+  }, [])
 
   // 自动保存配置
   useEffect(() => {
@@ -406,78 +310,15 @@ export default function RoguelikeTasks() {
       }
     }
 
-    const generation = beginExecution()
-    setStatusMessage('正在执行命令...')
-
-    try {
-      const params = buildCommandParams(task)
-      const result = await executePredefinedTask(task.command, params, null, null, task.name, 'roguelike', true)
-
-      if (!isCurrentExecution(generation)) return
-      if (result.success) {
-        setStatusMessage(`${task.name} 执行成功`, 'success')
-      } else {
-        setStatusMessage(`执行失败: ${getErrorMessage(result)}`, 'error')
-      }
-    } catch (error) {
-      if (!isCurrentExecution(generation)) return
-      setStatusMessage(`网络错误: ${(error as Error).message}`, 'error')
-    } finally {
-      if (isCurrentExecution(generation)) {
-        stopRequestedRef.current = false
-        setIsRunning(false)
-        setIsActiveStatus(false)
-        stopRequestInFlightRef.current = false
-        setIsStopping(false)
-      }
-    }
+    await execute({
+      command: task.command,
+      params: buildCommandParams(task),
+      taskName: task.name,
+    })
   }
 
   const handleStopTask = async () => {
-    if (!isRunning || stopRequestInFlightRef.current) return
-
-    const activeGeneration = executionGenerationRef.current
-    let operationGeneration = activeGeneration
-    let waitController: AbortController | null = null
-    stopRequestedRef.current = true
-    stopRequestInFlightRef.current = true
-    setIsStopping(true)
-    setStatusMessage('正在终止肉鸽任务...', 'warning')
-
-    try {
-      const result = await stopTask()
-      if (executionGenerationRef.current !== activeGeneration) return
-      const taskStopped = Boolean(result.data?.task?.success)
-      if (!result.success || !taskStopped) {
-        throw new Error(result.data?.task?.message || result.message || '当前任务未能终止')
-      }
-
-      executionGenerationRef.current += 1
-      operationGeneration = executionGenerationRef.current
-      stopWaitControllerRef.current?.abort()
-      waitController = new AbortController()
-      stopWaitControllerRef.current = waitController
-      const confirmedIdle = await waitForTaskIdle(getTaskStatus, { signal: waitController.signal })
-      if (waitController.signal.aborted || executionGenerationRef.current !== operationGeneration) return
-      if (!confirmedIdle) {
-        throw new Error('终止请求已发送，但尚未确认任务停止')
-      }
-
-      stopRequestedRef.current = false
-      setIsRunning(false)
-      setIsActiveStatus(false)
-      setStatusMessage('肉鸽任务已终止', 'warning')
-    } catch (error) {
-      if (waitController?.signal.aborted || executionGenerationRef.current !== operationGeneration) return
-      stopRequestedRef.current = false
-      setStatusMessage(`终止失败: ${(error as Error).message}`, 'error')
-    } finally {
-      if (stopWaitControllerRef.current === waitController) stopWaitControllerRef.current = null
-      if (executionGenerationRef.current === operationGeneration) {
-        stopRequestInFlightRef.current = false
-        setIsStopping(false)
-      }
-    }
+    await stop()
   }
 
   const handleInputChange = (taskId: string, value: string) => {
@@ -728,6 +569,8 @@ export default function RoguelikeTasks() {
                 <Button
                   onClick={() => handleExecute(activeTask)}
                   disabled={!automationAvailable}
+                  loading={isSubmitting}
+                  loadingText="正在启动"
                   title={!automationAvailable ? unavailableMessage : undefined}
                   variant="primary"
                   size="md"
