@@ -63,6 +63,21 @@ describe('readApiData', () => {
     })
   })
 
+  it('treats a 2xx success=false envelope as a failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: false,
+      message: '数据尚未生成',
+      error: { code: 'AGENT_DATA_NOT_READY', retryable: false },
+    }))
+
+    await expect(readApiData('/api/agent/data/depot')).rejects.toMatchObject({
+      kind: 'api',
+      code: 'AGENT_DATA_NOT_READY',
+      status: 200,
+      retryable: false,
+    })
+  })
+
   it('turns a malformed domain payload into an explicit contract failure', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
       success: true,
@@ -87,6 +102,24 @@ describe('readApiData', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status_code: 200, data: {} }))
 
     await expect(readApiData('/api/agent/copilots/1')).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    })
+  })
+
+  it('turns an empty 2xx body into a contract failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 200 }))
+
+    await expect(readApiData('/api/agent/data/depot')).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'EMPTY_API_RESPONSE',
+    })
+  })
+
+  it('turns malformed JSON on a 2xx response into a contract failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>ok</html>', { status: 200 }))
+
+    await expect(readApiData('/api/agent/data/depot')).rejects.toMatchObject({
       kind: 'contract',
       code: 'INVALID_API_RESPONSE',
     })
@@ -123,6 +156,21 @@ describe('readApiData', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/agent/data/depot')
     expect((fetchMock.mock.calls[0]![1] as RequestInit).method).toBeUndefined()
+  })
+
+  it('rejects an in-flight read when the caller aborts', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(new DOMException('The operation was aborted.', 'AbortError'))
+      }, { once: true })
+    }))
+    const controller = new AbortController()
+
+    const pending = readApiData('/api/agent/data/depot', { signal: controller.signal })
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('does not call fetch when the signal is already aborted', async () => {
