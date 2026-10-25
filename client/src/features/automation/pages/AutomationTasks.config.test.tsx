@@ -320,6 +320,82 @@ describe('AutomationTasks config persistence', () => {
     expect(pendingDraft()).toBeNull()
   })
 
+  const seedPendingDisabledScheduleEntry = () => {
+    localStorage.setItem('maa-task-flow', JSON.stringify(taskFlowFixture))
+    localStorage.setItem('maa-schedule', JSON.stringify({
+      enabled: true,
+      times: ['08:00'],
+      entries: [
+        { time: '08:00', enabled: true },
+        { time: '14:00', enabled: false },
+      ],
+    }))
+    localStorage.setItem('automationConfigSyncPending', 'pending-local-draft')
+  }
+
+  it('persists an edit to a disabled schedule entry locally even though the wire times stay the same', async () => {
+    const pendingSave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig.mockReturnValueOnce(pendingSave.promise)
+    seedPendingDisabledScheduleEntry()
+
+    await renderAutomation()
+    expect(mocks.loadUserConfig).not.toHaveBeenCalled()
+    const hourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
+    expect(hourInput?.value).toBe('14')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
+      ?.closest('.automation-schedule-time-row')?.classList.contains('is-disabled')).toBe(true)
+
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      inputValueSetter?.call(hourInput, '15')
+      hourInput?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await settle()
+
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('15')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      entries: [
+        { time: '08:00', enabled: true },
+        { time: '15:00', enabled: false },
+      ],
+    })
+    expect(pendingDraft()).not.toBeNull()
+    // 禁用项不进入 wire：times 仍是唯一启用时间，但本地草稿与后续提交都已发生。
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+    expect(mocks.saveUserConfig.mock.calls[0]?.[1]).toMatchObject({
+      schedule: { enabled: true, times: ['08:00'] },
+    })
+
+    await act(async () => pendingSave.resolve({ success: true }))
+    await settle()
+    expect(pendingDraft()).toBeNull()
+  })
+
+  it('persists deleting a disabled schedule entry locally even though the wire times stay the same', async () => {
+    const pendingSave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig.mockReturnValueOnce(pendingSave.promise)
+    seedPendingDisabledScheduleEntry()
+
+    await renderAutomation()
+    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(2)
+
+    await click(container.querySelector<HTMLButtonElement>('[aria-label="删除第 2 个时间点"]')!)
+    await settle()
+
+    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      entries: [{ time: '08:00', enabled: true }],
+    })
+    expect(pendingDraft()).not.toBeNull()
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+
+    await act(async () => pendingSave.resolve({ success: true }))
+    await settle()
+    expect(pendingDraft()).toBeNull()
+  })
+
   it('serializes saves across mounts and never lets an older save clear the newer draft', async () => {
     const olderSave = deferred<{ success: boolean }>()
     mocks.loadUserConfig.mockResolvedValue({
@@ -501,10 +577,24 @@ describe('AutomationTasks config persistence', () => {
   })
 
   it('reloads the automation flow when training applies a plan', async () => {
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    const updatedTaskFlow = [
+      ...taskFlowFixture,
+      {
+        id: 'mall-1',
+        commandId: 'mall',
+        name: '信用收支',
+        description: '访问好友、收取信用',
+        enabled: true,
+        params: { visit_friends: true, shopping: true },
+      },
+    ]
+    mocks.loadUserConfig
+      .mockResolvedValueOnce({ success: true, data: { taskFlow: taskFlowFixture } })
+      .mockResolvedValueOnce({ success: true, data: { taskFlow: updatedTaskFlow } })
 
     await renderAutomation()
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    expect(container.textContent).not.toContain('信用收支')
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent('training-plan-applied', { detail: { stageCount: 3 } }))
@@ -513,5 +603,7 @@ describe('AutomationTasks config persistence', () => {
 
     expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.setMessage).toHaveBeenCalledWith('智能养成计划已更新：3 个关卡', 'success')
+    // 强制重读后页面采用服务端的新内容，而不只是提示成功。
+    expect(container.textContent).toContain('信用收支')
   })
 })

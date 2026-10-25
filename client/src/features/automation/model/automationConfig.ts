@@ -354,6 +354,17 @@ function describeError(error: unknown): string {
  */
 let latestEncodedWireFingerprint: string | null = null
 
+function toAutomationWire(draft: AutomationConfigDraft): AutomationConfigWire {
+  const entries = normalizeScheduleEntries(draft.schedule.entries)
+  return {
+    taskFlow: toPersistedTaskFlow(draft.taskFlow),
+    schedule: {
+      enabled: draft.schedule.enabled,
+      times: activeScheduleTimes(entries),
+    },
+  }
+}
+
 export const automationConfigAdapter: ConfigPersistenceAdapter<
   AutomationConfigDraft,
   AutomationConfigWire
@@ -363,16 +374,25 @@ export const automationConfigAdapter: ConfigPersistenceAdapter<
   commitDelayMs: AUTOMATION_CONFIG_COMMIT_DELAY_MS,
 
   encodeDraft(draft) {
-    const entries = normalizeScheduleEntries(draft.schedule.entries)
-    const wire: AutomationConfigWire = {
+    const wire = toAutomationWire(draft)
+    latestEncodedWireFingerprint = JSON.stringify(wire)
+    return wire
+  },
+
+  /**
+   * 草稿等价判断必须覆盖本地 schedule.entries：禁用项不进入 wire，只比较 wire 会把
+   * “编辑/删除禁用时间点”当成无变化，协调器就会跳过本地写回并静默丢弃操作。
+   * 同时记录本次草稿对应的 wire，供完整提交在配置保存后判断是否出现了更新的草稿。
+   */
+  fingerprint(draft) {
+    latestEncodedWireFingerprint = JSON.stringify(toAutomationWire(draft))
+    return JSON.stringify({
       taskFlow: toPersistedTaskFlow(draft.taskFlow),
       schedule: {
         enabled: draft.schedule.enabled,
-        times: activeScheduleTimes(entries),
+        entries: normalizeScheduleEntries(draft.schedule.entries),
       },
-    }
-    latestEncodedWireFingerprint = JSON.stringify(wire)
-    return wire
+    })
   },
 
   decodeDraft: decodeAutomationConfig,
@@ -390,7 +410,7 @@ export const automationConfigAdapter: ConfigPersistenceAdapter<
 
   writeLocalDraft(draft) {
     const entries = normalizeScheduleEntries(draft.schedule.entries)
-    localStorage.setItem(AUTOMATION_TASK_FLOW_KEY, JSON.stringify(draft.taskFlow))
+    localStorage.setItem(AUTOMATION_TASK_FLOW_KEY, JSON.stringify(toPersistedTaskFlow(draft.taskFlow)))
     localStorage.setItem(AUTOMATION_SCHEDULE_KEY, JSON.stringify({
       enabled: draft.schedule.enabled,
       times: activeScheduleTimes(entries),

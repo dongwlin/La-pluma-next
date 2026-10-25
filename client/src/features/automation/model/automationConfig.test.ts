@@ -193,6 +193,41 @@ describe('automation config adapter', () => {
     expect(automationConfigAdapter.decodeDraft({})).toEqual(createDefaultAutomationDraft())
   })
 
+  it('fingerprints local schedule entries so disabled-row edits are not treated as no-ops', () => {
+    const base: AutomationConfigDraft = {
+      ...draft,
+      taskFlow: [],
+      schedule: {
+        enabled: true,
+        entries: [
+          { time: '08:00', enabled: true },
+          { time: '14:00', enabled: false },
+        ],
+      },
+    }
+    const edited: AutomationConfigDraft = {
+      ...base,
+      schedule: {
+        enabled: true,
+        entries: [
+          { time: '08:00', enabled: true },
+          { time: '15:00', enabled: false },
+        ],
+      },
+    }
+    const removed: AutomationConfigDraft = {
+      ...base,
+      schedule: { enabled: true, entries: [{ time: '08:00', enabled: true }] },
+    }
+    const fingerprint = automationConfigAdapter.fingerprint!
+
+    // 禁用项不进入 wire，但本地草稿指纹必须能区分编辑与删除。
+    expect(automationConfigAdapter.encodeDraft(base)).toEqual(automationConfigAdapter.encodeDraft(edited))
+    expect(automationConfigAdapter.encodeDraft(base)).toEqual(automationConfigAdapter.encodeDraft(removed))
+    expect(fingerprint(edited)).not.toBe(fingerprint(base))
+    expect(fingerprint(removed)).not.toBe(fingerprint(base))
+  })
+
   it.each([
     ['a non-object payload', null],
     ['an array payload', []],

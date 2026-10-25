@@ -389,6 +389,25 @@ describe('commit ordering', () => {
     expect(harness.commitMock).not.toHaveBeenCalled()
     expect(channel.getState().pending).toBe(false)
   })
+
+  it('honours an adapter fingerprint that covers fields omitted from the wire', async () => {
+    // 领域适配器可以把本地专有字段纳入等价判断；wire 未变化时仍要接受并写回草稿。
+    const adapterWithLocalField: ConfigPersistenceAdapter<Draft, Wire> = {
+      ...harness.adapter,
+      encodeDraft: (draft) => ({ value: draft.value, mode: 'normal' }),
+      fingerprint: (draft) => JSON.stringify(draft),
+    }
+    harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    const channel = harness.coordinator.channel(adapterWithLocalField)
+    await channel.hydrate()
+
+    channel.setDraft({ value: 'server', mode: 'raid' })
+    await channel.flush()
+
+    expect(channel.getState().draft).toEqual({ value: 'server', mode: 'raid' })
+    expect(harness.local.read()).toEqual({ value: 'server', mode: 'raid' })
+    expect(harness.commitMock).toHaveBeenCalledOnce()
+  })
 })
 
 describe('failure and retry', () => {
