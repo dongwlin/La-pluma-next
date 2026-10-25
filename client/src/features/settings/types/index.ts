@@ -26,8 +26,3 @@ export interface ConfigSection {
   name: string
   icon: ReactNode
 }
-
-export interface UpdateStatus {
-  core: boolean
-  cli: boolean
-}
