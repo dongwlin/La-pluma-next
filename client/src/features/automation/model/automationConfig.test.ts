@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/features/user-config', () => ({
+  USER_CONFIG_KEYS: { combatTasks: 'combat-tasks',
+    roguelikeTasks: 'roguelike-tasks',
+    automationTasks: 'automation-tasks' },
   loadUserConfig: mocks.loadUserConfig,
   saveUserConfig: mocks.saveUserConfig,
 }))

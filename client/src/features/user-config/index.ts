@@ -5,6 +5,9 @@
 
 export { loadUserConfig, saveUserConfig } from './api'
 
+export { USER_CONFIG_KEYS } from './model/configKeys'
+export type { UserConfigKey } from './model/configKeys'
+
 export {
   DEFAULT_RESTORED_MESSAGE,
   UserConfigCoordinator,
@@ -20,6 +23,7 @@ export type {
   ConfigPersistenceAdapter,
   ConfigReloadOutcome,
   ConfigReloadReason,
+  ConfigSettleResult,
   ConfigSyncState,
   UserConfigCoordinatorOptions,
 } from './model/configCoordinator'

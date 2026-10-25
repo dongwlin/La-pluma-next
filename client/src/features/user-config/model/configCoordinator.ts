@@ -563,6 +563,11 @@ export interface UserConfigCoordinatorOptions {
   now?: () => number
 }
 
+/** 排空指定配置通道后的结果；`pendingKeys` 是仍未完整提交的配置 key。 */
+export interface ConfigSettleResult {
+  readonly pendingKeys: readonly string[]
+}
+
 /**
  * 应用级协调器。按 key 保存通道，因此提交队列、pending 标记与草稿状态
  * 都不依赖某一个页面实例的生命周期。
@@ -600,6 +605,26 @@ export class UserConfigCoordinator {
   dispose(): void {
     for (const channel of this.channels.values()) channel.dispose()
     this.channels.clear()
+  }
+
+  /**
+   * 等待指定 key 当前已入队的提交全部结束。
+   *
+   * 用于“另一个域即将写入同一服务端文件”前的写入屏障：调用方先让本域的
+   * 在途保存落盘，再发出会改写该文件的请求，避免旧保存后到覆盖新内容。
+   * 不触发已失败草稿的自动重试，也不创建尚未挂载的通道；`pendingKeys`
+   * 返回仍未完整提交的 key，调用方据此拒绝继续。
+   */
+  async settle(keys: readonly string[]): Promise<ConfigSettleResult> {
+    const channels = keys
+      .map(key => this.channels.get(key))
+      .filter((channel): channel is ConfigKeyState<any, any> => Boolean(channel))
+    await Promise.all(channels.map(channel => channel.flush()))
+    return {
+      pendingKeys: channels
+        .filter(channel => channel.getState().pending)
+        .map(channel => channel.key),
+    }
   }
 
   private nextToken(): string {

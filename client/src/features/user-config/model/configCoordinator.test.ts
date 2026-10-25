@@ -591,3 +591,48 @@ describe('force reload', () => {
     expect(channel.getState().pending).toBe(true)
   })
 })
+
+describe('write barrier', () => {
+  it('returns no pending keys when the named channel was never mounted', async () => {
+    await expect(harness.coordinator.settle(['missing-tasks'])).resolves.toEqual({ pendingKeys: [] })
+  })
+
+  it('waits for an in-flight save before reporting the channel clean', async () => {
+    harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'v1', mode: 'normal' } })
+    const pendingSave = deferred<ConfigCommitResult>()
+    harness.commitMock.mockReturnValueOnce(pendingSave.promise)
+    const channel = harness.coordinator.channel(harness.adapter)
+    await channel.hydrate()
+
+    channel.setDraft({ value: 'edited', mode: 'normal' })
+    await tick()
+    expect(channel.getState().syncState).toBe('saving')
+
+    let settled = false
+    const barrier = harness.coordinator.settle([harness.adapter.key]).then(result => {
+      settled = true
+      return result
+    })
+    await tick()
+    expect(settled).toBe(false)
+
+    pendingSave.resolve(ok)
+    await expect(barrier).resolves.toEqual({ pendingKeys: [] })
+    expect(channel.getState().pending).toBe(false)
+  })
+
+  it('reports a failed save instead of retrying it', async () => {
+    harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'v1', mode: 'normal' } })
+    harness.commitMock.mockResolvedValueOnce(failed('暂时无法连接服务器'))
+    const channel = harness.coordinator.channel(harness.adapter)
+    await channel.hydrate()
+
+    channel.setDraft({ value: 'edited', mode: 'normal' })
+    await tick()
+
+    await expect(harness.coordinator.settle([harness.adapter.key]))
+      .resolves.toEqual({ pendingKeys: [harness.adapter.key] })
+    expect(harness.commitMock).toHaveBeenCalledTimes(1)
+    expect(channel.getState().syncState).toBe('failed')
+  })
+})
