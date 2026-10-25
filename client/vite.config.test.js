@@ -62,12 +62,13 @@ describe('PWA base path configuration', () => {
     expect(isDenied('/la-pluma/automation')).toBe(false)
   })
 
-  it('precaches the full bundle without runtime page-chunk caching', () => {
+  it('cleans outdated caches without adding runtime caching routes', () => {
+    // "每个产物 chunk 都进 precache" 由构建期的 scripts/check-precache.mjs
+    // 直接核对 dist/sw.js 保证；这里只守住配置层面仍需要的两个事实：
+    // 陈旧 precache 会被清理，且不再引入运行时缓存路由。
     const workbox = createWorkboxConfig('/la-pluma/')
 
     expect(workbox.cleanupOutdatedCaches).toBe(true)
-    expect(workbox.globPatterns).toContain('assets/{index,react-vendor,motion-vendor,workbox-window.prod.es5}-*.js')
-    expect(workbox.globPatterns).not.toContain('**/*.{js,css,html,ico,png,svg,woff,woff2}')
     expect(workbox.runtimeCaching).toBeUndefined()
   })
 
@@ -187,18 +188,6 @@ describe('PWA base path configuration', () => {
     expect(headers.get('Content-Type')).toBe('application/manifest+json; charset=utf-8')
     expect(headers.get('Cache-Control')).toContain('no-store')
     expect(JSON.parse(response.end.mock.calls[0][0])).toEqual(createWebManifest('/la-pluma/'))
-  })
-
-  it('builds a worker that clears app caches, unregisters, and refreshes clients', () => {
-    const script = createDevServiceWorkerCleanupScript()
-
-    expect(script).toContain("self.addEventListener('install'")
-    expect(script).toContain('self.skipWaiting()')
-    expect(script).toContain("cacheName.startsWith('workbox-')")
-    expect(script).toContain("cacheName === 'google-fonts-cache'")
-    expect(script).toContain("cacheName === 'la-pluma-page-chunks'")
-    expect(script).toContain('self.registration.unregister()')
-    expect(script).toContain('client.navigate(client.url)')
   })
 
   it('executes the complete cleanup worker lifecycle', async () => {

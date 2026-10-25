@@ -104,6 +104,8 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 ```bash
 # 前端类型检查和构建
+# 构建会校验 dist/assets/*.js 全部进入 dist/sw.js 的 precache 清单；
+# 新增 chunk 时必须同步 createWorkboxConfig 的 globPatterns，否则构建失败。
 pnpm --filter la-pluma-next-client build
 
 # 后端语法检查
