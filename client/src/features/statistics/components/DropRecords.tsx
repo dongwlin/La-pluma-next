@@ -22,7 +22,7 @@ function DropRecordsError({ description, onRetry }: DropRecordsErrorProps) {
         <div className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
             <p className="font-semibold text-primary">掉落记录读取失败</p>
-            <p className="mt-1 break-words text-sm leading-6 [overflow-wrap:anywhere] form-error-text">{description}</p>
+            <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{description}</p>
           </div>
           <Button
             variant="secondary"
@@ -108,7 +108,7 @@ export default function DropRecords({
         <div className="form-error-surface flex flex-col items-start gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
           <div className="min-w-0">
             <p className="font-semibold text-primary">掉落记录刷新失败</p>
-            <p className="mt-1 break-words text-sm leading-6 [overflow-wrap:anywhere] form-error-text">{error}</p>
+            <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{error}</p>
           </div>
           <Button
             variant="secondary"
@@ -123,7 +123,7 @@ export default function DropRecords({
       )}
 
       {/* 顶部统计卡片 */}
-      <div className="drop-records-metric-panel grid grid-cols-2 overflow-hidden rounded-[var(--app-radius-lg)] surface-soft md:grid-cols-4">
+      <div className="drop-records-metric-panel grid grid-cols-2 overflow-hidden rounded-(--app-radius-lg) surface-soft md:grid-cols-4">
         {metricCards.map((metric) => (
           <div key={metric.label} className="drop-records-metric-row min-w-0 p-4">
             <div className="mb-2 flex items-center justify-between text-secondary">
@@ -131,7 +131,7 @@ export default function DropRecords({
               <span className="brand-text">{metric.icon}</span>
             </div>
             <p
-              className="break-words text-xl font-bold text-primary [overflow-wrap:anywhere] sm:text-2xl"
+              className="wrap-break-word text-xl font-bold text-primary wrap-anywhere sm:text-2xl"
               title={String(metric.value)}
             >
               {metric.value}
@@ -184,7 +184,7 @@ export default function DropRecords({
         <h3 className="mb-4 flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold text-primary">
           <span className="shrink-0"><Icons.Package /></span>
           <span className="min-w-0">材料掉落统计</span>
-          <span className="break-words text-sm font-normal text-secondary [overflow-wrap:anywhere]">
+          <span className="wrap-break-word text-sm font-normal text-secondary wrap-anywhere">
             (共 {sortedItems.length} 种)
           </span>
         </h3>
@@ -198,15 +198,15 @@ export default function DropRecords({
             description="切换统计周期或完成作战后再查看。"
           />
         ) : (
-        <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-[var(--app-radius-lg)] surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-(--app-radius-lg) surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {sortedItems.slice(0, 20).map(([itemName, itemData]) => (
             <div
               key={itemName}
-              className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-[var(--app-surface-muted)]"
+              className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-(--app-surface-muted)"
             >
               {/* 物品图标 */}
               {itemData.iconId && (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
                   {failedItemImages[itemName] ? (
                     <span role="img" aria-label={`${itemName}图标不可用`}>
                       <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
@@ -224,7 +224,7 @@ export default function DropRecords({
               
               {/* 物品信息 */}
               <div className="flex-1 min-w-0">
-                <div className="break-words text-sm font-bold text-primary [overflow-wrap:anywhere]" title={itemName}>
+                <div className="wrap-break-word text-sm font-bold text-primary wrap-anywhere" title={itemName}>
                   {itemName}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
@@ -254,7 +254,7 @@ export default function DropRecords({
         <h3 className="mb-4 flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold text-primary">
           <span className="shrink-0"><Icons.Target /></span>
           <span className="min-w-0">关卡统计</span>
-          <span className="break-words text-sm font-normal text-secondary [overflow-wrap:anywhere]">
+          <span className="wrap-break-word text-sm font-normal text-secondary wrap-anywhere">
             (共 {sortedStages.length} 个关卡)
           </span>
         </h3>
@@ -268,7 +268,7 @@ export default function DropRecords({
             description="切换统计周期或完成作战后再查看。"
           />
         ) : (
-        <div className="drop-records-stage-list min-w-0 overflow-hidden rounded-[var(--app-radius-lg)] surface-soft">
+        <div className="drop-records-stage-list min-w-0 overflow-hidden rounded-(--app-radius-lg) surface-soft">
           {sortedStages.map(([stageName, stageData]) => (
             <div
               key={stageName}
@@ -276,7 +276,7 @@ export default function DropRecords({
             >
               <div className="mb-3 min-w-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="min-w-0 break-words text-lg font-bold text-primary [overflow-wrap:anywhere]">
+                  <span className="min-w-0 wrap-break-word text-lg font-bold text-primary wrap-anywhere">
                     {stageName}
                   </span>
                   <span className="shrink-0 whitespace-nowrap brand-chip rounded-full px-2 py-0.5 text-xs font-medium">
@@ -296,7 +296,7 @@ export default function DropRecords({
                 {Object.entries(stageData.items).map(([itemName, count]) => (
                   <span
                     key={itemName}
-                    className="max-w-full break-words whitespace-normal control-surface rounded-[var(--app-radius-sm)] px-2 py-1 text-xs text-secondary [overflow-wrap:anywhere]"
+                    className="max-w-full wrap-break-word whitespace-normal control-surface rounded-(--app-radius-sm) px-2 py-1 text-xs text-secondary wrap-anywhere"
                   >
                     {itemName} ×{count}
                   </span>
@@ -312,7 +312,7 @@ export default function DropRecords({
 
       {/* 日期范围提示 */}
       {dateRange.start && dateRange.end && (
-        <div className="break-words text-center text-sm text-secondary [overflow-wrap:anywhere]">
+        <div className="wrap-break-word text-center text-sm text-secondary wrap-anywhere">
           统计时间: {dateRange.start} 至 {dateRange.end} (共 {dateRange.days} 天)
         </div>
       )}

@@ -2445,13 +2445,13 @@ export default function AutomationTasks() {
               )}
 
               {lastDeletedTask && (
-                <div className="mx-3.5 flex min-h-11 items-center justify-between gap-3 border-t border-[var(--app-border)] text-xs text-secondary sm:mx-4" role="status">
+                <div className="mx-3.5 flex min-h-11 items-center justify-between gap-3 border-t border-(--app-border) text-xs text-secondary sm:mx-4" role="status">
                   <span className="min-w-0 truncate">已删除“{lastDeletedTask.task.name}”</span>
                   <button
                     type="button"
                     onClick={restoreDeletedTask}
                     disabled={isRunning}
-                    className="min-h-11 shrink-0 px-2 font-medium text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="min-h-11 shrink-0 px-2 font-medium text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     恢复
                   </button>
@@ -2536,7 +2536,7 @@ export default function AutomationTasks() {
               </div>
 
               {lastExecutionSummary && (
-                <section className="border-t border-[var(--app-border)] px-3.5 py-3 sm:px-4" aria-label="最近执行结果">
+                <section className="border-t border-(--app-border) px-3.5 py-3 sm:px-4" aria-label="最近执行结果">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200">最近执行</h4>
                     <span className="text-[11px] text-gray-400 dark:text-gray-500">
@@ -2585,7 +2585,7 @@ export default function AutomationTasks() {
                       className="overflow-hidden"
                     >
                       {lastExecutionSummary.summaries.some(summary => summary.stage || summary.drops) && (
-                        <div className="mt-2 space-y-2 border-t border-[var(--app-border)] pt-2">
+                        <div className="mt-2 space-y-2 border-t border-(--app-border) pt-2">
                           {lastExecutionSummary.summaries
                             .filter(summary => summary.stage || summary.drops)
                             .map((summary, summaryIndex) => (
@@ -2596,7 +2596,7 @@ export default function AutomationTasks() {
                                   {summary.duration && <span className="text-gray-400">{summary.duration}</span>}
                                 </div>
                                 {summary.drops && (
-                                  <p className="mt-1 break-words leading-5 text-gray-500 dark:text-gray-400">{summary.drops}</p>
+                                  <p className="mt-1 wrap-break-word leading-5 text-gray-500 dark:text-gray-400">{summary.drops}</p>
                                 )}
                               </div>
                             ))}
@@ -2604,7 +2604,7 @@ export default function AutomationTasks() {
                       )}
 
                       {lastExecutionSummary.reports.length > 0 && (
-                        <div className="mt-2 space-y-1.5 border-t border-[var(--app-border)] pt-2">
+                        <div className="mt-2 space-y-1.5 border-t border-(--app-border) pt-2">
                           {lastExecutionSummary.reports.map((report, reportIndex) => (
                             <div
                               key={`${report.provider}-${report.stage || reportIndex}-${reportIndex}`}
@@ -2613,7 +2613,7 @@ export default function AutomationTasks() {
                               {report.status === 'success'
                                 ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
                                 : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
-                              <span className="min-w-0 break-words">
+                              <span className="min-w-0 wrap-break-word">
                                 {report.message}{report.stage ? ` · ${report.stage}` : ''}
                               </span>
                             </div>
@@ -2622,7 +2622,7 @@ export default function AutomationTasks() {
                       )}
 
                       {lastExecutionSummary.actions?.length > 0 && (
-                        <div className="mt-2 space-y-1.5 border-t border-[var(--app-border)] pt-2">
+                        <div className="mt-2 space-y-1.5 border-t border-(--app-border) pt-2">
                           {lastExecutionSummary.actions.map((action, actionIndex) => (
                             <div
                               key={`${action.action}-${action.task}-${actionIndex}`}
@@ -2633,7 +2633,7 @@ export default function AutomationTasks() {
                                 : action.status === 'skipped'
                                   ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
                                   : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
-                              <span className="min-w-0 break-words">{action.message}</span>
+                              <span className="min-w-0 wrap-break-word">{action.message}</span>
                             </div>
                           ))}
                         </div>
@@ -2755,7 +2755,7 @@ export default function AutomationTasks() {
                                     disabled={isRunning || !task.enabled}
                                     className="custom-checkbox cursor-pointer"
                                   />
-                                  <span className="group-hover:text-[var(--app-accent)] transition-colors">{field.label}</span>
+                                  <span className="group-hover:text-(--app-accent) transition-colors">{field.label}</span>
                                 </label>
                               ) : field.type === 'multi-stages' ? (
                                 <AutomationStageEditor
@@ -2771,7 +2771,7 @@ export default function AutomationTasks() {
                               ) : field.type === 'stage-with-times' ? (
                                 <div className="flex items-center space-x-2">
                                   <label htmlFor={fieldId} className="automation-field-label w-20 whitespace-nowrap">{field.label}</label>
-                                  <div className="automation-composite-control flex items-center flex-1 max-w-[280px]">
+                                  <div className="automation-composite-control flex items-center flex-1 max-w-70">
                                     <input
                                       id={fieldId}
                                       type="text"
@@ -2851,7 +2851,7 @@ export default function AutomationTasks() {
                                             disabled={isRunning || !task.enabled}
                                             className="custom-checkbox cursor-pointer"
                                           />
-                                          <span className="group-hover:text-[var(--app-accent)] transition-colors flex items-center space-x-1">
+                                          <span className="group-hover:text-(--app-accent) transition-colors flex items-center space-x-1">
                                             <span>{star}</span>
                                             <svg className="w-3.5 h-3.5 brand-text" fill="currentColor" viewBox="0 0 20 20">
                                               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -2900,7 +2900,7 @@ export default function AutomationTasks() {
                                             disabled={isRunning || !task.enabled}
                                             className="custom-checkbox cursor-pointer"
                                           />
-                                          <span className="group-hover:text-[var(--app-accent)] transition-colors">{facility.label}</span>
+                                          <span className="group-hover:text-(--app-accent) transition-colors">{facility.label}</span>
                                         </label>
                                       );
                                     })}
@@ -3002,7 +3002,7 @@ export default function AutomationTasks() {
                       )}
 
                       {task.commandId === 'fight' && (
-                        <details className="group mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                        <details className="group mt-3 rounded-lg border border-(--app-border) bg-(--app-surface-muted) px-3 py-2">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
                             <span className="flex items-center gap-2">
                               <SlidersHorizontal size={15} strokeWidth={1.9} />
@@ -3011,7 +3011,7 @@ export default function AutomationTasks() {
                             <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
                           </summary>
 
-                          <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+                          <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
                             <div className="flex items-center gap-2">
                               <label htmlFor={`${task.id}-fight-client-type`} className="w-24 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">闪退重启:</label>
                               <div className="automation-select-control min-w-0 flex-1">
@@ -3048,7 +3048,7 @@ export default function AutomationTasks() {
                               </span>
                             </label>
 
-                            <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                            <section className="space-y-2 border-t border-(--app-border) pt-3">
                               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <input
                                   type="checkbox"
@@ -3075,7 +3075,7 @@ export default function AutomationTasks() {
                               )}
                             </section>
 
-                            <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                            <section className="space-y-2 border-t border-(--app-border) pt-3">
                               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                 <input
                                   type="checkbox"
@@ -3106,7 +3106,7 @@ export default function AutomationTasks() {
                       )}
 
                       {task.commandId === 'infrast' && (
-                        <details className="group mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                        <details className="group mt-3 rounded-lg border border-(--app-border) bg-(--app-surface-muted) px-3 py-2">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
                             <span className="flex items-center gap-2">
                               <SlidersHorizontal size={15} strokeWidth={1.9} />
@@ -3115,7 +3115,7 @@ export default function AutomationTasks() {
                             <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
                           </summary>
 
-                          <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+                          <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
                             {Array.isArray(task.params.facility) && task.params.facility.includes('Dorm') && (
                               <section className="space-y-2">
                                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">宿舍</h4>
@@ -3143,7 +3143,7 @@ export default function AutomationTasks() {
                             )}
 
                             {Array.isArray(task.params.facility) && task.params.facility.includes('Reception') && (
-                              <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                              <section className="space-y-2 border-t border-(--app-border) pt-3">
                                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">会客室</h4>
                                 <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                   <input
@@ -3179,7 +3179,7 @@ export default function AutomationTasks() {
                             )}
 
                             {Array.isArray(task.params.facility) && task.params.facility.includes('Training') && (
-                              <section className="space-y-2 border-t border-[var(--app-border)] pt-3">
+                              <section className="space-y-2 border-t border-(--app-border) pt-3">
                                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400">训练室</h4>
                                 <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                   <input
@@ -3198,7 +3198,7 @@ export default function AutomationTasks() {
                       )}
 
                       {task.commandId === 'recruit' && (
-                        <details className="group mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                        <details className="group mt-3 rounded-lg border border-(--app-border) bg-(--app-surface-muted) px-3 py-2">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-700 marker:hidden dark:text-gray-200 [&::-webkit-details-marker]:hidden">
                             <span className="flex items-center gap-2">
                               <SlidersHorizontal size={15} strokeWidth={1.9} />
@@ -3207,7 +3207,7 @@ export default function AutomationTasks() {
                             <ChevronDown size={15} strokeWidth={2} className="transition-transform group-open:rotate-180" />
                           </summary>
 
-                          <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+                          <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
                             <div className="flex items-center gap-2">
                               <label htmlFor={`${task.id}-extra-tags-mode`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">额外标签:</label>
                               <div className="automation-select-control min-w-0 flex-1">
@@ -3318,7 +3318,7 @@ export default function AutomationTasks() {
                                 {connectionFeedback.success
                                   ? <CheckCircle2 size={18} className="mt-0.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
                                   : <AlertTriangle size={18} className="mt-0.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />}
-                                <span className="min-w-0 break-words leading-5">{connectionFeedback.message}</span>
+                                <span className="min-w-0 wrap-break-word leading-5">{connectionFeedback.message}</span>
                               </motion.div>
                             )}
                           </AnimatePresence>

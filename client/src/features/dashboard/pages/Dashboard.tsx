@@ -21,7 +21,7 @@ import { loadUserConfig } from '@/features/user-config'
 
 const sectionTitleClass = 'text-base font-bold text-primary'
 const labelClass = 'text-secondary'
-const progressTrackClass = 'h-1.5 rounded-full bg-[var(--app-surface-muted)] overflow-hidden'
+const progressTrackClass = 'h-1.5 rounded-full bg-(--app-surface-muted) overflow-hidden'
 const dashboardChipClass = 'brand-chip rounded-lg px-2.5 py-1 text-xs font-medium'
 const mutedChipClass = 'rounded-lg px-2.5 py-1 surface-soft text-secondary text-xs'
 
@@ -76,16 +76,16 @@ const normalizeActivityCompletion = (
 }
 
 const getUsageBarClass = (pct?: number | null) => {
-  if (pct == null) return 'bg-[var(--app-accent)]'
-  if (pct >= 90) return 'bg-[var(--app-danger)]'
-  if (pct >= 75) return 'bg-[var(--app-warning)]'
-  return 'bg-[var(--app-accent)]'
+  if (pct == null) return 'bg-(--app-accent)'
+  if (pct >= 90) return 'bg-(--app-danger)'
+  if (pct >= 75) return 'bg-(--app-warning)'
+  return 'bg-(--app-accent)'
 }
 
 const getUsageValueClass = (pct?: number | null) => {
   if (pct == null) return 'text-primary'
-  if (pct >= 90) return 'text-[var(--app-danger)]'
-  if (pct >= 75) return 'text-[var(--app-warning)]'
+  if (pct >= 90) return 'text-(--app-danger)'
+  if (pct >= 75) return 'text-(--app-warning)'
   return 'text-primary'
 }
 
@@ -606,13 +606,13 @@ export default function Dashboard() {
 
               <div className="dashboard-flow-activity">
                 <div className="flex items-center gap-2">
-                  <CalendarDays className="h-3.5 w-3.5 text-[var(--app-accent-strong)]" strokeWidth={1.8} aria-hidden="true" />
+                  <CalendarDays className="h-3.5 w-3.5 text-(--app-accent-strong)" strokeWidth={1.8} aria-hidden="true" />
                   <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
                 </div>
-                <div className="mt-2 break-words text-sm font-bold text-primary">
+                <div className="mt-2 wrap-break-word text-sm font-bold text-primary">
                   {activitySummary.available ? (activitySummary.name || activitySummary.code || '进行中') : '暂无活动'}
                 </div>
-                <div className={`mt-0.5 break-words text-xs ${labelClass}`}>{activitySummary.tip || '等待活动数据'}</div>
+                <div className={`mt-0.5 wrap-break-word text-xs ${labelClass}`}>{activitySummary.tip || '等待活动数据'}</div>
               </div>
 
               <div className="dashboard-flow-stages">
@@ -646,9 +646,9 @@ export default function Dashboard() {
         {deviceStats && (
           <div className="dashboard-device-section">
             <div className="flex items-center gap-2">
-              <div className="h-0.5 flex-1 bg-[var(--app-border)] rounded-full" />
+              <div className="h-0.5 flex-1 bg-(--app-border) rounded-full" />
               <span className={`text-xs font-medium ${labelClass} uppercase shrink-0`}>设备状态</span>
-              <div className="h-0.5 flex-1 bg-[var(--app-border)] rounded-full" />
+              <div className="h-0.5 flex-1 bg-(--app-border) rounded-full" />
             </div>
             <div className="dashboard-device-grid">
               {([

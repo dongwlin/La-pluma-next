@@ -218,7 +218,7 @@ export function Checkbox({
         {...props}
       />
       {label && (
-        <span className="text-sm text-secondary transition-colors group-hover:text-[var(--app-accent)]">
+        <span className="text-sm text-secondary transition-colors group-hover:text-(--app-accent)">
           {label}
         </span>
       )}

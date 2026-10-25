@@ -827,7 +827,7 @@ export default function OperatorTraining() {
 
           {/* 干员卡片列表 */}
           {operatorsLoading ? (
-            <div className="flex min-h-[260px] items-center justify-center">
+            <div className="flex min-h-65 items-center justify-center">
               <Loading text="正在读取干员..." />
             </div>
           ) : operatorsError ? (
@@ -839,7 +839,7 @@ export default function OperatorTraining() {
           ) : operatorEmptyState ? (
             <OperatorEmptyState {...operatorEmptyState} />
           ) : (
-            <div className="min-h-[260px]">
+            <div className="min-h-65">
               <div className="training-operator-grid grid grid-cols-3 overflow-hidden rounded-xl surface-soft sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-5">
                 {visibleOperators.map((operator, idx) => {
                   const isInQueue = queue.some(q => q.operatorId === operator.id);
@@ -897,7 +897,7 @@ export default function OperatorTraining() {
                           />
                           {/* 不可添加时的半透明蒙版 */}
                           {!canAdd && imageLoaded && (
-                            <div className={`absolute inset-0 ${isOwned ? 'bg-[var(--app-surface)]/25' : 'bg-[var(--app-surface)]/50'}`} />
+                            <div className={`absolute inset-0 ${isOwned ? 'bg-(--app-surface)/25' : 'bg-(--app-surface)/50'}`} />
                           )}
                         </>
                       ) : (

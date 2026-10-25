@@ -82,13 +82,13 @@ const filterButtonClass = (isActive: boolean) =>
       : 'control-surface text-secondary'
   }`
 
-const menuSurfaceClass = 'data-statistics-menu-surface fixed z-[2000] overflow-y-auto overscroll-contain rounded-xl py-1 surface-panel'
+const menuSurfaceClass = 'data-statistics-menu-surface fixed z-2000 overflow-y-auto overscroll-contain rounded-xl py-1 surface-panel'
 
 const menuOptionClass = (isActive: boolean) =>
-  `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)] ${
+  `min-h-11 w-full px-3 text-left text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent) ${
     isActive
       ? 'brand-chip font-medium'
-      : 'text-secondary hover:bg-[var(--app-surface-muted)] hover:text-primary'
+      : 'text-secondary hover:bg-(--app-surface-muted) hover:text-primary'
   }`
 
 const taskPanelClass = (isActive: boolean) =>
@@ -332,7 +332,7 @@ function FilterMenu({
   return (
     <div
       ref={containerRef}
-      className="filter-menu-container relative w-[calc(33.333%_-_0.5rem)] sm:w-auto"
+      className="filter-menu-container relative w-[calc(33.333%-0.5rem)] sm:w-auto"
     >
       <button
         ref={triggerRef}
@@ -410,7 +410,7 @@ function InlineDataError({ title, description, isRetrying, onRetry }: InlineData
     >
       <div className="min-w-0">
         <p className="font-semibold text-primary">{title}</p>
-        <p className="mt-1 break-words text-sm leading-6 [overflow-wrap:anywhere] form-error-text">{description}</p>
+        <p className="mt-1 wrap-break-word text-sm leading-6 wrap-anywhere form-error-text">{description}</p>
       </div>
       <Button
         variant="secondary"
@@ -1221,7 +1221,7 @@ export default function DataStatistics() {
                         variant="ghost"
                         size="sm"
                         icon={<RotateCcw size={14} aria-hidden="true" />}
-                        className="min-h-11 w-[calc(33.333%_-_0.5rem)] sm:w-auto"
+                        className="min-h-11 w-[calc(33.333%-0.5rem)] sm:w-auto"
                       >
                         重置
                       </Button>
@@ -1276,12 +1276,12 @@ export default function DataStatistics() {
                         )}
                         
                         {/* 干员头像 */}
-                        <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
+                        <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-(--app-surface-muted)">
                           {oper.id ? (
                             <>
                               {/* 骨架屏 */}
                               {!imageLoaded && (
-                                <div className="absolute inset-0 animate-pulse bg-[var(--app-surface-muted)]"></div>
+                                <div className="absolute inset-0 animate-pulse bg-(--app-surface-muted)"></div>
                               )}
                               <img
                                 src={`https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${oper.id}.png`}
@@ -1504,7 +1504,7 @@ export default function DataStatistics() {
                           className="data-statistics-depot-item flex min-w-0 items-center gap-3 p-3"
                         >
                           {/* 物品图标 */}
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--app-surface-muted)]">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
                             {failedDepotImages[imageKey] ? (
                               <span role="img" aria-label={`${item.name}图标不可用`}>
                                 <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />

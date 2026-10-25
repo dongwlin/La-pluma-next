@@ -380,7 +380,7 @@ function RoguelikeSkeleton() {
 
 function TrainingSkeleton() {
   return (
-    <div className="grid grid-cols-1 items-start gap-[var(--app-space-section)] xl:grid-cols-[minmax(0,1fr)_minmax(22rem,27rem)]" aria-hidden="true">
+    <div className="grid grid-cols-1 items-start gap-(--app-space-section) xl:grid-cols-[minmax(0,1fr)_minmax(22rem,27rem)]" aria-hidden="true">
       <section className="order-1 min-w-0 space-y-4 training-operator-column">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
@@ -411,7 +411,7 @@ function TrainingSkeleton() {
             <Skeleton variant="rect" className="h-11 w-full rounded-xl" />
             <Skeleton variant="rect" className="h-11 w-24 rounded-xl" />
           </div>
-          <div className="min-h-[260px]">
+          <div className="min-h-65">
             <div className="training-operator-grid grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-4 2xl:grid-cols-6">
               {Array.from({ length: 12 }, (_, index) => (
                 <div key={index} className="training-operator-skeleton relative overflow-hidden rounded-xl p-2.5 surface-soft">
@@ -433,7 +433,7 @@ function TrainingSkeleton() {
             <div className="flex min-h-11 items-center">
               <Skeleton variant="text" className="h-4 w-24" />
             </div>
-            <div className="mt-2 divide-y divide-[var(--app-border)]">
+            <div className="mt-2 divide-y divide-(--app-border)">
               {[1, 2].map(item => (
                 <div
                   key={item}
@@ -451,7 +451,7 @@ function TrainingSkeleton() {
         </SmoothPanel>
         <Card smoothCorners className="training-queue-card p-0!">
           <CardHeaderSkeleton actionWidth="w-16" />
-          <div className="divide-y divide-[var(--app-border)] px-4">
+          <div className="divide-y divide-(--app-border) px-4">
             {[1, 2, 3].map(item => (
               <div key={item} className="flex min-h-16 items-center gap-3 py-3">
                 <Skeleton variant="rect" className="h-8 w-8 shrink-0 rounded-lg" />
@@ -619,12 +619,12 @@ function ConfigSkeleton() {
           ))}
         </div>
       </div>
-      <div className="config-workspace-grid grid min-w-0 gap-[var(--app-space-section)] xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
+      <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
         <div className="config-workspace-primary app-stack-section min-w-0">
       <Card smoothCorners className="config-editor-card p-0!">
         <CardHeaderSkeleton actionWidth="w-36" />
         <div className="app-card-content app-stack-card">
-          <div className="grid gap-[var(--app-space-card)] md:grid-cols-2">
+          <div className="grid gap-(--app-space-card) md:grid-cols-2">
             {[1, 2].map(item => (
               <div key={item} className="space-y-2">
                 <Skeleton variant="text" className="h-3 w-24" />
@@ -646,13 +646,13 @@ function ConfigSkeleton() {
               <Skeleton variant="rect" className="h-9 w-24 rounded-xl" />
             </div>
           </div>
-          <div className="grid gap-[var(--app-space-card)] md:grid-cols-2">
+          <div className="grid gap-(--app-space-card) md:grid-cols-2">
             <div className="space-y-2">
               <Skeleton variant="text" className="h-3 w-24" />
               <Skeleton variant="rect" className="h-11 w-full rounded-xl" />
               <Skeleton variant="text" className="h-2.5 w-48 max-w-full" />
             </div>
-            <div className="config-reconnect-row flex min-h-[3.5rem] items-center justify-between gap-3 py-1">
+            <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
               <div className="space-y-2">
                 <Skeleton variant="text" className="h-3 w-20" />
                 <Skeleton variant="text" className="h-2.5 w-36 max-w-full" />
@@ -693,7 +693,7 @@ function ConfigSkeleton() {
               <Skeleton variant="rect" className="h-7 w-12 rounded-full" />
             </div>
           </section>
-          <div className="grid gap-[var(--app-space-card)] md:grid-cols-2 xl:grid-cols-1">
+          <div className="grid gap-(--app-space-card) md:grid-cols-2 xl:grid-cols-1">
             {[1, 2].map(item => (
               <div key={item} className="space-y-3 rounded-xl p-4 surface-soft">
                 <Skeleton variant="text" className="h-4 w-28" />

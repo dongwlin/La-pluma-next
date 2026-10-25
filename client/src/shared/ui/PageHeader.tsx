@@ -28,7 +28,7 @@ export default function PageHeader({
     >
       <div className="app-page-heading">
         {icon && (
-          <div className="app-page-header-icon [&_*]:text-current">
+          <div className="app-page-header-icon **:text-current">
             {icon}
           </div>
         )}

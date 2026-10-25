@@ -213,7 +213,7 @@ function ModalLayer({
     <div
       ref={layerRef}
       data-app-modal-layer="true"
-      className="app-modal-layer pointer-events-none fixed inset-0 z-[80]"
+      className="app-modal-layer pointer-events-none fixed inset-0 z-80"
     >
       <motion.div
         initial={{ opacity: 0 }}

@@ -92,7 +92,7 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
         {displayText}
       </span>
 
-      <div className="floating-status-anchor inline-block min-h-[1px] min-w-[1px]">
+      <div className="floating-status-anchor inline-block min-h-px min-w-px">
         {indicatorContent}
       </div>
     </>

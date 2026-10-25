@@ -75,7 +75,7 @@ function DeviceNavigationButtons({
       aria-label={label}
       className={immersive
         ? 'group flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xs transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35'
-        : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'automation-preview-glass-button' : ''}`}
+        : `control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-35 ${compact ? 'automation-preview-glass-button' : ''}`}
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
     </button>
@@ -443,7 +443,7 @@ export default function ScrcpyDeviceView({
           }${
             webrtc.status === 'connected'
               ? 'is-connected bg-black'
-              : 'is-empty ring-1 ring-inset ring-[var(--app-border)]'
+              : 'is-empty ring-1 ring-inset ring-(--app-border)'
           }`}
           aria-busy={previewBusy}
         >
@@ -532,7 +532,7 @@ export default function ScrcpyDeviceView({
             disabled={webrtc.status !== 'connected'}
             title="全屏"
             aria-label="全屏"
-            className={`control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-35 ${isCompact ? 'automation-preview-glass-button' : ''}`}
+            className={`control-surface flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full text-secondary transition-colors hover:text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-35 ${isCompact ? 'automation-preview-glass-button' : ''}`}
           >
             <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
           </button>
@@ -725,7 +725,7 @@ export default function ScrcpyDeviceView({
                   />
                 </div>
               </div>
-              <p className={`text-xs leading-5 ${settingsDirty ? 'text-[var(--app-accent)]' : 'text-secondary'}`} role="status">
+              <p className={`text-xs leading-5 ${settingsDirty ? 'text-(--app-accent)' : 'text-secondary'}`} role="status">
                 {settingsDirty ? '画质已修改，重连预览后生效' : '画质调整会在下次连接时生效'}
               </p>
             </div>
@@ -753,7 +753,7 @@ export default function ScrcpyDeviceView({
         aria-modal="true"
         aria-label="模拟器沉浸预览"
         tabIndex={-1}
-        className="fixed inset-0 z-[9999] bg-black flex flex-col landscape:flex-row items-center justify-center gap-2 outline-hidden"
+        className="fixed inset-0 z-9999 bg-black flex flex-col landscape:flex-row items-center justify-center gap-2 outline-hidden"
         style={{
           paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
           paddingRight: 'max(0.5rem, env(safe-area-inset-right))',

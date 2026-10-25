@@ -1461,7 +1461,7 @@ export default function CombatTasks() {
 
     return (
       <motion.div
-        className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3"
+        className="mt-3 space-y-3 border-t border-(--app-border) pt-3"
         initial={{ opacity: 0, height: 0 }}
         animate={{ opacity: 1, height: "auto" }}
         transition={{ duration: 0.3 }}
@@ -1479,7 +1479,7 @@ export default function CombatTasks() {
                   onChange={(e) => handleAdvancedChange(task.id, option.key, e.target.checked)}
                   className="custom-checkbox h-4 w-4 cursor-pointer"
                 />
-                <span className="min-w-0 truncate transition-colors group-hover:text-[var(--app-accent)]">{option.label}</span>
+                <span className="min-w-0 truncate transition-colors group-hover:text-(--app-accent)">{option.label}</span>
               </label>
             ) : option.type === 'select' && option.options ? (
               <div className="grid min-w-0 gap-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-center">
@@ -1787,7 +1787,7 @@ export default function CombatTasks() {
                         <p className="truncate">支持作业链接、导入文件和本地作业。</p>
                         <details className="group relative shrink-0">
                           <summary className="inline-flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center brand-text hover:underline">说明</summary>
-                          <div className="absolute right-0 z-20 mt-2 hidden w-[min(18rem,calc(100vw_-_3rem))] space-y-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)] p-3 text-left shadow-lg group-open:block">
+                          <div className="absolute right-0 z-20 mt-2 hidden w-[min(18rem,calc(100vw-3rem))] space-y-1.5 rounded-lg border border-(--app-border) bg-(--app-surface-solid) p-3 text-left shadow-lg group-open:block">
                             <p>• 在 <a href="https://prts.plus/" target="_blank" rel="noopener noreferrer" className="brand-text hover:underline">prts.plus</a> 获取作业链接</p>
                             <p>• 单作业：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">prts://1234</code>；作业集：<code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">prts://s1234</code></p>
                             <p>• 作业站链接会自动识别，也可导入远程或本地作业文件</p>
@@ -1799,7 +1799,7 @@ export default function CombatTasks() {
                     {/* 作业类型选择 */}
                     <div className="flex items-center justify-between gap-3 px-4 text-xs">
                       <span className="shrink-0 font-medium text-secondary">识别方式</span>
-                      <div className="flex min-w-0 max-w-full overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5">
+                      <div className="flex min-w-0 max-w-full overflow-hidden rounded-lg border border-(--app-border) bg-(--app-surface-muted) p-0.5">
                         <button
                           onClick={() => handleCopilotTypeChange('auto')}
                           className={`min-h-11 rounded-md px-3 py-1 transition-colors ${
@@ -1847,7 +1847,7 @@ export default function CombatTasks() {
                             <button
                               onClick={() => setResetProgressDialogOpen(true)}
                               disabled={isResettingProgress}
-                              className="min-h-11 px-1 text-xs text-gray-500 transition-colors hover:text-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400"
+                              className="min-h-11 px-1 text-xs text-gray-500 transition-colors hover:text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400"
                             >
                               {isResettingProgress ? '重置中...' : '重置进度'}
                             </button>
@@ -1879,7 +1879,7 @@ export default function CombatTasks() {
                             const nextIndex = copilotSetInfo.copilots.findIndex((_, idx) => selectedCopilotIndexes.has(idx))
                             const nextCopilot = nextIndex >= 0 ? copilotSetInfo.copilots[nextIndex] : null
                             return (
-                              <div className="mb-3 border-y border-[var(--app-border)] py-3">
+                              <div className="mb-3 border-y border-(--app-border) py-3">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                   <div className="min-w-0">
                                     <div className="text-xs font-medium text-tertiary">续跑进度</div>
@@ -1892,25 +1892,25 @@ export default function CombatTasks() {
                                   </div>
                                   <div className="flex shrink-0 items-center gap-1.5">
                                     <span className="rounded-md px-2 py-1 text-[11px] brand-chip">待 {pendingCount}</span>
-                                    <span className="rounded-md border border-[var(--app-border)] px-2 py-1 text-[11px] text-secondary">完成 {completedCount}</span>
-                                    <span className={`rounded-md border px-2 py-1 text-[11px] ${failedCount > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-[var(--app-border)] text-secondary'}`}>失败 {failedCount}</span>
+                                    <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">完成 {completedCount}</span>
+                                    <span className={`rounded-md border px-2 py-1 text-[11px] ${failedCount > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-(--app-border) text-secondary'}`}>失败 {failedCount}</span>
                                   </div>
                                 </div>
                                 <div className="mt-3">
                                   <div className="h-1.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
                                     <div
-                                      className="h-full bg-[var(--app-accent)] transition-all duration-300"
+                                      className="h-full bg-(--app-accent) transition-all duration-300"
                                       style={{ width: `${total > 0 ? (completedCount / total) * 100 : 0}%` }}
                                     />
                                   </div>
                                   {nextCopilot ? (
-                                    <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-[var(--app-border)] pt-2 text-xs">
+                                    <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-(--app-border) pt-2 text-xs">
                                       <span className="shrink-0 text-tertiary">续跑目标</span>
                                       <span className="font-mono brand-text">prts://{nextCopilot.id}</span>
                                       <span className="min-w-0 truncate text-secondary">{nextCopilot.stage || nextCopilot.name || `第 ${nextIndex + 1} 关`}</span>
                                     </div>
                                   ) : (
-                                    <div className="mt-2 border-t border-[var(--app-border)] pt-2 text-xs text-tertiary">
+                                    <div className="mt-2 border-t border-(--app-border) pt-2 text-xs text-tertiary">
                                       需要重打时点击“重置进度”。
                                     </div>
                                   )}
@@ -1925,7 +1925,7 @@ export default function CombatTasks() {
                               ? copilotSetInfo.copilots[copilotSetInfo.currentIndex]
                               : null
                             return waitingForNextCopilot && currentCopilot && (
-                              <div className="mb-3 rounded-lg border border-[var(--app-accent)] bg-[var(--app-accent-soft)] p-3">
+                              <div className="mb-3 rounded-lg border border-(--app-accent) bg-(--app-accent-soft) p-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center space-x-2">
                                     <span className="px-2 py-0.5 brand-action text-xs font-medium rounded">下一关</span>
@@ -1936,7 +1936,7 @@ export default function CombatTasks() {
                                 <p className="text-sm font-medium text-primary">{currentCopilot.name || `作业 #${currentCopilot.id}`}</p>
                                 {currentCopilot.stage && <p className="text-xs text-secondary">{currentCopilot.stage}</p>}
 
-                                <div className="mt-3 pt-3 border-t border-[var(--app-border)]">
+                                <div className="mt-3 pt-3 border-t border-(--app-border)">
                                   <p className="text-xs brand-text mb-2">请在游戏中进入下一关界面后点击继续</p>
                                   <div className="flex space-x-2">
                                     <Button
@@ -1957,7 +1957,7 @@ export default function CombatTasks() {
                           })()}
 
                           {/* 作业列表 */}
-                          <div className="flex-1 divide-y divide-[var(--app-border)] overflow-hidden overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)]">
+                          <div className="flex-1 divide-y divide-(--app-border) overflow-hidden overflow-y-auto rounded-lg border border-(--app-border) bg-(--app-surface-solid)">
                             {copilotSetInfo.copilots.map((copilot, idx) => {
                               const isCompleted = copilotSetResults.some(r => r.index === idx)
                               const isSuccess = copilotSetResults.find(r => r.index === idx)?.success
@@ -1984,10 +1984,10 @@ export default function CombatTasks() {
 
                               return (
                                 <div key={`${copilot.id}-${idx}`} className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
-                                  isCurrent ? 'bg-[var(--app-accent-soft)]' :
+                                  isCurrent ? 'bg-(--app-accent-soft)' :
                                   isCompleted ? (isSuccess ? 'bg-emerald-500/10' : 'bg-rose-500/10') :
-                                  isPersistedDone ? 'bg-black/[0.025] opacity-70 dark:bg-white/[0.035]' :
-                                  'hover:bg-[var(--app-surface-muted)]'
+                                  isPersistedDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
+                                  'hover:bg-(--app-surface-muted)'
                                 }`}>
                                   <div className="flex min-w-0 items-center space-x-2">
                                     {/* 勾选框 */}
@@ -1997,12 +1997,12 @@ export default function CombatTasks() {
                                       disabled={isRunning}
                                       aria-pressed={isSelected}
                                       aria-label={`${isSelected ? '取消选择' : '选择'}第 ${idx + 1} 个作业`}
-                                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors ${isRunning ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-[var(--app-accent-soft)]'}`}
+                                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors ${isRunning ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-(--app-accent-soft)'}`}
                                     >
                                       <span className={`flex h-4 w-4 items-center justify-center rounded border ${
                                           isSelected
-                                            ? 'border-[var(--app-accent)] bg-[var(--app-accent)] text-white'
-                                            : 'border-[var(--app-border-strong)] bg-[var(--app-surface-solid)]'
+                                            ? 'border-(--app-accent) bg-(--app-accent) text-white'
+                                            : 'border-(--app-border-strong) bg-(--app-surface-solid)'
                                         }`}>
                                         {isSelected && (
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -2012,8 +2012,8 @@ export default function CombatTasks() {
                                       </span>
                                     </button>
                                     <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
-                                      isCurrent ? 'bg-[var(--app-accent)] text-white animate-pulse' :
-                                      isCompleted ? (isSuccess ? 'bg-[var(--app-success)] text-white' : 'bg-[var(--app-danger)] text-white') :
+                                      isCurrent ? 'bg-(--app-accent) text-white animate-pulse' :
+                                      isCompleted ? (isSuccess ? 'bg-(--app-success) text-white' : 'bg-(--app-danger) text-white') :
                                       isPersistedDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
                                       'bg-black/5 text-secondary dark:bg-white/10'
                                     }`}>
@@ -2051,7 +2051,7 @@ export default function CombatTasks() {
                           </div>
                         </>
                       ) : copilotSetInfo?.type === 'single' ? (
-                        <div className="flex-1 border-y border-[var(--app-border)] py-3">
+                        <div className="flex-1 border-y border-(--app-border) py-3">
                           <div className="flex items-center space-x-2 mb-1">
                             <span className="rounded-md px-2 py-0.5 text-xs font-medium brand-chip">单个作业</span>
                             <span className="text-xs text-tertiary">ID: {copilotSetInfo.id}</span>
@@ -2123,13 +2123,13 @@ export default function CombatTasks() {
                               onClick={() => void applyCopilotUri(copilot.uri)}
                               className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-1.5 text-left text-xs transition-all ${
                                 selectedSearchCopilotUri === copilot.uri
-                                  ? 'brand-action-subtle border-[var(--app-accent)]'
-                                  : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:border-[var(--app-accent)]'
+                                  ? 'brand-action-subtle border-(--app-accent)'
+                                  : 'border-(--app-border) bg-(--app-surface) hover:border-(--app-accent)'
                               }`}
                             >
                               <div className="flex items-center space-x-2">
                                 <span className="font-mono brand-text">{copilot.uri}</span>
-                                <span className="max-w-[80px] truncate text-secondary">{copilot.title}</span>
+                                <span className="max-w-20 truncate text-secondary">{copilot.title}</span>
                               </div>
                               <div className="flex items-center gap-1.5">
                                 {selectedSearchCopilotUri === copilot.uri && (
@@ -2182,7 +2182,7 @@ export default function CombatTasks() {
 
                                   {/* 当前作业详情 */}
                                   {currentCopilot && (
-                                    <div className="border-t border-[var(--app-border)] pt-2">
+                                    <div className="border-t border-(--app-border) pt-2">
                                       <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs text-tertiary">
                                           {isRunning ? '当前作业' : '下一作业'}
@@ -2341,7 +2341,7 @@ export default function CombatTasks() {
                           value={taskInputs[task.id] || ''}
                           onChange={(e) => handleInputChange(task.id, e.target.value)}
                           rows={isSss ? 4 : 5}
-                          className="app-native-control w-full resize-none rounded-lg px-4 py-3 font-mono text-sm font-medium text-primary control-surface focus:outline-hidden focus:ring-2 focus:ring-[var(--app-accent-soft)]"
+                          className="app-native-control w-full resize-none rounded-lg px-4 py-3 font-mono text-sm font-medium text-primary control-surface focus:outline-hidden focus:ring-2 focus:ring-(--app-accent-soft)"
                         />
                         {isSss && taskUris.length > 1 && (
                           <div className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-500 dark:text-rose-300">
@@ -2405,7 +2405,7 @@ export default function CombatTasks() {
                                 <span className="font-medium brand-text">{paradoxSearchResult.operator}</span>
                                 <span className="text-tertiary">{paradoxSearchResult.copilots.length} 个作业</span>
                               </div>
-                              <div className="max-h-56 divide-y divide-[var(--app-border)] overflow-hidden overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)]">
+                              <div className="max-h-56 divide-y divide-(--app-border) overflow-hidden overflow-y-auto rounded-lg border border-(--app-border) bg-(--app-surface-solid)">
                                 {paradoxSearchResult.copilots.slice(0, 6).map((copilot, idx) => {
                                   const stars = Math.min(5, Math.max(1, Math.ceil(copilot.hotScore)))
 
@@ -2415,7 +2415,7 @@ export default function CombatTasks() {
                                       onClick={() => {
                                         setTaskInputs({ ...taskInputs, paradoxcopilot: copilot.uri })
                                       }}
-                                      className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--app-surface-muted)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-accent)]"
+                                      className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-(--app-surface-muted) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent)"
                                     >
                                       <div className="flex min-w-0 items-center justify-between gap-2">
                                         <span className="truncate font-mono brand-text">{copilot.uri}</span>
@@ -2444,7 +2444,7 @@ export default function CombatTasks() {
                       ) : (
                         <div className="combat-workspace-section">
                           <h5 className="mb-3 text-sm font-semibold text-primary">执行概览</h5>
-                          <div className="divide-y divide-[var(--app-border)] overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-solid)] text-xs">
+                          <div className="divide-y divide-(--app-border) overflow-hidden rounded-lg border border-(--app-border) bg-(--app-surface-solid) text-xs">
                             <div className="flex items-center justify-between px-3 py-2">
                               <span className="text-tertiary">作业数量</span>
                               <span className={taskUris.length > 1 ? 'text-rose-500 dark:text-rose-300' : 'text-primary'}>{taskUris.length || 0}</span>
@@ -2477,7 +2477,7 @@ export default function CombatTasks() {
                             </div>
                           )}
                           {isParadox && recommendedParadox && (
-                            <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2">
+                            <div className="rounded-lg border border-(--app-border) bg-(--app-surface) px-3 py-2">
                               <div className="mb-1 text-tertiary">当前推荐</div>
                               <div className="truncate font-mono brand-text">{recommendedParadox.uri}</div>
                             </div>

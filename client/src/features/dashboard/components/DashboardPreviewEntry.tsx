@@ -17,7 +17,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
       className={`status-border-beam ${isConnecting ? 'is-active' : ''}`}
       aria-busy={isConnecting}
     >
-      <div className="dashboard-preview-header flex items-center justify-between gap-3 px-4 py-2 border-b border-[var(--app-border)]">
+      <div className="dashboard-preview-header flex items-center justify-between gap-3 px-4 py-2 border-b border-(--app-border)">
         <div className="flex min-w-0 items-center gap-2">
           <span
             className={`preview-status-light is-${connectionState}`}
