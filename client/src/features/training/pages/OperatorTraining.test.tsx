@@ -6,7 +6,8 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
 import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
-import { publishResourceInvalidation } from '@/features/resource-invalidation'
+import { trainingQueueCommandOwner } from '../model/queueCommands'
+import { publishResourceInvalidation, subscribeResourceInvalidation } from '@/features/resource-invalidation'
 import OperatorTraining from './OperatorTraining'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -246,6 +247,7 @@ const openPicker = async () => {
 
 describe('OperatorTraining queue workspace', () => {
   beforeEach(() => {
+    trainingQueueCommandOwner.reset()
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
       media: query,
@@ -1240,6 +1242,122 @@ describe('OperatorTraining queue workspace', () => {
       expect(onPlanApplied).toHaveBeenCalledOnce()
     } finally {
       window.removeEventListener('training-plan-applied', onPlanApplied)
+    }
+  })
+
+  it('serializes a queued reorder against the queue produced by an in-flight removal', async () => {
+    let server = [
+      queueItem('char_current', '阿米娅'),
+      queueItem('char_middle', '能天使'),
+      queueItem('char_last', '艾雅法拉'),
+    ]
+    mocks.getTrainingQueue.mockImplementation(async () => queueResponse([...server]))
+    const removeRequest = deferred<{ success: boolean }>()
+    mocks.removeFromTrainingQueue.mockImplementationOnce(async (operatorId: string) => {
+      await removeRequest.promise
+      server = server.filter(item => item.operatorId !== operatorId)
+      return { success: true, data: { queueUpdated: true, queueRevision: 'queue-2' } }
+    })
+    mocks.updateTrainingQueueOrder.mockImplementation(async (operatorIds: string[]) => {
+      server = operatorIds.map(operatorId => server.find(item => item.operatorId === operatorId)!)
+      return { success: true, data: { queueUpdated: true, queueRevision: 'queue-2' } }
+    })
+
+    await renderComponent()
+    const removeButton = queueButton('移除阿米娅')
+    const setCurrentButton = queueButton('将艾雅法拉设为当前')
+    await act(async () => {
+      removeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      setCurrentButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await Promise.resolve()
+    })
+    await flush()
+
+    // 第二条命令不基于点击时的旧队列提交；它排在移除之后，等最新快照。
+    expect(mocks.updateTrainingQueueOrder).not.toHaveBeenCalled()
+
+    await act(async () => removeRequest.resolve({ success: true }))
+    await flush()
+
+    expect(mocks.removeFromTrainingQueue).toHaveBeenCalledOnce()
+    expect(mocks.updateTrainingQueueOrder).toHaveBeenCalledWith(['char_last', 'char_middle'])
+    expect(queueOrder()).toEqual(['艾雅法拉', '能天使'])
+  })
+
+  it('keeps a local fallback, exposes the uncertain queue, and clears it after reload', async () => {
+    mocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: { operators: [operator('char_added', '能天使')] },
+    })
+    mocks.getTrainingQueue
+      .mockResolvedValueOnce(queueResponse([]))
+      .mockResolvedValueOnce({ success: false })
+      .mockResolvedValueOnce(queueResponse([queueItem('char_added', '能天使')]))
+    mocks.addToTrainingQueue.mockResolvedValue({
+      success: true,
+      data: { queueUpdated: true, queueRevision: 'queue-2' },
+    })
+
+    await renderComponent()
+    const { dialog } = await openPicker()
+    await click(buttonWithText('添加', dialog))
+
+    expect(queueOrder()).toEqual(['能天使'])
+    const warning = Array.from(container.querySelectorAll<HTMLElement>('[role="alert"]'))
+      .find(alert => alert.textContent?.includes('读取最新状态失败'))
+    expect(warning).toBeDefined()
+    expect(buttonWithText('预览刷图计划', container).disabled).toBe(true)
+
+    await click(buttonWithText('重新加载', warning!))
+
+    expect(container.textContent).not.toContain('读取最新状态失败')
+    expect(buttonWithText('预览刷图计划', container).disabled).toBe(false)
+    expect(queueOrder()).toEqual(['能天使'])
+  })
+
+  it('publishes cross-page queue invalidation without refetching from its own event', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    mocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: { operators: [operator('char_added', '能天使')] },
+    })
+    const events: Array<{
+      resources: readonly string[]
+      cause: string
+      detail?: unknown
+    }> = []
+    const unsubscribe = subscribeResourceInvalidation(event => {
+      events.push(event)
+    })
+
+    try {
+      await renderComponent()
+      mocks.getTrainingQueue.mockClear()
+      mocks.getOperatorList.mockClear()
+      mocks.getAllOperators.mockClear()
+      mocks.getOperBoxData.mockClear()
+
+      const { dialog } = await openPicker()
+      await click(buttonWithText('添加', dialog))
+
+      const queueEvent = events.find(event => (
+        event.cause === 'training-queue' && event.resources.includes('training-queue')
+      ))
+      expect(queueEvent).toBeDefined()
+      expect(queueEvent?.resources).toEqual(expect.arrayContaining([
+        'training-queue',
+        'materials',
+        'training-plan',
+        'dashboard-snapshot',
+      ]))
+      expect(queueEvent?.detail).toEqual({ source: 'training-queue-command' })
+      // 本页已写入权威快照；自己的发布不应再触发队列重读或候选/计数重取。
+      expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+      expect(mocks.getOperatorList).not.toHaveBeenCalled()
+      expect(mocks.getAllOperators).not.toHaveBeenCalled()
+      expect(mocks.getOperBoxData).not.toHaveBeenCalled()
+    } finally {
+      unsubscribe()
     }
   })
 

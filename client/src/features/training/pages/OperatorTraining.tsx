@@ -3,30 +3,30 @@ import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpToLine, Check, ClipboardList, Filter, Package, Plus, Search, Sparkles, Trash2, UserRoundSearch, X } from 'lucide-react'
-import { getTrainingQueue, addToTrainingQueue, removeFromTrainingQueue, updateTrainingQueueOrder, updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
+import { updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
 import { getItemIconUrl } from '@/features/game-data'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
-import { trainingCandidatesQueryOptions, trainingStatusCountsQueryOptions } from '../model/queries'
+import {
+  trainingCandidatesQueryOptions,
+  trainingQueueQueryOptions,
+  trainingStatusCountsQueryOptions,
+} from '../model/queries'
 import { trainingKeys } from '../model/queryKeys'
+import { isTrainingQueueMutationInvalidation } from '../model/queueCommands'
 import { EMPTY_TRAINING_COUNTS } from '../model/statusCounts'
+import { useTrainingQueueCommands } from '../hooks/useTrainingQueueCommands'
 import { PageHeader, Button, EmptyState, IconButton, Input, Loading, Select, Switch } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
-import type { TrainingOperator, TrainingQueueItem, TrainingSettings, TrainingPlan, MaterialNode, TrainingFilters, TrainingPlanMode } from '../types'
+import type { TrainingQueueCommandOutcome } from '../model/queueCommands'
+import type { TrainingOperator, TrainingQueueItem, TrainingQueueSnapshot, TrainingFlowSync, TrainingSettings, TrainingPlan, MaterialNode, TrainingFilters, TrainingPlanMode } from '../types'
 
 const TRAINING_STATUS_OPTIONS: Array<{ value: TrainingFilters['status']; label: string; desc: string }> = [
   { value: 'trainable', label: '可养成', desc: '可加入队列' },
   { value: 'owned', label: '已拥有', desc: '已识别干员' },
   { value: 'all', label: '全部', desc: '含未拥有' },
 ]
-
-interface TrainingFlowSync {
-  status: 'not_applied' | 'synced' | 'failed'
-  flowName: string
-  taskName?: string
-  error?: string
-}
 
 function ResourceIcon({ id }: { id?: string | number }) {
   return <span className="training-resource-icon"><Package size={18} aria-hidden="true" />{id && <img src={getItemIconUrl(id)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} />}</span>
@@ -112,6 +112,7 @@ function TrainingLoadError({
 }
 
 const OPERATOR_RENDER_BATCH_SIZE = 72
+const EMPTY_TRAINING_QUEUE: TrainingQueueItem[] = []
 const TRAINING_RESOURCE_SCOPES = [
   'depot',
   'operbox',
@@ -133,7 +134,6 @@ export default function OperatorTraining() {
     setStatusMessage(msg, 'error')
   }
   
-  const [queue, setQueue] = useState<TrainingQueueItem[]>([]);
   const [settings, setSettings] = useState<TrainingSettings>({
     useMedicine: 0,
     useStone: 0,
@@ -142,8 +142,6 @@ export default function OperatorTraining() {
   });
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [loading, setLoading] = useState(false);
-  const [queueLoading, setQueueLoading] = useState(true);
-  const [queueError, setQueueError] = useState<string | null>(null);
   const [filters, setFilters] = useState<TrainingFilters>({
     rarity: '',
     status: 'trainable',
@@ -188,11 +186,33 @@ export default function OperatorTraining() {
   // 计数失败静默保留旧值；只有读取中且尚无计数时显示占位。
   const statusCountsLoading = countsQuery.isFetching
 
+  // 队列由 training 领域 query 持有唯一快照；写入、写后刷新与 fallback 都归
+  // queueCommands 领域命令，页面不再维护第二份可写队列。
+  const queueOptions = useMemo(() => trainingQueueQueryOptions(), [])
+  const queueQuery = useQuery(queueOptions)
+  const queueSnapshot = queueQuery.data
+  const queue = queueSnapshot?.queue ?? EMPTY_TRAINING_QUEUE
+  // 首次读取失败后重试期间保持加载态，避免错误页与请求进度同时出现。
+  const queueLoading = queueQuery.isPending
+    || (queueQuery.isFetching && !queueSnapshot && queueQuery.isError)
+  const queueError = queueQuery.isError && !queueSnapshot
+    ? (queueQuery.error instanceof Error && queueQuery.error.message
+        ? queueQuery.error.message
+        : '养成队列加载失败，请稍后重试')
+    : null
+  const queueUncertain = queueSnapshot?.uncertain ?? null
+  const refreshError = Boolean(queueUncertain)
+    || (queueQuery.isError && Boolean(queueSnapshot))
+  const {
+    pendingOperatorIds,
+    queueMutationPending,
+    run: runQueueCommand,
+  } = useTrainingQueueCommands()
+
   const [searchTerm, setSearchTerm] = useState('');
   const [planMode, setPlanMode] = useState<TrainingPlanMode>('current');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [flowSync, setFlowSync] = useState<TrainingFlowSync>({ status: 'not_applied', flowName: '自动任务' });
-  const [refreshError, setRefreshError] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -201,14 +221,14 @@ export default function OperatorTraining() {
   const queueHeadingRef = useRef<HTMLHeadingElement>(null);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [visibleOperatorLimit, setVisibleOperatorLimit] = useState(OPERATOR_RENDER_BATCH_SIZE);
-  const [pendingOperatorIds, setPendingOperatorIds] = useState<Set<string>>(new Set());
   const [recentlyRemoved, setRecentlyRemoved] = useState<{ item: TrainingQueueItem; index: number } | null>(null);
   const settingsRequestRef = useRef(0);
-  const queueRequestRef = useRef(0);
-  const queueRevisionRef = useRef<string | null>(null);
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const persistedSettingsRef = useRef(settings);
-  const queueMutationInFlightRef = useRef(false);
+  const settingsHydrateBaselineRef = useRef(settingsRequestRef.current);
+  const settingsHydratedRef = useRef(false);
+  const flowSyncHydratedRef = useRef(false);
+  const queueRevisionRef = useRef<string | null>(null);
 
   const handleTrainingStatusChange = (status: TrainingFilters['status']) => {
     setFilters(current => ({
@@ -232,63 +252,56 @@ export default function OperatorTraining() {
     setVisibleOperatorLimit(OPERATOR_RENDER_BATCH_SIZE);
   }, [filters.status, filters.rarity, filters.needsElite2, searchTerm]);
 
-  // 加载养成队列
+  // 首次成功的队列快照把服务端设置与任务流程同步状态同步到页面；
+  // 用户先编辑设置时不覆盖编辑草稿。
   useEffect(() => {
-    void loadQueue(true);
-  }, []);
-
-  const loadQueue = async (syncSettings = false) => {
-    const requestId = ++queueRequestRef.current;
-    const settingsRevision = settingsRequestRef.current;
-    if (syncSettings) {
-      setQueueLoading(true);
-      setQueueError(null);
+    if (!queueSnapshot) return
+    if (!settingsHydratedRef.current && queueSnapshot.settings) {
+      settingsHydratedRef.current = true
+      if (settingsRequestRef.current === settingsHydrateBaselineRef.current) {
+        persistedSettingsRef.current = queueSnapshot.settings
+        setSettings(queueSnapshot.settings)
+      }
     }
-    try {
-      const response = await getTrainingQueue();
-      if (requestId !== queueRequestRef.current) return null;
-      if (!response.success) {
-        throw new Error(response.message || response.errorInfo?.message || response.error || '养成队列加载失败');
-      }
-      if (!Array.isArray(response.data?.queue)) {
-        throw new Error('养成队列数据格式不正确');
-      }
-      if (response.success && response.data?.queue) {
-        const revision = response.data.revision;
-        if (revision && queueRevisionRef.current && revision !== queueRevisionRef.current) {
-          planRequestRef.current += 1;
-          setPlan(null);
-        }
-        if (revision) queueRevisionRef.current = revision;
-        setQueue(response.data.queue);
-        setRefreshError(false);
-        if (response.data.flowSync) setFlowSync(response.data.flowSync);
-        setQueueError(null);
-        if (syncSettings && settingsRevision === settingsRequestRef.current && response.data.settings) {
-          persistedSettingsRef.current = response.data.settings;
-          setSettings(response.data.settings);
-        }
-        return response.data;
-      }
-    } catch (error) {
-      if (requestId === queueRequestRef.current) setRefreshError(true);
-      if (syncSettings && requestId === queueRequestRef.current) {
-        setQueueError(error instanceof Error && error.message ? error.message : '养成队列加载失败，请稍后重试');
-      }
-    } finally {
-      if (requestId === queueRequestRef.current) setQueueLoading(false);
+    if (!flowSyncHydratedRef.current && queueSnapshot.flowSync) {
+      flowSyncHydratedRef.current = true
+      setFlowSync(queueSnapshot.flowSync)
     }
-    return null;
-  };
+  }, [queueSnapshot])
 
-  const setOperatorPending = (operatorId: string, pending: boolean) => {
-    setPendingOperatorIds(current => {
-      const next = new Set(current);
-      if (pending) next.add(operatorId);
-      else next.delete(operatorId);
-      return next;
-    });
-  };
+  // 外部队列变化（识别、材料刷新、另一客户端）通过 revision 使旧计划失效。
+  // 本页自己的写入在命令开始时已作废旧计划；此处只处理读取到的版本变化。
+  useEffect(() => {
+    const revision = queueSnapshot?.revision
+    if (!revision) return
+    const previous = queueRevisionRef.current
+    queueRevisionRef.current = revision
+    if (previous && previous !== revision) {
+      planRequestRef.current += 1
+      setPlan(null)
+      setPlanError(null)
+    }
+  }, [queueSnapshot?.revision])
+
+  // 强制读取最新队列；写后确认、生成计划前与外部失效都走同一入口。
+  const reloadQueue = async (syncSettings = false): Promise<TrainingQueueSnapshot | null> => {
+    const settingsRevision = settingsRequestRef.current
+    const result = await queueQuery.refetch({ cancelRefetch: true })
+    if (result.isError || !result.data) return null
+    const revision = result.data.revision
+    if (revision && queueRevisionRef.current && revision !== queueRevisionRef.current) {
+      planRequestRef.current += 1
+      setPlan(null)
+      setPlanError(null)
+    }
+    if (revision) queueRevisionRef.current = revision
+    if (result.data.flowSync) setFlowSync(result.data.flowSync)
+    if (syncSettings && result.data.settings && settingsRevision === settingsRequestRef.current) {
+      persistedSettingsRef.current = result.data.settings
+      setSettings(result.data.settings)
+    }
+    return result.data
+  }
 
   const invalidatePlan = () => {
     planRequestRef.current += 1;
@@ -297,8 +310,11 @@ export default function OperatorTraining() {
   };
 
   // 识别、材料刷新与资源更新可能来自本页之外。候选列表与计数按资源作用域
-  // 失效领域 query，计划前提变化时作废旧计划；队列写入仍由本页 mutation 自己刷新。
-  useResourceInvalidation(TRAINING_RESOURCE_SCOPES, ({ resources }) => {
+  // 失效领域 query，计划前提变化时作废旧计划；队列写入的权威快照已由领域
+  // 命令写入，因此忽略本页自己发布的队列失效。
+  useResourceInvalidation(TRAINING_RESOURCE_SCOPES, invalidation => {
+    if (isTrainingQueueMutationInvalidation(invalidation)) return
+    const { resources } = invalidation
     const touchesPlan = resources.some(resource => (
       resource === 'depot' || resource === 'materials' || resource === 'training-plan'
     ))
@@ -310,26 +326,12 @@ export default function OperatorTraining() {
     ))
 
     if (touchesPlan) invalidatePlan()
-    if (touchesQueue) void loadQueue()
+    if (touchesQueue) void reloadQueue()
     if (touchesOperators) {
       void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('candidates') })
       void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('counts') })
     }
   });
-
-  const beginMutation = (operatorId: string) => {
-    if (queueMutationInFlightRef.current || workInFlightRef.current) return false;
-    queueMutationInFlightRef.current = true;
-    setOperatorPending(operatorId, true);
-    setOperationError(null);
-    invalidatePlan();
-    return true;
-  };
-
-  const finishMutation = (operatorId: string) => {
-    queueMutationInFlightRef.current = false;
-    setOperatorPending(operatorId, false);
-  };
 
   const recordSync = (sync?: TrainingFlowSync) => {
     if (!sync) return;
@@ -337,107 +339,94 @@ export default function OperatorTraining() {
     if (sync.status === 'synced') window.dispatchEvent(new CustomEvent('training-plan-applied'));
   };
 
+  // 命令失败保留原队列并展示可重试错误；写入成功（含写后刷新失败）才推进 UI。
+  const settleQueueOutcome = (
+    outcome: TrainingQueueCommandOutcome,
+  ): Extract<TrainingQueueCommandOutcome, { status: 'applied' | 'uncertain' }> | null => {
+    if (outcome.status === 'ignored') return null
+    if (outcome.status === 'failed') {
+      setOperationError(outcome.message)
+      showError(outcome.message)
+      // 命令开始时会取消在途读取；若当时还没有快照，失败后重新建立首屏读取。
+      if (!queueSnapshot) void queueQuery.refetch()
+      return null
+    }
+    recordSync(outcome.flowSync)
+    if (outcome.status === 'uncertain') setStatusMessage(outcome.message, 'warning')
+    else if (outcome.message) showSuccess(outcome.message)
+    return outcome
+  }
+
   const handleAddToQueue = async (operator: TrainingOperator) => {
-    if (queue.some(item => item.operatorId === operator.id) || !beginMutation(operator.id)) return;
+    if (queue.some(item => item.operatorId === operator.id) || workInFlightRef.current) return;
     setRecentlyRemoved(null);
-    try {
-      const response = await addToTrainingQueue({ operatorId: operator.id, currentElite: operator.currentElite ?? 0, targetElite: operator.targetElite ?? 2 });
-      if (!response.success) throw new Error(response.message || '添加失败，请重试');
-      const queueData = await loadQueue();
-      if (!queueData) {
-        setQueue(current => [...current, { operatorId: operator.id, operator: { name: operator.name, rarity: operator.rarity, profession: operator.profession }, currentElite: operator.currentElite ?? 0, targetElite: operator.targetElite ?? 2, materials: [], progress: 0 }]);
-      }
-      recordSync(queueData?.flowSync ?? response.data?.flowSync);
-      setStatusMessage(queueData ? `${operator.name} 已加入养成队列` : `${operator.name} 已添加，但队列刷新失败，请重试`, queueData ? 'success' : 'warning');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '添加失败，请重试';
-      setOperationError(message);
-      showError(message);
-    } finally { finishMutation(operator.id); }
+    setOperationError(null);
+    invalidatePlan();
+    const outcome = await runQueueCommand({ type: 'add', operator });
+    settleQueueOutcome(outcome);
   };
 
   const handleRemoveFromQueue = async (operatorId: string) => {
-    const index = queue.findIndex(item => item.operatorId === operatorId);
-    const item = queue[index];
-    if (!item || !beginMutation(operatorId)) return;
-    try {
-      const response = await removeFromTrainingQueue(operatorId);
-      if (!response.success) throw new Error(response.message || '删除失败，请重试');
-      const queueData = await loadQueue();
-      if (!queueData) setQueue(current => current.filter(entry => entry.operatorId !== operatorId));
-      recordSync(queueData?.flowSync ?? response.data?.flowSync);
-      setRecentlyRemoved({ item, index });
-      queueHeadingRef.current?.focus({ preventScroll: true });
-      if (!queueData) setStatusMessage('已移除，但队列刷新失败，请重试', 'warning');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '删除失败，请重试';
-      setOperationError(message);
-      showError(message);
-    } finally { finishMutation(operatorId); }
+    if (!queue.some(item => item.operatorId === operatorId) || workInFlightRef.current) return;
+    setOperationError(null);
+    invalidatePlan();
+    const outcome = await runQueueCommand({ type: 'remove', operatorId });
+    const settled = settleQueueOutcome(outcome);
+    if (!settled?.removed) return;
+    setRecentlyRemoved(settled.removed);
+    queueHeadingRef.current?.focus({ preventScroll: true });
   };
 
   const handleUndoRemove = async () => {
     const snapshot = recentlyRemoved;
-    if (!snapshot || !beginMutation(snapshot.item.operatorId)) return;
-    try {
-      const response = await addToTrainingQueue({ operatorId: snapshot.item.operatorId, currentElite: snapshot.item.currentElite, targetElite: snapshot.item.targetElite, position: snapshot.index });
-      if (!response.success) throw new Error(response.message || '撤销失败，请重试');
-      const queueData = await loadQueue();
-      if (!queueData) setQueue(current => {
-        const restored = current.filter(item => item.operatorId !== snapshot.item.operatorId);
-        restored.splice(Math.min(snapshot.index, restored.length), 0, snapshot.item);
-        return restored;
-      });
-      recordSync(queueData?.flowSync ?? response.data?.flowSync);
-      setRecentlyRemoved(null);
-      queueHeadingRef.current?.focus({ preventScroll: true });
-      setStatusMessage(`${snapshot.item.operator.name} 已恢复${queueData ? '' : '，但队列刷新失败，请重试'}`, queueData ? 'success' : 'warning');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '撤销失败，请重试';
-      setOperationError(message);
-      showError(message);
-    } finally { finishMutation(snapshot.item.operatorId); }
+    if (!snapshot || workInFlightRef.current) return;
+    setOperationError(null);
+    const outcome = await runQueueCommand({
+      type: 'undo',
+      item: snapshot.item,
+      index: snapshot.index,
+    });
+    const settled = settleQueueOutcome(outcome);
+    if (!settled) return;
+    setRecentlyRemoved(null);
+    queueHeadingRef.current?.focus({ preventScroll: true });
   };
 
   const handleReorder = async (operatorId: string, destination: number) => {
     const index = queue.findIndex(item => item.operatorId === operatorId);
-    if (index < 0 || index === destination || destination < 0 || destination >= queue.length || !beginMutation(operatorId)) return;
-    const reordered = [...queue];
-    const [item] = reordered.splice(index, 1);
-    reordered.splice(destination, 0, item!);
-    try {
-      const response = await updateTrainingQueueOrder(reordered.map(entry => entry.operatorId));
-      if (!response.success) throw new Error(response.message || '顺序更新失败，请重试');
-      const queueData = await loadQueue();
-      if (!queueData) setQueue(reordered);
-      setRecentlyRemoved(null);
-      recordSync(queueData?.flowSync ?? response.data?.flowSync);
-      queueHeadingRef.current?.focus({ preventScroll: true });
-      setStatusMessage(queueData ? '养成顺序已更新' : '顺序已更新，但队列刷新失败，请重试', queueData ? 'success' : 'warning');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '顺序更新失败，请重试';
-      setOperationError(message);
-      showError(message);
-    } finally { finishMutation(operatorId); }
+    if (
+      index < 0
+      || index === destination
+      || destination < 0
+      || destination >= queue.length
+      || workInFlightRef.current
+    ) return;
+    setOperationError(null);
+    invalidatePlan();
+    const outcome = await runQueueCommand({ type: 'reorder', operatorId, destination });
+    const settled = settleQueueOutcome(outcome);
+    if (!settled) return;
+    setRecentlyRemoved(null);
+    queueHeadingRef.current?.focus({ preventScroll: true });
   };
 
   const handleGeneratePlan = async () => {
-    if (queue.length === 0 || queueMutationInFlightRef.current || workInFlightRef.current || refreshError) return;
+    if (queue.length === 0 || queueMutationPending || workInFlightRef.current || refreshError) return;
     workInFlightRef.current = true;
     let requestId = ++planRequestRef.current;
     setLoading(true);
     setPlan(null);
     setPlanError(null);
     try {
-      const freshQueue = await loadQueue();
+      const freshQueue = await reloadQueue();
       if (!freshQueue) throw new Error('队列刷新失败，请重新加载后预览');
       if (!freshQueue.queue.length) throw new Error('养成队列为空，请先添加干员');
       requestId = ++planRequestRef.current;
       const response = await generateTrainingPlan({ mode: planMode });
       if (requestId !== planRequestRef.current) return;
       if (!response.success || !response.data) throw new Error(response.message || '生成计划失败，请重试');
-      if (response.data.queueRevision && queueRevisionRef.current && response.data.queueRevision !== queueRevisionRef.current) {
-        await loadQueue();
+      if (response.data.queueRevision && freshQueue.revision && response.data.queueRevision !== freshQueue.revision) {
+        await reloadQueue();
         setPlanError('养成队列已变化，请重新预览计划');
         return;
       }
@@ -451,7 +440,7 @@ export default function OperatorTraining() {
   };
 
   const handleApplyPlan = async () => {
-    if (!plan || queueMutationInFlightRef.current || workInFlightRef.current || refreshError) return;
+    if (!plan || queueMutationPending || workInFlightRef.current || refreshError) return;
     const todayPlan = getOpenStagePlan(plan);
     if (!todayPlan.stages?.length) return;
     workInFlightRef.current = true;
@@ -465,17 +454,17 @@ export default function OperatorTraining() {
     } catch (error) {
       setPlanError(error instanceof Error ? error.message : '应用失败，请重新预览后重试');
       setPlan(null);
-      await loadQueue();
+      await reloadQueue();
     } finally { workInFlightRef.current = false; setLoading(false); }
   };
 
   const handleRetrySync = async () => {
-    if (queueMutationInFlightRef.current || workInFlightRef.current) return;
+    if (queueMutationPending || workInFlightRef.current) return;
     workInFlightRef.current = true;
     setSyncing(true);
     try {
       const response = await retryTrainingSync();
-      await loadQueue();
+      await reloadQueue();
       if (response.data?.flowSync) recordSync(response.data.flowSync);
       else if (!response.success) throw new Error(response.message || '同步失败，请重试');
     } catch (error) {
@@ -525,7 +514,6 @@ export default function OperatorTraining() {
   const currentMissingMaterials = currentMaterials.filter(material => material.stillNeeded > 0);
   const currentProgress = currentTarget?.progress ?? 0;
   const planFocusName = plan?.focusOperator?.name || plan?.operators?.[0]?.name || currentTarget?.operator.name || '未设置';
-  const queueMutationPending = pendingOperatorIds.size > 0;
   const busy = queueMutationPending || loading || syncing;
   const todaySanity = todayStages.reduce((total, stage) => total + (plan?.stages?.find(entry => entry.stage === stage.stage)?.sanityPerRun ?? 0) * (stage.totalTimes ?? 0), 0);
   const operatorEmptyState: OperatorEmptyStateProps | null = !operatorsLoading && filteredOperators.length === 0
@@ -568,8 +556,8 @@ export default function OperatorTraining() {
             <ClipboardList size={20} className="text-tertiary" aria-hidden="true" />
           </div>
           {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
-          {refreshError && !queueError && <div role="alert" className="training-feedback status-warning"><span>队列已更新，但刷新失败。重新加载后再预览计划。</span><Button variant="ghost" onClick={() => { invalidatePlan(); void loadQueue(true); }} disabled={busy}>重新加载</Button></div>}
-          {queueLoading ? <div className="training-state"><Loading text="正在读取养成队列..." /></div> : queueError ? <TrainingLoadError title="养成队列加载失败" description={queueError} onRetry={() => void loadQueue(true)} /> : queue.length === 0 ? (
+          {refreshError && !queueError && <div role="alert" className="training-feedback status-warning"><span>{queueUncertain ?? '队列已更新，但刷新失败。重新加载后再预览计划。'}</span><Button variant="ghost" onClick={() => { invalidatePlan(); void reloadQueue(true); }} disabled={busy}>重新加载</Button></div>}
+          {queueLoading ? <div className="training-state"><Loading text="正在读取养成队列..." /></div> : queueError ? <TrainingLoadError title="养成队列加载失败" description={queueError} onRetry={() => void reloadQueue(true)} /> : queue.length === 0 ? (
             <div className="training-state"><EmptyState compact icon={<ClipboardList size={24} />} title="养成队列还是空的" description="添加需要筹备材料的干员，按目标安排刷图。" /><Button onClick={() => setSelectorOpen(true)} variant="secondary" icon={<Plus size={17} />}>选择干员</Button></div>
           ) : <ol className="training-queue-list">
             {queue.map((item, index) => <li key={item.operatorId} className={`training-queue-row ${index === 0 ? 'is-current' : ''}`}>
