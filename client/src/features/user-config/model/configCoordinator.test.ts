@@ -7,6 +7,7 @@ import {
   type ConfigLoadResult,
   type ConfigPersistenceAdapter,
 } from './configCoordinator'
+import { USER_CONFIG_KEYS, USER_CONFIG_PENDING_KEYS } from './configKeys'
 
 // 协调器必须能脱离 React 验证竞态：这里只用内存存储与可控 Promise。
 // 每个用例显式驱动 microtask/timer，不依赖页面渲染或 Activity。
@@ -619,6 +620,31 @@ describe('write barrier', () => {
     pendingSave.resolve(ok)
     await expect(barrier).resolves.toEqual({ pendingKeys: [] })
     expect(channel.getState().pending).toBe(false)
+  })
+
+  it('reports a persistent pending token even when the channel was never mounted', async () => {
+    const key = USER_CONFIG_KEYS.automationTasks
+    harness.storage.setItem(USER_CONFIG_PENDING_KEYS[key], 'pending-from-a-previous-session')
+
+    await expect(harness.coordinator.settle([key])).resolves.toEqual({ pendingKeys: [key] })
+    expect(harness.commitMock).not.toHaveBeenCalled()
+  })
+
+  it('ignores a pending token once the mounted channel confirms its save', async () => {
+    const key = USER_CONFIG_KEYS.automationTasks
+    harness.storage.setItem(USER_CONFIG_PENDING_KEYS[key], 'pending')
+    const adapter = {
+      ...harness.adapter,
+      key,
+      pendingKey: USER_CONFIG_PENDING_KEYS[key],
+    }
+    const channel = harness.coordinator.channel(adapter)
+
+    await expect(harness.coordinator.settle([key])).resolves.toEqual({ pendingKeys: [key] })
+
+    channel.setDraft({ value: 'edited', mode: 'normal' })
+    await tick()
+    await expect(harness.coordinator.settle([key])).resolves.toEqual({ pendingKeys: [] })
   })
 
   it('reports a failed save instead of retrying it', async () => {

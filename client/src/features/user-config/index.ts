@@ -5,7 +5,7 @@
 
 export { loadUserConfig, saveUserConfig } from './api'
 
-export { USER_CONFIG_KEYS } from './model/configKeys'
+export { USER_CONFIG_KEYS, USER_CONFIG_PENDING_KEYS } from './model/configKeys'
 export type { UserConfigKey } from './model/configKeys'
 
 export {

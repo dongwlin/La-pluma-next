@@ -17,6 +17,7 @@
 import { getErrorMessage } from '@/shared/api'
 import {
   USER_CONFIG_KEYS,
+  USER_CONFIG_PENDING_KEYS,
   loadUserConfig,
   saveUserConfig,
   type ConfigCommitResult,
@@ -29,7 +30,7 @@ import type { TaskFlowItem } from '../types'
 /** 服务端配置 key，与迁移前一致。 */
 export const AUTOMATION_CONFIG_KEY = USER_CONFIG_KEYS.automationTasks
 /** 本设备未同步草稿标记，成功提交后由协调器删除。 */
-export const AUTOMATION_CONFIG_PENDING_KEY = 'automationConfigSyncPending'
+export const AUTOMATION_CONFIG_PENDING_KEY = USER_CONFIG_PENDING_KEYS[USER_CONFIG_KEYS.automationTasks]
 /** 本地草稿键，保持迁移前的键名与布局。 */
 export const AUTOMATION_TASK_FLOW_KEY = 'maa-task-flow'
 export const AUTOMATION_SCHEDULE_KEY = 'maa-schedule'

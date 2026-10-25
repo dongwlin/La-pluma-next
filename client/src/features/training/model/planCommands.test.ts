@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResourceInvalidation } from '@/features/resource-invalidation'
 import type { ApiResponse } from '@/shared/api'
 import {
+  TRAINING_FLOW_SYNCED_SCOPES,
   TRAINING_PLAN_APPLIED_SCOPES,
   TRAINING_PLAN_APPLIED_SOURCE,
   TRAINING_PLAN_BASIS_CHANGED_MESSAGE,
@@ -517,7 +518,7 @@ describe('flow sync retry', () => {
 
     expect(harness.retrySync).toHaveBeenCalledOnce()
     expect(harness.published).toEqual([expect.objectContaining({
-      resources: [...TRAINING_PLAN_APPLIED_SCOPES],
+      resources: [...TRAINING_FLOW_SYNCED_SCOPES],
       cause: 'plan-applied',
     })])
     expect(harness.owner.getState().flowSync).toEqual(flowSync('synced'))

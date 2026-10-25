@@ -18,6 +18,7 @@
 import { getErrorMessage } from '@/shared/api'
 import {
   USER_CONFIG_KEYS,
+  USER_CONFIG_PENDING_KEYS,
   loadUserConfig,
   saveUserConfig,
   type ConfigCommitResult,
@@ -36,7 +37,7 @@ import type {
 /** 服务端配置 key，与迁移前一致。 */
 export const COMBAT_CONFIG_KEY = USER_CONFIG_KEYS.combatTasks
 /** 本设备未同步草稿标记，成功提交后由协调器删除。 */
-export const COMBAT_CONFIG_PENDING_KEY = 'combatConfigSyncPending'
+export const COMBAT_CONFIG_PENDING_KEY = USER_CONFIG_PENDING_KEYS[USER_CONFIG_KEYS.combatTasks]
 /** 本地草稿键，逐字段保持原布局。 */
 export const COMBAT_TASK_INPUTS_KEY = 'combatTaskInputs'
 export const COMBAT_ADVANCED_PARAMS_KEY = 'combatAdvancedParams'

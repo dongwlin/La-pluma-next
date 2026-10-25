@@ -19,6 +19,9 @@ vi.mock('@/features/user-config', () => ({
   USER_CONFIG_KEYS: { combatTasks: 'combat-tasks',
     roguelikeTasks: 'roguelike-tasks',
     automationTasks: 'automation-tasks' },
+  USER_CONFIG_PENDING_KEYS: { 'combat-tasks': 'combatConfigSyncPending',
+    'roguelike-tasks': 'roguelikeConfigSyncPending',
+    'automation-tasks': 'automationConfigSyncPending' },
   loadUserConfig: mocks.loadUserConfig,
   saveUserConfig: mocks.saveUserConfig,
 }))

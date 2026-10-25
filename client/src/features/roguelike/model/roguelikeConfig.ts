@@ -12,6 +12,7 @@
 import { getErrorMessage } from '@/shared/api'
 import {
   USER_CONFIG_KEYS,
+  USER_CONFIG_PENDING_KEYS,
   loadUserConfig,
   saveUserConfig,
   type ConfigCommitResult,
@@ -23,7 +24,7 @@ import type { RoguelikeAdvancedParams, RoguelikeTaskInputs } from '../types'
 /** 服务端配置 key，与迁移前一致。 */
 export const ROGUELIKE_CONFIG_KEY = USER_CONFIG_KEYS.roguelikeTasks
 /** 本设备未同步草稿标记，成功提交后由协调器删除。 */
-export const ROGUELIKE_CONFIG_PENDING_KEY = 'roguelikeConfigSyncPending'
+export const ROGUELIKE_CONFIG_PENDING_KEY = USER_CONFIG_PENDING_KEYS[USER_CONFIG_KEYS.roguelikeTasks]
 /** 本地草稿键，逐字段保持原布局。 */
 export const ROGUELIKE_TASK_INPUTS_KEY = 'roguelikeTaskInputs'
 export const ROGUELIKE_ADVANCED_PARAMS_KEY = 'roguelikeAdvancedParams'

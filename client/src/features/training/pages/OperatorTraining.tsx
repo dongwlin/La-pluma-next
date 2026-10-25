@@ -152,23 +152,6 @@ export default function OperatorTraining() {
     revision: settingsRevision,
     update: updateSettings,
   } = useTrainingSettings()
-  // 计划预览、版本前提、生成/应用/同步编排与跨域失效发布由领域所有者持有。
-  const {
-    plan,
-    basis: planBasis,
-    error: planError,
-    warning: planWarning,
-    flowSync,
-    generating,
-    applying,
-    syncing,
-    generate: generatePlan,
-    apply: applyPlan,
-    retrySync: retryFlowSync,
-    reload: reloadQueue,
-    invalidate: invalidatePlan,
-    recordFlowSync,
-  } = useTrainingPlan()
   const [filters, setFilters] = useState<TrainingFilters>({
     rarity: '',
     status: 'trainable',
@@ -230,6 +213,24 @@ export default function OperatorTraining() {
   const queueUncertain = queueSnapshot?.uncertain ?? null
   const refreshError = Boolean(queueUncertain)
     || (queueQuery.isError && Boolean(queueSnapshot))
+  // 计划预览、版本前提、生成/应用/同步编排与跨域失效发布由领域所有者持有；
+  // 页面把自己的队列快照交给所有者观察，不再创建第二个队列观察者。
+  const {
+    plan,
+    basis: planBasis,
+    error: planError,
+    warning: planWarning,
+    flowSync,
+    generating,
+    applying,
+    syncing,
+    generate: generatePlan,
+    apply: applyPlan,
+    retrySync: retryFlowSync,
+    reload: reloadQueue,
+    invalidate: invalidatePlan,
+    recordFlowSync,
+  } = useTrainingPlan({ queueSnapshot })
   const {
     pendingOperatorIds,
     queueMutationPending,

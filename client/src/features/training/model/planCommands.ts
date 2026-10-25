@@ -59,6 +59,17 @@ export const TRAINING_PLAN_APPLIED_SCOPES = [
   'dashboard-snapshot',
 ] as const satisfies readonly ResourceScope[]
 
+/**
+ * 任务流程同步（队列写入、重试同步）只改写 automation 配置。
+ *
+ * 这些路径不会重注册已存在的定时任务，因此不能发布 `automation-schedule`；
+ * 该作用域只属于显式应用计划（服务端会重新注册）。Dashboard 仍需刷新快照。
+ */
+export const TRAINING_FLOW_SYNCED_SCOPES = [
+  'automation-config',
+  'dashboard-snapshot',
+] as const satisfies readonly ResourceScope[]
+
 export const TRAINING_PLAN_APPLIED_SOURCE = 'training-plan-owner'
 
 export const TRAINING_PLAN_PARTIAL_REFRESH_MESSAGE =
@@ -530,7 +541,7 @@ export class TrainingPlanOwner {
 
       if (resolvedSync?.status === 'synced') {
         this.publishInvalidation({
-          resources: TRAINING_PLAN_APPLIED_SCOPES,
+          resources: TRAINING_FLOW_SYNCED_SCOPES,
           cause: 'plan-applied',
           detail: {
             stageCount: null,

@@ -261,6 +261,9 @@ describe('TrainingQueueCommandOwner', () => {
       cause: 'training-queue',
       detail: { source: TRAINING_QUEUE_MUTATION_SOURCE },
     })
+    // 自动同步不重注册 cron，因此不能声明 automation-schedule 已变化。
+    expect((harness.publish.mock.calls[0]?.[0] as { resources: readonly string[] }).resources)
+      .not.toContain('automation-schedule')
   })
 
   it('does not announce automation changes when the queue write could not sync the flow', async () => {

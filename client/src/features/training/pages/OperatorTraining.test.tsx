@@ -264,6 +264,7 @@ describe('OperatorTraining queue workspace', () => {
     trainingPlanOwner.reset()
     userConfigCoordinator.dispose()
     localStorage.removeItem('trainingPlanBarrierPending')
+    localStorage.removeItem('automationConfigSyncPending')
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
       media: query,
@@ -1677,6 +1678,20 @@ describe('OperatorTraining queue workspace', () => {
     expect(channel.getState().pending).toBe(false)
   })
 
+  it('blocks applying when an unmounted automation page left a persistent pending draft', async () => {
+    localStorage.setItem('automationConfigSyncPending', 'pending-from-a-previous-session')
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    await click(buttonWithText('应用到自动任务', container))
+
+    // automation 页面未挂载、没有协调器通道，但持久化 pending token 仍表示有未确认保存。
+    expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('自动化配置仍有未同步的本地编辑')
+    localStorage.removeItem('automationConfigSyncPending')
+  })
+
   it('keeps the applied plan and exposes a retry when the follow-up queue read fails', async () => {
     mockMutableQueue([queueItem('char_current', '阿米娅')])
     mocks.applyTrainingPlan.mockResolvedValue({
@@ -1705,6 +1720,37 @@ describe('OperatorTraining queue workspace', () => {
 
     expect(planSection!.textContent).not.toContain('读取最新队列失败')
     expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
+  })
+
+  it('shows a retryable warning when the applied plan could not refresh the schedule', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    mocks.applyTrainingPlan.mockResolvedValueOnce({
+      success: true,
+      data: {
+        stageCount: 1,
+        flowName: '日常刷图',
+        taskName: 'Fight',
+        flowSync: { status: 'synced', flowName: '日常刷图', taskName: 'Fight' },
+        scheduleSync: { attempted: true, success: false, message: '定时任务设置失败' },
+      },
+    })
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    await click(buttonWithText('应用到自动任务', container))
+
+    const planSection = container.querySelector<HTMLElement>('[aria-labelledby="training-plan-title"]')
+    expect(planSection).not.toBeNull()
+    expect(planSection!.textContent).toContain('定时任务刷新失败')
+    expect(planSection!.textContent).toContain('定时任务设置失败')
+
+    // 计划仍保留且可直接重试应用；成功后清除定时失败提示。
+    const retryApply = buttonWithText('应用到日常刷图', planSection!)
+    expect(retryApply.disabled).toBe(false)
+    await click(retryApply)
+
+    expect(mocks.applyTrainingPlan).toHaveBeenCalledTimes(2)
+    expect(planSection!.textContent).not.toContain('定时任务刷新失败')
   })
 
   it('does not show a plan whose settings changed while it was generating', async () => {

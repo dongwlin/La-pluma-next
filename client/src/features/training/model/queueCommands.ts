@@ -49,10 +49,15 @@ export const TRAINING_QUEUE_MUTATION_SCOPES = [
   'dashboard-snapshot',
 ] as const satisfies readonly ResourceScope[]
 
-/** 队列写入同步任务流程后，automation 配置与定时快照随之变化。 */
+/**
+ * 队列写入同步任务流程后只声明 automation 配置变化。
+ *
+ * 自动同步路径不会重新注册已存在的定时任务（见 docs/agent-api.md）；cron 仍持有
+ * 旧 taskFlow，因此不能把 `automation-schedule` 说成已变化。该作用域只由显式
+ * 应用计划的路径发布。
+ */
 export const TRAINING_QUEUE_FLOW_SYNC_SCOPES = [
   'automation-config',
-  'automation-schedule',
 ] as const satisfies readonly ResourceScope[]
 
 /** 用于让本页忽略自己发布的队列失效；外部发布不带该标记。 */

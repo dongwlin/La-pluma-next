@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { trainingKeys } from '../model/queryKeys'
 import { trainingQueueQueryOptions } from '../model/queries'
 import {
@@ -35,17 +35,19 @@ export interface TrainingPlanController extends TrainingPlanOwnerState {
   readonly recordFlowSync: (flowSync?: TrainingFlowSync) => void
 }
 
-export function useTrainingPlan(
-  owner: TrainingPlanOwner = trainingPlanOwner,
-): TrainingPlanController {
+export interface UseTrainingPlanOptions {
+  owner?: TrainingPlanOwner
+  /** 页面自身的队列 Query 快照；hook 不再创建第二个队列观察者。 */
+  queueSnapshot?: TrainingQueueSnapshot
+}
+
+export function useTrainingPlan({
+  owner = trainingPlanOwner,
+  queueSnapshot,
+}: UseTrainingPlanOptions = {}): TrainingPlanController {
   const queryClient = useQueryClient()
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
   const { adopt: adoptSettings, hydrate: hydrateSettings } = useTrainingSettings()
-
-  // 只读观察者：用于取得队列刷新失败标记与首屏快照；写入仍归队列命令。
-  const queueOptions = useMemo(() => trainingQueueQueryOptions(), [])
-  const queueQuery = useQuery(queueOptions)
-  const queueSnapshot = queueQuery.data
 
   // 操作发生时直接读 Query 缓存与命令所有者状态，避免在渲染期写 ref。
   const isRefreshFailed = useCallback(() => {

@@ -14,6 +14,8 @@
  * - 迟到响应：加载与提交返回时都重新校验身份，过期结果不写状态。
  */
 
+import { USER_CONFIG_PENDING_KEYS, type UserConfigKey } from './configKeys'
+
 /** 协调器使用的键值存储；生产为 localStorage，测试注入内存实现。 */
 export interface ConfigKeyStorage {
   getItem(key: string): string | null
@@ -610,21 +612,31 @@ export class UserConfigCoordinator {
   /**
    * 等待指定 key 当前已入队的提交全部结束。
    *
-   * 用于“另一个域即将写入同一服务端文件”前的写入屏障：调用方先让本域的
-   * 在途保存落盘，再发出会改写该文件的请求，避免旧保存后到覆盖新内容。
-   * 不触发已失败草稿的自动重试，也不创建尚未挂载的通道；`pendingKeys`
-   * 返回仍未完整提交的 key，调用方据此拒绝继续。
+   * 用于“另一个域即将写入同一服务端文件”前的写入屏障：调用方先让在途保存
+   * 落盘，再发出会改写该文件的请求，避免旧保存后到覆盖新内容。
+   *
+   * 不仅检查内存中的通道，也检查已知 key 的持久化 pending token：上一次会话
+   * 保存失败留下的草稿可能没有挂载任何页面，但同样会在之后重试时覆盖外部写入。
+   * 不触发已失败草稿的自动重试，也不创建尚未挂载的通道；`pendingKeys` 返回
+   * 仍未完整提交的 key，调用方据此拒绝继续。
    */
   async settle(keys: readonly string[]): Promise<ConfigSettleResult> {
     const channels = keys
       .map(key => this.channels.get(key))
       .filter((channel): channel is ConfigKeyState<any, any> => Boolean(channel))
     await Promise.all(channels.map(channel => channel.flush()))
-    return {
-      pendingKeys: channels
+
+    const pending = new Set(
+      channels
         .filter(channel => channel.getState().pending)
         .map(channel => channel.key),
+    )
+    for (const key of keys) {
+      if (pending.has(key)) continue
+      const pendingKey = USER_CONFIG_PENDING_KEYS[key as UserConfigKey]
+      if (pendingKey && this.storage.getItem(pendingKey) !== null) pending.add(key)
     }
+    return { pendingKeys: [...pending] }
   }
 
   private nextToken(): string {

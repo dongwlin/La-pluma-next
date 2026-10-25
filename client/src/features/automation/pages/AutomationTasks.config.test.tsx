@@ -672,6 +672,25 @@ describe('AutomationTasks config persistence', () => {
     expect(container.textContent).toContain('理智作战')
   })
 
+  it('warns when an applied plan cannot be reloaded and no local copy remains', async () => {
+    mocks.loadUserConfig
+      .mockResolvedValueOnce({ success: true, data: { taskFlow: taskFlowFixture, schedule: { enabled: false } } })
+      .mockResolvedValueOnce({ success: false, message: '服务暂不可用' })
+
+    await renderAutomation()
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+
+    // 清除本地回退副本，使强制重读在服务端失败后确实返回 failed。
+    localStorage.clear()
+    await act(async () => {
+      publishPlanApplied()
+    })
+    await settle()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
+    expect(mocks.setMessage).toHaveBeenCalledWith('自动化配置刷新失败，请稍后重试', 'warning')
+  })
+
   it('reloads the automation flow when training applies a plan', async () => {
     const updatedTaskFlow = [
       ...taskFlowFixture,
