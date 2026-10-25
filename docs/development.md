@@ -62,6 +62,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
   `@import "tailwindcss";` 必须是字符串形式（stylelint 的 `import-notation` 在该行就地豁免）。`@custom-variant dark (&:is(.dark *));` 保持 class 深色模式；不再有 `@config` 指令，也没有 `client/tailwind.config.js`。
 - **配置迁移**：`rounded-*` 由 `@theme` 的 `--radius-*` 映射到 `--app-radius-*`；`gap-*` / `space-*` 由 `@utility` 定向映射到 `--app-space-*`（v4 的 gap/space/p/m 共用 `--spacing`，不能直接改 `--spacing-3/4/5/6`，否则 `p-*` / `m-*` 会被连带改变）。gap 定向工具带 `!important`，用于压过 Tailwind 同名类生成的默认声明；p/m 仍为默认 4px 节奏。映射表见 [设计规范](../DESIGN.md)。
 - **content 检测**：v4 自动扫描 `index.html` 与 `src/**`，取代原 `content` glob。
+- **canonical 类名**：`eslint-plugin-tailwindcss` 的 `enforces-canonical-classname` 在 `client/eslint.config.js` 中对 `src/**/*.{ts,tsx}` 启用（只开这一条），由 `lint` 拦截非规范写法：CSS 变量写 `bg-(--app-surface-muted)` 而非 `bg-[var(--app-surface-muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
 - **token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；`ios-theme.css` 只保留 chrome/材质独有 token，不再重定义同名语义 token。
 - **cascade layer**：`page` 位于 `components` 之后、`utilities` 之前——utilities 永远赢，页面 CSS 覆盖 base/preflight 与 components。页面/组件规则若确实要压过 utilities，使用带注释的 `!important`；不要再依赖未分层 CSS 或深选择器抢优先级。S2 期间为深色预览标题添加的 `dark:text-white!` 仍然有效。
 - **gap 覆盖限制**：`@utility` 的 `gap-3/4/5/6` 带 `!important`，同一元素不要再用 `gap-[...]` 或其他 gap 档位覆盖；需要任意值时改用组件类或显式样式。
