@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAllOperators, getOperatorList, getTrainingQueue } from './index'
+import { getOperatorList, getTrainingQueue } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -42,20 +42,6 @@ describe('training resource reads', () => {
 
     const result = await getOperatorList({ status: 'all' })
 
-    expect(result.success).toBe(true)
-  })
-
-  it('forwards the signal when reading the full operator catalog', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
-      success: true,
-      data: [{ id: 'char_002_amiya' }],
-    }))
-    const controller = new AbortController()
-
-    const result = await getAllOperators(controller.signal)
-
-    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/data/operators')
-    expect(fetchCall().init.signal).toBe(controller.signal)
     expect(result.success).toBe(true)
   })
 

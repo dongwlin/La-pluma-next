@@ -1,5 +1,6 @@
 /**
  * 数据统计域类型
+ * 仓库、持有干员与干员目录的载荷类型由 `features/game-data` 持有。
  */
 
 export interface DropStatistics {
@@ -37,43 +38,6 @@ export interface DropRecordsProps {
   dropDays: number
   setDropDays: (days: number) => void
   onRefresh: () => void
-}
-
-// 仓库数据 (组件专用,包含详细的 items 数组)
-export interface DepotItem {
-  id: string
-  name: string
-  iconId: string
-  count: number
-  classifyType: string
-}
-
-export interface DepotDataDetailed {
-  itemCount: number
-  items: DepotItem[]
-  path?: string
-  timestamp: string
-}
-
-// 干员数据 (组件专用,包含详细信息)
-export interface OperatorDetailed {
-  id: string
-  name: string
-  rarity: number
-  profession: string
-  position?: string
-  level: number
-  elite: number
-  potential: number
-  currentElite?: number
-  hasMaterialData?: boolean
-}
-
-export interface OperBoxData {
-  operCount: number
-  data: OperatorDetailed[]
-  path?: string
-  timestamp: string
 }
 
 // 筛选状态

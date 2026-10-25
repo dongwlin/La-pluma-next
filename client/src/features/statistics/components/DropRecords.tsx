@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Package as PackageIcon } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
-import { getItemIconUrl } from '../api'
+import { getItemIconUrl } from '@/features/game-data'
 import type { DropRecordsProps } from '../types'
 import { Button, Card, EmptyState, Loading } from '@/shared/ui'
 

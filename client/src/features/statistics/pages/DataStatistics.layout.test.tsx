@@ -34,17 +34,20 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('../api', () => ({
-  getDepotData: mocks.getDepotData,
   getDropStatistics: mocks.getDropStatistics,
-  getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
-  getOperBoxData: mocks.getOperBoxData,
   parseDepotData: mocks.parseDepotData,
   parseOperBoxData: mocks.parseOperBoxData,
 }))
 
+vi.mock('@/features/game-data', () => ({
+  getAllOperators: mocks.getAllOperators,
+  getDepotData: mocks.getDepotData,
+  getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
+  getOperBoxData: mocks.getOperBoxData,
+}))
+
 vi.mock('@/features/training', () => ({
   fetchOperatorMaterials: vi.fn(),
-  getAllOperators: mocks.getAllOperators,
   getTrainingQueue: mocks.getTrainingQueue,
 }))
 

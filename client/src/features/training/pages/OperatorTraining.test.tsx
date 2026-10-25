@@ -43,7 +43,6 @@ vi.mock('framer-motion', async () => {
 
 vi.mock('../api', () => ({
   getOperatorList: mocks.getOperatorList,
-  getAllOperators: mocks.getAllOperators,
   getTrainingQueue: mocks.getTrainingQueue,
   addToTrainingQueue: mocks.addToTrainingQueue,
   removeFromTrainingQueue: mocks.removeFromTrainingQueue,
@@ -54,7 +53,8 @@ vi.mock('../api', () => ({
   retryTrainingSync: mocks.retryTrainingSync,
 }))
 
-vi.mock('@/features/statistics', () => ({
+vi.mock('@/features/game-data', () => ({
+  getAllOperators: mocks.getAllOperators,
   getOperBoxData: mocks.getOperBoxData,
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
 }))

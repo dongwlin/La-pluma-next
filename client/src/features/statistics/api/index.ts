@@ -1,6 +1,6 @@
 /**
  * 数据统计域 API 端点
- * 仓库/干员识别数据、掉落统计与今日开放关卡。
+ * 掉落统计、今日开放关卡与识别命令；仓库/持有干员等共享读取见 `features/game-data`。
  */
 
 import {
@@ -11,9 +11,6 @@ import {
   readApiResponse,
   type ApiResponse,
 } from '@/shared/api'
-
-export const getItemIconUrl = (iconId: string | number): string =>
-  `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png`
 
 /**
  * 解析并保存仓库数据
@@ -34,12 +31,6 @@ export async function parseOperBoxData(): Promise<ApiResponse> {
   })
   return parseJsonResponse(response)
 }
-
-const isDepotPayload = (payload: unknown): boolean =>
-  payload === null || (isRecord(payload) && Array.isArray(payload.items))
-
-const isOperBoxPayload = (payload: unknown): boolean =>
-  payload === null || (isRecord(payload) && Array.isArray(payload.data))
 
 /**
  * 今日掉落有两条既有形状：`/drops/today` 的日记录对象，以及旧版/仪表盘消费的
@@ -67,28 +58,6 @@ const isOpenTodayStagesPayload = (payload: unknown): boolean =>
   isRecord(payload)
   && Array.isArray(payload.open)
   && Array.isArray(payload.closed)
-
-/**
- * 获取已保存的仓库数据
- */
-export async function getDepotData(signal?: AbortSignal): Promise<ApiResponse> {
-  return readApiResponse(`${API_BASE_URL}/agent/data/depot`, {
-    signal,
-    validate: isDepotPayload,
-    invalidPayloadMessage: '仓库数据格式不正确',
-  })
-}
-
-/**
- * 获取已识别的持有干员数据
- */
-export async function getOperBoxData(signal?: AbortSignal): Promise<ApiResponse> {
-  return readApiResponse(`${API_BASE_URL}/agent/data/operbox`, {
-    signal,
-    validate: isOperBoxPayload,
-    invalidPayloadMessage: '干员识别结果格式不正确',
-  })
-}
 
 /**
  * 获取今日掉落记录

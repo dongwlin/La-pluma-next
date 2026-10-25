@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDepotData, getDropStatistics, getOpenTodayStages, getTodayDrops } from './index'
+import { getDropStatistics, getOpenTodayStages, getTodayDrops } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -17,47 +17,6 @@ describe('statistics resource reads', () => {
   beforeEach(() => {
     window.localStorage.clear()
     vi.restoreAllMocks()
-  })
-
-  it('forwards the abort signal and returns validated depot data', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
-      success: true,
-      data: { itemCount: 1, items: [{ id: '30011', count: 4 }], timestamp: '2026-10-25T00:00:00.000Z' },
-    }))
-    const controller = new AbortController()
-
-    const result = await getDepotData(controller.signal)
-
-    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/data/depot')
-    expect(fetchCall().init.signal).toBe(controller.signal)
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({ itemCount: 1, items: [{ id: '30011', count: 4 }], timestamp: '2026-10-25T00:00:00.000Z' })
-  })
-
-  it('keeps the legacy empty depot payload as a successful null data value', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data: null }))
-
-    const result = await getDepotData()
-
-    expect(result.success).toBe(true)
-    expect(result.data).toBeNull()
-  })
-
-  it('turns a malformed depot payload into a domain failure', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
-      success: true,
-      data: { itemCount: 1, items: 'not-an-array' },
-    }))
-
-    const result = await getDepotData()
-
-    expect(result.success).toBe(false)
-    expect(result.errorInfo).toMatchObject({
-      code: 'INVALID_DOMAIN_PAYLOAD',
-      kind: 'contract',
-      message: '仓库数据格式不正确',
-      retryable: false,
-    })
   })
 
   it('keeps a server success=false envelope as a typed failure', async () => {
@@ -137,16 +96,17 @@ describe('statistics resource reads', () => {
     expect(result.data).toEqual({ weekday: 1, open: [{ stage: 'CE-6' }], closed: [] })
   })
 
-  it('aborts a depot read without issuing a stop or mutation request', async () => {
+  it('forwards the abort signal for open stage reads without issuing a mutation', async () => {
     const abortError = new DOMException('The operation was aborted.', 'AbortError')
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(abortError)
     const controller = new AbortController()
 
-    const error = await getDepotData(controller.signal).catch(value => value)
+    const error = await getOpenTodayStages(controller.signal).catch(value => value)
 
     expect(error).toBe(abortError)
     expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1)
-    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/data/depot')
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/stages/open-today')
+    expect(fetchCall().init.signal).toBe(controller.signal)
     expect(fetchCall().init.method).toBeUndefined()
   })
 })

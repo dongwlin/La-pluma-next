@@ -1,6 +1,7 @@
 /**
  * 养成域 API 端点
- * 干员名册、养成队列、养成设置与养成计划相关的后端调用。
+ * 干员候选名册、养成队列、养成设置与养成计划相关的后端调用；
+ * 仓库、持有干员与全量干员目录由 `features/game-data` 持有。
  */
 
 import {
@@ -54,8 +55,6 @@ interface ApplyTrainingPlanData {
 const isOperatorListPayload = (payload: unknown): boolean =>
   Array.isArray(payload) || (isRecord(payload) && Array.isArray(payload.operators))
 
-const isAllOperatorsPayload = (payload: unknown): boolean => Array.isArray(payload)
-
 const isTrainingQueuePayload = (payload: unknown): boolean =>
   isRecord(payload) && Array.isArray(payload.queue)
 
@@ -77,17 +76,6 @@ export async function getOperatorList(
     signal,
     validate: isOperatorListPayload,
     invalidPayloadMessage: '干员列表格式不正确',
-  })
-}
-
-/**
- * 获取全量干员列表
- */
-export async function getAllOperators(signal?: AbortSignal): Promise<ApiResponse> {
-  return readApiResponse(`${API_BASE_URL}/agent/data/operators`, {
-    signal,
-    validate: isAllOperatorsPayload,
-    invalidPayloadMessage: '全量干员列表格式不正确',
   })
 }
 

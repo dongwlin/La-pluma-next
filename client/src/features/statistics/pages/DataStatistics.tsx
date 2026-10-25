@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getErrorMessage } from '@/shared/api'
-import { fetchOperatorMaterials, getAllOperators, getTrainingQueue } from '@/features/training'
+import { fetchOperatorMaterials, getTrainingQueue } from '@/features/training'
+import { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from '@/features/game-data'
 import {
-  getDepotData,
   getDropStatistics,
-  getItemIconUrl,
-  getOperBoxData,
   parseDepotData,
   parseOperBoxData,
 } from '../api'
@@ -27,6 +25,8 @@ import type {
   DepotDataDetailed,
   OperBoxData,
   OperatorDetailed,
+} from '@/features/game-data'
+import type {
   FilterRarity,
   FilterElite,
   FilterPotential,
