@@ -137,6 +137,66 @@ export function normalizeDailyFlowRequest(input = {}) {
   return { dryRun, scheduleId, taskFlow, waitForCompletion };
 }
 
+export const COPILOT_SET_MODES = Object.freeze(['continuous', 'manual']);
+const COPILOT_SET_RAIDS = new Set(['normal', 'raid', 'both']);
+
+/**
+ * `app` was page-driven sequential execution and `cli` was maa-cli's native
+ * multi-copilot run. Both are now one server-held continuous queue.
+ */
+export function normalizeCopilotSetMode(value) {
+  if (value === undefined || value === null || value === '') return 'continuous';
+  if (value === 'continuous' || value === 'app' || value === 'cli') return 'continuous';
+  if (value === 'manual') return 'manual';
+  throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_MODE_INVALID', 'mode 必须是 continuous、app、cli 或 manual', {
+    mode: value,
+    allowed: ['continuous', 'app', 'cli', 'manual']
+  });
+}
+
+export function normalizeCopilotSetExecutionRequest(input = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_INPUT_INVALID', '请求体必须是对象', {
+      receivedType: Array.isArray(input) ? 'array' : input === null ? 'null' : typeof input
+    });
+  }
+
+  const mode = normalizeCopilotSetMode(input.mode);
+
+  // The legacy endpoint treated any unknown raid value as normal; keep that
+  // mapping so old callers are not rejected by the new validation.
+  const raid = COPILOT_SET_RAIDS.has(input.raid) ? input.raid : 'normal';
+
+  const selectedIndexes = input.selectedIndexes ?? [];
+  if (!Array.isArray(selectedIndexes)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_SELECTION_INVALID', 'selectedIndexes 必须是数组', {
+      receivedType: typeof selectedIndexes
+    });
+  }
+  const normalizedIndexes = selectedIndexes.map(Number);
+  if (normalizedIndexes.some(index => !Number.isInteger(index) || index < 0)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_SELECTION_INVALID', 'selectedIndexes 只能包含非负整数', {
+      selectedIndexes
+    });
+  }
+
+  const options = input.options ?? {};
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_OPTIONS_INVALID', 'options 必须是对象', {
+      receivedType: Array.isArray(options) ? 'array' : typeof options
+    });
+  }
+
+  const waitForCompletion = input.waitForCompletion ?? true;
+  if (typeof waitForCompletion !== 'boolean') {
+    throw invalidRequest('AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID', 'waitForCompletion 必须是布尔值', {
+      receivedType: typeof waitForCompletion
+    });
+  }
+
+  return { mode, raid, selectedIndexes: normalizedIndexes, options, waitForCompletion };
+}
+
 /**
  * Execute a command exposed through the Agent API after validating its
  * filesystem-sensitive dynamic-task inputs.

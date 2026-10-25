@@ -1,9 +1,10 @@
 import { getActiveAgentRuns, getLatestTerminalAgentRun } from './agentRunService.js';
+import { getCopilotSetRunProgress } from './copilotSetRunService.js';
 import { getMaaExecutionLeaseSnapshot } from './executionCoordinatorService.js';
 import { getRealtimeLogs, getTaskStatus } from './maaService.js';
 import { getScheduleExecutionStatus } from './schedulerService.js';
 
-const ACTIVE_RUN_STATES = new Set(['accepted', 'running', 'stopping']);
+const ACTIVE_RUN_STATES = new Set(['accepted', 'waiting', 'running', 'stopping']);
 const DEVICE_OWNING_RUN_STATES = new Set(['running', 'stopping']);
 
 function normalizeLineCount(lines) {
@@ -47,6 +48,19 @@ export function enrichAgentRun(run) {
       }
     };
   }
+  if (run.operationId === 'run_copilot_set') {
+    const progress = getCopilotSetRunProgress(run.runId);
+    if (progress) return { ...run, progress };
+    return {
+      ...run,
+      progress: {
+        currentStep: null,
+        totalSteps: null,
+        currentTask: null,
+        message: run.state === 'waiting' ? '等待开始下一关' : '等待作业集状态'
+      }
+    };
+  }
   return {
     ...run,
     progress: {
@@ -61,9 +75,10 @@ export function enrichAgentRun(run) {
 /**
  * Describes device ownership without guessing: `run` means a tracked run owns
  * execution, `external` means device activity is visible without such a run
- * (flows, jobs or another cooperating process), `pending` means only accepted
- * runs exist, `idle` means nothing is visible, and `unknown` means the lease
- * file exists but cannot be verified.
+ * (flows, jobs or another cooperating process), `pending` means only active
+ * intents exist that do not own the device (accepted or waiting runs), `idle`
+ * means nothing is visible, and `unknown` means the lease file exists but
+ * cannot be verified.
  */
 function describeOccupancy({ activeRuns, task, schedule, lease }) {
   const current = activeRuns[0] || null;
@@ -116,7 +131,14 @@ export async function buildAgentRunSnapshot({ lines = 80 } = {}) {
   const schedule = getScheduleExecutionStatus();
   const activeRuns = getActiveAgentRuns();
   const currentRunId = activeRuns[0]?.runId || null;
-  const enrichedRuns = activeRuns.map(run => run.runId === currentRunId ? enrichAgentRun(run) : run);
+  // Global process/schedule projections only describe the current run; a
+  // copilot-set session is owned by its own runId and stays observable even
+  // when another run is current.
+  const enrichedRuns = activeRuns.map(run =>
+    run.runId === currentRunId || run.operationId === 'run_copilot_set'
+      ? enrichAgentRun(run)
+      : run
+  );
   const lease = await getMaaExecutionLeaseSnapshot();
 
   return {

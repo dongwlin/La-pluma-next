@@ -8,7 +8,7 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
 const TERMINAL_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_TERMINAL_RUNS = 500;
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
-const ACTIVE_STATUSES = new Set(['accepted', 'running', 'stopping']);
+const ACTIVE_STATUSES = new Set(['accepted', 'waiting', 'running', 'stopping']);
 const ALL_STATUSES = new Set([...TERMINAL_STATUSES, ...ACTIVE_STATUSES]);
 const AGENT_RUN_STORE_VERSION = 1;
 const DEFAULT_AGENT_RUN_STORE_PATH = fileURLToPath(new URL('../data/agent-runs.json', import.meta.url));
@@ -731,10 +731,12 @@ export function startAgentRun(runId) {
 /**
  * Gate used by executors after they obtain execution rights and before any
  * device side effect. A run stopped while still pending must not start.
+ * A waiting run (a manual copilot-set between entries) re-enters execution.
  */
 export function startAgentRunForExecution(runId) {
   const record = requireRecord(runId);
   if (record.run.status === 'accepted') return startAgentRun(runId);
+  if (record.run.status === 'waiting') return transition(runId, 'running', ['waiting']);
   if (record.run.status === 'running') return toAgentRunDto(record.run);
 
   const error = agentError(
@@ -750,16 +752,25 @@ export function startAgentRunForExecution(runId) {
   throw error;
 }
 
+/**
+ * Returns a running copilot-set run to the explicit waiting-for-next phase.
+ * Only multi-step executors use this; a waiting run holds no execution lease.
+ */
+export function markAgentRunWaiting(runId) {
+  return transition(runId, 'waiting', ['running']);
+}
+
 export function markAgentRunStopping(runId) {
   return transition(runId, 'stopping', ['accepted', 'running']);
 }
 
-const RUN_STOP_PRIORITY = { stopping: 3, running: 2, accepted: 1 };
+const RUN_STOP_PRIORITY = { stopping: 4, running: 3, accepted: 2, waiting: 1 };
 
 /**
  * Records a stop intent for one run without sending any device command.
- * `accepted` runs hold no execution rights, so they become terminal
- * immediately; `running` runs move to `stopping`; `stopping` is idempotent.
+ * `accepted` and `waiting` runs hold no execution rights, so they become
+ * terminal immediately; `running` runs move to `stopping`; `stopping` is
+ * idempotent.
  */
 export function requestAgentRunStop(runId) {
   const record = requireRecord(runId);
@@ -774,6 +785,12 @@ export function requestAgentRunStop(runId) {
       disposition: 'canceled'
     };
   }
+  if (state === 'waiting') {
+    return {
+      run: stopAgentRun(runId, { canceled: true, reason: 'stop_requested_while_waiting' }),
+      disposition: 'canceled'
+    };
+  }
   if (state === 'stopping') {
     return { run: toAgentRunDto(record.run), disposition: 'stopping' };
   }
@@ -783,8 +800,8 @@ export function requestAgentRunStop(runId) {
 export function setAgentRunAcceptedResult(runId, result = null) {
   const record = requireRecord(runId);
   if (TERMINAL_STATUSES.has(record.run.status)) return toAgentRunDto(record.run);
-  if (!['accepted', 'running', 'stopping'].includes(record.run.status)) {
-    throw transitionError(record, 'accepted-result', ['accepted', 'running', 'stopping']);
+  if (!ACTIVE_STATUSES.has(record.run.status)) {
+    throw transitionError(record, 'accepted-result', [...ACTIVE_STATUSES]);
   }
   record.run.result = normalizeJson(result, 'result');
   record.run.updatedAt = new Date().toISOString();
@@ -793,21 +810,21 @@ export function setAgentRunAcceptedResult(runId, result = null) {
 }
 
 export function completeAgentRun(runId, result = null) {
-  return transition(runId, 'succeeded', ['accepted', 'running'], {
+  return transition(runId, 'succeeded', ['accepted', 'waiting', 'running'], {
     result: normalizeJson(result, 'result'),
     error: null
   });
 }
 
 export function failAgentRun(runId, error = null) {
-  return transition(runId, 'failed', ['accepted', 'running', 'stopping'], {
+  return transition(runId, 'failed', ['accepted', 'waiting', 'running', 'stopping'], {
     result: null,
     error: normalizeFailure(error)
   });
 }
 
 export function stopAgentRun(runId, result = null) {
-  return transition(runId, 'stopped', ['accepted', 'running', 'stopping'], {
+  return transition(runId, 'stopped', ['accepted', 'waiting', 'running', 'stopping'], {
     result: normalizeJson(result, 'result'),
     error: null
   });

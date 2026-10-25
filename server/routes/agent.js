@@ -29,12 +29,24 @@ import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpda
 import { parseDepotData, parseOperBoxData, getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.js';
 import { getTodayDrops, getRecentDrops, getDropStatistics } from '../services/dropRecordService.js';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.js';
-import { buildCopilotPlan, executeCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.js';
+import { resetCopilotPlanProgress } from '../services/copilotPlanService.js';
 import { getActivityRunPreflight } from '../services/activityNavigationService.js';
 import { findActivityCopilotCandidates } from '../services/activityCopilotDiscoveryService.js';
 import { getActivityCompletion, runCurrentActivityCopilots } from '../services/activityCopilotRunService.js';
 import { withMaaExecutionLease } from '../services/executionCoordinatorService.js';
-import { createDailyFlowExecutionError, executeAgentTask, normalizeDailyFlowRequest } from '../services/agentActionService.js';
+import {
+  createDailyFlowExecutionError,
+  executeAgentTask,
+  normalizeCopilotSetExecutionRequest,
+  normalizeDailyFlowRequest
+} from '../services/agentActionService.js';
+import {
+  continueManualCopilotSet,
+  hasCopilotSetSession,
+  requestCopilotSetRunStop,
+  runContinuousCopilotSet,
+  startManualCopilotSet
+} from '../services/copilotSetRunService.js';
 import {
   beginAgentRun,
   startAgentRunForExecution,
@@ -82,7 +94,7 @@ const router = express.Router();
 const execFileAsync = promisify(execFile);
 const logger = createLogger('AgentRoutes');
 
-const ACTIVE_RUN_STATES = new Set(['accepted', 'running', 'stopping']);
+const ACTIVE_RUN_STATES = new Set(['accepted', 'waiting', 'running', 'stopping']);
 const TERMINAL_RUN_STATES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
 
 export function buildWebrtcBrowserProtocol(deviceId) {
@@ -177,6 +189,8 @@ function isPreExecutionError(error) {
     || code === 'AGENT_EXECUTION_BUSY'
     || code === 'AGENT_SCHEDULE_ALREADY_RUNNING'
     || code === 'AGENT_DAILY_FLOW_REJECTED'
+    || code === 'AGENT_COPILOT_SET_UNAVAILABLE'
+    || code === 'AGENT_COPILOT_SET_REJECTED'
     || code.startsWith('AGENT_VALIDATION_');
 }
 
@@ -263,7 +277,8 @@ export async function executeTrackedAgentAction(req, res, {
   execute,
   successMessage = '操作成功',
   acceptedMessage = '任务已接受',
-  stoppedMessage = '任务已终止'
+  stoppedMessage = '任务已终止',
+  settleOnReturn = true
 }) {
   const reservation = beginAgentRun({
     operationId,
@@ -338,7 +353,7 @@ export async function executeTrackedAgentAction(req, res, {
     if (!waitForCompletion && ACTIVE_RUN_STATES.has(run.state)) {
       run = setAgentRunAcceptedResult(runId, result);
     }
-    if (waitForCompletion && !TERMINAL_RUN_STATES.has(run.state)) {
+    if (waitForCompletion && !TERMINAL_RUN_STATES.has(run.state) && settleOnReturn) {
       run = run.state === 'stopping' || result?.stopped
         ? stopAgentRun(runId, result)
         : completeAgentRun(runId, result);
@@ -553,6 +568,315 @@ function executeTrackedDailyFlow(req, res, {
     acceptedMessage,
     stoppedMessage
   });
+}
+
+/**
+ * Starts a copilot set in the background and resolves once it owns the lease
+ * and has passed the pre-start gate. Continuous sets settle their Run through
+ * the tracked-action lifecycle; manual sets settle their own Run when they
+ * reach waiting or a terminal state.
+ */
+function startCopilotSetBackground({
+  runId,
+  start,
+  lifecycle,
+  acceptedResult,
+  settleOnFinish
+}) {
+  return new Promise((resolve, reject) => {
+    let started = false;
+    let preparedInfo = null;
+    const settle = outcome => {
+      Promise.resolve(lifecycle.onSettled?.(outcome)).catch(error => {
+        logger.error('后台作业集终态处理失败', { runId, error: error.message });
+      });
+    };
+    const wrappedLifecycle = {
+      ...lifecycle,
+      onPrepared: info => {
+        preparedInfo = info;
+      },
+      onStarted: () => {
+        started = true;
+        lifecycle.onStarted?.();
+        resolve(acceptedResult(preparedInfo));
+      }
+    };
+
+    let task;
+    try {
+      task = start(wrappedLifecycle);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    task.then(result => {
+      if (!started) {
+        const run = getAgentRun(runId);
+        if (run && (run.state === 'succeeded' || run.state === 'stopped')) {
+          resolve(result?.result || result || run.result);
+          return;
+        }
+        reject(new Error(result?.message || '作业集未能开始执行'));
+        return;
+      }
+      if (settleOnFinish) {
+        settle({ ok: !result?.stopped, stopped: Boolean(result?.stopped), result });
+      }
+    }, error => {
+      if (!started) {
+        reject(error);
+        return;
+      }
+      settle({ ok: false, stopped: Boolean(error?.stopped), error });
+    });
+  });
+}
+
+function executeContinuousCopilotSet(req, res, {
+  setId,
+  raid,
+  selectedIndexes,
+  options,
+  waitForCompletion
+}) {
+  return executeTrackedAgentAction(req, res, {
+    operationId: 'run_copilot_set',
+    input: { setId, mode: 'continuous', raid, selectedIndexes, options },
+    metadata: { taskName: `作业集 ${setId}`, taskType: 'copilot-set', setId, mode: 'continuous' },
+    waitForCompletion,
+    successMessage: result => result?.message || '作业集执行完成',
+    acceptedMessage: '作业集任务已接受',
+    stoppedMessage: result => result?.message || '作业集已停止',
+    execute: async (lifecycle, { runId }) => {
+      if (waitForCompletion) {
+        return runContinuousCopilotSet({ runId, setId, raid, selectedIndexes, options, lifecycle });
+      }
+      return startCopilotSetBackground({
+        runId,
+        start: wrappedLifecycle => runContinuousCopilotSet({
+          runId,
+          setId,
+          raid,
+          selectedIndexes,
+          options,
+          lifecycle: wrappedLifecycle
+        }),
+        lifecycle,
+        settleOnFinish: true,
+        acceptedResult: info => ({
+          success: true,
+          accepted: true,
+          stopped: false,
+          mode: 'continuous',
+          setId,
+          name: info?.name || `作业集 ${setId}`,
+          totalEntries: info?.totalEntries ?? null,
+          message: '作业集任务已接受'
+        })
+      });
+    }
+  });
+}
+
+function executeManualCopilotSet(req, res, {
+  setId,
+  raid,
+  selectedIndexes,
+  options,
+  waitForCompletion
+}) {
+  return executeTrackedAgentAction(req, res, {
+    operationId: 'run_copilot_set',
+    input: { setId, mode: 'manual', raid, selectedIndexes, options },
+    metadata: { taskName: `作业集 ${setId}`, taskType: 'copilot-set', setId, mode: 'manual' },
+    waitForCompletion,
+    settleOnReturn: false,
+    successMessage: result => result?.message || '作业集执行完成',
+    acceptedMessage: '作业集任务已接受',
+    stoppedMessage: result => result?.message || '作业集已停止',
+    execute: async (lifecycle, { runId }) => {
+      if (waitForCompletion) {
+        const outcome = await startManualCopilotSet({ runId, setId, raid, selectedIndexes, options, lifecycle });
+        return outcome.result;
+      }
+      return startCopilotSetBackground({
+        runId,
+        start: wrappedLifecycle => startManualCopilotSet({
+          runId,
+          setId,
+          raid,
+          selectedIndexes,
+          options,
+          lifecycle: wrappedLifecycle
+        }),
+        lifecycle,
+        settleOnFinish: false,
+        acceptedResult: info => ({
+          success: true,
+          accepted: true,
+          stopped: false,
+          mode: 'manual',
+          setId,
+          name: info?.name || `作业集 ${setId}`,
+          totalEntries: info?.totalEntries ?? null,
+          message: '作业集任务已接受'
+        })
+      });
+    }
+  });
+}
+
+function normalizeContinueRunId(req) {
+  const requested = req.body?.runId;
+  if (typeof requested !== 'string' || !requested.trim()) {
+    throw agentError('AGENT_VALIDATION_RUN_ID_INVALID', 'runId 必须是非空字符串', {
+      statusCode: 400,
+      details: { receivedType: typeof requested },
+      retryable: false
+    });
+  }
+  return requested.trim();
+}
+
+function settleContinueBackground(runId, outcome) {
+  if (!outcome || outcome.ok || outcome.stopped) return;
+  const run = getAgentRun(runId);
+  if (!run || TERMINAL_RUN_STATES.has(run.state)) return;
+  try {
+    failAgentRun(runId, outcome.error || new Error('作业集后台执行失败'));
+    flushAgentRunStore().catch(error => {
+      logger.error('作业集后台失败终态持久化失败', { runId, error: error.message });
+    });
+  } catch (error) {
+    logger.error('作业集后台失败终态写入失败', { runId, error: error.message });
+  }
+}
+
+function sendContinueSuccess(res, req, runId, outcome) {
+  return respondWithPersistedAgentRun(res, req, runId, '作业集下一关状态持久化失败', persistedRun => {
+    const run = persistedRun || getAgentRun(runId);
+    if (run?.state === 'failed' || run?.state === 'interrupted') {
+      return sendRunFailure(res, req, run);
+    }
+    const enrichedRun = enrichAgentRun(run);
+    const data = outcome?.result || run?.result;
+    setRunResponseHeaders(res, enrichedRun, false);
+    return sendSuccess(
+      res,
+      req,
+      runResponseData(data, enrichedRun),
+      data?.message || outcome?.message || '作业集已执行下一关',
+      { runId }
+    );
+  });
+}
+
+function respondContinueError(res, req, runId, error) {
+  const code = error?.code || '';
+  const run = getAgentRun(runId);
+
+  if (code === 'MAA_EXECUTION_BUSY') {
+    return sendError(res, req, agentError('MAA_EXECUTION_BUSY', error.message, {
+      statusCode: 409,
+      details: { owner: error.owner ?? error.details?.owner ?? null, runId, run },
+      retryable: true
+    }));
+  }
+  if (code === 'AGENT_COPILOT_SET_NOT_WAITING' || code === 'AGENT_COPILOT_SET_SESSION_LOST') {
+    return sendError(res, req, agentError(code, error.message, {
+      statusCode: 409,
+      details: { ...(error.details || {}), runId, run },
+      retryable: Boolean(error.retryable)
+    }));
+  }
+  if (error?.stopped || run?.state === 'stopped') {
+    return sendRunSuccess(res, req, run?.result, run, {
+      message: run?.result?.message || '作业集已停止'
+    });
+  }
+  logger.error('作业集下一关执行失败', { runId, error: error?.message });
+  return sendError(res, req, agentError('AGENT_COPILOT_SET_CONTINUE_FAILED', error?.message || '作业集下一关执行失败', {
+    statusCode: 500,
+    details: { runId, run },
+    retryable: true
+  }));
+}
+
+async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
+  const run = getAgentRun(runId);
+  if (!run) {
+    return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${runId}`, {
+      statusCode: 404,
+      details: { runId },
+      retryable: false
+    }));
+  }
+  if (run.operationId !== 'run_copilot_set') {
+    return sendError(res, req, agentError('AGENT_COPILOT_SET_NOT_WAITING', '目标 run 不是作业集执行', {
+      statusCode: 409,
+      details: { runId, operationId: run.operationId },
+      retryable: false
+    }));
+  }
+  if (TERMINAL_RUN_STATES.has(run.state)) {
+    return sendSuccess(res, req, {
+      runId,
+      alreadyTerminal: true,
+      waitingForNext: false,
+      finished: true,
+      run: enrichAgentRun(run)
+    }, '作业集已经结束');
+  }
+  if (run.state !== 'waiting') {
+    return sendError(res, req, agentError('AGENT_COPILOT_SET_NOT_WAITING', `作业集当前状态为 ${run.state}`, {
+      statusCode: 409,
+      details: { runId, state: run.state },
+      retryable: true
+    }));
+  }
+  if (!hasCopilotSetSession(runId)) {
+    return sendError(res, req, agentError('AGENT_COPILOT_SET_SESSION_LOST', '作业集会话已失效，无法继续下一关', {
+      statusCode: 409,
+      details: { runId },
+      retryable: false
+    }));
+  }
+
+  if (waitForCompletion) {
+    try {
+      const outcome = await continueManualCopilotSet({ runId });
+      return sendContinueSuccess(res, req, runId, outcome);
+    } catch (error) {
+      return respondContinueError(res, req, runId, error);
+    }
+  }
+
+  let accepted;
+  try {
+    accepted = await startCopilotSetBackground({
+      runId,
+      start: wrappedLifecycle => continueManualCopilotSet({ runId, lifecycle: wrappedLifecycle }),
+      lifecycle: { onSettled: outcome => settleContinueBackground(runId, outcome) },
+      settleOnFinish: false,
+      acceptedResult: () => ({
+        success: true,
+        accepted: true,
+        stopped: false,
+        mode: 'manual',
+        runId,
+        message: '作业集下一关已接受'
+      })
+    });
+  } catch (error) {
+    return respondContinueError(res, req, runId, error);
+  }
+
+  const enrichedRun = enrichAgentRun(getAgentRun(runId));
+  setRunResponseHeaders(res, enrichedRun, false, true);
+  res.status(202);
+  return sendSuccess(res, req, runResponseData(accepted, enrichedRun), accepted.message, { runId });
 }
 
 function sendConfigStorageError(res, req, result, fallbackCode, fallbackMessage) {
@@ -1126,14 +1450,26 @@ router.get('/copilot-sets/:id/plan', asyncHandler(async (req, res) => {
 }));
 
 router.post('/copilot-sets/:id/execute', asyncHandler(async (req, res) => {
-  const { raid = 'normal', selectedIndexes = [], options = {} } = req.body || {};
-  const result = await executeCopilotPlan({
-    setId: req.params.id,
-    raid,
-    selectedIndexes: Array.isArray(selectedIndexes) ? selectedIndexes : [],
-    options
-  });
-  return sendSuccess(res, req, result);
+  const setId = String(req.params.id || '').trim();
+  if (!setId) {
+    return sendError(res, req, agentError('AGENT_VALIDATION_COPILOT_SET_ID_REQUIRED', '作业集 id 不能为空', {
+      statusCode: 400,
+      retryable: false
+    }));
+  }
+  const { mode, raid, selectedIndexes, options, waitForCompletion } =
+    normalizeCopilotSetExecutionRequest(req.body || {});
+
+  if (mode === 'manual') {
+    return executeManualCopilotSet(req, res, { setId, raid, selectedIndexes, options, waitForCompletion });
+  }
+  return executeContinuousCopilotSet(req, res, { setId, raid, selectedIndexes, options, waitForCompletion });
+}));
+
+router.post('/actions/continue-copilot-set', asyncHandler(async (req, res) => {
+  const runId = normalizeContinueRunId(req);
+  const waitForCompletion = parseWaitForCompletion(req.body?.waitForCompletion);
+  return continueCopilotSet(req, res, { runId, waitForCompletion });
 }));
 
 router.post('/copilot-sets/:id/reset-progress', asyncHandler(async (req, res) => {
@@ -1861,6 +2197,26 @@ async function stopRequestedRun(res, req, requestedRunId) {
     }, '任务已经结束');
   }
 
+  if (requestedRun.operationId === 'run_copilot_set') {
+    const setStop = requestCopilotSetRunStop(requestedRunId);
+    if (setStop?.disposition === 'stopped') {
+      return sendStopSuccess(res, req, setStop.run.runId, {
+        stopRequested: true,
+        deviceStopRequested: false,
+        waitingRunStopped: true,
+        run: setStop.run
+      }, '作业集已停止，未开始下一关');
+    }
+    if (setStop?.disposition === 'canceled') {
+      return sendStopSuccess(res, req, setStop.run.runId, {
+        stopRequested: true,
+        deviceStopRequested: false,
+        acceptedRunCanceled: true,
+        run: setStop.run
+      }, '已取消尚未开始的作业集执行');
+    }
+  }
+
   // Accepted runs hold no execution rights: canceling them is safe and
   // cannot touch a newer execution.
   if (requestedRun.state === 'accepted') {
@@ -1908,6 +2264,21 @@ async function stopCurrentExecution(res, req) {
   const scheduleStopped = stopScheduleExecution();
   const deviceStopRequested = task.success || scheduleStopped;
   const currentRun = getCurrentAgentRun();
+
+  if (currentRun?.operationId === 'run_copilot_set') {
+    const setStop = requestCopilotSetRunStop(currentRun.runId);
+    if (setStop?.disposition === 'stopped' || setStop?.disposition === 'canceled') {
+      const canceled = setStop.disposition === 'canceled';
+      return sendStopSuccess(res, req, setStop.run.runId, {
+        task,
+        scheduleStopped,
+        stopRequested: true,
+        deviceStopRequested,
+        ...(canceled ? { acceptedRunCanceled: true } : { waitingRunStopped: true }),
+        run: setStop.run
+      }, canceled ? '已取消尚未开始的作业集执行' : '作业集已停止，未开始下一关');
+    }
+  }
 
   if (currentRun && ACTIVE_RUN_STATES.has(currentRun.state)) {
     const { run, disposition } = requestAgentRunStop(currentRun.runId);

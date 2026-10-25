@@ -905,7 +905,8 @@ export function buildOpenApiSpec(defaults = {}) {
             operationId: { type: 'string' },
             state: {
               type: 'string',
-              enum: ['accepted', 'running', 'succeeded', 'failed', 'stopping', 'stopped', 'interrupted']
+              enum: ['accepted', 'waiting', 'running', 'succeeded', 'failed', 'stopping', 'stopped', 'interrupted'],
+              description: '"waiting" = a manual copilot set waits for the next entry and holds no execution lease; it is active, not terminal.'
             },
             acceptedAt: { type: 'string', format: 'date-time' },
             startedAt: { type: ['string', 'null'], format: 'date-time' },
@@ -955,7 +956,7 @@ export function buildOpenApiSpec(defaults = {}) {
             state: {
               type: 'string',
               enum: ['idle', 'pending', 'run', 'external', 'unknown'],
-              description: '"run" = a tracked run owns execution; "external" = device activity without such a run; "pending" = only accepted runs exist; "idle" = nothing is observed; "unknown" = the lease file cannot be verified.'
+              description: '"run" = a tracked run owns execution; "external" = device activity without such a run; "pending" = only accepted or waiting runs exist; "idle" = nothing is observed; "unknown" = the lease file cannot be verified.'
             },
             runId: { type: ['string', 'null'], format: 'uuid' },
             runState: { type: ['string', 'null'] },
@@ -1031,7 +1032,7 @@ export function buildOpenApiSpec(defaults = {}) {
                 { $ref: '#/components/schemas/Run' },
                 { type: 'null' }
               ],
-              description: 'Current active run, ordered stopping > running > accepted and newest first.'
+              description: 'Current active run, ordered stopping > running > accepted > waiting and newest first.'
             },
             activeRuns: {
               type: 'array',

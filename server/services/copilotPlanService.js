@@ -230,6 +230,246 @@ export function buildCopilotRepeatFiles(entry, loopTimes, planDir) {
   }));
 }
 
+async function prepareCopilotList(entries, { planDir, loopTimes }) {
+  const list = [];
+  const executionItems = [];
+  for (const entry of entries) {
+    const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
+    const content = parseCopilotContent(data);
+    for (const { repeat, filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
+      await writeFile(filename, JSON.stringify(content, null, 2));
+      list.push({
+        id: executionItems.length,
+        filename,
+        stage_name: entry.displayStage,
+        is_raid: entry.mode === 'raid'
+      });
+      executionItems.push({ entry, filename, repeat });
+    }
+  }
+  return { list, executionItems };
+}
+
+/**
+ * Classifies the entries of one MAA Copilot command after it exited. MAA
+ * loads plan files in order, so entries fully before the last loaded file are
+ * confirmed. A stop leaves the in-flight entry `stopped` and later entries
+ * `pending`; a failure marks everything not confirmed as failed.
+ */
+export function classifyCopilotEntryOutcomes({ entries, executionItems, currentIndex, stopped, message }) {
+  return entries.map(entry => {
+    const indexes = executionItems
+      .map((item, index) => (item.entry.key === entry.key ? index : -1))
+      .filter(index => index >= 0);
+    const confirmed = indexes.length > 0 && currentIndex > 0 && indexes.every(index => index < currentIndex);
+    if (confirmed) return { entry, status: 'success' };
+    if (!stopped) return { entry, status: 'failed', error: message };
+    if (currentIndex >= 0 && indexes.some(index => index <= currentIndex)) {
+      return { entry, status: 'stopped', error: message };
+    }
+    return { entry, status: 'pending' };
+  });
+}
+
+function buildCopilotEntryOutcome({ entries, statusByKey, completed, results, loopTimes, stopped, error }) {
+  const taskResults = entries.map(entry => {
+    const settled = statusByKey.get(entry.key) || { status: 'pending' };
+    return {
+      key: entry.key,
+      itemIndex: entry.itemIndex,
+      copilotId: entry.copilotId,
+      stageId: entry.stageId,
+      stage: entry.displayStage,
+      displayStage: entry.displayStage,
+      apCost: entry.apCost,
+      mode: entry.mode,
+      presetFormation: Boolean(entry.presetFormation),
+      status: settled.status,
+      ...(settled.error ? { error: settled.error } : {})
+    };
+  });
+  const count = status => taskResults.filter(result => result.status === status).length;
+  const summary = {
+    totalEntries: taskResults.length,
+    successCount: count('success'),
+    failedCount: count('failed'),
+    stoppedCount: count('stopped'),
+    pendingCount: count('pending'),
+    taskResults
+  };
+  return {
+    success: summary.failedCount === 0,
+    stopped,
+    error: error || null,
+    results,
+    completed: [...completed],
+    pending: entries.filter(entry => !completed.has(entry.key)),
+    loopTimes,
+    summary
+  };
+}
+
+async function runCopilotGroup({
+  group,
+  configDir,
+  planDir,
+  loopTimes,
+  options,
+  name,
+  taskPrefix,
+  lifecycle
+}) {
+  const checkpoint = await createMaaLogCheckpoint();
+  let executionItems = [];
+  try {
+    const prepared = await prepareCopilotList(group.entries, { planDir, loopTimes });
+    executionItems = prepared.executionItems;
+    if (!prepared.list.length) {
+      return { statuses: group.entries.map(entry => ({ entry, status: 'success' })), error: null, stopped: false };
+    }
+
+    lifecycle.onEntryStarted?.(group.entries[0], group.entries);
+    const taskId = `${taskPrefix}_${Date.now()}`;
+    const taskConfig = {
+      name: taskId,
+      type: 'Copilot',
+      params: buildCopilotTaskParams(prepared.list, group.presetFormation, options)
+    };
+    if (group.presetFormation) await ensurePresetFormationResource(configDir);
+    await execDynamicTask(taskId, taskConfig, `作业集 ${name}`, 'copilot', true, group.presetFormation || options.userResource === true);
+    return { statuses: group.entries.map(entry => ({ entry, status: 'success' })), error: null, stopped: false };
+  } catch (error) {
+    const logText = await readMaaLogSince(checkpoint).catch(() => '');
+    const loadedFiles = extractLoadedCopilotFiles(logText);
+    const currentFile = loadedFiles.at(-1) || '';
+    const currentIndex = executionItems.findIndex(item => currentFile === item.filename || currentFile.endsWith(item.filename));
+    const wasStopped = Boolean(error?.stopped) || Boolean(await lifecycle.shouldStop?.());
+    const statuses = classifyCopilotEntryOutcomes({
+      entries: group.entries,
+      executionItems,
+      currentIndex,
+      stopped: wasStopped,
+      message: error.message || '作业集执行失败'
+    });
+    return {
+      statuses,
+      error: wasStopped ? null : error,
+      stopped: wasStopped
+    };
+  }
+}
+
+/**
+ * Executes selected copilot entries as one set attempt. The caller owns the
+ * Run; this function acquires the device lease, reports per-entry status
+ * through the lifecycle hooks and stops between groups when asked. Failures
+ * are returned as data so callers can decide whether the set failed.
+ */
+export async function executeCopilotEntries({
+  setId,
+  name,
+  entries = [],
+  options = {},
+  lifecycle = {},
+  taskPrefix = `copilot_plan_${setId}`
+}) {
+  const normalizedEntries = entries.filter(entry => Number.isInteger(Number(entry.copilotId)) && entry.displayStage);
+  const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
+  const progress = await loadProgress();
+  const completed = new Set(progress[String(setId)] || []);
+  const statusByKey = new Map(normalizedEntries.map(entry => [entry.key, { status: 'pending' }]));
+  const results = [];
+  let stopped = false;
+  let failure = null;
+
+  if (normalizedEntries.length === 0) {
+    return buildCopilotEntryOutcome({
+      entries: normalizedEntries,
+      statusByKey,
+      completed,
+      results,
+      loopTimes,
+      stopped: false,
+      error: null
+    });
+  }
+
+  await withMaaExecutionLease({
+    source: 'copilot-set',
+    taskName: name,
+    command: 'copilot-plan'
+  }, async () => {
+    await lifecycle.onBeforeStart?.();
+    lifecycle.onStarted?.();
+    const configDir = (await getMaaConfigDir()).trim();
+    const planDir = join(configDir, 'copilot-plans', String(setId));
+    await mkdir(planDir, { recursive: true });
+
+    for (const group of groupEntries(normalizedEntries)) {
+      if (await lifecycle.shouldStop?.()) {
+        stopped = true;
+        break;
+      }
+
+      const groupOutcome = await runCopilotGroup({
+        group,
+        configDir,
+        planDir,
+        loopTimes,
+        options,
+        name,
+        taskPrefix,
+        lifecycle
+      });
+      groupOutcome.statuses.forEach(settled => {
+        statusByKey.set(settled.entry.key, { status: settled.status, error: settled.error });
+        lifecycle.onEntrySettled?.(settled.entry, settled.status, settled.error);
+        if (settled.status === 'success') {
+          completed.add(settled.entry.key);
+          results.push({ ...settled.entry, success: true });
+        } else if (settled.status !== 'pending') {
+          results.push({
+            ...settled.entry,
+            success: false,
+            error: settled.error,
+            ...(settled.status === 'stopped' ? { stopped: true } : {})
+          });
+        }
+      });
+      const successfulEntries = groupOutcome.statuses
+        .filter(settled => settled.status === 'success')
+        .map(settled => settled.entry);
+      try {
+        await recordCompletedCopilotEntries(successfulEntries, loopTimes);
+        progress[String(setId)] = [...completed];
+        await saveProgress(progress);
+      } catch (error) {
+        failure = error;
+        break;
+      }
+
+      if (groupOutcome.stopped) {
+        stopped = true;
+        break;
+      }
+      if (groupOutcome.error) {
+        failure = groupOutcome.error;
+        break;
+      }
+    }
+  });
+
+  return buildCopilotEntryOutcome({
+    entries: normalizedEntries,
+    statusByKey,
+    completed,
+    results,
+    loopTimes,
+    stopped,
+    error: failure
+  });
+}
+
 async function recordCompletedCopilotEntries(entries, loopTimes) {
   for (const entry of entries) {
     await recordDrops({
@@ -273,20 +513,7 @@ export async function executeSelectedCopilotEntries({ planId, name, entries, opt
     await mkdir(planDir, { recursive: true });
 
     for (const [groupIndex, group] of groupEntries(normalizedEntries).entries()) {
-      const list = [];
-      for (const entry of group.entries) {
-        const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
-        const content = parseCopilotContent(data);
-        for (const { filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
-          await writeFile(filename, JSON.stringify(content, null, 2));
-          list.push({
-            id: list.length,
-            filename,
-            stage_name: entry.displayStage,
-            is_raid: entry.mode === 'raid'
-          });
-        }
-      }
+      const { list } = await prepareCopilotList(group.entries, { planDir, loopTimes });
       if (!list.length) continue;
 
       const taskId = `activity_copilot_${planId}_${groupIndex}`;
@@ -311,83 +538,45 @@ export async function executeCopilotPlan({ setId, raid = 'normal', selectedIndex
   const progress = await loadProgress();
   const completed = new Set(progress[String(setId)] || []);
   const pending = selectedEntries.filter(entry => !completed.has(entry.key));
-  const results = [];
-  const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
 
-  await withMaaExecutionLease({ source: 'copilot-set', taskName: plan.name, command: 'copilot-plan' }, async () => {
-    await lifecycle.onBeforeStart?.();
-    lifecycle.onStarted?.();
-    const configDir = (await getMaaConfigDir()).trim();
-    const planDir = join(configDir, 'copilot-plans', String(setId));
-    await mkdir(planDir, { recursive: true });
-
-    for (const group of groupEntries(pending)) {
-      const list = [];
-      const executionItems = [];
-      for (const entry of group.entries) {
-        const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
-        const content = parseCopilotContent(data);
-        for (const { repeat, filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
-          await writeFile(filename, JSON.stringify(content, null, 2));
-          list.push({
-            id: executionItems.length,
-            filename,
-            stage_name: entry.displayStage,
-            is_raid: entry.mode === 'raid'
-          });
-          executionItems.push({ entry, filename, repeat });
-        }
-      }
-      if (!list.length) continue;
-
-      const taskId = `copilot_plan_${setId}_${Date.now()}`;
-      const taskConfig = {
-        name: taskId,
-        type: 'Copilot',
-        params: buildCopilotTaskParams(list, group.presetFormation, options)
-      };
-      const checkpoint = await createMaaLogCheckpoint();
-      try {
-        if (group.presetFormation) await ensurePresetFormationResource(configDir);
-        await execDynamicTask(taskId, taskConfig, `作业集 ${plan.name}`, 'copilot', true, group.presetFormation || options.userResource === true);
-        for (const entry of group.entries) {
-          completed.add(entry.key);
-          results.push({ ...entry, success: true });
-        }
-        await recordCompletedCopilotEntries(group.entries, loopTimes);
-        progress[String(setId)] = [...completed];
-        await saveProgress(progress);
-      } catch (error) {
-        const message = error.message || '作业集执行失败';
-        const logText = await readMaaLogSince(checkpoint).catch(() => '');
-        const loadedFiles = extractLoadedCopilotFiles(logText);
-        const currentFile = loadedFiles.at(-1) || '';
-        const currentIndex = executionItems.findIndex(item => currentFile === item.filename || currentFile.endsWith(item.filename));
-        const successfulEntries = [];
-        group.entries.forEach(entry => {
-          const entryIndexes = executionItems
-            .map((item, index) => item.entry.key === entry.key ? index : -1)
-            .filter(index => index >= 0);
-          const success = currentIndex > 0 && entryIndexes.every(index => index < currentIndex);
-          if (success) {
-            completed.add(entry.key);
-            successfulEntries.push(entry);
-          }
-          results.push({ ...entry, success, error: success ? undefined : message });
-        });
-        await recordCompletedCopilotEntries(successfulEntries, loopTimes);
-        progress[String(setId)] = [...completed];
-        await saveProgress(progress);
-        error.code = error.code || 'COPILOT_PLAN_FAILED';
-        error.statusCode = error.statusCode || 422;
-        error.details = { ...(error.details || {}), plan, results, completed: [...completed] };
-        error.retryable = true;
-        throw Object.assign(error, { copilotPlan: { plan, results, completed: [...completed] } });
-      }
-    }
+  const outcome = await executeCopilotEntries({
+    setId,
+    name: plan.name,
+    entries: pending,
+    options,
+    lifecycle,
+    taskPrefix: `copilot_plan_${setId}`
   });
 
-  return { success: true, plan, results, completed: [...completed], pending: selectedEntries.filter(entry => !completed.has(entry.key)) };
+  if (outcome.error && !outcome.stopped) {
+    const message = outcome.error.message || '作业集执行失败';
+    const error = new Error(message, { cause: outcome.error });
+    error.code = outcome.error.code || 'COPILOT_PLAN_FAILED';
+    error.statusCode = outcome.error.statusCode || 422;
+    error.details = {
+      ...(outcome.error.details || {}),
+      plan,
+      results: outcome.results,
+      completed: outcome.completed,
+      summary: outcome.summary,
+      stopped: false
+    };
+    error.retryable = true;
+    throw Object.assign(error, { copilotPlan: { plan, results: outcome.results, completed: outcome.completed } });
+  }
+
+  const result = {
+    success: true,
+    stopped: outcome.stopped,
+    plan,
+    results: outcome.results,
+    completed: outcome.completed,
+    pending: selectedEntries.filter(entry => !outcome.completed.includes(entry.key)),
+    loopTimes: outcome.loopTimes,
+    summary: outcome.summary
+  };
+  if (outcome.stopped) return { ...result, message: '作业集已被终止' };
+  return result;
 }
 
 export async function resetCopilotPlanProgress(setId) {
