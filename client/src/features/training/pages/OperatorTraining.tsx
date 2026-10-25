@@ -429,7 +429,7 @@ export default function OperatorTraining() {
       resource === 'depot' || resource === 'materials' || resource === 'training-queue'
     ))
     const touchesOperators = resources.some(resource => (
-      resource === 'operbox' || resource === 'catalog' || resource === 'materials'
+      resource === 'depot' || resource === 'operbox' || resource === 'catalog' || resource === 'materials'
     ))
 
     if (touchesPlan) invalidatePlan()

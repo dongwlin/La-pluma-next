@@ -432,6 +432,7 @@ describe('OperatorTraining queue workspace', () => {
     await flush()
 
     expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
   })
 
   it('invalidates a previewed plan when resource invalidation reports a new plan basis', async () => {
