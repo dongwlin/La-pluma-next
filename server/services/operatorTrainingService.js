@@ -1178,9 +1178,15 @@ async function generateTrainingPlan(mode = 'current') {
  * 创建失败，只有比较请求时间与返回的 times 才能发现。任何缺失时间点都视为
  * 部分失败，让客户端保留计划并提示用户重试。
  */
+const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
 export function summarizeScheduleSync(result, requestedTimes) {
   const appliedTimes = Array.isArray(result?.times) ? result.times : [];
-  const missingTimes = requestedTimes.filter(time => !appliedTimes.includes(time));
+  // 与 setupSchedule 一致：忽略非法值与重复项，避免把持久化旧数据误报为缺失时间。
+  const normalizedRequested = [...new Set(
+    requestedTimes.filter(time => typeof time === 'string' && scheduleTimePattern.test(time))
+  )];
+  const missingTimes = normalizedRequested.filter(time => !appliedTimes.includes(time));
   const baseMessage = typeof result?.message === 'string' ? result.message : null;
   return {
     attempted: true,

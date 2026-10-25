@@ -149,6 +149,16 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal(summary.message, '已设置 2 个定时任务');
   });
 
+  it('normalizes duplicate and invalid stored times before reporting missing entries', () => {
+    const summary = summarizeScheduleSync(
+      { success: true, message: '已设置 1 个定时任务', times: ['08:00'] },
+      ['08:00', '08:00', 'not-a-time']
+    );
+
+    assert.equal(summary.success, true);
+    assert.equal(summary.missingTimes, undefined);
+  });
+
   it('reports a schedule refresh failure without discarding the applied plan', async () => {
     await training.addToQueue('alpha');
     const preview = await training.generateTrainingPlan();
