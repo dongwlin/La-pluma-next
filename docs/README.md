@@ -9,6 +9,7 @@
 | 文档 | 内容 | 适合谁看 |
 | --- | --- | --- |
 | [前端职责与质量基线](frontend-baseline.md) | 八页 API/存储/副作用归属、状态生命期、视觉与性能复现 | 参与前端结构与状态迁移的贡献者 |
+| [执行身份与生命周期契约](execution-lifecycle.md) | Run 身份、唯一状态来源、accepted/运行/停止/终态、断线/占用/manual/刷新/旧断点边界与入口覆盖 | 执行链路、Agent 集成与前端控制器开发者 |
 | [架构与技术栈](architecture.md) | 整体架构、前后端边界、技术栈和项目结构 | 需要理解前后端边界与代码组织的新开发者 |
 | [Agent API 使用指南](agent-api.md) | manifest/status/actions、推荐执行流程、幂等、持久化与鉴权 | 对接 `/api/agent` 的 Agent、脚本与集成开发者 |
 | [功能概览](features.md) | 控制台、自动化流程、定时任务、作业与肉鸽、数据养成、Telegram 通知 | 新用户与需要确认能力范围的用户 |

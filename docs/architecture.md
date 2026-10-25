@@ -11,7 +11,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 - `/api/agent` - 主控制接口，覆盖 MAA 命令、任务状态、日志、截图、WebRTC、养成、调度、通知和数据接口。
 - `/api/operator-quotes` - 干员语音/台词相关接口。
 
-历史拆分路由已清理；新增功能应优先接入 `/api/agent`。
+历史拆分路由已清理；新增功能应优先接入 `/api/agent`。设备执行的 Run 身份、状态来源以及停止、断线、刷新和外部占用边界见[执行身份与生命周期契约](execution-lifecycle.md)。
 
 ### 前端 UI 与响应式壳层
 
@@ -29,7 +29,7 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 - **路由**: React Router 7（`BrowserRouter`，URL 即 tab 状态）
 - **状态管理**: Zustand
 - **后端**: Node.js + Express
-- **实时通信**: Socket.io
+- **实时通信**: HTTP 轮询（执行/日志状态）+ WebRTC 同源信令网关（浏览器实时预览）
 - **MAA 集成**: 通过子进程调用 `maa` CLI 命令
 - **模拟器连接**: ADB + ScrcpyOverWebRTC
 - **数据来源**: MAA 识别结果和本地游戏数据 JSON
