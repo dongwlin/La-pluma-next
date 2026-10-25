@@ -352,6 +352,64 @@ describe('CombatTasks execution recovery', () => {
     expect(localStorage.getItem('combatConfigSyncPending')).toBeNull()
   })
 
+  it('migrates a saved app set mode to cli and normalizes legacy raid values on load', async () => {
+    mocks.loadUserConfig.mockResolvedValueOnce({
+      success: true,
+      data: {
+        taskInputs: { copilot: 'prts://s1' },
+        advancedParams: {
+          copilot: { ignoreRequirements: true, loopTimes: '1', executionStrategy: 'continue', raid: '1' },
+          paradoxcopilot: { executionStrategy: 'continue' },
+          ssscopilot: { loopTimes: '1' },
+        },
+        copilotSetExecutionMode: 'app',
+      },
+    })
+
+    await renderComponent()
+
+    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
+    expect(localStorage.getItem('combatCopilotSetExecutionMode')).toBe('cli')
+    expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
+      copilot: { raid: 'raid' },
+    })
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+  })
+
+  it('migrates a local app set mode to cli when the server copy is unavailable', async () => {
+    localStorage.setItem('combatTaskInputs', JSON.stringify({ copilot: 'prts://local' }))
+    localStorage.setItem('combatCopilotSetExecutionMode', 'app')
+
+    await renderComponent()
+
+    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+  })
+
+  // Defect reproduction: the domain adapter must reject a load that settles after
+  // an edit. The coordinator/domain migration owns converting this into a normal test.
+  it.fails('does not let a late server load overwrite an edit made before hydration', async () => {
+    const serverLoad = deferred<{ success: boolean; data: { taskInputs: { copilot: string } } }>()
+    mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
+
+    await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(input, 'prts://local-draft')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    await act(async () => serverLoad.resolve({
+      success: true,
+      data: { taskInputs: { copilot: 'prts://server-copy' } },
+    }))
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('prts://local-draft')
+  })
+
   it('keeps the hydrated draft and does not reload config after Activity restore', async () => {
     vi.useFakeTimers()
     mocks.loadUserConfig.mockResolvedValueOnce({

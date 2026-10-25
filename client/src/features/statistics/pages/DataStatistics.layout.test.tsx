@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   getDepotData: vi.fn(),
   getDropStatistics: vi.fn(),
   getOperBoxData: vi.fn(),
+  getTrainingQueue: vi.fn(),
+  executeCommand: vi.fn(),
+  parseDepotData: vi.fn(),
+  parseOperBoxData: vi.fn(),
   setMessage: vi.fn(),
 }))
 
@@ -34,14 +38,14 @@ vi.mock('../api', () => ({
   getDropStatistics: mocks.getDropStatistics,
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
   getOperBoxData: mocks.getOperBoxData,
-  parseDepotData: vi.fn(),
-  parseOperBoxData: vi.fn(),
+  parseDepotData: mocks.parseDepotData,
+  parseOperBoxData: mocks.parseOperBoxData,
 }))
 
 vi.mock('@/features/training', () => ({
   fetchOperatorMaterials: vi.fn(),
   getAllOperators: mocks.getAllOperators,
-  getTrainingQueue: vi.fn(),
+  getTrainingQueue: mocks.getTrainingQueue,
 }))
 
 vi.mock('@/shared/api', () => ({
@@ -49,7 +53,7 @@ vi.mock('@/shared/api', () => ({
 }))
 
 vi.mock('@/features/task-execution', () => ({
-  executeCommand: vi.fn(),
+  executeCommand: mocks.executeCommand,
 }))
 
 vi.mock('@/features/runtime-status', () => ({
@@ -128,6 +132,10 @@ describe('DataStatistics layout surfaces', () => {
     })
     mocks.getDropStatistics.mockReset().mockResolvedValue({ success: false })
     mocks.getOperBoxData.mockReset().mockResolvedValue({ success: false })
+    mocks.getTrainingQueue.mockReset().mockResolvedValue({ success: true, data: [] })
+    mocks.executeCommand.mockReset()
+    mocks.parseDepotData.mockReset()
+    mocks.parseOperBoxData.mockReset()
     mocks.setMessage.mockReset()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -137,6 +145,7 @@ describe('DataStatistics layout surfaces', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -360,6 +369,47 @@ describe('DataStatistics layout surfaces', () => {
     await click(findButton('重新加载')!)
     expect(mocks.getDepotData).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).toContain('物品种类')
+  })
+
+  it('updates the local depot view after recognition and only re-reads the training queue', async () => {
+    vi.useFakeTimers()
+    mocks.executeCommand.mockResolvedValue({ success: true })
+    mocks.parseDepotData.mockResolvedValue({
+      success: true,
+      data: {
+        itemCount: 3,
+        items: [{ id: '30012', name: '固源岩', count: 30, iconId: 'rock', classifyType: 'MATERIAL' }],
+        path: 'depot.json',
+      },
+    })
+    mocks.getTrainingQueue.mockResolvedValue({
+      success: true,
+      data: [{ operatorId: 'char_001', operator: { name: '阿米娅' } }],
+    })
+
+    await act(async () => root.render(<DataStatistics />))
+    await flush()
+    await click(findButton('仓库识别')!)
+    await click(findButton('立即执行')!)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    await flush()
+
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'depot',
+      [],
+      expect.objectContaining({ type: 'Depot' }),
+      null,
+      '仓库识别',
+      'statistics',
+      true,
+    )
+    expect(mocks.parseDepotData).toHaveBeenCalledOnce()
+    expect(mocks.getTrainingQueue).toHaveBeenCalledOnce()
+    expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 3 种物品，已更新养成进度')
     expect(container.textContent).toContain('物品种类')
   })
 

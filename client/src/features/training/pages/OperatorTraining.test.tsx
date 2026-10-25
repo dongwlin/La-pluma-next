@@ -896,4 +896,44 @@ describe('OperatorTraining queue workspace', () => {
     expect(document.body.textContent).toContain('已移除 能天使')
     expect(mocks.setMessage).toHaveBeenCalledWith(expect.stringContaining('队列刷新失败'), 'warning')
   })
+
+  it('announces a synced plan application so other pages can refresh their copy', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    mocks.applyTrainingPlan.mockResolvedValue({
+      success: true,
+      data: {
+        stageCount: 1,
+        flowSync: { status: 'synced', flowName: '日常刷图', taskName: 'Fight' },
+      },
+    })
+    const onPlanApplied = vi.fn()
+    window.addEventListener('training-plan-applied', onPlanApplied)
+
+    try {
+      await renderComponent()
+      await click(buttonWithText('预览刷图计划', container))
+      await click(buttonWithText('应用到自动任务', container))
+
+      expect(mocks.applyTrainingPlan).toHaveBeenCalledOnce()
+      expect(onPlanApplied).toHaveBeenCalledOnce()
+    } finally {
+      window.removeEventListener('training-plan-applied', onPlanApplied)
+    }
+  })
+
+  // Defect reproduction: a settings change must invalidate the previewed plan.
+  // The training settings/plan-validity task owns converting this into a normal test.
+  it.fails('invalidates an existing preview when training settings change', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    mocks.updateTrainingSettings.mockResolvedValue({ success: true, data: settings })
+
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    expect(buttonWithText('应用到自动任务', container)).toBeDefined()
+
+    await click(switchByLabel('自动切换')!)
+
+    expect(Array.from(container.querySelectorAll('button'))
+      .some(button => button.textContent?.trim() === '应用到自动任务')).toBe(false)
+  })
 })

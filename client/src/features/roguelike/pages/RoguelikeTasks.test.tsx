@@ -247,6 +247,94 @@ describe('RoguelikeTasks execution recovery', () => {
     expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
   })
 
+  it('does not let an older save response clear a newer remounted draft', async () => {
+    vi.useFakeTimers()
+    const olderSave = deferred<{ success: boolean }>()
+    const newerSave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig
+      .mockReturnValueOnce(olderSave.promise)
+      .mockReturnValueOnce(newerSave.promise)
+    await act(async () => root.render(<RoguelikeTasks />))
+    await flush()
+
+    let themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(themeInput, 'Phantom')
+      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await act(async () => root.render(<RoguelikeTasks />))
+    await flush()
+
+    themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(themeInput, 'Sami')
+      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    const newerSyncToken = localStorage.getItem('roguelikeConfigSyncPending')
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+
+    await act(async () => olderSave.resolve({ success: true }))
+    await flush()
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
+    expect(mocks.saveUserConfig.mock.calls[1]?.[1]).toMatchObject({
+      taskInputs: { roguelike: 'Sami' },
+    })
+    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBe(newerSyncToken)
+
+    await act(async () => newerSave.resolve({ success: true }))
+    await flush()
+    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
+  })
+
+  it('drops a pending marker whose local draft is unreadable and falls back to the server', async () => {
+    localStorage.setItem('roguelikeTaskInputs', '{not-json')
+    localStorage.setItem('roguelikeConfigSyncPending', 'stale-token')
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskInputs: { roguelike: 'Sami' }, advancedParams: {} },
+    })
+
+    await act(async () => root.render(<RoguelikeTasks />))
+    await flush()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Sami')
+  })
+
+  // Defect reproduction: the domain adapter must reject a load that settles after
+  // an edit. The coordinator/domain migration owns converting this into a normal test.
+  it.fails('does not let a late server load overwrite an edit made before hydration', async () => {
+    const serverLoad = deferred<{ success: boolean; data: { taskInputs: { roguelike: string } } }>()
+    mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
+
+    await act(async () => root.render(<RoguelikeTasks />))
+    await flush()
+
+    const themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(themeInput, 'Phantom')
+      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    await act(async () => serverLoad.resolve({
+      success: true,
+      data: { taskInputs: { roguelike: 'Sami' } },
+    }))
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value)
+      .toBe('Phantom')
+  })
+
   it('keeps the hydrated draft and skips config reload after Activity restore', async () => {
     vi.useFakeTimers()
     mocks.loadUserConfig.mockResolvedValueOnce({

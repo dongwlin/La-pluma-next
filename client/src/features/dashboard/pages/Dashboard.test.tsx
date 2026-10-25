@@ -154,6 +154,7 @@ describe('Dashboard connectivity state', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.useRealTimers()
     useDashboardStore.getState().reset()
     useStatusStore.getState().clearMessage()
     useStatusStore.getState().setActive(false)
@@ -273,6 +274,24 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).not.toContain('异常活动')
     expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
     expect(window.localStorage.getItem('la-pluma-dashboard-cache')).toBe(persistedSnapshot)
+  })
+
+  it('keeps the most recent device sample when a later sample fails', async () => {
+    vi.useFakeTimers()
+    apiMocks.getDeviceStats.mockResolvedValue({ success: true, data: { cpuPct: 42, temp: 38 } })
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+    expect(container.textContent).toContain('38°C')
+
+    apiMocks.getDeviceStats.mockResolvedValue({ success: false })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    await flushDashboard()
+
+    expect(container.textContent).toContain('38°C')
+    expect(useDashboardStore.getState().deviceStats?.temp).toBe(38)
   })
 
   it('disables execution actions as soon as the browser goes offline', async () => {
