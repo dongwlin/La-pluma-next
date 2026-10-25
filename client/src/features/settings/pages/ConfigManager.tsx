@@ -27,6 +27,9 @@ import type {
 import { loadUserConfig, saveUserConfig } from '@/features/user-config'
 import { useConfigSection } from '../hooks/useConfigSection'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
+import { useSettingsDeviceConnection } from '../hooks/useSettingsDeviceConnection'
+import { useSettingsConfigDirectory } from '../hooks/useSettingsConfigDirectory'
+import { useSettingsVersion } from '../hooks/useSettingsVersion'
 import {
   CONFIG_SECTION_IDS,
   isEditableConfigSection,
@@ -36,55 +39,18 @@ import {
   isValidUpdateTime,
   normalizeAutoUpdateConfig,
 } from '../model/configNormalization'
+import type { DiscoveredDevice } from '../model/deviceConnection'
 import {
-  discoverDevices,
-  getConfigDir,
-  getVersion,
   hotUpdateResources,
-  openConfigDir,
   setupAutoUpdate,
-  testConnection,
   updateMaaCli,
   updateMaaCore,
 } from '../api'
-
-interface MaaVersionInfo {
-  cli: string
-  core: string
-  raw: string
-  resource?: {
-    lastUpdated: string | null
-    modifiedAt: string | null
-    ageDays: number | null
-    status: 'current' | 'stale' | 'unknown'
-    message: string
-  }
-}
 
 interface UpdateFeedback {
   type: 'success' | 'error'
   message: string
   resourceRetry?: boolean
-}
-
-interface DiscoveredDevice {
-  address: string
-  state: 'device' | 'offline' | 'unauthorized' | 'unknown' | 'candidate'
-  details?: string
-  adbPath?: string
-  source: 'adb' | 'local-port' | 'emulator-adb'
-}
-
-interface DiscoveryResult {
-  success: boolean
-  message: string
-  devices: DiscoveredDevice[]
-  candidates: DiscoveredDevice[]
-}
-
-interface ConnectionFeedback {
-  success: boolean
-  message: string
 }
 
 interface SettingsFeedback {
@@ -112,9 +78,33 @@ export default function ConfigManager() {
     loaded: connectionLoaded,
   } = useSettingsConnectionConfig()
   const connectionSaving = connectionSyncState === 'saving'
-  const [configDir, setConfigDir] = useState<string>('')
-  const [configDirStatus, setConfigDirStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [configDirError, setConfigDirError] = useState<string | null>(null)
+  const {
+    version: versionInfo,
+    reload: reloadVersion,
+  } = useSettingsVersion()
+  const {
+    path: configDir,
+    status: configDirStatus,
+    error: configDirError,
+    reload: reloadConfigDir,
+    open: openConfigDirectory,
+  } = useSettingsConfigDirectory()
+  const {
+    discovery: deviceDiscovery,
+    test: connectionTest,
+    discover: discoverDevices,
+    testConnection,
+    selectDevice: selectDiscoveredDevice,
+    clearTestFeedback,
+  } = useSettingsDeviceConnection()
+  const discoveredDevices = deviceDiscovery.devices
+  const discoveryMessage = deviceDiscovery.message
+  const hasSearchedDevices = deviceDiscovery.searched
+  const discoveringDevices = deviceDiscovery.phase === 'running'
+  const testingConnection = connectionTest.phase === 'running'
+  const connectionFeedback = connectionTest.message
+    ? { success: connectionTest.success, message: connectionTest.message }
+    : null
   const [updating, setUpdating] = useState<UpdateStatus>({ core: false, cli: false })
   const [hotUpdating, setHotUpdating] = useState<boolean>(false)
   const [autoUpdate, setAutoUpdate] = useState<AutoUpdateConfig>(DEFAULT_AUTO_UPDATE_CONFIG)
@@ -122,15 +112,8 @@ export default function ConfigManager() {
   const [autoUpdateSaving, setAutoUpdateSaving] = useState(false)
   const [autoUpdateFeedback, setAutoUpdateFeedback] = useState<SettingsFeedback | null>(null)
   const [configFeedback, setConfigFeedback] = useState<SettingsFeedback | null>(null)
-  const [versionInfo, setVersionInfo] = useState<MaaVersionInfo | null>(null)
   const [updateFeedback, setUpdateFeedback] = useState<UpdateFeedback | null>(null)
-  const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredDevice[]>([])
-  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null)
-  const [hasSearchedDevices, setHasSearchedDevices] = useState(false)
-  const [discoveringDevices, setDiscoveringDevices] = useState(false)
-  const [testingConnection, setTestingConnection] = useState(false)
-  const [connectionFeedback, setConnectionFeedback] = useState<ConnectionFeedback | null>(null)
-  const didInitializeRef = useRef(false)
+  const autoUpdateInitializedRef = useRef(false)
   const autoUpdateTouchedRef = useRef(false)
   const autoUpdateRevisionRef = useRef(0)
   const autoUpdateSaveInFlightRef = useRef(false)
@@ -153,17 +136,6 @@ export default function ConfigManager() {
     reportedLoadFailureRef.current = null
     setConfigFeedback(current => (current?.message === message ? null : current))
   }, [connectionLoaded])
-
-  const loadVersion = useCallback(async () => {
-    try {
-      const result = await getVersion()
-      if (result.success && result.data) {
-        setVersionInfo(result.data)
-      }
-    } catch (error) {
-      // 静默失败
-    }
-  }, [])
 
   const loadAutoUpdateConfig = useCallback(async () => {
     let serverError: string | null = null
@@ -287,42 +259,11 @@ export default function ConfigManager() {
     setAutoUpdateFeedback(null)
   }
 
-  const loadConfigDir = useCallback(async () => {
-    setConfigDirStatus('loading')
-    setConfigDirError(null)
-    try {
-      const result = await getConfigDir()
-      if (result.success) {
-        const nextConfigDir = typeof result.data === 'string'
-          ? result.data
-          : (result.data && typeof result.data === 'object' && 'path' in result.data && typeof (result.data as { path?: unknown }).path === 'string'
-              ? (result.data as { path: string }).path
-              : '')
-        if (!nextConfigDir) throw new Error('服务器未返回配置目录')
-        setConfigDir(nextConfigDir)
-        setConfigDirStatus('ready')
-        return
-      }
-
-      throw new Error(getErrorMessage(result))
-    } catch (error) {
-      const detail = error instanceof Error && error.message ? error.message : '暂时无法读取配置目录'
-      setConfigDir('')
-      setConfigDirStatus('error')
-      setConfigDirError(`配置目录读取失败: ${detail}`)
-    }
-  }, [])
-
   useEffect(() => {
-    if (didInitializeRef.current) return
-    didInitializeRef.current = true
-
-    void Promise.allSettled([
-      loadConfigDir(),
-      loadAutoUpdateConfig(),
-      loadVersion(),
-    ])
-  }, [loadAutoUpdateConfig, loadConfigDir, loadVersion])
+    if (autoUpdateInitializedRef.current) return
+    autoUpdateInitializedRef.current = true
+    void loadAutoUpdateConfig()
+  }, [loadAutoUpdateConfig])
 
   const updateConnectionConfig = (patch: Partial<MaaConnectionConfig>) => {
     updateConnectionDraft(patch)
@@ -361,71 +302,21 @@ export default function ConfigManager() {
     setStatusMessage('已重置为默认值')
   }
 
-  const handleDiscoverDevices = async () => {
-    setDiscoveringDevices(true)
-    setDiscoveryMessage(null)
-    setConnectionFeedback(null)
-
-    try {
-      const result = await discoverDevices(configData.adb_path)
-      const discovery = result.data as DiscoveryResult | undefined
-      const devices = discovery ? [...(discovery.devices || []), ...(discovery.candidates || [])] : []
-      setDiscoveredDevices(devices)
-      setDiscoveryMessage(discovery?.message || getErrorMessage(result))
-    } catch (error) {
-      setDiscoveredDevices([])
-      setDiscoveryMessage(`查找设备失败: ${(error as Error).message}`)
-    } finally {
-      setHasSearchedDevices(true)
-      setDiscoveringDevices(false)
-    }
+  const handleDiscoverDevices = () => {
+    discoverDevices(configData.adb_path)
   }
 
-  const handleTestConnection = async (address = configData.address) => {
-    setTestingConnection(true)
-    setConnectionFeedback(null)
-
-    try {
-      const result = await testConnection(configData.adb_path, address)
-      const feedback = result.data as ConnectionFeedback | undefined
-      setConnectionFeedback({
-        success: Boolean(result.success && feedback?.success),
-        message: feedback?.message || getErrorMessage(result)
-      })
-    } catch (error) {
-      setConnectionFeedback({ success: false, message: `连接测试失败: ${(error as Error).message}` })
-    } finally {
-      setTestingConnection(false)
-    }
+  const handleTestConnection = (address = configData.address) => {
+    testConnection(configData.adb_path, address)
   }
 
-  const handleUseDiscoveredDevice = async (device: DiscoveredDevice) => {
-    const adbPath = device.adbPath || configData.adb_path
-    updateConnectionConfig({ adb_path: adbPath, address: device.address })
-    setTestingConnection(true)
-    setConnectionFeedback(null)
-
-    try {
-      const result = await testConnection(adbPath, device.address)
-      const feedback = result.data as ConnectionFeedback | undefined
-      setConnectionFeedback({
-        success: Boolean(result.success && feedback?.success),
-        message: feedback?.message || getErrorMessage(result)
-      })
-    } catch (error) {
-      setConnectionFeedback({ success: false, message: `连接测试失败: ${(error as Error).message}` })
-    } finally {
-      setTestingConnection(false)
-    }
+  const handleUseDiscoveredDevice = (device: DiscoveredDevice) => {
+    selectDiscoveredDevice(device)
   }
 
   const handleOpenConfigDir = async () => {
-    try {
-      const result = await openConfigDir()
-      setStatusMessage(result.success ? '已打开配置目录' : `打开失败: ${getErrorMessage(result)}`)
-    } catch (error) {
-      setStatusMessage(`打开失败: ${(error as Error).message}`)
-    }
+    const result = await openConfigDirectory()
+    setStatusMessage(result.success ? '已打开配置目录' : `打开失败: ${result.message}`)
   }
 
   const handleUpdateCore = async () => {
@@ -445,7 +336,7 @@ export default function ConfigManager() {
         setUpdateFeedback({ type: 'success', message })
         setStatusMessage(message)
         // 更新成功后重新加载版本信息
-        await loadVersion()
+        await reloadVersion()
       } else {
         const details = (result as any).error?.details || result.errorInfo?.details || {}
         const message = getErrorMessage(result)
@@ -478,7 +369,7 @@ export default function ConfigManager() {
       if (result.success) {
         setStatusMessage('MAA CLI 更新成功')
         // 更新成功后重新加载版本信息
-        await loadVersion()
+        await reloadVersion()
       } else {
         setStatusMessage(`更新失败: ${getErrorMessage(result)}`)
       }
@@ -512,7 +403,7 @@ export default function ConfigManager() {
         setUpdateFeedback({ type: 'success', message })
         setStatusMessage(message)
         // 更新成功后重新加载版本信息
-        await loadVersion()
+        await reloadVersion()
       } else {
         const details = (result as any).error?.details || result.errorInfo?.details || {}
         const message = getErrorMessage(result)
@@ -547,7 +438,7 @@ export default function ConfigManager() {
         const message = result.message || '资源文件更新成功'
         setUpdateFeedback({ type: 'success', message })
         setStatusMessage(message)
-        await loadVersion()
+        await reloadVersion()
       } else {
         const message = getErrorMessage(result)
         setUpdateFeedback({ type: 'error', message, resourceRetry: true })
@@ -724,7 +615,7 @@ export default function ConfigManager() {
                   value={configData.address}
                   onChange={(value: string) => {
                     updateConnectionConfig({ address: value })
-                    setConnectionFeedback(null)
+                    clearTestFeedback()
                   }}
                   hint="模拟器地址，例如 127.0.0.1:16384"
                 />
@@ -894,7 +785,7 @@ export default function ConfigManager() {
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               {configDirStatus === 'error' && (
                 <Button
-                  onClick={() => void loadConfigDir()}
+                  onClick={() => void reloadConfigDir()}
                   variant="outline"
                   size="sm"
                   className="flex-1 sm:flex-none"

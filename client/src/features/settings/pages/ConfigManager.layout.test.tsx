@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
 import { settingsConnectionOwner } from '../model/connectionConfig'
 import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '../model/configSection'
+import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
 import { settingsKeys } from '../model/queryKeys'
 import ConfigManager from './ConfigManager'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => ({
+  discoverDevices: vi.fn(),
   getConfig: vi.fn(),
   getConfigDir: vi.fn(),
   getVersion: vi.fn(),
@@ -21,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   saveConfig: vi.fn(),
   saveUserConfig: vi.fn(),
   setupAutoUpdate: vi.fn(),
+  testConnection: vi.fn(),
   updateMaaCore: vi.fn(),
   updateMaaCli: vi.fn(),
   hotUpdateResources: vi.fn(),
@@ -54,7 +57,7 @@ vi.mock('@/shared/api', async importOriginal => {
 })
 
 vi.mock('../api', () => ({
-  discoverDevices: vi.fn(),
+  discoverDevices: mocks.discoverDevices,
   getConfig: mocks.getConfig,
   getConfigDir: mocks.getConfigDir,
   getVersion: mocks.getVersion,
@@ -62,7 +65,7 @@ vi.mock('../api', () => ({
   openConfigDir: mocks.openConfigDir,
   saveConfig: mocks.saveConfig,
   setupAutoUpdate: mocks.setupAutoUpdate,
-  testConnection: vi.fn(),
+  testConnection: mocks.testConnection,
   updateMaaCli: mocks.updateMaaCli,
   updateMaaCore: mocks.updateMaaCore,
 }))
@@ -87,6 +90,14 @@ const flush = async () => {
     await Promise.resolve()
     await Promise.resolve()
   })
+}
+
+/** Query 的批量通知默认走 setTimeout，重取后再给一轮定时器与渲染。 */
+const settle = async () => {
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0))
+  })
+  await flush()
 }
 
 const deferred = <T,>() => {
@@ -122,6 +133,16 @@ const buttonByText = (text: string) => (
     .find(button => button.textContent?.trim() === text)
 )
 
+const buttonContaining = (text: string) => (
+  Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find(button => button.textContent?.includes(text))
+)
+
+const addressInputWithValue = (value: string) => (
+  Array.from(container.querySelectorAll<HTMLInputElement>('input'))
+    .find(input => input.value === value)
+)
+
 describe('ConfigManager layout surfaces', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -139,6 +160,21 @@ describe('ConfigManager layout surfaces', () => {
       success: true,
       data: { cli: '0.7.3', core: 'v5.0.0', raw: 'v5.0.0' },
     })
+    mocks.discoverDevices.mockReset().mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        message: '找到 1 个设备或可尝试地址',
+        devices: [
+          { address: 'emulator-5554', state: 'device', details: 'ADB 已识别设备', source: 'adb' },
+        ],
+        candidates: [],
+      },
+    })
+    mocks.testConnection.mockReset().mockResolvedValue({
+      success: true,
+      data: { success: true, connected: true, message: '已连接到 emulator-5554' },
+    })
     mocks.loadUserConfig.mockReset().mockResolvedValue({
       success: true,
       data: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
@@ -152,6 +188,7 @@ describe('ConfigManager layout surfaces', () => {
     mocks.hotUpdateResources.mockReset().mockResolvedValue({ success: true })
     mocks.setMessage.mockReset()
     settingsConnectionOwner.reset()
+    settingsDeviceConnectionOwner.reset()
     queryClient = createQueryClient()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -200,7 +237,7 @@ describe('ConfigManager layout surfaces', () => {
 
     mocks.getConfigDir.mockResolvedValueOnce({ success: true, data: '/tmp/recovered-config' })
     await act(async () => retryButton?.click())
-    await flush()
+    await settle()
 
     expect(container.textContent).toContain('/tmp/recovered-config')
     expect(container.querySelector('[role="alert"]')).toBeNull()
@@ -383,8 +420,10 @@ describe('ConfigManager layout surfaces', () => {
     expect(cliButton.disabled).toBe(true)
 
     await act(async () => pendingCoreUpdate.resolve({ success: true, message: '已更新' }))
-    await flush()
+    await settle()
     expect(cliButton.disabled).toBe(false)
+    expect(mocks.setMessage).toHaveBeenCalledWith('已更新')
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
   })
 
   it('offers a resource retry when a core update fails at the resource step', async () => {
@@ -652,5 +691,252 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => connectionButton?.click())
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
       .find(input => input.value === '127.0.0.1:5555')).toBeDefined()
+  })
+
+  it('discovers devices with the draft adb path and backfills the selected device', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    expect(mocks.discoverDevices).toHaveBeenCalledWith(
+      '/opt/homebrew/bin/adb',
+      expect.any(AbortSignal),
+    )
+    expect(container.textContent).toContain('找到 1 个设备或可尝试地址')
+    expect(container.textContent).toContain('emulator-5554')
+
+    await act(async () => buttonContaining('emulator-5554')?.click())
+    await flush()
+
+    expect(mocks.testConnection).toHaveBeenCalledWith(
+      '/opt/homebrew/bin/adb',
+      'emulator-5554',
+      expect.any(AbortSignal),
+    )
+    expect(addressInputWithValue('emulator-5554')).toBeDefined()
+    expect(container.textContent).toContain('已连接到 emulator-5554')
+  })
+
+  it('keeps discovery loading independent from connection testing', async () => {
+    const pendingDiscovery = deferred<{ success: boolean; data: unknown }>()
+    mocks.discoverDevices.mockReturnValueOnce(pendingDiscovery.promise)
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    expect(buttonByText('查找中')).toBeDefined()
+    expect(buttonByText('测试连接')?.disabled).toBe(false)
+
+    await act(async () => buttonByText('测试连接')?.click())
+    await flush()
+
+    expect(mocks.testConnection).toHaveBeenCalledWith(
+      '/opt/homebrew/bin/adb',
+      '127.0.0.1:16384',
+      expect.any(AbortSignal),
+    )
+    expect(buttonByText('查找中')).toBeDefined()
+    expect(container.textContent).toContain('已连接到 emulator-5554')
+
+    pendingDiscovery.resolve({
+      success: true,
+      data: {
+        success: true,
+        message: '找到 1 个设备或可尝试地址',
+        devices: [{ address: 'emulator-5554', state: 'device', source: 'adb' }],
+        candidates: [],
+      },
+    })
+    await flush()
+
+    expect(buttonByText('查找模拟器')).toBeDefined()
+    expect(container.textContent).toContain('emulator-5554')
+  })
+
+  it('reports discovery failures and retries with the same draft adb path', async () => {
+    mocks.discoverDevices.mockRejectedValueOnce(new Error('adb 未安装'))
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    expect(container.textContent).toContain('查找设备失败: adb 未安装')
+    expect(buttonByText('查找模拟器')?.disabled).toBe(false)
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    expect(mocks.discoverDevices).toHaveBeenCalledTimes(2)
+    expect(mocks.discoverDevices).toHaveBeenLastCalledWith(
+      '/opt/homebrew/bin/adb',
+      expect.any(AbortSignal),
+    )
+    expect(container.textContent).toContain('emulator-5554')
+  })
+
+  it('keeps completed discovery results across Activity hide and cancels an in-flight retry', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(page(mode))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    await renderMode('visible')
+    await flush()
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+    expect(container.textContent).toContain('emulator-5554')
+
+    await renderMode('hidden')
+    await renderMode('visible')
+    expect(mocks.discoverDevices).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('emulator-5554')
+
+    const pending = deferred<{ success: boolean; data: unknown }>()
+    mocks.discoverDevices.mockReturnValueOnce(pending.promise)
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+    const retrySignal = mocks.discoverDevices.mock.calls[1]![1] as AbortSignal
+
+    await renderMode('hidden')
+    expect(retrySignal.aborted).toBe(true)
+    pending.resolve({
+      success: true,
+      data: {
+        success: true,
+        message: '迟到的结果',
+        devices: [{ address: 'late-device', state: 'device', source: 'adb' }],
+        candidates: [],
+      },
+    })
+    await flush()
+    await renderMode('visible')
+
+    expect(container.textContent).toContain('emulator-5554')
+    expect(container.textContent).not.toContain('late-device')
+    expect(buttonByText('查找模拟器')).toBeDefined()
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+    expect(mocks.discoverDevices).toHaveBeenCalledTimes(3)
+    expect(container.textContent).toContain('emulator-5554')
+  })
+
+  it('cancels an in-flight connection test on hide and restores an actionable panel', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(page(mode))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    await renderMode('visible')
+    await flush()
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    const pending = deferred<{ success: boolean; data: unknown }>()
+    mocks.testConnection.mockReturnValueOnce(pending.promise)
+    await act(async () => buttonContaining('emulator-5554')?.click())
+    await flush()
+    const signal = mocks.testConnection.mock.calls[0]![2] as AbortSignal
+
+    await renderMode('hidden')
+    expect(signal.aborted).toBe(true)
+
+    pending.resolve({
+      success: true,
+      data: { success: true, message: '迟到的连接结果' },
+    })
+    await flush()
+    await renderMode('visible')
+
+    expect(buttonByText('测试连接')?.disabled).toBe(false)
+    expect(container.textContent).not.toContain('迟到的连接结果')
+    expect(addressInputWithValue('emulator-5554')).toBeDefined()
+  })
+
+  it('does not let a discovered-device test overwrite a newer address edit', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    const pending = deferred<{ success: boolean; data: unknown }>()
+    mocks.testConnection.mockReturnValueOnce(pending.promise)
+    await act(async () => buttonContaining('emulator-5554')?.click())
+    await flush()
+
+    await setInputValue(addressInputWithValue('emulator-5554')!, '127.0.0.1:6666')
+    pending.resolve({
+      success: true,
+      data: { success: true, message: '已连接到 emulator-5554' },
+    })
+    await flush()
+
+    expect(addressInputWithValue('127.0.0.1:6666')).toBeDefined()
+    expect(mocks.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('loads version and config directory from their queries and keeps them across Activity hide', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(page(mode))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    await renderMode('visible')
+    await flush()
+
+    expect(container.textContent).toContain('v5.0.0')
+    expect(container.textContent).toContain('/tmp/la-pluma')
+
+    await renderMode('hidden')
+    await renderMode('visible')
+    await flush()
+
+    expect(mocks.getVersion).toHaveBeenCalledOnce()
+    expect(mocks.getConfigDir).toHaveBeenCalledOnce()
+    expect(container.textContent).toContain('v5.0.0')
+    expect(container.textContent).toContain('/tmp/la-pluma')
+  })
+
+  it('opens the config directory from the card and the read-only header entry', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const cardButton = buttonByText('打开目录')
+    expect(cardButton).toBeDefined()
+    await act(async () => cardButton?.click())
+    await flush()
+
+    expect(mocks.openConfigDir).toHaveBeenCalledTimes(1)
+    expect(mocks.setMessage).toHaveBeenCalledWith('已打开配置目录')
+
+    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('资源'))
+    await act(async () => resourceButton?.click())
+
+    const openButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .filter(button => button.textContent?.trim() === '打开目录')
+    expect(openButtons).toHaveLength(2)
+
+    mocks.openConfigDir.mockResolvedValueOnce({ success: false, message: '没有桌面环境' })
+    await act(async () => openButtons[0]?.click())
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('打开失败: 没有桌面环境')
   })
 })
