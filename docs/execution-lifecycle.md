@@ -2,9 +2,9 @@
 
 > [← 返回 README](../README.md)
 
-本文固定 La Pluma Next 在 `0479065` 上的执行身份、唯一状态来源和生命周期边界，并区分**现行行为**与**后续迁移要交付的目标契约**。它面向执行链路、Agent 集成和前端控制器的维护者；不涉及页面视觉，也不改动现有生产逻辑。
+本文固定 La Pluma Next 在 `a07933e` 上的执行身份、唯一状态来源和生命周期边界，并区分**现行行为**与**后续迁移要交付的目标契约**。它面向执行链路、Agent 集成和前端控制器的维护者；不涉及页面视觉。
 
-契约的权威实现是服务端 Run 记录（`server/services/agentRunService.js`）、执行租约（`server/services/executionCoordinatorService.js`）、任务进程投影（`server/services/maaService.js`）和流程进度投影（`server/services/schedulerService.js`）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
+契约的权威实现是服务端 Run 记录（`server/services/agentRunService.js`）、运行快照（`server/services/runSnapshotService.js`）、执行租约（`server/services/executionCoordinatorService.js`）、任务进程投影（`server/services/maaService.js`）和流程进度投影（`server/services/schedulerService.js`）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
 
 ## 1. 执行身份
 
@@ -19,7 +19,8 @@
 | `state` | 生命周期状态 | 见第 3 节 |
 | `acceptedAt` / `startedAt` / `finishedAt` | 接受、开始、结束时间 | 终态必须有 `finishedAt` |
 | `result` / `error` | 终态结果或结构化失败 | `failed`/`interrupted` 必须有 `error` |
-| `links.self` / `links.stop` | 按 id 查询与停止入口 | `stop` 当前为通用停止端点 |
+| `links.self` / `links.stop` | 按 id 查询与按目标停止入口 | `stop` 为 `/api/agent/actions/stop?runId=…` |
+| `recovery` | 重启恢复边界，仅 `interrupted` 存在 | 见 5.7 |
 | `progress` | 活动 run 的进度投影 | 读取时计算，不持久化 |
 
 Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.json`，可通过 `LA_PLUMA_AGENT_RUN_STORE` 改路径。不要让多个 Node.js 进程同时读写同一文件。终态最多保留 24 小时和 500 条，先到期先淘汰；被淘汰后按 `runId` 查询返回 404，同键请求会创建新 run。
@@ -33,9 +34,10 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 | 观察对象 | 权威来源 | 只回答什么 | 不能据此推断 |
 | --- | --- | --- | --- |
 | 执行身份与状态 | Run 记录；`GET /api/agent/runs/current`、`GET /api/agent/runs/{runId}` | 本次执行处于 accepted/running/stopping/终态 | 设备是否空闲、页面是否可见 |
+| 活动身份集合与设备占用 | `GET /api/agent/runs/current` 的 `run`、`activeRuns`、`lastRun`、`occupancy` | 当前唯一活动 run、其余 accepted 意图、最近终态，以及设备由 run 还是未纳管执行占用 | 执行结果；`occupancy` 也不能证明租约之外的直接设备使用 |
 | 当前 MAA 子进程 | `GET /api/agent/tasks/status`（`maaService.taskStatus`） | 当前是否有一个受管子进程在跑，及其 `taskName`/`stopRequested` | 整个流程是否完成；流程步间等待时它可以是 idle |
 | 流程步骤进度 | `GET /api/agent/schedules/execution`（`scheduleExecutionStatus`） | `isRunning`、`currentStep`、`totalSteps`、`currentTask`、`taskResults` | 执行身份；它也可能代表定时或未纳入 Run 的流程 |
-| 执行租约 | `server/data/maa-execution.lock` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
+| 执行租约 | `server/data/maa-execution.lock`；快照中的 `occupancy.lease` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
 | 连接健康 | 前端 runtime-status 监测 | 浏览器能否访问后端、当前是否 active | 执行成功、失败或已完成 |
 | 页面运行标记 | 页面状态与 `statusStore.isActive` | 当前页面的 UI 投影 | 后台任务所有权或终态 |
 
@@ -47,14 +49,40 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 4. **租约只做互斥。** 它防止协作进程同时操作设备，不记录业务结果；锁文件被回收只说明原持有进程已不存活。
 5. **页面不维护第二份运行状态机。** 页面可以缓存展示，但停止、完成、重连后的恢复必须以 Run 快照对账。当前页面与连接监测器仍会争写 `statusStore.isActive`，这是待统一的现状，不是契约。
 
+### 2.1 运行快照
+
+`GET /api/agent/runs/current` 返回一个快照，而不是单个 run：
+
+| 字段 | 含义 |
+| --- | --- |
+| `run` | 当前活动 run；排序为 `stopping` > `running` > `accepted`，同级取最新 |
+| `activeRuns` | 全部活动 run，按同一顺序。长度大于 1 表示还有额外 accepted 意图，调用方不能把它们当作同一个执行 |
+| `lastRun` | 按 `finishedAt` 取最近终态；只用于展示，不是调用方自己的身份 |
+| `occupancy` | 设备占用投影：`state`、`runId`、`runState`、`sources`、`lease`、`task`、`schedule` |
+| `isRunning`/`taskName`/`startTime`/`taskType`/`stopRequested`/`logs` | 旧客户端的任务进程字段，原样保留 |
+| `schedule`/`recentLogs` | 旧客户端的流程与日志字段，原样保留 |
+
+`occupancy.state` 只描述“现在谁在变更设备”：
+
+| 值 | 含义 |
+| --- | --- |
+| `run` | 当前活动 run 为 `running`/`stopping`，设备归该 run |
+| `external` | 检测到任务进程、流程或存活租约，但没有持有执行权的 run（定时流程、作业集 cli、更新、Telegram 等） |
+| `pending` | 只有 accepted run，设备当前没有可观察的活动 |
+| `idle` | 没有活动 run、任务、流程或存活租约 |
+| `unknown` | 租约文件存在但无法解析；不能把它当作空闲 |
+
+`sources` 列出得出该判断的证据组合（`run`、`task`、`schedule`、`lease`）。`lease.state` 为 `free`/`held`/`stale`/`unknown`；`stale` 表示锁文件仍存在但记录的进程已不存活，可以回收，不算占用。`external` 与 `pending` 可以同时有 `runId`（一个待执行的 accepted 意图）——它们描述的是设备归属，不是 run 身份。
+
 执行状态没有推送通道；客户端通过 HTTP 轮询观察。浏览器实时预览使用 WebRTC 信令，与任务执行状态无关。
+
 
 ## 3. 生命周期状态
 
 ```
 accepted ──start──> running ──stop accepted──> stopping ──exit──> stopped
     │                  │                                          └ failed（正常停止路径优先 stopped）
-    ├──stop accepted──> stopping
+    ├──stop accepted──> stopped（取消，从未执行）
     ├──pre-exec fail──> failed
     └──settle─────────> succeeded
 running ──exit──> succeeded / failed / stopped
@@ -63,21 +91,23 @@ running ──exit──> succeeded / failed / stopped
 
 | 状态 | 含义 | 设备租约 | 可观察位置 | 状态机允许的下一状态 |
 | --- | --- | --- | --- | --- |
-| `accepted` | 已落库接受，执行器尚未开始 | 本 run 未持有 | `runs/current.run`；进度文案通常为“等待任务启动” | `running`、`stopping`、`succeeded`、`failed`、`stopped` |
-| `running` | 执行器已启动 | 持有 | run 进度、任务进程或流程进度 | `stopping`、`succeeded`、`failed`、`stopped` |
+| `accepted` | 已落库接受，执行器尚未获得执行权 | 本 run 未持有 | `runs/current.run`；并发时也在 `activeRuns` | `running`、`stopped`（取消）、`succeeded`、`failed` |
+| `running` | 执行器已获得执行权（租约后、子进程 spawn 前也短暂处于此状态） | 持有 | run 进度、任务进程或流程进度 | `stopping`、`succeeded`、`failed`、`stopped` |
 | `stopping` | 停止请求已接受，等待子进程/流程退出 | 持有到退出 | `state=stopping`，任务 `stopRequested` | `stopped`、`failed` |
 | `succeeded` | 终态成功 | 已释放 | `result` | 无 |
 | `failed` | 终态失败 | 已释放 | `error` | 无 |
-| `stopped` | 终态已停止 | 已释放 | `result` | 无 |
-| `interrupted` | 服务重启时尚未结束 | 未知，可能仍被旧进程占用 | `error.code=AGENT_RUN_INTERRUPTED` | 无 |
+| `stopped` | 终态已停止；`result.canceled=true` 表示从未开始的取消 | 已释放 | `result` | 无 |
+| `interrupted` | 服务重启时尚未结束 | 未知，可能仍被旧进程占用 | `error.code=AGENT_RUN_INTERRUPTED`；`recovery` | 无 |
 
 约束：
 
 - 终态不可变；重复写入同一终态是幂等的，其他越级转换返回 `AGENT_RUN_STATE_CONFLICT`（409）。
-- `accepted` 没有执行权，带 `runId` 的停止请求返回 `AGENT_RUN_NOT_STARTED`（409，可重试）；当前不会向设备发送停止命令。状态机内部允许 `accepted → stopping/stopped`，但只可能由不带 `runId` 的旧式停止与并发进程组合触发，属于待收敛行为，不是目标契约。
-- `stopping` 不是终态；调用方必须继续查询，直到 `stopped`、`failed` 或 `interrupted`。
+- `accepted` 没有执行权。带 `runId` 的停止会把它直接取消为 `stopped`，`result` 为 `{canceled:true, reason:'stop_requested_before_start'}`，不向设备发送任何命令；取消可以安全重复并保持 200。
+- 执行器在获得租约后、产生任何设备副作用前，会通过 `startAgentRunForExecution` 复核身份：只有 `accepted` 会转为 `running`；`stopping` 或终态会返回 `AGENT_RUN_STOPPED_BEFORE_START` 并放弃启动。该错误不对 HTTP 调用方暴露，提交方最终看到自己的 run 为 `stopped`。
+- `stopping` 不是终态；调用方必须继续查询，直到 `stopped`、`failed` 或 `interrupted`。重复停止请求返回同一状态。
 - `interrupted` 只描述**记录**：服务重启后无法确认原执行结果，因此不自动续跑。它不证明设备已空闲或原 MAA 进程已退出，重新提交前应重新确认连接与设备状态。
 - `discard` 仅用于执行前的校验/占用拒绝，会删除记录并释放幂等键；它不是公开状态。
+
 
 ### 响应与状态对应
 
@@ -104,29 +134,47 @@ running ──exit──> succeeded / failed / stopped
 
 ## 4. 取消语义
 
-停止是**服务端操作**，不是中止本地读取：
+停止是**服务端操作**，不是中止本地读取。入口是 `POST /api/agent/actions/stop`；`runId` 可放在请求体或查询参数中（`links.stop` 使用查询参数），请求体优先。
 
-- `POST /api/agent/actions/stop` 不带 `runId`：停止当前受管子进程和当前流程，并在存在活动 run 时把它转入 `stopping`。适合旧客户端和未纳入 Run 的流程。
-- 带 `runId`：只允许停止当前活动 run。`404` 表示未知/已淘汰；终态返回成功且 `alreadyTerminal: true`；`accepted` 返回 `AGENT_RUN_NOT_STARTED`；其他 run 返回 `AGENT_RUN_NOT_CURRENT`。不会误停随后启动的新执行。
-- 停止请求可重复：已在 `stopping` 时重复调用仍返回成功；调用方仍需轮询到终态。
-- 本地 `AbortController` 中止、页面卸载、浏览器断线都**不等于停止**；服务端会继续执行。页面关闭后任务继续运行是预期行为。
+不带 `runId` 的旧式停止仍然有效：停止当前受管子进程和当前流程，并在存在活动 run 时记录停止意图。`accepted` 的当前 run 会被取消；`running` 的会转入 `stopping`。响应保留 `task`、`scheduleStopped`、`stopRequested`，并新增 `deviceStopRequested` 表示是否真的向设备发出了停止命令。
+
+带 `runId` 的目标停止：
+
+| 目标 run 状态 | HTTP | 结果 | 是否发送设备命令 |
+| --- | --- | --- | --- |
+| `accepted`（是否为 current 均可） | 200 | 立即取消为 `stopped`，`acceptedRunCanceled: true` | 否 |
+| `running` 且是 current | 200 | 记录 `stopping` | 是，`deviceStopRequested` 反映结果 |
+| `running` 但不是 current | 409 `AGENT_RUN_NOT_CURRENT` | 拒绝，不改任何 run | 否 |
+| `stopping` 且是 current | 200 | 保持 `stopping`，重发设备停止 | 是 |
+| `stopping` 但不是 current | 200，`alreadyStopping: true` | 已是停止意图 | 否 |
+| 终态 | 200，`alreadyTerminal: true` | 原样返回 | 否 |
+| 未知或已淘汰 | 404 `AGENT_RUN_NOT_FOUND` | 无 | 否 |
+
+规则：
+
+- **旧 runId 不会误伤新运行。** 终态旧 run 只返回 `alreadyTerminal`；未开始的旧 run 只会取消它自己；非当前的活动 run 在发出设备命令前被拒绝。
+- **停止可安全重试。** `stopping` 与终态的重复请求都返回 200；`stopping` 时会重新尝试设备停止。调用方仍需轮询到终态。
+- 停止请求先记录 run 意图，再发送设备命令。若子进程尚未 spawn，执行器在 pre-start gate 看到 `stopping` 会直接放弃启动并转为 `stopped`；若 spawn 已发生但事件尚未处理，`onStarted` 会补发进程/流程停止。
 - 停止过程中若子进程/流程正常退出，run 进入 `stopped`；若以错误结束，当前实现按 `stopping` 优先记为 `stopped`。不要在停止请求后把“进程退出”直接当作成功完成。
+- 本地 `AbortController` 中止、页面卸载、浏览器断线都**不等于停止**；服务端会继续执行。页面关闭后任务继续运行是预期行为。
+
 
 ## 5. 边界契约
 
 ### 5.1 断线未知
 
 - 任何网络失败、超时、离线或无法解析的响应都表示**未知**，不是失败、完成或停止。UI 不得把已知的 `running` 清成 idle。
-- 重连后先按已知 `runId` 查询；没有 `runId` 时查询 `runs/current` 的 `run`（活动）与 `lastRun`（最近终态），但 `lastRun` 不是身份安全的：若同一实例期间启动了别的执行，可能与调用方自己的执行无关。
+- 重连后先按已知 `runId` 查询；没有 `runId` 时查询 `runs/current`：`run` 是当前活动执行，`activeRuns` 暴露其他 accepted 意图，`lastRun` 是最近终态。`lastRun` 不是身份安全的：若同一实例期间启动了别的执行，可能与调用方自己的执行无关。
 - 调用方应在提交时保存 `runId`，并保留到看到该 run 的终态为止。无法恢复身份时应标记为未知并要求用户确认，不能自动假定成功或重新提交。
-- `404` 表示未知或已过保留期，不是成功；服务重启后的活动 run 变为 `interrupted`，重连查询应展示该终态而不是继续等待。
+- `404` 表示未知或已过保留期，不是成功；服务重启后的活动 run 变为 `interrupted`，重连查询应展示该终态和 `recovery.deviceState=unknown`，而不是继续等待。
 - 没有推送通道；轮询间隔、超时和重连退避由客户端决定，但不得改变上述判定。
 
 ### 5.2 外部占用
 
 - 协作占用通过锁文件表达。提交执行时租约不可用会返回 409：通用执行是 `MAA_EXECUTION_BUSY`，日常流程入口包装为 `AGENT_EXECUTION_BUSY`，旧定时执行接口返回 `AGENT_SCHEDULE_ALREADY_RUNNING`。错误 `details.owner` 给出占用者元数据。
 - 对纳入 Run 的入口，占用属于执行前拒绝：run 为 `failed`，幂等键释放，调用方可用同键安全重试。
-- 未纳入 Run 的执行（定时流程、作业集 cli 模式、更新任务、Telegram 指令）也持有同一租约；此时 `/runs/current.run` 可能为 `null`，但 `schedule.isRunning` 或 `tasks/status.isRunning` 为真。不能因为 Run 为空就认为设备空闲。
+- 未纳入 Run 的执行（定时流程、作业集 cli 模式、更新任务、Telegram 指令）也持有同一租约。此时 `runs/current.run` 为 `null`，`activeRuns` 为空，但 `occupancy.state` 为 `external`，`sources` 包含 `task`、`schedule` 或 `lease`。不能因为 Run 为空就认为设备空闲。
+- `occupancy.lease.state=held` 表示租约记录的 PID 仍存活；`stale` 表示锁文件可回收，不算占用；`unknown` 表示锁文件无法解释，必须按“未知”处理而不是空闲。
 - 租约只约束协作进程。用户或其他工具直接用 MAA/ADB 操作设备不会被检测，系统不提供对非协作占用的排他保证。
 - 锁文件只在持有进程 PID 不存活时回收；PID 存活即视为占用。服务异常退出后，旧 MAA 子进程可能仍在运行，回收租约不代表设备已释放。
 
@@ -176,9 +224,12 @@ running ──exit──> succeeded / failed / stopped
 ### 5.7 服务重启与持久化失败
 
 - 启动时恢复 Run 存储：终态保留；所有 `accepted`/`running`/`stopping` 记录改为 `interrupted`，写入 `error.details.reason=server_restart`、`previousState` 和当前 `finishedAt`，不自动续跑。
+- `interrupted` 的 run 额外返回 `recovery`：`source`、`previousState`、`executionResumed=false`、`deviceState='unknown'`。可恢复的只有记录身份与终态；执行不会恢复，设备是否仍被旧进程占用无法证明。`/runs/current` 的 `lastRun` 会展示该记录，`occupancy` 不会因为存在终端 run 而把设备标成空闲以外的结论——它按新的任务/流程/租约观测重新判断。
 - 定时任务由运行时初始化按已保存的自动化配置重新注册；它与被中断的 Run 没有续跑关系，之后可以独立触发新的执行。
 - Run 存储文件损坏、版本不支持或启动恢复失败时，纳入 Run 的执行接口保持关闭（503），不能用无身份记录的方式继续执行。运行期写入失败按上一条处理：阻止新的准入并返回可重试的 503。
 - 服务正常退出不会自动把活动 run 写成终态；下次启动才做 `interrupted` 转换。退出时也不保证终止已 detach 的 MAA 子进程（非 Windows），因此重启后的设备占用需要重新确认。
+- 记录被 24 小时/500 条保留策略淘汰后，按 id 查询返回 404：这是“未知或已失效”，不是成功。
+
 
 ## 6. 执行入口覆盖
 
@@ -216,21 +267,22 @@ running ──exit──> succeeded / failed / stopped
 | 项目 | 现行兼容/现状 | 目标 | 归属能力 |
 | --- | --- | --- | --- |
 | Agent API 响应 | 原有 `data` 字段保留，新增 `runId`/`run`/`pollUrl`/`stopUrl` | 继续只增不减；旧客户端忽略新字段即可 | 契约演进 |
-| `/runs/current` | 保留 `task`、`schedule`、`recentLogs`；`run` 只含活动 run，`lastRun` 为最近终态 | 增加对未纳入 Run 的外部占用的显式表达；保持旧字段 | 运行快照与目标停止 |
+| `/runs/current` | 保留 `task`、`schedule`、`recentLogs`；新增 `activeRuns` 与 `occupancy`，`run`/`lastRun` 语义不变 | 前端从同一快照派生全局运行展示 | 运行状态单源 |
+| 目标停止入口 | `links.stop` 与 `stopUrl` 指向 `?runId=<id>`；查询参数与请求体都接受 `runId` | 控制器始终按 `runId` 停止 | 前端执行客户端 |
 | 旧执行端点 | `schedules/:id/execute`、`copilot-sets/:id/execute` 保持同步响应和现有错误码 | 接入 Run 后仍保留同步兼容入口；新入口尽早返回身份 | 日常流程纳入 Run、作业集纳入 Run |
 | 幂等键 | 可选；服务端完整支持；Web UI 未发送 | 控制器为每次逻辑提交生成并持久化键 | 前端执行客户端 |
 | `runId` 使用 | Web UI 不保存、不查询，只看 `tasks/status` | 页面/控制器保存到终态并据此恢复 | 前端执行客户端、运行状态单源 |
-| accepted 并发的 `current` | 可能有多个 accepted；`current` 按 stopping > running > accepted、同优先级取最新 | 明确唯一活动执行与占用者 | 运行快照与目标停止 |
-| accepted 的停止 | 带 runId 返回 `AGENT_RUN_NOT_STARTED`；不带 runId 以进程/流程为准 | 目标停止能安全处理 accepted，不误停其他执行 | 运行快照与目标停止 |
+| accepted 并发的 `current` | 已交付：`activeRuns` 列出全部活动意图；`run` 按 stopping > running > accepted、同级取最新 | 调用方不再假定只有一个 accepted | 运行快照（FPR-004） |
+| accepted 的停止 | 已交付：取消为 `stopped`（`result.canceled=true`），不发设备命令；执行器 pre-start gate 放弃启动 | 保持；集合级停止阻止下一项由作业集迁移覆盖 | 运行快照（FPR-004） |
 | 忙碌错误码 | `MAA_EXECUTION_BUSY`、`AGENT_EXECUTION_BUSY`、`AGENT_SCHEDULE_ALREADY_RUNNING` 并存 | 统一为可识别的占用错误，保留旧码映射 | 日常流程纳入 Run |
 | manual 等待 | 页面状态；刷新丢失；等待不持租约 | 服务端集合身份 + 显式等待态；重获租约失败可重试 | 作业集纳入 Run |
 | 旧断点 | 刷新后逐项重提 | 一次性转换/失效，不重提 | 自动化执行迁移 |
-| 全局运行展示 | 页面与监测器争写 `statusStore.isActive` | 从唯一 Run 快照派生 | 运行状态单源 |
-| 定时/更新/Telegram 入口 | 未纳入 Run，但持有租约 | 定时日常纳入 Run；维护与外部入口至少显式标注占用 | 日常流程纳入 Run；综合验收 |
-| 服务重启 | 活动 run → `interrupted`；设备可能仍被旧进程占用 | 重连后不自动续跑，先确认设备/连接 | 运行快照与目标停止 |
+| 全局运行展示 | 快照已提供单一事实来源；页面与监测器仍争写 `statusStore.isActive` | 页面展示从快照派生，不再各自维护运行状态 | 运行状态单源 |
+| 定时/更新/Telegram 入口 | 未纳入 Run，但持有租约；快照以 `occupancy.state=external` 显式标注 | 定时日常纳入 Run；维护与外部入口至少显式标注占用 | 日常流程纳入 Run；综合验收 |
+| 服务重启 | 已交付：活动 run → `interrupted`；`recovery.deviceState=unknown`；不自动续跑 | 重连后先确认设备/连接再重新提交 | 运行快照（FPR-004） |
 | 实时性 | 无推送，HTTP 轮询 | 保持轮询契约；不得把推送当作既有前提 | 客户端实现 |
 
-回滚边界：前端回滚不要求删除服务端已发布的 Run 能力；新增状态、错误码和字段先向后兼容发布，再迁移消费者。Run 存储版本升级必须能读旧文件；不能为了回滚删除已持久化的终态记录。旧断点键在迁移验证完成前只读保留。
+回滚边界：前端回滚不要求删除服务端已发布的 Run 能力；新增状态、错误码和字段先向后兼容发布，再迁移消费者。Run 存储版本升级必须能读旧文件；不能为了回滚删除已持久化的终态记录。旧断点键在迁移验证完成前只读保留。FPR-004 的改动只增加响应字段、查询参数和预启动门禁；回退服务端代码后，旧客户端仍按通用停止工作。
 
 ## 8. 契约测试清单
 
@@ -238,11 +290,14 @@ running ──exit──> succeeded / failed / stopped
 
 | 测试 | 固定的行为 |
 | --- | --- |
-| `server/services/__tests__/agentRunService.test.js` | 生命周期转换、终态幂等、幂等键分区/重用拒绝、500 条与 24 小时保留、缺失 run 错误 |
-| `server/services/__tests__/agentRunPersistence.test.js` | 重启后活动 run 变 `interrupted`、终态恢复、幂等重放跨重启、淘汰写回、坏文件/坏版本 fail-closed、持久化失败可重试 |
-| `server/routes/__tests__/agentRoutes.test.js` | 按 id 查询、`current` 保留旧字段与活动 run、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、停止守卫（未知/终态/未开始/非当前）、accepted 不误停旧进程 |
-| `server/routes/__tests__/agentContract.test.js` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举与错误结构 |
+| `server/services/__tests__/agentRunService.test.js` | 生命周期转换、终态幂等、幂等键分区/重用拒绝、500 条与 24 小时保留、缺失 run 错误、活动集合与最近终态排序、accepted 取消、pre-start 门禁 |
+| `server/services/__tests__/agentRunPersistence.test.js` | 重启后活动 run 变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、坏文件/坏版本 fail-closed、持久化失败可重试 |
+| `server/services/__tests__/runSnapshotService.test.js` | 快照 idle/pending/run/external/unknown、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度 |
+| `server/routes/__tests__/agentRoutes.test.js` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行 |
+| `server/routes/__tests__/agentContract.test.js` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举与错误结构、快照/占用/恢复/目标停止 schema |
 | `server/services/__tests__/executionCoordinatorService.test.js` | 租约互斥、同异步流重入、死进程锁回收 |
+| `server/services/__tests__/maaTaskExecution.test.js` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
+| `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程 |
 | `client/src/features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 连接监测的 online/offline/focus 行为与 active 轮询 |
 | `client/src/features/automation/pages/AutomationTasks.*.test.tsx` | Activity 恢复、执行接线、停止与连接测试的现有页面行为 |
 | `client/src/features/combat/pages/CombatTasks.test.tsx` | 顺序作业集停止后不继续、manual 接线与停止确认 |
@@ -252,16 +307,13 @@ running ──exit──> succeeded / failed / stopped
 
 以下测试尚未存在，属于对应迁移任务的验收前置；在补上之前不能宣称契约已实现：
 
-1. **运行快照**：`current`/按 id 能区分活动 run、最近终态和未纳入 Run 的外部占用；已淘汰/未知 id 返回 404；多个 accepted 时不误导调用方。
-2. **目标停止**：旧 `runId` 不得停掉新运行；终态/未开始/非当前的停止结果稳定；重复停止幂等；停止后不再执行下一项。
-3. **重启边界**：活动 run 恢复为 `interrupted`；同键重试不执行；换键可重新提交；`interrupted` 不声称设备已释放。
-4. **入口覆盖**：手动日常、Dashboard 快捷、定时触发、活动启动各自只产生一个执行归属和一个租约；旧同步端点仍可用。
-5. **步间等待**：流程在步骤延迟/截图/解析期间进程 idle，但 run 仍为活动；不得提前发布完成。
-6. **作业集模式**：app 连续、cli、manual 的模式映射明确；manual 等待不持租约；刷新后仍可观察；占用时继续可重试且不丢条目；停止阻止下一项。
-7. **旧断点**：有效/失效/冲突/版本不符的转换；恢复只观察不重提；旧键删除失败不导致新执行。
-8. **客户端恢复**：保存 `runId`、202 后转轮询、409 占用重试、断线未知不误判、重连对账、页面隐藏/刷新不重提。
-9. **全局单源**：页面与监测器不再各自写 `isActive`；全局展示从同一快照派生。
-10. **跨页一致性**：启动 → 切页 → 停止 → 断线重连 → 刷新后，所有页面显示同一 run 结果；日志/预览等非执行会话不干扰判定。
+1. **入口覆盖**：手动日常、Dashboard 快捷、定时触发、活动启动各自只产生一个执行归属和一个租约；旧同步端点仍可用。
+2. **步间等待**：流程在步骤延迟/截图/解析期间进程 idle，但 run 仍为活动；不得提前发布完成。
+3. **作业集模式**：app 连续、cli、manual 的模式映射明确；manual 等待不持租约；刷新后仍可观察；占用时继续可重试且不丢条目；停止阻止下一项。
+4. **旧断点**：有效/失效/冲突/版本不符的转换；恢复只观察不重提；旧键删除失败不导致新执行。
+5. **客户端恢复**：保存 `runId`、202 后转轮询、409 占用重试、断线未知不误判、重连对账、页面隐藏/刷新不重提。
+6. **全局单源**：页面与监测器不再各自写 `isActive`；全局展示从同一快照派生。
+7. **跨页一致性**：启动 → 切页 → 停止 → 断线重连 → 刷新后，所有页面显示同一 run 结果；日志/预览等非执行会话不干扰判定。
 
 ## 9. 本次核验
 
@@ -272,4 +324,4 @@ git diff --check
 pnpm --filter la-pluma-next-server verify
 ```
 
-本次只新增/修订公共文档，未改变生产逻辑、协议、存储格式或视觉基线。文档中的“现行”结论来自 `0479065` 的代码与上表测试；目标契约以“目标/归属”列标注，不代表已经实现。
+文档中的“现行”结论来自 `a07933e` 的代码与上表测试；FPR-004 已把运行快照、目标停止、重启恢复边界和 pre-start 门禁写入生产实现，并由上表服务端测试固定。未纳入本项的前端控制器、页面迁移和作业集/日常流程纳管仍以“目标/归属”列标注，不代表已经实现。

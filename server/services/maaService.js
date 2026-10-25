@@ -263,6 +263,10 @@ async function execMaaCommandUnlocked(command, args = [], taskName = null, taskT
 async function execMaaCommandWithEnv(command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle, env) {
   const finalArgs = normalizeCopilotCommandArgs(command, args);
   const fullCommand = `${MAA_CLI_PATH} ${command} ${finalArgs.join(' ')}`;
+
+  // Executors may be stopped while they are still pending. The gate runs after
+  // the execution lease is held and before any process is spawned.
+  await lifecycle.onBeforeStart?.();
   
   // 静默模式下不输出日志（用于健康检查等频繁调用）
   if (!silent) {

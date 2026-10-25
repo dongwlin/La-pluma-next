@@ -343,7 +343,7 @@ export const AGENT_OPERATIONS = Object.freeze([
     id: 'stop_task',
     method: 'POST',
     path: '/api/agent/actions/stop',
-    description: 'Stop the currently running MAA task if any.',
+    description: 'Stop the currently running MAA task if any. Pass runId to guard the stop to one execution; accepted runs are canceled without touching the device.',
     tags: ['Execution'],
     safety: safety('low-risk-write', {
       idempotent: true,
@@ -351,6 +351,15 @@ export const AGENT_OPERATIONS = Object.freeze([
       destructive: true,
       sideEffects: ['interrupt_running_automation']
     }),
+    query_schema: {
+      type: 'object',
+      properties: {
+        runId: {
+          ...runIdProperty,
+          description: 'Optional guard, used by Run links. The body field takes precedence when both are present.'
+        }
+      }
+    },
     body_schema: {
       type: 'object',
       properties: {
@@ -365,8 +374,9 @@ export const AGENT_OPERATIONS = Object.freeze([
     id: 'get_current_run',
     method: 'GET',
     path: '/api/agent/runs/current',
-    description: 'Return current MAA task, schedule execution state, and recent logs for polling.',
+    description: 'Return the current run, all active run identities, the latest terminal run, device occupancy (run, external, pending, idle or unknown), schedule execution state, and recent logs for polling.',
     tags: ['Status'],
+    responseKind: 'run-snapshot',
     query_schema: {
       type: 'object',
       properties: {
@@ -660,7 +670,9 @@ function openApiOperation(definition, defaults) {
     ? { $ref: '#/components/schemas/OpenApiDocument' }
     : item.responseKind === 'run'
       ? { $ref: '#/components/schemas/RunResponse' }
-      : { $ref: '#/components/schemas/SuccessResponse' };
+      : item.responseKind === 'run-snapshot'
+        ? { $ref: '#/components/schemas/RunSnapshotResponse' }
+        : { $ref: '#/components/schemas/SuccessResponse' };
   const runHeaders = item.execution.producesRun
     ? {
         'X-La-Pluma-Run-Id': {
@@ -863,6 +875,24 @@ export function buildOpenApiSpec(defaults = {}) {
           },
           additionalProperties: false
         },
+        RunRecovery: {
+          type: 'object',
+          required: ['source', 'previousState', 'executionResumed', 'deviceState'],
+          properties: {
+            source: { type: 'string', description: 'Why the record was closed without a recorded outcome.' },
+            previousState: {
+              type: ['string', 'null'],
+              description: 'State observed before the service restart.'
+            },
+            executionResumed: { type: 'boolean', const: false },
+            deviceState: {
+              type: 'string',
+              const: 'unknown',
+              description: 'The record cannot prove the device is free; verify the connection before resubmitting.'
+            }
+          },
+          additionalProperties: false
+        },
         Run: {
           type: 'object',
           required: ['runId', 'operationId', 'state', 'acceptedAt', 'links'],
@@ -880,6 +910,7 @@ export function buildOpenApiSpec(defaults = {}) {
             progress: { $ref: '#/components/schemas/RunProgress' },
             result: {},
             error: { $ref: '#/components/schemas/RunError' },
+            recovery: { $ref: '#/components/schemas/RunRecovery' },
             links: { $ref: '#/components/schemas/RunLinks' }
           },
           additionalProperties: false
@@ -891,6 +922,135 @@ export function buildOpenApiSpec(defaults = {}) {
               type: 'object',
               properties: {
                 data: { $ref: '#/components/schemas/Run' }
+              }
+            }
+          ]
+        },
+        ScheduleExecutionSnapshot: {
+          type: 'object',
+          properties: {
+            isRunning: { type: 'boolean' },
+            scheduleId: { type: ['string', 'null'] },
+            currentStep: { type: ['integer', 'null'], minimum: -1 },
+            totalSteps: { type: 'integer', minimum: 0 },
+            currentTask: { type: ['string', 'null'] },
+            currentTaskId: { type: ['string', 'null'] },
+            message: { type: 'string' },
+            startTime: { type: ['integer', 'null'] },
+            shouldStop: { type: 'boolean' },
+            lastResult: {},
+            taskResults: { type: 'array', items: {} }
+          },
+          additionalProperties: true
+        },
+        RunOccupancy: {
+          type: 'object',
+          required: ['state', 'runId', 'runState', 'lease', 'task', 'schedule', 'sources'],
+          properties: {
+            state: {
+              type: 'string',
+              enum: ['idle', 'pending', 'run', 'external', 'unknown'],
+              description: '"run" = a tracked run owns execution; "external" = device activity without such a run; "pending" = only accepted runs exist; "idle" = nothing is observed; "unknown" = the lease file cannot be verified.'
+            },
+            runId: { type: ['string', 'null'], format: 'uuid' },
+            runState: { type: ['string', 'null'] },
+            sources: {
+              type: 'array',
+              items: { type: 'string', enum: ['run', 'task', 'schedule', 'lease'] }
+            },
+            lease: {
+              type: 'object',
+              required: ['state', 'owner'],
+              properties: {
+                state: {
+                  type: 'string',
+                  enum: ['free', 'held', 'stale', 'unknown'],
+                  description: '"held" = the recorded owner process is alive; "stale" = the lock file is reclaimable; "unknown" = it cannot be interpreted.'
+                },
+                reason: {
+                  type: ['string', 'null'],
+                  description: 'Why the lease could not be interpreted; only set when state is unknown.'
+                },
+                owner: {
+                  oneOf: [
+                    {
+                      type: 'object',
+                      required: ['pid', 'source', 'taskName', 'command', 'startedAt'],
+                      properties: {
+                        pid: { type: ['integer', 'null'] },
+                        source: { type: ['string', 'null'] },
+                        taskName: { type: ['string', 'null'] },
+                        command: { type: ['string', 'null'] },
+                        startedAt: { type: ['string', 'null'], format: 'date-time' }
+                      },
+                      additionalProperties: false
+                    },
+                    { type: 'null' }
+                  ]
+                }
+              },
+              additionalProperties: false
+            },
+            task: {
+              type: 'object',
+              required: ['isRunning', 'taskName', 'taskType', 'stopRequested'],
+              properties: {
+                isRunning: { type: 'boolean' },
+                taskName: { type: ['string', 'null'] },
+                taskType: { type: ['string', 'null'] },
+                stopRequested: { type: 'boolean' }
+              },
+              additionalProperties: false
+            },
+            schedule: { $ref: '#/components/schemas/ScheduleExecutionSnapshot' }
+          },
+          additionalProperties: false
+        },
+        RunSnapshot: {
+          type: 'object',
+          required: ['isRunning', 'schedule', 'recentLogs', 'run', 'activeRuns', 'lastRun', 'occupancy'],
+          properties: {
+            isRunning: {
+              type: 'boolean',
+              description: 'Legacy task-process projection. False while a flow waits between steps.'
+            },
+            taskName: { type: ['string', 'null'] },
+            startTime: { type: ['integer', 'null'] },
+            taskType: { type: ['string', 'null'] },
+            stopRequested: { type: 'boolean' },
+            logs: { type: 'array', items: {} },
+            schedule: { $ref: '#/components/schemas/ScheduleExecutionSnapshot' },
+            recentLogs: { type: 'array', items: {} },
+            run: {
+              oneOf: [
+                { $ref: '#/components/schemas/Run' },
+                { type: 'null' }
+              ],
+              description: 'Current active run, ordered stopping > running > accepted and newest first.'
+            },
+            activeRuns: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/Run' },
+              description: 'Every active run. More than one entry means additional accepted intents exist.'
+            },
+            lastRun: {
+              oneOf: [
+                { $ref: '#/components/schemas/Run' },
+                { type: 'null' }
+              ],
+              description: 'Most recent terminal run by completion time. It is not identity-safe for a specific caller.'
+            },
+            occupancy: { $ref: '#/components/schemas/RunOccupancy' }
+          },
+          additionalProperties: true
+        },
+        RunSnapshotResponse: {
+          allOf: [
+            { $ref: '#/components/schemas/SuccessResponse' },
+            {
+              type: 'object',
+              properties: {
+                data: { $ref: '#/components/schemas/RunSnapshot' }
               }
             }
           ]

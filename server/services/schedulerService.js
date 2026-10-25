@@ -426,11 +426,10 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
   const validation = validateScheduledTaskFlow(taskFlow);
   if (!validation.success) return validation;
 
-  lifecycle.onStarted?.();
   logger.info('开始执行任务流程', { scheduleId });
   activeScheduleRunId = runId;
   activeScheduleAbortController = new AbortController();
-  
+
   // 更新状态：开始执行
   updateScheduleStatus({
     isRunning: true,
@@ -445,6 +444,11 @@ async function executeTaskFlowUnlocked(taskFlow, scheduleId, runId, lifecycle = 
     lastResult: null,
     taskResults: []
   });
+
+  // The pre-start gate runs after the flow owns the lease and the scheduler
+  // status is live, so a concurrent stop either aborts here or sets shouldStop.
+  await lifecycle.onBeforeStart?.();
+  lifecycle.onStarted?.();
   
   const startTime = Date.now();
   const enabledTasks = taskFlow.filter(t => t.enabled);
@@ -1397,7 +1401,11 @@ async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}) {
         owner: error.owner
       };
     }
-    unexpectedError = error;
+    if (error?.stopped) {
+      updateScheduleStatus({ shouldStop: true });
+    } else {
+      unexpectedError = error;
+    }
     throw error;
   } finally {
     const ownsActiveExecution = activeScheduleRunId === runId;

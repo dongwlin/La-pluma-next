@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, describe, it } from 'node:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
 import router, { buildWebrtcBrowserProtocol, executeTrackedAgentAction } from '../agent.js'
 import { API_VERSION } from '../agentContract.js'
 import { getTaskStatus, setTaskStatus } from '../../services/maaService.js'
@@ -20,6 +23,23 @@ const quietLogger = {
   info() {},
   error() {}
 }
+
+let lockDir
+let lockFile
+let previousLockFile
+
+before(async () => {
+  lockDir = await mkdtemp(join(tmpdir(), 'la-pluma-agent-routes-'))
+  lockFile = join(lockDir, 'maa-execution.lock')
+  previousLockFile = process.env.LA_PLUMA_MAA_LOCK_FILE
+  process.env.LA_PLUMA_MAA_LOCK_FILE = lockFile
+})
+
+after(async () => {
+  if (previousLockFile === undefined) delete process.env.LA_PLUMA_MAA_LOCK_FILE
+  else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLockFile
+  await rm(lockDir, { recursive: true, force: true })
+})
 
 function findHandler(method, path) {
   const layer = router.stack.find(item => item.route?.path === path && item.route.methods?.[method])
@@ -664,7 +684,7 @@ describe('Agent run routes', () => {
     assert.equal(res.body.error.details.currentRunId, current.runId)
   })
 
-  it('does not let an accepted run stop an untracked legacy process', async () => {
+  it('cancels an accepted run without touching an untracked legacy process', async () => {
     const signals = []
     setTaskStatus(true, '旧版任务', 'legacy', {
       pid: null,
@@ -692,8 +712,14 @@ describe('Agent run routes', () => {
       body: { runId: acceptedRun.runId }
     }, stopResponse, () => {})
 
-    assert.equal(stopResponse.statusCode, 409)
-    assert.equal(stopResponse.body.error.code, 'AGENT_RUN_NOT_STARTED')
+    assert.equal(stopResponse.statusCode, 200)
+    assert.equal(stopResponse.body.data.acceptedRunCanceled, true)
+    assert.equal(stopResponse.body.data.deviceStopRequested, false)
+    assert.equal(stopResponse.body.data.run.state, 'stopped')
+    assert.deepEqual(stopResponse.body.data.run.result, {
+      canceled: true,
+      reason: 'stop_requested_before_start'
+    })
     assert.deepEqual(signals, [])
 
     const busy = new Error('MAA 正在被其他任务使用')
@@ -701,6 +727,205 @@ describe('Agent run routes', () => {
     busy.statusCode = 409
     rejectAdmission(busy)
     await startRequest
+
+    assert.equal(startResponse.statusCode, 200)
+    assert.equal(startResponse.body.data.run.state, 'stopped')
+    assert.equal(getAgentRun(acceptedRun.runId).state, 'stopped')
+  })
+
+  it('stops an accepted run between admission and execution without executing it', async () => {
+    let releaseGate
+    let executions = 0
+    const res = createResponse()
+    const request = executeTrackedAgentAction(
+      { headers: { 'idempotency-key': 'cancel:before-start' } },
+      res,
+      {
+        operationId: 'run_task',
+        input: { command: 'award' },
+        execute: async lifecycle => {
+          await new Promise(resolve => { releaseGate = resolve })
+          await lifecycle.onBeforeStart()
+          executions += 1
+          return { success: true }
+        }
+      }
+    )
+    await new Promise(resolve => setImmediate(resolve))
+    const acceptedRun = getCurrentAgentRun()
+    assert.equal(acceptedRun.state, 'accepted')
+
+    const stopResponse = createResponse()
+    await findHandler('post', '/actions/stop')({
+      headers: {},
+      body: { runId: acceptedRun.runId }
+    }, stopResponse, () => {})
+    assert.equal(stopResponse.statusCode, 200)
+    assert.equal(stopResponse.body.data.acceptedRunCanceled, true)
+
+    releaseGate()
+    await request
+
+    assert.equal(executions, 0)
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.data.run.state, 'stopped')
+    assert.equal(res.body.data.canceled, true)
+    assert.equal(getAgentRun(acceptedRun.runId).state, 'stopped')
+  })
+
+  it('does not let an old terminal run stop a newer execution', async () => {
+    const signals = []
+    const oldRun = beginAgentRun({ operationId: 'fight' }).run
+    startAgentRun(oldRun.runId)
+    completeAgentRun(oldRun.runId, { ok: true })
+    const currentRun = beginAgentRun({ operationId: 'run_task' }).run
+    startAgentRun(currentRun.runId)
+    setTaskStatus(true, '新任务', 'agent', {
+      pid: null,
+      exitCode: null,
+      kill: signal => signals.push(signal)
+    })
+
+    const res = createResponse()
+    await findHandler('post', '/actions/stop')({
+      headers: {},
+      body: { runId: oldRun.runId }
+    }, res, () => {})
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.data.alreadyTerminal, true)
+    assert.equal(res.body.data.deviceStopRequested, false)
+    assert.deepEqual(signals, [])
+    assert.equal(getAgentRun(currentRun.runId).state, 'running')
+  })
+
+  it('accepts the targeted stop link through its query parameter', async () => {
+    const run = beginAgentRun({ operationId: 'fight' }).run
+    assert.equal(run.links.stop, `/api/agent/actions/stop?runId=${run.runId}`)
+
+    const res = createResponse()
+    await findHandler('post', '/actions/stop')({
+      headers: {},
+      query: { runId: run.runId }
+    }, res, () => {})
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.data.acceptedRunCanceled, true)
+    assert.equal(res.body.data.run.state, 'stopped')
+  })
+
+  it('keeps a targeted stop retryable while the run is stopping', async () => {
+    const signals = []
+    setTaskStatus(true, '理智作战', 'agent', {
+      pid: null,
+      exitCode: null,
+      kill: signal => signals.push(signal)
+    })
+    const run = beginAgentRun({ operationId: 'fight' }).run
+    startAgentRun(run.runId)
+    const stop = findHandler('post', '/actions/stop')
+
+    const first = createResponse()
+    await stop({ headers: {}, body: { runId: run.runId } }, first, () => {})
+    const second = createResponse()
+    await stop({ headers: {}, body: { runId: run.runId } }, second, () => {})
+
+    assert.equal(first.statusCode, 200)
+    assert.equal(first.body.data.deviceStopRequested, true)
+    assert.equal(first.body.data.run.state, 'stopping')
+    assert.equal(second.statusCode, 200)
+    assert.equal(second.body.data.stopRequested, true)
+    assert.equal(second.body.data.run.state, 'stopping')
+    assert.deepEqual(signals, ['SIGTERM'])
+  })
+
+  it('rejects a non-string run guard instead of stopping the current execution', async () => {
+    const signals = []
+    setTaskStatus(true, '理智作战', 'agent', {
+      pid: null,
+      exitCode: null,
+      kill: signal => signals.push(signal)
+    })
+    const run = beginAgentRun({ operationId: 'fight' }).run
+    startAgentRun(run.runId)
+
+    const res = createResponse()
+    await findHandler('post', '/actions/stop')({
+      headers: {},
+      body: { runId: 42 }
+    }, res, () => {})
+
+    assert.equal(res.statusCode, 400)
+    assert.equal(res.body.error.code, 'AGENT_VALIDATION_RUN_ID_INVALID')
+    assert.deepEqual(signals, [])
+    assert.equal(getAgentRun(run.runId).state, 'running')
+  })
+
+  it('reports external occupancy when the device is used without a tracked run', async () => {
+    setTaskStatus(true, '未纳管任务', 'legacy', { pid: null, exitCode: null, kill() {} })
+    const res = createResponse()
+
+    await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
+
+    assert.equal(res.body.data.run, null)
+    assert.deepEqual(res.body.data.activeRuns, [])
+    assert.equal(res.body.data.isRunning, true)
+    assert.equal(res.body.data.occupancy.state, 'external')
+    assert.equal(res.body.data.occupancy.runId, null)
+    assert.ok(res.body.data.occupancy.sources.includes('task'))
+  })
+
+  it('distinguishes a pending accepted run from external device activity', async () => {
+    const accepted = beginAgentRun({ operationId: 'run_task' }).run
+
+    const free = createResponse()
+    await findHandler('get', '/runs/current')({ headers: {}, query: {} }, free, () => {})
+    assert.equal(free.body.data.occupancy.state, 'pending')
+    assert.equal(free.body.data.occupancy.runId, accepted.runId)
+    assert.equal(free.body.data.occupancy.runState, 'accepted')
+
+    setTaskStatus(true, '未纳管任务', 'legacy', { pid: null, exitCode: null, kill() {} })
+    const busy = createResponse()
+    await findHandler('get', '/runs/current')({ headers: {}, query: {} }, busy, () => {})
+    assert.equal(busy.body.data.occupancy.state, 'external')
+    assert.equal(busy.body.data.occupancy.runId, accepted.runId)
+  })
+
+  it('exposes every active intent instead of hiding concurrent accepted runs', async () => {
+    const older = beginAgentRun({ operationId: 'fight' }).run
+    const newer = beginAgentRun({ operationId: 'run_task' }).run
+    const res = createResponse()
+
+    await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
+
+    assert.deepEqual(
+      res.body.data.activeRuns.map(run => run.runId),
+      [newer.runId, older.runId]
+    )
+    assert.equal(res.body.data.run.runId, newer.runId)
+    assert.equal(res.body.data.occupancy.state, 'pending')
+  })
+
+  it('reports a held lease with its owner in the occupancy snapshot', async () => {
+    await writeFile(lockFile, JSON.stringify({
+      pid: process.pid,
+      source: 'copilot-set',
+      taskName: '作业集',
+      command: 'copilot-plan',
+      startedAt: new Date().toISOString()
+    }))
+    const res = createResponse()
+    try {
+      await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
+    } finally {
+      await rm(lockFile, { force: true })
+    }
+
+    assert.equal(res.body.data.occupancy.state, 'external')
+    assert.equal(res.body.data.occupancy.lease.state, 'held')
+    assert.equal(res.body.data.occupancy.lease.owner.pid, process.pid)
+    assert.equal(res.body.data.occupancy.lease.owner.source, 'copilot-set')
+    assert.ok(res.body.data.occupancy.sources.includes('lease'))
   })
 })
 

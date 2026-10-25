@@ -311,6 +311,12 @@ describe('agent run persistence', () => {
         reason: 'server_restart',
         previousState
       });
+      assert.deepEqual(run.recovery, {
+        source: 'server_restart',
+        previousState,
+        executionResumed: false,
+        deviceState: 'unknown'
+      });
       assert.ok(run.finishedAt);
     }
 

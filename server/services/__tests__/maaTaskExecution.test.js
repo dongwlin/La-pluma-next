@@ -113,3 +113,20 @@ test('a background fight retains its cache until the child has actually exited',
   await assert.rejects(stat(process.env.LA_PLUMA_MAA_LOCK_FILE), { code: 'ENOENT' });
   assert.equal(getTaskStatus().isRunning, false);
 });
+
+test('an aborted pre-start gate never spawns the CLI or keeps the lease', async () => {
+  const marker = join(root, 'aborted.json');
+  const rejection = Object.assign(new Error('执行在开始前已被停止'), {
+    code: 'AGENT_RUN_STOPPED_BEFORE_START',
+    stopped: true
+  });
+  await assert.rejects(
+    execMaaCommand('fight', ['1-7', '--hold', marker], '理智作战', 'combat', false, false, {
+      onBeforeStart: async () => { throw rejection; }
+    }),
+    error => error === rejection
+  );
+  await assert.rejects(stat(marker), { code: 'ENOENT' });
+  await assert.rejects(stat(process.env.LA_PLUMA_MAA_LOCK_FILE), { code: 'ENOENT' });
+  assert.equal(getTaskStatus().isRunning, false);
+});

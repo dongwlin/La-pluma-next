@@ -207,7 +207,7 @@ function toAgentRunDto(run) {
     result: cloneJson(run.result),
     links: {
       self: `/api/agent/runs/${run.runId}`,
-      stop: '/api/agent/actions/stop'
+      stop: `/api/agent/actions/stop?runId=${encodeURIComponent(run.runId)}`
     }
   };
   if (run.durationMs !== null) dto.durationMs = run.durationMs;
@@ -219,6 +219,14 @@ function toAgentRunDto(run) {
       details: cloneJson(run.error.details),
       retryable: run.error.retryable,
       statusCode: run.error.statusCode
+    };
+  }
+  if (run.status === 'interrupted') {
+    dto.recovery = {
+      source: run.error?.details?.reason || 'unknown',
+      previousState: run.error?.details?.previousState || null,
+      executionResumed: false,
+      deviceState: 'unknown'
     };
   }
   return cloneJson(dto);
@@ -720,8 +728,56 @@ export function startAgentRun(runId) {
   return transition(runId, 'running', ['accepted']);
 }
 
+/**
+ * Gate used by executors after they obtain execution rights and before any
+ * device side effect. A run stopped while still pending must not start.
+ */
+export function startAgentRunForExecution(runId) {
+  const record = requireRecord(runId);
+  if (record.run.status === 'accepted') return startAgentRun(runId);
+  if (record.run.status === 'running') return toAgentRunDto(record.run);
+
+  const error = agentError(
+    'AGENT_RUN_STOPPED_BEFORE_START',
+    '执行在开始前已被停止，未向设备发送任何命令',
+    {
+      statusCode: 409,
+      details: { runId, state: record.run.status },
+      retryable: false
+    }
+  );
+  error.stopped = true;
+  throw error;
+}
+
 export function markAgentRunStopping(runId) {
   return transition(runId, 'stopping', ['accepted', 'running']);
+}
+
+const RUN_STOP_PRIORITY = { stopping: 3, running: 2, accepted: 1 };
+
+/**
+ * Records a stop intent for one run without sending any device command.
+ * `accepted` runs hold no execution rights, so they become terminal
+ * immediately; `running` runs move to `stopping`; `stopping` is idempotent.
+ */
+export function requestAgentRunStop(runId) {
+  const record = requireRecord(runId);
+  const state = record.run.status;
+
+  if (TERMINAL_STATUSES.has(state)) {
+    return { run: toAgentRunDto(record.run), disposition: 'terminal' };
+  }
+  if (state === 'accepted') {
+    return {
+      run: stopAgentRun(runId, { canceled: true, reason: 'stop_requested_before_start' }),
+      disposition: 'canceled'
+    };
+  }
+  if (state === 'stopping') {
+    return { run: toAgentRunDto(record.run), disposition: 'stopping' };
+  }
+  return { run: markAgentRunStopping(runId), disposition: 'stopping' };
 }
 
 export function setAgentRunAcceptedResult(runId, result = null) {
@@ -802,15 +858,31 @@ export function listAgentRuns({ operationId = null, state = null, status = null,
 }
 
 export function getCurrentAgentRun() {
+  return getActiveAgentRuns()[0] || null;
+}
+
+export function getActiveAgentRuns() {
   assertAgentRunStoreReadable();
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
-  const priority = { stopping: 3, running: 2, accepted: 1 };
-  const current = [...runs.values()]
-    .filter(record => priority[record.run.status])
+  return [...runs.values()]
+    .filter(record => ACTIVE_STATUSES.has(record.run.status))
     .sort((left, right) =>
-      priority[right.run.status] - priority[left.run.status] || right.sequence - left.sequence
+      RUN_STOP_PRIORITY[right.run.status] - RUN_STOP_PRIORITY[left.run.status]
+      || right.sequence - left.sequence
+    )
+    .map(record => toAgentRunDto(record.run));
+}
+
+export function getLatestTerminalAgentRun() {
+  assertAgentRunStoreReadable();
+  if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
+  const record = [...runs.values()]
+    .filter(item => TERMINAL_STATUSES.has(item.run.status))
+    .sort((left, right) =>
+      right.finishedAtMs - left.finishedAtMs
+      || right.terminalSequence - left.terminalSequence
     )[0];
-  return toAgentRunDto(current?.run);
+  return toAgentRunDto(record?.run);
 }
 
 function resetAgentRunState({ clearMemory = true } = {}) {

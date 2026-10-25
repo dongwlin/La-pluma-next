@@ -37,19 +37,19 @@ import { withMaaExecutionLease } from '../services/executionCoordinatorService.j
 import { createDailyFlowExecutionError, executeAgentTask, normalizeDailyFlowRequest } from '../services/agentActionService.js';
 import {
   beginAgentRun,
-  startAgentRun,
-  markAgentRunStopping,
+  startAgentRunForExecution,
   completeAgentRun,
   failAgentRun,
   stopAgentRun,
+  requestAgentRunStop,
   getAgentRun,
-  listAgentRuns,
   getCurrentAgentRun,
   releaseAgentRunIdempotency,
   setAgentRunAcceptedResult,
   flushAgentRunStore,
   withFlushedAgentRunSnapshot
 } from '../services/agentRunService.js';
+import { buildAgentRunSnapshot, enrichAgentRun } from '../services/runSnapshotService.js';
 import {
   asyncHandler,
   agentError,
@@ -112,33 +112,6 @@ function setRunResponseHeaders(res, run, replayed, includeLocation = false) {
     if (typeof res.set === 'function') res.set(name, value);
     else if (typeof res.setHeader === 'function') res.setHeader(name, value);
   }
-}
-
-function enrichAgentRun(run) {
-  if (!run || !ACTIVE_RUN_STATES.has(run.state)) return run;
-
-  const schedule = getScheduleExecutionStatus();
-  const task = getTaskStatus();
-  if (run.operationId === 'run_daily_flow') {
-    return {
-      ...run,
-      progress: {
-        currentStep: schedule.currentStep,
-        totalSteps: schedule.totalSteps,
-        currentTask: schedule.currentTask,
-        message: schedule.message || (schedule.isRunning ? '今日流程执行中' : '今日流程正在收尾')
-      }
-    };
-  }
-  return {
-    ...run,
-    progress: {
-      currentStep: null,
-      totalSteps: null,
-      currentTask: task.taskName,
-      message: task.stopRequested ? '正在终止任务' : task.isRunning ? '任务执行中' : '等待任务启动'
-    }
-  };
 }
 
 function runResponseData(result, run) {
@@ -311,9 +284,21 @@ export async function executeTrackedAgentAction(req, res, {
     return sendRunFailure(res, req, rejectedRun);
   }
 
-  const ensureRunStarted = () => {
+  const ensureRunStarted = () => startAgentRunForExecution(runId);
+  const observeProcessStart = () => {
     const run = getAgentRun(runId);
-    return run?.state === 'accepted' ? startAgentRun(runId) : run;
+    if (!run) return null;
+    if (run.state === 'accepted') return ensureRunStarted();
+    if (run.state === 'stopping' || TERMINAL_RUN_STATES.has(run.state)) {
+      // A stop landed between the pre-start gate and the spawn: kill what just started.
+      try {
+        stopCurrentTask();
+        stopScheduleExecution();
+      } catch (error) {
+        logger.error('停止已取消的执行进程失败', { runId, error: error.message });
+      }
+    }
+    return run;
   };
   let acceptedResult;
   let hasAcceptedResult = false;
@@ -326,7 +311,8 @@ export async function executeTrackedAgentAction(req, res, {
     return settleBackgroundRun(runId, mergeBackgroundOutcome(outcome, acceptedResult));
   };
   const lifecycle = {
-    onStarted: ensureRunStarted,
+    onBeforeStart: ensureRunStarted,
+    onStarted: observeProcessStart,
     ...(!waitForCompletion ? { onSettled: settleAcceptedBackgroundRun } : {})
   };
 
@@ -370,6 +356,21 @@ export async function executeTrackedAgentAction(req, res, {
     );
   } catch (error) {
     const current = getAgentRun(runId);
+    if (current && TERMINAL_RUN_STATES.has(current.state)) {
+      return respondWithPersistedAgentRun(
+        res,
+        req,
+        runId,
+        'Agent run 终态响应持久化失败',
+        persistedRun => {
+          const terminalRun = persistedRun || current;
+          if (terminalRun.state === 'stopped') {
+            return sendRunSuccess(res, req, terminalRun.result, terminalRun, { message: '任务已终止' });
+          }
+          return sendRunFailure(res, req, terminalRun);
+        }
+      );
+    }
     if (isPreExecutionError(error) && current && !TERMINAL_RUN_STATES.has(current.state)) {
       const rejectedRun = failAgentRun(runId, error);
       releaseAgentRunIdempotency(runId);
@@ -667,21 +668,7 @@ router.get('/status', asyncHandler(async (req, res) => {
 }));
 
 router.get('/runs/current', asyncHandler(async (req, res) => {
-  const lines = Math.min(Math.max(Number(req.query.lines || 80), 1), 500);
-  const task = getTaskStatus();
-  const schedule = getScheduleExecutionStatus();
-  const recentLogs = getRealtimeLogs(lines);
-  const currentRun = enrichAgentRun(getCurrentAgentRun());
-  const lastRun = listAgentRuns({ limit: 500 })
-    .filter(run => TERMINAL_RUN_STATES.has(run.state))
-    .sort((left, right) => String(right.finishedAt).localeCompare(String(left.finishedAt)))[0] || null;
-  return sendSuccess(res, req, {
-    ...task,
-    schedule,
-    recentLogs,
-    run: currentRun,
-    lastRun
-  });
+  return sendSuccess(res, req, await buildAgentRunSnapshot({ lines: req.query.lines }));
 }));
 
 router.get('/runs/:runId', asyncHandler(async (req, res) => {
@@ -1672,63 +1659,124 @@ router.post('/actions/run-task', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/actions/stop', asyncHandler(async (req, res) => {
-  const requestedRunId = req.body?.runId || null;
-  const currentRun = getCurrentAgentRun();
+function normalizeRequestedRunId(req) {
+  const requested = req.body?.runId ?? req.query?.runId ?? null;
+  if (requested === null) return null;
+  if (typeof requested !== 'string' || !requested.trim()) {
+    throw agentError('AGENT_VALIDATION_RUN_ID_INVALID', 'runId 必须是非空字符串', {
+      statusCode: 400,
+      details: { receivedType: typeof requested },
+      retryable: false
+    });
+  }
+  return requested.trim();
+}
 
-  if (requestedRunId) {
-    const requestedRun = getAgentRun(requestedRunId);
-    if (!requestedRun) {
-      return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${requestedRunId}`, {
-        statusCode: 404,
-        details: { runId: requestedRunId },
-        retryable: false
-      }));
+function sendStopSuccess(res, req, runId, data, message) {
+  return respondWithPersistedAgentRun(
+    res,
+    req,
+    runId,
+    'Agent run 停止状态持久化失败',
+    persistedRun => sendSuccess(res, req, {
+      ...data,
+      run: enrichAgentRun(persistedRun || data.run)
+    }, message)
+  );
+}
+
+async function stopRequestedRun(res, req, requestedRunId) {
+  const requestedRun = getAgentRun(requestedRunId);
+  if (!requestedRun) {
+    return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${requestedRunId}`, {
+      statusCode: 404,
+      details: { runId: requestedRunId },
+      retryable: false
+    }));
+  }
+  if (TERMINAL_RUN_STATES.has(requestedRun.state)) {
+    return sendSuccess(res, req, {
+      stopRequested: false,
+      deviceStopRequested: false,
+      alreadyTerminal: true,
+      run: requestedRun
+    }, '任务已经结束');
+  }
+
+  // Accepted runs hold no execution rights: canceling them is safe and
+  // cannot touch a newer execution.
+  if (requestedRun.state === 'accepted') {
+    const { run } = requestAgentRunStop(requestedRunId);
+    return sendStopSuccess(res, req, run.runId, {
+      stopRequested: true,
+      deviceStopRequested: false,
+      acceptedRunCanceled: true,
+      run
+    }, '已取消尚未开始的执行');
+  }
+
+  const currentRun = getCurrentAgentRun();
+  if (!currentRun || currentRun.runId !== requestedRunId) {
+    if (requestedRun.state === 'stopping') {
+      return sendSuccess(res, req, {
+        stopRequested: true,
+        deviceStopRequested: false,
+        alreadyStopping: true,
+        run: requestedRun
+      }, '任务正在终止');
     }
-    if (TERMINAL_RUN_STATES.has(requestedRun.state)) {
-      return sendSuccess(res, req, { stopped: false, alreadyTerminal: true, run: requestedRun }, '任务已经结束');
-    }
-    if (requestedRun.state === 'accepted') {
-      return sendError(res, req, agentError('AGENT_RUN_NOT_STARTED', '目标 run 尚未获得执行权，未发送终止命令', {
-        statusCode: 409,
-        details: { requestedRunId, state: requestedRun.state },
-        retryable: true
-      }));
-    }
-    if (!currentRun || currentRun.runId !== requestedRunId) {
-      return sendError(res, req, agentError('AGENT_RUN_NOT_CURRENT', '目标 run 不是当前执行，未发送终止命令', {
-        statusCode: 409,
-        details: { requestedRunId, currentRunId: currentRun?.runId || null },
-        retryable: false
-      }));
-    }
+    return sendError(res, req, agentError('AGENT_RUN_NOT_CURRENT', '目标 run 不是当前执行，未发送终止命令', {
+      statusCode: 409,
+      details: { requestedRunId, currentRunId: currentRun?.runId || null },
+      retryable: false
+    }));
   }
 
   const task = stopCurrentTask();
   const scheduleStopped = stopScheduleExecution();
-  const stopRequested = task.success || scheduleStopped;
-  let run = currentRun;
-  if (stopRequested && run && ACTIVE_RUN_STATES.has(run.state)) {
-    if (run.state !== 'stopping') run = markAgentRunStopping(run.runId);
-    return respondWithPersistedAgentRun(
-      res,
-      req,
-      run.runId,
-      'Agent run 停止状态持久化失败',
-      persistedRun => sendSuccess(res, req, {
-        task,
-        scheduleStopped,
-        stopRequested,
-        run: enrichAgentRun(persistedRun || run)
-      }, '已发送终止请求')
-    );
+  const deviceStopRequested = task.success || scheduleStopped;
+  const { run } = requestAgentRunStop(requestedRunId);
+  return sendStopSuccess(res, req, run.runId, {
+    task,
+    scheduleStopped,
+    stopRequested: true,
+    deviceStopRequested,
+    run
+  }, '已发送终止请求');
+}
+
+async function stopCurrentExecution(res, req) {
+  const task = stopCurrentTask();
+  const scheduleStopped = stopScheduleExecution();
+  const deviceStopRequested = task.success || scheduleStopped;
+  const currentRun = getCurrentAgentRun();
+
+  if (currentRun && ACTIVE_RUN_STATES.has(currentRun.state)) {
+    const { run, disposition } = requestAgentRunStop(currentRun.runId);
+    const acceptedRunCanceled = disposition === 'canceled';
+    return sendStopSuccess(res, req, run.runId, {
+      task,
+      scheduleStopped,
+      stopRequested: true,
+      deviceStopRequested,
+      ...(acceptedRunCanceled ? { acceptedRunCanceled: true } : {}),
+      run
+    }, acceptedRunCanceled ? '已取消尚未开始的执行' : '已发送终止请求');
   }
+
   return sendSuccess(res, req, {
     task,
     scheduleStopped,
-    stopRequested,
-    run: enrichAgentRun(run)
-  }, stopRequested ? '已发送终止请求' : '当前没有可终止的任务');
+    stopRequested: deviceStopRequested,
+    deviceStopRequested,
+    run: enrichAgentRun(currentRun)
+  }, deviceStopRequested ? '已发送终止请求' : '当前没有可终止的任务');
+}
+
+router.post('/actions/stop', asyncHandler(async (req, res) => {
+  const requestedRunId = normalizeRequestedRunId(req);
+  if (requestedRunId) return stopRequestedRun(res, req, requestedRunId);
+  return stopCurrentExecution(res, req);
 }));
 
 export default router;

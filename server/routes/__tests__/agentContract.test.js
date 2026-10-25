@@ -273,7 +273,7 @@ describe('Agent OpenAPI generation', () => {
       for (const status of ['400', '401', '404', '409', '422', '500']) {
         assert.ok(generated.responses[status], `${item.id} is missing ${status}`);
       }
-      if (item.responseKind !== 'openapi' && item.responseKind !== 'run') {
+      if (item.responseKind !== 'openapi' && item.responseKind !== 'run' && item.responseKind !== 'run-snapshot') {
         assert.equal(
           generated.responses['200'].content['application/json'].schema.$ref,
           '#/components/schemas/SuccessResponse'
@@ -341,12 +341,60 @@ describe('Agent OpenAPI generation', () => {
     assert.equal(schemas.Run.properties.progress.$ref, '#/components/schemas/RunProgress');
     assert.equal(schemas.Run.properties.durationMs.minimum, 0);
     assert.equal(schemas.Run.properties.error.$ref, '#/components/schemas/RunError');
+    assert.equal(schemas.Run.properties.recovery.$ref, '#/components/schemas/RunRecovery');
+    assert.deepEqual(
+      schemas.RunRecovery.required,
+      ['source', 'previousState', 'executionResumed', 'deviceState']
+    );
+    assert.equal(schemas.RunRecovery.properties.executionResumed.const, false);
+    assert.equal(schemas.RunRecovery.properties.deviceState.const, 'unknown');
     assert.deepEqual(
       schemas.RunError.required,
       ['code', 'message', 'details', 'retryable', 'statusCode']
     );
     assert.equal(schemas.RunError.additionalProperties, false);
     assert.equal(schemas.RunResponse.allOf[1].properties.data.$ref, '#/components/schemas/Run');
+  });
+
+  it('describes the run snapshot, occupancy and targeted stop contracts', () => {
+    const spec = buildOpenApiSpec(defaults);
+    const schemas = spec.components.schemas;
+    const current = spec.paths['/api/agent/runs/current'].get;
+    const stop = spec.paths['/api/agent/actions/stop'].post;
+
+    assert.equal(
+      current.responses['200'].content['application/json'].schema.$ref,
+      '#/components/schemas/RunSnapshotResponse'
+    );
+    assert.equal(
+      schemas.RunSnapshotResponse.allOf[1].properties.data.$ref,
+      '#/components/schemas/RunSnapshot'
+    );
+    assert.deepEqual(
+      schemas.RunSnapshot.required,
+      ['isRunning', 'schedule', 'recentLogs', 'run', 'activeRuns', 'lastRun', 'occupancy']
+    );
+    assert.deepEqual(
+      schemas.RunOccupancy.properties.state.enum,
+      ['idle', 'pending', 'run', 'external', 'unknown']
+    );
+    assert.deepEqual(
+      schemas.RunOccupancy.properties.lease.properties.state.enum,
+      ['free', 'held', 'stale', 'unknown']
+    );
+    assert.deepEqual(
+      schemas.RunOccupancy.properties.sources.items.enum,
+      ['run', 'task', 'schedule', 'lease']
+    );
+
+    const guard = stop.parameters.find(item => item.name === 'runId');
+    assert.equal(guard.in, 'query');
+    assert.equal(guard.required, false);
+    assert.equal(guard.schema.format, 'uuid');
+    assert.equal(
+      stop.requestBody.content['application/json'].schema.properties.runId.format,
+      'uuid'
+    );
   });
 
   it('marks read-only operations and actual dry-run support explicitly', () => {

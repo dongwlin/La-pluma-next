@@ -6,14 +6,18 @@ import {
   discardAgentRun,
   failAgentRun,
   fingerprintAgentRunInput,
+  getActiveAgentRuns,
   getAgentRun,
   getCurrentAgentRun,
+  getLatestTerminalAgentRun,
   listAgentRuns,
   markAgentRunStopping,
   releaseAgentRunIdempotency,
+  requestAgentRunStop,
   resetAgentRunsForTests,
   setAgentRunAcceptedResult,
   startAgentRun,
+  startAgentRunForExecution,
   stopAgentRun
 } from '../agentRunService.js';
 
@@ -34,7 +38,7 @@ describe('agent run registry', () => {
     assert.ok(run.acceptedAt);
     assert.deepEqual(run.links, {
       self: `/api/agent/runs/${run.runId}`,
-      stop: '/api/agent/actions/stop'
+      stop: `/api/agent/actions/stop?runId=${run.runId}`
     });
     for (const internalField of ['idempotencyKey', 'inputFingerprint', 'input', 'metadata', 'status', 'createdAt', 'updatedAt']) {
       assert.equal(Object.hasOwn(run, internalField), false, internalField);
@@ -317,5 +321,91 @@ describe('agent run registry', () => {
       () => startAgentRun('missing'),
       error => error.code === 'AGENT_RUN_NOT_FOUND' && error.statusCode === 404
     );
+  });
+
+  it('cancels accepted stops without execution rights and keeps stopping idempotent', () => {
+    const accepted = beginAgentRun({ operationId: 'run_task' }).run;
+    const canceled = requestAgentRunStop(accepted.runId);
+    assert.equal(canceled.disposition, 'canceled');
+    assert.equal(canceled.run.state, 'stopped');
+    assert.deepEqual(canceled.run.result, { canceled: true, reason: 'stop_requested_before_start' });
+
+    const repeated = requestAgentRunStop(accepted.runId);
+    assert.equal(repeated.disposition, 'terminal');
+    assert.deepEqual(repeated.run, canceled.run);
+
+    const running = beginAgentRun({ operationId: 'fight' }).run;
+    startAgentRun(running.runId);
+    const firstStop = requestAgentRunStop(running.runId);
+    assert.equal(firstStop.disposition, 'stopping');
+    assert.equal(firstStop.run.state, 'stopping');
+    const secondStop = requestAgentRunStop(running.runId);
+    assert.equal(secondStop.disposition, 'stopping');
+    assert.equal(secondStop.run.state, 'stopping');
+
+    assert.throws(
+      () => requestAgentRunStop('missing'),
+      error => error.code === 'AGENT_RUN_NOT_FOUND'
+    );
+  });
+
+  it('refuses to start a run that was stopped before execution', () => {
+    const accepted = beginAgentRun({ operationId: 'run_task' }).run;
+    assert.equal(startAgentRunForExecution(accepted.runId).state, 'running');
+    assert.equal(startAgentRunForExecution(accepted.runId).state, 'running');
+
+    const canceled = beginAgentRun({ operationId: 'fight' }).run;
+    requestAgentRunStop(canceled.runId);
+    assert.throws(
+      () => startAgentRunForExecution(canceled.runId),
+      error => {
+        assert.equal(error.code, 'AGENT_RUN_STOPPED_BEFORE_START');
+        assert.equal(error.stopped, true);
+        assert.equal(error.statusCode, 409);
+        return true;
+      }
+    );
+
+    const stopping = beginAgentRun({ operationId: 'award' }).run;
+    startAgentRun(stopping.runId);
+    markAgentRunStopping(stopping.runId);
+    assert.throws(
+      () => startAgentRunForExecution(stopping.runId),
+      error => error.code === 'AGENT_RUN_STOPPED_BEFORE_START' && error.stopped === true
+    );
+  });
+
+  it('lists every active run by stop priority and the latest terminal run by completion time', () => {
+    const originalNow = Date.now;
+    let now = Date.parse('2026-07-12T00:00:00.000Z');
+    Date.now = () => now;
+    try {
+      const older = beginAgentRun({ operationId: 'fight' }).run;
+      startAgentRun(older.runId);
+      now += 1;
+      completeAgentRun(older.runId, { order: 1 });
+
+      const newer = beginAgentRun({ operationId: 'award' }).run;
+      startAgentRun(newer.runId);
+      markAgentRunStopping(newer.runId);
+      const accepted = beginAgentRun({ operationId: 'run_task' }).run;
+
+      assert.deepEqual(
+        getActiveAgentRuns().map(run => [run.runId, run.state]),
+        [
+          [newer.runId, 'stopping'],
+          [accepted.runId, 'accepted']
+        ]
+      );
+      assert.equal(getCurrentAgentRun().runId, newer.runId);
+      assert.equal(getLatestTerminalAgentRun().runId, older.runId);
+
+      now += 1;
+      stopAgentRun(newer.runId, { order: 2 });
+      assert.equal(getLatestTerminalAgentRun().runId, newer.runId);
+      assert.deepEqual(getLatestTerminalAgentRun().result, { order: 2 });
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });

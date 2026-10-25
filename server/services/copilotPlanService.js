@@ -266,6 +266,7 @@ export async function executeSelectedCopilotEntries({ planId, name, entries, opt
   const results = [];
   const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
   await withMaaExecutionLease({ source: 'activity-copilot', taskName: name, command: 'copilot-plan' }, async () => {
+    await lifecycle.onBeforeStart?.();
     lifecycle.onStarted?.();
     const configDir = (await getMaaConfigDir()).trim();
     const planDir = join(configDir, 'copilot-plans', String(planId));
@@ -314,6 +315,7 @@ export async function executeCopilotPlan({ setId, raid = 'normal', selectedIndex
   const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
 
   await withMaaExecutionLease({ source: 'copilot-set', taskName: plan.name, command: 'copilot-plan' }, async () => {
+    await lifecycle.onBeforeStart?.();
     lifecycle.onStarted?.();
     const configDir = (await getMaaConfigDir()).trim();
     const planDir = join(configDir, 'copilot-plans', String(setId));

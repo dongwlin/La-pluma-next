@@ -41,6 +41,47 @@ async function readOwner(lockPath = getLockPath()) {
   }
 }
 
+function normalizeLeaseOwner(owner) {
+  if (!owner || typeof owner !== 'object' || Array.isArray(owner)) return null;
+  const pid = Number(owner.pid);
+  return {
+    pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+    source: typeof owner.source === 'string' ? owner.source : null,
+    taskName: typeof owner.taskName === 'string' ? owner.taskName : null,
+    command: typeof owner.command === 'string' ? owner.command : null,
+    startedAt: typeof owner.startedAt === 'string' ? owner.startedAt : null
+  };
+}
+
+/**
+ * Reports the lease without mutating it. `held` means the recorded owner
+ * process is alive; `stale` means the lock file exists but is reclaimable;
+ * `unknown` means the file exists but cannot be interpreted.
+ */
+export async function getMaaExecutionLeaseSnapshot() {
+  let raw;
+  try {
+    raw = await readFile(getLockPath(), 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { state: 'free', owner: null };
+    return { state: 'unknown', owner: null, reason: error?.code || 'read_failed' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: 'unknown', owner: null, reason: 'invalid_json' };
+  }
+
+  const owner = normalizeLeaseOwner(parsed);
+  if (!owner) return { state: 'unknown', owner: null, reason: 'invalid_owner' };
+  return {
+    state: isProcessAlive(owner.pid) ? 'held' : 'stale',
+    owner
+  };
+}
+
 async function removeStaleLock(lockPath) {
   const owner = await readOwner(lockPath);
   if (owner && isProcessAlive(Number(owner.pid))) return owner;

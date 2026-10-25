@@ -70,3 +70,25 @@ test('completed flows return task ids and retain skipped results in the polling 
   assert.deepEqual(status.taskResults, expected);
   assert.deepEqual(status.lastResult.taskResults, expected);
 });
+
+test('a stopped pre-start gate aborts the flow before any task runs', async () => {
+  const rejection = Object.assign(new Error('执行在开始前已被停止'), {
+    code: 'AGENT_RUN_STOPPED_BEFORE_START',
+    stopped: true
+  });
+  const taskFlow = [{ id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} }];
+
+  await assert.rejects(
+    executeScheduleNow('pre-start-stop', taskFlow, {
+      onBeforeStart: async () => { throw rejection; }
+    }),
+    error => error === rejection
+  );
+
+  const status = getScheduleExecutionStatus();
+  assert.equal(status.isRunning, false);
+  assert.equal(status.scheduleId, null);
+  assert.equal(status.totalSteps, 0);
+  assert.match(status.message, /任务流程已被用户终止/);
+  assert.deepEqual(status.taskResults, []);
+});
