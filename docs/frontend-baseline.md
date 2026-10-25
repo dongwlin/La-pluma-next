@@ -67,7 +67,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 配置 | GET/POST `/agent/config/user/combat-tasks`；仅 pending 时本地优先，否则服务端优先、失败用本地；坏 JSON 删除、app→cli 迁移；模块保存队列 + 页内 revision/token + 300ms debounce；手动重试 | combat 配置适配器 + 按 key 提交协调器 |
+| 配置 | 适配器 `features/combat/model/combatConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/combat-tasks`；本地键与 `combatConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、`app→cli` 与 raid `1`/`2` 迁移、300ms 去抖与跨 remount 提交队列由通道持有；页面只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | combat 配置适配器 + 按 key 提交协调器（FPR-014 已接入） |
 | 搜索 | GET `/agent/copilot/search?stage=…`、`/agent/paradox/search?name=…`；独立 request id 丢弃旧响应，但不取消网络 | combat 查询键/资源控制器；搜索词归面板 |
 | 预览与作业集 | GET `/agent/copilots/:id`、`/agent/copilot-sets/:id`、`/agent/copilot-sets/:id/plan?raid=…`；plan 优先，失败 fallback set + 并发详情；completedModes/raid 恢复选择 | combat 查询/预览会话与纯 URI 模型 |
 | 执行、进度与停止 | 单任务 POST `/agent/actions/run-task`，command 为 copilot/ssscopilot/paradoxcopilot，waitForCompletion=true；set POST `/agent/copilot-sets/:id/execute`；reset POST `…/:id/reset-progress`；兼容页内 sequential/manual 下一关；GET tasks/status 每 2s，三次失败警告；stop 后 400ms 查 idle，15s 超时 | task-execution 控制器 + combat 执行适配器；服务端拥有 set/manual 进度 |
