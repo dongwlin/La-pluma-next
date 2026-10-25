@@ -1,65 +1,19 @@
 /**
- * UI Store - 管理主题与当前工作区
+ * UI Store - 管理主题偏好
  */
 
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 
-const APP_TABS = [
-  'dashboard',
-  'automation',
-  'combat',
-  'roguelike',
-  'training',
-  'logs',
-  'statistics',
-  'config',
-] as const
-
-export type AppTab = typeof APP_TABS[number]
-
 type ThemeMode = 'light' | 'dark' | 'system'
 
 interface UIState {
   theme: ThemeMode
-  activeTab: AppTab
   setTheme: (theme: ThemeMode) => void
-  setActiveTab: (tab: AppTab) => void
 }
 
 type ThemeRuntimeWindow = Window & {
   __LA_PLUMA_APPLY_THEME__?: (theme: ThemeMode) => void
-}
-
-const DEFAULT_TAB: AppTab = 'dashboard'
-
-function basePath() {
-  return import.meta.env.BASE_URL.replace(/\/+$/, '')
-}
-
-export function isAppTab(value: string): value is AppTab {
-  return APP_TABS.includes(value as AppTab)
-}
-
-export function appTabFromPath(pathname: string): AppTab | null {
-  const base = basePath()
-  const relativePath = base && pathname.startsWith(`${base}/`)
-    ? pathname.slice(base.length)
-    : pathname
-  const segments = relativePath.split('/').filter(Boolean)
-  if (segments[0] !== 'app') return null
-  if (!segments[1]) return DEFAULT_TAB
-  return isAppTab(segments[1]) ? segments[1] : null
-}
-
-export function appTabPath(tab: AppTab) {
-  return `${basePath()}/app/${tab}`
-}
-
-function initialAppTab(): AppTab {
-  return typeof window === 'undefined'
-    ? DEFAULT_TAB
-    : appTabFromPath(window.location.pathname) ?? DEFAULT_TAB
 }
 
 export function applyThemePreference(theme: ThemeMode) {
@@ -90,18 +44,14 @@ export const useUIStore = create<UIState>()(
     persist(
       (set) => ({
         theme: 'dark',
-        activeTab: initialAppTab(),
 
         setTheme: (theme) => {
           set({ theme })
           applyThemePreference(theme)
         },
-
-        setActiveTab: (tab) => set({ activeTab: tab }),
       }),
       {
         name: 'ui-storage',
-        // 标签由 URL 唯一决定，避免持久化状态覆盖浏览器历史。
         partialize: (state) => ({
           theme: state.theme,
         }),
@@ -112,7 +62,6 @@ export const useUIStore = create<UIState>()(
             ...(stored?.theme && ['light', 'dark', 'system'].includes(stored.theme)
               ? { theme: stored.theme }
               : {}),
-            activeTab: initialAppTab(),
           }
         },
         onRehydrateStorage: () => (state) => {

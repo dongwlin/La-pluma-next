@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
 import { getErrorMessage } from '@/shared/api'
 import { executeScheduleNow, getActivity, getScheduleExecutionStatus, runCurrentActivity as runActivityNow } from '@/features/automation'
@@ -8,7 +9,7 @@ import Icons from '@/shared/ui/Icons'
 import { PageHeader, Card, Button, IconButton, SmoothPanel } from '@/shared/ui'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
 import { FloatingStatusIndicator, probeBackendAvailability, useStatusStore, type StatusMessageType } from '@/features/runtime-status'
-import { useUIStore } from '@/shared/stores'
+import { appTabRoute } from '@/shared/navigation'
 import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
 import DashboardPreviewEntry from '../components/DashboardPreviewEntry'
 import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
@@ -273,7 +274,7 @@ function refreshDashboardData(force = false): Promise<void> {
 }
 
 export default function Dashboard() {
-  const setActiveTab = useUIStore(state => state.setActiveTab)
+  const navigate = useNavigate()
   const {
     backendStatus,
     backendMessage,
@@ -281,7 +282,7 @@ export default function Dashboard() {
     setActive: setStatusActive,
   } = useStatusStore()
   const isOnline = useOnlineStatus()
-  const openAutomation = useCallback(() => setActiveTab('automation'), [setActiveTab])
+  const openAutomation = useCallback(() => navigate(appTabRoute('automation')), [navigate])
   const hasLoaded = useDashboardStore(state => state.hasLoaded)
   const activitySummary = useDashboardStore(state => state.activitySummary)
   const scheduleSummary = useDashboardStore(state => state.scheduleSummary)
@@ -378,7 +379,7 @@ export default function Dashboard() {
       if (!configResult.success || savedFlow.length === 0) {
         setQuickStartMessage('还没有配置今日流程，先去日常页保存任务流。')
         setQuickStartMessageType('warning')
-        setActiveTab('automation')
+        navigate(appTabRoute('automation'))
         return
       }
 
@@ -707,7 +708,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <IconButton
-                onClick={() => setActiveTab('training')}
+                onClick={() => navigate(appTabRoute('training'))}
                 icon={<ChevronRight className="h-4 w-4" />}
                 variant="ghost"
                 size="sm"
@@ -737,7 +738,7 @@ export default function Dashboard() {
                     ))}
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setActiveTab('training')} className="dashboard-summary-link min-h-11">
+                  <button type="button" onClick={() => navigate(appTabRoute('training'))} className="dashboard-summary-link min-h-11">
                     添加首个培养目标
                     <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
@@ -757,7 +758,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <IconButton
-                onClick={() => setActiveTab('statistics')}
+                onClick={() => navigate(appTabRoute('statistics'))}
                 icon={<ChevronRight className="h-4 w-4" />}
                 variant="ghost"
                 size="sm"
@@ -790,7 +791,7 @@ export default function Dashboard() {
                     ))}
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setActiveTab('statistics')} className="dashboard-summary-link min-h-11">
+                  <button type="button" onClick={() => navigate(appTabRoute('statistics'))} className="dashboard-summary-link min-h-11">
                     查看掉落数据
                     <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>

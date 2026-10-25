@@ -17,6 +17,8 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 前端使用 React 19、Tailwind CSS v4（`@tailwindcss/vite`；`@theme` 圆角映射 + 定向 `@utility` 间距映射，无 JS 配置）和 Framer Motion。`Layout` 与 `shared/ui` 通用组件使用原生语义元素实现页面 chrome、导航栏、移动 tabbar 和模态交互；`styles/` 下的语义 token 与 `ios-theme.css` 统一 iOS 26 材质、La Pluma Next 品牌色和信息密度。
 
+React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的唯一事实来源：`app/router/` 维护 tab 元数据、路由表与 URL 归一（`/`、`/app`、`/app/`、未知 tab 归一到默认页），`Layout` 只负责导航外观与按 tab 的滚动恢复。访问过的页面由 `Activity` 保活，切换 tab 只切换可见性、不卸载页面；因此不使用 `<Routes>`/`useRoutes`，避免路由导航卸载上一页。安装后的 PWA（standalone）同样走 URL 历史导航，不再用 `history.state` 单独记录当前 tab：刷新与深链会保留当前页面，升级前写入 `history.state` 的旧 tab 记录不再读取。
+
 桌面与移动导航、主题、安全区、响应式断点等界面规则以根目录 [设计规范](../DESIGN.md) 为唯一来源；组件 API 见 [通用组件库](component-library.md)。新增页面应复用现有 `Layout`、`shared/ui` 通用组件和语义 token，不要重复实现导航壳层或页面级安全区计算。
 
 ## 技术栈
@@ -24,6 +26,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 - **前端框架**: React 19 + TypeScript + Vite
 - **UI 框架**: Tailwind CSS v4（`@tailwindcss/vite`，CSS-first 配置）+ Framer Motion + 项目语义组件与 `src/styles/ios-theme.css`
 - **图标**: Lucide React
+- **路由**: React Router 7（`BrowserRouter`，URL 即 tab 状态）
 - **状态管理**: Zustand
 - **后端**: Node.js + Express
 - **实时通信**: Socket.io
@@ -36,9 +39,9 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 前端按 `app → features → shared` 三层垂直切分（依赖只能单向向下）：
 
-- `app/`：应用组装——根组件、页面注册表、布局壳与 Provider，不含业务逻辑。
+- `app/`：应用组装——根组件、路由表与 URL 归一、布局壳与 Provider，不含业务逻辑。
 - `features/*`：功能域，页面、域内组件、hooks、store、api、类型与常量全部自持；页面级 CSS 同样由各域自持，放在 `features/<domain>/styles/` 并由该域 `index.ts` 导入（统一收进 `@layer page`）。对外只有 `index.ts` 一个公开面，其他域与 `app/` 一律 `@/features/<domain>` 根 import。
-- `shared/`：与业务无关的横向下层（通用 UI、传输层底座、导航/全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
+- `shared/`：与业务无关的横向下层（通用 UI、传输层底座、路由词汇与全局 store、通用 hooks、跨域纯函数）；不感知 `features` 与 `app`。
 
 业务端点按语义归各 `features/<domain>/api/`；跨域共用的端点组独立为非页面微域（`task-execution`、`user-config`），不在 `shared/api` 留任何业务方法。`shared/api` 只保留协议/传输层底座。
 
@@ -55,9 +58,9 @@ La-pluma-next/
 │   │   │   ├── index.css      # 层序 + Tailwind 入口、语义 token 单源、@theme/@utility、通用组件类、跨域 keyframes
 │   │   │   └── ios-theme.css  # iOS 26 chrome/材质 token 与样式、跨域 page-kind 材质（不再重定义语义 token）
 │   │   ├── app/               # 应用组装层
-│   │   │   ├── App.tsx        # 根组件：Provider + Layout + 页面出口
-│   │   │   ├── router/        # tab 注册表与页面组件静态映射
-│   │   │   ├── layout/        # Layout、ThemeToggle、PWAInstallPrompt
+│   │   │   ├── App.tsx        # 根组件：BrowserRouter + Provider + Layout + 页面出口
+│   │   │   ├── router/        # tab 元数据、路由表、URL 归一与保活页面出口（react-router）
+│   │   │   ├── layout/        # Layout（导航壳与按 tab 滚动恢复）、ThemeToggle、PWAInstallPrompt
 │   │   │   └── providers/     # MotionConfig、主题 dark-class 副作用
 │   │   ├── features/          # 功能域（对外只有 index.ts）
 │   │   │   ├── dashboard/     # 控制台总览
@@ -75,7 +78,8 @@ La-pluma-next/
 │   │   │   └── operator-quotes/  # 干员语录服务（非页面域）
 │   │   └── shared/            # 横向下层
 │   │       ├── ui/            # 通用组件库（Button/Card/Modal/...）
-│   │       ├── stores/        # shared 自管的全局 store（uiStore）
+│   │       ├── navigation/    # tab 词汇表、router-relative 路径助手、useActiveAppTab
+│   │       ├── stores/        # shared 自管的全局 store（uiStore：主题）
 │   │       ├── api/           # 传输层底座：API_BASE_URL、fetchWithAuth、
 │   │       │                  # parseJsonResponse、getErrorMessage 与响应类型
 │   │       ├── hooks/         # useFluidTabIndicator、useOnlineStatus、usePageVisible

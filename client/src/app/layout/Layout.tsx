@@ -1,8 +1,10 @@
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { BarChart3, Bot, Dices, Ellipsis, FileText, GraduationCap, LayoutGrid, Settings2, Swords, X } from 'lucide-react'
+import { Ellipsis, X } from 'lucide-react'
+import { useNavigate } from 'react-router'
 import ThemeToggle from './ThemeToggle'
-import { appTabFromPath, appTabPath, isAppTab, useUIStore, type AppTab } from '@/shared/stores'
+import { appTabRoute, type AppTab } from '@/shared/navigation'
+import { appTabs, type AppTabDefinition } from '../router/tabs'
 import {
   DEFAULT_OPERATOR_QUOTE,
   getOperatorAvatarUrl,
@@ -19,24 +21,14 @@ const SHEET_DISMISS_VELOCITY = 650
 const SHEET_EASE = [0.32, 0.72, 0, 1] as const
 
 interface LayoutProps {
-  children: (props: { activeTab: string }) => ReactNode
+  activeTab: AppTab
+  children: ReactNode
 }
-
-const tabs = [
-  { id: 'dashboard', name: '概览', icon: LayoutGrid },
-  { id: 'automation', name: '日常', icon: Bot },
-  { id: 'combat', name: '作业', icon: Swords },
-  { id: 'roguelike', name: '肉鸽', icon: Dices },
-  { id: 'training', name: '养成', icon: GraduationCap },
-  { id: 'statistics', name: '数据', icon: BarChart3 },
-  { id: 'logs', name: '日志', icon: FileText },
-  { id: 'config', name: '配置', icon: Settings2 },
-] satisfies Array<{ id: AppTab; name: string; icon: typeof LayoutGrid }>
 
 // Keep the compact mobile rail focused on the four destinations used most often.
 // The remaining workspaces stay available from the adjacent more control.
-const mobileTabs = tabs.filter(tab => ['dashboard', 'automation', 'combat', 'config'].includes(tab.id))
-const overflowTabs = tabs.filter(tab => !mobileTabs.some(primary => primary.id === tab.id))
+const mobileTabs = appTabs.filter(tab => ['dashboard', 'automation', 'combat', 'config'].includes(tab.id))
+const overflowTabs = appTabs.filter(tab => !mobileTabs.some(primary => primary.id === tab.id))
 
 function getScrollHost() {
   return document.querySelector<HTMLElement>('.la-pluma-scroll-host')
@@ -55,21 +47,7 @@ function setScrollTop(top: number) {
   window.scrollTo({ top, left: 0, behavior: 'auto' })
 }
 
-function isStandaloneWebApp() {
-  const standaloneNavigator = window.navigator as Navigator & { standalone?: boolean }
-  return document.documentElement.classList.contains('la-pluma-standalone')
-    || window.matchMedia?.('(display-mode: standalone)').matches === true
-    || window.matchMedia?.('(display-mode: fullscreen)').matches === true
-    || standaloneNavigator.standalone === true
-}
-
-function appTabFromHistoryState(state: unknown): AppTab | null {
-  if (!state || typeof state !== 'object') return null
-  const tab = (state as { laPlumaTab?: unknown }).laPlumaTab
-  return typeof tab === 'string' && isAppTab(tab) ? tab : null
-}
-
-function TabIcon({ tab, size = 'h-4 w-4' }: { tab: typeof tabs[number]; size?: string }) {
+function TabIcon({ tab, size = 'h-4 w-4' }: { tab: AppTabDefinition; size?: string }) {
   const Icon = tab.icon
   return <Icon className={size} strokeWidth={1.9} aria-hidden="true" />
 }
@@ -88,7 +66,7 @@ function TabLink({
   onNavigate,
   mobile = false,
 }: {
-  tab: typeof tabs[number]
+  tab: AppTabDefinition
   active: boolean
   onNavigate: (tab: AppTab, mobile?: boolean) => void
   mobile?: boolean
@@ -117,17 +95,15 @@ function TabLink({
   )
 }
 
-export default function Layout({ children }: LayoutProps) {
-  const storedActiveTab = useUIStore(state => state.activeTab)
-  const setActiveTab = useUIStore(state => state.setActiveTab)
-  const activeTab: AppTab = isAppTab(storedActiveTab) ? storedActiveTab : 'dashboard'
+export default function Layout({ activeTab, children }: LayoutProps) {
+  const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarIdentity, setSidebarIdentity] = useState(DEFAULT_OPERATOR_QUOTE)
   const shouldReduceMotion = useReducedMotion()
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const scrollPositions = useRef(new Map<AppTab, number>())
-  const previousTab = useRef<AppTab>(activeTab)
-  const navigationSource = useRef<'initial' | 'store' | 'link' | 'popstate'>('initial')
+  // 滚动事件可能在提交后异步派发，用 ref 读取当时的 tab，避免把旧页的裁剪值记到新页。
+  const activeTabRef = useRef<AppTab>(activeTab)
   const restoreFrame = useRef<number | null>(null)
   const scrollRestoreCleanupRef = useRef<(() => void) | null>(null)
 
@@ -286,78 +262,60 @@ export default function Layout({ children }: LayoutProps) {
     maxTimer = window.setTimeout(cleanup, 10_000)
   }, [])
 
+  // 浏览器原生滚动恢复会与按 tab 的显式恢复互相干扰，统一交给 Layout 手动处理。
   useEffect(() => {
     const previousScrollRestoration = window.history.scrollRestoration
-    const savedScrollPositions = scrollPositions.current
     window.history.scrollRestoration = 'manual'
-    const handlePopState = (event: PopStateEvent) => {
-      const standalone = isStandaloneWebApp()
-      const pathTab = appTabFromPath(window.location.pathname)
-      const historyTab = standalone ? appTabFromHistoryState(event.state) : null
-      const nextTab = historyTab ?? pathTab ?? 'dashboard'
-      if (nextTab !== previousTab.current) {
-        savedScrollPositions.set(previousTab.current, getScrollTop())
-      }
-      navigationSource.current = 'popstate'
-      if (standalone && !historyTab) {
-        window.history.replaceState({ ...window.history.state, laPlumaTab: nextTab }, '')
-      } else if (!standalone && !pathTab) {
-        window.history.replaceState({ ...window.history.state, laPlumaTab: nextTab }, '', appTabPath(nextTab))
-      }
-      if (nextTab === useUIStore.getState().activeTab) {
-        restoreScroll(nextTab)
-        navigationSource.current = 'store'
-      } else {
-        setActiveTab(nextTab)
-      }
-    }
-    window.addEventListener('popstate', handlePopState)
     return () => {
-      savedScrollPositions.set(previousTab.current, getScrollTop())
       window.history.scrollRestoration = previousScrollRestoration
-      window.removeEventListener('popstate', handlePopState)
       scrollRestoreCleanupRef.current?.()
       if (restoreFrame.current !== null) window.cancelAnimationFrame(restoreFrame.current)
     }
-  }, [restoreScroll, setActiveTab])
+  }, [])
 
+  // 持续记录当前 tab 的滚动位置。异步导航（如概览快捷入口里 await 之后再跳转）
+  // 期间用户仍可能继续滚动，只有跟随 scroll 事件更新才能拿到离开前的真实位置。
+  useEffect(() => {
+    const host = getScrollHost()
+    if (!host) return undefined
+
+    const handleScroll = () => {
+      scrollPositions.current.set(activeTabRef.current, host.scrollTop)
+    }
+    host.addEventListener('scroll', handleScroll, { passive: true })
+    return () => host.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // scroll 事件在滚动后异步派发，点击与浏览器历史仍在事件派发期间补一次精确快照：
+  // - click 捕获阶段早于 React 的 click 处理器，旧页面尚未被 Activity 隐藏；
+  // - popstate 处理器返回前 React 不会提交 DOM，读到的仍是旧页的 scrollTop。
+  // 监听器只注册一次，通过 activeTabRef 取当时的 tab，避免提交后、effect 重订阅前
+  // 命中的事件把新页位置记到旧 tab 上。
+  useEffect(() => {
+    const snapshotActiveScroll = () => {
+      scrollPositions.current.set(activeTabRef.current, getScrollTop())
+    }
+
+    window.addEventListener('popstate', snapshotActiveScroll)
+    window.addEventListener('click', snapshotActiveScroll, { capture: true, passive: true })
+    return () => {
+      window.removeEventListener('popstate', snapshotActiveScroll)
+      window.removeEventListener('click', snapshotActiveScroll, { capture: true })
+    }
+  }, [])
+
+  // activeTab 提交后恢复目标 tab 的滚动位置；只在切换（含首次挂载）时执行一次。
   useLayoutEffect(() => {
-    if (storedActiveTab !== activeTab) {
-      setActiveTab(activeTab)
-      return
-    }
-
-    const source = navigationSource.current
-    const isInitial = source === 'initial'
-    if (!isInitial && source === 'store' && previousTab.current !== activeTab) {
-      scrollPositions.current.set(previousTab.current, getScrollTop())
-    }
-
-    const targetPath = appTabPath(activeTab)
-    const state = { ...window.history.state, laPlumaTab: activeTab }
-    if (isStandaloneWebApp()) {
-      if (isInitial || source === 'popstate' || previousTab.current === activeTab) {
-        window.history.replaceState(state, '')
-      } else {
-        window.history.pushState(state, '')
-      }
-    } else if (window.location.pathname !== targetPath) {
-      if (isInitial || source === 'popstate') window.history.replaceState(state, '', targetPath)
-      else window.history.pushState(state, '', targetPath)
-    }
-
-    previousTab.current = activeTab
-    navigationSource.current = 'store'
+    activeTabRef.current = activeTab
     restoreScroll(activeTab)
-  }, [activeTab, restoreScroll, setActiveTab, storedActiveTab])
+  }, [activeTab, restoreScroll])
 
   const navigateToTab = (tab: AppTab, mobile = false) => {
     if (mobile) setMoreOpen(false)
-    if (tab !== activeTab) {
-      scrollPositions.current.set(activeTab, getScrollTop())
-      navigationSource.current = 'link'
-      setActiveTab(tab)
-    }
+    if (tab === activeTab) return
+    // 先记录当前 tab 的滚动位置再切页：新页面提交后旧页会被 Activity 隐藏并裁剪 scrollTop。
+    scrollPositions.current.set(activeTab, getScrollTop())
+    navigate(appTabRoute(tab))
   }
 
   const isOverflowActive = overflowTabs.some(tab => tab.id === activeTab)
@@ -380,7 +338,7 @@ export default function Layout({ children }: LayoutProps) {
                 </div>
               </div>
               <div className="title">
-                <div className="la-pluma-navbar-title">{tabs.find(tab => tab.id === activeTab)?.name}</div>
+                <div className="la-pluma-navbar-title">{appTabs.find(tab => tab.id === activeTab)?.name}</div>
               </div>
               <div className="right">
                 <div className="la-pluma-navbar-actions">
@@ -401,7 +359,7 @@ export default function Layout({ children }: LayoutProps) {
 
           <aside className="la-pluma-sidebar" aria-label="主要功能">
             <nav className="la-pluma-sidebar-nav" aria-label="工作台">
-              {tabs.map(tab => (
+              {appTabs.map(tab => (
                 <TabLink key={tab.id} tab={tab} active={activeTab === tab.id} onNavigate={navigateToTab} />
               ))}
             </nav>
@@ -433,7 +391,7 @@ export default function Layout({ children }: LayoutProps) {
 
           <main className="la-pluma-scroll-host">
             <div className="la-pluma-content app-shell">
-              {children({ activeTab })}
+              {children}
             </div>
           </main>
         </div>

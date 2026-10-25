@@ -17,9 +17,7 @@ vi.mock('@/features/task-execution', () => ({
 }))
 
 vi.mock('./layout/Layout', () => ({
-  default: ({ children }: { children: (props: { activeTab: string }) => React.ReactNode }) => (
-    <div>{children({ activeTab: 'automation' })}</div>
-  ),
+  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
 vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
@@ -66,6 +64,7 @@ describe('App backend status gate', () => {
     apiMocks.getTaskStatus.mockReset()
     useStatusStore.getState().setBackendStatus('unknown')
     useStatusStore.getState().setActive(false)
+    window.history.replaceState({}, '', '/app/automation')
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)

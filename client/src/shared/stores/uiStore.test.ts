@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { appTabFromPath, appTabPath, applyThemePreference, useUIStore } from './uiStore'
+import { applyThemePreference, useUIStore } from './uiStore'
 
 type ThemeWindow = Window & { __LA_PLUMA_APPLY_THEME__?: (theme: 'light' | 'dark' | 'system') => void }
 
-describe('UI navigation and theme state', () => {
+describe('UI theme state', () => {
   let systemDark = false
 
   beforeEach(() => {
@@ -30,15 +30,24 @@ describe('UI navigation and theme state', () => {
     document.documentElement.style.colorScheme = ''
   })
 
-  it('maps supported application URLs without persisting navigation state', () => {
-    expect(appTabFromPath('/app/dashboard')).toBe('dashboard')
-    expect(appTabFromPath('/app/logs/details')).toBe('logs')
-    expect(appTabFromPath('/app/not-a-tab')).toBeNull()
-    expect(appTabPath('automation')).toBe('/app/automation')
+  it('persists only the theme preference', () => {
+    useUIStore.getState().setTheme('light')
 
-    useUIStore.getState().setActiveTab('logs')
+    expect(useUIStore.getState().theme).toBe('light')
     const persisted = JSON.parse(window.localStorage.getItem('ui-storage') ?? '{}')
-    expect(persisted.state).toEqual({ theme: useUIStore.getState().theme })
+    expect(persisted.state).toEqual({ theme: 'light' })
+  })
+
+  it('ignores a persisted theme value that is not supported', async () => {
+    useUIStore.getState().setTheme('dark')
+    window.localStorage.setItem('ui-storage', JSON.stringify({
+      state: { theme: 'sepia' },
+      version: 0,
+    }))
+
+    await useUIStore.persist.rehydrate()
+
+    expect(useUIStore.getState().theme).toBe('dark')
   })
 
   it('keeps class, color-scheme, and browser chrome in sync for system theme', () => {

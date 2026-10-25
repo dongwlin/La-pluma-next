@@ -2,6 +2,7 @@
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useStatusStore } from '@/features/runtime-status'
@@ -52,10 +53,6 @@ vi.mock('@/features/statistics', () => ({
 
 vi.mock('@/features/training', () => ({
   getTrainingQueue: apiMocks.getTrainingQueue,
-}))
-
-vi.mock('@/shared/stores', () => ({
-  useUIStore: (selector: (state: { setActiveTab: () => void }) => unknown) => selector({ setActiveTab: vi.fn() }),
 }))
 
 vi.mock('../hooks/useDashboardFlowLayout', () => ({
@@ -109,6 +106,20 @@ let root: Root
 const findButton = (text: string) => Array.from(container.querySelectorAll('button'))
   .find(button => button.textContent?.includes(text))
 
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.pathname}</output>
+}
+
+function renderDashboard() {
+  root.render(
+    <MemoryRouter initialEntries={['/app/dashboard']}>
+      <Dashboard />
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+}
+
 async function flushDashboard() {
   await act(async () => {
     await Promise.resolve()
@@ -156,7 +167,7 @@ describe('Dashboard connectivity state', () => {
       resolveActivity = resolve
     }))
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
 
     expect(container.textContent).toContain('loading')
     expect(renderSpies.dashboardSkeleton).toHaveBeenCalled()
@@ -171,7 +182,7 @@ describe('Dashboard connectivity state', () => {
   it('restores a fresh dashboard cache immediately without returning to the skeleton', async () => {
     apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(container.textContent).toContain('缓存活动')
@@ -179,7 +190,7 @@ describe('Dashboard connectivity state', () => {
 
     await act(async () => root.render(<div>其他页面</div>))
     apiMocks.getActivity.mockClear()
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
 
     expect(container.textContent).toContain('缓存活动')
     expect(container.textContent).not.toContain('loading')
@@ -190,7 +201,7 @@ describe('Dashboard connectivity state', () => {
   it('keeps stale content visible while refreshing it in the background', async () => {
     apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
     useDashboardStore.setState({
       lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
@@ -203,7 +214,7 @@ describe('Dashboard connectivity state', () => {
     const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
 
     await act(async () => root.render(<div>其他页面</div>))
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
 
     expect(container.textContent).toContain('缓存活动')
     expect(container.textContent).not.toContain('loading')
@@ -219,7 +230,7 @@ describe('Dashboard connectivity state', () => {
   it('keeps the last complete snapshot when one background request fails', async () => {
     apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '已确认活动' } })
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
     const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
     const persistedSnapshot = window.localStorage.getItem('la-pluma-dashboard-cache')
@@ -231,7 +242,7 @@ describe('Dashboard connectivity state', () => {
     apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
 
     await act(async () => root.render(<div>其他页面</div>))
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(container.textContent).toContain('已确认活动')
@@ -243,7 +254,7 @@ describe('Dashboard connectivity state', () => {
   it('keeps the last complete snapshot when a successful response has malformed data', async () => {
     apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '稳定活动' } })
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
     const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
     const persistedSnapshot = window.localStorage.getItem('la-pluma-dashboard-cache')
@@ -255,7 +266,7 @@ describe('Dashboard connectivity state', () => {
     apiMocks.getOpenTodayStages.mockResolvedValueOnce({ success: true, data: undefined })
 
     await act(async () => root.render(<div>其他页面</div>))
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(container.textContent).toContain('稳定活动')
@@ -265,7 +276,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('disables execution actions as soon as the browser goes offline', async () => {
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(container.textContent).toContain('准备就绪')
@@ -283,7 +294,7 @@ describe('Dashboard connectivity state', () => {
   it('shows a retry action and recovers after the backend becomes available', async () => {
     apiMocks.getTaskStatus.mockRejectedValueOnce(new Error('无法连接后端服务，请确认服务已启动'))
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(container.textContent).toContain('后端服务不可用')
@@ -302,7 +313,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('omits redundant manual refresh controls', async () => {
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     expect(findButton('刷新数据')).toBeUndefined()
@@ -310,8 +321,17 @@ describe('Dashboard connectivity state', () => {
     expect(container.querySelector('button[aria-label="刷新执行状态"]')).toBeNull()
   })
 
+  it('navigates to the destination tab from dashboard shortcuts', async () => {
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    await act(async () => findButton('添加首个培养目标')?.click())
+
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/training')
+  })
+
   it('keeps empty summary actions at the iOS touch target size', async () => {
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     const emptyActions = [findButton('添加首个培养目标'), findButton('查看掉落数据')]
@@ -328,7 +348,7 @@ describe('Dashboard connectivity state', () => {
       data: { isRunning: true, currentTask: '收取信用' },
     })
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     const flow = container.querySelector('.dashboard-flow-glow-shell')
@@ -346,7 +366,7 @@ describe('Dashboard connectivity state', () => {
       resolveRun = resolve
     }))
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
 
     const activityButton = container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')
@@ -386,7 +406,7 @@ describe('Dashboard connectivity state', () => {
       },
     })
 
-    await act(async () => root.render(<Dashboard />))
+    await act(async () => renderDashboard())
     await flushDashboard()
     await act(async () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')?.click()

@@ -27,13 +27,18 @@ vi.mock('@/shared/stores', () => ({
   useUIStore: (selector: (state: { theme: 'dark' }) => unknown) => selector({ theme: 'dark' }),
 }))
 
-vi.mock('./layout/Layout', () => ({
-  default: function MockLayout({ children }: { children: (props: { activeTab: string }) => ReactNode }) {
-    const [activeTab, setActiveTab] = useState('dashboard')
-    appMocks.navigate = setActiveTab
-    return children({ activeTab })
-  },
-}))
+vi.mock('./layout/Layout', async () => {
+  const { useNavigate } = await import('react-router')
+  const { appTabRoute } = await import('@/shared/navigation')
+
+  return {
+    default: function MockLayout({ activeTab, children }: { activeTab: string; children: ReactNode }) {
+      const navigate = useNavigate()
+      appMocks.navigate = (tab: string) => navigate(appTabRoute(tab as Parameters<typeof appTabRoute>[0]))
+      return <div data-testid="mock-layout" data-active-tab={activeTab}>{children}</div>
+    },
+  }
+})
 vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
 vi.mock('@/features/runtime-status', () => ({ useBackendStatusMonitor: () => undefined }))
 vi.mock('@/features/dashboard', () => ({
@@ -87,6 +92,7 @@ function mediaQueryList(query: string): MediaQueryList {
 describe('App motion preferences', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn(mediaQueryList)
+    window.history.replaceState({}, '', '/app/dashboard')
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)

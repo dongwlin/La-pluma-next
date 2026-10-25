@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, type ReactNode } from 'react'
+import { act, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { BrowserRouter, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useUIStore } from '@/shared/stores'
+import { appTabRoute, useActiveAppTab, type AppTab } from '@/shared/navigation'
 import Layout from './Layout'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -58,6 +59,7 @@ let container: HTMLDivElement
 let root: Root
 let currentScrollY = 0
 let availableScroll = Number.POSITIVE_INFINITY
+let clampViewportOnTabSwitch = false
 let scrollToMock: ReturnType<typeof vi.fn>
 
 function mediaQueryList(query: string, matches = false): MediaQueryList {
@@ -81,20 +83,91 @@ function installScrollModel() {
   const host = getScrollHost()
   Object.defineProperty(host, 'scrollTop', {
     configurable: true,
-    get: () => currentScrollY,
+    get: () => Math.min(currentScrollY, availableScroll),
     set: (value: number) => {
       currentScrollY = Math.min(value, availableScroll)
     },
   })
 }
 
+/**
+ * 模拟页面切换时真实发生的视口裁剪：旧页面被 Activity 隐藏后内容高度骤减，
+ * 浏览器会把 scrollTop 夹到新页面的可滚动范围。它的 layout effect 在 Layout 之前
+ * 执行（子组件先于父组件提交），因此能证明滚动快照必须发生在提交之前。
+ */
+function ViewportClamp({ activeTab }: { activeTab: AppTab }) {
+  const mounted = useRef(false)
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true
+      return
+    }
+    if (!clampViewportOnTabSwitch) return
+    availableScroll = activeTab === 'dashboard' ? 1000 : 0
+  }, [activeTab])
+  return null
+}
+
+interface Deferred {
+  promise: Promise<void>
+  resolve: () => void
+}
+
+let asyncNavigationGate: Deferred | null = null
+
+function createDeferred(): Deferred {
+  let resolve!: () => void
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = () => resolvePromise()
+  })
+  return { promise, resolve }
+}
+
+function AsyncNavigator() {
+  const navigate = useNavigate()
+  const started = useRef(false)
+
+  const startNavigation = () => {
+    if (started.current) return
+    started.current = true
+    // 模拟概览快捷入口：先 await 数据请求，再跨页跳转。由测试显式放行，
+    // 避免定时器与手动滚动竞争导致用例不稳定。
+    const gate = createDeferred()
+    asyncNavigationGate = gate
+    void gate.promise.then(() => {
+      if (asyncNavigationGate === gate) asyncNavigationGate = null
+      navigate(appTabRoute('automation'))
+    })
+  }
+
+  return <button type="button" onClick={startNavigation}>async-automation</button>
+}
+
+function LayoutHarness() {
+  const activeTab = useActiveAppTab()
+  const navigate = useNavigate()
+
+  return (
+    <Layout activeTab={activeTab}>
+      <output data-testid="active-tab">{activeTab}</output>
+      <button type="button" onClick={() => navigate(appTabRoute('automation'))}>programmatic-automation</button>
+      <AsyncNavigator />
+      <ViewportClamp activeTab={activeTab} />
+    </Layout>
+  )
+}
+
 async function renderLayout() {
   await act(async () => root.render(
-    <Layout>
-      {({ activeTab }) => <output data-testid="active-tab">{activeTab}</output>}
-    </Layout>,
+    <BrowserRouter>
+      <LayoutHarness />
+    </BrowserRouter>,
   ))
   installScrollModel()
+}
+
+function activeTabLabel() {
+  return container.querySelector('[data-testid="active-tab"]')?.textContent
 }
 
 function desktopLink(tab: string) {
@@ -109,6 +182,8 @@ describe('top-level application navigation', () => {
   beforeEach(() => {
     currentScrollY = 0
     availableScroll = Number.POSITIVE_INFINITY
+    clampViewportOnTabSwitch = false
+    asyncNavigationGate = null
     window.history.replaceState({}, '', '/app/dashboard')
     window.matchMedia = vi.fn(mediaQueryList)
     Object.defineProperty(window, 'scrollY', {
@@ -130,7 +205,6 @@ describe('top-level application navigation', () => {
       operator: '银灰',
       quote: '战术安排已就绪',
     })
-    useUIStore.setState({ activeTab: 'dashboard' })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -150,7 +224,7 @@ describe('top-level application navigation', () => {
     await act(async () => desktopLink('automation').click())
 
     expect(window.location.pathname).toBe('/app/automation')
-    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('automation')
+    expect(activeTabLabel()).toBe('automation')
     expect(desktopLink('automation').getAttribute('aria-current')).toBe('page')
     expect(getScrollHost().scrollTop).toBe(0)
 
@@ -160,18 +234,18 @@ describe('top-level application navigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
-    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('dashboard')
+    expect(activeTabLabel()).toBe('dashboard')
     expect(getScrollHost().scrollTop).toBe(240)
 
     await act(async () => {
       window.history.replaceState({}, '', '/app/automation')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
-    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('automation')
+    expect(activeTabLabel()).toBe('automation')
     expect(getScrollHost().scrollTop).toBe(510)
   })
 
-  it('keeps the installed-app URL stable while restoring tabs from history state', async () => {
+  it('uses the URL for installed-app navigation instead of history state', async () => {
     window.matchMedia = vi.fn((query: string) => mediaQueryList(
       query,
       query === '(display-mode: standalone)',
@@ -180,18 +254,17 @@ describe('top-level application navigation', () => {
 
     await act(async () => desktopLink('automation').click())
 
-    expect(window.location.pathname).toBe('/app/dashboard')
-    expect(window.history.state.laPlumaTab).toBe('automation')
-    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('automation')
+    expect(window.location.pathname).toBe('/app/automation')
+    expect(window.history.state?.laPlumaTab).toBeUndefined()
+    expect(activeTabLabel()).toBe('automation')
 
     await act(async () => {
-      const state = { ...window.history.state, laPlumaTab: 'dashboard' }
-      window.history.replaceState(state, '', '/app/dashboard')
-      window.dispatchEvent(new PopStateEvent('popstate', { state }))
+      window.history.replaceState({}, '', '/app/dashboard')
+      window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
     expect(window.location.pathname).toBe('/app/dashboard')
-    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('dashboard')
+    expect(activeTabLabel()).toBe('dashboard')
   })
 
   it('retries scroll restoration when lazy content grows after navigation', async () => {
@@ -223,12 +296,11 @@ describe('top-level application navigation', () => {
     expect(getScrollHost().scrollTop).toBe(640)
   })
 
-  it('captures scroll before a shorter lazy page can clamp the viewport', async () => {
+  it('captures scroll before a shorter page can clamp the viewport', async () => {
+    clampViewportOnTabSwitch = true
+    availableScroll = 1000
     await renderLayout()
     currentScrollY = 420
-    const unsubscribe = useUIStore.subscribe((state, previousState) => {
-      if (state.activeTab !== previousState.activeTab) currentScrollY = 0
-    })
 
     await act(async () => desktopLink('automation').click())
     expect(getScrollHost().scrollTop).toBe(0)
@@ -238,8 +310,67 @@ describe('top-level application navigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
+    // 若快照发生在 tab 提交（裁剪）之后，这里会恢复成 0 而不是 420。
     expect(getScrollHost().scrollTop).toBe(420)
-    unsubscribe()
+  })
+
+  it('snapshots scroll for navigation initiated outside the layout nav handlers', async () => {
+    clampViewportOnTabSwitch = true
+    availableScroll = 1000
+    await renderLayout()
+    currentScrollY = 420
+
+    await act(async () => {
+      Array.from(container.querySelectorAll('button'))
+        .find(button => button.textContent === 'programmatic-automation')
+        ?.click()
+    })
+    expect(activeTabLabel()).toBe('automation')
+
+    await act(async () => {
+      window.history.replaceState({}, '', '/app/dashboard')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    // 页面内 navigate()（如概览快捷入口）也应在提交前保存旧页滚动位置。
+    expect(getScrollHost().scrollTop).toBe(420)
+  })
+
+  it('keeps scrolling that happens while an async navigation is pending', async () => {
+    clampViewportOnTabSwitch = true
+    availableScroll = 1000
+    await renderLayout()
+    currentScrollY = 100
+
+    await act(async () => {
+      Array.from(container.querySelectorAll('button'))
+        .find(button => button.textContent === 'async-automation')
+        ?.click()
+    })
+    expect(activeTabLabel()).toBe('dashboard')
+
+    // 导航还卡在 deferred 上，用户继续把概览滚到 800。
+    currentScrollY = 800
+    await act(async () => {
+      getScrollHost().dispatchEvent(new Event('scroll'))
+    })
+
+    const gate = asyncNavigationGate
+    expect(gate).not.toBeNull()
+    await act(async () => {
+      gate?.resolve()
+      await gate?.promise
+      await new Promise(resolve => { window.setTimeout(resolve, 0) })
+    })
+    expect(activeTabLabel()).toBe('automation')
+
+    await act(async () => {
+      window.history.replaceState({}, '', '/app/dashboard')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    // 恢复的必须是最新滚动位置，而不是点击瞬间的快照。
+    expect(getScrollHost().scrollTop).toBe(800)
   })
 
   it('keeps all desktop workspaces in one flat navigation list', async () => {
@@ -365,7 +496,7 @@ describe('top-level application navigation', () => {
 
     await act(async () => overflowLink?.click())
 
-    expect(container.querySelector('[data-testid="active-tab"]')?.textContent).toBe('roguelike')
+    expect(activeTabLabel()).toBe('roguelike')
     expect(container.querySelector('#la-pluma-more-sheet')).toBeNull()
     expect(document.activeElement).toBe(trigger)
   })

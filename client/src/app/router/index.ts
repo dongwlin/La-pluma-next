@@ -1,2 +1,4 @@
+export { AppRoutes } from './AppRoutes'
 export { VisitedWorkspaces } from './VisitedWorkspaces'
-export { appPages } from './pages'
+export { appRoutes } from './pages'
+export { appTabs, type AppTabDefinition } from './tabs'

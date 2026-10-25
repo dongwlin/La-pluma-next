@@ -1,5 +1,6 @@
 import React, { Activity, useState } from 'react'
-import { appPages } from './pages'
+import type { AppTab } from '@/shared/navigation'
+import { appRoutes } from './pages'
 
 interface PageErrorBoundaryProps {
   activeKey: string
@@ -50,12 +51,12 @@ class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, { hasErr
 /**
  * 保活渲染：访问过的页面持续挂载，仅切换可见性
  */
-export function VisitedWorkspaces({ activeTab }: { activeTab: string }) {
-  const [visitedPages] = useState(() => new Set([activeTab]))
+export function VisitedWorkspaces({ activeTab }: { activeTab: AppTab }) {
+  const [visitedPages] = useState(() => new Set<AppTab>([activeTab]))
   // The active tab prop already drives renders; keep history mutable to avoid a second render on navigation.
   visitedPages.add(activeTab)
 
-  return appPages
+  return appRoutes
     .filter(({ id }) => id === activeTab || visitedPages.has(id))
     .map(({ id, Component }) => (
       <PageErrorBoundary key={id} activeKey={activeTab} pageKey={id}>
