@@ -5,8 +5,9 @@
  * 读取先走服务端 `auto-update` 用户配置，失败时回退本设备上次保存的草稿；
  * 只有显式保存才写服务端，两步都成功才算完整成功。
  *
- * - 读取返回时若本地已经出现编辑（`touched`），不采用服务端/本地副本，
- *   迟到加载不会覆盖较新草稿。
+ * - 读取携带开始时的 revision 与 `touched` 守卫：读取期间出现编辑或保存时，
+ *   服务端/本地副本不会覆盖较新草稿；确认保存会推进 revision 并清除 touched，
+ *   使真正重挂载后的显式读取可以重新采用服务端副本。
  * - 保存期间允许继续编辑；响应返回时只有 revision 未变才把当前草稿标记为
  *   已保存，否则返回 `superseded`，保留新草稿与“当前更改尚未保存”提示。
  * - 服务端调度以响应 data 中的 `success=false` 表示失败；配置已保存但调度
@@ -139,17 +140,18 @@ export class AutoUpdateConfigOwner {
   /**
    * 读取服务端策略；失败时回退本设备上次保存的草稿。
    *
-   * 页面每次真正挂载调用一次（Activity 恢复不重读）；读取期间出现编辑时，
-   * 服务端与本地副本都不会写回草稿。
+   * 页面每次真正挂载调用一次（Activity 恢复不重读）；读取期间出现编辑或
+   * 保存时，服务端与本地副本都不会写回草稿。
    */
   async load(): Promise<AutoUpdateLoadOutcome> {
+    const readRevision = this.revision
     let serverError: string | null = null
 
     try {
       const serverConfig = await this.loadConfig()
       const normalized = normalizeAutoUpdateConfig(serverConfig.data)
       if (serverConfig.success && normalized) {
-        if (!this.touched) {
+        if (!this.touched && this.revision === readRevision) {
           this.state = {
             ...this.state,
             draft: normalized,
@@ -174,7 +176,7 @@ export class AutoUpdateConfigOwner {
       const saved = this.readLocal()
       if (saved) {
         const config = normalizeAutoUpdateConfig(JSON.parse(saved))
-        if (config && !this.touched) {
+        if (config && !this.touched && this.revision === readRevision) {
           this.state = {
             ...this.state,
             draft: config,
@@ -260,6 +262,10 @@ export class AutoUpdateConfigOwner {
             ? `自动更新已启用，每天 ${config.time} 执行`
             : '自动更新已禁用'
           this.writeLocal(JSON.stringify(config))
+          // 已确认的保存使此前的读取令牌失效，并允许下一次显式读取采用
+          // 服务端副本（真正重挂载仍会读一次）。
+          this.touched = false
+          this.revision += 1
           this.state = {
             ...this.state,
             dirty: false,

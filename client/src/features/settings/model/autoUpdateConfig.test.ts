@@ -276,6 +276,44 @@ describe('AutoUpdateConfigOwner save', () => {
     })
   })
 
+  it('adopts a newer server copy after a confirmed save', async () => {
+    const harness = createOwner()
+    harness.owner.update({ enabled: true, time: '05:30' })
+    await harness.owner.save()
+    expect(harness.owner.getState().dirty).toBe(false)
+
+    harness.load.mockResolvedValueOnce({
+      success: true,
+      data: { enabled: true, time: '08:00', updateCore: false, updateCli: true },
+    })
+    await harness.owner.load()
+
+    expect(harness.owner.getState()).toMatchObject({
+      draft: { enabled: true, time: '08:00', updateCore: false, updateCli: true },
+      dirty: false,
+      feedback: null,
+    })
+  })
+
+  it('does not let a read started before a save overwrite the saved draft', async () => {
+    const harness = createOwner()
+    const pendingLoad = deferred<ApiResponse>()
+    harness.load.mockReturnValueOnce(pendingLoad.promise)
+
+    const loading = harness.owner.load()
+    harness.owner.update({ enabled: true, time: '05:30' })
+    await harness.owner.save()
+
+    pendingLoad.resolve({
+      success: true,
+      data: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
+    })
+    await loading
+
+    expect(harness.owner.getState().draft.time).toBe('05:30')
+    expect(harness.owner.getState().dirty).toBe(false)
+  })
+
   it('does not mark edits made during a save as persisted', async () => {
     const pending = deferred<ApiResponse>()
     const harness = createOwner()
