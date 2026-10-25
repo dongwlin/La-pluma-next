@@ -18,6 +18,9 @@ import { useDashboardStore, type DashboardBusinessSnapshot } from '../store/dash
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
 import { getDeviceStats } from '@/features/device-mirror'
 import { loadUserConfig } from '@/features/user-config'
+import { useResourceInvalidation } from '@/features/resource-invalidation'
+
+const DASHBOARD_RESOURCE_SCOPES = ['dashboard-snapshot'] as const
 
 const sectionTitleClass = 'text-base font-bold text-primary'
 const labelClass = 'text-secondary'
@@ -336,6 +339,12 @@ export default function Dashboard() {
   }, [])
 
   const loadDashboardData = useCallback(() => refreshDashboardData(true), [])
+
+  // 识别、计划应用与资源更新的发布端在后续任务接入；总览只接受一次完整快照，
+  // 因此这里统一走 force 刷新，由 refreshDashboardData 校验五项后才原子提交。
+  useResourceInvalidation(DASHBOARD_RESOURCE_SCOPES, () => {
+    void loadDashboardData()
+  })
 
   useEffect(() => {
     let disposed = false

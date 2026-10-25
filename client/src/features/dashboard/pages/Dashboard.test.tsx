@@ -8,6 +8,7 @@ import * as taskExecutionModule from '@/features/task-execution'
 import type { AgentRun, ExecutionController, RunSnapshot } from '@/features/task-execution'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useStatusStore } from '@/features/runtime-status'
+import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import Dashboard from './Dashboard'
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
 
@@ -353,6 +354,32 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     expect(container.textContent).toContain('更新活动')
+  })
+
+  it('refreshes the complete snapshot when a resource invalidation is published', async () => {
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    apiMocks.getActivity.mockClear()
+    apiMocks.getScheduleExecutionStatus.mockClear()
+    apiMocks.getTrainingQueue.mockClear()
+    apiMocks.getTodayDrops.mockClear()
+    apiMocks.getOpenTodayStages.mockClear()
+    apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
+    const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
+
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['dashboard-snapshot'], cause: 'plan-applied' })
+    })
+    await flushDashboard()
+
+    expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getScheduleExecutionStatus).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getTodayDrops).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getOpenTodayStages).toHaveBeenCalledTimes(1)
+    // 单路失败不提交半份快照，旧快照与时间戳保持不变。
+    expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
   })
 
   it('keeps the last complete snapshot when one background request fails', async () => {

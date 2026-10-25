@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { AlertCircle, ArrowDown, ArrowUp, ArrowUpToLine, Check, ClipboardList, Filter, Package, Plus, Search, Sparkles, Trash2, UserRoundSearch, X } from 'lucide-react'
 import { getOperatorList, getTrainingQueue, addToTrainingQueue, removeFromTrainingQueue, updateTrainingQueueOrder, updateTrainingSettings, generateTrainingPlan, applyTrainingPlan, retryTrainingSync } from '../api'
 import { getAllOperators, getItemIconUrl, getOperBoxData } from '@/features/game-data'
+import { useResourceInvalidation } from '@/features/resource-invalidation'
 import { PageHeader, Button, EmptyState, IconButton, Input, Loading, Select, Switch } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
@@ -115,6 +116,14 @@ type FallbackOperatorRow = Partial<TrainingOperator> & {
 
 type TrainingStatusCounts = Record<TrainingFilters['status'], number>
 const OPERATOR_RENDER_BATCH_SIZE = 72
+const TRAINING_RESOURCE_SCOPES = [
+  'depot',
+  'operbox',
+  'catalog',
+  'materials',
+  'training-queue',
+  'training-plan',
+] as const
 
 const extractOperatorRows = (payload: unknown): FallbackOperatorRow[] => {
   const data = payload as { operators?: FallbackOperatorRow[]; data?: FallbackOperatorRow[] } | FallbackOperatorRow[] | null | undefined;
@@ -409,6 +418,27 @@ export default function OperatorTraining() {
     setPlan(null);
     setPlanError(null);
   };
+
+  // 识别、材料刷新与资源更新可能来自本页之外。只刷新受影响的读取，
+  // 并在计划前提变化时作废旧计划；队列写入仍由本页 mutation 自己刷新。
+  useResourceInvalidation(TRAINING_RESOURCE_SCOPES, ({ resources }) => {
+    const touchesPlan = resources.some(resource => (
+      resource === 'depot' || resource === 'materials' || resource === 'training-plan'
+    ))
+    const touchesQueue = resources.some(resource => (
+      resource === 'depot' || resource === 'materials' || resource === 'training-queue'
+    ))
+    const touchesOperators = resources.some(resource => (
+      resource === 'operbox' || resource === 'catalog' || resource === 'materials'
+    ))
+
+    if (touchesPlan) invalidatePlan()
+    if (touchesQueue) void loadQueue()
+    if (touchesOperators) {
+      void loadOperators()
+      void loadTrainingStatusCounts()
+    }
+  });
 
   const beginMutation = (operatorId: string) => {
     if (queueMutationInFlightRef.current || workInFlightRef.current) return false;

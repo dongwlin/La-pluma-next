@@ -4,6 +4,7 @@ import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
+import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import OperatorTraining from './OperatorTraining'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -407,8 +408,50 @@ describe('OperatorTraining queue workspace', () => {
     })
   })
 
-  it('removes the only target to the empty state and restores it at the original position', async () => {
-    const getQueue = mockMutableQueue([queueItem('char_current', '阿米娅')])
+  it('refreshes shared reads on resource invalidation without reloading unrelated data', async () => {
+    await renderComponent()
+
+    mocks.getOperatorList.mockClear()
+    mocks.getAllOperators.mockClear()
+    mocks.getOperBoxData.mockClear()
+    mocks.getTrainingQueue.mockClear()
+
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['catalog'], cause: 'resource-update' })
+    })
+    await flush()
+
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperatorList).toHaveBeenCalledTimes(3)
+    expect(mocks.getTrainingQueue).not.toHaveBeenCalled()
+
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['depot'], cause: 'recognition' })
+    })
+    await flush()
+
+    expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates a previewed plan when resource invalidation reports a new plan basis', async () => {
+    mockMutableQueue([queueItem('char_current', '阿米娅')])
+    await renderComponent()
+    await click(buttonWithText('预览刷图计划', container))
+    expect(container.textContent).toContain('应用到自动任务')
+
+    mocks.getTrainingQueue.mockClear()
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['training-plan'], cause: 'resource-update' })
+    })
+    await flush()
+
+    expect(container.textContent).toContain('队列变更后需重新预览')
+    expect(buttonWithText('预览刷图计划', container)).toBeDefined()
+    expect(mocks.getTrainingQueue).not.toHaveBeenCalled()
+  })
+
+  it('removes the only target to the empty state and restores it at the original position', async () => {    const getQueue = mockMutableQueue([queueItem('char_current', '阿米娅')])
 
     await renderComponent()
     await click(queueButton('移除阿米娅'))
