@@ -136,6 +136,13 @@ export interface TrainingFilters {
   status: 'trainable' | 'owned' | 'all'
 }
 
+// 三种状态计数
+export interface TrainingStatusCounts {
+  trainable: number
+  owned: number
+  all: number
+}
+
 // 计划模式
 export type TrainingPlanMode = 'current' | 'all'
 

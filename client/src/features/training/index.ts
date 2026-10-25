@@ -12,3 +12,12 @@ export {
   generateTrainingPlan,
   getTrainingQueue,
 } from './api'
+export { TRAINING_DOMAIN, trainingKeys } from './model/queryKeys'
+export {
+  trainingCandidatesQueryOptions,
+  trainingStatusCountsQueryOptions,
+} from './model/queries'
+export type { TrainingResource } from './model/queryKeys'
+export type { TrainingCandidateFilters } from './model/candidates'
+export type { TrainingStatusCountsFilters } from './model/queries'
+export type { TrainingStatusCounts } from './types'

@@ -1,0 +1,114 @@
+/**
+ * 养成候选列表与状态计数 Query 定义
+ *
+ * 两个资源都由本域持有，页面只读取 query 结果，不再保存请求 id、loading
+ * 或错误状态。共享干员目录与持有干员仍由 `game-data` 提供端点与类型：
+ * 候选 `all` 的旧兼容补齐与计数回退在查询内部读取它们，不建立第二份
+ * Query key 或可写资源。
+ *
+ * 失败语义保持迁移前的差异：
+ * - 候选列表失败成为 query error，页面清空列表并展示可重试错误；
+ * - 计数失败不展示错误，Query 保留上一次成功数据（同 key 重新读取失败时）。
+ */
+
+import { keepPreviousData, queryOptions } from '@tanstack/react-query'
+import { unwrapApiResponse } from '@/shared/api'
+import {
+  getAllOperators,
+  getOperBoxData,
+  type OperBoxData,
+  type OperatorDetailed,
+} from '@/features/game-data'
+import { getOperatorList } from '../api'
+import type { TrainingOperator, TrainingStatusCounts } from '../types'
+import {
+  buildAllCandidateRows,
+  extractOperatorRows,
+  type TrainingCandidateFilters,
+} from './candidates'
+import { trainingKeys } from './queryKeys'
+import { buildTrainingStatusCounts, mergeTrainingStatusCounts } from './statusCounts'
+
+export interface TrainingStatusCountsFilters {
+  rarity?: number | null
+  needsElite2?: boolean
+}
+
+const toOperatorListFilters = (filters: TrainingCandidateFilters) => ({
+  status: filters.status,
+  rarity: filters.rarity ?? undefined,
+  needsElite2: filters.needsElite2 ?? false,
+})
+
+const readCandidateRows = async (
+  filters: TrainingCandidateFilters,
+  signal: AbortSignal,
+): Promise<TrainingOperator[]> => {
+  const response = await getOperatorList(toOperatorListFilters(filters), signal)
+  return extractOperatorRows(unwrapApiResponse(response))
+}
+
+const readOperatorCatalog = async (signal: AbortSignal): Promise<OperatorDetailed[]> => {
+  const data = unwrapApiResponse<OperatorDetailed[]>(await getAllOperators(signal))
+  return Array.isArray(data) ? data : []
+}
+
+const readOperBoxRows = async (signal: AbortSignal): Promise<OperatorDetailed[]> => {
+  const operBox = unwrapApiResponse<OperBoxData | null>(await getOperBoxData(signal))
+  return operBox?.data ?? []
+}
+
+/**
+ * 候选列表按状态、稀有度与“未精二”条件区分缓存身份。
+ * `status=all` 且端点返回空列表时沿用旧兼容补齐（目录 + 持有干员）。
+ */
+export const trainingCandidatesQueryOptions = (filters: TrainingCandidateFilters) => queryOptions({
+  queryKey: trainingKeys.query(
+    'candidates',
+    filters.status,
+    filters.rarity ?? null,
+    filters.needsElite2 ?? false,
+  ),
+  queryFn: async ({ signal }): Promise<TrainingOperator[]> => {
+    const rows = await readCandidateRows(filters, signal)
+    if (filters.status !== 'all' || rows.length > 0) return rows
+
+    const [catalog, ownedOperators] = await Promise.all([
+      readOperatorCatalog(signal),
+      readOperBoxRows(signal),
+    ])
+    return buildAllCandidateRows(catalog, ownedOperators, filters.rarity ?? null)
+  },
+})
+
+/**
+ * 三种状态计数使用固定筛选（稀有度、未精二），与当前列表状态无关。
+ * 同 key 刷新失败时 Query 保留上次数据；`all` 为 0 时由 structuralSharing
+ * 保留旧值，避免目录暂不可用时把“全部”显示成 0。
+ */
+export const trainingStatusCountsQueryOptions = (
+  filters: TrainingStatusCountsFilters,
+) => queryOptions({
+  queryKey: trainingKeys.query('counts', filters.rarity ?? null, filters.needsElite2 ?? false),
+  queryFn: async ({ signal }): Promise<TrainingStatusCounts> => {
+    const [trainableRows, ownedRows, catalog, operBoxRows] = await Promise.all([
+      readCandidateRows({ status: 'trainable', ...filters }, signal),
+      readCandidateRows({ status: 'owned', ...filters }, signal),
+      readOperatorCatalog(signal),
+      readOperBoxRows(signal),
+    ])
+
+    return buildTrainingStatusCounts({
+      trainableRows,
+      ownedRows,
+      catalog,
+      operBoxRows,
+      filters,
+    })
+  },
+  placeholderData: keepPreviousData,
+  structuralSharing: (previous, next) => mergeTrainingStatusCounts(
+    previous as TrainingStatusCounts | undefined,
+    next as TrainingStatusCounts,
+  ),
+})
