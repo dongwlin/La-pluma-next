@@ -517,6 +517,29 @@ describe('OperatorTraining queue workspace', () => {
     expect(mocks.getOperBoxData).not.toHaveBeenCalled()
   })
 
+  it('reflects an externally changed queue in candidate actions without refetching candidates', async () => {
+    mocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: { operators: [operator('char_current', '阿米娅')] },
+    })
+    mocks.getTrainingQueue
+      .mockResolvedValueOnce(queueResponse([]))
+      .mockResolvedValueOnce(queueResponse([queueItem('char_current', '阿米娅')]))
+
+    await renderComponent()
+    const { dialog } = await openPicker()
+    expect(buttonWithText('添加', dialog).disabled).toBe(false)
+
+    mocks.getOperatorList.mockClear()
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['training-queue'], cause: 'training-queue' })
+    })
+    await flush()
+
+    expect(mocks.getOperatorList).not.toHaveBeenCalled()
+    expect(buttonWithText('已添加', dialog).disabled).toBe(true)
+  })
+
   it('shows trainable, owned, and full counts from the training queries', async () => {
     mocks.getOperatorList.mockImplementation(async (filters: { status?: string } = {}) => {
       if (filters.status === 'trainable') {
