@@ -1,13 +1,33 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
 import { fetchOperatorMaterials, getTrainingQueue } from '@/features/training'
-import { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from '@/features/game-data'
 import {
-  getDropStatistics,
-  parseDepotData,
-  parseOperBoxData,
-} from '../api'
+  depotQueryOptions,
+  gameDataKeys,
+  getItemIconUrl,
+  operBoxQueryOptions,
+  operatorCatalogQueryOptions,
+} from '@/features/game-data'
+import { useResourceInvalidation } from '@/features/resource-invalidation'
+import { parseDepotData, parseOperBoxData } from '../api'
+import { dropStatisticsQueryOptions } from '../model/queries'
+import { statisticsKeys } from '../model/queryKeys'
+import {
+  DEFAULT_OPERATOR_FILTERS,
+  buildOwnedOperatorIdSet,
+  hasActiveOperatorFilters,
+  isOwnedOperator,
+  selectOperators,
+  type FilterElite,
+  type FilterOwnership,
+  type FilterPotential,
+  type FilterProfession,
+  type FilterRarity,
+  type OperatorFilters,
+  type SortBy,
+} from '../model/operatorFilters'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   ChevronDown,
@@ -24,21 +44,21 @@ import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type {
   DepotDataDetailed,
   OperBoxData,
-  OperatorDetailed,
 } from '@/features/game-data'
 import type {
-  FilterRarity,
-  FilterElite,
-  FilterPotential,
-  FilterOwnership,
-  FilterProfession,
-  SortBy,
   ActiveTask,
   ActiveTab,
   OpenMenu,
-  DropRecordsProps,
 } from '../types'
 import { executeCommand } from '@/features/task-execution'
+
+const DEPOT_READ_ERROR = '暂时无法读取仓库数据，请检查服务连接后重试。'
+const OPER_BOX_READ_ERROR = '暂时无法读取干员识别结果，请检查服务连接后重试。'
+const OPERATOR_CATALOG_READ_ERROR = '暂时无法读取干员资料，请检查资源状态后重试。'
+const DROP_READ_ERROR = '暂时无法读取掉落记录，请检查服务连接后重试。'
+
+/** 读取由 Query 持有，失效到达后按作用域精确保废对应资源。 */
+const STATISTICS_RESOURCE_SCOPES = ['depot', 'operbox', 'catalog', 'drops'] as const
 
 type FilterMenuKey = Exclude<OpenMenu, null>
 
@@ -431,30 +451,53 @@ export default function DataStatistics() {
   const [isRunning, setIsRunning] = useState(false)
   const [activeTask, setActiveTask] = useState<ActiveTask>(null)
   const { setMessage: setStatusMessage } = useStatusStore()
-  const [depotData, setDepotData] = useState<DepotDataDetailed | null>(null)
-  const [operBoxData, setOperBoxData] = useState<OperBoxData | null>(null)
-  const [allOperators, setAllOperators] = useState<OperatorDetailed[]>([])
-  const [depotDataLoading, setDepotDataLoading] = useState(true)
-  const [operBoxDataLoading, setOperBoxDataLoading] = useState(true)
-  const [operatorCatalogLoading, setOperatorCatalogLoading] = useState(true)
-  const [depotDataError, setDepotDataError] = useState<string | null>(null)
-  const [operBoxDataError, setOperBoxDataError] = useState<string | null>(null)
-  const [operatorCatalogError, setOperatorCatalogError] = useState<string | null>(null)
-  const depotRequestIdRef = useRef(0)
-  const operBoxRequestIdRef = useRef(0)
-  const operatorCatalogRequestIdRef = useRef(0)
+  const queryClient = useQueryClient()
+  const depotQuery = useQuery(depotQueryOptions())
+  const operBoxQuery = useQuery(operBoxQueryOptions())
+  const operatorCatalogQuery = useQuery(operatorCatalogQueryOptions())
+  const [dropDays, setDropDays] = useState(7)
+  const dropQuery = useQuery(dropStatisticsQueryOptions(dropDays))
+
+  const depotData = depotQuery.data ?? null
+  const depotDataLoading = depotQuery.isPending
+  const depotDataRefreshing = depotQuery.isFetching
+  const operBoxData = operBoxQuery.data ?? null
+  const allOperators = useMemo(
+    () => operatorCatalogQuery.data ?? [],
+    [operatorCatalogQuery.data],
+  )
+  const depotDataError = depotQuery.isError ? DEPOT_READ_ERROR : null
+  const operBoxDataError = operBoxQuery.isError ? OPER_BOX_READ_ERROR : null
+  const operatorCatalogError = operatorCatalogQuery.isError ? OPERATOR_CATALOG_READ_ERROR : null
+  const operatorDataError = operBoxDataError || operatorCatalogError
+  const operatorDataLoading = operBoxQuery.isPending || operatorCatalogQuery.isPending
+  const operatorDataRefreshing = operBoxQuery.isFetching || operatorCatalogQuery.isFetching
+  const dropStatistics = dropQuery.data ?? null
+  const dropDataError = dropQuery.isError ? DROP_READ_ERROR : null
+  const dropDataLoading = dropQuery.isFetching
   const [failedDepotImages, setFailedDepotImages] = useState<Record<string, boolean>>({})
   
-  // 筛选和排序状态
-  const [filterRarity, setFilterRarity] = useState<FilterRarity>('all')
-  const [filterElite, setFilterElite] = useState<FilterElite>('all')
-  const [filterPotential, setFilterPotential] = useState<FilterPotential>('all')
-  const [filterOwnership, setFilterOwnership] = useState<FilterOwnership>('all')
-  const [filterProfession, setFilterProfession] = useState<FilterProfession>('all')
-  const [sortBy, setSortBy] = useState<SortBy>('default')
+  // 筛选和排序状态；状态属于页面而不是条件挂载的面板，切换 tab 不丢筛选。
+  const [filters, setFilters] = useState<OperatorFilters>(DEFAULT_OPERATOR_FILTERS)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('operbox')
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({})
+
+  // 读取由 Query 持有；识别/资源更新等写入成功后只作废已声明的资源作用域。
+  useResourceInvalidation(STATISTICS_RESOURCE_SCOPES, ({ resources }) => {
+    if (resources.includes('depot')) {
+      void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('depot') })
+    }
+    if (resources.includes('operbox')) {
+      void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('operbox') })
+    }
+    if (resources.includes('catalog')) {
+      void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('catalog') })
+    }
+    if (resources.includes('drops')) {
+      void queryClient.invalidateQueries({ queryKey: statisticsKeys.resource('drops') })
+    }
+  })
   const shouldReduceMotion = useReducedMotion()
   const {
     containerRef: tabListRef,
@@ -475,280 +518,16 @@ export default function DataStatistics() {
       .sort((a, b) => b.count - a.count)
   }, [depotData])
 
-  // 掉落记录相关状态
-  const [dropStatistics, setDropStatistics] = useState<DropRecordsProps['dropStatistics']>(null)
-  const [dropDays, setDropDays] = useState(7)
-  const [dropDataLoading, setDropDataLoading] = useState(true)
-  const [dropDataError, setDropDataError] = useState<string | null>(null)
-  const dropRequestIdRef = useRef(0)
+  // 筛选、排序与阿米娅形态规则由纯模型持有，页面只传目录、持有快照与筛选状态。
+  const filteredOperators = useMemo(
+    () => selectOperators({ catalog: allOperators, operBox: operBoxData, filters }),
+    [allOperators, operBoxData, filters],
+  )
 
-  const loadDepotData = useCallback(async () => {
-    const requestId = ++depotRequestIdRef.current
-    setDepotDataLoading(true)
-    setDepotDataError(null)
-    try {
-      const depotResult = await getDepotData()
-      if (requestId !== depotRequestIdRef.current) return
-      if (!depotResult.success) {
-        setDepotDataError('暂时无法读取仓库数据，请检查服务连接后重试。')
-        return
-      }
-
-      if (depotResult.data) {
-        setDepotData({
-          itemCount: depotResult.data.itemCount,
-          items: depotResult.data.items || [],
-          timestamp: depotResult.data.timestamp
-        })
-      } else {
-        setDepotData(null)
-      }
-    } catch {
-      if (requestId !== depotRequestIdRef.current) return
-      setDepotDataError('暂时无法读取仓库数据，请检查服务连接后重试。')
-    } finally {
-      if (requestId === depotRequestIdRef.current) setDepotDataLoading(false)
-    }
-  }, [])
-
-  const loadOperBoxData = useCallback(async () => {
-    const requestId = ++operBoxRequestIdRef.current
-    setOperBoxDataLoading(true)
-    setOperBoxDataError(null)
-    try {
-      const operBoxResult = await getOperBoxData()
-      if (requestId !== operBoxRequestIdRef.current) return
-      if (!operBoxResult.success) {
-        setOperBoxDataError('暂时无法读取干员识别结果，请检查服务连接后重试。')
-        return
-      }
-
-      if (operBoxResult.data) {
-        setOperBoxData({
-          operCount: operBoxResult.data.operCount,
-          data: operBoxResult.data.data || [],
-          timestamp: operBoxResult.data.timestamp
-        })
-      } else {
-        setOperBoxData(null)
-      }
-    } catch {
-      if (requestId !== operBoxRequestIdRef.current) return
-      setOperBoxDataError('暂时无法读取干员识别结果，请检查服务连接后重试。')
-    } finally {
-      if (requestId === operBoxRequestIdRef.current) setOperBoxDataLoading(false)
-    }
-  }, [])
-
-  const loadAllOperators = useCallback(async () => {
-    const requestId = ++operatorCatalogRequestIdRef.current
-    setOperatorCatalogLoading(true)
-    setOperatorCatalogError(null)
-    try {
-      const result = await getAllOperators()
-      if (requestId !== operatorCatalogRequestIdRef.current) return
-      if (!result.success) {
-        setOperatorCatalogError('暂时无法读取干员资料，请检查资源状态后重试。')
-        return
-      }
-
-      setAllOperators(Array.isArray(result.data) ? result.data : [])
-    } catch {
-      if (requestId !== operatorCatalogRequestIdRef.current) return
-      setOperatorCatalogError('暂时无法读取干员资料，请检查资源状态后重试。')
-    } finally {
-      if (requestId === operatorCatalogRequestIdRef.current) setOperatorCatalogLoading(false)
-    }
-  }, [])
-
-  const loadOperatorData = useCallback(async () => {
-    await Promise.all([loadOperBoxData(), loadAllOperators()])
-  }, [loadAllOperators, loadOperBoxData])
-
-  // 加载掉落数据
-  const loadDropData = useCallback(async () => {
-    const requestId = ++dropRequestIdRef.current
-    setDropDataLoading(true)
-    setDropDataError(null)
-    try {
-      const statsResult = await getDropStatistics(dropDays)
-      if (requestId !== dropRequestIdRef.current) return
-      if (!statsResult.success) {
-        setDropDataError('暂时无法读取掉落记录，请检查服务连接后重试。')
-        return
-      }
-
-      setDropStatistics(statsResult.data || null)
-    } catch {
-      if (requestId !== dropRequestIdRef.current) return
-      setDropDataError('暂时无法读取掉落记录，请检查服务连接后重试。')
-    } finally {
-      if (requestId === dropRequestIdRef.current) setDropDataLoading(false)
-    }
-  }, [dropDays])
-
-  // 首次读取各区域数据；每个区域独立反馈，不让单个接口拖住整页。
-  useEffect(() => {
-    void loadDepotData()
-    void loadOperatorData()
-    return () => {
-      depotRequestIdRef.current += 1
-      operBoxRequestIdRef.current += 1
-      operatorCatalogRequestIdRef.current += 1
-    }
-  }, [loadDepotData, loadOperatorData])
-  
-  // 当统计天数变化时重新加载
-  useEffect(() => {
-    void loadDropData()
-    return () => {
-      dropRequestIdRef.current += 1
-    }
-  }, [loadDropData])
-
-  const operatorDataLoading = operBoxDataLoading || operatorCatalogLoading
-  const operatorDataError = operBoxDataError || operatorCatalogError
-
-  // 筛选和排序干员数据
-  const getFilteredAndSortedOperators = useMemo(() => {
-    let dataSource: OperatorDetailed[] = []
-    
-    const allOperatorsMap = new Map((allOperators || []).map(op => [op.id, op]))
-    const ownedIds = new Set((operBoxData?.data || []).map(op => op.id))
-    
-    // 特殊处理：阿米娅的三个形态
-    const amiyaIds = ['char_002_amiya', 'char_1001_amiya2', 'char_1037_amiya3']
-    const hasAnyAmiya = amiyaIds.some(id => ownedIds.has(id))
-    if (hasAnyAmiya) {
-      amiyaIds.forEach(id => ownedIds.add(id))
-    }
-    
-    if (filterOwnership === 'unowned') {
-      if (!allOperators || allOperators.length === 0) {
-        return []
-      }
-      
-      dataSource = allOperators
-        .filter(op => !ownedIds.has(op.id))
-        .map(op => ({
-          ...op,
-          level: 0,
-          elite: 0,
-          potential: 0
-        }))
-    } else if (filterOwnership === 'owned') {
-      if (!operBoxData || !operBoxData.data) return []
-      
-      const ownedOperators: OperatorDetailed[] = operBoxData.data.map(owned => {
-        const fullInfo = allOperatorsMap.get(owned.id)
-        return {
-          ...owned,
-          profession: fullInfo?.profession || owned.profession,
-          position: fullInfo?.position || owned.position
-        }
-      })
-      
-      if (hasAnyAmiya) {
-        const ownedOperatorIds = new Set(ownedOperators.map(op => op.id))
-        amiyaIds.forEach(amiyaId => {
-          if (!ownedOperatorIds.has(amiyaId)) {
-            const amiyaInfo = allOperatorsMap.get(amiyaId)
-            if (amiyaInfo) {
-              const ownedAmiya = ownedOperators.find(op => amiyaIds.includes(op.id))
-              ownedOperators.push({
-                ...amiyaInfo,
-                level: ownedAmiya?.level || 1,
-                elite: ownedAmiya?.elite || 0,
-                potential: ownedAmiya?.potential || 1,
-                position: amiyaInfo.position
-              } as OperatorDetailed)
-            }
-          }
-        })
-      }
-      
-      dataSource = ownedOperators
-    } else {
-      if (!allOperators || allOperators.length === 0) return []
-      
-      const ownedMap = new Map((operBoxData?.data || []).map(op => [op.id, op]))
-      
-      let ownedAmiyaData: OperatorDetailed | undefined = undefined
-      if (hasAnyAmiya) {
-        ownedAmiyaData = amiyaIds.map(id => ownedMap.get(id)).find(data => data)
-      }
-      
-      dataSource = allOperators.map(op => {
-        const owned = ownedMap.get(op.id)
-        if (owned) {
-          return {
-            ...op,
-            ...owned,
-          }
-        } else if (hasAnyAmiya && amiyaIds.includes(op.id)) {
-          return {
-            ...op,
-            level: ownedAmiyaData?.level || 1,
-            elite: ownedAmiyaData?.elite || 0,
-            potential: ownedAmiyaData?.potential || 1
-          }
-        } else {
-          return {
-            ...op,
-            level: 0,
-            elite: 0,
-            potential: 0
-          }
-        }
-      })
-    }
-    
-    let filtered = dataSource
-    
-    if (filterRarity !== 'all') {
-      const rarity = parseInt(filterRarity)
-      filtered = filtered.filter(oper => Math.min(oper.rarity || 0, 6) === rarity)
-    }
-    
-    if (filterProfession !== 'all') {
-      filtered = filtered.filter(oper => oper.profession === filterProfession)
-    }
-    
-    if (filterElite !== 'all' && filterOwnership !== 'unowned') {
-      const elite = parseInt(filterElite)
-      filtered = filtered.filter(oper => (oper.elite || 0) === elite)
-    }
-    
-    if (filterPotential !== 'all' && filterOwnership !== 'unowned') {
-      const potential = parseInt(filterPotential)
-      filtered = filtered.filter(oper => (oper.potential || 1) === potential)
-    }
-    
-    if (filterOwnership === 'owned') {
-      if (sortBy === 'level') {
-        filtered.sort((a, b) => (b.level || 0) - (a.level || 0))
-      } else if (sortBy === 'rarity') {
-        filtered.sort((a, b) => {
-          const rarityA = Math.min(a.rarity || 0, 6)
-          const rarityB = Math.min(b.rarity || 0, 6)
-          return rarityB - rarityA
-        })
-      } else if (sortBy === 'potential') {
-        filtered.sort((a, b) => (b.potential || 1) - (a.potential || 1))
-      }
-    } else {
-      filtered.sort((a, b) => {
-        const rarityA = Math.min(a.rarity || 0, 6)
-        const rarityB = Math.min(b.rarity || 0, 6)
-        if (rarityB !== rarityA) {
-          return rarityB - rarityA
-        }
-        return a.name.localeCompare(b.name, 'zh-CN')
-      })
-    }
-    
-    return filtered
-  }, [filterOwnership, filterRarity, filterProfession, filterElite, filterPotential, sortBy, allOperators, operBoxData])
+  const ownedOperatorIds = useMemo(
+    () => buildOwnedOperatorIdSet(operBoxData),
+    [operBoxData],
+  )
 
   const ownedOperatorCount = useMemo(
     () => new Set((operBoxData?.data || []).map(operator => operator.id)).size,
@@ -759,9 +538,20 @@ export default function DataStatistics() {
     ? Math.round((ownedOperatorCount / operatorCatalogCount) * 100)
     : 0
 
+  const reloadDepot = () => {
+    void depotQuery.refetch()
+  }
+  const reloadOperatorData = () => {
+    void operBoxQuery.refetch()
+    void operatorCatalogQuery.refetch()
+  }
+  const reloadDropData = () => {
+    void dropQuery.refetch()
+  }
+
   // 当筛选条件变化时，清理不再显示的干员图片加载状态
   useEffect(() => {
-    const currentOperIds = new Set(getFilteredAndSortedOperators.map(op => op.id))
+    const currentOperIds = new Set(filteredOperators.map(op => op.id))
     
     setLoadedImages(prev => {
       const loadedIds = Object.keys(prev)
@@ -778,7 +568,7 @@ export default function DataStatistics() {
       
       return prev
     })
-  }, [filterRarity, filterElite, filterPotential, filterOwnership, filterProfession, sortBy, getFilteredAndSortedOperators])
+  }, [filters, filteredOperators])
 
   // 执行仓库识别
   const executeDepot = async () => {
@@ -787,7 +577,6 @@ export default function DataStatistics() {
     setIsRunning(true)
     setActiveTask('depot')
     setStatusMessage('正在识别仓库物品...')
-    setDepotDataError(null)
 
     try {
       // 使用动态任务配置
@@ -811,13 +600,14 @@ export default function DataStatistics() {
         const parseResult = await parseDepotData()
         
         if (parseResult.success) {
-          setDepotDataError(null)
-          setDepotData({
+          // 解析结果是权威完整快照：写入该资源唯一的 Query 缓存，不另存页面副本。
+          const nextDepot: DepotDataDetailed = {
             itemCount: parseResult.data.itemCount,
             items: parseResult.data.items || [],
             path: parseResult.data.path,
             timestamp: new Date().toISOString()
-          })
+          }
+          queryClient.setQueryData(gameDataKeys.resource('depot'), nextDepot)
           
           try {
             setStatusMessage('正在更新智能养成系统...')
@@ -858,8 +648,8 @@ export default function DataStatistics() {
       if (result.success) {
         setStatusMessage('干员材料数据获取成功！')
 
-        // 重新加载干员列表以显示材料数据
-        await loadAllOperators()
+        // 重新读取干员目录以显示材料数据
+        await operatorCatalogQuery.refetch()
       } else {
         setStatusMessage(`获取失败: ${getErrorMessage(result)}`)
       }
@@ -877,7 +667,6 @@ export default function DataStatistics() {
     setIsRunning(true)
     setActiveTask('operbox')
     setStatusMessage('正在识别干员数据...')
-    setOperBoxDataError(null)
 
     try {
       // 使用动态任务配置
@@ -901,14 +690,14 @@ export default function DataStatistics() {
         const parseResult = await parseOperBoxData()
 
         if (parseResult.success) {
-          setOperBoxDataError(null)
           setStatusMessage(`识别完成！共识别 ${parseResult.data.operCount} 名干员`)
-          setOperBoxData({
+          const nextOperBox: OperBoxData = {
             operCount: parseResult.data.operCount,
             data: parseResult.data.data || [],
             path: parseResult.data.path,
             timestamp: new Date().toISOString()
-          })
+          }
+          queryClient.setQueryData(gameDataKeys.resource('operbox'), nextOperBox)
         } else {
           setStatusMessage(`识别完成，但数据解析失败: ${getErrorMessage(parseResult)}`)
         }
@@ -923,20 +712,10 @@ export default function DataStatistics() {
     }
   }
 
-  const hasActiveOperatorFilters = filterRarity !== 'all'
-    || filterElite !== 'all'
-    || filterPotential !== 'all'
-    || filterOwnership !== 'all'
-    || filterProfession !== 'all'
-    || sortBy !== 'default'
+  const filtersActive = hasActiveOperatorFilters(filters)
 
   const resetOperatorFilters = () => {
-    setFilterRarity('all')
-    setFilterElite('all')
-    setFilterPotential('all')
-    setFilterOwnership('all')
-    setFilterProfession('all')
-    setSortBy('default')
+    setFilters(DEFAULT_OPERATOR_FILTERS)
   }
 
   return (
@@ -1084,8 +863,8 @@ export default function DataStatistics() {
               <InlineDataError
                 title="干员数据读取失败"
                 description={operatorDataError}
-                isRetrying={operatorDataLoading}
-                onRetry={() => { void loadOperatorData() }}
+                isRetrying={operatorDataRefreshing}
+                onRetry={reloadOperatorData}
               />
             )}
             {!operatorDataLoading && !operatorDataError && !isRunning && (!operBoxData?.data || operBoxData.data.length === 0) && (
@@ -1113,7 +892,7 @@ export default function DataStatistics() {
                   </div>
                   <div className={statCardClass}>
                     <p className="text-xs text-secondary">当前显示</p>
-                    <p className="mt-1 text-2xl font-semibold text-primary">{getFilteredAndSortedOperators.length}</p>
+                    <p className="mt-1 text-2xl font-semibold text-primary">{filteredOperators.length}</p>
                   </div>
                   <div className={statCardClass}>
                     <p className="text-xs text-secondary">档案覆盖</p>
@@ -1132,7 +911,7 @@ export default function DataStatistics() {
                       )}
                     </div>
                     <p className="shrink-0 text-xs text-secondary" aria-live="polite">
-                      显示 <span className="font-semibold brand-text">{getFilteredAndSortedOperators.length}</span> 项
+                      显示 <span className="font-semibold brand-text">{filteredOperators.length}</span> 项
                     </p>
                   </div>
 
@@ -1140,82 +919,82 @@ export default function DataStatistics() {
                     {/* 拥有状态 */}
                     <FilterMenu
                       menuKey="ownership"
-                      label={ownershipLabels[filterOwnership]}
-                      value={filterOwnership}
+                      label={ownershipLabels[filters.ownership]}
+                      value={filters.ownership}
                       options={ownershipOptions}
-                      isActive={filterOwnership !== 'all'}
+                      isActive={filters.ownership !== 'all'}
                       isOpen={openMenu === 'ownership'}
                       onOpenChange={setOpenMenu}
-                      onSelect={value => setFilterOwnership(value as FilterOwnership)}
+                      onSelect={value => setFilters(current => ({ ...current, ownership: value as FilterOwnership }))}
                     />
 
                     {/* 星级 */}
                     <FilterMenu
                       menuKey="rarity"
-                      label={filterRarity === 'all' ? '星级' : `${filterRarity}星`}
-                      value={filterRarity}
+                      label={filters.rarity === 'all' ? '星级' : `${filters.rarity}星`}
+                      value={filters.rarity}
                       options={rarityOptions}
-                      isActive={filterRarity !== 'all'}
+                      isActive={filters.rarity !== 'all'}
                       isOpen={openMenu === 'rarity'}
                       menuWidth={112}
                       onOpenChange={setOpenMenu}
-                      onSelect={value => setFilterRarity(value as FilterRarity)}
+                      onSelect={value => setFilters(current => ({ ...current, rarity: value as FilterRarity }))}
                     />
 
                     {/* 职业 */}
                     <FilterMenu
                       menuKey="profession"
-                      label={professionLabels[filterProfession]}
-                      value={filterProfession}
+                      label={professionLabels[filters.profession]}
+                      value={filters.profession}
                       options={professionOptions}
-                      isActive={filterProfession !== 'all'}
+                      isActive={filters.profession !== 'all'}
                       isOpen={openMenu === 'profession'}
                       mobileAlign="end"
                       onOpenChange={setOpenMenu}
-                      onSelect={value => setFilterProfession(value as FilterProfession)}
+                      onSelect={value => setFilters(current => ({ ...current, profession: value as FilterProfession }))}
                     />
 
                     {/* 精英化 */}
                     <FilterMenu
                       menuKey="elite"
-                      label={filterElite === 'all' ? '精英化' : `精英${filterElite}`}
-                      value={filterElite}
+                      label={filters.elite === 'all' ? '精英化' : `精英${filters.elite}`}
+                      value={filters.elite}
                       options={eliteOptions}
-                      isActive={filterElite !== 'all'}
+                      isActive={filters.elite !== 'all'}
                       isOpen={openMenu === 'elite'}
                       menuWidth={112}
                       onOpenChange={setOpenMenu}
-                      onSelect={value => setFilterElite(value as FilterElite)}
+                      onSelect={value => setFilters(current => ({ ...current, elite: value as FilterElite }))}
                     />
 
                     {/* 潜能 */}
                     <FilterMenu
                       menuKey="potential"
-                      label={filterPotential === 'all' ? '潜能' : `潜能${filterPotential}`}
-                      value={filterPotential}
+                      label={filters.potential === 'all' ? '潜能' : `潜能${filters.potential}`}
+                      value={filters.potential}
                       options={potentialOptions}
-                      isActive={filterPotential !== 'all'}
+                      isActive={filters.potential !== 'all'}
                       isOpen={openMenu === 'potential'}
                       menuWidth={112}
                       onOpenChange={setOpenMenu}
-                      onSelect={value => setFilterPotential(value as FilterPotential)}
+                      onSelect={value => setFilters(current => ({ ...current, potential: value as FilterPotential }))}
                     />
 
                     {/* 排序 */}
                     <FilterMenu
                       menuKey="sort"
-                      label={sortLabels[sortBy]}
-                      value={sortBy}
+                      label={sortLabels[filters.sortBy]}
+                      value={filters.sortBy}
                       options={sortOptions}
-                      isActive={sortBy !== 'default'}
+                      isActive={filters.sortBy !== 'default'}
                       isOpen={openMenu === 'sort'}
                       mobileAlign="end"
                       onOpenChange={setOpenMenu}
-                      onSelect={value => setSortBy(value as SortBy)}
+                      onSelect={value => setFilters(current => ({ ...current, sortBy: value as SortBy }))}
                     />
 
                     {/* 重置按钮 */}
-                    {hasActiveOperatorFilters && (
+                    {filtersActive && (
                       <Button
                         onClick={resetOperatorFilters}
                         variant="ghost"
@@ -1230,14 +1009,14 @@ export default function DataStatistics() {
                 </section>
 
                 {/* 干员卡片网格 */}
-                {getFilteredAndSortedOperators.length === 0 ? (
+                {filteredOperators.length === 0 ? (
                   <EmptyState
                     compact
                     className="py-10"
                     icon={<Icons.Users />}
                     title="没有符合条件的干员"
                     description="调整筛选条件后再查看。"
-                    action={hasActiveOperatorFilters ? (
+                    action={filtersActive ? (
                       <Button variant="secondary" size="sm" onClick={resetOperatorFilters}>
                         清除筛选
                       </Button>
@@ -1245,18 +1024,8 @@ export default function DataStatistics() {
                   />
                 ) : (
                 <div className="data-statistics-item-grid grid grid-cols-2 overflow-hidden rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {getFilteredAndSortedOperators.map((oper) => {
-                    // 判断是否拥有该干员
-                    const ownedIds = new Set((operBoxData?.data || []).map(op => op.id))
-                    
-                    // 特殊处理：阿米娅的三个形态
-                    const amiyaIds = ['char_002_amiya', 'char_1001_amiya2', 'char_1037_amiya3']
-                    const hasAnyAmiya = amiyaIds.some(id => ownedIds.has(id))
-                    if (hasAnyAmiya) {
-                      amiyaIds.forEach(id => ownedIds.add(id))
-                    }
-                    
-                    const isOwned = oper.level > 0 || ownedIds.has(oper.id);
+                  {filteredOperators.map((oper) => {
+                    const isOwned = isOwnedOperator(oper, ownedOperatorIds);
                     const imageLoaded = loadedImages[oper.id] || false;
                     
                     return (
@@ -1413,8 +1182,8 @@ export default function DataStatistics() {
               <InlineDataError
                 title="仓库数据读取失败"
                 description={depotDataError}
-                isRetrying={depotDataLoading}
-                onRetry={() => { void loadDepotData() }}
+                isRetrying={depotDataRefreshing}
+                onRetry={reloadDepot}
               />
             )}
             {!depotDataLoading && !depotDataError && !isRunning && !depotData && (
@@ -1564,7 +1333,7 @@ export default function DataStatistics() {
                 dropStatistics={dropStatistics}
                 dropDays={dropDays}
                 setDropDays={setDropDays}
-                onRefresh={loadDropData}
+                onRefresh={reloadDropData}
                 isLoading={dropDataLoading}
                 error={dropDataError}
               />

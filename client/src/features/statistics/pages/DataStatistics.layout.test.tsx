@@ -2,7 +2,10 @@
 
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createQueryClient } from '@/shared/query'
+import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import DataStatistics from './DataStatistics'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -13,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getDropStatistics: vi.fn(),
   getOperBoxData: vi.fn(),
   getTrainingQueue: vi.fn(),
+  fetchOperatorMaterials: vi.fn(),
   executeCommand: vi.fn(),
   parseDepotData: vi.fn(),
   parseOperBoxData: vi.fn(),
@@ -33,26 +37,23 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../api', () => ({
-  getDropStatistics: mocks.getDropStatistics,
-  parseDepotData: mocks.parseDepotData,
-  parseOperBoxData: mocks.parseOperBoxData,
-}))
-
-vi.mock('@/features/game-data', () => ({
+// 在端点边界 mock：页面使用真实的领域 query 定义（key、signal、信封归一）。
+vi.mock('@/features/game-data/api', () => ({
   getAllOperators: mocks.getAllOperators,
   getDepotData: mocks.getDepotData,
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
   getOperBoxData: mocks.getOperBoxData,
 }))
 
-vi.mock('@/features/training', () => ({
-  fetchOperatorMaterials: vi.fn(),
-  getTrainingQueue: mocks.getTrainingQueue,
+vi.mock('../api', () => ({
+  getDropStatistics: mocks.getDropStatistics,
+  parseDepotData: mocks.parseDepotData,
+  parseOperBoxData: mocks.parseOperBoxData,
 }))
 
-vi.mock('@/shared/api', () => ({
-  getErrorMessage: () => '未知错误',
+vi.mock('@/features/training', () => ({
+  fetchOperatorMaterials: mocks.fetchOperatorMaterials,
+  getTrainingQueue: mocks.getTrainingQueue,
 }))
 
 vi.mock('@/features/task-execution', () => ({
@@ -91,13 +92,42 @@ vi.mock('../components/DropRecords', () => ({
   ),
 }))
 
+let client: ReturnType<typeof createQueryClient>
 let container: HTMLDivElement
 let root: Root
 
 const flush = async () => {
   await act(async () => {
-    await Promise.resolve()
-    await Promise.resolve()
+    if (vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+      return
+    }
+    // Query 的观察者通知走 setTimeout(0)，需要两个宏任务轮次才能稳定。
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
+  })
+}
+
+const renderPage = async () => {
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <DataStatistics />
+      </QueryClientProvider>,
+    )
+  })
+}
+
+const renderWithActivity = async (mode: 'visible' | 'hidden') => {
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <Activity mode={mode}>
+          <DataStatistics />
+        </Activity>
+      </QueryClientProvider>,
+    )
   })
 }
 
@@ -109,12 +139,33 @@ const click = async (element: HTMLElement) => {
 const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.textContent?.includes(label))
 
+const selectTab = async (tab: string) => {
+  const target = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+    .find(button => button.textContent?.includes(tab))
+  expect(target).toBeDefined()
+  await click(target!)
+}
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void
   const promise = new Promise<T>(resolvePromise => {
     resolve = resolvePromise
   })
   return { promise, resolve }
+}
+
+const ownedOperatorFixture = {
+  success: true,
+  data: {
+    operCount: 1,
+    data: [{ id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 }],
+    timestamp: '2026-07-20T08:00:00.000Z',
+  },
+}
+
+const catalogFixture = {
+  success: true,
+  data: [{ id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER' }],
 }
 
 describe('DataStatistics layout surfaces', () => {
@@ -124,8 +175,9 @@ describe('DataStatistics layout surfaces', () => {
       return 1
     })
     window.cancelAnimationFrame = vi.fn()
-    mocks.getAllOperators.mockReset().mockResolvedValue({ success: true, data: [] })
-    mocks.getDepotData.mockReset().mockResolvedValue({
+    Object.values(mocks).forEach(mock => mock.mockReset())
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: [] })
+    mocks.getDepotData.mockResolvedValue({
       success: true,
       data: {
         itemCount: 12,
@@ -133,13 +185,15 @@ describe('DataStatistics layout surfaces', () => {
         timestamp: '2026-07-20T08:00:00.000Z',
       },
     })
-    mocks.getDropStatistics.mockReset().mockResolvedValue({ success: false })
-    mocks.getOperBoxData.mockReset().mockResolvedValue({ success: false })
-    mocks.getTrainingQueue.mockReset().mockResolvedValue({ success: true, data: [] })
+    mocks.getDropStatistics.mockResolvedValue({ success: false })
+    mocks.getOperBoxData.mockResolvedValue({ success: false })
+    mocks.getTrainingQueue.mockResolvedValue({ success: true, data: [] })
+    mocks.fetchOperatorMaterials.mockResolvedValue({ success: true })
     mocks.executeCommand.mockReset()
     mocks.parseDepotData.mockReset()
     mocks.parseOperBoxData.mockReset()
     mocks.setMessage.mockReset()
+    client = createQueryClient()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -147,26 +201,17 @@ describe('DataStatistics layout surfaces', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount())
+    client.clear()
     container.remove()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
   it('switches statistics tabs with arrow keys and keeps a single focusable tab', async () => {
-    mocks.getAllOperators.mockResolvedValue({
-      success: true,
-      data: [{ id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER' }],
-    })
-    mocks.getOperBoxData.mockResolvedValue({
-      success: true,
-      data: {
-        operCount: 1,
-        data: [{ id: 'char_001', name: '测试干员', rarity: 6, level: 80, elite: 2, potential: 1 }],
-        timestamp: '2026-07-20T08:00:00.000Z',
-      },
-    })
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
 
     expect(container.querySelector('h1')?.textContent).toBe('数据')
@@ -187,30 +232,21 @@ describe('DataStatistics layout surfaces', () => {
   })
 
   it('shows local loading and recovers from an operator data error with retry', async () => {
-    mocks.getAllOperators.mockReturnValueOnce(new Promise(() => {}))
-    mocks.getOperBoxData.mockReturnValueOnce(new Promise(() => {}))
+    mocks.getAllOperators.mockReturnValue(new Promise(() => {}))
+    mocks.getOperBoxData.mockReturnValue(new Promise(() => {}))
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     expect(container.textContent).toContain('正在读取干员数据')
 
     await act(async () => root.unmount())
     root = createRoot(container)
 
-    mocks.getAllOperators.mockResolvedValue({
-      success: true,
-      data: [{ id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER' }],
-    })
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
     mocks.getOperBoxData
       .mockResolvedValueOnce({ success: false, message: 'Internal Server Error' })
-      .mockResolvedValueOnce({
-        success: true,
-        data: {
-          operCount: 1,
-          data: [{ id: 'char_001', name: '测试干员', rarity: 6, level: 80, elite: 2, potential: 1 }],
-        },
-      })
+      .mockResolvedValueOnce(ownedOperatorFixture)
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
 
     const alert = container.querySelector('[role="alert"]')
@@ -227,19 +263,10 @@ describe('DataStatistics layout surfaces', () => {
   })
 
   it('gives filter menus predictable focus, keyboard navigation, Escape, selection, and outside dismissal', async () => {
-    mocks.getAllOperators.mockResolvedValue({
-      success: true,
-      data: [{ id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER' }],
-    })
-    mocks.getOperBoxData.mockResolvedValue({
-      success: true,
-      data: {
-        operCount: 1,
-        data: [{ id: 'char_001', name: '测试干员', rarity: 6, level: 80, elite: 2, potential: 1 }],
-      },
-    })
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
 
     const trigger = findButton('拥有状态')!
@@ -276,19 +303,10 @@ describe('DataStatistics layout surfaces', () => {
   })
 
   it('right-aligns end-of-row menus on phones without changing desktop alignment', async () => {
-    mocks.getAllOperators.mockResolvedValue({
-      success: true,
-      data: [{ id: 'char_001', name: '测试干员', rarity: 6, profession: 'SNIPER' }],
-    })
-    mocks.getOperBoxData.mockResolvedValue({
-      success: true,
-      data: {
-        operCount: 1,
-        data: [{ id: 'char_001', name: '测试干员', rarity: 6, level: 80, elite: 2, potential: 1 }],
-      },
-    })
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
 
     for (const label of ['职业', '排序']) {
@@ -335,9 +353,9 @@ describe('DataStatistics layout surfaces', () => {
         },
       })
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
-    await click(findButton('掉落记录')!)
+    await selectTab('掉落记录')
 
     const alert = container.querySelector('[data-testid="drop-records"] [role="alert"]')
     expect(alert?.textContent).toContain('暂时无法读取掉落记录')
@@ -360,9 +378,9 @@ describe('DataStatistics layout surfaces', () => {
         },
       })
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
-    await click(findButton('仓库识别')!)
+    await selectTab('仓库识别')
 
     const alert = container.querySelector('[role="alert"]')
     expect(alert?.textContent).toContain('仓库数据读取失败')
@@ -373,6 +391,57 @@ describe('DataStatistics layout surfaces', () => {
     expect(mocks.getDepotData).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('物品种类')
+  })
+
+  it('keeps one failed resource from hiding independently loaded operator data', async () => {
+    mocks.getDepotData.mockReset().mockResolvedValue({ success: false, message: 'depot down' })
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+
+    await renderPage()
+    await flush()
+
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).toContain('测试干员')
+
+    await selectTab('仓库识别')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('仓库数据读取失败')
+
+    await selectTab('干员识别')
+    expect(container.textContent).toContain('测试干员')
+  })
+
+  it('starts all four first-screen reads without waiting for any of them', async () => {
+    const pending = () => new Promise(() => {})
+    mocks.getDepotData.mockReturnValue(pending())
+    mocks.getOperBoxData.mockReturnValue(pending())
+    mocks.getAllOperators.mockReturnValue(pending())
+    mocks.getDropStatistics.mockReturnValue(pending())
+
+    await renderPage()
+    await flush()
+
+    expect(mocks.getDepotData).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+    // 掉落读取也在首屏启用，不依赖掉落 tab 打开。
+    expect(mocks.getDropStatistics).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-reads the operator catalog after fetching materials', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+    mocks.fetchOperatorMaterials.mockResolvedValue({ success: true })
+
+    await renderPage()
+    await flush()
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+
+    await click(findButton('获取材料数据')!)
+
+    expect(mocks.fetchOperatorMaterials).toHaveBeenCalledOnce()
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
+    expect(mocks.setMessage).toHaveBeenCalledWith('干员材料数据获取成功！')
   })
 
   it('updates the local depot view after recognition and only re-reads the training queue', async () => {
@@ -391,9 +460,9 @@ describe('DataStatistics layout surfaces', () => {
       data: [{ operatorId: 'char_001', operator: { name: '阿米娅' } }],
     })
 
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
-    await click(findButton('仓库识别')!)
+    await selectTab('仓库识别')
     await click(findButton('立即执行')!)
 
     await act(async () => {
@@ -414,6 +483,82 @@ describe('DataStatistics layout surfaces', () => {
     expect(mocks.getTrainingQueue).toHaveBeenCalledOnce()
     expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 3 种物品，已更新养成进度')
     expect(container.textContent).toContain('物品种类')
+  })
+
+  it('keeps the operator filters across tab switches instead of losing panel state', async () => {
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'char_owned', name: '已拥有干员', rarity: 6, profession: 'SNIPER' },
+        { id: 'char_missing', name: '未拥有干员', rarity: 4, profession: 'MEDIC' },
+      ],
+    })
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 1,
+        data: [{ id: 'char_owned', name: '已拥有干员', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 1 }],
+      },
+    })
+
+    await renderPage()
+    await flush()
+    expect(container.textContent).toContain('未拥有干员')
+
+    await click(findButton('拥有状态')!)
+    const menu = document.body.querySelector<HTMLElement>('[role="menu"]')!
+    const ownedOption = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))
+      .find(option => option.textContent === '已拥有')
+    await click(ownedOption!)
+    expect(container.textContent).toContain('已拥有干员')
+    expect(container.textContent).not.toContain('未拥有干员')
+
+    await selectTab('仓库识别')
+    await selectTab('干员识别')
+
+    expect(findButton('已拥有')).toBeDefined()
+    expect(findButton('重置')).toBeDefined()
+    expect(container.textContent).toContain('已拥有干员')
+    expect(container.textContent).not.toContain('未拥有干员')
+  })
+
+  it('reuses the shared query cache across a page remount', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+
+    await renderPage()
+    await flush()
+    expect(mocks.getDepotData).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('测试干员')
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+
+    await renderPage()
+    await flush()
+
+    expect(mocks.getDepotData).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('测试干员')
+  })
+
+  it('refetches only the resource named by a cross-domain invalidation', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+
+    await renderPage()
+    await flush()
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      publishResourceInvalidation({ resources: ['catalog'], cause: 'resource-update' })
+    })
+    await flush()
+
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
+    expect(mocks.getDepotData).toHaveBeenCalledTimes(1)
+    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
   })
 
   it('ignores stale data loaders across an Activity hide and restore cycle', async () => {
@@ -437,24 +582,12 @@ describe('DataStatistics layout surfaces', () => {
       .mockReturnValueOnce(oldCatalog.promise)
       .mockReturnValueOnce(newCatalog.promise)
 
-    await act(async () => root.render(
-      <Activity mode="visible">
-        <DataStatistics />
-      </Activity>,
-    ))
+    await renderWithActivity('visible')
     await flush()
 
-    await act(async () => root.render(
-      <Activity mode="hidden">
-        <DataStatistics />
-      </Activity>,
-    ))
+    await renderWithActivity('hidden')
     await flush()
-    await act(async () => root.render(
-      <Activity mode="visible">
-        <DataStatistics />
-      </Activity>,
-    ))
+    await renderWithActivity('visible')
     await flush()
 
     expect(mocks.getDepotData).toHaveBeenCalledTimes(2)
@@ -487,7 +620,7 @@ describe('DataStatistics layout surfaces', () => {
 
     expect(container.textContent).toContain('正在读取干员数据')
     expect(container.textContent).not.toContain('旧干员')
-    await click(findButton('仓库识别')!)
+    await selectTab('仓库识别')
     expect(container.textContent).toContain('正在读取仓库数据')
     expect(container.textContent).not.toContain('旧仓库物品')
 
@@ -517,15 +650,15 @@ describe('DataStatistics layout surfaces', () => {
 
     expect(container.textContent).toContain('新仓库物品')
     expect(container.textContent).not.toContain('旧仓库物品')
-    await click(findButton('干员识别')!)
+    await selectTab('干员识别')
     expect(container.textContent).toContain('新干员')
     expect(container.textContent).not.toContain('旧干员')
   })
 
   it('renders a React-owned fallback when a depot image fails', async () => {
-    await act(async () => root.render(<DataStatistics />))
+    await renderPage()
     await flush()
-    await click(findButton('仓库识别')!)
+    await selectTab('仓库识别')
 
     const image = container.querySelector<HTMLImageElement>('img[alt="固源岩"]')
     expect(image).not.toBeNull()

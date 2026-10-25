@@ -40,13 +40,7 @@ export interface DropRecordsProps {
   onRefresh: () => void
 }
 
-// 筛选状态
-export type FilterRarity = 'all' | '1' | '2' | '3' | '4' | '5' | '6'
-export type FilterElite = 'all' | '0' | '1' | '2'
-export type FilterPotential = 'all' | '1' | '2' | '3' | '4' | '5' | '6'
-export type FilterOwnership = 'all' | 'owned' | 'unowned'
-export type FilterProfession = 'all' | 'PIONEER' | 'WARRIOR' | 'TANK' | 'SNIPER' | 'CASTER' | 'MEDIC' | 'SUPPORT' | 'SPECIAL'
-export type SortBy = 'default' | 'level' | 'rarity' | 'potential'
+// 筛选、排序与阿米娅形态规则见 `../model/operatorFilters`
 export type ActiveTask = 'depot' | 'operbox' | null
 export type ActiveTab = 'operbox' | 'depot' | 'drops'
 export type OpenMenu = 'ownership' | 'rarity' | 'profession' | 'elite' | 'potential' | 'sort' | null
