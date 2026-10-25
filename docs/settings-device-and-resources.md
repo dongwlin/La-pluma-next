@@ -73,7 +73,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 ```
 
 - `versionQueryOptions()` 把 Query 的 `AbortSignal` 传给 `getVersion(signal)`，只接受 `cli`/`core`/`raw` 为字符串；坏的 `resource` 块被归一为 `unknown` 状态与空字段，缺失 `resource` 时页面不显示资源行。不可用载荷成为 `contract` 失败。
-- `configDirectoryQueryOptions()` 把 signal 传给 `getConfigDir(signal)`，同时接受服务端当前的 `{ path }` 与旧的纯字符串形状；空白路径视为 `contract` 失败。`getConfigDir` 的返回类型因此从 `ApiResponse<string>` 收紧为 `ApiResponse<string | { path: string }>`，修正此前的类型漂移。
+- `configDirectoryQueryOptions()` 把 signal 传给 `getConfigDir(signal)`，同时接受服务端当前的 `{ path }` 与旧的纯字符串形状；空白路径视为 `contract` 失败。`getConfigDir` 的返回类型因此从 `ApiResponse<string>` 修正为 `ApiResponse<string | { path: string }>`，与运行时的旧字符串/对象两种形状一致。
 - 两者沿用 Query 默认策略：30s 新鲜期、可恢复失败最多重试 2 次、`contract` 失败与取消不重试。传输失败时初始目录错误最多延后约 1.5s 出现，与 FPR-024 的 connection 读取一致。
 
 ### 3.2 页面语义
