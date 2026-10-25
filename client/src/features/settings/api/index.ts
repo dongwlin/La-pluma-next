@@ -49,10 +49,16 @@ export async function getVersion(signal?: AbortSignal): Promise<ApiResponse> {
 }
 
 /**
+ * 配置目录响应：服务端当前返回 `{ path }`，同时保留旧的纯字符串形状。
+ * 归一化（取 `path`）属于设置域模型，API 层只负责类型与载荷校验。
+ */
+export type ConfigDirectoryValue = string | { path: string }
+
+/**
  * 获取配置目录
  */
-export async function getConfigDir(signal?: AbortSignal): Promise<ApiResponse<string>> {
-  return readApiResponse<string>(`${API_BASE_URL}/agent/config-directory`, {
+export async function getConfigDir(signal?: AbortSignal): Promise<ApiResponse<ConfigDirectoryValue>> {
+  return readApiResponse<ConfigDirectoryValue>(`${API_BASE_URL}/agent/config-directory`, {
     signal,
     validate: isConfigDirectoryPayload,
     invalidPayloadMessage: '配置目录格式不正确',
