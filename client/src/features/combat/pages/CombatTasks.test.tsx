@@ -12,6 +12,7 @@ import {
   type RunTaskResult,
   type StopRunResult,
 } from '@/features/task-execution'
+import { userConfigCoordinator } from '@/features/user-config'
 import CombatTasks from './CombatTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -51,6 +52,9 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('@/shared/api', () => ({
+  API_BASE_URL: '/api',
+  fetchWithAuth: vi.fn(),
+  parseJsonResponse: vi.fn(),
   getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
 }))
 
@@ -66,10 +70,14 @@ vi.mock('@/features/task-execution', async () => {
   }
 })
 
-vi.mock('@/features/user-config', () => ({
-  loadUserConfig: mocks.loadUserConfig,
-  saveUserConfig: mocks.saveUserConfig,
-}))
+vi.mock('@/features/user-config', async () => {
+  const actual = await vi.importActual<typeof import('@/features/user-config')>('@/features/user-config')
+  return {
+    ...actual,
+    loadUserConfig: mocks.loadUserConfig,
+    saveUserConfig: mocks.saveUserConfig,
+  }
+})
 
 vi.mock('../api', () => ({
   executeCopilotSetPlan: mocks.executeCopilotSetPlan,
@@ -394,6 +402,8 @@ describe('CombatTasks execution', () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }))
+    // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
+    userConfigCoordinator.dispose()
     localStorage.clear()
     mocks.executePredefinedTaskArgs.mockReset().mockResolvedValue({ success: true })
     mocks.executeCopilotSetPlan.mockReset().mockResolvedValue({ success: true })
@@ -1092,19 +1102,110 @@ describe('CombatTasks execution', () => {
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
   })
 
-  it('migrates a local app set mode to cli when the server copy is unavailable', async () => {
+  it('migrates a local app set mode to cli and normalizes legacy raid values when the server copy is unavailable', async () => {
     localStorage.setItem('combatTaskInputs', JSON.stringify({ copilot: 'prts://local' }))
+    localStorage.setItem('combatAdvancedParams', JSON.stringify({ copilot: { raid: '2' } }))
     localStorage.setItem('combatCopilotSetExecutionMode', 'app')
 
     await renderComponent()
 
     expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
+    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')?.value).toBe('both')
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    // 服务端不可用时会采用并回写规范化后的本地草稿。
+    expect(localStorage.getItem('combatCopilotSetExecutionMode')).toBe('cli')
+    expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
+      copilot: { raid: 'both' },
+    })
   })
 
-  // Defect reproduction: the domain adapter must reject a load that settles after
-  // an edit. The coordinator/domain migration owns converting this into a normal test.
-  it.fails('does not let a late server load overwrite an edit made before hydration', async () => {
+  it('restores a previous session draft with set mode migration and saved selections without reading the server', async () => {
+    localStorage.setItem('combatConfigSyncPending', 'previous-session-token')
+    localStorage.setItem('combatTaskInputs', JSON.stringify({ copilot: 'prts://s48990' }))
+    localStorage.setItem('combatAdvancedParams', JSON.stringify({ copilot: { raid: '2' } }))
+    localStorage.setItem('combatAutoFormation', JSON.stringify({ copilot: 'off' }))
+    localStorage.setItem('combatCopilotSetExecutionMode', 'app')
+    localStorage.setItem('combatCopilotSetSelections', JSON.stringify({ '48990': [1] }))
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskInputs: { copilot: 'prts://server' } },
+    })
+
+    await renderComponent()
+
+    expect(mocks.loadUserConfig).not.toHaveBeenCalled()
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('prts://s48990')
+    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')?.value).toBe('both')
+    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-formation')?.value).toBe('off')
+    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
+
+    // 保存的待执行索引参与作业集回填：两项里只保留第二项。
+    await previewSet('prts://s48990')
+    expect(container.textContent).toContain('待 1')
+    expect(container.textContent).toContain('共 2 个作业')
+  })
+
+  it('drops a pending marker whose local draft is unreadable and falls back to the server', async () => {
+    localStorage.setItem('combatTaskInputs', '{not-json')
+    localStorage.setItem('combatAdvancedParams', JSON.stringify({ copilot: 'invalid' }))
+    localStorage.setItem('combatConfigSyncPending', 'stale-token')
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskInputs: { copilot: 'prts://server' } },
+    })
+
+    await renderComponent()
+
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    expect(localStorage.getItem('combatConfigSyncPending')).toBeNull()
+    expect(localStorage.getItem('combatTaskInputs')).not.toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('prts://server')
+  })
+
+  it('keeps a manual retry single-flight and announces success only after confirmation', async () => {
+    vi.useFakeTimers()
+    mocks.saveUserConfig.mockRejectedValueOnce(new Error('网络连接中断'))
+    await renderComponent()
+
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(input, 'prts://24680')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    await flush()
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接中断')
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+    // 自动保存成功不弹成功提示；只有用户主动重试确认后才提示。
+    expect(mocks.setMessage).not.toHaveBeenCalledWith('自动战斗配置已同步', 'success')
+
+    const retrySave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig.mockReturnValueOnce(retrySave.promise)
+    await click(buttonByText('重新同步')!)
+    expect(buttonByText('同步中')?.disabled).toBe(true)
+
+    // 重试请求在途时再次点击不会产生第二个提交。
+    await click(buttonByText('同步中')!)
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
+    expect(mocks.setMessage).not.toHaveBeenCalledWith('自动战斗配置已同步', 'success')
+
+    await act(async () => retrySave.resolve({ success: true }))
+    await flush()
+
+    expect(localStorage.getItem('combatConfigSyncPending')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.setMessage).toHaveBeenCalledWith('自动战斗配置已同步', 'success')
+  })
+
+  // 加载在途时出现编辑后，迟到的服务端副本必须被丢弃；协调器按 revision 与 pending
+  // 标记校验加载身份，编辑自己的草稿继续提交。
+  it('does not let a late server load overwrite an edit made before hydration', async () => {
     const serverLoad = deferred<{ success: boolean; data: { taskInputs: { copilot: string } } }>()
     mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
 

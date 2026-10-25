@@ -20,40 +20,27 @@ import { normalizeCopilotInput, parseCopilotUri, splitCopilotInputToArgs } from 
 import type {
   CombatTask,
   CombatAdvancedOption,
-  CombatTaskInputs,
-  CombatAdvancedParams,
-  AutoFormationConfig,
   FormationMode,
   CopilotSetInfo,
   CopilotSearchResult,
   ParadoxSearchResult,
-  CopilotSetItem
+  CopilotSetItem,
+  CopilotSetExecutionMode
 } from '../types'
-import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import { useUserConfig } from '@/features/user-config'
+import {
+  combatConfigAdapter,
+  createDefaultCombatDraft,
+  normalizeRaidValue,
+} from '../model/combatConfig'
+import type { CombatConfigDraft } from '../model/combatConfig'
 import { useCombatExecution } from '../hooks/useCombatExecution'
 import type { CopilotSetItemStatus } from '../model/copilotSetRun'
 
-type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
-type CopilotSetSelections = Record<string, number[]>
 type CombatMode = 'copilot' | 'ssscopilot' | 'paradoxcopilot'
-type CombatUserConfig = {
-  taskInputs: CombatTaskInputs
-  advancedParams: CombatAdvancedParams
-  autoFormation: AutoFormationConfig
-  copilotSetExecutionMode: CopilotSetExecutionMode
-  copilotSetSelections: CopilotSetSelections
-}
 
-const COMBAT_CONFIG_SYNC_PENDING_KEY = 'combatConfigSyncPending'
-let combatConfigSyncSequence = 0
-let combatConfigSyncQueue: Promise<void> = Promise.resolve()
-
-const createCombatConfigSyncToken = () => `${Date.now()}-${++combatConfigSyncSequence}`
-const enqueueCombatConfigSync = <T,>(operation: () => Promise<T>) => {
-  const result = combatConfigSyncQueue.then(operation, operation)
-  combatConfigSyncQueue = result.then(() => undefined, () => undefined)
-  return result
-}
+/** 协调器加载完成前的渲染默认值；与迁移前的初始 state 一致。 */
+const DEFAULT_COMBAT_CONFIG = createDefaultCombatDraft()
 
 const serializeSelectedCopilotIndexes = (indexes: Set<number>): number[] =>
   [...indexes].filter(Number.isInteger).sort((a, b) => a - b)
@@ -155,23 +142,25 @@ export default function CombatTasks() {
   const [resetProgressDialogOpen, setResetProgressDialogOpen] = useState(false)
   const { setMessage: setStatusMessage } = useStatusStore()
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
-  const [taskInputs, setTaskInputs] = useState<CombatTaskInputs>({})
+  const {
+    draft: configDraft,
+    syncState: configSyncState,
+    error: configSyncError,
+    update: updateConfig,
+    channel: configChannel,
+    retry: retryConfigSave,
+  } = useUserConfig(combatConfigAdapter)
+  // 协调器负责草稿、pending、提交队列与加载次序；页面只从草稿派生当前字段并渲染同步状态。
+  const {
+    taskInputs,
+    advancedParams,
+    autoFormation,
+    copilotSetExecutionMode,
+    copilotSetSelections,
+  } = configDraft ?? DEFAULT_COMBAT_CONFIG
+  const isRetryingConfigSave = configSyncState === 'saving'
   const [copilotSetInfo, setCopilotSetInfo] = useState<CopilotSetInfo | null>(null)
   const [isLoadingSet, setIsLoadingSet] = useState(false)
-  const [advancedParams, setAdvancedParams] = useState<CombatAdvancedParams>({
-    copilot: { ignoreRequirements: true, loopTimes: '1', executionStrategy: 'continue', raid: 'normal' },
-    paradoxcopilot: { executionStrategy: 'continue' },
-    ssscopilot: { loopTimes: '1' }
-  })
-  const [autoFormation, setAutoFormation] = useState<AutoFormationConfig>({ copilot: 'auto' })
-  const [copilotSetExecutionMode, setCopilotSetExecutionMode] = useState<CopilotSetExecutionMode>('cli')
-  const [configLoaded, setConfigLoaded] = useState(false)
-  const [configSyncError, setConfigSyncError] = useState<string | null>(null)
-  const [isRetryingConfigSave, setIsRetryingConfigSave] = useState(false)
-  const configRevisionRef = useRef(0)
-  const skippedInitialConfigSaveRef = useRef(false)
-  const lastQueuedConfigFingerprintRef = useRef<string | null>(null)
-  const configHydratedRef = useRef(false)
   const previewRequestRef = useRef(0)
   const copilotSearchRequestRef = useRef(0)
   const paradoxSearchRequestRef = useRef(0)
@@ -196,12 +185,22 @@ export default function CombatTasks() {
     stopOnFailure: advancedParams.copilot?.executionStrategy === 'stop',
   })
 
+  // 配置编辑始终以协调器中的最新草稿为基准，避免同一帧内连续更新互相覆盖。
+  const updateCombatConfig = useCallback((update: (current: CombatConfigDraft) => CombatConfigDraft) => {
+    updateConfig(update(configChannel.getState().draft ?? DEFAULT_COMBAT_CONFIG))
+  }, [configChannel, updateConfig])
+
+  const handleRetryConfigSave = async () => {
+    if (isRetryingConfigSave) return
+    const saved = await retryConfigSave()
+    if (saved) setStatusMessage('自动战斗配置已同步', 'success')
+  }
+
   // 作业类型选择：'auto' 自动检测，'single' 单个作业，'set' 作业集
   const [copilotType, setCopilotType] = useState<'auto' | 'single' | 'set'>('auto')
 
   // 作业集任务选择状态（记录选中的索引）
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
-  const [copilotSetSelections, setCopilotSetSelections] = useState<CopilotSetSelections>({})
 
   // 悖论模拟搜索相关状态
   const [paradoxSearchName, setParadoxSearchName] = useState('')
@@ -235,7 +234,7 @@ export default function CombatTasks() {
     }
   }, [])
 
-  const normalizeFormationMode = (value: AutoFormationConfig[string] | undefined): FormationMode => {
+  const normalizeFormationMode = (value: unknown): FormationMode => {
     if (value === true) return 'on'
     if (value === false) return 'off'
     if (value === 'on' || value === 'off' || value === 'auto') return value
@@ -243,55 +242,6 @@ export default function CombatTasks() {
   }
 
   const getFormationMode = (taskId: string): FormationMode => normalizeFormationMode(autoFormation[taskId])
-
-  const normalizeRaidValue = useCallback((value: unknown): 'normal' | 'raid' | 'both' => {
-    if (value === '1' || value === 'raid') return 'raid'
-    if (value === '2' || value === 'both') return 'both'
-    return 'normal'
-  }, [])
-
-  const normalizeAdvancedConfig = useCallback((advanced: CombatAdvancedParams): CombatAdvancedParams => ({
-    ...advanced,
-    copilot: {
-      ...advanced.copilot,
-      raid: normalizeRaidValue(advanced.copilot?.raid)
-    }
-  }), [normalizeRaidValue])
-
-  const syncConfig = useCallback((
-    config: CombatUserConfig,
-    revision: number,
-    syncToken: string,
-    announceSuccess = false,
-  ) => enqueueCombatConfigSync(async () => {
-    if (
-      revision !== configRevisionRef.current
-      || localStorage.getItem(COMBAT_CONFIG_SYNC_PENDING_KEY) !== syncToken
-    ) return false
-
-    try {
-      const result = await saveUserConfig('combat-tasks', config)
-      if (!result.success) throw new Error(getErrorMessage(result))
-      if (
-        revision !== configRevisionRef.current
-        || localStorage.getItem(COMBAT_CONFIG_SYNC_PENDING_KEY) !== syncToken
-      ) return false
-
-      localStorage.removeItem(COMBAT_CONFIG_SYNC_PENDING_KEY)
-      setConfigSyncError(null)
-      if (announceSuccess) setStatusMessage('自动战斗配置已同步', 'success')
-      return true
-    } catch (error) {
-      if (
-        revision !== configRevisionRef.current
-        || localStorage.getItem(COMBAT_CONFIG_SYNC_PENDING_KEY) !== syncToken
-      ) return false
-
-      const detail = error instanceof Error && error.message ? error.message : '暂时无法连接服务器'
-      setConfigSyncError(`配置已保存在此设备，但尚未同步到服务器：${detail}`)
-      return false
-    }
-  }), [setStatusMessage])
 
   const shouldAppendFormation = (taskId: string, forceForSplitSet = false): boolean => {
     if (taskId !== 'copilot') return false
@@ -311,11 +261,14 @@ export default function CombatTasks() {
   const applySelectedCopilotIndexes = useCallback((indexes: Set<number>, setId: string) => {
     const normalized = new Set(serializeSelectedCopilotIndexes(indexes))
     setSelectedCopilotIndexes(normalized)
-    setCopilotSetSelections(prev => ({
-      ...prev,
-      [setId]: serializeSelectedCopilotIndexes(normalized)
+    updateCombatConfig(current => ({
+      ...current,
+      copilotSetSelections: {
+        ...current.copilotSetSelections,
+        [setId]: serializeSelectedCopilotIndexes(normalized),
+      },
     }))
-  }, [])
+  }, [updateCombatConfig])
 
   // 服务端计划进度是“待执行”的唯一来源：成功的条目从选择中移除，失败项保留待重试。
   const restoreSelectedCopilots = useCallback((
@@ -363,174 +316,8 @@ export default function CombatTasks() {
     }
   }
 
-  // 页面加载时从服务器或 localStorage 加载配置。
+  // 配置加载、pending 本地优先与迟到响应丢弃都由 user-config 协调器负责；
   // 运行状态由应用级执行控制器按 Run 快照观察，页面不在挂载时恢复第二份执行状态。
-  useEffect(() => {
-    let cancelled = false
-
-    const cleanup = () => {
-      cancelled = true
-    }
-
-    if (configHydratedRef.current) return cleanup
-
-    const loadLocalConfig = () => {
-      let restored = false
-      const restoreJson = <T,>(key: string, apply: (value: T) => void) => {
-        const stored = localStorage.getItem(key)
-        if (!stored) return
-        try {
-          apply(JSON.parse(stored) as T)
-          restored = true
-        } catch {
-          localStorage.removeItem(key)
-        }
-      }
-
-      restoreJson<CombatTaskInputs>('combatTaskInputs', setTaskInputs)
-      restoreJson<CombatAdvancedParams>('combatAdvancedParams', value => setAdvancedParams(normalizeAdvancedConfig(value)))
-      restoreJson<AutoFormationConfig>('combatAutoFormation', setAutoFormation)
-      restoreJson<CopilotSetSelections>('combatCopilotSetSelections', setCopilotSetSelections)
-
-      const savedSetMode = localStorage.getItem('combatCopilotSetExecutionMode')
-      if (savedSetMode === 'app' || savedSetMode === 'manual' || savedSetMode === 'cli') {
-        setCopilotSetExecutionMode(savedSetMode === 'app' ? 'cli' : savedSetMode)
-        restored = true
-      }
-      return restored
-    }
-
-    // A failed or interrupted save leaves a durable local draft. Never replace it
-    // with an older server copy on the next mount.
-    const hasPendingLocalDraft = localStorage.getItem(COMBAT_CONFIG_SYNC_PENDING_KEY) !== null
-    if (hasPendingLocalDraft) {
-      if (loadLocalConfig()) {
-        configHydratedRef.current = true
-        setConfigSyncError('上次更改已保存在此设备，但尚未同步到服务器。')
-        setConfigLoaded(true)
-        return cleanup
-      }
-      localStorage.removeItem(COMBAT_CONFIG_SYNC_PENDING_KEY)
-    }
-
-    // 加载保存的配置 - 优先从服务器加载
-    const loadConfig = async () => {
-      try {
-        const serverConfig = await loadUserConfig('combat-tasks')
-        if (cancelled) return
-        if (serverConfig.success && serverConfig.data) {
-          const {
-            taskInputs: inputs,
-            advancedParams: advanced,
-            autoFormation: formation,
-            copilotSetExecutionMode: savedSetMode,
-            copilotSetSelections: savedSelections
-          } = serverConfig.data
-          if (inputs) {
-            setTaskInputs(inputs)
-            localStorage.setItem('combatTaskInputs', JSON.stringify(inputs))
-          }
-          if (advanced) {
-            const normalizedAdvanced = normalizeAdvancedConfig(advanced)
-            setAdvancedParams(normalizedAdvanced)
-            localStorage.setItem('combatAdvancedParams', JSON.stringify(normalizedAdvanced))
-          }
-          if (formation) {
-            setAutoFormation(formation)
-            localStorage.setItem('combatAutoFormation', JSON.stringify(formation))
-          }
-          if (savedSetMode === 'app' || savedSetMode === 'manual' || savedSetMode === 'cli') {
-            const migratedSetMode = savedSetMode === 'app' ? 'cli' : savedSetMode
-            setCopilotSetExecutionMode(migratedSetMode)
-            localStorage.setItem('combatCopilotSetExecutionMode', migratedSetMode)
-          }
-          if (savedSelections && typeof savedSelections === 'object') {
-            setCopilotSetSelections(savedSelections)
-            localStorage.setItem('combatCopilotSetSelections', JSON.stringify(savedSelections))
-          }
-          return
-        }
-      } catch (error) {
-        if (cancelled) return
-        // 服务器加载失败，静默处理
-      }
-
-      if (cancelled) return
-
-      // 服务器加载失败，从 localStorage 加载
-      loadLocalConfig()
-    }
-
-    void loadConfig()
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) {
-          configHydratedRef.current = true
-          setConfigLoaded(true)
-        }
-      })
-
-    return cleanup
-  }, [normalizeAdvancedConfig])
-
-  // 自动保存配置
-  useEffect(() => {
-    if (!configLoaded) return
-
-    const config: CombatUserConfig = {
-      taskInputs,
-      advancedParams,
-      autoFormation,
-      copilotSetExecutionMode,
-      copilotSetSelections,
-    }
-    const fingerprint = JSON.stringify(config)
-
-    if (!skippedInitialConfigSaveRef.current) {
-      skippedInitialConfigSaveRef.current = true
-      lastQueuedConfigFingerprintRef.current = fingerprint
-      return
-    }
-
-    if (lastQueuedConfigFingerprintRef.current === fingerprint) return
-
-    const revision = configRevisionRef.current + 1
-    configRevisionRef.current = revision
-    const syncToken = createCombatConfigSyncToken()
-
-    localStorage.setItem('combatTaskInputs', JSON.stringify(taskInputs))
-    localStorage.setItem('combatAdvancedParams', JSON.stringify(advancedParams))
-    localStorage.setItem('combatAutoFormation', JSON.stringify(autoFormation))
-    localStorage.setItem('combatCopilotSetExecutionMode', copilotSetExecutionMode)
-    localStorage.setItem('combatCopilotSetSelections', JSON.stringify(copilotSetSelections))
-    localStorage.setItem(COMBAT_CONFIG_SYNC_PENDING_KEY, syncToken)
-
-    const saveTimer = window.setTimeout(() => {
-      lastQueuedConfigFingerprintRef.current = fingerprint
-      void syncConfig(config, revision, syncToken)
-    }, 300)
-
-    return () => window.clearTimeout(saveTimer)
-  }, [advancedParams, autoFormation, configLoaded, copilotSetExecutionMode, copilotSetSelections, syncConfig, taskInputs])
-
-  const handleRetryConfigSave = async () => {
-    if (isRetryingConfigSave) return
-    const revision = configRevisionRef.current
-    const syncToken = localStorage.getItem(COMBAT_CONFIG_SYNC_PENDING_KEY) ?? createCombatConfigSyncToken()
-    localStorage.setItem(COMBAT_CONFIG_SYNC_PENDING_KEY, syncToken)
-    setIsRetryingConfigSave(true)
-    try {
-      await syncConfig({
-        taskInputs,
-        advancedParams,
-        autoFormation,
-        copilotSetExecutionMode,
-        copilotSetSelections,
-      }, revision, syncToken, true)
-    } finally {
-      setIsRetryingConfigSave(false)
-    }
-  }
 
   const tasks: CombatTask[] = [
     {
@@ -691,7 +478,7 @@ export default function CombatTasks() {
       setCopilotSetInfo(prev => (prev?.id === setId ? { ...prev, copilots, currentIndex: 0 } : prev))
       restoreSelectedCopilots(setId, copilots, raid)
     })()
-  }, [activeSetRun, advancedParams.copilot?.raid, normalizeRaidValue, restoreSelectedCopilots])
+  }, [activeSetRun, advancedParams.copilot?.raid, restoreSelectedCopilots])
 
   // 继续 manual 作业集的下一关：等待态与下一项都由服务端持有，页面只发送继续意图。
   const handleStartNextCopilot = async () => {
@@ -781,7 +568,10 @@ export default function CombatTasks() {
   }
 
   const handleInputChange = (taskId: string, value: string) => {
-    setTaskInputs(current => ({ ...current, [taskId]: value }))
+    updateCombatConfig(current => ({
+      ...current,
+      taskInputs: { ...current.taskInputs, [taskId]: value },
+    }))
     if (taskId === 'copilot') {
       previewRequestRef.current += 1
       setIsLoadingSet(false)
@@ -793,18 +583,24 @@ export default function CombatTasks() {
   }
 
   const handleAdvancedChange = (taskId: string, key: string, value: string | number | boolean) => {
-    setAdvancedParams({
-      ...advancedParams,
-      [taskId]: {
-        ...(advancedParams[taskId] || {}),
-        [key]: value
-      }
-    })
+    updateCombatConfig(current => ({
+      ...current,
+      advancedParams: {
+        ...current.advancedParams,
+        [taskId]: {
+          ...(current.advancedParams[taskId] || {}),
+          [key]: value,
+        },
+      },
+    }))
   }
 
   const applyCopilotUri = async (uri: string) => {
     const normalizedUri = normalizeCopilotInput(uri).trim()
-    setTaskInputs(prev => ({ ...prev, copilot: normalizedUri }))
+    updateCombatConfig(current => ({
+      ...current,
+      taskInputs: { ...current.taskInputs, copilot: normalizedUri },
+    }))
     setSelectedSearchCopilotUri(normalizedUri)
     setCopilotSetInfo(null)
     await handlePreviewCopilotSetWithInput(normalizedUri)
@@ -1004,7 +800,10 @@ export default function CombatTasks() {
 
         // 自动填充推荐作业
         if (data.recommended) {
-          setTaskInputs(current => ({ ...current, paradoxcopilot: data.recommended.uri }))
+          updateCombatConfig(current => ({
+            ...current,
+            taskInputs: { ...current.taskInputs, paradoxcopilot: data.recommended.uri },
+          }))
         }
       } else {
         setStatusMessage(result.message || data.error || '未找到作业')
@@ -1313,7 +1112,10 @@ export default function CombatTasks() {
                             id="combat-copilot-formation"
                             name="maa-copilot-formation"
                             value={getFormationMode(task.id)}
-                            onChange={(e) => setAutoFormation({ ...autoFormation, [task.id]: e.target.value as FormationMode })}
+                            onChange={(e) => updateCombatConfig(current => ({
+                              ...current,
+                              autoFormation: { ...current.autoFormation, [task.id]: e.target.value as FormationMode },
+                            }))}
                             className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
                           >
                             <option value="auto">自动决定</option>
@@ -1350,7 +1152,10 @@ export default function CombatTasks() {
                             id="combat-copilot-set-mode"
                             name="maa-copilot-set-mode"
                             value={copilotSetExecutionMode}
-                            onChange={(e) => setCopilotSetExecutionMode(e.target.value as CopilotSetExecutionMode)}
+                            onChange={(e) => updateCombatConfig(current => ({
+                              ...current,
+                              copilotSetExecutionMode: e.target.value as CopilotSetExecutionMode,
+                            }))}
                             className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
                           >
                             <option value="app">顺序执行</option>
@@ -2045,7 +1850,10 @@ export default function CombatTasks() {
                                     <button
                                       key={copilot.id}
                                       onClick={() => {
-                                        setTaskInputs({ ...taskInputs, paradoxcopilot: copilot.uri })
+                                        updateCombatConfig(current => ({
+                                          ...current,
+                                          taskInputs: { ...current.taskInputs, paradoxcopilot: copilot.uri },
+                                        }))
                                       }}
                                       className="min-h-11 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-(--app-surface-muted) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent)"
                                     >
