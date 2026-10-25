@@ -81,7 +81,12 @@
     background: var(--app-surface-solid);
   }
 
-  .la-pluma-app .surface-panel.data-statistics-menu-surface {
+  /* 筛选菜单通过 createPortal 挂到 document.body，位于 .la-pluma-app 之外；
+     这里不能像页面内容那样限定应用根，否则材质规则永远匹配不到。与
+     training.css 的 .training-undo-toast 同理。 */
+  .surface-panel.data-statistics-menu-surface {
+    border-width: 1px;
+    border-style: solid;
     border-color: color-mix(in srgb, var(--app-border-strong) 72%, transparent);
     background: color-mix(in srgb, var(--app-surface-solid) 78%, transparent);
     -webkit-backdrop-filter: blur(24px) saturate(165%);
@@ -96,7 +101,7 @@
   }
 
   @media (prefers-contrast: more) {
-    .la-pluma-app .surface-panel.data-statistics-menu-surface {
+    .surface-panel.data-statistics-menu-surface {
       border-color: var(--app-border-strong);
       background: var(--app-surface-solid);
     }
