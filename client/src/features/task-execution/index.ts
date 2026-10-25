@@ -20,6 +20,7 @@ export {
   executionController,
 } from './controller/executionController'
 export type {
+  ExecutionControllerApi,
   ExecutionControllerState,
   ExecutionIdentityState,
   ExecutionIntent,
@@ -28,6 +29,9 @@ export type {
 } from './controller/executionController'
 
 export { useExecutionObservation, useExecutionSnapshot } from './hooks/useExecutionController'
+
+export { summarizeRunStatus } from './model/runStatus'
+export type { GlobalRunPhase, GlobalRunStatus } from './model/runStatus'
 
 export {
   ACTIVE_RUN_STATES,

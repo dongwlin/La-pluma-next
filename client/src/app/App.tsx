@@ -4,7 +4,7 @@ import PWAInstallPrompt from './layout/PWAInstallPrompt'
 import { AppProviders } from './providers'
 import { AppRoutes } from './router'
 import { routerBasename, useActiveAppTab } from '@/shared/navigation'
-import { useBackendStatusMonitor } from '@/features/runtime-status'
+import { useBackendStatusMonitor, useRunStatusProjection } from '@/features/runtime-status'
 import { useExecutionObservation } from '@/features/task-execution'
 
 function AppShell() {
@@ -21,8 +21,9 @@ function AppShell() {
 }
 
 function App() {
-  useBackendStatusMonitor()
   useExecutionObservation()
+  useRunStatusProjection()
+  useBackendStatusMonitor()
 
   return (
     <div id="app-root" className="la-pluma-app">

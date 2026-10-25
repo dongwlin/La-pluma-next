@@ -3,6 +3,7 @@ import { getErrorMessage } from '@/shared/api'
 import { useStatusStore } from '../store/statusStore'
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 import { getTaskStatus } from '@/features/task-execution'
+import { isRunStatusBusy } from '../utils/runStatus'
 
 const BACKEND_PROBE_INTERVAL_MS = 30_000
 const ACTIVE_TASK_PROBE_INTERVAL_MS = 2_000
@@ -12,6 +13,12 @@ export function invalidateBackendStatusProbe() {
   latestProbeRevision += 1
 }
 
+const isDeviceBusy = () => isRunStatusBusy(useStatusStore.getState().runStatus)
+
+/**
+ * 只读取后端连接健康。`tasks/status` 仍作为轻量存活探针，但它的 `isRunning`
+ * 是旧进程投影，不能写运行状态；运行字段只由执行快照投影。
+ */
 export async function probeBackendAvailability({
   signal,
   showChecking = true,
@@ -33,7 +40,6 @@ export async function probeBackendAvailability({
 
     if (result.success) {
       store.setBackendStatus('available')
-      store.setActive(Boolean(result.data?.isRunning))
       return true
     }
 
@@ -62,7 +68,7 @@ export function useBackendStatusMonitor() {
     const scheduleNextProbe = () => {
       if (disposed || !navigator.onLine) return
       clearTimer()
-      const delay = useStatusStore.getState().isActive
+      const delay = isDeviceBusy()
         ? ACTIVE_TASK_PROBE_INTERVAL_MS
         : BACKEND_PROBE_INTERVAL_MS
       timer = window.setTimeout(() => void runProbe(false), delay)
@@ -89,7 +95,8 @@ export function useBackendStatusMonitor() {
       if (navigator.onLine) void runProbe(false)
     }
     const unsubscribeStatus = useStatusStore.subscribe((state, previousState) => {
-      if (state.isActive !== previousState.isActive) scheduleNextProbe()
+      const busy = isRunStatusBusy(state.runStatus)
+      if (busy !== isRunStatusBusy(previousState.runStatus)) scheduleNextProbe()
     })
 
     if (navigator.onLine) void runProbe(true)

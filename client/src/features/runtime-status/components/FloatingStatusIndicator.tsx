@@ -20,7 +20,7 @@ interface FloatingStatusIndicatorProps {
  * 其他状态在原位置可见时显示在原位置，不可见时悬浮到右上角
  */
 export default function FloatingStatusIndicator({ className = '', textClassName = '' }: FloatingStatusIndicatorProps) {
-  const { message, messageType, isActive, backendStatus, backendMessage } = useStatusStore()
+  const { message, messageType, runStatus, backendStatus, backendMessage } = useStatusStore()
   const isOnline = useOnlineStatus()
   const shouldReduceMotion = useReducedMotion()
   const [readyQuote, setReadyQuote] = useState<OperatorQuote>(DEFAULT_RANDOM_OPERATOR_QUOTE)
@@ -35,7 +35,7 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
     }
   }, [])
 
-  // 显示文本：有消息显示消息，运行中显示运行态，否则显示干员台词
+  // 显示文本：连接健康优先，其次临时消息，再次唯一快照投影的运行状态，否则干员台词。
   const isBackendChecking = isOnline && (backendStatus === 'unknown' || backendStatus === 'checking')
   const connectionMessage = !isOnline
     ? '网络连接已断开，页面控制暂不可用'
@@ -44,14 +44,17 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
       : backendStatus === 'unavailable'
         ? (backendMessage || '无法连接后端服务，请确认服务已启动')
         : ''
-  const displayText = connectionMessage || message || (isActive ? '任务执行中' : `${readyQuote.operator}：${readyQuote.quote}`)
-  const isReady = !connectionMessage && !message && !isActive
+  const hasRunStatus = runStatus.phase !== 'idle'
+  const runText = runStatus.label || '任务执行中'
+  const displayText = connectionMessage || message || (hasRunStatus ? runText : `${readyQuote.operator}：${readyQuote.quote}`)
+  const isReady = !connectionMessage && !message && !hasRunStatus
 
+  const runStatusType = runStatus.phase === 'running' || runStatus.phase === 'waiting' ? 'info' : 'warning'
   const detectedType = isBackendChecking
     ? 'info'
     : connectionMessage
       ? (isOnline ? 'error' : 'warning')
-      : messageType ?? (message ? detectStatusMessageType(message) : (isActive ? 'info' : 'default'))
+      : messageType ?? (message ? detectStatusMessageType(message) : (hasRunStatus ? runStatusType : 'default'))
   const config = getStatusVisualConfig(detectedType)
 
   const indicatorContent = (

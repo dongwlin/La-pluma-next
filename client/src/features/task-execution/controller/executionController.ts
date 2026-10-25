@@ -328,6 +328,9 @@ export class ExecutionController {
     this.latestIntentSequence = sequence
     this.submission = 'pending'
     this.publish()
+    // 同步提交（如活动作业）在请求返回前不会给出 runId，但服务端可能已经创建 run。
+    // 提交在途时刷新一次快照，让全局观察尽早看到它；之后按 active 间隔轮询直到收敛。
+    this.requestRefresh('submission')
     return { operationId, idempotencyKey, scope, sequence }
   }
 
@@ -685,7 +688,7 @@ export class ExecutionController {
 
     const delay = this.phase === 'disconnected'
       ? this.intervals.disconnected
-      : this.state.hasActiveRun
+      : this.state.hasActiveRun || this.submission === 'pending'
         ? this.intervals.active
         : this.intervals.idle
 
