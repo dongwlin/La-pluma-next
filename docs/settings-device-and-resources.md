@@ -118,7 +118,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | --- | --- |
 | `features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
 | `features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找与连接测试失败后重试、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后重取同一版本 Query、目录失败重试 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后重取同一版本 Query、目录失败重试 |
 
 复现命令（仓库根目录）：
 
