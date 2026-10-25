@@ -1172,6 +1172,27 @@ async function generateTrainingPlan(mode = 'current') {
 }
 
 /**
+ * 把 setupSchedule 的结果规范化为可上报的 scheduleSync。
+ *
+ * setupSchedule 在至少创建一个 job 时返回 success:true；若某个时间点的 cron
+ * 创建失败，只有比较请求时间与返回的 times 才能发现。任何缺失时间点都视为
+ * 部分失败，让客户端保留计划并提示用户重试。
+ */
+export function summarizeScheduleSync(result, requestedTimes) {
+  const appliedTimes = Array.isArray(result?.times) ? result.times : [];
+  const missingTimes = requestedTimes.filter(time => !appliedTimes.includes(time));
+  const baseMessage = typeof result?.message === 'string' ? result.message : null;
+  return {
+    attempted: true,
+    success: Boolean(result?.success) && missingTimes.length === 0,
+    message: missingTimes.length > 0
+      ? `${baseMessage || '部分定时任务设置失败'}（未设置：${missingTimes.join('、')}）`
+      : baseMessage,
+    ...(missingTimes.length > 0 ? { missingTimes } : {})
+  };
+}
+
+/**
  * 已注册的默认定时任务持有 setup 时的 taskFlow 快照。训练流程改写
  * automation-tasks 后必须重新注册，否则定时执行继续使用旧关卡；没有注册过的
  * 定时任务不会被这里顺带创建。
@@ -1191,7 +1212,7 @@ async function refreshRegisteredSchedule(config) {
       times,
       Array.isArray(config?.taskFlow) ? config.taskFlow : []
     );
-    return { attempted: true, success: Boolean(result?.success), message: result?.message || null };
+    return summarizeScheduleSync(result, times);
   }
 
   // 配置已不需要定时执行，但进程内仍有注册：同步停止，避免继续按旧流程运行。

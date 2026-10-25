@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-'));
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
-const { default: training } = await import('../operatorTrainingService.js');
+const { default: training, summarizeScheduleSync } = await import('../operatorTrainingService.js');
 const { loggerManager } = await import('../../utils/logger.js');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
@@ -124,6 +124,29 @@ describe('training queue and applied flow synchronization', () => {
     } finally {
       stopSchedule('default');
     }
+  });
+
+  it('reports a per-time schedule registration failure as partial', () => {
+    const summary = summarizeScheduleSync(
+      { success: true, message: '已设置 1 个定时任务', times: ['08:00'] },
+      ['08:00', '14:00']
+    );
+
+    assert.equal(summary.attempted, true);
+    assert.equal(summary.success, false);
+    assert.deepEqual(summary.missingTimes, ['14:00']);
+    assert.match(summary.message, /14:00/);
+  });
+
+  it('accepts a schedule registration that accepted every requested time', () => {
+    const summary = summarizeScheduleSync(
+      { success: true, message: '已设置 2 个定时任务', times: ['08:00', '14:00'] },
+      ['08:00', '14:00']
+    );
+
+    assert.equal(summary.success, true);
+    assert.equal(summary.missingTimes, undefined);
+    assert.equal(summary.message, '已设置 2 个定时任务');
   });
 
   it('reports a schedule refresh failure without discarding the applied plan', async () => {
