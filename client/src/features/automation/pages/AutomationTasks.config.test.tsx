@@ -575,7 +575,11 @@ describe('AutomationTasks config persistence', () => {
 
     // 保存成功后强制重读服务端；刚保存的编辑（启用的定时）与新计划一起被采用。
     expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
-    expect(mocks.setupSchedule).toHaveBeenCalledOnce()
+    expect(mocks.setupSchedule).toHaveBeenCalledWith(
+      'default',
+      ['08:00', '14:00', '20:00'],
+      expect.any(Array),
+    )
     expect(pendingDraft()).toBeNull()
     expect(scheduleSwitch().checked).toBe(true)
     expect(mocks.setMessage).toHaveBeenCalledWith('智能养成计划已更新：3 个关卡', 'success')
