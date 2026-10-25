@@ -5,9 +5,15 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
+import {
+  subscribeResourceInvalidation,
+  type ResourceInvalidation,
+} from '@/features/resource-invalidation'
+import { settingsAutoUpdateOwner } from '../model/autoUpdateConfig'
 import { settingsConnectionOwner } from '../model/connectionConfig'
 import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '../model/configSection'
 import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
+import { settingsUpdateOwner } from '../model/updateCommands'
 import { settingsKeys } from '../model/queryKeys'
 import ConfigManager from './ConfigManager'
 
@@ -83,12 +89,18 @@ vi.mock('@/features/runtime-status', () => ({
 let container: HTMLDivElement
 let root: Root
 let queryClient: QueryClient
+let invalidationEvents: ResourceInvalidation[]
+let stopInvalidations: (() => void) | null = null
 
 const flush = async () => {
   await act(async () => {
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    // 页面同时挂载 connection/version/目录 Query 与自动更新读取；Query 的
+    // 批量通知与首个 effect 触发都可能排在后续任务里，因此每轮同时让出
+    // 微任务与一个定时器，避免只等微任务时结果尚未落到 DOM。
+    for (let index = 0; index < 3; index += 1) {
+      await Promise.resolve()
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
   })
 }
 
@@ -187,8 +199,14 @@ describe('ConfigManager layout surfaces', () => {
     mocks.updateMaaCli.mockReset().mockResolvedValue({ success: true })
     mocks.hotUpdateResources.mockReset().mockResolvedValue({ success: true })
     mocks.setMessage.mockReset()
+    invalidationEvents = []
+    stopInvalidations = subscribeResourceInvalidation(event => {
+      invalidationEvents.push(event)
+    })
     settingsConnectionOwner.reset()
     settingsDeviceConnectionOwner.reset()
+    settingsAutoUpdateOwner.reset()
+    settingsUpdateOwner.reset()
     queryClient = createQueryClient()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -196,6 +214,8 @@ describe('ConfigManager layout surfaces', () => {
   })
 
   afterEach(async () => {
+    stopInvalidations?.()
+    stopInvalidations = null
     await act(async () => root.unmount())
     queryClient.clear()
     container.remove()
@@ -424,6 +444,10 @@ describe('ConfigManager layout surfaces', () => {
     expect(cliButton.disabled).toBe(false)
     expect(mocks.setMessage).toHaveBeenCalledWith('已更新')
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+    expect(invalidationEvents).toEqual([{
+      resources: ['catalog', 'materials', 'training-plan', 'dashboard-snapshot'],
+      cause: 'resource-update',
+    }])
   })
 
   it('offers a resource retry when a core update fails at the resource step', async () => {
@@ -440,6 +464,10 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => coreButton.click())
     await flush()
 
+    expect(invalidationEvents).toEqual([])
+    expect(mocks.updateMaaCore).toHaveBeenCalledOnce()
+    expect(mocks.getVersion).toHaveBeenCalledOnce()
+
     const retryButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.trim() === '重试资源同步')
     expect(retryButton).toBeDefined()
@@ -448,6 +476,158 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => retryButton?.click())
     await flush()
     expect(mocks.hotUpdateResources).toHaveBeenCalledOnce()
+    expect(invalidationEvents).toHaveLength(1)
+  })
+
+  it('refreshes the version without resource invalidation after a CLI update', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const cliButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '更新 MAA CLI')!
+    await act(async () => cliButton.click())
+    await flush()
+
+    expect(mocks.updateMaaCli).toHaveBeenCalledOnce()
+    expect(mocks.setMessage).toHaveBeenCalledWith('MAA CLI 更新成功')
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+    expect(invalidationEvents).toEqual([])
+  })
+
+  it('does not retry or publish invalidation when a component update fails', async () => {
+    mocks.updateMaaCore.mockResolvedValue({
+      success: false,
+      message: '下载失败',
+      errorInfo: { details: { failedStep: 'core', coreUpdated: false } },
+    })
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('更新 MaaCore')?.click())
+    await flush()
+
+    expect(mocks.updateMaaCore).toHaveBeenCalledOnce()
+    expect(mocks.getVersion).toHaveBeenCalledOnce()
+    expect(invalidationEvents).toEqual([])
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('下载失败')
+    expect(buttonByText('重试资源同步')).toBeUndefined()
+  })
+
+  it('keeps a committed core update running across Activity hide and refreshes the version on show', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(page(mode))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    await renderMode('visible')
+    await flush()
+
+    const pending = deferred<{ success: boolean; message: string }>()
+    mocks.updateMaaCore.mockReturnValueOnce(pending.promise)
+    await act(async () => buttonByText('更新 MaaCore')?.click())
+    await flush()
+
+    await renderMode('hidden')
+    await act(async () => pending.resolve({ success: true, message: '后台更新完成' }))
+    await settle()
+
+    expect(invalidationEvents).toHaveLength(1)
+    expect(mocks.getVersion).toHaveBeenCalledOnce()
+
+    await renderMode('visible')
+    await settle()
+
+    expect(container.textContent).toContain('后台更新完成')
+    expect(buttonByText('更新 MaaCore')?.disabled).toBe(false)
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps an in-flight auto-update save running across Activity hide', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(page(mode))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { enabled: true, time: '04:00', updateCore: true, updateCli: true },
+    })
+    const pendingSave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig.mockReturnValueOnce(pendingSave.promise)
+
+    await renderMode('visible')
+    await flush()
+
+    const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!
+    await setInputValue(timeInput, '05:30')
+    const saveButton = buttonContaining('保存自动更新')!
+    await act(async () => saveButton.click())
+    await flush()
+
+    await renderMode('hidden')
+    await act(async () => pendingSave.resolve({ success: true }))
+    await settle()
+
+    expect(mocks.setupAutoUpdate).toHaveBeenCalledOnce()
+    expect(mocks.setMessage).toHaveBeenCalledWith('自动更新已启用，每天 05:30 执行', 'success')
+
+    await renderMode('visible')
+    await settle()
+
+    expect(container.textContent).toContain('自动更新已启用，每天 05:30 执行')
+    expect(container.textContent).toContain('设置会在保存后生效')
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+  })
+
+  it('does not let a late auto-update read overwrite an edit made after mount', async () => {
+    const pendingLoad = deferred<{ success: boolean; data: unknown }>()
+    mocks.loadUserConfig.mockReturnValueOnce(pendingLoad.promise)
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    const autoUpdateToggle = container.querySelector<HTMLInputElement>('input[aria-label="启用自动更新"]')!
+    await act(async () => {
+      autoUpdateToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!
+    await setInputValue(timeInput, '06:30')
+
+    await act(async () => pendingLoad.resolve({
+      success: true,
+      data: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
+    }))
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="启用自动更新"]')?.checked).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')?.value).toBe('06:30')
+    expect(container.textContent).toContain('有尚未保存的更改')
+  })
+
+  it('reports a local auto-update fallback in place and globally when the server read fails', async () => {
+    localStorage.setItem('autoUpdateConfig', JSON.stringify({
+      enabled: true,
+      time: '06:00',
+      updateCore: true,
+      updateCli: false,
+    }))
+    mocks.loadUserConfig.mockResolvedValue({ success: false, message: '配置目录不可读' })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    const expected = '自动更新设置读取失败: 配置目录不可读，已显示此设备上次保存的设置，请保存后重试'
+    expect(container.textContent).toContain(expected)
+    expect(container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')?.value).toBe('06:00')
+    expect(container.textContent).toContain('有尚未保存的更改')
+    expect(mocks.setMessage).toHaveBeenCalledWith(expected, 'warning')
   })
 
   it('does not report success when the scheduler rejects an enabled setting', async () => {

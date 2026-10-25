@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { getErrorMessage } from '@/shared/api'
+import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   Cable,
@@ -20,38 +19,20 @@ import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-stat
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type {
   MaaConnectionConfig,
-  AutoUpdateConfig,
   ConfigSection,
-  UpdateStatus
 } from '../types'
-import { loadUserConfig, saveUserConfig } from '@/features/user-config'
 import { useConfigSection } from '../hooks/useConfigSection'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
 import { useSettingsDeviceConnection } from '../hooks/useSettingsDeviceConnection'
 import { useSettingsConfigDirectory } from '../hooks/useSettingsConfigDirectory'
 import { useSettingsVersion } from '../hooks/useSettingsVersion'
+import { useSettingsAutoUpdate } from '../hooks/useSettingsAutoUpdate'
+import { useSettingsUpdates } from '../hooks/useSettingsUpdates'
 import {
   CONFIG_SECTION_IDS,
   isEditableConfigSection,
 } from '../model/configSection'
-import {
-  DEFAULT_AUTO_UPDATE_CONFIG,
-  isValidUpdateTime,
-  normalizeAutoUpdateConfig,
-} from '../model/configNormalization'
 import type { DiscoveredDevice } from '../model/deviceConnection'
-import {
-  hotUpdateResources,
-  setupAutoUpdate,
-  updateMaaCli,
-  updateMaaCore,
-} from '../api'
-
-interface UpdateFeedback {
-  type: 'success' | 'error'
-  message: string
-  resourceRetry?: boolean
-}
 
 interface SettingsFeedback {
   type: 'success' | 'error' | 'warning'
@@ -78,10 +59,7 @@ export default function ConfigManager() {
     loaded: connectionLoaded,
   } = useSettingsConnectionConfig()
   const connectionSaving = connectionSyncState === 'saving'
-  const {
-    version: versionInfo,
-    reload: reloadVersion,
-  } = useSettingsVersion()
+  const { version: versionInfo } = useSettingsVersion()
   const {
     path: configDir,
     status: configDirStatus,
@@ -105,20 +83,28 @@ export default function ConfigManager() {
   const connectionFeedback = connectionTest.message
     ? { success: connectionTest.success, message: connectionTest.message }
     : null
-  const [updating, setUpdating] = useState<UpdateStatus>({ core: false, cli: false })
-  const [hotUpdating, setHotUpdating] = useState<boolean>(false)
-  const [autoUpdate, setAutoUpdate] = useState<AutoUpdateConfig>(DEFAULT_AUTO_UPDATE_CONFIG)
-  const [autoUpdateDirty, setAutoUpdateDirty] = useState(false)
-  const [autoUpdateSaving, setAutoUpdateSaving] = useState(false)
-  const [autoUpdateFeedback, setAutoUpdateFeedback] = useState<SettingsFeedback | null>(null)
+  const {
+    draft: autoUpdate,
+    dirty: autoUpdateDirty,
+    saving: autoUpdateSaving,
+    feedback: autoUpdateFeedback,
+    update: updateAutoUpdate,
+    save: saveAutoUpdateConfig,
+  } = useSettingsAutoUpdate(setStatusMessage)
+  const {
+    running: updateOperation,
+    feedback: updateFeedback,
+    busy: updateBusy,
+    updateCore,
+    switchCoreChannel,
+    updateCli,
+    updateResources,
+  } = useSettingsUpdates(setStatusMessage)
+  const updatingCore = updateOperation === 'core' || updateOperation === 'core-channel'
+  const updatingCli = updateOperation === 'cli'
+  const hotUpdating = updateOperation === 'resources'
   const [configFeedback, setConfigFeedback] = useState<SettingsFeedback | null>(null)
-  const [updateFeedback, setUpdateFeedback] = useState<UpdateFeedback | null>(null)
-  const autoUpdateInitializedRef = useRef(false)
-  const autoUpdateTouchedRef = useRef(false)
-  const autoUpdateRevisionRef = useRef(0)
-  const autoUpdateSaveInFlightRef = useRef(false)
   const reportedLoadFailureRef = useRef<string | null>(null)
-  const updateInFlightRef = useRef(false)
 
   // 初始读取失败保留旧的页内与全局提示；后台刷新失败不打断已有草稿。
   useEffect(() => {
@@ -136,134 +122,6 @@ export default function ConfigManager() {
     reportedLoadFailureRef.current = null
     setConfigFeedback(current => (current?.message === message ? null : current))
   }, [connectionLoaded])
-
-  const loadAutoUpdateConfig = useCallback(async () => {
-    let serverError: string | null = null
-
-    try {
-      const serverConfig = await loadUserConfig('auto-update')
-      const normalizedConfig = normalizeAutoUpdateConfig(serverConfig.data)
-      if (serverConfig.success && normalizedConfig) {
-        if (!autoUpdateTouchedRef.current) {
-          setAutoUpdate(normalizedConfig)
-          setAutoUpdateDirty(false)
-          localStorage.setItem('autoUpdateConfig', JSON.stringify(normalizedConfig))
-        }
-        return
-      }
-
-      if (!serverConfig.success) {
-        serverError = `自动更新设置读取失败: ${getErrorMessage(serverConfig)}`
-      }
-    } catch (error) {
-      serverError = `自动更新设置读取失败: ${(error as Error).message}`
-    }
-
-    try {
-      const saved = localStorage.getItem('autoUpdateConfig')
-      if (saved) {
-        const config = normalizeAutoUpdateConfig(JSON.parse(saved))
-        if (config && !autoUpdateTouchedRef.current) {
-          setAutoUpdate(config)
-          setAutoUpdateDirty(true)
-        }
-
-        if (config) {
-          const message = serverError
-            ? `${serverError}，已显示此设备上次保存的设置，请保存后重试`
-            : '已载入此设备上次保存的自动更新设置，请保存后应用'
-          setAutoUpdateFeedback({ type: 'warning', message })
-          setStatusMessage(message, 'warning')
-          return
-        }
-      }
-    } catch (error) {
-      const message = `自动更新设置读取失败: ${(error as Error).message}`
-      setAutoUpdateFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-      return
-    }
-
-    if (serverError) {
-      setAutoUpdateFeedback({ type: 'error', message: serverError })
-      setStatusMessage(serverError, 'error')
-    }
-  }, [setStatusMessage])
-
-  const saveAutoUpdateConfig = async (config: AutoUpdateConfig) => {
-    if (autoUpdateSaveInFlightRef.current) return
-    if (config.enabled && !isValidUpdateTime(config.time)) {
-      const message = '更新时间格式无效，请输入 00:00 到 23:59 之间的时间'
-      setAutoUpdateFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-      return
-    }
-
-    const savedRevision = autoUpdateRevisionRef.current
-    autoUpdateSaveInFlightRef.current = true
-    setAutoUpdateSaving(true)
-    setAutoUpdateFeedback(null)
-    setStatusMessage('正在保存自动更新设置...', 'info')
-
-    try {
-      const saveResult = await saveUserConfig('auto-update', config)
-      if (!saveResult.success) {
-        const message = `自动更新设置保存失败: ${getErrorMessage(saveResult)}`
-        setAutoUpdateFeedback({ type: 'error', message })
-        setStatusMessage(message, 'error')
-        return
-      }
-
-      const result = await setupAutoUpdate(config)
-      const schedulerResult = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
-        ? result.data as { success?: boolean; message?: string }
-        : null
-      const schedulerSucceeded = result.success && (!config.enabled || schedulerResult?.success !== false)
-
-      if (schedulerSucceeded) {
-        if (savedRevision === autoUpdateRevisionRef.current) {
-          const message = config.enabled ? `自动更新已启用，每天 ${config.time} 执行` : '自动更新已禁用'
-          localStorage.setItem('autoUpdateConfig', JSON.stringify(config))
-          setAutoUpdateDirty(false)
-          setAutoUpdateFeedback({ type: 'success', message })
-          setStatusMessage(message, 'success')
-        } else {
-          const message = '此前设置已保存，当前更改尚未保存'
-          setAutoUpdateFeedback({ type: 'warning', message })
-          setStatusMessage(message, 'warning')
-        }
-      } else {
-        const message = `自动更新设置应用失败: ${schedulerResult?.message || getErrorMessage(result)}`
-        setAutoUpdateFeedback({ type: 'error', message })
-        setStatusMessage(message, 'error')
-      }
-    } catch (error) {
-      const message = `自动更新设置保存失败: ${(error as Error).message}`
-      setAutoUpdateFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-    } finally {
-      autoUpdateSaveInFlightRef.current = false
-      setAutoUpdateSaving(false)
-    }
-  }
-
-  const handleAutoUpdateChange = (field: keyof AutoUpdateConfig, value: boolean | string) => {
-    autoUpdateTouchedRef.current = true
-    autoUpdateRevisionRef.current += 1
-    setAutoUpdate(current => {
-      const next = { ...current, [field]: value }
-      localStorage.setItem('autoUpdateConfig', JSON.stringify(next))
-      return next
-    })
-    setAutoUpdateDirty(true)
-    setAutoUpdateFeedback(null)
-  }
-
-  useEffect(() => {
-    if (autoUpdateInitializedRef.current) return
-    autoUpdateInitializedRef.current = true
-    void loadAutoUpdateConfig()
-  }, [loadAutoUpdateConfig])
 
   const updateConnectionConfig = (patch: Partial<MaaConnectionConfig>) => {
     updateConnectionDraft(patch)
@@ -320,142 +178,25 @@ export default function ConfigManager() {
     setStatusMessage(result.success ? '已打开配置目录' : `打开失败: ${result.message}`)
   }
 
-  const handleUpdateCore = async () => {
-    if (updateInFlightRef.current) return
-    updateInFlightRef.current = true
-    setUpdating(current => ({ ...current, core: true }))
-    setUpdateFeedback(null)
-    setStatusMessage('正在更新 MaaCore 并同步最新资源...')
-
-    try {
-      // 更新到当前渠道的最新版本
-      // 不传版本号，后端会使用 maa update 命令
-      const result = await updateMaaCore()
-
-      if (result.success) {
-        const message = result.message || 'MaaCore 和资源已更新'
-        setUpdateFeedback({ type: 'success', message })
-        setStatusMessage(message)
-        // 更新成功后重新加载版本信息
-        await reloadVersion()
-      } else {
-        const details = (result as any).error?.details || result.errorInfo?.details || {}
-        const message = getErrorMessage(result)
-        setUpdateFeedback({
-          type: 'error',
-          message,
-          resourceRetry: details.failedStep === 'resources' || details.coreUpdated === true
-        })
-        setStatusMessage(message, 'error')
-      }
-    } catch (error) {
-      const message = `网络错误: ${(error as Error).message}`
-      setUpdateFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-    } finally {
-      setUpdating(current => ({ ...current, core: false }))
-      updateInFlightRef.current = false
-    }
+  const handleUpdateCore = () => {
+    void updateCore()
   }
 
-  const handleUpdateCli = async () => {
-    if (updateInFlightRef.current) return
-    updateInFlightRef.current = true
-    setUpdating(current => ({ ...current, cli: true }))
-    setStatusMessage('正在更新 MAA CLI...')
-
-    try {
-      const result = await updateMaaCli()
-
-      if (result.success) {
-        setStatusMessage('MAA CLI 更新成功')
-        // 更新成功后重新加载版本信息
-        await reloadVersion()
-      } else {
-        setStatusMessage(`更新失败: ${getErrorMessage(result)}`)
-      }
-    } catch (error) {
-      setStatusMessage(`网络错误: ${(error as Error).message}`)
-    } finally {
-      setUpdating(current => ({ ...current, cli: false }))
-      updateInFlightRef.current = false
-    }
+  const handleUpdateCli = () => {
+    void updateCli()
   }
 
-  const handleToggleCoreVersion = async () => {
-    if (updateInFlightRef.current) return
-    updateInFlightRef.current = true
-    // 根据当前安装的版本判断目标渠道
-    const currentIsBeta = versionInfo?.core.includes('beta') || versionInfo?.core.includes('alpha')
-    const targetIsBeta = !currentIsBeta
-    const targetChannel = targetIsBeta ? 'Beta' : '正式版'
-    
-    setUpdating(current => ({ ...current, core: true }))
-    setUpdateFeedback(null)
-    setStatusMessage(`正在切换到 ${targetChannel} 渠道...`)
-    
-    try {
-      // 切换渠道并安装
-      const versionToInstall = targetIsBeta ? 'beta' : 'stable'
-      const result = await updateMaaCore(versionToInstall)
-
-      if (result.success) {
-        const message = `已切换到 ${targetChannel} 渠道并同步最新资源`
-        setUpdateFeedback({ type: 'success', message })
-        setStatusMessage(message)
-        // 更新成功后重新加载版本信息
-        await reloadVersion()
-      } else {
-        const details = (result as any).error?.details || result.errorInfo?.details || {}
-        const message = getErrorMessage(result)
-        setUpdateFeedback({
-          type: 'error',
-          message,
-          resourceRetry: details.failedStep === 'resources' || details.coreUpdated === true
-        })
-        setStatusMessage(message, 'error')
-      }
-    } catch (error) {
-      const message = `网络错误: ${(error as Error).message}`
-      setUpdateFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-    } finally {
-      setUpdating(current => ({ ...current, core: false }))
-      updateInFlightRef.current = false
-    }
+  const handleToggleCoreVersion = () => {
+    void switchCoreChannel(versionInfo?.core)
   }
 
-  const handleHotUpdate = async () => {
-    if (updateInFlightRef.current) return
-    updateInFlightRef.current = true
-    setHotUpdating(true)
-    setUpdateFeedback(null)
-    setStatusMessage('正在热更新资源文件...')
-
-    try {
-      const result = await hotUpdateResources()
-
-      if (result.success) {
-        const message = result.message || '资源文件更新成功'
-        setUpdateFeedback({ type: 'success', message })
-        setStatusMessage(message)
-        await reloadVersion()
-      } else {
-        const message = getErrorMessage(result)
-        setUpdateFeedback({ type: 'error', message, resourceRetry: true })
-        setStatusMessage(message, 'error')
-      }
-    } catch (error) {
-      const message = `网络错误: ${(error as Error).message}`
-      setUpdateFeedback({ type: 'error', message, resourceRetry: true })
-      setStatusMessage(message, 'error')
-    } finally {
-      setHotUpdating(false)
-      updateInFlightRef.current = false
-    }
+  const handleHotUpdate = () => {
+    void updateResources()
   }
 
-  const updateBusy = updating.core || updating.cli || hotUpdating
+  const handleSaveAutoUpdate = () => {
+    void saveAutoUpdateConfig()
+  }
 
   const configSections = [
     {
@@ -828,7 +569,7 @@ export default function ConfigManager() {
               </div>
               <Switch
                 checked={autoUpdate.enabled}
-                onChange={checked => handleAutoUpdateChange('enabled', checked)}
+                onChange={checked => updateAutoUpdate({ enabled: checked })}
                 label="启用自动更新"
               />
             </div>
@@ -846,19 +587,19 @@ export default function ConfigManager() {
                     type="text"
                     label="更新时间"
                     value={autoUpdate.time}
-                    onChange={(value: string) => handleAutoUpdateChange('time', value)}
+                    onChange={(value: string) => updateAutoUpdate({ time: value })}
                     placeholder="HH:MM"
                     className="max-w-48"
                   />
                   <div className="flex min-h-11 flex-wrap items-center gap-x-5 gap-y-2">
                     <Checkbox
                       checked={autoUpdate.updateCore}
-                      onChange={(checked: boolean) => handleAutoUpdateChange('updateCore', checked)}
+                      onChange={(checked: boolean) => updateAutoUpdate({ updateCore: checked })}
                       label="更新 MaaCore"
                     />
                     <Checkbox
                       checked={autoUpdate.updateCli}
-                      onChange={(checked: boolean) => handleAutoUpdateChange('updateCli', checked)}
+                      onChange={(checked: boolean) => updateAutoUpdate({ updateCli: checked })}
                       label="更新 MAA CLI"
                     />
                   </div>
@@ -890,7 +631,7 @@ export default function ConfigManager() {
                 loading={autoUpdateSaving}
                 loadingText="保存中"
                 disabled={!autoUpdateDirty || autoUpdateSaving}
-                onClick={() => void saveAutoUpdateConfig(autoUpdate)}
+                onClick={handleSaveAutoUpdate}
                 icon={<Save size={16} aria-hidden="true" />}
               >
                 保存自动更新
@@ -929,7 +670,7 @@ export default function ConfigManager() {
                 <Button
                   onClick={handleUpdateCore}
                   disabled={updateBusy}
-                  loading={updating.core}
+                  loading={updatingCore}
                   loadingText="更新中"
                   variant="primary"
                   className="w-full"
@@ -972,7 +713,7 @@ export default function ConfigManager() {
                 <Button
                   onClick={handleUpdateCli}
                   disabled={updateBusy}
-                  loading={updating.cli}
+                  loading={updatingCli}
                   loadingText="更新中"
                   variant="primary"
                   fullWidth
