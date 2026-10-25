@@ -1370,7 +1370,9 @@
     box-shadow: none;
   }
 
-  .la-pluma-app .app-modal-backdrop {
+  /* Modals portal to document.body, outside .la-pluma-app, so the backdrop
+     cannot carry the app-root scope. */
+  .app-modal-backdrop {
     background: rgba(0, 0, 0, 0.42);
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
@@ -1991,12 +1993,17 @@
      page shell cannot override it; same cascade as the former unlayered rule). */
 @layer page {
   /* Only summoned, overlapping layers receive Liquid Glass. Ordinary cards and
-     grouped content remain opaque so the material hierarchy stays legible. */
-  .la-pluma-app :is(
-    .app-modal-layer .surface-panel,
-    .theme-menu-popover,
-    .pwa-install-prompt
+     grouped content remain opaque so the material hierarchy stays legible.
+     Modal dialogs render through createPortal to document.body, outside
+     .la-pluma-app, so the modal layer is referenced unscoped; only the
+     app-rendered overlays keep the app-root scope. */
+  :is(
+    .la-pluma-app .theme-menu-popover,
+    .la-pluma-app .pwa-install-prompt,
+    .app-modal-layer .surface-panel
   ) {
+    border-width: 1px;
+    border-style: solid;
     border-color: color-mix(in srgb, var(--app-border-strong) 72%, transparent);
     background: color-mix(in srgb, var(--app-surface-solid) 78%, transparent);
     -webkit-backdrop-filter: blur(24px) saturate(165%);
@@ -2105,10 +2112,10 @@
   }
 
   @media (prefers-contrast: more) {
-    .la-pluma-app :is(
-      .app-modal-layer .surface-panel,
-      .theme-menu-popover,
-      .pwa-install-prompt
+    :is(
+      .la-pluma-app .theme-menu-popover,
+      .la-pluma-app .pwa-install-prompt,
+      .app-modal-layer .surface-panel
     ) {
       border-color: var(--app-border-strong);
       background: var(--app-surface-solid);
