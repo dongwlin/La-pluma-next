@@ -3,6 +3,7 @@
  * 同源地址探测、鉴权头合并与响应解析；不承载任何业务端点。
  */
 
+import { isAbortError } from './abort'
 import type { ApiResponse } from './types/api'
 
 export { parseJsonResponse } from './apiResponse'
@@ -41,7 +42,7 @@ export const fetchWithAuth = async (input: RequestInfo | URL, init: RequestInit 
   try {
     return await fetch(input, { ...init, headers })
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw error
+    if (isAbortError(error)) throw error
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       throw new Error('当前网络已断开，请恢复连接后重试')
     }

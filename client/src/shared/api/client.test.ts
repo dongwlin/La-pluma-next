@@ -21,4 +21,11 @@ describe('fetchWithAuth connectivity errors', () => {
 
     await expect(fetchWithAuth('/api/agent/status')).rejects.toThrow('无法连接后端服务，请确认服务已启动')
   })
+
+  it('rethrows DOMException aborts without rewriting them as connectivity errors', async () => {
+    const abortError = new DOMException('The operation was aborted.', 'AbortError')
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(abortError)
+
+    await expect(fetchWithAuth('/api/agent/status')).rejects.toBe(abortError)
+  })
 })

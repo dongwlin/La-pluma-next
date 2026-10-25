@@ -61,4 +61,16 @@ describe('parseJsonResponse', () => {
     })
     expect(result.meta?.requestId).toBe('request-1')
   })
+
+  it('keeps non-envelope payloads unchanged for legacy raw consumers', async () => {
+    const response = new Response(JSON.stringify({ operator: '阿米娅', quote: '准备完成' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    await expect(parseJsonResponse(response)).resolves.toEqual({
+      operator: '阿米娅',
+      quote: '准备完成',
+    })
+  })
 })
