@@ -3,16 +3,26 @@
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ApiResponse } from '@/shared/api'
+import {
+  ExecutionController,
+  type AgentRun,
+  type RunProgress,
+  type RunSnapshot,
+  type RunTaskResult,
+  type StopRunResult,
+} from '@/features/task-execution'
 import CombatTasks from './CombatTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => ({
-  getTaskStatus: vi.fn(),
+  controller: { current: null as unknown as ExecutionController },
+  executePredefinedTaskArgs: vi.fn(),
+  executeCopilotSetPlan: vi.fn(),
+  continueCopilotSet: vi.fn(),
   loadUserConfig: vi.fn(),
   saveUserConfig: vi.fn(),
-  stopTask: vi.fn(),
-  executePredefinedTaskArgs: vi.fn(),
   getCopilotInfo: vi.fn(),
   getCopilotSet: vi.fn(),
   getCopilotSetPlan: vi.fn(),
@@ -20,7 +30,6 @@ const mocks = vi.hoisted(() => ({
   searchCopilot: vi.fn(),
   searchParadoxCopilot: vi.fn(),
   setMessage: vi.fn(),
-  setActive: vi.fn(),
 }))
 
 vi.mock('framer-motion', async () => {
@@ -45,11 +54,17 @@ vi.mock('@/shared/api', () => ({
   getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
 }))
 
-vi.mock('@/features/task-execution', () => ({
-  executePredefinedTaskArgs: mocks.executePredefinedTaskArgs,
-  getTaskStatus: mocks.getTaskStatus,
-  stopTask: mocks.stopTask,
-}))
+vi.mock('@/features/task-execution', async () => {
+  const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
+  return {
+    ...actual,
+    get executionController() {
+      return mocks.controller.current
+    },
+    executePredefinedTaskArgs: mocks.executePredefinedTaskArgs,
+    useExecutionSnapshot: () => actual.useExecutionSnapshot(mocks.controller.current),
+  }
+})
 
 vi.mock('@/features/user-config', () => ({
   loadUserConfig: mocks.loadUserConfig,
@@ -57,7 +72,8 @@ vi.mock('@/features/user-config', () => ({
 }))
 
 vi.mock('../api', () => ({
-  executeCopilotSetPlan: vi.fn(),
+  executeCopilotSetPlan: mocks.executeCopilotSetPlan,
+  continueCopilotSet: mocks.continueCopilotSet,
   getCopilotInfo: mocks.getCopilotInfo,
   getCopilotSet: mocks.getCopilotSet,
   getCopilotSetPlan: mocks.getCopilotSetPlan,
@@ -67,13 +83,190 @@ vi.mock('../api', () => ({
 }))
 
 vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage, setActive: mocks.setActive }),
+  useStatusStore: () => ({ setMessage: mocks.setMessage }),
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
 
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
 
+const CONTROLLER_INTERVALS = { active: 1_000, idle: 5_000, disconnected: 2_000 }
+
+const ok = <T,>(data: T): ApiResponse<T> => ({ success: true, data })
+const failed = (code: string, message: string): ApiResponse => ({
+  success: false,
+  error: message,
+  message,
+  errorInfo: { code, message },
+})
+
+function activeRun(
+  runId: string,
+  state: AgentRun['state'] = 'running',
+  overrides: Partial<AgentRun> = {},
+): AgentRun {
+  return {
+    runId,
+    operationId: 'run_task',
+    state,
+    acceptedAt: '2026-10-25T00:00:00.000Z',
+    links: {
+      self: `/api/agent/runs/${runId}`,
+      stop: `/api/agent/actions/stop?runId=${runId}`,
+    },
+    ...overrides,
+  }
+}
+
+function runSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
+  const activeRuns = overrides.activeRuns ?? []
+  const run = overrides.run ?? activeRuns[0] ?? null
+  return {
+    isRunning: activeRuns.length > 0,
+    run,
+    activeRuns,
+    lastRun: overrides.lastRun ?? null,
+    occupancy: {
+      state: activeRuns.length ? 'run' : 'idle',
+      runId: run?.runId ?? null,
+      runState: run?.state ?? null,
+      sources: activeRuns.length ? ['run'] : [],
+      lease: { state: 'free', owner: null },
+      task: { isRunning: false, taskName: null, taskType: null, stopRequested: false },
+      schedule: {},
+    },
+    ...overrides,
+  }
+}
+
+type ItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'stopped'
+
+/** 服务端作业集逐项结果的一条；同一作业在突袭/普通模式下会有多条。 */
+function planEntry(
+  itemIndex: number,
+  status: ItemStatus,
+  overrides: Partial<RunTaskResult> = {},
+): RunTaskResult {
+  return {
+    key: `${itemIndex}:${101 + itemIndex}:normal`,
+    itemIndex,
+    copilotId: 101 + itemIndex,
+    stageId: `test_${itemIndex + 1}`,
+    displayStage: `TEST-${itemIndex + 1}`,
+    stage: `TEST-${itemIndex + 1}`,
+    mode: 'normal',
+    presetFormation: false,
+    status,
+    ...overrides,
+  }
+}
+
+function setProgress(
+  taskResults: RunTaskResult[],
+  overrides: Partial<RunProgress> = {},
+): RunProgress {
+  const count = (status: ItemStatus) => taskResults.filter(entry => entry.status === status).length
+  return {
+    setId: '48990',
+    name: '作业集 48990',
+    mode: 'continuous',
+    phase: 'running',
+    currentStep: taskResults.length - count('pending'),
+    totalSteps: taskResults.length,
+    currentTask: null,
+    currentEntry: taskResults.find(entry => entry.status === 'running') ?? null,
+    nextEntry: null,
+    shouldStop: false,
+    successCount: count('success'),
+    failedCount: count('failed'),
+    stoppedCount: count('stopped'),
+    pendingCount: count('pending'),
+    message: '作业集执行中',
+    taskResults,
+    ...overrides,
+  }
+}
+
+function setResult(
+  taskResults: RunTaskResult[],
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const count = (status: ItemStatus) => taskResults.filter(entry => entry.status === status).length
+  return {
+    success: true,
+    stopped: false,
+    finished: true,
+    mode: 'continuous',
+    setId: '48990',
+    name: '作业集 48990',
+    raid: 'normal',
+    message: '作业集执行完成',
+    plan: { items: [], entries: [] },
+    completed: [],
+    pending: [],
+    results: [],
+    summary: {
+      setId: '48990',
+      name: '作业集 48990',
+      mode: 'continuous',
+      raid: 'normal',
+      totalEntries: taskResults.length,
+      attemptedCount: taskResults.length - count('pending'),
+      alreadyCompletedCount: 0,
+      successCount: count('success'),
+      failedCount: count('failed'),
+      stoppedCount: count('stopped'),
+      pendingCount: count('pending'),
+      durationMs: 5_000,
+      errors: taskResults
+        .filter(entry => entry.status === 'failed')
+        .map(entry => ({ key: entry.key, stage: entry.displayStage, error: entry.error })),
+      taskResults,
+    },
+    ...overrides,
+  }
+}
+
+function setRun(
+  runId: string,
+  state: AgentRun['state'],
+  options: { progress?: RunProgress; result?: Record<string, unknown>; error?: AgentRun['error'] } = {},
+): AgentRun {
+  return activeRun(runId, state, {
+    operationId: 'run_copilot_set',
+    ...(options.progress ? { progress: options.progress } : {}),
+    ...(options.result ? { result: options.result } : {}),
+    ...(options.error ? { error: options.error } : {}),
+  })
+}
+
+interface TestExecutionIdentity {
+  runId: string
+  operationId: string | null
+  scope?: string | null
+}
+
+function createApi() {
+  return {
+    fetchSnapshot: vi.fn<(signal?: AbortSignal) => Promise<ApiResponse<RunSnapshot>>>(),
+    fetchRun: vi.fn<(runId: string, signal?: AbortSignal) => Promise<ApiResponse<AgentRun>>>(),
+    stopRun: vi.fn<(runId: string) => Promise<ApiResponse<StopRunResult>>>(),
+  }
+}
+
+function memoryStorage(initial: TestExecutionIdentity | null = null) {
+  let value = initial
+  return {
+    read: () => value,
+    write: (identity: TestExecutionIdentity | null) => {
+      value = identity
+    },
+  }
+}
+
+let api: ReturnType<typeof createApi>
+let controller: ExecutionController
+let releases: Array<() => void>
 let container: HTMLDivElement
 let root: Root
 
@@ -89,18 +282,20 @@ const deferred = <T,>() => {
 
 const flush = async () => {
   await act(async () => {
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let index = 0; index < 6; index += 1) await Promise.resolve()
   })
 }
 
 const buttonsByText = (text: string) => Array.from(document.querySelectorAll('button'))
   .filter(button => button.textContent?.trim() === text) as HTMLButtonElement[]
 
+const buttonByText = (text: string) => buttonsByText(text)[0]
+
 const click = async (element: HTMLElement) => {
   await act(async () => {
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
+  await flush()
 }
 
 const keyDown = async (element: HTMLElement, key: string) => {
@@ -109,6 +304,27 @@ const keyDown = async (element: HTMLElement, key: string) => {
     element.dispatchEvent(event)
   })
   return event
+}
+
+const useIdentity = (identity: TestExecutionIdentity | null) => {
+  controller = new ExecutionController({
+    api,
+    storage: memoryStorage(identity),
+    intervals: CONTROLLER_INTERVALS,
+  })
+  mocks.controller.current = controller
+}
+
+const startController = () => {
+  const release = controller.start()
+  releases.push(release)
+}
+
+const refreshController = async (reason: 'poll' | 'reconnect' = 'poll') => {
+  await act(async () => {
+    await controller.refresh(reason)
+  })
+  await flush()
 }
 
 const renderComponent = async () => {
@@ -128,9 +344,45 @@ const renderActivityMode = async (mode: 'visible' | 'hidden') => {
     await Promise.resolve()
     await Promise.resolve()
   })
+  await flush()
 }
 
-describe('CombatTasks execution recovery', () => {
+const setInputValue = async (input: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  await act(async () => {
+    const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+const selectValue = async (select: HTMLSelectElement, value: string) => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+const setModeSelect = () => container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')!
+
+const mockSetPlan = () => mocks.getCopilotSetPlan.mockResolvedValue({
+  success: true,
+  data: {
+    items: [
+      { id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true },
+      { id: 102, stage: 'TEST-2', stageId: 'test_2', supportsRaid: true },
+    ],
+    entries: [],
+  },
+})
+
+const previewSet = async (uri = 'prts://s48990') => {
+  mockSetPlan()
+  await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, uri)
+  await click(buttonByText('预览')!)
+  await flush()
+}
+
+describe('CombatTasks execution', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
@@ -143,11 +395,11 @@ describe('CombatTasks execution recovery', () => {
       dispatchEvent: vi.fn(),
     }))
     localStorage.clear()
-    mocks.getTaskStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
+    mocks.executePredefinedTaskArgs.mockReset().mockResolvedValue({ success: true })
+    mocks.executeCopilotSetPlan.mockReset().mockResolvedValue({ success: true })
+    mocks.continueCopilotSet.mockReset().mockResolvedValue({ success: true, data: { accepted: true } })
     mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
-    mocks.stopTask.mockReset().mockResolvedValue({ success: true, data: { task: { success: true } } })
-    mocks.executePredefinedTaskArgs.mockReset().mockResolvedValue({ success: true })
     mocks.getCopilotInfo.mockReset()
     mocks.getCopilotSet.mockReset()
     mocks.getCopilotSetPlan.mockReset()
@@ -155,7 +407,17 @@ describe('CombatTasks execution recovery', () => {
     mocks.searchCopilot.mockReset()
     mocks.searchParadoxCopilot.mockReset()
     mocks.setMessage.mockReset()
-    mocks.setActive.mockReset()
+
+    api = createApi()
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot()))
+    api.fetchRun.mockResolvedValue(failed('AGENT_RUN_NOT_FOUND', '未找到 Agent run'))
+    api.stopRun.mockResolvedValue(ok({
+      stopRequested: true,
+      deviceStopRequested: true,
+      run: activeRun('run-1', 'stopping'),
+    }))
+    useIdentity(null)
+    releases = []
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -164,9 +426,483 @@ describe('CombatTasks execution recovery', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    for (const release of releases) release()
     document.body.style.overflow = ''
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('submits one idempotent continuous set run for the default cli mode', async () => {
+    const submission = deferred<ApiResponse>()
+    mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
+    await renderComponent()
+    await previewSet()
+    expect(setModeSelect().value).toBe('cli')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledOnce()
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
+      '48990',
+      expect.objectContaining({
+        mode: 'continuous',
+        waitForCompletion: false,
+        raid: 'normal',
+        selectedIndexes: [0, 1],
+      }),
+      { idempotencyKey: expect.stringMatching(/^run_copilot_set-/) },
+    )
+    expect(buttonByText('正在启动')?.disabled).toBe(true)
+
+    // 提交在途时重复点击（含直接派发）不会产生第二个请求。
+    await act(async () => {
+      buttonByText('正在启动')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await act(async () => submission.resolve(ok({
+      runId: 'run-set-1',
+      state: 'accepted',
+      run: setRun('run-set-1', 'accepted'),
+    })))
+    await flush()
+
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledOnce()
+    expect(buttonByText('终止执行')).toBeDefined()
+  })
+
+  it('maps the legacy app execution mode to a continuous server run', async () => {
+    await renderComponent()
+    await previewSet()
+    await selectValue(setModeSelect(), 'app')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
+      '48990',
+      expect.objectContaining({ mode: 'continuous', selectedIndexes: [0, 1] }),
+      expect.anything(),
+    )
+    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+  })
+
+  it('starts a manual set, waits for the server next entry, and continues it', async () => {
+    const submission = deferred<ApiResponse>()
+    mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
+    await renderComponent()
+    await previewSet()
+    await selectValue(setModeSelect(), 'manual')
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
+      '48990',
+      expect.objectContaining({ mode: 'manual', selectedIndexes: [0, 1] }),
+      expect.anything(),
+    )
+
+    const waiting = setRun('run-set-2', 'waiting', {
+      progress: setProgress(
+        [planEntry(0, 'success'), planEntry(1, 'pending')],
+        {
+          mode: 'manual',
+          phase: 'waiting_for_next',
+          nextEntry: planEntry(1, 'pending'),
+          currentEntry: null,
+          message: '等待开始下一关',
+        },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    await act(async () => submission.resolve(ok({ runId: 'run-set-2', state: 'waiting', run: waiting })))
+    await flush()
+
+    expect(container.textContent).toContain('下一关')
+    expect(container.textContent).toContain('第 2 / 2 关')
+    expect(buttonByText('开始下一关')).toBeDefined()
+    expect(buttonByText('终止执行')).toBeDefined()
+
+    await click(buttonByText('开始下一关')!)
+
+    expect(mocks.continueCopilotSet).toHaveBeenCalledOnce()
+    expect(mocks.continueCopilotSet).toHaveBeenCalledWith('run-set-2', { waitForCompletion: false })
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the waiting set when the device is busy and allows retry', async () => {
+    useIdentity({ runId: 'run-set-3', operationId: 'run_copilot_set', scope: 'combat' })
+    const waiting = setRun('run-set-3', 'waiting', {
+      progress: setProgress(
+        [planEntry(0, 'success'), planEntry(1, 'pending')],
+        { mode: 'manual', phase: 'waiting_for_next', nextEntry: planEntry(1, 'pending'), currentEntry: null },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    api.fetchRun.mockResolvedValue(ok(waiting))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+    await flush()
+
+    mocks.continueCopilotSet.mockResolvedValueOnce(failed('MAA_EXECUTION_BUSY', '设备正在被其他任务占用'))
+    await click(buttonByText('开始下一关')!)
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('设备正被其他任务占用，请稍后重试', 'warning')
+    expect(buttonByText('开始下一关')?.disabled).toBe(false)
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+
+    mocks.continueCopilotSet.mockResolvedValueOnce(ok({ success: true, accepted: true }))
+    await click(buttonByText('开始下一关')!)
+    await flush()
+
+    expect(mocks.continueCopilotSet).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports the failure summary of a failed set run', async () => {
+    useIdentity({ runId: 'run-set-4', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-4', 'running', {
+      progress: setProgress([planEntry(0, 'success'), planEntry(1, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+    await flush()
+    expect(buttonByText('终止执行')).toBeDefined()
+
+    const failedRun = setRun('run-set-4', 'failed', {
+      result: setResult([planEntry(0, 'success'), planEntry(1, 'failed', { error: '作战失败' })]),
+      error: { code: 'COPILOT_PLAN_FAILED', message: '作业集执行失败，1 项未完成' },
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: failedRun })))
+    api.fetchRun.mockResolvedValue(ok(failedRun))
+    await refreshController()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '作业集执行失败: 作业集执行失败，1 项未完成',
+      'error',
+    )
+    expect(container.textContent).toContain('失败 1')
+    expect(buttonByText('立即执行')).toBeDefined()
+  })
+
+  it('stops the tracked run and does not submit any further entry', async () => {
+    useIdentity({ runId: 'run-set-5', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-5', 'running', {
+      progress: setProgress([planEntry(0, 'success'), planEntry(1, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+    await flush()
+
+    await click(buttonByText('终止执行')!)
+
+    expect(api.stopRun).toHaveBeenCalledOnce()
+    expect(api.stopRun).toHaveBeenCalledWith('run-set-5')
+    expect(mocks.setMessage).toHaveBeenCalledWith('正在终止自动战斗...', 'warning')
+
+    const stopped = setRun('run-set-5', 'stopped', {
+      result: setResult([planEntry(0, 'success'), planEntry(1, 'pending')], {
+        stopped: true,
+        message: '作业集已被终止',
+      }),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: stopped })))
+    api.fetchRun.mockResolvedValue(ok(stopped))
+    await refreshController()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('作业集已终止：1/2 成功', 'warning')
+    expect(buttonByText('立即执行')).toBeDefined()
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+  })
+
+  it('unlocks the stop action when confirmation times out so it can be retried', async () => {
+    vi.useFakeTimers()
+    useIdentity({ runId: 'run-set-6', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-6', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+    await flush()
+
+    // 停止请求被接受但 run 仍显示 running：确认超时后必须解锁重试。
+    api.stopRun.mockResolvedValueOnce(ok({
+      stopRequested: true,
+      deviceStopRequested: true,
+      run: running,
+    }))
+    await click(buttonByText('终止执行')!)
+    expect(buttonByText('正在终止')?.disabled).toBe(true)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '终止失败: 终止请求已发送，但尚未确认任务停止',
+      'error',
+    )
+    expect(buttonByText('终止执行')?.disabled).toBe(false)
+
+    await click(buttonByText('终止执行')!)
+    expect(api.stopRun).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps running state across Activity hide/show without stopping or resubmitting', async () => {
+    useIdentity({ runId: 'run-set-7', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-7', 'running', {
+      progress: setProgress([planEntry(0, 'success'), planEntry(1, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+
+    await renderActivityMode('visible')
+    await previewSet()
+    expect(buttonByText('终止执行')).toBeDefined()
+
+    await renderActivityMode('hidden')
+    expect(api.stopRun).not.toHaveBeenCalled()
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+
+    const stopped = setRun('run-set-7', 'stopped', {
+      result: setResult([planEntry(0, 'success'), planEntry(1, 'stopped', { error: '已终止' })], {
+        stopped: true,
+      }),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: stopped })))
+    api.fetchRun.mockResolvedValue(ok(stopped))
+
+    await renderActivityMode('visible')
+    await refreshController()
+
+    expect(buttonByText('立即执行')).toBeDefined()
+    expect(api.stopRun).not.toHaveBeenCalled()
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+    expect(mocks.setMessage).not.toHaveBeenCalledWith(expect.stringContaining('执行完成'), 'success')
+  })
+
+  it('keeps the last running state when a snapshot fails and recovers on reconnect', async () => {
+    useIdentity({ runId: 'run-set-8', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-8', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+
+    api.fetchSnapshot.mockRejectedValueOnce(new Error('network down'))
+    await refreshController('reconnect')
+
+    expect(controller.getState().phase).toBe('disconnected')
+    expect(buttonByText('终止执行')).toBeDefined()
+
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    await refreshController('reconnect')
+
+    expect(controller.getState().phase).toBe('live')
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(api.fetchRun).toHaveBeenLastCalledWith('run-set-8', expect.anything())
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+  })
+
+  it('recovers its own set run identity after a refresh without resubmitting', async () => {
+    useIdentity({ runId: 'run-set-9', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-9', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+
+    await renderComponent()
+
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+  })
+
+  it('stops a manual set from the failure strategy instead of offering the next entry', async () => {
+    mocks.getCopilotSetPlan.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          { id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true },
+          { id: 102, stage: 'TEST-2', stageId: 'test_2', supportsRaid: true },
+          { id: 103, stage: 'TEST-3', stageId: 'test_3', supportsRaid: true },
+        ],
+        entries: [],
+      },
+    })
+    useIdentity({ runId: 'run-set-manual', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-manual', 'running', {
+      progress: setProgress([planEntry(0, 'running'), planEntry(1, 'pending'), planEntry(2, 'pending')], {
+        mode: 'manual',
+        totalSteps: 3,
+      }),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+
+    const strategySelect = Array.from(container.querySelectorAll<HTMLSelectElement>('select'))
+      .find(select => Array.from(select.options).some(option => option.value === 'stop'))!
+    await selectValue(strategySelect, 'stop')
+
+    const waitingAfterFailure = setRun('run-set-manual', 'waiting', {
+      progress: setProgress(
+        [planEntry(0, 'success'), planEntry(1, 'failed', { error: '作战失败' }), planEntry(2, 'pending')],
+        {
+          mode: 'manual',
+          phase: 'waiting_for_next',
+          totalSteps: 3,
+          nextEntry: planEntry(2, 'pending'),
+        },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waitingAfterFailure] })))
+    api.fetchRun.mockResolvedValue(ok(waitingAfterFailure))
+    await refreshController()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('作业 2/3 执行失败: 作战失败，已按队列策略停止', 'error')
+    expect(api.stopRun).toHaveBeenCalledWith('run-set-manual')
+    expect(buttonByText('开始下一关')).toBeUndefined()
+  })
+
+  it('keeps the new run when an older terminal record is also in the snapshot', async () => {
+    useIdentity({ runId: 'run-set-new', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-new', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    const olderTerminal = setRun('run-set-old', 'failed', {
+      result: setResult([planEntry(0, 'failed', { error: '旧的失败' })]),
+      error: { message: '旧的执行失败' },
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      activeRuns: [running],
+      lastRun: olderTerminal,
+    })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(mocks.setMessage).not.toHaveBeenCalledWith(expect.stringContaining('旧的执行失败'), 'error')
+    expect(controller.getState().trackedRunId).toBe('run-set-new')
+  })
+
+  it('does not turn an unknown run identity into completion or a resubmission', async () => {
+    useIdentity({ runId: 'run-set-now', operationId: 'run_copilot_set', scope: 'combat' })
+    const running = setRun('run-set-now', 'running', {
+      progress: setProgress([planEntry(0, 'running')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [running] })))
+    api.fetchRun.mockResolvedValue(ok(running))
+    startController()
+    await flush()
+    await renderComponent()
+    await previewSet()
+
+    const otherTerminal = setRun('run-set-old', 'succeeded', {
+      result: setResult([planEntry(0, 'success')]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ lastRun: otherTerminal })))
+    api.fetchRun.mockResolvedValue(failed('AGENT_RUN_NOT_FOUND', '未找到 Agent run'))
+    await refreshController()
+
+    expect(controller.getState().identity).toBe('unknown')
+    expect(buttonByText('立即执行')).toBeDefined()
+    expect(mocks.setMessage).not.toHaveBeenCalledWith(expect.stringContaining('作业集执行完成'), 'success')
+    expect(mocks.setMessage).not.toHaveBeenCalledWith(expect.stringContaining('作业集执行失败'), 'error')
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+  })
+
+  it('does not present another domain run as a combat execution', async () => {
+    useIdentity({ runId: 'run-rogue', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-rogue')] })))
+    api.fetchRun.mockResolvedValue(ok(activeRun('run-rogue')))
+    startController()
+    await flush()
+
+    await renderComponent()
+
+    expect(buttonByText('终止执行')).toBeUndefined()
+    expect(buttonByText('立即执行')).toBeDefined()
+  })
+
+  it('does not show another set run next entry for the previewed set', async () => {
+    useIdentity({ runId: 'run-set-other', operationId: 'run_copilot_set', scope: 'combat' })
+    const otherWaiting = setRun('run-set-other', 'waiting', {
+      progress: setProgress([planEntry(0, 'success'), planEntry(1, 'pending')], {
+        setId: '11111',
+        mode: 'manual',
+        phase: 'waiting_for_next',
+        nextEntry: planEntry(1, 'pending'),
+      }),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [otherWaiting] })))
+    api.fetchRun.mockResolvedValue(ok(otherWaiting))
+    startController()
+    await flush()
+
+    await renderComponent()
+    await previewSet()
+
+    expect(buttonByText('开始下一关')).toBeUndefined()
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(container.textContent).not.toContain('执行中')
+  })
+
+  it('runs a single task as a tracked run_task without waiting for completion', async () => {
+    const execution = deferred<ApiResponse>()
+    mocks.executePredefinedTaskArgs.mockReturnValueOnce(execution.promise)
+    await renderComponent()
+
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://1234')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledOnce()
+    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
+      'copilot',
+      expect.arrayContaining(['prts://1234']),
+      null,
+      null,
+      '自动战斗作业',
+      'combat',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+
+    await act(async () => execution.resolve(ok({
+      runId: 'run-task-1',
+      state: 'accepted',
+      run: activeRun('run-task-1', 'accepted'),
+    })))
+    await flush()
+    expect(buttonByText('终止执行')).toBeDefined()
   })
 
   it('previews an explicit PRTS single code without guessing a set with the same id', async () => {
@@ -174,12 +910,8 @@ describe('CombatTasks execution recovery', () => {
       stage_name: 'test_1', doc: { title: 'PRTS 单作业' },
     }) } })
     await renderComponent()
-    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'prts://1234')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await click(buttonsByText('预览')[0]!)
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://1234')
+    await click(buttonByText('预览')!)
     expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1234')
     expect(mocks.getCopilotSet).not.toHaveBeenCalled()
     expect(mocks.getCopilotSetPlan).not.toHaveBeenCalled()
@@ -193,30 +925,18 @@ describe('CombatTasks execution recovery', () => {
   })
 
   it.each(['prts://s48990', 'PRTS://S48990'])(
-    'previews %s as a set and executes its selected item using PRTS', async uri => {
+    'previews %s as a set with its plan entries',
+    async uri => {
       mocks.getCopilotSetPlan.mockResolvedValue({
         success: true,
         data: { items: [{ id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true }], entries: [] },
       })
       await renderComponent()
-      const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
-      await act(async () => {
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, uri)
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      })
-      await click(buttonsByText('预览')[0]!)
+      await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, uri)
+      await click(buttonByText('预览')!)
       expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
       expect(mocks.getCopilotInfo).not.toHaveBeenCalled()
-      const executionMode = Array.from(container.querySelectorAll('select'))
-        .find(select => Array.from(select.options).some(option => option.value === 'manual'))!
-      await act(async () => {
-        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(executionMode, 'manual')
-        executionMode.dispatchEvent(new Event('change', { bubbles: true }))
-      })
-      await click(buttonsByText('立即执行')[0]!)
-      expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
-        'copilot', expect.arrayContaining(['prts://101', '--formation']), null, null, '自动战斗作业', 'combat', true,
-      )
+      expect(container.textContent).toContain('续跑目标')
     },
   )
 
@@ -231,12 +951,8 @@ describe('CombatTasks execution recovery', () => {
     }) } })
 
     await renderComponent()
-    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'prts://s48990')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await click(buttonsByText('预览')[0]!)
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
+    await click(buttonByText('预览')!)
     await flush()
 
     expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
@@ -299,7 +1015,7 @@ describe('CombatTasks execution recovery', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value).toBe('prts://24680')
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
 
-    await click(buttonsByText('重新同步')[0]!)
+    await click(buttonByText('重新同步')!)
     await flush()
 
     expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
@@ -447,14 +1163,10 @@ describe('CombatTasks execution recovery', () => {
     mocks.searchParadoxCopilot.mockReturnValueOnce(deferred<any>().promise)
 
     await renderActivityMode('visible')
-    await click(buttonsByText('单个作业')[0]!)
+    await click(buttonByText('单个作业')!)
 
     const previewInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(previewInput, 'prts://1234')
-      previewInput.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    await setInputValue(previewInput, 'prts://1234')
     const previewButton = previewInput.parentElement?.querySelector<HTMLButtonElement>('button')
     await click(previewButton!)
     expect(previewButton?.disabled).toBe(true)
@@ -466,11 +1178,7 @@ describe('CombatTasks execution recovery', () => {
     expect(previewButton?.textContent).toContain('预览')
 
     const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(stageInput, '1-7')
-      stageInput.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    await setInputValue(stageInput, '1-7')
     const stageSearchButton = stageInput.parentElement?.querySelector<HTMLButtonElement>('button')
     await click(stageSearchButton!)
     expect(stageSearchButton?.disabled).toBe(true)
@@ -485,11 +1193,7 @@ describe('CombatTasks execution recovery', () => {
       .find(button => button.textContent?.includes('悖论模拟'))
     await click(paradoxModeButton!)
     const paradoxInput = container.querySelector<HTMLInputElement>('input[name="maa-paradox-operator"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(paradoxInput, '能天使')
-      paradoxInput.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    await setInputValue(paradoxInput, '能天使')
     const paradoxSearchButton = paradoxInput.parentElement?.querySelector<HTMLButtonElement>('button')
     await click(paradoxSearchButton!)
     expect(paradoxSearchButton?.disabled).toBe(true)
@@ -501,19 +1205,6 @@ describe('CombatTasks execution recovery', () => {
     expect(paradoxSearchButton?.textContent).toContain('搜索')
   })
 
-  it('keeps global activity true when another task type is running', async () => {
-    mocks.getTaskStatus.mockResolvedValueOnce({
-      success: true,
-      data: { isRunning: true, taskType: 'roguelike', taskName: '集成战略', startTime: Date.now() },
-    })
-
-    await renderComponent()
-
-    expect(mocks.setActive).toHaveBeenCalledWith(true)
-    expect(mocks.setActive).not.toHaveBeenCalledWith(false)
-    expect(buttonsByText('立即执行').length).toBeGreaterThan(0)
-  })
-
   it('ignores an older search response after the query changes', async () => {
     const olderSearch = deferred<any>()
     const newerSearch = deferred<any>()
@@ -523,16 +1214,9 @@ describe('CombatTasks execution recovery', () => {
     await renderComponent()
 
     const searchInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
-    const setQuery = async (value: string) => {
-      await act(async () => {
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-        valueSetter?.call(searchInput, value)
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }))
-      })
-    }
-    await setQuery('旧关卡')
+    await setInputValue(searchInput, '旧关卡')
     await click(buttonsByText('搜索')[0]!)
-    await setQuery('新关卡')
+    await setInputValue(searchInput, '新关卡')
     await click(buttonsByText('搜索')[0]!)
 
     await act(async () => newerSearch.resolve({
@@ -558,20 +1242,13 @@ describe('CombatTasks execution recovery', () => {
       .mockReturnValueOnce(olderPreview.promise)
       .mockReturnValueOnce(newerPreview.promise)
     await renderComponent()
-    await click(buttonsByText('单个作业')[0]!)
+    await click(buttonByText('单个作业')!)
 
     const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
-    const setUri = async (value: string) => {
-      await act(async () => {
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-        valueSetter?.call(input, value)
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      })
-    }
-    await setUri('prts://1')
-    await click(buttonsByText('预览')[0]!)
-    await setUri('prts://2')
-    await click(buttonsByText('预览')[0]!)
+    await setInputValue(input, 'prts://1')
+    await click(buttonByText('预览')!)
+    await setInputValue(input, 'prts://2')
+    await click(buttonByText('预览')!)
 
     const previewResponse = (title: string, stage: string) => ({
       success: true,
@@ -603,30 +1280,6 @@ describe('CombatTasks execution recovery', () => {
     })
   })
 
-  it('deduplicates stop requests and exposes the stopping state', async () => {
-    const stopRequest = deferred<{ success: boolean; data: { task: { success: boolean } } }>()
-    mocks.getTaskStatus.mockResolvedValueOnce({
-      success: true,
-      data: { isRunning: true, taskType: 'combat', taskName: '自动战斗', startTime: Date.now() },
-    })
-    mocks.stopTask.mockReturnValueOnce(stopRequest.promise)
-
-    await renderComponent()
-    const stopButton = buttonsByText('终止执行')[0]
-    expect(stopButton).toBeDefined()
-
-    await click(stopButton!)
-    stopButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-
-    expect(mocks.stopTask).toHaveBeenCalledOnce()
-    expect(buttonsByText('正在终止')[0]?.disabled).toBe(true)
-    expect(mocks.setMessage).toHaveBeenCalledWith('正在终止自动战斗...', 'warning')
-
-    await act(async () => stopRequest.resolve({ success: true, data: { task: { success: true } } }))
-    expect(mocks.setMessage).toHaveBeenCalledWith('自动战斗已终止', 'warning')
-    expect(buttonsByText('立即执行').length).toBeGreaterThan(0)
-  })
-
   it('keeps the reset dialog open when resetting progress fails', async () => {
     mocks.getCopilotSetPlan.mockResolvedValue({
       success: true,
@@ -638,123 +1291,22 @@ describe('CombatTasks execution recovery', () => {
     mocks.resetCopilotSetProgress.mockResolvedValue({ success: false, message: '进度存储不可用' })
 
     await renderComponent()
-    await click(buttonsByText('作业集')[0]!)
+    await click(buttonByText('作业集')!)
 
     const input = document.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
     expect(input).not.toBeNull()
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'prts://s48990')
-      input?.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await click(buttonsByText('预览')[0]!)
+    await setInputValue(input!, 'prts://s48990')
+    await click(buttonByText('预览')!)
     await flush()
 
-    await click(buttonsByText('重置进度')[0]!)
+    await click(buttonByText('重置进度')!)
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
-    await click(buttonsByText('确认重置')[0]!)
+    await click(buttonByText('确认重置')!)
     await flush()
 
     expect(mocks.resetCopilotSetProgress).toHaveBeenCalledWith('48990')
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
-    expect(buttonsByText('确认重置')[0]?.disabled).toBe(false)
+    expect(buttonByText('确认重置')?.disabled).toBe(false)
     expect(mocks.setMessage).toHaveBeenCalledWith('重置失败: 进度存储不可用', 'error')
-  })
-
-  it('keeps a normal task running until the wait-for-completion request settles', async () => {
-    const execution = deferred<{ success: boolean }>()
-    mocks.executePredefinedTaskArgs.mockReturnValueOnce(execution.promise)
-    await renderComponent()
-
-    const input = document.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'prts://1234')
-      input?.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await click(buttonsByText('立即执行')[0]!)
-
-    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
-      'copilot',
-      expect.arrayContaining(['prts://1234']),
-      null,
-      null,
-      '自动战斗作业',
-      'combat',
-      true,
-    )
-    expect(buttonsByText('终止执行')[0]).toBeDefined()
-
-    await act(async () => execution.resolve({ success: true }))
-    expect(buttonsByText('立即执行').length).toBeGreaterThan(0)
-  })
-
-  it('does not continue a sequential copilot set after stop is confirmed', async () => {
-    const firstCopilot = deferred<{ success: boolean }>()
-    mocks.getCopilotSetPlan.mockResolvedValue({
-      success: true,
-      data: {
-        items: [
-          { id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true },
-          { id: 102, stage: 'TEST-2', stageId: 'test_2', supportsRaid: true },
-        ],
-        entries: [],
-      },
-    })
-    mocks.executePredefinedTaskArgs.mockReturnValueOnce(firstCopilot.promise)
-
-    await renderComponent()
-    await click(buttonsByText('作业集')[0]!)
-    const input = document.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'prts://s48990')
-      input?.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await click(buttonsByText('预览')[0]!)
-    await flush()
-
-    const executionMode = Array.from(document.querySelectorAll('select'))
-      .find(select => Array.from(select.options).some(option => option.value === 'app'))
-    await act(async () => {
-      if (!executionMode) return
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
-      valueSetter?.call(executionMode, 'app')
-      executionMode.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    await click(buttonsByText('立即执行')[0]!)
-    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledTimes(1)
-
-    await click(buttonsByText('终止执行')[0]!)
-    await flush()
-    expect(mocks.setMessage).toHaveBeenCalledWith('自动战斗已终止', 'warning')
-
-    await act(async () => firstCopilot.resolve({ success: true }))
-    await flush()
-    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledTimes(1)
-    expect(mocks.setMessage).not.toHaveBeenCalledWith(expect.stringContaining('作业集执行完成'))
-  })
-
-  it('allows the stop request to be retried when idle confirmation times out', async () => {
-    vi.useFakeTimers()
-    mocks.getTaskStatus
-      .mockResolvedValueOnce({
-        success: true,
-        data: { isRunning: true, taskType: 'combat', taskName: '自动战斗', startTime: Date.now() },
-      })
-      .mockResolvedValue({ success: true, data: { isRunning: true } })
-
-    await renderComponent()
-    await click(buttonsByText('终止执行')[0]!)
-    await act(async () => vi.advanceTimersByTimeAsync(15_000))
-
-    expect(mocks.setMessage).toHaveBeenCalledWith(
-      '终止失败: 终止请求已发送，但尚未确认任务停止',
-      'error',
-    )
-    expect(buttonsByText('终止执行')[0]?.disabled).toBe(false)
-
-    await click(buttonsByText('终止执行')[0]!)
-    expect(mocks.stopTask).toHaveBeenCalledTimes(2)
   })
 })
