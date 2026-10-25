@@ -3,11 +3,11 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskFlowItem } from '../types'
 import { resolveExecutionStep } from '../utils/automationTaskProgress'
+import { placeClosedownLast } from '../model/automationConfig'
 import {
   getPointerSortTargetIndex,
   hasPointerSortActivated,
   moveTaskFlowItem,
-  placeClosedownLast,
 } from './AutomationTasks'
 
 const task = (id: string) => ({ id, name: id }) as TaskFlowItem

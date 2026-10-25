@@ -1,4 +1,4 @@
-import { useState, useEffect, useEffectEvent, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import { generateTrainingPlan } from '@/features/training'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -15,110 +15,36 @@ import type {
   StageConfig
 } from '../types'
 import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
-import {
-  getActivity,
-  setupSchedule,
-  stopSchedule,
-} from '../api'
+import { getActivity } from '../api'
 import { resolveExecutionStep, taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
 import { useAutomationExecution } from '../hooks/useAutomationExecution'
 import {
   executionSummaryHasFailure,
   type AutomationExecutionSummary,
 } from '../model/automationRun'
-import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import {
+  automationConfigAdapter,
+  createDefaultAutomationDraft,
+  createDefaultScheduleEntries,
+  formatScheduleTime,
+  normalizeScheduleEntries,
+  parseScheduleTime,
+  placeClosedownLast,
+  toPersistedTaskFlow,
+  toPersistedTaskFlowItem,
+  type ScheduleTimeEntry,
+} from '../model/automationConfig'
+import { loadUserConfig, useUserConfig } from '@/features/user-config'
 import { testConnection as testAdbConnection } from '@/features/settings'
 
-const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
-const normalizeScheduleTimes = (times: string[]) => (
-  [...new Set(times.filter(time => scheduleTimePattern.test(time)))]
-)
-
-interface ScheduleTimeEntry {
-  time: string
-  enabled: boolean
-}
-
-const DEFAULT_SCHEDULE_ENTRIES: ScheduleTimeEntry[] = [
-  { time: '08:00', enabled: true },
-  { time: '14:00', enabled: true },
-  { time: '20:00', enabled: true },
-]
-
-const formatScheduleTime = (hour: number, minute: number) => (
-  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-)
-
-const parseScheduleTime = (time: string) => {
-  const [hourText = '0', minuteText = '0'] = time.split(':')
-  const hour = Number(hourText)
-  const minute = Number(minuteText)
-  return {
-    hour: Number.isFinite(hour) ? Math.min(23, Math.max(0, hour)) : 0,
-    minute: Number.isFinite(minute) ? Math.min(59, Math.max(0, minute)) : 0,
-  }
-}
-
-const normalizeScheduleEntries = (entries: ScheduleTimeEntry[]) => {
-  const normalized: ScheduleTimeEntry[] = []
-  const seen = new Set<string>()
-
-  for (const entry of entries) {
-    if (!scheduleTimePattern.test(entry.time) || seen.has(entry.time)) continue
-    seen.add(entry.time)
-    normalized.push({ time: entry.time, enabled: entry.enabled !== false })
-  }
-
-  return normalized
-}
-
-const scheduleEntriesFromTimes = (times: string[]) => (
-  normalizeScheduleEntries(
-    normalizeScheduleTimes(times).map(time => ({ time, enabled: true })),
-  )
-)
-
-const activeScheduleTimes = (entries: ScheduleTimeEntry[]) => (
-  entries.filter(entry => entry.enabled).map(entry => entry.time)
-)
-
-const readScheduleEntries = (schedule: { times?: unknown, entries?: unknown } | null | undefined) => {
-  if (Array.isArray(schedule?.entries)) {
-    const fromEntries = normalizeScheduleEntries(
-      schedule.entries
-        .map((entry: unknown) => {
-          if (typeof entry === 'string') return { time: entry, enabled: true }
-          if (!entry || typeof entry !== 'object') return null
-          const record = entry as { time?: unknown, enabled?: unknown }
-          if (typeof record.time !== 'string') return null
-          return { time: record.time, enabled: record.enabled !== false }
-        })
-        .filter((entry): entry is ScheduleTimeEntry => Boolean(entry)),
-    )
-    if (fromEntries.length > 0) return fromEntries
-  }
-
-  if (Array.isArray(schedule?.times)) {
-    return scheduleEntriesFromTimes(
-      schedule.times.filter((time): time is string => typeof time === 'string'),
-    )
-  }
-
-  return []
-}
-
 const POINTER_SORT_ACTIVATION_PX = 10
-const AUTOMATION_CONFIG_SYNC_PENDING_KEY = 'automationConfigSyncPending'
-let automationConfigSyncSequence = 0
-
-const createAutomationConfigSyncToken = () => `${Date.now()}-${++automationConfigSyncSequence}`
 
 interface PointerSortSession {
   pointerId: number
   startX: number
   startY: number
   itemId: string
-  originalFlow: TaskFlowItem[]
+  currentFlow: TaskFlowItem[]
   activated: boolean
   changed: boolean
 }
@@ -130,7 +56,7 @@ interface DeletedTaskSnapshot {
 
 // Exported for focused ordering tests; this component intentionally keeps the small reducer local.
 // eslint-disable-next-line react-refresh/only-export-components
-export const moveTaskFlowItem = (flow: TaskFlowItem[], fromIndex: number, toIndex: number) => {
+export const moveTaskFlowItem = <T extends { id: string },>(flow: T[], fromIndex: number, toIndex: number) => {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= flow.length || toIndex >= flow.length) return flow
   const nextFlow = [...flow]
   const [movedTask] = nextFlow.splice(fromIndex, 1)
@@ -167,12 +93,6 @@ export const getPointerSortTargetIndex = (
   return insertionIndex
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export const placeClosedownLast = <T extends { id: string; commandId?: string },>(tasks: T[]) => [
-  ...tasks.filter(task => task.commandId !== 'closedown' && !task.id.startsWith('closedown-')),
-  ...tasks.filter(task => task.commandId === 'closedown' || task.id.startsWith('closedown-'))
-]
-
 const parseDropTargetEntries = (value: unknown): string[] | null => {
   if (value === undefined || value === null || value === '') return []
 
@@ -187,74 +107,6 @@ const parseDropTargetEntries = (value: unknown): string[] | null => {
     normalizedEntries.push(`${match[1]}=${Number(match[2])}`)
   }
   return normalizedEntries
-}
-
-const migrateTaskParams = (task: any) => {
-  const commandId = task.commandId || String(task.id || '').split('-')[0]
-  if (!task.params) return task
-
-  const params = { ...task.params }
-  if (commandId === 'startup' || commandId === 'closedown') {
-    delete params.adbPath
-    delete params.address
-  }
-  if (commandId === 'fight') {
-    params.drops ??= ''
-    params.clientType ??= ''
-    params.DrGrandet ??= false
-    params.report_to_penguin ??= false
-    params.penguin_id ??= ''
-    params.report_to_yituliu ??= false
-    params.yituliu_id ??= ''
-  } else if (commandId === 'closedown') {
-    params.recognizeDepotBeforeClose ??= true
-  } else if (commandId === 'recruit') {
-    if (params.preserve_tags === undefined && params.skip_robot === true) {
-      params.preserve_tags = '支援机械'
-    }
-    params.force_refresh ??= true
-    params.first_tags ??= ''
-    params.extra_tags_mode ??= 0
-    params.recruitment_time ??= { '3': 540, '4': 540 }
-    delete params.skip_robot
-  } else if (commandId === 'infrast') {
-    params.filename ??= ''
-    params.plan_index ??= 0
-    params.continue_training ??= false
-    params.dorm_notstationed_enabled ??= false
-    params.dorm_trust_enabled ??= false
-    params.reception_message_board ??= true
-    params.reception_clue_exchange ??= true
-    params.reception_send_clue ??= true
-  } else if (commandId === 'mall') {
-    params.visit_friends ??= true
-    params.shopping ??= true
-    params.buy_first ??= ''
-    params.blacklist ??= ''
-    params.force_shopping_if_credit_full ??= false
-    params.only_buy_discount ??= false
-    params.reserve_max_credit ??= false
-    params.credit_fight ??= false
-    params.formation_index ??= 0
-  }
-  return { ...task, params }
-}
-
-const synchronizeConnectionParams = (tasks: any[]) => {
-  const startupTask = tasks.find(task => (task.commandId || String(task.id || '').split('-')[0]) === 'startup')
-  if (!startupTask?.params) return tasks
-
-  return tasks.map(task => {
-    const commandId = task.commandId || String(task.id || '').split('-')[0]
-    if (commandId !== 'closedown') return task
-    return {
-      ...task,
-      params: {
-        ...task.params,
-        clientType: startupTask.params.clientType || task.params?.clientType || 'Official'
-      }
-    }
-  })
 }
 
 const stageSuggestions = [
@@ -274,6 +126,223 @@ const stageSuggestions = [
   ['Annihilation', '剿灭'],
   ...Array.from({ length: 10 }, (_, index) => [`HD-${index + 1}`, '活动']),
 ] as const
+
+// 可用的任务列表
+const AVAILABLE_TASKS: AutomationAvailableTask[] = [
+  {
+    id: 'startup' as const,
+    name: '启动游戏',
+    icon: <Icons.Play />,
+    description: '启动游戏并进入主界面',
+    defaultParams: {
+      clientType: 'Official',
+      accountName: ''
+    },
+    paramFields: [
+      { key: 'clientType', label: '客户端类型', type: 'select', options: [
+        { value: 'Official', label: '官服' },
+        { value: 'Bilibili', label: 'B服' },
+        { value: 'YoStarEN', label: '美服' },
+        { value: 'YoStarJP', label: '日服' },
+        { value: 'YoStarKR', label: '韩服' },
+        { value: 'Txwy', label: '繁中服' }
+      ]},
+      { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"' }
+    ]
+  },
+  {
+    id: 'fight' as const,
+    name: '理智作战',
+    icon: <Icons.Sword />,
+    description: '自动刷关卡消耗理智',
+    defaultParams: {
+      stage: '1-7',
+      stages: [{ stage: '1-7', times: '' }],
+      medicine: 0,
+      expiringMedicine: 0,
+      stone: 0,
+      series: '1',
+      drops: '',
+      clientType: '',
+      DrGrandet: false,
+      report_to_penguin: false,
+      penguin_id: '',
+      report_to_yituliu: false,
+      yituliu_id: ''
+    },
+    paramFields: [
+      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行' },
+      { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
+      { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
+      { key: 'expiringMedicine', label: '临期药数量', type: 'number', placeholder: '0', helper: '按瓶数设置可使用的临期理智药' },
+      { key: 'stone', label: '源石', type: 'number', placeholder: '0', helper: '使用源石数量' },
+      { key: 'series', label: '连战', type: 'select', options: [
+        { value: '-1', label: '禁用' },
+        { value: '0', label: '自动' },
+        { value: '1', label: '1次' },
+        { value: '2', label: '2次' },
+        { value: '3', label: '3次' },
+        { value: '4', label: '4次' },
+        { value: '5', label: '5次' },
+        { value: '6', label: '6次' }
+      ], helper: '单次代理作战重复次数（需要游戏支持）' },
+    ]
+  },
+  {
+    id: 'infrast' as const,
+    name: '基建换班',
+    icon: <Icons.Building />,
+    description: '自动基建换班收菜',
+    defaultParams: {
+      mode: '0',
+      facility: ['Mfg', 'Trade', 'Power', 'Control', 'Reception', 'Office', 'Dorm'],
+      drones: 'Money',
+      threshold: '0.3',
+      replenish: false,
+      filename: '',
+      plan_index: 0,
+      continue_training: false,
+      dorm_notstationed_enabled: false,
+      dorm_trust_enabled: false,
+      reception_message_board: true,
+      reception_clue_exchange: true,
+      reception_send_clue: true
+    },
+    paramFields: [
+      { key: 'mode', label: '换班模式', type: 'select', options: [
+        { value: '0', label: '默认换班' },
+        { value: '10000', label: '自定义换班' },
+        { value: '20000', label: '一键轮换' }
+      ], helper: '一键轮换使用游戏内队列，并保留无人机、会客室等基础操作' },
+      { key: 'facility', label: '设施选择', type: 'facility-select', helper: '选择要换班的设施' },
+      { key: 'drones', label: '无人机用途', type: 'select', options: [
+        { value: '_NotUse', label: '不使用无人机' },
+        { value: 'Money', label: '龙门币' },
+        { value: 'SyntheticJade', label: '合成玉' },
+        { value: 'CombatRecord', label: '作战记录' },
+        { value: 'PureGold', label: '赤金' },
+        { value: 'OriginStone', label: '源石碎片' },
+        { value: 'Chip', label: '芯片' }
+      ], hiddenWhen: { key: 'mode', value: '10000' } },
+      { key: 'threshold', label: '心情阈值', type: 'number', placeholder: '0.3', step: '0.1', min: '0', max: '1' },
+      { key: 'replenish', label: '自动补货', type: 'checkbox' },
+      { key: 'filename', label: '排班文件', type: 'text', placeholder: 'schedules/base.json', helper: '自定义换班使用的排班配置文件路径', visibleWhen: { key: 'mode', value: '10000' } },
+      { key: 'plan_index', label: '方案序号', type: 'number', placeholder: '0', min: '0', helper: '配置文件中的方案序号，从 0 开始', visibleWhen: { key: 'mode', value: '10000' } },
+    ],
+    taskType: 'Infrast'
+  },
+  {
+    id: 'recruit' as const,
+    name: '自动公招',
+    icon: <Icons.Users />,
+    description: '自动公开招募',
+    defaultParams: {
+      refresh: true,
+      force_refresh: true,
+      select: [4, 5, 6],
+      confirm: [3, 4],
+      first_tags: '',
+      extra_tags_mode: 0,
+      times: '4',
+      set_time: true,
+      expedite: false,
+      expedite_times: 0,
+      preserve_tags: '支援机械',
+      recruitment_time: { '3': 540, '4': 540 }
+    },
+    paramFields: [
+      { key: 'refresh', label: '刷新标签', type: 'checkbox' },
+      { key: 'force_refresh', label: '无许可时仍刷新', type: 'checkbox', helper: '招聘许可耗尽后，仍会使用可用刷新次数', visibleWhen: { key: 'refresh', value: true } },
+      { key: 'select', label: '招募星级', type: 'star-select', helper: '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合' },
+      { key: 'confirm', label: '确认星级', type: 'star-select', helper: '建议至少保留 5/6 星确认，避免高价值标签被跳过' },
+      { key: 'times', label: '招募次数', type: 'number', placeholder: '4' },
+      { key: 'set_time', label: '设置时间', type: 'checkbox' },
+      { key: 'expedite', label: '使用加急', type: 'checkbox' },
+      { key: 'expedite_times', label: '加急次数', type: 'number', placeholder: '0', visibleWhen: { key: 'expedite', value: true } },
+      { key: 'preserve_tags', label: '保留标签', type: 'text', placeholder: '支援机械,高级资深干员', helper: '识别到任一标签时保留该公招槽位，多个标签用逗号分隔' },
+    ],
+    taskType: 'Recruit'
+  },
+  {
+    id: 'mall' as const,
+    name: '信用收支',
+    icon: <Icons.Cash />,
+    description: '访问好友、收取信用',
+    defaultParams: {
+      visit_friends: true,
+      shopping: true,
+      buy_first: '',
+      blacklist: '',
+      force_shopping_if_credit_full: false,
+      only_buy_discount: false,
+      reserve_max_credit: false,
+      credit_fight: false,
+      formation_index: 0
+    },
+    paramFields: [
+      { key: 'visit_friends', label: '访问好友', type: 'checkbox' },
+      { key: 'shopping', label: '自动购物', type: 'checkbox' },
+      { key: 'buy_first', label: '优先购买', type: 'text', placeholder: '招聘许可,龙门币（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'blacklist', label: '黑名单', type: 'text', placeholder: '家具零件,碳（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'only_buy_discount', label: '只买折扣商品', type: 'checkbox', helper: '仅影响优先购买之外的普通购物', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'reserve_max_credit', label: '保留 300 信用', type: 'checkbox', helper: '普通购物时信用低于 300 就停止购买', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'force_shopping_if_credit_full', label: '信用溢出时无视黑名单', type: 'checkbox', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'credit_fight', label: '信用助战', type: 'checkbox', helper: '借助战完成一次 OF-1，以便次日获得更多信用' },
+      { key: 'formation_index', label: '助战编队', type: 'select', options: [
+        { value: '0', label: '当前编队' },
+        { value: '1', label: '编队 1' },
+        { value: '2', label: '编队 2' },
+        { value: '3', label: '编队 3' },
+        { value: '4', label: '编队 4' }
+      ], visibleWhen: { key: 'credit_fight', value: true } },
+    ],
+    taskType: 'Mall'
+  },
+  {
+    id: 'award' as const,
+    name: '领取奖励',
+    icon: <Icons.Gift />,
+    description: '领取每日/每周奖励',
+    defaultParams: {
+      award: true,
+      mail: true,
+      recruit: false,
+      orundum: false,
+      mining: false,
+      specialaccess: false
+    },
+    paramFields: [
+      { key: 'award', label: '每日奖励', type: 'checkbox' },
+      { key: 'mail', label: '邮件奖励', type: 'checkbox' },
+      { key: 'recruit', label: '公招奖励', type: 'checkbox' },
+      { key: 'orundum', label: '合成玉奖励', type: 'checkbox' },
+      { key: 'mining', label: '采矿奖励', type: 'checkbox' },
+      { key: 'specialaccess', label: '特别通行证', type: 'checkbox' },
+    ],
+    taskType: 'Award'
+  },
+  {
+    id: 'closedown' as const,
+    name: '关闭游戏',
+    icon: <Icons.Stop />,
+    description: '关闭游戏客户端',
+    defaultParams: {
+      clientType: 'Official',
+      recognizeDepotBeforeClose: false
+    },
+    paramFields: [
+      { key: 'clientType', label: '客户端类型', type: 'select', options: [
+        { value: 'Official', label: '官服' },
+        { value: 'Bilibili', label: 'B服' },
+        { value: 'YoStarEN', label: '美服' },
+        { value: 'YoStarJP', label: '日服' },
+        { value: 'YoStarKR', label: '韩服' },
+        { value: 'Txwy', label: '繁中服' }
+      ]},
+      { key: 'recognizeDepotBeforeClose', label: '关闭前识别仓库', type: 'checkbox', helper: '启用后会先识别并保存仓库数据，再关闭游戏客户端' }
+    ]
+  },
+]
 
 interface AutomationStageEditorProps {
   field: TaskFlowItem['paramFields'][number]
@@ -620,12 +689,43 @@ export default function AutomationTasks() {
     setStatusMessage(msg, 'error')
   }
 
-  const [taskFlow, setTaskFlow] = useState<TaskFlowItem[]>([])
-  const taskFlowRef = useRef<TaskFlowItem[]>([])
+  const {
+    draft: configDraft,
+    syncState: configSyncState,
+    error: configSyncError,
+    update: updateConfig,
+    channel: configChannel,
+    retry: retryConfigSave,
+    reload: reloadConfig,
+  } = useUserConfig(automationConfigAdapter)
+
+  // 协调器持有 task flow 与 schedule 的唯一草稿；页面只派生图标/参数表单等展示字段。
+  const taskFlow = useMemo<TaskFlowItem[]>(() => (
+    (configDraft?.taskFlow ?? []).map(item => {
+      const commandId = item.commandId || item.id.split('-')[0]
+      const originalTask = AVAILABLE_TASKS.find(task => task.id === item.commandId || task.id === commandId)
+      return {
+        ...item,
+        icon: originalTask?.icon,
+        paramFields: originalTask?.paramFields ?? [],
+      }
+    })
+  ), [configDraft?.taskFlow])
+  const scheduleEnabled = configDraft?.schedule.enabled ?? false
+  const scheduleEntries = configDraft?.schedule.entries ?? createDefaultScheduleEntries()
+  const isRetryingConfigSave = configSyncState === 'saving'
+
+  const currentDraft = () => configChannel.getState().draft ?? createDefaultAutomationDraft()
+
+  const handleRetryConfigSave = async () => {
+    if (isRetryingConfigSave) return
+    const saved = await retryConfigSave()
+    if (saved) setStatusMessage('自动化配置已同步', 'success')
+  }
+
+  const [dragFlow, setDragFlow] = useState<TaskFlowItem[] | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [taskPickerOpen, setTaskPickerOpen] = useState(false)
-  const [scheduleEnabled, setScheduleEnabled] = useState(false)
-  const [scheduleEntries, setScheduleEntries] = useState<ScheduleTimeEntry[]>(DEFAULT_SCHEDULE_ENTRIES)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [lastDeletedTask, setLastDeletedTask] = useState<DeletedTaskSnapshot | null>(null)
   const [sortAnnouncement, setSortAnnouncement] = useState('')
@@ -635,11 +735,6 @@ export default function AutomationTasks() {
   const [testingConnectionTaskId, setTestingConnectionTaskId] = useState<string | null>(null)
   const [lastExecutionSummary, setLastExecutionSummary] = useState<AutomationExecutionSummary | null>(null)
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false)
-  const autoSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const autoSaveRevisionRef = useRef(0)
-  const taskFlowHydratedRef = useRef(false)
-  const taskFlowLoadRequestRef = useRef(0)
-  const taskFlowLoadAbortRef = useRef<AbortController | null>(null)
   const connectionTestInFlightRef = useRef(false)
   const connectionTestAbortRef = useRef<AbortController | null>(null)
   const connectionTestMountedRef = useRef(true)
@@ -649,9 +744,11 @@ export default function AutomationTasks() {
   const editorColumnRef = useRef<HTMLDivElement>(null)
   const taskPickerRegionRef = useRef<HTMLDivElement>(null)
   const taskPickerButtonRef = useRef<HTMLButtonElement>(null)
-  const activeTaskId = selectedTaskId && taskFlow.some(task => task.id === selectedTaskId)
+  // 拖拽期间只渲染本地预览，松手时才把最终顺序作为一次编辑写入协调器。
+  const displayedTaskFlow = dragFlow ?? taskFlow
+  const activeTaskId = selectedTaskId && displayedTaskFlow.some(task => task.id === selectedTaskId)
     ? selectedTaskId
-    : taskFlow[0]?.id ?? null
+    : displayedTaskFlow[0]?.id ?? null
   const displaySummary = executionSummary
     ?? (!isRunning && !isSubmitting ? executionScheduleSummary : null)
   const taskResults: TaskExecutionResult[] = isRunning
@@ -659,10 +756,10 @@ export default function AutomationTasks() {
     : isSubmitting
       ? []
       : displaySummary
-        ? taskResultsFromSummary(displaySummary, taskFlow)
+        ? taskResultsFromSummary(displaySummary, displayedTaskFlow)
         : []
   const currentStep = isRunning && executionProgress
-    ? resolveExecutionStep(taskFlow, executionProgress)
+    ? resolveExecutionStep(displayedTaskFlow, executionProgress)
     : -1
 
   useEffect(() => {
@@ -726,10 +823,6 @@ export default function AutomationTasks() {
   }, [isRunning])
 
   useEffect(() => {
-    taskFlowRef.current = taskFlow
-  }, [taskFlow])
-
-  useEffect(() => {
     connectionTestMountedRef.current = true
     setTestingConnectionTaskId(null)
     return () => {
@@ -740,287 +833,68 @@ export default function AutomationTasks() {
         connectionTestAbortRef.current = null
         connectionTestInFlightRef.current = false
       }
-      taskFlowLoadRequestRef.current += 1
-      taskFlowLoadAbortRef.current?.abort()
-      taskFlowLoadAbortRef.current = null
     }
   }, [])
 
-  // 可用的任务列表
-  const availableTasks: AutomationAvailableTask[] = [
-    {
-      id: 'startup' as const,
-      name: '启动游戏',
-      icon: <Icons.Play />,
-      description: '启动游戏并进入主界面',
-      defaultParams: {
-        clientType: 'Official',
-        accountName: ''
-      },
-      paramFields: [
-        { key: 'clientType', label: '客户端类型', type: 'select', options: [
-          { value: 'Official', label: '官服' },
-          { value: 'Bilibili', label: 'B服' },
-          { value: 'YoStarEN', label: '美服' },
-          { value: 'YoStarJP', label: '日服' },
-          { value: 'YoStarKR', label: '韩服' },
-          { value: 'Txwy', label: '繁中服' }
-        ]},
-        { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"' }
-      ]
-    },
-    {
-      id: 'fight' as const,
-      name: '理智作战',
-      icon: <Icons.Sword />,
-      description: '自动刷关卡消耗理智',
-      defaultParams: {
-        stage: '1-7',
-        stages: [{ stage: '1-7', times: '' }],
-        medicine: 0,
-        expiringMedicine: 0,
-        stone: 0,
-        series: '1',
-        drops: '',
-        clientType: '',
-        DrGrandet: false,
-        report_to_penguin: false,
-        penguin_id: '',
-        report_to_yituliu: false,
-        yituliu_id: ''
-      },
-      paramFields: [
-        { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行' },
-        { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
-        { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
-        { key: 'expiringMedicine', label: '临期药数量', type: 'number', placeholder: '0', helper: '按瓶数设置可使用的临期理智药' },
-        { key: 'stone', label: '源石', type: 'number', placeholder: '0', helper: '使用源石数量' },
-        { key: 'series', label: '连战', type: 'select', options: [
-          { value: '-1', label: '禁用' },
-          { value: '0', label: '自动' },
-          { value: '1', label: '1次' },
-          { value: '2', label: '2次' },
-          { value: '3', label: '3次' },
-          { value: '4', label: '4次' },
-          { value: '5', label: '5次' },
-          { value: '6', label: '6次' }
-        ], helper: '单次代理作战重复次数（需要游戏支持）' },
-      ]
-    },
-    {
-      id: 'infrast' as const,
-      name: '基建换班',
-      icon: <Icons.Building />,
-      description: '自动基建换班收菜',
-      defaultParams: {
-        mode: '0',
-        facility: ['Mfg', 'Trade', 'Power', 'Control', 'Reception', 'Office', 'Dorm'],
-        drones: 'Money',
-        threshold: '0.3',
-        replenish: false,
-        filename: '',
-        plan_index: 0,
-        continue_training: false,
-        dorm_notstationed_enabled: false,
-        dorm_trust_enabled: false,
-        reception_message_board: true,
-        reception_clue_exchange: true,
-        reception_send_clue: true
-      },
-      paramFields: [
-        { key: 'mode', label: '换班模式', type: 'select', options: [
-          { value: '0', label: '默认换班' },
-          { value: '10000', label: '自定义换班' },
-          { value: '20000', label: '一键轮换' }
-        ], helper: '一键轮换使用游戏内队列，并保留无人机、会客室等基础操作' },
-        { key: 'facility', label: '设施选择', type: 'facility-select', helper: '选择要换班的设施' },
-        { key: 'drones', label: '无人机用途', type: 'select', options: [
-          { value: '_NotUse', label: '不使用无人机' },
-          { value: 'Money', label: '龙门币' },
-          { value: 'SyntheticJade', label: '合成玉' },
-          { value: 'CombatRecord', label: '作战记录' },
-          { value: 'PureGold', label: '赤金' },
-          { value: 'OriginStone', label: '源石碎片' },
-          { value: 'Chip', label: '芯片' }
-        ], hiddenWhen: { key: 'mode', value: '10000' } },
-        { key: 'threshold', label: '心情阈值', type: 'number', placeholder: '0.3', step: '0.1', min: '0', max: '1' },
-        { key: 'replenish', label: '自动补货', type: 'checkbox' },
-        { key: 'filename', label: '排班文件', type: 'text', placeholder: 'schedules/base.json', helper: '自定义换班使用的排班配置文件路径', visibleWhen: { key: 'mode', value: '10000' } },
-        { key: 'plan_index', label: '方案序号', type: 'number', placeholder: '0', min: '0', helper: '配置文件中的方案序号，从 0 开始', visibleWhen: { key: 'mode', value: '10000' } },
-      ],
-      taskType: 'Infrast'
-    },
-    {
-      id: 'recruit' as const,
-      name: '自动公招',
-      icon: <Icons.Users />,
-      description: '自动公开招募',
-      defaultParams: {
-        refresh: true,
-        force_refresh: true,
-        select: [4, 5, 6],
-        confirm: [3, 4],
-        first_tags: '',
-        extra_tags_mode: 0,
-        times: '4',
-        set_time: true,
-        expedite: false,
-        expedite_times: 0,
-        preserve_tags: '支援机械',
-        recruitment_time: { '3': 540, '4': 540 }
-      },
-      paramFields: [
-        { key: 'refresh', label: '刷新标签', type: 'checkbox' },
-        { key: 'force_refresh', label: '无许可时仍刷新', type: 'checkbox', helper: '招聘许可耗尽后，仍会使用可用刷新次数', visibleWhen: { key: 'refresh', value: true } },
-        { key: 'select', label: '招募星级', type: 'star-select', helper: '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合' },
-        { key: 'confirm', label: '确认星级', type: 'star-select', helper: '建议至少保留 5/6 星确认，避免高价值标签被跳过' },
-        { key: 'times', label: '招募次数', type: 'number', placeholder: '4' },
-        { key: 'set_time', label: '设置时间', type: 'checkbox' },
-        { key: 'expedite', label: '使用加急', type: 'checkbox' },
-        { key: 'expedite_times', label: '加急次数', type: 'number', placeholder: '0', visibleWhen: { key: 'expedite', value: true } },
-        { key: 'preserve_tags', label: '保留标签', type: 'text', placeholder: '支援机械,高级资深干员', helper: '识别到任一标签时保留该公招槽位，多个标签用逗号分隔' },
-      ],
-      taskType: 'Recruit'
-    },
-    {
-      id: 'mall' as const,
-      name: '信用收支',
-      icon: <Icons.Cash />,
-      description: '访问好友、收取信用',
-      defaultParams: {
-        visit_friends: true,
-        shopping: true,
-        buy_first: '',
-        blacklist: '',
-        force_shopping_if_credit_full: false,
-        only_buy_discount: false,
-        reserve_max_credit: false,
-        credit_fight: false,
-        formation_index: 0
-      },
-      paramFields: [
-        { key: 'visit_friends', label: '访问好友', type: 'checkbox' },
-        { key: 'shopping', label: '自动购物', type: 'checkbox' },
-        { key: 'buy_first', label: '优先购买', type: 'text', placeholder: '招聘许可,龙门币（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
-        { key: 'blacklist', label: '黑名单', type: 'text', placeholder: '家具零件,碳（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
-        { key: 'only_buy_discount', label: '只买折扣商品', type: 'checkbox', helper: '仅影响优先购买之外的普通购物', visibleWhen: { key: 'shopping', value: true } },
-        { key: 'reserve_max_credit', label: '保留 300 信用', type: 'checkbox', helper: '普通购物时信用低于 300 就停止购买', visibleWhen: { key: 'shopping', value: true } },
-        { key: 'force_shopping_if_credit_full', label: '信用溢出时无视黑名单', type: 'checkbox', visibleWhen: { key: 'shopping', value: true } },
-        { key: 'credit_fight', label: '信用助战', type: 'checkbox', helper: '借助战完成一次 OF-1，以便次日获得更多信用' },
-        { key: 'formation_index', label: '助战编队', type: 'select', options: [
-          { value: '0', label: '当前编队' },
-          { value: '1', label: '编队 1' },
-          { value: '2', label: '编队 2' },
-          { value: '3', label: '编队 3' },
-          { value: '4', label: '编队 4' }
-        ], visibleWhen: { key: 'credit_fight', value: true } },
-      ],
-      taskType: 'Mall'
-    },
-    {
-      id: 'award' as const,
-      name: '领取奖励',
-      icon: <Icons.Gift />,
-      description: '领取每日/每周奖励',
-      defaultParams: {
-        award: true,
-        mail: true,
-        recruit: false,
-        orundum: false,
-        mining: false,
-        specialaccess: false
-      },
-      paramFields: [
-        { key: 'award', label: '每日奖励', type: 'checkbox' },
-        { key: 'mail', label: '邮件奖励', type: 'checkbox' },
-        { key: 'recruit', label: '公招奖励', type: 'checkbox' },
-        { key: 'orundum', label: '合成玉奖励', type: 'checkbox' },
-        { key: 'mining', label: '采矿奖励', type: 'checkbox' },
-        { key: 'specialaccess', label: '特别通行证', type: 'checkbox' },
-      ],
-      taskType: 'Award'
-    },
-    {
-      id: 'closedown' as const,
-      name: '关闭游戏',
-      icon: <Icons.Stop />,
-      description: '关闭游戏客户端',
-      defaultParams: {
-        clientType: 'Official',
-        recognizeDepotBeforeClose: false
-      },
-      paramFields: [
-        { key: 'clientType', label: '客户端类型', type: 'select', options: [
-          { value: 'Official', label: '官服' },
-          { value: 'Bilibili', label: 'B服' },
-          { value: 'YoStarEN', label: '美服' },
-          { value: 'YoStarJP', label: '日服' },
-          { value: 'YoStarKR', label: '韩服' },
-          { value: 'Txwy', label: '繁中服' }
-        ]},
-        { key: 'recognizeDepotBeforeClose', label: '关闭前识别仓库', type: 'checkbox', helper: '启用后会先识别并保存仓库数据，再关闭游戏客户端' }
-      ]
-    },
-  ]
-
   const addTaskToFlow = (task: AutomationAvailableTask) => {
-    const newTask: TaskFlowItem = {
-      ...task,
+    const current = currentDraft()
+    const { icon: _icon, paramFields: _paramFields, ...definition } = task
+    const newTask = {
+      ...definition,
       params: { ...task.defaultParams },
       enabled: true,
       commandId: task.id,
-      id: `${task.id}-${Date.now()}`
+      id: `${task.id}-${Date.now()}`,
     }
     if (task.id === 'closedown') {
-      const startupTask = taskFlow.find(flowTask => flowTask.commandId === 'startup')
+      const startupTask = current.taskFlow.find(flowTask => (
+        flowTask.commandId === 'startup' || flowTask.id.split('-')[0] === 'startup'
+      ))
       if (startupTask) {
         newTask.params.clientType = startupTask.params.clientType || 'Official'
       }
     }
     const newFlow = task.id === 'closedown'
-      ? [...taskFlow, newTask]
-      : placeClosedownLast([...taskFlow, newTask])
+      ? [...current.taskFlow, newTask]
+      : placeClosedownLast([...current.taskFlow, newTask])
 
-    setTaskFlow(newFlow)
+    updateConfig({ ...current, taskFlow: newFlow })
     setSelectedTaskId(newTask.id)
     setTaskPickerOpen(false)
-    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   const removeTaskFromFlow = (index: number) => {
-    const removedTask = taskFlow[index]
+    const current = currentDraft()
+    const removedTask = current.taskFlow[index]
     if (!removedTask) return
-    const newFlow = taskFlow.filter((_, i) => i !== index)
+    const newFlow = current.taskFlow.filter((_, i) => i !== index)
     if (removedTask.id === activeTaskId) {
       setSelectedTaskId(newFlow[Math.min(index, newFlow.length - 1)]?.id ?? null)
     }
-    setLastDeletedTask({ task: removedTask, index })
-    setTaskFlow(newFlow)
-    taskFlowRef.current = newFlow
-    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+    const removedDisplayTask = taskFlow[index]
+    if (removedDisplayTask) setLastDeletedTask({ task: removedDisplayTask, index })
+    updateConfig({ ...current, taskFlow: newFlow })
   }
 
   const restoreDeletedTask = () => {
     if (!lastDeletedTask || isRunning) return
-    const insertionIndex = Math.min(lastDeletedTask.index, taskFlow.length)
-    const restoredFlow = [...taskFlow]
-    restoredFlow.splice(insertionIndex, 0, lastDeletedTask.task)
+    const current = currentDraft()
+    const insertionIndex = Math.min(lastDeletedTask.index, current.taskFlow.length)
+    const restoredFlow = [...current.taskFlow]
+    restoredFlow.splice(insertionIndex, 0, toPersistedTaskFlowItem(lastDeletedTask.task))
     const newFlow = placeClosedownLast(restoredFlow)
-    setTaskFlow(newFlow)
-    taskFlowRef.current = newFlow
+    updateConfig({ ...current, taskFlow: newFlow })
     setSelectedTaskId(lastDeletedTask.task.id)
     setLastDeletedTask(null)
-    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   const toggleTaskEnabled = (index: number) => {
-    const newFlow = [...taskFlow]
-    const task = newFlow[index]
-    if (task) {
-      task.enabled = !task.enabled
-      setTaskFlow(newFlow)
-      autoSave(newFlow, scheduleEnabled, scheduleEntries)
-    }
+    const current = currentDraft()
+    if (!current.taskFlow[index]) return
+    const newFlow = current.taskFlow.map((task, taskIndex) => (
+      taskIndex === index ? { ...task, enabled: !task.enabled } : task
+    ))
+    updateConfig({ ...current, taskFlow: newFlow })
   }
 
   const restorePointerSort = () => {
@@ -1028,11 +902,8 @@ export default function AutomationTasks() {
     if (!session) return
     pointerSortRef.current = null
     setDraggedIndex(null)
-    if (session.changed) {
-      taskFlowRef.current = session.originalFlow
-      setTaskFlow(session.originalFlow)
-      setSortAnnouncement('已取消排序')
-    }
+    setDragFlow(null)
+    if (session.changed) setSortAnnouncement('已取消排序')
   }
 
   const handleSortPointerDown = (event: React.PointerEvent<HTMLButtonElement>, taskId: string) => {
@@ -1042,7 +913,7 @@ export default function AutomationTasks() {
       startX: event.clientX,
       startY: event.clientY,
       itemId: taskId,
-      originalFlow: [...taskFlowRef.current],
+      currentFlow: [...displayedTaskFlow],
       activated: false,
       changed: false
     }
@@ -1062,7 +933,7 @@ export default function AutomationTasks() {
       session.activated = true
     }
 
-    const currentFlow = taskFlowRef.current
+    const currentFlow = session.currentFlow
     const currentIndex = currentFlow.findIndex(task => task.id === session.itemId)
     if (currentIndex < 0) return
     setDraggedIndex(currentIndex)
@@ -1074,9 +945,9 @@ export default function AutomationTasks() {
     if (targetIndex === currentIndex) return
 
     const newFlow = moveTaskFlowItem(currentFlow, currentIndex, targetIndex)
-    taskFlowRef.current = newFlow
+    session.currentFlow = newFlow
     session.changed = true
-    setTaskFlow(newFlow)
+    setDragFlow(newFlow)
     setDraggedIndex(targetIndex)
   }
 
@@ -1085,11 +956,13 @@ export default function AutomationTasks() {
     if (!session || session.pointerId !== event.pointerId) return
     pointerSortRef.current = null
     setDraggedIndex(null)
+    setDragFlow(null)
     if (session.activated && session.changed) {
-      const committedFlow = taskFlowRef.current
+      const committedFlow = session.currentFlow
       const committedIndex = committedFlow.findIndex(task => task.id === session.itemId)
+      const current = currentDraft()
+      updateConfig({ ...current, taskFlow: toPersistedTaskFlow(committedFlow) })
       setSortAnnouncement(`${committedFlow[committedIndex]?.name || '任务'}已移动到第 ${committedIndex + 1} 位`)
-      autoSave(committedFlow, scheduleEnabled, scheduleEntries)
     }
     try {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
@@ -1107,14 +980,14 @@ export default function AutomationTasks() {
   const handleSortKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, taskId: string) => {
     if (isRunning || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
     event.preventDefault()
-    const currentIndex = taskFlow.findIndex(task => task.id === taskId)
+    const current = currentDraft()
+    const currentIndex = current.taskFlow.findIndex(task => task.id === taskId)
+    if (currentIndex < 0) return
     const targetIndex = event.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1
-    const newFlow = moveTaskFlowItem(taskFlow, currentIndex, targetIndex)
-    if (newFlow === taskFlow) return
-    setTaskFlow(newFlow)
-    taskFlowRef.current = newFlow
+    const newFlow = moveTaskFlowItem(current.taskFlow, currentIndex, targetIndex)
+    if (newFlow === current.taskFlow) return
+    updateConfig({ ...current, taskFlow: newFlow })
     setSortAnnouncement(`${newFlow[targetIndex]?.name || '任务'}已移动到第 ${targetIndex + 1} 位`)
-    autoSave(newFlow, scheduleEnabled, scheduleEntries)
   }
 
   useEffect(() => {
@@ -1124,21 +997,19 @@ export default function AutomationTasks() {
       event.preventDefault()
       pointerSortRef.current = null
       setDraggedIndex(null)
-      if (session.changed) {
-        taskFlowRef.current = session.originalFlow
-        setTaskFlow(session.originalFlow)
-        setSortAnnouncement('已取消排序')
-      }
+      setDragFlow(null)
+      if (session.changed) setSortAnnouncement('已取消排序')
     }
     window.addEventListener('keydown', cancelSortOnEscape)
     return () => window.removeEventListener('keydown', cancelSortOnEscape)
   }, [])
 
   const updateTaskParam = (index: number, key: string, value: any) => {
-    const newFlow = [...taskFlow]
-    const currentTask = newFlow[index]
+    const current = currentDraft()
+    const currentTask = current.taskFlow[index]
     if (!currentTask) return
 
+    let nextValue = value
     // 如果修改的是 stages 参数，需要对关卡进行排序，但保留空白行用于继续输入。
     // 之前这里会把 { stage: '', times: '' } 过滤掉，导致“添加关卡”点击后看起来没反应。
     if (key === 'stages' && Array.isArray(value)) {
@@ -1160,31 +1031,29 @@ export default function AutomationTasks() {
       const blankStages = value.filter((s): s is string | StageConfig => !hasStageText(s));
 
       // 重新组合：置顶 -> 智能养成 -> 普通 -> 空白输入行
-      currentTask.params[key] = [...pinnedStages, ...smartStages, ...normalStages, ...blankStages];
-    } else {
-      currentTask.params[key] = value;
+      nextValue = [...pinnedStages, ...smartStages, ...normalStages, ...blankStages];
     }
 
-    // 如果修改的是启动游戏的客户端类型，同步到关闭游戏
+    const nextParams = { ...(currentTask.params ?? {}), [key]: nextValue }
     const connectionKeys = new Set(['clientType'])
-    if (currentTask.commandId === 'startup' && connectionKeys.has(key)) {
-      newFlow.forEach((task, i) => {
-        if (task.commandId === 'closedown' && newFlow[i]) {
-          newFlow[i]!.params.clientType = value
-        }
-      })
-    }
-    // 如果修改的是关闭游戏的客户端类型，同步到启动游戏
-    else if (currentTask.commandId === 'closedown' && connectionKeys.has(key)) {
-      newFlow.forEach((task, i) => {
-        if (task.commandId === 'startup' && newFlow[i]) {
-          newFlow[i]!.params.clientType = value
-        }
-      })
-    }
+    const syncsConnectionType = connectionKeys.has(key)
 
-    setTaskFlow(newFlow)
-    autoSave(newFlow, scheduleEnabled, scheduleEntries)
+    const newFlow = current.taskFlow.map((task, taskIndex) => {
+      if (taskIndex === index) return { ...task, params: nextParams }
+      // 启动/关闭游戏的客户端类型保持同步，与迁移前一致。
+      if (
+        syncsConnectionType
+        && (
+          (currentTask.commandId === 'startup' && task.commandId === 'closedown')
+          || (currentTask.commandId === 'closedown' && task.commandId === 'startup')
+        )
+      ) {
+        return { ...task, params: { ...(task.params ?? {}), clientType: value } }
+      }
+      return task
+    })
+
+    updateConfig({ ...current, taskFlow: newFlow })
   }
 
   const testConnection = async (taskId: string) => {
@@ -1239,103 +1108,74 @@ export default function AutomationTasks() {
     }
   }
 
-  const autoSave = (flow: TaskFlowItem[], enabled: boolean, entries: ScheduleTimeEntry[]) => {
-    const taskFlowToSave = flow.map(task => {
-      const { icon, paramFields, ...rest } = task
-      return rest
+  // schedule 编辑与 task flow 写入同一条草稿通道：协调器负责本地草稿、完整提交与重试。
+  const updateSchedule = (next: { enabled?: boolean; entries?: ScheduleTimeEntry[] }) => {
+    const current = currentDraft()
+    updateConfig({
+      ...current,
+      schedule: {
+        enabled: next.enabled ?? current.schedule.enabled,
+        entries: normalizeScheduleEntries(next.entries ?? current.schedule.entries),
+      },
     })
-    const normalizedEntries = normalizeScheduleEntries(entries)
-    const normalizedTimes = activeScheduleTimes(normalizedEntries)
-    const revision = ++autoSaveRevisionRef.current
-    const syncToken = createAutomationConfigSyncToken()
-    const isCurrentSave = () => (
-      revision === autoSaveRevisionRef.current
-      && localStorage.getItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY) === syncToken
-    )
-
-    // 保存到 localStorage（快速访问）
-    localStorage.setItem('maa-task-flow', JSON.stringify(taskFlowToSave))
-    localStorage.setItem('maa-schedule', JSON.stringify({
-      enabled,
-      times: normalizedTimes,
-      entries: normalizedEntries,
-    }))
-    localStorage.setItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY, syncToken)
-
-    autoSaveQueueRef.current = autoSaveQueueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        // 连续编辑时只提交队列中最新的一版，避免旧请求覆盖新配置。
-        if (!isCurrentSave()) return
-
-        const saveResult = await saveUserConfig('automation-tasks', {
-          taskFlow: taskFlowToSave,
-          schedule: { enabled, times: normalizedTimes }
-        })
-        if (!saveResult.success) {
-          throw new Error(getErrorMessage(saveResult))
-        }
-
-        if (!isCurrentSave()) return
-
-        const scheduleResult = enabled && normalizedTimes.length > 0
-          ? await setupSchedule('default', normalizedTimes, taskFlowToSave)
-          : await stopSchedule('default')
-
-        if (!scheduleResult.success) {
-          throw new Error(getErrorMessage(scheduleResult))
-        }
-        if (isCurrentSave()) localStorage.removeItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)
-      })
-      .catch((error: unknown) => {
-        if (!isCurrentSave()) return
-        const message = error instanceof Error ? error.message : '未知错误'
-        void showError(`配置同步失败: ${message}`)
-      })
   }
 
-  const commitScheduleEntries = (entries: ScheduleTimeEntry[]) => {
-    const normalizedEntries = normalizeScheduleEntries(entries)
-    setScheduleEntries(normalizedEntries)
-    autoSave(taskFlow, scheduleEnabled, normalizedEntries)
+  const handleScheduleEnabledChange = (enabled: boolean) => {
+    updateSchedule({ enabled })
+  }
+
+  const addScheduleTime = () => {
+    const current = currentDraft()
+    const existingTimes = new Set(current.schedule.entries.map(entry => entry.time))
+    const candidates = Array.from({ length: 24 }, (_, offset) =>
+      `${String((12 + offset) % 24).padStart(2, '0')}:00`
+    )
+    const nextTime = candidates.find(time => !existingTimes.has(time))
+    if (!nextTime) {
+      void showError('没有可添加的执行时间')
+      return
+    }
+
+    updateSchedule({ entries: [...current.schedule.entries, { time: nextTime, enabled: true }] })
+  }
+
+  const removeScheduleTime = (index: number) => {
+    const current = currentDraft()
+    updateSchedule({
+      entries: current.schedule.entries.filter((_, itemIndex) => itemIndex !== index),
+    })
   }
 
   const updateScheduleTimePart = (index: number, part: 'hour' | 'minute', rawValue: number) => {
-    setScheduleEntries(currentEntries => {
-      const current = currentEntries[index]
-      if (!current) return currentEntries
+    const current = currentDraft()
+    const currentEntry = current.schedule.entries[index]
+    if (!currentEntry) return
 
-      const parsed = parseScheduleTime(current.time)
-      const nextHour = part === 'hour' ? rawValue : parsed.hour
-      const nextMinute = part === 'minute' ? rawValue : parsed.minute
-      const clampedHour = ((nextHour % 24) + 24) % 24
-      const clampedMinute = ((nextMinute % 60) + 60) % 60
-      const nextTime = formatScheduleTime(clampedHour, clampedMinute)
+    const parsed = parseScheduleTime(currentEntry.time)
+    const nextHour = part === 'hour' ? rawValue : parsed.hour
+    const nextMinute = part === 'minute' ? rawValue : parsed.minute
+    const clampedHour = ((nextHour % 24) + 24) % 24
+    const clampedMinute = ((nextMinute % 60) + 60) % 60
+    const nextTime = formatScheduleTime(clampedHour, clampedMinute)
 
-      if (currentEntries.some((entry, itemIndex) => itemIndex !== index && entry.time === nextTime)) {
-        void showError('该执行时间已经存在')
-        return currentEntries
-      }
+    if (current.schedule.entries.some((entry, itemIndex) => itemIndex !== index && entry.time === nextTime)) {
+      void showError('该执行时间已经存在')
+      return
+    }
 
-      const newEntries = normalizeScheduleEntries(
-        currentEntries.map((entry, itemIndex) => (
-          itemIndex === index ? { ...entry, time: nextTime } : entry
-        )),
-      )
-      autoSave(taskFlow, scheduleEnabled, newEntries)
-      return newEntries
+    updateSchedule({
+      entries: current.schedule.entries.map((entry, itemIndex) => (
+        itemIndex === index ? { ...entry, time: nextTime } : entry
+      )),
     })
   }
 
   const updateScheduleTimeEnabled = (index: number, enabled: boolean) => {
-    setScheduleEntries(currentEntries => {
-      const newEntries = normalizeScheduleEntries(
-        currentEntries.map((entry, itemIndex) => (
-          itemIndex === index ? { ...entry, enabled } : entry
-        )),
-      )
-      autoSave(taskFlow, scheduleEnabled, newEntries)
-      return newEntries
+    const current = currentDraft()
+    updateSchedule({
+      entries: current.schedule.entries.map((entry, itemIndex) => (
+        itemIndex === index ? { ...entry, enabled } : entry
+      )),
     })
   }
 
@@ -1345,7 +1185,7 @@ export default function AutomationTasks() {
       return
     }
 
-    const invalidTask = taskFlow.find(task =>
+    const invalidTask = displayedTaskFlow.find(task =>
       task.enabled &&
       task.taskType === 'Infrast' &&
       Number(task.params.mode) === 10000 &&
@@ -1357,7 +1197,7 @@ export default function AutomationTasks() {
       return
     }
 
-    const invalidFightDrops = taskFlow.find(task => {
+    const invalidFightDrops = displayedTaskFlow.find(task => {
       const commandId = task.commandId || task.id.split('-')[0]
       return task.enabled && commandId === 'fight' && parseDropTargetEntries(task.params.drops) === null
     })
@@ -1368,139 +1208,14 @@ export default function AutomationTasks() {
     }
 
     lastExecutionFingerprintRef.current = ''
-    await submitFlow(taskFlow)
+    await submitFlow(displayedTaskFlow)
   }
 
-  const loadTaskFlow = useEffectEvent(async (force = false) => {
-    if (taskFlowHydratedRef.current && !force) return
-
-    const applyLoadedConfig = (savedTasks: any[] | null | undefined, schedule: any) => {
-      const loadedTasks = savedTasks
-        ? placeClosedownLast(synchronizeConnectionParams(savedTasks.map(migrateTaskParams)))
-        : savedTasks
-
-      if (loadedTasks) {
-        const restoredTasks = loadedTasks.map((task: any) => {
-          const originalTask = availableTasks.find(t => t.id === task.commandId || t.id === task.id.split('-')[0])
-          return {
-            ...task,
-            icon: originalTask?.icon,
-            paramFields: originalTask?.paramFields
-          }
-        })
-        taskFlowRef.current = restoredTasks
-        setTaskFlow(restoredTasks)
-      }
-
-      if (schedule) {
-        const { enabled } = schedule
-        const normalizedEntries = readScheduleEntries(schedule)
-        setScheduleEnabled(Boolean(enabled))
-        if (normalizedEntries.length > 0) setScheduleEntries(normalizedEntries)
-      }
-
-      return loadedTasks
-    }
-
-    const loadLocalConfig = () => {
-      try {
-        const savedTasks = localStorage.getItem('maa-task-flow')
-        const savedSchedule = localStorage.getItem('maa-schedule')
-        applyLoadedConfig(
-          savedTasks ? JSON.parse(savedTasks) : null,
-          savedSchedule ? JSON.parse(savedSchedule) : null,
-        )
-      } catch {
-        localStorage.removeItem('maa-task-flow')
-        localStorage.removeItem('maa-schedule')
-      }
-    }
-
-    if (localStorage.getItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)) {
-      loadLocalConfig()
-      taskFlowHydratedRef.current = true
-      return
-    }
-
-    taskFlowLoadAbortRef.current?.abort()
-    const controller = new AbortController()
-    const requestId = ++taskFlowLoadRequestRef.current
-    const startingRevision = autoSaveRevisionRef.current
-    taskFlowLoadAbortRef.current = controller
-    const isCurrentLoad = () => (
-      taskFlowLoadRequestRef.current === requestId
-      && !controller.signal.aborted
-      && autoSaveRevisionRef.current === startingRevision
-      && !localStorage.getItem(AUTOMATION_CONFIG_SYNC_PENDING_KEY)
-    )
-
-    try {
-      // 优先从服务器加载配置
-      const serverConfig = await loadUserConfig('automation-tasks', controller.signal)
-      if (!isCurrentLoad()) return
-
-      if (serverConfig.success && serverConfig.data) {
-        // 服务器有配置，使用服务器配置
-        const { taskFlow: savedTasks, schedule } = serverConfig.data
-        const loadedTasks = applyLoadedConfig(savedTasks, schedule)
-        if (loadedTasks) localStorage.setItem('maa-task-flow', JSON.stringify(loadedTasks))
-        if (schedule) {
-          const normalizedEntries = readScheduleEntries(schedule)
-          const normalizedTimes = activeScheduleTimes(normalizedEntries)
-          localStorage.setItem('maa-schedule', JSON.stringify({
-            ...schedule,
-            times: normalizedTimes,
-            entries: normalizedEntries.length > 0 ? normalizedEntries : undefined,
-          }))
-        }
-
-        taskFlowHydratedRef.current = true
-        return
-      }
-    } catch (error) {
-      if (controller.signal.aborted) return
-      // 静默失败，尝试从 localStorage 加载
-    } finally {
-      if (taskFlowLoadAbortRef.current === controller) taskFlowLoadAbortRef.current = null
-    }
-
-    if (!isCurrentLoad()) return
-    // 服务器加载失败，从 localStorage 加载
-    loadLocalConfig()
-    taskFlowHydratedRef.current = true
-  })
-
-  const handleScheduleEnabledChange = (enabled: boolean) => {
-    setScheduleEnabled(enabled)
-    autoSave(taskFlow, enabled, scheduleEntries)
-  }
-
-  const addScheduleTime = () => {
-    const existingTimes = new Set(scheduleEntries.map(entry => entry.time))
-    const candidates = Array.from({ length: 24 }, (_, offset) =>
-      `${String((12 + offset) % 24).padStart(2, '0')}:00`
-    )
-    const nextTime = candidates.find(time => !existingTimes.has(time))
-    if (!nextTime) {
-      void showError('没有可添加的执行时间')
-      return
-    }
-
-    commitScheduleEntries([...scheduleEntries, { time: nextTime, enabled: true }])
-  }
-
-  const removeScheduleTime = (index: number) => {
-    commitScheduleEntries(scheduleEntries.filter((_, itemIndex) => itemIndex !== index))
-  }
-
-  // 页面初始化：加载流程配置与活动信息。执行观察由应用级控制器负责。
+  // 页面初始化只读取展示用活动信息；配置由 user-config 协调器在挂载时加载。
   useEffect(() => {
     let cancelled = false
 
     const initialize = async () => {
-      await loadTaskFlow()
-      if (cancelled) return
-
       try {
         const activityResult = await getActivity('Official')
         if (cancelled) return
@@ -1515,14 +1230,19 @@ export default function AutomationTasks() {
 
     void initialize()
     return () => { cancelled = true }
-    // 初始化只运行一次；loadTaskFlow 是 useEffectEvent，重跑会改变配置加载时序。
   }, [])
 
-  // 监听养成计划应用事件，自动刷新任务流程
+  // 养成计划应用后强制重读；本设备有 pending 草稿或在途保存时协调器返回 local-draft，
+  // 本地编辑优先并明确提示，不静默采用可能更旧的外部副本。
   useEffect(() => {
-    const handleTrainingPlanApplied = async (event: any) => {
-      await loadTaskFlow(true)
-      setStatusMessage(`智能养成计划已更新：${event.detail?.stageCount || 0} 个关卡`, 'success')
+    const handleTrainingPlanApplied = async (event: Event) => {
+      const detail = (event as CustomEvent<{ stageCount?: number }>).detail
+      const outcome = await reloadConfig({ force: true })
+      if (outcome.reason === 'loaded') {
+        setStatusMessage(`智能养成计划已更新：${detail?.stageCount || 0} 个关卡`, 'success')
+      } else if (outcome.reason === 'local-draft' || outcome.reason === 'stale') {
+        setStatusMessage('检测到本设备有未同步的流程编辑，已保留本地草稿；养成计划更新未覆盖本地配置', 'warning')
+      }
     }
 
     window.addEventListener('training-plan-applied', handleTrainingPlanApplied)
@@ -1530,14 +1250,13 @@ export default function AutomationTasks() {
     return () => {
       window.removeEventListener('training-plan-applied', handleTrainingPlanApplied)
     }
-  }, [setStatusMessage])
+  }, [reloadConfig, setStatusMessage])
 
-  // 监听页面可见性变化，切换回来时自动刷新
+  // 监听页面可见性变化，切换回来时重试尚未成功的加载（已加载时协调器直接跳过）。
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (!document.hidden) {
-        // 页面重新可见时，重新加载任务流程
-        await loadTaskFlow()
+        await reloadConfig()
       }
     }
 
@@ -1546,7 +1265,7 @@ export default function AutomationTasks() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [])
+  }, [reloadConfig])
 
   const schedulePanel = (
     <div className="automation-schedule-column">
@@ -1739,6 +1458,26 @@ export default function AutomationTasks() {
           actions={<FloatingStatusIndicator />}
         />
 
+        {configSyncError && (
+          <div
+            role="alert"
+            className="status-warning flex min-h-11 flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm leading-5"
+          >
+            <span className="min-w-0 flex-1">{configSyncError}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              loading={isRetryingConfigSave}
+              loadingText="同步中"
+              onClick={() => void handleRetryConfigSave()}
+              className="min-h-11 shrink-0"
+            >
+              重新同步
+            </Button>
+          </div>
+        )}
+
         <div className="automation-workspace-grid">
           {/* 紧凑流程顺序 */}
           <div className="automation-sequence-column">
@@ -1762,12 +1501,12 @@ export default function AutomationTasks() {
                   </p>
                 </div>
                 <span className="automation-flow-summary">
-                  {taskFlow.filter(t => t.enabled).length}/{taskFlow.length}
+                  {displayedTaskFlow.filter(t => t.enabled).length}/{displayedTaskFlow.length}
                 </span>
                 <span className="sr-only" aria-live="polite">{sortAnnouncement}</span>
               </div>
 
-              {taskFlow.length === 0 ? (
+              {displayedTaskFlow.length === 0 ? (
                 <EmptyState
                   className="automation-sequence-empty"
                   compact
@@ -1777,7 +1516,7 @@ export default function AutomationTasks() {
                 />
               ) : (
                 <div className="automation-sequence-list">
-                  {taskFlow.map((task, index) => {
+                  {displayedTaskFlow.map((task, index) => {
                     const executionState = taskExecutionState(task, index)
                     const isCurrentStep = executionState === 'running'
                     const isCompletedStep = executionState === 'success'
@@ -1894,7 +1633,7 @@ export default function AutomationTasks() {
                   >
                     <Plus size={16} strokeWidth={2.1} />
                     <span>添加任务</span>
-                    <small>{availableTasks.length}</small>
+                    <small>{AVAILABLE_TASKS.length}</small>
                   </button>
                   <AnimatePresence initial={false}>
                     {taskPickerOpen && (
@@ -1908,8 +1647,8 @@ export default function AutomationTasks() {
                         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
                         transition={{ duration: shouldReduceMotion ? 0.12 : 0.32, ease: [0.32, 0.72, 0, 1] }}
                       >
-                        {availableTasks.map(task => {
-                          const addedCount = taskFlow.filter(flowTask => flowTask.commandId === task.id).length
+                        {AVAILABLE_TASKS.map(task => {
+                          const addedCount = displayedTaskFlow.filter(flowTask => flowTask.commandId === task.id).length
 
                           return (
                             <button
@@ -1931,7 +1670,7 @@ export default function AutomationTasks() {
                   </AnimatePresence>
                   <Button
                     onClick={executeTaskFlow}
-                    disabled={!automationAvailable || isRunning || isSubmitting || taskFlow.filter(t => t.enabled).length === 0}
+                    disabled={!automationAvailable || isRunning || isSubmitting || displayedTaskFlow.filter(t => t.enabled).length === 0}
                     title={!automationAvailable ? unavailableMessage : undefined}
                     loading={isRunning || isSubmitting}
                     loadingText={isRunning ? '执行中' : '正在启动'}
@@ -2096,7 +1835,7 @@ export default function AutomationTasks() {
                   <p>选择流程步骤后调整参数</p>
                 </div>
                 {activeTaskId && (
-                  <span>{String(taskFlow.findIndex(task => task.id === activeTaskId) + 1).padStart(2, '0')}</span>
+                  <span>{String(displayedTaskFlow.findIndex(task => task.id === activeTaskId) + 1).padStart(2, '0')}</span>
                 )}
               </div>
               {!activeTaskId ? (
@@ -2109,8 +1848,8 @@ export default function AutomationTasks() {
                 />
               ) : (
                 <div className="automation-editor-content">
-                  {taskFlow.filter(task => task.id === activeTaskId).map((task) => {
-                    const index = taskFlow.findIndex(item => item.id === task.id)
+                  {displayedTaskFlow.filter(task => task.id === activeTaskId).map((task) => {
+                    const index = displayedTaskFlow.findIndex(item => item.id === task.id)
                     const isCurrentTask = taskExecutionState(task, index) === 'running'
                     const connectionFeedback = connectionStatus[task.id]
                     const isTestingConnection = testingConnectionTaskId === task.id

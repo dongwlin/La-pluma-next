@@ -3,6 +3,7 @@
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { userConfigCoordinator } from '@/features/user-config'
 import AutomationTasks from './AutomationTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -78,10 +79,14 @@ vi.mock('@/features/task-execution', async () => {
   }
 })
 
-vi.mock('@/features/user-config', () => ({
-  loadUserConfig: mocks.loadUserConfig,
-  saveUserConfig: mocks.saveUserConfig,
-}))
+vi.mock('@/features/user-config', async () => {
+  const actual = await vi.importActual<typeof import('@/features/user-config')>('@/features/user-config')
+  return {
+    ...actual,
+    loadUserConfig: mocks.loadUserConfig,
+    saveUserConfig: mocks.saveUserConfig,
+  }
+})
 
 vi.mock('@/features/settings', () => ({ testConnection: mocks.testConnection }))
 vi.mock('@/features/training', () => ({ generateTrainingPlan: mocks.generateTrainingPlan }))
@@ -165,6 +170,8 @@ describe('AutomationTasks config persistence', () => {
       value: vi.fn(),
     })
     localStorage.clear()
+    // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
+    userConfigCoordinator.dispose()
     mocks.getActivity.mockReset().mockResolvedValue({ success: false })
     mocks.getScheduleExecutionStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
     mocks.getTaskStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
@@ -231,7 +238,9 @@ describe('AutomationTasks config persistence', () => {
     expect(mocks.setupSchedule).not.toHaveBeenCalled()
     expect(mocks.stopSchedule).not.toHaveBeenCalled()
     expect(pendingDraft()).not.toBeNull()
-    expect(mocks.setMessage).toHaveBeenCalledWith('配置同步失败: 配置存储暂不可用', 'error')
+    expect(container.querySelector('[role="alert"]')?.textContent)
+      .toContain('配置已保存在此设备，但尚未同步到服务器：配置存储暂不可用')
+    expect(mocks.setMessage).not.toHaveBeenCalled()
   })
 
   it('keeps the pending draft when the schedule step fails after the config save, then clears it on a later full success', async () => {
@@ -247,7 +256,8 @@ describe('AutomationTasks config persistence', () => {
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
     expect(mocks.setupSchedule).toHaveBeenCalledOnce()
     expect(pendingDraft()).not.toBeNull()
-    expect(mocks.setMessage).toHaveBeenCalledWith('配置同步失败: 排班设置失败', 'error')
+    expect(container.querySelector('[role="alert"]')?.textContent)
+      .toContain('配置已保存在此设备，但尚未同步到服务器：排班设置失败')
 
     await act(async () => root.unmount())
     root = createRoot(container)
@@ -257,6 +267,7 @@ describe('AutomationTasks config persistence', () => {
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
     expect(pendingDraft()).not.toBeNull()
     expect(container.textContent).toContain('理智作战')
+    expect(container.textContent).toContain('配置已保存在此设备，但尚未同步到服务器：排班设置失败')
 
     await click(scheduleSwitch())
     await settle()
@@ -309,7 +320,7 @@ describe('AutomationTasks config persistence', () => {
     expect(pendingDraft()).toBeNull()
   })
 
-  it('does not let a save from the previous mount clear the newer draft', async () => {
+  it('serializes saves across mounts and never lets an older save clear the newer draft', async () => {
     const olderSave = deferred<{ success: boolean }>()
     mocks.loadUserConfig.mockResolvedValue({
       success: true,
@@ -329,12 +340,15 @@ describe('AutomationTasks config persistence', () => {
     mocks.saveUserConfig.mockReturnValueOnce(newerSave.promise)
     await click(scheduleSwitch())
     const newerSyncToken = pendingDraft()
-    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
     expect(newerSyncToken).not.toBeNull()
+    // 协调器按 key 串行：重挂载后的提交排在旧请求之后，不会立刻发出第二个请求。
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
 
     await act(async () => olderSave.resolve({ success: true }))
     await settle()
     expect(pendingDraft()).toBe(newerSyncToken)
+    expect(mocks.stopSchedule).not.toHaveBeenCalled()
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
 
     await act(async () => newerSave.resolve({ success: true }))
     await settle()
@@ -360,15 +374,130 @@ describe('AutomationTasks config persistence', () => {
     expect(JSON.parse(localStorage.getItem('maa-task-flow') || '[]')).toEqual([])
   })
 
-  // Defect reproduction: a pending marker must not outlive its missing local draft.
-  // The automation persistence task owns converting this into a normal test.
-  it.fails('loads the server copy when a pending marker has no local draft', async () => {
+  // 协调器在 pending 标记指向的本地草稿不可读时删除标记并继续读服务端。
+  it('loads the server copy when a pending marker has no local draft', async () => {
     localStorage.setItem('automationConfigSyncPending', 'stale-token')
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
     await renderAutomation()
 
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    expect(pendingDraft()).toBeNull()
+    expect(container.textContent).toContain('理智作战')
+  })
+
+  it('retries the whole commit from the page alert after the schedule step fails', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskFlow: taskFlowFixture, schedule: { enabled: false, times: ['08:00'] } },
+    })
+    mocks.setupSchedule.mockResolvedValueOnce({ success: false, message: '排班设置失败' })
+
+    await renderAutomation()
+    await click(scheduleSwitch())
+
+    expect(pendingDraft()).not.toBeNull()
+    const retryButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('重新同步'))
+    expect(retryButton).toBeDefined()
+
+    await click(retryButton!)
+    await settle()
+
+    // 重试重新执行完整提交：配置再次保存，schedule 也再次设置。
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
+    expect(mocks.setupSchedule).toHaveBeenCalledTimes(2)
+    expect(pendingDraft()).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.setMessage).toHaveBeenCalledWith('自动化配置已同步', 'success')
+  })
+
+  it('does not confirm a newer revision when an older commit finishes late', async () => {
+    const firstSave = deferred<{ success: boolean }>()
+    const secondSave = deferred<{ success: boolean }>()
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskFlow: taskFlowFixture, schedule: { enabled: false, times: ['08:00'] } },
+    })
+    mocks.saveUserConfig
+      .mockReturnValueOnce(firstSave.promise)
+      .mockReturnValueOnce(secondSave.promise)
+
+    await renderAutomation()
+    await click(scheduleSwitch())
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+
+    await click(scheduleSwitch())
+    const newerSyncToken = pendingDraft()
+    expect(newerSyncToken).not.toBeNull()
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+
+    await act(async () => firstSave.resolve({ success: true }))
+    await settle()
+    expect(pendingDraft()).toBe(newerSyncToken)
+    expect(mocks.setupSchedule).not.toHaveBeenCalled()
+    expect(mocks.stopSchedule).not.toHaveBeenCalled()
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
+
+    await act(async () => secondSave.resolve({ success: true }))
+    await settle()
+    expect(mocks.stopSchedule).toHaveBeenCalledWith('default')
+    expect(pendingDraft()).toBeNull()
+  })
+
+  it('keeps an in-flight save and local draft when a training plan asks for a server reload', async () => {
+    const pendingSave = deferred<{ success: boolean }>()
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskFlow: taskFlowFixture, schedule: { enabled: false } },
+    })
+    mocks.saveUserConfig.mockReturnValueOnce(pendingSave.promise)
+
+    await renderAutomation()
+    await click(scheduleSwitch())
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    expect(pendingDraft()).not.toBeNull()
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('training-plan-applied', { detail: { stageCount: 3 } }))
+    })
+    await settle()
+
+    // pending 草稿/在途保存时强制重读返回 local-draft：不请求服务端，也不覆盖本地编辑。
+    expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
+    expect(container.textContent).toContain('理智作战')
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '检测到本设备有未同步的流程编辑，已保留本地草稿；养成计划更新未覆盖本地配置',
+      'warning',
+    )
+
+    await act(async () => pendingSave.resolve({ success: true }))
+    await settle()
+    expect(mocks.setupSchedule).toHaveBeenCalledOnce()
+    expect(pendingDraft()).toBeNull()
+  })
+
+  it('refuses a forced server reload while a pending local draft is restored', async () => {
+    localStorage.setItem('maa-task-flow', JSON.stringify(taskFlowFixture))
+    localStorage.setItem('maa-schedule', JSON.stringify({ enabled: false, times: ['14:00'] }))
+    localStorage.setItem('automationConfigSyncPending', 'pending-local-draft')
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: [] } })
+
+    await renderAutomation()
+    expect(mocks.loadUserConfig).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('理智作战')
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('training-plan-applied', { detail: { stageCount: 3 } }))
+    })
+    await settle()
+
+    expect(mocks.loadUserConfig).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '检测到本设备有未同步的流程编辑，已保留本地草稿；养成计划更新未覆盖本地配置',
+      'warning',
+    )
+    expect(container.textContent).toContain('理智作战')
   })
 
   it('reloads the automation flow when training applies a plan', async () => {

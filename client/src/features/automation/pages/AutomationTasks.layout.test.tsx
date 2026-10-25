@@ -3,6 +3,7 @@
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { userConfigCoordinator } from '@/features/user-config'
 import AutomationTasks from './AutomationTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -79,10 +80,14 @@ vi.mock('@/features/task-execution', async () => {
   }
 })
 
-vi.mock('@/features/user-config', () => ({
-  loadUserConfig: mocks.loadUserConfig,
-  saveUserConfig: mocks.saveUserConfig,
-}))
+vi.mock('@/features/user-config', async () => {
+  const actual = await vi.importActual<typeof import('@/features/user-config')>('@/features/user-config')
+  return {
+    ...actual,
+    loadUserConfig: mocks.loadUserConfig,
+    saveUserConfig: mocks.saveUserConfig,
+  }
+})
 
 vi.mock('@/features/settings', () => ({
   testConnection: mocks.testConnection,
@@ -206,6 +211,8 @@ describe('AutomationTasks layout surfaces', () => {
       value: mocks.scrollIntoView,
     })
     localStorage.clear()
+    // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
+    userConfigCoordinator.dispose()
     mocks.getActivity.mockReset().mockResolvedValue({ success: false })
     mocks.getScheduleExecutionStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
     mocks.getTaskStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })

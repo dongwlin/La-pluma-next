@@ -12,6 +12,7 @@ import {
   type RunTaskResult,
   type StopRunResult,
 } from '@/features/task-execution'
+import { userConfigCoordinator } from '@/features/user-config'
 import AutomationTasks from './AutomationTasks'
 import type { TaskFlowItem } from '../types'
 import type { TaskExecutionState } from '../utils/automationTaskProgress'
@@ -65,10 +66,14 @@ vi.mock('@/features/task-execution', async () => {
   }
 })
 
-vi.mock('@/features/user-config', () => ({
-  loadUserConfig: mocks.loadUserConfig,
-  saveUserConfig: mocks.saveUserConfig,
-}))
+vi.mock('@/features/user-config', async () => {
+  const actual = await vi.importActual<typeof import('@/features/user-config')>('@/features/user-config')
+  return {
+    ...actual,
+    loadUserConfig: mocks.loadUserConfig,
+    saveUserConfig: mocks.saveUserConfig,
+  }
+})
 
 vi.mock('@/features/settings', () => ({ testConnection: mocks.testConnection }))
 vi.mock('@/features/training', () => ({ generateTrainingPlan: mocks.generateTrainingPlan }))
@@ -323,6 +328,8 @@ beforeEach(() => {
     matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
   }))
   localStorage.clear()
+  // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
+  userConfigCoordinator.dispose()
   mocks.getActivity.mockReset().mockResolvedValue({ success: false })
   mocks.loadUserConfig.mockReset().mockResolvedValue({ success: true, data: { taskFlow: flow } })
   mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
