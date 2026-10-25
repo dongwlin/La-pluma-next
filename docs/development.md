@@ -127,3 +127,5 @@ pnpm verify
 pnpm --filter la-pluma-next-client stylelint:ratchet
 pnpm visual
 ```
+
+`eslint-plugin-react-hooks` 固定在 7.0.1：7.1 的 `recommended` 新增了 React Compiler 规则（如 `set-state-in-effect`、`purity`），现有代码仍有 19 处命中。等这些写法单独迁移后再放宽版本范围。
