@@ -5,6 +5,7 @@ import { AppProviders } from './providers'
 import { AppRoutes } from './router'
 import { routerBasename, useActiveAppTab } from '@/shared/navigation'
 import { useBackendStatusMonitor } from '@/features/runtime-status'
+import { useExecutionObservation } from '@/features/task-execution'
 
 function AppShell() {
   const activeTab = useActiveAppTab()
@@ -21,6 +22,7 @@ function AppShell() {
 
 function App() {
   useBackendStatusMonitor()
+  useExecutionObservation()
 
   return (
     <div id="app-root" className="la-pluma-app">

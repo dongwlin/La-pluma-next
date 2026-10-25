@@ -14,6 +14,14 @@ export interface TaskConfig {
 }
 
 /**
+ * 提交执行时可选的请求语义。幂等键由服务端按 operationId 分区；
+ * 不传时保持旧行为（每次请求都是新的 run）。
+ */
+export interface AgentRequestOptions {
+  idempotencyKey?: string
+}
+
+/**
  * 执行 MAA 命令
  */
 export async function executeCommand(
@@ -23,7 +31,8 @@ export async function executeCommand(
   signal: AbortSignal | null = null,
   taskName: string | null = null,
   taskType: string | null = null,
-  waitForCompletion: boolean = false
+  waitForCompletion: boolean = false,
+  options: AgentRequestOptions = {}
 ): Promise<ApiResponse> {
   const body: Record<string, any> = { command, args }
 
@@ -40,11 +49,16 @@ export async function executeCommand(
     body.waitForCompletion = waitForCompletion
   }
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (options.idempotencyKey) {
+    headers['Idempotency-Key'] = options.idempotencyKey
+  }
+
   const fetchOptions: RequestInit = {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(body)
   }
 
@@ -67,9 +81,10 @@ export async function executePredefinedTaskArgs(
   signal: AbortSignal | null = null,
   taskName: string | null = null,
   taskTypeLabel: string | null = null,
-  waitForCompletion: boolean = false
+  waitForCompletion: boolean = false,
+  options: AgentRequestOptions = {}
 ): Promise<ApiResponse> {
-  return executeCommand(taskType, args, taskConfig, signal, taskName, taskTypeLabel, waitForCompletion)
+  return executeCommand(taskType, args, taskConfig, signal, taskName, taskTypeLabel, waitForCompletion, options)
 }
 
 /**
@@ -82,7 +97,8 @@ export async function executePredefinedTask(
   signal: AbortSignal | null = null,
   taskName: string | null = null,
   taskTypeLabel: string | null = null,
-  waitForCompletion: boolean = false
+  waitForCompletion: boolean = false,
+  options: AgentRequestOptions = {}
 ): Promise<ApiResponse> {
   // 按 shell 风格切分参数，保留带引号的本地路径与远程 URL
   const args = params
@@ -90,11 +106,11 @@ export async function executePredefinedTask(
         .map(arg => arg.replace(/^("|')|("|')$/g, ''))
         .filter(arg => arg.trim())
     : []
-  return executeCommand(taskType, args, taskConfig, signal, taskName, taskTypeLabel, waitForCompletion)
+  return executeCommand(taskType, args, taskConfig, signal, taskName, taskTypeLabel, waitForCompletion, options)
 }
 
 /**
- * 获取任务执行状态
+ * 获取任务执行状态（旧客户端的进程投影）
  */
 export async function getTaskStatus(signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/tasks/status`, { signal })
@@ -102,7 +118,8 @@ export async function getTaskStatus(signal?: AbortSignal): Promise<ApiResponse> 
 }
 
 /**
- * 终止当前任务
+ * 终止当前任务（旧入口，不带 runId）。
+ * 需要保护特定执行时使用 runs 模块的 stopRun。
  */
 export async function stopTask(): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/stop`, {
@@ -110,3 +127,9 @@ export async function stopTask(): Promise<ApiResponse> {
   })
   return parseJsonResponse(response)
 }
+
+export {
+  getRun,
+  getRunSnapshot,
+  stopRun,
+} from './runs'

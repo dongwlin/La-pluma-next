@@ -14,6 +14,7 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('@/features/task-execution', () => ({
   getTaskStatus: apiMocks.getTaskStatus,
+  useExecutionObservation: () => undefined,
 }))
 
 vi.mock('./layout/Layout', () => ({

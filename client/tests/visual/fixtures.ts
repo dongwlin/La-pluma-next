@@ -23,6 +23,30 @@ export const apiFixtures: ApiFixture[] = [
   // ===== 全局：后端探针 / 状态指示器 / 侧栏身份 =====
   { path: '/agent/tasks/status', payload: ok({ isRunning: false }) },
   {
+    path: '/agent/runs/current',
+    payload: ok({
+      isRunning: false,
+      taskName: null,
+      startTime: null,
+      taskType: null,
+      stopRequested: false,
+      schedule: { isRunning: false, scheduleId: null, runId: null, currentStep: null, totalSteps: 0, currentTask: null, shouldStop: false, message: '空闲中' },
+      recentLogs: [],
+      run: null,
+      activeRuns: [],
+      lastRun: null,
+      occupancy: {
+        state: 'idle',
+        runId: null,
+        runState: null,
+        sources: [],
+        lease: { state: 'free', owner: null },
+        task: { isRunning: false, taskName: null, taskType: null, stopRequested: false },
+        schedule: { isRunning: false, scheduleId: null, runId: null, currentStep: null, totalSteps: 0, currentTask: null, shouldStop: false },
+      },
+    }),
+  },
+  {
     path: '/operator-quotes/random',
     payload: ok({ operatorId: 'char_002_amiya', operator: '阿米娅', quote: '博士，情报已经同步完毕' }),
   },
