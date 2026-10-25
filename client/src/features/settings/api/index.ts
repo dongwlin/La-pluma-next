@@ -24,7 +24,16 @@ const isConfigDirectoryPayload = (payload: unknown): boolean =>
     ? payload.trim().length > 0
     : isRecord(payload) && typeof payload.path === 'string' && payload.path.trim().length > 0
 
-const isConfigPayload = (payload: unknown): boolean => isRecord(payload)
+/**
+ * MAA profile 的 connection 段允许缺省字段（MAA 会使用自身默认值），因此只
+ * 校验出现字段的类型；缺失的已知字段由设置域归一化模型补齐，未知字段保留。
+ */
+const isConfigPayload = (payload: unknown): boolean =>
+  isRecord(payload)
+  && (payload.adb_path === undefined || typeof payload.adb_path === 'string')
+  && (payload.address === undefined || typeof payload.address === 'string')
+  && (payload.config === undefined || typeof payload.config === 'string')
+  && (payload.auto_reconnect === undefined || typeof payload.auto_reconnect === 'boolean')
 
 const isDeviceDiscoveryPayload = (payload: unknown): boolean => isRecord(payload)
 

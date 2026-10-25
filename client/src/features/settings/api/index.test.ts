@@ -77,7 +77,7 @@ describe('settings resource reads', () => {
   it('forwards the profile read signal and accepts a connection object', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
       success: true,
-      data: { adb_path: '/usr/bin/adb', address: '127.0.0.1:5555', config: 'CompatMac' },
+      data: { adb_path: '/usr/bin/adb', address: '127.0.0.1:5555', config: 'CompatMac', touch_mode: 'minitouch' },
     }))
     const controller = new AbortController()
 
@@ -87,6 +87,34 @@ describe('settings resource reads', () => {
     expect(fetchCall().init.signal).toBe(controller.signal)
     expect(result.success).toBe(true)
     expect(result.data?.address).toBe('127.0.0.1:5555')
+    expect(result.data?.touch_mode).toBe('minitouch')
+  })
+
+  it('accepts a partial connection profile because MAA fields are optional', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { address: '127.0.0.1:5555' },
+    }))
+
+    const result = await getConfig()
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual({ address: '127.0.0.1:5555' })
+  })
+
+  it('rejects a connection payload with an invalid known field', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { adb_path: '/usr/bin/adb', address: 127, config: 'CompatMac' },
+    }))
+
+    const result = await getConfig()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: '连接配置格式不正确',
+    })
   })
 
   it('forwards the signal for device discovery and accepts its nested success payload', async () => {

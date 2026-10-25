@@ -25,14 +25,23 @@ import type {
   UpdateStatus
 } from '../types'
 import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import { useConfigSection } from '../hooks/useConfigSection'
+import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
+import {
+  CONFIG_SECTION_IDS,
+  isEditableConfigSection,
+} from '../model/configSection'
+import {
+  DEFAULT_AUTO_UPDATE_CONFIG,
+  isValidUpdateTime,
+  normalizeAutoUpdateConfig,
+} from '../model/configNormalization'
 import {
   discoverDevices,
-  getConfig,
   getConfigDir,
   getVersion,
   hotUpdateResources,
   openConfigDir,
-  saveConfig,
   setupAutoUpdate,
   testConnection,
   updateMaaCli,
@@ -83,59 +92,29 @@ interface SettingsFeedback {
   message: string
 }
 
-const DEFAULT_AUTO_UPDATE_CONFIG: AutoUpdateConfig = {
-  enabled: false,
-  time: '04:00',
-  updateCore: true,
-  updateCli: true
-}
-
-const CONFIG_SECTION_IDS = ['connection', 'resource', 'instance'] as const
-type ConfigSectionId = typeof CONFIG_SECTION_IDS[number]
-
-const normalizeAutoUpdateConfig = (value: unknown): AutoUpdateConfig | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-
-  const config = value as Partial<AutoUpdateConfig>
-  return {
-    enabled: typeof config.enabled === 'boolean' ? config.enabled : DEFAULT_AUTO_UPDATE_CONFIG.enabled,
-    time: typeof config.time === 'string' ? config.time : DEFAULT_AUTO_UPDATE_CONFIG.time,
-    updateCore: typeof config.updateCore === 'boolean' ? config.updateCore : DEFAULT_AUTO_UPDATE_CONFIG.updateCore,
-    updateCli: typeof config.updateCli === 'boolean' ? config.updateCli : DEFAULT_AUTO_UPDATE_CONFIG.updateCli,
-  }
-}
-
-const isValidUpdateTime = (value: string) => {
-  const match = /^(\d{2}):(\d{2})$/.exec(value)
-  if (!match) return false
-  return Number(match[1]) <= 23 && Number(match[2]) <= 59
-}
-
 export default function ConfigManager() {
   const { setMessage: setStatusMessage } = useStatusStore()
   const shouldReduceMotion = useReducedMotion()
-  const [configType, setConfigType] = useState<ConfigSectionId>(() => {
-    const saved = localStorage.getItem('laPlumaConfigSection')
-    return CONFIG_SECTION_IDS.includes(saved as ConfigSectionId)
-      ? saved as ConfigSectionId
-      : 'connection'
-  })
+  const { section: configType, selectSection: handleConfigTypeChange } = useConfigSection()
   const {
     containerRef: configTabsRef,
     activeRect: activeConfigRect,
     setTabRef: setConfigTabRef,
     handleTabKeyDown: handleConfigTabKeyDown,
   } = useFluidTabIndicator(configType)
-  const [configData, setConfigData] = useState<MaaConnectionConfig>({
-    adb_path: '/opt/homebrew/bin/adb',
-    address: '127.0.0.1:16384',
-    config: 'CompatMac',
-    auto_reconnect: true,
-  })
+  const {
+    draft: configData,
+    update: updateConnectionDraft,
+    restoreDefaults,
+    save: saveConnectionConfig,
+    syncState: connectionSyncState,
+    loadError: connectionLoadError,
+    loaded: connectionLoaded,
+  } = useSettingsConnectionConfig()
+  const connectionSaving = connectionSyncState === 'saving'
   const [configDir, setConfigDir] = useState<string>('')
   const [configDirStatus, setConfigDirStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [configDirError, setConfigDirError] = useState<string | null>(null)
-  const [loading, setLoading] = useState<boolean>(false)
   const [updating, setUpdating] = useState<UpdateStatus>({ core: false, cli: false })
   const [hotUpdating, setHotUpdating] = useState<boolean>(false)
   const [autoUpdate, setAutoUpdate] = useState<AutoUpdateConfig>(DEFAULT_AUTO_UPDATE_CONFIG)
@@ -155,21 +134,25 @@ export default function ConfigManager() {
   const autoUpdateTouchedRef = useRef(false)
   const autoUpdateRevisionRef = useRef(0)
   const autoUpdateSaveInFlightRef = useRef(false)
-  const connectionRevisionRef = useRef(0)
-  const connectionSaveInFlightRef = useRef(false)
+  const reportedLoadFailureRef = useRef<string | null>(null)
   const updateInFlightRef = useRef(false)
 
+  // 初始读取失败保留旧的页内与全局提示；后台刷新失败不打断已有草稿。
   useEffect(() => {
-    const handleSectionChange = (event: Event) => {
-      const section = (event as CustomEvent).detail
-      if (['connection', 'resource', 'instance'].includes(section)) {
-        handleConfigTypeChange(section as ConfigSectionId)
-      }
-    }
+    if (!connectionLoadError) return
+    const message = `连接配置读取失败: ${connectionLoadError}`
+    if (reportedLoadFailureRef.current === message) return
+    reportedLoadFailureRef.current = message
+    setConfigFeedback({ type: 'error', message })
+    setStatusMessage(message, 'error')
+  }, [connectionLoadError, setStatusMessage])
 
-    window.addEventListener('la-pluma-config-section', handleSectionChange)
-    return () => window.removeEventListener('la-pluma-config-section', handleSectionChange)
-  }, [])
+  useEffect(() => {
+    if (!connectionLoaded || !reportedLoadFailureRef.current) return
+    const message = reportedLoadFailureRef.current
+    reportedLoadFailureRef.current = null
+    setConfigFeedback(current => (current?.message === message ? null : current))
+  }, [connectionLoaded])
 
   const loadVersion = useCallback(async () => {
     try {
@@ -330,85 +313,51 @@ export default function ConfigManager() {
     }
   }, [])
 
-  const loadConfig = useCallback(async () => {
-    try {
-      const result = await getConfig()
-      if (result.success && result.data && connectionRevisionRef.current === 0) {
-        setConfigData(result.data)
-      } else if (!result.success) {
-        const message = `连接配置读取失败: ${getErrorMessage(result)}`
-        setConfigFeedback({ type: 'error', message })
-        setStatusMessage(message, 'error')
-      }
-    } catch (error) {
-      const message = `连接配置读取失败: ${(error as Error).message}`
-      setConfigFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-    }
-  }, [setStatusMessage])
-
   useEffect(() => {
     if (didInitializeRef.current) return
     didInitializeRef.current = true
 
     void Promise.allSettled([
       loadConfigDir(),
-      loadConfig(),
       loadAutoUpdateConfig(),
       loadVersion(),
     ])
-  }, [loadAutoUpdateConfig, loadConfig, loadConfigDir, loadVersion])
+  }, [loadAutoUpdateConfig, loadConfigDir, loadVersion])
 
-  const updateConnectionConfig = (update: (current: MaaConnectionConfig) => MaaConnectionConfig) => {
-    connectionRevisionRef.current += 1
-    setConfigData(update)
+  const updateConnectionConfig = (patch: Partial<MaaConnectionConfig>) => {
+    updateConnectionDraft(patch)
     setConfigFeedback(null)
   }
 
   const handleSave = async () => {
-    if (connectionSaveInFlightRef.current) return
-    const savedRevision = connectionRevisionRef.current
-    const configSnapshot = { ...configData }
-    connectionSaveInFlightRef.current = true
-    setLoading(true)
+    if (connectionSaving) return
     setConfigFeedback(null)
     setStatusMessage('正在保存配置...', 'info')
-    
-    try {
-      const result = await saveConfig('default', { connection: configSnapshot })
 
-      if (result.success) {
-        if (savedRevision === connectionRevisionRef.current) {
-          const message = '连接配置保存成功'
-          setConfigFeedback({ type: 'success', message })
-          setStatusMessage(message, 'success')
-        } else {
-          const message = '此前连接配置已保存，当前更改尚未保存'
-          setConfigFeedback({ type: 'warning', message })
-          setStatusMessage(message, 'warning')
-        }
+    const outcome = await saveConnectionConfig()
+    if (outcome.status === 'ignored') return
+
+    if (outcome.status === 'saved') {
+      if (outcome.superseded) {
+        const message = '此前连接配置已保存，当前更改尚未保存'
+        setConfigFeedback({ type: 'warning', message })
+        setStatusMessage(message, 'warning')
       } else {
-        const message = `连接配置保存失败: ${getErrorMessage(result)}`
-        setConfigFeedback({ type: 'error', message })
-        setStatusMessage(message, 'error')
+        const message = '连接配置保存成功'
+        setConfigFeedback({ type: 'success', message })
+        setStatusMessage(message, 'success')
       }
-    } catch (error) {
-      const message = `连接配置保存失败: ${(error as Error).message}`
-      setConfigFeedback({ type: 'error', message })
-      setStatusMessage(message, 'error')
-    } finally {
-      connectionSaveInFlightRef.current = false
-      setLoading(false)
+      return
     }
+
+    const message = `连接配置保存失败: ${outcome.message ?? '未知错误'}`
+    setConfigFeedback({ type: 'error', message })
+    setStatusMessage(message, 'error')
   }
 
   const handleReset = () => {
-    updateConnectionConfig(() => ({
-      adb_path: '/opt/homebrew/bin/adb',
-      address: '127.0.0.1:16384',
-      config: 'CompatMac',
-      auto_reconnect: true,
-    }))
+    restoreDefaults()
+    setConfigFeedback(null)
     setStatusMessage('已重置为默认值')
   }
 
@@ -452,7 +401,7 @@ export default function ConfigManager() {
 
   const handleUseDiscoveredDevice = async (device: DiscoveredDevice) => {
     const adbPath = device.adbPath || configData.adb_path
-    updateConnectionConfig(current => ({ ...current, adb_path: adbPath, address: device.address }))
+    updateConnectionConfig({ adb_path: adbPath, address: device.address })
     setTestingConnection(true)
     setConnectionFeedback(null)
 
@@ -468,11 +417,6 @@ export default function ConfigManager() {
     } finally {
       setTestingConnection(false)
     }
-  }
-
-  const handleConfigTypeChange = (section: ConfigSectionId) => {
-    localStorage.setItem('laPlumaConfigSection', section)
-    setConfigType(section)
   }
 
   const handleOpenConfigDir = async () => {
@@ -713,11 +657,11 @@ export default function ConfigManager() {
       <Card smoothCorners className="config-editor-card p-0!">
         <CardHeader
           title={configSections.find(section => section.id === configType)?.name || '配置'}
-          actions={configType === 'connection' ? (
+          actions={isEditableConfigSection(configType) ? (
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleReset}
-                disabled={loading}
+                disabled={connectionSaving}
                 variant="outline"
                 size="sm"
                 icon={<RotateCcw size={16} aria-hidden="true" />}
@@ -725,8 +669,8 @@ export default function ConfigManager() {
                 重置
               </Button>
               <Button
-                onClick={handleSave}
-                loading={loading}
+                onClick={() => void handleSave()}
+                loading={connectionSaving}
                 loadingText="保存中"
                 variant="primary"
                 size="sm"
@@ -749,7 +693,7 @@ export default function ConfigManager() {
           )}
         />
         <CardContent>
-          {configType === 'connection' && (
+          {isEditableConfigSection(configType) && (
             <div className="app-stack-card">
               {configFeedback && (
                 <div
@@ -771,7 +715,7 @@ export default function ConfigManager() {
                   label="ADB 路径"
                   value={configData.adb_path}
                   onChange={(value: string) => {
-                    updateConnectionConfig(current => ({ ...current, adb_path: value }))
+                    updateConnectionConfig({ adb_path: value })
                   }}
                   hint="ADB 可执行文件的完整路径"
                 />
@@ -779,7 +723,7 @@ export default function ConfigManager() {
                   label="连接地址"
                   value={configData.address}
                   onChange={(value: string) => {
-                    updateConnectionConfig(current => ({ ...current, address: value }))
+                    updateConnectionConfig({ address: value })
                     setConnectionFeedback(null)
                   }}
                   hint="模拟器地址，例如 127.0.0.1:16384"
@@ -877,7 +821,7 @@ export default function ConfigManager() {
                   label="平台配置"
                   value={configData.config}
                   onChange={(value: string) => {
-                    updateConnectionConfig(current => ({ ...current, config: value }))
+                    updateConnectionConfig({ config: value })
                   }}
                   options={[
                     { value: 'CompatMac', label: 'CompatMac (macOS)' },
@@ -895,7 +839,7 @@ export default function ConfigManager() {
                     label="启用自动重连"
                     checked={configData.auto_reconnect !== false}
                     onChange={(checked: boolean) => {
-                      updateConnectionConfig(current => ({ ...current, auto_reconnect: checked }))
+                      updateConnectionConfig({ auto_reconnect: checked })
                     }}
                   />
                 </div>
