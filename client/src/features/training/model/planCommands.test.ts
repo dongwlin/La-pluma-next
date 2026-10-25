@@ -441,6 +441,27 @@ describe('plan application', () => {
     expect(harness.owner.getState().error).toBe('养成队列已变化，请重新生成计划后应用')
   })
 
+  it('keeps a schedule partial warning until the plan is applied again', async () => {
+    await generatePreview()
+    harness.applyPlan.mockResolvedValueOnce({
+      success: true,
+      data: {
+        stageCount: 1,
+        flowName: '自动任务',
+        flowSync: flowSync('synced'),
+        scheduleSync: { attempted: true, success: false, message: '定时任务设置失败' },
+      },
+    })
+
+    await harness.owner.apply(harness.context)
+    expect(harness.owner.getState().warning).toContain(TRAINING_PLAN_PARTIAL_SCHEDULE_MESSAGE)
+
+    harness.enqueueRefetch(snapshot('queue-1'))
+    await harness.owner.reload(harness.context)
+    // 一次成功的队列读取不能清除仍需重新应用才能修复的定时失败。
+    expect(harness.owner.getState().warning).toContain(TRAINING_PLAN_PARTIAL_SCHEDULE_MESSAGE)
+  })
+
   it('reports a partial apply when the registered schedule could not be refreshed', async () => {
     await generatePreview()
     harness.applyPlan.mockResolvedValueOnce({

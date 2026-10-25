@@ -557,10 +557,13 @@ export class TrainingPlanOwner {
     }
   }
 
-  /** 显式“重新加载”与外部失效使用；成功后清除部分成功提示。 */
+  /**
+   * 显式“重新加载”与外部失效使用。成功后只清除“读取队列失败”这一类提示；
+   * 定时注册失败或混合提示需要重新应用计划才能修复，不能被一次成功读取掩盖。
+   */
   async reload(context: TrainingPlanQueueContext): Promise<TrainingQueueSnapshot | null> {
     const snapshot = await this.refreshQueue(context)
-    if (snapshot && this.state.warning) {
+    if (snapshot && this.state.warning === TRAINING_PLAN_PARTIAL_REFRESH_MESSAGE) {
       this.state = { ...this.state, warning: null }
       this.notify()
     }
