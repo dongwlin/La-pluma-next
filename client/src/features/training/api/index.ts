@@ -12,7 +12,12 @@ import {
   readApiResponse,
   type ApiResponse,
 } from '@/shared/api'
-import type { TrainingPlan, TrainingSettings } from '../types'
+import type {
+  TrainingPlan,
+  TrainingQueueMutationData,
+  TrainingQueueSnapshot,
+  TrainingSettings,
+} from '../types'
 
 /**
  * 干员筛选条件
@@ -45,8 +50,7 @@ interface TrainingQueueData {
 
 /**
  * 养成计划应用数据
- */
-interface ApplyTrainingPlanData {
+ */interface ApplyTrainingPlanData {
   plan: TrainingPlan
   settings?: TrainingSettings
   taskType?: 'combat'
@@ -82,7 +86,9 @@ export async function getOperatorList(
 /**
  * 获取养成队列
  */
-export async function getTrainingQueue(signal?: AbortSignal): Promise<ApiResponse> {
+export async function getTrainingQueue(
+  signal?: AbortSignal,
+): Promise<ApiResponse<TrainingQueueSnapshot>> {
   return readApiResponse(`${API_BASE_URL}/agent/training/queue`, {
     signal,
     validate: isTrainingQueuePayload,
@@ -93,7 +99,9 @@ export async function getTrainingQueue(signal?: AbortSignal): Promise<ApiRespons
 /**
  * 添加干员到养成队列
  */
-export async function addToTrainingQueue(data: TrainingQueueData): Promise<ApiResponse> {
+export async function addToTrainingQueue(
+  data: TrainingQueueData,
+): Promise<ApiResponse<TrainingQueueMutationData>> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -105,7 +113,9 @@ export async function addToTrainingQueue(data: TrainingQueueData): Promise<ApiRe
 /**
  * 从养成队列中移除干员
  */
-export async function removeFromTrainingQueue(operatorId: string): Promise<ApiResponse> {
+export async function removeFromTrainingQueue(
+  operatorId: string,
+): Promise<ApiResponse<TrainingQueueMutationData>> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue/${operatorId}`, {
     method: 'DELETE'
   })
@@ -115,7 +125,9 @@ export async function removeFromTrainingQueue(operatorId: string): Promise<ApiRe
 /**
  * 更新养成队列顺序
  */
-export async function updateTrainingQueueOrder(operatorIds: string[]): Promise<ApiResponse> {
+export async function updateTrainingQueueOrder(
+  operatorIds: string[],
+): Promise<ApiResponse<TrainingQueueMutationData>> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/training/queue/order`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

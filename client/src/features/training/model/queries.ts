@@ -1,13 +1,14 @@
 /**
- * 养成候选列表与状态计数 Query 定义
+ * 养成队列、候选列表与状态计数 Query 定义
  *
- * 两个资源都由本域持有，页面只读取 query 结果，不再保存请求 id、loading
- * 或错误状态。共享干员目录与持有干员仍由 `game-data` 提供端点与类型：
+ * 三个资源都由本域持有，页面只读取 query 结果，不再保存请求 id、loading
+ * 或错误状态。队列写入由 `queueCommands` 领域命令在写成功后把权威快照写入
+ * 同一 `queue` key；共享干员目录与持有干员仍由 `game-data` 提供端点与类型：
  * 候选 `all` 的旧兼容补齐与计数回退在查询内部读取它们，不建立第二份
  * Query key 或可写资源。
  *
  * 失败语义保持迁移前的差异：
- * - 候选列表失败成为 query error，页面清空列表并展示可重试错误；
+ * - 队列与候选列表失败成为 query error，页面清空列表并展示可重试错误；
  * - 计数失败不展示错误，Query 保留上一次成功数据（同 key 重新读取失败时）。
  */
 
@@ -19,8 +20,12 @@ import {
   type OperBoxData,
   type OperatorDetailed,
 } from '@/features/game-data'
-import { getOperatorList } from '../api'
-import type { TrainingOperator, TrainingStatusCounts } from '../types'
+import { getOperatorList, getTrainingQueue } from '../api'
+import type {
+  TrainingOperator,
+  TrainingQueueSnapshot,
+  TrainingStatusCounts,
+} from '../types'
 import {
   buildAllCandidateRows,
   extractOperatorRows,
@@ -33,6 +38,19 @@ export interface TrainingStatusCountsFilters {
   rarity?: number | null
   needsElite2?: boolean
 }
+
+/**
+ * 养成队列的唯一读取入口。
+ *
+ * 页面与 Dashboard 不再各自保存队列副本；写成功后由领域命令把权威快照写入
+ * 同一 key。失败转换为 Query 错误，取消保持 `AbortError`。
+ */
+export const trainingQueueQueryOptions = () => queryOptions({
+  queryKey: trainingKeys.resource('queue'),
+  queryFn: async ({ signal }): Promise<TrainingQueueSnapshot> => (
+    unwrapApiResponse<TrainingQueueSnapshot>(await getTrainingQueue(signal))
+  ),
+})
 
 const toOperatorListFilters = (filters: TrainingCandidateFilters) => ({
   status: filters.status,

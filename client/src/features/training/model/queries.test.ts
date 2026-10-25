@@ -4,17 +4,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { keepPreviousData } from '@tanstack/react-query'
 import { ApiRequestError } from '@/shared/api'
 import { createQueryClient } from '@/shared/query'
-import { trainingCandidatesQueryOptions, trainingStatusCountsQueryOptions } from './queries'
+import { trainingCandidatesQueryOptions, trainingQueueQueryOptions, trainingStatusCountsQueryOptions } from './queries'
 import { TRAINING_DOMAIN, trainingKeys } from './queryKeys'
 
 const apiMocks = vi.hoisted(() => ({
   getOperatorList: vi.fn(),
+  getTrainingQueue: vi.fn(),
   getAllOperators: vi.fn(),
   getOperBoxData: vi.fn(),
 }))
 
 vi.mock('../api', () => ({
   getOperatorList: apiMocks.getOperatorList,
+  getTrainingQueue: apiMocks.getTrainingQueue,
 }))
 
 vi.mock('@/features/game-data', () => ({
@@ -29,6 +31,53 @@ const operatorRow = (id: string, rarity = 6) => ({
   profession: 'SNIPER',
   currentElite: 0,
   targetElite: 2,
+})
+
+describe('training queue query options', () => {
+  beforeEach(() => {
+    apiMocks.getTrainingQueue.mockReset()
+  })
+
+  it('uses the reserved queue resource identity inside the training domain', () => {
+    expect(trainingQueueQueryOptions().queryKey).toEqual(trainingKeys.resource('queue'))
+    expect(trainingQueueQueryOptions().queryKey).toEqual(['training', 'queue'])
+  })
+
+  it('reads the queue snapshot with the query signal and keeps its metadata', async () => {
+    apiMocks.getTrainingQueue.mockResolvedValue({
+      success: true,
+      data: {
+        queue: [{ operatorId: 'char_1' }],
+        settings: { useMedicine: 1, useStone: 0, autoSwitch: true, notifyOnComplete: false },
+        revision: 'revision-1',
+        lastUpdated: '2026-10-26T00:00:00.000Z',
+        flowSync: { status: 'synced', flowName: '自动任务', taskName: 'Fight' },
+      },
+    })
+
+    const data = await createQueryClient().fetchQuery(trainingQueueQueryOptions())
+
+    expect(apiMocks.getTrainingQueue).toHaveBeenCalledWith(expect.any(AbortSignal))
+    expect(data).toMatchObject({
+      queue: [{ operatorId: 'char_1' }],
+      revision: 'revision-1',
+      flowSync: { status: 'synced' },
+    })
+  })
+
+  it('turns a failed queue envelope into a query error instead of an empty queue', async () => {
+    apiMocks.getTrainingQueue.mockResolvedValue({
+      success: false,
+      message: '养成队列服务不可用',
+    })
+
+    const error = await createQueryClient()
+      .fetchQuery(trainingQueueQueryOptions())
+      .catch(cause => cause)
+
+    expect(error).toBeInstanceOf(ApiRequestError)
+    expect(error).toMatchObject({ message: '养成队列服务不可用' })
+  })
 })
 
 describe('training candidate query options', () => {

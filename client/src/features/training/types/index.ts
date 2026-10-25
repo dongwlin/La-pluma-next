@@ -62,6 +62,38 @@ export interface TrainingSettings {
   notifyOnComplete: boolean
 }
 
+// 队列与任务流程的同步状态
+export interface TrainingFlowSync {
+  status: 'not_applied' | 'synced' | 'failed'
+  flowName: string
+  taskName?: string
+  error?: string
+  syncedRevision?: string
+}
+
+// 养成队列快照（GET /agent/training/queue 的权威结果）
+export interface TrainingQueueSnapshot {
+  queue: TrainingQueueItem[]
+  settings?: TrainingSettings
+  revision?: string
+  lastUpdated?: string
+  flowSync?: TrainingFlowSync
+  /**
+   * 仅在队列写入成功、但写后刷新失败时由领域命令写入。
+   * 下一次权威读取会返回不带该字段的快照，从而清除不确定状态。
+   */
+  uncertain?: string
+}
+
+// 队列写入接口返回的增量信息
+export interface TrainingQueueMutationData {
+  queueUpdated?: boolean
+  queueRevision?: string
+  flowSync?: TrainingFlowSync
+  flowName?: string
+  taskName?: string
+}
+
 // 训练计划
 export interface TrainingPlan {
   queueRevision?: string

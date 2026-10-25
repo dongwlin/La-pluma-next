@@ -15,9 +15,14 @@ export {
 export { TRAINING_DOMAIN, trainingKeys } from './model/queryKeys'
 export {
   trainingCandidatesQueryOptions,
+  trainingQueueQueryOptions,
   trainingStatusCountsQueryOptions,
 } from './model/queries'
 export type { TrainingResource } from './model/queryKeys'
 export type { TrainingCandidateFilters } from './model/candidates'
 export type { TrainingStatusCountsFilters } from './model/queries'
-export type { TrainingStatusCounts } from './types'
+export type {
+  TrainingFlowSync,
+  TrainingQueueSnapshot,
+  TrainingStatusCounts,
+} from './types'
