@@ -1,9 +1,10 @@
 import { MotionConfig } from 'framer-motion'
 import { useEffect, type ReactNode } from 'react'
 import { useUIStore } from '@/shared/stores'
+import { QueryProvider } from './QueryProvider'
 
 /**
- * 全局 Provider 与副作用：主题 dark class、全局动效偏好
+ * 全局 Provider 与副作用：应用级 Query 缓存、主题 dark class、全局动效偏好
  */
 export function AppProviders({ children }: { children: ReactNode }) {
   const theme = useUIStore(state => state.theme)
@@ -15,8 +16,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, [isDark])
 
   return (
-    <MotionConfig reducedMotion="user">
-      {children}
-    </MotionConfig>
+    <QueryProvider>
+      <MotionConfig reducedMotion="user">
+        {children}
+      </MotionConfig>
+    </QueryProvider>
   )
 }
