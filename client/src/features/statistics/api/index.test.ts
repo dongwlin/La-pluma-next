@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDropStatistics, getOpenTodayStages, getTodayDrops } from './index'
+import {
+  getDropStatistics,
+  getOpenTodayStages,
+  getTodayDrops,
+  parseDepotData,
+  parseOperBoxData,
+} from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -94,6 +100,25 @@ describe('statistics resource reads', () => {
 
     expect(result.success).toBe(true)
     expect(result.data).toEqual({ weekday: 1, open: [{ stage: 'CE-6' }], closed: [] })
+  })
+
+  it('forwards the abort signal to recognition parsing commands without an extra body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({
+      success: true,
+      data: { itemCount: 1, items: [] },
+    }))
+    const controller = new AbortController()
+
+    await parseDepotData(controller.signal)
+    await parseOperBoxData(controller.signal)
+
+    expect(fetchCall(0).input).toBe('http://localhost:3000/api/agent/actions/depot-recognition')
+    expect(fetchCall(0).init.signal).toBe(controller.signal)
+    expect(fetchCall(0).init.method).toBe('POST')
+    expect(fetchCall(0).init.body).toBeUndefined()
+    expect(fetchCall(1).input).toBe('http://localhost:3000/api/agent/actions/operbox-recognition')
+    expect(fetchCall(1).init.signal).toBe(controller.signal)
+    expect(fetchCall(1).init.method).toBe('POST')
   })
 
   it('forwards the abort signal for open stage reads without issuing a mutation', async () => {

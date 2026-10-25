@@ -14,10 +14,14 @@ import {
 
 /**
  * 解析并保存仓库数据
+ *
+ * 解析端点读取 MAA 已写入的日志，不是设备命令；调用方可以在识别完成后轮询，
+ * 直到返回可用快照。`signal` 只放弃本次本地等待，不撤销已完成的服务端解析。
  */
-export async function parseDepotData(): Promise<ApiResponse> {
+export async function parseDepotData(signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/depot-recognition`, {
     method: 'POST',
+    signal,
   })
   return parseJsonResponse(response)
 }
@@ -25,9 +29,10 @@ export async function parseDepotData(): Promise<ApiResponse> {
 /**
  * 解析并保存干员数据
  */
-export async function parseOperBoxData(): Promise<ApiResponse> {
+export async function parseOperBoxData(signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/operbox-recognition`, {
     method: 'POST',
+    signal,
   })
   return parseJsonResponse(response)
 }

@@ -167,10 +167,14 @@ export async function applyTrainingPlan(data: ApplyTrainingPlanData): Promise<Ap
 
 /**
  * 获取干员材料数据
+ *
+ * 这是刷新材料缓存的脚本入口，不占设备执行租约。`signal` 只结束本地等待，
+ * 服务端可能已经完成脚本刷新；因此超时后不能把它当作确定失败。
  */
-export async function fetchOperatorMaterials(): Promise<ApiResponse> {
+export async function fetchOperatorMaterials(signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/fetch-training-materials`, {
-    method: 'POST'
+    method: 'POST',
+    signal,
   })
   return parseJsonResponse(response)
 }

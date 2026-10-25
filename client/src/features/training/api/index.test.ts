@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getOperatorList, getTrainingQueue } from './index'
+import { fetchOperatorMaterials, getOperatorList, getTrainingQueue } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -62,6 +62,21 @@ describe('training resource reads', () => {
       kind: 'contract',
       message: '养成队列数据格式不正确',
     })
+  })
+
+  it('forwards the abort signal to the materials refresh script command', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { operatorCount: 12, materialCount: 4 },
+    }))
+    const controller = new AbortController()
+
+    const result = await fetchOperatorMaterials(controller.signal)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/actions/fetch-training-materials')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(fetchCall().init.signal).toBe(controller.signal)
+    expect(result.success).toBe(true)
   })
 
   it('keeps a successful queue with revision and flow sync intact', async () => {
