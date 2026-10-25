@@ -182,6 +182,8 @@ describe('RealtimeLogStream', () => {
 
     stream.setDocumentVisible(false)
     stream.setDocumentVisible(true)
+    stream.stop()
+    stream.start()
     expect(stream.getState().paused).toBe(true)
     expect(read).toHaveBeenCalledTimes(1)
 
