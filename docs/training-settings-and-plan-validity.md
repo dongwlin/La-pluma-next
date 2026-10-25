@@ -125,8 +125,8 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 失效订阅忽略设置所有者自己的 `training-plan` 发布（`detail.source = 'training-settings-owner'`）；外部 `training-plan` 发布仍作废旧计划。
 - 队列命令同步 `flowSync` 后由所有者更新横幅；synced 时队列命令的失效发布额外包含
   `automation-config` / `automation-schedule`，不再派发 `training-plan-applied` window 事件。
-- 部分成功（服务端 schedule 注册失败或应用后重读失败）使用页内 warning 与“重新加载”入口；
-  失败不自动重试写请求。
+- 部分成功（服务端 schedule 注册失败或应用后重读失败）使用页内 warning：读取失败可用“重新加载”，
+  定时注册失败保留计划并可直接重试应用；失败不自动重试写请求。
 
 ## 6. 兼容与回滚
 
