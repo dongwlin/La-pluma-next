@@ -125,11 +125,12 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | --- | --- | --- |
 | 配置读取/草稿/保存 | GET `/agent/config/maa/default` 由 `settings/maa-config` Query 读取（signal、载荷校验）；`ConnectionConfigOwner` 持有草稿/revision/dirty，POST maa/default wire `{connection: snapshot}`；读取令牌使初始加载与 refresh 不覆盖编辑或未保存草稿，旧保存不确认新草稿；重置只改草稿 | settings connection Query + 草稿所有者（FPR-024） |
 | 自动更新 | POST user config auto-update 后 POST `/agent/actions/configure-auto-update`，两步成功才清 dirty；Touched/revision 防迟到加载/确认；`DEFAULT_AUTO_UPDATE_CONFIG`/归一化/时间校验已移入 `model/configNormalization.ts` | settings 完整提交适配器（FPR-026） |
-| 设备与连接 | GET `/agent/actions/discover-devices?adbPath=…`；POST `/agent/actions/test-connection`；页面未传 API 支持的 signal；POST `/agent/actions/open-config-directory` | 设备发现/连接测试用例（FPR-025） |
-| 版本/更新 | POST `/agent/actions/update-core`（普通更新不传 version，切渠道传 stable/beta）、`/agent/actions/update-cli`、`/agent/actions/hot-update-resources`；共用 updateInFlightRef 互斥；成功仅 reloadVersion | 更新用例与显式资源失效；版本/目录归资源域（FPR-025/026） |
-| 存储与 UI | `laPlumaConfigSection` 读写与 window `la-pluma-config-section` 订阅由 `model/configSection.ts` + `useConfigSection` 拥有并在 Effect cleanup 注销；`autoUpdateConfig` 成功加载/每次编辑/保存后写，服务端加载失败时读作 fallback；section、设备列表/选中、busy/error | section 归设置 section owner（FPR-024）；自动更新本地 fallback 归配置适配器（FPR-026） |
+| 设备与连接 | GET `/agent/actions/discover-devices?adbPath=…` 与 POST `/agent/actions/test-connection` 由 `model/deviceConnection.ts` 的模块级 `DeviceConnectionOwner` 持有：两条链独立 loading/error/取消，signal 到 fetch，Activity cleanup abort；选择设备以最新草稿 revision 回填 `adb_path`/`address` 后测试，响应不写草稿；POST `/agent/actions/open-config-directory` 由 `useSettingsConfigDirectory().open()` 执行 | 设备发现/连接测试所有者（FPR-025） |
+| 版本/更新 | 版本读取由 `settings/version` Query 持有（signal、归一化）；POST `/agent/actions/update-core`（普通更新不传 version，切渠道传 stable/beta）、`/agent/actions/update-cli`、`/agent/actions/hot-update-resources` 仍在页面，共用 updateInFlightRef 互斥；成功仅重取同一版本 Query | 版本归资源域（FPR-025）；更新用例与显式资源失效（FPR-026） |
+| 配置目录 | GET `/agent/config-directory` 由 `settings/config-directory` Query 持有（接受 `{path}` 与旧字符串）；失败重试走同一 key，后台刷新失败保留最近成功路径；两个“打开目录”入口调用同一命令 | 配置目录 Query（FPR-025） |
+| 存储与 UI | `laPlumaConfigSection` 读写与 window `la-pluma-config-section` 订阅由 `model/configSection.ts` + `useConfigSection` 拥有并在 Effect cleanup 注销；`autoUpdateConfig` 成功加载/每次编辑/保存后写，服务端加载失败时读作 fallback；section 与自动更新草稿仍在页面，设备列表/测试反馈来自 owner | section 归设置 section owner（FPR-024）；设备/版本/目录归 FPR-025；自动更新本地 fallback 归配置适配器（FPR-026） |
 
-无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/cli/资源更新尚不刷新目录、图标、候选/计数、计划及总览。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。
+无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/cli/资源更新尚不刷新目录、图标、候选/计数、计划及总览（版本由本任务改为重取 Query）。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。设备发现/连接测试在 Activity 隐藏时取消本地等待，已完成结果保留；版本与配置目录 Query 随观察者注销/恢复。
 
 ### Logs — `features/logs/pages/LogViewer.tsx`
 
@@ -166,7 +167,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
 | Training | 保留 filters/设置/计划/撤销 toast；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；未完成 closure 不会自动取消 |
-| Settings | didInitializeRef 阻止重复初始化；重建 section 监听；在途操作继续 | 无专门处理 | section/autoUpdate fallback 可恢复，其余重新初始化 |
+| Settings | 重建 section 监听；版本/目录 Query 观察者注销；abort 在途设备发现/连接测试并保留已完成结果；autoUpdate 初始化标记阻止重复加载 | 无专门处理 | section/autoUpdate fallback 可恢复；设备结果保留（未完成已取消），版本/目录按新鲜度重取 |
 | Logs | 停 interval/监听并 abort realtime；show 重建，刷新文件列表及实时（历史模式不重读当前文件） | interval 保留但 guard 不发请求，abort 实时；可见立即取数 | 缓冲/选择/过滤全部重置 |
 
 ## 性能对照入口与待验收边界

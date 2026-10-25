@@ -115,9 +115,12 @@ const depot = unwrapApiResponse(result)
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
 | `getVersion(signal?)` | `GET /agent/version` | `cli`/`core`/`raw` 为字符串 |
-| `getConfigDir(signal?)` | `GET /agent/config-directory` | 非空字符串或含非空 `path` 的对象 |
+| `getConfigDir(signal?)` | `GET /agent/config-directory` | 非空字符串或含非空 `path` 的对象；返回类型 `string \| { path: string }` |
 | `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | 已知字段出现时为正确类型（`adb_path`/`address`/`config` 字符串，`auto_reconnect` 布尔）；缺失字段允许；保留未知字段 |
 | `discoverDevices(adbPath, signal?)` | `GET /agent/actions/discover-devices` | 对象（保留内层 `success=false` 的设备发现结果） |
+| `testConnection(adbPath?, address?, signal?)` | `POST /agent/actions/test-connection` | 命令；由调用方归一 `success`/`message`，不进入 Query |
+
+设备发现与连接测试虽然带 `signal`，都是有副作用的显式命令：FPR-025 起由设置域 `DeviceConnectionOwner` 持有，不建立 Query，也不自动重试。打开配置目录是 POST 命令，不接收 `signal`，不进入 Query。版本与配置目录读取由 `settings/version`、`settings/config-directory` Query 消费。
 
 ### Logs（`features/logs/api/index.ts`）
 
@@ -180,6 +183,8 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
 | `client/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |
 | `client/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝、connection 已知字段校验、缺失字段与未知字段保留 |
+| `client/src/features/settings/model/systemResources.test.ts` | `settings/version`/`settings/config-directory` 的 signal、版本与目录归一、空白路径 contract 失败 |
+| `client/src/features/settings/model/deviceConnection.test.ts` | 发现/连接测试的请求信号、取消与迟到响应、独立 loading 与失败映射 |
 | `client/src/features/logs/api/index.test.ts` | 实时轮询 signal、文件列表与内容 signal、坏内容、取消保持 `AbortError` |
 | `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
 | `client/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
