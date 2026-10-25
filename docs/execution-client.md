@@ -109,7 +109,14 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 - `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。
 - Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。
 - 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染运行/停止按钮。停止走 `stopTrackedRun()`，确认期间由快照推进；停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面不再写 `statusStore.isActive`。
-- 作业、自动化与 Dashboard 仍走旧路径（`tasks/status` 轮询、旧 `stopTask`、页面内作业集编排），本阶段不删除这些写入者。页面迁移分别由作业、自动化执行迁移任务接入控制器的提交/停止/订阅，再由运行状态单源任务统一全局展示。
+- 作业页已迁移到控制器（FPR-009），`scope: 'combat'`：
+  - 单作业走 `run_task`（`waitForCompletion=false`），幂等键由控制器 intent 生成；作业集走 `run_copilot_set`，只有服务端持有的集合 run 一种身份。
+  - 三种页面模式映射为两种服务端模式：`顺序执行` 与 `连续执行` 都提交 `mode=continuous`；`手动逐关` 提交 `mode=manual`，首项后 run 转 `waiting`，页面用 `progress.nextEntry` 渲染“开始下一关”，点击调用 `POST /api/agent/actions/continue-copilot-set`（不新建 run、不使用新幂等键）。
+  - 逐项状态与失败汇总只来自 `progress.taskResults`（活动）与 `result.summary`（终态），页面不维护第二份逐项结果；停止后未开始项保持 `pending`，页面不会再提交下一关。
+  - 继续下一关返回可重试的 409 `MAA_EXECUTION_BUSY` 时保持等待态并允许重试；`AGENT_COPILOT_SET_SESSION_LOST` 提示重新提交；拒绝与传输失败之后都先重新读取快照，不凭页面状态推断结果。
+  - 作业集终态后页面按服务端计划进度重建“待执行”选择（成功项移出、失败项保留）；计划读取失败只影响展示，不据此宣告完成。`失败后停止` 策略在 manual 等待态遇到失败项时结束集合 run，不再提供“开始下一关”。
+  - 作业页同样不再写 `statusStore.isActive`；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复运行展示且不重提作业集。刷新后需要重新预览对应作业集才能恢复列表与“开始下一关”入口，`waiting` run 本身不会被重新提交。
+- 自动化与 Dashboard 仍走旧路径（`tasks/status` 轮询、旧 `stopTask`、页面内流程编排），本阶段不删除这些写入者。页面迁移分别由自动化执行迁移任务接入控制器的提交/停止/订阅，再由运行状态单源任务统一全局展示。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
 - 旧响应字段、旧停止入口与旧同步提交保持可用；回退前端控制器不需要删除服务端 Run 能力，也不会让已持久化的终态记录失效。
 
@@ -120,10 +127,12 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；旧 `tasks/status`、`stopTask` 仍可用 |
 | `controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；调用方 `scope` 随身份提交/持久化/恢复，未知身份时清除；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
 | `roguelike/pages/RoguelikeTasks.test.tsx` | 单次幂等提交保留 `run_task`/`taskType`/命令参数；重复点击不并发提交；按 `runId` 停止且确认中重复点击只发一次；Activity 隐藏/恢复不遗留锁定按钮；停止确认超时与拒绝后可重试；页面卸载不发送停止且继续观察；刷新按身份恢复且不重提交；其它 `scope` 的 run 不显示为本页执行；终态成功/失败消息 |
+| `combat/model/copilotSetRun.test.ts` | 活动 `progress` 与终态 `summary` 的投影；突袭/普通条目按作业折叠；等待态 `nextEntry`；缺失进度不伪造完成；终态通知文案 |
+| `combat/pages/CombatTasks.test.tsx` | 单作业 `run_task` 幂等提交（不等待完成）；作业集三模式映射（cli/app→`continuous`、`manual`）；提交在途重复点击只发一次；等待态“开始下一关”与 409 占用重试；失败汇总与失败数；按 `runId` 停止后不再提交；停止确认超时重试；Activity 隐藏/恢复不停止、不重提；断线保留运行态并在重连后恢复观察；刷新按身份恢复；其它 `scope`/其它作业集的 run 不显示为本页执行；未知身份不冒充完成 |
 
 ## 8. 尚未覆盖
 
-- 作业与自动化页面的提交仍不传幂等键，旧断点仍可能重提；由作业执行迁移、自动化执行迁移与旧断点转换任务处理。
-- 409 占用重试、manual 作业集“下一关”与作业页的停止确认仍属于对应域迁移任务。
-- 全局运行展示仍由页面与连接监测器争写 `statusStore.isActive`；肉鸽页已停止写入，其余写入者和统一投影由运行状态单源任务处理。
+- 自动化页面的提交仍不传幂等键，旧断点仍可能重提；由自动化执行迁移与旧断点转换任务处理。
+- 作业页刷新后不会自动恢复作业集预览：需要用户重新预览对应作业集才能看到列表与“开始下一关”；`waiting` run 本身仍可观察且不会被重提。自动恢复预览可与作业搜索结果查询一并由资源任务处理。
+- 全局运行展示仍由页面与连接监测器争写 `statusStore.isActive`；肉鸽与作业页已停止写入，其余写入者和统一投影由运行状态单源任务处理。
 - 控制器轮询 `runs/current` 的读取成本（每次读取租约文件）由性能验证任务复核。
