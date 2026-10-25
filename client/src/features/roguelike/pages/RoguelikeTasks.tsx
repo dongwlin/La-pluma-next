@@ -1,37 +1,25 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Check, Play, Square } from 'lucide-react'
-import { getErrorMessage } from '@/shared/api'
 import Icons from '@/shared/ui/Icons'
 import { PageHeader, Input, Select, Button, SmoothPanel, Switch } from '@/shared/ui'
 import { FloatingStatusIndicator, useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { ScreenMonitor } from '@/features/device-mirror'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
+import { useUserConfig } from '@/features/user-config'
 import type {
   RoguelikeTask,
   RoguelikeAdvancedOption,
   RoguelikeTaskInputs,
   RoguelikeAdvancedParams
 } from '../types'
-import { loadUserConfig, saveUserConfig } from '@/features/user-config'
+import { roguelikeConfigAdapter } from '../model/roguelikeConfig'
 import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
 
 type RoguelikeMode = 'roguelike' | 'reclamation'
-type RoguelikeUserConfig = {
-  taskInputs: RoguelikeTaskInputs
-  advancedParams: RoguelikeAdvancedParams
-}
 
-const ROGUELIKE_CONFIG_SYNC_PENDING_KEY = 'roguelikeConfigSyncPending'
-let roguelikeConfigSyncSequence = 0
-let roguelikeConfigSyncQueue: Promise<void> = Promise.resolve()
-
-const createRoguelikeConfigSyncToken = () => `${Date.now()}-${++roguelikeConfigSyncSequence}`
-const enqueueRoguelikeConfigSync = <T,>(operation: () => Promise<T>) => {
-  const result = roguelikeConfigSyncQueue.then(operation, operation)
-  roguelikeConfigSyncQueue = result.then(() => undefined, () => undefined)
-  return result
-}
+const EMPTY_TASK_INPUTS: RoguelikeTaskInputs = {}
+const EMPTY_ADVANCED_PARAMS: RoguelikeAdvancedParams = {}
 
 const THEME_PRESETS: Record<RoguelikeMode, Array<{ value: string; label: string }>> = {
   roguelike: [
@@ -57,15 +45,17 @@ export default function RoguelikeTasks() {
     execute,
     stop,
   } = useRoguelikeExecution({ notify: setStatusMessage })
-  const [taskInputs, setTaskInputs] = useState<RoguelikeTaskInputs>({})
-  const [advancedParams, setAdvancedParams] = useState<RoguelikeAdvancedParams>({})
-  const [configLoaded, setConfigLoaded] = useState(false)
-  const [configSyncError, setConfigSyncError] = useState<string | null>(null)
-  const [isRetryingConfigSave, setIsRetryingConfigSave] = useState(false)
-  const configRevisionRef = useRef(0)
-  const skippedInitialConfigSaveRef = useRef(false)
-  const lastQueuedConfigFingerprintRef = useRef<string | null>(null)
-  const configHydratedRef = useRef(false)
+  const {
+    draft: configDraft,
+    syncState: configSyncState,
+    error: configSyncError,
+    update: updateConfig,
+    retry: retryConfigSave,
+  } = useUserConfig(roguelikeConfigAdapter)
+  // 协调器负责草稿、pending 与提交队列；页面只从草稿派生当前字段并渲染同步状态。
+  const taskInputs = configDraft?.taskInputs ?? EMPTY_TASK_INPUTS
+  const advancedParams = configDraft?.advancedParams ?? EMPTY_ADVANCED_PARAMS
+  const isRetryingConfigSave = configSyncState === 'saving'
   const [activeMode, setActiveMode] = useState<RoguelikeMode>('roguelike')
   const {
     containerRef: modeTabsRef,
@@ -74,158 +64,10 @@ export default function RoguelikeTasks() {
     handleTabKeyDown: handleModeKeyDown,
   } = useFluidTabIndicator(activeMode)
 
-  const syncConfig = useCallback((
-    config: RoguelikeUserConfig,
-    revision: number,
-    syncToken: string,
-    announceSuccess = false,
-  ) => enqueueRoguelikeConfigSync(async () => {
-    if (
-      revision !== configRevisionRef.current
-      || localStorage.getItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY) !== syncToken
-    ) return false
-
-    try {
-      const result = await saveUserConfig('roguelike-tasks', config)
-      if (!result.success) throw new Error(getErrorMessage(result))
-      if (
-        revision !== configRevisionRef.current
-        || localStorage.getItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY) !== syncToken
-      ) return false
-
-      localStorage.removeItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY)
-      setConfigSyncError(null)
-      if (announceSuccess) setStatusMessage('肉鸽配置已同步', 'success')
-      return true
-    } catch (error) {
-      if (
-        revision !== configRevisionRef.current
-        || localStorage.getItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY) !== syncToken
-      ) return false
-
-      const detail = error instanceof Error && error.message ? error.message : '暂时无法连接服务器'
-      setConfigSyncError(`配置已保存在此设备，但尚未同步到服务器：${detail}`)
-      return false
-    }
-  }), [setStatusMessage])
-
-  // 页面加载时从服务器或 localStorage 加载配置。
-  // 运行状态由应用级执行控制器按 Run 快照观察，页面不在挂载时恢复第二份执行状态。
-  useEffect(() => {
-    let cancelled = false
-
-    const cleanup = () => {
-      cancelled = true
-    }
-
-    if (configHydratedRef.current) return cleanup
-    
-    const loadLocalConfig = () => {
-      let restored = false
-      const restoreJson = <T,>(key: string, apply: (value: T) => void) => {
-        const stored = localStorage.getItem(key)
-        if (!stored) return
-        try {
-          apply(JSON.parse(stored) as T)
-          restored = true
-        } catch {
-          localStorage.removeItem(key)
-        }
-      }
-
-      restoreJson<RoguelikeTaskInputs>('roguelikeTaskInputs', setTaskInputs)
-      restoreJson<RoguelikeAdvancedParams>('roguelikeAdvancedParams', setAdvancedParams)
-      return restored
-    }
-
-    // A pending local draft is newer than the server copy by definition.
-    const hasPendingLocalDraft = localStorage.getItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY) !== null
-    if (hasPendingLocalDraft) {
-      if (loadLocalConfig()) {
-        configHydratedRef.current = true
-        setConfigSyncError('上次更改已保存在此设备，但尚未同步到服务器。')
-        setConfigLoaded(true)
-        return cleanup
-      }
-      localStorage.removeItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY)
-    }
-
-    // 加载保存的配置 - 优先从服务器加载
-    const loadConfig = async () => {
-      try {
-        const serverConfig = await loadUserConfig('roguelike-tasks')
-        if (cancelled) return
-        if (serverConfig.success && serverConfig.data) {
-          const { taskInputs: inputs, advancedParams: advanced } = serverConfig.data
-          if (inputs) {
-            setTaskInputs(inputs)
-            localStorage.setItem('roguelikeTaskInputs', JSON.stringify(inputs))
-          }
-          if (advanced) {
-            setAdvancedParams(advanced)
-            localStorage.setItem('roguelikeAdvancedParams', JSON.stringify(advanced))
-          }
-          return
-        }
-      } catch (error) {
-        if (cancelled) return
-        // 静默失败，从 localStorage 加载
-      }
-
-      if (!cancelled) loadLocalConfig()
-    }
-    
-    void loadConfig().finally(() => {
-      if (!cancelled) {
-        configHydratedRef.current = true
-        setConfigLoaded(true)
-      }
-    })
-
-    return cleanup
-  }, [])
-
-  // 自动保存配置
-  useEffect(() => {
-    if (!configLoaded) return
-
-    const config: RoguelikeUserConfig = { taskInputs, advancedParams }
-    const fingerprint = JSON.stringify(config)
-
-    if (!skippedInitialConfigSaveRef.current) {
-      skippedInitialConfigSaveRef.current = true
-      lastQueuedConfigFingerprintRef.current = fingerprint
-      return
-    }
-
-    if (lastQueuedConfigFingerprintRef.current === fingerprint) return
-
-    const revision = configRevisionRef.current + 1
-    configRevisionRef.current = revision
-    const syncToken = createRoguelikeConfigSyncToken()
-
-    localStorage.setItem('roguelikeTaskInputs', JSON.stringify(taskInputs))
-    localStorage.setItem('roguelikeAdvancedParams', JSON.stringify(advancedParams))
-    localStorage.setItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY, syncToken)
-    const saveTimer = window.setTimeout(() => {
-      lastQueuedConfigFingerprintRef.current = fingerprint
-      void syncConfig(config, revision, syncToken)
-    }, 300)
-
-    return () => window.clearTimeout(saveTimer)
-  }, [advancedParams, configLoaded, syncConfig, taskInputs])
-
   const handleRetryConfigSave = async () => {
     if (isRetryingConfigSave) return
-    const revision = configRevisionRef.current
-    const syncToken = localStorage.getItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY) ?? createRoguelikeConfigSyncToken()
-    localStorage.setItem(ROGUELIKE_CONFIG_SYNC_PENDING_KEY, syncToken)
-    setIsRetryingConfigSave(true)
-    try {
-      await syncConfig({ taskInputs, advancedParams }, revision, syncToken, true)
-    } finally {
-      setIsRetryingConfigSave(false)
-    }
+    const saved = await retryConfigSave()
+    if (saved) setStatusMessage('肉鸽配置已同步', 'success')
   }
 
   const tasks: RoguelikeTask[] = [
@@ -322,16 +164,22 @@ export default function RoguelikeTasks() {
   }
 
   const handleInputChange = (taskId: string, value: string) => {
-    setTaskInputs({ ...taskInputs, [taskId]: value })
+    updateConfig({
+      taskInputs: { ...taskInputs, [taskId]: value },
+      advancedParams,
+    })
   }
 
   const handleAdvancedChange = (taskId: string, key: string, value: string | number | boolean) => {
-    setAdvancedParams({
-      ...advancedParams,
-      [taskId]: {
-        ...(advancedParams[taskId] || {}),
-        [key]: value
-      }
+    updateConfig({
+      taskInputs,
+      advancedParams: {
+        ...advancedParams,
+        [taskId]: {
+          ...(advancedParams[taskId] || {}),
+          [key]: value
+        }
+      },
     })
   }
 

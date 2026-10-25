@@ -10,6 +10,7 @@ import {
   type RunSnapshot,
   type StopRunResult,
 } from '@/features/task-execution'
+import { userConfigCoordinator } from '@/features/user-config'
 import RoguelikeTasks from './RoguelikeTasks'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -41,6 +42,9 @@ vi.mock('framer-motion', async () => {
 })
 
 vi.mock('@/shared/api', () => ({
+  API_BASE_URL: '/api',
+  fetchWithAuth: vi.fn(),
+  parseJsonResponse: vi.fn(),
   getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
 }))
 
@@ -56,10 +60,14 @@ vi.mock('@/features/task-execution', async () => {
   }
 })
 
-vi.mock('@/features/user-config', () => ({
-  loadUserConfig: mocks.loadUserConfig,
-  saveUserConfig: mocks.saveUserConfig,
-}))
+vi.mock('@/features/user-config', async () => {
+  const actual = await vi.importActual<typeof import('@/features/user-config')>('@/features/user-config')
+  return {
+    ...actual,
+    loadUserConfig: mocks.loadUserConfig,
+    saveUserConfig: mocks.saveUserConfig,
+  }
+})
 
 vi.mock('@/features/runtime-status', () => ({
   useStatusStore: () => ({ setMessage: mocks.setMessage }),
@@ -230,6 +238,8 @@ describe('RoguelikeTasks execution', () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }))
+    // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
+    userConfigCoordinator.dispose()
     localStorage.clear()
     mocks.executePredefinedTask.mockReset()
     mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
@@ -522,6 +532,8 @@ describe('RoguelikeTasks layout and config recovery', () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }))
+    // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
+    userConfigCoordinator.dispose()
     localStorage.clear()
     mocks.executePredefinedTask.mockReset()
     mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
@@ -629,6 +641,43 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('肉鸽配置已同步', 'success')
   })
 
+  it('keeps a manual retry single-flight and announces success only after confirmation', async () => {
+    vi.useFakeTimers()
+    mocks.saveUserConfig.mockRejectedValueOnce(new Error('网络连接中断'))
+    await renderPage()
+
+    const themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(themeInput, 'Phantom')
+      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    await flush()
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接中断')
+    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
+    // 自动保存成功不弹成功提示；只有用户主动重试确认后才提示。
+    expect(mocks.setMessage).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
+
+    const retrySave = deferred<{ success: boolean }>()
+    mocks.saveUserConfig.mockReturnValueOnce(retrySave.promise)
+    await click(buttonByText('重新同步')!)
+    expect(buttonByText('同步中')?.disabled).toBe(true)
+
+    // 重试请求在途时再次点击不会产生第二个提交。
+    await click(buttonByText('同步中')!)
+    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
+    expect(mocks.setMessage).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
+
+    await act(async () => retrySave.resolve({ success: true }))
+    await flush()
+
+    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(mocks.setMessage).toHaveBeenCalledWith('肉鸽配置已同步', 'success')
+  })
+
   it('serializes saves so the latest draft reaches the server last', async () => {
     vi.useFakeTimers()
     const olderSave = deferred<{ success: boolean }>()
@@ -661,6 +710,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     await act(async () => newerSave.resolve({ success: true }))
     await flush()
     expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
+    expect(mocks.setMessage).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
   })
 
   it('does not let an older save response clear a newer remounted draft', async () => {
@@ -723,9 +773,8 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Sami')
   })
 
-  // Defect reproduction: the domain adapter must reject a load that settles after
-  // an edit. The coordinator/domain migration owns converting this into a normal test.
-  it.fails('does not let a late server load overwrite an edit made before hydration', async () => {
+  it('does not let a late server load overwrite an edit made before hydration', async () => {
+    vi.useFakeTimers()
     const serverLoad = deferred<{ success: boolean; data: { taskInputs: { roguelike: string } } }>()
     mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
 
@@ -744,8 +793,18 @@ describe('RoguelikeTasks layout and config recovery', () => {
     }))
     await flush()
 
+    // 迟到响应被丢弃，编辑仍留在页面，并按自己的 revision 继续提交。
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value)
       .toBe('Phantom')
+
+    await act(async () => vi.advanceTimersByTimeAsync(300))
+    await flush()
+
+    expect(mocks.saveUserConfig).toHaveBeenCalledWith('roguelike-tasks', {
+      taskInputs: { roguelike: 'Phantom' },
+      advancedParams: {},
+    })
+    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
   })
 
   it('keeps the hydrated draft and skips config reload after Activity restore', async () => {
