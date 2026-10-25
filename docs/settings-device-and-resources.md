@@ -86,7 +86,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 ## 4. 页面接线与遗留清理
 
-`ConfigManager` 不再直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不再保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。页面只保留渲染与全局状态提示。
+`ConfigManager` 不再直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不再保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，页面只保留渲染与全局状态提示；自动更新与更新流程状态仍留在页面，见下。
 
 | 页面原职责 | 新归属 |
 | --- | --- |
