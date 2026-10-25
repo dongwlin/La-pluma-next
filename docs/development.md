@@ -69,6 +69,34 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 - **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor。`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
 - **浏览器下限**：Tailwind v4 依赖原生 cascade layers、`color-mix()`、OKLCH 与 `@property`，前端最低支持 **Safari 16.4+ / Chrome 111+ / Firefox 128+**。低于该下限的浏览器不再保证样式正确。
 
+## 测试治理
+
+### 断言只看用户能感知的输出
+
+前端测试锁的是**行为**，不是**实现**。允许断言的对象：
+
+- 可访问性契约：`role`、`aria-*`、`disabled`、`tabIndex`、label 的 `htmlFor` 关联
+- 用户可见文本与状态：文本内容、加载中/禁用/选中态的实际效果
+- 交互结果：回调入参、store 状态、`location.pathname`、请求入参
+- 渲染位置：portal 是否落在 `document.body` 且没有被塞回应用根（用 `closest('.la-pluma-app')` 断言）
+
+明确禁止：
+
+- **断言 CSS 类名**（`classList.contains('min-h-11')`、`toHaveClass('surface-soft')`）。Vitest 不做 CSS 处理，样式表根本不参与求值，这类断言只是在核对 JSX 里的字符串字面量：改类名就红，视觉零变化。点按区尺寸、断点显隐、材质层级、层级顺序由 `tests/visual/` 的像素基线守。唯一例外是 `<html>` 上的 `dark` 类——它是 Tailwind `@custom-variant dark` 的契约本体，不是样式细节。
+- **断言 DOM 形状**：子元素顺序、包裹层数量、`querySelectorAll(...).toHaveLength(n)`。等价重构（换包裹层、拆组件、调列表结构）都会误报，而它们不验证任何用户可感知的东西。
+- **正则 grep CSS 源文件**：`@keyframes` 是否还在、选择器有没有被应用根作用域包住，只有浏览器能判定。正确做法是给视觉基线补上对应状态，而不是在源码字符串上做断言。
+
+### 覆盖分工
+
+| 关注点 | 归属 | 手段 |
+| --- | --- | --- |
+| 纯逻辑（解析、格式化、store、URL 生成） | 单元测试 | 直接调函数 |
+| 竞态、轮询、生命周期、WebRTC 状态机 | jsdom 组件/钩子测试 | 假定时器 + 回调断言 |
+| 布局、断点、材质、遮罩层、视觉层级 | 视觉基线 | Playwright 像素比对 |
+| 弹层（Modal、筛选菜单、PWA 提示） | 视觉基线 | 打开状态单独截图 |
+
+新增样式约束时先问：这条规则能不能被视觉基线捕获？能就补基线，不能才考虑写测试——且只断言结果（元素实际位置、可见性），不复述选择器。
+
 ## 常用检查
 
 ```bash
