@@ -12,6 +12,7 @@
 | [执行身份与生命周期契约](execution-lifecycle.md) | Run 身份、唯一状态来源、accepted/运行/停止/终态、断线/占用/manual/刷新/旧断点边界与入口覆盖 | 执行链路、Agent 集成与前端控制器开发者 |
 | [前端执行客户端与控制器](execution-client.md) | 应用级控制器的公开面、幂等键/runId、快照观察、断线重连、停止与本地中止、页面迁移边界 | 执行控制器与前端执行迁移的开发者 |
 | [配置同步与资源一致性契约](config-sync-and-invalidation.md) | 三页配置提交差异、pending/迟到加载/跨 remount 次序、跨页失效关系与 Dashboard 完整快照规则 | 修改配置持久化、缓存失效或 Dashboard 快照的开发者 |
+| [配置持久化协调器](config-persistence.md) | 按 key 串行的协调模型、适配契约（编解码/迁移/完整提交）、薄 hooks、刷新与冲突边界、三域接入清单 | 迁移页面配置持久化或实现域适配器的开发者 |
 | [架构与技术栈](architecture.md) | 整体架构、前后端边界、技术栈和项目结构 | 需要理解前后端边界与代码组织的新开发者 |
 | [Agent API 使用指南](agent-api.md) | manifest/status/actions、推荐执行流程、幂等、持久化与鉴权 | 对接 `/api/agent` 的 Agent、脚本与集成开发者 |
 | [功能概览](features.md) | 控制台、自动化流程、定时任务、作业与肉鸽、数据养成、Telegram 通知 | 新用户与需要确认能力范围的用户 |

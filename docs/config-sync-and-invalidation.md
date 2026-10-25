@@ -4,6 +4,8 @@
 
 本记录描述 `a88628e` 上配置保存、跨页失效与 Dashboard 快照的实际行为，以及后续迁移必须保持或建立的不变量。它是本轮前端页面重构的表征基线：生产逻辑尚未迁移，文中标注为“缺口”的行为由后续配置持久化、资源失效与领域用例任务承接，不能把当前实现当成目标契约。
 
+配置持久化的目标契约（按 key 串行的协调模型、适配器编解码/迁移/完整提交条件与薄 hooks）见[配置持久化协调器](config-persistence.md)。协调器与脱离 React 的竞态回归已交付为独立基础设施；三个页面尚未接入，因此本文件第 1–2 节描述的行为仍是当前实现。
+
 验证入口见[回归证据](#6-回归证据)与[已知缺口](#5-已知缺口与归属)。文中路径均相对 `client/src`。
 
 ## 1. 三页配置同步对照
@@ -104,10 +106,10 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 
 | # | 缺口 | 可复现证据 | 后续归属 |
 | --- | --- | --- | --- |
-| 1 | Combat/Roguelike 的迟到服务端加载覆盖加载期间的编辑 | 两页 `it.fails` 用例 | 配置持久化协调器 + 两个域适配器 |
-| 2 | Automation 只有 pending、没有本地草稿时永远不读服务端 | `AutomationTasks.config.test.tsx` 的 `it.fails` 用例 | automation 配置适配器 + 协调器 |
-| 3 | Automation 提交队列是实例级，跨 remount 的旧请求可能后到覆盖服务端文件 | 代码结构；跨 mount 令牌测试只能证明旧响应不会清 pending | 配置持久化协调器 |
-| 4 | Automation 配置已保存但 schedule 失败时只有全局消息，没有页内重试；pending 只能靠下一次编辑解除 | 完整成功条件测试 | automation 配置适配器 |
+| 1 | Combat/Roguelike 的迟到服务端加载覆盖加载期间的编辑 | 两页 `it.fails` 用例 | 配置持久化协调器 + 两个域适配器（[目标契约](config-persistence.md)） |
+| 2 | Automation 只有 pending、没有本地草稿时永远不读服务端 | `AutomationTasks.config.test.tsx` 的 `it.fails` 用例 | automation 配置适配器 + 协调器（[目标契约](config-persistence.md)） |
+| 3 | Automation 提交队列是实例级，跨 remount 的旧请求可能后到覆盖服务端文件 | 代码结构；跨 mount 令牌测试只能证明旧响应不会清 pending | 配置持久化协调器（通道按 key 复用队列，[目标契约](config-persistence.md)） |
+| 4 | Automation 配置已保存但 schedule 失败时只有全局消息，没有页内重试；pending 只能靠下一次编辑解除 | 完整成功条件测试 | automation 配置适配器（完整提交条件 + `retry()`，[目标契约](config-persistence.md)） |
 | 5 | 养成设置保存成功后不使已生成计划失效 | `OperatorTraining.test.tsx` 的 `it.fails` 用例 | 训练设置/计划有效期 |
 | 6 | 仓库/干员识别完成不发布跨页失效；训练候选/计数/材料与 Dashboard 不会自动刷新 | `DataStatistics.layout.test.tsx` 的识别完成用例（仅本页 + 读 queue） | 资源失效与统计识别联动 |
 | 7 | 应用计划只触发 automation 重载；Dashboard 不立即失效，事件也不携带影响范围 | training 事件用例 + automation 重载用例 | 计划应用联动 + Dashboard 快照协调 |

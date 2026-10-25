@@ -72,7 +72,7 @@ La-pluma-next/
 │   │   │   ├── logs/          # 日志查看
 │   │   │   ├── settings/      # 配置管理
 │   │   │   ├── task-execution/   # 命令执行、Run 观察与执行控制器（跨域微域，非页面域）
-│   │   │   ├── user-config/      # 用户任务配置读写（跨域微域，非页面域）
+│   │   │   ├── user-config/      # 用户任务配置读写与持久化协调器（跨域微域，非页面域）
 │   │   │   ├── runtime-status/   # 后端连接与任务运行状态（非页面域）
 │   │   │   ├── device-mirror/    # 投屏/截图预览（非页面域）
 │   │   │   └── operator-quotes/  # 干员语录服务（非页面域）
