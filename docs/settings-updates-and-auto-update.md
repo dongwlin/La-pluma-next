@@ -76,7 +76,7 @@
 
 `AutoUpdateConfigOwner.load()`：
 
-1. 读取服务端 `auto-update` 用户配置并归一化。成功且载荷可归一化时采用，`dirty=false`，并把该副本写入 `autoUpdateConfig` 本地键。
+1. 读取服务端 `auto-update` 用户配置并归一化。成功且载荷可归一化时采用，`dirty=false`，清空此前的读取/保存反馈，并把该副本写入 `autoUpdateConfig` 本地键（编辑过的草稿不采用、不覆盖）。
 2. 服务端失败时读取本设备上次保存的 `autoUpdateConfig`：可归一化时作为草稿（`dirty=true`），并给出 warning。服务端错误存在时文案为 `自动更新设置读取失败: <原因>，已显示此设备上次保存的设置，请保存后重试`；否则为 `已载入此设备上次保存的自动更新设置，请保存后应用`。
 3. 本地 JSON 损坏时给出 `自动更新设置读取失败: <解析原因>`，不伪造草稿。
 4. 服务端成功但载荷不可归一化时按“无服务端错误”走本地回退；没有本地草稿且无服务端错误时保持默认值、不提示。
@@ -134,7 +134,7 @@
 | 测试 | 覆盖 |
 | --- | --- |
 | `features/settings/model/updateCommands.test.ts` | 渠道目标策略、失败详情新/旧形状、资源重试条件、四条命令互斥与重复忽略、core/渠道/CLI/资源成功与失败文案、网络异常、CLI 不产生页内反馈、无自动重试、reset |
-| `features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、迟到读取不覆盖编辑、服务端失败本地回退与无回退错误、坏服务端载荷与坏本地 JSON、编辑 dirty/revision/反馈清理、无效时间、保存 + 调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑为 `superseded`、保存互斥、抛错路径、reset |
+| `features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、后续成功读取清空旧回退警告、迟到读取不覆盖编辑、服务端失败本地回退与无回退错误、坏服务端载荷与坏本地 JSON、编辑 dirty/revision/反馈清理、无效时间、保存 + 调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑为 `superseded`、保存互斥、抛错路径、reset |
 | `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试、CLI 成功只重取版本、core/热更新成功发布四类失效、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界 |
 
 针对性命令（仓库根目录）：

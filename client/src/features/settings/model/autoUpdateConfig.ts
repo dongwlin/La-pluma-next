@@ -154,6 +154,8 @@ export class AutoUpdateConfigOwner {
             ...this.state,
             draft: normalized,
             dirty: false,
+            // 服务端副本已采用：此前的读取回退/保存反馈不再代表当前状态。
+            feedback: null,
           }
           this.writeLocal(JSON.stringify(normalized))
           this.notify()

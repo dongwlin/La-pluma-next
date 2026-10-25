@@ -86,6 +86,23 @@ describe('AutoUpdateConfigOwner load', () => {
     expect(writeLocal).toHaveBeenCalledOnce()
   })
 
+  it('clears a stale fallback warning when a later server read is adopted', async () => {
+    const { owner, load } = createOwner(enabledConfig)
+    load.mockResolvedValueOnce({ success: false, message: '配置目录不可读' })
+    await owner.load()
+    expect(owner.getState().feedback?.type).toBe('warning')
+
+    load.mockResolvedValueOnce({ success: true, data: { enabled: false, time: '04:00' } })
+    const outcome = await owner.load()
+
+    expect(outcome).toEqual({ status: 'loaded', feedback: null })
+    expect(owner.getState()).toMatchObject({
+      draft: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
+      dirty: false,
+      feedback: null,
+    })
+  })
+
   it('does not let a late server read overwrite a newer edit', async () => {
     const pending = deferred<ApiResponse>()
     const { owner, load, store } = createOwner()
