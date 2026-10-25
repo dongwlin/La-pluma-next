@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-25",
+  "sourceCommit": "af3634d",
+  "environment": {
+    "node": "24.22.1",
+    "pnpm": "12.6.0",
+    "host": "Linux 7.2.11-200.fc44.x86_64 x86_64",
+    "playwright": "1.64.1",
+    "visualImage": "mcr.microsoft.com/playwright:v1.64.1-noble"
+  },
+  "commands": [
+    {
+      "command": "pnpm verify",
+      "environment": "restricted sandbox",
+      "exitCode": 1,
+      "client": {
+        "filesPassed": 54,
+        "testsPassed": 389
+      },
+      "server": {
+        "filesPassed": 43,
+        "filesFailed": 5,
+        "failedFiles": [
+          "__tests__/server.test.js",
+          "services/__tests__/captureScreen.test.js",
+          "services/__tests__/copilotUri.test.js",
+          "services/__tests__/webrtcService.test.js",
+          "services/__tests__/webrtcSignalingGateway.test.js"
+        ]
+      },
+      "diagnosis": "Sandbox denies local listening/process capabilities; all five pass when rerun outside sandbox."
+    },
+    {
+      "command": "pnpm verify",
+      "environment": "host permissions",
+      "exitCode": 0,
+      "client": {
+        "filesPassed": 54,
+        "testsPassed": 389,
+        "lint": "passed",
+        "typecheck": "passed",
+        "productionBuild": "passed",
+        "precacheJsEntries": 5
+      },
+      "server": {
+        "filesPassed": 48,
+        "filesFailed": 0,
+        "testsPassed": 277
+      }
+    },
+    {
+      "command": "pnpm visual",
+      "environment": "host Docker socket",
+      "exitCode": 0,
+      "passed": 72,
+      "categories": {
+        "page": 48,
+        "overlay": 18,
+        "boot": 6
+      },
+      "updatedSnapshots": 0
+    },
+    {
+      "command": "pnpm --filter la-pluma-next-client stylelint:ratchet",
+      "exitCode": 0,
+      "existingViolations": 825,
+      "files": 11
+    },
+    {
+      "command": "pnpm --filter la-pluma-next-client verify",
+      "stage": "after adding the performance harness to tsconfig.node.json",
+      "exitCode": 0,
+      "filesPassed": 54,
+      "testsPassed": 389,
+      "lint": "passed",
+      "typecheck": "passed",
+      "productionBuild": "passed"
+    }
+  ],
+  "observations": [
+    "The client verify script does not invoke stylelint:ratchet, so it was executed explicitly.",
+    "Existing Vite warning: index JS 505.68 kB before gzip exceeds 500 kB advisory.",
+    "No production source, lockfile or stored visual screenshot changed.",
+    "Performance sampling later exposed an early visual-harness init-script appendChild exception before documentElement exists. Visual tests do not capture pageerror; 72/72 means pixel equality only. The performance harness records this setup-only exception and injects CSS after navigation, rejecting errors during measurement."
+  ]
+}
