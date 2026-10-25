@@ -1,0 +1,9 @@
+/**
+ * 游戏数据微域公开面
+ * 仓库、持有干员与干员目录的唯一 API、类型与 query key 归属。
+ */
+
+export { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from './api'
+export { GAME_DATA_DOMAIN, gameDataKeys } from './model/queryKeys'
+export type { GameDataResource } from './model/queryKeys'
+export type { DepotDataDetailed, DepotItem, OperBoxData, OperatorDetailed } from './types'
