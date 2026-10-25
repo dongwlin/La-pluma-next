@@ -395,6 +395,33 @@ describe('settings device connection owner', () => {
     })
   })
 
+  it('lets a newer connection test supersede an older one', async () => {
+    const first = deferred<ApiResponse<unknown>>()
+    const second = deferred<ApiResponse<unknown>>()
+    const test = vi.fn<TestRequest>()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    const { owner } = createOwner({ test })
+
+    const firstPromise = owner.test('/adb', '127.0.0.1:5555')
+    const firstSignal = test.mock.calls[0]![2]!
+    const secondPromise = owner.test('/adb', '127.0.0.1:6666')
+
+    expect(firstSignal.aborted).toBe(true)
+
+    first.resolve(ok({ success: true, message: '旧连接结果' }))
+    await expect(firstPromise).resolves.toMatchObject({ status: 'cancelled' })
+
+    second.resolve(ok({ success: true, message: '新连接结果' }))
+    await expect(secondPromise).resolves.toMatchObject({ status: 'succeeded' })
+
+    expect(owner.getState().test).toMatchObject({
+      address: '127.0.0.1:6666',
+      message: '新连接结果',
+      success: true,
+    })
+  })
+
   it('clears settled feedback but keeps a running test loading', async () => {
     const pending = deferred<ApiResponse<unknown>>()
     const { owner } = createOwner({
