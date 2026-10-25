@@ -15,6 +15,7 @@ const appMocks = vi.hoisted(() => ({
   automationEffectStops: 0,
   dashboardShouldThrow: false,
   automationShouldThrow: false,
+  queryClientReady: false,
 }))
 
 vi.mock('framer-motion', () => ({
@@ -40,10 +41,16 @@ vi.mock('./layout/Layout', async () => {
   }
 })
 vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('@/features/runtime-status', () => ({
-  useBackendStatusMonitor: () => undefined,
-  useRunStatusProjection: () => undefined,
-}))
+vi.mock('@/features/runtime-status', async () => {
+  const { useQueryClient } = await import('@tanstack/react-query')
+
+  return {
+    useBackendStatusMonitor: () => {
+      appMocks.queryClientReady = Boolean(useQueryClient())
+    },
+    useRunStatusProjection: () => undefined,
+  }
+})
 vi.mock('@/features/task-execution', () => ({ useExecutionObservation: () => undefined }))
 vi.mock('@/features/dashboard', () => ({
   default: function MockDashboard() {
@@ -107,6 +114,7 @@ describe('App motion preferences', () => {
     appMocks.automationEffectStops = 0
     appMocks.dashboardShouldThrow = false
     appMocks.automationShouldThrow = false
+    appMocks.queryClientReady = false
   })
 
   afterEach(async () => {
@@ -119,6 +127,13 @@ describe('App motion preferences', () => {
     await act(async () => { await Promise.resolve() })
 
     expect(container.querySelector('[data-testid="motion-config"]')?.getAttribute('data-reduced-motion')).toBe('user')
+  })
+
+  it('runs app-level hooks inside the application providers', async () => {
+    await act(async () => root.render(<App />))
+    await act(async () => { await Promise.resolve() })
+
+    expect(appMocks.queryClientReady).toBe(true)
   })
 
   it('preserves page state while pausing effects on hidden workspaces', async () => {

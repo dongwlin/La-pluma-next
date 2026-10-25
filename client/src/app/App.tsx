@@ -8,6 +8,10 @@ import { useBackendStatusMonitor, useRunStatusProjection } from '@/features/runt
 import { useExecutionObservation } from '@/features/task-execution'
 
 function AppShell() {
+  // 应用级观察/投影/探针必须位于 AppProviders 内，后续接入 Query 时才能拿到客户端。
+  useExecutionObservation()
+  useRunStatusProjection()
+  useBackendStatusMonitor()
   const activeTab = useActiveAppTab()
 
   return (
@@ -21,10 +25,6 @@ function AppShell() {
 }
 
 function App() {
-  useExecutionObservation()
-  useRunStatusProjection()
-  useBackendStatusMonitor()
-
   return (
     <div id="app-root" className="la-pluma-app">
       <BrowserRouter basename={routerBasename() || undefined}>
