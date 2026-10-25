@@ -22,7 +22,7 @@
 - **一个共享资源只有一份 API/类型/key 归属。** 页面不得各自声明同义端点或手写 key 数组。
 - **共享资源域不是通用后端层。** `game-data` 只收跨页面共享的读取；掉落、开放关卡、队列与计划仍归各自领域。
 - **失效端口不是 Query 总线。** 它不保存资源、不自动重取，也不向 `shared/query` 增加全局失效机制；订阅者自行决定刷新或失效范围。
-- **不在 Query 与页面状态中维护同一资源的双份可写真相。** 统计页已改由 Query 持有唯一缓存；training 的队列由 FPR-021 迁入领域 query 与串行命令，候选列表与状态计数由 FPR-044 迁入领域 query（设置/计划仍由页面持有，待 FPR-022/023），Dashboard 的完整快照仍待 FPR-030。
+- **不在 Query 与页面状态中维护同一资源的双份可写真相。** 统计页已改由 Query 持有唯一缓存；training 的队列由 FPR-021 迁入领域 query 与串行命令，候选列表与状态计数由 FPR-044 迁入领域 query，设置在 FPR-022 后由 `features/training/model/settingsCommands.ts` 的模块级所有者持有（计划编排仍由页面持有，待 FPR-023），Dashboard 的完整快照仍待 FPR-030。
 
 ## 2. 资源与缓存策略
 
@@ -126,7 +126,7 @@ publishResourceInvalidation({
 
 ## 5. 触发与影响映射
 
-写入方按下表发布；表同时约束 `dashboard-snapshot` 必须随影响总览的写入一起发布。前三行由 FPR-020 的命令所有者交付，第四行由 FPR-021 的队列命令交付。
+写入方按下表发布；表同时约束 `dashboard-snapshot` 必须随影响总览的写入一起发布。前三行由 FPR-020 的命令所有者交付，第四行由 FPR-021 的队列命令交付，第五行由 FPR-022 的设置所有者交付。
 
 | 触发 | 应发布作用域 | 归属任务 |
 | --- | --- | --- |
@@ -134,7 +134,7 @@ publishResourceInvalidation({
 | 干员识别成功并解析完成 | `operbox`、`materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
 | 材料刷新成功 | `materials`、`training-queue`、`dashboard-snapshot` | FPR-020（已交付） |
 | 队列增删/排序/撤销成功 | `training-queue`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-021（已交付） |
-| 养成设置保存成功 | `training-plan`（仅当设置影响计划前提） | FPR-022 |
+| 养成设置保存成功 | `training-plan`（设置值参与计划应用前提） | FPR-022（已交付） |
 | 应用养成计划成功 | `automation-config`、`automation-schedule`、`dashboard-snapshot` | FPR-023 |
 | 资源/热更新成功 | `catalog`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-026 |
 
@@ -167,7 +167,8 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 | `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、引用稳定 |
 | `features/training/model/queueCommands.test.ts` | 队列命令串行与最新快照排序、重复添加合并、写后刷新失败 fallback/`uncertain`、失败不发布、撤销原索引、写前取消读取 |
 | `features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key、signal、失败信封、补齐读取与结构共享 |
-| `features/training/pages/OperatorTraining.test.tsx` | 队列命令接线与写后刷新失败、跨页失效作用域与自发布忽略；目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧；筛选迟到响应与 Activity 恢复 |
+| `features/training/model/settingsCommands.test.ts` | 设置串行提交、旧响应裁决与写成功后发布 `training-plan`（FPR-022） |
+| `features/training/pages/OperatorTraining.test.tsx` | 队列命令接线与写后刷新失败、跨页失效作用域与自发布忽略；目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧、目录失败与仅计数失败；筛选迟到响应与 Activity 恢复；设置提交与计划版本前提 |
 | `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照 |
 | `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 掉落/关卡、识别解析与材料刷新的端点、signal 与载荷校验 |
 

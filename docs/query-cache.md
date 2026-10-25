@@ -212,7 +212,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 ## 10. 已迁移读取：养成队列、候选与状态计数（FPR-021/044）
 
-`OperatorTraining` 的队列、候选列表与三种状态计数都由 training 领域 query 持有，页面只读取 query 结果；设置与计划仍沿用页面状态（分别由 FPR-022/023 迁移）。队列写入由 `queueCommands` 领域命令串行执行，写成功后把权威快照写入同一 `queue` key，见[养成队列命令与写后刷新](training-queue-commands.md)。
+`OperatorTraining` 的队列、候选列表与三种状态计数都由 training 领域 query 持有，页面只读取 query 结果。设置在 FPR-022 后由 `features/training/model/settingsCommands.ts` 的领域所有者持有（不进入 Query），计划仍沿用页面状态（FPR-023 迁移）；队列写入由 `queueCommands` 领域命令串行执行，写成功后把权威快照写入同一 `queue` key，见[养成队列命令与写后刷新](training-queue-commands.md)与[养成设置提交与计划有效期](training-settings-and-plan-validity.md)。
 
 | 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
 | --- | --- | --- | --- | --- |
@@ -245,7 +245,8 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
 | `client/src/features/training/model/queueCommands.test.ts` | 队列命令串行与最新快照排序、重复添加合并、写后刷新失败 fallback/`uncertain`、失败不提交不发布、撤销原索引、目标失效拒绝、写前取消读取 |
 | `client/src/features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key 与参数、signal、失败信封、补齐读取与计数结构共享 |
-| `client/src/features/training/pages/OperatorTraining.test.tsx` | 队列读取与写入命令接线、计数展示、列表失败清空/计数保旧、筛选迟到响应、失效范围、Activity 隐藏恢复、写后刷新失败与跨页失效 |
+| `client/src/features/training/model/settingsCommands.test.ts`、`planValidity.test.ts` | 设置串行提交与旧响应裁决、计划队列/设置版本前提（FPR-022） |
+| `client/src/features/training/pages/OperatorTraining.test.tsx` | 队列读取与写入命令接线、计数展示、列表失败清空/计数保旧、目录失败与仅计数失败、筛选迟到响应、失效范围、Activity 隐藏恢复、写后刷新失败与跨页失效、设置提交与计划有效期 |
 | `client/src/features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、解析等待、超时/取消/继续与失效发布；识别命令不进入 Query |
 | `client/src/features/statistics/pages/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
 | `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
@@ -267,6 +268,8 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/training/model/candidates.test.ts \
   src/features/training/model/queueCommands.test.ts \
   src/features/training/model/queries.test.ts \
+  src/features/training/model/settingsCommands.test.ts \
+  src/features/training/model/planValidity.test.ts \
   src/features/training/pages/OperatorTraining.test.tsx \
   src/features/statistics/pages/DataStatistics.layout.test.tsx \
   src/features/resource-invalidation/model/resourceInvalidation.test.ts \

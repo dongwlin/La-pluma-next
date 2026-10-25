@@ -13,7 +13,8 @@
 | 养成队列快照 | `features/training/model/queries.ts` 的 `trainingQueueQueryOptions` | `['training', 'queue']` 是队列唯一的可写真相；页面与后续消费者只读取 |
 | 队列增删、排序、撤销 | `features/training/model/queueCommands.ts` | 非 React 命令所有者；串行执行、写后刷新、fallback 与失效发布都在此 |
 | 页面 pending 标记与命令发起 | `features/training/hooks/useTrainingQueueCommands.ts` | 薄适配层，把应用级 QueryClient 注入命令上下文 |
-| 训练设置与计划 | 页面状态 | 仍由 FPR-022/023 迁移；队列命令只读取快照中的 settings/revision 做展示与前提校验 |
+| 训练设置 | `features/training/model/settingsCommands.ts` | FPR-022 起设置提交、本地 revision 与旧响应裁决由领域所有者持有；队列命令不写设置。见[养成设置提交与计划有效期](training-settings-and-plan-validity.md) |
+| 训练计划 | 页面状态 | 版本前提已由 FPR-022 接入（队列 revision + 设置 revision）；生成/应用编排仍由页面持有，FPR-023 迁移 |
 | 跨域失效发布 | `features/resource-invalidation` | 命令写入成功后发布；失败不发布 |
 | 总览快照 | `features/dashboard` 的完整快照协调器 | 收到 `dashboard-snapshot` 后强制刷新，不复制队列缓存 |
 
@@ -54,7 +55,7 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 1. **执行时读取最新快照。** 命令参数只表达意图（操作哪个干员、目标索引、撤销哪一项），排序 payload 在真正执行时由最新队列生成，不在点击时冻结旧顺序。前一条命令的移除/排序会进入后一条命令的输入。
 2. **重复添加/移除/撤销被合并，排序不合并。** 同一干员的 pending `add` / `remove` / `undo` 只保留一个请求；`reorder` 总是排队执行，并在执行时按最新位置判断是否仍需写入，因此同一干员的后续排序目标不会被丢弃。
 3. **无快照时不做乐观写入。** 命令在写入前与写入后各取消一次在途的队列读取（`cancelQueries`，读取函数必须传 `AbortSignal`），避免“读取开始于写入之前、却在写入之后提交”的旧快照覆盖新结果；写入失败且此前没有快照时页面重新发起首屏读取。
-4. **版本裁决在读取侧。** 队列快照携带服务端 `revision`（成员与精英目标）与 `lastUpdated`；页面比较读取到的 revision，变化时作废旧计划。命令不发送条件写请求，跨客户端同时写入仍由服务端串行化，前端只保证本客户端的写入不互相覆盖。
+4. **版本裁决在读取侧。** 队列快照携带服务端 `revision`（成员与精英目标）与 `lastUpdated`；页面比较读取到的 revision，变化时作废旧计划。`revision` 不包含设置，设置的版本由 FPR-022 的设置所有者另外维护（见[养成设置提交与计划有效期](training-settings-and-plan-validity.md)）。命令不发送条件写请求，跨客户端同时写入仍由服务端串行化，前端只保证本客户端的写入不互相覆盖。
 5. **排序目标失效时明确失败。** 目标干员已不在最新队列时返回“队列已变化，请重新排序”，不发送可能回退他人更新的全量顺序。
 
 ## 4. 写后刷新与不确定状态
@@ -87,15 +88,15 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 - `OperatorTraining` 忽略带该 `detail` 的发布，因为权威快照已写入同一 Query key；外部发布的 `training-queue`（不带该标记）仍会触发重读。
 - `Dashboard` 只订阅 `dashboard-snapshot`，收到后走完整快照刷新；五路读取全部有效才提交，单路失败保留旧快照。
 - 候选列表与状态计数不因队列写入而失效；材料刷新/识别命令仍按 `materials` / `operbox` / `depot` 作用域触发候选与计数重取。
-- 计划失效有两条路径：命令开始时立即作废旧预览（即使用户随后取消或失败，见既有回归），以及读取到 revision 变化时作废。前者保证“点击排序后旧计划按钮立即不可应用”，后者覆盖识别、材料刷新和另一客户端造成的队列变化。
+- 计划失效路径：命令开始时立即作废旧预览（即使用户随后取消或失败，见既有回归），读取到 revision 变化时作废，以及设置版本变化时作废（FPR-022）。前者保证“点击排序后旧计划按钮立即不可应用”，后两条覆盖识别、材料刷新、外部设置修改和另一客户端造成的队列变化。
 
 ## 6. 页面与生命周期
 
 - `OperatorTraining` 用 `useQuery(trainingQueueQueryOptions())` 读取队列，用 `useTrainingQueueCommands()` 发起命令并派生 `pendingOperatorIds` / `queueMutationPending`。
 - 队列命令所有者为模块级单例；Activity 隐藏只注销页面 Effect，不中断串行链与写后刷新。隐藏期间完成的命令仍会写入应用级 Query 缓存，恢复时按新鲜度使用。
 - 真正卸载后重挂载：命令继续完成（请求没有 AbortController 绑定页面），新页面从 Query 缓存读取结果；pending 提示是否仍显示取决于命令是否完成，不再由旧页面闭包维护。
-- 页面首屏：首次成功的队列快照把 `settings` 与 `flowSync` 同步到页面状态；若用户先编辑设置，则不覆盖编辑草稿。后续队列刷新不重新覆盖设置（设置提交由 FPR-022 接管）。
-- 生成计划前、应用失败后与重试同步后都通过 `reloadQueue()` 强制重取；`reloadQueue` 与快照 revision 比较来作废过期预览。
+- 页面首屏：首次成功的队列快照把 `flowSync` 同步到页面状态，并把 `settings` 交给 FPR-022 的设置所有者 hydrate；若用户先编辑设置，则不采用迟到的首屏值。普通队列刷新不覆盖本地设置，`reloadQueue()` 在读取期间本地设置未变化时采用服务端值（外部设置变化由此被发现）。
+- 生成计划前、应用失败后、重试同步后与显式“重新加载”都通过 `reloadQueue()` 强制重取；`reloadQueue` 比较快照 revision 与设置版本，作废过期预览。
 - `recordSync` 在 `flowSync.status === 'synced'` 时继续派发 `training-plan-applied` window 事件，供 automation 兼容；FPR-023 将替换为领域失效协议。
 
 ## 7. 兼容与回滚
@@ -113,6 +114,7 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 | `features/training/model/queueCommands.test.ts` | 并发排序按最新快照串行、重复添加合并、写后刷新失败 fallback/`uncertain`、写入失败不提交不发布、移除后撤销按原索引恢复、目标干员消失时拒绝排序、写前取消读取 |
 | `features/training/model/queries.test.ts` | `queue` key、signal、快照元数据与失败信封 |
 | `features/training/pages/OperatorTraining.test.tsx` | 队列读取迁移后原有交互；移除进行中排队排序、写后刷新失败的 fallback/警告/重载、跨页失效作用域与自发布忽略、计划 revision 失效、Activity 隐藏恢复 |
+| `features/training/model/settingsCommands.test.ts`、`planValidity.test.ts` | 设置串行写入、旧响应裁决与计划版本前提（FPR-022，见[养成设置提交与计划有效期](training-settings-and-plan-validity.md)） |
 | `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 接收端完整刷新与单路失败保旧 |
 | `features/resource-invalidation/**` | 失效端口去重、revision、Activity 恢复补发 |
 
@@ -132,6 +134,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
 ## 关联
 
 - [Query 缓存与键规范](query-cache.md)：队列 key、默认策略与写后失效规则。
+- [养成设置提交与计划有效期](training-settings-and-plan-validity.md)：设置所有权、设置 revision 与计划前提。
 - [共享资源归属与失效端口](resource-ownership.md)：队列归属与触发映射。
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系、计划有效期与 Dashboard 快照。
 - [前端职责与质量基线](frontend-baseline.md)：Activity 生命周期与页面职责。
