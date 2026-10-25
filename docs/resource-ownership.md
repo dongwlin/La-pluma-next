@@ -136,9 +136,11 @@ publishResourceInvalidation({
 | 队列增删/排序/撤销成功 | `training-queue`、`materials`、`training-plan`、`dashboard-snapshot`；任务流程确认 synced 时额外 `automation-config`（自动同步不重注册 cron，不发布 `automation-schedule`） | FPR-021（已交付；automation 作用域由 FPR-023 补齐） |
 | 养成设置保存成功 | `training-plan`（设置值参与计划应用前提） | FPR-022（已交付） |
 | 应用养成计划成功 | `automation-config`、`automation-schedule`、`dashboard-snapshot` | FPR-023（已交付） |
-| 资源/热更新成功 | `catalog`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-026 |
+| 资源/热更新成功 | `catalog`、`materials`、`training-plan`、`dashboard-snapshot` | FPR-026（已交付） |
 
 `detail` 可选，例如应用计划时携带 `{ stageCount }`；接收方不得依赖未声明字段。队列命令的 `detail.source = 'training-queue-command'` 与设置所有者的 `detail.source = 'training-settings-owner'` 是各自任务声明的字段，供本页忽略自己的发布；外部发布不需要携带它。
+
+资源更新由 `features/settings` 的 `SettingsUpdateOwner` 在服务端确认成功后发布：core 更新与渠道切换在服务端同时同步资源，和“仅同步游戏资源”一样发布上表四个作用域；CLI 更新只改变 CLI 版本，不发布任何资源作用域。失败、取消与参数校验失败不发布。版本刷新由同一适配层失效 `settings/version`，不经过该端口。
 
 ## 6. 未迁移页面的最小接收
 
@@ -173,6 +175,8 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 | `features/automation/pages/AutomationTasks.config.test.tsx` | `automation-config`/`automation-schedule` 失效重读、Activity 恢复补发、在途保存等待与本地禁用时间点保留 |
 | `features/training/pages/OperatorTraining.test.tsx` | 队列命令接线与写后刷新失败、跨页失效作用域与自发布忽略；目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧、目录失败与仅计数失败；筛选迟到响应与 Activity 恢复；设置提交与计划版本前提；FPR-023 计划编排迁移、应用等待在途配置保存、部分成功重读与三类失效发布 |
 | `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照 |
+| `features/settings/model/updateCommands.test.ts` | 更新命令互斥与重复忽略、core/热更新失败详情与资源重试条件、成功作用域声明（FPR-026） |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | core/渠道/热更新成功发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`；失败不发布不重试；CLI 只失效版本（FPR-026） |
 | `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 掉落/关卡、识别解析与材料刷新的端点、signal 与载荷校验 |
 
 针对性命令（仓库根目录）：
@@ -188,7 +192,9 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/statistics/pages/DataStatistics.layout.test.tsx \
   src/features/statistics/components/DropRecords.test.tsx \
   src/features/training/pages/OperatorTraining.test.tsx \
-  src/features/dashboard/pages/Dashboard.test.tsx
+  src/features/dashboard/pages/Dashboard.test.tsx \
+  src/features/settings/model/updateCommands.test.ts \
+  src/features/settings/pages/ConfigManager.layout.test.tsx
 ```
 
 完整 `pnpm --filter la-pluma-next-client verify` 与视觉比对由任务完成记录给出。

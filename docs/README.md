@@ -15,6 +15,7 @@
 | [配置持久化协调器](config-persistence.md) | 按 key 串行的协调模型、适配契约（编解码/迁移/完整提交）、薄 hooks、刷新与冲突边界、三域接入清单 | 迁移页面配置持久化或实现域适配器的开发者 |
 | [设置配置编辑与保存](settings-config-editing.md) | MAA connection 的 Query 读取、草稿/revision、保存与重置边界、迟到读取裁决、section 存储/事件与清理 | 修改设置页配置表单、保存流程或 section 状态的开发者 |
 | [设置设备连接与系统资源](settings-device-and-resources.md) | 设备发现/连接测试命令所有者、取消与草稿回填 revision、版本/配置目录 Query、打开目录入口与 Activity 行为 | 修改设置页设备面板、版本或配置目录读取的开发者 |
+| [设置组件更新与自动更新](settings-updates-and-auto-update.md) | core/CLI/资源更新命令的互斥、失败重试与 Activity 行为、更新后版本与跨域资源失效、自动更新草稿/本地回退/完整提交 | 修改设置页组件更新、资源失效或自动更新策略的开发者 |
 | [资源请求错误与取消契约](resource-requests.md) | 只读资源的 AbortSignal 传递、信封与领域载荷校验、失败分类、取消/停止/撤销边界、候选端点与 Query 迁移入口 | 迁移资源查询、缓存或处理请求失败的前端开发者 |
 | [Query 缓存与键规范](query-cache.md) | 应用级 Query 客户端、默认重取/重试/Activity 策略、领域 key 与失效规范、Dashboard 快照边界 | 迁移资源读取或实现缓存失效的前端开发者 |
 | [共享资源归属与失效端口](resource-ownership.md) | game-data 共享资源域、training/statistics 去环后的依赖方向、图标与资源缓存策略、跨域失效端口与未迁移页面接收 | 迁移共享资源、写入后失效或页面读取的前端开发者 |

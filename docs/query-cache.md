@@ -253,7 +253,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 | 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
 | --- | --- | --- | --- | --- |
-| 版本 | `versionQueryOptions()` | `['settings','version']` | `cli`/`core`/`raw` 不可用时为 `contract` 失败；页面保持静默（迁移前行为） | 默认新鲜度/重试；更新成功后 `refetchQueries` 同一 key（FPR-026 复用） |
+| 版本 | `versionQueryOptions()` | `['settings','version']` | `cli`/`core`/`raw` 不可用时为 `contract` 失败；页面保持静默（迁移前行为） | 默认新鲜度/重试；更新成功（FPR-026）后 `invalidateQueries` 同一 key：可见时立即重取，隐藏时恢复后按 `refetchOnMount` 重取 |
 | 配置目录 | `configDirectoryQueryOptions()` | `['settings','config-directory']` | 空白路径/坏载荷为 `contract` 失败；从未成功时显示页内错误与重试 | 失败重试按钮、显式 `reload`；后台刷新失败保留最近成功路径 |
 
 规则：
@@ -261,6 +261,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 - 两者都把 Query 的 `signal` 传给 `getVersion`/`getConfigDir`，Activity 隐藏时取消本地读取并保留上一份数据。
 - 配置目录同时接受 `{ path }` 与旧字符串载荷，归一化在 `model/systemResources.ts`；`getConfigDir` 的返回类型随之修正。
 - 设备发现与连接测试有副作用，保持模块级命令所有者、独立 loading/取消，不建立 Query key，也不自动重试。
+- core/CLI/热更新同样是显式命令，不进入 Query，也不由 Query 自动重试；成功确认后只失效版本 key 并发布资源作用域，失败不失效（FPR-026，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)）。
 - 打开目录是 POST 命令，不进入 Query；页面原有卡片与只读 section 两个入口都调用同一 hook 动作。
 
 ## 13. 回归证据
@@ -287,7 +288,9 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/settings/model/connectionConfig.test.ts` | `settings/maa-config` key/profile/signal、读取令牌裁决、迟到读取与保存前读取失效、保存串行与失败重试、重置边界 |
 | `client/src/features/settings/model/systemResources.test.ts` | `settings/version`、`settings/config-directory` key/signal、版本/目录归一化、旧字符串目录、坏载荷失败 |
 | `client/src/features/settings/model/deviceConnection.test.ts` | 设备发现/连接测试的独立状态、取消与迟到响应、选择回填的草稿 revision |
-| `client/src/features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载/refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复、初始读取失败、发现回填/失败重试/hide-show、版本与目录 Query 复用 |
+| `client/src/features/settings/model/autoUpdateConfig.test.ts` | 自动更新策略读取守卫、本地回退与完整提交（FPR-026） |
+| `client/src/features/settings/model/updateCommands.test.ts` | 更新命令互斥、失败重试条件与成功作用域（FPR-026） |
+| `client/src/features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载/refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复、初始读取失败、发现回填/失败重试/hide-show、版本与目录 Query 复用；更新成功失效版本并发布资源作用域、CLI 只失效版本、自动更新保存跨 hide（FPR-026） |
 
 针对性复现命令（仓库根目录）：
 
@@ -314,6 +317,8 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/settings/model/connectionConfig.test.ts \
   src/features/settings/model/systemResources.test.ts \
   src/features/settings/model/deviceConnection.test.ts \
+  src/features/settings/model/autoUpdateConfig.test.ts \
+  src/features/settings/model/updateCommands.test.ts \
   src/features/settings/pages/ConfigManager.layout.test.tsx
 ```
 

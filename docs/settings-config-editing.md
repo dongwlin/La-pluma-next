@@ -4,7 +4,7 @@
 
 本文描述 FPR-024 交付的设置页配置编辑模型：MAA profile 的 `connection` 段如何读取、编辑、保存与重置，以及 `connection`/`resource`/`instance` 三个 section 的状态、存储键与 window 事件的归属。配置读取走 `settings/maa-config` Query，草稿与保存由 `features/settings/model/connectionConfig.ts` 的模块级所有者持有。
 
-设备发现、连接测试、版本、配置目录与打开目录由 FPR-025 接管，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新流程仍由 FPR-026 接手。自动更新的**归一化模型**已在本次移入 `model/configNormalization.ts`，其草稿、提交与调度状态机仍留在页面。
+设备发现、连接测试、版本、配置目录与打开目录由 FPR-025 接管，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新已由 FPR-026 迁入 `model/updateCommands.ts`、`model/autoUpdateConfig.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。自动更新的归一化模型仍在 `model/configNormalization.ts`，草稿、提交与调度状态机归自动更新所有者。
 
 验证入口见文末[回归证据](#6-回归证据)。
 
@@ -116,8 +116,8 @@ section 只控制渲染哪个面板：connection 的 Query 在 section 分支之
 - 页面删除的职责：`configData` state、`loadConfig()`、`connectionRevisionRef`、`connectionSaveInFlightRef`、section `localStorage` 读写与 window 监听。
 - 输入、平台配置与自动重连开关都通过 `update(patch)` 写入 owner；编辑清空页内反馈与保存错误。
 - 保存按钮 loading 取 `syncState === 'saving'`，重置按钮在保存中禁用；保存结果按 `saved`/`superseded`/`failed` 分别提示。
-- 自动更新仍保持迁移前逻辑：读取/本地回退、touched/revision、保存后 `setupAutoUpdate`；只把 `DEFAULT_AUTO_UPDATE_CONFIG`、`normalizeAutoUpdateConfig` 与 `isValidUpdateTime` 从页面移入 `model/configNormalization.ts`，供 FPR-026 复用。
-- 设备发现、连接测试、版本、配置目录与打开目录已由 FPR-025 移出页面，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新仍由 FPR-026 继续迁移。
+- 自动更新已由 FPR-026 移出页面：读取/本地回退、touched/revision、保存后 `setupAutoUpdate` 与反馈由 `AutoUpdateConfigOwner` 和 `useSettingsAutoUpdate()` 持有；归一化与时间校验仍在 `model/configNormalization.ts`，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
+- 设备发现、连接测试、版本、配置目录与打开目录已由 FPR-025 移出页面，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新由 FPR-026 迁移。
 
 ## 5. 兼容与回滚
 
@@ -147,6 +147,7 @@ pnpm --filter la-pluma-next-client verify
 ## 关联
 
 - [设置设备连接与系统资源](settings-device-and-resources.md)：设备发现/连接测试、版本与配置目录。
+- [设置组件更新与自动更新](settings-updates-and-auto-update.md)：更新命令、版本失效与自动更新策略。
 - [Query 缓存与键规范](query-cache.md)：`settings/maa-config` 的缓存身份、默认重试与 Activity 行为。
 - [前端职责与质量基线](frontend-baseline.md)：Settings 页职责矩阵与剩余迁移项。
 - [资源请求错误与取消契约](resource-requests.md)：`getConfig` 的 signal 与载荷校验。

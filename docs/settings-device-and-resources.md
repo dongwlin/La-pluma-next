@@ -78,7 +78,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 ### 3.2 页面语义
 
-- 版本读取失败保持静默（迁移前行为）；页面继续渲染其余内容。更新成功后的“重新加载版本”改为 `reload()` 同一 `settings/version` Query，FPR-026 可直接复用该资源。
+- 版本读取失败保持静默（迁移前行为）；页面继续渲染其余内容。更新成功后的版本同步由 FPR-026 的更新命令所有者 `invalidateQueries` 同一 `settings/version`，页面可见时立即重取，隐藏时恢复显示后重取，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 - 配置目录首次读取中显示“正在读取目录...”；从未成功读取且失败时显示 `配置目录读取失败: <原因>` 与“重试”按钮，重试走 `refetchQueries` 同一 key。
 - 后台刷新失败保留最近一次成功路径；只有从未成功读取过才显示错误，避免 Activity 恢复后的后台失败清空可用路径。
 - 打开目录有两个原有入口：只读 section 的卡片头按钮与配置目录卡片按钮。两者都调用 `useSettingsConfigDirectory().open()`；成功提示“已打开配置目录”，失败提示 `打开失败: <原因>`，不触发 Query 重取。
@@ -86,7 +86,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 ## 4. 页面接线与遗留清理
 
-`ConfigManager` 不再直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不再保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，页面只保留渲染与全局状态提示；自动更新与更新流程状态仍留在页面，见下。
+`ConfigManager` 不再直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不再保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，页面只保留渲染与全局状态提示；组件更新与自动更新由 FPR-026 的模块级所有者持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 
 | 页面原职责 | 新归属 |
 | --- | --- |
@@ -97,7 +97,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | `loadConfigDir`、目录三态与重试 | `useSettingsConfigDirectory()` + `settings/config-directory` |
 | `handleOpenConfigDir` 的 API/错误分支 | `useSettingsConfigDirectory().open()` |
 
-自动更新与 core/cli/资源更新仍留在页面，由 FPR-026 继续迁移；本任务只把更新成功后的版本读取接到同一 Query。
+自动更新与 core/cli/资源更新已由 FPR-026 迁移到 `model/autoUpdateConfig.ts`、`model/updateCommands.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)；本任务只把更新成功后的版本读取接到同一 Query。
 
 ## 5. 兼容与回滚
 
@@ -118,7 +118,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | --- | --- |
 | `features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
 | `features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后重取同一版本 Query、目录失败重试 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后失效并重取同一版本 Query（FPR-026）、目录失败重试 |
 
 复现命令（仓库根目录）：
 
@@ -131,6 +131,7 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/settings
 ## 关联
 
 - [设置配置编辑与保存](settings-config-editing.md)：connection 草稿、保存与 section 状态。
+- [设置组件更新与自动更新](settings-updates-and-auto-update.md)：版本失效、更新命令与自动更新策略。
 - [Query 缓存与键规范](query-cache.md)：`settings/version`、`settings/config-directory` 的缓存身份与 Activity 策略。
 - [资源请求错误与取消契约](resource-requests.md)：signal、失败分类与载荷校验。
 - [前端职责与质量基线](frontend-baseline.md)：Settings 页职责矩阵与 Activity 生命期。

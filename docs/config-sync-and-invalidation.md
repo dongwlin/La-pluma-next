@@ -88,11 +88,11 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 | 应用计划 | automation 配置/schedule、计划版本、总览 | 写入成功通知相关域；部分失败可识别；本地 pending 草稿不被外部副本覆盖 | 已由 FPR-023 交付：`TrainingPlanOwner` 先经配置协调器排空本设备 automation 在途保存，再应用并发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`（`cause: plan-applied`，`detail` 含关卡数）；automation 等到通道空闲后强制重读，失败草稿保留本地并提示；服务端重新注册已存在的默认定时任务，失败以 `scheduleSync` 上报为部分成功；Dashboard 立即走完整快照刷新。window `training-plan-applied` 已移除 |
 | 搜索/预览切换 | 对应查询键与本地选择 | 旧响应不覆盖新选择 | request id/generation 丢弃旧响应；FPR-044 候选 query 以筛选参数分 key，迟到响应只写旧 key，隐藏期间读取随 signal 取消（已有测试） |
 | Dashboard 刷新 | 完整业务快照、独立设备采样 | 业务数据全部有效才提交快照，采样失败保旧值 | 见第 4 节（已有测试） |
-| 资源/热更新成功 | 目录、图标/资源元数据、养成候选/计数、计划有效性、总览 | 先确定影响范围，不整体清空缓存 | 当前只重读版本，未发布资源失效（见第 5 节） |
+| 资源/热更新成功 | 目录、图标/资源元数据、养成候选/计数、计划有效性、总览 | 先确定影响范围，不整体清空缓存 | 已由 FPR-026 交付：`SettingsUpdateOwner` 成功确认后由适配层失效 `settings/version` 并发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`；CLI 只失效版本；不发布 `depot`/`operbox`，不调用 `queryClient.clear()` |
 
 应用计划的跨页链路当前是“训练域派发 window 事件 → automation 监听后强制 `loadTaskFlow`”。事件不带 `stageCount`，automation 从 `event.detail` 读不到时提示 0 关；后续应由领域失效协议携带明确影响范围，而不是继续扩大 window 事件。
 
-FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`features/resource-invalidation` 提供显式作用域发布/订阅，`OperatorTraining` 与 `Dashboard` 已接入最小接收（总览仍走完整快照刷新）。FPR-020 已接入识别与材料刷新的发布端；FPR-044 把训练页的候选/计数改为领域 query，接收端口后按作用域失效，队列失效仍只重读队列。FPR-021 已接入队列写入的发布端并让队列本身由 `training/queue` query 与串行命令持有；FPR-022 把设置提交集中在 `features/training/model/settingsCommands.ts`，设置变化通过本地 revision 与权威重读使旧计划失效（服务端队列 revision 不含设置）。FPR-023 把计划生成/应用/同步迁到 `features/training/model/planCommands.ts`，应用成功发布 automation 配置、定时与总览作用域，**取代** `training-plan-applied` window 事件；automation 页面改为订阅同一失效端口，并在处理前排空配置通道。资源更新的发布端仍由 FPR-026 接入。
+FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`features/resource-invalidation` 提供显式作用域发布/订阅，`OperatorTraining` 与 `Dashboard` 已接入最小接收（总览仍走完整快照刷新）。FPR-020 已接入识别与材料刷新的发布端；FPR-044 把训练页的候选/计数改为领域 query，接收端口后按作用域失效，队列失效仍只重读队列。FPR-021 已接入队列写入的发布端并让队列本身由 `training/queue` query 与串行命令持有；FPR-022 把设置提交集中在 `features/training/model/settingsCommands.ts`，设置变化通过本地 revision 与权威重读使旧计划失效（服务端队列 revision 不含设置）。FPR-023 把计划生成/应用/同步迁到 `features/training/model/planCommands.ts`，应用成功发布 automation 配置、定时与总览作用域，**取代** `training-plan-applied` window 事件；automation 页面改为订阅同一失效端口，并在处理前排空配置通道。资源更新的发布端已由 FPR-026 接入：`features/settings/model/updateCommands.ts` 持有 core/渠道/CLI/热更新命令，`hooks/useSettingsUpdates.ts` 在确认成功后发布上述作用域并失效版本 Query。
 
 ## 4. Dashboard 完整快照规则
 
@@ -121,7 +121,7 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | 4 | ~~养成设置保存成功后不使已生成计划失效~~ 已由 FPR-022 关闭：设置所有者维护本地 revision，编辑立即作废旧计划，成功/回滚/外部采用同步推进版本 | `OperatorTraining.test.tsx` 的设置作废旧计划用例；`settingsCommands.test.ts`、`planValidity.test.ts` | 已完成（[结论](training-settings-and-plan-validity.md)） |
 | 5 | ~~仓库/干员识别完成不发布跨页失效；训练候选/计数/材料与 Dashboard 不会自动刷新~~ 已由 FPR-020 关闭：命令所有者解析成功后才发布 `depot`/`operbox`/`materials`/`training-queue`/`dashboard-snapshot` | `statistics/model/commandOwner.test.ts` 的发布作用域用例与 `DataStatistics.layout.test.tsx` 的识别快照/失效用例 | 已完成（[统计识别命令与失效联动](statistics-commands.md)） |
 | 6 | ~~应用计划只触发 automation 重载；Dashboard 不立即失效，事件也不携带影响范围~~ 已由 FPR-023 关闭：计划所有者发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`，automation 经端口重读，Dashboard 立即刷新 | `planCommands.test.ts`、`AutomationTasks.config.test.tsx`、`Dashboard.test.tsx` 的 plan-applied 用例 | 已完成（[计划编排与有效期](training-settings-and-plan-validity.md)） |
-| 7 | 资源/热更新成功后目录、图标、候选/计数与总览没有失效路径 | 仅重读版本，无事件；接收端已由 FPR-018 接入，发布端待 FPR-026 | 更新流程与资源失效（FPR-026） |
+| 7 | ~~资源/热更新成功后目录、图标、候选/计数与总览没有失效路径~~ 已由 FPR-026 关闭：更新成功后适配层失效 `settings/version` 并发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`；只发布确认受影响的作用域 | `updateCommands.test.ts`、`ConfigManager.layout.test.tsx` 的更新成功/失败/CLI 用例 | 已完成（[设置组件更新与自动更新](settings-updates-and-auto-update.md)） |
 
 预期失败用例使用 Vitest 的 `it.fails`：当前行为确实不满足断言，CI 保持绿色；修复落地后该用例会转为失败，承接任务必须删除 `.fails` 标记并保留断言，作为新行为的回归测试。不得用删除断言或改写预期来“修复”这些用例。FPR-015 已将 Automation 的 stale pending 用例转为正常回归。
 
@@ -150,7 +150,9 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 失效作用域去重、revision、注销与监听器隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、Activity 隐藏/恢复补发与卸载注销 |
 | `features/settings/model/connectionConfig.test.ts` | connection 读取令牌、编辑/重置/保存后的迟到响应丢弃、保存串行与失败重试 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载与 refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复 |
+| `features/settings/model/autoUpdateConfig.test.ts` | 自动更新服务端/本地回退、迟到读取不覆盖编辑、保存与调度完整成功、半失败与 `superseded`（FPR-026） |
+| `features/settings/model/updateCommands.test.ts` | 更新命令互斥、失败重试条件与成功作用域声明（FPR-026） |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载与 refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复；更新成功发布四类失效、CLI 只失效版本、失败不发布不重试、自动更新保存跨 Activity 隐藏（FPR-026） |
 
 复现命令（仓库根目录）：
 
