@@ -59,14 +59,32 @@ export async function getScheduleExecutionStatus(): Promise<ApiResponse> {
 
 /**
  * 立即执行定时任务
+ *
+ * 默认保持旧同步行为；传 `waitForCompletion: false` 时服务端在流程获得执行权后
+ * 返回 202，调用方改为观察 Run。`idempotencyKey` 由执行控制器为一次逻辑提交生成。
  */
-export async function executeScheduleNow(scheduleId: string = 'default', taskFlow: any[]): Promise<ApiResponse> {
+export interface ScheduleExecutionOptions {
+  waitForCompletion?: boolean
+  idempotencyKey?: string
+  signal?: AbortSignal
+}
+
+export async function executeScheduleNow(
+  scheduleId: string = 'default',
+  taskFlow: any[],
+  options: ScheduleExecutionOptions = {},
+): Promise<ApiResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey
+
+  const body: Record<string, unknown> = { taskFlow }
+  if (options.waitForCompletion !== undefined) body.waitForCompletion = options.waitForCompletion
+
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/schedules/${scheduleId}/execute`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ taskFlow }),
+    headers,
+    body: JSON.stringify(body),
+    signal: options.signal,
   })
   return parseJsonResponse(response)
 }

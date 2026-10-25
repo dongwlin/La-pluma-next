@@ -31,7 +31,7 @@ export interface RunTaskResult {
   index?: number
   itemIndex?: number
   name?: string
-  status?: 'pending' | 'running' | 'success' | 'failed' | 'stopped'
+  status?: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
   error?: string
   [key: string]: unknown
 }

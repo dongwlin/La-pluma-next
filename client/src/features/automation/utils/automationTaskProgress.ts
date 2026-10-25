@@ -28,3 +28,16 @@ export function taskResultsFromSummary(summary: ProgressSummary, tasks: TaskFlow
     return status ? [{ taskId: task.id, task: task.name, status }] : []
   })
 }
+
+/** 服务端按 enabled 任务给步骤序号；优先用任务 ID 映射回真实流程位置。 */
+export function resolveExecutionStep(
+  flow: TaskFlowItem[],
+  progress: { currentStep: number | null; currentTaskId: string | null },
+): number {
+  if (progress.currentTaskId) {
+    const matched = flow.findIndex(task => task.id === progress.currentTaskId)
+    if (matched >= 0) return matched
+  }
+  const enabledTask = flow.filter(task => task.enabled)[progress.currentStep ?? -1]
+  return enabledTask ? flow.findIndex(task => task.id === enabledTask.id) : -1
+}

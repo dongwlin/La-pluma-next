@@ -16,14 +16,16 @@ import type {
 } from '../types'
 import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
 import {
-  executeScheduleNow,
   getActivity,
-  getScheduleExecutionStatus,
   setupSchedule,
   stopSchedule,
 } from '../api'
-import { taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
-import { executePredefinedTask, getTaskStatus, stopTask } from '@/features/task-execution'
+import { resolveExecutionStep, taskResultsFromSummary, type TaskExecutionResult } from '../utils/automationTaskProgress'
+import { useAutomationExecution } from '../hooks/useAutomationExecution'
+import {
+  executionSummaryHasFailure,
+  type AutomationExecutionSummary,
+} from '../model/automationRun'
 import { loadUserConfig, saveUserConfig } from '@/features/user-config'
 import { testConnection as testAdbConnection } from '@/features/settings'
 
@@ -105,15 +107,11 @@ const readScheduleEntries = (schedule: { times?: unknown, entries?: unknown } | 
   return []
 }
 
-const RECOVERY_STATUS_POLL_MS = 1000
-const RECOVERY_STATUS_TIMEOUT_MS = 30 * 60 * 1000
 const POINTER_SORT_ACTIVATION_PX = 10
 const AUTOMATION_CONFIG_SYNC_PENDING_KEY = 'automationConfigSyncPending'
 let automationConfigSyncSequence = 0
 
 const createAutomationConfigSyncToken = () => `${Date.now()}-${++automationConfigSyncSequence}`
-
-type RecoveryWaitResult = 'completed' | 'timeout' | 'cancelled'
 
 interface PointerSortSession {
   pointerId: number
@@ -175,9 +173,6 @@ export const placeClosedownLast = <T extends { id: string; commandId?: string },
   ...tasks.filter(task => task.commandId === 'closedown' || task.id.startsWith('closedown-'))
 ]
 
-
-const commaSeparatedArrayKeys = new Set(['buy_first', 'blacklist', 'first_tags', 'preserve_tags'])
-
 const parseDropTargetEntries = (value: unknown): string[] | null => {
   if (value === undefined || value === null || value === '') return []
 
@@ -193,75 +188,6 @@ const parseDropTargetEntries = (value: unknown): string[] | null => {
   }
   return normalizedEntries
 }
-
-interface AutomationExecutionSummary {
-  taskResults?: TaskExecutionResult[]
-  successCount: number
-  failedCount: number
-  skippedCount: number
-  durationMs: number
-  summaries: Array<{
-    task: string
-    stage?: string
-    times?: string
-    drops?: string
-    duration?: string
-  }>
-  reports: Array<{
-    provider: 'penguin' | 'yituliu'
-    stage?: string
-    status: 'success' | 'failed'
-    message: string
-  }>
-  actions: Array<{
-    task: string
-    action: 'startup' | 'closedown' | 'depot' | 'award' | 'recruit' | 'infrast' | 'mall' | 'fight'
-    status: 'success' | 'skipped' | 'failed'
-    message: string
-    startedCount?: number
-    collectedCount?: number
-    expeditedCount?: number
-    refreshCount?: number
-    highestLevel?: number
-    detectedTags?: string[]
-    finalTags?: string[]
-    preservedTags?: string[]
-    configuredFacilities?: string[]
-    observedFacilities?: string[]
-    rewardCollected?: boolean
-    rotationApplied?: boolean
-    droneUsed?: boolean
-    cluesReceived?: number
-    cluesSent?: number
-    clueExchange?: boolean
-    trainingContinued?: boolean
-    trainingCompleted?: boolean
-    trainingProcessing?: boolean
-    visitedCount?: number
-    creditCollected?: boolean
-    purchasedCount?: number
-    noMoney?: boolean
-    visitLimited?: boolean
-    noFriends?: boolean
-    stage?: string
-    times?: number
-    dropCount?: number
-    drops?: string
-    medicine?: number
-    stone?: number
-    duration?: string
-    sanityDepleted?: boolean
-  }>
-  errors: Array<string | { task: string; error: string }>
-  warnings: string[]
-}
-
-const executionSummaryHasFailure = (summary: AutomationExecutionSummary) => Boolean(
-  summary.failedCount > 0
-  || summary.errors?.length
-  || summary.actions?.some(action => action.status === 'failed')
-  || summary.reports?.some(report => report.status === 'failed')
-)
 
 const migrateTaskParams = (task: any) => {
   const commandId = task.commandId || String(task.id || '').split('-')[0]
@@ -673,8 +599,18 @@ function AutomationStageEditor({
 
 export default function AutomationTasks() {
   const shouldReduceMotion = useReducedMotion()
-  const { setMessage: setStatusMessage, setActive: setIsActiveStatus } = useStatusStore()
+  const { setMessage: setStatusMessage } = useStatusStore()
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
+  const {
+    isRunning,
+    isStopping,
+    isSubmitting,
+    progress: executionProgress,
+    summary: executionSummary,
+    scheduleSummary: executionScheduleSummary,
+    submitFlow,
+    stop: stopTaskFlow,
+  } = useAutomationExecution({ notify: setStatusMessage })
 
   // 辅助函数：显示消息
   const showSuccess = (msg: string) => {
@@ -683,20 +619,13 @@ export default function AutomationTasks() {
   const showError = (msg: string) => {
     setStatusMessage(msg, 'error')
   }
-  const showInfo = (msg: string) => {
-    setStatusMessage(msg, 'info')
-  }
 
-  const [isRunning, setIsRunning] = useState(false)
-  const [isStopping, setIsStopping] = useState(false)
   const [taskFlow, setTaskFlow] = useState<TaskFlowItem[]>([])
   const taskFlowRef = useRef<TaskFlowItem[]>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [taskPickerOpen, setTaskPickerOpen] = useState(false)
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleTimeEntry[]>(DEFAULT_SCHEDULE_ENTRIES)
-  const [currentStep, setCurrentStep] = useState(-1)
-  const [taskResults, setTaskResults] = useState<TaskExecutionResult[]>([])
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [lastDeletedTask, setLastDeletedTask] = useState<DeletedTaskSnapshot | null>(null)
   const [sortAnnouncement, setSortAnnouncement] = useState('')
@@ -711,10 +640,6 @@ export default function AutomationTasks() {
   const taskFlowHydratedRef = useRef(false)
   const taskFlowLoadRequestRef = useRef(0)
   const taskFlowLoadAbortRef = useRef<AbortController | null>(null)
-  const scheduleWasRunningRef = useRef(false)
-  const executionRevisionRef = useRef(0)
-  const manualExecutionInFlightRef = useRef(false)
-  const stopRequestInFlightRef = useRef(false)
   const connectionTestInFlightRef = useRef(false)
   const connectionTestAbortRef = useRef<AbortController | null>(null)
   const connectionTestMountedRef = useRef(true)
@@ -727,6 +652,28 @@ export default function AutomationTasks() {
   const activeTaskId = selectedTaskId && taskFlow.some(task => task.id === selectedTaskId)
     ? selectedTaskId
     : taskFlow[0]?.id ?? null
+  const displaySummary = executionSummary
+    ?? (!isRunning && !isSubmitting ? executionScheduleSummary : null)
+  const taskResults: TaskExecutionResult[] = isRunning
+    ? executionProgress?.taskResults ?? []
+    : isSubmitting
+      ? []
+      : displaySummary
+        ? taskResultsFromSummary(displaySummary, taskFlow)
+        : []
+  const currentStep = isRunning && executionProgress
+    ? resolveExecutionStep(taskFlow, executionProgress)
+    : -1
+
+  useEffect(() => {
+    if (!displaySummary) return
+    const fingerprint = JSON.stringify(displaySummary)
+    if (lastExecutionFingerprintRef.current === fingerprint) return
+
+    lastExecutionFingerprintRef.current = fingerprint
+    setLastExecutionSummary(displaySummary)
+    setExecutionDetailsOpen(executionSummaryHasFailure(displaySummary))
+  }, [displaySummary])
 
   const taskExecutionState = (task: TaskFlowItem, index: number) => {
     if (!task.enabled) return 'idle'
@@ -782,16 +729,6 @@ export default function AutomationTasks() {
     taskFlowRef.current = taskFlow
   }, [taskFlow])
 
-  const applyExecutionSummary = (summary: AutomationExecutionSummary) => {
-    setTaskResults(taskResultsFromSummary(summary, taskFlowRef.current))
-    const fingerprint = JSON.stringify(summary)
-    if (lastExecutionFingerprintRef.current === fingerprint) return
-
-    lastExecutionFingerprintRef.current = fingerprint
-    setLastExecutionSummary(summary)
-    setExecutionDetailsOpen(executionSummaryHasFailure(summary))
-  }
-
   useEffect(() => {
     connectionTestMountedRef.current = true
     setTestingConnectionTaskId(null)
@@ -808,82 +745,6 @@ export default function AutomationTasks() {
       taskFlowLoadAbortRef.current = null
     }
   }, [])
-
-  // 轮询定时任务执行状态
-  useEffect(() => {
-    let intervalId = null
-    let isSubscribed = true // 用于防止组件卸载后的状态更新
-    let requestInFlight = false
-
-    const checkScheduleStatus = async () => {
-      if (!isSubscribed || requestInFlight) return
-      requestInFlight = true
-      const revision = executionRevisionRef.current
-
-      try {
-        const result = await getScheduleExecutionStatus()
-        if (!isSubscribed || revision !== executionRevisionRef.current) return
-
-        if (result.success && result.data) {
-          const status = result.data
-
-          // 如果定时任务正在运行，更新 UI 状态
-          if (status.isRunning) {
-            setTaskResults(status.taskResults || [])
-            scheduleWasRunningRef.current = true
-            setIsRunning(true)
-            if (String(status.message || '').includes('正在终止')) {
-              stopRequestInFlightRef.current = true
-              setIsStopping(true)
-            }
-            setIsActiveStatus(true)
-
-            // 根据任务 ID 找到在 taskFlow 中的实际索引
-            if (status.currentTaskId) {
-              setCurrentStep(taskFlow.findIndex(task => task.id === status.currentTaskId))
-            } else {
-              const enabledTask = taskFlow.filter(task => task.enabled)[status.currentStep]
-              setCurrentStep(enabledTask ? taskFlow.findIndex(task => task.id === enabledTask.id) : -1)
-            }
-
-            setStatusMessage(status.message || `正在执行: ${status.currentTask}`, 'info')
-          } else {
-            // A manual request may still be starting when an earlier idle poll arrives.
-            if (manualExecutionInFlightRef.current && !scheduleWasRunningRef.current) return
-            const justFinished = scheduleWasRunningRef.current
-            scheduleWasRunningRef.current = false
-            setIsRunning(false)
-            setCurrentStep(-1)
-            setIsStopping(false)
-            stopRequestInFlightRef.current = false
-            if (status.lastResult) {
-              applyExecutionSummary(status.lastResult as AutomationExecutionSummary)
-            }
-            if (Array.isArray(status.taskResults)) setTaskResults(status.taskResults)
-
-            if (justFinished) {
-              const completionMessage = status.message || '任务流程执行完成'
-              const completionType = /终止|取消|失败/.test(completionMessage) ? 'warning' : 'success'
-              setStatusMessage(completionMessage, completionType)
-            }
-          }
-        }
-      } catch (error) {
-        // 静默失败，不影响用户体验
-      } finally {
-        requestInFlight = false
-      }
-    }
-
-    // 每秒检查一次
-    intervalId = setInterval(checkScheduleStatus, 1000)
-    checkScheduleStatus() // 立即执行一次
-
-    return () => {
-      isSubscribed = false
-      if (intervalId) clearInterval(intervalId)
-    }
-  }, [setIsActiveStatus, setStatusMessage, taskFlow])
 
   // 可用的任务列表
   const availableTasks: AutomationAvailableTask[] = [
@@ -1478,107 +1339,6 @@ export default function AutomationTasks() {
     })
   }
 
-  const buildCommand = (task: TaskFlowItem) => {
-    if (task.taskType) {
-      const params = task.params || {}
-      const taskConfig: any = {
-        name: task.name,
-        type: task.taskType,
-        params: {}
-      }
-
-      Object.keys(params).forEach(key => {
-        const value = params[key]
-        if (value === undefined || value === '' || value === null) return
-
-        if (typeof value === 'boolean') {
-          taskConfig.params[key] = value
-        }
-        else if (Array.isArray(value)) {
-          if (value.length > 0) {
-            taskConfig.params[key] = value
-          }
-        }
-        else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
-          taskConfig.params[key] = value.trim()
-        }
-        else if (typeof value === 'string' && (commaSeparatedArrayKeys.has(key) || (value.includes(',') && !value.includes('[')))) {
-          taskConfig.params[key] = value.split(',').map(v => v.trim()).filter(v => v)
-        }
-        else if (typeof value === 'number') {
-          taskConfig.params[key] = value
-        }
-        else if (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '') {
-          taskConfig.params[key] = Number(value)
-        }
-        else if (value) {
-          taskConfig.params[key] = value
-        }
-      })
-
-      return {
-        command: 'run',
-        params: task.commandId || task.id,
-        taskConfig: JSON.stringify(taskConfig)
-      }
-    }
-
-    const commandId = task.commandId || task.id.split('-')[0]
-    let params = ''
-    const extraArgs: string[] = []
-
-    if (commandId === 'startup' || commandId === 'closedown') {
-      params = task.params?.clientType || 'Official'
-      if (commandId === 'startup' && task.params?.accountName?.trim()) {
-        extraArgs.push(`--account-name ${task.params.accountName.trim()}`)
-      }
-    } else if (commandId === 'fight') {
-      const stages = task.params?.stages || [{ stage: task.params?.stage || '', times: task.params?.times || '' }]
-      params = stages
-        .map(stageConfig => typeof stageConfig === 'string'
-          ? { stage: stageConfig, times: '' }
-          : stageConfig)
-        .filter(stageConfig => stageConfig.stage?.trim())
-        .map(stageConfig => `${stageConfig.stage.trim()}${stageConfig.times ? `:${stageConfig.times}` : ''}`)
-        .join(',')
-      if (task.params?.medicine !== undefined && task.params.medicine !== '' && task.params.medicine !== null) {
-        params += ` -m ${task.params.medicine}`
-      }
-      if (task.params?.expiringMedicine !== undefined && task.params.expiringMedicine !== '' && task.params.expiringMedicine !== null) {
-        params += ` --expiring-medicine ${task.params.expiringMedicine}`
-      }
-      if (task.params?.stone !== undefined && task.params.stone !== '' && task.params.stone !== null) {
-        params += ` --stone ${task.params.stone}`
-      }
-      if (task.params?.series !== undefined && task.params.series !== '' && String(task.params.series) !== '1') {
-        params += ` --series ${task.params.series}`
-      }
-      const dropTargets = parseDropTargetEntries(task.params?.drops)
-      if (dropTargets === null) {
-        throw new Error('掉落目标格式应为物品 ID=数量，多个目标用逗号分隔')
-      }
-      dropTargets.forEach(target => {
-        params += ` -D${target}`
-      })
-      if (task.params?.clientType) params += ` --client-type ${task.params.clientType}`
-      if (task.params?.DrGrandet) params += ' --dr-grandet'
-      if (task.params?.report_to_penguin) {
-        params += ' --report-to-penguin'
-        if (task.params.penguin_id?.trim()) params += ` --penguin-id ${task.params.penguin_id.trim()}`
-      }
-      if (task.params?.report_to_yituliu) {
-        params += ' --report-to-yituliu'
-        if (task.params.yituliu_id?.trim()) params += ` --yituliu-id ${task.params.yituliu_id.trim()}`
-      }
-    }
-
-    if (extraArgs.length > 0) {
-      params = `${extraArgs.join(' ')} ${params}`
-    }
-
-    return { command: commandId, params }
-  }
-
   const executeTaskFlow = async () => {
     if (!automationAvailable) {
       void showError(unavailableMessage)
@@ -1607,91 +1367,9 @@ export default function AutomationTasks() {
       return
     }
 
-    stopRequestInFlightRef.current = false
-    manualExecutionInFlightRef.current = true
-    executionRevisionRef.current += 1
-    scheduleWasRunningRef.current = false
     lastExecutionFingerprintRef.current = ''
-    setTaskResults([])
-    setIsStopping(false)
-    setIsRunning(true)
-    setCurrentStep(-1)
-    showInfo('开始执行任务流程...')
-
-    try {
-      // 清理 taskFlow，移除不能序列化的字段（如 React 组件）
-      const cleanTaskFlow = taskFlow.map(task => ({
-        id: task.id,
-        name: task.name,
-        commandId: task.commandId,
-        taskType: task.taskType,
-        params: task.params,
-        enabled: task.enabled
-      }))
-
-      // 直接调用后端的定时任务执行接口，复用所有逻辑
-      const result = await executeScheduleNow('manual', cleanTaskFlow)
-      const executionSummary = result.data?.summary as AutomationExecutionSummary | undefined
-      if (executionSummary) {
-        applyExecutionSummary(executionSummary)
-      }
-
-      if (result.success && result.data?.stopped) {
-        setStatusMessage(result.message || '任务流程已终止', 'warning')
-      } else if (result.success) {
-        const hasWarnings = Boolean(executionSummary?.warnings?.length || executionSummary?.reports?.some(report => report.status === 'failed'))
-        setStatusMessage(result.message || '任务流程执行完成', hasWarnings ? 'warning' : 'success')
-      } else {
-        showError(`任务流程执行失败: ${result.message || '未知错误'}`)
-      }
-    } catch (error: any) {
-      showError(`执行失败: ${error.message}`)
-    } finally {
-      manualExecutionInFlightRef.current = false
-      executionRevisionRef.current += 1
-      stopRequestInFlightRef.current = false
-      setIsStopping(false)
-      setIsRunning(false)
-      setCurrentStep(-1)
-    }
+    await submitFlow(taskFlow)
   }
-
-  const stopTaskFlow = async () => {
-    if (stopRequestInFlightRef.current) return
-
-    stopRequestInFlightRef.current = true
-    setIsStopping(true)
-    showInfo('正在终止任务流程...')
-
-    // 调用后端 API 终止任务
-    try {
-      const result = await stopTask()
-      const taskStopped = Boolean(result.data?.task?.success)
-      const scheduleStopRequested = Boolean(result.data?.scheduleStopped)
-
-      if (!result.success || (!taskStopped && !scheduleStopRequested)) {
-        const detail = result.data?.task?.message || result.message || '当前没有可终止的任务'
-        stopRequestInFlightRef.current = false
-        setIsStopping(false)
-        void showError(`终止失败: ${detail}`)
-        return
-      }
-
-      setStatusMessage('正在终止任务流程...', 'warning')
-    } catch (error) {
-      stopRequestInFlightRef.current = false
-      setIsStopping(false)
-      void showError('终止任务失败')
-    }
-
-    localStorage.removeItem('maa-task-flow-execution')
-  }
-
-  useEffect(() => {
-    if (isRunning) return
-    stopRequestInFlightRef.current = false
-    setIsStopping(false)
-  }, [isRunning])
 
   const loadTaskFlow = useEffectEvent(async (force = false) => {
     if (taskFlowHydratedRef.current && !force) return
@@ -1815,93 +1493,14 @@ export default function AutomationTasks() {
     commitScheduleEntries(scheduleEntries.filter((_, itemIndex) => itemIndex !== index))
   }
 
+  // 页面初始化：加载流程配置与活动信息。执行观察由应用级控制器负责。
   useEffect(() => {
     let cancelled = false
-    const controller = new AbortController()
-    const cancellationHandlers = new Set<() => void>()
 
-    const cancelRecoveryWork = () => {
-      cancelled = true
-      controller.abort()
-      Array.from(cancellationHandlers).forEach(cancel => cancel())
-      cancellationHandlers.clear()
-    }
-
-    const waitForDelay = (durationMs: number) => new Promise<boolean>((resolve) => {
-      if (cancelled) {
-        resolve(false)
-        return
-      }
-
-      let settled = false
-      const timer = window.setTimeout(() => finish(true), durationMs)
-      const finish = (completed: boolean) => {
-        if (settled) return
-        settled = true
-        window.clearTimeout(timer)
-        cancellationHandlers.delete(cancel)
-        resolve(completed)
-      }
-      const cancel = () => finish(false)
-      cancellationHandlers.add(cancel)
-    })
-
-    const waitForTaskCompletion = () => new Promise<RecoveryWaitResult>((resolve) => {
-      if (cancelled) {
-        resolve('cancelled')
-        return
-      }
-
-      let settled = false
-      let requestInFlight = false
-      let intervalId: number | null = null
-      let timeoutId: number | null = null
-
-      const finish = (result: RecoveryWaitResult) => {
-        if (settled) return
-        settled = true
-        if (intervalId !== null) window.clearInterval(intervalId)
-        if (timeoutId !== null) window.clearTimeout(timeoutId)
-        cancellationHandlers.delete(cancel)
-        resolve(result)
-      }
-      const cancel = () => finish('cancelled')
-      const checkStatus = async () => {
-        if (cancelled || requestInFlight || settled) return
-        requestInFlight = true
-        try {
-          const statusResult = await getTaskStatus(controller.signal)
-          if (cancelled) {
-            finish('cancelled')
-          } else if (statusResult.success && statusResult.data?.isRunning === false) {
-            finish('completed')
-          }
-        } catch (error) {
-          if (cancelled || (error instanceof Error && error.name === 'AbortError')) {
-            finish('cancelled')
-          }
-        } finally {
-          requestInFlight = false
-        }
-      }
-
-      cancellationHandlers.add(cancel)
-      intervalId = window.setInterval(() => void checkStatus(), RECOVERY_STATUS_POLL_MS)
-      timeoutId = window.setTimeout(() => finish('timeout'), RECOVERY_STATUS_TIMEOUT_MS)
-      void checkStatus()
-    })
-
-    const reportWaitTimeout = (taskName: string) => {
-      setStatusMessage(`${taskName} 状态等待超时，已停止前端续跑，请检查后端任务状态`, 'warning')
-    }
-
-    // 先加载任务流程
-    const initializeAndRestore = async () => {
-      // 1. 先加载任务流程
+    const initialize = async () => {
       await loadTaskFlow()
       if (cancelled) return
 
-      // 2. 获取当前活动信息
       try {
         const activityResult = await getActivity('Official')
         if (cancelled) return
@@ -1909,190 +1508,14 @@ export default function AutomationTasks() {
           setCurrentActivity(activityResult.data.code)
           setActivityName(activityResult.data.name)
         }
-      } catch (error) {
-        // 静默失败，不影响用户体验
-      }
-
-      // 3. 然后检查是否需要恢复执行
-      try {
-        const result = await getTaskStatus(controller.signal)
-        if (cancelled) return
-
-        // 检查是否有任务流程正在执行
-        const flowExecution = localStorage.getItem('maa-task-flow-execution')
-
-        if (flowExecution) {
-          const { isExecuting, tasks, currentIndex } = JSON.parse(flowExecution)
-          const restoredTasks = Array.isArray(tasks) ? tasks : []
-          const restoredCurrentIndex = Number.isInteger(currentIndex) ? currentIndex : -1
-
-          if (isExecuting && restoredTasks.length > 0) {
-            setIsRunning(true)
-            showInfo(`恢复任务流程执行...`)
-
-            const continueTaskFlow = async () => {
-              // 从 localStorage 加载任务流程，找到当前执行的任务
-              const savedTaskFlow = localStorage.getItem('maa-task-flow')
-              if (!savedTaskFlow) {
-                setStatusMessage('无法恢复任务流程', 'error')
-                setIsRunning(false)
-                setCurrentStep(-1)
-                localStorage.removeItem('maa-task-flow-execution')
-                return
-              }
-
-              const parsedTasks = JSON.parse(savedTaskFlow)
-              const loadedTasks = Array.isArray(parsedTasks) ? parsedTasks : []
-              if (cancelled) return
-
-              const currentRun = result.data
-              if (result.success && currentRun?.isRunning) {
-                const currentTaskInfo = restoredTasks[restoredCurrentIndex]
-                if (currentTaskInfo) {
-                  // 找到当前任务在 taskFlow 中的索引
-                  const currentTask = loadedTasks.find((t: any) => {
-                    const tCommandId = t.commandId || t.id.split('-')[0]
-                    return tCommandId === currentTaskInfo.commandId
-                  })
-
-                  if (currentTask) {
-                    const actualIndex = loadedTasks.findIndex((t: any) => t.id === currentTask.id)
-                    setCurrentStep(actualIndex)
-                  }
-                }
-
-                showInfo(`正在执行: ${currentRun.taskName}`)
-
-                // 等待当前任务完成
-                const waitResult = await waitForTaskCompletion()
-                if (waitResult === 'cancelled') return
-                if (waitResult === 'timeout') {
-                  reportWaitTimeout(currentRun.taskName || '当前任务')
-                  return
-                }
-              }
-
-              // 继续执行剩余任务
-              const remainingTasks = restoredTasks.slice(restoredCurrentIndex + 1)
-
-              if (remainingTasks.length > 0) {
-                for (let i = 0; i < remainingTasks.length; i++) {
-                  const taskInfo = remainingTasks[i]
-                  if (cancelled || !taskInfo) return
-
-                  // 使用 commandId 匹配任务
-                  const task = loadedTasks.find((t: any) => {
-                    const tCommandId = t.commandId || t.id.split('-')[0]
-                    return tCommandId === taskInfo.commandId && t.enabled
-                  })
-
-                  if (!task) {
-                    continue
-                  }
-
-                  const actualIndex = loadedTasks.findIndex((t: any) => t.id === task.id)
-                  setCurrentStep(actualIndex)
-                  showInfo(`正在执行: ${task.name}`)
-
-                  localStorage.setItem('maa-task-flow-execution', JSON.stringify({
-                    isExecuting: true,
-                    tasks: restoredTasks,
-                    currentIndex: restoredCurrentIndex + i + 1,
-                    startTime: Date.now()
-                  }))
-
-                  try {
-                    const { command, params, taskConfig } = buildCommand(task)
-                    const result = await executePredefinedTask(
-                      command,
-                      params,
-                      taskConfig as any,
-                      controller.signal,
-                      task.name,
-                      'automation',
-                      false
-                    )
-                    if (cancelled) return
-
-                    if (!result.success) {
-                      setStatusMessage(`${task.name} 提交失败: ${getErrorMessage(result)}`, 'error')
-                      setIsRunning(false)
-                      setCurrentStep(-1)
-                      localStorage.removeItem('maa-task-flow-execution')
-                      return
-                    }
-
-                    const waitResult = await waitForTaskCompletion()
-                    if (waitResult === 'cancelled') return
-                    if (waitResult === 'timeout') {
-                      reportWaitTimeout(task.name)
-                      return
-                    }
-
-                    // 任务完成后的延迟时间
-                    // 启动游戏需要更长的等待时间，确保游戏完全启动
-                    const commandId = task.commandId || task.id.split('-')[0]
-                    const delayTime = commandId === 'startup' ? 15000 : commandId === 'closedown' ? 3000 : 2000
-
-                    showInfo(`${task.name} 完成，等待 ${delayTime / 1000} 秒后继续...`)
-                    if (!await waitForDelay(delayTime)) return
-                  } catch (error) {
-                    if (cancelled || (error instanceof Error && error.name === 'AbortError')) return
-                    setStatusMessage(`${task.name} 恢复执行失败`, 'error')
-                    setIsRunning(false)
-                    setCurrentStep(-1)
-                    localStorage.removeItem('maa-task-flow-execution')
-                    return
-                  }
-                }
-              }
-
-              if (cancelled) return
-              setStatusMessage('所有任务执行完成！', 'success')
-              setIsRunning(false)
-              setCurrentStep(-1)
-              localStorage.removeItem('maa-task-flow-execution')
-            }
-
-            await continueTaskFlow()
-            return
-          }
-        }
-
-        const currentRun = result.data
-        if (result.success && currentRun?.isRunning) {
-          const { taskName, startTime, taskType } = currentRun
-
-          if (taskType === 'automation') {
-            const elapsedMinutes = (Date.now() - startTime) / 1000 / 60
-            setIsRunning(true)
-            setCurrentStep(0)
-            if (elapsedMinutes > 5) {
-              showInfo(`${taskName} 可能已完成（已运行 ${Math.floor(elapsedMinutes)} 分钟）`)
-            } else {
-              showInfo(`正在执行: ${taskName}`)
-            }
-
-            const waitResult = await waitForTaskCompletion()
-            if (waitResult === 'completed' && !cancelled) {
-              setIsRunning(false)
-              setCurrentStep(-1)
-              setStatusMessage('任务已完成', 'success')
-            } else if (waitResult === 'timeout' && !cancelled) {
-              reportWaitTimeout(taskName || '当前任务')
-            }
-          }
-        }
-      } catch (error) {
-        // 静默失败，不影响用户体验
+      } catch {
+        // 活动信息只用于展示，失败不影响任务流程。
       }
     }
 
-    void initializeAndRestore()
-
-    return cancelRecoveryWork
-    // Recovery is mount-scoped; rerunning it would create a second task runner.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void initialize()
+    return () => { cancelled = true }
+    // 初始化只运行一次；loadTaskFlow 是 useEffectEvent，重跑会改变配置加载时序。
   }, [])
 
   // 监听养成计划应用事件，自动刷新任务流程
@@ -2508,11 +1931,11 @@ export default function AutomationTasks() {
                   </AnimatePresence>
                   <Button
                     onClick={executeTaskFlow}
-                    disabled={!automationAvailable || isRunning || taskFlow.filter(t => t.enabled).length === 0}
+                    disabled={!automationAvailable || isRunning || isSubmitting || taskFlow.filter(t => t.enabled).length === 0}
                     title={!automationAvailable ? unavailableMessage : undefined}
-                    loading={isRunning}
-                    loadingText="执行中"
-                    statusKey={isRunning ? 'running' : 'ready'}
+                    loading={isRunning || isSubmitting}
+                    loadingText={isRunning ? '执行中' : '正在启动'}
+                    statusKey={isRunning || isSubmitting ? 'running' : 'ready'}
                     variant="primary"
                     className={`automation-run-button w-full justify-center whitespace-nowrap${isRunning ? ' is-running' : ''}`}
                     icon={<Play size={16} fill="currentColor" aria-hidden="true" />}
