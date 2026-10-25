@@ -712,10 +712,13 @@ export class StatisticsCommandOwner {
     const commandSucceeded = this.resumable?.commandSucceeded ?? false
     const resumeMode: StatisticsCommandResumeMode = commandSucceeded ? 'parse' : 'command'
     const cancelled = operation.cancelled
+    const waitingForRun = this.state.phase === 'waiting'
     const message = cancelled
       ? '已取消等待识别结果'
       : commandSucceeded
-        ? '识别完成，但等待解析结果超时'
+        ? waitingForRun
+          ? '识别命令仍在执行，可继续等待结果'
+          : '识别完成，但等待解析结果超时'
         : '等待识别命令结果超时'
 
     this.setState({

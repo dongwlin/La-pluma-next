@@ -263,6 +263,28 @@ describe('statistics command owner', () => {
     expect(harness.publish).toHaveBeenCalledTimes(1)
   })
 
+  it('times out while a replayed run is still active without parsing or resubmitting', async () => {
+    const harness = createOwner({
+      timeouts: { command: 1_000, run: 20, parse: 1_000, materials: 1_000 },
+    })
+    harness.runCommand.mockResolvedValue(submittedRun('run-1', 'running'))
+    harness.readRun.mockResolvedValue({ success: true, data: terminalRun('running') })
+
+    const promise = harness.owner.run('depot')
+    await vi.advanceTimersByTimeAsync(30)
+    const timedOut = await promise
+
+    expect(timedOut).toMatchObject({
+      status: 'timed-out',
+      kind: 'depot',
+      message: '识别命令仍在执行，可继续等待结果',
+    })
+    expect(harness.owner.getState()).toMatchObject({ phase: 'timed-out', resumeMode: 'parse' })
+    expect(harness.parseDepot).not.toHaveBeenCalled()
+    expect(harness.runCommand).toHaveBeenCalledTimes(1)
+    expect(harness.readRun).toHaveBeenCalledWith('run-1', expect.any(AbortSignal))
+  })
+
   it('reuses the same idempotency key after a command timeout and waits for the replayed run', async () => {
     const harness = createOwner({
       timeouts: { command: 20, run: 1_000, parse: 1_000, materials: 1_000 },
