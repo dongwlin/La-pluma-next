@@ -16,7 +16,6 @@ import {
   cleanupLogs,
   clearRealtimeLogs,
   getLogFiles,
-  getRealtimeLogs,
   readLogFile,
 } from '../api'
 import {
@@ -35,7 +34,8 @@ import {
 } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
-import { buildLogView, parseHistoryContent, parseRealtimeLog, type LogContentMode, type LogFilter } from '../model/logModel'
+import { buildLogView, parseHistoryContent, type LogContentMode, type LogFilter } from '../model/logModel'
+import { useRealtimeLogs } from '../hooks/useRealtimeLogs'
 import type { LogEntry, LogFile } from '../types'
 
 type ConfirmAction = 'clear' | 'cleanup'
@@ -50,10 +50,9 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-
 export default function LogViewer() {
   const shouldReduceMotion = useReducedMotion()
-  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [historyLogs, setHistoryLogs] = useState<LogEntry[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const [contentMode, setContentMode] = useState<LogContentMode>('summary')
   const [filter, setFilter] = useState<LogFilter>('all')
@@ -63,11 +62,12 @@ export default function LogViewer() {
   const [loading, setLoading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<LogFile | null>(null)
   const [viewingHistory, setViewingHistory] = useState(false)
-  const [realtimeError, setRealtimeError] = useState<string | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
+  const realtime = useRealtimeLogs({ enabled: !viewingHistory })
+  const logs = viewingHistory ? historyLogs : realtime.logs
   const {
     containerRef: contentModeTabsRef,
     activeRect: activeContentModeRect,
@@ -77,45 +77,7 @@ export default function LogViewer() {
   const logContainerRef = useRef<HTMLDivElement>(null)
   const viewingHistoryRef = useRef(false)
   const mountedRef = useRef(true)
-  const realtimeAbortRef = useRef<AbortController | null>(null)
-  const realtimeRequestIdRef = useRef(0)
-  const realtimePausedRef = useRef(false)
   const historyRequestIdRef = useRef(0)
-
-  const loadRealtimeLogs = useCallback(async () => {
-    if (viewingHistoryRef.current || realtimePausedRef.current || document.hidden || realtimeAbortRef.current) return
-
-    const controller = new AbortController()
-    const requestId = ++realtimeRequestIdRef.current
-    realtimeAbortRef.current = controller
-
-    try {
-      const result = await getRealtimeLogs(200, controller.signal)
-      if (!result.success) throw new Error(result.message || '实时日志请求失败')
-
-      if (
-        mountedRef.current
-        && requestId === realtimeRequestIdRef.current
-        && !viewingHistoryRef.current
-        && !document.hidden
-      ) {
-        const values = Array.isArray(result.data) ? result.data : []
-        setLogs(values.map(parseRealtimeLog))
-        setRealtimeError(null)
-      }
-    } catch (error) {
-      if (
-        mountedRef.current
-        && !controller.signal.aborted
-        && requestId === realtimeRequestIdRef.current
-        && !viewingHistoryRef.current
-      ) {
-        setRealtimeError(getErrorMessage(error, '暂时无法获取实时日志'))
-      }
-    } finally {
-      if (realtimeAbortRef.current === controller) realtimeAbortRef.current = null
-    }
-  }, [])
 
   const loadHistoryFiles = useCallback(async () => {
     try {
@@ -132,21 +94,15 @@ export default function LogViewer() {
     }
   }, [])
 
-  const stopRealtimeRequest = useCallback(() => {
-    realtimeRequestIdRef.current += 1
-    realtimeAbortRef.current?.abort()
-    realtimeAbortRef.current = null
-  }, [])
-
   const viewHistoryFile = async (file: LogFile) => {
     const requestId = ++historyRequestIdRef.current
     viewingHistoryRef.current = true
-    stopRealtimeRequest()
+    realtime.stop()
+    realtime.clear()
     setViewingHistory(true)
     setSelectedFile(file)
     setAutoScroll(false)
     setLoading(true)
-    setRealtimeError(null)
     setHistoryError(null)
 
     try {
@@ -155,10 +111,10 @@ export default function LogViewer() {
       if (!mountedRef.current || !viewingHistoryRef.current || requestId !== historyRequestIdRef.current) return
 
       const content = typeof result.data?.content === 'string' ? result.data.content : ''
-      setLogs(parseHistoryContent(content))
+      setHistoryLogs(parseHistoryContent(content))
     } catch (error) {
       if (!mountedRef.current || !viewingHistoryRef.current || requestId !== historyRequestIdRef.current) return
-      setLogs([])
+      setHistoryLogs([])
       setHistoryError(getErrorMessage(error, '读取日志文件失败'))
     } finally {
       if (mountedRef.current && requestId === historyRequestIdRef.current) setLoading(false)
@@ -173,32 +129,17 @@ export default function LogViewer() {
     setAutoScroll(true)
     setHistoryError(null)
     setLoading(false)
-    setLogs([])
-    void loadRealtimeLogs()
+    setHistoryLogs([])
+    realtime.start()
   }
 
   useEffect(() => {
     mountedRef.current = true
     void loadHistoryFiles()
-    void loadRealtimeLogs()
-
-    const intervalId = window.setInterval(() => void loadRealtimeLogs(), 1250)
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopRealtimeRequest()
-      } else if (!viewingHistoryRef.current) {
-        void loadRealtimeLogs()
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       mountedRef.current = false
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      stopRealtimeRequest()
     }
-  }, [loadHistoryFiles, loadRealtimeLogs, stopRealtimeRequest])
+  }, [loadHistoryFiles])
 
   useEffect(() => {
     if (autoScroll && !viewingHistory && logContainerRef.current) {
@@ -217,22 +158,20 @@ export default function LogViewer() {
 
   const clearLogs = async () => {
     if (viewingHistoryRef.current) return false
-    realtimePausedRef.current = true
-    stopRealtimeRequest()
+    realtime.pause()
     setActionBusy(true)
     setNotice(null)
     try {
       const result = await clearRealtimeLogs()
       if (!result.success) throw new Error(result.message || '清空实时日志失败')
-      setLogs([])
-      setRealtimeError(null)
+      realtime.clear()
       setNotice({ type: 'success', text: result.message || '实时日志已清空' })
     } catch (error) {
       const message = getErrorMessage(error, '清空实时日志失败')
       setNotice({ type: 'error', text: message })
       throw new Error(message)
     } finally {
-      realtimePausedRef.current = false
+      realtime.resume()
       setActionBusy(false)
     }
   }
@@ -271,12 +210,12 @@ export default function LogViewer() {
     URL.revokeObjectURL(url)
   }
 
-  const activeError = viewingHistory ? historyError : realtimeError
+  const activeError = viewingHistory ? historyError : realtime.error
   const isSummaryEmpty = logs.length > 0 && logView.readable.length === 0
   const isFilteredEmpty = logView.readable.length > 0 && visibleLogs.length === 0
   const retryActiveLogs = () => {
     if (viewingHistory && selectedFile) void viewHistoryFile(selectedFile)
-    else void loadRealtimeLogs()
+    else realtime.refresh()
   }
 
   return (

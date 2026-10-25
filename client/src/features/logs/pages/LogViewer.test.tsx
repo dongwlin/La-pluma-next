@@ -35,6 +35,7 @@ vi.mock('@/features/runtime-status', () => ({ FloatingStatusIndicator: () => nul
 
 let container: HTMLDivElement
 let root: Root
+let visibility: DocumentVisibilityState
 
 const flush = async () => {
   await act(async () => {
@@ -71,6 +72,8 @@ describe('LogViewer recovery and controls', () => {
     mocks.readLogFile.mockReset()
     mocks.clearRealtimeLogs.mockReset()
     mocks.cleanupLogs.mockReset()
+    visibility = 'visible'
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -134,6 +137,10 @@ describe('LogViewer recovery and controls', () => {
     await renderComponent()
     expect(container.querySelector('.log-row')?.textContent).toContain('保留这条实时日志')
 
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await flush()
+    visibility = 'visible'
     await act(async () => document.dispatchEvent(new Event('visibilitychange')))
     await flush()
 
