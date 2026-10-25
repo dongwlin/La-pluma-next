@@ -53,7 +53,7 @@ FPR-013/014/015 之后，表中三列描述的“模块级/实例级队列、页
 
 ### 2.4 Activity 隐藏/恢复
 
-已访问页面由 `Activity` 保活：隐藏保留 state/DOM，清理 Effects；恢复重建 Effects。各页都由协调器通道的 `hydrated` 标记阻止恢复时重复加载，pending 草稿优先。Combat 还会在恢复时清理被中断请求遗留的 loading 状态。现有测试覆盖配置 hydrate 不重载；三域的 Activity 用例还覆盖隐藏期间提交队列不被页面挂载归属截断。
+已访问页面由 `Activity` 保活：隐藏保留 state/DOM，清理 Effects；恢复重建 Effects。各页都由协调器通道的 `hydrated` 标记阻止恢复时重复加载，pending 草稿优先。Combat 还会在恢复时清理被中断请求遗留的 loading 状态。现有测试覆盖配置 hydrate 不重载；Combat/Roguelike 的 Activity 用例覆盖隐藏期间提交队列不被页面挂载归属截断，Automation 由卸载/重挂载的串行提交用例覆盖。
 
 ### 2.5 失败与重试
 
@@ -127,8 +127,8 @@ Combat 的旧 `app` 作业集模式在加载时转换为 `cli`；raid 值 `1`/`2
 | `features/combat/pages/CombatTasks.test.tsx` | pending 跨 remount + 手动重试；重试防重入与成功提示；旧保存响应不清新令牌；`app→cli` 与 raid 迁移（服务端/本地）；迟到加载不覆盖编辑；坏草稿回退服务端；set 模式与待执行索引回填；Activity 恢复；搜索/预览竞态 |
 | `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状与解码校验、坏本地键清理、完整提交与读取失败信封 |
 | `features/roguelike/pages/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；重试防重入与成功提示；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载不覆盖编辑；Activity 恢复；另含 FPR-008 的执行接线用例（Run 提交/停止/恢复） |
-| `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交；wire 去掉界面字段、禁用 schedule 项只留本地；`entries`/`times` 兼容与任务参数迁移；配置+schedule 完整成功、半失败、保存期间新草稿跳过旧 schedule |
-| `features/automation/pages/AutomationTasks.config.test.tsx` | 配置 + schedule 完整成功；保存失败不碰 schedule；schedule 半失败保留 pending 并可从页内重试；disabled/全禁用走 stop；跨 mount 串行提交与旧提交不确认新 revision；迟到加载保护；stale pending 回退服务端；应用计划强制重读与 pending 草稿冲突裁决 |
+| `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交；wire 去掉界面字段、禁用 schedule 项只留本地；`entries`/`times` 兼容与任务参数迁移；配置+schedule 完整成功、半失败、保存期间新草稿跳过旧 schedule；草稿指纹覆盖本地 `entries` |
+| `features/automation/pages/AutomationTasks.config.test.tsx` | 配置 + schedule 完整成功；保存失败不碰 schedule；schedule 半失败保留 pending 并可从页内重试；disabled/全禁用走 stop；编辑/删除禁用时间点仍写回本地并触发提交；跨 mount 串行提交与旧提交不确认新 revision；迟到加载保护；stale pending 回退服务端；应用计划强制重读与 pending 草稿冲突裁决 |
 | `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 识别完成只更新本页并读一次 queue；各数据源独立错误与重试；Activity 恢复 |
 | `features/training/pages/OperatorTraining.test.tsx` | 队列变更废弃旧计划；queue revision 校验；设置写串行；应用计划事件；设置变更不失效计划的缺口 |
