@@ -1,0 +1,125 @@
+# 前端执行客户端与控制器
+
+> [← 返回 README](../README.md)
+
+本文描述 `client/src/features/task-execution/` 的执行客户端、Run 类型接线和应用级执行控制器。服务端的执行身份、状态机与停止矩阵见[执行身份与生命周期契约](execution-lifecycle.md)；本文只讲前端如何消费这些契约，以及尚未迁移的页面边界。
+
+## 1. 定位与边界
+
+`task-execution` 是跨页面微域：命令提交、Run 查询、目标停止与观察循环都归它，页面不再各自维护运行身份。控制器是模块级单例，由 `app/App.tsx` 启动，因此页面隐藏、Activity 清理或订阅组件卸载都不会停止观察。
+
+| 能力 | 归属 | 不负责 |
+| --- | --- | --- |
+| 提交执行并传 `Idempotency-Key` | `api/index.ts` 的命令函数 + `ExecutionController` | 页面表单校验、业务参数拼接 |
+| 读取 `runs/current` / 按 `runId` 查询 | `api/runs.ts` | 判断“设备是否空闲”以外的业务含义 |
+| 保存调用方自己的 `runId` | `ExecutionController` | 持久化 Run 记录（服务端） |
+| 停止指定 run | `api/runs.ts#stopRun` + `stopTrackedRun` | 旧页面按 `tasks/status` 的停止确认 |
+| 连接健康与全局 `isActive` | `runtime-status` | 执行控制器不写 `statusStore` |
+
+控制器不反向依赖 `runtime-status`，也不新增可写业务真相：所有观察都来自服务端 Run 快照，控制器只保存调用方身份与最近一次快照。
+
+## 2. 公开面
+
+### API
+
+| 导出 | 行为 |
+| --- | --- |
+| `getRunSnapshot(signal?)` | `GET /api/agent/runs/current`，返回 `RunSnapshot` |
+| `getRun(runId, signal?)` | `GET /api/agent/runs/{runId}`，终态保留期内可读 |
+| `stopRun(runId)` | `POST /api/agent/actions/stop?runId=…`，只停止目标 run |
+| `executeCommand(..., options?)` | 通用 `run-task`，`options.idempotencyKey` 写入 `Idempotency-Key` |
+| `executePredefinedTask` / `executePredefinedTaskArgs` | 旧参数形式保持不变，末位新增可选 `AgentRequestOptions` |
+| `getTaskStatus` / `stopTask` | 旧进程投影与旧式停止，保留给尚未迁移的页面 |
+
+### 类型
+
+`RunState`、`AgentRun`、`RunSnapshot`、`RunOccupancy`、`RunLease`、`StopRunResult` 与 OpenAPI 的 Run schema 对齐；`isActiveRunState` / `isTerminalRunState` / `findRunById` 提供不依赖页面状态的判断。类型只描述服务端事实，不包含前端推导出的完成语义。
+
+### 控制器
+
+```ts
+import { executionController, useExecutionSnapshot } from '@/features/task-execution'
+
+const intent = executionController.beginExecutionIntent('run_task')
+const result = await executionController.submitExecution('run_task', ({ idempotencyKey, signal }) =>
+  executePredefinedTask('copilot', params, null, signal, name, 'combat', true, { idempotencyKey }),
+)
+```
+
+| 方法 | 语义 |
+| --- | --- |
+| `start()` | 引用计数启动；返回的释放函数只停止本地观察 |
+| `refresh(reason?)` | 读取快照；`reconnect`/`resume` 先按已知 `runId` 查询 |
+| `beginExecutionIntent(operationId, { idempotencyKey? })` | 生成一次逻辑提交的键；重试必须复用同一 intent |
+| `settleExecutionIntent(intent, response, error?)` | 收敛提交结果，只允许最新 intent 更新身份 |
+| `submitExecution(operationId, request, options?)` | 生成键、执行请求、收敛响应；本地 signal 中止不等于停止 |
+| `adoptSubmission(response, operationId)` | 为日常流程/作业集等域端点采纳响应中的 `runId` |
+| `observeRun(runId \| null)` | 绑定或解除调用方身份，不发送停止 |
+| `stopTrackedRun()` | 按当前身份停止；没有身份时返回 `null`，不退化为旧式“停止当前任务” |
+| `abortObservation()` / `resumeObservation()` | 中止/恢复本地观察，不改变服务端执行 |
+| `useExecutionObservation()` | 应用级启动观察，通常在 `App` 中调用一次 |
+| `useExecutionSnapshot()` | 基于 `useSyncExternalStore` 的薄订阅，返回稳定快照 |
+
+控制器状态：
+
+| 字段 | 含义 |
+| --- | --- |
+| `phase` | `idle`/`syncing`/`live`/`disconnected`/`offline`/`suspended`；`disconnected` 与 `offline` 保留上次快照 |
+| `identity` | `none`/`tracked`/`unknown`；`unknown` 表示按 id 查不到，不是成功也不是失败 |
+| `submission` | `idle`/`pending`/`accepted`/`rejected`/`unknown`；传输失败一律 `unknown` |
+| `snapshot` | 最近一次成功的 `RunSnapshot`，失败时不清空 |
+| `trackedRunId` / `trackedRun` | 调用方自己的身份与最近观察到的记录 |
+| `hasActiveRun` | 快照 `activeRuns` 非空，或已跟踪的 run 仍处于活动状态 |
+| `occupancy` | 服务端设备占用投影，可直接展示但不能据此推断执行结果 |
+
+轮询间隔：有活动意图时 2s，空闲 30s，断线重试 10s。观察只走 HTTP 轮询；没有推送通道。
+
+## 3. 身份、幂等与旧响应
+
+1. 每次逻辑提交用 `beginExecutionIntent` 取一个幂等键；同一次重试复用 intent，不能生成第二个键。键格式为 `[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}`，由服务端按 `operationId` 分区。
+2. 提交响应通过 `data.runId` 取得身份，`data.run` 可用时立即作为 `trackedRun`；没有 `runId` 的旧同步响应不会被伪造出身份。
+3. 身份写入 `localStorage['la-pluma-execution-identity-v1']`，保留到该 run 进入终态为止。终态后清除持久化身份，本次会话仍可展示最后记录。
+4. `settleExecutionIntent` 只接受最新 intent 的响应。较早的提交即使更晚返回，也不会覆盖新 run；较早的快照请求同理，晚到响应由序列号丢弃。
+5. `stopRun` 始终携带 `runId`；终态旧 run 只返回 `alreadyTerminal`，accepted 会被取消而不发设备命令，非当前活动 run 由服务端拒绝。
+
+## 4. 观察、断线与重连
+
+- 启动/重连/恢复观察时，先按已知 `runId` 查询，再读取 `runs/current`；没有身份时只读快照。
+- 网络失败、超时、响应无法解析与离线的结果都是 `disconnected`/`offline`，不是失败或完成。已有 `snapshot`、`trackedRun` 和 `hasActiveRun` 原样保留。
+- 重连（`online`、窗口 `focus`、`resumeObservation`）只恢复观察，不重新提交；重新观察失败可安全重试。
+- 按 id 查询返回 404 时标记 `identity: 'unknown'` 并删除持久化身份，保留最后记录用于展示，不把 404 解释为成功。
+- `lastRun` 只用于展示，不是调用方身份；只有 `trackedRun` 或显式 `observeRun` 才能代表本客户端的执行。
+- 进程 idle、`tasks/status.isRunning=false`、页面卸载或轮询失败都不能写成完成；只有 Run 终态或快照中的终态记录可以。
+
+## 5. 停止与本地中止
+
+| 操作 | 是否调用服务端 | 是否影响执行 | 用途 |
+| --- | --- | --- | --- |
+| `stopTrackedRun()` | 是，`POST stop?runId=…` | 记录停止意图并停止设备任务 | 用户明确终止 |
+| `abortObservation()` | 否 | 只取消本地请求与定时器，保留快照 | 页面/会话暂时不再观察 |
+| `start()` 返回的释放函数 | 否 | 引用计数归零后停止本地观察 | 应用卸载或测试清理 |
+| 提交请求的 `AbortSignal` | 否 | 只放弃本地 HTTP 响应，服务端可能已接受 | 页面取消等待 |
+
+停止后仍需继续观察，直到 `stopped`/`failed`/`interrupted` 等终态；重复停止是安全的。
+
+## 6. 生命周期与兼容
+
+- `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。
+- Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。
+- 现有页面仍走旧路径（`tasks/status` 轮询、旧 `stopTask`、页面内作业集编排），本阶段不删除这些写入者。页面迁移分别由肉鸽、作业、自动化执行迁移任务接入控制器的提交/停止/订阅，再由运行状态单源任务统一全局展示。
+- `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
+- 旧响应字段、旧停止入口与旧同步提交保持可用；回退前端控制器不需要删除服务端 Run 能力，也不会让已持久化的终态记录失效。
+
+## 7. 回归清单
+
+| 测试 | 固定行为 |
+| --- | --- |
+| `api/api.test.ts` | 旧位置参数不带幂等头；新 `AgentRequestOptions` 写入 `Idempotency-Key`；快照/按 id/目标停止的 URL 与请求方式；旧 `tasks/status`、`stopTask` 仍可用 |
+| `controller/executionController.test.tsx` | 快照作为唯一观察源；旧快照不覆盖新快照；旧提交不覆盖新 run；幂等键复用与格式；断线保留活动状态；重连按 `runId` 恢复观察且不重新提交；页面卸载后仍观察；引用计数释放；订阅入口不启动轮询；观察 hook 挂载/卸载；404 标记 unknown；停止与本地中止分离 |
+
+## 8. 尚未覆盖
+
+- 页面提交仍不传幂等键，刷新后的旧断点仍可能重提；由自动化执行迁移与旧断点转换任务处理。
+- 202 后转轮询、409 占用重试、manual 作业集“下一关”与页面内停止确认仍属于各域迁移任务。
+- 全局运行展示仍由页面与连接监测器争写 `statusStore.isActive`，由运行状态单源任务统一从快照派生。
+- 控制器轮询 `runs/current` 的读取成本（每次读取租约文件）由性能验证任务复核。

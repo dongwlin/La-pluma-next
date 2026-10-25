@@ -11,7 +11,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 - `/api/agent` - 主控制接口，覆盖 MAA 命令、任务状态、日志、截图、WebRTC、养成、调度、通知和数据接口。
 - `/api/operator-quotes` - 干员语音/台词相关接口。
 
-历史拆分路由已清理；新增功能应优先接入 `/api/agent`。设备执行的 Run 身份、状态来源以及停止、断线、刷新和外部占用边界见[执行身份与生命周期契约](execution-lifecycle.md)。
+历史拆分路由已清理；新增功能应优先接入 `/api/agent`。设备执行的 Run 身份、状态来源以及停止、断线、刷新和外部占用边界见[执行身份与生命周期契约](execution-lifecycle.md)；前端如何保存 `runId`、传幂等键、观察快照以及区分停止与本地中止见[前端执行客户端与控制器](execution-client.md)。
 
 ### 前端 UI 与响应式壳层
 
@@ -71,7 +71,7 @@ La-pluma-next/
 │   │   │   ├── statistics/    # 仓库、干员和掉落数据
 │   │   │   ├── logs/          # 日志查看
 │   │   │   ├── settings/      # 配置管理
-│   │   │   ├── task-execution/   # 命令执行与任务状态控制（跨域微域，非页面域）
+│   │   │   ├── task-execution/   # 命令执行、Run 观察与执行控制器（跨域微域，非页面域）
 │   │   │   ├── user-config/      # 用户任务配置读写（跨域微域，非页面域）
 │   │   │   ├── runtime-status/   # 后端连接与任务运行状态（非页面域）
 │   │   │   ├── device-mirror/    # 投屏/截图预览（非页面域）
