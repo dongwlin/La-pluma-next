@@ -4,7 +4,8 @@
  * 只负责服务端只读资源的缓存基础设施：
  * - 一个应用生命周期内稳定复用同一个客户端，页面 remount 不重建缓存；
  * - 只对可恢复的传输/服务端失败自动重试，contract 失败与调用方取消不重试；
- * - 默认不因文档焦点变化重取，避免 Activity 隐藏页面同时刷流量；网络重连时重取过期数据。
+ * - 默认不因文档可见性变化自动重取；Activity 隐藏会清理 Effects 并注销 Query 观察者，
+ *   恢复时按 refetchOnMount/staleTime 决定是否重取；网络重连时重取过期数据。
  *
  * 配置草稿、执行 Run 与日志/轮询会话都不属于本层，见 docs/query-cache.md。
  */
@@ -12,10 +13,13 @@
 import { QueryClient, type DefaultOptions } from '@tanstack/react-query'
 import { ApiRequestError, isAbortError } from '@/shared/api'
 
-/** 数据在 30s 内视为新鲜；新鲜数据不会因 remount 或重连重复请求。 */
+/** 数据在 30s 内视为新鲜；新鲜数据不会因 remount、Activity 恢复或重连重复请求。 */
 export const QUERY_STALE_TIME_MS = 30_000
 
-/** 没有观察者后缓存保留 5 分钟；Activity 隐藏仍保留观察者，不受该值影响。 */
+/**
+ * 没有观察者后缓存保留 5 分钟。Activity 隐藏会注销 Query 观察者，
+ * 因此隐藏超过该时长后缓存会被回收，恢复时重新加载。
+ */
 export const QUERY_GC_TIME_MS = 5 * 60_000
 
 /** 自动重试次数上限（不含首次请求），因此最多 3 次尝试。 */

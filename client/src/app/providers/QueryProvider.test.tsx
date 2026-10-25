@@ -11,15 +11,24 @@ import { QueryProvider } from './QueryProvider'
 
 const queryMocks = vi.hoisted(() => ({
   fetchDepot: vi.fn(),
+  pendingSignal: null as AbortSignal | null,
 }))
 
 const DEPOT_KEY = ['statistics', 'depot'] as const
 const STALE_DEPOT_KEY = ['statistics', 'stale-depot'] as const
+const PENDING_DEPOT_KEY = ['statistics', 'pending-depot'] as const
 
-function DepotProbe({ label = 'depot' }: { label?: string }) {
+interface CacheOptions {
+  staleTime?: number
+  gcTime?: number
+}
+
+function DepotProbe({ label = 'depot', staleTime, gcTime }: { label?: string } & CacheOptions) {
   const { data, isPending } = useQuery({
     queryKey: DEPOT_KEY,
     queryFn: () => queryMocks.fetchDepot(),
+    ...(staleTime === undefined ? {} : { staleTime }),
+    ...(gcTime === undefined ? {} : { gcTime }),
   })
 
   return <span>{label}:{isPending ? 'loading' : String(data)}</span>
@@ -35,14 +44,28 @@ function StaleDepotProbe() {
   return <span>{String(data ?? 'loading')}:{isStale ? 'stale' : 'fresh'}</span>
 }
 
+function PendingDepotProbe() {
+  const { data, isPending } = useQuery({
+    queryKey: PENDING_DEPOT_KEY,
+    queryFn: ({ signal }) => {
+      queryMocks.pendingSignal = signal
+      return new Promise<string>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('已取消', 'AbortError')))
+      })
+    },
+  })
+
+  return <span>pending:{isPending ? 'loading' : String(data)}</span>
+}
+
 function PageSlot({ visible }: { visible: boolean }) {
   return visible ? <DepotProbe /> : <span>other page</span>
 }
 
-function ActivitySlot({ visible }: { visible: boolean }) {
+function ActivitySlot({ visible, ...cacheOptions }: { visible: boolean } & CacheOptions) {
   return (
     <Activity mode={visible ? 'visible' : 'hidden'}>
-      <DepotProbe label="activity" />
+      <DepotProbe label="activity" {...cacheOptions} />
     </Activity>
   )
 }
@@ -61,6 +84,12 @@ async function flushTimers(turns = 2) {
     for (let turn = 0; turn < turns; turn += 1) {
       await new Promise(resolve => setTimeout(resolve, 0))
     }
+  })
+}
+
+async function advance(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms)
   })
 }
 
@@ -92,6 +121,7 @@ describe('QueryProvider cache lifecycle', () => {
   beforeEach(() => {
     queryMocks.fetchDepot.mockReset()
     queryMocks.fetchDepot.mockResolvedValue('depot-42')
+    queryMocks.pendingSignal = null
     getQueryClient().clear()
     focusManager.setFocused(undefined)
     onlineManager.setOnline(true)
@@ -177,7 +207,7 @@ describe('QueryProvider cache lifecycle', () => {
     expect(queryMocks.fetchDepot).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps cached resource data across Activity hide and show', async () => {
+  it('drops the Activity observer and keeps fresh cached data across hide and show', async () => {
     await render(
       <QueryProvider>
         <ActivitySlot visible />
@@ -191,6 +221,10 @@ describe('QueryProvider cache lifecycle', () => {
       </QueryProvider>,
     )
     await flushTimers()
+
+    expect(getQueryClient().getQueryCache().find({ queryKey: DEPOT_KEY })?.getObserversCount()).toBe(0)
+    expect(getQueryClient().getQueryData(DEPOT_KEY)).toBe('depot-42')
+
     await render(
       <QueryProvider>
         <ActivitySlot visible />
@@ -199,6 +233,115 @@ describe('QueryProvider cache lifecycle', () => {
     await waitForText('activity:depot-42')
 
     expect(queryMocks.fetchDepot).toHaveBeenCalledTimes(1)
+  })
+
+  it('refetches stale data when Activity becomes visible after staleTime', async () => {
+    vi.useFakeTimers()
+    try {
+      queryMocks.fetchDepot.mockReset()
+      queryMocks.fetchDepot.mockResolvedValueOnce('depot-42').mockResolvedValueOnce('depot-43')
+
+      await render(
+        <QueryProvider>
+          <ActivitySlot visible staleTime={1_000} gcTime={60_000} />
+        </QueryProvider>,
+      )
+      await advance(1)
+      expect(container.textContent).toContain('activity:depot-42')
+      expect(queryMocks.fetchDepot).toHaveBeenCalledTimes(1)
+
+      await render(
+        <QueryProvider>
+          <ActivitySlot visible={false} staleTime={1_000} gcTime={60_000} />
+        </QueryProvider>,
+      )
+      await advance(1)
+
+      expect(getQueryClient().getQueryCache().find({ queryKey: DEPOT_KEY })?.getObserversCount()).toBe(0)
+      expect(getQueryClient().getQueryData(DEPOT_KEY)).toBe('depot-42')
+
+      await advance(1_500)
+      expect(getQueryClient().getQueryData(DEPOT_KEY)).toBe('depot-42')
+
+      await render(
+        <QueryProvider>
+          <ActivitySlot visible staleTime={1_000} gcTime={60_000} />
+        </QueryProvider>,
+      )
+      await advance(1)
+
+      expect(queryMocks.fetchDepot).toHaveBeenCalledTimes(2)
+      expect(container.textContent).toContain('activity:depot-43')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('starts a fresh query when Activity becomes visible after gcTime', async () => {
+    vi.useFakeTimers()
+    try {
+      queryMocks.fetchDepot.mockReset()
+      queryMocks.fetchDepot.mockResolvedValueOnce('depot-42').mockResolvedValueOnce('depot-43')
+
+      await render(
+        <QueryProvider>
+          <ActivitySlot visible staleTime={1_000} gcTime={2_000} />
+        </QueryProvider>,
+      )
+      await advance(1)
+      expect(container.textContent).toContain('activity:depot-42')
+      expect(queryMocks.fetchDepot).toHaveBeenCalledTimes(1)
+
+      await render(
+        <QueryProvider>
+          <ActivitySlot visible={false} staleTime={1_000} gcTime={2_000} />
+        </QueryProvider>,
+      )
+      await advance(1)
+      expect(getQueryClient().getQueryCache().find({ queryKey: DEPOT_KEY })?.getObserversCount()).toBe(0)
+
+      await advance(2_500)
+      expect(getQueryClient().getQueryData(DEPOT_KEY)).toBeUndefined()
+      expect(getQueryClient().getQueryCache().find({ queryKey: DEPOT_KEY })).toBeUndefined()
+
+      await render(
+        <QueryProvider>
+          <ActivitySlot visible staleTime={1_000} gcTime={2_000} />
+        </QueryProvider>,
+      )
+      await advance(1)
+
+      expect(queryMocks.fetchDepot).toHaveBeenCalledTimes(2)
+      expect(container.textContent).toContain('activity:depot-43')
+      expect(getQueryClient().getQueryData(DEPOT_KEY)).toBe('depot-43')
+      expect(getQueryClient().getQueryCache().find({ queryKey: DEPOT_KEY })).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('aborts an in-flight signal-aware read when Activity hides', async () => {
+    await render(
+      <QueryProvider>
+        <Activity mode="visible">
+          <PendingDepotProbe />
+        </Activity>
+      </QueryProvider>,
+    )
+    await flushTimers(1)
+    expect(queryMocks.pendingSignal?.aborted).toBe(false)
+
+    await render(
+      <QueryProvider>
+        <Activity mode="hidden">
+          <PendingDepotProbe />
+        </Activity>
+      </QueryProvider>,
+    )
+    await flushTimers(1)
+
+    expect(queryMocks.pendingSignal?.aborted).toBe(true)
+    expect(getQueryClient().getQueryData(PENDING_DEPOT_KEY)).toBeUndefined()
   })
 
   it('does not refetch stale resources when the document regains focus', async () => {

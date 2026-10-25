@@ -31,7 +31,7 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 
 | 入口 | 位置 | 行为 |
 | --- | --- | --- |
-| `getQueryClient()` | `shared/query/queryClient.ts` | 懒创建并复用应用级唯一客户端；页面、Activity 或 Provider 重建都不换缓存 |
+| `getQueryClient()` | `shared/query/queryClient.ts` | 懒创建并复用应用级唯一客户端；页面、Activity 或 Provider 重建都不换客户端（缓存是否过期由 `staleTime`/`gcTime` 决定） |
 | `createQueryClient()` | 同上 | 每次返回独立客户端；只用于测试或隔离环境 |
 | `QueryProvider` | `app/providers/QueryProvider.tsx` | `QueryClientProvider` 注入应用级客户端 |
 | `AppProviders` | `app/providers/AppProviders.tsx` | 在 `MotionConfig` 外组装 `QueryProvider`，整个应用只有一个 Provider |
@@ -39,10 +39,11 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 规则：
 
 - 页面、领域 hook 与微域**不得**自行 `new QueryClient()` 或嵌套 `QueryClientProvider`；需要测试隔离时使用 `createQueryClient()` 并显式注入测试树。
-- 页面卸载、Activity 隐藏/恢复与浏览器刷新不调用 `queryClient.clear()`；只有测试或明确的全局重置入口可以清空。
+- 应用级 hook（执行观察、运行状态投影、后端探针）在 `AppShell`/`AppProviders` 内运行；后续接入 Query 时可直接使用客户端上下文，不得在 Provider 外的根组件调用 `useQuery`。
+- 页面卸载、Activity 隐藏/恢复与浏览器刷新不调用 `queryClient.clear()`；缓存按 `gcTime` 自然回收，只有测试或明确的全局重置入口可以主动清空。
 - 客户端内部使用 TanStack Query 的默认 query hash 与结构共享，不额外包装 key 序列化。
 
-回归：`app/providers/AppProviders.test.tsx` 验证应用树拿到同一客户端；`app/providers/QueryProvider.test.tsx` 验证 Provider 重建、页面 remount 与 Activity 隐藏/恢复后仍是同一缓存实例。
+回归：`app/providers/AppProviders.test.tsx` 验证应用树拿到同一客户端；`app/providers/QueryProvider.test.tsx` 验证 Provider 重建、页面 remount，以及 Activity 隐藏后观察者注销、新鲜数据直接复用、过期数据重取与超过 `gcTime` 后重新加载。
 
 ## 3. 默认查询策略
 
@@ -50,10 +51,10 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `staleTime` | 30s | 新鲜期内 remount、重连与活动恢复不重复请求；过期不等于清空缓存 |
-| `gcTime` | 5min | 最后一个观察者离开后保留缓存；Activity 隐藏仍保留观察者，不受此值影响 |
-| `refetchOnMount` | `true` | 真正 remount 时若数据已过期则后台重取；新鲜则直接使用缓存 |
-| `refetchOnWindowFocus` | `false` | 文档重新可见时不自动重取；避免 Activity 隐藏页面集体刷流量 |
+| `staleTime` | 30s | 新鲜期内 remount、Activity 恢复与重连不重复请求；过期不等于清空缓存 |
+| `gcTime` | 5min | 最后一个观察者离开后保留缓存；Activity 隐藏会注销观察者并开始计时，隐藏超过该时长后缓存被回收 |
+| `refetchOnMount` | `true` | 页面 remount 或 Activity 恢复后重新订阅时，过期数据后台重取；新鲜则直接使用缓存 |
+| `refetchOnWindowFocus` | `false` | 文档重新可见时不自动重取；Activity 隐藏已清理观察者，恢复取数由 `refetchOnMount`/显式 refetch 负责 |
 | `refetchOnReconnect` | `true` | 网络恢复时重取过期资源，并继续被暂停的读取 |
 | `retry` | `shouldRetryQuery` | 最多 2 次重试（共 3 次尝试），只重试可恢复失败 |
 | `retryDelay` | 500ms 指数退避 | 单次等待上限 4s |
@@ -73,7 +74,8 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 
 说明：
 
-- TanStack Query 5.104 的“窗口焦点”实际监听文档可见性（`visibilitychange`）；切换应用内 tab 不产生该事件。Activity 隐藏页面仍保留 Query 观察者，`false` 保证回到浏览器时不会让所有页面同时重取。
+- TanStack Query 5.104 的“窗口焦点”实际监听文档可见性（`visibilitychange`）；切换应用内 tab 不产生该事件。React 19.3 的 Activity 隐藏会清理 Effects（见[前端职责与质量基线](frontend-baseline.md)的 Activity 说明），Query 观察者随之注销，因此 `refetchOnWindowFocus: false` 只避免浏览器切回时自动重取仍挂载的查询，不能阻止 Activity 恢复后的按需重取。
+- Activity 隐藏/恢复与页面卸载对 Query 订阅是等价的：隐藏清理观察者，缓存从最后一个观察者离开时开始按 `gcTime` 计时；显示后重新订阅。数据仍新鲜则直接用缓存，已过期则按 `refetchOnMount` 后台重取，已被回收则重新加载。
 - 网络在线状态来自浏览器 `navigator.onLine`，不代表本地后端可用；后端健康仍由 runtime-status 监测。后端不可用表现为传输失败，由重试与页面错误边界处理。
 - 需要更短或更长新鲜期的资源可在自己的 `useQuery` 中覆盖 `staleTime`，但必须在所属域说明理由；不得在页面里改动全局默认值。
 - 轮询资源（例如设备采样）如果使用 Query，必须由所属域显式设置 `refetchInterval` 与可见性/暂停条件，不能依赖全局默认值产生后台轮询；实时日志等既有会话继续由对应任务决定实现方式。
@@ -123,7 +125,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 
 ## 5. 失效方式
 
-失效是写入成功后的显式动作，不由页面 remount 或 Activity 显示自动触发。
+失效是写入成功后的显式动作，不由页面 remount 或 Activity 显示自动触发；Activity 显示可能按新鲜度重取数据，但不会把缓存标记为失效。
 
 ```ts
 // 只失效一个资源的所有参数变体
@@ -145,14 +147,15 @@ await queryClient.invalidateQueries({ queryKey: statisticsKeys.all })
 
 | 事件 | Query 行为 | 页面责任 |
 | --- | --- | --- |
-| 应用内 tab 切换（Activity 隐藏/显示） | 隐藏不销毁观察者与缓存，显示不触发失效或全量重取 | 需要刷新时由域显式调用 `refetch` 或失效，不能依赖 Activity 的显示事件 |
+| Activity 隐藏 | 清理 Effects，Query 观察者注销；缓存保留并从最后一个观察者离开时开始按 `gcTime` 计时。若 queryFn 使用了 `signal`，最后一个观察者离开时在途读取被取消并保留上一份数据 | 不得假设隐藏期间观察者仍存活或缓存一定保留；需要跨隐藏持续观察的资源由应用级所有者持有 |
+| Activity 显示 | 重新订阅；数据仍新鲜则直接用缓存，已过期则按 `refetchOnMount` 后台重取，已被 `gcTime` 回收则重新加载 | 需要最新快照时显式 `refetch`；不能依赖隐藏期间的观察者 |
 | 浏览器文档隐藏/可见 | `refetchOnWindowFocus: false`，不自动重取 | 实时会话按既有可见性规则暂停/恢复 |
-| 页面真正卸载后重挂载 | 缓存保留到 `gcTime`；新鲜则直接用缓存，过期则后台重取 | 不得在 effect cleanup 清空 queryClient 或删除其他页面的 key |
+| 页面真正卸载后重挂载 | 观察者注销，缓存保留到 `gcTime`；新鲜则直接用缓存，过期则后台重取，已回收则重新加载 | 不得在 effect cleanup 清空 queryClient 或删除其他页面的 key |
 | 浏览器刷新 | 内存缓存丢失；Dashboard 持久化快照仍按自身规则恢复 | 首屏骨架与旧数据展示保持各页现有行为 |
 | 网络离线/恢复 | 离线读取暂停；恢复后重取过期资源 | 连接健康仍由 runtime-status 展示，不从 Query 状态推断任务完成 |
 | 调用方取消 | `AbortError` 不重试、不记为失败 | 页面只在真正失败时展示错误 |
 
-Activity 隐藏只清理 Effects，不改变资源所有权；Query 缓存跨页面实例共享。真正卸载页面不会取消已发出的读取（TanStack 允许请求完成并写入缓存），需要放弃某个资源读取时由所属域显式 `cancelQueries` 并说明缓存语义。
+Activity 隐藏/显示与页面卸载都不改变资源所有权；Query 缓存按 key 共享，但观察者随 Effect 清理而注销。使用 Query 的 `signal` 读取在最后一个观察者离开时会被取消（Query 以 revert 方式保留上一份数据）；未使用 signal 的请求可能继续完成并写入缓存。接入契约要求 `queryFn` 传递 `signal`，因此应按“隐藏/卸载即取消本地读取、旧数据保留”设计。显式 `cancelQueries` 用于切换资源或放弃缓存写入，不作为 Activity 生命周期的替代。
 
 ## 7. Dashboard 完整快照边界
 
@@ -161,7 +164,7 @@ Dashboard 的五路业务读取（activity、schedule execution、training queue
 - 五项都 fulfilled 且载荷校验通过才提交快照；
 - 单路失败或形状错误保留上一份完整快照，不能用 Query 的部分成功覆盖 store；
 - 设备采样与后端探测独立于业务快照有效性；
-- 强制刷新与 Activity 恢复使用显式重取，不能用默认缓存命中冒充新快照。
+- 强制刷新必须显式重取；Activity 恢复若需要新的完整快照，不能接受默认缓存命中，需显式重取或验证数据新鲜度。
 
 因此允许的实现是：用 Query 或既有协调器取得五路结果，在协调层统一校验后原子写入 `dashboardStore`；**禁止**五个 `useQuery` 分别订阅并各自写 store，也禁止把 Query 的逐块更新暴露成新的可写真相。`dashboard/snapshot` key 仅用于协调读取，不能替代 `dashboardStore` 的版本、形状与时钟校验。
 
@@ -195,8 +198,9 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | --- | --- |
 | `client/src/shared/query/queryClient.test.ts` | 默认 staleTime/gcTime/重取/网络模式、重试分类与上限、退避、写请求不重试、工厂隔离与应用级单例 |
 | `client/src/shared/query/queryKeys.test.ts` | `[domain, resource, ...params]` 形状、同域 key 结构一致、域级与资源级失效范围 |
-| `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载、Activity 隐藏/显示、文档焦点不重取、重连重取过期资源 |
+| `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
 | `client/src/app/providers/AppProviders.test.tsx` | 应用树注入应用级客户端 |
+| `client/src/app/App.test.tsx` | 应用级 hook 在 `AppProviders` 内运行并能拿到 Query 客户端 |
 
 针对性复现命令（仓库根目录）：
 
@@ -205,7 +209,8 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/shared/query/queryClient.test.ts \
   src/shared/query/queryKeys.test.ts \
   src/app/providers/QueryProvider.test.tsx \
-  src/app/providers/AppProviders.test.tsx
+  src/app/providers/AppProviders.test.tsx \
+  src/app/App.test.tsx
 ```
 
 完整 `pnpm verify` 与视觉比对由任务完成记录给出；本文件不重复声称未执行的验证。
