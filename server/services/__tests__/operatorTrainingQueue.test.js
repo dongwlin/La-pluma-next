@@ -85,6 +85,65 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal((await training.syncTrainingFlow()).flowSync.status, 'not_applied');
   });
 
+  it('refreshes the registered schedule from the applied task flow', async () => {
+    await training.addToQueue('alpha');
+    const preview = await training.generateTrainingPlan();
+    const refreshed = [];
+    const applied = await training.applyPlanToTasks(preview, {}, {
+      refreshSchedule: async config => {
+        refreshed.push(config);
+        return { attempted: true, success: true, message: '已设置 1 个定时任务' };
+      }
+    });
+
+    assert.equal(applied.scheduleSync.attempted, true);
+    assert.equal(applied.scheduleSync.success, true);
+    assert.equal(refreshed.length, 1);
+    assert.deepEqual(refreshed[0].schedule, { enabled: true, times: ['12:00'] });
+    const fightTask = refreshed[0].taskFlow.find(task => task.commandId === 'fight');
+    const smart = fightTask.params.stages.find(stage => stage.smart);
+    assert.deepEqual(smart.trainingOperators, ['夜烟']);
+  });
+
+  it('re-registers an already running schedule through the default refresher', async () => {
+    const { setupSchedule, stopSchedule, getScheduleStatus } = await import('../schedulerService.js');
+    const initialFlow = [{ id: 'old-fight', commandId: 'fight', params: { stages: [{ stage: '1-7', times: '1' }] } }];
+    assert.equal(setupSchedule('default', ['01:00'], initialFlow).success, true);
+    try {
+      await training.addToQueue('alpha');
+      const preview = await training.generateTrainingPlan();
+      const applied = await training.applyPlanToTasks(preview);
+
+      assert.equal(applied.scheduleSync.attempted, true);
+      assert.equal(applied.scheduleSync.success, true);
+      // 以 automation-tasks 为准重新注册时间与任务流程。
+      assert.deepEqual(
+        getScheduleStatus().find(entry => entry.scheduleId === 'default')?.times,
+        ['12:00']
+      );
+    } finally {
+      stopSchedule('default');
+    }
+  });
+
+  it('reports a schedule refresh failure without discarding the applied plan', async () => {
+    await training.addToQueue('alpha');
+    const preview = await training.generateTrainingPlan();
+    const applied = await training.applyPlanToTasks(preview, {}, {
+      refreshSchedule: async () => ({
+        attempted: true,
+        success: false,
+        message: '定时任务设置失败'
+      })
+    });
+
+    assert.equal(applied.scheduleSync.attempted, true);
+    assert.equal(applied.scheduleSync.success, false);
+    assert.equal(applied.scheduleSync.message, '定时任务设置失败');
+    assert.equal((await training.getTrainingQueue()).flowSync.status, 'synced');
+    assert.ok((await smartStages()).length > 0);
+  });
+
   it('clears the only target and restores it in place while preserving ordinary stages', async () => {
     await training.addToQueue('alpha', { currentElite: 0, targetElite: 1 });
     const applied = await training.applyPlanToTasks(await training.generateTrainingPlan());

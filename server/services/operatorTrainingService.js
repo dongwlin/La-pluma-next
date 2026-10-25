@@ -1172,6 +1172,34 @@ async function generateTrainingPlan(mode = 'current') {
 }
 
 /**
+ * 已注册的默认定时任务持有 setup 时的 taskFlow 快照。训练流程改写
+ * automation-tasks 后必须重新注册，否则定时执行继续使用旧关卡；没有注册过的
+ * 定时任务不会被这里顺带创建。
+ *
+ * 使用动态 import 避免 `schedulerService → operatorTrainingService` 的静态环。
+ */
+async function refreshRegisteredSchedule(config) {
+  const { getScheduleStatus, setupSchedule, stopSchedule } = await import('./schedulerService.js');
+  const registered = getScheduleStatus().some(entry => entry.scheduleId === 'default');
+  if (!registered) return { attempted: false, success: true, message: null };
+
+  const schedule = config?.schedule;
+  const times = Array.isArray(schedule?.times) ? schedule.times : [];
+  if (schedule?.enabled && times.length > 0) {
+    const result = setupSchedule(
+      'default',
+      times,
+      Array.isArray(config?.taskFlow) ? config.taskFlow : []
+    );
+    return { attempted: true, success: Boolean(result?.success), message: result?.message || null };
+  }
+
+  // 配置已不需要定时执行，但进程内仍有注册：同步停止，避免继续按旧流程运行。
+  const result = stopSchedule('default');
+  return { attempted: true, success: Boolean(result?.success), message: result?.message || null };
+}
+
+/**
  * 应用养成计划到任务流程
  */
 async function applyPlanToTasks(plan, settings = {}, options = {}) {
@@ -1291,11 +1319,17 @@ async function applyPlanToTasks(plan, settings = {}, options = {}) {
         series: fightTask.params.series || 0
       };
 
-      appliedResult = { fightTask, smartStages, newStages, flowName: config.name || config.flowName || '自动任务' };
+      appliedResult = {
+        config,
+        fightTask,
+        smartStages,
+        newStages,
+        flowName: config.name || config.flowName || '自动任务'
+      };
       return config;
     }, { taskFlow: [], schedule: { enabled: false, times: [] } });
 
-    const { fightTask, smartStages, newStages, flowName } = appliedResult;
+    const { config, fightTask, smartStages, newStages, flowName } = appliedResult;
     queueData.settings = effectiveSettings;
     queueData.trainingFlow = {
       taskId: fightTask.id,
@@ -1307,8 +1341,23 @@ async function applyPlanToTasks(plan, settings = {}, options = {}) {
     };
     delete queueData.flowSyncError;
     await saveTrainingQueue(queueData);
+
+    // 配置与队列都已落盘；定时注册失败不回滚已生效的写入，而是作为部分失败上报，
+    // 让客户端保留计划并给出重试入口。自动队列同步只改写智能关卡，不在这里
+    // 顺带重注册定时任务（客户端计划应用才承诺同步 schedule）。
+    const refreshSchedule = options.refreshSchedule
+      ?? (options.automatic ? null : refreshRegisteredSchedule);
+    let scheduleSync = { attempted: false, success: true, message: null };
+    if (refreshSchedule) {
+      try {
+        scheduleSync = await refreshSchedule(config);
+      } catch (error) {
+        logger.error('定时任务刷新失败', { error: error.message });
+        scheduleSync = { attempted: true, success: false, message: error.message };
+      }
+    }
     logger.success('养成计划应用成功');
-    
+
     return { 
       success: true, 
       stageCount: smartStages.length,
@@ -1316,7 +1365,8 @@ async function applyPlanToTasks(plan, settings = {}, options = {}) {
       hasFallback: queueData.queue.length > 0 && !!effectiveSettings.fallbackStage,
       flowName: queueData.trainingFlow.flowName,
       taskName: queueData.trainingFlow.taskName,
-      flowSync: flowSyncStatus(queueData, { ...queueData.trainingFlow, applied: true })
+      flowSync: flowSyncStatus(queueData, { ...queueData.trainingFlow, applied: true }),
+      scheduleSync
     };
   } catch (error) {
     logger.error('应用任务流程失败', { error: error.message });

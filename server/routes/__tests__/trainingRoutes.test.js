@@ -57,6 +57,39 @@ describe('training queue route contract', () => {
     }
   });
 
+  it('returns the applied flow and schedule refresh result together', async () => {
+    let received;
+    training.applyPlanToTasks = async (plan, settings) => {
+      received = { plan, settings };
+      return {
+        success: true,
+        stageCount: 2,
+        flowName: '自动任务',
+        taskName: '理智作战',
+        flowSync: { status: 'synced', flowName: '自动任务' },
+        scheduleSync: { attempted: true, success: false, message: '定时任务设置失败' }
+      };
+    };
+    const res = response();
+    await handler('post', '/actions/apply-training-plan')({
+      headers: {},
+      body: { plan: { queueRevision: 'revision-1' }, settings: { useMedicine: 1 } }
+    }, res);
+
+    assert.deepEqual(received, {
+      plan: { queueRevision: 'revision-1' },
+      settings: { useMedicine: 1 }
+    });
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.stageCount, 2);
+    assert.equal(res.body.data.flowSync.status, 'synced');
+    assert.deepEqual(res.body.data.scheduleSync, {
+      attempted: true,
+      success: false,
+      message: '定时任务设置失败'
+    });
+  });
+
   it('returns a stale preview conflict through the shared error handler', async () => {
     training.applyPlanToTasks = async () => { throw Object.assign(new Error('请重新生成计划'), { statusCode: 409 }); };
     const res = response();
