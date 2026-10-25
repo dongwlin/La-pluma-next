@@ -100,10 +100,19 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 新增样式约束时先问：这条规则能不能被视觉基线捕获？能就补基线，不能才考虑写测试——且只断言结果（元素实际位置、可见性），不复述选择器。
 
+## 文件类型
+
+`client/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**` 和根级测试。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
+
+只有两个 `.js` 文件是有意保留的：
+
+- `client/public/legacy-page-cache-cleanup.js`：`public/` 由 Vite 原样复制，再经 workbox `importScripts` 注入 Service Worker，不经过构建管线，无法写成 TS。
+- `client/eslint.config.js`：ESLint 9 加载 TypeScript 配置需要额外的 `jiti` 依赖，且它依赖的 `globals` 包没有类型声明；工具启动配置留在 JS，不进入应用代码。
+
 ## 常用检查
 
 ```bash
-# 前端类型检查和构建
+# 前端类型检查和构建（类型检查覆盖 src、vite.config.ts、scripts 与 tests/visual）
 # 构建会校验 dist/assets/*.js 全部进入 dist/sw.js 的 precache 清单；
 # 新增 chunk 时必须同步 createWorkboxConfig 的 globPatterns，否则构建失败。
 pnpm --filter la-pluma-next-client build
