@@ -4,6 +4,9 @@
  * 路径读取由 `settings/config-directory` Query 持有；页面只渲染状态与重试。
  * “打开目录”是带副作用的命令，不进入 Query，也不自动重取。后台刷新失败时
  * 保留最近一次成功路径，只有从未成功读取过才显示错误。
+ *
+ * 只读 section 头部的第二个观察者只读缓存（`cacheOnly`）：挂载时不重取、
+ * 失败时不重试，加载与重试入口仍只归目录卡片，避免切 section 改变请求时机。
  */
 
 import { useCallback } from 'react'
@@ -18,6 +21,14 @@ export type ConfigDirectoryStatus = 'loading' | 'ready' | 'error'
 export type OpenConfigDirectoryOutcome =
   | { readonly success: true }
   | { readonly success: false; readonly message: string }
+
+export interface UseSettingsConfigDirectoryOptions {
+  /**
+   * 只复用同一 Query 的缓存状态，不在挂载时重取或重试。用于只读 section
+   * 头部；目录卡片必须保持默认策略，否则失败后没有重试入口。
+   */
+  readonly cacheOnly?: boolean
+}
 
 export interface UseSettingsConfigDirectoryResult {
   readonly path: string
@@ -35,8 +46,13 @@ const describeOpenError = (error: unknown): string => (
   error instanceof Error && error.message ? error.message : '未知错误'
 )
 
-export function useSettingsConfigDirectory(): UseSettingsConfigDirectoryResult {
-  const query = useQuery(configDirectoryQueryOptions())
+export function useSettingsConfigDirectory(
+  options: UseSettingsConfigDirectoryOptions = {},
+): UseSettingsConfigDirectoryResult {
+  const queryOptions = configDirectoryQueryOptions()
+  const query = useQuery(options.cacheOnly
+    ? { ...queryOptions, refetchOnMount: false, retryOnMount: false }
+    : queryOptions)
   const queryClient = useQueryClient()
 
   const reload = useCallback(async () => {

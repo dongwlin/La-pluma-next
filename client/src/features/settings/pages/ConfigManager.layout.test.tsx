@@ -270,6 +270,33 @@ describe('ConfigManager layout surfaces', () => {
     expect(openButton?.disabled).toBe(false)
   })
 
+  it('does not retry a failed config-directory read when switching to a read-only section', async () => {
+    // 每次读取都失败：只读 section 的第二个观察者若在挂载时重试，调用次数会继续增加。
+    mocks.getConfigDir.mockResolvedValue({ success: false, message: '目录服务暂不可用' })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    expect(container.querySelector('[role="alert"]')?.textContent)
+      .toContain('配置目录读取失败: 目录服务暂不可用')
+    expect(buttonByText('重试')).toBeDefined()
+    const callsBeforeSwitch = mocks.getConfigDir.mock.calls.length
+
+    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('资源'))
+    await act(async () => resourceButton?.click())
+    await flush()
+
+    expect(mocks.getConfigDir).toHaveBeenCalledTimes(callsBeforeSwitch)
+    expect(container.textContent).toContain('配置目录读取失败: 目录服务暂不可用')
+    expect(container.textContent).not.toContain('正在读取目录...')
+    expect(buttonByText('重试')).toBeDefined()
+    const openButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .filter(button => button.textContent?.trim() === '打开目录')
+    expect(openButtons).toHaveLength(2)
+    openButtons.forEach(button => expect(button.disabled).toBe(true))
+  })
+
   it('keeps auto-update edits local until the user explicitly saves them', async () => {
     mocks.loadUserConfig.mockResolvedValue({
       success: true,
@@ -732,6 +759,8 @@ describe('ConfigManager layout surfaces', () => {
     expect(editor?.textContent).toContain('当前资源来源保持不变')
     expect(editor?.querySelector('select')).toBeNull()
     expect(Array.from(editor?.querySelectorAll('button') ?? []).some(button => button.textContent?.trim() === '保存')).toBe(false)
+    // 目录卡片与只读头部共享同一 Query，首屏只读取一次。
+    expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
     const instanceButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('实例'))
     await act(async () => {
