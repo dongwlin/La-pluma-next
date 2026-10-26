@@ -105,6 +105,10 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 表征测试需要记录当前确实不满足目标不变量时，用 `it.fails` 而不是删除断言或写下“当前错误行为正确”的断言：CI 保持绿色，场景仍可执行，修复落地后该用例会转为失败。承接修复的任务必须删除 `.fails` 标记、保留原断言，并把它作为新行为的回归测试。用例名与注释要写明缺失的不变量，不能只写“当前行为”。现有示例见 `features/automation/pages/AutomationTasks.config.test.tsx` 与 `features/training/pages/OperatorTraining.test.tsx`；契约清单见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
+### 依赖与职责护栏
+
+`client/scripts/check-guardrails.ts` 检查功能域依赖环、公开面/深路径、`app → features → shared` 分层方向、`task-execution` 反向依赖，以及页面文件直接持有传输/存储/轮询原语；同时输出 hooks/model/components/pages 的规模观察并用 `size-budget.json` 拦截新增的大文件。它已作为客户端 `verify` 的第一步，不依赖视觉基线。阈值依据、允许方向、更新规模基线与已知限制见[依赖与职责护栏](guardrails.md)。
+
 ## 文件类型
 
 `client/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**` 和根级测试。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
@@ -125,7 +129,13 @@ pnpm --filter la-pluma-next-client build
 # 后端语法检查
 pnpm --filter la-pluma-next-server check
 
-# 全仓 lint + 类型 + 测试 + 构建（CI 主链路）
+# 依赖/职责护栏与规模预算（verify 已包含；单独运行便于定位）
+pnpm --filter la-pluma-next-client guardrails
+
+# 有意的结构调整后需要冻结新的规模基线
+pnpm --filter la-pluma-next-client guardrails:size-baseline
+
+# 全仓 guardrails + lint + 类型 + 测试 + 构建（CI 主链路）
 pnpm verify
 
 # 样式预算与视觉基线（配合 pnpm verify 使用）

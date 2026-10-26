@@ -1,0 +1,124 @@
+# 依赖与职责护栏
+
+> [← 返回文档索引](README.md)
+
+本文描述 FPR-041 交付的自动检查：功能域依赖环、公开面与分层方向、非页面微域的反向依赖、页面裸副作用，以及 hooks / model / components / pages 的规模观察与预算。规则实现在 `client/scripts/guardrails.ts`，CLI 为 `client/scripts/check-guardrails.ts`，已接入客户端 `verify`。
+
+它只做静态事实判断，不证明运行时所有权，也不替代[执行客户端](execution-client.md)、[配置持久化协调器](config-persistence.md)或[Query 缓存](query-cache.md)的行为契约。
+
+## 1. 定位与边界
+
+| 检查 | 目标 | 失败方式 |
+| --- | --- | --- |
+| 功能域依赖环 | `features/*` 折叠成节点后的强连通分量必须为空 | 失败并打印一条环路径 |
+| 公开面与分层 | `app → features → shared`；跨域只能经 `@/features/<domain>` 根入口；shared 不依赖 features/app，features 不依赖 app | 失败并指出文件与 import |
+| 非页面微域反向依赖 | `features/task-execution` 只能依赖 `shared` 与自身 | 失败并指出目标域 |
+| 页面裸副作用 | 页面文件不得直接持有传输、存储或轮询原语 | 失败并指出原语/import |
+| 规模观察 | hooks / model / components / pages 的文件数、总行数、中位、阈值与超阈值文件 | 仅报告；新增超阈值文件按预算失败 |
+
+范围：
+
+- 依赖检查读取 `client/src/**/*.{ts,tsx}` 的生产源码；`*.test.*` 与 `*.spec.*` 不进入运行时依赖图。测试可以为隔离而接触内部实现，不会进入生产包。
+- 页面检查只针对 `features/*/pages/*.{ts,tsx}` 生产文件；`components/`、`hooks/`、`model/` 等领域容器不受页面限制。
+- 规模只统计 `features/*/{pages,hooks,model,components}` 下的生产源码；`shared/`、`app/`、`api/`、`store/`、`utils/` 不在规模分类内。
+
+## 2. 依赖与公开面
+
+### 2.1 规则
+
+`app → features → shared` 是唯一允许的分层方向。具体判定：
+
+| 违规 | 例子 | 原因 |
+| --- | --- | --- |
+| `layer-direction` | `shared/**` import `@/features/x` 或 `@/app`；`features/**` import `@/app` | 下层不得反向依赖上层 |
+| `deep-import` | `features/a/**` import `@/features/b/model/x`；`app/**` import `../../features/b/pages/Page` | 功能域对外只有 `index.ts` 一个公开面 |
+| `deep-import` | `features/a/**` 用 `@/features/a/...` 访问自身内部 | 同一域内应使用相对路径，避免经公开面形成内部环 |
+| `deep-import` | 跨域使用相对路径，即使最终落在 `features/b/index.ts` | 跨域必须显式使用 `@/features/<domain>` 根入口，避免路径迁移时绕过公开面 |
+| `task-execution-reverse` | `features/task-execution/**` import `@/features/runtime-status` 或其他页面域 | `task-execution` 是跨页面微域，只持有命令/控制器；`runtime-status` 单向消费它的运行投影 |
+
+允许的跨域方向当前包括：
+
+- `automation`、`combat`、`dashboard`、`roguelike`、`settings`、`statistics`、`training` 等页面域按需读取彼此的公开面；
+- `statistics → training` 是单向使用队列/材料命令，不是共享资源的第二份归属（[共享资源归属与失效端口](resource-ownership.md) 第 3 节）；
+- `runtime-status → task-execution` 是运行快照的消费方向，不反向写运行状态。
+
+域环按强连通分量判空，不要求页面域之间零 import。当前依赖图无环；`task-execution` 只依赖 `shared`。
+
+### 2.2 与 ESLint 的分工
+
+`client/eslint.config.js` 继续负责编辑器内的快速反馈：拦截 `@/features/<domain>/...` 深路径、features/shared 反向依赖 app、shared 依赖 features。CLI 额外解析相对路径、目录 index 与动态 import，因此能发现 ESLint 字符串规则看不到的公开面绕过与真实域环。两处规则的权威事实都来自 `app → features → shared`，新增边界时先更新本文与脚本，再考虑 ESLint 的即时提示。
+
+## 3. 页面职责
+
+页面只负责页头、工作区与领域容器的组合。以下原语不能出现在 `features/*/pages/*` 的生产文件中：
+
+| 类别 | 禁止项 | 归属 |
+| --- | --- | --- |
+| 传输 | `@/shared/api`、`@/shared/query`、`@tanstack/react-query`；裸 `fetch`、`WebSocket`、`EventSource`、`XMLHttpRequest` | 领域 `api/`、领域 Query 与 Query Provider |
+| 存储 | `localStorage`、`sessionStorage`、`indexedDB` | user-config 协调器、领域所有者或面板会话 |
+| 轮询 | `setInterval` | 领域 hook / 流 / 会话所有者（例如实时日志、设备采样） |
+
+页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
+
+## 4. 规模观察与预算
+
+### 4.1 阈值依据
+
+阈值来自 FPR-031–040/044 完成后的实际迁移结果（实施基线 `de0605d`），统计范围为 `features/*/{pages,hooks,model,components}` 下的生产 `.ts/.tsx`，排除测试：
+
+| 分类 | 文件数 | 中位 | p90 | 最大 | 阈值 | 现有超阈值 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| pages | 8 | 28 | 44 | 44 | 60 | 0 |
+| hooks | 40 | 73 | 211 | 781 | 220 | 4 |
+| model | 71 | 113 | 336 | 801 | 340 | 7 |
+| components | 74 | 114 | 318 | 1126 | 320 | 7 |
+
+规则：阈值 = 该分类生产源码的 p90（最近秩）向上取整到 20 行。pages 只有 8 个样本，p90 等于最大值 44，按同一规则取 60。这里没有使用统一的 150 行：迁移后页面中位数 28 行，150 行会让页面回涨到迁移前的数倍仍不被提示；model/components 的中位数已超过 150 行，固定 150 会把正常领域模块全部标红。阈值是辅助信号，不是性能或正确性结论。
+
+### 4.2 预算语义
+
+`client/size-budget.json` 冻结每个分类的阈值与「超过阈值的文件集合」：
+
+- 当前超阈值文件都在基线内时通过；
+- 新增一个超过本类阈值、且不在基线内的文件时失败；
+- 基线文件降到阈值下或被删除时只提示，可运行 `guardrails:size-baseline` 收紧基线；
+- 各分类的总行数与中位数只报告，不作为失败条件。
+
+预算不逐行冻结基线内的大文件：它们继续增长仍会出现在每次输出中，由评审决定拆分或调整基线；这正是“辅助提示”而非硬行数上限的含义。四个分类使用同一套基线，因此把页面逻辑整体搬进新的 hooks、model 或 components 文件会新增超阈值文件并失败，而不是靠改变目录绕过。把大文件真正拆成多个低于阈值的小文件属于结构改善，仍会在总行数报告中可见；阈值本身不替代对职责和所有权的评审。
+
+更新基线：
+
+```bash
+pnpm --filter la-pluma-next-client guardrails:size-baseline
+```
+
+该命令只重算超阈值文件集合，保留 `size-budget.json` 中的阈值。调整阈值需要同步更新本节表格与依据；不能为了让一次改动通过而只放大阈值或删除已有基线文件。
+
+## 5. 接入与验证
+
+```bash
+# 依赖 + 页面职责 + 规模预算（客户端 verify 的第一步）
+pnpm --filter la-pluma-next-client guardrails
+
+# 只更新规模基线
+pnpm --filter la-pluma-next-client guardrails:size-baseline
+
+# 客户端完整质量门禁
+pnpm --filter la-pluma-next-client verify
+```
+
+CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` 仍是独立的 CI 步骤。
+
+回归集中在 `client/scripts/guardrails.test.ts`：
+
+- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面调用领域 hook；
+- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`、新增超阈值文件；
+- 当前源码树：无依赖/页面违规，且规模不超出已入库预算。
+
+## 6. 已知限制
+
+- 静态分析只能证明 import 与字面原语，不证明运行时谁真正写状态；跨 remount 的所有权仍需行为测试。
+- 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、通过动态字符串拼出的 import；这些仍由评审与领域测试把关。
+- `shared/` 的深路径没有统一公开面约定（`shared/ui`、`shared/hooks` 等按目录使用），本检查只约束 feature 公开面。
+- 规模预算只覆盖四个分类的 feature 生产源码；不评价单个函数的复杂度、渲染次数或包体积。
+- 测试文件被有意排除：它们可以 import 内部实现、使用 fetch 与计时器，且不会进入生产包。

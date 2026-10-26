@@ -112,4 +112,33 @@ La-pluma-next/
 
 `shared/types/` 已在 Phase 2a 解散：域类型归各 `features/<domain>/types/`，该目录已删除。
 
+## 状态与资源所有权
+
+FPR-001–040/044 迁移后，页面、领域容器与全局状态的职责按以下唯一所有者划分。页面只负责布局、页头与领域组合；`components/`、`hooks/` 等领域容器可以调用所属领域的 hook、Query 与命令所有者。
+
+| 状态 / 资源 | 唯一所有者 | 页面与面板职责 | 契约 |
+| --- | --- | --- | --- |
+| 执行身份、流程进度、终态 | 服务端 Run；`features/task-execution` 的 `ExecutionController` 负责提交、观察与目标停止 | 订阅执行快照并发送操作，不复制运行状态机；页面隐藏/卸载不停止观察 | [执行身份与生命周期](execution-lifecycle.md)、[前端执行客户端](execution-client.md) |
+| 连接健康与全局运行展示 | `features/runtime-status` 的后端探针；运行字段只由 `useRunStatusProjection` 从控制器投影 | 呈现连接/运行状态；断线不能写成任务完成，页面不写运行字段 | [执行客户端](execution-client.md) |
+| 配置草稿、pending 与完整提交 | `features/user-config` 按 key 的协调器 + combat/roguelike/automation 域适配器；automation 的 task flow 与 schedule 是同一完整提交单元 | 编辑/订阅草稿与 `syncState`，调用 `retry()`；页面不重建提交队列、不把 `saveUserConfig` 成功当成全部提交成功 | [配置持久化协调器](config-persistence.md) |
+| 设置与养成配置写入 | 设置连接：`settings/maa-config` Query + `model/connectionConfig.ts` 草稿所有者；自动更新：`model/autoUpdateConfig.ts`；养成设置：`training/model/settingsCommands.ts`；养成计划：`training/model/planCommands.ts` 与 `planValidity.ts` | 编辑、保存、重置表单并订阅 pending/版本；迟到读取与旧保存不覆盖新草稿；页面不直接写存储或维护第二份可写设置 | [设置配置编辑](settings-config-editing.md)、[自动更新](settings-updates-and-auto-update.md)、[养成设置与计划有效期](training-settings-and-plan-validity.md) |
+| 服务端只读资源 | 资源所属领域的 Query：`game-data`（仓库/持有干员/目录）、`statistics`（掉落/开放关卡）、`training`（队列/候选/计数）、`automation`（活动/流程进度）、`settings`（连接/版本/目录）、`device-mirror`（设备采样） | 经领域 query 读取并渲染；筛选、展开、选中项等 UI 状态留在最近面板；不在 Zustand 再存一份可写资源 | [Query 缓存与键规范](query-cache.md)、[共享资源归属](resource-ownership.md) |
+| 总览完整快照与设备历史 | `features/dashboard/model` 的刷新协调器与 `dashboardStore` 受控投影；设备样本归 `device-mirror` | 五路业务数据全部有效才原子提交；采样失败保旧值；页面不单独发起业务请求 | [总览完整快照与设备采样](dashboard-snapshot.md) |
+| 日志实时/历史会话与设备预览 | `features/logs` 的 `realtimeLogStream`/`historyLogSession`；`features/device-mirror` 的预览会话与 WebRTC transport | 按 Activity/文档可见性暂停恢复；页面不建立第二份轮询、日志缓冲或 WebRTC 连接 | [实时日志流](logs-realtime-stream.md)、[历史日志与清理](logs-history-and-cleanup.md) |
+| 跨域资源失效 | `features/resource-invalidation` 端口；写入成功后由领域命令发布 | 订阅失效范围并按需刷新；页面之间不新增轮询 | [共享资源归属与失效端口](resource-ownership.md) |
+| 跨页客户端状态 | Zustand：主题、连接健康、运行投影、预览偏好等非资源状态 | 不把 Query 数据、配置草稿或运行记录复制进全局 store | [Query 缓存](query-cache.md) |
+| 页面/面板局部状态 | 最近的面板或工作区；跨面板共享时上移 | Activity 隐藏保留 React 状态并清理 Effects；真正卸载/刷新才销毁 | [前端职责与质量基线](frontend-baseline.md) |
+
+页面不得直接持有传输、存储或业务轮询原语；服务端读取走领域 Query，配置写入走协调器，运行观察走控制器，日志/设备等流归对应会话所有者。领域容器可以按需调用 `fetchWithAuth`、计时器与领域 hook，这不是页面越权。
+
+## 依赖与职责护栏
+
+`app → features → shared` 的单向依赖、feature 公开面、`task-execution` 不反向依赖页面域、页面裸副作用，以及 hooks/model/components/pages 的规模观察由 `client/scripts/check-guardrails.ts` 自动检查，并作为客户端 `verify` 的第一步运行：
+
+```bash
+pnpm --filter la-pluma-next-client guardrails
+```
+
+规模预算冻结在 `client/size-budget.json`，阈值依据迁移后的实际分类分布而不是统一的 150 行；规则、阈值表、更新方式和已知限制见[依赖与职责护栏](guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与规模预算。
+
 开发流程与常用检查见 [开发文档](development.md)。

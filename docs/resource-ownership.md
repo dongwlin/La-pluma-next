@@ -69,7 +69,7 @@ FPR-019 已把统计页的仓库、持有干员、目录与掉落读取迁入 Qu
 - `training → statistics`：`getOperBoxData`、`getItemIconUrl` 已迁到 `game-data`，training 不再 import statistics。
 - `statistics → training`：`getAllOperators` 已迁到 `game-data`；`getTrainingQueue`、`fetchOperatorMaterials` 仍是 training 拥有的队列/材料命令，statistics 保持单向依赖。
 
-因此 training 与 statistics 不再为共享资源互相 import 页面域公开面；statistics → training 是“使用另一个领域的队列/材料命令”，不是共享资源的第二份归属。FPR-041 的依赖护栏应以无环为准，不要求页面域之间零 import。
+因此 training 与 statistics 不再为共享资源互相 import 页面域公开面；statistics → training 是“使用另一个领域的队列/材料命令”，不是共享资源的第二份归属。FPR-041 的护栏以功能域依赖无环为准，不要求页面域之间零 import；`statistics → training` 这条单向边由[依赖与职责护栏](guardrails.md)记录为允许方向。
 
 兼容与移除：
 
