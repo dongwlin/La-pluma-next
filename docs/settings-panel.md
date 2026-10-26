@@ -58,7 +58,7 @@ ConfigManager（页面壳）
 | 自动更新草稿/保存状态 | `SettingsUpdatesPanel` | 连接、设备、目录面板 |
 | 配置目录状态 | `ConfigDirectoryPanel`、可见的 `ReadOnlyConfigPanel` | 连接、设备、更新面板 |
 
-`ConfigManager.subscriptions.test.tsx` 用领域 hook 的调用次数作为面板渲染次数的代理，覆盖“设备/更新状态不驱动连接表单”和“草稿编辑不驱动更新/目录面板”。
+`ConfigManager.subscriptions.test.tsx` 用领域 hook 的调用次数作为面板渲染次数的代理，覆盖“设备/更新状态不驱动连接表单”和“草稿编辑不驱动更新/目录面板”。各面板只从 `useStatusStore` 选择 `setMessage` 动作，不订阅全局消息正文，因此更新/设备产生的全局提示也不会重渲染连接表单。
 
 ## 3. Section 与草稿生命期
 
@@ -111,7 +111,7 @@ ConfigManager（页面壳）
 | 文件 | 覆盖 |
 | --- | --- |
 | `features/settings/pages/ConfigManager.layout.test.tsx` | 既有 34 项设置回归：section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备/更新状态不重渲染连接表单；草稿编辑不重渲染更新/版本/目录面板 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备/更新状态与全局状态提示不重渲染连接表单；草稿编辑不重渲染更新/版本/目录面板 |
 | `features/settings/model/*.test.ts`、`features/settings/api/index.test.ts` | 配置归一/校验、section 模型、connection 草稿、设备命令、版本/目录、更新与自动更新所有者既有回归（本任务未改协议） |
 
 针对性命令（仓库根目录）：
