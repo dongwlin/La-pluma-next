@@ -26,6 +26,14 @@ import {
 } from '@/features/user-config'
 import { setupSchedule, stopSchedule } from '../api'
 import type { TaskFlowItem } from '../types'
+import {
+  activeScheduleTimes,
+  createDefaultScheduleEntries,
+  normalizeScheduleEntries,
+  scheduleEntriesFromTimes,
+  type ScheduleTimeEntry,
+} from './automationSchedule'
+import { placeClosedownLast } from './taskFlowSort'
 
 /** 服务端配置 key，与迁移前一致。 */
 export const AUTOMATION_CONFIG_KEY = USER_CONFIG_KEYS.automationTasks
@@ -38,12 +46,6 @@ export const AUTOMATION_SCHEDULE_KEY = 'maa-schedule'
 export const AUTOMATION_CONFIG_COMMIT_DELAY_MS = 0
 
 const FALLBACK_ERROR_MESSAGE = '暂时无法连接服务器'
-const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
-
-export interface ScheduleTimeEntry {
-  time: string
-  enabled: boolean
-}
 
 export interface AutomationScheduleDraft {
   enabled: boolean
@@ -64,59 +66,9 @@ export interface AutomationConfigWire {
   schedule: { enabled: boolean; times: string[] }
 }
 
-const DEFAULT_SCHEDULE_TIMES = ['08:00', '14:00', '20:00'] as const
-
-/** 默认执行时间；每次返回新对象，避免草稿之间共享可变的条目。 */
-export function createDefaultScheduleEntries(): ScheduleTimeEntry[] {
-  return DEFAULT_SCHEDULE_TIMES.map(time => ({ time, enabled: true }))
-}
-
 /** 默认草稿与迁移前页面初始 state 对齐，供加载完成前渲染与缺失字段回填。 */
 export function createDefaultAutomationDraft(): AutomationConfigDraft {
   return { taskFlow: [], schedule: { enabled: false, entries: createDefaultScheduleEntries() } }
-}
-
-export function normalizeScheduleTimes(times: string[]): string[] {
-  return [...new Set(times.filter(time => scheduleTimePattern.test(time)))]
-}
-
-export function formatScheduleTime(hour: number, minute: number): string {
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-}
-
-export function parseScheduleTime(time: string): { hour: number; minute: number } {
-  const [hourText = '0', minuteText = '0'] = time.split(':')
-  const hour = Number(hourText)
-  const minute = Number(minuteText)
-  return {
-    hour: Number.isFinite(hour) ? Math.min(23, Math.max(0, hour)) : 0,
-    minute: Number.isFinite(minute) ? Math.min(59, Math.max(0, minute)) : 0,
-  }
-}
-
-/** 去掉非法时间与重复项；`enabled` 缺省视为启用，与迁移前一致。 */
-export function normalizeScheduleEntries(entries: ScheduleTimeEntry[]): ScheduleTimeEntry[] {
-  const normalized: ScheduleTimeEntry[] = []
-  const seen = new Set<string>()
-
-  for (const entry of entries) {
-    if (!scheduleTimePattern.test(entry.time) || seen.has(entry.time)) continue
-    seen.add(entry.time)
-    normalized.push({ time: entry.time, enabled: entry.enabled !== false })
-  }
-
-  return normalized
-}
-
-export function scheduleEntriesFromTimes(times: string[]): ScheduleTimeEntry[] {
-  return normalizeScheduleEntries(
-    normalizeScheduleTimes(times).map(time => ({ time, enabled: true })),
-  )
-}
-
-/** wire 与 setupSchedule 使用的时间点：只包含启用项。 */
-export function activeScheduleTimes(entries: ScheduleTimeEntry[]): string[] {
-  return entries.filter(entry => entry.enabled).map(entry => entry.time)
 }
 
 /**
@@ -275,14 +227,6 @@ export function synchronizeConnectionParams<T extends Record<string, unknown>>(t
       },
     }
   })
-}
-
-/** 关闭游戏步骤始终排在流程最后。 */
-export function placeClosedownLast<T extends { id: string; commandId?: string }>(tasks: T[]): T[] {
-  return [
-    ...tasks.filter(task => task.commandId !== 'closedown' && !task.id.startsWith('closedown-')),
-    ...tasks.filter(task => task.commandId === 'closedown' || task.id.startsWith('closedown-')),
-  ]
 }
 
 function stripTaskFlowUiFields(task: TaskFlowItem | AutomationTaskFlowItem): AutomationTaskFlowItem {

@@ -267,6 +267,37 @@ describe('AutomationTasks layout surfaces', () => {
     expect(mocks.stopSchedule).not.toHaveBeenCalled()
   })
 
+  it('adds schedule times from the noon-first candidate list up to the row limit', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: taskFlowFixture,
+        schedule: {
+          enabled: true,
+          entries: ['08:00', '12:00', '13:00', '14:00', '15:00'].map(time => ({ time, enabled: true })),
+        },
+      },
+    })
+
+    await act(async () => root.render(<AutomationTasks />))
+    await flush()
+
+    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(5)
+    const addTimeButton = container.querySelector<HTMLButtonElement>('.automation-schedule-add')
+    expect(addTimeButton?.textContent).toContain('新增定时')
+
+    await act(async () => addTimeButton?.click())
+    await flush()
+
+    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(6)
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-5')?.value).toBe('16')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      times: ['08:00', '12:00', '13:00', '14:00', '15:00', '16:00'],
+    })
+    expect(container.querySelector('.automation-schedule-add')).toBeNull()
+  })
+
   it('keeps the hydrated task flow without reloading after Activity restore', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
     const renderMode = async (mode: 'visible' | 'hidden') => {

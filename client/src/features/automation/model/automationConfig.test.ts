@@ -7,12 +7,12 @@ import {
   AUTOMATION_CONFIG_PENDING_KEY,
   AUTOMATION_SCHEDULE_KEY,
   AUTOMATION_TASK_FLOW_KEY,
-  activeScheduleTimes,
   automationConfigAdapter,
   createDefaultAutomationDraft,
-  createDefaultScheduleEntries,
   type AutomationConfigDraft,
 } from './automationConfig'
+import { activeScheduleTimes, createDefaultScheduleEntries } from './automationSchedule'
+import { addTaskToFlow } from './taskFlowCommands'
 
 const mocks = vi.hoisted(() => ({
   loadUserConfig: vi.fn(),
@@ -417,5 +417,35 @@ describe('automation config adapter', () => {
     mocks.loadUserConfig.mockRejectedValueOnce(new TypeError('Failed to fetch'))
     await expect(automationConfigAdapter.fetch({ signal: new AbortController().signal }))
       .resolves.toEqual({ ok: false, message: 'Failed to fetch' })
+  })
+})
+
+describe('automation command model compatibility', () => {
+  it('decodes a flow created by the command model with the existing migrations', () => {
+    const { flow } = addTaskToFlow([], {
+      id: 'fight',
+      name: '理智作战',
+      icon: null,
+      description: '自动刷关卡消耗理智',
+      defaultParams: { stages: [{ stage: '1-7', times: '1' }], drops: '' },
+      paramFields: [],
+    }, 1_700_000_000_000)
+
+    const decoded = automationConfigAdapter.decodeDraft({ taskFlow: flow })
+
+    expect(decoded?.taskFlow).toHaveLength(1)
+    expect(decoded?.taskFlow[0]).toMatchObject({
+      id: 'fight-1700000000000',
+      commandId: 'fight',
+      enabled: true,
+      params: {
+        stages: [{ stage: '1-7', times: '1' }],
+        drops: '',
+        clientType: '',
+        DrGrandet: false,
+      },
+    })
+    expect(decoded?.taskFlow[0]).not.toHaveProperty('icon')
+    expect(decoded?.taskFlow[0]).not.toHaveProperty('paramFields')
   })
 })

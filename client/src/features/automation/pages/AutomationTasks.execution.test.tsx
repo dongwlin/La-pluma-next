@@ -390,6 +390,52 @@ describe('AutomationTasks execution', () => {
     expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
   })
 
+  it('blocks a custom shift without a schedule file and selects it for editing', async () => {
+    const infrastFlow: TaskFlowItem[] = [
+      flow[0]!,
+      {
+        id: 'infrast-1',
+        commandId: 'infrast',
+        name: '基建换班',
+        icon: null,
+        description: '自动基建换班收菜',
+        defaultParams: {},
+        paramFields: [],
+        params: { mode: '10000', filename: '' },
+        enabled: true,
+        taskType: 'Infrast',
+      },
+    ]
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: infrastFlow } })
+    useIdentity()
+    await renderPage()
+
+    await click(runButton())
+
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('自定义换班需要填写排班文件路径', 'error')
+    expect(container.querySelector('#automation-task-editor')?.textContent).toContain('基建换班')
+  })
+
+  it('blocks an invalid drop target before starting the run', async () => {
+    const invalidFlow = flow.map(task => (
+      task.commandId === 'fight'
+        ? { ...task, params: { ...task.params, drops: '30011' } }
+        : task
+    ))
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: invalidFlow } })
+    useIdentity()
+    await renderPage()
+
+    await click(runButton())
+
+    expect(mocks.executeScheduleNow).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '掉落目标格式应为物品 ID=数量，多个目标用逗号分隔',
+      'error',
+    )
+  })
+
   it('keeps the run alive through the step delay and completes only on the terminal run', async () => {
     api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
       progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },

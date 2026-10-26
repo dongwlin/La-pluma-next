@@ -1,10 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskFlowItem } from '../types'
-import { taskResultsFromSummary } from './automationTaskProgress'
+import { resolveExecutionStep, taskResultsFromSummary } from './automationTaskProgress'
 
 const task = (id: string, name: string, commandId = 'fight') => ({
   id, name, commandId, enabled: true, params: {},
 }) as TaskFlowItem
+
+describe('automation execution step mapping', () => {
+  it('maps the enabled-step index past disabled tasks', () => {
+    const flow = [
+      { ...task('startup-1', '启动游戏', 'startup'), enabled: false },
+      task('fight-1', '理智作战'),
+      task('recruit-1', '自动公招', 'recruit'),
+    ]
+
+    expect(resolveExecutionStep(flow, { currentStep: 0, currentTaskId: null })).toBe(1)
+    expect(resolveExecutionStep(flow, { currentStep: 1, currentTaskId: null })).toBe(2)
+  })
+
+  it('prefers the task id when the server provides it', () => {
+    const flow = [task('startup-1', '启动游戏', 'startup'), task('fight-1', '理智作战'), task('recruit-1', '自动公招', 'recruit')]
+
+    expect(resolveExecutionStep(flow, { currentStep: 0, currentTaskId: 'recruit-1' })).toBe(2)
+    expect(resolveExecutionStep(flow, { currentStep: null, currentTaskId: 'missing' })).toBe(-1)
+  })
+})
 
 describe('automation task results', () => {
   it('keeps task ids authoritative for repeated tasks and mixed action outcomes', () => {

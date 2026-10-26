@@ -25,20 +25,36 @@ import {
 import {
   automationConfigAdapter,
   createDefaultAutomationDraft,
-  createDefaultScheduleEntries,
-  formatScheduleTime,
-  normalizeScheduleEntries,
-  parseScheduleTime,
-  placeClosedownLast,
   toPersistedTaskFlow,
   toPersistedTaskFlowItem,
-  type ScheduleTimeEntry,
 } from '../model/automationConfig'
+import {
+  MAX_SCHEDULE_ENTRIES,
+  appendScheduleEntry,
+  createDefaultScheduleEntries,
+  normalizeScheduleEntries,
+  parseScheduleTime,
+  removeScheduleEntry,
+  setScheduleEntryEnabled,
+  updateScheduleTimeEntry,
+  type ScheduleTimeEntry,
+} from '../model/automationSchedule'
+import {
+  addTaskToFlow as appendTaskToFlow,
+  findTaskFlowValidationFailure,
+  insertTaskFlowItem,
+  removeTaskFlowItem,
+  toggleTaskFlowItemEnabled,
+  updateTaskFlowParams,
+} from '../model/taskFlowCommands'
+import {
+  getPointerSortTargetIndex,
+  hasPointerSortActivated,
+  moveTaskFlowItem,
+} from '../model/taskFlowSort'
 import { loadUserConfig, useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
 import { testConnection as testAdbConnection } from '@/features/settings'
-
-const POINTER_SORT_ACTIVATION_PX = 10
 
 /** 养成为任务流程或定时配置发布失效；页面据此强制重读同一协调器通道。 */
 const AUTOMATION_RESOURCE_SCOPES = ['automation-config', 'automation-schedule'] as const
@@ -56,61 +72,6 @@ interface PointerSortSession {
 interface DeletedTaskSnapshot {
   task: TaskFlowItem
   index: number
-}
-
-// Exported for focused ordering tests; this component intentionally keeps the small reducer local.
-// eslint-disable-next-line react-refresh/only-export-components
-export const moveTaskFlowItem = <T extends { id: string },>(flow: T[], fromIndex: number, toIndex: number) => {
-  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= flow.length || toIndex >= flow.length) return flow
-  const nextFlow = [...flow]
-  const [movedTask] = nextFlow.splice(fromIndex, 1)
-  if (!movedTask) return flow
-  nextFlow.splice(toIndex, 0, movedTask)
-  return nextFlow
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const hasPointerSortActivated = (startX: number, startY: number, clientX: number, clientY: number) =>
-  Math.hypot(clientX - startX, clientY - startY) >= POINTER_SORT_ACTIVATION_PX
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const getPointerSortTargetIndex = (
-  flow: TaskFlowItem[],
-  itemId: string,
-  clientY: number,
-  getItemMidpoint: (taskId: string) => number | null
-) => {
-  const currentIndex = flow.findIndex(task => task.id === itemId)
-  if (currentIndex < 0) return -1
-
-  const remainingTasks = flow.filter(task => task.id !== itemId)
-  let insertionIndex = remainingTasks.length
-  for (let index = 0; index < remainingTasks.length; index += 1) {
-    const task = remainingTasks[index]
-    if (!task) continue
-    const midpoint = getItemMidpoint(task.id)
-    if (midpoint !== null && clientY < midpoint) {
-      insertionIndex = index
-      break
-    }
-  }
-  return insertionIndex
-}
-
-const parseDropTargetEntries = (value: unknown): string[] | null => {
-  if (value === undefined || value === null || value === '') return []
-
-  const rawEntries = typeof value === 'object' && !Array.isArray(value)
-    ? Object.entries(value as Record<string, unknown>).map(([itemId, count]) => `${itemId}=${count}`)
-    : String(value).split(',').map(entry => entry.trim()).filter(Boolean)
-
-  const normalizedEntries: string[] = []
-  for (const entry of rawEntries) {
-    const match = entry.match(/^([A-Za-z0-9_-]+)\s*=\s*(\d+)$/)
-    if (!match || Number(match[2]) <= 0) return null
-    normalizedEntries.push(`${match[1]}=${Number(match[2])}`)
-  }
-  return normalizedEntries
 }
 
 const stageSuggestions = [
@@ -842,28 +803,10 @@ export default function AutomationTasks() {
 
   const addTaskToFlow = (task: AutomationAvailableTask) => {
     const current = currentDraft()
-    const { icon: _icon, paramFields: _paramFields, ...definition } = task
-    const newTask = {
-      ...definition,
-      params: { ...task.defaultParams },
-      enabled: true,
-      commandId: task.id,
-      id: `${task.id}-${Date.now()}`,
-    }
-    if (task.id === 'closedown') {
-      const startupTask = current.taskFlow.find(flowTask => (
-        flowTask.commandId === 'startup' || flowTask.id.split('-')[0] === 'startup'
-      ))
-      if (startupTask) {
-        newTask.params.clientType = startupTask.params.clientType || 'Official'
-      }
-    }
-    const newFlow = task.id === 'closedown'
-      ? [...current.taskFlow, newTask]
-      : placeClosedownLast([...current.taskFlow, newTask])
+    const added = appendTaskToFlow(current.taskFlow, task)
 
-    updateConfig({ ...current, taskFlow: newFlow })
-    setSelectedTaskId(newTask.id)
+    updateConfig({ ...current, taskFlow: added.flow })
+    setSelectedTaskId(added.task.id)
     setTaskPickerOpen(false)
   }
 
@@ -871,7 +814,7 @@ export default function AutomationTasks() {
     const current = currentDraft()
     const removedTask = current.taskFlow[index]
     if (!removedTask) return
-    const newFlow = current.taskFlow.filter((_, i) => i !== index)
+    const newFlow = removeTaskFlowItem(current.taskFlow, index)
     if (removedTask.id === activeTaskId) {
       setSelectedTaskId(newFlow[Math.min(index, newFlow.length - 1)]?.id ?? null)
     }
@@ -883,10 +826,11 @@ export default function AutomationTasks() {
   const restoreDeletedTask = () => {
     if (!lastDeletedTask || isRunning) return
     const current = currentDraft()
-    const insertionIndex = Math.min(lastDeletedTask.index, current.taskFlow.length)
-    const restoredFlow = [...current.taskFlow]
-    restoredFlow.splice(insertionIndex, 0, toPersistedTaskFlowItem(lastDeletedTask.task))
-    const newFlow = placeClosedownLast(restoredFlow)
+    const newFlow = insertTaskFlowItem(
+      current.taskFlow,
+      toPersistedTaskFlowItem(lastDeletedTask.task),
+      lastDeletedTask.index,
+    )
     updateConfig({ ...current, taskFlow: newFlow })
     setSelectedTaskId(lastDeletedTask.task.id)
     setLastDeletedTask(null)
@@ -895,10 +839,7 @@ export default function AutomationTasks() {
   const toggleTaskEnabled = (index: number) => {
     const current = currentDraft()
     if (!current.taskFlow[index]) return
-    const newFlow = current.taskFlow.map((task, taskIndex) => (
-      taskIndex === index ? { ...task, enabled: !task.enabled } : task
-    ))
-    updateConfig({ ...current, taskFlow: newFlow })
+    updateConfig({ ...current, taskFlow: toggleTaskFlowItemEnabled(current.taskFlow, index) })
   }
 
   const restorePointerSort = () => {
@@ -1010,54 +951,12 @@ export default function AutomationTasks() {
 
   const updateTaskParam = (index: number, key: string, value: any) => {
     const current = currentDraft()
-    const currentTask = current.taskFlow[index]
-    if (!currentTask) return
+    if (!current.taskFlow[index]) return
 
-    let nextValue = value
-    // 如果修改的是 stages 参数，需要对关卡进行排序，但保留空白行用于继续输入。
-    // 之前这里会把 { stage: '', times: '' } 过滤掉，导致“添加关卡”点击后看起来没反应。
-    if (key === 'stages' && Array.isArray(value)) {
-      const hasStageText = (s: string | StageConfig) =>
-        typeof s === 'string' ? s.trim() !== '' : !!s.stage && s.stage.trim() !== '';
-
-      const pinnedStages = value.filter((s): s is StageConfig =>
-        typeof s === 'object' && s.pinned === true && hasStageText(s)
-      );
-      const smartStages = value.filter((s): s is StageConfig =>
-        typeof s === 'object' && s.smart === true && hasStageText(s)
-      );
-      const normalStages = value.filter((s): s is string | StageConfig =>
-        hasStageText(s) && (
-          typeof s === 'string' ||
-          (typeof s === 'object' && !s.pinned && !s.smart)
-        )
-      );
-      const blankStages = value.filter((s): s is string | StageConfig => !hasStageText(s));
-
-      // 重新组合：置顶 -> 智能养成 -> 普通 -> 空白输入行
-      nextValue = [...pinnedStages, ...smartStages, ...normalStages, ...blankStages];
-    }
-
-    const nextParams = { ...(currentTask.params ?? {}), [key]: nextValue }
-    const connectionKeys = new Set(['clientType'])
-    const syncsConnectionType = connectionKeys.has(key)
-
-    const newFlow = current.taskFlow.map((task, taskIndex) => {
-      if (taskIndex === index) return { ...task, params: nextParams }
-      // 启动/关闭游戏的客户端类型保持同步，与迁移前一致。
-      if (
-        syncsConnectionType
-        && (
-          (currentTask.commandId === 'startup' && task.commandId === 'closedown')
-          || (currentTask.commandId === 'closedown' && task.commandId === 'startup')
-        )
-      ) {
-        return { ...task, params: { ...(task.params ?? {}), clientType: value } }
-      }
-      return task
+    updateConfig({
+      ...current,
+      taskFlow: updateTaskFlowParams(current.taskFlow, index, key, value),
     })
-
-    updateConfig({ ...current, taskFlow: newFlow })
   }
 
   const testConnection = async (taskId: string) => {
@@ -1130,57 +1029,34 @@ export default function AutomationTasks() {
 
   const addScheduleTime = () => {
     const current = currentDraft()
-    const existingTimes = new Set(current.schedule.entries.map(entry => entry.time))
-    const candidates = Array.from({ length: 24 }, (_, offset) =>
-      `${String((12 + offset) % 24).padStart(2, '0')}:00`
-    )
-    const nextTime = candidates.find(time => !existingTimes.has(time))
-    if (!nextTime) {
+    const nextEntries = appendScheduleEntry(current.schedule.entries)
+    if (!nextEntries) {
       void showError('没有可添加的执行时间')
       return
     }
 
-    updateSchedule({ entries: [...current.schedule.entries, { time: nextTime, enabled: true }] })
+    updateSchedule({ entries: nextEntries })
   }
 
   const removeScheduleTime = (index: number) => {
     const current = currentDraft()
-    updateSchedule({
-      entries: current.schedule.entries.filter((_, itemIndex) => itemIndex !== index),
-    })
+    updateSchedule({ entries: removeScheduleEntry(current.schedule.entries, index) })
   }
 
   const updateScheduleTimePart = (index: number, part: 'hour' | 'minute', rawValue: number) => {
     const current = currentDraft()
-    const currentEntry = current.schedule.entries[index]
-    if (!currentEntry) return
-
-    const parsed = parseScheduleTime(currentEntry.time)
-    const nextHour = part === 'hour' ? rawValue : parsed.hour
-    const nextMinute = part === 'minute' ? rawValue : parsed.minute
-    const clampedHour = ((nextHour % 24) + 24) % 24
-    const clampedMinute = ((nextMinute % 60) + 60) % 60
-    const nextTime = formatScheduleTime(clampedHour, clampedMinute)
-
-    if (current.schedule.entries.some((entry, itemIndex) => itemIndex !== index && entry.time === nextTime)) {
-      void showError('该执行时间已经存在')
+    const updated = updateScheduleTimeEntry(current.schedule.entries, index, part, rawValue)
+    if (!updated.ok) {
+      if (updated.reason === 'duplicate') void showError('该执行时间已经存在')
       return
     }
 
-    updateSchedule({
-      entries: current.schedule.entries.map((entry, itemIndex) => (
-        itemIndex === index ? { ...entry, time: nextTime } : entry
-      )),
-    })
+    updateSchedule({ entries: updated.entries })
   }
 
   const updateScheduleTimeEnabled = (index: number, enabled: boolean) => {
     const current = currentDraft()
-    updateSchedule({
-      entries: current.schedule.entries.map((entry, itemIndex) => (
-        itemIndex === index ? { ...entry, enabled } : entry
-      )),
-    })
+    updateSchedule({ entries: setScheduleEntryEnabled(current.schedule.entries, index, enabled) })
   }
 
   const executeTaskFlow = async () => {
@@ -1189,25 +1065,10 @@ export default function AutomationTasks() {
       return
     }
 
-    const invalidTask = displayedTaskFlow.find(task =>
-      task.enabled &&
-      task.taskType === 'Infrast' &&
-      Number(task.params.mode) === 10000 &&
-      !String(task.params.filename || '').trim()
-    )
+    const invalidTask = findTaskFlowValidationFailure(displayedTaskFlow)
     if (invalidTask) {
-      setSelectedTaskId(invalidTask.id)
-      void showError('自定义换班需要填写排班文件路径')
-      return
-    }
-
-    const invalidFightDrops = displayedTaskFlow.find(task => {
-      const commandId = task.commandId || task.id.split('-')[0]
-      return task.enabled && commandId === 'fight' && parseDropTargetEntries(task.params.drops) === null
-    })
-    if (invalidFightDrops) {
-      setSelectedTaskId(invalidFightDrops.id)
-      void showError('掉落目标格式应为物品 ID=数量，多个目标用逗号分隔')
+      setSelectedTaskId(invalidTask.taskId)
+      void showError(invalidTask.message)
       return
     }
 
@@ -1311,7 +1172,7 @@ export default function AutomationTasks() {
                 <small aria-label={`已设置 ${scheduleEntries.length} 个执行时间`}>
                   {scheduleEntries.length} 个
                 </small>
-                {scheduleEntries.length < 6 && (
+                {scheduleEntries.length < MAX_SCHEDULE_ENTRIES && (
                   <button
                     type="button"
                     onClick={addScheduleTime}
