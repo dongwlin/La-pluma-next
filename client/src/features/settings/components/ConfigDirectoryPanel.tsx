@@ -12,7 +12,7 @@ import { useStatusStore } from '@/features/runtime-status'
 import { useSettingsConfigDirectory } from '../hooks/useSettingsConfigDirectory'
 
 export default function ConfigDirectoryPanel() {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const {
     path: configDir,
     status: configDirStatus,

@@ -39,7 +39,7 @@ export interface ConnectionConfigPanelProps {
 }
 
 export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPanelProps) {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const {
     draft: configData,
     update: updateConnectionDraft,

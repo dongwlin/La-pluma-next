@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
+import { useStatusStore } from '@/features/runtime-status'
 import { settingsAutoUpdateOwner } from '../model/autoUpdateConfig'
 import { settingsConnectionOwner } from '../model/connectionConfig'
 import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
@@ -40,7 +41,6 @@ const mocks = vi.hoisted(() => ({
   updateMaaCore: vi.fn(),
   updateMaaCli: vi.fn(),
   hotUpdateResources: vi.fn(),
-  setMessage: vi.fn(),
 }))
 
 vi.mock('../hooks/useSettingsConnectionConfig', async importOriginal => {
@@ -146,10 +146,14 @@ vi.mock('@/features/user-config', () => ({
   saveUserConfig: mocks.saveUserConfig,
 }))
 
-vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage }),
-  FloatingStatusIndicator: () => null,
-}))
+// 保留真实 status store：更新/设备的全局提示不应把连接表单一起重渲染。
+vi.mock('@/features/runtime-status', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/runtime-status')>()
+  return {
+    ...actual,
+    FloatingStatusIndicator: () => null,
+  }
+})
 
 let container: HTMLDivElement
 let root: Root
@@ -240,7 +244,6 @@ describe('ConfigManager panel subscriptions', () => {
     mocks.updateMaaCore.mockReset().mockResolvedValue({ success: true })
     mocks.updateMaaCli.mockReset().mockResolvedValue({ success: true })
     mocks.hotUpdateResources.mockReset().mockResolvedValue({ success: true })
-    mocks.setMessage.mockReset()
     Object.keys(renderCounts).forEach(key => {
       renderCounts[key as keyof typeof renderCounts] = 0
     })
@@ -256,6 +259,8 @@ describe('ConfigManager panel subscriptions', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount())
+    // 真实 status store 会为 success/warning 安排消失计时器。
+    useStatusStore.getState().clearMessage()
     queryClient.clear()
     container.remove()
     vi.restoreAllMocks()

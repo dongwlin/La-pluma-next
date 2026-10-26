@@ -82,10 +82,15 @@ vi.mock('@/features/user-config', () => ({
   saveUserConfig: mocks.saveUserConfig,
 }))
 
-vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage }),
-  FloatingStatusIndicator: () => null,
-}))
+vi.mock('@/features/runtime-status', () => {
+  const state = { setMessage: mocks.setMessage }
+  return {
+    useStatusStore: (selector?: (store: typeof state) => unknown) => (
+      selector ? selector(state) : state
+    ),
+    FloatingStatusIndicator: () => null,
+  }
+})
 
 let container: HTMLDivElement
 let root: Root

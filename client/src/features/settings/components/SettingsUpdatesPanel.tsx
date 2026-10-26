@@ -27,7 +27,7 @@ import { useSettingsUpdates } from '../hooks/useSettingsUpdates'
 import { useSettingsVersion } from '../hooks/useSettingsVersion'
 
 export default function SettingsUpdatesPanel() {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const shouldReduceMotion = useReducedMotion()
   const {
     version: versionInfo,

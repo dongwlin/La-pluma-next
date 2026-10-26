@@ -18,7 +18,7 @@ export interface ReadOnlyConfigPanelProps {
 }
 
 export default function ReadOnlyConfigPanel({ section }: ReadOnlyConfigPanelProps) {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const {
     path: configDir,
     status: configDirStatus,
