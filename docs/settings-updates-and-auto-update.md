@@ -13,7 +13,7 @@
 | 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`（`cause: resource-update`） | 清空 Query 缓存、轮询 |
 | 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
 | 自动更新归一化与时间校验 | `features/settings/model/configNormalization.ts` | 纯函数 | 草稿生命周期 |
-| 页面反馈、按钮 loading、反馈渲染 | `components/SettingsUpdatesPanel.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
+| 页面反馈、按钮 loading、反馈渲染 | `components/AutoUpdateConfigPanel.tsx`、`components/ComponentUpdatePanel.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
 
 四条更新命令与自动更新保存都是**写入**：没有 Query mutation、没有自动重试，也没有 AbortSignal。用户取消页面或 Activity 隐藏只停止观察，不会撤销已提交的写入。
 
@@ -110,7 +110,7 @@
 
 ## 5. 面板接线
 
-`ConfigManager` 只组合 `SettingsWorkspace`；版本、更新命令与自动更新的订阅集中在 `components/SettingsUpdatesPanel.tsx`。该面板不导入 `loadUserConfig`、`saveUserConfig`、`updateMaaCore`、`updateMaaCli`、`hotUpdateResources`、`setupAutoUpdate`，也不保存更新/自动更新的页面 state：
+`ConfigManager` 只组合 `SettingsWorkspace`；`SettingsUpdatesPanel` 只提供卡片壳，自动更新策略与组件更新分别由 `AutoUpdateConfigPanel`、`ComponentUpdatePanel` 订阅。两个面板都不导入 `loadUserConfig`、`saveUserConfig`、`updateMaaCore`、`updateMaaCli`、`hotUpdateResources`、`setupAutoUpdate`，也不保存更新/自动更新的页面 state：
 
 | 页面原职责 | 新归属 |
 | --- | --- |
@@ -146,7 +146,7 @@
 | `features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
 | `features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发使用图标的组件重渲染 |
 | `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试/不推进图标 epoch、CLI 成功只重取版本且不推进图标 epoch、core/热更新成功发布四类失效并推进图标 epoch、成功提示先于版本重取、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界、更新反馈与连接反馈互不串面板 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 更新/自动更新/版本状态不重渲染连接表单；连接草稿编辑不重渲染更新面板 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 更新/自动更新/版本状态不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新面板 |
 
 面板组合与完整回归清单见[设置领域面板](settings-panel.md)。
 
