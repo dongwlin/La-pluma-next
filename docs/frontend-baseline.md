@@ -79,10 +79,10 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 配置 | 适配器 `features/roguelike/model/roguelikeConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/roguelike-tasks`；本地键 `roguelikeTaskInputs`、`roguelikeAdvancedParams` 与 `roguelikeConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、300ms 去抖与跨 remount 提交队列由通道持有；页面只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | roguelike 配置适配器 + 按 key 提交协调器（FPR-013 已接入） |
-| 命令 | `buildCommandParams` 字符串拼接；POST run-task，roguelike/reclamation、taskType=roguelike、waitForCompletion=true | roguelike 纯命令模型与执行适配器 |
-| 观察/停止 | 挂载 GET tasks/status；同类运行每 2s 单飞查询、三次失败警告；stop 后 400ms 查 idle，15s 超时；cleanup abort、generation 失效 | 应用级 task-execution 控制器 |
-| UI | activeMode、模式/高级字段、同步错误/重试、running/stopping | 模式/字段归面板；草稿归配置所有者，执行状态只订阅 |
+| 配置 | 适配器 `features/roguelike/model/roguelikeConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/roguelike-tasks`；本地键 `roguelikeTaskInputs`、`roguelikeAdvancedParams` 与 `roguelikeConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、300ms 去抖与跨 remount 提交队列由通道持有；工作区只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | roguelike 配置适配器 + 按 key 提交协调器（FPR-013 已接入） |
+| 命令 | `features/roguelike/model/roguelikeTasks.ts` 持有任务目录、主题快捷项、高级选项、命令拼接与输入校验；执行 hook 提交 POST run-task，roguelike/reclamation、taskType=roguelike、waitForCompletion=true | roguelike 纯命令模型（FPR-031）与执行适配器 |
+| 观察/停止 | `features/roguelike/hooks/useRoguelikeExecution.ts` 订阅 `task-execution` 控制器快照；提交/停止按本客户端持有的 runId，停止确认 15s 超时解锁；页面隐藏/卸载不停止 run | 应用级 task-execution 控制器（FPR-008 已接入） |
+| UI | `pages/RoguelikeTasks.tsx` 只组合页头与工作区；`components/RoguelikeWorkspace.tsx` 持有 activeMode、配置订阅、同步错误/重试与执行订阅；`RoguelikeModePanel` 负责分段控件测量/键盘，主题与策略面板只渲染草稿并回调；running/stopping 来自控制器 | 模式/字段归面板；草稿归配置所有者，执行状态只订阅（FPR-031） |
 
 ### Dashboard — `features/dashboard/pages/Dashboard.tsx`
 

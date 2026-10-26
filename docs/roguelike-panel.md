@@ -1,0 +1,92 @@
+# 肉鸽领域面板
+
+> [← 返回文档索引](README.md)
+
+本文描述 FPR-031 交付的肉鸽页面组合、局部状态边界与纯命令模型。配置草稿仍由 `user-config` 协调器持有，运行身份仍由 `task-execution` 控制器持有；本任务只调整页面/面板的职责与数据投影，不新增第二份持久化或执行状态。
+
+相关契约：[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端职责与质量基线](frontend-baseline.md)。
+
+## 1. 定位与边界
+
+| 内容 | 唯一归属 | 说明 |
+| --- | --- | --- |
+| 页面壳、页头与预览布局 | `features/roguelike/pages/RoguelikeTasks.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区 |
+| 当前模式、配置订阅、执行订阅与同步反馈 | `features/roguelike/components/RoguelikeWorkspace.tsx` | 跨面板状态的唯一容器；模式选择不写入持久化载荷 |
+| 模式分段控件的测量与键盘导航 | `features/roguelike/components/RoguelikeModePanel.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
+| 主题快捷项与自定义代号 | `features/roguelike/components/RoguelikeThemePanel.tsx` | 从草稿派生值，编辑经回调交给工作区 |
+| 高级字段与运行/停止按钮 | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染选项表并调用注入的执行动作，不创建执行状态机 |
+| 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | FPR-013 已接入；本任务未改 key、本地键或 wire |
+| 任务目录、主题快捷项、高级选项、命令拼接与输入校验 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
+| 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图 |
+
+非目标：
+
+- 不持久化 `activeMode`，也不把模式选择写进 `roguelike-tasks` 配置。
+- 不改变服务端端点、配置 key、本地存储键或 wire 形状。
+- 不在面板内复制配置、pending、停止确认或终态提示状态。
+
+## 2. 组合与状态边界
+
+```
+RoguelikeTasks（页面壳：页头、预览布局）
+└─ RoguelikeWorkspace（配置/执行/模式唯一容器）
+   ├─ RoguelikeModePanel（受控分段控件 + 高亮测量）
+   ├─ RoguelikeThemePanel（主题快捷项 + 自定义输入）
+   ├─ RoguelikeSettingsPanel（高级字段 + 运行/停止按钮）
+   └─ aside（ScreenMonitor 预览）
+```
+
+- **当前模式**是跨面板的局部交互状态：它决定主题与高级字段面板展示哪一份 `taskInputs`/`advancedParams`。它不进入配置 wire；`Activity` 隐藏/恢复保留，真正卸载或刷新后回到默认的 `roguelike`。
+- **配置草稿**只由工作区的一次 `useUserConfig(roguelikeConfigAdapter)` 读取。主题与高级字段编辑分别合并当前 `taskInputs`/`advancedParams` 后交给同一个通道；页面、面板都不直接调用 `saveUserConfig`/`loadUserConfig` 或写 `localStorage`。
+- **同步反馈**由工作区从通道的 `error`/`syncState` 派生：失败时显示页内 `role="alert"` 与“重新同步”，`syncState === 'saving'` 期间按钮显示“同步中”；只有手动 `retry()` 返回 true 才提示“肉鸽配置已同步”。
+- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isSubmitting` 与 `onExecute`/`onStop` 投影；停止确认、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。
+- 模式面板只保存 `useFluidTabIndicator` 的容器 ref、高亮矩形与键盘处理；这些测量状态不参与配置或执行。
+
+## 3. 纯命令模型
+
+`features/roguelike/model/roguelikeTasks.ts` 从页面移出以下规则：
+
+| 导出 | 作用 |
+| --- | --- |
+| `ROGUELIKE_TASKS` | 集成战略/生息演算的任务名、命令、图标、占位与描述 |
+| `ROGUELIKE_THEME_PRESETS` | 各模式的主题快捷项；只影响界面，不进入 wire |
+| `getRoguelikeAdvancedOptions(taskId)` | 高级字段表及其 CLI 参数名；未知任务返回空表 |
+| `buildRoguelikeCommandParams(taskId, taskInputs, advancedParams)` | 主题代号在前，高级参数按选项表顺序追加 |
+| `validateRoguelikeTaskInput(taskId, taskInputs)` | 两个已知模式必须有非空主题；未知任务交给调用方 |
+
+命令拼接保持迁移前的行为：
+
+- 空字符串、未勾选的 checkbox 与未设置的字段不写入命令；checkbox 为 true 时只追加参数名。
+- 非 checkbox 字段追加 `参数名 值`；select 的默认值只有在草稿中实际存在时才写入。
+- 例：`taskInputs.roguelike = 'Phantom'`，高级值 `{ mode: '1', squad: '指挥分队', useSupport: true }` 生成
+  `Phantom --mode 1 --squad 指挥分队 --use-support`。
+- 校验只 trim 输入判断是否为空，不修改实际传给 CLI 的主题字符串。
+
+模型不读取配置通道或执行状态，因此可以用纯 Node 测试覆盖目录、参数顺序、空值过滤与校验。
+
+## 4. Activity 与卸载
+
+- `Activity` 隐藏会清理工作区与模式面板的 Effects（执行 hook 的确认计时器、`useFluidTabIndicator` 的 ResizeObserver/resize 监听），但保留 React state：当前模式、已加载草稿和面板输入不变。恢复时不会重新读取服务端配置（通道的 hydrated 守卫），也不会重放执行提交。
+- 真正卸载/刷新会销毁 `activeMode` 与面板输入；配置草稿、pending 标记与在途提交仍属于应用级 `user-config` 通道，重新挂载后继续使用；运行身份由 `task-execution` 控制器持久化，页面重新订阅同一 run，不重新提交。
+- 页面隐藏或 Activity 隐藏不改变后台 Run 的所有权；停止仍按控制器持有的 `runId` 执行。
+
+## 5. 兼容与回滚
+
+- 配置 key `roguelike-tasks`、本地键 `roguelikeTaskInputs`/`roguelikeAdvancedParams`、pending 键 `roguelikeConfigSyncPending` 与 wire `{ taskInputs, advancedParams }` 均未变化，旧本地草稿与服务端配置可直接读取。
+- 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。
+- 渲染结构、DOM/CSS 类名、表单 `id`/`name` 与默认态视觉保持不变；本任务没有新增样式或更新截图。
+- 回滚本任务只需恢复页面内联实现；配置适配器、执行控制器与本地数据不需要迁移。
+
+## 6. 回归证据
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `client/src/features/roguelike/model/roguelikeTasks.test.ts` | 任务目录、主题快捷项、高级选项表、命令顺序、空值过滤、reclamation 参数、输入不变性与校验 |
+| `client/src/features/roguelike/model/roguelikeConfig.test.ts` | 配置适配器原有回归（key、本地键、wire、载荷校验、提交与读取失败） |
+| `client/src/features/roguelike/pages/RoguelikeTasks.test.tsx` | 模式键盘导航与标签关联、模式切换、高级字段进入命令、按当前模式提交、空主题拒绝、跨模式草稿合并、Activity 隐藏/恢复与 remount 的模式生命期、配置 pending/重试/迟到加载、执行提交/停止/超时/失败/断线恢复 |
+
+针对性命令（仓库根目录）：
+
+```sh
+pnpm --filter la-pluma-next-client exec vitest run src/features/roguelike
+```
