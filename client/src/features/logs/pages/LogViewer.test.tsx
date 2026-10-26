@@ -73,6 +73,15 @@ const click = async (element: HTMLElement) => {
   await flush()
 }
 
+const changeSelect = async (select: HTMLSelectElement, value: string) => {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+    setter?.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await flush()
+}
+
 describe('LogViewer recovery and controls', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -310,6 +319,43 @@ describe('LogViewer recovery and controls', () => {
     expect(autoScroll()?.checked).toBe(true)
     expect(autoScroll()?.disabled).toBe(false)
     expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('keeps level filters across realtime and history views', async () => {
+    const target = historyFile('maa.log')
+    mocks.getLogFiles.mockResolvedValue({ success: true, data: [target] })
+    mocks.readLogFile.mockResolvedValue({
+      success: true,
+      data: {
+        content: `${historyLine('历史普通行')}\n[2026-07-22 10:11:13][ERROR] 历史错误行`,
+      },
+    })
+    mocks.getRealtimeLogs.mockResolvedValue({
+      success: true,
+      data: [
+        { time: '2026-07-22T10:11:12', level: 'INFO', message: '实时普通行' },
+        { time: '2026-07-22T10:11:13', level: 'ERROR', message: '实时错误行' },
+      ],
+    })
+
+    await renderComponent()
+    expect(container.textContent).toContain('实时普通行')
+    const level = container.querySelector<HTMLSelectElement>('select[aria-label="日志级别"]')
+    expect(level).not.toBeNull()
+    await changeSelect(level!, 'ERROR')
+    expect(container.textContent).toContain('实时错误行')
+    expect(container.textContent).not.toContain('实时普通行')
+
+    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    expect(container.textContent).toContain('历史错误行')
+    expect(container.textContent).not.toContain('历史普通行')
+
+    const back = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '返回实时')
+    await click(back!)
+    expect(level?.value).toBe('ERROR')
+    expect(container.textContent).toContain('实时错误行')
+    expect(container.textContent).not.toContain('实时普通行')
   })
 
   it('confirms cleanup, refreshes the file list and reports the result', async () => {
