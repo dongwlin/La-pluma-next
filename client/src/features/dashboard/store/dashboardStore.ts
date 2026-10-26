@@ -47,10 +47,15 @@ interface DashboardCacheState extends DashboardSnapshot {
   hasLoaded: boolean
   isRefreshing: boolean
   lastRefreshAttemptAt: number | null
+  /**
+   * 最近一次投影到温度历史的采样时间（Query 的 `dataUpdatedAt`）。
+   * 不持久化：只用于抑制 Activity 恢复或重挂载时同一份缓存样本重复追加。
+   */
+  lastDeviceSampleAt: number | null
   startRefresh: () => void
   finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot) => void
   /** 设备采样来自只读端点，入 store 前在这里做语义校验。 */
-  updateDeviceStats: (stats: unknown) => void
+  updateDeviceStats: (stats: unknown, sampleAt?: number) => void
   reset: () => void
 }
 
@@ -237,6 +242,7 @@ function restoreDashboardCache() {
       hasLoaded: true,
       isRefreshing: false,
       lastRefreshAttemptAt: restoredAt,
+      lastDeviceSampleAt: null,
     }
   } catch {
     return null
@@ -269,6 +275,7 @@ const emptyCacheState = () => ({
   hasLoaded: false,
   isRefreshing: false,
   lastRefreshAttemptAt: null,
+  lastDeviceSampleAt: null,
 })
 
 const initialCacheState = () => restoreDashboardCache() ?? emptyCacheState()
@@ -296,13 +303,22 @@ export const useDashboardStore = create<DashboardCacheState>((set, get) => ({
         })
     if (validSnapshot) persistDashboardCache(get())
   },
-  updateDeviceStats: (deviceStats) => {
+  updateDeviceStats: (deviceStats, sampleAt) => {
     if (!isDeviceStats(deviceStats) || deviceStats === null) return
-    set(state => ({
+    // 同一份采样（相同 dataUpdatedAt 的缓存回放）只追加一次温度点：Activity
+    // 恢复会重跑页面 Effect，但 Query 缓存里的样本没有变化。同一毫秒内
+    // 产生了新的采样对象时仍按新样本处理。
+    const state = get()
+    if (sampleAt != null && state.lastDeviceSampleAt != null) {
+      if (sampleAt < state.lastDeviceSampleAt) return
+      if (sampleAt === state.lastDeviceSampleAt && deviceStats === state.deviceStats) return
+    }
+    set(current => ({
       deviceStats,
       temperatureHistory: Number.isFinite(deviceStats.temp)
-        ? [...state.temperatureHistory, Number(deviceStats.temp)].slice(-36)
-        : state.temperatureHistory,
+        ? [...current.temperatureHistory, Number(deviceStats.temp)].slice(-36)
+        : current.temperatureHistory,
+      lastDeviceSampleAt: sampleAt ?? current.lastDeviceSampleAt,
     }))
   },
   reset: () => {

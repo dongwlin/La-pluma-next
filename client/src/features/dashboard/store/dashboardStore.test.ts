@@ -157,6 +157,38 @@ describe('dashboardStore persistence', () => {
     expect(persisted.snapshot.temperatureHistory).toEqual([39])
   })
 
+  it('appends one temperature point per sample timestamp', async () => {
+    const dashboardModule = await import('./dashboardStore')
+    const store = dashboardModule.useDashboardStore.getState()
+
+    // Activity 恢复回放的是 Query 缓存里的同一个样本对象。
+    const restoredSample = { cpuPct: 44, temp: 39 }
+    store.updateDeviceStats(restoredSample, 1_000)
+    store.updateDeviceStats(restoredSample, 1_000)
+    expect(dashboardModule.useDashboardStore.getState().temperatureHistory).toEqual([39])
+    expect(dashboardModule.useDashboardStore.getState().lastDeviceSampleAt).toBe(1_000)
+
+    store.updateDeviceStats({ cpuPct: 42, temp: 39 }, 2_000)
+    expect(dashboardModule.useDashboardStore.getState().temperatureHistory).toEqual([39, 39])
+    expect(dashboardModule.useDashboardStore.getState().lastDeviceSampleAt).toBe(2_000)
+
+    // 迟到的旧样本不能覆盖更新的采样或追加温度点。
+    store.updateDeviceStats({ cpuPct: 10, temp: 20 }, 1_500)
+    expect(dashboardModule.useDashboardStore.getState().deviceStats).toEqual({ cpuPct: 42, temp: 39 })
+    expect(dashboardModule.useDashboardStore.getState().temperatureHistory).toEqual([39, 39])
+  })
+
+  it('does not persist the sample timestamp used for temperature dedupe', async () => {
+    const dashboardModule = await import('./dashboardStore')
+    const store = dashboardModule.useDashboardStore.getState()
+    store.updateDeviceStats({ cpuPct: 44, temp: 39 }, 1_000)
+    store.finishRefresh(Date.now(), businessSnapshotFixture)
+
+    const persisted = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}')
+    expect(persisted.snapshot).not.toHaveProperty('lastDeviceSampleAt')
+    expect(dashboardModule.useDashboardStore.getState().lastDeviceSampleAt).toBe(1_000)
+  })
+
   it('ignores an invalid device sample before it can poison the cache', async () => {
     const dashboardModule = await import('./dashboardStore')
     const store = dashboardModule.useDashboardStore.getState()
