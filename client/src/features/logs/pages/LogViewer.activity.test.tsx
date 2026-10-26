@@ -40,6 +40,15 @@ const row = (message: string) => ({
   message,
 })
 
+const historyFile = {
+  name: 'maa.log',
+  path: '/logs/maa.log',
+  modified: '2026-07-22T10:00:00.000Z',
+  size: 1024,
+}
+
+const historyLine = (message: string) => `[2026-07-22 10:11:12][INFO] ${message}`
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void
   const promise = new Promise<T>(nextResolve => {
@@ -208,6 +217,10 @@ describe('LogViewer realtime lifecycle', () => {
     await act(async () => confirmButton?.click())
     await flush()
 
+    const busyClearButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '清空')
+    expect(busyClearButton?.disabled).toBe(true)
+
     await advance(5000)
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
 
@@ -216,8 +229,102 @@ describe('LogViewer realtime lifecycle', () => {
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('实时日志已清空')
     expect(container.textContent).not.toContain('清空前')
+    expect(busyClearButton?.disabled).toBe(false)
 
     resumed.resolve({ success: true, data: [] })
     await flush()
+  })
+
+  it('retries an in-flight history read on restore without leaving loading', async () => {
+    const beforeHide = deferred<ApiResponse<unknown>>()
+    const afterRestore = deferred<ApiResponse<unknown>>()
+    mocks.getLogFiles.mockResolvedValue({ success: true, data: [historyFile] })
+    mocks.readLogFile
+      .mockReturnValueOnce(beforeHide.promise)
+      .mockReturnValueOnce(afterRestore.promise)
+
+    await renderMode('visible')
+    const historyRow = container.querySelector<HTMLButtonElement>('.log-history-row')
+    await act(async () => historyRow?.click())
+    await flush()
+    expect(mocks.readLogFile).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    const hiddenSignal = mocks.readLogFile.mock.calls[0]?.[2] as AbortSignal | undefined
+
+    await renderMode('hidden')
+    expect(hiddenSignal?.aborted).toBe(true)
+
+    beforeHide.resolve({ success: true, data: { content: historyLine('隐藏期间返回') } })
+    await flush()
+    expect(container.textContent).not.toContain('隐藏期间返回')
+
+    await renderMode('visible')
+    expect(mocks.readLogFile).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    expect(container.textContent).not.toContain('隐藏期间返回')
+
+    afterRestore.resolve({ success: true, data: { content: historyLine('恢复后读取') } })
+    await flush()
+    expect(container.textContent).toContain('恢复后读取')
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull()
+  })
+
+  it('keeps history mode on restore without restarting realtime polling', async () => {
+    mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [row('实时行')] })
+    mocks.getLogFiles.mockResolvedValue({ success: true, data: [historyFile] })
+    mocks.readLogFile.mockResolvedValue({
+      success: true,
+      data: { content: historyLine('历史内容') },
+    })
+
+    await renderMode('visible')
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+    const historyRow = container.querySelector<HTMLButtonElement>('.log-history-row')
+    await act(async () => historyRow?.click())
+    await flush()
+    expect(container.textContent).toContain('历史内容')
+
+    await advance(5000)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+
+    await renderMode('hidden')
+    await renderMode('visible')
+    await flush()
+    expect(mocks.getLogFiles).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('历史内容')
+
+    await advance(5000)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the open history file when the restored file list fails and retries the list', async () => {
+    mocks.getLogFiles
+      .mockResolvedValueOnce({ success: true, data: [historyFile] })
+      .mockResolvedValueOnce({ success: false, message: '列表刷新失败' })
+      .mockResolvedValueOnce({ success: true, data: [historyFile] })
+    mocks.readLogFile.mockResolvedValue({
+      success: true,
+      data: { content: historyLine('历史内容') },
+    })
+
+    await renderMode('visible')
+    const historyRow = container.querySelector<HTMLButtonElement>('.log-history-row')
+    await act(async () => historyRow?.click())
+    await flush()
+    expect(container.textContent).toContain('历史内容')
+
+    await renderMode('hidden')
+    await renderMode('visible')
+    await flush()
+
+    expect(container.textContent).toContain('历史内容')
+    const listError = container.querySelector<HTMLElement>('.log-history-state.is-error')
+    expect(listError?.textContent).toContain('列表刷新失败')
+    expect(mocks.readLogFile).toHaveBeenCalledTimes(1)
+
+    await act(async () => listError?.querySelector<HTMLButtonElement>('button')?.click())
+    await flush()
+    expect(container.querySelector('.log-history-state.is-error')).toBeNull()
+    expect(container.textContent).toContain('历史内容')
   })
 })

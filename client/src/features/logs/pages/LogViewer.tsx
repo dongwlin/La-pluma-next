@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   AlertCircle,
@@ -12,12 +12,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import {
-  cleanupLogs,
-  clearRealtimeLogs,
-  getLogFiles,
-  readLogFile,
-} from '../api'
 import {
   PageHeader,
   Card,
@@ -34,9 +28,9 @@ import {
 } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
-import { buildLogView, parseHistoryContent, type LogContentMode, type LogFilter } from '../model/logModel'
-import { useRealtimeLogs } from '../hooks/useRealtimeLogs'
-import type { LogEntry, LogFile } from '../types'
+import { buildLogView, type LogContentMode, type LogFilter } from '../model/logModel'
+import { useLogsSession } from '../hooks/useLogsSession'
+import type { LogFile } from '../types'
 
 type ConfirmAction = 'clear' | 'cleanup'
 type Notice = { type: 'success' | 'error'; text: string }
@@ -46,27 +40,24 @@ const CONTENT_MODE_OPTIONS: ReadonlyArray<{ id: LogContentMode; label: string; d
   { id: 'raw', label: '原始', description: '完整内容' },
 ]
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
-
 export default function LogViewer() {
   const shouldReduceMotion = useReducedMotion()
-  const [historyLogs, setHistoryLogs] = useState<LogEntry[]>([])
+  const session = useLogsSession()
+  const { history, realtime } = session
   const [autoScroll, setAutoScroll] = useState(true)
   const [contentMode, setContentMode] = useState<LogContentMode>('summary')
   const [filter, setFilter] = useState<LogFilter>('all')
   const [search, setSearch] = useState('')
   const [collapseRepeats, setCollapseRepeats] = useState(true)
-  const [historyFiles, setHistoryFiles] = useState<LogFile[]>([])
-  const [loading, setLoading] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<LogFile | null>(null)
-  const [viewingHistory, setViewingHistory] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
-  const [actionBusy, setActionBusy] = useState(false)
-  const realtime = useRealtimeLogs({ enabled: !viewingHistory })
+  const viewingHistory = history.viewing
+  const historyLogs = history.logs
+  const historyFiles = history.files
+  const selectedFile = history.selectedFile
+  const loading = history.readPhase === 'loading'
+  const historyError = history.error
+  const actionBusy = session.commandPending !== null
   const logs = viewingHistory ? historyLogs : realtime.logs
   const {
     containerRef: contentModeTabsRef,
@@ -75,71 +66,16 @@ export default function LogViewer() {
     handleTabKeyDown: handleContentModeKeyDown,
   } = useFluidTabIndicator(contentMode)
   const logContainerRef = useRef<HTMLDivElement>(null)
-  const viewingHistoryRef = useRef(false)
-  const mountedRef = useRef(true)
-  const historyRequestIdRef = useRef(0)
 
-  const loadHistoryFiles = useCallback(async () => {
-    try {
-      const result = await getLogFiles()
-      if (!result.success) throw new Error(result.message || '历史日志请求失败')
-      if (!mountedRef.current) return
-
-      setHistoryFiles(Array.isArray(result.data) ? result.data : [])
-      setHistoryError(null)
-    } catch (error) {
-      if (mountedRef.current) {
-        setHistoryError(getErrorMessage(error, '暂时无法获取历史日志'))
-      }
-    }
-  }, [])
-
-  const viewHistoryFile = async (file: LogFile) => {
-    const requestId = ++historyRequestIdRef.current
-    viewingHistoryRef.current = true
-    realtime.stop()
-    realtime.clear()
-    setViewingHistory(true)
-    setSelectedFile(file)
+  const viewHistoryFile = (file: LogFile) => {
     setAutoScroll(false)
-    setLoading(true)
-    setHistoryError(null)
-
-    try {
-      const result = await readLogFile(file.path, 1000)
-      if (!result.success) throw new Error(result.message || '读取日志文件失败')
-      if (!mountedRef.current || !viewingHistoryRef.current || requestId !== historyRequestIdRef.current) return
-
-      const content = typeof result.data?.content === 'string' ? result.data.content : ''
-      setHistoryLogs(parseHistoryContent(content))
-    } catch (error) {
-      if (!mountedRef.current || !viewingHistoryRef.current || requestId !== historyRequestIdRef.current) return
-      setHistoryLogs([])
-      setHistoryError(getErrorMessage(error, '读取日志文件失败'))
-    } finally {
-      if (mountedRef.current && requestId === historyRequestIdRef.current) setLoading(false)
-    }
+    session.enterHistory(file)
   }
 
   const backToRealtime = () => {
-    historyRequestIdRef.current += 1
-    viewingHistoryRef.current = false
-    setViewingHistory(false)
-    setSelectedFile(null)
     setAutoScroll(true)
-    setHistoryError(null)
-    setLoading(false)
-    setHistoryLogs([])
-    realtime.start()
+    session.backToRealtime()
   }
-
-  useEffect(() => {
-    mountedRef.current = true
-    void loadHistoryFiles()
-    return () => {
-      mountedRef.current = false
-    }
-  }, [loadHistoryFiles])
 
   useEffect(() => {
     if (autoScroll && !viewingHistory && logContainerRef.current) {
@@ -157,40 +93,32 @@ export default function LogViewer() {
   const visibleLogs = logView.visible
 
   const clearLogs = async () => {
-    if (viewingHistoryRef.current) return false
-    realtime.pause()
-    setActionBusy(true)
+    if (viewingHistory) return false
     setNotice(null)
-    try {
-      const result = await clearRealtimeLogs()
-      if (!result.success) throw new Error(result.message || '清空实时日志失败')
-      realtime.clear()
-      setNotice({ type: 'success', text: result.message || '实时日志已清空' })
-    } catch (error) {
-      const message = getErrorMessage(error, '清空实时日志失败')
-      setNotice({ type: 'error', text: message })
-      throw new Error(message)
-    } finally {
-      realtime.resume()
-      setActionBusy(false)
+    const outcome = await session.clearRealtimeLogs()
+    if (outcome.status === 'succeeded') {
+      setNotice({ type: 'success', text: outcome.message })
+      return true
     }
+    if (outcome.status === 'failed') {
+      setNotice({ type: 'error', text: outcome.message })
+      throw new Error(outcome.message)
+    }
+    return false
   }
 
   const cleanupHistoryLogs = async () => {
-    setActionBusy(true)
     setNotice(null)
-    try {
-      const result = await cleanupLogs(10)
-      if (!result.success) throw new Error(result.message || '清理历史日志失败')
-      setNotice({ type: 'success', text: result.message || '历史日志清理完成' })
-      await loadHistoryFiles()
-    } catch (error) {
-      const message = getErrorMessage(error, '清理历史日志失败')
-      setNotice({ type: 'error', text: message })
-      throw new Error(message)
-    } finally {
-      setActionBusy(false)
+    const outcome = await session.cleanupHistoryLogs()
+    if (outcome.status === 'succeeded') {
+      setNotice({ type: 'success', text: outcome.message })
+      return true
     }
+    if (outcome.status === 'failed') {
+      setNotice({ type: 'error', text: outcome.message })
+      throw new Error(outcome.message)
+    }
+    return false
   }
 
   const handleConfirm = async () => {
@@ -214,7 +142,7 @@ export default function LogViewer() {
   const isSummaryEmpty = logs.length > 0 && logView.readable.length === 0
   const isFilteredEmpty = logView.readable.length > 0 && visibleLogs.length === 0
   const retryActiveLogs = () => {
-    if (viewingHistory && selectedFile) void viewHistoryFile(selectedFile)
+    if (viewingHistory && selectedFile) history.retry()
     else realtime.refresh()
   }
 
@@ -494,16 +422,16 @@ export default function LogViewer() {
             }
           />
           <CardContent className="log-history-content">
-            {historyError && !viewingHistory && (
+            {history.filesError && (
               <div className="log-history-state is-error flex-wrap px-4 py-6" role="alert">
                 <AlertCircle className="h-5 w-5" aria-hidden="true" />
-                <span>{historyError}</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => void loadHistoryFiles()}>
+                <span>{history.filesError}</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => void history.reloadFiles()}>
                   重新加载
                 </Button>
               </div>
             )}
-            {!historyError && historyFiles.length === 0 && (
+            {!history.filesError && historyFiles.length === 0 && (
               <div className="log-history-state">
                 <FileText className="h-5 w-5" aria-hidden="true" />
                 <div>
@@ -512,13 +440,13 @@ export default function LogViewer() {
                 </div>
               </div>
             )}
-            {!historyError && historyFiles.length > 0 && (
+            {!history.filesError && historyFiles.length > 0 && (
               <div className="log-history-list">
                 {historyFiles.map(file => (
                   <button
                     type="button"
                     key={file.path}
-                    onClick={() => void viewHistoryFile(file)}
+                    onClick={() => viewHistoryFile(file)}
                     className={`log-history-row ${selectedFile?.path === file.path ? 'is-active' : ''}`}
                     aria-current={selectedFile?.path === file.path ? 'true' : undefined}
                   >
