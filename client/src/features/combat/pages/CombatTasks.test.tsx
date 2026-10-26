@@ -35,6 +35,9 @@ const mocks = vi.hoisted(() => ({
   setMessage: vi.fn(),
 }))
 
+/** 作业集列表的渲染次数：用来验证搜索/识别方式输入不推动列表重渲染。 */
+const renderCounts = vi.hoisted(() => ({ setPanel: 0 }))
+
 vi.mock('framer-motion', async () => {
   const React = await import('react')
   type MotionTestProps = Record<string, unknown> & { children?: ReactNode }
@@ -101,6 +104,16 @@ vi.mock('@/features/runtime-status', () => ({
 }))
 
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
+
+vi.mock('../components/CombatCopilotSetPanel', async (importOriginal) => {
+  const React = await import('react')
+  const actual = await importOriginal<typeof import('../components/CombatCopilotSetPanel')>()
+  const CountingSetPanel = (props: Parameters<typeof actual.default>[0]) => {
+    renderCounts.setPanel += 1
+    return React.createElement(actual.default, props)
+  }
+  return { ...actual, default: CountingSetPanel }
+})
 
 const CONTROLLER_INTERVALS = { active: 1_000, idle: 5_000, disconnected: 2_000 }
 
@@ -430,6 +443,7 @@ describe('CombatTasks execution', () => {
     mocks.searchCopilot.mockReset()
     mocks.searchParadoxCopilot.mockReset()
     mocks.setMessage.mockReset()
+    renderCounts.setPanel = 0
 
     api = createApi()
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot()))
@@ -1502,6 +1516,126 @@ describe('CombatTasks execution', () => {
     expect(api.stopRun).not.toHaveBeenCalled()
     expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
     expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+  })
+
+  it('keeps the set list out of local search and recognition-mode renders', async () => {
+    await renderComponent()
+    await previewSet()
+    expect(renderCounts.setPanel).toBeGreaterThan(0)
+
+    renderCounts.setPanel = 0
+    const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
+    await setInputValue(stageInput, '1-7')
+    // 搜索词存在面板会话存储里：输入不推动作业集列表重渲染。
+    expect(renderCounts.setPanel).toBe(0)
+
+    await click(buttonByText('单个作业')!)
+    // 识别方式是预览的局部选择，同样不推动列表。
+    expect(renderCounts.setPanel).toBe(0)
+
+    // 选择属于作业集列表自己的状态，仍应推动列表更新。
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="取消选择第 1 个作业"]')!)
+    expect(renderCounts.setPanel).toBeGreaterThan(0)
+  })
+
+  it('retains local search input and recognition mode across combat mode switches', async () => {
+    await renderComponent()
+    const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
+    await setInputValue(stageInput, '1-7')
+    await click(buttonByText('单个作业')!)
+
+    const modeButton = (label: string) => Array.from(
+      container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'),
+    ).find(button => button.textContent?.includes(label))!
+
+    await click(modeButton('悖论模拟'))
+    expect(container.querySelector('input[name="maa-copilot-stage-search"]')).toBeNull()
+
+    await click(modeButton('普通作业'))
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')?.value)
+      .toBe('1-7')
+    expect(buttonByText('单个作业')?.className).toContain('combat-segment-active')
+  })
+
+  it('applies a clicked search result to the input and previews it', async () => {
+    mocks.searchCopilot.mockResolvedValueOnce({
+      success: true,
+      data: {
+        stage: '1-7',
+        copilots: [{ id: 1, uri: 'prts://1', title: '搜索结果作业' }],
+      },
+    })
+    mocks.getCopilotInfo.mockResolvedValueOnce({
+      success: true,
+      data: {
+        status_code: 200,
+        data: { content: JSON.stringify({ doc: { title: '搜索预览' }, stage_name: '1-7' }) },
+      },
+    })
+
+    await renderComponent()
+    const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
+    await setInputValue(stageInput, '1-7')
+    await click(buttonsByText('搜索')[0]!)
+    await flush()
+    expect(container.textContent).toContain('搜索结果作业')
+
+    const resultButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('搜索结果作业'))!
+    await click(resultButton)
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('prts://1')
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1', expect.any(AbortSignal))
+    expect(container.textContent).toContain('搜索预览')
+    expect(resultButton.textContent).toContain('已选中')
+  })
+
+  it('renders per-item set results and the waiting progress', async () => {
+    mocks.getCopilotSetPlan.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          { id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true },
+          { id: 102, stage: 'TEST-2', stageId: 'test_2', supportsRaid: true },
+          { id: 103, stage: 'TEST-3', stageId: 'test_3', supportsRaid: true },
+        ],
+        entries: [],
+      },
+    })
+    useIdentity({ runId: 'run-set-items', operationId: 'run_copilot_set', scope: 'combat' })
+    const waiting = setRun('run-set-items', 'waiting', {
+      progress: setProgress(
+        [planEntry(0, 'success'), planEntry(1, 'failed', { error: '作战失败' }), planEntry(2, 'pending')],
+        {
+          mode: 'manual',
+          phase: 'waiting_for_next',
+          totalSteps: 3,
+          nextEntry: planEntry(2, 'pending'),
+        },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    api.fetchRun.mockResolvedValue(ok(waiting))
+    startController()
+    await flush()
+    await renderComponent()
+
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
+    await click(buttonByText('预览')!)
+    await flush()
+
+    const statusLabels = Array.from(container.querySelectorAll('span'))
+      .map(span => span.textContent?.trim())
+      .filter(text => text === '已完成' || text === '待重试' || text === '待执行')
+    expect(statusLabels).toEqual(['已完成', '待重试', '待执行'])
+    expect(container.textContent).toContain('待 2')
+    expect(container.textContent).toContain('完成 1')
+    expect(container.textContent).toContain('失败 1')
+    expect(container.textContent).toContain('本次已执行 2 个')
+    expect(container.textContent).toContain('第 3 / 3 关')
+    expect(buttonByText('开始下一关')).toBeDefined()
   })
 
   it('associates every visible form control with a label', async () => {

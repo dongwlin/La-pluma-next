@@ -4,6 +4,9 @@
 
 import type { ReactNode } from 'react'
 
+/** 作业页的三种入口；模式切换不写入配置。 */
+export type CombatMode = 'copilot' | 'ssscopilot' | 'paradoxcopilot'
+
 export interface CombatTask {
   id: string
   name: string
