@@ -13,7 +13,7 @@
 | 版本读取 | `features/settings/model/systemResources.ts` 的 `versionQueryOptions()` | `settings/version` Query | 更新命令 |
 | 配置目录读取 | 同文件的 `configDirectoryQueryOptions()` | `settings/config-directory` Query | 打开目录 |
 | 打开配置目录 | `features/settings/hooks/useSettingsConfigDirectory.ts` 的 `open()` | 显式命令 `POST /agent/actions/open-config-directory` | Query、自动重取 |
-| 页面反馈与按钮 loading | `pages/ConfigManager.tsx` | 只渲染 owner/Query 状态 | 命令状态机、请求取消 |
+| 页面反馈与按钮 loading | `components/DeviceConnectionPanel.tsx`、`ConfigDirectoryPanel.tsx`、`ReadOnlyConfigPanel.tsx` | 只渲染 owner/Query 状态 | 命令状态机、请求取消 |
 
 设备发现会探测本机 ADB 与常见模拟器端口，连接测试会尝试 `adb connect`；两者在 Agent 契约中属于低风险写入，不应做成可自动重取的只读 Query。打开配置目录同样有副作用，只保留显式入口。
 
@@ -57,9 +57,10 @@
 
 ### 2.3 Activity 与取消
 
-`useSettingsDeviceConnection()` 只做订阅与动作转发，并在 Effect cleanup 中调用 `cancelAll()`：
+`useSettingsDeviceConnection()` 只做订阅与动作转发；取消动作由 `SettingsWorkspace` 的 `useDeviceConnectionActivityCleanup()` 在 Effect cleanup 中调用：
 
 - Activity 隐藏或页面卸载会 abort 两条链的本地等待；不会调用服务端停止接口，也不撤销已发生的探测/`adb connect`。
+- section 切换不触发取消：设备面板会随 connection section 卸载/挂载，但在途请求继续，结果写入模块级 owner，恢复 connection 后显示。
 - 已完成的结果保存在模块级 owner 中，恢复后继续展示；不自动重发，用户可再次查找或测试。
 - hook 恢复时重新订阅；真正卸载后 owner 仍是同一实例，未完成请求已被取消，不会在后台回填页面。
 
@@ -82,20 +83,20 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 - 配置目录首次读取中显示“正在读取目录...”；从未成功读取且失败时显示 `配置目录读取失败: <原因>` 与“重试”按钮，重试走 `refetchQueries` 同一 key。
 - 后台刷新失败保留最近一次成功路径；只有从未成功读取过才显示错误，避免 Activity 恢复后的后台失败清空可用路径。
 - 打开目录有两个原有入口：只读 section 的卡片头按钮与配置目录卡片按钮。两者都调用 `useSettingsConfigDirectory().open()`；成功提示“已打开配置目录”，失败提示 `打开失败: <原因>`，不触发 Query 重取。
-- section 切换不卸载设备/版本/目录 hook；设备列表、测试反馈、版本与路径都保留。
+- section 切换不取消在途设备命令，也不清空设备列表、测试反馈、版本与目录路径；设备面板随 connection section 卸载/挂载，但状态保存在模块级 owner 与 Query 缓存中。设备命令的取消只由 Activity 隐藏或页面真正卸载触发（`SettingsWorkspace` 的 `useDeviceConnectionActivityCleanup`），不是面板可见性。
 
-## 4. 页面接线与遗留清理
+## 4. 面板接线与遗留清理
 
-`ConfigManager` 不再直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不再保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，页面只保留渲染与全局状态提示；组件更新与自动更新由 FPR-026 的模块级所有者持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
+`ConfigManager` 只组合 `SettingsWorkspace`；设备发现、连接测试、版本、配置目录与打开目录由 FPR-025 的 hooks 持有，FPR-034 后分别由设备、更新与目录面板订阅。`ConfigManager` 与各面板都不直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，面板只保留渲染与全局状态提示；组件更新与自动更新由 FPR-026 的模块级所有者持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 
 | 页面原职责 | 新归属 |
 | --- | --- |
-| `handleDiscoverDevices` / `handleTestConnection` / `handleUseDiscoveredDevice` | `useSettingsDeviceConnection()` 动作 |
+| `handleDiscoverDevices` / `handleTestConnection` / `handleUseDiscoveredDevice` | `DeviceConnectionPanel` → `useSettingsDeviceConnection()` 动作 |
 | 设备列表、查找提示、`hasSearchedDevices`、`discoveringDevices` | `DeviceConnectionOwner.discovery` |
 | 测试 loading 与 `connectionFeedback` | `DeviceConnectionOwner.test` |
-| `loadVersion` 与 `versionInfo` state | `useSettingsVersion()` + `settings/version` |
-| `loadConfigDir`、目录三态与重试 | `useSettingsConfigDirectory()` + `settings/config-directory` |
-| `handleOpenConfigDir` 的 API/错误分支 | `useSettingsConfigDirectory().open()` |
+| `loadVersion` 与 `versionInfo` state | `SettingsUpdatesPanel` → `useSettingsVersion()` + `settings/version` |
+| `loadConfigDir`、目录三态与重试 | `ConfigDirectoryPanel` / `ReadOnlyConfigPanel` → `useSettingsConfigDirectory()` + `settings/config-directory` |
+| `handleOpenConfigDir` 的 API/错误分支 | `useSettingsConfigDirectory().open()`；目录卡片与只读 section 头部共享同一命令 |
 
 自动更新与 core/cli/资源更新已由 FPR-026 迁移到 `model/autoUpdateConfig.ts`、`model/updateCommands.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)；本任务只把更新成功后的版本读取接到同一 Query。
 
@@ -105,12 +106,12 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 - 新增 Query key 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
 - 默认渲染结构、DOM、CSS 与文案未改变；失败/取消状态仍走原有提示区域，视觉基线不因本任务更新。
 - 行为差异：
-  - 设备发现与连接测试请求现在在 Activity 隐藏/卸载时 abort；迁移前会继续完成并写页面 state。
+  - 设备发现与连接测试请求现在在 Activity 隐藏/卸载时 abort；迁移前会继续完成并写页面 state。section 切换不取消命令（与迁移前一致），但设备面板会卸载并在恢复 connection 后从 owner 读取结果。
   - 非数组/坏设备条目被跳过而不是抛错；未知状态/来源回退为“状态未知”/ADB。
   - 配置目录后台刷新失败保留最近成功路径；迁移前显式重读失败会清空路径。
   - 版本 `resource` 块按已知字段归一；坏字段显示 `unknown`，不再把任意对象直接传入渲染。
   - 传输失败按 Query 默认重试，错误提示最多延后约 1.5s。
-- 独立回滚范围：`model/deviceConnection.ts`、`hooks/useSettingsDeviceConnection.ts`、`model/systemResources.ts`、`hooks/useSettingsVersion.ts`、`hooks/useSettingsConfigDirectory.ts`、`api/index.ts` 的目录返回类型与 `ConfigManager` 接线。回滚后恢复页面 state 与原直连调用，不需要数据迁移。
+- 独立回滚范围：`model/deviceConnection.ts`、`hooks/useSettingsDeviceConnection.ts`、`model/systemResources.ts`、`hooks/useSettingsVersion.ts`、`hooks/useSettingsConfigDirectory.ts`、`api/index.ts` 的目录返回类型与 `DeviceConnectionPanel`/`ConfigDirectoryPanel`/`ReadOnlyConfigPanel`/`SettingsUpdatesPanel` 的接线。回滚后恢复页面 state 与原直连调用，不需要数据迁移。
 
 ## 6. 回归证据
 
@@ -118,7 +119,10 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | --- | --- |
 | `features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
 | `features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后失效并重取同一版本 Query（FPR-026）、目录失败重试 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、section 切换不取消在途查找、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、更新成功后失效并重取同一版本 Query（FPR-026）、目录失败重试 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备状态不重渲染连接表单；连接草稿编辑不重渲染更新/目录面板 |
+
+面板组合与完整回归清单见[设置领域面板](settings-panel.md)。
 
 复现命令（仓库根目录）：
 

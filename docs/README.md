@@ -18,6 +18,7 @@
 | [设置配置编辑与保存](settings-config-editing.md) | MAA connection 的 Query 读取、草稿/revision、保存与重置边界、迟到读取裁决、section 存储/事件与清理 | 修改设置页配置表单、保存流程或 section 状态的开发者 |
 | [设置设备连接与系统资源](settings-device-and-resources.md) | 设备发现/连接测试命令所有者、取消与草稿回填 revision、版本/配置目录 Query、打开目录入口与 Activity 行为 | 修改设置页设备面板、版本或配置目录读取的开发者 |
 | [设置组件更新与自动更新](settings-updates-and-auto-update.md) | core/CLI/资源更新命令的互斥、失败重试与 Activity 行为、更新后版本与跨域资源失效、自动更新草稿/本地回退/完整提交 | 修改设置页组件更新、资源失效或自动更新策略的开发者 |
+| [设置领域面板](settings-panel.md) | 页面/工作区/连接/设备/只读 section/目录/更新面板的组合边界、订阅隔离、section 与草稿生命期、设备取消边界 | 修改设置页面结构、面板交互或订阅边界的开发者 |
 | [资源请求错误与取消契约](resource-requests.md) | 只读资源的 AbortSignal 传递、信封与领域载荷校验、失败分类、取消/停止/撤销边界、候选端点与 Query 迁移入口 | 迁移资源查询、缓存或处理请求失败的前端开发者 |
 | [Query 缓存与键规范](query-cache.md) | 应用级 Query 客户端、默认重取/重试/Activity 策略、领域 key 与失效规范、Dashboard 快照边界 | 迁移资源读取或实现缓存失效的前端开发者 |
 | [总览完整快照与设备采样](dashboard-snapshot.md) | 五路业务读取的领域 Query、完整快照归一/原子提交/失败保旧、设备采样轮询与 Activity 恢复、失效与执行入口 | 修改总览数据、刷新协调或设备采样的开发者 |

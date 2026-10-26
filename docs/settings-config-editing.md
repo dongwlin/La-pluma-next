@@ -23,7 +23,7 @@
 | 服务端只读快照、取消与重试 | `settings/maa-config` Query（`model/connectionConfig.ts`） | 草稿合并、保存时机 |
 | 草稿、revision、迟到读取裁决、保存去重与结果 | `ConnectionConfigOwner` | 服务端事务、跨客户端条件写 |
 | section 选择、存储键、window 事件与清理 | `model/configSection.ts` + `hooks/useConfigSection.ts` | 配置读取或保存 |
-| 页面反馈、保存按钮 loading、section 面板组合 | `pages/ConfigManager.tsx` | 再维护一份 revision 或草稿副本 |
+| 页面反馈、保存按钮 loading、section 面板组合 | `components/ConnectionConfigPanel.tsx`、`SettingsWorkspace`、`ConfigSectionNav` | 再维护一份 revision 或草稿副本 |
 
 `resource` 与 `instance` 没有可写入口；切到只读 section 不影响 connection 草稿，也不触发服务端读取。`connection` 的保存进行中切换到其它 section 时保存继续执行，返回后草稿与反馈仍然有效。
 
@@ -108,11 +108,12 @@ settingsKeys.query('maa-config', profileName) // ['settings', 'maa-config', prof
 
 `model/configSection.ts` 是这些常量的唯一所有者；`useConfigSection.ts` 只负责 React 订阅。页面不再自己读 `localStorage`、注册 `la-pluma-config-section` 监听或持有 `setConfigType`。
 
-section 只控制渲染哪个面板：connection 的 Query 在 section 分支之前订阅，切 section 不卸载 Query、不重读服务端、不清空草稿。`resource`/`instance` 的能力由 `isEditableConfigSection()` 明确为只读，保存/重置按钮只在 connection 渲染。
+section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 下保持挂载，只在 connection 时渲染 Card；`settings/maa-config` Query 与草稿订阅因此不随 section 切换重建，也不重读服务端或清空草稿。`resource`/`instance` 的能力由 `isEditableConfigSection()` 明确为只读，保存/重置按钮只在 connection 渲染。面板组合与订阅边界见[设置领域面板](settings-panel.md)。
 
-## 4. 页面接线
+## 4. 面板接线
 
-- `useSettingsConnectionConfig()` 返回 `draft`、`dirty`、`syncState`、`error`、`loaded`、`loadError`、`update`、`restoreDefaults`、`save`、`reload`；页面只渲染表单、按钮 loading 与反馈。
+- `ConfigManager` 只组合 `SettingsWorkspace`；section 导航、页头与网格由工作区渲染。
+- `useSettingsConnectionConfig()` 返回 `draft`、`dirty`、`syncState`、`error`、`loaded`、`loadError`、`update`、`restoreDefaults`、`save`、`reload`；`ConnectionConfigPanel` 只渲染表单、按钮 loading 与反馈。
 - 页面删除的职责：`configData` state、`loadConfig()`、`connectionRevisionRef`、`connectionSaveInFlightRef`、section `localStorage` 读写与 window 监听。
 - 输入、平台配置与自动重连开关都通过 `update(patch)` 写入 owner；编辑清空页内反馈与保存错误。
 - 保存按钮 loading 取 `syncState === 'saving'`，重置按钮在保存中禁用；保存结果按 `saved`/`superseded`/`failed` 分别提示。
@@ -126,7 +127,7 @@ section 只控制渲染哪个面板：connection 的 Query 在 section 分支之
 - 载荷校验比迁移前严格：已知字段类型不合法时整份读取失败并显示错误，而旧页面会把异常值放入受控输入。未知 connection 字段仍原样保留。
 - 已知字段缺失时显示页面默认值，而旧页面会显示空输入；这是归一化模型的要求，正常服务端载荷（`getConfig` 自带默认值）不受影响。
 - 默认渲染结构、DOM 与 CSS 未改变；失败/`superseded` 提示只在非默认状态出现，视觉基线不因本任务更新。
-- 独立回滚范围：`features/settings/model/configNormalization.ts`、`model/connectionConfig.ts`、`model/queryKeys.ts`、`model/configSection.ts`、`hooks/useConfigSection.ts`、`hooks/useSettingsConnectionConfig.ts` 与 `ConfigManager` 的 connection/section 接线，以及 API 校验收紧；回滚后恢复页面本地 state，不需要数据迁移。
+- 独立回滚范围：`features/settings/model/configNormalization.ts`、`model/connectionConfig.ts`、`model/queryKeys.ts`、`model/configSection.ts`、`hooks/useConfigSection.ts`、`hooks/useSettingsConnectionConfig.ts` 与 `ConnectionConfigPanel`/`SettingsWorkspace` 的 connection/section 接线，以及 API 校验收紧；回滚后恢复页面本地 state，不需要数据迁移。
 
 ## 6. 回归证据
 
@@ -138,6 +139,9 @@ section 只控制渲染哪个面板：connection 的 Query 在 section 分支之
 | `features/settings/model/autoUpdateConfig.test.ts` | 自动更新读取守卫、确认保存后的服务端采用、本地回退与完整提交（FPR-026） |
 | `features/settings/api/index.test.ts` | `getConfig` signal、profile 载荷校验、非法已知字段拒绝与未知字段保留 |
 | `features/settings/pages/ConfigManager.layout.test.tsx` | section 导航与只读说明、初始读取失败、初始加载/refresh 不覆盖编辑、保存期间继续编辑与跨 section 保存、重置只改草稿、外部 section 事件/存储/监听清理、Activity 恢复保留草稿并重新订阅、自动更新保存边界、连接保存失败 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 连接草稿编辑不重渲染更新/版本/目录面板；设备与更新状态不驱动连接表单 |
+
+面板组合与完整回归清单见[设置领域面板](settings-panel.md)。
 
 复现命令（仓库根目录）：
 

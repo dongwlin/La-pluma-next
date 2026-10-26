@@ -13,7 +13,7 @@
 | 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`（`cause: resource-update`） | 清空 Query 缓存、轮询 |
 | 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
 | 自动更新归一化与时间校验 | `features/settings/model/configNormalization.ts` | 纯函数 | 草稿生命周期 |
-| 页面反馈、按钮 loading、反馈渲染 | `pages/ConfigManager.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
+| 页面反馈、按钮 loading、反馈渲染 | `components/SettingsUpdatesPanel.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
 
 四条更新命令与自动更新保存都是**写入**：没有 Query mutation、没有自动重试，也没有 AbortSignal。用户取消页面或 Activity 隐藏只停止观察，不会撤销已提交的写入。
 
@@ -108,9 +108,9 @@
 
 保存期间允许继续编辑；Activity 隐藏或页面重挂载不会中断已提交的保存。owner 是模块级对象，保存完成后即使页面隐藏也会写入状态与全局提示。
 
-## 5. 页面接线
+## 5. 面板接线
 
-`ConfigManager` 不再导入 `loadUserConfig`、`saveUserConfig`、`updateMaaCore`、`updateMaaCli`、`hotUpdateResources`、`setupAutoUpdate`，也不再保存更新/自动更新的页面 state：
+`ConfigManager` 只组合 `SettingsWorkspace`；版本、更新命令与自动更新的订阅集中在 `components/SettingsUpdatesPanel.tsx`。该面板不导入 `loadUserConfig`、`saveUserConfig`、`updateMaaCore`、`updateMaaCli`、`hotUpdateResources`、`setupAutoUpdate`，也不保存更新/自动更新的页面 state：
 
 | 页面原职责 | 新归属 |
 | --- | --- |
@@ -135,7 +135,7 @@
   - 更新命令完成提示在 HTTP 返回后立即发出，按钮同时恢复；版本重取在后台继续（迁移前 loading 会覆盖到版本重取结束）。
   - 更新/自动更新的反馈与草稿由模块级 owner 持有：Activity 隐藏与真正重挂载都不丢失；自动更新真正重挂载仍会重读服务端，未保存草稿不会被覆盖；确认保存会清除 touched 并推进 revision，之后的重挂载读取可采用服务端副本。
   - 更新成功后仍不自动重试命令；版本读取沿用 Query 默认的可恢复失败重试。
-- 独立回滚范围：`model/updateCommands.ts`、`model/autoUpdateConfig.ts`、`hooks/useSettingsUpdates.ts`、`hooks/useSettingsAutoUpdate.ts`、`features/game-data/model/itemIconCache.ts`、`features/game-data/hooks/useItemIconCacheVersion.ts`、`features/game-data/api/index.ts` 的图标 URL、训练/统计页的图标接线与 `ConfigManager` 接线。回滚后恢复页面 state 与直连调用，不需要数据迁移；`laPlumaItemIconVersion` 可保留为无害的孤立键或手动清除。
+- 独立回滚范围：`model/updateCommands.ts`、`model/autoUpdateConfig.ts`、`hooks/useSettingsUpdates.ts`、`hooks/useSettingsAutoUpdate.ts`、`features/game-data/model/itemIconCache.ts`、`features/game-data/hooks/useItemIconCacheVersion.ts`、`features/game-data/api/index.ts` 的图标 URL、训练/统计页的图标接线与 `SettingsUpdatesPanel` 接线。回滚后恢复页面 state 与直连调用，不需要数据迁移；`laPlumaItemIconVersion` 可保留为无害的孤立键或手动清除。
 
 ## 7. 回归证据
 
@@ -145,7 +145,10 @@
 | `features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、后续成功读取清空旧回退警告、迟到读取不覆盖编辑、保存前读取不覆盖已保存草稿、确认保存后重挂载采用服务端副本、服务端失败本地回退与无回退错误、坏服务端载荷与坏本地 JSON、编辑 dirty/revision/反馈清理、无效时间、保存 + 调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑为 `superseded`、保存互斥、抛错路径、reset |
 | `features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
 | `features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发使用图标的组件重渲染 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试/不推进图标 epoch、CLI 成功只重取版本且不推进图标 epoch、core/热更新成功发布四类失效并推进图标 epoch、成功提示先于版本重取、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试/不推进图标 epoch、CLI 成功只重取版本且不推进图标 epoch、core/热更新成功发布四类失效并推进图标 epoch、成功提示先于版本重取、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界、更新反馈与连接反馈互不串面板 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 更新/自动更新/版本状态不重渲染连接表单；连接草稿编辑不重渲染更新面板 |
+
+面板组合与完整回归清单见[设置领域面板](settings-panel.md)。
 
 针对性命令（仓库根目录）：
 
