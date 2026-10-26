@@ -162,7 +162,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 页面 | Activity hide / show | document hidden | 真正 remount / 浏览器刷新 |
 | --- | --- | --- | --- |
 | Automation | 保留草稿/选择/撤销/结果；清 polling/监听/兼容 runner/连接测试；show 清 loading、查状态，已 hydrated 不重载配置 | 业务查询继续；预览暂停 | 重读本地/服务端与旧断点；旧续跑当前可能重提，未来改观察恢复 |
-| Combat | 保留草稿/UI；Query 观察者注销并取消在途搜索/预览读取，预览会话 stop 清 loading、保留已显示预览；abort status/stop 等待；show 查运行、不自动重放搜索/预览、不重载配置 | 业务查询观察者注销；预览请求取消 | 配置/后端 running 恢复；搜索词/识别方式/选中索引重置；Query 新鲜缓存可复用；manual 当前集/结果不恢复 |
+| Combat | 保留草稿/UI；Query 观察者注销并取消在途搜索/预览读取，预览会话 stop 清 loading、保留已显示预览；abort status/stop 等待；show 查运行、不自动重放搜索/预览、不重载配置 | 业务查询继续；预览暂停 | 配置/后端 running 恢复；搜索词/识别方式/选中索引重置；Query 新鲜缓存可复用；manual 当前集/结果不恢复 |
 | Roguelike | 保留草稿/模式；清 status/stop 等待；show 查运行、跳过已 hydrated 配置 | 业务查询继续；预览暂停 | 配置/后端恢复，activeMode 回默认 |
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
