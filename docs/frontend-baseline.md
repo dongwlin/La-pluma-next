@@ -68,12 +68,12 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
 | 配置 | 适配器 `features/combat/model/combatConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/combat-tasks`；本地键与 `combatConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、`app→cli` 与 raid `1`/`2` 迁移、300ms 去抖与跨 remount 提交队列由通道持有；页面只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | combat 配置适配器 + 按 key 提交协调器（FPR-014 已接入） |
-| 搜索 | GET `/agent/copilot/search?stage=…`、`/agent/paradox/search?name=…`；FPR-029 起由 `combat` 域 Query 持有（`copilot-search`/`paradox-search`），显式搜索 `staleTime: 0`，输入变化/Activity 隐藏 `cancelQueries` 并真正中止 fetch，旧响应只写旧 key | combat 查询键/资源控制器；搜索词归面板（`useCopilotSearch` 已交付取消与代次） |
+| 搜索 | GET `/agent/copilot/search?stage=…`、`/agent/paradox/search?name=…`；FPR-029 起由 `combat` 域 Query 持有（`copilot-search`/`paradox-search`），显式搜索 `staleTime: 0`，输入变化/Activity 隐藏 `cancelQueries` 并真正中止 fetch，旧响应只写旧 key | combat 查询键/资源控制器；搜索词与搜索选中项归搜索面板的会话存储，工作区不订阅（FPR-036） |
 | 预览与作业集 | GET `/agent/copilots/:id`、`/agent/copilot-sets/:id`、`/agent/copilot-sets/:id/plan?raid=…`；计划优先，失败 fallback set + 并发详情；`CopilotPreviewSession` 裁决旧响应、Activity 取消与终态强制刷新；completedModes/raid 恢复选择 | combat 查询/预览会话与纯 URI 模型（FPR-029 已交付） |
 | 执行、进度与停止 | 单任务 POST `/agent/actions/run-task`，command 为 copilot/ssscopilot/paradoxcopilot，waitForCompletion=true；set POST `/agent/copilot-sets/:id/execute`；reset POST `…/:id/reset-progress`；兼容页内 sequential/manual 下一关；GET tasks/status 每 2s，三次失败警告；stop 后 400ms 查 idle，15s 超时 | task-execution 控制器 + combat 执行适配器；服务端拥有 set/manual 进度 |
-| 命令与展示 | command/args/options 拼接由 `model/combatCommands.ts` 持有；preview/search 状态归域入口；activeCombatMode/copilotType、搜索结果、预览、selected indexes、reset dialog、waitingForNext/current task/results 仍由页面组合 | 纯命令模型；展示/选择归对应面板，执行结果只订阅 |
+| 命令与展示 | command/args/options 拼接由 `model/combatCommands.ts` 持有；FPR-036 后 `pages/CombatTasks.tsx` 只组合页头与工作区，`components/CombatWorkspace.tsx` 持有 activeCombatMode、配置订阅、预览/搜索入口、执行订阅、selected indexes 与重置弹层，设置/输入/搜索/作业集/信息面板只接收投影；搜索词、识别方式与搜索选中项由面板会话存储隔离 | 纯命令模型；展示/选择归对应面板，执行结果只订阅（FPR-036） |
 
-存储完整清单（均读写）：`combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections`；`combatConfigSyncPending` 读写/成功删除。FPR-029 后搜索/预览由 Query 观察者与 `CopilotPreviewSession` 的请求代次裁决，执行仍由控制器 generation/stop-wait 裁决；没有独立后台运行身份。
+存储完整清单（均读写）：`combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections`；`combatConfigSyncPending` 读写/成功删除。FPR-029 后搜索/预览由 Query 观察者与 `CopilotPreviewSession` 的请求代次裁决，执行仍由控制器 generation/stop-wait 裁决；没有独立后台运行身份。FPR-036 后页面壳只组合工作区，搜索词、识别方式与搜索选中项是面板会话状态，不写入上述存储。
 
 ### Roguelike — `features/roguelike/pages/RoguelikeTasks.tsx`
 

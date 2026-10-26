@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-029 交付的作业搜索、预览、选段与命令模型。它把普通搜索、悖论搜索、单作业详情与作业集详情的读取从页面状态机移到 `combat` 域 Query 与预览会话；执行提交、运行观察与停止仍由 `task-execution` 控制器持有，配置草稿仍由 `user-config` 协调器持有。
+本文描述 FPR-029 交付的作业搜索、预览、选段与命令模型。它把普通搜索、悖论搜索、单作业详情与作业集详情的读取从页面状态机移到 `combat` 域 Query 与预览会话；执行提交、运行观察与停止仍由 `task-execution` 控制器持有，配置草稿仍由 `user-config` 协调器持有。FPR-036 的页面组合与面板边界见[作业领域面板](combat-panel.md)。
 
 相关契约：[Query 缓存与键规范](query-cache.md)、[资源请求错误与取消契约](resource-requests.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)。
 
@@ -11,7 +11,7 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 搜索/详情/计划的只读端点、载荷解析与 query key | `features/combat/model/queries.ts`、`queryKeys.ts`、`copilotPayload.ts` | 只保存服务端只读资源；不写执行状态 |
-| 搜索的提交与取消语义 | `features/combat/hooks/useCopilotSearch.ts` | 搜索词仍由页面/后续面板持有；hook 提供代次与取消 |
+| 搜索的提交与取消语义 | `features/combat/hooks/useCopilotSearch.ts` | 搜索词由搜索面板通过工作区会话存储持有（FPR-036）；hook 提供代次与取消 |
 | 预览请求裁决与当前展示 | `features/combat/model/copilotPreviewSession.ts` + `hooks/useCopilotPreview.ts` | 计划优先、成员回退、旧响应裁决、Activity 取消 |
 | 预览目标与展示对象构造 | `features/combat/model/copilotPreview.ts` | 单作业/作业集/旧探测与提示文本 |
 | 作业集选择 | `features/combat/model/copilotSelection.ts` | 序列化、待执行求差、按计划进度恢复 |
@@ -95,7 +95,7 @@
 
 ## 5. 选择、配置与执行接线
 
-- 页面持有当前 `selectedCopilotIndexes`；`copilotSetSelections[setId]` 仍由 `user-config` 协调器持久化，本地键与 wire 形状不变。
+- 工作区持有当前 `selectedCopilotIndexes`；`copilotSetSelections[setId]` 仍由 `user-config` 协调器持久化，本地键与 wire 形状不变。
 - `serializeCopilotSelection` 去重、丢弃非整数并升序；`selectedCopilotItemIndexes` 把选择裁剪到当前列表；`pendingCopilotItemIndexes` 从页面选择中减去本次 Run 已成功的条目。
 - 预览成功（作业集）后按服务端计划进度恢复选择：`restorableCopilotIndexes` 以计划中“仍待执行”的索引为全集；没有保存过选择时使用全部待执行项，保存过则求交。预设编队只要求普通模式，突袭/两者按作业支持的模式判断。
 - 作业集 Run 终态后 `refreshSet` 强制重读计划并合并逐项结果，页面再用同一纯模型恢复选择；失败只影响展示，不把 Run 结果解释成完成。
@@ -122,7 +122,7 @@
 - Query 观察者随 Effect 清理注销；在途读取通过 `signal` 取消，缓存保留并按 `gcTime` 回收。
 - 预览会话 `stop()` 取消在途读取并结束 loading，保留已显示预览；恢复 `start()` 不自动重放。
 - 搜索 hook 在清理时取消在途搜索；恢复后不自动重放，成功结果仍可从 Query 缓存读取。
-- 真正卸载后重挂载会重置搜索词、识别方式与选中索引；Query 缓存若仍新鲜可直接复用。
+- 真正卸载后重挂载会重置搜索词、识别方式与选中索引；Query 缓存若仍新鲜可直接复用。切换作业类型只卸载卡片 DOM，工作区持有的面板会话存储会保留这些局部输入（FPR-036）。
 - 后台 Run 与配置提交不依赖本页 Activity；隐藏不会改变运行所有权。
 
 ## 8. 回归证据
