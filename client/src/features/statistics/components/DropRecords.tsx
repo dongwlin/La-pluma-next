@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Package as PackageIcon } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
 import { getItemIconUrl, useItemIconCacheVersion } from '@/features/game-data'
+import { DROP_ITEM_DISPLAY_LIMIT, sortDropItems, sortDropStages } from '../model/dropRecords'
 import type { DropRecordsProps } from '../types'
 import { Button, Card, EmptyState, Loading } from '@/shared/ui'
 
@@ -91,11 +92,9 @@ export default function DropRecords({
 
   const { total, items, stages, dateRange } = dropStatistics
 
-  // 按掉落数量排序物品
-  const sortedItems = Object.entries(items).sort((a, b) => b[1].count - a[1].count)
-  
-  // 按战斗次数排序关卡
-  const sortedStages = Object.entries(stages).sort((a, b) => b[1].battles - a[1].battles)
+  // 排序由纯模型持有：材料按掉落数量、关卡按战斗次数降序。
+  const sortedItems = sortDropItems(items)
+  const sortedStages = sortDropStages(stages)
   const metricCards = [
     { label: '总理智消耗', value: total.sanity.toLocaleString(), icon: <Icons.Zap className="h-4 w-4" /> },
     { label: '战斗次数', value: total.battles.toLocaleString(), icon: <Icons.Crosshair /> },
@@ -200,24 +199,24 @@ export default function DropRecords({
           />
         ) : (
         <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {sortedItems.slice(0, 20).map(([itemName, itemData]) => (
+          {sortedItems.slice(0, DROP_ITEM_DISPLAY_LIMIT).map((itemData) => (
             <div
-              key={itemName}
+              key={itemData.name}
               className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-(--app-surface-muted)"
             >
               {/* 物品图标 */}
               {itemData.iconId && (
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
-                  {failedItemImages[itemName] ? (
-                    <span role="img" aria-label={`${itemName}图标不可用`}>
+                  {failedItemImages[itemData.name] ? (
+                    <span role="img" aria-label={`${itemData.name}图标不可用`}>
                       <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
                     </span>
                   ) : (
                     <img
                       src={getItemIconUrl(itemData.iconId, itemIconVersion)}
-                      alt={itemName}
+                      alt={itemData.name}
                       className="h-full w-full object-cover"
-                      onError={() => setFailedItemImages(previous => ({ ...previous, [itemName]: true }))}
+                      onError={() => setFailedItemImages(previous => ({ ...previous, [itemData.name]: true }))}
                     />
                   )}
                 </div>
@@ -225,8 +224,8 @@ export default function DropRecords({
               
               {/* 物品信息 */}
               <div className="flex-1 min-w-0">
-                <div className="wrap-break-word text-sm font-bold text-primary wrap-anywhere" title={itemName}>
-                  {itemName}
+                <div className="wrap-break-word text-sm font-bold text-primary wrap-anywhere" title={itemData.name}>
+                  {itemData.name}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="brand-chip rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap">
@@ -239,7 +238,7 @@ export default function DropRecords({
         </div>
         )}
 
-        {sortedItems.length > 20 && (
+        {sortedItems.length > DROP_ITEM_DISPLAY_LIMIT && (
           <p className="mt-4 text-center text-sm text-secondary">
             仅显示前 20 种材料
           </p>
@@ -270,15 +269,15 @@ export default function DropRecords({
           />
         ) : (
         <div className="drop-records-stage-list min-w-0 overflow-hidden rounded-xl surface-soft">
-          {sortedStages.map(([stageName, stageData]) => (
+          {sortedStages.map((stageData) => (
             <div
-              key={stageName}
+              key={stageData.name}
               className="drop-records-stage-row min-w-0 p-4"
             >
               <div className="mb-3 min-w-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="min-w-0 wrap-break-word text-lg font-bold text-primary wrap-anywhere">
-                    {stageName}
+                    {stageData.name}
                   </span>
                   <span className="shrink-0 whitespace-nowrap brand-chip rounded-full px-2 py-0.5 text-xs font-medium">
                     {stageData.battles} 次

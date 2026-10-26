@@ -223,8 +223,9 @@ describe('DataStatistics layout surfaces', () => {
   })
 
   afterEach(async () => {
-    statisticsCommandOwner.reset()
+    // 先卸载观察者再重置命令所有者，避免卸载后的 store 通知落在 act 之外。
     await act(async () => root.unmount())
+    statisticsCommandOwner.reset()
     client.clear()
     container.remove()
     vi.useRealTimers()
