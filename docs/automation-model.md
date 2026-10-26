@@ -4,7 +4,7 @@
 
 本文描述 FPR-037 提取的自动化规则纯模型：定时时间、任务流程命令、拖拽排序与掉落目标解析。配置提交仍由 [`automationConfig.ts`](../client/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；本次只把页面内联的纯变换移到 `features/automation/model`，不改变请求、存储或执行协议。
 
-相关契约：[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[自动化任务编辑面板](automation-editor.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端职责与质量基线](frontend-baseline.md)。
 
 ## 1. 定位与边界
 
@@ -48,7 +48,7 @@
 | 恢复删除 | `insertTaskFlowItem` 按删除时索引插入，越界索引夹取到 `[0, flow.length]`，再保证关闭游戏在最后 |
 | 删除/启用 | `removeTaskFlowItem`、`toggleTaskFlowItemEnabled` 返回新数组；未知索引不产生可见变化 |
 | 参数编辑 | `updateTaskFlowParams` 只替换目标任务；`clientType` 变化时同步启动/关闭游戏步骤，与迁移前一致 |
-| 关卡分组 | `orderStagesForEditing` 输出 置顶 → 智能养成 → 普通 → 空白输入行；组内保持原顺序，每个条目只归类一次，长度与多重集合不变 |
+| 关卡分组 | `splitStagesForEditing` 负责 置顶/智能养成/普通/空白 分类，`orderStagesForEditing` 按 置顶 → 智能养成 → 普通 → 空白输入行拼接；任务编辑面板的智能养成增删复用同一分类。组内保持原顺序，每个条目只归类一次，长度与多重集合不变 |
 | 执行前校验 | `findTaskFlowValidationFailure` 先检查启用中的自定义换班（`taskType === 'Infrast'`、`mode === 10000`、`filename` 为空），再检查启用中的 `fight` 掉落目标；返回第一个无效任务 id 与提示 |
 | 提示文案 | 两条校验文案由模型返回，页面负责写入全局状态消息并选中该任务 |
 
@@ -110,6 +110,7 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/automation
 
 ## 关联
 
+- [自动化任务编辑面板](automation-editor.md)：StageEditor/TaskPicker 的组合、局部交互状态与智能养成接线。
 - [配置持久化协调器](config-persistence.md)：`automationConfig` 编解码、完整提交与重试边界。
 - [前端执行客户端与控制器](execution-client.md)：提交、停止与 Run 身份。
 - [前端职责与质量基线](frontend-baseline.md)：Automation 页职责与视觉复现入口。

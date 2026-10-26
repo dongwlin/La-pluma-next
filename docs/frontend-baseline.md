@@ -59,9 +59,9 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 旧断点续跑 | `initializeAndRestore` 按旧 commandId 匹配 enabled 步骤，等后端 idle 后逐项 POST `/agent/actions/run-task`；1s 查询、30min 超时；启动/关闭/其他步间等待 15s/3s/2s；cleanup abort | 独立兼容迁移适配器；转换后仅观察身份，不重提 |
 | 智能养成阶段 | `AutomationStageEditor.toggleSmartStages` 读取 `training-queue` 配置并 POST `/agent/training/plan`；订阅 `automation-config`/`automation-schedule` 失效后先 `flush()` 配置通道再 `reload({ force: true })`；有 pending 草稿时保留本地并提示，否则采用服务端副本并保留本地禁用时间点；document 可见时正常 load（已 hydrated 则跳过） | training 计划用例 + automation 配置冲突协调 |
 | 连接测试 | POST `/agent/actions/test-connection`，带 signal；反馈至少 450ms | 设备连接用例 |
-| 纯编辑与布局 | 定时时间、任务命令（添加/恢复/参数/执行前校验）、拖拽排序与掉落目标解析已由 `features/automation/model/automationSchedule.ts`、`taskFlowCommands.ts`、`taskFlowSort.ts`、`dropTargets.ts` 持有；picker 的 document pointerdown/keydown、排序 Escape/pointer capture/预览与小屏 rAF `scrollIntoView` 仍在页内 | 纯模型 + 最近的流程/编辑面板；布局副作用归布局 hook（FPR-037） |
+| 纯编辑与布局 | 定时时间、任务命令（添加/恢复/参数/执行前校验）、拖拽排序与掉落目标解析已由 `features/automation/model/automationSchedule.ts`、`taskFlowCommands.ts`、`taskFlowSort.ts`、`dropTargets.ts` 持有；关卡列表编辑与智能养成合成由 `model/stageEditing.ts` 持有，公招时长校验由 `model/taskParamRules.ts` 持有；`components/AutomationStageEditor.tsx` 持有智能养成在途标记并调用 training 读取/计划，`components/AutomationTaskPicker.tsx` 持有菜单开关、document pointerdown/keydown 与 Escape 回焦；排序 Escape/pointer capture/预览与小屏 rAF `scrollIntoView` 仍在页内 | 纯模型 + 最近的流程/编辑面板；布局副作用归布局 hook（FPR-037/038） |
 
-存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为协调器中的 taskFlow/schedule；picker/selectedTaskId/拖拽预览/撤销/公告/执行详情/连接反馈归局部 UI；running/stopping/currentStep/taskResults 是执行投影。
+存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为协调器中的 taskFlow/schedule；picker 开关与焦点归 `AutomationTaskPicker`，selectedTaskId/拖拽预览/撤销/公告/执行详情/连接反馈归页面局部 UI；running/stopping/currentStep/taskResults 是执行投影。
 
 ### Combat — `features/combat/pages/CombatTasks.tsx`
 
