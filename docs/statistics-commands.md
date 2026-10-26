@@ -109,7 +109,7 @@ executionController.settleExecutionIntent(intent, result)
 
 ## 6. 页面与生命周期
 
-- `DataStatistics` 只订阅命令状态：`isRunning`、当前任务与按钮 loading 全部来自 `useStatisticsCommandState()`，不再维护页面级 `isRunning`/`activeTask`。
+- `StatisticsWorkspace` 通过 `hooks/useStatisticsCommands.ts` 订阅一次命令状态：`isRunning`、当前任务、按钮 loading 与 resume 文案都从同一份 `useStatisticsCommandState()` 快照派生；干员/仓库面板只接收该投影，不再各自维护 `isRunning`/`activeTask`。
 - 命令所有者是模块级单例，寿命不跟随页面。Activity 隐藏会清理页面 Effects，但不会中止所有者；页面重挂载时按钮仍显示进行中，不会重复提交。
 - 点击处理器在 Activity 隐藏后仍会继续完成；解析成功时会把快照写入应用级 QueryClient，因此隐藏期间完成也不会丢失权威快照。
 - 所有者不持有服务端资源副本；页面与 Query 仍按 [Query 缓存与键规范](query-cache.md) 读取和失效。
@@ -129,6 +129,7 @@ executionController.settleExecutionIntent(intent, result)
 | --- | --- |
 | `features/statistics/model/commandOwner.test.ts` | 控制器 intent/幂等键、仓库与干员快照、材料刷新、单飞、解析轮询、解析超时后继续不重提、命令超时后复用同一幂等键并等待回放 Run、失败/拒绝、取消后继续 |
 | `features/statistics/pages/DataStatistics.layout.test.tsx` | 页面订阅命令状态、识别快照写入 Query、`depot`/`operbox`/`materials` 失效事件、按作用域失效、运行中不重复提交、超时后“继续解析”不重执行、Activity 隐藏/恢复 |
+| `features/statistics/components/FilterMenu.test.tsx`、`components/DropPanel.test.tsx` | FPR-032 面板化后的筛选菜单 portal/焦点/键盘，以及非当前 tab 仍启动读取、周期切换与重试 |
 | `features/statistics/api/index.test.ts` | 解析端点的 signal 与 POST 形状；既有掉落/开放关卡读取 |
 | `features/training/api/index.test.ts` | 材料刷新脚本的 signal 与 POST 形状 |
 | `features/training/pages/OperatorTraining.test.tsx` | `materials`/`depot`/`operbox` 失效后重读队列、候选与计数并作废旧计划 |

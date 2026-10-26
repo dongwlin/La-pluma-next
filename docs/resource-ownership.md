@@ -151,7 +151,7 @@ publishResourceInvalidation({
 | `OperatorTraining` | `depot`、`operbox`、`catalog`、`materials`、`training-queue`、`training-plan` | 计划前提变化时作废本地预览；仓库/材料/外部队列变化时重读队列；仓库/持有干员/目录/材料变化时失效 `training` 的 `candidates`/`counts` 领域 query（FPR-044）；队列失效不重取候选/计数；忽略带 `detail.source='training-queue-command'` 的自发布 |
 | `AutomationTasks` | `automation-config`、`automation-schedule` | 等到配置通道空闲后 `reload({ force: true })`；pending 失败草稿保留本地并提示；采用服务端副本时保留本设备独有的禁用时间点 |
 | `Dashboard` | `dashboard-snapshot` | 调用完整快照刷新（`force`），五项全部有效才提交；单路失败保留旧快照与 `lastUpdate`；设备采样由 `device-mirror` 独立轮询 |
-| `DataStatistics` | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，解析成功后页面写入 Query 快照并发布作用域 |
+| `StatisticsWorkspace`（统计页） | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，`hooks/useStatisticsCommands.ts` 把解析快照写入 Query 并发布作用域（FPR-032） |
 
 训练页的队列写入已由 FPR-021 改为领域命令与缓存协调：命令串行执行，写成功后刷新同一 `queue` key，并发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`；任务流程确认 synced 时发布 `automation-config`（不发布 `automation-schedule`，因为自动同步不重注册 cron）。本页忽略自己的发布，外部发布仍按上表刷新。计划生成/应用/同步由 FPR-023 的 `TrainingPlanOwner` 持有，应用成功发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`。候选列表与计数由 FPR-044 改为 Query 观察者，Activity 隐藏时随 Effect 注销并在恢复时按新鲜度重取。
 

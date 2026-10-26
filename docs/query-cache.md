@@ -203,7 +203,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 ## 9. 已迁移页面：数据统计（FPR-019）
 
-`DataStatistics` 是首个接入 Query 的页面。四路读取由领域 query 定义持有，页面不再保存资源副本、加载状态或 request id：
+`DataStatistics` 是首个接入 Query 的页面；FPR-032 后页面只组合 `StatisticsWorkspace` 与三个面板，四路读取仍由领域 query 定义持有，工作区与面板不保存资源副本、加载状态或 request id：
 
 | 资源 | query 定义 | 首屏启用 | 刷新方式 | 错误边界 |
 | --- | --- | --- | --- | --- |
@@ -214,8 +214,8 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 - 四路 query 在页面挂载时同时启用，不依赖当前 tab；切 tab 只改变渲染，不重建查询。
 - 缓存策略保持第 3 节默认值：30s 内页面重挂载或 Activity 恢复直接复用；过期后台重取；无观察者超过 5min 后重新加载。
-- 页面持有筛选与排序状态（一个 `OperatorFilters` 对象），不放在条件挂载的 tab 面板内，因此切 tab 不丢状态。筛选、排序与阿米娅形态规则由 `features/statistics/model/operatorFilters.ts` 纯函数实现并直接测试。
-- 识别解析结果作为权威完整快照写入 Query 缓存；命令所有者（FPR-020）在解析成功后由 `resource-invalidation` 声明影响范围，页面按作用域失效，不建立第二份本地状态。识别命令本身不进入 Query，也不由 Query 自动重试；超时/取消后的继续方式见[统计识别命令与失效联动](statistics-commands.md)。
+- 筛选与排序状态由常驻的 `OperatorPanel` 持有；干员面板对非当前 tab 只返回 null、不卸载，因此切 tab 不丢状态。筛选、排序与阿米娅形态规则由 `features/statistics/model/operatorFilters.ts` 纯函数实现并直接测试。
+- 识别解析结果作为权威完整快照写入 Query 缓存；命令所有者（FPR-020）在解析成功后由 `resource-invalidation` 声明影响范围，`StatisticsWorkspace` 按作用域失效，`hooks/useStatisticsCommands.ts` 写入快照，不建立第二份本地状态。识别命令本身不进入 Query，也不由 Query 自动重试；超时/取消后的继续方式见[统计识别命令与失效联动](statistics-commands.md)。
 - 切换掉落天数时使用 `keepPreviousData` 占位，旧周期内容在加载期间保持可见；新 key 首次失败只展示错误，不伪造上一个周期的数据。
 
 ## 10. 已迁移读取：养成队列、候选与状态计数（FPR-021/044）
