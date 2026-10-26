@@ -299,6 +299,67 @@ describe('page responsibility guardrails', () => {
     expect(violations.map(violation => violation.message).join('\n')).toContain('executeScheduleNow')
   })
 
+  const endpointUsageCases = [
+    ['namespace receiver wrapped in as', [
+      "import * as a from '..'",
+      ';(a as any).executeScheduleNow()',
+    ].join('\n')],
+    ['namespace alias', [
+      "import * as a from '..'",
+      'const b = a',
+      'b.executeScheduleNow()',
+    ].join('\n')],
+    ['namespace parameter default destructuring', [
+      "import * as a from '..'",
+      'function f({ executeScheduleNow } = a) { return executeScheduleNow }',
+    ].join('\n')],
+    ['namespace assignment destructuring', [
+      "import * as a from '..'",
+      'let run',
+      ';({ executeScheduleNow: run } = a)',
+      'run()',
+    ].join('\n')],
+    ['dynamic import receiver wrapped in as', [
+      'const load = async () => {',
+      "  const m = await import('..')",
+      '  ;(m as any).executeScheduleNow()',
+      '}',
+    ].join('\n')],
+    ['dynamic import alias', [
+      'const load = async () => {',
+      "  const m = await import('..')",
+      '  const b = m',
+      '  b.executeScheduleNow()',
+      '}',
+    ].join('\n')],
+    ['dynamic import then callback wrapped in as', [
+      "const load = () => import('..').then(m => (m as any).executeScheduleNow())",
+    ].join('\n')],
+    ['dynamic import assignment destructuring', [
+      'const load = async () => {',
+      '  let run',
+      "  ;({ executeScheduleNow: run } = await import('..'))",
+      '  run()',
+      '}',
+    ].join('\n')],
+  ] as const
+
+  it.each(endpointUsageCases)('flags endpoint usage through %s', (_label, source) => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', [
+        "export { executeScheduleNow } from './api'",
+        "export { useAutomationThing } from './hooks/useAutomationThing'",
+      ].join('\n')],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
+      ['features/a/pages/Page.tsx', source],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('executeScheduleNow')
+  })
+
   it('allows own feature index hooks imported as namespace or dynamic', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/index.ts', [
@@ -309,8 +370,13 @@ describe('page responsibility guardrails', () => {
       ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
       ['features/a/pages/Page.tsx', [
         "import * as automation from '..'",
-        'const load = async () => { const m = await import(\'..\'); return m.useAutomationThing() }',
-        'export default function Page() { automation.useAutomationThing(); load(); return null }',
+        'const helper = automation',
+        'const load = async () => {',
+        "  const m = await import('..')",
+        '  const copy = m',
+        '  return copy.useAutomationThing()',
+        '}',
+        'export default function Page() { helper.useAutomationThing(); load(); return null }',
       ].join('\n')],
     ))
 
@@ -460,6 +526,31 @@ describe('page responsibility guardrails', () => {
     ))
 
     expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-storage',
+      'page-polling',
+    ])
+  })
+
+  it('flags assignment destructuring, property chains and wrapped indexes of global objects', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        'let f',
+        '({ fetch: f } = window)',
+        "f('/api/agent/tasks/status')",
+        'const { fetch: g } = window.window',
+        "g('/api/agent/tasks/status')",
+        "window[('fetch')]('/api/agent/tasks/status')",
+        'const { localStorage: s } = globalThis.window',
+        "s.getItem('draft')",
+        "window[('setInterval')](() => {}, 1000)",
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-transport',
       'page-transport',
       'page-storage',
       'page-polling',

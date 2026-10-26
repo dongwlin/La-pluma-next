@@ -60,7 +60,7 @@
 | 存储 | `localStorage`、`sessionStorage`、`indexedDB` | user-config 协调器、领域所有者或面板会话 |
 | 轮询 | `setInterval` | 领域 hook / 流 / 会话所有者（例如实时日志、设备采样） |
 
-页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。端点检查会沿公开面的 `export { ... } from './api'` 与 `export * from './api'` 定位导出名来源；静态命名导入、命名空间导入、自域 `../api` 与字面量 `import('@/features/<domain>')` 都会检查，但命名空间/动态导入只在页面实际访问了 `api/` 导出名时才违规，只用 hook/组件时允许；整条 import 只是类型时跳过。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
+页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。端点检查会沿公开面的 `export { ... } from './api'` 与 `export * from './api'` 定位导出名来源；静态命名导入、命名空间导入、自域 `../api` 与字面量 `import('@/features/<domain>')` 都会检查。成员使用分析会解开 `as`/括号/非空/`satisfies` 包装，跟随本文件内的简单别名（变量、参数默认值、赋值解构）与 `.then` 回调；命名空间/动态导入只在页面实际访问了 `api/` 导出名时才违规，只用 hook/组件时允许；整条 import 只是类型时跳过。全局原语检查同样接受字符串字面量下标、包装表达式、`window.window` 等同名属性链，以及从这些全局对象经变量声明或赋值解构重命名后的直接调用。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
 
 ## 4. 规模观察与预算
 
@@ -115,15 +115,15 @@ CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` �
 回归集中在 `client/scripts/guardrails.test.ts`：
 
 - 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面调用领域 hook、命名空间/动态导入只用领域 hook、页面仅 type-only 导入传输层类型；
-- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `../api` 或经 `..`/命名空间/动态 import 调用本域 index 端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性、`window as any`/非空断言/括号包装与从全局对象解构重命名）、同域页面搬移启发式、新增超阈值文件；
+- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `../api` 或经 `..`/命名空间/动态 import 调用本域 index 端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性、`window as any`/非空断言/括号包装、从全局对象变量声明或赋值解构重命名、`window.window` 属性链）、命名空间/动态 import 经 as/非空/括号包装、局部别名、参数默认值/赋值解构或 `.then` 包装回调访问端点、同域页面搬移启发式、新增超阈值文件；
 - 当前源码树：无依赖/页面违规，且规模不超出已入库预算；旧版预算缺少分域行数时仍可读取并跳过搬移检查。
 
 ## 6. 已知限制
 
 - 静态分析只能证明 import 与字面原语，不证明运行时谁真正写状态；跨 remount 的所有权仍需行为测试。
 - 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、由变量或字符串拼接生成的动态 import；这些仍由评审与领域测试把关。
-- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问、字符串字面量下标、`as`/非空断言/括号包装，并跳过类型/属性名与声明名；它不做完整作用域解析，同名局部变量的裸引用仍可能被当作全局，也不追踪 `const w = window` 的别名或 `Reflect.get` 等间接提取。`window['loc' + 'alStorage']` 这类计算表达式也不在静态检查范围。
-- 页面端点检查覆盖 feature index 的直接 named / `export *` / namespace re-export 与字面量动态 import；经第三层模块再转发的端点不在静态检查范围内。命名空间/动态 import 的成员使用只识别本文件的属性访问、解构与 `.then` 回调；把命名空间整体传给其他函数时无法判定，可能漏报。
+- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问、字符串字面量下标（含包装）、`window.window` 等同名属性链、变量声明与赋值解构重命名，并跳过类型/属性名与声明名；它不做完整作用域解析，同名局部变量的裸引用仍可能被当作全局，也不追踪 `const w = window` 这类继续转存的别名或 `Reflect.get` 等间接提取。`window['loc' + 'alStorage']` 这类计算表达式也不在静态检查范围。
+- 页面端点检查覆盖 feature index 的直接 named / `export *` / namespace re-export 与字面量动态 import；经第三层模块再转发的端点不在静态检查范围内。命名空间/动态 import 的成员使用识别本文件内的属性访问、字面量下标、解构（含参数默认值与赋值解构）、简单别名与 `.then` 回调，并解开 `as`/括号/非空/`satisfies` 包装；把命名空间整体传给其他函数、经对象字段/数组转存或重新赋值到未知来源时无法判定，可能漏报。
 - 未写 `type` 的纯类型导入仍按运行时导入处理（例如 `import { ApiResponse } from '@/shared/api'` 用作类型）；需要跳过的类型依赖请使用 `import type` 或内联 `type` 说明符。
 - API 模块的纯辅助导出（例如 `getItemIconUrl`）也会按来源被视为端点；当前页面未直接使用。若确需在页面直接使用纯函数，应由领域公开面提供非 `api/` 位置的导出或扩展白名单。
 - 搬移检查是启发式：页面缩减与非页面增长同域同时发生即触发，真正拆分需要更新基线并评审；它不能证明代码是否只是被搬动。

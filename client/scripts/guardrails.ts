@@ -619,10 +619,36 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   return current
 }
 
+const GLOBAL_OBJECT_NAMES = new Set(['window', 'globalThis', 'self'])
+
+/**
+ * 判断表达式是否指向浏览器全局对象。除裸 `window`/`globalThis`/`self` 外，
+ * 也接受它们的同名属性链（`window.window`、`globalThis['self']`）：
+ * 这些属性仍指向同一个全局对象。
+ */
 function isGlobalObjectExpression(expression: ts.Expression): boolean {
   const unwrapped = unwrapExpression(expression)
-  return ts.isIdentifier(unwrapped)
-    && (unwrapped.text === 'window' || unwrapped.text === 'globalThis' || unwrapped.text === 'self')
+  if (ts.isIdentifier(unwrapped)) return GLOBAL_OBJECT_NAMES.has(unwrapped.text)
+  if (ts.isPropertyAccessExpression(unwrapped) && ts.isIdentifier(unwrapped.name)) {
+    return GLOBAL_OBJECT_NAMES.has(unwrapped.name.text) && isGlobalObjectExpression(unwrapped.expression)
+  }
+  if (ts.isElementAccessExpression(unwrapped) && unwrapped.argumentExpression) {
+    const key = unwrapExpression(unwrapped.argumentExpression)
+    return ts.isStringLiteralLike(key)
+      && GLOBAL_OBJECT_NAMES.has(key.text)
+      && isGlobalObjectExpression(unwrapped.expression)
+  }
+  return false
+}
+
+/** 属性/字面量下标访问的静态成员名；计算表达式返回 `null`。 */
+function staticMemberName(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null {
+  if (ts.isPropertyAccessExpression(node)) {
+    return ts.isIdentifier(node.name) ? node.name.text : null
+  }
+  if (!node.argumentExpression) return null
+  const argument = unwrapExpression(node.argumentExpression)
+  return ts.isStringLiteralLike(argument) ? argument.text : null
 }
 
 function isPropertyName(node: ts.Identifier): boolean {
@@ -673,17 +699,19 @@ function bindingElementKey(node: ts.BindingElement): string | null {
 }
 
 /**
- * 找到解构绑定的初始值。只认变量声明与参数默认值：
- * `const { fetch: f } = window`、`function f({ fetch } = window)`。
+ * 找到解构绑定实际解构的对象。沿绑定模式向上查找最近的初值来源：
+ * 变量声明、参数默认值或外层解构元素的默认值
+ * （`const { fetch: f } = window`、`function f({ fetch } = window)`）。
  */
 function findBindingInitializer(node: ts.BindingElement): ts.Expression | undefined {
-  let current: ts.Node = node.parent
+  let current: ts.Node = node
 
   while (
-    ts.isObjectBindingPattern(current)
+    ts.isBindingElement(current)
+    || ts.isObjectBindingPattern(current)
     || ts.isArrayBindingPattern(current)
-    || ts.isBindingElement(current)
   ) {
+    if (ts.isBindingElement(current) && current.initializer) return current.initializer
     const { parent } = current
     if (ts.isVariableDeclaration(parent) && parent.name === current) return parent.initializer
     if (ts.isParameter(parent) && parent.name === current) return parent.initializer
@@ -693,66 +721,133 @@ function findBindingInitializer(node: ts.BindingElement): ts.Expression | undefi
   return undefined
 }
 
-/** 收集某个标识符（命名空间变量/动态导入结果）在给定子树上的成员名。 */
+function unwrappedIdentifierName(expression: ts.Expression | undefined): string | null {
+  if (!expression) return null
+  const unwrapped = unwrapExpression(expression)
+  return ts.isIdentifier(unwrapped) ? unwrapped.text : null
+}
+
+/**
+ * 收集某个局部名字（命名空间变量、动态导入结果或它们在本文件中的别名）
+ * 实际访问的模块成员。会解开 as/括号/非空/satisfies 包装，跟随变量、参数、
+ * 解构默认值、赋值解构与简单赋值别名，并递归进入 `.then` 回调。
+ *
+ * 这不是完整的控制流或作用域分析：只跟踪本文件内以同一名字接收的值，
+ * 把名字传给其他函数或经对象字段转存时无法判定。
+ */
 function collectPropertyUsage(root: ts.Node, identifierName: string): Set<string> {
   const names = new Set<string>()
+  const tracked = new Set([identifierName])
 
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isPropertyAccessExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === identifierName
-      && ts.isIdentifier(node.name)
-    ) {
-      names.add(node.name.text)
-    }
-
-    if (
-      ts.isElementAccessExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === identifierName
-      && node.argumentExpression
-      && ts.isStringLiteralLike(node.argumentExpression)
-    ) {
-      names.add(node.argumentExpression.text)
-    }
-
-    if (
-      ts.isVariableDeclaration(node)
-      && node.initializer
-      && ts.isIdentifier(node.initializer)
-      && node.initializer.text === identifierName
-      && ts.isObjectBindingPattern(node.name)
-    ) {
-      for (const name of collectObjectBindingKeys(node.name)) names.add(name)
-    }
-
-    if (
-      ts.isCallExpression(node)
-      && ts.isPropertyAccessExpression(node.expression)
-      && ts.isIdentifier(node.expression.expression)
-      && node.expression.expression.text === identifierName
-      && node.expression.name.text === 'then'
-    ) {
-      const callback = node.arguments[0]
-      if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-        for (const name of collectCallbackModuleUsage(callback)) names.add(name)
-      }
-    }
-
-    ts.forEachChild(node, visit)
+  const isTrackedExpression = (expression: ts.Expression | undefined): boolean => {
+    const name = unwrappedIdentifierName(expression)
+    return name !== null && tracked.has(name)
   }
 
-  visit(root)
+  const trackBinding = (name: ts.BindingName): void => {
+    if (ts.isIdentifier(name)) {
+      tracked.add(name.text)
+      return
+    }
+    if (ts.isObjectBindingPattern(name)) {
+      for (const key of collectObjectBindingKeys(name)) names.add(key)
+    }
+  }
+
+  let changed = true
+  while (changed) {
+    const trackedBefore = tracked.size
+    const namesBefore = names.size
+
+    const visit = (node: ts.Node): void => {
+      if (
+        (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
+        && isTrackedExpression(node.expression)
+      ) {
+        const member = staticMemberName(node)
+        if (member) names.add(member)
+      }
+
+      if (
+        (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node))
+        && node.initializer
+        && isTrackedExpression(node.initializer)
+      ) {
+        trackBinding(node.name)
+      }
+
+      if (
+        ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && isTrackedExpression(node.right)
+      ) {
+        const left = unwrapExpression(node.left)
+        if (ts.isIdentifier(left)) {
+          tracked.add(left.text)
+        } else if (ts.isObjectLiteralExpression(left)) {
+          for (const key of collectObjectLiteralKeys(left)) names.add(key)
+        }
+      }
+
+      if (
+        ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === 'then'
+        && isTrackedExpression(node.expression.expression)
+      ) {
+        const callback = node.arguments[0]
+        if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+          for (const name of collectCallbackModuleUsage(callback)) names.add(name)
+        }
+      }
+
+      ts.forEachChild(node, visit)
+    }
+
+    visit(root)
+    changed = tracked.size !== trackedBefore || names.size !== namesBefore
+  }
+
   return names
 }
 
+/** 收集对象解构模式中的属性名（含嵌套层），例如 `{ a: { fetch } }` 仍取 fetch。 */
 function collectObjectBindingKeys(pattern: ts.ObjectBindingPattern): Set<string> {
   const names = new Set<string>()
-  for (const element of pattern.elements) {
-    const key = bindingElementKey(element)
-    if (key) names.add(key)
+
+  const visit = (current: ts.ObjectBindingPattern | ts.ArrayBindingPattern): void => {
+    for (const element of current.elements) {
+      if (!ts.isBindingElement(element)) continue
+      const key = bindingElementKey(element)
+      if (key) names.add(key)
+      if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        visit(element.name)
+      }
+    }
   }
+
+  visit(pattern)
+  return names
+}
+
+/** 收集赋值解构左侧对象字面量中的属性名（含嵌套层）。 */
+function collectObjectLiteralKeys(expression: ts.Expression): Set<string> {
+  const names = new Set<string>()
+  const unwrapped = unwrapExpression(expression)
+  if (!ts.isObjectLiteralExpression(unwrapped)) return names
+
+  for (const property of unwrapped.properties) {
+    if (ts.isShorthandPropertyAssignment(property)) {
+      names.add(property.name.text)
+      continue
+    }
+    if (!ts.isPropertyAssignment(property)) continue
+    if (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) {
+      names.add(property.name.text)
+    }
+    for (const name of collectObjectLiteralKeys(property.initializer)) names.add(name)
+  }
+
   return names
 }
 
@@ -806,20 +901,11 @@ function collectDynamicImportUsedNames(
   }
 
   if (
-    ts.isPropertyAccessExpression(parent)
+    (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent))
     && parent.expression === receiver
-    && ts.isIdentifier(parent.name)
   ) {
-    return new Set([parent.name.text])
-  }
-
-  if (
-    ts.isElementAccessExpression(parent)
-    && parent.expression === receiver
-    && parent.argumentExpression
-    && ts.isStringLiteralLike(parent.argumentExpression)
-  ) {
-    return new Set([parent.argumentExpression.text])
+    const member = staticMemberName(parent)
+    return member ? new Set([member]) : new Set()
   }
 
   if (
@@ -827,6 +913,16 @@ function collectDynamicImportUsedNames(
     && parent.initializer === receiver
   ) {
     return collectBindingUsage(parent.name, sourceFile)
+  }
+
+  if (
+    ts.isBinaryExpression(parent)
+    && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && parent.right === receiver
+  ) {
+    const left = unwrapExpression(parent.left)
+    if (ts.isIdentifier(left)) return collectPropertyUsage(sourceFile, left.text)
+    if (ts.isObjectLiteralExpression(left)) return collectObjectLiteralKeys(left)
   }
 
   return new Set()
@@ -867,10 +963,19 @@ function pageRuleForGlobal(name: string): GuardrailRule | null {
 
 function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViolation[]): void {
   const sourceFile = parseSourceFile(file)
+  const reported = new Set<string>()
+
+  const lineOf = (node: ts.Node): number =>
+    sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1
 
   const report = (name: string, line: number): void => {
     const rule = pageRuleForGlobal(name)
     if (!rule) return
+    // 同一个原语可能同时命中解构键与裸标识符（例如 `({ fetch } = window)`），
+    // 同一行只报一次，避免同一处使用产生重复违规。
+    const key = `${rule}:${line}:${name}`
+    if (reported.has(key)) return
+    reported.add(key)
     const reason = rule === 'page-transport'
       ? '页面不得直接使用传输原语'
       : rule === 'page-storage'
@@ -888,7 +993,16 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
       const key = bindingElementKey(node)
       const initializer = findBindingInitializer(node)
       if (key && initializer && isGlobalObjectExpression(initializer) && pageRuleForGlobal(key)) {
-        report(key, sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1)
+        report(key, lineOf(node))
+      }
+    }
+
+    // 赋值解构：`let f; ({ fetch: f } = window)`。
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = unwrapExpression(node.left)
+      if (ts.isObjectLiteralExpression(left) && isGlobalObjectExpression(node.right)) {
+        const line = lineOf(left)
+        for (const key of collectObjectLiteralKeys(left)) report(key, line)
       }
     }
 
@@ -898,7 +1012,7 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
       && !isBindingName(node)
       && pageRuleForGlobal(node.text)
     ) {
-      report(node.text, sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1)
+      report(node.text, lineOf(node))
     }
 
     if (
@@ -907,20 +1021,16 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
       && ts.isIdentifier(node.name)
       && pageRuleForGlobal(node.name.text)
     ) {
-      report(node.name.text, sourceFile.getLineAndCharacterOfPosition(node.name.getStart()).line + 1)
+      report(node.name.text, lineOf(node.name))
     }
 
-    if (
-      ts.isElementAccessExpression(node)
-      && isGlobalObjectExpression(node.expression)
-      && node.argumentExpression
-      && ts.isStringLiteralLike(node.argumentExpression)
-      && pageRuleForGlobal(node.argumentExpression.text)
-    ) {
-      report(
-        node.argumentExpression.text,
-        sourceFile.getLineAndCharacterOfPosition(node.argumentExpression.getStart()).line + 1,
-      )
+    if (ts.isElementAccessExpression(node) && isGlobalObjectExpression(node.expression)) {
+      const argument = node.argumentExpression
+        ? unwrapExpression(node.argumentExpression)
+        : undefined
+      if (argument && ts.isStringLiteralLike(argument) && pageRuleForGlobal(argument.text)) {
+        report(argument.text, lineOf(argument))
+      }
     }
 
     ts.forEachChild(node, visit)
