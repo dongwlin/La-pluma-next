@@ -206,6 +206,7 @@ describe('LogViewer recovery and controls', () => {
 
     const fileError = container.querySelector<HTMLElement>('.log-console-state.is-error')
     expect(fileError?.textContent).toContain('日志文件读取失败')
+    expect(container.querySelectorAll('.log-history-row')).toHaveLength(1)
     const fileRetry = fileError?.querySelector<HTMLButtonElement>('button')
     expect(fileRetry).not.toBeNull()
     await click(fileRetry!)
