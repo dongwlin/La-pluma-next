@@ -137,11 +137,11 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
 | 实时会话 | GET `/agent/logs/recent?lines=200`，每 1250ms HTTP 轮询；`RealtimeLogStream` 单在途、请求身份与 AbortSignal 防慢请求重叠和旧响应覆盖；每次替换最近 200 行，不是追加流 | logs 实时流所有者（FPR-027） |
-| 历史查询 | GET `/agent/logs/files`；GET `/agent/logs/files/{encodedPath}?lines=1000`；历史文件 request id 防切换覆盖；文件列表无请求序号 | logs 历史查询协调器（FPR-028） |
-| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，finally 恢复并立即重读；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表 | logs 清理用例与实时/历史协调（FPR-028） |
-| 模型/展示 | `model/logModel.ts` 的 parseHistoryLine/parseRealtimeLog/summarize/过滤/折叠与 `buildLogView`；页面保留 summary/raw、level/search/collapse、autoScroll、history selection/mode、confirm/notice；scrollTop Effect；导出 Blob/objectURL/anchor，随后 revoke | 纯日志模型（FPR-027）；最近面板；缓冲归会话 |
+| 历史查询 | GET `/agent/logs/files`；GET `/agent/logs/files/{encodedPath}?lines=1000`；列表与读取各自持有请求序号和 AbortSignal，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求，迟到响应不写新选择；协议无 cursor，选择以文件路径标识 | logs 历史会话 `HistoryLogSession`（FPR-028），见[历史日志与清理协调](logs-history-and-cleanup.md) |
+| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，finally 恢复并立即重读；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表，若选中文件被删除则退出历史模式；命令不触碰彼此状态 | `model/logCommands.ts` 的清空/清理命令（FPR-028） |
+| 模型/展示 | `model/logModel.ts` 的 parseHistoryLine/parseRealtimeLog/summarize/过滤/折叠与 `buildLogView`；页面保留 summary/raw、level/search/collapse、autoScroll、历史确认/通知；scrollTop Effect；导出 Blob/objectURL/anchor，随后 revoke | 纯日志模型（FPR-027）；最近面板；会话状态归实时流与历史会话 |
 
-无业务存储，无 WebSocket/EventSource。实时流实例随页面真正挂载创建，Activity 隐藏时停止计时器并 abort 在途读取、保留缓冲，显示时立即重读；`document.hidden` 时计时器保留但守卫不发请求并 abort 在途，可见时立即重读；手动暂停不被可见性或 Activity 变化清除，恢复时立即重读（工具栏暂停按钮待 FPR-035 接线）。历史请求在 Activity hidden 时完成会被 mounted guard 丢弃，finally 也不清 loading；restore 不自动重试当前历史文件，存在卡 loading 缺口。清理 handler 没有卸载取消。完整生命周期约定见[实时日志流生命周期](logs-realtime-stream.md)。
+无业务存储，无 WebSocket/EventSource。实时流实例随页面真正挂载创建，Activity 隐藏时停止计时器并 abort 在途读取、保留缓冲，显示时立即重读；`document.hidden` 时计时器保留但守卫不发请求并 abort 在途，可见时立即重读；手动暂停不被可见性或 Activity 变化清除，恢复时立即重读（工具栏暂停按钮待 FPR-035 接线）。历史读取由 `HistoryLogSession` 持有：Activity 隐藏会取消列表与读取，进行中的读取转为 `cancelled` 而不是留下 loading，显示时重读列表并重试被取消的当前文件；明确失败的读取不自动重试。返回实时经页面级 `enabled` 立即重读，历史模式恢复不会重新启动实时轮询。完整生命周期约定见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)。
 
 ## 共同副作用与状态生命期
 
@@ -168,12 +168,12 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
 | Training | 保留 filters/设置/计划/撤销 toast；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；未完成 closure 不会自动取消 |
 | Settings | 重建 section 监听；版本/目录 Query 观察者注销；abort 在途设备发现/连接测试并保留已完成结果；自动更新初始化标记阻止重复加载，更新命令与自动更新保存在隐藏期间继续完成 | 无专门处理 | section/autoUpdate fallback 可恢复；设备结果保留（未完成已取消），版本/目录按新鲜度重取；更新命令与自动更新反馈/草稿由模块级 owner 保留 |
-| Logs | 停实时计时器并 abort 在途读取；show 重建，刷新文件列表并立即重读实时（历史模式不启动实时轮询） | 取消在途读取，计时器保留但守卫不发请求；可见立即重读 | 缓冲/选择/过滤全部重置，手动暂停状态随实例重置 |
+| Logs | 停实时计时器并 abort 在途读取；历史会话取消列表/读取并保留选择，恢复时重读列表、重试被取消的当前文件 | 取消实时在途读取，计时器保留但守卫不发请求；历史读取继续；可见立即重读实时 | 缓冲/选择/过滤全部重置，手动暂停状态随实例重置 |
 
 ## 性能对照入口与待验收边界
 
 四类交互的固定数据、步骤、采样、浏览器指标和网络请求见[性能采样说明](evidence/frontend-baseline/performance.md)。它们测量浏览器工作与 DOM 更新；普通生产包没有 React profiling，不能把 DOM mutation 当作 React commit 次数。后续必须在同一构建方式/数据量/设备采样，真实大队列与 React Profiler 的补测条件在说明中登记。
 
-尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获、历史日志隐藏恢复。跨 remount 配置写入次序、automation schedule 半失败、训练设置改变后的计划有效期与计划应用跨页联动已由 FPR-015/022/023 关闭，资源更新后的目录/材料/计划/总览失效已由 FPR-026 关闭；应用计划遇到本设备未确认的 automation 草稿（含未挂载页面留下的持久化标记）会拒绝应用，但跨标签页/跨客户端同时写入仍为最后写入生效。计划已生成/计划过期仍未纳入 72 张默认态截图，FPR-023 未改变默认态 DOM/CSS，也未更新视觉基线。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获。跨 remount 配置写入次序、automation schedule 半失败、训练设置改变后的计划有效期与计划应用跨页联动已由 FPR-015/022/023 关闭，资源更新后的目录/材料/计划/总览失效已由 FPR-026 关闭；历史日志在 Activity 隐藏后的 loading 残留与恢复重试已由 FPR-028 关闭（见[历史日志与清理协调](logs-history-and-cleanup.md)）。应用计划遇到本设备未确认的 automation 草稿（含未挂载页面留下的持久化标记）会拒绝应用，但跨标签页/跨客户端同时写入仍为最后写入生效。计划已生成/计划过期仍未纳入 72 张默认态截图，FPR-023 未改变默认态 DOM/CSS，也未更新视觉基线。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
 实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，当前处理器取消排序并还原原序，没有配置写入。性能文件记录真实路径和结果；这组数据不能冒充成功排序的耗时。成功排序须在自动化流程面板处理捕获生命周期后补测，并在最终性能对照时重采。它属于明确缺陷修复边界，现有取消行为不作为保留要求。

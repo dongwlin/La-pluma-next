@@ -18,7 +18,7 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 | 运行身份、快照观察、停止与恢复 | `features/task-execution/` 控制器 | 不进入 Query；`runs/current`、`tasks/status` 不是普通资源 |
 | 跨页客户端状态（主题、连接健康、运行投影、预览偏好、面板选择） | 对应 Zustand store 或域内状态 | 不复制 Query 数据 |
 | Dashboard 完整业务快照 | Dashboard 刷新协调器 + `dashboardStore` | 可读取 Query，但只在完整快照通过校验后原子提交 |
-| 实时日志、WebRTC 信令等会话 | 对应会话所有者（日志见[实时日志流生命周期](logs-realtime-stream.md)） | 不因接入 Query 改变暂停/恢复与取消语义 |
+| 实时日志、历史日志读取、WebRTC 信令等会话 | 对应会话所有者（日志见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)） | 不因接入 Query 改变暂停/恢复、取消与选择裁决语义 |
 
 关键约束：
 
@@ -120,7 +120,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | `settings` | `maa-config`（参数 `profileName`） | FPR-024 已迁移，草稿仍归设置域 owner |
 | `settings` | `version`、`config-directory` | FPR-025 已迁移 |
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 |
-| `logs` | `files`、`file`（参数 `filePath`、`lines`） | FPR-028 |
+| `logs` | 无；历史文件列表/读取与实时缓冲均为页面会话数据 | FPR-028 判定不建立 Query key，请求裁决与 Activity 恢复由日志会话持有 |
 | `device-mirror` | `webrtc-status`、`device-stats` | FPR-030 |
 | `automation` | `activity`、`schedule-execution` | FPR-030 |
 | `dashboard` | `snapshot` | FPR-030 |

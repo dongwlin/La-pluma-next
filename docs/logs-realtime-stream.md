@@ -11,7 +11,7 @@
 | 实时缓冲、轮询计时器、请求取消与暂停状态 | `client/src/features/logs/model/realtimeLogStream.ts` 的 `RealtimeLogStream` | 会话数据，不进入 Query；同一时刻最多一个在途读取 |
 | 页面生命周期接线 | `client/src/features/logs/hooks/useRealtimeLogs.ts` | 实例寿命、`useSyncExternalStore` 订阅、Activity 启停与 `document` 可见性转发 |
 | 解析、级别归一、摘要、过滤与重复折叠 | `client/src/features/logs/model/logModel.ts` | 纯函数，不依赖 React、网络或 DOM |
-| 工具栏、模式切换、自滚动与历史浏览 | `client/src/features/logs/pages/LogViewer.tsx` | 历史文件读取、返回实时、清空与历史清理的完整协调仍归 FPR-028 |
+| 工具栏、模式切换、自滚动与历史浏览 | `client/src/features/logs/pages/LogViewer.tsx` | 页面视图状态；历史列表、选择与读取由[历史日志与清理协调](logs-history-and-cleanup.md)的会话持有 |
 
 实时流实例随日志页真正挂载创建。React Activity 隐藏会清理 Effects 但保留组件状态与实例，因此恢复后缓冲、过滤和选择仍在；浏览器刷新或真正重挂载会创建新实例，缓冲从头开始。实时日志没有持久化，也没有跨标签页共享。
 
@@ -41,14 +41,14 @@
 
 | 事件 | 实时流行为 | 页面结果 |
 | --- | --- | --- |
-| Activity 隐藏或页面真正卸载 | `stop()`：清计时器、取消在途读取，保留缓冲 | Effects 清理；历史文件读取沿用现有 mounted 守卫（隐藏期间完成的读取仍可能留下 loading，归 FPR-028） |
-| Activity 显示 | 先同步 `document` 可见性，再 `start()`：立即重读并重建 1250ms 计时器 | 缓冲、模式、过滤、搜索与折叠开关保留 |
+| Activity 隐藏或页面真正卸载 | `stop()`：清计时器、取消在途读取，保留缓冲 | Effects 清理；历史会话同时取消列表与文件读取，进行中的读取转为 `cancelled`，不会留下 loading（见[历史日志与清理协调](logs-history-and-cleanup.md)） |
+| Activity 显示 | 先同步 `document` 可见性，再 `start()`：立即重读并重建 1250ms 计时器 | 缓冲、模式、过滤、搜索与折叠开关保留；历史会话重读文件列表并重试被取消的当前文件 |
 | `document` 隐藏 | `setDocumentVisible(false)`：取消在途读取；计时器保留但守卫跳过发送 | 已有行继续显示 |
 | `document` 可见 | `setDocumentVisible(true)`：立即重读，之后按间隔轮询 | 不等待下一个 1250ms tick |
 | 手动暂停 | `pause()`：取消在途读取，之后计时器 tick 全部跳过；暂停状态不被 Activity 或文档可见性变化清除 | 已有行继续显示 |
 | 手动恢复 | `resume()`：立即重读一次，之后继续按间隔轮询 | 用最新快照替换暂停期间的旧快照 |
-| 历史模式 | 页面调用 `stop()` 并清空实时缓冲；`enabled=false` 保证 Activity 恢复不会重新启动轮询 | 返回实时时 `start()` 立即重读 |
-| 清空实时日志 | `pause()` → `POST /logs/recent/clear` → 成功后 `clear()` 本地缓冲 → `finally resume()` | 清空请求期间不发轮询；成功后立即重读服务端空快照 |
+| 历史模式 | 页面停止实时流并清空实时缓冲；`enabled=false` 保证 Activity 恢复不会重新启动轮询 | 返回实时时页面级 `enabled` 恢复，立即重读 |
+| 清空实时日志 | `pause()` → `POST /logs/recent/clear` → 成功后 `clear()` 本地缓冲 → `finally resume()` | 由 `logCommands.ts` 协调；清空期间不发轮询，成功后立即重读服务端空快照 |
 | 真正重挂载 / 浏览器刷新 | 新实例从空缓冲开始 | 过滤、搜索、折叠、历史选择与滚动状态全部重置 |
 
 手动暂停已是流的公开动作（`useRealtimeLogs` 返回 `pause`/`resume`/`paused`），当前页面工具栏尚无独立暂停按钮；清空实时日志是现有调用方，FPR-035 负责把暂停交互接到工具栏并补充可访问性。
@@ -71,7 +71,7 @@
 
 - 信封失败优先使用 `message`/`errorInfo.message`/`error`，缺省为“实时日志请求失败”；抛出的异常使用其 `message`，缺省为“暂时无法获取实时日志”。
 - 失败不改变实时 API 的函数签名、端点或响应形状；`getRealtimeLogs(lines?, signal?)` 继续由域 API 提供并传递 signal。
-- 实时流没有进入 TanStack Query，不改变 Query 的默认重取、Activity 或窗口焦点策略；清空、历史读取与清理命令也不进入 Query。
+- 实时流没有进入 TanStack Query，不改变 Query 的默认重取、Activity 或窗口焦点策略；清空、历史读取与清理命令也不进入 Query（见[历史日志与清理协调](logs-history-and-cleanup.md)）。
 - 本次不改变渲染结构、DOM 属性、CSS 或主题。页面隐藏、文档隐藏与暂停恢复只影响请求与缓冲，不改变已有行的展示格式。
 - 回滚可以单独恢复页面内的计时器与请求守卫；服务端无需配合改动。
 
@@ -82,6 +82,8 @@
 | `client/src/features/logs/model/logModel.test.ts` | 级别别名、时间格式、实时/历史解析、任务回调摘要、命令与噪声行、级别/搜索过滤、重复折叠、空输入 |
 | `client/src/features/logs/model/realtimeLogStream.test.ts` | 200 行与 1250ms、慢请求不重叠、旧响应丢弃、失败保留缓冲、文档隐藏/可见、手动暂停粘性、停止/重启立即读取 |
 | `client/src/features/logs/hooks/useRealtimeLogs.test.tsx` | 手动暂停跨可见性保持与恢复立即读取、`enabled` 启停、文档隐藏取消在途读取 |
-| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | Activity 隐藏停止并取消、显示立即重读、文档隐藏不发送、慢请求不叠加、清空期间暂停并在成功后立即重读 |
-| `client/src/features/logs/pages/LogViewer.test.tsx` | 实时失败重试、后台刷新失败保留行、历史列表与文件重试 |
+| `client/src/features/logs/model/historyLogSession.test.ts` | 历史列表/读取竞态、返回实时、Activity 隐藏取消与恢复重试、清理后选择裁决 |
+| `client/src/features/logs/model/logCommands.test.ts` | 清空实时的 pause/clear/resume、清理历史的列表刷新与选择裁决、失败路径 |
+| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | Activity 隐藏停止并取消、显示立即重读、文档隐藏不发送、慢请求不叠加、清空期间暂停并在成功后立即重读、历史读取恢复重试、历史模式不重启实时 |
+| `client/src/features/logs/pages/LogViewer.test.tsx` | 实时失败重试、后台刷新失败保留行、历史列表与文件重试、返回实时、切换竞态、清理确认与失败重试 |
 | `client/src/features/logs/api/index.test.ts` | 实时与历史读取的 signal、payload 校验、取消保持 `AbortError` |
