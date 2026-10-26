@@ -9,6 +9,7 @@ import {
   copilotSearchQueryOptions,
   copilotSetPlanQueryOptions,
   copilotSetQueryOptions,
+  invalidateCopilotSetPlan,
   loadCopilotPreview,
   paradoxSearchQueryOptions,
   type CopilotPreviewLoadOptions,
@@ -161,6 +162,22 @@ describe('combat detail queries', () => {
     expect(mocks.getCopilotInfo).toHaveBeenCalledWith('12', expect.any(AbortSignal))
     expect(mocks.getCopilotSet).toHaveBeenCalledWith('48990', expect.any(AbortSignal))
     expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'both', expect.any(AbortSignal))
+  })
+
+  it('invalidates every plan variant for one set', async () => {
+    mocks.getCopilotSetPlan.mockResolvedValue(ok({
+      setId: '48990', name: '作业集', items: [{ id: 101 }], entries: [],
+    }))
+    const client = createQueryClient()
+    const normal = copilotSetPlanQueryOptions('48990', 'normal')
+    const raid = copilotSetPlanQueryOptions('48990', 'raid')
+    await client.fetchQuery(normal)
+    await client.fetchQuery(raid)
+
+    await invalidateCopilotSetPlan(client, '48990')
+
+    expect(client.getQueryState(normal.queryKey)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(raid.queryKey)?.isInvalidated).toBe(true)
   })
 
   it('rejects a plan that lacks entries so the preview can fall back', async () => {
