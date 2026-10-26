@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify (lint + type-check + test + build)
+      - name: Verify (guardrails + lint + type-check + test + build)
         run: pnpm verify
 
       - name: Stylelint ratchet (fail on net-new violations)
