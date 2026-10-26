@@ -45,7 +45,10 @@ export interface ImportReference {
 
 export interface ReExport {
   exportedName: string
-  specifier: string
+  /** 本地再导出的本地名：`export { local as exported }` 中为 local。 */
+  localName?: string
+  /** `null` 表示本地 `export { ... }`，来源需沿同文件的 import 解析。 */
+  specifier: string | null
   typeOnly: boolean
 }
 
@@ -217,40 +220,55 @@ export function collectImportBindings(source: string, filePath = 'sample.tsx'): 
   return bindings
 }
 
-/** 取出公开面 `export { ... } from './module'` 与 `export * from './module'` 的来源。 */
+/**
+ * 取出公开面的再导出：
+ * - `export { ... } from './module'`、`export * from './module'`
+ *   与 `export * as ns from './module'`；
+ * - 本地 `export { local }` 没有模块说明符，记录 `localName`，
+ *   由调用方沿同文件的 import 解析来源。
+ */
 export function collectReExports(source: string, filePath = 'sample.ts'): ReExport[] {
   const sourceFile = parseSourceFile({ path: filePath, source })
   const reExports: ReExport[] = []
 
   for (const statement of sourceFile.statements) {
-    if (
-      !ts.isExportDeclaration(statement)
-      || !statement.moduleSpecifier
-      || !ts.isStringLiteralLike(statement.moduleSpecifier)
-    ) {
+    if (!ts.isExportDeclaration(statement)) continue
+
+    const clause = statement.exportClause
+    if (statement.moduleSpecifier && ts.isStringLiteralLike(statement.moduleSpecifier)) {
+      const specifier = statement.moduleSpecifier.text
+      if (!clause) {
+        reExports.push({ exportedName: '*', specifier, typeOnly: statement.isTypeOnly })
+        continue
+      }
+
+      if (ts.isNamespaceExport(clause)) {
+        reExports.push({
+          exportedName: clause.name.text,
+          specifier,
+          typeOnly: statement.isTypeOnly,
+        })
+        continue
+      }
+
+      if (!ts.isNamedExports(clause)) continue
+      for (const element of clause.elements) {
+        reExports.push({
+          exportedName: element.name.text,
+          specifier,
+          typeOnly: statement.isTypeOnly || element.isTypeOnly,
+        })
+      }
       continue
     }
 
-    const specifier = statement.moduleSpecifier.text
-    if (!statement.exportClause) {
-      reExports.push({ exportedName: '*', specifier, typeOnly: statement.isTypeOnly })
-      continue
-    }
-
-    if (ts.isNamespaceExport(statement.exportClause)) {
-      reExports.push({
-        exportedName: statement.exportClause.name.text,
-        specifier,
-        typeOnly: statement.isTypeOnly,
-      })
-      continue
-    }
-
-    if (!ts.isNamedExports(statement.exportClause)) continue
-    for (const element of statement.exportClause.elements) {
+    // 本地再导出：`import { x } from './api'; export { x }`。
+    if (!clause || !ts.isNamedExports(clause)) continue
+    for (const element of clause.elements) {
       reExports.push({
         exportedName: element.name.text,
-        specifier,
+        localName: element.propertyName?.text ?? element.name.text,
+        specifier: null,
         typeOnly: statement.isTypeOnly || element.isTypeOnly,
       })
     }
@@ -554,6 +572,15 @@ export function analyzeDependencies(files: readonly SourceFile[]): DependencyAna
       continue
     }
 
+    if (fromLayer === 'features' && toLayer === 'root') {
+      violations.push({
+        rule: 'layer-direction',
+        file: edge.from,
+        message: `features 不得依赖根入口模块：${edge.specifier}`,
+      })
+      continue
+    }
+
     const fromDomain = featureDomainOf(edge.from)
     const toDomain = featureDomainOf(edge.to)
 
@@ -619,28 +646,6 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   return current
 }
 
-const GLOBAL_OBJECT_NAMES = new Set(['window', 'globalThis', 'self'])
-
-/**
- * 判断表达式是否指向浏览器全局对象。除裸 `window`/`globalThis`/`self` 外，
- * 也接受它们的同名属性链（`window.window`、`globalThis['self']`）：
- * 这些属性仍指向同一个全局对象。
- */
-function isGlobalObjectExpression(expression: ts.Expression): boolean {
-  const unwrapped = unwrapExpression(expression)
-  if (ts.isIdentifier(unwrapped)) return GLOBAL_OBJECT_NAMES.has(unwrapped.text)
-  if (ts.isPropertyAccessExpression(unwrapped) && ts.isIdentifier(unwrapped.name)) {
-    return GLOBAL_OBJECT_NAMES.has(unwrapped.name.text) && isGlobalObjectExpression(unwrapped.expression)
-  }
-  if (ts.isElementAccessExpression(unwrapped) && unwrapped.argumentExpression) {
-    const key = unwrapExpression(unwrapped.argumentExpression)
-    return ts.isStringLiteralLike(key)
-      && GLOBAL_OBJECT_NAMES.has(key.text)
-      && isGlobalObjectExpression(unwrapped.expression)
-  }
-  return false
-}
-
 /** 属性/字面量下标访问的静态成员名；计算表达式返回 `null`。 */
 function staticMemberName(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null {
   if (ts.isPropertyAccessExpression(node)) {
@@ -649,6 +654,43 @@ function staticMemberName(node: ts.PropertyAccessExpression | ts.ElementAccessEx
   if (!node.argumentExpression) return null
   const argument = unwrapExpression(node.argumentExpression)
   return ts.isStringLiteralLike(argument) ? argument.text : null
+}
+
+const GLOBAL_OBJECT_NAMES = new Set(['window', 'globalThis', 'self'])
+/** 这些属性返回同一个 Window 代理对象：`window.top`、`self.parent`、`window.frames`。 */
+const WINDOW_PROXY_PROPERTIES = new Set(['window', 'globalThis', 'self', 'top', 'parent', 'frames'])
+
+/** `document.defaultView` 是 Window；`document` 本身不是全局对象。 */
+function isDocumentDefaultView(expression: ts.Expression): boolean {
+  const unwrapped = unwrapExpression(expression)
+  if (!ts.isPropertyAccessExpression(unwrapped) && !ts.isElementAccessExpression(unwrapped)) {
+    return false
+  }
+  if (staticMemberName(unwrapped) !== 'defaultView') return false
+  const receiver = unwrapExpression(unwrapped.expression)
+  return ts.isIdentifier(receiver) && receiver.text === 'document'
+}
+
+/**
+ * 判断表达式是否指向浏览器全局对象。除裸 `window`/`globalThis`/`self` 外，
+ * 也接受 Window 代理属性链（`window.window`、`window.top`、`self.parent`）
+ * 与 `document.defaultView`：这些表达式仍指向同一个全局对象。
+ */
+function isGlobalObjectExpression(expression: ts.Expression): boolean {
+  const unwrapped = unwrapExpression(expression)
+  if (isDocumentDefaultView(unwrapped)) return true
+  if (ts.isIdentifier(unwrapped)) return GLOBAL_OBJECT_NAMES.has(unwrapped.text)
+  if (ts.isPropertyAccessExpression(unwrapped) && ts.isIdentifier(unwrapped.name)) {
+    return WINDOW_PROXY_PROPERTIES.has(unwrapped.name.text)
+      && isGlobalObjectExpression(unwrapped.expression)
+  }
+  if (ts.isElementAccessExpression(unwrapped) && unwrapped.argumentExpression) {
+    const key = unwrapExpression(unwrapped.argumentExpression)
+    return ts.isStringLiteralLike(key)
+      && WINDOW_PROXY_PROPERTIES.has(key.text)
+      && isGlobalObjectExpression(unwrapped.expression)
+  }
+  return false
 }
 
 function isPropertyName(node: ts.Identifier): boolean {
@@ -667,6 +709,28 @@ function isPropertyName(node: ts.Identifier): boolean {
   )
 }
 
+/** 赋值解构左侧的简写属性名（`({ fetch } = props)`）是写入目标，不是全局引用。 */
+function isAssignmentPatternShorthand(node: ts.Identifier): boolean {
+  const property = node.parent
+  if (!ts.isShorthandPropertyAssignment(property) || property.name !== node) return false
+
+  let expression: ts.Node = property.parent
+  while (
+    ts.isParenthesizedExpression(expression)
+    || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression)
+    || ts.isNonNullExpression(expression)
+    || ts.isSatisfiesExpression(expression)
+  ) {
+    expression = expression.parent
+  }
+
+  const parent = expression.parent
+  return ts.isBinaryExpression(parent)
+    && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && parent.left === expression
+}
+
 /** 声明名、参数名与解构绑定不是对全局对象的引用。 */
 function isBindingName(node: ts.Identifier): boolean {
   const { parent } = node
@@ -683,9 +747,10 @@ function isBindingName(node: ts.Identifier): boolean {
     || (ts.isEnumDeclaration(parent) && parent.name === node)
     || (ts.isTypeParameterDeclaration(parent) && parent.name === node)
     || (ts.isImportClause(parent) && parent.name === node)
-    || (ts.isImportSpecifier(parent) && parent.name === node)
+    || (ts.isImportSpecifier(parent) && (parent.name === node || parent.propertyName === node))
     || (ts.isNamespaceImport(parent) && parent.name === node)
     || (ts.isImportEqualsDeclaration(parent) && parent.name === node)
+    || (ts.isExportSpecifier(parent) && (parent.name === node || parent.propertyName === node))
   )
 }
 
@@ -1010,6 +1075,7 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
       ts.isIdentifier(node)
       && !isPropertyName(node)
       && !isBindingName(node)
+      && !isAssignmentPatternShorthand(node)
       && pageRuleForGlobal(node.text)
     ) {
       report(node.text, lineOf(node))
@@ -1054,12 +1120,38 @@ function importsPageInfrastructure(
 }
 
 /**
+ * 收集同文件命名 import 的本地名到模块说明符映射，用于解析
+ * `import { x as local } from './api'; export { local }` 这类本地再导出。
+ */
+function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, string> {
+  const sources = new Map<string, string>()
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteralLike(statement.moduleSpecifier)) {
+      continue
+    }
+
+    const clause = statement.importClause
+    if (!clause || clause.isTypeOnly) continue
+    const namedBindings = clause.namedBindings
+    if (!namedBindings || !ts.isNamedImports(namedBindings)) continue
+
+    for (const element of namedBindings.elements) {
+      if (element.isTypeOnly) continue
+      sources.set(element.name.text, statement.moduleSpecifier.text)
+    }
+  }
+
+  return sources
+}
+
+/**
  * 收集各 feature 公开面中来自 `api/` 的导出名。
  *
  * 只禁 `@/features/x/api` 深路径不足以阻止页面直接调用端点：公开面可以把
  * `executeScheduleNow`、`saveUserConfig` 等端点再导出，也可能使用
- * `export * from './api'`。页面检查沿公开面定位来源，仍允许同一条公开面
- * 导出的领域 hook/组件。
+ * `export * from './api'` 或同文件 `import ... from './api'; export { ... }`
+ * 的本地转发。页面检查沿公开面定位来源，仍允许同一条公开面导出的领域 hook/组件。
  */
 function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<string>> {
   const filesByPath = new Map(files.map(file => [file.path, file]))
@@ -1070,9 +1162,14 @@ function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<st
     const domain = /^features\/([^/]+)\/index\.tsx?$/.exec(file.path)?.[1]
     if (!domain) continue
 
+    const localImportSources = collectLocalImportSources(parseSourceFile(file))
+
     for (const reExport of collectReExports(file.source, file.path)) {
       if (reExport.typeOnly) continue
-      const target = resolveImport(reExport.specifier, file.path, knownFiles)
+      const specifier = reExport.specifier
+        ?? (reExport.localName ? localImportSources.get(reExport.localName) : undefined)
+      if (!specifier) continue
+      const target = resolveImport(specifier, file.path, knownFiles)
       if (!target?.startsWith(`features/${domain}/api/`)) continue
 
       let names = apiExports.get(domain)

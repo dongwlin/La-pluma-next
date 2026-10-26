@@ -122,6 +122,19 @@ describe('dependency guardrails', () => {
     ])
   })
 
+  it('flags feature and task-execution imports of the root entry', () => {
+    const analysis = analyzeDependencies(files(
+      ['features/a/index.ts', "import { boot } from '@/main'\nexport const a = boot\n"],
+      ['features/task-execution/index.ts', "import { boot } from '@/main'\nexport const t = boot\n"],
+      ['main.tsx', 'export const boot = 1\n'],
+    ))
+
+    expect(analysis.violations).toEqual([
+      expect.objectContaining({ rule: 'layer-direction', file: 'features/a/index.ts' }),
+      expect.objectContaining({ rule: 'layer-direction', file: 'features/task-execution/index.ts' }),
+    ])
+  })
+
   it('keeps task-execution free of reverse dependencies on page domains', () => {
     const analysis = analyzeDependencies(files(
       ['features/task-execution/index.ts', "import { useStatusStore } from '@/features/runtime-status'\n"],
@@ -299,10 +312,73 @@ describe('page responsibility guardrails', () => {
     expect(violations.map(violation => violation.message).join('\n')).toContain('executeScheduleNow')
   })
 
+  const localReExportCases = [
+    ['named import and export', [
+      "import { executeScheduleNow } from './api'",
+      'export { executeScheduleNow }',
+    ].join('\n'), [
+      "import { executeScheduleNow } from '..'",
+      'executeScheduleNow()',
+    ].join('\n')],
+    ['aliased import and export', [
+      "import { executeScheduleNow as run } from './api'",
+      'export { run as executeScheduleNow }',
+    ].join('\n'), [
+      "import { executeScheduleNow } from '..'",
+      'executeScheduleNow()',
+    ].join('\n')],
+    ['namespace page usage', [
+      "import { executeScheduleNow } from './api'",
+      'export { executeScheduleNow }',
+    ].join('\n'), [
+      "import * as automation from '..'",
+      'automation.executeScheduleNow()',
+    ].join('\n')],
+    ['dynamic page usage', [
+      "import { executeScheduleNow } from './api'",
+      'export { executeScheduleNow }',
+    ].join('\n'), [
+      'const load = async () => {',
+      "  const m = await import('..')",
+      '  m.executeScheduleNow()',
+      '}',
+    ].join('\n')],
+    ['then page usage', [
+      "import { executeScheduleNow } from './api'",
+      'export { executeScheduleNow }',
+    ].join('\n'), [
+      "const load = () => import('..').then(m => m.executeScheduleNow())",
+    ].join('\n')],
+  ] as const
+
+  it.each(localReExportCases)('flags endpoints forwarded through local index %s', (_label, indexSource, pageSource) => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', indexSource],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/pages/Page.tsx', pageSource],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('executeScheduleNow')
+  })
+
   const endpointUsageCases = [
     ['namespace receiver wrapped in as', [
       "import * as a from '..'",
       ';(a as any).executeScheduleNow()',
+    ].join('\n')],
+    ['namespace receiver wrapped in parentheses', [
+      "import * as a from '..'",
+      ';((a)).executeScheduleNow()',
+    ].join('\n')],
+    ['namespace receiver with non-null assertion', [
+      "import * as a from '..'",
+      ';(a!).executeScheduleNow()',
+    ].join('\n')],
+    ['namespace receiver wrapped in satisfies', [
+      "import * as a from '..'",
+      ';(a satisfies any).executeScheduleNow()',
     ].join('\n')],
     ['namespace alias', [
       "import * as a from '..'",
@@ -323,6 +399,17 @@ describe('page responsibility guardrails', () => {
       'const load = async () => {',
       "  const m = await import('..')",
       '  ;(m as any).executeScheduleNow()',
+      '}',
+    ].join('\n')],
+    ['dynamic import receiver wrapped in parentheses', [
+      'const load = async () => {',
+      "  ;((await import('..'))).executeScheduleNow()",
+      '}',
+    ].join('\n')],
+    ['dynamic import receiver with non-null assertion', [
+      'const load = async () => {',
+      "  const m = await import('..')",
+      '  m!.executeScheduleNow()',
       '}',
     ].join('\n')],
     ['dynamic import alias', [
@@ -364,7 +451,8 @@ describe('page responsibility guardrails', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/index.ts', [
         "export { executeScheduleNow } from './api'",
-        "export { useAutomationThing } from './hooks/useAutomationThing'",
+        "import { useAutomationThing } from './hooks/useAutomationThing'",
+        'export { useAutomationThing }',
       ].join('\n')],
       ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
@@ -555,6 +643,42 @@ describe('page responsibility guardrails', () => {
       'page-storage',
       'page-polling',
     ])
+  })
+
+  it('flags window proxies and document.defaultView as global objects', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        "window.top.fetch('/api/agent/tasks/status')",
+        "window.parent['localStorage'].getItem('draft')",
+        'document.defaultView!.setInterval(() => {}, 1000)',
+        'document["defaultView"]?.fetch("/api/agent/tasks/status")',
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-storage',
+      'page-polling',
+      'page-transport',
+    ])
+  })
+
+  it('does not flag import/export aliases or non-global assignment destructuring', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        "import { fetch as fetchJson } from '../model/http'",
+        'export { fetchJson as fetch }',
+        'const props = { fetch: null }',
+        'let local',
+        ';({ fetch: local } = props)',
+        ';({ fetch } = props)',
+        'export default function Page() { return null }',
+      ].join('\n')],
+      ['features/a/model/http.ts', 'export const fetch = () => null\n'],
+    ))
+
+    expect(violations).toEqual([])
   })
 
   it('detects wrapped global objects before property access', () => {
