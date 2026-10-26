@@ -235,7 +235,7 @@ describe('ConfigManager panel subscriptions', () => {
     })
     mocks.loadUserConfig.mockReset().mockResolvedValue({
       success: true,
-      data: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
+      data: { enabled: true, time: '04:00', updateCore: true, updateCli: true },
     })
     mocks.openConfigDir.mockReset().mockResolvedValue({ success: true })
     mocks.saveConfig.mockReset().mockResolvedValue({ success: true })
@@ -286,13 +286,26 @@ describe('ConfigManager panel subscriptions', () => {
     expect(afterDevice.autoUpdate).toBe(initial.autoUpdate)
     expect(afterDevice.version).toBe(initial.version)
 
+    // 自动更新策略与组件更新是两个面板：编辑时间只重渲染自动更新面板。
+    await setInputValue(
+      container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!,
+      '05:30',
+    )
+    const afterAutoUpdate = snapshot()
+    expect(afterAutoUpdate.autoUpdate).toBeGreaterThan(afterDevice.autoUpdate)
+    expect(afterAutoUpdate.updates).toBe(afterDevice.updates)
+    expect(afterAutoUpdate.version).toBe(afterDevice.version)
+    expect(afterAutoUpdate.connection).toBe(afterDevice.connection)
+    expect(afterAutoUpdate.device).toBe(afterDevice.device)
+
     await act(async () => buttonByText('更新 MAA CLI')?.click())
     await settle()
 
     const afterUpdate = snapshot()
-    expect(afterUpdate.updates).toBeGreaterThan(afterDevice.updates)
-    expect(afterUpdate.connection).toBe(afterDevice.connection)
-    expect(afterUpdate.device).toBe(afterDevice.device)
+    expect(afterUpdate.updates).toBeGreaterThan(afterAutoUpdate.updates)
+    expect(afterUpdate.connection).toBe(afterAutoUpdate.connection)
+    expect(afterUpdate.device).toBe(afterAutoUpdate.device)
+    expect(afterUpdate.autoUpdate).toBe(afterAutoUpdate.autoUpdate)
   })
 
   it('does not re-render update and directory panels when the connection draft changes', async () => {
