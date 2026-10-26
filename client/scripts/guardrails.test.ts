@@ -438,6 +438,7 @@ describe('page responsibility guardrails', () => {
         'type fetch = () => void',
         'interface localStorage {}',
         'enum setInterval { A }',
+        'function generic<fetch>() { return null }',
         'type Props = { fetch: string; localStorage: string }',
         'export default function Page() { return null }',
       ].join('\n')],
