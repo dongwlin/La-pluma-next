@@ -32,7 +32,7 @@ export default defineConfig({
     port,
     reuseExistingServer: false,
     timeout: 30_000,
-    env: { PORT: String(port) },
+    env: { PORT: String(port), ...(process.env.STATIC_DIST_DIR ? { STATIC_DIST_DIR: process.env.STATIC_DIST_DIR } : {}) },
   },
   projects: [{ name: 'chromium-desktop' }],
 })

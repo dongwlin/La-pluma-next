@@ -1,0 +1,3060 @@
+{
+  "schemaVersion": 2,
+  "capturedAt": "2026-10-26T13:24:29.258Z",
+  "sourceCommit": "47c032f629858956f20e93a1342748dbf580eea0",
+  "sourceFilesDirty": false,
+  "buildMode": "production-with-react-profiling",
+  "sourceArchiveSha256": "f800f43e09aa2643c78f9543923ae716ad84b4ed21d57962450b5f31b22f0fbe",
+  "sourceLockSha256": "88d3d05ea3e79dfcdb0c32019e3746bb050352a7ae6b2f354075b305a75a8eb8",
+  "installedWorkspaceLockSha256": "88d3d05ea3e79dfcdb0c32019e3746bb050352a7ae6b2f354075b305a75a8eb8",
+  "distSha256": "fb0a2f995de4426dc93324460cf1a5b4f9a21f721f07902cf9bff17fe7a49db4",
+  "profilingBoundary": "StrictMode > Profiler(id=App) > App",
+  "reactDomAlias": "exact react-dom/client -> react-dom/profiling",
+  "overlaySha256": "cc7d958e04f400ca83eebda8a1667e160ec07cab9d01167df9be3a35b27f5cca",
+  "nodeVersion": "v24.22.1",
+  "reactVersion": "19.3.1",
+  "reactDomVersion": "19.3.1",
+  "viteVersion": "8.3.5",
+  "distDigestPathBase": "dist-root-relative",
+  "pnpmVersion": "12.6.0",
+  "evidenceHarnessDirty": true,
+  "fixtureSha256": "0ce08920b48bcf9c47b5c9ca66225248c3cfda3fe2ef5170d5adf1e76fcdd2a7",
+  "harnessSha256": "4424bcc0a25375282a467c947c9d7ba3ecbedea7c3534714e27dde98944a54c3",
+  "playwrightVersion": "1.64.1",
+  "image": "mcr.microsoft.com/playwright:v1.64.1-noble",
+  "imageId": "sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea",
+  "host": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 7 5800H with Radeon Graphics",
+    "logicalCpuCount": 16
+  },
+  "browserVersion": "156.0.8078.4",
+  "sampleCountPerScenario": 5,
+  "scenarios": [
+    "automation-drag",
+    "copilot-search",
+    "log-append",
+    "training-reorder",
+    "automation-keyboard"
+  ],
+  "profilingEnabled": true,
+  "expectedDragOutcome": "completed",
+  "clockMode": "fixed-Date-only; native performance.now/timers/requestAnimationFrame",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "deviceScaleFactor": 1
+  },
+  "fixedDate": "2026-10-24T04:00:00+08:00",
+  "theme": "dark",
+  "reducedMotion": "reduce",
+  "syntheticInteractionApiDelayMs": 25,
+  "samples": [
+    {
+      "scenario": "automation-drag",
+      "iteration": 1,
+      "browser": {
+        "mutationCallbacks": 6,
+        "childListMutations": 7,
+        "addedNodes": 4,
+        "removedNodes": 3,
+        "attributeMutations": 392,
+        "characterDataMutations": 4,
+        "longTasks": [],
+        "durationMs": 374.9
+      },
+      "cdp": {
+        "TaskDurationMs": 80.488,
+        "ScriptDurationMs": 36.964,
+        "LayoutDurationMs": 3.71,
+        "RecalcStyleDurationMs": 10.795,
+        "LayoutCount": 6,
+        "RecalcStyleCount": 21
+      },
+      "react": {
+        "committedUpdates": 8,
+        "actualDurationSumMs": 12.9,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.6999999582767487,
+            "baseDuration": 4.899999976158142,
+            "startTime": 710.3000000119209,
+            "commitTime": 712.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 4.899999976158142,
+            "startTime": 715.2000000178814,
+            "commitTime": 715.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4.299999982118607,
+            "baseDuration": 6.599999964237213,
+            "startTime": 791.4000000059605,
+            "commitTime": 795.9000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.09999999403953552,
+            "baseDuration": 6.699999958276749,
+            "startTime": 835.7000000178814,
+            "commitTime": 836.0999999940395
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 2,
+            "baseDuration": 5.4000000059604645,
+            "startTime": 908.2000000178814,
+            "commitTime": 910.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.399999976158142,
+            "baseDuration": 5.099999964237213,
+            "startTime": 917.5999999940395,
+            "commitTime": 919.2000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.200000017881393,
+            "startTime": 922.5,
+            "commitTime": 924.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.4000000059604645,
+            "startTime": 987.3000000119209,
+            "commitTime": 989.3000000119209
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "dragOutcome": "completed",
+      "pointerEvents": [
+        {
+          "type": "pointerdown",
+          "x": 330,
+          "y": 328,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 338.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 348.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 359,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 369.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 379.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "lostpointercapture",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 400.3333435058594,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 410.6666564941406,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 421,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 431.3333435058594,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 441.6666564941406,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 452,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointerup",
+          "x": 330,
+          "y": 452,
+          "button": "调整启动游戏顺序，当前第 3 位"
+        }
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f47ea51930dce9ac1a337c7814dba4360963bde7ca7cbbc96928331152972c9c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 234.865,
+          "durationMs": 27.515,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "483300796bca1aee34db0adca79c2920985a758e57726b7571c588f119e89c29",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 263.356,
+          "durationMs": 28.01,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-drag",
+      "iteration": 2,
+      "browser": {
+        "mutationCallbacks": 6,
+        "childListMutations": 7,
+        "addedNodes": 4,
+        "removedNodes": 3,
+        "attributeMutations": 392,
+        "characterDataMutations": 4,
+        "longTasks": [],
+        "durationMs": 358.9
+      },
+      "cdp": {
+        "TaskDurationMs": 85.311,
+        "ScriptDurationMs": 42.052,
+        "LayoutDurationMs": 3.661,
+        "RecalcStyleDurationMs": 10.45,
+        "LayoutCount": 6,
+        "RecalcStyleCount": 20
+      },
+      "react": {
+        "committedUpdates": 8,
+        "actualDurationSumMs": 14.8,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.9000000059604645,
+            "baseDuration": 5.399999976158142,
+            "startTime": 678.4000000059605,
+            "commitTime": 680.5
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 5.399999976158142,
+            "startTime": 683.3000000119209,
+            "commitTime": 683.6000000238419
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4.9000000059604645,
+            "baseDuration": 6.600000023841858,
+            "startTime": 758.6000000238419,
+            "commitTime": 763.7000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 6.500000029802322,
+            "startTime": 800.5,
+            "commitTime": 801
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 2.5,
+            "baseDuration": 5.699999958276749,
+            "startTime": 875.3000000119209,
+            "commitTime": 878.1000000238419
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5000000298023224,
+            "baseDuration": 4.9000000059604645,
+            "startTime": 886.8000000119209,
+            "commitTime": 888.7000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5000000298023224,
+            "baseDuration": 5,
+            "startTime": 891.9000000059605,
+            "commitTime": 893.7000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 2.5000000298023224,
+            "baseDuration": 5.800000011920929,
+            "startTime": 954.9000000059605,
+            "commitTime": 957.7000000178814
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "dragOutcome": "completed",
+      "pointerEvents": [
+        {
+          "type": "pointerdown",
+          "x": 330,
+          "y": 328,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 338.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 348.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 359,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 369.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 379.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "lostpointercapture",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 400.3333435058594,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 410.6666564941406,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 421,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 431.3333435058594,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 441.6666564941406,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 452,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointerup",
+          "x": 330,
+          "y": 452,
+          "button": "调整启动游戏顺序，当前第 3 位"
+        }
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f47ea51930dce9ac1a337c7814dba4360963bde7ca7cbbc96928331152972c9c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 236.055,
+          "durationMs": 26.702,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "483300796bca1aee34db0adca79c2920985a758e57726b7571c588f119e89c29",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 263.409,
+          "durationMs": 27.458,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-drag",
+      "iteration": 3,
+      "browser": {
+        "mutationCallbacks": 6,
+        "childListMutations": 7,
+        "addedNodes": 4,
+        "removedNodes": 3,
+        "attributeMutations": 392,
+        "characterDataMutations": 4,
+        "longTasks": [],
+        "durationMs": 366.5
+      },
+      "cdp": {
+        "TaskDurationMs": 85.383,
+        "ScriptDurationMs": 41.877,
+        "LayoutDurationMs": 3.38,
+        "RecalcStyleDurationMs": 11.356,
+        "LayoutCount": 6,
+        "RecalcStyleCount": 20
+      },
+      "react": {
+        "committedUpdates": 8,
+        "actualDurationSumMs": 14.1,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.600000023841858,
+            "baseDuration": 5.099999964237213,
+            "startTime": 682.4000000059605,
+            "commitTime": 684.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.10000002384185791,
+            "baseDuration": 5.199999988079071,
+            "startTime": 687,
+            "commitTime": 687.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 5.299999982118607,
+            "baseDuration": 7.099999904632568,
+            "startTime": 765.2000000178814,
+            "commitTime": 771.1000000238419
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 7.099999904632568,
+            "startTime": 808.3000000119209,
+            "commitTime": 808.7000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.899999976158142,
+            "baseDuration": 5.699999928474426,
+            "startTime": 882.4000000059605,
+            "commitTime": 884.6000000238419
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.600000023841858,
+            "baseDuration": 5.199999958276749,
+            "startTime": 891.5,
+            "commitTime": 893.1000000238419
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000476837158,
+            "baseDuration": 5.300000011920929,
+            "startTime": 896.5,
+            "commitTime": 898.7000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.899999976158142,
+            "baseDuration": 5.599999934434891,
+            "startTime": 961.5,
+            "commitTime": 963.6000000238419
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "dragOutcome": "completed",
+      "pointerEvents": [
+        {
+          "type": "pointerdown",
+          "x": 330,
+          "y": 328,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 338.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 348.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 359,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 369.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 379.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "lostpointercapture",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 400.3333435058594,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 410.6666564941406,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 421,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 431.3333435058594,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 441.6666564941406,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 452,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointerup",
+          "x": 330,
+          "y": 452,
+          "button": "调整启动游戏顺序，当前第 3 位"
+        }
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f47ea51930dce9ac1a337c7814dba4360963bde7ca7cbbc96928331152972c9c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 243.53,
+          "durationMs": 26.891,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "483300796bca1aee34db0adca79c2920985a758e57726b7571c588f119e89c29",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 271.3,
+          "durationMs": 27.585,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-drag",
+      "iteration": 4,
+      "browser": {
+        "mutationCallbacks": 6,
+        "childListMutations": 7,
+        "addedNodes": 4,
+        "removedNodes": 3,
+        "attributeMutations": 392,
+        "characterDataMutations": 4,
+        "longTasks": [],
+        "durationMs": 358.3
+      },
+      "cdp": {
+        "TaskDurationMs": 84.326,
+        "ScriptDurationMs": 40.552,
+        "LayoutDurationMs": 3.519,
+        "RecalcStyleDurationMs": 11.519,
+        "LayoutCount": 6,
+        "RecalcStyleCount": 20
+      },
+      "react": {
+        "committedUpdates": 8,
+        "actualDurationSumMs": 14,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.400000035762787,
+            "startTime": 687.5999999940395,
+            "commitTime": 689.5
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 5.400000035762787,
+            "startTime": 692.4000000059605,
+            "commitTime": 692.8000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 5.299999982118607,
+            "baseDuration": 6.800000011920929,
+            "startTime": 765.6999999880791,
+            "commitTime": 771.1999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 6.800000011920929,
+            "startTime": 808.0999999940395,
+            "commitTime": 808.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 2.300000011920929,
+            "baseDuration": 5.800000041723251,
+            "startTime": 882.6999999880791,
+            "commitTime": 885.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.4000000059604645,
+            "baseDuration": 5.000000029802322,
+            "startTime": 893.8000000119209,
+            "commitTime": 895.5999999940395
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.600000023841858,
+            "baseDuration": 5.300000041723251,
+            "startTime": 898.6999999880791,
+            "commitTime": 900.5
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.300000011920929,
+            "startTime": 963.0999999940395,
+            "commitTime": 965.3000000119209
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "dragOutcome": "completed",
+      "pointerEvents": [
+        {
+          "type": "pointerdown",
+          "x": 330,
+          "y": 328,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 338.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 348.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 359,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 369.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 379.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "lostpointercapture",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 400.3333435058594,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 410.6666564941406,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 421,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 431.3333435058594,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 441.6666564941406,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 452,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointerup",
+          "x": 330,
+          "y": 452,
+          "button": "调整启动游戏顺序，当前第 3 位"
+        }
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f47ea51930dce9ac1a337c7814dba4360963bde7ca7cbbc96928331152972c9c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 235.388,
+          "durationMs": 28.028,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "483300796bca1aee34db0adca79c2920985a758e57726b7571c588f119e89c29",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 264.12,
+          "durationMs": 27.407,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-drag",
+      "iteration": 5,
+      "browser": {
+        "mutationCallbacks": 6,
+        "childListMutations": 7,
+        "addedNodes": 4,
+        "removedNodes": 3,
+        "attributeMutations": 392,
+        "characterDataMutations": 4,
+        "longTasks": [],
+        "durationMs": 368.3
+      },
+      "cdp": {
+        "TaskDurationMs": 76.169,
+        "ScriptDurationMs": 34.129,
+        "LayoutDurationMs": 3.247,
+        "RecalcStyleDurationMs": 10.461,
+        "LayoutCount": 6,
+        "RecalcStyleCount": 21
+      },
+      "react": {
+        "committedUpdates": 8,
+        "actualDurationSumMs": 11.2,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5,
+            "baseDuration": 4.699999958276749,
+            "startTime": 691.8000000119209,
+            "commitTime": 693.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 4.699999958276749,
+            "startTime": 696.0999999940395,
+            "commitTime": 696.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4,
+            "baseDuration": 6.199999958276749,
+            "startTime": 774.3000000119209,
+            "commitTime": 778.6999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.09999999403953552,
+            "baseDuration": 6.199999958276749,
+            "startTime": 816.9000000059605,
+            "commitTime": 817.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.399999976158142,
+            "baseDuration": 4.799999952316284,
+            "startTime": 891.4000000059605,
+            "commitTime": 893.1999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.300000011920929,
+            "baseDuration": 4.699999988079071,
+            "startTime": 899.0999999940395,
+            "commitTime": 900.6999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1,
+            "baseDuration": 4.39999994635582,
+            "startTime": 903.8000000119209,
+            "commitTime": 905.1999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.899999976158142,
+            "baseDuration": 5.299999952316284,
+            "startTime": 965.5,
+            "commitTime": 967.6999999880791
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "领取奖励",
+        "启动游戏"
+      ],
+      "dragOutcome": "completed",
+      "pointerEvents": [
+        {
+          "type": "pointerdown",
+          "x": 330,
+          "y": 328,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 338.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 348.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 359,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 369.3333435058594,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 379.6666564941406,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 1 位"
+        },
+        {
+          "type": "lostpointercapture",
+          "x": 330,
+          "y": 390,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 400.3333435058594,
+          "button": "调整启动游戏顺序，当前第 2 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 410.6666564941406,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 421,
+          "button": null
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 431.3333435058594,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 441.6666564941406,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointermove",
+          "x": 330,
+          "y": 452,
+          "button": "调整领取奖励顺序，当前第 3 位"
+        },
+        {
+          "type": "pointerup",
+          "x": 330,
+          "y": 452,
+          "button": "调整启动游戏顺序，当前第 3 位"
+        }
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f47ea51930dce9ac1a337c7814dba4360963bde7ca7cbbc96928331152972c9c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 238.71,
+          "durationMs": 26.921,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "483300796bca1aee34db0adca79c2920985a758e57726b7571c588f119e89c29",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "award-visual-3",
+              "startup-visual-1"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 266.53,
+          "durationMs": 27.333,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "copilot-search",
+      "iteration": 1,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 8,
+        "addedNodes": 4,
+        "removedNodes": 4,
+        "attributeMutations": 71,
+        "characterDataMutations": 5,
+        "longTasks": [],
+        "durationMs": 114.9
+      },
+      "cdp": {
+        "TaskDurationMs": 64.296,
+        "ScriptDurationMs": 14.114,
+        "LayoutDurationMs": 3.405,
+        "RecalcStyleDurationMs": 3.797,
+        "LayoutCount": 7,
+        "RecalcStyleCount": 18
+      },
+      "react": {
+        "committedUpdates": 4,
+        "actualDurationSumMs": 2.9,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 5.300000041723251,
+            "startTime": 618.5999999940395,
+            "commitTime": 618.8999999761581
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5999999940395355,
+            "baseDuration": 5.600000023841858,
+            "startTime": 626,
+            "commitTime": 627.7999999821186
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 5.500000029802322,
+            "startTime": 655,
+            "commitTime": 655.2999999821186
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.300000011920929,
+            "baseDuration": 5.000000029802322,
+            "startTime": 664.5999999940395,
+            "commitTime": 666.1999999880791
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/config/user/combat-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/copilot/search?stage=1-7",
+          "startedAfterMs": 23.941,
+          "durationMs": 30.773,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "copilot-search",
+      "iteration": 2,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 8,
+        "addedNodes": 4,
+        "removedNodes": 4,
+        "attributeMutations": 71,
+        "characterDataMutations": 5,
+        "longTasks": [],
+        "durationMs": 114.3
+      },
+      "cdp": {
+        "TaskDurationMs": 65.216,
+        "ScriptDurationMs": 14.118,
+        "LayoutDurationMs": 3.043,
+        "RecalcStyleDurationMs": 3.772,
+        "LayoutCount": 7,
+        "RecalcStyleCount": 20
+      },
+      "react": {
+        "committedUpdates": 4,
+        "actualDurationSumMs": 3.1,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 4.39999994635582,
+            "startTime": 618.9000000059605,
+            "commitTime": 619.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.699999988079071,
+            "baseDuration": 5.099999964237213,
+            "startTime": 626.7000000178814,
+            "commitTime": 628.5
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.09999999403953552,
+            "baseDuration": 5.099999964237213,
+            "startTime": 655.7000000178814,
+            "commitTime": 656
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.300000011920929,
+            "baseDuration": 4.699999988079071,
+            "startTime": 665.5,
+            "commitTime": 666.9000000059605
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/config/user/combat-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/copilot/search?stage=1-7",
+          "startedAfterMs": 24.725,
+          "durationMs": 30.439,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "copilot-search",
+      "iteration": 3,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 8,
+        "addedNodes": 4,
+        "removedNodes": 4,
+        "attributeMutations": 71,
+        "characterDataMutations": 5,
+        "longTasks": [],
+        "durationMs": 114.5
+      },
+      "cdp": {
+        "TaskDurationMs": 63.943,
+        "ScriptDurationMs": 13.08,
+        "LayoutDurationMs": 2.877,
+        "RecalcStyleDurationMs": 3.725,
+        "LayoutCount": 7,
+        "RecalcStyleCount": 18
+      },
+      "react": {
+        "committedUpdates": 4,
+        "actualDurationSumMs": 2.7,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 5.099999964237213,
+            "startTime": 628.3999999761581,
+            "commitTime": 628.6999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.199999988079071,
+            "baseDuration": 4.999999970197678,
+            "startTime": 635.2999999821186,
+            "commitTime": 636.7999999821186
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 4.999999970197678,
+            "startTime": 663.2999999821186,
+            "commitTime": 663.5999999940395
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5,
+            "baseDuration": 5.199999988079071,
+            "startTime": 673.3999999761581,
+            "commitTime": 674.8999999761581
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/config/user/combat-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/copilot/search?stage=1-7",
+          "startedAfterMs": 22.324,
+          "durationMs": 30.705,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "copilot-search",
+      "iteration": 4,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 8,
+        "addedNodes": 4,
+        "removedNodes": 4,
+        "attributeMutations": 71,
+        "characterDataMutations": 5,
+        "longTasks": [],
+        "durationMs": 114.4
+      },
+      "cdp": {
+        "TaskDurationMs": 62.802,
+        "ScriptDurationMs": 13.302,
+        "LayoutDurationMs": 2.935,
+        "RecalcStyleDurationMs": 3.784,
+        "LayoutCount": 7,
+        "RecalcStyleCount": 19
+      },
+      "react": {
+        "committedUpdates": 4,
+        "actualDurationSumMs": 2.6,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0,
+            "baseDuration": 4.700000017881393,
+            "startTime": 618,
+            "commitTime": 618.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.2999999523162842,
+            "baseDuration": 4.699999988079071,
+            "startTime": 625.0999999940395,
+            "commitTime": 626.7000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.09999999403953552,
+            "baseDuration": 4.699999988079071,
+            "startTime": 653.5,
+            "commitTime": 653.9000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.2000000178813934,
+            "baseDuration": 4.700000047683716,
+            "startTime": 663.4000000059605,
+            "commitTime": 664.8000000119209
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/config/user/combat-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/copilot/search?stage=1-7",
+          "startedAfterMs": 22.455,
+          "durationMs": 30.953,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "copilot-search",
+      "iteration": 5,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 8,
+        "addedNodes": 4,
+        "removedNodes": 4,
+        "attributeMutations": 71,
+        "characterDataMutations": 5,
+        "longTasks": [],
+        "durationMs": 114.4
+      },
+      "cdp": {
+        "TaskDurationMs": 66.562,
+        "ScriptDurationMs": 14.378,
+        "LayoutDurationMs": 3.017,
+        "RecalcStyleDurationMs": 4.333,
+        "LayoutCount": 7,
+        "RecalcStyleCount": 18
+      },
+      "react": {
+        "committedUpdates": 4,
+        "actualDurationSumMs": 3,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.10000002384185791,
+            "baseDuration": 4.300000011920929,
+            "startTime": 613.8000000119209,
+            "commitTime": 614.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5,
+            "baseDuration": 4.300000011920929,
+            "startTime": 622.0999999940395,
+            "commitTime": 623.8000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 0.09999999403953552,
+            "baseDuration": 4.299999982118607,
+            "startTime": 650.5,
+            "commitTime": 650.8000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.300000011920929,
+            "baseDuration": 4.300000011920929,
+            "startTime": 662,
+            "commitTime": 663.5999999940395
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/config/user/combat-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/copilot/search?stage=1-7",
+          "startedAfterMs": 23.918,
+          "durationMs": 31.801,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "log-append",
+      "iteration": 1,
+      "browser": {
+        "mutationCallbacks": 1,
+        "childListMutations": 20,
+        "addedNodes": 20,
+        "removedNodes": 0,
+        "attributeMutations": 9,
+        "characterDataMutations": 1,
+        "longTasks": [],
+        "durationMs": 824.2
+      },
+      "cdp": {
+        "TaskDurationMs": 34.158,
+        "ScriptDurationMs": 8.408,
+        "LayoutDurationMs": 1.808,
+        "RecalcStyleDurationMs": 0.863,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 2
+      },
+      "react": {
+        "committedUpdates": 1,
+        "actualDurationSumMs": 3.9,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 3.900000035762787,
+            "baseDuration": 6.800000071525574,
+            "startTime": 1381.0999999940395,
+            "commitTime": 1385.699999988079
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/logs/files": 1,
+        "GET /api/agent/logs/recent?lines=200": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/logs/recent?lines=200",
+          "startedAfterMs": 755.233,
+          "durationMs": 28.016,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "log-append",
+      "iteration": 2,
+      "browser": {
+        "mutationCallbacks": 1,
+        "childListMutations": 20,
+        "addedNodes": 20,
+        "removedNodes": 0,
+        "attributeMutations": 9,
+        "characterDataMutations": 1,
+        "longTasks": [],
+        "durationMs": 823.5
+      },
+      "cdp": {
+        "TaskDurationMs": 33.286,
+        "ScriptDurationMs": 8.017,
+        "LayoutDurationMs": 1.906,
+        "RecalcStyleDurationMs": 0.902,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 2
+      },
+      "react": {
+        "committedUpdates": 1,
+        "actualDurationSumMs": 3.8,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 3.800000011920929,
+            "baseDuration": 7.0999999940395355,
+            "startTime": 1382.5999999940395,
+            "commitTime": 1386.7999999821186
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/logs/files": 1,
+        "GET /api/agent/logs/recent?lines=200": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/logs/recent?lines=200",
+          "startedAfterMs": 753.233,
+          "durationMs": 27.894,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "log-append",
+      "iteration": 3,
+      "browser": {
+        "mutationCallbacks": 1,
+        "childListMutations": 20,
+        "addedNodes": 20,
+        "removedNodes": 0,
+        "attributeMutations": 9,
+        "characterDataMutations": 1,
+        "longTasks": [],
+        "durationMs": 830.8
+      },
+      "cdp": {
+        "TaskDurationMs": 32.691,
+        "ScriptDurationMs": 8.061,
+        "LayoutDurationMs": 1.811,
+        "RecalcStyleDurationMs": 0.912,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 2
+      },
+      "react": {
+        "committedUpdates": 1,
+        "actualDurationSumMs": 3.9,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 3.9000000059604645,
+            "baseDuration": 7.300000011920929,
+            "startTime": 1381.800000011921,
+            "commitTime": 1386.2000000178814
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/logs/files": 1,
+        "GET /api/agent/logs/recent?lines=200": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/logs/recent?lines=200",
+          "startedAfterMs": 759.235,
+          "durationMs": 28.274,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "log-append",
+      "iteration": 4,
+      "browser": {
+        "mutationCallbacks": 1,
+        "childListMutations": 20,
+        "addedNodes": 20,
+        "removedNodes": 0,
+        "attributeMutations": 9,
+        "characterDataMutations": 1,
+        "longTasks": [],
+        "durationMs": 813
+      },
+      "cdp": {
+        "TaskDurationMs": 32.889,
+        "ScriptDurationMs": 7.814,
+        "LayoutDurationMs": 1.748,
+        "RecalcStyleDurationMs": 0.913,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 2
+      },
+      "react": {
+        "committedUpdates": 1,
+        "actualDurationSumMs": 3.8,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 3.799999952316284,
+            "baseDuration": 7.399999916553497,
+            "startTime": 1381,
+            "commitTime": 1385.2999999821186
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/logs/files": 1,
+        "GET /api/agent/logs/recent?lines=200": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/logs/recent?lines=200",
+          "startedAfterMs": 755.598,
+          "durationMs": 28.003,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "log-append",
+      "iteration": 5,
+      "browser": {
+        "mutationCallbacks": 1,
+        "childListMutations": 20,
+        "addedNodes": 20,
+        "removedNodes": 0,
+        "attributeMutations": 9,
+        "characterDataMutations": 1,
+        "longTasks": [],
+        "durationMs": 825
+      },
+      "cdp": {
+        "TaskDurationMs": 34.428,
+        "ScriptDurationMs": 8.433,
+        "LayoutDurationMs": 2.171,
+        "RecalcStyleDurationMs": 0.972,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 3
+      },
+      "react": {
+        "committedUpdates": 1,
+        "actualDurationSumMs": 4.2,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4.200000017881393,
+            "baseDuration": 7.500000029802322,
+            "startTime": 1381.5999999940395,
+            "commitTime": 1386.2000000178814
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/logs/files": 1,
+        "GET /api/agent/logs/recent?lines=200": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/agent/logs/recent?lines=200",
+          "startedAfterMs": 752.221,
+          "durationMs": 28.155,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "training-reorder",
+      "iteration": 1,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 18,
+        "addedNodes": 8,
+        "removedNodes": 10,
+        "attributeMutations": 59,
+        "characterDataMutations": 12,
+        "longTasks": [],
+        "durationMs": 164.5
+      },
+      "cdp": {
+        "TaskDurationMs": 41.378,
+        "ScriptDurationMs": 13.418,
+        "LayoutDurationMs": 1.434,
+        "RecalcStyleDurationMs": 4.413,
+        "LayoutCount": 4,
+        "RecalcStyleCount": 13
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 4.2,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.2999999523162842,
+            "baseDuration": 5.399999916553497,
+            "startTime": 630.7000000178814,
+            "commitTime": 632.2000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.800000011920929,
+            "baseDuration": 5.699999958276749,
+            "startTime": 695.9000000059605,
+            "commitTime": 697.8000000119209
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.0999999940395355,
+            "baseDuration": 5.199999958276749,
+            "startTime": 700.4000000059605,
+            "commitTime": 701.7000000178814
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/training/operators?needsElite2=true&status=trainable": 2,
+        "GET /api/agent/training/operators?needsElite2=true&status=owned": 1,
+        "GET /api/agent/data/operators": 1,
+        "GET /api/agent/data/operbox": 1,
+        "GET /api/agent/training/queue": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "PUT",
+          "path": "/api/agent/training/queue/order",
+          "bodySha256": "6e0ef4d0384a98e6a4cd9a79464c828a3a76718b46882ed4e8f55134ba253a69",
+          "bodySummary": {
+            "operatorIds": [
+              "char_202_demkni",
+              "char_180_amgoat"
+            ]
+          },
+          "startedAfterMs": 46.73,
+          "durationMs": 28.431,
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/agent/training/queue",
+          "startedAfterMs": 75.804,
+          "durationMs": 26.791,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "training-reorder",
+      "iteration": 2,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 18,
+        "addedNodes": 8,
+        "removedNodes": 10,
+        "attributeMutations": 59,
+        "characterDataMutations": 12,
+        "longTasks": [],
+        "durationMs": 146.8
+      },
+      "cdp": {
+        "TaskDurationMs": 44.637,
+        "ScriptDurationMs": 16.769,
+        "LayoutDurationMs": 1.554,
+        "RecalcStyleDurationMs": 4.464,
+        "LayoutCount": 4,
+        "RecalcStyleCount": 13
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 5,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5999999940395355,
+            "baseDuration": 5.900000065565109,
+            "startTime": 632,
+            "commitTime": 633.9000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 2,
+            "baseDuration": 5.700000077486038,
+            "startTime": 698.5,
+            "commitTime": 700.6999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.4000000059604645,
+            "baseDuration": 5.600000083446503,
+            "startTime": 704,
+            "commitTime": 705.5999999940395
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/training/operators?needsElite2=true&status=trainable": 2,
+        "GET /api/agent/training/operators?needsElite2=true&status=owned": 1,
+        "GET /api/agent/data/operators": 1,
+        "GET /api/agent/data/operbox": 1,
+        "GET /api/agent/training/queue": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "PUT",
+          "path": "/api/agent/training/queue/order",
+          "bodySha256": "6e0ef4d0384a98e6a4cd9a79464c828a3a76718b46882ed4e8f55134ba253a69",
+          "bodySummary": {
+            "operatorIds": [
+              "char_202_demkni",
+              "char_180_amgoat"
+            ]
+          },
+          "startedAfterMs": 47.611,
+          "durationMs": 28.555,
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/agent/training/queue",
+          "startedAfterMs": 76.695,
+          "durationMs": 27.401,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "training-reorder",
+      "iteration": 3,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 18,
+        "addedNodes": 8,
+        "removedNodes": 10,
+        "attributeMutations": 59,
+        "characterDataMutations": 12,
+        "longTasks": [],
+        "durationMs": 147.5
+      },
+      "cdp": {
+        "TaskDurationMs": 40.243,
+        "ScriptDurationMs": 14.401,
+        "LayoutDurationMs": 1.422,
+        "RecalcStyleDurationMs": 4.225,
+        "LayoutCount": 4,
+        "RecalcStyleCount": 12
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 4.5,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.300000011920929,
+            "baseDuration": 5,
+            "startTime": 647.3999999761581,
+            "commitTime": 648.8999999761581
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.800000011920929,
+            "baseDuration": 4.9000000059604645,
+            "startTime": 711.7999999821186,
+            "commitTime": 713.8999999761581
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.4000000059604645,
+            "baseDuration": 4.999999970197678,
+            "startTime": 717.0999999940395,
+            "commitTime": 718.7999999821186
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/training/operators?needsElite2=true&status=trainable": 2,
+        "GET /api/agent/training/operators?needsElite2=true&status=owned": 1,
+        "GET /api/agent/data/operators": 1,
+        "GET /api/agent/data/operbox": 1,
+        "GET /api/agent/training/queue": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "PUT",
+          "path": "/api/agent/training/queue/order",
+          "bodySha256": "6e0ef4d0384a98e6a4cd9a79464c828a3a76718b46882ed4e8f55134ba253a69",
+          "bodySummary": {
+            "operatorIds": [
+              "char_202_demkni",
+              "char_180_amgoat"
+            ]
+          },
+          "startedAfterMs": 45.117,
+          "durationMs": 28.213,
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/agent/training/queue",
+          "startedAfterMs": 73.918,
+          "durationMs": 27.11,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "training-reorder",
+      "iteration": 4,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 18,
+        "addedNodes": 8,
+        "removedNodes": 10,
+        "attributeMutations": 59,
+        "characterDataMutations": 12,
+        "longTasks": [],
+        "durationMs": 147.5
+      },
+      "cdp": {
+        "TaskDurationMs": 40.804,
+        "ScriptDurationMs": 14.671,
+        "LayoutDurationMs": 1.404,
+        "RecalcStyleDurationMs": 4.382,
+        "LayoutCount": 4,
+        "RecalcStyleCount": 12
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 4.6,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5999999940395355,
+            "baseDuration": 5.4000000059604645,
+            "startTime": 633.6000000238419,
+            "commitTime": 635.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.6999999582767487,
+            "baseDuration": 4.9000000059604645,
+            "startTime": 697.1000000238419,
+            "commitTime": 699.2000000178814
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.2999999821186066,
+            "baseDuration": 5.0999999940395355,
+            "startTime": 702,
+            "commitTime": 703.5
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/training/operators?needsElite2=true&status=trainable": 2,
+        "GET /api/agent/training/operators?needsElite2=true&status=owned": 1,
+        "GET /api/agent/data/operators": 1,
+        "GET /api/agent/data/operbox": 1,
+        "GET /api/agent/training/queue": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "PUT",
+          "path": "/api/agent/training/queue/order",
+          "bodySha256": "6e0ef4d0384a98e6a4cd9a79464c828a3a76718b46882ed4e8f55134ba253a69",
+          "bodySummary": {
+            "operatorIds": [
+              "char_202_demkni",
+              "char_180_amgoat"
+            ]
+          },
+          "startedAfterMs": 45.734,
+          "durationMs": 26.786,
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/agent/training/queue",
+          "startedAfterMs": 73.24,
+          "durationMs": 27.239,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "training-reorder",
+      "iteration": 5,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 18,
+        "addedNodes": 8,
+        "removedNodes": 10,
+        "attributeMutations": 59,
+        "characterDataMutations": 12,
+        "longTasks": [],
+        "durationMs": 147.7
+      },
+      "cdp": {
+        "TaskDurationMs": 43.951,
+        "ScriptDurationMs": 16.54,
+        "LayoutDurationMs": 1.464,
+        "RecalcStyleDurationMs": 4.476,
+        "LayoutCount": 4,
+        "RecalcStyleCount": 13
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 5.5,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7999999821186066,
+            "baseDuration": 4.899999976158142,
+            "startTime": 631.1999999880791,
+            "commitTime": 633.3999999761581
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 2.1999999582767487,
+            "baseDuration": 5,
+            "startTime": 696.8999999761581,
+            "commitTime": 699.3999999761581
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5,
+            "baseDuration": 4.800000011920929,
+            "startTime": 702.7999999821186,
+            "commitTime": 704.3999999761581
+          }
+        ]
+      },
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/training/operators?needsElite2=true&status=trainable": 2,
+        "GET /api/agent/training/operators?needsElite2=true&status=owned": 1,
+        "GET /api/agent/data/operators": 1,
+        "GET /api/agent/data/operbox": 1,
+        "GET /api/agent/training/queue": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "PUT",
+          "path": "/api/agent/training/queue/order",
+          "bodySha256": "6e0ef4d0384a98e6a4cd9a79464c828a3a76718b46882ed4e8f55134ba253a69",
+          "bodySummary": {
+            "operatorIds": [
+              "char_202_demkni",
+              "char_180_amgoat"
+            ]
+          },
+          "startedAfterMs": 47.686,
+          "durationMs": 27.793,
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/agent/training/queue",
+          "startedAfterMs": 76.136,
+          "durationMs": 27.45,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-keyboard",
+      "iteration": 1,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 5,
+        "addedNodes": 3,
+        "removedNodes": 2,
+        "attributeMutations": 196,
+        "characterDataMutations": 2,
+        "longTasks": [],
+        "durationMs": 164.2
+      },
+      "cdp": {
+        "TaskDurationMs": 47.281,
+        "ScriptDurationMs": 18.946,
+        "LayoutDurationMs": 2.442,
+        "RecalcStyleDurationMs": 6.742,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 7
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 8.1,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4.700000017881393,
+            "baseDuration": 6.199999958276749,
+            "startTime": 653.2999999821186,
+            "commitTime": 658.2999999821186
+          },
+          {
+            "id": "App",
+            "phase": "nested-update",
+            "actualDuration": 1.6999999582767487,
+            "baseDuration": 5.199999928474426,
+            "startTime": 671.5999999940395,
+            "commitTime": 673.5
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.199999988079071,
+            "startTime": 734.6999999880791,
+            "commitTime": 736.5
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f1953080407ccc0dfc1d98bbe870692b615ebfd274ecfff9dfd131526b3582f8",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 35.658,
+          "durationMs": 27.112,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "4a53477c75315fea18e8c889039654c34f85445a9b6059433e1b6bfccaf44c2c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 63.479,
+          "durationMs": 27.292,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-keyboard",
+      "iteration": 2,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 5,
+        "addedNodes": 3,
+        "removedNodes": 2,
+        "attributeMutations": 196,
+        "characterDataMutations": 2,
+        "longTasks": [],
+        "durationMs": 164.7
+      },
+      "cdp": {
+        "TaskDurationMs": 47.193,
+        "ScriptDurationMs": 18.654,
+        "LayoutDurationMs": 2.479,
+        "RecalcStyleDurationMs": 6.848,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 7
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 7.8,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4.5,
+            "baseDuration": 6.299999982118607,
+            "startTime": 650.4000000059605,
+            "commitTime": 655.3000000119209
+          },
+          {
+            "id": "App",
+            "phase": "nested-update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.0999999940395355,
+            "startTime": 668.4000000059605,
+            "commitTime": 670.4000000059605
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5999999940395355,
+            "baseDuration": 4.999999940395355,
+            "startTime": 730.7000000178814,
+            "commitTime": 732.5999999940395
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f1953080407ccc0dfc1d98bbe870692b615ebfd274ecfff9dfd131526b3582f8",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 34.975,
+          "durationMs": 26.666,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "4a53477c75315fea18e8c889039654c34f85445a9b6059433e1b6bfccaf44c2c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 62.36,
+          "durationMs": 26.977,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-keyboard",
+      "iteration": 3,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 5,
+        "addedNodes": 3,
+        "removedNodes": 2,
+        "attributeMutations": 196,
+        "characterDataMutations": 2,
+        "longTasks": [],
+        "durationMs": 164.8
+      },
+      "cdp": {
+        "TaskDurationMs": 50.849,
+        "ScriptDurationMs": 21.005,
+        "LayoutDurationMs": 2.614,
+        "RecalcStyleDurationMs": 8.176,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 7
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 9.3,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 5.900000035762787,
+            "baseDuration": 7.200000077486038,
+            "startTime": 649.7999999821186,
+            "commitTime": 656.2999999821186
+          },
+          {
+            "id": "App",
+            "phase": "nested-update",
+            "actualDuration": 1.800000011920929,
+            "baseDuration": 5.300000041723251,
+            "startTime": 671.3999999761581,
+            "commitTime": 673.3999999761581
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.5999999940395355,
+            "baseDuration": 4.900000035762787,
+            "startTime": 734.6999999880791,
+            "commitTime": 736.5999999940395
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f1953080407ccc0dfc1d98bbe870692b615ebfd274ecfff9dfd131526b3582f8",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 39.397,
+          "durationMs": 26.836,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "4a53477c75315fea18e8c889039654c34f85445a9b6059433e1b6bfccaf44c2c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 67.033,
+          "durationMs": 27.148,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-keyboard",
+      "iteration": 4,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 5,
+        "addedNodes": 3,
+        "removedNodes": 2,
+        "attributeMutations": 196,
+        "characterDataMutations": 2,
+        "longTasks": [],
+        "durationMs": 165
+      },
+      "cdp": {
+        "TaskDurationMs": 46.254,
+        "ScriptDurationMs": 18.137,
+        "LayoutDurationMs": 2.417,
+        "RecalcStyleDurationMs": 6.778,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 7
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 7.9,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 4.5,
+            "baseDuration": 6.399999976158142,
+            "startTime": 635.0999999940395,
+            "commitTime": 639.7999999821186
+          },
+          {
+            "id": "App",
+            "phase": "nested-update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.300000011920929,
+            "startTime": 652.5999999940395,
+            "commitTime": 654.5999999940395
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.7000000178813934,
+            "baseDuration": 5.4000000059604645,
+            "startTime": 714.2999999821186,
+            "commitTime": 716.1999999880791
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f1953080407ccc0dfc1d98bbe870692b615ebfd274ecfff9dfd131526b3582f8",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 33.921,
+          "durationMs": 26.685,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "4a53477c75315fea18e8c889039654c34f85445a9b6059433e1b6bfccaf44c2c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 61.385,
+          "durationMs": 26.671,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "scenario": "automation-keyboard",
+      "iteration": 5,
+      "browser": {
+        "mutationCallbacks": 3,
+        "childListMutations": 5,
+        "addedNodes": 3,
+        "removedNodes": 2,
+        "attributeMutations": 196,
+        "characterDataMutations": 2,
+        "longTasks": [],
+        "durationMs": 164.4
+      },
+      "cdp": {
+        "TaskDurationMs": 50.917,
+        "ScriptDurationMs": 22.444,
+        "LayoutDurationMs": 2.642,
+        "RecalcStyleDurationMs": 7.078,
+        "LayoutCount": 2,
+        "RecalcStyleCount": 7
+      },
+      "react": {
+        "committedUpdates": 3,
+        "actualDurationSumMs": 10.5,
+        "commits": [
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 6.299999982118607,
+            "baseDuration": 7.199999958276749,
+            "startTime": 654.3000000119209,
+            "commitTime": 661
+          },
+          {
+            "id": "App",
+            "phase": "nested-update",
+            "actualDuration": 2.2999999821186066,
+            "baseDuration": 5.599999964237213,
+            "startTime": 675.3000000119209,
+            "commitTime": 677.6999999880791
+          },
+          {
+            "id": "App",
+            "phase": "update",
+            "actualDuration": 1.9000000059604645,
+            "baseDuration": 4.999999970197678,
+            "startTime": 738.9000000059605,
+            "commitTime": 741
+          }
+        ]
+      },
+      "requestedOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "finalOrder": [
+        "理智作战",
+        "启动游戏",
+        "领取奖励"
+      ],
+      "setupPageErrors": [],
+      "setupConsoleErrors": [],
+      "measurementPageErrors": [],
+      "measurementConsoleErrors": [],
+      "setupRequests": {
+        "GET /api/operator-quotes/random": 1,
+        "GET /api/agent/webrtc/status": 1,
+        "GET /api/agent/notifications/config": 1,
+        "GET /api/agent/activity?clientType=Official": 1,
+        "GET /api/agent/config/user/automation-tasks": 1,
+        "GET /api/operator-quotes/daily": 1,
+        "GET /api/agent/runs/current": 1,
+        "GET /api/agent/tasks/status": 1
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/agent/config/user/automation-tasks",
+          "bodySha256": "f1953080407ccc0dfc1d98bbe870692b615ebfd274ecfff9dfd131526b3582f8",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "schedule": {
+              "enabled": true,
+              "times": [
+                "04:00",
+                "12:00"
+              ]
+            }
+          },
+          "startedAfterMs": 39.82,
+          "durationMs": 26.875,
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent/schedules",
+          "bodySha256": "4a53477c75315fea18e8c889039654c34f85445a9b6059433e1b6bfccaf44c2c",
+          "bodySummary": {
+            "taskIds": [
+              "fight-visual-2",
+              "startup-visual-1",
+              "award-visual-3"
+            ],
+            "scheduleId": "default",
+            "times": [
+              "04:00",
+              "12:00"
+            ]
+          },
+          "startedAfterMs": 67.475,
+          "durationMs": 26.878,
+          "status": 200
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,8 @@
 
 本记录描述 `af3634d` 的实际前端行为，采集日期为 2026-10-25。下文的“目标所有者”用于后续迁移评审，尚未实现；现有缺陷不构成必须保留的兼容要求。
 
+本页在迁移过程中追加过各域进展，包含历史行为与实施时说明。维护当前代码请以[前端架构与所有权](frontend-architecture.md)、[迁移与兼容审计](frontend-migration.md)和[最终质量基线](frontend-final-baseline.md)为准；原始性能 JSON 与说明保留原样，新的双侧 profiling 和普通生产后测见[最终性能证据](evidence/frontend-final/performance.md)。
+
 ## 复现环境与质量门禁
 
 Node 24.22.1、pnpm 12.6.0；宿主 Linux x86_64。视觉统一使用 `mcr.microsoft.com/playwright:v1.64.1-noble` 的 Chromium，时区 Asia/Shanghai、语言 zh-CN、DPR 1。仓库根执行：
@@ -176,4 +178,4 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获。跨 remount 配置写入次序、automation schedule 半失败、训练设置改变后的计划有效期与计划应用跨页联动已由 FPR-015/022/023 关闭，资源更新后的目录/材料/计划/总览失效已由 FPR-026 关闭；历史日志在 Activity 隐藏后的 loading 残留与恢复重试已由 FPR-028 关闭（见[历史日志与清理协调](logs-history-and-cleanup.md)）。应用计划遇到本设备未确认的 automation 草稿（含未挂载页面留下的持久化标记）会拒绝应用，但跨标签页/跨客户端同时写入仍为最后写入生效。计划已生成/计划过期仍未纳入 72 张默认态截图，FPR-023 未改变默认态 DOM/CSS，也未更新视觉基线。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
-实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，旧处理器取消排序并还原原序，没有配置写入。FPR-039 已把 `pointermove`/`pointerup`/`pointercancel` 改挂 `document`，`lostpointercapture` 不再取消排序，并由 `AutomationTasks.layout.test.tsx` 的成功拖拽用例固定；默认态视觉未变化。性能文件中的取消样本仍只能作为前测，成功排序的固定场景与耗时对照由 FPR-043 重采。
+实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，旧处理器取消排序并还原原序，没有配置写入。FPR-039 已把 `pointermove`/`pointerup`/`pointercancel` 改挂 `document`，`lostpointercapture` 不再取消排序，并由 `AutomationTasks.layout.test.tsx` 的成功拖拽用例固定；默认态视觉未变化。性能文件中的取消样本仍只能作为前测；成功排序、补充键盘排序与双侧 React profiling 已由[最终采样](evidence/frontend-final/performance.md)重测，并明确区分操作语义和时钟协议。

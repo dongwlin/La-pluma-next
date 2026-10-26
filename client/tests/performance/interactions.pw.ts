@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 import { createHash } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { performance } from 'node:perf_hooks'
@@ -19,7 +19,9 @@ const MOTION_FREEZE_CSS = `
     caret-color: transparent !important;
   }
 `
-const output = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/evidence/frontend-baseline/performance.json')
+const output = process.env.PERFORMANCE_OUTPUT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/evidence/frontend-final/production.json')
+const SCENARIOS = ['automation-drag', 'copilot-search', 'log-append', 'training-reorder', 'automation-keyboard'] as const
+const profiling = process.env.PERFORMANCE_PROFILE === '1'
 const samples: Record<string, unknown>[] = []
 let browserVersion = ''
 
@@ -39,6 +41,20 @@ interface PointerEvidence {
   x: number
   y: number
   button: string | null
+}
+
+interface ReactCommit {
+  id: string
+  phase: string
+  actualDuration: number
+  baseDuration: number
+  startTime: number
+  commitTime: number
+}
+
+interface ReactSample {
+  enabled: boolean
+  commits: ReactCommit[]
 }
 
 function summarizeBody(body: string | null): unknown {
@@ -81,6 +97,9 @@ function recordApi(page: Page) {
     }
   })
   return {
+    pendingSince(start: number) {
+      return [...requests.values()].filter(request => request.startedAt >= start && request.finishedAt === undefined).length
+    },
     since(start: number) {
       return [...requests.values()].filter(request => request.startedAt >= start).map(request => ({
         method: request.method,
@@ -111,7 +130,14 @@ async function measure(page: Page, action: () => Promise<void>) {
   const client = await page.context().newCDPSession(page)
   await client.send('Performance.enable')
   const before = await client.send('Performance.getMetrics')
-  await page.evaluate(() => {
+  await page.evaluate(expectProfile => {
+    const collector = (window as unknown as { __reactProfiler?: ReactSample }).__reactProfiler
+    if (expectProfile && !collector) throw new Error('React profiling collector is absent')
+    if (!expectProfile && collector) throw new Error('Ordinary production build unexpectedly has profiling instrumentation')
+    if (collector) {
+      collector.commits = []
+      collector.enabled = true
+    }
     const state = {
       startedAt: performance.now(),
       mutationCallbacks: 0,
@@ -139,7 +165,7 @@ async function measure(page: Page, action: () => Promise<void>) {
     })
     longTasks.observe({ type: 'longtask', buffered: false })
     Object.assign(window, { __performanceSample: { state, mutations, longTasks } })
-  })
+  }, profiling)
   await action()
   // Two real animation frames let style/layout/paint work caused by the asserted UI finish.
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
@@ -156,7 +182,9 @@ async function measure(page: Page, action: () => Promise<void>) {
     // Include entries queued immediately before the observer is disconnected.
     state.longTasks.push(...longTasks.takeRecords().map(entry => entry.duration))
     longTasks.disconnect()
-    return { ...state, startedAt: undefined, durationMs }
+    const collector = (window as unknown as { __reactProfiler?: ReactSample }).__reactProfiler
+    if (collector) collector.enabled = false
+    return { ...state, startedAt: undefined, durationMs, reactCommits: collector?.commits }
   })
   const after = await client.send('Performance.getMetrics')
   const previous = Object.fromEntries(before.metrics.map(metric => [metric.name, metric.value]))
@@ -166,19 +194,39 @@ async function measure(page: Page, action: () => Promise<void>) {
     round(((current[key] ?? 0) - (previous[key] ?? 0)) * (key.endsWith('Duration') ? 1000 : 1)),
   ]))
   await client.detach()
-  return { browser: { ...browser, durationMs: round(browser.durationMs), longTasks: browser.longTasks.map(round) }, cdp }
+  const { reactCommits, ...browserMetrics } = browser
+  if (profiling) {
+    expect(reactCommits?.length).toBeGreaterThan(0)
+    expect(reactCommits!.every(commit => commit.id === 'App' && commit.phase !== 'mount'
+      && Number.isFinite(commit.actualDuration) && commit.actualDuration >= 0)).toBe(true)
+  }
+  return {
+    browser: { ...browserMetrics, durationMs: round(browser.durationMs), longTasks: browser.longTasks.map(round) },
+    cdp,
+    ...(reactCommits ? { react: {
+      committedUpdates: reactCommits.length,
+      actualDurationSumMs: round(reactCommits.reduce((sum, commit) => sum + commit.actualDuration, 0)),
+      commits: reactCommits,
+    } } : {}),
+  }
 }
 
 test.afterAll(async () => {
-  if (samples.length !== SAMPLE_COUNT * 4) return // Never replace a complete baseline with a partial run.
+  if (samples.length !== SAMPLE_COUNT * SCENARIOS.length
+    || SCENARIOS.some(scenario => samples.filter(sample => sample.scenario === scenario).length !== SAMPLE_COUNT)) return
   await mkdir(path.dirname(output), { recursive: true })
   const metadata = JSON.parse(process.env.PERFORMANCE_METADATA || '{}')
-  await writeFile(output, `${JSON.stringify({
-    schemaVersion: 1,
+  const temporary = `${output}.${process.pid}.tmp`
+  await writeFile(temporary, `${JSON.stringify({
+    schemaVersion: 2,
     capturedAt: new Date().toISOString(),
     ...metadata,
     browserVersion,
     sampleCountPerScenario: SAMPLE_COUNT,
+    scenarios: SCENARIOS,
+    profilingEnabled: profiling,
+    expectedDragOutcome: process.env.PERFORMANCE_EXPECT_DRAG || 'completed',
+    clockMode: 'fixed-Date-only; native performance.now/timers/requestAnimationFrame',
     viewport: { width: 1440, height: 900, deviceScaleFactor: 1 },
     fixedDate: '2026-10-24T04:00:00+08:00',
     theme: 'dark',
@@ -186,25 +234,30 @@ test.afterAll(async () => {
     syntheticInteractionApiDelayMs: API_DELAY_MS,
     samples,
   }, null, 2)}\n`)
+  await rename(temporary, output) // Complete, validated evidence becomes visible atomically.
 })
 
-for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'training-reorder'] as const) {
+for (const scenario of SCENARIOS) {
   for (let iteration = 1; iteration <= SAMPLE_COUNT; iteration += 1) {
     test(`${scenario} sample ${iteration}`, async ({ page, browser }) => {
       browserVersion = browser.version()
-      const environment = await installDeterministicEnvironment(page)
+      const environment = await installDeterministicEnvironment(page, { nativeClock: true })
       await page.addInitScript(themeSeedScript('dark'))
       const api = recordApi(page)
       const errors: string[] = []
+      const consoleErrors: string[] = []
       page.on('pageerror', error => errors.push(error.message))
+      page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
       const reply = async (route: Parameters<Parameters<Page['route']>[1]>[0], body: unknown) => {
         await new Promise(resolve => setTimeout(resolve, API_DELAY_MS))
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       }
       let append = false
       const training = structuredClone(TRAINING_QUEUE)
-      if (scenario === 'automation-drag') {
+      if (scenario === 'automation-drag' || scenario === 'automation-keyboard') {
         await page.route('**/api/agent/schedules', route => reply(route, { success: true, data: {} }))
+        await page.route('**/api/agent/config/user/automation-tasks', route => route.request().method() === 'POST'
+          ? reply(route, { success: true, data: {} }) : route.fallback())
       } else if (scenario === 'copilot-search') {
         await page.route('**/api/agent/copilot/search?stage=1-7', route => reply(route, SEARCH_RESULT))
       } else if (scenario === 'log-append') {
@@ -220,14 +273,26 @@ for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'trai
         })
       }
 
-      const tab = { 'automation-drag': 'automation', 'copilot-search': 'combat', 'log-append': 'logs', 'training-reorder': 'training' }[scenario]
+      const tab = { 'automation-drag': 'automation', 'automation-keyboard': 'automation', 'copilot-search': 'combat', 'log-append': 'logs', 'training-reorder': 'training' }[scenario]
       await page.goto(`/app/${tab}`)
-      // The shared visual init script can run before documentElement exists.
-      // Apply the same freeze after navigation, before any benchmark operation.
+      // Keep the original benchmark's post-navigation freeze and settling period.
       await page.addStyleTag({ content: MOTION_FREEZE_CSS })
       if (scenario === 'log-append') await expect(page.locator('.log-row')).toHaveCount(180)
       else await waitForPageReady(page, tab)
       await page.evaluate(() => document.fonts.ready)
+      expect(await page.evaluate(() => ({
+        date: Date.now(),
+        explicitDate: new Date('2026-10-25T00:00:00Z').getTime(),
+        nativePerformance: performance.now.toString().includes('[native code]'),
+        nativeTimer: setTimeout.toString().includes('[native code]'),
+        nativeFrame: requestAnimationFrame.toString().includes('[native code]'),
+      }))).toEqual({
+        date: Date.parse('2026-10-24T04:00:00+08:00'),
+        explicitDate: Date.parse('2026-10-25T00:00:00Z'),
+        nativePerformance: true,
+        nativeTimer: true,
+        nativeFrame: true,
+      })
       await page.waitForTimeout(400)
 
       // Resolve scroll and coordinates before the measured interval.
@@ -235,7 +300,11 @@ for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'trai
       let pointerEvents: PointerEvidence[] | undefined
       let finalOrder: string[] | undefined
       let dragOutcome: string | undefined
-      const requestedOrder = ['理智作战', '领取奖励', '启动游戏']
+      const requestedOrder = scenario === 'automation-keyboard'
+        ? ['理智作战', '启动游戏', '领取奖励'] : ['理智作战', '领取奖励', '启动游戏']
+      const requestedIds = scenario === 'automation-keyboard'
+        ? ['fight-visual-2', 'startup-visual-1', 'award-visual-3']
+        : ['fight-visual-2', 'award-visual-3', 'startup-visual-1']
       if (scenario === 'automation-drag') {
         const handle = page.getByRole('button', { name: '调整启动游戏顺序，当前第 1 位', exact: true })
         await handle.scrollIntoViewIfNeeded()
@@ -255,6 +324,8 @@ for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'trai
             }, true)
           }
         })
+      } else if (scenario === 'automation-keyboard') {
+        await page.getByRole('button', { name: '调整启动游戏顺序，当前第 1 位', exact: true }).scrollIntoViewIfNeeded()
       } else if (scenario === 'copilot-search') {
         await page.getByLabel('搜索关卡作业', { exact: true }).scrollIntoViewIfNeeded()
       } else if (scenario === 'training-reorder') {
@@ -262,7 +333,9 @@ for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'trai
       }
 
       const setupPageErrors = errors.splice(0)
-      expect(setupPageErrors.filter(error => error !== "Cannot read properties of null (reading 'appendChild')")).toEqual([])
+      const setupConsoleErrors = consoleErrors.splice(0)
+      expect(setupPageErrors).toEqual([])
+      expect(setupConsoleErrors).toEqual([])
       const start = performance.now()
       const result = await measure(page, async () => {
         if (scenario === 'automation-drag') {
@@ -279,13 +352,14 @@ for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'trai
             : pointerEvents.some(event => event.type === 'lostpointercapture')
               ? 'cancelled-after-lost-pointer-capture'
               : 'uncommitted'
-          // Record the defect as evidence; successful dragging after a fix is allowed.
-          expect(['completed', 'cancelled-after-lost-pointer-capture', 'uncommitted']).toContain(dragOutcome)
-          await expect.poll(() => page.evaluate(() => localStorage.getItem('automationConfigSyncPending'))).toBeNull()
+          expect(dragOutcome).toBe(process.env.PERFORMANCE_EXPECT_DRAG || 'completed')
+        } else if (scenario === 'automation-keyboard') {
+          await page.getByRole('button', { name: '调整启动游戏顺序，当前第 1 位', exact: true }).press('ArrowDown')
         } else if (scenario === 'copilot-search') {
           await page.getByLabel('搜索关卡作业', { exact: true }).fill('1-7')
           await page.getByLabel('搜索关卡作业', { exact: true }).press('Enter')
           await expect(page.getByText('性能基线作业 5', { exact: true })).toBeVisible()
+          await expect(page.getByRole('button').filter({ hasText: /性能基线作业 [1-5]/ })).toHaveCount(5)
           await expect(page.getByRole('button', { name: '搜索', exact: true })).toBeEnabled()
         } else if (scenario === 'log-append') {
           append = true // Production's next 1250 ms poll receives the expanded snapshot.
@@ -296,23 +370,48 @@ for (const scenario of ['automation-drag', 'copilot-search', 'log-append', 'trai
           await expect(page.locator('.training-operator-name')).toHaveText(['塞雷娅', '艾雅法拉'])
           await expect(page.getByRole('button', { name: '下移塞雷娅', exact: true })).toBeEnabled()
         }
+        if (scenario === 'automation-keyboard' || (scenario === 'automation-drag' && dragOutcome === 'completed')) {
+          await expect(page.locator('.automation-sequence-select strong')).toHaveText(requestedOrder)
+          await expect.poll(() => api.since(start).filter(request => request.method === 'POST'
+            && request.path === '/api/agent/config/user/automation-tasks').length).toBe(1)
+          await expect.poll(() => page.evaluate(() => localStorage.getItem('automationConfigSyncPending'))).toBeNull()
+          const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('maa-task-flow') || '[]').map((task: { id: string }) => task.id))
+          expect(stored).toEqual(requestedIds)
+          finalOrder = await page.locator('.automation-sequence-select strong').allTextContents()
+        }
+        await expect.poll(() => api.pendingSince(start)).toBe(0)
       })
       environment.assertNoUnmatchedApi()
       expect(errors).toEqual([])
+      expect(consoleErrors).toEqual([])
       const requests = api.since(start)
       expect(requests.every(request => request.status === 200 && !request.failure)).toBe(true)
-      if (scenario === 'copilot-search') expect(requests.filter(request => request.path === '/api/agent/copilot/search?stage=1-7')).toHaveLength(1)
+      if (scenario === 'copilot-search') {
+        expect(requests.filter(request => request.path === '/api/agent/copilot/search?stage=1-7')).toHaveLength(1)
+        expect(requests.filter(request => /\/agent\/(copilots|copilot-sets)\//.test(request.path))).toEqual([])
+      }
       if (scenario === 'log-append') expect(requests.filter(request => request.path === '/api/agent/logs/recent?lines=200')).toHaveLength(1)
       if (scenario === 'training-reorder') {
         expect(requests.filter(request => request.method === 'PUT' && request.path === '/api/agent/training/queue/order')).toHaveLength(1)
         expect(requests.filter(request => request.method === 'GET' && request.path === '/api/agent/training/queue')).toHaveLength(1)
+        expect(requests.find(request => request.method === 'PUT' && request.path === '/api/agent/training/queue/order')?.bodySummary)
+          .toMatchObject({ operatorIds: ['char_202_demkni', 'char_180_amgoat'] })
       }
-      samples.push({ scenario, iteration, ...result, ...(pointerEvents ? {
+      if (scenario === 'automation-keyboard' || (scenario === 'automation-drag' && dragOutcome === 'completed')) {
+        const saved = requests.find(request => request.method === 'POST' && request.path === '/api/agent/config/user/automation-tasks')
+        expect(saved?.bodySummary).toMatchObject({ taskIds: requestedIds })
+        expect(requests.filter(request => request.method === 'POST' && request.path === '/api/agent/schedules')).toHaveLength(1)
+      }
+      if (scenario === 'automation-drag' && dragOutcome !== 'completed') {
+        expect(finalOrder).toEqual(['启动游戏', '理智作战', '领取奖励'])
+        expect(await page.evaluate(() => localStorage.getItem('automationConfigSyncPending'))).toBeNull()
+        expect(requests.filter(request => request.method !== 'GET')).toEqual([])
+      }
+      samples.push({ scenario, iteration, ...result, ...(finalOrder ? {
         requestedOrder,
         finalOrder,
-        dragOutcome,
-        pointerEvents,
-      } : {}), setupPageErrors, measurementPageErrors: [...errors], setupRequests: api.before(start), requests })
+        ...(pointerEvents ? { dragOutcome, pointerEvents } : {}),
+      } : {}), setupPageErrors, setupConsoleErrors, measurementPageErrors: [...errors], measurementConsoleErrors: [...consoleErrors], setupRequests: api.before(start), requests })
     })
   }
 }

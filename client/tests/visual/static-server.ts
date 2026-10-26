@@ -10,7 +10,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const distDir = path.resolve(__dirname, '..', '..', 'dist')
+const distDir = process.env.STATIC_DIST_DIR
+  ? path.resolve(process.env.STATIC_DIST_DIR)
+  : path.resolve(__dirname, '..', '..', 'dist')
 const port = Number(process.env.PORT || 4300)
 const host = process.env.HOST || '127.0.0.1'
 

@@ -18,8 +18,9 @@ import {
  *    基线环境无 SW、也无 PWA 注册提示。
  * 3. 时间 — page.clock.setFixedTime 固定 Date 到 FIXED_NOW（2026-10-24
  *    04:00 UTC+8，明日方舟每日重置时刻），日期敏感内容不随当天变化。
- *    不用 clock.install 假定时钟：它会冻结 requestAnimationFrame，
- *    让 framer-motion 停在初始帧、Playwright 的可见性轮询停摆。
+ *    不暂停/推进时钟，保持真实时间速率，避免动画与可见性轮询停摆。
+ *    Playwright 的 fixedTime 仍会安装整毫秒 clock facade；性能采样通过
+ *    nativeClock 选项只替换 Date，保留原生 performance/timers/rAF。
  *    会随真实时间累积的数据（概览温度历史，5s 轮询）改为只应答首次
  *    请求、后续请求 abort，从机制上消除采样数漂移。
  * 4. 动效 — reducedMotion: 'reduce'（MotionConfig reducedMotion="user"
@@ -106,7 +107,7 @@ function matchFixture(method: string, pathname: string): ApiFixture['payload'] |
   return undefined
 }
 
-export async function installDeterministicEnvironment(page: Page) {
+export async function installDeterministicEnvironment(page: Page, options: { nativeClock?: boolean } = {}) {
   const unmatchedApiCalls: string[] = []
 
   await page.addInitScript(NO_SW_SCRIPT)
@@ -151,7 +152,27 @@ export async function installDeterministicEnvironment(page: Page) {
   })
 
   // 时间固定：Date 从首帧起固定，定时器照常运行（详见文件头说明）。
-  await page.clock.setFixedTime(FIXED_NOW)
+  if (options.nativeClock) {
+    // Performance sampling needs native sub-ms performance.now(), rAF and timers.
+    // Playwright setFixedTime installs a real-time advancing clock facade which
+    // rounds its performance clock to whole milliseconds in this pinned version.
+    await page.addInitScript(`
+      (() => {
+        const NativeDate = Date
+        const fixed = ${FIXED_NOW.getTime()}
+        function FixedDate(...args) {
+          if (!new.target) return new NativeDate(fixed).toString()
+          return Reflect.construct(NativeDate, args.length ? args : [fixed], new.target)
+        }
+        Object.setPrototypeOf(FixedDate, NativeDate)
+        FixedDate.prototype = NativeDate.prototype
+        FixedDate.now = () => fixed
+        window.Date = FixedDate
+      })()
+    `)
+  } else {
+    await page.clock.setFixedTime(FIXED_NOW)
+  }
 
   return {
     assertNoUnmatchedApi() {

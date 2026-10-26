@@ -40,6 +40,8 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 
 前端按 `app → pages → features → shared` 四层垂直切分（依赖只能单向向下）：
 
+当前状态与资源所有者的集中说明见[前端架构与所有权](frontend-architecture.md)，兼容消费者与支持窗口见[前端迁移与兼容审计](frontend-migration.md)，质量与性能证据见[最终质量基线](frontend-final-baseline.md)。
+
 - `app/`：应用组装——根组件、路由表与 URL 归一、布局壳与 Provider，不含业务逻辑。
 - `pages/<domain>/`：页面层——按域组合页头、领域工作区与布局，只经 `@/features/<domain>` 根入口和 `shared/` 取用；不持有配置草稿、传输或运行状态。页面测试与被测页同目录，可深路径构造领域内部状态，不进入产物。
 - `features/*`：功能域，域内组件、hooks、store、api、类型与常量全部自持；页面级 CSS 同样由各域自持，放在 `features/<domain>/styles/` 并由该域 `index.ts` 导入（统一收进 `@layer page`）。对外只有 `index.ts` 一个公开面，其他域、`pages/` 与 `app/` 一律 `@/features/<domain>` 根 import。
