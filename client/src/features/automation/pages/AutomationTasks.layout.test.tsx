@@ -635,6 +635,35 @@ describe('AutomationTasks layout surfaces', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
+  it('keeps an open task picker across Activity restore and re-registers its keyboard close', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(
+          <Activity mode={mode}>
+            <AutomationTasks />
+          </Activity>,
+        )
+      })
+      await flush()
+    }
+
+    await renderMode('visible')
+    const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
+    await act(async () => trigger.click())
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+
+    await renderMode('hidden')
+    await renderMode('visible')
+
+    expect(container.querySelector('#automation-task-picker')).not.toBeNull()
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+
+    expect(container.querySelector('#automation-task-picker')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('closes the add-task picker when pressing outside its region', async () => {
     await act(async () => root.render(<AutomationTasks />))
     await flush()
