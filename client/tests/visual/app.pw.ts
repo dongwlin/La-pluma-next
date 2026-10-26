@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
 import {
   READY_MARKER,
   THEMES,
@@ -16,6 +17,7 @@ import {
 for (const theme of THEMES) {
   test.describe(`theme: ${theme}`, () => {
     test.beforeEach(async ({ page }) => {
+      recordBrowserErrors(page)
       await page.addInitScript(themeSeedScript(theme))
     })
 
@@ -38,6 +40,7 @@ for (const theme of THEMES) {
         })
 
         environment.assertNoUnmatchedApi()
+        await expectNoBrowserErrors(page)
       })
     }
   })

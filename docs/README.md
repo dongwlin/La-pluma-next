@@ -15,6 +15,7 @@
 | [历史日志与清理协调](logs-history-and-cleanup.md) | 实时/历史切换协议、历史列表/选择/读取竞态、Activity 恢复重试、清空实时与清理历史的缓存/列表/选择裁决 | 修改日志历史浏览、清理命令或相关生命周期的开发者 |
 | [执行身份与生命周期契约](execution-lifecycle.md) | Run 身份、唯一状态来源、accepted/运行/停止/终态、断线/占用/manual/刷新/旧断点边界与入口覆盖 | 执行链路、Agent 集成与前端控制器开发者 |
 | [前端执行客户端与控制器](execution-client.md) | 应用级控制器的公开面、幂等键/runId、快照观察、断线重连、停止与本地中止、页面迁移边界 | 执行控制器与前端执行迁移的开发者 |
+| [跨页一致性验收](cross-page-acceptance.md) | Chromium 场景数据与复现、停止/重连/刷新/旧身份保护、配置半失败重试、识别到养成计划的失效链路、状态归属核对 | 修改跨页运行、配置与资源联动的开发者 |
 | [配置同步与资源一致性契约](config-sync-and-invalidation.md) | 三页配置提交差异、pending/迟到加载/跨 remount 次序、跨页失效关系与 Dashboard 完整快照规则 | 修改配置持久化、缓存失效或 Dashboard 快照的开发者 |
 | [配置持久化协调器](config-persistence.md) | 按 key 串行的协调模型、适配契约（编解码/迁移/完整提交）、薄 hooks、刷新与冲突边界、三域接入清单 | 迁移页面配置持久化或实现域适配器的开发者 |
 | [设置配置编辑与保存](settings-config-editing.md) | MAA connection 的 Query 读取、草稿/revision、保存与重置边界、迟到读取裁决、section 存储/事件与清理 | 修改设置页配置表单、保存流程或 section 状态的开发者 |

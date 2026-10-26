@@ -333,6 +333,8 @@ const legacyCheckpoint = (overrides: Record<string, unknown> = {}) => JSON.strin
 })
 
 beforeEach(() => {
+  // 终态 Run 与旧断点使用同一时钟，避免固定 fixture 随真实日期超过 24h 保留期。
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-25T12:02:00.000Z'))
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} })
   vi.stubGlobal('matchMedia', () => ({
@@ -371,6 +373,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
   releases.forEach(release => release())
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 

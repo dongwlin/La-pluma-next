@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "type-check": "tsc -b",
     "test": "vitest run",
+    "test:integration": "node scripts/integration-docker.ts",
     "test:coverage": "vitest run --coverage",
     "stylelint": "stylelint \"src/**/*.css\"",
     "stylelint:ratchet": "node scripts/stylelint-ratchet.ts",

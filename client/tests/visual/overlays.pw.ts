@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
 import {
   THEMES,
   installDeterministicEnvironment,
@@ -16,6 +17,7 @@ import {
 for (const theme of THEMES) {
   test.describe(`overlays: ${theme}`, () => {
     test.beforeEach(async ({ page }) => {
+      recordBrowserErrors(page)
       await page.addInitScript(themeSeedScript(theme))
     })
 
@@ -35,6 +37,7 @@ for (const theme of THEMES) {
       })
 
       environment.assertNoUnmatchedApi()
+      await expectNoBrowserErrors(page)
     })
 
     test(`training operator modal ${theme}`, async ({ page }) => {
@@ -53,6 +56,7 @@ for (const theme of THEMES) {
       })
 
       environment.assertNoUnmatchedApi()
+      await expectNoBrowserErrors(page)
     })
 
     test(`pwa install prompt ${theme}`, async ({ page }) => {
@@ -77,6 +81,7 @@ for (const theme of THEMES) {
       })
 
       environment.assertNoUnmatchedApi()
+      await expectNoBrowserErrors(page)
     })
   })
 }

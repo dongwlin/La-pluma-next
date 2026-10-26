@@ -193,6 +193,32 @@ describe('run status projection', () => {
     expect(status.label).toBe('执行状态未知')
   })
 
+  it('keeps the last active run and reports unknown when the browser goes offline', async () => {
+    const run = buildRun()
+    await applySnapshot(buildSnapshot({ run, activeRuns: [run], occupancy: 'run' }))
+    expect(useStatusStore.getState().runStatus.phase).toBe('running')
+
+    await act(async () => {
+      Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false })
+      window.dispatchEvent(new Event('offline'))
+    })
+    await flush()
+
+    const status = useStatusStore.getState().runStatus
+    expect(status.phase).toBe('unknown')
+    expect(status.isRunning).toBe(true)
+    expect(status.runId).toBe('run-1')
+    expect(status.label).toBe('执行状态未知')
+
+    api.fetchSnapshot.mockResolvedValueOnce(ok(buildSnapshot({ run, activeRuns: [run], occupancy: 'run' })))
+    await act(async () => {
+      Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true })
+      window.dispatchEvent(new Event('online'))
+    })
+    await flush()
+    expect(useStatusStore.getState().runStatus.phase).toBe('running')
+  })
+
   it('returns to idle only after the terminal snapshot arrives', async () => {
     const run = buildRun()
     await applySnapshot(buildSnapshot({ run, activeRuns: [run], occupancy: 'run' }))

@@ -19,7 +19,7 @@ export interface GlobalRunStatus {
   phase: GlobalRunPhase
   /** 快照（或已跟踪 run）里仍有活动 run。断线时保留最后已知值，不能当作完成。 */
   isRunning: boolean
-  /** 当前活动 run 的身份；没有 run 或断线无法确认时为 null。 */
+  /** 当前或最后已知活动 run 的身份；没有已知身份时为 null。 */
   runId: string | null
   /** 面向用户的短标签；`idle` 时为 null。 */
   label: string | null
@@ -58,8 +58,9 @@ export function summarizeRunStatus(state: ExecutionControllerState): GlobalRunSt
   const isRunning = Boolean(run) || Boolean(state.snapshot?.activeRuns?.length)
   const runId = run?.runId ?? null
 
-  // 观察断线时保留最后已知的运行事实，但展示必须标明状态未知，不能冒充运行中或完成。
-  if (state.phase === 'disconnected') {
+  // 网络离线或观察断线都保留最后已知的运行事实，但展示必须标明状态未知，
+  // 不能继续冒充“正在运行”，也不能据此推断完成。
+  if (state.phase === 'disconnected' || state.phase === 'offline') {
     return { phase: 'unknown', isRunning, runId, label: UNKNOWN_LABEL, detail: null }
   }
 

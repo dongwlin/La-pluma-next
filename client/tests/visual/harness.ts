@@ -76,6 +76,23 @@ const NO_SW_SCRIPT = `
   }
 `
 
+const MOTION_FREEZE_SCRIPT = `
+  (() => {
+    const appendMotionFreezeStyle = () => {
+      const root = document.documentElement
+      if (!root || root.querySelector('style[data-la-pluma-motion-freeze]')) return
+      const style = document.createElement('style')
+      style.dataset.laPlumaMotionFreeze = ''
+      style.textContent = ${JSON.stringify(MOTION_FREEZE_CSS)}
+      root.appendChild(style)
+    }
+    // addInitScript 可能早于 <html> 创建；等文档根可用再插入，不能把
+    // 启动壳或页面加载期的空 documentElement 当成可append节点。
+    if (document.documentElement) appendMotionFreezeStyle()
+    else document.addEventListener('DOMContentLoaded', appendMotionFreezeStyle, { once: true })
+  })()
+`
+
 function matchFixture(method: string, pathname: string): ApiFixture['payload'] | undefined {
   for (const fixture of apiFixtures) {
     if ((fixture.method ?? 'GET') !== method) continue
@@ -93,11 +110,7 @@ export async function installDeterministicEnvironment(page: Page) {
   const unmatchedApiCalls: string[] = []
 
   await page.addInitScript(NO_SW_SCRIPT)
-  await page.addInitScript(`
-    const style = document.createElement('style')
-    style.textContent = ${JSON.stringify(MOTION_FREEZE_CSS)}
-    document.documentElement.appendChild(style)
-  `)
+  await page.addInitScript(MOTION_FREEZE_SCRIPT)
 
   // 双保险：即便 SW 脚本请求发生，也直接 404（register 已在文档起点被替换为挂起 promise）。
   await page.route('**/sw.js', route => route.fulfill({ status: 404, body: 'sw disabled' }))

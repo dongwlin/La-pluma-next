@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
 import {
   THEMES,
   installDeterministicEnvironment,
@@ -13,6 +14,7 @@ import {
 for (const theme of THEMES) {
   test(`boot-shell ${theme}`, async ({ page }) => {
     await page.addInitScript(themeSeedScript(theme))
+    recordBrowserErrors(page)
     const environment = await installDeterministicEnvironment(page)
     await page.route('**/assets/index-*.js', route => route.abort())
 
@@ -28,5 +30,6 @@ for (const theme of THEMES) {
     })
 
     environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
   })
 }

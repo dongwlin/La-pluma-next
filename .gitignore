@@ -32,3 +32,4 @@ study/
 # Playwright 视觉基线运行产物（基线截图在 client/tests/visual/__screenshots__，需入库）
 client/test-results/
 client/playwright-report/
+client/integration-artifacts/
