@@ -59,9 +59,9 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 旧断点续跑 | `initializeAndRestore` 按旧 commandId 匹配 enabled 步骤，等后端 idle 后逐项 POST `/agent/actions/run-task`；1s 查询、30min 超时；启动/关闭/其他步间等待 15s/3s/2s；cleanup abort | 独立兼容迁移适配器；转换后仅观察身份，不重提 |
 | 智能养成阶段 | `AutomationStageEditor.toggleSmartStages` 读取 `training-queue` 配置并 POST `/agent/training/plan`；订阅 `automation-config`/`automation-schedule` 失效后先 `flush()` 配置通道再 `reload({ force: true })`；有 pending 草稿时保留本地并提示，否则采用服务端副本并保留本地禁用时间点；document 可见时正常 load（已 hydrated 则跳过） | training 计划用例 + automation 配置冲突协调 |
 | 连接测试 | POST `/agent/actions/test-connection`，带 signal；反馈至少 450ms | 设备连接用例 |
-| 纯编辑与布局 | 定时时间、任务命令（添加/恢复/参数/执行前校验）、拖拽排序与掉落目标解析已由 `features/automation/model/automationSchedule.ts`、`taskFlowCommands.ts`、`taskFlowSort.ts`、`dropTargets.ts` 持有；关卡列表编辑与智能养成合成由 `model/stageEditing.ts` 持有，公招时长校验由 `model/taskParamRules.ts` 持有；`components/AutomationStageEditor.tsx` 持有智能养成在途标记并调用 training 读取/计划，`components/AutomationTaskPicker.tsx` 持有菜单开关、document pointerdown/keydown 与 Escape 回焦；排序 Escape/pointer capture/预览与小屏 rAF `scrollIntoView` 仍在页内 | 纯模型 + 最近的流程/编辑面板；布局副作用归布局 hook（FPR-037/038） |
+| 纯编辑与布局 | 定时时间、任务命令（添加/恢复/参数/执行前校验）、拖拽排序与掉落目标解析已由 `features/automation/model/automationSchedule.ts`、`taskFlowCommands.ts`、`taskFlowSort.ts`、`dropTargets.ts` 持有；关卡列表编辑与智能养成合成由 `model/stageEditing.ts` 持有，公招时长校验由 `model/taskParamRules.ts` 持有；FPR-039 起逐项执行状态与摘要来源由 `model/flowExecution.ts` 持有；`components/AutomationStageEditor.tsx` 持有智能养成在途标记并调用 training 读取/计划，`components/AutomationTaskPicker.tsx` 持有菜单开关、document pointerdown/keydown 与 Escape 回焦；排序预览、document pointer 生命周期与 Escape 由 `hooks/useTaskFlowSorting.ts` 持有；页面只组合 `components/AutomationWorkspace.tsx`，流程/定时/摘要分别在 `AutomationTaskFlowPanel`、`AutomationSchedulePanel`、`AutomationExecutionSummary`；小屏 rAF `scrollIntoView` 仍在工作区 | 纯模型 + 最近的流程/编辑面板；布局副作用归布局 hook（FPR-037/038/039） |
 
-存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为协调器中的 taskFlow/schedule；picker 开关与焦点归 `AutomationTaskPicker`，selectedTaskId/拖拽预览/撤销/公告/执行详情/连接反馈归页面局部 UI；running/stopping/currentStep/taskResults 是执行投影。
+存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为协调器中的 taskFlow/schedule；picker 开关与焦点归 `AutomationTaskPicker`，selectedTaskId/撤销/连接反馈归 `AutomationWorkspace`，拖拽预览/公告归 `useTaskFlowSorting`，执行详情归 `AutomationExecutionSummary`；running/stopping/currentStep/taskResults 是执行投影；当前活动由 `automation/activity` Query 展示（FPR-039）。
 
 ### Combat — `features/combat/pages/CombatTasks.tsx`
 
@@ -161,7 +161,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 页面 | Activity hide / show | document hidden | 真正 remount / 浏览器刷新 |
 | --- | --- | --- | --- |
-| Automation | 保留草稿/选择/撤销/结果；清 polling/监听/兼容 runner/连接测试；show 清 loading、查状态，已 hydrated 不重载配置 | 业务查询继续；预览暂停 | 重读本地/服务端与旧断点；旧续跑当前可能重提，未来改观察恢复 |
+| Automation | 保留草稿/选择/撤销/结果/摘要展开；清排序 document 监听、活动 Query 观察者与连接测试在途；show 清 loading、查状态，已 hydrated 不重载配置，活动按新鲜度重取 | 业务查询继续；预览暂停 | 重读本地/服务端与旧断点；旧续跑当前可能重提，未来改观察恢复 |
 | Combat | 保留草稿/UI；Query 观察者注销并取消在途搜索/预览读取，预览会话 stop 清 loading、保留已显示预览；abort status/stop 等待；show 查运行、不自动重放搜索/预览、不重载配置 | 业务查询继续；预览暂停 | 配置/后端 running 恢复；搜索词/识别方式/选中索引重置；Query 新鲜缓存可复用；manual 当前集/结果不恢复 |
 | Roguelike | 保留草稿/模式；清 status/stop 等待；show 查运行、跳过已 hydrated 配置 | 业务查询继续；预览暂停 | 配置/后端恢复，activeMode 回默认 |
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
@@ -176,4 +176,4 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 尚待实现的边界包括：所有旧执行入口纳入 Run、manual lease 释放/重获。跨 remount 配置写入次序、automation schedule 半失败、训练设置改变后的计划有效期与计划应用跨页联动已由 FPR-015/022/023 关闭，资源更新后的目录/材料/计划/总览失效已由 FPR-026 关闭；历史日志在 Activity 隐藏后的 loading 残留与恢复重试已由 FPR-028 关闭（见[历史日志与清理协调](logs-history-and-cleanup.md)）。应用计划遇到本设备未确认的 automation 草稿（含未挂载页面留下的持久化标记）会拒绝应用，但跨标签页/跨客户端同时写入仍为最后写入生效。计划已生成/计划过期仍未纳入 72 张默认态截图，FPR-023 未改变默认态 DOM/CSS，也未更新视觉基线。后续契约与表征工作需要给出对应回归清单；不以当前截图通过推断这些条件已经满足。配置提交差异、迟到加载、跨页失效与 Dashboard 快照的实际表征见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
-实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，当前处理器取消排序并还原原序，没有配置写入。性能文件记录真实路径和结果；这组数据不能冒充成功排序的耗时。成功排序须在自动化流程面板处理捕获生命周期后补测，并在最终性能对照时重采。它属于明确缺陷修复边界，现有取消行为不作为保留要求。
+实际拖拽采样发现：指针移动引起重排后发生 lostpointercapture，旧处理器取消排序并还原原序，没有配置写入。FPR-039 已把 `pointermove`/`pointerup`/`pointercancel` 改挂 `document`，`lostpointercapture` 不再取消排序，并由 `AutomationTasks.layout.test.tsx` 的成功拖拽用例固定；默认态视觉未变化。性能文件中的取消样本仍只能作为前测，成功排序的固定场景与耗时对照由 FPR-043 重采。

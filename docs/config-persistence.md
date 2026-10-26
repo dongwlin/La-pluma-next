@@ -249,7 +249,7 @@ function CombatTasks() {
 | 过期提交保护 | 配置保存期间若协调器接受了更新的草稿，适配器在 schedule 步骤前比对最新 wire 指纹并跳过旧 schedule；即使旧提交已经写入配置，协调器也不会用它的结果确认新 revision |
 | 外部写入裁决 | training 应用计划前调用 `userConfigCoordinator.settle([USER_CONFIG_KEYS.automationTasks])`，等本设备已入队的保存落盘，并按 `USER_CONFIG_PENDING_KEYS` 检查未挂载页面的持久化标记；仍有 pending 时拒绝应用。`automation-config`/`automation-schedule` 失效到达后，页面先 `flush()` 再 `reload({ force: true })`：`loaded` 采用服务端副本并提示更新，`local-draft`/`stale` 保留本地草稿并提示。采用服务端副本时保留本设备独有的禁用时间点（`mergeLocalScheduleEntries`），避免非冲突的本地 schedule 编辑丢失。跨客户端同时写入仍是最后写入生效 |
 | 页面派生 | task flow 的图标与参数表单由 `AVAILABLE_TASKS` 派生；schedule 的启用状态与条目都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动化配置已同步” |
-| 页面局部状态 | 拖拽中的顺序用本地预览渲染，松手时才作为一次编辑写入协调器；选中项、picker、撤销、执行详情、连接测试反馈仍是页面状态 |
+| 页面局部状态 | 拖拽中的顺序由 `hooks/useTaskFlowSorting` 渲染本地预览，松手时才作为一次编辑写入协调器；选中项、撤销与连接测试反馈归 `AutomationWorkspace`，picker 与执行详情分别归 `AutomationTaskPicker`、`AutomationExecutionSummary`；FPR-039 后工作区仍只调用 `useUserConfig` 的 `update`，面板不持有保存队列 |
 
 页面原有的模块级 token 序列、`autoSaveQueueRef`、`autoSaveRevisionRef`、`taskFlowHydratedRef`、请求序号/AbortController 与 300ms 以外的本地 schedule 状态已移除。`config.test.tsx` 中的 `it.fails`（pending 标记没有本地草稿时永远不读服务端）随适配器落地转为正常回归。
 

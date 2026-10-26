@@ -122,7 +122,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 已迁移；预览是这些资源的组合读取，不另建 key |
 | `logs` | 无；历史文件列表/读取与实时缓冲均为页面会话数据 | FPR-028 判定不建立 Query key，请求裁决与 Activity 恢复由日志会话持有 |
 | `device-mirror` | `webrtc-status`、`device-stats` | FPR-030 迁移 `device-stats`；`webrtc-status` 预留给预览服务状态 |
-| `automation` | `activity`、`schedule-execution` | FPR-030 已迁移（总览快照读取） |
+| `automation` | `activity`、`schedule-execution` | FPR-030 已迁移（总览快照读取）；FPR-039 起自动化页的活动标签也读取同一 `activity` Query |
 | `dashboard` | `snapshot` | FPR-030 已迁移；仅用于协调读取，`gcTime: 0` |
 
 ## 5. 失效方式
@@ -305,6 +305,8 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | 今日开放关卡 | `openTodayStagesQueryOptions()` | `['statistics','open-stages']` | 同上 | 同上 |
 | 完整快照 | `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | 五路任一失败即拒绝；`dashboardStore` 保留旧快照 | 协调器单飞；`force` 等在途后补一次；`gcTime: 0` |
 | 设备采样 | `deviceStatsQueryOptions()` + `useDeviceStatsSample` | `['device-mirror','device-stats']` | query error 不展示；Query 保留上一份成功数据 | 5s `refetchInterval`、`staleTime: 0`、`retry: false`、`refetchOnMount: 'always'`；Activity 隐藏注销观察者 |
+
+自动化页的活动标签（FPR-039）复用 `activityQueryOptions('Official')`，以 `retry: false` 做展示级读取；失败只隐藏标签，不写全局状态。Activity 隐藏时观察者注销，恢复后按默认 `staleTime` 决定是否后台重取，不额外轮询。实现见 `features/automation/hooks/useAutomationActivity.ts`。
 
 规则：
 

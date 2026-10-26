@@ -10,8 +10,10 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 流程/定时/执行摘要渲染、配置订阅、选中项、拖拽排序、连接测试 | `features/automation/pages/AutomationTasks.tsx` | 仍持有配置草稿订阅与页面级交互；FPR-039 继续下沉流程/定时/摘要面板 |
-| 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回页面 |
+| 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | FPR-039 后页面只组合工作区；流程/定时/摘要分别在独立面板 |
+| 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；排序预览与编辑器共享 |
+| 定时编辑与通知 | `components/AutomationSchedulePanel.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
+| 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区 |
 | 智能养成加入/移除与在途标记 | `components/AutomationStageEditor.tsx` + `model/stageEditing.ts` | 读取 `training-queue`、调用 `generateTrainingPlan({ mode: 'current' })`；合成规则在纯模型 |
 | 任务挑选菜单 | `components/AutomationTaskPicker.tsx` | 菜单开关、外部 pointerdown、Escape 回焦与运行态收起都在面板内 |
 | 可添加任务目录 | `components/automationTaskCatalog.tsx` | 名称、图标、默认参数与参数字段；不读取配置/Query/执行状态 |
@@ -29,13 +31,16 @@
 ## 2. 组合与状态边界
 
 ```
-AutomationTasks（配置订阅、选中项、拖拽预览、定时/摘要/监控）
-└─ automation-sequence-footer
-   ├─ AutomationTaskPicker（open / 外部点击 / Escape / disabled 收起）
-   ├─ 立即执行 / 终止执行（页面）
-   └─ …
-└─ automation-task-editor
-   └─ AutomationStageEditor（isSmartStageLoading / 关卡写回）
+AutomationTasks（页头 + 全局指示）
+└─ AutomationWorkspace（配置/执行/选中/撤销/连接/失效）
+   ├─ AutomationTaskFlowPanel
+   │  ├─ 任务流程列表（拖拽预览、拖拽公告）
+   │  └─ automation-sequence-footer
+   │     ├─ AutomationTaskPicker（open / 外部点击 / Escape / disabled 收起）
+   │     ├─ 立即执行 / 终止执行（工作区回调）
+   │     └─ …
+   └─ automation-task-editor
+      └─ AutomationStageEditor（isSmartStageLoading / 关卡写回）
 ```
 
 | 状态 | 所有者 | Activity 隐藏/恢复 | 真正卸载/刷新 |
@@ -44,11 +49,13 @@ AutomationTasks（配置订阅、选中项、拖拽预览、定时/摘要/监控
 | 关卡列表 | 配置草稿 `task.params.stages` | 保留 | 随草稿恢复 |
 | 智能养成在途标记 | `AutomationStageEditor` | 保留；在途 promise 不受 Effect 清理取消，`finally` 继续清标记 | 重置 |
 | 菜单开关 | `AutomationTaskPicker` | 保留；Effect 清理时注销 document 监听，恢复后重新注册 | 重置为关闭 |
-| 选中任务、拖拽预览、撤销、公告、执行详情、连接反馈 | 页面 | 保留 | 重置 |
+| 选中任务、撤销、连接反馈 | `AutomationWorkspace` | 保留 | 重置 |
+| 拖拽预览、公告 | `useTaskFlowSorting` | 清理 document 监听并丢弃进行中的预览 | 重置 |
+| 执行详情 | `AutomationExecutionSummary` | 保留 | 重置 |
 
-- **参数写回仍然单通道。** 面板只调用 `onUpdate`，由页面转交 `useUserConfig` 的 `update`；面板内不创建草稿副本。
+- **参数写回仍然单通道。** 面板只调用 `onUpdate`，经工作区转交 `useUserConfig` 的 `update`；面板内不创建草稿副本。
 - **智能养成只写一次。** 读取队列与生成计划是领域能力调用；成功后把生成的关卡与现有置顶/普通关卡合成一次写回。
-- **菜单是纯局部状态。** 页面只在添加成功后选中新任务；是否关闭菜单由面板自己决定。
+- **菜单是纯局部状态。** 工作区只在添加成功后选中新任务；是否关闭菜单由面板自己决定。
 
 ## 3. 关卡编辑与智能养成
 
@@ -92,7 +99,7 @@ AutomationTasks（配置订阅、选中项、拖拽预览、定时/摘要/监控
 
 ## 5. Activity、兼容与回滚
 
-- **Activity 隐藏/恢复**：面板 state 保留；document 监听在 Effect 清理时注销，恢复后按当前 `open` 重新注册，不会遗留监听。智能养成在途 promise 继续完成，隐藏期间只更新自身状态，不写配置以外的资源。
+- **Activity 隐藏/恢复**：面板 state 保留；document 监听在 Effect 清理时注销，恢复后按当前 `open` 重新注册，不会遗留监听。智能养成在途 promise 继续完成，隐藏期间只更新自身状态，不写配置以外的资源。流程排序的 document 监听同样在 Activity 隐藏时清理并丢弃进行中的预览。
 - **真正卸载/刷新**：菜单回到关闭，在途标记重置；配置草稿、pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、迁移与 wire 形状未变化；旧草稿可直接读取。
 - 渲染结构、DOM/CSS 类名、表单 `id`/`aria-label` 与默认态视觉未变化，未新增样式，也未更新任何视觉基线。
@@ -106,8 +113,8 @@ AutomationTasks（配置订阅、选中项、拖拽预览、定时/摘要/监控
 | `client/src/features/automation/model/taskParamRules.test.ts` | 10 分钟取整、60–540 夹取、空串/非有限输入回退 |
 | `client/src/features/automation/components/AutomationStageEditor.test.tsx` | 智能养成插入顺序、空队列/计划失败/抛错/材料已齐失败路径、移除保留置顶与普通行、步进与置顶写回、运行态禁用 |
 | `client/src/features/automation/components/AutomationTaskPicker.test.tsx` | 目录渲染与计数、选择回调后关闭、页脚内按下不关闭/外部关闭、Escape 回焦、禁用收起 |
-| `client/src/features/automation/pages/AutomationTasks.layout.test.tsx` | 既有布局、表单标签、picker 菜单/焦点/Activity 恢复后的 Escape 关闭、智能养成页面接线、公招时长失焦归一化 |
-| `client/src/features/automation/pages/AutomationTasks.{config,execution,activity}.test.tsx` | 既有配置持久化、执行身份与 Activity 回归 |
+| `client/src/features/automation/pages/AutomationTasks.layout.test.tsx` | 既有布局、表单标签、picker 菜单/焦点/Activity 恢复后的 Escape 关闭、智能养成页面接线、公招时长失焦归一化、FPR-039 的拖拽/定时/摘要接线 |
+| `client/src/features/automation/pages/AutomationTasks.{config,execution,activity}.test.tsx` | 既有配置持久化、执行身份与 Activity 回归（FPR-039 起以 Query Provider 包装活动读取） |
 
 针对性命令（仓库根目录）：
 
@@ -117,6 +124,7 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/automation
 
 ## 关联
 
+- [自动化流程、定时与执行摘要面板](automation-flow-panels.md)：页面/工作区/流程/定时/摘要的组合与排序指针生命周期。
 - [自动化纯模型与排序](automation-model.md)：定时时间、流程命令、排序与掉落目标规则。
 - [配置持久化协调器](config-persistence.md)：`automationConfig` 编解码、完整提交与重试边界。
 - [前端执行客户端与控制器](execution-client.md)：提交、停止与 Run 身份。
