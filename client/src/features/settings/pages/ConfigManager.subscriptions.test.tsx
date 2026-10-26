@@ -1,0 +1,309 @@
+// @vitest-environment jsdom
+
+import { act, type ReactNode } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createQueryClient } from '@/shared/query'
+import { settingsAutoUpdateOwner } from '../model/autoUpdateConfig'
+import { settingsConnectionOwner } from '../model/connectionConfig'
+import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
+import { settingsUpdateOwner } from '../model/updateCommands'
+import ConfigManager from './ConfigManager'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+/**
+ * 每个领域 hook 被调用的次数就是面板渲染次数的代理：hook 只在自己所在的
+ * 面板组件渲染时执行，因此可以用它验证设备/更新状态不会推动连接表单重渲染。
+ */
+const renderCounts = vi.hoisted(() => ({
+  connection: 0,
+  device: 0,
+  updates: 0,
+  autoUpdate: 0,
+  version: 0,
+  directory: 0,
+}))
+
+const mocks = vi.hoisted(() => ({
+  discoverDevices: vi.fn(),
+  getConfig: vi.fn(),
+  getConfigDir: vi.fn(),
+  getVersion: vi.fn(),
+  loadUserConfig: vi.fn(),
+  openConfigDir: vi.fn(),
+  saveConfig: vi.fn(),
+  saveUserConfig: vi.fn(),
+  setupAutoUpdate: vi.fn(),
+  testConnection: vi.fn(),
+  updateMaaCore: vi.fn(),
+  updateMaaCli: vi.fn(),
+  hotUpdateResources: vi.fn(),
+  setMessage: vi.fn(),
+}))
+
+vi.mock('../hooks/useSettingsConnectionConfig', async importOriginal => {
+  const actual = await importOriginal<typeof import('../hooks/useSettingsConnectionConfig')>()
+  return {
+    ...actual,
+    useSettingsConnectionConfig: (...args: Parameters<typeof actual.useSettingsConnectionConfig>) => {
+      renderCounts.connection += 1
+      return actual.useSettingsConnectionConfig(...args)
+    },
+  }
+})
+
+vi.mock('../hooks/useSettingsDeviceConnection', async importOriginal => {
+  const actual = await importOriginal<typeof import('../hooks/useSettingsDeviceConnection')>()
+  return {
+    ...actual,
+    useSettingsDeviceConnection: (...args: Parameters<typeof actual.useSettingsDeviceConnection>) => {
+      renderCounts.device += 1
+      return actual.useSettingsDeviceConnection(...args)
+    },
+  }
+})
+
+vi.mock('../hooks/useSettingsUpdates', async importOriginal => {
+  const actual = await importOriginal<typeof import('../hooks/useSettingsUpdates')>()
+  return {
+    ...actual,
+    useSettingsUpdates: (...args: Parameters<typeof actual.useSettingsUpdates>) => {
+      renderCounts.updates += 1
+      return actual.useSettingsUpdates(...args)
+    },
+  }
+})
+
+vi.mock('../hooks/useSettingsAutoUpdate', async importOriginal => {
+  const actual = await importOriginal<typeof import('../hooks/useSettingsAutoUpdate')>()
+  return {
+    ...actual,
+    useSettingsAutoUpdate: (...args: Parameters<typeof actual.useSettingsAutoUpdate>) => {
+      renderCounts.autoUpdate += 1
+      return actual.useSettingsAutoUpdate(...args)
+    },
+  }
+})
+
+vi.mock('../hooks/useSettingsVersion', async importOriginal => {
+  const actual = await importOriginal<typeof import('../hooks/useSettingsVersion')>()
+  return {
+    ...actual,
+    useSettingsVersion: (...args: Parameters<typeof actual.useSettingsVersion>) => {
+      renderCounts.version += 1
+      return actual.useSettingsVersion(...args)
+    },
+  }
+})
+
+vi.mock('../hooks/useSettingsConfigDirectory', async importOriginal => {
+  const actual = await importOriginal<typeof import('../hooks/useSettingsConfigDirectory')>()
+  return {
+    ...actual,
+    useSettingsConfigDirectory: (...args: Parameters<typeof actual.useSettingsConfigDirectory>) => {
+      renderCounts.directory += 1
+      return actual.useSettingsConfigDirectory(...args)
+    },
+  }
+})
+
+vi.mock('framer-motion', async () => {
+  const React = await import('react')
+  type MotionTestProps = Record<string, unknown> & { children?: ReactNode }
+  const motionComponent = (tag: 'button' | 'div') => React.forwardRef<HTMLElement, MotionTestProps>(
+    ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ...props }, ref) =>
+      React.createElement(tag, { ...props, ref }, children as ReactNode),
+  )
+
+  return {
+    AnimatePresence: ({ children }: { children?: ReactNode }) => children,
+    motion: {
+      button: motionComponent('button'),
+      div: motionComponent('div'),
+    },
+    useReducedMotion: () => true,
+  }
+})
+
+vi.mock('../api', () => ({
+  discoverDevices: mocks.discoverDevices,
+  getConfig: mocks.getConfig,
+  getConfigDir: mocks.getConfigDir,
+  getVersion: mocks.getVersion,
+  hotUpdateResources: mocks.hotUpdateResources,
+  openConfigDir: mocks.openConfigDir,
+  saveConfig: mocks.saveConfig,
+  setupAutoUpdate: mocks.setupAutoUpdate,
+  testConnection: mocks.testConnection,
+  updateMaaCli: mocks.updateMaaCli,
+  updateMaaCore: mocks.updateMaaCore,
+}))
+
+vi.mock('@/features/user-config', () => ({
+  loadUserConfig: mocks.loadUserConfig,
+  saveUserConfig: mocks.saveUserConfig,
+}))
+
+vi.mock('@/features/runtime-status', () => ({
+  useStatusStore: () => ({ setMessage: mocks.setMessage }),
+  FloatingStatusIndicator: () => null,
+}))
+
+let container: HTMLDivElement
+let root: Root
+let queryClient: QueryClient
+
+const flush = async () => {
+  await act(async () => {
+    for (let index = 0; index < 3; index += 1) {
+      await Promise.resolve()
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+  })
+}
+
+const settle = async () => {
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0))
+  })
+  await flush()
+}
+
+const page = () => (
+  <QueryClientProvider client={queryClient}>
+    <ConfigManager />
+  </QueryClientProvider>
+)
+
+const buttonByText = (text: string) => (
+  Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find(button => button.textContent?.trim() === text)
+)
+
+const addressInput = () => (
+  Array.from(container.querySelectorAll<HTMLInputElement>('input'))
+    .find(input => input.value === '127.0.0.1:16384')
+)
+
+const setInputValue = async (input: HTMLInputElement, value: string) => {
+  await act(async () => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+const snapshot = () => ({ ...renderCounts })
+
+describe('ConfigManager panel subscriptions', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mocks.getConfig.mockReset().mockResolvedValue({
+      success: true,
+      data: {
+        adb_path: '/opt/homebrew/bin/adb',
+        address: '127.0.0.1:16384',
+        config: 'CompatMac',
+        auto_reconnect: true,
+      },
+    })
+    mocks.getConfigDir.mockReset().mockResolvedValue({ success: true, data: '/tmp/la-pluma' })
+    mocks.getVersion.mockReset().mockResolvedValue({
+      success: true,
+      data: { cli: '0.7.3', core: 'v5.0.0', raw: 'v5.0.0' },
+    })
+    mocks.discoverDevices.mockReset().mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        message: '找到 1 个设备或可尝试地址',
+        devices: [
+          { address: 'emulator-5554', state: 'device', details: 'ADB 已识别设备', source: 'adb' },
+        ],
+        candidates: [],
+      },
+    })
+    mocks.testConnection.mockReset().mockResolvedValue({
+      success: true,
+      data: { success: true, connected: true, message: '已连接到 emulator-5554' },
+    })
+    mocks.loadUserConfig.mockReset().mockResolvedValue({
+      success: true,
+      data: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
+    })
+    mocks.openConfigDir.mockReset().mockResolvedValue({ success: true })
+    mocks.saveConfig.mockReset().mockResolvedValue({ success: true })
+    mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
+    mocks.setupAutoUpdate.mockReset().mockResolvedValue({ success: true })
+    mocks.updateMaaCore.mockReset().mockResolvedValue({ success: true })
+    mocks.updateMaaCli.mockReset().mockResolvedValue({ success: true })
+    mocks.hotUpdateResources.mockReset().mockResolvedValue({ success: true })
+    mocks.setMessage.mockReset()
+    Object.keys(renderCounts).forEach(key => {
+      renderCounts[key as keyof typeof renderCounts] = 0
+    })
+    settingsConnectionOwner.reset()
+    settingsDeviceConnectionOwner.reset()
+    settingsAutoUpdateOwner.reset()
+    settingsUpdateOwner.reset()
+    queryClient = createQueryClient()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    queryClient.clear()
+    container.remove()
+    vi.restoreAllMocks()
+  })
+
+  it('does not re-render the connection form when device or update state changes', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const initial = snapshot()
+    expect(initial.connection).toBeGreaterThan(0)
+    expect(initial.device).toBeGreaterThan(0)
+    expect(initial.updates).toBeGreaterThan(0)
+    expect(initial.autoUpdate).toBeGreaterThan(0)
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+
+    const afterDevice = snapshot()
+    expect(afterDevice.device).toBeGreaterThan(initial.device)
+    expect(afterDevice.connection).toBe(initial.connection)
+    expect(afterDevice.updates).toBe(initial.updates)
+    expect(afterDevice.autoUpdate).toBe(initial.autoUpdate)
+    expect(afterDevice.version).toBe(initial.version)
+
+    await act(async () => buttonByText('更新 MAA CLI')?.click())
+    await settle()
+
+    const afterUpdate = snapshot()
+    expect(afterUpdate.updates).toBeGreaterThan(afterDevice.updates)
+    expect(afterUpdate.connection).toBe(afterDevice.connection)
+    expect(afterUpdate.device).toBe(afterDevice.device)
+  })
+
+  it('does not re-render update and directory panels when the connection draft changes', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const initial = snapshot()
+    await setInputValue(addressInput()!, '127.0.0.1:5555')
+    await settle()
+
+    const afterEdit = snapshot()
+    expect(afterEdit.connection).toBeGreaterThan(initial.connection)
+    expect(afterEdit.device).toBeGreaterThan(initial.device)
+    expect(afterEdit.updates).toBe(initial.updates)
+    expect(afterEdit.autoUpdate).toBe(initial.autoUpdate)
+    expect(afterEdit.version).toBe(initial.version)
+    expect(afterEdit.directory).toBe(initial.directory)
+  })
+})

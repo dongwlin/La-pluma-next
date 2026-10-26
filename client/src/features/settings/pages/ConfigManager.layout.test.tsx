@@ -880,7 +880,9 @@ describe('ConfigManager layout surfaces', () => {
       .find(button => button.textContent?.includes('连接'))
     await act(async () => connectionButton?.click())
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('connection')
-    expect(editor?.querySelector('select')).not.toBeNull()
+    // 连接与只读 section 是两个独立面板；切回连接后重新取当前编辑器。
+    const connectionEditor = container.querySelector('.config-editor-card')
+    expect(connectionEditor?.querySelector('select')).not.toBeNull()
 
     await act(async () => {
       root.render(null)
@@ -925,6 +927,66 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => connectionButton?.click())
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('input'))
       .find(input => input.value === '127.0.0.1:5555')).toBeDefined()
+  })
+
+  it('keeps connection and update feedback inside their own panels', async () => {
+    mocks.saveConfig.mockResolvedValue({ success: false, message: '磁盘只读' })
+    mocks.updateMaaCore.mockResolvedValue({
+      success: false,
+      message: '下载失败',
+      errorInfo: { details: { failedStep: 'core', coreUpdated: false } },
+    })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('保存')?.click())
+    await flush()
+    await act(async () => buttonByText('更新 MaaCore')?.click())
+    await flush()
+
+    const editorAlert = container.querySelector('.config-editor-card [role="alert"]')
+    const updateAlert = container.querySelector('.config-update-card [role="alert"]')
+    expect(editorAlert?.textContent).toContain('连接配置保存失败: 磁盘只读')
+    expect(updateAlert?.textContent).toContain('下载失败')
+    expect(editorAlert?.textContent).not.toContain('下载失败')
+    expect(updateAlert?.textContent).not.toContain('磁盘只读')
+  })
+
+  it('keeps an in-flight discovery running across section switches', async () => {
+    const pendingDiscovery = deferred<{ success: boolean; data: unknown }>()
+    mocks.discoverDevices.mockReturnValueOnce(pendingDiscovery.promise)
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('查找模拟器')?.click())
+    await flush()
+    const signal = mocks.discoverDevices.mock.calls[0]![1] as AbortSignal
+
+    const resourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('资源'))
+    await act(async () => resourceButton?.click())
+    expect(signal.aborted).toBe(false)
+
+    pendingDiscovery.resolve({
+      success: true,
+      data: {
+        success: true,
+        message: '找到 1 个设备或可尝试地址',
+        devices: [{ address: 'emulator-5554', state: 'device', source: 'adb' }],
+        candidates: [],
+      },
+    })
+    await flush()
+
+    const connectionButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('连接'))
+    await act(async () => connectionButton?.click())
+
+    expect(container.textContent).toContain('emulator-5554')
+    expect(buttonByText('查找模拟器')).toBeDefined()
+    expect(buttonByText('查找中')).toBeUndefined()
   })
 
   it('discovers devices with the draft adb path and backfills the selected device', async () => {

@@ -2,8 +2,12 @@
  * 设备发现与连接测试的 React 适配层
  *
  * 命令状态由模块级 `DeviceConnectionOwner` 持有；本 hook 只订阅状态并转发
- * 动作。Activity 隐藏或页面卸载时 cleanup 取消两条命令的本地等待，恢复后
- * 重新订阅并保留已完成的结果，不自动重发。
+ * 动作，不持有本地命令状态。
+ *
+ * 设备的取消仍跟随页面/Activity 生命周期，而不是面板可见性：设备面板随
+ * connection section 显示/隐藏，若在它的 cleanup 中取消，切到只读 section
+ * 就会中断在途查找/测试。取消统一由 `useDeviceConnectionActivityCleanup`
+ * 在工作区持有。
  */
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
@@ -29,8 +33,6 @@ export function useSettingsDeviceConnection(
 ): UseSettingsDeviceConnectionResult {
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 
-  useEffect(() => () => owner.cancelAll(), [owner])
-
   const discover = useCallback((adbPath: string) => {
     void owner.discover(adbPath)
   }, [owner])
@@ -55,4 +57,25 @@ export function useSettingsDeviceConnection(
     selectDevice,
     clearTestFeedback,
   }
+}
+
+/**
+ * 地址编辑等与设备面板无关的输入需要清除旧测试反馈；这里只暴露稳定动作，
+ * 不订阅命令状态，避免把设备状态带进连接表单的渲染边界。
+ */
+export function useClearConnectionTestFeedback(
+  owner: DeviceConnectionOwner = settingsDeviceConnectionOwner,
+): () => void {
+  return useCallback(() => {
+    owner.clearTestFeedback()
+  }, [owner])
+}
+
+/**
+ * Activity 隐藏或页面真正卸载时结束设备命令的本地等待；section 切换不触发。
+ */
+export function useDeviceConnectionActivityCleanup(
+  owner: DeviceConnectionOwner = settingsDeviceConnectionOwner,
+): void {
+  useEffect(() => () => owner.cancelAll(), [owner])
 }
