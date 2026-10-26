@@ -12,3 +12,13 @@ export {
   getScheduleExecutionStatus,
   runCurrentActivity,
 } from './api'
+export { AUTOMATION_DOMAIN, automationKeys } from './model/queryKeys'
+export {
+  activityQueryOptions,
+  scheduleExecutionQueryOptions,
+} from './model/queries'
+export type { AutomationResource } from './model/queryKeys'
+export type {
+  AutomationActivityPayload,
+  AutomationScheduleExecutionPayload,
+} from './model/queries'

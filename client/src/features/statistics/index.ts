@@ -13,5 +13,13 @@ export {
   getTodayDrops,
 } from './api'
 export { STATISTICS_DOMAIN, statisticsKeys } from './model/queryKeys'
-export { dropStatisticsQueryOptions } from './model/queries'
+export {
+  dropStatisticsQueryOptions,
+  openTodayStagesQueryOptions,
+  todayDropsQueryOptions,
+} from './model/queries'
 export type { StatisticsResource } from './model/queryKeys'
+export type {
+  OpenTodayStagesPayload,
+  TodayDropsPayload,
+} from './model/queries'

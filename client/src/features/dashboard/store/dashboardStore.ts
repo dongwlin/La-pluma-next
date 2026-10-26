@@ -1,5 +1,13 @@
 import { create } from 'zustand'
 import { DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS } from '../constants'
+import type {
+  ActivitySummary,
+  DashboardBusinessSnapshot,
+  DropSummary,
+  OpenStageSummary,
+  ScheduleSummary,
+  TrainingSummary,
+} from '../model/snapshot'
 
 const DASHBOARD_CACHE_STORAGE_KEY = 'la-pluma-dashboard-cache'
 const DASHBOARD_CACHE_VERSION = 1
@@ -9,45 +17,6 @@ const MAX_TRAINING_NAMES = 10
 const MAX_RECENT_DROPS = 50
 const MAX_OPEN_STAGE_ITEMS = 100
 const MAX_TEMPERATURE_SAMPLES = 36
-
-interface ActivitySummary {
-  available: boolean
-  code?: string
-  name?: string
-  tip?: string
-  completion?: {
-    known?: boolean
-    complete?: boolean
-    completedStages?: string[]
-    totalStages?: number
-  }
-}
-
-interface ScheduleSummary {
-  isRunning: boolean
-  currentTask?: string
-  message?: string
-  lastTask?: string
-  lastResult?: string
-}
-
-interface TrainingSummary {
-  count: number
-  topNames: string[]
-}
-
-interface DropSummary {
-  count: number
-  recent: Array<{
-    stage: string
-    items: string
-  }>
-}
-
-interface OpenStageSummary {
-  open: Array<{ stage: string; name: string }>
-  closed: Array<{ stage: string; name: string }>
-}
 
 interface DeviceStats {
   cpuPct?: number | null
@@ -73,10 +42,6 @@ interface DashboardSnapshot {
 }
 
 type DashboardSnapshotData = Omit<DashboardSnapshot, 'lastUpdate'>
-export type DashboardBusinessSnapshot = Pick<
-  DashboardSnapshotData,
-  'activitySummary' | 'scheduleSummary' | 'trainingSummary' | 'dropSummary' | 'openStageSummary'
->
 
 interface DashboardCacheState extends DashboardSnapshot {
   hasLoaded: boolean
@@ -84,7 +49,8 @@ interface DashboardCacheState extends DashboardSnapshot {
   lastRefreshAttemptAt: number | null
   startRefresh: () => void
   finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot) => void
-  updateDeviceStats: (stats: DeviceStats) => void
+  /** 设备采样来自只读端点，入 store 前在这里做语义校验。 */
+  updateDeviceStats: (stats: unknown) => void
   reset: () => void
 }
 

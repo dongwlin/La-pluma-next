@@ -1,82 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Activity, CalendarDays, CheckCircle2, ChevronRight, Cpu, HardDrive, Database, PackageOpen, Play, ServerOff, Target, Thermometer, WifiOff } from 'lucide-react'
-import { getActivity, getScheduleExecutionStatus } from '@/features/automation'
-import { getOpenTodayStages, getTodayDrops } from '@/features/statistics'
-import { getTrainingQueue } from '@/features/training'
 import Icons from '@/shared/ui/Icons'
 import { PageHeader, Card, Button, IconButton, SmoothPanel } from '@/shared/ui'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
-import { FloatingStatusIndicator, probeBackendAvailability, useStatusStore, type StatusMessageType } from '@/features/runtime-status'
+import { FloatingStatusIndicator, useStatusStore, type StatusMessageType } from '@/features/runtime-status'
 import { appTabRoute } from '@/shared/navigation'
 import { useDashboardFlowLayout } from '../hooks/useDashboardFlowLayout'
 import { useDashboardExecution } from '../hooks/useDashboardExecution'
+import { useDashboardSnapshotRefresh } from '../hooks/useDashboardSnapshotRefresh'
+import { useDashboardDeviceStats } from '../hooks/useDashboardDeviceStats'
 import DashboardPreviewEntry from '../components/DashboardPreviewEntry'
-import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
-import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
-import { useDashboardStore, type DashboardBusinessSnapshot } from '../store/dashboardStore'
-import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
-import { getDeviceStats } from '@/features/device-mirror'
 import { loadUserConfig } from '@/features/user-config'
-import { useResourceInvalidation } from '@/features/resource-invalidation'
-
-const DASHBOARD_RESOURCE_SCOPES = ['dashboard-snapshot'] as const
+import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
+import { useDashboardStore } from '../store/dashboardStore'
 
 const sectionTitleClass = 'text-base font-bold text-primary'
 const labelClass = 'text-secondary'
 const progressTrackClass = 'h-1.5 rounded-full bg-(--app-surface-muted) overflow-hidden'
 const dashboardChipClass = 'brand-chip rounded-lg px-2.5 py-1 text-xs font-medium'
 const mutedChipClass = 'rounded-lg px-2.5 py-1 surface-soft text-secondary text-xs'
-
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-)
-
-const firstString = (...values: unknown[]) => values.find(
-  (value): value is string => typeof value === 'string' && value.trim().length > 0
-)
-
-const asRecordArray = (value: unknown): Array<Record<string, unknown>> | null => (
-  Array.isArray(value) && value.every(isRecord) ? value : null
-)
-
-const asStageSummaryArray = (value: unknown): Array<{ stage: string; name: string }> | null => {
-  if (!Array.isArray(value) || value.length > 100) return null
-  if (!value.every(item => isRecord(item) && typeof item.stage === 'string' && typeof item.name === 'string')) {
-    return null
-  }
-  return value.map(item => ({ stage: item.stage as string, name: item.name as string }))
-}
-
-const isValidActivityCompletion = (value: unknown) => {
-  if (value == null) return true
-  if (!isRecord(value)) return false
-
-  return (value.known === undefined || typeof value.known === 'boolean')
-    && (value.complete === undefined || typeof value.complete === 'boolean')
-    && (value.completedStages === undefined
-      || (Array.isArray(value.completedStages)
-        && value.completedStages.length <= 500
-        && value.completedStages.every(stage => typeof stage === 'string')))
-    && (value.totalStages === undefined
-      || (typeof value.totalStages === 'number'
-        && Number.isSafeInteger(value.totalStages)
-        && value.totalStages >= 0))
-}
-
-const normalizeActivityCompletion = (
-  value: unknown,
-): DashboardBusinessSnapshot['activitySummary']['completion'] => {
-  if (!isRecord(value)) return undefined
-  return {
-    known: typeof value.known === 'boolean' ? value.known : undefined,
-    complete: typeof value.complete === 'boolean' ? value.complete : undefined,
-    completedStages: Array.isArray(value.completedStages)
-      ? value.completedStages.filter((stage): stage is string => typeof stage === 'string')
-      : undefined,
-    totalStages: typeof value.totalStages === 'number' ? value.totalStages : undefined,
-  }
-}
 
 const getUsageBarClass = (pct?: number | null) => {
   if (pct == null) return 'bg-(--app-accent)'
@@ -135,147 +78,6 @@ const TemperatureSparkline = ({ values }: { values: number[] }) => {
   )
 }
 
-let dashboardRefreshPromise: Promise<void> | null = null
-
-function refreshDashboardData(force = false): Promise<void> {
-  if (dashboardRefreshPromise) {
-    return force
-      ? dashboardRefreshPromise.then(() => refreshDashboardData())
-      : dashboardRefreshPromise
-  }
-
-  const attemptedAt = Date.now()
-  const dashboardStore = useDashboardStore.getState()
-  dashboardStore.startRefresh()
-
-  const request = (async () => {
-    let completedSnapshot: DashboardBusinessSnapshot | undefined
-
-    try {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) return
-
-      const [, activityResult, scheduleResult, trainingResult, dropResult, openTodayResult] = await Promise.allSettled([
-        probeBackendAvailability({ showChecking: useStatusStore.getState().backendStatus !== 'available' }),
-        getActivity('Official'),
-        getScheduleExecutionStatus(),
-        getTrainingQueue(),
-        getTodayDrops(),
-        getOpenTodayStages(),
-      ])
-      // The five data responses already prove the backend was reachable. The
-      // status probe has its own revision handling and may be superseded by
-      // the app-level monitor, so it must not invalidate an otherwise complete snapshot.
-      const allDashboardRequestsSucceeded = activityResult.status === 'fulfilled' && activityResult.value.success
-        && scheduleResult.status === 'fulfilled' && scheduleResult.value.success
-        && trainingResult.status === 'fulfilled' && trainingResult.value.success
-        && dropResult.status === 'fulfilled' && dropResult.value.success
-        && openTodayResult.status === 'fulfilled' && openTodayResult.value.success
-
-      if (allDashboardRequestsSucceeded) {
-        const activity = activityResult.value.data
-        const execution = scheduleResult.value.data
-        const trainingPayload = trainingResult.value.data
-        const dropPayload = dropResult.value.data
-        const openStagePayload = openTodayResult.value.data
-        const queue = Array.isArray(trainingPayload)
-          ? asRecordArray(trainingPayload)
-          : isRecord(trainingPayload)
-            ? asRecordArray(trainingPayload.queue)
-            : null
-        const drops = Array.isArray(dropPayload)
-          ? asRecordArray(dropPayload)
-          : isRecord(dropPayload)
-            ? asRecordArray(dropPayload.records)
-            : null
-        const openStages = isRecord(openStagePayload) ? asStageSummaryArray(openStagePayload.open) : null
-        const closedStages = isRecord(openStagePayload) ? asStageSummaryArray(openStagePayload.closed) : null
-        const payloadsAreComplete = isRecord(activity)
-          && isRecord(execution)
-          && isValidActivityCompletion(activity.completion)
-          && queue !== null
-          && drops !== null
-          && openStages !== null
-          && closedStages !== null
-
-        if (!payloadsAreComplete) return
-
-        const activityCode = firstString(activity.code, activity.id)
-        const activityName = firstString(activity.name, activity.displayName, activity.stageName)
-        const activitySummary = {
-          available: activity.isActive === true || activity.available === true || Boolean(activityCode || activityName),
-          code: activityCode,
-          name: activityName,
-          tip: firstString(activity.tip, activity.description),
-          completion: normalizeActivityCompletion(activity.completion),
-        }
-        const rawLastResult = execution.lastResult || execution.result || execution.lastMessage
-        const scheduleSummary = {
-          isRunning: execution.isRunning === true || execution.running === true || execution.executing === true,
-          currentTask: firstString(
-            execution.taskName,
-            execution.currentTask,
-            isRecord(execution.task) ? execution.task.name : undefined,
-          ),
-          message: firstString(execution.message, execution.status),
-          lastTask: firstString(execution.lastTaskName, execution.lastTask, execution.completedTask)
-            || getExecutionLastTask(rawLastResult),
-          lastResult: formatExecutionSummary(rawLastResult),
-        }
-        const trainingSummary = {
-          count: queue.length,
-          topNames: queue
-            .map(item => firstString(
-              item.operatorName,
-              isRecord(item.operator) ? item.operator.name : undefined,
-              item.name,
-              item.nickname,
-            ))
-            .filter((name): name is string => Boolean(name))
-            .slice(0, 3),
-        }
-        const dropSummary = {
-          count: drops.length,
-          recent: [...drops].reverse().slice(0, 3).map(record => ({
-            stage: firstString(record.stageName, record.stageCode, record.stage) || '未知关卡',
-            items: Array.isArray(record.drops) && record.drops.length > 0
-              ? record.drops
-                  .slice(0, 3)
-                  .map((drop: any) => `${drop?.name || drop?.itemName || '材料'}×${drop?.count || 1}`)
-                  .join('、')
-              : Array.isArray(record.items) && record.items.length > 0
-                ? record.items
-                    .slice(0, 3)
-                    .map((item: any) => `${item?.name || item?.itemName || '材料'}×${item?.count || 1}`)
-                    .join('、')
-                : firstString(record.itemName) || '已记录作战，暂无材料明细',
-          })),
-        }
-        const openStageSummary = {
-          open: openStages,
-          closed: closedStages,
-        }
-        completedSnapshot = {
-          activitySummary,
-          scheduleSummary,
-          trainingSummary,
-          dropSummary,
-          openStageSummary,
-        }
-      }
-    } catch (error) {
-      console.error('加载 Dashboard 数据失败:', error)
-    } finally {
-      dashboardStore.finishRefresh(attemptedAt, completedSnapshot)
-    }
-  })()
-  const refreshPromise = request.finally(() => {
-    dashboardRefreshPromise = null
-  })
-
-  dashboardRefreshPromise = refreshPromise
-  return refreshPromise
-}
-
 export default function Dashboard() {
   const navigate = useNavigate()
   const {
@@ -300,7 +102,8 @@ export default function Dashboard() {
   const openStageSummary = useDashboardStore(state => state.openStageSummary)
   const deviceStats = useDashboardStore(state => state.deviceStats)
   const temperatureHistory = useDashboardStore(state => state.temperatureHistory)
-  const wasOnlineRef = useRef(isOnline)
+  const { refreshDashboard: loadDashboardData } = useDashboardSnapshotRefresh()
+  useDashboardDeviceStats()
   const { flowGridRef, flowCardRef, flowPreviewRef, flowGridStyle } = useDashboardFlowLayout(hasLoaded)
   const [quickStartLoading, setQuickStartLoading] = useState(false)
   const [activityPreflightLoading, setActivityPreflightLoading] = useState(false)
@@ -312,75 +115,6 @@ export default function Dashboard() {
 
   const serviceStatus = isOnline ? backendStatus : 'offline'
   const automationAvailable = serviceStatus === 'available'
-
-  useEffect(() => {
-    let disposed = false
-    let requestInFlight = false
-    const fetch = async () => {
-      if (requestInFlight) return
-      requestInFlight = true
-      try {
-        const result = await getDeviceStats()
-        if (!disposed && result.success && result.data) {
-          useDashboardStore.getState().updateDeviceStats(result.data)
-        }
-      } catch {
-        // Keep the most recent sample while the device endpoint is unavailable.
-      } finally {
-        requestInFlight = false
-      }
-    }
-    void fetch()
-    const timer = window.setInterval(() => void fetch(), 5000)
-    return () => {
-      disposed = true
-      window.clearInterval(timer)
-    }
-  }, [])
-
-  const loadDashboardData = useCallback(() => refreshDashboardData(true), [])
-
-  // 识别、计划应用与资源更新的发布端在后续任务接入；总览只接受一次完整快照，
-  // 因此这里统一走 force 刷新，由 refreshDashboardData 校验五项后才原子提交。
-  useResourceInvalidation(DASHBOARD_RESOURCE_SCOPES, () => {
-    void loadDashboardData()
-  })
-
-  useEffect(() => {
-    let disposed = false
-    let timer: number | null = null
-
-    const scheduleNextRefresh = () => {
-      if (disposed) return
-      const lastAttempt = useDashboardStore.getState().lastRefreshAttemptAt
-      const elapsed = lastAttempt === null ? DASHBOARD_REFRESH_INTERVAL_MS : Date.now() - lastAttempt
-      const delay = Math.max(1000, DASHBOARD_REFRESH_INTERVAL_MS - elapsed)
-      timer = window.setTimeout(() => {
-        void refreshDashboardData().finally(scheduleNextRefresh)
-      }, delay)
-    }
-    const refreshThenSchedule = () => {
-      void refreshDashboardData().finally(scheduleNextRefresh)
-    }
-    const cache = useDashboardStore.getState()
-    const cacheIsStale = cache.lastRefreshAttemptAt === null
-      || Date.now() - cache.lastRefreshAttemptAt >= DASHBOARD_REFRESH_INTERVAL_MS
-
-    if (!cache.hasLoaded || cacheIsStale) refreshThenSchedule()
-    else scheduleNextRefresh()
-
-    return () => {
-      disposed = true
-      if (timer !== null) window.clearTimeout(timer)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (isOnline && !wasOnlineRef.current) {
-      void refreshDashboardData(true)
-    }
-    wasOnlineRef.current = isOnline
-  }, [isOnline])
 
   const runTodayFlow = async () => {
     if (quickStartInFlightRef.current) return

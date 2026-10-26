@@ -12,5 +12,8 @@ export const qualityPresets = {
 
 export const fpsOptions = [10, 15, 30, 45, 60, 90, 120] as const
 
+/** 总览设备采样的轮询间隔；失败静默保留上一份样本。 */
+export const DEVICE_STATS_POLL_INTERVAL_MS = 5_000
+
 export type QualityPreset = keyof typeof qualityPresets
 export type QualitySelection = QualityPreset | 'custom'

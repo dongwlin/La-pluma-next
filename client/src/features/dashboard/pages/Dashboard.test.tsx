@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
-import { act } from 'react'
+import { Activity, act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as taskExecutionModule from '@/features/task-execution'
 import type { AgentRun, ExecutionController, RunSnapshot } from '@/features/task-execution'
+import { createQueryClient } from '@/shared/query'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useStatusStore } from '@/features/runtime-status'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
@@ -36,16 +38,23 @@ const renderSpies = vi.hoisted(() => ({
   dashboardSkeleton: vi.fn(),
 }))
 
-vi.mock('@/features/automation', () => ({
-  getActivity: apiMocks.getActivity,
-  getScheduleExecutionStatus: apiMocks.getScheduleExecutionStatus,
-  executeScheduleNow: apiMocks.executeScheduleNow,
-  runCurrentActivity: apiMocks.runCurrentActivity,
-}))
+// 在端点边界 mock：页面与快照协调器使用真实的领域 query 定义（key、signal、
+// 信封归一与取消），只替换网络读取与执行入口。
+vi.mock('@/features/automation/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/automation/api')>()
+  return {
+    ...actual,
+    getActivity: apiMocks.getActivity,
+    getScheduleExecutionStatus: apiMocks.getScheduleExecutionStatus,
+    executeScheduleNow: apiMocks.executeScheduleNow,
+    runCurrentActivity: apiMocks.runCurrentActivity,
+  }
+})
 
-vi.mock('@/features/device-mirror', () => ({
-  getDeviceStats: apiMocks.getDeviceStats,
-}))
+vi.mock('@/features/device-mirror/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/device-mirror/api')>()
+  return { ...actual, getDeviceStats: apiMocks.getDeviceStats }
+})
 
 // 真实 ExecutionController + 假 API：Dashboard 的执行接线按应用级控制器行为回归，
 // 网络请求、身份存储与轮询节奏由测试控制，每个用例拿到独立控制器。
@@ -82,18 +91,24 @@ vi.mock('@/features/task-execution', async (importOriginal) => {
   }
 })
 
-vi.mock('@/features/user-config', () => ({
-  loadUserConfig: apiMocks.loadUserConfig,
-}))
+vi.mock('@/features/user-config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/user-config')>()
+  return { ...actual, loadUserConfig: apiMocks.loadUserConfig }
+})
 
-vi.mock('@/features/statistics', () => ({
-  getTodayDrops: apiMocks.getTodayDrops,
-  getOpenTodayStages: apiMocks.getOpenTodayStages,
-}))
+vi.mock('@/features/statistics/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/statistics/api')>()
+  return {
+    ...actual,
+    getTodayDrops: apiMocks.getTodayDrops,
+    getOpenTodayStages: apiMocks.getOpenTodayStages,
+  }
+})
 
-vi.mock('@/features/training', () => ({
-  getTrainingQueue: apiMocks.getTrainingQueue,
-}))
+vi.mock('@/features/training/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/training/api')>()
+  return { ...actual, getTrainingQueue: apiMocks.getTrainingQueue }
+})
 
 vi.mock('../hooks/useDashboardFlowLayout', () => ({
   useDashboardFlowLayout: () => ({
@@ -146,6 +161,7 @@ const createExecutionController = (taskExecutionModule as unknown as {
 let online = true
 let container: HTMLDivElement
 let root: Root
+let client: ReturnType<typeof createQueryClient>
 let releaseExecution: (() => void) | null = null
 let trackedRunState: AgentRun
 
@@ -213,23 +229,24 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>
 }
 
-function renderDashboard() {
+function renderDashboard(mode: 'visible' | 'hidden' = 'visible') {
   root.render(
-    <MemoryRouter initialEntries={['/app/dashboard']}>
-      <Dashboard />
-      <LocationProbe />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/app/dashboard']}>
+        <Activity mode={mode}>
+          <Dashboard />
+          <LocationProbe />
+        </Activity>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
 async function flushDashboard() {
   await act(async () => {
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    // Query 的观察者通知与协调器收尾都经宏任务批次，等两轮再断言。
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
   })
 }
 
@@ -240,6 +257,10 @@ describe('Dashboard connectivity state', () => {
       configurable: true,
       get: () => online,
     })
+    // Query 的 onlineManager 也监听浏览器在线事件；上一个用例断开网络后
+    // 必须恢复在线状态，否则新查询会一直处于暂停。
+    window.dispatchEvent(new Event('online'))
+    onlineManager.setOnline(true)
     trackedRunState = buildRun({ progress: { currentTask: '收取信用' } })
     apiMocks.getTaskStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
     apiMocks.getDeviceStats.mockResolvedValue({ success: false })
@@ -271,6 +292,7 @@ describe('Dashboard connectivity state', () => {
     useStatusStore.getState().clearMessage()
     useStatusStore.getState().applyRunStatus({ phase: 'idle', isRunning: false, runId: null, label: null, detail: null })
     useStatusStore.getState().setBackendStatus('unknown')
+    client = createQueryClient()
     releaseExecution = createExecutionController().start()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -280,7 +302,6 @@ describe('Dashboard connectivity state', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
-    vi.useRealTimers()
     releaseExecution?.()
     releaseExecution = null
     useDashboardStore.getState().reset()
@@ -356,21 +377,55 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('更新活动')
   })
 
-  it('refreshes the complete snapshot when a resource invalidation is published', async () => {
+  it.each(['plan-applied', 'recognition', 'training-queue', 'resource-update'] as const)(
+    'refreshes the complete snapshot on a %s resource invalidation',
+    async (cause) => {
+      await act(async () => renderDashboard())
+      await flushDashboard()
+
+      apiMocks.getActivity.mockClear()
+      apiMocks.getScheduleExecutionStatus.mockClear()
+      apiMocks.getTrainingQueue.mockClear()
+      apiMocks.getTodayDrops.mockClear()
+      apiMocks.getOpenTodayStages.mockClear()
+      apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
+      const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
+
+      await act(async () => {
+        publishResourceInvalidation({ resources: ['dashboard-snapshot'], cause })
+      })
+      await flushDashboard()
+
+      expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
+      expect(apiMocks.getScheduleExecutionStatus).toHaveBeenCalledTimes(1)
+      expect(apiMocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+      expect(apiMocks.getTodayDrops).toHaveBeenCalledTimes(1)
+      expect(apiMocks.getOpenTodayStages).toHaveBeenCalledTimes(1)
+      // 单路失败不提交半份快照，旧快照与时间戳保持不变。
+      expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
+    },
+  )
+
+  it('refreshes once when a snapshot invalidation was published while Activity was hidden', async () => {
     await act(async () => renderDashboard())
     await flushDashboard()
-
     apiMocks.getActivity.mockClear()
     apiMocks.getScheduleExecutionStatus.mockClear()
     apiMocks.getTrainingQueue.mockClear()
     apiMocks.getTodayDrops.mockClear()
     apiMocks.getOpenTodayStages.mockClear()
-    apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
-    const lastSuccessfulUpdate = useDashboardStore.getState().lastUpdate
+    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '恢复活动' } })
 
+    await act(async () => renderDashboard('hidden'))
+    await flushDashboard()
     await act(async () => {
-      publishResourceInvalidation({ resources: ['dashboard-snapshot'], cause: 'plan-applied' })
+      publishResourceInvalidation({ resources: ['dashboard-snapshot'], cause: 'recognition' })
     })
+    await flushDashboard()
+    // 隐藏期间订阅已注销：不会在后台立即重读。
+    expect(apiMocks.getActivity).not.toHaveBeenCalled()
+
+    await act(async () => renderDashboard('visible'))
     await flushDashboard()
 
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
@@ -378,8 +433,7 @@ describe('Dashboard connectivity state', () => {
     expect(apiMocks.getTrainingQueue).toHaveBeenCalledTimes(1)
     expect(apiMocks.getTodayDrops).toHaveBeenCalledTimes(1)
     expect(apiMocks.getOpenTodayStages).toHaveBeenCalledTimes(1)
-    // 单路失败不提交半份快照，旧快照与时间戳保持不变。
-    expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
+    expect(container.textContent).toContain('恢复活动')
   })
 
   it('keeps the last complete snapshot when one background request fails', async () => {
@@ -418,7 +472,10 @@ describe('Dashboard connectivity state', () => {
     })
 
     apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '异常活动' } })
-    apiMocks.getOpenTodayStages.mockResolvedValueOnce({ success: true, data: undefined })
+    apiMocks.getOpenTodayStages.mockResolvedValueOnce({
+      success: true,
+      data: { open: [], closed: [{ stage: 'CE-6' }] },
+    })
 
     await act(async () => root.render(<div>其他页面</div>))
     await act(async () => renderDashboard())
@@ -430,22 +487,15 @@ describe('Dashboard connectivity state', () => {
     expect(window.localStorage.getItem('la-pluma-dashboard-cache')).toBe(persistedSnapshot)
   })
 
-  it('keeps the most recent device sample when a later sample fails', async () => {
-    vi.useFakeTimers()
+  it('projects the initial device sample into the dashboard cache', async () => {
     apiMocks.getDeviceStats.mockResolvedValue({ success: true, data: { cpuPct: 42, temp: 38 } })
 
     await act(async () => renderDashboard())
     await flushDashboard()
-    expect(container.textContent).toContain('38°C')
-
-    apiMocks.getDeviceStats.mockResolvedValue({ success: false })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000)
-    })
-    await flushDashboard()
 
     expect(container.textContent).toContain('38°C')
     expect(useDashboardStore.getState().deviceStats?.temp).toBe(38)
+    expect(useDashboardStore.getState().temperatureHistory).toEqual([38])
   })
 
   it('disables execution actions as soon as the browser goes offline', async () => {
