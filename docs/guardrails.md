@@ -55,10 +55,11 @@
 | 类别 | 禁止项 | 归属 |
 | --- | --- | --- |
 | 传输 | `@/shared/api`、`@/shared/query`、`@tanstack/react-query`；裸 `fetch`、`WebSocket`、`EventSource`、`XMLHttpRequest` | 领域 `api/`、领域 Query 与 Query Provider |
+| 领域端点转发 | 经 `@/features/<domain>` 公开面导入该域 `api/` 再导出的函数（例如 `executeScheduleNow`、`saveUserConfig`），或整体命名空间导入一个含端点的域 | 领域容器与领域 hook；公开面只导出页面/hook/组件与明确允许跨域读取的 query |
 | 存储 | `localStorage`、`sessionStorage`、`indexedDB` | user-config 协调器、领域所有者或面板会话 |
 | 轮询 | `setInterval` | 领域 hook / 流 / 会话所有者（例如实时日志、设备采样） |
 
-页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
+页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。端点检查会沿公开面的 `export { ... } from './api'` 定位导出名来源，因此“从 feature 根导入端点”与深路径导入一样会被拦住，而同一条公开面导出的领域 hook/组件仍然允许。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
 
 ## 4. 规模观察与预算
 
@@ -112,7 +113,7 @@ CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` �
 回归集中在 `client/scripts/guardrails.test.ts`：
 
 - 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面调用领域 hook；
-- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`、新增超阈值文件；
+- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面导入领域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`、新增超阈值文件；
 - 当前源码树：无依赖/页面违规，且规模不超出已入库预算。
 
 ## 6. 已知限制
