@@ -17,7 +17,7 @@ import {
   canGenerateTrainingPlan,
   isTrainingPlanBasisCurrent,
 } from '../model/planValidity'
-import { getOpenStagePlan } from '../model/planCommands'
+import { getOpenStagePlan } from '../model/planDisplay'
 import {
   TRAINING_SETTINGS_FAILURE_MESSAGE,
   isTrainingSettingsInvalidation,

@@ -40,6 +40,7 @@ import type {
   TrainingQueueSnapshot,
   TrainingSettings,
 } from '../types'
+import { getOpenStagePlan } from './planDisplay'
 import {
   canApplyTrainingPlan,
   canGenerateTrainingPlan,
@@ -153,16 +154,6 @@ export interface TrainingPlanOwnerOptions {
   readSettings?: () => TrainingSettingsOwnerState
   subscribeSettings?: (listener: () => void) => () => void
 }
-
-const getOpenStagePlan = (sourcePlan: TrainingPlan): TrainingPlan => ({
-  ...sourcePlan,
-  stages: sourcePlan.openStages
-    ?? sourcePlan.stages?.filter(stage => stage.isOpen !== false)
-    ?? [],
-})
-
-/** 供页面渲染与应用提交共用：只保留当日开放关卡。 */
-export { getOpenStagePlan }
 
 const flowSyncEqual = (left: TrainingFlowSync, right: TrainingFlowSync): boolean => (
   left.status === right.status
