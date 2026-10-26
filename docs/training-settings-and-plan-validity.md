@@ -141,8 +141,8 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 新的应用发布复用既有作用域与 `detail` 可选字段；automation 与 Dashboard 不依赖 window 事件。
   它不跨浏览器标签页，也不替代服务端 revision。
 - 独立回滚范围：`model/settingsCommands.ts`、`model/planValidity.ts`、`model/planCommands.ts`、
-  `hooks/useTrainingSettings.ts`、`hooks/useTrainingPlan.ts` 与 `OperatorTraining` 的计划接线；
-  回滚后恢复页面本地计划 state，不需要服务端迁移。
+  `hooks/useTrainingSettings.ts`、`hooks/useTrainingPlan.ts` 与 `components/TrainingWorkspace.tsx`
+  的计划接线；回滚后恢复页面本地计划 state，不需要服务端迁移。
 
 ## 7. 回归证据
 
@@ -170,6 +170,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
 ## 关联
 
 - [养成队列命令与写后刷新](training-queue-commands.md)：队列唯一可写真相、串行命令、revision 与不确定 fallback。
+- [养成领域面板](training-panel.md)：工作区如何持有共享版本边界、计划/设置面板的局部状态与展示模型。
 - [Query 缓存与键规范](query-cache.md)：队列/候选/计数缓存与失效规则。
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与计划有效期缺口。
 - [前端职责与质量基线](frontend-baseline.md)：活动生命周期与页面职责。

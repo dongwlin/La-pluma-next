@@ -115,9 +115,9 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 设置 | PUT `/agent/training/settings`；FPR-022 起由 `model/settingsCommands.ts` 的模块级所有者串行提交，只有最新响应能改变页面值，失败回滚到最近确认值；设置 revision 与队列 revision 共同决定计划是否可应用 | training 设置提交/计划有效期所有者（FPR-022 已接入） |
 | 计划 | `model/planCommands.ts` 的 `TrainingPlanOwner`：生成前重读 queue，冻结队列/设置版本，POST `/agent/training/plan`，拒绝 queueRevision 不符与生成期间版本变化；队列或设置版本变化、刷新失败时禁用生成/应用；应用前经配置协调器排空 automation 在途保存，POST `/agent/actions/apply-training-plan` 仅应用当日开放关，随后发布 automation/schedule/总览失效并重读；schedule 注册失败或重读失败为部分成功，保留计划并给重试入口；`POST /agent/training/sync` 后重读 | training 计划版本、生成/应用/同步用例（FPR-023） |
 | 通知 | 显式应用成功后由所有者发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`；队列写入/重试同步只发布 `automation-config`/`dashboard-snapshot`（自动同步不重注册 cron）；window `training-plan-applied` 已移除 | 领域失效协议 + automation 配置冲突协调 |
-| UI | filters/search、selectorOpen、planMode、render limit=72、图片、pending ids、busy/error；UndoToast 8s，hover/focus/pending 暂停，cleanup 清 timer | 最近面板；撤销意图归队列用例、toast 呈现归组件 |
+| UI | FPR-033 后由 `components/TrainingWorkspace` 与面板持有：选择器管 filters/search/render limit=72/图片，计划面板管 planMode，队列面板管行内焦点与 UndoToast（8s，hover/focus/pending 暂停，cleanup 清 timer），工作区管 selectorOpen、操作错误、撤销快照与 pending/busy 投影 | 最近面板；撤销意图归队列用例、toast 呈现归组件（见[养成领域面板](training-panel.md)） |
 
-无业务 localStorage；queue 已由 FPR-021 迁入 `training/queue` Query 与串行领域命令，页面只读取快照并订阅 pending；设置已由 FPR-022 迁入 `model/settingsCommands.ts` 的模块级所有者（不进入 Query）；计划生成/应用/同步在 FPR-023 后由 `model/planCommands.ts` 的模块级所有者持有，页面只订阅状态并调用动作。候选与计数由 Query 持有：key 含筛选参数、signal 取消、列表失败清空/计数静默保旧。命令的串行链与 pending 状态是模块级所有者，Activity 隐藏/页面 remount 不重建；写后刷新失败时缓存保存带 `uncertain` 的本地 fallback，重新加载后清除。外部 depot/operbox/material/resource 更新经 resource-invalidation 端口到达，按作用域失效候选/计数或重读队列；本页忽略自己的队列发布。
+无业务 localStorage；queue 已由 FPR-021 迁入 `training/queue` Query 与串行领域命令，页面只读取快照并订阅 pending；设置已由 FPR-022 迁入 `model/settingsCommands.ts` 的模块级所有者（不进入 Query）；计划生成/应用/同步在 FPR-023 后由 `model/planCommands.ts` 的模块级所有者持有，页面只订阅状态并调用动作。候选与计数由 Query 持有：key 含筛选参数、signal 取消、列表失败清空/计数静默保旧。FPR-033 起页面只组合 `TrainingWorkspace`，面板 JSX 与 DOM 未改，状态归属见[养成领域面板](training-panel.md)。命令的串行链与 pending 状态是模块级所有者，Activity 隐藏/页面 remount 不重建；写后刷新失败时缓存保存带 `uncertain` 的本地 fallback，重新加载后清除。外部 depot/operbox/material/resource 更新经 resource-invalidation 端口到达，按作用域失效候选/计数或重读队列；本页忽略自己的队列发布。
 
 ### Settings — `features/settings/pages/ConfigManager.tsx`
 
@@ -166,7 +166,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Roguelike | 保留草稿/模式；清 status/stop 等待；show 查运行、跳过已 hydrated 配置 | 业务查询继续；预览暂停 | 配置/后端恢复，activeMode 回默认 |
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
-| Training | 保留 filters/设置/计划/撤销 toast；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数、render limit 回 72；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；未完成 closure 不会自动取消 |
+| Training | 保留选择器筛选/搜索/分批游标/头像缓存、计划范围、设置/计划、操作错误与撤销快照；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；面板局部状态回到默认；未完成 closure 不会自动取消 |
 | Settings | 重建 section 监听；版本/目录 Query 观察者注销；abort 在途设备发现/连接测试并保留已完成结果；自动更新初始化标记阻止重复加载，更新命令与自动更新保存在隐藏期间继续完成 | 无专门处理 | section/autoUpdate fallback 可恢复；设备结果保留（未完成已取消），版本/目录按新鲜度重取；更新命令与自动更新反馈/草稿由模块级 owner 保留 |
 | Logs | 停实时计时器并 abort 在途读取；历史会话取消列表/读取并保留选择，恢复时重读列表、重试被取消的当前文件 | 取消实时在途读取，计时器保留但守卫不发请求；历史读取继续；可见立即重读实时 | 缓冲/选择/过滤全部重置，手动暂停状态随实例重置 |
 

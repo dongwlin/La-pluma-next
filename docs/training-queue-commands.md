@@ -86,14 +86,14 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 
 发布参数为 `cause: 'training-queue'`，并携带 `detail: { source: 'training-queue-command' }`：
 
-- `OperatorTraining` 忽略带该 `detail` 的发布，因为权威快照已写入同一 Query key；外部发布的 `training-queue`（不带该标记）仍会触发重读。
+- FPR-033 起由 `TrainingWorkspace` 忽略带该 `detail` 的发布，因为权威快照已写入同一 Query key；外部发布的 `training-queue`（不带该标记）仍会触发重读。
 - `Dashboard` 只订阅 `dashboard-snapshot`，收到后走完整快照刷新；五路读取全部有效才提交，单路失败保留旧快照。
 - 候选列表与状态计数不因队列写入而失效；材料刷新/识别命令仍按 `materials` / `operbox` / `depot` 作用域触发候选与计数重取。
 - 计划失效路径：命令开始时立即作废旧预览（包括撤销；即使用户随后取消或失败，见既有回归），读取到 revision 变化时作废，以及设置版本变化时作废（FPR-022）。前者保证“点击排序后旧计划按钮立即不可应用”，后两条覆盖识别、材料刷新、外部设置修改和另一客户端造成的队列变化。
 
 ## 6. 页面与生命周期
 
-- `OperatorTraining` 用 `useQuery(trainingQueueQueryOptions())` 读取队列，用 `useTrainingQueueCommands()` 发起命令并派生 `pendingOperatorIds` / `queueMutationPending`。
+- FPR-033 起 `TrainingWorkspace` 用 `useQuery(trainingQueueQueryOptions())` 读取队列，用 `useTrainingQueueCommands()` 发起命令并派生 `pendingOperatorIds` / `queueMutationPending`；页面只组合工作区。
 - 队列命令所有者为模块级单例；Activity 隐藏只注销页面 Effect，不中断串行链与写后刷新。隐藏期间完成的命令仍会写入应用级 Query 缓存，恢复时按新鲜度使用。
 - 真正卸载后重挂载：命令继续完成（请求没有 AbortController 绑定页面），新页面从 Query 缓存读取结果；pending 提示是否仍显示取决于命令是否完成，不再由旧页面闭包维护。
 - 页面首屏：`useTrainingPlan()` 把队列快照交给计划所有者，由其采用 `flowSync` 并把 `settings` 交给设置所有者 hydrate；若用户先编辑设置，则不采用迟到的首屏值。`TrainingPlanOwner` 的权威重读在读取期间本地设置未变化时采用服务端值（外部设置变化由此被发现）。
@@ -137,6 +137,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
 ## 关联
 
 - [Query 缓存与键规范](query-cache.md)：队列 key、默认策略与写后失效规则。
+- [养成领域面板](training-panel.md)：队列/材料/计划/设置面板的组合、共享版本边界与局部状态生命期。
 - [养成设置提交与计划有效期](training-settings-and-plan-validity.md)：设置所有权、设置 revision 与计划前提。
 - [共享资源归属与失效端口](resource-ownership.md)：队列归属与触发映射。
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系、计划有效期与 Dashboard 快照。
