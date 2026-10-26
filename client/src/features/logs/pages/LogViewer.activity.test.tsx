@@ -329,6 +329,60 @@ describe('LogViewer realtime lifecycle', () => {
     expect(container.textContent).toContain('历史内容')
   })
 
+  it('pauses polling from the toolbar and resumes with an immediate read', async () => {
+    let call = 0
+    mocks.getRealtimeLogs.mockImplementation(async () => {
+      call += 1
+      return { success: true, data: [row(`第${call}次`) ] }
+    })
+
+    await renderMode('visible')
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('第1次')
+
+    const action = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.getAttribute('aria-label') === label)
+
+    await act(async () => action('暂停实时日志')?.click())
+    await flush()
+    expect(action('继续实时日志')).toBeTruthy()
+
+    await advance(5000)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+    expect(container.textContent).not.toContain('第2次')
+
+    await act(async () => action('继续实时日志')?.click())
+    await flush()
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('第2次')
+
+    await advance(1250)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(3)
+    expect(container.textContent).toContain('第3次')
+  })
+
+  it('keeps a manual pause through Activity hide and show', async () => {
+    mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [row('暂停中')] })
+
+    await renderMode('visible')
+    const pause = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.getAttribute('aria-label') === '暂停实时日志')
+    await act(async () => pause?.click())
+    await flush()
+
+    await renderMode('hidden')
+    await renderMode('visible')
+    await advance(5000)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('暂停中')
+
+    const resume = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.getAttribute('aria-label') === '继续实时日志')
+    await act(async () => resume?.click())
+    await flush()
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+  })
+
   it('aborts the local clear wait when the page unmounts', async () => {
     const clearing = deferred<ApiResponse<unknown>>()
     mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [row('清空前')] })

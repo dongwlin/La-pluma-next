@@ -9,12 +9,20 @@ import {
   LOG_CLEANUP_MAX_SIZE_MB,
 } from './logCommands'
 
-const createRealtimePort = () => {
+const createRealtimePort = (paused = false) => {
   const calls: string[] = []
+  const state = { paused }
   return {
     calls,
-    pause: () => { calls.push('pause') },
-    resume: () => { calls.push('resume') },
+    get paused() { return state.paused },
+    pause: () => {
+      calls.push('pause')
+      state.paused = true
+    },
+    resume: () => {
+      calls.push('resume')
+      state.paused = false
+    },
     clear: () => { calls.push('clear') },
   }
 }
@@ -53,6 +61,28 @@ describe('clearRealtimeLogsCommand', () => {
 
     expect(outcome).toEqual({ status: 'failed', message: '清空接口暂不可用' })
     expect(realtime.calls).toEqual(['pause', 'resume'])
+  })
+
+  it('preserves a manual pause after a successful clear', async () => {
+    const realtime = createRealtimePort(true)
+    const request = vi.fn().mockResolvedValue({ success: true, message: '实时日志已清空' })
+
+    const outcome = await clearRealtimeLogsCommand(realtime, request)
+
+    expect(outcome).toEqual({ status: 'succeeded', message: '实时日志已清空' })
+    expect(realtime.calls).toEqual(['pause', 'clear'])
+    expect(realtime.paused).toBe(true)
+  })
+
+  it('keeps a manual pause when the clear fails', async () => {
+    const realtime = createRealtimePort(true)
+    const request = vi.fn().mockResolvedValue({ success: false, message: '清空接口暂不可用' })
+
+    const outcome = await clearRealtimeLogsCommand(realtime, request)
+
+    expect(outcome).toEqual({ status: 'failed', message: '清空接口暂不可用' })
+    expect(realtime.calls).toEqual(['pause'])
+    expect(realtime.paused).toBe(true)
   })
 
   it('keeps the buffer and resumes when the request throws', async () => {

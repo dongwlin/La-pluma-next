@@ -55,6 +55,12 @@ const historyFile = (name: string, path = `/logs/${name}`) => ({
 
 const historyLine = (message: string) => `[2026-07-22 10:11:12][INFO] ${message}`
 
+const realtimeLine = (message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') => ({
+  time: '2026-07-22T10:11:12.000Z',
+  level,
+  message: `[2026-07-22 10:11:12][${level}] ${message}`,
+})
+
 const flush = async () => {
   await act(async () => {
     await Promise.resolve()
@@ -73,6 +79,12 @@ const click = async (element: HTMLElement) => {
   await flush()
 }
 
+const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.textContent === label)
+
+const findAction = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.getAttribute('aria-label') === label)
+
 const changeSelect = async (select: HTMLSelectElement, value: string) => {
   await act(async () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
@@ -81,6 +93,25 @@ const changeSelect = async (select: HTMLSelectElement, value: string) => {
   })
   await flush()
 }
+
+const changeInput = async (input: HTMLInputElement, value: string) => {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    setter?.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await flush()
+}
+
+const readBlobText = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(String(reader.result ?? ''))
+  reader.onerror = () => reject(reader.error)
+  reader.readAsText(blob)
+})
+
+const originalCreateObjectURL = URL.createObjectURL
+const originalRevokeObjectURL = URL.revokeObjectURL
 
 describe('LogViewer recovery and controls', () => {
   beforeEach(() => {
@@ -109,6 +140,16 @@ describe('LogViewer recovery and controls', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: originalCreateObjectURL,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      writable: true,
+      value: originalRevokeObjectURL,
+    })
     vi.restoreAllMocks()
   })
 
@@ -438,5 +479,164 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('清空失败前的行')
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(1)
+  })
+
+  it('pauses realtime polling from the toolbar and resumes through the same control', async () => {
+    mocks.getRealtimeLogs
+      .mockResolvedValueOnce({ success: true, data: [realtimeLine('暂停前')] })
+      .mockResolvedValueOnce({ success: true, data: [realtimeLine('恢复后')] })
+
+    await renderComponent()
+    expect(container.textContent).toContain('暂停前')
+    const pause = findAction('暂停实时日志')
+    expect(pause?.textContent).toBe('暂停')
+
+    await click(pause!)
+    expect(findAction('继续实时日志')?.textContent).toBe('继续')
+
+    await click(findAction('继续实时日志')!)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('恢复后')
+    expect(findAction('暂停实时日志')?.textContent).toBe('暂停')
+  })
+
+  it('resumes a paused stream when retrying the realtime error', async () => {
+    mocks.getRealtimeLogs
+      .mockResolvedValueOnce({ success: false, message: '实时日志暂不可用' })
+      .mockResolvedValueOnce({ success: true, data: [realtimeLine('恢复后的日志')] })
+
+    await renderComponent()
+    expect(container.querySelector('.log-console-state.is-error')?.textContent).toContain('实时日志暂不可用')
+
+    await click(findAction('暂停实时日志')!)
+    expect(findAction('继续实时日志')).not.toBeUndefined()
+
+    await click(container.querySelector<HTMLButtonElement>('.log-console-state.is-error button')!)
+
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('.log-console-state.is-error')).toBeNull()
+    expect(container.textContent).toContain('恢复后的日志')
+    expect(findAction('暂停实时日志')).not.toBeUndefined()
+  })
+
+  it('keeps a manual pause after clearing realtime logs', async () => {
+    mocks.getRealtimeLogs.mockResolvedValue({
+      success: true,
+      data: [realtimeLine('暂停前的行')],
+    })
+    mocks.clearRealtimeLogs.mockResolvedValue({ success: true, message: '实时日志已清空' })
+
+    await renderComponent()
+    await click(findAction('暂停实时日志')!)
+    await click(findButton('清空')!)
+
+    const confirm = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '确认清空')
+    await click(confirm!)
+
+    expect(mocks.clearRealtimeLogs).toHaveBeenCalledTimes(1)
+    expect(container.textContent).not.toContain('暂停前的行')
+    expect(container.textContent).toContain('实时日志已暂停，继续后重新读取')
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
+    expect(findAction('继续实时日志')).not.toBeUndefined()
+
+    await click(findAction('继续实时日志')!)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+  })
+
+  it('resumes realtime polling when returning from history after a manual pause', async () => {
+    const target = historyFile('maa.log')
+    mocks.getLogFiles.mockResolvedValue({ success: true, data: [target] })
+    mocks.readLogFile.mockResolvedValue({
+      success: true,
+      data: { content: historyLine('历史内容') },
+    })
+    mocks.getRealtimeLogs
+      .mockResolvedValueOnce({ success: true, data: [realtimeLine('暂停前')] })
+      .mockResolvedValueOnce({ success: true, data: [realtimeLine('返回实时')] })
+
+    await renderComponent()
+    await click(findAction('暂停实时日志')!)
+    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+
+    expect(container.textContent).toContain('历史内容')
+    expect(findAction('暂停实时日志')).toBeUndefined()
+    expect(findAction('继续实时日志')).toBeUndefined()
+    expect(findButton('清理旧日志')?.disabled).toBe(true)
+
+    await click(findButton('返回实时')!)
+
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('返回实时')
+    expect(container.textContent).not.toContain('历史内容')
+    expect(findAction('暂停实时日志')).not.toBeUndefined()
+    expect(findButton('清理旧日志')?.disabled).toBe(false)
+  })
+
+  it('filters by search text and keeps the query across history views', async () => {
+    const target = historyFile('maa.log')
+    mocks.getLogFiles.mockResolvedValue({ success: true, data: [target] })
+    mocks.readLogFile.mockResolvedValue({
+      success: true,
+      data: {
+        content: `${historyLine('历史命中关键字')}\n${historyLine('历史普通行')}`,
+      },
+    })
+    mocks.getRealtimeLogs.mockResolvedValue({
+      success: true,
+      data: [realtimeLine('实时命中关键字'), realtimeLine('实时普通行')],
+    })
+
+    await renderComponent()
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索日志内容"]')
+    expect(search).not.toBeNull()
+    await changeInput(search!, '关键字')
+
+    expect(container.textContent).toContain('实时命中关键字')
+    expect(container.textContent).not.toContain('实时普通行')
+
+    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    expect(container.textContent).toContain('历史命中关键字')
+    expect(container.textContent).not.toContain('历史普通行')
+    expect(search?.value).toBe('关键字')
+  })
+
+  it('exports the filtered rows before repeat collapsing', async () => {
+    const createObjectURL = vi.fn<(blob: Blob) => string>(() => 'blob:log-export')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    mocks.getRealtimeLogs.mockResolvedValue({
+      success: true,
+      data: [realtimeLine('重复行'), realtimeLine('重复行'), realtimeLine('其他行')],
+    })
+
+    await renderComponent()
+    expect(container.querySelectorAll('.log-row')).toHaveLength(2)
+    expect(container.querySelector('.log-repeat')?.textContent).toBe('x2')
+
+    await click(findButton('导出')!)
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob
+    expect(await readBlobText(blob)).toBe([
+      '[10:11:12] [INFO] 重复行',
+      '[10:11:12] [INFO] 重复行',
+      '[10:11:12] [INFO] 其他行',
+    ].join('\n'))
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:log-export')
+
+    await changeSelect(container.querySelector<HTMLSelectElement>('select[aria-label="日志级别"]')!, 'ERROR')
+    expect(findButton('导出')?.disabled).toBe(true)
   })
 })

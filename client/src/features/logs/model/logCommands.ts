@@ -3,8 +3,9 @@
  *
  * 两个命令都只影响各自的作用域，并共享同一结论协议：
  * - 清空实时日志：先暂停实时轮询并取消在途读取，服务端确认后只清空实时
- *   缓冲，最后无论成功失败都恢复轮询；历史文件列表与当前历史选择不变。
- *   失败保留原缓冲，下一次轮询或恢复后的立即读取继续使用服务端快照。
+ *   缓冲；此前未手动暂停时在 finally 恢复轮询，手动暂停则保持暂停，不静默
+ *   解除用户意图。历史文件列表与当前历史选择不变。失败保留原缓冲，下一次
+ *   轮询或恢复后的立即读取继续使用服务端快照。
  * - 清理历史文件：服务端确认后刷新文件列表，再按清理结果裁决当前选择；
  *   实时缓冲与轮询不受影响。命令失败不刷新列表，也不改变选择。
  *
@@ -31,6 +32,8 @@ export type LogCommandOutcome =
 
 /** 清空实时日志需要协调的实时流动作；不包含历史状态。 */
 export interface RealtimeLogCommandPort {
+  /** 命令开始前的手动暂停状态；用于决定结束后是否恢复轮询。 */
+  readonly paused: boolean
   readonly pause: () => void
   readonly resume: () => void
   readonly clear: () => void
@@ -60,9 +63,10 @@ const caughtMessage = (error: unknown, fallback: string): string => (
 /**
  * 清空实时日志。
  *
- * `finally` 保证暂停状态在失败、取消或异常后都会恢复；只有服务端确认成功
- * 才调用 `clear()`，因此失败不会丢失仍可解释的缓冲。传入的 `signal` 只结束
- * 本地等待（例如页面卸载），不撤销服务端已发出的清空请求。
+ * `finally` 只恢复命令开始前未暂停的轮询；用户手动暂停时清空完成后保持
+ * 暂停，避免把“暂停”静默改写成“继续”。只有服务端确认成功才调用 `clear()`，
+ * 因此失败不会丢失仍可解释的缓冲。传入的 `signal` 只结束本地等待（例如
+ * 页面卸载），不撤销服务端已发出的清空请求。
  */
 export async function clearRealtimeLogsCommand(
   realtime: RealtimeLogCommandPort,
@@ -70,6 +74,7 @@ export async function clearRealtimeLogsCommand(
   signal?: AbortSignal,
 ): Promise<LogCommandOutcome> {
   if (signal?.aborted) return { status: 'cancelled' }
+  const wasPaused = realtime.paused
   realtime.pause()
   try {
     const result = await request(signal)
@@ -83,7 +88,7 @@ export async function clearRealtimeLogsCommand(
     if (isAbortError(error)) return { status: 'cancelled' }
     return { status: 'failed', message: caughtMessage(error, '清空实时日志失败') }
   } finally {
-    realtime.resume()
+    if (!wasPaused) realtime.resume()
   }
 }
 

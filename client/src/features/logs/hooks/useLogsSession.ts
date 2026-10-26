@@ -5,10 +5,11 @@
  *
  * - `enterHistory(file)`：先停止实时轮询并取消在途读取、清空实时缓冲，再
  *   进入历史选择。历史读取从此只写历史快照，不会回填实时缓冲。
- * - `backToRealtime()`：退出历史并清空选择；实时轮询由 `enabled` 从 false
- *   恢复为 true 时立即重读，不需要页面手动调用 `start()`，也不会在历史
- *   模式里绕过页面级停用。
- * - 清空实时日志只在实时模式可用；清理历史不触碰实时缓冲。
+ * - `backToRealtime()`：退出历史并清空选择；进入历史时已清空实时缓冲，
+ *   因此返回实时会把手动暂停一并恢复，再由 `enabled` 从 false 恢复为 true
+ *   立即重读，避免回到“已暂停且空缓冲”的不可用状态。
+ * - 清空实时日志只在实时模式可用；命令开始前已手动暂停时，清空结束后保持
+ *   暂停，不静默解除用户意图。清理历史不触碰实时缓冲。
  * - 两个命令共用一个在途槽位，命令执行期间页面按钮保持禁用；命令结论交
  *   页面展示，失败仍由确认弹层重抛以保留可重试的打开状态。
  * - 页面卸载时取消命令的本地等待；服务端已收到的清空/清理不会被撤销，
@@ -59,8 +60,12 @@ export function useLogsSession(): UseLogsSessionResult {
   }, [clear, selectFile, stop])
 
   const backToRealtime = useCallback(() => {
+    // 进入历史时缓冲已被清空；保留暂停会让返回实时停留在空列表，因此显式
+    // 恢复。此时 started 仍为 false，resume 不会自行发起请求，随后由
+    // `enabled` 的 Effect `start()` 立即重读。
+    resume()
     leaveHistory()
-  }, [leaveHistory])
+  }, [leaveHistory, resume])
 
   const clearRealtimeLogs = useCallback(async (): Promise<LogCommandOutcome> => {
     if (history.viewing || commandRef.current !== null) return { status: 'ignored' }
@@ -70,7 +75,7 @@ export function useLogsSession(): UseLogsSessionResult {
     setCommandPending('clear-realtime')
     try {
       return await clearRealtimeLogsCommand(
-        { pause, resume, clear },
+        { paused: realtime.paused, pause, resume, clear },
         undefined,
         controller.signal,
       )
@@ -79,7 +84,7 @@ export function useLogsSession(): UseLogsSessionResult {
       commandRef.current = null
       setCommandPending(null)
     }
-  }, [clear, history.viewing, pause, resume])
+  }, [clear, history.viewing, pause, realtime.paused, resume])
 
   const cleanupHistoryLogs = useCallback(async (): Promise<LogCommandOutcome> => {
     if (commandRef.current !== null) return { status: 'ignored' }
