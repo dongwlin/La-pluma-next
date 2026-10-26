@@ -230,6 +230,7 @@ describe('LogViewer realtime lifecycle', () => {
     expect(container.textContent).toContain('实时日志已清空')
     expect(container.textContent).not.toContain('清空前')
     expect(busyClearButton?.disabled).toBe(false)
+    expect(mocks.getLogFiles).toHaveBeenCalledTimes(1)
 
     resumed.resolve({ success: true, data: [] })
     await flush()

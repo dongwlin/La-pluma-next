@@ -379,6 +379,7 @@ describe('LogViewer recovery and controls', () => {
 
     expect(mocks.cleanupLogs).toHaveBeenCalledWith(10, expect.any(AbortSignal))
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(2)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
     expect(container.textContent).toContain('已清理 1 个日志文件')
     expect(container.textContent).toContain('暂无历史日志文件')
   })
@@ -435,5 +436,6 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('清空接口暂不可用')
     expect(container.textContent).toContain('清空失败前的行')
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(mocks.getLogFiles).toHaveBeenCalledTimes(1)
   })
 })
