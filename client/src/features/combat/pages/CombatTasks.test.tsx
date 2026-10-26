@@ -2,8 +2,10 @@
 
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '@/shared/api'
+import { createQueryClient } from '@/shared/query'
 import {
   ExecutionController,
   type AgentRun,
@@ -51,12 +53,14 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/shared/api', () => ({
-  API_BASE_URL: '/api',
-  fetchWithAuth: vi.fn(),
-  parseJsonResponse: vi.fn(),
-  getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
-}))
+vi.mock('@/shared/api', async () => {
+  const actual = await vi.importActual<typeof import('@/shared/api')>('@/shared/api')
+  return {
+    ...actual,
+    API_BASE_URL: '/api',
+    getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
+  }
+})
 
 vi.mock('@/features/task-execution', async () => {
   const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
@@ -277,6 +281,7 @@ let controller: ExecutionController
 let releases: Array<() => void>
 let container: HTMLDivElement
 let root: Root
+let client: ReturnType<typeof createQueryClient>
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void
@@ -337,7 +342,11 @@ const refreshController = async (reason: 'poll' | 'reconnect' = 'poll') => {
 
 const renderComponent = async () => {
   await act(async () => {
-    root.render(<CombatTasks />)
+    root.render(
+      <QueryClientProvider client={client}>
+        <CombatTasks />
+      </QueryClientProvider>,
+    )
   })
   await flush()
 }
@@ -345,9 +354,11 @@ const renderComponent = async () => {
 const renderActivityMode = async (mode: 'visible' | 'hidden') => {
   await act(async () => {
     root.render(
-      <Activity mode={mode}>
-        <CombatTasks />
-      </Activity>,
+      <QueryClientProvider client={client}>
+        <Activity mode={mode}>
+          <CombatTasks />
+        </Activity>
+      </QueryClientProvider>,
     )
     await Promise.resolve()
     await Promise.resolve()
@@ -405,6 +416,8 @@ describe('CombatTasks execution', () => {
     // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
     userConfigCoordinator.dispose()
     localStorage.clear()
+    // 搜索/预览 Query 缓存按用例隔离，避免复用上一个用例的 mock 结果。
+    client = createQueryClient()
     mocks.executePredefinedTaskArgs.mockReset().mockResolvedValue({ success: true })
     mocks.executeCopilotSetPlan.mockReset().mockResolvedValue({ success: true })
     mocks.continueCopilotSet.mockReset().mockResolvedValue({ success: true, data: { accepted: true } })
@@ -916,13 +929,16 @@ describe('CombatTasks execution', () => {
   })
 
   it('previews an explicit PRTS single code without guessing a set with the same id', async () => {
-    mocks.getCopilotInfo.mockResolvedValue({ status_code: 200, data: { content: JSON.stringify({
-      stage_name: 'test_1', doc: { title: 'PRTS 单作业' },
-    }) } })
+    mocks.getCopilotInfo.mockResolvedValue({
+      success: true,
+      data: { status_code: 200, data: { content: JSON.stringify({
+        stage_name: 'test_1', doc: { title: 'PRTS 单作业' },
+      }) } },
+    })
     await renderComponent()
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://1234')
     await click(buttonByText('预览')!)
-    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1234')
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('1234', expect.any(AbortSignal))
     expect(mocks.getCopilotSet).not.toHaveBeenCalled()
     expect(mocks.getCopilotSetPlan).not.toHaveBeenCalled()
     expect(container.textContent).toContain('PRTS 单作业')
@@ -944,7 +960,7 @@ describe('CombatTasks execution', () => {
       await renderComponent()
       await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, uri)
       await click(buttonByText('预览')!)
-      expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
+      expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal', expect.any(AbortSignal))
       expect(mocks.getCopilotInfo).not.toHaveBeenCalled()
       expect(container.textContent).toContain('续跑目标')
     },
@@ -956,18 +972,21 @@ describe('CombatTasks execution', () => {
       success: true,
       data: { status_code: 200, data: { copilot_ids: [101] } },
     })
-    mocks.getCopilotInfo.mockResolvedValue({ status_code: 200, data: { content: JSON.stringify({
-      stage_name: 'TEST-1', doc: { title: '兜底作业' },
-    }) } })
+    mocks.getCopilotInfo.mockResolvedValue({
+      success: true,
+      data: { status_code: 200, data: { content: JSON.stringify({
+        stage_name: 'TEST-1', doc: { title: '兜底作业' },
+      }) } },
+    })
 
     await renderComponent()
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
     await click(buttonByText('预览')!)
     await flush()
 
-    expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal')
-    expect(mocks.getCopilotSet).toHaveBeenCalledWith('48990')
-    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('101')
+    expect(mocks.getCopilotSetPlan).toHaveBeenCalledWith('48990', 'normal', expect.any(AbortSignal))
+    expect(mocks.getCopilotSet).toHaveBeenCalledWith('48990', expect.any(AbortSignal))
+    expect(mocks.getCopilotInfo).toHaveBeenCalledWith('101', expect.any(AbortSignal))
     expect(container.textContent).toContain('共 1 个作业')
     expect(container.textContent).toContain('兜底作业')
   })
@@ -1317,7 +1336,11 @@ describe('CombatTasks execution', () => {
     const searchInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
     await setInputValue(searchInput, '旧关卡')
     await click(buttonsByText('搜索')[0]!)
+    const olderSignal = mocks.searchCopilot.mock.calls[0]?.[1] as AbortSignal
+    expect(olderSignal.aborted).toBe(false)
     await setInputValue(searchInput, '新关卡')
+    // 输入变化立即取消旧读取，连接层收到的是真实 AbortSignal。
+    expect(olderSignal.aborted).toBe(true)
     await click(buttonsByText('搜索')[0]!)
 
     await act(async () => newerSearch.resolve({
@@ -1348,7 +1371,11 @@ describe('CombatTasks execution', () => {
     const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
     await setInputValue(input, 'prts://1')
     await click(buttonByText('预览')!)
+    const olderSignal = mocks.getCopilotInfo.mock.calls[0]?.[1] as AbortSignal
+    expect(olderSignal.aborted).toBe(false)
     await setInputValue(input, 'prts://2')
+    // 新输入取消旧预览读取，迟到的旧响应不能覆盖新预览。
+    expect(olderSignal.aborted).toBe(true)
     await click(buttonByText('预览')!)
 
     const previewResponse = (title: string, stage: string) => ({
@@ -1366,6 +1393,115 @@ describe('CombatTasks execution', () => {
     await flush()
     expect(container.textContent).toContain('新预览')
     expect(container.textContent).not.toContain('旧预览')
+  })
+
+  it('persists a set selection toggle and submits only the selected indexes', async () => {
+    mocks.getCopilotSetPlan.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          { id: 101, stage: 'TEST-1', stageId: 'test_1', supportsRaid: true },
+          { id: 102, stage: 'TEST-2', stageId: 'test_2', supportsRaid: true },
+          { id: 103, stage: 'TEST-3', stageId: 'test_3', supportsRaid: true },
+        ],
+        entries: [],
+      },
+    })
+    await renderComponent()
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
+    await click(buttonByText('预览')!)
+    await flush()
+
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="取消选择第 2 个作业"]')!)
+
+    expect(JSON.parse(localStorage.getItem('combatCopilotSetSelections') || '{}')).toEqual({
+      '48990': [0, 2],
+    })
+    expect(container.textContent).toContain('待 2')
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
+      '48990',
+      expect.objectContaining({ selectedIndexes: [0, 2] }),
+      expect.anything(),
+    )
+  })
+
+  it('reports a preview failure without discarding the current preview', async () => {
+    mocks.getCopilotSetPlan.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [{ id: 101, stage: 'TEST-ONLY', stageId: 'test_1', supportsRaid: true }],
+        entries: [],
+      },
+    })
+    await renderComponent()
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
+    await click(buttonByText('预览')!)
+    await flush()
+    expect(container.textContent).toContain('TEST-ONLY')
+
+    await selectValue(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')!, 'raid')
+    mocks.getCopilotSetPlan.mockRejectedValueOnce(new Error('plan unavailable'))
+    mocks.getCopilotSet.mockRejectedValueOnce(new Error('set unavailable'))
+    await click(buttonByText('预览')!)
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('网络错误: set unavailable')
+    expect(container.textContent).toContain('TEST-ONLY')
+  })
+
+  it('shows the server message for a failed search and keeps the last results', async () => {
+    mocks.searchCopilot.mockResolvedValueOnce({
+      success: true,
+      data: { stage: '1-7', copilots: [{ id: 1, uri: 'prts://1', title: '旧作业' }] },
+    })
+    await renderComponent()
+    const searchInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
+    await setInputValue(searchInput, '1-7')
+    await click(buttonsByText('搜索')[0]!)
+    expect(container.textContent).toContain('旧作业')
+
+    mocks.searchCopilot.mockResolvedValueOnce({
+      success: false,
+      message: '未找到关卡"1-7"的作业',
+      errorInfo: {
+        code: 'AGENT_COPILOT_NOT_FOUND',
+        message: '未找到关卡"1-7"的作业',
+        kind: 'api',
+        retryable: false,
+      },
+    })
+    await click(buttonsByText('搜索')[0]!)
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('未找到关卡"1-7"的作业')
+    expect(container.textContent).toContain('旧作业')
+  })
+
+  it('keeps an active run untouched by searches', async () => {
+    useIdentity({ runId: 'run-combat', operationId: 'run_task', scope: 'combat' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-combat')] })))
+    api.fetchRun.mockResolvedValue(ok(activeRun('run-combat')))
+    startController()
+    await flush()
+    await renderComponent()
+    expect(buttonByText('终止执行')).toBeDefined()
+
+    mocks.searchCopilot.mockResolvedValueOnce({
+      success: true,
+      data: { stage: '1-7', copilots: [{ id: 1, uri: 'prts://1', title: '搜索结果' }] },
+    })
+    const searchInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
+    await setInputValue(searchInput, '1-7')
+    await click(buttonsByText('搜索')[0]!)
+    await flush()
+
+    expect(container.textContent).toContain('搜索结果')
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(api.stopRun).not.toHaveBeenCalled()
+    expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
+    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
   })
 
   it('associates every visible form control with a label', async () => {

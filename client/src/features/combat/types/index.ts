@@ -31,6 +31,9 @@ export interface CombatTaskInputs {
 /** 作业集执行方式；`app` 是旧值，仅在加载时迁移为 `cli`。 */
 export type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
 
+/** 作业预览/计划请求的模式参数；服务端接受普通、突袭或两者。 */
+export type CopilotRaid = 'normal' | 'raid' | 'both'
+
 /** 每个作业集已保存的待执行索引。 */
 export type CopilotSetSelections = Record<string, number[]>
 
@@ -73,16 +76,18 @@ export interface CopilotSetInfo {
   currentIndex?: number
 }
 
+export interface CopilotSearchItem {
+  id: string
+  uri: string
+  views: number
+  hotScore: number
+  stageName?: string
+  title?: string
+}
+
 export interface CopilotSearchResult {
   stage: string
-  copilots: Array<{
-    id: string
-    uri: string
-    views: number
-    hotScore: number
-    stageName?: string
-    title?: string
-  }>
+  copilots: CopilotSearchItem[]
   recommended?: {
     uri: string
   }
@@ -90,14 +95,7 @@ export interface CopilotSearchResult {
 
 export interface ParadoxSearchResult {
   operator: string
-  copilots: Array<{
-    id: string
-    uri: string
-    views: number
-    hotScore: number
-    stageName?: string
-    title?: string
-  }>
+  copilots: CopilotSearchItem[]
   recommended?: {
     uri: string
   }

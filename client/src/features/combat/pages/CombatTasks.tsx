@@ -1,13 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { getErrorMessage } from '@/shared/api'
-import {
-  getCopilotInfo,
-  getCopilotSet,
-  getCopilotSetPlan,
-  resetCopilotSetProgress as resetCopilotSetProgressRequest,
-  searchCopilot,
-  searchParadoxCopilot,
-} from '../api'
+import { useQueryClient } from '@tanstack/react-query'
+import { resetCopilotSetProgress as resetCopilotSetProgressRequest } from '../api'
 import { motion, useReducedMotion } from 'framer-motion'
 import { FileText, Info, Play, Square } from 'lucide-react'
 import Icons from '@/shared/ui/Icons'
@@ -19,11 +13,7 @@ import { isTerminalRunState } from '@/features/task-execution'
 import { normalizeCopilotInput, parseCopilotUri, splitCopilotInputToArgs } from '../utils/copilotUri'
 import type {
   CombatTask,
-  CombatAdvancedOption,
   FormationMode,
-  CopilotSetInfo,
-  CopilotSearchResult,
-  ParadoxSearchResult,
   CopilotSetItem,
   CopilotSetExecutionMode
 } from '../types'
@@ -35,106 +25,31 @@ import {
 } from '../model/combatConfig'
 import type { CombatConfigDraft } from '../model/combatConfig'
 import { useCombatExecution } from '../hooks/useCombatExecution'
+import { useCopilotPreview } from '../hooks/useCopilotPreview'
+import { useCopilotSearch, useParadoxSearch } from '../hooks/useCopilotSearch'
+import {
+  buildCombatCommandArgs,
+  buildCopilotSetExecutionOptions,
+  getCombatAdvancedOptions,
+  normalizeFormationMode,
+  toCopilotSetRunMode,
+  validateCombatInput,
+} from '../model/combatCommands'
+import {
+  pendingCopilotItemIndexes,
+  restorableCopilotIndexes,
+  selectedCopilotItemIndexes,
+  serializeCopilotSelection,
+  toggleAllCopilotSelection,
+  toggleCopilotSelection,
+} from '../model/copilotSelection'
+import { invalidateCopilotSetPlan } from '../model/queries'
 import type { CopilotSetItemStatus } from '../model/copilotSetRun'
 
 type CombatMode = 'copilot' | 'ssscopilot' | 'paradoxcopilot'
 
 /** 协调器加载完成前的渲染默认值；与迁移前的初始 state 一致。 */
 const DEFAULT_COMBAT_CONFIG = createDefaultCombatDraft()
-
-const serializeSelectedCopilotIndexes = (indexes: Set<number>): number[] =>
-  [...indexes].filter(Number.isInteger).sort((a, b) => a - b)
-
-// 从作业内容中提取干员列表（包含固定干员和干员组）
-const extractOperators = (content: any): string => {
-  const opers = content.opers?.map((op: any) => op.name) || []
-  const groups = content.groups?.map((g: any) => `[${g.name}]`) || []
-  const allOpers = [...opers, ...groups]
-  return allOpers.length > 0 ? allOpers.join('、') : '未知'
-}
-
-const unwrapApiPayload = (response: any) => {
-  if (!response || typeof response !== 'object') return null
-  if (response.success === true && response.data) return response.data
-  return response
-}
-
-const getCopilotContent = (response: any) => {
-  const payload = unwrapApiPayload(response)
-  if (payload?.status_code !== 200 || !payload?.data?.content) return null
-  try {
-    return JSON.parse(payload.data.content)
-  } catch {
-    return null
-  }
-}
-
-const getCopilotSetIds = (response: any): number[] => {
-  const payload = unwrapApiPayload(response)
-  const rawIds = payload?.data?.copilot_ids
-  return Array.isArray(rawIds) ? rawIds.map((id: unknown) => Number(id)).filter(Number.isFinite) : []
-}
-
-const fetchCopilotDetail = async (copilotId: number): Promise<CopilotSetItem | null> => {
-  try {
-    const response = await getCopilotInfo(String(copilotId))
-    const content = getCopilotContent(response)
-    if (content) {
-      return {
-        id: copilotId,
-        name: content.doc?.title || '未命名作业',
-        stage: content.stage_name,
-        operators: extractOperators(content),
-        uri: `prts://${copilotId}`
-      }
-    }
-  } catch {
-    // 忽略单个作业获取失败
-  }
-  return { id: copilotId, uri: `prts://${copilotId}` }
-}
-
-// 获取作业集详情（包含所有作业列表）
-const fetchCopilotSetDetails = async (
-  setId: string,
-  raid: 'normal' | 'raid' | 'both',
-): Promise<CopilotSetItem[]> => {
-  let plan: any = null
-  try {
-    const planResponse = await getCopilotSetPlan(setId, raid)
-    plan = unwrapApiPayload(planResponse)
-  } catch {
-    // 计划接口失败时继续尝试集合列表，避免丢弃仍可执行的作业
-  }
-  if (Array.isArray(plan?.items) && plan.items.length > 0) {
-    return plan.items.map((item: any, itemIndex: number) => ({
-      id: Number(item.id),
-      name: item.stage || `作业 #${item.id}`,
-      stage: item.stage,
-      stageId: item.stageId,
-      presetFormation: Boolean(item.presetFormation),
-      supportsRaid: item.supportsRaid !== false,
-      completedModes: Array.isArray(plan.entries)
-        ? plan.entries
-            .filter((entry: any) => entry.itemIndex === itemIndex && entry.completed)
-            .map((entry: any) => entry.mode as 'normal' | 'raid')
-        : [],
-      uri: `prts://${item.id}`
-    }))
-  }
-  try {
-    const data = await getCopilotSet(setId)
-    const copilotIds = getCopilotSetIds(data)
-    if (copilotIds.length > 0) {
-      // 并行获取所有作业详情
-      const details = await Promise.all(copilotIds.map(id => fetchCopilotDetail(id)))
-      return details.filter((item): item is CopilotSetItem => item !== null)
-    }
-  } catch {
-    // 忽略集合列表获取错误
-  }
-  return []
-}
 
 export default function CombatTasks() {
   const shouldReduceMotion = useReducedMotion()
@@ -159,11 +74,30 @@ export default function CombatTasks() {
     copilotSetSelections,
   } = configDraft ?? DEFAULT_COMBAT_CONFIG
   const isRetryingConfigSave = configSyncState === 'saving'
-  const [copilotSetInfo, setCopilotSetInfo] = useState<CopilotSetInfo | null>(null)
-  const [isLoadingSet, setIsLoadingSet] = useState(false)
-  const previewRequestRef = useRef(0)
-  const copilotSearchRequestRef = useRef(0)
-  const paradoxSearchRequestRef = useRef(0)
+  const queryClient = useQueryClient()
+  // 预览、取消与旧响应裁决由域会话持有；页面只消费预览快照与动作。
+  const {
+    preview: copilotSetInfo,
+    isLoading: isLoadingSet,
+    load: loadCopilotPreview,
+    refreshSet: refreshCopilotSet,
+    resetProgressView: resetCopilotProgressView,
+    cancel: cancelCopilotPreview,
+    clear: clearCopilotPreview,
+  } = useCopilotPreview()
+  // 搜索词仍由页面（后续由搜索面板）持有，结果与取消归域 Query 入口。
+  const {
+    result: copilotSearchResult,
+    searching: isSearchingCopilot,
+    search: searchCopilotJobs,
+    cancel: cancelCopilotSearch,
+  } = useCopilotSearch()
+  const {
+    result: paradoxSearchResult,
+    searching: isSearchingParadox,
+    search: searchParadoxJobs,
+    cancel: cancelParadoxSearch,
+  } = useParadoxSearch()
   const reconciledRunRef = useRef<string | null>(null)
   // 用户重置进度后，旧 run 的逐项结果不再属于当前预览。
   const [dismissedRunId, setDismissedRunId] = useState<string | null>(null)
@@ -202,16 +136,10 @@ export default function CombatTasks() {
   // 作业集任务选择状态（记录选中的索引）
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
 
-  // 悖论模拟搜索相关状态
+  // 搜索输入词仍由页面持有；结果、loading 与取消归域 Query 入口。
   const [paradoxSearchName, setParadoxSearchName] = useState('')
-  const [paradoxSearchResult, setParadoxSearchResult] = useState<ParadoxSearchResult | null>(null)
-  const [isSearchingParadox, setIsSearchingParadox] = useState(false)
-
-  // 普通关卡搜索相关状态
   const [copilotSearchStage, setCopilotSearchStage] = useState('')
-  const [copilotSearchResult, setCopilotSearchResult] = useState<CopilotSearchResult | null>(null)
   const [selectedSearchCopilotUri, setSelectedSearchCopilotUri] = useState<string>('')
-  const [isSearchingCopilot, setIsSearchingCopilot] = useState(false)
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
   const {
     containerRef: combatModeTabsRef,
@@ -220,52 +148,21 @@ export default function CombatTasks() {
     handleTabKeyDown: handleCombatModeKeyDown,
   } = useFluidTabIndicator(activeCombatMode)
 
-  useEffect(() => {
-    // Activity retains state while hidden, so clear loading left behind by
-    // requests invalidated during the previous cleanup when effects resume.
-    setIsLoadingSet(false)
-    setIsSearchingCopilot(false)
-    setIsSearchingParadox(false)
-
-    return () => {
-      previewRequestRef.current += 1
-      copilotSearchRequestRef.current += 1
-      paradoxSearchRequestRef.current += 1
-    }
-  }, [])
-
-  const normalizeFormationMode = (value: unknown): FormationMode => {
-    if (value === true) return 'on'
-    if (value === false) return 'off'
-    if (value === 'on' || value === 'off' || value === 'auto') return value
-    return 'auto'
-  }
-
   const getFormationMode = (taskId: string): FormationMode => normalizeFormationMode(autoFormation[taskId])
-
-  const shouldAppendFormation = (taskId: string, forceForSplitSet = false): boolean => {
-    if (taskId !== 'copilot') return false
-    const mode = getFormationMode(taskId)
-    if (mode === 'on') return true
-    if (mode === 'off') return false
-    return forceForSplitSet
-  }
 
   const getSelectedCopilotIndexes = (): number[] => {
     if (!copilotSetInfo?.copilots?.length) return []
-    return copilotSetInfo.copilots
-      .map((_, index) => index)
-      .filter(index => selectedCopilotIndexes.has(index))
+    return selectedCopilotItemIndexes(selectedCopilotIndexes, copilotSetInfo.copilots.length)
   }
 
   const applySelectedCopilotIndexes = useCallback((indexes: Set<number>, setId: string) => {
-    const normalized = new Set(serializeSelectedCopilotIndexes(indexes))
-    setSelectedCopilotIndexes(normalized)
+    const normalized = serializeCopilotSelection(indexes)
+    setSelectedCopilotIndexes(new Set(normalized))
     updateCombatConfig(current => ({
       ...current,
       copilotSetSelections: {
         ...current.copilotSetSelections,
-        [setId]: serializeSelectedCopilotIndexes(normalized),
+        [setId]: normalized,
       },
     }))
   }, [updateCombatConfig])
@@ -276,20 +173,7 @@ export default function CombatTasks() {
     copilots: CopilotSetItem[],
     raid: 'normal' | 'raid' | 'both',
   ) => {
-    const savedIndexes = copilotSetSelections[setId]
-    const pendingIndexes = copilots
-      .map((copilot, index) => {
-        const requiredModes: Array<'normal' | 'raid'> = copilot.presetFormation
-          ? ['normal']
-          : raid === 'both'
-            ? ['normal', 'raid']
-            : [raid === 'raid' ? 'raid' : 'normal']
-        return requiredModes.every(mode => copilot.completedModes?.includes(mode)) ? -1 : index
-      })
-      .filter(index => index >= 0)
-    const indexes = Array.isArray(savedIndexes)
-      ? savedIndexes.filter(index => Number.isInteger(index) && pendingIndexes.includes(index))
-      : pendingIndexes
+    const indexes = restorableCopilotIndexes(copilots, raid, copilotSetSelections[setId])
     applySelectedCopilotIndexes(new Set(indexes), setId)
   }, [applySelectedCopilotIndexes, copilotSetSelections])
 
@@ -304,7 +188,9 @@ export default function CombatTasks() {
         throw new Error(getErrorMessage(result))
       }
       applySelectedCopilotIndexes(new Set(copilotSetInfo.copilots.map((_, index) => index)), copilotSetInfo.id)
-      setCopilotSetInfo(prev => prev ? { ...prev, currentIndex: 0 } : prev)
+      resetCopilotProgressView(copilotSetInfo.id)
+      // 服务端进度已改变：下次预览必须重新读取计划，不能复用旧的 completedModes。
+      void invalidateCopilotSetPlan(queryClient, copilotSetInfo.id)
       if (setRun) setDismissedRunId(setRun.runId)
       setStatusMessage('已重置作业集进度，将从第一关开始', 'success')
       return true
@@ -349,81 +235,15 @@ export default function CombatTasks() {
     },
   ]
 
-  const getAdvancedOptions = (taskId: string): CombatAdvancedOption[] => {
-    const options: Record<string, CombatAdvancedOption[]> = {
-      copilot: [
-        { key: 'ignoreRequirements', label: '忽略干员要求', type: 'checkbox', param: '--ignore-requirements' },
-        { key: 'loopTimes', label: '循环次数', type: 'number', param: '--loop-times', placeholder: '1' },
-        { key: 'executionStrategy', label: '队列策略', type: 'select', param: '', options: [
-          { value: 'continue', label: '失败继续下一个' },
-          { value: 'stop', label: '失败后停止' },
-        ]},
-        { key: 'formationIndex', label: '编队选择', type: 'select', param: '--formation-index', options: [
-          { value: '', label: '当前编队' },
-          { value: '1', label: '编队 1' },
-          { value: '2', label: '编队 2' },
-          { value: '3', label: '编队 3' },
-          { value: '4', label: '编队 4' },
-        ]},
-        { key: 'addTrust', label: '按信赖值填充空位', type: 'checkbox', param: '--add-trust' },
-        { key: 'useSanityPotion', label: '理智不足时使用理智药', type: 'checkbox', param: '--use-sanity-potion' },
-        { key: 'supportUsage', label: '助战使用模式', type: 'select', param: '--support-unit-usage', options: [
-          { value: '0', label: '不使用助战' },
-          { value: '1', label: '缺一个时使用' },
-          { value: '2', label: '使用指定助战' },
-          { value: '3', label: '使用随机助战' },
-        ]},
-        { key: 'supportName', label: '助战干员名称', type: 'text', param: '--support-unit-name', placeholder: '干员名称' },
-      ],
-      ssscopilot: [
-        { key: 'loopTimes', label: '循环次数', type: 'number', param: '--loop-times', placeholder: '1' },
-      ],
-      paradoxcopilot: [
-        { key: 'executionStrategy', label: '队列策略', type: 'select', param: '', options: [
-          { value: 'continue', label: '失败继续' },
-          { value: 'stop', label: '失败停止' },
-        ]},
-      ],
-    }
-    return options[taskId] || []
-  }
-
-  const appendCommandOptions = (args: string[], task: CombatTask, forceFormationForSplitSet = false): string[] => {
-    const nextArgs = [...args]
-    if (shouldAppendFormation(task.id, forceFormationForSplitSet)) {
-      nextArgs.push('--formation')
-    }
-
-    const advanced = advancedParams[task.id] || {}
-    const raidValue = normalizeRaidValue(advanced.raid)
-    if (task.id === 'copilot' && raidValue !== 'normal') {
-      nextArgs.push('--raid', raidValue)
-    }
-
-    getAdvancedOptions(task.id).forEach(option => {
-      const value = advanced[option.key]
-      if (!option.param || value === undefined || value === '' || value === false) return
-      if (option.type === 'checkbox' && value === true) {
-        nextArgs.push(option.param)
-      } else if (option.type !== 'checkbox') {
-        nextArgs.push(option.param, String(value))
-      }
-    })
-
-    return nextArgs
-  }
-
-  const buildCommandArgs = (task: CombatTask): string[] => {
-    const args = splitCopilotInputToArgs(taskInputs[task.id] || '')
-
-    if (task.id === 'copilot' && copilotSetInfo?.type === 'set' && copilotSetInfo?.autoAddS) {
-      for (let i = 0; i < args.length; i++) {
-        args[i] = (args[i] || '').replace(/^prts:\/\/(\d+)$/i, 'prts://s$1')
-      }
-    }
-
-    return appendCommandOptions(args, task)
-  }
+  const buildCommandArgs = (task: CombatTask): string[] => buildCombatCommandArgs(task.id, {
+    input: taskInputs[task.id] || '',
+    advanced: advancedParams[task.id],
+    formationMode: getFormationMode(task.id),
+    // 预览确认输入未带 s 前缀的作业集时，执行也补上服务端要求的 s 前缀。
+    autoAddSetPrefix: task.id === 'copilot'
+      && copilotSetInfo?.type === 'set'
+      && copilotSetInfo.autoAddS === true,
+  })
 
   // 作业集 Run 属于当前预览时，逐项状态与失败汇总才用于列表展示；
   // 其它作业集或其它领域发起的 run 不会被当成当前预览的结果。
@@ -443,9 +263,7 @@ export default function CombatTasks() {
   )
   // “待执行”= 页面选择减去本次 run 已成功的条目；终态后按服务端计划进度重建选择，
   // 因此失败与未开始项保留，成功项自动移出。
-  const pendingSelectedIndexes = [...selectedCopilotIndexes]
-    .filter(index => !runSuccessIndexes.has(index))
-    .sort((a, b) => a - b)
+  const pendingSelectedIndexes = pendingCopilotItemIndexes(selectedCopilotIndexes, runSuccessIndexes)
   const pendingSelectedCount = pendingSelectedIndexes.length
   const setRunFailedCount = activeSetRun
     ? [...activeSetRun.itemStatuses.values()].filter(status => status === 'failed' || status === 'stopped').length
@@ -470,15 +288,13 @@ export default function CombatTasks() {
     if (reconciledRunRef.current === activeSetRun.runId) return
     reconciledRunRef.current = activeSetRun.runId
 
-    const requestId = ++previewRequestRef.current
     const raid = normalizeRaidValue(activeSetRun.raid ?? advancedParams.copilot?.raid)
     void (async () => {
-      const copilots = await fetchCopilotSetDetails(setId, raid)
-      if (previewRequestRef.current !== requestId || !copilots.length) return
-      setCopilotSetInfo(prev => (prev?.id === setId ? { ...prev, copilots, currentIndex: 0 } : prev))
+      const copilots = await refreshCopilotSet(setId, raid)
+      if (!copilots?.length) return
       restoreSelectedCopilots(setId, copilots, raid)
     })()
-  }, [activeSetRun, advancedParams.copilot?.raid, restoreSelectedCopilots])
+  }, [activeSetRun, advancedParams.copilot?.raid, refreshCopilotSet, restoreSelectedCopilots])
 
   // 继续 manual 作业集的下一关：等待态与下一项都由服务端持有，页面只发送继续意图。
   const handleStartNextCopilot = async () => {
@@ -504,28 +320,18 @@ export default function CombatTasks() {
       return
     }
 
-    // 验证输入
+    // 输入校验与 SSS 单 URI 限制由纯命令模型描述。
     const inputValue = taskInputs[task.id] || ''
-    if (task.id === 'copilot' || task.id === 'paradoxcopilot' || task.id === 'ssscopilot') {
-      // copilot 任务需要输入作业 URI
-      if (!inputValue.trim()) {
-        setStatusMessage('请输入作业链接')
-        return
-      }
-    }
-
-    if (task.id === 'ssscopilot') {
-      const args = splitCopilotInputToArgs(inputValue)
-      if (args.length !== 1) {
-        setStatusMessage('保全派驻一次只能执行一个 SSS 作业 URI')
-        return
-      }
+    const inputError = validateCombatInput(task.id, inputValue)
+    if (inputError) {
+      setStatusMessage(inputError)
+      return
     }
 
     if (task.id === 'copilot' && !copilotSetInfo) {
       const firstArg = splitCopilotInputToArgs(inputValue)[0] || ''
       if (parseCopilotUri(firstArg)?.isSet) {
-        await handlePreviewCopilotSetWithInput(inputValue)
+        await requestCopilotPreview(inputValue)
         setStatusMessage('已恢复作业集进度，请确认待执行关卡后再次执行')
         return
       }
@@ -541,19 +347,13 @@ export default function CombatTasks() {
 
       await submitSet({
         setId: copilotSetInfo.id,
-        mode: copilotSetExecutionMode === 'manual' ? 'manual' : 'continuous',
+        mode: toCopilotSetRunMode(copilotSetExecutionMode),
         raid: normalizeRaidValue(advancedParams.copilot?.raid),
         selectedIndexes,
-        options: {
-          ignoreRequirements: advancedParams.copilot?.ignoreRequirements,
-          loopTimes: advancedParams.copilot?.loopTimes,
-          useSanityPotion: advancedParams.copilot?.useSanityPotion,
-          addTrust: advancedParams.copilot?.addTrust,
-          formationIndex: advancedParams.copilot?.formationIndex,
-          supportUsage: advancedParams.copilot?.supportUsage,
-          supportName: advancedParams.copilot?.supportName,
-          formationMode: getFormationMode(task.id)
-        },
+        options: buildCopilotSetExecutionOptions(
+          advancedParams.copilot,
+          getFormationMode(task.id),
+        ),
         taskName: task.name,
       })
       return
@@ -573,9 +373,7 @@ export default function CombatTasks() {
       taskInputs: { ...current.taskInputs, [taskId]: value },
     }))
     if (taskId === 'copilot') {
-      previewRequestRef.current += 1
-      setIsLoadingSet(false)
-      setCopilotSetInfo(null)
+      clearCopilotPreview()
       if (value.trim() !== selectedSearchCopilotUri) {
         setSelectedSearchCopilotUri('')
       }
@@ -595,6 +393,44 @@ export default function CombatTasks() {
     }))
   }
 
+  const requestCopilotPreview = useCallback(async (rawValue?: string) => {
+    const raid = normalizeRaidValue(advancedParams.copilot?.raid)
+    setStatusMessage('正在获取作业信息...')
+    const outcome = await loadCopilotPreview({
+      input: rawValue ?? (taskInputs['copilot'] || ''),
+      mode: copilotType,
+      raid,
+    })
+    if (outcome.status === 'cancelled') return outcome
+
+    if (outcome.status === 'ready') {
+      if (outcome.preview.type === 'set') {
+        restoreSelectedCopilots(outcome.preview.id, outcome.preview.copilots ?? [], raid)
+      }
+      setStatusMessage(outcome.message)
+      return outcome
+    }
+
+    if (outcome.status === 'failed') {
+      setStatusMessage(
+        outcome.kind === 'transport' || outcome.kind === 'unknown'
+          ? `网络错误: ${outcome.message}`
+          : outcome.message,
+      )
+      return outcome
+    }
+
+    setStatusMessage(outcome.message)
+    return outcome
+  }, [
+    advancedParams.copilot?.raid,
+    copilotType,
+    loadCopilotPreview,
+    restoreSelectedCopilots,
+    setStatusMessage,
+    taskInputs,
+  ])
+
   const applyCopilotUri = async (uri: string) => {
     const normalizedUri = normalizeCopilotInput(uri).trim()
     updateCombatConfig(current => ({
@@ -602,175 +438,8 @@ export default function CombatTasks() {
       taskInputs: { ...current.taskInputs, copilot: normalizedUri },
     }))
     setSelectedSearchCopilotUri(normalizedUri)
-    setCopilotSetInfo(null)
-    await handlePreviewCopilotSetWithInput(normalizedUri)
-  }
-
-  const handlePreviewCopilotSetWithInput = async (rawValue?: string) => {
-    const requestId = ++previewRequestRef.current
-    const isCurrentRequest = () => previewRequestRef.current === requestId
-    const rawInput = rawValue ?? (taskInputs['copilot'] || '')
-    const normalizedInput = normalizeCopilotInput(rawInput).trim()
-    const firstToken = normalizedInput.split(/\s+/)[0] || ''
-    const parsed = parseCopilotUri(firstToken)
-
-    if (!parsed) {
-      setStatusMessage('请输入有效的作业 URI / 作业站链接（如: prts://26766）')
-      return
-    }
-
-    const copilotId = parsed.id
-    const hasS = parsed.isSet
-    const raid = normalizeRaidValue(advancedParams.copilot?.raid)
-    // 新协议明确区分单作业与作业集；旧的无后缀输入保留自动探测。
-    const inferredType = hasS ? 'set' : /^prts:\/\//i.test(rawInput.trim()) ? 'single' : 'auto'
-    const resolvedType = copilotType === 'auto' ? inferredType : copilotType
-    setIsLoadingSet(true)
-    setStatusMessage('正在获取作业信息...')
-
-    try {
-      // 根据用户选择或自动检测模式
-      if (resolvedType === 'single') {
-        // 强制单个作业模式
-        const copilotData = await getCopilotInfo(copilotId)
-        if (!isCurrentRequest()) return
-        const content = getCopilotContent(copilotData)
-        if (content) {
-          setCopilotSetInfo({
-            type: 'single',
-            id: copilotId,
-            name: content.doc?.title || '未命名作业',
-            stage: content.stage_name,
-            operators: extractOperators(content)
-          })
-          setStatusMessage(`已加载作业：${content.doc?.title || content.stage_name}`)
-        } else {
-          setStatusMessage('作业不存在')
-        }
-      } else if (resolvedType === 'set') {
-        // 强制作业集模式
-        const copilots = await fetchCopilotSetDetails(copilotId, raid)
-        if (!isCurrentRequest()) return
-        if (copilots.length > 0) {
-          setCopilotSetInfo({
-            type: 'set',
-            id: copilotId,
-            name: `作业集 (${copilots.length} 个作业)`,
-            note: '包含多个关卡，将按顺序执行',
-            autoAddS: !hasS,
-            copilots,
-            currentIndex: 0
-          })
-          restoreSelectedCopilots(copilotId, copilots, raid)
-          setStatusMessage(`已加载作业集：${copilots.length} 个作业`)
-        } else {
-          setStatusMessage('作业集不存在或为空')
-        }
-      } else {
-        // 自动检测模式：同时请求两个接口，哪个成功就用哪个
-        const [copilotResult, setResult] = await Promise.allSettled([
-          getCopilotInfo(copilotId),
-          getCopilotSet(copilotId)
-        ])
-        if (!isCurrentRequest()) return
-
-        let foundSingle = false
-        let foundSet = false
-        let singleData: any = null
-        let setData: any = null
-
-        // 检查单个作业
-        if (copilotResult.status === 'fulfilled') {
-          const content = getCopilotContent(copilotResult.value)
-          if (content) {
-            foundSingle = true
-            singleData = content
-          }
-        }
-
-        // 检查作业集
-        if (setResult.status === 'fulfilled') {
-          const copilotIds = getCopilotSetIds(setResult.value)
-          if (copilotIds.length > 0) {
-            foundSet = true
-            setData = copilotIds
-          }
-        }
-
-        // 根据结果决定使用哪个
-        if (foundSingle && foundSet) {
-          // 两个都存在，优先使用作业集（因为作业集更少见，用户可能更想要）
-          const copilotIds: number[] = setData
-          const copilots = await Promise.all(copilotIds.map(id => fetchCopilotDetail(id)))
-          if (!isCurrentRequest()) return
-          const validCopilots = copilots.filter((item): item is CopilotSetItem => item !== null)
-          setCopilotSetInfo({
-            type: 'set',
-            id: copilotId,
-            name: `作业集 (${validCopilots.length} 个作业)`,
-            note: '包含多个关卡，将按顺序执行',
-            autoAddS: !hasS,
-            copilots: validCopilots,
-            currentIndex: 0
-          })
-          restoreSelectedCopilots(copilotId, validCopilots, raid)
-          setStatusMessage(`已识别作业集：${validCopilots.length} 个作业`)
-        } else if (foundSet) {
-          // 只有作业集
-          const copilotIds: number[] = setData
-          const copilots = await Promise.all(copilotIds.map(id => fetchCopilotDetail(id)))
-          if (!isCurrentRequest()) return
-          const validCopilots = copilots.filter((item): item is CopilotSetItem => item !== null)
-          setCopilotSetInfo({
-            type: 'set',
-            id: copilotId,
-            name: `作业集 (${validCopilots.length} 个作业)`,
-            note: '包含多个关卡，将按顺序执行',
-            autoAddS: !hasS,
-            copilots: validCopilots,
-            currentIndex: 0
-          })
-          restoreSelectedCopilots(copilotId, validCopilots, raid)
-          setStatusMessage(`已加载作业集：${validCopilots.length} 个作业`)
-        } else if (foundSingle) {
-          // 只有单个作业
-          const content = singleData
-          setCopilotSetInfo({
-            type: 'single',
-            id: copilotId,
-            name: content.doc?.title || '未命名作业',
-            stage: content.stage_name,
-            operators: extractOperators(content)
-          })
-          setStatusMessage(`已加载作业：${content.doc?.title || content.stage_name}`)
-        } else {
-          const singlePayload = copilotResult.status === 'fulfilled' ? unwrapApiPayload(copilotResult.value) : null
-          const setPayload = setResult.status === 'fulfilled' ? unwrapApiPayload(setResult.value) : null
-          const looksLikeSetFallback = singlePayload?.status_code === 404 && setPayload?.status_code === 400
-
-          if (looksLikeSetFallback) {
-            setCopilotSetInfo({
-              type: 'set',
-              id: copilotId,
-              name: '作业集',
-              note: `当前接口未返回 ${copilotId} 的明细，执行时将按作业集处理${!hasS ? '（自动添加 s 前缀）' : ''}`,
-              autoAddS: !hasS,
-              copilots: [],
-              currentIndex: 0
-            })
-            applySelectedCopilotIndexes(new Set(), copilotId)
-            setStatusMessage(`已按作业集处理：prts://s${copilotId}${!hasS ? '（执行时自动添加 s 前缀）' : ''}`)
-          } else {
-            setStatusMessage('未找到作业或作业集')
-          }
-        }
-      }
-
-    } catch (error) {
-      if (isCurrentRequest()) setStatusMessage(`网络错误: ${(error as Error).message}`)
-    } finally {
-      if (isCurrentRequest()) setIsLoadingSet(false)
-    }
+    clearCopilotPreview()
+    await requestCopilotPreview(normalizedUri)
   }
 
   // 搜索悖论模拟作业
@@ -781,40 +450,33 @@ export default function CombatTasks() {
       return
     }
 
-    const requestId = ++paradoxSearchRequestRef.current
-    const query = paradoxSearchName.trim()
-    setIsSearchingParadox(true)
     setStatusMessage('正在搜索作业...')
-    setParadoxSearchResult(null)
+    const outcome = await searchParadoxJobs(paradoxSearchName)
+    if (outcome.status === 'cancelled') return
 
-    try {
-      const result = await searchParadoxCopilot(query)
-      if (paradoxSearchRequestRef.current !== requestId) return
+    if (outcome.status === 'failed') {
+      setStatusMessage(
+        outcome.kind === 'transport' || outcome.kind === 'unknown'
+          ? `搜索失败: ${outcome.message}`
+          : outcome.message,
+      )
+      return
+    }
 
-      // 适配新的响应格式：数据在 result.data 中
-      const data = result.data || result
+    const { result } = outcome
+    if (!result.copilots.length) {
+      setStatusMessage('未找到作业')
+      return
+    }
 
-      if (result.success && data.copilots && data.copilots.length > 0) {
-        setParadoxSearchResult(data)
-        setStatusMessage(`找到 ${data.copilots.length} 个作业`)
-
-        // 自动填充推荐作业
-        if (data.recommended) {
-          updateCombatConfig(current => ({
-            ...current,
-            taskInputs: { ...current.taskInputs, paradoxcopilot: data.recommended.uri },
-          }))
-        }
-      } else {
-        setStatusMessage(result.message || data.error || '未找到作业')
-        setParadoxSearchResult(null)
-      }
-    } catch (error) {
-      if (paradoxSearchRequestRef.current !== requestId) return
-      setStatusMessage(`搜索失败: ${(error as Error).message}`)
-      setParadoxSearchResult(null)
-    } finally {
-      if (paradoxSearchRequestRef.current === requestId) setIsSearchingParadox(false)
+    setStatusMessage(`找到 ${result.copilots.length} 个作业`)
+    // 自动填充推荐作业
+    const recommendedUri = result.recommended?.uri
+    if (recommendedUri) {
+      updateCombatConfig(current => ({
+        ...current,
+        taskInputs: { ...current.taskInputs, paradoxcopilot: recommendedUri },
+      }))
     }
   }
 
@@ -826,62 +488,52 @@ export default function CombatTasks() {
       return
     }
 
-    const requestId = ++copilotSearchRequestRef.current
-    const query = copilotSearchStage.trim()
-    setIsSearchingCopilot(true)
     setStatusMessage('正在搜索作业...')
-    setCopilotSearchResult(null)
+    const outcome = await searchCopilotJobs(copilotSearchStage)
+    if (outcome.status === 'cancelled') return
 
-    try {
-      const result = await searchCopilot(query)
-      if (copilotSearchRequestRef.current !== requestId) return
+    if (outcome.status === 'failed') {
+      setStatusMessage(
+        outcome.kind === 'transport' || outcome.kind === 'unknown'
+          ? `搜索失败: ${outcome.message}`
+          : outcome.message,
+      )
+      return
+    }
 
-      // 适配新的响应格式：数据在 result.data 中
-      const data = result.data || result
+    const { result } = outcome
+    if (!result.copilots.length) {
+      setStatusMessage('未找到作业')
+      return
+    }
 
-      if (result.success && data.copilots && data.copilots.length > 0) {
-        setCopilotSearchResult(data)
-
-        // 自动填充并预览推荐作业
-        if (data.recommended?.uri) {
-          await applyCopilotUri(data.recommended.uri)
-        } else {
-          setStatusMessage(`找到 ${data.copilots.length} 个作业`)
-        }
-      } else {
-        setStatusMessage(result.message || data.error || '未找到作业')
-        setCopilotSearchResult(null)
-      }
-    } catch (error) {
-      if (copilotSearchRequestRef.current !== requestId) return
-      setStatusMessage(`搜索失败: ${(error as Error).message}`)
-      setCopilotSearchResult(null)
-    } finally {
-      if (copilotSearchRequestRef.current === requestId) setIsSearchingCopilot(false)
+    // 自动填充并预览推荐作业
+    if (result.recommended?.uri) {
+      await applyCopilotUri(result.recommended.uri)
+    } else {
+      setStatusMessage(`找到 ${result.copilots.length} 个作业`)
     }
   }
 
   const handleCopilotSearchStageChange = (value: string) => {
-    copilotSearchRequestRef.current += 1
-    setIsSearchingCopilot(false)
+    // 输入变化即放弃在途搜索；旧响应不会写入新的展示状态。
+    cancelCopilotSearch()
     setCopilotSearchStage(value)
   }
 
   const handleParadoxSearchNameChange = (value: string) => {
-    paradoxSearchRequestRef.current += 1
-    setIsSearchingParadox(false)
+    cancelParadoxSearch()
     setParadoxSearchName(value)
   }
 
   const handleCopilotTypeChange = (type: 'auto' | 'single' | 'set') => {
-    previewRequestRef.current += 1
-    setIsLoadingSet(false)
+    // 只取消在途预览并解锁按钮，保留已显示内容，与迁移前一致。
+    cancelCopilotPreview()
     setCopilotType(type)
   }
 
-
   const renderAdvancedOptions = (task: CombatTask) => {
-    const options = getAdvancedOptions(task.id)
+    const options = getCombatAdvancedOptions(task.id)
     if (options.length === 0) return null
 
     const advanced = advancedParams[task.id] || {}
@@ -1200,7 +852,7 @@ export default function CombatTasks() {
                           className="app-input app-native-control min-h-11 min-w-0 flex-1 font-mono control-surface"
                         />
                         <Button
-                          onClick={() => handlePreviewCopilotSetWithInput()}
+                          onClick={() => void requestCopilotPreview()}
                           disabled={isLoadingSet || !taskInputs[task.id]?.trim()}
                           loading={isLoadingSet}
                           variant="secondary"
@@ -1289,11 +941,13 @@ export default function CombatTasks() {
                             <span className="h-3 w-px bg-gray-200 dark:bg-white/10" />
                             <button
                               onClick={() => {
-                                if (selectedCopilotIndexes.size === copilotSetInfo.copilots!.length) {
-                                  applySelectedCopilotIndexes(new Set(), copilotSetInfo.id)
-                                } else {
-                                  applySelectedCopilotIndexes(new Set(copilotSetInfo.copilots!.map((_, idx) => idx)), copilotSetInfo.id)
-                                }
+                                applySelectedCopilotIndexes(
+                                  toggleAllCopilotSelection(
+                                    selectedCopilotIndexes,
+                                    copilotSetInfo.copilots!.length,
+                                  ),
+                                  copilotSetInfo.id,
+                                )
                               }}
                               className="min-h-11 px-1 text-xs brand-text transition-colors hover:underline"
                             >
@@ -1408,13 +1062,10 @@ export default function CombatTasks() {
                                     : '待执行'
 
                               const handleToggleSelect = () => {
-                                const newSet = new Set(selectedCopilotIndexes)
-                                if (newSet.has(idx)) {
-                                  newSet.delete(idx)
-                                } else {
-                                  newSet.add(idx)
-                                }
-                                applySelectedCopilotIndexes(newSet, copilotSetInfo.id)
+                                applySelectedCopilotIndexes(
+                                  toggleCopilotSelection(selectedCopilotIndexes, idx),
+                                  copilotSetInfo.id,
+                                )
                               }
 
                               return (
@@ -1668,7 +1319,7 @@ export default function CombatTasks() {
                             </>
                           )}
                           <Button
-                            onClick={() => setCopilotSetInfo(null)}
+                            onClick={clearCopilotPreview}
                             variant="ghost"
                             size="sm"
                             className="mt-2 text-xs"
