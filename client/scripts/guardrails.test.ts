@@ -234,6 +234,44 @@ describe('page responsibility guardrails', () => {
     ])
   })
 
+  it('flags a page importing a domain endpoint through the feature public surface', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/automation/index.ts', [
+        "export { executeScheduleNow } from './api'",
+        "export { useAutomationThing } from './hooks/useAutomationThing'",
+      ].join('\n')],
+      ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/automation/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        "import { executeScheduleNow, useAutomationThing } from '@/features/automation'",
+        'export default function Page() {',
+        '  useAutomationThing()',
+        '  executeScheduleNow()',
+        '  return null',
+        '}',
+      ].join('\n')],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('executeScheduleNow')
+  })
+
+  it('flags a page namespace-importing a domain that re-exports endpoints', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/automation/index.ts', "export { executeScheduleNow } from './api'\n"],
+      ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        "import * as automation from '@/features/automation'",
+        'export default function Page() { automation.executeScheduleNow(); return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('整体导入')
+  })
+
   it('allows a page to call its domain container hook', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/pages/Page.tsx', [

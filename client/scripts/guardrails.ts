@@ -27,6 +27,19 @@ export interface ImportEdge {
   specifier: string
 }
 
+export interface ImportBinding {
+  specifier: string
+  /** 具名导入使用导出名；默认/命名空间导入分别为 `default` / `*`。 */
+  imported: string
+  typeOnly: boolean
+}
+
+export interface ReExport {
+  exportedName: string
+  specifier: string
+  typeOnly: boolean
+}
+
 export type GuardrailRule =
   | 'domain-cycle'
   | 'deep-import'
@@ -108,6 +121,77 @@ export function collectImportSpecifiers(source: string, filePath = 'sample.tsx')
 
   visit(sourceFile)
   return specifiers
+}
+
+/**
+ * 取出 import 的具名绑定。页面职责检查用它在公开面 import 中区分
+ * “领域端点”与领域 hook/组件，避免只拦字符串路径却放过 feature 根转发。
+ */
+export function collectImportBindings(source: string, filePath = 'sample.tsx'): ImportBinding[] {
+  const sourceFile = parseSourceFile({ path: filePath, source })
+  const bindings: ImportBinding[] = []
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteralLike(statement.moduleSpecifier)) {
+      continue
+    }
+
+    const clause = statement.importClause
+    if (!clause) continue
+    const specifier = statement.moduleSpecifier.text
+    const declarationTypeOnly = clause.isTypeOnly
+
+    if (clause.name) {
+      bindings.push({ specifier, imported: 'default', typeOnly: declarationTypeOnly })
+    }
+
+    const namedBindings = clause.namedBindings
+    if (!namedBindings) continue
+
+    if (ts.isNamespaceImport(namedBindings)) {
+      bindings.push({ specifier, imported: '*', typeOnly: declarationTypeOnly })
+      continue
+    }
+
+    for (const element of namedBindings.elements) {
+      bindings.push({
+        specifier,
+        imported: element.propertyName?.text ?? element.name.text,
+        typeOnly: declarationTypeOnly || element.isTypeOnly,
+      })
+    }
+  }
+
+  return bindings
+}
+
+/** 取出公开面 `export { ... } from './module'` 的导出名与来源模块。 */
+export function collectReExports(source: string, filePath = 'sample.ts'): ReExport[] {
+  const sourceFile = parseSourceFile({ path: filePath, source })
+  const reExports: ReExport[] = []
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isExportDeclaration(statement)
+      || !statement.moduleSpecifier
+      || !ts.isStringLiteralLike(statement.moduleSpecifier)
+      || !statement.exportClause
+      || !ts.isNamedExports(statement.exportClause)
+    ) {
+      continue
+    }
+
+    const specifier = statement.moduleSpecifier.text
+    for (const element of statement.exportClause.elements) {
+      reExports.push({
+        exportedName: element.name.text,
+        specifier,
+        typeOnly: statement.isTypeOnly || element.isTypeOnly,
+      })
+    }
+  }
+
+  return reExports
 }
 
 /**
@@ -446,11 +530,44 @@ function importsPageInfrastructure(
 }
 
 /**
+ * 收集各 feature 公开面中来自 `api/` 的导出名。
+ *
+ * 只禁 `@/features/x/api` 深路径不足以阻止页面直接调用端点：公开面可以把
+ * `executeScheduleNow`、`saveUserConfig` 等端点再导出。页面检查沿公开面的
+ * `export { ... } from './api'` 定位来源，仍允许同一条公开面导出的领域 hook/组件。
+ */
+function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<string>> {
+  const knownFiles = new Set(files.map(file => file.path))
+  const apiExports = new Map<string, Set<string>>()
+
+  for (const file of files) {
+    const domain = /^features\/([^/]+)\/index\.tsx?$/.exec(file.path)?.[1]
+    if (!domain) continue
+
+    for (const reExport of collectReExports(file.source, file.path)) {
+      if (reExport.typeOnly) continue
+      const target = resolveImport(reExport.specifier, file.path, knownFiles)
+      if (!target?.startsWith(`features/${domain}/api/`)) continue
+
+      let names = apiExports.get(domain)
+      if (!names) {
+        names = new Set()
+        apiExports.set(domain, names)
+      }
+      names.add(reExport.exportedName)
+    }
+  }
+
+  return apiExports
+}
+
+/**
  * 页面职责检查：页面只组合页头、工作区与领域容器，不亲自持有请求、存储或业务轮询。
  * 领域容器/hook（components、hooks）不受这些限制，因此页面调用所属领域的 hook 不会被误报。
  */
 export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViolation[] {
   const knownFiles = new Set(files.map(file => file.path))
+  const publicApiExports = buildPublicApiExports(files)
   const violations: GuardrailViolation[] = []
 
   for (const file of files) {
@@ -464,6 +581,27 @@ export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViol
         file: file.path,
         message: `页面不得直接依赖传输层或 Query 基础设施（${specifier}）；读取/写入交给领域容器与领域 Query`,
       })
+    }
+
+    for (const binding of collectImportBindings(file.source, file.path)) {
+      if (binding.typeOnly) continue
+      const domain = /^@\/features\/([^/]+)$/.exec(binding.specifier)?.[1]
+      const apiNames = domain ? publicApiExports.get(domain) : undefined
+      if (!domain || !apiNames) continue
+
+      if (binding.imported === '*') {
+        violations.push({
+          rule: 'page-transport',
+          file: file.path,
+          message: `页面不得整体导入 ${binding.specifier}；请只导入所需领域 hook/组件，端点调用归领域容器`,
+        })
+      } else if (apiNames.has(binding.imported)) {
+        violations.push({
+          rule: 'page-transport',
+          file: file.path,
+          message: `页面不得经公开面直接调用领域端点 ${domain}.${binding.imported}（${binding.specifier}）；请交给领域容器/hook`,
+        })
+      }
     }
 
     collectPageGlobalViolations(file, violations)
