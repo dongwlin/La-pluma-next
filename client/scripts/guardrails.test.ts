@@ -466,6 +466,60 @@ describe('page responsibility guardrails', () => {
     expect(violations[0]?.message).toContain('executeScheduleNow')
   })
 
+  const aliasedEndpointCases = [
+    ['namespace cast', [
+      "import * as a from '@/features/a'",
+      ';(a as any).executeScheduleNow()',
+    ].join('\n')],
+    ['namespace local alias', [
+      "import * as a from '@/features/a'",
+      'const b = a',
+      'b.executeScheduleNow()',
+    ].join('\n')],
+    ['namespace parameter default destructuring', [
+      "import * as a from '@/features/a'",
+      'function f({ executeScheduleNow } = a) { return executeScheduleNow }',
+    ].join('\n')],
+    ['dynamic import cast', [
+      'const load = async () => {',
+      "  const m = await import('@/features/a')",
+      '  ;(m as any).executeScheduleNow()',
+      '}',
+    ].join('\n')],
+    ['dynamic import local alias', [
+      'const load = async () => {',
+      "  const m = await import('@/features/a')",
+      '  const b = m',
+      '  b.executeScheduleNow()',
+      '}',
+    ].join('\n')],
+    ['dynamic import then callback cast', [
+      "const load = () => import('@/features/a').then(m => (m as any).executeScheduleNow())",
+    ].join('\n')],
+    ['dynamic import wrapped then callback', [
+      "const load = () => import('@/features/a').then(((m) => m.executeScheduleNow()))",
+    ].join('\n')],
+    ['computed destructuring key', [
+      'const load = async () => {',
+      "  const m = await import('@/features/a')",
+      "  const { ['executeScheduleNow']: run } = m",
+      '  run()',
+      '}',
+    ].join('\n')],
+  ] as const
+
+  it.each(aliasedEndpointCases)('flags endpoint usage through %s', (_label, source) => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', "export { executeScheduleNow } from './api'\n"],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['pages/a/Page.tsx', source],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('executeScheduleNow')
+  })
+
   it('allows own feature index hooks imported as namespace or dynamic', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/index.ts', [
@@ -663,6 +717,65 @@ describe('page responsibility guardrails', () => {
       'page-storage',
       'page-polling',
     ])
+  })
+
+  const globalBypassCases = [
+    ['assignment destructuring from window', [
+      'let f',
+      '({ fetch: f } = window)',
+      "f('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['nested assignment destructuring', [
+      'let f',
+      '({ a: { fetch: f } } = window)',
+      "f('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['destructuring from window.window', [
+      'const { fetch: f } = window.window',
+      "f('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['destructured parameter default', [
+      'function f({ fetch: g } = window) { return g }',
+    ].join('\n'), 'page-transport'],
+    ['parenthesized string index', [
+      "window[('fetch')]('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['computed binding key', [
+      "const { ['fetch']: f } = window",
+      "f('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['computed assignment key', [
+      'let f',
+      "({ ['fetch']: f } = window)",
+      "f('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['window.document.defaultView chain', [
+      "window.document.defaultView.fetch('/api/agent/tasks/status')",
+    ].join('\n'), 'page-transport'],
+    ['globalThis document defaultView chain', [
+      "globalThis['document'].defaultView.localStorage.getItem('draft')",
+    ].join('\n'), 'page-storage'],
+  ] as const
+
+  it.each(globalBypassCases)('flags a global primitive bypass through %s', (_label, source, rule) => {
+    const violations = checkPageGuardrails(files(['pages/a/Page.tsx', source]))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule })
+  })
+
+  it('does not flag nested assignment targets that do not come from a global object', () => {
+    const violations = checkPageGuardrails(files(
+      ['pages/a/Page.tsx', [
+        'const props = { a: { fetch: null } }',
+        'let local',
+        ';({ a: { fetch: local } } = props)',
+        ';({ a: { fetch } } = props)',
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toEqual([])
   })
 
   it('flags window proxies and document.defaultView as global objects', () => {

@@ -694,34 +694,47 @@ const GLOBAL_OBJECT_NAMES = new Set(['window', 'globalThis', 'self'])
 /** 这些属性返回同一个 Window 代理对象：`window.top`、`self.parent`、`window.frames`。 */
 const WINDOW_PROXY_PROPERTIES = new Set(['window', 'globalThis', 'self', 'top', 'parent', 'frames'])
 
-/** `document.defaultView` 是 Window；`document` 本身不是全局对象。 */
+/** `document`、`window.document` 与 `globalThis['document']` 都指向文档对象。 */
+function isDocumentObjectExpression(expression: ts.Expression): boolean {
+  const unwrapped = unwrapExpression(expression)
+  if (ts.isIdentifier(unwrapped)) return unwrapped.text === 'document'
+  if (ts.isPropertyAccessExpression(unwrapped) || ts.isElementAccessExpression(unwrapped)) {
+    return staticMemberName(unwrapped) === 'document'
+      && isGlobalObjectExpression(unwrapped.expression)
+  }
+  return false
+}
+
+/**
+ * `document.defaultView`（含 `window.document.defaultView` 等属性链）是 Window；
+ * `document` 本身不是全局对象。
+ */
 function isDocumentDefaultView(expression: ts.Expression): boolean {
   const unwrapped = unwrapExpression(expression)
   if (!ts.isPropertyAccessExpression(unwrapped) && !ts.isElementAccessExpression(unwrapped)) {
     return false
   }
   if (staticMemberName(unwrapped) !== 'defaultView') return false
-  const receiver = unwrapExpression(unwrapped.expression)
-  return ts.isIdentifier(receiver) && receiver.text === 'document'
+  return isDocumentObjectExpression(unwrapped.expression)
 }
 
 /**
  * 判断表达式是否指向浏览器全局对象。除裸 `window`/`globalThis`/`self` 外，
  * 也接受 Window 代理属性链（`window.window`、`window.top`、`self.parent`）
  * 与 `document.defaultView`：这些表达式仍指向同一个全局对象。
+ *
+ * 属性/下标访问先解包 `as`/括号/非空/satisfies 再取成员名，
+ * 因此 `window.window`、`window[('window')]` 与 `(window as any).top`
+ * 都会继续按代理链递归判断，而不是只认裸标识符。
  */
 function isGlobalObjectExpression(expression: ts.Expression): boolean {
   const unwrapped = unwrapExpression(expression)
   if (isDocumentDefaultView(unwrapped)) return true
   if (ts.isIdentifier(unwrapped)) return GLOBAL_OBJECT_NAMES.has(unwrapped.text)
-  if (ts.isPropertyAccessExpression(unwrapped) && ts.isIdentifier(unwrapped.name)) {
-    return WINDOW_PROXY_PROPERTIES.has(unwrapped.name.text)
-      && isGlobalObjectExpression(unwrapped.expression)
-  }
-  if (ts.isElementAccessExpression(unwrapped) && unwrapped.argumentExpression) {
-    const key = unwrapExpression(unwrapped.argumentExpression)
-    return ts.isStringLiteralLike(key)
-      && WINDOW_PROXY_PROPERTIES.has(key.text)
+  if (ts.isPropertyAccessExpression(unwrapped) || ts.isElementAccessExpression(unwrapped)) {
+    const member = staticMemberName(unwrapped)
+    return member !== null
+      && WINDOW_PROXY_PROPERTIES.has(member)
       && isGlobalObjectExpression(unwrapped.expression)
   }
   return false
@@ -743,26 +756,49 @@ function isPropertyName(node: ts.Identifier): boolean {
   )
 }
 
-/** 赋值解构左侧的简写属性名（`({ fetch } = props)`）是写入目标，不是全局引用。 */
-function isAssignmentPatternShorthand(node: ts.Identifier): boolean {
-  const property = node.parent
-  if (!ts.isShorthandPropertyAssignment(property) || property.name !== node) return false
+/**
+ * 判断节点是否位于赋值解构左侧，可穿过嵌套对象/数组模式与包装表达式。
+ * 用于把 `({ a: { fetch } } = props)` 中的简写属性名识别为写入目标，
+ * 而不是对全局对象的引用。
+ */
+function isAssignmentPatternExpression(node: ts.Node): boolean {
+  const { parent } = node
 
-  let expression: ts.Node = property.parent
-  while (
-    ts.isParenthesizedExpression(expression)
-    || ts.isAsExpression(expression)
-    || ts.isTypeAssertionExpression(expression)
-    || ts.isNonNullExpression(expression)
-    || ts.isSatisfiesExpression(expression)
-  ) {
-    expression = expression.parent
+  if (ts.isBinaryExpression(parent)) {
+    return parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && parent.left === node
   }
 
-  const parent = expression.parent
-  return ts.isBinaryExpression(parent)
-    && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
-    && parent.left === expression
+  if (
+    ts.isParenthesizedExpression(parent)
+    || ts.isAsExpression(parent)
+    || ts.isTypeAssertionExpression(parent)
+    || ts.isNonNullExpression(parent)
+    || ts.isSatisfiesExpression(parent)
+  ) {
+    return isAssignmentPatternExpression(parent)
+  }
+
+  if (ts.isPropertyAssignment(parent) && parent.initializer === node) {
+    return isAssignmentPatternExpression(parent)
+  }
+
+  if (ts.isObjectLiteralExpression(parent) && parent.properties.some(property => property === node)) {
+    return isAssignmentPatternExpression(parent)
+  }
+
+  if (ts.isArrayLiteralExpression(parent) && parent.elements.some(element => element === node)) {
+    return isAssignmentPatternExpression(parent)
+  }
+
+  return false
+}
+
+/** 赋值解构左侧的简写属性名是写入目标，不是全局引用。 */
+function isAssignmentPatternShorthand(node: ts.Identifier): boolean {
+  const property = node.parent
+  return ts.isShorthandPropertyAssignment(property)
+    && property.name === node
+    && isAssignmentPatternExpression(property)
 }
 
 /** 声明名、参数名与解构绑定不是对全局对象的引用。 */
@@ -788,42 +824,109 @@ function isBindingName(node: ts.Identifier): boolean {
   )
 }
 
+/** 解构键名：标识符、字符串字面量或字面量计算属性（`['fetch']`）。 */
+function literalPropertyName(name: ts.PropertyName | undefined): string | null {
+  if (!name) return null
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text
+  if (ts.isComputedPropertyName(name)) {
+    const expression = unwrapExpression(name.expression)
+    return ts.isStringLiteralLike(expression) ? expression.text : null
+  }
+  return null
+}
+
 /** 解构键名：`{ fetch: f }` 取 fetch，`{ fetch }` 取 fetch。 */
 function bindingElementKey(node: ts.BindingElement): string | null {
-  const propertyName = node.propertyName
-  if (propertyName && (ts.isIdentifier(propertyName) || ts.isStringLiteralLike(propertyName))) {
-    return propertyName.text
-  }
+  if (node.propertyName) return literalPropertyName(node.propertyName)
   return ts.isIdentifier(node.name) ? node.name.text : null
 }
 
-/**
- * 找到解构绑定实际解构的对象。沿绑定模式向上查找最近的初值来源：
- * 变量声明、参数默认值或外层解构元素的默认值
- * （`const { fetch: f } = window`、`function f({ fetch } = window)`）。
- */
-function findBindingInitializer(node: ts.BindingElement): ts.Expression | undefined {
-  let current: ts.Node = node
+/** 赋值解构左侧的键名：`({ fetch: f } = window)` 取 fetch。 */
+function assignmentPropertyKey(
+  node: ts.PropertyAssignment | ts.ShorthandPropertyAssignment,
+): string | null {
+  if (ts.isShorthandPropertyAssignment(node)) return node.name.text
+  return literalPropertyName(node.name)
+}
 
-  while (
-    ts.isBindingElement(current)
-    || ts.isObjectBindingPattern(current)
-    || ts.isArrayBindingPattern(current)
-  ) {
-    if (ts.isBindingElement(current) && current.initializer) return current.initializer
-    const { parent } = current
-    if (ts.isVariableDeclaration(parent) && parent.name === current) return parent.initializer
-    if (ts.isParameter(parent) && parent.name === current) return parent.initializer
-    current = parent
+/**
+ * 找到解构目标实际解构的表达式。覆盖：
+ * - 变量声明：`const { fetch: f } = window`
+ * - 参数默认值：`function f({ fetch } = window)`
+ * - 外层解构元素默认值：`const { g: { fetch } = window } = props`
+ * - 赋值解构：`({ fetch: f } = window)`、`({ a: { fetch } } = window.window)`
+ *
+ * 绑定模式沿 `ObjectBindingPattern`/`ArrayBindingPattern` 向上找初值；
+ * 赋值模式沿对象/数组字面量与包装表达式向上，只接受作为 `=` 左值的模式，
+ * 因此 `x = { fetch: f }` 这类普通对象字面量不会被当作解构来源。
+ */
+function findDestructuringSource(
+  node: ts.BindingElement | ts.PropertyAssignment | ts.ShorthandPropertyAssignment,
+): ts.Expression | undefined {
+  if (ts.isBindingElement(node)) {
+    let current: ts.Node = node
+
+    while (
+      ts.isBindingElement(current)
+      || ts.isObjectBindingPattern(current)
+      || ts.isArrayBindingPattern(current)
+    ) {
+      if (ts.isBindingElement(current) && current.initializer) return current.initializer
+      const { parent } = current
+      if (ts.isVariableDeclaration(parent) && parent.name === current) return parent.initializer
+      if (ts.isParameter(parent) && parent.name === current) return parent.initializer
+      current = parent
+    }
+
+    return undefined
   }
 
-  return undefined
+  let current: ts.Node = node
+
+  while (true) {
+    const { parent } = current
+    if (
+      ts.isParenthesizedExpression(parent)
+      || ts.isAsExpression(parent)
+      || ts.isTypeAssertionExpression(parent)
+      || ts.isNonNullExpression(parent)
+      || ts.isSatisfiesExpression(parent)
+    ) {
+      current = parent
+      continue
+    }
+    if (ts.isPropertyAssignment(parent) && parent.initializer === current) {
+      current = parent
+      continue
+    }
+    if (ts.isObjectLiteralExpression(parent) || ts.isArrayLiteralExpression(parent)) {
+      current = parent
+      continue
+    }
+    if (
+      ts.isBinaryExpression(parent)
+      && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && parent.left === current
+    ) {
+      return parent.right
+    }
+    return undefined
+  }
 }
 
 function unwrappedIdentifierName(expression: ts.Expression | undefined): string | null {
   if (!expression) return null
   const unwrapped = unwrapExpression(expression)
   return ts.isIdentifier(unwrapped) ? unwrapped.text : null
+}
+
+/** 取出回调函数本体，解开 `as`/括号/非空/satisfies 包装（`.then((m) => ...)`）。 */
+function functionExpressionOf(
+  expression: ts.Expression | undefined,
+): ts.ArrowFunction | ts.FunctionExpression | null {
+  if (!expression) return null
+  const unwrapped = unwrapExpression(expression)
+  return ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped) ? unwrapped : null
 }
 
 /**
@@ -894,8 +997,8 @@ function collectPropertyUsage(root: ts.Node, identifierName: string): Set<string
         && node.expression.name.text === 'then'
         && isTrackedExpression(node.expression.expression)
       ) {
-        const callback = node.arguments[0]
-        if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+        const callback = functionExpressionOf(node.arguments[0])
+        if (callback) {
           for (const name of collectCallbackModuleUsage(callback)) names.add(name)
         }
       }
@@ -941,9 +1044,8 @@ function collectObjectLiteralKeys(expression: ts.Expression): Set<string> {
       continue
     }
     if (!ts.isPropertyAssignment(property)) continue
-    if (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) {
-      names.add(property.name.text)
-    }
+    const key = assignmentPropertyKey(property)
+    if (key) names.add(key)
     for (const name of collectObjectLiteralKeys(property.initializer)) names.add(name)
   }
 
@@ -993,8 +1095,8 @@ function collectDynamicImportUsedNames(
     && parent.name.text === 'then'
     && ts.isCallExpression(parent.parent)
   ) {
-    const callback = parent.parent.arguments[0]
-    if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+    const callback = functionExpressionOf(parent.parent.arguments[0])
+    if (callback) {
       return collectCallbackModuleUsage(callback)
     }
   }
@@ -1088,20 +1190,21 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
   }
 
   const visit = (node: ts.Node): void => {
+    // 变量声明、参数默认值与赋值解构共用同一套来源解析：
+    // `const { fetch: f } = window.window`、`({ fetch: f } = window)`。
     if (ts.isBindingElement(node)) {
       const key = bindingElementKey(node)
-      const initializer = findBindingInitializer(node)
-      if (key && initializer && isGlobalObjectExpression(initializer) && pageRuleForGlobal(key)) {
+      const source = findDestructuringSource(node)
+      if (key && source && isGlobalObjectExpression(source) && pageRuleForGlobal(key)) {
         report(key, lineOf(node))
       }
     }
 
-    // 赋值解构：`let f; ({ fetch: f } = window)`。
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-      const left = unwrapExpression(node.left)
-      if (ts.isObjectLiteralExpression(left) && isGlobalObjectExpression(node.right)) {
-        const line = lineOf(left)
-        for (const key of collectObjectLiteralKeys(left)) report(key, line)
+    if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
+      const key = assignmentPropertyKey(node)
+      const source = findDestructuringSource(node)
+      if (key && source && isGlobalObjectExpression(source) && pageRuleForGlobal(key)) {
+        report(key, lineOf(node))
       }
     }
 
