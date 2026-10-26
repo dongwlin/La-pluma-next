@@ -9,6 +9,7 @@ import { useStatusStore } from '@/features/runtime-status'
 import { settingsAutoUpdateOwner } from '../model/autoUpdateConfig'
 import { settingsConnectionOwner } from '../model/connectionConfig'
 import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
+import { settingsKeys } from '../model/queryKeys'
 import { settingsUpdateOwner } from '../model/updateCommands'
 import ConfigManager from './ConfigManager'
 
@@ -326,5 +327,23 @@ describe('ConfigManager panel subscriptions', () => {
     expect(afterEdit.autoUpdate).toBe(initial.autoUpdate)
     expect(afterEdit.version).toBe(initial.version)
     expect(afterEdit.directory).toBe(initial.directory)
+  })
+
+  it('does not re-render connection or update panels when the directory cache changes', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const initial = snapshot()
+    await act(async () => {
+      queryClient.setQueryData(settingsKeys.query('config-directory'), '/tmp/other-config')
+    })
+    await settle()
+
+    const afterDirectory = snapshot()
+    expect(afterDirectory.directory).toBeGreaterThan(initial.directory)
+    expect(afterDirectory.connection).toBe(initial.connection)
+    expect(afterDirectory.updates).toBe(initial.updates)
+    expect(afterDirectory.autoUpdate).toBe(initial.autoUpdate)
+    expect(afterDirectory.version).toBe(initial.version)
   })
 })
