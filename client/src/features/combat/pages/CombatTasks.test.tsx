@@ -1638,6 +1638,45 @@ describe('CombatTasks execution', () => {
     expect(buttonByText('开始下一关')).toBeDefined()
   })
 
+  it('executes the selected special task with its own command', async () => {
+    await renderComponent()
+    const modeButton = (label: string) => Array.from(
+      container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'),
+    ).find(button => button.textContent?.includes(label))!
+
+    await click(modeButton('保全派驻'))
+    const sssInput = container.querySelector<HTMLTextAreaElement>('textarea[name="maa-ssscopilot-uris"]')!
+    await setInputValue(sssInput, 'prts://1234')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledWith(
+      'ssscopilot',
+      expect.arrayContaining(['prts://1234']),
+      null,
+      null,
+      '保全派驻',
+      'combat',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+
+    await click(modeButton('悖论模拟'))
+    const paradoxInput = container.querySelector<HTMLTextAreaElement>('textarea[name="maa-paradoxcopilot-uris"]')!
+    await setInputValue(paradoxInput, 'prts://5678')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTaskArgs).toHaveBeenLastCalledWith(
+      'paradoxcopilot',
+      expect.arrayContaining(['prts://5678']),
+      null,
+      null,
+      '悖论模拟',
+      'combat',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
   it('associates every visible form control with a label', async () => {
     await renderComponent()
 
