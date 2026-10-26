@@ -226,6 +226,35 @@ const setTheme = async (value: string) => {
   await flush()
 }
 
+const setControlValue = async (
+  selector: string,
+  value: string,
+  eventName: 'input' | 'change' = 'input',
+) => {
+  const control = container.querySelector<HTMLInputElement | HTMLSelectElement>(selector)!
+  await act(async () => {
+    const prototype = control instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : HTMLInputElement.prototype
+    const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set
+    valueSetter?.call(control, value)
+    control.dispatchEvent(new Event(eventName, { bubbles: true }))
+  })
+  await flush()
+}
+
+const toggleSwitch = async (selector: string) => {
+  const input = container.querySelector<HTMLInputElement>(selector)!
+  await act(async () => {
+    input.click()
+  })
+  await flush()
+}
+
+const findModeButton = (name: string) => Array.from(
+  container.querySelectorAll<HTMLButtonElement>('.roguelike-mode-button'),
+).find(button => button.textContent?.includes(name))
+
 describe('RoguelikeTasks execution', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -303,6 +332,55 @@ describe('RoguelikeTasks execution', () => {
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledOnce()
     expect(buttonByText('终止执行')).toBeDefined()
+  })
+
+  it('builds the command from the active mode and advanced fields', async () => {
+    await renderPage()
+    await setTheme('Phantom')
+    await setControlValue('select[name="maa-roguelike-mode"]', '1', 'change')
+    await setControlValue('input[name="maa-roguelike-squad"]', '指挥分队')
+    await toggleSwitch('input[name="maa-roguelike-useSupport"]')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Phantom --mode 1 --squad 指挥分队 --use-support',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('submits the task selected by the active mode', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+    await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'reclamation',
+      'Tales',
+      null,
+      null,
+      '生息演算',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('rejects an empty theme before creating a run', async () => {
+    await renderPage()
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('请输入主题名称')
   })
 
   it('keeps the run observable after the page unmounts without sending a stop', async () => {
@@ -603,6 +681,58 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector('input[name="maa-reclamation-theme"]')).not.toBeNull()
     expect(Array.from(container.querySelectorAll('.roguelike-theme-option'))
       .some(option => option.textContent?.includes('沙洲遗闻'))).toBe(true)
+  })
+
+  it('keeps per-mode drafts while switching modes', async () => {
+    vi.useFakeTimers()
+    await renderPage()
+
+    await setTheme('Phantom')
+    await click(findModeButton('生息演算')!)
+    await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    await flush()
+
+    expect(mocks.saveUserConfig).toHaveBeenCalledWith('roguelike-tasks', {
+      taskInputs: { roguelike: 'Phantom', reclamation: 'Tales' },
+      advancedParams: {},
+    })
+
+    await click(findModeButton('集成战略')!)
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value)
+      .toBe('Phantom')
+  })
+
+  it('keeps the selected mode across Activity hide/show and resets it on remount', async () => {
+    const renderMode = async (mode: 'visible' | 'hidden') => {
+      await act(async () => {
+        root.render(
+          <Activity mode={mode}>
+            <RoguelikeTasks />
+          </Activity>,
+        )
+      })
+      await flush()
+    }
+
+    await renderMode('visible')
+    await click(findModeButton('生息演算')!)
+    expect(findModeButton('生息演算')?.getAttribute('aria-pressed')).toBe('true')
+
+    await renderMode('hidden')
+    await renderMode('visible')
+    expect(findModeButton('生息演算')?.getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector('input[name="maa-reclamation-theme"]')).not.toBeNull()
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await act(async () => root.render(<RoguelikeTasks />))
+    await flush()
+
+    expect(findModeButton('集成战略')?.getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector('input[name="maa-roguelike-theme"]')).not.toBeNull()
   })
 
   it('keeps an unsynced local draft across remounts and retries the save', async () => {
