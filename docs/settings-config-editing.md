@@ -2,9 +2,9 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-024 交付的设置页配置编辑模型：MAA profile 的 `connection` 段如何读取、编辑、保存与重置，以及 `connection`/`resource`/`instance` 三个 section 的状态、存储键与 window 事件的归属。配置读取走 `settings/maa-config` Query，草稿与保存由 `features/settings/model/connectionConfig.ts` 的模块级所有者持有。
+本文说明设置页配置编辑模型：MAA profile 的 `connection` 段如何读取、编辑、保存与重置，以及 `connection`/`resource`/`instance` 三个 section 的状态、存储键与 window 事件的归属。配置读取走 `settings/maa-config` Query，草稿与保存由 `features/settings/model/connectionConfig.ts` 的模块级所有者持有。
 
-设备发现、连接测试、版本、配置目录与打开目录由 FPR-025 接管，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新已由 FPR-026 迁入 `model/updateCommands.ts`、`model/autoUpdateConfig.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。自动更新的归一化模型仍在 `model/configNormalization.ts`，草稿、提交与调度状态机归自动更新所有者。
+设备发现、连接测试、版本、配置目录与打开目录由设置设备领域负责，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新由 `model/updateCommands.ts`、`model/autoUpdateConfig.ts` 及其 hooks 持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。自动更新的归一化模型仍在 `model/configNormalization.ts`，草稿、提交与调度状态机归自动更新所有者。
 
 验证入口见文末[回归证据](#6-回归证据)。
 
@@ -13,7 +13,7 @@
 | section | 可编辑 | 服务端资源 | 保存 / 重置 |
 | --- | --- | --- | --- |
 | `connection` | 是 | `settings/maa-config` Query + `ConnectionConfigOwner` 草稿 | 显式保存；重置只改草稿 |
-| `resource` | 否 | 配置目录等只读说明（读取归 FPR-025，见[设置设备连接与系统资源](settings-device-and-resources.md)） | 不渲染保存/重置 |
+| `resource` | 否 | 配置目录等只读说明（读取见[设置设备连接与系统资源](settings-device-and-resources.md)） | 不渲染保存/重置 |
 | `instance` | 否 | MAA 管理的实例选项 | 不渲染保存/重置 |
 
 归属：
@@ -117,8 +117,8 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 - 页面删除的职责：`configData` state、`loadConfig()`、`connectionRevisionRef`、`connectionSaveInFlightRef`、section `localStorage` 读写与 window 监听。
 - 输入、平台配置与自动重连开关都通过 `update(patch)` 写入 owner；编辑清空页内反馈与保存错误。
 - 保存按钮 loading 取 `syncState === 'saving'`，重置按钮在保存中禁用；保存结果按 `saved`/`superseded`/`failed` 分别提示。
-- 自动更新已由 FPR-026 移出页面：读取/本地回退、touched/revision、保存后 `setupAutoUpdate` 与反馈由 `AutoUpdateConfigOwner` 和 `useSettingsAutoUpdate()` 持有；归一化与时间校验仍在 `model/configNormalization.ts`，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
-- 设备发现、连接测试、版本、配置目录与打开目录已由 FPR-025 移出页面，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新由 FPR-026 迁移。
+- 自动更新的读取/本地回退、touched/revision、保存后 `setupAutoUpdate` 与反馈由 `AutoUpdateConfigOwner` 和 `useSettingsAutoUpdate()` 持有；归一化与时间校验仍在 `model/configNormalization.ts`，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
+- 设备发现、连接测试、版本、配置目录与打开目录归[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新归[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 
 ## 5. 兼容与回滚
 
@@ -126,7 +126,7 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 - 新增 Query key `['settings','maa-config',profileName]` 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
 - 载荷校验比迁移前严格：已知字段类型不合法时整份读取失败并显示错误，而旧页面会把异常值放入受控输入。未知 connection 字段仍原样保留。
 - 已知字段缺失时显示页面默认值，而旧页面会显示空输入；这是归一化模型的要求，正常服务端载荷（`getConfig` 自带默认值）不受影响。
-- 默认渲染结构、DOM 与 CSS 未改变；失败/`superseded` 提示只在非默认状态出现，视觉基线不因本任务更新。
+- 默认渲染结构、DOM 与 CSS 未改变；失败/`superseded` 提示只在非默认状态出现，视觉基线不因该逻辑调整更新。
 - 独立回滚范围：`features/settings/model/configNormalization.ts`、`model/connectionConfig.ts`、`model/queryKeys.ts`、`model/configSection.ts`、`hooks/useConfigSection.ts`、`hooks/useSettingsConnectionConfig.ts` 与 `ConnectionConfigPanel`/`SettingsWorkspace` 的 connection/section 接线，以及 API 校验收紧；回滚后恢复页面本地 state，不需要数据迁移。
 
 ## 6. 回归证据
@@ -136,7 +136,7 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 | `features/settings/model/configNormalization.test.ts` | connection 默认值与非法字段回退、未知字段保留、整份草稿比较；auto-update 归一化与 `HH:MM` 校验 |
 | `features/settings/model/connectionConfig.test.ts` | 初始状态、编辑 revision/dirty、服务端采用条件、编辑期间迟到读取、脏草稿读取、保存前读取失效、保存在途读取、保存串行、保存期间编辑、失败保留与重试、未知字段回写、重置边界与保存中忽略、`settings/maa-config` key/signal/contract 失败/信封失败 |
 | `features/settings/model/configSection.test.ts` | 存储键与事件名、非法存储回退、写入不抛错、可编辑能力、合法事件过滤与注销 |
-| `features/settings/model/autoUpdateConfig.test.ts` | 自动更新读取守卫、确认保存后的服务端采用、本地回退与完整提交（FPR-026） |
+| `features/settings/model/autoUpdateConfig.test.ts` | 自动更新读取守卫、确认保存后的服务端采用、本地回退与完整提交 |
 | `features/settings/api/index.test.ts` | `getConfig` signal、profile 载荷校验、非法已知字段拒绝与未知字段保留 |
 | `pages/settings/ConfigManager.layout.test.tsx` | section 导航与只读说明、初始读取失败、初始加载/refresh 不覆盖编辑、保存期间继续编辑与跨 section 保存、重置只改草稿、外部 section 事件/存储/监听清理、Activity 恢复保留草稿并重新订阅、自动更新保存边界、连接保存失败 |
 | `pages/settings/ConfigManager.subscriptions.test.tsx` | 连接草稿编辑不重渲染更新/版本/目录面板；设备与更新状态不驱动连接表单 |

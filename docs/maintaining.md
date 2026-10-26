@@ -45,3 +45,9 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 ## 外部运行时依赖
 
 WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudphone-v0.4.1.zip`，并校验固定 SHA-256。为保证长期可安装，建议把该压缩包镜像到本仓库的 Release，并在上游资产失效时更新 `server/services/webrtcRuntime.js` 中的 `RELEASE_URL`。
+
+## 项目文档与过程档案
+
+主仓库的 `docs/` 只维护现行架构、公开契约、兼容约束、开发/运维方法及可复现测试入口。迁移任务、实施日志、逐任务复核、一次性测试结果与性能原始采样属于过程档案，不复制到产品文档索引中。需要长期保留的结论应先转写为当前约束，并由实现或回归测试支持。
+
+性能采样结果默认写入 Git 忽略的 `client/test-results/performance/`；长期文档只描述采样方法与指标限制，不能把某次基准数据当作未来版本的持续保证。

@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-037 提取的自动化规则纯模型：定时时间、任务流程命令、拖拽排序与掉落目标解析。配置提交仍由 [`automationConfig.ts`](../client/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；FPR-039 后指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供，模型本身仍不访问 React、网络或存储。
+本文说明自动化规则纯模型：定时时间、任务流程命令、拖拽排序与掉落目标解析。配置提交仍由 [`automationConfig.ts`](../client/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；当前指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供，模型本身仍不访问 React、网络或存储。
 
 相关契约：[自动化流程、定时与执行摘要面板](automation-flow-panels.md)、[自动化任务编辑面板](automation-editor.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -20,7 +20,7 @@
 
 - 不改变 `/agent/schedules`、`/agent/schedules/manual/execute` 等端点、配置 key、本地存储键或 wire 形状。
 - 不改变任务执行引擎、旧断点续跑、执行控制器身份或 Activity 语义。
-- 不改变渲染结构、DOM/CSS 类名、表单 `id`/`aria-label` 或默认态视觉；本任务没有新增样式或更新截图。
+- 纯模型不负责渲染，DOM/CSS 类名、表单 `id`/`aria-label` 和默认态视觉由现有面板保持。
 - `automationConfig.ts` 仍是持久化适配器的唯一入口；它从两个纯模型导入时间与排序规则，而不是反向依赖网络或 React。
 
 ## 2. 定时时间规则
@@ -88,7 +88,6 @@
 - 配置 key、pending 键、`maa-task-flow`/`maa-schedule` 本地布局、`entries`/`times` 兼容读取与 wire 形状均未变化；旧草稿与服务端配置可直接读取。
 - 新任务仍携带 `defaultParams` 且不含 `icon`/`paramFields`；模型输出已由 `automationConfigAdapter.decodeDraft` 的回归用例验证可被现有迁移接受。
 - 面板 DOM/CSS、表单 id、`aria-label`、拖拽手柄与键盘行为不变；没有新增 CSS，也没有更新视觉基线。
-- 回滚 FPR-037 的提交可恢复页面内联的纯变换；FPR-039 只改变 React 接线位置，配置、存储与执行身份不需要迁移。
 
 ## 7. 回归证据
 
@@ -99,7 +98,7 @@
 | `model/taskFlowSort.test.ts` | 10px 阈值、向上/向下插入槽位、越界原引用、成员不变量、关闭游戏最后 |
 | `model/dropTargets.test.ts` | 文本/对象形状、空白与规范化、非法条目、重复保留、格式化往返 |
 | `model/automationConfig.test.ts` | 适配器原有回归，以及命令模型输出可被现有解码接受 |
-| `model/flowExecution.test.ts` | 最近执行来源、活动/空闲/提交在途的逐项结果、当前步骤映射、单项状态与文案（FPR-039） |
+| `model/flowExecution.test.ts` | 最近执行来源、活动/空闲/提交在途的逐项结果、当前步骤映射、单项状态与文案 |
 | `utils/automationTaskProgress.test.ts` | 既有执行步骤映射（从页面测试迁入工具入口） |
 | `pages/AutomationTasks.execution.test.tsx` | 自定义换班缺文件与非法掉落目标阻止提交并选中任务 |
 | `pages/AutomationTasks.layout.test.tsx` | 定时新增从 12:00 起接续到 6 行上限、重复时间拒绝；拖拽成功/Escape/pointercancel、键盘排序；既有布局与表单接线 |

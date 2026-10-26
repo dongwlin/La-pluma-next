@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-040 交付的总览页面组合与按区域订阅。五路业务快照、设备采样、执行控制器与失效协调的所有者均未改变；本任务只调整页面与区域容器的职责、订阅位置和局部展示计算。
+本文说明总览页面组合与按区域订阅。五路业务快照、设备采样、执行控制器与失效协调的所有者均未改变；区域容器分别持有局部订阅与展示计算。
 
 相关契约：[总览完整快照与设备采样](dashboard-snapshot.md)、[前端执行客户端与控制器](execution-client.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -23,9 +23,9 @@
 | 养成摘要卡 / 掉落摘要卡 | `components/DashboardTrainingSummaryCard.tsx`、`DashboardDropSummaryCard.tsx` | 各自订阅自己的摘要切片与导航函数 |
 | 流程展示计算 | `features/dashboard/model/flowView.ts` | 纯函数：命令标题/说明、按钮文案、禁用与忙碌标记 |
 | 设备展示计算 | `features/dashboard/model/deviceView.ts` | 纯函数：使用率颜色语义与温度曲线几何 |
-| 完整快照协调 | `model/snapshotRefresher.ts` + `hooks/useDashboardSnapshotRefresh.ts` | FPR-030 已交付；本任务只改变调用位置 |
-| 设备采样轮询 | `device-mirror` 的 `useDeviceStatsSample` | FPR-030 已交付；本任务不改变间隔、暂停与失败保旧 |
-| 预览会话 | `components/DashboardPreviewEntry.tsx` + `device-mirror` | FPR-030 已交付；本任务不改变预览协议 |
+| 完整快照协调 | `model/snapshotRefresher.ts` + `hooks/useDashboardSnapshotRefresh.ts` | 由此工作区接入，保持完整快照协调唯一性 |
+| 设备采样轮询 | `device-mirror` 的 `useDeviceStatsSample` | 已实现；轮询间隔、暂停与失败保旧保持不变 |
+| 预览会话 | `components/DashboardPreviewEntry.tsx` + `device-mirror` | 已实现；遵循已有预览协议 |
 
 非目标与保持不变：
 
@@ -34,8 +34,8 @@
 - 不改变设备采样端点、5s 间隔、文档隐藏暂停、`refetchOnMount: 'always'` 与失败保旧。
 - 不改变 `la-pluma-dashboard-cache` v1 的字段或持久化条件；`lastDeviceSampleAt` 只是运行期去重标记，不写入 localStorage。
 - 不把预检 loading、启动反馈、流程展示计算写入 `dashboardStore`、Query、localStorage 或 URL。
-- 不改变渲染结构、DOM/CSS 类名、文案或默认态视觉；本任务没有新增样式或更新截图。
-- 总览没有展开/折叠交互；本任务不需要迁移展开状态。局部交互状态只有预检/启动 loading 与反馈，就近放在流程卡。
+- 不改变渲染结构、DOM/CSS 类名、文案或默认态视觉；既有 DOM/CSS 与视觉约束保持不变。
+- 总览没有展开/折叠交互；没有跨面板展开状态需要提升为共享状态。局部交互状态只有预检/启动 loading 与反馈，就近放在流程卡。
 
 ## 2. 组合与订阅边界
 
@@ -146,7 +146,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 - 端点、Query key、响应信封、配置键、`la-pluma-dashboard-cache` v1、store 字段与 CSS 类名未变；纯结构搬移保持相同 DOM。回滚面板提交可恢复页面内联实现，数据不需要迁移。
 - 行为变化：
-  1. **温度点去重（缺陷修复）。** 迁移前 `useDashboardDeviceStats` 在 Activity 恢复重跑 Effect 时会把缓存中的同一份样本再追加一次，随后立即采样又追加一次，导致“近 N 秒”偏大。现在同一 `dataUpdatedAt` 的缓存回放只记录一次；新采样仍逐次追加。该修复由 FPR-030 遗留观察触发，回归见 `useDashboardDeviceStats.test.tsx` 与 store 测试。
+ 1. **温度点去重（缺陷修复）。** 迁移前 `useDashboardDeviceStats` 在 Activity 恢复重跑 Effect 时会把缓存中的同一份样本再追加一次，随后立即采样又追加一次，导致“近 N 秒”偏大。现在同一 `dataUpdatedAt` 的缓存回放只记录一次；新采样仍逐次追加。相关回归见 `useDashboardDeviceStats.test.tsx` 与 store 测试。
   2. **设备采样投影的启动时机。** 投影从页面顶层移到工作区（页面脱离骨架后）。骨架阶段没有设备区域，可见行为不变；采样间隔、暂停与失败保旧未变。
   3. **状态消息不再重渲染页面。** 流程卡只从 `useStatusStore` 取 `setMessage` 动作，总览不再因全局消息正文整体重渲染；显示内容与计时器仍由 `statusStore` 决定。
   4. **执行订阅随工作区挂载。** 首屏骨架期间不再建立流程卡的执行订阅；骨架期间完成的 run 不产生页面内终态提示，全局运行投影仍独立展示。页面正常装载后的观察、身份与提示规则不变。
@@ -162,7 +162,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | `components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留、效果重建、预览点击导航回调 |
 | `pages/Dashboard.test.tsx` | 首屏/缓存/后台刷新、四类失效、单路失败保旧、预检不写快照、启动后经协调器刷新、空流程导航、执行投影、Activity 恢复、预览挂载、导航与设备投影 |
 | `store/dashboardStore.test.ts` | 温度点去重、时间戳不持久化、既有缓存形状/时钟偏差/设备样本合并 |
-| `model/queries.test.ts`、`model/snapshot.test.ts`、`model/snapshotRefresher.test.ts` | FPR-030 既有五路读取、归一、原子提交与失败策略 |
+| `model/queries.test.ts`、`model/snapshot.test.ts`、`model/snapshotRefresher.test.ts` | 既有五路读取、归一、原子提交与失败策略 |
 | `device-mirror` 的 Query/采样/预览测试 | 采样间隔、失败保旧、Activity 暂停恢复、预览会话生命周期 |
 
 针对性命令（仓库根目录）：
@@ -182,7 +182,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
 ## 10. 剩余边界
 
 - 温度去重依赖 `dataUpdatedAt` 与缓存对象身份；同一毫秒内两次成功的完全相同采样在 Query 结构共享下可能被视为重复。5s 轮询下属于理论边界，未额外引入序列号。
-- `DashboardSkeleton` 仍保留自己的网格测量与加载态 DOM，未纳入区域组件；首屏视觉与 FPR-030 一致。
+- `DashboardSkeleton` 仍保留自己的网格测量与加载态 DOM，未纳入区域组件；首屏视觉依赖现有骨架结构。
 - 总览没有展开/折叠状态；若后续新增，应按使用点留在对应区域，不进入快照 store。
 - 流程区域只验证组合与局部展示；真实执行、停止与占用路径仍由执行控制器和既有页面/控制器测试覆盖。
 

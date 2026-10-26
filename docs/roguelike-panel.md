@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-031 交付的肉鸽页面组合、局部状态边界与纯命令模型。配置草稿仍由 `user-config` 协调器持有，运行身份仍由 `task-execution` 控制器持有；本任务只调整页面/面板的职责与数据投影，不新增第二份持久化或执行状态。
+本文说明肉鸽页面组合、局部状态边界与纯命令模型。配置草稿仍由 `user-config` 协调器持有，运行身份仍由 `task-execution` 控制器持有；页面/面板分别持有界面组合与只读数据投影，不新增第二份持久化或执行状态。
 
 相关契约：[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -15,7 +15,7 @@
 | 模式分段控件的测量与键盘导航 | `features/roguelike/components/RoguelikeModePanel.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 主题快捷项与自定义代号 | `features/roguelike/components/RoguelikeThemePanel.tsx` | 从草稿派生值，编辑经回调交给工作区 |
 | 高级字段与运行/停止按钮 | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染选项表并调用注入的执行动作，不创建执行状态机 |
-| 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | FPR-013 已接入；本任务未改 key、本地键或 wire |
+| 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | 配置适配器维持 key、本地键和 wire 协议 |
 | 任务目录、主题快捷项、高级选项、命令拼接与输入校验 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
 | 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图 |
 
@@ -74,8 +74,8 @@ RoguelikeTasks（页面壳：页头、预览布局）
 
 - 配置 key `roguelike-tasks`、本地键 `roguelikeTaskInputs`/`roguelikeAdvancedParams`、pending 键 `roguelikeConfigSyncPending` 与 wire `{ taskInputs, advancedParams }` 均未变化，旧本地草稿与服务端配置可直接读取。
 - 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。
-- 渲染结构、DOM/CSS 类名、表单 `id`/`name` 与默认态视觉保持不变；本任务没有新增样式或更新截图。
-- 回滚本任务只需恢复页面内联实现；配置适配器、执行控制器与本地数据不需要迁移。
+- 渲染结构、DOM/CSS 类名、表单 `id`/`name` 与默认态视觉保持不变；既有 DOM/CSS 与视觉约束保持不变。
+- 回滚当前需恢复页面内联实现；配置适配器、执行控制器与本地数据不需要迁移。
 
 ## 6. 回归证据
 

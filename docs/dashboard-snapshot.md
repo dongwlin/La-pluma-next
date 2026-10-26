@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-030 交付的总览数据所有权：五路业务读取如何组合成一份完整快照、单路失败如何保留上一份结果、设备采样如何独立轮询与恢复，以及总览如何接收获批的领域失效与统一执行入口。
+本文说明总览数据所有权：五路业务读取如何组合成一份完整快照、单路失败如何保留上一份结果、设备采样如何独立轮询与恢复，以及总览如何接收获批的领域失效与统一执行入口。
 
 相关契约：[Query 缓存与键规范](query-cache.md)、[配置持久化协调器](config-persistence.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端执行客户端与控制器](execution-client.md)、[资源请求错误与取消契约](resource-requests.md)。
 
@@ -17,7 +17,7 @@
 | 快照形状与归一 | `features/dashboard/model/snapshot.ts` | 纯函数，不发起请求、不读写 store |
 | 展示投影与持久化缓存 | `features/dashboard/store/dashboardStore.ts` | `la-pluma-dashboard-cache` v1；只由完整快照持久化 |
 | 设备采样 | `features/device-mirror/model/queries.ts`、`hooks/useDeviceStatsSample.ts` | `device-mirror/device-stats`，5s 轮询，独立失败策略 |
-| 设备采样写入总览 | `features/dashboard/hooks/useDashboardDeviceStats.ts` | 每条成功样本交给 store 做语义校验与温度历史；同一 `dataUpdatedAt` 的缓存回放只追加一次（FPR-040） |
+| 设备采样写入总览 | `features/dashboard/hooks/useDashboardDeviceStats.ts` | 每条成功样本交给 store 做语义校验与温度历史；同一 `dataUpdatedAt` 的缓存回放只追加一次 |
 | 后端连接探针 | `features/runtime-status` | 不参与五路业务快照的有效性判定 |
 | 日常/活动启动 | `features/dashboard/hooks/useDashboardExecution.ts` | 经应用级 task-execution 控制器提交，`scope: 'dashboard'` |
 
@@ -66,7 +66,7 @@
 - Query key：`['device-mirror','device-stats']`；`deviceStatsQueryOptions` 把 Query 的 `signal` 传给 `/agent/device-stats`。
 - `useDeviceStatsSample` 是页面观察入口：`refetchInterval: 5s`、`staleTime: 0`、`refetchOnMount: 'always'`、`retry: false`。轮询本身已按 5s 重试，不叠加默认 Query 重试。
 - 采样失败静默保留上一份成功数据；`data: null`（无设备）不覆盖旧样本。非法字段（百分比越界、非有限数值、形状错误）由 `dashboardStore.updateDeviceStats` 拒绝，不污染缓存或温度历史。
-- 每次新的成功采样都会追加一个温度点（依赖 `dataUpdatedAt`，即使数值相同也不丢点），最多保留 36 个；同一份缓存样本在 Activity 恢复重跑 Effect 时不会重复追加（FPR-040 按 `dataUpdatedAt` 与样本身份去重）。样本本身不单独写 localStorage，随下一次完整业务快照提交一起持久化。
+- 每次新的成功采样都会追加一个温度点（依赖 `dataUpdatedAt`，即使数值相同也不丢点），最多保留 36 个；同一份缓存样本在 Activity 恢复重跑 Effect 时不会重复追加（按 `dataUpdatedAt` 与样本身份去重）。样本本身不单独写 localStorage，随下一次完整业务快照提交一起持久化。
 - Activity 隐藏/卸载会注销 Query 观察者并清理 5s 计时器；恢复时 `refetchOnMount: 'always'` 立即采样一次，再只建立一个周期计时器。文档隐藏时 Query 默认暂停后台轮询，可见后恢复。
 - 设备采样不参与完整快照有效性，也不在 `dashboardStore` 中维护第二份可写资源。
 
@@ -80,7 +80,7 @@
 - 网络恢复（`online` 事件）`force` 刷新。
 - 在途协调读取不因 Activity 隐藏中止；结果仍写入 store，隐藏期间完成的快照在恢复后直接可用。
 
-统一执行入口保持 FPR-011 的接线：`useDashboardExecution` 调用 `executionController.submitExecution`，日常流程使用 `run_daily_flow` 与 `scope: 'dashboard'`，活动预检使用 `run_current_activity_copilots`。操作成功后的刷新仍走 `refreshDashboard`（force），不另建页面请求路径。FPR-040 起该接线由 `DashboardFlowPanel` 经 `useDashboardFlowActions` 调用，刷新调度仍只有页面/工作区一份，语义不变（见[总览领域面板](dashboard-panels.md)）。
+统一执行入口的接线为：`useDashboardExecution` 调用 `executionController.submitExecution`，日常流程使用 `run_daily_flow` 与 `scope: 'dashboard'`，活动预检使用 `run_current_activity_copilots`。操作成功后的刷新仍走 `refreshDashboard`（force），不另建页面请求路径。目前该接线由 `DashboardFlowPanel` 经 `useDashboardFlowActions` 调用，刷新调度仍只有页面/工作区一份，语义不变（见[总览领域面板](dashboard-panels.md)）。
 
 ## 6. 缓存与持久化边界
 
@@ -99,7 +99,7 @@
 - 设备轮询在文档隐藏时暂停，恢复可见后立即采样；迁移前每 5s 固定请求。轮询失败仍是静默保旧，不展示错误。
 - 设备采样不再由 Dashboard 页面直接轮询；`updateDeviceStats` 接受未知载荷并在 store 内校验，避免把端点形状当成可信类型。
 - Activity 恢复不再直接调用页面私有计时器；计时器由 Query 观察者与同步 hook 各自管理，隐藏时全部清理。
-- `AutomationTasks` 仍按页面配置流程直接调用 `getActivity`；该调用不写 Query 缓存，`automation/activity` 目前由总览快照读取，自动化页的读取迁移留给 FPR-037/FPR-039。`schedule-execution` 只由总览使用。
+- `automation/activity` 由自动化领域 Query 持有，自动化页与总览按各自需要读取；`schedule-execution` 仍由总览完整快照消费。
 
 ## 8. 回归证据
 
@@ -108,7 +108,7 @@
 | `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、各字段回退、单路缺失/形状错误/越界返回 `null` |
 | `client/src/features/dashboard/model/queries.test.ts` | 五个领域 key 与 signal、协调快照 key/缓存参数、每次重读、单路失败与坏载荷整体失败、不继承自动重试 |
 | `client/src/features/dashboard/model/snapshotRefresher.test.ts` | 单飞、force 补一次、原子提交、失败保旧、探针不否决、离线、预期失败静默 |
-| `client/src/features/dashboard/hooks/useDashboardDeviceStats.ts`（页面用例） | 首次设备样本投影到 store 与温度历史；FPR-040 起由 `useDashboardDeviceStats.test.tsx` 覆盖 Activity 恢复去重 |
+| `client/src/features/dashboard/hooks/useDashboardDeviceStats.ts`（页面用例） | 首次设备样本投影到 store 与温度历史；当前由 `useDashboardDeviceStats.test.tsx` 覆盖 Activity 恢复去重 |
 | `client/src/features/dashboard/hooks/useDashboardDeviceStats.test.tsx` | 首次投影、Activity 恢复不重复追加、新时间戳追加、null 载荷保旧 |
 | `client/src/features/dashboard/model/flowView.test.ts` | 流程卡命令文案、按钮状态与禁用规则的纯投影 |
 | `client/src/features/dashboard/model/deviceView.test.ts` | 使用率阈值与温度曲线几何 |

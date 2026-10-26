@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-020 交付的统计数据、识别与材料刷新命令所有者。它回答：仓库/干员识别和设备执行控制器如何接线；识别完成、等待日志可解析、超时、取消和重试分别由谁负责；识别成功后哪些资源失效，以及页面为什么不会因超时或页面生命周期重复执行设备命令。
+本文说明统计数据、识别与材料刷新命令所有者。它回答：仓库/干员识别和设备执行控制器如何接线；识别完成、等待日志可解析、超时、取消和重试分别由谁负责；识别成功后哪些资源失效，以及页面为什么不会因超时或页面生命周期重复执行设备命令。
 
 相关契约：[前端执行客户端与控制器](execution-client.md)、[共享资源归属与失效端口](resource-ownership.md)、[Query 缓存与键规范](query-cache.md)、[资源请求错误与取消契约](resource-requests.md)、[配置持久化协调器](config-persistence.md)。
 
@@ -120,7 +120,6 @@ executionController.settleExecutionIntent(intent, result)
 - `parseDepotData`、`parseOperBoxData`、`fetchOperatorMaterials` 新增可选末位 `AbortSignal`；原有调用与响应形状不变。识别端点仍是 POST，解析仍只读本地日志。
 - 识别命令的请求参数、任务类型、端点与快照形状保持不变；服务端数据格式未变。
 - 行为变化：移除命令成功后的固定 2s 等待，改为解析可用性轮询；不再为提示文案读取一次养成队列；材料刷新后不再重读干员目录（目录不含材料数据）。这些都在命令所有者范围内，不改变页面布局。
-- 独立回滚本任务提交会恢复页面内联命令与固定等待；服务端 Run、幂等键和失效端口协议保持兼容，不需要数据迁移。
 - 超时值是可注入的域内常量，生产默认值见第 2 节；没有暴露为用户设置。
 
 ## 8. 回归证据
@@ -129,7 +128,7 @@ executionController.settleExecutionIntent(intent, result)
 | --- | --- |
 | `features/statistics/model/commandOwner.test.ts` | 控制器 intent/幂等键、仓库与干员快照、材料刷新、单飞、解析轮询、解析超时后继续不重提、命令超时后复用同一幂等键并等待回放 Run、失败/拒绝、取消后继续 |
 | `pages/statistics/DataStatistics.layout.test.tsx` | 页面订阅命令状态、识别快照写入 Query、`depot`/`operbox`/`materials` 失效事件、按作用域失效、运行中不重复提交、超时后“继续解析”不重执行、Activity 隐藏/恢复 |
-| `features/statistics/components/FilterMenu.test.tsx`、`components/DropPanel.test.tsx` | FPR-032 面板化后的筛选菜单 portal/焦点/键盘，以及非当前 tab 仍启动读取、周期切换与重试 |
+| `features/statistics/components/FilterMenu.test.tsx`、`components/DropPanel.test.tsx` | 面板化后的筛选菜单 portal/焦点/键盘，以及非当前 tab 仍启动读取、周期切换与重试 |
 | `features/statistics/api/index.test.ts` | 解析端点的 signal 与 POST 形状；既有掉落/开放关卡读取 |
 | `features/training/api/index.test.ts` | 材料刷新脚本的 signal 与 POST 形状 |
 | `pages/training/OperatorTraining.test.tsx` | `materials`/`depot`/`operbox` 失效后重读队列、候选与计数并作废旧计划 |

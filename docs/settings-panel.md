@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-034 交付的设置页面组合与面板订阅边界。连接草稿、设备命令、版本/目录读取、组件更新与自动更新的所有者、Query key、wire 与失效语义均未改变；本任务只调整页面/面板的职责与订阅位置，不新增缓存、命令状态或存储。
+本文说明设置页面组合与面板订阅边界。连接草稿、设备命令、版本/目录读取、组件更新与自动更新的所有者、Query key、wire 与失效语义均未改变；页面/面板分别承担组合与订阅职责，不新增缓存、命令状态或存储。
 
 相关契约：[设置配置编辑与保存](settings-config-editing.md)、[设置设备连接与系统资源](settings-device-and-resources.md)、[设置组件更新与自动更新](settings-updates-and-auto-update.md)、[Query 缓存与键规范](query-cache.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -117,7 +117,7 @@ ConfigManager（页面壳）
 | `pages/settings/ConfigManager.layout.test.tsx` | 既有 34 项设置回归：section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消、目录失败后切只读 section 不重试且保留重试入口、只读首屏共享一次目录读取 |
 | `pages/settings/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新状态与全局状态提示不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板；设备/更新动作不重渲染目录面板；目录缓存变化不重渲染连接/更新面板 |
 | `features/settings/components/ReadOnlyConfigPanel.test.tsx` | 只读头部挂载时复用过期目录缓存、不触发 `getConfigDir`；目录可用时“打开目录”保持可点 |
-| `features/settings/model/*.test.ts`、`features/settings/api/index.test.ts` | 配置归一/校验、section 模型、connection 草稿、设备命令、版本/目录、更新与自动更新所有者既有回归（本任务未改协议） |
+| `features/settings/model/*.test.ts`、`features/settings/api/index.test.ts` | 配置归一/校验、section 模型、connection 草稿、设备命令、版本/目录、更新与自动更新所有者既有回归（当前未改协议） |
 
 72 张视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。三态静态 DOM 等价性由实施时的临时 jsdom 对比验证（迁移前页面与拆分后页面，除 React `useId` 外一致）；仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归，完整只读标记结构仍依赖代码审阅。
 

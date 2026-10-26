@@ -2,13 +2,13 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-028 交付的日志历史会话与清理命令。它回答：实时与历史如何切换；历史文件列表、当前选择与读取状态归谁；旧响应如何裁决；Activity 隐藏/恢复如何避免卡在 loading；清空实时与清理历史分别协调哪些状态。实时轮询与解析模型仍见[实时日志流生命周期](logs-realtime-stream.md)。
+本文说明日志历史会话与清理命令。它回答：实时与历史如何切换；历史文件列表、当前选择与读取状态归谁；旧响应如何裁决；Activity 隐藏/恢复如何避免卡在 loading；清空实时与清理历史分别协调哪些状态。实时轮询与解析模型仍见[实时日志流生命周期](logs-realtime-stream.md)。
 
 ## 1. 归属与边界
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 实时缓冲、轮询计时器、在途读取与手动暂停 | `client/src/features/logs/model/realtimeLogStream.ts` | FPR-027 交付；历史读取不写入该缓冲 |
+| 实时缓冲、轮询计时器、在途读取与手动暂停 | `client/src/features/logs/model/realtimeLogStream.ts` | 已实现；历史读取不写入该缓冲 |
 | 历史文件列表、当前选择、读取内容与读取/列表相位 | `client/src/features/logs/model/historyLogSession.ts` 的 `HistoryLogSession` | 会话数据，不进入 Query；同一时刻最多一个在途列表请求与一个在途文件读取 |
 | 实时/历史模式、进入与返回、清空/清理命令的共用槽位 | `client/src/features/logs/hooks/useLogsSession.ts` | 组合两个会话；页面只消费该协议 |
 | 清空实时与清理历史的请求协调 | `client/src/features/logs/model/logCommands.ts` | 纯命令函数，端口注入实时流/历史会话动作，便于直接测试 |
@@ -61,7 +61,7 @@
 | 浏览器文档隐藏 | 不专门处理历史读取 | 实时轮询由 `RealtimeLogStream` 暂停；历史读取继续 |
 | 真正重挂载 / 刷新 | 会话销毁，所有选择与内容重置 | 与迁移前一致 |
 
-FPR-027 记录的两个既有缺口在本项关闭：历史读取在 Activity 隐藏后完成不再留下 loading；恢复时会自动重试被取消的当前文件。明确失败仍不自动重试，避免隐藏期间反复请求坏文件。
+历史读取在 Activity 隐藏后完成不应留下 loading；恢复时应自动重试被取消的当前文件。明确失败仍不自动重试，避免隐藏期间反复请求坏文件。
 
 ## 5. 清空实时与清理历史
 
@@ -81,14 +81,14 @@ FPR-027 记录的两个既有缺口在本项关闭：历史读取在 Activity �
 - 摘要/原始、级别、搜索与折叠是工作区状态，切换实时/历史、读取失败与重试都不会重置，便于在历史结果上继续同一过滤条件。
 - 自动滚动在进入历史时关闭并禁用开关，返回实时时重新打开；历史内容不参与自动滚动 Effect（Effect 归 `LogConsole`）。
 - 导出使用当前过滤后的行；历史与实时共用同一导出入口，不导出折叠后的重复计数。文本与文件名规则由 `model/logExport.ts` 固定。
-- 工具栏暂停/继续按钮只在实时模式出现（FPR-035）；清空时保留手动暂停，从历史返回实时会恢复手动暂停。按钮可访问名称随动作变化。
+- 工具栏暂停/继续按钮只在实时模式出现；清空时保留手动暂停，从历史返回实时会恢复手动暂停。按钮可访问名称随动作变化。
 - 未改变端点、响应形状、存储键或服务端协议；清空/清理 API 只在末尾追加可选 `signal`，旧调用无需修改；未新增 Query key 或缓存。
 
 ## 7. 兼容与回滚
 
-- 可单独回退 `HistoryLogSession`、`useHistoryLogs`、`useLogsSession` 与 `logCommands`，恢复页面内的历史请求序号、mounted 守卫与清空/清理处理器；服务端无需配合。FPR-035 的面板拆分不影响这些会话所有者，回退面板组合即可恢复内联页面。
+- 可单独回退 `HistoryLogSession`、`useHistoryLogs`、`useLogsSession` 与 `logCommands`，恢复页面内的历史请求序号、mounted 守卫与清空/清理处理器；服务端无需配合。面板拆分不影响这些会话所有者，回退面板组合即可恢复内联页面。
 - 回退后旧缺口会重新出现：Activity 隐藏期间完成的历史读取可能留下 loading，恢复不重试当前文件。
-- 实时流与解析模型未修改；FPR-027 的接口、轮询频率与暂停语义保持不变。
+- 实时流与解析模型未修改；接口、轮询频率与暂停语义保持不变。
 
 ## 8. 回归证据
 
@@ -99,4 +99,4 @@ FPR-027 记录的两个既有缺口在本项关闭：历史读取在 Activity �
 | `client/src/features/logs/api/index.test.ts` | 实时/列表/文件读取 signal、清空/清理命令的本地等待 signal、坏载荷、取消保持 `AbortError` |
 | `client/src/pages/logs/LogViewer.test.tsx` | 返回实时立即重读且不残留旧实时/历史内容、旧历史响应、模式与自动滚动生命期、清理确认与列表刷新、清理失败保持弹层并重试、清空失败保留行并恢复轮询；暂停跨历史返回恢复、搜索跨模式保持 |
 | `client/src/pages/logs/LogViewer.activity.test.tsx` | 历史读取隐藏取消与恢复重试、历史模式恢复不重启实时、列表刷新失败保留内容并重试、清空期间暂停与命令槽位、卸载取消清空本地等待；手动暂停跨 Activity 保留 |
-| `client/src/features/logs/model/realtimeLogStream.test.ts`、`hooks/useRealtimeLogs.test.tsx`、`api/index.test.ts` | FPR-027 已覆盖的实时轮询、暂停恢复与 API 取消契约 |
+| `client/src/features/logs/model/realtimeLogStream.test.ts`、`hooks/useRealtimeLogs.test.tsx`、`api/index.test.ts` | 已覆盖的实时轮询、暂停恢复与 API 取消契约 |

@@ -2,10 +2,10 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-039 交付的自动化流程列表、定时面板与执行摘要，以及承载它们的
+本文说明自动化流程列表、定时面板与执行摘要，以及承载它们的
 工作区。配置草稿仍由 `automationConfig` 适配器与 `user-config` 协调器持有，
-执行仍由 `task-execution` 控制器与服务端 Run 持有；本任务只做页面组合化、
-局部交互状态归位和排序指针生命周期修复，不新增第二份配置、保存队列或运行
+执行仍由 `task-execution` 控制器与服务端 Run 持有；工作区负责
+局部交互状态与排序指针生命周期，不新增第二份配置、保存队列或运行
 状态机。
 
 相关契约：[自动化纯模型与排序](automation-model.md)、[自动化任务编辑面板](automation-editor.md)、
@@ -24,7 +24,7 @@
 | 拖拽/键盘排序的 React 接线 | `hooks/useTaskFlowSorting.ts` | 预览、pointer 生命周期、Escape、公告；规则仍来自 `model/taskFlowSort.ts` |
 | 当前活动展示 | `hooks/useAutomationActivity.ts` | 读取 `automation/activity` Query；失败只隐藏标签 |
 | 逐项执行状态与摘要选择 | `model/flowExecution.ts` | 纯函数：活动期读 `progress`，空闲期回退流程终态摘要，单项状态/文案 |
-| 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 与 FPR-015 一致，未改 key、本地布局、wire 或完整提交条件 |
+| 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 遵循配置协调器契约，维持 key、本地布局、wire 与完整提交条件 |
 | 执行提交、观察、停止与旧断点 | `task-execution` 控制器 + `useAutomationExecution` | 面板只读快照；不发送停止以外的执行写操作 |
 
 非目标与保持不变：
@@ -32,10 +32,10 @@
 - 不改变配置 key、pending 键、`maa-task-flow`/`maa-schedule` 本地布局、wire 形状、
   `/agent/schedules/*`、通知端点和执行协议。
 - 不改变任务参数默认值、智能养成参数、执行前校验顺序或执行身份。
-- 不改变渲染结构与 DOM/CSS 类名；表单 `id`/`aria-label`、菜单 `id`/`role`、
+- 遵循既有渲染结构与 DOM/CSS 类名；表单 `id`/`aria-label`、菜单 `id`/`role`、
   焦点顺序与键盘行为保持。没有新增样式，也没有更新视觉基线。
 - 任务配置编辑器（通用参数字段、高级设置与连接测试）仍与工作区同文件组合；
-  它读取同一草稿、选中项与执行投影，本任务不重排其表单结构。
+  它读取同一草稿、选中项与执行投影，表单结构与参数规则保持不变。
 
 ## 2. 组合与状态边界
 
@@ -99,19 +99,18 @@ AutomationTasks（页头 + 全局指示）
 5. 方向键上/下与拖拽共用同一移动模型，提交后写入 `aria-live` 公告。
 
 **指针生命周期修复。** 性能基线记录过重排后浏览器释放 pointer capture，
-旧实现把 `lostpointercapture` 当成取消，导致真实拖拽没有保存。本任务把
+不能把 `lostpointercapture` 当成取消，否则会导致真实拖拽没有保存。当前实现把
 `pointermove`/`pointerup`/`pointercancel` 挂到 `document`，排序不再依赖
 capture 是否仍属于手柄；`lostpointercapture` 不再取消排序。capture 仍会
 尽力建立，用于指针离开手柄时的浏览器语义。该行为由
 `AutomationTasks.layout.test.tsx` 的“commits a pointer drag even when the
-browser releases pointer capture”用例固定；DOM/CSS 未变化，成功排序的性能
-复测仍归 FPR-043。
+browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复测采用[性能采样工具](../client/tests/performance/README.md)中的相同场景与完成条件。
 
 ## 4. 定时编辑
 
 `AutomationSchedulePanel` 直接调用 `model/automationSchedule.ts`，把结果作为
 `{ enabled?, entries? }` 交给工作区的 `updateSchedule`；后者合并 `enabled`、
-规范化 entries 并写入唯一配置草稿。规则与 FPR-037 一致：
+规范化 entries 并写入唯一配置草稿。规则如下：
 
 | 操作 | 模型行为 | 面板失败路径 |
 | --- | --- | --- |
@@ -162,7 +161,6 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化，成功排�
 - 唯一行为变化是 `lostpointercapture` 不再取消拖拽。它修复的是已记录缺陷，
   不改变默认态视觉；回归用例覆盖成功提交，取消路径仍由 Escape/`pointercancel`
   覆盖。
-- 回滚本任务的提交可恢复页面内联实现；配置、执行与本地数据不需要迁移。
 
 ## 8. 回归证据
 
@@ -174,7 +172,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化，成功排�
 | `client/src/pages/automation/AutomationTasks.config.test.tsx` | 配置与 schedule 完整提交、半失败重试、跨 remount 串行、迟到加载、Activity 恢复（Query Provider 包装） |
 | `client/src/pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交、停止、流程进度、旧断点、摘要展示与 Activity 恢复（Query Provider 包装） |
 | `client/src/pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不停止、不重提 |
-| `client/src/features/automation/model/taskFlowSort.test.ts`、`automationSchedule.test.ts` | 排序与定时规则本体（FPR-037 回归） |
+| `client/src/features/automation/model/taskFlowSort.test.ts`、`automationSchedule.test.ts` | 排序与定时规则本体 |
 
 针对性命令（仓库根目录）：
 
@@ -184,10 +182,9 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/automation
 
 ## 9. 剩余边界
 
-- 通用任务配置编辑器仍在 `AutomationWorkspace` 内组合；本任务只迁出流程、定时
-  与摘要，未改变其表单结构或参数规则。
-- 成功拖拽的固定性能场景尚未补测；FPR-043 应以本任务的回归用例为行为前提
-  重采拖拽数据。
+- 通用任务配置编辑器仍在 `AutomationWorkspace` 内组合；流程、定时
+  与摘要在各自面板中，未改变其表单结构或参数规则。
+- 指针排序的性能比较必须先验证保存完成条件；旧版取消结果不可直接与成功保存耗时比较。采样方法见[性能采样工具](../client/tests/performance/README.md)。
 - 活动 Query 的刷新策略沿用全局 `staleTime`/`gcTime` 与观察者语义，不额外
   轮询；活动周期切换的及时性以页面重新订阅或总览强制读取为准。
 

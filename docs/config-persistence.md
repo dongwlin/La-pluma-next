@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。协调器与竞态回归已在 FPR-012 交付；肉鸽已由 FPR-013 接入（`features/roguelike/model/roguelikeConfig.ts`），作业已由 FPR-014 接入（`features/combat/model/combatConfig.ts`），自动化已由 FPR-015 接入（`features/automation/model/automationConfig.ts`）。三页的配置加载、草稿、提交与重试现在都由协调器通道持有。
+本文说明 `client/src/features/user-config/` 的持久化协调模型、域适配契约与薄 hooks。肉鸽、作业与自动化分别通过 `features/roguelike/model/roguelikeConfig.ts`、`features/combat/model/combatConfig.ts` 和 `features/automation/model/automationConfig.ts` 适配该协调器。三页的配置加载、草稿、提交与重试都由协调器通道持有。
 
 验证入口见文末[回归证据](#7-回归证据)。
 
@@ -185,7 +185,7 @@ function CombatTasks() {
 
 ## 6. 三域适配边界
 
-以下清单是各域迁移必须保留的语义。接入任务只替换页面内的加载/保存/重试接线，不改变 key、本地格式或视觉。
+以下清单是各域目前的配置契约。更改加载、保存或重试行为时，必须保持既有 key、格式和用户数据。
 
 | 项目 | Combat | Roguelike | Automation |
 | --- | --- | --- | --- |
@@ -195,7 +195,6 @@ function CombatTasks() {
 | 提交时机 | 300ms 去抖 | 300ms 去抖 | 编辑即入队（事件触发） |
 | 加载迁移 | `app`→`cli`；raid `1`/`2`→`raid`/`both` | 无 | `times`→`entries` 兼容；禁用项只留在本地 |
 | 完整提交 | `saveUserConfig` | `saveUserConfig` | `saveUserConfig` + `setupSchedule`/`stopSchedule` |
-| 迁移任务 | FPR-014（已接入） | FPR-013（已接入） | FPR-015（已接入） |
 
 接入时的额外边界：
 
@@ -204,7 +203,7 @@ function CombatTasks() {
 - automation 订阅 `automation-config`/`automation-schedule` 失效后通过 `reload({ force: true })` 重读；返回 `local-draft` 时不得丢弃本地编辑。计划应用不再使用 window `training-plan-applied` 事件。
 - 状态消息（成功 toast）与页内错误文案由页面从 `syncState`/`error` 和 `retry()` 结果派生，协调器不直接写 `statusStore`。
 
-### 6.1 肉鸽适配器（FPR-013 已接入）
+### 6.1 肉鸽适配器
 
 `features/roguelike/model/roguelikeConfig.ts` 是肉鸽配置的唯一所有者，页面 `pages/RoguelikeTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。
 
@@ -221,7 +220,7 @@ function CombatTasks() {
 
 兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化，回滚到迁移前的页面接线后仍能读取同一份本地草稿与服务端配置；适配器与页面接线可独立回滚，不需要清理本地数据或回退服务端。
 
-### 6.2 作业适配器（FPR-014 已接入）
+### 6.2 作业适配器
 
 `features/combat/model/combatConfig.ts` 是作业配置的唯一所有者，页面 `pages/CombatTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。
 
@@ -239,7 +238,7 @@ function CombatTasks() {
 
 兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化，页面接线可单独回滚到迁移前实现（适配器随即不再被引用），旧实现仍能读取同一份本地草稿与服务端配置；回滚不需要清理本地数据或回退服务端。服务端载荷校验比迁移前更严格：已知字段类型不合法时整份载荷回退本地草稿，而旧页面会采用部分/异常值；这是协调器要求的 payload 校验。
 
-### 6.3 自动化适配器（FPR-015 已接入）
+### 6.3 自动化适配器
 
 `features/automation/model/automationConfig.ts` 是 task flow 与 schedule 的唯一所有者，页面 `pages/AutomationTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。两个编辑模型共用同一通道，因此不会各自维护一份写入同份配置的队列或 token。
 
@@ -255,11 +254,11 @@ function CombatTasks() {
 | 过期提交保护 | 配置保存期间若协调器接受了更新的草稿，适配器在 schedule 步骤前比对最新 wire 指纹并跳过旧 schedule；即使旧提交已经写入配置，协调器也不会用它的结果确认新 revision |
 | 外部写入裁决 | training 应用计划前调用 `userConfigCoordinator.settle([USER_CONFIG_KEYS.automationTasks])`，等本设备已入队的保存落盘，并按 `USER_CONFIG_PENDING_KEYS` 检查未挂载页面的持久化标记；仍有 pending 时拒绝应用。`automation-config`/`automation-schedule` 失效到达后，页面先 `flush()` 再 `reload({ force: true })`：`loaded` 采用服务端副本并提示更新，`local-draft`/`stale` 保留本地草稿并提示。采用服务端副本时保留本设备独有的禁用时间点（`mergeLocalScheduleEntries`），避免非冲突的本地 schedule 编辑丢失。跨客户端同时写入仍是最后写入生效 |
 | 页面派生 | task flow 的图标与参数表单由 `AVAILABLE_TASKS` 派生；schedule 的启用状态与条目都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动化配置已同步” |
-| 页面局部状态 | 拖拽中的顺序由 `hooks/useTaskFlowSorting` 渲染本地预览，松手时才作为一次编辑写入协调器；选中项、撤销与连接测试反馈归 `AutomationWorkspace`，picker 与执行详情分别归 `AutomationTaskPicker`、`AutomationExecutionSummary`；FPR-039 后工作区仍只调用 `useUserConfig` 的 `update`，面板不持有保存队列 |
+| 页面局部状态 | 拖拽中的顺序由 `hooks/useTaskFlowSorting` 渲染本地预览，松手时才作为一次编辑写入协调器；选中项、撤销与连接测试反馈归 `AutomationWorkspace`，picker 与执行详情分别归 `AutomationTaskPicker`、`AutomationExecutionSummary`；当前工作区仍只调用 `useUserConfig` 的 `update`，面板不持有保存队列 |
 
-页面原有的模块级 token 序列、`autoSaveQueueRef`、`autoSaveRevisionRef`、`taskFlowHydratedRef`、请求序号/AbortController 与 300ms 以外的本地 schedule 状态已移除。`config.test.tsx` 中的 `it.fails`（pending 标记没有本地草稿时永远不读服务端）随适配器落地转为正常回归。
+页面不得重新引入模块级 token 序列、`autoSaveQueueRef`、`autoSaveRevisionRef`、`taskFlowHydratedRef` 或第二套本地保存队列。pending 标记存在但本地草稿不可读时，协调器必须删除该标记并回退服务端；该行为由适配器回归固定。
 
-兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化；回滚到迁移前页面接线后仍能读取同一份本地草稿与服务端配置，回滚不需要清理本地数据或回退服务端。服务端载荷校验比迁移前更严格：已知字段类型不合法时整份载荷回退本地草稿。页面不再把保存失败写成全局错误消息，而是显示页内 alert 与“重新同步”；这是 FPR-014 已建立的失败反馈约定。跨会话恢复 pending 草稿时也会显示协调器的默认提示与重试入口，而迁移前只静默采用本地草稿；本地优先本身不变。默认渲染结构与配置成功路径的 DOM 未变化，视觉基线不因本任务更新。
+兼容约束：保留配置 key、本地键、pending 键与 wire 形状；服务端载荷中已知字段类型不合法时，整份载荷回退到本地草稿。保存失败时通过页内 alert 与“重新同步”入口反馈，保留 pending 草稿；跨会话恢复草稿时显示恢复提示和重试入口。不得为了回滚清理用户存储，也不得因配置加载失败覆盖未确认草稿。
 
 ## 7. 回归证据
 
@@ -282,7 +281,7 @@ function CombatTasks() {
 pnpm --filter la-pluma-next-client verify
 ```
 
-三域迁移均未改变配置 key、本地键或服务端 wire；自动化额外保留 `entries`/`times` 双向兼容与任务参数迁移，因此旧本地草稿不需要手工迁移。默认渲染结构、DOM 与 CSS 未变化，只在同步失败时新增与 Combat/Roguelike 一致的 `role="alert"` 重试条；该条不在默认截图状态中，视觉基线不因本任务更新。
+三域必须保持既有配置 key、本地键与服务端 wire；自动化额外兼容 `entries`/`times` 及任务参数旧格式，无须手工迁移本地草稿。同步失败使用 `role="alert"` 显示重试入口，不改变成功路径的默认视觉。
 
 ## 关联
 

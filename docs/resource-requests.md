@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 `client/src/shared/api/` 的只读资源请求底座，以及各领域只读 API 如何把 `AbortSignal` 传到 `fetch`、校验响应载荷并把失败归类。它是后续把页面资源读取迁移到 Query 缓存的前置契约：先让请求具备真实的取消与失败语义，再迁缓存，避免在 Query 迁移中同时改变网络行为。
+本文说明 `client/src/shared/api/` 的只读资源请求底座，以及各领域只读 API 如何把 `AbortSignal` 传到 `fetch`、校验响应载荷并把失败归类。请求必须支持真实取消与失败分类，领域 Query 才能正确裁决竞态、重试与错误展示。
 
 ## 1. 定位与边界
 
@@ -11,7 +11,7 @@
 | `AbortSignal` → `fetch`、失败分类、领域载荷校验 | `shared/api/readApi.ts` | 业务端点、缓存键、重取策略 |
 | 端点路径、查询参数、领域载荷结构 | `features/<domain>/api/` | 页面生命周期、Query 缓存 |
 | 响应信封解析、旧格式兼容 | `shared/api/apiResponse.ts` | 只读请求的失败归类 |
-| Query 缓存、失效、重试 | [Query 缓存与键规范](query-cache.md)（FPR-017 起） | 本契约不引入 Query |
+| Query 缓存、失效、重试 | [Query 缓存与键规范](query-cache.md) | 本契约不引入 Query |
 
 本契约只覆盖**只读资源读取**：`GET` 端点，以及返回资源快照的读取函数。执行命令、停止、配置提交、通知配置读写、截图等 `POST`/`PUT`/`DELETE` 不在范围内。运行快照（`runs/current`、按 `runId` 查询、`tasks/status`）属于执行控制器的事实读取，已有 signal 与控制器级处理，不按普通资源迁移。
 
@@ -76,7 +76,7 @@ const depot = unwrapApiResponse(result)
 
 ### Game data（`features/game-data/api/index.ts`）
 
-仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，FPR-018 起由该非页面微域唯一持有。物品图标不是端点：`getItemIconUrl` 只生成外部静态资源 URL，由浏览器缓存，不进入 Query；FPR-026 起 URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
+仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标不是端点：`getItemIconUrl` 只生成外部静态资源 URL，由浏览器缓存，不进入 Query；当前 URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
@@ -120,7 +120,7 @@ const depot = unwrapApiResponse(result)
 | `discoverDevices(adbPath, signal?)` | `GET /agent/actions/discover-devices` | 对象（保留内层 `success=false` 的设备发现结果） |
 | `testConnection(adbPath?, address?, signal?)` | `POST /agent/actions/test-connection` | 命令；由调用方归一 `success`/`message`，不进入 Query |
 
-设备发现与连接测试虽然带 `signal`，都是有副作用的显式命令：FPR-025 起由设置域 `DeviceConnectionOwner` 持有，不建立 Query，也不自动重试。打开配置目录是 POST 命令，不接收 `signal`，不进入 Query。版本与配置目录读取由 `settings/version`、`settings/config-directory` Query 消费。
+设备发现与连接测试虽然带 `signal`，都是有副作用的显式命令：目前由设置域 `DeviceConnectionOwner` 持有，不建立 Query，也不自动重试。打开配置目录是 POST 命令，不接收 `signal`，不进入 Query。版本与配置目录读取由 `settings/version`、`settings/config-directory` Query 消费。
 
 ### Logs（`features/logs/api/index.ts`）
 
@@ -130,7 +130,7 @@ const depot = unwrapApiResponse(result)
 | `getLogFiles(signal?)` | `GET /agent/logs/files` | 数组 |
 | `readLogFile(filePath, lines?, signal?)` | `GET /agent/logs/files/:path` | `content` 为字符串 |
 
-FPR-027 起实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`getRealtimeLogs` 的函数签名、端点与返回形状不变；缓冲是最近行快照而非 Query 资源。FPR-028 起历史文件列表与读取由 `features/logs/model/historyLogSession.ts` 持有：列表与读取各自使用请求序号与 `AbortSignal`，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求；历史读取仍不进入 Query，协议也没有 cursor。清空/清理命令新增可选 `signal`，页面卸载时只取消本地等待，服务端已收到的命令不会被撤销。完整生命周期见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)。
+目前实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`getRealtimeLogs` 的函数签名、端点与返回形状不变；缓冲是最近行快照而非 Query 资源。目前历史文件列表与读取由 `features/logs/model/historyLogSession.ts` 持有：列表与读取各自使用请求序号与 `AbortSignal`，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求；历史读取仍不进入 Query，协议也没有 cursor。清空/清理命令新增可选 `signal`，页面卸载时只取消本地等待，服务端已收到的命令不会被撤销。完整生命周期见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)。
 
 ### Combat（`features/combat/api/index.ts`）
 
@@ -142,7 +142,7 @@ FPR-027 起实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`
 | `getCopilotSet(copilotId, signal?)` | `GET /agent/copilot-sets/:id` | PRTS 代理对象 |
 | `getCopilotSetPlan(copilotId, raid?, signal?)` | `GET /agent/copilot-sets/:id/plan` | `items`/`entries` 数组 |
 
-FPR-029 起这些读取由 `combat` 域 Query 消费，页面不再保留独立的 preview/search request id；所有 `queryFn` 都把 Query 的 `signal` 传到上述函数，切换输入或 Activity 隐藏时真正取消 fetch。计划优先、成员回退、旧响应裁决与选段语义见[作业搜索与预览](combat-search-preview.md)。
+目前这些读取由 `combat` 域 Query 消费，页面不再保留独立的 preview/search request id；所有 `queryFn` 都把 Query 的 `signal` 传到上述函数，切换输入或 Activity 隐藏时真正取消 fetch。计划优先、成员回退、旧响应裁决与选段语义见[作业搜索与预览](combat-search-preview.md)。
 
 ### Device mirror（`features/device-mirror/api/index.ts`）
 
@@ -155,24 +155,24 @@ FPR-029 起这些读取由 `combat` 域 Query 消费，页面不再保留独立�
 
 - 运行快照、按 `runId` 查询、`tasks/status`：执行控制器事实，已有 signal；不建立 Query 缓存。
 - `loadUserConfig` / `saveUserConfig`：配置协调器通道已有 signal 与适配器 `decodeDraft` 校验，配置草稿也不是普通资源缓存。
-- `NotificationSettings` 直接读取通知配置：属于设置域配置编辑，交 FPR-024。
+- `NotificationSettings` 直接读取通知配置：归设置域配置编辑，不进入 Query。
 - 所有 `POST`/`PUT`/`DELETE` 命令与截图：不属于只读资源。
 
 ## 6. 旧消费者兼容
 
 - `parseJsonResponse` 保持宽松：合法 JSON 即使不是 Agent 信封也会原样返回，operator-quotes、PRTS 代理等旧消费者不受影响。严格信封/载荷判断只在新只读入口中做。
 - 候选端点的函数名、位置参数和 `ApiResponse` 返回形状不变；`errorInfo.kind`/`status` 是新增字段，旧页面只读 `success`/`message`/`error`/`data` 时行为不变。
-- FPR-018 把 `getDepotData`/`getOperBoxData`/`getAllOperators` 的归属迁到 `features/game-data`，函数签名、端点与载荷校验不变；仓库内消费者全部改为经该域公开面导入后，statistics/training 不再转发这些函数。图标 helper 同域持有，没有 Query key；FPR-026 为其增加缓存 epoch 与订阅 hook，仍不发请求。
+- 把 `getDepotData`/`getOperBoxData`/`getAllOperators` 的归属迁到 `features/game-data`，函数签名、端点与载荷校验不变；仓库内消费者全部改为经该域公开面导入后，statistics/training 不再转发这些函数。图标 helper 同域持有，借助缓存 epoch 与订阅 hook 触发图片重新加载，不建立 Query key 或额外数据请求。
 - `fetchWithAuth` 现在按结构判断 `AbortError`，不再要求 `instanceof Error`。这修复了 `DOMException` 被改写成连接失败的问题；非取消路径不变。
 - 配置 key/格式、执行协议、存储与视觉均未改变。本契约可独立回滚：回滚后旧调用仍能读取同一端点，只是失去取消与领域校验。
 
-## 7. 后续迁移入口
+## 7. 领域 Query 接入要求
 
-FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体约定见[Query 缓存与键规范](query-cache.md)。资源任务按以下方式接入：
+已实现应用级 Query 客户端、默认策略与 key 工厂，具体约定见[Query 缓存与键规范](query-cache.md)。新增资源按以下方式接入：
 
 1. `queryFn: ({ signal }) => readApiData(...)`，或在保留旧端点函数时 `unwrapApiResponse(await getX(signal))`。
 2. 只对 `kind === 'transport'` 或 `kind === 'api' && retryable` 的失败启用自动重试；`contract` 失败不重试，`AbortError` 不计入失败。
-3. 页面现有的 request id / generation guard 可以保留到 Query 接管，但 Query 的 `signal` 必须真正取消网络，不能只丢弃响应。
+3. 既有页面的 request id / generation guard 仅在接入 Query 之前保留，但 Query 的 `signal` 必须真正取消网络，不能只丢弃响应。
 4. 失效与重取策略由[共享资源归属与失效端口](resource-ownership.md)约束，不在传输层增加跨域失效。
 
 ## 8. 回归证据

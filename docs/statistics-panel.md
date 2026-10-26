@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-032 交付的统计页面组合、面板局部状态与纯模型。四类读取仍由领域 Query 持有，识别/材料命令仍由 `features/statistics/model/commandOwner.ts` 持有；本任务只调整页面/面板的职责与状态生命期，不新增第二份缓存、命令状态或存储。
+本文说明统计页面组合、面板局部状态与纯模型。四类读取仍由领域 Query 持有，识别/材料命令仍由 `features/statistics/model/commandOwner.ts` 持有；页面/面板分别承担界面组合与局部状态生命期，不新增第二份缓存、命令状态或存储。
 
 相关契约：[统计识别命令与失效联动](statistics-commands.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -17,9 +17,9 @@
 | 仓库读取、失败图标与分类展示 | `features/statistics/components/DepotPanel.tsx` | 汇总结果由纯模型派生 |
 | 掉落周期与掉落读取 | `features/statistics/components/DropPanel.tsx` | `DropRecords` 退为纯视图 |
 | 筛选菜单的测量、portal、焦点与键盘 | `features/statistics/components/FilterMenu.tsx` | 规则跟随组件，面板只传值与选项 |
-| 筛选、排序与阿米娅形态规则 | `features/statistics/model/operatorFilters.ts` | FPR-019 已交付 |
-| 仓库分类标签、分组与概览 | `features/statistics/model/depotSummary.ts` | 本任务新增的纯模型 |
-| 掉落材料/关卡排序与展示上限 | `features/statistics/model/dropRecords.ts` | 本任务新增的纯模型 |
+| 筛选、排序与阿米娅形态规则 | `features/statistics/model/operatorFilters.ts` | 已实现 |
+| 仓库分类标签、分组与概览 | `features/statistics/model/depotSummary.ts` | 纯模型 |
+| 掉落材料/关卡排序与展示上限 | `features/statistics/model/dropRecords.ts` | 纯模型 |
 | 识别/材料命令生命周期 | `model/commandOwner.ts` + `hooks/useStatisticsCommands.ts` | 所有者是模块级单例；hook 只订阅、投影并写回解析快照 |
 | 四类资源读取 | `game-data` 与 `statistics` 的 query 定义 | key、失效作用域与重取策略均未变 |
 
@@ -60,7 +60,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 | 模块 | 导出 | 规则 |
 | --- | --- | --- |
-| `model/operatorFilters.ts` | `selectOperators`、`buildOwnedOperatorIdSet`、`hasActiveOperatorFilters` 等 | 阿米娅形态共享持有状态；未拥有视图忽略精英/潜能筛选；非已拥有视图按星级与中文名排序（FPR-019） |
+| `model/operatorFilters.ts` | `selectOperators`、`buildOwnedOperatorIdSet`、`hasActiveOperatorFilters` 等 | 阿米娅形态共享持有状态；未拥有视图忽略精英/潜能筛选；非已拥有视图按星级与中文名排序 |
 | `model/depotSummary.ts` | `summarizeDepot`、`summarizeDepotTypes`、`getDepotTypeLabel` | 分类按库存件数降序，件数相同保留首次出现顺序；`itemCount` 用服务端快照值；空快照返回全零 |
 | `model/dropRecords.ts` | `sortDropItems`、`sortDropStages`、`DROP_ITEM_DISPLAY_LIMIT` | 材料按数量、关卡按战斗次数降序；并列保留服务端键顺序；最多展示 20 种材料 |
 

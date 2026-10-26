@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-026 交付的设置页组件更新与自动更新边界：core 更新/渠道切换、CLI 更新、资源热更新四条命令，自动更新策略的读取/草稿/完整提交，以及更新成功后的版本失效与跨域资源失效。版本资源的 Query 身份见[设置设备连接与系统资源](settings-device-and-resources.md)，配置编辑见[设置配置编辑与保存](settings-config-editing.md)，失效端口见[共享资源归属与失效端口](resource-ownership.md)。
+本文说明设置页组件更新与自动更新边界：core 更新/渠道切换、CLI 更新、资源热更新四条命令，自动更新策略的读取/草稿/完整提交，以及更新成功后的版本失效与跨域资源失效。版本资源的 Query 身份见[设置设备连接与系统资源](settings-device-and-resources.md)，配置编辑见[设置配置编辑与保存](settings-config-editing.md)，失效端口见[共享资源归属与失效端口](resource-ownership.md)。
 
 ## 1. 定位与边界
 
@@ -129,7 +129,7 @@
 - localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、每次编辑、保存成功）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
 - 无 Query key 新增；版本继续复用 `settings/version`；物品图标仍不进入 Query。
 - 行为差异：
-  - 更新成功后新增 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` 失效发布，关闭 FPR-018 留下的发布端缺口。
+ - 更新成功后发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` 的明确失效作用域。
   - 资源变化后 `getItemIconUrl()` 从固定 URL 变为 `?v=<epoch>`；epoch 持久化，浏览器刷新后仍与更新前不同。干员头像仍是各页面直接构造的独立 URL，不在此机制内。
   - 版本同步由 `refetchQueries` 改为 `invalidateQueries`，活动页面立即重取，隐藏页面恢复后重取，不再因新鲜期保留旧版本。
   - 更新命令完成提示在 HTTP 返回后立即发出，按钮同时恢复；版本重取在后台继续（迁移前 loading 会覆盖到版本重取结束）。

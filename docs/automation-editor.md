@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-038 交付的自动化任务编辑与挑选组件、它们的局部交互状态和纯模型边界。配置草稿仍由 `automationConfig` 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；本任务只把 `StageEditor`/`TaskPicker` 从页面迁出，并下沉菜单开关、外部点击、Escape 回焦与智能养成在途标记，不新增第二份配置、保存队列或执行状态。
+本文说明自动化任务编辑与挑选组件、它们的局部交互状态和纯模型边界。配置草稿仍由 `automationConfig` 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；这些面板持有菜单开关、外部点击、Escape 回焦与智能养成在途标记，不新增第二份配置、保存队列或执行状态。
 
 相关契约：[自动化纯模型与排序](automation-model.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | FPR-039 后页面只组合工作区；流程/定时/摘要分别在独立面板 |
+| 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
 | 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；排序预览与编辑器共享 |
 | 定时编辑与通知 | `components/AutomationSchedulePanel.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
 | 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区 |
@@ -103,7 +103,6 @@ AutomationTasks（页头 + 全局指示）
 - **真正卸载/刷新**：菜单回到关闭，在途标记重置；配置草稿、pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、迁移与 wire 形状未变化；旧草稿可直接读取。
 - 渲染结构、DOM/CSS 类名、表单 `id`/`aria-label` 与默认态视觉未变化，未新增样式，也未更新任何视觉基线。
-- 回滚本任务的提交可恢复页面内联组件；配置、执行与本地数据不需要迁移。
 
 ## 6. 回归证据
 
@@ -113,8 +112,8 @@ AutomationTasks（页头 + 全局指示）
 | `client/src/features/automation/model/taskParamRules.test.ts` | 10 分钟取整、60–540 夹取、空串/非有限输入回退 |
 | `client/src/features/automation/components/AutomationStageEditor.test.tsx` | 智能养成插入顺序、空队列/计划失败/抛错/材料已齐失败路径、移除保留置顶与普通行、步进与置顶写回、运行态禁用 |
 | `client/src/features/automation/components/AutomationTaskPicker.test.tsx` | 目录渲染与计数、选择回调后关闭、页脚内按下不关闭/外部关闭、Escape 回焦、禁用收起 |
-| `client/src/pages/automation/AutomationTasks.layout.test.tsx` | 既有布局、表单标签、picker 菜单/焦点/Activity 恢复后的 Escape 关闭、智能养成页面接线、公招时长失焦归一化、FPR-039 的拖拽/定时/摘要接线 |
-| `client/src/pages/automation/AutomationTasks.{config,execution,activity}.test.tsx` | 既有配置持久化、执行身份与 Activity 回归（FPR-039 起以 Query Provider 包装活动读取） |
+| `client/src/pages/automation/AutomationTasks.layout.test.tsx` | 既有布局、表单标签、picker 菜单/焦点/Activity 恢复后的 Escape 关闭、智能养成页面接线、公招时长失焦归一化、拖拽/定时/摘要接线 |
+| `client/src/pages/automation/AutomationTasks.{config,execution,activity}.test.tsx` | 既有配置持久化、执行身份与 Activity 回归（目前以 Query Provider 包装活动读取） |
 
 针对性命令（仓库根目录）：
 

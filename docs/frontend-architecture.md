@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文说明当前前端的依赖方向、状态所有者和生命周期，供新增功能与后续维护使用。兼容入口及移除条件见[前端迁移与兼容审计](frontend-migration.md)。整体系统与技术栈见[架构与技术栈](architecture.md)，界面规则以[设计规范](../DESIGN.md)为准。
+本文说明当前前端的依赖方向、状态所有者和生命周期，供新增功能与后续维护使用。兼容入口及移除条件见[前端兼容入口与移除规则](frontend-migration.md)。整体系统与技术栈见[架构与技术栈](architecture.md)，界面规则以[设计规范](../DESIGN.md)为准。
 
 ## 分层与公开面
 
@@ -64,7 +64,7 @@
 
 更细的当前行为见[执行客户端](execution-client.md)、[配置持久化协调器](config-persistence.md)、[日志实时流](logs-realtime-stream.md)、[日志历史与清理](logs-history-and-cleanup.md)、[总览快照与设备采样](dashboard-snapshot.md)。默认 Query 策略不意味着所有会话都会随 `document.hidden` 停止；日志、预览及业务刷新各自有明确契约。
 
-## 样式、验证与性能证据
+## 样式、验证与性能方法
 
 `main.tsx` 只引入启动族 `styles` 并挂载 App。全局层序、语义 token、Tailwind v4 映射与 chrome 材质归 `client/src/styles/`；领域页面 CSS 放在 `features/<domain>/styles/`，由领域根入口引入并归入 `@layer page`。通用组件复用 `shared/ui`；新增页面不重复实现导航、安全区或主题。样式边界详见[开发指南](development.md)与[通用组件库](component-library.md)。
 

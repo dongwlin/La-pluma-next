@@ -2,7 +2,7 @@
 
 > [← 返回 README](../README.md)
 
-本文描述 `client/src/features/task-execution/` 的执行客户端、Run 类型接线和应用级执行控制器。服务端的执行身份、状态机与停止矩阵见[执行身份与生命周期契约](execution-lifecycle.md)；本文只讲前端如何消费这些契约，以及尚未迁移的页面边界。
+本文说明 `client/src/features/task-execution/` 的执行客户端、Run 类型接线和应用级执行控制器。服务端的执行身份、状态机与停止矩阵见[执行身份与生命周期契约](execution-lifecycle.md)；本文只讲前端如何消费这些契约，以及各页面的消费边界。
 
 ## 1. 定位与边界
 
@@ -125,26 +125,26 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 - `App` 通过 `useExecutionObservation()` 启动一次应用级观察；页面或组件只能通过 `useExecutionSnapshot()` 订阅，不得自行创建控制器或重复启动轮询。`App` 同时调用 `useRunStatusProjection()`：它在 React 树外订阅控制器并写 `statusStore.runStatus`，所以页面切换、Activity 清理和组件卸载都不会让全局运行展示退回空闲。
 - Activity 隐藏只清理页面 Effects，不调用 `abortObservation()` 或 `stopTrackedRun()`；控制器不在 React 树内，页面生命周期不改变执行所有权。
 - 肉鸽页已迁移到控制器：`run_task` 以 `waitForCompletion=false` 和 `scope: 'roguelike'` 提交，202 接受后只按 `trackedRun` 渲染运行/停止按钮。停止走 `stopTrackedRun()`，确认期间由快照推进；停止请求成功但 15s 内仍看不到 `stopping`/终态时解锁按钮允许重试。页面卸载或 Activity 隐藏不发送停止，刷新后按持久化身份恢复且不重新提交。页面不再写 `statusStore.isActive`。
-- 作业页已迁移到控制器（FPR-009），`scope: 'combat'`：
+- 作业页已迁移到控制器，`scope: 'combat'`：
   - 单作业走 `run_task`（`waitForCompletion=false`），幂等键由控制器 intent 生成；作业集走 `run_copilot_set`，只有服务端持有的集合 run 一种身份。
   - 三种页面模式映射为两种服务端模式：`顺序执行` 与 `连续执行` 都提交 `mode=continuous`；`手动逐关` 提交 `mode=manual`，首项后 run 转 `waiting`，页面用 `progress.nextEntry` 渲染“开始下一关”，点击调用 `POST /api/agent/actions/continue-copilot-set`（不新建 run、不使用新幂等键）。
   - 逐项状态与失败汇总只来自 `progress.taskResults`（活动）与 `result.summary`（终态），页面不维护第二份逐项结果；停止后未开始项保持 `pending`，页面不会再提交下一关。
   - 继续下一关返回可重试的 409 `MAA_EXECUTION_BUSY` 时保持等待态并允许重试；`AGENT_COPILOT_SET_SESSION_LOST` 提示重新提交；拒绝与传输失败之后都先重新读取快照，不凭页面状态推断结果。
   - 作业集终态后页面按服务端计划进度重建“待执行”选择（成功项移出、失败项保留）；计划读取失败只影响展示，不据此宣告完成。`失败后停止` 策略在 manual 等待态遇到失败项时结束集合 run，不再提供“开始下一关”。
   - 作业页同样不再写 `statusStore.isActive`；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复运行展示且不重提作业集。刷新后需要重新预览对应作业集才能恢复列表与“开始下一关”入口，`waiting` run 本身不会被重新提交。
-- 自动化页已迁移到控制器（FPR-010），`scope: 'automation'`：
+- 自动化页已迁移到控制器，`scope: 'automation'`：
   - 手动执行只提交一次 `run_daily_flow`（`POST /api/agent/schedules/manual/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后运行/停止按钮只由 `trackedRun` 决定。页面不再逐项提交 `run-task`，也不再保留第二套前端流程引擎。
   - 活动进度来自 `run.progress` 的 `currentStep`/`totalSteps`/`currentTask`/`message`；逐项结果只读取快照中 `schedule.runId === trackedRunId` 的 `taskResults`。流程步间延迟期间 run 仍为活动，页面不会提前标完成；终态摘要只来自 `run.result.summary`。空闲且本页没有持有 run 时，“最近执行”可回退展示快照的 `schedule.lastResult`；它只是旧字段的展示投影，不用于判断身份、完成或重提。
   - 停止走 `stopTrackedRun()`，确认期间由快照推进，15s 未确认解锁重试；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复观察且不重新提交。
   - 旧 `maa-task-flow-execution` 断点只在首次拿到 Run 快照时读取一次：能关联到活动或终态 `run_daily_flow` 时只观察该 run 并删除旧键；格式错误、版本不符、过期（24h）、没有可关联 run、或与其它活动执行冲突时删除旧键并提示重新开始。任何分支都不重提任务，旧键清理失败也不会触发新执行。
   - 自动化页不再单独轮询 `schedules/execution`，也不写 `statusStore.isActive`；它只接管本页发起的 run，不把 cron、Dashboard 或 Telegram 发起的流程显示成自己的执行。跨页全局展示由运行状态投影统一处理。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
-- Dashboard 已迁移到控制器（FPR-011），`scope: 'dashboard'`：
+- Dashboard 已迁移到控制器，`scope: 'dashboard'`：
   - 日常入口提交一次 `run_daily_flow`（`POST /api/agent/schedules/dashboard-quick-start/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后不再等待请求返回，卡片按共享快照显示运行或等待。
   - 活动入口保留领域预检：仍同步调用 `POST /api/agent/activity/run`，服务端先检查导航链、活动作业候选与偏好，`executed=false` 时返回原因；响应中的 `runId` 由控制器采纳。该端点不支持 `waitForCompletion`，页面不据此假设执行会异步开始。
   - 两个入口的禁用与运行文案只来自共享投影：活动 run（含其它域发起的）和未纳管占用都会禁用启动；断线时显示“执行状态未知”并按最后已知活动 run 保留禁用。Dashboard 不再写 `statusStore.isActive`，也不再用 `schedules/execution.isRunning` 判断运行。
   - 本页发起的日常流程终态只在“实际观察过活动”后提示一次；其它域或未纳管执行不产生“今日流程完成”提示。页面隐藏/卸载不发送停止，控制器继续观察。
-- 数据统计页已迁移到控制器（FPR-020），`scope: 'statistics'`：
+- 数据统计页已迁移到控制器，`scope: 'statistics'`：
   - 仓库/干员识别通过 `beginExecutionIntent('run_task', { scope: 'statistics' })` 生成幂等键，以 `waitForCompletion=true` 提交；命令确认成功后才轮询解析端点等待 MAA 日志可解析。
   - 命令超时或本地取消只结束本地等待，不调用停止；继续时复用同一幂等键确认已有 Run，已接受 Run 只读取终态，绝不产生第二个设备命令。Run 终态等待或解析超时后只继续等待/解析，不再提交 `run-task`。
   - 识别成功由 `features/statistics/model/commandOwner.ts` 发布作用域失效；材料刷新是脚本入口，不产生 Run。命令状态归域内所有者，页面不再内联 `executeCommand`、固定延迟或读 queue 决定提示。详见[统计识别命令与失效联动](statistics-commands.md)。

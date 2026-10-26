@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-025 交付的设置页设备连接与系统资源边界：设备发现、连接测试、版本读取、配置目录读取与打开。设备发现/连接测试是带副作用的显式命令，由模块级 `DeviceConnectionOwner` 持有；版本与配置目录是只读资源，由 `settings/version`、`settings/config-directory` Query 持有。connection 草稿与保存见[设置配置编辑与保存](settings-config-editing.md)，Query 通用策略见[Query 缓存与键规范](query-cache.md)，请求取消与失败分类见[资源请求错误与取消契约](resource-requests.md)。
+本文说明设置页设备连接与系统资源边界：设备发现、连接测试、版本读取、配置目录读取与打开。设备发现/连接测试是带副作用的显式命令，由模块级 `DeviceConnectionOwner` 持有；版本与配置目录是只读资源，由 `settings/version`、`settings/config-directory` Query 持有。connection 草稿与保存见[设置配置编辑与保存](settings-config-editing.md)，Query 通用策略见[Query 缓存与键规范](query-cache.md)，请求取消与失败分类见[资源请求错误与取消契约](resource-requests.md)。
 
 ## 1. 定位与边界
 
@@ -75,11 +75,11 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 - `versionQueryOptions()` 把 Query 的 `AbortSignal` 传给 `getVersion(signal)`，只接受 `cli`/`core`/`raw` 为字符串；坏的 `resource` 块被归一为 `unknown` 状态与空字段，缺失 `resource` 时页面不显示资源行。不可用载荷成为 `contract` 失败。
 - `configDirectoryQueryOptions()` 把 signal 传给 `getConfigDir(signal)`，同时接受服务端当前的 `{ path }` 与旧的纯字符串形状；空白路径视为 `contract` 失败。`getConfigDir` 的返回类型因此从 `ApiResponse<string>` 修正为 `ApiResponse<string | { path: string }>`，与运行时的旧字符串/对象两种形状一致。
-- 两者沿用 Query 默认策略：30s 新鲜期、可恢复失败最多重试 2 次、`contract` 失败与取消不重试。传输失败时初始目录错误最多延后约 1.5s 出现，与 FPR-024 的 connection 读取一致。
+- 两者沿用 Query 默认策略：30s 新鲜期、可恢复失败最多重试 2 次、`contract` 失败与取消不重试。传输失败时初始目录错误最多延后约 1.5s 出现，与 connection 读取一致。
 
 ### 3.2 页面语义
 
-- 版本读取失败保持静默（迁移前行为）；页面继续渲染其余内容。更新成功后的版本同步由 FPR-026 的更新命令调用 `useSettingsVersion().reload()`，其内部 `invalidateQueries` 同一 `settings/version`：页面可见时立即重取，隐藏时恢复显示后重取，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
+- 版本读取失败保持静默（迁移前行为）；页面继续渲染其余内容。更新成功后的版本同步由设置域更新命令调用 `useSettingsVersion().reload()`，其内部 `invalidateQueries` 同一 `settings/version`：页面可见时立即重取，隐藏时恢复显示后重取，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 - 配置目录首次读取中显示“正在读取目录...”；从未成功读取且失败时显示 `配置目录读取失败: <原因>` 与“重试”按钮，重试走 `refetchQueries` 同一 key。
 - 后台刷新失败保留最近一次成功路径；只有从未成功读取过才显示错误，避免 Activity 恢复后的后台失败清空可用路径。
 - 打开目录有两个原有入口：只读 section 的卡片头按钮与配置目录卡片按钮。两者都调用 `useSettingsConfigDirectory().open()`；成功提示“已打开配置目录”，失败提示 `打开失败: <原因>`，不触发 Query 重取。
@@ -88,7 +88,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 ## 4. 面板接线与遗留清理
 
-`ConfigManager` 只组合 `SettingsWorkspace`；设备发现、连接测试、版本、配置目录与打开目录由 FPR-025 的 hooks 持有，FPR-034 后分别由设备、更新与目录面板订阅。`ConfigManager` 与各面板都不直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，面板只保留渲染与全局状态提示；组件更新与自动更新由 FPR-026 的模块级所有者持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
+`ConfigManager` 只组合 `SettingsWorkspace`；设备发现、连接测试、版本、配置目录与打开目录由 hooks 持有，当前分别由设备、更新与目录面板订阅。`ConfigManager` 与各面板都不直接导入 `discoverDevices`、`testConnection`、`getVersion`、`getConfigDir`、`openConfigDir`，也不保存设备列表、查找/测试 loading、测试反馈、版本、目录路径/状态/错误的页面 state。对这些资源，面板只保留渲染与全局状态提示；组件更新与自动更新由 模块级所有者持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 
 | 页面原职责 | 新归属 |
 | --- | --- |
@@ -99,13 +99,13 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | `loadConfigDir`、目录三态与重试 | `ConfigDirectoryPanel` / `ReadOnlyConfigPanel` → `useSettingsConfigDirectory()` + `settings/config-directory` |
 | `handleOpenConfigDir` 的 API/错误分支 | `useSettingsConfigDirectory().open()`；目录卡片与只读 section 头部共享同一命令 |
 
-自动更新与 core/cli/资源更新已由 FPR-026 迁移到 `model/autoUpdateConfig.ts`、`model/updateCommands.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)；本任务只把更新成功后的版本读取接到同一 Query。
+自动更新与 core/cli/资源更新归 `model/autoUpdateConfig.ts`、`model/updateCommands.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)；更新成功后的版本读取走同一 Query。
 
 ## 5. 兼容与回滚
 
 - 端点、请求体与响应体未改变；未修改服务端。设备发现仍是 GET、连接测试与打开目录仍是 POST。
 - 新增 Query key 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
-- 默认渲染结构、DOM、CSS 与文案未改变；失败/取消状态仍走原有提示区域，视觉基线不因本任务更新。
+- 默认渲染结构、DOM、CSS 与文案未改变；失败/取消状态仍走原有提示区域，视觉基线不因该逻辑调整更新。
 - 行为差异：
   - 设备发现与连接测试请求现在在 Activity 隐藏/卸载时 abort；迁移前会继续完成并写页面 state。section 切换不取消命令（与迁移前一致），但设备面板会卸载并在恢复 connection 后从 owner 读取结果。
   - 非数组/坏设备条目被跳过而不是抛错；未知状态/来源回退为“状态未知”/ADB。
@@ -120,7 +120,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | --- | --- |
 | `features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
 | `features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `pages/settings/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、section 切换不取消在途查找、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、目录失败后切只读 section 不重试且保留重试入口、更新成功后失效并重取同一版本 Query（FPR-026）、目录失败重试 |
+| `pages/settings/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、section 切换不取消在途查找、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、目录失败后切只读 section 不重试且保留重试入口、更新成功后失效并重取同一版本 Query、目录失败重试 |
 | `pages/settings/ConfigManager.subscriptions.test.tsx` | 设备状态不重渲染连接/目录面板；目录缓存变化不重渲染连接/更新面板；连接草稿编辑不重渲染更新/目录面板 |
 | `features/settings/components/ReadOnlyConfigPanel.test.tsx` | 只读头部复用过期目录缓存、不触发目录读取；打开目录在目录可用时可点 |
 

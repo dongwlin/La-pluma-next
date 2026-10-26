@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-033 交付的养成页面组合、面板局部状态与纯模型。队列、设置与计划的领域所有者、Query key、失效作用域和视觉均未改变；本任务只调整页面/面板/选择器的职责与状态生命期，不新增缓存、命令状态或存储。
+本文说明养成页面组合、面板局部状态与纯模型。队列、设置与计划的领域所有者、Query key、失效作用域和视觉均未改变；页面、面板与选择器分别承担界面组合与局部状态生命期，不新增缓存、命令状态或存储。
 
 相关契约：[养成队列命令与写后刷新](training-queue-commands.md)、[养成设置提交与计划有效期](training-settings-and-plan-validity.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -22,7 +22,7 @@
 | 干员行规则 | `features/training/model/operatorRows.ts` | 搜索匹配、分批、空态文案与卡片动作 |
 | 材料规则 | `features/training/model/materials.ts` | 龙门币追加、缺口筛选与当前目标摘要 |
 | 计划展示规则 | `features/training/model/planDisplay.ts` | 当日开放关卡投影、次数/理智与焦点干员 |
-| 队列写入、设置提交、计划编排 | `model/queueCommands.ts`、`model/settingsCommands.ts`、`model/planCommands.ts` | FPR-021/022/023 已有所有者，本任务未改协议 |
+| 队列写入、设置提交、计划编排 | `model/queueCommands.ts`、`model/settingsCommands.ts`、`model/planCommands.ts` | 已有所有者，当前未改协议 |
 
 非目标：
 
@@ -130,7 +130,7 @@ OperatorTraining（页面壳）
 | `features/training/components/MaterialViews.test.tsx` | 表格 role/列头/缺口与已齐、嵌套合成层级 |
 | `features/training/components/UndoToast.test.tsx` | portal 在页面容器外、`role="status"`/`aria-live`、8 秒关闭、悬停/焦点/pending 暂停、失焦恢复 |
 | `pages/training/OperatorTraining.test.tsx` | 既有 56 项回归：队列增删排序撤销、写后刷新 fallback、设置串行、计划版本/生成/应用/部分成功、选择器焦点、Activity 隐藏恢复、材料展示与错误重试 |
-| `features/training/model/queueCommands.test.ts`、`settingsCommands.test.ts`、`planCommands.test.ts`、`planValidity.test.ts` | 领域所有者既有回归（本任务未改） |
+| `features/training/model/queueCommands.test.ts`、`settingsCommands.test.ts`、`planCommands.test.ts`、`planValidity.test.ts` | 领域所有者既有回归（当前未改） |
 
 针对性命令（仓库根目录）：
 

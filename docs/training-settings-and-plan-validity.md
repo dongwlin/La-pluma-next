@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述养成设置所有者、计划有效期与 FPR-023 交付的计划编排模型。它回答：设置由谁提交、连续编辑如何排序；旧响应能否覆盖新值；计划由谁生成/应用、在什么条件下仍然可应用；队列或设置变化、队列刷新失败时如何阻止使用过期计划；应用成功如何通知 automation 与总览。
+本文描述养成设置所有者、计划有效期与计划编排模型。它回答：设置由谁提交、连续编辑如何排序；旧响应能否覆盖新值；计划由谁生成/应用、在什么条件下仍然可应用；队列或设置变化、队列刷新失败时如何阻止使用过期计划；应用成功如何通知 automation 与总览。
 
 相关契约：[养成队列命令与写后刷新](training-queue-commands.md)、[Query 缓存与键规范](query-cache.md)、[配置持久化协调器](config-persistence.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -14,7 +14,7 @@
 | 计划状态、生成/应用/同步编排、失效发布 | `features/training/model/planCommands.ts` 的 `TrainingPlanOwner` | 非 React 所有者；同时只允许一个写操作 |
 | 设置所有权状态订阅与编辑入口 | `features/training/hooks/useTrainingSettings.ts` | 薄适配层，不含请求或竞态逻辑 |
 | 计划版本前提与可用性判断 | `features/training/model/planValidity.ts` | 纯函数：basis 捕获、版本比较、生成/应用可用性 |
-| 计划生成/应用/同步编排与跨域失效 | `features/training/model/planCommands.ts` 的 `TrainingPlanOwner` | FPR-023 起为模块级所有者；页面只发起动作并渲染状态 |
+| 计划生成/应用/同步编排与跨域失效 | `features/training/model/planCommands.ts` 的 `TrainingPlanOwner` | 目前为模块级所有者；页面只发起动作并渲染状态 |
 | 队列快照与队列写入 | `features/training/model/queries.ts`、`queueCommands.ts` | 队列 revision 由服务端提供；设置不进入队列写命令 |
 
 约束：
@@ -137,7 +137,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 端点路径、请求体与服务端存储未改变；设置仍写入训练队列文件中的 `settings` 字段，`PUT /agent/training/settings` 的返回形状不变。应用计划的响应新增可选 `scheduleSync` 字段，其余响应形状不变，旧客户端会忽略新字段。
 - 未新增 localStorage、Query key 或持久化版本；设置 revision 与计划 basis 只存在于模块内存，刷新页面随计划一起丢失。
 - 默认态页面结构、DOM 与 CSS 未改变。新增的“计划已应用但读取/定时刷新失败”提示条与
-  “重新加载”入口只在部分成功状态出现；计划失效时隐藏详情是 FPR-022 已有行为。
+ “重新加载”入口只在部分成功状态出现；计划失效时隐藏详情是当前行为。
 - 新的应用发布复用既有作用域与 `detail` 可选字段；automation 与 Dashboard 不依赖 window 事件。
   它不跨浏览器标签页，也不替代服务端 revision。
 - 独立回滚范围：`model/settingsCommands.ts`、`model/planValidity.ts`、`model/planCommands.ts`、

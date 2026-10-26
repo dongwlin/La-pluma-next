@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-036 交付的作业页面组合、面板职责与局部状态边界。配置草稿仍由 `user-config` 协调器持有，搜索/预览仍由 `combat` 域 Query 与 `CopilotPreviewSession` 持有，执行仍归 `task-execution` 控制器；本任务只调整页面/面板的职责、视图派生与会话存储，不新增第二份配置、预览、选择或运行状态。
+本文说明作业页面组合、面板职责与局部状态边界。配置草稿仍由 `user-config` 协调器持有，搜索/预览仍由 `combat` 域 Query 与 `CopilotPreviewSession` 持有，执行仍归 `task-execution` 控制器；页面/面板分别持有组合、视图派生与会话存储，不新增第二份配置、预览、选择或运行状态。
 
 相关契约：[作业搜索与预览](combat-search-preview.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[Query 缓存与键规范](query-cache.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -23,14 +23,14 @@
 | 卡片头部与运行/停止按钮 | `components/CombatTaskHeading.tsx` | 共享两种卡片的标题与执行投影 |
 | 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、待执行求差、下一关与信息面板当前项 |
 | 面板会话状态 | `model/panelState.ts` + `hooks/usePanelState.ts` | 工作区创建、面板订阅；页面卸载时销毁 |
-| 命令、URI 与载荷模型 | `model/combatCommands.ts`、`utils/copilotUri.ts`、`model/copilotPayload.ts` | FPR-014/029 已交付；本任务只复核未改协议 |
+| 命令、URI 与载荷模型 | `model/combatCommands.ts`、`utils/copilotUri.ts`、`model/copilotPayload.ts` | 纯命令与载荷模型，不改变执行协议 |
 
 非目标与保持不变：
 
 - 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等端点、Query key、配置 key、本地存储键或 wire 形状。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
 - 不把搜索词、识别方式、选中索引写进配置或 localStorage；不新增跨页共享。
-- 不改变渲染结构、DOM/CSS 类名、表单 `id`/`name` 或默认态视觉；本任务没有新增样式或更新截图。
+- 不改变渲染结构、DOM/CSS 类名、表单 `id`/`name` 或默认态视觉；既有 DOM/CSS 与视觉约束保持不变。
 - 页面壳不包含业务状态机；工作区是唯一领域容器，面板只接收投影。
 
 ## 2. 组合与状态边界
@@ -125,7 +125,6 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - 服务端执行参数、作业集模式映射、幂等键与停止语义未变化。
 - 渲染结构与 DOM/CSS 类名保持：面板 JSX 由原页面原样迁出，表单 `id`/`name` 与默认态视觉不变；没有新增 CSS，也没有更新任何视觉基线。
 - 实施时在仓库根执行 `pnpm visual -- --grep "app tab: combat"`；由于当前 pnpm 参数转发未生效，实际执行了全量 72 张比对，全部通过（未更新截图）。
-- 回滚本任务的提交可恢复页面内联实现；配置、Query、执行与本地数据不需要迁移。
 
 ## 8. 回归证据
 

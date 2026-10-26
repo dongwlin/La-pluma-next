@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-035 交付的日志页面组合、工具栏/列表/历史选择器边界与手动暂停接线。实时轮询、历史读取、清空/清理命令的所有者与协议均未改变；本任务把页面视图状态拆到工作区和受控面板，并补齐工具栏暂停入口及暂停与清空、历史、重试、Activity 的交互策略。
+本文说明日志页面组合、工具栏/列表/历史选择器边界与手动暂停接线。实时轮询、历史读取、清空/清理命令的所有者与协议均未改变；页面视图状态由工作区和受控面板持有；工具栏暂停入口与清空、历史、重试、Activity 协作的策略见下文。
 
 相关契约：[实时日志流生命周期](logs-realtime-stream.md)、[历史日志与清理协调](logs-history-and-cleanup.md)、[前端架构与所有权](frontend-architecture.md)。
 
@@ -17,7 +17,7 @@
 | 日志列表 | `features/logs/components/LogConsole.tsx` | 列表行、加载/失败/空态、选中历史文件信息与滚动容器 |
 | 历史文件选择器 | `features/logs/components/HistoryLogPicker.tsx` | 文件列表、列表失败重试、当前选中与清理入口 |
 | 命令结果提示 | `features/logs/components/LogNotice.tsx` | 成功 `status`、失败 `alert` 与关闭入口 |
-| 实时/历史/命令状态 | `model/realtimeLogStream.ts`、`model/historyLogSession.ts`、`model/logCommands.ts` | FPR-027/028 的会话所有者，本任务未改协议 |
+| 实时/历史/命令状态 | `model/realtimeLogStream.ts`、`model/historyLogSession.ts`、`model/logCommands.ts` | 会话所有者，当前未改协议 |
 | 解析/过滤/折叠视图 | `model/logModel.ts` 的 `buildLogView` | 纯函数；工作区只做一次派生，列表与导出共享结果 |
 | 导出文本与文件名 | `model/logExport.ts` | 纯格式规则；Blob/objectURL/anchor 下载仍由工作区执行 |
 
@@ -89,7 +89,6 @@ LogViewer（页面壳：PageHeader + FloatingStatusIndicator）
 - 端点、响应形状、轮询频率、请求取消、历史选择裁决、清空/清理命令端点与 `maxSizeMB:10` 均未变。
 - 行为变化仅限本次接线所需的暂停策略：手动暂停时清空不再静默恢复轮询；从历史返回实时会恢复手动暂停。两者都有命令/页面级回归。
 - 没有新增 CSS；DOM 结构除工具栏新增暂停按钮、暂停空态文案外与迁移前一致。暂停按钮是任务要求的可见交互，因此只更新 `logs` 的 6 张默认态截图（deep/light × desktop/tablet/mobile），其余页面基线不变；未通过放宽断言或删除测试取得通过。
-- 回滚本任务的提交可恢复页面内联实现；实时流、历史会话与命令协议不需要迁移，视觉基线需随回滚恢复旧截图。
 
 ## 7. 回归证据
 

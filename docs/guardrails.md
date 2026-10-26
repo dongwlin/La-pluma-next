@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文描述 FPR-041 交付的自动检查：功能域依赖环、公开面与分层方向、非页面微域的反向依赖、页面裸副作用，以及 hooks / model / components / pages 的规模观察与预算。规则实现在 `client/scripts/guardrails.ts`，CLI 为 `client/scripts/check-guardrails.ts`，已接入客户端 `verify`。
+本文说明自动检查：功能域依赖环、公开面与分层方向、非页面微域的反向依赖、页面裸副作用，以及 hooks / model / components / pages 的规模观察与预算。规则实现在 `client/scripts/guardrails.ts`，CLI 为 `client/scripts/check-guardrails.ts`，已接入客户端 `verify`。
 
 它只做静态事实判断，不证明运行时所有权，也不替代[执行客户端](execution-client.md)、[配置持久化协调器](config-persistence.md)或[Query 缓存](query-cache.md)的行为契约。
 
@@ -67,7 +67,7 @@
 
 ### 4.1 阈值依据
 
-阈值来自 FPR-031–040/044 完成后的实际迁移结果（实施基线 `de0605d`），统计范围为 `pages/*` 与 `features/*/{hooks,model,components}` 下的生产 `.ts/.tsx`，排除测试；页面按 `pages/<domain>/` 归到同名功能域：
+阈值以 `de0605d` 版本的生产文件规模为参考基线，统计范围为 `pages/*` 与 `features/*/{hooks,model,components}` 下的生产 `.ts/.tsx`，排除测试；页面按 `pages/<domain>/` 归到同名功能域：
 
 | 分类 | 文件数 | 中位 | p90 | 最大 | 阈值 | 现有超阈值 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
