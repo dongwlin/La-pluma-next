@@ -136,7 +136,7 @@
 | `client/src/features/combat/model/queries.test.ts` | 资源 key、signal 传递与取消、失败分类、计划优先/成员回退、探测、强制刷新 |
 | `client/src/features/combat/model/copilotPreviewSession.test.ts` | loading/ready、旧响应取消、tracked key 取消、Activity 停止/恢复、静默刷新、进度视图 |
 | `client/src/features/combat/utils/copilotUri.test.ts` | prts://、prts.plus、本地文件、多行输入与不支持输入 |
-| `client/src/features/combat/pages/CombatTasks.test.tsx` | 搜索/预览旧响应与 AbortSignal、选择写入配置并提交选中索引、预览失败保留旧预览、搜索失败消息、搜索结果与运行状态隔离、Activity 恢复清 loading、配置与执行既有回归 |
+| `client/src/pages/combat/CombatTasks.test.tsx` | 搜索/预览旧响应与 AbortSignal、选择写入配置并提交选中索引、预览失败保留旧预览、搜索失败消息、搜索结果与运行状态隔离、Activity 恢复清 loading、配置与执行既有回归 |
 
 针对性命令（仓库根目录）：
 

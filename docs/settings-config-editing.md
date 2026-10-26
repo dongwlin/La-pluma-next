@@ -138,8 +138,8 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 | `features/settings/model/configSection.test.ts` | 存储键与事件名、非法存储回退、写入不抛错、可编辑能力、合法事件过滤与注销 |
 | `features/settings/model/autoUpdateConfig.test.ts` | 自动更新读取守卫、确认保存后的服务端采用、本地回退与完整提交（FPR-026） |
 | `features/settings/api/index.test.ts` | `getConfig` signal、profile 载荷校验、非法已知字段拒绝与未知字段保留 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | section 导航与只读说明、初始读取失败、初始加载/refresh 不覆盖编辑、保存期间继续编辑与跨 section 保存、重置只改草稿、外部 section 事件/存储/监听清理、Activity 恢复保留草稿并重新订阅、自动更新保存边界、连接保存失败 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 连接草稿编辑不重渲染更新/版本/目录面板；设备与更新状态不驱动连接表单 |
+| `pages/settings/ConfigManager.layout.test.tsx` | section 导航与只读说明、初始读取失败、初始加载/refresh 不覆盖编辑、保存期间继续编辑与跨 section 保存、重置只改草稿、外部 section 事件/存储/监听清理、Activity 恢复保留草稿并重新订阅、自动更新保存边界、连接保存失败 |
+| `pages/settings/ConfigManager.subscriptions.test.tsx` | 连接草稿编辑不重渲染更新/版本/目录面板；设备与更新状态不驱动连接表单 |
 
 面板组合与完整回归清单见[设置领域面板](settings-panel.md)。
 

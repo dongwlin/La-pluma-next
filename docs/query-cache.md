@@ -334,18 +334,18 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、单路缺失/形状错误/越界返回 `null`（FPR-030） |
 | `client/src/features/dashboard/model/queries.test.ts` | 五路领域 key/signal、协调快照 key 与缓存参数、整体失败、不继承自动重试（FPR-030） |
 | `client/src/features/dashboard/model/snapshotRefresher.test.ts` | 单飞/force、原子提交、失败保旧、探针不否决、离线与预期失败静默（FPR-030） |
-| `client/src/features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交、单路失败/坏载荷保旧、计划应用/识别/队列/资源更新失效、Activity 隐藏期间失效恢复、设备样本投影、启动入口身份（FPR-030） |
+| `client/src/pages/dashboard/Dashboard.test.tsx` | 完整快照原子提交、单路失败/坏载荷保旧、计划应用/识别/队列/资源更新失效、Activity 隐藏期间失效恢复、设备样本投影、启动入口身份（FPR-030） |
 | `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划 key、signal 与取消、失败分类、计划优先与成员回退、探测、强制刷新 |
 | `client/src/features/combat/model/copilotPreviewSession.test.ts` | 预览 loading/旧响应取消、tracked key 取消、Activity 停止与恢复、终态静默刷新 |
 | `client/src/features/combat/model/copilotPayload.test.ts`、`copilotPreview.test.ts`、`copilotSelection.test.ts`、`combatCommands.test.ts` | 载荷兼容、目标/预览构造、选段恢复、命令与执行选项 |
-| `client/src/features/combat/pages/CombatTasks.test.tsx` | 搜索/预览旧响应与 AbortSignal、选择写入配置并提交、预览失败保留旧预览、搜索结果与运行状态隔离、Activity 恢复 |
+| `client/src/pages/combat/CombatTasks.test.tsx` | 搜索/预览旧响应与 AbortSignal、选择写入配置并提交、预览失败保留旧预览、搜索结果与运行状态隔离、Activity 恢复 |
 | `client/src/features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
 | `client/src/features/training/model/queueCommands.test.ts` | 队列命令串行与最新快照排序、重复添加合并、写后刷新失败 fallback/`uncertain`、失败不提交不发布、撤销原索引、目标失效拒绝、写前取消读取 |
 | `client/src/features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key 与参数、signal、失败信封、补齐读取与计数结构共享 |
 | `client/src/features/training/model/settingsCommands.test.ts`、`planValidity.test.ts` | 设置串行提交与旧响应裁决、计划队列/设置版本前提（FPR-022） |
-| `client/src/features/training/pages/OperatorTraining.test.tsx` | 队列读取与写入命令接线、计数展示、列表失败清空/计数保旧、目录失败与仅计数失败、筛选迟到响应、失效范围、Activity 隐藏恢复、写后刷新失败与跨页失效、设置提交与计划有效期 |
+| `client/src/pages/training/OperatorTraining.test.tsx` | 队列读取与写入命令接线、计数展示、列表失败清空/计数保旧、目录失败与仅计数失败、筛选迟到响应、失效范围、Activity 隐藏恢复、写后刷新失败与跨页失效、设置提交与计划有效期 |
 | `client/src/features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、解析等待、超时/取消/继续与失效发布；识别命令不进入 Query |
-| `client/src/features/statistics/pages/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
+| `client/src/pages/statistics/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
 | `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
 | `client/src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 订阅过滤、Activity 隐藏/恢复补发、卸载注销与最新 handler |
 | `client/src/features/settings/model/connectionConfig.test.ts` | `settings/maa-config` key/profile/signal、读取令牌裁决、迟到读取与保存前读取失效、保存串行与失败重试、重置边界 |
@@ -353,7 +353,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/settings/model/deviceConnection.test.ts` | 设备发现/连接测试的独立状态、取消与迟到响应、选择回填的草稿 revision |
 | `client/src/features/settings/model/autoUpdateConfig.test.ts` | 自动更新策略读取守卫、本地回退与完整提交（FPR-026） |
 | `client/src/features/settings/model/updateCommands.test.ts` | 更新命令互斥、失败重试条件与成功作用域（FPR-026） |
-| `client/src/features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载/refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复、初始读取失败、发现回填/失败重试/hide-show、版本与目录 Query 复用；更新成功失效版本并发布资源作用域、CLI 只失效版本、自动更新保存跨 hide（FPR-026） |
+| `client/src/pages/settings/ConfigManager.layout.test.tsx` | 初始加载/refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复、初始读取失败、发现回填/失败重试/hide-show、版本与目录 Query 复用；更新成功失效版本并发布资源作用域、CLI 只失效版本、自动更新保存跨 hide（FPR-026） |
 
 针对性复现命令（仓库根目录）：
 
@@ -373,18 +373,18 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/dashboard/model/snapshot.test.ts \
   src/features/dashboard/model/queries.test.ts \
   src/features/dashboard/model/snapshotRefresher.test.ts \
-  src/features/dashboard/pages/Dashboard.test.tsx \
+  src/pages/dashboard/Dashboard.test.tsx \
   src/features/statistics/model/operatorFilters.test.ts \
   src/features/combat/model/queries.test.ts \
   src/features/combat/model/copilotPreviewSession.test.ts \
-  src/features/combat/pages/CombatTasks.test.tsx \
+  src/pages/combat/CombatTasks.test.tsx \
   src/features/training/model/candidates.test.ts \
   src/features/training/model/queueCommands.test.ts \
   src/features/training/model/queries.test.ts \
   src/features/training/model/settingsCommands.test.ts \
   src/features/training/model/planValidity.test.ts \
-  src/features/training/pages/OperatorTraining.test.tsx \
-  src/features/statistics/pages/DataStatistics.layout.test.tsx \
+  src/pages/training/OperatorTraining.test.tsx \
+  src/pages/statistics/DataStatistics.layout.test.tsx \
   src/features/resource-invalidation/model/resourceInvalidation.test.ts \
   src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx \
   src/features/settings/model/connectionConfig.test.ts \
@@ -392,7 +392,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/settings/model/deviceConnection.test.ts \
   src/features/settings/model/autoUpdateConfig.test.ts \
   src/features/settings/model/updateCommands.test.ts \
-  src/features/settings/pages/ConfigManager.layout.test.tsx
+  src/pages/settings/ConfigManager.layout.test.tsx
 ```
 
 完整 `pnpm verify` 与视觉比对由任务完成记录给出；本文件不重复声称未执行的验证。

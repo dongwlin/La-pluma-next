@@ -120,8 +120,8 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 | --- | --- |
 | `features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
 | `features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、section 切换不取消在途查找、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、目录失败后切只读 section 不重试且保留重试入口、更新成功后失效并重取同一版本 Query（FPR-026）、目录失败重试 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备状态不重渲染连接/目录面板；目录缓存变化不重渲染连接/更新面板；连接草稿编辑不重渲染更新/目录面板 |
+| `pages/settings/ConfigManager.layout.test.tsx` | 发现使用草稿 adb 路径并回填选中设备、查找/测试 loading 独立、查找失败重试与连接测试失败反馈、Activity 隐藏取消在途查找/测试并保留已完成结果、section 切换不取消在途查找、测试期间编辑不被覆盖、版本/目录 Query 在 hide/show 后复用、两个打开目录入口、目录失败后切只读 section 不重试且保留重试入口、更新成功后失效并重取同一版本 Query（FPR-026）、目录失败重试 |
+| `pages/settings/ConfigManager.subscriptions.test.tsx` | 设备状态不重渲染连接/目录面板；目录缓存变化不重渲染连接/更新面板；连接草稿编辑不重渲染更新/目录面板 |
 | `features/settings/components/ReadOnlyConfigPanel.test.tsx` | 只读头部复用过期目录缓存、不触发目录读取；打开目录在目录可用时可点 |
 
 面板组合与完整回归清单见[设置领域面板](settings-panel.md)。

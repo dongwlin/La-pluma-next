@@ -194,8 +194,8 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/features/logs/model/realtimeLogStream.test.ts` | 1250ms/200 行轮询、单在途、旧响应与文档隐藏/暂停取消、失败保留缓冲 |
 | `client/src/features/logs/model/historyLogSession.test.ts` | 历史列表/读取信号与旧响应、返回实时、Activity 隐藏取消与恢复重试、清理后选择裁决 |
 | `client/src/features/logs/model/logCommands.test.ts` | 清空实时的 pause/clear/resume 与失败保留、清理历史的列表刷新/选择裁决 |
-| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | Activity/文档可见性恢复、慢请求不叠加、清空暂停与恢复立即重读、历史读取恢复重试、历史模式不重启实时 |
-| `client/src/features/logs/pages/LogViewer.test.tsx` | 实时失败重试、后台刷新保留行、历史列表/文件重试、返回实时、切换竞态、清理确认与失败重试 |
+| `client/src/pages/logs/LogViewer.activity.test.tsx` | Activity/文档可见性恢复、慢请求不叠加、清空暂停与恢复立即重读、历史读取恢复重试、历史模式不重启实时 |
+| `client/src/pages/logs/LogViewer.test.tsx` | 实时失败重试、后台刷新保留行、历史列表/文件重试、返回实时、切换竞态、清理确认与失败重试 |
 | `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
 | `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划的 Query signal 与取消、失败分类、预览组合读取 |
 | `client/src/features/combat/model/copilotPayload.test.ts` | PRTS 代理信封/原始载荷兼容、搜索条目与计划 completedModes |

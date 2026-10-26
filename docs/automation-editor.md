@@ -113,8 +113,8 @@ AutomationTasks（页头 + 全局指示）
 | `client/src/features/automation/model/taskParamRules.test.ts` | 10 分钟取整、60–540 夹取、空串/非有限输入回退 |
 | `client/src/features/automation/components/AutomationStageEditor.test.tsx` | 智能养成插入顺序、空队列/计划失败/抛错/材料已齐失败路径、移除保留置顶与普通行、步进与置顶写回、运行态禁用 |
 | `client/src/features/automation/components/AutomationTaskPicker.test.tsx` | 目录渲染与计数、选择回调后关闭、页脚内按下不关闭/外部关闭、Escape 回焦、禁用收起 |
-| `client/src/features/automation/pages/AutomationTasks.layout.test.tsx` | 既有布局、表单标签、picker 菜单/焦点/Activity 恢复后的 Escape 关闭、智能养成页面接线、公招时长失焦归一化、FPR-039 的拖拽/定时/摘要接线 |
-| `client/src/features/automation/pages/AutomationTasks.{config,execution,activity}.test.tsx` | 既有配置持久化、执行身份与 Activity 回归（FPR-039 起以 Query Provider 包装活动读取） |
+| `client/src/pages/automation/AutomationTasks.layout.test.tsx` | 既有布局、表单标签、picker 菜单/焦点/Activity 恢复后的 Escape 关闭、智能养成页面接线、公招时长失焦归一化、FPR-039 的拖拽/定时/摘要接线 |
+| `client/src/pages/automation/AutomationTasks.{config,execution,activity}.test.tsx` | 既有配置持久化、执行身份与 Activity 回归（FPR-039 起以 Query Provider 包装活动读取） |
 
 针对性命令（仓库根目录）：
 

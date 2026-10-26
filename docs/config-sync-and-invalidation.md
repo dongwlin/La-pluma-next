@@ -25,7 +25,7 @@
 | 完整成功条件 | `saveUserConfig` 成功 | `saveUserConfig` 成功 | `saveUserConfig` 成功且 `setupSchedule`/`stopSchedule` 成功 |
 | 加载时迁移 | `app` → `cli`；raid `1`/`2` → `raid`/`both` | 无 | schedule `entries`/`times` 兼容；禁用项只保留在本地 |
 
-实现位置：Combat 的适配器见 `features/combat/model/combatConfig.ts`，页面订阅与重试见 `features/combat/pages/CombatTasks.tsx`；Roguelike 的适配器见 `features/roguelike/model/roguelikeConfig.ts`，页面订阅与重试见 `features/roguelike/pages/RoguelikeTasks.tsx`；Automation 的适配器见 `features/automation/model/automationConfig.ts`，页面订阅、完整提交与重试见 `features/automation/pages/AutomationTasks.tsx`。
+实现位置：Combat 的适配器见 `features/combat/model/combatConfig.ts`，页面订阅与重试见 `pages/combat/CombatTasks.tsx`；Roguelike 的适配器见 `features/roguelike/model/roguelikeConfig.ts`，页面订阅与重试见 `pages/roguelike/RoguelikeTasks.tsx`；Automation 的适配器见 `features/automation/model/automationConfig.ts`，页面订阅、完整提交与重试见 `pages/automation/AutomationTasks.tsx`。
 
 FPR-013/014/015 之后，表中三列描述的“模块级/实例级队列、页内 revision/token、300ms timer/立即 autoSave、`configHydratedRef`、`configLoaded`”已由 `features/user-config` 协调器通道接管，key、本地键、pending 键与 wire 形状不变。三域现行语义见[配置持久化协调器](config-persistence.md)第 6.1–6.3 节；上表保留迁移前基线以便对照。
 
@@ -130,15 +130,15 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：五路�
 | 测试文件 | 覆盖 |
 | --- | --- |
 | `features/combat/model/combatConfig.test.ts` | 作业适配器：原 key/pending/本地键/300ms、wire 形状与解码校验、`app→cli` 与 raid `1`/`2` 迁移、坏本地键清理、完整提交与读取失败信封 |
-| `features/combat/pages/CombatTasks.test.tsx` | pending 跨 remount + 手动重试；重试防重入与成功提示；旧保存响应不清新令牌；`app→cli` 与 raid 迁移（服务端/本地）；迟到加载不覆盖编辑；坏草稿回退服务端；set 模式与待执行索引回填；Activity 恢复；搜索/预览竞态 |
+| `pages/combat/CombatTasks.test.tsx` | pending 跨 remount + 手动重试；重试防重入与成功提示；旧保存响应不清新令牌；`app→cli` 与 raid 迁移（服务端/本地）；迟到加载不覆盖编辑；坏草稿回退服务端；set 模式与待执行索引回填；Activity 恢复；搜索/预览竞态 |
 | `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状与解码校验、坏本地键清理、完整提交与读取失败信封 |
-| `features/roguelike/pages/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；重试防重入与成功提示；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载不覆盖编辑；Activity 恢复；另含 FPR-008 的执行接线用例（Run 提交/停止/恢复） |
+| `pages/roguelike/RoguelikeTasks.test.tsx` | pending 跨 remount + 重试；重试防重入与成功提示；提交串行；旧响应不清新令牌；坏草稿回退服务端；迟到加载不覆盖编辑；Activity 恢复；另含 FPR-008 的执行接线用例（Run 提交/停止/恢复） |
 | `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交；wire 去掉界面字段、禁用 schedule 项只留本地；`entries`/`times` 兼容与任务参数迁移；配置+schedule 完整成功、半失败、保存期间新草稿跳过旧 schedule；草稿指纹覆盖本地 `entries` |
-| `features/automation/pages/AutomationTasks.config.test.tsx` | 配置 + schedule 完整成功；保存失败不碰 schedule；schedule 半失败保留 pending 并可从页内重试；disabled/全禁用走 stop；编辑/删除禁用时间点仍写回本地并触发提交；跨 mount 串行提交与旧提交不确认新 revision；迟到加载保护；stale pending 回退服务端；应用计划强制重读与 pending 草稿冲突裁决 |
-| `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
+| `pages/automation/AutomationTasks.config.test.tsx` | 配置 + schedule 完整成功；保存失败不碰 schedule；schedule 半失败保留 pending 并可从页内重试；disabled/全禁用走 stop；编辑/删除禁用时间点仍写回本地并触发提交；跨 mount 串行提交与旧提交不确认新 revision；迟到加载保护；stale pending 回退服务端；应用计划强制重读与 pending 草稿冲突裁决 |
+| `pages/automation/AutomationTasks.layout.test.tsx` | pending 本地优先；在途服务端响应不覆盖新草稿；hydrate 不重建 schedule；Activity 恢复 |
 | `features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、日志解析等待、超时/取消/继续与失效发布 |
-| `features/statistics/pages/DataStatistics.layout.test.tsx` | 识别快照写入 Query 并发布作用域；按作用域失效；运行中不重复提交；超时后继续解析；各数据源独立错误与重试；Activity 恢复 |
-| `features/training/pages/OperatorTraining.test.tsx` | FPR-021 队列命令接线、写后刷新失败 fallback/警告/重载、跨页失效与自发布忽略、并发排序；队列变更废弃旧计划；queue revision 校验；FPR-044 候选/计数 Query、列表失败/计数保旧、目录失败与仅计数失败、筛选迟到响应与 Activity 恢复；FPR-022 设置串行/跨重挂载/失败回滚、设置变更作废旧计划、刷新失败禁用生成与应用；FPR-023 计划编排迁移、生成期间版本变化、应用等待在途配置保存、部分成功重读、三类失效发布 |
+| `pages/statistics/DataStatistics.layout.test.tsx` | 识别快照写入 Query 并发布作用域；按作用域失效；运行中不重复提交；超时后继续解析；各数据源独立错误与重试；Activity 恢复 |
+| `pages/training/OperatorTraining.test.tsx` | FPR-021 队列命令接线、写后刷新失败 fallback/警告/重载、跨页失效与自发布忽略、并发排序；队列变更废弃旧计划；queue revision 校验；FPR-044 候选/计数 Query、列表失败/计数保旧、目录失败与仅计数失败、筛选迟到响应与 Activity 恢复；FPR-022 设置串行/跨重挂载/失败回滚、设置变更作废旧计划、刷新失败禁用生成与应用；FPR-023 计划编排迁移、生成期间版本变化、应用等待在途配置保存、部分成功重读、三类失效发布 |
 | `features/training/model/settingsCommands.test.ts` | 设置串行写入、旧响应不覆盖最新值、旧失败不打断新草稿、最新失败回滚、服务端归一化、hydrate 与显式重读、reset 丢弃迟到响应 |
 | `features/training/model/planCommands.test.ts` | 生成/应用版本裁决、重复触发合并、automation 配置写入屏障、应用后重读与 schedule 部分成功、失效发布 |
 | `features/training/model/planValidity.test.ts` | 计划 basis 捕获、队列/设置版本比较、刷新失败与版本失效下的生成/应用门禁 |
@@ -148,7 +148,7 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：五路�
 | `features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、单路缺失/形状错误/越界返回 `null`（FPR-030） |
 | `features/dashboard/model/queries.test.ts` | 五路领域 key/signal、协调快照 key 与缓存参数、整体失败、不继承自动重试（FPR-030） |
 | `features/dashboard/model/snapshotRefresher.test.ts` | 单飞/force、原子提交、失败保旧、探针不否决、离线与预期失败静默（FPR-030） |
-| `features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交；单请求失败/形状错误保旧；计划应用/识别/资源更新失效；Activity 隐藏期间失效恢复；设备样本投影；缓存恢复与后台刷新；启动入口与执行控制器 |
+| `pages/dashboard/Dashboard.test.tsx` | 完整快照原子提交；单请求失败/形状错误保旧；计划应用/识别/资源更新失效；Activity 隐藏期间失效恢复；设备样本投影；缓存恢复与后台刷新；启动入口与执行控制器 |
 | `features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 设备采样 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询与恢复单计时器（FPR-030） |
 | `features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/时钟偏差/语义边界校验；设备采样合并；失败刷新不覆盖成功缓存 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 失效作用域去重、revision、注销与监听器隔离 |
@@ -157,7 +157,7 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：五路�
 | `features/settings/model/autoUpdateConfig.test.ts` | 自动更新服务端/本地回退、迟到读取不覆盖编辑、保存与调度完整成功、半失败与 `superseded`（FPR-026） |
 | `features/settings/model/updateCommands.test.ts` | 更新命令互斥、失败重试条件与成功作用域声明（FPR-026） |
 | `features/game-data/model/itemIconCache.test.ts`、`features/game-data/hooks/useItemIconCacheVersion.test.tsx` | 物品图标 epoch 持久化、单调推进与订阅重渲染（FPR-026） |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 初始加载与 refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复；更新成功发布四类失效、CLI 只失效版本、失败不发布不重试、自动更新保存跨 Activity 隐藏（FPR-026） |
+| `pages/settings/ConfigManager.layout.test.tsx` | 初始加载与 refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复；更新成功发布四类失效、CLI 只失效版本、失败不发布不重试、自动更新保存跨 Activity 隐藏（FPR-026） |
 
 复现命令（仓库根目录）：
 

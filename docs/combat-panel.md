@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面壳、页头与全局状态指示 | `features/combat/pages/CombatTasks.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区；不调用搜索/预览/执行 hook，不持有请求生命周期 |
+| 页面壳、页头与全局状态指示 | `pages/combat/CombatTasks.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区；不调用搜索/预览/执行 hook，不持有请求生命周期 |
 | 模式、配置订阅、预览/搜索入口、执行订阅、作业集选择、同步反馈与重置弹层 | `features/combat/components/CombatWorkspace.tsx` | 跨面板唯一容器；`activeCombatMode`、`selectedCopilotIndexes` 与面板会话存储在这里创建 |
 | 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
 | 模式分段控件的测量与键盘导航 | `features/combat/components/CombatModeTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
@@ -131,7 +131,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `client/src/features/combat/pages/CombatTasks.test.tsx` | 既有配置迁移/pending/重试/迟到加载、三种模式、停止与超时、Activity、搜索/预览旧响应；新增搜索选择回填与预览、逐项结果与等待进度、局部输入不推动列表渲染、局部状态跨模式切换保留、保全派驻/悖论模拟命令接线 |
+| `client/src/pages/combat/CombatTasks.test.tsx` | 既有配置迁移/pending/重试/迟到加载、三种模式、停止与超时、Activity、搜索/预览旧响应；新增搜索选择回填与预览、逐项结果与等待进度、局部输入不推动列表渲染、局部状态跨模式切换保留、保全派驻/悖论模拟命令接线 |
 | `client/src/features/combat/model/copilotSetView.test.ts` | Run 归属、重置作废、待执行求差、失败/已执行计数、下一关与自动停止、续跑/当前项回退、单作业预览 |
 | `client/src/features/combat/model/panelState.test.ts` | 初始值、通知、相同值抑制、退订、多订阅者、独立 store |
 | `client/src/features/combat/model/combatCommands.test.ts`、`copilotSelection.test.ts`、`copilotPreviewSession.test.ts`、`queries.test.ts`、`api/index.test.ts`、`utils/copilotUri.test.ts` | 既有命令/选段/预览会话/Query/API/URI 回归 |

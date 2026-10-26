@@ -113,7 +113,7 @@
 | `client/src/features/dashboard/model/flowView.test.ts` | 流程卡命令文案、按钮状态与禁用规则的纯投影 |
 | `client/src/features/dashboard/model/deviceView.test.ts` | 使用率阈值与温度曲线几何 |
 | `client/src/features/dashboard/components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留与导航回调 |
-| `client/src/features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交、单路失败/形状错误保旧、计划应用/识别/资源更新失效、Activity 隐藏期间失效恢复、设备样本投影、预检不写快照、启动后经协调器刷新、预览挂载与导航、启动入口与控制器身份 |
+| `client/src/pages/dashboard/Dashboard.test.tsx` | 完整快照原子提交、单路失败/形状错误保旧、计划应用/识别/资源更新失效、Activity 隐藏期间失效恢复、设备样本投影、预检不写快照、启动后经协调器刷新、预览挂载与导航、启动入口与控制器身份 |
 | `client/src/features/device-mirror/model/queries.test.ts` | 设备 key、signal、null 载荷与失败信封 |
 | `client/src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询、恢复立即采样且只有一个计时器 |
 | `client/src/features/automation/model/queries.test.ts` | activity/schedule-execution key、clientType 参数、signal 与失败 |

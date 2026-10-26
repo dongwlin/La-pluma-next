@@ -360,15 +360,15 @@ waiting ──stop──> stopped
 | `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
 | `client/src/features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 连接监测的 online/offline/focus 行为；探针只写连接健康，不写运行状态；投影进入忙态后改按 2s 间隔 |
 | `client/src/features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 唯一快照投影为 running/waiting/occupied/unknown/idle；断线保留最后活动 run 但标记未知；终态后才回到空闲 |
-| `client/src/features/dashboard/pages/Dashboard.test.tsx` | Dashboard 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；跨域启动/停止、外部占用与断线未知时全局状态一致；活动预检阻断保留领域原因 |
+| `client/src/pages/dashboard/Dashboard.test.tsx` | Dashboard 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；跨域启动/停止、外部占用与断线未知时全局状态一致；活动预检阻断保留领域原因 |
 | `client/src/features/automation/api/index.test.ts` | 旧同步调用不带 `waitForCompletion`/幂等头；后台日常流程写入 `waitForCompletion=false`、`Idempotency-Key` 并转发 signal |
 | `client/src/features/automation/model/automationRun.test.ts` | 活动进度取 `run.progress` 与匹配 runId 的 `schedule`；其它 run 的逐项结果不被借用；缺失/不完整结果不伪造状态；终态摘要只来自 `succeeded`/`stopped`；终态通知分类 |
 | `client/src/features/automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/24h 时效；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 冲突；删除旧键；删除失败不触发执行 |
-| `client/src/features/automation/pages/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影隔离；Activity 隐藏/恢复；旧断点有效/终态/失效/过期/冲突；失败、跳过与未执行结果 |
-| `client/src/features/automation/pages/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
+| `client/src/pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影隔离；Activity 隐藏/恢复；旧断点有效/终态/失效/过期/冲突；失败、跳过与未执行结果 |
+| `client/src/pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
 | `client/src/features/combat/model/copilotSetRun.test.ts` | 集合 run 投影：活动 `progress`、终态 `summary`、突袭/普通条目按作业折叠、等待态 `nextEntry`、缺失进度不伪造完成、终态文案 |
-| `client/src/features/combat/pages/CombatTasks.test.tsx` | 三模式映射（cli/app→continuous、manual）、幂等提交、等待态“开始下一关”与 409 占用重试、失败汇总、按 `runId` 停止后不续跑、停止确认超时重试、hide/show、断线重连、刷新按身份恢复、非本域/非当前集合 run 隔离、上一条记录不冒充完成 |
-| `client/src/features/roguelike/pages/RoguelikeTasks.test.tsx` | 单次幂等提交与命令语义、重复点击不并发、按 `runId` 停止、停止确认中 hide/show 与超时重试、卸载不停止、刷新按身份恢复、非本域 run 隔离、终态消息 |
+| `client/src/pages/combat/CombatTasks.test.tsx` | 三模式映射（cli/app→continuous、manual）、幂等提交、等待态“开始下一关”与 409 占用重试、失败汇总、按 `runId` 停止后不续跑、停止确认超时重试、hide/show、断线重连、刷新按身份恢复、非本域/非当前集合 run 隔离、上一条记录不冒充完成 |
+| `client/src/pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交与命令语义、重复点击不并发、按 `runId` 停止、停止确认中 hide/show 与超时重试、卸载不停止、刷新按身份恢复、非本域 run 隔离、终态消息 |
 
 日常流程的入口覆盖已由 `server/routes/__tests__/agentRoutes.test.js` 与 `server/services/__tests__/schedulerRecovery.test.js` 的新增用例固定：手动、Dashboard 快捷（同一端点）、cron 与 Agent 入口共用一个 `run_daily_flow` 和同一执行租约，旧同步端点保持可用。FPR-011 把 Dashboard 快捷入口改为 `waitForCompletion=false` 并交给控制器观察，活动日常入口（`run_current_activity_copilots`）保持同步但同样采纳 `runId`；两处的端到端浏览器覆盖仍归 FPR-042。
 

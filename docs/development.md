@@ -103,11 +103,11 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 ### 已知缺陷的预期失败标记
 
-表征测试需要记录当前确实不满足目标不变量时，用 `it.fails` 而不是删除断言或写下“当前错误行为正确”的断言：CI 保持绿色，场景仍可执行，修复落地后该用例会转为失败。承接修复的任务必须删除 `.fails` 标记、保留原断言，并把它作为新行为的回归测试。用例名与注释要写明缺失的不变量，不能只写“当前行为”。现有示例见 `features/automation/pages/AutomationTasks.config.test.tsx` 与 `features/training/pages/OperatorTraining.test.tsx`；契约清单见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+表征测试需要记录当前确实不满足目标不变量时，用 `it.fails` 而不是删除断言或写下“当前错误行为正确”的断言：CI 保持绿色，场景仍可执行，修复落地后该用例会转为失败。承接修复的任务必须删除 `.fails` 标记、保留原断言，并把它作为新行为的回归测试。用例名与注释要写明缺失的不变量，不能只写“当前行为”。现有示例见 `pages/automation/AutomationTasks.config.test.tsx` 与 `pages/training/OperatorTraining.test.tsx`；契约清单见[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
 
 ### 依赖与职责护栏
 
-`client/scripts/check-guardrails.ts` 检查功能域依赖环、公开面/深路径、`app → features → shared` 分层方向、`task-execution` 反向依赖，以及页面文件直接持有传输/存储/轮询原语；同时输出 hooks/model/components/pages 的规模观察，并用 `size-budget.json` 拦截新增超阈值文件与同域页面疑似搬移（80% 阈值）。它已作为客户端 `verify` 的第一步，不依赖视觉基线。阈值依据、允许方向、更新规模基线与已知限制见[依赖与职责护栏](guardrails.md)。
+`client/scripts/check-guardrails.ts` 检查功能域依赖环、公开面/深路径、`app → pages → features → shared` 分层方向、`task-execution` 反向依赖，以及页面文件直接持有传输/存储/轮询原语；同时输出 hooks/model/components/pages 的规模观察，并用 `size-budget.json` 拦截新增超阈值文件与同域页面疑似搬移（80% 阈值）。它已作为客户端 `verify` 的第一步，不依赖视觉基线。阈值依据、允许方向、更新规模基线与已知限制见[依赖与职责护栏](guardrails.md)。
 
 ## 文件类型
 

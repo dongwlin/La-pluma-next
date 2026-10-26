@@ -85,7 +85,7 @@
 | `client/src/features/logs/hooks/useRealtimeLogs.test.tsx` | 手动暂停跨可见性保持与恢复立即读取、`enabled` 启停、文档隐藏取消在途读取 |
 | `client/src/features/logs/model/historyLogSession.test.ts` | 历史列表/读取竞态、返回实时、Activity 隐藏取消与恢复重试、清理后选择裁决 |
 | `client/src/features/logs/model/logCommands.test.ts` | 清空实时的 pause/clear/resume、清理历史的列表刷新与选择裁决、失败路径 |
-| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | Activity 隐藏停止并取消、显示立即重读、文档隐藏不发送、慢请求不叠加、清空期间暂停并在成功后立即重读、历史读取恢复重试、历史模式不重启实时；FPR-035 新增工具栏暂停停止轮询/继续立即读取、手动暂停跨 Activity 隐藏/恢复保留 |
-| `client/src/features/logs/pages/LogViewer.test.tsx` | 实时失败重试、后台刷新失败保留行、历史列表与文件重试、返回实时、切换竞态、清理确认与失败重试；FPR-035 新增暂停/继续、暂停时重试先恢复、暂停后清空保持暂停、暂停跨历史返回恢复、搜索与导出接线 |
+| `client/src/pages/logs/LogViewer.activity.test.tsx` | Activity 隐藏停止并取消、显示立即重读、文档隐藏不发送、慢请求不叠加、清空期间暂停并在成功后立即重读、历史读取恢复重试、历史模式不重启实时；FPR-035 新增工具栏暂停停止轮询/继续立即读取、手动暂停跨 Activity 隐藏/恢复保留 |
+| `client/src/pages/logs/LogViewer.test.tsx` | 实时失败重试、后台刷新失败保留行、历史列表与文件重试、返回实时、切换竞态、清理确认与失败重试；FPR-035 新增暂停/继续、暂停时重试先恢复、暂停后清空保持暂停、暂停跨历史返回恢复、搜索与导出接线 |
 | `client/src/features/logs/model/logExport.test.ts` | 导出行格式、空选择与 UTC 文件名 |
 | `client/src/features/logs/api/index.test.ts` | 实时与历史读取的 signal、payload 校验、取消保持 `AbortError` |

@@ -145,8 +145,8 @@
 | `features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、后续成功读取清空旧回退警告、迟到读取不覆盖编辑、保存前读取不覆盖已保存草稿、确认保存后重挂载采用服务端副本、服务端失败本地回退与无回退错误、坏服务端载荷与坏本地 JSON、编辑 dirty/revision/反馈清理、无效时间、保存 + 调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑为 `superseded`、保存互斥、抛错路径、reset |
 | `features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
 | `features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发使用图标的组件重渲染 |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试/不推进图标 epoch、CLI 成功只重取版本且不推进图标 epoch、core/热更新成功发布四类失效并推进图标 epoch、成功提示先于版本重取、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界、更新反馈与连接反馈互不串面板 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 更新/自动更新/版本状态不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新面板 |
+| `pages/settings/ConfigManager.layout.test.tsx` | 更新命令共享互斥、资源步骤失败重试、失败不发布/不重试/不推进图标 epoch、CLI 成功只重取版本且不推进图标 epoch、core/热更新成功发布四类失效并推进图标 epoch、成功提示先于版本重取、Activity 隐藏期间 core 更新继续且恢复后版本重取、自动更新保存跨 Activity 隐藏、迟到自动更新读取不覆盖编辑、既有自动更新保存/失败/调度失败边界、更新反馈与连接反馈互不串面板 |
+| `pages/settings/ConfigManager.subscriptions.test.tsx` | 更新/自动更新/版本状态不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新面板 |
 
 面板组合与完整回归清单见[设置领域面板](settings-panel.md)。
 
@@ -156,7 +156,7 @@
 pnpm --filter la-pluma-next-client exec vitest run \
   src/features/settings/model/updateCommands.test.ts \
   src/features/settings/model/autoUpdateConfig.test.ts \
-  src/features/settings/pages/ConfigManager.layout.test.tsx \
+  src/pages/settings/ConfigManager.layout.test.tsx \
   src/features/game-data/model/itemIconCache.test.ts \
   src/features/game-data/hooks/useItemIconCacheVersion.test.tsx
 ```

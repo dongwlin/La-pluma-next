@@ -97,6 +97,6 @@ FPR-027 记录的两个既有缺口在本项关闭：历史读取在 Activity �
 | `client/src/features/logs/model/historyLogSession.test.ts` | 列表成功/失败保留、列表旧响应、切换文件旧读取、返回实时丢弃、Activity 隐藏取消与恢复重试、成功/失败不自动重试、失败重试、清理后选择裁决、停止取消列表 |
 | `client/src/features/logs/model/logCommands.test.ts` | 清空成功/失败/异常/取消时的 pause/clear/resume 次序、手动暂停时清空保持暂停、清理成功刷新与裁决、清理失败/取消不刷新、列表失败/取消不裁决 |
 | `client/src/features/logs/api/index.test.ts` | 实时/列表/文件读取 signal、清空/清理命令的本地等待 signal、坏载荷、取消保持 `AbortError` |
-| `client/src/features/logs/pages/LogViewer.test.tsx` | 返回实时立即重读且不残留旧实时/历史内容、旧历史响应、模式与自动滚动生命期、清理确认与列表刷新、清理失败保持弹层并重试、清空失败保留行并恢复轮询；暂停跨历史返回恢复、搜索跨模式保持 |
-| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | 历史读取隐藏取消与恢复重试、历史模式恢复不重启实时、列表刷新失败保留内容并重试、清空期间暂停与命令槽位、卸载取消清空本地等待；手动暂停跨 Activity 保留 |
+| `client/src/pages/logs/LogViewer.test.tsx` | 返回实时立即重读且不残留旧实时/历史内容、旧历史响应、模式与自动滚动生命期、清理确认与列表刷新、清理失败保持弹层并重试、清空失败保留行并恢复轮询；暂停跨历史返回恢复、搜索跨模式保持 |
+| `client/src/pages/logs/LogViewer.activity.test.tsx` | 历史读取隐藏取消与恢复重试、历史模式恢复不重启实时、列表刷新失败保留内容并重试、清空期间暂停与命令槽位、卸载取消清空本地等待；手动暂停跨 Activity 保留 |
 | `client/src/features/logs/model/realtimeLogStream.test.ts`、`hooks/useRealtimeLogs.test.tsx`、`api/index.test.ts` | FPR-027 已覆盖的实时轮询、暂停恢复与 API 取消契约 |

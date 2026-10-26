@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面壳、页头与全局状态指示 | `features/statistics/pages/DataStatistics.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区 |
+| 页面壳、页头与全局状态指示 | `pages/statistics/DataStatistics.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区 |
 | 当前 tab、命令投影与失效订阅 | `features/statistics/components/StatisticsWorkspace.tsx` | 跨面板唯一容器；tab 不写入存储或 URL |
 | tab 分段控件的测量与键盘导航 | `features/statistics/components/StatisticsTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 干员读取、筛选/排序、筛选菜单、头像缓存 | `features/statistics/components/OperatorPanel.tsx` | 读取 `operbox` 与 `catalog` 两路 Query |
@@ -90,7 +90,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 | `features/statistics/model/depotSummary.test.ts` | 分类标签、分组顺序与并列顺序、服务端物品数、材料种类、总量、最大库存、空快照 |
 | `features/statistics/model/dropRecords.test.ts` | 材料/关卡降序、并列顺序、图标身份、空记录、展示上限 |
 | `features/statistics/model/operatorFilters.test.ts` | 既有筛选/排序与阿米娅规则 |
-| `features/statistics/pages/DataStatistics.layout.test.tsx` | tab 键盘切换、四路首屏并行、独立错误与重试、筛选跨 tab 保留、识别快照/失效、命令单飞与超时继续、Activity 隐藏/恢复、图标失败回退 |
+| `pages/statistics/DataStatistics.layout.test.tsx` | tab 键盘切换、四路首屏并行、独立错误与重试、筛选跨 tab 保留、识别快照/失效、命令单飞与超时继续、Activity 隐藏/恢复、图标失败回退 |
 | `features/statistics/model/commandOwner.test.ts` | 命令所有者既有超时/取消/继续/发布回归 |
 | `features/statistics/model/queries.test.ts`、`api/index.test.ts` | 掉落/今日资源的 key、signal 与信封归一 |
 

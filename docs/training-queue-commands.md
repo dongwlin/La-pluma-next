@@ -115,10 +115,10 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 | --- | --- |
 | `features/training/model/queueCommands.test.ts` | 并发排序按最新快照串行、重复添加合并、写后刷新失败 fallback/`uncertain`、写入失败不提交不发布、移除后撤销按原索引恢复、目标干员消失时拒绝排序、写前取消读取 |
 | `features/training/model/queries.test.ts` | `queue` key、signal、快照元数据与失败信封 |
-| `features/training/pages/OperatorTraining.test.tsx` | 队列读取迁移后原有交互；移除进行中排队排序、写后刷新失败的 fallback/警告/重载、跨页失效作用域与自发布忽略、计划 revision 失效、Activity 隐藏恢复；FPR-023 撤销开始作废旧计划 |
+| `pages/training/OperatorTraining.test.tsx` | 队列读取迁移后原有交互；移除进行中排队排序、写后刷新失败的 fallback/警告/重载、跨页失效作用域与自发布忽略、计划 revision 失效、Activity 隐藏恢复；FPR-023 撤销开始作废旧计划 |
 | `features/training/model/planCommands.test.ts` | 计划生成/应用/同步的版本裁决、automation 配置写入屏障、部分成功与失效发布 |
 | `features/training/model/settingsCommands.test.ts`、`planValidity.test.ts` | 设置串行写入、旧响应裁决与计划版本前提（FPR-022，见[养成设置提交与计划有效期](training-settings-and-plan-validity.md)） |
-| `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 接收端完整刷新与单路失败保旧 |
+| `pages/dashboard/Dashboard.test.tsx` | `dashboard-snapshot` 接收端完整刷新与单路失败保旧 |
 | `features/resource-invalidation/**` | 失效端口去重、revision、Activity 恢复补发 |
 
 针对性命令（仓库根目录）：
@@ -127,8 +127,8 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 pnpm --filter la-pluma-next-client exec vitest run \
   src/features/training/model/queueCommands.test.ts \
   src/features/training/model/queries.test.ts \
-  src/features/training/pages/OperatorTraining.test.tsx \
-  src/features/dashboard/pages/Dashboard.test.tsx \
+  src/pages/training/OperatorTraining.test.tsx \
+  src/pages/dashboard/Dashboard.test.tsx \
   src/features/resource-invalidation
 ```
 

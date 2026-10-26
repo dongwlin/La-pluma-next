@@ -128,12 +128,12 @@ executionController.settleExecutionIntent(intent, result)
 | 文件 | 覆盖 |
 | --- | --- |
 | `features/statistics/model/commandOwner.test.ts` | 控制器 intent/幂等键、仓库与干员快照、材料刷新、单飞、解析轮询、解析超时后继续不重提、命令超时后复用同一幂等键并等待回放 Run、失败/拒绝、取消后继续 |
-| `features/statistics/pages/DataStatistics.layout.test.tsx` | 页面订阅命令状态、识别快照写入 Query、`depot`/`operbox`/`materials` 失效事件、按作用域失效、运行中不重复提交、超时后“继续解析”不重执行、Activity 隐藏/恢复 |
+| `pages/statistics/DataStatistics.layout.test.tsx` | 页面订阅命令状态、识别快照写入 Query、`depot`/`operbox`/`materials` 失效事件、按作用域失效、运行中不重复提交、超时后“继续解析”不重执行、Activity 隐藏/恢复 |
 | `features/statistics/components/FilterMenu.test.tsx`、`components/DropPanel.test.tsx` | FPR-032 面板化后的筛选菜单 portal/焦点/键盘，以及非当前 tab 仍启动读取、周期切换与重试 |
 | `features/statistics/api/index.test.ts` | 解析端点的 signal 与 POST 形状；既有掉落/开放关卡读取 |
 | `features/training/api/index.test.ts` | 材料刷新脚本的 signal 与 POST 形状 |
-| `features/training/pages/OperatorTraining.test.tsx` | `materials`/`depot`/`operbox` 失效后重读队列、候选与计数并作废旧计划 |
-| `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发完整快照刷新，单路失败保留旧快照 |
+| `pages/training/OperatorTraining.test.tsx` | `materials`/`depot`/`operbox` 失效后重读队列、候选与计数并作废旧计划 |
+| `pages/dashboard/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发完整快照刷新，单路失败保留旧快照 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | Activity 隐藏期间错过发布后的恢复补发 |
 
 针对性命令（仓库根目录）：
@@ -143,8 +143,8 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/statistics \
   src/features/resource-invalidation \
   src/features/training/api/index.test.ts \
-  src/features/training/pages/OperatorTraining.test.tsx \
-  src/features/dashboard/pages/Dashboard.test.tsx
+  src/pages/training/OperatorTraining.test.tsx \
+  src/pages/dashboard/Dashboard.test.tsx
 ```
 
 ## 关联

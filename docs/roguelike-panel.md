@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面壳、页头与预览布局 | `features/roguelike/pages/RoguelikeTasks.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区 |
+| 页面壳、页头与预览布局 | `pages/roguelike/RoguelikeTasks.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区 |
 | 当前模式、配置订阅、执行订阅与同步反馈 | `features/roguelike/components/RoguelikeWorkspace.tsx` | 跨面板状态的唯一容器；模式选择不写入持久化载荷 |
 | 模式分段控件的测量与键盘导航 | `features/roguelike/components/RoguelikeModePanel.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 主题快捷项与自定义代号 | `features/roguelike/components/RoguelikeThemePanel.tsx` | 从草稿派生值，编辑经回调交给工作区 |
@@ -83,7 +83,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 | --- | --- |
 | `client/src/features/roguelike/model/roguelikeTasks.test.ts` | 任务目录、主题快捷项、高级选项表、命令顺序、空值过滤、reclamation 参数、输入不变性与校验 |
 | `client/src/features/roguelike/model/roguelikeConfig.test.ts` | 配置适配器原有回归（key、本地键、wire、载荷校验、提交与读取失败） |
-| `client/src/features/roguelike/pages/RoguelikeTasks.test.tsx` | 模式键盘导航与标签关联、模式切换、高级字段进入命令、按当前模式提交、空主题拒绝、跨模式草稿合并、Activity 隐藏/恢复与 remount 的模式生命期、配置 pending/重试/迟到加载、执行提交/停止/超时/失败/断线恢复 |
+| `client/src/pages/roguelike/RoguelikeTasks.test.tsx` | 模式键盘导航与标签关联、模式切换、高级字段进入命令、按当前模式提交、空主题拒绝、跨模式草稿合并、Activity 隐藏/恢复与 remount 的模式生命期、配置 pending/重试/迟到加载、执行提交/停止/超时/失败/断线恢复 |
 
 针对性命令（仓库根目录）：
 

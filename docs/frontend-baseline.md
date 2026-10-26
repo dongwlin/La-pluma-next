@@ -43,13 +43,13 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 `app/router/pages.ts` 注册八页；`AppRoutes` 归一 URL，`VisitedWorkspaces` 保留已访问页面并以 `Activity` 切换。URL 是导航事实来源，`Layout` 保存每个 tab 的滚动位置。Activity 隐藏保留 React 状态，清理 Effects，显示后重新运行 Effects；真正卸载/刷新会销毁页面状态。`usePageVisible` 只读取浏览器 `document.visibilityState`，不代表页面 tab 是否选中。
 
-事件处理器已经发出的异步操作不会因 Effect 清理自动取消。跨页任务、配置写入与共享资源不能依靠页面挂载维持所有权。后续依赖仍遵守 `app → features → shared`；app 组装 Provider/控制器，业务协调留在对应 feature，shared 仅放传输与通用 UI。
+事件处理器已经发出的异步操作不会因 Effect 清理自动取消。跨页任务、配置写入与共享资源不能依靠页面挂载维持所有权。后续依赖遵守 `app → pages → features → shared`；app 组装 Provider/控制器，pages 只组合页头与领域工作区，业务协调留在对应 feature，shared 仅放传输与通用 UI。
 
 ## 八页职责矩阵
 
 路径下文均相对 `client/src`；每页条目覆盖页面以及经 feature 根调用的业务能力。“资源域”表示未来独立于页面的唯一资源所有者；本基线采集时没有 Query 缓存或统一失效总线，FPR-017 已补应用级 Query 基础设施，页面读取迁移仍由后续任务完成（见 [Query 缓存与键规范](query-cache.md)）。FPR-018 已把仓库、持有干员与干员目录的读取归属迁到 `features/game-data`，并交付跨域失效端口；下表“当前”列仍描述 `af3634d` 基线，最新归属与失效契约见[共享资源归属与失效端口](resource-ownership.md)。UI 状态保留策略另列在生命周期表。
 
-### Automation — `features/automation/pages/AutomationTasks.tsx`
+### Automation — `pages/automation/AutomationTasks.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 存储完整清单：`maa-task-flow`、`maa-schedule` 读写；`automationConfigSyncPending` 读写/成功删除；`maa-task-flow-execution` 初始化读取、逐步写入、完成/停止/提交失败删除（超时保留）。旧断点包含执行语义，不能和普通配置一起自动重放。领域草稿为协调器中的 taskFlow/schedule；picker 开关与焦点归 `AutomationTaskPicker`，selectedTaskId/撤销/连接反馈归 `AutomationWorkspace`，拖拽预览/公告归 `useTaskFlowSorting`，执行详情归 `AutomationExecutionSummary`；running/stopping/currentStep/taskResults 是执行投影；当前活动由 `automation/activity` Query 展示（FPR-039）。
 
-### Combat — `features/combat/pages/CombatTasks.tsx`
+### Combat — `pages/combat/CombatTasks.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 存储完整清单（均读写）：`combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections`；`combatConfigSyncPending` 读写/成功删除。FPR-029 后搜索/预览由 Query 观察者与 `CopilotPreviewSession` 的请求代次裁决，执行仍由控制器 generation/stop-wait 裁决；没有独立后台运行身份。FPR-036 后页面壳只组合工作区，搜索词、识别方式与搜索选中项是面板会话状态，不写入上述存储。
 
-### Roguelike — `features/roguelike/pages/RoguelikeTasks.tsx`
+### Roguelike — `pages/roguelike/RoguelikeTasks.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -84,7 +84,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 观察/停止 | `features/roguelike/hooks/useRoguelikeExecution.ts` 订阅 `task-execution` 控制器快照；提交/停止按本客户端持有的 runId，停止确认 15s 超时解锁；页面隐藏/卸载不停止 run | 应用级 task-execution 控制器（FPR-008 已接入） |
 | UI | `pages/RoguelikeTasks.tsx` 只组合页头与工作区；`components/RoguelikeWorkspace.tsx` 持有 activeMode、配置订阅、同步错误/重试与执行订阅；`RoguelikeModePanel` 负责分段控件测量/键盘，主题与策略面板只渲染草稿并回调；running/stopping 来自控制器 | 模式/字段归面板；草稿归配置所有者，执行状态只订阅（FPR-031） |
 
-### Dashboard — `features/dashboard/pages/Dashboard.tsx`
+### Dashboard — `pages/dashboard/Dashboard.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 缓存 | `dashboard/store/dashboardStore.ts` 管 `la-pluma-dashboard-cache` v1 读写/重置删除；验 shape、未来偏差 60s；仅完整快照持久化（夹带设备值/历史），独立采样不写存储；最多 36 温度样本；`dashboard/snapshot` 协调读取 `gcTime: 0`，不长期保留第二份快照 | dashboard 快照 store |
 | UI/布局/预览 | FPR-040 起页面只组合 `DashboardWorkspace`：连接提示、流程/预览、设备状态与摘要分别在 `DashboardConnectionAlert`、`DashboardFlowSection`（含 `DashboardFlowPanel`）、`DashboardDeviceSection`、`DashboardSummarySection`（两张摘要卡）；预检/启动 loading 与反馈留在流程卡，命令文案与设备曲线由 `model/flowView.ts`/`model/deviceView.ts` 纯派生；`useDashboardFlowLayout` matchMedia(1280)、ResizeObserver、window resize、rAF；`useDashboardPreview` 预览会话 | 局部反馈与布局 hook；预览归 device-mirror 会话（FPR-040） |
 
-### Statistics — `features/statistics/pages/DataStatistics.tsx`
+### Statistics — `pages/statistics/DataStatistics.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -106,7 +106,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 无业务 localStorage（执行控制器持久化的是 Run 身份，不属于本页）。命令所有者是模块级单例，识别在 Activity hidden 后仍会继续完成并写入 Query 快照；重新显示时按失效 revision 补一次读取。
 
-### Training — `features/training/pages/OperatorTraining.tsx`
+### Training — `pages/training/OperatorTraining.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -119,7 +119,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 无业务 localStorage；queue 已由 FPR-021 迁入 `training/queue` Query 与串行领域命令，页面只读取快照并订阅 pending；设置已由 FPR-022 迁入 `model/settingsCommands.ts` 的模块级所有者（不进入 Query）；计划生成/应用/同步在 FPR-023 后由 `model/planCommands.ts` 的模块级所有者持有，页面只订阅状态并调用动作。候选与计数由 Query 持有：key 含筛选参数、signal 取消、列表失败清空/计数静默保旧。FPR-033 起页面只组合 `TrainingWorkspace`，面板 JSX 与 DOM 未改，状态归属见[养成领域面板](training-panel.md)。命令的串行链与 pending 状态是模块级所有者，Activity 隐藏/页面 remount 不重建；写后刷新失败时缓存保存带 `uncertain` 的本地 fallback，重新加载后清除。外部 depot/operbox/material/resource 更新经 resource-invalidation 端口到达，按作用域失效候选/计数或重读队列；本页忽略自己的队列发布。
 
-### Settings — `features/settings/pages/ConfigManager.tsx`
+### Settings — `pages/settings/ConfigManager.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/资源更新成功后按作用域失效目录、材料、计划前提与总览，并推进物品图标 epoch；CLI 只失效版本。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。FPR-034 起页面只组合 `SettingsWorkspace`；连接、设备、目录与更新面板各自订阅所属所有者/Query，设备/更新状态不重渲染连接表单。设备发现/连接测试在 Activity 隐藏时取消本地等待，已完成结果保留；section 切换不取消在途命令，设备面板从 owner 恢复显示。版本与配置目录 Query 随观察者注销/恢复；更新命令与自动更新保存不因 Activity 隐藏中断，反馈与草稿由模块级 owner 保留。详见[设置领域面板](settings-panel.md)。
 
-### Logs — `features/logs/pages/LogViewer.tsx` + `components/LogsWorkspace.tsx`
+### Logs — `pages/logs/LogViewer.tsx` + `components/LogsWorkspace.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |

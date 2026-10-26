@@ -262,13 +262,13 @@ function CombatTasks() {
 | `features/user-config/model/configCoordinator.test.ts` | 非 React：服务端加载与迁移、未同步草稿优先、损坏草稿回退、迟到加载丢弃、强制刷新中止旧加载、提交串行与旧提交不确认新草稿、标记被外部替换、去抖合并、内容等价跳过、完整提交失败与重试防重入、编辑中断重试、跨重挂载队列与状态、异构适配器拒绝、`settle` 写入屏障等待在途提交并报告失败草稿 |
 | `features/user-config/hooks/useUserConfig.test.tsx` | 首次加载与订阅渲染、编辑写回、`autoHydrate: false`、失败提示与重试后清空 |
 | `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状、缺省字段与非法载荷解码、本地键损坏清理、完整提交与读取失败信封 |
-| `features/roguelike/pages/RoguelikeTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、坏草稿回退服务端、迟到加载不覆盖编辑、Activity 隐藏/恢复 |
+| `pages/roguelike/RoguelikeTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、坏草稿回退服务端、迟到加载不覆盖编辑、Activity 隐藏/恢复 |
 | `features/combat/model/combatConfig.test.ts` | 作业适配器：原 key/pending/本地键/300ms、wire 形状、`app→cli` 与 raid `1`/`2` 迁移、缺省字段与非法载荷解码、本地键损坏清理、裸字符串执行方式、完整提交与读取失败信封 |
-| `features/combat/pages/CombatTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、迟到加载不覆盖编辑、坏草稿回退服务端、本地与服务端 `app→cli`/raid 迁移、set 模式与待执行索引回填、Activity 隐藏/恢复 |
+| `pages/combat/CombatTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、迟到加载不覆盖编辑、坏草稿回退服务端、本地与服务端 `app→cli`/raid 迁移、set 模式与待执行索引回填、Activity 隐藏/恢复 |
 | `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交、wire 去掉界面字段、`entries`/`times` 兼容、任务参数迁移与客户端类型同步、非法载荷解码、本地键损坏清理、配置+schedule 完整提交、schedule 半失败、保存期间新草稿跳过旧 schedule、禁用项参与的本地草稿指纹、读取失败信封 |
-| `features/automation/pages/AutomationTasks.config.test.tsx` | 页面接线：配置/schedule 全成功才清 pending、保存失败不碰 schedule、半失败页内重试、禁用与全禁用 schedule、编辑/删除禁用时间点仍写回本地、跨 remount 串行提交与旧响应保护、迟到加载、stale pending 回退服务端、计划失效重读等待在途保存、Activity 恢复补发及本地禁用时间点保留 |
-| `features/automation/pages/AutomationTasks.layout.test.tsx` | pending 本地优先、在途服务端响应不覆盖新草稿、hydrate 不重建 schedule、Activity 恢复、拖拽/表单接线 |
-| `features/automation/pages/AutomationTasks.execution.test.tsx` | Run 提交、停止、流程进度与旧断点只观察不重提 |
+| `pages/automation/AutomationTasks.config.test.tsx` | 页面接线：配置/schedule 全成功才清 pending、保存失败不碰 schedule、半失败页内重试、禁用与全禁用 schedule、编辑/删除禁用时间点仍写回本地、跨 remount 串行提交与旧响应保护、迟到加载、stale pending 回退服务端、计划失效重读等待在途保存、Activity 恢复补发及本地禁用时间点保留 |
+| `pages/automation/AutomationTasks.layout.test.tsx` | pending 本地优先、在途服务端响应不覆盖新草稿、hydrate 不重建 schedule、Activity 恢复、拖拽/表单接线 |
+| `pages/automation/AutomationTasks.execution.test.tsx` | Run 提交、停止、流程进度与旧断点只观察不重提 |
 
 复现命令（仓库根目录）：
 

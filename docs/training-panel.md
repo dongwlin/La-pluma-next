@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面壳 | `features/training/pages/OperatorTraining.tsx` | 只渲染 `app-page`/`data-page` 并组合工作区 |
+| 页面壳 | `pages/training/OperatorTraining.tsx` | 只渲染 `app-page`/`data-page` 并组合工作区 |
 | 页头、工作区布局与共享版本边界 | `features/training/components/TrainingWorkspace.tsx` | 队列读取、计划/设置/队列命令适配、失效订阅、选择器开关与操作错误 |
 | 队列列表、行内操作与撤销提示 | `features/training/components/TrainingQueuePanel.tsx` | 操作成功后把焦点还给队列标题；`UndoToast` 跟随该面板渲染 |
 | 当前目标材料 | `features/training/components/TrainingMaterialsPanel.tsx` | 只从队列首位派生，不读取资源 |
@@ -129,7 +129,7 @@ OperatorTraining（页面壳）
 | `features/training/components/OperatorPicker.test.tsx` | 搜索与无结果空态、分批渲染与“继续显示”、关闭再打开保留搜索与游标 |
 | `features/training/components/MaterialViews.test.tsx` | 表格 role/列头/缺口与已齐、嵌套合成层级 |
 | `features/training/components/UndoToast.test.tsx` | portal 在页面容器外、`role="status"`/`aria-live`、8 秒关闭、悬停/焦点/pending 暂停、失焦恢复 |
-| `features/training/pages/OperatorTraining.test.tsx` | 既有 56 项回归：队列增删排序撤销、写后刷新 fallback、设置串行、计划版本/生成/应用/部分成功、选择器焦点、Activity 隐藏恢复、材料展示与错误重试 |
+| `pages/training/OperatorTraining.test.tsx` | 既有 56 项回归：队列增删排序撤销、写后刷新 fallback、设置串行、计划版本/生成/应用/部分成功、选择器焦点、Activity 隐藏恢复、材料展示与错误重试 |
 | `features/training/model/queueCommands.test.ts`、`settingsCommands.test.ts`、`planCommands.test.ts`、`planValidity.test.ts` | 领域所有者既有回归（本任务未改） |
 
 针对性命令（仓库根目录）：

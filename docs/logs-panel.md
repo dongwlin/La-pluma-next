@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面壳 | `features/logs/pages/LogViewer.tsx` | 只渲染 `app-page`/`app-stack-section`、页头、状态指示与工作区 |
+| 页面壳 | `pages/logs/LogViewer.tsx` | 只渲染 `app-page`/`app-stack-section`、页头、状态指示与工作区 |
 | 跨面板视图状态 | `features/logs/components/LogsWorkspace.tsx` | 内容模式、级别、搜索、折叠、自动滚动、通知与确认动作；组合 `useLogsSession` |
 | 摘要/原始模式分段 | `features/logs/components/LogContentModeTabs.tsx` | 受控 tab、流体高亮与方向键导航；测量跟随组件 |
 | 工具栏 | `features/logs/components/LogsToolbar.tsx` | 自动滚动/折叠开关、级别、搜索、暂停、清空与导出入口 |

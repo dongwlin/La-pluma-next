@@ -170,10 +170,10 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化，成功排�
 | --- | --- |
 | `client/src/features/automation/model/flowExecution.test.ts` | 摘要来源优先级、活动/空闲/提交在途的逐项结果、当前步骤映射、单项状态与文案 |
 | `client/src/features/automation/components/AutomationExecutionSummary.test.tsx` | 首次摘要前不渲染、提交在途保留上一份、失败自动展开、手动收起保持、新 run 重新展开、阶段/上报/警告详情 |
-| `client/src/features/automation/pages/AutomationTasks.layout.test.tsx` | 活动 Query 展示、定时新增/上限/重复拒绝、拖拽在 lostpointercapture 后仍提交、Escape/pointercancel 取消、键盘排序、既有布局与编辑接线 |
-| `client/src/features/automation/pages/AutomationTasks.config.test.tsx` | 配置与 schedule 完整提交、半失败重试、跨 remount 串行、迟到加载、Activity 恢复（Query Provider 包装） |
-| `client/src/features/automation/pages/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交、停止、流程进度、旧断点、摘要展示与 Activity 恢复（Query Provider 包装） |
-| `client/src/features/automation/pages/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不停止、不重提 |
+| `client/src/pages/automation/AutomationTasks.layout.test.tsx` | 活动 Query 展示、定时新增/上限/重复拒绝、拖拽在 lostpointercapture 后仍提交、Escape/pointercancel 取消、键盘排序、既有布局与编辑接线 |
+| `client/src/pages/automation/AutomationTasks.config.test.tsx` | 配置与 schedule 完整提交、半失败重试、跨 remount 串行、迟到加载、Activity 恢复（Query Provider 包装） |
+| `client/src/pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交、停止、流程进度、旧断点、摘要展示与 Activity 恢复（Query Provider 包装） |
+| `client/src/pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不停止、不重提 |
 | `client/src/features/automation/model/taskFlowSort.test.ts`、`automationSchedule.test.ts` | 排序与定时规则本体（FPR-037 回归） |
 
 针对性命令（仓库根目录）：

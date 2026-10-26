@@ -168,7 +168,7 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 | `features/game-data/model/queries.test.ts` | 共享读取的 query key、空快照、载荷归一、失败与 signal |
 | `features/statistics/model/queries.test.ts`、`features/statistics/model/operatorFilters.test.ts` | 掉落 `days` 缓存身份；筛选、排序与阿米娅形态纯规则 |
 | `features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、日志解析等待、超时/取消/继续与失效发布 |
-| `features/statistics/pages/DataStatistics.layout.test.tsx` | 统计页按作用域失效；独立错误边界、首屏并行、缓存复用、识别快照写入、命令状态与筛选状态生命周期 |
+| `pages/statistics/DataStatistics.layout.test.tsx` | 统计页按作用域失效；独立错误边界、首屏并行、缓存复用、识别快照写入、命令状态与筛选状态生命周期 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 去重发布、空发布忽略、revision、注销、监听器异常隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、首挂载不补发、Activity 隐藏/恢复补发、卸载注销、最新 handler |
 | `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、引用稳定 |
@@ -176,13 +176,13 @@ Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新�
 | `features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key、signal、失败信封、补齐读取与结构共享 |
 | `features/training/model/settingsCommands.test.ts` | 设置串行提交、旧响应裁决与写成功后发布 `training-plan`（FPR-022） |
 | `features/training/model/planCommands.test.ts` | 计划生成/应用的版本裁决、重复触发合并、automation 配置写入屏障、部分成功与失效发布（FPR-023） |
-| `features/automation/pages/AutomationTasks.config.test.tsx` | `automation-config`/`automation-schedule` 失效重读、Activity 恢复补发、在途保存等待与本地禁用时间点保留 |
-| `features/training/pages/OperatorTraining.test.tsx` | 队列命令接线与写后刷新失败、跨页失效作用域与自发布忽略；目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧、目录失败与仅计数失败；筛选迟到响应与 Activity 恢复；设置提交与计划版本前提；FPR-023 计划编排迁移、应用等待在途配置保存、部分成功重读与三类失效发布 |
-| `features/dashboard/pages/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照；识别/计划/资源更新作用域；Activity 隐藏期间失效恢复 |
+| `pages/automation/AutomationTasks.config.test.tsx` | `automation-config`/`automation-schedule` 失效重读、Activity 恢复补发、在途保存等待与本地禁用时间点保留 |
+| `pages/training/OperatorTraining.test.tsx` | 队列命令接线与写后刷新失败、跨页失效作用域与自发布忽略；目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧、目录失败与仅计数失败；筛选迟到响应与 Activity 恢复；设置提交与计划版本前提；FPR-023 计划编排迁移、应用等待在途配置保存、部分成功重读与三类失效发布 |
+| `pages/dashboard/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照；识别/计划/资源更新作用域；Activity 隐藏期间失效恢复 |
 | `features/dashboard/model/snapshot.test.ts`、`model/queries.test.ts`、`model/snapshotRefresher.test.ts` | 五路归一与坏载荷、领域 key/signal、单飞/force 与原子提交（FPR-030） |
 | `features/device-mirror/hooks/useDeviceStatsSample.test.tsx`、`model/queries.test.ts` | 设备采样轮询、失败保旧、Activity 恢复单计时器与 Query 契约（FPR-030） |
 | `features/settings/model/updateCommands.test.ts` | 更新命令互斥与重复忽略、core/热更新失败详情与资源重试条件、成功作用域声明（FPR-026） |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | core/渠道/热更新成功发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`；失败不发布不重试；CLI 只失效版本（FPR-026） |
+| `pages/settings/ConfigManager.layout.test.tsx` | core/渠道/热更新成功发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`；失败不发布不重试；CLI 只失效版本（FPR-026） |
 | `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 掉落/关卡、识别解析与材料刷新的端点、signal 与载荷校验 |
 
 针对性命令（仓库根目录）：
@@ -195,15 +195,15 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/training/model \
   src/features/statistics/api/index.test.ts \
   src/features/training/api/index.test.ts \
-  src/features/statistics/pages/DataStatistics.layout.test.tsx \
+  src/pages/statistics/DataStatistics.layout.test.tsx \
   src/features/statistics/components/DropRecords.test.tsx \
-  src/features/training/pages/OperatorTraining.test.tsx \
-  src/features/dashboard/pages/Dashboard.test.tsx \
+  src/pages/training/OperatorTraining.test.tsx \
+  src/pages/dashboard/Dashboard.test.tsx \
   src/features/dashboard/model \
   src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx \
   src/features/device-mirror/model/queries.test.ts \
   src/features/settings/model/updateCommands.test.ts \
-  src/features/settings/pages/ConfigManager.layout.test.tsx
+  src/pages/settings/ConfigManager.layout.test.tsx
 ```
 
 完整 `pnpm --filter la-pluma-next-client verify` 与视觉比对由任务完成记录给出。

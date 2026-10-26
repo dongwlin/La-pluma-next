@@ -151,7 +151,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 | `features/training/model/settingsCommands.test.ts` | 默认值；串行编辑与旧响应不覆盖新值；旧失败不打断新草稿；最新失败回滚；服务端归一化；缺省响应回退；等值编辑忽略；首次 hydrate 只采用一次；编辑后拒绝迟到快照；写入期间忽略快照、之后采用显式重载；reset 丢弃迟到写入；成功才发布 `training-plan`；失败原因兜底 |
 | `features/training/model/planValidity.test.ts` | basis 捕获与空 revision；队列/设置版本任一不符即失效；刷新失败、busy、无队列时禁止生成；版本失效、刷新失败、无计划时禁止应用 |
 | `features/training/model/planCommands.test.ts` | 生成前权威重读与 basis 冻结；采用外部设置后仍接受按新版本生成的计划；生成期间设置/队列版本变化丢弃旧响应；响应 queueRevision 不符；重复生成/应用只发一个请求；应用前排空 automation 配置并在 pending 时拒绝；排空后二次校验；应用成功发布三类作用域；部分成功（schedule 注册失败、应用后重读失败）；同步重试的失败/部分成功；外部 revision 作废旧计划 |
-| `features/training/pages/OperatorTraining.test.tsx` | 设置串行写入与旧响应；设置跨页面重挂载串行；设置失败回滚与重试；设置变化作废旧计划并按新设置重新预览/应用；生成期间设置变化不展示旧计划；写入期间生成的预览不被自身发布清空；权威重读采用外部设置并作废旧计划；队列刷新失败时禁用生成/应用、重载后重新预览恢复；应用等待在途 automation 保存；部分成功提示与重读入口；撤销开始即作废旧计划；应用成功发布 automation/schedule/总览失效且不再派发 window 事件；目录失败清空候选并保留计数；仅计数失败时列表保留、计数保旧 |
+| `pages/training/OperatorTraining.test.tsx` | 设置串行写入与旧响应；设置跨页面重挂载串行；设置失败回滚与重试；设置变化作废旧计划并按新设置重新预览/应用；生成期间设置变化不展示旧计划；写入期间生成的预览不被自身发布清空；权威重读采用外部设置并作废旧计划；队列刷新失败时禁用生成/应用、重载后重新预览恢复；应用等待在途 automation 保存；部分成功提示与重读入口；撤销开始即作废旧计划；应用成功发布 automation/schedule/总览失效且不再派发 window 事件；目录失败清空候选并保留计数；仅计数失败时列表保留、计数保旧 |
 
 针对性命令（仓库根目录）：
 
@@ -160,9 +160,9 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/training/model/settingsCommands.test.ts \
   src/features/training/model/planValidity.test.ts \
   src/features/training/model/planCommands.test.ts \
-  src/features/training/pages/OperatorTraining.test.tsx \
-  src/features/automation/pages/AutomationTasks.config.test.tsx \
-  src/features/dashboard/pages/Dashboard.test.tsx
+  src/pages/training/OperatorTraining.test.tsx \
+  src/pages/automation/AutomationTasks.config.test.tsx \
+  src/pages/dashboard/Dashboard.test.tsx
 ```
 
 完整 `pnpm --filter la-pluma-next-client verify` 与 72 张视觉比对由任务完成记录给出；本文件不声称未执行的验证。
