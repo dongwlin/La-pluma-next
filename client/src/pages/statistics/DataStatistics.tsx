@@ -8,7 +8,7 @@
 
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
-import StatisticsWorkspace from '../components/StatisticsWorkspace'
+import { StatisticsWorkspace } from '@/features/statistics'
 
 export default function DataStatistics() {
   return (

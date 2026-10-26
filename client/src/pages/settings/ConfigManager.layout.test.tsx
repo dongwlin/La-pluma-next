@@ -10,12 +10,12 @@ import {
   subscribeResourceInvalidation,
   type ResourceInvalidation,
 } from '@/features/resource-invalidation'
-import { settingsAutoUpdateOwner } from '../model/autoUpdateConfig'
-import { settingsConnectionOwner } from '../model/connectionConfig'
-import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '../model/configSection'
-import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
-import { settingsUpdateOwner } from '../model/updateCommands'
-import { settingsKeys } from '../model/queryKeys'
+import { settingsAutoUpdateOwner } from '@/features/settings/model/autoUpdateConfig'
+import { settingsConnectionOwner } from '@/features/settings/model/connectionConfig'
+import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '@/features/settings/model/configSection'
+import { settingsDeviceConnectionOwner } from '@/features/settings/model/deviceConnection'
+import { settingsUpdateOwner } from '@/features/settings/model/updateCommands'
+import { settingsKeys } from '@/features/settings/model/queryKeys'
 import ConfigManager from './ConfigManager'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -63,7 +63,7 @@ vi.mock('@/shared/api', async importOriginal => {
   }
 })
 
-vi.mock('../api', () => ({
+vi.mock('@/features/settings/api', () => ({
   discoverDevices: mocks.discoverDevices,
   getConfig: mocks.getConfig,
   getConfigDir: mocks.getConfigDir,

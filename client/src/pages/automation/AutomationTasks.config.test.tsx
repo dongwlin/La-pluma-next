@@ -44,7 +44,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../api', () => ({
+vi.mock('@/features/automation/api', () => ({
   getActivity: mocks.getActivity,
   getScheduleExecutionStatus: mocks.getScheduleExecutionStatus,
   setupSchedule: mocks.setupSchedule,
@@ -101,7 +101,7 @@ vi.mock('@/features/runtime-status', () => ({
 }))
 
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
-vi.mock('../components/NotificationSettings', () => ({ default: () => <div /> }))
+vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => <div /> }))
 
 class IntersectionObserverMock {
   observe() {}

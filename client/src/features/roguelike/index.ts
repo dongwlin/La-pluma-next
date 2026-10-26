@@ -4,4 +4,4 @@
 
 import './styles/roguelike.css'
 
-export { default } from './pages/RoguelikeTasks'
+export { default as RoguelikeWorkspace } from './components/RoguelikeWorkspace'

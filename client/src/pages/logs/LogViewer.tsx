@@ -8,7 +8,7 @@
 
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
-import LogsWorkspace from '../components/LogsWorkspace'
+import { LogsWorkspace } from '@/features/logs'
 
 export default function LogViewer() {
   return (

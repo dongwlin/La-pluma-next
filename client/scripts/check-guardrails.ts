@@ -39,7 +39,7 @@ const BUDGET_PATH = path.join(clientRoot, 'size-budget.json')
 const updateSizeBaseline = process.argv.includes('--update-size-baseline')
 
 const BUDGET_COMMENT =
-  '规模预算：按分类冻结超过阈值的文件集合，并记录各 feature 的 pages / hooks+model+components 总行数；同一域页面缩减 ≥40 行且这三类增长达到 80% 时判为疑似搬移。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。'
+  '规模预算：按分类冻结超过阈值的文件集合，并记录各域（pages/<domain> 与 features/<domain>）的页面 / hooks+model+components 总行数；同一域页面缩减 ≥40 行且这三类增长达到 80% 时判为疑似搬移。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

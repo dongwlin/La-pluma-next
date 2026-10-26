@@ -52,7 +52,7 @@ vi.mock('@/features/runtime-status', async () => {
   }
 })
 vi.mock('@/features/task-execution', () => ({ useExecutionObservation: () => undefined }))
-vi.mock('@/features/dashboard', () => ({
+vi.mock('@/pages/dashboard/Dashboard', () => ({
   default: function MockDashboard() {
     if (appMocks.dashboardShouldThrow) throw new Error('dashboard render failed')
     const [draft, setDraft] = useState('')
@@ -65,7 +65,7 @@ vi.mock('@/features/dashboard', () => ({
     return <input aria-label="控制台草稿" value={draft} onChange={event => setDraft(event.target.value)} />
   },
 }))
-vi.mock('@/features/automation', () => ({
+vi.mock('@/pages/automation/AutomationTasks', () => ({
   default: function MockAutomationTasks() {
     if (appMocks.automationShouldThrow) throw new Error('automation render failed')
     useEffect(() => {
@@ -77,12 +77,12 @@ vi.mock('@/features/automation', () => ({
     return <div>automation</div>
   },
 }))
-vi.mock('@/features/combat', () => ({ default: () => <div>combat</div> }))
-vi.mock('@/features/roguelike', () => ({ default: () => <div>roguelike</div> }))
-vi.mock('@/features/training', () => ({ default: () => <div>training</div> }))
-vi.mock('@/features/logs', () => ({ default: () => <div>logs</div> }))
-vi.mock('@/features/statistics', () => ({ default: () => <div>statistics</div> }))
-vi.mock('@/features/settings', () => ({ default: () => <div>config</div> }))
+vi.mock('@/pages/combat/CombatTasks', () => ({ default: () => <div>combat</div> }))
+vi.mock('@/pages/roguelike/RoguelikeTasks', () => ({ default: () => <div>roguelike</div> }))
+vi.mock('@/pages/training/OperatorTraining', () => ({ default: () => <div>training</div> }))
+vi.mock('@/pages/logs/LogViewer', () => ({ default: () => <div>logs</div> }))
+vi.mock('@/pages/statistics/DataStatistics', () => ({ default: () => <div>statistics</div> }))
+vi.mock('@/pages/settings/ConfigManager', () => ({ default: () => <div>config</div> }))
 
 let container: HTMLDivElement
 let root: Root

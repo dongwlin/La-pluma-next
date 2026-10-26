@@ -8,11 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as taskExecutionModule from '@/features/task-execution'
 import type { AgentRun, ExecutionController, RunSnapshot } from '@/features/task-execution'
 import { createQueryClient } from '@/shared/query'
-import { useDashboardStore } from '../store/dashboardStore'
+import { useDashboardStore } from '@/features/dashboard/store/dashboardStore'
 import { useStatusStore } from '@/features/runtime-status'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import Dashboard from './Dashboard'
-import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
+import { DASHBOARD_REFRESH_INTERVAL_MS } from '@/features/dashboard/constants'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -110,7 +110,7 @@ vi.mock('@/features/training/api', async (importOriginal) => {
   return { ...actual, getTrainingQueue: apiMocks.getTrainingQueue }
 })
 
-vi.mock('../hooks/useDashboardFlowLayout', () => ({
+vi.mock('@/features/dashboard/hooks/useDashboardFlowLayout', () => ({
   useDashboardFlowLayout: () => ({
     flowGridRef: { current: null },
     flowCardRef: { current: null },
@@ -119,7 +119,7 @@ vi.mock('../hooks/useDashboardFlowLayout', () => ({
   }),
 }))
 
-vi.mock('../components/DashboardPreviewEntry', () => ({
+vi.mock('@/features/dashboard/components/DashboardPreviewEntry', () => ({
   default: ({ onOpen }: { onOpen: () => void }) => (
     <div data-dashboard-preview-card>
       <button type="button" onClick={onOpen}>preview</button>
@@ -134,7 +134,7 @@ vi.mock('@/shared/ui/Icons', () => {
   const Icon = () => null
   return { default: new Proxy({}, { get: () => Icon }) }
 })
-vi.mock('../components/DashboardSkeleton', () => ({
+vi.mock('@/features/dashboard/components/DashboardSkeleton', () => ({
   DashboardSkeleton: () => {
     renderSpies.dashboardSkeleton()
     return <div>loading</div>

@@ -14,7 +14,7 @@ import {
 } from '@/features/task-execution'
 import { userConfigCoordinator } from '@/features/user-config'
 import AutomationTasks from './AutomationTasks'
-import type { TaskFlowItem } from '../types'
+import type { TaskFlowItem } from '@/features/automation/types'
 
 // Keep the real Framer Motion lifecycle: mocking AnimatePresence hides this regression.
 const mocks = vi.hoisted(() => ({
@@ -33,7 +33,7 @@ const flow: TaskFlowItem[] = [
   icon: null, description: '任务说明', defaultParams: {}, paramFields: [], params: {}, enabled: true,
 }))
 
-vi.mock('../api', () => ({
+vi.mock('@/features/automation/api', () => ({
   getActivity: mocks.getActivity,
   executeScheduleNow: mocks.executeScheduleNow,
   setupSchedule: vi.fn(),
@@ -70,7 +70,7 @@ vi.mock('@/features/runtime-status', () => ({
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => null }))
-vi.mock('../components/NotificationSettings', () => ({ default: () => null }))
+vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => null }))
 
 const ok = <T,>(data: T): ApiResponse<T> => ({ success: true, data })
 

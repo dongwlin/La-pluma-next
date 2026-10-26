@@ -6,7 +6,7 @@
  * Query、命令所有者或 localStorage。
  */
 
-import TrainingWorkspace from '../components/TrainingWorkspace'
+import { TrainingWorkspace } from '@/features/training'
 
 export default function OperatorTraining() {
   return (

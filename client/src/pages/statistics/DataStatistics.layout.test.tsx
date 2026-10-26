@@ -11,7 +11,7 @@ import {
   subscribeResourceInvalidation,
   type ResourceInvalidation,
 } from '@/features/resource-invalidation'
-import { statisticsCommandOwner } from '../model/commandOwner'
+import { statisticsCommandOwner } from '@/features/statistics/model/commandOwner'
 import DataStatistics from './DataStatistics'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -51,7 +51,7 @@ vi.mock('@/features/game-data/api', () => ({
   getOperBoxData: mocks.getOperBoxData,
 }))
 
-vi.mock('../api', () => ({
+vi.mock('@/features/statistics/api', () => ({
   getDropStatistics: mocks.getDropStatistics,
   parseDepotData: mocks.parseDepotData,
   parseOperBoxData: mocks.parseOperBoxData,
@@ -94,7 +94,7 @@ vi.mock('@/features/runtime-status', () => ({
   ),
 }))
 
-vi.mock('../components/DropRecords', () => ({
+vi.mock('@/features/statistics/components/DropRecords', () => ({
   default: ({
     dropStatistics,
     isLoading,

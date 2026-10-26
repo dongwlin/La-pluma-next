@@ -5,10 +5,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
-import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '../types'
-import { trainingQueueCommandOwner } from '../model/queueCommands'
-import { trainingSettingsOwner } from '../model/settingsCommands'
-import { trainingPlanOwner } from '../model/planCommands'
+import type { TrainingOperator, TrainingPlan, TrainingQueueItem, TrainingSettings } from '@/features/training/types'
+import { trainingQueueCommandOwner } from '@/features/training/model/queueCommands'
+import { trainingSettingsOwner } from '@/features/training/model/settingsCommands'
+import { trainingPlanOwner } from '@/features/training/model/planCommands'
 import { publishResourceInvalidation, subscribeResourceInvalidation } from '@/features/resource-invalidation'
 import {
   USER_CONFIG_KEYS,
@@ -53,7 +53,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../api', () => ({
+vi.mock('@/features/training/api', () => ({
   getOperatorList: mocks.getOperatorList,
   getTrainingQueue: mocks.getTrainingQueue,
   addToTrainingQueue: mocks.addToTrainingQueue,

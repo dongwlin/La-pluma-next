@@ -16,8 +16,8 @@ import {
 } from '@/features/task-execution'
 import { userConfigCoordinator } from '@/features/user-config'
 import AutomationTasks from './AutomationTasks'
-import type { TaskFlowItem } from '../types'
-import type { TaskExecutionState } from '../utils/automationTaskProgress'
+import type { TaskFlowItem } from '@/features/automation/types'
+import type { TaskExecutionState } from '@/features/automation/utils/automationTaskProgress'
 
 const mocks = vi.hoisted(() => ({
   controller: { current: null as unknown as ExecutionController },
@@ -50,7 +50,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../api', () => ({
+vi.mock('@/features/automation/api', () => ({
   getActivity: mocks.getActivity,
   executeScheduleNow: mocks.executeScheduleNow,
   setupSchedule: mocks.setupSchedule,
@@ -85,7 +85,7 @@ vi.mock('@/features/runtime-status', () => ({
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => null }))
-vi.mock('../components/NotificationSettings', () => ({ default: () => null }))
+vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => null }))
 
 const CONTROLLER_INTERVALS = { active: 1_000, idle: 5_000, disconnected: 2_000 }
 const LEGACY_KEY = 'maa-task-flow-execution'

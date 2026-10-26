@@ -8,7 +8,7 @@
 
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
-import CombatWorkspace from '../components/CombatWorkspace'
+import { CombatWorkspace } from '@/features/combat'
 
 export default function CombatTasks() {
   return (

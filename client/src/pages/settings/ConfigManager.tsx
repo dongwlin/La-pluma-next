@@ -5,7 +5,7 @@
  * 分别由工作区和面板持有，页面不访问 API、Query、命令所有者或 localStorage。
  */
 
-import SettingsWorkspace from '../components/SettingsWorkspace'
+import { SettingsWorkspace } from '@/features/settings'
 
 export default function ConfigManager() {
   return (

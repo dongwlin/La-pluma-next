@@ -8,7 +8,7 @@
 
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
-import AutomationWorkspace from '../components/AutomationWorkspace'
+import { AutomationWorkspace } from '@/features/automation'
 
 export default function AutomationTasks() {
   return (

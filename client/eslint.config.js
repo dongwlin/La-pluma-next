@@ -72,7 +72,7 @@ export default defineConfig([
       'tailwindcss/enforces-canonical-classname': 'error',
     },
   },
-  // 分层护栏：app → features → shared 只能单向依赖。
+  // 分层护栏：app → pages → features → shared 只能单向依赖。
   // flat config 中同一规则后置块会整体覆盖前置块，因此每个块都写全该目录需要的 patterns。
   {
     // 任何 src 文件都只能经 feature 的 index.ts 根 import，禁止 `@/features/<x>/...` 深路径。
@@ -87,7 +87,7 @@ export default defineConfig([
     },
   },
   {
-    // features/shared 不得反向依赖 app 层。
+    // features/shared 不得反向依赖 app 或 pages 层。
     files: ['src/features/**/*.{ts,tsx}', 'src/shared/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -99,6 +99,10 @@ export default defineConfig([
           {
             regex: '^@/app(?:/.*)?$',
             message: 'app 是组装层，features/shared 不得反向依赖 @/app。',
+          },
+          {
+            regex: '^@/pages(?:/.*)?$',
+            message: 'pages 是组合层，features/shared 不得反向依赖 @/pages。',
           },
         ],
       }],
@@ -118,6 +122,44 @@ export default defineConfig([
           {
             regex: '^@/app(?:/.*)?$',
             message: 'app 是组装层，features/shared 不得反向依赖 @/app。',
+          },
+          {
+            regex: '^@/pages(?:/.*)?$',
+            message: 'shared 不感知 pages，组合职责留在 pages/app。',
+          },
+        ],
+      }],
+    },
+  },
+  {
+    // pages 只向下组合：可以经功能域根入口与 shared，不得反向依赖 app；
+    // 页面内部不得跨域深路径，也不得深路径访问自身域内部。
+    files: ['src/pages/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^@/features/[^/]+/.+',
+            message: '页面只能经功能域根入口组合，请改为 @/features/<domain> 根 import。',
+          },
+          {
+            regex: '^@/app(?:/.*)?$',
+            message: 'pages 是组合层，不得反向依赖 @/app。',
+          },
+        ],
+      }],
+    },
+  },
+  {
+    // 页面测试允许深路径到被测域内部（构造领域状态），不进入产物；
+    // 分层方向仍然生效，只是放开 @/features/<domain>/... 的深路径。
+    files: ['src/pages/**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^@/app(?:/.*)?$',
+            message: 'pages 是组合层，不得反向依赖 @/app。',
           },
         ],
       }],

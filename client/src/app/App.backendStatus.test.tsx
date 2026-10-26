@@ -26,7 +26,7 @@ vi.mock('./layout/Layout', () => ({
 }))
 
 vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('@/features/automation', async () => {
+vi.mock('@/pages/automation/AutomationTasks', async () => {
   const { useStatusStore: useMockStatusStore } = await import('@/features/runtime-status')
 
   return {

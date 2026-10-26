@@ -16,24 +16,24 @@ const pageMocks = vi.hoisted(() => ({
   automationRenders: 0,
 }))
 
-vi.mock('@/features/dashboard', () => ({
+vi.mock('@/pages/dashboard/Dashboard', () => ({
   default: () => {
     pageMocks.dashboardRenders += 1
     return <div data-page="dashboard">dashboard</div>
   },
 }))
-vi.mock('@/features/automation', () => ({
+vi.mock('@/pages/automation/AutomationTasks', () => ({
   default: () => {
     pageMocks.automationRenders += 1
     return <div data-page="automation">automation</div>
   },
 }))
-vi.mock('@/features/combat', () => ({ default: () => <div data-page="combat">combat</div> }))
-vi.mock('@/features/roguelike', () => ({ default: () => <div data-page="roguelike">roguelike</div> }))
-vi.mock('@/features/training', () => ({ default: () => <div data-page="training">training</div> }))
-vi.mock('@/features/statistics', () => ({ default: () => <div data-page="statistics">statistics</div> }))
-vi.mock('@/features/logs', () => ({ default: () => <div data-page="logs">logs</div> }))
-vi.mock('@/features/settings', () => ({ default: () => <div data-page="config">config</div> }))
+vi.mock('@/pages/combat/CombatTasks', () => ({ default: () => <div data-page="combat">combat</div> }))
+vi.mock('@/pages/roguelike/RoguelikeTasks', () => ({ default: () => <div data-page="roguelike">roguelike</div> }))
+vi.mock('@/pages/training/OperatorTraining', () => ({ default: () => <div data-page="training">training</div> }))
+vi.mock('@/pages/statistics/DataStatistics', () => ({ default: () => <div data-page="statistics">statistics</div> }))
+vi.mock('@/pages/logs/LogViewer', () => ({ default: () => <div data-page="logs">logs</div> }))
+vi.mock('@/pages/settings/ConfigManager', () => ({ default: () => <div data-page="config">config</div> }))
 
 function Harness() {
   const activeTab = useActiveAppTab()

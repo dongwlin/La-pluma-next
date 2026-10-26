@@ -2,7 +2,8 @@
  * 依赖与职责护栏的分析核心。
  *
  * 这里只做静态事实判断，不运行应用、不读取 Query、不推断运行时所有权：
- * - 功能域公开面与分层方向：`app → features → shared`，跨域只能经 `index.ts` 根入口；
+ * - 功能域公开面与分层方向：`app → pages → features → shared`，跨域只能经 `index.ts` 根入口；
+ * - 页面由 `src/pages/<domain>/` 持有，只向下组合功能域与 shared；
  * - 功能域依赖环：把 feature 目录折叠成节点，求强连通分量；
  * - 非页面微域 `task-execution` 不得反向依赖任何功能域；
  * - 页面文件不得直接持有传输、存储与轮询原语，但可以调用所属领域的容器与 hook；
@@ -74,8 +75,8 @@ export interface DependencyAnalysis {
 }
 
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.(?:ts|tsx)$/
-const PAGE_FILE_PATTERN = /^features\/[^/]+\/pages\/[^/]+\.(?:ts|tsx)$/
-const SIZE_CATEGORY_PATTERN = /^features\/[^/]+\/(pages|hooks|model|components)\/.+\.(?:ts|tsx)$/
+const PAGE_FILE_PATTERN = /^pages\/[^/]+\/[^/]+\.(?:ts|tsx)$/
+const SIZE_CATEGORY_PATTERN = /^(?:features\/[^/]+\/(hooks|model|components)|pages\/[^/]+)\/.+\.(?:ts|tsx)$/
 
 /** 这些全局对象只能出现在页面之外的领域容器/hook 中。 */
 const TRANSPORT_GLOBALS = new Set(['fetch', 'WebSocket', 'EventSource', 'XMLHttpRequest'])
@@ -417,15 +418,21 @@ export function buildImportEdges(files: readonly SourceFile[]): ImportEdge[] {
   return edges
 }
 
-function topLayerOf(filePath: string): 'app' | 'shared' | 'features' | 'root' {
+function topLayerOf(filePath: string): 'app' | 'pages' | 'shared' | 'features' | 'root' {
   const top = filePath.split('/')[0]
-  if (top === 'app' || top === 'shared' || top === 'features') return top
+  if (top === 'app' || top === 'pages' || top === 'shared' || top === 'features') return top
   return 'root'
 }
 
 function featureDomainOf(filePath: string): string | null {
   const [top, domain] = filePath.split('/')
   return top === 'features' && domain ? domain : null
+}
+
+/** 页面路径 `pages/<domain>/...` 的所属领域；页面只组合对应功能域的公开面。 */
+function pageDomainOf(filePath: string): string | null {
+  const match = /^pages\/([^/]+)\//.exec(filePath)
+  return match?.[1] ?? null
 }
 
 function isFeatureIndex(filePath: string): { domain: string } | null {
@@ -572,6 +579,33 @@ export function analyzeDependencies(files: readonly SourceFile[]): DependencyAna
       continue
     }
 
+    if (fromLayer === 'features' && toLayer === 'pages') {
+      violations.push({
+        rule: 'layer-direction',
+        file: edge.from,
+        message: `features 不得反向依赖 pages：${edge.specifier}`,
+      })
+      continue
+    }
+
+    if (fromLayer === 'pages' && toLayer === 'app') {
+      violations.push({
+        rule: 'layer-direction',
+        file: edge.from,
+        message: `pages 不得反向依赖 app：${edge.specifier}`,
+      })
+      continue
+    }
+
+    if (fromLayer === 'pages' && toLayer === 'root') {
+      violations.push({
+        rule: 'layer-direction',
+        file: edge.from,
+        message: `pages 不得依赖根入口模块：${edge.specifier}`,
+      })
+      continue
+    }
+
     if (fromLayer === 'features' && toLayer === 'root') {
       violations.push({
         rule: 'layer-direction',
@@ -596,7 +630,7 @@ export function analyzeDependencies(files: readonly SourceFile[]): DependencyAna
       const targetIsPublicEntry = isFeatureIndex(edge.to)?.domain === toDomain
       const usesRootAlias = edge.specifier === `@/features/${toDomain}`
       const isCrossDomain = fromDomain !== null && fromDomain !== toDomain
-      const isOutsideFeature = fromLayer === 'app' || fromLayer === 'root'
+      const isOutsideFeature = fromLayer === 'app' || fromLayer === 'pages' || fromLayer === 'root'
 
       if ((isCrossDomain || isOutsideFeature) && (!targetIsPublicEntry || !usesRootAlias)) {
         violations.push({
@@ -1217,7 +1251,7 @@ export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViol
 
   for (const file of files) {
     if (!isPageFile(file.path)) continue
-    const pageDomain = featureDomainOf(file.path)
+    const pageDomain = pageDomainOf(file.path)
     const sourceFile = parseSourceFile(file)
 
     for (const reference of collectImportReferences(file.source, file.path)) {
@@ -1384,9 +1418,10 @@ export function countLines(source: string): number {
 
 export function sizeCategoryOf(filePath: string): SizeCategory | null {
   if (isTestFile(filePath)) return null
+  if (PAGE_FILE_PATTERN.test(filePath)) return 'pages'
   const match = SIZE_CATEGORY_PATTERN.exec(filePath)
   const category = match?.[1]
-  return category === 'pages' || category === 'hooks' || category === 'model' || category === 'components'
+  return category === 'hooks' || category === 'model' || category === 'components'
     ? category
     : null
 }
@@ -1428,7 +1463,7 @@ export function analyzeSize(
 
   const domainTotals: Record<string, DomainSizeTotals> = {}
   for (const entry of entries) {
-    const domain = /^features\/([^/]+)\//.exec(entry.path)?.[1]
+    const domain = /^(?:features|pages)\/([^/]+)\//.exec(entry.path)?.[1]
     if (!domain) continue
     const totals = domainTotals[domain] ?? { pages: 0, nonPage: 0 }
     if (entry.category === 'pages') {
@@ -1502,7 +1537,7 @@ export function evaluateSizeBudget(report: SizeReport, baseline: SizeBaseline): 
     if (growth < Math.ceil(shrink * RELOCATION_GROWTH_RATIO)) continue
 
     violations.push(
-      `疑似把页面逻辑搬进非页面目录：features/${domain} 的 pages 从 ${baselinePages} 行降到 ${totals.pages} 行`
+      `疑似把页面逻辑搬进非页面目录：pages/${domain} 从 ${baselinePages} 行降到 ${totals.pages} 行`
       + `（-${shrink}），hooks/model/components 从 ${baselineNonPage} 行增到 ${totals.nonPage} 行（+${growth}）。`
       + '请确认是真实拆分；如属有意的结构调整，运行 guardrails:size-baseline 并说明依据。',
     )

@@ -4,5 +4,5 @@
 
 import './styles/settings.css'
 
-export { default } from './pages/ConfigManager'
+export { default as SettingsWorkspace } from './components/SettingsWorkspace'
 export { testConnection } from './api'

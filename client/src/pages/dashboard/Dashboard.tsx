@@ -8,10 +8,10 @@
 
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
-import { DashboardSkeleton } from '../components/DashboardSkeleton'
-import DashboardWorkspace from '../components/DashboardWorkspace'
-import { useDashboardSnapshotRefresh } from '../hooks/useDashboardSnapshotRefresh'
-import { useDashboardStore } from '../store/dashboardStore'
+import { DashboardSkeleton } from '@/features/dashboard'
+import { DashboardWorkspace } from '@/features/dashboard'
+import { useDashboardSnapshotRefresh } from '@/features/dashboard'
+import { useDashboardStore } from '@/features/dashboard'
 
 export default function Dashboard() {
   const hasLoaded = useDashboardStore(state => state.hasLoaded)

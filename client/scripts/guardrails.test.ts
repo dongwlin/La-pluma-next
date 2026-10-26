@@ -45,13 +45,13 @@ describe('import extraction and resolution', () => {
       'features/a/index.ts',
       'features/a/model/x.ts',
       'features/b/index.ts',
-      'features/b/pages/Page.tsx',
+      'pages/b/Page.tsx',
       'shared/api/index.ts',
     ])
 
     expect(resolveImport('@/features/b', 'features/a/index.ts', known)).toBe('features/b/index.ts')
     expect(resolveImport('@/features/a/model/x', 'features/b/index.ts', known)).toBe('features/a/model/x.ts')
-    expect(resolveImport('./pages/Page', 'features/b/index.ts', known)).toBe('features/b/pages/Page.tsx')
+    expect(resolveImport('../../pages/b/Page', 'features/b/index.ts', known)).toBe('pages/b/Page.tsx')
     expect(resolveImport('@/shared/api', 'features/a/index.ts', known)).toBe('shared/api/index.ts')
     expect(resolveImport('react', 'features/a/index.ts', known)).toBeNull()
     expect(resolveImport('./missing', 'features/a/index.ts', known)).toBeNull()
@@ -107,9 +107,10 @@ describe('dependency guardrails', () => {
 
   it('flags app deep imports, shared reverse dependencies and feature-to-app imports', () => {
     const analysis = analyzeDependencies(files(
-      ['app/router/pages.ts', "import Page from '../../features/a/pages/Page'\n"],
-      ['features/a/index.ts', 'export { default } from "./pages/Page"\n'],
-      ['features/a/pages/Page.tsx', 'export default function Page() { return null }\n'],
+      ['app/router/pages.ts', "import Workspace from '../../features/a/components/Workspace'\nimport Page from '@/pages/a/Page'\n"],
+      ['features/a/index.ts', 'export { default as Workspace } from "./components/Workspace"\n'],
+      ['features/a/components/Workspace.tsx', 'export default function Workspace() { return null }\n'],
+      ['pages/a/Page.tsx', 'export default function Page() { return null }\n'],
       ['shared/utils/leak.ts', "import { a } from '@/features/a'\n"],
       ['features/a/model/reverse.ts', "import App from '@/app/App'\n"],
       ['app/App.tsx', 'export default function App() { return null }\n'],
@@ -186,8 +187,8 @@ describe('dependency guardrails', () => {
 
   it('ignores test-only imports when building the runtime graph', () => {
     const analysis = analyzeDependencies(files(
-      ['features/a/pages/Page.test.tsx', "import { internals } from '../b/model/internals'\ninternals()\n"],
-      ['features/a/pages/Page.tsx', 'export default function Page() { return null }\n'],
+      ['pages/a/Page.test.tsx', "import { internals } from '../b/model/internals'\ninternals()\n"],
+      ['pages/a/Page.tsx', 'export default function Page() { return null }\n'],
       ['features/b/index.ts', 'export const b = 1\n'],
       ['features/b/model/internals.ts', 'export const internals = () => 1\n'],
     ))
@@ -209,7 +210,7 @@ describe('dependency guardrails', () => {
 describe('page responsibility guardrails', () => {
   it('flags a page that imports transport or Query infrastructure directly', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import { fetchWithAuth } from '@/shared/api'",
         "import { getQueryClient } from '@/shared/query'",
         "import { useQuery } from '@tanstack/react-query'",
@@ -228,7 +229,7 @@ describe('page responsibility guardrails', () => {
 
   it('flags bare transport, storage and polling globals in a page', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         'export default function Page() {',
         "  fetch('/api/agent/tasks/status')",
         "  new WebSocket('/webrtc-signaling/socket')",
@@ -256,7 +257,7 @@ describe('page responsibility guardrails', () => {
       ].join('\n')],
       ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/automation/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import { executeScheduleNow, useAutomationThing } from '@/features/automation'",
         'export default function Page() {',
         '  useAutomationThing()',
@@ -275,7 +276,7 @@ describe('page responsibility guardrails', () => {
     const violations = checkPageGuardrails(files(
       ['features/automation/index.ts', "export { executeScheduleNow } from './api'\n"],
       ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import * as automation from '@/features/automation'",
         'export default function Page() { automation.executeScheduleNow(); return null }',
       ].join('\n')],
@@ -294,10 +295,10 @@ describe('page responsibility guardrails', () => {
       ].join('\n')],
       ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
-      ['features/a/pages/Page.tsx', [
-        "import { executeScheduleNow } from '..'",
-        "import * as automation from '..'",
-        "const load = async () => { const m = await import('..'); m.executeScheduleNow() }",
+      ['pages/a/Page.tsx', [
+        "import { executeScheduleNow } from '@/features/a'",
+        "import * as automation from '@/features/a'",
+        "const load = async () => { const m = await import('@/features/a'); m.executeScheduleNow() }",
         'export default function Page() {',
         '  executeScheduleNow()',
         '  automation.executeScheduleNow()',
@@ -317,21 +318,21 @@ describe('page responsibility guardrails', () => {
       "import { executeScheduleNow } from './api'",
       'export { executeScheduleNow }',
     ].join('\n'), [
-      "import { executeScheduleNow } from '..'",
+      "import { executeScheduleNow } from '@/features/a'",
       'executeScheduleNow()',
     ].join('\n')],
     ['aliased import and export', [
       "import { executeScheduleNow as run } from './api'",
       'export { run as executeScheduleNow }',
     ].join('\n'), [
-      "import { executeScheduleNow } from '..'",
+      "import { executeScheduleNow } from '@/features/a'",
       'executeScheduleNow()',
     ].join('\n')],
     ['namespace page usage', [
       "import { executeScheduleNow } from './api'",
       'export { executeScheduleNow }',
     ].join('\n'), [
-      "import * as automation from '..'",
+      "import * as automation from '@/features/a'",
       'automation.executeScheduleNow()',
     ].join('\n')],
     ['dynamic page usage', [
@@ -339,7 +340,7 @@ describe('page responsibility guardrails', () => {
       'export { executeScheduleNow }',
     ].join('\n'), [
       'const load = async () => {',
-      "  const m = await import('..')",
+      "  const m = await import('@/features/a')",
       '  m.executeScheduleNow()',
       '}',
     ].join('\n')],
@@ -347,7 +348,7 @@ describe('page responsibility guardrails', () => {
       "import { executeScheduleNow } from './api'",
       'export { executeScheduleNow }',
     ].join('\n'), [
-      "const load = () => import('..').then(m => m.executeScheduleNow())",
+      "const load = () => import('@/features/a').then(m => m.executeScheduleNow())",
     ].join('\n')],
   ] as const
 
@@ -355,7 +356,7 @@ describe('page responsibility guardrails', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/index.ts', indexSource],
       ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
-      ['features/a/pages/Page.tsx', pageSource],
+      ['pages/a/Page.tsx', pageSource],
     ))
 
     expect(violations).toHaveLength(1)
@@ -370,8 +371,8 @@ describe('page responsibility guardrails', () => {
         'export default executeScheduleNow',
       ].join('\n')],
       ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
-      ['features/a/pages/Page.tsx', [
-        "import run from '..'",
+      ['pages/a/Page.tsx', [
+        "import run from '@/features/a'",
         'run()',
       ].join('\n')],
     ))
@@ -383,67 +384,67 @@ describe('page responsibility guardrails', () => {
 
   const endpointUsageCases = [
     ['namespace receiver wrapped in as', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       ';(a as any).executeScheduleNow()',
     ].join('\n')],
     ['namespace receiver wrapped in parentheses', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       ';((a)).executeScheduleNow()',
     ].join('\n')],
     ['namespace receiver with non-null assertion', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       ';(a!).executeScheduleNow()',
     ].join('\n')],
     ['namespace receiver wrapped in satisfies', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       ';(a satisfies any).executeScheduleNow()',
     ].join('\n')],
     ['namespace alias', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       'const b = a',
       'b.executeScheduleNow()',
     ].join('\n')],
     ['namespace parameter default destructuring', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       'function f({ executeScheduleNow } = a) { return executeScheduleNow }',
     ].join('\n')],
     ['namespace assignment destructuring', [
-      "import * as a from '..'",
+      "import * as a from '@/features/a'",
       'let run',
       ';({ executeScheduleNow: run } = a)',
       'run()',
     ].join('\n')],
     ['dynamic import receiver wrapped in as', [
       'const load = async () => {',
-      "  const m = await import('..')",
+      "  const m = await import('@/features/a')",
       '  ;(m as any).executeScheduleNow()',
       '}',
     ].join('\n')],
     ['dynamic import receiver wrapped in parentheses', [
       'const load = async () => {',
-      "  ;((await import('..'))).executeScheduleNow()",
+      "  ;((await import('@/features/a'))).executeScheduleNow()",
       '}',
     ].join('\n')],
     ['dynamic import receiver with non-null assertion', [
       'const load = async () => {',
-      "  const m = await import('..')",
+      "  const m = await import('@/features/a')",
       '  m!.executeScheduleNow()',
       '}',
     ].join('\n')],
     ['dynamic import alias', [
       'const load = async () => {',
-      "  const m = await import('..')",
+      "  const m = await import('@/features/a')",
       '  const b = m',
       '  b.executeScheduleNow()',
       '}',
     ].join('\n')],
     ['dynamic import then callback wrapped in as', [
-      "const load = () => import('..').then(m => (m as any).executeScheduleNow())",
+      "const load = () => import('@/features/a').then(m => (m as any).executeScheduleNow())",
     ].join('\n')],
     ['dynamic import assignment destructuring', [
       'const load = async () => {',
       '  let run',
-      "  ;({ executeScheduleNow: run } = await import('..'))",
+      "  ;({ executeScheduleNow: run } = await import('@/features/a'))",
       '  run()',
       '}',
     ].join('\n')],
@@ -457,7 +458,7 @@ describe('page responsibility guardrails', () => {
       ].join('\n')],
       ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
-      ['features/a/pages/Page.tsx', source],
+      ['pages/a/Page.tsx', source],
     ))
 
     expect(violations).toHaveLength(1)
@@ -474,11 +475,11 @@ describe('page responsibility guardrails', () => {
       ].join('\n')],
       ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
-      ['features/a/pages/Page.tsx', [
-        "import * as automation from '..'",
+      ['pages/a/Page.tsx', [
+        "import * as automation from '@/features/a'",
         'const helper = automation',
         'const load = async () => {',
-        "  const m = await import('..')",
+        "  const m = await import('@/features/a')",
         '  const copy = m',
         '  return copy.useAutomationThing()',
         '}',
@@ -497,7 +498,7 @@ describe('page responsibility guardrails', () => {
       ].join('\n')],
       ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/automation/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         'export default async function Page() {',
         "  const m = await import('@/features/automation')",
         '  m.useAutomationThing()',
@@ -513,13 +514,14 @@ describe('page responsibility guardrails', () => {
     const violations = checkPageGuardrails(files(
       ['features/automation/index.ts', [
         "export * from './api'",
-        "export { default } from './pages/AutomationTasks'",
+        "export { default as AutomationWorkspace } from './components/AutomationWorkspace'",
       ].join('\n')],
       ['features/automation/api/index.ts', 'export default () => null\n'],
-      ['features/automation/pages/AutomationTasks.tsx', 'export default function Page() { return null }\n'],
-      ['features/a/pages/Page.tsx', [
-        "import Page from '@/features/automation'",
-        'export default function Wrapper() { return <Page /> }',
+      ['features/automation/components/AutomationWorkspace.tsx', 'export default function Workspace() { return null }\n'],
+      ['pages/automation/AutomationTasks.tsx', 'export default function Page() { return null }\n'],
+      ['pages/a/Page.tsx', [
+        "import { AutomationWorkspace } from '@/features/automation'",
+        'export default function Wrapper() { return <AutomationWorkspace /> }',
       ].join('\n')],
     ))
 
@@ -533,7 +535,7 @@ describe('page responsibility guardrails', () => {
         'export const executeScheduleNow = () => null',
         'export function getActivity() { return null }',
       ].join('\n')],
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import { executeScheduleNow } from '@/features/automation'",
         'export default function Page() { executeScheduleNow(); return null }',
       ].join('\n')],
@@ -547,7 +549,7 @@ describe('page responsibility guardrails', () => {
     const violations = checkPageGuardrails(files(
       ['features/automation/index.ts', "export { executeScheduleNow } from './api'\n"],
       ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "const load = () => import('@/features/automation').then(m => m.executeScheduleNow())",
         'export default function Page() { load(); return null }',
       ].join('\n')],
@@ -560,8 +562,8 @@ describe('page responsibility guardrails', () => {
 
   it('flags a page importing its own domain api directly', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
-        "import { loadThing } from '../api'",
+      ['pages/a/Page.tsx', [
+        "import { loadThing } from '@/features/a/api'",
         'export default function Page() { loadThing(); return null }',
       ].join('\n')],
       ['features/a/api/index.ts', 'export const loadThing = () => null\n'],
@@ -574,7 +576,7 @@ describe('page responsibility guardrails', () => {
 
   it('does not flag type-only imports from transport or query modules', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import type { ApiResponse } from '@/shared/api'",
         "import type { QueryClient } from '@tanstack/react-query'",
         "import { type AutomationActivityPayload } from '@/features/automation'",
@@ -590,7 +592,7 @@ describe('page responsibility guardrails', () => {
 
   it('detects computed global access and ignores local binding names', () => {
     const computed = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "window['fetch']('/api/agent/tasks/status')",
         "globalThis['setInterval'](() => {}, 1000)",
         "window[`localStorage`].getItem('draft')",
@@ -604,7 +606,7 @@ describe('page responsibility guardrails', () => {
     ])
 
     const shadowed = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         'const { fetch, localStorage: storage } = useProps()',
         'function setInterval() {}',
         'type fetch = () => void',
@@ -620,7 +622,7 @@ describe('page responsibility guardrails', () => {
 
   it('flags destructuring transport, storage and polling from global objects', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         'const { fetch: f } = window',
         'const { localStorage: s } = globalThis',
         'const { setInterval: i } = (self as any)',
@@ -640,7 +642,7 @@ describe('page responsibility guardrails', () => {
 
   it('flags assignment destructuring, property chains and wrapped indexes of global objects', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         'let f',
         '({ fetch: f } = window)',
         "f('/api/agent/tasks/status')",
@@ -665,7 +667,7 @@ describe('page responsibility guardrails', () => {
 
   it('flags window proxies and document.defaultView as global objects', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "window.top.fetch('/api/agent/tasks/status')",
         "window.parent['localStorage'].getItem('draft')",
         'document.defaultView!.setInterval(() => {}, 1000)',
@@ -684,7 +686,7 @@ describe('page responsibility guardrails', () => {
 
   it('does not flag import/export aliases or non-global assignment destructuring', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import { fetch as fetchJson } from '../model/http'",
         'export { fetchJson as fetch }',
         'const props = { fetch: null }',
@@ -701,7 +703,7 @@ describe('page responsibility guardrails', () => {
 
   it('detects wrapped global objects before property access', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "(window as any).fetch('/api/agent/tasks/status');",
         "window!.fetch('/api/agent/tasks/status');",
         "(window).localStorage.getItem('draft');",
@@ -720,7 +722,7 @@ describe('page responsibility guardrails', () => {
 
   it('allows a page to call its domain container hook', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.tsx', [
+      ['pages/a/Page.tsx', [
         "import { useWorkspace } from '../hooks/useWorkspace'",
         'export default function Page() {',
         '  const value = useWorkspace()',
@@ -751,7 +753,7 @@ describe('page responsibility guardrails', () => {
 
   it('does not apply page restrictions to page tests', () => {
     const violations = checkPageGuardrails(files(
-      ['features/a/pages/Page.test.tsx', "fetch('/api/agent/tasks/status')\n"],
+      ['pages/a/Page.test.tsx', "fetch('/api/agent/tasks/status')\n"],
     ))
 
     expect(violations).toEqual([])
@@ -769,7 +771,7 @@ describe('size reporting and budget', () => {
   })
 
   it('classifies feature source files and ignores tests', () => {
-    expect(sizeCategoryOf('features/a/pages/Page.tsx')).toBe('pages')
+    expect(sizeCategoryOf('pages/a/Page.tsx')).toBe('pages')
     expect(sizeCategoryOf('features/a/hooks/useThing.ts')).toBe('hooks')
     expect(sizeCategoryOf('features/a/model/thing.ts')).toBe('model')
     expect(sizeCategoryOf('features/a/components/Thing.tsx')).toBe('components')
@@ -779,15 +781,15 @@ describe('size reporting and budget', () => {
 
   it('reports per-category lines, medians and large files', () => {
     const report = analyzeSize(files(
-      ['features/a/pages/Page.tsx', '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n'],
-      ['features/a/pages/Small.tsx', '1\n2\n'],
+      ['pages/a/Page.tsx', '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n'],
+      ['pages/a/Small.tsx', '1\n2\n'],
       ['features/a/hooks/useThing.ts', '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n'],
       ['features/a/components/Thing.test.tsx', '1\n'.repeat(50)],
     ), thresholds)
 
     const pages = report.categories.find(category => category.category === 'pages')
     expect(pages).toMatchObject({ fileCount: 2, totalLines: 13, medianLines: 7 })
-    expect(pages?.largeFiles.map(entry => entry.path)).toEqual(['features/a/pages/Page.tsx'])
+    expect(pages?.largeFiles.map(entry => entry.path)).toEqual(['pages/a/Page.tsx'])
     expect(report.totalFiles).toBe(3)
   })
 
@@ -795,13 +797,13 @@ describe('size reporting and budget', () => {
     const report = analyzeSize(files(
       ['features/a/hooks/useLarge.ts', '1\n'.repeat(11)],
       ['features/a/hooks/useSmall.ts', '1\n'.repeat(2)],
-      ['features/a/pages/Page.tsx', '1\n'.repeat(11)],
+      ['pages/a/Page.tsx', '1\n'.repeat(11)],
     ), thresholds)
 
     const baseline: SizeBaseline = {
       thresholds,
       largeFiles: {
-        pages: ['features/a/pages/Page.tsx'],
+        pages: ['pages/a/Page.tsx'],
         hooks: ['features/a/hooks/useRecovered.ts'],
         model: [],
         components: [],
@@ -824,9 +826,9 @@ describe('size reporting and budget', () => {
     const relocationThresholds = { pages: 500, hooks: 500, model: 500, components: 500 }
     const report = analyzeSize(files(
       ['features/a/hooks/usePage.ts', '1\n'.repeat(70)],
-      ['features/b/pages/Page.tsx', '1\n'.repeat(70)],
+      ['pages/b/Page.tsx', '1\n'.repeat(70)],
       ['features/b/hooks/usePage.ts', '1\n'.repeat(30)],
-      ['features/c/pages/Page.tsx', '1\n'.repeat(30)],
+      ['pages/c/Page.tsx', '1\n'.repeat(30)],
       ['features/c/hooks/usePage.ts', '1\n'.repeat(20)],
     ), relocationThresholds)
 
@@ -839,7 +841,7 @@ describe('size reporting and budget', () => {
 
     const result = evaluateSizeBudget(report, baseline)
     expect(result.violations).toHaveLength(1)
-    expect(result.violations[0]).toContain('features/a')
+    expect(result.violations[0]).toContain('pages/a')
     expect(result.violations[0]).toContain('疑似把页面逻辑搬进非页面目录')
   })
 

@@ -7,7 +7,7 @@
 
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
-import RoguelikeWorkspace from '../components/RoguelikeWorkspace'
+import { RoguelikeWorkspace } from '@/features/roguelike'
 
 export default function RoguelikeTasks() {
   return (

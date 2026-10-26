@@ -4,4 +4,4 @@
 
 import './styles/logs.css'
 
-export { default } from './pages/LogViewer'
+export { default as LogsWorkspace } from './components/LogsWorkspace'

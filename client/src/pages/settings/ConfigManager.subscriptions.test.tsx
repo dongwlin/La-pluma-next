@@ -6,11 +6,11 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
 import { useStatusStore } from '@/features/runtime-status'
-import { settingsAutoUpdateOwner } from '../model/autoUpdateConfig'
-import { settingsConnectionOwner } from '../model/connectionConfig'
-import { settingsDeviceConnectionOwner } from '../model/deviceConnection'
-import { settingsKeys } from '../model/queryKeys'
-import { settingsUpdateOwner } from '../model/updateCommands'
+import { settingsAutoUpdateOwner } from '@/features/settings/model/autoUpdateConfig'
+import { settingsConnectionOwner } from '@/features/settings/model/connectionConfig'
+import { settingsDeviceConnectionOwner } from '@/features/settings/model/deviceConnection'
+import { settingsKeys } from '@/features/settings/model/queryKeys'
+import { settingsUpdateOwner } from '@/features/settings/model/updateCommands'
 import ConfigManager from './ConfigManager'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -44,8 +44,8 @@ const mocks = vi.hoisted(() => ({
   hotUpdateResources: vi.fn(),
 }))
 
-vi.mock('../hooks/useSettingsConnectionConfig', async importOriginal => {
-  const actual = await importOriginal<typeof import('../hooks/useSettingsConnectionConfig')>()
+vi.mock('@/features/settings/hooks/useSettingsConnectionConfig', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/settings/hooks/useSettingsConnectionConfig')>()
   return {
     ...actual,
     useSettingsConnectionConfig: (...args: Parameters<typeof actual.useSettingsConnectionConfig>) => {
@@ -55,8 +55,8 @@ vi.mock('../hooks/useSettingsConnectionConfig', async importOriginal => {
   }
 })
 
-vi.mock('../hooks/useSettingsDeviceConnection', async importOriginal => {
-  const actual = await importOriginal<typeof import('../hooks/useSettingsDeviceConnection')>()
+vi.mock('@/features/settings/hooks/useSettingsDeviceConnection', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/settings/hooks/useSettingsDeviceConnection')>()
   return {
     ...actual,
     useSettingsDeviceConnection: (...args: Parameters<typeof actual.useSettingsDeviceConnection>) => {
@@ -66,8 +66,8 @@ vi.mock('../hooks/useSettingsDeviceConnection', async importOriginal => {
   }
 })
 
-vi.mock('../hooks/useSettingsUpdates', async importOriginal => {
-  const actual = await importOriginal<typeof import('../hooks/useSettingsUpdates')>()
+vi.mock('@/features/settings/hooks/useSettingsUpdates', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/settings/hooks/useSettingsUpdates')>()
   return {
     ...actual,
     useSettingsUpdates: (...args: Parameters<typeof actual.useSettingsUpdates>) => {
@@ -77,8 +77,8 @@ vi.mock('../hooks/useSettingsUpdates', async importOriginal => {
   }
 })
 
-vi.mock('../hooks/useSettingsAutoUpdate', async importOriginal => {
-  const actual = await importOriginal<typeof import('../hooks/useSettingsAutoUpdate')>()
+vi.mock('@/features/settings/hooks/useSettingsAutoUpdate', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/settings/hooks/useSettingsAutoUpdate')>()
   return {
     ...actual,
     useSettingsAutoUpdate: (...args: Parameters<typeof actual.useSettingsAutoUpdate>) => {
@@ -88,8 +88,8 @@ vi.mock('../hooks/useSettingsAutoUpdate', async importOriginal => {
   }
 })
 
-vi.mock('../hooks/useSettingsVersion', async importOriginal => {
-  const actual = await importOriginal<typeof import('../hooks/useSettingsVersion')>()
+vi.mock('@/features/settings/hooks/useSettingsVersion', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/settings/hooks/useSettingsVersion')>()
   return {
     ...actual,
     useSettingsVersion: (...args: Parameters<typeof actual.useSettingsVersion>) => {
@@ -99,8 +99,8 @@ vi.mock('../hooks/useSettingsVersion', async importOriginal => {
   }
 })
 
-vi.mock('../hooks/useSettingsConfigDirectory', async importOriginal => {
-  const actual = await importOriginal<typeof import('../hooks/useSettingsConfigDirectory')>()
+vi.mock('@/features/settings/hooks/useSettingsConfigDirectory', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/settings/hooks/useSettingsConfigDirectory')>()
   return {
     ...actual,
     useSettingsConfigDirectory: (...args: Parameters<typeof actual.useSettingsConfigDirectory>) => {
@@ -128,7 +128,7 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('../api', () => ({
+vi.mock('@/features/settings/api', () => ({
   discoverDevices: mocks.discoverDevices,
   getConfig: mocks.getConfig,
   getConfigDir: mocks.getConfigDir,

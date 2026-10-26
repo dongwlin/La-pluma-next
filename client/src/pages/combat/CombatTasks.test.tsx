@@ -86,7 +86,7 @@ vi.mock('@/features/user-config', async () => {
   }
 })
 
-vi.mock('../api', () => ({
+vi.mock('@/features/combat/api', () => ({
   executeCopilotSetPlan: mocks.executeCopilotSetPlan,
   continueCopilotSet: mocks.continueCopilotSet,
   getCopilotInfo: mocks.getCopilotInfo,
@@ -105,9 +105,9 @@ vi.mock('@/features/runtime-status', () => ({
 
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
 
-vi.mock('../components/CombatCopilotSetPanel', async (importOriginal) => {
+vi.mock('@/features/combat/components/CombatCopilotSetPanel', async (importOriginal) => {
   const React = await import('react')
-  const actual = await importOriginal<typeof import('../components/CombatCopilotSetPanel')>()
+  const actual = await importOriginal<typeof import('@/features/combat/components/CombatCopilotSetPanel')>()
   const CountingSetPanel = (props: Parameters<typeof actual.default>[0]) => {
     renderCounts.setPanel += 1
     return React.createElement(actual.default, props)

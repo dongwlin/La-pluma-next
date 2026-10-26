@@ -4,4 +4,4 @@
 
 import './styles/combat.css'
 
-export { default } from './pages/CombatTasks'
+export { default as CombatWorkspace } from './components/CombatWorkspace'
