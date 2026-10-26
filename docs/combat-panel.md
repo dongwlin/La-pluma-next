@@ -131,7 +131,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `client/src/features/combat/pages/CombatTasks.test.tsx` | 既有配置迁移/pending/重试/迟到加载、三种模式、停止与超时、Activity、搜索/预览旧响应；新增搜索选择回填与预览、逐项结果与等待进度、局部输入不推动列表渲染、局部状态跨模式切换保留 |
+| `client/src/features/combat/pages/CombatTasks.test.tsx` | 既有配置迁移/pending/重试/迟到加载、三种模式、停止与超时、Activity、搜索/预览旧响应；新增搜索选择回填与预览、逐项结果与等待进度、局部输入不推动列表渲染、局部状态跨模式切换保留、保全派驻/悖论模拟命令接线 |
 | `client/src/features/combat/model/copilotSetView.test.ts` | Run 归属、重置作废、待执行求差、失败/已执行计数、下一关与自动停止、续跑/当前项回退、单作业预览 |
 | `client/src/features/combat/model/panelState.test.ts` | 初始值、通知、相同值抑制、退订、多订阅者、独立 store |
 | `client/src/features/combat/model/combatCommands.test.ts`、`copilotSelection.test.ts`、`copilotPreviewSession.test.ts`、`queries.test.ts`、`api/index.test.ts`、`utils/copilotUri.test.ts` | 既有命令/选段/预览会话/Query/API/URI 回归 |
