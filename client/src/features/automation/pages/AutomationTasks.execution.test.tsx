@@ -2,8 +2,10 @@
 
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '@/shared/api'
+import { createQueryClient } from '@/shared/query'
 import {
   ExecutionController,
   type AgentRun,
@@ -255,6 +257,7 @@ let storage: ReturnType<typeof memoryStorage>
 let releases: Array<() => void>
 let container: HTMLDivElement
 let root: Root
+let queryClient: ReturnType<typeof createQueryClient>
 
 const flush = async () => {
   await act(async () => {
@@ -284,12 +287,20 @@ const useIdentity = (identity: TestIdentity | null = null) => {
 }
 
 const renderPage = async () => {
-  await act(async () => root.render(<AutomationTasks />))
+  await act(async () => root.render(
+    <QueryClientProvider client={queryClient}>
+      <AutomationTasks />
+    </QueryClientProvider>,
+  ))
   await flush()
 }
 
 const renderActivityMode = async (mode: 'visible' | 'hidden') => {
-  await act(async () => root.render(<Activity mode={mode}><AutomationTasks /></Activity>))
+  await act(async () => root.render(
+    <QueryClientProvider client={queryClient}>
+      <Activity mode={mode}><AutomationTasks /></Activity>
+    </QueryClientProvider>,
+  ))
   await flush()
 }
 
@@ -330,6 +341,8 @@ beforeEach(() => {
   localStorage.clear()
   // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
   userConfigCoordinator.dispose()
+  // 活动读取走 Query：每个用例独立客户端，避免复用上一个用例的 mock 结果。
+  queryClient = createQueryClient()
   mocks.getActivity.mockReset().mockResolvedValue({ success: false })
   mocks.loadUserConfig.mockReset().mockResolvedValue({ success: true, data: { taskFlow: flow } })
   mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })

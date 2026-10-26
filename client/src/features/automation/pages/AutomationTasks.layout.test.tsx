@@ -2,7 +2,9 @@
 
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createQueryClient } from '@/shared/query'
 import { userConfigCoordinator } from '@/features/user-config'
 import AutomationTasks from './AutomationTasks'
 
@@ -118,6 +120,7 @@ class IntersectionObserverMock {
 
 let container: HTMLDivElement
 let root: Root
+let queryClient: ReturnType<typeof createQueryClient>
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
 
 const taskFlowFixture = [
@@ -173,9 +176,17 @@ const taskFlowFixture = [
 
 const flush = async () => {
   await act(async () => {
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let index = 0; index < 8; index += 1) await Promise.resolve()
   })
+}
+
+const renderPage = async () => {
+  await act(async () => root.render(
+    <QueryClientProvider client={queryClient}>
+      <AutomationTasks />
+    </QueryClientProvider>,
+  ))
+  await flush()
 }
 
 const deferred = <T,>() => {
@@ -196,6 +207,48 @@ const clickSequenceTask = async (taskName: string) => {
   return button
 }
 
+const sequenceOrder = () => Array.from(container.querySelectorAll('.automation-sequence-copy strong'))
+  .map(node => node.textContent)
+
+const pointerEvent = (
+  type: string,
+  init: { clientY: number; clientX?: number; pointerId?: number },
+) => {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    clientX: init.clientX ?? 0,
+    clientY: init.clientY,
+  })
+  Object.defineProperty(event, 'pointerId', { value: init.pointerId ?? 1 })
+  return event
+}
+
+/** 让每行占 80px 高、间隔 20px，便于按 clientY 计算中线。 */
+const stubSequenceRects = () => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    const rows = Array.from(container.querySelectorAll('.automation-sequence-item'))
+    const index = rows.indexOf(this)
+    const top = index * 100
+    return {
+      top,
+      bottom: top + 80,
+      height: 80,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    } as DOMRect
+  })
+}
+
+const savedFlowIds = () => (
+  JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{ id: string }>
+).map(task => task.id)
+
 describe('AutomationTasks layout surfaces', () => {
   beforeEach(() => {
     vi.stubGlobal('IntersectionObserver', IntersectionObserverMock)
@@ -213,6 +266,8 @@ describe('AutomationTasks layout surfaces', () => {
     localStorage.clear()
     // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
     userConfigCoordinator.dispose()
+    // 活动读取走 Query：每个用例独立客户端，避免复用上一个用例的 mock 结果。
+    queryClient = createQueryClient()
     mocks.getActivity.mockReset().mockResolvedValue({ success: false })
     mocks.getScheduleExecutionStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
     mocks.getTaskStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
@@ -244,10 +299,23 @@ describe('AutomationTasks layout surfaces', () => {
   })
 
   it('uses the compact device monitor in the automation workspace', async () => {
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     expect(container.querySelector('[data-testid="screen-monitor"]')?.getAttribute('data-variant')).toBe('compact')
+  })
+
+  it('shows the current activity from the automation activity query', async () => {
+    mocks.getActivity.mockResolvedValue({
+      success: true,
+      data: { code: 'act-1', name: '测试活动' },
+    })
+
+    await renderPage()
+
+    expect(container.querySelector('.automation-flow-activity')?.textContent)
+      .toContain('当前活动 · 测试活动')
+    expect(mocks.getActivity).toHaveBeenCalledOnce()
+    expect(mocks.getActivity).toHaveBeenCalledWith('Official', expect.any(AbortSignal))
   })
 
   it('hydrates an enabled schedule without rebuilding the server schedule', async () => {
@@ -259,8 +327,7 @@ describe('AutomationTasks layout surfaces', () => {
       },
     })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     expect(container.querySelector<HTMLInputElement>('[aria-label="定时执行"]')?.checked).toBe(true)
     expect(mocks.setupSchedule).not.toHaveBeenCalled()
@@ -279,8 +346,7 @@ describe('AutomationTasks layout surfaces', () => {
       },
     })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(5)
     const addTimeButton = container.querySelector<HTMLButtonElement>('.automation-schedule-add')
@@ -298,14 +364,55 @@ describe('AutomationTasks layout surfaces', () => {
     expect(container.querySelector('.automation-schedule-add')).toBeNull()
   })
 
+  it('rejects a duplicate schedule time without writing the draft', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: taskFlowFixture,
+        schedule: {
+          enabled: true,
+          entries: ['08:30', '12:45'].map(time => ({ time, enabled: true })),
+        },
+      },
+    })
+
+    await renderPage()
+
+    const firstHour = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')!
+    const firstMinute = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')!
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+
+    await act(async () => {
+      inputValueSetter?.call(firstHour, '12')
+      firstHour.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    await act(async () => {
+      inputValueSetter?.call(firstMinute, '45')
+      firstMinute.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+
+    // 纯模型拒绝重复时间点，面板不产生写入，受控输入保持上一次合法值。
+    expect(mocks.setMessage).toHaveBeenCalledWith('该执行时间已经存在', 'error')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('12')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('30')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      times: ['12:30', '12:45'],
+    })
+  })
+
   it('keeps the hydrated task flow without reloading after Activity restore', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
     const renderMode = async (mode: 'visible' | 'hidden') => {
       await act(async () => {
         root.render(
-          <Activity mode={mode}>
-            <AutomationTasks />
-          </Activity>,
+          <QueryClientProvider client={queryClient}>
+            <Activity mode={mode}>
+              <AutomationTasks />
+            </Activity>
+          </QueryClientProvider>,
         )
         await Promise.resolve()
         await Promise.resolve()
@@ -328,8 +435,7 @@ describe('AutomationTasks layout surfaces', () => {
     localStorage.setItem('maa-schedule', JSON.stringify({ enabled: false, times: ['14:00'] }))
     localStorage.setItem('automationConfigSyncPending', 'pending-local-draft')
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
     expect(container.textContent).toContain('理智作战')
@@ -342,9 +448,11 @@ describe('AutomationTasks layout surfaces', () => {
     const renderMode = async (mode: 'visible' | 'hidden') => {
       await act(async () => {
         root.render(
-          <Activity mode={mode}>
-            <AutomationTasks />
-          </Activity>,
+          <QueryClientProvider client={queryClient}>
+            <Activity mode={mode}>
+              <AutomationTasks />
+            </Activity>
+          </QueryClientProvider>,
         )
         await Promise.resolve()
       })
@@ -377,9 +485,11 @@ describe('AutomationTasks layout surfaces', () => {
     const renderMode = async (mode: 'visible' | 'hidden') => {
       await act(async () => {
         root.render(
-          <Activity mode={mode}>
-            <AutomationTasks />
-          </Activity>,
+          <QueryClientProvider client={queryClient}>
+            <Activity mode={mode}>
+              <AutomationTasks />
+            </Activity>
+          </QueryClientProvider>,
         )
         await Promise.resolve()
         await Promise.resolve()
@@ -405,8 +515,7 @@ describe('AutomationTasks layout surfaces', () => {
   it('scrolls the selected task editor into view on narrow screens', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     const selectedButton = await clickSequenceTask('理智作战')
     const editor = container.querySelector('#automation-task-editor')
@@ -426,8 +535,7 @@ describe('AutomationTasks layout surfaces', () => {
       },
     })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     const clientTypeLabel = container.querySelector<HTMLLabelElement>('label[for="automation-startup-1-clientType"]')
     expect(clientTypeLabel?.textContent).toContain('客户端类型')
@@ -503,8 +611,7 @@ describe('AutomationTasks layout surfaces', () => {
   it('normalizes the recruitment duration when the field loses focus', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
     await clickSequenceTask('自动公招')
 
     const recruitmentTime = container.querySelector<HTMLInputElement>('#recruit-1-recruitment-time-3')!
@@ -528,11 +635,112 @@ describe('AutomationTasks layout surfaces', () => {
     expect(savedFlow.find(task => task.id === 'recruit-1')?.params.recruitment_time['3']).toBe(330)
   })
 
+  it('commits a pointer drag even when the browser releases pointer capture', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    await renderPage()
+    stubSequenceRects()
+
+    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    await act(async () => {
+      handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 7 }))
+    })
+    await act(async () => {
+      document.dispatchEvent(pointerEvent('pointermove', { clientY: 260, pointerId: 7 }))
+    })
+
+    // 拖拽期间只渲染预览，尚未写入配置。
+    expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
+    expect(container.querySelectorAll('.automation-sequence-item')[2]?.classList.contains('is-dragging')).toBe(true)
+    expect(savedFlowIds()).toEqual(['startup-1', 'fight-1', 'recruit-1'])
+
+    // 性能基线记录的真实路径：重排后浏览器释放 capture，排序不能因此取消。
+    await act(async () => {
+      handle.dispatchEvent(new Event('lostpointercapture', { bubbles: true }))
+    })
+    expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
+
+    await act(async () => {
+      document.dispatchEvent(pointerEvent('pointerup', { clientY: 260, pointerId: 7 }))
+    })
+    await flush()
+
+    expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
+    expect(savedFlowIds()).toEqual(['fight-1', 'recruit-1', 'startup-1'])
+    expect(container.querySelector('.automation-sequence-item.is-dragging')).toBeNull()
+    expect(container.querySelector('[aria-live="polite"]')?.textContent)
+      .toBe('启动游戏已移动到第 3 位')
+  })
+
+  it('cancels a pointer sort with Escape and keeps the committed order', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    await renderPage()
+    stubSequenceRects()
+    const committedBefore = localStorage.getItem('maa-task-flow')
+
+    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    await act(async () => {
+      handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 9 }))
+    })
+    await act(async () => {
+      document.dispatchEvent(pointerEvent('pointermove', { clientY: 260, pointerId: 9 }))
+    })
+    expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    await flush()
+
+    expect(sequenceOrder()).toEqual(['启动游戏', '理智作战', '自动公招'])
+    expect(localStorage.getItem('maa-task-flow')).toBe(committedBefore)
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('已取消排序')
+  })
+
+  it('restores the committed order when the pointer is cancelled', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    await renderPage()
+    stubSequenceRects()
+    const committedBefore = localStorage.getItem('maa-task-flow')
+
+    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    await act(async () => {
+      handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 11 }))
+    })
+    await act(async () => {
+      document.dispatchEvent(pointerEvent('pointermove', { clientY: 260, pointerId: 11 }))
+    })
+    expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
+
+    await act(async () => {
+      document.dispatchEvent(pointerEvent('pointercancel', { clientY: 260, pointerId: 11 }))
+    })
+    await flush()
+
+    expect(sequenceOrder()).toEqual(['启动游戏', '理智作战', '自动公招'])
+    expect(localStorage.getItem('maa-task-flow')).toBe(committedBefore)
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('已取消排序')
+  })
+
+  it('moves tasks with the keyboard handle and announces the new position', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    await renderPage()
+
+    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    await act(async () => {
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+    await flush()
+
+    expect(sequenceOrder()).toEqual(['理智作战', '启动游戏', '自动公招'])
+    expect(savedFlowIds()).toEqual(['fight-1', 'startup-1', 'recruit-1'])
+    expect(container.querySelector('[aria-live="polite"]')?.textContent)
+      .toBe('启动游戏已移动到第 2 位')
+  })
+
   it('keeps stage creation and deletion inside one grouped list', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
     await clickSequenceTask('理智作战')
 
     const stageEditor = container.querySelector('.automation-stage-editor')!
@@ -570,8 +778,7 @@ describe('AutomationTasks layout surfaces', () => {
       },
     })
 
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
     await clickSequenceTask('理智作战')
 
     const addSmartStages = container.querySelector<HTMLButtonElement>('[aria-label="加入智能养成关卡"]')!
@@ -599,8 +806,7 @@ describe('AutomationTasks layout surfaces', () => {
   })
 
   it('exposes the add-task picker as a labelled menu', async () => {
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
     expect(trigger.textContent).toContain('添加任务')
@@ -617,8 +823,7 @@ describe('AutomationTasks layout surfaces', () => {
   })
 
   it('closes the add-task picker with Escape and restores trigger focus', async () => {
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
     await act(async () => trigger.click())
@@ -639,9 +844,11 @@ describe('AutomationTasks layout surfaces', () => {
     const renderMode = async (mode: 'visible' | 'hidden') => {
       await act(async () => {
         root.render(
-          <Activity mode={mode}>
-            <AutomationTasks />
-          </Activity>,
+          <QueryClientProvider client={queryClient}>
+            <Activity mode={mode}>
+              <AutomationTasks />
+            </Activity>
+          </QueryClientProvider>,
         )
       })
       await flush()
@@ -665,8 +872,7 @@ describe('AutomationTasks layout surfaces', () => {
   })
 
   it('closes the add-task picker when pressing outside its region', async () => {
-    await act(async () => root.render(<AutomationTasks />))
-    await flush()
+    await renderPage()
 
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
     await act(async () => trigger.click())

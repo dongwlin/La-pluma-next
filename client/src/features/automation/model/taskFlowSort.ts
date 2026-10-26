@@ -7,7 +7,8 @@
  * - `moveTaskFlowItem` 对同位置与越界输入返回原数组，页面可用引用相等判断无变化；
  * - `placeClosedownLast` 是流程不变量：解码、添加与恢复任务都必须经过它。
  *
- * 模型不访问 React、网络或存储；页面只负责 pointer capture、预览与提交。
+ * 模型不访问 React、网络或存储；`hooks/useTaskFlowSorting.ts` 负责 pointer 生命周期、
+ * 预览与提交，capture 丢失不取消排序。
  */
 
 /** 拖拽激活阈值（像素）。 */
