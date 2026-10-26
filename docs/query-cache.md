@@ -4,7 +4,7 @@
 
 本文描述 FPR-017 交付的应用级 TanStack Query 基础设施：客户端与 Provider 的创建位置、默认重取/重试策略、领域 query key 约定、失效方式，以及它与 Zustand、配置草稿、执行控制器和 Dashboard 完整快照的边界。
 
-当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询、FPR-021 完成养成队列的读取与写入命令、FPR-024 完成设置页 MAA connection 的读取，FPR-025 完成设置页版本与配置目录的读取。其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)。
+当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询、FPR-021 完成养成队列的读取与写入命令、FPR-024 完成设置页 MAA connection 的读取，FPR-025 完成设置页版本与配置目录的读取，FPR-029 完成作业搜索与预览的五类资源迁移。其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)，作业搜索/预览的取消与选段语义见[作业搜索与预览](combat-search-preview.md)。
 
 ## 1. 定位与边界
 
@@ -119,7 +119,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | `training` | `queue`、`candidates`、`counts` | `queue` 由 FPR-021 迁移；`candidates`/`counts` 由 FPR-044 迁移 |
 | `settings` | `maa-config`（参数 `profileName`） | FPR-024 已迁移，草稿仍归设置域 owner |
 | `settings` | `version`、`config-directory` | FPR-025 已迁移 |
-| `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 |
+| `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 已迁移；预览是这些资源的组合读取，不另建 key |
 | `logs` | 无；历史文件列表/读取与实时缓冲均为页面会话数据 | FPR-028 判定不建立 Query key，请求裁决与 Activity 恢复由日志会话持有 |
 | `device-mirror` | `webrtc-status`、`device-stats` | FPR-030 |
 | `automation` | `activity`、`schedule-execution` | FPR-030 |
@@ -264,7 +264,27 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 - core/CLI/热更新同样是显式命令，不进入 Query，也不由 Query 自动重试；成功确认后只失效版本 key 并发布资源作用域，失败不失效（FPR-026，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)）。
 - 打开目录是 POST 命令，不进入 Query；页面原有卡片与只读 section 两个入口都调用同一 hook 动作。
 
-## 13. 回归证据
+## 13. 已迁移读取：作业搜索与预览（FPR-029）
+
+`CombatTasks` 的普通/悖论搜索、单作业详情与作业集详情由 `combat` 域 Query 持有；预览是这些资源的组合读取，由 `CopilotPreviewSession` 裁决当前展示，执行仍由 task-execution 控制器持有。详细契约、取消与选段语义见[作业搜索与预览](combat-search-preview.md)。
+
+| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
+| --- | --- | --- | --- | --- |
+| 普通搜索 | `copilotSearchQueryOptions(stage)` | `['combat','copilot-search',stage]` | API/载荷失败转为 query error，页面展示服务端消息；transport 显示“搜索失败: …”；取消静默 | 显式搜索 `fetchQuery({ staleTime: 0 })`；输入变化/Activity 隐藏 `cancelQueries`；默认 30s 内保留上次成功结果 |
+| 悖论搜索 | `paradoxSearchQueryOptions(name)` | `['combat','paradox-search',name]` | 同上 | 同上 |
+| 单作业详情 | `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 代理失败为 query error；PRTS 非 200 为“作业不存在” | 预览按钮按默认新鲜度复用/重取；终态刷新不涉及 |
+| 作业集成员 | `copilotSetQueryOptions(id)` | `['combat','copilot-set',id]` | 计划不可用/为空时的回退读取；失败参与预览失败判定 | 计划回退时读取；默认新鲜度 |
+| 作业集计划 | `copilotSetPlanQueryOptions(id, raid)` | `['combat','copilot-set-plan',id,raid]` | 缺 `items`/`entries` 为 `contract` 失败并回退成员列表 | 计划优先；终态刷新 `staleTime: 0`；重置进度成功失效该作业集前缀 |
+
+规则：
+
+- 搜索/详情/计划都把 Query 的 `signal` 传给 fetch；预览会话取消时对登记的精确 key 调用 `cancelQueries`。
+- 预览不建立额外 key，也不把组合结果写入第二份缓存；页面只订阅会话的 `preview`/`loading`。
+- 搜索词、识别方式、选中索引是客户端选择，不进入 key；搜索结果与执行 Run 完全分离。
+- 作业集终态后的进度刷新把新计划写回同一 key；重置进度只失效相关计划，不触碰搜索或其它作业集。
+- Activity 隐藏会注销查询观察者并取消在途读取，缓存保留；恢复后不自动重放搜索或预览。
+
+## 14. 回归证据
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -276,6 +296,10 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
 | `client/src/features/game-data/model/queries.test.ts` | 共享资源 key、空快照保留、载荷归一、失败转为 query 错误、signal 传递 |
 | `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、失败转为 query 错误、signal 传递 |
+| `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划 key、signal 与取消、失败分类、计划优先与成员回退、探测、强制刷新 |
+| `client/src/features/combat/model/copilotPreviewSession.test.ts` | 预览 loading/旧响应取消、tracked key 取消、Activity 停止与恢复、终态静默刷新 |
+| `client/src/features/combat/model/copilotPayload.test.ts`、`copilotPreview.test.ts`、`copilotSelection.test.ts`、`combatCommands.test.ts` | 载荷兼容、目标/预览构造、选段恢复、命令与执行选项 |
+| `client/src/features/combat/pages/CombatTasks.test.tsx` | 搜索/预览旧响应与 AbortSignal、选择写入配置并提交、预览失败保留旧预览、搜索结果与运行状态隔离、Activity 恢复 |
 | `client/src/features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
 | `client/src/features/training/model/queueCommands.test.ts` | 队列命令串行与最新快照排序、重复添加合并、写后刷新失败 fallback/`uncertain`、失败不提交不发布、撤销原索引、目标失效拒绝、写前取消读取 |
 | `client/src/features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key 与参数、signal、失败信封、补齐读取与计数结构共享 |
@@ -305,6 +329,9 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/game-data/model/queries.test.ts \
   src/features/statistics/model/queries.test.ts \
   src/features/statistics/model/operatorFilters.test.ts \
+  src/features/combat/model/queries.test.ts \
+  src/features/combat/model/copilotPreviewSession.test.ts \
+  src/features/combat/pages/CombatTasks.test.tsx \
   src/features/training/model/candidates.test.ts \
   src/features/training/model/queueCommands.test.ts \
   src/features/training/model/queries.test.ts \

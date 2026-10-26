@@ -68,12 +68,12 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
 | 配置 | 适配器 `features/combat/model/combatConfig.ts` 经 `features/user-config` 协调器读写 GET/POST `/agent/config/user/combat-tasks`；本地键与 `combatConfigSyncPending` 不变；坏 JSON 清理、pending 本地优先、`app→cli` 与 raid `1`/`2` 迁移、300ms 去抖与跨 remount 提交队列由通道持有；页面只订阅 `draft`/`error`/`syncState` 并调用 `retry()` | combat 配置适配器 + 按 key 提交协调器（FPR-014 已接入） |
-| 搜索 | GET `/agent/copilot/search?stage=…`、`/agent/paradox/search?name=…`；独立 request id 丢弃旧响应，但不取消网络 | combat 查询键/资源控制器；搜索词归面板 |
-| 预览与作业集 | GET `/agent/copilots/:id`、`/agent/copilot-sets/:id`、`/agent/copilot-sets/:id/plan?raid=…`；plan 优先，失败 fallback set + 并发详情；completedModes/raid 恢复选择 | combat 查询/预览会话与纯 URI 模型 |
+| 搜索 | GET `/agent/copilot/search?stage=…`、`/agent/paradox/search?name=…`；FPR-029 起由 `combat` 域 Query 持有（`copilot-search`/`paradox-search`），显式搜索 `staleTime: 0`，输入变化/Activity 隐藏 `cancelQueries` 并真正中止 fetch，旧响应只写旧 key | combat 查询键/资源控制器；搜索词归面板（`useCopilotSearch` 已交付取消与代次） |
+| 预览与作业集 | GET `/agent/copilots/:id`、`/agent/copilot-sets/:id`、`/agent/copilot-sets/:id/plan?raid=…`；计划优先，失败 fallback set + 并发详情；`CopilotPreviewSession` 裁决旧响应、Activity 取消与终态强制刷新；completedModes/raid 恢复选择 | combat 查询/预览会话与纯 URI 模型（FPR-029 已交付） |
 | 执行、进度与停止 | 单任务 POST `/agent/actions/run-task`，command 为 copilot/ssscopilot/paradoxcopilot，waitForCompletion=true；set POST `/agent/copilot-sets/:id/execute`；reset POST `…/:id/reset-progress`；兼容页内 sequential/manual 下一关；GET tasks/status 每 2s，三次失败警告；stop 后 400ms 查 idle，15s 超时 | task-execution 控制器 + combat 执行适配器；服务端拥有 set/manual 进度 |
-| 命令与展示 | command/args/options 拼接；activeCombatMode/copilotType、搜索结果、预览、selected indexes、reset dialog、waitingForNext/current task/results | 纯命令模型；展示/选择归对应面板，执行结果只订阅 |
+| 命令与展示 | command/args/options 拼接由 `model/combatCommands.ts` 持有；preview/search 状态归域入口；activeCombatMode/copilotType、搜索结果、预览、selected indexes、reset dialog、waitingForNext/current task/results 仍由页面组合 | 纯命令模型；展示/选择归对应面板，执行结果只订阅 |
 
-存储完整清单（均读写）：`combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections`；`combatConfigSyncPending` 读写/成功删除。搜索/预览 generation、执行 generation 与 stop-wait AbortController 分别防迟到结果；没有独立后台运行身份。
+存储完整清单（均读写）：`combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections`；`combatConfigSyncPending` 读写/成功删除。FPR-029 后搜索/预览由 Query 观察者与 `CopilotPreviewSession` 的请求代次裁决，执行仍由控制器 generation/stop-wait 裁决；没有独立后台运行身份。
 
 ### Roguelike — `features/roguelike/pages/RoguelikeTasks.tsx`
 
@@ -162,7 +162,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | 页面 | Activity hide / show | document hidden | 真正 remount / 浏览器刷新 |
 | --- | --- | --- | --- |
 | Automation | 保留草稿/选择/撤销/结果；清 polling/监听/兼容 runner/连接测试；show 清 loading、查状态，已 hydrated 不重载配置 | 业务查询继续；预览暂停 | 重读本地/服务端与旧断点；旧续跑当前可能重提，未来改观察恢复 |
-| Combat | 保留草稿/UI；失效 search/preview generation，abort status/stop 等待；show 清中断 loading、查运行，不重载配置 | 业务查询继续；预览暂停 | 恢复配置/后端 running，manual 当前集/结果不恢复 |
+| Combat | 保留草稿/UI；Query 观察者注销并取消在途搜索/预览读取，预览会话 stop 清 loading、保留已显示预览；abort status/stop 等待；show 查运行、不自动重放搜索/预览、不重载配置 | 业务查询观察者注销；预览请求取消 | 配置/后端 running 恢复；搜索词/识别方式/选中索引重置；Query 新鲜缓存可复用；manual 当前集/结果不恢复 |
 | Roguelike | 保留草稿/模式；清 status/stop 等待；show 查运行、跳过已 hydrated 配置 | 业务查询继续；预览暂停 | 配置/后端恢复，activeMode 回默认 |
 | Dashboard | 停 5s/5min timers；在途业务 promise 仍可落 store；show 按时戳刷新并立即采设备 | 业务/设备 timer 继续，预览暂停 | store/模块在普通 remount 存活；刷新读完整 local cache |
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |

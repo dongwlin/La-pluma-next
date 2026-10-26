@@ -142,6 +142,8 @@ FPR-027 起实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`
 | `getCopilotSet(copilotId, signal?)` | `GET /agent/copilot-sets/:id` | PRTS 代理对象 |
 | `getCopilotSetPlan(copilotId, raid?, signal?)` | `GET /agent/copilot-sets/:id/plan` | `items`/`entries` 数组 |
 
+FPR-029 起这些读取由 `combat` 域 Query 消费，页面不再保留独立的 preview/search request id；所有 `queryFn` 都把 Query 的 `signal` 传到上述函数，切换输入或 Activity 隐藏时真正取消 fetch。计划优先、成员回退、旧响应裁决与选段语义见[作业搜索与预览](combat-search-preview.md)。
+
 ### Device mirror（`features/device-mirror/api/index.ts`）
 
 | 函数 | 端点 | 载荷校验 |
@@ -195,6 +197,8 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 | `client/src/features/logs/pages/LogViewer.activity.test.tsx` | Activity/文档可见性恢复、慢请求不叠加、清空暂停与恢复立即重读、历史读取恢复重试、历史模式不重启实时 |
 | `client/src/features/logs/pages/LogViewer.test.tsx` | 实时失败重试、后台刷新保留行、历史列表/文件重试、返回实时、切换竞态、清理确认与失败重试 |
 | `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
+| `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划的 Query signal 与取消、失败分类、预览组合读取 |
+| `client/src/features/combat/model/copilotPayload.test.ts` | PRTS 代理信封/原始载荷兼容、搜索条目与计划 completedModes |
 | `client/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
 
 验证命令与结果记录在对应任务的完成记录；本文件只描述契约与回归入口。
