@@ -843,6 +843,7 @@ export interface SizeEntry {
 
 export interface DomainSizeTotals {
   pages: number
+  /** hooks + model + components 的总行数；不含 api/store/utils 等其他目录。 */
   nonPage: number
 }
 
