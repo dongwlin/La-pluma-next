@@ -197,13 +197,19 @@ describe('page responsibility guardrails', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/pages/Page.tsx', [
         "import { fetchWithAuth } from '@/shared/api'",
+        "import { getQueryClient } from '@/shared/query'",
         "import { useQuery } from '@tanstack/react-query'",
         'export default function Page() { return null }',
       ].join('\n')],
       ['shared/api/index.ts', 'export const fetchWithAuth = () => null\n'],
+      ['shared/query/index.ts', 'export const getQueryClient = () => null\n'],
     ))
 
-    expect(violations.map(violation => violation.rule)).toEqual(['page-transport', 'page-transport'])
+    expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-transport',
+      'page-transport',
+    ])
   })
 
   it('flags bare transport, storage and polling globals in a page', () => {
