@@ -115,7 +115,7 @@ ConfigManager（页面壳）
 | 文件 | 覆盖 |
 | --- | --- |
 | `features/settings/pages/ConfigManager.layout.test.tsx` | 既有 34 项设置回归：section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消、目录失败后切只读 section 不重试且保留重试入口、只读首屏共享一次目录读取 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新状态与全局状态提示不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板；设备/更新动作不重渲染目录面板 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新状态与全局状态提示不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板；设备/更新动作不重渲染目录面板；目录缓存变化不重渲染连接/更新面板 |
 | `features/settings/components/ReadOnlyConfigPanel.test.tsx` | 只读头部挂载时复用过期目录缓存、不触发 `getConfigDir`；目录可用时“打开目录”保持可点 |
 | `features/settings/model/*.test.ts`、`features/settings/api/index.test.ts` | 配置归一/校验、section 模型、connection 草稿、设备命令、版本/目录、更新与自动更新所有者既有回归（本任务未改协议） |
 
