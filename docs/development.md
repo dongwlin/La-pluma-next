@@ -107,7 +107,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 ### 依赖与职责护栏
 
-`client/scripts/check-guardrails.ts` 检查功能域依赖环、公开面/深路径、`app → features → shared` 分层方向、`task-execution` 反向依赖，以及页面文件直接持有传输/存储/轮询原语；同时输出 hooks/model/components/pages 的规模观察，并用 `size-budget.json` 拦截新增超阈值文件与同域页面等量搬移。它已作为客户端 `verify` 的第一步，不依赖视觉基线。阈值依据、允许方向、更新规模基线与已知限制见[依赖与职责护栏](guardrails.md)。
+`client/scripts/check-guardrails.ts` 检查功能域依赖环、公开面/深路径、`app → features → shared` 分层方向、`task-execution` 反向依赖，以及页面文件直接持有传输/存储/轮询原语；同时输出 hooks/model/components/pages 的规模观察，并用 `size-budget.json` 拦截新增超阈值文件与同域页面疑似搬移（80% 阈值）。它已作为客户端 `verify` 的第一步，不依赖视觉基线。阈值依据、允许方向、更新规模基线与已知限制见[依赖与职责护栏](guardrails.md)。
 
 ## 文件类型
 
