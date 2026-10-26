@@ -4,7 +4,7 @@
 
 本文描述 FPR-030 交付的总览数据所有权：五路业务读取如何组合成一份完整快照、单路失败如何保留上一份结果、设备采样如何独立轮询与恢复，以及总览如何接收获批的领域失效与统一执行入口。
 
-相关契约：[Query 缓存与键规范](query-cache.md)、[配置同步与资源一致性契约](config-sync-and-invalidation.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端执行客户端与控制器](execution-client.md)、[资源请求错误与取消契约](resource-requests.md)。
+相关契约：[Query 缓存与键规范](query-cache.md)、[配置持久化协调器](config-persistence.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端执行客户端与控制器](execution-client.md)、[资源请求错误与取消契约](resource-requests.md)。
 
 ## 1. 定位与边界
 

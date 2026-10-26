@@ -161,7 +161,7 @@ Activity 隐藏/显示与页面卸载都不改变资源所有权；Query 缓存�
 
 ## 7. Dashboard 完整快照边界
 
-Dashboard 的五路业务读取（activity、schedule execution、training queue、today drops、open-today stages）是一个**完整快照**，不是五个可独立展示的资源块。接入 Query 后仍必须满足[配置同步与资源一致性契约](config-sync-and-invalidation.md)第 4 节：
+Dashboard 的五路业务读取（activity、schedule execution、training queue、today drops、open-today stages）是一个**完整快照**，不是五个可独立展示的资源块。接入 Query 后仍必须满足[总览完整快照与设备采样](dashboard-snapshot.md)第 2–3 节：
 
 - 五项都 fulfilled 且载荷校验通过才提交快照；
 - 单路失败或形状错误保留上一份完整快照，不能用 Query 的部分成功覆盖 store；
@@ -401,6 +401,5 @@ pnpm --filter la-pluma-next-client exec vitest run \
 
 - [资源请求错误与取消契约](resource-requests.md)：signal、失败分类与载荷校验。
 - [养成队列命令与写后刷新](training-queue-commands.md)：队列唯一可写真相、串行命令、写后刷新与不确定 fallback。
-- [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与 Dashboard 完整快照规则。
 - [配置持久化协调器](config-persistence.md)：草稿、pending 与完整提交。
 - [前端执行客户端与控制器](execution-client.md)：Run 身份、观察与停止。

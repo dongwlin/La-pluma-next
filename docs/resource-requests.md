@@ -173,7 +173,7 @@ FPR-017 已交付应用级 Query 客户端、默认策略与 key 工厂，具体
 1. `queryFn: ({ signal }) => readApiData(...)`，或在保留旧端点函数时 `unwrapApiResponse(await getX(signal))`。
 2. 只对 `kind === 'transport'` 或 `kind === 'api' && retryable` 的失败启用自动重试；`contract` 失败不重试，`AbortError` 不计入失败。
 3. 页面现有的 request id / generation guard 可以保留到 Query 接管，但 Query 的 `signal` 必须真正取消网络，不能只丢弃响应。
-4. 失效与重取策略按[配置同步与资源一致性契约](config-sync-and-invalidation.md)执行；FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)，不在本层增加跨域失效。
+4. 失效与重取策略由[共享资源归属与失效端口](resource-ownership.md)约束，不在传输层增加跨域失效。
 
 ## 8. 回归证据
 

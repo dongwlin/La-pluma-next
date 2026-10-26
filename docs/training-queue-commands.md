@@ -4,7 +4,7 @@
 
 本文描述 FPR-021 交付的养成队列领域命令。它回答：队列的增删、排序和撤销由谁写入；并发点击如何排序；写入成功后如何取得权威队列；刷新失败时页面显示什么；以及队列变化如何使材料派生进度、旧计划与总览保持一致。
 
-相关契约：[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[配置同步与资源一致性契约](config-sync-and-invalidation.md)、[资源请求错误与取消契约](resource-requests.md)、[前端架构与所有权](frontend-architecture.md)。
+相关契约：[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[配置持久化协调器](config-persistence.md)、[资源请求错误与取消契约](resource-requests.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -140,4 +140,3 @@ pnpm --filter la-pluma-next-client exec vitest run \
 - [养成领域面板](training-panel.md)：队列/材料/计划/设置面板的组合、共享版本边界与局部状态生命期。
 - [养成设置提交与计划有效期](training-settings-and-plan-validity.md)：设置所有权、设置 revision 与计划前提。
 - [共享资源归属与失效端口](resource-ownership.md)：队列归属与触发映射。
-- [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系、计划有效期与 Dashboard 快照。

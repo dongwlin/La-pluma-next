@@ -168,5 +168,4 @@ pnpm --filter la-pluma-next-client exec vitest run \
 - [设置设备连接与系统资源](settings-device-and-resources.md)：版本 Query、配置目录与设备命令。
 - [设置配置编辑与保存](settings-config-editing.md)：connection 草稿与 section 状态。
 - [共享资源归属与失效端口](resource-ownership.md)：作用域词汇、发布/订阅规则与触发映射。
-- [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与 Dashboard 完整快照。
 - [Query 缓存与键规范](query-cache.md)：Query key、默认策略与 `settings/version`。

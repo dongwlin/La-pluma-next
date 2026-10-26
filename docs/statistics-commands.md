@@ -4,7 +4,7 @@
 
 本文描述 FPR-020 交付的统计数据、识别与材料刷新命令所有者。它回答：仓库/干员识别和设备执行控制器如何接线；识别完成、等待日志可解析、超时、取消和重试分别由谁负责；识别成功后哪些资源失效，以及页面为什么不会因超时或页面生命周期重复执行设备命令。
 
-相关契约：[前端执行客户端与控制器](execution-client.md)、[共享资源归属与失效端口](resource-ownership.md)、[Query 缓存与键规范](query-cache.md)、[资源请求错误与取消契约](resource-requests.md)、[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+相关契约：[前端执行客户端与控制器](execution-client.md)、[共享资源归属与失效端口](resource-ownership.md)、[Query 缓存与键规范](query-cache.md)、[资源请求错误与取消契约](resource-requests.md)、[配置持久化协调器](config-persistence.md)。
 
 ## 1. 定位与边界
 

@@ -4,7 +4,7 @@
 
 本文描述养成设置所有者、计划有效期与 FPR-023 交付的计划编排模型。它回答：设置由谁提交、连续编辑如何排序；旧响应能否覆盖新值；计划由谁生成/应用、在什么条件下仍然可应用；队列或设置变化、队列刷新失败时如何阻止使用过期计划；应用成功如何通知 automation 与总览。
 
-相关契约：[养成队列命令与写后刷新](training-queue-commands.md)、[Query 缓存与键规范](query-cache.md)、[配置同步与资源一致性契约](config-sync-and-invalidation.md)、[前端架构与所有权](frontend-architecture.md)。
+相关契约：[养成队列命令与写后刷新](training-queue-commands.md)、[Query 缓存与键规范](query-cache.md)、[配置持久化协调器](config-persistence.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -172,4 +172,3 @@ pnpm --filter la-pluma-next-client exec vitest run \
 - [养成队列命令与写后刷新](training-queue-commands.md)：队列唯一可写真相、串行命令、revision 与不确定 fallback。
 - [养成领域面板](training-panel.md)：工作区如何持有共享版本边界、计划/设置面板的局部状态与展示模型。
 - [Query 缓存与键规范](query-cache.md)：队列/候选/计数缓存与失效规则。
-- [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与计划有效期缺口。

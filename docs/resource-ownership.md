@@ -4,7 +4,7 @@
 
 本文描述 FPR-018 交付的共享资源归属与跨域失效端口。它回答三件事：仓库、持有干员、干员目录这些被多个页面消费的服务端读取由谁持有；training 与 statistics 之间原先的双向 API 依赖如何解开；识别、计划应用和资源更新等写入成功后，尚未迁移到 Query 的页面如何通过稳定端口刷新。
 
-相关契约：[资源请求错误与取消契约](resource-requests.md)、[Query 缓存与键规范](query-cache.md)、[配置同步与资源一致性契约](config-sync-and-invalidation.md)。
+相关契约：[资源请求错误与取消契约](resource-requests.md)、[Query 缓存与键规范](query-cache.md)、[配置持久化协调器](config-persistence.md)。
 
 ## 1. 定位与边界
 
@@ -53,6 +53,8 @@ import {
 | 设备采样 | `/agent/device-stats` | Dashboard | `deviceMirrorKeys.query('device-stats')` | 归 device-mirror；5s 轮询、失败静默保旧，不持久化 |
 
 FPR-019 已把统计页的仓库、持有干员、目录与掉落读取迁入 Query；`game-data` 与 `statistics` 各自导出 query 定义，页面不再保存资源副本。FPR-020 已把识别/材料命令与发布端接入第 4 节的端口；FPR-044 把训练页的候选列表与三种状态计数迁入 `training` 领域 query，查询内部经 `game-data` 的公开端点读取目录与持有干员，不复制共享 key；FPR-021 把队列迁入 `training` 的 `queue` query，写入由串行领域命令持有（见[养成队列命令与写后刷新](training-queue-commands.md)）。FPR-030 已把 Dashboard 的五路业务读取迁入各领域 Query，并由 `features/dashboard/model` 协调完整快照与设备采样（见[总览完整快照与设备采样](dashboard-snapshot.md)）。识别命令与完成条件见[统计识别命令与失效联动](statistics-commands.md)。
+
+跨页一致性不依靠各页面互相轮询：识别、队列修改、计划应用或资源更新在写入确认后发布精确作用域；接收方通过自身 Query 或会话协调器重读。失败的命令不发布成功失效，部分成功仍需保留草稿与失败条件。Dashboard 接收 `dashboard-snapshot` 后重读全部五路业务资源，单路失败保留上一份完整快照；具体规则见[总览完整快照与设备采样](dashboard-snapshot.md)。
 
 ## 3. 公开面与依赖方向
 
@@ -212,5 +214,4 @@ pnpm --filter la-pluma-next-client exec vitest run \
 
 - [资源请求错误与取消契约](resource-requests.md)：signal、失败分类与载荷校验。
 - [Query 缓存与键规范](query-cache.md)：key 规范、默认策略与迁移入口。
-- [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与 Dashboard 完整快照。
 - [养成队列命令与写后刷新](training-queue-commands.md)：队列唯一可写真相、串行命令与写后失效。
