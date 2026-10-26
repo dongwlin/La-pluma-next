@@ -471,6 +471,10 @@ describe('page responsibility guardrails', () => {
       "import * as a from '@/features/a'",
       ';(a as any).executeScheduleNow()',
     ].join('\n')],
+    ['relative public surface', [
+      "import * as a from '../../features/a'",
+      ';(a as any).executeScheduleNow()',
+    ].join('\n')],
     ['namespace local alias', [
       "import * as a from '@/features/a'",
       'const b = a',
