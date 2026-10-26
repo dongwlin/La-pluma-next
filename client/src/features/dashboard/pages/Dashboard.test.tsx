@@ -119,7 +119,13 @@ vi.mock('../hooks/useDashboardFlowLayout', () => ({
   }),
 }))
 
-vi.mock('../components/DashboardPreviewEntry', () => ({ default: () => <div>preview</div> }))
+vi.mock('../components/DashboardPreviewEntry', () => ({
+  default: ({ onOpen }: { onOpen: () => void }) => (
+    <div data-dashboard-preview-card>
+      <button type="button" onClick={onOpen}>preview</button>
+    </div>
+  ),
+}))
 vi.mock('@/features/runtime-status', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/runtime-status')>()
   return { ...actual, FloatingStatusIndicator: () => null }
@@ -549,8 +555,32 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     await act(async () => findButton('添加首个培养目标')?.click())
-
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/training')
+
+    await act(async () => findButton('查看掉落数据')?.click())
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/statistics')
+
+    await act(async () => findButton('preview')?.click())
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/automation')
+  })
+
+  it('keeps the preview entry mounted across Activity hide and show', async () => {
+    await act(async () => renderDashboard())
+    await flushDashboard()
+    const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
+    const preview = container.querySelector('[data-dashboard-preview-card]')
+    expect(preview).not.toBeNull()
+
+    await act(async () => renderDashboard('hidden'))
+    await flushDashboard()
+    expect(container.querySelector('[data-dashboard-preview-card]')).toBe(preview)
+
+    await act(async () => renderDashboard('visible'))
+    await flushDashboard()
+    expect(container.querySelector('[data-dashboard-preview-card]')).toBe(preview)
+    // 恢复时只重建 Effects，不重新走首屏骨架，也不重建预览卡片。
+    expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
+    expect(container.querySelectorAll('[data-dashboard-preview-card]')).toHaveLength(1)
   })
 
   it('activates the status beam for a run projected from the execution snapshot', async () => {
@@ -588,6 +618,13 @@ describe('Dashboard connectivity state', () => {
     await act(async () => renderDashboard())
     await flushDashboard()
 
+    const snapshotBefore = useDashboardStore.getState()
+    apiMocks.getActivity.mockClear()
+    apiMocks.getScheduleExecutionStatus.mockClear()
+    apiMocks.getTrainingQueue.mockClear()
+    apiMocks.getTodayDrops.mockClear()
+    apiMocks.getOpenTodayStages.mockClear()
+
     const activityButton = container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')
     await act(async () => {
       activityButton?.click()
@@ -602,6 +639,14 @@ describe('Dashboard connectivity state', () => {
     expect(flow?.getAttribute('aria-busy')).toBe('true')
     expect(status.message).toContain('当前活动')
     expect(status.messageType).toBe('info')
+    // 预检 loading/反馈是流程卡局部状态，不触发完整快照读取或提交。
+    expect(apiMocks.getActivity).not.toHaveBeenCalled()
+    expect(apiMocks.getScheduleExecutionStatus).not.toHaveBeenCalled()
+    expect(apiMocks.getTrainingQueue).not.toHaveBeenCalled()
+    expect(apiMocks.getTodayDrops).not.toHaveBeenCalled()
+    expect(apiMocks.getOpenTodayStages).not.toHaveBeenCalled()
+    expect(useDashboardStore.getState().lastUpdate).toBe(snapshotBefore.lastUpdate)
+    expect(useDashboardStore.getState().activitySummary).toEqual(snapshotBefore.activitySummary)
 
     await act(async () => resolveRun?.({
       success: true,
@@ -613,6 +658,11 @@ describe('Dashboard connectivity state', () => {
       },
     }))
     await flushDashboard()
+
+    // 未实际执行时也不需要刷新，旧快照与时间戳继续有效。
+    expect(apiMocks.getActivity).not.toHaveBeenCalled()
+    expect(useDashboardStore.getState().lastUpdate).toBe(snapshotBefore.lastUpdate)
+    expect(useDashboardStore.getState().activitySummary).toEqual(snapshotBefore.activitySummary)
   })
 
   it('surfaces the exact activity preflight blocker as a warning', async () => {
@@ -654,6 +704,12 @@ describe('Dashboard connectivity state', () => {
     await act(async () => renderDashboard())
     await flushDashboard()
 
+    apiMocks.getActivity.mockClear()
+    apiMocks.getScheduleExecutionStatus.mockClear()
+    apiMocks.getTrainingQueue.mockClear()
+    apiMocks.getTodayDrops.mockClear()
+    apiMocks.getOpenTodayStages.mockClear()
+
     const action = findButton('开始今日流程')
     await act(async () => {
       action?.click()
@@ -680,6 +736,26 @@ describe('Dashboard connectivity state', () => {
     expect(container.querySelector('[data-dashboard-flow-feedback]')?.textContent).toBe('今日流程已开始执行')
     expect(findButton('正在运行')?.disabled).toBe(true)
     expect(controller().getState().trackedScope).toBe('dashboard')
+    // 启动成功后的刷新仍经完整快照协调器读取五路，不另建页面请求路径。
+    expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getScheduleExecutionStatus).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getTrainingQueue).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getTodayDrops).toHaveBeenCalledTimes(1)
+    expect(apiMocks.getOpenTodayStages).toHaveBeenCalledTimes(1)
+  })
+
+  it('navigates to automation when the saved daily flow is empty', async () => {
+    await act(async () => renderDashboard())
+    await flushDashboard()
+    apiMocks.loadUserConfig.mockResolvedValueOnce({ success: true, data: { taskFlow: [] } })
+
+    await act(async () => findButton('开始今日流程')?.click())
+    await flushDashboard()
+
+    expect(container.querySelector('[data-dashboard-flow-feedback]')?.textContent)
+      .toBe('还没有配置今日流程，先去日常页保存任务流。')
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/automation')
+    expect(apiMocks.executeScheduleNow).not.toHaveBeenCalled()
   })
 
   it('observes the accepted daily flow until its terminal state', async () => {

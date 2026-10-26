@@ -1,0 +1,72 @@
+/**
+ * 总览养成摘要卡
+ *
+ * 只订阅 `trainingSummary`，并按需导航到养成页；不读取训练 Query，
+ * 也不修改完整快照。
+ */
+
+import { ChevronRight, Target } from 'lucide-react'
+import { Card, IconButton } from '@/shared/ui'
+import { useDashboardStore } from '../store/dashboardStore'
+
+const sectionTitleClass = 'text-base font-bold text-primary'
+
+interface DashboardTrainingSummaryCardProps {
+  onOpenTraining: () => void
+}
+
+export default function DashboardTrainingSummaryCard({ onOpenTraining }: DashboardTrainingSummaryCardProps) {
+  const trainingSummary = useDashboardStore(state => state.trainingSummary)
+
+  return (
+    <Card smoothCorners className="dashboard-summary-card is-training p-0!">
+      <div className="dashboard-summary-header">
+        <div className="dashboard-summary-heading">
+          <span className="dashboard-summary-icon" aria-hidden="true">
+            <Target className="h-4 w-4" strokeWidth={1.8} />
+          </span>
+          <div className="min-w-0">
+            <div className={sectionTitleClass}>养成摘要</div>
+          </div>
+        </div>
+        <IconButton
+          onClick={onOpenTraining}
+          icon={<ChevronRight className="h-4 w-4" />}
+          variant="ghost"
+          size="sm"
+          title="打开养成"
+          aria-label="打开养成"
+          className="dashboard-summary-action"
+        />
+      </div>
+      <div className="dashboard-summary-body">
+        <div className="dashboard-summary-statline">
+          <div>
+            <div className="dashboard-summary-number">{trainingSummary.count}</div>
+            <div className="dashboard-summary-number-label">培养目标</div>
+          </div>
+          <div className="dashboard-summary-copy">
+            <div className="text-sm font-semibold text-primary">{trainingSummary.count > 0 ? '队列已建立' : '等待添加目标'}</div>
+            <div className="dashboard-summary-detail">
+              {trainingSummary.count > 0 ? '按优先级推进当前培养计划' : '添加干员后会在这里汇总优先目标'}
+            </div>
+          </div>
+        </div>
+        <div className={`dashboard-summary-footer${trainingSummary.topNames.length === 0 ? ' is-action' : ''}`}>
+          {trainingSummary.topNames.length > 0 ? (
+            <div className="dashboard-stage-list">
+              {trainingSummary.topNames.map(name => (
+                <span key={name} className="dashboard-stage-chip is-accent">{name}</span>
+              ))}
+            </div>
+          ) : (
+            <button type="button" onClick={onOpenTraining} className="dashboard-summary-link min-h-11">
+              添加首个培养目标
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
