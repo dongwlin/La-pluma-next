@@ -1162,9 +1162,62 @@ function pageRuleForGlobal(name: string): GuardrailRule | null {
   return null
 }
 
+/**
+ * 收集模块级值绑定名（import 与顶层变量/函数/类/枚举/模块），用于放行
+ * `import { fetch } from '../model/http'; fetch()` 这类同名本地 helper。
+ * 只做模块级近似，不解析嵌套作用域；同名声明会放行整个文件的裸引用，
+ * 但若初值来自 `window.fetch` 等全局访问，仍会由属性/解构分支报出。
+ */
+function collectModuleValueNames(sourceFile: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause
+      if (!clause || clause.isTypeOnly) continue
+      if (clause.name) names.add(clause.name.text)
+      const namedBindings = clause.namedBindings
+      if (!namedBindings) continue
+      if (ts.isNamespaceImport(namedBindings)) {
+        names.add(namedBindings.name.text)
+        continue
+      }
+      for (const element of namedBindings.elements) {
+        if (!element.isTypeOnly) names.add(element.name.text)
+      }
+      continue
+    }
+
+    if (ts.isImportEqualsDeclaration(statement)) {
+      names.add(statement.name.text)
+      continue
+    }
+
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        collectBindingNames(declaration.name, names)
+      }
+      continue
+    }
+
+    if (
+      (ts.isFunctionDeclaration(statement)
+        || ts.isClassDeclaration(statement)
+        || ts.isEnumDeclaration(statement)
+        || ts.isModuleDeclaration(statement))
+      && statement.name
+    ) {
+      names.add(statement.name.text)
+    }
+  }
+
+  return names
+}
+
 function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViolation[]): void {
   const sourceFile = parseSourceFile(file)
   const reported = new Set<string>()
+  const moduleValueNames = collectModuleValueNames(sourceFile)
 
   const lineOf = (node: ts.Node): number =>
     sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1
@@ -1208,31 +1261,36 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
       }
     }
 
-    if (
-      ts.isIdentifier(node)
-      && !isPropertyName(node)
-      && !isBindingName(node)
-      && !isAssignmentPatternShorthand(node)
-      && pageRuleForGlobal(node.text)
-    ) {
-      report(node.text, lineOf(node))
-    }
+    // 类型别名、类型引用与 `typeof fetch` 的 TypeQuery 都不会在运行时取得原语；
+    // `typeof window.fetch` 同样不能当作页面持有传输能力的证据。
+    if (!ts.isPartOfTypeNode(node) && !(node.parent && ts.isTypeQueryNode(node.parent))) {
+      if (
+        ts.isIdentifier(node)
+        && !isPropertyName(node)
+        && !isBindingName(node)
+        && !isAssignmentPatternShorthand(node)
+        && !moduleValueNames.has(node.text)
+        && pageRuleForGlobal(node.text)
+      ) {
+        report(node.text, lineOf(node))
+      }
 
-    if (
-      ts.isPropertyAccessExpression(node)
-      && isGlobalObjectExpression(node.expression)
-      && ts.isIdentifier(node.name)
-      && pageRuleForGlobal(node.name.text)
-    ) {
-      report(node.name.text, lineOf(node.name))
-    }
+      if (
+        ts.isPropertyAccessExpression(node)
+        && isGlobalObjectExpression(node.expression)
+        && ts.isIdentifier(node.name)
+        && pageRuleForGlobal(node.name.text)
+      ) {
+        report(node.name.text, lineOf(node.name))
+      }
 
-    if (ts.isElementAccessExpression(node) && isGlobalObjectExpression(node.expression)) {
-      const argument = node.argumentExpression
-        ? unwrapExpression(node.argumentExpression)
-        : undefined
-      if (argument && ts.isStringLiteralLike(argument) && pageRuleForGlobal(argument.text)) {
-        report(argument.text, lineOf(argument))
+      if (ts.isElementAccessExpression(node) && isGlobalObjectExpression(node.expression)) {
+        const argument = node.argumentExpression
+          ? unwrapExpression(node.argumentExpression)
+          : undefined
+        if (argument && ts.isStringLiteralLike(argument) && pageRuleForGlobal(argument.text)) {
+          report(argument.text, lineOf(argument))
+        }
       }
     }
 
@@ -1257,8 +1315,10 @@ function importsPageInfrastructure(
 }
 
 /**
- * 收集同文件命名 import 的本地名到模块说明符映射，用于解析
- * `import { x as local } from './api'; export { local }` 这类本地再导出。
+ * 收集同文件 import 的本地名到模块说明符映射（含 default、namespace 与命名导入），
+ * 用于解析 `import run from './api'; export { run }`、
+ * `import * as api from './api'; export { api }`、
+ * `import { x as local } from './api'; export { local }` 等本地再导出。
  */
 function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, string> {
   const sources = new Map<string, string>()
@@ -1270,12 +1330,21 @@ function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, strin
 
     const clause = statement.importClause
     if (!clause || clause.isTypeOnly) continue
+    const specifier = statement.moduleSpecifier.text
+
+    if (clause.name) sources.set(clause.name.text, specifier)
+
     const namedBindings = clause.namedBindings
-    if (!namedBindings || !ts.isNamedImports(namedBindings)) continue
+    if (!namedBindings) continue
+
+    if (ts.isNamespaceImport(namedBindings)) {
+      sources.set(namedBindings.name.text, specifier)
+      continue
+    }
 
     for (const element of namedBindings.elements) {
       if (element.isTypeOnly) continue
-      sources.set(element.name.text, statement.moduleSpecifier.text)
+      sources.set(element.name.text, specifier)
     }
   }
 
@@ -1288,7 +1357,7 @@ function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, strin
  * 只禁 `@/features/x/api` 深路径不足以阻止页面直接调用端点：公开面可以把
  * `executeScheduleNow`、`saveUserConfig` 等端点再导出，也可能使用
  * `export * from './api'` 或同文件 `import ... from './api'; export { ... }`
- * 的本地命名/默认转发。页面检查沿公开面定位来源，仍允许同一条公开面导出的领域 hook/组件。
+ * 的本地命名/默认/命名空间转发。页面检查沿公开面定位来源，仍允许同一条公开面导出的领域 hook/组件。
  */
 function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<string>> {
   const filesByPath = new Map(files.map(file => [file.path, file]))

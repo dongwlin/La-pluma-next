@@ -364,6 +364,70 @@ describe('page responsibility guardrails', () => {
     expect(violations[0]?.message).toContain('executeScheduleNow')
   })
 
+  const defaultOrNamespaceReExportCases = [
+    ['default import and named export', [
+      "import run from './api'",
+      'export { run }',
+    ].join('\n'), [
+      "import { run } from '@/features/a'",
+      'run()',
+    ].join('\n'), 'run'],
+    ['default import and default export', [
+      "import run from './api'",
+      'export default run',
+    ].join('\n'), [
+      "import run from '@/features/a'",
+      'run()',
+    ].join('\n'), 'default'],
+    ['namespace import and named export', [
+      "import * as api from './api'",
+      'export { api }',
+    ].join('\n'), [
+      "import { api } from '@/features/a'",
+      'api.executeScheduleNow()',
+    ].join('\n'), 'api'],
+    ['direct namespace re-export', [
+      "export * as api from './api'",
+    ].join('\n'), [
+      "import { api } from '@/features/a'",
+      'api.executeScheduleNow()',
+    ].join('\n'), 'api'],
+    ['namespace import and namespace page usage', [
+      "import * as api from './api'",
+      'export { api }',
+    ].join('\n'), [
+      "import * as domain from '@/features/a'",
+      'domain.api.executeScheduleNow()',
+    ].join('\n'), 'api'],
+    ['namespace import and dynamic page usage', [
+      "import * as api from './api'",
+      'export { api }',
+    ].join('\n'), [
+      'const load = async () => {',
+      "  const m = await import('@/features/a')",
+      '  m.api.executeScheduleNow()',
+      '}',
+    ].join('\n'), 'api'],
+  ] as const
+
+  it.each(defaultOrNamespaceReExportCases)(
+    'flags endpoints forwarded through %s',
+    (_label, indexSource, pageSource, expectedName) => {
+      const violations = checkPageGuardrails(files(
+        ['features/a/index.ts', indexSource],
+        ['features/a/api/index.ts', [
+          'export const executeScheduleNow = () => null',
+          'export default function run() { return null }',
+        ].join('\n')],
+        ['pages/a/Page.tsx', pageSource],
+      ))
+
+      expect(violations).toHaveLength(1)
+      expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+      expect(violations[0]?.message).toContain(expectedName)
+    },
+  )
+
   it('flags a default export of an endpoint imported from api', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/index.ts', [
@@ -801,6 +865,64 @@ describe('page responsibility guardrails', () => {
     ])
   })
 
+  it('does not flag module-level helpers named like transport primitives', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', "export { fetch } from './model/http'\n"],
+      ['features/a/model/http.ts', 'export const fetch = () => null\n'],
+      ['pages/a/Page.tsx', [
+        "import { fetch } from '@/features/a'",
+        'function localStorage() { return null }',
+        'const payload = { fetch, localStorage }',
+        'fetch(); localStorage()',
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toEqual([])
+  })
+
+  it('ignores global names in type positions without hiding runtime usage', () => {
+    const typesOnly = checkPageGuardrails(files(
+      ['pages/a/Page.tsx', [
+        'type Fetcher = typeof fetch',
+        'type Storage = typeof localStorage',
+        'type Timer = ReturnType<typeof setInterval>',
+        'type FetchReference = fetch',
+        'type WindowFetch = typeof window.fetch',
+        "import type { fetch as TransportHelper } from '@/shared/api'",
+        'type ImportedHelper = typeof TransportHelper',
+        'export type { Fetcher, Storage, Timer, FetchReference, WindowFetch, ImportedHelper }',
+      ].join('\n')],
+    ))
+    expect(typesOnly).toEqual([])
+
+    const runtime = checkPageGuardrails(files(
+      ['pages/a/Page.tsx', [
+        'type Fetcher = typeof fetch',
+        "fetch('/api/agent/tasks/status')",
+        "window.localStorage.getItem('draft')",
+      ].join('\n')],
+    ))
+    expect(runtime.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-storage',
+    ])
+  })
+
+  it('still flags global primitives captured through shorthand object literals', () => {
+    const violations = checkPageGuardrails(files(
+      ['pages/a/Page.tsx', [
+        'const payload = { fetch }',
+        'const storage = window.localStorage',
+      ].join('\n')],
+    ))
+
+    expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-storage',
+    ])
+  })
+
   it('does not flag import/export aliases or non-global assignment destructuring', () => {
     const violations = checkPageGuardrails(files(
       ['pages/a/Page.tsx', [
@@ -837,19 +959,25 @@ describe('page responsibility guardrails', () => {
     ])
   })
 
-  it('allows a page to call its domain container hook', () => {
-    const violations = checkPageGuardrails(files(
+  it('allows a page to call its domain container hook through the public surface', () => {
+    const sourceFiles = files(
+      ['features/a/index.ts', [
+        "export { executeScheduleNow } from './api'",
+        "export { useWorkspace } from './hooks/useWorkspace'",
+      ].join('\n')],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/hooks/useWorkspace.ts', 'export const useWorkspace = () => "ok"\n'],
       ['pages/a/Page.tsx', [
-        "import { useWorkspace } from '../hooks/useWorkspace'",
+        "import { useWorkspace } from '@/features/a'",
         'export default function Page() {',
         '  const value = useWorkspace()',
         '  return <div>{value}</div>',
         '}',
       ].join('\n')],
-      ['features/a/hooks/useWorkspace.ts', 'export const useWorkspace = () => "ok"\n'],
-    ))
+    )
 
-    expect(violations).toEqual([])
+    expect(checkPageGuardrails(sourceFiles)).toEqual([])
+    expect(analyzeDependencies(sourceFiles).violations).toEqual([])
   })
 
   it('allows domain containers and hooks to use fetch and timers', () => {
