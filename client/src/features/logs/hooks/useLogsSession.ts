@@ -11,9 +11,11 @@
  * - 清空实时日志只在实时模式可用；清理历史不触碰实时缓冲。
  * - 两个命令共用一个在途槽位，命令执行期间页面按钮保持禁用；命令结论交
  *   页面展示，失败仍由确认弹层重抛以保留可重试的打开状态。
+ * - 页面卸载时取消命令的本地等待；服务端已收到的清空/清理不会被撤销，
+ *   重新挂载后按服务端状态重新读取。
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   clearRealtimeLogsCommand,
   cleanupHistoryLogsCommand,
@@ -40,6 +42,12 @@ export function useLogsSession(): UseLogsSessionResult {
   const realtime = useRealtimeLogs({ enabled: !history.viewing })
   const [commandPending, setCommandPending] = useState<LogsCommandKind | null>(null)
   const commandRef = useRef<LogsCommandKind | null>(null)
+  const commandAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    commandAbortRef.current?.abort()
+    commandAbortRef.current = null
+  }, [])
 
   const { selectFile, backToRealtime: leaveHistory } = history
   const { stop, clear, pause, resume } = realtime
@@ -57,10 +65,17 @@ export function useLogsSession(): UseLogsSessionResult {
   const clearRealtimeLogs = useCallback(async (): Promise<LogCommandOutcome> => {
     if (history.viewing || commandRef.current !== null) return { status: 'ignored' }
     commandRef.current = 'clear-realtime'
+    const controller = new AbortController()
+    commandAbortRef.current = controller
     setCommandPending('clear-realtime')
     try {
-      return await clearRealtimeLogsCommand({ pause, resume, clear })
+      return await clearRealtimeLogsCommand(
+        { pause, resume, clear },
+        undefined,
+        controller.signal,
+      )
     } finally {
+      if (commandAbortRef.current === controller) commandAbortRef.current = null
       commandRef.current = null
       setCommandPending(null)
     }
@@ -69,13 +84,20 @@ export function useLogsSession(): UseLogsSessionResult {
   const cleanupHistoryLogs = useCallback(async (): Promise<LogCommandOutcome> => {
     if (commandRef.current !== null) return { status: 'ignored' }
     commandRef.current = 'cleanup-history'
+    const controller = new AbortController()
+    commandAbortRef.current = controller
     setCommandPending('cleanup-history')
     try {
-      return await cleanupHistoryLogsCommand({
-        reloadFiles: history.reloadFiles,
-        reconcileSelection: history.reconcileSelection,
-      })
+      return await cleanupHistoryLogsCommand(
+        {
+          reloadFiles: history.reloadFiles,
+          reconcileSelection: history.reconcileSelection,
+        },
+        undefined,
+        controller.signal,
+      )
     } finally {
+      if (commandAbortRef.current === controller) commandAbortRef.current = null
       commandRef.current = null
       setCommandPending(null)
     }

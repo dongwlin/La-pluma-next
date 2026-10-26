@@ -327,4 +327,29 @@ describe('LogViewer realtime lifecycle', () => {
     expect(container.querySelector('.log-history-state.is-error')).toBeNull()
     expect(container.textContent).toContain('历史内容')
   })
+
+  it('aborts the local clear wait when the page unmounts', async () => {
+    const clearing = deferred<ApiResponse<unknown>>()
+    mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [row('清空前')] })
+    mocks.clearRealtimeLogs.mockReturnValueOnce(clearing.promise)
+
+    await renderMode('visible')
+    const clearButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '清空')
+    await act(async () => clearButton?.click())
+    await flush()
+    const confirmButton = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '确认清空')
+    await act(async () => confirmButton?.click())
+    await flush()
+
+    const signal = mocks.clearRealtimeLogs.mock.calls[0]?.[0] as AbortSignal | undefined
+    expect(signal?.aborted).toBe(false)
+
+    await act(async () => root.unmount())
+    expect(signal?.aborted).toBe(true)
+
+    clearing.resolve({ success: true, message: '实时日志已清空' })
+    await flush()
+  })
 })

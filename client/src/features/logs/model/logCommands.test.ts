@@ -64,6 +64,32 @@ describe('clearRealtimeLogsCommand', () => {
     expect(outcome).toEqual({ status: 'failed', message: '网络中断' })
     expect(realtime.calls).toEqual(['pause', 'resume'])
   })
+
+  it('reports a cancelled local wait without clearing the buffer', async () => {
+    const realtime = createRealtimePort()
+    const controller = new AbortController()
+    const request = vi.fn<(signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'))
+
+    const outcome = await clearRealtimeLogsCommand(realtime, request, controller.signal)
+
+    expect(request).toHaveBeenCalledWith(controller.signal)
+    expect(outcome).toEqual({ status: 'cancelled' })
+    expect(realtime.calls).toEqual(['pause', 'resume'])
+  })
+
+  it('does not start a clear for an already aborted signal', async () => {
+    const realtime = createRealtimePort()
+    const controller = new AbortController()
+    controller.abort()
+    const request = vi.fn()
+
+    const outcome = await clearRealtimeLogsCommand(realtime, request, controller.signal)
+
+    expect(outcome).toEqual({ status: 'cancelled' })
+    expect(request).not.toHaveBeenCalled()
+    expect(realtime.calls).toEqual([])
+  })
 })
 
 describe('cleanupHistoryLogsCommand', () => {
@@ -73,7 +99,7 @@ describe('cleanupHistoryLogsCommand', () => {
 
     const outcome = await cleanupHistoryLogsCommand(history, request)
 
-    expect(request).toHaveBeenCalledWith(LOG_CLEANUP_MAX_SIZE_MB)
+    expect(request).toHaveBeenCalledWith(LOG_CLEANUP_MAX_SIZE_MB, undefined)
     expect(history.calls).toEqual(['reload', 'reconcile'])
     expect(outcome).toEqual({ status: 'succeeded', message: '已清理 2 个日志文件' })
   })
@@ -112,12 +138,38 @@ describe('cleanupHistoryLogsCommand', () => {
 
   it('reports a thrown cleanup request without refreshing the list', async () => {
     const history = createHistoryPort('ready')
-    const request = vi.fn<() => Promise<ApiResponse<unknown>>>()
+    const request = vi.fn<(maxSizeMB: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
       .mockRejectedValue(new Error('清理接口不可用'))
 
     const outcome = await cleanupHistoryLogsCommand(history, request)
 
     expect(outcome).toEqual({ status: 'failed', message: '清理接口不可用' })
+    expect(history.reloadFiles).not.toHaveBeenCalled()
+  })
+
+  it('reports a cancelled cleanup wait without refreshing the list', async () => {
+    const history = createHistoryPort('ready')
+    const controller = new AbortController()
+    const request = vi.fn<(maxSizeMB: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'))
+
+    const outcome = await cleanupHistoryLogsCommand(history, request, controller.signal)
+
+    expect(request).toHaveBeenCalledWith(LOG_CLEANUP_MAX_SIZE_MB, controller.signal)
+    expect(outcome).toEqual({ status: 'cancelled' })
+    expect(history.reloadFiles).not.toHaveBeenCalled()
+  })
+
+  it('does not start cleanup for an already aborted signal', async () => {
+    const history = createHistoryPort('ready')
+    const controller = new AbortController()
+    controller.abort()
+    const request = vi.fn()
+
+    const outcome = await cleanupHistoryLogsCommand(history, request, controller.signal)
+
+    expect(outcome).toEqual({ status: 'cancelled' })
+    expect(request).not.toHaveBeenCalled()
     expect(history.reloadFiles).not.toHaveBeenCalled()
   })
 })

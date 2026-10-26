@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getLogFiles, getRealtimeLogs, readLogFile } from './index'
+import { cleanupLogs, clearRealtimeLogs, getLogFiles, getRealtimeLogs, readLogFile } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -77,6 +77,25 @@ describe('logs resource reads', () => {
       code: 'INVALID_DOMAIN_PAYLOAD',
       message: '日志文件内容格式不正确',
     })
+  })
+
+  it('passes the local wait signal to the clear and cleanup commands', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+      jsonResponse({ success: true, message: 'ok' })
+    ))
+    const clearController = new AbortController()
+    const cleanupController = new AbortController()
+
+    await clearRealtimeLogs(clearController.signal)
+    await cleanupLogs(10, cleanupController.signal)
+
+    expect(fetchCall(0).input).toBe('http://localhost:3000/api/agent/logs/recent/clear')
+    expect(fetchCall(0).init.method).toBe('POST')
+    expect(fetchCall(0).init.signal).toBe(clearController.signal)
+    expect(fetchCall(1).input).toBe('http://localhost:3000/api/agent/logs/cleanup')
+    expect(fetchCall(1).init.method).toBe('POST')
+    expect(fetchCall(1).init.signal).toBe(cleanupController.signal)
+    expect(fetchCall(1).init.body).toBe(JSON.stringify({ maxSizeMB: 10 }))
   })
 
   it('keeps a cancelled background poll as AbortError', async () => {

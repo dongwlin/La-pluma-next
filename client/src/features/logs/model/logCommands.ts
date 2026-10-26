@@ -13,7 +13,7 @@
  * 缓冲、文件列表与当前选择，而不是分页游标。
  */
 
-import type { ApiResponse } from '@/shared/api'
+import { isAbortError, type ApiResponse } from '@/shared/api'
 import {
   cleanupLogs as defaultCleanupLogs,
   clearRealtimeLogs as defaultClearRealtimeLogs,
@@ -26,6 +26,7 @@ export const LOG_CLEANUP_MAX_SIZE_MB = 10
 export type LogCommandOutcome =
   | { readonly status: 'succeeded'; readonly message: string }
   | { readonly status: 'failed'; readonly message: string }
+  | { readonly status: 'cancelled' }
   | { readonly status: 'ignored' }
 
 /** 清空实时日志需要协调的实时流动作；不包含历史状态。 */
@@ -41,8 +42,11 @@ export interface HistoryLogCommandPort {
   readonly reconcileSelection: () => boolean
 }
 
-type ClearRequest = () => Promise<ApiResponse<unknown>>
-type CleanupRequest = (maxSizeMB?: number) => Promise<ApiResponse<unknown>>
+type ClearRequest = (signal?: AbortSignal) => Promise<ApiResponse<unknown>>
+type CleanupRequest = (
+  maxSizeMB: number,
+  signal?: AbortSignal,
+) => Promise<ApiResponse<unknown>>
 
 const responseMessage = (response: ApiResponse<unknown>, fallback: string): string => {
   const message = response.message || response.errorInfo?.message || response.error
@@ -57,21 +61,26 @@ const caughtMessage = (error: unknown, fallback: string): string => (
  * 清空实时日志。
  *
  * `finally` 保证暂停状态在失败、取消或异常后都会恢复；只有服务端确认成功
- * 才调用 `clear()`，因此失败不会丢失仍可解释的缓冲。
+ * 才调用 `clear()`，因此失败不会丢失仍可解释的缓冲。传入的 `signal` 只结束
+ * 本地等待（例如页面卸载），不撤销服务端已发出的清空请求。
  */
 export async function clearRealtimeLogsCommand(
   realtime: RealtimeLogCommandPort,
   request: ClearRequest = defaultClearRealtimeLogs,
+  signal?: AbortSignal,
 ): Promise<LogCommandOutcome> {
+  if (signal?.aborted) return { status: 'cancelled' }
   realtime.pause()
   try {
-    const result = await request()
+    const result = await request(signal)
+    if (signal?.aborted) return { status: 'cancelled' }
     if (!result.success) {
       return { status: 'failed', message: responseMessage(result, '清空实时日志失败') }
     }
     realtime.clear()
     return { status: 'succeeded', message: result.message || '实时日志已清空' }
   } catch (error) {
+    if (isAbortError(error)) return { status: 'cancelled' }
     return { status: 'failed', message: caughtMessage(error, '清空实时日志失败') }
   } finally {
     realtime.resume()
@@ -83,14 +92,18 @@ export async function clearRealtimeLogsCommand(
  *
  * 只有在服务端确认清理并成功读取新列表后才裁决当前选择：被删除的选中
  * 文件会退出历史模式，仍存在的文件保持不变。列表读取失败仍视为清理成功
- * （删除已发生），由历史会话展示列表错误并提供重试。
+ * （删除已发生），由历史会话展示列表错误并提供重试。取消只结束本地等待，
+ * 不再刷新列表或展示失败。
  */
 export async function cleanupHistoryLogsCommand(
   history: HistoryLogCommandPort,
   request: CleanupRequest = defaultCleanupLogs,
+  signal?: AbortSignal,
 ): Promise<LogCommandOutcome> {
+  if (signal?.aborted) return { status: 'cancelled' }
   try {
-    const result = await request(LOG_CLEANUP_MAX_SIZE_MB)
+    const result = await request(LOG_CLEANUP_MAX_SIZE_MB, signal)
+    if (signal?.aborted) return { status: 'cancelled' }
     if (!result.success) {
       return { status: 'failed', message: responseMessage(result, '清理历史日志失败') }
     }
@@ -99,6 +112,7 @@ export async function cleanupHistoryLogsCommand(
     if (filesOutcome === 'ready') history.reconcileSelection()
     return { status: 'succeeded', message: result.message || '历史日志清理完成' }
   } catch (error) {
+    if (isAbortError(error)) return { status: 'cancelled' }
     return { status: 'failed', message: caughtMessage(error, '清理历史日志失败') }
   }
 }

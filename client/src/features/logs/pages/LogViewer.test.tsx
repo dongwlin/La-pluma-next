@@ -377,7 +377,7 @@ describe('LogViewer recovery and controls', () => {
       .find(button => button.textContent === '确认清理')
     await click(confirm!)
 
-    expect(mocks.cleanupLogs).toHaveBeenCalledWith(10)
+    expect(mocks.cleanupLogs).toHaveBeenCalledWith(10, expect.any(AbortSignal))
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('已清理 1 个日志文件')
     expect(container.textContent).toContain('暂无历史日志文件')

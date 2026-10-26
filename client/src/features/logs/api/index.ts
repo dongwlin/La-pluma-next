@@ -32,10 +32,13 @@ export async function getRealtimeLogs(lines: number = 100, signal?: AbortSignal)
 
 /**
  * 清空实时日志
+ *
+ * `signal` 只结束本地等待；服务端已收到的清空动作不会被撤销。
  */
-export async function clearRealtimeLogs(): Promise<ApiResponse> {
+export async function clearRealtimeLogs(signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/logs/recent/clear`, {
     method: 'POST',
+    signal,
   })
   return parseJsonResponse(response)
 }
@@ -69,14 +72,20 @@ export async function readLogFile(
 
 /**
  * 手动清理日志文件
+ *
+ * `signal` 只结束本地等待；服务端已收到的清理动作不会被撤销。
  */
-export async function cleanupLogs(maxSizeMB: number = 10): Promise<ApiResponse> {
+export async function cleanupLogs(
+  maxSizeMB: number = 10,
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/logs/cleanup`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ maxSizeMB }),
+    signal,
   })
   return parseJsonResponse(response)
 }
