@@ -13,6 +13,7 @@
 
 import type { AutomationAvailableTask, StageConfig, TaskFlowItem, TaskParams } from '../types'
 import { parseDropTargets } from './dropTargets'
+import { flattenStagesForEditing, splitStagesForEditing } from './stageEditing'
 import { placeClosedownLast } from './taskFlowSort'
 
 /**
@@ -110,28 +111,14 @@ export function toggleTaskFlowItemEnabled<T extends TaskFlowEntry>(
 /**
  * 关卡编辑顺序：置顶 → 智能养成 → 普通 → 空白输入行。
  *
- * 每个条目只归类一次，输出长度与多重集合和输入一致；组内保持原顺序。
+ * 分组规则由 `stageEditing.splitStagesForEditing` 与任务编辑面板共用，
+ * 每个条目只归类一次；组内保持原顺序，输出长度与多重集合和输入一致。
  * 同时带 `pinned` 与 `smart` 的异常形状按置顶处理（编辑路径不会产生该形状）。
  */
 export function orderStagesForEditing(
   stages: Array<string | StageConfig>,
 ): Array<string | StageConfig> {
-  const hasStageText = (stage: string | StageConfig) => (
-    typeof stage === 'string' ? stage.trim() !== '' : Boolean(stage.stage?.trim())
-  )
-  const isStageObject = (stage: string | StageConfig): stage is StageConfig => typeof stage !== 'string'
-
-  return [
-    ...stages.filter(stage => hasStageText(stage) && isStageObject(stage) && stage.pinned === true),
-    ...stages.filter(stage => (
-      hasStageText(stage) && isStageObject(stage) && stage.pinned !== true && stage.smart === true
-    )),
-    ...stages.filter(stage => (
-      hasStageText(stage)
-      && (typeof stage === 'string' || (isStageObject(stage) && !stage.pinned && !stage.smart))
-    )),
-    ...stages.filter(stage => !hasStageText(stage)),
-  ]
+  return flattenStagesForEditing(splitStagesForEditing(stages))
 }
 
 /**
