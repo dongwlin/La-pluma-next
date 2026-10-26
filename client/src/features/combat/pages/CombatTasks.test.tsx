@@ -1310,6 +1310,8 @@ describe('CombatTasks execution', () => {
     await renderActivityMode('visible')
     expect(previewButton?.disabled).toBe(false)
     expect(previewButton?.textContent).toContain('预览')
+    expect(previewInput.value).toBe('prts://1234')
+    expect(buttonByText('单个作业')?.className).toContain('combat-segment-active')
 
     const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
     await setInputValue(stageInput, '1-7')
@@ -1322,6 +1324,7 @@ describe('CombatTasks execution', () => {
     await renderActivityMode('visible')
     expect(stageSearchButton?.disabled).toBe(false)
     expect(stageSearchButton?.textContent).toContain('搜索')
+    expect(stageInput.value).toBe('1-7')
 
     const paradoxModeButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'))
       .find(button => button.textContent?.includes('悖论模拟'))
@@ -1337,6 +1340,7 @@ describe('CombatTasks execution', () => {
     await renderActivityMode('visible')
     expect(paradoxSearchButton?.disabled).toBe(false)
     expect(paradoxSearchButton?.textContent).toContain('搜索')
+    expect(paradoxInput.value).toBe('能天使')
   })
 
   it('ignores an older search response after the query changes', async () => {
