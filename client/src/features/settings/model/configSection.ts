@@ -35,8 +35,8 @@ export const isConfigSectionId = (value: unknown): value is ConfigSectionId => (
   typeof value === 'string' && (CONFIG_SECTION_IDS as readonly string[]).includes(value)
 )
 
-/** 只有 connection section 提供可写表单与保存/重置。 */
-export const isEditableConfigSection = (section: ConfigSectionId): boolean => (
+/** 只有 connection section 提供可写表单与保存/重置；可收窄 section 分支。 */
+export const isEditableConfigSection = (section: ConfigSectionId): section is 'connection' => (
   CONFIG_SECTION_EDITABLE[section]
 )
 

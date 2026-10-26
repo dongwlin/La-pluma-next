@@ -285,6 +285,7 @@ describe('ConfigManager panel subscriptions', () => {
     expect(afterDevice.updates).toBe(initial.updates)
     expect(afterDevice.autoUpdate).toBe(initial.autoUpdate)
     expect(afterDevice.version).toBe(initial.version)
+    expect(afterDevice.directory).toBe(initial.directory)
 
     // 自动更新策略与组件更新是两个面板：编辑时间只重渲染自动更新面板。
     await setInputValue(
@@ -297,6 +298,7 @@ describe('ConfigManager panel subscriptions', () => {
     expect(afterAutoUpdate.version).toBe(afterDevice.version)
     expect(afterAutoUpdate.connection).toBe(afterDevice.connection)
     expect(afterAutoUpdate.device).toBe(afterDevice.device)
+    expect(afterAutoUpdate.directory).toBe(afterDevice.directory)
 
     await act(async () => buttonByText('更新 MAA CLI')?.click())
     await settle()
@@ -306,6 +308,7 @@ describe('ConfigManager panel subscriptions', () => {
     expect(afterUpdate.connection).toBe(afterAutoUpdate.connection)
     expect(afterUpdate.device).toBe(afterAutoUpdate.device)
     expect(afterUpdate.autoUpdate).toBe(afterAutoUpdate.autoUpdate)
+    expect(afterUpdate.directory).toBe(afterAutoUpdate.directory)
   })
 
   it('does not re-render update and directory panels when the connection draft changes', async () => {

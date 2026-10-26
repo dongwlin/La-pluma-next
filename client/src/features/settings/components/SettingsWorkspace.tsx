@@ -16,6 +16,7 @@ import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { useConfigSection } from '../hooks/useConfigSection'
 import { useDeviceConnectionActivityCleanup } from '../hooks/useSettingsDeviceConnection'
+import { isEditableConfigSection } from '../model/configSection'
 import ConfigDirectoryPanel from './ConfigDirectoryPanel'
 import ConfigSectionNav from './ConfigSectionNav'
 import ConnectionConfigPanel from './ConnectionConfigPanel'
@@ -24,6 +25,8 @@ import SettingsUpdatesPanel from './SettingsUpdatesPanel'
 
 export default function SettingsWorkspace() {
   const { section, selectSection } = useConfigSection()
+  // connection 表单始终挂载；能力模型决定当前 section 是否渲染可写表单。
+  const connectionEditable = isEditableConfigSection(section)
   useDeviceConnectionActivityCleanup()
 
   return (
@@ -44,8 +47,8 @@ export default function SettingsWorkspace() {
 
       <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
         <div className="config-workspace-primary app-stack-section min-w-0">
-          <ConnectionConfigPanel isActive={section === 'connection'} />
-          {section !== 'connection' && <ReadOnlyConfigPanel section={section} />}
+          <ConnectionConfigPanel isActive={connectionEditable} />
+          {connectionEditable ? null : <ReadOnlyConfigPanel section={section} />}
           <ConfigDirectoryPanel />
         </div>
 
