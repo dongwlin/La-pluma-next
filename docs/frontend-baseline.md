@@ -132,16 +132,16 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 无页面 timer。`autoUpdateConfig` 本地已写不代表调度已应用。core/资源更新成功后按作用域失效目录、材料、计划前提与总览，并推进物品图标 epoch；CLI 只失效版本。connection 的初始读取失败保留页内与全局提示；已有数据后的后台 refresh 失败不打断编辑。FPR-034 起页面只组合 `SettingsWorkspace`；连接、设备、目录与更新面板各自订阅所属所有者/Query，设备/更新状态不重渲染连接表单。设备发现/连接测试在 Activity 隐藏时取消本地等待，已完成结果保留；section 切换不取消在途命令，设备面板从 owner 恢复显示。版本与配置目录 Query 随观察者注销/恢复；更新命令与自动更新保存不因 Activity 隐藏中断，反馈与草稿由模块级 owner 保留。详见[设置领域面板](settings-panel.md)。
 
-### Logs — `features/logs/pages/LogViewer.tsx`
+### Logs — `features/logs/pages/LogViewer.tsx` + `components/LogsWorkspace.tsx`
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
 | 实时会话 | GET `/agent/logs/recent?lines=200`，每 1250ms HTTP 轮询；`RealtimeLogStream` 单在途、请求身份与 AbortSignal 防慢请求重叠和旧响应覆盖；每次替换最近 200 行，不是追加流 | logs 实时流所有者（FPR-027） |
 | 历史查询 | GET `/agent/logs/files`；GET `/agent/logs/files/{encodedPath}?lines=1000`；列表与读取各自持有请求序号和 AbortSignal，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求，迟到响应不写新选择；协议无 cursor，选择以文件路径标识 | logs 历史会话 `HistoryLogSession`（FPR-028），见[历史日志与清理协调](logs-history-and-cleanup.md) |
-| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，finally 恢复并立即重读；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表，若选中文件被删除则退出历史模式；命令不触碰彼此状态，页面卸载时只取消本地等待 | `model/logCommands.ts` 的清空/清理命令（FPR-028） |
-| 模型/展示 | `model/logModel.ts` 的 parseHistoryLine/parseRealtimeLog/summarize/过滤/折叠与 `buildLogView`；页面保留 summary/raw、level/search/collapse、autoScroll、历史确认/通知；scrollTop Effect；导出 Blob/objectURL/anchor，随后 revoke | 纯日志模型（FPR-027）；最近面板；会话状态归实时流与历史会话 |
+| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，此前未手动暂停时恢复并立即重读，手动暂停则保持暂停；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表，若选中文件被删除则退出历史模式；命令不触碰彼此状态，页面卸载时只取消本地等待 | `model/logCommands.ts` 的清空/清理命令（FPR-028）；暂停策略接线（FPR-035） |
+| 模型/展示 | `model/logModel.ts` 的 parseHistoryLine/parseRealtimeLog/summarize/过滤/折叠与 `buildLogView`；`components/LogsWorkspace.tsx` 持有 summary/raw、level/search/collapse、autoScroll、通知与确认动作；工具栏/列表/历史选择器为受控面板，`scrollTop` Effect 归 `LogConsole`；导出使用过滤后行，`model/logExport.ts` 固定文本与文件名，Blob/objectURL/anchor 由工作区执行 | 纯日志模型（FPR-027）；日志工作区与面板（FPR-035）；会话状态归实时流与历史会话 |
 
-无业务存储，无 WebSocket/EventSource。实时流实例随页面真正挂载创建，Activity 隐藏时停止计时器并 abort 在途读取、保留缓冲，显示时立即重读；`document.hidden` 时计时器保留但守卫不发请求并 abort 在途，可见时立即重读；手动暂停不被可见性或 Activity 变化清除，恢复时立即重读（工具栏暂停按钮待 FPR-035 接线）。历史读取由 `HistoryLogSession` 持有：Activity 隐藏会取消列表与读取，进行中的读取转为 `cancelled` 而不是留下 loading，显示时重读列表并重试被取消的当前文件；明确失败的读取不自动重试。返回实时经页面级 `enabled` 立即重读，历史模式恢复不会重新启动实时轮询。完整生命周期约定见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)。
+无业务存储，无 WebSocket/EventSource。实时流实例随页面真正挂载创建，Activity 隐藏时停止计时器并 abort 在途读取、保留缓冲，显示时立即重读；`document.hidden` 时计时器保留但守卫不发请求并 abort 在途，可见时立即重读；手动暂停不被可见性或 Activity 变化清除，恢复时立即重读，工具栏暂停/继续按钮已接线（FPR-035）。历史读取由 `HistoryLogSession` 持有：Activity 隐藏会取消列表与读取，进行中的读取转为 `cancelled` 而不是留下 loading，显示时重读列表并重试被取消的当前文件；明确失败的读取不自动重试。返回实时经页面级 `enabled` 立即重读，若此前手动暂停会先恢复；历史模式恢复不会重新启动实时轮询。暂停与清空/重试/历史返回的组合策略、工作区/工具栏/列表/历史选择器边界见[日志领域面板](logs-panel.md)；完整生命周期约定见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)。
 
 ## 共同副作用与状态生命期
 
@@ -168,7 +168,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | Statistics | 保留筛选/UI；失效读取；show 重读四类资源 | 无专门处理 | 所有局部状态重置 |
 | Training | 保留选择器筛选/搜索/分批游标/头像缓存、计划范围、设置/计划、操作错误与撤销快照；队列命令、设置与计划所有者均为模块级，候选/计数/队列 Query 观察者随 Effect 注销；show 按新鲜度重取 queue 与候选/计数；撤销计时重新计 8s | 无专门处理 | 队列命令与计划写请求继续完成并写入应用级缓存/所有者；设置与计划状态不随 remount 重建；面板局部状态回到默认；未完成 closure 不会自动取消 |
 | Settings | 重建 section 监听；连接/版本/目录 Query 观察者注销；工作区的 `useDeviceConnectionActivityCleanup` abort 在途设备发现/连接测试并保留已完成结果；自动更新初始化标记阻止重复加载，更新命令与自动更新保存在隐藏期间继续完成 | 无专门处理 | section/autoUpdate fallback 可恢复；设备结果保留（未完成已取消），版本/目录按新鲜度重取；更新命令与自动更新反馈/草稿由模块级 owner 保留；section 切换不取消设备命令 |
-| Logs | 停实时计时器并 abort 在途读取；历史会话取消列表/读取并保留选择，恢复时重读列表、重试被取消的当前文件 | 取消实时在途读取，计时器保留但守卫不发请求；历史读取继续；可见立即重读实时 | 缓冲/选择/过滤全部重置，手动暂停状态随实例重置 |
+| Logs | 停实时计时器并 abort 在途读取；历史会话取消列表/读取并保留选择，恢复时重读列表、重试被取消的当前文件；工作区过滤/折叠/自动滚动/通知保留 | 取消实时在途读取，计时器保留但守卫不发请求；历史读取继续；可见立即重读实时（手动暂停保持） | 缓冲/选择/过滤/自动滚动全部重置，手动暂停状态随实例重置 |
 
 ## 性能对照入口与待验收边界
 
