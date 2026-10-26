@@ -10,6 +10,7 @@ import {
   countLines,
   evaluateSizeBudget,
   findDomainCycles,
+  isSizeBaseline,
   readSourceTree,
   resolveImport,
   sizeCategoryOf,
@@ -269,7 +270,88 @@ describe('page responsibility guardrails', () => {
 
     expect(violations).toHaveLength(1)
     expect(violations[0]).toMatchObject({ rule: 'page-transport' })
-    expect(violations[0]?.message).toContain('整体导入')
+    expect(violations[0]?.message).toContain('executeScheduleNow')
+  })
+
+  it('flags own feature index endpoints imported relatively, as namespace, or dynamically', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', [
+        "export { executeScheduleNow } from './api'",
+        "export { useAutomationThing } from './hooks/useAutomationThing'",
+      ].join('\n')],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        "import { executeScheduleNow } from '..'",
+        "import * as automation from '..'",
+        "const load = async () => { const m = await import('..'); m.executeScheduleNow() }",
+        'export default function Page() {',
+        '  executeScheduleNow()',
+        '  automation.executeScheduleNow()',
+        '  load()',
+        '  return null',
+        '}',
+      ].join('\n')],
+    ))
+
+    expect(violations).toHaveLength(3)
+    expect(violations.every(violation => violation.rule === 'page-transport')).toBe(true)
+    expect(violations.map(violation => violation.message).join('\n')).toContain('executeScheduleNow')
+  })
+
+  it('allows own feature index hooks imported as namespace or dynamic', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', [
+        "export { executeScheduleNow } from './api'",
+        "export { useAutomationThing } from './hooks/useAutomationThing'",
+      ].join('\n')],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        "import * as automation from '..'",
+        'const load = async () => { const m = await import(\'..\'); return m.useAutomationThing() }',
+        'export default function Page() { automation.useAutomationThing(); load(); return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toEqual([])
+  })
+
+  it('does not flag dynamic imports used only for domain hooks', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/automation/index.ts', [
+        "export { executeScheduleNow } from './api'",
+        "export { useAutomationThing } from './hooks/useAutomationThing'",
+      ].join('\n')],
+      ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/automation/hooks/useAutomationThing.ts', 'export const useAutomationThing = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        'export default async function Page() {',
+        "  const m = await import('@/features/automation')",
+        '  m.useAutomationThing()',
+        '  return null',
+        '}',
+      ].join('\n')],
+    ))
+
+    expect(violations).toEqual([])
+  })
+
+  it('does not treat the API default export as forwarded by export *', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/automation/index.ts', [
+        "export * from './api'",
+        "export { default } from './pages/AutomationTasks'",
+      ].join('\n')],
+      ['features/automation/api/index.ts', 'export default () => null\n'],
+      ['features/automation/pages/AutomationTasks.tsx', 'export default function Page() { return null }\n'],
+      ['features/a/pages/Page.tsx', [
+        "import Page from '@/features/automation'",
+        'export default function Wrapper() { return <Page /> }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toEqual([])
   })
 
   it('expands export * from api when locating public endpoints', () => {
@@ -294,7 +376,7 @@ describe('page responsibility guardrails', () => {
       ['features/automation/index.ts', "export { executeScheduleNow } from './api'\n"],
       ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
       ['features/a/pages/Page.tsx', [
-        "const load = () => import('@/features/automation')",
+        "const load = () => import('@/features/automation').then(m => m.executeScheduleNow())",
         'export default function Page() { load(); return null }',
       ].join('\n')],
     ))
@@ -353,11 +435,53 @@ describe('page responsibility guardrails', () => {
       ['features/a/pages/Page.tsx', [
         'const { fetch, localStorage: storage } = useProps()',
         'function setInterval() {}',
+        'type fetch = () => void',
+        'interface localStorage {}',
+        'enum setInterval { A }',
         'type Props = { fetch: string; localStorage: string }',
         'export default function Page() { return null }',
       ].join('\n')],
     ))
     expect(shadowed).toEqual([])
+  })
+
+  it('flags destructuring transport, storage and polling from global objects', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        'const { fetch: f } = window',
+        'const { localStorage: s } = globalThis',
+        'const { setInterval: i } = (self as any)',
+        "f('/api/agent/tasks/status')",
+        "s.getItem('draft')",
+        'i(() => {}, 1000)',
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-storage',
+      'page-polling',
+    ])
+  })
+
+  it('detects wrapped global objects before property access', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        "(window as any).fetch('/api/agent/tasks/status');",
+        "window!.fetch('/api/agent/tasks/status');",
+        "(window).localStorage.getItem('draft');",
+        "(globalThis as any)['setInterval'](() => {}, 1000);",
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-transport',
+      'page-storage',
+      'page-polling',
+    ])
   })
 
   it('allows a page to call its domain container hook', () => {
@@ -483,6 +607,32 @@ describe('size reporting and budget', () => {
     expect(result.violations).toHaveLength(1)
     expect(result.violations[0]).toContain('features/a')
     expect(result.violations[0]).toContain('疑似把页面逻辑搬进非页面目录')
+  })
+
+  it('skips relocation checks for legacy baselines without domain totals', () => {
+    const relocationThresholds = { pages: 500, hooks: 500, model: 500, components: 500 }
+    const report = analyzeSize(files(
+      ['features/a/hooks/usePage.ts', '1\n'.repeat(70)],
+    ), relocationThresholds)
+    const baseline: SizeBaseline = {
+      thresholds: relocationThresholds,
+      largeFiles: { pages: [], hooks: [], model: [], components: [] },
+    }
+
+    expect(evaluateSizeBudget(report, baseline).violations).toEqual([])
+  })
+
+  it('accepts full and legacy size baselines but rejects invalid shapes', () => {
+    const base = {
+      thresholds: { pages: 60, hooks: 220, model: 340, components: 320 },
+      largeFiles: { pages: [], hooks: [], model: [], components: [] },
+    }
+
+    expect(isSizeBaseline(base)).toBe(true)
+    expect(isSizeBaseline({ ...base, pageLines: { a: 1 }, nonPageLines: { a: 2 } })).toBe(true)
+    expect(isSizeBaseline({ ...base, thresholds: { ...base.thresholds, pages: 0 } })).toBe(false)
+    expect(isSizeBaseline({ ...base, pageLines: { a: 'x' } })).toBe(false)
+    expect(isSizeBaseline(null)).toBe(false)
   })
 })
 

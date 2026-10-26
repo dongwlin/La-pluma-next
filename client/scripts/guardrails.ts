@@ -6,7 +6,8 @@
  * - 功能域依赖环：把 feature 目录折叠成节点，求强连通分量；
  * - 非页面微域 `task-execution` 不得反向依赖任何功能域；
  * - 页面文件不得直接持有传输、存储与轮询原语，但可以调用所属领域的容器与 hook；
- * - hooks / model / components / pages 的规模只作为辅助信号与预算提示。
+ * - hooks / model / components / pages 的规模作为辅助信号：新增超阈值文件与
+ *   同域页面搬移（80% 阈值）会按预算失败，其余只报告。
  *
  * 规则边界与阈值依据见 docs/guardrails.md。测试文件不参与运行时依赖与规模统计，
  * 因为测试可以为了隔离而接触内部实现，不会进入生产包。
@@ -31,6 +32,8 @@ export interface ImportBinding {
   specifier: string
   /** 具名导入使用导出名；默认/命名空间导入分别为 `default` / `*`。 */
   imported: string
+  /** 页面内实际使用的本地名，用于分析命名空间导入的成员访问。 */
+  localName: string
   typeOnly: boolean
 }
 
@@ -38,7 +41,6 @@ export interface ImportReference {
   specifier: string
   /** 整条 import/export 都是类型时跳过页面运行时检查。 */
   typeOnly: boolean
-  dynamic: boolean
 }
 
 export interface ReExport {
@@ -122,7 +124,7 @@ function isTypeOnlyExportDeclaration(node: ts.ExportDeclaration): boolean {
 
 /**
  * 取出静态 import/export、副作用 import 与动态 import 的模块说明符，
- * 同时保留“整条导入只是类型”与“是否动态”的信息，供页面职责检查使用。
+ * 同时保留“整条导入只是类型”的信息，供页面职责检查使用。
  * 注释和字符串字面量不会被误判。
  */
 export function collectImportReferences(source: string, filePath = 'sample.tsx'): ImportReference[] {
@@ -134,7 +136,6 @@ export function collectImportReferences(source: string, filePath = 'sample.tsx')
       references.push({
         specifier: node.moduleSpecifier.text,
         typeOnly: isTypeOnlyImportDeclaration(node),
-        dynamic: false,
       })
     }
 
@@ -142,14 +143,13 @@ export function collectImportReferences(source: string, filePath = 'sample.tsx')
       references.push({
         specifier: node.moduleSpecifier.text,
         typeOnly: isTypeOnlyExportDeclaration(node),
-        dynamic: false,
       })
     }
 
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const [firstArgument] = node.arguments
       if (firstArgument && ts.isStringLiteralLike(firstArgument)) {
-        references.push({ specifier: firstArgument.text, typeOnly: false, dynamic: true })
+        references.push({ specifier: firstArgument.text, typeOnly: false })
       }
     }
 
@@ -183,14 +183,24 @@ export function collectImportBindings(source: string, filePath = 'sample.tsx'): 
     const declarationTypeOnly = clause.isTypeOnly
 
     if (clause.name) {
-      bindings.push({ specifier, imported: 'default', typeOnly: declarationTypeOnly })
+      bindings.push({
+        specifier,
+        imported: 'default',
+        localName: clause.name.text,
+        typeOnly: declarationTypeOnly,
+      })
     }
 
     const namedBindings = clause.namedBindings
     if (!namedBindings) continue
 
     if (ts.isNamespaceImport(namedBindings)) {
-      bindings.push({ specifier, imported: '*', typeOnly: declarationTypeOnly })
+      bindings.push({
+        specifier,
+        imported: '*',
+        localName: namedBindings.name.text,
+        typeOnly: declarationTypeOnly,
+      })
       continue
     }
 
@@ -198,6 +208,7 @@ export function collectImportBindings(source: string, filePath = 'sample.tsx'): 
       bindings.push({
         specifier,
         imported: element.propertyName?.text ?? element.name.text,
+        localName: element.name.text,
         typeOnly: declarationTypeOnly || element.isTypeOnly,
       })
     }
@@ -594,9 +605,24 @@ export function analyzeDependencies(files: readonly SourceFile[]): DependencyAna
   return { edges, cycles, violations }
 }
 
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression
+  while (
+    ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current)
+    || ts.isNonNullExpression(current)
+    || ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression
+  }
+  return current
+}
+
 function isGlobalObjectExpression(expression: ts.Expression): boolean {
-  return ts.isIdentifier(expression)
-    && (expression.text === 'window' || expression.text === 'globalThis' || expression.text === 'self')
+  const unwrapped = unwrapExpression(expression)
+  return ts.isIdentifier(unwrapped)
+    && (unwrapped.text === 'window' || unwrapped.text === 'globalThis' || unwrapped.text === 'self')
 }
 
 function isPropertyName(node: ts.Identifier): boolean {
@@ -626,11 +652,210 @@ function isBindingName(node: ts.Identifier): boolean {
     || (ts.isFunctionExpression(parent) && parent.name === node)
     || (ts.isClassDeclaration(parent) && parent.name === node)
     || (ts.isClassExpression(parent) && parent.name === node)
+    || (ts.isTypeAliasDeclaration(parent) && parent.name === node)
+    || (ts.isInterfaceDeclaration(parent) && parent.name === node)
+    || (ts.isEnumDeclaration(parent) && parent.name === node)
+    || (ts.isTypeParameterDeclaration(parent) && parent.name === node)
     || (ts.isImportClause(parent) && parent.name === node)
     || (ts.isImportSpecifier(parent) && parent.name === node)
     || (ts.isNamespaceImport(parent) && parent.name === node)
     || (ts.isImportEqualsDeclaration(parent) && parent.name === node)
   )
+}
+
+/** 解构键名：`{ fetch: f }` 取 fetch，`{ fetch }` 取 fetch。 */
+function bindingElementKey(node: ts.BindingElement): string | null {
+  const propertyName = node.propertyName
+  if (propertyName && (ts.isIdentifier(propertyName) || ts.isStringLiteralLike(propertyName))) {
+    return propertyName.text
+  }
+  return ts.isIdentifier(node.name) ? node.name.text : null
+}
+
+/**
+ * 找到解构绑定的初始值。只认变量声明与参数默认值：
+ * `const { fetch: f } = window`、`function f({ fetch } = window)`。
+ */
+function findBindingInitializer(node: ts.BindingElement): ts.Expression | undefined {
+  let current: ts.Node = node.parent
+
+  while (
+    ts.isObjectBindingPattern(current)
+    || ts.isArrayBindingPattern(current)
+    || ts.isBindingElement(current)
+  ) {
+    const { parent } = current
+    if (ts.isVariableDeclaration(parent) && parent.name === current) return parent.initializer
+    if (ts.isParameter(parent) && parent.name === current) return parent.initializer
+    current = parent
+  }
+
+  return undefined
+}
+
+/** 收集某个标识符（命名空间变量/动态导入结果）在给定子树上的成员名。 */
+function collectPropertyUsage(root: ts.Node, identifierName: string): Set<string> {
+  const names = new Set<string>()
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAccessExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === identifierName
+      && ts.isIdentifier(node.name)
+    ) {
+      names.add(node.name.text)
+    }
+
+    if (
+      ts.isElementAccessExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === identifierName
+      && node.argumentExpression
+      && ts.isStringLiteralLike(node.argumentExpression)
+    ) {
+      names.add(node.argumentExpression.text)
+    }
+
+    if (
+      ts.isVariableDeclaration(node)
+      && node.initializer
+      && ts.isIdentifier(node.initializer)
+      && node.initializer.text === identifierName
+      && ts.isObjectBindingPattern(node.name)
+    ) {
+      for (const name of collectObjectBindingKeys(node.name)) names.add(name)
+    }
+
+    if (
+      ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === identifierName
+      && node.expression.name.text === 'then'
+    ) {
+      const callback = node.arguments[0]
+      if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+        for (const name of collectCallbackModuleUsage(callback)) names.add(name)
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(root)
+  return names
+}
+
+function collectObjectBindingKeys(pattern: ts.ObjectBindingPattern): Set<string> {
+  const names = new Set<string>()
+  for (const element of pattern.elements) {
+    const key = bindingElementKey(element)
+    if (key) names.add(key)
+  }
+  return names
+}
+
+function collectBindingUsage(name: ts.BindingName, root: ts.Node): Set<string> {
+  if (ts.isIdentifier(name)) return collectPropertyUsage(root, name.text)
+  if (ts.isObjectBindingPattern(name)) return collectObjectBindingKeys(name)
+  return new Set()
+}
+
+function collectCallbackModuleUsage(callback: ts.ArrowFunction | ts.FunctionExpression): Set<string> {
+  const [parameter] = callback.parameters
+  if (!parameter) return new Set()
+  return collectBindingUsage(parameter.name, callback.body)
+}
+
+function climbThroughExpressionWrappers(node: ts.Node): ts.Node {
+  let current = node
+  while (
+    current.parent
+    && (
+      ts.isAwaitExpression(current.parent)
+      || ts.isParenthesizedExpression(current.parent)
+      || ts.isAsExpression(current.parent)
+      || ts.isTypeAssertionExpression(current.parent)
+      || ts.isNonNullExpression(current.parent)
+      || ts.isSatisfiesExpression(current.parent)
+    )
+  ) {
+    current = current.parent
+  }
+  return current
+}
+
+function collectDynamicImportUsedNames(
+  call: ts.CallExpression,
+  sourceFile: ts.SourceFile,
+): Set<string> {
+  const receiver = climbThroughExpressionWrappers(call)
+  const { parent } = receiver
+
+  if (
+    ts.isPropertyAccessExpression(parent)
+    && parent.expression === receiver
+    && parent.name.text === 'then'
+    && ts.isCallExpression(parent.parent)
+  ) {
+    const callback = parent.parent.arguments[0]
+    if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+      return collectCallbackModuleUsage(callback)
+    }
+  }
+
+  if (
+    ts.isPropertyAccessExpression(parent)
+    && parent.expression === receiver
+    && ts.isIdentifier(parent.name)
+  ) {
+    return new Set([parent.name.text])
+  }
+
+  if (
+    ts.isElementAccessExpression(parent)
+    && parent.expression === receiver
+    && parent.argumentExpression
+    && ts.isStringLiteralLike(parent.argumentExpression)
+  ) {
+    return new Set([parent.argumentExpression.text])
+  }
+
+  if (
+    (ts.isVariableDeclaration(parent) || ts.isParameter(parent))
+    && parent.initializer === receiver
+  ) {
+    return collectBindingUsage(parent.name, sourceFile)
+  }
+
+  return new Set()
+}
+
+interface DynamicImportUsage {
+  specifier: string
+  usedNames: Set<string>
+}
+
+function collectDynamicImportUsages(sourceFile: ts.SourceFile): DynamicImportUsage[] {
+  const usages: DynamicImportUsage[] = []
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [specifierArgument] = node.arguments
+      if (specifierArgument && ts.isStringLiteralLike(specifierArgument)) {
+        usages.push({
+          specifier: specifierArgument.text,
+          usedNames: collectDynamicImportUsedNames(node, sourceFile),
+        })
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return usages
 }
 
 function pageRuleForGlobal(name: string): GuardrailRule | null {
@@ -659,6 +884,14 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
   }
 
   const visit = (node: ts.Node): void => {
+    if (ts.isBindingElement(node)) {
+      const key = bindingElementKey(node)
+      const initializer = findBindingInitializer(node)
+      if (key && initializer && isGlobalObjectExpression(initializer) && pageRuleForGlobal(key)) {
+        report(key, sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1)
+      }
+    }
+
     if (
       ts.isIdentifier(node)
       && !isPropertyName(node)
@@ -740,7 +973,8 @@ function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<st
 
       if (reExport.exportedName === '*') {
         for (const name of collectModuleExportedNames(target, filesByPath, knownFiles, new Set())) {
-          names.add(name)
+          // `export *` 不转发 default；default 可能来自页面组件，不能当作端点。
+          if (name !== 'default') names.add(name)
         }
       } else {
         names.add(reExport.exportedName)
@@ -763,6 +997,7 @@ export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViol
   for (const file of files) {
     if (!isPageFile(file.path)) continue
     const pageDomain = featureDomainOf(file.path)
+    const sourceFile = parseSourceFile(file)
 
     for (const reference of collectImportReferences(file.source, file.path)) {
       if (reference.typeOnly) continue
@@ -783,30 +1018,39 @@ export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViol
           file: file.path,
           message: `页面不得直接导入本域 API（${reference.specifier}）；读取/写入交给领域容器与领域查询`,
         })
-        continue
       }
+    }
 
-      if (!reference.dynamic) continue
-      const domain = /^@\/features\/([^/]+)$/.exec(reference.specifier)?.[1]
-      if (!domain || !publicApiExports.get(domain)?.size) continue
+    for (const usage of collectDynamicImportUsages(sourceFile)) {
+      const resolved = resolveImport(usage.specifier, file.path, knownFiles)
+      const domain = resolved ? isFeatureIndex(resolved)?.domain : null
+      const apiNames = domain ? publicApiExports.get(domain) : undefined
+      if (!domain || !apiNames?.size) continue
+
+      const endpoints = [...usage.usedNames].filter(name => apiNames.has(name))
+      if (endpoints.length === 0) continue
       violations.push({
         rule: 'page-transport',
         file: file.path,
-        message: `页面不得动态 import 含领域端点的公开面（${reference.specifier}）；请在领域容器中静态使用所需 hook/组件`,
+        message: `页面不得动态 import 领域公开面并调用端点 ${domain}.${endpoints.join(', ')}（${usage.specifier}）；请在领域容器中使用所需 hook/组件`,
       })
     }
 
     for (const binding of collectImportBindings(file.source, file.path)) {
       if (binding.typeOnly) continue
-      const domain = /^@\/features\/([^/]+)$/.exec(binding.specifier)?.[1]
+      const resolved = resolveImport(binding.specifier, file.path, knownFiles)
+      const domain = resolved ? isFeatureIndex(resolved)?.domain : null
       const apiNames = domain ? publicApiExports.get(domain) : undefined
-      if (!domain || !apiNames) continue
+      if (!domain || !apiNames?.size) continue
 
       if (binding.imported === '*') {
+        const usedNames = collectPropertyUsage(sourceFile, binding.localName)
+        const endpoints = [...usedNames].filter(name => apiNames.has(name))
+        if (endpoints.length === 0) continue
         violations.push({
           rule: 'page-transport',
           file: file.path,
-          message: `页面不得整体导入 ${binding.specifier}；请只导入所需领域 hook/组件，端点调用归领域容器`,
+          message: `页面不得经公开面调用领域端点 ${domain}.${endpoints.join(', ')}（${binding.specifier}）；请交给领域容器/hook`,
         })
       } else if (apiNames.has(binding.imported)) {
         violations.push({
@@ -868,10 +1112,40 @@ export interface SizeReport {
 export interface SizeBaseline {
   thresholds: Record<SizeCategory, number>
   largeFiles: Record<SizeCategory, string[]>
-  /** 基线时各 feature 的 pages 总行数，用于搬移启发式。 */
-  pageLines: Record<string, number>
+  /** 基线时各 feature 的 pages 总行数；旧版预算可缺失，此时跳过搬移检查。 */
+  pageLines?: Record<string, number>
   /** 基线时各 feature 的 hooks/model/components 总行数。 */
-  nonPageLines: Record<string, number>
+  nonPageLines?: Record<string, number>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** 校验 size-budget.json；旧版预算允许缺少 pageLines/nonPageLines。 */
+export function isSizeBaseline(value: unknown): value is SizeBaseline {
+  if (!isRecord(value) || !isRecord(value.thresholds) || !isRecord(value.largeFiles)) {
+    return false
+  }
+
+  for (const category of SIZE_CATEGORIES) {
+    const threshold = value.thresholds[category]
+    if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold <= 0) return false
+    const files = value.largeFiles[category]
+    if (!Array.isArray(files) || files.some(file => typeof file !== 'string')) return false
+  }
+
+  for (const lines of [value.pageLines, value.nonPageLines]) {
+    if (lines === undefined) continue
+    if (
+      !isRecord(lines)
+      || Object.values(lines).some(lineCount => typeof lineCount !== 'number' || !Number.isFinite(lineCount))
+    ) {
+      return false
+    }
+  }
+
+  return true
 }
 
 export interface SizeBudgetResult {
@@ -996,8 +1270,8 @@ export function evaluateSizeBudget(report: SizeReport, baseline: SizeBaseline): 
   }
 
   for (const [domain, totals] of Object.entries(report.domainTotals).sort(([a], [b]) => a.localeCompare(b))) {
-    const baselinePages = baseline.pageLines[domain]
-    const baselineNonPage = baseline.nonPageLines[domain]
+    const baselinePages = baseline.pageLines?.[domain]
+    const baselineNonPage = baseline.nonPageLines?.[domain]
     if (baselinePages === undefined || baselineNonPage === undefined) continue
 
     const shrink = baselinePages - totals.pages

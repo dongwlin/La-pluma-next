@@ -9,7 +9,7 @@
 // 辅助项：
 // - 输出 hooks/model/components/pages 的规模观察；
 // - 用 size-budget.json 冻结「超阈值大文件集合」，并检查同域页面缩减是否被
-//   等量搬进 hooks/model/components。阈值依据迁移结果与分类分布，见
+//   搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80%）。阈值依据迁移结果与分类分布，见
 //   docs/guardrails.md；正常的小幅增长不需要更新基线，确实需要新增一个大文件
 //   或有意的结构调整时运行：
 //   pnpm --filter la-pluma-next-client guardrails:size-baseline
@@ -18,11 +18,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   DEFAULT_SIZE_THRESHOLDS,
-  SIZE_CATEGORIES,
   analyzeDependencies,
   analyzeSize,
   checkPageGuardrails,
   evaluateSizeBudget,
+  isSizeBaseline,
   readSourceTree,
   type GuardrailRule,
   type GuardrailViolation,
@@ -49,33 +49,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isSizeBaseline(value: unknown): value is SizeBaseline {
-  if (
-    !isRecord(value)
-    || !isRecord(value.thresholds)
-    || !isRecord(value.largeFiles)
-    || !isRecord(value.pageLines)
-    || !isRecord(value.nonPageLines)
-  ) {
-    return false
-  }
-
-  for (const category of SIZE_CATEGORIES) {
-    const threshold = value.thresholds[category]
-    if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold <= 0) return false
-    const files = value.largeFiles[category]
-    if (!Array.isArray(files) || files.some(file => typeof file !== 'string')) return false
-  }
-
-  for (const lines of [Object.values(value.pageLines), Object.values(value.nonPageLines)]) {
-    if (lines.some(lineCount => typeof lineCount !== 'number' || !Number.isFinite(lineCount))) {
-      return false
-    }
-  }
-
-  return true
-}
-
 async function readSizeBaselineFile(): Promise<SizeBaseline | null> {
   let raw: string
   try {
@@ -96,7 +69,7 @@ async function readSizeBaselineFile(): Promise<SizeBaseline | null> {
   }
 
   if (!isSizeBaseline(parsed)) {
-    console.error('规模预算结构无效：需要 thresholds、largeFiles、pageLines 与 nonPageLines。')
+    console.error('规模预算结构无效：需要 thresholds、largeFiles；pageLines/nonPageLines 可选，若存在必须为数字映射。')
     process.exit(2)
   }
 
@@ -225,6 +198,9 @@ if (updateSizeBaseline) {
 }
 
 const baseline = await loadSizeBaseline()
+if (!baseline.pageLines || !baseline.nonPageLines) {
+  console.warn('规模预算缺少分域行数，跳过页面搬移检查；运行 `pnpm --filter la-pluma-next-client guardrails:size-baseline` 升级基线。')
+}
 thresholds = baseline.thresholds
 const report = analyzeSize(sourceFiles, thresholds)
 printSizeReport(report)
@@ -238,7 +214,7 @@ if (budgetResult.notes.length > 0) {
 }
 
 if (budgetResult.violations.length > 0) {
-  console.error(`规模预算失败：${budgetResult.violations.length} 个新增超阈值文件。`)
+  console.error(`规模预算失败：${budgetResult.violations.length} 项（新增超阈值文件或疑似页面搬移）。`)
   for (const violation of budgetResult.violations) {
     console.error(`  ${violation}`)
   }
@@ -247,4 +223,4 @@ if (budgetResult.violations.length > 0) {
   process.exit(1)
 }
 
-console.log('规模预算通过：未新增超阈值文件。')
+console.log('规模预算通过：未新增超阈值文件，未发现页面搬移。')
