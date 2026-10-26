@@ -120,6 +120,7 @@ CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` �
 
 - 静态分析只能证明 import 与字面原语，不证明运行时谁真正写状态；跨 remount 的所有权仍需行为测试。
 - 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、通过动态字符串拼出的 import；这些仍由评审与领域测试把关。
+- 页面端点检查只看页面直接出现的公开面 import 和 feature index 的一条 `export { ... } from './api'`；经第三层模块再转发的端点不在静态检查范围内。
 - `shared/` 的深路径没有统一公开面约定（`shared/ui`、`shared/hooks` 等按目录使用），本检查只约束 feature 公开面。
 - 规模预算只覆盖四个分类的 feature 生产源码；不评价单个函数的复杂度、渲染次数或包体积。
 - 测试文件被有意排除：它们可以 import 内部实现、使用 fetch 与计时器，且不会进入生产包。
