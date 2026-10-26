@@ -363,6 +363,24 @@ describe('page responsibility guardrails', () => {
     expect(violations[0]?.message).toContain('executeScheduleNow')
   })
 
+  it('flags a default export of an endpoint imported from api', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/index.ts', [
+        "import { executeScheduleNow } from './api'",
+        'export default executeScheduleNow',
+      ].join('\n')],
+      ['features/a/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        "import run from '..'",
+        'run()',
+      ].join('\n')],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('default')
+  })
+
   const endpointUsageCases = [
     ['namespace receiver wrapped in as', [
       "import * as a from '..'",

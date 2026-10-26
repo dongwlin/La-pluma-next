@@ -1151,18 +1151,28 @@ function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, strin
  * 只禁 `@/features/x/api` 深路径不足以阻止页面直接调用端点：公开面可以把
  * `executeScheduleNow`、`saveUserConfig` 等端点再导出，也可能使用
  * `export * from './api'` 或同文件 `import ... from './api'; export { ... }`
- * 的本地转发。页面检查沿公开面定位来源，仍允许同一条公开面导出的领域 hook/组件。
+ * 的本地命名/默认转发。页面检查沿公开面定位来源，仍允许同一条公开面导出的领域 hook/组件。
  */
 function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<string>> {
   const filesByPath = new Map(files.map(file => [file.path, file]))
   const knownFiles = new Set(filesByPath.keys())
   const apiExports = new Map<string, Set<string>>()
 
+  const addExport = (domain: string, name: string): void => {
+    let names = apiExports.get(domain)
+    if (!names) {
+      names = new Set()
+      apiExports.set(domain, names)
+    }
+    names.add(name)
+  }
+
   for (const file of files) {
     const domain = /^features\/([^/]+)\/index\.tsx?$/.exec(file.path)?.[1]
     if (!domain) continue
 
-    const localImportSources = collectLocalImportSources(parseSourceFile(file))
+    const sourceFile = parseSourceFile(file)
+    const localImportSources = collectLocalImportSources(sourceFile)
 
     for (const reExport of collectReExports(file.source, file.path)) {
       if (reExport.typeOnly) continue
@@ -1172,20 +1182,24 @@ function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<st
       const target = resolveImport(specifier, file.path, knownFiles)
       if (!target?.startsWith(`features/${domain}/api/`)) continue
 
-      let names = apiExports.get(domain)
-      if (!names) {
-        names = new Set()
-        apiExports.set(domain, names)
-      }
-
       if (reExport.exportedName === '*') {
         for (const name of collectModuleExportedNames(target, filesByPath, knownFiles, new Set())) {
           // `export *` 不转发 default；default 可能来自页面组件，不能当作端点。
-          if (name !== 'default') names.add(name)
+          if (name !== 'default') addExport(domain, name)
         }
       } else {
-        names.add(reExport.exportedName)
+        addExport(domain, reExport.exportedName)
       }
+    }
+
+    // 本地默认转发：`import { executeScheduleNow } from './api'; export default executeScheduleNow`。
+    for (const statement of sourceFile.statements) {
+      if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue
+      const localName = unwrappedIdentifierName(statement.expression)
+      const specifier = localName ? localImportSources.get(localName) : undefined
+      if (!specifier) continue
+      const target = resolveImport(specifier, file.path, knownFiles)
+      if (target?.startsWith(`features/${domain}/api/`)) addExport(domain, 'default')
     }
   }
 
