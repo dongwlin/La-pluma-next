@@ -1,0 +1,36 @@
+{
+  "_comment": "规模预算：按分类冻结超过阈值的文件集合。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意新增/拆分大文件时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。",
+  "thresholds": {
+    "pages": 60,
+    "hooks": 220,
+    "model": 340,
+    "components": 320
+  },
+  "largeFiles": {
+    "pages": [],
+    "hooks": [
+      "features/automation/hooks/useAutomationExecution.ts",
+      "features/combat/hooks/useCombatExecution.ts",
+      "features/dashboard/hooks/useDashboardExecution.ts",
+      "features/device-mirror/hooks/useScrcpyWebRTC.ts"
+    ],
+    "model": [
+      "features/automation/model/automationConfig.ts",
+      "features/logs/model/historyLogSession.ts",
+      "features/settings/model/deviceConnection.ts",
+      "features/statistics/model/commandOwner.ts",
+      "features/training/model/planCommands.ts",
+      "features/training/model/queueCommands.ts",
+      "features/user-config/model/configCoordinator.ts"
+    ],
+    "components": [
+      "features/automation/components/AutomationWorkspace.tsx",
+      "features/combat/components/CombatWorkspace.tsx",
+      "features/device-mirror/components/ScrcpyDeviceView.tsx",
+      "features/statistics/components/DropRecords.tsx",
+      "features/statistics/components/OperatorPanel.tsx",
+      "features/training/components/OperatorPicker.tsx",
+      "features/training/components/TrainingWorkspace.tsx"
+    ]
+  }
+}
