@@ -34,6 +34,13 @@ export interface ImportBinding {
   typeOnly: boolean
 }
 
+export interface ImportReference {
+  specifier: string
+  /** 整条 import/export 都是类型时跳过页面运行时检查。 */
+  typeOnly: boolean
+  dynamic: boolean
+}
+
 export interface ReExport {
   exportedName: string
   specifier: string
@@ -92,27 +99,57 @@ function parseSourceFile(file: SourceFile): ts.SourceFile {
   )
 }
 
+function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
+  const clause = node.importClause
+  // 副作用 import 没有 importClause，但它仍然会在运行时加载模块。
+  if (!clause) return false
+  if (clause.isTypeOnly) return true
+  if (clause.name) return false
+  const namedBindings = clause.namedBindings
+  if (!namedBindings || ts.isNamespaceImport(namedBindings)) return false
+  return namedBindings.elements.length > 0
+    && namedBindings.elements.every(element => element.isTypeOnly)
+}
+
+function isTypeOnlyExportDeclaration(node: ts.ExportDeclaration): boolean {
+  if (node.isTypeOnly) return true
+  const clause = node.exportClause
+  return !!clause
+    && ts.isNamedExports(clause)
+    && clause.elements.length > 0
+    && clause.elements.every(element => element.isTypeOnly)
+}
+
 /**
- * 取出静态 import/export、副作用 import 与动态 import 的模块说明符。
+ * 取出静态 import/export、副作用 import 与动态 import 的模块说明符，
+ * 同时保留“整条导入只是类型”与“是否动态”的信息，供页面职责检查使用。
  * 注释和字符串字面量不会被误判。
  */
-export function collectImportSpecifiers(source: string, filePath = 'sample.tsx'): string[] {
+export function collectImportReferences(source: string, filePath = 'sample.tsx'): ImportReference[] {
   const sourceFile = parseSourceFile({ path: filePath, source })
-  const specifiers: string[] = []
+  const references: ImportReference[] = []
 
   const visit = (node: ts.Node): void => {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
-      && node.moduleSpecifier
-      && ts.isStringLiteralLike(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text)
+    if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) {
+      references.push({
+        specifier: node.moduleSpecifier.text,
+        typeOnly: isTypeOnlyImportDeclaration(node),
+        dynamic: false,
+      })
+    }
+
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) {
+      references.push({
+        specifier: node.moduleSpecifier.text,
+        typeOnly: isTypeOnlyExportDeclaration(node),
+        dynamic: false,
+      })
     }
 
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const [firstArgument] = node.arguments
       if (firstArgument && ts.isStringLiteralLike(firstArgument)) {
-        specifiers.push(firstArgument.text)
+        references.push({ specifier: firstArgument.text, typeOnly: false, dynamic: true })
       }
     }
 
@@ -120,7 +157,11 @@ export function collectImportSpecifiers(source: string, filePath = 'sample.tsx')
   }
 
   visit(sourceFile)
-  return specifiers
+  return references
+}
+
+export function collectImportSpecifiers(source: string, filePath = 'sample.tsx'): string[] {
+  return collectImportReferences(source, filePath).map(reference => reference.specifier)
 }
 
 /**
@@ -165,7 +206,7 @@ export function collectImportBindings(source: string, filePath = 'sample.tsx'): 
   return bindings
 }
 
-/** 取出公开面 `export { ... } from './module'` 的导出名与来源模块。 */
+/** 取出公开面 `export { ... } from './module'` 与 `export * from './module'` 的来源。 */
 export function collectReExports(source: string, filePath = 'sample.ts'): ReExport[] {
   const sourceFile = parseSourceFile({ path: filePath, source })
   const reExports: ReExport[] = []
@@ -175,13 +216,26 @@ export function collectReExports(source: string, filePath = 'sample.ts'): ReExpo
       !ts.isExportDeclaration(statement)
       || !statement.moduleSpecifier
       || !ts.isStringLiteralLike(statement.moduleSpecifier)
-      || !statement.exportClause
-      || !ts.isNamedExports(statement.exportClause)
     ) {
       continue
     }
 
     const specifier = statement.moduleSpecifier.text
+    if (!statement.exportClause) {
+      reExports.push({ exportedName: '*', specifier, typeOnly: statement.isTypeOnly })
+      continue
+    }
+
+    if (ts.isNamespaceExport(statement.exportClause)) {
+      reExports.push({
+        exportedName: statement.exportClause.name.text,
+        specifier,
+        typeOnly: statement.isTypeOnly,
+      })
+      continue
+    }
+
+    if (!ts.isNamedExports(statement.exportClause)) continue
     for (const element of statement.exportClause.elements) {
       reExports.push({
         exportedName: element.name.text,
@@ -231,6 +285,91 @@ export function resolveImport(
     if (knownFiles.has(candidate)) return candidate
   }
   return null
+}
+
+function hasExportModifier(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) return false
+  return ts.getModifiers(node)?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false
+}
+
+function collectBindingNames(name: ts.BindingName, names: Set<string>): void {
+  if (ts.isIdentifier(name)) {
+    names.add(name.text)
+    return
+  }
+  for (const element of name.elements) {
+    if (ts.isBindingElement(element)) collectBindingNames(element.name, names)
+  }
+}
+
+/**
+ * 递归收集一个模块实际导出的运行时名字，用于展开 `export * from './api'`。
+ * 只做静态声明扫描，不执行类型检查；类型声明与 `export type` 不计入端点集合。
+ */
+function collectModuleExportedNames(
+  filePath: string,
+  filesByPath: ReadonlyMap<string, SourceFile>,
+  knownFiles: ReadonlySet<string>,
+  seen: Set<string>,
+): Set<string> {
+  const names = new Set<string>()
+  if (seen.has(filePath)) return names
+  seen.add(filePath)
+
+  const file = filesByPath.get(filePath)
+  if (!file) return names
+  const sourceFile = parseSourceFile(file)
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement)) {
+      names.add('default')
+      continue
+    }
+
+    if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        collectBindingNames(declaration.name, names)
+      }
+      continue
+    }
+
+    if (
+      (ts.isFunctionDeclaration(statement)
+        || ts.isClassDeclaration(statement)
+        || ts.isEnumDeclaration(statement))
+      && hasExportModifier(statement)
+      && statement.name
+    ) {
+      names.add(statement.name.text)
+      continue
+    }
+
+    if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue
+
+    if (!statement.exportClause) {
+      if (statement.moduleSpecifier && ts.isStringLiteralLike(statement.moduleSpecifier)) {
+        const target = resolveImport(statement.moduleSpecifier.text, filePath, knownFiles)
+        if (target) {
+          for (const name of collectModuleExportedNames(target, filesByPath, knownFiles, seen)) {
+            names.add(name)
+          }
+        }
+      }
+      continue
+    }
+
+    if (ts.isNamespaceExport(statement.exportClause)) {
+      names.add(statement.exportClause.name.text)
+      continue
+    }
+
+    if (!ts.isNamedExports(statement.exportClause)) continue
+    for (const element of statement.exportClause.elements) {
+      if (!element.isTypeOnly) names.add(element.name.text)
+    }
+  }
+
+  return names
 }
 
 export function buildImportEdges(files: readonly SourceFile[]): ImportEdge[] {
@@ -465,8 +604,32 @@ function isPropertyName(node: ts.Identifier): boolean {
   return (
     (ts.isPropertyAccessExpression(parent) && parent.name === node)
     || (ts.isPropertyAssignment(parent) && parent.name === node)
+    || (ts.isPropertySignature(parent) && parent.name === node)
+    || (ts.isPropertyDeclaration(parent) && parent.name === node)
+    || (ts.isMethodSignature(parent) && parent.name === node)
+    || (ts.isMethodDeclaration(parent) && parent.name === node)
+    || (ts.isGetAccessorDeclaration(parent) && parent.name === node)
+    || (ts.isSetAccessorDeclaration(parent) && parent.name === node)
     || (ts.isQualifiedName(parent) && parent.right === node)
     || (ts.isJsxAttribute(parent) && parent.name === node)
+  )
+}
+
+/** 声明名、参数名与解构绑定不是对全局对象的引用。 */
+function isBindingName(node: ts.Identifier): boolean {
+  const { parent } = node
+  return (
+    (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node))
+    || (ts.isVariableDeclaration(parent) && parent.name === node)
+    || (ts.isParameter(parent) && parent.name === node)
+    || (ts.isFunctionDeclaration(parent) && parent.name === node)
+    || (ts.isFunctionExpression(parent) && parent.name === node)
+    || (ts.isClassDeclaration(parent) && parent.name === node)
+    || (ts.isClassExpression(parent) && parent.name === node)
+    || (ts.isImportClause(parent) && parent.name === node)
+    || (ts.isImportSpecifier(parent) && parent.name === node)
+    || (ts.isNamespaceImport(parent) && parent.name === node)
+    || (ts.isImportEqualsDeclaration(parent) && parent.name === node)
   )
 }
 
@@ -496,7 +659,12 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
   }
 
   const visit = (node: ts.Node): void => {
-    if (ts.isIdentifier(node) && !isPropertyName(node) && pageRuleForGlobal(node.text)) {
+    if (
+      ts.isIdentifier(node)
+      && !isPropertyName(node)
+      && !isBindingName(node)
+      && pageRuleForGlobal(node.text)
+    ) {
       report(node.text, sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1)
     }
 
@@ -507,6 +675,19 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
       && pageRuleForGlobal(node.name.text)
     ) {
       report(node.name.text, sourceFile.getLineAndCharacterOfPosition(node.name.getStart()).line + 1)
+    }
+
+    if (
+      ts.isElementAccessExpression(node)
+      && isGlobalObjectExpression(node.expression)
+      && node.argumentExpression
+      && ts.isStringLiteralLike(node.argumentExpression)
+      && pageRuleForGlobal(node.argumentExpression.text)
+    ) {
+      report(
+        node.argumentExpression.text,
+        sourceFile.getLineAndCharacterOfPosition(node.argumentExpression.getStart()).line + 1,
+      )
     }
 
     ts.forEachChild(node, visit)
@@ -533,11 +714,13 @@ function importsPageInfrastructure(
  * 收集各 feature 公开面中来自 `api/` 的导出名。
  *
  * 只禁 `@/features/x/api` 深路径不足以阻止页面直接调用端点：公开面可以把
- * `executeScheduleNow`、`saveUserConfig` 等端点再导出。页面检查沿公开面的
- * `export { ... } from './api'` 定位来源，仍允许同一条公开面导出的领域 hook/组件。
+ * `executeScheduleNow`、`saveUserConfig` 等端点再导出，也可能使用
+ * `export * from './api'`。页面检查沿公开面定位来源，仍允许同一条公开面
+ * 导出的领域 hook/组件。
  */
 function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<string>> {
-  const knownFiles = new Set(files.map(file => file.path))
+  const filesByPath = new Map(files.map(file => [file.path, file]))
+  const knownFiles = new Set(filesByPath.keys())
   const apiExports = new Map<string, Set<string>>()
 
   for (const file of files) {
@@ -554,7 +737,14 @@ function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<st
         names = new Set()
         apiExports.set(domain, names)
       }
-      names.add(reExport.exportedName)
+
+      if (reExport.exportedName === '*') {
+        for (const name of collectModuleExportedNames(target, filesByPath, knownFiles, new Set())) {
+          names.add(name)
+        }
+      } else {
+        names.add(reExport.exportedName)
+      }
     }
   }
 
@@ -572,14 +762,37 @@ export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViol
 
   for (const file of files) {
     if (!isPageFile(file.path)) continue
+    const pageDomain = featureDomainOf(file.path)
 
-    for (const specifier of collectImportSpecifiers(file.source, file.path)) {
-      const resolved = resolveImport(specifier, file.path, knownFiles)
-      if (!importsPageInfrastructure(specifier, resolved)) continue
+    for (const reference of collectImportReferences(file.source, file.path)) {
+      if (reference.typeOnly) continue
+      const resolved = resolveImport(reference.specifier, file.path, knownFiles)
+
+      if (importsPageInfrastructure(reference.specifier, resolved)) {
+        violations.push({
+          rule: 'page-transport',
+          file: file.path,
+          message: `页面不得直接依赖传输层或 Query 基础设施（${reference.specifier}）；读取/写入交给领域容器与领域 Query`,
+        })
+        continue
+      }
+
+      if (pageDomain && resolved?.startsWith(`features/${pageDomain}/api/`)) {
+        violations.push({
+          rule: 'page-transport',
+          file: file.path,
+          message: `页面不得直接导入本域 API（${reference.specifier}）；读取/写入交给领域容器与领域查询`,
+        })
+        continue
+      }
+
+      if (!reference.dynamic) continue
+      const domain = /^@\/features\/([^/]+)$/.exec(reference.specifier)?.[1]
+      if (!domain || !publicApiExports.get(domain)?.size) continue
       violations.push({
         rule: 'page-transport',
         file: file.path,
-        message: `页面不得直接依赖传输层或 Query 基础设施（${specifier}）；读取/写入交给领域容器与领域 Query`,
+        message: `页面不得动态 import 含领域端点的公开面（${reference.specifier}）；请在领域容器中静态使用所需 hook/组件`,
       })
     }
 
@@ -628,6 +841,11 @@ export interface SizeEntry {
   lines: number
 }
 
+export interface DomainSizeTotals {
+  pages: number
+  nonPage: number
+}
+
 export interface SizeCategoryReport {
   category: SizeCategory
   threshold: number
@@ -642,11 +860,17 @@ export interface SizeReport {
   totalLines: number
   totalFiles: number
   entries: SizeEntry[]
+  /** 按功能域聚合 pages 与 hooks/model/components，用于识别“页面搬进新目录”。 */
+  domainTotals: Record<string, DomainSizeTotals>
 }
 
 export interface SizeBaseline {
   thresholds: Record<SizeCategory, number>
   largeFiles: Record<SizeCategory, string[]>
+  /** 基线时各 feature 的 pages 总行数，用于搬移启发式。 */
+  pageLines: Record<string, number>
+  /** 基线时各 feature 的 hooks/model/components 总行数。 */
+  nonPageLines: Record<string, number>
 }
 
 export interface SizeBudgetResult {
@@ -706,17 +930,39 @@ export function analyzeSize(
     }
   })
 
+  const domainTotals: Record<string, DomainSizeTotals> = {}
+  for (const entry of entries) {
+    const domain = /^features\/([^/]+)\//.exec(entry.path)?.[1]
+    if (!domain) continue
+    const totals = domainTotals[domain] ?? { pages: 0, nonPage: 0 }
+    if (entry.category === 'pages') {
+      totals.pages += entry.lines
+    } else {
+      totals.nonPage += entry.lines
+    }
+    domainTotals[domain] = totals
+  }
+
   return {
     categories,
     totalLines: entries.reduce((sum, entry) => sum + entry.lines, 0),
     totalFiles: entries.length,
     entries,
+    domainTotals,
   }
 }
 
+/** 同一功能域 pages 缩减到这个行数以上才参与搬移判断，避免小修误报。 */
+export const RELOCATION_MIN_SHRINK_LINES = 40
+/** 非页面目录增长达到页面缩减量的这个比例时，视为疑似搬移。 */
+export const RELOCATION_GROWTH_RATIO = 0.8
+
 /**
- * 规模预算只冻结「超过阈值的大文件集合」，不逐行限制正常增长：
- * - 新增一个超过本类阈值、且不在基线中的文件 → 失败，防止把页面逻辑搬进新 hook/model；
+ * 规模预算冻结「超过阈值的大文件集合」，并检查页面逻辑是否被整体搬进同域
+ * 的非页面目录：
+ * - 新增一个超过本类阈值、且不在基线中的文件 → 失败；
+ * - 同一 feature 的 pages 缩减 ≥ 40 行，且 hooks/model/components 增长达到
+ *   缩减量的 80% 以上 → 判为疑似搬移并失败；
  * - 基线文件降到阈值下或删除 → 只提示，可择机收紧基线；
  * - 各类总行数只报告，不作为失败条件。
  */
@@ -746,6 +992,24 @@ export function evaluateSizeBudget(report: SizeReport, baseline: SizeBaseline): 
           : `基线文件已不存在：${baselinePath}（${category}）`,
       )
     }
+  }
+
+  for (const [domain, totals] of Object.entries(report.domainTotals).sort(([a], [b]) => a.localeCompare(b))) {
+    const baselinePages = baseline.pageLines[domain]
+    const baselineNonPage = baseline.nonPageLines[domain]
+    if (baselinePages === undefined || baselineNonPage === undefined) continue
+
+    const shrink = baselinePages - totals.pages
+    if (shrink < RELOCATION_MIN_SHRINK_LINES) continue
+
+    const growth = totals.nonPage - baselineNonPage
+    if (growth < Math.ceil(shrink * RELOCATION_GROWTH_RATIO)) continue
+
+    violations.push(
+      `疑似把页面逻辑搬进非页面目录：features/${domain} 的 pages 从 ${baselinePages} 行降到 ${totals.pages} 行`
+      + `（-${shrink}），hooks/model/components 从 ${baselineNonPage} 行增到 ${totals.nonPage} 行（+${growth}）。`
+      + '请确认是真实拆分；如属有意的结构调整，运行 guardrails:size-baseline 并说明依据。',
+    )
   }
 
   return { violations, notes }

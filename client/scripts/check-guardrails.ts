@@ -8,9 +8,10 @@
 //
 // 辅助项：
 // - 输出 hooks/model/components/pages 的规模观察；
-// - 用 size-budget.json 冻结「超阈值大文件集合」，新增超阈值文件时失败。
-//   阈值依据迁移结果与分类分布，见 docs/guardrails.md；正常的小幅增长
-//   不需要更新基线，确实需要新增一个大文件时运行：
+// - 用 size-budget.json 冻结「超阈值大文件集合」，并检查同域页面缩减是否被
+//   等量搬进 hooks/model/components。阈值依据迁移结果与分类分布，见
+//   docs/guardrails.md；正常的小幅增长不需要更新基线，确实需要新增一个大文件
+//   或有意的结构调整时运行：
 //   pnpm --filter la-pluma-next-client guardrails:size-baseline
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -38,7 +39,7 @@ const BUDGET_PATH = path.join(clientRoot, 'size-budget.json')
 const updateSizeBaseline = process.argv.includes('--update-size-baseline')
 
 const BUDGET_COMMENT =
-  '规模预算：按分类冻结超过阈值的文件集合。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意新增/拆分大文件时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。'
+  '规模预算：按分类冻结超过阈值的文件集合，并记录各 feature 的 pages / 非页面总行数；同一域页面缩减 ≥40 行且 hooks/model/components 增长达到 80% 时判为疑似搬移。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -49,7 +50,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isSizeBaseline(value: unknown): value is SizeBaseline {
-  if (!isRecord(value) || !isRecord(value.thresholds) || !isRecord(value.largeFiles)) {
+  if (
+    !isRecord(value)
+    || !isRecord(value.thresholds)
+    || !isRecord(value.largeFiles)
+    || !isRecord(value.pageLines)
+    || !isRecord(value.nonPageLines)
+  ) {
     return false
   }
 
@@ -58,6 +65,12 @@ function isSizeBaseline(value: unknown): value is SizeBaseline {
     if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold <= 0) return false
     const files = value.largeFiles[category]
     if (!Array.isArray(files) || files.some(file => typeof file !== 'string')) return false
+  }
+
+  for (const lines of [Object.values(value.pageLines), Object.values(value.nonPageLines)]) {
+    if (lines.some(lineCount => typeof lineCount !== 'number' || !Number.isFinite(lineCount))) {
+      return false
+    }
   }
 
   return true
@@ -83,7 +96,7 @@ async function readSizeBaselineFile(): Promise<SizeBaseline | null> {
   }
 
   if (!isSizeBaseline(parsed)) {
-    console.error('规模预算结构无效：需要 thresholds 与 largeFiles（按分类列出文件路径）。')
+    console.error('规模预算结构无效：需要 thresholds、largeFiles、pageLines 与 nonPageLines。')
     process.exit(2)
   }
 
@@ -186,11 +199,23 @@ if (updateSizeBaseline) {
       category.largeFiles.map(entry => entry.path).sort((a, b) => a.localeCompare(b)),
     ]),
   ) as Record<SizeCategory, string[]>
+  const pageLines = Object.fromEntries(
+    Object.entries(report.domainTotals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([domain, totals]) => [domain, totals.pages]),
+  )
+  const nonPageLines = Object.fromEntries(
+    Object.entries(report.domainTotals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([domain, totals]) => [domain, totals.nonPage]),
+  )
 
   const baseline = {
     _comment: BUDGET_COMMENT,
     thresholds,
     largeFiles,
+    pageLines,
+    nonPageLines,
   } satisfies SizeBaseline & { _comment: string }
 
   await writeFile(BUDGET_PATH, `${JSON.stringify(baseline, null, 2)}\n`)

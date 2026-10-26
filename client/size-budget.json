@@ -1,5 +1,5 @@
 {
-  "_comment": "规模预算：按分类冻结超过阈值的文件集合。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意新增/拆分大文件时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。",
+  "_comment": "规模预算：按分类冻结超过阈值的文件集合，并记录各 feature 的 pages / 非页面总行数；同一域页面缩减 ≥40 行且 hooks/model/components 增长达到 80% 时判为疑似搬移。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。",
   "thresholds": {
     "pages": 60,
     "hooks": 220,
@@ -32,5 +32,37 @@
       "features/training/components/OperatorPicker.tsx",
       "features/training/components/TrainingWorkspace.tsx"
     ]
+  },
+  "pageLines": {
+    "automation": 28,
+    "combat": 28,
+    "dashboard": 44,
+    "device-mirror": 0,
+    "game-data": 0,
+    "logs": 28,
+    "resource-invalidation": 0,
+    "roguelike": 32,
+    "runtime-status": 0,
+    "settings": 16,
+    "statistics": 36,
+    "task-execution": 0,
+    "training": 17,
+    "user-config": 0
+  },
+  "nonPageLines": {
+    "automation": 5115,
+    "combat": 4769,
+    "dashboard": 2167,
+    "device-mirror": 2106,
+    "game-data": 133,
+    "logs": 1969,
+    "resource-invalidation": 169,
+    "roguelike": 936,
+    "runtime-status": 264,
+    "settings": 3320,
+    "statistics": 2919,
+    "task-execution": 113,
+    "training": 3510,
+    "user-config": 732
   }
 }

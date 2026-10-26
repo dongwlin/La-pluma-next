@@ -272,6 +272,94 @@ describe('page responsibility guardrails', () => {
     expect(violations[0]?.message).toContain('整体导入')
   })
 
+  it('expands export * from api when locating public endpoints', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/automation/index.ts', "export * from './api'\n"],
+      ['features/automation/api/index.ts', [
+        'export const executeScheduleNow = () => null',
+        'export function getActivity() { return null }',
+      ].join('\n')],
+      ['features/a/pages/Page.tsx', [
+        "import { executeScheduleNow } from '@/features/automation'",
+        'export default function Page() { executeScheduleNow(); return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]?.message).toContain('executeScheduleNow')
+  })
+
+  it('flags a page dynamically importing a domain that exposes endpoints', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/automation/index.ts', "export { executeScheduleNow } from './api'\n"],
+      ['features/automation/api/index.ts', 'export const executeScheduleNow = () => null\n'],
+      ['features/a/pages/Page.tsx', [
+        "const load = () => import('@/features/automation')",
+        'export default function Page() { load(); return null }',
+      ].join('\n')],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('动态 import')
+  })
+
+  it('flags a page importing its own domain api directly', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        "import { loadThing } from '../api'",
+        'export default function Page() { loadThing(); return null }',
+      ].join('\n')],
+      ['features/a/api/index.ts', 'export const loadThing = () => null\n'],
+    ))
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ rule: 'page-transport' })
+    expect(violations[0]?.message).toContain('本域 API')
+  })
+
+  it('does not flag type-only imports from transport or query modules', () => {
+    const violations = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        "import type { ApiResponse } from '@/shared/api'",
+        "import type { QueryClient } from '@tanstack/react-query'",
+        "import { type AutomationActivityPayload } from '@/features/automation'",
+        'export type { ApiResponse, QueryClient, AutomationActivityPayload }',
+        'export default function Page() { return null }',
+      ].join('\n')],
+      ['shared/api/index.ts', 'export type ApiResponse = { ok: boolean }\n'],
+      ['features/automation/index.ts', 'export type { AutomationActivityPayload } from "./types"\n'],
+    ))
+
+    expect(violations).toEqual([])
+  })
+
+  it('detects computed global access and ignores local binding names', () => {
+    const computed = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        "window['fetch']('/api/agent/tasks/status')",
+        "globalThis['setInterval'](() => {}, 1000)",
+        "window[`localStorage`].getItem('draft')",
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+    expect(computed.map(violation => violation.rule)).toEqual([
+      'page-transport',
+      'page-polling',
+      'page-storage',
+    ])
+
+    const shadowed = checkPageGuardrails(files(
+      ['features/a/pages/Page.tsx', [
+        'const { fetch, localStorage: storage } = useProps()',
+        'function setInterval() {}',
+        'type Props = { fetch: string; localStorage: string }',
+        'export default function Page() { return null }',
+      ].join('\n')],
+    ))
+    expect(shadowed).toEqual([])
+  })
+
   it('allows a page to call its domain container hook', () => {
     const violations = checkPageGuardrails(files(
       ['features/a/pages/Page.tsx', [
@@ -360,6 +448,8 @@ describe('size reporting and budget', () => {
         model: [],
         components: [],
       },
+      pageLines: {},
+      nonPageLines: {},
     }
 
     const result = evaluateSizeBudget(report, baseline)
@@ -370,6 +460,29 @@ describe('size reporting and budget', () => {
     expect(result.notes).toEqual([
       expect.stringContaining('features/a/hooks/useRecovered.ts'),
     ])
+  })
+
+  it('flags page logic moved into same-domain hooks/model/components', () => {
+    const relocationThresholds = { pages: 500, hooks: 500, model: 500, components: 500 }
+    const report = analyzeSize(files(
+      ['features/a/hooks/usePage.ts', '1\n'.repeat(70)],
+      ['features/b/pages/Page.tsx', '1\n'.repeat(70)],
+      ['features/b/hooks/usePage.ts', '1\n'.repeat(30)],
+      ['features/c/pages/Page.tsx', '1\n'.repeat(30)],
+      ['features/c/hooks/usePage.ts', '1\n'.repeat(20)],
+    ), relocationThresholds)
+
+    const baseline: SizeBaseline = {
+      thresholds: relocationThresholds,
+      largeFiles: { pages: [], hooks: [], model: [], components: [] },
+      pageLines: { a: 70, b: 100, c: 100 },
+      nonPageLines: { a: 0, b: 0, c: 0 },
+    }
+
+    const result = evaluateSizeBudget(report, baseline)
+    expect(result.violations).toHaveLength(1)
+    expect(result.violations[0]).toContain('features/a')
+    expect(result.violations[0]).toContain('疑似把页面逻辑搬进非页面目录')
   })
 })
 
