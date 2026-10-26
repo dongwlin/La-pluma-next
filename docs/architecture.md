@@ -139,6 +139,6 @@ FPR-001–040/044 迁移后，页面、领域容器与全局状态的职责按�
 pnpm --filter la-pluma-next-client guardrails
 ```
 
-规模预算冻结在 `client/size-budget.json`，阈值依据迁移后的实际分类分布而不是统一的 150 行；规则、阈值表、更新方式和已知限制见[依赖与职责护栏](guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与规模预算。
+规模预算冻结在 `client/size-budget.json`，阈值依据迁移后的实际分类分布而不是统一的 150 行，并检查同域页面缩减是否被等量搬进 hooks/model/components；规则、阈值表、更新方式和已知限制见[依赖与职责护栏](guardrails.md)。ESLint 继续负责编辑器内的深路径与分层即时报错，CLI 额外覆盖相对路径绕过、真实域环、页面职责与规模预算。
 
 开发流程与常用检查见 [开发文档](development.md)。

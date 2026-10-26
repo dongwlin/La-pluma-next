@@ -55,11 +55,12 @@
 | 类别 | 禁止项 | 归属 |
 | --- | --- | --- |
 | 传输 | `@/shared/api`、`@/shared/query`、`@tanstack/react-query`；裸 `fetch`、`WebSocket`、`EventSource`、`XMLHttpRequest` | 领域 `api/`、领域 Query 与 Query Provider |
-| 领域端点转发 | 经 `@/features/<domain>` 公开面导入该域 `api/` 再导出的函数（例如 `executeScheduleNow`、`saveUserConfig`），或整体命名空间导入一个含端点的域 | 领域容器与领域 hook；公开面只导出页面/hook/组件与明确允许跨域读取的 query |
+| 领域端点转发 | 经 `@/features/<domain>` 公开面导入该域 `api/` 再导出的函数（例如 `executeScheduleNow`、`saveUserConfig`，含 `export * from './api'`），或整体命名空间/字面量动态导入一个含端点的域 | 领域容器与领域 hook；公开面只导出页面/hook/组件与明确允许跨域读取的 query |
+| 本域 API | 页面 import 本域的 `../api`、`../api/*` 或 `@/features/<own>/api` | 领域容器与领域 hook |
 | 存储 | `localStorage`、`sessionStorage`、`indexedDB` | user-config 协调器、领域所有者或面板会话 |
 | 轮询 | `setInterval` | 领域 hook / 流 / 会话所有者（例如实时日志、设备采样） |
 
-页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。端点检查会沿公开面的 `export { ... } from './api'` 定位导出名来源，因此“从 feature 根导入端点”与深路径导入一样会被拦住，而同一条公开面导出的领域 hook/组件仍然允许。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
+页面可以调用所属领域的 hook 与容器，例如 `Dashboard` 调用 `useDashboardSnapshotRefresh`、导入 `DashboardWorkspace`。这些调用不会被误判为页面裸副作用；检查只看页面文件自身是否直接持有上述原语。端点检查会沿公开面的 `export { ... } from './api'` 与 `export * from './api'` 定位导出名来源，静态命名导入、命名空间导入、自域 `../api` 与字面量 `import('@/features/<domain>')` 都会检查；整条 import 只是类型时跳过。`setTimeout`、`requestAnimationFrame` 与 DOM 事件不计为业务轮询，避免把布局/交互副作用一并禁掉；如果一个页面用递归 `setTimeout` 模拟轮询，仍然逃不过代码评审，本文不声称静态检查能识别所有轮询写法。
 
 ## 4. 规模观察与预算
 
@@ -74,18 +75,19 @@
 | model | 71 | 113 | 336 | 801 | 340 | 7 |
 | components | 74 | 114 | 318 | 1126 | 320 | 7 |
 
-规则：阈值 = 该分类生产源码的 p90（最近秩）向上取整到 20 行。pages 只有 8 个样本，p90 等于最大值 44，按同一规则取 60。这里没有使用统一的 150 行：迁移后页面中位数 28 行，150 行会让页面回涨到迁移前的数倍仍不被提示；model/components 的中位数已超过 150 行，固定 150 会把正常领域模块全部标红。阈值是辅助信号，不是性能或正确性结论。
+规则：阈值 = 该分类生产源码的 p90（最近秩）向上取整到 20 行。pages 只有 8 个样本，p90 等于最大值 44，按同一规则取 60。这里没有使用统一的 150 行：迁移后页面中位数 28 行，150 行会让页面回涨到迁移前的数倍仍不被提示；model/components 的 p90 已分别达到 336/318 行，固定 150 行会把大量正常领域模块标红（两者中位数 113/114，单看中位数会掩盖尾部分布）。阈值是辅助信号，不是性能或正确性结论。
 
 ### 4.2 预算语义
 
-`client/size-budget.json` 冻结每个分类的阈值与「超过阈值的文件集合」：
+`client/size-budget.json` 冻结每个分类的阈值、「超过阈值的文件集合」，以及各 feature 的 pages / 非页面总行数：
 
 - 当前超阈值文件都在基线内时通过；
 - 新增一个超过本类阈值、且不在基线内的文件时失败；
+- 同一 feature 的 pages 缩减 ≥40 行，且 hooks/model/components 增长达到缩减量的 80% 以上时，判为疑似搬移并失败；
 - 基线文件降到阈值下或被删除时只提示，可运行 `guardrails:size-baseline` 收紧基线；
-- 各分类的总行数与中位数只报告，不作为失败条件。
+- 各分类的总行数与中位数只报告，不作为失败条件；分域 pages / 非页面总行数只用于搬移启发式。
 
-预算不逐行冻结基线内的大文件：它们继续增长仍会出现在每次输出中，由评审决定拆分或调整基线；这正是“辅助提示”而非硬行数上限的含义。四个分类使用同一套基线，因此把页面逻辑整体搬进新的 hooks、model 或 components 文件会新增超阈值文件并失败，而不是靠改变目录绕过。把大文件真正拆成多个低于阈值的小文件属于结构改善，仍会在总行数报告中可见；阈值本身不替代对职责和所有权的评审。
+预算不逐行冻结基线内的大文件：它们继续增长仍会出现在每次输出中，由评审决定拆分或调整基线；这正是“辅助提示”而非硬行数上限的含义。四个分类使用同一套基线，并且按 feature 记录 pages 与非页面总行数，因此把 70 行页面逻辑整体移到同域新建的 70 行 hook 会触发搬移检查（pages 减少 70、非页面增加 70），而不是靠改变目录绕过。该检查是启发式，不证明代码性质：同一域内页面缩减与无关的非页面增长恰好同时发生也可能误报；如属真实拆分，运行 `guardrails:size-baseline` 让新结构进入基线并在评审中说明依据。把大文件真正拆成多个低于阈值的小文件仍会在总行数与差异中可见；阈值本身不替代对职责和所有权的评审。
 
 更新基线：
 
@@ -93,7 +95,7 @@
 pnpm --filter la-pluma-next-client guardrails:size-baseline
 ```
 
-该命令只重算超阈值文件集合，保留 `size-budget.json` 中的阈值。调整阈值需要同步更新本节表格与依据；不能为了让一次改动通过而只放大阈值或删除已有基线文件。
+该命令重算超阈值文件集合与各 feature 的 pages / 非页面总行数，保留 `size-budget.json` 中的阈值。调整阈值需要同步更新本节表格与依据；不能为了让一次改动通过而只放大阈值或删除已有基线文件。
 
 ## 5. 接入与验证
 
@@ -112,15 +114,18 @@ CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` �
 
 回归集中在 `client/scripts/guardrails.test.ts`：
 
-- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面调用领域 hook；
-- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面导入领域端点、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`、新增超阈值文件；
+- 正例：跨域公开面 import、同域相对 import、shared import、领域容器使用 fetch/计时器、页面调用领域 hook、页面仅 type-only 导入传输层类型；
+- 反例：深路径、跨域相对绕过、shared→features、features→app、task-execution→runtime-status、双域依赖环、页面直接 import 传输层、页面经公开面（含 `export *`、命名空间、字面量动态 import）导入领域端点、页面导入本域 `../api`、页面使用 `fetch`/`WebSocket`/`localStorage`/`setInterval`（含 `window[...]` 计算属性）、同域页面搬移启发式、新增超阈值文件；
 - 当前源码树：无依赖/页面违规，且规模不超出已入库预算。
 
 ## 6. 已知限制
 
 - 静态分析只能证明 import 与字面原语，不证明运行时谁真正写状态；跨 remount 的所有权仍需行为测试。
-- 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、通过动态字符串拼出的 import；这些仍由评审与领域测试把关。
-- 页面端点检查只看页面直接出现的公开面 import 和 feature index 的一条 `export { ... } from './api'`；经第三层模块再转发的端点不在静态检查范围内。
+- 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、由变量或字符串拼接生成的动态 import；这些仍由评审与领域测试把关。
+- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问与字符串字面量下标；`window['loc' + 'alStorage']` 这类计算表达式不在静态检查范围。
+- 页面端点检查覆盖 feature index 的直接 named / `export *` / namespace re-export 与字面量动态 import；经第三层模块再转发的端点不在静态检查范围内。
+- API 模块的纯辅助导出（例如 `getItemIconUrl`）也会按来源被视为端点；当前页面未直接使用。若确需在页面直接使用纯函数，应由领域公开面提供非 `api/` 位置的导出或扩展白名单。
+- 搬移检查是启发式：页面缩减与非页面增长同域同时发生即触发，真正拆分需要更新基线并评审；它不能证明代码是否只是被搬动。
 - `shared/` 的深路径没有统一公开面约定（`shared/ui`、`shared/hooks` 等按目录使用），本检查只约束 feature 公开面。
 - 规模预算只覆盖四个分类的 feature 生产源码；不评价单个函数的复杂度、渲染次数或包体积。
 - 测试文件被有意排除：它们可以 import 内部实现、使用 fetch 与计时器，且不会进入生产包。
