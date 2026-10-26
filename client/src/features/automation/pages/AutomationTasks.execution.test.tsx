@@ -390,6 +390,23 @@ describe('AutomationTasks execution', () => {
     expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
   })
 
+  it('closes the add-task picker when a run starts', async () => {
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
+      progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },
+      statuses: ['running', 'pending', 'pending'],
+    })))
+    useIdentity()
+    await renderPage()
+
+    await click(container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]'))
+    expect(container.querySelector('#automation-task-picker')).not.toBeNull()
+
+    await click(runButton())
+
+    expect(container.querySelector('#automation-task-picker')).toBeNull()
+    expect(container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.disabled).toBe(true)
+  })
+
   it('blocks a custom shift without a schedule file and selects it for editing', async () => {
     const infrastFlow: TaskFlowItem[] = [
       flow[0]!,

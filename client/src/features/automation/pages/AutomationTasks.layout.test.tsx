@@ -500,6 +500,34 @@ describe('AutomationTasks layout surfaces', () => {
     expect(container.querySelector('fieldset legend')?.textContent).toContain('招募星级')
   })
 
+  it('normalizes the recruitment duration when the field loses focus', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await act(async () => root.render(<AutomationTasks />))
+    await flush()
+    await clickSequenceTask('自动公招')
+
+    const recruitmentTime = container.querySelector<HTMLInputElement>('#recruit-1-recruitment-time-3')!
+    expect(recruitmentTime.value).toBe('540')
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+
+    recruitmentTime.focus()
+    await act(async () => {
+      inputValueSetter?.call(recruitmentTime, '333')
+      recruitmentTime.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    await act(async () => recruitmentTime.blur())
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('#recruit-1-recruitment-time-3')?.value).toBe('330')
+    const savedFlow = JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{
+      id: string
+      params: { recruitment_time: Record<string, number> }
+    }>
+    expect(savedFlow.find(task => task.id === 'recruit-1')?.params.recruitment_time['3']).toBe(330)
+  })
+
   it('keeps stage creation and deletion inside one grouped list', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
