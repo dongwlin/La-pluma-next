@@ -122,7 +122,7 @@ CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` �
 
 - 静态分析只能证明 import 与字面原语，不证明运行时谁真正写状态；跨 remount 的所有权仍需行为测试。
 - 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、由变量或字符串拼接生成的动态 import；这些仍由评审与领域测试把关。
-- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问与字符串字面量下标；`window['loc' + 'alStorage']` 这类计算表达式不在静态检查范围。
+- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问与字符串字面量下标，并跳过类型/属性名与声明名；它不做完整作用域解析，同名局部变量的裸引用仍可能被当作全局。`window['loc' + 'alStorage']` 这类计算表达式也不在静态检查范围。
 - 页面端点检查覆盖 feature index 的直接 named / `export *` / namespace re-export 与字面量动态 import；经第三层模块再转发的端点不在静态检查范围内。
 - API 模块的纯辅助导出（例如 `getItemIconUrl`）也会按来源被视为端点；当前页面未直接使用。若确需在页面直接使用纯函数，应由领域公开面提供非 `api/` 位置的导出或扩展白名单。
 - 搬移检查是启发式：页面缩减与非页面增长同域同时发生即触发，真正拆分需要更新基线并评审；它不能证明代码是否只是被搬动。
