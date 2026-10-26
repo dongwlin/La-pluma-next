@@ -1,0 +1,326 @@
+/**
+ * 养成工作区容器
+ *
+ * 跨面板的共享版本边界集中在这里：
+ * - 队列快照是唯一可写真相，队列命令、写后刷新与失效发布由领域所有者持有；
+ * - 队列 revision 与设置 revision 共同决定计划预览是否仍可应用；
+ * - 识别/材料/资源更新只在工作区订阅一次，候选/计数按 key 失效、队列重读；
+ * - 选择器开关、操作错误与移除后的撤销快照是跨面板的局部交互状态，
+ *   不进入配置、Query、localStorage 或 URL，Activity 隐藏/恢复保留。
+ *
+ * 面板各自持有展示与局部交互：材料只看当前目标，计划持有范围选择，设置只把
+ * 开关变化交给所有者，选择器持有筛选、搜索、分批与头像缓存。
+ */
+
+import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { Button, PageHeader } from '@/shared/ui'
+import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
+import { useResourceInvalidation } from '@/features/resource-invalidation'
+import { trainingKeys } from '../model/queryKeys'
+import { trainingQueueQueryOptions } from '../model/queries'
+import {
+  isTrainingQueueMutationInvalidation,
+  type TrainingQueueCommandOutcome,
+} from '../model/queueCommands'
+import { isTrainingPlanBasisCurrent } from '../model/planValidity'
+import {
+  TRAINING_SETTINGS_FAILURE_MESSAGE,
+  isTrainingSettingsInvalidation,
+} from '../model/settingsCommands'
+import { useTrainingPlan } from '../hooks/useTrainingPlan'
+import { useTrainingQueueCommands } from '../hooks/useTrainingQueueCommands'
+import { useTrainingSettings } from '../hooks/useTrainingSettings'
+import OperatorPicker from './OperatorPicker'
+import TrainingMaterialsPanel from './TrainingMaterialsPanel'
+import TrainingPlanPanel from './TrainingPlanPanel'
+import TrainingQueuePanel, { type RemovedTrainingQueueItem } from './TrainingQueuePanel'
+import TrainingSettingsPanel from './TrainingSettingsPanel'
+import type {
+  TrainingOperator,
+  TrainingPlanMode,
+  TrainingQueueItem,
+  TrainingSettings,
+} from '../types'
+
+const EMPTY_TRAINING_QUEUE: TrainingQueueItem[] = []
+const TRAINING_RESOURCE_SCOPES = [
+  'depot',
+  'operbox',
+  'catalog',
+  'materials',
+  'training-queue',
+  'training-plan',
+] as const
+
+export default function TrainingWorkspace() {
+  const { setMessage: setStatusMessage } = useStatusStore()
+  const queryClient = useQueryClient()
+  // 设置的读取、串行提交与本地 revision 由 training 领域所有者持有；
+  // 工作区只显示当前值，并把要应用的设置交给 apply 请求。
+  const {
+    settings,
+    revision: settingsRevision,
+    update: updateSettings,
+  } = useTrainingSettings()
+
+  // 队列由 training 领域 query 持有唯一快照；写入、写后刷新与 fallback 都归
+  // queueCommands 领域命令，工作区不再维护第二份可写队列。
+  const queueOptions = useMemo(() => trainingQueueQueryOptions(), [])
+  const queueQuery = useQuery(queueOptions)
+  const queueSnapshot = queueQuery.data
+  const queue = queueSnapshot?.queue ?? EMPTY_TRAINING_QUEUE
+  // 首次读取失败后重试期间保持加载态，避免错误页与请求进度同时出现。
+  const queueLoading = queueQuery.isPending
+    || (queueQuery.isFetching && !queueSnapshot && queueQuery.isError)
+  const queueError = queueQuery.isError && !queueSnapshot
+    ? (queueQuery.error instanceof Error && queueQuery.error.message
+        ? queueQuery.error.message
+        : '养成队列加载失败，请稍后重试')
+    : null
+  const queueUncertain = queueSnapshot?.uncertain ?? null
+  const refreshError = Boolean(queueUncertain)
+    || (queueQuery.isError && Boolean(queueSnapshot))
+
+  // 计划预览、版本前提、生成/应用/同步编排与跨域失效发布由领域所有者持有；
+  // 工作区把自己的队列快照交给所有者观察，不创建第二个队列观察者。
+  const {
+    plan,
+    basis: planBasis,
+    error: planError,
+    warning: planWarning,
+    flowSync,
+    generating,
+    applying,
+    syncing,
+    generate: generatePlan,
+    apply: applyPlan,
+    retrySync: retryFlowSync,
+    reload: reloadQueue,
+    invalidate: invalidatePlan,
+    recordFlowSync,
+  } = useTrainingPlan({ queueSnapshot })
+  const {
+    pendingOperatorIds,
+    queueMutationPending,
+    run: runQueueCommand,
+  } = useTrainingQueueCommands()
+
+  const [selectorOpen, setSelectorOpen] = useState(false)
+  const [operationError, setOperationError] = useState<string | null>(null)
+  const [recentlyRemoved, setRecentlyRemoved] = useState<RemovedTrainingQueueItem | null>(null)
+
+  const showSuccess = (msg: string) => {
+    setStatusMessage(msg, 'success')
+  }
+  const showError = (msg: string) => {
+    setStatusMessage(msg, 'error')
+  }
+
+  // 识别、材料刷新与资源更新可能来自本页之外。候选列表与计数按资源作用域
+  // 失效领域 query，计划前提变化时作废旧计划；队列写入的权威快照已由领域
+  // 命令写入，因此忽略本页自己发布的队列失效。
+  useResourceInvalidation(TRAINING_RESOURCE_SCOPES, invalidation => {
+    if (isTrainingQueueMutationInvalidation(invalidation)) return
+    // 设置所有者已在编辑时按 revision 作废旧计划；它自己的成功发布不再重复
+    // 清空用户在该写入期间重新生成的预览。外部 `training-plan` 仍会作废。
+    if (isTrainingSettingsInvalidation(invalidation)) return
+    const { resources } = invalidation
+    const touchesPlan = resources.some(resource => (
+      resource === 'depot' || resource === 'materials' || resource === 'training-plan'
+    ))
+    const touchesQueue = resources.some(resource => (
+      resource === 'depot' || resource === 'materials' || resource === 'training-queue'
+    ))
+    const touchesOperators = resources.some(resource => (
+      resource === 'depot' || resource === 'operbox' || resource === 'catalog' || resource === 'materials'
+    ))
+
+    if (touchesPlan) invalidatePlan()
+    if (touchesQueue) void reloadQueue()
+    if (touchesOperators) {
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('candidates') })
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('counts') })
+    }
+  })
+
+  // 命令失败保留原队列并展示可重试错误；写入成功（含写后刷新失败）才推进 UI。
+  const settleQueueOutcome = (
+    outcome: TrainingQueueCommandOutcome,
+  ): Extract<TrainingQueueCommandOutcome, { status: 'applied' | 'uncertain' }> | null => {
+    if (outcome.status === 'ignored') return null
+    if (outcome.status === 'failed') {
+      setOperationError(outcome.message)
+      showError(outcome.message)
+      // 命令开始时会取消在途读取；若当时还没有快照，失败后重新建立首屏读取。
+      if (!queueSnapshot) void queueQuery.refetch()
+      return null
+    }
+    recordFlowSync(outcome.flowSync)
+    if (outcome.status === 'uncertain') setStatusMessage(outcome.message, 'warning')
+    else if (outcome.message) showSuccess(outcome.message)
+    return outcome
+  }
+
+  const queueOperatorIds = useMemo(
+    () => new Set(queue.map(item => item.operatorId)),
+    [queue],
+  )
+
+  const handleAddToQueue = async (operator: TrainingOperator) => {
+    if (queueOperatorIds.has(operator.id)) return
+    setRecentlyRemoved(null)
+    setOperationError(null)
+    invalidatePlan()
+    const outcome = await runQueueCommand({ type: 'add', operator })
+    settleQueueOutcome(outcome)
+  }
+
+  const handleRemoveFromQueue = async (operatorId: string): Promise<boolean> => {
+    if (!queueOperatorIds.has(operatorId)) return false
+    setOperationError(null)
+    invalidatePlan()
+    const outcome = await runQueueCommand({ type: 'remove', operatorId })
+    const settled = settleQueueOutcome(outcome)
+    if (!settled?.removed) return false
+    setRecentlyRemoved(settled.removed)
+    return true
+  }
+
+  const handleUndoRemove = async (): Promise<boolean> => {
+    const snapshot = recentlyRemoved
+    if (!snapshot) return false
+    setOperationError(null)
+    // 撤销同样是队列写入：开始时立即作废旧预览，不依赖写后 revision 兜底。
+    invalidatePlan()
+    const outcome = await runQueueCommand({
+      type: 'undo',
+      item: snapshot.item,
+      index: snapshot.index,
+    })
+    const settled = settleQueueOutcome(outcome)
+    if (!settled) return false
+    setRecentlyRemoved(null)
+    return true
+  }
+
+  const handleReorder = async (operatorId: string, destination: number): Promise<boolean> => {
+    const index = queue.findIndex(item => item.operatorId === operatorId)
+    if (
+      index < 0
+      || index === destination
+      || destination < 0
+      || destination >= queue.length
+    ) return false
+    setOperationError(null)
+    invalidatePlan()
+    const outcome = await runQueueCommand({ type: 'reorder', operatorId, destination })
+    const settled = settleQueueOutcome(outcome)
+    if (!settled) return false
+    setRecentlyRemoved(null)
+    return true
+  }
+
+  // 可生成/可应用条件与版本前提由领域所有者再次校验；这里的值只驱动按钮状态。
+  const handleGeneratePlan = (mode: TrainingPlanMode) => {
+    void generatePlan(mode)
+  }
+
+  const handleApplyPlan = async () => {
+    const outcome = await applyPlan()
+    if (outcome.status === 'applied') {
+      showSuccess(`养成计划已应用到${outcome.flowName}`)
+    } else if (outcome.status === 'partial') {
+      setStatusMessage(outcome.message, 'warning')
+    }
+  }
+
+  const handleRetrySync = async () => {
+    const outcome = await retryFlowSync()
+    if (outcome.status === 'partial') setStatusMessage(outcome.message, 'warning')
+  }
+
+  const handleUpdateSettings = (newSettings: TrainingSettings) => {
+    // 编辑立即作废旧计划：即使随后写入失败，旧计划也不能继续被应用。
+    invalidatePlan()
+    void updateSettings(newSettings).then(outcome => {
+      if (outcome.status === 'failed' && !outcome.superseded) {
+        showError(TRAINING_SETTINGS_FAILURE_MESSAGE)
+      }
+    })
+  }
+
+  const busy = queueMutationPending || generating || applying || syncing
+  const planBasisCurrent = Boolean(plan && planBasis
+    && isTrainingPlanBasisCurrent(planBasis, {
+      queueRevision: queueSnapshot?.revision ?? null,
+      settingsRevision,
+    }))
+  const currentTarget = queue[0] ?? null
+
+  return (
+    <>
+      <PageHeader title="养成" subtitle="管理目标，筹备材料，安排下一次作战" actions={<><FloatingStatusIndicator /><Button onClick={() => setSelectorOpen(true)} icon={<Plus size={17} />}>添加干员</Button></>} />
+      <div className="training-workspace-grid">
+        <TrainingQueuePanel
+          queue={queue}
+          loading={queueLoading}
+          error={queueError}
+          uncertain={queueUncertain}
+          refreshError={refreshError}
+          operationError={operationError}
+          busy={busy}
+          pendingOperatorIds={pendingOperatorIds}
+          queueMutationPending={queueMutationPending}
+          recentlyRemoved={recentlyRemoved}
+          onRemove={handleRemoveFromQueue}
+          onReorder={handleReorder}
+          onUndo={handleUndoRemove}
+          onDismissUndo={() => setRecentlyRemoved(null)}
+          onRetryLoad={() => void reloadQueue()}
+          onReload={() => { invalidatePlan(); void reloadQueue() }}
+          onOpenPicker={() => setSelectorOpen(true)}
+        />
+
+        <div className="training-detail-column">
+          <TrainingMaterialsPanel target={currentTarget} />
+
+          <TrainingPlanPanel
+            plan={plan}
+            basisCurrent={planBasisCurrent}
+            error={planError}
+            warning={planWarning}
+            flowSync={flowSync}
+            generating={generating}
+            applying={applying}
+            syncing={syncing}
+            busy={busy}
+            hasQueue={queue.length > 0 && !queueError}
+            refreshFailed={refreshError}
+            queueLength={queue.length}
+            currentTarget={currentTarget}
+            onGenerate={handleGeneratePlan}
+            onApply={handleApplyPlan}
+            onRetrySync={handleRetrySync}
+            onReload={() => void reloadQueue()}
+            onInvalidate={invalidatePlan}
+          />
+        </div>
+      </div>
+
+      <TrainingSettingsPanel settings={settings} onUpdate={handleUpdateSettings} />
+
+      <OperatorPicker
+        isOpen={selectorOpen}
+        onClose={() => setSelectorOpen(false)}
+        queueOperatorIds={queueOperatorIds}
+        queueLength={queue.length}
+        busy={busy}
+        operationError={operationError}
+        pendingOperatorIds={pendingOperatorIds}
+        onAdd={handleAddToQueue}
+      />
+    </>
+  )
+}
