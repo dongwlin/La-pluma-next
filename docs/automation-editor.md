@@ -4,7 +4,7 @@
 
 本文描述 FPR-038 交付的自动化任务编辑与挑选组件、它们的局部交互状态和纯模型边界。配置草稿仍由 `automationConfig` 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；本任务只把 `StageEditor`/`TaskPicker` 从页面迁出，并下沉菜单开关、外部点击、Escape 回焦与智能养成在途标记，不新增第二份配置、保存队列或执行状态。
 
-相关契约：[自动化纯模型与排序](automation-model.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[自动化纯模型与排序](automation-model.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -128,4 +128,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/automation
 - [自动化纯模型与排序](automation-model.md)：定时时间、流程命令、排序与掉落目标规则。
 - [配置持久化协调器](config-persistence.md)：`automationConfig` 编解码、完整提交与重试边界。
 - [前端执行客户端与控制器](execution-client.md)：提交、停止与 Run 身份。
-- [前端职责与质量基线](frontend-baseline.md)：Automation 页职责与视觉复现入口。

@@ -19,7 +19,7 @@ const MOTION_FREEZE_CSS = `
     caret-color: transparent !important;
   }
 `
-const output = process.env.PERFORMANCE_OUTPUT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/evidence/frontend-final/production.json')
+const output = process.env.PERFORMANCE_OUTPUT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test-results/performance/production.json')
 const SCENARIOS = ['automation-drag', 'copilot-search', 'log-append', 'training-reorder', 'automation-keyboard'] as const
 const profiling = process.env.PERFORMANCE_PROFILE === '1'
 const samples: Record<string, unknown>[] = []

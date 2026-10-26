@@ -281,5 +281,4 @@ pnpm --filter la-pluma-next-client verify
 ## 关联
 
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：三页现行行为、缺口与跨页失效关系。
-- [前端职责与质量基线](frontend-baseline.md)：八页职责矩阵与生命周期。
 - [开发文档](development.md)：测试治理与常用检查。

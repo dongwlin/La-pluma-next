@@ -4,7 +4,7 @@
 
 本文描述 FPR-034 交付的设置页面组合与面板订阅边界。连接草稿、设备命令、版本/目录读取、组件更新与自动更新的所有者、Query key、wire 与失效语义均未改变；本任务只调整页面/面板的职责与订阅位置，不新增缓存、命令状态或存储。
 
-相关契约：[设置配置编辑与保存](settings-config-editing.md)、[设置设备连接与系统资源](settings-device-and-resources.md)、[设置组件更新与自动更新](settings-updates-and-auto-update.md)、[Query 缓存与键规范](query-cache.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[设置配置编辑与保存](settings-config-editing.md)、[设置设备连接与系统资源](settings-device-and-resources.md)、[设置组件更新与自动更新](settings-updates-and-auto-update.md)、[Query 缓存与键规范](query-cache.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -134,4 +134,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/settings
 - [设置配置编辑与保存](settings-config-editing.md)：connection Query、草稿/revision、保存/重置与 section 状态。
 - [设置设备连接与系统资源](settings-device-and-resources.md)：设备命令、版本/目录 Query 与取消语义。
 - [设置组件更新与自动更新](settings-updates-and-auto-update.md)：更新命令、版本失效与自动更新完整提交。
-- [前端职责与质量基线](frontend-baseline.md)：Settings 页职责矩阵与 Activity 生命期。

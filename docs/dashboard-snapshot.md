@@ -134,7 +134,6 @@ pnpm --filter la-pluma-next-client exec vitest run \
 
 ## 关联
 
-- [前端职责与质量基线](frontend-baseline.md)：Dashboard 的职责与 Activity 说明。
 - [资源请求错误与取消契约](resource-requests.md)：signal、失败分类与载荷校验。
 - [Query 缓存与键规范](query-cache.md)：默认策略、key 规范与已迁移资源。
 - [共享资源归属与失效端口](resource-ownership.md)：写入方的失效发布与订阅规则。

@@ -2,7 +2,7 @@
 
 > [← 返回文档索引](README.md)
 
-本文说明当前前端的依赖方向、状态所有者和生命周期，供新增功能与后续维护使用。迁移前的行为清单保存在[前端职责与质量基线](frontend-baseline.md)；兼容入口及移除条件见[前端迁移与兼容审计](frontend-migration.md)。整体系统与技术栈见[架构与技术栈](architecture.md)，界面规则以[设计规范](../DESIGN.md)为准。
+本文说明当前前端的依赖方向、状态所有者和生命周期，供新增功能与后续维护使用。兼容入口及移除条件见[前端迁移与兼容审计](frontend-migration.md)。整体系统与技术栈见[架构与技术栈](architecture.md)，界面规则以[设计规范](../DESIGN.md)为准。
 
 ## 分层与公开面
 
@@ -62,7 +62,7 @@
 | 设备预览 | 按实际 tab 和文档可见性暂停，撤销 transport、timer 与监听器 | 由预览会话重建；不影响 Run 身份或设备任务 |
 | 排序与模态交互 | 清理 document 事件、pointer/rAF、焦点与滚动副作用 | 保留的 UI 状态由所属面板恢复；不能留下后台交互监听 |
 
-更细的当前行为见[执行客户端](execution-client.md)、[配置持久化协调器](config-persistence.md)、[日志实时流](logs-realtime-stream.md)、[日志历史与清理](logs-history-and-cleanup.md)、[总览快照与设备采样](dashboard-snapshot.md)；[基线生命周期表](frontend-baseline.md)用于迁移前后对照。默认 Query 策略不意味着所有会话都会随 `document.hidden` 停止；日志、预览及业务刷新各自有明确契约。
+更细的当前行为见[执行客户端](execution-client.md)、[配置持久化协调器](config-persistence.md)、[日志实时流](logs-realtime-stream.md)、[日志历史与清理](logs-history-and-cleanup.md)、[总览快照与设备采样](dashboard-snapshot.md)。默认 Query 策略不意味着所有会话都会随 `document.hidden` 停止；日志、预览及业务刷新各自有明确契约。
 
 ## 样式、验证与性能证据
 
@@ -70,4 +70,4 @@
 
 客户端 `verify` 执行依赖与页面职责护栏、lint、类型检查、单元测试和构建；视觉与浏览器集成检查覆盖布局、交互和生命周期，静态护栏不证明运行时所有权。测试可深路径构造领域内部状态，但不进入生产依赖图。规模预算用于提示大文件增长与整块搬移，不代表性能指标。
 
-性能前测保存在[基线采样](evidence/frontend-baseline/performance.md)，最终采样及可比性说明保存在[最终性能证据](evidence/frontend-final/performance.md)。比较必须保持构建、数据、设备、浏览器及操作语义一致；普通生产包的 DOM mutation 与 CDP 指标不能当作 React render 或 commit 次数。拖拽取消与成功保存是不同结果，日志端到端耗时包含轮询等待，不能直接称为纯渲染耗时。本文不根据结构缩减推断性能提升。
+性能测试的场景、采样方法与解释限制见[性能采样说明](../client/tests/performance/README.md)。比较必须保持构建、数据、设备、浏览器及操作语义一致；DOM mutation 和 CDP 指标不能当作 React render 或 commit 次数，日志总耗时包含轮询等待。不能根据结构缩减推断性能提升。

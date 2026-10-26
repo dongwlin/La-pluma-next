@@ -140,4 +140,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/settings
 - [设置组件更新与自动更新](settings-updates-and-auto-update.md)：版本失效、更新命令与自动更新策略。
 - [Query 缓存与键规范](query-cache.md)：`settings/version`、`settings/config-directory` 的缓存身份与 Activity 策略。
 - [资源请求错误与取消契约](resource-requests.md)：signal、失败分类与载荷校验。
-- [前端职责与质量基线](frontend-baseline.md)：Settings 页职责矩阵与 Activity 生命期。

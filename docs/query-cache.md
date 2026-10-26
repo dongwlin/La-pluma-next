@@ -74,7 +74,7 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 
 说明：
 
-- TanStack Query 5.104 的“窗口焦点”实际监听文档可见性（`visibilitychange`）；切换应用内 tab 不产生该事件。React 19.3 的 Activity 隐藏会清理 Effects（见[前端职责与质量基线](frontend-baseline.md)的 Activity 说明），Query 观察者随之注销，因此 `refetchOnWindowFocus: false` 只避免浏览器切回时自动重取仍挂载的查询，不能阻止 Activity 恢复后的按需重取。
+- TanStack Query 5.104 的“窗口焦点”实际监听文档可见性（`visibilitychange`）；切换应用内 tab 不产生该事件。React 19.3 的 Activity 隐藏会清理 Effects（见[前端架构与所有权](frontend-architecture.md)的 Activity 说明），Query 观察者随之注销，因此 `refetchOnWindowFocus: false` 只避免浏览器切回时自动重取仍挂载的查询，不能阻止 Activity 恢复后的按需重取。
 - Activity 隐藏/恢复与页面卸载对 Query 订阅是等价的：隐藏清理观察者，缓存从最后一个观察者离开时开始按 `gcTime` 计时；显示后重新订阅。数据仍新鲜则直接用缓存，已过期则按 `refetchOnMount` 后台重取，已被回收则重新加载。
 - 网络在线状态来自浏览器 `navigator.onLine`，不代表本地后端可用；后端健康仍由 runtime-status 监测。后端不可用表现为传输失败，由重试与页面错误边界处理。
 - 需要更短或更长新鲜期的资源可在自己的 `useQuery` 中覆盖 `staleTime`，但必须在所属域说明理由；不得在页面里改动全局默认值。
@@ -404,4 +404,3 @@ pnpm --filter la-pluma-next-client exec vitest run \
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与 Dashboard 完整快照规则。
 - [配置持久化协调器](config-persistence.md)：草稿、pending 与完整提交。
 - [前端执行客户端与控制器](execution-client.md)：Run 身份、观察与停止。
-- [前端职责与质量基线](frontend-baseline.md)：八页职责与 Activity 生命周期。

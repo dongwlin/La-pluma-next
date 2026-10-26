@@ -40,7 +40,7 @@ React Router 7（library 模式的 `BrowserRouter`）是当前 tab 与 URL 的�
 
 前端按 `app → pages → features → shared` 四层垂直切分（依赖只能单向向下）：
 
-当前状态与资源所有者的集中说明见[前端架构与所有权](frontend-architecture.md)，兼容消费者与支持窗口见[前端迁移与兼容审计](frontend-migration.md)，质量与性能证据见[最终质量基线](frontend-final-baseline.md)。
+当前状态与资源所有者的集中说明见[前端架构与所有权](frontend-architecture.md)，兼容消费者与支持窗口见[前端迁移与兼容审计](frontend-migration.md)。
 
 - `app/`：应用组装——根组件、路由表与 URL 归一、布局壳与 Provider，不含业务逻辑。
 - `pages/<domain>/`：页面层——按域组合页头、领域工作区与布局，只经 `@/features/<domain>` 根入口和 `shared/` 取用；不持有配置草稿、传输或运行状态。页面测试与被测页同目录，可深路径构造领域内部状态，不进入产物。
@@ -131,7 +131,7 @@ FPR-001–040/044 迁移后，页面、领域容器与全局状态的职责按�
 | 日志实时/历史会话与设备预览 | `features/logs` 的 `realtimeLogStream`/`historyLogSession`；`features/device-mirror` 的预览会话与 WebRTC transport | 按 Activity/文档可见性暂停恢复；页面不建立第二份轮询、日志缓冲或 WebRTC 连接 | [实时日志流](logs-realtime-stream.md)、[历史日志与清理](logs-history-and-cleanup.md) |
 | 跨域资源失效 | `features/resource-invalidation` 端口；写入成功后由领域命令发布 | 订阅失效范围并按需刷新；页面之间不新增轮询 | [共享资源归属与失效端口](resource-ownership.md) |
 | 跨页客户端状态 | Zustand：主题、连接健康、运行投影、预览偏好等非资源状态 | 不把 Query 数据、配置草稿或运行记录复制进全局 store | [Query 缓存](query-cache.md) |
-| 页面/面板局部状态 | 最近的面板或工作区；跨面板共享时上移 | Activity 隐藏保留 React 状态并清理 Effects；真正卸载/刷新才销毁 | [前端职责与质量基线](frontend-baseline.md) |
+| 页面/面板局部状态 | 最近的面板或工作区；跨面板共享时上移 | Activity 隐藏保留 React 状态并清理 Effects；真正卸载/刷新才销毁 | [前端架构与所有权](frontend-architecture.md) |
 
 页面不得直接持有传输、存储或业务轮询原语；服务端读取走领域 Query，配置写入走协调器，运行观察走控制器，日志/设备等流归对应会话所有者。领域容器可以按需调用 `fetchWithAuth`、计时器与领域 hook，这不是页面越权。
 

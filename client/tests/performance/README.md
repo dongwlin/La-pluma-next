@@ -1,6 +1,6 @@
 # 浏览器交互与 React 性能采样
 
-从仓库根目录运行，普通生产构建默认输出最终基线，原始前测禁止覆盖：
+从仓库根目录运行，普通生产构建默认输出到忽略入库的性能结果目录：
 
 ```sh
 node client/scripts/performance-docker.ts
@@ -43,14 +43,14 @@ node client/scripts/performance-build.ts <after-commit> /tmp/profile-after-sourc
 PERFORMANCE_SKIP_BUILD=1 \
 PERFORMANCE_DIST=/tmp/profile-before-dist \
 PERFORMANCE_BUILD_METADATA=/tmp/profile-before-dist.build.json \
-PERFORMANCE_OUTPUT=docs/evidence/frontend-final/profile-before.json \
+PERFORMANCE_OUTPUT=client/test-results/performance/profile-before.json \
 PERFORMANCE_EXPECT_DRAG=cancelled-after-lost-pointer-capture \
 node client/scripts/performance-docker.ts
 
 PERFORMANCE_SKIP_BUILD=1 \
 PERFORMANCE_DIST=/tmp/profile-after-dist \
 PERFORMANCE_BUILD_METADATA=/tmp/profile-after-dist.build.json \
-PERFORMANCE_OUTPUT=docs/evidence/frontend-final/profile-after.json \
+PERFORMANCE_OUTPUT=client/test-results/performance/profile-after.json \
 node client/scripts/performance-docker.ts
 ```
 
@@ -66,9 +66,9 @@ node client/scripts/performance-docker.ts
 - `cdp.*DurationMs`：Chromium 累计指标的窗口差；Task 包含 Script 等工作，不能相加。layout/style 次数也不是 React 次数。
 - `requests`：真实发出的 API 路径、method、status、相对时刻、完成耗时、body SHA 与业务摘要；fixture 延时不能代表真实后端或公网性能。`setupRequests` 另记初始化端点计数。
 
-输出仅允许位于 `docs/evidence/frontend-final/`。全部 25 个有效样本、每类恰好 5 个才原子替换目标 JSON；失败或筛选的 smoke 不产生完整证据。源码 commit、导出 archive SHA、构建方式、覆盖层 SHA、dist/fixture/harness SHA、生产输入和证据脚本是否有未提交改动、依赖版本、镜像 ID、浏览器与宿主信息均登记。dist SHA 使用相对于 dist 根的排序路径、NUL 分隔符和内容；原始前测使用仓库相对路径，不能直接比较两种摘要。
+输出仅允许位于被 Git 忽略的 `client/test-results/performance/`。全部 25 个有效样本、每类恰好 5 个才原子替换目标 JSON；失败或筛选的 smoke 不产生完整证据。源码 commit、导出 archive SHA、构建方式、覆盖层 SHA、dist/fixture/harness SHA、生产输入和证据脚本是否有未提交改动、依赖版本、镜像 ID、浏览器与宿主信息均登记。dist SHA 使用相对于 dist 根的排序路径、NUL 分隔符和内容；比较不同构建时必须使用一致的摘要规则。
 
-原始 [performance.json](../../../docs/evidence/frontend-baseline/performance.json) 和说明保持原样。[最终证据](../../../docs/evidence/frontend-final/performance.md)登记本轮全部结果与可比性边界。5 次采样没有硬编码速度阈值，不证明统计显著，也不覆盖大队列、慢设备、真实服务端或公网。
+每次采样的数据集应另行标记源码提交、构建参数及采样条件，不把不同完成语义或计时协议的结果直接混为性能对照。5 次采样没有硬编码速度阈值，不证明统计显著，也不覆盖大队列、慢设备、真实服务端或公网。
 
 入口由现有 TypeScript 和 lint 门禁覆盖：
 

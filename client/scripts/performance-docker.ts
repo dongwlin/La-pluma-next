@@ -6,7 +6,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
@@ -14,10 +14,11 @@ import os from 'node:os'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const clientRoot = path.join(repoRoot, 'client')
 const distRoot = path.resolve(process.env.PERFORMANCE_DIST || path.join(clientRoot, 'dist'))
-const output = path.resolve(repoRoot, process.env.PERFORMANCE_OUTPUT || 'docs/evidence/frontend-final/production.json')
-if (!output.startsWith(path.join(repoRoot, 'docs/evidence/frontend-final/'))) {
-  throw new Error('Performance output must stay in docs/evidence/frontend-final; the original baseline is immutable')
+const output = path.resolve(repoRoot, process.env.PERFORMANCE_OUTPUT || 'client/test-results/performance/production.json')
+if (!output.startsWith(path.join(clientRoot, 'test-results/performance/'))) {
+  throw new Error('Performance output must stay in ignored client/test-results/performance/')
 }
+mkdirSync(path.dirname(output), { recursive: true })
 const buildMetadata = process.env.PERFORMANCE_BUILD_METADATA
   ? JSON.parse(readFileSync(process.env.PERFORMANCE_BUILD_METADATA, 'utf8'))
   : null

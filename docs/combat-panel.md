@@ -4,7 +4,7 @@
 
 本文描述 FPR-036 交付的作业页面组合、面板职责与局部状态边界。配置草稿仍由 `user-config` 协调器持有，搜索/预览仍由 `combat` 域 Query 与 `CopilotPreviewSession` 持有，执行仍归 `task-execution` 控制器；本任务只调整页面/面板的职责、视图派生与会话存储，不新增第二份配置、预览、选择或运行状态。
 
-相关契约：[作业搜索与预览](combat-search-preview.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[Query 缓存与键规范](query-cache.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[作业搜索与预览](combat-search-preview.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[Query 缓存与键规范](query-cache.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -147,4 +147,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/combat
 - [作业搜索与预览](combat-search-preview.md)：搜索/预览资源身份、取消与旧响应裁决、选段与命令模型。
 - [配置持久化协调器](config-persistence.md)：combat 配置适配器与 300ms 提交策略。
 - [前端执行客户端与控制器](execution-client.md)：Run 身份、提交、停止与恢复。
-- [前端职责与质量基线](frontend-baseline.md)：Combat 页职责与视觉复现入口。

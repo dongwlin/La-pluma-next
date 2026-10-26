@@ -4,7 +4,7 @@
 
 本文描述 FPR-037 提取的自动化规则纯模型：定时时间、任务流程命令、拖拽排序与掉落目标解析。配置提交仍由 [`automationConfig.ts`](../client/src/features/automation/model/automationConfig.ts) 适配器与 `user-config` 协调器持有，执行仍由 `task-execution` 控制器与服务端 Run 持有；FPR-039 后指针/键盘接线由 `hooks/useTaskFlowSorting.ts` 持有，逐项执行状态与摘要来源由 `model/flowExecution.ts` 提供，模型本身仍不访问 React、网络或存储。
 
-相关契约：[自动化流程、定时与执行摘要面板](automation-flow-panels.md)、[自动化任务编辑面板](automation-editor.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[自动化流程、定时与执行摘要面板](automation-flow-panels.md)、[自动化任务编辑面板](automation-editor.md)、[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -116,4 +116,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/automation
 - [自动化任务编辑面板](automation-editor.md)：StageEditor/TaskPicker 的组合、局部交互状态与智能养成接线。
 - [配置持久化协调器](config-persistence.md)：`automationConfig` 编解码、完整提交与重试边界。
 - [前端执行客户端与控制器](execution-client.md)：提交、停止与 Run 身份。
-- [前端职责与质量基线](frontend-baseline.md)：Automation 页职责与视觉复现入口。

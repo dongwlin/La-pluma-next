@@ -10,7 +10,7 @@
 
 相关契约：[自动化纯模型与排序](automation-model.md)、[自动化任务编辑面板](automation-editor.md)、
 [配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、
-[Query 缓存与键规范](query-cache.md)、[前端职责与质量基线](frontend-baseline.md)。
+[Query 缓存与键规范](query-cache.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -197,4 +197,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/automation
 - [配置持久化协调器](config-persistence.md)：`automationConfig` 编解码、完整提交与重试边界。
 - [前端执行客户端与控制器](execution-client.md)：提交、停止与 Run 身份。
 - [Query 缓存与键规范](query-cache.md)：活动资源键与默认读取策略。
-- [前端职责与质量基线](frontend-baseline.md)：Automation 页职责与视觉复现入口。

@@ -4,7 +4,7 @@
 
 本文描述 FPR-032 交付的统计页面组合、面板局部状态与纯模型。四类读取仍由领域 Query 持有，识别/材料命令仍由 `features/statistics/model/commandOwner.ts` 持有；本任务只调整页面/面板的职责与状态生命期，不新增第二份缓存、命令状态或存储。
 
-相关契约：[统计识别命令与失效联动](statistics-commands.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[统计识别命令与失效联动](statistics-commands.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 

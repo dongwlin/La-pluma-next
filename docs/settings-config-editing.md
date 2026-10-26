@@ -154,6 +154,5 @@ pnpm --filter la-pluma-next-client verify
 - [设置设备连接与系统资源](settings-device-and-resources.md)：设备发现/连接测试、版本与配置目录。
 - [设置组件更新与自动更新](settings-updates-and-auto-update.md)：更新命令、版本失效与自动更新策略。
 - [Query 缓存与键规范](query-cache.md)：`settings/maa-config` 的缓存身份、默认重试与 Activity 行为。
-- [前端职责与质量基线](frontend-baseline.md)：Settings 页职责矩阵与剩余迁移项。
 - [资源请求错误与取消契约](resource-requests.md)：`getConfig` 的 signal 与载荷校验。
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：配置草稿、迟到加载与跨页失效的通用不变量。

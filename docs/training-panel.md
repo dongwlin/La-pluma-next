@@ -4,7 +4,7 @@
 
 本文描述 FPR-033 交付的养成页面组合、面板局部状态与纯模型。队列、设置与计划的领域所有者、Query key、失效作用域和视觉均未改变；本任务只调整页面/面板/选择器的职责与状态生命期，不新增缓存、命令状态或存储。
 
-相关契约：[养成队列命令与写后刷新](training-queue-commands.md)、[养成设置提交与计划有效期](training-settings-and-plan-validity.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[养成队列命令与写后刷新](training-queue-commands.md)、[养成设置提交与计划有效期](training-settings-and-plan-validity.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -145,4 +145,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/training
 - [养成队列命令与写后刷新](training-queue-commands.md)：队列唯一可写真相、串行命令、revision 与不确定 fallback。
 - [养成设置提交与计划有效期](training-settings-and-plan-validity.md)：设置 revision、计划 basis、生成/应用/同步与配置写入屏障。
 - [共享资源归属与失效端口](resource-ownership.md)：候选/计数/队列的归属与触发映射。
-- [前端职责与质量基线](frontend-baseline.md)：Activity 生命周期、页面职责与视觉基线。

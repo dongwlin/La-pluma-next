@@ -214,4 +214,3 @@ pnpm --filter la-pluma-next-client exec vitest run \
 - [Query 缓存与键规范](query-cache.md)：key 规范、默认策略与迁移入口。
 - [配置同步与资源一致性契约](config-sync-and-invalidation.md)：跨页失效关系与 Dashboard 完整快照。
 - [养成队列命令与写后刷新](training-queue-commands.md)：队列唯一可写真相、串行命令与写后失效。
-- [前端职责与质量基线](frontend-baseline.md)：页面职责与 Activity 生命周期。

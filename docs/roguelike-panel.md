@@ -4,7 +4,7 @@
 
 本文描述 FPR-031 交付的肉鸽页面组合、局部状态边界与纯命令模型。配置草稿仍由 `user-config` 协调器持有，运行身份仍由 `task-execution` 控制器持有；本任务只调整页面/面板的职责与数据投影，不新增第二份持久化或执行状态。
 
-相关契约：[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[配置持久化协调器](config-persistence.md)、[前端执行客户端与控制器](execution-client.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 

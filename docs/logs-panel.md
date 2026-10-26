@@ -4,7 +4,7 @@
 
 本文描述 FPR-035 交付的日志页面组合、工具栏/列表/历史选择器边界与手动暂停接线。实时轮询、历史读取、清空/清理命令的所有者与协议均未改变；本任务把页面视图状态拆到工作区和受控面板，并补齐工具栏暂停入口及暂停与清空、历史、重试、Activity 的交互策略。
 
-相关契约：[实时日志流生命周期](logs-realtime-stream.md)、[历史日志与清理协调](logs-history-and-cleanup.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[实时日志流生命周期](logs-realtime-stream.md)、[历史日志与清理协调](logs-history-and-cleanup.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -113,4 +113,3 @@ pnpm --filter la-pluma-next-client exec vitest run src/features/logs
 
 - [实时日志流生命周期](logs-realtime-stream.md)：实时缓冲、轮询、暂停与解析模型。
 - [历史日志与清理协调](logs-history-and-cleanup.md)：历史列表/读取竞态、清空/清理命令与选择裁决。
-- [前端职责与质量基线](frontend-baseline.md)：Logs 页职责、Activity 与视觉复现入口。

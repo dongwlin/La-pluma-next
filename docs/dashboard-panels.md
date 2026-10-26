@@ -4,7 +4,7 @@
 
 本文描述 FPR-040 交付的总览页面组合与按区域订阅。五路业务快照、设备采样、执行控制器与失效协调的所有者均未改变；本任务只调整页面与区域容器的职责、订阅位置和局部展示计算。
 
-相关契约：[总览完整快照与设备采样](dashboard-snapshot.md)、[前端执行客户端与控制器](execution-client.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端职责与质量基线](frontend-baseline.md)。
+相关契约：[总览完整快照与设备采样](dashboard-snapshot.md)、[前端执行客户端与控制器](execution-client.md)、[Query 缓存与键规范](query-cache.md)、[共享资源归属与失效端口](resource-ownership.md)、[前端架构与所有权](frontend-architecture.md)。
 
 ## 1. 定位与边界
 
@@ -189,6 +189,5 @@ pnpm --filter la-pluma-next-client exec vitest run \
 ## 关联
 
 - [总览完整快照与设备采样](dashboard-snapshot.md)：五路读取、原子提交、采样与失效协调。
-- [前端职责与质量基线](frontend-baseline.md)：Dashboard 的职责与 Activity 说明。
 - [前端执行客户端与控制器](execution-client.md)：Dashboard 启动入口与 `scope`。
 - [Query 缓存与键规范](query-cache.md)：默认策略与领域 key。

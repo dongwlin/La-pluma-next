@@ -169,6 +169,5 @@ FPR-015 将 Automation 的配置读写迁到 `features/automation/model/automati
 
 ## 关联
 
-- [前端职责与质量基线](frontend-baseline.md)：八页职责矩阵、生命周期与性能入口。
 - [执行身份与生命周期契约](execution-lifecycle.md)：Run 身份、停止与恢复边界。
 - [开发文档](development.md)：测试治理与常用检查。
