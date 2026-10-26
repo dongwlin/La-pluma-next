@@ -12,11 +12,13 @@ import ReadOnlyConfigPanel from './ReadOnlyConfigPanel'
 
 const mocks = vi.hoisted(() => ({
   getConfigDir: vi.fn(),
+  getVersion: vi.fn(),
   openConfigDir: vi.fn(),
 }))
 
 vi.mock('../api', () => ({
   getConfigDir: mocks.getConfigDir,
+  getVersion: mocks.getVersion,
   openConfigDir: mocks.openConfigDir,
 }))
 
