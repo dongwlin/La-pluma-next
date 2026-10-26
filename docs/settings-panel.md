@@ -49,7 +49,7 @@ ConfigManager（页面壳）
 - **连接面板始终挂载。** `ConnectionConfigPanel` 在所有 section 下保持组件挂载，只在 connection 时渲染 Card；因此切换 section 不重建 `settings/maa-config` Query 观察者，也不清空草稿、保存 loading 或读取/保存反馈。
 - **设备面板按 section 挂载，命令不随 section 取消。** `DeviceConnectionPanel` 只在自己的可见子树内订阅 `DeviceConnectionOwner`；切到只读 section 会卸载面板 DOM，但 owner 继续持有在途命令与已完成结果，恢复 connection 后从 owner 读取最新状态。
 - **更新用例分成两个面板。** `SettingsUpdatesPanel` 只提供卡片壳；`AutoUpdateConfigPanel` 订阅 `AutoUpdateConfigOwner`，`ComponentUpdatePanel` 订阅版本 Query 与 `SettingsUpdateOwner`。自动更新草稿/保存状态不会重渲染组件更新按钮，组件更新/版本状态也不会重渲染自动更新表单。
-- **目录 Query 由两个入口共享。** 目录卡片与只读 section 头部各自调用 `useSettingsConfigDirectory()`，React Query 对同一 key 去重，不会重复请求；两个“打开目录”按钮都走同一个显式命令。
+- **目录 Query 由两个入口共享，第二个观察者只读缓存。** 目录卡片与只读 section 头部共享同一 `settings/config-directory` Query；只读头部使用 `useSettingsConfigDirectory({ cacheOnly: true })`，显式 `refetchOnMount: false`、`retryOnMount: false`。因此切到 resource/instance 不会重取、失败后不会自动重试，也不会把目录卡片的错误/重试临时换成“正在读取目录...”。加载与重试仍只由目录卡片观察者负责。
 
 订阅隔离（渲染边界的验收依据）：
 
@@ -114,9 +114,11 @@ ConfigManager（页面壳）
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `features/settings/pages/ConfigManager.layout.test.tsx` | 既有 34 项设置回归：section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消 |
-| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新状态与全局状态提示不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板 |
+| `features/settings/pages/ConfigManager.layout.test.tsx` | 既有 34 项设置回归：section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消、目录失败后切只读 section 不重试且保留重试入口、只读首屏共享一次目录读取 |
+| `features/settings/pages/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新状态与全局状态提示不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板；设备/更新动作不重渲染目录面板 |
 | `features/settings/model/*.test.ts`、`features/settings/api/index.test.ts` | 配置归一/校验、section 模型、connection 草稿、设备命令、版本/目录、更新与自动更新所有者既有回归（本任务未改协议） |
+
+72 张视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。三态静态 DOM 等价性由实施时的临时 jsdom 对比验证（迁移前页面与拆分后页面，除 React `useId` 外一致）；仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归，完整只读标记结构仍依赖代码审阅。
 
 针对性命令（仓库根目录）：
 

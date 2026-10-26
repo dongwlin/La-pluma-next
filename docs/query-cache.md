@@ -270,6 +270,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 - 设备发现与连接测试有副作用，保持模块级命令所有者、独立 loading/取消，不建立 Query key，也不自动重试。
 - core/CLI/热更新同样是显式命令，不进入 Query，也不由 Query 自动重试；成功确认后只失效版本 key 并发布资源作用域，失败不失效（FPR-026，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)）。
 - 打开目录是 POST 命令，不进入 Query；页面原有卡片与只读 section 两个入口都调用同一 hook 动作。
+- 只读 section 头部与目录卡片共享 `settings/config-directory`，但头部观察者显式 `refetchOnMount: false`、`retryOnMount: false`（`useSettingsConfigDirectory({ cacheOnly: true })`），只复用缓存：section 切换不产生新请求，初始失败后也不会自动重试或把错误/重试入口换成加载态。加载与重试仍只由目录卡片负责。
 
 ## 13. 已迁移读取：作业搜索与预览（FPR-029）
 
