@@ -71,6 +71,7 @@ FPR-027 记录的两个既有缺口在本项关闭：历史读取在 Activity �
 | 清理历史文件 | 无实时动作；历史按钮在历史模式下禁用 | `POST /agent/logs/cleanup {maxSizeMB:10}` 确认后重读文件列表；若当前选择已不在列表中则退出历史模式 | 不刷新列表、不改变选择；返回失败提示 |
 
 - 两个命令共用一个在途槽位：执行期间清空/清理按钮禁用，确认弹层自身也阻止重复提交。
+- 页面卸载时取消命令的本地等待；服务端已收到的清空/清理动作不会被撤销。重新挂载后实时流重读服务端快照、历史会话重读文件列表，不依赖卸载前的命令结果。
 - 清空实时不触碰历史文件列表与选择；清理历史不触碰实时缓冲或轮询。协议没有 cursor，因此没有需要重置的分页游标。
 - 清理已成功但列表重读失败仍视为清理成功（删除已经发生），由历史会话显示列表错误与重试。
 - 确认弹层、成功/失败通知与错误内联展示保持原交互；失败时弹层保持打开，可直接重试。
@@ -94,7 +95,8 @@ FPR-027 记录的两个既有缺口在本项关闭：历史读取在 Activity �
 | 文件 | 覆盖 |
 | --- | --- |
 | `client/src/features/logs/model/historyLogSession.test.ts` | 列表成功/失败保留、列表旧响应、切换文件旧读取、返回实时丢弃、Activity 隐藏取消与恢复重试、成功/失败不自动重试、失败重试、清理后选择裁决、停止取消列表 |
-| `client/src/features/logs/model/logCommands.test.ts` | 清空成功/失败/异常时的 pause/clear/resume 次序、清理成功刷新与裁决、清理失败不刷新、列表失败/取消不裁决 |
+| `client/src/features/logs/model/logCommands.test.ts` | 清空成功/失败/异常/取消时的 pause/clear/resume 次序、清理成功刷新与裁决、清理失败/取消不刷新、列表失败/取消不裁决 |
+| `client/src/features/logs/api/index.test.ts` | 实时/列表/文件读取 signal、清空/清理命令的本地等待 signal、坏载荷、取消保持 `AbortError` |
 | `client/src/features/logs/pages/LogViewer.test.tsx` | 返回实时立即重读且不残留旧实时/历史内容、旧历史响应、模式与自动滚动生命期、清理确认与列表刷新、清理失败保持弹层并重试、清空失败保留行并恢复轮询 |
-| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | 历史读取隐藏取消与恢复重试、历史模式恢复不重启实时、列表刷新失败保留内容并重试、清空期间暂停与命令槽位 |
+| `client/src/features/logs/pages/LogViewer.activity.test.tsx` | 历史读取隐藏取消与恢复重试、历史模式恢复不重启实时、列表刷新失败保留内容并重试、清空期间暂停与命令槽位、卸载取消清空本地等待 |
 | `client/src/features/logs/model/realtimeLogStream.test.ts`、`hooks/useRealtimeLogs.test.tsx`、`api/index.test.ts` | FPR-027 已覆盖的实时轮询、暂停恢复与 API 取消契约 |

@@ -138,7 +138,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 | --- | --- | --- |
 | 实时会话 | GET `/agent/logs/recent?lines=200`，每 1250ms HTTP 轮询；`RealtimeLogStream` 单在途、请求身份与 AbortSignal 防慢请求重叠和旧响应覆盖；每次替换最近 200 行，不是追加流 | logs 实时流所有者（FPR-027） |
 | 历史查询 | GET `/agent/logs/files`；GET `/agent/logs/files/{encodedPath}?lines=1000`；列表与读取各自持有请求序号和 AbortSignal，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求，迟到响应不写新选择；协议无 cursor，选择以文件路径标识 | logs 历史会话 `HistoryLogSession`（FPR-028），见[历史日志与清理协调](logs-history-and-cleanup.md) |
-| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，finally 恢复并立即重读；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表，若选中文件被删除则退出历史模式；命令不触碰彼此状态 | `model/logCommands.ts` 的清空/清理命令（FPR-028） |
+| 清空/清理 | POST `/agent/logs/recent/clear` 前手动暂停并 abort，成功后清流缓冲，finally 恢复并立即重读；POST `/agent/logs/cleanup` `{maxSizeMB:10}` 后重读列表，若选中文件被删除则退出历史模式；命令不触碰彼此状态，页面卸载时只取消本地等待 | `model/logCommands.ts` 的清空/清理命令（FPR-028） |
 | 模型/展示 | `model/logModel.ts` 的 parseHistoryLine/parseRealtimeLog/summarize/过滤/折叠与 `buildLogView`；页面保留 summary/raw、level/search/collapse、autoScroll、历史确认/通知；scrollTop Effect；导出 Blob/objectURL/anchor，随后 revoke | 纯日志模型（FPR-027）；最近面板；会话状态归实时流与历史会话 |
 
 无业务存储，无 WebSocket/EventSource。实时流实例随页面真正挂载创建，Activity 隐藏时停止计时器并 abort 在途读取、保留缓冲，显示时立即重读；`document.hidden` 时计时器保留但守卫不发请求并 abort 在途，可见时立即重读；手动暂停不被可见性或 Activity 变化清除，恢复时立即重读（工具栏暂停按钮待 FPR-035 接线）。历史读取由 `HistoryLogSession` 持有：Activity 隐藏会取消列表与读取，进行中的读取转为 `cancelled` 而不是留下 loading，显示时重读列表并重试被取消的当前文件；明确失败的读取不自动重试。返回实时经页面级 `enabled` 立即重读，历史模式恢复不会重新启动实时轮询。完整生命周期约定见[实时日志流生命周期](logs-realtime-stream.md)与[历史日志与清理协调](logs-history-and-cleanup.md)。

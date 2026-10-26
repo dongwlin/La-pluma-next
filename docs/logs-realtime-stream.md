@@ -48,7 +48,7 @@
 | 手动暂停 | `pause()`：取消在途读取，之后计时器 tick 全部跳过；暂停状态不被 Activity 或文档可见性变化清除 | 已有行继续显示 |
 | 手动恢复 | `resume()`：立即重读一次，之后继续按间隔轮询 | 用最新快照替换暂停期间的旧快照 |
 | 历史模式 | 页面停止实时流并清空实时缓冲；`enabled=false` 保证 Activity 恢复不会重新启动轮询 | 返回实时时页面级 `enabled` 恢复，立即重读 |
-| 清空实时日志 | `pause()` → `POST /logs/recent/clear` → 成功后 `clear()` 本地缓冲 → `finally resume()` | 由 `logCommands.ts` 协调；清空期间不发轮询，成功后立即重读服务端空快照 |
+| 清空实时日志 | `pause()` → `POST /logs/recent/clear` → 成功后 `clear()` 本地缓冲 → `finally resume()` | 由 `logCommands.ts` 协调；清空期间不发轮询，成功后立即重读服务端空快照；页面卸载只取消本地等待 |
 | 真正重挂载 / 浏览器刷新 | 新实例从空缓冲开始 | 过滤、搜索、折叠、历史选择与滚动状态全部重置 |
 
 手动暂停已是流的公开动作（`useRealtimeLogs` 返回 `pause`/`resume`/`paused`），当前页面工具栏尚无独立暂停按钮；清空实时日志是现有调用方，FPR-035 负责把暂停交互接到工具栏并补充可访问性。
