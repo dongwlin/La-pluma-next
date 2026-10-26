@@ -96,20 +96,20 @@ FPR-018 已交付[共享资源归属与失效端口](resource-ownership.md)：`f
 
 ## 4. Dashboard 完整快照规则
 
-`features/dashboard/pages/Dashboard.tsx` 的 `refreshDashboardData` 与 `features/dashboard/store/dashboardStore.ts` 共同构成受控投影：
+FPR-030 起，`features/dashboard/model/snapshotRefresher.ts`、`model/queries.ts`、`model/snapshot.ts` 与 `features/dashboard/store/dashboardStore.ts` 共同构成受控投影：
 
-1. **单飞**：模块级 `dashboardRefreshPromise` 保证同时只有一个业务刷新；`force` 会先等在途刷新结束再补一次。
-2. **五项业务读取**：activity、schedule execution、training queue、today drops、open-today stages 并发读取；五项都必须 fulfilled 且 `success === true`。
+1. **单飞**：模块级协调器保证同时只有一个业务刷新；`force` 会先等在途刷新结束再补一次。
+2. **五项业务读取**：activity、schedule execution、training queue、today drops、open-today stages 经各自领域 Query 并发读取（`staleTime: 0`、不自动重试）；五项都必须 fulfilled 并通过归一校验。详见[总览完整快照与设备采样](dashboard-snapshot.md)第 2 节。
 3. **payload 校验**：activity 必须是对象且 `completion` 形状合法；queue 必须可解析为对象数组；drops 必须是对象数组；open/closed 必须是 `{stage,name}` 数组。任一 payload 不合法视为本次快照无效。
 4. **后端探测不参与快照有效性**：`probeBackendAvailability` 有自己的 revision 处理且可能被应用级监测取代；它失败不否决其他五项已成功的数据，也不把状态写成“任务完成”。
 5. **原子提交**：只有完整快照才交给 `finishRefresh`；`finishRefresh` 合并当前设备采样与温度历史，写入 `lastUpdate = attemptedAt` 并持久化。无快照时保留旧业务值、旧 `lastUpdate`，只更新 `lastRefreshAttemptAt`。
-6. **设备采样独立**：页面立即采样一次，之后每 5s 单飞；失败保留上一份样本；无效样本（百分比越界、非有限数值、形状错误）被 `updateDeviceStats` 拒绝，不污染缓存。
+6. **设备采样独立**：`device-mirror/device-stats` Query 由 `useDeviceStatsSample` 立即采样并每 5s 轮询；失败保留上一份样本；无效样本（百分比越界、非有限数值、形状错误）被 `updateDeviceStats` 拒绝，不污染缓存；Activity 隐藏清理观察者与计时器，恢复立即采样一次。
 7. **缓存持久化 v1**：只持久化完整业务快照与设备/温度投影；恢复时校验版本、形状、语义边界与未来时钟偏差（60s 内夹紧，超出拒绝）；最多保留 36 个温度点。失败刷新不覆盖最近一次成功缓存。
-8. **调度**：距 `lastRefreshAttemptAt` 满 5 分钟刷新；缓存新鲜时只排下一次；online 恢复强制刷新。首次无缓存显示骨架，恢复缓存后不回到骨架；页面不提供手动刷新按钮。
+8. **调度**：`useDashboardSnapshotRefresh` 距 `lastRefreshAttemptAt` 满 5 分钟刷新；缓存新鲜时只排下一次；online 恢复与 `dashboard-snapshot` 失效强制刷新；Activity 隐藏清理计时器与订阅，恢复时补发隐藏期间错过的失效。首次无缓存显示骨架，恢复缓存后不回到骨架；页面不提供手动刷新按钮。
 
 这些规则共同保证：Dashboard 展示的是一份彼此同期的业务快照，而不是五个请求各写各的混合状态；设备采样可以更新，但不会把不完整的业务响应带进快照。
 
-FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得把五路 query 的逐块结果直接写入 `dashboardStore`，完整快照校验与原子提交仍由 Dashboard 协调层持有，见 [Query 缓存与键规范](query-cache.md) 第 7 节。
+FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：五路资源可以保留各自的只读缓存，但不得把逐块结果直接写入 `dashboardStore`；完整快照校验与原子提交由 `features/dashboard/model` 的协调层持有，`dashboard/snapshot` 只用于协调读取（`gcTime: 0`），见 [Query 缓存与键规范](query-cache.md) 第 7 与第 14 节。
 
 ## 5. 已知缺口与归属
 
@@ -145,7 +145,11 @@ FPR-017 的 Query 缓存只服务资源读取，不改变上述条件：不得�
 | `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
 | `features/training/model/queueCommands.test.ts` | 队列命令串行、最新快照排序、重复命令合并、写后刷新失败与不确定状态、失败不提交不发布、撤销原索引 |
 | `features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key、筛选参数、signal、失败信封、补齐读取与计数结构共享 |
-| `features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交；单请求失败/形状错误保旧；设备采样失败保旧；缓存恢复与后台刷新；FPR-018 资源失效触发完整刷新且单路失败保留旧快照 |
+| `features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、单路缺失/形状错误/越界返回 `null`（FPR-030） |
+| `features/dashboard/model/queries.test.ts` | 五路领域 key/signal、协调快照 key 与缓存参数、整体失败、不继承自动重试（FPR-030） |
+| `features/dashboard/model/snapshotRefresher.test.ts` | 单飞/force、原子提交、失败保旧、探针不否决、离线与预期失败静默（FPR-030） |
+| `features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交；单请求失败/形状错误保旧；计划应用/识别/资源更新失效；Activity 隐藏期间失效恢复；设备样本投影；缓存恢复与后台刷新；启动入口与执行控制器 |
+| `features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 设备采样 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询与恢复单计时器（FPR-030） |
 | `features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/时钟偏差/语义边界校验；设备采样合并；失败刷新不覆盖成功缓存 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 失效作用域去重、revision、注销与监听器隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、Activity 隐藏/恢复补发与卸载注销 |

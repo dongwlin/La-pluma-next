@@ -88,10 +88,10 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 
 | 职责 | 当前读写、入口与副作用 | 唯一目标所有者 |
 | --- | --- | --- |
-| 完整业务快照 | `refreshDashboardData` 模块 single-flight；并发 GET `/agent/activity`、`/agent/schedules/execution`、`/agent/training/queue`、`/agent/drops/today`、`/agent/stages/open-today`；另 probe tasks/status；五业务响应全有效才替换；force 等在途后再补一次；每 5min 串行刷新，online 恢复 force | dashboard 快照协调器；共享资源唯一域，store 为受控投影 |
-| 设备采样 | GET `/agent/device-stats`，立即 + 每 5s 单飞；失败保旧，与业务快照独立 | device telemetry 所有者 |
+| 完整业务快照 | `model/queries.ts` 组合 `automation/activity`、`automation/schedule-execution`、`training/queue`、`statistics/today-drops`、`statistics/open-stages` 五路 Query（协调读取显式 `staleTime: 0`/不自动重试），`model/snapshot.ts` 纯归一；`model/snapshotRefresher.ts` 模块 single-flight，force 等在途后再补一次，五路全有效才原子提交；后端探针不否决快照；`hooks/useDashboardSnapshotRefresh.ts` 每 5min 串行刷新、online 恢复与 `dashboard-snapshot` 失效 force 刷新 | dashboard 快照协调器与纯模型；五路资源归各自领域 Query，store 为受控投影（FPR-030） |
+| 设备采样 | `device-mirror` 的 `deviceStatsQueryOptions` + `useDeviceStatsSample`：`device-stats` Query 每 5s 轮询、立即采样、失败静默保旧、`retry: false`；`useDashboardDeviceStats` 把成功样本交给 store 校验并追加温度历史；Activity 隐藏注销观察者与计时器，恢复立即采样一次 | device-mirror 采样所有者；总览只做投影（FPR-030） |
 | 快捷命令 | `runTodayFlow` 读取 automation-tasks 后 POST `/agent/schedules/dashboard-quick-start/execute`；无配置导航 automation；`runCurrentActivity` POST `/agent/activity/run`；成功刷新，页内写全局 active/message | automation/task-execution 控制器；Dashboard 保留操作反馈 |
-| 缓存 | `dashboard/store/dashboardStore.ts` 管 `la-pluma-dashboard-cache` v1 读写/重置删除；验 shape、未来偏差 60s；仅完整快照持久化（夹带设备值/历史），独立采样不写存储；最多 36 温度样本 | dashboard 快照 store |
+| 缓存 | `dashboard/store/dashboardStore.ts` 管 `la-pluma-dashboard-cache` v1 读写/重置删除；验 shape、未来偏差 60s；仅完整快照持久化（夹带设备值/历史），独立采样不写存储；最多 36 温度样本；`dashboard/snapshot` 协调读取 `gcTime: 0`，不长期保留第二份快照 | dashboard 快照 store |
 | UI/布局/预览 | quickStartLoading、activityPreflightLoading、消息；`useDashboardFlowLayout` matchMedia(1280)、ResizeObserver、window resize、rAF；`useDashboardPreview` 预览会话 | 局部反馈与布局 hook；预览归 device-mirror 会话 |
 
 ### Statistics — `features/statistics/pages/DataStatistics.tsx`

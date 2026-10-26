@@ -4,7 +4,7 @@
 
 本文描述 FPR-017 交付的应用级 TanStack Query 基础设施：客户端与 Provider 的创建位置、默认重取/重试策略、领域 query key 约定、失效方式，以及它与 Zustand、配置草稿、执行控制器和 Dashboard 完整快照的边界。
 
-当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询、FPR-021 完成养成队列的读取与写入命令、FPR-024 完成设置页 MAA connection 的读取，FPR-025 完成设置页版本与配置目录的读取，FPR-029 完成作业搜索与预览的五类资源迁移。其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)，作业搜索/预览的取消与选段语义见[作业搜索与预览](combat-search-preview.md)。
+当前已交付基础设施，并由 FPR-019 完成数据统计页的首个迁移、FPR-044 完成养成候选列表与状态计数查询、FPR-021 完成养成队列的读取与写入命令、FPR-024 完成设置页 MAA connection 的读取，FPR-025 完成设置页版本与配置目录的读取，FPR-029 完成作业搜索与预览的五类资源迁移，FPR-030 完成总览五路业务快照与设备采样的查询接入。其余页面按资源任务逐步接入。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)，作业搜索/预览的取消与选段语义见[作业搜索与预览](combat-search-preview.md)，总览快照与设备采样见[总览完整快照与设备采样](dashboard-snapshot.md)。
 
 ## 1. 定位与边界
 
@@ -115,15 +115,15 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 域 | 预留资源 | 归属任务 |
 | --- | --- | --- |
 | `game-data` | `depot`、`operbox`、`catalog` | FPR-018 交付归属；statistics 页面读取由 FPR-019 迁移；training 只在候选补齐/计数中读取公开端点，不复制 key |
-| `statistics` | `drops`（参数 `days`） | FPR-019 已迁移 |
+| `statistics` | `drops`（参数 `days`）、`today-drops`、`open-stages` | FPR-019 迁移 `drops`；FPR-030 迁移后两者供总览完整快照读取 |
 | `training` | `queue`、`candidates`、`counts` | `queue` 由 FPR-021 迁移；`candidates`/`counts` 由 FPR-044 迁移 |
 | `settings` | `maa-config`（参数 `profileName`） | FPR-024 已迁移，草稿仍归设置域 owner |
 | `settings` | `version`、`config-directory` | FPR-025 已迁移 |
 | `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | FPR-029 已迁移；预览是这些资源的组合读取，不另建 key |
 | `logs` | 无；历史文件列表/读取与实时缓冲均为页面会话数据 | FPR-028 判定不建立 Query key，请求裁决与 Activity 恢复由日志会话持有 |
-| `device-mirror` | `webrtc-status`、`device-stats` | FPR-030 |
-| `automation` | `activity`、`schedule-execution` | FPR-030 |
-| `dashboard` | `snapshot` | FPR-030 |
+| `device-mirror` | `webrtc-status`、`device-stats` | FPR-030 迁移 `device-stats`；`webrtc-status` 预留给预览服务状态 |
+| `automation` | `activity`、`schedule-execution` | FPR-030 已迁移（总览快照读取） |
+| `dashboard` | `snapshot` | FPR-030 已迁移；仅用于协调读取，`gcTime: 0` |
 
 ## 5. 失效方式
 
@@ -169,6 +169,13 @@ Dashboard 的五路业务读取（activity、schedule execution、training queue
 - 强制刷新必须显式重取；Activity 恢复若需要新的完整快照，不能接受默认缓存命中，需显式重取或验证数据新鲜度。
 
 因此允许的实现是：用 Query 或既有协调器取得五路结果，在协调层统一校验后原子写入 `dashboardStore`；**禁止**五个 `useQuery` 分别订阅并各自写 store，也禁止把 Query 的逐块更新暴露成新的可写真相。`dashboard/snapshot` key 仅用于协调读取，不能替代 `dashboardStore` 的版本、形状与时钟校验。
+
+FPR-030 的实现（见[总览完整快照与设备采样](dashboard-snapshot.md)）：
+
+- `features/automation`、`features/training`、`features/statistics` 各自持有五路只读 Query；`features/dashboard/model/queries.ts` 用 `fetchQuery({ staleTime: 0, retry: false })` 组合读取，`model/snapshot.ts` 纯归一，任一路失败或形状不符都不返回快照。
+- `model/snapshotRefresher.ts` 保持单飞与 `force` 补一次，只有完整结果才调用 `dashboardStore.finishRefresh`；后端探针失败不否决快照。
+- `dashboard/snapshot` 协调查询使用 `staleTime: 0`、`gcTime: 0`，成功后立即提交，不长期保留第二份展示缓存。
+- 设备采样使用 `device-mirror/device-stats` Query（5s `refetchInterval`、`retry: false`、`refetchOnMount: 'always'`），失败静默保旧；Activity 隐藏注销观察者并停止计时器，恢复立即采样一次。
 
 ## 8. 迁移入口
 
@@ -284,7 +291,29 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 - 作业集终态后的进度刷新把新计划写回同一 key；重置进度只失效相关计划，不触碰搜索或其它作业集。
 - Activity 隐藏会注销查询观察者并取消在途读取，缓存保留；恢复后不自动重放搜索或预览。
 
-## 14. 回归证据
+## 14. 已迁移读取：总览完整快照与设备采样（FPR-030）
+
+总览的五路业务读取各自归领域 Query，完整快照的归一与原子提交由 `features/dashboard/model` 协调。设备采样是独立的轮询资源，不参与业务快照有效性。完整契约见[总览完整快照与设备采样](dashboard-snapshot.md)。
+
+| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
+| --- | --- | --- | --- | --- |
+| 当前活动 | `activityQueryOptions(clientType)` | `['automation','activity',clientType]` | `success=false`/坏载荷转为 query error；协调读取整体失败保旧快照 | 总览协调读取 `staleTime: 0`、`retry: false` |
+| 定时执行状态 | `scheduleExecutionQueryOptions()` | `['automation','schedule-execution']` | 同上 | 同上 |
+| 养成队列 | `trainingQueueQueryOptions()` | `['training','queue']` | 与养成页共享；总览读取失败整体保旧 | 协调读取强制新鲜，写后刷新仍归队列命令 |
+| 今日掉落 | `todayDropsQueryOptions()` | `['statistics','today-drops']` | query error；总览整体失败保旧 | 协调读取 `staleTime: 0`、`retry: false` |
+| 今日开放关卡 | `openTodayStagesQueryOptions()` | `['statistics','open-stages']` | 同上 | 同上 |
+| 完整快照 | `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | 五路任一失败即拒绝；`dashboardStore` 保留旧快照 | 协调器单飞；`force` 等在途后补一次；`gcTime: 0` |
+| 设备采样 | `deviceStatsQueryOptions()` + `useDeviceStatsSample` | `['device-mirror','device-stats']` | query error 不展示；Query 保留上一份成功数据 | 5s `refetchInterval`、`staleTime: 0`、`retry: false`、`refetchOnMount: 'always'`；Activity 隐藏注销观察者 |
+
+规则：
+
+- 总览不得把五路 query 的逐块更新直接写入 `dashboardStore`；协调器只在 `normalizeDashboardSnapshot` 返回完整快照时提交。
+- `dashboard/snapshot` 只用于协调读取，不长期保留缓存；展示与持久化仍由 `dashboardStore` 持有。
+- 设备采样失败静默、`null` 载荷不覆盖旧样本；无效字段由 `updateDeviceStats` 拒绝。样本不单独持久化，随下一次完整业务快照夹带。
+- 后端探针不是业务资源，失败不否决已完成的五路业务快照。
+- 总览协调读取显式关闭自动重试；失败由 5 分钟周期、online 恢复或 `dashboard-snapshot` 失效重试。
+
+## 15. 回归证据
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -295,7 +324,14 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/app/App.test.tsx` | 应用级 hook 在 `AppProviders` 内运行并能拿到 Query 客户端 |
 | `client/src/features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
 | `client/src/features/game-data/model/queries.test.ts` | 共享资源 key、空快照保留、载荷归一、失败转为 query 错误、signal 传递 |
-| `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、失败转为 query 错误、signal 传递 |
+| `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、`today-drops`/`open-stages` key 与 signal、失败转为 query 错误 |
+| `client/src/features/automation/model/queries.test.ts` | `activity`（clientType 参数）与 `schedule-execution` key、signal、失败信封（FPR-030） |
+| `client/src/features/device-mirror/model/queries.test.ts` | `device-stats` key、signal、null 载荷与失败信封（FPR-030） |
+| `client/src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询与恢复单计时器（FPR-030） |
+| `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、单路缺失/形状错误/越界返回 `null`（FPR-030） |
+| `client/src/features/dashboard/model/queries.test.ts` | 五路领域 key/signal、协调快照 key 与缓存参数、整体失败、不继承自动重试（FPR-030） |
+| `client/src/features/dashboard/model/snapshotRefresher.test.ts` | 单飞/force、原子提交、失败保旧、探针不否决、离线与预期失败静默（FPR-030） |
+| `client/src/features/dashboard/pages/Dashboard.test.tsx` | 完整快照原子提交、单路失败/坏载荷保旧、计划应用/识别/队列/资源更新失效、Activity 隐藏期间失效恢复、设备样本投影、启动入口身份（FPR-030） |
 | `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划 key、signal 与取消、失败分类、计划优先与成员回退、探测、强制刷新 |
 | `client/src/features/combat/model/copilotPreviewSession.test.ts` | 预览 loading/旧响应取消、tracked key 取消、Activity 停止与恢复、终态静默刷新 |
 | `client/src/features/combat/model/copilotPayload.test.ts`、`copilotPreview.test.ts`、`copilotSelection.test.ts`、`combatCommands.test.ts` | 载荷兼容、目标/预览构造、选段恢复、命令与执行选项 |
@@ -328,6 +364,13 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/game-data/model/queryKeys.test.ts \
   src/features/game-data/model/queries.test.ts \
   src/features/statistics/model/queries.test.ts \
+  src/features/automation/model/queries.test.ts \
+  src/features/device-mirror/model/queries.test.ts \
+  src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx \
+  src/features/dashboard/model/snapshot.test.ts \
+  src/features/dashboard/model/queries.test.ts \
+  src/features/dashboard/model/snapshotRefresher.test.ts \
+  src/features/dashboard/pages/Dashboard.test.tsx \
   src/features/statistics/model/operatorFilters.test.ts \
   src/features/combat/model/queries.test.ts \
   src/features/combat/model/copilotPreviewSession.test.ts \
