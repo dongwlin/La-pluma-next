@@ -122,8 +122,8 @@ CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` �
 
 - 静态分析只能证明 import 与字面原语，不证明运行时谁真正写状态；跨 remount 的所有权仍需行为测试。
 - 页面检查不覆盖 `document.*` 监听、递归 `setTimeout` 轮询、由变量或字符串拼接生成的动态 import；这些仍由评审与领域测试把关。
-- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问、字符串字面量下标（含包装）、`window.window` 等同名属性链、变量声明与赋值解构重命名，并跳过类型/属性名与声明名；它不做完整作用域解析，同名局部变量的裸引用仍可能被当作全局，也不追踪 `const w = window` 这类继续转存的别名或 `Reflect.get` 等间接提取。`window['loc' + 'alStorage']` 这类计算表达式也不在静态检查范围。
-- 页面端点检查覆盖 feature index 的直接 named / `export *` / namespace re-export 与字面量动态 import；经第三层模块再转发的端点不在静态检查范围内。命名空间/动态 import 的成员使用识别本文件内的属性访问、字面量下标、解构（含参数默认值与赋值解构）、简单别名与 `.then` 回调，并解开 `as`/括号/非空/`satisfies` 包装；把命名空间整体传给其他函数、经对象字段/数组转存或重新赋值到未知来源时无法判定，可能漏报。
+- 页面全局扫描支持 `window`/`globalThis`/`self` 的点访问、字符串字面量下标（含包装）、`window.window` 等同名属性链、变量声明与赋值解构（如 `const { fetch: f } = window`、`({ fetch: f } = window)`），并跳过类型/属性名与声明名；它不做完整作用域解析，同名局部变量的裸引用仍可能被当作全局，也不追踪 `const w = window` 这类继续转存的别名或 `Reflect.get` 等间接提取。`window['loc' + 'alStorage']` 这类计算表达式也不在静态检查范围。
+- 页面端点检查覆盖 feature index 的直接 named / `export *` / namespace re-export 与字面量动态 import；经第三层模块再转发的端点不在静态检查范围内。命名空间/动态 import 的成员使用识别本文件内的属性访问、字面量下标、解构（含参数默认值与赋值解构）、简单别名与 `.then` 回调，并解开 `as`/括号/非空/`satisfies` 包装；把命名空间整体传给其他函数、经对象字段/数组转存或重新赋值到未知来源时无法判定，可能漏报。别名按文件内同名合并，不做完整作用域解析，同名局部变量可能被误当作同一命名空间。
 - 未写 `type` 的纯类型导入仍按运行时导入处理（例如 `import { ApiResponse } from '@/shared/api'` 用作类型）；需要跳过的类型依赖请使用 `import type` 或内联 `type` 说明符。
 - API 模块的纯辅助导出（例如 `getItemIconUrl`）也会按来源被视为端点；当前页面未直接使用。若确需在页面直接使用纯函数，应由领域公开面提供非 `api/` 位置的导出或扩展白名单。
 - 搬移检查是启发式：页面缩减与非页面增长同域同时发生即触发，真正拆分需要更新基线并评审；它不能证明代码是否只是被搬动。
