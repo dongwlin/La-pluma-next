@@ -3,14 +3,13 @@ import { getCopilotSetRunProgress } from './copilotSetRunService.js';
 import { getMaaExecutionLeaseSnapshot } from './executionCoordinatorService.js';
 import { getRealtimeLogs, getTaskStatus } from './maaService.js';
 import { getScheduleExecutionStatus } from './schedulerService.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 
 const ACTIVE_RUN_STATES = new Set(['accepted', 'waiting', 'running', 'stopping']);
 const DEVICE_OWNING_RUN_STATES = new Set(['running', 'stopping']);
 
 function normalizeLineCount(lines) {
-  const numeric = Number(lines);
-  if (!Number.isFinite(numeric)) return 80;
-  return Math.min(Math.max(Math.trunc(numeric), 1), 500);
+  return resolveBoundedInteger(lines, { defaultValue: 80, min: 1, max: 500 });
 }
 
 /**

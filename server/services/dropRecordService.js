@@ -8,13 +8,18 @@ import { fileURLToPath } from 'url';
 import { readJsonFile, ensureDir, updateJsonFile } from '../utils/fileHelper.js';
 import { successResponse, errorResponse } from '../utils/apiHelper.js';
 import { createLogger } from '../utils/logger.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 
 const logger = createLogger('DropRecord');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DROP_RECORDS_DIR = path.join(__dirname, '../data/drop-records');
+// 历史查询按天读取记录文件，天数上限防止非法 query 触发无界文件读取；
+// 目录支持环境变量注入，供测试隔离运行数据。
+export const MAX_DROP_HISTORY_DAYS = 365;
+const DROP_RECORDS_DIR = process.env.LA_PLUMA_DROP_RECORDS_DIR
+  || path.join(__dirname, '../data/drop-records');
 const MATERIALS_PATH = path.join(__dirname, '../data/materials.json');
 
 // 业务日期统一使用服务器配置时区，避免北京时间凌晨落到前一天。
@@ -125,12 +130,18 @@ export async function getTodayDrops() {
  */
 export async function getRecentDrops(days = 7) {
   try {
+    // 直接调用也受限：非法输入回落默认值，有限值截断并夹取到历史上限天数。
+    const dayCount = resolveBoundedInteger(days, {
+      defaultValue: 7,
+      min: 1,
+      max: MAX_DROP_HISTORY_DAYS
+    });
     await ensureDir(DROP_RECORDS_DIR);
-    
+
     const records = [];
     const today = new Date();
-    
-    for (let i = 0; i < days; i++) {
+
+    for (let i = 0; i < dayCount; i++) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
       const dateStr = getLocalDateString(date);

@@ -19,7 +19,9 @@ import {
   readLogFile,
   cleanupLogs,
   getDebugScreenshots,
-  clearRealtimeLogs
+  clearRealtimeLogs,
+  MAX_REALTIME_LOG_LINES,
+  MAX_LOG_FILE_LINES
 } from '../services/maaService.js';
 import { executeScheduleNow, getScheduledTaskFlowPlan, getScheduleExecutionStatus, stopScheduleExecution, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
 import { loadUserConfig, saveUserConfig, getAllUserConfigs, deleteUserConfig } from '../services/configStorageService.js';
@@ -27,7 +29,7 @@ import { getNotificationConfig, sendNotification, sendToChannel, testNotificatio
 import operatorTrainingService from '../services/operatorTrainingService.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
 import { parseDepotData, parseOperBoxData, getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.js';
-import { getTodayDrops, getRecentDrops, getDropStatistics } from '../services/dropRecordService.js';
+import { getTodayDrops, getRecentDrops, getDropStatistics, MAX_DROP_HISTORY_DAYS } from '../services/dropRecordService.js';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.js';
 import { resetCopilotPlanProgress } from '../services/copilotPlanService.js';
 import { getActivityRunPreflight } from '../services/activityNavigationService.js';
@@ -70,6 +72,7 @@ import {
   sendError
 } from '../utils/apiHelper.js';
 import { createLogger } from '../utils/logger.js'
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.js'
 import { resolveConnectionInput } from '../services/connectionService.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js'
@@ -1167,7 +1170,11 @@ router.post('/screen/screenshot', asyncHandler(async (req, res) => {
 }));
 
 router.get('/logs/recent', asyncHandler(async (req, res) => {
-  const lines = Math.min(Math.max(Number(req.query.lines || 80), 1), 500);
+  const lines = resolveBoundedInteger(req.query.lines, {
+    defaultValue: 80,
+    min: 1,
+    max: MAX_REALTIME_LOG_LINES
+  });
   return sendSuccess(res, req, getRealtimeLogs(lines));
 }));
 
@@ -1186,7 +1193,11 @@ router.get('/logs/files', asyncHandler(async (req, res) => {
 
 router.get('/logs/files/:filePath(*)', asyncHandler(async (req, res) => {
   const { filePath } = req.params;
-  const lines = Math.min(Math.max(Number(req.query.lines || 1000), 1), 5000);
+  const lines = resolveBoundedInteger(req.query.lines, {
+    defaultValue: 1000,
+    min: 1,
+    max: MAX_LOG_FILE_LINES
+  });
   return sendSuccess(res, req, await readLogFile(decodeURIComponent(filePath), lines));
 }));
 
@@ -1294,13 +1305,21 @@ router.get('/drops/today', asyncHandler(async (req, res) => {
 }));
 
 router.get('/drops/recent', asyncHandler(async (req, res) => {
-  const days = Number(req.query.days || 7);
+  const days = resolveBoundedInteger(req.query.days, {
+    defaultValue: 7,
+    min: 1,
+    max: MAX_DROP_HISTORY_DAYS
+  });
   const result = await getRecentDrops(days);
   return sendSuccess(res, req, result.data || result, result.message || '操作成功');
 }));
 
 router.get('/drops/statistics', asyncHandler(async (req, res) => {
-  const days = Number(req.query.days || 7);
+  const days = resolveBoundedInteger(req.query.days, {
+    defaultValue: 7,
+    min: 1,
+    max: MAX_DROP_HISTORY_DAYS
+  });
   const result = await getDropStatistics(days);
   return sendSuccess(res, req, result.data || result, result.message || '操作成功');
 }));

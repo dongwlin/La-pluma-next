@@ -6,6 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path
 import { randomBytes } from 'crypto';
 import TOML from '@iarna/toml';
 import { createLogger } from '../utils/logger.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 import { getFallbackActivity } from './activityFallbackService.js';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
 import { acquireMaaExecutionLease } from './executionCoordinatorService.js';
@@ -20,6 +21,11 @@ const logger = createLogger('MaaService');
 
 // MAA CLI 路径
 const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
+// 读取实时日志和日志文件时的行数上限。MAX_REALTIME_LOGS 是内存保留缓冲，
+// 两者独立；对外契约（/logs/recent 与 /runs/current）按 MAX_REALTIME_LOG_LINES 声明。
+export const MAX_REALTIME_LOG_LINES = 500;
+export const MAX_LOG_FILE_LINES = 5000;
+
 const MAX_REALTIME_LOGS = Number(process.env.LA_PLUMA_MAX_REALTIME_LOGS || 5000);
 const LOCAL_EMULATOR_ADDRESSES = [
   '127.0.0.1:16384',
@@ -70,8 +76,14 @@ export function getTaskStatus() {
  * 获取实时日志
  */
 export function getRealtimeLogs(lines = 100) {
+  // 直接调用也受限：非法输入回落默认值，有限值截断并夹取到公开行数上限。
+  const lineCount = resolveBoundedInteger(lines, {
+    defaultValue: 100,
+    min: 1,
+    max: MAX_REALTIME_LOG_LINES
+  });
   // 返回最后 N 行日志
-  const startIndex = Math.max(0, taskStatus.logs.length - lines);
+  const startIndex = Math.max(0, taskStatus.logs.length - lineCount);
   return taskStatus.logs.slice(startIndex);
 }
 
@@ -1641,6 +1653,12 @@ export async function cleanupLogs(maxSizeMB = 10) {
  * 读取日志文件内容
  */
 export async function readLogFile(filePath, lines = 1000) {
+  // 直接调用也受限：非法输入回落默认值，有限值截断并夹取到公开行数上限。
+  const lineCount = resolveBoundedInteger(lines, {
+    defaultValue: 1000,
+    min: 1,
+    max: MAX_LOG_FILE_LINES
+  });
   try {
     const logDir = await realpath(resolve(await getMaaLogDir()));
     const requestedPath = await realpath(resolve(filePath));
@@ -1654,9 +1672,9 @@ export async function readLogFile(filePath, lines = 1000) {
     }
     const content = await readFile(requestedPath, 'utf-8');
     const allLines = content.split('\n');
-    
+
     // 只返回最后 N 行
-    const startIndex = Math.max(0, allLines.length - lines);
+    const startIndex = Math.max(0, allLines.length - lineCount);
     const selectedLines = allLines.slice(startIndex);
     
     return {
