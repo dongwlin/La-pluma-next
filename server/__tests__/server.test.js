@@ -100,6 +100,8 @@ describe('La Pluma Next transport configuration', () => {
     await mkdir(join(clientDistPath, 'assets'))
     await writeFile(join(clientDistPath, 'index.html'), '<!doctype html><title>La Pluma Next fixture</title>')
     await writeFile(join(clientDistPath, 'assets', 'app.js'), 'globalThis.fixtureLoaded = true')
+    await writeFile(join(clientDistPath, 'manifest.webmanifest'), '{"name":"La Pluma Next fixture"}')
+    await writeFile(join(clientDistPath, 'sw.js'), 'globalThis.fixtureServiceWorker = true')
 
     const signalingGateway = {
       proxyPath: WEBRTC_SIGNALING_PATH,
@@ -124,6 +126,23 @@ describe('La Pluma Next transport configuration', () => {
     assert.match(asset.headers.get('content-type'), /javascript/)
     assert.match(await asset.text(), /fixtureLoaded/)
 
+    const subPathShell = await fetch(`${origin}/la-pluma/`)
+    assert.equal(subPathShell.status, 200)
+    assert.match(await subPathShell.text(), /La Pluma Next fixture/)
+
+    const mountRedirect = await fetch(`${origin}/la-pluma`, { redirect: 'manual' })
+    assert.equal(mountRedirect.status, 301)
+    assert.equal(mountRedirect.headers.get('location'), '/la-pluma/')
+
+    for (const [file, mimePattern] of [
+      ['manifest.webmanifest', /application\/manifest\+json/],
+      ['sw.js', /javascript/]
+    ]) {
+      const response = await fetch(`${origin}/la-pluma/${file}`)
+      assert.equal(response.status, 200)
+      assert.match(response.headers.get('content-type'), mimePattern)
+    }
+
     const missingAsset = await fetch(`${origin}/la-pluma/assets/missing.js`)
     assert.equal(missingAsset.status, 404)
 
@@ -135,6 +154,66 @@ describe('La Pluma Next transport configuration', () => {
       assert.equal(reservedResponse.status, 404)
       assert.doesNotMatch(await reservedResponse.text(), /La Pluma Next fixture/)
     }
+  })
+
+  it('serves the root deployment shell, deep links and PWA resources at the origin root', async () => {
+    const clientDistPath = await mkdtemp(join(tmpdir(), 'la-pluma-client-root-'))
+    tempDirs.push(clientDistPath)
+    await mkdir(join(clientDistPath, 'assets'))
+    await writeFile(join(clientDistPath, 'index.html'), '<!doctype html><title>La Pluma Next root fixture</title>')
+    await writeFile(join(clientDistPath, 'assets', 'app.js'), 'globalThis.fixtureLoaded = true')
+    await writeFile(join(clientDistPath, 'manifest.webmanifest'), '{"name":"La Pluma Next root fixture"}')
+    await writeFile(join(clientDistPath, 'sw.js'), 'globalThis.fixtureServiceWorker = true')
+
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      handleLogin(_req, res) {
+        return res.json({ token: 'fixture-ticket' })
+      }
+    }
+    const app = createLaPlumaApp({
+      env: { NODE_ENV: 'production' },
+      signalingGateway,
+      clientDistPath
+    })
+    const port = await listen(app)
+    const origin = `http://127.0.0.1:${port}`
+
+    const shell = await fetch(origin)
+    assert.equal(shell.status, 200)
+    assert.match(await shell.text(), /La Pluma Next root fixture/)
+
+    const deepLink = await fetch(`${origin}/automation/deep/link`)
+    assert.equal(deepLink.status, 200)
+    assert.match(await deepLink.text(), /La Pluma Next root fixture/)
+
+    const asset = await fetch(`${origin}/assets/app.js`)
+    assert.equal(asset.status, 200)
+    assert.match(asset.headers.get('content-type'), /javascript/)
+
+    for (const [file, mimePattern] of [
+      ['manifest.webmanifest', /application\/manifest\+json/],
+      ['sw.js', /javascript/]
+    ]) {
+      const response = await fetch(`${origin}/${file}`)
+      assert.equal(response.status, 200)
+      assert.match(response.headers.get('content-type'), mimePattern)
+    }
+
+    const missingAsset = await fetch(`${origin}/assets/missing.js`)
+    assert.equal(missingAsset.status, 404)
+
+    const health = await fetch(`${origin}/health`)
+    assert.equal(health.status, 200)
+    assert.deepEqual(await health.json(), { success: true, status: 'ok' })
+
+    const apiMiss = await fetch(`${origin}/api/agent/nonexistent-endpoint`)
+    assert.equal(apiMiss.status, 404)
+    assert.equal((await apiMiss.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+
+    const hiddenSignaling = await fetch(`${origin}${WEBRTC_SIGNALING_PATH}/devices`)
+    assert.equal(hiddenSignaling.status, 404)
+    assert.deepEqual(await hiddenSignaling.json(), { error: 'Not Found' })
   })
 
   it('starts on an ephemeral HTTP port and closes without leaving a listener', async () => {

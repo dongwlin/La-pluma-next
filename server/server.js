@@ -65,6 +65,9 @@ export function createLaPlumaApp({
   clientDistPath = join(__dirname, '..', 'client', 'dist')
 } = {}) {
   const app = express();
+  // Express 5 的 req.query 是只读 getter；显式固定 simple 解析器，
+  // 让查询参数保持单值扁平结构，不依赖嵌套对象解析。
+  app.set('query parser', 'simple');
   const optionalApiAuth = createOptionalApiAuth(env.LA_PLUMA_TOKEN || '');
   const signalingPath = signalingGateway.proxyPath || WEBRTC_SIGNALING_PATH;
   const basePath = normalizeBasePath(env.LA_PLUMA_BASE_PATH);
@@ -81,8 +84,10 @@ export function createLaPlumaApp({
   // device endpoints remain inaccessible through the public application port.
   // 登录不依赖业务请求体：注册在 JSON parser 之前，handleLogin 只丢弃请求流。
   app.post(`${signalingPath}/api/login`, optionalApiAuth, signalingGateway.handleLogin);
+  // Express 5 通配符必须命名（*splat），捕获值在 req.params.splat 中为路径段数组；
+  // 本路径与子路径的隐藏策略不变：除 ticket 签发外一律返回固定 404。
   app.all(signalingPath, (_req, res) => res.status(404).json({ error: 'Not Found' }));
-  app.all(`${signalingPath}/*`, (_req, res) => res.status(404).json({ error: 'Not Found' }));
+  app.all(`${signalingPath}/*splat`, (_req, res) => res.status(404).json({ error: 'Not Found' }));
 
   // API 鉴权先于请求体解析：未携带有效 token 的请求在读取请求体之前即被拒绝。
   app.use('/api', optionalApiAuth);
@@ -107,8 +112,11 @@ export function createLaPlumaApp({
     };
 
     app.use(staticMountPath, express.static(clientDistPath));
-    if (basePath === '/') app.get('*', sendAppShell);
-    else app.get(`${staticMountPath}/*`, sendAppShell);
+    // SPA fallback 使用可选命名通配符 {*splat}：根部署同时覆盖 / 与深链接，
+    // 子路径部署不匹配挂载根本身（由 static 中间件重定向到带斜杠路径），与旧 '*'
+    // 语法在 Express 4 下的匹配范围一致。
+    if (basePath === '/') app.get('/{*splat}', sendAppShell);
+    else app.get(`${staticMountPath}/{*splat}`, sendAppShell);
   }
 
   app.use('/api/agent', agentRoutes);

@@ -1195,8 +1195,10 @@ router.get('/logs/files', asyncHandler(async (req, res) => {
   return sendSuccess(res, req, await getLogFiles());
 }));
 
-router.get('/logs/files/:filePath(*)', asyncHandler(async (req, res) => {
-  const { filePath } = req.params;
+router.get('/logs/files/*filePath', asyncHandler(async (req, res) => {
+  // Express 5 命名通配符把捕获值作为路径段数组返回（如 ['sub', 'run.log']），
+  // join 还原为相对路径后交给日志读取边界。
+  const filePath = req.params.filePath.join('/');
   const lines = resolveBoundedInteger(req.query.lines, {
     defaultValue: 1000,
     min: 1,
@@ -1238,7 +1240,9 @@ router.get('/config/user/:configType', asyncHandler(async (req, res) => {
 }));
 
 router.post('/config/user/:configType', asyncHandler(async (req, res) => {
-  const result = await saveUserConfig(req.params.configType, req.body);
+  // Express 5 未解析的请求体是 undefined；缺失 body 与 Express 4 的空对象一样
+  // 视为合法的空配置保存。
+  const result = await saveUserConfig(req.params.configType, req.body || {});
   if (!result.success) {
     return sendConfigStorageError(res, req, result, 'AGENT_CONFIG_SAVE_FAILED', '保存配置失败');
   }
