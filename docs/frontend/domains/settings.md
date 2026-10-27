@@ -493,7 +493,6 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 | `client/src/features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
 | `client/src/features/settings/model/updateCommands.test.ts` | 渠道目标策略、失败详情新/旧形状、资源重试条件、四条命令互斥与重复忽略、core/渠道/CLI/资源成功与失败文案、网络异常、CLI 不产生页内反馈、无自动重试、reset |
 | `client/src/features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
-| `client/src/features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发使用图标的组件重渲染 |
 
 视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归；完整只读标记结构仍依赖代码审阅。
 
@@ -520,8 +519,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/settings/model/updateCommands.test.ts \
   src/features/settings/model/autoUpdateConfig.test.ts \
   src/pages/settings/ConfigManager.layout.test.tsx \
-  src/features/game-data/model/itemIconCache.test.ts \
-  src/features/game-data/hooks/useItemIconCacheVersion.test.tsx
+  src/features/game-data/model/itemIconCache.test.ts
 ```
 
 完整验证与视觉回归入口见[开发指南](../../development/README.md)。

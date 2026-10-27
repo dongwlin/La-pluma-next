@@ -43,7 +43,7 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 - 页面卸载、Activity 隐藏/恢复与浏览器刷新不调用 `queryClient.clear()`；缓存按 `gcTime` 自然回收，只有测试或明确的全局重置入口可以主动清空。
 - 客户端内部使用 TanStack Query 的默认 query hash 与结构共享，不额外包装 key 序列化。
 
-回归：`app/providers/AppProviders.test.tsx` 验证应用树拿到同一客户端；`app/providers/QueryProvider.test.tsx` 验证 Provider 重建、页面 remount，以及 Activity 隐藏后观察者注销、新鲜数据直接复用、过期数据重取与超过 `gcTime` 后重新加载。
+回归：`app/providers/QueryProvider.test.tsx` 验证 Provider 重建、页面 remount，以及 Activity 隐藏后观察者注销、新鲜数据直接复用、过期数据重取与超过 `gcTime` 后重新加载。
 
 ## 3. 默认查询策略
 
@@ -225,11 +225,10 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `client/src/shared/query/queryClient.test.ts` | 默认 staleTime/gcTime/重取/网络模式、重试分类与上限、退避、写请求不重试、工厂隔离与应用级单例 |
-| `client/src/shared/query/queryKeys.test.ts` | `[domain, resource, ...params]` 形状、同域 key 结构一致、域级与资源级失效范围 |
+| `client/src/shared/query/queryClient.test.ts` | 默认 staleTime/gcTime/重取/网络模式、重试分类与上限、退避、写请求不重试 |
+| `client/src/shared/query/queryKeys.test.ts` | `[domain, resource, ...params]` 形状、同域 key 结构一致 |
 | `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
-| `client/src/app/providers/AppProviders.test.tsx` | 应用树注入应用级客户端 |
-| `client/src/app/App.test.tsx` | 应用级 hook 在 `AppProviders` 内运行并能拿到 Query 客户端 |
+| `client/src/app/App.test.tsx` | Activity 保活、隐藏工作区错误边界与恢复 |
 
 基础设施的针对性复现命令（仓库根目录）：
 
@@ -237,7 +236,6 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 pnpm --filter la-pluma-next-client exec vitest run \
   src/shared/query \
   src/app/providers/QueryProvider.test.tsx \
-  src/app/providers/AppProviders.test.tsx \
   src/app/App.test.tsx
 ```
 
