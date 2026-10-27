@@ -20,7 +20,7 @@ process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_LOG_DIR = fakeLogDir;
 
 const { getRealtimeLogs, readLogFile, isPathOutsideDir, setTaskStatus, clearRealtimeLogs } = await import('../maaService.js');
-const { loggerManager } = await import('../../utils/logger.js');
+const { loggerManager } = await import('../../utils/logger.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
 

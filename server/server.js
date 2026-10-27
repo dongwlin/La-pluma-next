@@ -18,7 +18,7 @@ import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from './services/webrtcSignalingGateway.js';
-import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.js';
+import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

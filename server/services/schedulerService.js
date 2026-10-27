@@ -11,7 +11,7 @@ import { loadUserConfig, saveUserConfig } from './configStorageService.js';
 import operatorTrainingService from './operatorTrainingService.js';
 import { recordDrops } from './dropRecordService.js';
 import { updateMaaResources } from './resourceUpdateService.js';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';

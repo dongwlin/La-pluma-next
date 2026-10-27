@@ -45,7 +45,7 @@ if (args.includes('--fail')) {
 `, { mode: 0o755 });
 
 const { execMaaCommand, getTaskStatus } = await import('../maaService.js');
-const { loggerManager } = await import('../../utils/logger.js');
+const { loggerManager } = await import('../../utils/logger.ts');
 loggerManager.getLogger('MaaService').enableConsole = false;
 
 after(async () => {

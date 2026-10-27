@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
-import { loggerManager } from '../utils/logger.js';
+import { loggerManager } from '../utils/logger.ts';
 
 // 相关环境变量均在模块导入前设置：MAA_CLI_PATH 由被测模块在导入时读取，
 // 测试因此使用假 CLI 与临时日志目录，不读取真实设备日志。

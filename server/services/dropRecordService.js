@@ -5,9 +5,9 @@
 
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readJsonFile, ensureDir, updateJsonFile } from '../utils/fileHelper.js';
-import { successResponse, errorResponse } from '../utils/apiHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { readJsonFile, ensureDir, updateJsonFile } from '../utils/fileHelper.ts';
+import { successResponse, errorResponse } from '../utils/apiHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 
 const logger = createLogger('DropRecord');

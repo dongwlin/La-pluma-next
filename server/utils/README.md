@@ -4,14 +4,14 @@
 
 ## 📁 文件列表
 
-### 1. apiHelper.js - API 辅助工具
+### 1. apiHelper.ts - API 辅助工具
 
 统一的 API 响应格式和错误处理。
 
 **使用示例**：
 
 ```javascript
-import { successResponse, errorResponse, asyncHandler, validateRequired } from '../utils/apiHelper.js';
+import { successResponse, errorResponse, asyncHandler, validateRequired } from '../utils/apiHelper.ts';
 
 // 在路由中使用 asyncHandler 自动捕获错误
 router.get('/api/data', asyncHandler(async (req, res) => {
@@ -38,14 +38,14 @@ export async function getData() {
 }
 ```
 
-### 2. fileHelper.js - 文件操作工具
+### 2. fileHelper.ts - 文件操作工具
 
 统一的文件读写操作，特别是 JSON 文件。
 
 **使用示例**：
 
 ```javascript
-import { readJsonFile, writeJsonFile, updateJsonFile, ensureDir } from '../utils/fileHelper.js';
+import { readJsonFile, writeJsonFile, updateJsonFile, ensureDir } from '../utils/fileHelper.ts';
 
 // 读取 JSON 文件（文件不存在时返回默认值）
 const config = await readJsonFile('./config.json', { default: 'value' });
@@ -63,14 +63,14 @@ await updateJsonFile('./data/counter.json', (data) => {
 await ensureDir('./data/logs');
 ```
 
-### 3. logger.js - 日志服务
+### 3. logger.ts - 日志服务
 
 结构化的日志记录和管理。
 
 **使用示例**：
 
 ```javascript
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 
 // 创建服务专用的 Logger
 const logger = createLogger('MyService');
@@ -95,7 +95,7 @@ logger.clear();
 **全局日志管理**：
 
 ```javascript
-import { loggerManager } from '../utils/logger.js';
+import { loggerManager } from '../utils/logger.ts';
 
 // 获取所有 Logger 的日志
 const allLogs = loggerManager.getAllLogs();
@@ -123,8 +123,8 @@ try {
 **重构后**：
 ```javascript
 // ✅ 使用工具类
-import { readJsonFile } from '../utils/fileHelper.js';
-import { successResponse, errorResponse } from '../utils/apiHelper.js';
+import { readJsonFile } from '../utils/fileHelper.ts';
+import { successResponse, errorResponse } from '../utils/apiHelper.ts';
 
 try {
   const data = await readJsonFile(path);
@@ -164,9 +164,9 @@ logger.error('错误', { error: error.message });
 ### 步骤 1：导入工具类
 
 ```javascript
-import { successResponse, errorResponse } from '../utils/apiHelper.js';
-import { readJsonFile, writeJsonFile } from '../utils/fileHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { successResponse, errorResponse } from '../utils/apiHelper.ts';
+import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 ```
 
 ### 步骤 2：替换现有代码

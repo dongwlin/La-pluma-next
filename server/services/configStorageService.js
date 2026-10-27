@@ -1,9 +1,9 @@
 import { readdir } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { deleteJsonFile, readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.js';
-import { agentError, successResponse, errorResponse } from '../utils/apiHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { deleteJsonFile, readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.ts';
+import { agentError, successResponse, errorResponse } from '../utils/apiHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 
 const logger = createLogger('ConfigStorage');
 

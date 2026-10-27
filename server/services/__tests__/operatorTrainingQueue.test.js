@@ -7,7 +7,7 @@ import path from 'node:path';
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-'));
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
 const { default: training, summarizeScheduleSync } = await import('../operatorTrainingService.js');
-const { loggerManager } = await import('../../utils/logger.js');
+const { loggerManager } = await import('../../utils/logger.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
 

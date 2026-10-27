@@ -6,7 +6,7 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
 import router, { buildWebrtcBrowserProtocol, executeTrackedAgentAction } from '../agent.js'
 import { API_VERSION } from '../agentContract.js'
 import { getTaskStatus, setTaskStatus } from '../../services/maaService.js'
-import { loggerManager } from '../../utils/logger.js'
+import { loggerManager } from '../../utils/logger.ts'
 import {
   beginAgentRun,
   completeAgentRun,

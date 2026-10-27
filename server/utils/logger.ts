@@ -3,8 +3,29 @@
  * 提供结构化的日志记录和管理
  */
 
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS';
+
+/** 单条内存日志的公开字段。 */
+export interface LogEntry {
+  time: string;
+  level: LogLevel;
+  message: string;
+  service: string;
+  data?: unknown;
+}
+
+export interface LoggerOptions {
+  maxLogs?: number;
+  enableConsole?: boolean;
+}
+
 class Logger {
-  constructor(name, options = {}) {
+  name: string;
+  logs: LogEntry[];
+  maxLogs: number;
+  enableConsole: boolean;
+
+  constructor(name: string, options: LoggerOptions = {}) {
     this.name = name;
     this.logs = [];
     this.maxLogs = options.maxLogs || 1000; // 最多保留的日志条数
@@ -14,14 +35,17 @@ class Logger {
   /**
    * 记录日志
    */
-  log(level, message, data = null) {
-    const entry = {
+  log(level: LogLevel, message: string, data: unknown = null): LogEntry {
+    const entry: LogEntry = {
       time: new Date().toISOString(),
       level,
       message,
-      service: this.name,
-      ...(data && { data })
+      service: this.name
     };
+    // 与原 `...(data && { data })` 等价：data 为假值（含 null）时不携带 data 字段
+    if (data) {
+      entry.data = data;
+    }
 
     // 添加到内存日志
     this.logs.push(entry);
@@ -43,8 +67,8 @@ class Logger {
   /**
    * 获取日志级别对应的 emoji
    */
-  getLevelEmoji(level) {
-    const emojis = {
+  getLevelEmoji(level: LogLevel): string {
+    const emojis: Record<LogLevel, string> = {
       DEBUG: '🔍',
       INFO: 'ℹ️',
       WARN: '⚠️',
@@ -57,30 +81,30 @@ class Logger {
   /**
    * 便捷方法
    */
-  debug(message, data) {
+  debug(message: string, data?: unknown): LogEntry {
     return this.log('DEBUG', message, data);
   }
 
-  info(message, data) {
+  info(message: string, data?: unknown): LogEntry {
     return this.log('INFO', message, data);
   }
 
-  warn(message, data) {
+  warn(message: string, data?: unknown): LogEntry {
     return this.log('WARN', message, data);
   }
 
-  error(message, data) {
+  error(message: string, data?: unknown): LogEntry {
     return this.log('ERROR', message, data);
   }
 
-  success(message, data) {
+  success(message: string, data?: unknown): LogEntry {
     return this.log('SUCCESS', message, data);
   }
 
   /**
    * 获取最近的日志
    */
-  getRecentLogs(count = 100) {
+  getRecentLogs(count: number = 100): LogEntry[] {
     const startIndex = Math.max(0, this.logs.length - count);
     return this.logs.slice(startIndex);
   }
@@ -88,28 +112,28 @@ class Logger {
   /**
    * 获取所有日志
    */
-  getAllLogs() {
+  getAllLogs(): LogEntry[] {
     return [...this.logs];
   }
 
   /**
    * 清空日志
    */
-  clear() {
+  clear(): void {
     this.logs = [];
   }
 
   /**
    * 按级别过滤日志
    */
-  filterByLevel(level) {
+  filterByLevel(level: LogLevel): LogEntry[] {
     return this.logs.filter(log => log.level === level);
   }
 
   /**
    * 按时间范围过滤日志
    */
-  filterByTimeRange(startTime, endTime) {
+  filterByTimeRange(startTime: Date, endTime: Date): LogEntry[] {
     return this.logs.filter(log => {
       const logTime = new Date(log.time);
       return logTime >= startTime && logTime <= endTime;
@@ -121,6 +145,8 @@ class Logger {
  * 全局日志管理器
  */
 class LoggerManager {
+  loggers: Map<string, Logger>;
+
   constructor() {
     this.loggers = new Map();
   }
@@ -128,29 +154,29 @@ class LoggerManager {
   /**
    * 获取或创建 Logger 实例
    */
-  getLogger(name, options) {
+  getLogger(name: string, options?: LoggerOptions): Logger {
     if (!this.loggers.has(name)) {
       this.loggers.set(name, new Logger(name, options));
     }
-    return this.loggers.get(name);
+    return this.loggers.get(name)!;
   }
 
   /**
    * 获取所有日志（合并所有 Logger）
    */
-  getAllLogs() {
-    const allLogs = [];
+  getAllLogs(): LogEntry[] {
+    const allLogs: LogEntry[] = [];
     for (const logger of this.loggers.values()) {
       allLogs.push(...logger.getAllLogs());
     }
     // 按时间排序
-    return allLogs.sort((a, b) => new Date(a.time) - new Date(b.time));
+    return allLogs.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   }
 
   /**
    * 清空所有日志
    */
-  clearAll() {
+  clearAll(): void {
     for (const logger of this.loggers.values()) {
       logger.clear();
     }
@@ -163,6 +189,6 @@ export const loggerManager = new LoggerManager();
 /**
  * 创建 Logger 的便捷函数
  */
-export function createLogger(name, options) {
+export function createLogger(name: string, options?: LoggerOptions): Logger {
   return loggerManager.getLogger(name, options);
 }

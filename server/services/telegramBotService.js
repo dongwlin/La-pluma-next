@@ -7,7 +7,7 @@ import { executeScheduleNow } from './schedulerService.js';
 import { execMaaCommand, getTaskStatus, stopCurrentTask, captureScreen } from './maaService.js';
 import { resolveConnection } from './connectionService.js';
 import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.js';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
 const logger = createLogger('TelegramBot');

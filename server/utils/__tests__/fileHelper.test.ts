@@ -3,9 +3,9 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { readJsonFile, updateJsonFile, writeJsonFile } from '../fileHelper.js';
+import { readJsonFile, updateJsonFile, writeJsonFile } from '../fileHelper.ts';
 
-async function withTempDir(run) {
+async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'la-pluma-json-'));
   try {
     await run(dir);
@@ -47,6 +47,9 @@ test('concurrent updates to the same JSON path are serialized', async () => {
     await Promise.all(Array.from({ length: 20 }, () =>
       updateJsonFile(filePath, async current => {
         await new Promise(resolve => setTimeout(resolve, 2));
+        if (typeof current !== 'object' || current === null || !('count' in current) || typeof current.count !== 'number') {
+          throw new TypeError(`意外的计数载荷: ${JSON.stringify(current)}`);
+        }
         return { count: current.count + 1 };
       })
     ));

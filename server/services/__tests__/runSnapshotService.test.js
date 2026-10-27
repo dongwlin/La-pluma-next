@@ -12,7 +12,7 @@ import {
 } from '../agentRunService.js'
 import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaService.js'
 import { buildAgentRunSnapshot } from '../runSnapshotService.js'
-import { loggerManager } from '../../utils/logger.js'
+import { loggerManager } from '../../utils/logger.ts'
 
 loggerManager.getLogger('MaaService').enableConsole = false
 

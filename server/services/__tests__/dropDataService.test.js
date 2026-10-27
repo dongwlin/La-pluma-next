@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const { findBestFarmStage, getStageEstimate } = await import('../dropDataService.js');
-const { loggerManager } = await import('../../utils/logger.js');
+const { loggerManager } = await import('../../utils/logger.ts');
 loggerManager.getLogger('DropData').enableConsole = false;
 
 // 与 scripts/fetch-penguin-stats.js 的产出同构的测试夹具

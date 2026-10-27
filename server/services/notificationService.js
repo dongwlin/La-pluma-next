@@ -5,7 +5,7 @@
  */
 
 import fetch from 'node-fetch';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 
 // 创建日志记录器
 const logger = createLogger('Notification');

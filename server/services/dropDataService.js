@@ -14,8 +14,8 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { readJsonFile } from '../utils/fileHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { readJsonFile } from '../utils/fileHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

@@ -1,8 +1,8 @@
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.js';
-import { successResponse, errorResponse, safeJsonParse } from '../utils/apiHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.ts';
+import { successResponse, errorResponse, safeJsonParse } from '../utils/apiHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 import { 
   getMaaLogPath, 
   getItemIndexPath, 

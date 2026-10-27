@@ -3,7 +3,7 @@ import { resolveConnection } from './connectionService.js';
 import { getNotificationConfig, setNotificationConfig } from './notificationService.js';
 import { setupAutoUpdate, setupSchedule } from './schedulerService.js';
 import { initTelegramBot } from './telegramBotService.js';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 
 const logger = createLogger('RuntimeInitialization');
 

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { agentError } from '../utils/apiHelper.js';
-import { readJsonFile, writeJsonFile } from '../utils/fileHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { agentError } from '../utils/apiHelper.ts';
+import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
 const TERMINAL_RETENTION_MS = 24 * 60 * 60 * 1000;

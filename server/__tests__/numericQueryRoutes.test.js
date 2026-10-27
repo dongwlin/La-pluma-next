@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
-import { loggerManager } from '../utils/logger.js';
+import { loggerManager } from '../utils/logger.ts';
 
 // 相关环境变量均在模块导入前设置：MAA_CLI_PATH 与 LA_PLUMA_DROP_RECORDS_DIR
 // 由被测模块在导入时读取，测试因此使用假 CLI 与临时目录，不触碰真实运行数据。

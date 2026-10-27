@@ -1,4 +1,4 @@
-import { agentError } from '../utils/apiHelper.js';
+import { agentError } from '../utils/apiHelper.ts';
 
 export const AGENT_TASK_COMMANDS = Object.freeze([
   'startup',

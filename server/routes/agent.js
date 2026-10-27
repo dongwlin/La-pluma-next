@@ -70,8 +70,8 @@ import {
   sendSuccess,
   sendDryRun,
   sendError
-} from '../utils/apiHelper.js';
-import { createLogger } from '../utils/logger.js'
+} from '../utils/apiHelper.ts';
+import { createLogger } from '../utils/logger.ts'
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js'
 import { resolveConnectionInput } from '../services/connectionService.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'

@@ -5,7 +5,7 @@ import { readFile, writeFile, mkdir, readdir, stat, unlink, realpath, open } fro
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { randomBytes } from 'crypto';
 import TOML from '@iarna/toml';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 import { getFallbackActivity } from './activityFallbackService.js';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
