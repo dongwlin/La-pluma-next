@@ -4,11 +4,15 @@
  * 未来可扩展：微信、钉钉、邮件、Bark 等
  */
 
-import fetch from 'node-fetch';
+import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createLogger } from '../utils/logger.ts';
 
 // 创建日志记录器
 const logger = createLogger('Notification');
+
+// Telegram 通知发送（sendMessage JSON / sendPhoto multipart）统一经出站端口：
+// 写入类方法不自动重放；sendMessage 补缺省时限，sendPhoto 保持 30 秒时限。
+const outboundHttp = createOutboundHttpClient();
 
 const TELEGRAM_LEVEL_EMOJIS = {
   info: 'ℹ️',
@@ -186,25 +190,20 @@ class TelegramChannel extends NotificationChannel {
     const text = formatTelegramMessage(title, content, level, data);
     
     const url = `https://api.telegram.org/bot${this.config.botToken}/sendMessage`;
-    
-    const response = await fetch(url, {
+
+    const { data: result } = await outboundHttp.requestJson(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      body: {
         chat_id: this.config.chatId,
         text: text,
         parse_mode: 'Markdown',
-      }),
+      },
     });
-    
-    const result = await response.json();
-    
+
     if (!result.ok) {
       throw new Error(`Telegram 发送失败: ${result.description || '未知错误'}`);
     }
-    
+
     return result;
   }
 
@@ -226,35 +225,27 @@ class TelegramChannel extends NotificationChannel {
       return await this.send({ title, content, level, data });
     }
     
-    // 使用 FormData 发送图片
-    const FormData = (await import('form-data')).default;
+    // 使用原生 FormData/Blob 构造 multipart：出站端口绑定原生 fetch，
+    // 编码与 boundary 由运行时完成；字段与文件名保持原有线上契约。
     const formData = new FormData();
-    
-    // 增加事件监听器限制，避免内存泄漏警告
-    formData.setMaxListeners(20);
-    
     formData.append('chat_id', this.config.chatId);
-    formData.append('photo', imageBuffer, { filename: 'screenshot.png' });
+    formData.append('photo', new Blob([imageBuffer], { type: 'image/png' }), 'screenshot.png');
     formData.append('caption', caption);
     formData.append('parse_mode', 'Markdown');
-    
+
     // 添加重试机制
     const maxRetries = 3;
     let lastError = null;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         logger.debug('发送 Telegram 图片', { attempt, maxRetries });
-        
-        const response = await fetch(url, {
-          method: 'POST',
-          body: formData,
-          headers: formData.getHeaders(),
-          timeout: 30000, // 30秒超时
+
+        const { data: result } = await outboundHttp.requestMultipart(url, {
+          formData,
+          timeoutMs: 30000, // 30秒超时
         });
-        
-        const result = await response.json();
-        
+
         if (!result.ok) {
           throw new Error(`Telegram 发送图片失败: ${result.description || '未知错误'}`);
         }

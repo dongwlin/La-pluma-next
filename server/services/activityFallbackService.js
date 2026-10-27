@@ -1,8 +1,10 @@
-import fetch from 'node-fetch';
+import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
 const PENGUIN_API_BASE = 'https://penguin-stats.io/PenguinStats/api/v2';
 const CACHE_TTL = 30 * 60 * 1000;
+// 企鹅物流读取保持原 5 秒时限；GET 读取按端口缺省受限重试。
+const outboundHttp = createOutboundHttpClient({ defaultTimeoutMs: 5000 });
 const CLIENT_SERVERS = {
   Official: 'CN',
   Bilibili: 'CN',
@@ -74,9 +76,8 @@ export function selectCurrentPenguinActivity(zones, stages, server = 'CN', now =
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  const { data } = await outboundHttp.requestJson(url);
+  return data;
 }
 
 export async function getFallbackActivity(clientType = DEFAULT_CLIENT_TYPE) {

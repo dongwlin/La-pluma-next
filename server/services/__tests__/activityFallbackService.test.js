@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectCurrentPenguinActivity } from '../activityFallbackService.js';
+import { getFallbackActivity, selectCurrentPenguinActivity } from '../activityFallbackService.js';
 
 const activeWindow = {
   CN: {
@@ -71,5 +71,63 @@ describe('activity fallback selection', () => {
     const stages = [{ zoneId: 'main_1', code: '1-7', existence: activeWindow }];
 
     assert.equal(selectCurrentPenguinActivity(zones, stages, 'CN', 2000), null);
+  });
+});
+
+describe('fallback activity fetch', () => {
+  const originalFetch = globalThis.fetch;
+  const now = Date.now();
+  const liveWindow = { exist: true, openTime: now - 60000, closeTime: now + 3600000 };
+
+  it('fetches penguin data through the outbound port and serves repeats from the cache', async () => {
+    const calls = [];
+    globalThis.fetch = async url => {
+      calls.push(String(url));
+      assert.ok(String(url).startsWith('https://penguin-stats.io/PenguinStats/api/v2/'));
+      const body = String(url).includes('/zones')
+        ? [{ zoneId: 'act_zone', type: 'ACTIVITY', zoneName: '矩阵活动', existence: { US: liveWindow } }]
+        : [{ zoneId: 'act_zone', code: 'BD-1', existence: { US: liveWindow } }];
+      return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify(body) };
+    };
+    try {
+      const activity = await getFallbackActivity('YoStarEN');
+
+      assert.equal(activity.code, 'BD');
+      assert.equal(activity.name, '矩阵活动');
+      assert.equal(activity.source, 'penguin');
+      assert.deepEqual(activity.stages, ['BD-1']);
+      assert.equal(calls.length, 2);
+      assert.ok(calls.some(url => url.includes('/zones?server=US')));
+      assert.ok(calls.some(url => url.includes('/stages?server=US')));
+
+      const cached = await getFallbackActivity('YoStarEN');
+      assert.deepEqual(cached, activity);
+      assert.equal(calls.length, 2, 'cached value must not re-fetch within the TTL');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('surfaces upstream http failures and clears the in-flight request for later retries', async () => {
+    const calls = [];
+    globalThis.fetch = async url => {
+      calls.push(String(url));
+      return { ok: false, status: 500, statusText: 'Internal Server Error', text: async () => 'upstream broken' };
+    };
+    try {
+      await assert.rejects(getFallbackActivity('YoStarJP'), error => {
+        assert.equal(error.kind, 'http-error');
+        assert.equal(error.statusCode, 500);
+        return true;
+      });
+
+      await assert.rejects(getFallbackActivity('YoStarJP'), error => {
+        assert.equal(error.kind, 'http-error');
+        return true;
+      });
+      assert.equal(calls.length, 4, 'each attempt fetches zones+stages; a failed request must not poison the cache or the in-flight map');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

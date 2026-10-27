@@ -1,3 +1,9 @@
+import { createOutboundHttpClient } from './outboundRequestService.ts'
+
+// 悖论模拟数据回源读取（GitHub raw JSON）统一经出站端口：
+// GET 读取按端口缺省受限重试，显式时限与错误映射由端口承担。
+const outboundHttp = createOutboundHttpClient()
+
 function normalizeStageIdForPrts(stageId = '') {
   return String(stageId).replace(/#[fn]#/g, '')
 }
@@ -38,17 +44,13 @@ export async function loadParadoxOperators() {
   const cached = await loadLocalJson('../data/paradox-operators.json', null)
   if (Array.isArray(cached)) return cached
 
-  const [handbookResponse, characterResponse] = await Promise.all([
-    fetch('https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/handbook_info_table.json'),
-    fetch('https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json')
+  const [handbookResult, characterResult] = await Promise.all([
+    outboundHttp.requestJson('https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/handbook_info_table.json'),
+    outboundHttp.requestJson('https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json')
   ])
 
-  if (!handbookResponse.ok || !characterResponse.ok) {
-    throw new Error('无法获取悖论模拟干员数据')
-  }
-
-  const handbook = await handbookResponse.json()
-  const characters = await characterResponse.json()
+  const handbook = handbookResult.data
+  const characters = characterResult.data
 
   return Object.entries(handbook.handbookStageData || {})
     .map(([charId, stage]) => ({

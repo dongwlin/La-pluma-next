@@ -65,6 +65,7 @@ import {
   withFlushedAgentRunSnapshot
 } from '../services/agentRunService.js';
 import { buildAgentRunSnapshot, enrichAgentRun } from '../services/runSnapshotService.js';
+import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
 import {
   asyncHandler,
   agentError,
@@ -97,6 +98,10 @@ import {
 const router = express.Router();
 const execFileAsync = promisify(execFile);
 const logger = createLogger('AgentRoutes');
+
+// 出站读取入口（changelog/copilot/paradox 查询）统一经出站端口：
+// 显式时限、取消与受限重试由端口承担，错误经 asyncHandler 进入统一错误出口。
+const outboundHttp = createOutboundHttpClient();
 
 const ACTIVE_RUN_STATES = new Set(['accepted', 'waiting', 'running', 'stopping']);
 const TERMINAL_RUN_STATES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
@@ -1320,7 +1325,7 @@ router.get('/data/operators', asyncHandler(async (req, res) => {
 
 router.get('/changelog/core', asyncHandler(async (req, res) => {
   try {
-    const response = await fetch(
+    const { data: releases } = await outboundHttp.requestJson(
       `https://api.github.com/repos/MaaAssistantArknights/MaaAssistantArknights/releases?per_page=100`,
       {
         headers: {
@@ -1329,12 +1334,6 @@ router.get('/changelog/core', asyncHandler(async (req, res) => {
         }
       }
     );
-
-    if (!response.ok) {
-      throw new Error(`GitHub API 请求失败: ${response.status}`);
-    }
-
-    const releases = await response.json();
 
     const latestBeta = releases.find(release => release.prerelease);
     const latestStable = releases.find(release => !release.prerelease);
@@ -1375,7 +1374,7 @@ router.get('/changelog/core', asyncHandler(async (req, res) => {
 
 router.get('/changelog/cli', asyncHandler(async (req, res) => {
   try {
-    const response = await fetch(
+    const { data: releases } = await outboundHttp.requestJson(
       `https://api.github.com/repos/MaaAssistantArknights/maa-cli/releases?per_page=100`,
       {
         headers: {
@@ -1384,12 +1383,6 @@ router.get('/changelog/cli', asyncHandler(async (req, res) => {
         }
       }
     );
-
-    if (!response.ok) {
-      throw new Error(`GitHub API 请求失败: ${response.status}`);
-    }
-
-    const releases = await response.json();
     const latestStable = releases.find(release => !release.prerelease);
 
     const changelog = latestStable ? [{
@@ -1412,14 +1405,12 @@ router.get('/changelog/cli', asyncHandler(async (req, res) => {
 }));
 
 router.get('/copilots/:id', asyncHandler(async (req, res) => {
-  const response = await fetch(`https://prts.maa.plus/copilot/get/${req.params.id}`);
-  const data = await response.json();
+  const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/copilot/get/${req.params.id}`);
   return sendSuccess(res, req, data);
 }));
 
 router.get('/copilot-sets/:id', asyncHandler(async (req, res) => {
-  const response = await fetch(`https://prts.maa.plus/set/get?id=${encodeURIComponent(req.params.id)}`);
-  const data = await response.json();
+  const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/set/get?id=${encodeURIComponent(req.params.id)}`);
   return sendSuccess(res, req, data);
 }));
 
@@ -1467,8 +1458,7 @@ router.get('/paradox/search', asyncHandler(async (req, res) => {
     return sendError(res, req, agentError('AGENT_PARADOX_OPERATOR_NOT_FOUND', `未找到干员"${name}"的悖论模拟关卡`, { statusCode: 404, details: { name } }));
   }
 
-  const response = await fetch(`https://prts.maa.plus/copilot/query?level_keyword=${operator.stage_id}&page=1&limit=10&order_by=hot`);
-  const data = await response.json();
+  const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/copilot/query?level_keyword=${operator.stage_id}&page=1&limit=10&order_by=hot`);
   if (data.status_code !== 200 || !data.data?.data?.length) {
     return sendError(res, req, agentError('AGENT_PARADOX_COPILOT_NOT_FOUND', `未找到干员"${operator.name}"的作业`, { statusCode: 404, details: { operator: operator.name, stageId: operator.stage_id } }));
   }
@@ -1511,8 +1501,7 @@ router.get('/copilot/search', asyncHandler(async (req, res) => {
   const targetCount = 10;
 
   while (page <= maxPages && allCopilots.length < targetCount) {
-    const response = await fetch(`https://prts.maa.plus/copilot/query?level_keyword=${encodeURIComponent(searchKeyword)}&page=${page}&limit=50&order_by=hot`);
-    const data = await response.json();
+    const { data } = await outboundHttp.requestJson(`https://prts.maa.plus/copilot/query?level_keyword=${encodeURIComponent(searchKeyword)}&page=${page}&limit=50&order_by=hot`);
     if (data.status_code !== 200 || !data.data?.data?.length) break;
 
     for (const item of data.data.data) {

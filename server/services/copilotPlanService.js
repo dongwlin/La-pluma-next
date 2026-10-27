@@ -4,9 +4,13 @@ import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask, getMaaConfigDir, createMaaLogCheckpoint, readMaaLogSince } from './maaService.js';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';
 import { recordDrops } from './dropRecordService.js';
+import { createOutboundHttpClient } from './outboundRequestService.ts';
 
 const dataDir = fileURLToPath(new URL('../data/', import.meta.url));
 const progressPath = join(dataDir, 'copilot-progress.json');
+
+// 作业站读取：服务内已有固定次数重试循环，端口侧关闭自动重试以保持总请求次数不变。
+const outboundHttp = createOutboundHttpClient();
 
 function parseCopilotContent(data) {
   try {
@@ -20,9 +24,10 @@ async function fetchJson(url, maxAttempts = 3) {
   let lastError = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      if (!response.ok) throw new Error(`作业站请求失败: ${response.status}`);
-      const payload = await response.json();
+      const { data: payload } = await outboundHttp.requestJson(url, {
+        timeoutMs: 15000,
+        retry: { maxRetries: 0 }
+      });
       if (payload.status_code && payload.status_code !== 200) throw new Error(payload.message || '作业站返回失败');
       return payload.data || payload;
     } catch (error) {

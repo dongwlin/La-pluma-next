@@ -3,17 +3,21 @@ import { fileURLToPath } from 'url';
 import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.ts';
 import { successResponse, errorResponse, safeJsonParse } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts';
-import { 
-  getMaaLogPath, 
-  getItemIndexPath, 
-  getItemTablePath, 
+import {
+  getMaaLogPath,
+  getItemIndexPath,
+  getItemTablePath,
   getBattleDataPath,
   getMaaResourceDir
 } from '../config/paths.ts';
+import { createOutboundHttpClient } from './outboundRequestService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const logger = createLogger('DataParser');
+
+// 物品表网络回源（GitHub raw JSON）统一经出站端口：显式时限与受限读取重试由端口承担。
+const outboundHttp = createOutboundHttpClient();
 
 // 项目数据目录
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -62,13 +66,8 @@ async function loadItemTable() {
     
     // 从网络获取
     logger.info('本地文件不存在，尝试从网络获取物品表...');
-    const response = await fetch('https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/gamedata/excel/item_table.json');
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const data = await response.json();
+    const { data } = await outboundHttp.requestJson('https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/gamedata/excel/item_table.json');
+
     itemTableCache = data.items || {};
     logger.success(`物品表从网络加载成功，共 ${Object.keys(itemTableCache).length} 种物品`);
     

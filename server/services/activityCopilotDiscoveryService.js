@@ -1,10 +1,15 @@
 import { getActivityRunPreflight } from './activityNavigationService.js';
+import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
 const PRTS_QUERY_URL = 'https://prts.maa.plus/copilot/query';
+const PRTS_TIMEOUT_MS = 12000;
 const MAX_STAGES = 12;
 const CANDIDATES_PER_STAGE = 3;
 const SET_CANDIDATE_LIMIT = 8;
+
+// 作业站读取/查询统一经出站端口；显式时限 12 秒保持不变。
+const outboundHttp = createOutboundHttpClient();
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -49,11 +54,13 @@ export function coversActivityStages(contents, activityCode, stages) {
 
 async function fetchCopilotContent(id) {
   let lastError;
+  // 服务内已有固定次数重试循环，端口侧关闭自动重试以保持总请求次数不变。
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const response = await fetch(`https://prts.maa.plus/copilot/get/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(12000) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
+      const { data: payload } = await outboundHttp.requestJson(
+        `https://prts.maa.plus/copilot/get/${encodeURIComponent(id)}`,
+        { timeoutMs: PRTS_TIMEOUT_MS, retry: { maxRetries: 0 } }
+      );
       return parseContent(payload?.data || payload);
     } catch (error) {
       lastError = error;
@@ -65,14 +72,12 @@ async function fetchCopilotContent(id) {
 
 async function findMatchingCopilotSet(activity, stages) {
   const keyword = activity.name || activity.code;
-  const response = await fetch('https://prts.maa.plus/set/query', {
+  // POST 查询：端口对写入类方法不自动重放，行为与原实现一致。
+  const { data: payload } = await outboundHttp.requestJson('https://prts.maa.plus/set/query', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keyword, page: 1, limit: 20 }),
-    signal: AbortSignal.timeout(12000)
+    body: { keyword, page: 1, limit: 20 },
+    timeoutMs: PRTS_TIMEOUT_MS
   });
-  if (!response.ok) throw new Error(`作业集查询失败: HTTP ${response.status}`);
-  const payload = await response.json();
   const sets = payload?.status_code === 200 && Array.isArray(payload?.data?.data) ? payload.data.data : [];
   const matches = [];
   for (const set of sets.filter(item => item?.status === 'PUBLIC').slice(0, SET_CANDIDATE_LIMIT)) {
@@ -135,9 +140,7 @@ export function rankActivityCopilots(items, stage) {
 
 async function queryStageCandidates(stage) {
   const url = `${PRTS_QUERY_URL}?level_keyword=${encodeURIComponent(stage)}&page=1&limit=50&order_by=hot`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
-  if (!response.ok) throw new Error(`作业站请求失败: HTTP ${response.status}`);
-  const payload = await response.json();
+  const { data: payload } = await outboundHttp.requestJson(url, { timeoutMs: PRTS_TIMEOUT_MS });
   const items = payload?.status_code === 200 && Array.isArray(payload?.data?.data)
     ? payload.data.data
     : [];
