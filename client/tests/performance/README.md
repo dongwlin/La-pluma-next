@@ -14,23 +14,23 @@ PERFORMANCE_SKIP_BUILD=1 node client/scripts/performance-docker.ts
 
 四类代表场景各 5 次，另加成功键盘排序对照 5 次，共 25 个新 browser context；一个 worker、无重试。固定 Chromium、1440×900、DPR 1、深色主题、zh-CN、上海时区、2026-10-24 04:00 的 Date、减弱动态效果、固定图片与 API。计时器与 `performance.now()` 为真实时间。交互 fixture 人工延时 25ms，既有视觉 fixture 即时应答。
 
-性能环境显式选择 `nativeClock: true`：只替换无参数 Date/Date.now，保留带参数 Date、静态 parse/UTC 与原生 performance.now、setTimeout、requestAnimationFrame，并逐样本断言原生函数身份。默认视觉环境仍用 Playwright `setFixedTime`。该版本的 setFixedTime 会安装按真实时间推进、整毫秒精度的 clock facade；原始前测把它称为原生计时并不准确。最终三轮全部采用相同 Date-only 协议，不能与历史前测耗时直接视为严格成对比较。
+性能环境显式选择 `nativeClock: true`：只替换无参数 Date/Date.now，保留带参数 Date、静态 parse/UTC 与原生 performance.now、setTimeout、requestAnimationFrame，并逐样本断言原生函数身份。默认视觉环境使用 Playwright `setFixedTime`，其 clock facade 按真实时间推进、精度为整毫秒。性能对照须使用相同 Date-only 协议，不能将不同计时协议的样本直接视为严格成对比较。
 
 | 场景 | 固定输入 | 完成断言 |
 | --- | --- | --- |
-| automation-drag | 3 项流程，首项「启动游戏」拖过第三项中心，12 步 pointer move 后释放 | 真实 down/up；后测必须完成指定顺序、POST 配置中的 taskIds 正确、本地顺序一致、schedule 提交完成、pending 清除 |
+| automation-drag | 3 项流程，首项「启动游戏」拖过第三项中心，12 步 pointer move 后释放 | 真实 down/up；必须完成指定顺序、POST 配置中的 taskIds 正确、本地顺序一致、schedule 提交完成、pending 清除 |
 | copilot-search | 冷 context，普通作业输入 `1-7` 后 Enter，5 条响应，无 recommended | 第 5 条可见、搜索按钮可用、只发 1 个 search GET |
 | log-append | 180 行，下一次自然 1250ms 轮询取得 200 行快照 | 200 行与追加第 20 条可见，只发 1 个日志 GET |
 | training-reorder | 2 项队列，下移艾雅法拉 | PUT IDs 为塞雷娅、艾雅法拉，再 GET 权威队列；最终顺序正确、按钮可用 |
-| automation-keyboard（补充） | 同一 3 项流程，首项手柄 ArrowDown 一次 | 两侧均成功到第二位，配置/本地顺序、schedule 完成与 pending 清除都成立 |
+| automation-keyboard | 同一 3 项流程，首项手柄 ArrowDown 一次 | 两侧均成功到第二位，配置/本地顺序、schedule 完成与 pending 清除都成立 |
 
-共享环境已修复早期空 documentElement 注入。setup 与 measurement 的 pageerror、console.error 均必须为零；不再豁免原前测的 appendChild 错误。页面和字体就绪后稳定 400ms，测量前完成滚动与起点定位；测量含输入、请求、完成断言及末尾两个 animation frame。所有测量窗口内请求必须已结束、HTTP 200 且无失败。初始化请求另记。
+setup 与 measurement 的 pageerror、console.error 均必须为零。页面和字体就绪后稳定 400ms，测量前完成滚动与起点定位；测量含输入、请求、完成断言及末尾两个 animation frame。所有测量窗口内请求必须已结束、HTTP 200 且无失败。初始化请求另记。
 
 请求窗口从调用 `measure()` 前开始，包含建立 CDP 会话和读取初始指标的开销；browser/React 窗口在随后安装浏览器 observer 时才开始，到末尾两个 frame 后停止。两者起点不同，不能按相对时刻直接合并成同一时间轴。
 
 CDP 累计指标窗口也比 browser/React 窗口宽，包含浏览器 observer 的安装与停止/读取开销；不能将其视为与 React 回调完全相同的区间。
 
-旧源码的指针拖拽会 lostpointercapture 后取消；仅在该侧显式传 `PERFORMANCE_EXPECT_DRAG=cancelled-after-lost-pointer-capture` 接受已知结果，并要求没有写请求。成功排序侧默认严格要求 `completed`。**这两种指针结果不可直接解释为成功排序加速**；补充键盘场景才提供两侧相同成功语义。
+指针拖拽默认严格要求 `completed`。对已确认在 lostpointercapture 后取消的场景，可显式传 `PERFORMANCE_EXPECT_DRAG=cancelled-after-lost-pointer-capture` 检查取消结果，并要求没有写请求。**取消与成功排序不可直接用于比较成功排序耗时**；比较成功排序时，两侧必须满足相同完成断言，可使用键盘排序场景。
 
 ## 双侧 React profiling 构建
 
@@ -54,7 +54,7 @@ PERFORMANCE_OUTPUT=client/test-results/performance/profile-after.json \
 node client/scripts/performance-docker.ts
 ```
 
-导出目录必须尚不存在，避免复用被改过的源码。构建工具对两侧精确 alias `react-dom/client` 到 `react-dom/profiling`，把相同 `Profiler(id=App)` 放在 `StrictMode` 与 `App` 之间，只在测量窗口收集。覆盖层不写入任何生产源码或正常构建。该方法遵循 [React profiling build 文档](https://react.dev/reference/dev-tools/react-performance-tracks)；字段含义见 [Profiler 文档](https://react.dev/reference/react/Profiler)。两侧 profiling 数据单独比较，不与原普通生产前测或普通生产后测混算。
+导出目录必须尚不存在，避免复用被改过的源码。构建工具对两侧精确 alias `react-dom/client` 到 `react-dom/profiling`，把相同 `Profiler(id=App)` 放在 `StrictMode` 与 `App` 之间，只在测量窗口收集。覆盖层不写入任何生产源码或正常构建。该方法遵循 [React profiling build 文档](https://react.dev/reference/dev-tools/react-performance-tracks)；字段含义见 [Profiler 文档](https://react.dev/reference/react/Profiler)。两侧 profiling 数据单独比较，不与普通生产构建的样本混算。
 
 ## 指标、追溯与输出
 

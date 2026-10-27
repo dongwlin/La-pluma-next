@@ -160,7 +160,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 本文件描述规则；token 的具体数值以 `client/src/styles/index.css` 为准，调整 token 时同步更新本文件的表格与说明。
 
-## 层序与 token 单源（S3）
+## 层序与 token 单源
 
 `client/src/styles/index.css` 首行先声明完整层序，再导入 Tailwind：
 
@@ -177,7 +177,7 @@ La Pluma Next 是一个高密度的本地自动化控制台，不是营销页面
 
 ## 配置即规范（Tailwind 压缩映射）
 
-S3 删除了 `client/tailwind.config.js`，压缩映射改由 `index.css` 的 `@theme` 与定向 `@utility` 承担，语义与 v3/v4 过渡期保持一致。页面代码继续使用 Tailwind 类名，但实际生效的档位由下面的映射表唯一决定——不要按通用 v4 迁移指南改写这些类名。
+压缩映射由 `index.css` 的 `@theme` 与定向 `@utility` 承担，保持已有类名的尺寸约定。页面代码继续使用 Tailwind 类名，但实际生效的档位由下面的映射表唯一决定——不要按通用 v4 迁移指南改写这些类名。
 
 - **圆角**：`@theme` 先用 `--radius-*: initial` 清掉 Tailwind v4 默认档位，再把 `--radius-sm/md/lg/xl/full` 映射到 `--app-radius-*`。应用只使用这 5 个命名档位，裸 `rounded`、`rounded-xs`、`rounded-2xl/3xl` 都不再生成；`rounded-sm` 是应用最小档（6px），从 sm 起收口。
 - **gap/space**：v4 的 `gap-*` / `space-*` 与 `p-*` / `m-*` 共用全局 `--spacing` 尺度，直接改 `--spacing-3/4/5/6` 会连带改变 `p-3..6` / `m-3..6`。因此用 `@utility` 定向定义 `gap-3/4/5/6`、`gap-x/y-3/4/5/6`、`space-x/y-4/5/6`；`p-*` / `m-*` 仍保持 v4 默认 4px 节奏。gap 定向工具带 `!important`，用于压过 Tailwind 为同名类生成的默认 `calc(var(--spacing) * n)` 声明；space 定向工具沿用 v4 的 `& > :not(:last-child)` end-margin 语义。代价是 `gap-3/4/5/6` 不能被同元素的 `gap-[...]` 覆盖——需要任意值时改用组件类或显式样式。
@@ -208,7 +208,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 
 ### 冻结规则（全局样式入口）
 
-- `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**：S3 已完成归层，页面级选择器仍不再新增进这两个文件。
+- `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**，不接收新增页面级选择器。
 - 页面选择器归 `features/<domain>/styles/`，由该域 `index.ts` 导入；两个全局入口对页面级选择器保持冻结，新样式按组件目录或功能域目录新增。
 - 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development/README.md) 的「样式治理」一节。
 

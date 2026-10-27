@@ -6,8 +6,8 @@
  * - `settingsRevision` 来自 `TrainingSettingsOwner`，设置值每次变化都会递增。
  *
  * 版本不同或队列刷新失败时，页面不得生成新计划，也不得应用旧计划。这里只做
- * 比较与可用性判断，不持有计划、不发起请求；计划生成与应用编排由页面
- * （后续由 FPR-023 的领域所有者）负责。
+ * 比较与可用性判断，不持有计划、不发起请求；计划生成与应用编排由
+ * `planCommands.ts` 的 `TrainingPlanOwner` 负责，`useTrainingPlan` 提供 React 适配。
  */
 
 export interface TrainingPlanBasis {
