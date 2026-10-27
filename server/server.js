@@ -69,17 +69,23 @@ export function createLaPlumaApp({
   const signalingPath = signalingGateway.proxyPath || WEBRTC_SIGNALING_PATH;
   const basePath = normalizeBasePath(env.LA_PLUMA_BASE_PATH);
 
+  // CORS 只声明浏览器可跨域读取响应，不承担鉴权；预检必须在鉴权之前应答，
+  // 因此 cors 位于所有路由之前。服务不使用 Cookie，也不支持浏览器凭据模式
+  // （credentials: 'include'），跨域调用一律通过 token 头鉴权。
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+  }));
+
   // Only ticket issuance is exposed over HTTP. The signaling admin UI and
   // device endpoints remain inaccessible through the public application port.
+  // 登录不依赖业务请求体：注册在 JSON parser 之前，handleLogin 只丢弃请求流。
   app.post(`${signalingPath}/api/login`, optionalApiAuth, signalingGateway.handleLogin);
   app.all(signalingPath, (_req, res) => res.status(404).json({ error: 'Not Found' }));
   app.all(`${signalingPath}/*`, (_req, res) => res.status(404).json({ error: 'Not Found' }));
 
-  app.use(cors({
-    origin: '*',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
-  }));
+  // API 鉴权先于请求体解析：未携带有效 token 的请求在读取请求体之前即被拒绝。
+  app.use('/api', optionalApiAuth);
   app.use(express.json());
 
   app.get('/health', (_req, res) => {
@@ -105,7 +111,6 @@ export function createLaPlumaApp({
     else app.get(`${staticMountPath}/*`, sendAppShell);
   }
 
-  app.use('/api', optionalApiAuth);
   app.use('/api/agent', agentRoutes);
   app.use('/api/operator-quotes', operatorQuotesRoutes);
   // 未匹配的 API 路径返回稳定 JSON 404，不回显请求路径与查询串

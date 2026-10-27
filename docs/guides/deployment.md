@@ -98,6 +98,14 @@ HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级�
 
 PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，但 MAA、ADB、实时预览、状态读取和所有自动化操作仍需要连接 La Pluma Next 后端；页面会持续显示断连状态并禁用控制台执行入口。
 
+### 跨域与访问来源
+
+同源是默认且完整的支持方式：Web UI 与 `/api`、`/health`、`/webrtc-signaling` 同源部署（根路径或反向代理后的同源子路径）时无需关心跨域头部。跨域调用按以下策略支持：
+
+- 鉴权只由 token 承担，CORS 不作为鉴权。服务端对任何来源应答 CORS 预检（`OPTIONS` 无需 token）并返回 `Access-Control-Allow-Origin: *`，但这只声明浏览器可跨域读取响应；来源不构成访问边界。配置 `LA_PLUMA_TOKEN` 后，`/api` 与票据入口要求 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`；网络访问建议始终配置该 token。
+- 不支持浏览器凭据模式：服务端不使用 Cookie，不返回 `Access-Control-Allow-Credentials`。以 `credentials: 'include'` 发起的跨域请求会被浏览器拒绝；调用方应改用上述 token 头并保持默认的 `credentials: 'same-origin'`。关闭凭据并不限制请求来源——任何来源都可携带 token 调用开放接口，未携带有效 token 的 `/api` 请求一律 401。
+- 实时预览的 `/webrtc-signaling` 网关继续按同源方式使用：HTTP 票据入口受同一 token 保护，其余信令管理端点不通过应用端口暴露，WebSocket 升级只服务持一次性票据的观看连接。
+
 ### 子路径部署
 
 部署到 `/la-pluma-next/` 等子路径时，需要在构建前设置：

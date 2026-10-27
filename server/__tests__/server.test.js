@@ -164,6 +164,171 @@ describe('La Pluma Next transport configuration', () => {
   })
 })
 
+describe('Cross-origin and auth middleware order', () => {
+  const CROSS_ORIGIN = 'http://console.example:5173'
+
+  it('answers preflight OPTIONS before auth and without credential headers', async () => {
+    const app = createLaPlumaApp({ env: { LA_PLUMA_TOKEN: 'api-secret' } })
+    const port = await listen(app)
+
+    const preflight = await fetch(`http://127.0.0.1:${port}/api/agent/status`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: CROSS_ORIGIN,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'authorization,x-la-pluma-token,content-type'
+      }
+    })
+
+    assert.equal(preflight.status, 204)
+    assert.equal(preflight.headers.get('access-control-allow-origin'), '*')
+    assert.match(preflight.headers.get('access-control-allow-methods') || '', /POST/)
+    assert.match(preflight.headers.get('access-control-allow-headers') || '', /x-la-pluma-token/)
+    assert.equal(preflight.headers.get('access-control-allow-credentials'), null)
+
+    // 预检在路由匹配之前应答：未匹配的 API 路径同样返回 204 而不是 401/404
+    const unknownPreflight = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: CROSS_ORIGIN,
+        'Access-Control-Request-Method': 'GET'
+      }
+    })
+    assert.equal(unknownPreflight.status, 204)
+    assert.equal(unknownPreflight.headers.get('access-control-allow-origin'), '*')
+  })
+
+  it('answers preflight for the token-protected ticket endpoint behind CORS', async () => {
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      handleLogin(_req, res) {
+        return res.json({ token: 'one-use-ticket' })
+      }
+    }
+    const app = createLaPlumaApp({
+      env: { LA_PLUMA_TOKEN: 'api-secret' },
+      signalingGateway
+    })
+    const port = await listen(app)
+
+    const preflight = await fetch(`http://127.0.0.1:${port}${WEBRTC_SIGNALING_PATH}/api/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: CROSS_ORIGIN,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'authorization'
+      }
+    })
+
+    assert.equal(preflight.status, 204)
+    assert.equal(preflight.headers.get('access-control-allow-origin'), '*')
+    assert.equal(preflight.headers.get('access-control-allow-credentials'), null)
+
+    const ticket = await fetch(`http://127.0.0.1:${port}${WEBRTC_SIGNALING_PATH}/api/login`, {
+      method: 'POST',
+      headers: {
+        Origin: CROSS_ORIGIN,
+        Authorization: 'Bearer api-secret'
+      }
+    })
+    assert.equal(ticket.status, 200)
+    assert.deepEqual(await ticket.json(), { token: 'one-use-ticket' })
+    assert.equal(ticket.headers.get('access-control-allow-origin'), '*')
+  })
+
+  it('authenticates cross-origin API calls by token headers and keeps 401 ahead of the parser', async () => {
+    const app = createLaPlumaApp({ env: { LA_PLUMA_TOKEN: 'api-secret' } })
+    const port = await listen(app)
+    const url = `http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`
+
+    const missingToken = await fetch(url, { headers: { Origin: CROSS_ORIGIN } })
+    assert.equal(missingToken.status, 401)
+    assert.equal((await missingToken.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(missingToken.headers.get('access-control-allow-origin'), '*')
+    assert.equal(missingToken.headers.get('access-control-allow-credentials'), null)
+
+    const wrongToken = await fetch(url, {
+      headers: { Origin: CROSS_ORIGIN, 'X-La-Pluma-Token': 'not-the-secret' }
+    })
+    assert.equal(wrongToken.status, 401)
+    assert.equal((await wrongToken.json()).error.code, 'AGENT_AUTH_REQUIRED')
+
+    const bearerToken = await fetch(url, {
+      headers: { Origin: CROSS_ORIGIN, Authorization: 'Bearer api-secret' }
+    })
+    assert.equal(bearerToken.status, 404)
+    assert.equal((await bearerToken.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+
+    const headerToken = await fetch(url, {
+      headers: { Origin: CROSS_ORIGIN, 'X-La-Pluma-Token': 'api-secret' }
+    })
+    assert.equal(headerToken.status, 404)
+    assert.equal((await headerToken.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+  })
+
+  it('rejects an invalid token before parsing an invalid request body', async () => {
+    const app = createLaPlumaApp({ env: { LA_PLUMA_TOKEN: 'api-secret' } })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Authorization: 'Bearer wrong-token',
+        Origin: CROSS_ORIGIN
+      },
+      body: '{"broken'
+    })
+
+    assert.equal(response.status, 401)
+    assert.equal((await response.json()).error.code, 'AGENT_AUTH_REQUIRED')
+  })
+
+  it('maps an invalid body to the stable 400 once the token is accepted', async () => {
+    const app = createLaPlumaApp({ env: { LA_PLUMA_TOKEN: 'api-secret' } })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/status`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Authorization: 'Bearer api-secret',
+        Origin: CROSS_ORIGIN
+      },
+      body: '{"broken'
+    })
+
+    assert.equal(response.status, 400)
+    const body = await response.json()
+    assert.equal(body.error.code, 'AGENT_REQUEST_BODY_INVALID')
+    assert.equal(body.error.retryable, false)
+  })
+
+  it('keeps hidden signaling admin endpoints 404 while remaining origin-agnostic', async () => {
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      handleLogin(_req, res) {
+        return res.json({ token: 'one-use-ticket' })
+      }
+    }
+    const app = createLaPlumaApp({
+      env: { LA_PLUMA_TOKEN: 'api-secret' },
+      signalingGateway
+    })
+    const port = await listen(app)
+
+    const hidden = await fetch(`http://127.0.0.1:${port}${WEBRTC_SIGNALING_PATH}/devices`, {
+      headers: { Origin: CROSS_ORIGIN }
+    })
+    assert.equal(hidden.status, 404)
+    assert.deepEqual(await hidden.json(), { error: 'Not Found' })
+
+    // 同源请求（无 Origin 头）行为不变：鉴权仍由 token 决定，与来源无关
+    const sameOrigin = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`)
+    assert.equal(sameOrigin.status, 401)
+  })
+})
+
 describe('API unified error exit', () => {
   const servers = []
   const consoleLines = []
