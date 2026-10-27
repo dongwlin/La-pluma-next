@@ -11,7 +11,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 配置存储目录
-const CONFIG_STORAGE_DIR = path.join(__dirname, '../data/user-configs');
+const DEFAULT_CONFIG_STORAGE_DIR = path.join(__dirname, '../data/user-configs');
+let configStorageDir = DEFAULT_CONFIG_STORAGE_DIR;
 const ALLOWED_CONFIG_TYPES = new Set([
   'activity-cache',
   'auto-update',
@@ -21,6 +22,11 @@ const ALLOWED_CONFIG_TYPES = new Set([
   'roguelike-tasks',
   'training-queue'
 ]);
+
+// 仅测试使用：把配置写入重定向到临时目录；生产代码不得调用。
+export function setConfigStorageDirForTests(dir) {
+  configStorageDir = dir ? path.resolve(dir) : DEFAULT_CONFIG_STORAGE_DIR;
+}
 
 export function validateConfigType(configType) {
   if (typeof configType !== 'string' || !ALLOWED_CONFIG_TYPES.has(configType)) {
@@ -32,11 +38,27 @@ export function validateConfigType(configType) {
   return configType;
 }
 
+/**
+ * 顶层载荷校验：只要求 JSON 对象，不限制字段，
+ * 保留旧结构 payload 与扩展字段，同时挡住字符串、数组、null 等错误输入。
+ */
+function validateConfigPayload(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw agentError('AGENT_CONFIG_DATA_INVALID', '配置数据必须是 JSON 对象', {
+      statusCode: 400,
+      details: {
+        receivedType: Array.isArray(data) ? 'array' : data === null ? 'null' : typeof data
+      },
+      retryable: false
+    });
+  }
+}
+
 // 获取配置文件路径
 function getConfigPath(configType) {
   const normalizedType = validateConfigType(configType);
-  const configPath = path.resolve(CONFIG_STORAGE_DIR, `${normalizedType}.json`);
-  if (path.dirname(configPath) !== path.resolve(CONFIG_STORAGE_DIR)) {
+  const configPath = path.resolve(configStorageDir, `${normalizedType}.json`);
+  if (path.dirname(configPath) !== path.resolve(configStorageDir)) {
     throw new Error('配置路径不合法');
   }
   return configPath;
@@ -45,7 +67,8 @@ function getConfigPath(configType) {
 // 保存用户配置
 export async function saveUserConfig(configType, data) {
   try {
-    await ensureDir(CONFIG_STORAGE_DIR);
+    validateConfigPayload(data);
+    await ensureDir(configStorageDir);
     const configPath = getConfigPath(configType);
     await writeJsonFile(configPath, data);
     // 移除 DEBUG 日志，保存配置太频繁
@@ -71,8 +94,8 @@ export async function loadUserConfig(configType) {
 // 获取所有配置
 export async function getAllUserConfigs() {
   try {
-    await ensureDir(CONFIG_STORAGE_DIR);
-    const files = await readdir(CONFIG_STORAGE_DIR);
+    await ensureDir(configStorageDir);
+    const files = await readdir(configStorageDir);
     const configs = {};
     
     for (const file of files) {

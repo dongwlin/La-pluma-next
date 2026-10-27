@@ -882,15 +882,19 @@ async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
   return sendSuccess(res, req, runResponseData(accepted, enrichedRun), accepted.message, { runId });
 }
 
+// 配置存储的 400 校验错误按原 code 透传；其余按存储失败处理
+const CONFIG_VALIDATION_CODES = new Set(['AGENT_CONFIG_TYPE_INVALID', 'AGENT_CONFIG_DATA_INVALID']);
+
 function sendConfigStorageError(res, req, result, fallbackCode, fallbackMessage) {
-  const invalidType = result?.error?.code === 'AGENT_CONFIG_TYPE_INVALID';
+  const errorCode = result?.error?.code;
+  const isValidationError = CONFIG_VALIDATION_CODES.has(errorCode);
   return sendError(res, req, agentError(
-    invalidType ? 'AGENT_CONFIG_TYPE_INVALID' : fallbackCode,
+    isValidationError ? errorCode : fallbackCode,
     result?.message || fallbackMessage,
     {
-      statusCode: invalidType ? 400 : 500,
+      statusCode: isValidationError ? 400 : 500,
       details: result?.error?.details || {},
-      retryable: !invalidType
+      retryable: !isValidationError
     }
   ));
 }
@@ -1814,7 +1818,7 @@ router.get('/notifications/config', asyncHandler(async (req, res) => {
 router.post('/notifications/config', asyncHandler(async (req, res) => {
   const result = await saveUserConfig('notification', req.body || {});
   if (!result.success) {
-    return sendError(res, req, agentError('AGENT_NOTIFICATION_CONFIG_SAVE_FAILED', result.message || '通知配置保存失败', { statusCode: 500 }));
+    return sendConfigStorageError(res, req, result, 'AGENT_NOTIFICATION_CONFIG_SAVE_FAILED', '通知配置保存失败');
   }
   setNotificationConfig(req.body || {});
   return sendSuccess(res, req, null, '通知配置已保存');
