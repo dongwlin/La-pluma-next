@@ -86,6 +86,7 @@ La-pluma-next/
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
 │   │   ├── agent.js           # 主 Agent API
+│   │   ├── userConfig.js      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   └── operatorQuotes.js  # 干员台词接口
 │   ├── services/              # 业务逻辑
 │   │   ├── maaService.js      # MAA CLI、ADB、截图、实时日志

@@ -15,6 +15,7 @@ import {
 } from './config/runtimeConfig.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.js';
 import agentRoutes from './routes/agent.js';
+import { createUserConfigRouter } from './routes/userConfig.js';
 import {
   getAgentRunStoreStatus,
   initializeAgentRunStore
@@ -64,7 +65,8 @@ function createOptionalApiAuth(apiToken = '') {
 export function createLaPlumaApp({
   env = process.env,
   signalingGateway = createWebrtcSignalingGateway(),
-  clientDistPath = resolveAppPaths().frontendDistDir
+  clientDistPath = resolveAppPaths().frontendDistDir,
+  userConfigStorage
 } = {}) {
   const app = express();
   // Express 5 的 req.query 是只读 getter；显式固定 simple 解析器，
@@ -121,6 +123,9 @@ export function createLaPlumaApp({
     else app.get(`${staticMountPath}/{*splat}`, sendAppShell);
   }
 
+  // 用户配置 HTTP 适配独立挂载；存储实例由应用组装注入，缺省使用默认存储。
+  // 鉴权与 JSON 解析仍由 /api 前置中间件承担，错误继续交给统一出口。
+  app.use('/api/agent/config/user', createUserConfigRouter({ storage: userConfigStorage }));
   app.use('/api/agent', agentRoutes);
   app.use('/api/operator-quotes', operatorQuotesRoutes);
   // 未匹配的 API 路径返回稳定 JSON 404，不回显请求路径与查询串

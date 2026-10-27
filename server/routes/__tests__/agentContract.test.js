@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import agentRouter from '../agent.js';
 import {
   API_VERSION,
   AGENT_OPERATIONS,
@@ -170,16 +170,30 @@ describe('Agent API contract registry', () => {
     );
   });
 
-  it('only advertises operations that exist on the mounted Agent router', async () => {
-    const source = await readFile(new URL('../agent.js', import.meta.url), 'utf8');
+  function collectRouterRoutes(router) {
+    const routes = new Set();
+    for (const layer of router.stack) {
+      if (!layer.route) continue;
+      const { path, methods } = layer.route;
+      for (const method of Object.keys(methods ?? {})) {
+        if (methods[method]) routes.add(`${method.toUpperCase()} ${path}`);
+      }
+    }
+    return routes;
+  }
+
+  it('only advertises operations that exist on the mounted Agent router', () => {
+    const routes = collectRouterRoutes(agentRouter);
     const manifest = buildAgentManifest(defaults);
 
     for (const action of manifest.actions) {
       const relativePath = action.path
         .replace(/^\/api\/agent/, '')
         .replace(/\{([^}]+)\}/g, ':$1');
-      const routeDeclaration = `router.${action.method.toLowerCase()}('${relativePath}'`;
-      assert.ok(source.includes(routeDeclaration), `missing router declaration for ${action.method} ${action.path}`);
+      assert.ok(
+        routes.has(`${action.method} ${relativePath}`),
+        `missing router declaration for ${action.method} ${action.path}`
+      );
     }
   });
 });
