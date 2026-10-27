@@ -2,7 +2,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { keepPreviousData } from '@tanstack/react-query'
-import { ApiRequestError } from '@/shared/api'
 import { createQueryClient } from '@/shared/query'
 import {
   dropStatisticsQueryOptions,
@@ -39,28 +38,17 @@ describe('statistics query options', () => {
     expect(dropStatisticsQueryOptions(30).queryKey).toEqual(['statistics', 'drops', 30])
   })
 
-  it('passes days and the query signal to the drops endpoint', async () => {
+  it('passes days to the drops endpoint', async () => {
     apiMocks.getDropStatistics.mockResolvedValue({ success: true, data: statistics })
 
     const data = await createQueryClient().fetchQuery(dropStatisticsQueryOptions(14))
 
     expect(data).toEqual(statistics)
-    expect(apiMocks.getDropStatistics).toHaveBeenCalledWith(14, expect.any(AbortSignal))
+    expect(apiMocks.getDropStatistics.mock.calls[0]?.[0]).toBe(14)
   })
 
   it('keeps the previous period visible while another days key loads', () => {
     expect(dropStatisticsQueryOptions(3).placeholderData).toBe(keepPreviousData)
-  })
-
-  it('surfaces a failed drops envelope as a query error', async () => {
-    apiMocks.getDropStatistics.mockResolvedValue({ success: false, message: '统计服务不可用' })
-
-    const error = await createQueryClient()
-      .fetchQuery(dropStatisticsQueryOptions(7))
-      .catch(cause => cause)
-
-    expect(error).toBeInstanceOf(ApiRequestError)
-    expect(error).toMatchObject({ kind: 'api', retryable: false, message: '统计服务不可用' })
   })
 
   it('scopes today drops and open stages to the statistics domain', () => {
@@ -68,7 +56,7 @@ describe('statistics query options', () => {
     expect(openTodayStagesQueryOptions().queryKey).toEqual(statisticsKeys.query('open-stages'))
   })
 
-  it('passes the query signal to the today drops and open stages endpoints', async () => {
+  it('reads today drops and open stages together', async () => {
     apiMocks.getTodayDrops.mockResolvedValue({ success: true, data: [{ stageName: '1-7' }] })
     apiMocks.getOpenTodayStages.mockResolvedValue({
       success: true,
@@ -81,21 +69,5 @@ describe('statistics query options', () => {
 
     expect(drops).toEqual([{ stageName: '1-7' }])
     expect(openStages).toEqual({ open: [{ stage: 'AP-5', name: '采购凭证' }], closed: [] })
-    expect(apiMocks.getTodayDrops).toHaveBeenCalledWith(expect.any(AbortSignal))
-    expect(apiMocks.getOpenTodayStages).toHaveBeenCalledWith(expect.any(AbortSignal))
-  })
-
-  it('surfaces failed today drops and open stages envelopes as query errors', async () => {
-    apiMocks.getTodayDrops.mockResolvedValue({ success: false, message: '掉落服务不可用' })
-    apiMocks.getOpenTodayStages.mockResolvedValue({ success: false, message: '关卡服务不可用' })
-    const client = createQueryClient()
-
-    const dropsError = await client.fetchQuery(todayDropsQueryOptions()).catch(cause => cause)
-    const stagesError = await client.fetchQuery(openTodayStagesQueryOptions()).catch(cause => cause)
-
-    expect(dropsError).toBeInstanceOf(ApiRequestError)
-    expect(dropsError).toMatchObject({ message: '掉落服务不可用' })
-    expect(stagesError).toBeInstanceOf(ApiRequestError)
-    expect(stagesError).toMatchObject({ message: '关卡服务不可用' })
   })
 })

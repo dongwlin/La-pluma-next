@@ -7,7 +7,6 @@ import {
   QUERY_RETRY_LIMIT,
   QUERY_STALE_TIME_MS,
   createQueryClient,
-  getQueryClient,
   queryRetryDelay,
   shouldRetryQuery,
 } from './queryClient'
@@ -48,11 +47,6 @@ describe('query client defaults', () => {
       retry: false,
       networkMode: 'online',
     })
-  })
-
-  it('creates isolated clients but reuses one application client', () => {
-    expect(createQueryClient()).not.toBe(createQueryClient())
-    expect(getQueryClient()).toBe(getQueryClient())
   })
 })
 

@@ -373,8 +373,6 @@ describe('AutomationTasks config persistence', () => {
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
     const hourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
     expect(hourInput?.value).toBe('14')
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
-      ?.closest('.automation-schedule-time-row')?.classList.contains('is-disabled')).toBe(true)
 
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     await act(async () => {
@@ -409,12 +407,13 @@ describe('AutomationTasks config persistence', () => {
     seedPendingDisabledScheduleEntry()
 
     await renderAutomation()
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(2)
+    expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
 
     await click(container.querySelector<HTMLButtonElement>('[aria-label="删除第 2 个时间点"]')!)
     await settle()
 
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(1)
+    expect(container.querySelector('[aria-label="已设置 1 个执行时间"]')).not.toBeNull()
+    expect(container.querySelector('#automation-schedule-hour-1')).toBeNull()
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       entries: [{ time: '08:00', enabled: true }],
@@ -610,9 +609,8 @@ describe('AutomationTasks config persistence', () => {
     })
 
     await renderAutomation()
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(2)
-    const disabledRow = container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
-    expect(disabledRow?.closest('.automation-schedule-time-row')?.classList.contains('is-disabled')).toBe(true)
+    expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('14')
 
     await act(async () => {
       publishPlanApplied()
@@ -620,9 +618,8 @@ describe('AutomationTasks config persistence', () => {
     await settle()
 
     // 禁用项不进入 wire；外部计划重读后仍保留本设备独有的禁用时间点。
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(2)
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
-      ?.closest('.automation-schedule-time-row')?.classList.contains('is-disabled')).toBe(true)
+    expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('14')
   })
 
   it('applies a plan invalidation missed while the page is hidden after Activity resumes', async () => {

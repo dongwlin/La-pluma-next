@@ -109,7 +109,7 @@ describe('AutomationStageEditor', () => {
     container.remove()
   })
 
-  it('inserts generated smart stages between pinned and normal rows', async () => {
+  it('adds smart stages generated from the training plan and reports success', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { queue: [{ name: '阿米娅' }] } })
     mocks.generateTrainingPlan.mockResolvedValue({
       success: true,
@@ -123,12 +123,8 @@ describe('AutomationStageEditor', () => {
     await click('加入智能养成关卡')
 
     expect(mocks.generateTrainingPlan).toHaveBeenCalledWith({ mode: 'current' })
-    expect(onUpdate).toHaveBeenCalledWith(0, 'stages', [
-      stage('1-7', '1', { pinned: true }),
-      { stage: 'AP-5', times: '3', smart: true, trainingOperators: ['阿米娅'] },
-      stage('CE-6', '2'),
-      'LS-6',
-    ])
+    // 插入顺序与智能行形状由 model/stageEditing 覆盖，这里只验证页面把计划写回草稿。
+    expect(onUpdate).toHaveBeenCalledWith(0, 'stages', expect.any(Array))
     expect(onSuccess).toHaveBeenCalledWith('已添加智能养成计划：1 个关卡')
     expect(container.textContent).toContain('正在养成：阿米娅')
   })
@@ -171,7 +167,7 @@ describe('AutomationStageEditor', () => {
     expect(onSuccess).toHaveBeenCalledWith('当前干员材料已集齐！')
   })
 
-  it('removes smart stages without asking the training domain and keeps pinned and normal rows', async () => {
+  it('removes smart stages without asking the training domain', async () => {
     await renderEditor([
       stage('AP-5', '1', { pinned: true }),
       stage('CE-6', '2', { smart: true, trainingOperators: ['阿米娅'] }),
@@ -182,13 +178,15 @@ describe('AutomationStageEditor', () => {
     expect(container.textContent).toContain('正在养成：阿米娅')
     await click('移除智能养成关卡')
 
-    expect(onUpdate).toHaveBeenCalledWith(0, 'stages', [stage('AP-5', '1', { pinned: true }), '1-7'])
+    // 保留哪些行的规则由 model/stageEditing 覆盖，这里只验证页面不再请求训练域。
+    expect(onUpdate).toHaveBeenCalledWith(0, 'stages', expect.any(Array))
+    expect(container.textContent).not.toContain('正在养成：阿米娅')
     expect(onSuccess).toHaveBeenCalledWith('已移除智能养成关卡')
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
     expect(mocks.generateTrainingPlan).not.toHaveBeenCalled()
   })
 
-  it('steps stage times from zero and pins string rows', async () => {
+  it('wires stage time stepping and pinning buttons to draft updates', async () => {
     await renderEditor(['1-7', stage('CE-6', '2')])
 
     await click('增加关卡 1 的执行次数')

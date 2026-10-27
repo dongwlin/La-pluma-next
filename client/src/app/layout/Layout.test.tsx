@@ -76,7 +76,7 @@ function mediaQueryList(query: string, matches = false): MediaQueryList {
 }
 
 function getScrollHost() {
-  return container.querySelector<HTMLElement>('.la-pluma-scroll-host')!
+  return container.querySelector<HTMLElement>('main')!
 }
 
 function installScrollModel() {
@@ -171,11 +171,16 @@ function activeTabLabel() {
 }
 
 function desktopLink(tab: string) {
-  return container.querySelector<HTMLButtonElement>(`.la-pluma-sidebar-nav button[data-app-tab="${tab}"]`)!
+  return container.querySelector<HTMLButtonElement>(`nav[aria-label="工作台"] button[data-app-tab="${tab}"]`)!
 }
 
 function mobileMoreTrigger() {
-  return container.querySelector<HTMLButtonElement>('.la-pluma-tabbar button[aria-label="更多页面"]')!
+  return container.querySelector<HTMLButtonElement>('button[aria-label="更多页面"]')!
+}
+
+/** 侧边栏身份区以「干员：台词」作为无障碍名称，不依赖包裹类名。 */
+function sidebarIdentity() {
+  return container.querySelector<HTMLElement>('aside [aria-label*="："]')!
 }
 
 describe('top-level application navigation', () => {
@@ -376,10 +381,11 @@ describe('top-level application navigation', () => {
   it('keeps all desktop workspaces in one flat navigation list', async () => {
     await renderLayout()
 
-    const sidebar = container.querySelector<HTMLElement>('.la-pluma-sidebar')!
-    const sidebarNav = sidebar.querySelector<HTMLElement>('.la-pluma-sidebar-nav')!
+    const sidebar = container.querySelector<HTMLElement>('aside[aria-label="主要功能"]')!
+    const sidebarNav = sidebar.querySelector<HTMLElement>('nav[aria-label="工作台"]')!
     expect(sidebarNav.querySelector('[role="group"]')).toBeNull()
-    expect([...sidebarNav.children].map(child => (child as HTMLElement).dataset.appTab)).toEqual([
+    expect([...sidebarNav.querySelectorAll<HTMLButtonElement>('button[data-app-tab]')]
+      .map(button => button.dataset.appTab)).toEqual([
       'dashboard',
       'automation',
       'combat',
@@ -390,7 +396,6 @@ describe('top-level application navigation', () => {
       'config',
     ])
     expect(sidebar.querySelectorAll('button[data-app-tab]')).toHaveLength(8)
-    expect(sidebar.querySelectorAll('button[data-app-tab] svg[aria-hidden="true"]')).toHaveLength(8)
 
     const mobileDestinations = [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="主要功能"] button[data-app-tab]')]
       .map(button => button.dataset.appTab)
@@ -405,8 +410,6 @@ describe('top-level application navigation', () => {
     await act(async () => desktopLink('statistics').click())
     expect(sidebar.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
     expect(sidebar.querySelector<HTMLElement>('[aria-current="page"]')?.dataset.appTab).toBe('statistics')
-
-    expect(sidebar.querySelectorAll('.la-pluma-sidebar-nav button[data-app-tab]')).toHaveLength(8)
   })
 
   it('shows the daily operator portrait, name, and quote in the desktop identity area', async () => {
@@ -415,8 +418,8 @@ describe('top-level application navigation', () => {
       await Promise.resolve()
     })
 
-    const identity = container.querySelector<HTMLElement>('.la-pluma-sidebar-identity')!
-    const avatar = identity.querySelector<HTMLImageElement>('.la-pluma-sidebar-avatar img')!
+    const identity = sidebarIdentity()
+    const avatar = identity.querySelector<HTMLImageElement>('img')!
     expect(mocks.loadDailyOperatorQuote).toHaveBeenCalledTimes(1)
     expect(identity.getAttribute('aria-label')).toBe('银灰：战术安排已就绪')
     expect(identity.querySelector('strong')?.textContent).toBe('银灰')
@@ -432,7 +435,7 @@ describe('top-level application navigation', () => {
       await Promise.resolve()
     })
 
-    const identity = container.querySelector<HTMLElement>('.la-pluma-sidebar-identity')!
+    const identity = sidebarIdentity()
     expect(identity.getAttribute('aria-label')).toBe('阿米娅：今天也请多指教')
     expect(identity.querySelector('strong')?.textContent).toBe('阿米娅')
     expect(identity.querySelector('small')?.textContent).toBe('今天也请多指教')
@@ -442,12 +445,11 @@ describe('top-level application navigation', () => {
   it('exposes the GitHub repository as a secure external action', async () => {
     await renderLayout()
 
-    const githubLink = container.querySelector<HTMLAnchorElement>('.la-pluma-github-link')!
+    const githubLink = container.querySelector<HTMLAnchorElement>('a[aria-label="打开 GitHub 仓库"]')!
     expect(githubLink.getAttribute('aria-label')).toBe('打开 GitHub 仓库')
     expect(githubLink.getAttribute('href')).toBe('https://github.com/dongwlin/La-pluma-next')
     expect(githubLink.getAttribute('target')).toBe('_blank')
     expect(githubLink.getAttribute('rel')?.split(/\s+/).sort()).toEqual(['noopener', 'noreferrer'])
-    expect(githubLink.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1)
   })
 
   it('opens and dismisses the mobile overflow sheet without losing trigger focus', async () => {

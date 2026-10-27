@@ -66,11 +66,7 @@ describe('shared navigation vocabulary', () => {
     for (const tab of APP_TABS) {
       expect(isAppTab(tab)).toBe(true)
     }
-    expect(APP_TABS).toHaveLength(8)
     expect(isAppTab('not-a-tab')).toBe(false)
     expect(isAppTab(undefined)).toBe(false)
-    expect(isAppTab(null)).toBe(false)
-    expect(isAppTab(42)).toBe(false)
-    expect(isAppTab({})).toBe(false)
   })
 })

@@ -30,7 +30,7 @@ const click = async (element: HTMLElement) => {
   await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 }
 
-describe('DropRecords layout surfaces', () => {
+describe('DropRecords read states', () => {
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -40,45 +40,6 @@ describe('DropRecords layout surfaces', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
-  })
-
-  it('uses smooth corners only for the two outer record panels', async () => {
-    await act(async () => root.render(
-      <DropRecords
-        dropStatistics={{
-          total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
-          items: { '固源岩': { count: 6, iconId: 'rock' } },
-          stages: { '1-7': { battles: 3, sanity: 42, items: { '固源岩': 6 } } },
-          dateRange: { start: '2026-07-14', end: '2026-07-20', days: 7 },
-        }}
-        dropDays={7}
-        setDropDays={vi.fn()}
-        onRefresh={vi.fn()}
-      />,
-    ))
-
-    const panels = Array.from(container.querySelectorAll('.drop-records-panel'))
-    expect(panels).toHaveLength(2)
-    panels.forEach((panel) => {
-      expect(panel.getAttribute('data-smooth-corners')).toBe('true')
-      expect(panel.querySelector(':scope > .app-card-smooth-surface')).not.toBeNull()
-    })
-    expect(container.querySelectorAll('[data-smooth-corners="true"]')).toHaveLength(2)
-  })
-
-  it('keeps the empty state on the same continuous outer surface', async () => {
-    await act(async () => root.render(
-      <DropRecords
-        dropStatistics={null}
-        dropDays={7}
-        setDropDays={vi.fn()}
-        onRefresh={vi.fn()}
-      />,
-    ))
-
-    const panel = container.querySelector('.drop-records-panel')
-    expect(panel?.getAttribute('data-smooth-corners')).toBe('true')
-    expect(panel?.textContent).toContain('暂无掉落记录')
   })
 
   it('shows loading instead of an empty state during the initial read', async () => {
@@ -94,6 +55,27 @@ describe('DropRecords layout surfaces', () => {
 
     expect(container.querySelector('[role="status"]')?.textContent).toContain('正在读取掉落记录')
     expect(container.textContent).not.toContain('暂无掉落记录')
+  })
+
+  it('shows the empty state and its reload entry when no statistics exist', async () => {
+    const onRefresh = vi.fn()
+    await act(async () => root.render(
+      <DropRecords
+        dropStatistics={null}
+        dropDays={7}
+        setDropDays={vi.fn()}
+        onRefresh={onRefresh}
+      />,
+    ))
+
+    expect(container.textContent).toContain('暂无掉落记录')
+    expect(container.textContent).toContain('执行作战任务后会自动记录掉落数据')
+
+    const reload = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('重新加载'))
+    expect(reload).toBeDefined()
+    await click(reload!)
+    expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
   it('shows a recoverable error in place and invokes retry', async () => {

@@ -197,8 +197,15 @@ const deferred = <T,>() => {
   return { promise, resolve }
 }
 
+const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.textContent?.includes(label))
+
+/** 关卡编辑器的无障碍名称来自 legend，用它定位整个分组。 */
+const findStageEditor = () => Array.from(container.querySelectorAll('fieldset'))
+  .find(fieldset => fieldset.querySelector('legend')?.textContent === '关卡计划')
+
 const clickSequenceTask = async (taskName: string) => {
-  const button = Array.from(container.querySelectorAll<HTMLButtonElement>('.automation-sequence-select'))
+  const button = Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-controls="automation-task-editor"]'))
     .find(candidate => candidate.textContent?.includes(taskName))
 
   expect(button).toBeDefined()
@@ -207,8 +214,9 @@ const clickSequenceTask = async (taskName: string) => {
   return button
 }
 
-const sequenceOrder = () => Array.from(container.querySelectorAll('.automation-sequence-copy strong'))
-  .map(node => node.textContent)
+/** 拖拽手柄的无障碍名称同时带有任务名与当前位次，可直接读出序列顺序。 */
+const sequenceOrder = () => Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label^="调整"]'))
+  .map(button => button.getAttribute('aria-label')?.match(/^调整(.+)顺序，当前第 \d+ 位$/)?.[1] ?? '')
 
 const pointerEvent = (
   type: string,
@@ -228,7 +236,7 @@ const pointerEvent = (
 /** 让每行占 80px 高、间隔 20px，便于按 clientY 计算中线。 */
 const stubSequenceRects = () => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-    const rows = Array.from(container.querySelectorAll('.automation-sequence-item'))
+    const rows = Array.from(container.querySelectorAll('[data-execution-state]'))
     const index = rows.indexOf(this)
     const top = index * 100
     return {
@@ -348,20 +356,20 @@ describe('AutomationTasks layout surfaces', () => {
 
     await renderPage()
 
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(5)
-    const addTimeButton = container.querySelector<HTMLButtonElement>('.automation-schedule-add')
-    expect(addTimeButton?.textContent).toContain('新增定时')
+    expect(container.querySelector('[aria-label="已设置 5 个执行时间"]')).not.toBeNull()
+    const addTimeButton = findButton('新增定时')
+    expect(addTimeButton).toBeDefined()
 
     await act(async () => addTimeButton?.click())
     await flush()
 
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(6)
+    expect(container.querySelector('[aria-label="已设置 6 个执行时间"]')).not.toBeNull()
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-5')?.value).toBe('16')
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       times: ['08:00', '12:00', '13:00', '14:00', '15:00', '16:00'],
     })
-    expect(container.querySelector('.automation-schedule-add')).toBeNull()
+    expect(findButton('新增定时')).toBeUndefined()
   })
 
   it('rejects a duplicate schedule time without writing the draft', async () => {
@@ -556,10 +564,9 @@ describe('AutomationTasks layout surfaces', () => {
 
     const deleteTimeButton = container.querySelector<HTMLButtonElement>('[aria-label="删除第 1 个时间点"]')
     expect(deleteTimeButton).not.toBeNull()
-    const firstTimeRow = firstHourInput?.closest('.automation-schedule-time-row')
-    expect(firstTimeRow).not.toBeNull()
-    expect(firstTimeRow?.querySelector('.automation-schedule-time-unit')?.textContent).toContain('时')
-    expect(container.querySelector('.automation-schedule-list-heading-actions > .automation-schedule-add')?.textContent).toContain('新增定时')
+    const firstTimeGroup = container.querySelector('[aria-label="第 1 个执行时间"]')
+    expect(firstTimeGroup?.textContent).toContain('时')
+    expect(findButton('新增定时')).toBeDefined()
     expect(container.querySelector('[aria-label="定时执行"]')).not.toBeNull()
 
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
@@ -581,7 +588,7 @@ describe('AutomationTasks layout surfaces', () => {
     await act(async () => deleteTimeButton?.click())
     await flush()
 
-    expect(container.querySelectorAll('.automation-schedule-time-row')).toHaveLength(1)
+    expect(container.querySelector('[aria-label="已设置 1 个执行时间"]')).not.toBeNull()
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('12')
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('45')
     expect(container.querySelector('[aria-label^="删除第 "]')).toBeNull()
@@ -597,10 +604,10 @@ describe('AutomationTasks layout surfaces', () => {
     expect(container.querySelector('[aria-label="关卡 2 执行次数"]')).not.toBeNull()
 
     const stageLabel = container.querySelector<HTMLLabelElement>('label[for="automation-fight-1-stages-0"]')!
-    const stageEditor = stageLabel.closest('.automation-stage-editor')
+    const stageEditor = stageLabel.closest('fieldset')
     expect(stageEditor).not.toBeNull()
-    expect(stageEditor?.querySelector('.automation-stage-add')?.textContent).toContain('添加关卡')
-    expect(stageEditor?.querySelector('.automation-smart-stage-entry')?.textContent).toContain('智能养成关卡')
+    expect(stageEditor?.textContent).toContain('添加关卡')
+    expect(stageEditor?.textContent).toContain('智能养成关卡')
 
     await clickSequenceTask('自动公招')
     expect(container.querySelector('label[for="automation-recruit-1-refresh"]')).not.toBeNull()
@@ -650,7 +657,6 @@ describe('AutomationTasks layout surfaces', () => {
 
     // 拖拽期间只渲染预览，尚未写入配置。
     expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
-    expect(container.querySelectorAll('.automation-sequence-item')[2]?.classList.contains('is-dragging')).toBe(true)
     expect(savedFlowIds()).toEqual(['startup-1', 'fight-1', 'recruit-1'])
 
     // 性能基线记录的真实路径：重排后浏览器释放 capture，排序不能因此取消。
@@ -666,7 +672,6 @@ describe('AutomationTasks layout surfaces', () => {
 
     expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
     expect(savedFlowIds()).toEqual(['fight-1', 'recruit-1', 'startup-1'])
-    expect(container.querySelector('.automation-sequence-item.is-dragging')).toBeNull()
     expect(container.querySelector('[aria-live="polite"]')?.textContent)
       .toBe('启动游戏已移动到第 3 位')
   })
@@ -743,24 +748,25 @@ describe('AutomationTasks layout surfaces', () => {
     await renderPage()
     await clickSequenceTask('理智作战')
 
-    const stageEditor = container.querySelector('.automation-stage-editor')!
-    expect(stageEditor.querySelectorAll('.automation-stage-item')).toHaveLength(2)
+    const stageEditor = findStageEditor()
+    expect(stageEditor).toBeDefined()
+    expect(stageEditor?.querySelector('[aria-label="关卡 2"]')).not.toBeNull()
+    expect(stageEditor?.querySelector('[aria-label="关卡 3"]')).toBeNull()
 
     await act(async () => {
-      stageEditor.querySelector<HTMLButtonElement>('.automation-stage-add')?.click()
+      findButton('添加关卡')?.click()
     })
     await flush()
 
-    expect(stageEditor.querySelectorAll('.automation-stage-item')).toHaveLength(3)
-    expect(stageEditor.querySelector('[aria-label="关卡 3"]')).not.toBeNull()
+    expect(stageEditor?.querySelector('[aria-label="关卡 3"]')).not.toBeNull()
 
     await act(async () => {
-      stageEditor.querySelector<HTMLButtonElement>('[aria-label="删除关卡 3"]')?.click()
+      stageEditor?.querySelector<HTMLButtonElement>('[aria-label="删除关卡 3"]')?.click()
     })
     await flush()
 
-    expect(stageEditor.querySelectorAll('.automation-stage-item')).toHaveLength(2)
-    expect(stageEditor.querySelector('[aria-label="关卡 3"]')).toBeNull()
+    expect(stageEditor?.querySelector('[aria-label="关卡 3"]')).toBeNull()
+    expect(stageEditor?.querySelector('[aria-label="关卡 2"]')).not.toBeNull()
   })
 
   it('adds and removes the generated smart training stages from the dedicated entry', async () => {
@@ -789,7 +795,7 @@ describe('AutomationTasks layout surfaces', () => {
     })
     await flush()
 
-    const stageEditor = container.querySelector('.automation-stage-editor')!
+    const stageEditor = findStageEditor()!
     expect(stageEditor.querySelector('[aria-label="移除智能养成关卡"]')).not.toBeNull()
     expect(stageEditor.textContent).toContain('正在养成：阿米娅')
     const smartStageInput = Array.from(stageEditor.querySelectorAll<HTMLInputElement>('input'))

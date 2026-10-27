@@ -319,13 +319,13 @@ describe('LogViewer realtime lifecycle', () => {
     await flush()
 
     expect(container.textContent).toContain('历史内容')
-    const listError = container.querySelector<HTMLElement>('.log-history-state.is-error')
+    const listError = container.querySelector<HTMLElement>('[role="alert"]')
     expect(listError?.textContent).toContain('列表刷新失败')
     expect(mocks.readLogFile).toHaveBeenCalledTimes(1)
 
     await act(async () => listError?.querySelector<HTMLButtonElement>('button')?.click())
     await flush()
-    expect(container.querySelector('.log-history-state.is-error')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('历史内容')
   })
 

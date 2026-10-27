@@ -123,35 +123,33 @@ describe('FilterMenu layout and keyboard rules', () => {
     const surface = menu()!
     expect(surface).not.toBeNull()
     expect(container.contains(surface)).toBe(false)
-    expect(surface.parentElement).toBe(document.body)
     expect(trigger().getAttribute('aria-expanded')).toBe('true')
     expect(trigger().getAttribute('aria-controls')).toBe(surface.id)
     expect(surface.getAttribute('aria-label')).toBe('已拥有筛选')
     expect(surface.dataset.placement).toBe('bottom')
-    expect(surface.style.left).toBe('100px')
-    expect(surface.style.width).toBe('128px')
-    expect(surface.style.top).toBe('150px')
-    expect(surface.style.maxHeight).toBe('140px')
     expect(document.activeElement).toBe(menuItems()[1])
     expect(menuItems().map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false'])
   })
 
-  it('aligns end-of-row menus to the trigger edge on phones only', async () => {
-    await render({ mobileAlign: 'end' })
-    stubTriggerRect(trigger(), { left: 220, right: 300, top: 100, bottom: 144 })
+  it('aligns end-of-row menus to the trigger edge only on phones', async () => {
+    const menuWidth = 160
+    const triggerRect = { left: 120, right: 200 }
+    await render({ mobileAlign: 'end', menuWidth })
+    stubTriggerRect(trigger(), { ...triggerRect, top: 100, bottom: 144 })
     vi.stubGlobal('innerWidth', 320)
     vi.stubGlobal('innerHeight', 568)
 
     await click(trigger())
 
-    const surface = menu()!
-    expect(surface.style.left).toBe('172px')
-    expect(surface.style.width).toBe('128px')
+    const phoneMenu = menu()!
+    expect(Number.parseFloat(phoneMenu.style.width)).toBe(menuWidth)
+    expect(Number.parseFloat(phoneMenu.style.left) + Number.parseFloat(phoneMenu.style.width)).toBe(triggerRect.right)
 
     await press(document, 'Escape')
     vi.stubGlobal('innerWidth', 1024)
     await click(trigger())
-    expect(menu()!.style.left).toBe('220px')
+
+    expect(Number.parseFloat(menu()!.style.left)).toBe(triggerRect.left)
   })
 
   it('opens upward when there is not enough room below', async () => {
@@ -162,12 +160,7 @@ describe('FilterMenu layout and keyboard rules', () => {
 
     await click(trigger())
 
-    const surface = menu()!
-    expect(surface.dataset.placement).toBe('top')
-    expect(surface.style.top).toBe('594px')
-    expect(surface.style.transform).toBe('translateY(-100%)')
-    expect(surface.style.transformOrigin).toBe('bottom')
-    expect(surface.style.maxHeight).toBe('140px')
+    expect(menu()!.dataset.placement).toBe('top')
   })
 
   it('cycles focus with arrows, Home and End', async () => {

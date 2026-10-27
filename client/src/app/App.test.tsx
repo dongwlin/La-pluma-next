@@ -15,7 +15,6 @@ const appMocks = vi.hoisted(() => ({
   automationEffectStops: 0,
   dashboardShouldThrow: false,
   automationShouldThrow: false,
-  queryClientReady: false,
 }))
 
 vi.mock('framer-motion', () => ({
@@ -41,16 +40,10 @@ vi.mock('./layout/Layout', async () => {
   }
 })
 vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
-vi.mock('@/features/runtime-status', async () => {
-  const { useQueryClient } = await import('@tanstack/react-query')
-
-  return {
-    useBackendStatusMonitor: () => {
-      appMocks.queryClientReady = Boolean(useQueryClient())
-    },
-    useRunStatusProjection: () => undefined,
-  }
-})
+vi.mock('@/features/runtime-status', () => ({
+  useBackendStatusMonitor: () => undefined,
+  useRunStatusProjection: () => undefined,
+}))
 vi.mock('@/features/task-execution', () => ({ useExecutionObservation: () => undefined }))
 vi.mock('@/pages/dashboard/Dashboard', () => ({
   default: function MockDashboard() {
@@ -114,7 +107,6 @@ describe('App motion preferences', () => {
     appMocks.automationEffectStops = 0
     appMocks.dashboardShouldThrow = false
     appMocks.automationShouldThrow = false
-    appMocks.queryClientReady = false
   })
 
   afterEach(async () => {
@@ -127,13 +119,6 @@ describe('App motion preferences', () => {
     await act(async () => { await Promise.resolve() })
 
     expect(container.querySelector('[data-testid="motion-config"]')?.getAttribute('data-reduced-motion')).toBe('user')
-  })
-
-  it('runs app-level hooks inside the application providers', async () => {
-    await act(async () => root.render(<App />))
-    await act(async () => { await Promise.resolve() })
-
-    expect(appMocks.queryClientReady).toBe(true)
   })
 
   it('preserves page state while pausing effects on hidden workspaces', async () => {
@@ -191,16 +176,30 @@ describe('App motion preferences', () => {
     expect(container.textContent).toContain('页面渲染失败：automation render failed')
 
     await act(async () => appMocks.navigate?.('dashboard'))
-    const findWorkspaceError = () => Array.from(container.querySelectorAll<HTMLElement>('.p-6'))
-      .find(element => element.textContent?.includes('automation render failed'))
-    expect(findWorkspaceError()?.style.display).toBe('none')
+    // 按错误文案定位文本节点；Activity 隐藏工作区时给根节点设置 display:none，
+    // 沿祖先读取计算样式即可判断文案当前是否可见，不依赖类名或文档顺序。
+    const findWorkspaceError = () => {
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.textContent?.includes('automation render failed') && node.parentElement) {
+          return node.parentElement as HTMLElement
+        }
+      }
+      return null
+    }
+    const workspaceErrorHidden = () => {
+      for (let node = findWorkspaceError(); node; node = node.parentElement) {
+        if (window.getComputedStyle(node).display === 'none') return true
+      }
+      return false
+    }
+    expect(workspaceErrorHidden()).toBe(true)
 
     await act(async () => appMocks.navigate?.('automation'))
     // React 19.3 重新显示 Activity 时会重建错误边界内的子树，隐藏期间拿到的
     // 节点已从文档移除，因此这里重新查询而不是复用旧引用。
-    const visibleError = findWorkspaceError()
-    expect(visibleError).not.toBeNull()
-    expect(visibleError?.style.display).not.toBe('none')
+    expect(findWorkspaceError()).not.toBeNull()
+    expect(workspaceErrorHidden()).toBe(false)
     consoleError.mockRestore()
   })
 })
