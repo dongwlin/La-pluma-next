@@ -181,6 +181,13 @@ const deferred = <T,>() => {
   return { promise, resolve }
 }
 
+/** 命令请求只会在 signal 中止时失败，用于验证页面在超时后恢复同一命令。 */
+const abortable = (signal: AbortSignal | null): Promise<{ success: boolean }> => new Promise((_, reject) => {
+  signal?.addEventListener('abort', () => {
+    reject(new DOMException('The operation was aborted.', 'AbortError'))
+  })
+})
+
 const ownedOperatorFixture = {
   success: true,
   data: {
@@ -478,9 +485,7 @@ describe('DataStatistics layout surfaces', () => {
     }
   })
 
-  it('writes the parsed depot snapshot and publishes affected resources after recognition', async () => {
-    const events: ResourceInvalidation[] = []
-    const unsubscribe = subscribeResourceInvalidation(event => events.push(event))
+  it('writes the parsed depot snapshot and reports the recognition result', async () => {
     const refetch = deferred<unknown>()
     mocks.executeCommand.mockResolvedValue({ success: true })
     mocks.parseDepotData.mockResolvedValue({
@@ -504,41 +509,26 @@ describe('DataStatistics layout surfaces', () => {
       })
       .mockReturnValueOnce(refetch.promise)
 
-    try {
-      await renderPage()
-      await flush()
-      await selectTab('仓库识别')
-      await click(findButton('立即执行')!)
-      await flush()
+    await renderPage()
+    await flush()
+    await selectTab('仓库识别')
+    await click(findButton('立即执行')!)
+    await flush()
 
-      expect(mocks.executeCommand).toHaveBeenCalledWith(
-        'depot',
-        [],
-        expect.objectContaining({ type: 'Depot' }),
-        expect.any(AbortSignal),
-        '仓库识别',
-        'statistics',
-        true,
-        { idempotencyKey: expect.any(String) },
-      )
-      expect(mocks.parseDepotData).toHaveBeenCalledOnce()
-      expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 3 种物品')
-      expect(client.getQueryData(gameDataKeys.resource('depot'))).toMatchObject({
-        itemCount: 3,
-        items: [{ name: '识别后的固源岩', count: 30 }],
-      })
-      expect(events).toContainEqual({
-        resources: ['depot', 'materials', 'training-queue', 'dashboard-snapshot'],
-        cause: 'recognition',
-      })
-      expect(container.textContent).toContain('物品种类')
-    } finally {
-      unsubscribe()
-    }
+    // 命令参数与失效发布由 commandOwner 覆盖；页面只负责把解析快照写回 Query 并提示。
+    expect(mocks.executeCommand).toHaveBeenCalledOnce()
+    expect(mocks.parseDepotData).toHaveBeenCalledOnce()
+    expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 3 种物品')
+    expect(client.getQueryData(gameDataKeys.resource('depot'))).toMatchObject({
+      itemCount: 3,
+      items: [{ name: '识别后的固源岩', count: 30 }],
+    })
+    expect(container.textContent).toContain('物品种类')
   })
 
-  it('writes the parsed operbox snapshot and publishes owned operator resources', async () => {
-    mocks.executeCommand.mockResolvedValue({ success: true })
+  it('writes the parsed operbox snapshot and reports the recognition result', async () => {
+    const command = deferred<{ success: boolean }>()
+    mocks.executeCommand.mockReturnValue(command.promise)
     mocks.parseOperBoxData.mockResolvedValue({
       success: true,
       data: {
@@ -550,80 +540,50 @@ describe('DataStatistics layout surfaces', () => {
         path: 'operbox.json',
       },
     })
-    mocks.getOperBoxData.mockReturnValue(new Promise(() => {}))
-    mocks.getAllOperators.mockResolvedValue({ success: true, data: [] })
-
-    const events: ResourceInvalidation[] = []
-    const unsubscribe = subscribeResourceInvalidation(event => events.push(event))
-
-    try {
-      await renderPage()
-      await flush()
-      await click(findButton('立即执行')!)
-      await flush()
-
-      expect(mocks.executeCommand).toHaveBeenCalledWith(
-        'operbox',
-        [],
-        expect.objectContaining({ type: 'OperBox' }),
-        expect.any(AbortSignal),
-        '干员识别',
-        'statistics',
-        true,
-        { idempotencyKey: expect.any(String) },
-      )
-      expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 2 名干员')
-      expect(client.getQueryData(gameDataKeys.resource('operbox'))).toMatchObject({
-        operCount: 2,
-        data: [{ name: '识别后的干员' }, { name: '另一位干员' }],
-      })
-      expect(events).toContainEqual({
-        resources: ['operbox', 'materials', 'training-queue', 'dashboard-snapshot'],
-        cause: 'recognition',
-      })
-    } finally {
-      unsubscribe()
-    }
-  })
-
-  it('does not submit a second recognition while the first command is in flight', async () => {
-    const command = deferred<{ success: boolean }>()
-    mocks.executeCommand.mockReturnValue(command.promise)
-    mocks.parseDepotData.mockResolvedValue({
-      success: true,
-      data: { itemCount: 3, items: [], path: 'depot.json' },
-    })
+    // 识别后的跨域失效会触发页面自身的后台重读；保持挂起，确保断言的是
+    // 解析快照写入路径，而不是随后一次 GET 恰好返回了新数据。
+    mocks.getOperBoxData
+      .mockReset()
+      .mockResolvedValueOnce(ownedOperatorFixture)
+      .mockReturnValue(new Promise(() => {}))
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
 
     await renderPage()
     await flush()
-    await selectTab('仓库识别')
+    await selectTab('干员识别')
     await click(findButton('立即执行')!)
 
-    // 运行中按钮由领域命令状态切换为 loading/disabled；再次触发也不会产生第二个设备命令。
+    // 运行中按钮由领域命令状态切换为 loading/disabled，不会产生第二个设备命令。
     const runningButton = findButton('正在执行')
     expect(runningButton).toBeDefined()
     expect(runningButton?.disabled).toBe(true)
     await click(runningButton!)
 
-    expect(mocks.executeCommand).toHaveBeenCalledTimes(1)
+    expect(mocks.executeCommand).toHaveBeenCalledOnce()
 
     command.resolve({ success: true })
     await flush()
-    expect(mocks.parseDepotData).toHaveBeenCalledOnce()
-    expect(mocks.executeCommand).toHaveBeenCalledTimes(1)
+
+    // 命令参数、幂等键与失效发布由 commandOwner 覆盖；页面只负责把解析快照
+    // 写回 Query 并提示。
+    expect(mocks.parseOperBoxData).toHaveBeenCalledOnce()
+    expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 2 名干员')
+    expect(client.getQueryData(gameDataKeys.resource('operbox'))).toMatchObject({
+      operCount: 2,
+      data: [{ name: '识别后的干员' }, { name: '另一位干员' }],
+    })
   })
 
-  it('keeps a timed-out recognition resumable without executing the command again', async () => {
+  it('offers to continue parsing after a parse timeout without executing the command again', async () => {
     vi.useFakeTimers()
     mocks.executeCommand.mockResolvedValue({ success: true })
     mocks.parseDepotData.mockResolvedValue({ success: true, data: null })
-    const refetch = deferred<unknown>()
     mocks.getDepotData
       .mockResolvedValueOnce({
         success: true,
         data: { itemCount: 12, items: [], timestamp: '2026-07-20T08:00:00.000Z' },
       })
-      .mockReturnValueOnce(refetch.promise)
+      .mockReturnValueOnce(new Promise(() => {}))
 
     await renderPage()
     await flush()
@@ -654,6 +614,47 @@ describe('DataStatistics layout surfaces', () => {
       itemCount: 3,
       items: [{ name: '识别后的固源岩' }],
     })
+  })
+
+  it('offers a retry label when the command result is uncertain', async () => {
+    vi.useFakeTimers()
+    mocks.executeCommand
+      .mockImplementationOnce((_command, _args, _task, signal: AbortSignal) => abortable(signal))
+      .mockResolvedValueOnce({ success: true })
+    mocks.parseDepotData.mockResolvedValue({
+      success: true,
+      data: {
+        itemCount: 3,
+        items: [{ id: '30012', name: '识别后的固源岩', count: 30, iconId: 'rock', classifyType: 'MATERIAL' }],
+        path: 'depot.json',
+      },
+    })
+    mocks.getDepotData
+      .mockResolvedValueOnce({
+        success: true,
+        data: { itemCount: 12, items: [], timestamp: '2026-07-20T08:00:00.000Z' },
+      })
+      .mockReturnValueOnce(new Promise(() => {}))
+
+    await renderPage()
+    await flush()
+    await selectTab('仓库识别')
+    await click(findButton('立即执行')!)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 500)
+    })
+    await flush()
+
+    expect(mocks.executeCommand).toHaveBeenCalledTimes(1)
+    expect(findButton('重试识别')).toBeDefined()
+
+    await click(findButton('重试识别')!)
+    await flush()
+
+    // 继续的是同一逻辑命令：幂等键复用由 commandOwner 覆盖，页面只重新展示解析结果。
+    expect(mocks.executeCommand).toHaveBeenCalledTimes(2)
+    expect(client.getQueryData(gameDataKeys.resource('depot'))).toMatchObject({ itemCount: 3 })
   })
 
   it('keeps the operator filters across tab switches instead of losing panel state', async () => {

@@ -85,6 +85,10 @@ const findButton = (label: string) => Array.from(container.querySelectorAll<HTML
 const findAction = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.getAttribute('aria-label') === label)
 
+/** 历史文件行按可见文件名定位，不依赖列表行的包裹类名。 */
+const findHistoryRow = (file: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+  .find(button => button.textContent?.includes(file))
+
 const changeSelect = async (select: HTMLSelectElement, value: string) => {
   await act(async () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
@@ -164,7 +168,7 @@ describe('LogViewer recovery and controls', () => {
     await renderComponent()
 
     expect(container.querySelector('h1')?.textContent).toBe('日志')
-    const error = container.querySelector<HTMLElement>('.log-console-state.is-error')
+    const error = container.querySelector<HTMLElement>('[role="alert"]')
     expect(error?.textContent).toContain('实时日志暂不可用')
     expect(container.textContent).not.toContain('暂无实时日志，等待任务执行')
     const realtimeRetry = error?.querySelector<HTMLButtonElement>('button')
@@ -172,11 +176,10 @@ describe('LogViewer recovery and controls', () => {
     await click(realtimeRetry!)
 
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
-    expect(container.querySelector('.log-console-state.is-error')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('TaskChainStart')
-    expect(container.querySelector('.log-mode-shell.app-liquid-tab-pill')).not.toBeNull()
-    expect(container.querySelector('.log-toolbar .log-mode-shell')).toBeNull()
-    const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('.log-mode-shell [role="tab"]'))
+    expect(container.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('日志内容模式')
+    const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
     expect(modeTabs).toHaveLength(2)
     expect(modeTabs[0]?.getAttribute('aria-selected')).toBe('true')
     await click(modeTabs[1]!)
@@ -203,7 +206,7 @@ describe('LogViewer recovery and controls', () => {
       .mockResolvedValueOnce({ success: false, message: '后台刷新暂不可用' })
 
     await renderComponent()
-    expect(container.querySelector('.log-row')?.textContent).toContain('保留这条实时日志')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('保留这条实时日志')
 
     visibility = 'hidden'
     await act(async () => document.dispatchEvent(new Event('visibilitychange')))
@@ -213,8 +216,8 @@ describe('LogViewer recovery and controls', () => {
     await flush()
 
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
-    expect(container.querySelector('.log-console-state.is-error')?.textContent).toContain('后台刷新暂不可用')
-    expect(container.querySelector('.log-row')?.textContent).toContain('保留这条实时日志')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('后台刷新暂不可用')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('保留这条实时日志')
   })
 
   it('offers retry for both the history list and a selected history file', async () => {
@@ -232,28 +235,28 @@ describe('LogViewer recovery and controls', () => {
       .mockResolvedValueOnce({ success: true, data: { content: '[2026-07-22 10:11:12][INFO] recovered' } })
 
     await renderComponent()
-    const historyError = container.querySelector<HTMLElement>('.log-history-state.is-error')
+    const historyError = container.querySelector<HTMLElement>('[role="alert"]')
     expect(historyError?.textContent).toContain('历史列表读取失败')
     expect(container.textContent).not.toContain('暂无历史日志文件')
     const historyRetry = historyError?.querySelector<HTMLButtonElement>('button')
     expect(historyRetry).not.toBeNull()
     await click(historyRetry!)
 
-    const historyRow = container.querySelector<HTMLButtonElement>('.log-history-row')
-    expect(historyRow?.textContent).toContain('maa.log')
+    const historyRow = findHistoryRow('maa.log')
+    expect(historyRow).not.toBeUndefined()
     await click(historyRow!)
     expect(historyRow?.getAttribute('aria-current')).toBe('true')
-    expect(container.querySelector('.log-console-content .surface-soft')?.textContent).toContain('maa.log')
+    expect(findButton('返回实时')).toBeDefined()
 
-    const fileError = container.querySelector<HTMLElement>('.log-console-state.is-error')
+    const fileError = container.querySelector<HTMLElement>('[role="alert"]')
     expect(fileError?.textContent).toContain('日志文件读取失败')
-    expect(container.querySelectorAll('.log-history-row')).toHaveLength(1)
+    expect(findHistoryRow('maa.log')).not.toBeUndefined()
     const fileRetry = fileError?.querySelector<HTMLButtonElement>('button')
     expect(fileRetry).not.toBeNull()
     await click(fileRetry!)
 
     expect(mocks.readLogFile).toHaveBeenCalledTimes(2)
-    expect(container.querySelector('.log-console-state.is-error')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('recovered')
   })
 
@@ -278,7 +281,7 @@ describe('LogViewer recovery and controls', () => {
       .find(input => input.getAttribute('aria-label') === '自动滚动')
     expect(autoScroll()?.checked).toBe(true)
 
-    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    await click(findHistoryRow('maa.log')!)
     expect(mocks.readLogFile).toHaveBeenCalledWith(target.path, 1000, expect.any(AbortSignal))
     expect(container.textContent).toContain('历史内容')
     expect(autoScroll()?.checked).toBe(false)
@@ -313,21 +316,23 @@ describe('LogViewer recovery and controls', () => {
     ))
 
     await renderComponent()
-    const rows = container.querySelectorAll<HTMLButtonElement>('.log-history-row')
-    expect(rows).toHaveLength(2)
-    await click(rows[0]!)
-    await click(rows[1]!)
+    const olderRow = findHistoryRow('older.log')
+    const newerRow = findHistoryRow('newer.log')
+    expect(olderRow).toBeDefined()
+    expect(newerRow).toBeDefined()
+    await click(olderRow!)
+    await click(newerRow!)
 
     newer.resolve({ success: true, data: { content: historyLine('新选择') } })
     await flush()
     expect(container.textContent).toContain('新选择')
-    expect(rows[1]?.getAttribute('aria-current')).toBe('true')
+    expect(newerRow?.getAttribute('aria-current')).toBe('true')
 
     older.resolve({ success: true, data: { content: historyLine('旧选择') } })
     await flush()
     expect(container.textContent).toContain('新选择')
     expect(container.textContent).not.toContain('旧选择')
-    expect(rows[1]?.getAttribute('aria-current')).toBe('true')
+    expect(newerRow?.getAttribute('aria-current')).toBe('true')
   })
 
   it('keeps content mode and auto-scroll across history switching and retry', async () => {
@@ -339,18 +344,18 @@ describe('LogViewer recovery and controls', () => {
       .mockResolvedValueOnce({ success: true, data: { content: historyLine('原始模式内容') } })
 
     await renderComponent()
-    const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('.log-mode-shell [role="tab"]'))
+    const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
     await click(modeTabs[1]!)
     expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
     const autoScroll = () => Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
       .find(input => input.getAttribute('aria-label') === '自动滚动')
 
-    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    await click(findHistoryRow('maa.log')!)
     expect(autoScroll()?.checked).toBe(false)
     expect(autoScroll()?.disabled).toBe(true)
-    expect(container.querySelector('.log-console-state.is-error')?.textContent).toContain('日志文件读取失败')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('日志文件读取失败')
 
-    await click(container.querySelector<HTMLButtonElement>('.log-console-state.is-error button')!)
+    await click(container.querySelector<HTMLButtonElement>('[role="alert"] button')!)
     expect(container.textContent).toContain('原始模式内容')
     expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
 
@@ -388,7 +393,7 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('实时错误行')
     expect(container.textContent).not.toContain('实时普通行')
 
-    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    await click(findHistoryRow('maa.log')!)
     expect(container.textContent).toContain('历史错误行')
     expect(container.textContent).not.toContain('历史普通行')
 
@@ -408,7 +413,7 @@ describe('LogViewer recovery and controls', () => {
     mocks.cleanupLogs.mockResolvedValue({ success: true, message: '已清理 1 个日志文件' })
 
     await renderComponent()
-    expect(container.querySelector('.log-history-row')).not.toBeNull()
+    expect(findHistoryRow('maa.log')).toBeDefined()
 
     const cleanup = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent === '清理旧日志')
@@ -506,15 +511,15 @@ describe('LogViewer recovery and controls', () => {
       .mockResolvedValueOnce({ success: true, data: [realtimeLine('恢复后的日志')] })
 
     await renderComponent()
-    expect(container.querySelector('.log-console-state.is-error')?.textContent).toContain('实时日志暂不可用')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('实时日志暂不可用')
 
     await click(findAction('暂停实时日志')!)
     expect(findAction('继续实时日志')).not.toBeUndefined()
 
-    await click(container.querySelector<HTMLButtonElement>('.log-console-state.is-error button')!)
+    await click(container.querySelector<HTMLButtonElement>('[role="alert"] button')!)
 
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
-    expect(container.querySelector('.log-console-state.is-error')).toBeNull()
+    expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('恢复后的日志')
     expect(findAction('暂停实时日志')).not.toBeUndefined()
   })
@@ -557,7 +562,7 @@ describe('LogViewer recovery and controls', () => {
 
     await renderComponent()
     await click(findAction('暂停实时日志')!)
-    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    await click(findHistoryRow('maa.log')!)
 
     expect(container.textContent).toContain('历史内容')
     expect(findAction('暂停实时日志')).toBeUndefined()
@@ -595,7 +600,7 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('实时命中关键字')
     expect(container.textContent).not.toContain('实时普通行')
 
-    await click(container.querySelector<HTMLButtonElement>('.log-history-row')!)
+    await click(findHistoryRow('maa.log')!)
     expect(container.textContent).toContain('历史命中关键字')
     expect(container.textContent).not.toContain('历史普通行')
     expect(search?.value).toBe('关键字')
@@ -621,8 +626,9 @@ describe('LogViewer recovery and controls', () => {
     })
 
     await renderComponent()
-    expect(container.querySelectorAll('.log-row')).toHaveLength(2)
-    expect(container.querySelector('.log-repeat')?.textContent).toBe('x2')
+    // 重复行折叠后页面只展示两条日志；计数与折叠标记都来自可见内容。
+    expect(container.textContent).toContain('2 条')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('x2')
 
     await click(findButton('导出')!)
 

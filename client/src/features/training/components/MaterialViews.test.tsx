@@ -52,18 +52,15 @@ describe('training material views', () => {
       .toEqual(['固源岩', '2', '5', '3', '龙门币', '2', '2', '已齐'])
   })
 
-  it('renders nested synthesis levels as a hierarchy', async () => {
+  it('renders nested synthesis levels with parent and child materials', async () => {
     const parent = {
       ...material('30013', '聚酸酯', 1),
       children: [material('30012', '固源岩', 2)],
     }
     await act(async () => root.render(<MaterialTree nodes={[parent]} />))
 
-    const topLevel = container.querySelectorAll(':scope > ul.training-material-tree > li')
-    expect(topLevel).toHaveLength(1)
-    expect(topLevel[0]?.textContent).toContain('聚酸酯')
-    expect(topLevel[0]?.textContent).toContain('缺 1')
-    expect(topLevel[0]?.querySelectorAll('.training-material-tree > li')).toHaveLength(1)
-    expect(topLevel[0]?.textContent).toContain('固源岩')
+    expect(container.textContent).toContain('聚酸酯')
+    expect(container.textContent).toContain('缺 1')
+    expect(container.textContent).toContain('固源岩')
   })
 })

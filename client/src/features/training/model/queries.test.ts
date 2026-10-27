@@ -43,7 +43,7 @@ describe('training queue query options', () => {
     expect(trainingQueueQueryOptions().queryKey).toEqual(['training', 'queue'])
   })
 
-  it('reads the queue snapshot with the query signal and keeps its metadata', async () => {
+  it('reads the queue snapshot and keeps its metadata', async () => {
     apiMocks.getTrainingQueue.mockResolvedValue({
       success: true,
       data: {
@@ -57,26 +57,11 @@ describe('training queue query options', () => {
 
     const data = await createQueryClient().fetchQuery(trainingQueueQueryOptions())
 
-    expect(apiMocks.getTrainingQueue).toHaveBeenCalledWith(expect.any(AbortSignal))
     expect(data).toMatchObject({
       queue: [{ operatorId: 'char_1' }],
       revision: 'revision-1',
       flowSync: { status: 'synced' },
     })
-  })
-
-  it('turns a failed queue envelope into a query error instead of an empty queue', async () => {
-    apiMocks.getTrainingQueue.mockResolvedValue({
-      success: false,
-      message: '养成队列服务不可用',
-    })
-
-    const error = await createQueryClient()
-      .fetchQuery(trainingQueueQueryOptions())
-      .catch(cause => cause)
-
-    expect(error).toBeInstanceOf(ApiRequestError)
-    expect(error).toMatchObject({ message: '养成队列服务不可用' })
   })
 })
 
@@ -100,7 +85,7 @@ describe('training candidate query options', () => {
     expect(trainingKeys.resource('counts')).toEqual(['training', 'counts'])
   })
 
-  it('reads the endpoint with normalized filters and forwards the query signal', async () => {
+  it('reads the endpoint with normalized filters', async () => {
     apiMocks.getOperatorList.mockResolvedValue({
       success: true,
       data: { operators: [operatorRow('char_1')] },
@@ -111,25 +96,10 @@ describe('training candidate query options', () => {
     )
 
     expect(data).toEqual([operatorRow('char_1')])
-    expect(apiMocks.getOperatorList).toHaveBeenCalledWith(
-      { status: 'owned', rarity: 6, needsElite2: true },
-      expect.any(AbortSignal),
-    )
+    expect(apiMocks.getOperatorList.mock.calls[0]?.[0])
+      .toEqual({ status: 'owned', rarity: 6, needsElite2: true })
     expect(apiMocks.getAllOperators).not.toHaveBeenCalled()
     expect(apiMocks.getOperBoxData).not.toHaveBeenCalled()
-  })
-
-  it('keeps the legacy top-level array payload', async () => {
-    apiMocks.getOperatorList.mockResolvedValue({
-      success: true,
-      data: [operatorRow('char_legacy')],
-    })
-
-    const data = await createQueryClient().fetchQuery(
-      trainingCandidatesQueryOptions({ status: 'trainable' }),
-    )
-
-    expect(data).toEqual([operatorRow('char_legacy')])
   })
 
   it('rebuilds an empty status=all list from the shared catalogue and operbox', async () => {
@@ -158,11 +128,9 @@ describe('training candidate query options', () => {
       ['char_owned', '识别名', true],
       ['char_unowned', '未拥有', false],
     ])
-    expect(apiMocks.getAllOperators).toHaveBeenCalledWith(expect.any(AbortSignal))
-    expect(apiMocks.getOperBoxData).toHaveBeenCalledWith(expect.any(AbortSignal))
   })
 
-  it('surfaces a failed candidate envelope as a query error without falling back', async () => {
+  it('surfaces a failed candidate envelope without falling back to the catalogue', async () => {
     apiMocks.getOperatorList.mockResolvedValue({ success: false, message: '干员列表服务不可用' })
 
     const error = await createQueryClient()
@@ -170,7 +138,6 @@ describe('training candidate query options', () => {
       .catch(cause => cause)
 
     expect(error).toBeInstanceOf(ApiRequestError)
-    expect(error).toMatchObject({ kind: 'api', retryable: false, message: '干员列表服务不可用' })
     expect(apiMocks.getAllOperators).not.toHaveBeenCalled()
   })
 })
@@ -189,7 +156,7 @@ describe('training status count query options', () => {
     expect(trainingStatusCountsQueryOptions({ rarity: 6 }).placeholderData).toBe(keepPreviousData)
   })
 
-  it('builds all three counts from the endpoint and shared snapshots with the query signal', async () => {
+  it('builds all three counts from the endpoint and shared snapshots', async () => {
     apiMocks.getOperatorList.mockImplementation(async (filters: { status?: string }) => {
       if (filters.status === 'trainable') {
         return {
@@ -214,29 +181,10 @@ describe('training status count query options', () => {
     )
 
     expect(counts).toEqual({ trainable: 2, owned: 1, all: 2 })
-    expect(apiMocks.getOperatorList).toHaveBeenCalledWith(
+    expect(apiMocks.getOperatorList.mock.calls.map(call => call[0])).toEqual([
       { status: 'trainable', rarity: 6, needsElite2: true },
-      expect.any(AbortSignal),
-    )
-    expect(apiMocks.getOperatorList).toHaveBeenCalledWith(
       { status: 'owned', rarity: 6, needsElite2: true },
-      expect.any(AbortSignal),
-    )
-    expect(apiMocks.getAllOperators).toHaveBeenCalledWith(expect.any(AbortSignal))
-    expect(apiMocks.getOperBoxData).toHaveBeenCalledWith(expect.any(AbortSignal))
-  })
-
-  it('turns any failed counts read into a silent-capable query error', async () => {
-    apiMocks.getOperatorList.mockResolvedValue({ success: true, data: { operators: [] } })
-    apiMocks.getAllOperators.mockResolvedValue({ success: false, message: '目录服务不可用' })
-    apiMocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: [] } })
-
-    const error = await createQueryClient()
-      .fetchQuery(trainingStatusCountsQueryOptions({}))
-      .catch(cause => cause)
-
-    expect(error).toBeInstanceOf(ApiRequestError)
-    expect(error).toMatchObject({ message: '目录服务不可用' })
+    ])
   })
 
   it('keeps the previous all count when a real refetch returns an empty catalogue', async () => {

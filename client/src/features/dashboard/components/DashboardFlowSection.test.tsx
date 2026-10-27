@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { Activity, act, useEffect } from 'react'
+import { Activity, act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DashboardFlowSection from './DashboardFlowSection'
@@ -8,29 +8,19 @@ import { usePreviewStore } from '@/features/device-mirror'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-const previewSpies = vi.hoisted(() => ({ effectRuns: 0, cleanups: 0 }))
-
 vi.mock('../hooks/useDashboardPreview', () => ({
-  useDashboardPreview: () => {
-    useEffect(() => {
-      previewSpies.effectRuns += 1
-      return () => {
-        previewSpies.cleanups += 1
-      }
-    }, [])
-    return {
-      videoRef: { current: null },
-      fallbackSnapshot: null,
-      showLivePreview: false,
-      isConnecting: false,
-      connectionState: 'off',
-      statusText: '预览已关闭',
-      headerStatusText: '预览已关闭',
-      retry: vi.fn(),
-      error: null,
-      available: true,
-    }
-  },
+  useDashboardPreview: () => ({
+    videoRef: { current: null },
+    fallbackSnapshot: null,
+    showLivePreview: false,
+    isConnecting: false,
+    connectionState: 'off',
+    statusText: '预览已关闭',
+    headerStatusText: '预览已关闭',
+    retry: vi.fn(),
+    error: null,
+    available: true,
+  }),
 }))
 
 vi.mock('../hooks/useDashboardFlowLayout', () => ({
@@ -74,8 +64,6 @@ async function renderSection(mode: 'visible' | 'hidden', onOpenAutomation = vi.f
 
 describe('DashboardFlowSection preview lifecycle', () => {
   beforeEach(() => {
-    previewSpies.effectRuns = 0
-    previewSpies.cleanups = 0
     usePreviewStore.setState({ mode: 'off' })
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -87,19 +75,16 @@ describe('DashboardFlowSection preview lifecycle', () => {
     container.remove()
   })
 
-  it('keeps the preview entry mounted while Activity rebuilds its Effects', async () => {
+  it('keeps the preview entry mounted across Activity visibility changes', async () => {
     await renderSection('visible')
     expect(container.querySelector('[data-testid="flow-panel"]')).not.toBeNull()
     expect(container.querySelector('[data-dashboard-preview-card]')).not.toBeNull()
-    expect(previewSpies.effectRuns).toBe(1)
 
     await renderSection('hidden')
-    expect(previewSpies.cleanups).toBe(1)
     // Activity 隐藏保留 DOM 与组件状态，预览入口不因流程/快照区域而条件卸载。
     expect(container.querySelector('[data-dashboard-preview-card]')).not.toBeNull()
 
     await renderSection('visible')
-    expect(previewSpies.effectRuns).toBe(2)
     expect(container.querySelector('[data-dashboard-preview-card]')).not.toBeNull()
   })
 

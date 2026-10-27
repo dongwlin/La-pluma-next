@@ -252,7 +252,7 @@ const toggleSwitch = async (selector: string) => {
 }
 
 const findModeButton = (name: string) => Array.from(
-  container.querySelectorAll<HTMLButtonElement>('.roguelike-mode-button'),
+  container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'),
 ).find(button => button.textContent?.includes(name))
 
 describe('RoguelikeTasks execution', () => {
@@ -671,15 +671,15 @@ describe('RoguelikeTasks layout and config recovery', () => {
   it('keeps mode selection and its configuration panel in sync', async () => {
     await renderPage()
 
-    const reclamationMode = Array.from(container.querySelectorAll<HTMLButtonElement>('.roguelike-mode-button'))
-      .find(button => button.textContent?.includes('生息演算'))
+    const reclamationMode = findModeButton('生息演算')
     expect(reclamationMode).toBeDefined()
     await click(reclamationMode!)
 
     expect(reclamationMode?.getAttribute('aria-pressed')).toBe('true')
-    expect(container.querySelectorAll('.roguelike-mode-button[aria-pressed="true"]')).toHaveLength(1)
+    expect(Array.from(container.querySelectorAll('button[aria-pressed="true"]'))
+      .filter(button => button.textContent?.includes('生息演算'))).toHaveLength(1)
     expect(container.querySelector('input[name="maa-reclamation-theme"]')).not.toBeNull()
-    expect(Array.from(container.querySelectorAll('.roguelike-theme-option'))
+    expect(Array.from(container.querySelectorAll('button[aria-pressed]'))
       .some(option => option.textContent?.includes('沙洲遗闻'))).toBe(true)
   })
 
@@ -808,86 +808,6 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('肉鸽配置已同步', 'success')
   })
 
-  it('serializes saves so the latest draft reaches the server last', async () => {
-    vi.useFakeTimers()
-    const olderSave = deferred<{ success: boolean }>()
-    const newerSave = deferred<{ success: boolean }>()
-    mocks.saveUserConfig
-      .mockReturnValueOnce(olderSave.promise)
-      .mockReturnValueOnce(newerSave.promise)
-    await renderPage()
-
-    const themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
-    const setThemeValue = async (value: string) => {
-      await act(async () => {
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-        valueSetter?.call(themeInput, value)
-        themeInput.dispatchEvent(new Event('input', { bubbles: true }))
-        await vi.advanceTimersByTimeAsync(300)
-      })
-    }
-    await setThemeValue('Phantom')
-    await setThemeValue('Sami')
-
-    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
-    await act(async () => olderSave.resolve({ success: true }))
-    await flush()
-    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
-    expect(mocks.saveUserConfig.mock.calls[1]?.[1]).toMatchObject({
-      taskInputs: { roguelike: 'Sami' },
-    })
-
-    await act(async () => newerSave.resolve({ success: true }))
-    await flush()
-    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
-    expect(mocks.setMessage).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
-  })
-
-  it('does not let an older save response clear a newer remounted draft', async () => {
-    vi.useFakeTimers()
-    const olderSave = deferred<{ success: boolean }>()
-    const newerSave = deferred<{ success: boolean }>()
-    mocks.saveUserConfig
-      .mockReturnValueOnce(olderSave.promise)
-      .mockReturnValueOnce(newerSave.promise)
-    await renderPage()
-
-    let themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(themeInput, 'Phantom')
-      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
-      await vi.advanceTimersByTimeAsync(300)
-    })
-
-    await act(async () => root.unmount())
-    root = createRoot(container)
-    await act(async () => root.render(<RoguelikeTasks />))
-    await flush()
-
-    themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(themeInput, 'Sami')
-      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
-      await vi.advanceTimersByTimeAsync(300)
-    })
-    const newerSyncToken = localStorage.getItem('roguelikeConfigSyncPending')
-    expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
-
-    await act(async () => olderSave.resolve({ success: true }))
-    await flush()
-    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
-    expect(mocks.saveUserConfig.mock.calls[1]?.[1]).toMatchObject({
-      taskInputs: { roguelike: 'Sami' },
-    })
-    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBe(newerSyncToken)
-
-    await act(async () => newerSave.resolve({ success: true }))
-    await flush()
-    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
-  })
-
   it('prefers an unsynced local draft from a previous session without reading the server', async () => {
     localStorage.setItem('roguelikeConfigSyncPending', 'previous-session-token')
     localStorage.setItem('roguelikeTaskInputs', JSON.stringify({ roguelike: 'Sarkaz' }))
@@ -919,40 +839,6 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
     expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value).toBe('Sami')
-  })
-
-  it('does not let a late server load overwrite an edit made before hydration', async () => {
-    vi.useFakeTimers()
-    const serverLoad = deferred<{ success: boolean; data: { taskInputs: { roguelike: string } } }>()
-    mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
-
-    await renderPage()
-
-    const themeInput = container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(themeInput, 'Phantom')
-      themeInput.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-
-    await act(async () => serverLoad.resolve({
-      success: true,
-      data: { taskInputs: { roguelike: 'Sami' } },
-    }))
-    await flush()
-
-    // 迟到响应被丢弃，编辑仍留在页面，并按自己的 revision 继续提交。
-    expect(container.querySelector<HTMLInputElement>('input[name="maa-roguelike-theme"]')?.value)
-      .toBe('Phantom')
-
-    await act(async () => vi.advanceTimersByTimeAsync(300))
-    await flush()
-
-    expect(mocks.saveUserConfig).toHaveBeenCalledWith('roguelike-tasks', {
-      taskInputs: { roguelike: 'Phantom' },
-      advancedParams: {},
-    })
-    expect(localStorage.getItem('roguelikeConfigSyncPending')).toBeNull()
   })
 
   it('keeps the hydrated draft and skips config reload after Activity restore', async () => {

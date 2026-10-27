@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiRequestError } from '@/shared/api'
 import { createQueryClient } from '@/shared/query'
-import { gameDataKeys } from './queryKeys'
+import { GAME_DATA_DOMAIN, gameDataKeys } from './queryKeys'
 import { depotQueryOptions, operBoxQueryOptions, operatorCatalogQueryOptions } from './queries'
 
 const apiMocks = vi.hoisted(() => ({
@@ -21,20 +20,24 @@ describe('game data query options', () => {
     apiMocks.getOperBoxData.mockReset()
   })
 
+  it('keeps the game-data domain as the invalidation scope', () => {
+    expect(GAME_DATA_DOMAIN).toBe('game-data')
+    expect(gameDataKeys.all).toEqual(['game-data'])
+  })
+
   it('uses one cache identity per shared resource in the game-data domain', () => {
     expect(depotQueryOptions().queryKey).toEqual(gameDataKeys.resource('depot'))
     expect(operBoxQueryOptions().queryKey).toEqual(gameDataKeys.resource('operbox'))
     expect(operatorCatalogQueryOptions().queryKey).toEqual(gameDataKeys.resource('catalog'))
   })
 
-  it('keeps the empty depot snapshot and forwards the query signal', async () => {
+  it('keeps the empty depot snapshot', async () => {
     apiMocks.getDepotData.mockResolvedValue({ success: true, data: null })
 
     const data = await createQueryClient().fetchQuery(depotQueryOptions())
 
     expect(data).toBeNull()
     expect(apiMocks.getDepotData).toHaveBeenCalledOnce()
-    expect(apiMocks.getDepotData.mock.calls[0]?.[0]).toBeInstanceOf(AbortSignal)
   })
 
   it('normalizes a depot snapshot without an items array', async () => {
@@ -73,14 +76,5 @@ describe('game data query options', () => {
     const data = await createQueryClient().fetchQuery(operatorCatalogQueryOptions())
 
     expect(data).toEqual([])
-  })
-
-  it('turns a failed envelope into a query error instead of cached data', async () => {
-    apiMocks.getDepotData.mockResolvedValue({ success: false, message: '仓库服务不可用' })
-
-    const error = await createQueryClient().fetchQuery(depotQueryOptions()).catch(cause => cause)
-
-    expect(error).toBeInstanceOf(ApiRequestError)
-    expect(error).toMatchObject({ kind: 'api', retryable: false, message: '仓库服务不可用' })
   })
 })

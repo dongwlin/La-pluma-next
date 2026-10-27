@@ -95,7 +95,8 @@ const buttonWithText = (text: string): HTMLButtonElement | undefined => Array.fr
   document.querySelectorAll<HTMLButtonElement>('button'),
 ).find(candidate => candidate.textContent?.trim() === text)
 
-const renderedCards = () => document.querySelectorAll('.training-operator-item').length
+// 卡片容器本身没有语义 role，用每张卡片唯一的“添加”按钮可访问名计数行数。
+const renderedCards = () => document.querySelectorAll('[role="dialog"] button[aria-label^="添加"]').length
 
 function Harness() {
   const [open, setOpen] = useState(true)

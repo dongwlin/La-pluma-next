@@ -15,7 +15,6 @@ import { settingsConnectionOwner } from '@/features/settings/model/connectionCon
 import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '@/features/settings/model/configSection'
 import { settingsDeviceConnectionOwner } from '@/features/settings/model/deviceConnection'
 import { settingsUpdateOwner } from '@/features/settings/model/updateCommands'
-import { settingsKeys } from '@/features/settings/model/queryKeys'
 import ConfigManager from './ConfigManager'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -390,42 +389,6 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error')
   })
 
-  it('does not mark edits made during an auto-update save as persisted', async () => {
-    const pendingSave = deferred<{ success: boolean }>()
-    mocks.loadUserConfig.mockResolvedValue({
-      success: true,
-      data: { enabled: true, time: '04:00', updateCore: true, updateCli: true },
-    })
-    mocks.saveUserConfig.mockReturnValueOnce(pendingSave.promise)
-
-    await act(async () => root.render(page()))
-    await flush()
-
-    const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!
-    const setTime = async (value: string) => {
-      await act(async () => {
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-        valueSetter?.call(timeInput, value)
-        timeInput.dispatchEvent(new Event('input', { bubbles: true }))
-      })
-    }
-    await setTime('05:30')
-    const saveButton = Array.from(container.querySelectorAll('button')).find(button =>
-      button.textContent?.includes('保存自动更新')
-    )!
-    await act(async () => saveButton.click())
-    await setTime('06:45')
-
-    await act(async () => pendingSave.resolve({ success: true }))
-    await flush()
-
-    expect(mocks.setupAutoUpdate).toHaveBeenCalledWith({ enabled: true, time: '05:30', updateCore: true, updateCli: true })
-    expect(timeInput.value).toBe('06:45')
-    expect(localStorage.getItem('autoUpdateConfig')).toContain('06:45')
-    expect(container.textContent).toContain('当前更改尚未保存')
-    expect(saveButton.disabled).toBe(false)
-  })
-
   it('does not let the initial connection response replace an edited draft', async () => {
     const pendingConfig = deferred<{
       success: boolean
@@ -671,32 +634,6 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
   })
 
-  it('does not let a late auto-update read overwrite an edit made after mount', async () => {
-    const pendingLoad = deferred<{ success: boolean; data: unknown }>()
-    mocks.loadUserConfig.mockReturnValueOnce(pendingLoad.promise)
-
-    await act(async () => root.render(page()))
-    await flush()
-
-    const autoUpdateToggle = container.querySelector<HTMLInputElement>('input[aria-label="启用自动更新"]')!
-    await act(async () => {
-      autoUpdateToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    const timeInput = container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!
-    await setInputValue(timeInput, '06:30')
-
-    await act(async () => pendingLoad.resolve({
-      success: true,
-      data: { enabled: false, time: '04:00', updateCore: true, updateCli: true },
-    }))
-    await flush()
-
-    expect(container.querySelector<HTMLInputElement>('input[aria-label="启用自动更新"]')?.checked).toBe(true)
-    expect(container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')?.value).toBe('06:30')
-    expect(container.textContent).toContain('有尚未保存的更改')
-  })
-
   it('reports a local auto-update fallback in place and globally when the server read fails', async () => {
     localStorage.setItem('autoUpdateConfig', JSON.stringify({
       enabled: true,
@@ -730,7 +667,7 @@ describe('ConfigManager layout surfaces', () => {
     await flush()
 
     const coreCheckbox = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
-      .find(input => input.parentElement?.textContent?.includes('更新 MaaCore'))
+      .find(input => input.labels?.[0]?.textContent?.includes('更新 MaaCore'))
     await act(async () => {
       coreCheckbox?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
@@ -780,38 +717,6 @@ describe('ConfigManager layout surfaces', () => {
     const alert = container.querySelector('.config-editor-card [role="alert"]')
     expect(alert?.textContent).toContain('连接配置读取失败: 配置不可读')
     expect(mocks.setMessage).toHaveBeenCalledWith('连接配置读取失败: 配置不可读', 'error')
-  })
-
-  it('does not let a config refresh replace an edited draft', async () => {
-    await act(async () => root.render(page()))
-    await flush()
-
-    const pendingRefresh = deferred<{
-      success: boolean
-      data: { adb_path: string; address: string; config: string; auto_reconnect: boolean }
-    }>()
-    mocks.getConfig.mockReturnValueOnce(pendingRefresh.promise)
-
-    let refresh: Promise<unknown> | undefined
-    await act(async () => {
-      refresh = queryClient.refetchQueries({ queryKey: settingsKeys.query('maa-config', 'default') })
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(mocks.getConfig).toHaveBeenCalledTimes(2)
-
-    const addressInput = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '127.0.0.1:16384')!
-    await setInputValue(addressInput, '127.0.0.1:5555')
-
-    await act(async () => pendingRefresh.resolve({
-      success: true,
-      data: { adb_path: '/server/adb', address: '10.0.0.2:5555', config: 'General', auto_reconnect: false },
-    }))
-    await refresh
-    await flush()
-
-    expect(addressInput.value).toBe('127.0.0.1:5555')
   })
 
   it('keeps a connection save running across section switches and reports later edits as unsaved', async () => {

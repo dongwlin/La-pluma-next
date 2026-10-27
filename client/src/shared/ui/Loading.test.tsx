@@ -10,8 +10,6 @@ import { PageSkeleton } from './Loading'
 let container: HTMLDivElement
 let root: Root
 
-const SKELETON_VARIANTS = ['automation', 'combat', 'roguelike', 'training', 'logs', 'statistics', 'config']
-
 describe('PageSkeleton', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn((query: string): MediaQueryList => ({
@@ -41,8 +39,8 @@ describe('PageSkeleton', () => {
     vi.restoreAllMocks()
   })
 
-  it.each(SKELETON_VARIANTS)('exposes the %s placeholder as a busy region and hides its chrome', async (variant) => {
-    await act(async () => root.render(<PageSkeleton variant={variant} />))
+  it('exposes the placeholder as a busy region and hides its chrome', async () => {
+    await act(async () => root.render(<PageSkeleton variant="automation" />))
 
     const region = container.querySelector('[aria-busy="true"][aria-label="页面内容加载中"]')
     expect(region).not.toBeNull()

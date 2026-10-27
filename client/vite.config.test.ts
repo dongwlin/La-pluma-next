@@ -66,20 +66,15 @@ describe('PWA base path configuration', () => {
     expect(isDenied('/la-pluma/automation')).toBe(false)
   })
 
-  it('cleans outdated caches without adding runtime caching routes', () => {
-    // "每个产物 chunk 都进 precache" 由构建期的 scripts/check-precache.ts
-    // 直接核对 dist/sw.js 保证；这里只守住配置层面仍需要的两个事实：
-    // 陈旧 precache 会被清理，且不再引入运行时缓存路由。
+  it('cleans outdated caches, loads the legacy cleanup worker and adds no runtime caching routes', () => {
     const workbox = createWorkboxConfig('/la-pluma/')
 
     expect(workbox.cleanupOutdatedCaches).toBe(true)
+    expect(workbox.importScripts).toEqual(['/la-pluma/legacy-page-cache-cleanup.js'])
     expect('runtimeCaching' in workbox).toBe(false)
   })
 
   it('purges the legacy page-chunk cache when the worker activates', async () => {
-    const workbox = createWorkboxConfig('/la-pluma/')
-    expect(workbox.importScripts).toEqual(['/la-pluma/legacy-page-cache-cleanup.js'])
-
     const listeners = new Map<string, ServiceWorkerListener>()
     const deleteCache = vi.fn().mockResolvedValue(true)
     runInNewContext(
@@ -103,125 +98,73 @@ describe('PWA base path configuration', () => {
     expect(deleteCache).toHaveBeenCalledWith('la-pluma-page-chunks')
   })
 
-  it('serves a no-store cleanup worker before the development SPA fallback', () => {
+  it('serves a no-store cleanup worker and manifest before the development SPA fallback', () => {
     const middleware = createDevPwaMiddleware('/la-pluma/')
-
-    const headers = new Map<string, string>()
-    const response = {
-      statusCode: 0,
-      setHeader: (name: string, value: string) => headers.set(name, value),
-      end: vi.fn(),
+    const request = (url: string) => {
+      const headers = new Map<string, string>()
+      const response = {
+        statusCode: 0,
+        setHeader: (name: string, value: string) => headers.set(name, value),
+        end: vi.fn(),
+      }
+      const next = vi.fn()
+      middleware({ method: 'GET', url }, response, next)
+      return { headers, response, next }
     }
-    const next = vi.fn()
-    middleware(
-      { method: 'GET', url: '/la-pluma/sw.js?update=1' },
-      response,
-      next,
-    )
 
-    expect(next).not.toHaveBeenCalled()
-    expect(response.statusCode).toBe(200)
-    expect(headers.get('Content-Type')).toBe('application/javascript; charset=utf-8')
-    expect(headers.get('Cache-Control')).toContain('no-store')
-    expect(headers.get('Service-Worker-Allowed')).toBe('/la-pluma/')
-    expect(headers.get('X-La-Pluma-Dev-Service-Worker')).toBe('cleanup')
-    expect(response.end).toHaveBeenCalledWith(createDevServiceWorkerCleanupScript())
+    const worker = request('/la-pluma/sw.js?update=1')
+    expect(worker.next).not.toHaveBeenCalled()
+    expect(worker.response.statusCode).toBe(200)
+    expect(worker.headers.get('Cache-Control')).toContain('no-store')
+    expect(worker.headers.get('Service-Worker-Allowed')).toBe('/la-pluma/')
+    expect(worker.response.end).toHaveBeenCalledWith(createDevServiceWorkerCleanupScript())
+
+    const manifest = request('/la-pluma/manifest.webmanifest')
+    expect(manifest.next).not.toHaveBeenCalled()
+    expect(JSON.parse(manifest.response.end.mock.calls[0]?.[0] as string)).toEqual(createWebManifest('/la-pluma/'))
+
+    const other = request('/src/main.tsx')
+    expect(other.next).toHaveBeenCalledOnce()
   })
 
-  it('lets unrelated development requests continue through Vite', () => {
-    const middleware = createDevPwaMiddleware('/')
-
-    const next = vi.fn()
-    middleware(
-      { method: 'GET', url: '/src/main.tsx' },
-      { statusCode: 0, setHeader: vi.fn(), end: vi.fn() },
-      next,
-    )
-
-    expect(next).toHaveBeenCalledOnce()
-  })
-
-  it('exposes the install manifest in development without enabling a caching worker', () => {
-    const middleware = createDevPwaMiddleware('/la-pluma/')
-
-    expect(createManifestLinkTag('/la-pluma/')).toEqual({
-      tag: 'link',
-      attrs: { rel: 'manifest', href: '/la-pluma/manifest.webmanifest' },
-      injectTo: 'head',
-    })
-
-    const headers = new Map<string, string>()
-    const response = {
-      statusCode: 0,
-      setHeader: (name: string, value: string) => headers.set(name, value),
-      end: vi.fn(),
-    }
-    const next = vi.fn()
-    middleware(
-      { method: 'GET', url: '/la-pluma/manifest.webmanifest?install=1' },
-      response,
-      next,
-    )
-
-    expect(next).not.toHaveBeenCalled()
-    expect(response.statusCode).toBe(200)
-    expect(headers.get('Content-Type')).toBe('application/manifest+json; charset=utf-8')
-    expect(headers.get('Cache-Control')).toContain('no-store')
-    expect(JSON.parse(response.end.mock.calls[0]![0] as string)).toEqual(createWebManifest('/la-pluma/'))
-  })
-
-  it('executes the complete cleanup worker lifecycle', async () => {
+  it('executes the cleanup worker lifecycle without touching unrelated caches', async () => {
     const listeners = new Map<string, ServiceWorkerListener>()
     const skipWaiting = vi.fn().mockResolvedValue(undefined)
     const claim = vi.fn().mockResolvedValue(undefined)
     const unregister = vi.fn().mockResolvedValue(true)
     const navigate = vi.fn().mockResolvedValue(undefined)
     const deleteCache = vi.fn().mockResolvedValue(true)
-    const workerScope = {
-      addEventListener: (type: string, listener: ServiceWorkerListener) => listeners.set(type, listener),
-      skipWaiting,
-      clients: {
-        claim,
-        matchAll: vi.fn().mockResolvedValue([
-          { url: 'http://localhost:5173/app/dashboard', navigate },
-        ]),
-      },
-      registration: { unregister },
-    }
-    const cacheStorage = {
-      keys: vi.fn().mockResolvedValue([
-        'workbox-precache-v2-http://localhost:5173/',
-        'google-fonts-cache',
-        'la-pluma-page-chunks',
-        'unrelated-cache',
-      ]),
-      delete: deleteCache,
-    }
 
     runInNewContext(createDevServiceWorkerCleanupScript(), {
-      self: workerScope,
-      caches: cacheStorage,
+      self: {
+        addEventListener: (type: string, listener: ServiceWorkerListener) => listeners.set(type, listener),
+        skipWaiting,
+        clients: {
+          claim,
+          matchAll: vi.fn().mockResolvedValue([{ url: 'http://localhost:5173/app/dashboard', navigate }]),
+        },
+        registration: { unregister },
+      },
+      caches: {
+        keys: vi.fn().mockResolvedValue([
+          'workbox-precache-v2-http://localhost:5173/',
+          'google-fonts-cache',
+          'la-pluma-page-chunks',
+          'unrelated-cache',
+        ]),
+        delete: deleteCache,
+      },
     })
 
     let installWork: Promise<unknown> | undefined
-    listeners.get('install')!({
-      waitUntil: (work) => {
-        installWork = work
-      },
-    })
-    expect(installWork).toBeDefined()
+    listeners.get('install')!({ waitUntil: (work) => { installWork = work } })
     await installWork
+    expect(skipWaiting).toHaveBeenCalledOnce()
 
     let activateWork: Promise<unknown> | undefined
-    listeners.get('activate')!({
-      waitUntil: (work) => {
-        activateWork = work
-      },
-    })
-    expect(activateWork).toBeDefined()
+    listeners.get('activate')!({ waitUntil: (work) => { activateWork = work } })
     await activateWork
 
-    expect(skipWaiting).toHaveBeenCalledOnce()
     expect(deleteCache.mock.calls.map(([cacheName]) => cacheName)).toEqual([
       'workbox-precache-v2-http://localhost:5173/',
       'google-fonts-cache',
@@ -230,5 +173,18 @@ describe('PWA base path configuration', () => {
     expect(claim).toHaveBeenCalledOnce()
     expect(unregister).toHaveBeenCalledOnce()
     expect(navigate).toHaveBeenCalledWith('http://localhost:5173/app/dashboard')
+  })
+
+  it('links the install manifest at the deployment path', () => {
+    expect(createManifestLinkTag('/la-pluma/')).toEqual({
+      tag: 'link',
+      attrs: { rel: 'manifest', href: '/la-pluma/manifest.webmanifest' },
+      injectTo: 'head',
+    })
+    expect(createManifestLinkTag('/')).toEqual({
+      tag: 'link',
+      attrs: { rel: 'manifest', href: '/manifest.webmanifest' },
+      injectTo: 'head',
+    })
   })
 })

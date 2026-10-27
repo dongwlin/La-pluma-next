@@ -176,7 +176,7 @@ describe('ScrcpyDeviceView automation availability', () => {
       />
     ))
 
-    const frame = container.querySelector('.scrcpy-video-frame')
+    const frame = container.querySelector('[aria-busy]')
     expect(frame?.getAttribute('aria-busy')).toBe('true')
 
     webrtcMock.status = 'connected'
@@ -190,7 +190,7 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(frame?.getAttribute('aria-busy')).toBe('false')
   })
 
-  it('keeps compact preview controls outside the video and expands settings below them', async () => {
+  it('expands and collapses compact preview settings', async () => {
     await act(async () => root.render(
       <ScrcpyDeviceView
         variant="compact"
@@ -199,25 +199,21 @@ describe('ScrcpyDeviceView automation availability', () => {
       />
     ))
 
-    const frame = container.querySelector('.scrcpy-video-frame')
-    const toolbar = container.querySelector('.scrcpy-preview-toolbar')
     const openSettings = findButton('打开预览设置')
+    const controlsId = openSettings?.getAttribute('aria-controls')
 
-    expect(container.querySelector('.scrcpy-view-header [role="radiogroup"][aria-label="预览模式"]')).not.toBeNull()
-    expect(container.querySelector('.scrcpy-view-header .scrcpy-view-status')).toBeNull()
-    expect(frame?.nextElementSibling).toBe(toolbar)
-    expect(toolbar?.contains(frame)).toBe(false)
-    expect(container.querySelector('.scrcpy-control-rail')).toBeNull()
+    expect(container.querySelector('[role="radiogroup"][aria-label="预览模式"]')).not.toBeNull()
+    expect(container.querySelector('[role="toolbar"][aria-label="模拟器导航"]')).not.toBeNull()
     expect(openSettings?.getAttribute('aria-expanded')).toBe('false')
-    expect(toolbar?.getAttribute('role')).toBe('toolbar')
+    expect(controlsId).toBeTruthy()
+    expect(document.getElementById(controlsId!)).toBeNull()
 
     await act(async () => openSettings?.click())
 
-    const rail = container.querySelector('.scrcpy-control-rail.is-compact')
-    expect(rail).not.toBeNull()
-    expect(toolbar?.parentElement?.nextElementSibling).toBe(rail)
-    expect(findButton('收起预览设置')?.getAttribute('aria-expanded')).toBe('true')
-    expect(findButton('收起预览设置')?.getAttribute('aria-controls')).toBe(rail?.id)
+    const collapseSettings = findButton('收起预览设置')
+    expect(collapseSettings?.getAttribute('aria-expanded')).toBe('true')
+    expect(collapseSettings?.getAttribute('aria-controls')).toBe(controlsId)
+    expect(document.getElementById(controlsId!)).not.toBeNull()
 
     const autoStart = container.querySelector<HTMLInputElement>('input[role="switch"][aria-label="重新打开时恢复预览"]')
     expect(autoStart).not.toBeNull()

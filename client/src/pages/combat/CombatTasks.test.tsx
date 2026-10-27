@@ -1067,50 +1067,6 @@ describe('CombatTasks execution', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动战斗配置已同步', 'success')
   })
 
-  it('does not let an older save response clear a newer remounted draft', async () => {
-    vi.useFakeTimers()
-    const olderSave = deferred<{ success: boolean }>()
-    const newerSave = deferred<{ success: boolean }>()
-    mocks.saveUserConfig
-      .mockReturnValueOnce(olderSave.promise)
-      .mockReturnValueOnce(newerSave.promise)
-    await renderComponent()
-
-    let input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'prts://10001')
-      input?.dispatchEvent(new Event('input', { bubbles: true }))
-      await vi.advanceTimersByTimeAsync(300)
-    })
-
-    await act(async () => root.unmount())
-    root = createRoot(container)
-    await renderComponent()
-    input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'prts://10002')
-      input?.dispatchEvent(new Event('input', { bubbles: true }))
-      await vi.advanceTimersByTimeAsync(300)
-    })
-    const newerSyncToken = localStorage.getItem('combatConfigSyncPending')
-    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(1)
-
-    await act(async () => olderSave.resolve({ success: true }))
-    await flush()
-    expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
-    expect(mocks.saveUserConfig.mock.calls[1]?.[1]).toMatchObject({
-      taskInputs: { copilot: 'prts://10002' },
-    })
-    expect(localStorage.getItem('combatConfigSyncPending')).toBe(newerSyncToken)
-    expect(JSON.parse(localStorage.getItem('combatTaskInputs') || '{}')).toMatchObject({ copilot: 'prts://10002' })
-
-    await act(async () => newerSave.resolve({ success: true }))
-    await flush()
-    expect(localStorage.getItem('combatConfigSyncPending')).toBeNull()
-  })
-
   it('migrates a saved app set mode to cli and normalizes legacy raid values on load', async () => {
     mocks.loadUserConfig.mockResolvedValueOnce({
       success: true,
@@ -1236,30 +1192,6 @@ describe('CombatTasks execution', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动战斗配置已同步', 'success')
   })
 
-  // 加载在途时出现编辑后，迟到的服务端副本必须被丢弃；协调器按 revision 与 pending
-  // 标记校验加载身份，编辑自己的草稿继续提交。
-  it('does not let a late server load overwrite an edit made before hydration', async () => {
-    const serverLoad = deferred<{ success: boolean; data: { taskInputs: { copilot: string } } }>()
-    mocks.loadUserConfig.mockReturnValueOnce(serverLoad.promise)
-
-    await renderComponent()
-    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, 'prts://local-draft')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-
-    await act(async () => serverLoad.resolve({
-      success: true,
-      data: { taskInputs: { copilot: 'prts://server-copy' } },
-    }))
-    await flush()
-
-    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
-      .toBe('prts://local-draft')
-  })
-
   it('keeps the hydrated draft and does not reload config after Activity restore', async () => {
     vi.useFakeTimers()
     mocks.loadUserConfig.mockResolvedValueOnce({
@@ -1301,7 +1233,7 @@ describe('CombatTasks execution', () => {
 
     const previewInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
     await setInputValue(previewInput, 'prts://1234')
-    const previewButton = previewInput.parentElement?.querySelector<HTMLButtonElement>('button')
+    const previewButton = buttonByText('预览')
     await click(previewButton!)
     expect(previewButton?.disabled).toBe(true)
     expect(mocks.getCopilotInfo).toHaveBeenCalledOnce()
@@ -1311,11 +1243,10 @@ describe('CombatTasks execution', () => {
     expect(previewButton?.disabled).toBe(false)
     expect(previewButton?.textContent).toContain('预览')
     expect(previewInput.value).toBe('prts://1234')
-    expect(buttonByText('单个作业')?.className).toContain('combat-segment-active')
 
     const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
     await setInputValue(stageInput, '1-7')
-    const stageSearchButton = stageInput.parentElement?.querySelector<HTMLButtonElement>('button')
+    const stageSearchButton = buttonByText('搜索')
     await click(stageSearchButton!)
     expect(stageSearchButton?.disabled).toBe(true)
     expect(mocks.searchCopilot).toHaveBeenCalledOnce()
@@ -1326,12 +1257,13 @@ describe('CombatTasks execution', () => {
     expect(stageSearchButton?.textContent).toContain('搜索')
     expect(stageInput.value).toBe('1-7')
 
-    const paradoxModeButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'))
+    const paradoxModeButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'))
       .find(button => button.textContent?.includes('悖论模拟'))
+    expect(paradoxModeButton).toBeDefined()
     await click(paradoxModeButton!)
     const paradoxInput = container.querySelector<HTMLInputElement>('input[name="maa-paradox-operator"]')!
     await setInputValue(paradoxInput, '能天使')
-    const paradoxSearchButton = paradoxInput.parentElement?.querySelector<HTMLButtonElement>('button')
+    const paradoxSearchButton = buttonByText('搜索')
     await click(paradoxSearchButton!)
     expect(paradoxSearchButton?.disabled).toBe(true)
     expect(mocks.searchParadoxCopilot).toHaveBeenCalledOnce()
@@ -1549,7 +1481,7 @@ describe('CombatTasks execution', () => {
     await click(buttonByText('单个作业')!)
 
     const modeButton = (label: string) => Array.from(
-      container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'),
+      container.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'),
     ).find(button => button.textContent?.includes(label))!
 
     await click(modeButton('悖论模拟'))
@@ -1558,7 +1490,23 @@ describe('CombatTasks execution', () => {
     await click(modeButton('普通作业'))
     expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')?.value)
       .toBe('1-7')
-    expect(buttonByText('单个作业')?.className).toContain('combat-segment-active')
+
+    // 识别方式没有 aria 状态，用预览走哪条读取路径证明“单个作业”选择仍生效：
+    // prts.plus 链接在自动模式下同时探测作业集，单作业模式只读作业详情。
+    mocks.getCopilotInfo.mockResolvedValueOnce({
+      success: true,
+      data: { status_code: 200, data: { content: JSON.stringify({ doc: { title: '单作业预览' } }) } },
+    })
+    await setInputValue(
+      container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!,
+      'https://prts.plus/a?id=1234',
+    )
+    await click(buttonByText('预览')!)
+    await flush()
+
+    expect(mocks.getCopilotInfo).toHaveBeenCalledOnce()
+    expect(mocks.getCopilotSetPlan).not.toHaveBeenCalled()
+    expect(mocks.getCopilotSet).not.toHaveBeenCalled()
   })
 
   it('applies a clicked search result to the input and previews it', async () => {

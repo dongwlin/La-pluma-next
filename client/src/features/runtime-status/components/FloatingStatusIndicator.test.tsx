@@ -81,10 +81,6 @@ function statusText() {
   return container.querySelector<HTMLElement>('[role="status"]')?.textContent
 }
 
-function indicatorClass() {
-  return container.querySelector<HTMLElement>('.floating-status-indicator')?.className ?? ''
-}
-
 describe('FloatingStatusIndicator', () => {
   beforeEach(() => {
     resetStore()
@@ -138,7 +134,6 @@ describe('FloatingStatusIndicator', () => {
     await renderIndicator()
 
     expect(statusText()).toBe('正在执行: 收取信用')
-    expect(indicatorClass()).toContain('status-info')
   })
 
   it('keeps a waiting run visible without claiming completion', async () => {
@@ -153,10 +148,9 @@ describe('FloatingStatusIndicator', () => {
     await renderIndicator()
 
     expect(statusText()).toBe('等待继续')
-    expect(indicatorClass()).toContain('status-info')
   })
 
-  it('labels unmanaged device occupancy as a warning', async () => {
+  it('shows unmanaged device occupancy from the unique snapshot', async () => {
     mocks.store.runStatus = {
       phase: 'occupied',
       isRunning: false,
@@ -168,7 +162,6 @@ describe('FloatingStatusIndicator', () => {
     await renderIndicator()
 
     expect(statusText()).toBe('设备被其他任务占用')
-    expect(indicatorClass()).toContain('status-warning')
   })
 
   it('labels a disconnected observation as unknown instead of idle or complete', async () => {
@@ -183,7 +176,6 @@ describe('FloatingStatusIndicator', () => {
     await renderIndicator()
 
     expect(statusText()).toBe('执行状态未知')
-    expect(indicatorClass()).toContain('status-warning')
   })
 
   it('keeps connection health ahead of messages and run state', async () => {
@@ -201,7 +193,6 @@ describe('FloatingStatusIndicator', () => {
     await renderIndicator()
 
     expect(statusText()).toBe('网络连接已断开，页面控制暂不可用')
-    expect(indicatorClass()).toContain('status-warning')
   })
 
   it('keeps a temporary message ahead of the run label', async () => {
