@@ -1,48 +1,64 @@
 # 文档索引
 
-> [← 返回 README](../README.md)
+> [← 返回项目 README](../README.md)
 
-`docs/` 目录保存 La Pluma Next 的专题文档，覆盖架构、接口、功能、部署、配置、开发、组件库与维护流程。
+根 README 负责安装与快速开始；这里按使用任务组织长期文档。新增或修改约定时，先查[文档归属与单一事实来源](development/maintaining.md#文档归属与单一事实来源)，更新其归属文档，其他位置通过链接引用。
 
-根 README 负责安装与快速开始，本页提供其余文档的入口。UI 设计规范不在 `docs/` 下维护，统一见根目录 [DESIGN.md](../DESIGN.md)。
+```text
+docs/
+├── guides/          # 使用、配置与部署
+├── architecture/    # 系统概览与跨域契约
+├── api/             # Agent 接口使用
+├── frontend/        # 前端架构、兼容与组件 API
+│   └── domains/     # 八个领域各维护一份文档
+└── development/     # 开发、检查、集成与维护
+```
 
-| 文档 | 内容 | 适合谁看 |
-| --- | --- | --- |
-| [前端架构与所有权](frontend-architecture.md) | app → pages → features → shared、状态与资源所有者、查询和生命周期 | 新增或维护前端能力的开发者 |
-| [前端兼容入口与移除规则](frontend-migration.md) | 现行分层、旧入口消费者、支持窗口、旧断点接受与恢复 | 修改执行、兼容入口或持久化格式的开发者 |
-| [依赖与职责护栏](guardrails.md) | 功能域环/公开面/分层、task-execution 反向依赖、页面裸副作用、hooks/model/components/pages 规模预算与阈值依据 | 修改依赖边界、页面结构或规模基线的开发者 |
-| [日志领域面板](logs-panel.md) | 页面/工作区/工具栏/列表/历史选择器的组合边界、暂停与清空/历史/重试策略、过滤与导出接线、自滚动与视觉证据 | 修改日志页面结构、暂停交互或日志展示的开发者 |
-| [实时日志流生命周期](logs-realtime-stream.md) | 实时轮询与快照语义、单在途/旧响应裁决、Activity/文档可见性/手动暂停恢复、解析过滤折叠模型与回归入口 | 修改日志实时读取、暂停恢复或日志展示模型的开发者 |
-| [历史日志与清理协调](logs-history-and-cleanup.md) | 实时/历史切换协议、历史列表/选择/读取竞态、Activity 恢复重试、清空实时与清理历史的缓存/列表/选择裁决 | 修改日志历史浏览、清理命令或相关生命周期的开发者 |
-| [执行身份与生命周期契约](execution-lifecycle.md) | Run 身份、唯一状态来源、accepted/运行/停止/终态、断线/占用/manual/刷新/旧断点边界与入口覆盖 | 执行链路、Agent 集成与前端控制器开发者 |
-| [前端执行客户端与控制器](execution-client.md) | 应用级控制器的公开面、幂等键/runId、快照观察、断线重连、停止与本地中止、页面消费边界 | 维护执行控制器与前端接线的开发者 |
-| [跨页一致性集成测试](cross-page-acceptance.md) | Chromium 场景数据与复现、停止/重连/刷新/旧身份保护、配置半失败重试、识别到养成计划的失效链路、状态归属核对 | 修改跨页运行、配置与资源联动的开发者 |
-| [配置持久化协调器](config-persistence.md) | 按 key 串行的协调模型、适配契约（编解码/迁移/完整提交）、薄 hooks、刷新与冲突边界、三域接入清单 | 维护页面配置持久化或实现域适配器的开发者 |
-| [设置配置编辑与保存](settings-config-editing.md) | MAA connection 的 Query 读取、草稿/revision、保存与重置边界、迟到读取裁决、section 存储/事件与清理 | 修改设置页配置表单、保存流程或 section 状态的开发者 |
-| [设置设备连接与系统资源](settings-device-and-resources.md) | 设备发现/连接测试命令所有者、取消与草稿回填 revision、版本/配置目录 Query、打开目录入口与 Activity 行为 | 修改设置页设备面板、版本或配置目录读取的开发者 |
-| [设置组件更新与自动更新](settings-updates-and-auto-update.md) | core/CLI/资源更新命令的互斥、失败重试与 Activity 行为、更新后版本与跨域资源失效、自动更新草稿/本地回退/完整提交 | 修改设置页组件更新、资源失效或自动更新策略的开发者 |
-| [设置领域面板](settings-panel.md) | 页面/工作区/连接/设备/只读 section/目录/更新面板的组合边界、订阅隔离、section 与草稿生命期、设备取消边界 | 修改设置页面结构、面板交互或订阅边界的开发者 |
-| [资源请求错误与取消契约](resource-requests.md) | 只读资源的 AbortSignal 传递、信封与领域载荷校验、失败分类、取消/停止/撤销边界、候选端点与 Query 接入要求 | 迁移资源查询、缓存或处理请求失败的前端开发者 |
-| [Query 缓存与键规范](query-cache.md) | 应用级 Query 客户端、默认重取/重试/Activity 策略、领域 key 与失效规范、Dashboard 快照边界 | 维护资源读取或实现缓存失效的前端开发者 |
-| [总览完整快照与设备采样](dashboard-snapshot.md) | 五路业务读取的领域 Query、完整快照归一/原子提交/失败保旧、设备采样轮询与 Activity 恢复、失效与执行入口 | 修改总览数据、刷新协调或设备采样的开发者 |
-| [总览领域面板](dashboard-panels.md) | 页面/工作区/流程/设备/摘要区域组合、按区域订阅、预检与刷新接线、设备温度去重、预览 Activity 生命期、局部展示纯模型 | 修改总览页面结构、区域交互或订阅边界的开发者 |
-| [肉鸽领域面板](roguelike-panel.md) | 页面/工作区/面板的组合边界、模式与配置/执行状态归属、任务目录与命令/校验纯模型、Activity 与兼容 | 修改肉鸽页面结构、表单字段或命令拼接的开发者 |
-| [统计数据领域面板](statistics-panel.md) | 页面/工作区/干员/仓库/掉落面板的组合边界、筛选菜单 portal/焦点/键盘、面板局部状态生命期、仓库汇总与掉落排序纯模型 | 修改统计页面结构、筛选交互或识别结果展示的开发者 |
-| [作业搜索与预览](combat-search-preview.md) | 普通/悖论搜索、单作业与作业集详情的资源身份、取消与旧响应裁决、计划优先/成员回退、选段与命令模型 | 修改作业搜索、预览或执行选择接线的开发者 |
-| [作业领域面板](combat-panel.md) | 页面/工作区/设置/输入/搜索/作业集/信息面板的组合边界、面板会话状态与渲染隔离、作业集视图派生、Activity 与视觉证据 | 修改作业页面结构、局部交互或作业集展示的开发者 |
-| [自动化纯模型与排序](automation-model.md) | 定时时间、任务流程命令、拖拽排序与掉落目标的纯模型边界、兼容输入、排序不变量与回归入口 | 修改自动化页面规则、排序或执行前校验的开发者 |
-| [自动化任务编辑面板](automation-editor.md) | 关卡编辑器/任务挑选面板的组合边界、局部交互状态、智能养成合成、公招时长规则与焦点/键盘行为 | 修改自动化编辑面板、智能养成接线或挑选交互的开发者 |
-| [自动化流程、定时与执行摘要面板](automation-flow-panels.md) | 页面/工作区/流程/定时/摘要面板的组合边界、排序预览与指针生命周期、执行投影与摘要保留、活动 Query 与 Activity 行为 | 修改自动化页面结构、拖拽排序、定时编辑或执行摘要的开发者 |
-| [共享资源归属与失效端口](resource-ownership.md) | game-data 共享资源域、training/statistics 去环后的依赖方向、图标与资源缓存策略、跨域失效端口与各页面接收 | 维护共享资源、写入后失效或页面读取的前端开发者 |
-| [统计识别命令与失效联动](statistics-commands.md) | 识别/材料命令所有者、执行控制器与幂等回放、日志解析等待、超时/取消/继续、识别后作用域失效 | 维护页面命令、处理识别结果或调整命令超时与失效联动的开发者 |
-| [养成队列命令与写后刷新](training-queue-commands.md) | 队列增删排序撤销的串行命令、写后刷新与不确定 fallback、队列 revision、跨页失效与 Dashboard 联动 | 修改养成队列写入、撤销或队列缓存失效的开发者 |
-| [养成设置提交与计划有效期](training-settings-and-plan-validity.md) | 设置的串行提交与本地 revision、旧响应裁决、计划 basis、生成/应用/同步所有者、配置写入屏障与跨页失效 | 修改养成设置、计划生成/应用或相关页面接线的开发者 |
-| [养成领域面板](training-panel.md) | 页面/工作区/队列/材料/计划/设置/选择器的组合边界、共享版本与面板局部状态、搜索与分批规则、材料与计划展示纯模型 | 修改养成页面结构、选择器交互或材料/计划展示的开发者 |
-| [架构与技术栈](architecture.md) | 整体架构、前后端边界、技术栈和项目结构 | 需要理解前后端边界与代码组织的新开发者 |
-| [Agent API 使用指南](agent-api.md) | manifest/status/actions、推荐执行流程、幂等、持久化与鉴权 | 对接 `/api/agent` 的 Agent、脚本与集成开发者 |
-| [功能概览](features.md) | 控制台、自动化流程、定时任务、作业与肉鸽、数据养成、Telegram 通知 | 新用户与需要确认能力范围的用户 |
-| [部署指南](deployment.md) | GHCR 镜像、环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建 | 负责部署与运维的人员 |
-| [配置与跨平台支持](configuration.md) | 运行平台与配置路径、ADB 连接、Telegram 通知与 Bot 命令 | 首次配置环境或排查连接问题的用户 |
-| [开发文档](development.md) | 主要技术点与常用检查命令 | 参与开发与提交 PR 的贡献者 |
-| [通用组件库](component-library.md) | 通用组件 API、用法与页面重构清单 | 前端开发者与 UI 贡献者 |
-| [维护说明](maintaining.md) | 分支与合并、发布流程、容器镜像、兼容性标识与外部运行时依赖 | 仓库维护者与发布负责人 |
+## 使用与部署
+
+| 文档 | 内容 |
+| --- | --- |
+| [功能概览](guides/features.md) | 总览、自动化、作业、肉鸽、数据养成与通知 |
+| [配置与跨平台支持](guides/configuration.md) | 运行平台、ADB、Telegram 通知与 Bot |
+| [部署指南](guides/deployment.md) | Docker、环境变量、HTTPS/PWA、子路径与 Compose |
+| [Agent API](api/agent.md) | 能力发现、执行流程、幂等与鉴权 |
+
+## 架构与通用契约
+
+| 文档 | 内容 |
+| --- | --- |
+| [架构与技术栈](architecture/README.md) | 前后端边界、技术栈与项目目录 |
+| [执行身份与生命周期](architecture/execution-lifecycle.md) | 服务端 Run、状态机、停止、占用与持久化 |
+| [前端执行客户端](architecture/execution-client.md) | 控制器公开面、身份观察、停止与领域接线 |
+| [配置持久化协调器](architecture/config-persistence.md) | 配置 key/wire、草稿、pending 与完整提交 |
+| [资源请求错误与取消](architecture/resource-requests.md) | 请求信封、载荷校验、失败分类与取消 |
+| [Query 缓存与键规范](architecture/query-cache.md) | 唯一客户端、key 清单、默认策略与覆盖值 |
+| [共享资源归属与失效端口](architecture/resource-ownership.md) | 共享资源、跨域失效作用域及发布/接收映射 |
+
+## 前端与领域
+
+先读[前端架构与所有权](frontend/README.md)，了解分层、状态所有者、URL 与 Activity。旧入口消费者及移除规则见[兼容约束](frontend/compatibility.md)，组件 API 见[通用组件库](frontend/components.md)。界面规范统一维护在根 [DESIGN.md](../DESIGN.md)。
+
+领域内的面板、模型、命令和回归入口合并在同一文档：
+
+| 领域 | 内容 |
+| --- | --- |
+| [总览](frontend/domains/dashboard.md) | 区域订阅、完整快照与设备采样 |
+| [自动化](frontend/domains/automation.md) | 流程/定时/摘要面板、纯模型、排序与任务编辑 |
+| [作业](frontend/domains/combat.md) | 页面面板、搜索、预览、选段与命令模型 |
+| [肉鸽](frontend/domains/roguelike.md) | 页面组合、配置表单与命令模型 |
+| [统计与识别](frontend/domains/statistics.md) | 统计面板、筛选、识别命令与解析 |
+| [养成](frontend/domains/training.md) | 队列、候选/计数、设置提交与计划有效期 |
+| [日志](frontend/domains/logs.md) | 页面交互、实时流、历史会话与清理 |
+| [设置](frontend/domains/settings.md) | 配置编辑、设备命令、系统资源与组件更新 |
+
+## 开发与维护
+
+| 文档 | 内容 |
+| --- | --- |
+| [开发指南](development/README.md) | 样式/测试治理、文件类型与常用检查 |
+| [依赖与职责护栏](development/guardrails.md) | 分层、公开面、页面职责、规模预算与限制 |
+| [跨页一致性集成测试](development/integration.md) | Chromium 场景、复现方法、观察结果与覆盖边界 |
+| [维护说明](development/maintaining.md) | 分支、发布、运行时依赖与文档归属 |
+
+性能采样的方法与指标限制随工具维护在 [client/tests/performance/README.md](../client/tests/performance/README.md)。任务过程和一次性证据不加入现行文档索引。

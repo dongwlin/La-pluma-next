@@ -10,7 +10,7 @@
  * - hooks / model / components / pages 的规模作为辅助信号：新增超阈值文件与
  *   同域页面搬移（80% 阈值）会按预算失败，其余只报告。
  *
- * 规则边界与阈值依据见 docs/guardrails.md。测试文件不参与运行时依赖与规模统计，
+ * 规则边界与阈值依据见 docs/development/guardrails.md。测试文件不参与运行时依赖与规模统计，
  * 因为测试可以为了隔离而接触内部实现，不会进入生产包。
  */
 import { readFile, readdir } from 'node:fs/promises'

@@ -3,7 +3,7 @@
 本目录是项目通用 UI 组件的实现，统一通过 `index.ts` 导出。页面中统一从 `@/shared/ui` 引入。
 
 - 设计规范（颜色、文字层级、间距、圆角、交互与反馈）：[DESIGN.md](../../../../DESIGN.md)，项目内唯一来源。
-- 组件 API、用法与页面重构清单：[docs/component-library.md](../../../../docs/component-library.md)。
+- 组件 API、用法与组件接入约定：[docs/frontend/components.md](../../../../docs/frontend/components.md)。
 
 ## 目录约定
 

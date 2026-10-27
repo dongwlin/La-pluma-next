@@ -180,7 +180,7 @@ function findDeclaration(
 
 // 首帧背景色横跨两套无法共享代码的层：构建期常量（BOOT_THEME_COLORS）与
 // 手写 CSS（index.html 的内联启动样式、index.css / ios-theme.css 的页面底色）。
-// 不一致时表现为首帧闪一下旧色，截图拍不到。这是 docs/development.md 中
+// 不一致时表现为首帧闪一下旧色，截图拍不到。这是 docs/development/README.md 中
 // 「禁止枚举式 grep CSS」的例外，用法与 animations.test.ts 相同：不枚举选择器
 // 清单，只核对同一语义在两处的取值是否一致。
 //

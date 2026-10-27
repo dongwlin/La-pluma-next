@@ -210,7 +210,7 @@ Tailwind 的 8 个圆角档位被压缩为应用的 5 个命名档位：`rounded
 
 - `client/src/styles/index.css` 与 `client/src/styles/ios-theme.css` 是全局样式的**冻结入口**：S3 已完成归层，页面级选择器仍不再新增进这两个文件。
 - 页面选择器归 `features/<domain>/styles/`，由该域 `index.ts` 导入；两个全局入口对页面级选择器保持冻结，新样式按组件目录或功能域目录新增。
-- 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development.md) 的「样式治理」一节。
+- 拦截机制：stylelint 预算制（ratchet）冻结存量违规数、只拦净新增，用法见 [开发文档](docs/development/README.md) 的「样式治理」一节。
 
 ## Colors
 

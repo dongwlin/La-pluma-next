@@ -9,8 +9,8 @@
 // 辅助项：
 // - 输出 hooks/model/components/pages 的规模观察；
 // - 用 size-budget.json 冻结「超阈值大文件集合」，并检查同域页面缩减是否被
-//   搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80%）。阈值依据迁移结果与分类分布，见
-//   docs/guardrails.md；正常的小幅增长不需要更新基线，确实需要新增一个大文件
+//   搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80%）。阈值依据冻结基线的分类分布，见
+//   docs/development/guardrails.md；正常的小幅增长不需要更新基线，确实需要新增一个大文件
 //   或有意的结构调整时运行：
 //   pnpm --filter la-pluma-next-client guardrails:size-baseline
 import { readFile, writeFile } from 'node:fs/promises'
@@ -39,7 +39,7 @@ const BUDGET_PATH = path.join(clientRoot, 'size-budget.json')
 const updateSizeBaseline = process.argv.includes('--update-size-baseline')
 
 const BUDGET_COMMENT =
-  '规模预算：按分类冻结超过阈值的文件集合，并记录各域（pages/<domain> 与 features/<domain>）的页面 / hooks+model+components 总行数；同一域页面缩减 ≥40 行且这三类增长达到 80% 时判为疑似搬移。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。'
+  '规模预算：按分类冻结超过阈值的文件集合，并记录各域（pages/<domain> 与 features/<domain>）的页面 / hooks+model+components 总行数；同一域页面缩减 ≥40 行且这三类增长达到 80% 时判为疑似搬移。阈值依据已冻结的生产源码分类分布（p90 向上取整到 20 行），见 docs/development/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -156,7 +156,7 @@ if (violations.length > 0) {
   console.error('')
   printRuleSummary(violations)
   console.error('')
-  console.error('规则说明见 docs/guardrails.md。')
+  console.error('规则说明见 docs/development/guardrails.md。')
   process.exit(1)
 }
 console.log('依赖与职责检查通过（域环、深路径、分层方向、task-execution 反向依赖、页面裸副作用）。')

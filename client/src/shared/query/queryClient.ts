@@ -7,7 +7,7 @@
  * - 默认不因文档可见性变化自动重取；Activity 隐藏会清理 Effects 并注销 Query 观察者，
  *   恢复时按 refetchOnMount/staleTime 决定是否重取；网络重连时重取过期数据。
  *
- * 配置草稿、执行 Run 与日志/轮询会话都不属于本层，见 docs/query-cache.md。
+ * 配置草稿、执行 Run 与日志/轮询会话都不属于本层，见 docs/architecture/query-cache.md。
  */
 
 import { QueryClient, type DefaultOptions } from '@tanstack/react-query'

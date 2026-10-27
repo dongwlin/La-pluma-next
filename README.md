@@ -14,7 +14,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ## ✨ 特性
 
-以下是最常用的能力，完整功能列表见 [功能概览](docs/features.md)。
+以下是最常用的能力，完整功能列表见 [功能概览](docs/guides/features.md)。
 
 - 🧭 **控制台总览** - 汇总今日活动、任务状态、实时预览和掉落信息
 - 🎮 **日常任务流程** - 启动游戏、理智作战、基建换班、自动公招、信用收支、领取奖励、关闭游戏
@@ -109,7 +109,7 @@ docker run -d \
   ghcr.io/dongwlin/la-pluma-next:latest
 ```
 
-浏览器打开 http://localhost:3055。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/deployment.md)。
+浏览器打开 http://localhost:3055。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
 
 ## ⚙️ 基础配置
 
@@ -122,7 +122,7 @@ docker run -d \
 
 ### Telegram 通知与 Bot
 
-在「通知设置」页面填入 Bot Token 和 Chat ID，即可接收任务完成通知并使用 Bot 远程控制。完整配置步骤、Bot 命令与运行平台说明见 [配置与跨平台支持](docs/configuration.md)。
+在「通知设置」页面填入 Bot Token 和 Chat ID，即可接收任务完成通知并使用 Bot 远程控制。完整配置步骤、Bot 命令与运行平台说明见 [配置与跨平台支持](docs/guides/configuration.md)。
 
 Bot 只响应配置的 Chat ID，其他用户无法控制。
 
@@ -130,7 +130,7 @@ Bot 只响应配置的 Chat ID，其他用户无法控制。
 
 La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent` 以语义化的 manifest/status/actions 暴露能力发现、状态读取与动作执行，Manifest 与 OpenAPI 由同一份能力清单生成，并公开每个动作的风险、dry-run、轮询和停止方式。
 
-设置 `LA_PLUMA_TOKEN` 后，Agent API 与其它 `/api/*` 入口需要 Bearer Token 或 `X-La-Pluma-Token`。完整的接口说明、推荐执行流程、幂等与持久化约定见 [Agent API 使用指南](docs/agent-api.md)。
+设置 `LA_PLUMA_TOKEN` 后，Agent API 与其它 `/api/*` 入口需要 Bearer Token 或 `X-La-Pluma-Token`。完整的接口说明、推荐执行流程、幂等与持久化约定见 [Agent API 使用指南](docs/api/agent.md)。
 
 ## 📚 文档
 
@@ -138,19 +138,19 @@ La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent
 
 | 文档 | 内容 |
 | --- | --- |
-| [架构与技术栈](docs/architecture.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
-| [Agent API 使用指南](docs/agent-api.md) | manifest/status/actions、执行流程、幂等与鉴权 |
-| [功能概览](docs/features.md) | 控制台、自动化流程、作业与肉鸽、数据养成等详细功能 |
-| [部署指南](docs/deployment.md) | Docker 镜像、环境变量、HTTPS/PWA、子路径与 Compose |
-| [配置与跨平台支持](docs/configuration.md) | 运行平台、ADB 连接、Telegram 通知与 Bot 命令 |
-| [开发文档](docs/development.md) | 主要技术点与常用检查命令 |
+| [架构与技术栈](docs/architecture/README.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
+| [Agent API 使用指南](docs/api/agent.md) | manifest/status/actions、执行流程、幂等与鉴权 |
+| [功能概览](docs/guides/features.md) | 控制台、自动化流程、作业与肉鸽、数据养成等详细功能 |
+| [部署指南](docs/guides/deployment.md) | Docker 镜像、环境变量、HTTPS/PWA、子路径与 Compose |
+| [配置与跨平台支持](docs/guides/configuration.md) | 运行平台、ADB 连接、Telegram 通知与 Bot 命令 |
+| [开发文档](docs/development/README.md) | 主要技术点与常用检查命令 |
 | [设计规范](DESIGN.md) | 设计原则、语义 token、布局、响应式与交互状态 |
-| [通用组件库](docs/component-library.md) | 通用组件 API、用法与页面重构清单 |
-| [维护说明](docs/maintaining.md) | 分支与合并、发布流程、容器镜像与兼容性标识 |
+| [通用组件库](docs/frontend/components.md) | 通用组件 API、用法与组件接入约定 |
+| [维护说明](docs/development/maintaining.md) | 分支与合并、发布流程、容器镜像与兼容性标识 |
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！开发环境与常用检查见 [开发文档](docs/development.md)，分支管理、发布流程和兼容性约定见 [维护说明](docs/maintaining.md)。
+欢迎提交 Issue 和 Pull Request！开发环境与常用检查见 [开发文档](docs/development/README.md)，分支管理、发布流程和兼容性约定见 [维护说明](docs/development/maintaining.md)。
 
 ## 📄 许可证
 

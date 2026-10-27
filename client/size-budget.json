@@ -1,5 +1,5 @@
 {
-  "_comment": "规模预算：按分类冻结超过阈值的文件集合，并记录各域（pages/<domain> 与 features/<domain>）的页面 / hooks+model+components 总行数；同一域页面缩减 ≥40 行且这三类增长达到 80% 时判为疑似搬移。阈值依据 FPR-031–040/044 迁移后的生产源码分布（p90 向上取整到 20 行），见 docs/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。",
+  "_comment": "规模预算：按分类冻结超过阈值的文件集合，并记录各域（pages/<domain> 与 features/<domain>）的页面 / hooks+model+components 总行数；同一域页面缩减 ≥40 行且这三类增长达到 80% 时判为疑似搬移。阈值依据已冻结的生产源码分类分布（p90 向上取整到 20 行），见 docs/development/guardrails.md。正常增长不更新基线；有意的结构调整（新增/拆分大文件或真实页面搬移）时运行 pnpm --filter la-pluma-next-client guardrails:size-baseline。",
   "thresholds": {
     "pages": 60,
     "hooks": 220,
