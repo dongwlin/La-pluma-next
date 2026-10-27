@@ -4,18 +4,7 @@
 
 现行前端通过领域所有者、Query 与执行控制器管理资源与状态，旧接口中仍有消费者或兼容承诺的入口必须保留。当前架构见[前端架构与所有权](frontend-architecture.md)。本文以仓库生产调用、公开导出及兼容测试为依据；只有确认已无消费者且明确支持窗口已经结束，才可删除兼容代码。
 
-## 现行职责边界
-
-| 迁移内容 | 当前归属 | 行为依据 |
-| --- | --- | --- |
-| 页面传输、存储、轮询与业务状态 | `pages` 只组合，业务能力经 `features/<domain>/index.ts` 暴露 | [依赖与职责护栏](guardrails.md) |
-| 页面自行推断运行、重放任务或泛化停止 | 服务端 Run + 应用级 ExecutionController；新页面提交后观察、停止携带 `runId` | [执行生命周期](execution-lifecycle.md)、[执行客户端](execution-client.md) |
-| 三页独立保存与迟到写覆盖 | 按配置 key 的稳定协调器通道与域适配器；自动化配置和 schedule 是一个完整提交单元 | [配置持久化协调器](config-persistence.md) |
-| 服务端资源的页面副本与共享端点重复归属 | 领域 Query；共享游戏数据唯一归 `game-data`，写后经精确作用域失效 | [Query 缓存](query-cache.md)、[资源所有权](resource-ownership.md) |
-| 巨型页面的规则、命令与展示混杂 | 纯模型、模块级命令所有者、工作区和受控面板 | [前端架构](frontend-architecture.md)、各领域契约 |
-| 全局导航与领域样式混杂 | URL 驱动导航、Activity 保活、全局语义 token 与领域 `@layer page` 样式 | [整体架构](architecture.md)、[开发指南](development.md) |
-
-这些变化不等于旧 HTTP 接口、持久化键或外部执行入口已失效。审计结果如下；下列兼容项仍需保留。
+现行职责以[前端架构与所有权](frontend-architecture.md)为准；服务端 Run 由[执行生命周期](execution-lifecycle.md)维护，前端观察与领域接线由[执行客户端](execution-client.md)维护。本文只维护兼容消费者、窗口及移除条件，现行所有权变化不表示旧 HTTP 接口、持久化键或外部执行入口已经失效。
 
 ## 兼容入口、消费者和支持窗口
 
@@ -65,7 +54,7 @@ API 路径均相对于 `/api/agent`。这里的“未声明移除日期”表示
 
 当前表内各项至少缺少上述一个必要条件，因此保留。后续接入 Telegram 等入口的 Run 包装时，还需证明 schedule、进程与 lease 的真实所有权一致后，再缩减外部占用分支。
 
-回滚前端时应保留服务端 Run 记录、配置草稿与 pending 标记，先观察并确认当前执行；不要为了恢复旧 UI 清空存储、重放启动请求或调用泛化停止。配置完整提交仍可能包含多个请求，不是跨端点事务，schedule 半失败必须保留 pending 并经原协调器重试。执行身份与 Run 继续/停止边界以[执行生命周期](execution-lifecycle.md)为准。
+回滚前端时应保留服务端 Run 记录、配置草稿与 pending 标记，先观察并确认当前执行；不要为了恢复旧 UI 清空存储、重放启动请求或调用泛化停止。配置草稿、pending 与完整提交约束见[配置持久化协调器](config-persistence.md)。执行身份与 Run 继续/停止边界以[执行生命周期](execution-lifecycle.md)为准。
 
 ## 验证与性能证据
 

@@ -222,7 +222,7 @@ const { containerRef, activeRect, setTabRef } = useFluidTabIndicator(activeTab)
 
 ---
 
-## 页面重构清单
+## 组件接入
 
 新增页面或改老页面时，按下面顺序处理：
 
@@ -247,17 +247,6 @@ className={`from-${tone}`}
 ```
 
 需要按状态切换样式时，使用明确的 class 映射，或优先使用已有语义类。
-
----
-
-## 维护清单
-
-- [x] 页面级色彩收敛到品牌色与状态语义色。
-- [x] 圆角和常用间距接入 Tailwind token。
-- [x] 卡片、按钮、输入控件接入 `app-*` 语义类。
-- [x] 移动端页面 padding 改由 `app-page` 和 spacing token 控制。
-- [ ] 持续把零散手写卡片迁移到 `Card` 或 `app-card`。
-- [ ] 为核心通用组件补充单元测试或视觉回归检查。
 
 ---
 

@@ -23,7 +23,7 @@
 | 识别/材料命令生命周期 | `model/commandOwner.ts` + `hooks/useStatisticsCommands.ts` | 所有者是模块级单例；hook 只订阅、投影并写回解析快照 |
 | 四类资源读取 | `game-data` 与 `statistics` 的 query 定义 | key、失效作用域与重取策略均未变 |
 
-非目标：
+维护约束：
 
 - 不改变四路读取的首屏时机、失效作用域与 Query key。
 - 不持久化 `activeTab`、筛选、排序或掉落统计周期；真正卸载/刷新后回到默认值。
@@ -73,14 +73,13 @@ DataStatistics（页面壳：页头、全局状态指示）
 - 真正卸载/刷新会销毁 tab 与面板局部状态；Query 缓存（`game-data` 的 depot/operbox/catalog 与 `statistics` 的 drops）由应用级 QueryClient 持有，可在新鲜期内复用。
 - 页面不使用业务 localStorage；执行控制器持久化的是 Run 身份，不属于本页。
 
-## 6. 兼容与回滚
+## 6. 兼容与维护约束
 
 - 四路 Query key、失效作用域、`staleTime`/`gcTime`/重试策略未变；首屏仍同时启动四路读取。
 - 识别/材料命令的端点、幂等键、超时与失效发布未变；材料刷新仍不重读干员目录。
-- 渲染结构、DOM/CSS 类名、表单 `id` 与默认态视觉保持：面板 JSX 由原页面原样迁出，未新增样式或更新截图。
-- 回滚本次面板提交即可恢复页面内联实现；Query 缓存、命令所有者与本地数据不需要迁移。
+- 保持渲染结构、DOM/CSS 类名、表单 `id` 与默认态视觉；筛选菜单、tab 导航和局部状态由下列回归测试覆盖。
 
-## 7. 回归证据
+## 7. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -97,5 +96,5 @@ DataStatistics（页面壳：页头、全局状态指示）
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/statistics
+pnpm --filter la-pluma-next-client exec vitest run src/features/statistics src/pages/statistics
 ```

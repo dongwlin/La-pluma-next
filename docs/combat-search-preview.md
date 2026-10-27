@@ -20,7 +20,7 @@
 | 运行身份、提交/停止/继续 | `features/combat/hooks/useCombatExecution.ts` + `task-execution` | 搜索/预览生命周期不控制后台运行 |
 | 配置草稿与 `copilotSetSelections` | `features/user-config` + `model/combatConfig.ts` | 选择写入仍走 300ms 去抖协调器 |
 
-非目标：
+维护约束：
 
 - 不以搜索/预览的资源生命周期启动、停止或恢复后台 Run。
 - 不改变服务端端点、存储 key、配置 wire 或页面布局。
@@ -28,13 +28,15 @@
 
 ## 2. 资源与缓存身份
 
-| 资源 | 端点 | Query key | 参数语义 | 缓存与刷新 |
-| --- | --- | --- | --- | --- |
-| 普通搜索 | `GET /agent/copilot/search?stage=` | `['combat','copilot-search',stage]` | 提交的关卡搜索词 | 显式搜索 `staleTime: 0`；输入变化取消；默认 30s 新鲜期保留上次结果 |
-| 悖论搜索 | `GET /agent/paradox/search?name=` | `['combat','paradox-search',name]` | 提交的干员搜索词 | 同上 |
-| 单作业详情 | `GET /agent/copilots/:id` | `['combat','copilot',id]` | PRTS 作业 id | 30s 内复用；预览按钮显式重读仍复用新鲜缓存 |
-| 作业集成员 | `GET /agent/copilot-sets/:id` | `['combat','copilot-set',id]` | 作业集 id | 仅在计划不可用/为空时读取；30s 内复用 |
-| 作业集计划 | `GET /agent/copilot-sets/:id/plan?raid=` | `['combat','copilot-set-plan',id,raid]` | 作业集 id、模式（normal/raid/both） | 计划优先；终态刷新 `staleTime: 0` 强制重读 |
+资源 key、参数清单与缓存数值以[Query 缓存与键规范](query-cache.md)为准；本域读取顺序与显式刷新语义如下。
+
+| 资源 | 端点与参数语义 | 域内读取策略 |
+| --- | --- | --- |
+| 普通搜索 | `GET /agent/copilot/search?stage=`，已提交的关卡搜索词 | 每次显式搜索重读；输入变化取消；失败时保留同一搜索词的上次结果 |
+| 悖论搜索 | `GET /agent/paradox/search?name=`，已提交的干员搜索词 | 同上 |
+| 单作业详情 | `GET /agent/copilots/:id`，PRTS 作业 id | 预览按钮复用新鲜缓存 |
+| 作业集成员 | `GET /agent/copilot-sets/:id`，作业集 id | 仅在计划不可用/为空时读取，复用新鲜缓存 |
+| 作业集计划 | `GET /agent/copilot-sets/:id/plan?raid=`，作业集 id 与 normal/raid/both 模式 | 计划优先；Run 终态刷新强制重读 |
 
 关键规则：
 
@@ -50,7 +52,7 @@
 
 | 动作 | 行为 |
 | --- | --- |
-| 提交搜索 | 记录本次代次，`fetchQuery({ staleTime: 0 })` 总是重新读取；返回 `success`/`failed`/`cancelled` |
+| 提交搜索 | 记录本次代次，`fetchQuery` 显式强制重新读取；返回 `success`/`failed`/`cancelled` |
 | 输入变化 | 调用 `cancel()`：推进代次并 `cancelQueries(combatKeys.resource('copilot-search'))`；Query 的 `signal` 中止 fetch |
 | Activity 隐藏/卸载 | Effect 清理调用 `cancel()`；显示时不自动重放搜索，成功结果仍在 Query 缓存 |
 | 旧响应 | 代次不匹配的 Promise 返回 `cancelled`，页面不提示、不自动填充推荐 |
@@ -115,7 +117,7 @@
 | 旧探测 | `prts://<id>` 的“自动”模式按单作业处理，不会猜测同 id 作业集；prts.plus 链接继续探测 |
 | 执行 | raid `1`/`2` 规范化为 `raid`/`both`；未带 s 前缀的作业集在预览与执行时补 `prts://s<id>` |
 
-服务端端点、配置 key、本地存储键与 wire 形状均未改变；回滚前端即可恢复页面内请求状态机，不需要迁移数据。
+服务端端点保持兼容；配置 key、本地存储键、pending 与 wire 形状由[配置持久化协调器](config-persistence.md)统一定义。搜索与预览应继续经过领域 Query 和预览会话，不在页面重建请求状态机。
 
 ## 7. Activity 与卸载
 
@@ -125,7 +127,7 @@
 - 真正卸载后重挂载会重置搜索词、识别方式与选中索引；Query 缓存若仍新鲜可直接复用。切换作业类型只卸载卡片 DOM，工作区持有的面板会话存储会保留这些局部输入。
 - 后台 Run 与配置提交不依赖本页 Activity；隐藏不会改变运行所有权。
 
-## 8. 回归证据
+## 8. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -141,5 +143,5 @@
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/combat
+pnpm --filter la-pluma-next-client exec vitest run src/features/combat src/pages/combat
 ```

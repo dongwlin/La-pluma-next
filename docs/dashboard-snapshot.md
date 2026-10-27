@@ -24,22 +24,22 @@
 约束：
 
 - **完整快照不是五个可独立展示的资源块。** 不得让五个 `useQuery` 各自写 `dashboardStore`，也不得把 Query 的逐块更新当成新的可写真相。
-- **`dashboard/snapshot` 只用于协调读取。** 它的缓存不承担展示或持久化：`staleTime: 0`、`gcTime: 0`，成功后立即由 `dashboardStore` 原子提交。
+- **`dashboard/snapshot` 只用于协调读取。** 它的缓存不承担展示或持久化，成功后立即由 `dashboardStore` 原子提交；Query 参数见[Query 缓存与键规范](query-cache.md)。
 - **设备采样与业务快照相互独立。** 采样失败不影响业务快照；业务刷新失败也不清除最新样本。
 
 ## 2. 五路读取与归一
 
 `readDashboardSnapshot(client)` 并发读取五个领域 Query：
 
-| 资源 | Query key | 读取 |
-| --- | --- | --- |
-| 当前活动 | `['automation','activity','Official']` | `getActivity('Official', signal)` |
-| 定时执行状态 | `['automation','schedule-execution']` | `getScheduleExecutionStatus(signal)` |
-| 养成队列 | `['training','queue']` | `getTrainingQueue(signal)` |
-| 今日掉落 | `['statistics','today-drops']` | `getTodayDrops(signal)` |
-| 今日开放关卡 | `['statistics','open-stages']` | `getOpenTodayStages(signal)` |
+| 资源 | 读取 |
+| --- | --- |
+| 当前活动 | `getActivity('Official', signal)` |
+| 定时执行状态 | `getScheduleExecutionStatus(signal)` |
+| 养成队列 | `getTrainingQueue(signal)` |
+| 今日掉落 | `getTodayDrops(signal)` |
+| 今日开放关卡 | `getOpenTodayStages(signal)` |
 
-每路都显式 `staleTime: 0` 且 `retry: false`：总览每次刷新都读取最新值；单路失败由下个周期或失效入口重试，不在协调层叠加自动重试。
+资源 key、协调快照 key 与 Query 参数以[Query 缓存与键规范](query-cache.md)为准。协调读取每次强制取最新值并关闭自动重试；单路失败由下个周期或失效入口重试。
 
 `normalizeDashboardSnapshot` 负责兼容与校验：
 
@@ -63,8 +63,8 @@
 
 ## 4. 设备采样
 
-- Query key：`['device-mirror','device-stats']`；`deviceStatsQueryOptions` 把 Query 的 `signal` 传给 `/agent/device-stats`。
-- `useDeviceStatsSample` 是页面观察入口：`refetchInterval: 5s`、`staleTime: 0`、`refetchOnMount: 'always'`、`retry: false`。轮询本身已按 5s 重试，不叠加默认 Query 重试。
+- 采样 key 与 Query 参数见[Query 缓存与键规范](query-cache.md)；`deviceStatsQueryOptions` 把 Query 的 `signal` 传给 `/agent/device-stats`。
+- `useDeviceStatsSample` 是页面观察入口：周期采样、挂载时立即重读，不叠加默认 Query 重试。
 - 采样失败静默保留上一份成功数据；`data: null`（无设备）不覆盖旧样本。非法字段（百分比越界、非有限数值、形状错误）由 `dashboardStore.updateDeviceStats` 拒绝，不污染缓存或温度历史。
 - 每次新的成功采样都会追加一个温度点（依赖 `dataUpdatedAt`，即使数值相同也不丢点），最多保留 36 个；同一份缓存样本在 Activity 恢复重跑 Effect 时不会重复追加（按 `dataUpdatedAt` 与样本身份去重）。样本本身不单独写 localStorage，随下一次完整业务快照提交一起持久化。
 - Activity 隐藏/卸载会注销 Query 观察者并清理 5s 计时器；恢复时 `refetchOnMount: 'always'` 立即采样一次，再只建立一个周期计时器。文档隐藏时 Query 默认暂停后台轮询，可见后恢复。
@@ -86,22 +86,22 @@
 
 | 数据 | 位置 | 生命周期 |
 | --- | --- | --- |
-| 五路资源读取 | 各自领域 Query 缓存 | 默认 30s 新鲜期；总览协调读取显式 `staleTime: 0` |
-| 协调快照 | `dashboard/snapshot` | `gcTime: 0`，不长期保留 |
+| 五路资源读取 | 各自领域 Query 缓存 | 协调读取强制取最新值；默认策略见[Query 缓存与键规范](query-cache.md) |
+| 协调快照 | `dashboard/snapshot` | 只用于当前协调读取，不长期保留 |
 | 展示快照 | `dashboardStore` | 进程内；完整快照才更新 `lastUpdate` |
 | 持久化快照 | `la-pluma-dashboard-cache` v1 | 仅完整快照提交时写入；恢复校验版本/形状/语义边界/未来时钟偏差 |
 | 设备样本 | `device-mirror/device-stats` Query + `dashboardStore` | 内存；不单独持久化，随完整快照夹带 |
 
 ## 7. 兼容与已知行为差异
 
-- 端点、响应信封、`la-pluma-dashboard-cache` v1 与 store 字段未变；回滚本项即恢复页面内请求编排，不需要数据迁移。
+- 保持端点、响应信封、`la-pluma-dashboard-cache` v1 与 store 字段兼容；完整快照读取与提交统一经过协调器。
 - 五路读取继承资源 Query 的信封/载荷校验与 `signal`；总览协调读取显式关闭自动重试，失败路径仍为一次请求后保留旧快照（迁移前不自动重试）。
 - 设备轮询在文档隐藏时暂停，恢复可见后立即采样；迁移前每 5s 固定请求。轮询失败仍是静默保旧，不展示错误。
 - 设备采样不再由 Dashboard 页面直接轮询；`updateDeviceStats` 接受未知载荷并在 store 内校验，避免把端点形状当成可信类型。
 - Activity 恢复不再直接调用页面私有计时器；计时器由 Query 观察者与同步 hook 各自管理，隐藏时全部清理。
 - `automation/activity` 由自动化领域 Query 持有，自动化页与总览按各自需要读取；`schedule-execution` 仍由总览完整快照消费。
 
-## 8. 回归证据
+## 8. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -125,12 +125,13 @@
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run \
   src/features/dashboard \
+  src/pages/dashboard \
   src/features/device-mirror \
   src/features/automation/model \
   src/features/statistics/model
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与 `pnpm visual` 由任务完成记录给出；本文件不重复声称未执行的验证。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

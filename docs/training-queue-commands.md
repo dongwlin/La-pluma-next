@@ -74,20 +74,11 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 
 ## 5. 失效联动
 
-队列写入确认成功后发布一次：
-
-| 作用域 | 原因 |
-| --- | --- |
-| `training-queue` | 队列成员、顺序、材料进度与服务端 revision 已变化 |
-| `materials` | 队列项的派生材料进度变化 |
-| `training-plan` | 已生成计划的队列前提变化 |
-| `automation-config` | 写入响应确认任务流程 `synced` 时，automation 配置中的智能关卡已变化。自动同步不会重注册已存在的 cron，因此不发布 `automation-schedule` |
-| `dashboard-snapshot` | 总览快照包含队列与材料摘要 |
+队列写入确认成功后发布一次失效；完整作用域与跨域接收方映射以[共享资源归属与失效端口](resource-ownership.md)为准。只有写入响应确认任务流程 `synced` 时才包含 `automation-config`；自动同步不会重注册已存在的 cron，因此不发布 `automation-schedule`。
 
 发布参数为 `cause: 'training-queue'`，并携带 `detail: { source: 'training-queue-command' }`：
 
 - 目前由 `TrainingWorkspace` 忽略带该 `detail` 的发布，因为权威快照已写入同一 Query key；外部发布的 `training-queue`（不带该标记）仍会触发重读。
-- `Dashboard` 只订阅 `dashboard-snapshot`，收到后走完整快照刷新；五路读取全部有效才提交，单路失败保留旧快照。
 - 候选列表与状态计数不因队列写入而失效；材料刷新/识别命令仍按 `materials` / `operbox` / `depot` 作用域触发候选与计数重取。
 - 计划失效路径：命令开始时立即作废旧预览（包括撤销；即使用户随后取消或失败，见既有回归），读取到 revision 变化时作废，以及设置版本变化时作废。前者保证“点击排序后旧计划按钮立即不可应用”，后两条覆盖识别、材料刷新、外部设置修改和另一客户端造成的队列变化。
 
@@ -98,18 +89,17 @@ add / remove / undo / reorder → 排队 → 前一条写入并刷新完成 → 
 - 真正卸载后重挂载：命令继续完成（请求没有 AbortController 绑定页面），新页面从 Query 缓存读取结果；pending 提示是否仍显示取决于命令是否完成，不再由旧页面闭包维护。
 - 页面首屏：`useTrainingPlan()` 把队列快照交给计划所有者，由其采用 `flowSync` 并把 `settings` 交给设置所有者 hydrate；若用户先编辑设置，则不采用迟到的首屏值。`TrainingPlanOwner` 的权威重读在读取期间本地设置未变化时采用服务端值（外部设置变化由此被发现）。
 - 生成计划前、应用后/失败后、重试同步后与显式“重新加载”都通过所有者强制重取队列；重读比较快照 revision 与设置版本，作废过期预览。
-- 队列命令在 `flowSync.status === 'synced'` 时随同一次发布携带 `automation-config`；自动同步不重注册 cron，因此不发布 `automation-schedule`。`training-plan-applied` window 事件已移除。显式应用计划仍由 `TrainingPlanOwner` 发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`。
+- 队列命令的同步发布遵循第 5 节；显式计划应用的发布由 `TrainingPlanOwner` 持有，见[养成设置提交与计划有效期](training-settings-and-plan-validity.md)。`training-plan-applied` window 事件已移除。
 
-## 7. 兼容与回滚
+## 7. 兼容与维护约束
 
 - 端点、请求体、响应体、服务端存储与 `flowSync` / `revision` 形状均未改变；`getTrainingQueue`、`addToTrainingQueue`、`removeFromTrainingQueue`、`updateTrainingQueueOrder` 的位置参数与 `ApiResponse` 信封保持兼容。
-- 新增 `['training', 'queue']` Query key；回滚到页面本地队列时不需要服务端迁移，缓存按 `gcTime` 自然淘汰。
+- 队列只保存在领域 Query 缓存中；key 与缓存策略以[Query 缓存与键规范](query-cache.md)为准。
 - 新增的 `uncertain` 字段只存在于前端 Query 缓存，不写入服务端，也不进入任何持久化存储。
 - 目前 synced 队列写入额外发布 `automation-config`（不含 `automation-schedule`），并移除 window 事件；不需要服务端迁移，旧订阅者若仍在监听 window 事件会失去通知（本仓库内已全部迁移）。
 - `detail.source` 是协议中的可选字段；不了解该字段的订阅者按普通 `training-queue` 发布处理，行为安全。
-- 独立回滚范围：页面与 `hooks/useTrainingQueueCommands.ts`、`model/queueCommands.ts`、`model/queries.ts` 的队列定义；不要求删除已有端点能力。
 
-## 8. 回归证据
+## 8. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -132,7 +122,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/resource-invalidation
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与 72 张视觉比对由任务完成记录给出。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

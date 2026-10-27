@@ -21,12 +21,12 @@
 | 解析/过滤/折叠视图 | `model/logModel.ts` 的 `buildLogView` | 纯函数；工作区只做一次派生，列表与导出共享结果 |
 | 导出文本与文件名 | `model/logExport.ts` | 纯格式规则；Blob/objectURL/anchor 下载仍由工作区执行 |
 
-非目标与保持不变：
+维护约束：
 
 - 不改变 `/agent/logs/*` 端点、`lines` 参数、1250ms 轮询、快照替换语义、历史请求序号与 AbortSignal 裁决。
 - 不改变列表行结构、折叠规则、摘要识别、搜索匹配范围与导出格式（仍导出过滤后的折叠前行）。
 - 不新增 Query、业务存储、cursor/offset 或跨标签页共享。
-- 唯一有意的呈现变化是工具栏新增暂停/继续入口；`logs` 的 6 张默认态截图随之更新，其余 66 张基线不变（见 §6）。
+- 工具栏提供暂停/继续入口与对应空态；视觉约束见 §6。
 
 ## 2. 组合与状态边界
 
@@ -84,29 +84,29 @@ LogViewer（页面壳：PageHeader + FloatingStatusIndicator）
 - Activity 显示：实时流按 `enabled` 与暂停标记决定是否立即重读；历史会话重读列表并重试被取消的当前文件。历史模式恢复不启动实时轮询。
 - 浏览器刷新/真正重挂载：两个会话实例新建，缓冲、历史选择、过滤与滚动位置全部重置，与迁移前一致。
 
-## 6. 兼容、视觉与回滚
+## 6. 兼容与视觉约束
 
 - 端点、响应形状、轮询频率、请求取消、历史选择裁决、清空/清理命令端点与 `maxSizeMB:10` 均未变。
-- 行为变化仅限本次接线所需的暂停策略：手动暂停时清空不再静默恢复轮询；从历史返回实时会恢复手动暂停。两者都有命令/页面级回归。
-- 没有新增 CSS；DOM 结构除工具栏新增暂停按钮、暂停空态文案外与迁移前一致。暂停按钮是任务要求的可见交互，因此只更新 `logs` 的 6 张默认态截图（deep/light × desktop/tablet/mobile），其余页面基线不变；未通过放宽断言或删除测试取得通过。
+- 暂停策略的明确兼容差异：手动暂停时清空不再静默恢复轮询；从历史返回实时会恢复手动暂停。两者都有命令/页面级回归。
+- 工具栏暂停按钮与暂停空态文案属于当前 DOM；默认态视觉由 `logs` 的主题/视口截图覆盖，更新基线应遵循[开发指南](development.md)的视觉回归流程。
 
-## 7. 回归证据
+## 7. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `pages/LogViewer.test.tsx` | 既有恢复/切换/清理回归；新增工具栏暂停与继续、暂停时错误重试先恢复、暂停后清空保持暂停、暂停→历史→返回实时立即重读、搜索过滤跨历史保持、导出过滤前重复行且过滤为空时禁用 |
-| `pages/LogViewer.activity.test.tsx` | 既有 Activity/文档可见性、慢请求、清空与历史恢复；新增工具栏暂停停止轮询与恢复立即读取、手动暂停跨 Activity 隐藏/恢复保留 |
+| `pages/logs/LogViewer.test.tsx` | 既有恢复/切换/清理回归；新增工具栏暂停与继续、暂停时错误重试先恢复、暂停后清空保持暂停、暂停→历史→返回实时立即重读、搜索过滤跨历史保持、导出过滤前重复行且过滤为空时禁用 |
+| `pages/logs/LogViewer.activity.test.tsx` | 既有 Activity/文档可见性、慢请求、清空与历史恢复；新增工具栏暂停停止轮询与恢复立即读取、手动暂停跨 Activity 隐藏/恢复保留 |
 | `model/logCommands.test.ts` | 既有清空/清理次序；新增手动暂停时清空成功/失败都不自动恢复 |
 | `model/logExport.test.ts` | 导出行格式、空选择与 UTC 文件名 |
 | `model/logModel.test.ts`、`model/realtimeLogStream.test.ts`、`model/historyLogSession.test.ts`、`hooks/useRealtimeLogs.test.tsx`、`api/index.test.ts` | 既有解析/过滤/折叠、轮询与暂停、历史竞态、API signal 与载荷校验 |
 
-针对性命令（实施仓库根目录）：
+针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/logs
+pnpm --filter la-pluma-next-client exec vitest run src/features/logs src/pages/logs
 ```
 
-真实浏览器验收在 Playwright Chromium（桌面视口）中以动态 `/api/agent/logs/*` 路由执行一次临时交互脚本，覆盖初始渲染与滚动到底、轮询追加、暂停后不再请求、继续立即读取、进入历史（暂停入口隐藏、清理禁用、自动滚动禁用）、返回实时、暂停后清空保持暂停、清理历史并刷新列表、搜索过滤、关闭自动滚动后新行不改变滚动位置、重新开启后回到底部；脚本验证后删除，不进入仓库。完整 `pnpm --filter la-pluma-next-client verify` 与 72 张视觉比对由任务工作流脚本执行，本文件不声称未执行的验证。
+维护时重点检查暂停/继续、清空后保留暂停、历史返回立即重读、搜索过滤、导出和自动滚动；可复用的行为回归见上表。完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

@@ -20,7 +20,7 @@
 | `acceptedAt` / `startedAt` / `finishedAt` | 接受、开始、结束时间 | 终态必须有 `finishedAt` |
 | `result` / `error` | 终态结果或结构化失败 | `failed`/`interrupted` 必须有 `error` |
 | `links.self` / `links.stop` | 按 id 查询与按目标停止入口 | `stop` 为 `/api/agent/actions/stop?runId=…` |
-| `recovery` | 重启恢复边界，仅 `interrupted` 存在 | 见 5.7 |
+| `recovery` | 重启恢复边界，仅 `interrupted` 存在 | 见 5.5 |
 | `progress` | 活动 run 的进度投影 | 读取时计算，不持久化 |
 
 Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.json`，可通过 `LA_PLUMA_AGENT_RUN_STORE` 改路径。不要让多个 Node.js 进程同时读写同一文件。终态最多保留 24 小时和 500 条，先到期先淘汰；被淘汰后按 `runId` 查询返回 404，同键请求会创建新 run。
@@ -38,8 +38,8 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 | 当前 MAA 子进程 | `GET /api/agent/tasks/status`（`maaService.taskStatus`） | 当前是否有一个受管子进程在跑，及其 `taskName`/`stopRequested` | 整个流程是否完成；流程步间等待时它可以是 idle |
 | 流程步骤进度 | `GET /api/agent/schedules/execution`（`scheduleExecutionStatus`） | `isRunning`、`currentStep`、`totalSteps`、`currentTask`、`taskResults`，以及当前流程的 `runId` | 看不到进度就推断未运行；`runId` 为空只表示该次流程没有 Run 身份（如 Telegram 等未纳管调用方） |
 | 执行租约 | `server/data/maa-execution.lock`；快照中的 `occupancy.lease` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
-| 连接健康 | 前端 runtime-status 监测 | 浏览器能否访问后端、当前是否 active | 执行成功、失败或已完成 |
-| 页面运行标记 | 页面状态与 `statusStore.isActive` | 当前页面的 UI 投影 | 后台任务所有权或终态 |
+| 连接健康 | 前端 runtime-status 健康探针 | 浏览器能否访问后端 | 执行是否活动、成功、失败或已完成 |
+| 全局运行展示 | `useRunStatusProjection` 从执行控制器写入 `statusStore.runStatus` | 当前 Run 快照的 UI 投影 | 后台任务所有权或独立终态 |
 
 规则：
 
@@ -47,7 +47,7 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 2. **进程 idle 不等于流程完成。** 定时/日常流程在步骤之间会释放子进程（等待、截图、仓库解析、汇报），此时 `tasks/status.isRunning=false`，但流程仍在进行；只有 Run 终态或流程结果才能确认完成。日常流程 Run 只有在自己持有 `schedule.runId` 时才投影步骤；`accepted` 尚未获得执行权、或 `schedule.runId` 指向别的流程时，`progress` 显示等待而不是借用他人的步骤。
 3. **流程进度是投影。** `schedules/execution` 与 Run 的 `progress` 来自同一流程状态；纳入 Run 的流程在 `scheduleExecutionStatus.runId` 中带上自己的 `runId`，本身仍不是执行身份。未纳入 Run 的调用（当前为 Telegram 等直接调用方）`runId` 为 `null`。
 4. **租约只做互斥。** 它防止协作进程同时操作设备，不记录业务结果；锁文件被回收只说明原持有进程已不存活。
-5. **页面不维护第二份运行状态机。** 页面可以缓存展示，但停止、完成、重连后的恢复必须以 Run 快照对账。当前 `statusStore.isActive` 仍由连接监测器按 `tasks/status` 写入；肉鸽、作业与自动化页已停止写入，统一投影由运行状态单源任务处理。
+5. **页面不维护第二份运行状态机。** 页面可以缓存展示，但停止、完成、重连后的恢复必须以 Run 快照对账。`useRunStatusProjection` 是 `statusStore.runStatus` 的唯一写入者；健康探针只写连接健康，页面只消费投影。客户端规则见[执行客户端](execution-client.md)。
 
 ### 2.1 运行快照
 
@@ -136,7 +136,7 @@ waiting ──stop──> stopped
 - 幂等记录随 Run 持久化，正常重启后仍有效；重启时活动 run 变为 `interrupted`，同键重试只会重放该中断结果，**不会重新执行**；要重试必须换新键。
 - 执行中失败（`failed`）保留键，因此同键重试会重放失败；只有执行前拒绝（占用、校验、准入落库失败）会释放键。
 - 键的保证受 24 小时/500 条终态保留限制；记录被淘汰后同键请求会创建新 run。
-- 未提供键时，每次请求都是新 run；当前 Web UI 未发送幂等键，因此页面重复点击没有服务端去重保护。
+- 未提供键时，每次请求都是新 run；当前 Web UI 经执行控制器生成并复用逻辑提交的幂等键，具体接线见[执行客户端](execution-client.md)。
 - 执行准入前落库失败会阻止执行并把 run 置为 `failed`；服务启动时 Run 存储初始化失败则**纳入 Run 的执行接口**整体关闭（503），不会在无身份记录的情况下执行。运行期写入失败时，准入落库会失败并阻止执行，返回可重试的 503。
 
 ## 4. 取消语义
@@ -196,7 +196,7 @@ waiting ──stop──> stopped
 | `app` / `cli`（旧模式） | 同端点，`mode=app` 或 `mode=cli` | 均映射为 `continuous`；旧的页面内连续与 maa-cli 连续不再有独立服务端语义 | 同 `continuous` |
 
 - 未传 `mode` 的旧调用保持 `continuous`，响应继续包含 `plan`、`results`、`completed`、`pending`，并新增 `runId`、`run`、`state`、`pollUrl`、`stopUrl`、`mode`、`summary`。旧客户端只读原有字段时行为不变。
-- 旧 `app` 模式的页面内“失败继续/失败停止”属于页面编排，不再有独立服务端语义；映射到 `continuous` 后沿用旧 `cli` 行为：一个 MAA 命令失败会结束集合，Run 置为 `failed`，未开始的条目保持 `pending`。页面迁移时应把策略表达为是否继续提交剩余条目，而不是让服务端自动跳过。
+- 旧 `app` 模式的页面内“失败继续/失败停止”属于页面编排，不再有独立服务端语义；映射到 `continuous` 后沿用旧 `cli` 行为：一个 MAA 命令失败会结束集合，Run 置为 `failed`，未开始的条目保持 `pending`。前端模式与失败策略见[执行客户端](execution-client.md)，不得重新引入页面逐项提交循环。
 - `continuous` 的逐项结果在 `summary.taskResults`：`status` 为 `pending`/`running`/`success`/`failed`/`stopped`。MAA 命令失败时 Run 为 `failed`，响应保留旧错误码 `COPILOT_PLAN_FAILED`（HTTP 422）与 `details.summary`；停止时返回 `stopped`，已完成项为 `success`，未开始项保持 `pending`。组与组之间检查停止意图，停止后不会启动下一组。
 - `manual` 在等待阶段返回 HTTP 200，`data.waitingForNext=true` 与 `data.nextEntry`；`run.state=waiting`，`progress.phase=waiting_for_next`。等待不持有租约，`occupancy` 不会把设备算作该 run 所有。
 - 继续下一项必须携带 runId。租约被占用时返回可重试的 409 `MAA_EXECUTION_BUSY`，run 保持 `waiting`，已完成条目、选中范围与下一项都不变；停止后继续返回 `alreadyTerminal`，不会启动任何条目。
@@ -240,39 +240,11 @@ waiting ──stop──> stopped
 
 与日常流程的步间延迟区分：后者由服务端流程在运行期间持有租约，延迟只是流程内部推进，不是“等待用户决定是否继续”；manual 等待则是释放租约、等待外部确认的独立阶段，用 `waiting` 显式表达。
 
-### 5.4 页面隐藏与文档不可见
+### 5.4 客户端生命周期与旧断点
 
-- `Activity` 隐藏保留页面状态、清理 Effects；它不改变后台执行所有权。隐藏不发送停止，也不代表完成；恢复后应重新查询 Run/流程状态再展示。
-- 隐藏期间轮询停止是预期行为；在途异步处理器不会被 Effect 清理自动取消，不能把它们的完成当成页面生命周期仍在的信号。
-- `document.hidden` 只影响预览、部分轮询等可见性相关会话，不影响 Run；执行完成的通知与状态不由文档可见性决定。
-- 当前 `usePageVisible` 只读取浏览器可见性，不代表 tab 是否选中；不得用它推断执行状态。
+页面隐藏、卸载、刷新或本地读取中止均不改变服务端执行所有权。客户端只能恢复观察，不能据此停止、宣告完成或重新提交；观察与持久化身份规则见[执行客户端](execution-client.md)。旧 `maa-task-flow-execution` 断点只允许关联已有 Run，格式、24 小时接受期限、冲突和清理规则由[前端兼容入口与移除规则](frontend-migration.md#旧自动化断点的接受与恢复)统一维护。
 
-### 5.5 刷新与重新挂载
-
-- 浏览器刷新会销毁页面状态，但服务端 run 继续。新页面实例必须按 `runId` 或 `runs/current` 重新观察，**不得因此重新提交任务**。
-- 真正卸载/重新挂载同样不改变所有权；页面内未完成的 Promise 不能作为恢复依据。
-- 当前客户端统一通过执行控制器保存身份、观察快照并按 `runId` 恢复；肉鸽、作业、自动化及总览均不依靠 `tasks/status` 推断任务终态。刷新只能恢复观察，不能重提执行。
-
-### 5.6 旧断点转换
-
-`localStorage['maa-task-flow-execution']` 是旧版 Automation 前端流程引擎的断点：包含 `isExecuting`、`tasks`、`currentIndex`、`startTime`，逐步写入，完成/停止/失败时删除，超时保留。它包含执行语义，不是普通配置。
-
-旧断点兼容规则：
-
-1. 只读一次，作为一次性兼容输入；不得把它当作 run 身份，也不得写入新的执行断点。
-2. 若能关联到匹配的活动/终态 Run，只观察该 Run 并删除旧键；不得重新提交。
-3. 无法关联、版本不符或已过期时，标记失效并删除，提示用户重新启动；不得自动续跑。
-4. 与活动 Run 冲突时以 Run 为准，不并行启动第二套流程。
-5. 首次读取后删除旧键；清理失败也不能导致执行提交，页面不得再次写入此键。
-
-当前自动化页不再写这个键，也没有第二套前端流程引擎。页面在首次拿到 Run 快照时读取一次旧键，按 `snapshot.schedule.runId` 与 `activeRuns` 关联活动 `run_daily_flow`，或关联在旧键写入时已经活动、随后结束的 `lastRun`；关联成功只调用执行控制器 `observeRun(runId, 'run_daily_flow', 'automation')` 并删除旧键。
-
-- 格式错误、版本不符、超过 24 小时（与 Run 终态保留期一致）、没有可关联 Run 时，删除旧键并提示重新开始，不自动续跑。
-- 有其它活动 run，或流程正在运行但没有 Run 身份（未纳管调用方/旧服务端）时按冲突处理：删除旧键，不接管该流程，也不启动第二条流程。
-- 旧键删除失败只影响清理；页面从不根据旧键提交执行，下一次启动会再次检查。
-- 支持范围依赖服务端快照能给出 Run 身份。回退到旧服务端时旧断点无法关联，只会被清理并提示重新开始。
-
-### 5.7 服务重启与持久化失败
+### 5.5 服务重启与持久化失败
 
 - 启动时恢复 Run 存储：终态保留；所有 `accepted`/`waiting`/`running`/`stopping` 记录改为 `interrupted`，写入 `error.details.reason=server_restart`、`previousState` 和当前 `finishedAt`，不自动续跑。
 - `interrupted` 的 run 额外返回 `recovery`：`source`、`previousState`、`executionResumed=false`、`deviceState='unknown'`。可恢复的只有记录身份与终态；执行不会恢复，设备是否仍被旧进程占用无法证明。`/runs/current` 的 `lastRun` 会展示该记录，`occupancy` 不会因为存在终端 run 而把设备标成空闲以外的结论——它按新的任务/流程/租约观测重新判断。
@@ -299,7 +271,7 @@ waiting ──stop──> stopped
 | 作业集（continuous，含旧 app/cli） | `POST /api/agent/copilot-sets/{setId}/execute` | 是（`run_copilot_set`） | 集合全程持有 | `run.progress` + 响应 `summary`；完成进度落 `copilot-progress.json` | 默认同步兼容原响应；`waitForCompletion=false` 返回 202 |
 | 作业集（manual） | `POST /api/agent/copilot-sets/{setId}/execute`（`mode=manual`）与 `POST /api/agent/actions/continue-copilot-set` | 是（`run_copilot_set`；集合级 `waiting`） | 仅单条目执行期间持有；等待释放 | `run.progress` 的 `waiting_for_next`/逐项结果 | 等待期间其他客户端可占用；继续失败可重试且不消耗条目 |
 | 逐项 `run-task`（通用入口） | `POST /api/agent/actions/run-task` | 每项是；集合整体否 | 每项命令期间持有 | 每项 run | 页面内的连续编排已退役；其它调用方仍可逐项提交，但不构成集合身份 |
-| 旧断点迁移 | 页面启动读取 `maa-task-flow-execution` | 否（只关联已有 run） | 不获取 | 所关联 run 的 progress | 一次性；不重提，见 5.6 |
+| 旧断点迁移 | 页面启动读取 `maa-task-flow-execution` | 否（只关联已有 run） | 不获取 | 所关联 run 的 progress | 一次性；不重提，见 5.4 |
 | 仓库/干员识别 | `POST /api/agent/actions/run-task`（`depot`/`operbox`） | 是 | 命令期间持有 | run 进度 | 后续 `depot-recognition`/`operbox-recognition` 只解析本地日志，不是设备执行 |
 | 材料数据更新 | `POST /api/agent/actions/fetch-training-materials` | 否 | 不占设备租约 | 无 | 拉取数据脚本，不是设备自动化 |
 | 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 否 | 全程持有 | 无 | 维护入口；与自动化互斥 |
@@ -317,30 +289,13 @@ waiting ──stop──> stopped
 - `POST /api/agent/copilot-sets/{setId}/execute` 与 `POST /api/agent/actions/continue-copilot-set` 面向 Web UI，未在 Agent manifest 中广告；它们创建/推进 `run_copilot_set`，与其他执行共享同一租约与快照。
 - 定时流程与 HTTP 入口使用同一执行租约；同一时刻只有一个流程能进入 pre-start gate，第二个触发会得到占用失败而不是并行执行。
 
-## 7. 兼容约束与支持窗口
+## 7. 契约演进与持久化维护
 
-| 项目 | 当前行为与兼容约束 | 维护要求 | 对应能力 |
-| --- | --- | --- | --- |
-| Agent API 响应 | 原有 `data` 字段保留，新增 `runId`/`run`/`pollUrl`/`stopUrl` | 继续只增不减；旧客户端忽略新字段即可 | 契约演进 |
-| `/runs/current` | 保留 `task`、`schedule`、`recentLogs`；新增 `activeRuns` 与 `occupancy`，`run`/`lastRun` 语义不变 | 前端从同一快照派生全局运行展示 | 运行状态单源 |
-| 目标停止入口 | `links.stop` 与 `stopUrl` 指向 `?runId=<id>`；查询参数与请求体都接受 `runId`；肉鸽、作业与自动化页已统一按 `runId` 停止 | 保持 | 前端执行客户端（控制器）、自动化执行 |
-| 旧执行端点 | `schedules/:id/execute` 默认仍同步且保留原 `data`；`copilot-sets/:id/execute` 默认仍同步，保留 `plan`/`results`/`completed`/`pending` 与 `COPILOT_PLAN_FAILED` | 异步模式返回 Run 身份；旧同步入口继续保持 | 日常流程执行、作业集纳入 Run |
-| 幂等键 | 可选；服务端完整支持；执行控制器为新提交生成并持久化键；肉鸽、作业与自动化页提交均复用控制器 intent | 保持 | 前端执行客户端（控制器）、自动化执行 |
-| `runId` 使用 | 日常流程与作业集所有 HTTP 入口已产生 `runId`；应用级控制器已保存、按 id 查询并恢复观察；肉鸽、作业、自动化与 Dashboard 入口都从控制器快照派生运行展示并在终态前保留身份 | 保持 | 前端执行客户端（控制器）、自动化执行、运行状态单源 |
-| accepted 并发的 `current` | `activeRuns` 列出全部活动意图；`run` 按 stopping > running > accepted > waiting、同级取最新 | 调用方不再假定只有一个 accepted | 运行快照 |
-| accepted 的停止 | 取消为 `stopped`（`result.canceled=true`），不发设备命令；执行器 pre-start gate 放弃启动 | 保持；集合级停止必须阻止下一项启动 | 运行快照、作业集纳入 Run |
-| 作业集模式 | app/cli 映射为 `continuous`，`manual` 使用服务端 `waiting` 会话；旧响应字段保留；作业页只通过集合 run 展示、继续与停止 | 保持 | 作业集执行 |
-| 作业集逐项结果 | `summary.taskResults` 覆盖全部范围；失败汇总与 `pending`/`completed` 归属于集合 `runId`；作业页从 `progress`/`summary` 投影展示，不自行拼接 | 保持 | 作业集执行 |
-| 忙碌错误码 | Agent 日常流程入口统一为 `AGENT_EXECUTION_BUSY`；`/schedules/:id/execute` 保留 `AGENT_SCHEDULE_ALREADY_RUNNING`；作业集入口与继续下一关保留 `MAA_EXECUTION_BUSY`；底层仍为 `MAA_EXECUTION_BUSY` | 调用方按 `retryable` 与 `details.owner` 重试；旧码继续映射 | 日常流程执行、作业集纳入 Run |
-| 日常流程失败 | 占用/校验拒绝释放幂等键；流程已开始后的失败保留键，run 转为 `failed` 并带错误原因 | 调用方修正输入或换键重试 | 日常流程执行 |
-| manual 等待 | 服务端 `waiting` run 与显式 `waiting_for_next`；等待不持租约；继续失败可重试且不消耗条目；作业页以服务端 `nextEntry` 渲染“开始下一关”，继续走 `continue-copilot-set` | 保持 | 作业集执行 |
-| 旧断点 | 首次快照读取一次，关联活动/终态 `run_daily_flow` 时只观察；失效、过期、冲突与无法关联时删除并提示，从不重提 | 保持；支持窗口 24h，依赖服务端 Run 身份 | 自动化执行 |
-| 全局运行展示 | `App` 的应用级投影把唯一快照写成 `statusStore.runStatus`（running/waiting/occupied/unknown/idle）；页面与连接监测器都不再写运行字段，监测器只写连接健康 | 保持；展示与启动入口同源，断线不得写成完成 | 运行状态单源 |
-| 定时/更新/Telegram 入口 | 定时日常与作业集已纳入 Run；更新、维护与 Telegram 仍持有租约但未纳管；快照以 `occupancy.state=external` 显式标注 | 维护与外部入口至少显式标注占用 | 日常流程执行、作业集纳入 Run；综合验收 |
-| 服务重启 | 活动 run → `interrupted`；`recovery.deviceState=unknown`；不自动续跑 | 重连后先确认设备/连接再重新提交 | 运行快照 |
-| 实时性 | 无推送，HTTP 轮询 | 保持轮询契约；不得把推送当作既有前提 | 客户端实现 |
+旧 HTTP 入口、响应字段、同步默认值、作业集模式别名及外部调用方的现存消费者、支持窗口和移除条件，统一见[前端兼容入口与移除规则](frontend-migration.md)。新增 Run 字段不授权删除旧字段；客户端按身份观察和停止的约束见[执行客户端](execution-client.md)。
 
-回滚边界：前端回退必须先确认正在执行的 Run、现有持久化记录和外部设备占用；不能删除服务端终态记录或因为旧页面没有新字段就重新提交任务。旧客户端仍可忽略新增的 Run 字段，旧同步入口继续保留默认等待语义；回退前应检查目标版本是否支持 `waiting`、幂等键和按身份停止，避免状态语义退化。完整消费者与移除条件见[兼容性审计](frontend-migration.md)。
+Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；不支持任意旧版本的自动迁移。后续升级格式必须能读取旧文件，或提供明确迁移路径，并保留 `runId`、终态与幂等记录的一致性。服务端回退前必须确认目标版本能读取当前文件格式；不支持的格式应保持 fail-closed，不得删除 Run 文件来绕过准入关闭。
+
+回退前端前应确认正在执行的 Run、持久化身份与外部设备占用，并检查目标版本对 `waiting`、幂等键和按身份停止的支持。不得清空服务端记录或因为旧页面没有新字段就重提执行。终态记录的 24 小时/500 条保留限制及服务重启中断语义见第 1 节与 5.5。
 
 ## 8. 契约测试清单
 
@@ -358,18 +313,5 @@ waiting ──stop──> stopped
 | `server/services/__tests__/executionCoordinatorService.test.js` | 租约互斥、同异步流重入、死进程锁回收 |
 | `server/services/__tests__/maaTaskExecution.test.js` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
 | `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
-| `client/src/features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 连接监测的 online/offline/focus 行为；探针只写连接健康，不写运行状态；投影进入忙态后改按 2s 间隔 |
-| `client/src/features/runtime-status/hooks/useRunStatusProjection.test.tsx` | 唯一快照投影为 running/waiting/occupied/unknown/idle；断线保留最后活动 run 但标记未知；终态后才回到空闲 |
-| `client/src/pages/dashboard/Dashboard.test.tsx` | Dashboard 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；跨域启动/停止、外部占用与断线未知时全局状态一致；活动预检阻断保留领域原因 |
-| `client/src/features/automation/api/index.test.ts` | 旧同步调用不带 `waitForCompletion`/幂等头；后台日常流程写入 `waitForCompletion=false`、`Idempotency-Key` 并转发 signal |
-| `client/src/features/automation/model/automationRun.test.ts` | 活动进度取 `run.progress` 与匹配 runId 的 `schedule`；其它 run 的逐项结果不被借用；缺失/不完整结果不伪造状态；终态摘要只来自 `succeeded`/`stopped`；终态通知分类 |
-| `client/src/features/automation/model/flowCheckpoint.test.ts` | 旧断点 JSON/版本/24h 时效；活动与终态 `run_daily_flow` 关联；无身份流程与其它活动 run 冲突；删除旧键；删除失败不触发执行 |
-| `client/src/pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交；步间延迟不提前完成；按 `runId` 停止并等待终态；刷新按身份恢复且不重提；其它 run 的 `schedule` 投影隔离；Activity 隐藏/恢复；旧断点有效/终态/失效/过期/冲突；失败、跳过与未执行结果 |
-| `client/src/pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不发送停止、不重新提交 |
-| `client/src/features/combat/model/copilotSetRun.test.ts` | 集合 run 投影：活动 `progress`、终态 `summary`、突袭/普通条目按作业折叠、等待态 `nextEntry`、缺失进度不伪造完成、终态文案 |
-| `client/src/pages/combat/CombatTasks.test.tsx` | 三模式映射（cli/app→continuous、manual）、幂等提交、等待态“开始下一关”与 409 占用重试、失败汇总、按 `runId` 停止后不续跑、停止确认超时重试、hide/show、断线重连、刷新按身份恢复、非本域/非当前集合 run 隔离、上一条记录不冒充完成 |
-| `client/src/pages/roguelike/RoguelikeTasks.test.tsx` | 单次幂等提交与命令语义、重复点击不并发、按 `runId` 停止、停止确认中 hide/show 与超时重试、卸载不停止、刷新按身份恢复、非本域 run 隔离、终态消息 |
 
-日常流程的入口覆盖已由 `server/routes/__tests__/agentRoutes.test.js` 与 `server/services/__tests__/schedulerRecovery.test.js` 的新增用例固定：手动、Dashboard 快捷（同一端点）、cron 与 Agent 入口共用一个 `run_daily_flow` 和同一执行租约，旧同步端点保持可用。Dashboard 快捷入口以 `waitForCompletion=false` 提交并交给控制器观察，活动日常入口（`run_current_activity_copilots`）保持同步但同样采纳 `runId`；跨页行为由[集成场景](cross-page-acceptance.md)验证。
-
-作业集的入口覆盖由 `server/services/__tests__/copilotSetRunService.test.js` 与 `server/routes/__tests__/agentRoutes.test.js` 固定：`continuous`（含旧 app/cli）使用单个 `run_copilot_set` 和同一租约；`manual` 首项后转 `waiting`，等待期间租约自由，继续时重新获取；逐项结果与失败汇总写在 run 的 `summary`；停止后不再启动下一项。肉鸽页接入执行控制器并覆盖刷新恢复与停止确认；作业页接入集合 Run，覆盖三模式提交、manual 继续、失败汇总、停止不续跑与恢复路径；自动化页接入 `run_daily_flow`，覆盖单次幂等提交、步间延迟、按 `runId` 停止、刷新恢复与旧断点迁移，页面不再逐项提交 `run-task`。
+客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](cross-page-acceptance.md)。本表只维护服务端身份、状态机、持久化与执行入口的契约测试。

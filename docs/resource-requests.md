@@ -13,7 +13,7 @@
 | 响应信封解析、旧格式兼容 | `shared/api/apiResponse.ts` | 只读请求的失败归类 |
 | Query 缓存、失效、重试 | [Query 缓存与键规范](query-cache.md) | 本契约不引入 Query |
 
-本契约只覆盖**只读资源读取**：`GET` 端点，以及返回资源快照的读取函数。执行命令、停止、配置提交、通知配置读写、截图等 `POST`/`PUT`/`DELETE` 不在范围内。运行快照（`runs/current`、按 `runId` 查询、`tasks/status`）属于执行控制器的事实读取，已有 signal 与控制器级处理，不按普通资源迁移。
+本契约只覆盖**只读资源读取**：`GET` 端点，以及返回资源快照的读取函数。执行命令、停止、配置提交、通知配置读写、截图等 `POST`/`PUT`/`DELETE` 不在范围内。运行快照（`runs/current`、按 `runId` 查询）由执行控制器观察，`tasks/status` 由 runtime-status 健康探针读取；它们各有 signal 与观察处理，不按普通资源迁移。
 
 ## 2. 两层入口
 
@@ -153,9 +153,9 @@ const depot = unwrapApiResponse(result)
 
 未纳入的读取：
 
-- 运行快照、按 `runId` 查询、`tasks/status`：执行控制器事实，已有 signal；不建立 Query 缓存。
+- 运行快照与按 `runId` 查询归执行控制器，`tasks/status` 归健康探针读取；已有 signal，不建立 Query 缓存。
 - `loadUserConfig` / `saveUserConfig`：配置协调器通道已有 signal 与适配器 `decodeDraft` 校验，配置草稿也不是普通资源缓存。
-- `NotificationSettings` 直接读取通知配置：归设置域配置编辑，不进入 Query。
+- `features/automation/components/NotificationSettings.tsx` 自持通知配置草稿、保存与测试，不进入 Query，也不与 task flow/schedule 配置作为同一提交单元。
 - 所有 `POST`/`PUT`/`DELETE` 命令与截图：不属于只读资源。
 
 ## 6. 旧消费者兼容
@@ -164,7 +164,7 @@ const depot = unwrapApiResponse(result)
 - 候选端点的函数名、位置参数和 `ApiResponse` 返回形状不变；`errorInfo.kind`/`status` 是新增字段，旧页面只读 `success`/`message`/`error`/`data` 时行为不变。
 - 把 `getDepotData`/`getOperBoxData`/`getAllOperators` 的归属迁到 `features/game-data`，函数签名、端点与载荷校验不变；仓库内消费者全部改为经该域公开面导入后，statistics/training 不再转发这些函数。图标 helper 同域持有，借助缓存 epoch 与订阅 hook 触发图片重新加载，不建立 Query key 或额外数据请求。
 - `fetchWithAuth` 现在按结构判断 `AbortError`，不再要求 `instanceof Error`。这修复了 `DOMException` 被改写成连接失败的问题；非取消路径不变。
-- 配置 key/格式、执行协议、存储与视觉均未改变。本契约可独立回滚：回滚后旧调用仍能读取同一端点，只是失去取消与领域校验。
+- 配置 key/格式、执行协议与存储保持兼容；取消与领域校验是读取端的维护要求。
 
 ## 7. 领域 Query 接入要求
 
@@ -187,18 +187,8 @@ const depot = unwrapApiResponse(result)
 | `client/src/features/training/api/index.test.ts` | 候选列表信号与旧数组形状、队列坏载荷、revision/flowSync 保留 |
 | `client/src/features/automation/api/index.test.ts` | 活动与调度状态 signal、坏载荷、服务端失败码、既有执行参数与幂等键 |
 | `client/src/features/settings/api/index.test.ts` | 版本/配置目录/配置/设备发现 signal、旧字符串目录、空目录拒绝、connection 已知字段校验、缺失字段与未知字段保留 |
-| `client/src/features/settings/model/systemResources.test.ts` | `settings/version`/`settings/config-directory` 的 signal、版本与目录归一、空白路径 contract 失败 |
-| `client/src/features/settings/model/deviceConnection.test.ts` | 发现/连接测试的请求信号、取消与迟到响应、独立 loading 与失败映射 |
 | `client/src/features/logs/api/index.test.ts` | 实时轮询 signal、文件列表与内容 signal、坏内容、取消保持 `AbortError` |
-| `client/src/features/logs/model/logModel.test.ts` | 实时/历史解析、级别归一、摘要、过滤、折叠与空输入 |
-| `client/src/features/logs/model/realtimeLogStream.test.ts` | 1250ms/200 行轮询、单在途、旧响应与文档隐藏/暂停取消、失败保留缓冲 |
-| `client/src/features/logs/model/historyLogSession.test.ts` | 历史列表/读取信号与旧响应、返回实时、Activity 隐藏取消与恢复重试、清理后选择裁决 |
-| `client/src/features/logs/model/logCommands.test.ts` | 清空实时的 pause/clear/resume 与失败保留、清理历史的列表刷新/选择裁决 |
-| `client/src/pages/logs/LogViewer.activity.test.tsx` | Activity/文档可见性恢复、慢请求不叠加、清空暂停与恢复立即重读、历史读取恢复重试、历史模式不重启实时 |
-| `client/src/pages/logs/LogViewer.test.tsx` | 实时失败重试、后台刷新保留行、历史列表/文件重试、返回实时、切换竞态、清理确认与失败重试 |
 | `client/src/features/combat/api/index.test.ts` | 搜索/详情/计划 signal、PRTS 代理对象、坏计划载荷、404 错误码 |
-| `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划的 Query signal 与取消、失败分类、预览组合读取 |
-| `client/src/features/combat/model/copilotPayload.test.ts` | PRTS 代理信封/原始载荷兼容、搜索条目与计划 completedModes |
 | `client/src/features/device-mirror/api/index.test.ts` | WebRTC 状态 signal 与坏载荷、设备状态 signal 与 `null` 保留、既有组合启动 |
 
-验证命令与结果记录在对应任务的完成记录；本文件只描述契约与回归入口。
+运行上述对应测试可验证传输层取消、错误分类与领域载荷校验；Query 生命周期、领域会话和命令接线的回归由各自契约维护。

@@ -16,7 +16,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页头、全局状态指示与工作区组合 | `pages/AutomationTasks.tsx` | 只调用 `PageHeader`、`FloatingStatusIndicator` 与 `AutomationWorkspace` |
+| 页头、全局状态指示与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只调用 `PageHeader`、`FloatingStatusIndicator` 与 `AutomationWorkspace` |
 | 配置订阅、Run 订阅、选中项、撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
 | 流程列表、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；页脚仍是任务挑选菜单的点击区域 |
 | 定时编辑与通知 | `components/AutomationSchedulePanel.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
@@ -27,10 +27,10 @@
 | 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 遵循配置协调器契约，维持 key、本地布局、wire 与完整提交条件 |
 | 执行提交、观察、停止与旧断点 | `task-execution` 控制器 + `useAutomationExecution` | 面板只读快照；不发送停止以外的执行写操作 |
 
-非目标与保持不变：
+维护约束：
 
-- 不改变配置 key、pending 键、`maa-task-flow`/`maa-schedule` 本地布局、wire 形状、
-  `/agent/schedules/*`、通知端点和执行协议。
+- 配置 key、pending、本地布局与 wire 形状以[配置持久化协调器](config-persistence.md)
+  为准；保持 `/agent/schedules/*`、通知端点和执行协议兼容。
 - 不改变任务参数默认值、智能养成参数、执行前校验顺序或执行身份。
 - 遵循既有渲染结构与 DOM/CSS 类名；表单 `id`/`aria-label`、菜单 `id`/`role`、
   焦点顺序与键盘行为保持。没有新增样式，也没有更新视觉基线。
@@ -148,7 +148,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
   按 `staleTime` 决定是否后台重取；
 - 活动名称缺失时回退显示活动 code。
 
-## 7. Activity、兼容与回滚
+## 7. Activity 与兼容约束
 
 - **Activity 隐藏/恢复**：流程排序的 document 监听随 Effect 清理并丢弃进行中
   的预览；摘要保留与展开状态保留；活动 Query 观察者注销；配置通道与执行
@@ -162,7 +162,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
   不改变默认态视觉；回归用例覆盖成功提交，取消路径仍由 Escape/`pointercancel`
   覆盖。
 
-## 8. 回归证据
+## 8. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -177,7 +177,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/automation
+pnpm --filter la-pluma-next-client exec vitest run src/features/automation src/pages/automation
 ```
 
 ## 9. 剩余边界

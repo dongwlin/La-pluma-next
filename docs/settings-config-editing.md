@@ -6,7 +6,7 @@
 
 设备发现、连接测试、版本、配置目录与打开目录由设置设备领域负责，见[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新由 `model/updateCommands.ts`、`model/autoUpdateConfig.ts` 及其 hooks 持有，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。自动更新的归一化模型仍在 `model/configNormalization.ts`，草稿、提交与调度状态机归自动更新所有者。
 
-验证入口见文末[回归证据](#6-回归证据)。
+验证入口见文末[回归测试](#6-回归测试)。
 
 ## 1. 定位与边界
 
@@ -31,14 +31,12 @@
 
 ### 2.1 Query 身份与载荷
 
-```ts
-settingsKeys.query('maa-config', profileName) // ['settings', 'maa-config', profileName]
-```
+`maa-config` 的 profile 参数与 Query key 以[Query 缓存与键规范](query-cache.md)为准。
 
 - Query 只保存服务端只读快照，不直接写页面；`queryFn` 把 Query 的 `AbortSignal` 传给 `getConfig(profileName, signal)`，Activity 隐藏或卸载时由 Query 取消观察并按既有策略保留缓存。
 - `getConfig` 收紧载荷校验：`adb_path`、`address`、`config` 出现时必须是字符串，`auto_reconnect` 出现时必须是布尔；已知字段类型不合法返回 `INVALID_DOMAIN_PAYLOAD`。缺失字段是合法的 MAA profile 形态，由归一化模型补页面默认值。
 - 归一化保留 `connection` 段中的未知字段，保存时随快照原样回写；已知字段缺失或类型不合法时使用页面原有默认值（`/opt/homebrew/bin/adb`、`127.0.0.1:16384`、`CompatMac`、自动重连开启）。
-- Query 默认策略沿用 [Query 缓存与键规范](query-cache.md)：30s 新鲜期、可恢复失败最多重试 2 次、`contract` 失败与取消不重试。
+- Query 默认策略与失败分类沿用[Query 缓存与键规范](query-cache.md)。
 
 ### 2.2 草稿状态
 
@@ -120,16 +118,15 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 - 自动更新的读取/本地回退、touched/revision、保存后 `setupAutoUpdate` 与反馈由 `AutoUpdateConfigOwner` 和 `useSettingsAutoUpdate()` 持有；归一化与时间校验仍在 `model/configNormalization.ts`，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 - 设备发现、连接测试、版本、配置目录与打开目录归[设置设备连接与系统资源](settings-device-and-resources.md)；组件更新与自动更新归[设置组件更新与自动更新](settings-updates-and-auto-update.md)。
 
-## 5. 兼容与回滚
+## 5. 兼容与维护约束
 
 - 端点、请求体、响应体与服务端 TOML 写入方式未改变；配置 key、profile 名与 section 存储键/事件名保持不变。
-- 新增 Query key `['settings','maa-config',profileName]` 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
+- Query 快照只存在于内存，浏览器刷新随缓存丢失；key 与参数清单见[Query 缓存与键规范](query-cache.md)。没有新增 localStorage 数据。
 - 载荷校验比迁移前严格：已知字段类型不合法时整份读取失败并显示错误，而旧页面会把异常值放入受控输入。未知 connection 字段仍原样保留。
 - 已知字段缺失时显示页面默认值，而旧页面会显示空输入；这是归一化模型的要求，正常服务端载荷（`getConfig` 自带默认值）不受影响。
 - 默认渲染结构、DOM 与 CSS 未改变；失败/`superseded` 提示只在非默认状态出现，视觉基线不因该逻辑调整更新。
-- 独立回滚范围：`features/settings/model/configNormalization.ts`、`model/connectionConfig.ts`、`model/queryKeys.ts`、`model/configSection.ts`、`hooks/useConfigSection.ts`、`hooks/useSettingsConnectionConfig.ts` 与 `ConnectionConfigPanel`/`SettingsWorkspace` 的 connection/section 接线，以及 API 校验收紧；回滚后恢复页面本地 state，不需要数据迁移。
 
-## 6. 回归证据
+## 6. 回归测试
 
 | 测试 | 覆盖 |
 | --- | --- |

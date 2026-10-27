@@ -24,7 +24,7 @@
 | 计划展示规则 | `features/training/model/planDisplay.ts` | 当日开放关卡投影、次数/理智与焦点干员 |
 | 队列写入、设置提交、计划编排 | `model/queueCommands.ts`、`model/settingsCommands.ts`、`model/planCommands.ts` | 已有所有者，当前未改协议 |
 
-非目标：
+维护约束：
 
 - 不改变队列、候选、计数三类 Query 的 key、读取时机、失效作用域与失败语义。
 - 不持久化筛选、搜索、分批游标、计划范围或选择器开关；真正卸载/刷新后回到默认值。
@@ -111,15 +111,14 @@ OperatorTraining（页面壳）
 - 队列命令、设置写入与计划生成/应用/同步都是模块级所有者：隐藏或真正卸载不会重建串行链、取消写请求或清空 pending；恢复时工作区重新订阅所有者状态。
 - 真正卸载会销毁面板局部状态并由新页面从默认值开始；应用级 QueryClient 中的队列/候选/计数缓存和所有者状态继续可用。
 
-## 8. 兼容与回滚
+## 8. 兼容与维护约束
 
 - Query key、读取时机、失效作用域、失败保旧与 `uncertain` 语义未变；选择器关闭不改变候选/计数读取的启动时机。
 - 队列/设置/计划的所有者 API、端点与失效发布未变；`training-plan-applied` window 事件仍未恢复。
-- 渲染结构、DOM 类名、表单 `id` 前缀、`aria-*` 与默认态视觉保持：面板 JSX 由原页面原样迁出。迁移时用离线渲染对比默认页面与选择器弹层的 DOM，除 React `useId` 生成值随组件层级变化外无节点或属性差异；没有新增样式或更新截图。
-- 唯一的结构性文件移动是 `getOpenStagePlan` 从 `planCommands.ts` 迁到 `planDisplay.ts`；它不是 feature 公开面成员，仓库内只有页面与计划所有者使用。
-- 回滚本次面板提交即可恢复页面内联实现；Query 缓存、所有者与本地数据不需要迁移。
+- 保持渲染结构、DOM 类名、表单 `id` 前缀、`aria-*` 与默认态视觉；选择器焦点、标签和交互由下列组件/页面回归测试覆盖。
+- `getOpenStagePlan` 归 `planDisplay.ts`；它不是 feature 公开面成员，供渲染层与计划所有者使用。
 
-## 9. 回归证据
+## 9. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -129,16 +128,16 @@ OperatorTraining（页面壳）
 | `features/training/components/OperatorPicker.test.tsx` | 搜索与无结果空态、分批渲染与“继续显示”、关闭再打开保留搜索与游标 |
 | `features/training/components/MaterialViews.test.tsx` | 表格 role/列头/缺口与已齐、嵌套合成层级 |
 | `features/training/components/UndoToast.test.tsx` | portal 在页面容器外、`role="status"`/`aria-live`、8 秒关闭、悬停/焦点/pending 暂停、失焦恢复 |
-| `pages/training/OperatorTraining.test.tsx` | 既有 56 项回归：队列增删排序撤销、写后刷新 fallback、设置串行、计划版本/生成/应用/部分成功、选择器焦点、Activity 隐藏恢复、材料展示与错误重试 |
+| `pages/training/OperatorTraining.test.tsx` | 队列增删排序撤销、写后刷新 fallback、设置串行、计划版本/生成/应用/部分成功、选择器焦点、Activity 隐藏恢复、材料展示与错误重试 |
 | `features/training/model/queueCommands.test.ts`、`settingsCommands.test.ts`、`planCommands.test.ts`、`planValidity.test.ts` | 领域所有者既有回归（当前未改） |
 
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/training
+pnpm --filter la-pluma-next-client exec vitest run src/features/training src/pages/training
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与 72 张视觉比对由任务完成记录给出；本文件不声称未执行的验证。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

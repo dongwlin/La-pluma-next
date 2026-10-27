@@ -27,7 +27,7 @@
 | 设备采样轮询 | `device-mirror` 的 `useDeviceStatsSample` | 已实现；轮询间隔、暂停与失败保旧保持不变 |
 | 预览会话 | `components/DashboardPreviewEntry.tsx` + `device-mirror` | 已实现；遵循已有预览协议 |
 
-非目标与保持不变：
+维护约束：
 
 - 不改变五个领域 Query key、`staleTime`/`gcTime`、自动重试、失效作用域与 5 分钟刷新节奏。
 - 不改变执行端点、幂等键、`scope: 'dashboard'`、预检响应语义与终态提示规则。
@@ -93,7 +93,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 ## 4. 设备采样与温度历史
 
-- 采样观察者仍由 `device-mirror` 的 `useDeviceStatsSample` 持有：5s 轮询、`staleTime: 0`、`refetchOnMount: 'always'`、`retry: false`；文档隐藏时 Query 暂停后台轮询，Activity 隐藏/恢复注销与重建观察者。
+- 采样观察者由 `device-mirror` 的 `useDeviceStatsSample` 持有；间隔和 Query 参数见[Query 缓存与键规范](query-cache.md)。文档隐藏时暂停后台轮询，Activity 隐藏/恢复注销与重建观察者。
 - `useDashboardDeviceStats` 把成功样本连同 `dataUpdatedAt` 交给 `dashboardStore.updateDeviceStats`；store 继续做百分比、有限数值与形状校验，并维护最多 36 个温度点。
 - **样本身份去重。** Activity 隐藏会清理 Effects，恢复时重跑同一份 Query 缓存样本。`updateDeviceStats(stats, dataUpdatedAt)` 在以下情况不追加温度点：时间戳早于最近样本；或时间戳相同且样本对象与 store 中保存的是同一份缓存对象。新的 `dataUpdatedAt` 始终追加一次，即使温度数值相同；同一毫秒内产生了不同样本对象时也按新样本处理。
 - `lastDeviceSampleAt` 只存在于运行期 store，不进入 `la-pluma-dashboard-cache`；刷新页面后从持久化快照恢复旧温度历史，并由新采样继续追加。
@@ -142,17 +142,16 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 预览会话 | `device-mirror` | 清理连接/截图 Effects，保留模式；恢复按模式重建 | 按 `autoStart` 规则恢复模式 |
 | 导航回调 | `DashboardWorkspace` | 稳定 | 重建 |
 
-## 8. 兼容与回滚
+## 8. 兼容与维护约束
 
-- 端点、Query key、响应信封、配置键、`la-pluma-dashboard-cache` v1、store 字段与 CSS 类名未变；纯结构搬移保持相同 DOM。回滚面板提交可恢复页面内联实现，数据不需要迁移。
+- 保持端点、响应信封、`la-pluma-dashboard-cache` v1、store 字段与 DOM/CSS 兼容；Query key 与默认策略以[Query 缓存与键规范](query-cache.md)为准。
 - 行为变化：
  1. **温度点去重（缺陷修复）。** 迁移前 `useDashboardDeviceStats` 在 Activity 恢复重跑 Effect 时会把缓存中的同一份样本再追加一次，随后立即采样又追加一次，导致“近 N 秒”偏大。现在同一 `dataUpdatedAt` 的缓存回放只记录一次；新采样仍逐次追加。相关回归见 `useDashboardDeviceStats.test.tsx` 与 store 测试。
   2. **设备采样投影的启动时机。** 投影从页面顶层移到工作区（页面脱离骨架后）。骨架阶段没有设备区域，可见行为不变；采样间隔、暂停与失败保旧未变。
   3. **状态消息不再重渲染页面。** 流程卡只从 `useStatusStore` 取 `setMessage` 动作，总览不再因全局消息正文整体重渲染；显示内容与计时器仍由 `statusStore` 决定。
   4. **执行订阅随工作区挂载。** 首屏骨架期间不再建立流程卡的执行订阅；骨架期间完成的 run 不产生页面内终态提示，全局运行投影仍独立展示。页面正常装载后的观察、身份与提示规则不变。
-- 回滚：面板提交与去重提交可分别回滚；去重回滚只恢复旧的重复温度点行为，不影响快照、执行或存储格式。
 
-## 9. 回归证据
+## 9. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -160,7 +159,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | `model/deviceView.test.ts` | 使用率阈值、空历史、单点水平线、稳定区间、曲线几何与时长文案 |
 | `hooks/useDashboardDeviceStats.test.tsx` | 首次投影、Activity 恢复不重复追加、新时间戳追加、`null` 载荷保旧 |
 | `components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留、效果重建、预览点击导航回调 |
-| `pages/Dashboard.test.tsx` | 首屏/缓存/后台刷新、四类失效、单路失败保旧、预检不写快照、启动后经协调器刷新、空流程导航、执行投影、Activity 恢复、预览挂载、导航与设备投影 |
+| `pages/dashboard/Dashboard.test.tsx` | 首屏/缓存/后台刷新、四类失效、单路失败保旧、预检不写快照、启动后经协调器刷新、空流程导航、执行投影、Activity 恢复、预览挂载、导航与设备投影 |
 | `store/dashboardStore.test.ts` | 温度点去重、时间戳不持久化、既有缓存形状/时钟偏差/设备样本合并 |
 | `model/queries.test.ts`、`model/snapshot.test.ts`、`model/snapshotRefresher.test.ts` | 既有五路读取、归一、原子提交与失败策略 |
 | `device-mirror` 的 Query/采样/预览测试 | 采样间隔、失败保旧、Activity 暂停恢复、预览会话生命周期 |
@@ -170,6 +169,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run \
   src/features/dashboard \
+  src/pages/dashboard \
   src/features/device-mirror \
   src/features/automation/model \
   src/features/statistics/model \
@@ -177,7 +177,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/runtime-status
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与 `pnpm visual` 由任务完成记录给出；本文件不重复声称未执行的验证。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 10. 剩余边界
 

@@ -10,7 +10,7 @@
 
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
-| 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
+| 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/automation/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
 | 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；排序预览与编辑器共享 |
 | 定时编辑与通知 | `components/AutomationSchedulePanel.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
 | 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区 |
@@ -21,11 +21,11 @@
 | 公招招募时长校验 | `model/taskParamRules.ts` | 纯模型：10 分钟取整、60–540 夹取、非法输入回退 |
 | 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 面板不调用 `saveUserConfig`、不写 localStorage、不拥有提交队列 |
 
-非目标与保持不变：
+维护约束：
 
-- 不改变配置 key、pending 键、`maa-task-flow`/`maa-schedule` 本地布局、wire 形状或 `/agent/schedules/*` 端点。
+- 配置 key、pending、本地布局与 wire 形状以[配置持久化协调器](config-persistence.md)为准；保持 `/agent/schedules/*` 端点兼容。
 - 不改变任务参数默认值、智能养成计划生成参数、执行前校验顺序或执行身份。
-- 不改变渲染结构与 DOM/CSS 类名：原 JSX 原样迁出，表单 `id`/`aria-label`、菜单 `id`/`role`、焦点顺序与键盘行为不变；没有新增 CSS，也没有更新视觉基线。
+- 保持渲染结构、DOM/CSS 类名、表单 `id`/`aria-label`、菜单 `id`/`role`、焦点顺序与键盘行为；视觉回归遵循[开发指南](development.md)。
 - 挑选面板仍把“整条流程页脚”作为点击区域：在页脚内按下指针（包括运行/停止按钮）不关闭菜单，页脚之外按下才关闭，与迁移前一致。
 
 ## 2. 组合与状态边界
@@ -97,14 +97,14 @@ AutomationTasks（页头 + 全局指示）
 
 面板不实现焦点陷阱；菜单项的 Tab 顺序与迁移前一致。
 
-## 5. Activity、兼容与回滚
+## 5. Activity 与兼容约束
 
 - **Activity 隐藏/恢复**：面板 state 保留；document 监听在 Effect 清理时注销，恢复后按当前 `open` 重新注册，不会遗留监听。智能养成在途 promise 继续完成，隐藏期间只更新自身状态，不写配置以外的资源。流程排序的 document 监听同样在 Activity 隐藏时清理并丢弃进行中的预览。
 - **真正卸载/刷新**：菜单回到关闭，在途标记重置；配置草稿、pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、迁移与 wire 形状未变化；旧草稿可直接读取。
-- 渲染结构、DOM/CSS 类名、表单 `id`/`aria-label` 与默认态视觉未变化，未新增样式，也未更新任何视觉基线。
+- 默认态视觉、表单标签、菜单焦点与键盘行为继续由下列组件/页面回归覆盖。
 
-## 6. 回归证据
+## 6. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -118,7 +118,7 @@ AutomationTasks（页头 + 全局指示）
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/automation
+pnpm --filter la-pluma-next-client exec vitest run src/features/automation src/pages/automation
 ```
 
 ## 关联

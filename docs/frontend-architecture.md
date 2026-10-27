@@ -38,7 +38,7 @@
 
 ## 读取、缓存与写后刷新
 
-[QueryProvider](../client/src/app/providers/QueryProvider.tsx)注入应用级唯一 QueryClient，页面重挂载不重建缓存。[默认策略](../client/src/shared/query/queryClient.ts)为 30 秒新鲜期、无观察者后 5 分钟回收；挂载和网络重连按新鲜度重取，窗口 focus 不自动重取。仅传输失败或服务端明确标记可重试的 API 错误最多自动重试两次；契约错误、取消与写请求不自动重试。领域查询可以明确覆盖这些默认值。
+[QueryProvider](../client/src/app/providers/QueryProvider.tsx)注入应用级唯一 QueryClient，页面重挂载不重建缓存。默认值、重试分类、各资源 key 与覆盖策略由[Query 缓存与键规范](query-cache.md)统一维护。
 
 资源边界为：
 
@@ -51,7 +51,9 @@
 
 ## URL、保活与副作用生命周期
 
-[AppRoutes](../client/src/app/router/AppRoutes.tsx)将 URL 作为当前 tab 的唯一事实来源并归一非规范路径；[VisitedWorkspaces](../client/src/app/router/VisitedWorkspaces.tsx)只创建访问过的页面，通过 React `Activity` 切换可见性。隐藏保留页面 React 状态并清理 Effects；它与真正卸载、浏览器刷新、`document.hidden` 是不同事件，不能用同一个 cleanup 推断业务结束。
+React Router 7 的 `BrowserRouter` 是当前 tab 与 URL 的唯一事实来源。[AppRoutes](../client/src/app/router/AppRoutes.tsx)把 `/`、`/app`、`/app/` 与未知 tab 归一到默认页；`Layout` 负责导航外观与按 tab 的滚动恢复。[VisitedWorkspaces](../client/src/app/router/VisitedWorkspaces.tsx)只创建访问过的页面，通过 React `Activity` 切换可见性，因此不使用会随导航卸载上一页的 `<Routes>`/`useRoutes`。安装后的 PWA（standalone）也使用 URL 历史导航，刷新与深链保留当前页；升级前 `history.state` 中的旧 tab 记录不再读取。
+
+Activity 隐藏保留页面 React 状态并清理 Effects；它与真正卸载、浏览器刷新、`document.hidden` 是不同事件，不能用同一个 cleanup 推断业务结束。
 
 | 所有者 | Activity 隐藏时 | 恢复或刷新时 |
 | --- | --- | --- |
@@ -63,6 +65,12 @@
 | 排序与模态交互 | 清理 document 事件、pointer/rAF、焦点与滚动副作用 | 保留的 UI 状态由所属面板恢复；不能留下后台交互监听 |
 
 更细的当前行为见[执行客户端](execution-client.md)、[配置持久化协调器](config-persistence.md)、[日志实时流](logs-realtime-stream.md)、[日志历史与清理](logs-history-and-cleanup.md)、[总览快照与设备采样](dashboard-snapshot.md)。默认 Query 策略不意味着所有会话都会随 `document.hidden` 停止；日志、预览及业务刷新各自有明确契约。
+
+## 预览偏好与信令凭据
+
+[`previewStore`](../client/src/features/device-mirror/store/previewStore.ts)以 `preview-storage` version 1 持久化 `mode`、`autoStart`、`quality`、`fps`、`maxSize`、`bitrateMbps`。新应用加载时只有 `autoStart === true` 才恢复合法的 `mode`，否则从 `off` 开始；导航切页保留运行时偏好。预设画质使用预设数值，自定义值须通过字段范围校验。恢复、旧值迁移与坏值回退见[偏好测试](../client/src/features/device-mirror/store/previewStore.test.ts)。
+
+[`useScrcpyWebRTC`](../client/src/features/device-mirror/hooks/useScrcpyWebRTC.ts)每次登录信令服务前先删除旧 `scrcpy_webrtc_auth_token`，成功后只保存本次返回的有效凭据；失败清理同样删除凭据，不能复用旧 token。信令服务重启、连接失败与 transport 清理的回归见[信令测试](../client/src/features/device-mirror/hooks/useScrcpyWebRTC.test.tsx)。
 
 ## 样式、验证与性能方法
 

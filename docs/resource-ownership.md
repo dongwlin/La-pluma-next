@@ -42,15 +42,15 @@ import {
 } from '@/features/game-data'
 ```
 
-| 资源 | 端点 | 当前读取方 | Query key | 缓存/刷新策略 |
-| --- | --- | --- | --- | --- |
-| 仓库快照 | `GET /agent/data/depot` | DataStatistics；识别后影响养成与总览 | `gameDataKeys.resource('depot')` | Query 默认策略（30s stale、5min gc、可恢复失败重试）；不轮询，识别后显式失效；仅当资源更新重写已识别快照时才额外发布 `depot` |
-| 持有干员 | `GET /agent/data/operbox` | DataStatistics、OperatorTraining | `gameDataKeys.resource('operbox')` | 同上；干员识别完成后失效 |
-| 干员目录 | `GET /agent/data/operators` | DataStatistics、OperatorTraining | `gameDataKeys.resource('catalog')` | 同上；资源/热更新完成后失效 |
-| 物品图标 | 外部静态资源 URL | DataStatistics 仓库、掉落记录、养成材料 | 无 | 浏览器 HTTP/图片缓存；`getItemIconUrl` 带 `?v=<epoch>`，epoch 在资源更新成功后推进并持久化到 `laPlumaItemIconVersion`，使用 `useItemIconCacheVersion()` 的页面随 epoch 重新渲染。不建立 Query key；干员头像仍是各页面直接构造的独立 URL，不在该 epoch 内 |
-| 养成队列（含材料进度） | `/agent/training/queue` 等 | OperatorTraining、Dashboard 快照 | `trainingKeys.resource('queue')` | 归 training；写后由命令刷新同一 key，不复制进 `game-data`；识别命令不再为提示文案额外读取 |
-| 掉落/开放关卡 | `/agent/drops/*`、`/agent/stages/open-today` | DataStatistics、Dashboard 快照 | 归 `statistics`；三种资源各有领域 Query | 不进入 `game-data`；Dashboard 只通过完整快照读取 |
-| 设备采样 | `/agent/device-stats` | Dashboard | `deviceMirrorKeys.query('device-stats')` | 归 device-mirror；5s 轮询、失败静默保旧，不持久化 |
+| 资源 | 唯一所有者 | 当前读取方 |
+| --- | --- | --- |
+| 仓库、持有干员、干员目录 | `game-data` | StatisticsWorkspace、TrainingWorkspace；识别后影响养成与总览 |
+| 物品图标 URL 与 epoch | `game-data` | 仓库、掉落记录、养成材料；不建立 Query |
+| 养成队列（含材料进度） | `training` | TrainingWorkspace、Dashboard 快照 |
+| 掉落/今日开放关卡 | `statistics` | StatisticsWorkspace、Dashboard 快照 |
+| 设备采样 | `device-mirror` | Dashboard |
+
+Query key、参数与缓存策略集中见[Query 缓存与键规范](query-cache.md)。物品图标由浏览器 HTTP/图片缓存；`getItemIconUrl` 带 `?v=<epoch>`，epoch 存储在 `laPlumaItemIconVersion`，使用 `useItemIconCacheVersion()` 的组件随 epoch 重渲染。干员头像仍使用独立 URL，不在该 epoch 内。
 
 统计页的仓库、持有干员、目录与掉落读取由所属领域 Query 持有，页面不保存第二份资源副本；识别与材料命令通过第 4 节的端口发布失效。训练页的候选列表和状态计数使用 `training` 领域 Query，查询内经 `game-data` 公开面读取目录与持有干员；队列使用 `training/queue` Query，并由串行命令负责写入（见[养成队列命令与写后刷新](training-queue-commands.md)）。Dashboard 经各领域 Query 读取五路业务数据，由 `features/dashboard/model` 协调完整快照（见[总览完整快照与设备采样](dashboard-snapshot.md)）。识别命令与完成条件见[统计识别命令与失效联动](statistics-commands.md)。
 
@@ -76,8 +76,7 @@ import {
 兼容与移除：
 
 - `getDepotData`、`getOperBoxData`、`getItemIconUrl`、`getAllOperators` 的函数名、位置参数和 `ApiResponse` 形状不变，只更换归属模块。
-- 迁移前用仓库内 grep 核对消费者；培训页与统计页、DropRecords 及其测试全部改为 `@/features/game-data` 后，statistics/training 公开面不再转发这些函数。
-- 数据格式、端点与存储未变；独立回滚可恢复旧公开面转发与页面 import，不需要迁移服务端数据。
+- statistics/training 不再转发这些共享读取，消费者统一通过 `@/features/game-data` 公开面导入；数据格式、端点与存储保持兼容。
 - 若未来再次迁域，必须保留旧 key 的失效范围并给消费者迁移窗口，不能在同一资源上新建第二个 domain key。
 
 ## 4. 资源失效端口
@@ -155,60 +154,29 @@ publishResourceInvalidation({
 | `Dashboard` | `dashboard-snapshot` | 调用完整快照刷新（`force`），五项全部有效才提交；单路失败保留旧快照与 `lastUpdate`；设备采样由 `device-mirror` 独立轮询 |
 | `StatisticsWorkspace`（统计页） | `depot`、`operbox`、`catalog`、`drops` | 按作用域 `invalidateQueries` 对应资源；识别命令由 `features/statistics` 的命令所有者提交，`hooks/useStatisticsCommands.ts` 把解析快照写入 Query 并发布作用域 |
 
-训练页的队列写入由领域命令与缓存协调：命令串行执行，写成功后刷新同一 `queue` key，并发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`；任务流程确认 synced 时发布 `automation-config`（不发布 `automation-schedule`，因为自动同步不重注册 cron）。本页忽略自己的发布，外部发布仍按上表刷新。计划生成/应用/同步由 `TrainingPlanOwner` 持有，应用成功发布 `automation-config`/`automation-schedule`/`dashboard-snapshot`。候选列表与计数由 Query 观察者持有，Activity 隐藏时随 Effect 注销并在恢复时按新鲜度重取。
+队列写入、计划应用与设置提交的命令生命周期分别见[养成队列命令](training-queue-commands.md)和[养成设置与计划有效期](training-settings-and-plan-validity.md)；本页第 5–6 节统一维护其跨域发布与接收映射。
 
 Activity 语义：隐藏会清理订阅 Effect，期间发布不会直接刷新；恢复时 hook 补发一次合成事件，避免“隐藏期间资源已变化但页面仍显示旧值”。真正卸载后重挂载由页面首屏读取负责，不重放历史事件。
 
-## 7. 回归证据
+## 7. 本层回归入口
 
-| 文件 | 覆盖 |
+| 文件（相对于 `client/src/`） | 覆盖 |
 | --- | --- |
-| `features/game-data/api/index.test.ts` | 仓库/持有干员/目录的 signal、旧空值、坏载荷、取消；图标 URL 编码、携带 epoch 查询参数且不发请求 |
-| `features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
-| `features/game-data/hooks/useItemIconCacheVersion.test.tsx` | epoch 推进触发订阅组件重渲染 |
-| `features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
-| `features/game-data/model/queries.test.ts` | 共享读取的 query key、空快照、载荷归一、失败与 signal |
-| `features/statistics/model/queries.test.ts`、`features/statistics/model/operatorFilters.test.ts` | 掉落 `days` 缓存身份；筛选、排序与阿米娅形态纯规则 |
-| `features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、日志解析等待、超时/取消/继续与失效发布 |
-| `pages/statistics/DataStatistics.layout.test.tsx` | 统计页按作用域失效；独立错误边界、首屏并行、缓存复用、识别快照写入、命令状态与筛选状态生命周期 |
 | `features/resource-invalidation/model/resourceInvalidation.test.ts` | 去重发布、空发布忽略、revision、注销、监听器异常隔离 |
 | `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 作用域过滤、首挂载不补发、Activity 隐藏/恢复补发、卸载注销、最新 handler |
-| `features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、引用稳定 |
-| `features/training/model/queueCommands.test.ts` | 队列命令串行与最新快照排序、重复添加合并、写后刷新失败 fallback/`uncertain`、失败不发布、撤销原索引、写前取消读取 |
-| `features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key、signal、失败信封、补齐读取与结构共享 |
-| `features/training/model/settingsCommands.test.ts` | 设置串行提交、旧响应裁决与写成功后发布 `training-plan` |
-| `features/training/model/planCommands.test.ts` | 计划生成/应用的版本裁决、重复触发合并、automation 配置写入屏障、部分成功与失效发布 |
-| `pages/automation/AutomationTasks.config.test.tsx` | `automation-config`/`automation-schedule` 失效重读、Activity 恢复补发、在途保存等待与本地禁用时间点保留 |
-| `pages/training/OperatorTraining.test.tsx` | 队列命令接线与写后刷新失败、跨页失效作用域与自发布忽略；目录/识别失效刷新候选与计数；队列失效只重读队列；列表失败清空/计数保旧、目录失败与仅计数失败；筛选迟到响应与 Activity 恢复；设置提交与计划版本前提；计划编排、应用等待在途配置保存、部分成功重读与三类失效发布 |
-| `pages/dashboard/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发五路完整刷新；单路失败保留旧快照；识别/计划/资源更新作用域；Activity 隐藏期间失效恢复 |
-| `features/dashboard/model/snapshot.test.ts`、`model/queries.test.ts`、`model/snapshotRefresher.test.ts` | 五路归一与坏载荷、领域 key/signal、单飞/force 与原子提交 |
-| `features/device-mirror/hooks/useDeviceStatsSample.test.tsx`、`model/queries.test.ts` | 设备采样轮询、失败保旧、Activity 恢复单计时器与 Query 契约 |
-| `features/settings/model/updateCommands.test.ts` | 更新命令互斥与重复忽略、core/热更新失败详情与资源重试条件、成功作用域声明 |
-| `pages/settings/ConfigManager.layout.test.tsx` | core/渠道/热更新成功发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`；失败不发布不重试；CLI 只失效版本 |
-| `features/statistics/api/index.test.ts`、`features/training/api/index.test.ts` | 掉落/关卡、识别解析与材料刷新的端点、signal 与载荷校验 |
+| `features/settings/model/updateCommands.test.ts`、`pages/settings/ConfigManager.layout.test.tsx` | 资源/渠道/core 更新的作用域；失败不发布；CLI 只失效版本 |
+| `pages/statistics/DataStatistics.layout.test.tsx` | 统计按作用域失效；识别快照写入与发布 |
+| `pages/automation/AutomationTasks.config.test.tsx` | 失效重读等待在途保存、Activity 恢复补发、本地禁用时间点保留 |
+| `pages/training/OperatorTraining.test.tsx` | 外部队列/目录/识别作用域、自发布忽略、计划应用发布 |
+| `pages/dashboard/Dashboard.test.tsx` | 完整快照失效刷新、单路失败保旧、隐藏期间失效恢复 |
 
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run \
-  src/features/game-data \
-  src/features/resource-invalidation \
-  src/features/statistics/model \
-  src/features/training/model \
-  src/features/statistics/api/index.test.ts \
-  src/features/training/api/index.test.ts \
-  src/pages/statistics/DataStatistics.layout.test.tsx \
-  src/features/statistics/components/DropRecords.test.tsx \
-  src/pages/training/OperatorTraining.test.tsx \
-  src/pages/dashboard/Dashboard.test.tsx \
-  src/features/dashboard/model \
-  src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx \
-  src/features/device-mirror/model/queries.test.ts \
-  src/features/settings/model/updateCommands.test.ts \
-  src/pages/settings/ConfigManager.layout.test.tsx
+pnpm --filter la-pluma-next-client exec vitest run src/features/resource-invalidation
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与视觉比对由任务完成记录给出。
+端点与 signal 回归见[资源请求契约](resource-requests.md)，key 与缓存回归见[Query 规范](query-cache.md)，领域命令测试由对应领域契约维护。完整检查使用 `pnpm --filter la-pluma-next-client verify`，视觉检查范围与方式见[开发指南](development.md)。
 
 ## 关联
 

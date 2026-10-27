@@ -68,14 +68,11 @@
 
 ### 3.1 Query 身份与归一化
 
-```ts
-settingsKeys.query('version')          // ['settings', 'version']
-settingsKeys.query('config-directory') // ['settings', 'config-directory']
-```
+版本与配置目录的 Query key、默认策略以[Query 缓存与键规范](query-cache.md)为准。
 
 - `versionQueryOptions()` 把 Query 的 `AbortSignal` 传给 `getVersion(signal)`，只接受 `cli`/`core`/`raw` 为字符串；坏的 `resource` 块被归一为 `unknown` 状态与空字段，缺失 `resource` 时页面不显示资源行。不可用载荷成为 `contract` 失败。
 - `configDirectoryQueryOptions()` 把 signal 传给 `getConfigDir(signal)`，同时接受服务端当前的 `{ path }` 与旧的纯字符串形状；空白路径视为 `contract` 失败。`getConfigDir` 的返回类型因此从 `ApiResponse<string>` 修正为 `ApiResponse<string | { path: string }>`，与运行时的旧字符串/对象两种形状一致。
-- 两者沿用 Query 默认策略：30s 新鲜期、可恢复失败最多重试 2 次、`contract` 失败与取消不重试。传输失败时初始目录错误最多延后约 1.5s 出现，与 connection 读取一致。
+- 两者沿用 Query 默认重试与取消策略；传输失败会先经过重试，之后才显示初始目录错误，与 connection 读取一致。
 
 ### 3.2 页面语义
 
@@ -101,7 +98,7 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 
 自动更新与 core/cli/资源更新归 `model/autoUpdateConfig.ts`、`model/updateCommands.ts` 及其 hooks，见[设置组件更新与自动更新](settings-updates-and-auto-update.md)；更新成功后的版本读取走同一 Query。
 
-## 5. 兼容与回滚
+## 5. 兼容与维护约束
 
 - 端点、请求体与响应体未改变；未修改服务端。设备发现仍是 GET、连接测试与打开目录仍是 POST。
 - 新增 Query key 只存在于内存，浏览器刷新随缓存丢失；没有新增 localStorage 数据。
@@ -111,10 +108,9 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
   - 非数组/坏设备条目被跳过而不是抛错；未知状态/来源回退为“状态未知”/ADB。
   - 配置目录后台刷新失败保留最近成功路径；迁移前显式重读失败会清空路径。
   - 版本 `resource` 块按已知字段归一；坏字段显示 `unknown`，不再把任意对象直接传入渲染。
-  - 传输失败按 Query 默认重试，错误提示最多延后约 1.5s。
-- 独立回滚范围：`model/deviceConnection.ts`、`hooks/useSettingsDeviceConnection.ts`、`model/systemResources.ts`、`hooks/useSettingsVersion.ts`、`hooks/useSettingsConfigDirectory.ts`、`api/index.ts` 的目录返回类型与 `DeviceConnectionPanel`/`ConfigDirectoryPanel`/`ReadOnlyConfigPanel`/`SettingsUpdatesPanel` 的接线。回滚后恢复页面 state 与原直连调用，不需要数据迁移。
+  - 传输失败按 Query 默认重试，错误提示在重试结束后显示。
 
-## 6. 回归证据
+## 6. 回归测试
 
 | 测试 | 覆盖 |
 | --- | --- |
@@ -129,10 +125,10 @@ settingsKeys.query('config-directory') // ['settings', 'config-directory']
 复现命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/settings
+pnpm --filter la-pluma-next-client exec vitest run src/features/settings src/pages/settings
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与视觉比对由任务完成记录给出。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

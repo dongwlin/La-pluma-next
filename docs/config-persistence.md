@@ -141,7 +141,7 @@ import { useUserConfig, type ConfigPersistenceAdapter } from '@/features/user-co
 
 const adapter: ConfigPersistenceAdapter<CombatDraft, CombatWire> = { /* 域内常量，见第 6 节 */ }
 
-function CombatTasks() {
+function CombatWorkspace() {
   const { draft, hydrated, pending, syncState, error, update, retry, reload } = useUserConfig(adapter)
   // draft 渲染表单；update 接受编辑；retry 绑定“重新同步”；reload({ force: true }) 用于外部写入后强制重读
 }
@@ -198,14 +198,14 @@ function CombatTasks() {
 
 接入时的额外边界：
 
-- 页面不再自己维护 `configRevisionRef`、模块级 Promise 队列、`configHydratedRef` 或 `isRetryingConfigSave`；这些职责已由通道承担。
+- 工作区只订阅与编辑通道，不建立第二份 revision、pending 状态或保存队列。
 - `Activity` 隐藏/恢复只影响 Effects；`hydrate()` 的已加载守卫保证恢复时不重读，pending 草稿仍优先。
 - automation 订阅 `automation-config`/`automation-schedule` 失效后通过 `reload({ force: true })` 重读；返回 `local-draft` 时不得丢弃本地编辑。计划应用不再使用 window `training-plan-applied` 事件。
 - 状态消息（成功 toast）与页内错误文案由页面从 `syncState`/`error` 和 `retry()` 结果派生，协调器不直接写 `statusStore`。
 
 ### 6.1 肉鸽适配器
 
-`features/roguelike/model/roguelikeConfig.ts` 是肉鸽配置的唯一所有者，页面 `pages/RoguelikeTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。
+`features/roguelike/model/roguelikeConfig.ts` 定义肉鸽配置适配器，协调器通道持有草稿与提交；`RoguelikeWorkspace` 通过 `useUserConfig` 订阅与编辑，`pages/roguelike/RoguelikeTasks.tsx` 只组合工作区。
 
 | 项目 | 实现 |
 | --- | --- |
@@ -216,13 +216,11 @@ function CombatTasks() {
 | 完整提交 | `saveUserConfig('roguelike-tasks', wire)` 成功即完成；失败或传输异常保留 pending 与重试入口 |
 | 页面派生 | `taskInputs`/`advancedParams` 从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“肉鸽配置已同步” |
 
-页面原有的模块级 Promise 队列、页内 revision/token、`configHydratedRef` 与 300ms `setTimeout` 已移除。迟到加载由协调器按 revision/pending 标记丢弃，编辑不再被服务端旧副本覆盖（原 `it.fails` 缺陷用例已转为正常回归）。
-
-兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化，回滚到迁移前的页面接线后仍能读取同一份本地草稿与服务端配置；适配器与页面接线可独立回滚，不需要清理本地数据或回退服务端。
+兼容约束：保留配置 key、本地键、pending 键与 wire 形状；迟到加载须由协调器按 revision/pending 裁决，不得覆盖当前编辑。
 
 ### 6.2 作业适配器
 
-`features/combat/model/combatConfig.ts` 是作业配置的唯一所有者，页面 `pages/CombatTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。
+`features/combat/model/combatConfig.ts` 定义作业配置适配器，协调器通道持有草稿与提交；`CombatWorkspace` 通过 `useUserConfig` 订阅与编辑，`pages/combat/CombatTasks.tsx` 只组合工作区。
 
 | 项目 | 实现 |
 | --- | --- |
@@ -234,20 +232,18 @@ function CombatTasks() {
 | 完整提交 | `saveUserConfig('combat-tasks', wire)` 成功即完成；失败或传输异常保留 pending 与重试入口 |
 | 页面派生 | 五个配置字段都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动战斗配置已同步” |
 
-页面原有的模块级 Promise 队列、页内 revision/token、`configHydratedRef`、`configLoaded` 与 300ms `setTimeout` 已移除。迟到加载由协调器按 revision/pending 标记丢弃，编辑不再被服务端旧副本覆盖（原 `it.fails` 缺陷用例已转为正常回归）。默认草稿与迁移前页面的初始 state 对齐（copilot 默认忽略干员要求、循环 1 次、失败继续、普通模式；作业集默认 `cli`），因此加载完成前与读取失败时的表单表现不变。
-
-兼容与回滚：配置 key、本地键、pending 键与 wire 形状均未变化，页面接线可单独回滚到迁移前实现（适配器随即不再被引用），旧实现仍能读取同一份本地草稿与服务端配置；回滚不需要清理本地数据或回退服务端。服务端载荷校验比迁移前更严格：已知字段类型不合法时整份载荷回退本地草稿，而旧页面会采用部分/异常值；这是协调器要求的 payload 校验。
+默认草稿中 copilot 忽略干员要求、循环 1 次、失败继续、普通模式，作业集默认 `cli`。兼容约束：保留配置 key、本地键、pending 键与 wire 形状；服务端已知字段类型不合法时整份载荷回退本地草稿，不能采用部分异常值。迟到加载须由协调器裁决。
 
 ### 6.3 自动化适配器
 
-`features/automation/model/automationConfig.ts` 是 task flow 与 schedule 的唯一所有者，页面 `pages/AutomationTasks.tsx` 只通过 `useUserConfig` 订阅与编辑。两个编辑模型共用同一通道，因此不会各自维护一份写入同份配置的队列或 token。
+`features/automation/model/automationConfig.ts` 定义 task flow 与 schedule 的共同适配器；`AutomationWorkspace` 通过 `useUserConfig` 订阅与编辑，`pages/automation/AutomationTasks.tsx` 只组合工作区。两个编辑模型共用一个协调器通道。
 
 | 项目 | 实现 |
 | --- | --- |
 | 身份 | key `automation-tasks`；pending 键 `automationConfigSyncPending` |
 | 本地草稿 | `maa-task-flow`（任务数组）与 `maa-schedule`（`{ enabled, times, entries }`）；单个键损坏清理后丢弃该部分，两个键都不可读才返回 null 并让协调器删除 pending 标记、改读服务端 |
 | wire | `{ taskFlow, schedule: { enabled, times } }`；task flow 去掉 `icon`/`paramFields` 等界面字段，其余旧字段（如 `name`、`description`、`defaultParams`、`taskType`）原样保留；`times` 只包含启用的时间点 |
-| 加载迁移 | 兼容 `maa-schedule.entries` 与旧 `times`；`times` 为空时保留默认执行时间（迁移前空数组不覆盖默认行）；任务参数迁移（`skip_robot`→`preserve_tags`、新旧字段补齐）、启动/关闭客户端类型同步、关闭游戏置底都在解码与本地读取时执行 |
+| 加载迁移 | 兼容 `maa-schedule.entries` 与旧 `times`；`times` 为空时保留默认执行时间；任务参数迁移（`skip_robot`→`preserve_tags`、新旧字段补齐）、启动/关闭客户端类型同步、关闭游戏置底都在解码与本地读取时执行 |
 | 提交时机 | `commitDelayMs = 0`，每次编辑立即入队；同一 key 的提交仍串行 |
 | 草稿等价 | 适配器 `fingerprint` 比较 task flow 与本地 `schedule.entries`，而不是只看 wire；编辑或删除禁用时间点仍会接受草稿、写回本地并触发提交，不会被协调器当成无变化而静默丢弃。wire 未变化时这次提交内容与上一次相同，属于幂等写入 |
 | 完整提交 | `saveUserConfig('automation-tasks', wire)` 成功后再执行 `setupSchedule('default', times, taskFlow)`（启用且存在时间点）或 `stopSchedule('default')`；任一步失败都返回 `ok: false`，协调器保留 pending 与“重新同步”入口，重试重跑整段提交 |
@@ -256,7 +252,7 @@ function CombatTasks() {
 | 页面派生 | task flow 的图标与参数表单由 `AVAILABLE_TASKS` 派生；schedule 的启用状态与条目都从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“自动化配置已同步” |
 | 页面局部状态 | 拖拽中的顺序由 `hooks/useTaskFlowSorting` 渲染本地预览，松手时才作为一次编辑写入协调器；选中项、撤销与连接测试反馈归 `AutomationWorkspace`，picker 与执行详情分别归 `AutomationTaskPicker`、`AutomationExecutionSummary`；当前工作区仍只调用 `useUserConfig` 的 `update`，面板不持有保存队列 |
 
-页面不得重新引入模块级 token 序列、`autoSaveQueueRef`、`autoSaveRevisionRef`、`taskFlowHydratedRef` 或第二套本地保存队列。pending 标记存在但本地草稿不可读时，协调器必须删除该标记并回退服务端；该行为由适配器回归固定。
+pending 标记存在但本地草稿不可读时，协调器必须删除该标记并回退服务端；该行为由适配器回归固定。
 
 兼容约束：保留配置 key、本地键、pending 键与 wire 形状；服务端载荷中已知字段类型不合法时，整份载荷回退到本地草稿。保存失败时通过页内 alert 与“重新同步”入口反馈，保留 pending 草稿；跨会话恢复草稿时显示恢复提示和重试入口。不得为了回滚清理用户存储，也不得因配置加载失败覆盖未确认草稿。
 

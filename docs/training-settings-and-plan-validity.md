@@ -132,7 +132,7 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 - 部分成功（服务端 schedule 注册失败或应用后重读失败）使用页内 warning：读取失败可用“重新加载”，
   定时注册失败保留计划并可直接重试应用；失败不自动重试写请求。
 
-## 6. 兼容与回滚
+## 6. 兼容与维护约束
 
 - 端点路径、请求体与服务端存储未改变；设置仍写入训练队列文件中的 `settings` 字段，`PUT /agent/training/settings` 的返回形状不变。应用计划的响应新增可选 `scheduleSync` 字段，其余响应形状不变，旧客户端会忽略新字段。
 - 未新增 localStorage、Query key 或持久化版本；设置 revision 与计划 basis 只存在于模块内存，刷新页面随计划一起丢失。
@@ -140,11 +140,9 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
  “重新加载”入口只在部分成功状态出现；计划失效时隐藏详情是当前行为。
 - 新的应用发布复用既有作用域与 `detail` 可选字段；automation 与 Dashboard 不依赖 window 事件。
   它不跨浏览器标签页，也不替代服务端 revision。
-- 独立回滚范围：`model/settingsCommands.ts`、`model/planValidity.ts`、`model/planCommands.ts`、
-  `hooks/useTrainingSettings.ts`、`hooks/useTrainingPlan.ts` 与 `components/TrainingWorkspace.tsx`
-  的计划接线；回滚后恢复页面本地计划 state，不需要服务端迁移。
+- 设置提交、计划有效期与编排继续由设置/计划所有者持有；hooks 与 `TrainingWorkspace` 只适配订阅和交互，不另建本地计划 state 或写入链。
 
-## 7. 回归证据
+## 7. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -165,7 +163,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/pages/dashboard/Dashboard.test.tsx
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与 72 张视觉比对由任务完成记录给出；本文件不声称未执行的验证。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

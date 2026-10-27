@@ -78,7 +78,7 @@ Query 缓存只保存**服务端只读资源**的最近一次成功结果，不�
 - Activity 隐藏/恢复与页面卸载对 Query 订阅是等价的：隐藏清理观察者，缓存从最后一个观察者离开时开始按 `gcTime` 计时；显示后重新订阅。数据仍新鲜则直接用缓存，已过期则按 `refetchOnMount` 后台重取，已被回收则重新加载。
 - 网络在线状态来自浏览器 `navigator.onLine`，不代表本地后端可用；后端健康仍由 runtime-status 监测。后端不可用表现为传输失败，由重试与页面错误边界处理。
 - 需要更短或更长新鲜期的资源可在自己的 `useQuery` 中覆盖 `staleTime`，但必须在所属域说明理由；不得在页面里改动全局默认值。
-- 轮询资源（例如设备采样）如果使用 Query，必须由所属域显式设置 `refetchInterval` 与可见性/暂停条件，不能依赖全局默认值产生后台轮询；实时日志等既有会话继续由对应任务决定实现方式。
+- 轮询资源（例如设备采样）如果使用 Query，必须由所属域显式设置 `refetchInterval` 与可见性/暂停条件，不能依赖全局默认值产生后台轮询；实时日志等会话的生命周期由对应领域契约维护。
 - 需要强制读取最新值的流程（例如 Dashboard 的强制刷新、计划生成前重读 queue）使用 `staleTime: 0` 的 `fetchQuery` 或显式 `refetch`，不能依赖默认 `staleTime`。
 
 ## 4. Query key 约定
@@ -104,26 +104,40 @@ import { defineQueryKeys } from '@/shared/query'
 export const statisticsKeys = defineQueryKeys('statistics')
 
 statisticsKeys.all                      // ['statistics']：整域作用域
-statisticsKeys.resource('depot')        // ['statistics', 'depot']：资源作用域
+statisticsKeys.resource('drops')        // ['statistics', 'drops']：资源作用域
 statisticsKeys.query('drops', 7)        // ['statistics', 'drops', 7]：具体缓存身份
 ```
 
 key 中只放服务端资源身份：筛选/排序等会改变响应的输入放在 `params`，展开、选中、弹层、分页游标等纯 UI 状态不进入 Query key。`domain` 与 `resource` 必须唯一归属一个域；同名资源在两个域各建缓存属于两个真相，必须避免。
 
-当前领域资源及其缓存身份（不得为同一资源另起 key）：
+当前领域资源及其缓存身份如下。本文集中维护 key、参数与 Query 策略；领域契约维护业务规则，跨域写后失效映射见[资源所有权](resource-ownership.md)。未列覆盖项的资源沿用第 3 节默认值，不得为同一资源另起 key。
 
-| 域 | 资源或 key | 当前消费与约束 |
+| 资源 / query 定义 | 完整缓存身份 | Query 覆盖或读取方式 |
 | --- | --- | --- |
-| `game-data` | `depot`、`operbox`、`catalog` | 共享资源归属在此域；statistics 通过 Query 读取；training 候选补齐/计数经公开端点访问，不复制 key |
-| `statistics` | `drops`（参数 `days`）、`today-drops`、`open-stages` | 掉落统计由统计页消费；今日掉落与开放关卡供总览完整快照读取 |
-| `training` | `queue`、`candidates`、`counts` | 队列、候选及状态计数均由训练域 Query 持有 |
-| `settings` | `maa-config`（参数 `profileName`） | 只读配置快照；草稿仍归设置域 owner |
-| `settings` | `version`、`config-directory` | 版本与配置目录的只读 Query |
-| `combat` | `copilot-search`、`paradox-search`、`copilot`、`copilot-set`、`copilot-set-plan` | 预览组合这些资源，不另建 key |
-| `logs` | 无；实时与历史日志由领域会话持有 | 不建立 Query key；请求裁决与 Activity 恢复由日志会话持有 |
-| `device-mirror` | `webrtc-status`、`device-stats` | `device-stats` 为设备采样 Query；`webrtc-status` 保留预览服务状态的 key |
-| `automation` | `activity`、`schedule-execution` | 总览使用两项资源，自动化页的活动标签共享 `activity` Query |
-| `dashboard` | `snapshot` | 仅用于协调读取，`gcTime: 0` |
+| 仓库 `depotQueryOptions()` | `['game-data','depot']` | 默认；保留 `null` 空快照 |
+| 持有干员 `operBoxQueryOptions()` | `['game-data','operbox']` | 默认；保留 `null` 空快照 |
+| 干员目录 `operatorCatalogQueryOptions()` | `['game-data','catalog']` | 默认 |
+| 掉落 `dropStatisticsQueryOptions(days)` | `['statistics','drops',days]` | `placeholderData: keepPreviousData` |
+| 今日掉落 `todayDropsQueryOptions()` | `['statistics','today-drops']` | 默认；总览协调读取时强制新鲜且不重试 |
+| 今日开放关卡 `openTodayStagesQueryOptions()` | `['statistics','open-stages']` | 同上 |
+| 队列 `trainingQueueQueryOptions()` | `['training','queue']` | 默认；计划所有者的权威重读使用 `staleTime: 0` |
+| 候选 `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | `rarity` 缺省为 `null`，`needsElite2` 缺省为 `false` |
+| 计数 `trainingStatusCountsQueryOptions(filters)` | `['training','counts',rarity,needsElite2]` | 同上缺省值；`placeholderData: keepPreviousData`，`structuralSharing` 合并计数 |
+| connection `connectionConfigQueryOptions(profileName)` | `['settings','maa-config',profileName]` | 默认；快照采用须通过 owner 的读取令牌 |
+| 版本 `versionQueryOptions()` | `['settings','version']` | 默认 |
+| 配置目录 `configDirectoryQueryOptions()` | `['settings','config-directory']` | 默认；只读 section 头部 `cacheOnly` 观察者设 `refetchOnMount: false`、`retryOnMount: false` |
+| 普通搜索 `copilotSearchQueryOptions(stage)` | `['combat','copilot-search',stage]` | 显式搜索 `fetchQuery({ staleTime: 0 })` |
+| 悖论搜索 `paradoxSearchQueryOptions(name)` | `['combat','paradox-search',name]` | 同上 |
+| 单作业 `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 默认；强制预览读取 `staleTime: 0` |
+| 作业集 `copilotSetQueryOptions(id)` | `['combat','copilot-set',id]` | 同上 |
+| 作业集计划 `copilotSetPlanQueryOptions(id, raid)` | `['combat','copilot-set-plan',id,raid]` | 同上；重置进度后按 id 前缀失效 |
+| 活动 `activityQueryOptions(clientType)` | `['automation','activity',clientType]` | `clientType` 默认 `Official`；活动标签读取 `retry: false` |
+| schedule 投影 `scheduleExecutionQueryOptions()` | `['automation','schedule-execution']` | 供总览协调读取 |
+| 完整快照 `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | `staleTime: 0`、`gcTime: 0`、`retry: false`；五路领域读取同样 `staleTime: 0`、`retry: false` |
+| 设备采样 `deviceStatsQueryOptions()` + `useDeviceStatsSample` | `['device-mirror','device-stats']` | hook 设置 5s `refetchInterval`、`staleTime: 0`、`retry: false`、`refetchOnMount: 'always'` |
+| 预览服务状态词汇 | `['device-mirror','webrtc-status']` | 保留资源 key，当前没有独立 Query 观察者 |
+
+实时与历史日志由领域会话持有，不建立 Query key；WebRTC 信令、设备发现/连接测试、打开目录、配置草稿与执行命令同样不进入 Query。共享游戏数据的端点、载荷类型与 key 唯一归 `game-data`，training 的候选补齐与计数读取不另建同义缓存。
 
 ## 5. 失效方式
 
@@ -159,23 +173,9 @@ await queryClient.invalidateQueries({ queryKey: statisticsKeys.all })
 
 Activity 隐藏/显示与页面卸载都不改变资源所有权；Query 缓存按 key 共享，但观察者随 Effect 清理而注销。使用 Query 的 `signal` 读取在最后一个观察者离开时会被取消（Query 以 revert 方式保留上一份数据）；未使用 signal 的请求可能继续完成并写入缓存。接入契约要求 `queryFn` 传递 `signal`，因此应按“隐藏/卸载即取消本地读取、旧数据保留”设计。显式 `cancelQueries` 用于切换资源或放弃缓存写入，不作为 Activity 生命周期的替代。
 
-## 7. Dashboard 完整快照边界
+## 7. 聚合快照边界
 
-Dashboard 的五路业务读取（activity、schedule execution、training queue、today drops、open-today stages）是一个**完整快照**，不是五个可独立展示的资源块。接入 Query 后仍必须满足[总览完整快照与设备采样](dashboard-snapshot.md)第 2–3 节：
-
-- 五项都 fulfilled 且载荷校验通过才提交快照；
-- 单路失败或形状错误保留上一份完整快照，不能用 Query 的部分成功覆盖 store；
-- 设备采样与后端探测独立于业务快照有效性；
-- 强制刷新必须显式重取；Activity 恢复若需要新的完整快照，不能接受默认缓存命中，需显式重取或验证数据新鲜度。
-
-因此允许的实现是：用 Query 或既有协调器取得五路结果，在协调层统一校验后原子写入 `dashboardStore`；**禁止**五个 `useQuery` 分别订阅并各自写 store，也禁止把 Query 的逐块更新暴露成新的可写真相。`dashboard/snapshot` key 仅用于协调读取，不能替代 `dashboardStore` 的版本、形状与时钟校验。
-
-实现（见[总览完整快照与设备采样](dashboard-snapshot.md)）：
-
-- `features/automation`、`features/training`、`features/statistics` 各自持有五路只读 Query；`features/dashboard/model/queries.ts` 用 `fetchQuery({ staleTime: 0, retry: false })` 组合读取，`model/snapshot.ts` 纯归一，任一路失败或形状不符都不返回快照。
-- `model/snapshotRefresher.ts` 保持单飞与 `force` 补一次，只有完整结果才调用 `dashboardStore.finishRefresh`；后端探针失败不否决快照。
-- `dashboard/snapshot` 协调查询使用 `staleTime: 0`、`gcTime: 0`，成功后立即提交，不长期保留第二份展示缓存。
-- 设备采样使用 `device-mirror/device-stats` Query（5s `refetchInterval`、`retry: false`、`refetchOnMount: 'always'`），失败静默保旧；Activity 隐藏注销观察者并停止计时器，恢复立即采样一次。
+Dashboard 通过领域 Query 取得五路业务资源，由刷新协调器校验并原子提交 `dashboardStore`；禁止五个 `useQuery` 分别写 store。`dashboard/snapshot` 只用于协调读取，设备采样独立。完整提交条件、失败保旧、单飞与恢复行为统一见[总览完整快照与设备采样](dashboard-snapshot.md)，Query 覆盖值见第 4 节。
 
 ## 8. 新增资源的接入规范
 
@@ -203,120 +203,41 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 
 ## 9. 数据统计读取
 
-`DataStatistics` 当前只组合 `StatisticsWorkspace` 与三个面板，四路读取仍由领域 query 定义持有，工作区与面板不保存资源副本、加载状态或 request id：
+`DataStatistics` 只组合 `StatisticsWorkspace` 与面板。仓库、持有干员、目录、掉落四路 Query 在挂载时并行启用，不依赖当前 tab；工作区不保存资源副本、loading 或 request id。错误边界为：
 
-| 资源 | query 定义 | 首屏启用 | 刷新方式 | 错误边界 |
-| --- | --- | --- | --- | --- |
-| 仓库快照 | `game-data` 的 `depotQueryOptions()` | 是 | 重试按钮 `refetch`；识别解析成功后 `setQueryData` 写入完整快照；收到 `depot` 失效 | 独立错误面板，不阻塞干员/掉落 |
-| 持有干员 | `operBoxQueryOptions()` | 是 | 重试 `refetch`；干员识别解析成功后 `setQueryData`；收到 `operbox` 失效 | 与目录错误合并为干员面板错误 |
-| 干员目录 | `operatorCatalogQueryOptions()` | 是 | 重试 `refetch`；收到 `catalog` 失效（材料刷新不改变目录，不再额外重读） | 与持有干员错误合并为干员面板错误 |
-| 掉落统计 | `statistics` 的 `dropStatisticsQueryOptions(days)` | 是 | 天数切换使用独立 key；刷新/重试 `refetch`；收到 `drops` 失效 | 独立错误面板，刷新失败保留上次成功数据 |
+| 资源 | 失败展示与恢复 |
+| --- | --- |
+| 仓库快照 | 独立错误面板，不阻塞干员/掉落；重试按钮 `refetch` |
+| 持有干员、干员目录 | 合并为干员面板错误；重试 `refetch` |
+| 掉落统计 | 独立错误面板；同 key 刷新失败保留旧数据；天数切换期间用旧周期占位，新 key 首次失败只展示错误，不伪造上个周期数据 |
 
-- 四路 query 在页面挂载时同时启用，不依赖当前 tab；切 tab 只改变渲染，不重建查询。
-- 缓存策略保持第 3 节默认值：30s 内页面重挂载或 Activity 恢复直接复用；过期后台重取；无观察者超过 5min 后重新加载。
-- 筛选与排序状态由常驻的 `OperatorPanel` 持有；干员面板对非当前 tab 只返回 null、不卸载，因此切 tab 不丢状态。筛选、排序与阿米娅形态规则由 `features/statistics/model/operatorFilters.ts` 纯函数实现并直接测试。
-- 识别解析结果作为权威完整快照写入 Query 缓存；命令所有者在解析成功后由 `resource-invalidation` 声明影响范围，`StatisticsWorkspace` 按作用域失效，`hooks/useStatisticsCommands.ts` 写入快照，不建立第二份本地状态。识别命令本身不进入 Query，也不由 Query 自动重试；超时/取消后的继续方式见[统计识别命令与失效联动](statistics-commands.md)。
-- 切换掉落天数时使用 `keepPreviousData` 占位，旧周期内容在加载期间保持可见；新 key 首次失败只展示错误，不伪造上一个周期的数据。
+筛选与排序由常驻的 `OperatorPanel` 持有，非当前 tab 只返回 null，因此切 tab 不丢状态；筛选、排序与阿米娅形态由 `model/operatorFilters.ts` 纯函数实现。识别成功后的完整快照写入及命令生命周期见[统计识别命令](statistics-commands.md)，跨域失效映射统一见[资源所有权](resource-ownership.md)。
 
-## 10. 养成队列、候选与状态计数
+## 10. 养成候选与状态计数
 
-`OperatorTraining` 的队列、候选列表与三种状态计数都由 training 领域 query 持有，页面只读取 query 结果。设置由 `features/training/model/settingsCommands.ts` 的领域所有者持有（不进入 Query），计划由 `model/planCommands.ts` 的领域所有者持有（也不进入 Query）；队列写入由 `queueCommands` 领域命令串行执行，写成功后把权威快照写入同一 `queue` key，见[养成队列命令与写后刷新](training-queue-commands.md)与[养成设置提交与计划有效期](training-settings-and-plan-validity.md)。
+队列读取使用第 4 节的唯一 key，写入、刷新失败的 `uncertain` fallback 与计划门禁见[养成队列命令](training-queue-commands.md)和[养成设置与计划有效期](training-settings-and-plan-validity.md)。跨域发布与接收映射由[资源所有权](resource-ownership.md)维护。
 
-| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
-| --- | --- | --- | --- | --- |
-| 队列 | `trainingQueueQueryOptions()` | `['training','queue']` | query error；页面展示可重试错误；写入成功但写后刷新失败时保留带 `uncertain` 的本地 fallback | 首屏/remount 按默认策略；收到 `depot`/`materials`/`training-queue` 外部失效后重读（`operbox` 识别同时发布 `materials`）；计划生成前、应用后/失败后、重试同步后与“重新加载”由计划所有者取消在途读取并以 `fetchQuery({ staleTime: 0 })` 强制读取；队列命令自行做写后刷新 |
-| 候选列表 | `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | query error；页面清空列表并展示可重试错误 | 筛选切换使用独立 key；收到 `depot`/`operbox`/`catalog`/`materials` 失效后 `invalidateQueries`；重试按钮 `refetch` |
-| 三种计数 | `trainingStatusCountsQueryOptions(filters)` | `['training','counts',rarity,needsElite2]` | 不展示错误；同 key 失败保留上次成功值 | 同上作用域失效；`placeholderData: keepPreviousData` 让筛选切换期间保留旧计数 |
+候选与计数的读取规则为：
 
-规则：
+- 候选失败时页面清空列表并展示可重试错误；计数失败不提示，同 key 保留上次成功值。
+- 候选 `status=all` 且端点返回空列表时，在同一 queryFn 内读取 `game-data` 的目录与持有干员公开端点补齐；其它状态直接使用端点行，不建立第二套 key。
+- `trainable`/`owned` 计数取候选端点行数，`owned` 为空时回退持有干员快照；`all` 取目录按稀有度过滤后的行数，不应用“未精二”。
+- 新 `all` 为 0 时不覆盖旧值；`mergeTrainingStatusCounts` 通过结构共享保持引用稳定，避免 `keepPreviousData` 占位反复通知。
+- 筛选切换由 key 隔离，旧 key 的迟到响应只写旧 key；Activity 生命周期沿用第 6 节。
 
-- 队列只有一个可写真相：页面不保存第二份队列副本；命令执行时读取缓存中的最新快照，写前取消在途读取，写成功后重新读取权威队列。重复的同类命令在 pending 期间合并。
-- 队列写入成功但刷新失败时，命令在最新缓存上应用本地 fallback 并标记 `uncertain`；页面据此禁用计划预览/应用，重新加载成功后清除。写入失败不修改缓存、不发布失效。
-- 队列命令发布 `training-queue`/`materials`/`training-plan`/`dashboard-snapshot`，并携带 `detail.source`；本页忽略自己的发布，外部 `training-queue` 发布仍触发重读。
-- 候选 `status=all` 且端点返回空列表时，沿用旧兼容补齐：在同一 queryFn 内读取 `game-data` 的目录与持有干员公开端点，不建立第二套 key；其它状态直接使用端点行。
-- 计数保持迁移前来源：`trainable`/`owned` 取候选端点行数，`owned` 为空时回退持有干员快照，`all` 取目录按稀有度过滤后的行数（不应用“未精二”）。计数为 0 的 `all` 不覆盖旧值，由 `structuralSharing` 调用 `mergeTrainingStatusCounts` 保持引用稳定，避免 `keepPreviousData` 占位反复通知。
-- `training-queue` 失效只重读队列，不重取候选/计数；`training-plan` 失效作废旧计划预览。队列写入后不使候选/计数失效。
-- 筛选切换由 key 隔离，旧 key 的迟到响应只写入旧 key；Activity 隐藏会注销观察者并取消本地读取，恢复时按新鲜度重取。
+## 11. 领域消费边界
 
-## 11. 设置 MAA profile
+| 消费领域 | 本文之外的权威契约 |
+| --- | --- |
+| 设置 connection | [设置配置编辑与保存](settings-config-editing.md)：快照采用令牌、草稿、保存、重置与 section 生命周期 |
+| 设置版本与目录 | [设置设备连接与系统资源](settings-device-and-resources.md)：载荷归一、失败展示、只读头部缓存复用与设备命令 |
+| 设置更新 | [设置组件更新与自动更新](settings-updates-and-auto-update.md)：显式命令、互斥与成功确认；失效映射见[资源所有权](resource-ownership.md) |
+| 作业搜索与预览 | [作业搜索与预览](combat-search-preview.md)：计划优先、成员回退、会话取消、选段与终态刷新；预览不新建 key |
+| 总览与设备采样 | [总览完整快照与设备采样](dashboard-snapshot.md)：完整提交、失败保旧、刷新协调与设备样本投影 |
 
-设置页的 MAA profile 只有 `connection` 段可编辑；配置读取由 `settings/maa-config` Query 持有，草稿与保存由 `features/settings/model/connectionConfig.ts` 的 `ConnectionConfigOwner` 持有。详细契约见[设置配置编辑与保存](settings-config-editing.md)。
+自动化页的活动标签复用 `activityQueryOptions('Official')`，以第 4 节覆盖策略做展示级读取；失败只隐藏标签，不写全局状态。Activity 隐藏时观察者注销，恢复按默认新鲜度重取，不额外轮询。实现见 [`useAutomationActivity`](../client/src/features/automation/hooks/useAutomationActivity.ts)。
 
-| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
-| --- | --- | --- | --- | --- |
-| MAA connection | `connectionConfigQueryOptions(profileName)` | `['settings','maa-config',profileName]` | `getConfig` 载荷校验失败为 `contract`，`success=false` 转为 Query 错误；初始失败显示页内与全局提示 | 默认新鲜度/重试；显式 `reload`、remount 或 Query 失效后重取；返回快照必须通过 owner 的读取令牌裁决 |
-
-规则：
-
-- Query 只保存服务端只读快照，不直接写表单。每条快照带读取开始时的 `{revision, dirty, saving}` 令牌；owner 只在读取开始后没有编辑/保存、当前也没有未保存草稿或保存在途时采用。
-- 初始加载期间的编辑、未保存草稿上的 refresh、保存前发出的读取和重置前发出的读取都会被丢弃；保存成功后 revision 推进，使旧读取失效。
-- 读取不是写路径：保存继续使用 `POST /agent/config/maa/:profileName`，不新增 Query mutation。保存成功后不伪造服务端 profile 回写。
-- `version` 与 `config-directory` 由设置域同一 `settingsKeys` 工厂持有，见第 12 节；设备发现/连接测试不建立 Query key。
-- section 选择（`laPlumaConfigSection` / `la-pluma-config-section`）是纯客户端状态，不进入 Query；section 切换不卸载 connection Query、不重读服务端。
-
-## 12. 设置版本与配置目录
-
-设置页的版本与配置目录由 `settings` 域 Query 持有，设备发现/连接测试/打开目录仍是显式命令，不进入 Query。详细契约见[设置设备连接与系统资源](settings-device-and-resources.md)。
-
-| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
-| --- | --- | --- | --- | --- |
-| 版本 | `versionQueryOptions()` | `['settings','version']` | `cli`/`core`/`raw` 不可用时为 `contract` 失败；页面保持静默（迁移前行为） | 默认新鲜度/重试；更新成功后 `invalidateQueries` 同一 key：可见时立即重取，隐藏时恢复后按 `refetchOnMount` 重取 |
-| 配置目录 | `configDirectoryQueryOptions()` | `['settings','config-directory']` | 空白路径/坏载荷为 `contract` 失败；从未成功时显示页内错误与重试 | 失败重试按钮、显式 `reload`；后台刷新失败保留最近成功路径 |
-
-规则：
-
-- 两者都把 Query 的 `signal` 传给 `getVersion`/`getConfigDir`，Activity 隐藏时取消本地读取并保留上一份数据。
-- 配置目录同时接受 `{ path }` 与旧字符串载荷，归一化在 `model/systemResources.ts`；`getConfigDir` 的返回类型随之修正。
-- 设备发现与连接测试有副作用，保持模块级命令所有者、独立 loading/取消，不建立 Query key，也不自动重试。
-- core/CLI/热更新同样是显式命令，不进入 Query，也不由 Query 自动重试；成功确认后只失效版本 key 并发布资源作用域，失败不失效（见[设置组件更新与自动更新](settings-updates-and-auto-update.md)）。
-- 打开目录是 POST 命令，不进入 Query；页面原有卡片与只读 section 两个入口都调用同一 hook 动作。
-- 只读 section 头部与目录卡片共享 `settings/config-directory`，但头部观察者显式 `refetchOnMount: false`、`retryOnMount: false`（`useSettingsConfigDirectory({ cacheOnly: true })`），只复用缓存：section 切换不产生新请求，初始失败后也不会自动重试或把错误/重试入口换成加载态。加载与重试仍只由目录卡片负责。
-
-## 13. 作业搜索与预览
-
-`CombatTasks` 的普通/悖论搜索、单作业详情与作业集详情由 `combat` 域 Query 持有；预览是这些资源的组合读取，由 `CopilotPreviewSession` 裁决当前展示，执行仍由 task-execution 控制器持有。详细契约、取消与选段语义见[作业搜索与预览](combat-search-preview.md)。
-
-| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
-| --- | --- | --- | --- | --- |
-| 普通搜索 | `copilotSearchQueryOptions(stage)` | `['combat','copilot-search',stage]` | API/载荷失败转为 query error，页面展示服务端消息；transport 显示“搜索失败: …”；取消静默 | 显式搜索 `fetchQuery({ staleTime: 0 })`；输入变化/Activity 隐藏 `cancelQueries`；默认 30s 内保留上次成功结果 |
-| 悖论搜索 | `paradoxSearchQueryOptions(name)` | `['combat','paradox-search',name]` | 同上 | 同上 |
-| 单作业详情 | `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 代理失败为 query error；PRTS 非 200 为“作业不存在” | 预览按钮按默认新鲜度复用/重取；终态刷新不涉及 |
-| 作业集成员 | `copilotSetQueryOptions(id)` | `['combat','copilot-set',id]` | 计划不可用/为空时的回退读取；失败参与预览失败判定 | 计划回退时读取；默认新鲜度 |
-| 作业集计划 | `copilotSetPlanQueryOptions(id, raid)` | `['combat','copilot-set-plan',id,raid]` | 缺 `items`/`entries` 为 `contract` 失败并回退成员列表 | 计划优先；终态刷新 `staleTime: 0`；重置进度成功失效该作业集前缀 |
-
-规则：
-
-- 搜索/详情/计划都把 Query 的 `signal` 传给 fetch；预览会话取消时对登记的精确 key 调用 `cancelQueries`。
-- 预览不建立额外 key，也不把组合结果写入第二份缓存；页面只订阅会话的 `preview`/`loading`。
-- 搜索词、识别方式、选中索引是客户端选择，不进入 key；搜索结果与执行 Run 完全分离。
-- 作业集终态后的进度刷新把新计划写回同一 key；重置进度只失效相关计划，不触碰搜索或其它作业集。
-- Activity 隐藏会注销查询观察者并取消在途读取，缓存保留；恢复后不自动重放搜索或预览。
-
-## 14. 已迁移读取：总览完整快照与设备采样
-
-总览的五路业务读取各自归领域 Query，完整快照的归一与原子提交由 `features/dashboard/model` 协调。设备采样是独立的轮询资源，不参与业务快照有效性。完整契约见[总览完整快照与设备采样](dashboard-snapshot.md)。
-
-| 资源 | query 定义 | 缓存身份 | 失败语义 | 刷新方式 |
-| --- | --- | --- | --- | --- |
-| 当前活动 | `activityQueryOptions(clientType)` | `['automation','activity',clientType]` | `success=false`/坏载荷转为 query error；协调读取整体失败保旧快照 | 总览协调读取 `staleTime: 0`、`retry: false` |
-| 定时执行状态 | `scheduleExecutionQueryOptions()` | `['automation','schedule-execution']` | 同上 | 同上 |
-| 养成队列 | `trainingQueueQueryOptions()` | `['training','queue']` | 与养成页共享；总览读取失败整体保旧 | 协调读取强制新鲜，写后刷新仍归队列命令 |
-| 今日掉落 | `todayDropsQueryOptions()` | `['statistics','today-drops']` | query error；总览整体失败保旧 | 协调读取 `staleTime: 0`、`retry: false` |
-| 今日开放关卡 | `openTodayStagesQueryOptions()` | `['statistics','open-stages']` | 同上 | 同上 |
-| 完整快照 | `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | 五路任一失败即拒绝；`dashboardStore` 保留旧快照 | 协调器单飞；`force` 等在途后补一次；`gcTime: 0` |
-| 设备采样 | `deviceStatsQueryOptions()` + `useDeviceStatsSample` | `['device-mirror','device-stats']` | query error 不展示；Query 保留上一份成功数据 | 5s `refetchInterval`、`staleTime: 0`、`retry: false`、`refetchOnMount: 'always'`；Activity 隐藏注销观察者 |
-
-自动化页的活动标签复用 `activityQueryOptions('Official')`，以 `retry: false` 做展示级读取；失败只隐藏标签，不写全局状态。Activity 隐藏时观察者注销，恢复后按默认 `staleTime` 决定是否后台重取，不额外轮询。实现见 `features/automation/hooks/useAutomationActivity.ts`。
-
-规则：
-
-- 总览不得把五路 query 的逐块更新直接写入 `dashboardStore`；协调器只在 `normalizeDashboardSnapshot` 返回完整快照时提交。
-- `dashboard/snapshot` 只用于协调读取，不长期保留缓存；展示与持久化仍由 `dashboardStore` 持有。
-- 设备采样失败静默、`null` 载荷不覆盖旧样本；无效字段由 `updateDeviceStats` 拒绝。样本不单独持久化，随下一次完整业务快照夹带。
-- 后端探针不是业务资源，失败不否决已完成的五路业务快照。
-- 总览协调读取显式关闭自动重试；失败由 5 分钟周期、online 恢复或 `dashboard-snapshot` 失效重试。
-
-## 15. 回归证据
+## 12. 本层回归入口
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -325,77 +246,20 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
 | `client/src/app/providers/AppProviders.test.tsx` | 应用树注入应用级客户端 |
 | `client/src/app/App.test.tsx` | 应用级 hook 在 `AppProviders` 内运行并能拿到 Query 客户端 |
-| `client/src/features/game-data/model/queryKeys.test.ts` | `game-data` 域名与 `depot`/`operbox`/`catalog` 资源作用域 |
-| `client/src/features/game-data/model/queries.test.ts` | 共享资源 key、空快照保留、载荷归一、失败转为 query 错误、signal 传递 |
-| `client/src/features/statistics/model/queries.test.ts` | `drops` 的 `days` 缓存身份、`keepPreviousData`、`today-drops`/`open-stages` key 与 signal、失败转为 query 错误 |
-| `client/src/features/automation/model/queries.test.ts` | `activity`（clientType 参数）与 `schedule-execution` key、signal、失败信封 |
-| `client/src/features/device-mirror/model/queries.test.ts` | `device-stats` key、signal、null 载荷与失败信封 |
-| `client/src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询与恢复单计时器 |
-| `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、单路缺失/形状错误/越界返回 `null` |
-| `client/src/features/dashboard/model/queries.test.ts` | 五路领域 key/signal、协调快照 key 与缓存参数、整体失败、不继承自动重试 |
-| `client/src/features/dashboard/model/snapshotRefresher.test.ts` | 单飞/force、原子提交、失败保旧、探针不否决、离线与预期失败静默 |
-| `client/src/pages/dashboard/Dashboard.test.tsx` | 完整快照原子提交、单路失败/坏载荷保旧、计划应用/识别/队列/资源更新失效、Activity 隐藏期间失效恢复、设备样本投影、启动入口身份 |
-| `client/src/features/combat/model/queries.test.ts` | 搜索/详情/计划 key、signal 与取消、失败分类、计划优先与成员回退、探测、强制刷新 |
-| `client/src/features/combat/model/copilotPreviewSession.test.ts` | 预览 loading/旧响应取消、tracked key 取消、Activity 停止与恢复、终态静默刷新 |
-| `client/src/features/combat/model/copilotPayload.test.ts`、`copilotPreview.test.ts`、`copilotSelection.test.ts`、`combatCommands.test.ts` | 载荷兼容、目标/预览构造、选段恢复、命令与执行选项 |
-| `client/src/pages/combat/CombatTasks.test.tsx` | 搜索/预览旧响应与 AbortSignal、选择写入配置并提交、预览失败保留旧预览、搜索结果与运行状态隔离、Activity 恢复 |
-| `client/src/features/training/model/candidates.test.ts` | 候选旧载荷、`all` 补齐、计数来源与 `all=0` 保留、结构共享引用稳定 |
-| `client/src/features/training/model/queueCommands.test.ts` | 队列命令串行与最新快照排序、重复添加合并、写后刷新失败 fallback/`uncertain`、失败不提交不发布、撤销原索引、目标失效拒绝、写前取消读取 |
-| `client/src/features/training/model/queries.test.ts` | `queue`/`candidates`/`counts` key 与参数、signal、失败信封、补齐读取与计数结构共享 |
-| `client/src/features/training/model/settingsCommands.test.ts`、`planValidity.test.ts` | 设置串行提交与旧响应裁决、计划队列/设置版本前提 |
-| `client/src/pages/training/OperatorTraining.test.tsx` | 队列读取与写入命令接线、计数展示、列表失败清空/计数保旧、目录失败与仅计数失败、筛选迟到响应、失效范围、Activity 隐藏恢复、写后刷新失败与跨页失效、设置提交与计划有效期 |
-| `client/src/features/statistics/model/commandOwner.test.ts` | 识别/材料命令的控制器 intent、幂等复用、解析等待、超时/取消/继续与失效发布；识别命令不进入 Query |
-| `client/src/pages/statistics/DataStatistics.layout.test.tsx` | 四路首屏并行、共享缓存与 remount、按作用域失效、独立错误边界、识别写入缓存、筛选与 tab 生命周期、Activity 隐藏/恢复取消旧读取 |
-| `client/src/features/resource-invalidation/model/resourceInvalidation.test.ts` | 跨域失效发布、作用域 revision、注销与监听器异常隔离 |
-| `client/src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | 订阅过滤、Activity 隐藏/恢复补发、卸载注销与最新 handler |
-| `client/src/features/settings/model/connectionConfig.test.ts` | `settings/maa-config` key/profile/signal、读取令牌裁决、迟到读取与保存前读取失效、保存串行与失败重试、重置边界 |
-| `client/src/features/settings/model/systemResources.test.ts` | `settings/version`、`settings/config-directory` key/signal、版本/目录归一化、旧字符串目录、坏载荷失败 |
-| `client/src/features/settings/model/deviceConnection.test.ts` | 设备发现/连接测试的独立状态、取消与迟到响应、选择回填的草稿 revision |
-| `client/src/features/settings/model/autoUpdateConfig.test.ts` | 自动更新策略读取守卫、本地回退与完整提交 |
-| `client/src/features/settings/model/updateCommands.test.ts` | 更新命令互斥、失败重试条件与成功作用域 |
-| `client/src/pages/settings/ConfigManager.layout.test.tsx` | 初始加载/refresh 不覆盖编辑、保存期间继续编辑、section 切换与监听清理、Activity 恢复、初始读取失败、发现回填/失败重试/hide-show、版本与目录 Query 复用；更新成功失效版本并发布资源作用域、CLI 只失效版本、自动更新保存跨 hide |
+| `client/src/features/statistics/model/queries.test.ts`、`client/src/pages/statistics/DataStatistics.layout.test.tsx` | 本文第 9 节的并行读取、错误边界、缓存复用与天数切换 |
+| `client/src/features/training/model/candidates.test.ts`、`client/src/features/training/model/queries.test.ts` | 本文第 10 节的候选补齐、计数来源、key 隔离与结构共享 |
 
-针对性复现命令（仓库根目录）：
+基础设施的针对性复现命令（仓库根目录）：
 
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run \
-  src/shared/query/queryClient.test.ts \
-  src/shared/query/queryKeys.test.ts \
+  src/shared/query \
   src/app/providers/QueryProvider.test.tsx \
   src/app/providers/AppProviders.test.tsx \
-  src/app/App.test.tsx \
-  src/features/game-data/model/queryKeys.test.ts \
-  src/features/game-data/model/queries.test.ts \
-  src/features/statistics/model/queries.test.ts \
-  src/features/automation/model/queries.test.ts \
-  src/features/device-mirror/model/queries.test.ts \
-  src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx \
-  src/features/dashboard/model/snapshot.test.ts \
-  src/features/dashboard/model/queries.test.ts \
-  src/features/dashboard/model/snapshotRefresher.test.ts \
-  src/pages/dashboard/Dashboard.test.tsx \
-  src/features/statistics/model/operatorFilters.test.ts \
-  src/features/combat/model/queries.test.ts \
-  src/features/combat/model/copilotPreviewSession.test.ts \
-  src/pages/combat/CombatTasks.test.tsx \
-  src/features/training/model/candidates.test.ts \
-  src/features/training/model/queueCommands.test.ts \
-  src/features/training/model/queries.test.ts \
-  src/features/training/model/settingsCommands.test.ts \
-  src/features/training/model/planValidity.test.ts \
-  src/pages/training/OperatorTraining.test.tsx \
-  src/pages/statistics/DataStatistics.layout.test.tsx \
-  src/features/resource-invalidation/model/resourceInvalidation.test.ts \
-  src/features/resource-invalidation/hooks/useResourceInvalidation.test.tsx \
-  src/features/settings/model/connectionConfig.test.ts \
-  src/features/settings/model/systemResources.test.ts \
-  src/features/settings/model/deviceConnection.test.ts \
-  src/features/settings/model/autoUpdateConfig.test.ts \
-  src/features/settings/model/updateCommands.test.ts \
-  src/pages/settings/ConfigManager.layout.test.tsx
+  src/app/App.test.tsx
 ```
 
-完整 `pnpm verify` 与视觉比对由任务完成记录给出；本文件不重复声称未执行的验证。
+领域 Query、页面接线、命令与会话回归由第 11 节链接的领域契约维护；跨域失效测试见[资源所有权](resource-ownership.md)。完整检查使用 `pnpm verify`，浏览器与视觉检查范围见[开发指南](development.md)。
 
 ## 关联
 

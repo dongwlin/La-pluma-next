@@ -25,7 +25,7 @@
 | 面板会话状态 | `model/panelState.ts` + `hooks/usePanelState.ts` | 工作区创建、面板订阅；页面卸载时销毁 |
 | 命令、URI 与载荷模型 | `model/combatCommands.ts`、`utils/copilotUri.ts`、`model/copilotPayload.ts` | 纯命令与载荷模型，不改变执行协议 |
 
-非目标与保持不变：
+维护约束：
 
 - 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等端点、Query key、配置 key、本地存储键或 wire 形状。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
@@ -119,14 +119,14 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - **切换作业类型**：卡片 DOM 卸载，面板会话存储与工作区预览/搜索/执行实例保留；返回时输入与识别方式恢复。
 - **真正卸载/刷新**：工作区与面板 store 销毁，搜索词/识别方式/搜索结果/选中索引/弹层重置；配置草稿、pending 队列和 Run 身份仍由应用级所有者持有，重新挂载后继续使用。
 
-## 7. 兼容、视觉与回滚
+## 7. 兼容与视觉约束
 
 - 端点、Query key、配置 key、本地存储键、pending 标记与 wire 形状均未变化；旧本地草稿与服务端配置可直接读取。
 - 服务端执行参数、作业集模式映射、幂等键与停止语义未变化。
-- 渲染结构与 DOM/CSS 类名保持：面板 JSX 由原页面原样迁出，表单 `id`/`name` 与默认态视觉不变；没有新增 CSS，也没有更新任何视觉基线。
-- 实施时在仓库根执行 `pnpm visual -- --grep "app tab: combat"`；由于当前 pnpm 参数转发未生效，实际执行了全量 72 张比对，全部通过（未更新截图）。
+- 保持渲染结构、DOM/CSS 类名、表单 `id`/`name` 与默认态视觉；交互和局部状态边界由下列回归测试覆盖。
+- 页面视觉回归入口见[开发指南](development.md)；面板行为与订阅隔离由下列回归测试覆盖。
 
-## 8. 回归证据
+## 8. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -135,10 +135,10 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | `client/src/features/combat/model/panelState.test.ts` | 初始值、通知、相同值抑制、退订、多订阅者、独立 store |
 | `client/src/features/combat/model/combatCommands.test.ts`、`copilotSelection.test.ts`、`copilotPreviewSession.test.ts`、`queries.test.ts`、`api/index.test.ts`、`utils/copilotUri.test.ts` | 既有命令/选段/预览会话/Query/API/URI 回归 |
 
-针对性命令（实施仓库根目录）：
+针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/combat
+pnpm --filter la-pluma-next-client exec vitest run src/features/combat src/pages/combat
 ```
 
 ## 关联

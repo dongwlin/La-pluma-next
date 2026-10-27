@@ -31,11 +31,11 @@ pnpm --filter la-pluma-next-client stylelint:ratchet   # 预算校验（CI 同�
 pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有意的迁移/重构后重新生成基线
 ```
 
-CI 中 `stylelint:ratchet` 随 `pnpm verify` 一起执行（见 `.github/workflows/ci.yml`）。
+CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。
 
 ### 视觉基线（8 tab + 3 弹层 + 启动壳 × 深/浅主题 × 3 视口 = 72 张）
 
-视觉基线是样式轨道 S2/S3/S4 每一步“保留视觉”的验收手段，harness 在 `client/tests/visual/`，基线截图入库于 `client/tests/visual/__screenshots__/`。
+视觉基线用于验收布局、材质与交互层级，harness 在 `client/tests/visual/`，基线截图入库于 `client/tests/visual/__screenshots__/`。
 
 - **环境钉死**：截图生成与比对统一跑在 `mcr.microsoft.com/playwright` 官方镜像内（tag 自动取 client 实际安装的 `@playwright/test` 版本，如 `v1.64.1-noble`），字体与浏览器由此与 CI 完全一致。基线截图是 **Linux/Chromium 专属**：更换镜像、Playwright 版本或操作系统后，必须用 `pnpm visual:update` 重新生成并逐项评审 diff，不要试图跨环境复用。
 - **确定性**：`/api` 请求全部由 `client/tests/visual/fixtures.ts` 的固定数据应答（不依赖真实后端与 MAA 运行状态）；`page.clock` 固定到 2026-10-24 04:00（UTC+8），日期敏感内容（今日开放关卡、资源更新时间等）不随运行当天变化；`reducedMotion: 'reduce'` 加文档级样式禁用 CSS 动画/过渡；主题通过 zustand persist 的 `ui-storage` localStorage 预置，首帧即目标主题。公共部分集中在 `harness.ts`。
@@ -49,9 +49,9 @@ pnpm visual:update   # 有意的视觉改动后重新生成基线截图
 pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
 ```
 
-### Tailwind v4 与 S3 分层
+### Tailwind v4 与样式分层
 
-样式轨道 S2 把 Tailwind CSS 从 v3 升级到 v4，S3 完成 token 单一化、cascade layer 与 CSS-first 配置迁移。当前约定：
+当前约定：
 
 - **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `client/postcss.config.js` 已退役。PostCSS 链路不再参与前端构建。
 - **入口与层序**：`client/src/styles/index.css` 在最前声明完整层序：
@@ -64,10 +64,9 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 - **content 检测**：v4 自动扫描 `index.html` 与 `src/**`，取代原 `content` glob。
 - **canonical 类名**：`eslint-plugin-tailwindcss` 的 `enforces-canonical-classname` 在 `client/eslint.config.js` 中对 `src/**/*.{ts,tsx}` 启用（只开这一条），由 `lint` 拦截非规范写法：CSS 变量写 `bg-(--app-surface-muted)` 而非 `bg-[var(--app-surface-muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
 - **token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；`ios-theme.css` 只保留 chrome/材质独有 token，不再重定义同名语义 token。
-- **cascade layer**：`page` 位于 `components` 之后、`utilities` 之前——utilities 永远赢，页面 CSS 覆盖 base/preflight 与 components。页面/组件规则若确实要压过 utilities，使用带注释的 `!important`；不要再依赖未分层 CSS 或深选择器抢优先级。S2 期间为深色预览标题添加的 `dark:text-white!` 仍然有效。
+- **cascade layer**：`page` 位于 `components` 之后、`utilities` 之前——utilities 永远赢，页面 CSS 覆盖 base/preflight 与 components。页面/组件规则若确实要压过 utilities，使用带注释的 `!important`；不要再依赖未分层 CSS 或深选择器抢优先级。深色预览标题使用的 `dark:text-white!` 仍然有效。
 - **gap 覆盖限制**：`@utility` 的 `gap-3/4/5/6` 带 `!important`，同一元素不要再用 `gap-[...]` 或其他 gap 档位覆盖；需要任意值时改用组件类或显式样式。
-- **S3 验收记录**：32 张视觉基线比对通过、rect 0 diff；token 在 light/dark 与对比度/透明度媒体查询下的 computed 值等价。已知并接受：dashboard 运行态按钮与 combat 深色任务图标恢复 S1 基线色；约 28 个元素的 transition 属性/时序因层优先级变化（utilities 胜出或 page 覆盖 components）而变化；`background-position` 的 `0%`/`0px` 为等价序列化。`!important` 声明级 138→216（+83/-5），新增均用于压过工具类以保持既有视觉；stylelint 基线 890→856，其中 index 413→427（`no-descending-specificity` +22 为分层重排产物，已重生成基线），ios 397→349。S3 恢复 6 个页面 `@keyframes` 并修复深色 `html/body` 背景渐变。
-- **v3 视觉基线**：S2 已按断代点迁移类名（`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`!` 前缀改后缀、`flex-shrink-0→shrink-0`）。**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色；`space-x/y` 使用 `:not(:last-child)` 的 end margin 语义。
+- **类名兼容**：v3 到 v4 的类名对应关系为（`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`!` 前缀改后缀、`flex-shrink-0→shrink-0`）。**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色；`space-x/y` 使用 `:not(:last-child)` 的 end margin 语义。
 - **默认色板**：v4 默认色板保留 OKLCH 校准值；项目语义 token 使用 `index.css` 中显式定义的颜色，不依赖默认色板。
 - **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor。`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
 - **浏览器下限**：Tailwind v4 依赖原生 cascade layers、`color-mix()`、OKLCH 与 `@property`，前端最低支持 **Safari 16.4+ / Chrome 111+ / Firefox 128+**。低于该下限的浏览器不再保证样式正确。
@@ -103,7 +102,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 ### 已知缺陷的预期失败标记
 
-表征测试需要记录当前确实不满足目标不变量时，用 `it.fails` 而不是删除断言或写下“当前错误行为正确”的断言：CI 保持绿色，场景仍可执行，修复落地后该用例会转为失败。承接修复的任务必须删除 `.fails` 标记、保留原断言，并把它作为新行为的回归测试。用例名与注释要写明缺失的不变量，不能只写“当前行为”。现有示例见 `pages/automation/AutomationTasks.config.test.tsx` 与 `pages/training/OperatorTraining.test.tsx`；契约清单见[配置持久化协调器](config-persistence.md)。
+表征测试需要记录当前确实不满足目标不变量时，用 `it.fails` 而不是删除断言或写下“当前错误行为正确”的断言：CI 保持绿色，场景仍可执行，修复落地后该用例会转为失败。承接修复的任务必须删除 `.fails` 标记、保留原断言，并把它作为新行为的回归测试。用例名与注释要写明缺失的不变量，不能只写“当前行为”。契约清单见[配置持久化协调器](config-persistence.md)。
 
 ### 依赖与职责护栏
 
@@ -111,7 +110,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 
 ## 文件类型
 
-`client/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**` 和根级测试。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
+`client/` 下的应用代码、构建脚本与测试一律使用 TypeScript。`tsc -b` 通过两个 project 覆盖：`tsconfig.app.json` 检查 `src`，`tsconfig.node.json` 检查 `vite.config.ts`、`scripts/**`、`tests/visual/**`、`tests/integration/**`、`tests/performance/**` 和根级测试。Node 侧脚本直接以 `node xxx.ts` 运行（Node 24 原生类型擦除，脚本只使用可擦除语法：不用 `enum`、`namespace` 与构造器参数属性）。
 
 只有两个 `.js` 文件是有意保留的：
 
@@ -121,7 +120,7 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 ## 常用检查
 
 ```bash
-# 前端类型检查和构建（类型检查覆盖 src、vite.config.ts、scripts 与 tests/visual）
+# 前端类型检查和构建（类型检查覆盖 src、vite.config.ts、scripts 与 tests/{visual,integration,performance}）
 # 构建会校验 dist/assets/*.js 全部进入 dist/sw.js 的 precache 清单；
 # 新增 chunk 时必须同步 createWorkboxConfig 的 globPatterns，否则构建失败。
 pnpm --filter la-pluma-next-client build

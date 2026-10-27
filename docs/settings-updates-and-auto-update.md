@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | core 更新 / 渠道切换 / CLI 更新 / 资源热更新 | `features/settings/model/updateCommands.ts` 的 `SettingsUpdateOwner` | 显式 POST 命令；共用一条在途槽位；不进入 Query | 版本读取、跨域失效发布 |
 | 更新后的版本同步 | `features/settings/hooks/useSettingsUpdates.ts` 调用 `useSettingsVersion().reload()` | 后者 `invalidateQueries` 同一 `settings/version` | 伪造版本快照 |
-| 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot`（`cause: resource-update`） | 清空 Query 缓存、轮询 |
+| 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并按[失效端口](resource-ownership.md)发布（`cause: resource-update`） | 清空 Query 缓存、轮询 |
 | 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
 | 自动更新归一化与时间校验 | `features/settings/model/configNormalization.ts` | 纯函数 | 草稿生命周期 |
 | 页面反馈、按钮 loading、反馈渲染 | `components/AutoUpdateConfigPanel.tsx`、`components/ComponentUpdatePanel.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
@@ -57,22 +57,14 @@
 更新命令确认成功后，React 适配层执行三项副作用：
 
 1. **物品图标缓存版本**：资源变化成功后调用 `invalidateItemIconCache()`，推进并持久化 `laPlumaItemIconVersion`；`getItemIconUrl()` 使用 `?v=<epoch>`，训练/统计页通过 `useItemIconCacheVersion()` 重新渲染，避免浏览器继续命中同一路径的旧图。CLI 更新不推进。
-2. **版本失效**：调用 `useSettingsVersion().reload()`，其内部 `queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被 30s 新鲜期挡住。
-3. **资源失效**：core 更新、渠道切换与资源热更新发布 `catalog`、`materials`、`training-plan`、`dashboard-snapshot`，`cause: 'resource-update'`。CLI 更新只改变 CLI 版本，不发布资源失效，也不推进图标 epoch。
+2. **版本失效**：调用 `useSettingsVersion().reload()`，其内部 `queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被默认新鲜期挡住。
+3. **资源失效**：core 更新、渠道切换与资源热更新按[共享资源归属与失效端口](resource-ownership.md)发布，`cause: 'resource-update'`。CLI 更新只改变 CLI 版本，不发布资源失效，也不推进图标 epoch。
 
 完成提示（成功或失败）在命令 HTTP 返回后立即发出，资源失效与版本重取随后执行；按钮在命令返回时恢复可点，早于版本重取结束（迁移前的 loading 会覆盖到版本重取完成）。因此用户立即发起第二条命令时，其开始提示不会被第一条的成功提示覆盖。
 
 图标 epoch 由本客户端发起的手动更新推进；服务端定时自动更新或其他客户端触发的资源变化不会主动通知本标签页，需等待浏览器缓存过期或本客户端下一次手动更新。干员头像仍是各页面直接构造的独立 URL，不在该机制内。
 
-影响范围与[资源归属与失效端口](resource-ownership.md)第 5 节一致：
-
-| 接收方 | 收到的作用域 | 动作 |
-| --- | --- | --- |
-| OperatorTraining | `catalog`/`materials` | 失效候选与计数 query；`training-plan` 作废旧计划预览 |
-| DataStatistics | `catalog` | 失效干员目录读取 |
-| Dashboard | `dashboard-snapshot` | 完整快照刷新，失败保留旧快照 |
-| 物品图标 | 本地 icon cache epoch | `useItemIconCacheVersion()` 触发重渲染，`<img src>` 换用 `?v=<epoch>` |
-| 其它资源（`depot`、`operbox`、`drops` 等） | 不发布 | 识别快照与掉落不由资源更新重写，保持缓存 |
+跨域作用域与接收方映射以[共享资源归属与失效端口](resource-ownership.md)为准。图标 epoch 是独立的本地缓存标记，由 `useItemIconCacheVersion()` 推动使用图标的组件重渲染；识别快照与掉落不由资源更新重写。
 
 失败与取消不发布失效，也不重取版本以外的资源。失效只标记/重取明确受影响的 key，不调用 `queryClient.clear()`，不整体清空无关缓存。
 
@@ -123,21 +115,20 @@
 
 按钮语义保持不变：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。默认渲染结构、DOM、CSS 与文案未改变。
 
-## 6. 兼容与回滚
+## 6. 兼容与维护约束
 
 - 端点、请求体、响应体未改变；未修改服务端。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
 - localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、每次编辑、保存成功）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
 - 无 Query key 新增；版本继续复用 `settings/version`；物品图标仍不进入 Query。
 - 行为差异：
- - 更新成功后发布 `catalog`/`materials`/`training-plan`/`dashboard-snapshot` 的明确失效作用域。
+  - 更新成功后按统一失效映射发布受影响资源。
   - 资源变化后 `getItemIconUrl()` 从固定 URL 变为 `?v=<epoch>`；epoch 持久化，浏览器刷新后仍与更新前不同。干员头像仍是各页面直接构造的独立 URL，不在此机制内。
   - 版本同步由 `refetchQueries` 改为 `invalidateQueries`，活动页面立即重取，隐藏页面恢复后重取，不再因新鲜期保留旧版本。
   - 更新命令完成提示在 HTTP 返回后立即发出，按钮同时恢复；版本重取在后台继续（迁移前 loading 会覆盖到版本重取结束）。
   - 更新/自动更新的反馈与草稿由模块级 owner 持有：Activity 隐藏与真正重挂载都不丢失；自动更新真正重挂载仍会重读服务端，未保存草稿不会被覆盖；确认保存会清除 touched 并推进 revision，之后的重挂载读取可采用服务端副本。
   - 更新成功后仍不自动重试命令；版本读取沿用 Query 默认的可恢复失败重试。
-- 独立回滚范围：`model/updateCommands.ts`、`model/autoUpdateConfig.ts`、`hooks/useSettingsUpdates.ts`、`hooks/useSettingsAutoUpdate.ts`、`features/game-data/model/itemIconCache.ts`、`features/game-data/hooks/useItemIconCacheVersion.ts`、`features/game-data/api/index.ts` 的图标 URL、训练/统计页的图标接线与 `SettingsUpdatesPanel` 接线。回滚后恢复页面 state 与直连调用，不需要数据迁移；`laPlumaItemIconVersion` 可保留为无害的孤立键或手动清除。
 
-## 7. 回归证据
+## 7. 回归测试
 
 | 测试 | 覆盖 |
 | --- | --- |
@@ -161,7 +152,7 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/game-data/hooks/useItemIconCacheVersion.test.tsx
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与视觉比对由任务完成记录给出。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

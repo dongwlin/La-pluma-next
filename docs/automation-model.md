@@ -16,7 +16,7 @@
 | `model/flowExecution.ts` | 活动进度、终态摘要、流程 | 逐项状态/文案与“最近执行”来源 | 流程面板、任务编辑与执行摘要 |
 | `model/dropTargets.ts` | `fight.params.drops` 的任意历史形状 | 结构化目标或 `null` | 由命令模型执行前校验调用 |
 
-非目标与保持不变：
+维护约束：
 
 - 不改变 `/agent/schedules`、`/agent/schedules/manual/execute` 等端点、配置 key、本地存储键或 wire 形状。
 - 不改变任务执行引擎、旧断点续跑、执行控制器身份或 Activity 语义。
@@ -83,13 +83,13 @@
 - 重复条目保留原顺序，不做去重，兼容旧草稿；
 - `formatDropTargets` 输出无空格的规范文本，与 `parseDropTargets` 互为逆变换。
 
-## 6. 兼容、视觉与回滚
+## 6. 兼容与视觉约束
 
-- 配置 key、pending 键、`maa-task-flow`/`maa-schedule` 本地布局、`entries`/`times` 兼容读取与 wire 形状均未变化；旧草稿与服务端配置可直接读取。
+- 配置 key、pending、本地布局与 wire 形状以[配置持久化协调器](config-persistence.md)为准；本域纯模型保留 `entries`/`times` 兼容读取。
 - 新任务仍携带 `defaultParams` 且不含 `icon`/`paramFields`；模型输出已由 `automationConfigAdapter.decodeDraft` 的回归用例验证可被现有迁移接受。
 - 面板 DOM/CSS、表单 id、`aria-label`、拖拽手柄与键盘行为不变；没有新增 CSS，也没有更新视觉基线。
 
-## 7. 回归证据
+## 7. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -100,13 +100,13 @@
 | `model/automationConfig.test.ts` | 适配器原有回归，以及命令模型输出可被现有解码接受 |
 | `model/flowExecution.test.ts` | 最近执行来源、活动/空闲/提交在途的逐项结果、当前步骤映射、单项状态与文案 |
 | `utils/automationTaskProgress.test.ts` | 既有执行步骤映射（从页面测试迁入工具入口） |
-| `pages/AutomationTasks.execution.test.tsx` | 自定义换班缺文件与非法掉落目标阻止提交并选中任务 |
-| `pages/AutomationTasks.layout.test.tsx` | 定时新增从 12:00 起接续到 6 行上限、重复时间拒绝；拖拽成功/Escape/pointercancel、键盘排序；既有布局与表单接线 |
+| `pages/automation/AutomationTasks.execution.test.tsx` | 自定义换班缺文件与非法掉落目标阻止提交并选中任务 |
+| `pages/automation/AutomationTasks.layout.test.tsx` | 定时新增从 12:00 起接续到 6 行上限、重复时间拒绝；拖拽成功/Escape/pointercancel、键盘排序；既有布局与表单接线 |
 
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/automation
+pnpm --filter la-pluma-next-client exec vitest run src/features/automation src/pages/automation
 ```
 
 ## 关联

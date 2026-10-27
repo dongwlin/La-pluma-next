@@ -22,7 +22,7 @@
 | 自动更新策略 | `features/settings/components/AutoUpdateConfigPanel.tsx` | 自动更新草稿、本地回退、完整提交与反馈 |
 | 版本与组件更新 | `features/settings/components/ComponentUpdatePanel.tsx` | 版本 Query、core/渠道/CLI/资源命令与反馈 |
 
-非目标：
+维护约束：
 
 - 不改变 connection 字段、wire 与保存时机；自动更新仍先写 user config 再应用调度。
 - 不改变 Query key、读取时机、失败/重试、失效作用域与展示文案。
@@ -103,31 +103,30 @@ ConfigManager（页面壳）
 
 各面板只渲染自己的反馈；一个用例的失败不会写入另一个面板的页内状态。全局状态消息仍由各面板在明确结果后调用 `useStatusStore`。
 
-## 6. 兼容与回滚
+## 6. 兼容与维护约束
 
 - Query key、读取时机、失效作用域、失败保旧、设备命令 wire、更新顺序与自动更新本地键均未变。
-- 默认 connection 页面、resource 与 instance 只读页面的 DOM 已用离线渲染对比迁移前页面：除 React `useId` 生成值随组件层级变化外无节点或属性差异；没有新增样式或更新截图。
+- 保持默认 connection 页面、resource 与 instance 只读页面的 DOM、标签关联与视觉约束；section 切换和只读入口由下列回归测试覆盖。
 - 唯一可见的生命期差异：section 切换不再卸载设备 hook，而是卸载设备面板；在途命令不取消（与迁移前语义一致），恢复后从 owner 显示结果。
-- 回滚本次面板提交即可恢复页面内联实现；Query 缓存、领域所有者与本地数据不需要迁移。
 
-## 7. 回归证据
+## 7. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `pages/settings/ConfigManager.layout.test.tsx` | 既有 34 项设置回归：section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消、目录失败后切只读 section 不重试且保留重试入口、只读首屏共享一次目录读取 |
+| `pages/settings/ConfigManager.layout.test.tsx` | section 导航/存储/事件/清理、草稿读取/保存/重置、保存期间切 section、目录失败重试、设备发现/测试/取消、版本与目录 Query 复用、更新互斥/失效/失败重试、自动更新边界、两个打开目录入口；新增连接与更新反馈互不串面板、跨 section 的在途查找不取消、目录失败后切只读 section 不重试且保留重试入口、只读首屏共享一次目录读取 |
 | `pages/settings/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新状态与全局状态提示不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板；设备/更新动作不重渲染目录面板；目录缓存变化不重渲染连接/更新面板 |
 | `features/settings/components/ReadOnlyConfigPanel.test.tsx` | 只读头部挂载时复用过期目录缓存、不触发 `getConfigDir`；目录可用时“打开目录”保持可点 |
 | `features/settings/model/*.test.ts`、`features/settings/api/index.test.ts` | 配置归一/校验、section 模型、connection 草稿、设备命令、版本/目录、更新与自动更新所有者既有回归（当前未改协议） |
 
-72 张视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。三态静态 DOM 等价性由实施时的临时 jsdom 对比验证（迁移前页面与拆分后页面，除 React `useId` 外一致）；仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归，完整只读标记结构仍依赖代码审阅。
+视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归；完整只读标记结构仍依赖代码审阅。
 
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/settings
+pnpm --filter la-pluma-next-client exec vitest run src/features/settings src/pages/settings
 ```
 
-完整 `pnpm --filter la-pluma-next-client verify` 与 72 张视觉比对由任务完成记录给出；本文件不声称未执行的验证。
+完整验证与视觉回归入口见[开发指南](development.md)。
 
 ## 关联
 

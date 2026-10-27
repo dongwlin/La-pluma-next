@@ -51,3 +51,24 @@ WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudph
 主仓库的 `docs/` 只维护现行架构、公开契约、兼容约束、开发/运维方法及可复现测试入口。迁移任务、实施日志、逐任务复核、一次性测试结果与性能原始采样属于过程档案，不复制到产品文档索引中。需要长期保留的结论应先转写为当前约束，并由实现或回归测试支持。
 
 性能采样结果默认写入 Git 忽略的 `client/test-results/performance/`；长期文档只描述采样方法与指标限制，不能把某次基准数据当作未来版本的持续保证。
+
+### 文档归属与单一事实来源
+
+修改约定时更新下列归属文档；概览只保留必要摘要与链接，不复制参数表、状态机或完整映射。同一领域的面板、模型和命令集中维护，章节之间直接引用。
+
+| 信息 | 维护位置 |
+| --- | --- |
+| 安装与快速开始 | 根 [README](../README.md) |
+| 界面视觉、交互与设计 token | 根 [DESIGN.md](../DESIGN.md)；[组件库](component-library.md)只维护组件 API 和用法 |
+| 系统技术栈与目录结构 | [整体架构](architecture.md) |
+| 前端分层、状态所有者、URL 与 Activity | [前端架构](frontend-architecture.md) |
+| Agent 对接流程与鉴权 | [Agent API](agent-api.md) |
+| 服务端 Run 协议 / 前端控制器 | [执行生命周期](execution-lifecycle.md) / [执行客户端](execution-client.md) |
+| 三域配置 key、wire、pending 与完整提交 | [配置持久化](config-persistence.md) |
+| 请求错误与取消 / Query key 与缓存策略 | [资源请求](resource-requests.md) / [Query 缓存](query-cache.md) |
+| 共享资源所有权、跨域失效作用域与收发映射 | [资源归属与失效端口](resource-ownership.md) |
+| 旧入口消费者、支持窗口与移除条件 | [兼容入口](frontend-migration.md) |
+| 领域特有的面板、命令、竞态与回归 | 各领域文档；通用规则链接到上述契约 |
+| 日常检查、集成场景与性能方法 | [开发指南](development.md)、[跨页集成](cross-page-acceptance.md)、[性能采样说明](../client/tests/performance/README.md) |
+
+文件移动或合并时，同步修复索引、相对路径、章节锚点和源码/脚本中的文档引用。已完成任务的历史证据应固定到交付提交，避免用当前路径冒充仍在维护的文档；不为旧路径建立第二份正文或长期占位文件。

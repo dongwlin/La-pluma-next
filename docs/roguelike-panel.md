@@ -19,7 +19,7 @@
 | 任务目录、主题快捷项、高级选项、命令拼接与输入校验 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
 | 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图 |
 
-非目标：
+维护约束：
 
 - 不持久化 `activeMode`，也不把模式选择写进 `roguelike-tasks` 配置。
 - 不改变服务端端点、配置 key、本地存储键或 wire 形状。
@@ -70,14 +70,14 @@ RoguelikeTasks（页面壳：页头、预览布局）
 - 真正卸载/刷新会销毁 `activeMode` 与面板输入；配置草稿、pending 标记与在途提交仍属于应用级 `user-config` 通道，重新挂载后继续使用；运行身份由 `task-execution` 控制器持久化，页面重新订阅同一 run，不重新提交。
 - 页面隐藏或 Activity 隐藏不改变后台 Run 的所有权；停止仍按控制器持有的 `runId` 执行。
 
-## 5. 兼容与回滚
+## 5. 兼容与维护约束
 
-- 配置 key `roguelike-tasks`、本地键 `roguelikeTaskInputs`/`roguelikeAdvancedParams`、pending 键 `roguelikeConfigSyncPending` 与 wire `{ taskInputs, advancedParams }` 均未变化，旧本地草稿与服务端配置可直接读取。
+- 配置 key、本地草稿、pending 与 wire 形状以[配置持久化协调器](config-persistence.md)为准；面板不另建持久化格式。
 - 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。
 - 渲染结构、DOM/CSS 类名、表单 `id`/`name` 与默认态视觉保持不变；既有 DOM/CSS 与视觉约束保持不变。
-- 回滚当前需恢复页面内联实现；配置适配器、执行控制器与本地数据不需要迁移。
+- 面板只组合命令模型、配置适配器与执行控制器；不在页面恢复独立的配置或执行状态。
 
-## 6. 回归证据
+## 6. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -88,5 +88,5 @@ RoguelikeTasks（页面壳：页头、预览布局）
 针对性命令（仓库根目录）：
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/roguelike
+pnpm --filter la-pluma-next-client exec vitest run src/features/roguelike src/pages/roguelike
 ```

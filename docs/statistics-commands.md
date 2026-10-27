@@ -40,32 +40,9 @@
 
 ## 3. 执行控制器与幂等
 
-识别命令通过控制器的 intent API 提交：
+识别命令通过控制器 intent API 提交 `run_task`，使用 `scope: 'statistics'`。intent、幂等键与 Run 身份的通用规则以[前端执行客户端与控制器](execution-client.md)为准。
 
-```ts
-const intent = executionController.beginExecutionIntent('run_task', {
-  scope: 'statistics',
-})
-const result = await executeCommand(
-  'depot',
-  [],
-  { name: '仓库识别', type: 'Depot', params: { enable: true } },
-  signal,
-  '仓库识别',
-  'statistics',
-  true,
-  { idempotencyKey: intent.idempotencyKey },
-)
-executionController.settleExecutionIntent(intent, result)
-```
-
-规则：
-
-1. **每个逻辑识别只生成一个幂等键。** 命令超时、本地取消或传输失败后，继续时复用同一个 `idempotencyKey` 再次提交；服务端若已接受会回放已有 Run，不会启动第二个设备命令。
-2. **命令确认成功后不再提交。** 等待 Run 终态与解析阶段的中断只恢复等待/解析，`run-task` 不再发送。
-3. **活动 Run 只读取。** 幂等回放可能返回仍处于 `accepted`/`running` 的 Run；所有者按 `runId` 读取终态，不重新提交。读取失败不等于执行失败，超时前继续观察。
-4. **本地中止不是停止。** 取消超时只 `AbortController.abort()` 当前请求；不调用 `stopTrackedRun`，服务端执行与设备状态不受影响。
-5. **定终态才结束。** `failed`/`interrupted`/`stopped` 不解析、不发布；`succeeded` 或无 Run 身份的旧同步响应才进入解析。
+本域恢复只推进尚未完成的阶段：命令确认成功后，Run 等待与解析中断都不再发送 `run-task`；幂等回放返回活动 Run 时按 `runId` 等终态；只有 `succeeded` 或无 Run 身份的旧同步成功响应进入解析，`failed`/`interrupted`/`stopped` 不解析、不发布。取消只中止本地等待，不发送停止命令。
 
 ## 4. 超时、取消与继续
 
@@ -92,13 +69,7 @@ executionController.settleExecutionIntent(intent, result)
 
 ## 5. 识别成功后的失效联动
 
-命令确认成功且解析完成后，由所有者发布一次失效（`cause: 'recognition'`）：
-
-| 命令 | 作用域 | 接收方结果 |
-| --- | --- | --- |
-| 仓库识别 | `depot`、`materials`、`training-queue`、`dashboard-snapshot` | 统计页按 `depot` 失效并重读；养成页重读队列/候选/计数并作废旧计划；总览走完整快照刷新 |
-| 干员识别 | `operbox`、`materials`、`training-queue`、`dashboard-snapshot` | 统计页按 `operbox` 失效；养成页与总览同上 |
-| 材料刷新 | `materials`、`training-queue`、`dashboard-snapshot` | 养成页重读候选/队列并作废旧计划；总览刷新；统计页不再额外重读目录 |
+命令确认成功且解析完成后，由所有者发布一次失效（`cause: 'recognition'`）；各命令的作用域与接收方映射以[共享资源归属与失效端口](resource-ownership.md)为准。
 
 规则：
 
@@ -115,14 +86,14 @@ executionController.settleExecutionIntent(intent, result)
 - 所有者不持有服务端资源副本；页面与 Query 仍按 [Query 缓存与键规范](query-cache.md) 读取和失效。
 - 命令状态不写入 Zustand、localStorage 或 URL；跨刷新恢复的是服务端 Run 身份（由执行控制器持久化），不是识别命令本身。刷新后不会自动重新发起识别。
 
-## 7. 兼容与回滚
+## 7. 兼容与维护约束
 
 - `parseDepotData`、`parseOperBoxData`、`fetchOperatorMaterials` 新增可选末位 `AbortSignal`；原有调用与响应形状不变。识别端点仍是 POST，解析仍只读本地日志。
 - 识别命令的请求参数、任务类型、端点与快照形状保持不变；服务端数据格式未变。
 - 行为变化：移除命令成功后的固定 2s 等待，改为解析可用性轮询；不再为提示文案读取一次养成队列；材料刷新后不再重读干员目录（目录不含材料数据）。这些都在命令所有者范围内，不改变页面布局。
 - 超时值是可注入的域内常量，生产默认值见第 2 节；没有暴露为用户设置。
 
-## 8. 回归证据
+## 8. 回归测试
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -140,6 +111,7 @@ executionController.settleExecutionIntent(intent, result)
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run \
   src/features/statistics \
+  src/pages/statistics \
   src/features/resource-invalidation \
   src/features/training/api/index.test.ts \
   src/pages/training/OperatorTraining.test.tsx \
