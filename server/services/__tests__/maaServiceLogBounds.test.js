@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { after, before, beforeEach, afterEach, describe, it } from 'node:test';
 
 // MAA_CLI_PATH 在模块导入时读取；先准备好假 CLI 和临时日志目录再导入被测模块。
@@ -19,7 +19,7 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'log') {
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_LOG_DIR = fakeLogDir;
 
-const { getRealtimeLogs, readLogFile, setTaskStatus, clearRealtimeLogs } = await import('../maaService.js');
+const { getRealtimeLogs, readLogFile, isPathOutsideDir, setTaskStatus, clearRealtimeLogs } = await import('../maaService.js');
 const { loggerManager } = await import('../../utils/logger.js');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
@@ -120,5 +120,75 @@ describe('readLogFile numeric bounds', () => {
     const result = await readLogFile(logFilePath, 200);
     assert.equal(result.returnedLines, 200);
     assert.ok(result.content.endsWith(`log line ${totalLines}`));
+  });
+});
+
+describe('readLogFile path boundary', () => {
+  const nestedDir = join(fakeLogDir, 'sub');
+  const nestedLogFile = join(nestedDir, 'run-1.log');
+  const outsideDir = join(fixtureDir, 'outside');
+  const outsideLogFile = join(outsideDir, 'secret.log');
+
+  before(async () => {
+    await mkdir(nestedDir, { recursive: true });
+    await mkdir(outsideDir, { recursive: true });
+    await writeFile(nestedLogFile, 'nested log', 'utf-8');
+    await writeFile(outsideLogFile, 'outside secret', 'utf-8');
+    await writeFile(join(fakeLogDir, 'notes.txt'), 'not a log', 'utf-8');
+    // 目录内符号链接：指向目录外的日志、悬空目标与目录内别名各一
+    await symlink(outsideLogFile, join(fakeLogDir, 'escape.log'));
+    await symlink(join(nestedDir, 'missing.log'), join(fakeLogDir, 'dangling.log'));
+    await symlink(nestedLogFile, join(fakeLogDir, 'alias.log'));
+    // 目录内目录符号链接指向目录外
+    await symlink(outsideDir, join(fakeLogDir, 'sub-alias'));
+  });
+
+  it('reads nested files and internal symlink aliases inside the log directory', async () => {
+    const nested = await readLogFile(nestedLogFile, 10);
+    assert.equal(nested.totalLines, 1);
+    assert.equal(nested.content, 'nested log');
+
+    const alias = await readLogFile(join(fakeLogDir, 'alias.log'), 10);
+    assert.equal(alias.content, 'nested log');
+  });
+
+  it('rejects traversal and absolute paths outside the log directory', async () => {
+    const traversal = join(fakeLogDir, '..', 'outside', 'secret.log');
+    await assert.rejects(readLogFile(traversal), /只能读取 MAA 日志目录内的文件/);
+    await assert.rejects(readLogFile(outsideLogFile), /只能读取 MAA 日志目录内的文件/);
+  });
+
+  it('rejects symlinks resolving outside the log directory but not internal aliases', async () => {
+    // realpath 后落到目录外：文件符号链接与目录符号链接都必须拒绝
+    await assert.rejects(readLogFile(join(fakeLogDir, 'escape.log')), /只能读取 MAA 日志目录内的文件/);
+    await assert.rejects(readLogFile(join(fakeLogDir, 'sub-alias', 'secret.log')), /只能读取 MAA 日志目录内的文件/);
+    await assert.rejects(readLogFile(join(fakeLogDir, 'dangling.log')));
+  });
+
+  it('rejects non-log files, the log directory itself and missing files', async () => {
+    await assert.rejects(readLogFile(join(fakeLogDir, 'notes.txt')), /只能读取 MAA 日志目录内的文件/);
+    await assert.rejects(readLogFile(fakeLogDir), /只能读取 MAA 日志目录内的文件/);
+    await assert.rejects(readLogFile(join(nestedDir, 'missing.log')));
+  });
+});
+
+// Windows 路径策略通过注入 path.win32 验证；本仓库测试环境非 Windows，
+// 无法在真实 Windows 运行时执行，这里覆盖的是同一份路径判定逻辑。
+describe('isPathOutsideDir path policy', () => {
+  it('posix policy contains descendants and rejects traversal, the dir itself and absolute escapes', () => {
+    assert.equal(isPathOutsideDir('/data/logs', '/data/logs/asst.log', posix), false);
+    assert.equal(isPathOutsideDir('/data/logs', '/data/logs/sub/run.log', posix), false);
+    assert.equal(isPathOutsideDir('/data/logs', '/data/logs', posix), true);
+    assert.equal(isPathOutsideDir('/data/logs', '/data/other/secret.log', posix), true);
+    assert.equal(isPathOutsideDir('/data/logs', '/data/logs/..', posix), true);
+  });
+
+  it('win32 policy contains descendants and rejects drive-absolute, traversal and UNC escapes', () => {
+    assert.equal(isPathOutsideDir('C:\\logs', 'C:\\logs\\asst.log', win32), false);
+    assert.equal(isPathOutsideDir('C:\\logs', 'C:\\logs\\sub\\run.log', win32), false);
+    assert.equal(isPathOutsideDir('C:\\logs', 'C:\\logs', win32), true);
+    assert.equal(isPathOutsideDir('C:\\logs', 'C:\\Windows\\evil.log', win32), true);
+    assert.equal(isPathOutsideDir('C:\\logs', 'C:\\logs\\..\\evil.log', win32), true);
+    assert.equal(isPathOutsideDir('C:\\logs', '\\\\server\\share\\asst.log', win32), true);
   });
 });

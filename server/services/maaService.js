@@ -1650,6 +1650,18 @@ export async function cleanupLogs(maxSizeMB = 10) {
 }
 
 /**
+ * 判断目标路径是否落在目录之外；等于目录本身同样视为越界。
+ * pathImpl 可注入 path.win32 等实现，使 Windows 路径策略可以脱离运行平台验证。
+ */
+export function isPathOutsideDir(logDir, requestedPath, pathImpl = { relative, sep, isAbsolute }) {
+  const relativePath = pathImpl.relative(logDir, requestedPath);
+  return !relativePath
+    || relativePath === '..'
+    || relativePath.startsWith(`..${pathImpl.sep}`)
+    || pathImpl.isAbsolute(relativePath);
+}
+
+/**
  * 读取日志文件内容
  */
 export async function readLogFile(filePath, lines = 1000) {
@@ -1662,12 +1674,8 @@ export async function readLogFile(filePath, lines = 1000) {
   try {
     const logDir = await realpath(resolve(await getMaaLogDir()));
     const requestedPath = await realpath(resolve(filePath));
-    const relativePath = relative(logDir, requestedPath);
-    const isOutsideLogDir = relativePath === '..'
-      || relativePath.startsWith(`..${sep}`)
-      || isAbsolute(relativePath);
 
-    if (!relativePath || isOutsideLogDir || extname(requestedPath).toLowerCase() !== '.log') {
+    if (isPathOutsideDir(logDir, requestedPath) || extname(requestedPath).toLowerCase() !== '.log') {
       throw new Error('只能读取 MAA 日志目录内的文件');
     }
     const content = await readFile(requestedPath, 'utf-8');

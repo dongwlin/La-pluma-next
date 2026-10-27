@@ -1202,7 +1202,9 @@ router.get('/logs/files/:filePath(*)', asyncHandler(async (req, res) => {
     min: 1,
     max: MAX_LOG_FILE_LINES
   });
-  return sendSuccess(res, req, await readLogFile(decodeURIComponent(filePath), lines));
+  // Express 已对路径参数完成一次 URL 解码；这里不再二次解码，
+  // 否则字面 %20 文件名会被错误转换，结尾为 % 的名字（如 100%.log）会抛 URIError。
+  return sendSuccess(res, req, await readLogFile(filePath, lines));
 }));
 
 router.post('/logs/cleanup', asyncHandler(async (req, res) => {
