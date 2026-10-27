@@ -73,7 +73,7 @@ jobs:
           path: client/dist/
           if-no-files-found: error
           overwrite: true
-          retention-days: 1
+          retention-days: 7
 
   browser:
     needs: [prepare, checks]
@@ -206,4 +206,5 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           REVISION: ${{ needs.prepare.outputs.revision }}
           DIGEST_DIRECTORY: ${{ runner.temp }}/digests
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/ci/publish-image.mjs

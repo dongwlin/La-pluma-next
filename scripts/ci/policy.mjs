@@ -24,7 +24,6 @@ export function shouldPromote(version, currentVersion) {
   if (version.prerelease) return false
   if (currentVersion === null) return true
   const current = parseVersion(currentVersion.replace(/^v/, ''))
-  if (current.prerelease) return true
   for (const part of ['major', 'minor', 'patch']) {
     const difference = BigInt(version[part]) - BigInt(current[part])
     if (difference !== 0n) return difference > 0n

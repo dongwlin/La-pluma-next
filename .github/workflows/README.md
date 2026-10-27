@@ -16,7 +16,7 @@
 
 分支保护继续要求名为 **`verify`** 的状态检查。它现在是汇总门禁，因此已有分支保护无需改名。`checks` 是源码校验 job，不能单独代替汇总门禁。
 
-镜像步骤只定义在可复用工作流中；`build` 与 `release-build` 分开调用，以保证普通 PR 不获得发布写权限。中间产物允许同一次运行重试时覆盖，避免重跑产生同名 artifact 冲突。
+镜像步骤只定义在可复用工作流中；`build` 与 `release-build` 分开调用，以保证普通 PR 不获得发布写权限。中间产物允许同一次运行重试时覆盖，避免重跑产生同名 artifact 冲突；`frontend-dist` 和平台 digest 保留 7 天，支持隔天重跑失败的下游任务。
 
 ## 按改动选择检查
 
@@ -43,6 +43,10 @@
 
 完整版本标签保持不可变。重跑同一版本时，只有原镜像的 revision 与版本一致才复用原镜像；不以重新构建的 digest 覆盖它。revision 冲突、注册表读取失败或现有渠道版本无法识别都会使发布失败。
 
+发布先并行读取完整版本及所有相关渠道的 manifest/config 元数据，完成冲突检查、版本比较和升级计划后才写标签，不下载旧镜像文件层。只有目标 tag 的 manifest 请求返回明确的 404 缺失错误才视为不存在；子 manifest 或 config 缺失、鉴权错误和损坏元数据都会阻断。数字版本先于预发布状态比较，因此较旧正式版也不能覆盖数字版本更高的预发布。
+
+注册表超时、429、5xx 和连接故障最多尝试 3 次，间隔 0.5 秒、1 秒；鉴权或数据错误直接失败。多个标签的写入不承诺整体原子性，中途失败后可重跑：保留已有完整版本镜像，重新读取渠道并恢复尚未完成的升级。
+
 `publish` job 按仓库串行执行，使用 `queue: max` 保留等待中的发布，在同一临界区内重新读取渠道版本并更新。PR 新提交会取消旧验证；正在执行的发布不会被新运行自动取消。
 
 镜像地址为 `ghcr.io/<仓库所有者的小写名称>/la-pluma-next`。首次发布后须在 GitHub Package settings 中将镜像设为 Public，公开镜像和构建缓存才可供 fork PR 匿名读取。
@@ -61,7 +65,7 @@ Dockerfile 的 npm/pnpm cache mount 仅复用同一本地 builder 的下载，�
 
 ## 权限与本地复现
 
-默认 `contents: read`；只有 `release-build` 和 `publish` 申请 `packages: write`。使用内置 `GITHUB_TOKEN`，无需将仓库默认 workflow 权限设置为读写。
+默认 `contents: read`；只有 `release-build` 和 `publish` 申请 `packages: write`。使用内置 `GITHUB_TOKEN`，发布脚本通过 `GHCR_TOKEN` 接收同一令牌以读取注册表元数据，无需新增 secret，也无需将仓库默认 workflow 权限设置为读写。
 
 ```bash
 pnpm test:ci

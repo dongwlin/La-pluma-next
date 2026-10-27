@@ -88,4 +88,4 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           overwrite: true
-          retention-days: 1
+          retention-days: 7
