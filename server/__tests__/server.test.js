@@ -64,6 +64,13 @@ describe('La Pluma Next transport configuration', () => {
     assert.equal(options.key.toString(), '/key.pem')
   })
 
+  it('rejects an invalid PORT from the environment before starting any listener', async () => {
+    await assert.rejects(
+      startLaPlumaServer({ env: { PORT: 'not-a-port' } }),
+      error => error.code === 'RUNTIME_CONFIG_INVALID' && error.variableName === 'PORT'
+    )
+  })
+
   it('protects ticket issuance with LA_PLUMA_TOKEN and hides all other HTTP paths', async () => {
     const signalingGateway = {
       proxyPath: WEBRTC_SIGNALING_PATH,

@@ -9,7 +9,7 @@ import {
   getItemTablePath, 
   getBattleDataPath,
   getMaaResourceDir
-} from '../config/paths.js';
+} from '../config/paths.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

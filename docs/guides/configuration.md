@@ -4,14 +4,15 @@
 
 ## 运行平台
 
-La Pluma Next 支持 macOS 和 Linux 系统。项目会自动检测操作系统并使用对应的配置路径：
+La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统解析外部 MAA 的目录，路径解析锚定服务端安装位置，与启动时的工作目录无关：
 
-### 配置文件路径
+| MAA 目录 | macOS | Linux（XDG 标准） | Windows |
+| --- | --- | --- | --- |
+| 配置 | `~/Library/Application Support/com.loong.maa/` | `$XDG_CONFIG_HOME/maa/`，缺省 `~/.config/maa/` | `%APPDATA%\maa\`，缺省 `~/AppData/Roaming/maa/` |
+| 数据 | 同配置目录 | `$XDG_DATA_HOME/maa/`，缺省 `~/.local/share/maa/` | `%LOCALAPPDATA%\maa\`，缺省 `~/AppData/Local/maa/` |
+| 状态 | 同配置目录 | `$XDG_STATE_HOME/maa/`，缺省 `~/.local/state/maa/` | 同 Windows 数据目录 |
 
-- **macOS**: `~/Library/Application Support/com.loong.maa/`
-- **Linux**: `~/.config/maa/` (遵循 XDG 标准)
-
-服务器启动时会自动显示当前系统的路径配置。
+服务器启动时会自动显示当前系统的路径配置。应用自身的运行数据（Run 存储、用户配置、掉落记录等）默认写入 `server/data/`，可通过部署指南中列出的 `LA_PLUMA_*` 变量重定向；生产环境前端静态资源默认读取 `client/dist/`。
 
 ## 应用配置
 

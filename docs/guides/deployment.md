@@ -39,7 +39,7 @@ docker run -d \
 
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `PORT` | 后端监听端口 | `3000` |
+| `PORT` | 后端监听端口；必须为 0-65535 的整数，否则服务拒绝启动 | `3000` |
 | `LA_PLUMA_BASE_PATH` | 生产环境前端挂载路径，需与构建时 `VITE_BASE_PATH` 一致 | `/` |
 | `ADB_PATH` | ADB 可执行文件路径 | `/opt/homebrew/bin/adb` |
 | `ADB_ADDRESS` | 默认 ADB 设备地址 | `127.0.0.1:16384` |

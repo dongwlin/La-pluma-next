@@ -2,11 +2,17 @@ import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { networkInterfaces } from 'node:os';
-import { dirname, extname, join, resolve } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
-import { printPathConfig } from './config/paths.js';
+import { printPathConfig } from './config/paths.ts';
+import {
+  loadHttpsOptions,
+  normalizeBasePath,
+  parsePort,
+  resolveAppPaths
+} from './config/runtimeConfig.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.js';
 import agentRoutes from './routes/agent.js';
 import {
@@ -20,8 +26,11 @@ import {
 } from './services/webrtcSignalingGateway.js';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
 
+// 供 isMainModule 判断使用；应用内路径解析已由 config 入口按模块位置锚定
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+
+// 组装入口的配置解析归属 config 模块；此处保留导出供既有使用者与测试引用
+export { loadHttpsOptions, normalizeBasePath } from './config/runtimeConfig.ts';
 
 function getLocalIpAddress() {
   const nets = networkInterfaces();
@@ -31,13 +40,6 @@ function getLocalIpAddress() {
     }
   }
   return 'localhost';
-}
-
-export function normalizeBasePath(value = '/') {
-  const trimmed = String(value || '').trim();
-  if (!trimmed || trimmed === '/') return '/';
-  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  return `${withLeadingSlash.replace(/\/+$/, '')}/`;
 }
 
 function createOptionalApiAuth(apiToken = '') {
@@ -62,7 +64,7 @@ function createOptionalApiAuth(apiToken = '') {
 export function createLaPlumaApp({
   env = process.env,
   signalingGateway = createWebrtcSignalingGateway(),
-  clientDistPath = join(__dirname, '..', 'client', 'dist')
+  clientDistPath = resolveAppPaths().frontendDistDir
 } = {}) {
   const app = express();
   // Express 5 的 req.query 是只读 getter；显式固定 simple 解析器，
@@ -130,19 +132,6 @@ export function createLaPlumaApp({
   return app;
 }
 
-export function loadHttpsOptions(env = process.env, readFile = readFileSync) {
-  const certPath = env.LA_PLUMA_HTTPS_CERT_PATH?.trim();
-  const keyPath = env.LA_PLUMA_HTTPS_KEY_PATH?.trim();
-  if (!certPath && !keyPath) return null;
-  if (!certPath || !keyPath) {
-    throw new Error('LA_PLUMA_HTTPS_CERT_PATH 和 LA_PLUMA_HTTPS_KEY_PATH 必须同时配置');
-  }
-  return {
-    cert: readFile(certPath),
-    key: readFile(keyPath)
-  };
-}
-
 function createLaPlumaTransportServer({
   app,
   signalingGateway,
@@ -175,7 +164,7 @@ function createLaPlumaTransportServer({
 export async function startLaPlumaServer({
   env = process.env,
   host = '0.0.0.0',
-  port = Number(env.PORT || 3000),
+  port = parsePort(env.PORT, { fallback: 3000, name: 'PORT' }),
   signalingGateway = createWebrtcSignalingGateway(),
   initializeRunStore = initializeAgentRunStore,
   initializeRuntime = initializeRuntimeState,
