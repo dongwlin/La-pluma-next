@@ -16,7 +16,7 @@ async function findTestFiles(directory, insideTestDirectory = false) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       files.push(...await findTestFiles(entryPath, insideTestDirectory || entry.name === '__tests__'));
-    } else if (insideTestDirectory && entry.name.endsWith('.test.js')) {
+    } else if (insideTestDirectory && (entry.name.endsWith('.test.js') || entry.name.endsWith('.test.ts'))) {
       files.push(entryPath);
     }
   }
