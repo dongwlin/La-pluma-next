@@ -864,13 +864,16 @@ describe('Agent run routes', () => {
     startAgentRun(run.runId)
 
     const res = createResponse()
+    const forwarded = []
     await findHandler('post', '/actions/stop')({
       headers: {},
       body: { runId: 42 }
-    }, res, () => {})
+    }, res, error => forwarded.push(error))
 
-    assert.equal(res.statusCode, 400)
-    assert.equal(res.body.error.code, 'AGENT_VALIDATION_RUN_ID_INVALID')
+    assert.equal(forwarded.length, 1)
+    assert.equal(forwarded[0].statusCode, 400)
+    assert.equal(forwarded[0].code, 'AGENT_VALIDATION_RUN_ID_INVALID')
+    assert.equal(res.body, null)
     assert.deepEqual(signals, [])
     assert.equal(getAgentRun(run.runId).state, 'running')
   })
@@ -1206,16 +1209,18 @@ describe('Agent daily flow run coverage', () => {
     assert.equal(listAgentRuns({ operationId: 'run_daily_flow' }).length, 1)
 
     const conflict = createResponse()
+    const forwardedConflicts = []
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({
         taskFlow: [{ id: 'award-2', commandId: 'award', name: '另一条流程', enabled: true, params: {} }]
       }, headers),
       conflict,
-      () => {}
+      error => forwardedConflicts.push(error)
     )
 
-    assert.equal(conflict.statusCode, 409)
-    assert.equal(conflict.body.error.code, 'AGENT_IDEMPOTENCY_KEY_REUSED')
+    assert.equal(forwardedConflicts.length, 1)
+    assert.equal(forwardedConflicts[0].statusCode, 409)
+    assert.equal(forwardedConflicts[0].code, 'AGENT_IDEMPOTENCY_KEY_REUSED')
   })
 
   it('maps an occupied executor to the legacy code and releases the idempotency key', async () => {
@@ -1534,14 +1539,16 @@ describe('Agent copilot set routes', () => {
 
   it('rejects an unknown mode before creating a run', async () => {
     const res = createResponse()
+    const forwarded = []
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'auto' }),
       res,
-      () => {}
+      error => forwarded.push(error)
     )
 
-    assert.equal(res.statusCode, 400)
-    assert.equal(res.body.error.code, 'AGENT_VALIDATION_COPILOT_SET_MODE_INVALID')
+    assert.equal(forwarded.length, 1)
+    assert.equal(forwarded[0].statusCode, 400)
+    assert.equal(forwarded[0].code, 'AGENT_VALIDATION_COPILOT_SET_MODE_INVALID')
     assert.deepEqual(listAgentRuns(), [])
   })
 

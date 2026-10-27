@@ -90,18 +90,19 @@ describe('training queue route contract', () => {
     });
   });
 
-  it('returns a stale preview conflict through the shared error handler', async () => {
+  it('delegates stale preview conflicts to the unified error exit via next(error)', async () => {
     training.applyPlanToTasks = async () => { throw Object.assign(new Error('请重新生成计划'), { statusCode: 409 }); };
     const res = response();
-    const originalConsoleError = console.error;
-    console.error = () => {};
-    try {
-      await handler('post', '/actions/apply-training-plan')({ headers: {}, body: { plan: { queueRevision: 'old' } } }, res);
-    } finally {
-      console.error = originalConsoleError;
-    }
-    assert.equal(res.statusCode, 409);
-    assert.equal(res.body.success, false);
-    assert.equal(res.body.message, '请重新生成计划');
+    const forwarded = [];
+    await handler('post', '/actions/apply-training-plan')(
+      { headers: {}, body: { plan: { queueRevision: 'old' } } },
+      res,
+      error => forwarded.push(error)
+    );
+
+    assert.equal(forwarded.length, 1);
+    assert.equal(forwarded[0].statusCode, 409);
+    assert.equal(forwarded[0].message, '请重新生成计划');
+    assert.equal(res.body, undefined);
   });
 });

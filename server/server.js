@@ -18,7 +18,7 @@ import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from './services/webrtcSignalingGateway.js';
-import { agentError, sendError } from './utils/apiHelper.js';
+import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -108,6 +108,12 @@ export function createLaPlumaApp({
   app.use('/api', optionalApiAuth);
   app.use('/api/agent', agentRoutes);
   app.use('/api/operator-quotes', operatorQuotesRoutes);
+  // 未匹配的 API 路径返回稳定 JSON 404，不回显请求路径与查询串
+  app.use('/api', (_req, res) => {
+    sendError(res, _req, agentError('AGENT_ROUTE_NOT_FOUND', '接口不存在', { statusCode: 404 }));
+  });
+  // 统一 API 错误出口：捕获框架错误、业务错误与未知异常
+  app.use('/api', apiErrorHandler);
   return app;
 }
 

@@ -11,6 +11,8 @@ import {
   startLaPlumaServer
 } from '../server.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
+import operatorTraining from '../services/operatorTrainingService.js'
+import OperatorQuotes from '../services/operatorQuotesService.js'
 
 const servers = []
 const tempDirs = []
@@ -159,5 +161,201 @@ describe('La Pluma Next transport configuration', () => {
       await runtime.close()
     }
     assert.equal(runtime.server.listening, false)
+  })
+})
+
+describe('API unified error exit', () => {
+  const servers = []
+  const consoleLines = []
+  const originalConsoleError = console.error
+
+  async function listen(app) {
+    const server = createServer(app)
+    servers.push(server)
+    await new Promise((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    return server.address().port
+  }
+
+  function captureConsole() {
+    console.error = (...parts) => consoleLines.push(parts.join(' '))
+  }
+
+  afterEach(async () => {
+    console.error = originalConsoleError
+    consoleLines.length = 0
+    while (servers.length) {
+      const server = servers.pop()
+      server.closeIdleConnections?.()
+      server.closeAllConnections?.()
+      await new Promise(resolve => server.close(resolve))
+    }
+  })
+
+  it('maps malformed JSON bodies to a stable JSON error', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/status`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"broken'
+    })
+
+    assert.equal(response.status, 400)
+    const body = await response.json()
+    assert.equal(body.success, false)
+    assert.equal(body.message, '请求体不是有效的 JSON')
+    assert.equal(body.error.code, 'AGENT_REQUEST_BODY_INVALID')
+    assert.deepEqual(body.error.details, {})
+    assert.equal(body.error.retryable, false)
+  })
+
+  it('maps oversized JSON bodies to a stable 413', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/status`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payload: 'x'.repeat(200_000) })
+    })
+
+    assert.equal(response.status, 413)
+    const body = await response.json()
+    assert.equal(body.error.code, 'AGENT_REQUEST_BODY_TOO_LARGE')
+    assert.equal(body.message, '请求体超过允许的大小')
+  })
+
+  it('maps undecodable path params to a stable 400 without echoing the raw value', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/runs/%E0%A4%A`)
+
+    assert.equal(response.status, 400)
+    const body = await response.json()
+    assert.equal(body.error.code, 'AGENT_REQUEST_PATH_INVALID')
+    assert.equal(body.message, '请求路径参数无法解码')
+    assert.ok(!JSON.stringify(body).includes('%E0%A4%A'))
+  })
+
+  it('answers unmatched API paths with JSON 404 without echoing path or query', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint?token=secret-query-value`)
+
+    assert.equal(response.status, 404)
+    const body = await response.json()
+    assert.equal(body.success, false)
+    assert.equal(body.message, '接口不存在')
+    assert.equal(body.error.code, 'AGENT_ROUTE_NOT_FOUND')
+    const raw = JSON.stringify(body)
+    assert.ok(!raw.includes('secret-query-value'))
+    assert.ok(!raw.includes('nonexistent-endpoint'))
+  })
+
+  it('keeps token auth ahead of the API 404 answer', async () => {
+    const app = createLaPlumaApp({ env: { LA_PLUMA_TOKEN: 'api-secret' } })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`)
+
+    assert.equal(response.status, 401)
+    assert.equal((await response.json()).error.code, 'AGENT_AUTH_REQUIRED')
+  })
+
+  it('keeps declared business errors intact through the unified exit', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+    const originalApply = operatorTraining.applyPlanToTasks
+    operatorTraining.applyPlanToTasks = async () => {
+      throw Object.assign(new Error('养成队列已变化，请重新生成计划后应用'), { statusCode: 409 })
+    }
+    captureConsole()
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/agent/actions/apply-training-plan`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-request-id': 'error-exit-409' },
+        body: JSON.stringify({ plan: { queueRevision: 'stale' } })
+      })
+
+      assert.equal(response.status, 409)
+      const body = await response.json()
+      assert.equal(body.success, false)
+      assert.equal(body.message, '养成队列已变化，请重新生成计划后应用')
+      assert.equal(body.meta.requestId, 'error-exit-409')
+      assert.ok(consoleLines[0].includes('[API] POST /api/agent/actions/apply-training-plan -> 409'))
+    } finally {
+      operatorTraining.applyPlanToTasks = originalApply
+    }
+  })
+
+  it('hides unknown internal errors behind a generic 500 and never logs the query', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+    const originalApply = operatorTraining.applyPlanToTasks
+    operatorTraining.applyPlanToTasks = async () => {
+      throw new Error('内部堆栈泄露标记 /etc/la-pluma/token')
+    }
+    captureConsole()
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/agent/actions/apply-training-plan?token=secret-query-value`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ plan: { queueRevision: 'stale' } })
+      })
+
+      assert.equal(response.status, 500)
+      const body = await response.json()
+      assert.equal(body.error.code, 'AGENT_INTERNAL_ERROR')
+      assert.equal(body.message, '服务器内部错误')
+      assert.deepEqual(body.error.details, {})
+      assert.equal(body.error.retryable, false)
+      assert.ok(!JSON.stringify(body).includes('内部堆栈泄露标记'))
+      const logged = consoleLines.join('\n')
+      assert.ok(!logged.includes('内部堆栈泄露标记'))
+      assert.ok(!logged.includes('secret-query-value'))
+      assert.ok(logged.includes('[API] POST /api/agent/actions/apply-training-plan -> 500'))
+    } finally {
+      operatorTraining.applyPlanToTasks = originalApply
+    }
+  })
+
+  it('routes sync exceptions through the unified exit', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+    const originalGetAllQuotes = OperatorQuotes.getAllQuotes
+    OperatorQuotes.getAllQuotes = () => {
+      throw new Error('同步异常泄露标记')
+    }
+    captureConsole()
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/operator-quotes/all`)
+
+      assert.equal(response.status, 500)
+      const body = await response.json()
+      assert.equal(body.error.code, 'AGENT_INTERNAL_ERROR')
+      assert.equal(body.message, '服务器内部错误')
+      assert.ok(!JSON.stringify(body).includes('同步异常泄露标记'))
+    } finally {
+      OperatorQuotes.getAllQuotes = originalGetAllQuotes
+    }
+  })
+
+  it('keeps the default HTML 404 for non-API paths', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+
+    const response = await fetch(`http://127.0.0.1:${port}/definitely-missing`)
+
+    assert.equal(response.status, 404)
+    assert.match(response.headers.get('content-type') || '', /html/)
   })
 })
