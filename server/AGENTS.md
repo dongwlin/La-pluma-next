@@ -2,7 +2,7 @@
 
 ## 职责与组织
 
-服务端使用原生 JavaScript ESM；相对导入保留 `.js` 扩展名。服务文件、函数与变量使用现有的 camelCase 命名。
+服务端运行在 Node.js 24.12+ 上，JavaScript ESM 与 TypeScript 混合：Node 原生类型擦除直接运行 `.ts`，生产不经过编译器。JS 相对导入保留 `.js` 扩展名；TS 相对导入使用真实 `.ts` 扩展名，且只使用可擦除语法（不用 `enum`、`namespace`、构造器参数属性和 `import =`）。类型门禁以 `tsc --noEmit` 独立执行（NodeNext、strict、noEmit、erasableSyntaxOnly、verbatimModuleSyntax，固定 TypeScript 6.0.3），只检查 TS 文件；过渡期 JS 文件经 `allowJs` 纳入程序但不做类型检查，未检查 JS 的清单与数量由 `typecheck` 脚本输出。服务文件、函数与变量使用现有的 camelCase 命名。
 
 | 位置 | 修改边界 |
 | --- | --- |
@@ -10,7 +10,7 @@
 | `routes/` | 请求归一化、校验、响应与执行入口；主要控制接口集中在 `agent.js` |
 | `services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
 | `config/`、`utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
-| `scripts/` | 语法检查、测试入口与游戏数据获取脚本 |
+| `scripts/` | 语法检查、类型检查、测试入口与游戏数据获取脚本 |
 
 - 路由沿用 `asyncHandler`、`sendSuccess`、`sendError` 与结构化 `agentError`；保留现有错误码、HTTP 状态和兼容响应字段。
 - 向 Agent 公开能力时更新 `routes/agentContract.js`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
@@ -39,13 +39,14 @@
 | 目的 | 命令 |
 | --- | --- |
 | 后端语法检查 | `pnpm --filter la-pluma-next-server check` |
+| 后端类型检查 | `pnpm --filter la-pluma-next-server typecheck` |
 | 后端回归 | `pnpm --filter la-pluma-next-server test` |
 | 定向回归示例 | `node --test server/services/__tests__/maaCallbackService.test.js` |
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 
-`build` 仅执行语法检查；后端未配置独立的 Lint、Format 或 TypeScript 类型检查。常规测试入口逐文件、逐进程串行运行；不要为提速随意改成共享进程并行，以免模块单例和环境变量相互污染。
+`build` 仅执行语法检查；类型检查由 `typecheck` 独立承担，覆盖范围内的 TS 文件并输出未检查 JS 清单（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；后端未配置独立的 Lint 与 Format。常规测试入口逐文件、逐进程串行运行；不要为提速随意改成共享进程并行，以免模块单例和环境变量相互污染。
 
-- 测试使用 `node:test` 与 `node:assert/strict`，放在相关模块的 `__tests__/*.test.js`；新增文件须符合测试入口的发现规则。
+- 测试使用 `node:test` 与 `node:assert/strict`，放在相关模块的 `__tests__/*.test.js` 或 `*.test.ts`；新增文件须符合测试入口的发现规则，TS 测试同样只使用可擦除语法。
 - 执行、持久化或子进程测试沿用临时目录、假 CLI 和依赖注入；隔离 Run 存储、执行锁、养成数据等路径，清理单例并恢复环境变量。模块导入时读取的环境变量须在导入前设置。
 - 修改行为或修复 Bug 时补对应的契约/回归场景，尤其是停止竞态、后台失败、存储失败、重启恢复及部分同步失败；修改后运行定向回归及后端语法检查、完整回归。
 - 数据获取脚本访问外部数据源并重写数据文件，不能作为普通验证步骤运行。

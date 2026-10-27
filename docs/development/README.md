@@ -130,6 +130,9 @@ pnpm --filter la-pluma-next-client build
 # 后端语法检查
 pnpm --filter la-pluma-next-server check
 
+# 后端类型检查（TypeScript 6.0.3，仅检查 TS 文件；输出同时给出未检查 JS 的清单与数量）
+pnpm --filter la-pluma-next-server typecheck
+
 # 依赖/职责护栏与规模预算（verify 已包含；单独运行便于定位）
 pnpm --filter la-pluma-next-client guardrails
 
