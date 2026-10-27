@@ -12,15 +12,6 @@ on:
       arch:
         type: string
         required: true
-      image:
-        type: string
-        required: true
-      version:
-        type: string
-        required: true
-      revision:
-        type: string
-        required: true
       publish:
         type: boolean
         default: false
@@ -36,6 +27,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Set image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - name: Log in for release builds
         if: inputs.publish
@@ -52,25 +46,25 @@ jobs:
           platforms: ${{ inputs.platform }}
           load: ${{ !inputs.publish }}
           tags: ${{ !inputs.publish && 'la-pluma-next:ci' || '' }}
-          outputs: ${{ inputs.publish && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', inputs.image) || '' }}
+          outputs: ${{ inputs.publish && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', steps.image.outputs.name) || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ inputs.revision }}
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
           build-args: |
-            BUILD_REVISION=${{ inputs.revision }}
-          cache-from: type=registry,ref=${{ inputs.image }}:buildcache-${{ inputs.arch }}
-          # Only validated release refs have write permission to this shared cache.
-          cache-to: ${{ inputs.publish && format('type=registry,ref={0}:buildcache-{1},mode=max,ignore-error=true', inputs.image, inputs.arch) || '' }}
+            BUILD_REVISION=${{ github.sha }}
+          cache-from: type=registry,ref=${{ steps.image.outputs.name }}:buildcache-${{ inputs.arch }}
+          # Only release jobs write the shared cache.
+          cache-to: ${{ inputs.publish && format('type=registry,ref={0}:buildcache-{1},mode=max,ignore-error=true', steps.image.outputs.name, inputs.arch) || '' }}
       - name: Pull candidate by digest
         if: inputs.publish
         env:
-          IMAGE: ${{ inputs.image }}
+          IMAGE: ${{ steps.image.outputs.name }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: docker pull "$IMAGE@$DIGEST"
       - name: Check production startup and HTTP behavior
         env:
-          CANDIDATE: ${{ inputs.publish && format('{0}@{1}', inputs.image, steps.build.outputs.digest) || 'la-pluma-next:ci' }}
+          CANDIDATE: ${{ inputs.publish && format('{0}@{1}', steps.image.outputs.name, steps.build.outputs.digest) || 'la-pluma-next:ci' }}
         run: node scripts/ci/smoke-image.mjs "$CANDIDATE"
       - name: Export verified platform digest
         if: inputs.publish

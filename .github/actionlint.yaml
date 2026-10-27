@@ -5,11 +5,3 @@ self-hosted-runner:
   labels:
     - ubuntu-26.04
     - ubuntu-26.04-arm
-
-# actionlint 1.7.12 尚未支持 2026-05 已发布的 concurrency.queue。
-# 仅放行该新键的 schema 提示，其余语法与 ShellCheck 错误仍阻断。
-# https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/
-paths:
-  .github/workflows/ci.yml:
-    ignore:
-      - '^unexpected key "queue" for "concurrency" section\.'

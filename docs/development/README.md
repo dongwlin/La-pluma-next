@@ -33,7 +33,7 @@ pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有�
 
 CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。
 
-CI 按改动范围运行已有浏览器跨页集成和视觉检查，复用源码校验生成的前端产物；发布还验证两种原生架构的容器启动。必选的 `verify` 状态是这些任务的汇总结果。路径、缓存与发布规则见[工作流说明](../../.github/workflows/README.md)，CI 策略回归可单独运行 `pnpm test:ci`。
+CI 在 PR/main 运行已有浏览器跨页集成和视觉检查，直接复用源码校验生成的前端产物；PR 和发布还验证两种原生架构的容器启动。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
 
 ### 视觉基线（8 tab + 3 弹层 + 启动壳 × 深/浅主题 × 3 视口 = 72 张）
 

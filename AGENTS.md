@@ -11,7 +11,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台。Reac
 | `client/` | 页面、领域逻辑、共享 UI、浏览器测试和 PWA 构建 |
 | `server/` | HTTP API、任务执行、调度、设备连接、通知和持久化 |
 | `docs/` | 现行架构、领域契约、开发与运维说明 |
-| `scripts/` | 根工作区的 Docker 视觉测试入口与 CI / 镜像发布校验 |
+| `scripts/` | 根工作区的 Docker 视觉测试入口与容器启动检查 |
 | `.github/workflows/` | 质量检查、视觉比对与 GHCR 镜像发布 |
 
 ## 环境与常用命令

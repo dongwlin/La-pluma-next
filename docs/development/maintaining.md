@@ -6,7 +6,7 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 ## 分支与合并
 
-- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码、应执行的浏览器和镜像检查。
+- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码、浏览器和适用的镜像检查。
 - 日常改动使用主题分支，通过 Pull Request 合并。
 
 ## 发布流程
@@ -29,10 +29,10 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
    git push origin "v${release_version}"
    ```
 
-3. CI 校验 tag 格式、根版本及 main 归属，运行源码、浏览器和原生双架构容器启动检查。`verify` 汇总通过后发布多架构镜像。正式版推进稳定渠道；预发布只产生完整版本标签，旧版本不会回退 `latest`。完整版本标签不可覆盖。
+3. CI 校验根版本及 main 归属，并行运行源码校验和原生双架构构建、启动检查。`verify` 汇总通过后发布多架构镜像，不重复运行 PR/main 的浏览器检查。正式版更新完整版本、主次版本别名及 `latest`；预发布只产生完整版本标签。标签可覆盖，补发旧正式版本也会更新别名。
 4. 在 GitHub Releases 中补充变更说明。
 
-检查选择、权限、缓存和发布标签的完整规则见[工作流说明](../../.github/workflows/README.md)。main 推送不发布镜像，手动运行分支也只验证。
+检查、权限、缓存和发布标签的规则见[工作流说明](../../.github/workflows/README.md)。main 推送不发布镜像，手动运行分支也只验证。
 
 ## 容器镜像
 
