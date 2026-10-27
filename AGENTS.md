@@ -11,7 +11,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台。Reac
 | `client/` | 页面、领域逻辑、共享 UI、浏览器测试和 PWA 构建 |
 | `server/` | HTTP API、任务执行、调度、设备连接、通知和持久化 |
 | `docs/` | 现行架构、领域契约、开发与运维说明 |
-| `scripts/` | 根工作区的 Docker 视觉测试入口 |
+| `scripts/` | 根工作区的 Docker 视觉测试入口与 CI / 镜像发布校验 |
 | `.github/workflows/` | 质量检查、视觉比对与 GHCR 镜像发布 |
 
 ## 环境与常用命令
@@ -64,4 +64,4 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台。Reac
 | [开发指南](docs/development/README.md) | 查询检查方法、测试治理及工具约束 |
 | [维护说明](docs/development/maintaining.md) | 发布、兼容性变更、外部运行时依赖或文档归属调整 |
 | [部署指南](docs/guides/deployment.md) | 修改 Docker、HTTPS、反向代理、PWA 或子路径部署 |
-| [CI 工作流](.github/workflows/ci.yml)、[镜像发布工作流](.github/workflows/docker-publish.yml) | 调整质量门禁、构建或发布时核对真实触发条件与步骤 |
+| [CI 工作流](.github/workflows/ci.yml) | 调整质量门禁、镜像构建或发布时核对真实触发条件与 job 依赖 |

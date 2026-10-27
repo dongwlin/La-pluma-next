@@ -33,6 +33,8 @@ docker run -d \
 
 > 首次发布后请在 GitHub Package settings 中把 `la-pluma-next` 镜像设为 Public；如果保持私有，拉取前需要先执行 `docker login ghcr.io`。
 
+`latest` 跟随通过校验的正式版本，预发布和旧版本补发不会让它回退，`main` 推送不会更新镜像。需要固定版本时改用完整版本标签（如 `0.0.6`），它同时提供 amd64 与 arm64 两个架构；预发布使用完整标签（如 `0.1.0-rc.1`）。
+
 可选环境变量：
 
 | 变量 | 说明 | 默认值 |
@@ -141,7 +143,12 @@ docker-compose logs -f
 
 # 构建并启动
 docker-compose up -d --build
+
+# 国内网络下依赖下载较慢，可改用镜像源构建
+docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t la-pluma-next:local .
 ```
+
+镜像默认使用 `registry.npmjs.org`，CI 也使用该默认值；`NPM_REGISTRY` 只影响构建时的依赖下载，不会写入运行环境。
 
 **配置说明**：
 - 宿主机端口：`3055`，容器内端口：`3000`

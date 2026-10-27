@@ -15,6 +15,8 @@ pnpm visual
 
 集成和视觉测试复用已安装 `@playwright/test` 对应版本的 `mcr.microsoft.com/playwright:v<version>-noble` 镜像。集成入口要求本机已有镜像，不自动拉取。默认先构建客户端；已经构建时可用 `INTEGRATION_SKIP_BUILD=1` 跳过。Docker 需要本机 daemon 权限。集成端口默认 4318，视觉端口独立；集成顺序运行，避免共享场景竞态。
 
+CI 的 `browser` job 会先拉取匹配镜像，再复用 `checks` 上传的前端产物运行集成和视觉测试；应执行的浏览器任务失败会阻止 `verify` 汇总通过。CI 中禁止 `test.only`，避免意外只运行单个场景。
+
 失败截图与 trace 保存在忽略入库的 `client/integration-artifacts/`。`tests/integration/harness.ts` 记录每次 API 的方法、路径、正文以及提交、停止、配置保存、定时注册和应用次数。未登记 API 与浏览器 `pageerror` 都使测试失败。视觉测试也从文档加载前记录脚本异常，防止仅截图通过掩盖初始化错误。
 
 ## 场景及可观测结果

@@ -2,78 +2,208 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags: ['v*']
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-
+  prepare:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      checks: ${{ steps.plan.outputs.checks }}
+      browser: ${{ steps.plan.outputs.browser }}
+      container: ${{ steps.plan.outputs.container }}
+      publish: ${{ steps.plan.outputs.publish }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      image: ${{ steps.plan.outputs.image }}
+      version: ${{ steps.plan.outputs.version }}
+      revision: ${{ steps.plan.outputs.revision }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
         with:
-          version: 12.6.0
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check workflow syntax and shell scripts
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+      - name: Test CI and release policy
+        run: node --test scripts/ci/*.test.mjs
+      - name: Select checks and validate release
+        id: plan
+        run: node scripts/ci/prepare.mjs
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.checks == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Verify (guardrails + lint + type-check + test + build)
+      - run: pnpm install --frozen-lockfile
+      - name: Verify source, tests and production build
         run: pnpm verify
-
-      - name: Stylelint ratchet (fail on net-new violations)
+      - name: Check stylesheet budget
         run: pnpm --filter la-pluma-next-client stylelint:ratchet
-
-  visual-baseline:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - name: Share the verified frontend build
+        if: needs.prepare.outputs.browser == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          version: 12.6.0
+          name: frontend-dist
+          path: client/dist/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+  browser:
+    needs: [prepare, checks]
+    if: needs.prepare.outputs.browser == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # pnpm visual：先在宿主机构建 client/dist，再把截图生成与比对
-      # 统一钉进 mcr.microsoft.com/playwright 官方镜像（tag 与 client 实际
-      # 安装的 @playwright/test 版本一致），与本地完全同一环境。
-      - name: Visual baseline comparison (dockerized Playwright)
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: client/dist/
+      - name: Pull the matching Playwright image
+        run: |
+          version=$(node -p "require('./client/node_modules/@playwright/test/package.json').version")
+          docker pull "mcr.microsoft.com/playwright:v${version}-noble"
+      - name: Cross-page behavior
+        env:
+          INTEGRATION_SKIP_BUILD: '1'
+        run: pnpm --filter la-pluma-next-client test:integration
+      - name: Visual baseline comparison
+        if: ${{ !cancelled() }}
+        env:
+          VISUAL_SKIP_BUILD: '1'
         run: pnpm visual
-
-      - name: Upload visual diff artifacts
+      - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-test-results
-          path: client/test-results/
+          name: browser-test-results
+          path: |
+            client/test-results/
+            client/integration-artifacts/
+          overwrite: true
           retention-days: 7
+
+  build:
+    needs: [prepare, checks]
+    if: needs.prepare.outputs.container == 'true' && needs.prepare.outputs.publish != 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    uses: ./.github/workflows/container-build.yml
+    with:
+      runner: ${{ matrix.runner }}
+      platform: ${{ matrix.platform }}
+      arch: ${{ matrix.arch }}
+      image: ${{ needs.prepare.outputs.image }}
+      version: ${{ needs.prepare.outputs.version }}
+      revision: ${{ needs.prepare.outputs.revision }}
+
+  release-build:
+    needs: [prepare, checks]
+    if: needs.prepare.outputs.publish == 'true'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    uses: ./.github/workflows/container-build.yml
+    with:
+      runner: ${{ matrix.runner }}
+      platform: ${{ matrix.platform }}
+      arch: ${{ matrix.arch }}
+      image: ${{ needs.prepare.outputs.image }}
+      version: ${{ needs.prepare.outputs.version }}
+      revision: ${{ needs.prepare.outputs.revision }}
+      publish: true
+
+  # Keep the existing required check name while gating all applicable jobs.
+  verify:
+    needs: [prepare, checks, browser, build, release-build]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Require every planned check to succeed
+        env:
+          CHECK_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/ci/check-results.mjs
+
+  publish:
+    needs: [prepare, verify]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ghcr-release-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish immutable version and advance stable channels
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          REVISION: ${{ needs.prepare.outputs.revision }}
+          DIGEST_DIRECTORY: ${{ runner.temp }}/digests
+        run: node scripts/ci/publish-image.mjs

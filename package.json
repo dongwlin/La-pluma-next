@@ -23,8 +23,9 @@
     "dev:client": "pnpm --filter la-pluma-next-client dev",
     "dev:server": "pnpm --filter la-pluma-next-server dev",
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
-    "verify": "pnpm -r verify",
+    "test": "pnpm run test:ci && pnpm -r test",
+    "test:ci": "node --test scripts/ci/*.test.mjs",
+    "verify": "pnpm run test:ci && pnpm -r verify",
     "visual": "node scripts/visual-docker.mjs",
     "visual:update": "node scripts/visual-docker.mjs --update-snapshots",
     "start": "pnpm --filter la-pluma-next-server start"

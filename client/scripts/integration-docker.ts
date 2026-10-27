@@ -25,7 +25,7 @@ const cli = `/work/node_modules/.pnpm/${packageDirectory}/node_modules/playwrigh
 const result = spawnSync('docker', [
   'run', '--rm', '--pull=never', '--ipc=host', '--network=host',
   '--user', `${process.getuid!()}:${process.getgid!()}`,
-  '-e', 'TZ=Asia/Shanghai', '-e', 'XDG_CACHE_HOME=/tmp',
+  '-e', 'TZ=Asia/Shanghai', '-e', 'XDG_CACHE_HOME=/tmp', '-e', 'CI',
   '-v', `${repoRoot}:/work`, '-w', '/work', image,
   'node', cli, 'test', '--config', 'client/tests/integration/playwright.config.ts',
   ...process.argv.slice(2),
