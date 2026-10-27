@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import { createLaPlumaApp } from '../server.js'
-import { setConfigStorageDirForTests } from '../services/configStorageService.js'
+import { setConfigStorageDirForTests } from '../services/configStorageService.ts'
 import OperatorQuotes from '../services/operatorQuotesService.js'
 
 const servers = []

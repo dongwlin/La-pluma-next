@@ -11,7 +11,7 @@ import { getFallbackActivity } from './activityFallbackService.js';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
 import { acquireMaaExecutionLease } from './executionCoordinatorService.js';
 import { prepareMaaTaskCache } from './maaTaskCacheService.js';
-import { loadUserConfig, saveUserConfig } from './configStorageService.js';
+import { loadUserConfig, saveUserConfig } from './configStorageService.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 
 const execFilePromise = promisify(execFile);

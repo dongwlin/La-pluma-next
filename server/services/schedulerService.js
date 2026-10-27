@@ -7,7 +7,7 @@ import { parseRecruitExecutionAction } from './recruitResultService.js';
 import { parseInfrastExecutionAction } from './infrastResultService.js';
 import { parseMallExecutionAction } from './mallResultService.js';
 import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.js';
-import { loadUserConfig, saveUserConfig } from './configStorageService.js';
+import { loadUserConfig, saveUserConfig } from './configStorageService.ts';
 import operatorTrainingService from './operatorTrainingService.js';
 import { recordDrops } from './dropRecordService.js';
 import { updateMaaResources } from './resourceUpdateService.js';

@@ -1,4 +1,4 @@
-import { loadUserConfig } from './configStorageService.js';
+import { loadUserConfig } from './configStorageService.ts';
 import { findActivityCopilotCandidates } from './activityCopilotDiscoveryService.js';
 import { buildCopilotPlan, ensureCurrentMapActivityResource, executeCopilotPlan, executeSelectedCopilotEntries } from './copilotPlanService.js';
 import { getMaaConfigDir } from './maaService.js';

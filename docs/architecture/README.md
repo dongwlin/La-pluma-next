@@ -86,7 +86,7 @@ La-pluma-next/
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
 │   │   ├── agent.js           # 主 Agent API
-│   │   ├── userConfig.js      # 用户配置 HTTP 适配（存储实例经应用组装注入）
+│   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   └── operatorQuotes.js  # 干员台词接口
 │   ├── services/              # 业务逻辑
 │   │   ├── maaService.js      # MAA CLI、ADB、截图、实时日志
@@ -94,7 +94,7 @@ La-pluma-next/
 │   │   ├── notificationService.js # 通知服务
 │   │   ├── operatorTrainingService.js # 养成计划和材料计算
 │   │   ├── webrtcService.js   # ScrcpyOverWebRTC 管理
-│   │   └── configStorageService.js # 配置存储
+│   │   └── configStorageService.ts # 配置存储
 │   ├── data/                  # 用户配置数据
 │   │   └── user-configs/      # 任务配置 JSON 文件
 │   └── server.js              # 服务器入口

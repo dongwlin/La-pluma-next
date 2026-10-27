@@ -15,7 +15,7 @@ import {
 } from './config/runtimeConfig.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.js';
 import agentRoutes from './routes/agent.js';
-import { createUserConfigRouter } from './routes/userConfig.js';
+import { createUserConfigRouter } from './routes/userConfig.ts';
 import {
   getAgentRunStoreStatus,
   initializeAgentRunStore

@@ -24,8 +24,8 @@ import {
   MAX_LOG_FILE_LINES
 } from '../services/maaService.js';
 import { executeScheduleNow, getScheduledTaskFlowPlan, getScheduleExecutionStatus, stopScheduleExecution, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
-import { loadUserConfig, saveUserConfig } from '../services/configStorageService.js';
-import { sendConfigStorageError } from './userConfig.js';
+import { loadUserConfig, saveUserConfig } from '../services/configStorageService.ts';
+import { sendConfigStorageError } from './userConfig.ts';
 import { getNotificationConfig, sendNotification, sendToChannel, testNotificationChannel, setNotificationConfig, getTodayOpenStages } from '../services/notificationService.js';
 import operatorTrainingService from '../services/operatorTrainingService.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
