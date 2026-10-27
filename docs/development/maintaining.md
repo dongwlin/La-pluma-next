@@ -6,27 +6,33 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 ## 分支与合并
 
-- `main` 是集成分支，已开启分支保护，要求 `Build and Publish GHCR Image` 的 `verify` 任务通过，并禁止 force push 和删除。
+- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码、浏览器和适用的镜像检查。
 - 日常改动使用主题分支，通过 Pull Request 合并。
 
 ## 发布流程
 
-1. 在 `main` 上提升版本。该命令会同时创建提交和 `v` 前缀的 annotated tag，只修改根目录 `package.json`（子包不参与发布，保持 `0.0.0`），并要求工作区干净：
+1. 在主题分支提升根目录 `package.json` 版本，通过 Pull Request 合入 `main`。子包不参与发布，保持 `0.0.0`。先只修改版本，不创建 tag，避免 squash 合并后 tag 指向未进入 main 的旧提交：
 
    ```bash
-   pnpm version patch -m "chore(release): v%s"
+   pnpm version patch --no-git-tag-version
    ```
 
-   首个版本用显式版本号（`pnpm version 0.0.1`），之后用 `patch` / `minor` / `major`。
+   也可以显式指定版本（例如 `pnpm version 0.1.0-rc.1 --no-git-tag-version`）。
 
-2. 推送提交与 tag：
+2. 合并后更新本地 main，再为该提交创建并推送 annotated tag：
 
    ```bash
-   git push --follow-tags origin main
+   git switch main
+   git pull --ff-only origin main
+   release_version=$(node -p "require('./package.json').version")
+   git tag -a "v${release_version}" -m "Release v${release_version}"
+   git push origin "v${release_version}"
    ```
 
-3. GitHub Actions 的 `verify` 通过后，构建并推送 GHCR 镜像的 semver 标签（如 `0.0.1`、`0.0`、`0`）。`latest` 只在推送到默认分支时更新，推送 tag 不会改动它。
+3. CI 校验根版本及 main 归属，并行运行源码校验和原生双架构构建、启动检查。`verify` 汇总通过后发布多架构镜像，不重复运行 PR/main 的浏览器检查。正式版更新完整版本、主次版本别名及 `latest`；预发布只产生完整版本标签。标签可覆盖，补发旧正式版本也会更新别名。
 4. 在 GitHub Releases 中补充变更说明。
+
+检查、权限、缓存和发布标签的规则见[工作流说明](../../.github/workflows/README.md)。main 推送不发布镜像，手动运行分支也只验证。
 
 ## 容器镜像
 

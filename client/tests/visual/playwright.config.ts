@@ -20,6 +20,7 @@ export default defineConfig({
   testMatch: '**/*.pw.ts',
   outputDir: path.resolve(__dirname, '..', '..', 'test-results'),
   fullyParallel: false,
+  forbidOnly: Boolean(process.env.CI),
   workers: 1,
   retries: 0,
   reporter: [['line']],

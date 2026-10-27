@@ -6,13 +6,20 @@
 # ============================================
 # 阶段 1: 构建前端
 # ============================================
-FROM node:24-alpine AS frontend-builder
+# 前端产物与目标架构无关，固定在构建机架构上执行，避免 QEMU 下运行 tsc/vite。
+# 同一 builder 可复用此阶段；两个原生 runner 各自构建一次。
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 
 ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
+# 依赖源：CI（GitHub 美区 runner）用官方源最快；在国内本地构建时可传
+# --build-arg NPM_REGISTRY=https://registry.npmmirror.com 加速。
+ARG NPM_REGISTRY=https://registry.npmjs.org
+
 # 安装 pnpm（版本与 package.json 的 packageManager 保持一致）
-RUN npm install -g pnpm@12.6.0 --registry=https://registry.npmmirror.com
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g pnpm@12.6.0 --registry=${NPM_REGISTRY}
 
 WORKDIR /app
 
@@ -21,9 +28,10 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
 
-# 安装前端依赖（使用国内镜像加速）
-RUN pnpm install --frozen-lockfile --filter la-pluma-next-client... \
-    --registry=https://registry.npmmirror.com
+# store 挂载复用同一个本地 builder 的下载；CI 的跨 runner 复用依靠 registry 层缓存。
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter la-pluma-next-client... \
+    --registry=${NPM_REGISTRY}
 
 # 复制前端源代码
 COPY client/ ./client/
@@ -38,6 +46,7 @@ FROM node:24-slim
 
 ARG VITE_BASE_PATH=/
 ARG BUILD_REVISION=unknown
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 LABEL org.opencontainers.image.title="La Pluma Next" \
       org.opencontainers.image.description="MAA CLI 的现代化 WebUI 与本地 Agent 控制台" \
@@ -48,7 +57,8 @@ LABEL org.opencontainers.image.title="La Pluma Next" \
 WORKDIR /app
 
 # 安装 pnpm（版本与 package.json 的 packageManager 保持一致）
-RUN npm install -g pnpm@12.6.0 --registry=https://registry.npmmirror.com
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g pnpm@12.6.0 --registry=${NPM_REGISTRY}
 
 # 安装必要的系统依赖
 RUN apt-get update && \
@@ -78,9 +88,10 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
 
-# 安装后端生产依赖（使用国内镜像加速）
-RUN pnpm install --frozen-lockfile --prod --filter la-pluma-next-server... \
-    --registry=https://registry.npmmirror.com
+# 安装后端生产依赖；store 走 BuildKit 缓存挂载
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --prod --filter la-pluma-next-server... \
+    --registry=${NPM_REGISTRY}
 
 # 复制后端源代码
 COPY server/ ./server/

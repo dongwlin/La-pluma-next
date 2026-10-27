@@ -14,9 +14,8 @@ pnpm-debug.log*
 logs/
 
 # 环境变量
-.env
-.env.local
-.env.*.local
+.env*
+**/.env*
 
 # 编辑器
 .vscode/
@@ -44,6 +43,7 @@ temp/
 
 # 用户配置和数据（不要打包进镜像）
 server/data/
+server/debug/
 docker-data/
 
 # 学习参考资料

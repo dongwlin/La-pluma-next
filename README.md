@@ -4,7 +4,7 @@
   <img src="client/public/logo-graphite.svg" alt="La Pluma Next Logo" width="120" />
   <p><em>MAA CLI 的现代化 WebUI 与本地 Agent 控制台</em></p>
   
-  [![Build and Publish GHCR Image](https://github.com/dongwlin/La-pluma-next/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/dongwlin/La-pluma-next/actions/workflows/docker-publish.yml)
+  [![CI](https://github.com/dongwlin/La-pluma-next/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dongwlin/La-pluma-next/actions/workflows/ci.yml)
   [![GHCR](https://img.shields.io/badge/GHCR-la--pluma--next-2496ED?logo=github)](https://github.com/dongwlin/La-pluma-next/pkgs/container/la-pluma-next)
 </div>
 

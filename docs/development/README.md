@@ -33,6 +33,8 @@ pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有�
 
 CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。
 
+CI 在 PR/main 运行已有浏览器跨页集成和视觉检查，直接复用源码校验生成的前端产物；PR 和发布还验证两种原生架构的容器启动。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
+
 ### 视觉基线（8 tab + 3 弹层 + 启动壳 × 深/浅主题 × 3 视口 = 72 张）
 
 视觉基线用于验收布局、材质与交互层级，harness 在 `client/tests/visual/`，基线截图入库于 `client/tests/visual/__screenshots__/`。

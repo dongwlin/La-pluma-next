@@ -2,78 +2,178 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags: ['v*']
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-
+  checks:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
         with:
-          version: 12.6.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check workflow syntax and shell scripts
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Verify (guardrails + lint + type-check + test + build)
+      - name: Check release version and main ancestry
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "$RELEASE_TAG" = "v$version"
+          git merge-base --is-ancestor HEAD origin/main
+      - run: pnpm install --frozen-lockfile
+      - name: Verify source, tests and production build
         run: pnpm verify
-
-      - name: Stylelint ratchet (fail on net-new violations)
+      - name: Check stylesheet budget
         run: pnpm --filter la-pluma-next-client stylelint:ratchet
-
-  visual-baseline:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 12.6.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # pnpm visual：先在宿主机构建 client/dist，再把截图生成与比对
-      # 统一钉进 mcr.microsoft.com/playwright 官方镜像（tag 与 client 实际
-      # 安装的 @playwright/test 版本一致），与本地完全同一环境。
-      - name: Visual baseline comparison (dockerized Playwright)
+      # Browser checks already run on PRs and main; avoid repeating them for tags.
+      - name: Pull the matching Playwright image
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          version=$(node -p "require('./client/node_modules/@playwright/test/package.json').version")
+          docker pull "mcr.microsoft.com/playwright:v${version}-noble"
+      - name: Cross-page behavior
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          INTEGRATION_SKIP_BUILD: '1'
+        run: pnpm --filter la-pluma-next-client test:integration
+      - name: Visual baseline comparison
+        if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          VISUAL_SKIP_BUILD: '1'
         run: pnpm visual
-
-      - name: Upload visual diff artifacts
-        if: failure()
+      - name: Upload browser failure evidence
+        if: ${{ failure() && !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: visual-test-results
-          path: client/test-results/
+          name: browser-test-results
+          path: |
+            client/test-results/
+            client/integration-artifacts/
+          overwrite: true
           retention-days: 7
+
+  build:
+    if: github.event_name != 'push' && !startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-26.04-arm
+            platform: linux/arm64
+            arch: arm64
+    uses: ./.github/workflows/container-build.yml
+    with:
+      runner: ${{ matrix.runner }}
+      platform: ${{ matrix.platform }}
+      arch: ${{ matrix.arch }}
+
+  release-build:
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-26.04-arm
+            platform: linux/arm64
+            arch: arm64
+    uses: ./.github/workflows/container-build.yml
+    with:
+      runner: ${{ matrix.runner }}
+      platform: ${{ matrix.platform }}
+      arch: ${{ matrix.arch }}
+      publish: true
+
+  # Preserve the required check name used by branch protection.
+  verify:
+    needs: [checks, build, release-build]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the applicable checks to succeed
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          RELEASE_RESULT: ${{ needs.release-build.result }}
+          IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          if [ "$IS_RELEASE" = true ]; then
+            test "$RELEASE_RESULT" = success
+          elif [ "$EVENT_NAME" != push ]; then
+            test "$BUILD_RESULT" = success
+          fi
+
+  publish:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate release tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+      - name: Merge verified platform images
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          METADATA: ${{ steps.meta.outputs.json }}
+        run: |
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$METADATA")
+          test "${#tags[@]}" -gt 0
+          args=()
+          for tag in "${tags[@]}"; do args+=(--tag "$tag"); done
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          sources=()
+          for digest in *; do sources+=("$image@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"

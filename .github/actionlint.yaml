@@ -1,0 +1,7 @@
+# actionlint 内置的 GitHub 托管 runner 标签表可能滞后于 actions/runner-images
+# 的发布节奏，这里补上已经 GA 但尚未内置的标签，避免本地检查误报。
+# 参考：https://github.com/actions/runner-images#available-images
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm

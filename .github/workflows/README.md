@@ -1,70 +1,49 @@
 # GitHub Actions 配置说明
 
-## GHCR 镜像构建与发布
+`ci.yml` 是 PR、main、版本 tag 和手动运行的统一入口；`container-build.yml` 复用两个架构的镜像构建和启动检查。
 
-### 功能
+## 检查与发布
 
-- 自动运行前后端校验
-- 自动构建多架构 Docker 镜像（amd64 + arm64）
-- 推送到 GitHub Container Registry（GHCR）
-- 推送 `v*` tag 时自动生成版本标签
-- 使用 GitHub Actions 缓存加速构建
+| 触发 | 执行内容 |
+| --- | --- |
+| PR、手动运行分支 | 源码、样式预算、浏览器集成和视觉检查；并行构建及启动 amd64、arm64 镜像，不推送 |
+| main 推送 | 源码、样式预算、浏览器集成和视觉检查，不构建镜像 |
+| `v*` tag | 源码校验与原生双架构构建并行；启动检查和 `verify` 通过后合并并发布镜像 |
 
-### 触发条件
+浏览器检查直接复用同一 job 中 `pnpm verify` 生成的前端产物。tag 发布不重复运行 PR/main 的浏览器检查。检查固定执行，不维护按文件路径选择任务的策略。
 
-1. **推送到 main 分支** → 构建并推送 `latest` 标签
-2. **推送 tag（如 `v1.0.0`）** → 构建并推送版本标签
-3. **Pull Request** → 仅校验和构建，不推送
-4. **手动触发** → 在 Actions 页面手动运行
+分支保护继续要求 **`verify`**。它用几行 shell 汇总适用任务，任何失败、取消或意外跳过均阻止通过。PR 新提交取消旧运行；tag 发布不自动取消正在执行的同 tag 运行。
 
-### 镜像地址
+`checks` 校验发布 tag 与根 `package.json` 版本一致、提交已进入 `origin/main`。版本提升和打 tag 的步骤见[维护说明](../../docs/development/maintaining.md#发布流程)。
 
-```text
-ghcr.io/dongwlin/la-pluma-next:latest
-ghcr.io/dongwlin/la-pluma-next:v1.0.0
-ghcr.io/dongwlin/la-pluma-next:1.0
-ghcr.io/dongwlin/la-pluma-next:1
-```
+## 镜像标签
 
-`IMAGE_NAME` 使用 `${{ github.repository_owner }}/la-pluma-next`，因此 fork 后会自动跟随新的仓库所有者。
+镜像地址为 `ghcr.io/<仓库所有者的小写名称>/<仓库名的小写名称>`。标签由 `docker/metadata-action` 的 semver 规则生成：正式版 `v0.0.6` 生成 `0.0.6`、`0.0`、`0` 和 `latest`；预发布如 `v0.1.0-rc.1` 只生成完整版本标签。
 
-### 权限配置
+发布使用 `docker buildx imagetools create` 合并两个已验证的平台 digest。遵循 Docker 的普通可变标签语义，重跑会重新构建并更新对应标签；补发旧正式版本也会更新 `latest` 等别名。需要固定具体内容时使用 digest。
 
-Workflow 使用内置的 `GITHUB_TOKEN` 登录 GHCR，不需要额外 secrets。仓库需要保留：
+默认仅有 `contents: read`，只有 `release-build` 和 `publish` 申请 `packages: write`，使用内置 `GITHUB_TOKEN`，无需额外 secret。
 
-- `Settings → Actions → General → Workflow permissions`
-- 勾选 `Read and write permissions`（或至少允许 workflow 写 packages）
+## 容器与缓存
 
-Workflow 已声明：
+两个架构分别使用 `ubuntu-26.04`、`ubuntu-26.04-arm` 原生 runner，避免 QEMU。Dockerfile 的前端阶段固定为 `$BUILDPLATFORM`。
 
-```yaml
-permissions:
-  contents: read
-  packages: write
-```
+`scripts/ci/smoke-image.mjs IMAGE` 检查真实 `maa --version`、生产 entrypoint、健康接口、静态资源及 API 鉴权。使用临时数据、禁用外部网络和设备访问，并用 MaaCore 存在性 fixture 避免首次启动下载；不代表真实设备已验证。
 
-### 首次发布后
+构建读取 GHCR 的 `buildcache-amd64`、`buildcache-arm64`，只有发布任务写入。缓存缺失可冷构建，缓存导出失败不阻断镜像发布。Dockerfile 的 cache mount 只复用同一本地 builder，不自动进入外部层缓存。首次发布后，在 GitHub Package settings 中将镜像设为 Public，供用户和 fork PR 匿名读取。
 
-1. 打开 `https://github.com/dongwlin?tab=packages`
-2. 找到 `la-pluma-next` 镜像
-3. 在 Package settings 中把可见性改为 `Public`（否则拉取前需要 `docker login ghcr.io`）
-
-本地拉取：
+## 本地复现
 
 ```bash
-docker pull ghcr.io/dongwlin/la-pluma-next:latest
+actionlint
+pnpm verify
+pnpm --filter la-pluma-next-client stylelint:ratchet
+
+# 先拉取与已安装 Playwright 匹配的镜像
+pnpm --filter la-pluma-next-client test:integration
+pnpm visual
+
+# 只在本机构建和检查，不推送
+docker buildx build --load --platform linux/amd64 -t la-pluma-next:ci .
+node scripts/ci/smoke-image.mjs la-pluma-next:ci
 ```
-
-### 发布版本
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-GitHub Actions 会自动构建并推送：
-
-- `ghcr.io/dongwlin/la-pluma-next:v1.0.0`
-- `ghcr.io/dongwlin/la-pluma-next:1.0`
-- `ghcr.io/dongwlin/la-pluma-next:1`
-- `ghcr.io/dongwlin/la-pluma-next:latest`
