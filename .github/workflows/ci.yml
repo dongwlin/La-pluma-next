@@ -68,7 +68,8 @@ jobs:
           INTEGRATION_SKIP_BUILD: '1'
         run: pnpm --filter la-pluma-next-client test:integration
       - name: Visual baseline comparison
-        if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/v') }}
+        # 依赖前序 verify 产出的 client/dist；verify 失败时跳过，避免级联假失败。
+        if: ${{ success() && !startsWith(github.ref, 'refs/tags/v') }}
         env:
           VISUAL_SKIP_BUILD: '1'
         run: pnpm visual
