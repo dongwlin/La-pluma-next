@@ -327,7 +327,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 | `server/services/__tests__/maaTaskExecution.test.ts` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
 | `server/services/__tests__/schedulerRecovery.test.ts` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
 | `server/services/__tests__/scheduleTriggerLifecycle.test.ts` | 重复配置替换而不叠加、全部/部分注册失败、停止与销毁幂等、销毁失败上报关闭步骤、draining 后拒绝注册并丢弃已排队回调、活动流程终态仍由执行结算 |
-| `server/services/__tests__/telegramBotLifecycle.test.js` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
+| `server/services/__tests__/telegramBotLifecycle.test.ts` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、未知 update 校验与 offset 推进、命令解析与领域输入缺省值、未知/失败命令与截图失败回复、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
 | `server/services/__tests__/webrtcPreviewOwnership.test.js` | 外部 server/TURN/设备 Agent 不被停止、本实例 server/TURN/设备 Agent 的停止与 `ownership` 上报、关闭中止在途启动并终止本实例子进程、关闭取消 viewer 自动回收、重复关闭幂等、关闭后拒绝启动 |
 | `server/services/__tests__/webrtcSignalingGateway.test.js` | 一次性票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、关闭断开观看连接并清空票据、重新挂接后旧票据不可用 |
 | `server/services/__tests__/executionShutdown.test.js` | draining 后 Run 准入与设备租约拒绝、cron 与租约入口（Telegram/维护更新共用）不可绕过、只停止本实例的活动执行与进程内任务、执行器实际结果优先、预算耗尽记为 `interrupted`（`server_shutdown`）、Run 落盘失败使关闭步骤失败、重复关闭复用摘要、等待中的作业集不再继续下一项、重启重放不续跑、SIGTERM/SIGINT 子进程退出码 |
