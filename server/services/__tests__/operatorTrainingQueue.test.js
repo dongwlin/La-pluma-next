@@ -258,6 +258,39 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal(await readFile(configPath, 'utf8'), original);
   });
 
+  it('rejects an unknown plan mode before reading the queue', async () => {
+    await writeFile(queuePath, '{ invalid JSON');
+    await assert.rejects(training.generateTrainingPlan('elite2'), error => {
+      assert.equal(error.statusCode, 400);
+      return true;
+    });
+  });
+
+  it('normalizes stored settings and keeps them stable across writes', async () => {
+    // 旧字段 notify 只在缺少 notifyOnComplete 时映射，避免覆盖已保存的新字段
+    await writeJson(queuePath, { queue: [], settings: { notify: false } });
+    const loaded = (await training.getTrainingQueue()).settings;
+    assert.deepEqual(loaded, {
+      autoSwitch: true,
+      notifyOnComplete: false,
+      useMedicine: 0,
+      useStone: 0
+    });
+
+    const revisionBefore = (await training.getTrainingQueue()).revision;
+    const settings = await training.updateSettings({ useStone: 1 });
+    assert.deepEqual(settings, {
+      autoSwitch: true,
+      notifyOnComplete: false,
+      useMedicine: 0,
+      useStone: 1
+    });
+    assert.equal(settings.notify, undefined);
+    assert.deepEqual((await training.getTrainingQueue()).settings, settings);
+    // 设置不属于队列版本：同一个队列在不同设置下保持同一 revision
+    assert.equal((await training.getTrainingQueue()).revision, revisionBefore);
+  });
+
   it('retains applied fallback settings through synchronization and clears them with an empty queue', async () => {
     await training.addToQueue('alpha');
     await training.applyPlanToTasks(await training.generateTrainingPlan(), { fallbackStage: 'LS-6', fallbackTimes: 3 });
