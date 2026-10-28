@@ -1,6 +1,6 @@
 import { getActivityRunPreflight } from './activityNavigationService.js';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
-import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
 const PRTS_QUERY_URL = 'https://prts.maa.plus/copilot/query';
 const PRTS_TIMEOUT_MS = 12000;

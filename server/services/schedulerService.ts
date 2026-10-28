@@ -1,4 +1,4 @@
-import { resolveConnection } from './connectionService.js';
+import { resolveConnection } from './connectionService.ts';
 import { withExecutionLogContext } from '../utils/logContext.ts';
 import { createLogger } from '../utils/logger.ts';
 import {

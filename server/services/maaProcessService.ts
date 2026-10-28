@@ -6,7 +6,7 @@ import { redactLogText } from '../utils/logRedaction.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
 import { prepareMaaTaskCache } from './maaTaskCacheService.ts';
-import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
+import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
 
 /**
  * MAA CLI 子进程执行与进程状态投影。

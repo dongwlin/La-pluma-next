@@ -3,7 +3,7 @@ import { closeSync, openSync } from 'fs'
 import { promisify } from 'util'
 import path from 'path'
 import { setTimeout as delay } from 'timers/promises'
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js'
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts'
 import { resolveWebrtcCredentials } from '../config/webrtcCredentials.ts'
 import { getWebrtcHostIp, getWebrtcRuntimeBinary, installWebrtcRelease } from './webrtcRuntime.js'
 

@@ -8,7 +8,8 @@
  * - 前端产物（client/dist，生产静态资源）
  *
  * 外部 MAA 路径由 `./paths.ts` 的 `resolveMaaPaths` 解析；ADB/MAA CLI 等连接默认值
- * 暂由 `./connectionDefaults.js` 承载，待所属领域任务接入后统一走本入口。
+ * 由本入口的 `resolveConnectionDefaults` 解析，具名常量在 `./connectionDefaults.ts`
+ * 按导入时环境固化一次，业务模块只消费常量或解析结果。
  *
  * 本模块导入时无副作用：不读取环境变量、不访问文件系统、不注册监听。
  * 所有解析通过显式入参完成；入参缺省时才读取当前进程环境或按本模块位置锚定路径，
@@ -222,5 +223,36 @@ export function loadHttpsOptions(
   return {
     cert: readFile(certPath),
     key: readFile(keyPath)
+  };
+}
+
+/** ADB 与 MAA CLI 的连接默认值。 */
+export interface ConnectionDefaults {
+  /** ADB 可执行文件路径（`ADB_PATH`） */
+  adbPath: string;
+  /** 默认 ADB 设备地址（`ADB_ADDRESS`） */
+  adbAddress: string;
+  /** 默认客户端类型（`MAA_CLIENT_TYPE`） */
+  clientType: string;
+  /** MAA CLI 可执行文件路径（`MAA_CLI_PATH`；Docker 缺省 `/usr/local/bin/maa`） */
+  maaCliPath: string;
+}
+
+const FALLBACK_ADB_PATH = '/opt/homebrew/bin/adb';
+const FALLBACK_ADB_ADDRESS = '127.0.0.1:16384';
+const FALLBACK_CLIENT_TYPE = 'Official';
+const DOCKER_MAA_CLI_PATH = '/usr/local/bin/maa';
+const LOCAL_MAA_CLI_PATH = 'maa';
+
+/**
+ * 解析连接默认值；缺失或空字符串回退，`DOCKER_ENV` 非空时 CLI 缺省为容器路径。
+ * 与其余解析函数一致，显式入参优先，入参缺省时才读取当前进程环境。
+ */
+export function resolveConnectionDefaults(env: RuntimeEnvSource = process.env): ConnectionDefaults {
+  return {
+    adbPath: env.ADB_PATH || FALLBACK_ADB_PATH,
+    adbAddress: env.ADB_ADDRESS || FALLBACK_ADB_ADDRESS,
+    clientType: env.MAA_CLIENT_TYPE || FALLBACK_CLIENT_TYPE,
+    maaCliPath: env.MAA_CLI_PATH || (env.DOCKER_ENV ? DOCKER_MAA_CLI_PATH : LOCAL_MAA_CLI_PATH)
   };
 }

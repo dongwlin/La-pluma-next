@@ -1,4 +1,4 @@
-import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
 // 流程计划与命令构建：只处理任务流程数据，不读取设备连接、用户配置或通知状态。
 // 连接默认值由调用方解析后传入，调度入口与确认接口共用同一份构建规则。

@@ -1,5 +1,5 @@
 import { createLogger } from '../utils/logger.ts';
-import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { getFallbackActivity } from './activityFallbackService.js';
 import { loadUserConfig, saveUserConfig } from './configStorageService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';

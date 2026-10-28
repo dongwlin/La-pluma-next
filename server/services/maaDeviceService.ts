@@ -5,7 +5,7 @@ import { createConnection } from 'node:net';
 import { stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
 /**
  * ADB 设备探测、连接测试、游戏前台状态与截图。

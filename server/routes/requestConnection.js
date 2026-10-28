@@ -1,4 +1,4 @@
-import { resolveConnectionInput } from '../services/connectionService.js';
+import { resolveConnectionInput } from '../services/connectionService.ts';
 
 /**
  * 请求级连接覆盖解析：查询参数与请求体按既有顺序合并，再交给连接 profile

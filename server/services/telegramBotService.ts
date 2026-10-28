@@ -33,13 +33,13 @@ import { execMaaCommand } from './maaExecutionService.ts';
 import { getTaskStatus, stopCurrentTask } from './maaProcessService.ts';
 import { captureScreen } from './maaDeviceService.ts';
 import type { CapturedScreen } from './maaDeviceService.ts';
-import { resolveConnection } from './connectionService.js';
+import { resolveConnection } from './connectionService.ts';
 import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.js';
 import { loadUserConfig } from './configStorageService.ts';
 import type { ConfigStorageResult } from './configStorageService.ts';
 import { createLogger } from '../utils/logger.ts';
 import type { RuntimeLifecycle } from './runtimeLifecycleService.ts';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
 const logger = createLogger('TelegramBot');
 

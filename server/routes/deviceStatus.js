@@ -7,7 +7,7 @@ import {
   DEFAULT_DEVICE_ADDRESS,
   WEBRTC_PORT
 } from '../services/webrtcService.js';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 
 /**
  * 设备状态读取适配：ADB 摘要、WebRTC 摘要与 Android 显示状态。

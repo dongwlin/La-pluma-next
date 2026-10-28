@@ -22,7 +22,7 @@ import type {
   OutboundRequestOptions
 } from '../outboundRequestService.ts';
 import { createRuntimeLifecycle } from '../runtimeLifecycleService.ts';
-import { DEFAULT_CLIENT_TYPE } from '../../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../../config/connectionDefaults.ts';
 
 const silentLogger = {
   debug() {},

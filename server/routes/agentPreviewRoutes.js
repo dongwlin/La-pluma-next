@@ -22,7 +22,7 @@ import {
 } from '../utils/apiHelper.ts';
 import { resolveRequestConnection } from './requestConnection.js';
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 
 /**
  * 设备预览路由：截图、WebRTC 启停与状态、方向设置和设备采样。

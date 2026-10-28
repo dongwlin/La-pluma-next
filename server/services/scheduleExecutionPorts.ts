@@ -2,7 +2,7 @@ import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import { captureScreen, getGameClientState, testAdbConnection } from './maaDeviceService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import { replaceActivityCode } from './maaActivityService.ts';
-import { resolveConnection } from './connectionService.js';
+import { resolveConnection } from './connectionService.ts';
 import {
   sendTaskCompletionNotification,
   isStageOpenToday,

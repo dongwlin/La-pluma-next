@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { getCurrentActivity } from './maaActivityService.ts';
 

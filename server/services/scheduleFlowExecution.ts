@@ -21,7 +21,7 @@ import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import type { MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import type { DropRecordInput } from './dropRecordService.ts';
 import type { StageOpenState, TaskCompletionInfo } from './notificationService.ts';
-import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { createLogger } from '../utils/logger.ts';
 
 /**

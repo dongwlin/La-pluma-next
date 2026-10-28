@@ -6,7 +6,7 @@ import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceServ
 import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
 import { getCurrentActivity } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
-import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
+import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.js';
@@ -24,7 +24,7 @@ import {
 } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
 import { resolveRequestConnection } from './requestConnection.js'
-import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js'
+import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts'
 
 /**
  * 维护与平台入口路由：连接/profile 配置、连接诊断、资源与 MAA 更新、

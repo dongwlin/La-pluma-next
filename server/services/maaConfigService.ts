@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import TOML from '@iarna/toml';
 import { createLogger } from '../utils/logger.ts';
 import { updateTextFile } from '../utils/fileHelper.ts';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 import { execMaaCommandUnlocked } from './maaProcessService.ts';
 
 /**

@@ -8,7 +8,7 @@ import agentPreviewRoutes from './agentPreviewRoutes.js';
 import agentNotificationRoutes from './agentNotificationRoutes.js';
 import agentMaintenanceRoutes from './agentMaintenanceRoutes.js';
 import { sendSuccess } from '../utils/apiHelper.ts';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js'
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts'
 import { buildAgentManifest, buildOpenApiSpec } from './agentContract.js';
 
 /**

@@ -1,5 +1,5 @@
 import { createOutboundHttpClient } from './outboundRequestService.ts';
-import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
 const PENGUIN_API_BASE = 'https://penguin-stats.io/PenguinStats/api/v2';
 const CACHE_TTL = 30 * 60 * 1000;
