@@ -269,7 +269,7 @@ waiting ──stop──> stopped
 
 ## 6. 执行入口覆盖
 
-“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/routes/agentExecution.ts`、`server/routes/agent.js` 与 `server/routes/agentContract.ts`。
+“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/routes/agentExecution.ts`、`server/routes/agent.ts` 与 `server/routes/agentContract.ts`。
 
 | 入口 | 端点/调用方 | Run | 租约/执行方式 | 进度来源 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -320,7 +320,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 | `server/services/__tests__/agentRunPersistence.test.ts` | 重启后活动 run（含 `waiting`）变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、坏文件/坏版本 fail-closed、持久化失败可重试、cron 日常流程的终态结果写回磁盘 |
 | `server/services/__tests__/runSnapshotService.test.ts` | 快照 idle/pending/run/external/unknown、`waiting` 作业集不占设备、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度（作业集 run 带自己的会话进度）、日常流程只投影自己持有的 `schedule.runId` |
 | `server/routes/__tests__/agentRoutes.test.ts` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/waiting 停止/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行；日常流程同步响应带终态 run、异步 202、步间 idle 时 run 仍活动、停止后不启动下一项、幂等重放与占用错误码映射、cron/旧码兼容；作业集连续同步/异步、app/cli 映射、manual 等待与继续、等待时不占租约、占用可重试不消耗条目、停止后不续跑、逐项汇总归属 runId、幂等重放与执行前占用 |
-| `server/routes/__tests__/agentContract.test.js` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举（含 `waiting`）与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
+| `server/routes/__tests__/agentContract.test.ts` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举（含 `waiting`）与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
 | `server/__tests__/agentContractHttp.test.ts` | 沿实际挂载的 router 图核对每个清单 operation 的唯一挂载与 method/path、Web UI 专用路由不进入 manifest、manifest/OpenAPI 同源输出；对每个公开 operation 用发布 schema 校验有效/无效请求与真实响应，并记录运行时兼容输入与静态 schema 的差异 |
 | `server/services/__tests__/copilotSetRunService.test.ts` | 连续集合逐项结果、manual 首项后转 `waiting`、等待释放租约、继续前占用返回 409 且不消耗条目、停止等待中的集合并保留逐项结果、条目失败后继续等待、停止后不启动下一项 |
 | `server/services/__tests__/copilotPlanService.test.ts` | 计划构建、重复文件展开、日志恢复、停止/失败下的逐项状态分类（`success`/`stopped`/`failed`/`pending`） |
@@ -331,8 +331,8 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 | `server/services/__tests__/telegramBotLifecycle.test.ts` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、未知 update 校验与 offset 推进、命令解析与领域输入缺省值、未知/失败命令与截图失败回复、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
 | `server/services/__tests__/webrtcPreviewOwnership.test.ts` | 外部 server/TURN/设备 Agent 不被停止、本实例 server/TURN/设备 Agent 的停止与 `ownership` 上报、关闭中止在途启动并终止本实例子进程、关闭取消 viewer 自动回收、重复关闭幂等、关闭后拒绝启动 |
 | `server/services/__tests__/webrtcSignalingGateway.test.ts` | 一次性票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、非法或越权升级不消耗票据、关闭断开观看连接并清空票据、重新挂接后旧票据不可用 |
-| `server/services/__tests__/executionShutdown.test.js` | draining 后 Run 准入与设备租约拒绝、cron 与租约入口（Telegram/维护更新共用）不可绕过、只停止本实例的活动执行与进程内任务、执行器实际结果优先、预算耗尽记为 `interrupted`（`server_shutdown`）、Run 落盘失败使关闭步骤失败、重复关闭复用摘要、等待中的作业集不再继续下一项、重启重放不续跑、SIGTERM/SIGINT 子进程退出码 |
-| `server/services/__tests__/executionShutdownMaa.test.js` | 假 CLI 前台执行在关闭时收到 SIGTERM 并按实际结果结算为 `stopped`、忽略 SIGTERM 时在预算内升级 SIGKILL、租约释放 |
-| `server/services/__tests__/runtimeInitializationService.test.js` | 调度停止端口先于持久配置恢复挂接、恢复只注册不执行、单项恢复失败与接入失败隔离 |
+| `server/services/__tests__/executionShutdown.test.ts` | draining 后 Run 准入与设备租约拒绝、cron 与租约入口（Telegram/维护更新共用）不可绕过、只停止本实例的活动执行与进程内任务、执行器实际结果优先、预算耗尽记为 `interrupted`（`server_shutdown`）、Run 落盘失败使关闭步骤失败、重复关闭复用摘要、等待中的作业集不再继续下一项、重启重放不续跑、SIGTERM/SIGINT 子进程退出码 |
+| `server/services/__tests__/executionShutdownMaa.test.ts` | 假 CLI 前台执行在关闭时收到 SIGTERM 并按实际结果结算为 `stopped`、忽略 SIGTERM 时在预算内升级 SIGKILL、租约释放 |
+| `server/services/__tests__/runtimeInitializationService.test.ts` | 调度停止端口先于持久配置恢复挂接、恢复只注册不执行、单项恢复失败与接入失败隔离 |
 
 客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](../development/integration.md)。本表只维护服务端身份、状态机、持久化与执行入口的契约测试。

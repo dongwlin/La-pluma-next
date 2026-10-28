@@ -85,7 +85,7 @@ La-pluma-next/
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
-│   │   ├── agent.js           # 主 Agent API（聚合领域 router）
+│   │   ├── agent.ts           # 主 Agent API（聚合领域 router）
 │   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止
 │   │   ├── executionDto.ts   # 执行请求按端点收窄与 Run 响应载荷
 │   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（ADB 探测有副作用）
@@ -101,7 +101,7 @@ La-pluma-next/
 │   │   ├── agentMaintenanceRoutes.ts # 连接/profile、资源与核心更新、定时配置及维护动作
 │   │   ├── maintenanceDto.ts  # 维护请求收窄、上游响应结构与维护动作载荷
 │   │   ├── deviceStatus.ts    # ADB/WebRTC/显示状态探测适配
-│   │   ├── requestConnection.js # 请求级连接覆盖解析
+│   │   ├── requestConnection.ts # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   ├── operatorQuotes.ts  # 干员台词接口
 │   │   └── operatorQuotesDto.ts # 台词请求按端点收窄与业务错误文案
@@ -132,7 +132,7 @@ La-pluma-next/
 │   │   └── configStorageService.ts # 配置存储
 │   ├── data/                  # 用户配置数据
 │   │   └── user-configs/      # 任务配置 JSON 文件
-│   └── server.js              # 服务器入口
+│   └── server.ts              # 服务器入口
 ├── pnpm-workspace.yaml        # pnpm 工作区配置
 ├── pnpm-lock.yaml             # 统一依赖锁文件
 ├── package.json               # 根目录脚本（pnpm workspace 入口）
