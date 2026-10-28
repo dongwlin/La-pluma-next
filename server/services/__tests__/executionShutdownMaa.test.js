@@ -22,13 +22,15 @@ await mkdir(cacheDir);
 await writeFile(cliPath, `#!${process.execPath}
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
-writeFileSync(process.env.FIXTURE_CLI_READY, String(process.pid));
 process.stdout.write('fixture cli started: ' + args.join(' ') + '\\n');
 if (args.includes('--ignore-term')) {
   process.on('SIGTERM', () => {});
 } else {
   process.on('SIGTERM', () => { process.exit(143); });
 }
+// 就绪标记必须晚于 SIGTERM 处理器注册：父进程看到标记后可能立刻发信号，
+// 标记先写会让信号落在默认处理器上，导致 SIGKILL 升级用例偶发收到 SIGTERM。
+writeFileSync(process.env.FIXTURE_CLI_READY, String(process.pid));
 setInterval(() => {}, 1000);
 `, { mode: 0o755 });
 
