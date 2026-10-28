@@ -87,6 +87,10 @@ La-pluma-next/
 │   ├── routes/                # API 路由
 │   │   ├── agent.js           # 主 Agent API（聚合领域 router）
 │   │   ├── agentExecution.js  # tracked 执行、流程/作业集与目标停止
+│   │   ├── agentStatusRoutes.js # 状态汇总与 Run 查询（ADB 探测有副作用）
+│   │   ├── agentLogRoutes.js  # 实时/历史日志读取、清空与清理
+│   │   ├── agentDataRoutes.js # 今日关卡、掉落与本地游戏数据读取
+│   │   ├── deviceStatus.js    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.js # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   └── operatorQuotes.js  # 干员台词接口
