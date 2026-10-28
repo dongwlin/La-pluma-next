@@ -1,19 +1,59 @@
 /**
  * 干员台词服务
- * 从 PRTS Wiki 获取干员语音记录
+ * 从 PRTS Wiki 获取干员语音记录（本文件仅承载内置兜底文案与可选的用户自定义文件）
+ *
+ * 存储契约（用户自定义文件 server/data/operatorQuotes.json）：
+ * - 文件缺失：视为尚未自定义，读取返回内置兜底文案；首次写入把兜底文案连同变更一并落盘。
+ * - 文件为合法 JSON 数组且归一后非空：条目即用户自定义台词。
+ * - 文件为合法 JSON 数组但归一后为空（如删除全部台词后的 `[]`）：合法空状态，读取返回内置兜底文案。
+ * - 文件存在但解析失败或顶层不是数组：视为损坏——读取与写入一律报错，绝不用兜底文案
+ *   覆盖原文件，损坏内容保留待人工处置。
+ *
+ * 全部 IO 为异步；读改写整体在同一路径排队单元内执行（fileHelper），
+ * 并发修改互不丢失，写回为临时文件原子替换。
  */
 
-import fs from 'fs'
-import path from 'path'
+import { readJsonFile, updateJsonFile } from '../utils/fileHelper.ts'
+import { agentError } from '../utils/apiHelper.ts'
+import { join } from 'path'
 import { fileURLToPath } from 'url'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+// 数据目录按模块位置锚定，与 cwd 无关；`LA_PLUMA_OPERATOR_QUOTES_STORE`
+// 可重定向存储位置（测试隔离与部署需要），默认路径保持 server/data/operatorQuotes.json。
+const dataDir = fileURLToPath(new URL('../data/', import.meta.url))
 
-// 数据文件路径
-const DATA_FILE = path.join(__dirname, '../data/operatorQuotes.json')
+/**
+ * 创建绑定单一台词 JSON 文件的存储实例。
+ *
+ * @param {object} options
+ * @param {string} options.quotesPath 台词文件的绝对路径。
+ * @returns {{
+ *   path: string,
+ *   load: () => Promise<unknown>,
+ *   update: (updateFn: (current: unknown) => unknown | Promise<unknown>) => Promise<unknown>
+ * }}
+ */
+export function createOperatorQuotesStore({ quotesPath }) {
+  if (typeof quotesPath !== 'string' || !quotesPath) {
+    throw new TypeError('quotesPath 必须是非空字符串')
+  }
 
-// 默认状态文案（当数据文件不存在、为空或损坏时使用）
+  return {
+    path: quotesPath,
+    // 缺失文件按 null 返回（由服务层决定兜底语义）；解析失败抛“读取 JSON 文件失败”。
+    load: () => readJsonFile(quotesPath, null),
+    // 读改写整体在同一排队单元内执行：并发修改互不丢失，写回为临时文件原子替换，
+    // 失败时保留原文件内容。updateFn 抛出错误即中断本次读改写且不产生写入。
+    update: updateFn => updateJsonFile(quotesPath, updateFn, null)
+  }
+}
+
+// 默认存储在导入时绑定路径；测试进程通过环境变量在导入前注入临时目录。
+const defaultStore = createOperatorQuotesStore({
+  quotesPath: process.env.LA_PLUMA_OPERATOR_QUOTES_STORE || join(dataDir, 'operatorQuotes.json')
+})
+
+// 内置兜底文案（当数据文件缺失或为空时使用）
 // 这些是项目内置兜底文案，不作为官方语音记录。
 const OPERATOR_IDS = {
   阿米娅: 'char_002_amiya',
@@ -75,103 +115,128 @@ export function normalizeQuotes(quotes) {
 
 export { DEFAULT_QUOTES }
 
-const OperatorQuotes = {
-  /**
-   * 读取台词数据
-   */
-  loadQuotes() {
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        const data = fs.readFileSync(DATA_FILE, 'utf-8')
-        const quotes = normalizeQuotes(JSON.parse(data))
-        if (quotes.length > 0) return quotes
-      }
-    } catch (error) {
-      console.error('读取干员台词数据失败:', error.message)
-    }
-    return DEFAULT_QUOTES
-  },
-
-  /**
-   * 保存台词数据
-   */
-  saveQuotes(quotes) {
-    try {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(quotes, null, 2), 'utf-8')
-      return true
-    } catch (error) {
-      console.error('保存干员台词数据失败:', error.message)
-      return false
-    }
-  },
-
-  /**
-   * 获取所有干员台词
-   */
-  getAllQuotes() {
-    return this.loadQuotes()
-  },
-
-  /**
-   * 根据日期获取今日台词
-   */
-  getDailyQuote() {
-    const quotes = this.loadQuotes()
-    const today = new Date()
-    const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
-    return quotes[dayOfYear % quotes.length]
-  },
-
-  /**
-   * 随机获取一条台词
-   */
-  getRandomQuote() {
-    const quotes = this.loadQuotes()
-    const randomIndex = Math.floor(Math.random() * quotes.length)
-    return quotes[randomIndex] || DEFAULT_QUOTES[0]
-  },
-
-  /**
-   * 根据干员名获取台词
-   */
-  getQuoteByOperator(operatorName) {
-    const quotes = this.loadQuotes()
-    return quotes.find(q => q.operator === operatorName)
-  },
-
-  /**
-   * 添加新台词
-   */
-  addQuote(quote) {
-    const quotes = this.loadQuotes()
-    quotes.push(quote)
-    this.saveQuotes(quotes)
-    return quotes
-  },
-
-  /**
-   * 更新台词
-   */
-  updateQuote(operatorName, newQuote) {
-    const quotes = this.loadQuotes()
-    const index = quotes.findIndex(q => q.operator === operatorName)
-    if (index !== -1) {
-      quotes[index].quote = newQuote
-      this.saveQuotes(quotes)
-      return quotes[index]
-    }
-    return null
-  },
-
-  /**
-   * 删除台词
-   */
-  deleteQuote(operatorName) {
-    const quotes = this.loadQuotes()
-    const filtered = quotes.filter(q => q.operator !== operatorName)
-    this.saveQuotes(filtered)
-    return filtered
+// 用户文件损坏（顶层不是数组）的可识别标记；解析失败由 fileHelper 抛出。
+class QuotesFileInvalidError extends Error {
+  constructor(message) {
+    super(message)
+    this.name = 'QuotesFileInvalidError'
   }
 }
+
+// 读改写内部哨兵：目标干员不存在时中断本次读改写且不产生任何写入。
+const QUOTE_NOT_FOUND = Symbol('quote-not-found')
+
+function resolveStoredQuotes(raw) {
+  // 缺失文件（null）与合法空数组都回退内置兜底文案。
+  if (raw === null) return DEFAULT_QUOTES
+  if (!Array.isArray(raw)) {
+    throw new QuotesFileInvalidError('台词数据文件顶层不是数组')
+  }
+  const quotes = normalizeQuotes(raw)
+  return quotes.length > 0 ? quotes : DEFAULT_QUOTES
+}
+
+function isQuotesFileReadError(error) {
+  // fileHelper 的 JSON 读取/解析失败统一携带该前缀（fileHelper.readJsonFile）。
+  return error instanceof Error && error.message.startsWith('读取 JSON 文件失败')
+}
+
+/**
+ * 存储失败的结构化出口：损坏文件不重试，写入失败允许重试。
+ */
+function wrapQuotesStorageError(error) {
+  if (error instanceof QuotesFileInvalidError || isQuotesFileReadError(error)) {
+    return agentError('AGENT_QUOTES_DATA_INVALID', error.message, {
+      statusCode: 500,
+      retryable: false
+    })
+  }
+  return agentError('AGENT_QUOTES_SAVE_FAILED', `保存台词数据失败: ${error?.message || error}`, {
+    statusCode: 500,
+    retryable: true
+  })
+}
+
+/**
+ * 创建台词服务实例。存储经参数注入；生产使用默认存储，测试注入指向临时目录的实例。
+ *
+ * @param {object} options
+ * @param {ReturnType<typeof createOperatorQuotesStore>} options.store 台词 JSON 文件存储。
+ */
+export function createOperatorQuotesService({ store }) {
+  if (!store || typeof store.load !== 'function' || typeof store.update !== 'function') {
+    throw new TypeError('store 必须提供 load 与 update')
+  }
+
+  async function loadQuotes() {
+    try {
+      return resolveStoredQuotes(await store.load())
+    } catch (error) {
+      throw wrapQuotesStorageError(error)
+    }
+  }
+
+  return {
+    loadQuotes,
+
+    async getAllQuotes() {
+      return loadQuotes()
+    },
+
+    async getDailyQuote() {
+      const quotes = await loadQuotes()
+      const today = new Date()
+      const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
+      return quotes[dayOfYear % quotes.length]
+    },
+
+    async getRandomQuote() {
+      const quotes = await loadQuotes()
+      const randomIndex = Math.floor(Math.random() * quotes.length)
+      return quotes[randomIndex] || DEFAULT_QUOTES[0]
+    },
+
+    async getQuoteByOperator(operatorName) {
+      const quotes = await loadQuotes()
+      return quotes.find(q => q.operator === operatorName)
+    },
+
+    async addQuote(quote) {
+      try {
+        return await store.update(current => [...resolveStoredQuotes(current), quote])
+      } catch (error) {
+        throw wrapQuotesStorageError(error)
+      }
+    },
+
+    async updateQuote(operatorName, newQuote) {
+      let updatedQuote = null
+      try {
+        // 文件写回完整数组，返回值保持旧契约：命中的单条更新结果。
+        await store.update(current => {
+          const quotes = resolveStoredQuotes(current)
+          const index = quotes.findIndex(q => q.operator === operatorName)
+          if (index === -1) throw QUOTE_NOT_FOUND
+          updatedQuote = { ...quotes[index], quote: newQuote }
+          return quotes.map((quote, position) => (position === index ? updatedQuote : quote))
+        })
+        return updatedQuote
+      } catch (error) {
+        if (error === QUOTE_NOT_FOUND) return null
+        throw wrapQuotesStorageError(error)
+      }
+    },
+
+    async deleteQuote(operatorName) {
+      try {
+        return await store.update(current => resolveStoredQuotes(current).filter(q => q.operator !== operatorName))
+      } catch (error) {
+        throw wrapQuotesStorageError(error)
+      }
+    }
+  }
+}
+
+const OperatorQuotes = createOperatorQuotesService({ store: defaultStore })
 
 export default OperatorQuotes

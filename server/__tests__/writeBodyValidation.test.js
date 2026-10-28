@@ -34,19 +34,26 @@ async function useTempConfigStorage() {
 }
 
 /**
- * 存储间谍：记录传入存储层的写入载荷；测试结束后恢复原实现。
+ * 存储间谍：记录路由传入台词服务的写入载荷；测试结束后恢复原实现。
+ * 服务方法已异步化，真实存储行为由台词持久化 HTTP 回归覆盖。
  */
 function spyQuoteStorage() {
-  const originalSaveQuotes = OperatorQuotes.saveQuotes
+  const originalAddQuote = OperatorQuotes.addQuote
+  const originalUpdateQuote = OperatorQuotes.updateQuote
   const saveCalls = []
-  OperatorQuotes.saveQuotes = quotes => {
-    saveCalls.push(quotes)
-    return true
+  OperatorQuotes.addQuote = async quote => {
+    saveCalls.push(quote)
+    return [quote]
+  }
+  OperatorQuotes.updateQuote = async (name, quote) => {
+    saveCalls.push({ name, quote })
+    return { operator: name, quote }
   }
   return {
     saveCalls,
     restore() {
-      OperatorQuotes.saveQuotes = originalSaveQuotes
+      OperatorQuotes.addQuote = originalAddQuote
+      OperatorQuotes.updateQuote = originalUpdateQuote
     }
   }
 }
@@ -265,7 +272,7 @@ describe('operator quotes write body boundaries', () => {
     }
   })
 
-  it('stores a valid quote through the storage layer and keeps the legacy response format', async () => {
+  it('passes a valid trimmed quote to the storage layer and keeps the legacy response format', async () => {
     const app = createLaPlumaApp({ env: {} })
     const port = await listen(app)
     const storage = spyQuoteStorage()
@@ -283,7 +290,7 @@ describe('operator quotes write body boundaries', () => {
       assert.deepEqual(quotes.at(-1), { operator: '测试干员', quote: '台词正文' })
 
       assert.equal(storage.saveCalls.length, 1)
-      assert.deepEqual(storage.saveCalls[0].at(-1), { operator: '测试干员', quote: '台词正文' })
+      assert.deepEqual(storage.saveCalls[0], { operator: '测试干员', quote: '台词正文' })
     } finally {
       storage.restore()
     }
@@ -293,11 +300,14 @@ describe('operator quotes write body boundaries', () => {
     const app = createLaPlumaApp({ env: {} })
     const port = await listen(app)
     const origin = `http://127.0.0.1:${port}/api/operator-quotes/operator`
-    const storage = spyQuoteStorage()
-    const originalLoadQuotes = OperatorQuotes.loadQuotes
-    OperatorQuotes.loadQuotes = () => [
-      { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '旧台词' }
-    ]
+    const originalUpdateQuote = OperatorQuotes.updateQuote
+    const updateCalls = []
+    OperatorQuotes.updateQuote = async (name, quote) => {
+      updateCalls.push({ name, quote })
+      return name === '阿米娅'
+        ? { operatorId: 'char_002_amiya', operator: '阿米娅', quote }
+        : null
+    }
 
     try {
       const updated = await fetch(`${origin}/阿米娅`, {
@@ -312,10 +322,7 @@ describe('operator quotes write body boundaries', () => {
         operator: '阿米娅',
         quote: '新台词'
       })
-      assert.equal(storage.saveCalls.length, 1)
-      assert.deepEqual(storage.saveCalls[0], [
-        { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '新台词' }
-      ])
+      assert.deepEqual(updateCalls, [{ name: '阿米娅', quote: '新台词' }])
 
       const missing = await fetch(`${origin}/不存在干员`, {
         method: 'PUT',
@@ -324,10 +331,9 @@ describe('operator quotes write body boundaries', () => {
       })
       assert.equal(missing.status, 404)
       assert.deepEqual(await missing.json(), { error: '未找到该干员的台词' })
-      assert.equal(storage.saveCalls.length, 1)
+      assert.equal(updateCalls.length, 2)
     } finally {
-      OperatorQuotes.loadQuotes = originalLoadQuotes
-      storage.restore()
+      OperatorQuotes.updateQuote = originalUpdateQuote
     }
   })
 })

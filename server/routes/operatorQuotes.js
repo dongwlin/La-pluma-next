@@ -1,5 +1,6 @@
 import express from 'express'
 import OperatorQuotes from '../services/operatorQuotesService.js'
+import { asyncHandler } from '../utils/apiHelper.ts'
 
 const router = express.Router()
 
@@ -38,58 +39,58 @@ function validateQuoteText(quote, { missingMessage }) {
 /**
  * 获取今日干员台词
  */
-router.get('/daily', (req, res) => {
-  const quote = OperatorQuotes.getDailyQuote()
+router.get('/daily', asyncHandler(async (_req, res) => {
+  const quote = await OperatorQuotes.getDailyQuote()
   res.json(quote)
-})
+}))
 
 /**
  * 获取所有干员台词
  */
-router.get('/all', (req, res) => {
-  const quotes = OperatorQuotes.getAllQuotes()
+router.get('/all', asyncHandler(async (_req, res) => {
+  const quotes = await OperatorQuotes.getAllQuotes()
   res.json(quotes)
-})
+}))
 
 /**
  * 随机获取一条台词
  */
-router.get('/random', (req, res) => {
-  const quote = OperatorQuotes.getRandomQuote()
+router.get('/random', asyncHandler(async (_req, res) => {
+  const quote = await OperatorQuotes.getRandomQuote()
   res.json(quote)
-})
+}))
 
 /**
  * 根据干员名获取台词
  */
-router.get('/operator/:name', (req, res) => {
+router.get('/operator/:name', asyncHandler(async (req, res) => {
   const { name } = req.params
-  const quote = OperatorQuotes.getQuoteByOperator(name)
+  const quote = await OperatorQuotes.getQuoteByOperator(name)
   if (quote) {
     res.json(quote)
   } else {
     res.status(404).json({ error: '未找到该干员的台词' })
   }
-})
+}))
 
 /**
- * 添加新台词
+ * 添加新台词；保存失败经统一错误出口返回，不返回伪成功
  */
-router.post('/', (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const body = isPlainObject(req.body) ? req.body : {}
   const { operator, quote } = body
   const invalidReason = validateOperatorName(operator) || validateQuoteText(quote, { missingMessage: '缺少干员名或台词' })
   if (invalidReason) {
     return res.status(400).json({ error: invalidReason })
   }
-  const quotes = OperatorQuotes.addQuote({ operator: operator.trim(), quote: quote.trim() })
+  const quotes = await OperatorQuotes.addQuote({ operator: operator.trim(), quote: quote.trim() })
   res.json(quotes)
-})
+}))
 
 /**
- * 更新台词
+ * 更新台词；保存失败经统一错误出口返回，不返回伪成功
  */
-router.put('/operator/:name', (req, res) => {
+router.put('/operator/:name', asyncHandler(async (req, res) => {
   const { name } = req.params
   const body = isPlainObject(req.body) ? req.body : {}
   const { quote } = body
@@ -97,21 +98,21 @@ router.put('/operator/:name', (req, res) => {
   if (invalidReason) {
     return res.status(400).json({ error: invalidReason })
   }
-  const updated = OperatorQuotes.updateQuote(name, quote.trim())
+  const updated = await OperatorQuotes.updateQuote(name, quote.trim())
   if (updated) {
     res.json(updated)
   } else {
     res.status(404).json({ error: '未找到该干员的台词' })
   }
-})
+}))
 
 /**
- * 删除台词
+ * 删除台词；保存失败经统一错误出口返回，不返回伪成功
  */
-router.delete('/operator/:name', (req, res) => {
+router.delete('/operator/:name', asyncHandler(async (req, res) => {
   const { name } = req.params
-  const quotes = OperatorQuotes.deleteQuote(name)
+  const quotes = await OperatorQuotes.deleteQuote(name)
   res.json(quotes)
-})
+}))
 
 export default router
