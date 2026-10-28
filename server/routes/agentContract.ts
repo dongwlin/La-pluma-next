@@ -1,10 +1,234 @@
 import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
 
+/**
+ * Agent API 公开契约
+ *
+ * 能力清单与 manifest/OpenAPI 生成器共用同一份 `AGENT_OPERATIONS`：生成器只
+ * 投影这些定义，不另维护第二份 schema。这里的类型覆盖清单实际使用的 JSON
+ * Schema 关键字（OpenAPI 3.1 采用 draft 2020-12），用于在编译期约束定义；
+ * 运行期输出与类型化前保持一致，URL、字段名和 schema 内容不变。
+ *
+ * 生成器只做纯投影：运行时连接默认值由调用方传入，模块本身不读取环境变量、
+ * 文件或设备状态。
+ */
+
 export const API_VERSION = '2026-07-12';
 
-const runtimeDefault = (key) => ({ 'x-la-pluma-runtime-default': key });
+/** 契约中可由 manifest 用当前运行配置替换的默认值键。 */
+export type RuntimeDefaultKey = 'adbPath' | 'adbAddress' | 'clientType';
 
-const profileIdProperty = {
+export type JsonSchemaType = 'object' | 'array' | 'string' | 'integer' | 'number' | 'boolean' | 'null';
+
+/** 能力清单使用的 JSON Schema 子集；未知关键字保持原样透传。 */
+export interface JsonSchema {
+  $ref?: string;
+  type?: JsonSchemaType | readonly JsonSchemaType[];
+  properties?: Record<string, JsonSchema>;
+  required?: readonly string[];
+  additionalProperties?: boolean | JsonSchema;
+  items?: JsonSchema;
+  oneOf?: readonly JsonSchema[];
+  allOf?: readonly JsonSchema[];
+  enum?: readonly (string | number | boolean | null)[];
+  const?: unknown;
+  minimum?: number;
+  maximum?: number;
+  minItems?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  format?: string;
+  default?: unknown;
+  description?: string;
+  examples?: readonly unknown[];
+  /** 构建 manifest 时替换为当前运行配置；OpenAPI 文档不输出该标记。 */
+  'x-la-pluma-runtime-default'?: RuntimeDefaultKey;
+}
+
+/** manifest 构建输入：只声明运行配置里会被写入 schema 默认值的字段。 */
+export interface AgentRuntimeDefaults {
+  adbPath?: string;
+  adbAddress?: string;
+  /** 旧调用方使用的别名，按 adbAddress 处理。 */
+  address?: string;
+  clientType?: string;
+}
+
+export type AgentSafetyLevel = 'read-only' | 'low-risk-write' | 'consequential';
+
+export interface AgentOperationSafety {
+  level: AgentSafetyLevel;
+  riskLevel: AgentSafetyLevel;
+  readOnly: boolean;
+  idempotent: boolean;
+  mutatesDevice: boolean;
+  destructive: boolean;
+  confirmationRequired: boolean;
+  confirmationRecommended: boolean;
+  sideEffects: string[];
+}
+
+export interface AgentExecutionSupport {
+  supported: boolean;
+  parameter?: string;
+  default?: boolean;
+}
+
+export interface AgentIdempotencyPolicy {
+  supported: boolean;
+  required: boolean;
+  header: string;
+  scope: string;
+  namespace: string;
+  survivesRestart: boolean;
+  restartBehavior: string;
+  retentionSeconds: number;
+  retentionMode: string;
+  maxTerminalRuns: number;
+  appliesWhen?: { dryRun: boolean };
+}
+
+export interface AgentOperationExecution {
+  mode: string;
+  supportsDryRun: boolean;
+  dryRun: AgentExecutionSupport;
+  supportsWaitForCompletion: boolean;
+  waitForCompletion: AgentExecutionSupport;
+  pollAction?: string;
+  stopAction?: string;
+  preflightAction?: string;
+  conflictsWith?: string[];
+  producesRun?: boolean;
+  runLookupAction?: string;
+  idempotency?: AgentIdempotencyPolicy;
+}
+
+/** 清单中的一条能力定义；`advertised` 决定是否进入 manifest。 */
+export interface AgentOperationDefinition {
+  id: string;
+  method: 'GET' | 'POST';
+  path: string;
+  description: string;
+  tags: string[];
+  advertised?: boolean;
+  discovery?: boolean;
+  responseKind?: 'openapi' | 'run' | 'run-snapshot';
+  safety?: AgentOperationSafety;
+  execution?: AgentOperationExecution;
+  query_schema?: JsonSchema;
+  body_schema?: JsonSchema;
+  path_schema?: JsonSchema;
+}
+
+/** `operation()` 补齐默认值后的注册项，`AGENT_OPERATIONS` 的元素类型。 */
+export interface RegisteredAgentOperation extends AgentOperationDefinition {
+  advertised: boolean;
+  safety: AgentOperationSafety;
+  execution: AgentOperationExecution;
+}
+
+export interface AgentManifestAction {
+  id: string;
+  method: string;
+  path: string;
+  description: string;
+  body_schema?: JsonSchema;
+  query_schema?: JsonSchema;
+  path_schema?: JsonSchema;
+  header_schema?: JsonSchema;
+  safety: AgentOperationSafety;
+  execution: AgentOperationExecution;
+}
+
+export interface AgentManifest {
+  name: string;
+  id: 'la-pluma-agent-api';
+  version: string;
+  description: string;
+  auth: {
+    type: string;
+    requiredWhen: string;
+    schemes: Array<{ type: string; header: string; format?: string }>;
+    note: string;
+  };
+  defaults: Record<string, string>;
+  links: {
+    status: string;
+    openapi: string;
+    currentRun: string;
+    run: string;
+    screenshot: string;
+    recentLogs: string;
+  };
+  actions: AgentManifestAction[];
+}
+
+export interface OpenApiMediaType {
+  schema: JsonSchema;
+}
+
+export interface OpenApiHeader {
+  description: string;
+  schema: JsonSchema;
+}
+
+export interface OpenApiResponse {
+  $ref?: string;
+  description?: string;
+  headers?: Record<string, OpenApiHeader>;
+  content?: Record<string, OpenApiMediaType>;
+}
+
+/** OpenAPI 参数既可以是内联定义，也可以是组件引用。 */
+export interface OpenApiParameter {
+  $ref?: string;
+  name?: string;
+  in?: 'query' | 'path' | 'header';
+  required?: boolean;
+  description?: string;
+  schema?: JsonSchema;
+}
+
+export interface OpenApiRequestBody {
+  required: boolean;
+  content: Record<string, OpenApiMediaType>;
+}
+
+export interface OpenApiOperation {
+  operationId: string;
+  tags: string[];
+  summary: string;
+  description: string;
+  security: Array<Record<string, string[]>>;
+  'x-la-pluma-safety': AgentOperationSafety;
+  'x-la-pluma-execution': AgentOperationExecution;
+  responses: Record<string, OpenApiResponse>;
+  parameters?: OpenApiParameter[];
+  requestBody?: OpenApiRequestBody;
+}
+
+export interface OpenApiComponents {
+  parameters: Record<string, OpenApiParameter>;
+  securitySchemes: Record<string, Record<string, string>>;
+  schemas: Record<string, JsonSchema>;
+  responses: Record<string, OpenApiResponse>;
+}
+
+export interface OpenApiDocument {
+  openapi: '3.1.0';
+  info: { title: string; version: string; description: string };
+  servers: Array<{ url: string }>;
+  security: Array<Record<string, string[]>>;
+  tags: Array<{ name: string }>;
+  paths: Record<string, Record<string, OpenApiOperation>>;
+  components: OpenApiComponents;
+}
+
+const runtimeDefault = (key: RuntimeDefaultKey): { 'x-la-pluma-runtime-default': RuntimeDefaultKey } => ({
+  'x-la-pluma-runtime-default': key
+});
+
+const profileIdProperty: JsonSchema = {
   type: 'string',
   minLength: 1,
   maxLength: 64,
@@ -13,13 +237,13 @@ const profileIdProperty = {
   description: 'Saved connection profile id. Explicit connection fields override values loaded from this profile.'
 };
 
-const runIdProperty = {
+const runIdProperty: JsonSchema = {
   type: 'string',
   format: 'uuid',
   description: 'Server-generated id for one Agent API execution.'
 };
 
-const idempotencyKeyProperty = {
+const idempotencyKeyProperty: JsonSchema = {
   type: 'string',
   minLength: 1,
   maxLength: 128,
@@ -27,7 +251,7 @@ const idempotencyKeyProperty = {
   description: 'Client-generated key that identifies one logical execution request.'
 };
 
-const idempotencyPolicy = (appliesWhen = null) => ({
+const idempotencyPolicy = (appliesWhen: { dryRun: boolean } | null = null): AgentIdempotencyPolicy => ({
   supported: true,
   required: false,
   header: 'Idempotency-Key',
@@ -41,7 +265,17 @@ const idempotencyPolicy = (appliesWhen = null) => ({
   ...(appliesWhen ? { appliesWhen } : {})
 });
 
-const safety = (level, options = {}) => ({
+interface SafetyOptions {
+  readOnly?: boolean;
+  idempotent?: boolean;
+  mutatesDevice?: boolean;
+  destructive?: boolean;
+  confirmationRequired?: boolean;
+  confirmationRecommended?: boolean;
+  sideEffects?: string[];
+}
+
+const safety = (level: AgentSafetyLevel, options: SafetyOptions = {}): AgentOperationSafety => ({
   level,
   riskLevel: level,
   readOnly: options.readOnly ?? level === 'read-only',
@@ -53,39 +287,57 @@ const safety = (level, options = {}) => ({
   sideEffects: options.sideEffects || []
 });
 
-const execution = ({
-  mode = 'request-response',
-  dryRun = false,
-  waitForCompletion = false,
-  pollAction = null,
-  stopAction = null,
-  preflightAction = null,
-  conflictsWith = [],
-  producesRun = false,
-  idempotency = null
-} = {}) => ({
-  mode,
-  supportsDryRun: dryRun,
-  dryRun: {
-    supported: dryRun,
-    ...(dryRun ? { parameter: 'dryRun' } : {})
-  },
-  supportsWaitForCompletion: waitForCompletion,
-  waitForCompletion: {
-    supported: waitForCompletion,
-    ...(waitForCompletion ? { parameter: 'waitForCompletion', default: true } : {})
-  },
-  ...(pollAction ? { pollAction } : {}),
-  ...(stopAction ? { stopAction } : {}),
-  ...(preflightAction ? { preflightAction } : {}),
-  ...(conflictsWith.length ? { conflictsWith } : {}),
-  ...(producesRun ? { producesRun: true, runLookupAction: 'get_run' } : {}),
-  ...(idempotency ? { idempotency } : {})
-});
+interface ExecutionOptions {
+  mode?: string;
+  dryRun?: boolean;
+  waitForCompletion?: boolean;
+  pollAction?: string | null;
+  stopAction?: string | null;
+  preflightAction?: string | null;
+  conflictsWith?: string[];
+  producesRun?: boolean;
+  idempotency?: AgentIdempotencyPolicy | null;
+}
+
+const execution = (options: ExecutionOptions = {}): AgentOperationExecution => {
+  const {
+    mode = 'request-response',
+    dryRun = false,
+    waitForCompletion = false,
+    pollAction = null,
+    stopAction = null,
+    preflightAction = null,
+    conflictsWith = [],
+    producesRun = false,
+    idempotency = null
+  } = options;
+
+  return {
+    mode,
+    supportsDryRun: dryRun,
+    dryRun: {
+      supported: dryRun,
+      ...(dryRun ? { parameter: 'dryRun' } : {})
+    },
+    supportsWaitForCompletion: waitForCompletion,
+    waitForCompletion: {
+      supported: waitForCompletion,
+      ...(waitForCompletion ? { parameter: 'waitForCompletion', default: true } : {})
+    },
+    ...(pollAction ? { pollAction } : {}),
+    ...(stopAction ? { stopAction } : {}),
+    ...(preflightAction ? { preflightAction } : {}),
+    ...(conflictsWith.length ? { conflictsWith } : {}),
+    ...(producesRun ? { producesRun: true, runLookupAction: 'get_run' } : {}),
+    ...(idempotency ? { idempotency } : {})
+  };
+};
 
 const readOnly = safety('read-only');
-const lowRiskWrite = (sideEffects = [], options = {}) => safety('low-risk-write', { sideEffects, ...options });
-const consequential = (sideEffects = [], options = {}) => safety('consequential', {
+const lowRiskWrite = (sideEffects: string[] = [], options: SafetyOptions = {}): AgentOperationSafety => (
+  safety('low-risk-write', { sideEffects, ...options })
+);
+const consequential = (sideEffects: string[] = [], options: SafetyOptions = {}): AgentOperationSafety => safety('consequential', {
   confirmationRequired: true,
   confirmationRecommended: true,
   mutatesDevice: true,
@@ -93,15 +345,24 @@ const consequential = (sideEffects = [], options = {}) => safety('consequential'
   ...options
 });
 
-const operation = (definition) => ({
-  advertised: true,
-  tags: ['Agent'],
-  safety: readOnly,
-  execution: execution(),
-  ...definition
-});
+const operation = (definition: AgentOperationDefinition): RegisteredAgentOperation => {
+  const {
+    advertised = true,
+    tags = ['Agent'],
+    safety: operationSafety = readOnly,
+    execution: operationExecution = execution(),
+    ...rest
+  } = definition;
+  return {
+    advertised,
+    tags,
+    safety: operationSafety,
+    execution: operationExecution,
+    ...rest
+  };
+};
 
-export const AGENT_OPERATIONS = Object.freeze([
+export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.freeze([
   operation({
     id: 'get_manifest',
     method: 'GET',
@@ -545,27 +806,28 @@ export const AGENT_OPERATIONS = Object.freeze([
   })
 ]);
 
-function clone(value) {
-  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+function clone<T>(value: T): T {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 }
 
-function normalizeDefaults(defaults = {}) {
-  const values = {
+function normalizeDefaults(defaults: AgentRuntimeDefaults = {}): Record<string, string> {
+  const values: Record<string, string | undefined> = {
     adbPath: defaults.adbPath,
     adbAddress: defaults.adbAddress ?? defaults.address,
     clientType: defaults.clientType
   };
-  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+  const entries = Object.entries(values).filter((entry): entry is [string, string] => entry[1] !== undefined);
+  return Object.fromEntries(entries);
 }
 
-function materializeRuntimeDefaults(value, defaults) {
+function materializeRuntimeDefaults(value: unknown, defaults: Record<string, string>): unknown {
   if (Array.isArray(value)) {
     return value.map(item => materializeRuntimeDefaults(item, defaults));
   }
   if (!value || typeof value !== 'object') return value;
 
-  const result = {};
-  const defaultKey = value['x-la-pluma-runtime-default'];
+  const result: Record<string, unknown> = {};
+  const defaultKey = (value as { 'x-la-pluma-runtime-default'?: RuntimeDefaultKey })['x-la-pluma-runtime-default'];
   for (const [key, child] of Object.entries(value)) {
     if (key === 'x-la-pluma-runtime-default') continue;
     result[key] = materializeRuntimeDefaults(child, defaults);
@@ -576,35 +838,40 @@ function materializeRuntimeDefaults(value, defaults) {
   return result;
 }
 
-function materializeOperation(definition, defaults = {}) {
-  return materializeRuntimeDefaults(clone(definition), normalizeDefaults(defaults));
+function materializeOperation(
+  definition: RegisteredAgentOperation,
+  defaults: AgentRuntimeDefaults = {}
+): RegisteredAgentOperation {
+  const materialized: unknown = materializeRuntimeDefaults(clone(definition), normalizeDefaults(defaults));
+  return materialized as RegisteredAgentOperation;
 }
 
-function manifestAction(definition, defaults) {
+function manifestAction(definition: RegisteredAgentOperation, defaults: AgentRuntimeDefaults): AgentManifestAction {
   const item = materializeOperation(definition, defaults);
-  const action = {
+  return {
     id: item.id,
     method: item.method,
     path: item.path,
-    description: item.description
+    description: item.description,
+    ...(item.body_schema ? { body_schema: item.body_schema } : {}),
+    ...(item.query_schema ? { query_schema: item.query_schema } : {}),
+    ...(item.path_schema ? { path_schema: item.path_schema } : {}),
+    ...(item.execution.idempotency?.supported
+      ? {
+          header_schema: {
+            type: 'object',
+            properties: {
+              'Idempotency-Key': clone(idempotencyKeyProperty)
+            }
+          } satisfies JsonSchema
+        }
+      : {}),
+    safety: item.safety,
+    execution: item.execution
   };
-  if (item.body_schema) action.body_schema = item.body_schema;
-  if (item.query_schema) action.query_schema = item.query_schema;
-  if (item.path_schema) action.path_schema = item.path_schema;
-  if (item.execution.idempotency?.supported) {
-    action.header_schema = {
-      type: 'object',
-      properties: {
-        'Idempotency-Key': clone(idempotencyKeyProperty)
-      }
-    };
-  }
-  action.safety = item.safety;
-  action.execution = item.execution;
-  return action;
 }
 
-export function buildAgentManifest(defaults = {}) {
+export function buildAgentManifest(defaults: AgentRuntimeDefaults = {}): AgentManifest {
   const resolvedDefaults = normalizeDefaults(defaults);
   return {
     name: 'La Pluma Next Agent API',
@@ -635,7 +902,7 @@ export function buildAgentManifest(defaults = {}) {
   };
 }
 
-function queryParameters(schema = {}) {
+function queryParameters(schema: JsonSchema = {}): OpenApiParameter[] {
   const required = new Set(schema.required || []);
   return Object.entries(schema.properties || {}).map(([name, property]) => ({
     name,
@@ -646,7 +913,7 @@ function queryParameters(schema = {}) {
   }));
 }
 
-function pathParameters(schema = {}) {
+function pathParameters(schema: JsonSchema = {}): OpenApiParameter[] {
   return Object.entries(schema.properties || {}).map(([name, property]) => ({
     name,
     in: 'path',
@@ -656,7 +923,7 @@ function pathParameters(schema = {}) {
   }));
 }
 
-const standardErrorResponses = {
+const standardErrorResponses: Record<string, OpenApiResponse> = {
   400: { $ref: '#/components/responses/BadRequest' },
   401: { $ref: '#/components/responses/Unauthorized' },
   404: { $ref: '#/components/responses/NotFound' },
@@ -666,16 +933,16 @@ const standardErrorResponses = {
   503: { $ref: '#/components/responses/ServiceUnavailable' }
 };
 
-function openApiOperation(definition, defaults) {
+function openApiOperation(definition: RegisteredAgentOperation, defaults: AgentRuntimeDefaults): OpenApiOperation {
   const item = materializeOperation(definition, defaults);
-  const successSchema = item.responseKind === 'openapi'
+  const successSchema: JsonSchema = item.responseKind === 'openapi'
     ? { $ref: '#/components/schemas/OpenApiDocument' }
     : item.responseKind === 'run'
       ? { $ref: '#/components/schemas/RunResponse' }
       : item.responseKind === 'run-snapshot'
         ? { $ref: '#/components/schemas/RunSnapshotResponse' }
         : { $ref: '#/components/schemas/SuccessResponse' };
-  const runHeaders = item.execution.producesRun
+  const runHeaders: Record<string, OpenApiHeader> | null = item.execution.producesRun
     ? {
         'X-La-Pluma-Run-Id': {
           description: 'Server-generated run id for this execution.',
@@ -687,7 +954,7 @@ function openApiOperation(definition, defaults) {
         }
       }
     : null;
-  const result = {
+  const result: OpenApiOperation = {
     operationId: item.id,
     tags: item.tags,
     summary: item.description,
@@ -711,7 +978,7 @@ function openApiOperation(definition, defaults) {
     }
   };
 
-  const parameters = [
+  const parameters: OpenApiParameter[] = [
     ...(item.path_schema ? pathParameters(item.path_schema) : []),
     ...(item.query_schema ? queryParameters(item.query_schema) : []),
     ...(item.execution.idempotency?.supported
@@ -747,7 +1014,7 @@ function openApiOperation(definition, defaults) {
   return result;
 }
 
-function reusableErrorResponse(description) {
+function reusableErrorResponse(description: string): OpenApiResponse {
   return {
     description,
     content: {
@@ -758,8 +1025,8 @@ function reusableErrorResponse(description) {
   };
 }
 
-export function buildOpenApiSpec(defaults = {}) {
-  const paths = {};
+export function buildOpenApiSpec(defaults: AgentRuntimeDefaults = {}): OpenApiDocument {
+  const paths: Record<string, Record<string, OpenApiOperation>> = {};
   for (const definition of AGENT_OPERATIONS) {
     const method = definition.method.toLowerCase();
     paths[definition.path] = {

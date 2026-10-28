@@ -9,7 +9,7 @@ import agentNotificationRoutes from './agentNotificationRoutes.ts';
 import agentMaintenanceRoutes from './agentMaintenanceRoutes.ts';
 import { sendSuccess } from '../utils/apiHelper.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts'
-import { buildAgentManifest, buildOpenApiSpec } from './agentContract.js';
+import { buildAgentManifest, buildOpenApiSpec } from './agentContract.ts';
 
 /**
  * Agent API 聚合入口。

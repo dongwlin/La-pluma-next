@@ -10,7 +10,7 @@ import {
   sendError
 } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
-import { API_VERSION } from './agentContract.js';
+import { API_VERSION } from './agentContract.ts';
 import { resolveRequestConnection } from './requestConnection.js';
 import { getAdbSummary, getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.ts';
 import { readErrorMessage, readNumericQuery } from './readDto.ts';

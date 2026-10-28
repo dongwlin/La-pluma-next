@@ -6,7 +6,7 @@ import {
   AGENT_OPERATIONS,
   buildAgentManifest,
   buildOpenApiSpec
-} from '../agentContract.js';
+} from '../agentContract.ts';
 
 const defaults = {
   adbPath: '/custom/platform-tools/adb',
