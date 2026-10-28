@@ -48,7 +48,7 @@ describe('fetchOperatorMaterials', () => {
 
     assert.equal(calls.length, 5);
     assert.ok(calls.every(call => call.file === process.execPath));
-    assert.match(calls[0].args[0], /scripts[\/\\]fetch-all-materials\.js$/);
+    assert.match(calls[0].args[0], /scripts[\/\\]fetch-all-materials\.ts$/);
     assert.equal(calls[0].options.cwd, serverDir);
     assert.equal(calls[0].options.timeout, 5 * 60 * 1000);
 
@@ -79,7 +79,7 @@ describe('fetchOperatorMaterials', () => {
       const scriptName = path.basename(args[0]);
       executedScripts.push(scriptName);
 
-      if (scriptName === 'fetch-material-formulas.js') {
+      if (scriptName === 'fetch-material-formulas.ts') {
         const error: Error & { stderr?: string } = new Error(`Command failed: node ${scriptName}`);
         error.stderr = 'HTTP error! status: 404\n';
         callback(error, '', error.stderr);
@@ -98,11 +98,11 @@ describe('fetchOperatorMaterials', () => {
     });
 
     assert.deepEqual(executedScripts, [
-      'fetch-all-materials.js',
-      'fetch-material-formulas.js',
-      'merge-formulas.js',
-      'fetch-operator-materials.js',
-      'fetch-penguin-stats.js'
+      'fetch-all-materials.ts',
+      'fetch-material-formulas.ts',
+      'merge-formulas.ts',
+      'fetch-operator-materials.ts',
+      'fetch-penguin-stats.ts'
     ]);
   });
 });

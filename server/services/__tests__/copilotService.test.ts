@@ -16,7 +16,7 @@ after(async () => {
   await rm(rootDir, { recursive: true, force: true });
 });
 
-// 与 server/scripts/fetch-stage-data.js 的产出同构的测试夹具
+// 与 server/scripts/fetch-stage-data.ts 的产出同构的测试夹具
 const TEST_STAGES = {
   '1-7': { id: 'main_01-07', code: '1-7', name: '坍塌', stageType: 'MAIN' },
   'PR-B-1': { id: 'pro_b_1#f#', code: 'PR-B-1', name: '狙击芯片', stageType: 'WEEKLY' },

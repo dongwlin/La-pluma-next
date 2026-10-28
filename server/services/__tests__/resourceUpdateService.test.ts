@@ -129,7 +129,7 @@ function createUpdateService(options: {
     },
     now: () => now,
     spawn: spawnUpdate,
-    scriptPath: '/virtual/server/scripts/update-maa-resources.js',
+    scriptPath: '/virtual/server/scripts/update-maa-resources.ts',
     cwd: '/virtual/server',
     timeoutMs: options.timeoutMs ?? null,
     forceKillDelayMs: options.forceKillDelayMs,
@@ -299,7 +299,7 @@ describe('resource updates', () => {
     assert.equal(firstResult.output, '资源文件更新成功\n');
     assert.equal(firstResult.resource.status, 'current');
     assert.equal(harness.spawnCalls[0].command, 'node');
-    assert.deepEqual(harness.spawnCalls[0].args, ['/virtual/server/scripts/update-maa-resources.js']);
+    assert.deepEqual(harness.spawnCalls[0].args, ['/virtual/server/scripts/update-maa-resources.ts']);
     assert.equal(harness.spawnCalls[0].cwd, '/virtual/server');
   });
 

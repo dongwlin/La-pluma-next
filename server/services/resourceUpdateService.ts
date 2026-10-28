@@ -258,7 +258,7 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
   /** 运行一次更新脚本；时限到期先 SIGTERM，宽限后升级 SIGKILL，不做重试。 */
   function runUpdateScript(): Promise<string> {
     const appPaths = resolveAppPaths();
-    const scriptPath = ports.scriptPath ?? join(appPaths.serverRoot, 'scripts', 'update-maa-resources.js');
+    const scriptPath = ports.scriptPath ?? join(appPaths.serverRoot, 'scripts', 'update-maa-resources.ts');
     const cwd = ports.cwd ?? appPaths.serverRoot;
 
     return new Promise<string>((resolve, reject) => {

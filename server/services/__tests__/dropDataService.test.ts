@@ -9,7 +9,7 @@ import { loggerManager } from '../../utils/logger.ts';
 
 loggerManager.getLogger('DropData').enableConsole = false;
 
-// 与 scripts/fetch-penguin-stats.js 的产出同构的测试夹具
+// 与 scripts/fetch-penguin-stats.ts 的产出同构的测试夹具
 const TEST_DROP_DATA: PenguinDropData = {
   metadata: { source: 'test', server: 'CN', fetchedAt: '2026-10-24T00:00:00.000Z' },
   stages: {

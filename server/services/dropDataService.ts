@@ -1,7 +1,7 @@
 /**
  * 企鹅物流掉落数据服务
  *
- * 数据文件 server/data/penguin-drop-data.json 由 scripts/fetch-penguin-stats.js 生成
+ * 数据文件 server/data/penguin-drop-data.json 由 scripts/fetch-penguin-stats.ts 生成
  * （数据源企鹅物流公开 API v2，server=CN，抓取时间见 metadata.fetchedAt）。
  *
  * 提供两类查询：

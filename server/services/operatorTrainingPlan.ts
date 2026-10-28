@@ -419,7 +419,7 @@ function toEstimate(found: StageDropEstimate): FarmEstimate {
 /**
  * 为单个材料选择刷取关卡并给出期望掉落与理智单价
  *
- * 数据来源：企鹅物流公开 API v2（server=CN），由 scripts/fetch-penguin-stats.js
+ * 数据来源：企鹅物流公开 API v2（server=CN），由 scripts/fetch-penguin-stats.ts
  * 抓取为 server/data/penguin-drop-data.json，数据版本见文件 metadata.fetchedAt：
  * - 芯片类材料刷取关卡固定（CHIP_STAGE_MAP），期望掉落取该关卡的真实统计；
  * - 其余材料在企鹅矩阵中按「期望理智消耗/个」（apCost / 期望掉落）反查最优永久关卡；

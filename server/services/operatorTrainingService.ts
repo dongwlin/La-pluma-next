@@ -361,11 +361,11 @@ async function updateSettings(settings: unknown): Promise<TrainingSettings> {
  * 5. 生成 penguin-drop-data.json（企鹅物流真实掉落统计）
  */
 const MATERIAL_FETCH_SCRIPTS: MaterialFetchScriptConfig[] = [
-  { name: 'fetch-all-materials', script: 'fetch-all-materials.js', output: 'materials.json' },
-  { name: 'fetch-material-formulas', script: 'fetch-material-formulas.js', output: 'material-formulas.json' },
-  { name: 'merge-formulas', script: 'merge-formulas.js', output: 'materials.json' },
-  { name: 'fetch-operator-materials', script: 'fetch-operator-materials.js', output: 'operator-materials.json' },
-  { name: 'fetch-penguin-stats', script: 'fetch-penguin-stats.js', output: 'penguin-drop-data.json' }
+  { name: 'fetch-all-materials', script: 'fetch-all-materials.ts', output: 'materials.json' },
+  { name: 'fetch-material-formulas', script: 'fetch-material-formulas.ts', output: 'material-formulas.json' },
+  { name: 'merge-formulas', script: 'merge-formulas.ts', output: 'materials.json' },
+  { name: 'fetch-operator-materials', script: 'fetch-operator-materials.ts', output: 'operator-materials.json' },
+  { name: 'fetch-penguin-stats', script: 'fetch-penguin-stats.ts', output: 'penguin-drop-data.json' }
 ];
 
 // 单个抓取脚本的超时时间（毫秒）

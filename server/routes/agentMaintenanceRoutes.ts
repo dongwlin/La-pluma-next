@@ -371,7 +371,7 @@ router.post('/actions/update-core', asyncHandler<MaintenanceRequest, ApiResponse
       : { action: 'update-core', targetChannel: 'current', command: 'update', args: [] };
   const plan: MaintenanceUpdateCorePlan = {
     action: 'update-core-and-resources',
-    steps: [corePlan, { action: 'hot-update-resources', script: 'server/scripts/update-maa-resources.js' }]
+    steps: [corePlan, { action: 'hot-update-resources', script: 'server/scripts/update-maa-resources.ts' }]
   };
 
   if (dryRun) return sendDryRun(res, req, plan);
@@ -441,7 +441,7 @@ router.post('/actions/update-cli', asyncHandler<MaintenanceRequest, ApiResponseW
 }));
 
 router.post('/actions/hot-update-resources', asyncHandler<MaintenanceRequest, ApiResponseWriter>(async (req, res) => {
-  const plan: MaintenanceHotUpdateResourcesPlan = { action: 'hot-update-resources', script: 'server/scripts/update-maa-resources.js' };
+  const plan: MaintenanceHotUpdateResourcesPlan = { action: 'hot-update-resources', script: 'server/scripts/update-maa-resources.ts' };
   if (parseDryRunBody(req.body).dryRun) return sendDryRun(res, req, plan);
   try {
     const result = await updateMaaResources();
