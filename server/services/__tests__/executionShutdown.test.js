@@ -34,7 +34,7 @@ import {
   createExecutionShutdownService
 } from '../executionShutdownService.ts';
 import { createRuntimeLifecycle } from '../runtimeLifecycleService.ts';
-import { executeScheduledTaskFromCron } from '../schedulerService.js';
+import { executeScheduledTaskFromCron } from '../schedulerService.ts';
 import {
   configureCopilotSetRuntimeForTests,
   continueManualCopilotSet,

@@ -257,7 +257,7 @@ export function summarizeScheduleSync(result: unknown, requestedTimes: unknown[]
  * 使用动态 import 避免 `schedulerService → operatorTrainingService` 的静态环。
  */
 async function refreshRegisteredSchedule(config: CombatTasksConfig): Promise<ScheduleSyncResult> {
-  const { getScheduleStatus, setupSchedule, stopSchedule } = await import('./schedulerService.js');
+  const { getScheduleStatus, setupSchedule, stopSchedule } = await import('./schedulerService.ts');
   const registered = getScheduleStatus().some(entry => entry.scheduleId === 'default');
   if (!registered) return { attempted: false, success: true, message: null };
 

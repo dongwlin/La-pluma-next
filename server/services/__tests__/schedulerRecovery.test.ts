@@ -8,14 +8,22 @@ import {
   executeScheduleNow,
   getScheduleExecutionStatus,
   stopScheduleExecution
-} from '../schedulerService.js';
+} from '../schedulerService.ts';
+import type { ScheduledDailyFlowRunResult } from '../schedulerService.ts';
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
+import type { AgentRunDto } from '../agentRunService.ts';
 import { buildAgentRunSnapshot } from '../runSnapshotService.js';
 import { getTaskStatus } from '../maaProcessService.ts';
 import { getTodayOpenStages } from '../notificationService.ts';
+import type {
+  ScheduleExecutionStatus,
+  ScheduleFlowCompletedResult,
+  ScheduleFlowExecutionResult,
+  ScheduleFlowRejectedResult
+} from '../scheduleFlowExecution.ts';
 
-let testDir;
-let lockFile;
+let testDir = '';
+let lockFile = '';
 
 before(async () => {
   testDir = await mkdtemp(join(tmpdir(), 'la-pluma-scheduler-'));
@@ -39,6 +47,22 @@ const fastTaskFlow = [
 ];
 
 const malformedTaskFlow = [{ enabled: true, name: 'Malformed task', params: {} }];
+
+function completedResult(result: ScheduleFlowExecutionResult): ScheduleFlowCompletedResult {
+  if (!result.success) throw new Error(result.message);
+  return result;
+}
+
+function rejectedResult(result: ScheduleFlowExecutionResult): ScheduleFlowRejectedResult {
+  if (result.success) throw new Error('expected a rejected flow');
+  return result;
+}
+
+function dailyFlowResult(run: AgentRunDto | null): ScheduledDailyFlowRunResult {
+  assert.ok(run);
+  assert.ok(run.result && typeof run.result === 'object');
+  return run.result as ScheduledDailyFlowRunResult;
+}
 
 test('unexpected execution errors always reset scheduler state', async () => {
   let started = 0;
@@ -64,33 +88,38 @@ test('unexpected execution errors always reset scheduler state', async () => {
 test('cron execution catches rejected task flows and leaves the scheduler reusable', async () => {
   const result = await executeScheduledTaskFromCron(malformedTaskFlow, 'cron-error');
 
-  assert.equal(result.success, false);
-  assert.match(result.message, /split/);
+  const reject = rejectedResult(result);
+  assert.match(reject.message, /split/);
   assert.equal(getScheduleExecutionStatus().isRunning, false);
   const runs = listAgentRuns({ operationId: 'run_daily_flow' });
   assert.equal(runs.length, 1);
   assert.equal(runs[0].state, 'failed');
+  assert.ok(runs[0].error);
   assert.match(runs[0].error.message, /split/);
 });
 
 test('cron execution records one daily-flow run with its final result', async () => {
-  const result = await executeScheduledTaskFromCron(fastTaskFlow, 'cron-run');
+  const result = completedResult(await executeScheduledTaskFromCron(fastTaskFlow, 'cron-run'));
 
   assert.equal(result.success, true);
   const runs = listAgentRuns({ operationId: 'run_daily_flow' });
   assert.equal(runs.length, 1);
   assert.equal(runs[0].state, 'succeeded');
-  assert.equal(runs[0].result.success, true);
-  assert.equal(runs[0].result.scheduleId, 'cron-run');
-  assert.equal(runs[0].result.totalSteps, 2);
-  assert.equal(runs[0].result.summary.skippedCount, 2);
-  assert.equal(runs[0].result.summary.taskResults.length, 2);
+  const runResult = dailyFlowResult(runs[0]);
+  assert.equal(runResult.success, true);
+  assert.equal(runResult.scheduleId, 'cron-run');
+  assert.equal(runResult.totalSteps, 2);
+  assert.equal(runResult.summary?.skippedCount, 2);
+  assert.equal(runResult.summary?.taskResults.length, 2);
   const status = getScheduleExecutionStatus();
   assert.equal(status.isRunning, false);
   assert.equal(status.runId, null);
 });
 
-async function waitForCondition(predicate, { timeout = 8000, interval = 20 } = {}) {
+async function waitForCondition<T>(
+  predicate: () => T | null | undefined | false,
+  { timeout = 8000, interval = 20 } = {}
+): Promise<T> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const value = await predicate();
@@ -109,7 +138,7 @@ test('cron execution exposes one active run while it waits between steps', async
   ];
 
   const execution = executeScheduledTaskFromCron(taskFlow, 'cron-progress');
-  const active = await waitForCondition(() => {
+  const active: ScheduleExecutionStatus = await waitForCondition(() => {
     const status = getScheduleExecutionStatus();
     return status.isRunning && status.currentStep === 0 ? status : null;
   });
@@ -125,14 +154,15 @@ test('cron execution exposes one active run while it waits between steps', async
   assert.equal(getTaskStatus().isRunning, false);
 
   assert.equal(stopScheduleExecution(), true);
-  const result = await execution;
+  const result = completedResult(await execution);
 
   assert.equal(result.stopped, true);
   const run = getAgentRun(active.runId);
-  assert.equal(run.state, 'stopped');
-  assert.equal(run.result.stopped, true);
-  assert.equal(run.result.scheduleId, 'cron-progress');
-  assert.equal(run.result.totalSteps, 2);
+  assert.equal(run?.state, 'stopped');
+  const runResult = dailyFlowResult(run);
+  assert.equal(runResult.stopped, true);
+  assert.equal(runResult.scheduleId, 'cron-progress');
+  assert.equal(runResult.totalSteps, 2);
 });
 
 test('cron execution fails closed when the device lease is held', async () => {
@@ -144,13 +174,13 @@ test('cron execution fails closed when the device lease is held', async () => {
     startedAt: new Date().toISOString()
   }));
 
-  const result = await executeScheduledTaskFromCron(fastTaskFlow, 'cron-busy');
+  const result = rejectedResult(await executeScheduledTaskFromCron(fastTaskFlow, 'cron-busy'));
 
-  assert.equal(result.success, false);
   assert.equal(result.busy, true);
   const runs = listAgentRuns({ operationId: 'run_daily_flow' });
   assert.equal(runs.length, 1);
   assert.equal(runs[0].state, 'failed');
+  assert.ok(runs[0].error);
   assert.equal(runs[0].error.code, 'AGENT_EXECUTION_BUSY');
   assert.equal(getScheduleExecutionStatus().isRunning, false);
 });
@@ -162,7 +192,7 @@ test('completed flows return task ids and retain skipped results in the polling 
     { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} },
     { id: 'award-2', commandId: 'award', name: '领取奖励', enabled: true, params: {} },
   ];
-  const result = await executeScheduleNow('task-progress', taskFlow);
+  const result = completedResult(await executeScheduleNow('task-progress', taskFlow));
   const expected = taskFlow.filter(task => task.enabled).map(task => ({
     taskId: task.id, task: task.name, status: 'skipped'
   }));
@@ -171,7 +201,7 @@ test('completed flows return task ids and retain skipped results in the polling 
   const status = getScheduleExecutionStatus();
   assert.equal(status.isRunning, false);
   assert.deepEqual(status.taskResults, expected);
-  assert.deepEqual(status.lastResult.taskResults, expected);
+  assert.deepEqual(status.lastResult?.taskResults, expected);
 });
 
 test('a stopped pre-start gate aborts the flow before any task runs', async () => {

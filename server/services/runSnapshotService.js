@@ -2,7 +2,7 @@ import { getActiveAgentRuns, getLatestTerminalAgentRun } from './agentRunService
 import { getCopilotSetRunProgress } from './copilotSetRunService.js';
 import { getMaaExecutionLeaseSnapshot } from './executionCoordinatorService.ts';
 import { getRealtimeLogs, getTaskStatus } from './maaProcessService.ts';
-import { getScheduleExecutionStatus } from './schedulerService.js';
+import { getScheduleExecutionStatus } from './schedulerService.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 
 const ACTIVE_RUN_STATES = new Set(['accepted', 'waiting', 'running', 'stopping']);

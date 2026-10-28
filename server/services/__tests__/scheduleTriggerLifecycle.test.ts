@@ -9,11 +9,24 @@ import {
   executeScheduledTaskFromCron,
   getScheduleExecutionStatus,
   stopScheduleExecution
-} from '../schedulerService.js';
+} from '../schedulerService.ts';
+import type { ScheduledDailyFlowRunResult } from '../schedulerService.ts';
 import { createRuntimeLifecycle } from '../runtimeLifecycleService.ts';
 import { initializeRuntimeState } from '../runtimeInitializationService.js';
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
+import type { AgentRunDto } from '../agentRunService.ts';
 import { getTodayOpenStages } from '../notificationService.ts';
+import type {
+  ScheduleExecutionStatus,
+  ScheduleFlowCompletedResult,
+  ScheduleFlowExecutionResult
+} from '../scheduleFlowExecution.ts';
+import type {
+  AutoUpdateConfig,
+  ScheduleTriggerLifecycle,
+  ScheduleTriggerLifecycleStep,
+  ScheduleTriggerRuntimeOptions
+} from '../scheduleTriggerService.ts';
 
 const silentLogger = {
   info() {},
@@ -26,9 +39,15 @@ const taskFlow = [
   { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} }
 ];
 
+interface RecordedLog {
+  level: string;
+  message: string;
+  data: unknown;
+}
+
 function createRecordingLogger() {
-  const entries = [];
-  const record = level => (message, data) => {
+  const entries: RecordedLog[] = [];
+  const record = (level: string) => (message: string, data?: unknown) => {
     entries.push({ level, message, data });
   };
   return {
@@ -40,12 +59,30 @@ function createRecordingLogger() {
   };
 }
 
+interface FakeCronTask {
+  expression: string;
+  callback: () => void;
+  options: { timezone: string };
+  started: boolean;
+  destroyed: boolean;
+  stopCalls: number;
+  start(): void;
+  stop(): void;
+  destroy(): void;
+}
+
+interface FakeCron {
+  tasks: FakeCronTask[];
+  failNext: number;
+  createTask(expression: string, callback: () => void, options: { timezone: string }): FakeCronTask;
+}
+
 /**
  * 假 cron：createTask 只登记，start/stop/destroy 由测试或注册表调用。
  * failNext 用于模拟连续创建失败，验证失败时保留旧注册。
  */
-function createFakeCron() {
-  const cron = {
+function createFakeCron(): FakeCron {
+  const cron: FakeCron = {
     tasks: [],
     failNext: 0,
     createTask(expression, callback, options) {
@@ -53,7 +90,7 @@ function createFakeCron() {
         cron.failNext -= 1;
         throw new Error('cron unavailable');
       }
-      const task = {
+      const task: FakeCronTask = {
         expression,
         callback,
         options,
@@ -80,24 +117,32 @@ function createFakeCron() {
   return cron;
 }
 
-function createFakeClock(start = 1_000) {
+interface FakeClock {
+  now(): number;
+  set(value: number): void;
+  advance(ms: number): void;
+}
+
+function createFakeClock(start = 1_000): FakeClock {
   let current = start;
   return {
     now: () => current,
-    set(value) {
+    set(value: number) {
       current = value;
     },
-    advance(ms) {
+    advance(ms: number) {
       current += ms;
     }
   };
 }
 
-function createRuntime({
-  cronImpl = createFakeCron(),
-  clock = createFakeClock(),
-  ...overrides
-} = {}) {
+interface RuntimeFixtureOverrides extends Partial<ScheduleTriggerRuntimeOptions> {
+  cronImpl?: FakeCron;
+  clock?: FakeClock;
+}
+
+function createRuntime(fixture: RuntimeFixtureOverrides = {}) {
+  const { cronImpl = createFakeCron(), clock = createFakeClock(), ...overrides } = fixture;
   const runtime = createScheduleTriggerRuntime({
     cronImpl,
     now: clock.now,
@@ -107,6 +152,21 @@ function createRuntime({
     ...overrides
   });
   return { runtime, fakeCron: cronImpl, clock };
+}
+
+function completedResult(result: ScheduleFlowExecutionResult): ScheduleFlowCompletedResult {
+  if (!result.success) throw new Error(result.message);
+  return result;
+}
+
+function dailyFlowResult(run: AgentRunDto | null): ScheduledDailyFlowRunResult {
+  assert.ok(run);
+  assert.ok(run.result && typeof run.result === 'object');
+  return run.result as ScheduledDailyFlowRunResult;
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 describe('schedule trigger runtime', () => {
@@ -232,7 +292,7 @@ describe('schedule trigger runtime', () => {
   });
 
   it('drops callbacks queued before reconfiguration or stop', () => {
-    const calls = [];
+    const calls: Array<{ flow: unknown; scheduleId: string }> = [];
     const { runtime, fakeCron } = createRuntime({
       runScheduleFlow: (flow, scheduleId) => {
         calls.push({ flow, scheduleId });
@@ -244,7 +304,7 @@ describe('schedule trigger runtime', () => {
 
     runtime.setupSchedule('default', ['09:00'], taskFlow);
     staleTask.callback();
-    assert.deepEqual(calls, []);
+    assert.equal(calls.length, 0);
     assert.equal(runtime.describe().counters.skippedStale, 1);
 
     const currentTask = fakeCron.tasks[1];
@@ -262,7 +322,7 @@ describe('schedule trigger runtime', () => {
     const clock = createFakeClock(10_000);
     const logger = createRecordingLogger();
     let draining = false;
-    const calls = [];
+    const calls: string[] = [];
     const fakeCron = createFakeCron();
     const runtime = createScheduleTriggerRuntime({
       cronImpl: fakeCron,
@@ -287,13 +347,14 @@ describe('schedule trigger runtime', () => {
       message: '运行时正在关闭，无法设置定时任务'
     });
     const skip = logger.entries.find(entry => entry.message === '运行时正在关闭，忽略已排队的定时触发');
+    assert.ok(skip);
     assert.deepEqual(skip.data, { scheduleId: 'default-0', time: '08:00', at: 11_500 });
     assert.equal(runtime.describe().counters.skippedDraining, 1);
   });
 
   it('registers auto-update without executing it and drops it while draining', () => {
     let draining = false;
-    const updates = [];
+    const updates: unknown[] = [];
     const { runtime, fakeCron } = createRuntime({
       runAutoUpdate: config => {
         updates.push(config);
@@ -353,24 +414,29 @@ describe('schedule trigger runtime', () => {
   });
 });
 
-function createFakeLifecycle() {
+interface FakeLifecycle extends ScheduleTriggerLifecycle {
+  steps: ScheduleTriggerLifecycleStep[];
+  close(): Promise<{ ok: boolean; steps: Array<{ name: string; status: string; error?: string }> }>;
+}
+
+function createFakeLifecycle(): FakeLifecycle {
   let draining = false;
-  const steps = [];
+  const steps: ScheduleTriggerLifecycleStep[] = [];
   return {
     steps,
-    register(step) {
+    register(step: ScheduleTriggerLifecycleStep) {
       steps.push(step);
     },
     isDraining: () => draining,
     async close() {
       draining = true;
-      const results = [];
+      const results: Array<{ name: string; status: string; error?: string }> = [];
       for (const step of [...steps].reverse()) {
         try {
           await step.close?.();
           results.push({ name: step.name, status: 'closed' });
         } catch (error) {
-          results.push({ name: step.name, status: 'failed', error: error.message });
+          results.push({ name: step.name, status: 'failed', error: errorMessageOf(error) });
         }
       }
       return { ok: results.every(result => result.status === 'closed'), steps: results };
@@ -415,15 +481,15 @@ describe('schedule trigger runtime lifecycle', () => {
 
     const summary = await closing;
     assert.equal(summary.ok, true);
-    assert.equal(summary.steps.find(step => step.name === 'scheduled-triggers').status, 'closed');
+    assert.equal(summary.steps.find(step => step.name === 'scheduled-triggers')?.status, 'closed');
     assert.equal(task.destroyed, true);
     assert.equal(runtime.describe().closed, true);
   });
 
   it('still registers the stop port when the lifecycle has no draining predicate', async () => {
     const runtime = createRuntime().runtime;
-    const steps = [];
-    const lifecycle = {
+    const steps: ScheduleTriggerLifecycleStep[] = [];
+    const lifecycle: ScheduleTriggerLifecycle = {
       register(step) {
         steps.push(step);
       }
@@ -435,7 +501,7 @@ describe('schedule trigger runtime lifecycle', () => {
     });
     assert.deepEqual(steps.map(step => step.name), ['scheduled-triggers']);
     assert.equal(attachScheduleTriggersToLifecycle(null, runtime).attached, false);
-    await steps[0].close();
+    await steps[0].close?.();
     assert.equal(runtime.describe().closed, true);
   });
 
@@ -450,7 +516,7 @@ describe('schedule trigger runtime lifecycle', () => {
 
     assert.throws(
       () => attachScheduleTriggersToLifecycle(lifecycle, runtime),
-      error => error.code === 'RUNTIME_LIFECYCLE_CLOSED'
+      error => error instanceof Error && (error as Error & { code?: string }).code === 'RUNTIME_LIFECYCLE_CLOSED'
     );
     assert.equal(runtime.describe().draining, true);
     assert.deepEqual(runtime.setupSchedule('default', ['08:00'], taskFlow), {
@@ -466,23 +532,26 @@ describe('schedule trigger runtime lifecycle', () => {
       throw new Error('destroy failed');
     };
     const lifecycle = createFakeLifecycle();
-    const laterSteps = [];
+    const laterSteps: string[] = [];
     lifecycle.register({ name: 'later-cleanup', close: () => laterSteps.push('closed') });
     attachScheduleTriggersToLifecycle(lifecycle, runtime);
 
     const summary = await lifecycle.close();
     assert.equal(summary.ok, false);
-    assert.equal(summary.steps.find(step => step.name === 'scheduled-triggers').status, 'failed');
-    assert.match(summary.steps.find(step => step.name === 'scheduled-triggers').error, /destroy failed/);
+    assert.equal(summary.steps.find(step => step.name === 'scheduled-triggers')?.status, 'failed');
+    assert.match(
+      summary.steps.find(step => step.name === 'scheduled-triggers')?.error || '',
+      /destroy failed/
+    );
     assert.deepEqual(laterSteps, ['closed']);
-    assert.equal(runtime.describe().closeSummary.ok, false);
+    assert.equal(runtime.describe().closeSummary?.ok, false);
     assert.equal(runtime.describe().closed, true);
   });
 
   it('restores persisted triggers without executing them and stops them on close', async () => {
     const fakeCron = createFakeCron();
     const clock = createFakeClock(5_000);
-    const runs = [];
+    const runs: unknown[] = [];
     const runtime = createScheduleTriggerRuntime({
       cronImpl: fakeCron,
       now: clock.now,
@@ -501,7 +570,7 @@ describe('schedule trigger runtime lifecycle', () => {
       closeDeadlineMs: 1_000,
       now: clock.now
     });
-    const persisted = {
+    const persisted: Record<string, unknown> = {
       'automation-tasks': {
         taskFlow: [{ id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} }],
         schedule: { enabled: true, times: ['04:30', '12:00'] }
@@ -513,11 +582,13 @@ describe('schedule trigger runtime lifecycle', () => {
       name: 'runtime-initialization',
       start: () => initializeRuntimeState({
         lifecycle,
-        attachScheduleLifecycle: target => attachScheduleTriggersToLifecycle(target, runtime),
-        loadConfig: async configType => ({ success: true, data: persisted[configType] || null }),
+        attachScheduleLifecycle: (target: ScheduleTriggerLifecycle) => attachScheduleTriggersToLifecycle(target, runtime),
+        loadConfig: async (configType: string) => ({ success: true, data: persisted[configType] || null }),
         readNotificationConfig: () => ({ channels: {} }),
-        registerSchedule: (scheduleId, times, taskFlowToRun) => runtime.setupSchedule(scheduleId, times, taskFlowToRun),
-        registerAutoUpdate: config => runtime.setupAutoUpdate(config),
+        registerSchedule: (scheduleId: string, times: unknown, taskFlowToRun: unknown) => (
+          runtime.setupSchedule(scheduleId, times, taskFlowToRun)
+        ),
+        registerAutoUpdate: (config: AutoUpdateConfig) => runtime.setupAutoUpdate(config),
         resolveRuntimeConnection: async () => ({}),
         startTelegramBot: () => {},
         runtimeLogger: silentLogger
@@ -548,8 +619,8 @@ describe('schedule trigger runtime lifecycle', () => {
 });
 
 describe('scheduled flow shutdown', () => {
-  let testDir;
-  let lockFile;
+  let testDir = '';
+  let lockFile = '';
 
   before(async () => {
     testDir = await mkdtemp(join(tmpdir(), 'la-pluma-schedule-trigger-'));
@@ -567,7 +638,10 @@ describe('scheduled flow shutdown', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  async function waitForCondition(predicate, { timeout = 8000, interval = 20 } = {}) {
+  async function waitForCondition<T>(
+    predicate: () => T | null | undefined | false,
+    { timeout = 8000, interval = 20 } = {}
+  ): Promise<T> {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
       const value = await predicate();
@@ -585,7 +659,7 @@ describe('scheduled flow shutdown', () => {
       { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: {} }
     ];
     const fakeCron = createFakeCron();
-    let execution;
+    let execution: Promise<ScheduleFlowExecutionResult> | undefined;
     const runtime = createScheduleTriggerRuntime({
       cronImpl: fakeCron,
       runtimeLogger: silentLogger,
@@ -598,28 +672,29 @@ describe('scheduled flow shutdown', () => {
     const scheduledTask = fakeCron.tasks[0];
 
     scheduledTask.callback();
-    const active = await waitForCondition(() => {
+    const active: ScheduleExecutionStatus = await waitForCondition(() => {
       const status = getScheduleExecutionStatus();
       return status.isRunning && status.currentStep === 0 ? status : null;
     });
     assert.ok(active.runId);
-    assert.equal(getAgentRun(active.runId).state, 'running');
+    assert.equal(getAgentRun(active.runId)?.state, 'running');
 
     const summary = runtime.stopAll('test-close');
     assert.equal(summary.ok, true);
     assert.equal(scheduledTask.destroyed, true);
     assert.equal(getScheduleExecutionStatus().isRunning, true);
-    assert.equal(getAgentRun(active.runId).state, 'running');
+    assert.equal(getAgentRun(active.runId)?.state, 'running');
     assert.equal(listAgentRuns({ operationId: 'run_daily_flow' }).length, 1);
 
     scheduledTask.callback();
     assert.equal(listAgentRuns({ operationId: 'run_daily_flow' }).length, 1);
 
     assert.equal(stopScheduleExecution(), true);
-    const result = await execution;
+    assert.ok(execution);
+    const result = completedResult(await execution);
     assert.equal(result.stopped, true);
     const run = getAgentRun(active.runId);
-    assert.equal(run.state, 'stopped');
-    assert.equal(run.result.stopped, true);
+    assert.equal(run?.state, 'stopped');
+    assert.equal(dailyFlowResult(run).stopped, true);
   });
 });

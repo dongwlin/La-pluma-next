@@ -5,7 +5,7 @@ import {
   attachScheduleTriggersToLifecycle,
   setupAutoUpdate,
   setupSchedule
-} from './schedulerService.js';
+} from './schedulerService.ts';
 import { initTelegramBot, attachTelegramBotToLifecycle } from './telegramBotService.js';
 import { createLogger } from '../utils/logger.ts';
 

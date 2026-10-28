@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from '../schedulerService.js'
+import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from '../schedulerService.ts'
+import type { ScheduledTaskFlowPlanResult } from '../scheduleFlowPlan.ts'
+
+function plannedResult(result: ScheduledTaskFlowPlanResult) {
+  if (!result.success) throw new Error(result.message)
+  return result
+}
+
+function failureMessage(result: ScheduledTaskFlowPlanResult): string {
+  if (result.success) throw new Error('expected a rejected plan')
+  return result.message
+}
 
 describe('scheduled task flow planning', () => {
   it('uses the same dynamic task config as execution for MaaCore task types', () => {
@@ -17,8 +28,7 @@ describe('scheduled task flow planning', () => {
       }
     }])
 
-    assert.equal(result.success, true)
-    assert.deepEqual(result.steps[0], {
+    assert.deepEqual(plannedResult(result).steps[0], {
       index: 1,
       id: 'recruit-1',
       name: '自动公招',
@@ -59,7 +69,7 @@ describe('scheduled task flow planning', () => {
       }
     }])
 
-    assert.deepEqual(result.steps[0].args, [
+    assert.deepEqual(plannedResult(result).steps[0].args, [
       '1-7:3,CE-6', '-m', '2', '--expiring-medicine', '1', '--stone', '0', '--series', '2',
       '-D30011=10', '-D30062=5', '--client-type', 'Bilibili', '--dr-grandet',
       '--report-to-penguin', '--penguin-id', 'penguin-user',
@@ -82,8 +92,9 @@ describe('scheduled task flow planning', () => {
       params: { clientType: 'Official', recognizeDepotBeforeClose: true }
     }], { address: '127.0.0.1:16384' })
 
-    assert.deepEqual(result.steps[0].args, ['-a', '127.0.0.1:16384', '--account-name', '4567', 'Official'])
-    assert.deepEqual(result.steps[1].preActions, [{ action: 'depot-recognition' }])
+    const { steps } = plannedResult(result)
+    assert.deepEqual(steps[0].args, ['-a', '127.0.0.1:16384', '--account-name', '4567', 'Official'])
+    assert.deepEqual(steps[1].preActions, [{ action: 'depot-recognition' }])
   })
 
   it('runs the scheduler validation during dry-run planning', () => {
@@ -101,8 +112,8 @@ describe('scheduled task flow planning', () => {
     }]
 
     assert.equal(validateScheduledTaskFlow(invalidInfrast).success, false)
-    assert.match(buildScheduledTaskFlowPlan(invalidInfrast).message, /排班文件/)
-    assert.match(buildScheduledTaskFlowPlan(invalidDrops).message, /掉落目标格式/)
+    assert.match(failureMessage(buildScheduledTaskFlowPlan(invalidInfrast)), /排班文件/)
+    assert.match(failureMessage(buildScheduledTaskFlowPlan(invalidDrops)), /掉落目标格式/)
   })
 
   it('rejects malformed task entries without throwing', () => {

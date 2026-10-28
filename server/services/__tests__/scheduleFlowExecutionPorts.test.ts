@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createScheduleFlowExecutor } from '../scheduleFlowExecution.js';
-import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from '../scheduleFlowPlan.js';
-import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from '../scheduleFlowResult.js';
+import { createScheduleFlowExecutor } from '../scheduleFlowExecution.ts';
+import type {
+  ScheduleExecutionPorts,
+  ScheduleFlowCompletedResult,
+  ScheduleFlowExecutionResult
+} from '../scheduleFlowExecution.ts';
+import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from '../scheduleFlowPlan.ts';
+import type { ScheduledTaskFlowPlanResult } from '../scheduleFlowPlan.ts';
+import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from '../scheduleFlowResult.ts';
+import type { TaskCompletionInfo } from '../notificationService.ts';
+import type { DropRecordInput } from '../dropRecordService.ts';
+import type { MaaExecutionLeaseRequest } from '../executionCoordinatorService.ts';
 
 const silentLogger = {
   info() {},
@@ -12,19 +21,29 @@ const silentLogger = {
   success() {}
 };
 
-function createPorts(overrides = {}) {
+function plannedResult(result: ScheduledTaskFlowPlanResult) {
+  if (!result.success) throw new Error(result.message);
+  return result;
+}
+
+function completedResult(result: ScheduleFlowExecutionResult): ScheduleFlowCompletedResult {
+  if (!result.success) throw new Error(result.message);
+  return result;
+}
+
+function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
   const calls = {
-    commands: [],
-    dynamicTasks: [],
+    commands: [] as Array<{ command: string; args: readonly string[]; taskName: string | null }>,
+    dynamicTasks: [] as Array<{ taskId: string; taskConfig: string; taskName: string | null }>,
     checkpoints: 0,
     reads: 0,
-    notifications: [],
-    drops: [],
-    refreshes: [],
-    leases: []
+    notifications: [] as TaskCompletionInfo[],
+    drops: [] as DropRecordInput[],
+    refreshes: [] as string[],
+    leases: [] as MaaExecutionLeaseRequest[]
   };
 
-  const ports = {
+  const ports: ScheduleExecutionPorts = {
     executeCommand: async (command, args, taskName) => {
       calls.commands.push({ command, args, taskName });
       return { stdout: '', stderr: '' };
@@ -35,11 +54,11 @@ function createPorts(overrides = {}) {
     },
     createLogCheckpoint: async () => {
       calls.checkpoints += 1;
-      return { position: calls.checkpoints };
+      return { logPath: 'asst.log', size: 0 };
     },
-    readLogSince: async checkpoint => {
+    readLogSince: async () => {
       calls.reads += 1;
-      return `log-${checkpoint.position}`;
+      return 'log-1';
     },
     resolveConnection: async () => ({ adbPath: 'adb', address: '127.0.0.1:5555' }),
     testConnection: async () => ({ success: true }),
@@ -58,7 +77,7 @@ function createPorts(overrides = {}) {
     refreshSmartTrainingStages: async scheduleId => {
       calls.refreshes.push(scheduleId);
     },
-    withExecutionLease: async (context, run) => {
+    withExecutionLease: async <T>(context: MaaExecutionLeaseRequest, run: () => Promise<T>): Promise<T> => {
       calls.leases.push(context);
       return run();
     },
@@ -68,7 +87,10 @@ function createPorts(overrides = {}) {
   return { ports, calls };
 }
 
-async function waitForCondition(predicate, { timeout = 5_000, interval = 5 } = {}) {
+async function waitForCondition<T>(
+  predicate: () => T | null | undefined | false,
+  { timeout = 5_000, interval = 5 } = {}
+): Promise<T> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const value = await predicate();
@@ -80,7 +102,7 @@ async function waitForCondition(predicate, { timeout = 5_000, interval = 5 } = {
 
 describe('schedule flow boundaries', () => {
   it('plans commands and aggregates results without device, storage or notification ports', () => {
-    const plan = buildScheduledTaskFlowPlan([
+    const plan = plannedResult(buildScheduledTaskFlowPlan([
       {
         id: 'fight-1',
         commandId: 'fight',
@@ -96,18 +118,19 @@ describe('schedule flow boundaries', () => {
         taskType: 'Recruit',
         params: { times: '4' }
       }
-    ]);
+    ]));
 
-    assert.equal(plan.success, true);
+    const steps = plan.steps;
     assert.equal(plan.totalSteps, 2);
-    assert.deepEqual(plan.steps[0].args, ['1-7:3', '-D30011=10']);
-    assert.equal(plan.steps[1].command, 'run');
-    assert.equal(plan.steps[1].dynamicTask, true);
+    assert.deepEqual(steps[0].args, ['1-7:3', '-D30011=10']);
+    assert.equal(steps[1].command, 'run');
+    assert.equal(steps[1].dynamicTask, true);
 
     assert.deepEqual(validateScheduledTaskFlow(null), { success: false, message: '任务流程格式无效' });
     assert.equal(validateScheduledTaskFlow([{ id: 'fight-1', commandId: 'fight', params: { drops: 'bad' } }]).success, false);
 
     const summary = parseTaskSummary('理智作战', 'Fight 1-7 3 times, total drops: 龙门币 × 252');
+    assert.ok(summary);
     assert.equal(summary.stage, '1-7');
     assert.equal(summary.times, '3');
     assert.deepEqual(summary.dropItems, [{ name: '龙门币', count: 252 }]);
@@ -131,7 +154,7 @@ describe('schedule flow boundaries', () => {
       durationMs: 1_000,
       wasStopped: false,
       summaries: [],
-      reports: [{ provider: 'penguin', status: 'failed' }],
+      reports: [{ provider: 'penguin', stage: '1-7', status: 'failed', message: '企鹅物流汇报失败' }],
       actions: [],
       errors: [],
       warnings: [],
@@ -189,9 +212,8 @@ describe('schedule flow boundaries', () => {
       { id: 'broken-1', commandId: 'throw', name: '失败任务', enabled: true, params: {} }
     ];
 
-    const result = await executor.execute(taskFlow, 'flow-ports');
+    const result = completedResult(await executor.execute(taskFlow, 'flow-ports'));
 
-    assert.equal(result.success, true);
     assert.equal(result.stopped, false);
     assert.equal(result.summary.successCount, 1);
     assert.equal(result.summary.skippedCount, 1);
@@ -233,7 +255,7 @@ describe('schedule flow boundaries', () => {
     assert.deepEqual(duplicate, { success: false, message: '已有任务流程正在执行' });
 
     assert.equal(executor.stop(), true);
-    const result = await execution;
+    const result = completedResult(await execution);
 
     assert.equal(result.stopped, true);
     assert.equal(result.summary.successCount, 1);

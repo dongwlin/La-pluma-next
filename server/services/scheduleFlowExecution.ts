@@ -1,15 +1,186 @@
-import { createScheduleTaskProgress } from './scheduleTaskProgress.js';
-import { buildScheduledTaskCommand, validateScheduledTaskFlow } from './scheduleFlowPlan.js';
-import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from './scheduleFlowResult.js';
+import { createScheduleTaskProgress } from './scheduleTaskProgress.ts';
+import type { ScheduleTaskProgress, ScheduleTaskProgressResult } from './scheduleTaskProgress.ts';
+import { buildScheduledTaskCommand, validateScheduledTaskFlow } from './scheduleFlowPlan.ts';
+import type { ScheduledTask, ScheduledTaskParams } from './scheduleFlowPlan.ts';
+import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from './scheduleFlowResult.ts';
+import type {
+  FightReportResult,
+  FlowExecutionSummary,
+  FlowTaskError,
+  FlowTaskSkip,
+  FlowTaskSummary,
+  ScheduleStepAction
+} from './scheduleFlowResult.ts';
 import { getEnabledAwardItems, parseAwardExecutionActions } from './awardResultService.ts';
 import { parseRecruitExecutionAction } from './recruitResultService.ts';
 import { parseInfrastExecutionAction } from './infrastResultService.ts';
 import { parseMallExecutionAction } from './mallResultService.ts';
 import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.ts';
+import type { FightExecutionAction } from './fightResultService.ts';
+import type { MaaLogCheckpoint } from './maaLogFileService.ts';
+import type { MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
+import type { DropRecordInput } from './dropRecordService.ts';
+import type { StageOpenState, TaskCompletionInfo } from './notificationService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 import { createLogger } from '../utils/logger.ts';
 
-const REQUIRED_PORTS = [
+/**
+ * 流程执行器
+ *
+ * 类型边界：
+ * - 步骤结论是 `success`/`failed`/`skipped` 的有穷联合；执行被终止时进度记
+ *   `stopped`，不会把取消伪装成失败；
+ * - 日志检查点是 `MaaLogCheckpoint | null`，执行后只读取检查点之后的新增日志，
+ *   旧任务日志不进入当前结果；
+ * - 设备命令、通知、掉落记录与养成回写全部经端口注入，执行规则本身不直接
+ *   读写设备、用户配置或通知实现；
+ * - 同一进程只创建一个实例，异步流程只有一个执行所有者。
+ */
+
+/** 执行只需要连接地址与 ADB 路径；profile 解析仍由连接服务负责。 */
+export interface ScheduleConnection {
+  adbPath: string;
+  address: string;
+}
+
+/** 命令输出：流程只读取 stdout/stderr 文本。 */
+export interface ScheduleCommandOutput {
+  stdout: string;
+  stderr: string;
+}
+
+export interface ScheduleAdbTestResult {
+  success: boolean;
+  message?: string;
+}
+
+export interface ScheduleGameClientState {
+  running: boolean;
+  foregroundPackage?: string | null;
+}
+
+export interface ScheduleCapturedScreen {
+  image: string;
+}
+
+/** 仓库识别结果：流程只读取成功标志与条目数。 */
+export interface ScheduleDepotParseResult {
+  success: boolean;
+  itemCount?: number;
+}
+
+export interface ScheduleStageOpenState {
+  isOpen: boolean;
+  reason?: string | null;
+}
+
+/**
+ * 流程执行端口：设备命令、日志检查点、通知与存储适配集中在组装处接线。
+ * 端口签名只描述执行器实际读取的字段；测试可传入假端口验证步骤结果，
+ * 不需要 MAA CLI、ADB 或真实数据目录。
+ */
+export interface ScheduleExecutionPorts {
+  executeCommand(
+    command: string,
+    args: readonly string[],
+    taskName: string | null,
+    taskType: string | null,
+    waitForCompletion: boolean
+  ): Promise<ScheduleCommandOutput>;
+  executeDynamicTask(
+    taskId: string,
+    taskConfig: string,
+    taskName: string | null,
+    taskType: string | null,
+    waitForCompletion: boolean
+  ): Promise<ScheduleCommandOutput>;
+  createLogCheckpoint(): Promise<MaaLogCheckpoint | null>;
+  readLogSince(checkpoint: MaaLogCheckpoint | null): Promise<string>;
+  resolveConnection(): Promise<ScheduleConnection>;
+  testConnection(adbPath: string, address: string): Promise<ScheduleAdbTestResult>;
+  getGameClientState(adbPath: string, address: string, clientType: string): Promise<ScheduleGameClientState>;
+  captureScreen(adbPath: string, address: string): Promise<ScheduleCapturedScreen>;
+  replaceActivityCode(stage: string, clientType: string): Promise<string>;
+  isStageOpenToday(stage: string): ScheduleStageOpenState;
+  shouldCaptureNotificationScreenshot(): boolean;
+  sendCompletionNotification(info: TaskCompletionInfo): Promise<unknown>;
+  recordDrops(input: DropRecordInput): Promise<unknown>;
+  parseDepotData(): Promise<ScheduleDepotParseResult | null>;
+  refreshSmartTrainingStages(scheduleId: string): Promise<unknown>;
+  withExecutionLease<T>(request: MaaExecutionLeaseRequest, run: () => Promise<T>): Promise<T>;
+}
+
+export interface ScheduleFlowLogger {
+  info(message: string, data?: unknown): unknown;
+  warn(message: string, data?: unknown): unknown;
+  error(message: string, data?: unknown): unknown;
+  debug(message: string, data?: unknown): unknown;
+  success(message: string, data?: unknown): unknown;
+}
+
+/** 执行前后门禁：onBeforeStart 在取得租约后、第一步之前运行。 */
+export interface ScheduleFlowLifecycle {
+  onBeforeStart?(): unknown;
+  onStarted?(): unknown;
+}
+
+export interface ScheduleFlowExecutionOptions {
+  /** Run 身份来自调用方；非字符串或空串按未关联处理。 */
+  runId?: unknown;
+}
+
+/** 轮询投影：进度、当前步骤与最近一次汇总，不携带设备句柄。 */
+export interface ScheduleExecutionStatus {
+  isRunning: boolean;
+  scheduleId: string | null;
+  runId: string | null;
+  currentStep: number;
+  totalSteps: number;
+  currentTask: string | null;
+  currentTaskId: string | null;
+  message: string;
+  startTime: number | null;
+  shouldStop: boolean;
+  lastResult: FlowExecutionSummary | null;
+  taskResults: ScheduleTaskProgressResult[];
+}
+
+/** 拒绝执行的原因保留 busy/owner，供 HTTP 映射 409 与外部占用提示。 */
+export interface ScheduleFlowRejectedResult {
+  success: false;
+  message: string;
+  busy?: boolean;
+  owner?: unknown;
+}
+
+/** 正常完成或被用户终止；两者都由实际执行收尾。 */
+export interface ScheduleFlowCompletedResult {
+  success: true;
+  stopped: boolean;
+  message: string;
+  summary: FlowExecutionSummary;
+}
+
+export type ScheduleFlowExecutionResult = ScheduleFlowRejectedResult | ScheduleFlowCompletedResult;
+
+export interface ScheduleFlowExecutor {
+  execute(
+    taskFlow: unknown,
+    scheduleId: string,
+    lifecycle?: ScheduleFlowLifecycle,
+    options?: ScheduleFlowExecutionOptions
+  ): Promise<ScheduleFlowExecutionResult>;
+  getStatus(): ScheduleExecutionStatus;
+  stop(): boolean;
+}
+
+export interface ScheduleFlowExecutorOptions {
+  /** 端口缺省时仍按名称逐个校验，缺端口在构造期报错。 */
+  ports?: Partial<ScheduleExecutionPorts>;
+  logger?: ScheduleFlowLogger;
+}
+
+const REQUIRED_PORTS: readonly (keyof ScheduleExecutionPorts)[] = [
   'executeCommand',
   'executeDynamicTask',
   'createLogCheckpoint',
@@ -28,20 +199,39 @@ const REQUIRED_PORTS = [
   'withExecutionLease'
 ];
 
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function errorFieldOf(error: unknown, key: string): unknown {
+  return error && typeof error === 'object' ? (error as Record<string, unknown>)[key] : undefined;
+}
+
+/** 错误对象上的命令输出按文本读取；非对象错误没有输出。 */
+function errorOutputOf(error: unknown): string {
+  return String(errorFieldOf(error, 'stdout') || '') + String(errorFieldOf(error, 'stderr') || '');
+}
+
+/** 失败任务的配置关卡：第一段关卡对象的 stage 优先，其次单关卡 stage。 */
+function configuredStageOf(params: ScheduledTaskParams | undefined): string {
+  const first = params?.stages?.[0];
+  const stage = first && typeof first === 'object' ? first.stage : undefined;
+  return String(stage || params?.stage || '');
+}
+
 /**
  * 创建流程执行器。每个实例独占一份执行状态、停止信号和任务进度，
  * 同一进程只应在组装处创建一个实例，保证异步流程只有一个执行所有者。
- *
- * 设备命令、日志检查点、通知发送、掉落记录与智能养成回写全部通过 ports 注入；
- * 执行规则本身不直接读写设备、用户配置或通知实现。
  */
-export function createScheduleFlowExecutor({ ports, logger = createLogger('Scheduler') } = {}) {
+export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions = {}): ScheduleFlowExecutor {
+  const { ports, logger = createLogger('Scheduler') } = options;
   for (const name of REQUIRED_PORTS) {
     if (typeof ports?.[name] !== 'function') {
       throw new TypeError(`createScheduleFlowExecutor 缺少执行端口: ${name}`);
     }
   }
 
+  // 端口名已逐个验证为函数；此处按完整契约读取，缺省实现由组装处提供。
   const {
     executeCommand,
     executeDynamicTask,
@@ -59,10 +249,10 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
     parseDepotData,
     refreshSmartTrainingStages,
     withExecutionLease
-  } = ports;
+  } = ports as ScheduleExecutionPorts;
 
   // 定时任务执行状态
-  const executionStatus = {
+  const executionStatus: ScheduleExecutionStatus = {
     isRunning: false,
     scheduleId: null,
     runId: null,
@@ -77,18 +267,18 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
     taskResults: []
   };
 
-  let cancelActiveDelay = null;
-  let activeAbortController = null;
-  let activeExecutionToken = null;
-  let activeTaskProgress = null;
+  let cancelActiveDelay: (() => void) | null = null;
+  let activeAbortController: AbortController | null = null;
+  let activeExecutionToken: symbol | null = null;
+  let activeTaskProgress: ScheduleTaskProgress | null = null;
 
-  function waitForDelay(delayMs) {
+  function waitForDelay(delayMs: number): Promise<boolean> {
     return new Promise((resolve) => {
       let settled = false;
-      let timeoutId = null;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
       const signal = activeAbortController?.signal;
 
-      const finish = (completed) => {
+      const finish = (completed: boolean) => {
         if (settled) return;
         settled = true;
         if (timeoutId) clearTimeout(timeoutId);
@@ -109,14 +299,14 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
   /**
    * 获取定时任务执行状态
    */
-  function getStatus() {
+  function getStatus(): ScheduleExecutionStatus {
     return { ...executionStatus };
   }
 
   /**
    * 停止当前正在执行的任务流程
    */
-  function stop() {
+  function stop(): boolean {
     if (executionStatus.isRunning) {
       logger.warn('设置停止标志，正在终止任务流程');
       updateStatus({
@@ -133,13 +323,13 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
   /**
    * 更新定时任务执行状态
    */
-  function updateStatus(updates) {
+  function updateStatus(updates: Partial<ScheduleExecutionStatus>) {
     Object.assign(executionStatus, updates);
     logger.debug('定时任务状态更新', executionStatus);
   }
 
-  async function recordFightDrops(summary, scheduleId) {
-    if (!summary?.stage || !Array.isArray(summary.dropItems) || summary.dropItems.length === 0) return;
+  async function recordFightDrops(summary: FlowTaskSummary | null, scheduleId: string) {
+    if (!summary || !summary.stage || !Array.isArray(summary.dropItems) || summary.dropItems.length === 0) return;
 
     try {
       const times = Math.max(1, Number(summary.times) || 1);
@@ -153,12 +343,18 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
       });
       logger.debug('掉落记录已保存', { scheduleId, stage: summary.stage });
     } catch (error) {
-      logger.error('掉落记录保存失败', { scheduleId, error: error.message });
+      logger.error('掉落记录保存失败', { scheduleId, error: errorMessageOf(error) });
     }
   }
 
   // 执行任务流程
-  async function runTaskFlow(taskFlow, scheduleId, executionToken, lifecycle = {}, runId = null) {
+  async function runTaskFlow(
+    taskFlow: unknown,
+    scheduleId: string,
+    executionToken: symbol,
+    lifecycle: ScheduleFlowLifecycle = {},
+    runId: string | null = null
+  ): Promise<ScheduleFlowExecutionResult> {
     if (!Array.isArray(taskFlow)) {
       return { success: false, message: '任务流程格式无效' };
     }
@@ -174,9 +370,12 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
     const validation = validateScheduledTaskFlow(taskFlow);
     if (!validation.success) return validation;
 
+    const tasks = taskFlow as ScheduledTask[];
+
     logger.info('开始执行任务流程', { scheduleId, runId });
     activeExecutionToken = executionToken;
-    activeAbortController = new AbortController();
+    const abortController = new AbortController();
+    activeAbortController = abortController;
 
     // 更新状态：开始执行
     updateStatus({
@@ -184,7 +383,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
       scheduleId,
       runId,
       currentStep: -1,
-      totalSteps: taskFlow.filter(t => t.enabled).length,
+      totalSteps: tasks.filter(t => t.enabled).length,
       currentTask: null,
       currentTaskId: null,
       message: '开始执行任务流程',
@@ -200,34 +399,37 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
     lifecycle.onStarted?.();
 
     const startTime = Date.now();
-    const enabledTasks = taskFlow.filter(t => t.enabled);
+    const enabledTasks = tasks.filter(t => t.enabled);
     let successCount = 0;
     let failedCount = 0;
     let skippedCount = 0;
-    const errors = [];
-    const skipped = [];
-    const taskSummaries = []; // 收集任务总结信息
-    const reportResults = [];
-    const executionWarnings = new Set();
-    const actionResults = [];
-    const addFightAction = (action) => {
+    const errors: FlowTaskError[] = [];
+    const skipped: FlowTaskSkip[] = [];
+    const taskSummaries: FlowTaskSummary[] = []; // 收集任务总结信息
+    const reportResults: FightReportResult[] = [];
+    const executionWarnings = new Set<string>();
+    const actionResults: ScheduleStepAction[] = [];
+    // 作战动作单独保留引用，多关卡计数只统计本任务新增的作战结论。
+    const fightActions: FightExecutionAction[] = [];
+    const addFightAction = (action: FightExecutionAction) => {
       actionResults.push(action);
+      fightActions.push(action);
       if (action.status === 'failed') {
         errors.push({ task: action.task, error: action.message });
       } else if (action.status === 'skipped') {
         skipped.push({ task: action.task, reason: action.message });
       }
     };
-    const countFightTaskResult = (actions) => {
+    const countFightTaskResult = (actions: FightExecutionAction[]) => {
       if (actions.some(action => action.status === 'failed')) failedCount++;
       else if (actions.some(action => action.status === 'success')) successCount++;
       else skippedCount++;
     };
-    let screenshot = null;
+    let screenshot: string | null = null;
     const taskProgress = createScheduleTaskProgress(
       enabledTasks,
       () => ({ successCount, failedCount, skippedCount }),
-      taskResults => updateStatus({ taskResults })
+      results => updateStatus({ taskResults: results })
     );
     activeTaskProgress = taskProgress;
     const sharedConnection = await resolveConnection();
@@ -279,13 +481,13 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
           }
 
           const logCheckpoint = await createLogCheckpoint();
-          let result;
+          let result: ScheduleCommandOutput;
 
           if (taskConfig) {
             const taskId = params;
             result = await executeDynamicTask(taskId, taskConfig, task.name, null, true);
           } else {
-            let args = params ? params.split(' ').filter(arg => arg) : [];
+            const args = params ? params.split(' ').filter(arg => arg) : [];
             result = await executeCommand(command, args, task.name, null, true);
           }
 
@@ -312,7 +514,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
               screenshot = screenshotResult.image;
               logger.success('通知截图成功', { scheduleId });
             } catch (error) {
-              logger.error('通知截图失败', { scheduleId, error: error.message });
+              logger.error('通知截图失败', { scheduleId, error: errorMessageOf(error) });
             }
           }
 
@@ -321,17 +523,17 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
           continue;
         } catch (error) {
           failedCount++;
-          errors.push({ task: task.name, error: error.message });
+          errors.push({ task: task.name, error: errorMessageOf(error) });
           actionResults.push({
             task: task.name,
             action: 'award',
             status: 'failed',
-            message: `领取奖励失败：${error.message}`
+            message: `领取奖励失败：${errorMessageOf(error)}`
           });
           logger.error('任务执行失败', {
             scheduleId,
             taskName: task.name,
-            error: error.message
+            error: errorMessageOf(error)
           });
           continue;
         }
@@ -392,13 +594,13 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
           } catch (depotError) {
             logger.error('仓库识别失败', {
               scheduleId,
-              error: depotError.message
+              error: errorMessageOf(depotError)
             });
             actionResults.push({
               task: task.name,
               action: 'depot',
               status: 'failed',
-              message: `关闭前仓库识别失败：${depotError.message}`
+              message: `关闭前仓库识别失败：${errorMessageOf(depotError)}`
             });
             // 即使识别失败也继续执行后续任务
           }
@@ -409,13 +611,13 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         } catch (error) {
           logger.error('仓库识别异常', {
             scheduleId,
-            error: error.message
+            error: errorMessageOf(error)
           });
           actionResults.push({
             task: task.name,
             action: 'depot',
             status: 'failed',
-            message: `关闭前仓库识别异常：${error.message}`
+            message: `关闭前仓库识别异常：${errorMessageOf(error)}`
           });
           // 即使识别失败也继续
         }
@@ -454,7 +656,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
             }
 
             const { command, params } = buildScheduledTaskCommand(task, adbConfig);
-            let args = params ? params.split(' ').filter(arg => arg) : [];
+            const args = params ? params.split(' ').filter(arg => arg) : [];
             await executeCommand(command, args, task.name, null, true);
 
             logger.info('启动游戏命令执行完成', { scheduleId });
@@ -485,7 +687,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
             } catch (error) {
               logger.error('游戏可能已闪退', {
                 scheduleId,
-                error: error.message
+                error: errorMessageOf(error)
               });
               retryCount++;
               if (retryCount > maxRetries) {
@@ -495,17 +697,17 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
           } catch (error) {
             if (retryCount >= maxRetries) {
               failedCount++;
-              errors.push({ task: task.name, error: error.message });
+              errors.push({ task: task.name, error: errorMessageOf(error) });
               actionResults.push({
                 task: task.name,
                 action: 'startup',
                 status: 'failed',
-                message: error.message
+                message: errorMessageOf(error)
               });
               logger.error('任务执行失败', {
                 scheduleId,
                 taskName: task.name,
-                error: error.message
+                error: errorMessageOf(error)
               });
               break;
             }
@@ -521,7 +723,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         try {
           const { command, params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
           const logCheckpoint = await createLogCheckpoint();
-          let result;
+          let result: ScheduleCommandOutput;
 
           if (taskConfig) {
             result = await executeDynamicTask(params, taskConfig, task.name, null, true);
@@ -558,21 +760,22 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         } catch (error) {
           if (executionStatus.shouldStop) break;
           failedCount++;
-          errors.push({ task: task.name, error: error.message });
+          errors.push({ task: task.name, error: errorMessageOf(error) });
           actionResults.push({
             task: task.name,
             action: 'recruit',
             status: 'failed',
-            message: `自动公招失败：${error.message}`
+            message: `自动公招失败：${errorMessageOf(error)}`
           });
-          logger.error('自动公招执行失败', { scheduleId, taskName: task.name, error: error.message });
+          logger.error('自动公招执行失败', { scheduleId, taskName: task.name, error: errorMessageOf(error) });
           continue;
         }
       }
 
       if (commandId === 'infrast') {
         try {
-          if (!Array.isArray(task.params?.facility) || task.params.facility.length === 0) {
+          const facility = task.params?.facility;
+          if (!Array.isArray(facility) || facility.length === 0) {
             const infrastAction = parseInfrastExecutionAction(task.name, task.params);
             skippedCount++;
             skipped.push({ task: task.name, reason: infrastAction.message });
@@ -582,7 +785,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
 
           const { command, params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
           const logCheckpoint = await createLogCheckpoint();
-          let result;
+          let result: ScheduleCommandOutput;
 
           if (taskConfig) {
             result = await executeDynamicTask(params, taskConfig, task.name, null, true);
@@ -619,14 +822,14 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         } catch (error) {
           if (executionStatus.shouldStop) break;
           failedCount++;
-          errors.push({ task: task.name, error: error.message });
+          errors.push({ task: task.name, error: errorMessageOf(error) });
           actionResults.push({
             task: task.name,
             action: 'infrast',
             status: 'failed',
-            message: `基建任务失败：${error.message}`
+            message: `基建任务失败：${errorMessageOf(error)}`
           });
-          logger.error('基建任务执行失败', { scheduleId, taskName: task.name, error: error.message });
+          logger.error('基建任务执行失败', { scheduleId, taskName: task.name, error: errorMessageOf(error) });
           continue;
         }
       }
@@ -645,7 +848,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
 
           const { command, params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
           const logCheckpoint = await createLogCheckpoint();
-          let result;
+          let result: ScheduleCommandOutput;
 
           if (taskConfig) {
             result = await executeDynamicTask(params, taskConfig, task.name, null, true);
@@ -682,14 +885,14 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         } catch (error) {
           if (executionStatus.shouldStop) break;
           failedCount++;
-          errors.push({ task: task.name, error: error.message });
+          errors.push({ task: task.name, error: errorMessageOf(error) });
           actionResults.push({
             task: task.name,
             action: 'mall',
             status: 'failed',
-            message: `信用收支失败：${error.message}`
+            message: `信用收支失败：${errorMessageOf(error)}`
           });
-          logger.error('信用收支执行失败', { scheduleId, taskName: task.name, error: error.message });
+          logger.error('信用收支执行失败', { scheduleId, taskName: task.name, error: errorMessageOf(error) });
           continue;
         }
       }
@@ -710,7 +913,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
             }
           }
         } else {
-          let args = params ? params.split(' ').filter(arg => arg) : [];
+          const args = params ? params.split(' ').filter(arg => arg) : [];
 
           // 如果是 fight 命令，处理多个关卡
           if (command === 'fight' && args.length > 0) {
@@ -734,10 +937,10 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
               });
 
               let sanityDepleted = false;
-              const fightActionStartIndex = actionResults.length;
+              const fightActionStartIndex = fightActions.length;
 
               for (let i = 0; i < stageEntries.length; i++) {
-                if (executionStatus.shouldStop || activeAbortController.signal.aborted) {
+                if (executionStatus.shouldStop || abortController.signal.aborted) {
                   logger.warn('多关卡任务收到停止信号，不再进入下一关', { scheduleId });
                   break;
                 }
@@ -785,14 +988,14 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
                 }
 
                 // 构建当前关卡的参数（移除第一个参数，添加当前关卡和次数）
-                const currentArgs = [realStage];
+                const currentArgs: string[] = [realStage];
                 if (times) {
                   currentArgs.push('--times', times);
                 }
 
                 // 添加其他参数（理智药、源石等）
                 // 如果填了次数，排除 --series 参数；否则保留所有参数
-                let otherArgs;
+                let otherArgs: string[];
                 if (times) {
                   // 填了次数，过滤掉 --series
                   otherArgs = args.slice(1).filter((arg, index, arr) => {
@@ -807,7 +1010,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
                 // 执行命令
                 try {
                   const result = await executeCommand(command, currentArgs, `${task.name} (${stage})`, null, true);
-                  if (executionStatus.shouldStop || activeAbortController.signal.aborted) break;
+                  if (executionStatus.shouldStop || abortController.signal.aborted) break;
                   const reportSummary = getFightReportResults(task, stage, result);
                   reportResults.push(...reportSummary.reportResults);
                   reportSummary.diagnostics.forEach(diagnostic => executionWarnings.add(diagnostic.message));
@@ -844,12 +1047,12 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
                     output
                   }));
                 } catch (error) {
-                  if (executionStatus.shouldStop || activeAbortController.signal.aborted) {
+                  if (executionStatus.shouldStop || abortController.signal.aborted) {
                     logger.warn('当前关卡已被终止，不再执行后续关卡', { scheduleId, stage });
                     break;
                   }
-                  const errorMsg = error.message || '';
-                  const errorOutput = (error.stdout || '') + (error.stderr || '');
+                  const errorMsg = errorMessageOf(error);
+                  const errorOutput = errorOutputOf(error);
 
                   logger.debug('任务执行出错，检查是否理智不足', {
                     scheduleId,
@@ -880,10 +1083,10 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
                 }
               }
 
-              countFightTaskResult(actionResults.slice(fightActionStartIndex));
+              countFightTaskResult(fightActions.slice(fightActionStartIndex));
 
               // 所有关卡完成后的延迟
-              let delayTime = 2000;
+              const delayTime = 2000;
               logger.debug('任务完成，等待后继续', {
                 scheduleId,
                 taskName: task.name,
@@ -967,7 +1170,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
           }
 
           // 尝试从输出中提取任务总结
-          let parsedTaskSummary = null;
+          let parsedTaskSummary: FlowTaskSummary | null = null;
           if (result.stdout) {
             parsedTaskSummary = parseTaskSummary(task.name, result.stdout, logger);
             if (parsedTaskSummary) {
@@ -1015,9 +1218,9 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         }
 
         failedCount++;
-        errors.push({ task: task.name, error: error.message });
+        errors.push({ task: task.name, error: errorMessageOf(error) });
         if (commandId === 'fight') {
-          const configuredStage = task.params?.stages?.[0]?.stage || task.params?.stage || '';
+          const configuredStage = configuredStageOf(task.params);
           const action = createFightExecutionAction(task.name, configuredStage, { error });
           actionResults.push(action);
           if (action.status === 'skipped') {
@@ -1032,13 +1235,13 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
             task: task.name,
             action: 'closedown',
             status: 'failed',
-            message: `关闭游戏失败：${error.message}`
+            message: `关闭游戏失败：${errorMessageOf(error)}`
           });
         }
         logger.error('任务执行失败', {
           scheduleId,
           taskName: task.name,
-          error: error.message
+          error: errorMessageOf(error)
         });
         // 继续执行下一个任务
       }
@@ -1093,7 +1296,7 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
     } catch (error) {
       logger.error('动态更新智能养成关卡失败', {
         scheduleId,
-        error: error.message
+        error: errorMessageOf(error)
       });
     }
 
@@ -1117,17 +1320,22 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
     } catch (error) {
       logger.error('发送通知失败', {
         scheduleId,
-        error: error.message
+        error: errorMessageOf(error)
       });
     }
 
     return { success: true, stopped: false, message: completionMessage, summary: executionSummary };
   }
 
-  async function executeTaskFlow(taskFlow, scheduleId, lifecycle = {}, options = {}) {
+  async function executeTaskFlow(
+    taskFlow: unknown,
+    scheduleId: string,
+    lifecycle: ScheduleFlowLifecycle = {},
+    options: ScheduleFlowExecutionOptions = {}
+  ): Promise<ScheduleFlowExecutionResult> {
     const executionToken = Symbol(scheduleId);
     const runId = typeof options.runId === 'string' && options.runId.trim() ? options.runId : null;
-    let unexpectedError = null;
+    let unexpectedError: unknown = null;
     try {
       return await withExecutionLease({
         source: 'schedule',
@@ -1135,16 +1343,19 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         command: 'schedule'
       }, () => runTaskFlow(taskFlow, scheduleId, executionToken, lifecycle, runId));
     } catch (error) {
-      if (error?.code === 'MAA_EXECUTION_BUSY') {
-        logger.warn('设备正被其他 MAA 任务占用，跳过任务流程', { scheduleId, owner: error.owner });
+      if (errorFieldOf(error, 'code') === 'MAA_EXECUTION_BUSY') {
+        logger.warn('设备正被其他 MAA 任务占用，跳过任务流程', {
+          scheduleId,
+          owner: errorFieldOf(error, 'owner')
+        });
         return {
           success: false,
-          message: error.message,
+          message: errorMessageOf(error),
           busy: true,
-          owner: error.owner
+          owner: errorFieldOf(error, 'owner')
         };
       }
-      if (error?.stopped) {
+      if (errorFieldOf(error, 'stopped')) {
         updateStatus({ shouldStop: true });
       } else {
         unexpectedError = error;
@@ -1159,13 +1370,13 @@ export function createScheduleFlowExecutor({ ports, logger = createLogger('Sched
         const wasStopped = executionStatus.shouldStop;
         const message = wasStopped
           ? '任务流程已被用户终止'
-          : `任务流程异常终止${unexpectedError?.message ? `: ${unexpectedError.message}` : ''}`;
+          : `任务流程异常终止${unexpectedError ? `: ${errorMessageOf(unexpectedError)}` : ''}`;
 
         logger.error('任务流程未正常收尾，已复位执行状态', {
           scheduleId,
           runId,
           stopped: wasStopped,
-          error: unexpectedError?.message || null
+          error: unexpectedError ? errorMessageOf(unexpectedError) : null
         });
         updateStatus({
           isRunning: false,

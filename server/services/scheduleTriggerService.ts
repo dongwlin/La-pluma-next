@@ -6,9 +6,15 @@ import { updateMaaResources } from './resourceUpdateService.js';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 import { createLogger } from '../utils/logger.ts';
+import type { ScheduledTask } from './scheduleFlowPlan.ts';
 
 // 定时触发源：cron 注册、替换、停止与自动更新作业。触发回调只调用注入的
 // 执行入口，不持有流程状态；流程执行规则由 scheduleFlowExecution 负责。
+//
+// 类型边界：
+// - cron 实现与时钟可注入，注册表只依赖 `createTask`/`schedule` 与 start/stop/destroy；
+// - 注册对象在安装时快照任务流程与配置，后续请求体变动不影响已登记触发；
+// - `stopAll` 的摘要是有穷结构；重复关闭返回同一对象。
 
 const execAsync = promisify(exec);
 const logger = createLogger('Scheduler');
@@ -19,13 +25,170 @@ const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 const SCHEDULE_TRIGGER_TIMEZONE = 'Asia/Shanghai';
 const AUTO_UPDATE_SCHEDULE_ID = 'auto-update';
 
-function normalizeScheduleTimes(times) {
+/** 自动更新配置：缺省字段按未启用处理，扩展字段随注册快照保留。 */
+export interface AutoUpdateConfig {
+  enabled?: boolean;
+  time?: string;
+  updateCore?: boolean;
+  updateCli?: boolean;
+  [extension: string]: unknown;
+}
+
+/** cron 任务的最小能力；node-cron v4 与兼容实现都满足。 */
+export interface CronTaskLike {
+  start?(): void;
+  stop?(): void;
+  destroy?(): void;
+}
+
+/** 注入的 cron 实现：优先 createTask（只登记不启动），兼容仅暴露 schedule 的实现。 */
+export interface CronImplLike {
+  createTask?(expression: string, callback: () => void, options: { timezone: string }): CronTaskLike;
+  schedule?(expression: string, callback: () => void, options: { timezone: string; scheduled: boolean }): CronTaskLike;
+}
+
+export interface ScheduleTriggerLogger {
+  info(message: string, data?: unknown): unknown;
+  warn(message: string, data?: unknown): unknown;
+  error(message: string, data?: unknown): unknown;
+  debug(message: string, data?: unknown): unknown;
+}
+
+export type ScheduleRegistrationKind = 'schedule' | 'auto-update';
+
+export interface ScheduleSetupResult {
+  success: boolean;
+  message: string;
+  times?: string[];
+}
+
+export interface AutoUpdateSetupResult {
+  success: boolean;
+  message: string;
+  config?: AutoUpdateConfig;
+}
+
+export interface ScheduleRegistrationStatus {
+  scheduleId: string;
+  times: string[];
+  count: number;
+}
+
+export interface ScheduleTriggerCounters {
+  triggered: number;
+  skippedDraining: number;
+  skippedStale: number;
+}
+
+export interface ScheduleTriggerStopEntry {
+  scheduleId: string;
+  kind: ScheduleRegistrationKind;
+  times: string[];
+  count: number;
+}
+
+export interface ScheduleTriggerDestroyError {
+  time: string;
+  error: string;
+}
+
+export interface ScheduleTriggerStopError {
+  scheduleId: string;
+  errors: ScheduleTriggerDestroyError[];
+}
+
+export interface ScheduleTriggerStopSummary {
+  reason: string;
+  ok: boolean;
+  stoppedAt: number;
+  durationMs: number;
+  stopped: ScheduleTriggerStopEntry[];
+  errors?: ScheduleTriggerStopError[];
+}
+
+export interface ScheduleRegistrationDescription extends ScheduleRegistrationStatus {
+  kind: ScheduleRegistrationKind;
+  registeredAt: number;
+}
+
+export interface ScheduleTriggerDescription {
+  closed: boolean;
+  draining: boolean;
+  counters: ScheduleTriggerCounters;
+  registrations: ScheduleRegistrationDescription[];
+  closeSummary: ScheduleTriggerStopSummary | null;
+}
+
+/** 生命周期步骤只要求名称与关闭函数；具体生命周期实现可携带更多字段。 */
+export interface ScheduleTriggerLifecycleStep {
+  name: string;
+  close?: () => unknown;
+}
+
+export interface ScheduleTriggerLifecycle {
+  register(step: ScheduleTriggerLifecycleStep): unknown;
+  isDraining?(): boolean;
+}
+
+export interface ScheduleTriggerRuntimeOptions {
+  cronImpl?: CronImplLike;
+  now?: () => number;
+  runtimeLogger?: ScheduleTriggerLogger;
+  runScheduleFlow?: (taskFlow: ScheduledTask[] | null, scheduleId: string) => unknown;
+  runAutoUpdate?: (config: AutoUpdateConfig) => unknown;
+  isDraining?: () => unknown;
+}
+
+export interface ScheduleTriggerRuntime {
+  setupSchedule(scheduleId: string, times: unknown, taskFlow: unknown): ScheduleSetupResult;
+  setupAutoUpdate(config?: AutoUpdateConfig): AutoUpdateSetupResult;
+  stopSchedule(scheduleId: string): ScheduleSetupResult;
+  stopAll(reason?: string): ScheduleTriggerStopSummary;
+  getStatus(): ScheduleRegistrationStatus[];
+  getAutoUpdateStatus(): { enabled: boolean; time: string | null };
+  describe(): ScheduleTriggerDescription;
+  setDrainPredicate(predicate: unknown): void;
+}
+
+interface ScheduleRegistration {
+  scheduleId: string;
+  kind: ScheduleRegistrationKind;
+  times: string[];
+  taskFlow: ScheduledTask[] | null;
+  config: AutoUpdateConfig | null;
+  jobs: Array<{ time: string; job: CronTaskLike }>;
+  registeredAt: number;
+  destroyed: boolean;
+}
+
+interface PreparedJob {
+  time: string;
+  job: CronTaskLike;
+}
+
+interface JobFailure {
+  time: string;
+  error: string;
+}
+
+interface BuildRegistrationInput {
+  scheduleId: string;
+  kind: ScheduleRegistrationKind;
+  times: string[];
+  taskFlow?: ScheduledTask[] | null;
+  config?: AutoUpdateConfig | null;
+  makeRun: (registration: ScheduleRegistration, time: string, triggerScheduleId: string) => unknown;
+}
+
+const SCHEDULE_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+function normalizeScheduleTimes(times: unknown): string[] {
   return Array.isArray(times)
-    ? [...new Set(times.filter(time => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)))]
+    ? [...new Set(times.filter((time): time is string => SCHEDULE_TIME_PATTERN.test(String(time))))]
     : [];
 }
 
-function cronExpressionForTime(time) {
+function cronExpressionForTime(time: string): string {
   const [hour, minute] = String(time).split(':');
   return `${minute} ${hour} * * *`;
 }
@@ -33,7 +196,7 @@ function cronExpressionForTime(time) {
 /**
  * 执行一次自动更新。抽成独立函数供触发源注册表调用，注册本身不包含执行。
  */
-export async function runAutoUpdateJob(config = {}) {
+export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<void> {
   const { time, updateCore, updateCli } = config;
 
   logger.info('自动更新触发执行', { time });
@@ -64,13 +227,13 @@ export async function runAutoUpdateJob(config = {}) {
             await execAsync(`${MAA_CLI_PATH} self update`);
             logger.success('MAA CLI 更新完成', { environment: 'Docker', persistent: true });
           } catch (error) {
-            logger.error('MAA CLI 更新失败', { error: error.message });
+            logger.error('MAA CLI 更新失败', { error: errorMessageOf(error) });
           }
         } else {
           // 根据操作系统选择更新方式
           const os = await import('os');
           const platform = os.platform();
-          let command;
+          let command: string;
 
           if (platform === 'darwin') {
             command = 'brew upgrade maa-cli';
@@ -88,8 +251,12 @@ export async function runAutoUpdateJob(config = {}) {
       logger.success('所有自动更新任务完成');
     });
   } catch (error) {
-    logger.error('自动更新失败', { error: error.message });
+    logger.error('自动更新失败', { error: errorMessageOf(error) });
   }
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -112,44 +279,44 @@ export function createScheduleTriggerRuntime({
   runScheduleFlow,
   runAutoUpdate = runAutoUpdateJob,
   isDraining = () => false
-} = {}) {
+}: ScheduleTriggerRuntimeOptions = {}): ScheduleTriggerRuntime {
   if (typeof runScheduleFlow !== 'function') {
     throw new TypeError('createScheduleTriggerRuntime 缺少 runScheduleFlow 执行端口');
   }
 
-  const registrations = new Map();
-  const counters = { triggered: 0, skippedDraining: 0, skippedStale: 0 };
-  let drainPredicate = isDraining;
+  const registrations = new Map<string, ScheduleRegistration>();
+  const counters: ScheduleTriggerCounters = { triggered: 0, skippedDraining: 0, skippedStale: 0 };
+  let drainPredicate: (() => unknown) | null = isDraining;
   let closed = false;
-  let closeSummary = null;
+  let closeSummary: ScheduleTriggerStopSummary | null = null;
 
-  function isRuntimeClosing() {
+  function isRuntimeClosing(): boolean {
     if (closed) return true;
     if (typeof drainPredicate !== 'function') return false;
     try {
       return Boolean(drainPredicate());
     } catch (error) {
       // 读不到关闭状态时按已关闭处理，避免关闭期间意外启动新执行。
-      runtimeLogger.error('读取运行时关闭状态失败，按关闭处理', { error: error.message });
+      runtimeLogger.error('读取运行时关闭状态失败，按关闭处理', { error: errorMessageOf(error) });
       return true;
     }
   }
 
-  function destroyJob(job, context) {
+  function destroyJob(job: CronTaskLike | undefined, context: { scheduleId: string; time: string }): string | null {
     try {
       if (typeof job?.destroy === 'function') job.destroy();
       else if (typeof job?.stop === 'function') job.stop();
       return null;
     } catch (error) {
-      runtimeLogger.error('定时任务销毁失败', { ...context, error: error.message });
-      return error.message;
+      runtimeLogger.error('定时任务销毁失败', { ...context, error: errorMessageOf(error) });
+      return errorMessageOf(error);
     }
   }
 
-  function destroyRegistration(registration) {
+  function destroyRegistration(registration: ScheduleRegistration | null): ScheduleTriggerDestroyError[] {
     if (!registration || registration.destroyed) return [];
     registration.destroyed = true;
-    const errors = [];
+    const errors: ScheduleTriggerDestroyError[] = [];
     for (const entry of registration.jobs) {
       const errorMessage = destroyJob(entry.job, { scheduleId: registration.scheduleId, time: entry.time });
       if (errorMessage) errors.push({ time: entry.time, error: errorMessage });
@@ -157,21 +324,26 @@ export function createScheduleTriggerRuntime({
     return errors;
   }
 
-  function createCronTask(expression, callback) {
+  function createCronTask(expression: string, callback: () => void): CronTaskLike {
     const options = { timezone: SCHEDULE_TRIGGER_TIMEZONE };
     if (typeof cronImpl.createTask === 'function') {
       // v4：createTask 只登记不启动，便于先构造后切换。
       return cronImpl.createTask(expression, callback, options);
     }
     // 兼容只暴露 schedule 的实现：先以 scheduled:false 创建，再统一启动。
-    return cronImpl.schedule(expression, callback, { ...options, scheduled: false });
+    return cronImpl.schedule!(expression, callback, { ...options, scheduled: false });
   }
 
-  function startJob(job) {
+  function startJob(job: CronTaskLike | undefined) {
     if (job && typeof job.start === 'function') job.start();
   }
 
-  function createTrigger(registration, time, triggerScheduleId, run) {
+  function createTrigger(
+    registration: ScheduleRegistration,
+    time: string,
+    triggerScheduleId: string,
+    run: () => unknown
+  ): () => void {
     return () => {
       if (isRuntimeClosing()) {
         counters.skippedDraining += 1;
@@ -192,7 +364,7 @@ export function createScheduleTriggerRuntime({
         return;
       }
       counters.triggered += 1;
-      let pending;
+      let pending: unknown;
       try {
         // 同步调用执行入口：准入与 Run 创建之间不插入 await，避免 draining 从中间插入。
         pending = run();
@@ -200,7 +372,7 @@ export function createScheduleTriggerRuntime({
         runtimeLogger.error('定时触发执行失败', {
           scheduleId: triggerScheduleId,
           time,
-          error: error.message
+          error: errorMessageOf(error)
         });
         return;
       }
@@ -208,14 +380,14 @@ export function createScheduleTriggerRuntime({
         runtimeLogger.error('定时触发执行失败', {
           scheduleId: triggerScheduleId,
           time,
-          error: error?.message || String(error)
+          error: errorMessageOf(error)
         });
       });
     };
   }
 
-  function buildRegistration({ scheduleId, kind, times, taskFlow = null, config = null, makeRun }) {
-    const registration = {
+  function buildRegistration({ scheduleId, kind, times, taskFlow = null, config = null, makeRun }: BuildRegistrationInput) {
+    const registration: ScheduleRegistration = {
       scheduleId,
       kind,
       times: [],
@@ -226,8 +398,8 @@ export function createScheduleTriggerRuntime({
       registeredAt: now(),
       destroyed: false
     };
-    const prepared = [];
-    const failures = [];
+    const prepared: PreparedJob[] = [];
+    const failures: JobFailure[] = [];
     times.forEach((time, index) => {
       const triggerScheduleId = kind === 'schedule' ? `${scheduleId}-${index}` : scheduleId;
       const run = () => makeRun(registration, time, triggerScheduleId);
@@ -238,11 +410,11 @@ export function createScheduleTriggerRuntime({
         );
         prepared.push({ time, job });
       } catch (error) {
-        failures.push({ time, error: error.message });
+        failures.push({ time, error: errorMessageOf(error) });
         runtimeLogger.error('定时任务设置失败', {
           scheduleId: triggerScheduleId,
           time,
-          error: error.message
+          error: errorMessageOf(error)
         });
       }
     });
@@ -253,19 +425,23 @@ export function createScheduleTriggerRuntime({
    * 启动新 job 并切换到新注册。新 job 启动失败时不销毁旧注册；切换后旧 job 的排队
    * 回调会因身份不匹配被丢弃。返回 null 表示没有任何 job 启动成功。
    */
-  function installRegistration({ registration, prepared, failures }) {
-    const started = [];
+  function installRegistration({
+    registration,
+    prepared,
+    failures
+  }: { registration: ScheduleRegistration; prepared: PreparedJob[]; failures: JobFailure[] }): ScheduleRegistration | null {
+    const started: PreparedJob[] = [];
     for (const entry of prepared) {
       try {
         startJob(entry.job);
         started.push(entry);
       } catch (error) {
-        failures.push({ time: entry.time, error: error.message });
+        failures.push({ time: entry.time, error: errorMessageOf(error) });
         destroyJob(entry.job, { scheduleId: registration.scheduleId, time: entry.time });
         runtimeLogger.error('定时任务启动失败', {
           scheduleId: registration.scheduleId,
           time: entry.time,
-          error: error.message
+          error: errorMessageOf(error)
         });
       }
     }
@@ -279,7 +455,7 @@ export function createScheduleTriggerRuntime({
     return registration;
   }
 
-  function setupSchedule(scheduleId, times, taskFlow) {
+  function setupSchedule(scheduleId: string, times: unknown, taskFlow: unknown): ScheduleSetupResult {
     if (!Array.isArray(taskFlow)) {
       return { success: false, message: '任务流程格式无效' };
     }
@@ -296,10 +472,10 @@ export function createScheduleTriggerRuntime({
       scheduleId,
       kind: 'schedule',
       times: normalizedTimes,
-      taskFlow,
+      taskFlow: taskFlow as ScheduledTask[],
       makeRun: (current, time, triggerScheduleId) => {
         runtimeLogger.info('定时任务触发执行', { scheduleId: triggerScheduleId, time });
-        return runScheduleFlow(current.taskFlow, triggerScheduleId);
+        return runScheduleFlow!(current.taskFlow, triggerScheduleId);
       }
     });
     const installed = installRegistration({ registration, prepared, failures });
@@ -323,7 +499,7 @@ export function createScheduleTriggerRuntime({
     };
   }
 
-  function setupAutoUpdate(config = {}) {
+  function setupAutoUpdate(config: AutoUpdateConfig = {}): AutoUpdateSetupResult {
     const { enabled, time } = config;
 
     // 显式禁用或缺少时间点表示停止自动更新；无效输入不清空既有有效注册。
@@ -349,7 +525,7 @@ export function createScheduleTriggerRuntime({
       kind: 'auto-update',
       times: [time],
       config,
-      makeRun: current => runAutoUpdate(current.config)
+      makeRun: current => runAutoUpdate(current.config || {})
     });
     const installed = installRegistration({ registration, prepared, failures });
     if (!installed) {
@@ -366,7 +542,7 @@ export function createScheduleTriggerRuntime({
     };
   }
 
-  function stopSchedule(scheduleId) {
+  function stopSchedule(scheduleId: string): ScheduleSetupResult {
     const registration = registrations.get(scheduleId);
     if (!registration) {
       // 重复停止是幂等的：目标状态已满足，返回与首次停止一致的成功结果。
@@ -386,12 +562,12 @@ export function createScheduleTriggerRuntime({
   /**
    * 停止并销毁全部触发源。关闭后不再接受注册；重复调用返回首次摘要。
    */
-  function stopAll(reason = 'shutdown') {
+  function stopAll(reason = 'shutdown'): ScheduleTriggerStopSummary {
     if (closeSummary) return closeSummary;
 
     const startedAt = now();
-    const stopped = [];
-    const errors = [];
+    const stopped: ScheduleTriggerStopEntry[] = [];
+    const errors: ScheduleTriggerStopError[] = [];
     for (const [scheduleId, registration] of [...registrations.entries()]) {
       registrations.delete(scheduleId);
       const destroyErrors = destroyRegistration(registration);
@@ -422,7 +598,7 @@ export function createScheduleTriggerRuntime({
     return closeSummary;
   }
 
-  function getStatus() {
+  function getStatus(): ScheduleRegistrationStatus[] {
     return [...registrations.values()].map(registration => ({
       scheduleId: registration.scheduleId,
       times: [...registration.times],
@@ -430,7 +606,7 @@ export function createScheduleTriggerRuntime({
     }));
   }
 
-  function getAutoUpdateStatus() {
+  function getAutoUpdateStatus(): { enabled: boolean; time: string | null } {
     const registration = registrations.get(AUTO_UPDATE_SCHEDULE_ID);
     if (registration && registration.jobs.length > 0) {
       return { enabled: true, time: registration.times[0] };
@@ -438,7 +614,7 @@ export function createScheduleTriggerRuntime({
     return { enabled: false, time: null };
   }
 
-  function describe() {
+  function describe(): ScheduleTriggerDescription {
     return {
       closed,
       draining: isRuntimeClosing(),
@@ -454,8 +630,8 @@ export function createScheduleTriggerRuntime({
     };
   }
 
-  function setDrainPredicate(predicate) {
-    drainPredicate = typeof predicate === 'function' ? predicate : () => false;
+  function setDrainPredicate(predicate: unknown) {
+    drainPredicate = typeof predicate === 'function' ? predicate as () => unknown : () => false;
   }
 
   return {
@@ -470,13 +646,16 @@ export function createScheduleTriggerRuntime({
   };
 }
 
-const attachedLifecycles = new WeakMap();
+const attachedLifecycles = new WeakMap<object, ScheduleTriggerRuntime>();
 
 /**
  * 把触发源注册表接入运行时生命周期：draining 后停止响应 cron 触发，关闭步骤停止并
  * 销毁全部 job。同一 lifecycle 重复接入不重复注册；同一 lifecycle 不能挂接两个注册表。
  */
-export function attachScheduleTriggersToLifecycle(lifecycle, runtime) {
+export function attachScheduleTriggersToLifecycle(
+  lifecycle: ScheduleTriggerLifecycle | null | undefined,
+  runtime: ScheduleTriggerRuntime
+): { attached: boolean; duplicate: boolean } {
   if (!lifecycle || typeof lifecycle.register !== 'function') {
     return { attached: false, duplicate: false };
   }

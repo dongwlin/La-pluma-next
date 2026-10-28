@@ -24,7 +24,7 @@ import type {
   AgentRunStoreOverrides,
   AgentRunStoreSnapshot
 } from '../agentRunService.ts';
-import { executeScheduledTaskFromCron } from '../schedulerService.js';
+import { executeScheduledTaskFromCron } from '../schedulerService.ts';
 
 interface ErrorFields {
   code?: string;

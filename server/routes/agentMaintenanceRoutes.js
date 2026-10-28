@@ -5,7 +5,7 @@ import { execMaaCommand, getMaaVersion } from '../services/maaExecutionService.t
 import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.ts';
 import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
 import { getCurrentActivity } from '../services/maaActivityService.ts';
-import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
+import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';

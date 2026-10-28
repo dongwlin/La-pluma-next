@@ -131,7 +131,7 @@ describe('training queue and applied flow synchronization', () => {
   });
 
   it('re-registers an already running schedule through the default refresher', async () => {
-    const { setupSchedule, stopSchedule, getScheduleStatus } = await import('../schedulerService.js');
+    const { setupSchedule, stopSchedule, getScheduleStatus } = await import('../schedulerService.ts');
     const initialFlow = [{ id: 'old-fight', commandId: 'fight', params: { stages: [{ stage: '1-7', times: '1' }] } }];
     assert.equal(setupSchedule('default', ['01:00'], initialFlow).success, true);
     try {

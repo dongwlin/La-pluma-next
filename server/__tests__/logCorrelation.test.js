@@ -37,7 +37,7 @@ const {
 } = await import('../services/maaProcessService.ts')
 const { execMaaCommand } = await import('../services/maaExecutionService.ts')
 const { getMaaExecutionLeaseSnapshot } = await import('../services/executionCoordinatorService.ts')
-const { executeScheduledTaskFromCron } = await import('../services/schedulerService.js')
+const { executeScheduledTaskFromCron } = await import('../services/schedulerService.ts')
 const {
   initializeAgentRunStore,
   listAgentRuns,

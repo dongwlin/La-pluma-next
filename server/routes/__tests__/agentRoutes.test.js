@@ -22,7 +22,7 @@ import {
 import {
   getScheduleExecutionStatus,
   stopScheduleExecution
-} from '../../services/schedulerService.js'
+} from '../../services/schedulerService.ts'
 import {
   configureCopilotSetRuntimeForTests,
   resetCopilotSetRunStateForTests

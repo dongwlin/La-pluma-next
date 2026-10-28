@@ -15,7 +15,7 @@
  */
 
 import { createOutboundHttpClient, isOutboundRequestError } from './outboundRequestService.ts';
-import { executeScheduleNow, getScheduleExecutionStatus } from './schedulerService.js';
+import { executeScheduleNow, getScheduleExecutionStatus } from './schedulerService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { getTaskStatus, stopCurrentTask } from './maaProcessService.ts';
 import { captureScreen } from './maaDeviceService.ts';

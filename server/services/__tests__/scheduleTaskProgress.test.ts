@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createScheduleTaskProgress } from '../scheduleTaskProgress.js';
+import { createScheduleTaskProgress } from '../scheduleTaskProgress.ts';
+import type { ScheduleTaskCounts, ScheduleTaskProgressResult } from '../scheduleTaskProgress.ts';
 
 function fixture() {
-  const counts = { successCount: 0, failedCount: 0, skippedCount: 0 };
-  const snapshots = [];
+  const counts: ScheduleTaskCounts = { successCount: 0, failedCount: 0, skippedCount: 0 };
+  const snapshots: ScheduleTaskProgressResult[][] = [];
   const progress = createScheduleTaskProgress(
     ['fight-1', 'fight-2', 'award-1'].map(taskId => ({ id: taskId, name: '同名任务' })),
     () => counts,
