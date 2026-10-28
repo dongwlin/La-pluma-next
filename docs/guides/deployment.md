@@ -59,6 +59,14 @@ docker run -d \
 | `LA_PLUMA_HTTPS_CERT_PATH` | 可选 HTTPS 证书链路径，必须与私钥同时配置 | 空，使用 HTTP |
 | `LA_PLUMA_HTTPS_KEY_PATH` | 可选 HTTPS 私钥路径，必须与证书同时配置 | 空，使用 HTTP |
 
+### 存活与就绪检查
+
+容器健康检查继续请求根路径 `/health`，只判断进程是否仍在应答。该端点不执行 ADB、MAA 或外网探测，设备离线不会让存活检查失败，也不会触发无意义的重启。
+
+根路径 `/readiness` 表达是否应接收业务流量：运行时初始化未完成、Run 存储不可用或服务正在关闭（draining/closed）时返回 503，其余稳定运行状态返回 200。响应只包含生命周期、初始化与 Run 存储的粗粒度状态和稳定原因码，不包含文件路径、凭据或底层错误文本，并设置 `Cache-Control: no-store`。与 `/health` 一样，`/readiness` 不受 `LA_PLUMA_TOKEN` 约束，便于本机与编排探针直接调用；`/api` 的鉴权行为不变。
+
+反向代理和编排应把 `/readiness` 用于摘除流量，不要用它重启容器：draining 期间 `/health` 仍为 200，进程正在停止执行并等待 Run 落盘。
+
 ### PWA、HTTPS 与实时预览
 
 概览和日常的预览默认关闭，需手动选择快照或实时。自动回收通过同源 `/webrtc-signaling` 网关统计观看者，并在释放前核对上游设备的 `client_count` / `clients`。旧版上游若仅返回设备 ID 字符串，只能根据网关观看者判断；未携带设备 ID 的旧网关连接会保守阻止自动回收。项目仍使用单个受管设备 Agent，自动回收仅停止匹配的设备，不关闭信令和 TURN 服务。
@@ -96,13 +104,13 @@ docker run -d \
 
 证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问建议始终配置 `LA_PLUMA_TOKEN`。
 
-HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
+HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
 
 PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，但 MAA、ADB、实时预览、状态读取和所有自动化操作仍需要连接 La Pluma Next 后端；页面会持续显示断连状态并禁用控制台执行入口。
 
 ### 跨域与访问来源
 
-同源是默认且完整的支持方式：Web UI 与 `/api`、`/health`、`/webrtc-signaling` 同源部署（根路径或反向代理后的同源子路径）时无需关心跨域头部。跨域调用按以下策略支持：
+同源是默认且完整的支持方式：Web UI 与 `/api`、`/health`、`/readiness`、`/webrtc-signaling` 同源部署（根路径或反向代理后的同源子路径）时无需关心跨域头部。跨域调用按以下策略支持：
 
 - 鉴权只由 token 承担，CORS 不作为鉴权。服务端对任何来源应答 CORS 预检（`OPTIONS` 无需 token）并返回 `Access-Control-Allow-Origin: *`，但这只声明浏览器可跨域读取响应；来源不构成访问边界。配置 `LA_PLUMA_TOKEN` 后，`/api` 与票据入口要求 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`；网络访问建议始终配置该 token。
 - 不支持浏览器凭据模式：服务端不使用 Cookie，不返回 `Access-Control-Allow-Credentials`。以 `credentials: 'include'` 发起的跨域请求会被浏览器拒绝；调用方应改用上述 token 头并保持默认的 `credentials: 'same-origin'`。关闭凭据并不限制请求来源——任何来源都可携带 token 调用开放接口，未携带有效 token 的 `/api` 请求一律 401。
@@ -123,7 +131,7 @@ pnpm start
 docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
 ```
 
-本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
+本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health`、`/readiness` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
 
 ### 使用 Docker Compose（推荐）
 
