@@ -1,15 +1,67 @@
-import { parseMaaCallbackEvents } from './maaCallbackService.js';
+/**
+ * 自动公招（Recruit）结果解析
+ *
+ * 类型边界：
+ * - 回调事件经 `maaCallbackService` 校验后再读取：`what`、`details.task`、`details.tags`、
+ *   `details.level` 逐字段收窄，缺字段或类型不符按“未观察到”处理，不会中断解析。
+ * - 输出只描述本次公招步骤（`success`/`failed`/`skipped`），不是整个 Run 的终态；没有结构化
+ *   回调（旧日志或增量日志不可用）时按“流程已完成”回退。
+ */
 
-function normalizePreserveTags(value) {
+import {
+  getCallbackDetails,
+  getCallbackStringField,
+  getCallbackStringList,
+  getStartedTaskNames,
+  parseMaaCallbackEvents
+} from './maaCallbackService.ts';
+import type { MaaCallbackEvent } from './maaCallbackService.ts';
+
+/** 自动公招任务的参数：`preserve_tags` 支持数组或逗号分隔字符串，其余字段不参与解析。 */
+export interface RecruitTaskParams {
+  preserve_tags?: string | readonly string[] | null;
+  [extension: string]: unknown;
+}
+
+/**
+ * 公招结果：计数只在观察到回调事件时提供；旧日志回退（无事件）只返回
+ * `task`/`action`/`status`/`message`，保持既有响应形状。
+ */
+export interface RecruitExecutionAction {
+  task: string;
+  action: 'recruit';
+  status: 'success' | 'failed' | 'skipped';
+  message: string;
+  startedCount?: number;
+  collectedCount?: number;
+  expeditedCount?: number;
+  refreshCount?: number;
+  highestLevel?: number;
+  detectedTags?: string[];
+  finalTags?: string[];
+  preservedTags?: string[];
+  noRefresh?: boolean;
+}
+
+function normalizePreserveTags(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String).map(tag => tag.trim()).filter(Boolean);
   return String(value || '').split(',').map(tag => tag.trim()).filter(Boolean);
 }
 
-function uniqueStrings(values) {
-  return [...new Set(values.filter(value => typeof value === 'string' && value.trim()))];
+function uniqueStrings(values: readonly unknown[]): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim() !== ''))];
 }
 
-export function parseRecruitExecutionAction(taskName, params = {}, logOutput = '') {
+function hasWhat(event: MaaCallbackEvent, what: string): boolean {
+  return getCallbackStringField(event, 'what') === what;
+}
+
+/** 解析一次自动公招步骤的回调日志。 */
+export function parseRecruitExecutionAction(
+  taskName: string,
+  params: RecruitTaskParams = {},
+  logOutput: string | null | undefined = ''
+): RecruitExecutionAction {
   const events = parseMaaCallbackEvents(logOutput, 'Recruit');
   if (events.length === 0) {
     return {
@@ -20,14 +72,11 @@ export function parseRecruitExecutionAction(taskName, params = {}, logOutput = '
     };
   }
 
-  const taskNames = events
-    .filter(event => event.callback === 'SubTaskStart')
-    .map(event => event.details?.task)
-    .filter(Boolean);
-  const detectedEvents = events.filter(event => event.what === 'RecruitTagsDetected');
-  const resultEvents = events.filter(event => event.what === 'RecruitResult');
-  const preservedEvents = events.filter(event => event.what === 'RecruitPreservedTag');
-  const refreshCount = events.filter(event => event.what === 'RecruitTagsRefreshed').length;
+  const taskNames = getStartedTaskNames(events);
+  const detectedEvents = events.filter(event => hasWhat(event, 'RecruitTagsDetected'));
+  const resultEvents = events.filter(event => hasWhat(event, 'RecruitResult'));
+  const preservedEvents = events.filter(event => hasWhat(event, 'RecruitPreservedTag'));
+  const refreshCount = events.filter(event => hasWhat(event, 'RecruitTagsRefreshed')).length;
   const startedCount = taskNames.filter(task => task === 'RecruitConfirm').length;
   const collectedCount = taskNames.filter(task => task === 'RecruitFinish').length;
   const expeditedCount = taskNames.filter(task => task === 'RecruitNowConfirm').length;
@@ -36,23 +85,22 @@ export function parseRecruitExecutionAction(taskName, params = {}, logOutput = '
   const failed = events.some(event => event.callback === 'TaskChainError');
   const completed = events.some(event => event.callback === 'TaskChainCompleted');
   const detectedTags = uniqueStrings(
-    detectedEvents.flatMap(event => Array.isArray(event.details?.tags) ? event.details.tags : [])
+    detectedEvents.flatMap(event => getCallbackStringList(event, 'tags'))
   );
-  const finalTags = uniqueStrings(
-    Array.isArray(detectedEvents.at(-1)?.details?.tags) ? detectedEvents.at(-1).details.tags : []
-  );
+  const finalDetectedEvent = detectedEvents.at(-1);
+  const finalTags = finalDetectedEvent ? uniqueStrings(getCallbackStringList(finalDetectedEvent, 'tags')) : [];
   const highestLevel = resultEvents.reduce(
-    (highest, event) => Math.max(highest, Number(event.details?.level) || 0),
+    (highest, event) => Math.max(highest, Number(getCallbackDetails(event)?.level) || 0),
     0
   );
   const configuredPreserveTags = normalizePreserveTags(params.preserve_tags);
   const preservedDetectedTags = uniqueStrings(
-    preservedEvents.flatMap(event => Array.isArray(event.details?.tags) ? event.details.tags : [])
+    preservedEvents.flatMap(event => getCallbackStringList(event, 'tags'))
   );
   const preservedTags = configuredPreserveTags.filter(tag => preservedDetectedTags.includes(tag));
   const effectivePreservedTags = preservedTags.length > 0 ? preservedTags : preservedDetectedTags;
 
-  const baseAction = {
+  const baseAction: Omit<RecruitExecutionAction, 'status' | 'message'> = {
     task: taskName,
     action: 'recruit',
     startedCount,
@@ -77,7 +125,7 @@ export function parseRecruitExecutionAction(taskName, params = {}, logOutput = '
   }
 
   if (startedCount > 0 || collectedCount > 0 || expeditedCount > 0) {
-    const operations = [];
+    const operations: string[] = [];
     if (startedCount > 0) operations.push(`开始 ${startedCount} 次招募`);
     if (collectedCount > 0) operations.push(`收取 ${collectedCount} 次结果`);
     if (expeditedCount > 0) operations.push(`加急 ${expeditedCount} 次`);

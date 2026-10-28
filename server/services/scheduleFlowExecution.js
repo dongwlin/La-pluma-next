@@ -1,11 +1,11 @@
 import { createScheduleTaskProgress } from './scheduleTaskProgress.js';
 import { buildScheduledTaskCommand, validateScheduledTaskFlow } from './scheduleFlowPlan.js';
 import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from './scheduleFlowResult.js';
-import { getEnabledAwardItems, parseAwardExecutionActions } from './awardResultService.js';
-import { parseRecruitExecutionAction } from './recruitResultService.js';
-import { parseInfrastExecutionAction } from './infrastResultService.js';
-import { parseMallExecutionAction } from './mallResultService.js';
-import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.js';
+import { getEnabledAwardItems, parseAwardExecutionActions } from './awardResultService.ts';
+import { parseRecruitExecutionAction } from './recruitResultService.ts';
+import { parseInfrastExecutionAction } from './infrastResultService.ts';
+import { parseMallExecutionAction } from './mallResultService.ts';
+import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 import { createLogger } from '../utils/logger.ts';
 

@@ -1,4 +1,43 @@
-const AWARD_ITEMS = [
+/**
+ * 领取奖励（Award）结果解析
+ *
+ * 类型边界：
+ * - 输入为命令日志文本：只读取 `first` 分段标记与 `"task"` 事件，不依赖 MaaCore 结构化回调；
+ *   日志缺失或分段不完整时回退为“流程已完成”的检查结论。
+ * - 输出只描述本次领取步骤的检查结果（`success`/`skipped`；执行异常由流程层以同一形状记录
+ *   `failed`），不能当作整个 Run 的终态。
+ */
+
+/** 领取奖励的六个 MaaCore 开关。 */
+export type AwardItemKey = 'award' | 'mail' | 'recruit' | 'orundum' | 'mining' | 'specialaccess';
+
+/** 单个领取项目的日志分段定义。 */
+export interface AwardItem {
+  readonly key: AwardItemKey;
+  readonly label: string;
+  readonly beginTask: string;
+  readonly claimedTasks: readonly string[];
+}
+
+/** 领取奖励任务的参数：只有严格等于 `true` 的开关才领取，其余字段不参与解析。 */
+export interface AwardTaskParams {
+  award?: unknown;
+  mail?: unknown;
+  recruit?: unknown;
+  orundum?: unknown;
+  mining?: unknown;
+  specialaccess?: unknown;
+}
+
+/** 单个领取项目的检查结果。 */
+export interface AwardExecutionAction {
+  task: string;
+  action: 'award';
+  status: 'success' | 'failed' | 'skipped';
+  message: string;
+}
+
+const AWARD_ITEMS: readonly AwardItem[] = [
   {
     key: 'award',
     label: '日常与周常奖励',
@@ -37,12 +76,12 @@ const AWARD_ITEMS = [
   }
 ];
 
-function hasTaskEvent(logSegment, taskName) {
+function hasTaskEvent(logSegment: string, taskName: string): boolean {
   const escapedTaskName = taskName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`"task":"${escapedTaskName}"`).test(logSegment);
 }
 
-function getTaskSegment(logOutput, item, nextItem) {
+function getTaskSegment(logOutput: string, item: AwardItem, nextItem: AwardItem | undefined): string | null {
   const startMarker = `"first":["${item.beginTask}"]`;
   const start = logOutput.indexOf(startMarker);
   if (start === -1) return null;
@@ -53,11 +92,23 @@ function getTaskSegment(logOutput, item, nextItem) {
   return end === -1 ? logOutput.slice(start) : logOutput.slice(start, end);
 }
 
-export function getEnabledAwardItems(params = {}) {
+/** 返回配置中严格启用（值为 `true`）的领取项目。 */
+export function getEnabledAwardItems(params: AwardTaskParams = {}): AwardItem[] {
   return AWARD_ITEMS.filter(item => params[item.key] === true);
 }
 
-export function parseAwardExecutionActions(taskName, params = {}, logOutput = '') {
+/**
+ * 解析领取步骤的日志分段。
+ *
+ * - 未启用任何项目：单项 `skipped`；
+ * - 分段缺失（旧日志或增量日志不可用）：回退为“流程已完成，共检查 N 项”的 `success`；
+ * - 其余按各分段中是否出现领取任务事件区分 `success`/`skipped`。
+ */
+export function parseAwardExecutionActions(
+  taskName: string,
+  params: AwardTaskParams = {},
+  logOutput: string | null | undefined = ''
+): AwardExecutionAction[] {
   const enabledItems = getEnabledAwardItems(params);
   if (enabledItems.length === 0) {
     return [{
@@ -68,12 +119,13 @@ export function parseAwardExecutionActions(taskName, params = {}, logOutput = ''
     }];
   }
 
-  const actions = [];
+  const actions: AwardExecutionAction[] = [];
   let parsedItemCount = 0;
+  const log = String(logOutput || '');
 
   enabledItems.forEach(item => {
     const itemIndex = AWARD_ITEMS.findIndex(candidate => candidate.key === item.key);
-    const segment = getTaskSegment(logOutput, item, AWARD_ITEMS[itemIndex + 1]);
+    const segment = getTaskSegment(log, item, AWARD_ITEMS[itemIndex + 1]);
     if (!segment) return;
     parsedItemCount++;
 
