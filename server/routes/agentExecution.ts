@@ -1,4 +1,4 @@
-import express from 'express';
+import { Router } from 'express';
 import { execMaaCommand, execDynamicTask } from '../services/maaExecutionService.ts';
 import { stopCurrentTask } from '../services/maaProcessService.ts';
 import { executeScheduleNow, getScheduledTaskFlowPlan, stopScheduleExecution } from '../services/schedulerService.ts';
@@ -9,7 +9,8 @@ import {
   executeAgentTask,
   normalizeCopilotSetExecutionRequest,
   normalizeDailyFlowRequest
-} from '../services/agentActionService.js';
+} from '../services/agentActionService.ts';
+import type { AgentTaskConfig } from '../services/agentActionService.ts';
 import {
   continueManualCopilotSet,
   hasCopilotSetSession,
@@ -17,6 +18,7 @@ import {
   runContinuousCopilotSet,
   startManualCopilotSet
 } from '../services/copilotSetRunService.ts';
+import type { CopilotSetLifecycle, CopilotSetPreparedInfo } from '../services/copilotSetRunService.ts';
 import {
   beginAgentRun,
   startAgentRunForExecution,
@@ -31,6 +33,8 @@ import {
   flushAgentRunStore,
   withFlushedAgentRunSnapshot
 } from '../services/agentRunService.ts';
+import type { AgentRunDto, AgentRunStatus } from '../services/agentRunService.ts';
+import type { ScheduleFlowExecutionResult } from '../services/scheduleFlowExecution.ts';
 import { enrichAgentRun } from '../services/runSnapshotService.js';
 import {
   asyncHandler,
@@ -39,30 +43,98 @@ import {
   sendDryRun,
   sendError
 } from '../utils/apiHelper.ts';
+import type { MaybeApiRequest } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
 import { withExecutionLogContext } from '../utils/logContext.ts'
-import { resolveRequestConnection } from './requestConnection.js'
+import { resolveRequestConnection } from './requestConnection.js';
+import {
+  isRecord,
+  isStopped,
+  parseContinueRunId,
+  parseRequestedRunId,
+  parseWaitForCompletion,
+  readField,
+  readIdempotencyKey,
+  resultMessage,
+  textOf
+} from './executionDto.ts';
+import type {
+  ExecutionCopilotSetRequest,
+  ExecutionRequest,
+  ExecutionResponseWriter,
+  ExecutionRunPayload,
+  ExecutionScheduleRequest
+} from './executionDto.ts';
 
 /**
  * 执行路由与 Run 生命周期适配：任务、流程、作业集的 tracked 执行，目标停止与
  * 202/幂等响应集中在本 router。agent.js 只按原注册顺序挂载；Run 与设备租约
  * 仍由 agentRunService / executionCoordinatorService 唯一持有。
+ *
+ * 类型边界：请求体、查询与会话输入在 executionDto 按端点收窄；本模块只做
+ * HTTP 适配与 Run 生命周期衔接。执行接受后由实际用例持有 Run/租约，后台
+ * 收尾只在子进程真实退出或执行结果返回时写入终态。
  */
-const router = express.Router();
+const router = Router();
 const logger = createLogger('AgentRoutes');
 
-const ACTIVE_RUN_STATES = new Set(['accepted', 'waiting', 'running', 'stopping']);
-const TERMINAL_RUN_STATES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
+const ACTIVE_RUN_STATES: ReadonlySet<AgentRunStatus> = new Set<AgentRunStatus>(['accepted', 'waiting', 'running', 'stopping']);
+const TERMINAL_RUN_STATES: ReadonlySet<AgentRunStatus> = new Set<AgentRunStatus>(['succeeded', 'failed', 'stopped', 'interrupted']);
 
-function getIdempotencyKey(req) {
-  return req.get?.('Idempotency-Key')
-    ?? req.headers?.['idempotency-key']
-    ?? req.headers?.['Idempotency-Key']
-    ?? null;
+/** 执行结果的后台/同步收尾信息：只声明适配层实际读取的字段。 */
+export interface ExecutionOutcome {
+  ok?: boolean;
+  stopped?: boolean;
+  result?: unknown;
+  error?: unknown;
 }
 
-function setRunResponseHeaders(res, run, replayed, includeLocation = false) {
-  const headers = {
+/** 执行生命周期：进程启动前的门禁、已启动回调与终态收尾。 */
+export interface TrackedExecutionLifecycle {
+  onBeforeStart?(): void | Promise<void>;
+  onStarted?(): void;
+  onSettled?(outcome: ExecutionOutcome): void | Promise<void>;
+}
+
+/** 目标停止/当前停止的响应：保留旧字段组合，`run` 为停止后的 Run 投影。 */
+export interface ExecutionStopPayload extends Record<string, unknown> {
+  stopRequested: boolean;
+  deviceStopRequested: boolean;
+  run: AgentRunDto | null;
+  task?: unknown;
+  scheduleStopped?: boolean;
+  acceptedRunCanceled?: boolean;
+  waitingRunStopped?: boolean;
+  alreadyTerminal?: boolean;
+  alreadyStopping?: boolean;
+}
+
+/** 响应文案可以是固定文本，或按实际结果生成；空结果回退到调用方兜底。 */
+export type ExecutionMessage = string | ((result: unknown) => string | null | undefined);
+
+export interface TrackedExecutionOptions {
+  operationId: string;
+  input: unknown;
+  waitForCompletion?: boolean;
+  metadata?: unknown;
+  execute: (lifecycle: TrackedExecutionLifecycle, context: { runId: string }) => unknown | Promise<unknown>;
+  successMessage?: ExecutionMessage;
+  acceptedMessage?: ExecutionMessage;
+  stoppedMessage?: ExecutionMessage;
+  settleOnReturn?: boolean;
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function setRunResponseHeaders(
+  res: ExecutionResponseWriter,
+  run: AgentRunDto,
+  replayed: boolean,
+  includeLocation = false
+): void {
+  const headers: Record<string, string> = {
     'X-La-Pluma-Run-Id': run.runId,
     'Idempotency-Replayed': String(Boolean(replayed))
   };
@@ -74,10 +146,8 @@ function setRunResponseHeaders(res, run, replayed, includeLocation = false) {
   }
 }
 
-function runResponseData(result, run) {
-  const base = result && typeof result === 'object' && !Array.isArray(result)
-    ? { ...result }
-    : { result };
+function runResponseData(result: unknown, run: AgentRunDto): ExecutionRunPayload {
+  const base = isRecord(result) ? { ...result } : { result };
   return {
     ...base,
     runId: run.runId,
@@ -88,15 +158,27 @@ function runResponseData(result, run) {
   };
 }
 
-function sendRunSuccess(res, req, result, run, {
-  message = '操作成功',
-  replayed = false,
-  accepted = false
-} = {}) {
-  const enrichedRun = enrichAgentRun(run);
+interface SendRunSuccessOptions {
+  message?: string;
+  replayed?: boolean;
+  accepted?: boolean;
+}
+
+function sendRunSuccess(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  result: unknown,
+  run: AgentRunDto,
+  {
+    message = '操作成功',
+    replayed = false,
+    accepted = false
+  }: SendRunSuccessOptions = {}
+): void {
+  const enrichedRun: AgentRunDto = enrichAgentRun(run);
   setRunResponseHeaders(res, enrichedRun, replayed, accepted);
   if (accepted) res.status(202);
-  return sendSuccess(
+  sendSuccess(
     res,
     req,
     runResponseData(result, enrichedRun),
@@ -105,7 +187,12 @@ function sendRunSuccess(res, req, result, run, {
   );
 }
 
-function sendRunFailure(res, req, run, replayed = false) {
+function sendRunFailure(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  run: AgentRunDto,
+  replayed = false
+): void {
   const error = agentError(run.error?.code || 'AGENT_RUN_FAILED', run.error?.message || 'Agent run 执行失败', {
     statusCode: run.error?.statusCode || 500,
     details: {
@@ -116,23 +203,30 @@ function sendRunFailure(res, req, run, replayed = false) {
     retryable: run.error?.retryable ?? false
   });
   setRunResponseHeaders(res, run, replayed);
-  return sendError(res, req, error, undefined, { runId: run.runId, idempotentReplay: replayed });
+  sendError(res, req, error, undefined, { runId: run.runId, idempotentReplay: replayed });
 }
 
-function respondWithExistingRun(res, req, run, message = '返回已有执行') {
+function respondWithExistingRun(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  run: AgentRunDto,
+  message = '返回已有执行'
+): void {
   if (run.state === 'failed' || run.state === 'interrupted') {
-    return sendRunFailure(res, req, run, true);
+    sendRunFailure(res, req, run, true);
+    return;
   }
   const accepted = ACTIVE_RUN_STATES.has(run.state);
-  return sendRunSuccess(res, req, run.result, run, {
+  sendRunSuccess(res, req, run.result, run, {
     message,
     replayed: true,
     accepted
   });
 }
 
-function isPreExecutionError(error) {
-  const code = error?.code || '';
+function isPreExecutionError(error: unknown): boolean {
+  const code = readField(error, 'code');
+  if (typeof code !== 'string') return false;
   return code === 'MAA_EXECUTION_BUSY'
     || code === 'AGENT_EXECUTION_BUSY'
     || code === 'AGENT_SCHEDULE_ALREADY_RUNNING'
@@ -145,21 +239,25 @@ function isPreExecutionError(error) {
 // Shutdown rejections are not failures of the execution itself: the run had not
 // started when the service began draining. Settling it as `stopped` matches the
 // pre-start gate, so callers never see a shutdown as a successful execution.
-function isShutdownRejection(error) {
-  const code = error?.code || '';
+function isShutdownRejection(error: unknown): boolean {
+  const code = readField(error, 'code');
+  if (typeof code !== 'string') return false;
   return code === 'MAA_EXECUTION_SHUTTING_DOWN' || code === 'AGENT_EXECUTION_SHUTTING_DOWN';
 }
 
-function resolveResponseMessage(message, result, fallback) {
+function resolveResponseMessage(message: ExecutionMessage | undefined, result: unknown, fallback: string): string {
   const resolved = typeof message === 'function' ? message(result) : message;
   return resolved || fallback;
 }
 
-async function settleBackgroundRun(runId, outcome) {
+async function settleBackgroundRun(
+  runId: string,
+  outcome: ExecutionOutcome | null | undefined
+): Promise<AgentRunDto | null> {
   const current = getAgentRun(runId);
   if (!current || TERMINAL_RUN_STATES.has(current.state)) return current;
   try {
-    let run;
+    let run: AgentRunDto;
     if (outcome?.stopped || current.state === 'stopping') {
       run = stopAgentRun(runId, outcome?.result || null);
     } else if (outcome?.ok) {
@@ -170,75 +268,98 @@ async function settleBackgroundRun(runId, outcome) {
     await flushAgentRunStore();
     return run;
   } catch (error) {
-    logger.error('更新或持久化 Agent run 终态失败', { runId, error: error.message });
+    logger.error('更新或持久化 Agent run 终态失败', { runId, error: errorMessageOf(error) });
     return getAgentRun(runId);
   }
 }
 
-async function persistAgentRunMutation(runId, context) {
+async function persistAgentRunMutation(runId: string, context: string): Promise<unknown | null> {
   try {
     await flushAgentRunStore();
     return null;
   } catch (error) {
-    logger.error(context, { runId, error: error.message });
+    logger.error(context, { runId, error: errorMessageOf(error) });
     return error;
   }
 }
 
-async function respondWithPersistedAgentRun(res, req, runId, context, respond) {
+async function respondWithPersistedAgentRun<T>(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  runId: string,
+  context: string,
+  respond: (run: AgentRunDto | null) => T
+): Promise<T | void> {
   try {
     return await withFlushedAgentRunSnapshot(runId, respond);
   } catch (error) {
-    logger.error(context, { runId, error: error.message });
+    logger.error(context, { runId, error: errorMessageOf(error) });
     return sendRunPersistenceFailure(res, req, runId, error);
   }
 }
 
-function sendRunPersistenceFailure(res, req, runId, error) {
+function sendRunPersistenceFailure(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  runId: string,
+  error: unknown
+): void {
   const run = getAgentRun(runId);
+  const errorCode = readField(error, 'code');
+  const errorStatus = readField(error, 'statusCode');
+  const errorStatusFallback = readField(error, 'status');
+  const errorDetails = readField(error, 'details');
+  const errorRetryable = readField(error, 'retryable');
+  const declaredStatus = typeof errorStatus === 'number'
+    ? errorStatus
+    : typeof errorStatusFallback === 'number' ? errorStatusFallback : 0;
   const persistenceError = agentError(
-    error?.code || 'AGENT_RUN_PERSISTENCE_FAILED',
-    error?.message || 'Agent run 持久化失败',
+    typeof errorCode === 'string' ? errorCode : 'AGENT_RUN_PERSISTENCE_FAILED',
+    resultMessage(error) || 'Agent run 持久化失败',
     {
-      statusCode: error?.statusCode || error?.status || 503,
+      statusCode: declaredStatus || 503,
       details: {
-        ...(error?.details || {}),
+        ...(isRecord(errorDetails) ? errorDetails : {}),
         runId,
         run
       },
-      retryable: error?.retryable ?? true
+      retryable: typeof errorRetryable === 'boolean' ? errorRetryable : true
     }
   );
-  return sendError(res, req, persistenceError, undefined, { runId });
+  sendError(res, req, persistenceError, undefined, { runId });
 }
 
-function mergeBackgroundOutcome(outcome, acceptedResult) {
-  const accepted = acceptedResult && typeof acceptedResult === 'object' && !Array.isArray(acceptedResult)
-    ? acceptedResult
-    : { acceptedResult };
-  const terminal = outcome?.result && typeof outcome.result === 'object' && !Array.isArray(outcome.result)
-    ? outcome.result
-    : { result: outcome?.result ?? null };
+function mergeBackgroundOutcome(
+  outcome: ExecutionOutcome | null | undefined,
+  acceptedResult: unknown
+): ExecutionOutcome {
+  const accepted = isRecord(acceptedResult) ? acceptedResult : { acceptedResult };
+  const terminalValue = outcome?.result;
+  const terminal = isRecord(terminalValue) ? terminalValue : { result: terminalValue ?? null };
   return {
     ...outcome,
     result: { ...accepted, ...terminal }
   };
 }
 
-export async function executeTrackedAgentAction(req, res, {
-  operationId,
-  input,
-  waitForCompletion = true,
-  metadata = {},
-  execute,
-  successMessage = '操作成功',
-  acceptedMessage = '任务已接受',
-  stoppedMessage = '任务已终止',
-  settleOnReturn = true
-}) {
+export async function executeTrackedAgentAction(
+  req: ExecutionRequest,
+  res: ExecutionResponseWriter,
+  {
+    operationId,
+    input,
+    waitForCompletion = true,
+    metadata = {},
+    execute,
+    successMessage = '操作成功',
+    acceptedMessage = '任务已接受',
+    stoppedMessage = '任务已终止',
+    settleOnReturn = true
+  }: TrackedExecutionOptions
+): Promise<unknown> {
   const reservation = beginAgentRun({
     operationId,
-    idempotencyKey: getIdempotencyKey(req),
+    idempotencyKey: readIdempotencyKey(req),
     input,
     metadata
   });
@@ -264,11 +385,12 @@ export async function executeTrackedAgentAction(req, res, {
     const rejectedRun = failAgentRun(runId, admissionPersistenceError);
     releaseAgentRunIdempotency(runId);
     await persistAgentRunMutation(runId, 'Agent run 持久化失败终态写入失败');
-    return sendRunFailure(res, req, rejectedRun);
+    sendRunFailure(res, req, rejectedRun);
+    return;
   }
 
-  const ensureRunStarted = () => startAgentRunForExecution(runId);
-  const observeProcessStart = () => {
+  const ensureRunStarted = (): AgentRunDto => startAgentRunForExecution(runId);
+  const observeProcessStart = (): AgentRunDto | null => {
     const run = getAgentRun(runId);
     if (!run) return null;
     if (run.state === 'accepted') return ensureRunStarted();
@@ -278,29 +400,35 @@ export async function executeTrackedAgentAction(req, res, {
         stopCurrentTask();
         stopScheduleExecution();
       } catch (error) {
-        logger.error('停止已取消的执行进程失败', { runId, error: error.message });
+        logger.error('停止已取消的执行进程失败', { runId, error: errorMessageOf(error) });
       }
     }
     return run;
   };
-  let acceptedResult;
+  let acceptedResult: unknown;
   let hasAcceptedResult = false;
-  let pendingOutcome = null;
-  const settleAcceptedBackgroundRun = async (outcome) => {
+  let pendingOutcome: ExecutionOutcome | null = null;
+  const settleAcceptedBackgroundRun = async (outcome: ExecutionOutcome): Promise<AgentRunDto | null> => {
     if (!hasAcceptedResult) {
       pendingOutcome = outcome;
       return null;
     }
     return settleBackgroundRun(runId, mergeBackgroundOutcome(outcome, acceptedResult));
   };
-  const lifecycle = {
-    onBeforeStart: ensureRunStarted,
-    onStarted: observeProcessStart,
+  const lifecycle: TrackedExecutionLifecycle = {
+    onBeforeStart: () => {
+      ensureRunStarted();
+    },
+    onStarted: () => {
+      observeProcessStart();
+    },
     ...(!waitForCompletion
       ? {
-          onSettled: outcome => withExecutionLogContext(
+          onSettled: (outcome: ExecutionOutcome) => withExecutionLogContext(
             executionLogContext,
-            () => settleAcceptedBackgroundRun(outcome)
+            async () => {
+              await settleAcceptedBackgroundRun(outcome);
+            }
           )
         }
       : {})
@@ -321,12 +449,12 @@ export async function executeTrackedAgentAction(req, res, {
         () => settleAcceptedBackgroundRun(outcome)
       );
     }
-    let run = getAgentRun(runId);
+    let run = getAgentRun(runId) ?? reservation.run;
     if (!waitForCompletion && ACTIVE_RUN_STATES.has(run.state)) {
       run = setAgentRunAcceptedResult(runId, result);
     }
     if (waitForCompletion && !TERMINAL_RUN_STATES.has(run.state) && settleOnReturn) {
-      run = run.state === 'stopping' || result?.stopped
+      run = run.state === 'stopping' || isStopped(result)
         ? stopAgentRun(runId, result)
         : completeAgentRun(runId, result);
     }
@@ -348,7 +476,7 @@ export async function executeTrackedAgentAction(req, res, {
         const accepted = !waitForCompletion && ACTIVE_RUN_STATES.has(run.state);
         return sendRunSuccess(res, req, TERMINAL_RUN_STATES.has(run.state) ? run.result : result, run, {
           message: accepted
-            ? acceptedMessage
+            ? resolveResponseMessage(acceptedMessage, result, '任务已接受')
             : resolveResponseMessage(successMessage, result, '操作成功'),
           accepted
         });
@@ -380,11 +508,11 @@ export async function executeTrackedAgentAction(req, res, {
       if (persistenceError) return sendRunPersistenceFailure(res, req, runId, persistenceError);
       return sendRunFailure(res, req, rejectedRun);
     }
-    const run = error?.stopped || isShutdownRejection(error) || current?.state === 'stopping'
+    const run = isStopped(error) || isShutdownRejection(error) || current?.state === 'stopping'
       ? stopAgentRun(runId, {
-          message: error.message,
-          exitCode: error.exitCode ?? null,
-          signal: error.signal ?? null,
+          message: errorMessageOf(error),
+          exitCode: readField(error, 'exitCode') ?? null,
+          signal: readField(error, 'signal') ?? null,
           ...(isShutdownRejection(error) ? { reason: 'server_shutdown' } : {})
         })
       : failAgentRun(runId, error);
@@ -406,32 +534,30 @@ export async function executeTrackedAgentAction(req, res, {
   }
 }
 
-function parseWaitForCompletion(value, defaultValue = true) {
-  const normalized = value ?? defaultValue;
-  if (typeof normalized !== 'boolean') {
-    throw agentError('AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID', 'waitForCompletion 必须是布尔值', {
-      statusCode: 400,
-      details: { receivedType: typeof normalized },
-      retryable: false
-    });
-  }
-  return normalized;
-}
-
-function mapLegacyBusyError(error, legacyCode) {
-  if (!error || !legacyCode || error.code !== 'AGENT_EXECUTION_BUSY') return error;
-  return agentError(legacyCode, error.message, {
-    statusCode: error.statusCode || 409,
-    details: error.details || {},
-    retryable: error.retryable ?? true
+/** 旧实现按 `error.code` 把忙碌错误映射到兼容码，其余错误原样抛出。 */
+function mapLegacyBusyError(error: unknown, legacyCode: string | null): unknown {
+  if (!error || !legacyCode || readField(error, 'code') !== 'AGENT_EXECUTION_BUSY') return error;
+  return agentError(legacyCode, errorMessageOf(error), {
+    statusCode: typeof readField(error, 'statusCode') === 'number' ? readField(error, 'statusCode') as number : 409,
+    details: isRecord(readField(error, 'details')) ? readField(error, 'details') as Record<string, unknown> : {},
+    retryable: typeof readField(error, 'retryable') === 'boolean' ? readField(error, 'retryable') as boolean : true
   });
 }
 
-function toDailyFlowOutcome(result, legacyBusyCode) {
+function toDailyFlowOutcome(result: ScheduleFlowExecutionResult, legacyBusyCode: string | null): ExecutionOutcome {
   const error = createDailyFlowExecutionError(result);
   if (error) return { ok: false, error: mapLegacyBusyError(error, legacyBusyCode) };
-  if (result?.stopped) return { stopped: true, result };
+  if (isStopped(result)) return { stopped: true, result };
   return { ok: true, result };
+}
+
+interface StartDailyFlowBackgroundOptions {
+  scheduleId: string;
+  taskFlow: unknown[];
+  lifecycle: TrackedExecutionLifecycle;
+  runId: string;
+  legacyBusyCode: string | null;
+  acceptedResult: unknown;
 }
 
 /**
@@ -446,7 +572,7 @@ function startDailyFlowBackground({
   runId,
   legacyBusyCode,
   acceptedResult
-}) {
+}: StartDailyFlowBackgroundOptions): Promise<unknown> {
   if (typeof lifecycle.onSettled !== 'function') {
     throw new Error('后台日常流程需要 onSettled 生命周期');
   }
@@ -454,15 +580,15 @@ function startDailyFlowBackground({
   return new Promise((resolve, reject) => {
     let started = false;
     let settled = false;
-    const settle = outcome => {
+    const settle = (outcome: ExecutionOutcome): void => {
       if (settled) return;
       settled = true;
-      Promise.resolve(lifecycle.onSettled(outcome)).catch(error => {
-        logger.error('后台日常流程终态处理失败', { scheduleId, runId, error: error.message });
+      Promise.resolve(lifecycle.onSettled?.(outcome)).catch(error => {
+        logger.error('后台日常流程终态处理失败', { scheduleId, runId, error: errorMessageOf(error) });
       });
     };
 
-    let flow;
+    let flow: Promise<ScheduleFlowExecutionResult>;
     try {
       flow = executeScheduleNow(scheduleId, taskFlow, {
         onBeforeStart: () => lifecycle.onBeforeStart?.(),
@@ -480,7 +606,7 @@ function startDailyFlowBackground({
     flow.then(result => {
       const outcome = toDailyFlowOutcome(result, legacyBusyCode);
       if (!started) {
-        reject(outcome.error || new Error(outcome.result?.message || '任务流程未能开始'));
+        reject(outcome.error || new Error(resultMessage(outcome.result) || '任务流程未能开始'));
         return;
       }
       settle(outcome);
@@ -494,18 +620,34 @@ function startDailyFlowBackground({
   });
 }
 
-function executeTrackedDailyFlow(req, res, {
-  scheduleId,
-  taskFlow,
-  waitForCompletion = true,
-  metadata,
-  legacyBusyCode = null,
-  successMessage = '任务流程执行完成',
-  acceptedMessage = '任务流程已接受',
-  stoppedMessage = result => result?.message || '任务流程已被终止',
-  extraResult = {}
-}) {
-  const totalSteps = taskFlow.filter(task => task?.enabled).length;
+interface TrackedDailyFlowOptions {
+  scheduleId: string;
+  taskFlow: unknown[];
+  waitForCompletion?: boolean;
+  metadata?: unknown;
+  legacyBusyCode?: string | null;
+  successMessage?: ExecutionMessage;
+  acceptedMessage?: ExecutionMessage;
+  stoppedMessage?: ExecutionMessage;
+  extraResult?: Record<string, unknown>;
+}
+
+function executeTrackedDailyFlow(
+  req: ExecutionRequest,
+  res: ExecutionResponseWriter,
+  {
+    scheduleId,
+    taskFlow,
+    waitForCompletion = true,
+    metadata,
+    legacyBusyCode = null,
+    successMessage = '任务流程执行完成',
+    acceptedMessage = '任务流程已接受',
+    stoppedMessage = result => resultMessage(result) || '任务流程已被终止',
+    extraResult = {}
+  }: TrackedDailyFlowOptions
+): Promise<unknown> {
+  const totalSteps = taskFlow.filter(task => isRecord(task) && Boolean(task.enabled)).length;
 
   return executeTrackedAgentAction(req, res, {
     operationId: 'run_daily_flow',
@@ -543,6 +685,14 @@ function executeTrackedDailyFlow(req, res, {
   });
 }
 
+interface StartCopilotSetBackgroundOptions {
+  runId: string;
+  start: (lifecycle: CopilotSetLifecycle) => Promise<unknown>;
+  lifecycle: TrackedExecutionLifecycle;
+  acceptedResult: (info: CopilotSetPreparedInfo | null) => unknown;
+  settleOnFinish: boolean;
+}
+
 /**
  * Starts a copilot set in the background and resolves once it owns the lease
  * and has passed the pre-start gate. Continuous sets settle their Run through
@@ -555,16 +705,16 @@ function startCopilotSetBackground({
   lifecycle,
   acceptedResult,
   settleOnFinish
-}) {
+}: StartCopilotSetBackgroundOptions): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let started = false;
-    let preparedInfo = null;
-    const settle = outcome => {
+    let preparedInfo: CopilotSetPreparedInfo | null = null;
+    const settle = (outcome: ExecutionOutcome): void => {
       Promise.resolve(lifecycle.onSettled?.(outcome)).catch(error => {
-        logger.error('后台作业集终态处理失败', { runId, error: error.message });
+        logger.error('后台作业集终态处理失败', { runId, error: errorMessageOf(error) });
       });
     };
-    const wrappedLifecycle = {
+    const wrappedLifecycle: CopilotSetLifecycle = {
       ...lifecycle,
       onPrepared: info => {
         preparedInfo = info;
@@ -576,7 +726,7 @@ function startCopilotSetBackground({
       }
     };
 
-    let task;
+    let task: Promise<unknown>;
     try {
       task = start(wrappedLifecycle);
     } catch (error) {
@@ -588,40 +738,52 @@ function startCopilotSetBackground({
       if (!started) {
         const run = getAgentRun(runId);
         if (run && (run.state === 'succeeded' || run.state === 'stopped')) {
-          resolve(result?.result || result || run.result);
+          resolve(readField(result, 'result') || result || run.result);
           return;
         }
-        reject(new Error(result?.message || '作业集未能开始执行'));
+        reject(new Error(resultMessage(result) || '作业集未能开始执行'));
         return;
       }
       if (settleOnFinish) {
-        settle({ ok: !result?.stopped, stopped: Boolean(result?.stopped), result });
+        settle({ ok: !isStopped(result), stopped: isStopped(result), result });
       }
     }, error => {
       if (!started) {
         reject(error);
         return;
       }
-      settle({ ok: false, stopped: Boolean(error?.stopped), error });
+      settle({ ok: false, stopped: isStopped(error), error });
     });
   });
 }
 
-function executeContinuousCopilotSet(req, res, {
-  setId,
-  raid,
-  selectedIndexes,
-  options,
-  waitForCompletion
-}) {
+interface CopilotSetExecutionOptions {
+  setId: string;
+  raid: 'normal' | 'raid' | 'both';
+  selectedIndexes: number[];
+  options: Record<string, unknown>;
+  waitForCompletion: boolean;
+}
+
+function executeContinuousCopilotSet(
+  req: ExecutionRequest,
+  res: ExecutionResponseWriter,
+  {
+    setId,
+    raid,
+    selectedIndexes,
+    options,
+    waitForCompletion
+  }: CopilotSetExecutionOptions
+): Promise<unknown> {
   return executeTrackedAgentAction(req, res, {
     operationId: 'run_copilot_set',
     input: { setId, mode: 'continuous', raid, selectedIndexes, options },
     metadata: { taskName: `作业集 ${setId}`, taskType: 'copilot-set', setId, mode: 'continuous' },
     waitForCompletion,
-    successMessage: result => result?.message || '作业集执行完成',
+    successMessage: result => resultMessage(result) || '作业集执行完成',
     acceptedMessage: '作业集任务已接受',
-    stoppedMessage: result => result?.message || '作业集已停止',
+    stoppedMessage: result => resultMessage(result) || '作业集已停止',
     execute: async (lifecycle, { runId }) => {
       if (waitForCompletion) {
         return runContinuousCopilotSet({ runId, setId, raid, selectedIndexes, options, lifecycle });
@@ -653,22 +815,26 @@ function executeContinuousCopilotSet(req, res, {
   });
 }
 
-function executeManualCopilotSet(req, res, {
-  setId,
-  raid,
-  selectedIndexes,
-  options,
-  waitForCompletion
-}) {
+function executeManualCopilotSet(
+  req: ExecutionRequest,
+  res: ExecutionResponseWriter,
+  {
+    setId,
+    raid,
+    selectedIndexes,
+    options,
+    waitForCompletion
+  }: CopilotSetExecutionOptions
+): Promise<unknown> {
   return executeTrackedAgentAction(req, res, {
     operationId: 'run_copilot_set',
     input: { setId, mode: 'manual', raid, selectedIndexes, options },
     metadata: { taskName: `作业集 ${setId}`, taskType: 'copilot-set', setId, mode: 'manual' },
     waitForCompletion,
     settleOnReturn: false,
-    successMessage: result => result?.message || '作业集执行完成',
+    successMessage: result => resultMessage(result) || '作业集执行完成',
     acceptedMessage: '作业集任务已接受',
-    stoppedMessage: result => result?.message || '作业集已停止',
+    stoppedMessage: result => resultMessage(result) || '作业集已停止',
     execute: async (lifecycle, { runId }) => {
       if (waitForCompletion) {
         const outcome = await startManualCopilotSet({ runId, setId, raid, selectedIndexes, options, lifecycle });
@@ -701,90 +867,99 @@ function executeManualCopilotSet(req, res, {
   });
 }
 
-function normalizeContinueRunId(req) {
-  const requested = req.body?.runId;
-  if (typeof requested !== 'string' || !requested.trim()) {
-    throw agentError('AGENT_VALIDATION_RUN_ID_INVALID', 'runId 必须是非空字符串', {
-      statusCode: 400,
-      details: { receivedType: typeof requested },
-      retryable: false
-    });
-  }
-  return requested.trim();
-}
-
-function settleContinueBackground(runId, outcome) {
+function settleContinueBackground(runId: string, outcome: ExecutionOutcome | null): void {
   if (!outcome || outcome.ok || outcome.stopped) return;
   const run = getAgentRun(runId);
   if (!run || TERMINAL_RUN_STATES.has(run.state)) return;
   try {
     failAgentRun(runId, outcome.error || new Error('作业集后台执行失败'));
     flushAgentRunStore().catch(error => {
-      logger.error('作业集后台失败终态持久化失败', { runId, error: error.message });
+      logger.error('作业集后台失败终态持久化失败', { runId, error: errorMessageOf(error) });
     });
   } catch (error) {
-    logger.error('作业集后台失败终态写入失败', { runId, error: error.message });
+    logger.error('作业集后台失败终态写入失败', { runId, error: errorMessageOf(error) });
   }
 }
 
-function sendContinueSuccess(res, req, runId, outcome) {
+function sendContinueSuccess(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  runId: string,
+  outcome: unknown
+): Promise<void> {
   return respondWithPersistedAgentRun(res, req, runId, '作业集下一关状态持久化失败', persistedRun => {
     const run = persistedRun || getAgentRun(runId);
     if (run?.state === 'failed' || run?.state === 'interrupted') {
-      return sendRunFailure(res, req, run);
+      sendRunFailure(res, req, run);
+      return;
     }
-    const enrichedRun = enrichAgentRun(run);
-    const data = outcome?.result || run?.result;
+    if (!run) throw new Error('Agent run 不存在');
+    const enrichedRun: AgentRunDto = enrichAgentRun(run);
+    const data = readField(outcome, 'result') || run.result;
     setRunResponseHeaders(res, enrichedRun, false);
-    return sendSuccess(
+    sendSuccess(
       res,
       req,
       runResponseData(data, enrichedRun),
-      data?.message || outcome?.message || '作业集已执行下一关',
+      resultMessage(data) || resultMessage(outcome) || '作业集已执行下一关',
       { runId }
     );
   });
 }
 
-function respondContinueError(res, req, runId, error) {
-  const code = error?.code || '';
+function respondContinueError(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  runId: string,
+  error: unknown
+): void {
+  const code = typeof readField(error, 'code') === 'string' ? readField(error, 'code') as string : '';
   const run = getAgentRun(runId);
 
   if (code === 'MAA_EXECUTION_BUSY') {
-    return sendError(res, req, agentError('MAA_EXECUTION_BUSY', error.message, {
+    sendError(res, req, agentError('MAA_EXECUTION_BUSY', errorMessageOf(error), {
       statusCode: 409,
-      details: { owner: error.owner ?? error.details?.owner ?? null, runId, run },
+      details: { owner: readField(error, 'owner') ?? readField(readField(error, 'details'), 'owner') ?? null, runId, run },
       retryable: true
     }));
+    return;
   }
   if (code === 'MAA_EXECUTION_SHUTTING_DOWN') {
-    return sendError(res, req, agentError('MAA_EXECUTION_SHUTTING_DOWN', error.message, {
+    sendError(res, req, agentError('MAA_EXECUTION_SHUTTING_DOWN', errorMessageOf(error), {
       statusCode: 503,
-      details: { reason: error.details?.reason ?? null, runId, run },
+      details: { reason: readField(readField(error, 'details'), 'reason') ?? null, runId, run },
       retryable: true
     }));
+    return;
   }
   if (code === 'AGENT_COPILOT_SET_NOT_WAITING' || code === 'AGENT_COPILOT_SET_SESSION_LOST') {
-    return sendError(res, req, agentError(code, error.message, {
+    sendError(res, req, agentError(code, errorMessageOf(error), {
       statusCode: 409,
-      details: { ...(error.details || {}), runId, run },
-      retryable: Boolean(error.retryable)
+      details: { ...(isRecord(readField(error, 'details')) ? readField(error, 'details') as Record<string, unknown> : {}), runId, run },
+      retryable: readField(error, 'retryable') === true
     }));
+    return;
   }
-  if (error?.stopped || run?.state === 'stopped') {
-    return sendRunSuccess(res, req, run?.result, run, {
-      message: run?.result?.message || '作业集已停止'
+  if (isStopped(error) || run?.state === 'stopped') {
+    if (!run) throw new Error('Agent run 不存在');
+    sendRunSuccess(res, req, run.result, run, {
+      message: resultMessage(run.result) || '作业集已停止'
     });
+    return;
   }
-  logger.error('作业集下一关执行失败', { runId, error: error?.message });
-  return sendError(res, req, agentError('AGENT_COPILOT_SET_CONTINUE_FAILED', error?.message || '作业集下一关执行失败', {
+  logger.error('作业集下一关执行失败', { runId, error: errorMessageOf(error) });
+  sendError(res, req, agentError('AGENT_COPILOT_SET_CONTINUE_FAILED', errorMessageOf(error) || '作业集下一关执行失败', {
     statusCode: 500,
     details: { runId, run },
     retryable: true
   }));
 }
 
-async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
+async function continueCopilotSet(
+  req: ExecutionRequest,
+  res: ExecutionResponseWriter,
+  { runId, waitForCompletion }: { runId: string; waitForCompletion: boolean }
+): Promise<unknown> {
   const run = getAgentRun(runId);
   if (!run) {
     return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${runId}`, {
@@ -836,7 +1011,7 @@ async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
     }
   }
 
-  let accepted;
+  let accepted: unknown;
   try {
     accepted = await startCopilotSetBackground({
       runId,
@@ -864,18 +1039,41 @@ async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
     return respondContinueError(res, req, runId, error);
   }
 
-  const enrichedRun = enrichAgentRun(getAgentRun(runId));
+  const enrichedRun: AgentRunDto = enrichAgentRun(getAgentRun(runId));
   setRunResponseHeaders(res, enrichedRun, false, true);
   res.status(202);
-  return sendSuccess(res, req, runResponseData(accepted, enrichedRun), accepted.message, { runId });
+  sendSuccess(res, req, runResponseData(accepted, enrichedRun), resultMessage(accepted) || '作业集下一关已接受', { runId });
 }
 
-function buildFightArgs({ stages, stage, times, medicine = 0, expiringMedicine = 0, stone = 0, series = 0 } = {}) {
-  const rawStages = Array.isArray(stages) ? stages : [{ stage: stage || '', times: times || '' }];
+interface FightOptions extends Record<string, unknown> {
+  stages?: unknown;
+  stage?: unknown;
+  times?: unknown;
+  medicine?: unknown;
+  expiringMedicine?: unknown;
+  stone?: unknown;
+  series?: unknown;
+}
+
+function readStageEntry(item: unknown): { stage: unknown; times: unknown } {
+  if (typeof item === 'string') return { stage: item, times: '' };
+  return { stage: readField(item, 'stage'), times: readField(item, 'times') };
+}
+
+function buildFightArgs({
+  stages,
+  stage,
+  times,
+  medicine = 0,
+  expiringMedicine = 0,
+  stone = 0,
+  series = 0
+}: FightOptions = {}): string[] {
+  const rawStages: unknown[] = Array.isArray(stages) ? stages : [{ stage: stage || '', times: times || '' }];
   const stageList = rawStages
-    .map(item => typeof item === 'string' ? { stage: item, times: '' } : item)
-    .filter(item => item?.stage && String(item.stage).trim())
-    .map(item => `${String(item.stage).trim()}${item.times !== undefined && item.times !== '' && item.times !== null ? `:${item.times}` : ''}`)
+    .map(readStageEntry)
+    .filter(item => item.stage && String(item.stage).trim())
+    .map(item => `${String(item.stage).trim()}${item.times !== undefined && item.times !== '' && item.times !== null ? `:${String(item.times)}` : ''}`)
     .join(',');
 
   if (!stageList) return [];
@@ -888,14 +1086,16 @@ function buildFightArgs({ stages, stage, times, medicine = 0, expiringMedicine =
   return args;
 }
 
-async function loadAutomationTaskFlow(overrideTaskFlow = null) {
+async function loadAutomationTaskFlow(overrideTaskFlow: unknown = null): Promise<unknown[]> {
   if (Array.isArray(overrideTaskFlow)) return overrideTaskFlow;
   const saved = await loadUserConfig('automation-tasks');
-  return saved.success && Array.isArray(saved.data?.taskFlow) ? saved.data.taskFlow : [];
+  if (!saved.success) return [];
+  const taskFlow = readField(saved.data, 'taskFlow');
+  return Array.isArray(taskFlow) ? taskFlow : [];
 }
 
 // 执行路由：注册顺序与抽离前一致，URL、响应与幂等语义不变。
-router.post('/activity/run', asyncHandler(async (req, res) => {
+router.post('/activity/run', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
   const { clientType } = await resolveRequestConnection(req, { allowOverrides: true });
   return executeTrackedAgentAction(req, res, {
     operationId: 'run_current_activity_copilots',
@@ -906,7 +1106,7 @@ router.post('/activity/run', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/copilot-sets/:id/execute', asyncHandler(async (req, res) => {
+router.post('/copilot-sets/:id/execute', asyncHandler<ExecutionCopilotSetRequest, ExecutionResponseWriter>(async (req, res) => {
   const setId = String(req.params.id || '').trim();
   if (!setId) {
     return sendError(res, req, agentError('AGENT_VALIDATION_COPILOT_SET_ID_REQUIRED', '作业集 id 不能为空', {
@@ -923,19 +1123,20 @@ router.post('/copilot-sets/:id/execute', asyncHandler(async (req, res) => {
   return executeContinuousCopilotSet(req, res, { setId, raid, selectedIndexes, options, waitForCompletion });
 }));
 
-router.post('/actions/continue-copilot-set', asyncHandler(async (req, res) => {
-  const runId = normalizeContinueRunId(req);
-  const waitForCompletion = parseWaitForCompletion(req.body?.waitForCompletion);
+router.post('/actions/continue-copilot-set', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
+  const runId = parseContinueRunId(req.body);
+  const waitForCompletion = parseWaitForCompletion(readField(req.body, 'waitForCompletion'));
   return continueCopilotSet(req, res, { runId, waitForCompletion });
 }));
 
-router.post('/schedules/:scheduleId/execute', asyncHandler(async (req, res) => {
+router.post('/schedules/:scheduleId/execute', asyncHandler<ExecutionScheduleRequest, ExecutionResponseWriter>(async (req, res) => {
   const { scheduleId } = req.params;
-  const { taskFlow } = req.body || {};
+  const requestBody = isRecord(req.body) ? req.body : {};
+  const { taskFlow } = requestBody;
   if (!Array.isArray(taskFlow)) {
     return sendError(res, req, agentError('AGENT_VALIDATION_TASK_FLOW_INVALID', '任务流程格式无效', { statusCode: 400 }));
   }
-  const waitForCompletion = parseWaitForCompletion(req.body?.waitForCompletion);
+  const waitForCompletion = parseWaitForCompletion(requestBody.waitForCompletion);
   return executeTrackedDailyFlow(req, res, {
     scheduleId,
     taskFlow,
@@ -947,12 +1148,12 @@ router.post('/schedules/:scheduleId/execute', asyncHandler(async (req, res) => {
       trigger: 'schedule-api'
     },
     legacyBusyCode: 'AGENT_SCHEDULE_ALREADY_RUNNING',
-    successMessage: result => result?.message || '任务流程执行完成'
+    successMessage: result => resultMessage(result) || '任务流程执行完成'
   });
 }));
 
-router.post('/actions/start-game', asyncHandler(async (req, res) => {
-  const waitForCompletion = parseWaitForCompletion(req.body?.waitForCompletion);
+router.post('/actions/start-game', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
+  const waitForCompletion = parseWaitForCompletion(readField(req.body, 'waitForCompletion'));
   const { clientType, address } = await resolveRequestConnection(req, { allowOverrides: true })
   return executeTrackedAgentAction(req, res, {
     operationId: 'start_game',
@@ -973,7 +1174,7 @@ router.post('/actions/start-game', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/actions/run-daily-flow', asyncHandler(async (req, res) => {
+router.post('/actions/run-daily-flow', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
   const {
     dryRun,
     scheduleId,
@@ -982,9 +1183,9 @@ router.post('/actions/run-daily-flow', asyncHandler(async (req, res) => {
   } = normalizeDailyFlowRequest(req.body || {});
   const taskFlow = await loadAutomationTaskFlow(overrideTaskFlow);
   const planResult = await getScheduledTaskFlowPlan(taskFlow);
-  const planError = createDailyFlowExecutionError(planResult);
-  if (planError) {
-    return sendError(res, req, planError);
+  if (!planResult.success) {
+    const planError = createDailyFlowExecutionError(planResult);
+    return sendError(res, req, planError ?? planResult);
   }
   const plan = planResult.steps;
 
@@ -1021,10 +1222,11 @@ router.post('/actions/run-daily-flow', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/actions/fight', asyncHandler(async (req, res) => {
-  const { dryRun = false, ...requestOptions } = req.body || {};
+router.post('/actions/fight', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
+  const body: FightOptions = isRecord(req.body) ? req.body : {};
+  const { dryRun = false, ...requestOptions } = body;
   const waitForCompletion = parseWaitForCompletion(requestOptions.waitForCompletion);
-  const fightOptions = { ...requestOptions };
+  const fightOptions: FightOptions = { ...requestOptions };
   delete fightOptions.waitForCompletion;
   const args = buildFightArgs(fightOptions);
   if (!args.length) {
@@ -1072,8 +1274,8 @@ router.post('/actions/fight', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/actions/run-task', asyncHandler(async (req, res) => {
-  const input = req.body || {};
+router.post('/actions/run-task', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
+  const input = isRecord(req.body) ? req.body : {};
   const requestedWait = parseWaitForCompletion(input.waitForCompletion);
   const waitForCompletion = input.command === 'activity' || input.command === 'list'
     ? true
@@ -1082,13 +1284,16 @@ router.post('/actions/run-task', asyncHandler(async (req, res) => {
     operationId: 'run_task',
     input: { ...input, waitForCompletion },
     waitForCompletion,
-    metadata: { taskName: input.taskName || `Agent: ${input.command || 'task'}`, taskType: input.taskType || 'agent' },
+    metadata: {
+      taskName: input.taskName || `Agent: ${textOf(input.command || 'task')}`,
+      taskType: input.taskType || 'agent'
+    },
     execute: lifecycle => executeAgentTask(
       { ...input, waitForCompletion },
       {
         execMaaCommand: (command, args, taskName, taskType, shouldWait, silent = false) =>
           execMaaCommand(command, args, taskName, taskType, shouldWait, silent, lifecycle),
-        execDynamicTask: (taskId, taskConfig, taskName, taskType, shouldWait, userResource) =>
+        execDynamicTask: (taskId, taskConfig: AgentTaskConfig, taskName, taskType, shouldWait, userResource) =>
           execDynamicTask(taskId, taskConfig, taskName, taskType, shouldWait, userResource, { lifecycle })
       }
     ),
@@ -1097,20 +1302,13 @@ router.post('/actions/run-task', asyncHandler(async (req, res) => {
   });
 }));
 
-function normalizeRequestedRunId(req) {
-  const requested = req.body?.runId ?? req.query?.runId ?? null;
-  if (requested === null) return null;
-  if (typeof requested !== 'string' || !requested.trim()) {
-    throw agentError('AGENT_VALIDATION_RUN_ID_INVALID', 'runId 必须是非空字符串', {
-      statusCode: 400,
-      details: { receivedType: typeof requested },
-      retryable: false
-    });
-  }
-  return requested.trim();
-}
-
-function sendStopSuccess(res, req, runId, data, message) {
+function sendStopSuccess(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  runId: string,
+  data: ExecutionStopPayload,
+  message: string
+): Promise<void> {
   return respondWithPersistedAgentRun(
     res,
     req,
@@ -1123,7 +1321,11 @@ function sendStopSuccess(res, req, runId, data, message) {
   );
 }
 
-async function stopRequestedRun(res, req, requestedRunId) {
+async function stopRequestedRun(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest,
+  requestedRunId: string
+): Promise<unknown> {
   const requestedRun = getAgentRun(requestedRunId);
   if (!requestedRun) {
     return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${requestedRunId}`, {
@@ -1203,7 +1405,10 @@ async function stopRequestedRun(res, req, requestedRunId) {
   }, '已发送终止请求');
 }
 
-async function stopCurrentExecution(res, req) {
+async function stopCurrentExecution(
+  res: ExecutionResponseWriter,
+  req: MaybeApiRequest
+): Promise<unknown> {
   const task = stopCurrentTask();
   const scheduleStopped = stopScheduleExecution();
   const deviceStopRequested = task.success || scheduleStopped;
@@ -1246,8 +1451,8 @@ async function stopCurrentExecution(res, req) {
   }, deviceStopRequested ? '已发送终止请求' : '当前没有可终止的任务');
 }
 
-router.post('/actions/stop', asyncHandler(async (req, res) => {
-  const requestedRunId = normalizeRequestedRunId(req);
+router.post('/actions/stop', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(async (req, res) => {
+  const requestedRunId = parseRequestedRunId(req.body, req.query);
   if (requestedRunId) return stopRequestedRun(res, req, requestedRunId);
   return stopCurrentExecution(res, req);
 }));

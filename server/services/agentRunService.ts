@@ -148,7 +148,8 @@ export interface AgentRunStoreOverrides {
 
 export interface BeginAgentRunParams {
   operationId: string;
-  idempotencyKey?: string | null;
+  /** 调用方可能传入任意请求头值；由 normalizeIdempotencyKey 按既有规则收窄或拒绝。 */
+  idempotencyKey?: unknown;
   input?: unknown;
   metadata?: unknown;
 }

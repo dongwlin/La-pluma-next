@@ -1,5 +1,5 @@
 import express from 'express';
-import agentExecutionRoutes from './agentExecution.js';
+import agentExecutionRoutes from './agentExecution.ts';
 import agentStatusRoutes from './agentStatusRoutes.js';
 import agentLogRoutes from './agentLogRoutes.js';
 import agentDataRoutes from './agentDataRoutes.js';
@@ -67,6 +67,6 @@ router.use(agentNotificationRoutes);
 // 注册配置与实际执行分开，维护动作的副作用复用既有服务。
 router.use(agentMaintenanceRoutes);
 
-export { executeTrackedAgentAction } from './agentExecution.js';
+export { executeTrackedAgentAction } from './agentExecution.ts';
 
 export default router;

@@ -10,7 +10,7 @@ import {
   startAgentRunForExecution,
   stopAgentRun
 } from './agentRunService.ts';
-import { createDailyFlowExecutionError } from './agentActionService.js';
+import { createDailyFlowExecutionError } from './agentActionService.ts';
 import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from './scheduleFlowPlan.ts';
 import type { ScheduledTaskFlowPlanResult } from './scheduleFlowPlan.ts';
 import { createScheduleFlowExecutor } from './scheduleFlowExecution.ts';

@@ -1,4 +1,14 @@
 import { agentError } from '../utils/apiHelper.ts';
+import type { AgentError } from '../utils/apiHelper.ts';
+
+/**
+ * Agent 动作用例与请求归一化
+ *
+ * 类型边界：HTTP 请求体、动态任务配置与执行器依赖都是 unknown 入口，
+ * 由本模块按既有规则逐项收窄；命令白名单、动态任务 ID 规则、标签长度
+ * 与 `waitForCompletion` 的布尔要求保持迁移前的错误码、文案与接受时机。
+ * 执行器由调用方注入，本模块不直接启动子进程或持有 Run。
+ */
 
 export const AGENT_TASK_COMMANDS = Object.freeze([
   'startup',
@@ -17,13 +27,62 @@ export const AGENT_TASK_COMMANDS = Object.freeze([
   'activity',
   'run',
   'list'
-]);
+] as const);
 
-const AGENT_TASK_COMMAND_SET = new Set(AGENT_TASK_COMMANDS);
-const AGENT_QUERY_COMMANDS = new Set(['activity', 'list']);
+export type AgentTaskCommand = (typeof AGENT_TASK_COMMANDS)[number];
+
+const AGENT_TASK_COMMAND_SET: ReadonlySet<string> = new Set(AGENT_TASK_COMMANDS);
+const AGENT_QUERY_COMMANDS: ReadonlySet<string> = new Set(['activity', 'list']);
 const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
-function invalidRequest(code, message, details) {
+/** 动态任务配置：`name`/`type` 必填，其余字段原样透传给 MAA。 */
+export interface AgentTaskConfig extends Record<string, unknown> {
+  name: string;
+  type: string;
+  params: Record<string, unknown>;
+}
+
+/** 命令执行器端口：只转发已归一化的参数，设备与租约仍由实现持有。 */
+export type AgentTaskCommandExecutor = (
+  command: string,
+  args: readonly string[],
+  taskName: string | null,
+  taskType: string | null,
+  waitForCompletion: boolean
+) => Promise<unknown>;
+
+export type AgentTaskDynamicExecutor = (
+  taskId: string,
+  taskConfig: AgentTaskConfig,
+  taskName: string,
+  taskType: string,
+  waitForCompletion: boolean,
+  userResource: boolean
+) => Promise<unknown>;
+
+export interface AgentTaskDependencies {
+  execMaaCommand?: AgentTaskCommandExecutor;
+  execDynamicTask?: AgentTaskDynamicExecutor;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 旧实现的模板字符串/属性访问按文本输出未知值，保留同一归一。 */
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value : String(value);
+}
+
+function errorMessageOf(error: unknown): string | undefined {
+  return error instanceof Error ? error.message : undefined;
+}
+
+function receivedTypeOf(value: unknown): string {
+  return Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
+}
+
+function invalidRequest(code: string, message: string, details: Record<string, unknown>): AgentError {
   return agentError(code, message, {
     statusCode: 400,
     details,
@@ -31,8 +90,8 @@ function invalidRequest(code, message, details) {
   });
 }
 
-function normalizeTaskConfig(taskConfig) {
-  let normalized = taskConfig;
+function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
+  let normalized: unknown = taskConfig;
 
   if (typeof taskConfig === 'string') {
     try {
@@ -41,12 +100,12 @@ function normalizeTaskConfig(taskConfig) {
       throw invalidRequest(
         'AGENT_VALIDATION_TASK_CONFIG_INVALID',
         'taskConfig 必须是有效的 JSON 对象',
-        { reason: 'invalid_json', parseError: error.message }
+        { reason: 'invalid_json', parseError: errorMessageOf(error) }
       );
     }
   }
 
-  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
+  if (!isRecord(normalized)) {
     throw invalidRequest(
       'AGENT_VALIDATION_TASK_CONFIG_INVALID',
       'taskConfig 必须是非数组对象',
@@ -66,8 +125,8 @@ function normalizeTaskConfig(taskConfig) {
     );
   }
 
-  if (normalized.params !== undefined
-    && (!normalized.params || typeof normalized.params !== 'object' || Array.isArray(normalized.params))) {
+  const params = normalized.params;
+  if (params !== undefined && !isRecord(params)) {
     throw invalidRequest(
       'AGENT_VALIDATION_TASK_CONFIG_INVALID',
       'taskConfig.params 必须是对象',
@@ -79,18 +138,18 @@ function normalizeTaskConfig(taskConfig) {
     ...normalized,
     name: normalized.name.trim(),
     type: normalized.type.trim(),
-    params: normalized.params || {}
+    params: params ?? {}
   };
 }
 
-function normalizeOptionalLabel(value, field, fallback, maxLength) {
+function normalizeOptionalLabel(value: unknown, field: string, fallback: string, maxLength: number): string {
   const errorField = field.replace(/[A-Z]/g, character => `_${character}`).toUpperCase();
   if (value === undefined || value === null) return fallback;
   if (typeof value !== 'string') {
     throw invalidRequest(
       `AGENT_VALIDATION_${errorField}_INVALID`,
       `${field} 必须是字符串`,
-      { receivedType: Array.isArray(value) ? 'array' : typeof value }
+      { receivedType: receivedTypeOf(value) }
     );
   }
 
@@ -105,10 +164,18 @@ function normalizeOptionalLabel(value, field, fallback, maxLength) {
   return normalized || fallback;
 }
 
-export function normalizeDailyFlowRequest(input = {}) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+/** 日常流程请求：`taskFlow` 保持 unknown[]，步骤校验仍由 scheduler 域判定。 */
+export interface NormalizedDailyFlowRequest {
+  dryRun: boolean;
+  scheduleId: string;
+  taskFlow: unknown[] | null;
+  waitForCompletion: boolean;
+}
+
+export function normalizeDailyFlowRequest(input: unknown = {}): NormalizedDailyFlowRequest {
+  if (!isRecord(input)) {
     throw invalidRequest('AGENT_VALIDATION_DAILY_FLOW_INPUT_INVALID', '请求体必须是对象', {
-      receivedType: Array.isArray(input) ? 'array' : input === null ? 'null' : typeof input
+      receivedType: receivedTypeOf(input)
     });
   }
 
@@ -137,14 +204,18 @@ export function normalizeDailyFlowRequest(input = {}) {
   return { dryRun, scheduleId, taskFlow, waitForCompletion };
 }
 
-export const COPILOT_SET_MODES = Object.freeze(['continuous', 'manual']);
-const COPILOT_SET_RAIDS = new Set(['normal', 'raid', 'both']);
+export const COPILOT_SET_MODES = Object.freeze(['continuous', 'manual'] as const);
+
+export type CopilotSetMode = (typeof COPILOT_SET_MODES)[number];
+export type CopilotSetRaid = 'normal' | 'raid' | 'both';
+
+const COPILOT_SET_RAIDS: ReadonlySet<string> = new Set<CopilotSetRaid>(['normal', 'raid', 'both']);
 
 /**
  * `app` was page-driven sequential execution and `cli` was maa-cli's native
  * multi-copilot run. Both are now one server-held continuous queue.
  */
-export function normalizeCopilotSetMode(value) {
+export function normalizeCopilotSetMode(value: unknown): CopilotSetMode {
   if (value === undefined || value === null || value === '') return 'continuous';
   if (value === 'continuous' || value === 'app' || value === 'cli') return 'continuous';
   if (value === 'manual') return 'manual';
@@ -154,10 +225,19 @@ export function normalizeCopilotSetMode(value) {
   });
 }
 
-export function normalizeCopilotSetExecutionRequest(input = {}) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+/** 作业集执行请求：选择按非负整数收窄，`options` 原样交给计划域读取。 */
+export interface NormalizedCopilotSetExecutionRequest {
+  mode: CopilotSetMode;
+  raid: CopilotSetRaid;
+  selectedIndexes: number[];
+  options: Record<string, unknown>;
+  waitForCompletion: boolean;
+}
+
+export function normalizeCopilotSetExecutionRequest(input: unknown = {}): NormalizedCopilotSetExecutionRequest {
+  if (!isRecord(input)) {
     throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_INPUT_INVALID', '请求体必须是对象', {
-      receivedType: Array.isArray(input) ? 'array' : input === null ? 'null' : typeof input
+      receivedType: receivedTypeOf(input)
     });
   }
 
@@ -165,7 +245,9 @@ export function normalizeCopilotSetExecutionRequest(input = {}) {
 
   // The legacy endpoint treated any unknown raid value as normal; keep that
   // mapping so old callers are not rejected by the new validation.
-  const raid = COPILOT_SET_RAIDS.has(input.raid) ? input.raid : 'normal';
+  const raid: CopilotSetRaid = typeof input.raid === 'string' && COPILOT_SET_RAIDS.has(input.raid)
+    ? input.raid as CopilotSetRaid
+    : 'normal';
 
   const selectedIndexes = input.selectedIndexes ?? [];
   if (!Array.isArray(selectedIndexes)) {
@@ -181,7 +263,7 @@ export function normalizeCopilotSetExecutionRequest(input = {}) {
   }
 
   const options = input.options ?? {};
-  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+  if (!isRecord(options)) {
     throw invalidRequest('AGENT_VALIDATION_COPILOT_SET_OPTIONS_INVALID', 'options 必须是对象', {
       receivedType: Array.isArray(options) ? 'array' : typeof options
     });
@@ -201,7 +283,11 @@ export function normalizeCopilotSetExecutionRequest(input = {}) {
  * Execute a command exposed through the Agent API after validating its
  * filesystem-sensitive dynamic-task inputs.
  */
-export async function executeAgentTask(input = {}, dependencies = {}) {
+export async function executeAgentTask(
+  input: unknown = {},
+  dependencies: AgentTaskDependencies = {}
+): Promise<unknown> {
+  const source = isRecord(input) ? input : {};
   const {
     command,
     args = [],
@@ -210,12 +296,12 @@ export async function executeAgentTask(input = {}, dependencies = {}) {
     taskType,
     waitForCompletion = true,
     userResource = false
-  } = input || {};
+  } = source;
 
-  if (!AGENT_TASK_COMMAND_SET.has(command)) {
+  if (typeof command !== 'string' || !AGENT_TASK_COMMAND_SET.has(command)) {
     throw invalidRequest(
       'AGENT_VALIDATION_COMMAND_NOT_ALLOWED',
-      `不允许的 command: ${command}`,
+      `不允许的 command: ${textOf(command)}`,
       { command, allowed: [...AGENT_TASK_COMMANDS] }
     );
   }
@@ -224,7 +310,7 @@ export async function executeAgentTask(input = {}, dependencies = {}) {
     throw invalidRequest(
       'AGENT_VALIDATION_ARGS_INVALID',
       'args 必须是数组',
-      { receivedType: args === null ? 'null' : typeof args }
+      { receivedType: receivedTypeOf(args) }
     );
   }
 
@@ -293,16 +379,22 @@ export async function executeAgentTask(input = {}, dependencies = {}) {
   );
 }
 
-export function createDailyFlowExecutionError(result) {
-  if (result?.success !== false) return null;
+/**
+ * 流程结果中只有 `success: false` 表示未开始；忙碌与其它拒绝分别映射到
+ * 既有错误码。`result` 原样进入错误详情，供调用方排查。
+ */
+export function createDailyFlowExecutionError(result: unknown): AgentError | null {
+  const source: Record<string, unknown> = isRecord(result) ? result : {};
+  if (source.success !== false) return null;
 
-  const message = result.message || '今日流程未能开始执行';
-  const isBusy = result.busy === true || message.includes('已有任务');
+  const rawMessage = source.message;
+  const message = rawMessage ? textOf(rawMessage) : '今日流程未能开始执行';
+  const isBusy = source.busy === true || message.includes('已有任务');
 
   if (isBusy) {
     return agentError('AGENT_EXECUTION_BUSY', message, {
       statusCode: 409,
-      details: { owner: result.owner ?? null },
+      details: { owner: source.owner ?? null },
       retryable: true
     });
   }

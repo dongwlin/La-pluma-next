@@ -3,9 +3,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
-import router, { executeTrackedAgentAction } from '../agent.js'
+import router, { executeTrackedAgentAction as aggregateExecuteTrackedAgentAction } from '../agent.js'
+import { executeTrackedAgentAction } from '../agentExecution.ts'
 import { API_VERSION } from '../agentContract.js'
 import { getTaskStatus, setTaskStatus } from '../../services/maaProcessService.ts'
+import type { MaaChildProcess, MaaChildOutputStream } from '../../services/maaProcessService.ts'
 import { loggerManager } from '../../utils/logger.ts'
 import {
   beginAgentRun,
@@ -19,6 +21,7 @@ import {
   shutdownAgentRunStoreForTests,
   startAgentRun
 } from '../../services/agentRunService.ts'
+import type { AgentRunDto } from '../../services/agentRunService.ts'
 import {
   getScheduleExecutionStatus,
   stopScheduleExecution
@@ -27,20 +30,37 @@ import {
   configureCopilotSetRuntimeForTests,
   resetCopilotSetRunStateForTests
 } from '../../services/copilotSetRunService.ts'
+import type {
+  CopilotEntriesOutcome,
+  CopilotEntryOutcomeStatus,
+  CopilotPlan,
+  CopilotPlanEntry,
+  CopilotTaskResult,
+  ExecuteCopilotEntriesInput
+} from '../../services/copilotPlanService.ts'
 import {
   getMaaExecutionLeaseSnapshot,
   withMaaExecutionLease
 } from '../../services/executionCoordinatorService.ts'
 import { getTodayOpenStages } from '../../services/notificationService.ts'
+import type {
+  ExecutionOutcome,
+  TrackedExecutionLifecycle,
+  TrackedExecutionOptions
+} from '../agentExecution.ts'
 
+// 执行路由与 Run 生命周期已类型化，本文件同步转为 TS：反射取到的 handler
+// 以最小 RouteHandler 边界调用，响应体经统一信封读取；Run 与作业集断言使用
+// 真实服务入口，假执行器只注入计划/条目执行端口。真实 HTTP 的鉴权、parser
+// 与错误出口由独立的 HTTP 回归文件覆盖，不用假 handler 冒充。
 const quietLogger = {
   info() {},
   error() {}
 }
 
-let lockDir
-let lockFile
-let previousLockFile
+let lockDir: string
+let lockFile: string
+let previousLockFile: string | undefined
 
 before(async () => {
   lockDir = await mkdtemp(join(tmpdir(), 'la-pluma-agent-routes-'))
@@ -55,43 +75,96 @@ after(async () => {
   await rm(lockDir, { recursive: true, force: true })
 })
 
+/** Express router 与 route layer 的最小反射结构；只读取路由声明。 */
+type RouteHandler = (req: unknown, res: TestResponse, next?: (error?: unknown) => void) => unknown
+
+interface MountedRoute {
+  path: string
+  methods?: Record<string, boolean>
+  stack: Array<{ handle: RouteHandler }>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null
+}
+
+function isMountedRoute(value: unknown): value is MountedRoute {
+  if (!isRecord(value)) return false
+  if (typeof value.path !== 'string') return false
+  if (value.methods !== undefined && !isRecord(value.methods)) return false
+  if (!Array.isArray(value.stack)) return false
+  return value.stack.every(entry => isRecord(entry) && typeof entry.handle === 'function')
+}
+
 // 路由存在性以 agent.js 实际挂载的 router 图为准：执行路由由独立子 router
 // 承担，这里按挂载关系递归解析，不依赖某个文件里的声明位置。
-function collectMountedRoutes(routerInstance, routes = []) {
-  for (const layer of routerInstance.stack) {
-    if (layer.route) {
+function findMountedRoute(candidateRouter: unknown, method: string, routePath: string): MountedRoute | null {
+  if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return null
+  for (const layer of candidateRouter.stack) {
+    if (!isRecord(layer)) continue
+    if (isMountedRoute(layer.route)
+      && layer.route.path === routePath
+      && layer.route.methods?.[method]) {
+      return layer.route
+    }
+    const nested = findMountedRoute(layer.handle, method, routePath)
+    if (nested) return nested
+  }
+  return null
+}
+
+function findHandler(method: string, routePath: string): RouteHandler {
+  const route = findMountedRoute(router, method, routePath)
+  assert.ok(route, `missing ${method.toUpperCase()} ${routePath}`)
+  const handle = route.stack.at(-1)?.handle
+  assert.ok(handle, `missing ${method.toUpperCase()} ${routePath} handler`)
+  return handle
+}
+
+function collectMountedRoutes(candidateRouter: unknown, routes: string[] = []): string[] {
+  if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return routes
+  for (const layer of candidateRouter.stack) {
+    if (!isRecord(layer)) continue
+    if (isMountedRoute(layer.route)) {
       for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
         if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`)
       }
       continue
     }
-    if (layer.handle?.stack) collectMountedRoutes(layer.handle, routes)
+    collectMountedRoutes(layer.handle, routes)
   }
   return routes
 }
 
-function findMountedRoute(routerInstance, method, path) {
-  for (const layer of routerInstance.stack) {
-    if (layer.route?.path === path && layer.route.methods?.[method]) return layer.route
-    if (layer.handle?.stack) {
-      const nested = findMountedRoute(layer.handle, method, path)
-      if (nested) return nested
-    }
-  }
-  return null
+/** 响应信封：只声明断言实际读取的字段，`data` 保持端点结果形状。 */
+interface TestEnvelope {
+  success: boolean
+  message: string
+  data: Record<string, any>
+  error: { code?: string; message?: string; details: Record<string, any>; retryable?: boolean }
+  meta: Record<string, any>
+  /** 契约文档（manifest/OpenAPI）等非信封响应也经同一假响应写入。 */
+  [key: string]: any
 }
 
-function findHandler(method, path) {
-  const route = findMountedRoute(router, method, path)
-  assert.ok(route, `missing ${method.toUpperCase()} ${path}`)
-  return route.stack.at(-1).handle
+interface TestResponse {
+  statusCode: number
+  body: TestEnvelope
+  headers: Record<string, string>
+  headersSent: boolean
+  jsonCalls: number
+  status(code: number): TestResponse
+  set(name: string, value: string): TestResponse
+  json(body: TestEnvelope): TestResponse
 }
 
-function createResponse() {
+function response(): TestResponse {
   return {
     statusCode: 200,
-    body: null,
+    body: { success: false, message: '', data: {}, error: { details: {} }, meta: {} },
     headers: {},
+    headersSent: false,
+    jsonCalls: 0,
     status(code) {
       this.statusCode = code
       return this
@@ -102,14 +175,61 @@ function createResponse() {
     },
     json(body) {
       this.body = body
+      this.jsonCalls += 1
       return this
+    }
+  }
+}
+
+function requireRun(runId: string): AgentRunDto {
+  const run = getAgentRun(runId)
+  assert.ok(run, `missing run ${runId}`)
+  return run
+}
+
+function requireCurrentRun(): AgentRunDto {
+  const run = getCurrentAgentRun()
+  assert.ok(run, 'missing current run')
+  return run
+}
+
+/** Run 结果在断言侧是对象；先确认形状再读取端点字段。 */
+function runResult(run: AgentRunDto): Record<string, any> {
+  const result = run.result
+  assert.ok(result !== null && typeof result === 'object' && !Array.isArray(result), 'expected object run result')
+  return result as Record<string, any>
+}
+
+function taskError(message: string, fields: Record<string, unknown> = {}): Error {
+  return Object.assign(new Error(message), fields)
+}
+
+/** 错误出口转发的是原始错误对象；只读取公开的 statusCode 与 code。 */
+function statusCodeOf(error: unknown): unknown {
+  return isRecord(error) && 'statusCode' in error ? error.statusCode : undefined
+}
+
+function codeOf(error: unknown): unknown {
+  return isRecord(error) && 'code' in error ? error.code : undefined
+}
+
+function fakeChildProcess(signals: string[]): MaaChildProcess {
+  const stream: MaaChildOutputStream = { on: () => undefined }
+  return {
+    exitCode: null,
+    stdout: stream,
+    stderr: stream,
+    on: () => undefined,
+    kill: signal => {
+      signals.push(String(signal))
+      return true
     }
   }
 }
 
 describe('Agent discovery routes', () => {
   it('serves the generated manifest through the public route', async () => {
-    const res = createResponse()
+    const res = response()
     await findHandler('get', '/manifest')({ headers: { 'x-request-id': 'manifest-test' } }, res)
 
     assert.equal(res.statusCode, 200)
@@ -117,17 +237,17 @@ describe('Agent discovery routes', () => {
     assert.equal(res.body.meta.requestId, 'manifest-test')
     assert.equal(res.body.data.version, API_VERSION)
     assert.equal(res.body.data.actions.length, 21)
-    assert.ok(res.body.data.actions.every(action => action.safety && action.execution))
+    assert.ok(res.body.data.actions.every((action: Record<string, any>) => action.safety && action.execution))
   })
 
   it('serves OpenAPI with real query parameters and structured errors', async () => {
-    const res = createResponse()
+    const res = response()
     await findHandler('get', '/openapi.json')({ headers: {} }, res)
 
     const discover = res.body.paths['/api/agent/actions/discover-devices'].get
     assert.equal(res.body.openapi, '3.1.0')
     assert.equal(discover.requestBody, undefined)
-    assert.ok(discover.parameters.some(parameter => parameter.name === 'adbPath' && parameter.in === 'query'))
+    assert.ok(discover.parameters.some((parameter: Record<string, any>) => parameter.name === 'adbPath' && parameter.in === 'query'))
     assert.equal(
       res.body.components.responses.Conflict.content['application/json'].schema.$ref,
       '#/components/schemas/ErrorResponse'
@@ -135,6 +255,7 @@ describe('Agent discovery routes', () => {
   })
 
   it('exposes every execution route exactly once through the mounted agent router', () => {
+    assert.equal(aggregateExecuteTrackedAgentAction, executeTrackedAgentAction)
     const executionRoutes = [
       'POST /activity/run',
       'POST /copilot-sets/:id/execute',
@@ -169,7 +290,7 @@ describe('Agent run routes', () => {
     const run = beginAgentRun({ operationId: 'fight', input: { stage: '1-7' } }).run
     startAgentRun(run.runId)
     completeAgentRun(run.runId, { success: true, summary: 'done' })
-    const res = createResponse()
+    const res = response()
 
     await findHandler('get', '/runs/:runId')({
       headers: { 'x-request-id': 'run-lookup' },
@@ -184,7 +305,7 @@ describe('Agent run routes', () => {
   })
 
   it('returns a structured 404 for an unknown run id', async () => {
-    const res = createResponse()
+    const res = response()
 
     await findHandler('get', '/runs/:runId')({
       headers: {},
@@ -200,7 +321,7 @@ describe('Agent run routes', () => {
     completeAgentRun(terminal.runId, { ok: true })
     const run = beginAgentRun({ operationId: 'run_task' }).run
     startAgentRun(run.runId)
-    const res = createResponse()
+    const res = response()
 
     await findHandler('get', '/runs/current')({ headers: {}, query: { lines: 1 } }, res, () => {})
 
@@ -225,7 +346,7 @@ describe('Agent run routes', () => {
       completeAgentRun(newer.runId, { order: 1 })
       now += 1
       completeAgentRun(older.runId, { order: 2 })
-      const res = createResponse()
+      const res = response()
 
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
 
@@ -238,10 +359,10 @@ describe('Agent run routes', () => {
 
   it('replays one background intent without executing it twice and retains its final result', async () => {
     const req = { headers: { 'idempotency-key': 'background:test:1' } }
-    const first = createResponse()
+    const first = response()
     let executions = 0
-    let settle = null
-    const options = {
+    let settle: ((outcome: ExecutionOutcome) => void | Promise<void>) | undefined
+    const options: TrackedExecutionOptions = {
       operationId: 'test_background_action',
       input: { command: 'award', waitForCompletion: false },
       waitForCompletion: false,
@@ -259,7 +380,7 @@ describe('Agent run routes', () => {
     assert.equal(executions, 1)
     const runId = first.body.data.runId
 
-    const activeReplay = createResponse()
+    const activeReplay = response()
     await executeTrackedAgentAction(req, activeReplay, options)
     assert.equal(activeReplay.statusCode, 202)
     assert.equal(activeReplay.body.data.message, first.body.data.message)
@@ -267,8 +388,8 @@ describe('Agent run routes', () => {
     assert.equal(activeReplay.body.data.runId, runId)
     assert.equal(executions, 1)
 
-    await settle({ ok: true, result: { stdout: 'finished', exitCode: 0 } })
-    const terminal = getAgentRun(runId)
+    await settle?.({ ok: true, result: { stdout: 'finished', exitCode: 0 } })
+    const terminal = requireRun(runId)
     assert.equal(terminal.state, 'succeeded')
     assert.deepEqual(terminal.result, {
       message: 'started',
@@ -277,7 +398,7 @@ describe('Agent run routes', () => {
       exitCode: 0
     })
 
-    const replay = createResponse()
+    const replay = response()
     await executeTrackedAgentAction(req, replay, options)
 
     assert.equal(replay.statusCode, 200)
@@ -288,10 +409,8 @@ describe('Agent run routes', () => {
   })
 
   it('returns an early background failure instead of a successful accepted response', async () => {
-    const error = new Error('background process failed before admission returned')
-    error.code = 'EARLY_BACKGROUND_FAILURE'
-    error.statusCode = 422
-    const res = createResponse()
+    const error = taskError('background process failed before admission returned', { code: 'EARLY_BACKGROUND_FAILURE', statusCode: 422 })
+    const res = response()
 
     await executeTrackedAgentAction(
       { headers: { 'idempotency-key': 'background:early-failure' } },
@@ -301,8 +420,8 @@ describe('Agent run routes', () => {
         input: { command: 'award' },
         waitForCompletion: false,
         execute: async lifecycle => {
-          lifecycle.onStarted()
-          await lifecycle.onSettled({ ok: false, error })
+          lifecycle.onStarted?.()
+          await lifecycle.onSettled?.({ ok: false, error })
           return { message: 'started' }
         }
       }
@@ -315,7 +434,7 @@ describe('Agent run routes', () => {
   })
 
   it('returns a stopped result when a background process exits during admission', async () => {
-    const res = createResponse()
+    const res = response()
 
     await executeTrackedAgentAction(
       { headers: { 'idempotency-key': 'background:early-stop' } },
@@ -325,8 +444,8 @@ describe('Agent run routes', () => {
         input: { command: 'fight' },
         waitForCompletion: false,
         execute: async lifecycle => {
-          lifecycle.onStarted()
-          await lifecycle.onSettled({
+          lifecycle.onStarted?.()
+          await lifecycle.onSettled?.({
             ok: false,
             stopped: true,
             result: { signal: 'SIGTERM' }
@@ -347,7 +466,7 @@ describe('Agent run routes', () => {
     let failWrites = false
     let executions = 0
     const req = { headers: { 'idempotency-key': 'persistence:retry:1' } }
-    const options = {
+    const options: TrackedExecutionOptions = {
       operationId: 'test_persistence_failure',
       input: { command: 'award' },
       execute: async () => {
@@ -370,7 +489,7 @@ describe('Agent run routes', () => {
       })
 
       failWrites = true
-      const rejected = createResponse()
+      const rejected = response()
       await executeTrackedAgentAction(req, rejected, options)
 
       assert.equal(rejected.statusCode, 503)
@@ -379,7 +498,7 @@ describe('Agent run routes', () => {
       const rejectedRunId = rejected.body.error.details.runId
 
       failWrites = false
-      const retry = createResponse()
+      const retry = response()
       await executeTrackedAgentAction(req, retry, options)
 
       assert.equal(retry.statusCode, 200)
@@ -396,10 +515,10 @@ describe('Agent run routes', () => {
   })
 
   it('replays a run interrupted by restart without executing it again', async () => {
-    let snapshot = null
+    let snapshot: unknown = null
     let executions = 0
     const req = { headers: { 'idempotency-key': 'restart:interrupted:1' } }
-    const options = {
+    const options: TrackedExecutionOptions = {
       operationId: 'test_restart_interruption',
       input: { command: 'fight' },
       execute: async () => {
@@ -410,7 +529,7 @@ describe('Agent run routes', () => {
     const store = {
       filePath: '/virtual/agent-route-restart-runs.json',
       runtimeLogger: quietLogger,
-      writeStore: async (_filePath, value) => {
+      writeStore: async (_filePath: string, value: unknown) => {
         snapshot = JSON.parse(JSON.stringify(value))
       }
     }
@@ -427,7 +546,7 @@ describe('Agent run routes', () => {
       await shutdownAgentRunStoreForTests()
       await initializeAgentRunStore({ ...store, readStore: async () => snapshot })
 
-      const replay = createResponse()
+      const replay = response()
       await executeTrackedAgentAction(req, replay, options)
 
       assert.equal(replay.statusCode, 503)
@@ -443,12 +562,12 @@ describe('Agent run routes', () => {
 
   it('waits for the accepted snapshot before acknowledging a concurrent replay', async () => {
     let blockWrites = false
-    let releaseBlockedWrite
-    let signalWriteStarted
-    const writeStarted = new Promise(resolve => { signalWriteStarted = resolve })
+    let releaseBlockedWrite!: () => void
+    let signalWriteStarted!: () => void
+    const writeStarted = new Promise<void>(resolve => { signalWriteStarted = resolve })
     let executions = 0
     const req = { headers: { 'idempotency-key': 'persistence:concurrent:1' } }
-    const options = {
+    const options: TrackedExecutionOptions = {
       operationId: 'test_persistence_concurrency',
       input: { command: 'award' },
       execute: async () => {
@@ -463,20 +582,20 @@ describe('Agent run routes', () => {
       writeStore: async () => {
         if (!blockWrites) return
         signalWriteStarted()
-        await new Promise(resolve => { releaseBlockedWrite = resolve })
+        await new Promise<void>(resolve => { releaseBlockedWrite = resolve })
       },
       runtimeLogger: quietLogger
     })
 
     try {
       blockWrites = true
-      const first = createResponse()
+      const first = response()
       let firstFinished = false
       const firstRequest = executeTrackedAgentAction(req, first, options)
         .then(() => { firstFinished = true })
       await writeStarted
 
-      const replay = createResponse()
+      const replay = response()
       let replayFinished = false
       const replayRequest = executeTrackedAgentAction(req, replay, options)
         .then(() => { replayFinished = true })
@@ -504,12 +623,12 @@ describe('Agent run routes', () => {
 
   it('refreshes a replay that becomes terminal while its state is being persisted', async () => {
     let blockWrites = false
-    let releaseBlockedWrite
-    let signalWriteStarted
-    const writeStarted = new Promise(resolve => { signalWriteStarted = resolve })
+    let releaseBlockedWrite!: () => void
+    let signalWriteStarted!: () => void
+    const writeStarted = new Promise<void>(resolve => { signalWriteStarted = resolve })
     let executions = 0
     const req = { headers: { 'idempotency-key': 'persistence:refresh-replay' } }
-    const options = {
+    const options: TrackedExecutionOptions = {
       operationId: 'test_replay_refresh',
       input: { command: 'award' },
       waitForCompletion: false,
@@ -525,7 +644,7 @@ describe('Agent run routes', () => {
       writeStore: async () => {
         if (!blockWrites) return
         signalWriteStarted()
-        await new Promise(resolve => { releaseBlockedWrite = resolve })
+        await new Promise<void>(resolve => { releaseBlockedWrite = resolve })
       },
       runtimeLogger: quietLogger
     })
@@ -540,7 +659,7 @@ describe('Agent run routes', () => {
 
       blockWrites = true
       startAgentRun(run.runId)
-      const replay = createResponse()
+      const replay = response()
       const replayRequest = executeTrackedAgentAction(req, replay, options)
       await writeStarted
       completeAgentRun(run.runId, { stdout: 'finished during replay' })
@@ -572,10 +691,10 @@ describe('Agent run routes', () => {
 
     let executions = 0
     let stateAtSerialization = null
-    const res = createResponse()
+    const res = response()
     const serialize = res.json
     res.json = function json(body) {
-      stateAtSerialization = getAgentRun(run.runId).state
+      stateAtSerialization = requireRun(run.runId).state
       return serialize.call(this, body)
     }
 
@@ -592,34 +711,35 @@ describe('Agent run routes', () => {
     await replay
 
     assert.equal(res.body.data.run.state, stateAtSerialization)
-    assert.equal(getAgentRun(run.runId).state, 'succeeded')
+    assert.equal(requireRun(run.runId).state, 'succeeded')
     assert.equal(executions, 0)
   })
 
   it('returns a background failure that settles during the response flush', async () => {
-    let releaseBlockedWrite
-    let signalWriteStarted
-    const writeStarted = new Promise(resolve => { signalWriteStarted = resolve })
-    let settle
-    const error = new Error('background failed during response persistence')
-    error.code = 'BACKGROUND_SETTLED_DURING_FLUSH'
-    error.statusCode = 422
+    let releaseBlockedWrite!: () => void
+    let signalWriteStarted!: () => void
+    const writeStarted = new Promise<void>(resolve => { signalWriteStarted = resolve })
+    let settle: ((outcome: ExecutionOutcome) => void | Promise<void>) | undefined
+    const error = taskError('background failed during response persistence', { code: 'BACKGROUND_SETTLED_DURING_FLUSH', statusCode: 422 })
 
     await initializeAgentRunStore({
       filePath: '/virtual/agent-route-response-runs.json',
       readStore: async (_filePath, fallback) => fallback,
-      writeStore: async (_filePath, snapshot) => {
-        const run = snapshot.runs[0]?.run
-        if (run?.status === 'running' && run?.result?.message === 'started') {
+      writeStore: async (_filePath: string, data: unknown) => {
+        const runs = isRecord(data) && Array.isArray(data.runs) ? data.runs : []
+        const entry = runs[0]
+        const run = isRecord(entry) && isRecord(entry.run) ? entry.run : null
+        const result = run && isRecord(run.result) ? run.result : null
+        if (run?.status === 'running' && result?.message === 'started') {
           signalWriteStarted()
-          await new Promise(resolve => { releaseBlockedWrite = resolve })
+          await new Promise<void>(resolve => { releaseBlockedWrite = resolve })
         }
       },
       runtimeLogger: quietLogger
     })
 
     try {
-      const res = createResponse()
+      const res = response()
       const request = executeTrackedAgentAction(
         { headers: { 'idempotency-key': 'background:settle-during-flush' } },
         res,
@@ -628,7 +748,7 @@ describe('Agent run routes', () => {
           input: { command: 'award' },
           waitForCompletion: false,
           execute: async lifecycle => {
-            lifecycle.onStarted()
+            lifecycle.onStarted?.()
             settle = lifecycle.onSettled
             return { message: 'started' }
           }
@@ -636,7 +756,7 @@ describe('Agent run routes', () => {
       )
 
       await writeStarted
-      const settlement = settle({ ok: false, error })
+      const settlement = settle?.({ ok: false, error })
       releaseBlockedWrite()
       await Promise.all([request, settlement])
 
@@ -652,9 +772,9 @@ describe('Agent run routes', () => {
 
   it('keeps a concurrently replayed run queryable when admission later fails', async () => {
     const req = { headers: { 'idempotency-key': 'busy:retry:1' } }
-    let rejectAdmission
+    let rejectAdmission!: (reason?: unknown) => void
     let executions = 0
-    const options = {
+    const options: TrackedExecutionOptions = {
       operationId: 'test_busy_action',
       input: { command: 'fight', waitForCompletion: false },
       waitForCompletion: false,
@@ -667,16 +787,13 @@ describe('Agent run routes', () => {
       }
     }
 
-    const first = createResponse()
+    const first = response()
     const firstRequest = executeTrackedAgentAction(req, first, options)
     await Promise.resolve()
-    const replay = createResponse()
+    const replay = response()
     await executeTrackedAgentAction(req, replay, options)
     const replayedRunId = replay.body.data.runId
-    const busy = new Error('MAA 正在被其他任务使用')
-    busy.code = 'MAA_EXECUTION_BUSY'
-    busy.statusCode = 409
-    busy.retryable = true
+    const busy = taskError('MAA 正在被其他任务使用', { code: 'MAA_EXECUTION_BUSY', statusCode: 409, retryable: true })
     rejectAdmission(busy)
     await firstRequest
 
@@ -684,9 +801,9 @@ describe('Agent run routes', () => {
     assert.equal(first.statusCode, 409)
     assert.equal(first.body.data, undefined)
     assert.equal(first.body.error.details.runId, replayedRunId)
-    assert.equal(getAgentRun(replayedRunId).state, 'failed')
+    assert.equal(requireRun(replayedRunId).state, 'failed')
 
-    const retry = createResponse()
+    const retry = response()
     await executeTrackedAgentAction(req, retry, options)
     assert.equal(retry.statusCode, 202)
     assert.notEqual(retry.body.data.runId, replayedRunId)
@@ -696,8 +813,8 @@ describe('Agent run routes', () => {
   it('does not let a pending admission hide the run that owns the executor', async () => {
     const owner = beginAgentRun({ operationId: 'fight' }).run
     startAgentRun(owner.runId)
-    let rejectAdmission
-    const res = createResponse()
+    let rejectAdmission!: (reason?: unknown) => void
+    const res = response()
     const request = executeTrackedAgentAction(
       { headers: { 'idempotency-key': 'pending:behind-owner' } },
       res,
@@ -709,15 +826,13 @@ describe('Agent run routes', () => {
     )
     await new Promise(resolve => setImmediate(resolve))
 
-    assert.equal(getCurrentAgentRun().runId, owner.runId)
-    const busy = new Error('MAA 正在被其他任务使用')
-    busy.code = 'MAA_EXECUTION_BUSY'
-    busy.statusCode = 409
+    assert.equal(requireCurrentRun().runId, owner.runId)
+    const busy = taskError('MAA 正在被其他任务使用', { code: 'MAA_EXECUTION_BUSY', statusCode: 409 })
     rejectAdmission(busy)
     await request
 
     assert.equal(res.statusCode, 409)
-    assert.equal(getCurrentAgentRun().runId, owner.runId)
+    assert.equal(requireCurrentRun().runId, owner.runId)
   })
 
   it('rejects guarded stop when the requested run is not current', async () => {
@@ -725,7 +840,7 @@ describe('Agent run routes', () => {
     startAgentRun(older.runId)
     const current = beginAgentRun({ operationId: 'run_task' }).run
     startAgentRun(current.runId)
-    const res = createResponse()
+    const res = response()
 
     await findHandler('post', '/actions/stop')({
       headers: {},
@@ -739,14 +854,10 @@ describe('Agent run routes', () => {
   })
 
   it('cancels an accepted run without touching an untracked legacy process', async () => {
-    const signals = []
-    setTaskStatus(true, '旧版任务', 'legacy', {
-      pid: null,
-      exitCode: null,
-      kill: signal => signals.push(signal)
-    })
-    let rejectAdmission
-    const startResponse = createResponse()
+    const signals: string[] = []
+    setTaskStatus(true, '旧版任务', 'legacy', fakeChildProcess(signals))
+    let rejectAdmission!: (reason?: unknown) => void
+    const startResponse = response()
     const startRequest = executeTrackedAgentAction(
       { headers: { 'idempotency-key': 'guard:legacy-process' } },
       startResponse,
@@ -757,10 +868,10 @@ describe('Agent run routes', () => {
       }
     )
     await Promise.resolve()
-    const acceptedRun = getCurrentAgentRun()
+    const acceptedRun = requireCurrentRun()
     assert.equal(acceptedRun.state, 'accepted')
 
-    const stopResponse = createResponse()
+    const stopResponse = response()
     await findHandler('post', '/actions/stop')({
       headers: {},
       body: { runId: acceptedRun.runId }
@@ -776,21 +887,19 @@ describe('Agent run routes', () => {
     })
     assert.deepEqual(signals, [])
 
-    const busy = new Error('MAA 正在被其他任务使用')
-    busy.code = 'MAA_EXECUTION_BUSY'
-    busy.statusCode = 409
+    const busy = taskError('MAA 正在被其他任务使用', { code: 'MAA_EXECUTION_BUSY', statusCode: 409 })
     rejectAdmission(busy)
     await startRequest
 
     assert.equal(startResponse.statusCode, 200)
     assert.equal(startResponse.body.data.run.state, 'stopped')
-    assert.equal(getAgentRun(acceptedRun.runId).state, 'stopped')
+    assert.equal(requireRun(acceptedRun.runId).state, 'stopped')
   })
 
   it('stops an accepted run between admission and execution without executing it', async () => {
-    let releaseGate
+    let releaseGate!: () => void
     let executions = 0
-    const res = createResponse()
+    const res = response()
     const request = executeTrackedAgentAction(
       { headers: { 'idempotency-key': 'cancel:before-start' } },
       res,
@@ -798,18 +907,18 @@ describe('Agent run routes', () => {
         operationId: 'run_task',
         input: { command: 'award' },
         execute: async lifecycle => {
-          await new Promise(resolve => { releaseGate = resolve })
-          await lifecycle.onBeforeStart()
+          await new Promise<void>(resolve => { releaseGate = resolve })
+          await lifecycle.onBeforeStart?.()
           executions += 1
           return { success: true }
         }
       }
     )
     await new Promise(resolve => setImmediate(resolve))
-    const acceptedRun = getCurrentAgentRun()
+    const acceptedRun = requireCurrentRun()
     assert.equal(acceptedRun.state, 'accepted')
 
-    const stopResponse = createResponse()
+    const stopResponse = response()
     await findHandler('post', '/actions/stop')({
       headers: {},
       body: { runId: acceptedRun.runId }
@@ -824,23 +933,19 @@ describe('Agent run routes', () => {
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.data.run.state, 'stopped')
     assert.equal(res.body.data.canceled, true)
-    assert.equal(getAgentRun(acceptedRun.runId).state, 'stopped')
+    assert.equal(requireRun(acceptedRun.runId).state, 'stopped')
   })
 
   it('does not let an old terminal run stop a newer execution', async () => {
-    const signals = []
+    const signals: string[] = []
     const oldRun = beginAgentRun({ operationId: 'fight' }).run
     startAgentRun(oldRun.runId)
     completeAgentRun(oldRun.runId, { ok: true })
     const currentRun = beginAgentRun({ operationId: 'run_task' }).run
     startAgentRun(currentRun.runId)
-    setTaskStatus(true, '新任务', 'agent', {
-      pid: null,
-      exitCode: null,
-      kill: signal => signals.push(signal)
-    })
+    setTaskStatus(true, '新任务', 'agent', fakeChildProcess(signals))
 
-    const res = createResponse()
+    const res = response()
     await findHandler('post', '/actions/stop')({
       headers: {},
       body: { runId: oldRun.runId }
@@ -850,14 +955,14 @@ describe('Agent run routes', () => {
     assert.equal(res.body.data.alreadyTerminal, true)
     assert.equal(res.body.data.deviceStopRequested, false)
     assert.deepEqual(signals, [])
-    assert.equal(getAgentRun(currentRun.runId).state, 'running')
+    assert.equal(requireRun(currentRun.runId).state, 'running')
   })
 
   it('accepts the targeted stop link through its query parameter', async () => {
     const run = beginAgentRun({ operationId: 'fight' }).run
     assert.equal(run.links.stop, `/api/agent/actions/stop?runId=${run.runId}`)
 
-    const res = createResponse()
+    const res = response()
     await findHandler('post', '/actions/stop')({
       headers: {},
       query: { runId: run.runId }
@@ -869,19 +974,15 @@ describe('Agent run routes', () => {
   })
 
   it('keeps a targeted stop retryable while the run is stopping', async () => {
-    const signals = []
-    setTaskStatus(true, '理智作战', 'agent', {
-      pid: null,
-      exitCode: null,
-      kill: signal => signals.push(signal)
-    })
+    const signals: string[] = []
+    setTaskStatus(true, '理智作战', 'agent', fakeChildProcess(signals))
     const run = beginAgentRun({ operationId: 'fight' }).run
     startAgentRun(run.runId)
     const stop = findHandler('post', '/actions/stop')
 
-    const first = createResponse()
+    const first = response()
     await stop({ headers: {}, body: { runId: run.runId } }, first, () => {})
-    const second = createResponse()
+    const second = response()
     await stop({ headers: {}, body: { runId: run.runId } }, second, () => {})
 
     assert.equal(first.statusCode, 200)
@@ -894,33 +995,29 @@ describe('Agent run routes', () => {
   })
 
   it('rejects a non-string run guard instead of stopping the current execution', async () => {
-    const signals = []
-    setTaskStatus(true, '理智作战', 'agent', {
-      pid: null,
-      exitCode: null,
-      kill: signal => signals.push(signal)
-    })
+    const signals: string[] = []
+    setTaskStatus(true, '理智作战', 'agent', fakeChildProcess(signals))
     const run = beginAgentRun({ operationId: 'fight' }).run
     startAgentRun(run.runId)
 
-    const res = createResponse()
-    const forwarded = []
+    const res = response()
+    const forwarded: unknown[] = []
     await findHandler('post', '/actions/stop')({
       headers: {},
       body: { runId: 42 }
     }, res, error => forwarded.push(error))
 
     assert.equal(forwarded.length, 1)
-    assert.equal(forwarded[0].statusCode, 400)
-    assert.equal(forwarded[0].code, 'AGENT_VALIDATION_RUN_ID_INVALID')
-    assert.equal(res.body, null)
+    assert.equal(statusCodeOf(forwarded[0]), 400)
+    assert.equal(codeOf(forwarded[0]), 'AGENT_VALIDATION_RUN_ID_INVALID')
+    assert.equal(res.jsonCalls, 0)
     assert.deepEqual(signals, [])
-    assert.equal(getAgentRun(run.runId).state, 'running')
+    assert.equal(requireRun(run.runId).state, 'running')
   })
 
   it('reports external occupancy when the device is used without a tracked run', async () => {
-    setTaskStatus(true, '未纳管任务', 'legacy', { pid: null, exitCode: null, kill() {} })
-    const res = createResponse()
+    setTaskStatus(true, '未纳管任务', 'legacy', fakeChildProcess([]))
+    const res = response()
 
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
 
@@ -935,14 +1032,14 @@ describe('Agent run routes', () => {
   it('distinguishes a pending accepted run from external device activity', async () => {
     const accepted = beginAgentRun({ operationId: 'run_task' }).run
 
-    const free = createResponse()
+    const free = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, free, () => {})
     assert.equal(free.body.data.occupancy.state, 'pending')
     assert.equal(free.body.data.occupancy.runId, accepted.runId)
     assert.equal(free.body.data.occupancy.runState, 'accepted')
 
-    setTaskStatus(true, '未纳管任务', 'legacy', { pid: null, exitCode: null, kill() {} })
-    const busy = createResponse()
+    setTaskStatus(true, '未纳管任务', 'legacy', fakeChildProcess([]))
+    const busy = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, busy, () => {})
     assert.equal(busy.body.data.occupancy.state, 'external')
     assert.equal(busy.body.data.occupancy.runId, accepted.runId)
@@ -951,12 +1048,12 @@ describe('Agent run routes', () => {
   it('exposes every active intent instead of hiding concurrent accepted runs', async () => {
     const older = beginAgentRun({ operationId: 'fight' }).run
     const newer = beginAgentRun({ operationId: 'run_task' }).run
-    const res = createResponse()
+    const res = response()
 
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
 
     assert.deepEqual(
-      res.body.data.activeRuns.map(run => run.runId),
+      res.body.data.activeRuns.map((run: AgentRunDto) => run.runId),
       [newer.runId, older.runId]
     )
     assert.equal(res.body.data.run.runId, newer.runId)
@@ -971,7 +1068,7 @@ describe('Agent run routes', () => {
       command: 'copilot-plan',
       startedAt: new Date().toISOString()
     }))
-    const res = createResponse()
+    const res = response()
     try {
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
     } finally {
@@ -988,7 +1085,7 @@ describe('Agent run routes', () => {
 
 describe('Agent daily flow route', () => {
   it('returns an inspectable dry-run plan with the standard dry-run metadata', async () => {
-    const res = createResponse()
+    const res = response()
     const req = {
       headers: { 'x-request-id': 'dry-run-test' },
       body: {
@@ -1021,7 +1118,7 @@ describe('Agent daily flow route', () => {
   })
 
   it('uses scheduler-native dynamic configs and advanced fight arguments in dry-run output', async () => {
-    const res = createResponse()
+    const res = response()
     const req = {
       headers: {},
       query: {},
@@ -1052,7 +1149,7 @@ describe('Agent daily flow route', () => {
   })
 
   it('rejects invalid scheduler configuration during dry-run', async () => {
-    const res = createResponse()
+    const res = response()
     const req = {
       headers: {},
       query: {},
@@ -1074,7 +1171,7 @@ describe('Agent daily flow route', () => {
   })
 
   it('returns a validation error for malformed task entries', async () => {
-    const res = createResponse()
+    const res = response()
     const req = { headers: {}, query: {}, body: { dryRun: true, taskFlow: [null] } }
 
     await findHandler('post', '/actions/run-daily-flow')(req, res, () => {})
@@ -1085,7 +1182,10 @@ describe('Agent daily flow route', () => {
   })
 })
 
-async function waitForSnapshot(predicate, { timeout = 8000, interval = 20 } = {}) {
+async function waitForSnapshot<T>(
+  predicate: () => T | null | undefined | false | Promise<T | null | undefined | false>,
+  { timeout = 8000, interval = 20 }: { timeout?: number; interval?: number } = {}
+): Promise<T> {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
     const value = await predicate()
@@ -1111,7 +1211,7 @@ function interStepDailyFlow() {
   ]
 }
 
-function scheduleExecuteRequest(body, headers = {}) {
+function scheduleExecuteRequest(body: unknown, headers: Record<string, string> = {}) {
   return {
     headers,
     params: { scheduleId: 'manual' },
@@ -1136,7 +1236,7 @@ describe('Agent daily flow run coverage', () => {
   })
 
   it('keeps the legacy synchronous response and adds a terminal run identity', async () => {
-    const res = createResponse()
+    const res = response()
     const handler = findHandler('post', '/schedules/:scheduleId/execute')
 
     await handler(scheduleExecuteRequest({ taskFlow: fastDailyFlow() }), res, () => {})
@@ -1151,16 +1251,16 @@ describe('Agent daily flow run coverage', () => {
     assert.ok(res.body.data.runId)
     assert.equal(res.headers['X-La-Pluma-Run-Id'], res.body.data.runId)
 
-    const run = getAgentRun(res.body.data.runId)
+    const run = requireRun(res.body.data.runId)
     assert.equal(run.operationId, 'run_daily_flow')
     assert.equal(run.state, 'succeeded')
-    assert.equal(run.result.summary.taskResults.length, 2)
+    assert.equal(runResult(run).summary.taskResults.length, 2)
     assert.equal(getScheduleExecutionStatus().runId, null)
   })
 
   it('accepts a background flow early and keeps progress queryable while it waits between steps', async () => {
     const flow = interStepDailyFlow()
-    const res = createResponse()
+    const res = response()
     const handler = findHandler('post', '/schedules/:scheduleId/execute')
 
     await handler(scheduleExecuteRequest({ taskFlow: flow, waitForCompletion: false }), res, () => {})
@@ -1185,11 +1285,11 @@ describe('Agent daily flow run coverage', () => {
     assert.equal(waiting.currentTaskId, 'fight-closed-1')
     assert.equal(getTaskStatus().isRunning, false)
 
-    const run = getAgentRun(runId)
+    const run = requireRun(runId)
     assert.equal(run.state, 'running')
     assert.equal(run.progress, undefined)
 
-    const snapshotRes = createResponse()
+    const snapshotRes = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, snapshotRes, () => {})
 
     assert.equal(snapshotRes.body.data.run.runId, runId)
@@ -1200,7 +1300,7 @@ describe('Agent daily flow run coverage', () => {
     assert.equal(snapshotRes.body.data.occupancy.state, 'run')
     assert.equal(snapshotRes.body.data.occupancy.schedule.runId, runId)
 
-    const stopRes = createResponse()
+    const stopRes = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopRes, () => {})
 
     assert.equal(stopRes.statusCode, 200)
@@ -1212,16 +1312,16 @@ describe('Agent daily flow run coverage', () => {
     })
 
     assert.equal(terminal.state, 'stopped')
-    assert.equal(terminal.result.stopped, true)
-    assert.equal(terminal.result.summary.taskResults[0].status, 'skipped')
-    assert.equal(terminal.result.summary.taskResults[1].status, 'pending')
+    assert.equal(runResult(terminal).stopped, true)
+    assert.equal(runResult(terminal).summary.taskResults[0].status, 'skipped')
+    assert.equal(runResult(terminal).summary.taskResults[1].status, 'pending')
     assert.equal(getScheduleExecutionStatus().isRunning, false)
     assert.equal(getScheduleExecutionStatus().runId, null)
   })
 
   it('reuses one run for an idempotent resubmission and rejects a changed input', async () => {
     const headers = { 'idempotency-key': 'daily-flow:replay:1' }
-    const first = createResponse()
+    const first = response()
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({ taskFlow: fastDailyFlow(), waitForCompletion: false }, headers),
       first,
@@ -1236,7 +1336,7 @@ describe('Agent daily flow run coverage', () => {
       return run && run.state === 'succeeded' ? run : null
     })
 
-    const replay = createResponse()
+    const replay = response()
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({ taskFlow: fastDailyFlow(), waitForCompletion: false }, headers),
       replay,
@@ -1248,8 +1348,8 @@ describe('Agent daily flow run coverage', () => {
     assert.equal(replay.headers['Idempotency-Replayed'], 'true')
     assert.equal(listAgentRuns({ operationId: 'run_daily_flow' }).length, 1)
 
-    const conflict = createResponse()
-    const forwardedConflicts = []
+    const conflict = response()
+    const forwardedConflicts: unknown[] = []
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({
         taskFlow: [{ id: 'award-2', commandId: 'award', name: '另一条流程', enabled: true, params: {} }]
@@ -1259,8 +1359,8 @@ describe('Agent daily flow run coverage', () => {
     )
 
     assert.equal(forwardedConflicts.length, 1)
-    assert.equal(forwardedConflicts[0].statusCode, 409)
-    assert.equal(forwardedConflicts[0].code, 'AGENT_IDEMPOTENCY_KEY_REUSED')
+    assert.equal(statusCodeOf(forwardedConflicts[0]), 409)
+    assert.equal(codeOf(forwardedConflicts[0]), 'AGENT_IDEMPOTENCY_KEY_REUSED')
   })
 
   it('maps an occupied executor to the legacy code and releases the idempotency key', async () => {
@@ -1273,7 +1373,7 @@ describe('Agent daily flow run coverage', () => {
       startedAt: new Date().toISOString()
     }))
 
-    const busy = createResponse()
+    const busy = response()
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({ taskFlow: fastDailyFlow() }, headers),
       busy,
@@ -1283,13 +1383,13 @@ describe('Agent daily flow run coverage', () => {
     assert.equal(busy.statusCode, 409)
     assert.equal(busy.body.error.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
     assert.equal(busy.body.error.retryable, true)
-    const rejectedRun = getAgentRun(busy.body.error.details.runId)
+    const rejectedRun = requireRun(busy.body.error.details.runId)
     assert.equal(rejectedRun.state, 'failed')
-    assert.equal(rejectedRun.error.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
+    assert.equal(rejectedRun.error?.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
     assert.equal(getScheduleExecutionStatus().isRunning, false)
 
     await rm(lockFile, { force: true })
-    const retry = createResponse()
+    const retry = response()
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({ taskFlow: fastDailyFlow() }, headers),
       retry,
@@ -1298,11 +1398,11 @@ describe('Agent daily flow run coverage', () => {
 
     assert.equal(retry.statusCode, 200)
     assert.notEqual(retry.body.data.runId, rejectedRun.runId)
-    assert.equal(getAgentRun(retry.body.data.runId).state, 'succeeded')
+    assert.equal(requireRun(retry.body.data.runId).state, 'succeeded')
   })
 
   it('accepts the Agent daily-flow entry early and serves the final result by run id', async () => {
-    const res = createResponse()
+    const res = response()
     const req = {
       headers: { 'idempotency-key': 'daily-flow:agent:1' },
       query: {},
@@ -1327,10 +1427,10 @@ describe('Agent daily flow run coverage', () => {
       return run && run.state === 'succeeded' ? run : null
     })
 
-    assert.equal(terminal.result.success, true)
-    assert.equal(terminal.result.plan[0].command, 'award')
+    assert.equal(runResult(terminal).success, true)
+    assert.equal(runResult(terminal).plan[0].command, 'award')
 
-    const lookup = createResponse()
+    const lookup = response()
     await findHandler('get', '/runs/:runId')({ headers: {}, params: { runId } }, lookup, () => {})
 
     assert.equal(lookup.statusCode, 200)
@@ -1340,7 +1440,7 @@ describe('Agent daily flow run coverage', () => {
   })
 
   it('does not create a run for a dry-run plan', async () => {
-    const res = createResponse()
+    const res = response()
     const req = {
       headers: {},
       query: {},
@@ -1370,7 +1470,7 @@ describe('Agent daily flow concurrency', () => {
   })
 
   it('rejects a second daily flow instead of sharing one execution lease', async () => {
-    const first = createResponse()
+    const first = response()
     await findHandler('post', '/schedules/:scheduleId/execute')(
       scheduleExecuteRequest({ taskFlow: interStepDailyFlow(), waitForCompletion: false }),
       first,
@@ -1379,9 +1479,9 @@ describe('Agent daily flow concurrency', () => {
 
     assert.equal(first.statusCode, 202)
     const runId = first.body.data.runId
-    assert.equal(getAgentRun(runId).state, 'running')
+    assert.equal(requireRun(runId).state, 'running')
 
-    const second = createResponse()
+    const second = response()
     await findHandler('post', '/actions/run-daily-flow')({
       headers: {},
       query: {},
@@ -1391,10 +1491,10 @@ describe('Agent daily flow concurrency', () => {
     assert.equal(second.statusCode, 409)
     assert.equal(second.body.error.code, 'AGENT_EXECUTION_BUSY')
     assert.equal(second.body.error.retryable, true)
-    assert.equal(getAgentRun(runId).state, 'running')
+    assert.equal(requireRun(runId).state, 'running')
     assert.equal(getScheduleExecutionStatus().runId, runId)
 
-    const stopRes = createResponse()
+    const stopRes = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopRes, () => {})
     assert.equal(stopRes.statusCode, 200)
 
@@ -1406,11 +1506,12 @@ describe('Agent daily flow concurrency', () => {
   })
 })
 
-function copilotSetPlan(count = 2) {
+function copilotSetPlan(count = 2): CopilotPlan {
   return {
     setId: '42',
     name: '测试作业集',
-    entries: Array.from({ length: count }, (_, index) => ({
+    items: [],
+    entries: Array.from({ length: count }, (_, index): CopilotPlanEntry => ({
       key: `${index}:${100 + index}:normal`,
       itemIndex: index,
       copilotId: 100 + index,
@@ -1424,12 +1525,22 @@ function copilotSetPlan(count = 2) {
   }
 }
 
-function createCopilotSetExecutor(plan, { onExecute = null } = {}) {
-  const executed = []
+interface CopilotSetExecutor {
+  executed: string[]
+  execute(input: ExecuteCopilotEntriesInput): Promise<CopilotEntriesOutcome>
+}
+
+function createCopilotSetExecutor(
+  plan: CopilotPlan,
+  { onExecute = null }: { onExecute?: ((entry: CopilotPlanEntry) => void | Promise<void>) | null } = {}
+): CopilotSetExecutor {
+  const executed: string[] = []
   return {
     executed,
-    async execute({ entries, lifecycle }) {
-      const statusByKey = new Map(entries.map(entry => [entry.key, 'pending']))
+    async execute({ entries = [], lifecycle = {} }: ExecuteCopilotEntriesInput): Promise<CopilotEntriesOutcome> {
+      const statusByKey = new Map<string, CopilotEntryOutcomeStatus>(
+        entries.map(entry => [entry.key, 'pending'] as const)
+      )
       let stopped = false
       await withMaaExecutionLease({ source: 'copilot-set', taskName: '测试作业集', command: 'copilot-plan' }, async () => {
         await lifecycle.onBeforeStart?.()
@@ -1446,7 +1557,7 @@ function createCopilotSetExecutor(plan, { onExecute = null } = {}) {
           lifecycle.onEntrySettled?.(entry, 'success')
         }
       })
-      const taskResults = plan.entries
+      const taskResults: CopilotTaskResult[] = plan.entries
         .filter(entry => statusByKey.has(entry.key))
         .map(entry => ({
           key: entry.key,
@@ -1457,9 +1568,11 @@ function createCopilotSetExecutor(plan, { onExecute = null } = {}) {
           displayStage: entry.displayStage,
           apCost: entry.apCost,
           mode: entry.mode,
-          status: statusByKey.get(entry.key)
+          presetFormation: entry.presetFormation,
+          status: statusByKey.get(entry.key) ?? 'pending'
         }))
-      const count = status => taskResults.filter(result => result.status === status).length
+      const count = (status: CopilotEntryOutcomeStatus): number =>
+        taskResults.filter(result => result.status === status).length
       return {
         success: count('failed') === 0,
         stopped,
@@ -1481,18 +1594,18 @@ function createCopilotSetExecutor(plan, { onExecute = null } = {}) {
   }
 }
 
-function useCopilotSetRuntime(plan, executor) {
+function useCopilotSetRuntime(plan: CopilotPlan, executor: CopilotSetExecutor): void {
   configureCopilotSetRuntimeForTests({
     buildCopilotPlan: async () => plan,
     executeCopilotEntries: executor.execute
   })
 }
 
-function copilotSetRequest(body, headers = {}, id = '42') {
+function copilotSetRequest(body: unknown, headers: Record<string, string> = {}, id = '42') {
   return { headers, params: { id }, body, query: {} }
 }
 
-function continueRequest(runId, body = {}) {
+function continueRequest(runId: string, body: Record<string, unknown> = {}) {
   return { headers: {}, query: {}, body: { runId, ...body } }
 }
 
@@ -1514,7 +1627,7 @@ describe('Agent copilot set routes', () => {
     const executor = createCopilotSetExecutor(plan)
     useCopilotSetRuntime(plan, executor)
 
-    const res = createResponse()
+    const res = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'cli', selectedIndexes: [] }),
       res,
@@ -1531,10 +1644,10 @@ describe('Agent copilot set routes', () => {
     assert.ok(res.body.data.runId)
     assert.equal(res.headers['X-La-Pluma-Run-Id'], res.body.data.runId)
 
-    const run = getAgentRun(res.body.data.runId)
+    const run = requireRun(res.body.data.runId)
     assert.equal(run.operationId, 'run_copilot_set')
     assert.equal(run.state, 'succeeded')
-    assert.equal(run.result.summary.successCount, 2)
+    assert.equal(runResult(run).summary.successCount, 2)
     assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal'])
     assert.deepEqual(await getMaaExecutionLeaseSnapshot(), { state: 'free', owner: null })
   })
@@ -1545,7 +1658,7 @@ describe('Agent copilot set routes', () => {
     const executor = createCopilotSetExecutor(plan)
     useCopilotSetRuntime(plan, executor)
 
-    const res = createResponse()
+    const res = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({}),
       res,
@@ -1556,7 +1669,7 @@ describe('Agent copilot set routes', () => {
     assert.equal(res.body.data.finished, true)
     assert.equal(res.body.data.summary.totalEntries, 0)
     assert.equal(res.body.data.summary.alreadyCompletedCount, 1)
-    assert.equal(getAgentRun(res.body.data.runId).state, 'succeeded')
+    assert.equal(requireRun(res.body.data.runId).state, 'succeeded')
     assert.deepEqual(executor.executed, [])
   })
 
@@ -1564,7 +1677,7 @@ describe('Agent copilot set routes', () => {
     const plan = copilotSetPlan(1)
     useCopilotSetRuntime(plan, createCopilotSetExecutor(plan))
 
-    const res = createResponse()
+    const res = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'app' }),
       res,
@@ -1574,12 +1687,12 @@ describe('Agent copilot set routes', () => {
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.data.mode, 'continuous')
     assert.equal(res.body.data.summary.successCount, 1)
-    assert.equal(getAgentRun(res.body.data.runId).state, 'succeeded')
+    assert.equal(requireRun(res.body.data.runId).state, 'succeeded')
   })
 
   it('rejects an unknown mode before creating a run', async () => {
-    const res = createResponse()
-    const forwarded = []
+    const res = response()
+    const forwarded: unknown[] = []
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'auto' }),
       res,
@@ -1587,8 +1700,8 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(forwarded.length, 1)
-    assert.equal(forwarded[0].statusCode, 400)
-    assert.equal(forwarded[0].code, 'AGENT_VALIDATION_COPILOT_SET_MODE_INVALID')
+    assert.equal(statusCodeOf(forwarded[0]), 400)
+    assert.equal(codeOf(forwarded[0]), 'AGENT_VALIDATION_COPILOT_SET_MODE_INVALID')
     assert.deepEqual(listAgentRuns(), [])
   })
 
@@ -1596,7 +1709,7 @@ describe('Agent copilot set routes', () => {
     const plan = copilotSetPlan(2)
     useCopilotSetRuntime(plan, createCopilotSetExecutor(plan))
 
-    const res = createResponse()
+    const res = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ waitForCompletion: false }),
       res,
@@ -1610,16 +1723,16 @@ describe('Agent copilot set routes', () => {
     assert.equal(res.headers.Location, `/api/agent/runs/${res.body.data.runId}`)
 
     const terminal = await waitForSnapshot(() => {
-      const run = getAgentRun(res.body.data.runId)
+      const run = requireRun(res.body.data.runId)
       return run && run.state === 'succeeded' ? run : null
     })
-    assert.equal(terminal.result.summary.successCount, 2)
+    assert.equal(runResult(terminal).summary.successCount, 2)
   })
 
   it('keeps a continuous set observable in the snapshot while it executes', async () => {
     const plan = copilotSetPlan(2)
-    let releaseFirstEntry
-    const firstEntryGate = new Promise(resolve => {
+    let releaseFirstEntry!: () => void
+    const firstEntryGate = new Promise<void>(resolve => {
       releaseFirstEntry = resolve
     })
     let gated = false
@@ -1632,7 +1745,7 @@ describe('Agent copilot set routes', () => {
     })
     useCopilotSetRuntime(plan, executor)
 
-    const res = createResponse()
+    const res = response()
     const request = findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ waitForCompletion: false }),
       res,
@@ -1640,7 +1753,7 @@ describe('Agent copilot set routes', () => {
     )
 
     const snapshot = await waitForSnapshot(async () => {
-      const current = createResponse()
+      const current = response()
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, current, () => {})
       return current.body?.data?.run?.progress?.phase === 'running' ? current : null
     })
@@ -1655,16 +1768,16 @@ describe('Agent copilot set routes', () => {
     releaseFirstEntry()
     await request
     const terminal = await waitForSnapshot(() => {
-      const run = getAgentRun(res.body.data.runId)
+      const run = requireRun(res.body.data.runId)
       return run && run.state === 'succeeded' ? run : null
     })
-    assert.equal(terminal.result.summary.successCount, 2)
+    assert.equal(runResult(terminal).summary.successCount, 2)
   })
 
   it('stops a running continuous set before the next entry starts', async () => {
     const plan = copilotSetPlan(3)
-    let releaseFirstEntry
-    const firstEntryGate = new Promise(resolve => {
+    let releaseFirstEntry!: () => void
+    const firstEntryGate = new Promise<void>(resolve => {
       releaseFirstEntry = resolve
     })
     let gated = false
@@ -1677,20 +1790,20 @@ describe('Agent copilot set routes', () => {
     })
     useCopilotSetRuntime(plan, executor)
 
-    const res = createResponse()
+    const res = response()
     const request = findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ waitForCompletion: false }),
       res,
       () => {}
     )
     const snapshot = await waitForSnapshot(async () => {
-      const current = createResponse()
+      const current = response()
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, current, () => {})
       return current.body?.data?.run?.progress?.phase === 'running' ? current : null
     })
     const runId = snapshot.body.data.run.runId
 
-    const stopped = createResponse()
+    const stopped = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopped, () => {})
     assert.equal(stopped.statusCode, 200)
     assert.equal(stopped.body.data.run.state, 'stopping')
@@ -1702,9 +1815,9 @@ describe('Agent copilot set routes', () => {
       return run && run.state === 'stopped' ? run : null
     })
 
-    assert.equal(terminal.result.stopped, true)
-    assert.equal(terminal.result.summary.successCount, 1)
-    assert.equal(terminal.result.summary.pendingCount, 2)
+    assert.equal(runResult(terminal).stopped, true)
+    assert.equal(runResult(terminal).summary.successCount, 1)
+    assert.equal(runResult(terminal).summary.pendingCount, 2)
     assert.deepEqual(executor.executed, ['0:100:normal'])
   })
 
@@ -1714,7 +1827,7 @@ describe('Agent copilot set routes', () => {
     useCopilotSetRuntime(plan, executor)
     const headers = { 'idempotency-key': 'copilot-set:replay:1' }
 
-    const first = createResponse()
+    const first = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ selectedIndexes: [] }, headers),
       first,
@@ -1722,7 +1835,7 @@ describe('Agent copilot set routes', () => {
     )
     assert.equal(first.statusCode, 200)
 
-    const replay = createResponse()
+    const replay = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ selectedIndexes: [] }, headers),
       replay,
@@ -1747,7 +1860,7 @@ describe('Agent copilot set routes', () => {
     }))
     const headers = { 'idempotency-key': 'copilot-set:busy:1' }
 
-    const busy = createResponse()
+    const busy = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({}, headers),
       busy,
@@ -1757,10 +1870,10 @@ describe('Agent copilot set routes', () => {
     assert.equal(busy.statusCode, 409)
     assert.equal(busy.body.error.code, 'MAA_EXECUTION_BUSY')
     assert.equal(busy.body.error.retryable, true)
-    assert.equal(getAgentRun(busy.body.error.details.runId).state, 'failed')
+    assert.equal(requireRun(busy.body.error.details.runId).state, 'failed')
 
     await rm(lockFile, { force: true })
-    const retry = createResponse()
+    const retry = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({}, headers),
       retry,
@@ -1769,7 +1882,7 @@ describe('Agent copilot set routes', () => {
 
     assert.equal(retry.statusCode, 200)
     assert.notEqual(retry.body.data.runId, busy.body.error.details.runId)
-    assert.equal(getAgentRun(retry.body.data.runId).state, 'succeeded')
+    assert.equal(requireRun(retry.body.data.runId).state, 'succeeded')
   })
 
   it('exposes a manual set waiting between entries and resumes it on demand', async () => {
@@ -1777,7 +1890,7 @@ describe('Agent copilot set routes', () => {
     const executor = createCopilotSetExecutor(plan)
     useCopilotSetRuntime(plan, executor)
 
-    const started = createResponse()
+    const started = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'manual' }),
       started,
@@ -1789,10 +1902,10 @@ describe('Agent copilot set routes', () => {
     assert.equal(started.body.data.nextEntry.key, '1:101:normal')
     assert.equal(started.body.data.summary.successCount, 1)
     const runId = started.body.data.runId
-    assert.equal(getAgentRun(runId).state, 'waiting')
+    assert.equal(requireRun(runId).state, 'waiting')
     assert.deepEqual(await getMaaExecutionLeaseSnapshot(), { state: 'free', owner: null })
 
-    const snapshot = createResponse()
+    const snapshot = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, snapshot, () => {})
     assert.equal(snapshot.body.data.run.runId, runId)
     assert.equal(snapshot.body.data.run.state, 'waiting')
@@ -1801,7 +1914,7 @@ describe('Agent copilot set routes', () => {
     assert.equal(snapshot.body.data.occupancy.state, 'pending')
     assert.equal(snapshot.body.data.occupancy.runState, 'waiting')
 
-    const continued = createResponse()
+    const continued = response()
     await findHandler('post', '/actions/continue-copilot-set')(
       continueRequest(runId),
       continued,
@@ -1813,9 +1926,9 @@ describe('Agent copilot set routes', () => {
     assert.equal(continued.body.data.waitingForNext, false)
     assert.equal(continued.body.data.run.state, 'succeeded')
     assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal'])
-    assert.equal(getAgentRun(runId).result.summary.successCount, 2)
+    assert.equal(runResult(requireRun(runId)).summary.successCount, 2)
 
-    const repeated = createResponse()
+    const repeated = response()
     await findHandler('post', '/actions/continue-copilot-set')(
       continueRequest(runId),
       repeated,
@@ -1830,7 +1943,7 @@ describe('Agent copilot set routes', () => {
     const executor = createCopilotSetExecutor(plan)
     useCopilotSetRuntime(plan, executor)
 
-    const started = createResponse()
+    const started = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'manual' }),
       started,
@@ -1838,21 +1951,21 @@ describe('Agent copilot set routes', () => {
     )
     const runId = started.body.data.runId
     assert.equal(started.body.data.waitingForNext, true)
-    assert.equal(getAgentRun(runId).state, 'waiting')
+    assert.equal(requireRun(runId).state, 'waiting')
 
-    const second = createResponse()
+    const second = response()
     await findHandler('post', '/actions/continue-copilot-set')(continueRequest(runId), second, () => {})
     assert.equal(second.statusCode, 200)
     assert.equal(second.body.data.waitingForNext, true)
     assert.equal(second.body.data.nextEntry.key, '2:102:normal')
-    assert.equal(getAgentRun(runId).state, 'waiting')
-    assert.equal(getAgentRun(runId).result.summary.successCount, 2)
+    assert.equal(requireRun(runId).state, 'waiting')
+    assert.equal(runResult(requireRun(runId)).summary.successCount, 2)
 
-    const third = createResponse()
+    const third = response()
     await findHandler('post', '/actions/continue-copilot-set')(continueRequest(runId), third, () => {})
     assert.equal(third.statusCode, 200)
     assert.equal(third.body.data.finished, true)
-    assert.equal(getAgentRun(runId).state, 'succeeded')
+    assert.equal(requireRun(runId).state, 'succeeded')
     assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal', '2:102:normal'])
   })
 
@@ -1861,7 +1974,7 @@ describe('Agent copilot set routes', () => {
     const executor = createCopilotSetExecutor(plan)
     useCopilotSetRuntime(plan, executor)
 
-    const started = createResponse()
+    const started = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'manual' }),
       started,
@@ -1877,7 +1990,7 @@ describe('Agent copilot set routes', () => {
       startedAt: new Date().toISOString()
     }))
 
-    const busy = createResponse()
+    const busy = response()
     await findHandler('post', '/actions/continue-copilot-set')(
       continueRequest(runId),
       busy,
@@ -1887,19 +2000,19 @@ describe('Agent copilot set routes', () => {
     assert.equal(busy.statusCode, 409)
     assert.equal(busy.body.error.code, 'MAA_EXECUTION_BUSY')
     assert.equal(busy.body.error.retryable, true)
-    assert.equal(getAgentRun(runId).state, 'waiting')
-    assert.equal(getAgentRun(runId).result.summary.pendingCount, 1)
+    assert.equal(requireRun(runId).state, 'waiting')
+    assert.equal(runResult(requireRun(runId)).summary.pendingCount, 1)
     assert.deepEqual(executor.executed, ['0:100:normal'])
 
     await rm(lockFile, { force: true })
-    const continued = createResponse()
+    const continued = response()
     await findHandler('post', '/actions/continue-copilot-set')(
       continueRequest(runId),
       continued,
       () => {}
     )
     assert.equal(continued.statusCode, 200)
-    assert.equal(getAgentRun(runId).state, 'succeeded')
+    assert.equal(requireRun(runId).state, 'succeeded')
   })
 
   it('stops a waiting manual set and never starts the next entry', async () => {
@@ -1907,7 +2020,7 @@ describe('Agent copilot set routes', () => {
     const executor = createCopilotSetExecutor(plan)
     useCopilotSetRuntime(plan, executor)
 
-    const started = createResponse()
+    const started = response()
     await findHandler('post', '/copilot-sets/:id/execute')(
       copilotSetRequest({ mode: 'manual' }),
       started,
@@ -1915,7 +2028,7 @@ describe('Agent copilot set routes', () => {
     )
     const runId = started.body.data.runId
 
-    const stopped = createResponse()
+    const stopped = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopped, () => {})
 
     assert.equal(stopped.statusCode, 200)
@@ -1925,7 +2038,7 @@ describe('Agent copilot set routes', () => {
     assert.equal(stopped.body.data.run.result.summary.successCount, 1)
     assert.equal(stopped.body.data.run.result.summary.pendingCount, 2)
 
-    const continued = createResponse()
+    const continued = response()
     await findHandler('post', '/actions/continue-copilot-set')(
       continueRequest(runId),
       continued,

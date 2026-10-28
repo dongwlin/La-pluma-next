@@ -1,4 +1,4 @@
-import { AGENT_TASK_COMMANDS } from '../services/agentActionService.js';
+import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
 
 export const API_VERSION = '2026-07-12';
 
