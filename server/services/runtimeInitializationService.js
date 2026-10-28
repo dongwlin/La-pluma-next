@@ -6,7 +6,7 @@ import {
   setupAutoUpdate,
   setupSchedule
 } from './schedulerService.ts';
-import { initTelegramBot, attachTelegramBotToLifecycle } from './telegramBotService.js';
+import { initTelegramBot, attachTelegramBotToLifecycle } from './telegramBotService.ts';
 import { createLogger } from '../utils/logger.ts';
 
 const logger = createLogger('RuntimeInitialization');
