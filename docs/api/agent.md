@@ -128,6 +128,8 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 如果设置了 `LA_PLUMA_TOKEN`，Agent API、其它 `/api/*` 以及 WebRTC 同源网关的票据入口都需要 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`。未设置时认证关闭。
 
+令牌比较先对两侧做摘要再使用恒定时间比较：长度差异、非字符串请求头或格式错误只返回 401 `AGENT_AUTH_REQUIRED`，不抛错，也不回显预期值、变量名或长度。认证失败按来源地址限流（默认每分钟 10 次），超限返回 429 `AGENT_RATE_LIMITED` 并带 `Retry-After`；有效令牌不参与失败计数。未设置令牌时，信令票据入口只接受同源签发，跨源请求返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`；设置后由令牌把关，票据签发仍按来源限流（默认每分钟 30 次）。信令凭据与上游账号的迁移要求见[部署指南](../guides/deployment.md#信令凭据与上游端口边界)。
+
 ## 养成队列与任务流程
 
 添加目标和生成预览不会首次应用任务流程。先调用 `POST /api/agent/training/plan`（`mode` 为 `current` 或 `all`），再将返回的计划原样放入 `POST /api/agent/actions/apply-training-plan` 的 `plan` 字段。必须保留 `queueRevision`；队列已变化或缺少版本时应用返回 HTTP `409`，需要重新预览。应用成功后服务端会按更新后的 automation 配置重新注册已存在的默认定时任务；响应中的可选 `scheduleSync` 为 `{ attempted, success, message, missingTimes? }`；`attempted: true, success: false` 表示配置与队列已应用但定时注册失败（包括只有部分时间点创建成功，`missingTimes` 列出未注册时间点），客户端应保留计划并给出重试入口。普通队列同步（`/training/sync` 或队列写入触发的自动同步）不会创建或重注册定时任务。
