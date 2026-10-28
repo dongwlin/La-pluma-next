@@ -12,7 +12,7 @@ import {
   stopWebrtc,
   getWebrtcDevices
 } from '../services/webrtcService.ts';
-import { getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.js';
+import { getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.ts';
 import {
   asyncHandler,
   agentError,

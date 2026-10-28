@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
+import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
+import type { MaaLogFileContent, MaaLogFileEntry } from '../services/maaLogFileService.ts';
+import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 import { loggerManager } from '../utils/logger.ts';
 
 // 相关环境变量均在模块导入前设置：MAA_CLI_PATH 由被测模块在导入时读取，
 // 测试因此使用假 CLI 与临时日志目录，不读取真实设备日志。
 // 注意：webrtcSignalingGateway 及其传递依赖会在导入时读取 MAA_CLI_PATH，
 // 必须等环境变量就绪后再动态导入，不能用顶层静态导入。
+// 响应按日志边界的领域类型读取；越界与解码失败按统一错误信封收窄。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-log-path-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const outsideDir = join(fixtureDir, 'outside');
@@ -53,38 +58,71 @@ const { createLaPlumaApp } = await import('../server.js');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
 
-const servers = [];
+const servers: Server[] = [];
 
-async function listen(app) {
+async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
   const server = createServer(app);
   servers.push(server);
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  return server.address().port;
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  return address.port;
 }
 
-async function listenAndFetch(pathSuffix) {
+async function listenAndFetch(pathSuffix: string): Promise<Response> {
   const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
   return fetch(`http://127.0.0.1:${port}/api/agent/logs/files/${pathSuffix}`);
 }
 
-function stubSignalingGateway() {
+/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
+function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,
-    handleLogin(_req, res) {
+    async handleLogin(_req, res) {
       res.json({ token: 'stub' });
-    }
+    },
+    async handleUpgrade() {},
+    attach() {},
+    close() {}
   };
+}
+
+interface ApiEnvelopeLike {
+  success: boolean;
+}
+
+function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
+  if (typeof value !== 'object' || value === null) return false;
+  return typeof (value as { success?: unknown }).success === 'boolean';
+}
+
+/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
+async function readBody<T>(response: Response): Promise<T> {
+  const body: unknown = await response.json();
+  assert.ok(isApiEnvelope(body));
+  return body as T;
+}
+
+async function readLogContent(response: Response): Promise<ApiSuccessResponse<MaaLogFileContent>> {
+  return readBody<ApiSuccessResponse<MaaLogFileContent>>(response);
+}
+
+async function readErrorBody(response: Response): Promise<ApiErrorResponse> {
+  const body = await readBody<ApiErrorResponse>(response);
+  assert.equal(body.success, false);
+  return body;
 }
 
 afterEach(async () => {
   while (servers.length) {
     const server = servers.pop();
+    assert.ok(server);
     server.closeIdleConnections?.();
     server.closeAllConnections?.();
-    await new Promise(resolve => server.close(resolve));
+    await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
 
@@ -96,7 +134,7 @@ describe('GET /api/agent/logs/files/:filePath single URL decoding', () => {
   it('reads nested files requested with literal slashes', async () => {
     const response = await listenAndFetch(NESTED_LOG);
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readLogContent(response);
     assert.equal(body.success, true);
     assert.equal(body.data.content, 'nested run log');
   });
@@ -105,14 +143,14 @@ describe('GET /api/agent/logs/files/:filePath single URL decoding', () => {
     // 客户端形态：encodeURIComponent 把目录分隔符与文件名一起编码
     const response = await listenAndFetch(encodeURIComponent(NESTED_LOG));
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readLogContent(response);
     assert.equal(body.data.content, 'nested run log');
   });
 
   it('resolves normalized traversal that stays inside the log directory', async () => {
     const response = await listenAndFetch(encodeURIComponent(join(maaLogDir, 'sub', '..', '100%.log')));
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readLogContent(response);
     assert.equal(body.data.content, 'trailing percent log');
   });
 
@@ -121,7 +159,7 @@ describe('GET /api/agent/logs/files/:filePath single URL decoding', () => {
     // 二次解码会在这里抛 URIError 并退化为 500，回归锁定单次解码后的 200。
     const response = await listenAndFetch(encodeURIComponent(TRAILING_PERCENT_LOG));
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readLogContent(response);
     assert.equal(body.data.content, 'trailing percent log');
   });
 
@@ -130,14 +168,14 @@ describe('GET /api/agent/logs/files/:filePath single URL decoding', () => {
     // 二次解码会把它错转成 'a b.log'，回归锁定字面文件名不被转换。
     const response = await listenAndFetch(encodeURIComponent(LITERAL_PERCENT_LOG));
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readLogContent(response);
     assert.equal(body.data.content, 'literal percent-twenty log');
   });
 
   it('keeps encoded-space file names readable', async () => {
     const response = await listenAndFetch(encodeURIComponent(SPACE_LOG));
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readLogContent(response);
     assert.equal(body.data.content, 'space log');
   });
 });
@@ -147,7 +185,7 @@ describe('GET /api/agent/logs/files file listing round trip', () => {
     const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
     const response = await fetch(`http://127.0.0.1:${port}/api/agent/logs/files`);
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readBody<ApiSuccessResponse<MaaLogFileEntry[]>>(response);
     assert.equal(body.success, true);
     const names = body.data.map(file => file.name);
     assert.ok(names.includes('sub/run-1.log'));
@@ -158,10 +196,10 @@ describe('GET /api/agent/logs/files file listing round trip', () => {
 
 describe('GET /api/agent/logs/files/:filePath path boundary', () => {
   // 越界与失败走统一错误出口：普通 Error 无公开状态，按现有契约返回 500 与稳定错误码
-  async function assertRejected(pathSuffix, expectedStatus = 500) {
+  async function assertRejected(pathSuffix: string, expectedStatus = 500): Promise<ApiErrorResponse> {
     const response = await listenAndFetch(pathSuffix);
     assert.equal(response.status, expectedStatus);
-    const body = await response.json();
+    const body = await readErrorBody(response);
     assert.equal(body.success, false);
     return body;
   }

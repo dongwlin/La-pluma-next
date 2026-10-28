@@ -12,7 +12,7 @@ import {
 import type { ScheduledDailyFlowRunResult } from '../schedulerService.ts';
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
 import type { AgentRunDto } from '../agentRunService.ts';
-import { buildAgentRunSnapshot } from '../runSnapshotService.js';
+import { buildAgentRunSnapshot } from '../runSnapshotService.ts';
 import { getTaskStatus } from '../maaProcessService.ts';
 import { getTodayOpenStages } from '../notificationService.ts';
 import type {
@@ -145,11 +145,15 @@ test('cron execution exposes one active run while it waits between steps', async
 
   assert.ok(active.runId);
   const snapshot = await buildAgentRunSnapshot();
+  assert.ok(snapshot.run);
+  // 日常流程的进度是进程/流程投影（带自己的 scheduleId），不是作业集会话进度。
+  const progress = snapshot.run.progress;
+  assert.ok(progress && 'scheduleId' in progress);
   assert.equal(snapshot.run.runId, active.runId);
   assert.equal(snapshot.run.state, 'running');
-  assert.equal(snapshot.run.progress.scheduleId, 'cron-progress');
-  assert.equal(snapshot.run.progress.currentStep, 0);
-  assert.equal(snapshot.run.progress.totalSteps, 2);
+  assert.equal(progress.scheduleId, 'cron-progress');
+  assert.equal(progress.currentStep, 0);
+  assert.equal(progress.totalSteps, 2);
   assert.equal(snapshot.occupancy.state, 'run');
   assert.equal(getTaskStatus().isRunning, false);
 

@@ -35,7 +35,7 @@ import {
 } from '../services/agentRunService.ts';
 import type { AgentRunDto, AgentRunStatus } from '../services/agentRunService.ts';
 import type { ScheduleFlowExecutionResult } from '../services/scheduleFlowExecution.ts';
-import { enrichAgentRun } from '../services/runSnapshotService.js';
+import { enrichAgentRun } from '../services/runSnapshotService.ts';
 import {
   asyncHandler,
   agentError,
@@ -1039,7 +1039,8 @@ async function continueCopilotSet(
     return respondContinueError(res, req, runId, error);
   }
 
-  const enrichedRun: AgentRunDto = enrichAgentRun(getAgentRun(runId));
+  // 续跑入口刚写入的 Run 必然存在；非空断言只收窄类型，缺失时与旧实现一样原样返回 null。
+  const enrichedRun: AgentRunDto = enrichAgentRun(getAgentRun(runId)!);
   setRunResponseHeaders(res, enrichedRun, false, true);
   res.status(202);
   sendSuccess(res, req, runResponseData(accepted, enrichedRun), resultMessage(accepted) || '作业集下一关已接受', { runId });

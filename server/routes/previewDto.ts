@@ -28,6 +28,7 @@ import type { CapturedScreen } from '../services/maaDeviceService.ts';
 import type { ConnectionProfile } from '../services/connectionService.ts';
 import type { WebrtcStatus } from '../services/webrtcService.ts';
 import type { ApiErrorResponse, ApiRequestLike } from '../utils/apiHelper.ts';
+import type { AndroidDisplayState } from './deviceStatus.ts';
 import { resolveRequestConnection } from './requestConnection.js';
 
 /** 预览路由处理器的请求端口：query/body 保持 unknown，由本模块按端点收窄。 */
@@ -119,20 +120,10 @@ export interface PreviewOrientationCommandResult {
 }
 
 /**
- * 方向应用后的显示观测（deviceStatus.getAndroidDisplayState 的返回值）。
- * `inferredOrientation` 在适配层是未类型化 JS，实际只会是
- * landscape/portrait/null，这里按适配层边界保留 string|null。
+ * 方向应用后的显示观测：复用 deviceStatus 适配层的返回类型，
+ * `inferredOrientation` 只会是 landscape/portrait/null。
  */
-export interface PreviewDisplayState {
-  adbPath: string;
-  address: string;
-  rotation: number | null;
-  accelerometerRotation: string | null;
-  userRotation: string | null;
-  width: number | null;
-  height: number | null;
-  inferredOrientation: string | null;
-}
+export type PreviewDisplayState = AndroidDisplayState;
 
 /** `POST /preview/orientation` 的已执行结果：计划、命令结果与观测。 */
 export interface PreviewOrientationApplyResult extends PreviewOrientationPlan {

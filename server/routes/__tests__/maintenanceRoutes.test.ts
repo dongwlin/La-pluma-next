@@ -112,9 +112,9 @@ const {
 } = await import('../maintenanceDto.ts');
 const { default: agentRouter } = await import('../agent.js');
 const agentExecutionRoutes = (await import('../agentExecution.ts')).default;
-const agentStatusRoutes = (await import('../agentStatusRoutes.js')).default;
-const agentLogRoutes = (await import('../agentLogRoutes.js')).default;
-const agentDataRoutes = (await import('../agentDataRoutes.js')).default;
+const agentStatusRoutes = (await import('../agentStatusRoutes.ts')).default;
+const agentLogRoutes = (await import('../agentLogRoutes.ts')).default;
+const agentDataRoutes = (await import('../agentDataRoutes.ts')).default;
 const agentTrainingRoutes = (await import('../agentTrainingRoutes.ts')).default;
 const agentPreviewRoutes = (await import('../agentPreviewRoutes.ts')).default;
 const agentNotificationRoutes = (await import('../agentNotificationRoutes.ts')).default;

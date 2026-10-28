@@ -11,14 +11,14 @@ import {
   startAgentRun
 } from '../agentRunService.ts'
 import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
-import { buildAgentRunSnapshot } from '../runSnapshotService.js'
+import { buildAgentRunSnapshot } from '../runSnapshotService.ts'
 import { loggerManager } from '../../utils/logger.ts'
 
 loggerManager.getLogger('MaaService').enableConsole = false
 
-let lockDir
-let lockFile
-let previousLockFile
+let lockDir: string
+let lockFile: string
+let previousLockFile: string | undefined
 
 before(async () => {
   lockDir = await mkdtemp(join(tmpdir(), 'la-pluma-run-snapshot-'))
@@ -33,7 +33,7 @@ after(async () => {
   await rm(lockDir, { recursive: true, force: true })
 })
 
-async function writeLease(owner) {
+async function writeLease(owner: Record<string, unknown>): Promise<void> {
   await writeFile(lockFile, JSON.stringify(owner))
 }
 
@@ -62,6 +62,7 @@ describe('run snapshot', () => {
 
     const snapshot = await buildAgentRunSnapshot()
 
+    assert.ok(snapshot.run)
     assert.equal(snapshot.run.runId, run.runId)
     assert.equal(snapshot.run.state, 'running')
     assert.equal(snapshot.occupancy.state, 'run')
@@ -77,11 +78,15 @@ describe('run snapshot', () => {
     const accepted = beginAgentRun({ operationId: 'run_daily_flow' }).run
 
     const pendingSnapshot = await buildAgentRunSnapshot()
+    assert.ok(pendingSnapshot.run)
+    assert.ok(pendingSnapshot.run.progress)
     assert.equal(pendingSnapshot.run.progress.currentStep, null)
     assert.equal(pendingSnapshot.run.progress.message, '等待执行权')
 
     startAgentRun(accepted.runId)
     const snapshot = await buildAgentRunSnapshot()
+    assert.ok(snapshot.run)
+    assert.ok(snapshot.run.progress)
     assert.equal(snapshot.run.progress.currentStep, null)
     assert.equal(snapshot.run.progress.message, '等待流程状态')
   })
@@ -144,6 +149,8 @@ describe('run snapshot', () => {
 
     const snapshot = await buildAgentRunSnapshot()
 
+    assert.ok(snapshot.run)
+    assert.ok(snapshot.run.progress)
     assert.equal(snapshot.run.runId, run.runId)
     assert.equal(snapshot.run.state, 'waiting')
     assert.equal(snapshot.run.progress.message, '等待开始下一关')
@@ -153,8 +160,10 @@ describe('run snapshot', () => {
 
     const newer = beginAgentRun({ operationId: 'run_task' }).run
     const withIntent = await buildAgentRunSnapshot()
+    assert.ok(withIntent.run)
     assert.equal(withIntent.run.runId, newer.runId)
     const waitingEntry = withIntent.activeRuns.find(active => active.runId === run.runId)
+    assert.ok(waitingEntry?.progress)
     assert.equal(waitingEntry.state, 'waiting')
     assert.equal(waitingEntry.progress.message, '等待开始下一关')
     assert.equal(withIntent.occupancy.state, 'pending')
@@ -168,6 +177,7 @@ describe('run snapshot', () => {
     const snapshot = await buildAgentRunSnapshot()
 
     assert.equal(snapshot.run, null)
+    assert.ok(snapshot.lastRun)
     assert.equal(snapshot.lastRun.runId, run.runId)
     assert.equal(snapshot.lastRun.state, 'succeeded')
     assert.equal(snapshot.occupancy.state, 'idle')
@@ -179,9 +189,10 @@ describe('run snapshot', () => {
 
     const snapshot = await buildAgentRunSnapshot()
 
-    assert.equal(snapshot.run.runId, newer.runId)
+    assert.ok(snapshot.run)
     assert.ok(snapshot.run.progress)
-    assert.equal(snapshot.activeRuns.find(item => item.runId === older.runId).progress, undefined)
+    assert.equal(snapshot.run.runId, newer.runId)
+    assert.equal(snapshot.activeRuns.find(item => item.runId === older.runId)?.progress, undefined)
   })
 })
 
@@ -203,18 +214,21 @@ describe('run snapshot line normalization', () => {
   })
 
   it('keeps the established normalization for omitted, invalid and repeated lines', async () => {
-    for (const lines of [undefined, 'abc', Number.NaN, ['1', '2'], Infinity, -Infinity, '1e999']) {
+    const invalidLines: unknown[] = [undefined, 'abc', Number.NaN, ['1', '2'], Infinity, -Infinity, '1e999']
+    for (const lines of invalidLines) {
       const snapshot = await buildAgentRunSnapshot({ lines })
       assert.equal(snapshot.recentLogs.length, 80)
     }
   })
 
   it('keeps clamping oversized finite values to the 1..500 range', async () => {
-    for (const lines of ['1e9', 1000, '1e21']) {
+    const oversizedLines: unknown[] = ['1e9', 1000, '1e21']
+    for (const lines of oversizedLines) {
       const snapshot = await buildAgentRunSnapshot({ lines })
       assert.equal(snapshot.recentLogs.length, 500)
     }
-    for (const lines of [-5, 0]) {
+    const undersizedLines: unknown[] = [-5, 0]
+    for (const lines of undersizedLines) {
       const snapshot = await buildAgentRunSnapshot({ lines })
       assert.equal(snapshot.recentLogs.length, 1)
     }

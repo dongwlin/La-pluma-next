@@ -1,15 +1,28 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
+import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
+import type { AgentStatusPayload } from '../routes/readDto.ts';
+import type { AgentRunSnapshot } from '../services/runSnapshotService.ts';
+import type { MaaTaskStatus } from '../services/maaProcessService.ts';
+import type { MaaLogFileContent, MaaLogFileEntry } from '../services/maaLogFileService.ts';
+import type { DropRecordDay, DropStatistics } from '../services/dropRecordService.ts';
+import type { DailyStageOverview } from '../services/notificationService.ts';
+import type { DepotFile, OperBoxFile, OperatorSummary } from '../services/dataParserService.ts';
+import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 
 // 真实 HTTP 回归：状态、Run 查询、日志、掉落与游戏数据读取已从 agent.js
 // 拆到独立 router，这里通过 createLaPlumaApp 验证挂载、鉴权、query 归一化、
 // 日志路径与生产静态 fallback 顺序保持不变。
 // 环境变量必须在导入被测模块前就绪：MAA_CLI_PATH 与 XDG_* 由服务在导入或
 // 调用时读取，测试只使用临时目录与假 CLI / 假 ADB，不触碰真实设备。
+//
+// 响应按各端点声明的 DTO 读取：状态汇总的探测兜底与成功投影分别收窄，
+// Run 快照直接复用 runSnapshotService 的快照类型，掉落与游戏数据复用领域类型。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-read-routes-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const dropDir = join(fixtureDir, 'drop-records');
@@ -96,37 +109,66 @@ for (const loggerName of ['Api', 'MaaService', 'DropRecord', 'DataParser']) {
   loggerManager.getLogger(loggerName).enableConsole = false;
 }
 
-const servers = [];
+const servers: Server[] = [];
 
-async function listen(app) {
+async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
   const server = createServer(app);
   servers.push(server);
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  return server.address().port;
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  return address.port;
 }
 
-function stubSignalingGateway() {
+/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
+function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,
-    handleLogin(_req, res) {
+    async handleLogin(_req, res) {
       res.json({ token: 'stub' });
-    }
+    },
+    async handleUpgrade() {},
+    attach() {},
+    close() {}
   };
 }
 
-function authorizedHeaders() {
+interface ApiEnvelopeLike {
+  success: boolean;
+}
+
+function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
+  if (typeof value !== 'object' || value === null) return false;
+  return typeof (value as { success?: unknown }).success === 'boolean';
+}
+
+/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
+async function readBody<T>(response: Response): Promise<T> {
+  const body: unknown = await response.json();
+  assert.ok(isApiEnvelope(body));
+  return body as T;
+}
+
+async function readErrorBody(response: Response): Promise<ApiErrorResponse> {
+  const body = await readBody<ApiErrorResponse>(response);
+  assert.equal(body.success, false);
+  return body;
+}
+
+function authorizedHeaders(): Record<string, string> {
   return { Authorization: 'Bearer api-secret' };
 }
 
 afterEach(async () => {
   while (servers.length) {
     const server = servers.pop();
+    assert.ok(server);
     server.closeIdleConnections?.();
     server.closeAllConnections?.();
-    await new Promise(resolve => server.close(resolve));
+    await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
 
@@ -143,7 +185,7 @@ describe('moved agent read routes keep authentication and response contracts', (
       loginRateLimit: { maxAuthFailures: 100 }
     }));
     const baseUrl = `http://127.0.0.1:${port}`;
-    const movedRoutes = [
+    const movedRoutes: ReadonlyArray<readonly [string, string]> = [
       ['GET', `/api/agent/status?adbPath=${encodeURIComponent(fakeAdbPath)}&address=127.0.0.1:5555`],
       ['GET', '/api/agent/runs/current'],
       ['GET', '/api/agent/runs/00000000-0000-4000-8000-000000000000'],
@@ -166,7 +208,7 @@ describe('moved agent read routes keep authentication and response contracts', (
     for (const [method, path] of movedRoutes) {
       const response = await fetch(`${baseUrl}${path}`, { method });
       assert.equal(response.status, 401, `${method} ${path} must require the API token`);
-      const body = await response.json();
+      const body = await readErrorBody(response);
       assert.equal(body.error.code, 'AGENT_AUTH_REQUIRED');
     }
   });
@@ -179,19 +221,26 @@ describe('moved agent read routes keep authentication and response contracts', (
     });
     const response = await fetch(`http://127.0.0.1:${port}/api/agent/status?${query}`);
     assert.equal(response.status, 200);
-    const body = await response.json();
+    const body = await readBody<ApiSuccessResponse<AgentStatusPayload>>(response);
 
     assert.equal(body.success, true);
     assert.equal(body.data.api.name, 'la-pluma-agent-api');
     assert.equal(body.data.api.manifest, '/api/agent/manifest');
-    assert.equal(body.data.maa.version.cli, 'v0.7.0');
+    const version = body.data.maa.version;
+    assert.ok('cli' in version);
+    assert.equal(version.cli, 'v0.7.0');
     assert.equal(body.data.maa.task.isRunning, false);
-    assert.equal(body.data.device.adbPath, fakeAdbPath);
-    assert.equal(body.data.device.address, '127.0.0.1:5555');
-    assert.equal(body.data.device.connected, true);
-    assert.match(body.data.device.foreground, /MainActivity/);
-    assert.equal(body.data.screen.orientation.width, 1080);
-    assert.equal(body.data.screen.orientation.height, 1920);
+    const device = body.data.device;
+    assert.equal(device.adbPath, fakeAdbPath);
+    assert.equal(device.address, '127.0.0.1:5555');
+    assert.equal(device.connected, true);
+    assert.ok('foreground' in device);
+    assert.ok(device.foreground);
+    assert.match(device.foreground, /MainActivity/);
+    const orientation = body.data.screen.orientation;
+    assert.ok('width' in orientation);
+    assert.equal(orientation.width, 1080);
+    assert.equal(orientation.height, 1920);
     assert.ok(Array.isArray(body.data.recentLogs));
     assert.ok(Array.isArray(body.data.recommendations));
 
@@ -205,7 +254,9 @@ describe('moved agent read routes keep authentication and response contracts', (
     const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
     const baseUrl = `http://127.0.0.1:${port}`;
 
-    const snapshot = await (await fetch(`${baseUrl}/api/agent/runs/current?lines=1`)).json();
+    const snapshot = await readBody<ApiSuccessResponse<AgentRunSnapshot>>(
+      await fetch(`${baseUrl}/api/agent/runs/current?lines=1`)
+    );
     assert.equal(snapshot.success, true);
     assert.equal(snapshot.data.isRunning, false);
     assert.equal(snapshot.data.run, null);
@@ -215,13 +266,15 @@ describe('moved agent read routes keep authentication and response contracts', (
     assert.ok(Array.isArray(snapshot.data.recentLogs));
     assert.ok(snapshot.data.schedule);
 
-    const task = await (await fetch(`${baseUrl}/api/agent/tasks/status`)).json();
+    const task = await readBody<ApiSuccessResponse<MaaTaskStatus>>(
+      await fetch(`${baseUrl}/api/agent/tasks/status`)
+    );
     assert.equal(task.success, true);
     assert.equal(typeof task.data.isRunning, 'boolean');
 
     const missing = await fetch(`${baseUrl}/api/agent/runs/00000000-0000-4000-8000-000000000000`);
     assert.equal(missing.status, 404);
-    const missingBody = await missing.json();
+    const missingBody = await readErrorBody(missing);
     assert.equal(missingBody.error.code, 'AGENT_RUN_NOT_FOUND');
     assert.deepEqual(missingBody.error.details, { runId: '00000000-0000-4000-8000-000000000000' });
     assert.equal(missingBody.error.retryable, false);
@@ -231,20 +284,28 @@ describe('moved agent read routes keep authentication and response contracts', (
     const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
     const baseUrl = `http://127.0.0.1:${port}`;
 
-    const recent = await (await fetch(`${baseUrl}/api/agent/logs/recent?lines=2`)).json();
+    const recent = await readBody<ApiSuccessResponse<unknown[]>>(
+      await fetch(`${baseUrl}/api/agent/logs/recent?lines=2`)
+    );
     assert.equal(recent.success, true);
     assert.ok(Array.isArray(recent.data));
 
-    const listing = await (await fetch(`${baseUrl}/api/agent/logs/files`)).json();
+    const listing = await readBody<ApiSuccessResponse<MaaLogFileEntry[]>>(
+      await fetch(`${baseUrl}/api/agent/logs/files`)
+    );
     assert.equal(listing.success, true);
     assert.ok(listing.data.some(file => file.name === 'run.log'));
 
-    const read = await (await fetch(`${baseUrl}/api/agent/logs/files/${encodeURIComponent(logFilePath)}?lines=1`)).json();
+    const read = await readBody<ApiSuccessResponse<MaaLogFileContent>>(
+      await fetch(`${baseUrl}/api/agent/logs/files/${encodeURIComponent(logFilePath)}?lines=1`)
+    );
     assert.equal(read.success, true);
     assert.equal(read.data.returnedLines, 1);
     assert.equal(read.data.content, 'line two');
 
-    const escaped = await (await fetch(`${baseUrl}/api/agent/logs/files/${encodeURIComponent('../outside.log')}`)).json();
+    const escaped = await readErrorBody(
+      await fetch(`${baseUrl}/api/agent/logs/files/${encodeURIComponent('../outside.log')}`)
+    );
     assert.equal(escaped.success, false);
     assert.equal(escaped.error.code, 'AGENT_INTERNAL_ERROR');
   });
@@ -253,7 +314,9 @@ describe('moved agent read routes keep authentication and response contracts', (
     const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
     const baseUrl = `http://127.0.0.1:${port}`;
 
-    const cleared = await (await fetch(`${baseUrl}/api/agent/logs/recent/clear`, { method: 'POST' })).json();
+    const cleared = await readBody<ApiSuccessResponse<null>>(
+      await fetch(`${baseUrl}/api/agent/logs/recent/clear`, { method: 'POST' })
+    );
     assert.equal(cleared.success, true);
     assert.equal(cleared.message, '实时日志已清空');
 
@@ -263,11 +326,13 @@ describe('moved agent read routes keep authentication and response contracts', (
       body: JSON.stringify({ maxSizeMB: 0 })
     });
     assert.equal(invalidCleanup.status, 400);
-    const invalidBody = await invalidCleanup.json();
+    const invalidBody = await readErrorBody(invalidCleanup);
     assert.equal(invalidBody.error.code, 'AGENT_VALIDATION_LOG_SIZE_INVALID');
     assert.deepEqual(invalidBody.error.details, { maxSizeMB: 0 });
 
-    const screenshots = await (await fetch(`${baseUrl}/api/agent/debug-screenshots`)).json();
+    const screenshots = await readBody<ApiSuccessResponse<unknown[]>>(
+      await fetch(`${baseUrl}/api/agent/debug-screenshots`)
+    );
     assert.equal(screenshots.success, true);
   });
 
@@ -281,34 +346,46 @@ describe('moved agent read routes keep authentication and response contracts', (
     const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
     const baseUrl = `http://127.0.0.1:${port}`;
 
-    const recentDrops = await (await fetch(`${baseUrl}/api/agent/drops/recent?days=2`)).json();
+    const recentDrops = await readBody<ApiSuccessResponse<DropRecordDay[]>>(
+      await fetch(`${baseUrl}/api/agent/drops/recent?days=2`)
+    );
     assert.equal(recentDrops.success, true);
     assert.equal(recentDrops.data.length, 1);
     assert.equal(recentDrops.data[0].date, date);
 
-    const todayDrops = await (await fetch(`${baseUrl}/api/agent/drops/today`)).json();
+    const todayDrops = await readBody<ApiSuccessResponse<DropRecordDay>>(
+      await fetch(`${baseUrl}/api/agent/drops/today`)
+    );
     assert.equal(todayDrops.success, true);
 
-    const statistics = await (await fetch(`${baseUrl}/api/agent/drops/statistics?days=2`)).json();
+    const statistics = await readBody<ApiSuccessResponse<DropStatistics>>(
+      await fetch(`${baseUrl}/api/agent/drops/statistics?days=2`)
+    );
     assert.equal(statistics.success, true);
     assert.equal(statistics.data.dateRange.days, 1);
     assert.equal(statistics.data.dailyTrend.length, 1);
 
-    const stages = await (await fetch(`${baseUrl}/api/agent/stages/open-today`)).json();
+    const stages = await readBody<ApiSuccessResponse<DailyStageOverview>>(
+      await fetch(`${baseUrl}/api/agent/stages/open-today`)
+    );
     assert.equal(stages.success, true);
     assert.ok(Array.isArray(stages.data.open));
     assert.ok(Array.isArray(stages.data.closed));
 
-    const operators = await (await fetch(`${baseUrl}/api/agent/data/operators`)).json();
+    const operators = await readBody<ApiSuccessResponse<OperatorSummary[]>>(
+      await fetch(`${baseUrl}/api/agent/data/operators`)
+    );
     assert.equal(operators.success, true);
     assert.deepEqual(operators.data.map(operator => operator.id), ['char_002_amiya']);
 
-    for (const path of ['/api/agent/data/depot', '/api/agent/data/operbox']) {
-      const response = await fetch(`${baseUrl}${path}`);
-      assert.equal(response.status, 200, path);
-      const body = await response.json();
-      assert.equal(body.success, true);
-    }
+    const depot = await readBody<ApiSuccessResponse<DepotFile | null>>(
+      await fetch(`${baseUrl}/api/agent/data/depot`)
+    );
+    assert.equal(depot.success, true);
+    const operbox = await readBody<ApiSuccessResponse<OperBoxFile | null>>(
+      await fetch(`${baseUrl}/api/agent/data/operbox`)
+    );
+    assert.equal(operbox.success, true);
   });
 
   it('keeps production static fallback behind the moved API routes', async () => {
@@ -329,11 +406,13 @@ describe('moved agent read routes keep authentication and response contracts', (
     const logs = await fetch(`${baseUrl}/api/agent/logs/recent`, { headers: authorizedHeaders() });
     assert.equal(logs.status, 200);
     assert.match(logs.headers.get('content-type') || '', /application\/json/);
-    assert.equal((await logs.json()).success, true);
+    const logsBody = await readBody<ApiSuccessResponse<unknown[]>>(logs);
+    assert.equal(logsBody.success, true);
 
     const missing = await fetch(`${baseUrl}/api/agent/nonexistent-endpoint`, { headers: authorizedHeaders() });
     assert.equal(missing.status, 404);
-    assert.equal((await missing.json()).error.code, 'AGENT_ROUTE_NOT_FOUND');
+    const missingBody = await readErrorBody(missing);
+    assert.equal(missingBody.error.code, 'AGENT_ROUTE_NOT_FOUND');
 
     const shell = await fetch(`${baseUrl}/logs`);
     assert.equal(shell.status, 200);
