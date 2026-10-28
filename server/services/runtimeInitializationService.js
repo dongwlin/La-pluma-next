@@ -6,7 +6,7 @@ import {
   setupAutoUpdate,
   setupSchedule
 } from './schedulerService.js';
-import { initTelegramBot } from './telegramBotService.js';
+import { initTelegramBot, attachTelegramBotToLifecycle } from './telegramBotService.js';
 import { createLogger } from '../utils/logger.ts';
 
 const logger = createLogger('RuntimeInitialization');
@@ -34,6 +34,9 @@ async function readPersistedConfig(configType, loadConfig, runtimeLogger) {
  *
  * 调度触发源的停止端口在读取持久配置前挂接：即使没有已保存配置或恢复失败，
  * 关闭时也能停止之后通过 API 注册的 cron/自动更新。恢复只注册触发源，不执行流程。
+ *
+ * Telegram 的关闭步骤在实际启动轮询前挂接：只有启用了 Bot 才需要停止端口，
+ * 挂接失败时不启动轮询，避免出现关闭流程无法回收的后台长轮询。
  */
 export async function initializeRuntimeState(overrides = {}) {
   const { lifecycle, ...dependencyOverrides } = overrides;
@@ -44,6 +47,7 @@ export async function initializeRuntimeState(overrides = {}) {
     registerSchedule: setupSchedule,
     registerAutoUpdate: setupAutoUpdate,
     attachScheduleLifecycle: attachScheduleTriggersToLifecycle,
+    attachTelegramLifecycle: attachTelegramBotToLifecycle,
     resolveRuntimeConnection: resolveConnection,
     startTelegramBot: initTelegramBot,
     runtimeLogger: logger,
@@ -122,14 +126,23 @@ export async function initializeRuntimeState(overrides = {}) {
     const telegramConfig = dependencies.readNotificationConfig()?.channels?.telegram;
     if (telegramConfig) {
       const connection = await dependencies.resolveRuntimeConnection();
-      dependencies.startTelegramBot({
+      const botConfig = {
         ...telegramConfig,
         adbPath: connection.adbPath,
         adbAddress: connection.address
-      });
-      summary.telegram.initialized = Boolean(
-        telegramConfig.enabled && telegramConfig.botToken && telegramConfig.chatId
-      );
+      };
+      const enabled = Boolean(telegramConfig.enabled && telegramConfig.botToken && telegramConfig.chatId);
+      if (enabled && lifecycle && typeof dependencies.attachTelegramLifecycle === 'function') {
+        try {
+          dependencies.attachTelegramLifecycle(lifecycle);
+        } catch (error) {
+          // 没有停止端口的后台轮询会在关闭后继续运行，因此宁可本次不启动。
+          dependencies.runtimeLogger.error('Telegram 生命周期接入失败', { error: error.message });
+          throw error;
+        }
+      }
+      dependencies.startTelegramBot(botConfig);
+      summary.telegram.initialized = enabled;
     }
   } catch (error) {
     summary.telegram.error = error.message;

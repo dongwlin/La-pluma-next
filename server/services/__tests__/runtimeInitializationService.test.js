@@ -256,4 +256,60 @@ describe('runtime initialization', () => {
     assert.equal(summary.notification.restored, false);
     assert.equal(summary.telegram.initialized, true);
   });
+
+  it('attaches the Telegram stop port before starting the enabled bot', async () => {
+    const events = [];
+    const lifecycle = createFakeLifecycle();
+
+    const summary = await initializeRuntimeState({
+      lifecycle,
+      attachScheduleLifecycle: () => ({ attached: false, duplicate: false }),
+      loadConfig: async () => ({ success: true, data: null }),
+      readNotificationConfig: () => ({
+        channels: { telegram: { enabled: true, botToken: 'stop-token', chatId: 'stop-chat' } }
+      }),
+      registerSchedule: () => assert.fail('no schedule should be registered'),
+      registerAutoUpdate: () => assert.fail('no auto update should be registered'),
+      resolveRuntimeConnection: async () => ({ adbPath: '/adb', address: 'device:5555' }),
+      attachTelegramLifecycle: target => {
+        events.push(['attach', target === lifecycle]);
+        target.register({ name: 'telegram-bot', close: () => events.push(['close']) });
+        return { attached: true, duplicate: false };
+      },
+      startTelegramBot: config => events.push(['start', config.botToken]),
+      runtimeLogger: silentLogger
+    });
+
+    assert.deepEqual(events, [['attach', true], ['start', 'stop-token']]);
+    assert.equal(summary.telegram.initialized, true);
+    assert.deepEqual(lifecycle.steps.map(step => step.name), ['telegram-bot']);
+
+    await lifecycle.close();
+    assert.deepEqual(events.at(-1), ['close']);
+  });
+
+  it('does not start Telegram when its stop port cannot be attached', async () => {
+    const started = [];
+
+    const summary = await initializeRuntimeState({
+      lifecycle: createFakeLifecycle(),
+      attachScheduleLifecycle: () => ({ attached: false, duplicate: false }),
+      loadConfig: async () => ({ success: true, data: null }),
+      readNotificationConfig: () => ({
+        channels: { telegram: { enabled: true, botToken: 'stop-token', chatId: 'stop-chat' } }
+      }),
+      registerSchedule: () => assert.fail('no schedule should be registered'),
+      registerAutoUpdate: () => assert.fail('no auto update should be registered'),
+      resolveRuntimeConnection: async () => ({}),
+      attachTelegramLifecycle: () => {
+        throw new Error('lifecycle unavailable');
+      },
+      startTelegramBot: () => started.push('telegram'),
+      runtimeLogger: silentLogger
+    });
+
+    assert.deepEqual(started, []);
+    assert.equal(summary.telegram.initialized, false);
+    assert.equal(summary.telegram.error, 'lifecycle unavailable');
+  });
 });
