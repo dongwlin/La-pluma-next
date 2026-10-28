@@ -10,11 +10,12 @@ const tempDir = await mkdtemp(join(tmpdir(), 'la-pluma-progress-persistence-'));
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(tempDir, 'copilot-progress.json');
 process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(tempDir, 'activity-copilot-progress.json');
 
-const { resetCopilotPlanProgress } = await import('../copilotPlanService.js');
-const { getActivityCompletion, recordActivityCompletion } = await import('../activityCopilotRunService.js');
+const { resetCopilotPlanProgress } = await import('../copilotPlanService.ts');
+const { getActivityCompletion, recordActivityCompletion } = await import('../activityCopilotRunService.ts');
 
 const planProgressPath = process.env.LA_PLUMA_COPILOT_PROGRESS_STORE;
 const activityProgressPath = process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE;
+if (!planProgressPath || !activityProgressPath) throw new Error('测试进度路径未注入');
 
 after(async () => {
   await rm(tempDir, { recursive: true, force: true });

@@ -5,14 +5,46 @@ import {
   getCombatCopilotPreferences,
   shouldRefreshActivityNavigation,
   summarizeActivityCompletion
-} from '../activityCopilotRunService.js';
+} from '../activityCopilotRunService.ts';
+import type { ActivityCandidatePlan } from '../activityCopilotRunService.ts';
+import type { ActivityCopilotCandidate } from '../activityCopilotDiscoveryService.ts';
+import type { ActivityNavigationResult } from '../activityNavigationService.ts';
 
-const candidatePlan = {
+/** 就绪预检的固定投影：计划只读取 activity 与 stages，不触发任何读取。 */
+const readyPreflight: ActivityNavigationResult = {
+  state: 'ready',
+  canPrepare: true,
+  canRun: false,
+  reasonCode: null,
+  reason: '已确认当前活动和从主页进入活动关卡的导航资源；此接口不会启动作业。',
+  activity: { code: 'BD', name: '丛林症结', source: 'maa', stages: ['BD-1', 'BD-2'] },
+  navigation: { source: 'maa-resource', stageFile: 'tasks/Stages/BD.json', stageCount: 2, entryTask: 'BD-OpenOpt' }
+};
+
+/** 一份完整的作业站候选：字段与发现服务收窄后的投影一致。 */
+function candidate(id: number, stage: string): ActivityCopilotCandidate {
+  return {
+    id,
+    uri: `prts://${id}`,
+    stage,
+    title: stage,
+    stageName: `act_${id}`,
+    presetFormation: false,
+    uploader: null,
+    uploadTime: null,
+    ratingLevel: 10,
+    ratingRatio: 1,
+    hotScore: 0,
+    views: 0
+  };
+}
+
+const candidatePlan: ActivityCandidatePlan = {
   state: 'candidates-ready',
-  preflight: { activity: { code: 'BD', name: '丛林症结' } },
+  preflight: readyPreflight,
   stages: [
-    { stage: 'BD-1', candidates: [{ id: 10, uri: 'prts://10', title: 'BD-1', presetFormation: false }] },
-    { stage: 'BD-2', candidates: [{ id: 11, uri: 'prts://11', title: 'BD-2', presetFormation: false }] }
+    { stage: 'BD-1', candidates: [candidate(10, 'BD-1')] },
+    { stage: 'BD-2', candidates: [candidate(11, 'BD-2')] }
   ]
 };
 
@@ -26,7 +58,8 @@ test('activity run plan selects the top reliable candidate for every known stage
 });
 
 test('activity run plan refuses to silently omit a known stage', () => {
-  const plan = buildActivityCopilotRunPlan({ ...candidatePlan, stages: [...candidatePlan.stages, { stage: 'BD-3', candidates: [] }] }, {});
+  const incomplete = { ...candidatePlan, stages: [...candidatePlan.stages, { stage: 'BD-3', candidates: [] }] };
+  const plan = buildActivityCopilotRunPlan(incomplete, {});
   assert.equal(plan.state, 'blocked');
   assert.match(plan.reason, /BD-3/);
 });

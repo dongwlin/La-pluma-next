@@ -10,10 +10,10 @@ import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSched
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
-import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.js';
+import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
 import { getActivityRunPreflight } from '../services/activityNavigationService.ts';
 import { findActivityCopilotCandidates } from '../services/activityCopilotDiscoveryService.ts';
-import { getActivityCompletion } from '../services/activityCopilotRunService.js';
+import { getActivityCompletion } from '../services/activityCopilotRunService.ts';
 import { withMaaExecutionLease } from '../services/executionCoordinatorService.ts';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
 import {

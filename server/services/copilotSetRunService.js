@@ -7,7 +7,7 @@ import {
   startAgentRunForExecution,
   stopAgentRun
 } from './agentRunService.ts';
-import { buildCopilotPlan, executeCopilotEntries } from './copilotPlanService.js';
+import { buildCopilotPlan, executeCopilotEntries } from './copilotPlanService.ts';
 
 const TERMINAL_RUN_STATES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
 

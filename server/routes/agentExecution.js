@@ -3,7 +3,7 @@ import { execMaaCommand, execDynamicTask } from '../services/maaExecutionService
 import { stopCurrentTask } from '../services/maaProcessService.ts';
 import { executeScheduleNow, getScheduledTaskFlowPlan, stopScheduleExecution } from '../services/schedulerService.ts';
 import { loadUserConfig } from '../services/configStorageService.ts';
-import { runCurrentActivityCopilots } from '../services/activityCopilotRunService.js';
+import { runCurrentActivityCopilots } from '../services/activityCopilotRunService.ts';
 import {
   createDailyFlowExecutionError,
   executeAgentTask,

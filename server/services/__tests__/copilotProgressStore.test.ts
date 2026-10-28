@@ -3,9 +3,22 @@ import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createCopilotProgressStore } from '../copilotProgressStore.js';
+import { createCopilotProgressStore } from '../copilotProgressStore.ts';
 
-async function withTempDir(run) {
+/** 测试内的进度文档收窄：存储层读取值为 unknown，非对象按空文档处理。 */
+function asProgress(current: unknown): Record<string, unknown> {
+  return typeof current === 'object' && current !== null && !Array.isArray(current)
+    ? current as Record<string, unknown>
+    : {};
+}
+
+/** 读取已知键的条目键数组；非数组按空数组处理。 */
+function readKeys(progress: Record<string, unknown>, key: string): unknown[] {
+  const entries = progress[key];
+  return Array.isArray(entries) ? entries : [];
+}
+
+async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'la-pluma-progress-store-'));
   try {
     await run(dir);
@@ -25,7 +38,7 @@ test('missing progress file loads as empty and updates create it atomically', as
     assert.deepEqual(await store.load(), {});
     assert.deepEqual(await readdir(dir), []);
 
-    await store.update(current => ({ ...current, '42': ['0:10:normal'] }));
+    await store.update(current => ({ ...asProgress(current), '42': ['0:10:normal'] }));
 
     assert.deepEqual(await store.load(), { '42': ['0:10:normal'] });
     // 原子替换：目录里只有目标文件，没有残留临时文件。
@@ -41,11 +54,11 @@ test('concurrent updates to different keys do not lose either update', async () 
     await Promise.all([
       store.update(async current => {
         await new Promise(resolve => setTimeout(resolve, 6));
-        return { ...current, '42': ['0:10:normal'] };
+        return { ...asProgress(current), '42': ['0:10:normal'] };
       }),
       store.update(async current => {
         await new Promise(resolve => setTimeout(resolve, 3));
-        return { ...current, '43': ['1:11:raid'] };
+        return { ...asProgress(current), '43': ['1:11:raid'] };
       })
     ]);
 
@@ -59,9 +72,9 @@ test('concurrent update and reset of different keys keep both effects', async ()
     await store.update(() => ({ '42': ['a'], '43': ['b'] }));
 
     await Promise.all([
-      store.update(current => ({ ...current, '42': ['a', 'a2'] })),
+      store.update(current => ({ ...asProgress(current), '42': ['a', 'a2'] })),
       store.update(current => {
-        const next = { ...current };
+        const next = asProgress(current);
         delete next['43'];
         return next;
       })
@@ -79,7 +92,7 @@ test('a corrupted progress file is reported instead of silently reset', async ()
     const store = createCopilotProgressStore({ progressPath: filePath });
 
     await assert.rejects(store.load(), /读取 JSON 文件失败/);
-    await assert.rejects(store.update(current => ({ ...current, '43': ['x'] })), /读取 JSON 文件失败/);
+    await assert.rejects(store.update(current => ({ ...asProgress(current), '43': ['x'] })), /读取 JSON 文件失败/);
     // 损坏文件保持原样：失败的读改写不会把已有进度清零。
     assert.equal(await readFile(filePath, 'utf8'), broken);
   });
@@ -126,9 +139,12 @@ test('progress written by previous versions stays readable and round-trips', asy
 
     assert.deepEqual(await store.load(), legacy);
 
-    await store.update(current => ({ ...current, '42': [...current['42'], '0:10:raid'] }));
+    await store.update(current => {
+      const progress = asProgress(current);
+      return { ...progress, '42': [...readKeys(progress, '42'), '0:10:raid'] };
+    });
 
-    const after = await store.load();
+    const after = asProgress(await store.load());
     assert.deepEqual(after['42'], ['0:10:normal', '0:10:raid']);
     assert.deepEqual(after['43'], ['1:11:raid']);
     // 写回仍是可读的 pretty JSON，与旧文件可读性一致。

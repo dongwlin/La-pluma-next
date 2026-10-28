@@ -192,6 +192,7 @@ import { createLogger } from '../utils/logger.ts';
 - ✅ `maaProcessService.ts` 等 MAA 模块 - 已按职责拆分并完成类型化（进程、执行、配置、设备、日志、活动、任务缓存）
 - ✅ `connectionService.ts`、`resourceUpdateService.ts` 与 `config/connectionDefaults.ts` - 已完成类型化（profile 解析与显式覆盖、资源读取与单次共享更新、连接默认值环境适配）
 - ✅ `activityNavigationService.ts`、`activityCopilotDiscoveryService.ts`、`activityFallbackService.ts` 与 `copilotUri.ts` - 已完成类型化（活动导航资源校验、作业候选/作业集收窄、备用活动源选择与作业 URI 解析）
+- ✅ `copilotPlanService.ts`、`activityCopilotRunService.ts` 与 `copilotProgressStore.ts` - 已完成类型化（作业站载荷与计划条目收窄、活动执行计划与其持久进度解析、共享进度读改写边界）
 
 ## 🎉 预期收益
 

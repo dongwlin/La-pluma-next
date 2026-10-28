@@ -10,7 +10,7 @@ import {
   getNavigationStage,
   isPresetFormationCopilot,
   mergePresetFormationTasks
-} from '../copilotPlanService.js';
+} from '../copilotPlanService.ts';
 
 test('preset formation stages are normal-only candidates', () => {
   assert.equal(isPresetFormationCopilot({
@@ -79,13 +79,14 @@ test('preset resource merge preserves existing user BattleStart settings', () =>
   assert.equal(merged.BattleStart.postDelay, 4321);
   assert.equal(merged.BattleStart.custom, true);
   assert.deepEqual(merged.ExistingTask, { action: 'DoNothing' });
-  assert.ok(merged.BattleStart.next.includes('LaPlumaPresetBattleConfirm'));
+  const next = merged.BattleStart.next;
+  assert.ok(Array.isArray(next) && next.includes('LaPlumaPresetBattleConfirm'));
 });
 
 test('both mode skips raid for preset formation stages', async () => {
   const originalFetch = globalThis.fetch;
   // 出站端口经 text() 消费响应体；stub 返回 JSON 文本，零网络访问。
-  globalThis.fetch = async url => {
+  globalThis.fetch = (async (url: string | URL | Request) => {
     const text = String(url);
     const data = text.includes('/set/get')
       ? { id: 1, name: 'set', copilot_ids: [10, 10, 11] }
@@ -93,7 +94,7 @@ test('both mode skips raid for preset formation stages', async () => {
         ? { content: JSON.stringify({ stage_name: 'act_test_01', doc: { title: 'T-1' }, opers: [{ name: 'A' }], groups: [] }) }
         : { content: JSON.stringify({ stage_name: 'act_test_s01', doc: { title: 'T-S-1' }, opers: [], groups: [] }) };
     return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ status_code: 200, data }) };
-  };
+  }) as unknown as typeof fetch;
   try {
     const plan = await buildCopilotPlan('1', 'both');
     assert.deepEqual(plan.entries.map(entry => entry.key), [
