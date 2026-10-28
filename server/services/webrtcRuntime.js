@@ -50,14 +50,17 @@ export function getWebrtcHostIp(address = '', interfaces = networkInterfaces()) 
   return lanInterface?.address || candidates[0]?.address || '127.0.0.1'
 }
 
-export async function installWebrtcRelease(dir) {
+export async function installWebrtcRelease(dir, { signal } = {}) {
   const stagingDir = await mkdtemp(path.join(tmpdir(), 'la-pluma-webrtc-install-'))
   try {
     const archive = process.env.LA_PLUMA_WEBRTC_ARCHIVE || path.join(stagingDir, 'release.zip')
     if (!process.env.LA_PLUMA_WEBRTC_ARCHIVE) {
-      const response = await fetch(RELEASE_URL, { signal: AbortSignal.timeout(180000) })
+      const timeoutSignal = AbortSignal.timeout(180000)
+      const response = await fetch(RELEASE_URL, {
+        signal: signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal
+      })
       if (!response.ok || !response.body) throw new Error(`WebRTC 发布包下载失败（HTTP ${response.status}）`)
-      await pipeline(Readable.fromWeb(response.body), createWriteStream(archive, { flags: 'wx' }))
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(archive, { flags: 'wx' }), { signal })
     }
 
     const hash = createHash('sha256')

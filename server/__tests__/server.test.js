@@ -661,7 +661,7 @@ describe('Server runtime assembly', () => {
       const summary = await runtime.close('test')
 
       assert.deepEqual(events, ['runtime-initialized', 'runtime-domain', 'signaling-gateway'])
-      assert.deepEqual(summary.steps.map(step => step.name), ['fixture-runtime-domain', 'http-transport'])
+      assert.deepEqual(summary.steps.map(step => step.name), ['fixture-runtime-domain', 'http-transport', 'webrtc-preview'])
       assert.equal(summary.ok, true)
       assert.equal(runtime.server.listening, false)
       assert.equal(runtime.lifecycle.getState(), 'closed')

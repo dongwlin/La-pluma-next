@@ -29,6 +29,7 @@ import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from './services/webrtcSignalingGateway.js';
+import { attachWebrtcPreviewToLifecycle } from './services/webrtcService.js';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
 
 // 供 isMainModule 判断使用；应用内路径解析已由 config 入口按模块位置锚定
@@ -184,6 +185,12 @@ export async function startLaPlumaServer({
   // 组装入口集中解析配置并接线运行依赖：应用、传输、Run 存储和运行时恢复共享同一个
   // 生命周期，关闭顺序由注册顺序取反决定，避免各模块在导入时自行启动或停止。
   const lifecycle = createRuntimeLifecycle({ logger, closeDeadlineMs });
+  // 预览资源属于本实例的 viewer 会话与本地子进程；先于传输入口注册，
+  // 关闭时网关先断开观看连接，再由预览步骤取消计时器并终止本实例子进程。
+  const webrtcPreview = attachWebrtcPreviewToLifecycle(lifecycle);
+  if (!webrtcPreview.attached) {
+    logger.warn?.('[WebRTC] 预览关闭步骤未挂接，关闭时无法保证释放本地预览资源');
+  }
   const app = createLaPlumaApp({
     env,
     signalingGateway,

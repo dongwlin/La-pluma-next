@@ -102,7 +102,7 @@ async function createFixture({ now = () => Date.now(), ticketTtlMs, registerView
     await closeServer(server)
     await closeServer(upstream)
   })
-  return { gateway, port, upstreamRequests }
+  return { gateway, server, port, upstreamRequests }
 }
 
 afterEach(async () => {
@@ -204,5 +204,40 @@ describe('WebRTC same-origin signaling gateway', () => {
     )
     rejected.socket.destroy()
     assert.deepEqual(registered, ['preview-device'])
+  })
+
+  it('closes active viewer sessions and clears outstanding tickets idempotently', async () => {
+    const released = []
+    const fixture = await createFixture({
+      registerViewer: deviceId => ({
+        ready: Promise.resolve(),
+        release: () => released.push(deviceId)
+      })
+    })
+    const login = await fetch(`http://127.0.0.1:${fixture.port}${WEBRTC_SIGNALING_PATH}/api/login`, { method: 'POST' })
+    const { token } = await login.json()
+    const viewer = await openUpgrade(
+      fixture.port,
+      `${WEBRTC_SIGNALING_PATH}/connect_client?token=${token}&deviceId=preview-device`
+    )
+    assert.match(viewer.response, /^HTTP\/1\.1 101 Switching Protocols/)
+    const unusedLogin = await fetch(`http://127.0.0.1:${fixture.port}${WEBRTC_SIGNALING_PATH}/api/login`, { method: 'POST' })
+    const unusedTicket = (await unusedLogin.json()).token
+
+    fixture.gateway.close()
+    fixture.gateway.close()
+    await waitUntil(() => released.length === 1)
+    assert.deepEqual(released, ['preview-device'])
+    await waitUntil(() => viewer.socket.destroyed)
+
+    // 关闭后清空了票据；重新挂接的新连接不能用关闭前的票据升级。
+    fixture.gateway.attach(fixture.server)
+    const replayed = await openUpgrade(
+      fixture.port,
+      `${WEBRTC_SIGNALING_PATH}/connect_client?token=${unusedTicket}&deviceId=preview-device`
+    )
+    assert.match(replayed.response, /^HTTP\/1\.1 401 Unauthorized/)
+    replayed.socket.destroy()
+    assert.equal(fixture.upstreamRequests.length, 1)
   })
 })

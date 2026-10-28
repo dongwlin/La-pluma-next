@@ -463,7 +463,8 @@ fi
 
     assert.equal(results[0].agentRunning, true)
     assert.equal(results[1].agentRunning, true)
-    assert.deepEqual(results[2], { stopped: true })
+    assert.equal(results[2].stopped, true)
+    assert.deepEqual([...results[2].released].sort(), ['device-agent', 'server', 'turn'])
     assert.equal(await countLines(agentCountFile), beforeInterleaving + 1)
     assert.deepEqual(JSON.parse(await readFile(devicesFile, 'utf8')), [])
 
