@@ -91,7 +91,7 @@ const agentLogRoutes = (await import('../agentLogRoutes.js')).default;
 const agentDataRoutes = (await import('../agentDataRoutes.js')).default;
 const agentTrainingRoutes = (await import('../agentTrainingRoutes.ts')).default;
 const agentPreviewRoutes = (await import('../agentPreviewRoutes.ts')).default;
-const agentNotificationRoutes = (await import('../agentNotificationRoutes.js')).default;
+const agentNotificationRoutes = (await import('../agentNotificationRoutes.ts')).default;
 const agentMaintenanceRoutes = (await import('../agentMaintenanceRoutes.js')).default;
 const { loggerManager } = await import('../../utils/logger.ts');
 
