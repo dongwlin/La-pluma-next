@@ -11,12 +11,54 @@
  *
  * 全部 IO 为异步；读改写整体在同一路径排队单元内执行（fileHelper），
  * 并发修改互不丢失，写回为临时文件原子替换。
+ *
+ * 持久文件的读取值是 unknown：缺失、顶层非数组与条目形状都由
+ * resolveStoredQuotes/normalizeQuotes 归一，内置兜底文案有显式结构。
  */
 
-import { readJsonFile, updateJsonFile } from '../utils/fileHelper.ts'
-import { agentError } from '../utils/apiHelper.ts'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
+import { readJsonFile, updateJsonFile } from '../utils/fileHelper.ts'
+import { agentError } from '../utils/apiHelper.ts'
+import type { AgentError } from '../utils/apiHelper.ts'
+
+/** 归一后的台词条目；operatorId 为空串表示内置映射未覆盖的自定义干员。 */
+export interface OperatorQuote {
+  operatorId: string;
+  operator: string;
+  quote: string;
+}
+
+/** 新增台词的写入草稿：旧契约把请求字段原样追加，不补 operatorId。 */
+export interface OperatorQuoteDraft {
+  operator: string;
+  quote: string;
+}
+
+/** 落盘条目：归一后的台词条目或未归一的新增草稿。 */
+export type StoredOperatorQuote = OperatorQuote | OperatorQuoteDraft;
+
+/**
+ * 台词 JSON 文件的最小读写端口：读值为 unknown，由服务归一化；
+ * update 在 fileHelper 的同一路径排队单元内完成完整读改写。
+ */
+export interface OperatorQuotesStore {
+  path: string;
+  load(): Promise<unknown>;
+  update<T>(updateFn: (current: unknown) => T | Promise<T>): Promise<T>;
+}
+
+/** 台词服务公开方法；不同方法的返回值保持旧 HTTP 契约的形状。 */
+export interface OperatorQuotesService {
+  loadQuotes(): Promise<OperatorQuote[]>;
+  getAllQuotes(): Promise<OperatorQuote[]>;
+  getDailyQuote(): Promise<OperatorQuote>;
+  getRandomQuote(): Promise<OperatorQuote>;
+  getQuoteByOperator(operatorName: string): Promise<OperatorQuote | undefined>;
+  addQuote(quote: OperatorQuoteDraft): Promise<StoredOperatorQuote[]>;
+  updateQuote(operatorName: string, newQuote: string): Promise<OperatorQuote | null>;
+  deleteQuote(operatorName: string): Promise<OperatorQuote[]>;
+}
 
 // 数据目录按模块位置锚定，与 cwd 无关；`LA_PLUMA_OPERATOR_QUOTES_STORE`
 // 可重定向存储位置（测试隔离与部署需要），默认路径保持 server/data/operatorQuotes.json。
@@ -24,16 +66,8 @@ const dataDir = fileURLToPath(new URL('../data/', import.meta.url))
 
 /**
  * 创建绑定单一台词 JSON 文件的存储实例。
- *
- * @param {object} options
- * @param {string} options.quotesPath 台词文件的绝对路径。
- * @returns {{
- *   path: string,
- *   load: () => Promise<unknown>,
- *   update: (updateFn: (current: unknown) => unknown | Promise<unknown>) => Promise<unknown>
- * }}
  */
-export function createOperatorQuotesStore({ quotesPath }) {
+export function createOperatorQuotesStore({ quotesPath }: { quotesPath: string }): OperatorQuotesStore {
   if (typeof quotesPath !== 'string' || !quotesPath) {
     throw new TypeError('quotesPath 必须是非空字符串')
   }
@@ -55,7 +89,8 @@ const defaultStore = createOperatorQuotesStore({
 
 // 内置兜底文案（当数据文件缺失或为空时使用）
 // 这些是项目内置兜底文案，不作为官方语音记录。
-const OPERATOR_IDS = {
+// 归一化对任意干员名做查找：未收录的名称按旧实现回退空串。
+const OPERATOR_IDS: Readonly<Record<string, string>> = {
   阿米娅: 'char_002_amiya',
   凯尔希: 'char_003_kalts',
   陈: 'char_010_chen',
@@ -75,7 +110,7 @@ const OPERATOR_IDS = {
   澄闪: 'char_377_gdglow'
 }
 
-const DEFAULT_QUOTES = [
+export const DEFAULT_QUOTES: OperatorQuote[] = [
   { operatorId: OPERATOR_IDS.阿米娅, operator: '阿米娅', quote: '今天也请多指教' },
   { operatorId: OPERATOR_IDS.凯尔希, operator: '凯尔希', quote: '作战记录已归档' },
   { operatorId: OPERATOR_IDS.陈, operator: '陈', quote: '任务简报已经确认' },
@@ -95,11 +130,21 @@ const DEFAULT_QUOTES = [
   { operatorId: OPERATOR_IDS.澄闪, operator: '澄闪', quote: '信号稳定，可以开始' }
 ]
 
-export function normalizeQuotes(quotes) {
+/** 只按旧实现的真值规则排除 null/undefined；数组条目取不到字段时同样被归一丢弃。 */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * 把持久文件或外部输入归一为台词条目数组；非数组输入返回空数组。
+ * 字段缺失按空串处理（与旧实现一致），归一后缺少干员名或台词的条目被丢弃。
+ */
+export function normalizeQuotes(quotes: unknown): OperatorQuote[] {
   if (!Array.isArray(quotes)) return []
 
-  return quotes
-    .filter((item) => item && typeof item === 'object')
+  const items: unknown[] = quotes
+  return items
+    .filter(isRecord)
     .map((item) => {
       const operator = String(item.operator || '').trim()
       const operatorId = String(item.operatorId || OPERATOR_IDS[operator] || '').trim()
@@ -113,11 +158,9 @@ export function normalizeQuotes(quotes) {
     .filter((item) => item.operator && item.quote)
 }
 
-export { DEFAULT_QUOTES }
-
 // 用户文件损坏（顶层不是数组）的可识别标记；解析失败由 fileHelper 抛出。
 class QuotesFileInvalidError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message)
     this.name = 'QuotesFileInvalidError'
   }
@@ -126,7 +169,7 @@ class QuotesFileInvalidError extends Error {
 // 读改写内部哨兵：目标干员不存在时中断本次读改写且不产生任何写入。
 const QUOTE_NOT_FOUND = Symbol('quote-not-found')
 
-function resolveStoredQuotes(raw) {
+function resolveStoredQuotes(raw: unknown): OperatorQuote[] {
   // 缺失文件（null）与合法空数组都回退内置兜底文案。
   if (raw === null) return DEFAULT_QUOTES
   if (!Array.isArray(raw)) {
@@ -136,22 +179,26 @@ function resolveStoredQuotes(raw) {
   return quotes.length > 0 ? quotes : DEFAULT_QUOTES
 }
 
-function isQuotesFileReadError(error) {
+function isQuotesFileReadError(error: unknown): boolean {
   // fileHelper 的 JSON 读取/解析失败统一携带该前缀（fileHelper.readJsonFile）。
   return error instanceof Error && error.message.startsWith('读取 JSON 文件失败')
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
  * 存储失败的结构化出口：损坏文件不重试，写入失败允许重试。
  */
-function wrapQuotesStorageError(error) {
+function wrapQuotesStorageError(error: unknown): AgentError {
   if (error instanceof QuotesFileInvalidError || isQuotesFileReadError(error)) {
-    return agentError('AGENT_QUOTES_DATA_INVALID', error.message, {
+    return agentError('AGENT_QUOTES_DATA_INVALID', errorMessage(error), {
       statusCode: 500,
       retryable: false
     })
   }
-  return agentError('AGENT_QUOTES_SAVE_FAILED', `保存台词数据失败: ${error?.message || error}`, {
+  return agentError('AGENT_QUOTES_SAVE_FAILED', `保存台词数据失败: ${errorMessage(error)}`, {
     statusCode: 500,
     retryable: true
   })
@@ -159,16 +206,13 @@ function wrapQuotesStorageError(error) {
 
 /**
  * 创建台词服务实例。存储经参数注入；生产使用默认存储，测试注入指向临时目录的实例。
- *
- * @param {object} options
- * @param {ReturnType<typeof createOperatorQuotesStore>} options.store 台词 JSON 文件存储。
  */
-export function createOperatorQuotesService({ store }) {
+export function createOperatorQuotesService({ store }: { store: OperatorQuotesStore }): OperatorQuotesService {
   if (!store || typeof store.load !== 'function' || typeof store.update !== 'function') {
     throw new TypeError('store 必须提供 load 与 update')
   }
 
-  async function loadQuotes() {
+  async function loadQuotes(): Promise<OperatorQuote[]> {
     try {
       return resolveStoredQuotes(await store.load())
     } catch (error) {
@@ -210,15 +254,16 @@ export function createOperatorQuotesService({ store }) {
     },
 
     async updateQuote(operatorName, newQuote) {
-      let updatedQuote = null
+      let updatedQuote: OperatorQuote | null = null
       try {
         // 文件写回完整数组，返回值保持旧契约：命中的单条更新结果。
         await store.update(current => {
           const quotes = resolveStoredQuotes(current)
           const index = quotes.findIndex(q => q.operator === operatorName)
           if (index === -1) throw QUOTE_NOT_FOUND
-          updatedQuote = { ...quotes[index], quote: newQuote }
-          return quotes.map((quote, position) => (position === index ? updatedQuote : quote))
+          const updated: OperatorQuote = { ...quotes[index], quote: newQuote }
+          updatedQuote = updated
+          return quotes.map((quote, position) => (position === index ? updated : quote))
         })
         return updatedQuote
       } catch (error) {
@@ -237,6 +282,6 @@ export function createOperatorQuotesService({ store }) {
   }
 }
 
-const OperatorQuotes = createOperatorQuotesService({ store: defaultStore })
+const OperatorQuotes: OperatorQuotesService = createOperatorQuotesService({ store: defaultStore })
 
 export default OperatorQuotes

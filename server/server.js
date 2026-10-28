@@ -13,7 +13,7 @@ import {
   parsePort,
   resolveAppPaths
 } from './config/runtimeConfig.ts';
-import operatorQuotesRoutes from './routes/operatorQuotes.js';
+import operatorQuotesRoutes from './routes/operatorQuotes.ts';
 import agentRoutes from './routes/agent.js';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import {

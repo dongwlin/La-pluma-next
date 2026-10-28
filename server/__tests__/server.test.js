@@ -19,7 +19,7 @@ import {
 } from '../services/webrtcSignalingGateway.ts'
 import { getExecutionAdmissionGate } from '../services/executionAdmissionService.ts'
 import operatorTraining from '../services/operatorTrainingService.ts'
-import OperatorQuotes from '../services/operatorQuotesService.js'
+import OperatorQuotes from '../services/operatorQuotesService.ts'
 
 const servers = []
 const tempDirs = []

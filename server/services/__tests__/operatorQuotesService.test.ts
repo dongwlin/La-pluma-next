@@ -8,7 +8,30 @@ import {
   createOperatorQuotesStore,
   createOperatorQuotesService,
   normalizeQuotes
-} from '../operatorQuotesService.js'
+} from '../operatorQuotesService.ts'
+import type { OperatorQuotesService } from '../operatorQuotesService.ts'
+
+/** agentError 把结构化字段挂在 Error 上；assert.rejects 的入参是 unknown，按错误形状读取。 */
+interface QuoteStorageError extends Error {
+  code?: string;
+  statusCode?: number;
+  retryable?: boolean;
+}
+
+function readStorageError(error: unknown): QuoteStorageError {
+  return error as QuoteStorageError
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** 读回的台词文件是 unknown：JSON 解析后按条目数组收窄供断言使用。 */
+function parseStoredQuotes(content: string): unknown[] {
+  const parsed: unknown = JSON.parse(content)
+  assert.ok(Array.isArray(parsed))
+  return parsed
+}
 
 test('built-in operator quotes always include a character avatar id', () => {
   assert.ok(DEFAULT_QUOTES.length > 0)
@@ -40,14 +63,14 @@ test('legacy quotes gain known operator ids without discarding custom entries', 
 })
 
 test('store factory rejects a missing or empty quotes path', () => {
-  assert.throws(() => createOperatorQuotesStore({}), TypeError)
+  assert.throws(() => createOperatorQuotesStore({} as { quotesPath: string }), TypeError)
   assert.throws(() => createOperatorQuotesStore({ quotesPath: '' }), TypeError)
 })
 
 describe('operator quotes service storage behaviour', () => {
-  let tempDir
-  let quotesPath
-  let quotes
+  let tempDir: string
+  let quotesPath: string
+  let quotes: OperatorQuotesService
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'la-pluma-quotes-service-'))
@@ -64,12 +87,12 @@ describe('operator quotes service storage behaviour', () => {
     assert.deepEqual(all, DEFAULT_QUOTES)
 
     const updated = await quotes.addQuote({ operator: '自定义干员', quote: '自定义台词' })
-    assert.equal(updated.at(-1).operator, '自定义干员')
+    assert.deepEqual(updated.at(-1), { operator: '自定义干员', quote: '自定义台词' })
 
     // 缺失文件时的首次写入把兜底文案连同新增一并落盘（与旧实现一致）
-    const stored = JSON.parse(await readFile(quotesPath, 'utf-8'))
+    const stored = parseStoredQuotes(await readFile(quotesPath, 'utf-8'))
     assert.equal(stored.length, DEFAULT_QUOTES.length + 1)
-    assert.equal(stored.at(-1).operator, '自定义干员')
+    assert.deepEqual(stored.at(-1), { operator: '自定义干员', quote: '自定义台词' })
   })
 
   test('an empty quotes array is a legal state that serves built-in quotes', async () => {
@@ -90,12 +113,12 @@ describe('operator quotes service storage behaviour', () => {
       quotes.updateQuote('阿米娅', '新台词')
     ])
 
-    const stored = JSON.parse(await readFile(quotesPath, 'utf-8'))
+    const stored = parseStoredQuotes(await readFile(quotesPath, 'utf-8'))
     assert.equal(stored.length, 3)
-    assert.ok(stored.some(quote => quote.operator === '干员一'))
-    assert.ok(stored.some(quote => quote.operator === '干员二'))
+    assert.ok(stored.some(quote => isRecord(quote) && quote.operator === '干员一'))
+    assert.ok(stored.some(quote => isRecord(quote) && quote.operator === '干员二'))
     assert.deepEqual(
-      stored.find(quote => quote.operator === '阿米娅'),
+      stored.find(quote => isRecord(quote) && quote.operator === '阿米娅'),
       { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '新台词' }
     )
   })
@@ -110,7 +133,7 @@ describe('operator quotes service storage behaviour', () => {
     assert.deepEqual(updated, { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '新台词' })
 
     // 文件写回完整数组，未命中的条目不受影响
-    assert.deepEqual(JSON.parse(await readFile(quotesPath, 'utf-8')), [
+    assert.deepEqual(parseStoredQuotes(await readFile(quotesPath, 'utf-8')), [
       { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '新台词' },
       { operatorId: 'char_172_svrash', operator: '银灰', quote: '另一条' }
     ])
@@ -123,7 +146,7 @@ describe('operator quotes service storage behaviour', () => {
 
     assert.equal(await quotes.updateQuote('不存在干员', '台词'), null)
 
-    assert.deepEqual(JSON.parse(await readFile(quotesPath, 'utf-8')), [
+    assert.deepEqual(parseStoredQuotes(await readFile(quotesPath, 'utf-8')), [
       { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '旧台词' }
     ])
   })
@@ -132,14 +155,15 @@ describe('operator quotes service storage behaviour', () => {
     await writeFile(quotesPath, 'not-json', 'utf-8')
 
     await assert.rejects(quotes.getAllQuotes(), error => {
-      assert.equal(error.code, 'AGENT_QUOTES_DATA_INVALID')
-      assert.equal(error.statusCode, 500)
-      assert.equal(error.retryable, false)
-      assert.match(error.message, /读取 JSON 文件失败/)
+      const storageError = readStorageError(error)
+      assert.equal(storageError.code, 'AGENT_QUOTES_DATA_INVALID')
+      assert.equal(storageError.statusCode, 500)
+      assert.equal(storageError.retryable, false)
+      assert.match(storageError.message, /读取 JSON 文件失败/)
       return true
     })
     await assert.rejects(quotes.addQuote({ operator: '干员', quote: '台词' }), error => {
-      assert.equal(error.code, 'AGENT_QUOTES_DATA_INVALID')
+      assert.equal(readStorageError(error).code, 'AGENT_QUOTES_DATA_INVALID')
       return true
     })
 
@@ -151,8 +175,9 @@ describe('operator quotes service storage behaviour', () => {
     await writeFile(quotesPath, '{"operator":"阿米娅"}', 'utf-8')
 
     await assert.rejects(quotes.getAllQuotes(), error => {
-      assert.equal(error.code, 'AGENT_QUOTES_DATA_INVALID')
-      assert.match(error.message, /台词数据文件顶层不是数组/)
+      const storageError = readStorageError(error)
+      assert.equal(storageError.code, 'AGENT_QUOTES_DATA_INVALID')
+      assert.match(storageError.message, /台词数据文件顶层不是数组/)
       return true
     })
 
@@ -168,9 +193,10 @@ describe('operator quotes service storage behaviour', () => {
 
     try {
       await assert.rejects(quotes.addQuote({ operator: '干员', quote: '台词' }), error => {
-        assert.equal(error.code, 'AGENT_QUOTES_SAVE_FAILED')
-        assert.equal(error.statusCode, 500)
-        assert.equal(error.retryable, true)
+        const storageError = readStorageError(error)
+        assert.equal(storageError.code, 'AGENT_QUOTES_SAVE_FAILED')
+        assert.equal(storageError.statusCode, 500)
+        assert.equal(storageError.retryable, true)
         return true
       })
     } finally {
