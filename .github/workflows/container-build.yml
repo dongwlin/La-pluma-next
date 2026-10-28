@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.1
       - name: Set image name
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
@@ -62,10 +62,25 @@ jobs:
           IMAGE: ${{ steps.image.outputs.name }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: docker pull "$IMAGE@$DIGEST"
-      - name: Check production startup and HTTP behavior
+      - name: Check root-path startup and HTTP behavior
         env:
           CANDIDATE: ${{ inputs.publish && format('{0}@{1}', steps.image.outputs.name, steps.build.outputs.digest) || 'la-pluma-next:ci' }}
         run: node scripts/ci/smoke-image.mjs "$CANDIDATE"
+      # 子路径部署的 base path 在构建时写死到前端产物，必须单独构建一个只用于
+      # 冒烟、不推送的变体；不复用 cache-to，避免覆盖根路径发布缓存。
+      - name: Build sub-path variant for the startup check
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ inputs.platform }}
+          load: true
+          tags: la-pluma-next:ci-subpath
+          build-args: |
+            VITE_BASE_PATH=/la-pluma-next/
+            BUILD_REVISION=${{ github.sha }}
+          cache-from: type=registry,ref=${{ steps.image.outputs.name }}:buildcache-${{ inputs.arch }}
+      - name: Check sub-path startup and HTTP behavior
+        run: node scripts/ci/smoke-image.mjs la-pluma-next:ci-subpath --base-path /la-pluma-next/
       - name: Export verified platform digest
         if: inputs.publish
         env:

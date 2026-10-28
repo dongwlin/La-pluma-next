@@ -95,9 +95,11 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
   -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
 ```
 
-所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。日常流程的 Agent 入口和 `/api/agent/schedules/{scheduleId}/execute` 共用 `run_daily_flow`：默认同步等待整个流程；传 `waitForCompletion=false` 时在流程获得执行租约后返回 202，并在 `data` 中给出 `accepted: true`、`scheduleId`、`totalSteps` 和 `runId`。旧同步响应字段保持不变。执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。API 错误经过统一错误出口：`/api` 下未匹配的路径返回 404 `AGENT_ROUTE_NOT_FOUND`；无法解析的 JSON 请求体返回 400 `AGENT_REQUEST_BODY_INVALID`，超过大小限制返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`，字符集不支持返回 415 `AGENT_REQUEST_CHARSET_UNSUPPORTED`；路径参数解码失败返回 400 `AGENT_REQUEST_PATH_INVALID`；用户配置写接口（`POST /api/agent/config/user/{configType}` 与 `POST /api/agent/notifications/config`）的请求体必须是 JSON 对象，其他顶层类型返回 400 `AGENT_CONFIG_DATA_INVALID`。错误状态限制在 400–599；携带业务状态的错误保留其公开 `code`、`message`、`details` 与 `retryable`，`retryable` 只来自错误本身，不按 5xx 推导；未知内部错误统一返回 500 `AGENT_INTERNAL_ERROR`，不泄露内部 message、details 或堆栈。错误响应与错误日志不回显请求查询串。日常流程的 Agent 入口和 `/api/agent/schedules/{scheduleId}/execute` 共用 `run_daily_flow`：默认同步等待整个流程；传 `waitForCompletion=false` 时在流程获得执行租约后返回 202，并在 `data` 中给出 `accepted: true`、`scheduleId`、`totalSteps` 和 `runId`。旧同步响应字段保持不变。执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
 作业集入口 `/api/agent/copilot-sets/{setId}/execute` 使用 `run_copilot_set`。`mode` 可取 `continuous`（默认，旧 `app`/`cli` 也映射到这里）或 `manual`。`continuous` 默认同步返回旧字段并新增 `runId`、`run`、`mode`、`summary`；`waitForCompletion=false` 在取得执行租约后返回 202。`manual` 只执行第一个待办条目然后返回 `waitingForNext: true`、`nextEntry` 与逐项 `summary`，run 进入 `waiting`；等待期间不持有设备租约，其他执行可以占用设备。调用 `POST /api/agent/actions/continue-copilot-set` 携带该 `runId` 执行下一项；如果设备被占用，返回可重试的 409 `MAA_EXECUTION_BUSY` 且不消耗条目。`waiting` 的 run 可以用同一个 stop 接口停止：直接转为 `stopped`，不发送设备命令，未开始条目保持 `pending`。逐项状态为 `pending`/`running`/`success`/`failed`/`stopped`，失败汇总在 `summary.failedCount` 与 `summary.errors` 中。集合会话只在服务端进程内保存，服务重启后活动集合 run 转为 `interrupted`，不会自动续跑。
+
+请求关联与日志：请求头 `x-request-id` 可选，合法值为 1–64 位字母、数字与 `.`、`_`、`:`、`-`，首字符必须是字母或数字。合法值原样出现在响应头 `x-request-id`、响应 `meta.requestId` 与同一请求的 API 错误日志中；缺失、超长或含其他字符时服务端生成新 id 并在上述三处使用该新 id，非法输入不会回显。执行日志（含 MAA 子进程输出与响应返回后的后台收尾）在纳入 Run 时记录 `runId` 与 `operationId`，未纳入 Run 的直接调用不冒用其他执行的 id；HTTP 请求结束不代表执行完成，仍需以 run 终态或实际进程结果为准。API 错误按级别记录：携带状态且已归类的 4xx 为 WARN，未知内部 5xx 为 ERROR。日志不输出 Authorization、cookie、token、信令 ticket、密码与签名等凭据字段，也不回显请求查询串或请求体。
 
 `runs/current` 返回运行快照：`run` 是当前活动 run，`activeRuns` 列出全部活动意图（多个 `accepted` 或等待下一关的 `waiting` 不会只剩一个），`lastRun` 是最近终态，`occupancy` 说明设备由 `run` 还是未纳管执行（`external`）占用，或只是 `pending`、`idle`、`unknown`。`pending` 包含 `accepted` 与 `waiting` 意图；`waiting` 作业集不属于设备所有者。`occupancy.lease` 给出协作租约的 `free`/`held`/`stale`/`unknown` 状态和占用者。旧字段 `isRunning`、`taskName`、`schedule`、`recentLogs` 保持原样；`schedule.runId` 标识当前流程所属的 Run，为 `null` 表示该流程没有 Run 身份。`run.progress` 对日常流程只在持有对应 `schedule.runId` 时给出步骤；对作业集给出 `phase`、当前条目、下一项与逐项结果，否则显示等待。行为不变的部分：进程 idle 不代表流程完成，`lastRun` 也不是调用方自己的身份。
 
@@ -125,6 +127,8 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 ```
 
 如果设置了 `LA_PLUMA_TOKEN`，Agent API、其它 `/api/*` 以及 WebRTC 同源网关的票据入口都需要 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`。未设置时认证关闭。
+
+令牌比较先对两侧做摘要再使用恒定时间比较：长度差异、非字符串请求头或格式错误只返回 401 `AGENT_AUTH_REQUIRED`，不抛错，也不回显预期值、变量名或长度。认证失败按来源地址限流（默认每分钟 10 次），超限返回 429 `AGENT_RATE_LIMITED` 并带 `Retry-After`；有效令牌不参与失败计数。未设置令牌时，信令票据入口只接受同源签发，跨源请求返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`；设置后由令牌把关，票据签发仍按来源限流（默认每分钟 30 次）。信令凭据与上游账号的迁移要求见[部署指南](../guides/deployment.md#信令凭据与上游端口边界)。
 
 ## 养成队列与任务流程
 

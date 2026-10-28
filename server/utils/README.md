@@ -4,14 +4,14 @@
 
 ## 📁 文件列表
 
-### 1. apiHelper.js - API 辅助工具
+### 1. apiHelper.ts - API 辅助工具
 
 统一的 API 响应格式和错误处理。
 
 **使用示例**：
 
 ```javascript
-import { successResponse, errorResponse, asyncHandler, validateRequired } from '../utils/apiHelper.js';
+import { successResponse, errorResponse, asyncHandler, validateRequired } from '../utils/apiHelper.ts';
 
 // 在路由中使用 asyncHandler 自动捕获错误
 router.get('/api/data', asyncHandler(async (req, res) => {
@@ -38,14 +38,14 @@ export async function getData() {
 }
 ```
 
-### 2. fileHelper.js - 文件操作工具
+### 2. fileHelper.ts - 文件操作工具
 
 统一的文件读写操作，特别是 JSON 文件。
 
 **使用示例**：
 
 ```javascript
-import { readJsonFile, writeJsonFile, updateJsonFile, ensureDir } from '../utils/fileHelper.js';
+import { readJsonFile, writeJsonFile, updateJsonFile, ensureDir } from '../utils/fileHelper.ts';
 
 // 读取 JSON 文件（文件不存在时返回默认值）
 const config = await readJsonFile('./config.json', { default: 'value' });
@@ -63,14 +63,14 @@ await updateJsonFile('./data/counter.json', (data) => {
 await ensureDir('./data/logs');
 ```
 
-### 3. logger.js - 日志服务
+### 3. logger.ts - 日志服务
 
 结构化的日志记录和管理。
 
 **使用示例**：
 
 ```javascript
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.ts';
 
 // 创建服务专用的 Logger
 const logger = createLogger('MyService');
@@ -95,7 +95,7 @@ logger.clear();
 **全局日志管理**：
 
 ```javascript
-import { loggerManager } from '../utils/logger.js';
+import { loggerManager } from '../utils/logger.ts';
 
 // 获取所有 Logger 的日志
 const allLogs = loggerManager.getAllLogs();
@@ -123,8 +123,8 @@ try {
 **重构后**：
 ```javascript
 // ✅ 使用工具类
-import { readJsonFile } from '../utils/fileHelper.js';
-import { successResponse, errorResponse } from '../utils/apiHelper.js';
+import { readJsonFile } from '../utils/fileHelper.ts';
+import { successResponse, errorResponse } from '../utils/apiHelper.ts';
 
 try {
   const data = await readJsonFile(path);
@@ -164,9 +164,9 @@ logger.error('错误', { error: error.message });
 ### 步骤 1：导入工具类
 
 ```javascript
-import { successResponse, errorResponse } from '../utils/apiHelper.js';
-import { readJsonFile, writeJsonFile } from '../utils/fileHelper.js';
-import { createLogger } from '../utils/logger.js';
+import { successResponse, errorResponse } from '../utils/apiHelper.ts';
+import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 ```
 
 ### 步骤 2：替换现有代码
@@ -183,12 +183,17 @@ import { createLogger } from '../utils/logger.js';
 ## 📊 重构进度
 
 - ✅ `configStorageService.js` - 已重构
-- ✅ `dropRecordService.js` - 已重构
-- ✅ `dataParserService.js` - 已重构
-- ✅ `operatorTrainingService.js` - 已重构
-- ⏳ `notificationService.js` - 待重构（日志优化）
-- ⏳ `schedulerService.js` - 待重构（日志优化）
-- ⏳ `maaService.js` - 待重构（日志部分，低优先级）
+- ✅ `dropRecordService.ts` - 已完成类型化（记录解析、统计与材料表）
+- ✅ `dataParserService.ts` - 已完成类型化（物品索引/物品表、仓库与干员缓存）
+- ✅ `operatorTrainingService.ts` - 已按职责拆分到模型、计划、存储与应用同步，并完成类型化（设置/队列/材料/计划的解析与部分同步结果）
+- ✅ `notificationService.ts` - 已完成类型化（配置解析、格式化与渠道发送）
+- ✅ `maaCallbackService.ts` 与 `award/recruit/infrast/mall/fightResultService.ts` - 已完成类型化（回调载荷校验、步骤结果类型与 skipped/failed/success 区分）
+- ✅ `schedulerService.ts` - 已按职责拆分到流程计划、执行、触发源与养成回写，并完成类型化（步骤结论联合、日志检查点与端口契约）
+- ✅ `maaProcessService.ts` 等 MAA 模块 - 已按职责拆分并完成类型化（进程、执行、配置、设备、日志、活动、任务缓存）
+- ✅ `connectionService.ts`、`resourceUpdateService.ts` 与 `config/connectionDefaults.ts` - 已完成类型化（profile 解析与显式覆盖、资源读取与单次共享更新、连接默认值环境适配）
+- ✅ `activityNavigationService.ts`、`activityCopilotDiscoveryService.ts`、`activityFallbackService.ts` 与 `copilotUri.ts` - 已完成类型化（活动导航资源校验、作业候选/作业集收窄、备用活动源选择与作业 URI 解析）
+- ✅ `copilotPlanService.ts`、`activityCopilotRunService.ts` 与 `copilotProgressStore.ts` - 已完成类型化（作业站载荷与计划条目收窄、活动执行计划与其持久进度解析、共享进度读改写边界）
+- ✅ `copilotSetRunService.ts` - 已完成类型化（集合会话持有范围、manual 等待与条目/集合结果投影）
 
 ## 🎉 预期收益
 

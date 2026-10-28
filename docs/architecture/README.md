@@ -85,18 +85,55 @@ La-pluma-next/
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
-│   │   ├── agent.js           # 主 Agent API
-│   │   └── operatorQuotes.js  # 干员台词接口
+│   │   ├── agent.ts           # 主 Agent API（聚合领域 router）
+│   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止
+│   │   ├── executionDto.ts   # 执行请求按端点收窄与 Run 响应载荷
+│   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（ADB 探测有副作用）
+│   │   ├── agentLogRoutes.ts  # 实时/历史日志读取、清空与清理
+│   │   ├── agentDataRoutes.ts # 今日关卡、掉落与本地游戏数据读取
+│   │   ├── readDto.ts         # 读取请求收窄与状态/掉落/游戏数据响应载荷
+│   │   ├── agentTrainingRoutes.ts # 养成队列、设置、候选与计划生成/应用
+│   │   ├── trainingDto.ts     # 养成请求按端点收窄与候选/计数响应载荷
+│   │   ├── agentPreviewRoutes.ts # 截图、WebRTC、方向与设备采样预览适配
+│   │   ├── previewDto.ts      # 预览设备/方向/dryRun 请求收窄与截图/状态载荷
+│   │   ├── agentNotificationRoutes.ts # 通知频道配置、测试与发送适配
+│   │   ├── notificationDto.ts # 通知请求收窄、保存/应用结果与响应载荷
+│   │   ├── agentMaintenanceRoutes.ts # 连接/profile、资源与核心更新、定时配置及维护动作
+│   │   ├── maintenanceDto.ts  # 维护请求收窄、上游响应结构与维护动作载荷
+│   │   ├── deviceStatus.ts    # ADB/WebRTC/显示状态探测适配
+│   │   ├── requestConnection.ts # 请求级连接覆盖解析
+│   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
+│   │   ├── operatorQuotes.ts  # 干员台词接口
+│   │   └── operatorQuotesDto.ts # 台词请求按端点收窄与业务错误文案
 │   ├── services/              # 业务逻辑
-│   │   ├── maaService.js      # MAA CLI、ADB、截图、实时日志
-│   │   ├── schedulerService.js # 定时任务调度
-│   │   ├── notificationService.js # 通知服务
-│   │   ├── operatorTrainingService.js # 养成计划和材料计算
-│   │   ├── webrtcService.js   # ScrcpyOverWebRTC 管理
-│   │   └── configStorageService.js # 配置存储
+│   │   ├── maaProcessService.ts # MAA CLI 子进程、实时日志与停止
+│   │   ├── maaExecutionService.ts # 执行租约门禁、CLI 命令与动态任务
+│   │   ├── maaConfigService.ts # MAA profile 读取与原子写入
+│   │   ├── maaDeviceService.ts # ADB 探测、连接测试与截图
+│   │   ├── maaLogFileService.ts # 日志文件边界、清理与检查点
+│   │   ├── maaActivityService.ts # 当前活动查询与关卡代号替换
+│   │   ├── maaTaskCacheService.ts # 本地任务私有 hot-update 缓存
+│   │   ├── schedulerService.ts # 流程执行器组装、Run 关联与定时任务公开入口
+│   │   ├── scheduleFlowPlan.ts # 流程校验、命令构建与执行计划（纯函数）
+│   │   ├── scheduleFlowExecution.ts # 流程步骤编排、进度状态与停止门控
+│   │   ├── scheduleFlowResult.ts # 流程结果聚合与掉落汇报解析（纯函数）
+│   │   ├── scheduleExecutionPorts.ts # 设备、通知与存储适配的端口组装
+│   │   ├── scheduleTriggerService.ts # cron 触发源注册、替换与自动更新作业
+│   │   ├── scheduleSmartTrainingService.ts # 流程结束后的智能养成关卡回写
+│   │   ├── notificationService.ts # 通知配置、格式化与渠道发送
+│   │   ├── operatorTrainingService.ts # 养成领域接口：候选、队列命令、计划入口与数据抓取
+│   │   ├── operatorTrainingModel.ts # 设置归一化、候选投影与材料需求（纯函数）
+│   │   ├── operatorTrainingPlan.ts # 配方展开、掉落估算与刷取计划
+│   │   ├── operatorTrainingStore.ts # 队列、游戏数据与 automation 配置读写与校验
+│   │   ├── operatorTrainingApplication.ts # 计划应用、流程与定时同步的部分成功上报
+│   │   ├── webrtcService.ts   # ScrcpyOverWebRTC 进程、viewer 与会话所有权
+│   │   ├── webrtcRuntime.ts   # 平台二进制、宿主网络地址与发布包安装
+│   │   ├── webrtcSignalingGateway.ts # 同源一次性票据与 WebSocket 升级代理
+│   │   └── configStorageService.ts # 配置存储
 │   ├── data/                  # 用户配置数据
 │   │   └── user-configs/      # 任务配置 JSON 文件
-│   └── server.js              # 服务器入口
+│   ├── app.ts                 # Express 应用装配（中间件与路由挂载）
+│   └── server.ts              # 服务器入口（HTTP/HTTPS 传输与启动）
 ├── pnpm-workspace.yaml        # pnpm 工作区配置
 ├── pnpm-lock.yaml             # 统一依赖锁文件
 ├── package.json               # 根目录脚本（pnpm workspace 入口）
@@ -104,6 +141,12 @@ La-pluma-next/
 ```
 
 领域类型归各 `features/<domain>/types/`，不集中到 `shared/types/`。
+
+## 后端组装与启动
+
+`server/app.ts` 通过 `createLaPlumaApp(options)` 创建独立 Express 应用，接收信令登录、就绪快照和配置存储等注入端口。`/api` router 内先认证再解析 JSON，挂载业务路由后由统一 JSON 404 与错误出口收尾；生产静态文件与 SPA fallback 最后挂载，共同排除 API、探针和信令命名空间。探针与信令登录不经过业务 JSON 解析。HTTP 回归使用应用工厂和本机临时监听器，无需恢复调度、Telegram 或真实设备运行时。
+
+`server/server.ts` 的 `createLaPlumaServer(options)` 同步校验传输配置并组装生命周期，返回尚未监听的句柄；`start()` 才恢复 Run 存储、挂载信令网关、监听 HTTP/HTTPS 并初始化后台领域，重复调用复用同一次启动。直接执行入口先安装 SIGINT/SIGTERM 处理，再调用 `start()`，初始化期间即可关闭准入、取消初始化并进入 draining。`startLaPlumaServer(options)` 保留为一步启动入口。初始化退出与资源释放共用关闭截止时间；HTTP 等待在途响应完成，超时才强制断开。启动回滚复用统一释放结果，网关关闭失败仍会排空 HTTP；具体执行收尾语义见[执行身份与生命周期契约](execution-lifecycle.md#56-运行时关闭与后台触发源)。
 
 ## 状态与资源所有权
 

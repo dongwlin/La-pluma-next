@@ -1,6 +1,8 @@
 # 服务器脚本
 
-## fetch-operator-materials.js
+维护脚本以 TypeScript 编写，由 Node.js 原生类型擦除直接运行（`node scripts/<name>.ts`）；导入脚本不会触发抓取或写文件，只有作为入口运行时才执行。
+
+## fetch-operator-materials.ts
 
 自动从 [Kengxxiao/ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData) 获取干员材料数据。
 

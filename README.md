@@ -50,7 +50,7 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 ## 📋 前置要求
 
 - **操作系统**: macOS / Linux
-- **Node.js** 24+
+- **Node.js** 24.12+
 - **pnpm** 12.6.0（仓库通过 `packageManager` 固定版本，执行 `corepack enable` 会自动切换；也可 `npm install -g pnpm@12.6.0`）
 - **MAA CLI** 已安装
   - macOS: `brew install MaaAssistantArknights/tap/maa-cli`

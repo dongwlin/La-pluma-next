@@ -2,7 +2,7 @@
  * 视觉基线 fixture：页面级拦截 /api 请求返回固定数据，让 UI 状态
  * 不依赖真实后端、不依赖 MAA 是否在跑、不依赖当天日期。
  *
- * 数据形状与 server/routes/agent.js 的响应契约一致（以 client 端
+ * 数据形状与 server/routes/agent.ts 的响应契约一致（以 client 端
  * 各 feature api 的消费方式为准），内容取"有数据的合理日常状态"。
  */
 

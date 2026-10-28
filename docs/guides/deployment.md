@@ -39,7 +39,7 @@ docker run -d \
 
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `PORT` | 后端监听端口 | `3000` |
+| `PORT` | 后端监听端口；必须为 0-65535 的整数，否则服务拒绝启动 | `3000` |
 | `LA_PLUMA_BASE_PATH` | 生产环境前端挂载路径，需与构建时 `VITE_BASE_PATH` 一致 | `/` |
 | `ADB_PATH` | ADB 可执行文件路径 | `/opt/homebrew/bin/adb` |
 | `ADB_ADDRESS` | 默认 ADB 设备地址 | `127.0.0.1:16384` |
@@ -50,6 +50,8 @@ docker run -d \
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
 | `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC` |
 | `LA_PLUMA_WEBRTC_PORT` | ScrcpyOverWebRTC 本地端口 | `8443` |
+| `LA_PLUMA_WEBRTC_USERNAME` | 网关登录上游 ScrcpyOverWebRTC 的账号；必须与上游实际账号一致 | `admin` |
+| `LA_PLUMA_WEBRTC_PASSWORD` | 网关登录上游 ScrcpyOverWebRTC 的密码；不会自动生成或轮换 | `admin123` |
 | `LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS` | 最后一位观看者退出后释放设备 Agent 的等待时间（毫秒） | `3000` |
 | `LA_PLUMA_WEBRTC_VIEWER_STARTUP_GRACE_MS` | Agent 启动后无人观看时的等待时间（毫秒） | `15000` |
 | `LA_PLUMA_WEBRTC_HOST_IP` | 向设备公布的宿主机 IPv4 地址；默认优先选择与目标 ADB 地址同网段的网卡 | 自动检测 |
@@ -59,9 +61,27 @@ docker run -d \
 | `LA_PLUMA_HTTPS_CERT_PATH` | 可选 HTTPS 证书链路径，必须与私钥同时配置 | 空，使用 HTTP |
 | `LA_PLUMA_HTTPS_KEY_PATH` | 可选 HTTPS 私钥路径，必须与证书同时配置 | 空，使用 HTTP |
 
+### 存活与就绪检查
+
+容器健康检查继续请求根路径 `/health`，只判断进程是否仍在应答。该端点不执行 ADB、MAA 或外网探测，设备离线不会让存活检查失败，也不会触发无意义的重启。
+
+根路径 `/readiness` 表达是否应接收业务流量：运行时初始化未完成、Run 存储不可用或服务正在关闭（draining/closed）时返回 503，其余稳定运行状态返回 200。响应只包含生命周期、初始化与 Run 存储的粗粒度状态和稳定原因码，不包含文件路径、凭据或底层错误文本，并设置 `Cache-Control: no-store`。与 `/health` 一样，`/readiness` 不受 `LA_PLUMA_TOKEN` 约束，便于本机与编排探针直接调用；`/api` 的鉴权行为不变。
+
+反向代理和编排应把 `/readiness` 用于摘除流量，不要用它重启容器：draining 期间 `/health` 仍为 200，进程正在停止执行并等待 Run 落盘。
+
 ### PWA、HTTPS 与实时预览
 
 概览和日常的预览默认关闭，需手动选择快照或实时。自动回收通过同源 `/webrtc-signaling` 网关统计观看者，并在释放前核对上游设备的 `client_count` / `clients`。旧版上游若仅返回设备 ID 字符串，只能根据网关观看者判断；未携带设备 ID 的旧网关连接会保守阻止自动回收。项目仍使用单个受管设备 Agent，自动回收仅停止匹配的设备，不关闭信令和 TURN 服务。
+
+预览启停只释放本实例启动的资源：停止接口与服务关闭流程都不会终止启动前已存在的信令服务、TURN 或设备端 Agent。`/api/agent/webrtc/*` 状态中的 `ownership` 以 `managed`、`external`、`none` 标注 server、turn 与 agent 的归属，停止响应的 `released` 列出本次实际释放的 `server`、`turn`、`agent-deployment` 与 `device-agent`；需要接管外部启动的组件时先手动停止它，再由本服务启动。
+
+### 信令凭据与上游端口边界
+
+同源网关每次签发票据都用本机回环地址登录上游 ScrcpyOverWebRTC。账号来自 `LA_PLUMA_WEBRTC_USERNAME` / `LA_PLUMA_WEBRTC_PASSWORD`，未配置时沿用上游出厂值 `admin` / `admin123`。服务不会生成随机密码，也不会改写上游的账号数据，因此两侧始终使用同一组显式或默认值；只改一侧时网关登录失败，票据入口返回 503，不会回退到默认值掩盖不一致。
+
+迁移默认弱口令的顺序固定：先在 ScrcpyOverWebRTC 中修改管理员账号，再把两个变量设置为同一组值并重启本服务。未配置账号时启动日志会提示默认弱口令仍在生效。默认值保留是为了兼容由本服务直接启动的上游安装；它不会阻止外部已有账号，账号是否可用始终以上游登录结果为准。
+
+受管信令服务为设备端 Agent 监听局域网地址，它的管理界面、`/api` 与 `/devices` 不经过本服务的 `LA_PLUMA_TOKEN` 鉴权，只在 `/webrtc-signaling` 网关后隐藏。局域网或不受信任网络部署应修改上游默认账号，或用防火墙限制 `LA_PLUMA_WEBRTC_PORT` 的来源；浏览器预览仍只经过同源网关。
 
 PWA 的 Service Worker 只会在 HTTPS 或浏览器认可的本机 `localhost` 安全上下文中启用。生产构建在电脑本机通过 `http://localhost:*` 打开时可以安装；手机通过 `http://192.168.x.x:*` 访问时不能安装，也不会获得离线界面缓存。Vite 开发模式默认不注册 Service Worker。
 
@@ -94,9 +114,18 @@ docker run -d \
 
 证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问建议始终配置 `LA_PLUMA_TOKEN`。
 
-HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
+HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
 
 PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，但 MAA、ADB、实时预览、状态读取和所有自动化操作仍需要连接 La Pluma Next 后端；页面会持续显示断连状态并禁用控制台执行入口。
+
+### 跨域与访问来源
+
+同源是默认且完整的支持方式：Web UI 与 `/api`、`/health`、`/readiness`、`/webrtc-signaling` 同源部署（根路径或反向代理后的同源子路径）时无需关心跨域头部。跨域调用按以下策略支持：
+
+- 鉴权只由 token 承担，CORS 不作为鉴权。服务端对任何来源应答 CORS 预检（`OPTIONS` 无需 token）并返回 `Access-Control-Allow-Origin: *`，但这只声明浏览器可跨域读取响应；`/api` 的来源不构成访问边界。配置 `LA_PLUMA_TOKEN` 后，`/api` 与票据入口要求 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`；网络访问建议始终配置该 token。
+- 令牌比较先对两侧做摘要再使用恒定时间比较：长度差异、非字符串请求头或格式错误只会返回 401 `AGENT_AUTH_REQUIRED`，不会抛错，也不会回显预期值、变量名或长度。认证失败按来源地址限流（默认每分钟 10 次），超限返回 429 `AGENT_RATE_LIMITED` 并带 `Retry-After`；有效令牌不参与失败计数，也不会被同一来源的失败额度阻塞。限额是进程内计数、重启清零，不跨实例共享；未启用 `trust proxy`，反向代理后所有客户端共享代理连接地址的额度。
+- 不支持浏览器凭据模式：服务端不使用 Cookie，不返回 `Access-Control-Allow-Credentials`。以 `credentials: 'include'` 发起的跨域请求会被浏览器拒绝；调用方应改用上述 token 头并保持默认的 `credentials: 'same-origin'`。关闭凭据并不限制请求来源——任何来源都可携带 token 调用开放接口，未携带有效 token 的 `/api` 请求一律 401。
+- 实时预览的 `/webrtc-signaling` 网关继续按同源方式使用：HTTP 票据入口受同一 token 保护，其余信令管理端点不通过应用端口暴露，WebSocket 升级只服务持一次性票据的观看连接。票据签发自成边界：未设置 `LA_PLUMA_TOKEN` 的本地/LAN 模式只接受同源签发，`Origin` 的主机名必须与 `Host` 一致（端口不参与比较，兼容本地开发代理）；无 `Origin` 的非浏览器调用保持可用，跨源请求返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`。设置 token 后由 token 把关，来源不再作为额外边界。两种模式都按来源地址限制签发频率（默认每分钟 30 次），反向代理需要保留原始 `Host` 主机名。
 
 ### 子路径部署
 
@@ -113,7 +142,7 @@ pnpm start
 docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
 ```
 
-本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
+本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health`、`/readiness` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
 
 ### 使用 Docker Compose（推荐）
 

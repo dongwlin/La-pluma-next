@@ -8,7 +8,7 @@
 
 - **前端**: React Hooks 与原生语义组件实现页面壳层和响应式 chrome，Tailwind CSS v4（`@tailwindcss/vite`）/语义 token 负责业务布局，Framer Motion 负责物理动效，Zustand 管理跨页面状态
 - **API**: 前端通过 `client/src/shared/api/` 的传输层底座（`API_BASE_URL`、`fetchWithAuth`、`parseJsonResponse`、`getErrorMessage`）访问 `/api/agent/*`；业务端点按语义归各 `features/<domain>/api/`，跨域共用的命令执行与用户配置端点在 `features/task-execution/`、`features/user-config/` 两个微域，应用级 Run 观察与执行控制器也在 `task-execution`（见[前端执行客户端与控制器](../architecture/execution-client.md)）
-- **后端**: `server/server.js` 挂载 Agent API；执行进度与状态由 `/api/agent` 轮询读取，浏览器实时预览经同源 `/webrtc-signaling` 网关；执行身份与生命周期见 [执行身份与生命周期契约](../architecture/execution-lifecycle.md)
+- **后端**: `server/app.ts` 装配并挂载 Agent API，`server/server.ts` 负责 HTTP 传输与启动；执行进度与状态由 `/api/agent` 轮询读取，浏览器实时预览经同源 `/webrtc-signaling` 网关；执行身份与生命周期见 [执行身份与生命周期契约](../architecture/execution-lifecycle.md)
 - **MAA 集成**: 通过 Node.js 子进程调用 `maa` CLI 命令
 - **定时任务**: 使用 node-cron 实现任务调度
 - **通知服务**: Telegram Bot API + 任务完成通知
@@ -31,7 +31,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet   # 预算校验（CI 同�
 pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有意的迁移/重构后重新生成基线
 ```
 
-CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。
+CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。服务端编译器版本断言、独立 `typecheck` 与覆盖率阈值同样在 `verify` 之后单独成步，版本漂移或阈值失败会直接阻断 `checks`。
 
 CI 在 PR/main 运行已有浏览器跨页集成和视觉检查，直接复用源码校验生成的前端产物；PR 和发布还验证两种原生架构的容器启动。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
 
@@ -127,8 +127,17 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 # 新增 chunk 时必须同步 createWorkboxConfig 的 globPatterns，否则构建失败。
 pnpm --filter la-pluma-next-client build
 
-# 后端语法检查
+# 后端语法检查（node --check 逐个解析 TS，不依赖 TypeScript 编译器）
 pnpm --filter la-pluma-next-server check
+
+# 后端类型检查（TypeScript 6.0.3，覆盖全部 TS；源码目录出现 JS 时直接失败）
+pnpm --filter la-pluma-next-server typecheck
+
+# 后端类型与依赖护栏（any / 类型抑制 / 双重断言 / 分层方向 / 静态导入环，verify 已包含）
+pnpm --filter la-pluma-next-server guardrails
+
+# 后端覆盖率（固定统计范围与渐进阈值，独立于 verify）
+pnpm --filter la-pluma-next-server test:coverage
 
 # 依赖/职责护栏与规模预算（verify 已包含；单独运行便于定位）
 pnpm --filter la-pluma-next-client guardrails
