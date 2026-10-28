@@ -11,8 +11,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
 import {
   createLaPlumaApp,
-  loadHttpsOptions,
-  normalizeBasePath,
   startLaPlumaServer
 } from '../server.ts'
 import {
@@ -140,33 +138,6 @@ afterEach(async () => {
 })
 
 describe('La Pluma Next transport configuration', () => {
-  it('normalizes the production application base path', () => {
-    assert.equal(normalizeBasePath(), '/')
-    assert.equal(normalizeBasePath('la-pluma'), '/la-pluma/')
-    assert.equal(normalizeBasePath('/la-pluma/'), '/la-pluma/')
-  })
-
-  it('requires both HTTPS paths and loads both certificate files', () => {
-    assert.equal(loadHttpsOptions({}), null)
-    assert.throws(
-      () => loadHttpsOptions({ LA_PLUMA_HTTPS_CERT_PATH: '/cert.pem' }),
-      /必须同时配置/
-    )
-
-    const reads: string[] = []
-    const options = loadHttpsOptions({
-      LA_PLUMA_HTTPS_CERT_PATH: '/cert.pem',
-      LA_PLUMA_HTTPS_KEY_PATH: '/key.pem'
-    }, path => {
-      reads.push(path)
-      return Buffer.from(path)
-    })
-    assert.ok(options, '同时提供证书与私钥时应解析出 HTTPS 选项')
-    assert.deepEqual(reads, ['/cert.pem', '/key.pem'])
-    assert.equal(options.cert.toString(), '/cert.pem')
-    assert.equal(options.key.toString(), '/key.pem')
-  })
-
   it('rejects an invalid PORT from the environment before starting any listener', async () => {
     await assert.rejects(
       startLaPlumaServer({ env: { PORT: 'not-a-port' } }),

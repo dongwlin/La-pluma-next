@@ -69,6 +69,4 @@ router.use(agentNotificationRoutes);
 // 注册配置与实际执行分开，维护动作的副作用复用既有服务。
 router.use(agentMaintenanceRoutes);
 
-export { executeTrackedAgentAction } from './agentExecution.ts';
-
 export default router;

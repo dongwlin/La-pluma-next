@@ -31,7 +31,7 @@ process.exitCode = 0;
 `, { mode: 0o755 })
 
 const { createLaPlumaApp } = await import('../server.ts')
-const { executeTrackedAgentAction } = await import('../routes/agent.ts')
+const { executeTrackedAgentAction } = await import('../routes/agentExecution.ts')
 const operatorTraining = (await import('../services/operatorTrainingService.ts')).default
 const {
   clearRealtimeLogs,

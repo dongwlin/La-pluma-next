@@ -61,9 +61,6 @@ import type { UserConfigStorage } from './services/configStorageService.ts';
 // 供 isMainModule 判断使用；应用内路径解析已由 config 入口按模块位置锚定
 const __filename = fileURLToPath(import.meta.url);
 
-// 组装入口的配置解析归属 config 模块；此处保留导出供既有使用者与测试引用
-export { loadHttpsOptions, normalizeBasePath } from './config/runtimeConfig.ts';
-
 /** 认证失败与票据签发的限流窗口；测试可注入更小阈值与假时钟。 */
 export interface LoginRateLimitOptions {
   windowMs?: number;

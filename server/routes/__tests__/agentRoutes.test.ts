@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
-import router, { executeTrackedAgentAction as aggregateExecuteTrackedAgentAction } from '../agent.ts'
+import router from '../agent.ts'
 import { executeTrackedAgentAction } from '../agentExecution.ts'
 import { API_VERSION } from '../agentContract.ts'
 import { getTaskStatus, setTaskStatus } from '../../services/maaProcessService.ts'
@@ -255,7 +255,6 @@ describe('Agent discovery routes', () => {
   })
 
   it('exposes every execution route exactly once through the mounted agent router', () => {
-    assert.equal(aggregateExecuteTrackedAgentAction, executeTrackedAgentAction)
     const executionRoutes = [
       'POST /activity/run',
       'POST /copilot-sets/:id/execute',
