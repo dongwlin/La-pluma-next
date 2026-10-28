@@ -114,7 +114,11 @@ La-pluma-next/
 │   │   ├── scheduleTriggerService.js # cron 触发源注册、替换与自动更新作业
 │   │   ├── scheduleSmartTrainingService.js # 流程结束后的智能养成关卡回写
 │   │   ├── notificationService.js # 通知服务
-│   │   ├── operatorTrainingService.js # 养成计划和材料计算
+│   │   ├── operatorTrainingService.js # 养成领域接口：候选、队列命令、计划入口与数据抓取
+│   │   ├── operatorTrainingModel.js # 设置归一化、候选投影与材料需求（纯函数）
+│   │   ├── operatorTrainingPlan.js # 配方展开、掉落估算与刷取计划
+│   │   ├── operatorTrainingStore.js # 队列、游戏数据与 automation 配置读写
+│   │   ├── operatorTrainingApplication.js # 计划应用、流程与定时同步的部分成功上报
 │   │   ├── webrtcService.js   # ScrcpyOverWebRTC 管理
 │   │   └── configStorageService.ts # 配置存储
 │   ├── data/                  # 用户配置数据
