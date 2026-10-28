@@ -106,13 +106,13 @@ La-pluma-next/
 │   │   ├── maaLogFileService.ts # 日志文件边界、清理与检查点
 │   │   ├── maaActivityService.ts # 当前活动查询与关卡代号替换
 │   │   ├── maaTaskCacheService.ts # 本地任务私有 hot-update 缓存
-│   │   ├── schedulerService.js # 流程执行器组装、Run 关联与定时任务公开入口
-│   │   ├── scheduleFlowPlan.js # 流程校验、命令构建与执行计划（纯函数）
-│   │   ├── scheduleFlowExecution.js # 流程步骤编排、进度状态与停止门控
-│   │   ├── scheduleFlowResult.js # 流程结果聚合与掉落汇报解析（纯函数）
-│   │   ├── scheduleExecutionPorts.js # 设备、通知与存储适配的端口组装
-│   │   ├── scheduleTriggerService.js # cron 触发源注册、替换与自动更新作业
-│   │   ├── scheduleSmartTrainingService.js # 流程结束后的智能养成关卡回写
+│   │   ├── schedulerService.ts # 流程执行器组装、Run 关联与定时任务公开入口
+│   │   ├── scheduleFlowPlan.ts # 流程校验、命令构建与执行计划（纯函数）
+│   │   ├── scheduleFlowExecution.ts # 流程步骤编排、进度状态与停止门控
+│   │   ├── scheduleFlowResult.ts # 流程结果聚合与掉落汇报解析（纯函数）
+│   │   ├── scheduleExecutionPorts.ts # 设备、通知与存储适配的端口组装
+│   │   ├── scheduleTriggerService.ts # cron 触发源注册、替换与自动更新作业
+│   │   ├── scheduleSmartTrainingService.ts # 流程结束后的智能养成关卡回写
 │   │   ├── notificationService.ts # 通知配置、格式化与渠道发送
 │   │   ├── operatorTrainingService.ts # 养成领域接口：候选、队列命令、计划入口与数据抓取
 │   │   ├── operatorTrainingModel.ts # 设置归一化、候选投影与材料需求（纯函数）

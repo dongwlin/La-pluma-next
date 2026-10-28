@@ -188,7 +188,7 @@ import { createLogger } from '../utils/logger.ts';
 - ✅ `operatorTrainingService.ts` - 已按职责拆分到模型、计划、存储与应用同步，并完成类型化（设置/队列/材料/计划的解析与部分同步结果）
 - ✅ `notificationService.ts` - 已完成类型化（配置解析、格式化与渠道发送）
 - ✅ `maaCallbackService.ts` 与 `award/recruit/infrast/mall/fightResultService.ts` - 已完成类型化（回调载荷校验、步骤结果类型与 skipped/failed/success 区分）
-- ✅ `schedulerService.js` - 已按职责拆分到流程计划、执行、触发源与养成回写
+- ✅ `schedulerService.ts` - 已按职责拆分到流程计划、执行、触发源与养成回写，并完成类型化（步骤结论联合、日志检查点与端口契约）
 - ✅ `maaProcessService.ts` 等 MAA 模块 - 已按职责拆分并完成类型化（进程、执行、配置、设备、日志、活动、任务缓存）
 
 ## 🎉 预期收益
