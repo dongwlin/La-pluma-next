@@ -27,7 +27,7 @@ import {
   requestAgentRunStop
 } from './agentRunService.js';
 import { requestCopilotSetRunStop } from './copilotSetRunService.js';
-import { getTaskStatus, stopCurrentTask } from './maaService.js';
+import { getTaskStatus, stopCurrentTask } from './maaProcessService.js';
 import { getScheduleExecutionStatus, stopScheduleExecution } from './schedulerService.js';
 import type {
   RuntimeLifecycle,

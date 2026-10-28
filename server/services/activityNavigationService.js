@@ -1,7 +1,8 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
-import { execMaaCommand, getCurrentActivity } from './maaService.js';
+import { execMaaCommand } from './maaExecutionService.js';
+import { getCurrentActivity } from './maaActivityService.js';
 
 function toArray(value) {
   return Array.isArray(value) ? value : value ? [value] : [];

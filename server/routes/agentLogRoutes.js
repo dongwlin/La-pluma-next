@@ -1,14 +1,12 @@
 import express from 'express';
+import { clearRealtimeLogs, getRealtimeLogs, MAX_REALTIME_LOG_LINES } from '../services/maaProcessService.js';
 import {
-  clearRealtimeLogs,
   cleanupLogs,
   getDebugScreenshots,
   getLogFiles,
-  getRealtimeLogs,
   readLogFile,
-  MAX_REALTIME_LOG_LINES,
   MAX_LOG_FILE_LINES
-} from '../services/maaService.js';
+} from '../services/maaLogFileService.js';
 import {
   asyncHandler,
   agentError,
@@ -20,9 +18,10 @@ import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 /**
  * 日志读取与维护路由。
  *
- * 读取只经 maaService 的日志边界：路径解码、目录越界判定与行数上限仍由该
- * 服务承担，路由只做 query 归一化。清空实时缓冲和按大小清理历史文件会改变
- * 运行数据，不是纯读取。文件名与行数上限的既有语义保持不变。
+ * 读取只经 maaLogFileService 的日志边界：路径解码、目录越界判定与行数
+ * 上限仍由该服务承担；实时缓冲的清空由 maaProcessService 承担。路由只做
+ * query 归一化。清空实时缓冲和按大小清理历史文件会改变运行数据，不是纯
+ * 读取。文件名与行数上限的既有语义保持不变。
  */
 const router = express.Router();
 

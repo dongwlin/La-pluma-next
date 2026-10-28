@@ -16,7 +16,9 @@
 
 import { createOutboundHttpClient, isOutboundRequestError } from './outboundRequestService.ts';
 import { executeScheduleNow, getScheduleExecutionStatus } from './schedulerService.js';
-import { execMaaCommand, getTaskStatus, stopCurrentTask, captureScreen } from './maaService.js';
+import { execMaaCommand } from './maaExecutionService.js';
+import { getTaskStatus, stopCurrentTask } from './maaProcessService.js';
+import { captureScreen } from './maaDeviceService.js';
 import { resolveConnection } from './connectionService.js';
 import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.js';
 import { loadUserConfig } from './configStorageService.ts';

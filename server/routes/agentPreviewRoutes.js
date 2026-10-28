@@ -1,7 +1,7 @@
 import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { captureScreen } from '../services/maaService.js';
+import { captureScreen } from '../services/maaDeviceService.js';
 import {
   installWebrtc,
   startWebrtcServer,
@@ -27,7 +27,7 @@ import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefau
 /**
  * 设备预览路由：截图、WebRTC 启停与状态、方向设置和设备采样。
  *
- * 这里只做 HTTP 适配：截图调用 maaService 的既有用例，WebRTC 进程、
+ * 这里只做 HTTP 适配：截图调用 maaDeviceService 的既有用例，WebRTC 进程、
  * viewer 计时器、启动队列和资源所有权仍由 webrtcService/webrtcRuntime
  * 持有，方向设置复用同一 ADB 命令计划，设备采样只读 ADB。router 不缓存
  * 运行状态、不另建子进程或租约；预览与截图按现行契约不参与设备自动化

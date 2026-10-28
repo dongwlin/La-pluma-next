@@ -1,5 +1,9 @@
 import cron from 'node-cron';
-import { execMaaCommand, execDynamicTask, replaceActivityCode, captureScreen, getGameClientState, getMaaExecutionDiagnostics, testAdbConnection, createMaaLogCheckpoint, readMaaLogSince } from './maaService.js';
+import { execMaaCommand, execDynamicTask } from './maaExecutionService.js';
+import { getMaaExecutionDiagnostics } from './maaProcessService.js';
+import { replaceActivityCode } from './maaActivityService.js';
+import { captureScreen, getGameClientState, testAdbConnection } from './maaDeviceService.js';
+import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.js';
 import { resolveConnection } from './connectionService.js';
 import { sendTaskCompletionNotification, isStageOpenToday, shouldCaptureNotificationScreenshot } from './notificationService.js';
 import { getEnabledAwardItems, parseAwardExecutionActions } from './awardResultService.js';

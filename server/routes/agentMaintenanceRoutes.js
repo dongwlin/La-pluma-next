@@ -1,16 +1,10 @@
 import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import {
-  execMaaCommand,
-  getMaaVersion,
-  testAdbConnection,
-  discoverAdbDevices,
-  getMaaConfigDir,
-  getConfig,
-  saveConfig,
-  getCurrentActivity
-} from '../services/maaService.js';
+import { execMaaCommand, getMaaVersion } from '../services/maaExecutionService.js';
+import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.js';
+import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.js';
+import { getCurrentActivity } from '../services/maaActivityService.js';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.js';
@@ -36,8 +30,9 @@ import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js'
  * 维护与平台入口路由：连接/profile 配置、连接诊断、资源与 MAA 更新、
  * 定时与自动更新配置、识别动作，以及更新日志/作业/活动查询。
  *
- * 这里只做 HTTP 适配。profile 读写复用 maaService 的既有解析与覆盖策略；
- * 资源/核心/CLI 更新复用 resourceUpdateService、maaService 与执行租约；
+ * 这里只做 HTTP 适配。profile 读写复用 maaConfigService 的既有解析与覆盖
+ * 策略；资源/核心/CLI 更新复用 resourceUpdateService、maaExecutionService
+ * 与执行租约；
  * 定时与自动更新只调用 schedulerService 的注册入口，不自行持有定时器或
  * 执行状态；识别动作调用 dataParserService 的既有用例。router 不缓存运行
  * 状态、不另建子进程或锁。
@@ -55,7 +50,7 @@ const logger = createLogger('AgentRoutes');
 // 显式时限、取消与受限重试由端口承担，错误经 asyncHandler 进入统一错误出口。
 const outboundHttp = createOutboundHttpClient();
 
-// 连接与 profile：读写仍由 maaService 的 profile 解析与原子写入承担。
+// 连接与 profile：读写仍由 maaConfigService 的 profile 解析与原子写入承担。
 router.get('/config/maa/:profileName', asyncHandler(async (req, res) => {
   return sendSuccess(res, req, await getConfig(req.params.profileName));
 }));
@@ -355,8 +350,8 @@ router.get('/auto-update/status', asyncHandler(async (req, res) => {
   return sendSuccess(res, req, getAutoUpdateStatus());
 }));
 
-// 资源、核心与 CLI 维护：进程副作用经既有 maaService/resourceUpdateService
-// 与执行租约，dryRun 只返回计划。
+// 资源、核心与 CLI 维护：进程副作用经既有 maaExecutionService/
+// resourceUpdateService 与执行租约，dryRun 只返回计划。
 router.post('/actions/open-config-directory', asyncHandler(async (req, res) => {
   const configDir = await getMaaConfigDir();
   const command = process.platform === 'darwin'
@@ -459,7 +454,7 @@ router.post('/actions/hot-update-resources', asyncHandler(async (req, res) => {
   }
 }));
 
-// 连接诊断与平台信息：连接覆盖沿用请求级解析，设备探测复用 maaService。
+// 连接诊断与平台信息：连接覆盖沿用请求级解析，设备探测复用 maaDeviceService。
 router.post('/actions/test-connection', asyncHandler(async (req, res) => {
   const { adbPath, address } = await resolveRequestConnection(req, { allowOverrides: true })
   return sendSuccess(res, req, await testAdbConnection(adbPath, address));
