@@ -18,7 +18,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +44,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify source, tests and production build
         run: pnpm verify
+      # 类型门禁独立于 pnpm verify：先确认 CI 解析到的编译器就是锁定的 6.0.3，
+      # 再单独运行服务端 typecheck，版本漂移与类型错误分别定位。
+      - name: Type-check the server with the pinned compiler
+        run: |
+          reported=$(pnpm --filter la-pluma-next-server exec tsc --version)
+          echo "TypeScript compiler: $reported"
+          test "$reported" = "Version 6.0.3"
+          pnpm --filter la-pluma-next-server typecheck
+      - name: Enforce server coverage thresholds
+        run: pnpm --filter la-pluma-next-server test:coverage
       - name: Check stylesheet budget
         run: pnpm --filter la-pluma-next-client stylelint:ratchet
       # Browser checks already run on PRs and main; avoid repeating them for tags.

@@ -31,7 +31,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet   # 预算校验（CI 同�
 pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有意的迁移/重构后重新生成基线
 ```
 
-CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。
+CI 在 `pnpm verify` 后以独立步骤执行 `stylelint:ratchet`；`verify` 本身不包含样式预算检查（见 `.github/workflows/ci.yml`）。服务端编译器版本断言、独立 `typecheck` 与覆盖率阈值同样在 `verify` 之后单独成步，版本漂移或阈值失败会直接阻断 `checks`。
 
 CI 在 PR/main 运行已有浏览器跨页集成和视觉检查，直接复用源码校验生成的前端产物；PR 和发布还验证两种原生架构的容器启动。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
 
