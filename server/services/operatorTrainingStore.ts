@@ -483,21 +483,20 @@ export async function loadDepot(): Promise<DepotSnapshot> {
   }
 }
 
-function parseCombatTask(value: unknown): CombatTask {
-  if (!isRecord(value)) throw new Error('自动化任务配置格式无效');
+function isCombatTask(value: unknown): value is CombatTask {
+  if (!isRecord(value)) return false;
   const { params } = value;
-  if (params !== undefined) {
-    if (!isRecord(params)) throw new Error('自动化任务配置格式无效');
-    if (params.stages !== undefined) {
-      if (!Array.isArray(params.stages)) throw new Error('自动化任务配置格式无效');
-      for (const stage of params.stages) {
-        if (typeof stage === 'string' || isRecord(stage)) continue;
-        throw new Error('自动化任务配置格式无效');
-      }
-    }
-  }
+  if (params === undefined) return true;
+  if (!isRecord(params)) return false;
+  if (params.stages === undefined) return true;
+  if (!Array.isArray(params.stages)) return false;
+  return params.stages.every(stage => typeof stage === 'string' || isRecord(stage));
+}
+
+function parseCombatTask(value: unknown): CombatTask {
+  if (!isCombatTask(value)) throw new Error('自动化任务配置格式无效');
   // 结构已校验；保留原始对象引用，回写时不丢失本领域未读取的字段。
-  return value as unknown as CombatTask;
+  return value;
 }
 
 /**
