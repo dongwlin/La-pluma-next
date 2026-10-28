@@ -12,6 +12,7 @@ import operatorTrainingService from './operatorTrainingService.js';
 import { recordDrops } from './dropRecordService.js';
 import { updateMaaResources } from './resourceUpdateService.js';
 import { createLogger } from '../utils/logger.ts';
+import { withExecutionLogContext } from '../utils/logContext.ts';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';
@@ -1528,13 +1529,17 @@ export async function executeScheduledTaskFromCron(taskFlow, scheduleId) {
   }
 
   try {
-    const result = await executeTaskFlow(taskFlow, scheduleId, {
-      onBeforeStart: () => startAgentRunForExecution(runId)
-    }, { runId });
-    const totalSteps = Array.isArray(taskFlow) ? taskFlow.filter(task => task?.enabled).length : 0;
-    settleDailyFlowRun(runId, { ...result, scheduleId, totalSteps });
-    await flushDailyFlowRunStore('定时流程终态持久化失败', runId);
-    return result;
+    // 定时触发同样拥有 Run 身份：执行、终态结算与落盘日志都记录同一个
+    // runId/operationId，关联生命周期跟随流程本身而不是触发时机。
+    return await withExecutionLogContext({ runId, operationId: 'run_daily_flow' }, async () => {
+      const result = await executeTaskFlow(taskFlow, scheduleId, {
+        onBeforeStart: () => startAgentRunForExecution(runId)
+      }, { runId });
+      const totalSteps = Array.isArray(taskFlow) ? taskFlow.filter(task => task?.enabled).length : 0;
+      settleDailyFlowRun(runId, { ...result, scheduleId, totalSteps });
+      await flushDailyFlowRunStore('定时流程终态持久化失败', runId);
+      return result;
+    });
   } catch (error) {
     settleDailyFlowRun(runId, null, error);
     await flushDailyFlowRunStore('定时流程失败终态持久化失败', runId);

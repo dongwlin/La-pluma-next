@@ -1,7 +1,16 @@
 /**
  * 统一日志服务
  * 提供结构化的日志记录和管理
+ *
+ * 适配职责：本模块是所有结构化日志的统一出口。
+ * - 从日志上下文补齐 requestId/runId/operationId，使同一请求或同一执行
+ *   的日志可以互相核对（控制台用 req=/run=/op= 短标签，结构化字段保持全名）；
+ * - 对 message 与 data 统一脱敏，凭据类字段不进入内存日志或控制台；
+ * - WARN/ERROR 写入 stderr，其余级别写入 stdout。
  */
+
+import { getLogContext } from './logContext.ts';
+import { redactLogData, redactLogText } from './logRedaction.ts';
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS';
 
@@ -12,6 +21,10 @@ export interface LogEntry {
   message: string;
   service: string;
   data?: unknown;
+  /** 关联字段只在上下文中存在时写入，不写入 null 占位。 */
+  requestId?: string;
+  runId?: string;
+  operationId?: string;
 }
 
 export interface LoggerOptions {
@@ -36,15 +49,19 @@ class Logger {
    * 记录日志
    */
   log(level: LogLevel, message: string, data: unknown = null): LogEntry {
+    const context = getLogContext();
     const entry: LogEntry = {
       time: new Date().toISOString(),
       level,
-      message,
+      message: redactLogText(message),
       service: this.name
     };
+    if (context.requestId) entry.requestId = context.requestId;
+    if (context.runId) entry.runId = context.runId;
+    if (context.operationId) entry.operationId = context.operationId;
     // 与原 `...(data && { data })` 等价：data 为假值（含 null）时不携带 data 字段
     if (data) {
-      entry.data = data;
+      entry.data = redactLogData(data);
     }
 
     // 添加到内存日志
@@ -55,10 +72,25 @@ class Logger {
       this.logs.shift();
     }
 
-    // 输出到控制台
+    // 输出到控制台：错误与警告走 stderr，其余走 stdout。
+    // DEBUG 行是高频诊断输出，控制台省略关联标签以保持可读性；结构化 entry
+    // 始终携带 requestId/runId/operationId，轮询与日志查询读取的是完整字段。
     if (this.enableConsole) {
       const emoji = this.getLevelEmoji(level);
-      console.log(`${emoji} [${this.name}][${level}] ${message}`, data || '');
+      const contextLabel = level === 'DEBUG'
+        ? ''
+        : [
+            context.requestId ? `req=${context.requestId}` : '',
+            context.runId ? `run=${context.runId}` : '',
+            context.operationId ? `op=${context.operationId}` : ''
+          ].filter(Boolean).join(' ');
+      const line = `${emoji} [${this.name}][${level}]${contextLabel ? `[${contextLabel}]` : ''} ${entry.message}`;
+      const sink = level === 'ERROR' || level === 'WARN' ? console.error : console.log;
+      if (entry.data === undefined) {
+        sink(line);
+      } else {
+        sink(line, entry.data);
+      }
     }
 
     return entry;

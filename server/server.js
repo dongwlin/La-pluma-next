@@ -34,6 +34,7 @@ import {
 } from './services/webrtcSignalingGateway.js';
 import { attachWebrtcPreviewToLifecycle } from './services/webrtcService.js';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
+import { requestIdMiddleware } from './utils/requestContext.ts';
 
 // 供 isMainModule 判断使用；应用内路径解析已由 config 入口按模块位置锚定
 const __filename = fileURLToPath(import.meta.url);
@@ -95,6 +96,10 @@ export function createLaPlumaApp({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE']
   }));
+
+  // 请求 id 在鉴权与请求体解析之前建立：401/400 等前置失败、响应 meta 与
+  // 同一请求的日志都使用同一个 id。客户端值需通过长度与字符集校验，否则丢弃重发。
+  app.use(requestIdMiddleware);
 
   // Only ticket issuance is exposed over HTTP. The signaling admin UI and
   // device endpoints remain inaccessible through the public application port.

@@ -2,6 +2,10 @@
  * API 辅助工具 - 统一的响应格式和错误处理
  */
 
+import { createLogger } from './logger.ts';
+import { withRequestLogContext } from './logContext.ts';
+import { normalizeRequestId } from './requestContext.ts';
+
 /** Express NextFunction 的最小结构端口，仅约束错误透传调用。 */
 export type NextLike = (error?: unknown) => void;
 
@@ -52,7 +56,7 @@ export interface AgentError extends Error {
 }
 
 export interface ResponseMeta extends Record<string, unknown> {
-  requestId: string | number | string[] | null;
+  requestId: string | null;
   dryRun: boolean;
 }
 
@@ -111,8 +115,13 @@ function asRetryable(value: unknown): boolean {
   return typeof value === 'boolean' ? value : false;
 }
 
-function getRequestId(req: MaybeApiRequest): string | number | string[] | null {
-  return req?.headers?.['x-request-id'] || req?.id || null;
+/**
+ * 响应与日志共用的请求 id：优先使用请求 id 中间件写入的 `req.id`，
+ * 未经过中间件的直接调用回退到同一套校验规则下的请求头。
+ * 非法或超长的头值不会回显。
+ */
+function getRequestId(req: MaybeApiRequest): string | null {
+  return normalizeRequestId(req?.id) ?? normalizeRequestId(req?.headers?.['x-request-id']);
 }
 
 function responseMeta(req: MaybeApiRequest = null, extra: Record<string, unknown> = {}): ResponseMeta {
@@ -264,6 +273,8 @@ function isPathParamDecodeError(error: unknown): boolean {
     && (errorFieldsOf(error).status === 400 || errorFieldsOf(error).statusCode === 400);
 }
 
+const apiLogger = createLogger('Api');
+
 function logApiError(req: MaybeApiRequest, status: number, code: string, message: string | null = null): void {
   // 记录不含查询串的完整路径，日志不回显 query 中的敏感参数
   const original = typeof req?.originalUrl === 'string'
@@ -272,11 +283,19 @@ function logApiError(req: MaybeApiRequest, status: number, code: string, message
   const pathWithoutQuery = original
     ? original.split('?')[0]
     : (req?.path || '(unknown path)');
-  const line = `[API] ${req?.method || 'UNKNOWN'} ${pathWithoutQuery} -> ${status} ${code}`;
-  if (message) {
-    console.error(`${line} ${message}`);
+  const line = `[API] ${req?.method || 'UNKNOWN'} ${pathWithoutQuery} -> ${status} ${code}`
+    + (message ? ` ${message}` : '');
+  // 已知 4xx 是调用方错误，记 WARN；5xx 才需要按服务端故障排查。
+  const requestId = getRequestId(req);
+  const write = () => {
+    if (status >= 500) apiLogger.error(line);
+    else apiLogger.warn(line);
+  };
+  // 未经中间件的直接调用也把同一个 id 带进日志上下文。
+  if (requestId) {
+    withRequestLogContext({ requestId }, write);
   } else {
-    console.error(line);
+    write();
   }
 }
 

@@ -6,6 +6,8 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path
 import { randomBytes } from 'crypto';
 import TOML from '@iarna/toml';
 import { createLogger } from '../utils/logger.ts';
+import { getLogContext } from '../utils/logContext.ts';
+import { redactLogText } from '../utils/logRedaction.ts';
 import { updateTextFile } from '../utils/fileHelper.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 import { getFallbackActivity } from './activityFallbackService.js';
@@ -102,25 +104,32 @@ function trimRealtimeLogs() {
 }
 
 function appendRealtimeLog(level, message) {
-  taskStatus.logs.push({
+  // 执行归属来自执行上下文而不是发起请求：请求返回后仍在运行的子进程
+  // 输出继续携带同一个 runId/operationId。日志内容统一脱敏后再入缓冲。
+  const context = getLogContext();
+  const entry = {
     time: new Date().toISOString(),
     level,
-    message
-  });
+    message: redactLogText(message)
+  };
+  if (context.runId) entry.runId = context.runId;
+  if (context.operationId) entry.operationId = context.operationId;
+  taskStatus.logs.push(entry);
   trimRealtimeLogs();
+  return entry;
 }
 
 /**
  * 添加日志到缓存
  */
 function addLog(level, message) {
-  appendRealtimeLog(level, message);
-  // 使用结构化日志，不再使用 console.log
+  const entry = appendRealtimeLog(level, message);
+  // 使用结构化日志，不再使用 console.log；复用已脱敏的文本。
   const logLevel = level.toLowerCase();
   if (logger[logLevel]) {
-    logger[logLevel](message);
+    logger[logLevel](entry.message);
   } else {
-    logger.info(message);
+    logger.info(entry.message);
   }
 }
 

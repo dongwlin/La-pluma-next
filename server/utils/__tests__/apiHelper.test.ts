@@ -255,7 +255,9 @@ describe('apiHelper', () => {
         details: { owner: 'run-1' },
         retryable: true
       });
-      assert.strictEqual(consoleLines[0], '[API] POST /api/agent/actions/start -> 409 MAA_EXECUTION_BUSY MAA 正在被其他任务使用');
+      // 已知 4xx 按 WARN 记录，日志行保留原有方法/路径/状态/code 信息
+      assert.ok(consoleLines[0].includes('[Api][WARN]'));
+      assert.ok(consoleLines[0].includes('[API] POST /api/agent/actions/start -> 409 MAA_EXECUTION_BUSY MAA 正在被其他任务使用'));
     });
 
     it('应该保留只带状态的存量业务错误（训练计划冲突）', () => {
@@ -287,6 +289,8 @@ describe('apiHelper', () => {
       });
       assert.ok(!JSON.stringify(res.body).includes('内部堆栈泄露标记'));
       assert.ok(!consoleLines.join('\n').includes('内部堆栈泄露标记'));
+      // 未知 5xx 按 ERROR 记录，与已知 4xx 的 WARN 分级区分
+      assert.ok(consoleLines[0].includes('[Api][ERROR]'));
     });
 
     it('不应该按 5xx 推导 retryable，未知错误保持 false', () => {
@@ -403,6 +407,37 @@ describe('apiHelper', () => {
       const logged = consoleLines.join('\n');
       assert.ok(logged.includes('[API] GET /api/agent/runs/run-1 -> 404'));
       assert.ok(!logged.includes('secret-query-value'));
+    });
+
+    it('响应 meta 与错误日志使用同一个请求 id，非法头值不回显', () => {
+      captureConsole();
+      const res = createResponse();
+
+      apiErrorHandler(
+        agentError('AGENT_RUN_NOT_FOUND', '未找到 run', { statusCode: 404 }),
+        { method: 'GET', path: '/api/agent/runs/run-1', id: 'direct-req-1', headers: {} },
+        res,
+        () => {}
+      );
+
+      assert.strictEqual(writtenError(res).meta.requestId, 'direct-req-1');
+      assert.ok(consoleLines[0].includes('req=direct-req-1'));
+
+      consoleLines.length = 0;
+      const invalid = createResponse();
+      apiErrorHandler(
+        agentError('AGENT_RUN_NOT_FOUND', '未找到 run', { statusCode: 404 }),
+        {
+          method: 'GET',
+          path: '/api/agent/runs/run-1',
+          headers: { 'x-request-id': `${'a'.repeat(80)}\nforged` }
+        },
+        invalid,
+        () => {}
+      );
+
+      assert.strictEqual(writtenError(invalid).meta.requestId, null);
+      assert.ok(!consoleLines.join('\n').includes('a'.repeat(64)));
     });
   });
 

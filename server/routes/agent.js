@@ -74,6 +74,7 @@ import {
   sendError
 } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
+import { withExecutionLogContext } from '../utils/logContext.ts'
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js'
 import { resolveConnectionInput } from '../services/connectionService.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
@@ -314,6 +315,9 @@ export async function executeTrackedAgentAction(req, res, {
   }
 
   const runId = reservation.run.runId;
+  // 执行上下文跟随 Run 本身：请求返回后的子进程输出与后台收尾仍记录同一个
+  // runId/operationId，不能把 HTTP 请求结束当作执行完成。
+  const executionLogContext = { runId, operationId };
   const admissionPersistenceError = await persistAgentRunMutation(
     runId,
     'Agent run 接受状态持久化失败，已阻止执行'
@@ -354,17 +358,30 @@ export async function executeTrackedAgentAction(req, res, {
   const lifecycle = {
     onBeforeStart: ensureRunStarted,
     onStarted: observeProcessStart,
-    ...(!waitForCompletion ? { onSettled: settleAcceptedBackgroundRun } : {})
+    ...(!waitForCompletion
+      ? {
+          onSettled: outcome => withExecutionLogContext(
+            executionLogContext,
+            () => settleAcceptedBackgroundRun(outcome)
+          )
+        }
+      : {})
   };
 
   try {
-    const result = await execute(lifecycle, { runId });
+    const result = await withExecutionLogContext(
+      executionLogContext,
+      () => execute(lifecycle, { runId })
+    );
     acceptedResult = result;
     hasAcceptedResult = true;
     if (pendingOutcome) {
       const outcome = pendingOutcome;
       pendingOutcome = null;
-      await settleAcceptedBackgroundRun(outcome);
+      await withExecutionLogContext(
+        executionLogContext,
+        () => settleAcceptedBackgroundRun(outcome)
+      );
     }
     let run = getAgentRun(runId);
     if (!waitForCompletion && ACTIVE_RUN_STATES.has(run.state)) {
@@ -871,7 +888,10 @@ async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
 
   if (waitForCompletion) {
     try {
-      const outcome = await continueManualCopilotSet({ runId });
+      const outcome = await withExecutionLogContext(
+        { runId, operationId: run.operationId },
+        () => continueManualCopilotSet({ runId })
+      );
       return sendContinueSuccess(res, req, runId, outcome);
     } catch (error) {
       return respondContinueError(res, req, runId, error);
@@ -882,8 +902,16 @@ async function continueCopilotSet(req, res, { runId, waitForCompletion }) {
   try {
     accepted = await startCopilotSetBackground({
       runId,
-      start: wrappedLifecycle => continueManualCopilotSet({ runId, lifecycle: wrappedLifecycle }),
-      lifecycle: { onSettled: outcome => settleContinueBackground(runId, outcome) },
+      start: wrappedLifecycle => withExecutionLogContext(
+        { runId, operationId: run.operationId },
+        () => continueManualCopilotSet({ runId, lifecycle: wrappedLifecycle })
+      ),
+      lifecycle: {
+        onSettled: outcome => withExecutionLogContext(
+          { runId, operationId: run.operationId },
+          () => settleContinueBackground(runId, outcome)
+        )
+      },
       settleOnFinish: false,
       acceptedResult: () => ({
         success: true,
