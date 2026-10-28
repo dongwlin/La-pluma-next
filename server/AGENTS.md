@@ -7,7 +7,7 @@
 | 位置 | 修改边界 |
 | --- | --- |
 | `server.js` | HTTP/HTTPS、认证、生产静态资源、WebRTC 信令网关与启动初始化 |
-| `routes/` | 请求归一化、校验、响应与执行入口；`agent.js` 只做契约文档与领域 router 聚合，tracked 执行、流程/作业集与目标停止在 `agentExecution.ts`（请求 DTO 在 `executionDto.ts`），状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentStatusRoutes.js`、`agentLogRoutes.js`、`agentDataRoutes.js`、`agentTrainingRoutes.ts`（请求 DTO 在 `trainingDto.ts`）、`agentPreviewRoutes.ts`（请求 DTO 在 `previewDto.ts`）、`agentNotificationRoutes.ts`（请求 DTO 在 `notificationDto.ts`）、`agentMaintenanceRoutes.ts`（请求 DTO 在 `maintenanceDto.ts`） |
+| `routes/` | 请求归一化、校验、响应与执行入口；`agent.js` 只做契约文档与领域 router 聚合，tracked 执行、流程/作业集与目标停止在 `agentExecution.ts`（请求 DTO 在 `executionDto.ts`），状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentStatusRoutes.ts`、`agentLogRoutes.ts`、`agentDataRoutes.ts`（请求 DTO 在 `readDto.ts`，设备探测适配在 `deviceStatus.ts`）、`agentTrainingRoutes.ts`（请求 DTO 在 `trainingDto.ts`）、`agentPreviewRoutes.ts`（请求 DTO 在 `previewDto.ts`）、`agentNotificationRoutes.ts`（请求 DTO 在 `notificationDto.ts`）、`agentMaintenanceRoutes.ts`（请求 DTO 在 `maintenanceDto.ts`） |
 | `services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
 | `config/`、`utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
 | `scripts/` | 语法检查、类型检查、测试入口与游戏数据获取脚本 |

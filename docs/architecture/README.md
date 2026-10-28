@@ -88,9 +88,10 @@ La-pluma-next/
 │   │   ├── agent.js           # 主 Agent API（聚合领域 router）
 │   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止
 │   │   ├── executionDto.ts   # 执行请求按端点收窄与 Run 响应载荷
-│   │   ├── agentStatusRoutes.js # 状态汇总与 Run 查询（ADB 探测有副作用）
-│   │   ├── agentLogRoutes.js  # 实时/历史日志读取、清空与清理
-│   │   ├── agentDataRoutes.js # 今日关卡、掉落与本地游戏数据读取
+│   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（ADB 探测有副作用）
+│   │   ├── agentLogRoutes.ts  # 实时/历史日志读取、清空与清理
+│   │   ├── agentDataRoutes.ts # 今日关卡、掉落与本地游戏数据读取
+│   │   ├── readDto.ts         # 读取请求收窄与状态/掉落/游戏数据响应载荷
 │   │   ├── agentTrainingRoutes.ts # 养成队列、设置、候选与计划生成/应用
 │   │   ├── trainingDto.ts     # 养成请求按端点收窄与候选/计数响应载荷
 │   │   ├── agentPreviewRoutes.ts # 截图、WebRTC、方向与设备采样预览适配
@@ -99,7 +100,7 @@ La-pluma-next/
 │   │   ├── notificationDto.ts # 通知请求收窄、保存/应用结果与响应载荷
 │   │   ├── agentMaintenanceRoutes.ts # 连接/profile、资源与核心更新、定时配置及维护动作
 │   │   ├── maintenanceDto.ts  # 维护请求收窄、上游响应结构与维护动作载荷
-│   │   ├── deviceStatus.js    # ADB/WebRTC/显示状态探测适配
+│   │   ├── deviceStatus.ts    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.js # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   ├── operatorQuotes.ts  # 干员台词接口
