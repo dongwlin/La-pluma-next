@@ -253,11 +253,12 @@ waiting ──stop──> stopped
 - 服务正常退出不会自动把活动 run 写成终态；下次启动才做 `interrupted` 转换。退出时也不保证终止已 detach 的 MAA 子进程（非 Windows），因此重启后的设备占用需要重新确认。
 - 记录被 24 小时/500 条保留策略淘汰后，按 id 查询返回 404：这是“未知或已失效”，不是成功。
 
-### 5.6 运行时关闭与定时触发源
+### 5.6 运行时关闭与后台触发源
 
 - 运行时初始化把默认定时计划与自动更新注册到同一个触发源注册表，并把停止步骤纳入运行时关闭流程。关闭开始（draining）后注册表拒绝新注册，已经排队的 cron 回调不再启动日常流程或自动更新。
 - 关闭只停止触发源，不替活动流程写终态：已开始的日常流程继续按实际执行结果把 Run 结算为 `succeeded`/`failed`/`stopped`，停止、超时与进程退出仍按 §4 与 §5.5 处理。
 - 同一 `scheduleId` 的重复配置替换旧任务而不叠加；全部时间点都注册失败时保留上一份有效注册，部分失败通过返回的 `times` 报告缺失时间点。重复停止是幂等的，目标未注册时也按已完成处理。重启后由运行时初始化按已保存配置重新注册，注册本身不执行流程。
+- Telegram Bot 的停止步骤在启动轮询前注册：关闭会中止在途 `getUpdates`、轮询间隔与命令内的等待，停止后不再派发迟到命令。重复初始化或改配置只保留一个轮询会话，offset、授权用户与命令语义保持不变。
 
 
 ## 6. 执行入口覆盖
@@ -320,6 +321,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 | `server/services/__tests__/maaTaskExecution.test.js` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
 | `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
 | `server/services/__tests__/scheduleTriggerLifecycle.test.js` | 重复配置替换而不叠加、全部/部分注册失败、停止与销毁幂等、销毁失败上报关闭步骤、draining 后拒绝注册并丢弃已排队回调、活动流程终态仍由执行结算 |
+| `server/services/__tests__/telegramBotLifecycle.test.js` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
 | `server/services/__tests__/runtimeInitializationService.test.js` | 调度停止端口先于持久配置恢复挂接、恢复只注册不执行、单项恢复失败与接入失败隔离 |
 
 客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](../development/integration.md)。本表只维护服务端身份、状态机、持久化与执行入口的契约测试。
