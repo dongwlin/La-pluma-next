@@ -12,15 +12,13 @@ import {
   getCurrentActivity
 } from '../services/maaService.js';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
-import { saveUserConfig } from '../services/configStorageService.ts';
-import { sendConfigStorageError } from './userConfig.ts';
 import agentExecutionRoutes from './agentExecution.js';
 import agentStatusRoutes from './agentStatusRoutes.js';
 import agentLogRoutes from './agentLogRoutes.js';
 import agentDataRoutes from './agentDataRoutes.js';
 import agentTrainingRoutes from './agentTrainingRoutes.js';
 import agentPreviewRoutes from './agentPreviewRoutes.js';
-import { getNotificationConfig, sendNotification, sendToChannel, testNotificationChannel, setNotificationConfig } from '../services/notificationService.js';
+import agentNotificationRoutes from './agentNotificationRoutes.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.js';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.js';
@@ -354,41 +352,9 @@ router.get('/paradox/operators', asyncHandler(async (req, res) => {
 // 写后串行化与流程/定时同步结果仍由 operatorTrainingService 提供。
 router.use(agentTrainingRoutes);
 
-router.get('/notifications/config', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, getNotificationConfig());
-}));
-
-router.post('/notifications/config', asyncHandler(async (req, res) => {
-  const result = await saveUserConfig('notification', req.body || {});
-  if (!result.success) {
-    return sendConfigStorageError(res, req, result, 'AGENT_NOTIFICATION_CONFIG_SAVE_FAILED', '通知配置保存失败');
-  }
-  setNotificationConfig(req.body || {});
-  return sendSuccess(res, req, null, '通知配置已保存');
-}));
-
-router.post('/actions/test-notification-channel', asyncHandler(async (req, res) => {
-  const channel = req.body?.channel;
-  const config = req.body?.config;
-  if (!channel) {
-    return sendError(res, req, agentError('AGENT_VALIDATION_CHANNEL_REQUIRED', '缺少通知渠道', { statusCode: 400 }));
-  }
-  if (config != null && (typeof config !== 'object' || Array.isArray(config))) {
-    return sendError(res, req, agentError('AGENT_VALIDATION_NOTIFICATION_CONFIG_INVALID', '通知渠道配置格式无效', { statusCode: 400 }));
-  }
-  const result = await testNotificationChannel(channel, config || null);
-  if (!result.success) {
-    return sendError(res, req, agentError('AGENT_NOTIFICATION_TEST_FAILED', result.message || '测试通知失败', { statusCode: 400, details: { channel } }));
-  }
-  return sendSuccess(res, req, { channel }, result.message || '测试消息已发送');
-}));
-
-router.post('/actions/send-notification', asyncHandler(async (req, res) => {
-  const { channel, title, content, level = 'info', data } = req.body || {};
-  const payload = { title: title || '测试通知', content: content || '这是一条测试通知', level, data };
-  const result = channel ? await sendToChannel(channel, payload) : await sendNotification(payload);
-  return sendSuccess(res, req, result, channel ? '通知已发送到指定渠道' : '通知已发送');
-}));
+// 通知配置读写与渠道测试/发送由独立 router 承担；配置持久化仍在
+// configStorageService，运行时配置与渠道发送仍由 notificationService 持有。
+router.use(agentNotificationRoutes);
 
 router.get('/schedules/status', asyncHandler(async (req, res) => {
   return sendSuccess(res, req, getScheduleStatus());
