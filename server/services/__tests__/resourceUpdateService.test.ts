@@ -213,7 +213,7 @@ describe('buildResourceInfo', () => {
     }
 
     // 非 Date 的文件时间来自注入值，按未知处理而不是原样透传。
-    const invalidModified = buildResourceInfo({}, 'not-a-date' as unknown as Date, now);
+    const invalidModified = buildResourceInfo({}, 'not-a-date', now);
     assert.equal(invalidModified.modifiedAt, null);
 
     const invalidTimestamp = buildResourceInfo({ last_updated: 'not-a-date' }, null, now);

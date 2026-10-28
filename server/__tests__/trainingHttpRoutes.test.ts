@@ -32,10 +32,10 @@ function agentUrl(port: number, path: string): string {
   return `http://127.0.0.1:${port}/api/agent${path}`
 }
 
-interface ApiEnvelope {
+interface ApiEnvelope<T = unknown> {
   success: boolean
   message: string
-  data?: Record<string, any>
+  data?: T
   error?: { code?: string }
 }
 
@@ -47,10 +47,10 @@ function isApiEnvelope(value: unknown): value is ApiEnvelope {
 }
 
 /** fetch 的 JSON 载荷是 unknown；测试只读取统一成功/错误信封。 */
-async function readEnvelope(response: Response): Promise<ApiEnvelope> {
+async function readEnvelope<T = unknown>(response: Response): Promise<ApiEnvelope<T>> {
   const body: unknown = await response.json()
   assert.ok(isApiEnvelope(body))
-  return body
+  return body as ApiEnvelope<T>
 }
 
 /**
@@ -163,7 +163,7 @@ describe('training routes over real HTTP', () => {
       headers: { Authorization: 'Bearer api-secret' }
     })
     assert.equal(authorized.status, 200)
-    assert.equal((await readEnvelope(authorized)).data?.revision, 'revision-1')
+    assert.equal((await readEnvelope<{ revision: string }>(authorized)).data?.revision, 'revision-1')
   })
 
   it('rejects invalid training write bodies before calling the service', async () => {
@@ -220,7 +220,11 @@ describe('training routes over real HTTP', () => {
       body: JSON.stringify({ operatorId: 'alpha', currentElite: 1, targetElite: 2, position: 0 })
     })
     assert.equal(added.status, 200)
-    const addedBody = await readEnvelope(added)
+    const addedBody = await readEnvelope<{
+      queueUpdated: boolean
+      queueRevision: string
+      flowSync: FlowSyncState
+    }>(added)
     assert.equal(addedBody.success, true)
     assert.equal(addedBody.data?.queueUpdated, true)
     assert.equal(addedBody.data?.queueRevision, 'revision-2')
@@ -228,7 +232,7 @@ describe('training routes over real HTTP', () => {
 
     const synced = await fetch(agentUrl(port, '/training/sync'), { method: 'POST' })
     assert.equal(synced.status, 200)
-    const syncedBody = await readEnvelope(synced)
+    const syncedBody = await readEnvelope<{ flowSync: FlowSyncState }>(synced)
     assert.equal(syncedBody.message, '任务流程同步失败，可重试')
     assert.equal(syncedBody.data?.flowSync.status, 'failed')
 
@@ -238,7 +242,7 @@ describe('training routes over real HTTP', () => {
       body: JSON.stringify({ plan: { queueRevision: 'revision-2' } })
     })
     assert.equal(applied.status, 200)
-    const appliedBody = await readEnvelope(applied)
+    const appliedBody = await readEnvelope<{ flowSync: FlowSyncState; scheduleSync: unknown }>(applied)
     assert.equal(appliedBody.success, true)
     assert.equal(appliedBody.data?.flowSync.status, 'synced')
     assert.deepEqual(appliedBody.data?.scheduleSync, {
@@ -274,7 +278,10 @@ describe('training routes over real HTTP', () => {
       headers: { 'content-type': 'application/json' }
     })
     assert.equal(response.status, 200)
-    const payload = await readEnvelope(response)
+    const payload = await readEnvelope<{
+      count: number
+      operators: Array<{ id: string }>
+    }>(response)
     assert.deepEqual(filters, {
       rarity: 5,
       profession: undefined,
@@ -283,7 +290,7 @@ describe('training routes over real HTTP', () => {
       status: 'owned'
     })
     assert.equal(payload.data?.count, 2)
-    assert.deepEqual(payload.data?.operators.map((operator: { id: string }) => operator.id), ['alpha', 'beta'])
+    assert.deepEqual(payload.data?.operators.map(operator => operator.id), ['alpha', 'beta'])
   })
 
   it('routes training service errors through the unified error exit', async () => {

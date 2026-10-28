@@ -35,14 +35,14 @@ function errorField(error: unknown, key: string): unknown {
     : undefined;
 }
 
-function detailsOf(error: unknown): Record<string, any> {
+function detailsOf(error: unknown): Record<string, unknown> {
   const details = errorField(error, 'details');
-  return typeof details === 'object' && details !== null ? details as Record<string, any> : {};
+  return typeof details === 'object' && details !== null ? details as Record<string, unknown> : {};
 }
 
-function resultOf(value: unknown): Record<string, any> {
+function resultOf(value: unknown): Record<string, unknown> {
   assert.ok(typeof value === 'object' && value !== null, 'expected object result');
-  return value as Record<string, any>;
+  return value as Record<string, unknown>;
 }
 
 describe('executeAgentTask', () => {

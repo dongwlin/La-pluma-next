@@ -11,7 +11,6 @@ import type { ValidateFunction } from 'ajv';
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 import type {
   JsonSchema,
-  OpenApiDocument,
   OpenApiOperation,
   RegisteredAgentOperation
 } from '../routes/agentContract.ts';
@@ -182,9 +181,8 @@ const openApiOperationsById = new Map<string, OpenApiOperation>(
 
 const documentId = 'la-pluma-agent-contract';
 const ajv = new Ajv2020({ strict: false, allErrors: true });
-// ajv-formats 的 CJS 入口以 module.exports 导出插件；修复 d.ts 的 default 声明差异。
-const addFormats = addFormatsModule as unknown as (instance: Ajv2020) => Ajv2020;
-addFormats(ajv);
+// 插件同时经 module.exports 与 exports.default 暴露；取声明的 default 导出即可调用。
+addFormatsModule.default(ajv);
 ajv.addSchema({ $id: documentId, components: openApiSpec.components }, documentId);
 const compiledSchemas = new Map<string, ValidateFunction>();
 
@@ -564,7 +562,8 @@ describe('Agent API contract registry and mounted routes', () => {
     const openApiResponse = await fetch(`${baseUrl}/api/agent/openapi.json`);
     assert.equal(openApiResponse.status, 200);
     const openApiBody: unknown = await openApiResponse.json();
-    assert.deepEqual(openApiBody, openApiSpec as unknown as OpenApiDocument);    const documentSchema = openApiSpec.components.schemas.OpenApiDocument;
+    assert.deepEqual(openApiBody, openApiSpec);
+    const documentSchema = openApiSpec.components.schemas.OpenApiDocument;
     assert.ok(documentSchema);
     assertMatchesSchema(documentSchema, openApiBody, 'served OpenAPI document');
     // 发布文档中的每个 $ref 都必须在同一份文档内可解析。

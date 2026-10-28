@@ -170,7 +170,7 @@ export function parseResourceVersion(content: string): ResourceVersionMetadata {
 /** 由已收窄的版本元数据构建资源信息；`last_updated` 规则与既有版本输出一致。 */
 function buildResourceInfoFromMetadata(
   metadata: ResourceVersionMetadata,
-  modifiedAt: Date | null,
+  modifiedAt: unknown,
   now: Date
 ): ResourceInfo {
   const parsedDate = metadata.lastUpdated
@@ -199,11 +199,12 @@ function buildResourceInfoFromMetadata(
 
 /**
  * 由版本元数据构建资源信息。`versionData` 来自文件或注入值，按 `unknown`
- * 收窄；`last_updated` 的解析规则与既有版本输出保持一致。
+ * 收窄；`modifiedAt` 同样按未知输入处理，只有真正的 `Date` 才进入输出。
+ * `last_updated` 的解析规则与既有版本输出保持一致。
  */
 export function buildResourceInfo(
   versionData: unknown = {},
-  modifiedAt: Date | null = null,
+  modifiedAt: unknown = null,
   now: Date = new Date()
 ): ResourceInfo {
   return buildResourceInfoFromMetadata(normalizeVersionMetadata(versionData), modifiedAt, now);

@@ -422,14 +422,12 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
   });
 }
 
-/** 出站端口经 text() 消费响应体；stub 返回 JSON 文本，零外部网络访问。 */
+/** 出站端口经 text() 消费响应体；stub 用真实 Response 承载 JSON 文本，零外部网络访问。 */
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    statusText: status === 200 ? 'OK' : 'Error',
-    text: async () => JSON.stringify(body)
-  } as unknown as Response;
+    statusText: status === 200 ? 'OK' : 'Error'
+  });
 }
 
 /**

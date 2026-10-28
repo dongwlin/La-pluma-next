@@ -11,9 +11,8 @@ const activeWindow = {
   }
 };
 
-/** 出站端口只读取最小响应结构；测试替身按该结构返回并由外层断言。 */
+/** 出站端口只读取状态与文本；测试替身用真实 Response 承载该结构。 */
 interface StubResponse {
-  ok: boolean;
   status: number;
   statusText: string;
   body: string;
@@ -26,12 +25,10 @@ function stubFetch(t: TestContext, respond: (url: string) => StubResponse): stri
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     calls.push(url);
     const response = respond(url);
-    return {
-      ok: response.ok,
+    return new Response(response.body, {
       status: response.status,
-      statusText: response.statusText,
-      text: async () => response.body
-    } as unknown as Response;
+      statusText: response.statusText
+    });
   });
   return calls;
 }
@@ -117,7 +114,7 @@ describe('fallback activity fetch', () => {
       const body = url.includes('/zones')
         ? [{ zoneId: 'act_zone', type: 'ACTIVITY', zoneName: '矩阵活动', existence: { US: liveWindow } }]
         : [{ zoneId: 'act_zone', code: 'BD-1', existence: { US: liveWindow } }];
-      return { ok: true, status: 200, statusText: 'OK', body: JSON.stringify(body) };
+      return { status: 200, statusText: 'OK', body: JSON.stringify(body) };
     });
 
     const activity = await getFallbackActivity('YoStarEN');
@@ -137,7 +134,6 @@ describe('fallback activity fetch', () => {
 
   it('surfaces upstream http failures and clears the in-flight request for later retries', async (t) => {
     const calls = stubFetch(t, () => ({
-      ok: false,
       status: 500,
       statusText: 'Internal Server Error',
       body: 'upstream broken'

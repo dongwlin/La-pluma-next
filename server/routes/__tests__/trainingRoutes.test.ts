@@ -136,9 +136,15 @@ function findMountedRoute(candidateRouter: unknown, method: string, routePath: s
 interface TestEnvelope {
   success: boolean;
   message: string;
-  data: Record<string, any>;
+  data: unknown;
   error?: { code?: string; message?: string };
   meta?: unknown;
+}
+
+/** 端点结果按用例声明的字段读取；未声明的字段保持 unknown。 */
+function dataOf<T>(envelope: TestEnvelope | undefined): T {
+  assert.ok(envelope, 'missing response envelope');
+  return envelope.data as T;
 }
 
 /** 错误出口转发的是原始错误对象；只读取公开的 statusCode、code 与 message。 */
@@ -239,7 +245,7 @@ describe('training queue route contract', () => {
     const planRes = response();
     await handler('post', '/training/plan')({ headers: {}, body: { mode: 'all' } }, planRes);
     assert.equal(mode, 'all');
-    assert.equal(planRes.body?.data.mode, 'all');
+    assert.equal(dataOf<{ mode: string }>(planRes.body).mode, 'all');
 
     await handler('post', '/training/plan')({ headers: {}, body: {} }, response());
     assert.equal(mode, 'current');
@@ -343,8 +349,9 @@ describe('training queue route contract', () => {
     await handler('post', '/training/queue')({ headers: {}, body: { operatorId: 'alpha', currentElite: 1, targetElite: 2, position: 0 } }, res);
     assert.deepEqual(received, ['alpha', { currentElite: 1, targetElite: 2, position: 0 }]);
     assert.equal(res.body?.success, true);
-    assert.equal(res.body?.data.queueUpdated, true);
-    assert.equal(res.body?.data.flowSync.status, 'failed');
+    const mutationResult = dataOf<{ queueUpdated: boolean; flowSync: FlowSyncState }>(res.body);
+    assert.equal(mutationResult.queueUpdated, true);
+    assert.equal(mutationResult.flowSync.status, 'failed');
   });
 
   it('returns synchronization results for removal, order changes and retry', async () => {
@@ -359,9 +366,14 @@ describe('training queue route contract', () => {
     ] as const) {
       const res = response();
       await handler(method, routePath)({ headers: {}, ...req }, res);
-      assert.equal(res.body?.data.flowSync.status, 'synced');
-      assert.equal(res.body?.data.queueRevision, 'revision-3');
-      assert.equal(res.body?.data.queueUpdated, method !== 'post');
+      const payload = dataOf<{
+        flowSync: FlowSyncState;
+        queueRevision: string;
+        queueUpdated: boolean;
+      }>(res.body);
+      assert.equal(payload.flowSync.status, 'synced');
+      assert.equal(payload.queueRevision, 'revision-3');
+      assert.equal(payload.queueUpdated, method !== 'post');
     }
   });
 
@@ -385,9 +397,14 @@ describe('training queue route contract', () => {
       settings: { useMedicine: 1 }
     });
     assert.equal(res.body?.success, true);
-    assert.equal(res.body?.data.stageCount, 2);
-    assert.equal(res.body?.data.flowSync.status, 'synced');
-    assert.deepEqual(res.body?.data.scheduleSync, {
+    const applied = dataOf<{
+      stageCount: number;
+      flowSync: FlowSyncState;
+      scheduleSync: unknown;
+    }>(res.body);
+    assert.equal(applied.stageCount, 2);
+    assert.equal(applied.flowSync.status, 'synced');
+    assert.deepEqual(applied.scheduleSync, {
       attempted: true,
       success: false,
       message: '定时任务设置失败'
@@ -407,7 +424,7 @@ describe('training queue route contract', () => {
     }, res);
 
     assert.deepEqual(received, { autoSwitch: 'yes', extraField: { nested: true } });
-    assert.deepEqual(res.body?.data.extraField, { nested: true });
+    assert.deepEqual(dataOf<{ extraField: unknown }>(res.body).extraField, { nested: true });
   });
 
   it('delegates stale preview conflicts to the unified error exit via next(error)', async () => {

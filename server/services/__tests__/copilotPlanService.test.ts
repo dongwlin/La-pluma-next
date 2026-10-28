@@ -85,16 +85,16 @@ test('preset resource merge preserves existing user BattleStart settings', () =>
 
 test('both mode skips raid for preset formation stages', async () => {
   const originalFetch = globalThis.fetch;
-  // 出站端口经 text() 消费响应体；stub 返回 JSON 文本，零网络访问。
-  globalThis.fetch = (async (url: string | URL | Request) => {
+  // 出站端口经 text() 消费响应体；stub 用真实 Response 承载 JSON 文本，零网络访问。
+  globalThis.fetch = async (url: string | URL | Request) => {
     const text = String(url);
     const data = text.includes('/set/get')
       ? { id: 1, name: 'set', copilot_ids: [10, 10, 11] }
       : text.endsWith('/10')
         ? { content: JSON.stringify({ stage_name: 'act_test_01', doc: { title: 'T-1' }, opers: [{ name: 'A' }], groups: [] }) }
         : { content: JSON.stringify({ stage_name: 'act_test_s01', doc: { title: 'T-S-1' }, opers: [], groups: [] }) };
-    return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ status_code: 200, data }) };
-  }) as unknown as typeof fetch;
+    return new Response(JSON.stringify({ status_code: 200, data }), { status: 200 });
+  };
   try {
     const plan = await buildCopilotPlan('1', 'both');
     assert.deepEqual(plan.entries.map(entry => entry.key), [

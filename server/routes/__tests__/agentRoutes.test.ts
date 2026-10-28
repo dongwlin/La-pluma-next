@@ -6,6 +6,13 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
 import router from '../agent.ts'
 import { executeTrackedAgentAction } from '../agentExecution.ts'
 import { API_VERSION } from '../agentContract.ts'
+import type { AgentManifestAction, OpenApiDocument } from '../agentContract.ts'
+import type {
+  AgentRunProgressProjection,
+  RunOccupancyProjection
+} from '../../services/runSnapshotService.ts'
+import type { CopilotSetProgress } from '../../services/copilotSetRunService.ts'
+import type { ScheduledTaskPlanStep } from '../../services/scheduleFlowPlan.ts'
 import { getTaskStatus, setTaskStatus } from '../../services/maaProcessService.ts'
 import type { MaaChildProcess, MaaChildOutputStream } from '../../services/maaProcessService.ts'
 import { loggerManager } from '../../utils/logger.ts'
@@ -136,15 +143,64 @@ function collectMountedRoutes(candidateRouter: unknown, routes: string[] = []): 
   return routes
 }
 
-/** 响应信封：只声明断言实际读取的字段，`data` 保持端点结果形状。 */
+/** 响应信封：只声明断言实际读取的字段；`data` 保持端点结果，读取处按用例声明的形状收窄。 */
 interface TestEnvelope {
   success: boolean
   message: string
-  data: Record<string, any>
-  error: { code?: string; message?: string; details: Record<string, any>; retryable?: boolean }
-  meta: Record<string, any>
+  data: unknown
+  error: { code?: string; message?: string; details: JsonView; retryable?: boolean }
+  meta: Record<string, unknown>
   /** 契约文档（manifest/OpenAPI）等非信封响应也经同一假响应写入。 */
-  [key: string]: any
+  [key: string]: unknown
+}
+
+/** 任意 JSON 对象的断言视图：只做字段读取，叶子比较由 assert.* 承担。 */
+interface JsonView {
+  [key: string]: JsonView
+}
+
+/** 快照进度：日常流程与作业集各投影自己的字段，用例按场景读取。 */
+type AgentRunProgressView = AgentRunProgressProjection & CopilotSetProgress
+
+/** Run 视图：DTO 字段原样保留；`progress` 与 `result.summary` 只声明断言实际读取的部分。 */
+interface AgentRunView extends AgentRunDto {
+  progress: AgentRunProgressView
+  result: { summary: { successCount: number; pendingCount: number } } & Record<string, unknown>
+}
+
+/** 计划视图：日常流程返回步骤数组，作业集返回带 `entries` 的计划对象。 */
+type AgentPlanView = Array<ScheduledTaskPlanStep & { taskConfig: Record<string, unknown> }> & {
+  entries: CopilotPlanEntry[]
+}
+
+/** 端点结果视图：只声明断言实际读取的结构字段，其余保持 unknown。 */
+interface AgentResponseData {
+  [key: string]: unknown
+  run: AgentRunView
+  lastRun: AgentRunView
+  activeRuns: AgentRunView[]
+  occupancy: RunOccupancyProjection
+  plan: AgentPlanView
+  actions: AgentManifestAction[]
+  summary: JsonView
+  result: JsonView
+  nextEntry: CopilotPlanEntry
+}
+
+/** 读取端点结果：字段级别断言前由用例声明期望形状，未声明部分保持 unknown。 */
+function dataOf<T = AgentResponseData>(envelope: TestEnvelope): T {
+  return envelope.data as T
+}
+
+/** 读取字符串标识：先断言类型再返回，供 requireRun/getAgentRun 等入参使用。 */
+function textOf(value: unknown): string {
+  assert.equal(typeof value, 'string', 'expected string field')
+  return value as string
+}
+
+/** 读取非信封响应体（例如契约文档）；形状由后续断言与 schema 校验确认。 */
+function asView<T>(value: unknown): T {
+  return value as T
 }
 
 interface TestResponse {
@@ -194,10 +250,10 @@ function requireCurrentRun(): AgentRunDto {
 }
 
 /** Run 结果在断言侧是对象；先确认形状再读取端点字段。 */
-function runResult(run: AgentRunDto): Record<string, any> {
+function runResult(run: AgentRunDto): JsonView {
   const result = run.result
   assert.ok(result !== null && typeof result === 'object' && !Array.isArray(result), 'expected object run result')
-  return result as Record<string, any>
+  return result as JsonView
 }
 
 function taskError(message: string, fields: Record<string, unknown> = {}): Error {
@@ -235,21 +291,25 @@ describe('Agent discovery routes', () => {
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.success, true)
     assert.equal(res.body.meta.requestId, 'manifest-test')
-    assert.equal(res.body.data.version, API_VERSION)
-    assert.equal(res.body.data.actions.length, 21)
-    assert.ok(res.body.data.actions.every((action: Record<string, any>) => action.safety && action.execution))
+    assert.equal(dataOf(res.body).version, API_VERSION)
+    assert.equal(dataOf(res.body).actions.length, 21)
+    assert.ok(dataOf(res.body).actions.every(action => action.safety && action.execution))
   })
 
   it('serves OpenAPI with real query parameters and structured errors', async () => {
     const res = response()
     await findHandler('get', '/openapi.json')({ headers: {} }, res)
 
-    const discover = res.body.paths['/api/agent/actions/discover-devices'].get
-    assert.equal(res.body.openapi, '3.1.0')
+    const document = asView<OpenApiDocument>(res.body)
+    const discover = document.paths['/api/agent/actions/discover-devices'].get
+    assert.equal(document.openapi, '3.1.0')
     assert.equal(discover.requestBody, undefined)
-    assert.ok(discover.parameters.some((parameter: Record<string, any>) => parameter.name === 'adbPath' && parameter.in === 'query'))
+    assert.ok(discover.parameters)
+    assert.ok(discover.parameters.some(parameter => parameter.name === 'adbPath' && parameter.in === 'query'))
+    const conflictContent = document.components.responses.Conflict.content
+    assert.ok(conflictContent, 'expected the Conflict response content')
     assert.equal(
-      res.body.components.responses.Conflict.content['application/json'].schema.$ref,
+      conflictContent['application/json'].schema.$ref,
       '#/components/schemas/ErrorResponse'
     )
   })
@@ -298,9 +358,9 @@ describe('Agent run routes', () => {
 
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.meta.requestId, 'run-lookup')
-    assert.equal(res.body.data.runId, run.runId)
-    assert.equal(res.body.data.state, 'succeeded')
-    assert.deepEqual(res.body.data.result, { success: true, summary: 'done' })
+    assert.equal(dataOf(res.body).runId, run.runId)
+    assert.equal(dataOf(res.body).state, 'succeeded')
+    assert.deepEqual(dataOf(res.body).result, { success: true, summary: 'done' })
   })
 
   it('returns a structured 404 for an unknown run id', async () => {
@@ -324,13 +384,13 @@ describe('Agent run routes', () => {
 
     await findHandler('get', '/runs/current')({ headers: {}, query: { lines: 1 } }, res, () => {})
 
-    assert.equal(typeof res.body.data.isRunning, 'boolean')
-    assert.ok(res.body.data.schedule)
-    assert.ok(Array.isArray(res.body.data.recentLogs))
-    assert.equal(res.body.data.run.runId, run.runId)
-    assert.equal(res.body.data.run.state, 'running')
-    assert.equal(res.body.data.lastRun.runId, terminal.runId)
-    assert.equal(res.body.data.lastRun.state, 'succeeded')
+    assert.equal(typeof dataOf(res.body).isRunning, 'boolean')
+    assert.ok(dataOf(res.body).schedule)
+    assert.ok(Array.isArray(dataOf(res.body).recentLogs))
+    assert.equal(dataOf(res.body).run.runId, run.runId)
+    assert.equal(dataOf(res.body).run.state, 'running')
+    assert.equal(dataOf(res.body).lastRun.runId, terminal.runId)
+    assert.equal(dataOf(res.body).lastRun.state, 'succeeded')
   })
 
   it('selects lastRun by completion time rather than creation order', async () => {
@@ -349,8 +409,8 @@ describe('Agent run routes', () => {
 
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
 
-      assert.equal(res.body.data.lastRun.runId, older.runId)
-      assert.deepEqual(res.body.data.lastRun.result, { order: 2 })
+      assert.equal(dataOf(res.body).lastRun.runId, older.runId)
+      assert.deepEqual(dataOf(res.body).lastRun.result, { order: 2 })
     } finally {
       Date.now = originalNow
     }
@@ -377,14 +437,14 @@ describe('Agent run routes', () => {
     assert.equal(first.statusCode, 202)
     assert.equal(first.headers['Idempotency-Replayed'], 'false')
     assert.equal(executions, 1)
-    const runId = first.body.data.runId
+    const runId = textOf(dataOf(first.body).runId)
 
     const activeReplay = response()
     await executeTrackedAgentAction(req, activeReplay, options)
     assert.equal(activeReplay.statusCode, 202)
-    assert.equal(activeReplay.body.data.message, first.body.data.message)
-    assert.deepEqual(activeReplay.body.data.plan, first.body.data.plan)
-    assert.equal(activeReplay.body.data.runId, runId)
+    assert.equal(dataOf(activeReplay.body).message, dataOf(first.body).message)
+    assert.deepEqual(dataOf(activeReplay.body).plan, dataOf(first.body).plan)
+    assert.equal(dataOf(activeReplay.body).runId, runId)
     assert.equal(executions, 1)
 
     await settle?.({ ok: true, result: { stdout: 'finished', exitCode: 0 } })
@@ -402,8 +462,8 @@ describe('Agent run routes', () => {
 
     assert.equal(replay.statusCode, 200)
     assert.equal(replay.headers['Idempotency-Replayed'], 'true')
-    assert.equal(replay.body.data.runId, runId)
-    assert.equal(replay.body.data.run.state, 'succeeded')
+    assert.equal(dataOf(replay.body).runId, runId)
+    assert.equal(dataOf(replay.body).run.state, 'succeeded')
     assert.equal(executions, 1)
   })
 
@@ -457,8 +517,8 @@ describe('Agent run routes', () => {
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.success, true)
     assert.equal(res.body.message, '任务已终止')
-    assert.equal(res.body.data.run.state, 'stopped')
-    assert.equal(res.body.data.signal, 'SIGTERM')
+    assert.equal(dataOf(res.body).run.state, 'stopped')
+    assert.equal(dataOf(res.body).signal, 'SIGTERM')
   })
 
   it('does not execute when the accepted run cannot be persisted and releases the key for retry', async () => {
@@ -494,7 +554,7 @@ describe('Agent run routes', () => {
       assert.equal(rejected.statusCode, 503)
       assert.equal(rejected.body.error.code, 'AGENT_RUN_PERSISTENCE_FAILED')
       assert.equal(executions, 0)
-      const rejectedRunId = rejected.body.error.details.runId
+      const rejectedRunId = textOf(rejected.body.error.details.runId)
 
       failWrites = false
       const retry = response()
@@ -502,7 +562,7 @@ describe('Agent run routes', () => {
 
       assert.equal(retry.statusCode, 200)
       assert.equal(executions, 1)
-      assert.notEqual(retry.body.data.runId, rejectedRunId)
+      assert.notEqual(dataOf(retry.body).runId, rejectedRunId)
     } finally {
       failWrites = false
       try {
@@ -611,7 +671,7 @@ describe('Agent run routes', () => {
       assert.equal(first.statusCode, 200)
       assert.equal(replay.statusCode, 202)
       assert.equal(replay.headers['Idempotency-Replayed'], 'true')
-      assert.equal(replay.body.data.runId, first.body.data.runId)
+      assert.equal(dataOf(replay.body).runId, dataOf(first.body).runId)
       assert.equal(executions, 1)
     } finally {
       blockWrites = false
@@ -668,8 +728,8 @@ describe('Agent run routes', () => {
 
       assert.equal(replay.statusCode, 200)
       assert.equal(replay.headers['Idempotency-Replayed'], 'true')
-      assert.equal(replay.body.data.run.state, 'succeeded')
-      assert.equal(replay.body.data.stdout, 'finished during replay')
+      assert.equal(dataOf(replay.body).run.state, 'succeeded')
+      assert.equal(dataOf(replay.body).stdout, 'finished during replay')
       assert.equal(executions, 0)
     } finally {
       blockWrites = false
@@ -709,7 +769,7 @@ describe('Agent run routes', () => {
     queueMicrotask(() => completeAgentRun(run.runId, { stdout: 'completed in microtask' }))
     await replay
 
-    assert.equal(res.body.data.run.state, stateAtSerialization)
+    assert.equal(dataOf(res.body).run.state, stateAtSerialization)
     assert.equal(requireRun(run.runId).state, 'succeeded')
     assert.equal(executions, 0)
   })
@@ -791,21 +851,21 @@ describe('Agent run routes', () => {
     await Promise.resolve()
     const replay = response()
     await executeTrackedAgentAction(req, replay, options)
-    const replayedRunId = replay.body.data.runId
+    const replayedRunId = textOf(dataOf(replay.body).runId)
     const busy = taskError('MAA 正在被其他任务使用', { code: 'MAA_EXECUTION_BUSY', statusCode: 409, retryable: true })
     rejectAdmission(busy)
     await firstRequest
 
     assert.equal(replay.statusCode, 202)
     assert.equal(first.statusCode, 409)
-    assert.equal(first.body.data, undefined)
+    assert.equal(dataOf(first.body), undefined)
     assert.equal(first.body.error.details.runId, replayedRunId)
     assert.equal(requireRun(replayedRunId).state, 'failed')
 
     const retry = response()
     await executeTrackedAgentAction(req, retry, options)
     assert.equal(retry.statusCode, 202)
-    assert.notEqual(retry.body.data.runId, replayedRunId)
+    assert.notEqual(dataOf(retry.body).runId, replayedRunId)
     assert.equal(executions, 2)
   })
 
@@ -877,10 +937,10 @@ describe('Agent run routes', () => {
     }, stopResponse, () => {})
 
     assert.equal(stopResponse.statusCode, 200)
-    assert.equal(stopResponse.body.data.acceptedRunCanceled, true)
-    assert.equal(stopResponse.body.data.deviceStopRequested, false)
-    assert.equal(stopResponse.body.data.run.state, 'stopped')
-    assert.deepEqual(stopResponse.body.data.run.result, {
+    assert.equal(dataOf(stopResponse.body).acceptedRunCanceled, true)
+    assert.equal(dataOf(stopResponse.body).deviceStopRequested, false)
+    assert.equal(dataOf(stopResponse.body).run.state, 'stopped')
+    assert.deepEqual(dataOf(stopResponse.body).run.result, {
       canceled: true,
       reason: 'stop_requested_before_start'
     })
@@ -891,7 +951,7 @@ describe('Agent run routes', () => {
     await startRequest
 
     assert.equal(startResponse.statusCode, 200)
-    assert.equal(startResponse.body.data.run.state, 'stopped')
+    assert.equal(dataOf(startResponse.body).run.state, 'stopped')
     assert.equal(requireRun(acceptedRun.runId).state, 'stopped')
   })
 
@@ -923,15 +983,15 @@ describe('Agent run routes', () => {
       body: { runId: acceptedRun.runId }
     }, stopResponse, () => {})
     assert.equal(stopResponse.statusCode, 200)
-    assert.equal(stopResponse.body.data.acceptedRunCanceled, true)
+    assert.equal(dataOf(stopResponse.body).acceptedRunCanceled, true)
 
     releaseGate()
     await request
 
     assert.equal(executions, 0)
     assert.equal(res.statusCode, 200)
-    assert.equal(res.body.data.run.state, 'stopped')
-    assert.equal(res.body.data.canceled, true)
+    assert.equal(dataOf(res.body).run.state, 'stopped')
+    assert.equal(dataOf(res.body).canceled, true)
     assert.equal(requireRun(acceptedRun.runId).state, 'stopped')
   })
 
@@ -951,8 +1011,8 @@ describe('Agent run routes', () => {
     }, res, () => {})
 
     assert.equal(res.statusCode, 200)
-    assert.equal(res.body.data.alreadyTerminal, true)
-    assert.equal(res.body.data.deviceStopRequested, false)
+    assert.equal(dataOf(res.body).alreadyTerminal, true)
+    assert.equal(dataOf(res.body).deviceStopRequested, false)
     assert.deepEqual(signals, [])
     assert.equal(requireRun(currentRun.runId).state, 'running')
   })
@@ -968,8 +1028,8 @@ describe('Agent run routes', () => {
     }, res, () => {})
 
     assert.equal(res.statusCode, 200)
-    assert.equal(res.body.data.acceptedRunCanceled, true)
-    assert.equal(res.body.data.run.state, 'stopped')
+    assert.equal(dataOf(res.body).acceptedRunCanceled, true)
+    assert.equal(dataOf(res.body).run.state, 'stopped')
   })
 
   it('keeps a targeted stop retryable while the run is stopping', async () => {
@@ -985,11 +1045,11 @@ describe('Agent run routes', () => {
     await stop({ headers: {}, body: { runId: run.runId } }, second, () => {})
 
     assert.equal(first.statusCode, 200)
-    assert.equal(first.body.data.deviceStopRequested, true)
-    assert.equal(first.body.data.run.state, 'stopping')
+    assert.equal(dataOf(first.body).deviceStopRequested, true)
+    assert.equal(dataOf(first.body).run.state, 'stopping')
     assert.equal(second.statusCode, 200)
-    assert.equal(second.body.data.stopRequested, true)
-    assert.equal(second.body.data.run.state, 'stopping')
+    assert.equal(dataOf(second.body).stopRequested, true)
+    assert.equal(dataOf(second.body).run.state, 'stopping')
     assert.deepEqual(signals, ['SIGTERM'])
   })
 
@@ -1020,12 +1080,12 @@ describe('Agent run routes', () => {
 
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
 
-    assert.equal(res.body.data.run, null)
-    assert.deepEqual(res.body.data.activeRuns, [])
-    assert.equal(res.body.data.isRunning, true)
-    assert.equal(res.body.data.occupancy.state, 'external')
-    assert.equal(res.body.data.occupancy.runId, null)
-    assert.ok(res.body.data.occupancy.sources.includes('task'))
+    assert.equal(dataOf(res.body).run, null)
+    assert.deepEqual(dataOf(res.body).activeRuns, [])
+    assert.equal(dataOf(res.body).isRunning, true)
+    assert.equal(dataOf(res.body).occupancy.state, 'external')
+    assert.equal(dataOf(res.body).occupancy.runId, null)
+    assert.ok(dataOf(res.body).occupancy.sources.includes('task'))
   })
 
   it('distinguishes a pending accepted run from external device activity', async () => {
@@ -1033,15 +1093,15 @@ describe('Agent run routes', () => {
 
     const free = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, free, () => {})
-    assert.equal(free.body.data.occupancy.state, 'pending')
-    assert.equal(free.body.data.occupancy.runId, accepted.runId)
-    assert.equal(free.body.data.occupancy.runState, 'accepted')
+    assert.equal(dataOf(free.body).occupancy.state, 'pending')
+    assert.equal(dataOf(free.body).occupancy.runId, accepted.runId)
+    assert.equal(dataOf(free.body).occupancy.runState, 'accepted')
 
     setTaskStatus(true, '未纳管任务', 'legacy', fakeChildProcess([]))
     const busy = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, busy, () => {})
-    assert.equal(busy.body.data.occupancy.state, 'external')
-    assert.equal(busy.body.data.occupancy.runId, accepted.runId)
+    assert.equal(dataOf(busy.body).occupancy.state, 'external')
+    assert.equal(dataOf(busy.body).occupancy.runId, accepted.runId)
   })
 
   it('exposes every active intent instead of hiding concurrent accepted runs', async () => {
@@ -1052,11 +1112,11 @@ describe('Agent run routes', () => {
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, res, () => {})
 
     assert.deepEqual(
-      res.body.data.activeRuns.map((run: AgentRunDto) => run.runId),
+      dataOf(res.body).activeRuns.map((run: AgentRunDto) => run.runId),
       [newer.runId, older.runId]
     )
-    assert.equal(res.body.data.run.runId, newer.runId)
-    assert.equal(res.body.data.occupancy.state, 'pending')
+    assert.equal(dataOf(res.body).run.runId, newer.runId)
+    assert.equal(dataOf(res.body).occupancy.state, 'pending')
   })
 
   it('reports a held lease with its owner in the occupancy snapshot', async () => {
@@ -1074,11 +1134,13 @@ describe('Agent run routes', () => {
       await rm(lockFile, { force: true })
     }
 
-    assert.equal(res.body.data.occupancy.state, 'external')
-    assert.equal(res.body.data.occupancy.lease.state, 'held')
-    assert.equal(res.body.data.occupancy.lease.owner.pid, process.pid)
-    assert.equal(res.body.data.occupancy.lease.owner.source, 'copilot-set')
-    assert.ok(res.body.data.occupancy.sources.includes('lease'))
+    assert.equal(dataOf(res.body).occupancy.state, 'external')
+    assert.equal(dataOf(res.body).occupancy.lease.state, 'held')
+    const leaseOwner = dataOf(res.body).occupancy.lease.owner
+    assert.ok(leaseOwner, 'expected the lease owner projection')
+    assert.equal(leaseOwner.pid, process.pid)
+    assert.equal(leaseOwner.source, 'copilot-set')
+    assert.ok(dataOf(res.body).occupancy.sources.includes('lease'))
   })
 })
 
@@ -1103,10 +1165,10 @@ describe('Agent daily flow route', () => {
     assert.equal(res.body.success, true)
     assert.equal(res.body.meta.requestId, 'dry-run-test')
     assert.equal(res.body.meta.dryRun, true)
-    assert.equal(res.body.data.dryRun, true)
-    assert.equal(res.body.data.scheduleId, 'contract-test')
-    assert.equal(res.body.data.totalSteps, 1)
-    assert.deepEqual(res.body.data.plan[0], {
+    assert.equal(dataOf(res.body).dryRun, true)
+    assert.equal(dataOf(res.body).scheduleId, 'contract-test')
+    assert.equal(dataOf(res.body).totalSteps, 1)
+    assert.deepEqual(dataOf(res.body).plan[0], {
       index: 1,
       id: 'award-1',
       name: '领取奖励',
@@ -1139,10 +1201,10 @@ describe('Agent daily flow route', () => {
     await findHandler('post', '/actions/run-daily-flow')(req, res, () => {})
 
     assert.equal(res.body.meta.dryRun, true)
-    assert.equal(res.body.data.plan[0].command, 'run')
-    assert.equal(res.body.data.plan[0].dynamicTask, true)
-    assert.equal(res.body.data.plan[0].taskConfig.type, 'Recruit')
-    assert.deepEqual(res.body.data.plan[1].args, [
+    assert.equal(dataOf(res.body).plan[0].command, 'run')
+    assert.equal(dataOf(res.body).plan[0].dynamicTask, true)
+    assert.equal(dataOf(res.body).plan[0].taskConfig.type, 'Recruit')
+    assert.deepEqual(dataOf(res.body).plan[1].args, [
       '1-7', '-m', '1', '-D30011=10', '--report-to-penguin', '--penguin-id', 'doctor'
     ])
   })
@@ -1242,15 +1304,15 @@ describe('Agent daily flow run coverage', () => {
 
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.success, true)
-    assert.equal(res.body.data.success, true)
-    assert.equal(res.body.data.stopped, false)
-    assert.equal(res.body.data.scheduleId, 'manual')
-    assert.equal(res.body.data.totalSteps, 2)
-    assert.equal(res.body.data.summary.skippedCount, 2)
-    assert.ok(res.body.data.runId)
-    assert.equal(res.headers['X-La-Pluma-Run-Id'], res.body.data.runId)
+    assert.equal(dataOf(res.body).success, true)
+    assert.equal(dataOf(res.body).stopped, false)
+    assert.equal(dataOf(res.body).scheduleId, 'manual')
+    assert.equal(dataOf(res.body).totalSteps, 2)
+    assert.equal(dataOf(res.body).summary.skippedCount, 2)
+    assert.ok(dataOf(res.body).runId)
+    assert.equal(res.headers['X-La-Pluma-Run-Id'], dataOf(res.body).runId)
 
-    const run = requireRun(res.body.data.runId)
+    const run = requireRun(textOf(dataOf(res.body).runId))
     assert.equal(run.operationId, 'run_daily_flow')
     assert.equal(run.state, 'succeeded')
     assert.equal(runResult(run).summary.taskResults.length, 2)
@@ -1265,12 +1327,12 @@ describe('Agent daily flow run coverage', () => {
     await handler(scheduleExecuteRequest({ taskFlow: flow, waitForCompletion: false }), res, () => {})
 
     assert.equal(res.statusCode, 202)
-    assert.equal(res.body.data.accepted, true)
-    assert.equal(res.body.data.scheduleId, 'manual')
-    assert.equal(res.body.data.totalSteps, 2)
-    assert.ok(res.body.data.runId)
-    assert.equal(res.headers.Location, `/api/agent/runs/${res.body.data.runId}`)
-    const runId = res.body.data.runId
+    assert.equal(dataOf(res.body).accepted, true)
+    assert.equal(dataOf(res.body).scheduleId, 'manual')
+    assert.equal(dataOf(res.body).totalSteps, 2)
+    assert.ok(dataOf(res.body).runId)
+    assert.equal(res.headers.Location, `/api/agent/runs/${dataOf(res.body).runId}`)
+    const runId = textOf(dataOf(res.body).runId)
 
     await waitForSnapshot(() => {
       const status = getScheduleExecutionStatus()
@@ -1291,19 +1353,19 @@ describe('Agent daily flow run coverage', () => {
     const snapshotRes = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, snapshotRes, () => {})
 
-    assert.equal(snapshotRes.body.data.run.runId, runId)
-    assert.equal(snapshotRes.body.data.run.state, 'running')
-    assert.equal(snapshotRes.body.data.run.progress.scheduleId, 'manual')
-    assert.equal(snapshotRes.body.data.run.progress.currentStep, 0)
-    assert.equal(snapshotRes.body.data.run.progress.totalSteps, 2)
-    assert.equal(snapshotRes.body.data.occupancy.state, 'run')
-    assert.equal(snapshotRes.body.data.occupancy.schedule.runId, runId)
+    assert.equal(dataOf(snapshotRes.body).run.runId, runId)
+    assert.equal(dataOf(snapshotRes.body).run.state, 'running')
+    assert.equal(dataOf(snapshotRes.body).run.progress.scheduleId, 'manual')
+    assert.equal(dataOf(snapshotRes.body).run.progress.currentStep, 0)
+    assert.equal(dataOf(snapshotRes.body).run.progress.totalSteps, 2)
+    assert.equal(dataOf(snapshotRes.body).occupancy.state, 'run')
+    assert.equal(dataOf(snapshotRes.body).occupancy.schedule.runId, runId)
 
     const stopRes = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopRes, () => {})
 
     assert.equal(stopRes.statusCode, 200)
-    assert.equal(stopRes.body.data.run.state, 'stopping')
+    assert.equal(dataOf(stopRes.body).run.state, 'stopping')
 
     const terminal = await waitForSnapshot(() => {
       const current = getAgentRun(runId)
@@ -1328,7 +1390,7 @@ describe('Agent daily flow run coverage', () => {
     )
 
     assert.equal(first.statusCode, 202)
-    const runId = first.body.data.runId
+    const runId = textOf(dataOf(first.body).runId)
 
     await waitForSnapshot(() => {
       const run = getAgentRun(runId)
@@ -1343,7 +1405,7 @@ describe('Agent daily flow run coverage', () => {
     )
 
     assert.ok([200, 202].includes(replay.statusCode))
-    assert.equal(replay.body.data.runId, runId)
+    assert.equal(dataOf(replay.body).runId, runId)
     assert.equal(replay.headers['Idempotency-Replayed'], 'true')
     assert.equal(listAgentRuns({ operationId: 'run_daily_flow' }).length, 1)
 
@@ -1382,7 +1444,7 @@ describe('Agent daily flow run coverage', () => {
     assert.equal(busy.statusCode, 409)
     assert.equal(busy.body.error.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
     assert.equal(busy.body.error.retryable, true)
-    const rejectedRun = requireRun(busy.body.error.details.runId)
+    const rejectedRun = requireRun(textOf(busy.body.error.details.runId))
     assert.equal(rejectedRun.state, 'failed')
     assert.equal(rejectedRun.error?.code, 'AGENT_SCHEDULE_ALREADY_RUNNING')
     assert.equal(getScheduleExecutionStatus().isRunning, false)
@@ -1396,8 +1458,8 @@ describe('Agent daily flow run coverage', () => {
     )
 
     assert.equal(retry.statusCode, 200)
-    assert.notEqual(retry.body.data.runId, rejectedRun.runId)
-    assert.equal(requireRun(retry.body.data.runId).state, 'succeeded')
+    assert.notEqual(dataOf(retry.body).runId, rejectedRun.runId)
+    assert.equal(requireRun(textOf(dataOf(retry.body).runId)).state, 'succeeded')
   })
 
   it('accepts the Agent daily-flow entry early and serves the final result by run id', async () => {
@@ -1416,10 +1478,10 @@ describe('Agent daily flow run coverage', () => {
     await findHandler('post', '/actions/run-daily-flow')(req, res, () => {})
 
     assert.equal(res.statusCode, 202)
-    assert.equal(res.body.data.accepted, true)
-    assert.equal(res.body.data.totalSteps, 2)
-    assert.equal(res.body.data.plan.length, 2)
-    const runId = res.body.data.runId
+    assert.equal(dataOf(res.body).accepted, true)
+    assert.equal(dataOf(res.body).totalSteps, 2)
+    assert.equal(dataOf(res.body).plan.length, 2)
+    const runId = textOf(dataOf(res.body).runId)
 
     const terminal = await waitForSnapshot(() => {
       const run = getAgentRun(runId)
@@ -1433,9 +1495,9 @@ describe('Agent daily flow run coverage', () => {
     await findHandler('get', '/runs/:runId')({ headers: {}, params: { runId } }, lookup, () => {})
 
     assert.equal(lookup.statusCode, 200)
-    assert.equal(lookup.body.data.runId, runId)
-    assert.equal(lookup.body.data.state, 'succeeded')
-    assert.equal(lookup.body.data.result.summary.taskResults.length, 2)
+    assert.equal(dataOf(lookup.body).runId, runId)
+    assert.equal(dataOf(lookup.body).state, 'succeeded')
+    assert.equal(dataOf(lookup.body).result.summary.taskResults.length, 2)
   })
 
   it('does not create a run for a dry-run plan', async () => {
@@ -1477,7 +1539,7 @@ describe('Agent daily flow concurrency', () => {
     )
 
     assert.equal(first.statusCode, 202)
-    const runId = first.body.data.runId
+    const runId = textOf(dataOf(first.body).runId)
     assert.equal(requireRun(runId).state, 'running')
 
     const second = response()
@@ -1635,15 +1697,15 @@ describe('Agent copilot set routes', () => {
 
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.success, true)
-    assert.equal(res.body.data.success, true)
-    assert.equal(res.body.data.mode, 'continuous')
-    assert.equal(res.body.data.setId, '42')
-    assert.equal(res.body.data.summary.successCount, 2)
-    assert.equal(res.body.data.plan.entries.length, 2)
-    assert.ok(res.body.data.runId)
-    assert.equal(res.headers['X-La-Pluma-Run-Id'], res.body.data.runId)
+    assert.equal(dataOf(res.body).success, true)
+    assert.equal(dataOf(res.body).mode, 'continuous')
+    assert.equal(dataOf(res.body).setId, '42')
+    assert.equal(dataOf(res.body).summary.successCount, 2)
+    assert.equal(dataOf(res.body).plan.entries.length, 2)
+    assert.ok(dataOf(res.body).runId)
+    assert.equal(res.headers['X-La-Pluma-Run-Id'], dataOf(res.body).runId)
 
-    const run = requireRun(res.body.data.runId)
+    const run = requireRun(textOf(dataOf(res.body).runId))
     assert.equal(run.operationId, 'run_copilot_set')
     assert.equal(run.state, 'succeeded')
     assert.equal(runResult(run).summary.successCount, 2)
@@ -1665,10 +1727,10 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(res.statusCode, 200)
-    assert.equal(res.body.data.finished, true)
-    assert.equal(res.body.data.summary.totalEntries, 0)
-    assert.equal(res.body.data.summary.alreadyCompletedCount, 1)
-    assert.equal(requireRun(res.body.data.runId).state, 'succeeded')
+    assert.equal(dataOf(res.body).finished, true)
+    assert.equal(dataOf(res.body).summary.totalEntries, 0)
+    assert.equal(dataOf(res.body).summary.alreadyCompletedCount, 1)
+    assert.equal(requireRun(textOf(dataOf(res.body).runId)).state, 'succeeded')
     assert.deepEqual(executor.executed, [])
   })
 
@@ -1684,9 +1746,9 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(res.statusCode, 200)
-    assert.equal(res.body.data.mode, 'continuous')
-    assert.equal(res.body.data.summary.successCount, 1)
-    assert.equal(requireRun(res.body.data.runId).state, 'succeeded')
+    assert.equal(dataOf(res.body).mode, 'continuous')
+    assert.equal(dataOf(res.body).summary.successCount, 1)
+    assert.equal(requireRun(textOf(dataOf(res.body).runId)).state, 'succeeded')
   })
 
   it('rejects an unknown mode before creating a run', async () => {
@@ -1716,13 +1778,13 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(res.statusCode, 202)
-    assert.equal(res.body.data.accepted, true)
-    assert.equal(res.body.data.mode, 'continuous')
-    assert.ok(res.body.data.runId)
-    assert.equal(res.headers.Location, `/api/agent/runs/${res.body.data.runId}`)
+    assert.equal(dataOf(res.body).accepted, true)
+    assert.equal(dataOf(res.body).mode, 'continuous')
+    assert.ok(dataOf(res.body).runId)
+    assert.equal(res.headers.Location, `/api/agent/runs/${dataOf(res.body).runId}`)
 
     const terminal = await waitForSnapshot(() => {
-      const run = requireRun(res.body.data.runId)
+      const run = requireRun(textOf(dataOf(res.body).runId))
       return run && run.state === 'succeeded' ? run : null
     })
     assert.equal(runResult(terminal).summary.successCount, 2)
@@ -1754,20 +1816,22 @@ describe('Agent copilot set routes', () => {
     const snapshot = await waitForSnapshot(async () => {
       const current = response()
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, current, () => {})
-      return current.body?.data?.run?.progress?.phase === 'running' ? current : null
+      return dataOf(current.body)?.run?.progress?.phase === 'running' ? current : null
     })
 
-    assert.equal(snapshot.body.data.run.operationId, 'run_copilot_set')
-    assert.equal(snapshot.body.data.run.state, 'running')
-    assert.equal(snapshot.body.data.run.progress.setId, '42')
-    assert.equal(snapshot.body.data.run.progress.currentEntry.key, '0:100:normal')
-    assert.equal(snapshot.body.data.run.progress.totalSteps, 2)
-    assert.equal(snapshot.body.data.occupancy.runId, snapshot.body.data.run.runId)
+    assert.equal(dataOf(snapshot.body).run.operationId, 'run_copilot_set')
+    assert.equal(dataOf(snapshot.body).run.state, 'running')
+    assert.equal(dataOf(snapshot.body).run.progress.setId, '42')
+    const currentEntry = dataOf(snapshot.body).run.progress.currentEntry
+    assert.ok(currentEntry, 'expected the current copilot entry')
+    assert.equal(currentEntry.key, '0:100:normal')
+    assert.equal(dataOf(snapshot.body).run.progress.totalSteps, 2)
+    assert.equal(dataOf(snapshot.body).occupancy.runId, dataOf(snapshot.body).run.runId)
 
     releaseFirstEntry()
     await request
     const terminal = await waitForSnapshot(() => {
-      const run = requireRun(res.body.data.runId)
+      const run = requireRun(textOf(dataOf(res.body).runId))
       return run && run.state === 'succeeded' ? run : null
     })
     assert.equal(runResult(terminal).summary.successCount, 2)
@@ -1798,14 +1862,14 @@ describe('Agent copilot set routes', () => {
     const snapshot = await waitForSnapshot(async () => {
       const current = response()
       await findHandler('get', '/runs/current')({ headers: {}, query: {} }, current, () => {})
-      return current.body?.data?.run?.progress?.phase === 'running' ? current : null
+      return dataOf(current.body)?.run?.progress?.phase === 'running' ? current : null
     })
-    const runId = snapshot.body.data.run.runId
+    const runId = textOf(dataOf(snapshot.body).run.runId)
 
     const stopped = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopped, () => {})
     assert.equal(stopped.statusCode, 200)
-    assert.equal(stopped.body.data.run.state, 'stopping')
+    assert.equal(dataOf(stopped.body).run.state, 'stopping')
 
     releaseFirstEntry()
     await request
@@ -1842,7 +1906,7 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(replay.statusCode, 200)
-    assert.equal(replay.body.data.runId, first.body.data.runId)
+    assert.equal(dataOf(replay.body).runId, dataOf(first.body).runId)
     assert.equal(replay.headers['Idempotency-Replayed'], 'true')
     assert.equal(executor.executed.length, 1)
   })
@@ -1869,7 +1933,7 @@ describe('Agent copilot set routes', () => {
     assert.equal(busy.statusCode, 409)
     assert.equal(busy.body.error.code, 'MAA_EXECUTION_BUSY')
     assert.equal(busy.body.error.retryable, true)
-    assert.equal(requireRun(busy.body.error.details.runId).state, 'failed')
+    assert.equal(requireRun(textOf(busy.body.error.details.runId)).state, 'failed')
 
     await rm(lockFile, { force: true })
     const retry = response()
@@ -1880,8 +1944,8 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(retry.statusCode, 200)
-    assert.notEqual(retry.body.data.runId, busy.body.error.details.runId)
-    assert.equal(requireRun(retry.body.data.runId).state, 'succeeded')
+    assert.notEqual(dataOf(retry.body).runId, busy.body.error.details.runId)
+    assert.equal(requireRun(textOf(dataOf(retry.body).runId)).state, 'succeeded')
   })
 
   it('exposes a manual set waiting between entries and resumes it on demand', async () => {
@@ -1897,21 +1961,21 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(started.statusCode, 200)
-    assert.equal(started.body.data.waitingForNext, true)
-    assert.equal(started.body.data.nextEntry.key, '1:101:normal')
-    assert.equal(started.body.data.summary.successCount, 1)
-    const runId = started.body.data.runId
+    assert.equal(dataOf(started.body).waitingForNext, true)
+    assert.equal(dataOf(started.body).nextEntry.key, '1:101:normal')
+    assert.equal(dataOf(started.body).summary.successCount, 1)
+    const runId = textOf(dataOf(started.body).runId)
     assert.equal(requireRun(runId).state, 'waiting')
     assert.deepEqual(await getMaaExecutionLeaseSnapshot(), { state: 'free', owner: null })
 
     const snapshot = response()
     await findHandler('get', '/runs/current')({ headers: {}, query: {} }, snapshot, () => {})
-    assert.equal(snapshot.body.data.run.runId, runId)
-    assert.equal(snapshot.body.data.run.state, 'waiting')
-    assert.equal(snapshot.body.data.run.progress.phase, 'waiting_for_next')
-    assert.equal(snapshot.body.data.run.progress.pendingCount, 1)
-    assert.equal(snapshot.body.data.occupancy.state, 'pending')
-    assert.equal(snapshot.body.data.occupancy.runState, 'waiting')
+    assert.equal(dataOf(snapshot.body).run.runId, runId)
+    assert.equal(dataOf(snapshot.body).run.state, 'waiting')
+    assert.equal(dataOf(snapshot.body).run.progress.phase, 'waiting_for_next')
+    assert.equal(dataOf(snapshot.body).run.progress.pendingCount, 1)
+    assert.equal(dataOf(snapshot.body).occupancy.state, 'pending')
+    assert.equal(dataOf(snapshot.body).occupancy.runState, 'waiting')
 
     const continued = response()
     await findHandler('post', '/actions/continue-copilot-set')(
@@ -1921,9 +1985,9 @@ describe('Agent copilot set routes', () => {
     )
 
     assert.equal(continued.statusCode, 200)
-    assert.equal(continued.body.data.finished, true)
-    assert.equal(continued.body.data.waitingForNext, false)
-    assert.equal(continued.body.data.run.state, 'succeeded')
+    assert.equal(dataOf(continued.body).finished, true)
+    assert.equal(dataOf(continued.body).waitingForNext, false)
+    assert.equal(dataOf(continued.body).run.state, 'succeeded')
     assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal'])
     assert.equal(runResult(requireRun(runId)).summary.successCount, 2)
 
@@ -1934,7 +1998,7 @@ describe('Agent copilot set routes', () => {
       () => {}
     )
     assert.equal(repeated.statusCode, 200)
-    assert.equal(repeated.body.data.alreadyTerminal, true)
+    assert.equal(dataOf(repeated.body).alreadyTerminal, true)
   })
 
   it('cycles a manual set through waiting until every selected entry is attempted', async () => {
@@ -1948,22 +2012,22 @@ describe('Agent copilot set routes', () => {
       started,
       () => {}
     )
-    const runId = started.body.data.runId
-    assert.equal(started.body.data.waitingForNext, true)
+    const runId = textOf(dataOf(started.body).runId)
+    assert.equal(dataOf(started.body).waitingForNext, true)
     assert.equal(requireRun(runId).state, 'waiting')
 
     const second = response()
     await findHandler('post', '/actions/continue-copilot-set')(continueRequest(runId), second, () => {})
     assert.equal(second.statusCode, 200)
-    assert.equal(second.body.data.waitingForNext, true)
-    assert.equal(second.body.data.nextEntry.key, '2:102:normal')
+    assert.equal(dataOf(second.body).waitingForNext, true)
+    assert.equal(dataOf(second.body).nextEntry.key, '2:102:normal')
     assert.equal(requireRun(runId).state, 'waiting')
     assert.equal(runResult(requireRun(runId)).summary.successCount, 2)
 
     const third = response()
     await findHandler('post', '/actions/continue-copilot-set')(continueRequest(runId), third, () => {})
     assert.equal(third.statusCode, 200)
-    assert.equal(third.body.data.finished, true)
+    assert.equal(dataOf(third.body).finished, true)
     assert.equal(requireRun(runId).state, 'succeeded')
     assert.deepEqual(executor.executed, ['0:100:normal', '1:101:normal', '2:102:normal'])
   })
@@ -1979,7 +2043,7 @@ describe('Agent copilot set routes', () => {
       started,
       () => {}
     )
-    const runId = started.body.data.runId
+    const runId = textOf(dataOf(started.body).runId)
 
     await writeFile(lockFile, JSON.stringify({
       pid: process.pid,
@@ -2025,17 +2089,17 @@ describe('Agent copilot set routes', () => {
       started,
       () => {}
     )
-    const runId = started.body.data.runId
+    const runId = textOf(dataOf(started.body).runId)
 
     const stopped = response()
     await findHandler('post', '/actions/stop')({ headers: {}, query: {}, body: { runId } }, stopped, () => {})
 
     assert.equal(stopped.statusCode, 200)
-    assert.equal(stopped.body.data.waitingRunStopped, true)
-    assert.equal(stopped.body.data.deviceStopRequested, false)
-    assert.equal(stopped.body.data.run.state, 'stopped')
-    assert.equal(stopped.body.data.run.result.summary.successCount, 1)
-    assert.equal(stopped.body.data.run.result.summary.pendingCount, 2)
+    assert.equal(dataOf(stopped.body).waitingRunStopped, true)
+    assert.equal(dataOf(stopped.body).deviceStopRequested, false)
+    assert.equal(dataOf(stopped.body).run.state, 'stopped')
+    assert.equal(dataOf(stopped.body).run.result.summary.successCount, 1)
+    assert.equal(dataOf(stopped.body).run.result.summary.pendingCount, 2)
 
     const continued = response()
     await findHandler('post', '/actions/continue-copilot-set')(
@@ -2044,7 +2108,7 @@ describe('Agent copilot set routes', () => {
       () => {}
     )
     assert.equal(continued.statusCode, 200)
-    assert.equal(continued.body.data.alreadyTerminal, true)
+    assert.equal(dataOf(continued.body).alreadyTerminal, true)
     assert.deepEqual(executor.executed, ['0:100:normal'])
   })
 })
