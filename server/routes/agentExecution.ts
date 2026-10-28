@@ -1039,11 +1039,15 @@ async function continueCopilotSet(
     return respondContinueError(res, req, runId, error);
   }
 
-  // 续跑入口刚写入的 Run 必然存在；非空断言只收窄类型，缺失时与旧实现一样原样返回 null。
-  const enrichedRun: AgentRunDto = enrichAgentRun(getAgentRun(runId)!);
-  setRunResponseHeaders(res, enrichedRun, false, true);
-  res.status(202);
-  sendSuccess(res, req, runResponseData(accepted, enrichedRun), resultMessage(accepted) || '作业集下一关已接受', { runId });
+  // 202 确认续跑前必须等 waiting → running 落盘：否则进程在持久化前退出时，
+  // 磁盘记录停留在旧 waiting 状态，客户端却已收到续跑成功。
+  return respondWithPersistedAgentRun(res, req, runId, '作业集下一关接受状态持久化失败', persistedRun => {
+    // 续跑入口刚写入的 Run 必然存在；非空断言只收窄类型，缺失时与旧实现一样原样返回 null。
+    const enrichedRun: AgentRunDto = enrichAgentRun((persistedRun || getAgentRun(runId))!);
+    setRunResponseHeaders(res, enrichedRun, false, true);
+    res.status(202);
+    sendSuccess(res, req, runResponseData(accepted, enrichedRun), resultMessage(accepted) || '作业集下一关已接受', { runId });
+  });
 }
 
 interface FightOptions extends Record<string, unknown> {

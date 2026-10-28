@@ -1662,6 +1662,18 @@ function useCopilotSetRuntime(plan: CopilotPlan, executor: CopilotSetExecutor): 
   })
 }
 
+/** writeStore 收到的纯 JSON 快照：内部记录字段是 status，对应 DTO 的 state。 */
+function storedRunState(snapshot: unknown, runId: string): string | null {
+  if (!isRecord(snapshot) || !Array.isArray(snapshot.runs)) return null
+  for (const entry of snapshot.runs) {
+    if (!isRecord(entry) || !isRecord(entry.run)) continue
+    if (entry.run.runId === runId && typeof entry.run.status === 'string') {
+      return entry.run.status
+    }
+  }
+  return null
+}
+
 function copilotSetRequest(body: unknown, headers: Record<string, string> = {}, id = '42') {
   return { headers, params: { id }, body, query: {} }
 }
@@ -2110,5 +2122,147 @@ describe('Agent copilot set routes', () => {
     assert.equal(continued.statusCode, 200)
     assert.equal(dataOf(continued.body).alreadyTerminal, true)
     assert.deepEqual(executor.executed, ['0:100:normal'])
+  })
+
+  it('acknowledges an async continuation only after the run state reaches disk', async () => {
+    const plan = copilotSetPlan(2)
+    let releaseEntry!: () => void
+    const entryGate = new Promise<void>(resolve => { releaseEntry = resolve })
+    let holdNextEntry = false
+    const executor = createCopilotSetExecutor(plan, {
+      onExecute: async () => {
+        if (!holdNextEntry) return
+        holdNextEntry = false
+        await entryGate
+      }
+    })
+    useCopilotSetRuntime(plan, executor)
+
+    let diskSnapshot: unknown = null
+    let blockWrites = false
+    let releaseBlockedWrite!: () => void
+    let signalWriteStarted!: () => void
+    const writeStarted = new Promise<void>(resolve => { signalWriteStarted = resolve })
+
+    await initializeAgentRunStore({
+      filePath: '/virtual/agent-copilot-continue-runs.json',
+      readStore: async (_filePath, fallback) => fallback,
+      writeStore: async (_filePath: string, value: unknown) => {
+        if (blockWrites) {
+          signalWriteStarted()
+          await new Promise<void>(resolve => { releaseBlockedWrite = resolve })
+        }
+        diskSnapshot = JSON.parse(JSON.stringify(value))
+      },
+      runtimeLogger: quietLogger
+    })
+
+    try {
+      const started = response()
+      await findHandler('post', '/copilot-sets/:id/execute')(
+        copilotSetRequest({ mode: 'manual' }),
+        started,
+        () => {}
+      )
+      assert.equal(started.statusCode, 200)
+      const runId = textOf(dataOf(started.body).runId)
+      await flushAgentRunStore()
+      assert.equal(requireRun(runId).state, 'waiting')
+      assert.equal(storedRunState(diskSnapshot, runId), 'waiting')
+
+      blockWrites = true
+      holdNextEntry = true
+      const continued = response()
+      let continueSettled = false
+      const continueCall = Promise.resolve(findHandler('post', '/actions/continue-copilot-set')(
+        continueRequest(runId, { waitForCompletion: false }),
+        continued,
+        () => {}
+      )).then(() => { continueSettled = true })
+
+      await waitForSnapshot(() => (requireRun(runId).state === 'running' ? requireRun(runId) : null))
+      await writeStarted
+      assert.equal(continueSettled, false)
+      assert.equal(continued.jsonCalls, 0, '202 must not be sent while the state write is pending')
+      assert.equal(storedRunState(diskSnapshot, runId), 'waiting')
+
+      blockWrites = false
+      releaseBlockedWrite()
+      await continueCall
+
+      assert.equal(continued.statusCode, 202)
+      assert.equal(dataOf(continued.body).accepted, true)
+      assert.equal(continued.headers.Location, `/api/agent/runs/${runId}`)
+      assert.equal(storedRunState(diskSnapshot, runId), 'running')
+
+      releaseEntry()
+      const terminal = await waitForSnapshot(() => {
+        const run = requireRun(runId)
+        return run.state === 'succeeded' ? run : null
+      })
+      assert.equal(runResult(terminal).summary.successCount, 2)
+    } finally {
+      blockWrites = false
+      releaseBlockedWrite?.()
+      releaseEntry()
+      await shutdownAgentRunStoreForTests()
+    }
+  })
+
+  it('rejects an async continuation with a persistence failure instead of a false 202', async () => {
+    const plan = copilotSetPlan(2)
+    const executor = createCopilotSetExecutor(plan)
+    useCopilotSetRuntime(plan, executor)
+
+    let failWrites = false
+    await initializeAgentRunStore({
+      filePath: '/virtual/agent-copilot-continue-failure-runs.json',
+      readStore: async (_filePath, fallback) => fallback,
+      writeStore: async () => {
+        if (failWrites) throw new Error('simulated continuation write failure')
+      },
+      runtimeLogger: quietLogger
+    })
+
+    const routeLogger = loggerManager.getLogger('AgentRoutes')
+    const wasConsoleEnabled = routeLogger.enableConsole
+    routeLogger.enableConsole = false
+
+    try {
+      const started = response()
+      await findHandler('post', '/copilot-sets/:id/execute')(
+        copilotSetRequest({ mode: 'manual' }),
+        started,
+        () => {}
+      )
+      assert.equal(started.statusCode, 200)
+      const runId = textOf(dataOf(started.body).runId)
+      await flushAgentRunStore()
+
+      failWrites = true
+      const continued = response()
+      await findHandler('post', '/actions/continue-copilot-set')(
+        continueRequest(runId, { waitForCompletion: false }),
+        continued,
+        () => {}
+      )
+
+      assert.equal(continued.statusCode, 503)
+      assert.equal(continued.body.error.code, 'AGENT_RUN_PERSISTENCE_FAILED')
+      assert.equal(continued.body.error.retryable, true)
+      assert.equal(continued.body.error.details.runId, runId)
+
+      failWrites = false
+      const terminal = await waitForSnapshot(() => {
+        const run = requireRun(runId)
+        return run.state === 'succeeded' ? run : null
+      })
+      assert.equal(runResult(terminal).summary.successCount, 2)
+      await flushAgentRunStore()
+    } finally {
+      failWrites = false
+      routeLogger.enableConsole = wasConsoleEnabled
+      await shutdownAgentRunStoreForTests()
+    }
   })
 })
