@@ -3,7 +3,8 @@
  *
  * - 进程所有权：只终止本实例启动的 server/TURN/Agent 部署/构建子进程，设备端
  *   Agent 只停止已登记所有权的地址；启动前已存在的资源记为 external，停止与
- *   关闭流程都不会杀掉它们。
+ *   关闭流程都不会杀掉它们。停止与关闭对托管子进程先 SIGTERM，短宽限期后
+ *   以 SIGKILL 收尾，不依赖子进程对 SIGTERM 的响应时机。
  * - viewer 生命周期：同一设备最后一个浏览器离开后按 idle 宽限期回收 Agent；
  *   新 viewer 会取消排队中的回收并在建立上游连接前确认（必要时恢复）Agent。
  * - 启动队列：所有启动/停止/安装串行执行；关闭一旦开始，排队中与在途的步骤
@@ -45,6 +46,8 @@ const WEBRTC_TURN_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WE
 const WEBRTC_START_POLL_INTERVAL_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS, 250);
 const WEBRTC_VIEWER_IDLE_GRACE_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS, 3000);
 const WEBRTC_VIEWER_STARTUP_GRACE_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_VIEWER_STARTUP_GRACE_MS, 15000);
+/** SIGTERM 之后的强制收尾宽限期；仍存活的托管子进程在超时后以 SIGKILL 结束。 */
+const WEBRTC_PROCESS_KILL_GRACE_MS = 500;
 
 /** 资源归属：managed 由本实例启动并登记，external 是启动前已存在或其它实例的资源。 */
 export type WebrtcOwnershipState = 'managed' | 'external' | 'none';
@@ -375,17 +378,20 @@ function isChildProcessRunning(child: ChildProcess | null | undefined): child is
   return Boolean(child && !child.killed && child.exitCode === null && child.signalCode === null);
 }
 
-function terminateManagedProcess(child: ChildProcess | null | undefined): void {
+function terminateManagedProcess(
+  child: ChildProcess | null | undefined,
+  signal: NodeJS.Signals = 'SIGTERM'
+): void {
   if (!isChildProcessRunning(child)) return;
   if (child.pid) {
     try {
-      process.kill(-child.pid, 'SIGTERM');
+      process.kill(-child.pid, signal);
       return;
     } catch {
       // Fall back when the child did not establish its process group.
     }
   }
-  child.kill('SIGTERM');
+  child.kill(signal);
 }
 
 function clearManagedProcess(type: WebrtcProcessKind, child: ChildProcess): void {
@@ -945,7 +951,9 @@ async function startLocalTurnServerUnlocked(): Promise<void> {
   }
 }
 
-function terminateOwnedLocalProcesses(): void {
+function terminateOwnedLocalProcesses(): ChildProcess[] {
+  const children = [webrtcBuildProcess, webrtcAgentProcess, webrtcServerProcess, webrtcTurnProcess]
+    .filter((child): child is ChildProcess => child !== null);
   terminateManagedProcess(webrtcBuildProcess);
   terminateManagedProcess(webrtcAgentProcess);
   terminateManagedProcess(webrtcServerProcess);
@@ -954,6 +962,22 @@ function terminateOwnedLocalProcesses(): void {
   webrtcAgentProcess = null;
   webrtcServerProcess = null;
   webrtcTurnProcess = null;
+  return children;
+}
+
+/**
+ * 托管子进程的强制收尾：SIGTERM 的生效依赖子进程及其进程组的信号处理时机，
+ * 高负载下可能不生效或显著延迟。宽限期内仍存活的子进程以 SIGKILL 结束，
+ * 保证停止与关闭流程不遗留本实例启动的进程。
+ */
+async function enforceOwnedProcessesTerminated(children: readonly ChildProcess[]): Promise<void> {
+  const deadline = Date.now() + WEBRTC_PROCESS_KILL_GRACE_MS;
+  while (Date.now() < deadline && children.some(isChildProcessRunning)) {
+    await delay(20);
+  }
+  for (const child of children) {
+    if (isChildProcessRunning(child)) terminateManagedProcess(child, 'SIGKILL');
+  }
 }
 
 /**
@@ -970,7 +994,7 @@ async function releaseOwnedPreviewResourcesUnlocked(
   if (isChildProcessRunning(webrtcAgentProcess)) released.push('agent-deployment');
   if (isChildProcessRunning(webrtcServerProcess)) released.push('server');
   if (isChildProcessRunning(webrtcTurnProcess)) released.push('turn');
-  terminateOwnedLocalProcesses();
+  await enforceOwnedProcessesTerminated(terminateOwnedLocalProcesses());
   registeredAgentOwner = null;
   if (stopDeviceAgent && owner) {
     await stopRemoteWebrtcAgent(owner.address, owner.adbPath, { signal: getCloseSignal() });
@@ -1307,9 +1331,10 @@ async function closeWebrtcPreview(): Promise<{ stopped: true }> {
   // 先取消 viewer 自动回收计时器，再终止本进程拥有的子进程；
   // 已受理的启动/停止会因 abort 立即结束，等待队列后做一次兜底终止。
   viewerLifecycle.close();
-  terminateOwnedLocalProcesses();
+  const childrenAtClose = terminateOwnedLocalProcesses();
   await webrtcLifecycleQueue;
-  terminateOwnedLocalProcesses();
+  const childrenAfterQueue = terminateOwnedLocalProcesses();
+  await enforceOwnedProcessesTerminated([...childrenAtClose, ...childrenAfterQueue]);
   idleStoppedAgentOwner = null;
   registeredAgentOwner = null;
   return { stopped: true };

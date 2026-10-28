@@ -27,6 +27,7 @@ const ENV_KEYS = [
   'TEST_WEBRTC_AGENT_COUNT_FILE',
   'TEST_WEBRTC_AGENT_PID_FILE',
   'TEST_WEBRTC_SLOW_PID_FILE',
+  'TEST_WEBRTC_IMMUNE_PID_FILE',
   'TEST_WEBRTC_PKILL_FILE'
 ];
 
@@ -39,6 +40,7 @@ interface FixtureFiles {
   agentCount: string;
   agentPid: string;
   slowPid: string;
+  immunePid: string;
   pkill: string;
   externalCount: string;
   externalArgs: string;
@@ -180,6 +182,12 @@ if [ "$1" = "slow-address" ]; then
   sleep 5
   exit 0
 fi
+if [ "$1" = "immune-address" ]; then
+  trap '' TERM
+  printf '%s' "$$" > "$TEST_WEBRTC_IMMUNE_PID_FILE"
+  sleep 4
+  exit 0
+fi
 sleep 0.15
 printf '[{"device_id":"%s"}]' "$3" > "$TEST_WEBRTC_DEVICES_FILE"
 `;
@@ -188,7 +196,7 @@ printf '[{"device_id":"%s"}]' "$3" > "$TEST_WEBRTC_DEVICES_FILE"
 function createFakeAdbScript(): string {
   return `#!/bin/bash
 if [ "$1" = "devices" ]; then
-  printf 'List of devices attached\\nfixture-device\\tdevice\\nsecond-address\\tdevice\\nslow-address\\tdevice\\n'
+  printf 'List of devices attached\\nfixture-device\\tdevice\\nsecond-address\\tdevice\\nslow-address\\tdevice\\nimmune-address\\tdevice\\n'
   exit 0
 fi
 if [[ "$*" == *"pkill -f cloudphone-agent"* ]]; then
@@ -222,6 +230,7 @@ async function createFixture(): Promise<WebrtcFixture> {
     agentCount: join(dir, 'agent-count.log'),
     agentPid: join(dir, 'agent.pid'),
     slowPid: join(dir, 'slow.pid'),
+    immunePid: join(dir, 'immune.pid'),
     pkill: join(dir, 'pkill.log'),
     externalCount: join(dir, 'external-server-count.log'),
     externalArgs: join(dir, 'external-server-args.json'),
@@ -267,6 +276,7 @@ async function createFixture(): Promise<WebrtcFixture> {
     TEST_WEBRTC_AGENT_COUNT_FILE: files.agentCount,
     TEST_WEBRTC_AGENT_PID_FILE: files.agentPid,
     TEST_WEBRTC_SLOW_PID_FILE: files.slowPid,
+    TEST_WEBRTC_IMMUNE_PID_FILE: files.immunePid,
     TEST_WEBRTC_PKILL_FILE: files.pkill
   });
 
@@ -325,6 +335,7 @@ after(async () => {
       fixture.files.turnPid,
       fixture.files.agentPid,
       fixture.files.slowPid,
+      fixture.files.immunePid,
       fixture.files.externalPid,
       fixture.files.externalTurnPid
     ];
@@ -469,6 +480,40 @@ describe('WebRTC preview ownership and shutdown', () => {
       error => readErrorCode(error) === 'WEBRTC_PREVIEW_CLOSED'
     );
     assert.equal(await countLines(files.serverCount), 1);
+  });
+
+  it('kills a deployment that ignores SIGTERM when close begins', async () => {
+    const fixture = await createFixture();
+    const { service, files } = fixture;
+    const serverStatus = await service.startWebrtcServer('fixture-device', files.fakeAdb);
+    assert.equal(serverStatus.ownership.server, 'managed');
+
+    const lifecycle = createRuntimeLifecycle({
+      logger: { warn() {}, error() {} },
+      closeDeadlineMs: 2000
+    });
+    service.attachWebrtcPreviewToLifecycle(lifecycle);
+    await lifecycle.start();
+
+    const pending = service.startWebrtcAgent('immune-address', 'immune-device', files.fakeAdb);
+    const settled: Promise<{ value?: WebrtcRunningStatus; error?: unknown }> = pending.then(
+      value => ({ value }),
+      error => ({ error })
+    );
+    await waitUntil(() => fileExists(files.immunePid), 'immune deployment did not start');
+    const deploymentPid = await readPid(files.immunePid);
+
+    const startedAt = Date.now();
+    const summary = await lifecycle.close('test');
+    const elapsed = Date.now() - startedAt;
+
+    // 部署脚本忽略 SIGTERM；关闭必须在宽限期后以 SIGKILL 收尾，而不是等它自然退出。
+    const outcome = await settled;
+    assert.equal(outcome.value, undefined);
+    assert.equal(readErrorCode(outcome.error), 'WEBRTC_PREVIEW_CLOSED');
+    assert.equal(summary.ok, true);
+    assert.ok(elapsed < 2000, `close waited ${elapsed}ms for the SIGTERM-immune deployment`);
+    await waitUntil(() => !isAlive(deploymentPid), 'SIGTERM-immune deployment was not killed');
   });
 
   it('cancels pending viewer cleanup and releases owned children on close', async () => {
