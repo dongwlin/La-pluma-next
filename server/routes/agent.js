@@ -4,40 +4,32 @@ import { promisify } from 'util';
 import {
   execMaaCommand,
   getMaaVersion,
-  getRealtimeLogs,
-  getTaskStatus,
   testAdbConnection,
   discoverAdbDevices,
   captureScreen,
   getMaaConfigDir,
   getConfig,
   saveConfig,
-  getCurrentActivity,
-  getLogFiles,
-  readLogFile,
-  cleanupLogs,
-  getDebugScreenshots,
-  clearRealtimeLogs,
-  MAX_REALTIME_LOG_LINES,
-  MAX_LOG_FILE_LINES
+  getCurrentActivity
 } from '../services/maaService.js';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
 import { saveUserConfig } from '../services/configStorageService.ts';
 import { sendConfigStorageError } from './userConfig.ts';
 import agentExecutionRoutes from './agentExecution.js';
-import { getNotificationConfig, sendNotification, sendToChannel, testNotificationChannel, setNotificationConfig, getTodayOpenStages } from '../services/notificationService.js';
+import agentStatusRoutes from './agentStatusRoutes.js';
+import agentLogRoutes from './agentLogRoutes.js';
+import agentDataRoutes from './agentDataRoutes.js';
+import { getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.js';
+import { getNotificationConfig, sendNotification, sendToChannel, testNotificationChannel, setNotificationConfig } from '../services/notificationService.js';
 import operatorTrainingService from '../services/operatorTrainingService.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
-import { parseDepotData, parseOperBoxData, getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.js';
-import { getTodayDrops, getRecentDrops, getDropStatistics, MAX_DROP_HISTORY_DAYS } from '../services/dropRecordService.js';
+import { parseDepotData, parseOperBoxData } from '../services/dataParserService.js';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.js';
 import { resetCopilotPlanProgress } from '../services/copilotPlanService.js';
 import { getActivityRunPreflight } from '../services/activityNavigationService.js';
 import { findActivityCopilotCandidates } from '../services/activityCopilotDiscoveryService.js';
 import { getActivityCompletion } from '../services/activityCopilotRunService.js';
 import { withMaaExecutionLease } from '../services/executionCoordinatorService.js';
-import { getAgentRun } from '../services/agentRunService.js';
-import { buildAgentRunSnapshot, enrichAgentRun } from '../services/runSnapshotService.js';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
 import {
   asyncHandler,
@@ -47,13 +39,11 @@ import {
   sendError
 } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
-import { resolveBoundedInteger } from '../utils/numericQueryHelper.js'
 import { resolveRequestConnection } from './requestConnection.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js'
-import { API_VERSION, buildAgentManifest, buildOpenApiSpec } from './agentContract.js';
+import { buildAgentManifest, buildOpenApiSpec } from './agentContract.js';
 import {
-  getWebrtcStatus,
   installWebrtc,
   startWebrtcServer,
   stopWebrtcServer,
@@ -61,10 +51,7 @@ import {
   stopWebrtcAgent,
   startWebrtc,
   stopWebrtc,
-  isWebrtcServerReachable,
   getWebrtcDevices,
-  WEBRTC_PORT,
-  DEFAULT_DEVICE_ADDRESS,
   DEFAULT_DEVICE_ID
 } from '../services/webrtcService.js';
 
@@ -85,55 +72,6 @@ export function buildWebrtcBrowserProtocol(deviceId) {
   };
 }
 
-async function getAdbSummary(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
-  const connection = await testAdbConnection(adbPath, address);
-  let foreground = null;
-  let devices = '';
-
-  try {
-    const { stdout } = await execFileAsync(adbPath, ['devices', '-l'], { timeout: 5000 });
-    devices = stdout.trim();
-  } catch (error) {
-    devices = `adb devices failed: ${error.message}`;
-  }
-
-  if (connection.connected || connection.success) {
-    try {
-      const { stdout } = await execFileAsync(adbPath, ['-s', address, 'shell', 'dumpsys', 'window', 'windows'], { timeout: 7000, maxBuffer: 1024 * 1024 });
-      const focusLine = stdout.split('\n').find(line => line.includes('mCurrentFocus') || line.includes('mFocusedApp')) || '';
-      foreground = focusLine.trim() || null;
-    } catch {
-      foreground = null;
-    }
-  }
-
-  return {
-    adbPath,
-    address,
-    connected: !!(connection.connected || connection.success),
-    message: connection.message,
-    foreground,
-    devices
-  };
-}
-
-async function getWebrtcSummary(address = DEFAULT_DEVICE_ADDRESS, adbPath = DEFAULT_ADB_PATH) {
-  const [status, reachable] = await Promise.all([
-    getWebrtcStatus(address, adbPath).catch(() => null),
-    isWebrtcServerReachable()
-  ])
-  return {
-    ...(status || {}),
-    url: status?.url || `http://127.0.0.1:${WEBRTC_PORT}`,
-    reachable,
-    serverRunning: Boolean(status?.serverRunning || reachable),
-    agentRunning: Boolean(status?.agentRunning),
-    installed: Boolean(status?.installed),
-    built: Boolean(status?.built),
-    note: reachable ? 'WebRTC page is reachable. Use browser UI to connect the device.' : 'WebRTC page is not reachable. Start it from /api/agent/webrtc/start or the Web UI.'
-  }
-}
-
 function pngDimensions(base64) {
   try {
     const buffer = Buffer.from(base64, 'base64');
@@ -144,44 +82,6 @@ function pngDimensions(base64) {
     // best-effort metadata only
   }
   return { width: null, height: null };
-}
-
-async function getAndroidDisplayState(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
-  const readSetting = async (name) => {
-    try {
-      const { stdout } = await execFileAsync(adbPath, ['-s', address, 'shell', 'settings', 'get', 'system', name], { timeout: 5000 });
-      return stdout.trim();
-    } catch {
-      return null;
-    }
-  };
-
-  let display = '';
-  try {
-    const { stdout } = await execFileAsync(adbPath, ['-s', address, 'shell', 'dumpsys', 'display'], { timeout: 7000, maxBuffer: 512 * 1024 });
-    display = stdout;
-  } catch {
-    display = '';
-  }
-
-  const rotationMatch = display.match(/mCurrentOrientation\s*=\s*(\d+)/)
-    || display.match(/mDisplayInfo=.*?rotation\s+(\d+)/)
-    || display.match(/rotation\s*=\s*(\d+)/i);
-  const sizeMatch = display.match(/real\s+(\d+)\s+x\s+(\d+)/i)
-    || display.match(/logicalWidth=(\d+).*?logicalHeight=(\d+)/s);
-  const width = sizeMatch ? Number(sizeMatch[1]) : null;
-  const height = sizeMatch ? Number(sizeMatch[2]) : null;
-
-  return {
-    adbPath,
-    address,
-    rotation: rotationMatch ? Number(rotationMatch[1]) : null,
-    accelerometerRotation: await readSetting('accelerometer_rotation'),
-    userRotation: await readSetting('user_rotation'),
-    width,
-    height,
-    inferredOrientation: width && height ? (width > height ? 'landscape' : 'portrait') : null
-  };
 }
 
 function buildOrientationPlan({ orientation, adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS } = {}) {
@@ -238,45 +138,6 @@ async function setAndroidOrientation(options = {}) {
   };
 }
 
-async function buildAgentStatus(req) {
-  const connection = await resolveRequestConnection(req, { allowOverrides: true })
-  const { adbPath, address } = connection
-  const [version, adb, webrtc, orientation] = await Promise.all([
-    getMaaVersion(true).catch(error => ({ error: error.message })),
-    getAdbSummary(adbPath, address).catch(error => ({ connected: false, error: error.message, adbPath, address })),
-    getWebrtcSummary(address, adbPath),
-    getAndroidDisplayState(adbPath, address).catch(error => ({ error: error.message, adbPath, address }))
-  ]);
-  const task = getTaskStatus();
-  const logs = getRealtimeLogs(25);
-  const recommendations = [];
-
-  if (!adb.connected) recommendations.push(`ADB 未连接：检查模拟器和 ${address}`);
-  if (task.isRunning) recommendations.push('MAA 当前有任务运行，避免并发启动新任务');
-  if (!webrtc.reachable) recommendations.push('WebRTC 实时预览未启动，可启动 WebRTC 服务');
-  if (adb.connected && !task.isRunning) recommendations.push('可以执行 start-game 或 run-task');
-
-  return {
-    api: {
-      name: 'la-pluma-agent-api',
-      version: API_VERSION,
-      manifest: '/api/agent/manifest',
-      openapi: '/api/agent/openapi.json'
-    },
-    maa: {
-      version,
-      task
-    },
-    device: adb,
-    screen: {
-      webrtc,
-      orientation
-    },
-    recentLogs: logs,
-    recommendations
-  };
-}
-
 router.get('/manifest', (req, res) => {
   return sendSuccess(res, req, buildAgentManifest({
     adbPath: DEFAULT_ADB_PATH,
@@ -293,29 +154,9 @@ router.get('/openapi.json', (req, res) => {
   }));
 });
 
-router.get('/status', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await buildAgentStatus(req));
-}));
-
-router.get('/runs/current', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await buildAgentRunSnapshot({ lines: req.query.lines }));
-}));
-
-router.get('/runs/:runId', asyncHandler(async (req, res) => {
-  const run = getAgentRun(req.params.runId);
-  if (!run) {
-    return sendError(res, req, agentError('AGENT_RUN_NOT_FOUND', `未找到 Agent run: ${req.params.runId}`, {
-      statusCode: 404,
-      details: { runId: req.params.runId },
-      retryable: false
-    }));
-  }
-  return sendSuccess(res, req, enrichAgentRun(run));
-}));
-
-router.get('/tasks/status', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, getTaskStatus());
-}));
+// 状态汇总与 Run 查询由独立 router 承担；状态探测保留在状态边界内，
+// 不与执行编排或纯数据读取混在一起。
+router.use(agentStatusRoutes);
 
 router.post('/screen/screenshot', asyncHandler(async (req, res) => {
   const { adbPath, address, profileId } = await resolveRequestConnection(req, { allowOverrides: true })
@@ -330,54 +171,9 @@ router.post('/screen/screenshot', asyncHandler(async (req, res) => {
   });
 }));
 
-router.get('/logs/recent', asyncHandler(async (req, res) => {
-  const lines = resolveBoundedInteger(req.query.lines, {
-    defaultValue: 80,
-    min: 1,
-    max: MAX_REALTIME_LOG_LINES
-  });
-  return sendSuccess(res, req, getRealtimeLogs(lines));
-}));
-
-router.post('/logs/recent/clear', asyncHandler(async (req, res) => {
-  clearRealtimeLogs();
-  return sendSuccess(res, req, null, '实时日志已清空');
-}));
-
-router.get('/debug-screenshots', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await getDebugScreenshots());
-}));
-
-router.get('/logs/files', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await getLogFiles());
-}));
-
-router.get('/logs/files/*filePath', asyncHandler(async (req, res) => {
-  // Express 5 命名通配符把捕获值作为路径段数组返回（如 ['sub', 'run.log']），
-  // join 还原为相对路径后交给日志读取边界。
-  const filePath = req.params.filePath.join('/');
-  const lines = resolveBoundedInteger(req.query.lines, {
-    defaultValue: 1000,
-    min: 1,
-    max: MAX_LOG_FILE_LINES
-  });
-  // Express 已对路径参数完成一次 URL 解码；这里不再二次解码，
-  // 否则字面 %20 文件名会被错误转换，结尾为 % 的名字（如 100%.log）会抛 URIError。
-  return sendSuccess(res, req, await readLogFile(filePath, lines));
-}));
-
-router.post('/logs/cleanup', asyncHandler(async (req, res) => {
-  const maxSizeMB = Number(req.body?.maxSizeMB ?? 10);
-  if (!Number.isFinite(maxSizeMB) || maxSizeMB < 1 || maxSizeMB > 1024) {
-    return sendError(res, req, agentError(
-      'AGENT_VALIDATION_LOG_SIZE_INVALID',
-      '日志保留上限必须在 1 到 1024 MB 之间',
-      { statusCode: 400, details: { maxSizeMB: req.body?.maxSizeMB } }
-    ));
-  }
-  const result = await cleanupLogs(maxSizeMB);
-  return sendSuccess(res, req, result, `已清理 ${result.deletedCount} 个日志文件，释放 ${(result.freedSpace / 1024 / 1024).toFixed(2)} MB 空间`);
-}));
+// 日志读取与清理由独立 router 承担；清空/清理仍属运行数据维护，
+// 不能因迁出 agent.js 而当作无副作用接口。
+router.use(agentLogRoutes);
 
 router.get('/config/maa/:profileName', asyncHandler(async (req, res) => {
   return sendSuccess(res, req, await getConfig(req.params.profileName));
@@ -418,41 +214,12 @@ router.get('/activity/copilot-candidates', asyncHandler(async (req, res) => {
 }));
 
 // 执行路由与 Run 生命周期适配由独立 router 承担；此处按原注册顺序挂载，
-// agent.js 只保留读取、配置与维护入口。
+// agent.js 只保留领域 router 聚合、配置与维护入口。
 router.use(agentExecutionRoutes);
 
-router.get('/stages/open-today', asyncHandler(async (_req, res) => {
-  return sendSuccess(res, _req, getTodayOpenStages(), '已获取今日开放日常关卡');
-}));
-
-router.get('/drops/today', asyncHandler(async (req, res) => {
-  const result = await getTodayDrops();
-  return sendSuccess(res, req, result.data || result, result.message || '操作成功');
-}));
-
-router.get('/drops/recent', asyncHandler(async (req, res) => {
-  const days = resolveBoundedInteger(req.query.days, {
-    defaultValue: 7,
-    min: 1,
-    max: MAX_DROP_HISTORY_DAYS
-  });
-  const result = await getRecentDrops(days);
-  return sendSuccess(res, req, result.data || result, result.message || '操作成功');
-}));
-
-router.get('/drops/statistics', asyncHandler(async (req, res) => {
-  const days = resolveBoundedInteger(req.query.days, {
-    defaultValue: 7,
-    min: 1,
-    max: MAX_DROP_HISTORY_DAYS
-  });
-  const result = await getDropStatistics(days);
-  return sendSuccess(res, req, result.data || result, result.message || '操作成功');
-}));
-
-router.get('/data/depot', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await getDepotData());
-}));
+// 今日关卡、掉落与本地游戏数据读取由独立 router 承担；识别动作仍留在
+// 动作入口，读取路由不解析 MAA 日志或更新缓存。
+router.use(agentDataRoutes);
 
 router.post('/actions/depot-recognition', asyncHandler(async (req, res) => {
   const plan = {
@@ -465,10 +232,6 @@ router.post('/actions/depot-recognition', asyncHandler(async (req, res) => {
   return sendSuccess(res, req, await parseDepotData(), '仓库识别完成');
 }));
 
-router.get('/data/operbox', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await getOperBoxData());
-}));
-
 router.post('/actions/operbox-recognition', asyncHandler(async (req, res) => {
   const plan = {
     action: 'operbox-recognition',
@@ -478,10 +241,6 @@ router.post('/actions/operbox-recognition', asyncHandler(async (req, res) => {
     return sendDryRun(res, req, plan);
   }
   return sendSuccess(res, req, await parseOperBoxData(), '干员识别完成');
-}));
-
-router.get('/data/operators', asyncHandler(async (req, res) => {
-  return sendSuccess(res, req, await getAllOperators());
 }));
 
 router.get('/changelog/core', asyncHandler(async (req, res) => {
