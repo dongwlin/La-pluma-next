@@ -10,7 +10,7 @@ import express from 'express';
 import agentRouter from '../agent.ts';
 import { createAgentNotificationRoutes } from '../agentNotificationRoutes.ts';
 import type { AgentNotificationRouteDependencies } from '../agentNotificationRoutes.ts';
-import { createLaPlumaApp } from '../../server.ts';
+import { createLaPlumaApp } from '../../app.ts';
 import {
   parseChannelTestBody,
   parseNotificationConfigBody,

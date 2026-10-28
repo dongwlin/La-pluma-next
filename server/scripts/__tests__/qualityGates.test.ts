@@ -100,7 +100,8 @@ describe('layer direction', () => {
     assert.deepEqual(violations, []);
   });
 
-  it('classifies every production directory and the entry file', () => {
+  it('classifies every production directory and the entry files', () => {
+    assert.equal(layerOf('app.ts'), 'entry');
     assert.equal(layerOf('server.ts'), 'entry');
     assert.equal(layerOf('utils/logger.ts'), 'utils');
     assert.equal(layerOf('config/paths.ts'), 'config');

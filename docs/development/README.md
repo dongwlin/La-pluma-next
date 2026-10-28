@@ -8,7 +8,7 @@
 
 - **前端**: React Hooks 与原生语义组件实现页面壳层和响应式 chrome，Tailwind CSS v4（`@tailwindcss/vite`）/语义 token 负责业务布局，Framer Motion 负责物理动效，Zustand 管理跨页面状态
 - **API**: 前端通过 `client/src/shared/api/` 的传输层底座（`API_BASE_URL`、`fetchWithAuth`、`parseJsonResponse`、`getErrorMessage`）访问 `/api/agent/*`；业务端点按语义归各 `features/<domain>/api/`，跨域共用的命令执行与用户配置端点在 `features/task-execution/`、`features/user-config/` 两个微域，应用级 Run 观察与执行控制器也在 `task-execution`（见[前端执行客户端与控制器](../architecture/execution-client.md)）
-- **后端**: `server/server.ts` 挂载 Agent API；执行进度与状态由 `/api/agent` 轮询读取，浏览器实时预览经同源 `/webrtc-signaling` 网关；执行身份与生命周期见 [执行身份与生命周期契约](../architecture/execution-lifecycle.md)
+- **后端**: `server/app.ts` 装配并挂载 Agent API，`server/server.ts` 负责 HTTP 传输与启动；执行进度与状态由 `/api/agent` 轮询读取，浏览器实时预览经同源 `/webrtc-signaling` 网关；执行身份与生命周期见 [执行身份与生命周期契约](../architecture/execution-lifecycle.md)
 - **MAA 集成**: 通过 Node.js 子进程调用 `maa` CLI 命令
 - **定时任务**: 使用 node-cron 实现任务调度
 - **通知服务**: Telegram Bot API + 任务完成通知

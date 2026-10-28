@@ -4,7 +4,7 @@ import { createServer, type RequestListener, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
-import { createLaPlumaApp } from '../server.ts'
+import { createLaPlumaApp } from '../app.ts'
 import { createUserConfigStorage } from '../services/configStorageService.ts'
 import type { UserConfigStorage, UserConfigStore } from '../services/configStorageService.ts'
 

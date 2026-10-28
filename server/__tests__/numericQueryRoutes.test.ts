@@ -48,7 +48,7 @@ process.env.FAKE_MAA_LOG_DIR = maaLogDir;
 process.env.LA_PLUMA_DROP_RECORDS_DIR = dropDir;
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
-const { createLaPlumaApp } = await import('../server.ts');
+const { createLaPlumaApp } = await import('../app.ts');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { setTaskStatus, clearRealtimeLogs } = await import('../services/maaProcessService.ts');
 

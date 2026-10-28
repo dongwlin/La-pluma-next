@@ -12,7 +12,7 @@ const tempDir = await mkdtemp(join(tmpdir(), 'la-pluma-quotes-persistence-'))
 const quotesPath = join(tempDir, 'operatorQuotes.json')
 process.env.LA_PLUMA_OPERATOR_QUOTES_STORE = quotesPath
 
-const { createLaPlumaApp } = await import('../server.ts')
+const { createLaPlumaApp } = await import('../app.ts')
 
 /** 台词响应/存储条目：旧契约允许新增草稿缺少 operatorId。 */
 interface StoredQuoteEntry {

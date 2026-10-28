@@ -9,10 +9,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
-import {
-  createLaPlumaApp,
-  startLaPlumaServer
-} from '../server.ts'
+import { createLaPlumaApp } from '../app.ts'
+import { startLaPlumaServer } from '../server.ts'
 import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH

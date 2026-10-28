@@ -6,7 +6,8 @@
 
 | 位置 | 修改边界 |
 | --- | --- |
-| `server.ts` | HTTP/HTTPS、认证、生产静态资源、WebRTC 信令网关与启动初始化 |
+| `app.ts` | Express 应用装配：CORS、请求 id、认证与限流、信令登录入口、生产静态资源与路由挂载；`createLaPlumaApp` 是唯一组装入口 |
+| `server.ts` | HTTP/HTTPS 传输、WebRTC 信令网关挂载、启动初始化与关闭处理 |
 | `routes/` | 请求归一化、校验、响应与执行入口；`agent.ts` 只做契约文档与领域 router 聚合，tracked 执行、流程/作业集与目标停止在 `agentExecution.ts`（请求 DTO 在 `executionDto.ts`），状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentStatusRoutes.ts`、`agentLogRoutes.ts`、`agentDataRoutes.ts`（请求 DTO 在 `readDto.ts`，设备探测适配在 `deviceStatus.ts`）、`agentTrainingRoutes.ts`（请求 DTO 在 `trainingDto.ts`）、`agentPreviewRoutes.ts`（请求 DTO 在 `previewDto.ts`）、`agentNotificationRoutes.ts`（请求 DTO 在 `notificationDto.ts`）、`agentMaintenanceRoutes.ts`（请求 DTO 在 `maintenanceDto.ts`） |
 | `services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
 | `config/`、`utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
@@ -61,7 +62,7 @@
 | `explicit-any` | 不新增显式 `any` | 超出基线即失败 |
 | `suppression-directive` | 不使用 `@ts-` 抑制指令 | 超出基线即失败 |
 | `double-assertion` | 不写经 `any` / `unknown` 的双重断言 | 超出基线即失败 |
-| `layer-inversion` | `utils` / `config` → `services` → `routes` → `server.ts` 单向；`scripts` 可调用业务代码，业务代码不得依赖 `scripts` | 直接失败 |
+| `layer-inversion` | `utils` / `config` → `services` → `routes` → `app.ts` / `server.ts` 单向；`scripts` 可调用业务代码，业务代码不得依赖 `scripts` | 直接失败 |
 | `import-cycle` | 静态 `import` / `export ... from` 不得成环 | 直接失败 |
 | `unlayered-file` | 新增顶层模块或目录必须先归入既有层 | 直接失败 |
 

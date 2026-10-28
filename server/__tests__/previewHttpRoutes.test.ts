@@ -84,7 +84,7 @@ process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
 process.env.LA_PLUMA_WEBRTC_PORT = '45871';
 process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
-const { createLaPlumaApp } = await import('../server.ts');
+const { createLaPlumaApp } = await import('../app.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
 // 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。

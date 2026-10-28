@@ -4,7 +4,7 @@
  * 只做静态事实判断，不运行服务端、不启动子进程：
  * - 类型逃生舱：显式 `any`、TypeScript 抑制指令（`@ts-` 系列注释）、经
  *   `any` / `unknown` 的双重断言；
- * - 分层方向：`utils` / `config` → `services` → `routes` → `server.ts` 单向，
+ * - 分层方向：`utils` / `config` → `services` → `routes` → `app.ts` / `server.ts` 单向，
  *   `scripts/` 只作为工具入口，生产模块不得反向依赖它；
  * - 静态导入环：静态 `import` / `export ... from` 形成的环（动态 `import()` 是
  *   有意的延迟加载断环手段，不在本检查范围，见 docs）；
@@ -117,9 +117,12 @@ export function isTestFile(filePath: string): boolean {
   return /(?:^|\/)__tests__\//.test(filePath);
 }
 
-/** 返回文件所属层；顶层入口只允许 `server.ts`。 */
+/** 顶层入口模块：`app.ts` 只做应用装配，`server.ts` 负责传输与启动。 */
+const ENTRY_MODULES: ReadonlySet<string> = new Set(['app.ts', 'server.ts']);
+
+/** 返回文件所属层；顶层入口只允许 `app.ts` 与 `server.ts`。 */
 export function layerOf(filePath: string): Layer | undefined {
-  if (filePath === 'server.ts') return 'entry';
+  if (ENTRY_MODULES.has(filePath)) return 'entry';
   for (const [prefix, layer] of LAYER_DIRECTORIES) {
     if (filePath.startsWith(prefix)) return layer;
   }
@@ -319,7 +322,7 @@ export function analyzeSources(files: readonly SourceFile[]): GuardrailViolation
         'unlayered-file',
         file.path,
         1,
-        '文件未归入 utils/config/services/routes/scripts 或 server.ts 入口；先确定所属层再新增模块'
+        '文件未归入 utils/config/services/routes/scripts 或 app.ts/server.ts 入口；先确定所属层再新增模块'
       );
     }
 

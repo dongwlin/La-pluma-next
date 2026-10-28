@@ -5,7 +5,8 @@ import type { RequestListener, Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
-import { createLaPlumaApp, startLaPlumaServer } from '../server.ts'
+import { createLaPlumaApp } from '../app.ts'
+import { startLaPlumaServer } from '../server.ts'
 import {
   initializeAgentRunStore,
   shutdownAgentRunStoreForTests

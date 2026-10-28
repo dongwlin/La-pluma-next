@@ -72,7 +72,7 @@ process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
 process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
 
-const { createLaPlumaApp } = await import('../server.ts');
+const { createLaPlumaApp } = await import('../app.ts');
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 

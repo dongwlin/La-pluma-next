@@ -30,7 +30,7 @@ if (args.includes('--slow')) await delay(120);
 process.exitCode = 0;
 `, { mode: 0o755 })
 
-const { createLaPlumaApp } = await import('../server.ts')
+const { createLaPlumaApp } = await import('../app.ts')
 const { executeTrackedAgentAction } = await import('../routes/agentExecution.ts')
 const operatorTraining = (await import('../services/operatorTrainingService.ts')).default
 const {

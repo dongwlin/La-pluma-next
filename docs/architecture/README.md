@@ -132,7 +132,8 @@ La-pluma-next/
 │   │   └── configStorageService.ts # 配置存储
 │   ├── data/                  # 用户配置数据
 │   │   └── user-configs/      # 任务配置 JSON 文件
-│   └── server.ts              # 服务器入口
+│   ├── app.ts                 # Express 应用装配（中间件与路由挂载）
+│   └── server.ts              # 服务器入口（HTTP/HTTPS 传输与启动）
 ├── pnpm-workspace.yaml        # pnpm 工作区配置
 ├── pnpm-lock.yaml             # 统一依赖锁文件
 ├── package.json               # 根目录脚本（pnpm workspace 入口）

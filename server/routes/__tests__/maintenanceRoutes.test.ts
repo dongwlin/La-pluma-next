@@ -93,7 +93,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
 process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(fixtureDir, 'activity-copilot-progress.json');
 
-const { createLaPlumaApp } = await import('../../server.ts');
+const { createLaPlumaApp } = await import('../../app.ts');
 const {
   parseAutoUpdateBody,
   parseCopilotPlanQuery,
