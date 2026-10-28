@@ -1,0 +1,249 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { createScheduleFlowExecutor } from '../scheduleFlowExecution.js';
+import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from '../scheduleFlowPlan.js';
+import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from '../scheduleFlowResult.js';
+
+const silentLogger = {
+  info() {},
+  warn() {},
+  error() {},
+  debug() {},
+  success() {}
+};
+
+function createPorts(overrides = {}) {
+  const calls = {
+    commands: [],
+    dynamicTasks: [],
+    checkpoints: 0,
+    reads: 0,
+    notifications: [],
+    drops: [],
+    refreshes: [],
+    leases: []
+  };
+
+  const ports = {
+    executeCommand: async (command, args, taskName) => {
+      calls.commands.push({ command, args, taskName });
+      return { stdout: '', stderr: '' };
+    },
+    executeDynamicTask: async (taskId, taskConfig, taskName) => {
+      calls.dynamicTasks.push({ taskId, taskConfig, taskName });
+      return { stdout: '', stderr: '' };
+    },
+    createLogCheckpoint: async () => {
+      calls.checkpoints += 1;
+      return { position: calls.checkpoints };
+    },
+    readLogSince: async checkpoint => {
+      calls.reads += 1;
+      return `log-${checkpoint.position}`;
+    },
+    resolveConnection: async () => ({ adbPath: 'adb', address: '127.0.0.1:5555' }),
+    testConnection: async () => ({ success: true }),
+    getGameClientState: async () => ({ running: true, foregroundPackage: 'com.hypergryph.arknights' }),
+    captureScreen: async () => ({ image: 'fake-image' }),
+    replaceActivityCode: async stage => stage,
+    isStageOpenToday: () => ({ isOpen: true }),
+    shouldCaptureNotificationScreenshot: () => false,
+    sendCompletionNotification: async payload => {
+      calls.notifications.push(payload);
+    },
+    recordDrops: async payload => {
+      calls.drops.push(payload);
+    },
+    parseDepotData: async () => ({ success: true, itemCount: 0 }),
+    refreshSmartTrainingStages: async scheduleId => {
+      calls.refreshes.push(scheduleId);
+    },
+    withExecutionLease: async (context, run) => {
+      calls.leases.push(context);
+      return run();
+    },
+    ...overrides
+  };
+
+  return { ports, calls };
+}
+
+async function waitForCondition(predicate, { timeout = 5_000, interval = 5 } = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const value = await predicate();
+    if (value) return value;
+    await new Promise(resolve => setTimeout(resolve, interval));
+  }
+  throw new Error('condition not met before timeout');
+}
+
+describe('schedule flow boundaries', () => {
+  it('plans commands and aggregates results without device, storage or notification ports', () => {
+    const plan = buildScheduledTaskFlowPlan([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: '1-7', times: 3, drops: '30011=10' }
+      },
+      {
+        id: 'recruit-1',
+        commandId: 'recruit',
+        name: '自动公招',
+        enabled: true,
+        taskType: 'Recruit',
+        params: { times: '4' }
+      }
+    ]);
+
+    assert.equal(plan.success, true);
+    assert.equal(plan.totalSteps, 2);
+    assert.deepEqual(plan.steps[0].args, ['1-7:3', '-D30011=10']);
+    assert.equal(plan.steps[1].command, 'run');
+    assert.equal(plan.steps[1].dynamicTask, true);
+
+    assert.deepEqual(validateScheduledTaskFlow(null), { success: false, message: '任务流程格式无效' });
+    assert.equal(validateScheduledTaskFlow([{ id: 'fight-1', commandId: 'fight', params: { drops: 'bad' } }]).success, false);
+
+    const summary = parseTaskSummary('理智作战', 'Fight 1-7 3 times, total drops: 龙门币 × 252');
+    assert.equal(summary.stage, '1-7');
+    assert.equal(summary.times, '3');
+    assert.deepEqual(summary.dropItems, [{ name: '龙门币', count: 252 }]);
+
+    const { reportResults } = getFightReportResults(
+      { params: { report_to_penguin: true } },
+      '1-7',
+      { stdout: 'Fight 1-7 3 times', stderr: '' }
+    );
+    assert.deepEqual(reportResults, [{
+      provider: 'penguin',
+      stage: '1-7',
+      status: 'success',
+      message: '已汇报至企鹅物流'
+    }]);
+
+    const outcome = buildFlowExecutionOutcome({
+      successCount: 1,
+      failedCount: 2,
+      skippedCount: 0,
+      durationMs: 1_000,
+      wasStopped: false,
+      summaries: [],
+      reports: [{ provider: 'penguin', status: 'failed' }],
+      actions: [],
+      errors: [],
+      warnings: [],
+      taskResults: []
+    });
+    assert.equal(outcome.completionMessage, '任务流程执行完成，1 项掉落汇报失败');
+    assert.equal(outcome.executionSummary.failedCount, 2);
+
+    const baseOutcome = {
+      successCount: 0,
+      failedCount: 2,
+      skippedCount: 0,
+      durationMs: 0,
+      wasStopped: false,
+      summaries: [],
+      reports: [],
+      actions: [],
+      errors: [],
+      warnings: [],
+      taskResults: []
+    };
+    assert.equal(
+      buildFlowExecutionOutcome({ ...baseOutcome, wasStopped: true }).completionMessage,
+      '任务流程已被用户终止'
+    );
+    assert.equal(
+      buildFlowExecutionOutcome(baseOutcome).completionMessage,
+      '任务流程执行完成，2 项任务失败'
+    );
+    assert.equal(
+      buildFlowExecutionOutcome({ ...baseOutcome, failedCount: 0 }).completionMessage,
+      '任务流程执行完成'
+    );
+  });
+
+  it('refuses to create an executor without the required ports', () => {
+    assert.throws(
+      () => createScheduleFlowExecutor({ ports: {}, logger: silentLogger }),
+      /缺少执行端口/
+    );
+  });
+
+  it('runs steps through injected ports and keeps success, skipped and failed apart', async () => {
+    const { ports, calls } = createPorts({
+      executeCommand: async (command, args, taskName) => {
+        calls.commands.push({ command, args, taskName });
+        if (command === 'throw') throw new Error('命令执行失败');
+        return { stdout: '', stderr: '' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const taskFlow = [
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } },
+      { id: 'infrast-1', commandId: 'infrast', name: '基建换班', enabled: true, params: { facility: [] } },
+      { id: 'broken-1', commandId: 'throw', name: '失败任务', enabled: true, params: {} }
+    ];
+
+    const result = await executor.execute(taskFlow, 'flow-ports');
+
+    assert.equal(result.success, true);
+    assert.equal(result.stopped, false);
+    assert.equal(result.summary.successCount, 1);
+    assert.equal(result.summary.skippedCount, 1);
+    assert.equal(result.summary.failedCount, 1);
+    assert.deepEqual(result.summary.taskResults.map(task => task.status), ['success', 'skipped', 'failed']);
+
+    assert.equal(calls.checkpoints, 1);
+    assert.equal(calls.reads, 1);
+    assert.deepEqual(calls.commands.map(call => call.command), ['award', 'throw']);
+    assert.equal(calls.leases.length, 1);
+    assert.equal(calls.leases[0].source, 'schedule');
+
+    assert.equal(calls.refreshes.length, 1);
+    assert.equal(calls.refreshes[0], 'flow-ports');
+    assert.equal(calls.notifications.length, 1);
+    assert.equal(calls.notifications[0].totalTasks, 3);
+    assert.equal(calls.notifications[0].successTasks, 1);
+    assert.equal(calls.notifications[0].failedTasks, 1);
+    assert.equal(calls.notifications[0].skippedTasks, 1);
+
+    const status = executor.getStatus();
+    assert.equal(status.isRunning, false);
+    assert.equal(status.scheduleId, null);
+    assert.deepEqual(status.lastResult, result.summary);
+  });
+
+  it('keeps a single execution owner and stops before the next step', async () => {
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const taskFlow = [
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } },
+      { id: 'award-2', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ];
+
+    const execution = executor.execute(taskFlow, 'flow-stop');
+    await waitForCondition(() => calls.commands.length === 1 && executor.getStatus().currentStep === 0);
+
+    const duplicate = await executor.execute(taskFlow, 'flow-stop-duplicate');
+    assert.deepEqual(duplicate, { success: false, message: '已有任务流程正在执行' });
+
+    assert.equal(executor.stop(), true);
+    const result = await execution;
+
+    assert.equal(result.stopped, true);
+    assert.equal(result.summary.successCount, 1);
+    assert.deepEqual(result.summary.taskResults.map(task => task.status), ['success', 'pending']);
+    assert.equal(calls.commands.length, 1, 'the queued task must not start after the stop');
+    assert.equal(calls.notifications.length, 0, 'stopped flows skip the completion notification');
+
+    const status = executor.getStatus();
+    assert.equal(status.isRunning, false);
+    assert.equal(status.shouldStop, false);
+    assert.equal(status.message, '任务流程已被用户终止');
+  });
+});
