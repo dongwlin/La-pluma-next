@@ -113,7 +113,7 @@ La-pluma-next/
 │   │   ├── scheduleExecutionPorts.js # 设备、通知与存储适配的端口组装
 │   │   ├── scheduleTriggerService.js # cron 触发源注册、替换与自动更新作业
 │   │   ├── scheduleSmartTrainingService.js # 流程结束后的智能养成关卡回写
-│   │   ├── notificationService.js # 通知服务
+│   │   ├── notificationService.ts # 通知配置、格式化与渠道发送
 │   │   ├── operatorTrainingService.js # 养成领域接口：候选、队列命令、计划入口与数据抓取
 │   │   ├── operatorTrainingModel.js # 设置归一化、候选投影与材料需求（纯函数）
 │   │   ├── operatorTrainingPlan.js # 配方展开、掉落估算与刷取计划

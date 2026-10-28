@@ -186,7 +186,7 @@ import { createLogger } from '../utils/logger.ts';
 - ✅ `dropRecordService.js` - 已重构
 - ✅ `dataParserService.js` - 已重构
 - ✅ `operatorTrainingService.js` - 已按职责拆分到模型、计划、存储与应用同步
-- ⏳ `notificationService.js` - 待重构（日志优化）
+- ✅ `notificationService.ts` - 已完成类型化（配置解析、格式化与渠道发送）
 - ✅ `schedulerService.js` - 已按职责拆分到流程计划、执行、触发源与养成回写
 - ✅ `maaProcessService.ts` 等 MAA 模块 - 已按职责拆分并完成类型化（进程、执行、配置、设备、日志、活动、任务缓存）
 
