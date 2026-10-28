@@ -261,7 +261,9 @@ export const createViteConfig = (basePath: string): UserConfig => ({
       },
       '/webrtc-signaling': {
         target: 'http://localhost:3000',
-        changeOrigin: true,
+        // 保留浏览器看到的 Host：信令票据入口在无令牌模式下按 Origin/Host
+        // 主机名限制签发来源，改写 Host 会把同一页面的请求误判为跨源。
+        changeOrigin: false,
         ws: true,
       }
     }
