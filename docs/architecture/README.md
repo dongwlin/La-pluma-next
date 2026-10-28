@@ -94,7 +94,8 @@ La-pluma-next/
 │   │   ├── trainingDto.ts     # 养成请求按端点收窄与候选/计数响应载荷
 │   │   ├── agentPreviewRoutes.ts # 截图、WebRTC、方向与设备采样预览适配
 │   │   ├── previewDto.ts      # 预览设备/方向/dryRun 请求收窄与截图/状态载荷
-│   │   ├── agentNotificationRoutes.js # 通知频道配置、测试与发送适配
+│   │   ├── agentNotificationRoutes.ts # 通知频道配置、测试与发送适配
+│   │   ├── notificationDto.ts # 通知请求收窄、保存/应用结果与响应载荷
 │   │   ├── agentMaintenanceRoutes.js # 连接/profile、资源与核心更新、定时配置及维护动作
 │   │   ├── deviceStatus.js    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.js # 请求级连接覆盖解析
