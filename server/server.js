@@ -32,8 +32,8 @@ import { createSignalingLoginGuard } from './services/signalingLoginGuard.ts';
 import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
-} from './services/webrtcSignalingGateway.js';
-import { attachWebrtcPreviewToLifecycle } from './services/webrtcService.js';
+} from './services/webrtcSignalingGateway.ts';
+import { attachWebrtcPreviewToLifecycle } from './services/webrtcService.ts';
 import { resolveWebrtcCredentials } from './config/webrtcCredentials.ts';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
 import { createOptionalApiAuth } from './utils/apiTokenAuth.ts';

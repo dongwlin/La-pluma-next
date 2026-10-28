@@ -12,7 +12,7 @@ import {
   stopWebrtc,
   getWebrtcDevices,
   DEFAULT_DEVICE_ID
-} from '../services/webrtcService.js';
+} from '../services/webrtcService.ts';
 import { getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.js';
 import {
   asyncHandler,
@@ -21,7 +21,7 @@ import {
   sendDryRun
 } from '../utils/apiHelper.ts';
 import { resolveRequestConnection } from './requestConnection.js';
-import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js';
+import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 
 /**

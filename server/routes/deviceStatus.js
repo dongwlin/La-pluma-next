@@ -6,7 +6,7 @@ import {
   isWebrtcServerReachable,
   DEFAULT_DEVICE_ADDRESS,
   WEBRTC_PORT
-} from '../services/webrtcService.js';
+} from '../services/webrtcService.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 
 /**

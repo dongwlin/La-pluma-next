@@ -82,7 +82,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
 process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(fixtureDir, 'activity-copilot-progress.json');
 
-const { WEBRTC_SIGNALING_PATH } = await import('../../services/webrtcSignalingGateway.js');
+const { WEBRTC_SIGNALING_PATH } = await import('../../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../../server.js');
 const { default: agentRouter } = await import('../agent.js');
 const agentExecutionRoutes = (await import('../agentExecution.js')).default;

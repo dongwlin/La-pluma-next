@@ -11,7 +11,7 @@ import {
 } from '../services/agentRunService.ts'
 import { createRuntimeLifecycle } from '../services/runtimeLifecycleService.ts'
 import { createRuntimeReadinessTracker } from '../services/runtimeReadinessService.ts'
-import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
+import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.ts'
 
 const servers = []
 const tempDirs = []

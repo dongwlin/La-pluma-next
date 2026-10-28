@@ -86,7 +86,7 @@ process.env.LA_PLUMA_MAA_LOCK_FILE = join(fixtureDir, 'maa-execution.lock');
 process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
 process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
-const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.js');
+const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../server.js');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { loggerManager } = await import('../utils/logger.ts');

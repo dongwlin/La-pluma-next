@@ -48,7 +48,7 @@ await symlink(outsideDir, join(maaLogDir, 'sub-alias'));
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_LOG_DIR = maaLogDir;
 
-const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.js');
+const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../server.js');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
