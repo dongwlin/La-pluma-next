@@ -21,7 +21,7 @@
 修改设备执行、Run、停止或调度前，先阅读延伸阅读中的生命周期契约。
 
 - Run 负责执行身份与终态；`maaProcessService` 的子进程状态、调度步骤和设备租约是不同投影。子进程 idle、HTTP 结束或读取失败不能直接作为整个流程完成的依据。
-- 设备变更复用 `executionCoordinatorService.js` 的租约；保持获得租约后、产生设备副作用前的 `startAgentRunForExecution` 门禁。后台执行不能在返回接受响应时释放租约或写成功终态；须由实际进程退出结果收尾。
+- 设备变更复用 `executionCoordinatorService.ts` 的租约；保持获得租约后、产生设备副作用前的 `startAgentRunForExecution` 门禁。后台执行不能在返回接受响应时释放租约或写成功终态；须由实际进程退出结果收尾。
 - 按 `runId` 停止必须保留目标校验、重复停止和旧终态保护，避免旧请求停止后续执行；流程停止后不得启动下一步。
 - 解析 MAA 回调时复用 `maaCallbackService.js`，按 `taskchain` 过滤结构化载荷并容忍不完整行。调度中的回调结果读取使用执行前检查点与增量日志，不能把旧任务日志算入当前结果；领域结果中的 `skipped`、`failed` 与 `success` 不可混同。
 
