@@ -32,10 +32,10 @@ const { executeTrackedAgentAction } = await import('../routes/agent.js')
 const operatorTraining = (await import('../services/operatorTrainingService.js')).default
 const {
   clearRealtimeLogs,
-  execMaaCommand,
   getRealtimeLogs,
   getTaskStatus
-} = await import('../services/maaService.js')
+} = await import('../services/maaProcessService.ts')
+const { execMaaCommand } = await import('../services/maaExecutionService.ts')
 const { getMaaExecutionLeaseSnapshot } = await import('../services/executionCoordinatorService.ts')
 const { executeScheduledTaskFromCron } = await import('../services/schedulerService.js')
 const {

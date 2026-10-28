@@ -1,12 +1,12 @@
 import express from 'express';
-import { clearRealtimeLogs, getRealtimeLogs, MAX_REALTIME_LOG_LINES } from '../services/maaProcessService.js';
+import { clearRealtimeLogs, getRealtimeLogs, MAX_REALTIME_LOG_LINES } from '../services/maaProcessService.ts';
 import {
   cleanupLogs,
   getDebugScreenshots,
   getLogFiles,
   readLogFile,
   MAX_LOG_FILE_LINES
-} from '../services/maaLogFileService.js';
+} from '../services/maaLogFileService.ts';
 import {
   asyncHandler,
   agentError,

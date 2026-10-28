@@ -43,7 +43,8 @@ import {
   resetCopilotSetRunStateForTests,
   startManualCopilotSet
 } from '../copilotSetRunService.js';
-import { execMaaCommand, getTaskStatus } from '../maaService.js';
+import { execMaaCommand } from '../maaExecutionService.ts';
+import { getTaskStatus } from '../maaProcessService.ts';
 import { writeJsonFile } from '../../utils/fileHelper.ts';
 import { installShutdownHandlers, startLaPlumaServer } from '../../server.js';
 

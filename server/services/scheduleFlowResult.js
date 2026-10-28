@@ -1,4 +1,4 @@
-import { getMaaExecutionDiagnostics } from './maaProcessService.js';
+import { getMaaExecutionDiagnostics } from './maaProcessService.ts';
 
 // 流程结果聚合：从命令输出与任务日志提炼执行结果，不读取设备、存储或通知配置。
 // 纯函数便于脱离设备验证步骤结果与完成消息。

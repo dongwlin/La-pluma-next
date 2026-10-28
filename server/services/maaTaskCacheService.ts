@@ -7,12 +7,12 @@ import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 
 const execFilePromise = promisify(execFile);
 
-const LOCAL_RESOURCE_COMMANDS = new Set([
+const LOCAL_RESOURCE_COMMANDS: ReadonlySet<string> = new Set([
   'startup', 'closedown', 'fight', 'run', 'infrast', 'recruit', 'mall', 'award',
   'depot', 'operbox', 'roguelike', 'reclamation'
 ]);
 
-const RESOURCE_TARGETS = [
+const RESOURCE_TARGETS: readonly string[][] = [
   [],
   ['platform_diff', 'iOS', 'resource'],
   ...['YoStarEN', 'YoStarJP', 'YoStarKR', 'txwy'].map(client => ['global', client, 'resource'])
@@ -20,7 +20,7 @@ const RESOURCE_TARGETS = [
 
 // maa-cli 0.7.7 checks all clients, even when running a single Official stage.
 // Include the legacy task paths too, for CLI versions using flat task files.
-const HOT_UPDATE_FILES = [
+const HOT_UPDATE_FILES: readonly string[] = [
   'StageActivityV2.json',
   ...RESOURCE_TARGETS.flatMap(target => [
     join('resource', ...target, 'tasks', 'tasks.json'),
@@ -28,13 +28,31 @@ const HOT_UPDATE_FILES = [
   ])
 ];
 
-async function readCachedJson(path) {
+/** 私有任务缓存的对外形状：替换后的环境变量与清理入口。 */
+export interface MaaTaskCache {
+  env: NodeJS.ProcessEnv;
+  cleanup(): Promise<void>;
+}
+
+/** 缓存准备端口：CLI 路径与环境变量可覆盖，测试可用临时目录替代共享缓存。 */
+export interface MaaTaskCacheOptions {
+  cliPath?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+function errorCodeOf(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
+async function readCachedJson(path: string): Promise<string> {
   try {
     const content = await readFile(path, 'utf-8');
-    const value = JSON.parse(content);
+    const value: unknown = JSON.parse(content);
     if (value && typeof value === 'object' && !Array.isArray(value)) return content;
   } catch (error) {
-    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+    if (errorCodeOf(error) !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
   }
   // These are optional overlays. An empty object leaves installed resources intact.
   return '{}';
@@ -45,19 +63,21 @@ async function readCachedJson(path) {
  * keep maa-cli's mandatory startup updater local without marking the real cache
  * as remotely checked. Explicit update/activity/copilot commands keep their cache.
  */
-export async function prepareMaaTaskCache(command, {
+export async function prepareMaaTaskCache(command: string, {
   cliPath = DEFAULT_MAA_CLI_PATH,
   env = process.env
-} = {}) {
+}: MaaTaskCacheOptions = {}): Promise<MaaTaskCache | null> {
   if (!LOCAL_RESOURCE_COMMANDS.has(command)) return null;
 
-  const cacheDir = env.MAA_CACHE_DIR?.trim() || (await execFilePromise(
+  const cacheDir = env.MAA_CACHE_DIR?.trim() || String((await execFilePromise(
     cliPath, ['dir', 'cache'], { env }
-  )).stdout.trim();
+  )).stdout).trim();
   if (!cacheDir) throw new Error('无法获取 MAA 缓存目录');
 
   const taskCacheDir = await mkdtemp(join(tmpdir(), 'la-pluma-maa-task-'));
-  const cleanup = () => rm(taskCacheDir, { recursive: true, force: true });
+  const cleanup = async (): Promise<void> => {
+    await rm(taskCacheDir, { recursive: true, force: true });
+  };
 
   try {
     for (const file of HOT_UPDATE_FILES) {

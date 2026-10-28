@@ -1,9 +1,9 @@
 import { mkdir, readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
-import { execMaaCommand, execDynamicTask } from './maaExecutionService.js';
-import { getMaaConfigDir } from './maaConfigService.js';
-import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.js';
+import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
+import { getMaaConfigDir } from './maaConfigService.ts';
+import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { recordDrops } from './dropRecordService.js';
 import { createOutboundHttpClient } from './outboundRequestService.ts';

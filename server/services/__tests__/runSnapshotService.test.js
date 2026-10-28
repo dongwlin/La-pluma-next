@@ -10,7 +10,7 @@ import {
   resetAgentRunsForTests,
   startAgentRun
 } from '../agentRunService.ts'
-import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaService.js'
+import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
 import { buildAgentRunSnapshot } from '../runSnapshotService.js'
 import { loggerManager } from '../../utils/logger.ts'
 

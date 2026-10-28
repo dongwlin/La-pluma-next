@@ -1,6 +1,6 @@
 import express from 'express';
-import { execMaaCommand, execDynamicTask } from '../services/maaExecutionService.js';
-import { stopCurrentTask } from '../services/maaProcessService.js';
+import { execMaaCommand, execDynamicTask } from '../services/maaExecutionService.ts';
+import { stopCurrentTask } from '../services/maaProcessService.ts';
 import { executeScheduleNow, getScheduledTaskFlowPlan, stopScheduleExecution } from '../services/schedulerService.js';
 import { loadUserConfig } from '../services/configStorageService.ts';
 import { runCurrentActivityCopilots } from '../services/activityCopilotRunService.js';

@@ -47,7 +47,7 @@ test('passes prts URIs to the CLI', { skip: process.platform === 'win32' }, asyn
     else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLock;
     await rm(directory, { recursive: true, force: true });
   });
-  const { execMaaCommand } = await import('../maaService.js');
+  const { execMaaCommand } = await import('../maaExecutionService.ts');
   const result = await execMaaCommand('copilot', ['prts://12', 'prts://s34', '--loop-times', '1'], null, null, true, true);
   assert.deepEqual(JSON.parse(result.stdout), ['copilot', 'prts://12', 'prts://s34', '--loop-times', '1']);
   assert.match(result.command, /copilot prts:\/\/12 prts:\/\/s34/);

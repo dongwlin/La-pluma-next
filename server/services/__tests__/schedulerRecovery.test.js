@@ -11,7 +11,7 @@ import {
 } from '../schedulerService.js';
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
 import { buildAgentRunSnapshot } from '../runSnapshotService.js';
-import { getTaskStatus } from '../maaService.js';
+import { getTaskStatus } from '../maaProcessService.ts';
 import { getTodayOpenStages } from '../notificationService.js';
 
 let testDir;

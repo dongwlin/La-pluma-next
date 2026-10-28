@@ -1,7 +1,7 @@
 import { loadUserConfig } from './configStorageService.ts';
 import { findActivityCopilotCandidates } from './activityCopilotDiscoveryService.js';
 import { buildCopilotPlan, ensureCurrentMapActivityResource, executeCopilotPlan, executeSelectedCopilotEntries } from './copilotPlanService.js';
-import { getMaaConfigDir } from './maaConfigService.js';
+import { getMaaConfigDir } from './maaConfigService.ts';
 import { updateMaaResources } from './resourceUpdateService.js';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 import { createCopilotProgressStore } from './copilotProgressStore.js';

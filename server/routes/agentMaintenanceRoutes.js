@@ -1,10 +1,10 @@
 import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { execMaaCommand, getMaaVersion } from '../services/maaExecutionService.js';
-import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.js';
-import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.js';
-import { getCurrentActivity } from '../services/maaActivityService.js';
+import { execMaaCommand, getMaaVersion } from '../services/maaExecutionService.ts';
+import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.ts';
+import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
+import { getCurrentActivity } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.js';

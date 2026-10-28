@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { execMaaCommand } from './maaExecutionService.js';
+import { execMaaCommand } from './maaExecutionService.ts';
 import { updateMaaResources } from './resourceUpdateService.js';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';

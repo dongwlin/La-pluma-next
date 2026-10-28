@@ -7,7 +7,10 @@ import {
   parseMaaProfile,
   saveConfig,
   validateMaaProfileName
-} from '../maaService.js';
+} from '../maaConfigService.ts';
+
+// 与 maaConfigService 相同：stringify 的声明参数是内部 JsonMap，运行时接受任意表。
+const stringifyToml = TOML.stringify as (document: Record<string, unknown>) => string;
 
 const existingProfile = `
 profile_name = "daily"
@@ -27,13 +30,19 @@ auto_update = false
 touch_mode = "maatouch"
 `;
 
+function readTable(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
+
 test('MAA profile parser preserves native TOML value types', () => {
   const profile = parseMaaProfile(existingProfile);
+  const connection = readTable(profile.connection);
 
-  assert.equal(profile.connection.auto_reconnect, true);
-  assert.equal(profile.connection.retry_count, 3);
-  assert.deepEqual(profile.connection.ports, [5555, 16384]);
-  assert.equal(profile.resource.auto_update, false);
+  assert.equal(connection.auto_reconnect, true);
+  assert.equal(connection.retry_count, 3);
+  assert.deepEqual(connection.ports, [5555, 16384]);
+  assert.equal(readTable(profile.resource).auto_update, false);
 });
 
 test('connection updates preserve unknown profile sections and existing values', () => {
@@ -44,14 +53,15 @@ test('connection updates preserve unknown profile sections and existing values',
       auto_reconnect: false
     }
   });
-  const roundTrip = parseMaaProfile(TOML.stringify(merged));
+  const roundTrip = parseMaaProfile(stringifyToml(merged));
+  const connection = readTable(roundTrip.connection);
 
   assert.equal(roundTrip.profile_name, 'daily');
-  assert.equal(roundTrip.connection.adb_path, 'adb');
-  assert.equal(roundTrip.connection.address, '192.168.1.10:5555');
-  assert.equal(roundTrip.connection.auto_reconnect, false);
-  assert.equal(roundTrip.connection.retry_count, 3);
-  assert.deepEqual(roundTrip.connection.ports, [5555, 16384]);
+  assert.equal(connection.adb_path, 'adb');
+  assert.equal(connection.address, '192.168.1.10:5555');
+  assert.equal(connection.auto_reconnect, false);
+  assert.equal(connection.retry_count, 3);
+  assert.deepEqual(connection.ports, [5555, 16384]);
   assert.deepEqual(roundTrip.resource, { channel: 'beta', auto_update: false });
   assert.deepEqual(roundTrip.instance_options, { touch_mode: 'maatouch' });
 });

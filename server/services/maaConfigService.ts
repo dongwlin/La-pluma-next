@@ -4,7 +4,7 @@ import TOML from '@iarna/toml';
 import { createLogger } from '../utils/logger.ts';
 import { updateTextFile } from '../utils/fileHelper.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js';
-import { execMaaCommandUnlocked } from './maaProcessService.js';
+import { execMaaCommandUnlocked } from './maaProcessService.ts';
 
 /**
  * MAA profile 配置的读取与写入。
@@ -21,9 +21,30 @@ import { execMaaCommandUnlocked } from './maaProcessService.js';
 const logger = createLogger('MaaService');
 
 /**
+ * TOML 文档的 JSON 等价形状：表字段的值来自 TOML 解析或 HTTP 请求体，
+ * 在写出前保持 unknown，不复制第二套 TOML 值域。
+ */
+export type MaaProfileDocument = Record<string, unknown>;
+
+/** connection section 的读写形状；字段集合由 MAA profile 决定。 */
+export type MaaProfileConnection = Record<string, unknown>;
+
+/** TOML 默认导出把文档形状声明为未导出的内部 JsonMap；解析结果与之兼容。 */
+const parseToml: (text: string) => MaaProfileDocument = TOML.parse;
+/**
+ * stringify 的声明参数是内部 JsonMap（数组为同构联合），与运行时接受的
+ * 任意表不一致；只在库边界收窄一次，调用方仍按 MaaProfileDocument 使用。
+ */
+const stringifyToml = TOML.stringify as (document: MaaProfileDocument) => string;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
  * 获取 MAA 配置目录
  */
-export async function getMaaConfigDir() {
+export async function getMaaConfigDir(): Promise<string> {
   const result = await execMaaCommandUnlocked('dir', ['config']);
   return result.stdout;
 }
@@ -31,14 +52,14 @@ export async function getMaaConfigDir() {
 /**
  * 获取配置文件路径
  */
-export function validateMaaProfileName(profileName = 'default') {
+export function validateMaaProfileName(profileName: unknown = 'default'): string {
   if (typeof profileName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(profileName)) {
     throw new Error('连接配置名称不合法');
   }
   return profileName;
 }
 
-async function getConfigPath(profileName = 'default') {
+async function getConfigPath(profileName: unknown = 'default'): Promise<string> {
   const normalizedProfileName = validateMaaProfileName(profileName);
   const configDir = await getMaaConfigDir();
   const profilesDir = resolve(configDir.trim(), 'profiles');
@@ -49,24 +70,30 @@ async function getConfigPath(profileName = 'default') {
   return configPath;
 }
 
-export function parseMaaProfile(content) {
-  return TOML.parse(String(content || ''));
+export function parseMaaProfile(content: unknown): MaaProfileDocument {
+  return parseToml(String(content || ''));
 }
 
-export function mergeMaaProfileConnection(profileDocument = {}, config = {}) {
-  if (!profileDocument || typeof profileDocument !== 'object' || Array.isArray(profileDocument)) {
+export function mergeMaaProfileConnection(
+  profileDocument: unknown = {},
+  config: unknown = {}
+): MaaProfileDocument {
+  if (!isRecord(profileDocument)) {
     throw new TypeError('MAA profile 文档格式不合法');
+  }
+  if (!isRecord(config)) {
+    throw new TypeError('connection 配置格式不合法');
   }
 
   const connectionUpdates = Object.prototype.hasOwnProperty.call(config, 'connection')
     ? config.connection
     : config;
-  if (!connectionUpdates || typeof connectionUpdates !== 'object' || Array.isArray(connectionUpdates)) {
+  if (!isRecord(connectionUpdates)) {
     throw new TypeError('connection 配置格式不合法');
   }
 
   const existingConnection = profileDocument.connection;
-  if (existingConnection != null && (typeof existingConnection !== 'object' || Array.isArray(existingConnection))) {
+  if (existingConnection != null && !isRecord(existingConnection)) {
     throw new TypeError('现有 connection section 格式不合法');
   }
 
@@ -85,13 +112,14 @@ export function mergeMaaProfileConnection(profileDocument = {}, config = {}) {
 /**
  * 读取配置文件
  */
-export async function getConfig(profileName = 'default') {
+export async function getConfig(profileName: unknown = 'default'): Promise<MaaProfileConnection> {
   const normalizedProfileName = validateMaaProfileName(profileName);
   try {
     const configPath = await getConfigPath(normalizedProfileName);
     const content = await readFile(configPath, 'utf-8');
     const profile = parseMaaProfile(content);
-    return profile.connection || profile;
+    const connection = profile.connection;
+    return isRecord(connection) ? connection : profile;
   } catch {
     logger.debug('配置文件不存在，返回环境默认配置');
     return {
@@ -105,7 +133,7 @@ export async function getConfig(profileName = 'default') {
 /**
  * 保存配置文件
  */
-export async function saveConfig(profileName = 'default', config) {
+export async function saveConfig(profileName: unknown = 'default', config: unknown): Promise<void> {
   try {
     const normalizedProfileName = validateMaaProfileName(profileName);
     const configPath = await getConfigPath(normalizedProfileName);
@@ -116,10 +144,10 @@ export async function saveConfig(profileName = 'default', config) {
     await updateTextFile(configPath, currentContent => {
       const existingProfile = currentContent === null ? {} : parseMaaProfile(currentContent);
       const mergedProfile = mergeMaaProfileConnection(existingProfile, config);
-      return TOML.stringify(mergedProfile);
+      return stringifyToml(mergedProfile);
     });
     logger.debug('配置已保存', { configPath });
   } catch (error) {
-    throw new Error(`保存配置失败: ${error.message}`);
+    throw new Error(`保存配置失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

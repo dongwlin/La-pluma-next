@@ -1,7 +1,7 @@
-import { execMaaCommand, execDynamicTask } from './maaExecutionService.js';
-import { captureScreen, getGameClientState, testAdbConnection } from './maaDeviceService.js';
-import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.js';
-import { replaceActivityCode } from './maaActivityService.js';
+import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
+import { captureScreen, getGameClientState, testAdbConnection } from './maaDeviceService.ts';
+import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
+import { replaceActivityCode } from './maaActivityService.ts';
 import { resolveConnection } from './connectionService.js';
 import {
   sendTaskCompletionNotification,

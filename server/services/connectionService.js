@@ -1,4 +1,4 @@
-import { getConfig, validateMaaProfileName } from './maaConfigService.js'
+import { getConfig, validateMaaProfileName } from './maaConfigService.ts'
 import { agentError } from '../utils/apiHelper.ts'
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js'
 

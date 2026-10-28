@@ -3,15 +3,25 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import { captureScreen } from '../maaService.js';
+import { captureScreen } from '../maaDeviceService.ts';
 import { loggerManager } from '../../utils/logger.ts';
 
-const fixtureDirectories = [];
+const fixtureDirectories: string[] = [];
 const address = 'capture-device';
 const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 loggerManager.getLogger('MaaService').enableConsole = false;
 
-async function createAdbFixture({ hang = null, connected = true } = {}) {
+type AdbStep = 'devices' | 'connect' | 'screencap';
+
+interface AdbFixture {
+  adbPath: string;
+  pidPath: string;
+  callsPath: string;
+}
+
+async function createAdbFixture(
+  { hang = null, connected = true }: { hang?: AdbStep | null; connected?: boolean } = {}
+): Promise<AdbFixture> {
   const directory = await mkdtemp(join(tmpdir(), 'la-pluma-capture-'));
   fixtureDirectories.push(directory);
   const adbPath = join(directory, 'adb');
@@ -49,6 +59,11 @@ after(async () => {
   }
 });
 
+async function readAdbCalls(callsPath: string): Promise<unknown[]> {
+  const content = await readFile(callsPath, 'utf8');
+  return content.trim().split('\n').map(line => JSON.parse(line));
+}
+
 describe('captureScreen bounded ADB steps', () => {
   for (const connected of [true, false]) {
     it(`returns the captured image with an ${connected ? 'existing' : 'initially missing'} connection`, async () => {
@@ -56,7 +71,7 @@ describe('captureScreen bounded ADB steps', () => {
       const result = await captureScreen(fixture.adbPath, address);
       assert.equal(result.image, image.toString('base64'));
       assert.ok(Number.isFinite(Date.parse(result.timestamp)));
-      const calls = (await readFile(fixture.callsPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+      const calls = await readAdbCalls(fixture.callsPath);
       assert.deepEqual(calls, [
         ['devices'],
         ...connected ? [] : [['connect', address]],
@@ -69,13 +84,16 @@ describe('captureScreen bounded ADB steps', () => {
     ['devices', 3000, '检查设备'],
     ['connect', 5000, '连接设备'],
     ['screencap', 8000, '读取屏幕画面']
-  ]) {
+  ] as const) {
     it(`terminates an unresponsive ${step} process and rejects within its deadline`, { timeout: timeoutMs + 5000 }, async () => {
       const fixture = await createAdbFixture({ hang: step, connected: step !== 'connect' });
       const startedAt = Date.now();
       await assert.rejects(captureScreen(fixture.adbPath, address), error => {
+        assert.ok(error instanceof Error);
         assert.equal(error.message, `截图失败: ${message}超时（${timeoutMs}ms）`);
-        assert.equal(error.cause.signal, 'SIGKILL');
+        const cause: unknown = error.cause;
+        assert.ok(cause !== null && typeof cause === 'object' && 'signal' in cause);
+        assert.equal(cause.signal, 'SIGKILL');
         return true;
       });
       const elapsed = Date.now() - startedAt;

@@ -19,7 +19,8 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'log') {
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_LOG_DIR = fakeLogDir;
 
-const { getRealtimeLogs, readLogFile, isPathOutsideDir, setTaskStatus, clearRealtimeLogs } = await import('../maaService.js');
+const { getRealtimeLogs, setTaskStatus, clearRealtimeLogs } = await import('../maaProcessService.ts');
+const { readLogFile, isPathOutsideDir } = await import('../maaLogFileService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
@@ -79,7 +80,7 @@ describe('getRealtimeLogs numeric bounds', () => {
 
 describe('readLogFile numeric bounds', () => {
   const totalLines = 6000;
-  let logFilePath;
+  let logFilePath = '';
 
   before(async () => {
     await mkdir(fakeLogDir, { recursive: true });
@@ -90,7 +91,7 @@ describe('readLogFile numeric bounds', () => {
   });
 
   it('returns the default count for omitted, invalid and repeated input', async () => {
-    for (const lines of [undefined, 'abc', Number.NaN, ['1', '2']]) {
+    for (const lines of [undefined, 'abc', Number.NaN, ['1', '2']] as unknown[]) {
       const result = await readLogFile(logFilePath, lines);
       assert.equal(result.totalLines, totalLines);
       assert.equal(result.returnedLines, 1000);

@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { readFile, stat } from 'fs/promises';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { execMaaCommand } from './maaExecutionService.js';
+import { execMaaCommand } from './maaExecutionService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 
 const serviceDir = dirname(fileURLToPath(import.meta.url));

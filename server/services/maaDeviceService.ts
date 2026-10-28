@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import type { ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createConnection } from 'node:net';
 import { stat } from 'node:fs/promises';
@@ -21,7 +22,7 @@ const execFilePromise = promisify(execFile);
 
 const logger = createLogger('MaaService');
 
-const LOCAL_EMULATOR_ADDRESSES = [
+const LOCAL_EMULATOR_ADDRESSES: readonly string[] = [
   '127.0.0.1:16384',
   '127.0.0.1:5555',
   '127.0.0.1:7555',
@@ -34,8 +35,8 @@ const WINDOWS_EMULATOR_PROCESSES = [
   { names: ['Nox.exe', 'NoxVMHandle.exe'], label: '夜神模拟器', adbFiles: ['nox_adb.exe', 'adb.exe'] },
   { names: ['MuMuPlayer.exe', 'MuMuNxDevice.exe'], label: 'MuMu 模拟器', adbFiles: ['adb.exe', 'shell\\adb.exe'] },
   { names: ['MEmu.exe', 'MEmuHeadless.exe'], label: '逍遥模拟器', adbFiles: ['adb.exe', 'MEmuHyperv\\adb.exe'] }
-];
-const GAME_PACKAGES = {
+] as const;
+const GAME_PACKAGES: Readonly<Record<string, string>> = {
   Official: 'com.hypergryph.arknights',
   Bilibili: 'com.hypergryph.arknights.bilibili',
   YoStarEN: 'com.YoStarEN.Arknights',
@@ -44,7 +45,86 @@ const GAME_PACKAGES = {
   Txwy: 'tw.txwy.and.arknights'
 };
 
-function validateAdbPath(adbPath) {
+/** adb devices 报告的连接状态；未知状态不能当作可用。 */
+export type AdbDeviceState = 'device' | 'offline' | 'unauthorized' | 'unknown';
+
+/** 设备来源：当前 ADB、模拟器内置 ADB 或本机端口候选。 */
+export type AdbDeviceSource = 'adb' | 'emulator-adb' | 'local-port';
+
+/** 设备发现条目；候选状态为 `candidate`，不会被自动连接。 */
+export interface AdbDevice {
+  address: string;
+  state: AdbDeviceState | 'candidate';
+  details: string;
+  source: AdbDeviceSource;
+  adbPath?: string;
+  label?: string;
+}
+
+/** 模拟器内置 ADB 的安装位置。 */
+export interface AdbInstallation {
+  adbPath: string;
+  label: string;
+  source: 'emulator-adb';
+}
+
+/** 设备发现结果；失败时 error 说明原因，设备列表为空。 */
+export interface AdbDiscoveryResult {
+  success: boolean;
+  adbAvailable: boolean;
+  message: string;
+  devices: AdbDevice[];
+  candidates: AdbDevice[];
+  adbInstallations?: AdbInstallation[];
+  error?: string;
+}
+
+/** 游戏前台状态；running 只在期望包位于前台时为 true。 */
+export interface GameClientState {
+  running: boolean;
+  expectedPackage: string;
+  foregroundPackage: string | null;
+}
+
+/** ADB 连接测试结果；connected 只在确认设备可用时给出。 */
+export interface AdbConnectionResult {
+  success: boolean;
+  message: string;
+  connected?: boolean;
+  error?: string;
+  output?: string;
+}
+
+/** 截图结果：base64 图像与采集时间。 */
+export interface CapturedScreen {
+  image: string;
+  timestamp: string;
+}
+
+interface EmulatorProcess {
+  name: string;
+  executablePath: string;
+}
+
+interface AdbDeviceMetadata {
+  adbPath?: string;
+  label?: string;
+  source?: AdbDeviceSource;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isAdbDeviceState(value: string): value is AdbDeviceState {
+  return value === 'device' || value === 'offline' || value === 'unauthorized';
+}
+
+function validateAdbPath(adbPath: unknown): string {
   if (typeof adbPath !== 'string' || !adbPath.trim()) {
     throw new Error('ADB 路径不能为空');
   }
@@ -58,7 +138,7 @@ function validateAdbPath(adbPath) {
   return adbPath;
 }
 
-function validateAdbAddress(address) {
+function validateAdbAddress(address: unknown): string {
   if (typeof address !== 'string' || !address.trim()) {
     throw new Error('ADB 地址不能为空');
   }
@@ -69,15 +149,35 @@ function validateAdbAddress(address) {
   return address;
 }
 
-async function adbExec(adbPath, args, options = {}) {
-  validateAdbPath(adbPath);
-  return execFilePromise(adbPath, args, {
+/** 文本命令端口：输出按 utf8 读取；路径在进入子进程前校验。 */
+async function adbExecText(
+  adbPath: unknown,
+  args: readonly string[],
+  options: ExecFileOptions = {}
+): Promise<{ stdout: string; stderr: string }> {
+  const executable = validateAdbPath(adbPath);
+  return execFilePromise(executable, [...args], {
     maxBuffer: 50 * 1024 * 1024,
-    ...options
+    ...options,
+    encoding: 'utf8'
   });
 }
 
-function parseAdbDeviceList(output = '') {
+/** 二进制命令端口：截图按 buffer 读取原图。 */
+async function adbExecBuffer(
+  adbPath: unknown,
+  args: readonly string[],
+  options: ExecFileOptions
+): Promise<{ stdout: Buffer; stderr: Buffer }> {
+  const executable = validateAdbPath(adbPath);
+  return execFilePromise(executable, [...args], {
+    maxBuffer: 50 * 1024 * 1024,
+    ...options,
+    encoding: 'buffer'
+  });
+}
+
+function parseAdbDeviceList(output: unknown = ''): AdbDevice[] {
   return String(output)
     .split('\n')
     .map(line => line.trim())
@@ -94,26 +194,27 @@ function parseAdbDeviceList(output = '') {
 
       return {
         address,
-        state: ['device', 'offline', 'unauthorized'].includes(state) ? state : 'unknown',
+        state: isAdbDeviceState(state) ? state : 'unknown',
         details: details || attributes.join(' '),
         source: 'adb'
-      };
+      } satisfies AdbDevice;
     })
     .filter(device => device.address);
 }
 
-export function getAdbDeviceState(output, address) {
-  return parseAdbDeviceList(output).find(device => device.address === address)?.state || null;
+export function getAdbDeviceState(output: unknown, address: string): AdbDeviceState | null {
+  const state = parseAdbDeviceList(output).find(device => device.address === address)?.state;
+  return state && state !== 'candidate' ? state : null;
 }
 
-function probeLocalAddress(address, timeout = 280) {
+function probeLocalAddress(address: string, timeout = 280): Promise<boolean> {
   const [host, portValue] = address.split(':');
   const port = Number(portValue);
   if (!host || !Number.isInteger(port)) return Promise.resolve(false);
 
   return new Promise(resolve => {
     const socket = createConnection({ host, port });
-    const complete = (reachable) => {
+    const complete = (reachable: boolean): void => {
       socket.removeAllListeners();
       socket.destroy();
       resolve(reachable);
@@ -125,7 +226,7 @@ function probeLocalAddress(address, timeout = 280) {
   });
 }
 
-async function isRegularFile(filePath) {
+async function isRegularFile(filePath: string): Promise<boolean> {
   try {
     return (await stat(filePath)).isFile();
   } catch {
@@ -133,14 +234,14 @@ async function isRegularFile(filePath) {
   }
 }
 
-function findWindowsEmulatorSpec(processName = '') {
+function findWindowsEmulatorSpec(processName: unknown = ''): (typeof WINDOWS_EMULATOR_PROCESSES)[number] | undefined {
   const normalizedName = String(processName).toLowerCase();
   return WINDOWS_EMULATOR_PROCESSES.find(spec =>
     spec.names.some(name => name.toLowerCase() === normalizedName)
   );
 }
 
-async function getWindowsEmulatorProcesses() {
+async function getWindowsEmulatorProcesses(): Promise<EmulatorProcess[]> {
   if (process.platform !== 'win32') return [];
 
   const processFilter = WINDOWS_EMULATOR_PROCESSES
@@ -160,26 +261,28 @@ async function getWindowsEmulatorProcesses() {
       '-NonInteractive',
       '-Command',
       command
-    ], { timeout: 6000, windowsHide: true, maxBuffer: 1024 * 1024 });
+    ], { timeout: 6000, windowsHide: true, maxBuffer: 1024 * 1024, encoding: 'utf8' });
     const output = stdout.trim();
     if (!output) return [];
-    const entries = JSON.parse(output);
-    return (Array.isArray(entries) ? entries : [entries])
-      .filter(entry => entry?.Name && entry?.ExecutablePath)
-      .map(entry => ({
-        name: String(entry.Name),
-        executablePath: String(entry.ExecutablePath)
-      }));
+    const parsed: unknown = JSON.parse(output);
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    return entries
+      .map(entry => {
+        if (!isRecord(entry) || typeof entry.Name !== 'string' || !entry.Name) return null;
+        if (typeof entry.ExecutablePath !== 'string' || !entry.ExecutablePath) return null;
+        return { name: entry.Name, executablePath: entry.ExecutablePath };
+      })
+      .filter((entry): entry is EmulatorProcess => entry !== null);
   } catch (error) {
-    logger.debug('Windows 模拟器进程扫描失败', { error: error.message });
+    logger.debug('Windows 模拟器进程扫描失败', { error: errorMessageOf(error) });
     return [];
   }
 }
 
-async function discoverWindowsEmulatorAdbs() {
+async function discoverWindowsEmulatorAdbs(): Promise<AdbInstallation[]> {
   const processes = await getWindowsEmulatorProcesses();
-  const seenPaths = new Set();
-  const installations = [];
+  const seenPaths = new Set<string>();
+  const installations: AdbInstallation[] = [];
 
   for (const processInfo of processes) {
     const spec = findWindowsEmulatorSpec(processInfo.name);
@@ -205,9 +308,9 @@ async function discoverWindowsEmulatorAdbs() {
   return installations;
 }
 
-async function listDevicesFromAdb(adbPath, metadata = {}) {
+async function listDevicesFromAdb(adbPath: string, metadata: AdbDeviceMetadata = {}): Promise<AdbDevice[]> {
   try {
-    const { stdout } = await adbExec(adbPath, ['devices', '-l'], { timeout: 6000, windowsHide: true });
+    const { stdout } = await adbExecText(adbPath, ['devices', '-l'], { timeout: 6000, windowsHide: true });
     return parseAdbDeviceList(stdout).map(device => ({
       ...device,
       adbPath,
@@ -218,14 +321,29 @@ async function listDevicesFromAdb(adbPath, metadata = {}) {
       ].filter(Boolean).join(' · ')
     }));
   } catch (error) {
-    logger.debug('读取模拟器内置 ADB 设备失败', { adbPath, error: error.message });
+    logger.debug('读取模拟器内置 ADB 设备失败', { adbPath, error: errorMessageOf(error) });
     return [];
   }
 }
 
-function mergeDiscoveredDevices(...deviceGroups) {
-  const devicesByAddress = new Map();
+function isAdbDevice(value: unknown): value is AdbDevice {
+  return isRecord(value)
+    && typeof value.address === 'string'
+    && typeof value.state === 'string'
+    && typeof value.details === 'string'
+    && typeof value.source === 'string';
+}
+
+/**
+ * 合并设备组。历史调用会把“设备组数组”整体作为一组传入，`flat()` 只展开
+ * 一层，内层数组因此从未成为设备条目；类型化后按设备形状显式收窄，非设备
+ * 条目被忽略，不会把数组写进设备列表。内置 ADB 设备未能实际并入是既有
+ * 缺陷，修复需要独立任务与 Windows 证据，本项不改设备发现语义。
+ */
+function mergeDiscoveredDevices(...deviceGroups: readonly unknown[][]): AdbDevice[] {
+  const devicesByAddress = new Map<string, AdbDevice>();
   for (const device of deviceGroups.flat()) {
+    if (!isAdbDevice(device)) continue;
     const existing = devicesByAddress.get(device.address);
     // Preserve the configured ADB result when two servers report the same serial.
     if (!existing || (existing.source === 'emulator-adb' && device.source !== 'emulator-adb')) {
@@ -240,13 +358,13 @@ function mergeDiscoveredDevices(...deviceGroups) {
  * On Windows, also locates ADB executables bundled with running emulators.
  * Candidates are not connected automatically; callers must confirm them.
  */
-export async function discoverAdbDevices(adbPath = DEFAULT_ADB_PATH) {
+export async function discoverAdbDevices(adbPath: unknown = DEFAULT_ADB_PATH): Promise<AdbDiscoveryResult> {
   let configuredAdbAvailable = true;
   try {
-    await adbExec(adbPath, ['version']);
+    await adbExecText(adbPath, ['version']);
   } catch (error) {
     configuredAdbAvailable = false;
-    logger.debug('当前 ADB 不可用，继续查找 Windows 模拟器内置 ADB', { adbPath, error: error.message });
+    logger.debug('当前 ADB 不可用，继续查找 Windows 模拟器内置 ADB', { adbPath, error: errorMessageOf(error) });
   }
 
   try {
@@ -263,9 +381,15 @@ export async function discoverAdbDevices(adbPath = DEFAULT_ADB_PATH) {
       };
     }
 
-    const configuredDevices = configuredAdbAvailable
-      ? await listDevicesFromAdb(adbPath, { adbPath, label: '当前 ADB', source: 'adb' })
-      : [];
+    let configuredDevices: AdbDevice[] = [];
+    if (configuredAdbAvailable) {
+      const configuredAdbPath = validateAdbPath(adbPath);
+      configuredDevices = await listDevicesFromAdb(configuredAdbPath, {
+        adbPath: configuredAdbPath,
+        label: '当前 ADB',
+        source: 'adb'
+      });
+    }
     const emulatorDevices = await Promise.all(emulatorAdbs.map(installation =>
       listDevicesFromAdb(installation.adbPath, installation)
     ));
@@ -275,7 +399,7 @@ export async function discoverAdbDevices(adbPath = DEFAULT_ADB_PATH) {
       address,
       reachable: await probeLocalAddress(address)
     })));
-    const candidates = reachable
+    const candidates: AdbDevice[] = reachable
       .filter(candidate => candidate.reachable && !knownAddresses.has(candidate.address))
       .map(candidate => ({
         address: candidate.address,
@@ -303,21 +427,21 @@ export async function discoverAdbDevices(adbPath = DEFAULT_ADB_PATH) {
       message: '查找设备失败',
       devices: [],
       candidates: [],
-      error: error.message
+      error: errorMessageOf(error)
     };
   }
 }
 
 export async function getGameClientState(
-  adbPath = DEFAULT_ADB_PATH,
-  address = DEFAULT_ADB_ADDRESS,
-  clientType = DEFAULT_CLIENT_TYPE
-) {
-  validateAdbPath(adbPath);
-  validateAdbAddress(address);
+  adbPath: unknown = DEFAULT_ADB_PATH,
+  address: unknown = DEFAULT_ADB_ADDRESS,
+  clientType: string = DEFAULT_CLIENT_TYPE
+): Promise<GameClientState> {
+  const executable = validateAdbPath(adbPath);
+  const deviceAddress = validateAdbAddress(address);
 
   const expectedPackage = GAME_PACKAGES[clientType] || GAME_PACKAGES.Official;
-  const { stdout } = await adbExec(adbPath, ['-s', address, 'shell', 'dumpsys', 'window']);
+  const { stdout } = await adbExecText(executable, ['-s', deviceAddress, 'shell', 'dumpsys', 'window']);
   const foregroundPackage = parseForegroundPackage(stdout);
 
   return {
@@ -327,7 +451,7 @@ export async function getGameClientState(
   };
 }
 
-export function parseForegroundPackage(output = '') {
+export function parseForegroundPackage(output: unknown = ''): string | null {
   const lines = String(output).split('\n');
   const focusLine = lines.find(line => line.includes('mCurrentFocus'))
     || lines.find(line => line.includes('mFocusedApp'))
@@ -339,28 +463,31 @@ export function parseForegroundPackage(output = '') {
 /**
  * 测试 ADB 连接
  */
-export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
+export async function testAdbConnection(
+  adbPath: unknown = DEFAULT_ADB_PATH,
+  address: unknown = DEFAULT_ADB_ADDRESS
+): Promise<AdbConnectionResult> {
   try {
     // 检查 ADB 是否可用
     try {
-      await adbExec(adbPath, ['version'], { timeout: 5000, windowsHide: true });
+      await adbExecText(adbPath, ['version'], { timeout: 5000, windowsHide: true });
     } catch (error) {
       return {
         success: false,
-        message: `ADB 不可用，请检查 ADB 路径：${error.message}`,
-        error: error.message
+        message: `ADB 不可用，请检查 ADB 路径：${errorMessageOf(error)}`,
+        error: errorMessageOf(error)
       };
     }
 
     // 检查设备列表
-    validateAdbAddress(address);
-    const { stdout: devicesOutput } = await adbExec(adbPath, ['devices'], { timeout: 6000, windowsHide: true });
-    const deviceState = getAdbDeviceState(devicesOutput, address);
+    const deviceAddress = validateAdbAddress(address);
+    const { stdout: devicesOutput } = await adbExecText(adbPath, ['devices'], { timeout: 6000, windowsHide: true });
+    const deviceState = getAdbDeviceState(devicesOutput, deviceAddress);
 
     if (deviceState === 'device') {
       return {
         success: true,
-        message: `已连接到 ${address}`,
+        message: `已连接到 ${deviceAddress}`,
         connected: true
       };
     }
@@ -368,7 +495,7 @@ export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DE
     if (deviceState === 'unauthorized') {
       return {
         success: false,
-        message: `设备 ${address} 未授权，请在模拟器中允许 USB 调试`,
+        message: `设备 ${deviceAddress} 未授权，请在模拟器中允许 USB 调试`,
         connected: false
       };
     }
@@ -376,35 +503,35 @@ export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DE
     if (deviceState === 'offline') {
       return {
         success: false,
-        message: `设备 ${address} 已离线，请重启模拟器或 ADB`,
+        message: `设备 ${deviceAddress} 已离线，请重启模拟器或 ADB`,
         connected: false
       };
     }
 
     // 尝试连接
-    logger.debug('尝试连接设备', { address });
-    const { stdout: connectOutput } = await adbExec(adbPath, ['connect', address], { timeout: 8000, windowsHide: true });
+    logger.debug('尝试连接设备', { address: deviceAddress });
+    const { stdout: connectOutput } = await adbExecText(adbPath, ['connect', deviceAddress], { timeout: 8000, windowsHide: true });
 
     // 等待连接稳定
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 再次检查连接状态
-    const { stdout: devicesOutput2 } = await adbExec(adbPath, ['devices'], { timeout: 6000, windowsHide: true });
-    const currentDeviceState = getAdbDeviceState(devicesOutput2, address);
+    const { stdout: devicesOutput2 } = await adbExecText(adbPath, ['devices'], { timeout: 6000, windowsHide: true });
+    const currentDeviceState = getAdbDeviceState(devicesOutput2, deviceAddress);
 
     if (currentDeviceState === 'device') {
       return {
         success: true,
-        message: `成功连接到 ${address}`,
+        message: `成功连接到 ${deviceAddress}`,
         connected: true
       };
     }
 
     const stateMessage = currentDeviceState === 'unauthorized'
-      ? `设备 ${address} 未授权，请在模拟器中允许 USB 调试`
+      ? `设备 ${deviceAddress} 未授权，请在模拟器中允许 USB 调试`
       : currentDeviceState === 'offline'
-        ? `设备 ${address} 已离线，请重启模拟器或 ADB`
-        : `无法连接到 ${address}，请确保模拟器已启动`;
+        ? `设备 ${deviceAddress} 已离线，请重启模拟器或 ADB`
+        : `无法连接到 ${deviceAddress}，请确保模拟器已启动`;
     return {
       success: false,
       message: stateMessage,
@@ -414,8 +541,8 @@ export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DE
   } catch (error) {
     return {
       success: false,
-      message: `连接测试失败：${error.message}`,
-      error: error.message
+      message: `连接测试失败：${errorMessageOf(error)}`,
+      error: errorMessageOf(error)
     };
   }
 }
@@ -423,26 +550,29 @@ export async function testAdbConnection(adbPath = DEFAULT_ADB_PATH, address = DE
 /**
  * 通过 ADB 截取模拟器屏幕
  */
-export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAULT_ADB_ADDRESS) {
+export async function captureScreen(
+  adbPath: unknown = DEFAULT_ADB_PATH,
+  address: unknown = DEFAULT_ADB_ADDRESS
+): Promise<CapturedScreen> {
   let step = '检查设备';
   let timeoutMs = 3000;
   try {
-    validateAdbPath(adbPath);
-    validateAdbAddress(address);
+    const executable = validateAdbPath(adbPath);
+    const deviceAddress = validateAdbAddress(address);
 
     // 先检查设备是否已连接
-    const { stdout: devicesOutput } = await adbExec(adbPath, ['devices'], {
+    const { stdout: devicesOutput } = await adbExecText(executable, ['devices'], {
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
       windowsHide: true
     });
-    const isConnected = devicesOutput.includes(address);
+    const isConnected = devicesOutput.includes(deviceAddress);
 
     if (!isConnected) {
-      logger.debug('设备未连接，尝试连接', { address });
+      logger.debug('设备未连接，尝试连接', { address: deviceAddress });
       step = '连接设备';
       timeoutMs = 5000;
-      const { stdout: connectOutput, stderr: connectError } = await adbExec(adbPath, ['connect', address], {
+      const { stdout: connectOutput, stderr: connectError } = await adbExecText(executable, ['connect', deviceAddress], {
         timeout: timeoutMs,
         killSignal: 'SIGKILL',
         windowsHide: true
@@ -456,10 +586,10 @@ export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAUL
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    logger.debug('执行截图命令', { adbPath, address });
+    logger.debug('执行截图命令', { adbPath: executable, address: deviceAddress });
     step = '读取屏幕画面';
     timeoutMs = 8000;
-    const { stdout, stderr } = await adbExec(adbPath, ['-s', address, 'exec-out', 'screencap', '-p'], {
+    const { stdout, stderr } = await adbExecBuffer(executable, ['-s', deviceAddress, 'exec-out', 'screencap', '-p'], {
       encoding: 'buffer',
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
@@ -475,9 +605,10 @@ export async function captureScreen(adbPath = DEFAULT_ADB_PATH, address = DEFAUL
       timestamp: new Date().toISOString()
     };
   } catch (error) {
-    if (error.killed && error.signal === 'SIGKILL') {
+    const details: Record<string, unknown> = isRecord(error) ? error : {};
+    if (details.killed === true && details.signal === 'SIGKILL') {
       throw new Error(`截图失败: ${step}超时（${timeoutMs}ms）`, { cause: error });
     }
-    throw new Error(`截图失败: ${error.message}`);
+    throw new Error(`截图失败: ${errorMessageOf(error)}`);
   }
 }

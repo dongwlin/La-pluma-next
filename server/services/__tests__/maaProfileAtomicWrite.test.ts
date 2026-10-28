@@ -21,7 +21,7 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'config') {
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_CONFIG_DIR = configDir;
 
-const { getConfig, saveConfig } = await import('../maaService.js');
+const { getConfig, saveConfig } = await import('../maaConfigService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
@@ -43,16 +43,21 @@ auto_update = false
 touch_mode = "maatouch"
 `;
 
-function profilePath(profileName) {
+function readTable(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
+
+function profilePath(profileName: string): string {
   return join(profilesDir, `${profileName}.toml`);
 }
 
-async function writeProfile(profileName, content) {
+async function writeProfile(profileName: string, content: string): Promise<void> {
   await mkdir(profilesDir, { recursive: true });
   await writeFile(profilePath(profileName), content, 'utf-8');
 }
 
-async function readProfile(profileName) {
+async function readProfile(profileName: string): Promise<string> {
   return readFile(profilePath(profileName), 'utf-8');
 }
 
@@ -109,10 +114,11 @@ describe('MAA profile atomic text write', () => {
     ));
 
     const parsed = TOML.parse(await readProfile('daily'));
+    const connection = readTable(parsed.connection);
     for (let index = 0; index < probeCount; index++) {
-      assert.equal(parsed.connection[`probe_${index}`], index);
+      assert.equal(connection[`probe_${index}`], index);
     }
-    assert.equal(parsed.connection.address, '127.0.0.1:5555');
+    assert.equal(connection.address, '127.0.0.1:5555');
     assert.deepEqual(parsed.resource, { channel: 'beta', auto_update: false });
     assert.deepEqual(await readdir(profilesDir), ['daily.toml']);
   });
@@ -126,8 +132,8 @@ describe('MAA profile atomic text write', () => {
       saveConfig('weekly', { connection: { address: '10.0.0.2:5555' } })
     ]);
 
-    assert.equal(TOML.parse(await readProfile('daily')).connection.address, '10.0.0.1:5555');
-    assert.equal(TOML.parse(await readProfile('weekly')).connection.address, '10.0.0.2:5555');
+    assert.equal(readTable(readTable(TOML.parse(await readProfile('daily'))).connection).address, '10.0.0.1:5555');
+    assert.equal(readTable(readTable(TOML.parse(await readProfile('weekly'))).connection).address, '10.0.0.2:5555');
     assert.equal((await getConfig('weekly')).address, '10.0.0.2:5555');
     assert.deepEqual((await readdir(profilesDir)).sort(), ['daily.toml', 'weekly.toml']);
   });

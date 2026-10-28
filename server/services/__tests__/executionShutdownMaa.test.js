@@ -34,7 +34,8 @@ writeFileSync(process.env.FIXTURE_CLI_READY, String(process.pid));
 setInterval(() => {}, 1000);
 `, { mode: 0o755 });
 
-const { execMaaCommand, getTaskStatus } = await import('../maaService.js');
+const { execMaaCommand } = await import('../maaExecutionService.ts');
+const { getTaskStatus } = await import('../maaProcessService.ts');
 const {
   beginAgentRun,
   getAgentRun,

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
 import router, { executeTrackedAgentAction } from '../agent.js'
 import { API_VERSION } from '../agentContract.js'
-import { getTaskStatus, setTaskStatus } from '../../services/maaService.js'
+import { getTaskStatus, setTaskStatus } from '../../services/maaProcessService.ts'
 import { loggerManager } from '../../utils/logger.ts'
 import {
   beginAgentRun,

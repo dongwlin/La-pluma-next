@@ -1,7 +1,7 @@
 import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { captureScreen } from '../services/maaDeviceService.js';
+import { captureScreen } from '../services/maaDeviceService.ts';
 import {
   installWebrtc,
   startWebrtcServer,

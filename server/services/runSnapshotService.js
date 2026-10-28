@@ -1,7 +1,7 @@
 import { getActiveAgentRuns, getLatestTerminalAgentRun } from './agentRunService.ts';
 import { getCopilotSetRunProgress } from './copilotSetRunService.js';
 import { getMaaExecutionLeaseSnapshot } from './executionCoordinatorService.ts';
-import { getRealtimeLogs, getTaskStatus } from './maaProcessService.js';
+import { getRealtimeLogs, getTaskStatus } from './maaProcessService.ts';
 import { getScheduleExecutionStatus } from './schedulerService.js';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 

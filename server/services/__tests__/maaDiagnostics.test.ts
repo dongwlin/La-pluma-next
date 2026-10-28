@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getAdbDeviceState, getMaaExecutionDiagnostics, parseForegroundPackage } from '../maaService.js';
+import { getMaaExecutionDiagnostics } from '../maaProcessService.ts';
+import { getAdbDeviceState, parseForegroundPackage } from '../maaDeviceService.ts';
 
 describe('getMaaExecutionDiagnostics', () => {
   it('translates unknown drop report failures into one actionable warning', () => {

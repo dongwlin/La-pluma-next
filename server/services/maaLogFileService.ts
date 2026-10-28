@@ -2,8 +2,8 @@ import { readFile, readdir, stat, unlink, realpath, open } from 'node:fs/promise
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
-import { execMaaCommandUnlocked } from './maaProcessService.js';
-import { getMaaConfigDir } from './maaConfigService.js';
+import { execMaaCommandUnlocked } from './maaProcessService.ts';
+import { getMaaConfigDir } from './maaConfigService.ts';
 
 /**
  * MAA 日志文件 IO 与检查点。
@@ -22,22 +22,90 @@ const logger = createLogger('MaaService');
 // 读取日志文件时的行数上限；/logs/files 的 lines 参数按它夹取。
 export const MAX_LOG_FILE_LINES = 5000;
 
+/** 日志目录内的单个日志文件条目。 */
+export interface MaaLogFileEntry {
+  name: string;
+  path: string;
+  size: number;
+  modified: string;
+}
+
+/** 执行后增量读取的起点；size 是创建检查点时的文件字节数。 */
+export interface MaaLogCheckpoint {
+  logPath: string;
+  size: number;
+}
+
+/** stat 端口只读取文件大小。 */
+export interface MaaLogFileStats {
+  size: number;
+}
+
+/** open 端口返回的读取句柄；调用方负责 close。 */
+export interface MaaLogFileHandle {
+  read(
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: number
+  ): Promise<{ bytesRead: number; buffer: Buffer }>;
+  close(): Promise<void>;
+}
+
+export interface MaaLogCheckpointPorts {
+  resolveLogDir?(): Promise<string>;
+  stat?(path: string): Promise<MaaLogFileStats>;
+}
+
+export interface MaaLogReadPorts {
+  stat?(path: string): Promise<MaaLogFileStats>;
+  open?(path: string, flags: 'r'): Promise<MaaLogFileHandle>;
+}
+
+/** readLogFile 的输出；只返回文件末尾的行。 */
+export interface MaaLogFileContent {
+  content: string;
+  totalLines: number;
+  returnedLines: number;
+}
+
+/** cleanupLogs 的删除统计。 */
+export interface MaaLogCleanupResult {
+  deletedCount: number;
+  freedSpace: number;
+}
+
+/** MAA 调试截图条目。 */
+export interface MaaDebugScreenshot {
+  name: string;
+  path: string;
+  size: number;
+  modified: string;
+}
+
+/** 目录边界判定所需的 path 能力；可注入 path.win32/path.posix 验证跨平台策略。 */
+export interface MaaPathPolicy {
+  relative(from: string, to: string): string;
+  readonly sep: string;
+  isAbsolute(path: string): boolean;
+}
+
 /**
  * 获取 MAA 日志目录
  */
-async function getMaaLogDir() {
+async function getMaaLogDir(): Promise<string> {
   try {
     const result = await execMaaCommandUnlocked('dir', ['log'], null, null, false, true);
     return result.stdout.trim();
   } catch (error) {
-    throw new Error(`获取日志目录失败: ${error.message}`);
+    throw new Error(`获取日志目录失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-async function collectMaaLogFiles(logDir) {
-  const files = [];
+async function collectMaaLogFiles(logDir: string): Promise<MaaLogFileEntry[]> {
+  const files: MaaLogFileEntry[] = [];
 
-  async function scanDir(dir, prefix = '') {
+  async function scanDir(dir: string, prefix = ''): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -64,7 +132,9 @@ async function collectMaaLogFiles(logDir) {
  * 记录 asst.log 当前大小，供执行后只读取新增内容。
  * ports.resolveLogDir / ports.stat 可覆盖目录解析与文件状态读取。
  */
-export async function createMaaLogCheckpoint(ports = {}) {
+export async function createMaaLogCheckpoint(
+  ports: MaaLogCheckpointPorts = {}
+): Promise<MaaLogCheckpoint | null> {
   const resolveLogDir = ports.resolveLogDir || getMaaLogDir;
   const statFile = ports.stat || stat;
   try {
@@ -72,7 +142,7 @@ export async function createMaaLogCheckpoint(ports = {}) {
     const logStats = await statFile(logPath);
     return { logPath, size: logStats.size };
   } catch (error) {
-    logger.debug('无法创建 Maa 日志检查点', { error: error.message });
+    logger.debug('无法创建 Maa 日志检查点', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -81,7 +151,11 @@ export async function createMaaLogCheckpoint(ports = {}) {
  * 读取检查点之后新增的日志字节（最多 maxBytes）。
  * ports.stat / ports.open 可覆盖文件状态与打开操作。
  */
-export async function readMaaLogSince(checkpoint, maxBytes = 2 * 1024 * 1024, ports = {}) {
+export async function readMaaLogSince(
+  checkpoint: MaaLogCheckpoint | null,
+  maxBytes = 2 * 1024 * 1024,
+  ports: MaaLogReadPorts = {}
+): Promise<string> {
   if (!checkpoint?.logPath) return '';
 
   const statFile = ports.stat || stat;
@@ -102,7 +176,7 @@ export async function readMaaLogSince(checkpoint, maxBytes = 2 * 1024 * 1024, po
     }
     return buffer.toString('utf-8');
   } catch (error) {
-    logger.debug('无法读取 Maa 增量日志', { error: error.message });
+    logger.debug('无法读取 Maa 增量日志', { error: error instanceof Error ? error.message : String(error) });
     return '';
   }
 }
@@ -110,16 +184,16 @@ export async function readMaaLogSince(checkpoint, maxBytes = 2 * 1024 * 1024, po
 /**
  * 获取日志文件列表
  */
-export async function getLogFiles() {
+export async function getLogFiles(): Promise<MaaLogFileEntry[]> {
   try {
     const logDir = await getMaaLogDir();
     const files = await collectMaaLogFiles(logDir);
     // 按修改时间倒序排序
-    files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    files.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
     return files;
   } catch (error) {
-    logger.error('获取日志文件列表失败', { error: error.message });
+    logger.error('获取日志文件列表失败', { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
@@ -127,7 +201,7 @@ export async function getLogFiles() {
 /**
  * 手动清理日志文件
  */
-export async function cleanupLogs(maxSizeMB = 10) {
+export async function cleanupLogs(maxSizeMB: unknown = 10): Promise<MaaLogCleanupResult> {
   try {
     const sizeLimit = Number(maxSizeMB);
     if (!Number.isFinite(sizeLimit) || sizeLimit < 1 || sizeLimit > 1024) {
@@ -136,11 +210,11 @@ export async function cleanupLogs(maxSizeMB = 10) {
 
     const logDir = await getMaaLogDir();
     const files = await collectMaaLogFiles(logDir);
-    files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    files.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
     const maxSize = sizeLimit * 1024 * 1024;
     let totalSize = 0;
-    const filesToDelete = [];
+    const filesToDelete: MaaLogFileEntry[] = [];
 
     for (const file of files) {
       totalSize += file.size;
@@ -158,7 +232,7 @@ export async function cleanupLogs(maxSizeMB = 10) {
       freedSpace: filesToDelete.reduce((sum, f) => sum + f.size, 0)
     };
   } catch (error) {
-    throw new Error(`清理日志失败: ${error.message}`);
+    throw new Error(`清理日志失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -166,7 +240,11 @@ export async function cleanupLogs(maxSizeMB = 10) {
  * 判断目标路径是否落在目录之外；等于目录本身同样视为越界。
  * pathImpl 可注入 path.win32 等实现，使 Windows 路径策略可以脱离运行平台验证。
  */
-export function isPathOutsideDir(logDir, requestedPath, pathImpl = { relative, sep, isAbsolute }) {
+export function isPathOutsideDir(
+  logDir: string,
+  requestedPath: string,
+  pathImpl: MaaPathPolicy = { relative, sep, isAbsolute }
+): boolean {
   const relativePath = pathImpl.relative(logDir, requestedPath);
   return !relativePath
     || relativePath === '..'
@@ -177,7 +255,7 @@ export function isPathOutsideDir(logDir, requestedPath, pathImpl = { relative, s
 /**
  * 读取日志文件内容
  */
-export async function readLogFile(filePath, lines = 1000) {
+export async function readLogFile(filePath: string, lines: unknown = 1000): Promise<MaaLogFileContent> {
   // 直接调用也受限：非法输入回落默认值，有限值截断并夹取到公开行数上限。
   const lineCount = resolveBoundedInteger(lines, {
     defaultValue: 1000,
@@ -204,14 +282,14 @@ export async function readLogFile(filePath, lines = 1000) {
       returnedLines: selectedLines.length
     };
   } catch (error) {
-    throw new Error(`读取日志文件失败: ${error.message}`);
+    throw new Error(`读取日志文件失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /**
  * 获取 MAA 调试截图列表
  */
-export async function getDebugScreenshots() {
+export async function getDebugScreenshots(): Promise<MaaDebugScreenshot[]> {
   try {
     const configDir = await getMaaConfigDir();
     const debugDir = join(configDir.trim(), '..', 'debug');
@@ -241,11 +319,11 @@ export async function getDebugScreenshots() {
     );
 
     // 按修改时间倒序排序
-    screenshots.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    screenshots.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
     return screenshots;
   } catch (error) {
-    logger.error('获取调试截图失败', { error: error.message });
+    logger.error('获取调试截图失败', { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }

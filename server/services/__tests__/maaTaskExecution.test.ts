@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { MaaCommandOutcome } from '../maaProcessService.ts';
 
 const root = await mkdtemp(join(tmpdir(), 'la-pluma-maa-execution-'));
 const cliPath = join(root, 'maa');
 const sharedCache = join(root, 'shared-cache');
-const previousEnv = Object.fromEntries(
+const previousEnv: Record<string, string | undefined> = Object.fromEntries(
   ['MAA_CLI_PATH', 'MAA_CACHE_DIR', 'LA_PLUMA_MAA_LOCK_FILE'].map(key => [key, process.env[key]])
 );
 process.env.MAA_CLI_PATH = cliPath;
@@ -44,7 +45,8 @@ if (args.includes('--fail')) {
 }
 `, { mode: 0o755 });
 
-const { execMaaCommand, getTaskStatus } = await import('../maaService.js');
+const { execMaaCommand } = await import('../maaExecutionService.ts');
+const { getTaskStatus } = await import('../maaProcessService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 loggerManager.getLogger('MaaService').enableConsole = false;
 
@@ -56,11 +58,36 @@ after(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+function lockPath(): string {
+  const value = process.env.LA_PLUMA_MAA_LOCK_FILE;
+  assert.ok(value);
+  return value;
+}
+
+interface ProbeOutput {
+  args: string[];
+  cacheDir: string;
+}
+
+/** 假 CLI 输出是外部进程字节，逐字段收窄后才参与断言。 */
+function readProbeOutput(text: string): ProbeOutput {
+  const value: unknown = JSON.parse(text);
+  assert.ok(value !== null && typeof value === 'object');
+  const fields = value as Record<string, unknown>;
+  assert.ok(Array.isArray(fields.args));
+  return { args: fields.args.map(String), cacheDir: String(fields.cacheDir) };
+}
+
+function readErrorField(error: unknown, key: string): unknown {
+  if (typeof error !== 'object' || error === null || !(key in error)) return undefined;
+  return (error as Record<string, unknown>)[key];
+}
+
 test('both foreground execution paths preserve fight options and clean private caches', async () => {
   const args = ['1-7', '-m', '0', '--expiring-medicine', '0', '--stone', '0', '--series', '0', '--report-to-penguin'];
-  for (const taskName of [null, '理智作战']) {
+  for (const taskName of [null, '理智作战'] as const) {
     const result = await execMaaCommand('fight', args, taskName, 'combat', true);
-    const output = JSON.parse(result.stdout);
+    const output = readProbeOutput(result.stdout);
     assert.deepEqual(output.args, ['fight', ...args]);
     assert.notEqual(output.cacheDir, sharedCache);
     await assert.rejects(stat(output.cacheDir), { code: 'ENOENT' });
@@ -69,39 +96,41 @@ test('both foreground execution paths preserve fight options and clean private c
 });
 
 test('a failed fight remains failed and releases its private cache and execution lease', async () => {
-  let failure;
+  let failureStdout = '';
   await assert.rejects(
     execMaaCommand('fight', ['1-7', '--fail'], '理智作战', 'combat', true),
     error => {
-      failure = error;
-      assert.equal(error.exitCode, 7);
-      assert.match(error.stderr, /MaaCore task failed/);
+      failureStdout = String(readErrorField(error, 'stdout'));
+      assert.equal(readErrorField(error, 'exitCode'), 7);
+      assert.match(String(readErrorField(error, 'stderr')), /MaaCore task failed/);
       return true;
     }
   );
-  await assert.rejects(stat(JSON.parse(failure.stdout).cacheDir), { code: 'ENOENT' });
+  await assert.rejects(stat(readProbeOutput(failureStdout).cacheDir), { code: 'ENOENT' });
   assert.equal(getTaskStatus().isRunning, false);
-  await assert.rejects(stat(process.env.LA_PLUMA_MAA_LOCK_FILE), { code: 'ENOENT' });
+  await assert.rejects(stat(lockPath()), { code: 'ENOENT' });
 });
 
 test('a background fight retains its cache until the child has actually exited', async () => {
   const marker = join(root, 'background.json');
-  let resolveOutcome;
-  const settled = new Promise(resolve => { resolveOutcome = resolve; });
+  let resolveOutcome: (outcome: MaaCommandOutcome) => void = () => {};
+  const settled = new Promise<MaaCommandOutcome>(resolve => { resolveOutcome = resolve; });
   const started = await execMaaCommand('fight', ['1-7', '--hold', marker], '理智作战', 'combat', false, false, {
     onSettled: resolveOutcome
   });
   assert.equal(started.message, '任务已在后台启动');
 
-  let output;
+  let output: ProbeOutput | null = null;
   for (let n = 0; n < 100; n++) {
-    output = await readFile(marker, 'utf-8').then(content => JSON.parse(content), () => null);
+    output = await readFile(marker, 'utf-8').then(content => readProbeOutput(content), () => null);
     if (output) break;
     await delay(10);
   }
+  let cacheDirectory = '';
   try {
     assert.ok(output, 'the background CLI should start');
-    assert.ok((await stat(output.cacheDir)).isDirectory());
+    cacheDirectory = output.cacheDir;
+    assert.ok((await stat(cacheDirectory)).isDirectory());
     assert.equal(getTaskStatus().isRunning, true);
   } finally {
     await writeFile(`${marker}.release`, '');
@@ -109,8 +138,8 @@ test('a background fight retains its cache until the child has actually exited',
   }
   const outcome = await settled;
   assert.equal(outcome.ok, true);
-  await assert.rejects(stat(output.cacheDir), { code: 'ENOENT' });
-  await assert.rejects(stat(process.env.LA_PLUMA_MAA_LOCK_FILE), { code: 'ENOENT' });
+  await assert.rejects(stat(cacheDirectory), { code: 'ENOENT' });
+  await assert.rejects(stat(lockPath()), { code: 'ENOENT' });
   assert.equal(getTaskStatus().isRunning, false);
 });
 
@@ -127,6 +156,6 @@ test('an aborted pre-start gate never spawns the CLI or keeps the lease', async 
     error => error === rejection
   );
   await assert.rejects(stat(marker), { code: 'ENOENT' });
-  await assert.rejects(stat(process.env.LA_PLUMA_MAA_LOCK_FILE), { code: 'ENOENT' });
+  await assert.rejects(stat(lockPath()), { code: 'ENOENT' });
   assert.equal(getTaskStatus().isRunning, false);
 });

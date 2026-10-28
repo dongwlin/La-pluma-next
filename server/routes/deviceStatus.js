@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { testAdbConnection } from '../services/maaDeviceService.js';
+import { testAdbConnection } from '../services/maaDeviceService.ts';
 import {
   getWebrtcStatus,
   isWebrtcServerReachable,
