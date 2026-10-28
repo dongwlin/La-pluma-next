@@ -190,6 +190,7 @@ import { createLogger } from '../utils/logger.ts';
 - ✅ `maaCallbackService.ts` 与 `award/recruit/infrast/mall/fightResultService.ts` - 已完成类型化（回调载荷校验、步骤结果类型与 skipped/failed/success 区分）
 - ✅ `schedulerService.ts` - 已按职责拆分到流程计划、执行、触发源与养成回写，并完成类型化（步骤结论联合、日志检查点与端口契约）
 - ✅ `maaProcessService.ts` 等 MAA 模块 - 已按职责拆分并完成类型化（进程、执行、配置、设备、日志、活动、任务缓存）
+- ✅ `connectionService.ts`、`resourceUpdateService.ts` 与 `config/connectionDefaults.ts` - 已完成类型化（profile 解析与显式覆盖、资源读取与单次共享更新、连接默认值环境适配）
 
 ## 🎉 预期收益
 
