@@ -119,7 +119,9 @@ La-pluma-next/
 │   │   ├── operatorTrainingPlan.ts # 配方展开、掉落估算与刷取计划
 │   │   ├── operatorTrainingStore.ts # 队列、游戏数据与 automation 配置读写与校验
 │   │   ├── operatorTrainingApplication.ts # 计划应用、流程与定时同步的部分成功上报
-│   │   ├── webrtcService.js   # ScrcpyOverWebRTC 管理
+│   │   ├── webrtcService.ts   # ScrcpyOverWebRTC 进程、viewer 与会话所有权
+│   │   ├── webrtcRuntime.ts   # 平台二进制、宿主网络地址与发布包安装
+│   │   ├── webrtcSignalingGateway.ts # 同源一次性票据与 WebSocket 升级代理
 │   │   └── configStorageService.ts # 配置存储
 │   ├── data/                  # 用户配置数据
 │   │   └── user-configs/      # 任务配置 JSON 文件
