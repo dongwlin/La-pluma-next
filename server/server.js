@@ -23,6 +23,7 @@ import {
 import { initializeRuntimeState } from './services/runtimeInitializationService.js';
 import { closeExecutionAdmission } from './services/executionAdmissionService.ts';
 import { attachExecutionShutdownToLifecycle } from './services/executionShutdownService.ts';
+import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
 import {
   DEFAULT_CLOSE_DEADLINE_MS,
   createRuntimeLifecycle
@@ -73,8 +74,12 @@ export function createLaPlumaApp({
   env = process.env,
   signalingGateway = createWebrtcSignalingGateway(),
   clientDistPath = resolveAppPaths().frontendDistDir,
-  userConfigStorage
+  userConfigStorage,
+  readiness = createRuntimeReadinessTracker()
 } = {}) {
+  if (typeof readiness?.snapshot !== 'function') {
+    throw new TypeError('readiness 必须提供 snapshot()');
+  }
   const app = express();
   // Express 5 的 req.query 是只读 getter；显式固定 simple 解析器，
   // 让查询参数保持单值扁平结构，不依赖嵌套对象解析。
@@ -108,9 +113,23 @@ export function createLaPlumaApp({
     res.json({ success: true, status: 'ok' });
   });
 
+  // 就绪状态与存活分离：/health 只表示进程仍在运行（容器存活检查继续使用），
+  // /readiness 反映初始化、Run 存储与 draining，不可就绪时返回 503。
+  // 快照只读进程内状态，不探测 ADB/MAA 或外网；响应不含路径、凭据与错误文本。
+  app.get('/readiness', (_req, res) => {
+    const snapshot = readiness.snapshot();
+    res.set('Cache-Control', 'no-store');
+    res.status(snapshot.ready ? 200 : 503).json({
+      success: snapshot.ready,
+      status: snapshot.status,
+      checks: snapshot.checks,
+      reasons: snapshot.reasons
+    });
+  });
+
   if (env.NODE_ENV === 'production') {
     const staticMountPath = basePath === '/' ? '/' : basePath.slice(0, -1);
-    const reservedPaths = ['/api', '/health', signalingPath];
+    const reservedPaths = ['/api', '/health', '/readiness', signalingPath];
     const sendAppShell = (req, res, next) => {
       const appPath = staticMountPath === '/'
         ? req.path
@@ -188,6 +207,12 @@ export async function startLaPlumaServer({
   // 组装入口集中解析配置并接线运行依赖：应用、传输、Run 存储和运行时恢复共享同一个
   // 生命周期，关闭顺序由注册顺序取反决定，避免各模块在导入时自行启动或停止。
   const lifecycle = createRuntimeLifecycle({ logger, closeDeadlineMs });
+  // 就绪投影只读生命周期、初始化阶段与 Run 存储状态；绑定在组装入口完成，
+  // 关闭开始后生命周期进入 draining，/readiness 立即转为不可就绪。
+  const readiness = createRuntimeReadinessTracker({
+    lifecycle,
+    runStoreStatus: getAgentRunStoreStatus
+  });
   // 预览资源属于本实例的 viewer 会话与本地子进程；先于传输入口注册，
   // 关闭时网关先断开观看连接，再由预览步骤取消计时器并终止本实例子进程。
   const webrtcPreview = attachWebrtcPreviewToLifecycle(lifecycle);
@@ -197,7 +222,8 @@ export async function startLaPlumaServer({
   const app = createLaPlumaApp({
     env,
     signalingGateway,
-    clientDistPath: appPaths.frontendDistDir
+    clientDistPath: appPaths.frontendDistDir,
+    readiness
   });
   const transport = createLaPlumaTransportServer({ app, signalingGateway, env });
   let listeningPort = port;
@@ -252,10 +278,15 @@ export async function startLaPlumaServer({
   lifecycle.register({
     name: 'runtime-initialization',
     start: async () => {
+      // 初始化阶段单独记录：即使初始化抛错被记录后继续提供 HTTP，就绪端点也保持
+      // 不可就绪，直到完成一次完整初始化。
+      readiness.markInitializationStarted();
       try {
         // 后台领域通过传入的生命周期端口注册自己的停止能力。
         await initializeRuntime({ lifecycle });
+        readiness.markInitializationCompleted();
       } catch (error) {
+        readiness.markInitializationFailed();
         logger.error('[Runtime] 初始化失败:', error.message);
       }
     }
@@ -276,6 +307,7 @@ export async function startLaPlumaServer({
     protocol: transport.protocol,
     port: listeningPort,
     lifecycle,
+    readiness,
     executionShutdown: executionShutdown.service,
     close: reason => {
       // 关闭请求一到就关闭准入，早于第一个关闭步骤执行：新的执行意图在 Run 准入
