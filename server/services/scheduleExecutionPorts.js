@@ -9,7 +9,7 @@ import {
   shouldCaptureNotificationScreenshot
 } from './notificationService.js';
 import { recordDrops } from './dropRecordService.js';
-import { withMaaExecutionLease } from './executionCoordinatorService.js';
+import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { updateSmartTrainingStages } from './scheduleSmartTrainingService.js';
 
 /**

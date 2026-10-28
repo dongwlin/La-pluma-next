@@ -43,7 +43,7 @@ const {
   shutdownAgentRunStoreForTests,
   startAgentRun,
   stopAgentRun
-} = await import('../agentRunService.js');
+} = await import('../agentRunService.ts');
 const { createExecutionShutdownService } = await import('../executionShutdownService.ts');
 const { clearExecutionAdmissionGateForTests } = await import('../executionAdmissionService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');

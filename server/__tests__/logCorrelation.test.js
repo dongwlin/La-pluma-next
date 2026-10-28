@@ -36,13 +36,13 @@ const {
   getRealtimeLogs,
   getTaskStatus
 } = await import('../services/maaService.js')
-const { getMaaExecutionLeaseSnapshot } = await import('../services/executionCoordinatorService.js')
+const { getMaaExecutionLeaseSnapshot } = await import('../services/executionCoordinatorService.ts')
 const { executeScheduledTaskFromCron } = await import('../services/schedulerService.js')
 const {
   initializeAgentRunStore,
   listAgentRuns,
   resetAgentRunsForTests
-} = await import('../services/agentRunService.js')
+} = await import('../services/agentRunService.ts')
 const { writeJsonFile } = await import('../utils/fileHelper.ts')
 const { loggerManager } = await import('../utils/logger.ts')
 const { getLogContext } = await import('../utils/logContext.ts')

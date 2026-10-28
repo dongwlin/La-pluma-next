@@ -9,7 +9,7 @@ import {
   markAgentRunWaiting,
   resetAgentRunsForTests,
   startAgentRun
-} from '../agentRunService.js'
+} from '../agentRunService.ts'
 import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaService.js'
 import { buildAgentRunSnapshot } from '../runSnapshotService.js'
 import { loggerManager } from '../../utils/logger.ts'

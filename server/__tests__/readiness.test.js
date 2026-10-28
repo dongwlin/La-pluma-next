@@ -8,7 +8,7 @@ import { createLaPlumaApp, startLaPlumaServer } from '../server.js'
 import {
   initializeAgentRunStore,
   shutdownAgentRunStoreForTests
-} from '../services/agentRunService.js'
+} from '../services/agentRunService.ts'
 import { createRuntimeLifecycle } from '../services/runtimeLifecycleService.ts'
 import { createRuntimeReadinessTracker } from '../services/runtimeReadinessService.ts'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'

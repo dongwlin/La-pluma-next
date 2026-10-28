@@ -13,7 +13,7 @@ import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotP
 import { getActivityRunPreflight } from '../services/activityNavigationService.js';
 import { findActivityCopilotCandidates } from '../services/activityCopilotDiscoveryService.js';
 import { getActivityCompletion } from '../services/activityCopilotRunService.js';
-import { withMaaExecutionLease } from '../services/executionCoordinatorService.js';
+import { withMaaExecutionLease } from '../services/executionCoordinatorService.ts';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
 import {
   asyncHandler,

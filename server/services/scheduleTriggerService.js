@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { execMaaCommand } from './maaExecutionService.js';
 import { updateMaaResources } from './resourceUpdateService.js';
-import { withMaaExecutionLease } from './executionCoordinatorService.js';
+import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';
 import { createLogger } from '../utils/logger.ts';
 

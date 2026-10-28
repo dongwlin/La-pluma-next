@@ -1,6 +1,21 @@
+/**
+ * Agent Run 记录、幂等与持久化
+ *
+ * Run 是执行身份与终态的唯一来源（见 docs/architecture/execution-lifecycle.md）。
+ * 本模块只维护记录本身：创建/转换/停止意图/幂等与磁盘快照；设备租约、子进程与
+ * 流程进度是另外的投影，由调用方组合。
+ *
+ * 类型边界：
+ * - 生命周期状态是有穷联合，写入路径只接受已建模的转换；
+ * - 磁盘快照从 `unknown` 逐字段校验；身份、状态、时间戳与序号不合法时 fail-closed，
+ *   不删除文件、不绕开准入；
+ * - 存储版本保持 `version: 1`，本模块不迁移旧格式。
+ */
+
 import { createHash, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { agentError } from '../utils/apiHelper.ts';
+import type { AgentError } from '../utils/apiHelper.ts';
 import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
@@ -8,18 +23,167 @@ import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
 const TERMINAL_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_TERMINAL_RUNS = 500;
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
-const ACTIVE_STATUSES = new Set(['accepted', 'waiting', 'running', 'stopping']);
-const ALL_STATUSES = new Set([...TERMINAL_STATUSES, ...ACTIVE_STATUSES]);
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['succeeded', 'failed', 'stopped', 'interrupted']);
+const ACTIVE_STATUSES: ReadonlySet<string> = new Set(['accepted', 'waiting', 'running', 'stopping']);
+const ALL_STATUSES: ReadonlySet<string> = new Set([...TERMINAL_STATUSES, ...ACTIVE_STATUSES]);
 const AGENT_RUN_STORE_VERSION = 1;
 const DEFAULT_AGENT_RUN_STORE_PATH = fileURLToPath(new URL('../data/agent-runs.json', import.meta.url));
 const logger = createLogger('AgentRunService');
 
-const runs = new Map();
-const idempotencyIndex = new Map();
+/** 活动状态：`accepted`/`waiting` 不持有执行权，`running`/`stopping` 持有到退出。 */
+export type AgentRunActiveStatus = 'accepted' | 'waiting' | 'running' | 'stopping';
+/** 终态：写入后不可变，重复写入同一终态是幂等的。 */
+export type AgentRunTerminalStatus = 'succeeded' | 'failed' | 'stopped' | 'interrupted';
+export type AgentRunStatus = AgentRunActiveStatus | AgentRunTerminalStatus;
+
+/** 停止意图的处理方式，仅用于调用方分流；不是 Run 状态。 */
+export type AgentRunStopDisposition = 'terminal' | 'canceled' | 'stopping';
+
+/** 结构化失败；`failed` 与 `interrupted` 必须携带。 */
+export interface AgentRunError {
+  code: string;
+  message: string;
+  statusCode: number;
+  details: Record<string, unknown>;
+  retryable: boolean;
+}
+
+export interface AgentRunLinks {
+  self: string;
+  stop: string;
+}
+
+/** 重启恢复边界，仅 `interrupted` 存在。 */
+export interface AgentRunRecovery {
+  source: string;
+  previousState: string | null;
+  executionResumed: false;
+  deviceState: 'unknown';
+}
+
+/**
+ * 对外的 Run DTO。字段可变是因为每次读取都返回深拷贝，调用方（包括既有测试）
+ * 可以像操作普通对象一样修改返回值，不会影响存储。
+ */
+export interface AgentRunDto {
+  runId: string;
+  operationId: string;
+  state: AgentRunStatus;
+  acceptedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  result: unknown;
+  links: AgentRunLinks;
+  durationMs?: number;
+  progress?: unknown;
+  error?: AgentRunError;
+  recovery?: AgentRunRecovery;
+}
+
+/** 内存与磁盘共用的 Run 记录（内部字段不进入 DTO）。 */
+export interface AgentRunRecord {
+  runId: string;
+  operationId: string;
+  idempotencyKey: string | null;
+  inputFingerprint: string;
+  input: unknown;
+  metadata: unknown;
+  status: AgentRunStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  result: unknown;
+  error: AgentRunError | null;
+  /** 读取时追加的进度投影不持久化；保留字段以兼容既有 DTO 分支。 */
+  progress?: unknown;
+}
+
+export interface AgentRunStoreRecord {
+  run: AgentRunRecord;
+  sequence: number;
+  createdAtMs: number;
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+  terminalSequence: number | null;
+}
+
+export interface AgentRunStoreSnapshot {
+  version: number;
+  savedAt: string;
+  runs: AgentRunStoreRecord[];
+}
+
+export interface AgentRunStoreStatus {
+  enabled: boolean;
+  required: boolean;
+  ready: boolean;
+  dirty: boolean;
+  filePath: string;
+  error: string | null;
+}
+
+export interface AgentRunStoreRestoreSummary {
+  filePath: string;
+  restoredRuns: number;
+  interruptedRuns: number;
+  prunedRuns: number;
+}
+
+export type AgentRunStoreReader = (filePath: string, defaultValue: unknown) => Promise<unknown>;
+export type AgentRunStoreWriter = (filePath: string, data: unknown, pretty?: boolean) => Promise<void>;
+
+export interface AgentRunStoreLogger {
+  info(message: string, data?: unknown): unknown;
+  error(message: string, data?: unknown): unknown;
+}
+
+export interface AgentRunStoreOverrides {
+  filePath?: string;
+  readStore?: AgentRunStoreReader;
+  writeStore?: AgentRunStoreWriter;
+  runtimeLogger?: AgentRunStoreLogger;
+}
+
+export interface BeginAgentRunParams {
+  operationId: string;
+  idempotencyKey?: string | null;
+  input?: unknown;
+  metadata?: unknown;
+}
+
+export interface BeginAgentRunResult {
+  run: AgentRunDto;
+  replayed: boolean;
+}
+
+export interface AgentRunStopResult {
+  run: AgentRunDto;
+  disposition: AgentRunStopDisposition;
+}
+
+export interface ListAgentRunsQuery {
+  operationId?: string | null;
+  state?: AgentRunStatus | null;
+  status?: AgentRunStatus | null;
+  limit?: number;
+}
+
+interface PersistenceState {
+  enabled: boolean;
+  required: boolean;
+  filePath: string;
+  readStore: AgentRunStoreReader;
+  writeStore: AgentRunStoreWriter;
+  runtimeLogger: AgentRunStoreLogger;
+}
+
+const runs = new Map<string, AgentRunStoreRecord>();
+const idempotencyIndex = new Map<string, { runId: string; inputFingerprint: string }>();
 let sequence = 0;
 let terminalSequence = 0;
-let persistence = {
+let persistence: PersistenceState = {
   enabled: false,
   required: false,
   filePath: DEFAULT_AGENT_RUN_STORE_PATH,
@@ -28,33 +192,67 @@ let persistence = {
   runtimeLogger: logger
 };
 let persistenceDirty = false;
-let persistencePromise = null;
-let persistenceError = null;
+let persistencePromise: Promise<void> | null = null;
+let persistenceError: unknown = null;
 let persistenceStartQueued = false;
 let persistenceGeneration = 0;
 
-function agentRunPersistenceError(error) {
-  return agentError('AGENT_RUN_PERSISTENCE_FAILED', `Agent run 持久化失败: ${error?.message || error}`, {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function truthyOrNull(value: unknown): unknown {
+  return value ? value : null;
+}
+
+function describeError(error: unknown): string {
+  if (isRecord(error) && error.message) return String(error.message);
+  return String(error);
+}
+
+function errorCodeOf(error: unknown): unknown {
+  return isRecord(error) ? error.code : undefined;
+}
+
+function isTerminalStatus(status: string): status is AgentRunTerminalStatus {
+  return TERMINAL_STATUSES.has(status);
+}
+
+function isActiveStatus(status: string): status is AgentRunActiveStatus {
+  return ACTIVE_STATUSES.has(status);
+}
+
+function isAgentRunStatus(value: unknown): value is AgentRunStatus {
+  return typeof value === 'string' && ALL_STATUSES.has(value);
+}
+
+function agentRunPersistenceError(error: unknown): AgentError {
+  return agentError('AGENT_RUN_PERSISTENCE_FAILED', `Agent run 持久化失败: ${describeError(error)}`, {
     statusCode: 503,
     details: { filePath: persistence.filePath },
     retryable: true
   });
 }
 
-function assertAgentRunStoreReadable() {
+function persistenceErrorMessage(): string | null {
+  if (!isRecord(persistenceError) || !persistenceError.message) return null;
+  return String(persistenceError.message);
+}
+
+function assertAgentRunStoreReadable(): void {
   if (persistence.required && !persistence.enabled) {
     throw agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
   }
 }
 
-function buildStoreSnapshot() {
+function buildStoreSnapshot(): AgentRunStoreSnapshot {
   return {
     version: AGENT_RUN_STORE_VERSION,
     savedAt: new Date().toISOString(),
     runs: [...runs.values()]
       .sort((left, right) => left.sequence - right.sequence)
       .map(record => ({
-        run: JSON.parse(JSON.stringify(record.run)),
+        run: cloneJson(record.run),
         sequence: record.sequence,
         createdAtMs: record.createdAtMs,
         startedAtMs: record.startedAtMs,
@@ -64,7 +262,7 @@ function buildStoreSnapshot() {
   };
 }
 
-function startPersistenceWriter() {
+function startPersistenceWriter(): Promise<void> | null {
   if (!persistence.enabled || persistencePromise || !persistenceDirty) return persistencePromise;
 
   const generation = persistenceGeneration;
@@ -82,13 +280,13 @@ function startPersistenceWriter() {
         persistenceError = error;
         activePersistence.runtimeLogger.error('Agent run 持久化失败', {
           filePath: activePersistence.filePath,
-          error: error.message
+          error: describeError(error)
         });
         break;
       }
     }
   });
-  const settled = writer().finally(() => {
+  const settled: Promise<void> = writer().finally(() => {
     if (persistencePromise !== settled) return;
     persistencePromise = null;
     if (generation === persistenceGeneration
@@ -102,7 +300,7 @@ function startPersistenceWriter() {
   return settled;
 }
 
-function scheduleAgentRunPersistence() {
+function scheduleAgentRunPersistence(): void {
   if (!persistence.enabled) return;
   persistenceDirty = true;
   if (persistencePromise || persistenceStartQueued) return;
@@ -115,7 +313,7 @@ function scheduleAgentRunPersistence() {
   });
 }
 
-export async function flushAgentRunStore() {
+export async function flushAgentRunStore(): Promise<{ persisted: boolean; filePath: string }> {
   if (!persistence.enabled) {
     if (persistence.required) {
       throw agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
@@ -133,7 +331,10 @@ export async function flushAgentRunStore() {
   }
 }
 
-export async function withFlushedAgentRunSnapshot(runId, consume) {
+export async function withFlushedAgentRunSnapshot<T>(
+  runId: string,
+  consume: (run: AgentRunDto | null) => T
+): Promise<T> {
   while (true) {
     await flushAgentRunStore();
     const run = getAgentRun(runId);
@@ -141,18 +342,18 @@ export async function withFlushedAgentRunSnapshot(runId, consume) {
   }
 }
 
-export function getAgentRunStoreStatus() {
+export function getAgentRunStoreStatus(): AgentRunStoreStatus {
   return {
     enabled: persistence.enabled,
     required: persistence.required,
     ready: persistence.enabled && !persistenceError,
     dirty: persistenceDirty,
     filePath: persistence.filePath,
-    error: persistenceError?.message || null
+    error: persistenceErrorMessage()
   };
 }
 
-function validationError(code, message, details = {}) {
+function validationError(code: string, message: string, details: Record<string, unknown> = {}): AgentError {
   return agentError(code, message, {
     statusCode: 400,
     details,
@@ -160,7 +361,7 @@ function validationError(code, message, details = {}) {
   });
 }
 
-function normalizeJson(value, fieldName) {
+function normalizeJson(value: unknown, fieldName: string): unknown {
   try {
     const serialized = JSON.stringify(value);
     if (serialized === undefined) {
@@ -171,34 +372,37 @@ function normalizeJson(value, fieldName) {
     throw validationError(
       'AGENT_RUN_JSON_INVALID',
       `${fieldName} 必须是可序列化的 JSON`,
-      { field: fieldName, reason: error.message }
+      { field: fieldName, reason: describeError(error) }
     );
   }
 }
 
-function stableJson(value) {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
 
-  return `{${Object.keys(value)
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
     .sort()
-    .map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+    .map(key => `${JSON.stringify(key)}:${stableJson(record[key])}`)
     .join(',')}}`;
 }
 
-export function fingerprintAgentRunInput(input = {}) {
+export function fingerprintAgentRunInput(input: unknown = {}): string {
   const normalized = normalizeJson(input, 'input');
   return createHash('sha256').update(stableJson(normalized)).digest('hex');
 }
 
-function cloneJson(value) {
-  return JSON.parse(JSON.stringify(value));
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function toAgentRunDto(run) {
+function toAgentRunDto(run: AgentRunRecord): AgentRunDto;
+function toAgentRunDto(run: AgentRunRecord | null | undefined): AgentRunDto | null;
+function toAgentRunDto(run: AgentRunRecord | null | undefined): AgentRunDto | null {
   if (!run) return null;
 
-  const dto = {
+  const dto: AgentRunDto = {
     runId: run.runId,
     operationId: run.operationId,
     state: run.status,
@@ -224,8 +428,8 @@ function toAgentRunDto(run) {
   }
   if (run.status === 'interrupted') {
     dto.recovery = {
-      source: run.error?.details?.reason || 'unknown',
-      previousState: run.error?.details?.previousState || null,
+      source: stringField(run.error?.details.reason) || 'unknown',
+      previousState: stringField(run.error?.details.previousState) || null,
       executionResumed: false,
       deviceState: 'unknown'
     };
@@ -233,11 +437,16 @@ function toAgentRunDto(run) {
   return cloneJson(dto);
 }
 
-function idempotencyIndexKey(operationId, idempotencyKey) {
+/** 读取已持久化的可选字符串字段；非字符串按缺失处理，不把任意外部值透传到公开 DTO。 */
+function stringField(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function idempotencyIndexKey(operationId: string, idempotencyKey: string): string {
   return JSON.stringify([operationId, idempotencyKey]);
 }
 
-function removeRecord(runId) {
+function removeRecord(runId: string): boolean {
   const record = runs.get(runId);
   if (!record) return false;
 
@@ -249,14 +458,19 @@ function removeRecord(runId) {
   return true;
 }
 
-function pruneTerminalRuns(now = Date.now()) {
+function terminalFinishedAt(record: AgentRunStoreRecord): number {
+  // 终态记录在写入与恢复时都要求 finishedAtMs，这里只把类型收窄到 number。
+  return record.finishedAtMs ?? 0;
+}
+
+function pruneTerminalRuns(now: number = Date.now()): number {
   const cutoff = now - TERMINAL_RETENTION_MS;
-  const retained = [];
+  const retained: AgentRunStoreRecord[] = [];
   let removed = 0;
 
   for (const [runId, record] of runs) {
-    if (!TERMINAL_STATUSES.has(record.run.status)) continue;
-    if (record.finishedAtMs <= cutoff) {
+    if (!isTerminalStatus(record.run.status)) continue;
+    if (terminalFinishedAt(record) <= cutoff) {
       if (removeRecord(runId)) removed += 1;
       continue;
     }
@@ -265,7 +479,8 @@ function pruneTerminalRuns(now = Date.now()) {
 
   if (retained.length <= MAX_TERMINAL_RUNS) return removed;
   retained.sort((left, right) =>
-    left.finishedAtMs - right.finishedAtMs || left.terminalSequence - right.terminalSequence
+    terminalFinishedAt(left) - terminalFinishedAt(right)
+    || (left.terminalSequence ?? 0) - (right.terminalSequence ?? 0)
   );
   for (const record of retained.slice(0, retained.length - MAX_TERMINAL_RUNS)) {
     if (removeRecord(record.run.runId)) removed += 1;
@@ -273,7 +488,7 @@ function pruneTerminalRuns(now = Date.now()) {
   return removed;
 }
 
-function normalizeOperationId(operationId) {
+function normalizeOperationId(operationId: unknown): string {
   if (typeof operationId !== 'string' || !operationId.trim()) {
     throw validationError(
       'AGENT_RUN_OPERATION_REQUIRED',
@@ -284,7 +499,7 @@ function normalizeOperationId(operationId) {
   return operationId.trim();
 }
 
-function normalizeIdempotencyKey(idempotencyKey) {
+function normalizeIdempotencyKey(idempotencyKey: unknown): string | null {
   if (idempotencyKey === undefined || idempotencyKey === null) return null;
   if (typeof idempotencyKey !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
     throw validationError(
@@ -296,7 +511,7 @@ function normalizeIdempotencyKey(idempotencyKey) {
   return idempotencyKey;
 }
 
-function requireRecord(runId) {
+function requireRecord(runId: string): AgentRunStoreRecord {
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
   const record = runs.get(runId);
   if (!record) {
@@ -309,7 +524,11 @@ function requireRecord(runId) {
   return record;
 }
 
-function transitionError(record, targetStatus, allowedStatuses) {
+function transitionError(
+  record: AgentRunStoreRecord,
+  targetStatus: string,
+  allowedStatuses: readonly string[]
+): AgentError {
   return agentError('AGENT_RUN_STATE_CONFLICT', `无法将 run 从 ${record.run.status} 更新为 ${targetStatus}`, {
     statusCode: 409,
     details: {
@@ -322,7 +541,12 @@ function transitionError(record, targetStatus, allowedStatuses) {
   });
 }
 
-function transition(runId, targetStatus, allowedStatuses, updates = {}) {
+function transition(
+  runId: string,
+  targetStatus: AgentRunStatus,
+  allowedStatuses: readonly AgentRunStatus[],
+  updates: Partial<AgentRunRecord> = {}
+): AgentRunDto {
   const record = requireRecord(runId);
   if (record.run.status === targetStatus) return toAgentRunDto(record.run);
   if (!allowedStatuses.includes(record.run.status)) {
@@ -340,7 +564,7 @@ function transition(runId, targetStatus, allowedStatuses, updates = {}) {
     record.startedAtMs = nowMs;
   }
 
-  if (TERMINAL_STATUSES.has(targetStatus)) {
+  if (isTerminalStatus(targetStatus)) {
     record.run.finishedAt = now;
     record.run.durationMs = Math.max(0, nowMs - (record.startedAtMs ?? record.createdAtMs));
     record.finishedAtMs = nowMs;
@@ -352,37 +576,48 @@ function transition(runId, targetStatus, allowedStatuses, updates = {}) {
   return toAgentRunDto(record.run);
 }
 
-function normalizeFailure(error) {
+/** 持久化错误对象只保证公开字段；缺省或类型不符时回退到稳定的默认值。 */
+function normalizeErrorFields(value: unknown): AgentRunError {
+  const record = isRecord(value) ? value : {};
+  return {
+    code: typeof record.code === 'string' && record.code ? record.code : 'AGENT_RUN_FAILED',
+    message: typeof record.message === 'string' && record.message ? record.message : 'Agent run 执行失败',
+    statusCode: normalizeFailureStatusCode(record.statusCode ?? record.status),
+    details: isRecord(record.details) ? record.details : {},
+    retryable: typeof record.retryable === 'boolean' ? record.retryable : false
+  };
+}
+
+function normalizeFailure(error: unknown): AgentRunError {
   if (error instanceof Error) {
-    return normalizeJson({
-      code: error.code || 'AGENT_RUN_FAILED',
-      message: error.message,
-      statusCode: normalizeFailureStatusCode(error.statusCode || error.status),
-      details: error.details || {},
-      retryable: error.retryable ?? false
-    }, 'error');
+    const fields = error as Error & {
+      code?: unknown;
+      statusCode?: unknown;
+      status?: unknown;
+      details?: unknown;
+      retryable?: unknown;
+    };
+    return normalizeErrorFields(normalizeJson({
+      code: fields.code || 'AGENT_RUN_FAILED',
+      message: fields.message,
+      statusCode: normalizeFailureStatusCode(fields.statusCode || fields.status),
+      details: fields.details || {},
+      retryable: fields.retryable ?? false
+    }, 'error'));
   }
   const normalized = normalizeJson(error ?? { message: 'Agent run 执行失败' }, 'error');
   if (typeof normalized === 'string') {
     return { code: 'AGENT_RUN_FAILED', message: normalized, statusCode: 500, details: {}, retryable: false };
   }
-  return {
-    code: normalized.code || 'AGENT_RUN_FAILED',
-    message: normalized.message || 'Agent run 执行失败',
-    statusCode: normalizeFailureStatusCode(normalized.statusCode || normalized.status),
-    details: normalized.details && typeof normalized.details === 'object' && !Array.isArray(normalized.details)
-      ? normalized.details
-      : {},
-    retryable: normalized.retryable ?? false
-  };
+  return normalizeErrorFields(normalized);
 }
 
-function normalizeFailureStatusCode(statusCode) {
+function normalizeFailureStatusCode(statusCode: unknown): number {
   const normalized = Number(statusCode);
   return Number.isInteger(normalized) && normalized >= 400 && normalized <= 599 ? normalized : 500;
 }
 
-function storeValidationError(message, details = {}) {
+function storeValidationError(message: string, details: Record<string, unknown> = {}): AgentError {
   return agentError('AGENT_RUN_STORE_INVALID', message, {
     statusCode: 503,
     details: { filePath: persistence.filePath, ...details },
@@ -390,7 +625,7 @@ function storeValidationError(message, details = {}) {
   });
 }
 
-function finiteTimestamp(value, fallback, field, index) {
+function finiteTimestamp(value: unknown, fallback: unknown, field: string, index: number): number {
   const normalized = Number(value ?? fallback);
   if (!Number.isFinite(normalized) || normalized < 0) {
     throw storeValidationError(`Agent run 存储中的 ${field} 无效`, { index, field });
@@ -398,84 +633,109 @@ function finiteTimestamp(value, fallback, field, index) {
   return normalized;
 }
 
-function restoreRecord(item, index) {
-  if (!item || typeof item !== 'object' || Array.isArray(item) || !item.run || typeof item.run !== 'object') {
+/**
+ * 从 unknown 恢复一条磁盘记录。身份、状态、时间戳与序号决定准入是否关闭；
+ * 其余字段按类型边界归一化，已由本模块写出的记录不受影响。
+ */
+function restoreRecord(item: unknown, index: number): AgentRunStoreRecord {
+  if (!isRecord(item) || !item.run || typeof item.run !== 'object') {
     throw storeValidationError('Agent run 存储记录格式无效', { index });
   }
 
-  const run = normalizeJson(item.run, `runs[${index}].run`);
-  if (typeof run.runId !== 'string' || !run.runId
-    || typeof run.operationId !== 'string' || !run.operationId
-    || !ALL_STATUSES.has(run.status)
-    || typeof run.createdAt !== 'string' || !Number.isFinite(Date.parse(run.createdAt))) {
-    throw storeValidationError('Agent run 存储记录缺少有效的身份或状态字段', { index, runId: run.runId || null });
+  const storedRun = normalizeJson(item.run, `runs[${index}].run`);
+  if (!isRecord(storedRun)
+    || typeof storedRun.runId !== 'string' || !storedRun.runId
+    || typeof storedRun.operationId !== 'string' || !storedRun.operationId
+    || !isAgentRunStatus(storedRun.status)
+    || typeof storedRun.createdAt !== 'string' || !Number.isFinite(Date.parse(storedRun.createdAt))) {
+    throw storeValidationError('Agent run 存储记录缺少有效的身份或状态字段', {
+      index,
+      runId: truthyOrNull(isRecord(storedRun) ? storedRun.runId : null)
+    });
   }
-  if (run.idempotencyKey !== null && run.idempotencyKey !== undefined
-    && (typeof run.idempotencyKey !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(run.idempotencyKey))) {
-    throw storeValidationError('Agent run 存储中的幂等键无效', { index, runId: run.runId });
+  const runId: string = storedRun.runId;
+  const operationId: string = storedRun.operationId;
+  const status: AgentRunStatus = storedRun.status;
+  const createdAt: string = storedRun.createdAt;
+
+  const idempotencyKey = storedRun.idempotencyKey;
+  if (idempotencyKey !== null && idempotencyKey !== undefined
+    && (typeof idempotencyKey !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey))) {
+    throw storeValidationError('Agent run 存储中的幂等键无效', { index, runId });
   }
-  if (run.idempotencyKey && typeof run.inputFingerprint !== 'string') {
-    throw storeValidationError('Agent run 存储缺少请求指纹', { index, runId: run.runId });
+  if (idempotencyKey && typeof storedRun.inputFingerprint !== 'string') {
+    throw storeValidationError('Agent run 存储缺少请求指纹', { index, runId });
   }
 
-  const terminal = TERMINAL_STATUSES.has(run.status);
-  const active = ACTIVE_STATUSES.has(run.status);
-  if (typeof run.updatedAt !== 'string' || !Number.isFinite(Date.parse(run.updatedAt))) {
-    throw storeValidationError('Agent run 存储中的 updatedAt 无效', { index, runId: run.runId });
+  const terminal = isTerminalStatus(status);
+  const active = isActiveStatus(status);
+  if (typeof storedRun.updatedAt !== 'string' || !Number.isFinite(Date.parse(storedRun.updatedAt))) {
+    throw storeValidationError('Agent run 存储中的 updatedAt 无效', { index, runId });
   }
-  if (run.startedAt !== null && run.startedAt !== undefined
-    && (typeof run.startedAt !== 'string' || !Number.isFinite(Date.parse(run.startedAt)))) {
-    throw storeValidationError('Agent run 存储中的 startedAt 无效', { index, runId: run.runId });
+  if (storedRun.startedAt !== null && storedRun.startedAt !== undefined
+    && (typeof storedRun.startedAt !== 'string' || !Number.isFinite(Date.parse(storedRun.startedAt)))) {
+    throw storeValidationError('Agent run 存储中的 startedAt 无效', { index, runId });
   }
-  if (terminal && (typeof run.finishedAt !== 'string' || !Number.isFinite(Date.parse(run.finishedAt)))) {
-    throw storeValidationError('Agent run 终态记录缺少有效的 finishedAt', { index, runId: run.runId });
+  if (terminal && (typeof storedRun.finishedAt !== 'string' || !Number.isFinite(Date.parse(storedRun.finishedAt)))) {
+    throw storeValidationError('Agent run 终态记录缺少有效的 finishedAt', { index, runId });
   }
-  if (active && run.finishedAt !== null && run.finishedAt !== undefined) {
-    throw storeValidationError('Agent run 活跃记录不能包含 finishedAt', { index, runId: run.runId });
+  if (active && storedRun.finishedAt !== null && storedRun.finishedAt !== undefined) {
+    throw storeValidationError('Agent run 活跃记录不能包含 finishedAt', { index, runId });
   }
-  if (['failed', 'interrupted'].includes(run.status)
-    && (!run.error || typeof run.error !== 'object' || Array.isArray(run.error))) {
-    throw storeValidationError('Agent run 失败终态缺少错误信息', { index, runId: run.runId });
+  if ((status === 'failed' || status === 'interrupted')
+    && (!storedRun.error || typeof storedRun.error !== 'object' || Array.isArray(storedRun.error))) {
+    throw storeValidationError('Agent run 失败终态缺少错误信息', { index, runId });
   }
 
-  run.idempotencyKey = run.idempotencyKey || null;
-  run.inputFingerprint = typeof run.inputFingerprint === 'string' ? run.inputFingerprint : '';
-  run.input = run.input ?? {};
-  run.metadata = run.metadata ?? {};
-  run.startedAt = run.startedAt ?? null;
-  run.finishedAt = run.finishedAt ?? null;
-  run.durationMs = run.durationMs ?? null;
-  run.result = run.result ?? null;
-  run.error = run.error ?? null;
+  const startedAt = typeof storedRun.startedAt === 'string' ? storedRun.startedAt : null;
+  const finishedAt = typeof storedRun.finishedAt === 'string' ? storedRun.finishedAt : null;
+  const run: AgentRunRecord = {
+    runId,
+    operationId,
+    idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : null,
+    inputFingerprint: typeof storedRun.inputFingerprint === 'string' ? storedRun.inputFingerprint : '',
+    input: storedRun.input ?? {},
+    metadata: storedRun.metadata ?? {},
+    status,
+    createdAt,
+    updatedAt: storedRun.updatedAt,
+    startedAt,
+    finishedAt,
+    durationMs: typeof storedRun.durationMs === 'number' ? storedRun.durationMs : null,
+    result: storedRun.result ?? null,
+    error: storedRun.error === null || storedRun.error === undefined
+      ? null
+      : normalizeErrorFields(storedRun.error)
+  };
 
-  const createdAtMs = finiteTimestamp(item.createdAtMs, Date.parse(run.createdAt), 'createdAtMs', index);
-  const startedAtMs = run.startedAt
-    ? finiteTimestamp(item.startedAtMs, Date.parse(run.startedAt), 'startedAtMs', index)
+  const createdAtMs = finiteTimestamp(item.createdAtMs, Date.parse(createdAt), 'createdAtMs', index);
+  const startedAtMs = startedAt
+    ? finiteTimestamp(item.startedAtMs, Date.parse(startedAt), 'startedAtMs', index)
     : null;
   if (terminal && (item.finishedAtMs === null || item.finishedAtMs === undefined)) {
-    throw storeValidationError('Agent run 终态记录缺少 finishedAtMs', { index, runId: run.runId });
+    throw storeValidationError('Agent run 终态记录缺少 finishedAtMs', { index, runId });
   }
   const finishedAtMs = terminal
     ? finiteTimestamp(item.finishedAtMs, undefined, 'finishedAtMs', index)
     : null;
   const storedSequence = Number(item.sequence);
   if (!Number.isInteger(storedSequence) || storedSequence <= 0) {
-    throw storeValidationError('Agent run 存储中的 sequence 无效', { index, runId: run.runId });
+    throw storeValidationError('Agent run 存储中的 sequence 无效', { index, runId });
   }
   const storedTerminalSequence = item.terminalSequence === null || item.terminalSequence === undefined
     ? null
     : Number(item.terminalSequence);
-  if (terminal && (!Number.isInteger(storedTerminalSequence) || storedTerminalSequence <= 0)) {
-    throw storeValidationError('Agent run 终态记录缺少有效的 terminalSequence', { index, runId: run.runId });
+  if (terminal && (!Number.isInteger(storedTerminalSequence) || (storedTerminalSequence ?? 0) <= 0)) {
+    throw storeValidationError('Agent run 终态记录缺少有效的 terminalSequence', { index, runId });
   }
   if (active && storedTerminalSequence !== null) {
-    throw storeValidationError('Agent run 活跃记录不能包含 terminalSequence', { index, runId: run.runId });
+    throw storeValidationError('Agent run 活跃记录不能包含 terminalSequence', { index, runId });
   }
   if (startedAtMs !== null && startedAtMs < createdAtMs) {
-    throw storeValidationError('Agent run 的 startedAt 早于 createdAt', { index, runId: run.runId });
+    throw storeValidationError('Agent run 的 startedAt 早于 createdAt', { index, runId });
   }
   if (finishedAtMs !== null && finishedAtMs < (startedAtMs ?? createdAtMs)) {
-    throw storeValidationError('Agent run 的 finishedAt 早于开始时间', { index, runId: run.runId });
+    throw storeValidationError('Agent run 的 finishedAt 早于开始时间', { index, runId });
   }
 
   return {
@@ -488,21 +748,29 @@ function restoreRecord(item, index) {
   };
 }
 
-function restoreStoreSnapshot(snapshot, nowMs = Date.now()) {
+interface RestoredStore {
+  records: AgentRunStoreRecord[];
+  sequence: number;
+  terminalSequence: number;
+  interruptedRuns: number;
+}
+
+function restoreStoreSnapshot(snapshot: unknown, nowMs: number = Date.now()): RestoredStore {
   const normalized = snapshot;
-  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)
-    || normalized.version !== AGENT_RUN_STORE_VERSION || !Array.isArray(normalized.runs)) {
+  if (!isRecord(normalized)
+    || normalized.version !== AGENT_RUN_STORE_VERSION
+    || !Array.isArray(normalized.runs)) {
     throw storeValidationError('Agent run 存储版本或顶层格式无效', {
       expectedVersion: AGENT_RUN_STORE_VERSION,
-      actualVersion: normalized?.version ?? null
+      actualVersion: isRecord(normalized) ? normalized.version ?? null : null
     });
   }
 
   const restoredRecords = normalized.runs.map(restoreRecord);
-  const runIds = new Set();
-  const sequences = new Set();
-  const terminalSequences = new Set();
-  const idempotencyKeys = new Set();
+  const runIds = new Set<string>();
+  const sequences = new Set<number>();
+  const terminalSequences = new Set<number>();
+  const idempotencyKeys = new Set<string>();
   let restoredSequence = 0;
   let restoredTerminalSequence = 0;
   let interruptedRuns = 0;
@@ -542,8 +810,8 @@ function restoreStoreSnapshot(snapshot, nowMs = Date.now()) {
   }
 
   for (const record of restoredRecords) {
-    if (!ACTIVE_STATUSES.has(record.run.status)) continue;
-    const previousState = record.run.status;
+    if (!isActiveStatus(record.run.status)) continue;
+    const previousState: AgentRunActiveStatus = record.run.status;
     record.run.status = 'interrupted';
     record.run.updatedAt = now;
     record.run.finishedAt = now;
@@ -568,7 +836,9 @@ function restoreStoreSnapshot(snapshot, nowMs = Date.now()) {
   };
 }
 
-export async function initializeAgentRunStore(overrides = {}) {
+export async function initializeAgentRunStore(
+  overrides: AgentRunStoreOverrides = {}
+): Promise<AgentRunStoreRestoreSummary> {
   if (persistencePromise) await persistencePromise;
 
   persistenceGeneration += 1;
@@ -584,7 +854,7 @@ export async function initializeAgentRunStore(overrides = {}) {
   persistenceError = null;
   persistenceStartQueued = false;
 
-  let restored;
+  let restored: RestoredStore;
   try {
     const snapshot = await persistence.readStore(persistence.filePath, {
       version: AGENT_RUN_STORE_VERSION,
@@ -595,9 +865,9 @@ export async function initializeAgentRunStore(overrides = {}) {
     persistenceError = error;
     persistence.runtimeLogger.error('Agent run 存储恢复失败，执行接口将保持关闭', {
       filePath: persistence.filePath,
-      error: error.message
+      error: describeError(error)
     });
-    throw error?.code === 'AGENT_RUN_STORE_INVALID' ? error : agentRunPersistenceError(error);
+    throw errorCodeOf(error) === 'AGENT_RUN_STORE_INVALID' ? error : agentRunPersistenceError(error);
   }
 
   runs.clear();
@@ -632,8 +902,10 @@ export async function initializeAgentRunStore(overrides = {}) {
   };
 }
 
-export async function shutdownAgentRunStoreForTests({ clearMemory = true } = {}) {
-  let flushError = null;
+export async function shutdownAgentRunStoreForTests(
+  { clearMemory = true }: { clearMemory?: boolean } = {}
+): Promise<void> {
+  let flushError: unknown = null;
   try {
     if (persistence.enabled) await flushAgentRunStore();
   } catch (error) {
@@ -649,7 +921,8 @@ export function beginAgentRun({
   idempotencyKey = null,
   input = {},
   metadata = {}
-} = {}) {
+  // 缺省值只保留既有调用边界（空参数仍走 operationId 校验），由 normalizeOperationId 拒绝。
+}: BeginAgentRunParams = {} as BeginAgentRunParams): BeginAgentRunResult {
   // 关闭开始后不再创建新的执行身份；这是所有纳入 Run 的入口（HTTP、cron、
   // 作业集）共用的准入点，早于幂等重放与落库，避免关闭期间写入新的执行意图。
   assertExecutionAdmissionOpen(
@@ -694,7 +967,7 @@ export function beginAgentRun({
 
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
-  const run = {
+  const run: AgentRunRecord = {
     runId: randomUUID(),
     operationId: normalizedOperationId,
     idempotencyKey: normalizedIdempotencyKey,
@@ -710,7 +983,7 @@ export function beginAgentRun({
     result: null,
     error: null
   };
-  const record = {
+  const record: AgentRunStoreRecord = {
     run,
     sequence: ++sequence,
     createdAtMs: nowMs,
@@ -731,7 +1004,7 @@ export function beginAgentRun({
   return { run: toAgentRunDto(run), replayed: false };
 }
 
-export function startAgentRun(runId) {
+export function startAgentRun(runId: string): AgentRunDto {
   return transition(runId, 'running', ['accepted']);
 }
 
@@ -740,7 +1013,7 @@ export function startAgentRun(runId) {
  * device side effect. A run stopped while still pending must not start.
  * A waiting run (a manual copilot-set between entries) re-enters execution.
  */
-export function startAgentRunForExecution(runId) {
+export function startAgentRunForExecution(runId: string): AgentRunDto {
   const record = requireRecord(runId);
   if (record.run.status === 'accepted') return startAgentRun(runId);
   if (record.run.status === 'waiting') return transition(runId, 'running', ['waiting']);
@@ -754,7 +1027,7 @@ export function startAgentRunForExecution(runId) {
       details: { runId, state: record.run.status },
       retryable: false
     }
-  );
+  ) as AgentError & { stopped?: boolean };
   error.stopped = true;
   throw error;
 }
@@ -763,15 +1036,20 @@ export function startAgentRunForExecution(runId) {
  * Returns a running copilot-set run to the explicit waiting-for-next phase.
  * Only multi-step executors use this; a waiting run holds no execution lease.
  */
-export function markAgentRunWaiting(runId) {
+export function markAgentRunWaiting(runId: string): AgentRunDto {
   return transition(runId, 'waiting', ['running']);
 }
 
-export function markAgentRunStopping(runId) {
+export function markAgentRunStopping(runId: string): AgentRunDto {
   return transition(runId, 'stopping', ['accepted', 'running']);
 }
 
-const RUN_STOP_PRIORITY = { stopping: 4, running: 3, accepted: 2, waiting: 1 };
+const RUN_STOP_PRIORITY: Record<AgentRunActiveStatus, number> = {
+  stopping: 4,
+  running: 3,
+  accepted: 2,
+  waiting: 1
+};
 
 /**
  * Records a stop intent for one run without sending any device command.
@@ -779,11 +1057,11 @@ const RUN_STOP_PRIORITY = { stopping: 4, running: 3, accepted: 2, waiting: 1 };
  * terminal immediately; `running` runs move to `stopping`; `stopping` is
  * idempotent.
  */
-export function requestAgentRunStop(runId) {
+export function requestAgentRunStop(runId: string): AgentRunStopResult {
   const record = requireRecord(runId);
   const state = record.run.status;
 
-  if (TERMINAL_STATUSES.has(state)) {
+  if (isTerminalStatus(state)) {
     return { run: toAgentRunDto(record.run), disposition: 'terminal' };
   }
   if (state === 'accepted') {
@@ -804,10 +1082,10 @@ export function requestAgentRunStop(runId) {
   return { run: markAgentRunStopping(runId), disposition: 'stopping' };
 }
 
-export function setAgentRunAcceptedResult(runId, result = null) {
+export function setAgentRunAcceptedResult(runId: string, result: unknown = null): AgentRunDto {
   const record = requireRecord(runId);
-  if (TERMINAL_STATUSES.has(record.run.status)) return toAgentRunDto(record.run);
-  if (!ACTIVE_STATUSES.has(record.run.status)) {
+  if (isTerminalStatus(record.run.status)) return toAgentRunDto(record.run);
+  if (!isActiveStatus(record.run.status)) {
     throw transitionError(record, 'accepted-result', [...ACTIVE_STATUSES]);
   }
   record.run.result = normalizeJson(result, 'result');
@@ -816,21 +1094,21 @@ export function setAgentRunAcceptedResult(runId, result = null) {
   return toAgentRunDto(record.run);
 }
 
-export function completeAgentRun(runId, result = null) {
+export function completeAgentRun(runId: string, result: unknown = null): AgentRunDto {
   return transition(runId, 'succeeded', ['accepted', 'waiting', 'running'], {
     result: normalizeJson(result, 'result'),
     error: null
   });
 }
 
-export function failAgentRun(runId, error = null) {
+export function failAgentRun(runId: string, error: unknown = null): AgentRunDto {
   return transition(runId, 'failed', ['accepted', 'waiting', 'running', 'stopping'], {
     result: null,
     error: normalizeFailure(error)
   });
 }
 
-export function stopAgentRun(runId, result = null) {
+export function stopAgentRun(runId: string, result: unknown = null): AgentRunDto {
   return transition(runId, 'stopped', ['accepted', 'waiting', 'running', 'stopping'], {
     result: normalizeJson(result, 'result'),
     error: null
@@ -843,11 +1121,14 @@ export function stopAgentRun(runId, result = null) {
  * 自动续跑；`recovery.source` 记录实际关闭原因（例如 `server_shutdown`）。
  * 已进入终态的 run 原样返回，不覆盖执行器的实际结果。
  */
-export function interruptAgentRun(runId, { reason = 'server_shutdown', message } = {}) {
+export function interruptAgentRun(
+  runId: string,
+  { reason = 'server_shutdown', message }: { reason?: string; message?: string } = {}
+): AgentRunDto {
   const record = requireRecord(runId);
-  if (TERMINAL_STATUSES.has(record.run.status)) return toAgentRunDto(record.run);
+  if (isTerminalStatus(record.run.status)) return toAgentRunDto(record.run);
   const previousState = record.run.status;
-  return transition(runId, 'interrupted', [...ACTIVE_STATUSES], {
+  return transition(runId, 'interrupted', ['accepted', 'waiting', 'running', 'stopping'], {
     result: null,
     error: {
       code: 'AGENT_RUN_INTERRUPTED',
@@ -859,7 +1140,7 @@ export function interruptAgentRun(runId, { reason = 'server_shutdown', message }
   });
 }
 
-export function releaseAgentRunIdempotency(runId) {
+export function releaseAgentRunIdempotency(runId: string): AgentRunDto {
   const record = requireRecord(runId);
   if (!record.run.idempotencyKey) return toAgentRunDto(record.run);
   const indexKey = idempotencyIndexKey(record.run.operationId, record.run.idempotencyKey);
@@ -869,9 +1150,9 @@ export function releaseAgentRunIdempotency(runId) {
   return toAgentRunDto(record.run);
 }
 
-export function discardAgentRun(runId) {
+export function discardAgentRun(runId: string): AgentRunDto {
   const record = requireRecord(runId);
-  const allowedStatuses = ['accepted', 'running'];
+  const allowedStatuses: AgentRunStatus[] = ['accepted', 'running'];
   if (!allowedStatuses.includes(record.run.status)) {
     throw transitionError(record, 'discarded', allowedStatuses);
   }
@@ -882,13 +1163,18 @@ export function discardAgentRun(runId) {
   return discarded;
 }
 
-export function getAgentRun(runId) {
+export function getAgentRun(runId: string): AgentRunDto | null {
   assertAgentRunStoreReadable();
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
   return toAgentRunDto(runs.get(runId)?.run);
 }
 
-export function listAgentRuns({ operationId = null, state = null, status = null, limit = 500 } = {}) {
+export function listAgentRuns({
+  operationId = null,
+  state = null,
+  status = null,
+  limit = 500
+}: ListAgentRunsQuery = {}): AgentRunDto[] {
   assertAgentRunStoreReadable();
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
   const normalizedLimit = Math.min(Math.max(Number(limit) || 0, 0), 500);
@@ -903,35 +1189,38 @@ export function listAgentRuns({ operationId = null, state = null, status = null,
     .map(record => toAgentRunDto(record.run));
 }
 
-export function getCurrentAgentRun() {
+export function getCurrentAgentRun(): AgentRunDto | null {
   return getActiveAgentRuns()[0] || null;
 }
 
-export function getActiveAgentRuns() {
+export function getActiveAgentRuns(): AgentRunDto[] {
   assertAgentRunStoreReadable();
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
   return [...runs.values()]
-    .filter(record => ACTIVE_STATUSES.has(record.run.status))
-    .sort((left, right) =>
-      RUN_STOP_PRIORITY[right.run.status] - RUN_STOP_PRIORITY[left.run.status]
-      || right.sequence - left.sequence
-    )
+    .filter(record => isActiveStatus(record.run.status))
+    .sort((left, right) => {
+      // 过滤后状态已收窄到活动集合，排序只按停止优先级与创建顺序。
+      const leftStatus = left.run.status as AgentRunActiveStatus;
+      const rightStatus = right.run.status as AgentRunActiveStatus;
+      return RUN_STOP_PRIORITY[rightStatus] - RUN_STOP_PRIORITY[leftStatus]
+        || right.sequence - left.sequence;
+    })
     .map(record => toAgentRunDto(record.run));
 }
 
-export function getLatestTerminalAgentRun() {
+export function getLatestTerminalAgentRun(): AgentRunDto | null {
   assertAgentRunStoreReadable();
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
   const record = [...runs.values()]
-    .filter(item => TERMINAL_STATUSES.has(item.run.status))
+    .filter(item => isTerminalStatus(item.run.status))
     .sort((left, right) =>
-      right.finishedAtMs - left.finishedAtMs
-      || right.terminalSequence - left.terminalSequence
+      terminalFinishedAt(right) - terminalFinishedAt(left)
+      || (right.terminalSequence ?? 0) - (left.terminalSequence ?? 0)
     )[0];
   return toAgentRunDto(record?.run);
 }
 
-function resetAgentRunState({ clearMemory = true } = {}) {
+function resetAgentRunState({ clearMemory = true }: { clearMemory?: boolean } = {}): void {
   persistenceGeneration += 1;
   persistence = {
     enabled: false,
@@ -952,6 +1241,6 @@ function resetAgentRunState({ clearMemory = true } = {}) {
   }
 }
 
-export function resetAgentRunsForTests() {
+export function resetAgentRunsForTests(): void {
   resetAgentRunState();
 }

@@ -30,7 +30,7 @@ import {
   setAgentRunAcceptedResult,
   flushAgentRunStore,
   withFlushedAgentRunSnapshot
-} from '../services/agentRunService.js';
+} from '../services/agentRunService.ts';
 import { enrichAgentRun } from '../services/runSnapshotService.js';
 import {
   asyncHandler,

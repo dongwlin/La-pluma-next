@@ -12,7 +12,7 @@ import {
 } from '../schedulerService.js';
 import { createRuntimeLifecycle } from '../runtimeLifecycleService.ts';
 import { initializeRuntimeState } from '../runtimeInitializationService.js';
-import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.js';
+import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
 import { getTodayOpenStages } from '../notificationService.js';
 
 const silentLogger = {

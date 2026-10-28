@@ -19,11 +19,11 @@ import {
   shutdownAgentRunStoreForTests,
   startAgentRun,
   stopAgentRun
-} from '../agentRunService.js';
+} from '../agentRunService.ts';
 import {
   acquireMaaExecutionLease,
   withMaaExecutionLease
-} from '../executionCoordinatorService.js';
+} from '../executionCoordinatorService.ts';
 import {
   clearExecutionAdmissionGateForTests,
   getExecutionAdmissionGate,
@@ -632,7 +632,7 @@ describe('shutdown signal handling', () => {
 
   async function writeHarness() {
     const serverUrl = pathToFileURL(fileURLToPath(new URL('../../server.js', import.meta.url))).href;
-    const agentRunUrl = pathToFileURL(fileURLToPath(new URL('../agentRunService.js', import.meta.url))).href;
+    const agentRunUrl = pathToFileURL(fileURLToPath(new URL('../agentRunService.ts', import.meta.url))).href;
     const fileHelperUrl = pathToFileURL(fileURLToPath(new URL('../../utils/fileHelper.ts', import.meta.url))).href;
     const source = `import { installShutdownHandlers, startLaPlumaServer } from ${JSON.stringify(serverUrl)};
 import { beginAgentRun, getAgentRun, initializeAgentRunStore, startAgentRun, stopAgentRun } from ${JSON.stringify(agentRunUrl)};

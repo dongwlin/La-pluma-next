@@ -9,7 +9,7 @@ import {
   markAgentRunStopping,
   resetAgentRunsForTests,
   startAgentRunForExecution
-} from '../agentRunService.js';
+} from '../agentRunService.ts';
 import {
   configureCopilotSetRuntimeForTests,
   continueManualCopilotSet,
@@ -20,7 +20,7 @@ import {
   runContinuousCopilotSet,
   startManualCopilotSet
 } from '../copilotSetRunService.js';
-import { getMaaExecutionLeaseSnapshot, withMaaExecutionLease } from '../executionCoordinatorService.js';
+import { getMaaExecutionLeaseSnapshot, withMaaExecutionLease } from '../executionCoordinatorService.ts';
 
 let lockDir;
 let lockFile;

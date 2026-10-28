@@ -3,7 +3,7 @@ import { readFile, stat } from 'fs/promises';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { execMaaCommand } from './maaExecutionService.js';
-import { withMaaExecutionLease } from './executionCoordinatorService.js';
+import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 
 const serviceDir = dirname(fileURLToPath(import.meta.url));
 const serverDir = resolve(serviceDir, '..');

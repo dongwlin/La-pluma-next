@@ -19,7 +19,7 @@ import { createUserConfigRouter } from './routes/userConfig.ts';
 import {
   getAgentRunStoreStatus,
   initializeAgentRunStore
-} from './services/agentRunService.js';
+} from './services/agentRunService.ts';
 import { initializeRuntimeState } from './services/runtimeInitializationService.js';
 import { closeExecutionAdmission } from './services/executionAdmissionService.ts';
 import { attachExecutionShutdownToLifecycle } from './services/executionShutdownService.ts';

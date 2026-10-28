@@ -18,7 +18,7 @@ import {
   resetAgentRunsForTests,
   shutdownAgentRunStoreForTests,
   startAgentRun
-} from '../../services/agentRunService.js'
+} from '../../services/agentRunService.ts'
 import {
   getScheduleExecutionStatus,
   stopScheduleExecution
@@ -30,7 +30,7 @@ import {
 import {
   getMaaExecutionLeaseSnapshot,
   withMaaExecutionLease
-} from '../../services/executionCoordinatorService.js'
+} from '../../services/executionCoordinatorService.ts'
 import { getTodayOpenStages } from '../../services/notificationService.js'
 
 const quietLogger = {

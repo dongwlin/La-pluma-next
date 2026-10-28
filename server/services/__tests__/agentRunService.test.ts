@@ -20,7 +20,38 @@ import {
   startAgentRun,
   startAgentRunForExecution,
   stopAgentRun
-} from '../agentRunService.js';
+} from '../agentRunService.ts';
+import type { AgentRunDto } from '../agentRunService.ts';
+
+interface ErrorFields {
+  code?: string;
+  statusCode?: number;
+  retryable?: boolean;
+  details?: Record<string, unknown>;
+  stopped?: boolean;
+}
+
+function errorFields(error: unknown): ErrorFields {
+  return error as ErrorFields;
+}
+
+function runOf(runId: string): AgentRunDto {
+  const run = getAgentRun(runId);
+  assert.ok(run, `expected run ${runId} to exist`);
+  return run;
+}
+
+function currentRun(): AgentRunDto {
+  const run = getCurrentAgentRun();
+  assert.ok(run, 'expected a current run');
+  return run;
+}
+
+function latestTerminalRun(): AgentRunDto {
+  const run = getLatestTerminalAgentRun();
+  assert.ok(run, 'expected a terminal run');
+  return run;
+}
 
 describe('agent run registry', () => {
   beforeEach(() => resetAgentRunsForTests());
@@ -97,11 +128,12 @@ describe('agent run registry', () => {
         input: { command: 'fight' }
       }),
       error => {
-        assert.equal(error.code, 'AGENT_IDEMPOTENCY_KEY_REUSED');
-        assert.equal(error.statusCode, 409);
-        assert.equal(error.retryable, false);
-        assert.equal(error.details.operationId, 'run_task');
-        assert.equal(error.details.idempotencyKey, 'request_1');
+        const fields = errorFields(error);
+        assert.equal(fields.code, 'AGENT_IDEMPOTENCY_KEY_REUSED');
+        assert.equal(fields.statusCode, 409);
+        assert.equal(fields.retryable, false);
+        assert.equal(fields.details?.operationId, 'run_task');
+        assert.equal(fields.details?.idempotencyKey, 'request_1');
         return true;
       }
     );
@@ -123,7 +155,8 @@ describe('agent run registry', () => {
     for (const idempotencyKey of ['', '-starts-with-dash', 'has space', 'x'.repeat(129)]) {
       assert.throws(
         () => beginAgentRun({ operationId: 'fight', idempotencyKey }),
-        error => error.code === 'AGENT_IDEMPOTENCY_KEY_INVALID' && error.statusCode === 400
+        error => errorFields(error).code === 'AGENT_IDEMPOTENCY_KEY_INVALID'
+          && errorFields(error).statusCode === 400
       );
     }
   });
@@ -137,11 +170,13 @@ describe('agent run registry', () => {
     assert.deepEqual(stopped.result, { signal: 'SIGTERM' });
 
     const failedRun = beginAgentRun({ operationId: 'award' }).run;
-    const failure = new Error('MAA exited with code 1');
-    failure.code = 'MAA_EXIT_FAILED';
-    failure.statusCode = 409;
+    const failure = Object.assign(new Error('MAA exited with code 1'), {
+      code: 'MAA_EXIT_FAILED',
+      statusCode: 409
+    });
     const failed = failAgentRun(failedRun.runId, failure);
     assert.equal(failed.state, 'failed');
+    assert.ok(failed.error);
     assert.equal(failed.error.code, 'MAA_EXIT_FAILED');
     assert.equal(failed.error.message, failure.message);
     assert.equal(failed.error.statusCode, 409);
@@ -169,13 +204,14 @@ describe('agent run registry', () => {
       idempotencyKey: 'fight:busy',
       input: { stage: '1-7' }
     }).run;
-    const error = new Error('MAA 正在被其他任务使用');
-    error.code = 'MAA_EXECUTION_BUSY';
-    error.statusCode = 409;
+    const error = Object.assign(new Error('MAA 正在被其他任务使用'), {
+      code: 'MAA_EXECUTION_BUSY',
+      statusCode: 409
+    });
     failAgentRun(first.runId, error);
     releaseAgentRunIdempotency(first.runId);
 
-    assert.equal(getAgentRun(first.runId).state, 'failed');
+    assert.equal(runOf(first.runId).state, 'failed');
     const retry = beginAgentRun({
       operationId: 'fight',
       idempotencyKey: 'fight:busy',
@@ -193,7 +229,8 @@ describe('agent run registry', () => {
 
     assert.throws(
       () => markAgentRunStopping(run.runId),
-      error => error.code === 'AGENT_RUN_STATE_CONFLICT' && error.statusCode === 409
+      error => errorFields(error).code === 'AGENT_RUN_STATE_CONFLICT'
+        && errorFields(error).statusCode === 409
     );
   });
 
@@ -225,14 +262,16 @@ describe('agent run registry', () => {
     markAgentRunStopping(stopping.runId);
     assert.throws(
       () => discardAgentRun(stopping.runId),
-      error => error.code === 'AGENT_RUN_STATE_CONFLICT' && error.statusCode === 409
+      error => errorFields(error).code === 'AGENT_RUN_STATE_CONFLICT'
+        && errorFields(error).statusCode === 409
     );
 
     const terminal = beginAgentRun({ operationId: 'award' }).run;
     completeAgentRun(terminal.runId);
     assert.throws(
       () => discardAgentRun(terminal.runId),
-      error => error.code === 'AGENT_RUN_STATE_CONFLICT' && error.statusCode === 409
+      error => errorFields(error).code === 'AGENT_RUN_STATE_CONFLICT'
+        && errorFields(error).statusCode === 409
     );
   });
 
@@ -249,12 +288,12 @@ describe('agent run registry', () => {
     metadata.owner.name = 'mutated';
     created.links.self = '/mutated';
 
-    const current = getCurrentAgentRun();
+    const current = currentRun();
     current.links.stop = '/mutated';
     const listed = listAgentRuns();
     listed[0].links.self = '/also-mutated';
 
-    const stored = getAgentRun(created.runId);
+    const stored = runOf(created.runId);
     assert.equal(stored.links.self, `/api/agent/runs/${created.runId}`);
     const replay = beginAgentRun({
       operationId: 'run_task',
@@ -266,30 +305,31 @@ describe('agent run registry', () => {
 
     const started = startAgentRun(created.runId);
     started.state = 'failed';
-    assert.equal(getAgentRun(created.runId).state, 'running');
+    assert.equal(runOf(created.runId).state, 'running');
   });
 
   it('keeps at most 500 terminal runs and removes evicted idempotency entries', () => {
-    let first;
+    let firstRunId: string | null = null;
     for (let index = 0; index < 501; index += 1) {
       const begun = beginAgentRun({
         operationId: 'bounded',
         idempotencyKey: `key:${index}`,
         input: { index }
       });
-      if (index === 0) first = begun.run;
+      if (index === 0) firstRunId = begun.run.runId;
       completeAgentRun(begun.run.runId, { index });
     }
 
+    assert.ok(firstRunId);
     assert.equal(listAgentRuns().length, 500);
-    assert.equal(getAgentRun(first.runId), null);
+    assert.equal(getAgentRun(firstRunId), null);
     const recreated = beginAgentRun({
       operationId: 'bounded',
       idempotencyKey: 'key:0',
       input: { index: 0 }
     });
     assert.equal(recreated.replayed, false);
-    assert.notEqual(recreated.run.runId, first.runId);
+    assert.notEqual(recreated.run.runId, firstRunId);
   });
 
   it('expires terminal runs after 24 hours without expiring active runs', () => {
@@ -304,7 +344,7 @@ describe('agent run registry', () => {
       now += 24 * 60 * 60 * 1000 + 1;
 
       assert.equal(getAgentRun(terminal.runId), null);
-      assert.equal(getAgentRun(active.runId).state, 'accepted');
+      assert.equal(runOf(active.runId).state, 'accepted');
     } finally {
       Date.now = originalNow;
     }
@@ -317,10 +357,11 @@ describe('agent run registry', () => {
 
     assert.deepEqual(listAgentRuns({ state: 'accepted' }).map(run => run.runId), [first.runId]);
     assert.deepEqual(listAgentRuns({ limit: 1 }).map(run => run.runId), [second.runId]);
-    assert.equal(getCurrentAgentRun().runId, second.runId);
+    assert.equal(currentRun().runId, second.runId);
     assert.throws(
       () => startAgentRun('missing'),
-      error => error.code === 'AGENT_RUN_NOT_FOUND' && error.statusCode === 404
+      error => errorFields(error).code === 'AGENT_RUN_NOT_FOUND'
+        && errorFields(error).statusCode === 404
     );
   });
 
@@ -346,7 +387,7 @@ describe('agent run registry', () => {
 
     assert.throws(
       () => requestAgentRunStop('missing'),
-      error => error.code === 'AGENT_RUN_NOT_FOUND'
+      error => errorFields(error).code === 'AGENT_RUN_NOT_FOUND'
     );
   });
 
@@ -360,9 +401,10 @@ describe('agent run registry', () => {
     assert.throws(
       () => startAgentRunForExecution(canceled.runId),
       error => {
-        assert.equal(error.code, 'AGENT_RUN_STOPPED_BEFORE_START');
-        assert.equal(error.stopped, true);
-        assert.equal(error.statusCode, 409);
+        const fields = errorFields(error);
+        assert.equal(fields.code, 'AGENT_RUN_STOPPED_BEFORE_START');
+        assert.equal(fields.stopped, true);
+        assert.equal(fields.statusCode, 409);
         return true;
       }
     );
@@ -372,7 +414,8 @@ describe('agent run registry', () => {
     markAgentRunStopping(stopping.runId);
     assert.throws(
       () => startAgentRunForExecution(stopping.runId),
-      error => error.code === 'AGENT_RUN_STOPPED_BEFORE_START' && error.stopped === true
+      error => errorFields(error).code === 'AGENT_RUN_STOPPED_BEFORE_START'
+        && errorFields(error).stopped === true
     );
   });
 
@@ -421,13 +464,13 @@ describe('agent run registry', () => {
           [accepted.runId, 'accepted']
         ]
       );
-      assert.equal(getCurrentAgentRun().runId, newer.runId);
-      assert.equal(getLatestTerminalAgentRun().runId, older.runId);
+      assert.equal(currentRun().runId, newer.runId);
+      assert.equal(latestTerminalRun().runId, older.runId);
 
       now += 1;
       stopAgentRun(newer.runId, { order: 2 });
-      assert.equal(getLatestTerminalAgentRun().runId, newer.runId);
-      assert.deepEqual(getLatestTerminalAgentRun().result, { order: 2 });
+      assert.equal(latestTerminalRun().runId, newer.runId);
+      assert.deepEqual(latestTerminalRun().result, { order: 2 });
     } finally {
       Date.now = originalNow;
     }

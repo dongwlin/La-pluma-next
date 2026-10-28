@@ -2,7 +2,7 @@ import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createLogger } from '../utils/logger.ts';
-import { acquireMaaExecutionLease } from './executionCoordinatorService.js';
+import { acquireMaaExecutionLease } from './executionCoordinatorService.ts';
 import { addLog, execMaaCommandUnlocked } from './maaProcessService.js';
 import { getMaaConfigDir } from './maaConfigService.js';
 

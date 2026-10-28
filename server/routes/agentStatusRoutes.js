@@ -1,7 +1,7 @@
 import express from 'express';
 import { getMaaVersion } from '../services/maaExecutionService.js';
 import { getRealtimeLogs, getTaskStatus } from '../services/maaProcessService.js';
-import { getAgentRun } from '../services/agentRunService.js';
+import { getAgentRun } from '../services/agentRunService.ts';
 import { buildAgentRunSnapshot, enrichAgentRun } from '../services/runSnapshotService.js';
 import {
   asyncHandler,

@@ -9,7 +9,7 @@ import {
   getScheduleExecutionStatus,
   stopScheduleExecution
 } from '../schedulerService.js';
-import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.js';
+import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
 import { buildAgentRunSnapshot } from '../runSnapshotService.js';
 import { getTaskStatus } from '../maaService.js';
 import { getTodayOpenStages } from '../notificationService.js';

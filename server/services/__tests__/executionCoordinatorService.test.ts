@@ -7,7 +7,7 @@ import {
   MaaExecutionBusyError,
   acquireMaaExecutionLease,
   withMaaExecutionLease
-} from '../executionCoordinatorService.js';
+} from '../executionCoordinatorService.ts';
 
 test('execution lease is exclusive and released after use', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'la-pluma-lock-'));
@@ -16,7 +16,7 @@ test('execution lease is exclusive and released after use', async () => {
     const lease = await acquireMaaExecutionLease({ taskName: 'first' });
     await assert.rejects(
       acquireMaaExecutionLease({ taskName: 'second' }),
-      error => error instanceof MaaExecutionBusyError && error.owner.taskName === 'first'
+      error => error instanceof MaaExecutionBusyError && error.owner?.taskName === 'first'
     );
     await lease.release();
     const nextLease = await acquireMaaExecutionLease({ taskName: 'second' });

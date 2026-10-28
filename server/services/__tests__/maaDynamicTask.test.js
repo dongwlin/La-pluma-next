@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { execDynamicTask } from '../maaService.js'
-import { MaaExecutionBusyError } from '../executionCoordinatorService.js'
+import { MaaExecutionBusyError } from '../executionCoordinatorService.ts'
 
 function createRuntime({ background = false } = {}) {
   const events = []

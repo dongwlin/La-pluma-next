@@ -9,7 +9,7 @@ import {
   getAgentRun,
   startAgentRunForExecution,
   stopAgentRun
-} from './agentRunService.js';
+} from './agentRunService.ts';
 import { createDailyFlowExecutionError } from './agentActionService.js';
 import { buildScheduledTaskFlowPlan, validateScheduledTaskFlow } from './scheduleFlowPlan.js';
 import { createScheduleFlowExecutor } from './scheduleFlowExecution.js';

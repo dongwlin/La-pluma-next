@@ -18,17 +18,54 @@ import {
   setAgentRunAcceptedResult,
   shutdownAgentRunStoreForTests,
   startAgentRun
-} from '../agentRunService.js';
+} from '../agentRunService.ts';
+import type {
+  AgentRunDto,
+  AgentRunStoreOverrides,
+  AgentRunStoreSnapshot
+} from '../agentRunService.ts';
 import { executeScheduledTaskFromCron } from '../schedulerService.js';
+
+interface ErrorFields {
+  code?: string;
+  statusCode?: number;
+  retryable?: boolean;
+  details?: Record<string, unknown>;
+}
+
+function errorFields(error: unknown): ErrorFields {
+  return error as ErrorFields;
+}
+
+function runOf(runId: string): AgentRunDto {
+  const run = getAgentRun(runId);
+  assert.ok(run, `expected run ${runId} to exist`);
+  return run;
+}
 
 const quietLogger = {
   info() {},
   error() {}
 };
 
+interface TerminalSnapshotOverrides {
+  run?: Record<string, unknown>;
+  finishedAtMs?: number | null;
+  terminalSequence?: number | null;
+}
+
+interface TerminalSnapshotRecord {
+  run: Record<string, unknown>;
+  sequence: number;
+  createdAtMs: number;
+  startedAtMs: number;
+  finishedAtMs: number;
+  terminalSequence: number;
+}
+
 describe('agent run persistence', () => {
-  let testDir;
-  let storePath;
+  let testDir: string;
+  let storePath: string;
 
   beforeEach(async () => {
     testDir = await mkdtemp(join(tmpdir(), 'la-pluma-agent-runs-'));
@@ -51,7 +88,7 @@ describe('agent run persistence', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  async function initialize(overrides = {}) {
+  async function initialize(overrides: AgentRunStoreOverrides = {}) {
     return initializeAgentRunStore({
       filePath: storePath,
       runtimeLogger: quietLogger,
@@ -64,14 +101,14 @@ describe('agent run persistence', () => {
     return initialize();
   }
 
-  async function readSnapshot() {
-    return JSON.parse(await readFile(storePath, 'utf8'));
+  async function readSnapshot(): Promise<AgentRunStoreSnapshot> {
+    return JSON.parse(await readFile(storePath, 'utf8')) as AgentRunStoreSnapshot;
   }
 
-  async function writeTerminalSnapshot(overrides = {}) {
+  async function writeTerminalSnapshot(overrides: TerminalSnapshotOverrides = {}) {
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
-    const record = {
+    const record: TerminalSnapshotRecord = {
       run: {
         runId: 'persisted-terminal-run',
         operationId: 'fight',
@@ -134,8 +171,8 @@ describe('agent run persistence', () => {
     const restored = await reload();
     assert.equal(restored.restoredRuns, 1);
     assert.equal(restored.interruptedRuns, 0);
-    assert.equal(getAgentRun(first.runId).state, 'succeeded');
-    assert.deepEqual(getAgentRun(first.runId).result, { stdout: 'completed' });
+    assert.equal(runOf(first.runId).state, 'succeeded');
+    assert.deepEqual(runOf(first.runId).result, { stdout: 'completed' });
 
     const replay = beginAgentRun({
       operationId: 'run_task',
@@ -151,13 +188,14 @@ describe('agent run persistence', () => {
         idempotencyKey: 'persistent:request-1',
         input: { command: 'award' }
       }),
-      error => error.code === 'AGENT_IDEMPOTENCY_KEY_REUSED' && error.statusCode === 409
+      error => errorFields(error).code === 'AGENT_IDEMPOTENCY_KEY_REUSED'
+        && errorFields(error).statusCode === 409
     );
   });
 
   it('prunes restored terminal runs to the newest 500 without reviving evicted keys', async () => {
     const baseMs = Date.now() - 10_000;
-    const records = Array.from({ length: 501 }, (_, index) => {
+    const records = Array.from({ length: 501 }, (_, index): Record<string, unknown> => {
       const timestampMs = baseMs + index;
       const timestamp = new Date(timestampMs).toISOString();
       const input = { index };
@@ -191,7 +229,7 @@ describe('agent run persistence', () => {
     assert.equal(firstRestore.restoredRuns, 500);
     assert.equal(firstRestore.prunedRuns, 1);
     assert.equal(getAgentRun('terminal-run-0'), null);
-    assert.equal(getAgentRun('terminal-run-1').state, 'succeeded');
+    assert.equal(runOf('terminal-run-1').state, 'succeeded');
 
     const persisted = await readSnapshot();
     assert.equal(persisted.runs.length, 500);
@@ -212,10 +250,10 @@ describe('agent run persistence', () => {
   });
 
   it('coalesces synchronous mutations into one final succeeded snapshot', async () => {
-    const writes = [];
+    const writes: AgentRunStoreSnapshot[] = [];
     await initialize({
       writeStore: async (filePath, snapshot) => {
-        const copy = JSON.parse(JSON.stringify(snapshot));
+        const copy = JSON.parse(JSON.stringify(snapshot)) as AgentRunStoreSnapshot;
         writes.push(copy);
         await writeFile(filePath, JSON.stringify(copy), 'utf8');
       }
@@ -247,18 +285,18 @@ describe('agent run persistence', () => {
   });
 
   it('does not strand a dirty mutation in the writer finalization window', async () => {
-    const writes = [];
+    const writes: AgentRunStoreSnapshot[] = [];
     let armTerminalMutation = false;
-    let runId = null;
+    let runId: string | null = null;
     await initialize({
       writeStore: async (filePath, snapshot) => {
-        const copy = JSON.parse(JSON.stringify(snapshot));
+        const copy = JSON.parse(JSON.stringify(snapshot)) as AgentRunStoreSnapshot;
         writes.push(copy);
         await writeFile(filePath, JSON.stringify(copy), 'utf8');
         if (armTerminalMutation) {
           armTerminalMutation = false;
           Promise.resolve().then(() => queueMicrotask(() => {
-            completeAgentRun(runId, { phase: 'writer-finalization' });
+            completeAgentRun(runId as string, { phase: 'writer-finalization' });
           }));
         }
       }
@@ -270,7 +308,7 @@ describe('agent run persistence', () => {
     await flushAgentRunStore();
 
     assert.equal(getAgentRunStoreStatus().dirty, false);
-    assert.equal(getAgentRun(runId).state, 'succeeded');
+    assert.equal(runOf(runId).state, 'succeeded');
     assert.equal(writes.length, 2);
     const persisted = await readSnapshot();
     assert.equal(persisted.runs[0].run.status, 'succeeded');
@@ -305,14 +343,16 @@ describe('agent run persistence', () => {
     const restored = await reload();
     assert.equal(restored.interruptedRuns, 4);
 
-    for (const [runId, previousState] of [
+    const interruptedStates: Array<[string, string]> = [
       [accepted.runId, 'accepted'],
       [running.runId, 'running'],
       [stopping.runId, 'stopping'],
       [waiting.runId, 'waiting']
-    ]) {
-      const run = getAgentRun(runId);
+    ];
+    for (const [runId, previousState] of interruptedStates) {
+      const run = runOf(runId);
       assert.equal(run.state, 'interrupted');
+      assert.ok(run.error);
       assert.equal(run.error.code, 'AGENT_RUN_INTERRUPTED');
       assert.equal(run.error.statusCode, 503);
       assert.equal(run.error.retryable, false);
@@ -320,6 +360,7 @@ describe('agent run persistence', () => {
         reason: 'server_restart',
         previousState
       });
+      assert.ok(run.recovery);
       assert.deepEqual(run.recovery, {
         source: 'server_restart',
         previousState,
@@ -329,10 +370,10 @@ describe('agent run persistence', () => {
       assert.ok(run.finishedAt);
     }
 
-    const interruptedAt = getAgentRun(running.runId).finishedAt;
+    const interruptedAt = runOf(running.runId).finishedAt;
     const secondRestore = await reload();
     assert.equal(secondRestore.interruptedRuns, 0);
-    assert.equal(getAgentRun(running.runId).finishedAt, interruptedAt);
+    assert.equal(runOf(running.runId).finishedAt, interruptedAt);
 
     const replay = beginAgentRun({
       operationId: 'running_operation',
@@ -359,7 +400,7 @@ describe('agent run persistence', () => {
     await flushAgentRunStore();
 
     await reload();
-    assert.equal(getAgentRun(first.runId).state, 'failed');
+    assert.equal(runOf(first.runId).state, 'failed');
     const retry = beginAgentRun({
       operationId: 'fight',
       idempotencyKey: 'retry:after-rejection',
@@ -374,17 +415,20 @@ describe('agent run persistence', () => {
 
     await assert.rejects(
       initialize(),
-      error => error.code === 'AGENT_RUN_PERSISTENCE_FAILED' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
+        && errorFields(error).statusCode === 503
     );
     assert.equal(getAgentRunStoreStatus().ready, false);
     assert.equal(getAgentRunStoreStatus().required, true);
     await assert.rejects(
       flushAgentRunStore(),
-      error => error.code === 'AGENT_RUN_PERSISTENCE_FAILED' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
+        && errorFields(error).statusCode === 503
     );
     assert.throws(
       () => getAgentRun('unknown-run'),
-      error => error.code === 'AGENT_RUN_PERSISTENCE_FAILED' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
+        && errorFields(error).statusCode === 503
     );
   });
 
@@ -394,13 +438,15 @@ describe('agent run persistence', () => {
 
     await assert.rejects(
       initialize(),
-      error => error.code === 'AGENT_RUN_STORE_INVALID' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
+        && errorFields(error).statusCode === 503
     );
     assert.equal(await readFile(storePath, 'utf8'), original);
     assert.equal(getAgentRunStoreStatus().ready, false);
     await assert.rejects(
       flushAgentRunStore(),
-      error => error.code === 'AGENT_RUN_PERSISTENCE_FAILED' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
+        && errorFields(error).statusCode === 503
     );
   });
 
@@ -409,7 +455,8 @@ describe('agent run persistence', () => {
 
     await assert.rejects(
       initialize(),
-      error => error.code === 'AGENT_RUN_STORE_INVALID' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
+        && errorFields(error).statusCode === 503
     );
     assert.equal(await readFile(storePath, 'utf8'), 'null');
     assert.equal(getAgentRunStoreStatus().ready, false);
@@ -423,7 +470,8 @@ describe('agent run persistence', () => {
 
     await assert.rejects(
       initialize(),
-      error => error.code === 'AGENT_RUN_STORE_INVALID' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
+        && errorFields(error).statusCode === 503
     );
     assert.equal(getAgentRunStoreStatus().ready, false);
   });
@@ -433,7 +481,8 @@ describe('agent run persistence', () => {
 
     await assert.rejects(
       initialize(),
-      error => error.code === 'AGENT_RUN_STORE_INVALID' && error.statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
+        && errorFields(error).statusCode === 503
     );
     assert.equal(getAgentRunStoreStatus().ready, false);
   });
@@ -448,16 +497,19 @@ describe('agent run persistence', () => {
         }
       }),
       error => {
-        assert.equal(error.code, 'AGENT_RUN_PERSISTENCE_FAILED');
-        assert.equal(error.statusCode, 503);
-        assert.equal(error.retryable, true);
-        assert.equal(error.details.filePath, storePath);
+        const fields = errorFields(error);
+        assert.equal(fields.code, 'AGENT_RUN_PERSISTENCE_FAILED');
+        assert.equal(fields.statusCode, 503);
+        assert.equal(fields.retryable, true);
+        assert.equal(fields.details?.filePath, storePath);
         return true;
       }
     );
     assert.equal(writeAttempts, 1);
     assert.equal(getAgentRunStoreStatus().ready, false);
-    assert.match(getAgentRunStoreStatus().error, /disk is read-only/);
+    const statusError = getAgentRunStoreStatus().error;
+    assert.ok(statusError);
+    assert.match(statusError, /disk is read-only/);
   });
 
   it('writes read-time TTL pruning back to disk so expired runs cannot reappear', async () => {
@@ -504,9 +556,14 @@ describe('agent run persistence', () => {
       const stored = (await readSnapshot()).runs.find(item => item.run.operationId === 'run_daily_flow');
       assert.ok(stored, 'expected the cron flow to be persisted before it runs');
       assert.equal(stored.run.status, 'succeeded');
-      assert.equal(stored.run.result.scheduleId, 'cron-persisted');
-      assert.equal(stored.run.result.totalSteps, 2);
-      assert.equal(stored.run.result.summary.skippedCount, 2);
+      const storedResult = stored.run.result as {
+        scheduleId: string;
+        totalSteps: number;
+        summary: { skippedCount: number };
+      };
+      assert.equal(storedResult.scheduleId, 'cron-persisted');
+      assert.equal(storedResult.totalSteps, 2);
+      assert.equal(storedResult.summary.skippedCount, 2);
     } finally {
       if (previousLockFile === undefined) delete process.env.LA_PLUMA_MAA_LOCK_FILE;
       else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLockFile;

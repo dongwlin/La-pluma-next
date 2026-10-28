@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.js';
 import { getMaaConfigDir } from './maaConfigService.js';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.js';
-import { withMaaExecutionLease } from './executionCoordinatorService.js';
+import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { recordDrops } from './dropRecordService.js';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.js';
