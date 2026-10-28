@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import type { Server } from 'node:http';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
+import type { ApiSuccessResponse } from '../utils/apiHelper.ts';
+import type {
+  PreviewDeviceStats,
+  PreviewErrorResponse,
+  PreviewOrientationApplyResult,
+  PreviewOrientationPlan,
+  PreviewScreenshotPayload,
+  PreviewWebrtcStatusPayload
+} from '../routes/previewDto.ts';
 
 // 真实 HTTP 回归：截图、WebRTC、方向与设备采样已从 agent.js 拆到独立
 // 预览 router，这里通过 createLaPlumaApp 验证挂载、鉴权、body/query 归一化、
@@ -82,24 +92,26 @@ for (const loggerName of ['Api', 'MaaService', 'AgentRoutes']) {
   loggerManager.getLogger(loggerName).enableConsole = false;
 }
 
-const servers = [];
+const servers: Server[] = [];
 const originalConsoleError = console.error;
 
-async function listen(app) {
+async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
   const server = createServer(app);
   servers.push(server);
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  return server.address().port;
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  return address.port;
 }
 
-function agentUrl(port, path) {
+function agentUrl(port: number, path: string): string {
   return `http://127.0.0.1:${port}/api/agent${path}`;
 }
 
-function jsonRequest(body) {
+function jsonRequest(body: unknown): RequestInit {
   return {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -107,13 +119,30 @@ function jsonRequest(body) {
   };
 }
 
+interface ApiEnvelopeLike {
+  success: boolean;
+}
+
+function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
+  if (typeof value !== 'object' || value === null) return false;
+  return typeof (value as { success?: unknown }).success === 'boolean';
+}
+
+/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
+async function readBody<T>(response: Response): Promise<T> {
+  const body: unknown = await response.json();
+  assert.ok(isApiEnvelope(body));
+  return body as T;
+}
+
 afterEach(async () => {
   console.error = originalConsoleError;
   while (servers.length) {
     const server = servers.pop();
+    assert.ok(server);
     server.closeIdleConnections?.();
     server.closeAllConnections?.();
-    await new Promise(resolve => server.close(resolve));
+    await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
 
@@ -129,7 +158,7 @@ describe('preview routes over real HTTP', () => {
     });
     const port = await listen(app);
 
-    const entries = [
+    const entries: Array<[string, string]> = [
       ['POST', '/screen/screenshot'],
       ['GET', '/webrtc/status'],
       ['GET', '/webrtc/devices'],
@@ -147,7 +176,8 @@ describe('preview routes over real HTTP', () => {
     for (const [method, path] of entries) {
       const response = await fetch(agentUrl(port, path), { method });
       assert.equal(response.status, 401, `${method} ${path} must stay behind auth`);
-      assert.equal((await response.json()).error.code, 'AGENT_AUTH_REQUIRED');
+      const body = await readBody<PreviewErrorResponse>(response);
+      assert.equal(body.error.code, 'AGENT_AUTH_REQUIRED');
     }
   });
 
@@ -158,7 +188,7 @@ describe('preview routes over real HTTP', () => {
 
     const screenshot = await fetch(agentUrl(port, '/screen/screenshot'), jsonRequest(connection));
     assert.equal(screenshot.status, 200);
-    const screenshotBody = await screenshot.json();
+    const screenshotBody = await readBody<ApiSuccessResponse<PreviewScreenshotPayload>>(screenshot);
     assert.equal(screenshotBody.data.mediaType, 'image/png');
     assert.equal(screenshotBody.data.width, 1);
     assert.equal(screenshotBody.data.height, 1);
@@ -173,7 +203,7 @@ describe('preview routes over real HTTP', () => {
       dryRun: true
     }));
     assert.equal(dryRun.status, 200);
-    const dryRunBody = await dryRun.json();
+    const dryRunBody = await readBody<ApiSuccessResponse<{ plan: PreviewOrientationPlan }>>(dryRun);
     assert.equal(dryRunBody.meta.dryRun, true);
     assert.equal(dryRunBody.data.plan.action, 'preview-orientation');
     assert.equal(dryRunBody.data.plan.orientation, 'landscape');
@@ -187,14 +217,15 @@ describe('preview routes over real HTTP', () => {
       orientation: 'sideways'
     }));
     assert.equal(invalid.status, 400);
-    assert.equal((await invalid.json()).error.code, 'AGENT_VALIDATION_ORIENTATION_INVALID');
+    const invalidBody = await readBody<PreviewErrorResponse>(invalid);
+    assert.equal(invalidBody.error.code, 'AGENT_VALIDATION_ORIENTATION_INVALID');
 
     const applied = await fetch(agentUrl(port, '/preview/orientation'), jsonRequest({
       ...connection,
       orientation: 'landscape'
     }));
     assert.equal(applied.status, 200);
-    const appliedBody = await applied.json();
+    const appliedBody = await readBody<ApiSuccessResponse<PreviewOrientationApplyResult>>(applied);
     assert.equal(appliedBody.data.action, 'preview-orientation');
     assert.equal(appliedBody.data.results.length, 3);
     assert.ok(appliedBody.data.results.every(result => result.ok));
@@ -205,7 +236,8 @@ describe('preview routes over real HTTP', () => {
 
     const stats = await fetch(agentUrl(port, `/device-stats?${new URLSearchParams(connection)}`));
     assert.equal(stats.status, 200);
-    const statsBody = await stats.json();
+    const statsBody = await readBody<ApiSuccessResponse<PreviewDeviceStats | null>>(stats);
+    assert.ok(statsBody.data);
     assert.equal(statsBody.data.cpuPct, 1);
     assert.equal(statsBody.data.memTotalKb, 4000000);
     assert.equal(statsBody.data.memUsedKb, 2000000);
@@ -222,18 +254,21 @@ describe('preview routes over real HTTP', () => {
 
     const status = await fetch(agentUrl(port, `/webrtc/status?${query}`));
     assert.equal(status.status, 200);
-    const statusBody = await status.json();
+    const statusBody = await readBody<ApiSuccessResponse<PreviewWebrtcStatusPayload>>(status);
     assert.equal(statusBody.data.signalingUrl, '/webrtc-signaling');
     assert.equal(statusBody.data.profileId, 'default');
     assert.ok(Array.isArray(statusBody.data.devices));
-    assert.deepEqual(Object.keys(statusBody.data.ownership).sort(), ['agent', 'server', 'turn']);
-    for (const owner of Object.values(statusBody.data.ownership)) {
+    const ownership = statusBody.data.ownership;
+    assert.ok(ownership);
+    assert.deepEqual(Object.keys(ownership).sort(), ['agent', 'server', 'turn']);
+    for (const owner of Object.values(ownership)) {
       assert.ok(['managed', 'external', 'none'].includes(owner));
     }
 
     const devices = await fetch(agentUrl(port, '/webrtc/devices'));
     assert.equal(devices.status, 200);
-    assert.ok(Array.isArray((await devices.json()).data.devices));
+    const devicesBody = await readBody<ApiSuccessResponse<{ devices: string[] }>>(devices);
+    assert.ok(Array.isArray(devicesBody.data.devices));
   });
 
   it('routes preview failures through the unified error exit', async () => {
@@ -247,7 +282,7 @@ describe('preview routes over real HTTP', () => {
     }));
 
     assert.equal(response.status, 500);
-    const body = await response.json();
+    const body = await readBody<PreviewErrorResponse>(response);
     assert.equal(body.success, false);
     assert.equal(body.error.code, 'AGENT_INTERNAL_ERROR');
     assert.equal(body.message, '服务器内部错误');
