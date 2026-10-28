@@ -85,7 +85,9 @@ La-pluma-next/
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
-│   │   ├── agent.js           # 主 Agent API
+│   │   ├── agent.js           # 主 Agent API（聚合领域 router）
+│   │   ├── agentExecution.js  # tracked 执行、流程/作业集与目标停止
+│   │   ├── requestConnection.js # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   └── operatorQuotes.js  # 干员台词接口
 │   ├── services/              # 业务逻辑

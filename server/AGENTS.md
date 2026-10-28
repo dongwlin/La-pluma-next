@@ -7,7 +7,7 @@
 | 位置 | 修改边界 |
 | --- | --- |
 | `server.js` | HTTP/HTTPS、认证、生产静态资源、WebRTC 信令网关与启动初始化 |
-| `routes/` | 请求归一化、校验、响应与执行入口；主要控制接口集中在 `agent.js` |
+| `routes/` | 请求归一化、校验、响应与执行入口；`agent.js` 聚合领域 router，tracked 执行、流程/作业集与目标停止在 `agentExecution.js` |
 | `services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
 | `config/`、`utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
 | `scripts/` | 语法检查、类型检查、测试入口与游戏数据获取脚本 |
