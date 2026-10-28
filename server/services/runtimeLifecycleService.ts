@@ -6,7 +6,7 @@
  * 实现：领域任务把已有的停止能力包装成步骤注册进来即可。
  *
  * 语义：
- * - start：按注册顺序执行启动步骤；某步失败时先逆序回收已开始的步骤，再抛出携带
+ * - start：按注册顺序执行启动步骤；某步失败时先逆序回收已受理或已获资源的步骤，再抛出携带
  *   步骤名的错误。已被受理的启动请求重复调用返回同一结果，不重复执行。
  * - draining：close 一旦被请求即进入 draining；此后拒绝注册新步骤，启动循环不再
  *   开始新步骤。关闭仍会等待进行中的启动步骤结束。
@@ -110,7 +110,7 @@ interface RegisteredStep {
   name: string;
   start: (() => unknown | Promise<unknown>) | null;
   close: ((context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>) | null;
-  /** 启动步骤已被受理（无论成功或失败），需要纳入释放范围 */
+  /** 已受理启动（无论成功或失败）或已登记既有资源，需要纳入释放范围 */
   active: boolean;
   /** 已执行过释放，重复关闭时跳过 */
   released: boolean;
@@ -193,9 +193,10 @@ export function createRuntimeLifecycle({
       name: step.name,
       start: step.start ?? null,
       close: step.close ?? null,
-      // 启动完成后注册的步骤代表已经归属本实例的资源，直接纳入释放范围；
-      // 启动期间的步骤由启动循环在轮到它时标记。
-      active: state === 'running',
+      // 只有 close 的步骤代表已经获得的资源，注册即纳入释放；否则初始化中途
+      // 收到关闭或抛错时，启动循环尚未遍历到的领域停止能力会被遗漏。
+      // 带 start 的步骤仍在启动循环实际受理时才纳入回收。
+      active: step.start === undefined,
       released: false
     });
   }

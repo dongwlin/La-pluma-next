@@ -1,7 +1,7 @@
 /**
  * Express 应用装配：CORS、请求 id、认证与限流、信令登录入口、生产静态资源
  * 与 API 路由挂载都集中在这里。HTTP/HTTPS 传输与启动初始化见 server.ts；
- * 测试通过 createLaPlumaApp 注入 env、信令网关与 readiness，无需监听端口。
+ * 测试通过 createLaPlumaApp 注入 env、信令登录与 readiness，无需启动运行时。
  */
 import { extname, join } from 'node:path';
 import cors from 'cors';
@@ -37,10 +37,10 @@ export interface LoginRateLimitOptions {
 /** 应用组装选项：运行配置、传输网关与测试注入口。 */
 export interface CreateLaPlumaAppOptions {
   env?: RuntimeEnvSource;
-  signalingGateway?: WebrtcSignalingGateway;
+  signalingGateway?: Pick<WebrtcSignalingGateway, 'proxyPath' | 'handleLogin'>;
   clientDistPath?: string;
   userConfigStorage?: UserConfigStorage;
-  readiness?: RuntimeReadinessTracker;
+  readiness?: Pick<RuntimeReadinessTracker, 'snapshot'>;
   loginRateLimit?: LoginRateLimitOptions;
 }
 
@@ -53,7 +53,7 @@ const MAX_SIGNALING_LOGINS_PER_WINDOW = 30;
 export function createLaPlumaApp({
   env = process.env,
   signalingGateway = createWebrtcSignalingGateway(),
-  clientDistPath = resolveAppPaths().frontendDistDir,
+  clientDistPath = resolveAppPaths({ env }).frontendDistDir,
   userConfigStorage,
   readiness = createRuntimeReadinessTracker(),
   loginRateLimit = {}
@@ -114,10 +114,6 @@ export function createLaPlumaApp({
   app.all(signalingPath, (_req, res) => res.status(404).json({ error: 'Not Found' }));
   app.all(`${signalingPath}/*splat`, (_req, res) => res.status(404).json({ error: 'Not Found' }));
 
-  // API 鉴权先于请求体解析：未携带有效 token 的请求在读取请求体之前即被拒绝。
-  app.use('/api', optionalApiAuth);
-  app.use(express.json());
-
   app.get('/health', (_req, res) => {
     res.json({ success: true, status: 'ok' });
   });
@@ -136,38 +132,37 @@ export function createLaPlumaApp({
     });
   });
 
+  // API 独占自己的命名空间：鉴权先于 JSON 解析，稳定 404 与错误出口先于静态资源。
+  // 探针、信令登录和前端资源不读取业务 JSON 请求体。
+  const api = express.Router();
+  api.use(optionalApiAuth, express.json());
+  api.use('/agent/config/user', createUserConfigRouter({ storage: userConfigStorage }));
+  api.use('/agent', agentRoutes);
+  api.use('/operator-quotes', operatorQuotesRoutes);
+  api.use((req, res) => {
+    sendError(res, req, agentError('AGENT_ROUTE_NOT_FOUND', '接口不存在', { statusCode: 404 }));
+  });
+  api.use(apiErrorHandler);
+  app.use('/api', api);
+
   if (env.NODE_ENV === 'production') {
     const staticMountPath = basePath === '/' ? '/' : basePath.slice(0, -1);
     const reservedPaths = ['/api', '/health', '/readiness', signalingPath];
-    const sendAppShell = (req: Request, res: Response, next: NextFunction): void => {
-      const appPath = staticMountPath === '/'
-        ? req.path
-        : req.path.slice(staticMountPath.length) || '/';
-      if (reservedPaths.some(path => appPath === path || appPath.startsWith(`${path}/`))) {
-        return next();
+    const frontend = express.Router();
+    // 子路径内也保留服务命名空间；文件与 SPA fallback 共用此边界。
+    frontend.use((req, _res, next) => {
+      if (reservedPaths.some(path => req.path === path || req.path.startsWith(`${path}/`))) {
+        return next('router');
       }
+      next();
+    });
+    frontend.use(express.static(clientDistPath));
+    frontend.get('/{*splat}', (req: Request, res: Response, next: NextFunction): void => {
       if (extname(req.path)) return next();
       res.sendFile(join(clientDistPath, 'index.html'));
-    };
-
-    app.use(staticMountPath, express.static(clientDistPath));
-    // SPA fallback 使用可选命名通配符 {*splat}：根部署同时覆盖 / 与深链接，
-    // 子路径部署不匹配挂载根本身（由 static 中间件重定向到带斜杠路径），与旧 '*'
-    // 语法在 Express 4 下的匹配范围一致。
-    if (basePath === '/') app.get('/{*splat}', sendAppShell);
-    else app.get(`${staticMountPath}/{*splat}`, sendAppShell);
+    });
+    // static 先处理挂载根到尾斜杠的重定向，再由 fallback 接收根与深链接。
+    app.use(staticMountPath, frontend);
   }
-
-  // 用户配置 HTTP 适配独立挂载；存储实例由应用组装注入，缺省使用默认存储。
-  // 鉴权与 JSON 解析仍由 /api 前置中间件承担，错误继续交给统一出口。
-  app.use('/api/agent/config/user', createUserConfigRouter({ storage: userConfigStorage }));
-  app.use('/api/agent', agentRoutes);
-  app.use('/api/operator-quotes', operatorQuotesRoutes);
-  // 未匹配的 API 路径返回稳定 JSON 404，不回显请求路径与查询串
-  app.use('/api', (_req, res) => {
-    sendError(res, _req, agentError('AGENT_ROUTE_NOT_FOUND', '接口不存在', { statusCode: 404 }));
-  });
-  // 统一 API 错误出口：捕获框架错误、业务错误与未知异常
-  app.use('/api', apiErrorHandler);
   return app;
 }

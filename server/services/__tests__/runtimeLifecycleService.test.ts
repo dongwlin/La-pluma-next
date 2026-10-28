@@ -257,6 +257,53 @@ describe('runtime lifecycle', () => {
     );
   });
 
+  it('releases already-owned resources even before startup', async () => {
+    const closes: string[] = [];
+    const lifecycle = createRuntimeLifecycle({ logger: silentLogger });
+    lifecycle.register({ name: 'owned', close: () => { closes.push('owned'); } });
+    lifecycle.register({ name: 'not-started', start: () => {}, close: () => { closes.push('not-started'); } });
+
+    const summary = await lifecycle.close('before-start');
+
+    assert.equal(summary.ok, true);
+    assert.deepEqual(closes, ['owned']);
+    assert.deepEqual(summary.steps.map(step => step.name), ['owned']);
+  });
+
+  for (const outcome of ['close', 'failure'] as const) {
+    it(`releases resources registered by an in-flight initializer on ${outcome}`, async () => {
+      const events: string[] = [];
+      const lifecycle = createRuntimeLifecycle({ logger: silentLogger });
+      let entered = () => {};
+      let release = () => {};
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      const hold = new Promise<void>(resolve => { release = resolve; });
+      lifecycle.register({
+        name: 'initializer',
+        start: async () => {
+          lifecycle.register({ name: 'owned-domain', close: () => { events.push('domain'); } });
+          entered();
+          await hold;
+          if (outcome === 'failure') throw new Error('fixture initialization failure');
+        },
+        close: () => { events.push('initializer'); }
+      });
+      const starting = lifecycle.start();
+      await started;
+      const closing = outcome === 'close' ? lifecycle.close('during-start') : null;
+      release();
+      if (outcome === 'failure') {
+        await assert.rejects(starting, isLifecycleError('RUNTIME_LIFECYCLE_START_FAILED', 'initializer'));
+      } else {
+        await starting;
+        assert.equal((await closing)?.ok, true);
+      }
+      assert.deepEqual(events, ['domain', 'initializer']);
+      await lifecycle.close('cleanup');
+      assert.deepEqual(events, ['domain', 'initializer']);
+    });
+  }
+
   it('rejects duplicate names, invalid deadlines and late start steps', async () => {
     const lifecycle = createRuntimeLifecycle({ logger: silentLogger });
     lifecycle.register({ name: 'same', close: () => {} });

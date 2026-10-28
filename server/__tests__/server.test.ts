@@ -960,6 +960,7 @@ describe('Server runtime assembly', () => {
     )
 
     assert.deepEqual(events, ['attach', 'signaling-gateway'])
+    assert.equal(getExecutionAdmissionGate()?.isClosed(), true)
   })
 
   it('does not start listeners, timers or runtime domains when the entry is imported', async () => {

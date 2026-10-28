@@ -142,6 +142,12 @@ La-pluma-next/
 
 领域类型归各 `features/<domain>/types/`，不集中到 `shared/types/`。
 
+## 后端组装与启动
+
+`server/app.ts` 通过 `createLaPlumaApp(options)` 创建独立 Express 应用，接收信令登录、就绪快照和配置存储等注入端口。`/api` router 内先认证再解析 JSON，挂载业务路由后由统一 JSON 404 与错误出口收尾；生产静态文件与 SPA fallback 最后挂载，共同排除 API、探针和信令命名空间。探针与信令登录不经过业务 JSON 解析。HTTP 回归使用应用工厂和本机临时监听器，无需恢复调度、Telegram 或真实设备运行时。
+
+`server/server.ts` 的 `createLaPlumaServer(options)` 同步校验传输配置并组装生命周期，返回尚未监听的句柄；`start()` 才恢复 Run 存储、挂载信令网关、监听 HTTP/HTTPS 并初始化后台领域，重复调用复用同一次启动。直接执行入口先安装 SIGINT/SIGTERM 处理，再调用 `start()`，初始化期间即可关闭准入并进入 draining。`startLaPlumaServer(options)` 保留为一步启动入口。启动失败通过统一关闭入口收尾，网关关闭失败仍会释放 HTTP 监听器；具体执行收尾语义见[执行身份与生命周期契约](execution-lifecycle.md#56-运行时关闭与后台触发源)。
+
 ## 状态与资源所有权
 
 状态所有者与页面/领域容器的职责统一维护在[前端架构与所有权](../frontend/README.md)。执行、配置、Query 和跨域失效的详细契约分别由该页链接到对应专题。

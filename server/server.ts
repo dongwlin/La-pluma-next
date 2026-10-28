@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+/** HTTP/HTTPS 传输与运行时装配；直接执行时先安装关闭信号，再开始异步初始化。 */
 import { createServer as createHttpServer } from 'node:http';
 import type { Server as HttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
@@ -14,7 +14,7 @@ import {
   parsePort,
   resolveAppPaths
 } from './config/runtimeConfig.ts';
-import type { AppPaths, ReadFileSyncLike, RuntimeEnvSource } from './config/runtimeConfig.ts';
+import type { AppPaths, RuntimeEnvSource } from './config/runtimeConfig.ts';
 import { resolveWebrtcCredentials } from './config/webrtcCredentials.ts';
 import {
   getAgentRunStoreStatus,
@@ -81,6 +81,11 @@ export interface LaPlumaRuntime {
   close(reason?: string): Promise<RuntimeLifecycleCloseSummary>;
 }
 
+/** 构造后尚未监听；start 幂等，允许调用方在初始化前安装关闭处理。 */
+export interface LaPlumaServer extends LaPlumaRuntime {
+  start(): Promise<LaPlumaRuntime>;
+}
+
 /** 关闭处理器读取的结果：整体成功位与步骤状态。 */
 export interface ShutdownStepOutcome {
   name: string;
@@ -122,45 +127,73 @@ interface CreateTransportServerOptions {
   app: Express;
   signalingGateway: WebrtcSignalingGateway;
   env?: RuntimeEnvSource;
-  readFile?: ReadFileSyncLike;
 }
 
 interface LaPlumaTransport {
   server: HttpServer | HttpsServer;
   protocol: 'http' | 'https';
+  listen(port: number, host: string): Promise<void>;
   close(): Promise<void>;
 }
 
 function createLaPlumaTransportServer({
   app,
   signalingGateway,
-  env = process.env,
-  readFile = readFileSync
+  env = process.env
 }: CreateTransportServerOptions): LaPlumaTransport {
-  const httpsOptions = loadHttpsOptions(env, readFile);
+  const httpsOptions = loadHttpsOptions(env);
   const server = httpsOptions
     ? createHttpsServer(httpsOptions, app)
     : createHttpServer(app);
-  signalingGateway.attach(server);
+
+  const listen = async (port: number, host: string): Promise<void> => {
+    // 网关挂载属于启动步骤；配置或 Run 存储阶段失败时尚未占用传输资源。
+    signalingGateway.attach(server);
+    await new Promise<void>((resolveListen, rejectListen) => {
+      const onError = (error: Error): void => {
+        server.off('listening', onListening);
+        rejectListen(error);
+      };
+      const onListening = (): void => {
+        server.off('error', onError);
+        resolveListen();
+      };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      try {
+        server.listen(port, host);
+      } catch (error) {
+        server.off('error', onError);
+        server.off('listening', onListening);
+        rejectListen(error);
+      }
+    });
+  };
 
   const close = async (): Promise<void> => {
-    signalingGateway.close();
-    if (!server.listening) return;
-    server.closeIdleConnections?.();
-    server.closeAllConnections?.();
-    await new Promise<void>((resolveClose, rejectClose) => {
-      server.close(error => error ? rejectClose(error) : resolveClose());
-    });
+    try {
+      signalingGateway.close();
+    } finally {
+      // 网关释放失败也必须停止 HTTP 接受连接；由生命周期记录失败并继续其余收尾。
+      if (server.listening) {
+        const closed = new Promise<void>((resolveClose, rejectClose) => {
+          server.close(error => error ? rejectClose(error) : resolveClose());
+        });
+        server.closeAllConnections();
+        await closed;
+      }
+    }
   };
 
   return {
     server,
     protocol: httpsOptions ? 'https' : 'http',
+    listen,
     close
   };
 }
 
-export async function startLaPlumaServer({
+export function createLaPlumaServer({
   env = process.env,
   host = '0.0.0.0',
   port = parsePort(env.PORT, { fallback: 3000, name: 'PORT' }),
@@ -171,7 +204,7 @@ export async function startLaPlumaServer({
   closeDeadlineMs = DEFAULT_CLOSE_DEADLINE_MS,
   executionShutdownOptions = {},
   appPaths = resolveAppPaths({ env })
-}: StartLaPlumaServerOptions = {}): Promise<LaPlumaRuntime> {
+}: StartLaPlumaServerOptions = {}): LaPlumaServer {
   // 组装入口集中解析配置并接线运行依赖：应用、传输、Run 存储和运行时恢复共享同一个
   // 生命周期，关闭顺序由注册顺序取反决定，避免各模块在导入时自行启动或停止。
   const lifecycle = createRuntimeLifecycle({ logger, closeDeadlineMs });
@@ -181,29 +214,22 @@ export async function startLaPlumaServer({
     lifecycle,
     runStoreStatus: getAgentRunStoreStatus
   });
-  // 预览资源属于本实例的 viewer 会话与本地子进程；先于传输入口注册，
-  // 关闭时网关先断开观看连接，再由预览步骤取消计时器并终止本实例子进程。
-  const webrtcPreview = attachWebrtcPreviewToLifecycle(lifecycle);
-  if (!webrtcPreview.attached) {
-    logger.warn?.('[WebRTC] 预览关闭步骤未挂接，关闭时无法保证释放本地预览资源');
-  }
   const app = createLaPlumaApp({
     env,
     signalingGateway,
     clientDistPath: appPaths.frontendDistDir,
     readiness
   });
-  // 上游默认账号保存在 ScrcpyOverWebRTC 自己的数据目录，服务不能替它改密；
-  // 这里只提示迁移，绝不在启动时生成与上游不同步的随机凭据。
-  const webrtcCredentials = resolveWebrtcCredentials(env);
-  if (webrtcCredentials.usingDefault) {
-    logger.warn?.(
-      '[WebRTC] 信令网关仍使用上游默认账号；请在上游修改账号后同步设置 '
-      + 'LA_PLUMA_WEBRTC_USERNAME 与 LA_PLUMA_WEBRTC_PASSWORD'
-    );
-  }
+  // 先校验 TLS 等同步配置，再把运行时绑定到进程内领域状态。
   const transport = createLaPlumaTransportServer({ app, signalingGateway, env });
   let listeningPort = port;
+  let startPromise: Promise<LaPlumaRuntime> | null = null;
+
+  // 注册顺序决定关闭顺序：后台触发源/轮询 → 执行收尾 → 传输 → 预览。
+  const webrtcPreview = attachWebrtcPreviewToLifecycle(lifecycle);
+  if (!webrtcPreview.attached) {
+    logger.warn?.('[WebRTC] 预览关闭步骤未挂接，关闭时无法保证释放本地预览资源');
+  }
 
   lifecycle.register({
     name: 'agent-run-store',
@@ -229,14 +255,7 @@ export async function startLaPlumaServer({
   lifecycle.register({
     name: 'http-transport',
     start: async () => {
-      await new Promise<void>((resolveListen, rejectListen) => {
-        const onError = (error: Error): void => rejectListen(error);
-        transport.server.once('error', onError);
-        transport.server.listen(port, host, () => {
-          transport.server.off('error', onError);
-          resolveListen();
-        });
-      });
+      await transport.listen(port, host);
       const address = transport.server.address();
       listeningPort = typeof address === 'object' && address ? address.port : port;
     },
@@ -269,23 +288,43 @@ export async function startLaPlumaServer({
     }
   });
 
-  await lifecycle.start();
-
-  const localIp = getLocalIpAddress();
-  logger.log('服务器运行在:');
-  logger.log(`  - 本地: ${transport.protocol}://localhost:${listeningPort}`);
-  logger.log(`  - 网络: ${transport.protocol}://${localIp}:${listeningPort}`);
-  logger.log('');
-  printPathConfig();
-
-  return {
+  const runtime: LaPlumaServer = {
     app,
     server: transport.server,
     protocol: transport.protocol,
-    port: listeningPort,
+    get port() { return listeningPort; },
     lifecycle,
     readiness,
     executionShutdown: executionShutdown.service,
+    start() {
+      if (startPromise) return startPromise;
+      startPromise = (async () => {
+        try {
+          // 上游账号由 ScrcpyOverWebRTC 管理；这里只提示迁移，不自行改密。
+          if (resolveWebrtcCredentials(env).usingDefault) {
+            logger.warn?.(
+              '[WebRTC] 信令网关仍使用上游默认账号；请在上游修改账号后同步设置 '
+              + 'LA_PLUMA_WEBRTC_USERNAME 与 LA_PLUMA_WEBRTC_PASSWORD'
+            );
+          }
+          await lifecycle.start();
+          // 初始化期间可能已收到关闭信号，此时不再宣布服务启动完成。
+          if (lifecycle.getState() === 'running') {
+            logger.log('服务器运行在:');
+            logger.log(`  - 本地: ${transport.protocol}://localhost:${listeningPort}`);
+            logger.log(`  - 网络: ${transport.protocol}://${getLocalIpAddress()}:${listeningPort}`);
+            logger.log('');
+            printPathConfig();
+          }
+          return runtime;
+        } catch (error) {
+          // 监听等步骤失败时生命周期已回滚；统一关闭入口同时关上执行准入。
+          await runtime.close('start-failed');
+          throw error;
+        }
+      })();
+      return startPromise;
+    },
     close: reason => {
       // 关闭请求一到就关闭准入，早于第一个关闭步骤执行：新的执行意图在 Run 准入
       // 与设备租约处都被拒绝；已经开始的执行由执行关闭步骤收尾。
@@ -293,6 +332,12 @@ export async function startLaPlumaServer({
       return lifecycle.close(reason);
     }
   };
+  return runtime;
+}
+
+/** 常用的一步启动入口；需要提前安装关闭信号时使用 createLaPlumaServer。 */
+export async function startLaPlumaServer(options: StartLaPlumaServerOptions = {}): Promise<LaPlumaRuntime> {
+  return createLaPlumaServer(options).start();
 }
 
 /**
@@ -357,10 +402,13 @@ export function installShutdownHandlers(runtime: ShutdownRuntime, {
 const entryArg = process.argv[1];
 const isMainModule = entryArg !== undefined && resolve(entryArg) === __filename;
 if (isMainModule) {
+  let shutdownHandlers: ReturnType<typeof installShutdownHandlers> | undefined;
   try {
-    const runtime = await startLaPlumaServer();
-    installShutdownHandlers(runtime);
+    const runtime = createLaPlumaServer();
+    shutdownHandlers = installShutdownHandlers(runtime);
+    await runtime.start();
   } catch (error) {
+    shutdownHandlers?.dispose();
     console.error('[Server] 启动失败:', readErrorMessage(error));
     process.exitCode = 1;
   }
