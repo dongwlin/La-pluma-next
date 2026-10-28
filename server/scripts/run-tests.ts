@@ -1,34 +1,15 @@
-import { readdir } from 'node:fs/promises';
-import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findTestFiles } from './testFiles.ts';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const excludedDirectories = new Set(['data', 'debug', 'node_modules']);
 
 /**
- * 逐文件、逐进程发现测试：只认 `__tests__` 目录下的 `.test.js` / `.test.ts`，
- * 跳过隐藏项与运行数据目录，排序后逐个交给独立 Node 进程执行。
+ * 逐文件、逐进程执行测试：发现规则见 `testFiles.ts`，每个测试文件交给独立的
+ * Node 进程，避免模块单例与环境变量在文件之间相互污染。
  */
-async function findTestFiles(directory: string, insideTestDirectory = false): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const files: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.name.startsWith('.') || excludedDirectories.has(entry.name)) continue;
-
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await findTestFiles(entryPath, insideTestDirectory || entry.name === '__tests__'));
-    } else if (insideTestDirectory && (entry.name.endsWith('.test.js') || entry.name.endsWith('.test.ts'))) {
-      files.push(entryPath);
-    }
-  }
-
-  return files;
-}
-
-const testFiles = (await findTestFiles(serverRoot)).sort();
+const testFiles = await findTestFiles(serverRoot);
 if (testFiles.length === 0) {
   console.error('No server test files found.');
   process.exitCode = 1;

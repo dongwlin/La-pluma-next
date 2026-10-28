@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node server.ts",
     "start": "node server.ts",
-    "check": "node scripts/check-syntax.js",
+    "check": "node scripts/check-syntax.ts",
     "typecheck": "node scripts/typecheck.ts",
     "build": "pnpm run check",
     "test": "node scripts/run-tests.ts",

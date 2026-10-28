@@ -9,10 +9,8 @@
     "noEmit": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "allowJs": true,
-    "checkJs": false,
     "types": ["node"]
   },
-  "include": ["**/*.js", "**/*.ts"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "data", "debug"]
 }
