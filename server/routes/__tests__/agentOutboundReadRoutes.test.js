@@ -3,10 +3,26 @@ import { afterEach, describe, it } from 'node:test'
 import router from '../agent.js'
 import { createOutboundHttpClient } from '../../services/outboundRequestService.ts'
 
+// 出站读取入口已随维护路由迁出 agent.js：按实际挂载关系递归解析，
+// 证明入口仍通过聚合 router 暴露，而不是只存在于某个文件里。
+function findMountedRoute(routerInstance, method, path) {
+  for (const layer of routerInstance.stack) {
+    if (layer.route) {
+      if (layer.route.path === path && layer.route.methods?.[method]) return layer.route
+      continue
+    }
+    if (layer.handle?.stack) {
+      const nested = findMountedRoute(layer.handle, method, path)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
 function findHandler(method, path) {
-  const layer = router.stack.find(item => item.route?.path === path && item.route.methods?.[method])
-  assert.ok(layer, `missing ${method.toUpperCase()} ${path}`)
-  return layer.route.stack.at(-1).handle
+  const route = findMountedRoute(router, method, path)
+  assert.ok(route, `missing ${method.toUpperCase()} ${path}`)
+  return route.stack.at(-1).handle
 }
 
 function createResponse() {
