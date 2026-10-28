@@ -3,7 +3,7 @@ import agentExecutionRoutes from './agentExecution.js';
 import agentStatusRoutes from './agentStatusRoutes.js';
 import agentLogRoutes from './agentLogRoutes.js';
 import agentDataRoutes from './agentDataRoutes.js';
-import agentTrainingRoutes from './agentTrainingRoutes.js';
+import agentTrainingRoutes from './agentTrainingRoutes.ts';
 import agentPreviewRoutes from './agentPreviewRoutes.js';
 import agentNotificationRoutes from './agentNotificationRoutes.js';
 import agentMaintenanceRoutes from './agentMaintenanceRoutes.js';
