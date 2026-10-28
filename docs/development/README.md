@@ -127,11 +127,17 @@ pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部
 # 新增 chunk 时必须同步 createWorkboxConfig 的 globPatterns，否则构建失败。
 pnpm --filter la-pluma-next-client build
 
-# 后端语法检查
+# 后端语法检查（node --check 逐个解析 TS，不依赖 TypeScript 编译器）
 pnpm --filter la-pluma-next-server check
 
-# 后端类型检查（TypeScript 6.0.3，仅检查 TS 文件；输出同时给出未检查 JS 的清单与数量）
+# 后端类型检查（TypeScript 6.0.3，覆盖全部 TS；源码目录出现 JS 时直接失败）
 pnpm --filter la-pluma-next-server typecheck
+
+# 后端类型与依赖护栏（any / 类型抑制 / 双重断言 / 分层方向 / 静态导入环，verify 已包含）
+pnpm --filter la-pluma-next-server guardrails
+
+# 后端覆盖率（固定统计范围与渐进阈值，独立于 verify）
+pnpm --filter la-pluma-next-server test:coverage
 
 # 依赖/职责护栏与规模预算（verify 已包含；单独运行便于定位）
 pnpm --filter la-pluma-next-client guardrails
