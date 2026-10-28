@@ -1,5 +1,5 @@
 import express from 'express';
-import operatorTrainingService from '../services/operatorTrainingService.js';
+import operatorTrainingService from '../services/operatorTrainingService.ts';
 import {
   asyncHandler,
   agentError,

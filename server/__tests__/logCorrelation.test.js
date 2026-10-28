@@ -29,7 +29,7 @@ process.exitCode = 0;
 
 const { createLaPlumaApp } = await import('../server.js')
 const { executeTrackedAgentAction } = await import('../routes/agent.js')
-const operatorTraining = (await import('../services/operatorTrainingService.js')).default
+const operatorTraining = (await import('../services/operatorTrainingService.ts')).default
 const {
   clearRealtimeLogs,
   getRealtimeLogs,

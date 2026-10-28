@@ -3,11 +3,17 @@ import { describe, it } from 'node:test';
 import {
   buildTrainingCandidates,
   getOperBoxOperators
-} from '../operatorTrainingModel.js';
+} from '../operatorTrainingModel.ts';
+import type {
+  OperatorMaterialsFile,
+  OwnedOperator,
+  TrainingBaseOperator,
+  TrainingCandidate
+} from '../operatorTrainingModel.ts';
 
 // 候选计数回归：/training/operators 的 count 与客户端三种状态计数都来自这份投影，
 // 因此在不读取运行数据的前提下固定「持有 / 材料 / 精英等级」到计数与排序的映射。
-const catalog = [
+const catalog: TrainingBaseOperator[] = [
   { id: 'char_a', name: '甲', rarity: 6, profession: 'CASTER', position: 'RANGED' },
   { id: 'char_b', name: '乙', rarity: 5, profession: 'MEDIC', position: 'RANGED' },
   { id: 'char_c', name: '丙', rarity: 6, profession: 'CASTER', position: 'MELEE' },
@@ -15,7 +21,7 @@ const catalog = [
   { id: 'char_e', name: '戊', rarity: 5, profession: 'CASTER', position: 'RANGED' }
 ];
 
-const operatorMaterials = {
+const operatorMaterials: OperatorMaterialsFile = {
   operators: {
     char_a: {
       name: '甲', rarity: 6, profession: 'CASTER',
@@ -28,14 +34,15 @@ const operatorMaterials = {
 };
 
 // char_a 可养成；char_b 已精二；char_c 缺材料数据；char_e 未持有但有材料数据；char_d 未持有
-const owned = [
+const owned: OwnedOperator[] = [
   { id: 'char_a', name: '甲', rarity: 6, elite: 0, level: 50, potential: 2 },
   { id: 'char_b', name: '乙', rarity: 5, elite: 2, level: 60, potential: 1 },
   { id: 'char_c', name: '丙', rarity: 6, elite: 1, level: 70, potential: 1 }
 ];
 
-const ids = rows => rows.map(row => row.id);
-const byId = rows => Object.fromEntries(rows.map(row => [row.id, row]));
+const ids = (rows: TrainingCandidate[]): string[] => rows.map(row => row.id);
+const byId = (rows: TrainingCandidate[]): Record<string, TrainingCandidate> =>
+  Object.fromEntries(rows.map(row => [row.id, row] as const));
 
 describe('training candidate projection', () => {
   it('counts trainable, owned and all candidates from the catalog', () => {

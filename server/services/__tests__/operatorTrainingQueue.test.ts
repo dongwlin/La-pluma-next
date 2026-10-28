@@ -3,11 +3,12 @@ import { after, beforeEach, describe, it } from 'node:test';
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { CombatStageObject, CombatTasksConfig } from '../operatorTrainingStore.ts';
+import { loggerManager } from '../../utils/logger.ts';
 
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-'));
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
-const { default: training, summarizeScheduleSync } = await import('../operatorTrainingService.js');
-const { loggerManager } = await import('../../utils/logger.ts');
+const { default: training, summarizeScheduleSync } = await import('../operatorTrainingService.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
 
@@ -20,17 +21,25 @@ const operators = {
   gamma: { name: '假日威龙陈', stage: 'S4-1' }
 };
 
-async function writeJson(filePath, value) {
+async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, JSON.stringify(value));
 }
 
-async function readConfig() {
+async function readConfig(): Promise<CombatTasksConfig> {
   return JSON.parse(await readFile(configPath, 'utf8'));
 }
 
-async function smartStages() {
+function statusCodeOf(error: unknown): number | undefined {
+  return typeof error === 'object' && error !== null && 'statusCode' in error
+    ? (error as { statusCode?: number }).statusCode
+    : undefined;
+}
+
+async function smartStages(): Promise<CombatStageObject[]> {
   const config = await readConfig();
-  return config.taskFlow[0].params.stages.filter(stage => stage.smart);
+  const stages = config.taskFlow[0].params?.stages ?? [];
+  return stages.filter((stage): stage is CombatStageObject =>
+    typeof stage === 'object' && Boolean(stage.smart));
 }
 
 beforeEach(async () => {
@@ -85,10 +94,25 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal((await training.syncTrainingFlow()).flowSync.status, 'not_applied');
   });
 
+  it('serializes concurrent queue mutations without losing updates', async () => {
+    const [first, second] = await Promise.all([
+      training.addToQueue('alpha'),
+      training.addToQueue('beta')
+    ]);
+
+    assert.equal(first.queueUpdated, true);
+    assert.equal(second.queueUpdated, true);
+    assert.notEqual(first.queueRevision, second.queueRevision);
+    const queue = await training.getTrainingQueue();
+    assert.deepEqual(queue.queue.map(item => item.operatorId), ['alpha', 'beta']);
+    assert.deepEqual(queue.queue.map(item => item.priority), [1, 2]);
+    assert.equal(queue.revision, second.queueRevision);
+  });
+
   it('refreshes the registered schedule from the applied task flow', async () => {
     await training.addToQueue('alpha');
     const preview = await training.generateTrainingPlan();
-    const refreshed = [];
+    const refreshed: CombatTasksConfig[] = [];
     const applied = await training.applyPlanToTasks(preview, {}, {
       refreshSchedule: async config => {
         refreshed.push(config);
@@ -101,8 +125,9 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal(refreshed.length, 1);
     assert.deepEqual(refreshed[0].schedule, { enabled: true, times: ['12:00'] });
     const fightTask = refreshed[0].taskFlow.find(task => task.commandId === 'fight');
-    const smart = fightTask.params.stages.find(stage => stage.smart);
-    assert.deepEqual(smart.trainingOperators, ['夜烟']);
+    const smart = fightTask?.params?.stages?.find((stage): stage is CombatStageObject =>
+      typeof stage === 'object' && Boolean(stage.smart));
+    assert.deepEqual(smart?.trainingOperators, ['夜烟']);
   });
 
   it('re-registers an already running schedule through the default refresher', async () => {
@@ -135,7 +160,7 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal(summary.attempted, true);
     assert.equal(summary.success, false);
     assert.deepEqual(summary.missingTimes, ['14:00']);
-    assert.match(summary.message, /14:00/);
+    assert.match(summary.message ?? '', /14:00/);
   });
 
   it('accepts a schedule registration that accepted every requested time', () => {
@@ -186,16 +211,19 @@ describe('training queue and applied flow synchronization', () => {
 
     // A smart stage remains managed even if someone pinned it in the task editor.
     const config = await readConfig();
-    config.taskFlow[0].params.stages.find(stage => stage.smart).pinned = true;
+    const smartStage = config.taskFlow[0].params?.stages?.find((stage): stage is CombatStageObject =>
+      typeof stage === 'object' && Boolean(stage.smart));
+    assert.ok(smartStage);
+    smartStage.pinned = true;
     await writeJson(configPath, config);
     const removed = await training.removeFromQueue('alpha');
     assert.equal(removed.flowSync.status, 'synced');
-    assert.deepEqual((await readConfig()).taskFlow[0].params.stages, normalStages);
+    assert.deepEqual((await readConfig()).taskFlow[0].params?.stages, normalStages);
     assert.deepEqual((await readConfig()).schedule, { enabled: true, times: ['12:00'] });
 
     const restored = await training.addToQueue('alpha', { currentElite: 0, targetElite: 1, position: 0 });
     assert.equal(restored.flowSync.status, 'synced');
-    assert.deepEqual((await smartStages())[0].trainingOperators, ['夜烟']);
+    assert.deepEqual((await smartStages())[0]?.trainingOperators, ['夜烟']);
     assert.equal((await training.getTrainingQueue()).queue[0].targetElite, 1);
   });
 
@@ -207,12 +235,12 @@ describe('training queue and applied flow synchronization', () => {
     await training.addToQueue('gamma');
     const sorted = await training.updateQueueOrder(['beta', 'gamma', 'alpha']);
     assert.equal(sorted.flowSync.status, 'synced');
-    assert.deepEqual((await smartStages())[0].trainingOperators, ['调香师']);
+    assert.deepEqual((await smartStages())[0]?.trainingOperators, ['调香师']);
     await training.removeFromQueue('gamma');
     await training.addToQueue('gamma', { position: 1 });
     assert.deepEqual((await training.getTrainingQueue()).queue.map(item => item.operatorId), ['beta', 'gamma', 'alpha']);
     await training.removeFromQueue('beta');
-    assert.deepEqual((await smartStages())[0].trainingOperators, ['假日威龙陈']);
+    assert.deepEqual((await smartStages())[0]?.trainingOperators, ['假日威龙陈']);
 
     await assert.rejects(training.updateQueueOrder(['alpha']), /全部养成干员/);
     await assert.rejects(training.updateQueueOrder(['alpha', 'alpha']), /不能重复/);
@@ -237,14 +265,14 @@ describe('training queue and applied flow synchronization', () => {
     assert.equal(retried.queueUpdated, false);
     assert.equal(retried.queueRevision, removed.queueRevision);
     assert.equal(retried.flowSync.status, 'synced');
-    assert.deepEqual((await smartStages())[0].trainingOperators, ['调香师']);
+    assert.deepEqual((await smartStages())[0]?.trainingOperators, ['调香师']);
   });
 
   it('keeps the explicitly applied all-target mode during subsequent synchronization', async () => {
     await training.addToQueue('alpha');
     await training.applyPlanToTasks(await training.generateTrainingPlan('all'));
     await training.addToQueue('beta');
-    assert.deepEqual((await smartStages())[0].trainingOperators, ['夜烟', '调香师']);
+    assert.deepEqual((await smartStages())[0]?.trainingOperators, ['夜烟', '调香师']);
     assert.equal((await training.getTrainingQueue()).flowSync.mode, 'all');
   });
 
@@ -253,15 +281,15 @@ describe('training queue and applied flow synchronization', () => {
     const preview = await training.generateTrainingPlan();
     await training.addToQueue('beta');
     const original = await readFile(configPath, 'utf8');
-    await assert.rejects(training.applyPlanToTasks(preview), error => error.statusCode === 409);
-    await assert.rejects(training.applyPlanToTasks({ stages: [] }), error => error.statusCode === 409);
+    await assert.rejects(training.applyPlanToTasks(preview), error => statusCodeOf(error) === 409);
+    await assert.rejects(training.applyPlanToTasks({ stages: [] }), error => statusCodeOf(error) === 409);
     assert.equal(await readFile(configPath, 'utf8'), original);
   });
 
   it('rejects an unknown plan mode before reading the queue', async () => {
     await writeFile(queuePath, '{ invalid JSON');
     await assert.rejects(training.generateTrainingPlan('elite2'), error => {
-      assert.equal(error.statusCode, 400);
+      assert.equal(statusCodeOf(error), 400);
       return true;
     });
   });
@@ -328,8 +356,11 @@ describe('training queue and applied flow synchronization', () => {
     const result = await training.applyPlanToTasks(await training.generateTrainingPlan());
     assert.equal(result.taskName, '养成专用作战');
     const appliedConfig = await readConfig();
-    assert.deepEqual(appliedConfig.taskFlow[0].params.stages, normalStages);
-    assert.deepEqual(appliedConfig.taskFlow[1].params.stages[0].trainingOperators, ['夜烟']);
+    assert.deepEqual(appliedConfig.taskFlow[0].params?.stages, normalStages);
+    const smartStage = appliedConfig.taskFlow[1].params?.stages?.find((stage): stage is CombatStageObject =>
+      typeof stage === 'object');
+    assert.ok(smartStage);
+    assert.deepEqual(smartStage.trainingOperators, ['夜烟']);
   });
 
   it('reports an exact LMD shortfall without declaring materials complete or estimating currency stages', async () => {

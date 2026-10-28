@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import router from '../agent.js';
-import training from '../../services/operatorTrainingService.js';
+import training from '../../services/operatorTrainingService.ts';
 
 const originalMethods = { ...training };
 afterEach(() => Object.assign(training, originalMethods));

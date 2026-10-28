@@ -18,7 +18,7 @@ import {
   WEBRTC_SIGNALING_PATH
 } from '../services/webrtcSignalingGateway.js'
 import { getExecutionAdmissionGate } from '../services/executionAdmissionService.ts'
-import operatorTraining from '../services/operatorTrainingService.js'
+import operatorTraining from '../services/operatorTrainingService.ts'
 import OperatorQuotes from '../services/operatorQuotesService.js'
 
 const servers = []

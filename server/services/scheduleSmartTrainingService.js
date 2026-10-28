@@ -1,5 +1,5 @@
 import { loadUserConfig, saveUserConfig } from './configStorageService.ts';
-import operatorTrainingService from './operatorTrainingService.js';
+import operatorTrainingService from './operatorTrainingService.ts';
 import { createLogger } from '../utils/logger.ts';
 
 // 流程结束后的智能养成关卡回写：读取养成队列、生成刷取计划并保存任务流程。

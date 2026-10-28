@@ -3,22 +3,32 @@ import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import type { PenguinDropData } from '../dropDataService.ts';
+import { loggerManager } from '../../utils/logger.ts';
 
 const require = createRequire(import.meta.url);
 const childProcess = require('node:child_process');
 
+type ExecFileCallback = (error: (Error & { stderr?: string }) | null, stdout: string, stderr: string) => void;
+interface ExecFileOptions {
+  cwd?: string;
+  timeout?: number;
+  maxBuffer?: number;
+  windowsHide?: boolean;
+}
+type ExecFileOverride = (file: string, args: string[], options: ExecFileOptions, callback: ExecFileCallback) => void;
+
 // node:child_process 的 ESM 命名导入在模块加载时快照，
 // 因此必须在动态 import 服务之前挂上分发器，测试中通过 execFileOverride 替换实现
 const originalExecFile = childProcess.execFile;
-let execFileOverride = null;
-childProcess.execFile = (file, args, options, callback) => {
+let execFileOverride: ExecFileOverride | null = null;
+childProcess.execFile = (file: string, args: string[], options: ExecFileOptions, callback: ExecFileCallback) => {
   if (execFileOverride) return execFileOverride(file, args, options, callback);
   return originalExecFile(file, args, options, callback);
 };
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const { default: operatorTrainingService, expandMaterialTree, estimateMaterialFarming } = await import('../operatorTrainingService.js');
-const { loggerManager } = await import('../../utils/logger.ts');
+const { default: operatorTrainingService, expandMaterialTree, estimateMaterialFarming } = await import('../operatorTrainingService.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
 
@@ -28,7 +38,7 @@ afterEach(() => {
 
 describe('fetchOperatorMaterials', () => {
   it('runs all material fetch scripts sequentially and returns a summary', async () => {
-    const calls = [];
+    const calls: { file: string; args: string[]; options: ExecFileOptions }[] = [];
     execFileOverride = (file, args, options, callback) => {
       calls.push({ file, args, options });
       callback(null, 'ok', '');
@@ -64,13 +74,13 @@ describe('fetchOperatorMaterials', () => {
   });
 
   it('continues with the remaining scripts and throws with stderr when one fails', async () => {
-    const executedScripts = [];
+    const executedScripts: string[] = [];
     execFileOverride = (file, args, options, callback) => {
       const scriptName = path.basename(args[0]);
       executedScripts.push(scriptName);
 
       if (scriptName === 'fetch-material-formulas.js') {
-        const error = new Error(`Command failed: node ${scriptName}`);
+        const error: Error & { stderr?: string } = new Error(`Command failed: node ${scriptName}`);
         error.stderr = 'HTTP error! status: 404\n';
         callback(error, '', error.stderr);
         return;
@@ -80,9 +90,10 @@ describe('fetchOperatorMaterials', () => {
     };
 
     await assert.rejects(operatorTrainingService.fetchOperatorMaterials(), error => {
-      assert.match(error.message, /1\/5 个脚本失败/);
-      assert.match(error.message, /fetch-material-formulas/);
-      assert.match(error.message, /HTTP error! status: 404/);
+      const message = error instanceof Error ? error.message : String(error);
+      assert.match(message, /1\/5 个脚本失败/);
+      assert.match(message, /fetch-material-formulas/);
+      assert.match(message, /HTTP error! status: 404/);
       return true;
     });
 
@@ -101,7 +112,7 @@ describe('fetchOperatorMaterials', () => {
  * - act99side_01 为临时活动关，效率最优但应被排除（活动结束后无法执行）
  * - main_01-01 样本数低于下限，统计不可信
  */
-const TEST_DROP_DATA = {
+const TEST_DROP_DATA: PenguinDropData = {
   metadata: { source: 'test', server: 'CN', fetchedAt: '2026-10-24T00:00:00.000Z' },
   stages: {
     pro_b_1: { code: 'PR-B-1', apCost: 18, zoneId: 'weekly_1', zoneType: 'WEEKLY' },
@@ -125,6 +136,7 @@ const TEST_DROP_DATA = {
 describe('estimateMaterialFarming', () => {
   it('estimates chip farming with real penguin stats', () => {
     const estimate = estimateMaterialFarming({ id: '3251', name: '术师芯片' }, TEST_DROP_DATA);
+    assert.ok(estimate);
 
     assert.equal(estimate.stage, 'PR-B-1');
     assert.equal(estimate.stageId, 'pro_b_1');
@@ -136,13 +148,14 @@ describe('estimateMaterialFarming', () => {
 
   it('falls back to experience values for chips when drop data is unavailable', () => {
     const estimate = estimateMaterialFarming({ id: '3251', name: '术师芯片' }, null);
+    assert.ok(estimate);
 
     assert.equal(estimate.stage, 'PR-B-1');
     assert.equal(estimate.stageId, null);
     assert.equal(estimate.apCost, 18);
     assert.equal(estimate.expectedPerRun, 0.5);
     assert.equal(estimate.dataSource, 'experience');
-    assert.match(estimate.fallbackReason, /未加载/);
+    assert.match(estimate.fallbackReason ?? '', /未加载/);
   });
 
   it('selects the most sanity-efficient permanent stage for regular materials', () => {
@@ -150,6 +163,7 @@ describe('estimateMaterialFarming', () => {
       { id: '30011', name: '源岩', bestStages: [{ stage: 'act99side_01' }] },
       TEST_DROP_DATA
     );
+    assert.ok(estimate);
 
     // 临时活动关效率更优但被排除、main_01-01 样本不足，最终选 main_01-07
     assert.equal(estimate.stage, '1-7');
@@ -161,13 +175,14 @@ describe('estimateMaterialFarming', () => {
 
   it('falls back to the material database best stage when drop data is unavailable', () => {
     const estimate = estimateMaterialFarming({ id: '30073', name: '扭转醇', bestStage: 'pro_a_1' }, null);
+    assert.ok(estimate);
 
     assert.equal(estimate.stage, 'PR-A-1');
     assert.equal(estimate.stageId, 'pro_a_1');
     assert.equal(estimate.apCost, 18);
     assert.equal(estimate.expectedPerRun, 0.5);
     assert.equal(estimate.dataSource, 'experience');
-    assert.match(estimate.fallbackReason, /未加载/);
+    assert.match(estimate.fallbackReason ?? '', /未加载/);
   });
 
   it('returns null when neither drop data nor best stage exists', () => {
