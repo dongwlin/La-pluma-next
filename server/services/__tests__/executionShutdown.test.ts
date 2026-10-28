@@ -251,6 +251,20 @@ describe('execution admission gate', () => {
 });
 
 describe('execution shutdown coordination', () => {
+  it('honors an exhausted budget without falling back to the default drain timeout', async () => {
+    const { run } = beginAgentRun({ operationId: 'fight' });
+    startAgentRun(run.runId);
+    const service = createExecutionShutdownService({
+      logger: quietLogger,
+      runtime: realRunRuntime({ sleep: async () => assert.fail('zero-budget shutdown must not wait for settlement') })
+    });
+    const summary = await service.drain({ reason: 'deadline-exhausted', timeoutMs: 0 });
+    assert.equal(summary.budgetMs, 0);
+    assert.deepEqual(summary.interruptedRunIds, [run.runId]);
+    assert.equal(requireRun(run.runId).state, 'interrupted');
+    assert.equal(summary.flush.ok, true);
+  });
+
   it('stops only this instance’s active runs and keeps the result reported by the executor', async () => {
     const { run: running } = beginAgentRun({ operationId: 'fight' });
     startAgentRun(running.runId);

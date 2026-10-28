@@ -1,6 +1,6 @@
 /** HTTP/HTTPS 传输与运行时装配；直接执行时先安装关闭信号，再开始异步初始化。 */
 import { createServer as createHttpServer } from 'node:http';
-import type { Server as HttpServer } from 'node:http';
+import type { RequestListener, Server as HttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import type { Server as HttpsServer } from 'node:https';
 import { networkInterfaces } from 'node:os';
@@ -37,6 +37,8 @@ import {
 } from './services/runtimeLifecycleService.ts';
 import type {
   RuntimeLifecycle,
+  RuntimeLifecycleCloseContext,
+  RuntimeLifecycleStartContext,
   RuntimeLifecycleCloseSummary,
   RuntimeLifecycleLogger
 } from './services/runtimeLifecycleService.ts';
@@ -60,7 +62,7 @@ export interface StartLaPlumaServerOptions {
   host?: string;
   port?: number;
   signalingGateway?: WebrtcSignalingGateway;
-  initializeRunStore?: () => Promise<AgentRunStoreRestoreSummary>;
+  initializeRunStore?: (context: RuntimeLifecycleStartContext) => Promise<AgentRunStoreRestoreSummary>;
   /** 运行时恢复端口；真实实现接收生命周期端口，测试可只返回 Promise。 */
   initializeRuntime?: (overrides: RuntimeInitializationOverrides) => unknown;
   logger?: ServerLogger;
@@ -132,8 +134,8 @@ interface CreateTransportServerOptions {
 interface LaPlumaTransport {
   server: HttpServer | HttpsServer;
   protocol: 'http' | 'https';
-  listen(port: number, host: string): Promise<void>;
-  close(): Promise<void>;
+  listen(port: number, host: string, signal: AbortSignal): Promise<void>;
+  close(context: RuntimeLifecycleCloseContext): Promise<void>;
 }
 
 function createLaPlumaTransportServer({
@@ -142,35 +144,58 @@ function createLaPlumaTransportServer({
   env = process.env
 }: CreateTransportServerOptions): LaPlumaTransport {
   const httpsOptions = loadHttpsOptions(env);
+  let draining = false;
+  const handleRequest: RequestListener = (request, response) => {
+    response.once('finish', () => {
+      // 关闭开始时仍活动的 keep-alive 连接，在响应完成后也应立即释放。
+      if (draining) server.closeIdleConnections();
+    });
+    app(request, response);
+  };
   const server = httpsOptions
-    ? createHttpsServer(httpsOptions, app)
-    : createHttpServer(app);
+    ? createHttpsServer(httpsOptions, handleRequest)
+    : createHttpServer(handleRequest);
 
-  const listen = async (port: number, host: string): Promise<void> => {
-    // 网关挂载属于启动步骤；配置或 Run 存储阶段失败时尚未占用传输资源。
+  const listen = async (port: number, host: string, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    // 网关挂载属于监听步骤，构造和 Run 存储恢复期间不挂载。
     signalingGateway.attach(server);
+    signal.throwIfAborted();
     await new Promise<void>((resolveListen, rejectListen) => {
-      const onError = (error: Error): void => {
+      const listenAbort = new AbortController();
+      const cleanup = (): void => {
+        signal.removeEventListener('abort', onAbort);
         server.off('listening', onListening);
+        server.off('error', onError);
+      };
+      const onAbort = (): void => {
+        listenAbort.abort();
+        cleanup();
+        rejectListen(signal.reason);
+      };
+      const onError = (error: Error): void => {
+        cleanup();
         rejectListen(error);
       };
       const onListening = (): void => {
-        server.off('error', onError);
+        // 启动取消只负责未完成的 listen；运行后的 HTTP 由传输关闭阶段排空。
+        cleanup();
         resolveListen();
       };
+      signal.addEventListener('abort', onAbort, { once: true });
       server.once('error', onError);
       server.once('listening', onListening);
       try {
-        server.listen(port, host);
+        server.listen({ port, host, signal: listenAbort.signal });
       } catch (error) {
-        server.off('error', onError);
-        server.off('listening', onListening);
+        cleanup();
         rejectListen(error);
       }
     });
   };
 
-  const close = async (): Promise<void> => {
+  const close = async ({ signal }: RuntimeLifecycleCloseContext): Promise<void> => {
+    draining = true;
     try {
       signalingGateway.close();
     } finally {
@@ -179,8 +204,15 @@ function createLaPlumaTransportServer({
         const closed = new Promise<void>((resolveClose, rejectClose) => {
           server.close(error => error ? rejectClose(error) : resolveClose());
         });
-        server.closeAllConnections();
-        await closed;
+        const forceClose = (): void => { server.closeAllConnections(); };
+        signal.addEventListener('abort', forceClose, { once: true });
+        try {
+          // server.close 停止接受新连接并等待在途响应；本步骤预算耗尽才强制断开。
+          if (signal.aborted) forceClose();
+          await closed;
+        } finally {
+          signal.removeEventListener('abort', forceClose);
+        }
       }
     }
   };
@@ -198,7 +230,7 @@ export function createLaPlumaServer({
   host = '0.0.0.0',
   port = parsePort(env.PORT, { fallback: 3000, name: 'PORT' }),
   signalingGateway = createWebrtcSignalingGateway(),
-  initializeRunStore = initializeAgentRunStore,
+  initializeRunStore = ({ signal }) => initializeAgentRunStore({ signal }),
   initializeRuntime = initializeRuntimeState,
   logger = console,
   closeDeadlineMs = DEFAULT_CLOSE_DEADLINE_MS,
@@ -233,9 +265,10 @@ export function createLaPlumaServer({
 
   lifecycle.register({
     name: 'agent-run-store',
-    start: async () => {
+    start: async ({ signal }) => {
       try {
-        const summary = await initializeRunStore();
+        const summary = await initializeRunStore({ signal });
+        signal.throwIfAborted();
         logger.log('[AgentRun] 存储已就绪:', {
           filePath: summary.filePath,
           restoredRuns: summary.restoredRuns,
@@ -243,6 +276,7 @@ export function createLaPlumaServer({
           prunedRuns: summary.prunedRuns
         });
       } catch (error) {
+        signal.throwIfAborted();
         const status = getAgentRunStoreStatus();
         logger.error('[AgentRun] 存储初始化失败，执行接口已关闭:', {
           filePath: status.filePath,
@@ -254,13 +288,13 @@ export function createLaPlumaServer({
 
   lifecycle.register({
     name: 'http-transport',
-    start: async () => {
-      await transport.listen(port, host);
+    start: async ({ signal }) => {
+      await transport.listen(port, host, signal);
       const address = transport.server.address();
       listeningPort = typeof address === 'object' && address ? address.port : port;
     },
     // 传输入口拥有信令网关的挂载与关闭，二者作为同一资源释放。
-    close: () => transport.close()
+    close: context => transport.close(context)
   });
 
   // 执行关闭在传输入口之后注册、在运行时初始化之前注册：关闭顺序为
@@ -273,15 +307,17 @@ export function createLaPlumaServer({
 
   lifecycle.register({
     name: 'runtime-initialization',
-    start: async () => {
+    start: async ({ signal }) => {
       // 初始化阶段单独记录：即使初始化抛错被记录后继续提供 HTTP，就绪端点也保持
       // 不可就绪，直到完成一次完整初始化。
       readiness.markInitializationStarted();
       try {
         // 后台领域通过传入的生命周期端口注册自己的停止能力。
-        await initializeRuntime({ lifecycle });
+        await initializeRuntime({ lifecycle, signal });
+        signal.throwIfAborted();
         readiness.markInitializationCompleted();
       } catch (error) {
+        signal.throwIfAborted();
         readiness.markInitializationFailed();
         logger.error('[Runtime] 初始化失败:', readErrorMessage(error));
       }

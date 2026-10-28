@@ -177,57 +177,62 @@ describe('Server construction and startup', () => {
     assert.equal(summary.steps.find(step => step.name === 'webrtc-preview')?.status, 'closed')
   })
 
-  it('handles SIGTERM received by a child process while startup is pending', async () => {
-    const entry = new URL('../server.ts', import.meta.url).href
-    const source = `import { createLaPlumaServer, installShutdownHandlers } from ${JSON.stringify(entry)};
-const runtime = createLaPlumaServer({
-  env: {}, host: '127.0.0.1', port: 0,
-  logger: { log() {}, warn() {}, error() {} },
-  initializeRunStore: async () => (${JSON.stringify(runStoreSummary)}),
-  initializeRuntime: async ({ lifecycle }) => {
-    lifecycle.register({ name: 'fixture-domain', close() { process.stdout.write('domain-closed\\n'); } });
-    const interrupted = new Promise(resolve => process.once('SIGTERM', resolve));
-    process.stdout.write('initializing\\n');
-    await interrupted;
-  },
-  executionShutdownOptions: { runtime: {
-    listActiveRuns: () => [], isDeviceTaskRunning: () => false,
-    isScheduleRunning: () => false, flushRunStore: async () => {}
-  } }
-});
-installShutdownHandlers(runtime);
-await runtime.start();`
-    const child = spawn(process.execPath, ['--input-type=module', '--eval', source], {
-      env: { ...process.env, NODE_ENV: 'test' },
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }>((resolve, reject) => {
-      let stdout = ''
-      let stderr = ''
-      let signaled = false
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL')
-        reject(new Error(`startup shutdown timed out: ${stdout} ${stderr}`))
-      }, 10_000)
-      child.stdout.setEncoding('utf8')
-      child.stderr.setEncoding('utf8')
-      child.stdout.on('data', (chunk: string) => {
-        stdout += chunk
-        if (!signaled && stdout.includes('initializing\n')) {
-          signaled = true
-          child.kill('SIGTERM')
-        }
+  for (const cancellation of ['cooperative', 'ignored'] as const) {
+    it(`handles SIGTERM during pending startup in a child process (${cancellation})`, async () => {
+      const entry = new URL('../server.ts', import.meta.url).href
+      const source = `import { createLaPlumaServer, installShutdownHandlers } from ${JSON.stringify(entry)};
+  const runtime = createLaPlumaServer({
+    env: {}, host: '127.0.0.1', port: 0, closeDeadlineMs: 180,
+    logger: { log() {}, warn() {}, error() {} },
+    initializeRunStore: async () => (${JSON.stringify(runStoreSummary)}),
+    initializeRuntime: async ({ lifecycle, signal }) => {
+      lifecycle.register({ name: 'fixture-domain', close() { process.stdout.write('domain-closed\\n'); } });
+      const interrupted = new Promise((_resolve, reject) => {
+        if (${JSON.stringify(cancellation === 'cooperative')}) signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+      process.stdout.write('initializing\\n');
+      await interrupted;
+    },
+    executionShutdownOptions: { runtime: {
+      listActiveRuns: () => [], isDeviceTaskRunning: () => false,
+      isScheduleRunning: () => false, flushRunStore: async () => {}
+    } }
+  });
+  installShutdownHandlers(runtime);
+  await runtime.start();`
+      const child = spawn(process.execPath, ['--input-type=module', '--eval', source], {
+        env: { ...process.env, NODE_ENV: 'test' },
+        stdio: ['ignore', 'pipe', 'pipe']
       })
-      child.stderr.on('data', (chunk: string) => { stderr += chunk })
-      child.once('error', error => { clearTimeout(timer); reject(error) })
-      child.once('close', (code, signal) => {
-        clearTimeout(timer)
-        resolve({ code, signal, stdout, stderr })
+      const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }>((resolve, reject) => {
+        let stdout = ''
+        let stderr = ''
+        let signaled = false
+        const timer = setTimeout(() => {
+          child.kill('SIGKILL')
+          reject(new Error(`startup shutdown timed out: ${stdout} ${stderr}`))
+        }, 10_000)
+        child.stdout.setEncoding('utf8')
+        child.stderr.setEncoding('utf8')
+        child.stdout.on('data', (chunk: string) => {
+          stdout += chunk
+          if (!signaled && stdout.includes('initializing\n')) {
+            signaled = true
+            child.kill('SIGTERM')
+          }
+        })
+        child.stderr.on('data', (chunk: string) => { stderr += chunk })
+        child.once('error', error => { clearTimeout(timer); reject(error) })
+        child.once('close', (code, signal) => {
+          clearTimeout(timer)
+          resolve({ code, signal, stdout, stderr })
+        })
       })
+      assert.equal(result.signal, null)
+      assert.equal(result.code, cancellation === 'cooperative' ? 0 : 1)
+      assert.match(result.stdout, /initializing\ndomain-closed\n/)
+      if (cancellation === 'cooperative') assert.equal(result.stderr, '')
+      else assert.match(result.stderr, /runtime-initialization:start:timeout/)
     })
-    assert.equal(result.signal, null)
-    assert.equal(result.code, 0)
-    assert.match(result.stdout, /initializing\ndomain-closed\n/)
-    assert.equal(result.stderr, '')
-  })
+  }
 })

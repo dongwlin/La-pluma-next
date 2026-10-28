@@ -157,6 +157,26 @@ describe('agent run persistence', () => {
     });
   });
 
+  it('cancels recovery without enabling persistence or writing a late snapshot', async () => {
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const read = Promise.withResolvers<unknown>();
+    let writes = 0;
+    const restoring = initialize({
+      signal: controller.signal,
+      readStore: async () => { entered.resolve(); return read.promise; },
+      writeStore: async () => { writes += 1; }
+    });
+    await entered.promise;
+    controller.abort(new Error('cancelled run-store recovery'));
+    await assert.rejects(restoring, error => error === controller.signal.reason);
+    read.resolve({ version: 1, runs: [] });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(writes, 0);
+    assert.equal(getAgentRunStoreStatus().ready, false);
+    assert.throws(() => beginAgentRun({ operationId: 'fight' }));
+  });
+
   it('restores terminal runs and preserves idempotent replay and conflict detection', async () => {
     await initialize();
     const first = beginAgentRun({

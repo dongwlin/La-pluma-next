@@ -18,6 +18,7 @@ import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
 import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
+import { waitWithAbort } from '../utils/abort.ts';
 import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
@@ -140,6 +141,7 @@ export interface AgentRunStoreLogger {
 }
 
 export interface AgentRunStoreOverrides {
+  signal?: AbortSignal;
   filePath?: string;
   readStore?: AgentRunStoreReader;
   writeStore?: AgentRunStoreWriter;
@@ -840,7 +842,10 @@ function restoreStoreSnapshot(snapshot: unknown, nowMs: number = Date.now()): Re
 export async function initializeAgentRunStore(
   overrides: AgentRunStoreOverrides = {}
 ): Promise<AgentRunStoreRestoreSummary> {
-  if (persistencePromise) await persistencePromise;
+  const { signal } = overrides;
+  signal?.throwIfAborted();
+  if (persistencePromise) await waitWithAbort(() => persistencePromise, signal);
+  signal?.throwIfAborted();
 
   persistenceGeneration += 1;
   persistence = {
@@ -857,13 +862,15 @@ export async function initializeAgentRunStore(
 
   let restored: RestoredStore;
   try {
-    const snapshot = await persistence.readStore(persistence.filePath, {
+    const snapshot = await waitWithAbort(() => persistence.readStore(persistence.filePath, {
       version: AGENT_RUN_STORE_VERSION,
       runs: []
-    });
+    }), signal);
+    signal?.throwIfAborted();
     restored = restoreStoreSnapshot(snapshot);
   } catch (error) {
     persistenceError = error;
+    signal?.throwIfAborted();
     persistence.runtimeLogger.error('Agent run 存储恢复失败，执行接口将保持关闭', {
       filePath: persistence.filePath,
       error: describeError(error)
@@ -888,7 +895,9 @@ export async function initializeAgentRunStore(
 
   persistence.enabled = true;
   scheduleAgentRunPersistence();
-  await flushAgentRunStore();
+  // 已提交的原子写入由持久化队列完成；取消后不再宣布初始化成功。
+  await waitWithAbort(() => flushAgentRunStore(), signal);
+  signal?.throwIfAborted();
   persistence.runtimeLogger.info('Agent run 存储恢复完成', {
     filePath: persistence.filePath,
     restoredRuns: runs.size,

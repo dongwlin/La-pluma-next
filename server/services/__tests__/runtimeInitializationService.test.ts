@@ -47,7 +47,7 @@ function createFakeLifecycle(): FakeLifecycle {
       draining = true;
       state = 'closed';
       for (const step of [...steps].reverse()) {
-        await step.close?.({ reason: 'test', timeoutMs: 1_000 });
+        await step.close?.({ reason: 'test', timeoutMs: 1_000, deadlineAt: Date.now() + 1_000, signal: new AbortController().signal });
       }
       return { reason: 'test', state: 'closed', ok: true, deadlineMs: 1_000, durationMs: 0, steps: [] };
     }
@@ -55,6 +55,61 @@ function createFakeLifecycle(): FakeLifecycle {
 }
 
 describe('runtime initialization', () => {
+  it('does not read configuration or attach domains after an already-cancelled startup', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('cancelled before startup'));
+    await assert.rejects(initializeRuntimeState({
+      signal: controller.signal,
+      lifecycle: createFakeLifecycle(),
+      attachScheduleLifecycle: () => assert.fail('must not attach after cancellation'),
+      loadConfig: async () => assert.fail('must not read after cancellation')
+    }), error => error === controller.signal.reason);
+  });
+
+  it('abandons pending config reads without applying their late results', async () => {
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const config = Promise.withResolvers<{ success: boolean; data: unknown }>();
+    const lifecycle = createFakeLifecycle();
+    const restoring = initializeRuntimeState({
+      signal: controller.signal, lifecycle,
+      attachScheduleLifecycle: () => ({}),
+      loadConfig: async () => { entered.resolve(); return config.promise; },
+      applyNotificationConfig: () => assert.fail('late notification must not be applied'),
+      registerSchedule: () => assert.fail('late schedule must not be registered'),
+      registerAutoUpdate: () => assert.fail('late auto-update must not be registered'),
+      readNotificationConfig: () => assert.fail('must not continue to Telegram'),
+      runtimeLogger: silentLogger
+    });
+    await entered.promise;
+    controller.abort(new Error('cancelled while reading configuration'));
+    await assert.rejects(restoring, error => error === controller.signal.reason);
+    config.resolve({ success: true, data: { enabled: true, schedule: { enabled: true } } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(lifecycle.steps, []);
+  });
+
+  it('does not attach or start Telegram when connection resolution finishes after cancellation', async () => {
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const connection = Promise.withResolvers<{ adbPath: string; address: string }>();
+    const restoring = initializeRuntimeState({
+      signal: controller.signal, lifecycle: createFakeLifecycle(),
+      attachScheduleLifecycle: () => ({}),
+      loadConfig: async () => ({ success: true, data: null }),
+      readNotificationConfig: () => ({ channels: { telegram: { enabled: true, botToken: 'fixture', chatId: 'fixture' } } }),
+      resolveRuntimeConnection: async () => { entered.resolve(); return connection.promise; },
+      attachTelegramLifecycle: () => assert.fail('late Telegram must not be attached'),
+      startTelegramBot: () => assert.fail('late Telegram must not be started'),
+      runtimeLogger: silentLogger
+    });
+    await entered.promise;
+    controller.abort(new Error('cancelled while resolving connection'));
+    await assert.rejects(restoring, error => error === controller.signal.reason);
+    connection.resolve({ adbPath: '/fixture/adb', address: 'fixture-device' });
+    await new Promise(resolve => setImmediate(resolve));
+  });
+
   it('attaches the scheduler stop port before restoring persisted triggers without executing flows', async () => {
     const events: unknown[][] = [];
     const lifecycle = createFakeLifecycle();

@@ -135,7 +135,7 @@ describe('runtime lifecycle', () => {
       'close:transport',
       'close:store'
     ]);
-    assert.deepEqual(summary.steps, []);
+    assert.deepEqual(summary.steps.map(step => step.name), ['transport', 'store']);
     assert.equal(lifecycle.getState(), 'closed');
   });
 
@@ -333,5 +333,128 @@ describe('runtime lifecycle', () => {
     assert.equal(lateClosed, true);
     assert.deepEqual(summary.steps.map(step => step.name), ['late-close', 'same']);
     assert.equal(summary.ok, true);
+  });
+
+  it('cancels an in-flight initializer synchronously and skips later startup steps', async () => {
+    const lifecycle = createRuntimeLifecycle({ logger: silentLogger, closeDeadlineMs: 300 });
+    const entered = Promise.withResolvers<void>();
+    let startupSignal: AbortSignal | undefined;
+    let lateStarts = 0;
+    lifecycle.register({
+      name: 'initializer',
+      start: ({ signal }) => new Promise<void>((_resolve, reject) => {
+        startupSignal = signal;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        entered.resolve();
+      })
+    });
+    lifecycle.register({ name: 'later', start: () => { lateStarts += 1; } });
+    const starting = lifecycle.start();
+    await entered.promise;
+    const closing = lifecycle.close('cancel-initializer');
+    assert.equal(startupSignal?.aborted, true);
+    assert.equal((await closing).ok, true);
+    assert.deepEqual((await starting).started, []);
+    assert.equal(lateStarts, 0);
+  });
+
+  it('bounds uncooperative startup and cleanup within the same shutdown budget', async () => {
+    const lifecycle = createRuntimeLifecycle({ logger: silentLogger, closeDeadlineMs: 150 });
+    const entered = Promise.withResolvers<void>();
+    let finalClosed = false;
+    let cleanupCancelled = false;
+    lifecycle.register({ name: 'final-resource', close: () => { finalClosed = true; } });
+    lifecycle.register({
+      name: 'hung-resource',
+      close: ({ signal }) => new Promise<void>(() => {
+        signal.addEventListener('abort', () => { cleanupCancelled = true; }, { once: true });
+      })
+    });
+    lifecycle.register({
+      name: 'initializer',
+      start: () => { entered.resolve(); return new Promise<void>(() => {}); }
+    });
+    const starting = lifecycle.start();
+    await entered.promise;
+    const wallStart = Date.now();
+    const summary = await lifecycle.close('hung-initializer');
+    assert.ok(Date.now() - wallStart < 700, 'shutdown must not wait indefinitely for startup');
+    assert.ok(summary.durationMs >= 70, 'summary must include waiting for startup and cleanup');
+    assert.equal(summary.ok, false);
+    assert.deepEqual(summary.steps.map(step => [step.name, step.status]), [
+      ['initializer:start', 'timeout'], ['hung-resource', 'timeout'], ['final-resource', 'closed']
+    ]);
+    assert.equal(finalClosed, true);
+    assert.equal(cleanupCancelled, true);
+    await starting;
+    assert.equal(lifecycle.getState(), 'closed');
+    assert.equal(await lifecycle.close('again'), summary);
+  });
+
+  it('charges initialization cancellation time against every cleanup deadline', async () => {
+    let clock = 1_000;
+    const lifecycle = createRuntimeLifecycle({ logger: silentLogger, closeDeadlineMs: 100, now: () => clock });
+    const entered = Promise.withResolvers<void>();
+    const budgets: number[] = [];
+    const deadlines: number[] = [];
+    lifecycle.register({
+      name: 'initializer',
+      start: ({ signal }) => new Promise<void>(resolve => {
+        signal.addEventListener('abort', () => { clock += 40; resolve(); }, { once: true });
+        entered.resolve();
+      })
+    });
+    for (const name of ['first', 'second']) {
+      lifecycle.register({ name, close: ({ timeoutMs, deadlineAt }) => {
+        budgets.push(timeoutMs);
+        deadlines.push(deadlineAt);
+        clock += 10;
+      } });
+    }
+    const starting = lifecycle.start();
+    await entered.promise;
+    const summary = await lifecycle.close('shared-deadline');
+    await starting;
+    assert.deepEqual(deadlines, [1_100, 1_100]);
+    assert.deepEqual(budgets, [30, 50]);
+    assert.equal(summary.durationMs, 60);
+    assert.equal(summary.ok, true);
+  });
+
+  it('attempts zero-budget cleanup without reporting a completed startup as hung', async () => {
+    let clock = 1_000;
+    let cleaned = false;
+    const lifecycle = createRuntimeLifecycle({ logger: silentLogger, closeDeadlineMs: 10, now: () => clock });
+    lifecycle.register({
+      name: 'resource',
+      start: ({ signal }) => { signal.addEventListener('abort', () => { clock += 20; }, { once: true }); },
+      close: ({ timeoutMs, signal }) => {
+        assert.equal(timeoutMs, 0);
+        assert.equal(signal.aborted, true);
+        cleaned = true;
+      }
+    });
+    await lifecycle.start();
+    const summary = await lifecycle.close('budget-exhausted');
+    assert.equal(cleaned, true);
+    assert.deepEqual(summary.steps.map(step => [step.name, step.status]), [['resource', 'timeout']]);
+    assert.equal(summary.durationMs, 20);
+  });
+
+  it('preserves rollback failures in later close calls and never releases twice', async () => {
+    let closes = 0;
+    const lifecycle = createRuntimeLifecycle({ logger: silentLogger });
+    lifecycle.register({
+      name: 'partial-start',
+      start: () => { throw new Error('fixture startup failure'); },
+      close: () => { closes += 1; throw new Error('fixture rollback failure'); }
+    });
+    await assert.rejects(lifecycle.start(), isLifecycleError('RUNTIME_LIFECYCLE_START_FAILED', 'partial-start'));
+    const summary = await lifecycle.close('after-rollback');
+    assert.equal(summary.ok, false);
+    assert.equal(summary.steps[0].status, 'failed');
+    assert.equal(summary.steps[0].error, 'fixture rollback failure');
+    assert.equal(await lifecycle.close('again'), summary);
+    assert.equal(closes, 1);
   });
 });

@@ -151,7 +151,9 @@ export function createExecutionShutdownService(
     context: { reason?: string; timeoutMs?: number } = {}
   ): Promise<ExecutionShutdownSummary> {
     const reason = context.reason || 'shutdown';
-    const budgetMs = positiveInteger(context.timeoutMs, defaultDrainBudgetMs);
+    const budgetMs = context.timeoutMs !== undefined && Number.isFinite(context.timeoutMs) && context.timeoutMs >= 0
+      ? Math.floor(context.timeoutMs)
+      : defaultDrainBudgetMs;
     const startedAt = runtime.now();
     const deadlineAt = startedAt + budgetMs;
     // 预留落盘时间：等待只在 deadlineAt 之前结束，落盘本身仍受生命周期步骤超时约束。

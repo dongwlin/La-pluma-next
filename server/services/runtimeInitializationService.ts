@@ -11,6 +11,7 @@ import type { AutoUpdateConfig } from './scheduleTriggerService.ts';
 import { initTelegramBot, attachTelegramBotToLifecycle } from './telegramBotService.ts';
 import type { RuntimeLifecycle } from './runtimeLifecycleService.ts';
 import { createLogger } from '../utils/logger.ts';
+import { waitWithAbort } from '../utils/abort.ts';
 
 const logger = createLogger('RuntimeInitialization');
 
@@ -77,6 +78,7 @@ export interface RuntimeInitializationPorts {
 /** 可注入端口与生命周期；未提供的端口使用默认实现。 */
 export interface RuntimeInitializationOverrides extends Partial<RuntimeInitializationPorts> {
   lifecycle?: RuntimeLifecycle | null;
+  signal?: AbortSignal;
 }
 
 /** 恢复摘要：每个领域独立记录成功位与失败原因，互不替代。 */
@@ -103,10 +105,12 @@ function readOutcomeMessage(value: unknown): string | null {
 async function readPersistedConfig(
   configType: string,
   loadConfig: RuntimeInitializationPorts['loadConfig'],
-  runtimeLogger: RuntimeInitializationLogger
+  runtimeLogger: RuntimeInitializationLogger,
+  signal?: AbortSignal
 ): Promise<Record<string, unknown> | null> {
   try {
-    const result = await loadConfig(configType);
+    const result = await waitWithAbort(() => loadConfig(configType), signal);
+    signal?.throwIfAborted();
     if (!result.success) {
       runtimeLogger.warn('运行时配置加载失败', {
         configType,
@@ -116,6 +120,7 @@ async function readPersistedConfig(
     }
     return isObject(result.data) ? result.data : null;
   } catch (error) {
+    signal?.throwIfAborted();
     runtimeLogger.error('运行时配置加载异常', { configType, error: readErrorMessage(error) });
     return null;
   }
@@ -135,7 +140,8 @@ async function readPersistedConfig(
 export async function initializeRuntimeState(
   overrides: RuntimeInitializationOverrides = {}
 ): Promise<RuntimeInitializationSummary> {
-  const { lifecycle, ...dependencyOverrides } = overrides;
+  const { lifecycle, signal, ...dependencyOverrides } = overrides;
+  signal?.throwIfAborted();
   // 未提供的端口回落到真实实现；显式传入的实现优先，包括测试的假实现。
   const dependencies: RuntimeInitializationPorts = {
     loadConfig: dependencyOverrides.loadConfig ?? loadUserConfig,
@@ -166,10 +172,11 @@ export async function initializeRuntimeState(
   };
 
   const [notificationConfig, automationConfig, autoUpdateConfig] = await Promise.all([
-    readPersistedConfig('notification', dependencies.loadConfig, dependencies.runtimeLogger),
-    readPersistedConfig('automation-tasks', dependencies.loadConfig, dependencies.runtimeLogger),
-    readPersistedConfig('auto-update', dependencies.loadConfig, dependencies.runtimeLogger)
+    readPersistedConfig('notification', dependencies.loadConfig, dependencies.runtimeLogger, signal),
+    readPersistedConfig('automation-tasks', dependencies.loadConfig, dependencies.runtimeLogger, signal),
+    readPersistedConfig('auto-update', dependencies.loadConfig, dependencies.runtimeLogger, signal)
   ]);
+  signal?.throwIfAborted();
 
   if (notificationConfig) {
     try {
@@ -182,6 +189,7 @@ export async function initializeRuntimeState(
   }
 
   const persistedSchedule = isObject(automationConfig?.schedule) ? automationConfig.schedule : null;
+  signal?.throwIfAborted();
   if (persistedSchedule?.enabled) {
     try {
       const result = dependencies.registerSchedule(
@@ -202,6 +210,7 @@ export async function initializeRuntimeState(
     }
   }
 
+  signal?.throwIfAborted();
   if (autoUpdateConfig?.enabled) {
     try {
       const result = dependencies.registerAutoUpdate(autoUpdateConfig);
@@ -219,9 +228,11 @@ export async function initializeRuntimeState(
   }
 
   try {
+    signal?.throwIfAborted();
     const telegramConfig = dependencies.readNotificationConfig()?.channels?.telegram;
     if (telegramConfig) {
-      const connection = await dependencies.resolveRuntimeConnection();
+      const connection = await waitWithAbort(() => dependencies.resolveRuntimeConnection(), signal);
+      signal?.throwIfAborted();
       const botConfig: TelegramRuntimeConfig = {
         ...telegramConfig,
         adbPath: connection.adbPath,
@@ -237,10 +248,12 @@ export async function initializeRuntimeState(
           throw error;
         }
       }
+      signal?.throwIfAborted();
       dependencies.startTelegramBot(botConfig);
       summary.telegram.initialized = enabled;
     }
   } catch (error) {
+    signal?.throwIfAborted();
     summary.telegram.error = readErrorMessage(error);
     dependencies.runtimeLogger.error('Telegram Bot 初始化失败', { error: readErrorMessage(error) });
   }

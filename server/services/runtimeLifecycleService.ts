@@ -9,9 +9,9 @@
  * - start：按注册顺序执行启动步骤；某步失败时先逆序回收已受理或已获资源的步骤，再抛出携带
  *   步骤名的错误。已被受理的启动请求重复调用返回同一结果，不重复执行。
  * - draining：close 一旦被请求即进入 draining；此后拒绝注册新步骤，启动循环不再
- *   开始新步骤。关闭仍会等待进行中的启动步骤结束。
- * - deadline：closeDeadlineMs 是整次关闭的总预算，按剩余步骤均分给每一步，单步至少
- *   1ms。超时的步骤记为 timeout 并继续后续步骤，因此一个卡住的领域不会阻断其余收尾。
+ *   开始新步骤，并通过 signal 取消初始化。
+ * - deadline：从收到 close 起统一计算预算，等待初始化退出与逆序释放共用截止时间。
+ *   启动不响应取消时记录 timeout，继续收尾；关闭步骤超时也会取消其 signal。
  * - 重复 close：第一次关闭的 Promise 被复用；重复调用不重复执行任何 close，返回同一
  *   关闭摘要。单步失败只记录结果，不抛出，避免吞掉仍可执行的后续清理。
  */
@@ -34,7 +34,7 @@ export interface RuntimeLifecycleStep {
   /** 唯一名称：用于日志、重复注册拒绝和测试断言 */
   name: string;
   /** 启动步骤；缺省表示资源在注册前已由组装入口启动 */
-  start?: () => unknown | Promise<unknown>;
+  start?: (context: RuntimeLifecycleStartContext) => unknown | Promise<unknown>;
   /**
    * 释放步骤；缺省表示该步骤没有需要释放的资源。
    * 入参给出本步骤分到的预算与关闭原因，长耗时收尾可据此在超时前自行收束。
@@ -42,11 +42,19 @@ export interface RuntimeLifecycleStep {
   close?: (context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>;
 }
 
+export interface RuntimeLifecycleStartContext {
+  signal: AbortSignal;
+}
+
 export interface RuntimeLifecycleCloseContext {
   /** 触发本次关闭的原因（信号名或调用方提供） */
   reason: string;
   /** 本步骤分到的时间预算；等于超时监控使用的时长 */
   timeoutMs: number;
+  /** 整次关闭的绝对截止时间，与初始化等待共用预算。 */
+  deadlineAt: number;
+  /** 本步骤份额耗尽时取消，供传输等资源执行强制收尾。 */
+  signal: AbortSignal;
 }
 
 export interface RuntimeLifecycleStartSummary {
@@ -108,7 +116,7 @@ export class RuntimeLifecycleError extends Error {
 
 interface RegisteredStep {
   name: string;
-  start: (() => unknown | Promise<unknown>) | null;
+  start: ((context: RuntimeLifecycleStartContext) => unknown | Promise<unknown>) | null;
   close: ((context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>) | null;
   /** 已受理启动（无论成功或失败）或已登记既有资源，需要纳入释放范围 */
   active: boolean;
@@ -117,6 +125,24 @@ interface RegisteredStep {
 }
 
 const TIMEOUT = Symbol('runtime-lifecycle-timeout');
+
+interface ShutdownWindow {
+  reason: string;
+  startedAt: number;
+  deadlineAt: number;
+}
+
+async function withinBudget<T>(work: Promise<T>, timeoutMs: number): Promise<T | typeof TIMEOUT> {
+  if (timeoutMs <= 0) return TIMEOUT;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<typeof TIMEOUT>(resolve => {
+      timer = setTimeout(() => resolve(TIMEOUT), timeoutMs);
+    })]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -145,6 +171,20 @@ export function createRuntimeLifecycle({
   let startPromise: Promise<RuntimeLifecycleStartSummary> | null = null;
   let closePromise: Promise<RuntimeLifecycleCloseSummary> | null = null;
   let closeSummary: RuntimeLifecycleCloseSummary | null = null;
+  const startupAbort = new AbortController();
+  const abandonStartup = Promise.withResolvers<typeof TIMEOUT>();
+  let startingStep: RegisteredStep | null = null;
+  let startupProblem: RuntimeLifecycleCloseStepResult | null = null;
+  let shutdownWindow: ShutdownWindow | null = null;
+  let releasePromise: Promise<RuntimeLifecycleCloseSummary> | null = null;
+
+  function getShutdownWindow(reason: string): ShutdownWindow {
+    if (!shutdownWindow) {
+      const startedAt = now();
+      shutdownWindow = { reason, startedAt, deadlineAt: startedAt + deadlineMs };
+    }
+    return shutdownWindow;
+  }
 
   function register(step: RuntimeLifecycleStep): void {
     if (!step || typeof step.name !== 'string' || step.name.trim() === '') {
@@ -204,29 +244,28 @@ export function createRuntimeLifecycle({
   async function closeStep(
     step: RegisteredStep,
     timeoutMs: number,
-    reason: string
+    window: ShutdownWindow
   ): Promise<RuntimeLifecycleCloseStepResult> {
     const startedAt = now();
     const close = step.close;
     if (!close) {
       return { name: step.name, status: 'closed', durationMs: 0 };
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<typeof TIMEOUT>(resolveTimeout => {
-      // 保留 timer 的引用计数：关闭期间即使其他句柄已释放，也应等满预算再退出。
-      timer = setTimeout(() => resolveTimeout(TIMEOUT), timeoutMs);
-    });
-    const work = Promise.resolve()
-      .then(() => close({ reason, timeoutMs }))
+    const abort = new AbortController();
+    const cancel = (): void => { abort.abort(new DOMException('运行时关闭步骤超时', 'TimeoutError')); };
+    if (timeoutMs <= 0) cancel();
+    const work = Promise.resolve().then(() => close({
+      reason: window.reason, timeoutMs, deadlineAt: window.deadlineAt, signal: abort.signal
+    }))
       .then(
         () => ({ ok: true as const }),
         error => ({ ok: false as const, error })
       );
-    const outcome = await Promise.race([work, timeout]);
-    if (timer) clearTimeout(timer);
+    const outcome = await withinBudget(work, timeoutMs);
     const durationMs = now() - startedAt;
 
     if (outcome === TIMEOUT) {
+      cancel();
       logger.warn?.('运行时关闭步骤超时', { step: step.name, timeoutMs, durationMs });
       return { name: step.name, status: 'timeout', durationMs };
     }
@@ -239,40 +278,43 @@ export function createRuntimeLifecycle({
   }
 
   /**
-   * 逆序释放所有已受理且未释放的步骤。总预算按剩余步骤均分，保证卡住的步骤不会
-   * 独占预算；每个步骤至少保留 1ms，从而仍会被尝试。
+   * 逆序释放已获资源。每步按剩余预算均分；预算已耗尽时仍调用释放端口，
+   * 传入已取消的 signal 和零预算，不为后续步骤重新计时。
    */
-  async function releaseAll(reason: string): Promise<RuntimeLifecycleCloseSummary> {
-    const startedAt = now();
-    const deadlineAt = startedAt + deadlineMs;
+  async function releaseAll(window: ShutdownWindow): Promise<RuntimeLifecycleCloseSummary> {
     const pending = steps.filter(step => step.active && !step.released && step.close).reverse();
-    const results: RuntimeLifecycleCloseStepResult[] = [];
+    const results: RuntimeLifecycleCloseStepResult[] = startupProblem ? [startupProblem] : [];
 
     for (let index = 0; index < pending.length; index += 1) {
       const step = pending[index];
       step.released = true;
-      const remaining = deadlineAt - now();
+      const remaining = Math.max(0, window.deadlineAt - now());
       const stepsLeft = pending.length - index;
-      const slice = Math.max(1, Math.floor(remaining / stepsLeft));
-      results.push(await closeStep(step, slice, reason));
+      const slice = Math.floor(remaining / stepsLeft);
+      results.push(await closeStep(step, slice, window));
     }
 
     const failed = results.filter(result => result.status !== 'closed');
     const summary: RuntimeLifecycleCloseSummary = {
-      reason,
+      reason: window.reason,
       state: 'closed',
       ok: failed.length === 0,
       deadlineMs,
-      durationMs: now() - startedAt,
+      durationMs: now() - window.startedAt,
       steps: results
     };
     if (failed.length > 0) {
       logger.warn?.('运行时关闭未完全成功', {
-        reason,
+        reason: window.reason,
         failed: failed.map(result => ({ name: result.name, status: result.status }))
       });
     }
     return summary;
+  }
+
+  function releaseOnce(window: ShutdownWindow): Promise<RuntimeLifecycleCloseSummary> {
+    releasePromise ??= Promise.resolve().then(() => releaseAll(window));
+    return releasePromise;
   }
 
   async function runStart(): Promise<RuntimeLifecycleStartSummary> {
@@ -286,18 +328,39 @@ export function createRuntimeLifecycle({
       // 先标记为已受理：启动失败的步骤也可能已部分占用资源，需要它自己的 close 回收。
       step.active = true;
       try {
-        if (step.start) await step.start();
+        if (step.start) {
+          startingStep = step;
+          const work = Promise.resolve().then(() => {
+            startupAbort.signal.throwIfAborted();
+            return step.start?.({ signal: startupAbort.signal });
+          }).then(() => ({ ok: true as const }), error => ({ ok: false as const, error }));
+          const outcome = await Promise.race([work, abandonStartup.promise]);
+          if (outcome === TIMEOUT) break;
+          startingStep = null;
+          if (!outcome.ok) throw outcome.error;
+        }
       } catch (error) {
+        startingStep = null;
+        if (draining) {
+          if (error !== startupAbort.signal.reason && !(error instanceof Error && error.name === 'AbortError')) {
+            startupProblem = { name: `${step.name}:start`, status: 'failed', durationMs: now() - startedAt, error: describeError(error) };
+          }
+          break;
+        }
         state = 'start-failed';
+        draining = true;
         const message = describeError(error);
         logger.error?.('运行时启动步骤失败', { step: step.name, error: message });
-        await releaseAll('start-rollback');
-        throw new RuntimeLifecycleError(
+        const failure = new RuntimeLifecycleError(
           `运行时启动步骤失败: ${step.name}: ${message}`,
           'RUNTIME_LIFECYCLE_START_FAILED',
           step.name,
           { cause: error }
         );
+        const window = getShutdownWindow('start-rollback');
+        startupAbort.abort(failure);
+        closeSummary = await releaseOnce(window);
+        throw failure;
       }
       started.push(step.name);
       index += 1;
@@ -321,21 +384,28 @@ export function createRuntimeLifecycle({
 
   function close(reason = 'shutdown'): Promise<RuntimeLifecycleCloseSummary> {
     if (closePromise) return closePromise;
+    const pending = Promise.withResolvers<RuntimeLifecycleCloseSummary>();
+    closePromise = pending.promise;
+    const window = getShutdownWindow(reason);
     draining = true;
     if (state !== 'closed') state = 'draining';
-    closePromise = (async () => {
-      if (startPromise) {
-        try {
-          await startPromise;
-        } catch {
-          // 启动失败已完成回滚；这里继续收尾，返回的摘要描述实际释放结果。
+    startupAbort.abort(new DOMException('运行时正在关闭', 'AbortError'));
+    void (async () => {
+      if (startPromise && startingStep && !releasePromise) {
+        // 给初始化一次停止份额，保留其余预算用于资源释放。
+        const releaseCount = steps.filter(step => step.active && !step.released && step.close).length;
+        const slice = Math.floor(Math.max(0, window.deadlineAt - now()) / (releaseCount + 1));
+        const outcome = await withinBudget(startPromise.catch(() => undefined), slice);
+        if (outcome === TIMEOUT) {
+          startupProblem = { name: `${startingStep?.name ?? 'runtime'}:start`, status: 'timeout', durationMs: now() - window.startedAt };
+          abandonStartup.resolve(TIMEOUT);
         }
       }
-      const summary = await releaseAll(reason);
+      const summary = await releaseOnce(window);
       closeSummary = summary;
       state = 'closed';
       return summary;
-    })();
+    })().then(pending.resolve, pending.reject);
     return closePromise;
   }
 
