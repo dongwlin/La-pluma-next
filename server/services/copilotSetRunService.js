@@ -367,6 +367,13 @@ async function runManualAttempt(session, lifecycle, { initial } = {}) {
       session.currentEntry = null;
       throw error;
     }
+    if (error?.code === 'MAA_EXECUTION_SHUTTING_DOWN') {
+      // 关闭期间拒绝新条目：不消耗条目，也不把集合写成成功或失败；集合 run 由
+      // 关闭流程按停止意图结算，恢复继续请求时会得到可重试的 503。
+      session.phase = initial ? 'starting' : 'waiting';
+      session.currentEntry = null;
+      throw error;
+    }
     session.results.set(entry.key, { status: 'failed', error: error?.message || '作业集执行失败' });
     return settleManualQueue(session);
   } finally {

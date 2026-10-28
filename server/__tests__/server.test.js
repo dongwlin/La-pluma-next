@@ -13,6 +13,7 @@ import {
   startLaPlumaServer
 } from '../server.js'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
+import { getExecutionAdmissionGate } from '../services/executionAdmissionService.ts'
 import operatorTraining from '../services/operatorTrainingService.js'
 import OperatorQuotes from '../services/operatorQuotesService.js'
 
@@ -661,7 +662,14 @@ describe('Server runtime assembly', () => {
       const summary = await runtime.close('test')
 
       assert.deepEqual(events, ['runtime-initialized', 'runtime-domain', 'signaling-gateway'])
-      assert.deepEqual(summary.steps.map(step => step.name), ['fixture-runtime-domain', 'http-transport', 'webrtc-preview'])
+      // 运行时领域先收尾，执行关闭（活动执行与 Run 落盘）随后进行，最后才断开传输与预览。
+      assert.deepEqual(summary.steps.map(step => step.name), [
+        'fixture-runtime-domain',
+        'execution-shutdown',
+        'http-transport',
+        'webrtc-preview'
+      ])
+      assert.equal(getExecutionAdmissionGate()?.isClosed(), true)
       assert.equal(summary.ok, true)
       assert.equal(runtime.server.listening, false)
       assert.equal(runtime.lifecycle.getState(), 'closed')

@@ -1457,9 +1457,15 @@ export async function replaceActivityCode(stage, clientType = DEFAULT_CLIENT_TYP
 }
 
 /**
- * 终止当前正在运行的任务
+ * 终止当前正在运行的任务。
+ * `forceKillDelayMs` 控制 SIGTERM 后升级 SIGKILL 的等待时间；关闭流程会在预算内
+ * 传入更短的值，避免退出后留下仍在运行的 detach 子进程。缺省保持 3000ms。
  */
-export function stopCurrentTask() {
+export function stopCurrentTask(options = {}) {
+  const requestedDelay = Number(options?.forceKillDelayMs);
+  const forceKillDelayMs = Number.isFinite(requestedDelay) && requestedDelay > 0
+    ? Math.floor(requestedDelay)
+    : 3000;
   if (!taskStatus.isRunning) {
     return { success: false, message: '当前没有正在运行的任务' };
   }
@@ -1499,7 +1505,7 @@ export function stopCurrentTask() {
         } catch (error) {
           logger.error('强制终止任务失败', { error: error.message });
         }
-      }, 3000);
+      }, forceKillDelayMs);
       taskStatus.forceKillTimer.unref?.();
 
       return { success: true, message: '已发送终止请求' };

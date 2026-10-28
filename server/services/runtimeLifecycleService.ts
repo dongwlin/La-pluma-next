@@ -35,8 +35,18 @@ export interface RuntimeLifecycleStep {
   name: string;
   /** 启动步骤；缺省表示资源在注册前已由组装入口启动 */
   start?: () => unknown | Promise<unknown>;
-  /** 释放步骤；缺省表示该步骤没有需要释放的资源 */
-  close?: () => unknown | Promise<unknown>;
+  /**
+   * 释放步骤；缺省表示该步骤没有需要释放的资源。
+   * 入参给出本步骤分到的预算与关闭原因，长耗时收尾可据此在超时前自行收束。
+   */
+  close?: (context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>;
+}
+
+export interface RuntimeLifecycleCloseContext {
+  /** 触发本次关闭的原因（信号名或调用方提供） */
+  reason: string;
+  /** 本步骤分到的时间预算；等于超时监控使用的时长 */
+  timeoutMs: number;
 }
 
 export interface RuntimeLifecycleStartSummary {
@@ -99,7 +109,7 @@ export class RuntimeLifecycleError extends Error {
 interface RegisteredStep {
   name: string;
   start: (() => unknown | Promise<unknown>) | null;
-  close: (() => unknown | Promise<unknown>) | null;
+  close: ((context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>) | null;
   /** 启动步骤已被受理（无论成功或失败），需要纳入释放范围 */
   active: boolean;
   /** 已执行过释放，重复关闭时跳过 */
@@ -190,7 +200,11 @@ export function createRuntimeLifecycle({
     });
   }
 
-  async function closeStep(step: RegisteredStep, timeoutMs: number): Promise<RuntimeLifecycleCloseStepResult> {
+  async function closeStep(
+    step: RegisteredStep,
+    timeoutMs: number,
+    reason: string
+  ): Promise<RuntimeLifecycleCloseStepResult> {
     const startedAt = now();
     const close = step.close;
     if (!close) {
@@ -202,7 +216,7 @@ export function createRuntimeLifecycle({
       timer = setTimeout(() => resolveTimeout(TIMEOUT), timeoutMs);
     });
     const work = Promise.resolve()
-      .then(() => close())
+      .then(() => close({ reason, timeoutMs }))
       .then(
         () => ({ ok: true as const }),
         error => ({ ok: false as const, error })
@@ -239,7 +253,7 @@ export function createRuntimeLifecycle({
       const remaining = deadlineAt - now();
       const stepsLeft = pending.length - index;
       const slice = Math.max(1, Math.floor(remaining / stepsLeft));
-      results.push(await closeStep(step, slice));
+      results.push(await closeStep(step, slice, reason));
     }
 
     const failed = results.filter(result => result.status !== 'closed');

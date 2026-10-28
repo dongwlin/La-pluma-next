@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { agentError } from '../utils/apiHelper.ts';
 import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
+import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
 const TERMINAL_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -649,6 +650,12 @@ export function beginAgentRun({
   input = {},
   metadata = {}
 } = {}) {
+  // 关闭开始后不再创建新的执行身份；这是所有纳入 Run 的入口（HTTP、cron、
+  // 作业集）共用的准入点，早于幂等重放与落库，避免关闭期间写入新的执行意图。
+  assertExecutionAdmissionOpen(
+    'AGENT_EXECUTION_SHUTTING_DOWN',
+    '服务正在关闭，不再接受新的设备执行'
+  );
   if (persistence.required && !persistence.enabled) {
     throw agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
   }
@@ -827,6 +834,28 @@ export function stopAgentRun(runId, result = null) {
   return transition(runId, 'stopped', ['accepted', 'waiting', 'running', 'stopping'], {
     result: normalizeJson(result, 'result'),
     error: null
+  });
+}
+
+/**
+ * 关闭流程在截止时间内没有等到执行器结算时，把剩余活动 run 记为中断。
+ * 与重启恢复使用同一终态语义：只记录身份与未知结果，不证明设备已释放，也不会
+ * 自动续跑；`recovery.source` 记录实际关闭原因（例如 `server_shutdown`）。
+ * 已进入终态的 run 原样返回，不覆盖执行器的实际结果。
+ */
+export function interruptAgentRun(runId, { reason = 'server_shutdown', message } = {}) {
+  const record = requireRecord(runId);
+  if (TERMINAL_STATUSES.has(record.run.status)) return toAgentRunDto(record.run);
+  const previousState = record.run.status;
+  return transition(runId, 'interrupted', [...ACTIVE_STATUSES], {
+    result: null,
+    error: {
+      code: 'AGENT_RUN_INTERRUPTED',
+      message: message || '服务关闭时该执行尚未结束，已标记为中断且不会自动续跑',
+      statusCode: 503,
+      details: { reason, previousState },
+      retryable: false
+    }
   });
 }
 

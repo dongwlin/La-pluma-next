@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { mkdir, open, readFile, unlink } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 
 const serviceDir = dirname(fileURLToPath(import.meta.url));
 const defaultLockPath = join(serviceDir, '../data/maa-execution.lock');
@@ -103,6 +104,14 @@ export async function acquireMaaExecutionLease(owner = {}) {
       }
     };
   }
+
+  // 关闭开始后不再授予新的设备变更权。已经持有租约的执行（流程步、重入调用）
+  // 不受影响，仍由关闭流程按停止意图收尾；没有 Run 身份的入口（Telegram、
+  // 维护更新）也在同一处被拒绝。
+  assertExecutionAdmissionOpen(
+    'MAA_EXECUTION_SHUTTING_DOWN',
+    '服务正在关闭，不再接受新的设备执行'
+  );
 
   const lockPath = getLockPath();
   await mkdir(dirname(lockPath), { recursive: true });

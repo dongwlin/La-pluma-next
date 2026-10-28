@@ -21,6 +21,8 @@ import {
   initializeAgentRunStore
 } from './services/agentRunService.js';
 import { initializeRuntimeState } from './services/runtimeInitializationService.js';
+import { closeExecutionAdmission } from './services/executionAdmissionService.ts';
+import { attachExecutionShutdownToLifecycle } from './services/executionShutdownService.ts';
 import {
   DEFAULT_CLOSE_DEADLINE_MS,
   createRuntimeLifecycle
@@ -180,6 +182,7 @@ export async function startLaPlumaServer({
   initializeRuntime = initializeRuntimeState,
   logger = console,
   closeDeadlineMs = DEFAULT_CLOSE_DEADLINE_MS,
+  executionShutdownOptions = {},
   appPaths = resolveAppPaths({ env })
 } = {}) {
   // 组装入口集中解析配置并接线运行依赖：应用、传输、Run 存储和运行时恢复共享同一个
@@ -238,6 +241,14 @@ export async function startLaPlumaServer({
     close: () => transport.close()
   });
 
+  // 执行关闭在传输入口之后注册、在运行时初始化之前注册：关闭顺序为
+  // 运行时初始化注册的触发源/轮询 → 执行收尾与 Run 落盘 → 传输 → 预览。
+  // 收尾先于断开连接，仍在等待回复的同步执行可以先按实际结果返回。
+  const executionShutdown = attachExecutionShutdownToLifecycle(lifecycle, { logger, ...executionShutdownOptions });
+  if (!executionShutdown.attached) {
+    logger.warn?.('[Runtime] 执行关闭步骤未挂接，关闭时无法保证停止活动执行与 Run 落盘');
+  }
+
   lifecycle.register({
     name: 'runtime-initialization',
     start: async () => {
@@ -265,7 +276,69 @@ export async function startLaPlumaServer({
     protocol: transport.protocol,
     port: listeningPort,
     lifecycle,
-    close: reason => lifecycle.close(reason)
+    executionShutdown: executionShutdown.service,
+    close: reason => {
+      // 关闭请求一到就关闭准入，早于第一个关闭步骤执行：新的执行意图在 Run 准入
+      // 与设备租约处都被拒绝；已经开始的执行由执行关闭步骤收尾。
+      closeExecutionAdmission(reason || 'shutdown');
+      return lifecycle.close(reason);
+    }
+  };
+}
+
+/**
+ * 安装 SIGINT/SIGTERM 关闭处理。
+ *
+ * 重复信号不会启动第二次关闭：同一个关闭 Promise 被复用，后来的信号只记录日志，
+ * 不会在收尾中途强行退出；部分步骤失败时其余收尾已由生命周期继续执行，最终以
+ * 非零退出码明确报告。`exit`/`logger`/`signals` 可注入以便测试。
+ */
+export function installShutdownHandlers(runtime, {
+  logger = console,
+  exit = code => process.exit(code),
+  signals = ['SIGINT', 'SIGTERM']
+} = {}) {
+  let shutdownPromise = null;
+
+  const shutdown = signal => {
+    if (shutdownPromise) {
+      logger.warn?.(`[Server] 已收到 ${signal}，关闭流程仍在进行，继续等待`);
+      return shutdownPromise;
+    }
+    shutdownPromise = (async () => {
+      let summary = null;
+      try {
+        summary = await runtime.close(signal);
+      } catch (error) {
+        logger.error?.('[Server] 关闭失败:', error?.message || String(error));
+        exit(1);
+        return null;
+      }
+      const failedSteps = (summary?.steps || []).filter(step => step.status !== 'closed');
+      if (summary?.ok === false || failedSteps.length > 0) {
+        logger.error?.('[Server] 关闭未完全成功:', failedSteps.length > 0
+          ? failedSteps.map(step => `${step.name}:${step.status}`)
+          : '未知步骤');
+        exit(1);
+      } else {
+        exit(0);
+      }
+      return summary;
+    })();
+    return shutdownPromise;
+  };
+
+  const handlers = signals.map(signal => {
+    const handler = () => { void shutdown(signal); };
+    process.on(signal, handler);
+    return { signal, handler };
+  });
+
+  return {
+    shutdown,
+    dispose() {
+      for (const { signal, handler } of handlers) process.off(signal, handler);
+    }
   };
 }
 
@@ -273,21 +346,7 @@ const isMainModule = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMainModule) {
   try {
     const runtime = await startLaPlumaServer();
-    const shutdown = async signal => {
-      try {
-        const summary = await runtime.close(signal);
-        if (!summary.ok) {
-          console.error('[Server] 关闭未完全成功:', summary.steps
-            .filter(step => step.status !== 'closed')
-            .map(step => `${step.name}:${step.status}`));
-        }
-      } catch (error) {
-        console.error('[Server] 关闭失败:', error.message);
-      }
-      process.exit(0);
-    };
-    process.once('SIGINT', () => void shutdown('SIGINT'));
-    process.once('SIGTERM', () => void shutdown('SIGTERM'));
+    installShutdownHandlers(runtime);
   } catch (error) {
     console.error('[Server] 启动失败:', error.message);
     process.exitCode = 1;

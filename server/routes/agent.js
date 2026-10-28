@@ -203,6 +203,14 @@ function isPreExecutionError(error) {
     || code.startsWith('AGENT_VALIDATION_');
 }
 
+// Shutdown rejections are not failures of the execution itself: the run had not
+// started when the service began draining. Settling it as `stopped` matches the
+// pre-start gate, so callers never see a shutdown as a successful execution.
+function isShutdownRejection(error) {
+  const code = error?.code || '';
+  return code === 'MAA_EXECUTION_SHUTTING_DOWN' || code === 'AGENT_EXECUTION_SHUTTING_DOWN';
+}
+
 function resolveResponseMessage(message, result, fallback) {
   const resolved = typeof message === 'function' ? message(result) : message;
   return resolved || fallback;
@@ -417,11 +425,12 @@ export async function executeTrackedAgentAction(req, res, {
       if (persistenceError) return sendRunPersistenceFailure(res, req, runId, persistenceError);
       return sendRunFailure(res, req, rejectedRun);
     }
-    const run = error?.stopped || current?.state === 'stopping'
+    const run = error?.stopped || isShutdownRejection(error) || current?.state === 'stopping'
       ? stopAgentRun(runId, {
           message: error.message,
           exitCode: error.exitCode ?? null,
-          signal: error.signal ?? null
+          signal: error.signal ?? null,
+          ...(isShutdownRejection(error) ? { reason: 'server_shutdown' } : {})
         })
       : failAgentRun(runId, error);
     return respondWithPersistedAgentRun(
@@ -790,6 +799,13 @@ function respondContinueError(res, req, runId, error) {
     return sendError(res, req, agentError('MAA_EXECUTION_BUSY', error.message, {
       statusCode: 409,
       details: { owner: error.owner ?? error.details?.owner ?? null, runId, run },
+      retryable: true
+    }));
+  }
+  if (code === 'MAA_EXECUTION_SHUTTING_DOWN') {
+    return sendError(res, req, agentError('MAA_EXECUTION_SHUTTING_DOWN', error.message, {
+      statusCode: 503,
+      details: { reason: error.details?.reason ?? null, runId, run },
       retryable: true
     }));
   }
