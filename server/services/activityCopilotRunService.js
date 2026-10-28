@@ -4,12 +4,17 @@ import { buildCopilotPlan, ensureCurrentMapActivityResource, executeCopilotPlan,
 import { getMaaConfigDir } from './maaService.js';
 import { updateMaaResources } from './resourceUpdateService.js';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { createCopilotProgressStore } from './copilotProgressStore.js';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 
 const dataDir = fileURLToPath(new URL('../data/', import.meta.url));
-const activityProgressPath = join(dataDir, 'activity-copilot-progress.json');
+// 活动完成进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
+// 默认位置保持 server/data/activity-copilot-progress.json，可用环境变量注入隔离。
+const activityProgressStore = createCopilotProgressStore({
+  progressPath: process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE
+    || join(dataDir, 'activity-copilot-progress.json')
+});
 const RESOURCE_REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 const resourceRefreshAttempts = new Map();
 
@@ -17,15 +22,6 @@ export function shouldRefreshActivityNavigation(preflight = {}, lastAttemptAt = 
   return preflight?.reasonCode === 'navigation-resource-unavailable' &&
     Boolean(preflight?.activity?.code) &&
     now - lastAttemptAt >= RESOURCE_REFRESH_INTERVAL;
-}
-
-async function loadActivityProgress() {
-  try { return JSON.parse(await readFile(activityProgressPath, 'utf8')); } catch { return {}; }
-}
-
-async function saveActivityProgress(progress) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(activityProgressPath, JSON.stringify(progress, null, 2));
 }
 
 export function summarizeActivityCompletion(activity = {}, progress = {}) {
@@ -44,16 +40,18 @@ export function summarizeActivityCompletion(activity = {}, progress = {}) {
 }
 
 export async function getActivityCompletion(activity = {}) {
-  return summarizeActivityCompletion(activity, await loadActivityProgress());
+  return summarizeActivityCompletion(activity, await activityProgressStore.load());
 }
 
-async function recordActivityCompletion(activity, entries) {
-  const progress = await loadActivityProgress();
+export async function recordActivityCompletion(activity, entries) {
   const code = String(activity.code).toUpperCase();
-  const existing = new Set(progress[code]?.stages || []);
-  entries.filter(entry => entry.success !== false).forEach(entry => existing.add(entry.displayStage));
-  progress[code] = { stages: [...existing].sort(), updatedAt: new Date().toISOString() };
-  await saveActivityProgress(progress);
+  // 读改写当前文件内容后仅替换本活动代号的键，其他活动的进度不受影响；
+  // 损坏文件报错且不清零。导出供回归测试直接验证读改写语义。
+  return activityProgressStore.update(current => {
+    const existing = new Set(current[code]?.stages || []);
+    entries.filter(entry => entry.success !== false).forEach(entry => existing.add(entry.displayStage));
+    return { ...current, [code]: { stages: [...existing].sort(), updatedAt: new Date().toISOString() } };
+  });
 }
 
 function normalizeRaid(value) {

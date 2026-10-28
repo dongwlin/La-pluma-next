@@ -1,13 +1,19 @@
-import { mkdir, readFile, readdir, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask, getMaaConfigDir, createMaaLogCheckpoint, readMaaLogSince } from './maaService.js';
 import { withMaaExecutionLease } from './executionCoordinatorService.js';
 import { recordDrops } from './dropRecordService.js';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
+import { createCopilotProgressStore } from './copilotProgressStore.js';
+import { updateJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 
 const dataDir = fileURLToPath(new URL('../data/', import.meta.url));
-const progressPath = join(dataDir, 'copilot-progress.json');
+// 作业进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
+// 默认位置保持 server/data/copilot-progress.json，可用环境变量注入隔离。
+const progressStore = createCopilotProgressStore({
+  progressPath: process.env.LA_PLUMA_COPILOT_PROGRESS_STORE || join(dataDir, 'copilot-progress.json')
+});
 
 // 作业站读取：服务内已有固定次数重试循环，端口侧关闭自动重试以保持总请求次数不变。
 const outboundHttp = createOutboundHttpClient();
@@ -138,7 +144,7 @@ export async function buildCopilotPlan(setId, raid = 'normal') {
       });
     }
   }
-  const progress = await loadProgress();
+  const progress = await progressStore.load();
   const completed = new Set(progress[String(setId)] || []);
   return {
     setId: String(setId),
@@ -146,15 +152,6 @@ export async function buildCopilotPlan(setId, raid = 'normal') {
     items: copilots,
     entries: entries.map(entry => ({ ...entry, completed: completed.has(entry.key) }))
   };
-}
-
-async function loadProgress() {
-  try { return JSON.parse(await readFile(progressPath, 'utf8')); } catch { return {}; }
-}
-
-async function saveProgress(progress) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(progressPath, JSON.stringify(progress, null, 2));
 }
 
 export function mergePresetFormationTasks(installedTasks, userTasks = {}) {
@@ -186,22 +183,19 @@ export async function ensureCurrentMapActivityResource(configDir, activityCode, 
   if (!/^[A-Z0-9]{2,8}$/.test(code)) throw new Error('活动代号格式不合法');
   const tasks = buildCurrentMapStageTasks(stages);
   if (!Object.keys(tasks).length) throw new Error('没有可写入的活动关卡');
-  const stagesDir = join(configDir, 'resource', 'tasks', 'Stages');
-  await mkdir(stagesDir, { recursive: true });
-  await writeFile(join(stagesDir, `${code}.json`), JSON.stringify(tasks, null, 2));
-  return { stageFile: join(stagesDir, `${code}.json`), stages: Object.keys(tasks) };
+  const stageFile = join(configDir, 'resource', 'tasks', 'Stages', `${code}.json`);
+  // 执行产物 JSON 经临时文件原子替换写入，中断不会留下半截关卡文件。
+  await writeJsonFile(stageFile, tasks);
+  return { stageFile, stages: Object.keys(tasks) };
 }
 
 async function ensurePresetFormationResource(configDir) {
   const installedResource = (await execMaaCommand('dir', ['resource'], null, null, false, true)).stdout.trim();
   const installedTasks = JSON.parse(await readFile(join(installedResource, 'tasks', 'tasks.json'), 'utf8'));
-  const userTasksDir = join(configDir, 'resource', 'tasks');
-  const userTasksPath = join(userTasksDir, 'tasks.json');
-  await mkdir(userTasksDir, { recursive: true });
-  let userTasks = {};
-  try { userTasks = JSON.parse(await readFile(userTasksPath, 'utf8')); } catch {}
-
-  await writeFile(userTasksPath, JSON.stringify(mergePresetFormationTasks(installedTasks, userTasks), null, 2));
+  const userTasksPath = join(configDir, 'resource', 'tasks', 'tasks.json');
+  // 用户 tasks.json 与安装资源的合并是共享资源读改写：读取、合并、写回在同一
+  // 排队单元内原子完成；缺失文件按空任务合并，损坏文件报错且不覆盖原内容。
+  await updateJsonFile(userTasksPath, current => mergePresetFormationTasks(installedTasks, current), {});
 }
 
 export function buildCopilotTaskParams(list, presetFormation, options = {}) {
@@ -242,7 +236,7 @@ async function prepareCopilotList(entries, { planDir, loopTimes }) {
     const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
     const content = parseCopilotContent(data);
     for (const { repeat, filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
-      await writeFile(filename, JSON.stringify(content, null, 2));
+      await writeJsonFile(filename, content);
       list.push({
         id: executionItems.length,
         filename,
@@ -380,7 +374,7 @@ export async function executeCopilotEntries({
 }) {
   const normalizedEntries = entries.filter(entry => Number.isInteger(Number(entry.copilotId)) && entry.displayStage);
   const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
-  const progress = await loadProgress();
+  const progress = await progressStore.load();
   const completed = new Set(progress[String(setId)] || []);
   const statusByKey = new Map(normalizedEntries.map(entry => [entry.key, { status: 'pending' }]));
   const results = [];
@@ -446,8 +440,8 @@ export async function executeCopilotEntries({
         .map(settled => settled.entry);
       try {
         await recordCompletedCopilotEntries(successfulEntries, loopTimes);
-        progress[String(setId)] = [...completed];
-        await saveProgress(progress);
+        // 读改写当前文件内容后仅替换本作业集的键，其他作业集的进度不受影响。
+        await progressStore.update(current => ({ ...current, [String(setId)]: [...completed] }));
       } catch (error) {
         failure = error;
         break;
@@ -540,7 +534,7 @@ export async function executeCopilotPlan({ setId, raid = 'normal', selectedIndex
   const plan = await buildCopilotPlan(setId, raid);
   const selected = new Set(selectedIndexes.map(Number));
   const selectedEntries = plan.entries.filter(entry => selected.size === 0 || selected.has(entry.itemIndex));
-  const progress = await loadProgress();
+  const progress = await progressStore.load();
   const completed = new Set(progress[String(setId)] || []);
   const pending = selectedEntries.filter(entry => !completed.has(entry.key));
 
@@ -585,8 +579,11 @@ export async function executeCopilotPlan({ setId, raid = 'normal', selectedIndex
 }
 
 export async function resetCopilotPlanProgress(setId) {
-  const progress = await loadProgress();
-  delete progress[String(setId)];
-  await saveProgress(progress);
+  // 读改写删除单键：并发保存其他作业集进度的更新不会丢失，损坏文件报错且不清零。
+  await progressStore.update(current => {
+    const next = { ...current };
+    delete next[String(setId)];
+    return next;
+  });
   return { success: true };
 }
