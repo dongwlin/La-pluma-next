@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveBoundedInteger } from '../numericQueryHelper.js';
+import { resolveBoundedInteger } from '../numericQueryHelper.ts';
+import type { BoundedIntegerBounds } from '../numericQueryHelper.ts';
 
-const bounds = { defaultValue: 80, min: 1, max: 500 };
+const bounds: BoundedIntegerBounds = { defaultValue: 80, min: 1, max: 500 };
 
 describe('resolveBoundedInteger', () => {
   it('falls back to the default for omitted or non-numeric input', () => {

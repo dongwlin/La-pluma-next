@@ -7,7 +7,18 @@
  * 超大值因此都有确定且受限的结果，与运行快照既有的行数归一化语义一致。
  */
 
-export function resolveBoundedInteger(value, { defaultValue, min, max }) {
+/** 归一化边界：默认值用于省略/非法输入，min/max 是夹取范围。 */
+export interface BoundedIntegerBounds {
+  defaultValue: number;
+  min: number;
+  max: number;
+}
+
+/** 把未知的查询值归一化为受界整数；输入类型保持 unknown，由本函数完成收窄。 */
+export function resolveBoundedInteger(
+  value: unknown,
+  { defaultValue, min, max }: BoundedIntegerBounds
+): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
     return defaultValue;

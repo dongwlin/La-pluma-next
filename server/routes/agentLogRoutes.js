@@ -13,7 +13,7 @@ import {
   sendSuccess,
   sendError
 } from '../utils/apiHelper.ts';
-import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 
 /**
  * 日志读取与维护路由。

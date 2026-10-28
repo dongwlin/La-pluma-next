@@ -5,7 +5,7 @@ import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
-import { recordDrops } from './dropRecordService.js';
+import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.js';
 import { updateJsonFile, writeJsonFile } from '../utils/fileHelper.ts';

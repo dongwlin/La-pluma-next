@@ -8,7 +8,7 @@ import {
   isStageOpenToday,
   shouldCaptureNotificationScreenshot
 } from './notificationService.ts';
-import { recordDrops } from './dropRecordService.js';
+import { recordDrops } from './dropRecordService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { updateSmartTrainingStages } from './scheduleSmartTrainingService.js';
 
@@ -34,7 +34,7 @@ export function createScheduleExecutionPorts(overrides = {}) {
     recordDrops,
     // 仓库解析按需加载，保持既有的惰性导入与运行数据写入时机。
     parseDepotData: async () => {
-      const { parseDepotData } = await import('./dataParserService.js');
+      const { parseDepotData } = await import('./dataParserService.ts');
       return parseDepotData();
     },
     refreshSmartTrainingStages: updateSmartTrainingStages,

@@ -1,9 +1,9 @@
 import express from 'express';
 import { getTodayOpenStages } from '../services/notificationService.ts';
-import { getTodayDrops, getRecentDrops, getDropStatistics, MAX_DROP_HISTORY_DAYS } from '../services/dropRecordService.js';
-import { getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.js';
+import { getTodayDrops, getRecentDrops, getDropStatistics, MAX_DROP_HISTORY_DAYS } from '../services/dropRecordService.ts';
+import { getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.ts';
 import { asyncHandler, sendSuccess } from '../utils/apiHelper.ts';
-import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 
 /**
  * 游戏数据读取路由：今日开放关卡、掉落记录与本地仓库/干员缓存。

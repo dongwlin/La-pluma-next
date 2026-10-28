@@ -19,7 +19,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
-import { getAllOperators } from './dataParserService.js';
+import { getAllOperators } from './dataParserService.ts';
 import {
   buildTrainingCandidates,
   calculateOperatorMaterials,

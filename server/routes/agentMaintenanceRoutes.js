@@ -7,8 +7,8 @@ import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigSer
 import { getCurrentActivity } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.js';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.js';
-import { parseDepotData, parseOperBoxData } from '../services/dataParserService.js';
-import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.js';
+import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
+import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.js';
 import { getActivityRunPreflight } from '../services/activityNavigationService.js';
 import { findActivityCopilotCandidates } from '../services/activityCopilotDiscoveryService.js';

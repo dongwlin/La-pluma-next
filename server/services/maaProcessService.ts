@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { createLogger } from '../utils/logger.ts';
 import { getLogContext } from '../utils/logContext.ts';
 import { redactLogText } from '../utils/logRedaction.ts';
-import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
 import { prepareMaaTaskCache } from './maaTaskCacheService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.js';

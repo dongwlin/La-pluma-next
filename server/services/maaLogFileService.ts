@@ -1,7 +1,7 @@
 import { readFile, readdir, stat, unlink, realpath, open } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
-import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
+import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { execMaaCommandUnlocked } from './maaProcessService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
 

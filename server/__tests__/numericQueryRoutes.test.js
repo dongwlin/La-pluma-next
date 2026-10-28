@@ -40,7 +40,7 @@ process.env.LA_PLUMA_DROP_RECORDS_DIR = dropDir;
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.js');
 const { createLaPlumaApp } = await import('../server.js');
-const { getLocalDateString } = await import('../services/dropRecordService.js');
+const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { setTaskStatus, clearRealtimeLogs } = await import('../services/maaProcessService.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;

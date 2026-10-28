@@ -183,8 +183,8 @@ import { createLogger } from '../utils/logger.ts';
 ## 📊 重构进度
 
 - ✅ `configStorageService.js` - 已重构
-- ✅ `dropRecordService.js` - 已重构
-- ✅ `dataParserService.js` - 已重构
+- ✅ `dropRecordService.ts` - 已完成类型化（记录解析、统计与材料表）
+- ✅ `dataParserService.ts` - 已完成类型化（物品索引/物品表、仓库与干员缓存）
 - ✅ `operatorTrainingService.js` - 已按职责拆分到模型、计划、存储与应用同步
 - ✅ `notificationService.ts` - 已完成类型化（配置解析、格式化与渠道发送）
 - ✅ `schedulerService.js` - 已按职责拆分到流程计划、执行、触发源与养成回写
