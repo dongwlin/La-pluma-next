@@ -188,7 +188,7 @@ import { createLogger } from '../utils/logger.ts';
 - ✅ `operatorTrainingService.js` - 已重构
 - ⏳ `notificationService.js` - 待重构（日志优化）
 - ⏳ `schedulerService.js` - 待重构（日志优化）
-- ⏳ `maaService.js` - 待重构（日志部分，低优先级）
+- ✅ `maaService.js` - 已按职责拆分到同域服务（进程、执行、配置、设备、日志、活动）
 
 ## 🎉 预期收益
 

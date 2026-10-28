@@ -4,7 +4,7 @@
 
 本文说明 La Pluma Next 当前的执行身份、唯一状态来源与生命周期边界，以及必须保留的兼容语义。它面向执行链路、Agent 集成和前端控制器的维护者；不涉及页面视觉。
 
-契约的权威实现是服务端 Run 记录（`server/services/agentRunService.js`）、运行快照（`server/services/runSnapshotService.js`）、执行租约（`server/services/executionCoordinatorService.js`）、作业集会话（`server/services/copilotSetRunService.js`）、任务进程投影（`server/services/maaService.js`）和流程进度投影（`server/services/schedulerService.js`）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
+契约的权威实现是服务端 Run 记录（`server/services/agentRunService.js`）、运行快照（`server/services/runSnapshotService.js`）、执行租约（`server/services/executionCoordinatorService.js`）、作业集会话（`server/services/copilotSetRunService.js`）、任务进程投影（`server/services/maaProcessService.js`）和流程进度投影（`server/services/schedulerService.js`）。文档与代码冲突时，以代码和契约测试为准，并修正本文。
 
 ## 1. 执行身份
 
@@ -35,7 +35,7 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 | --- | --- | --- | --- |
 | 执行身份与状态 | Run 记录；`GET /api/agent/runs/current`、`GET /api/agent/runs/{runId}` | 本次执行处于 accepted/waiting/running/stopping/终态 | 设备是否空闲、页面是否可见 |
 | 活动身份集合与设备占用 | `GET /api/agent/runs/current` 的 `run`、`activeRuns`、`lastRun`、`occupancy` | 当前唯一活动 run、其余 accepted 意图、最近终态，以及设备由 run 还是未纳管执行占用 | 执行结果；`occupancy` 也不能证明租约之外的直接设备使用 |
-| 当前 MAA 子进程 | `GET /api/agent/tasks/status`（`maaService.taskStatus`） | 当前是否有一个受管子进程在跑，及其 `taskName`/`stopRequested` | 整个流程是否完成；流程步间等待时它可以是 idle |
+| 当前 MAA 子进程 | `GET /api/agent/tasks/status`（`maaProcessService` 的 `taskStatus`） | 当前是否有一个受管子进程在跑，及其 `taskName`/`stopRequested` | 整个流程是否完成；流程步间等待时它可以是 idle |
 | 流程步骤进度 | `GET /api/agent/schedules/execution`（`scheduleExecutionStatus`） | `isRunning`、`currentStep`、`totalSteps`、`currentTask`、`taskResults`，以及当前流程的 `runId` | 看不到进度就推断未运行；`runId` 为空只表示该次流程没有 Run 身份（如 Telegram 等未纳管调用方） |
 | 执行租约 | `server/data/maa-execution.lock`；快照中的 `occupancy.lease` | 哪个协作进程在占用设备变更权（`pid`、`source`、`taskName`、`command`、`startedAt`） | 执行结果；租约释放不代表流程成功 |
 | 连接健康 | 前端 runtime-status 健康探针 | 浏览器能否访问后端 | 执行是否活动、成功、失败或已完成 |

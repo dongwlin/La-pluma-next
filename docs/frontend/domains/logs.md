@@ -207,7 +207,7 @@ LogViewer（页面壳：PageHeader + FloatingStatusIndicator）
 | --- | --- | --- |
 | 文件列表 | `GET /agent/logs/files` | `features/logs/api` 的 `getLogFiles` |
 | 文件内容 | `GET /agent/logs/files/:encodedPath?lines=1000` | `readLogFile`；服务端把 `lines` 限制在 1–5000 |
-| 列表顺序 | 服务端按修改时间倒序 | `server/services/maaService.js` 的 `getLogFiles` |
+| 列表顺序 | 服务端按修改时间倒序 | `server/services/maaLogFileService.js` 的 `getLogFiles` |
 | 内容语义 | 文件末尾 N 行的快照 | 与实时快照一致；没有 cursor、offset 或增量序号 |
 | 选择标识 | 文件 `path` | “已有 cursor 状态”在本域表现为当前选择与读取相位 |
 

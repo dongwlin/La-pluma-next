@@ -99,7 +99,13 @@ La-pluma-next/
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
 │   │   └── operatorQuotes.js  # 干员台词接口
 │   ├── services/              # 业务逻辑
-│   │   ├── maaService.js      # MAA CLI、ADB、截图、实时日志
+│   │   ├── maaProcessService.js # MAA CLI 子进程、实时日志与停止
+│   │   ├── maaExecutionService.js # 执行租约门禁、CLI 命令与动态任务
+│   │   ├── maaConfigService.js # MAA profile 读取与原子写入
+│   │   ├── maaDeviceService.js # ADB 探测、连接测试与截图
+│   │   ├── maaLogFileService.js # 日志文件边界、清理与检查点
+│   │   ├── maaActivityService.js # 当前活动查询与关卡代号替换
+│   │   ├── maaService.js      # 上述能力的兼容转接层
 │   │   ├── schedulerService.js # 定时任务调度
 │   │   ├── notificationService.js # 通知服务
 │   │   ├── operatorTrainingService.js # 养成计划和材料计算
