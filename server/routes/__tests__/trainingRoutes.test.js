@@ -7,9 +7,22 @@ const originalMethods = { ...training };
 afterEach(() => Object.assign(training, originalMethods));
 
 function handler(method, routePath) {
-  const layer = router.stack.find(item => item.route?.path === routePath && item.route.methods?.[method]);
-  assert.ok(layer, `missing ${method} ${routePath}`);
-  return layer.route.stack.at(-1).handle;
+  const route = findMountedRoute(router, method, routePath);
+  assert.ok(route, `missing ${method} ${routePath}`);
+  return route.stack.at(-1).handle;
+}
+
+// 养成入口由独立子 router 承担：按 agent.js 的实际挂载关系递归解析，
+// 证明这些路径仍通过聚合 router 暴露，而不是只存在于某个文件里。
+function findMountedRoute(routerInstance, method, routePath) {
+  for (const layer of routerInstance.stack) {
+    if (layer.route?.path === routePath && layer.route.methods?.[method]) return layer.route;
+    if (layer.handle?.stack) {
+      const nested = findMountedRoute(layer.handle, method, routePath);
+      if (nested) return nested;
+    }
+  }
+  return null;
 }
 
 function response() {
@@ -21,7 +34,78 @@ function response() {
   };
 }
 
+function collectMountedRoutes(routerInstance, routes = []) {
+  for (const layer of routerInstance.stack) {
+    if (layer.route) {
+      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
+        if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`);
+      }
+      continue;
+    }
+    if (layer.handle?.stack) collectMountedRoutes(layer.handle, routes);
+  }
+  return routes;
+}
+
+describe('training route exposure', () => {
+  it('mounts every training entry exactly once through the agent router', () => {
+    const expected = [
+      'GET /training/operators',
+      'GET /training/queue',
+      'POST /training/queue',
+      'DELETE /training/queue/:operatorId',
+      'PUT /training/queue/order',
+      'POST /training/sync',
+      'PUT /training/settings',
+      'POST /training/plan',
+      'POST /actions/apply-training-plan',
+      'POST /actions/fetch-training-materials'
+    ];
+    const mounted = collectMountedRoutes(router);
+
+    for (const route of expected) {
+      assert.equal(
+        mounted.filter(candidate => candidate === route).length,
+        1,
+        `expected exactly one mounted ${route}`
+      );
+    }
+  });
+});
+
 describe('training queue route contract', () => {
+  it('keeps candidate filter normalization and plan mode pass-through', async () => {
+    let filters
+    let mode
+    training.getOperatorList = async value => {
+      filters = value
+      return [{ id: 'alpha' }]
+    }
+    training.generateTrainingPlan = async value => {
+      mode = value
+      return { mode: value }
+    }
+
+    const operatorsRes = response()
+    await handler('get', '/training/operators')({
+      headers: {},
+      query: { rarity: '5', profession: 'CASTER', owned: 'false', needsElite2: 'true', status: 'owned' }
+    }, operatorsRes)
+
+    assert.deepEqual(filters, {
+      rarity: 5, profession: 'CASTER', owned: false, needsElite2: true, status: 'owned'
+    })
+    assert.deepEqual(operatorsRes.body.data, { operators: [{ id: 'alpha' }], count: 1 })
+
+    const planRes = response()
+    await handler('post', '/training/plan')({ headers: {}, body: { mode: 'all' } }, planRes)
+    assert.equal(mode, 'all')
+    assert.deepEqual(planRes.body.data, { mode: 'all' })
+
+    await handler('post', '/training/plan')({ headers: {}, body: {} }, response())
+    assert.equal(mode, 'current')
+  })
+
   it('passes an undo position and returns queue success separately from flow failure', async () => {
     let received;
     training.addToQueue = async (...args) => {
