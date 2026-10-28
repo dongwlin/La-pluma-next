@@ -7,6 +7,7 @@ import { executeScheduleNow } from './schedulerService.js';
 import { execMaaCommand, getTaskStatus, stopCurrentTask, captureScreen } from './maaService.js';
 import { resolveConnection } from './connectionService.js';
 import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.js';
+import { loadUserConfig } from './configStorageService.ts';
 import { createLogger } from '../utils/logger.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.js';
 
@@ -733,27 +734,15 @@ async function executeTaskFlow(flowType = 'automation') {
     };
     
     const flowName = flowNames[flowType];
-    
-    // 读取任务流程配置
-    const { readFile } = await import('fs/promises');
-    const { join, dirname } = await import('path');
-    const { fileURLToPath } = await import('url');
-    
-    // 获取当前文件所在目录
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    
-    const configFileName = flowType === 'automation' ? 'automation-tasks.json' : 
-                          flowType === 'combat' ? 'combat-tasks.json' : 
-                          'roguelike-tasks.json';
-    
-    // 从 services 目录向上两级到项目根目录，然后进入 data/user-configs
-    const configPath = join(__dirname, '..', 'data', 'user-configs', configFileName);
-    logger.debug('读取配置文件', { configPath });
-    
-    const configContent = await readFile(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    
+
+    // 任务流程配置经用户配置存储端口读取：类型在白名单内，缺失与损坏
+    // 都有明确结果，不再直读 data/user-configs 下的文件。
+    const configResult = await loadUserConfig(`${flowType}-tasks`);
+    if (!configResult.success) {
+      throw new Error(configResult.message || '读取任务流程配置失败');
+    }
+    const config = configResult.data || {};
+
     // 获取任务流程
     const taskFlow = config.taskFlow;
     
