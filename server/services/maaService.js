@@ -6,6 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path
 import { randomBytes } from 'crypto';
 import TOML from '@iarna/toml';
 import { createLogger } from '../utils/logger.ts';
+import { updateTextFile } from '../utils/fileHelper.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.js';
 import { getFallbackActivity } from './activityFallbackService.js';
 import { normalizeCopilotCommandArgs } from './copilotUri.js';
@@ -670,18 +671,15 @@ export async function saveConfig(profileName = 'default', config) {
   try {
     const normalizedProfileName = validateMaaProfileName(profileName);
     const configPath = await getConfigPath(normalizedProfileName);
-    await mkdir(dirname(configPath), { recursive: true });
 
-    let existingProfile = {};
-    try {
-      existingProfile = parseMaaProfile(await readFile(configPath, 'utf-8'));
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-
-    const mergedProfile = mergeMaaProfileConnection(existingProfile, config);
-    const tomlContent = TOML.stringify(mergedProfile);
-    await writeFile(configPath, tomlContent, 'utf-8');
+    // 同一 profile 的读取、合并与写入在同一排队单元内完成：并发保存不会互相覆盖未知 section，
+    // 异名 profile 路径不同、互不阻塞。TOML 内容按文本原子替换；解析或写入失败时不写回，
+    // 已有配置保持原样。
+    await updateTextFile(configPath, currentContent => {
+      const existingProfile = currentContent === null ? {} : parseMaaProfile(currentContent);
+      const mergedProfile = mergeMaaProfileConnection(existingProfile, config);
+      return TOML.stringify(mergedProfile);
+    });
     logger.debug('配置已保存', { configPath });
   } catch (error) {
     throw new Error(`保存配置失败: ${error.message}`);
