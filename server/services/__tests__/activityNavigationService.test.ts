@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessActivityNavigation } from '../activityNavigationService.js';
+import { assessActivityNavigation } from '../activityNavigationService.ts';
 
 const activity = { code: 'BD', name: '丛林症结', source: 'maa' };
 
@@ -15,6 +15,7 @@ test('activity preflight is ready only with a complete home navigation chain', (
   assert.equal(result.state, 'ready');
   assert.equal(result.canPrepare, true);
   assert.equal(result.canRun, false);
+  assert.ok(result.navigation);
   assert.equal(result.navigation.entryTask, 'BD-OpenOpt');
 });
 

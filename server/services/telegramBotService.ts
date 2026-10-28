@@ -34,7 +34,7 @@ import { getTaskStatus, stopCurrentTask } from './maaProcessService.ts';
 import { captureScreen } from './maaDeviceService.ts';
 import type { CapturedScreen } from './maaDeviceService.ts';
 import { resolveConnection } from './connectionService.ts';
-import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.js';
+import { normalizeCopilotUri, parseCopilotUri } from './copilotUri.ts';
 import { loadUserConfig } from './configStorageService.ts';
 import type { ConfigStorageResult } from './configStorageService.ts';
 import { createLogger } from '../utils/logger.ts';
@@ -326,18 +326,6 @@ function parseUpdate(value: unknown): TelegramMessageUpdate | null {
   return { updateId, message: parseMessageUpdate(value.message) };
 }
 
-/** 本地收窄 copilotUri 模块（尚未类型化）的返回值，避免 any 扩散。 */
-function readCopilotUri(uri: string): { id: string; isSet: boolean } | null {
-  const parsed: unknown = parseCopilotUri(uri);
-  if (!isRecord(parsed) || typeof parsed.id !== 'string') return null;
-  return { id: parsed.id, isSet: Boolean(parsed.isSet) };
-}
-
-function normalizeUri(uri: string): string {
-  const normalized: unknown = normalizeCopilotUri(uri);
-  return typeof normalized === 'string' ? normalized : uri;
-}
-
 /** 关键词映射表（只包含不带参数的命令）。 */
 const keywordMap: Record<string, TelegramCommandName> = {
   '截图': 'screenshot',
@@ -403,7 +391,7 @@ function resolveSlashCommand(name: string): TelegramCommandName | null {
  */
 export function parseTelegramCommand(text: string): TelegramCommandInput | null {
   // 检查作业 URI
-  if (readCopilotUri(text)) {
+  if (parseCopilotUri(text)) {
     return { name: 'copilot', rawName: 'copilot', args: [text], source: 'copilot-uri' };
   }
 
@@ -1155,7 +1143,7 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
    */
   async function executeCopilot(uri: string, target: TelegramBotSession): Promise<string | null> {
     if (!isActive(target)) return null;
-    const normalized = normalizeUri(uri);
+    const normalized = normalizeCopilotUri(uri);
     const config = target.config;
     try {
       // 1. 获取关卡信息
@@ -1233,7 +1221,7 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     target: TelegramBotSession
   ): Promise<CopilotStageInfo | null> {
     try {
-      const parsed = readCopilotUri(uri);
+      const parsed = parseCopilotUri(uri);
       if (parsed && !parsed.isSet) {
         const code = parsed.id;
         const apiUrl = `${dependencies.copilotApiBaseUrl}/copilot/get/${code}`;

@@ -3,14 +3,15 @@ import test from 'node:test';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { normalizeCopilotCommandArgs, normalizeCopilotUri, parseCopilotUri } from '../copilotUri.js';
+import { normalizeCopilotCommandArgs, normalizeCopilotUri, parseCopilotUri } from '../copilotUri.ts';
 
 test('parses prts single and set codes', () => {
-  for (const [uri, id, isSet] of [
+  const cases: [string, string, boolean][] = [
     ['prts://1234', '1234', false],
     ['prts://s1234', '1234', true],
     ['PRTS://S1234', '1234', true],
-  ]) {
+  ];
+  for (const [uri, id, isSet] of cases) {
     assert.deepEqual(parseCopilotUri(uri), { id, isSet }, uri);
     assert.equal(normalizeCopilotUri(uri), `prts://${isSet ? 's' : ''}${id}`);
   }

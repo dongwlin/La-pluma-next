@@ -4,7 +4,7 @@ import { createLogger } from '../utils/logger.ts';
 import { getLogContext } from '../utils/logContext.ts';
 import { redactLogText } from '../utils/logRedaction.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
-import { normalizeCopilotCommandArgs } from './copilotUri.js';
+import { normalizeCopilotCommandArgs } from './copilotUri.ts';
 import { prepareMaaTaskCache } from './maaTaskCacheService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
 
@@ -487,12 +487,6 @@ function createCommandOutcome({
   };
 }
 
-/** copilot URI 归一化由 copilotUri 负责；这里只把返回值收窄为字符串参数。 */
-function normalizeCommandArgs(command: string, args: readonly string[]): string[] {
-  const normalized: unknown = normalizeCopilotCommandArgs(command, [...args]);
-  return Array.isArray(normalized) ? normalized.map(argument => String(argument)) : [...args];
-}
-
 /**
  * 执行 MAA CLI 命令（支持后台异步执行）。
  * ports 可覆盖 cliPath/spawn/execFile，测试用假子进程验证状态与输出处理。
@@ -612,7 +606,7 @@ function execMaaCommandWithEnv(
   ports: MaaProcessPorts = {}
 ): Promise<MaaCommandOutput | MaaBackgroundStart> {
   const processPorts: Required<MaaProcessPorts> = { ...defaultProcessPorts, ...ports };
-  const finalArgs = normalizeCommandArgs(command, args);
+  const finalArgs = normalizeCopilotCommandArgs(command, [...args]);
   const fullCommand = `${processPorts.cliPath} ${command} ${finalArgs.join(' ')}`;
 
   // Executors may be stopped while they are still pending. The gate runs after

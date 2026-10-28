@@ -1,5 +1,5 @@
 import { loadUserConfig } from './configStorageService.ts';
-import { findActivityCopilotCandidates } from './activityCopilotDiscoveryService.js';
+import { findActivityCopilotCandidates } from './activityCopilotDiscoveryService.ts';
 import { buildCopilotPlan, ensureCurrentMapActivityResource, executeCopilotPlan, executeSelectedCopilotEntries } from './copilotPlanService.js';
 import { getMaaConfigDir } from './maaConfigService.ts';
 import { updateMaaResources } from './resourceUpdateService.ts';

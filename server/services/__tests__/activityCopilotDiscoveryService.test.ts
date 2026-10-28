@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canUseCurrentMapFallback, coversActivityStages, rankActivityCopilots } from '../activityCopilotDiscoveryService.js';
+import { canUseCurrentMapFallback, coversActivityStages, rankActivityCopilots } from '../activityCopilotDiscoveryService.ts';
 
 test('activity candidate ranking keeps only exact current-stage titles', () => {
   const candidates = rankActivityCopilots([
@@ -21,6 +21,7 @@ test('activity candidate marks preset formations so raid planning can reject the
     rating_level: 10,
     content: JSON.stringify({ stage_name: 'act21mini_s01', doc: { title: 'BD-1' }, opers: [], groups: [] })
   }], 'BD-1');
+  assert.ok(candidate);
   assert.equal(candidate.presetFormation, true);
 });
 
