@@ -90,6 +90,7 @@ La-pluma-next/
 │   │   ├── agentStatusRoutes.js # 状态汇总与 Run 查询（ADB 探测有副作用）
 │   │   ├── agentLogRoutes.js  # 实时/历史日志读取、清空与清理
 │   │   ├── agentDataRoutes.js # 今日关卡、掉落与本地游戏数据读取
+│   │   ├── agentTrainingRoutes.js # 养成队列、设置、候选与计划生成/应用
 │   │   ├── deviceStatus.js    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.js # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
