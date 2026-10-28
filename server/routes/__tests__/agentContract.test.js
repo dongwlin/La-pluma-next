@@ -170,14 +170,18 @@ describe('Agent API contract registry', () => {
     );
   });
 
-  function collectRouterRoutes(router) {
-    const routes = new Set();
+  // 领域 router 以子 router 挂载在 agent router 上；这里遍历实际挂载关系，
+  // 子 router 未挂载或其路由未注册时清单检查会直接失败。
+  function collectRouterRoutes(router, routes = new Set()) {
     for (const layer of router.stack) {
-      if (!layer.route) continue;
-      const { path, methods } = layer.route;
-      for (const method of Object.keys(methods ?? {})) {
-        if (methods[method]) routes.add(`${method.toUpperCase()} ${path}`);
+      if (layer.route) {
+        const { path, methods } = layer.route;
+        for (const method of Object.keys(methods ?? {})) {
+          if (methods[method]) routes.add(`${method.toUpperCase()} ${path}`);
+        }
+        continue;
       }
+      if (layer.handle?.stack) collectRouterRoutes(layer.handle, routes);
     }
     return routes;
   }

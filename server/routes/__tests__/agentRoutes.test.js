@@ -55,10 +55,36 @@ after(async () => {
   await rm(lockDir, { recursive: true, force: true })
 })
 
+// 路由存在性以 agent.js 实际挂载的 router 图为准：执行路由由独立子 router
+// 承担，这里按挂载关系递归解析，不依赖某个文件里的声明位置。
+function collectMountedRoutes(routerInstance, routes = []) {
+  for (const layer of routerInstance.stack) {
+    if (layer.route) {
+      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
+        if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`)
+      }
+      continue
+    }
+    if (layer.handle?.stack) collectMountedRoutes(layer.handle, routes)
+  }
+  return routes
+}
+
+function findMountedRoute(routerInstance, method, path) {
+  for (const layer of routerInstance.stack) {
+    if (layer.route?.path === path && layer.route.methods?.[method]) return layer.route
+    if (layer.handle?.stack) {
+      const nested = findMountedRoute(layer.handle, method, path)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
 function findHandler(method, path) {
-  const layer = router.stack.find(item => item.route?.path === path && item.route.methods?.[method])
-  assert.ok(layer, `missing ${method.toUpperCase()} ${path}`)
-  return layer.route.stack.at(-1).handle
+  const route = findMountedRoute(router, method, path)
+  assert.ok(route, `missing ${method.toUpperCase()} ${path}`)
+  return route.stack.at(-1).handle
 }
 
 function createResponse() {
@@ -115,6 +141,29 @@ describe('Agent discovery routes', () => {
       res.body.components.responses.Conflict.content['application/json'].schema.$ref,
       '#/components/schemas/ErrorResponse'
     )
+  })
+
+  it('exposes every execution route exactly once through the mounted agent router', () => {
+    const executionRoutes = [
+      'POST /activity/run',
+      'POST /copilot-sets/:id/execute',
+      'POST /actions/continue-copilot-set',
+      'POST /schedules/:scheduleId/execute',
+      'POST /actions/start-game',
+      'POST /actions/run-daily-flow',
+      'POST /actions/fight',
+      'POST /actions/run-task',
+      'POST /actions/stop'
+    ]
+    const mounted = collectMountedRoutes(router)
+
+    for (const route of executionRoutes) {
+      assert.equal(
+        mounted.filter(candidate => candidate === route).length,
+        1,
+        `expected exactly one mounted ${route}`
+      )
+    }
   })
 })
 
