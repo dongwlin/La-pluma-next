@@ -106,7 +106,13 @@ La-pluma-next/
 │   │   ├── maaLogFileService.js # 日志文件边界、清理与检查点
 │   │   ├── maaActivityService.js # 当前活动查询与关卡代号替换
 │   │   ├── maaService.js      # 上述能力的兼容转接层
-│   │   ├── schedulerService.js # 定时任务调度
+│   │   ├── schedulerService.js # 流程执行器组装、Run 关联与定时任务公开入口
+│   │   ├── scheduleFlowPlan.js # 流程校验、命令构建与执行计划（纯函数）
+│   │   ├── scheduleFlowExecution.js # 流程步骤编排、进度状态与停止门控
+│   │   ├── scheduleFlowResult.js # 流程结果聚合与掉落汇报解析（纯函数）
+│   │   ├── scheduleExecutionPorts.js # 设备、通知与存储适配的端口组装
+│   │   ├── scheduleTriggerService.js # cron 触发源注册、替换与自动更新作业
+│   │   ├── scheduleSmartTrainingService.js # 流程结束后的智能养成关卡回写
 │   │   ├── notificationService.js # 通知服务
 │   │   ├── operatorTrainingService.js # 养成计划和材料计算
 │   │   ├── webrtcService.js   # ScrcpyOverWebRTC 管理
