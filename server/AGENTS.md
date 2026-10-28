@@ -14,7 +14,7 @@
 
 - 路由沿用 `asyncHandler`、`sendSuccess`、`sendError` 与结构化 `agentError`；保留现有错误码、HTTP 状态和兼容响应字段。
 - 向 Agent 公开能力时更新 `routes/agentContract.js`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
-- 新业务逻辑放入对应 service，路由负责适配；回调解析与结果格式化沿用独立的 `*ResultService.js`，避免继续堆入执行编排。
+- 新业务逻辑放入对应 service，路由负责适配；回调解析与结果格式化沿用独立的 `*ResultService.ts`，避免继续堆入执行编排。
 
 ## 执行与回调边界
 
@@ -23,7 +23,7 @@
 - Run 负责执行身份与终态；`maaProcessService` 的子进程状态、调度步骤和设备租约是不同投影。子进程 idle、HTTP 结束或读取失败不能直接作为整个流程完成的依据。
 - 设备变更复用 `executionCoordinatorService.ts` 的租约；保持获得租约后、产生设备副作用前的 `startAgentRunForExecution` 门禁。后台执行不能在返回接受响应时释放租约或写成功终态；须由实际进程退出结果收尾。
 - 按 `runId` 停止必须保留目标校验、重复停止和旧终态保护，避免旧请求停止后续执行；流程停止后不得启动下一步。
-- 解析 MAA 回调时复用 `maaCallbackService.js`，按 `taskchain` 过滤结构化载荷并容忍不完整行。调度中的回调结果读取使用执行前检查点与增量日志，不能把旧任务日志算入当前结果；领域结果中的 `skipped`、`failed` 与 `success` 不可混同。
+- 解析 MAA 回调时复用 `maaCallbackService.ts`，按 `taskchain` 过滤结构化载荷并容忍不完整行。调度中的回调结果读取使用执行前检查点与增量日志，不能把旧任务日志算入当前结果；领域结果中的 `skipped`、`failed` 与 `success` 不可混同。
 
 ## 持久化与运行时
 
@@ -41,7 +41,7 @@
 | 后端语法检查 | `pnpm --filter la-pluma-next-server check` |
 | 后端类型检查 | `pnpm --filter la-pluma-next-server typecheck` |
 | 后端回归 | `pnpm --filter la-pluma-next-server test` |
-| 定向回归示例 | `node --test server/services/__tests__/maaCallbackService.test.js` |
+| 定向回归示例 | `node --test server/services/__tests__/maaCallbackService.test.ts` |
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 
 `build` 仅执行语法检查；类型检查由 `typecheck` 独立承担，覆盖范围内的 TS 文件并输出未检查 JS 清单（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；后端未配置独立的 Lint 与 Format。常规测试入口逐文件、逐进程串行运行；不要为提速随意改成共享进程并行，以免模块单例和环境变量相互污染。
