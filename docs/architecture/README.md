@@ -101,7 +101,8 @@ La-pluma-next/
 │   │   ├── deviceStatus.js    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.js # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
-│   │   └── operatorQuotes.js  # 干员台词接口
+│   │   ├── operatorQuotes.ts  # 干员台词接口
+│   │   └── operatorQuotesDto.ts # 台词请求按端点收窄与业务错误文案
 │   ├── services/              # 业务逻辑
 │   │   ├── maaProcessService.ts # MAA CLI 子进程、实时日志与停止
 │   │   ├── maaExecutionService.ts # 执行租约门禁、CLI 命令与动态任务
