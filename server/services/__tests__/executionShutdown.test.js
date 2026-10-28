@@ -42,7 +42,7 @@ import {
   requestCopilotSetRunStop,
   resetCopilotSetRunStateForTests,
   startManualCopilotSet
-} from '../copilotSetRunService.js';
+} from '../copilotSetRunService.ts';
 import { execMaaCommand } from '../maaExecutionService.ts';
 import { getTaskStatus } from '../maaProcessService.ts';
 import { writeJsonFile } from '../../utils/fileHelper.ts';

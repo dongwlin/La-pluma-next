@@ -26,7 +26,7 @@ import {
 import {
   configureCopilotSetRuntimeForTests,
   resetCopilotSetRunStateForTests
-} from '../../services/copilotSetRunService.js'
+} from '../../services/copilotSetRunService.ts'
 import {
   getMaaExecutionLeaseSnapshot,
   withMaaExecutionLease

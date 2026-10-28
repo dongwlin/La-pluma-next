@@ -16,7 +16,7 @@ import {
   requestCopilotSetRunStop,
   runContinuousCopilotSet,
   startManualCopilotSet
-} from '../services/copilotSetRunService.js';
+} from '../services/copilotSetRunService.ts';
 import {
   beginAgentRun,
   startAgentRunForExecution,
