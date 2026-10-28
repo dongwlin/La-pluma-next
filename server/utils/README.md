@@ -185,7 +185,7 @@ import { createLogger } from '../utils/logger.ts';
 - ✅ `configStorageService.js` - 已重构
 - ✅ `dropRecordService.ts` - 已完成类型化（记录解析、统计与材料表）
 - ✅ `dataParserService.ts` - 已完成类型化（物品索引/物品表、仓库与干员缓存）
-- ✅ `operatorTrainingService.js` - 已按职责拆分到模型、计划、存储与应用同步
+- ✅ `operatorTrainingService.ts` - 已按职责拆分到模型、计划、存储与应用同步，并完成类型化（设置/队列/材料/计划的解析与部分同步结果）
 - ✅ `notificationService.ts` - 已完成类型化（配置解析、格式化与渠道发送）
 - ✅ `schedulerService.js` - 已按职责拆分到流程计划、执行、触发源与养成回写
 - ✅ `maaProcessService.ts` 等 MAA 模块 - 已按职责拆分并完成类型化（进程、执行、配置、设备、日志、活动、任务缓存）
