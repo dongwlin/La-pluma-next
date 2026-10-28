@@ -259,6 +259,8 @@ waiting ──stop──> stopped
 - 关闭只停止触发源，不替活动流程写终态：已开始的日常流程继续按实际执行结果把 Run 结算为 `succeeded`/`failed`/`stopped`，停止、超时与进程退出仍按 §4 与 §5.5 处理。
 - 同一 `scheduleId` 的重复配置替换旧任务而不叠加；全部时间点都注册失败时保留上一份有效注册，部分失败通过返回的 `times` 报告缺失时间点。重复停止是幂等的，目标未注册时也按已完成处理。重启后由运行时初始化按已保存配置重新注册，注册本身不执行流程。
 - Telegram Bot 的停止步骤在启动轮询前注册：关闭会中止在途 `getUpdates`、轮询间隔与命令内的等待，停止后不再派发迟到命令。重复初始化或改配置只保留一个轮询会话，offset、授权用户与命令语义保持不变。
+- WebRTC 预览的关闭步骤在启动前注册：关闭开始后不再启动新的预览资源，已排定的 viewer 自动回收计时器被取消，同源信令网关断开观看连接并清空一次性票据，本进程启动的信令服务、TURN、Agent 部署与构建子进程被终止。关闭会等待已受理的启动/停止退出，因此启动中关闭不会留下孤儿进程。
+- 预览启停只释放本实例拥有所有权的资源：服务启动前已存在的信令服务、TURN 与设备端 Agent 没有所有权记录，停止接口与关闭流程都不会终止它们；关闭也不通过 ADB 清理设备端 Agent。`/api/agent/webrtc/*` 状态中的 `ownership` 用 `managed`/`external`/`none` 区分本实例、外部资源与未运行。
 
 
 ## 6. 执行入口覆盖
@@ -322,6 +324,8 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 | `server/services/__tests__/schedulerRecovery.test.js` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
 | `server/services/__tests__/scheduleTriggerLifecycle.test.js` | 重复配置替换而不叠加、全部/部分注册失败、停止与销毁幂等、销毁失败上报关闭步骤、draining 后拒绝注册并丢弃已排队回调、活动流程终态仍由执行结算 |
 | `server/services/__tests__/telegramBotLifecycle.test.js` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
+| `server/services/__tests__/webrtcPreviewOwnership.test.js` | 外部 server/TURN/设备 Agent 不被停止、本实例 server/TURN/设备 Agent 的停止与 `ownership` 上报、关闭中止在途启动并终止本实例子进程、关闭取消 viewer 自动回收、重复关闭幂等、关闭后拒绝启动 |
+| `server/services/__tests__/webrtcSignalingGateway.test.js` | 一次性票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、关闭断开观看连接并清空票据、重新挂接后旧票据不可用 |
 | `server/services/__tests__/runtimeInitializationService.test.js` | 调度停止端口先于持久配置恢复挂接、恢复只注册不执行、单项恢复失败与接入失败隔离 |
 
 客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](../development/integration.md)。本表只维护服务端身份、状态机、持久化与执行入口的契约测试。
