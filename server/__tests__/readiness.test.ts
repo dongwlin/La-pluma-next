@@ -1,53 +1,115 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import type { RequestListener, Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
-import { createLaPlumaApp, startLaPlumaServer } from '../server.js'
+import { createLaPlumaApp, startLaPlumaServer } from '../server.ts'
 import {
   initializeAgentRunStore,
   shutdownAgentRunStoreForTests
 } from '../services/agentRunService.ts'
 import { createRuntimeLifecycle } from '../services/runtimeLifecycleService.ts'
 import { createRuntimeReadinessTracker } from '../services/runtimeReadinessService.ts'
+import type {
+  AgentRunStoreReadinessStatus,
+  ReadinessLifecyclePort
+} from '../services/runtimeReadinessService.ts'
+import type { RuntimeLifecycleState } from '../services/runtimeLifecycleService.ts'
 import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.ts'
+import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts'
 
-const servers = []
-const tempDirs = []
-const silentLogger = { log() {}, info() {}, warn() {}, error() {} }
+const servers: Server[] = []
+const tempDirs: string[] = []
+/** 组装与存储日志端口：静默实现，避免用例向 stdout 混入运行时日志。 */
+interface SilentLogger {
+  log(): void
+  info(): void
+  warn(): void
+  error(): void
+}
+const silentLogger: SilentLogger = { log() {}, info() {}, warn() {}, error() {} }
 
-async function listen(app) {
+type JsonRecord = Record<string, unknown>
+
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+async function readJson(response: Response): Promise<JsonRecord> {
+  const body: unknown = await response.json()
+  assert.ok(isRecord(body), '响应应为 JSON 对象')
+  return body
+}
+
+function readNested(payload: JsonRecord, key: string): JsonRecord {
+  const value = payload[key]
+  assert.ok(isRecord(value), `${key} 应为 JSON 对象`)
+  return value
+}
+
+function readError(payload: JsonRecord): JsonRecord {
+  const error = payload.error
+  assert.ok(isRecord(error), '错误信封应包含 error 对象')
+  return error
+}
+
+async function listen(app: RequestListener): Promise<string> {
   const server = createServer(app)
   servers.push(server)
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  return `http://127.0.0.1:${server.address().port}`
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('监听端口获取失败')
+  }
+  return `http://127.0.0.1:${address.port}`
 }
 
-function fixedLifecycle(state) {
+function fixedLifecycle(state: RuntimeLifecycleState): ReadinessLifecyclePort {
   return { getState: () => state }
+}
+
+/** 存储状态夹具：路径与错误只用于证明响应不泄露它们。 */
+interface RunStoreStatusFixture extends AgentRunStoreReadinessStatus {
+  filePath?: string
+  error?: string
 }
 
 function readyTracker() {
   const tracker = createRuntimeReadinessTracker({
     lifecycle: fixedLifecycle('running'),
-    runStoreStatus: () => ({ required: true, ready: true })
+    runStoreStatus: (): RunStoreStatusFixture => ({ required: true, ready: true })
   })
   tracker.markInitializationCompleted()
   return tracker
 }
 
+/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
+function stubSignalingGateway(): WebrtcSignalingGateway {
+  return {
+    proxyPath: WEBRTC_SIGNALING_PATH,
+    async handleLogin(_req, res) {
+      res.json({ token: 'fixture-ticket' })
+    },
+    async handleUpgrade() {},
+    attach() {},
+    close() {}
+  }
+}
+
 afterEach(async () => {
   while (servers.length) {
     const server = servers.pop()
+    assert.ok(server)
     server.closeIdleConnections?.()
     server.closeAllConnections?.()
-    await new Promise(resolve => server.close(resolve))
+    await new Promise<void>(resolve => server.close(() => resolve()))
   }
-  while (tempDirs.length) await rm(tempDirs.pop(), { recursive: true, force: true })
+  while (tempDirs.length) await rm(tempDirs.pop() as string, { recursive: true, force: true })
 })
 
 describe('Readiness endpoint matrix', () => {
@@ -55,20 +117,21 @@ describe('Readiness endpoint matrix', () => {
     const defaultOrigin = await listen(createLaPlumaApp({ env: {} }))
     const defaultResponse = await fetch(`${defaultOrigin}/readiness`)
     assert.equal(defaultResponse.status, 503)
-    const defaultBody = await defaultResponse.json()
+    const defaultBody = await readJson(defaultResponse)
     assert.equal(defaultBody.success, false)
     assert.equal(defaultBody.status, 'not_ready')
-    assert.deepEqual(defaultBody.checks.lifecycle, { ok: false, state: 'unattached' })
-    assert.deepEqual(defaultBody.checks.initialization, { ok: false, state: 'pending' })
+    const defaultChecks = readNested(defaultBody, 'checks')
+    assert.deepEqual(defaultChecks.lifecycle, { ok: false, state: 'unattached' })
+    assert.deepEqual(defaultChecks.initialization, { ok: false, state: 'pending' })
     assert.deepEqual(defaultBody.reasons, ['runtime_not_attached', 'initialization_pending'])
 
     const startingTracker = createRuntimeReadinessTracker({
       lifecycle: fixedLifecycle('starting')
     })
     const startingOrigin = await listen(createLaPlumaApp({ env: {}, readiness: startingTracker }))
-    const startingBody = await (await fetch(`${startingOrigin}/readiness`)).json()
+    const startingBody = await readJson(await fetch(`${startingOrigin}/readiness`))
     assert.equal(startingBody.status, 'not_ready')
-    assert.deepEqual(startingBody.checks.lifecycle, { ok: false, state: 'starting' })
+    assert.deepEqual(readNested(startingBody, 'checks').lifecycle, { ok: false, state: 'starting' })
     assert.deepEqual(startingBody.reasons, ['lifecycle_starting', 'initialization_pending'])
   })
 
@@ -86,8 +149,8 @@ describe('Readiness endpoint matrix', () => {
 
     assert.equal(response.status, 200)
     assert.equal(response.headers.get('cache-control'), 'no-store')
-    assert.match(response.headers.get('content-type'), /application\/json/)
-    assert.deepEqual(await response.json(), {
+    assert.match(response.headers.get('content-type') ?? '', /application\/json/)
+    assert.deepEqual(await readJson(response), {
       success: true,
       status: 'ready',
       checks: {
@@ -111,16 +174,16 @@ describe('Readiness endpoint matrix', () => {
     const response = await fetch(`${origin}/readiness`)
 
     assert.equal(response.status, 503)
-    const body = await response.json()
+    const body = await readJson(response)
     assert.equal(body.status, 'not_ready')
-    assert.deepEqual(body.checks.initialization, { ok: false, state: 'failed' })
+    assert.deepEqual(readNested(body, 'checks').initialization, { ok: false, state: 'failed' })
     assert.deepEqual(body.reasons, ['initialization_failed'])
   })
 
   it('stays not ready when the run store is unavailable without leaking its path or error', async () => {
     const tracker = createRuntimeReadinessTracker({
       lifecycle: fixedLifecycle('running'),
-      runStoreStatus: () => ({
+      runStoreStatus: (): RunStoreStatusFixture => ({
         required: true,
         ready: false,
         filePath: '/run/secrets/agent-runs.json',
@@ -143,8 +206,8 @@ describe('Readiness endpoint matrix', () => {
 
   it('turns not ready as soon as draining begins while liveness stays up', async () => {
     const lifecycle = createRuntimeLifecycle({ logger: silentLogger })
-    let releaseClose
-    const hold = new Promise(resolve => { releaseClose = resolve })
+    let releaseClose: () => void = () => {}
+    const hold = new Promise<void>(resolve => { releaseClose = resolve })
     lifecycle.register({ name: 'fixture-hold', close: () => hold })
     await lifecycle.start()
 
@@ -160,16 +223,16 @@ describe('Readiness endpoint matrix', () => {
     const closing = lifecycle.close('test-draining')
     const draining = await fetch(`${origin}/readiness`)
     assert.equal(draining.status, 503)
-    assert.deepEqual((await draining.json()).reasons, ['draining'])
+    assert.deepEqual((await readJson(draining)).reasons, ['draining'])
 
     // 存活检查不受关闭中的就绪状态影响：容器不应因 draining 被重启。
     const liveness = await fetch(`${origin}/health`)
     assert.equal(liveness.status, 200)
-    assert.deepEqual(await liveness.json(), { success: true, status: 'ok' })
+    assert.deepEqual(await readJson(liveness), { success: true, status: 'ok' })
 
     releaseClose()
     await closing
-    assert.deepEqual((await (await fetch(`${origin}/readiness`)).json()).reasons, ['lifecycle_closed'])
+    assert.deepEqual((await readJson(await fetch(`${origin}/readiness`))).reasons, ['lifecycle_closed'])
   })
 
   it('keeps probes independent from API token auth and never echoes the token', async () => {
@@ -186,7 +249,7 @@ describe('Readiness endpoint matrix', () => {
 
     const api = await fetch(`${origin}/api/agent/status`)
     assert.equal(api.status, 401)
-    assert.equal((await api.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(readError(await readJson(api)).code, 'AGENT_AUTH_REQUIRED')
   })
 
   it('keeps readiness on the origin root in subpath deployments', async () => {
@@ -195,15 +258,9 @@ describe('Readiness endpoint matrix', () => {
     await mkdir(join(clientDistPath, 'assets'))
     await writeFile(join(clientDistPath, 'index.html'), '<!doctype html><title>Readiness fixture</title>')
 
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        res.json({ token: 'fixture-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: { NODE_ENV: 'production', LA_PLUMA_BASE_PATH: '/la-pluma/' },
-      signalingGateway,
+      signalingGateway: stubSignalingGateway(),
       clientDistPath,
       readiness: readyTracker()
     })
@@ -211,7 +268,7 @@ describe('Readiness endpoint matrix', () => {
 
     const readiness = await fetch(`${origin}/readiness`)
     assert.equal(readiness.status, 200)
-    assert.equal((await readiness.json()).status, 'ready')
+    assert.equal((await readJson(readiness)).status, 'ready')
 
     // 子路径下的同名路径不得被 SPA 回退接管，也不能泄露应用外壳。
     const shadowed = await fetch(`${origin}/la-pluma/readiness`)
@@ -315,14 +372,15 @@ describe('Server readiness assembly', () => {
   })
 
   it('turns not ready for HTTP probes while draining and recovers liveness semantics', async () => {
-    let releaseClose
-    const hold = new Promise(resolve => { releaseClose = resolve })
+    let releaseClose: () => void = () => {}
+    const hold = new Promise<void>(resolve => { releaseClose = resolve })
     const runtime = await startLaPlumaServer({
       env: {},
       host: '127.0.0.1',
       port: 0,
       initializeRunStore: async () => runStoreSummary,
       initializeRuntime: async ({ lifecycle }) => {
+        assert.ok(lifecycle, '组装入口必须传入生命周期端口')
         lifecycle.register({ name: 'fixture-slow-close', close: () => hold })
       },
       logger: silentLogger
@@ -333,12 +391,12 @@ describe('Server readiness assembly', () => {
       assert.equal(runtime.lifecycle.getState(), 'running')
       const ready = await fetch(`${origin}/readiness`)
       assert.equal(ready.status, 200)
-      assert.equal((await ready.json()).status, 'ready')
+      assert.equal((await readJson(ready)).status, 'ready')
 
       const closing = runtime.close('test-draining')
       const draining = await fetch(`${origin}/readiness`)
       assert.equal(draining.status, 503)
-      assert.deepEqual((await draining.json()).reasons, ['draining'])
+      assert.deepEqual((await readJson(draining)).reasons, ['draining'])
       assert.equal((await fetch(`${origin}/health`)).status, 200)
 
       releaseClose()

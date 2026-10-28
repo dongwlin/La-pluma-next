@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
+import type { Server as HttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import type { Server as HttpsServer } from 'node:https';
 import { networkInterfaces } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
 import { printPathConfig } from './config/paths.ts';
 import {
   loadHttpsOptions,
@@ -13,32 +16,47 @@ import {
   parsePort,
   resolveAppPaths
 } from './config/runtimeConfig.ts';
+import type { AppPaths, ReadFileSyncLike, RuntimeEnvSource } from './config/runtimeConfig.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
-import agentRoutes from './routes/agent.js';
+import agentRoutes from './routes/agent.ts';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import {
   getAgentRunStoreStatus,
   initializeAgentRunStore
 } from './services/agentRunService.ts';
-import { initializeRuntimeState } from './services/runtimeInitializationService.js';
+import type { AgentRunStoreRestoreSummary } from './services/agentRunService.ts';
+import { initializeRuntimeState } from './services/runtimeInitializationService.ts';
+import type { RuntimeInitializationOverrides } from './services/runtimeInitializationService.ts';
 import { closeExecutionAdmission } from './services/executionAdmissionService.ts';
 import { attachExecutionShutdownToLifecycle } from './services/executionShutdownService.ts';
+import type {
+  ExecutionShutdownOptions,
+  ExecutionShutdownService
+} from './services/executionShutdownService.ts';
 import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
+import type { RuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
 import {
   DEFAULT_CLOSE_DEADLINE_MS,
   createRuntimeLifecycle
+} from './services/runtimeLifecycleService.ts';
+import type {
+  RuntimeLifecycle,
+  RuntimeLifecycleCloseSummary,
+  RuntimeLifecycleLogger
 } from './services/runtimeLifecycleService.ts';
 import { createSignalingLoginGuard } from './services/signalingLoginGuard.ts';
 import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from './services/webrtcSignalingGateway.ts';
+import type { WebrtcSignalingGateway } from './services/webrtcSignalingGateway.ts';
 import { attachWebrtcPreviewToLifecycle } from './services/webrtcService.ts';
 import { resolveWebrtcCredentials } from './config/webrtcCredentials.ts';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
 import { createOptionalApiAuth } from './utils/apiTokenAuth.ts';
 import { createLoginThrottle } from './utils/loginThrottle.ts';
 import { requestIdMiddleware } from './utils/requestContext.ts';
+import type { UserConfigStorage } from './services/configStorageService.ts';
 
 // 供 isMainModule 判断使用；应用内路径解析已由 config 入口按模块位置锚定
 const __filename = fileURLToPath(import.meta.url);
@@ -46,14 +64,93 @@ const __filename = fileURLToPath(import.meta.url);
 // 组装入口的配置解析归属 config 模块；此处保留导出供既有使用者与测试引用
 export { loadHttpsOptions, normalizeBasePath } from './config/runtimeConfig.ts';
 
-function getLocalIpAddress() {
+/** 认证失败与票据签发的限流窗口；测试可注入更小阈值与假时钟。 */
+export interface LoginRateLimitOptions {
+  windowMs?: number;
+  maxAuthFailures?: number;
+  maxSignalingLogins?: number;
+  now?: () => number;
+}
+
+/** 应用组装选项：运行配置、传输网关与测试注入口。 */
+export interface CreateLaPlumaAppOptions {
+  env?: RuntimeEnvSource;
+  signalingGateway?: WebrtcSignalingGateway;
+  clientDistPath?: string;
+  userConfigStorage?: UserConfigStorage;
+  readiness?: RuntimeReadinessTracker;
+  loginRateLimit?: LoginRateLimitOptions;
+}
+
+/** 组装日志端口：与既有调用一致，warn 可缺省。 */
+export interface ServerLogger {
+  log(message: string, data?: unknown): unknown;
+  warn?(message: string, data?: unknown): unknown;
+  error(message: string, data?: unknown): unknown;
+}
+
+/** 启动选项：生命周期预算、运行依赖注入口与应用路径覆盖。 */
+export interface StartLaPlumaServerOptions {
+  env?: RuntimeEnvSource;
+  host?: string;
+  port?: number;
+  signalingGateway?: WebrtcSignalingGateway;
+  initializeRunStore?: () => Promise<AgentRunStoreRestoreSummary>;
+  /** 运行时恢复端口；真实实现接收生命周期端口，测试可只返回 Promise。 */
+  initializeRuntime?: (overrides: RuntimeInitializationOverrides) => unknown;
+  logger?: ServerLogger;
+  closeDeadlineMs?: number;
+  executionShutdownOptions?: ExecutionShutdownOptions;
+  appPaths?: AppPaths;
+}
+
+/** 组装完成后的运行句柄：应用、传输、生命周期与统一关闭入口。 */
+export interface LaPlumaRuntime {
+  app: Express;
+  server: HttpServer | HttpsServer;
+  protocol: 'http' | 'https';
+  port: number;
+  lifecycle: RuntimeLifecycle;
+  readiness: RuntimeReadinessTracker;
+  executionShutdown: ExecutionShutdownService | null;
+  close(reason?: string): Promise<RuntimeLifecycleCloseSummary>;
+}
+
+/** 关闭处理器读取的结果：整体成功位与步骤状态。 */
+export interface ShutdownStepOutcome {
+  name: string;
+  status: string;
+  error?: string;
+}
+
+export interface ShutdownOutcome {
+  ok?: boolean;
+  steps?: readonly ShutdownStepOutcome[];
+}
+
+/** 关闭处理器只要求运行时提供 close；测试可注入更小的关闭端口。 */
+export interface ShutdownRuntime {
+  close(reason?: string): Promise<ShutdownOutcome>;
+}
+
+export interface ShutdownHandlerOptions {
+  logger?: RuntimeLifecycleLogger;
+  exit?: (code: number) => void;
+  signals?: readonly NodeJS.Signals[];
+}
+
+function getLocalIpAddress(): string {
   const nets = networkInterfaces();
   for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
+    for (const net of nets[name] ?? []) {
       if (net.family === 'IPv4' && !net.internal) return net.address;
     }
   }
   return 'localhost';
+}
+
+function readErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // 单实例限流窗口：认证失败与票据签发分别计数，均按来源地址隔离。
@@ -69,7 +166,7 @@ export function createLaPlumaApp({
   userConfigStorage,
   readiness = createRuntimeReadinessTracker(),
   loginRateLimit = {}
-} = {}) {
+}: CreateLaPlumaAppOptions = {}): Express {
   if (typeof readiness?.snapshot !== 'function') {
     throw new TypeError('readiness 必须提供 snapshot()');
   }
@@ -116,7 +213,10 @@ export function createLaPlumaApp({
     `${signalingPath}/api/login`,
     optionalApiAuth,
     signalingLoginGuard,
-    signalingGateway.handleLogin
+    async (req: Request, res: Response): Promise<void> => {
+      // 统一包装为 void 返回：上游登录失败仍交给 Express 错误出口处理。
+      await signalingGateway.handleLogin(req, res);
+    }
   );
   // Express 5 通配符必须命名（*splat），捕获值在 req.params.splat 中为路径段数组；
   // 本路径与子路径的隐藏策略不变：除 ticket 签发外一律返回固定 404。
@@ -148,7 +248,7 @@ export function createLaPlumaApp({
   if (env.NODE_ENV === 'production') {
     const staticMountPath = basePath === '/' ? '/' : basePath.slice(0, -1);
     const reservedPaths = ['/api', '/health', '/readiness', signalingPath];
-    const sendAppShell = (req, res, next) => {
+    const sendAppShell = (req: Request, res: Response, next: NextFunction): void => {
       const appPath = staticMountPath === '/'
         ? req.path
         : req.path.slice(staticMountPath.length) || '/';
@@ -181,24 +281,37 @@ export function createLaPlumaApp({
   return app;
 }
 
+interface CreateTransportServerOptions {
+  app: Express;
+  signalingGateway: WebrtcSignalingGateway;
+  env?: RuntimeEnvSource;
+  readFile?: ReadFileSyncLike;
+}
+
+interface LaPlumaTransport {
+  server: HttpServer | HttpsServer;
+  protocol: 'http' | 'https';
+  close(): Promise<void>;
+}
+
 function createLaPlumaTransportServer({
   app,
   signalingGateway,
   env = process.env,
   readFile = readFileSync
-}) {
+}: CreateTransportServerOptions): LaPlumaTransport {
   const httpsOptions = loadHttpsOptions(env, readFile);
   const server = httpsOptions
     ? createHttpsServer(httpsOptions, app)
     : createHttpServer(app);
   signalingGateway.attach(server);
 
-  const close = async () => {
+  const close = async (): Promise<void> => {
     signalingGateway.close();
     if (!server.listening) return;
     server.closeIdleConnections?.();
     server.closeAllConnections?.();
-    await new Promise((resolveClose, rejectClose) => {
+    await new Promise<void>((resolveClose, rejectClose) => {
       server.close(error => error ? rejectClose(error) : resolveClose());
     });
   };
@@ -221,7 +334,7 @@ export async function startLaPlumaServer({
   closeDeadlineMs = DEFAULT_CLOSE_DEADLINE_MS,
   executionShutdownOptions = {},
   appPaths = resolveAppPaths({ env })
-} = {}) {
+}: StartLaPlumaServerOptions = {}): Promise<LaPlumaRuntime> {
   // 组装入口集中解析配置并接线运行依赖：应用、传输、Run 存储和运行时恢复共享同一个
   // 生命周期，关闭顺序由注册顺序取反决定，避免各模块在导入时自行启动或停止。
   const lifecycle = createRuntimeLifecycle({ logger, closeDeadlineMs });
@@ -270,7 +383,7 @@ export async function startLaPlumaServer({
         const status = getAgentRunStoreStatus();
         logger.error('[AgentRun] 存储初始化失败，执行接口已关闭:', {
           filePath: status.filePath,
-          error: status.error || error.message
+          error: status.error || readErrorMessage(error)
         });
       }
     }
@@ -279,8 +392,8 @@ export async function startLaPlumaServer({
   lifecycle.register({
     name: 'http-transport',
     start: async () => {
-      await new Promise((resolveListen, rejectListen) => {
-        const onError = error => rejectListen(error);
+      await new Promise<void>((resolveListen, rejectListen) => {
+        const onError = (error: Error): void => rejectListen(error);
         transport.server.once('error', onError);
         transport.server.listen(port, host, () => {
           transport.server.off('error', onError);
@@ -314,7 +427,7 @@ export async function startLaPlumaServer({
         readiness.markInitializationCompleted();
       } catch (error) {
         readiness.markInitializationFailed();
-        logger.error('[Runtime] 初始化失败:', error.message);
+        logger.error('[Runtime] 初始化失败:', readErrorMessage(error));
       }
     }
   });
@@ -352,24 +465,27 @@ export async function startLaPlumaServer({
  * 不会在收尾中途强行退出；部分步骤失败时其余收尾已由生命周期继续执行，最终以
  * 非零退出码明确报告。`exit`/`logger`/`signals` 可注入以便测试。
  */
-export function installShutdownHandlers(runtime, {
+export function installShutdownHandlers(runtime: ShutdownRuntime, {
   logger = console,
   exit = code => process.exit(code),
   signals = ['SIGINT', 'SIGTERM']
-} = {}) {
-  let shutdownPromise = null;
+}: ShutdownHandlerOptions = {}): {
+  shutdown(signal: string): Promise<ShutdownOutcome | null>;
+  dispose(): void;
+} {
+  let shutdownPromise: Promise<ShutdownOutcome | null> | null = null;
 
-  const shutdown = signal => {
+  const shutdown = (signal: string): Promise<ShutdownOutcome | null> => {
     if (shutdownPromise) {
       logger.warn?.(`[Server] 已收到 ${signal}，关闭流程仍在进行，继续等待`);
       return shutdownPromise;
     }
-    shutdownPromise = (async () => {
-      let summary = null;
+    shutdownPromise = (async (): Promise<ShutdownOutcome | null> => {
+      let summary: ShutdownOutcome | null = null;
       try {
         summary = await runtime.close(signal);
       } catch (error) {
-        logger.error?.('[Server] 关闭失败:', error?.message || String(error));
+        logger.error?.('[Server] 关闭失败:', readErrorMessage(error));
         exit(1);
         return null;
       }
@@ -388,7 +504,7 @@ export function installShutdownHandlers(runtime, {
   };
 
   const handlers = signals.map(signal => {
-    const handler = () => { void shutdown(signal); };
+    const handler = (): void => { void shutdown(signal); };
     process.on(signal, handler);
     return { signal, handler };
   });
@@ -401,13 +517,14 @@ export function installShutdownHandlers(runtime, {
   };
 }
 
-const isMainModule = process.argv[1] && resolve(process.argv[1]) === __filename;
+const entryArg = process.argv[1];
+const isMainModule = entryArg !== undefined && resolve(entryArg) === __filename;
 if (isMainModule) {
   try {
     const runtime = await startLaPlumaServer();
     installShutdownHandlers(runtime);
   } catch (error) {
-    console.error('[Server] 启动失败:', error.message);
+    console.error('[Server] 启动失败:', readErrorMessage(error));
     process.exitCode = 1;
   }
 }

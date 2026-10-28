@@ -1,3 +1,11 @@
+/**
+ * JavaScript 语法检查入口（保留 .js 的工具脚本）。
+ *
+ * `node --check` 只解析 JavaScript，不能解析 TypeScript 的类型标注与类型擦除语法，
+ * 因此本脚本无法检查已迁移的 .ts 源码，保留 .js 而非入口源码。它继续对 server/
+ * 下剩余的 .js 文件逐个执行 `node --check`，新增 JS 会在进入提交前暴露语法错误；
+ * .ts 的语法与类型门禁由 `scripts/typecheck.ts` 的 `tsc --noEmit` 承担。
+ */
 import { readdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';

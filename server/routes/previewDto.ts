@@ -29,7 +29,7 @@ import type { ConnectionProfile } from '../services/connectionService.ts';
 import type { WebrtcStatus } from '../services/webrtcService.ts';
 import type { ApiErrorResponse, ApiRequestLike } from '../utils/apiHelper.ts';
 import type { AndroidDisplayState } from './deviceStatus.ts';
-import { resolveRequestConnection } from './requestConnection.js';
+import { resolveRequestConnection } from './requestConnection.ts';
 
 /** 预览路由处理器的请求端口：query/body 保持 unknown，由本模块按端点收窄。 */
 export interface PreviewRequest extends ApiRequestLike {

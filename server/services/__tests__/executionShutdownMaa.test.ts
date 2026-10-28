@@ -3,13 +3,21 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, beforeEach, test } from 'node:test';
+import type { MaaCommandError } from '../maaProcessService.ts';
+
+/** execMaaCommand 的结局：成功结果或带 stopped/signal 的命令错误。 */
+interface ExecutionOutcome {
+  ok: boolean;
+  result?: unknown;
+  error?: MaaCommandError;
+}
 
 const root = await mkdtemp(join(tmpdir(), 'la-pluma-shutdown-maa-'));
 const cliPath = join(root, 'maa');
 const cacheDir = join(root, 'cache');
 const lockPath = join(root, 'maa.lock');
 const readyMarker = join(root, 'cli-ready');
-const previousEnv = Object.fromEntries(
+const previousEnv: Record<string, string | undefined> = Object.fromEntries(
   ['MAA_CLI_PATH', 'MAA_CACHE_DIR', 'LA_PLUMA_MAA_LOCK_FILE', 'FIXTURE_CLI_READY'].map(key => [key, process.env[key]])
 );
 
@@ -58,8 +66,8 @@ const quietLogger = {
   error() {}
 };
 
-let testDir;
-let storePath;
+let testDir = '';
+let storePath = '';
 
 beforeEach(async () => {
   testDir = await mkdtemp(join(tmpdir(), 'la-pluma-shutdown-maa-store-'));
@@ -96,7 +104,7 @@ after(async () => {
 async function waitForTaskRunning() {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     if (getTaskStatus().isRunning) return getTaskStatus();
-    await new Promise(resolve => { setTimeout(resolve, 10); });
+    await new Promise<void>(resolve => { setTimeout(resolve, 10); });
   }
   throw new Error('fake CLI did not start in time');
 }
@@ -108,7 +116,7 @@ async function waitForCliReady() {
       await stat(readyMarker);
       return;
     } catch {
-      await new Promise(resolve => { setTimeout(resolve, 10); });
+      await new Promise<void>(resolve => { setTimeout(resolve, 10); });
     }
   }
   throw new Error('fake CLI did not announce readiness in time');
@@ -122,11 +130,11 @@ function beginExecution() {
 
 test('shutdown terminates the running fake CLI and settles the run from its actual outcome', async () => {
   const runId = beginExecution();
-  const outcomes = [];
+  const outcomes: ExecutionOutcome[] = [];
   const execution = execMaaCommand('fight', ['1-7'], '理智作战', 'combat', true)
     .then(result => {
       outcomes.push({ ok: true, result });
-    }, error => {
+    }, (error: MaaCommandError) => {
       outcomes.push({ ok: false, error });
       // 与 HTTP 执行器一致：停止后按实际结果结算 Run。
       stopAgentRun(runId, { message: error.message, signal: error.signal ?? null });
@@ -144,11 +152,15 @@ test('shutdown terminates the running fake CLI and settles the run from its actu
   const summary = await service.drain({ reason: 'SIGTERM', timeoutMs: 1500 });
   await execution;
 
-  assert.equal(getAgentRun(runId).state, 'stopped');
+  const settledRun = getAgentRun(runId);
+  assert.ok(settledRun);
+  assert.equal(settledRun.state, 'stopped');
   assert.equal(getTaskStatus().isRunning, false);
   assert.equal(outcomes.length, 1);
-  assert.equal(outcomes[0].ok, false);
-  assert.equal(outcomes[0].error.stopped, true);
+  const first = outcomes[0];
+  assert.equal(first.ok, false);
+  assert.ok(first.error);
+  assert.equal(first.error.stopped, true);
   assert.ok(summary.deviceStopCalls >= 1);
   assert.deepEqual(summary.interruptedRunIds, []);
   await assert.rejects(stat(lockPath), { code: 'ENOENT' });
@@ -157,7 +169,7 @@ test('shutdown terminates the running fake CLI and settles the run from its actu
 test('shutdown escalates to SIGKILL inside its budget when the fake CLI ignores SIGTERM', async () => {
   const runId = beginExecution();
   const execution = execMaaCommand('fight', ['1-7', '--ignore-term'], '理智作战', 'combat', true)
-    .then(() => ({ ok: true }), error => {
+    .then((): ExecutionOutcome => ({ ok: true }), (error: MaaCommandError): ExecutionOutcome => {
       stopAgentRun(runId, { message: error.message, signal: error.signal ?? null });
       return { ok: false, error };
     });
@@ -177,8 +189,11 @@ test('shutdown escalates to SIGKILL inside its budget when the fake CLI ignores 
   const outcome = await execution;
 
   assert.equal(outcome.ok, false);
+  assert.ok(outcome.error);
   assert.equal(outcome.error.signal, 'SIGKILL');
-  assert.equal(getAgentRun(runId).state, 'stopped');
+  const settledRun = getAgentRun(runId);
+  assert.ok(settledRun);
+  assert.equal(settledRun.state, 'stopped');
   assert.equal(getTaskStatus().isRunning, false);
   assert.deepEqual(summary.interruptedRunIds, []);
   assert.ok(Date.now() - startedAt < 2000, 'forced shutdown should finish inside the drain budget');

@@ -12,7 +12,7 @@ import {
 } from '../schedulerService.ts';
 import type { ScheduledDailyFlowRunResult } from '../schedulerService.ts';
 import { createRuntimeLifecycle } from '../runtimeLifecycleService.ts';
-import { initializeRuntimeState } from '../runtimeInitializationService.js';
+import { initializeRuntimeState } from '../runtimeInitializationService.ts';
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
 import type { AgentRunDto } from '../agentRunService.ts';
 import { getTodayOpenStages } from '../notificationService.ts';

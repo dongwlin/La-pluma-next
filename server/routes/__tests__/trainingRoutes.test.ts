@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import router from '../agent.js';
+import router from '../agent.ts';
 import training from '../../services/operatorTrainingService.ts';
 import type { OperatorTrainingService } from '../../services/operatorTrainingService.ts';
 import { DEFAULT_TRAINING_SETTINGS } from '../../services/operatorTrainingModel.ts';
@@ -116,7 +116,7 @@ function handler(method: string, routePath: string): RouteHandler {
   return handle;
 }
 
-// 养成入口由独立子 router 承担：按 agent.js 的实际挂载关系递归解析，
+// 养成入口由独立子 router 承担：按 agent.ts 的实际挂载关系递归解析，
 // 证明这些路径仍通过聚合 router 暴露，而不是只存在于某个文件里。
 function findMountedRoute(candidateRouter: unknown, method: string, routePath: string): MountedRoute | null {
   if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return null;

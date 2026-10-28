@@ -1,37 +1,64 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { initializeRuntimeState } from '../runtimeInitializationService.js';
+import { initializeRuntimeState } from '../runtimeInitializationService.ts';
+import type {
+  RuntimeInitializationLogger,
+  TelegramRuntimeConfig
+} from '../runtimeInitializationService.ts';
+import type {
+  RuntimeLifecycle,
+  RuntimeLifecycleCloseSummary,
+  RuntimeLifecycleStartSummary,
+  RuntimeLifecycleState,
+  RuntimeLifecycleStep
+} from '../runtimeLifecycleService.ts';
 
-const silentLogger = {
+const silentLogger: RuntimeInitializationLogger = {
   info() {},
   warn() {},
   error() {}
 };
 
-function createFakeLifecycle() {
+/**
+ * 最小生命周期夹具：只实现注册与逆序关闭，其余查询返回固定值，
+ * 用来断言恢复过程把停止端口挂到同一个生命周期上。
+ */
+interface FakeLifecycle extends RuntimeLifecycle {
+  steps: RuntimeLifecycleStep[];
+}
+
+function createFakeLifecycle(): FakeLifecycle {
   let draining = false;
-  const steps = [];
+  let state: RuntimeLifecycleState = 'idle';
+  const steps: RuntimeLifecycleStep[] = [];
   return {
     steps,
     register(step) {
       steps.push(step);
     },
     isDraining: () => draining,
-    async close() {
+    getState: () => state,
+    getCloseSummary: () => null,
+    async start(): Promise<RuntimeLifecycleStartSummary> {
+      state = 'running';
+      return { started: [], durationMs: 0 };
+    },
+    async close(): Promise<RuntimeLifecycleCloseSummary> {
       draining = true;
+      state = 'closed';
       for (const step of [...steps].reverse()) {
-        await step.close?.();
+        await step.close?.({ reason: 'test', timeoutMs: 1_000 });
       }
-      return { ok: true };
+      return { reason: 'test', state: 'closed', ok: true, deadlineMs: 1_000, durationMs: 0, steps: [] };
     }
   };
 }
 
 describe('runtime initialization', () => {
   it('attaches the scheduler stop port before restoring persisted triggers without executing flows', async () => {
-    const events = [];
+    const events: unknown[][] = [];
     const lifecycle = createFakeLifecycle();
-    const persisted = {
+    const persisted: Record<string, unknown> = {
       'automation-tasks': {
         taskFlow: [{ id: 'award-1', enabled: true, commandId: 'award' }],
         schedule: { enabled: true, times: ['05:00'] }
@@ -81,7 +108,7 @@ describe('runtime initialization', () => {
   });
 
   it('keeps restoring persisted state when the scheduler lifecycle attachment fails', async () => {
-    const calls = [];
+    const calls: string[] = [];
     const summary = await initializeRuntimeState({
       lifecycle: createFakeLifecycle(),
       attachScheduleLifecycle: () => {
@@ -135,21 +162,20 @@ describe('runtime initialization', () => {
       updateCore: true,
       updateCli: false
     };
-    const persisted = {
+    const persisted: Record<string, unknown> = {
       notification,
       'automation-tasks': automation,
       'auto-update': autoUpdate
     };
-    const calls = {};
-    let activeNotification = null;
+    // 捕获注入的端口收到什么；readNotificationConfig 返回应用后的当前配置。
+    const calls: { notification?: unknown; schedule?: unknown; autoUpdate?: unknown; telegram?: unknown } = {};
 
     const summary = await initializeRuntimeState({
       loadConfig: async configType => ({ success: true, data: persisted[configType] }),
       applyNotificationConfig: config => {
         calls.notification = config;
-        activeNotification = config;
       },
-      readNotificationConfig: () => activeNotification,
+      readNotificationConfig: () => notification,
       registerSchedule: (scheduleId, times, taskFlow) => {
         calls.schedule = { scheduleId, times, taskFlow };
         return { success: true, message: 'restored schedule' };
@@ -186,7 +212,7 @@ describe('runtime initialization', () => {
   });
 
   it('isolates restore failures so other persisted jobs still start', async () => {
-    const calls = [];
+    const calls: string[] = [];
     const summary = await initializeRuntimeState({
       loadConfig: async configType => {
         if (configType === 'notification') throw new Error('notification storage unavailable');
@@ -228,7 +254,7 @@ describe('runtime initialization', () => {
   });
 
   it('initializes Telegram from the current config when no persisted notification exists', async () => {
-    let telegramConfig = null;
+    let telegramConfig: TelegramRuntimeConfig | null = null;
     const currentTelegram = {
       enabled: true,
       botToken: 'environment-token',
@@ -258,7 +284,7 @@ describe('runtime initialization', () => {
   });
 
   it('attaches the Telegram stop port before starting the enabled bot', async () => {
-    const events = [];
+    const events: unknown[][] = [];
     const lifecycle = createFakeLifecycle();
 
     const summary = await initializeRuntimeState({
@@ -289,7 +315,7 @@ describe('runtime initialization', () => {
   });
 
   it('does not start Telegram when its stop port cannot be attached', async () => {
-    const started = [];
+    const started: string[] = [];
 
     const summary = await initializeRuntimeState({
       lifecycle: createFakeLifecycle(),

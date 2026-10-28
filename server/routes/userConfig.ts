@@ -62,7 +62,7 @@ export function sendConfigStorageError(
 /**
  * 用户配置 HTTP 适配 router 工厂。存储实例经参数注入，缺省绑定
  * configStorageService 的默认存储；URL、错误码与成功字段与抽离前
- * agent.js 的内联路由保持一致。
+ * agent.ts 的内联路由保持一致。
  */
 export function createUserConfigRouter({
   storage = defaultUserConfigStorage

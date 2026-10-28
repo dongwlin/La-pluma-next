@@ -4,7 +4,7 @@ import { createServer, type RequestListener, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
-import { createLaPlumaApp } from '../server.js'
+import { createLaPlumaApp } from '../server.ts'
 import { createUserConfigStorage } from '../services/configStorageService.ts'
 import type { UserConfigStorage, UserConfigStore } from '../services/configStorageService.ts'
 
@@ -54,10 +54,7 @@ async function startAppWithStorage(
 ): Promise<{ port: number; storage: UserConfigStore; configDir: string }> {
   const configDir = await makeTempDir('la-pluma-user-config-http-')
   const storage = createUserConfigStorage({ configDir })
-  // server.js 为 JS 入口，其推断参数类型尚未包含 userConfigStorage 注入口；
-  // 这里以非字面量传参保持注入可达，注入口的类型收口随入口组装任务处理。
-  const appOptions = { env, userConfigStorage: storage }
-  const app = createLaPlumaApp(appOptions)
+  const app = createLaPlumaApp({ env, userConfigStorage: storage })
   const port = await listen(app)
   return { port, storage, configDir }
 }
@@ -174,13 +171,17 @@ describe('user config routes mounted with injected storage', () => {
     assert.equal(readRecord(brokenJsonPayload.error, 'error').code, 'AGENT_REQUEST_BODY_INVALID')
 
     // 非校验类存储失败按路由 fallback code 以 500 返回
-    const failingStorage: Pick<UserConfigStorage, 'loadUserConfig'> = {
+    // 只驱动读取路径；其余存储操作在断言失败前不会被调用。
+    const failingStorage: UserConfigStorage = {
       loadUserConfig: async () => ({
         success: false,
         message: '读取配置失败',
         error: { code: 'AGENT_INTERNAL_ERROR', details: {}, retryable: false },
         meta: { requestId: null, dryRun: false }
-      })
+      }),
+      saveUserConfig: async () => assert.fail('保存不应被调用'),
+      getAllUserConfigs: async () => assert.fail('列表不应被调用'),
+      deleteUserConfig: async () => assert.fail('删除不应被调用')
     }
     const failingAppOptions = { env: {}, userConfigStorage: failingStorage }
     const app = createLaPlumaApp(failingAppOptions)

@@ -8,8 +8,10 @@ import agentPreviewRoutes from './agentPreviewRoutes.ts';
 import agentNotificationRoutes from './agentNotificationRoutes.ts';
 import agentMaintenanceRoutes from './agentMaintenanceRoutes.ts';
 import { sendSuccess } from '../utils/apiHelper.ts';
-import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts'
+import type { ApiResponseWriter } from '../utils/apiHelper.ts';
+import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { buildAgentManifest, buildOpenApiSpec } from './agentContract.ts';
+import type { ReadRequest } from './readDto.ts';
 
 /**
  * Agent API 聚合入口。
@@ -20,7 +22,7 @@ import { buildAgentManifest, buildOpenApiSpec } from './agentContract.ts';
  */
 const router = express.Router();
 
-router.get('/manifest', (req, res) => {
+router.get('/manifest', (req: ReadRequest, res: ApiResponseWriter) => {
   return sendSuccess(res, req, buildAgentManifest({
     adbPath: DEFAULT_ADB_PATH,
     adbAddress: DEFAULT_ADB_ADDRESS,
@@ -28,7 +30,7 @@ router.get('/manifest', (req, res) => {
   }));
 });
 
-router.get('/openapi.json', (req, res) => {
+router.get('/openapi.json', (_req: ReadRequest, res: ApiResponseWriter) => {
   res.json(buildOpenApiSpec({
     adbPath: DEFAULT_ADB_PATH,
     adbAddress: DEFAULT_ADB_ADDRESS,
@@ -45,7 +47,7 @@ router.use(agentStatusRoutes);
 router.use(agentPreviewRoutes);
 
 // 日志读取与清理由独立 router 承担；清空/清理仍属运行数据维护，
-// 不能因迁出 agent.js 而当作无副作用接口。
+// 不能因迁出 agent.ts 而当作无副作用接口。
 router.use(agentLogRoutes);
 
 // 执行路由与 Run 生命周期适配由独立 router 承担。

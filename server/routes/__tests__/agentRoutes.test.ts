@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
-import router, { executeTrackedAgentAction as aggregateExecuteTrackedAgentAction } from '../agent.js'
+import router, { executeTrackedAgentAction as aggregateExecuteTrackedAgentAction } from '../agent.ts'
 import { executeTrackedAgentAction } from '../agentExecution.ts'
 import { API_VERSION } from '../agentContract.ts'
 import { getTaskStatus, setTaskStatus } from '../../services/maaProcessService.ts'
@@ -96,7 +96,7 @@ function isMountedRoute(value: unknown): value is MountedRoute {
   return value.stack.every(entry => isRecord(entry) && typeof entry.handle === 'function')
 }
 
-// 路由存在性以 agent.js 实际挂载的 router 图为准：执行路由由独立子 router
+// 路由存在性以 agent.ts 实际挂载的 router 图为准：执行路由由独立子 router
 // 承担，这里按挂载关系递归解析，不依赖某个文件里的声明位置。
 function findMountedRoute(candidateRouter: unknown, method: string, routePath: string): MountedRoute | null {
   if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return null

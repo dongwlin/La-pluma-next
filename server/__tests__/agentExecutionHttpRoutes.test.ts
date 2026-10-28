@@ -8,7 +8,7 @@ import { after, afterEach, describe, it } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 
-// 执行入口已从 agent.js 拆到独立 router 并类型化：这里通过 createLaPlumaApp
+// 执行入口已从 agent.ts 拆到独立 router 并类型化：这里通过 createLaPlumaApp
 // 验证真实 HTTP 的鉴权、body/query 收窄、统一错误出口、dryRun、幂等与目标
 // 停止。外部依赖只有临时目录与假 MAA CLI，不连接真实设备或 MAA 运行时。
 //
@@ -72,7 +72,7 @@ process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
 process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
 
-const { createLaPlumaApp } = await import('../server.js');
+const { createLaPlumaApp } = await import('../server.ts');
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 

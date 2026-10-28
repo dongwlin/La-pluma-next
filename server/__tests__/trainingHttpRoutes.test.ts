@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import { afterEach, describe, it } from 'node:test'
-import { createLaPlumaApp } from '../server.js'
+import { createLaPlumaApp } from '../server.ts'
 import operatorTraining from '../services/operatorTrainingService.ts'
 import type {
   OperatorTrainingService,

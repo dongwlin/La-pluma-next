@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import express from 'express';
-import agentRouter from '../agent.js';
+import agentRouter from '../agent.ts';
 import { createAgentNotificationRoutes } from '../agentNotificationRoutes.ts';
 import type { AgentNotificationRouteDependencies } from '../agentNotificationRoutes.ts';
-import { createLaPlumaApp } from '../../server.js';
+import { createLaPlumaApp } from '../../server.ts';
 import {
   parseChannelTestBody,
   parseNotificationConfigBody,
@@ -36,7 +36,7 @@ import {
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import { loggerManager } from '../../utils/logger.ts';
 
-// 通知 HTTP 适配已从 agent.js 拆到独立 router：这里按 agent.js 实际挂载
+// 通知 HTTP 适配已从 agent.ts 拆到独立 router：这里按 agent.ts 实际挂载
 // 关系验证入口存在，并通过真实 HTTP 验证鉴权、body 校验与统一错误出口。
 // 发送/测试路径只使用注入的假发送器或会在发起网络前失败的缺省配置；
 // 涉及发送的用例同时安装运行时出站守卫，证明回归不会发送真实通知消息。
@@ -164,7 +164,7 @@ async function useTempConfigStorage(): Promise<string> {
 }
 
 /**
- * 最小挂载：与 agent.js 一样把通知 router 挂在 /api/agent 下，并复用生产
+ * 最小挂载：与 agent.ts 一样把通知 router 挂在 /api/agent 下，并复用生产
  * 统一错误出口。鉴权由 createLaPlumaApp 的真实用例单独覆盖，这里专注
  * 注入发送器后的响应与失败语义。
  */

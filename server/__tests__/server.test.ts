@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import type { RequestListener } from 'node:http'
 import { connect as connectTcp, createServer as createTcpServer } from 'node:net'
+import type { Server as NetServer, Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,42 +14,95 @@ import {
   loadHttpsOptions,
   normalizeBasePath,
   startLaPlumaServer
-} from '../server.js'
+} from '../server.ts'
 import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from '../services/webrtcSignalingGateway.ts'
+import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts'
 import { getExecutionAdmissionGate } from '../services/executionAdmissionService.ts'
 import operatorTraining from '../services/operatorTrainingService.ts'
 import OperatorQuotes from '../services/operatorQuotesService.ts'
 
-const servers = []
-const tempDirs = []
+/** 用例注册的 HTTP/TCP 监听器：关闭时按需断开空闲连接。 */
+type TrackedServer = NetServer & {
+  closeIdleConnections?(): void
+  closeAllConnections?(): void
+}
 
-async function listen(app) {
-  const server = createServer(app)
+type JsonRecord = Record<string, unknown>
+
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+async function readJson(response: Response): Promise<JsonRecord> {
+  const body: unknown = await response.json()
+  assert.ok(isRecord(body), '响应应为 JSON 对象')
+  return body
+}
+
+function readNested(payload: JsonRecord, key: string): JsonRecord {
+  const value = payload[key]
+  assert.ok(isRecord(value), `${key} 应为 JSON 对象`)
+  return value
+}
+
+function readError(payload: JsonRecord): JsonRecord {
+  return readNested(payload, 'error')
+}
+
+/** 信令网关桩：只实现被组装入口读取的端口，不建立 WebRTC 连接。 */
+interface StubGatewayOptions {
+  handleLogin?: WebrtcSignalingGateway['handleLogin']
+  attach?: WebrtcSignalingGateway['attach']
+  close?: WebrtcSignalingGateway['close']
+}
+
+function stubSignalingGateway(options: StubGatewayOptions = {}): WebrtcSignalingGateway {
+  return {
+    proxyPath: WEBRTC_SIGNALING_PATH,
+    handleLogin: options.handleLogin ?? (async (_req, res) => { res.json({ token: 'one-use-ticket' }) }),
+    async handleUpgrade() {},
+    attach: options.attach ?? (() => {}),
+    close: options.close ?? (() => {})
+  }
+}
+
+const servers: TrackedServer[] = []
+const tempDirs: string[] = []
+
+async function listenOn(server: TrackedServer): Promise<number> {
   servers.push(server)
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  return server.address().port
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('监听端口获取失败')
+  }
+  return address.port
 }
 
-async function listenNetServer(server) {
-  servers.push(server)
-  await new Promise((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  return server.address().port
+async function listen(app: RequestListener): Promise<number> {
+  return listenOn(createServer(app))
 }
 
-function openUpgrade(port, path, origin) {
-  return new Promise((resolve, reject) => {
+async function listenNetServer(server: TrackedServer): Promise<number> {
+  return listenOn(server)
+}
+
+interface UpgradeResult {
+  socket: Socket
+  response: string
+}
+
+function openUpgrade(port: number, path: string, origin: string): Promise<UpgradeResult> {
+  return new Promise<UpgradeResult>((resolve, reject) => {
     const socket = connectTcp({ host: '127.0.0.1', port })
     let response = ''
-    const finish = () => {
+    const finish = (): void => {
       if (!response.includes('\r\n\r\n')) return
       socket.off('error', reject)
       resolve({ socket, response })
@@ -76,11 +131,12 @@ function openUpgrade(port, path, origin) {
 afterEach(async () => {
   while (servers.length) {
     const server = servers.pop()
+    assert.ok(server)
     server.closeIdleConnections?.()
     server.closeAllConnections?.()
-    await new Promise(resolve => server.close(resolve))
+    await new Promise<void>(resolve => server.close(() => resolve()))
   }
-  while (tempDirs.length) await rm(tempDirs.pop(), { recursive: true, force: true })
+  while (tempDirs.length) await rm(tempDirs.pop() as string, { recursive: true, force: true })
 })
 
 describe('La Pluma Next transport configuration', () => {
@@ -97,7 +153,7 @@ describe('La Pluma Next transport configuration', () => {
       /必须同时配置/
     )
 
-    const reads = []
+    const reads: string[] = []
     const options = loadHttpsOptions({
       LA_PLUMA_HTTPS_CERT_PATH: '/cert.pem',
       LA_PLUMA_HTTPS_KEY_PATH: '/key.pem'
@@ -105,6 +161,7 @@ describe('La Pluma Next transport configuration', () => {
       reads.push(path)
       return Buffer.from(path)
     })
+    assert.ok(options, '同时提供证书与私钥时应解析出 HTTPS 选项')
     assert.deepEqual(reads, ['/cert.pem', '/key.pem'])
     assert.equal(options.cert.toString(), '/cert.pem')
     assert.equal(options.key.toString(), '/key.pem')
@@ -113,27 +170,21 @@ describe('La Pluma Next transport configuration', () => {
   it('rejects an invalid PORT from the environment before starting any listener', async () => {
     await assert.rejects(
       startLaPlumaServer({ env: { PORT: 'not-a-port' } }),
-      error => error.code === 'RUNTIME_CONFIG_INVALID' && error.variableName === 'PORT'
+      error => isRecord(error) && error.code === 'RUNTIME_CONFIG_INVALID' && error.variableName === 'PORT'
     )
   })
 
   it('protects ticket issuance with LA_PLUMA_TOKEN and hides all other HTTP paths', async () => {
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        return res.json({ token: 'one-use-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
-      signalingGateway
+      signalingGateway: stubSignalingGateway()
     })
     const port = await listen(app)
     const baseUrl = `http://127.0.0.1:${port}${WEBRTC_SIGNALING_PATH}`
 
     const unauthorized = await fetch(`${baseUrl}/api/login`, { method: 'POST' })
     assert.equal(unauthorized.status, 401)
-    assert.equal((await unauthorized.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(readError(await readJson(unauthorized)).code, 'AGENT_AUTH_REQUIRED')
 
     const authorized = await fetch(`${baseUrl}/api/login`, {
       method: 'POST',
@@ -156,15 +207,9 @@ describe('La Pluma Next transport configuration', () => {
     await writeFile(join(clientDistPath, 'manifest.webmanifest'), '{"name":"La Pluma Next fixture"}')
     await writeFile(join(clientDistPath, 'sw.js'), 'globalThis.fixtureServiceWorker = true')
 
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        return res.json({ token: 'fixture-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: { NODE_ENV: 'production', LA_PLUMA_BASE_PATH: '/la-pluma/' },
-      signalingGateway,
+      signalingGateway: stubSignalingGateway(),
       clientDistPath
     })
     const port = await listen(app)
@@ -176,7 +221,7 @@ describe('La Pluma Next transport configuration', () => {
 
     const asset = await fetch(`${origin}/la-pluma/assets/app.js`)
     assert.equal(asset.status, 200)
-    assert.match(asset.headers.get('content-type'), /javascript/)
+    assert.match(asset.headers.get('content-type') ?? '', /javascript/)
     assert.match(await asset.text(), /fixtureLoaded/)
 
     const subPathShell = await fetch(`${origin}/la-pluma/`)
@@ -187,13 +232,14 @@ describe('La Pluma Next transport configuration', () => {
     assert.equal(mountRedirect.status, 301)
     assert.equal(mountRedirect.headers.get('location'), '/la-pluma/')
 
-    for (const [file, mimePattern] of [
+    const staticFiles: Array<[string, RegExp]> = [
       ['manifest.webmanifest', /application\/manifest\+json/],
       ['sw.js', /javascript/]
-    ]) {
+    ]
+    for (const [file, mimePattern] of staticFiles) {
       const response = await fetch(`${origin}/la-pluma/${file}`)
       assert.equal(response.status, 200)
-      assert.match(response.headers.get('content-type'), mimePattern)
+      assert.match(response.headers.get('content-type') ?? '', mimePattern)
     }
 
     const missingAsset = await fetch(`${origin}/la-pluma/assets/missing.js`)
@@ -218,15 +264,9 @@ describe('La Pluma Next transport configuration', () => {
     await writeFile(join(clientDistPath, 'manifest.webmanifest'), '{"name":"La Pluma Next root fixture"}')
     await writeFile(join(clientDistPath, 'sw.js'), 'globalThis.fixtureServiceWorker = true')
 
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        return res.json({ token: 'fixture-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: { NODE_ENV: 'production' },
-      signalingGateway,
+      signalingGateway: stubSignalingGateway(),
       clientDistPath
     })
     const port = await listen(app)
@@ -242,15 +282,16 @@ describe('La Pluma Next transport configuration', () => {
 
     const asset = await fetch(`${origin}/assets/app.js`)
     assert.equal(asset.status, 200)
-    assert.match(asset.headers.get('content-type'), /javascript/)
+    assert.match(asset.headers.get('content-type') ?? '', /javascript/)
 
-    for (const [file, mimePattern] of [
+    const staticFiles: Array<[string, RegExp]> = [
       ['manifest.webmanifest', /application\/manifest\+json/],
       ['sw.js', /javascript/]
-    ]) {
+    ]
+    for (const [file, mimePattern] of staticFiles) {
       const response = await fetch(`${origin}/${file}`)
       assert.equal(response.status, 200)
-      assert.match(response.headers.get('content-type'), mimePattern)
+      assert.match(response.headers.get('content-type') ?? '', mimePattern)
     }
 
     const missingAsset = await fetch(`${origin}/assets/missing.js`)
@@ -262,7 +303,7 @@ describe('La Pluma Next transport configuration', () => {
 
     const apiMiss = await fetch(`${origin}/api/agent/nonexistent-endpoint`)
     assert.equal(apiMiss.status, 404)
-    assert.equal((await apiMiss.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+    assert.equal(readError(await readJson(apiMiss)).code, 'AGENT_ROUTE_NOT_FOUND')
 
     const hiddenSignaling = await fetch(`${origin}${WEBRTC_SIGNALING_PATH}/devices`)
     assert.equal(hiddenSignaling.status, 404)
@@ -270,7 +311,7 @@ describe('La Pluma Next transport configuration', () => {
   })
 
   it('starts on an ephemeral HTTP port and closes without leaving a listener', async () => {
-    const warnings = []
+    const warnings: string[] = []
     const runtime = await startLaPlumaServer({
       env: {},
       host: '127.0.0.1',
@@ -344,15 +385,9 @@ describe('Cross-origin and auth middleware order', () => {
   })
 
   it('answers preflight for the token-protected ticket endpoint behind CORS', async () => {
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        return res.json({ token: 'one-use-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
-      signalingGateway
+      signalingGateway: stubSignalingGateway()
     })
     const port = await listen(app)
 
@@ -388,7 +423,7 @@ describe('Cross-origin and auth middleware order', () => {
 
     const missingToken = await fetch(url, { headers: { Origin: CROSS_ORIGIN } })
     assert.equal(missingToken.status, 401)
-    assert.equal((await missingToken.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(readError(await readJson(missingToken)).code, 'AGENT_AUTH_REQUIRED')
     assert.equal(missingToken.headers.get('access-control-allow-origin'), '*')
     assert.equal(missingToken.headers.get('access-control-allow-credentials'), null)
 
@@ -396,19 +431,19 @@ describe('Cross-origin and auth middleware order', () => {
       headers: { Origin: CROSS_ORIGIN, 'X-La-Pluma-Token': 'not-the-secret' }
     })
     assert.equal(wrongToken.status, 401)
-    assert.equal((await wrongToken.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(readError(await readJson(wrongToken)).code, 'AGENT_AUTH_REQUIRED')
 
     const bearerToken = await fetch(url, {
       headers: { Origin: CROSS_ORIGIN, Authorization: 'Bearer api-secret' }
     })
     assert.equal(bearerToken.status, 404)
-    assert.equal((await bearerToken.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+    assert.equal(readError(await readJson(bearerToken)).code, 'AGENT_ROUTE_NOT_FOUND')
 
     const headerToken = await fetch(url, {
       headers: { Origin: CROSS_ORIGIN, 'X-La-Pluma-Token': 'api-secret' }
     })
     assert.equal(headerToken.status, 404)
-    assert.equal((await headerToken.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+    assert.equal(readError(await readJson(headerToken)).code, 'AGENT_ROUTE_NOT_FOUND')
   })
 
   it('rejects an invalid token before parsing an invalid request body', async () => {
@@ -426,7 +461,7 @@ describe('Cross-origin and auth middleware order', () => {
     })
 
     assert.equal(response.status, 401)
-    assert.equal((await response.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(readError(await readJson(response)).code, 'AGENT_AUTH_REQUIRED')
   })
 
   it('maps an invalid body to the stable 400 once the token is accepted', async () => {
@@ -444,21 +479,15 @@ describe('Cross-origin and auth middleware order', () => {
     })
 
     assert.equal(response.status, 400)
-    const body = await response.json()
-    assert.equal(body.error.code, 'AGENT_REQUEST_BODY_INVALID')
-    assert.equal(body.error.retryable, false)
+    const error = readError(await readJson(response))
+    assert.equal(error.code, 'AGENT_REQUEST_BODY_INVALID')
+    assert.equal(error.retryable, false)
   })
 
   it('keeps hidden signaling admin endpoints 404 while remaining origin-agnostic', async () => {
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        return res.json({ token: 'one-use-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
-      signalingGateway
+      signalingGateway: stubSignalingGateway()
     })
     const port = await listen(app)
 
@@ -475,14 +504,15 @@ describe('Cross-origin and auth middleware order', () => {
 
   it('keeps unprotected ticket issuance same-origin without breaking non-browser clients', async () => {
     let logins = 0
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        logins += 1
-        return res.json({ token: `ticket-${logins}` })
-      }
-    }
-    const app = createLaPlumaApp({ env: {}, signalingGateway })
+    const app = createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway({
+        async handleLogin(_req, res) {
+          logins += 1
+          res.json({ token: `ticket-${logins}` })
+        }
+      })
+    })
     const port = await listen(app)
     const origin = `http://127.0.0.1:${port}`
     const loginUrl = `${origin}${WEBRTC_SIGNALING_PATH}/api/login`
@@ -496,9 +526,9 @@ describe('Cross-origin and auth middleware order', () => {
 
     const crossOrigin = await fetch(loginUrl, { method: 'POST', headers: { Origin: CROSS_ORIGIN } })
     assert.equal(crossOrigin.status, 403)
-    const forbidden = await crossOrigin.json()
-    assert.equal(forbidden.error.code, 'AGENT_SIGNALING_ORIGIN_FORBIDDEN')
-    assert.equal(forbidden.error.retryable, false)
+    const forbidden = await readJson(crossOrigin)
+    assert.equal(readError(forbidden).code, 'AGENT_SIGNALING_ORIGIN_FORBIDDEN')
+    assert.equal(readError(forbidden).retryable, false)
     assert.ok(!JSON.stringify(forbidden).includes(CROSS_ORIGIN))
     assert.equal(logins, 2)
 
@@ -513,15 +543,9 @@ describe('Cross-origin and auth middleware order', () => {
   })
 
   it('limits ticket issuance per source while keeping preflight available', async () => {
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
-      handleLogin(_req, res) {
-        return res.json({ token: 'one-use-ticket' })
-      }
-    }
     const app = createLaPlumaApp({
       env: {},
-      signalingGateway,
+      signalingGateway: stubSignalingGateway(),
       loginRateLimit: { maxSignalingLogins: 2 }
     })
     const port = await listen(app)
@@ -531,10 +555,10 @@ describe('Cross-origin and auth middleware order', () => {
     assert.equal((await fetch(loginUrl, { method: 'POST' })).status, 200)
     const blocked = await fetch(loginUrl, { method: 'POST' })
     assert.equal(blocked.status, 429)
-    const body = await blocked.json()
-    assert.equal(body.error.code, 'AGENT_RATE_LIMITED')
-    assert.equal(body.error.retryable, true)
-    assert.equal(body.error.details.retryAfterSeconds >= 1, true)
+    const error = readError(await readJson(blocked))
+    assert.equal(error.code, 'AGENT_RATE_LIMITED')
+    assert.equal(error.retryable, true)
+    assert.equal(Number(readNested(error, 'details').retryAfterSeconds) >= 1, true)
     assert.equal(Number(blocked.headers.get('retry-after')) >= 1, true)
 
     const preflight = await fetch(loginUrl, {
@@ -557,8 +581,8 @@ describe('Cross-origin and auth middleware order', () => {
       headers: { Authorization: `Bearer ${'x'.repeat(4096)}` }
     })
     assert.equal(longToken.status, 401)
-    const unauthorized = await longToken.json()
-    assert.equal(unauthorized.error.code, 'AGENT_AUTH_REQUIRED')
+    const unauthorized = await readJson(longToken)
+    assert.equal(readError(unauthorized).code, 'AGENT_AUTH_REQUIRED')
     assert.ok(!JSON.stringify(unauthorized).includes('LA_PLUMA_TOKEN'))
     assert.ok(!JSON.stringify(unauthorized).includes('api-secret'))
 
@@ -567,18 +591,18 @@ describe('Cross-origin and auth middleware order', () => {
 
     const blocked = await fetch(url, { headers: { 'X-La-Pluma-Token': 'wrong-token' } })
     assert.equal(blocked.status, 429)
-    const limited = await blocked.json()
-    assert.equal(limited.error.code, 'AGENT_RATE_LIMITED')
-    assert.equal(limited.error.retryable, true)
+    const limited = readError(await readJson(blocked))
+    assert.equal(limited.code, 'AGENT_RATE_LIMITED')
+    assert.equal(limited.retryable, true)
     assert.equal(Number(blocked.headers.get('retry-after')) >= 1, true)
 
     const accepted = await fetch(url, { headers: { Authorization: 'Bearer api-secret' } })
     assert.equal(accepted.status, 404)
-    assert.equal((await accepted.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+    assert.equal(readError(await readJson(accepted)).code, 'AGENT_ROUTE_NOT_FOUND')
   })
 
   it('issues a same-origin ticket that opens exactly one WebSocket upgrade', async () => {
-    const upstreamRequests = []
+    const upstreamRequests: string[] = []
     const upstream = createTcpServer(socket => {
       let request = ''
       socket.on('data', chunk => {
@@ -605,11 +629,15 @@ describe('Cross-origin and auth middleware order', () => {
     const server = createServer(app)
     servers.push(server)
     gateway.attach(server)
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(0, '127.0.0.1', resolve)
     })
-    const port = server.address().port
+    const address = server.address()
+    if (address === null || typeof address === 'string') {
+      throw new Error('监听端口获取失败')
+    }
+    const port = address.port
     const origin = `http://127.0.0.1:${port}`
     const loginUrl = `${origin}${WEBRTC_SIGNALING_PATH}/api/login`
 
@@ -620,12 +648,12 @@ describe('Cross-origin and auth middleware order', () => {
 
       const login = await fetch(loginUrl, { method: 'POST', headers: { Origin: origin } })
       assert.equal(login.status, 200)
-      const { token } = await login.json()
+      const token = (await readJson(login)).token
       assert.equal(token, 'server-ticket-1')
 
       const viewer = await openUpgrade(
         port,
-        `${WEBRTC_SIGNALING_PATH}/connect_client?token=${token}`,
+        `${WEBRTC_SIGNALING_PATH}/connect_client?token=${String(token)}`,
         origin
       )
       assert.match(viewer.response, /^HTTP\/1\.1 101 Switching Protocols/)
@@ -636,7 +664,7 @@ describe('Cross-origin and auth middleware order', () => {
 
       const replay = await openUpgrade(
         port,
-        `${WEBRTC_SIGNALING_PATH}/connect_client?token=${token}`,
+        `${WEBRTC_SIGNALING_PATH}/connect_client?token=${String(token)}`,
         origin
       )
       assert.match(replay.response, /^HTTP\/1\.1 401 Unauthorized/)
@@ -649,22 +677,28 @@ describe('Cross-origin and auth middleware order', () => {
 })
 
 describe('API unified error exit', () => {
-  const servers = []
-  const consoleLines = []
+  const servers: TrackedServer[] = []
+  const consoleLines: string[] = []
   const originalConsoleError = console.error
 
-  async function listen(app) {
+  async function listen(app: RequestListener): Promise<number> {
     const server = createServer(app)
     servers.push(server)
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(0, '127.0.0.1', resolve)
     })
-    return server.address().port
+    const address = server.address()
+    if (address === null || typeof address === 'string') {
+      throw new Error('监听端口获取失败')
+    }
+    return address.port
   }
 
-  function captureConsole() {
-    console.error = (...parts) => consoleLines.push(parts.join(' '))
+  function captureConsole(): void {
+    console.error = (...parts: unknown[]): void => {
+      consoleLines.push(parts.map(String).join(' '))
+    }
   }
 
   afterEach(async () => {
@@ -672,9 +706,10 @@ describe('API unified error exit', () => {
     consoleLines.length = 0
     while (servers.length) {
       const server = servers.pop()
+      assert.ok(server)
       server.closeIdleConnections?.()
       server.closeAllConnections?.()
-      await new Promise(resolve => server.close(resolve))
+      await new Promise<void>(resolve => server.close(() => resolve()))
     }
   })
 
@@ -689,12 +724,13 @@ describe('API unified error exit', () => {
     })
 
     assert.equal(response.status, 400)
-    const body = await response.json()
+    const body = await readJson(response)
     assert.equal(body.success, false)
     assert.equal(body.message, '请求体不是有效的 JSON')
-    assert.equal(body.error.code, 'AGENT_REQUEST_BODY_INVALID')
-    assert.deepEqual(body.error.details, {})
-    assert.equal(body.error.retryable, false)
+    const error = readError(body)
+    assert.equal(error.code, 'AGENT_REQUEST_BODY_INVALID')
+    assert.deepEqual(error.details, {})
+    assert.equal(error.retryable, false)
   })
 
   it('maps oversized JSON bodies to a stable 413', async () => {
@@ -708,8 +744,8 @@ describe('API unified error exit', () => {
     })
 
     assert.equal(response.status, 413)
-    const body = await response.json()
-    assert.equal(body.error.code, 'AGENT_REQUEST_BODY_TOO_LARGE')
+    const body = await readJson(response)
+    assert.equal(readError(body).code, 'AGENT_REQUEST_BODY_TOO_LARGE')
     assert.equal(body.message, '请求体超过允许的大小')
   })
 
@@ -720,8 +756,8 @@ describe('API unified error exit', () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/agent/runs/%E0%A4%A`)
 
     assert.equal(response.status, 400)
-    const body = await response.json()
-    assert.equal(body.error.code, 'AGENT_REQUEST_PATH_INVALID')
+    const body = await readJson(response)
+    assert.equal(readError(body).code, 'AGENT_REQUEST_PATH_INVALID')
     assert.equal(body.message, '请求路径参数无法解码')
     assert.ok(!JSON.stringify(body).includes('%E0%A4%A'))
   })
@@ -733,10 +769,10 @@ describe('API unified error exit', () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint?token=secret-query-value`)
 
     assert.equal(response.status, 404)
-    const body = await response.json()
+    const body = await readJson(response)
     assert.equal(body.success, false)
     assert.equal(body.message, '接口不存在')
-    assert.equal(body.error.code, 'AGENT_ROUTE_NOT_FOUND')
+    assert.equal(readError(body).code, 'AGENT_ROUTE_NOT_FOUND')
     const raw = JSON.stringify(body)
     assert.ok(!raw.includes('secret-query-value'))
     assert.ok(!raw.includes('nonexistent-endpoint'))
@@ -749,7 +785,7 @@ describe('API unified error exit', () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`)
 
     assert.equal(response.status, 401)
-    assert.equal((await response.json()).error.code, 'AGENT_AUTH_REQUIRED')
+    assert.equal(readError(await readJson(response)).code, 'AGENT_AUTH_REQUIRED')
   })
 
   it('keeps declared business errors intact through the unified exit', async () => {
@@ -769,10 +805,10 @@ describe('API unified error exit', () => {
       })
 
       assert.equal(response.status, 409)
-      const body = await response.json()
+      const body = await readJson(response)
       assert.equal(body.success, false)
       assert.equal(body.message, '养成队列已变化，请重新生成计划后应用')
-      assert.equal(body.meta.requestId, 'error-exit-409')
+      assert.equal(readNested(body, 'meta').requestId, 'error-exit-409')
       assert.ok(consoleLines[0].includes('[API] POST /api/agent/actions/apply-training-plan -> 409'))
     } finally {
       operatorTraining.applyPlanToTasks = originalApply
@@ -796,11 +832,12 @@ describe('API unified error exit', () => {
       })
 
       assert.equal(response.status, 500)
-      const body = await response.json()
-      assert.equal(body.error.code, 'AGENT_INTERNAL_ERROR')
+      const body = await readJson(response)
+      const error = readError(body)
+      assert.equal(error.code, 'AGENT_INTERNAL_ERROR')
       assert.equal(body.message, '服务器内部错误')
-      assert.deepEqual(body.error.details, {})
-      assert.equal(body.error.retryable, false)
+      assert.deepEqual(error.details, {})
+      assert.equal(error.retryable, false)
       assert.ok(!JSON.stringify(body).includes('内部堆栈泄露标记'))
       const logged = consoleLines.join('\n')
       assert.ok(!logged.includes('内部堆栈泄露标记'))
@@ -824,8 +861,8 @@ describe('API unified error exit', () => {
       const response = await fetch(`http://127.0.0.1:${port}/api/operator-quotes/all`)
 
       assert.equal(response.status, 500)
-      const body = await response.json()
-      assert.equal(body.error.code, 'AGENT_INTERNAL_ERROR')
+      const body = await readJson(response)
+      assert.equal(readError(body).code, 'AGENT_INTERNAL_ERROR')
       assert.equal(body.message, '服务器内部错误')
       assert.ok(!JSON.stringify(body).includes('同步异常泄露标记'))
     } finally {
@@ -853,17 +890,16 @@ describe('Server runtime assembly', () => {
   }
 
   it('closes runtime domains before the transport and reuses the first close result', async () => {
-    const events = []
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
+    const events: string[] = []
+    const signalingGateway = stubSignalingGateway({
       attach() {},
-      handleLogin(_req, res) {
+      async handleLogin(_req, res) {
         res.status(404).end()
       },
       close() {
         events.push('signaling-gateway')
       }
-    }
+    })
 
     const runtime = await startLaPlumaServer({
       env: {},
@@ -872,6 +908,7 @@ describe('Server runtime assembly', () => {
       signalingGateway,
       initializeRunStore: async () => runStoreSummary,
       initializeRuntime: async ({ lifecycle }) => {
+        assert.ok(lifecycle, '组装入口必须传入生命周期端口')
         assert.equal(lifecycle.getState(), 'starting')
         lifecycle.register({
           name: 'fixture-runtime-domain',
@@ -915,25 +952,28 @@ describe('Server runtime assembly', () => {
   it('releases the transport when the listen step fails', async () => {
     const blocker = createServer()
     servers.push(blocker)
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       blocker.once('error', reject)
       blocker.listen(0, '127.0.0.1', resolve)
     })
-    const blockedPort = blocker.address().port
+    const blockedAddress = blocker.address()
+    if (blockedAddress === null || typeof blockedAddress === 'string') {
+      throw new Error('监听端口获取失败')
+    }
+    const blockedPort = blockedAddress.port
 
-    const events = []
-    const signalingGateway = {
-      proxyPath: WEBRTC_SIGNALING_PATH,
+    const events: string[] = []
+    const signalingGateway = stubSignalingGateway({
       attach() {
         events.push('attach')
       },
-      handleLogin(_req, res) {
+      async handleLogin(_req, res) {
         res.status(404).end()
       },
       close() {
         events.push('signaling-gateway')
       }
-    }
+    })
 
     await assert.rejects(
       startLaPlumaServer({
@@ -947,14 +987,14 @@ describe('Server runtime assembly', () => {
         },
         logger: { log() {}, error() {} }
       }),
-      error => error.code === 'RUNTIME_LIFECYCLE_START_FAILED' && error.stepName === 'http-transport'
+      error => isRecord(error) && error.code === 'RUNTIME_LIFECYCLE_START_FAILED' && error.stepName === 'http-transport'
     )
 
     assert.deepEqual(events, ['attach', 'signaling-gateway'])
   })
 
   it('does not start listeners, timers or runtime domains when the entry is imported', async () => {
-    const entry = new URL('../server.js', import.meta.url).href
+    const entry = new URL('../server.ts', import.meta.url).href
     const script = `await import(${JSON.stringify(entry)}); process.stdout.write('imported');`
     const child = spawn(process.execPath, ['--input-type=module', '--eval', script], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
@@ -962,7 +1002,14 @@ describe('Server runtime assembly', () => {
       stdio: ['ignore', 'pipe', 'pipe']
     })
 
-    const result = await new Promise((resolve, reject) => {
+    interface ImportOutcome {
+      code: number | null
+      signal: NodeJS.Signals | null
+      stdout: string
+      stderr: string
+    }
+
+    const result = await new Promise<ImportOutcome>((resolve, reject) => {
       let stdout = ''
       let stderr = ''
       const timer = setTimeout(() => {

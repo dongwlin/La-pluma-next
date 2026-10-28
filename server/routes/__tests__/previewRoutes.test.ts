@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import router from '../agent.js';
+import router from '../agent.ts';
 import { buildWebrtcBrowserProtocol } from '../agentPreviewRoutes.ts';
 import { DEFAULT_DEVICE_ID } from '../../services/webrtcService.ts';
 import { parseDeviceIdBody, parseOrientationBody } from '../previewDto.ts';
 
-// 预览入口由独立子 router 承担：按 agent.js 的实际挂载关系递归解析，
+// 预览入口由独立子 router 承担：按 agent.ts 的实际挂载关系递归解析，
 // 证明截图、WebRTC、方向与设备采样仍通过聚合 router 暴露，而不是只
 // 存在于某个文件里。
 interface MountedRouteLayer {

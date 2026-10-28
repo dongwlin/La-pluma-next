@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import type { RequestListener, Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, afterEach, describe, it } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
+import type { ExecutionRequest, ExecutionResponseWriter } from '../routes/executionDto.ts'
+import type { TrackedExecutionLifecycle } from '../routes/agentExecution.ts'
 
 // 假 MAA CLI 必须在导入服务模块之前就位（CLI 路径在模块导入时读取）。
 const root = await mkdtemp(join(tmpdir(), 'la-pluma-log-correlation-'))
 const cliPath = join(root, 'maa')
 let failWrites = false
-const previousEnv = Object.fromEntries(
+const previousEnv: Record<string, string | undefined> = Object.fromEntries(
   ['MAA_CLI_PATH', 'LA_PLUMA_MAA_LOCK_FILE'].map(key => [key, process.env[key]])
 )
 process.env.MAA_CLI_PATH = cliPath
@@ -27,8 +30,8 @@ if (args.includes('--slow')) await delay(120);
 process.exitCode = 0;
 `, { mode: 0o755 })
 
-const { createLaPlumaApp } = await import('../server.js')
-const { executeTrackedAgentAction } = await import('../routes/agent.js')
+const { createLaPlumaApp } = await import('../server.ts')
+const { executeTrackedAgentAction } = await import('../routes/agent.ts')
 const operatorTraining = (await import('../services/operatorTrainingService.ts')).default
 const {
   clearRealtimeLogs,
@@ -61,25 +64,31 @@ await initializeAgentRunStore({
   }
 })
 
-const servers = []
-const consoleLines = []
+const servers: Server[] = []
+const consoleLines: string[] = []
 const originalConsoleError = console.error
 
-async function listen(app) {
+async function listen(app: RequestListener): Promise<number> {
   const server = createServer(app)
   servers.push(server)
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  return server.address().port
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('监听端口获取失败')
+  }
+  return address.port
 }
 
-function captureConsole() {
-  console.error = (...parts) => consoleLines.push(parts.join(' '))
+function captureConsole(): void {
+  console.error = (...parts: unknown[]): void => {
+    consoleLines.push(parts.map(String).join(' '))
+  }
 }
 
-function malformedBodyRequest(port, headers = {}) {
+function malformedBodyRequest(port: number, headers: Record<string, string> = {}): Promise<Response> {
   return fetch(`http://127.0.0.1:${port}/api/agent/status`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
@@ -87,32 +96,56 @@ function malformedBodyRequest(port, headers = {}) {
   })
 }
 
-function createRequest() {
+/** 执行适配器只读取 headers/query/body/get；其余字段由路由声明补齐。 */
+function createRequest(): ExecutionRequest {
   return { headers: {}, query: {}, body: {}, get: () => undefined }
 }
 
-function createResponse() {
-  return {
+/** 执行响应夹具：记录状态码与 JSON 载荷，供断言运行生命周期。 */
+interface TestResponse extends ExecutionResponseWriter {
+  statusCode: number
+  body: unknown
+  headers: Record<string, string>
+}
+
+function createResponse(): TestResponse {
+  const res: TestResponse = {
     statusCode: 200,
     headersSent: false,
     body: null,
     headers: {},
-    set(name, value) {
+    set(name: string, value: string) {
       this.headers[name] = value
       return this
     },
-    status(code) {
+    status(code: number) {
       this.statusCode = code
       return this
     },
-    json(body) {
+    json(body: object) {
       this.body = body
       return this
     }
   }
+  return res
 }
 
-async function waitFor(predicate, timeoutMs = 5000) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readRecord(value: unknown, label: string): Record<string, unknown> {
+  assert.ok(isRecord(value), `${label} 应为 JSON 对象`)
+  return value
+}
+
+async function readJson(response: Response): Promise<Record<string, unknown>> {
+  const body: unknown = await response.json()
+  assert.ok(isRecord(body), '响应应为 JSON 对象')
+  return body
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if (predicate()) return
@@ -121,7 +154,7 @@ async function waitFor(predicate, timeoutMs = 5000) {
   throw new Error('等待执行结束超时')
 }
 
-async function waitForLeaseFree(timeoutMs = 5000) {
+async function waitForLeaseFree(timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if ((await getMaaExecutionLeaseSnapshot()).state === 'free') return
@@ -135,9 +168,10 @@ afterEach(async () => {
   consoleLines.length = 0
   while (servers.length) {
     const server = servers.pop()
+    assert.ok(server)
     server.closeIdleConnections?.()
     server.closeAllConnections?.()
-    await new Promise(resolve => server.close(resolve))
+    await new Promise<void>(resolve => server.close(() => resolve()))
   }
 })
 
@@ -155,7 +189,7 @@ describe('request id correlation', () => {
     const port = await listen(app)
     captureConsole()
 
-    const cases = [
+    const cases: Array<{ headers: Record<string, string>; supplied: string | null }> = [
       { headers: { 'x-request-id': 'client-correlation-1' }, supplied: 'client-correlation-1' },
       { headers: {}, supplied: null },
       { headers: { 'x-request-id': 'x'.repeat(200) }, supplied: 'x'.repeat(200) },
@@ -175,7 +209,7 @@ describe('request id correlation', () => {
       } else {
         assert.match(String(requestId), /^[0-9a-f-]{36}$/)
       }
-      assert.equal((await response.json()).meta.requestId, requestId)
+      assert.equal(readRecord((await readJson(response)).meta, 'meta').requestId, requestId)
 
       const logged = consoleLines.join('\n')
       assert.ok(logged.includes('[Api][WARN]'))
@@ -219,8 +253,8 @@ describe('request id correlation', () => {
       )
 
       assert.equal(serverError.status, 500)
-      const body = await serverError.json()
-      assert.equal(body.error.code, 'AGENT_INTERNAL_ERROR')
+      const body = await readJson(serverError)
+      assert.equal(readRecord(body.error, 'error').code, 'AGENT_INTERNAL_ERROR')
       const logged = consoleLines.join('\n')
       assert.ok(logged.includes('[Api][ERROR]'))
       assert.ok(logged.includes('[API] POST /api/agent/actions/apply-training-plan -> 500 AGENT_INTERNAL_ERROR'))
@@ -317,6 +351,7 @@ describe('request id correlation', () => {
     const backgroundEntry = loggerManager.getLogger('MaaService').getAllLogs()
       .filter(entry => entry.message.includes('命令执行完成'))
       .at(-1)
+    assert.ok(backgroundEntry, '结构化日志应记录后台完成')
     assert.equal(backgroundEntry.runId, 'run-bg-1')
     assert.equal(backgroundEntry.operationId, 'run_task')
 
@@ -335,31 +370,35 @@ describe('run ownership correlation', () => {
     failWrites = false
     const req = createRequest()
     const res = createResponse()
-    let lifecycleRef = null
-    let executeContext = null
+    // 执行回调在适配器内部运行，用数组收集实际注入的生命周期与上下文。
+    const lifecycles: TrackedExecutionLifecycle[] = []
+    const contexts: Array<{ runId?: string; operationId?: string }> = []
 
     await executeTrackedAgentAction(req, res, {
       operationId: 'run_task',
       input: { command: 'fight', waitForCompletion: false },
       waitForCompletion: false,
       execute: async (lifecycle, { runId }) => {
-        lifecycleRef = lifecycle
-        executeContext = { ...getLogContext(), runId }
+        lifecycles.push(lifecycle)
+        contexts.push({ ...getLogContext(), runId })
         return { accepted: true }
       }
     })
 
-    const runId = res.body?.data?.runId
-    assert.ok(runId, '响应应包含 runId')
+    const responseData = readRecord(readRecord(res.body, 'response body').data, 'response data')
+    const runId = responseData.runId
+    assert.equal(typeof runId, 'string')
     assert.equal(res.statusCode, 202)
-    assert.equal(executeContext.runId, runId)
-    assert.equal(executeContext.operationId, 'run_task')
+    const [executeContext] = contexts
+    assert.equal(executeContext?.runId, runId)
+    assert.equal(executeContext?.operationId, 'run_task')
 
     // 响应已返回且发起作用域已结束：此时统一收尾由 Run 所有者记录。
     assert.deepEqual(getLogContext(), {})
     failWrites = true
     routesLogger.clear()
-    await lifecycleRef.onSettled({ ok: true, result: { done: true } })
+    const [settledLifecycle] = lifecycles
+    await settledLifecycle?.onSettled?.({ ok: true, result: { done: true } })
 
     const failureEntry = routesLogger.getAllLogs()
       .find(entry => entry.message.includes('更新或持久化 Agent run 终态失败'))

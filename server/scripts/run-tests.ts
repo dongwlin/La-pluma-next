@@ -6,9 +6,13 @@ import { fileURLToPath } from 'node:url';
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const excludedDirectories = new Set(['data', 'debug', 'node_modules']);
 
-async function findTestFiles(directory, insideTestDirectory = false) {
+/**
+ * 逐文件、逐进程发现测试：只认 `__tests__` 目录下的 `.test.js` / `.test.ts`，
+ * 跳过隐藏项与运行数据目录，排序后逐个交给独立 Node 进程执行。
+ */
+async function findTestFiles(directory: string, insideTestDirectory = false): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
-  const files = [];
+  const files: string[] = [];
 
   for (const entry of entries) {
     if (entry.name.startsWith('.') || excludedDirectories.has(entry.name)) continue;
@@ -29,7 +33,7 @@ if (testFiles.length === 0) {
   console.error('No server test files found.');
   process.exitCode = 1;
 } else {
-  const failures = [];
+  const failures: string[] = [];
 
   for (const testFile of testFiles) {
     const relativePath = path.relative(serverRoot, testFile);

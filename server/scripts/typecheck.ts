@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ignoredDirectories = new Set(['node_modules', 'data', 'debug']);
 
-function collectFiles(directory, extension) {
+/** 递归收集指定扩展名的文件，排除运行数据与依赖目录。 */
+function collectFiles(directory: string, extension: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     if (entry.isDirectory()) {
       return ignoredDirectories.has(entry.name)

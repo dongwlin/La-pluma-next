@@ -46,7 +46,7 @@ import {
 import type { MaybeApiRequest } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
 import { withExecutionLogContext } from '../utils/logContext.ts'
-import { resolveRequestConnection } from './requestConnection.js';
+import { resolveRequestConnection } from './requestConnection.ts';
 import {
   isRecord,
   isStopped,
@@ -68,7 +68,7 @@ import type {
 
 /**
  * 执行路由与 Run 生命周期适配：任务、流程、作业集的 tracked 执行，目标停止与
- * 202/幂等响应集中在本 router。agent.js 只按原注册顺序挂载；Run 与设备租约
+ * 202/幂等响应集中在本 router。agent.ts 只按原注册顺序挂载；Run 与设备租约
  * 仍由 agentRunService / executionCoordinatorService 唯一持有。
  *
  * 类型边界：请求体、查询与会话输入在 executionDto 按端点收窄；本模块只做

@@ -15,7 +15,7 @@ import type {
   PreviewWebrtcStatusPayload
 } from '../routes/previewDto.ts';
 
-// 真实 HTTP 回归：截图、WebRTC、方向与设备采样已从 agent.js 拆到独立
+// 真实 HTTP 回归：截图、WebRTC、方向与设备采样已从 agent.ts 拆到独立
 // 预览 router，这里通过 createLaPlumaApp 验证挂载、鉴权、body/query 归一化、
 // dry-run 与统一错误出口保持不变。只使用临时目录、假 MAA CLI 和假 ADB，
 // 不连接真实设备、不启动真实 WebRTC 服务。
@@ -84,7 +84,7 @@ process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
 process.env.LA_PLUMA_WEBRTC_PORT = '45871';
 process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
-const { createLaPlumaApp } = await import('../server.js');
+const { createLaPlumaApp } = await import('../server.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
 // 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。

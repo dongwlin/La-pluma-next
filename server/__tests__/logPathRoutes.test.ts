@@ -54,7 +54,7 @@ process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_LOG_DIR = maaLogDir;
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
-const { createLaPlumaApp } = await import('../server.js');
+const { createLaPlumaApp } = await import('../server.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
 

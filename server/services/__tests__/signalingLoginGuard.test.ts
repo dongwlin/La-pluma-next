@@ -5,27 +5,42 @@ import {
   createSignalingLoginGuard,
   isSameOriginRequest
 } from '../signalingLoginGuard.ts'
+import type { SignalingLoginRequestLike, SignalingLoginResponseLike } from '../signalingLoginGuard.ts'
 import { RATE_LIMITED_CODE } from '../../utils/apiTokenAuth.ts'
 import { createLoginThrottle } from '../../utils/loginThrottle.ts'
+import type { ApiErrorResponse } from '../../utils/apiHelper.ts'
 
-function createRecorder() {
-  const headers = {}
-  const state = { statusCode: 0, body: null }
-  const response = {
-    set(field, value) {
+type SignalingLoginGuard = ReturnType<typeof createSignalingLoginGuard>
+
+interface RecorderState {
+  statusCode: number
+  body: unknown
+}
+
+interface Recorder {
+  response: SignalingLoginResponseLike
+  headers: Record<string, string>
+  state: RecorderState
+}
+
+function createRecorder(): Recorder {
+  const headers: Record<string, string> = {}
+  const state: RecorderState = { statusCode: 0, body: null }
+  const response: SignalingLoginResponseLike = {
+    set(field: string, value: string) {
       headers[field] = value
       return response
     },
-    status(statusCode) {
+    status(statusCode: number) {
       state.statusCode = statusCode
       return {
-        json(body) {
+        json(body: object) {
           state.body = body
           return state
         }
       }
     },
-    json(body) {
+    json(body: object) {
       state.statusCode = 200
       state.body = body
       return state
@@ -34,13 +49,31 @@ function createRecorder() {
   return { response, headers, state }
 }
 
-function invoke(guard, req) {
+function invoke(guard: SignalingLoginGuard, req: SignalingLoginRequestLike): Recorder & { nextCalls: number } {
   const recorder = createRecorder()
   let nextCalls = 0
   guard({ ip: '198.51.100.7', ...req }, recorder.response, () => {
     nextCalls += 1
   })
   return { ...recorder, nextCalls }
+}
+
+/** 响应体按统一错误信封收窄；拒绝只来自守卫本身。 */
+function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as { success?: unknown; message?: unknown; error?: unknown }
+  if (record.success !== false || typeof record.message !== 'string') return false
+  const error = record.error as { code?: unknown; retryable?: unknown; details?: unknown } | null
+  return typeof error === 'object'
+    && error !== null
+    && typeof error.code === 'string'
+    && typeof error.retryable === 'boolean'
+    && typeof error.details === 'object'
+}
+
+function readErrorBody(state: RecorderState): ApiErrorResponse {
+  assert.ok(isApiErrorResponse(state.body), '响应体应为统一错误信封')
+  return state.body
 }
 
 describe('same-origin detection', () => {
@@ -86,7 +119,7 @@ describe('same-origin detection', () => {
 })
 
 describe('signaling login guard', () => {
-  const openGuard = () => createSignalingLoginGuard({
+  const openGuard = (): SignalingLoginGuard => createSignalingLoginGuard({
     token: '',
     throttle: createLoginThrottle({ windowMs: 60_000, maxAttempts: 30 })
   })
@@ -105,9 +138,10 @@ describe('signaling login guard', () => {
     })
     assert.equal(result.nextCalls, 0)
     assert.equal(result.state.statusCode, 403)
-    assert.equal(result.state.body.error.code, SIGNALING_ORIGIN_FORBIDDEN_CODE)
-    assert.equal(result.state.body.error.retryable, false)
-    const serialized = JSON.stringify(result.state.body)
+    const body = readErrorBody(result.state)
+    assert.equal(body.error.code, SIGNALING_ORIGIN_FORBIDDEN_CODE)
+    assert.equal(body.error.retryable, false)
+    const serialized = JSON.stringify(body)
     assert.ok(!serialized.includes('evil.example'))
     assert.ok(!serialized.includes('LA_PLUMA_TOKEN'))
   })
@@ -134,8 +168,9 @@ describe('signaling login guard', () => {
     const blocked = invoke(guard, { headers: {}, ip: '203.0.113.5' })
     assert.equal(blocked.nextCalls, 0)
     assert.equal(blocked.state.statusCode, 429)
-    assert.equal(blocked.state.body.error.code, RATE_LIMITED_CODE)
-    assert.equal(blocked.state.body.error.details.retryAfterSeconds >= 1, true)
+    const blockedBody = readErrorBody(blocked.state)
+    assert.equal(blockedBody.error.code, RATE_LIMITED_CODE)
+    assert.equal(Number(blockedBody.error.details.retryAfterSeconds) >= 1, true)
     assert.equal(Number(blocked.headers['Retry-After']) >= 1, true)
 
     assert.equal(invoke(guard, { headers: {}, ip: '203.0.113.6' }).nextCalls, 1)

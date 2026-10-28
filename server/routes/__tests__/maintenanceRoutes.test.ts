@@ -9,7 +9,7 @@ import type { TestContext } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../maintenanceDto.ts';
 
-// 剩余维护入口已从 agent.js 拆到独立 router：这里先按实际挂载关系核对
+// 剩余维护入口已从 agent.ts 拆到独立 router：这里先按实际挂载关系核对
 // 完整路由清单与顺序，再通过 createLaPlumaApp 验证真实 HTTP 的鉴权、
 // 连接覆盖、dryRun 与平台信息契约。所有外部依赖都用假 CLI / 假 ADB
 // 或临时目录，不触碰真实设备与资源更新。
@@ -93,7 +93,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
 process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(fixtureDir, 'activity-copilot-progress.json');
 
-const { createLaPlumaApp } = await import('../../server.js');
+const { createLaPlumaApp } = await import('../../server.ts');
 const {
   parseAutoUpdateBody,
   parseCopilotPlanQuery,
@@ -110,7 +110,7 @@ const {
   resourceInfoFallback,
   toChangelogEntry
 } = await import('../maintenanceDto.ts');
-const { default: agentRouter } = await import('../agent.js');
+const { default: agentRouter } = await import('../agent.ts');
 const agentExecutionRoutes = (await import('../agentExecution.ts')).default;
 const agentStatusRoutes = (await import('../agentStatusRoutes.ts')).default;
 const agentLogRoutes = (await import('../agentLogRoutes.ts')).default;

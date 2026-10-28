@@ -11,7 +11,7 @@ import {
 } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { API_VERSION } from './agentContract.ts';
-import { resolveRequestConnection } from './requestConnection.js';
+import { resolveRequestConnection } from './requestConnection.ts';
 import { getAdbSummary, getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.ts';
 import { readErrorMessage, readNumericQuery } from './readDto.ts';
 import type { AdbStatusFailure, AgentStatusPayload, ReadRequest, RunLookupRequest } from './readDto.ts';

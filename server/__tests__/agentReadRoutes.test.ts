@@ -15,7 +15,7 @@ import type { DailyStageOverview } from '../services/notificationService.ts';
 import type { DepotFile, OperBoxFile, OperatorSummary } from '../services/dataParserService.ts';
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 
-// 真实 HTTP 回归：状态、Run 查询、日志、掉落与游戏数据读取已从 agent.js
+// 真实 HTTP 回归：状态、Run 查询、日志、掉落与游戏数据读取已从 agent.ts
 // 拆到独立 router，这里通过 createLaPlumaApp 验证挂载、鉴权、query 归一化、
 // 日志路径与生产静态 fallback 顺序保持不变。
 // 环境变量必须在导入被测模块前就绪：MAA_CLI_PATH 与 XDG_* 由服务在导入或
@@ -100,7 +100,7 @@ process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
 process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
-const { createLaPlumaApp } = await import('../server.js');
+const { createLaPlumaApp } = await import('../server.ts');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
