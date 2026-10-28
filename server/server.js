@@ -22,6 +22,10 @@ import {
 } from './services/agentRunService.js';
 import { initializeRuntimeState } from './services/runtimeInitializationService.js';
 import {
+  DEFAULT_CLOSE_DEADLINE_MS,
+  createRuntimeLifecycle
+} from './services/runtimeLifecycleService.ts';
+import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from './services/webrtcSignalingGateway.js';
@@ -173,43 +177,74 @@ export async function startLaPlumaServer({
   signalingGateway = createWebrtcSignalingGateway(),
   initializeRunStore = initializeAgentRunStore,
   initializeRuntime = initializeRuntimeState,
-  logger = console
+  logger = console,
+  closeDeadlineMs = DEFAULT_CLOSE_DEADLINE_MS,
+  appPaths = resolveAppPaths({ env })
 } = {}) {
-  const app = createLaPlumaApp({ env, signalingGateway });
+  // 组装入口集中解析配置并接线运行依赖：应用、传输、Run 存储和运行时恢复共享同一个
+  // 生命周期，关闭顺序由注册顺序取反决定，避免各模块在导入时自行启动或停止。
+  const lifecycle = createRuntimeLifecycle({ logger, closeDeadlineMs });
+  const app = createLaPlumaApp({
+    env,
+    signalingGateway,
+    clientDistPath: appPaths.frontendDistDir
+  });
   const transport = createLaPlumaTransportServer({ app, signalingGateway, env });
+  let listeningPort = port;
 
-  try {
-    const summary = await initializeRunStore();
-    logger.log('[AgentRun] 存储已就绪:', {
-      filePath: summary.filePath,
-      restoredRuns: summary.restoredRuns,
-      interruptedRuns: summary.interruptedRuns,
-      prunedRuns: summary.prunedRuns
-    });
-  } catch (error) {
-    const status = getAgentRunStoreStatus();
-    logger.error('[AgentRun] 存储初始化失败，执行接口已关闭:', {
-      filePath: status.filePath,
-      error: status.error || error.message
-    });
-  }
+  lifecycle.register({
+    name: 'agent-run-store',
+    start: async () => {
+      try {
+        const summary = await initializeRunStore();
+        logger.log('[AgentRun] 存储已就绪:', {
+          filePath: summary.filePath,
+          restoredRuns: summary.restoredRuns,
+          interruptedRuns: summary.interruptedRuns,
+          prunedRuns: summary.prunedRuns
+        });
+      } catch (error) {
+        const status = getAgentRunStoreStatus();
+        logger.error('[AgentRun] 存储初始化失败，执行接口已关闭:', {
+          filePath: status.filePath,
+          error: status.error || error.message
+        });
+      }
+    }
+  });
 
-  try {
-    await new Promise((resolveListen, rejectListen) => {
-      const onError = error => rejectListen(error);
-      transport.server.once('error', onError);
-      transport.server.listen(port, host, () => {
-        transport.server.off('error', onError);
-        resolveListen();
+  lifecycle.register({
+    name: 'http-transport',
+    start: async () => {
+      await new Promise((resolveListen, rejectListen) => {
+        const onError = error => rejectListen(error);
+        transport.server.once('error', onError);
+        transport.server.listen(port, host, () => {
+          transport.server.off('error', onError);
+          resolveListen();
+        });
       });
-    });
-  } catch (error) {
-    await transport.close();
-    throw error;
-  }
+      const address = transport.server.address();
+      listeningPort = typeof address === 'object' && address ? address.port : port;
+    },
+    // 传输入口拥有信令网关的挂载与关闭，二者作为同一资源释放。
+    close: () => transport.close()
+  });
 
-  const address = transport.server.address();
-  const listeningPort = typeof address === 'object' && address ? address.port : port;
+  lifecycle.register({
+    name: 'runtime-initialization',
+    start: async () => {
+      try {
+        // 后台领域通过传入的生命周期端口注册自己的停止能力。
+        await initializeRuntime({ lifecycle });
+      } catch (error) {
+        logger.error('[Runtime] 初始化失败:', error.message);
+      }
+    }
+  });
+
+  await lifecycle.start();
+
   const localIp = getLocalIpAddress();
   logger.log('服务器运行在:');
   logger.log(`  - 本地: ${transport.protocol}://localhost:${listeningPort}`);
@@ -217,28 +252,35 @@ export async function startLaPlumaServer({
   logger.log('');
   printPathConfig();
 
-  try {
-    await initializeRuntime();
-  } catch (error) {
-    logger.error('[Runtime] 初始化失败:', error.message);
-  }
-
-  return { app, ...transport, port: listeningPort };
+  return {
+    app,
+    server: transport.server,
+    protocol: transport.protocol,
+    port: listeningPort,
+    lifecycle,
+    close: reason => lifecycle.close(reason)
+  };
 }
 
 const isMainModule = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMainModule) {
   try {
     const runtime = await startLaPlumaServer();
-    let closing = false;
-    const shutdown = async () => {
-      if (closing) return;
-      closing = true;
-      await runtime.close().catch(error => console.error('[Server] 关闭失败:', error.message));
+    const shutdown = async signal => {
+      try {
+        const summary = await runtime.close(signal);
+        if (!summary.ok) {
+          console.error('[Server] 关闭未完全成功:', summary.steps
+            .filter(step => step.status !== 'closed')
+            .map(step => `${step.name}:${step.status}`));
+        }
+      } catch (error) {
+        console.error('[Server] 关闭失败:', error.message);
+      }
       process.exit(0);
     };
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
+    process.once('SIGINT', () => void shutdown('SIGINT'));
+    process.once('SIGTERM', () => void shutdown('SIGTERM'));
   } catch (error) {
     console.error('[Server] 启动失败:', error.message);
     process.exitCode = 1;

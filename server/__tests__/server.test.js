@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
 import {
   createLaPlumaApp,
@@ -608,5 +610,150 @@ describe('API unified error exit', () => {
 
     assert.equal(response.status, 404)
     assert.match(response.headers.get('content-type') || '', /html/)
+  })
+})
+
+describe('Server runtime assembly', () => {
+  const runStoreSummary = {
+    filePath: '/tmp/test-agent-runs.json',
+    restoredRuns: 0,
+    interruptedRuns: 0,
+    prunedRuns: 0
+  }
+
+  it('closes runtime domains before the transport and reuses the first close result', async () => {
+    const events = []
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      attach() {},
+      handleLogin(_req, res) {
+        res.status(404).end()
+      },
+      close() {
+        events.push('signaling-gateway')
+      }
+    }
+
+    const runtime = await startLaPlumaServer({
+      env: {},
+      host: '127.0.0.1',
+      port: 0,
+      signalingGateway,
+      initializeRunStore: async () => runStoreSummary,
+      initializeRuntime: async ({ lifecycle }) => {
+        assert.equal(lifecycle.getState(), 'starting')
+        lifecycle.register({
+          name: 'fixture-runtime-domain',
+          close: () => {
+            events.push('runtime-domain')
+          }
+        })
+        events.push('runtime-initialized')
+      },
+      logger: { log() {}, error() {} }
+    })
+
+    try {
+      assert.equal(runtime.lifecycle.getState(), 'running')
+      assert.equal(runtime.lifecycle.isDraining(), false)
+      assert.equal(runtime.server.listening, true)
+
+      const summary = await runtime.close('test')
+
+      assert.deepEqual(events, ['runtime-initialized', 'runtime-domain', 'signaling-gateway'])
+      assert.deepEqual(summary.steps.map(step => step.name), ['fixture-runtime-domain', 'http-transport'])
+      assert.equal(summary.ok, true)
+      assert.equal(runtime.server.listening, false)
+      assert.equal(runtime.lifecycle.getState(), 'closed')
+
+      const repeated = await runtime.close('again')
+      assert.equal(repeated, summary)
+      assert.deepEqual(events, ['runtime-initialized', 'runtime-domain', 'signaling-gateway'])
+    } finally {
+      if (runtime.server.listening) await runtime.close('cleanup')
+    }
+  })
+
+  it('releases the transport when the listen step fails', async () => {
+    const blocker = createServer()
+    servers.push(blocker)
+    await new Promise((resolve, reject) => {
+      blocker.once('error', reject)
+      blocker.listen(0, '127.0.0.1', resolve)
+    })
+    const blockedPort = blocker.address().port
+
+    const events = []
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      attach() {
+        events.push('attach')
+      },
+      handleLogin(_req, res) {
+        res.status(404).end()
+      },
+      close() {
+        events.push('signaling-gateway')
+      }
+    }
+
+    await assert.rejects(
+      startLaPlumaServer({
+        env: {},
+        host: '127.0.0.1',
+        port: blockedPort,
+        signalingGateway,
+        initializeRunStore: async () => runStoreSummary,
+        initializeRuntime: async () => {
+          events.push('runtime-initialized')
+        },
+        logger: { log() {}, error() {} }
+      }),
+      error => error.code === 'RUNTIME_LIFECYCLE_START_FAILED' && error.stepName === 'http-transport'
+    )
+
+    assert.deepEqual(events, ['attach', 'signaling-gateway'])
+  })
+
+  it('does not start listeners, timers or runtime domains when the entry is imported', async () => {
+    const entry = new URL('../server.js', import.meta.url).href
+    const script = `await import(${JSON.stringify(entry)}); process.stdout.write('imported');`
+    const child = spawn(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      env: { ...process.env, NODE_ENV: 'test' },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    const result = await new Promise((resolve, reject) => {
+      let stdout = ''
+      let stderr = ''
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL')
+        reject(new Error(
+          `server entry import did not exit; stdout=${JSON.stringify(stdout)} stderr=${JSON.stringify(stderr)}`
+        ))
+      }, 10_000)
+      child.stdout.setEncoding('utf8')
+      child.stderr.setEncoding('utf8')
+      child.stdout.on('data', chunk => {
+        stdout += chunk
+      })
+      child.stderr.on('data', chunk => {
+        stderr += chunk
+      })
+      child.once('error', error => {
+        clearTimeout(timer)
+        reject(error)
+      })
+      child.once('close', (code, signal) => {
+        clearTimeout(timer)
+        resolve({ code, signal, stdout, stderr })
+      })
+    })
+
+    assert.equal(result.signal, null)
+    assert.equal(result.code, 0)
+    assert.equal(result.stdout, 'imported')
+    assert.equal(result.stderr, '')
   })
 })

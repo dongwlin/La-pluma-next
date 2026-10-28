@@ -23,6 +23,11 @@ async function readPersistedConfig(configType, loadConfig, runtimeLogger) {
   }
 }
 
+/**
+ * 恢复已保存的通知、定时任务、自动更新与 Telegram 配置。
+ * 所有副作用通过 overrides 注入；组装入口同时传入 lifecycle 关闭端口，
+ * 供具体领域把已启动后台任务的停止能力注册到同一次关闭流程。
+ */
 export async function initializeRuntimeState(overrides = {}) {
   const dependencies = {
     loadConfig: loadUserConfig,
