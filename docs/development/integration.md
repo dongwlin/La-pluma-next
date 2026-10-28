@@ -30,7 +30,7 @@ PR/main 的 `checks` job 会先拉取匹配镜像，再直接复用 `pnpm verify
 | 配置半失败显式重试 | 增加第三个定时时间，配置 POST 成功而 schedule 返回失败；切页后点“重新同步” | 保留三项草稿与页内错误，恢复页面不自动重发；显式重试完整提交同一草稿，成功才清 pending，无设备执行 |
 | 识别到计划应用 | 先挂载总览/日常/养成再隐藏；数据页识别完成后权威队列从两项变一项，预览 `CE-6 ×3` 并应用 | 识别只提交一次；隐藏养成恢复后读新队列；应用只写一次，日常重读服务端配置显示智能关卡；总览完整刷新显示一个目标，日常不把旧配置反写覆盖计划 |
 
-测试文件为 `client/tests/integration/execution.pw.ts` 与 `resources.pw.ts`。服务端目标停止保护的关键回归在 `server/routes/__tests__/agentRoutes.test.ts`；Run 状态、持久化、快照与契约分别由 `agentRunService.test.ts`、`agentRunPersistence.test.ts`、`runSnapshotService.test.ts`、`agentContract.test.js` 覆盖。
+测试文件为 `client/tests/integration/execution.pw.ts` 与 `resources.pw.ts`。服务端目标停止保护的关键回归在 `server/routes/__tests__/agentRoutes.test.ts`；Run 状态、持久化、快照与契约分别由 `agentRunService.test.ts`、`agentRunPersistence.test.ts`、`runSnapshotService.test.ts`、`agentContract.test.js` 与 `agentContractHttp.test.ts` 覆盖。
 
 ## 契约与覆盖边界
 

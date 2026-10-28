@@ -13,7 +13,7 @@
 | `scripts/` | 语法检查、类型检查、测试入口与游戏数据获取脚本 |
 
 - 路由沿用 `asyncHandler`、`sendSuccess`、`sendError` 与结构化 `agentError`；保留现有错误码、HTTP 状态和兼容响应字段。
-- 向 Agent 公开能力时更新 `routes/agentContract.js`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
+- 向 Agent 公开能力时更新 `routes/agentContract.ts`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
 - 新业务逻辑放入对应 service，路由负责适配；回调解析与结果格式化沿用独立的 `*ResultService.ts`，避免继续堆入执行编排。
 
 ## 执行与回调边界
