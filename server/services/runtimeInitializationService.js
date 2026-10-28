@@ -1,7 +1,11 @@
 import { loadUserConfig } from './configStorageService.ts';
 import { resolveConnection } from './connectionService.js';
 import { getNotificationConfig, setNotificationConfig } from './notificationService.js';
-import { setupAutoUpdate, setupSchedule } from './schedulerService.js';
+import {
+  attachScheduleTriggersToLifecycle,
+  setupAutoUpdate,
+  setupSchedule
+} from './schedulerService.js';
 import { initTelegramBot } from './telegramBotService.js';
 import { createLogger } from '../utils/logger.ts';
 
@@ -27,19 +31,32 @@ async function readPersistedConfig(configType, loadConfig, runtimeLogger) {
  * 恢复已保存的通知、定时任务、自动更新与 Telegram 配置。
  * 所有副作用通过 overrides 注入；组装入口同时传入 lifecycle 关闭端口，
  * 供具体领域把已启动后台任务的停止能力注册到同一次关闭流程。
+ *
+ * 调度触发源的停止端口在读取持久配置前挂接：即使没有已保存配置或恢复失败，
+ * 关闭时也能停止之后通过 API 注册的 cron/自动更新。恢复只注册触发源，不执行流程。
  */
 export async function initializeRuntimeState(overrides = {}) {
+  const { lifecycle, ...dependencyOverrides } = overrides;
   const dependencies = {
     loadConfig: loadUserConfig,
     applyNotificationConfig: setNotificationConfig,
     readNotificationConfig: getNotificationConfig,
     registerSchedule: setupSchedule,
     registerAutoUpdate: setupAutoUpdate,
+    attachScheduleLifecycle: attachScheduleTriggersToLifecycle,
     resolveRuntimeConnection: resolveConnection,
     startTelegramBot: initTelegramBot,
     runtimeLogger: logger,
-    ...overrides
+    ...dependencyOverrides
   };
+
+  if (lifecycle && typeof dependencies.attachScheduleLifecycle === 'function') {
+    try {
+      dependencies.attachScheduleLifecycle(lifecycle);
+    } catch (error) {
+      dependencies.runtimeLogger.error('调度触发源生命周期接入失败', { error: error.message });
+    }
+  }
 
   const summary = {
     notification: { restored: false },

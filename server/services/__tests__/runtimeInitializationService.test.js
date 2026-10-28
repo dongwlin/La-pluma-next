@@ -8,7 +8,111 @@ const silentLogger = {
   error() {}
 };
 
+function createFakeLifecycle() {
+  let draining = false;
+  const steps = [];
+  return {
+    steps,
+    register(step) {
+      steps.push(step);
+    },
+    isDraining: () => draining,
+    async close() {
+      draining = true;
+      for (const step of [...steps].reverse()) {
+        await step.close?.();
+      }
+      return { ok: true };
+    }
+  };
+}
+
 describe('runtime initialization', () => {
+  it('attaches the scheduler stop port before restoring persisted triggers without executing flows', async () => {
+    const events = [];
+    const lifecycle = createFakeLifecycle();
+    const persisted = {
+      'automation-tasks': {
+        taskFlow: [{ id: 'award-1', enabled: true, commandId: 'award' }],
+        schedule: { enabled: true, times: ['05:00'] }
+      },
+      'auto-update': { enabled: true, time: '06:00', updateCore: true }
+    };
+
+    await initializeRuntimeState({
+      lifecycle,
+      attachScheduleLifecycle: target => {
+        events.push(['attach', target === lifecycle]);
+        target.register({ name: 'scheduled-triggers', close: () => events.push(['close']) });
+        return { attached: true };
+      },
+      loadConfig: async configType => {
+        events.push(['load', configType]);
+        return { success: true, data: persisted[configType] || null };
+      },
+      readNotificationConfig: () => ({ channels: {} }),
+      registerSchedule: () => {
+        events.push(['registerSchedule']);
+        return { success: true, message: 'restored schedule' };
+      },
+      registerAutoUpdate: () => {
+        events.push(['registerAutoUpdate']);
+        return { success: true, message: 'restored auto update' };
+      },
+      resolveRuntimeConnection: async () => ({}),
+      startTelegramBot: () => events.push(['telegram']),
+      runtimeLogger: silentLogger
+    });
+
+    assert.deepEqual(events[0], ['attach', true]);
+    assert.deepEqual(events.slice(1), [
+      ['load', 'notification'],
+      ['load', 'automation-tasks'],
+      ['load', 'auto-update'],
+      ['registerSchedule'],
+      ['registerAutoUpdate']
+    ]);
+    assert.deepEqual(lifecycle.steps.map(step => step.name), ['scheduled-triggers']);
+    assert.equal(events.some(([kind]) => kind === 'execute' || kind === 'close'), false);
+
+    await lifecycle.close();
+    assert.deepEqual(events.at(-1), ['close']);
+    assert.equal(lifecycle.isDraining(), true);
+  });
+
+  it('keeps restoring persisted state when the scheduler lifecycle attachment fails', async () => {
+    const calls = [];
+    const summary = await initializeRuntimeState({
+      lifecycle: createFakeLifecycle(),
+      attachScheduleLifecycle: () => {
+        throw new Error('lifecycle unavailable');
+      },
+      loadConfig: async configType => ({
+        success: true,
+        data: configType === 'automation-tasks'
+          ? { taskFlow: [], schedule: { enabled: true, times: ['05:00'] } }
+          : null
+      }),
+      readNotificationConfig: () => ({ channels: {} }),
+      registerSchedule: () => {
+        calls.push('schedule');
+        return { success: true, message: 'restored schedule' };
+      },
+      registerAutoUpdate: () => {
+        calls.push('auto-update');
+        return { success: true };
+      },
+      resolveRuntimeConnection: async () => ({}),
+      startTelegramBot: () => calls.push('telegram'),
+      runtimeLogger: silentLogger
+    });
+
+    assert.deepEqual(calls, ['schedule']);
+    assert.equal(summary.schedule.restored, true);
+    assert.equal(summary.autoUpdate.restored, false);
+    assert.equal(summary.telegram.initialized, false);
+  });
+
   it('restores persisted runtime state before initializing Telegram', async () => {
     const notification = {
       enabled: true,
