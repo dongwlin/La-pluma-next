@@ -28,12 +28,16 @@ import {
   DEFAULT_CLOSE_DEADLINE_MS,
   createRuntimeLifecycle
 } from './services/runtimeLifecycleService.ts';
+import { createSignalingLoginGuard } from './services/signalingLoginGuard.ts';
 import {
   createWebrtcSignalingGateway,
   WEBRTC_SIGNALING_PATH
 } from './services/webrtcSignalingGateway.js';
 import { attachWebrtcPreviewToLifecycle } from './services/webrtcService.js';
+import { resolveWebrtcCredentials } from './config/webrtcCredentials.ts';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
+import { createOptionalApiAuth } from './utils/apiTokenAuth.ts';
+import { createLoginThrottle } from './utils/loginThrottle.ts';
 import { requestIdMiddleware } from './utils/requestContext.ts';
 
 // 供 isMainModule 判断使用；应用内路径解析已由 config 入口按模块位置锚定
@@ -52,31 +56,19 @@ function getLocalIpAddress() {
   return 'localhost';
 }
 
-function createOptionalApiAuth(apiToken = '') {
-  return function optionalApiAuth(req, res, next) {
-    if (!apiToken) return next();
-
-    const authHeader = req.headers.authorization || '';
-    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-    const headerToken = req.headers['x-la-pluma-token'];
-
-    if (bearerToken === apiToken || headerToken === apiToken) return next();
-
-    res.set('WWW-Authenticate', 'Bearer realm="la-pluma"');
-    return sendError(res, req, agentError(
-      'AGENT_AUTH_REQUIRED',
-      '需要有效的 LA_PLUMA_TOKEN',
-      { statusCode: 401, retryable: false }
-    ));
-  };
-}
+// 单实例限流窗口：认证失败与票据签发分别计数，均按来源地址隔离。
+// 阈值只防暴力尝试，正常预览一次会话通常只登录一次。
+const AUTH_RATE_LIMIT_WINDOW_MS = 60_000;
+const MAX_AUTH_FAILURES_PER_WINDOW = 10;
+const MAX_SIGNALING_LOGINS_PER_WINDOW = 30;
 
 export function createLaPlumaApp({
   env = process.env,
   signalingGateway = createWebrtcSignalingGateway(),
   clientDistPath = resolveAppPaths().frontendDistDir,
   userConfigStorage,
-  readiness = createRuntimeReadinessTracker()
+  readiness = createRuntimeReadinessTracker(),
+  loginRateLimit = {}
 } = {}) {
   if (typeof readiness?.snapshot !== 'function') {
     throw new TypeError('readiness 必须提供 snapshot()');
@@ -85,7 +77,21 @@ export function createLaPlumaApp({
   // Express 5 的 req.query 是只读 getter；显式固定 simple 解析器，
   // 让查询参数保持单值扁平结构，不依赖嵌套对象解析。
   app.set('query parser', 'simple');
-  const optionalApiAuth = createOptionalApiAuth(env.LA_PLUMA_TOKEN || '');
+  const apiToken = env.LA_PLUMA_TOKEN || '';
+  // 认证失败与票据签发共享窗口长度、各自计数；测试可注入更小阈值与假时钟。
+  const rateLimitWindowMs = loginRateLimit.windowMs ?? AUTH_RATE_LIMIT_WINDOW_MS;
+  const authFailureThrottle = createLoginThrottle({
+    windowMs: rateLimitWindowMs,
+    maxAttempts: loginRateLimit.maxAuthFailures ?? MAX_AUTH_FAILURES_PER_WINDOW,
+    now: loginRateLimit.now
+  });
+  const signalingLoginThrottle = createLoginThrottle({
+    windowMs: rateLimitWindowMs,
+    maxAttempts: loginRateLimit.maxSignalingLogins ?? MAX_SIGNALING_LOGINS_PER_WINDOW,
+    now: loginRateLimit.now
+  });
+  const optionalApiAuth = createOptionalApiAuth({ token: apiToken, failureThrottle: authFailureThrottle });
+  const signalingLoginGuard = createSignalingLoginGuard({ token: apiToken, throttle: signalingLoginThrottle });
   const signalingPath = signalingGateway.proxyPath || WEBRTC_SIGNALING_PATH;
   const basePath = normalizeBasePath(env.LA_PLUMA_BASE_PATH);
 
@@ -104,7 +110,14 @@ export function createLaPlumaApp({
   // Only ticket issuance is exposed over HTTP. The signaling admin UI and
   // device endpoints remain inaccessible through the public application port.
   // 登录不依赖业务请求体：注册在 JSON parser 之前，handleLogin 只丢弃请求流。
-  app.post(`${signalingPath}/api/login`, optionalApiAuth, signalingGateway.handleLogin);
+  // 令牌模式由 optionalApiAuth 把关；无令牌的本地/LAN 模式只允许同源签发，
+  // 并对签发频率限流，避免跨站页面换取设备控制票据或刷上游登录。
+  app.post(
+    `${signalingPath}/api/login`,
+    optionalApiAuth,
+    signalingLoginGuard,
+    signalingGateway.handleLogin
+  );
   // Express 5 通配符必须命名（*splat），捕获值在 req.params.splat 中为路径段数组；
   // 本路径与子路径的隐藏策略不变：除 ticket 签发外一律返回固定 404。
   app.all(signalingPath, (_req, res) => res.status(404).json({ error: 'Not Found' }));
@@ -230,6 +243,15 @@ export async function startLaPlumaServer({
     clientDistPath: appPaths.frontendDistDir,
     readiness
   });
+  // 上游默认账号保存在 ScrcpyOverWebRTC 自己的数据目录，服务不能替它改密；
+  // 这里只提示迁移，绝不在启动时生成与上游不同步的随机凭据。
+  const webrtcCredentials = resolveWebrtcCredentials(env);
+  if (webrtcCredentials.usingDefault) {
+    logger.warn?.(
+      '[WebRTC] 信令网关仍使用上游默认账号；请在上游修改账号后同步设置 '
+      + 'LA_PLUMA_WEBRTC_USERNAME 与 LA_PLUMA_WEBRTC_PASSWORD'
+    );
+  }
   const transport = createLaPlumaTransportServer({ app, signalingGateway, env });
   let listeningPort = port;
 

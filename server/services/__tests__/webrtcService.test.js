@@ -15,9 +15,12 @@ const ENV_KEYS = [
   'LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS',
   'LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS',
   'LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS',
+  'LA_PLUMA_WEBRTC_USERNAME',
+  'LA_PLUMA_WEBRTC_PASSWORD',
   'TEST_WEBRTC_DEVICES_FILE',
   'TEST_WEBRTC_SERVER_COUNT_FILE',
   'TEST_WEBRTC_SERVER_ARGS_FILE',
+  'TEST_WEBRTC_LOGIN_BODY_FILE',
   'TEST_WEBRTC_AGENT_COUNT_FILE',
   'TEST_WEBRTC_AGENT_PID_FILE',
   'TEST_WEBRTC_STOP_STARTED_FILE',
@@ -62,6 +65,7 @@ describe('WebRTC startup readiness', () => {
   let devicesFile
   let serverCountFile
   let serverArgsFile
+  let loginBodyFile
   let agentCountFile
   let agentPidFile
   let serverPidFile
@@ -85,6 +89,7 @@ describe('WebRTC startup readiness', () => {
     devicesFile = join(fixtureDir, 'devices.json')
     serverCountFile = join(fixtureDir, 'server-count.log')
     serverArgsFile = join(fixtureDir, 'server-args.json')
+    loginBodyFile = join(fixtureDir, 'login-body.json')
     agentCountFile = join(fixtureDir, 'agent-count.log')
     agentPidFile = join(fixtureDir, 'agent.pid')
     serverPidFile = join(fixtureDir, 'server.pid')
@@ -103,8 +108,13 @@ fs.writeFileSync(process.env.TEST_WEBRTC_SERVER_PID_FILE, String(process.pid))
 
 const server = http.createServer((request, response) => {
   if (request.url === '/api/login' && request.method === 'POST') {
-    response.setHeader('Content-Type', 'application/json')
-    response.end(JSON.stringify({ token: 'fixture-token' }))
+    let body = ''
+    request.on('data', chunk => { body += chunk })
+    request.on('end', () => {
+      fs.writeFileSync(process.env.TEST_WEBRTC_LOGIN_BODY_FILE, body)
+      response.setHeader('Content-Type', 'application/json')
+      response.end(JSON.stringify({ token: 'fixture-token' }))
+    })
     return
   }
   if (request.url === '/devices') {
@@ -192,6 +202,7 @@ fi
       TEST_WEBRTC_DEVICES_FILE: devicesFile,
       TEST_WEBRTC_SERVER_COUNT_FILE: serverCountFile,
       TEST_WEBRTC_SERVER_ARGS_FILE: serverArgsFile,
+      TEST_WEBRTC_LOGIN_BODY_FILE: loginBodyFile,
       TEST_WEBRTC_AGENT_COUNT_FILE: agentCountFile,
       TEST_WEBRTC_AGENT_PID_FILE: agentPidFile,
       TEST_WEBRTC_SERVER_PID_FILE: serverPidFile,
@@ -355,6 +366,26 @@ fi
 
     const logPaths = await service.getWebrtcLogPaths()
     assert.deepEqual(await openFixtureLogDescriptors(Object.values(logPaths)), [])
+  })
+
+  it('logs in to the upstream with the configured signaling credentials', async () => {
+    const previousUsername = process.env.LA_PLUMA_WEBRTC_USERNAME
+    const previousPassword = process.env.LA_PLUMA_WEBRTC_PASSWORD
+    try {
+      process.env.LA_PLUMA_WEBRTC_USERNAME = 'fixture-console'
+      process.env.LA_PLUMA_WEBRTC_PASSWORD = 'fixture-password'
+
+      assert.equal(await service.getWebrtcAuthToken({ throwOnError: true }), 'fixture-token')
+      assert.deepEqual(JSON.parse(await readFile(loginBodyFile, 'utf8')), {
+        username: 'fixture-console',
+        password: 'fixture-password'
+      })
+    } finally {
+      if (previousUsername === undefined) delete process.env.LA_PLUMA_WEBRTC_USERNAME
+      else process.env.LA_PLUMA_WEBRTC_USERNAME = previousUsername
+      if (previousPassword === undefined) delete process.env.LA_PLUMA_WEBRTC_PASSWORD
+      else process.env.LA_PLUMA_WEBRTC_PASSWORD = previousPassword
+    }
   })
 
   it('does not reuse a matching device id that belongs to another address', async () => {

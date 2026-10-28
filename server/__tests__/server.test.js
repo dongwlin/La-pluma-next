@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { connect as connectTcp, createServer as createTcpServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,7 +13,10 @@ import {
   normalizeBasePath,
   startLaPlumaServer
 } from '../server.js'
-import { WEBRTC_SIGNALING_PATH } from '../services/webrtcSignalingGateway.js'
+import {
+  createWebrtcSignalingGateway,
+  WEBRTC_SIGNALING_PATH
+} from '../services/webrtcSignalingGateway.js'
 import { getExecutionAdmissionGate } from '../services/executionAdmissionService.ts'
 import operatorTraining from '../services/operatorTrainingService.js'
 import OperatorQuotes from '../services/operatorQuotesService.js'
@@ -28,6 +32,45 @@ async function listen(app) {
     server.listen(0, '127.0.0.1', resolve)
   })
   return server.address().port
+}
+
+async function listenNetServer(server) {
+  servers.push(server)
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  return server.address().port
+}
+
+function openUpgrade(port, path, origin) {
+  return new Promise((resolve, reject) => {
+    const socket = connectTcp({ host: '127.0.0.1', port })
+    let response = ''
+    const finish = () => {
+      if (!response.includes('\r\n\r\n')) return
+      socket.off('error', reject)
+      resolve({ socket, response })
+    }
+    socket.once('error', reject)
+    socket.on('data', chunk => {
+      response += chunk.toString('utf8')
+      finish()
+    })
+    socket.once('connect', () => {
+      socket.write([
+        `GET ${path} HTTP/1.1`,
+        `Host: 127.0.0.1:${port}`,
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        `Origin: ${origin}`,
+        'Sec-WebSocket-Version: 13',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+        '',
+        ''
+      ].join('\r\n'))
+    })
+  })
 }
 
 afterEach(async () => {
@@ -227,6 +270,7 @@ describe('La Pluma Next transport configuration', () => {
   })
 
   it('starts on an ephemeral HTTP port and closes without leaving a listener', async () => {
+    const warnings = []
     const runtime = await startLaPlumaServer({
       env: {},
       host: '127.0.0.1',
@@ -238,7 +282,13 @@ describe('La Pluma Next transport configuration', () => {
         prunedRuns: 0
       }),
       initializeRuntime: async () => {},
-      logger: { log() {}, error() {} }
+      logger: {
+        log() {},
+        error() {},
+        warn(message) {
+          warnings.push(message)
+        }
+      }
     })
 
     try {
@@ -246,6 +296,12 @@ describe('La Pluma Next transport configuration', () => {
       assert.equal(response.status, 200)
       assert.deepEqual(await response.json(), { success: true, status: 'ok' })
       assert.equal(runtime.server.listening, true)
+      // 默认弱口令只在启动日志中提示迁移，不回显密码本身
+      assert.equal(warnings.length, 1)
+      assert.match(warnings[0], /LA_PLUMA_WEBRTC_USERNAME/)
+      assert.match(warnings[0], /LA_PLUMA_WEBRTC_PASSWORD/)
+      assert.ok(!warnings[0].includes('admin123'))
+      assert.ok(!warnings[0].includes('admin'))
     } finally {
       await runtime.close()
     }
@@ -415,6 +471,180 @@ describe('Cross-origin and auth middleware order', () => {
     // 同源请求（无 Origin 头）行为不变：鉴权仍由 token 决定，与来源无关
     const sameOrigin = await fetch(`http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`)
     assert.equal(sameOrigin.status, 401)
+  })
+
+  it('keeps unprotected ticket issuance same-origin without breaking non-browser clients', async () => {
+    let logins = 0
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      handleLogin(_req, res) {
+        logins += 1
+        return res.json({ token: `ticket-${logins}` })
+      }
+    }
+    const app = createLaPlumaApp({ env: {}, signalingGateway })
+    const port = await listen(app)
+    const origin = `http://127.0.0.1:${port}`
+    const loginUrl = `${origin}${WEBRTC_SIGNALING_PATH}/api/login`
+
+    const nonBrowser = await fetch(loginUrl, { method: 'POST' })
+    assert.equal(nonBrowser.status, 200)
+    assert.deepEqual(await nonBrowser.json(), { token: 'ticket-1' })
+
+    const sameOrigin = await fetch(loginUrl, { method: 'POST', headers: { Origin: origin } })
+    assert.equal(sameOrigin.status, 200)
+
+    const crossOrigin = await fetch(loginUrl, { method: 'POST', headers: { Origin: CROSS_ORIGIN } })
+    assert.equal(crossOrigin.status, 403)
+    const forbidden = await crossOrigin.json()
+    assert.equal(forbidden.error.code, 'AGENT_SIGNALING_ORIGIN_FORBIDDEN')
+    assert.equal(forbidden.error.retryable, false)
+    assert.ok(!JSON.stringify(forbidden).includes(CROSS_ORIGIN))
+    assert.equal(logins, 2)
+
+    // 预检仍由 CORS 在守卫之前应答，跨源页面能读到 403 但拿不到票据
+    const preflight = await fetch(loginUrl, {
+      method: 'OPTIONS',
+      headers: { Origin: CROSS_ORIGIN, 'Access-Control-Request-Method': 'POST' }
+    })
+    assert.equal(preflight.status, 204)
+    assert.equal(preflight.headers.get('access-control-allow-origin'), '*')
+    assert.equal(logins, 2)
+  })
+
+  it('limits ticket issuance per source while keeping preflight available', async () => {
+    const signalingGateway = {
+      proxyPath: WEBRTC_SIGNALING_PATH,
+      handleLogin(_req, res) {
+        return res.json({ token: 'one-use-ticket' })
+      }
+    }
+    const app = createLaPlumaApp({
+      env: {},
+      signalingGateway,
+      loginRateLimit: { maxSignalingLogins: 2 }
+    })
+    const port = await listen(app)
+    const loginUrl = `http://127.0.0.1:${port}${WEBRTC_SIGNALING_PATH}/api/login`
+
+    assert.equal((await fetch(loginUrl, { method: 'POST' })).status, 200)
+    assert.equal((await fetch(loginUrl, { method: 'POST' })).status, 200)
+    const blocked = await fetch(loginUrl, { method: 'POST' })
+    assert.equal(blocked.status, 429)
+    const body = await blocked.json()
+    assert.equal(body.error.code, 'AGENT_RATE_LIMITED')
+    assert.equal(body.error.retryable, true)
+    assert.equal(body.error.details.retryAfterSeconds >= 1, true)
+    assert.equal(Number(blocked.headers.get('retry-after')) >= 1, true)
+
+    const preflight = await fetch(loginUrl, {
+      method: 'OPTIONS',
+      headers: { Origin: CROSS_ORIGIN, 'Access-Control-Request-Method': 'POST' }
+    })
+    assert.equal(preflight.status, 204)
+  })
+
+  it('limits failed token attempts but never blocks an accepted token', async () => {
+    const app = createLaPlumaApp({
+      env: { LA_PLUMA_TOKEN: 'api-secret' },
+      loginRateLimit: { maxAuthFailures: 2 }
+    })
+    const port = await listen(app)
+    const url = `http://127.0.0.1:${port}/api/agent/nonexistent-endpoint`
+
+    // 长度与预期值不同的令牌不会抛错，也不会变成 500
+    const longToken = await fetch(url, {
+      headers: { Authorization: `Bearer ${'x'.repeat(4096)}` }
+    })
+    assert.equal(longToken.status, 401)
+    const unauthorized = await longToken.json()
+    assert.equal(unauthorized.error.code, 'AGENT_AUTH_REQUIRED')
+    assert.ok(!JSON.stringify(unauthorized).includes('LA_PLUMA_TOKEN'))
+    assert.ok(!JSON.stringify(unauthorized).includes('api-secret'))
+
+    const secondFailure = await fetch(url, { headers: { 'X-La-Pluma-Token': 'wrong-token' } })
+    assert.equal(secondFailure.status, 401)
+
+    const blocked = await fetch(url, { headers: { 'X-La-Pluma-Token': 'wrong-token' } })
+    assert.equal(blocked.status, 429)
+    const limited = await blocked.json()
+    assert.equal(limited.error.code, 'AGENT_RATE_LIMITED')
+    assert.equal(limited.error.retryable, true)
+    assert.equal(Number(blocked.headers.get('retry-after')) >= 1, true)
+
+    const accepted = await fetch(url, { headers: { Authorization: 'Bearer api-secret' } })
+    assert.equal(accepted.status, 404)
+    assert.equal((await accepted.json()).error.code, 'AGENT_ROUTE_NOT_FOUND')
+  })
+
+  it('issues a same-origin ticket that opens exactly one WebSocket upgrade', async () => {
+    const upstreamRequests = []
+    const upstream = createTcpServer(socket => {
+      let request = ''
+      socket.on('data', chunk => {
+        request += chunk.toString('utf8')
+        if (!request.includes('\r\n\r\n')) return
+        upstreamRequests.push(request)
+        socket.write([
+          'HTTP/1.1 101 Switching Protocols',
+          'Connection: Upgrade',
+          'Upgrade: websocket',
+          '',
+          ''
+        ].join('\r\n'))
+      })
+    })
+    const upstreamPort = await listenNetServer(upstream)
+    const gateway = createWebrtcSignalingGateway({
+      targetPort: upstreamPort,
+      getUpstreamToken: async () => 'upstream-secret',
+      createTicket: () => 'server-ticket-1',
+      registerViewer: () => ({ ready: Promise.resolve(), release() {} })
+    })
+    const app = createLaPlumaApp({ env: {}, signalingGateway: gateway })
+    const server = createServer(app)
+    servers.push(server)
+    gateway.attach(server)
+    await new Promise((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    const port = server.address().port
+    const origin = `http://127.0.0.1:${port}`
+    const loginUrl = `${origin}${WEBRTC_SIGNALING_PATH}/api/login`
+
+    try {
+      const crossOrigin = await fetch(loginUrl, { method: 'POST', headers: { Origin: CROSS_ORIGIN } })
+      assert.equal(crossOrigin.status, 403)
+      assert.equal(upstreamRequests.length, 0)
+
+      const login = await fetch(loginUrl, { method: 'POST', headers: { Origin: origin } })
+      assert.equal(login.status, 200)
+      const { token } = await login.json()
+      assert.equal(token, 'server-ticket-1')
+
+      const viewer = await openUpgrade(
+        port,
+        `${WEBRTC_SIGNALING_PATH}/connect_client?token=${token}`,
+        origin
+      )
+      assert.match(viewer.response, /^HTTP\/1\.1 101 Switching Protocols/)
+      assert.equal(upstreamRequests.length, 1)
+      assert.match(upstreamRequests[0], /^GET \/connect_client\?token=upstream-secret HTTP\/1\.1/m)
+      assert.equal(upstreamRequests[0].includes('server-ticket-1'), false)
+      viewer.socket.destroy()
+
+      const replay = await openUpgrade(
+        port,
+        `${WEBRTC_SIGNALING_PATH}/connect_client?token=${token}`,
+        origin
+      )
+      assert.match(replay.response, /^HTTP\/1\.1 401 Unauthorized/)
+      replay.socket.destroy()
+      assert.equal(upstreamRequests.length, 1)
+    } finally {
+      gateway.close()
+    }
   })
 })
 

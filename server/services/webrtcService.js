@@ -4,6 +4,7 @@ import { promisify } from 'util'
 import path from 'path'
 import { setTimeout as delay } from 'timers/promises'
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.js'
+import { resolveWebrtcCredentials } from '../config/webrtcCredentials.ts'
 import { getWebrtcHostIp, getWebrtcRuntimeBinary, installWebrtcRelease } from './webrtcRuntime.js'
 
 const execFileAsync = promisify(execFile)
@@ -23,8 +24,6 @@ const WEBRTC_TURN_START_TIMEOUT_MS = readPositiveInteger(process.env.LA_PLUMA_WE
 const WEBRTC_START_POLL_INTERVAL_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS, 250)
 const WEBRTC_VIEWER_IDLE_GRACE_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS, 3000)
 const WEBRTC_VIEWER_STARTUP_GRACE_MS = readPositiveInteger(process.env.LA_PLUMA_WEBRTC_VIEWER_STARTUP_GRACE_MS, 15000)
-const WEBRTC_USERNAME = process.env.LA_PLUMA_WEBRTC_USERNAME || 'admin'
-const WEBRTC_PASSWORD = process.env.LA_PLUMA_WEBRTC_PASSWORD || 'admin123'
 
 let webrtcServerProcess = null
 let webrtcAgentProcess = null
@@ -414,10 +413,12 @@ export async function isWebrtcServerReachable() {
 }
 
 async function requestWebrtcAuthToken() {
+  // 网关与上游使用同一组账号；凭据入口只解析环境，不生成或轮换密码。
+  const { username, password } = resolveWebrtcCredentials()
   const response = await fetch(`http://127.0.0.1:${WEBRTC_PORT}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: WEBRTC_USERNAME, password: WEBRTC_PASSWORD }),
+    body: JSON.stringify({ username, password }),
     signal: AbortSignal.timeout(WEBRTC_REQUEST_TIMEOUT_MS)
   })
   if (!response.ok) {

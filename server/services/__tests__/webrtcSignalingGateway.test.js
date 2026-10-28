@@ -64,7 +64,12 @@ async function waitUntil(check) {
   }
 }
 
-async function createFixture({ now = () => Date.now(), ticketTtlMs, registerViewer = () => ({ ready: Promise.resolve(), release() {} }) } = {}) {
+async function createFixture({
+  now = () => Date.now(),
+  ticketTtlMs,
+  registerViewer = () => ({ ready: Promise.resolve(), release() {} }),
+  getUpstreamToken = async () => 'upstream-secret'
+} = {}) {
   const upstreamRequests = []
   const upstream = createTcpServer(socket => {
     let request = ''
@@ -89,7 +94,7 @@ async function createFixture({ now = () => Date.now(), ticketTtlMs, registerView
     ticketTtlMs,
     registerViewer,
     createTicket: () => `proxy-ticket-${++ticketSequence}`,
-    getUpstreamToken: async () => 'upstream-secret'
+    getUpstreamToken
   })
   const app = express()
   app.post(`${WEBRTC_SIGNALING_PATH}/api/login`, gateway.handleLogin)
@@ -141,6 +146,26 @@ describe('WebRTC same-origin signaling gateway', () => {
     assert.match(replay.response, /^HTTP\/1\.1 401 Unauthorized/)
     assert.equal(fixture.upstreamRequests.length, 1)
     replay.socket.destroy()
+  })
+
+  it('does not leak upstream credential failures through the ticket endpoint', async () => {
+    const fixture = await createFixture({
+      getUpstreamToken: async () => {
+        throw new Error('upstream rejected admin/admin123')
+      }
+    })
+    const response = await fetch(`http://127.0.0.1:${fixture.port}${WEBRTC_SIGNALING_PATH}/api/login`, {
+      method: 'POST'
+    })
+    assert.equal(response.status, 503)
+    assert.equal(response.headers.get('cache-control'), 'no-store')
+    const body = await response.json()
+    assert.deepEqual(body, { error: 'WebRTC signaling service is unavailable' })
+    const serialized = JSON.stringify(body)
+    assert.equal(serialized.includes('admin'), false)
+    assert.equal(serialized.includes('admin123'), false)
+    assert.equal(serialized.includes('rejected'), false)
+    assert.equal(fixture.upstreamRequests.length, 0)
   })
 
   it('rejects expired tickets and every non-client signaling path', async () => {
