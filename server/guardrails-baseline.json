@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "rule": "explicit-any",
+      "file": "__tests__/trainingHttpRoutes.test.ts",
+      "count": 1,
+      "reason": "HTTP 测试用 Record<string, any> 读取响应体，断言前不做结构收窄。",
+      "remove": "该测试改用 routes/readDto.ts 导出的响应类型后删除。"
+    },
+    {
+      "rule": "explicit-any",
+      "file": "routes/__tests__/agentRoutes.test.ts",
+      "count": 8,
+      "reason": "Agent 路由测试的响应辅助函数与 request 归一化替身使用 Record<string, any>。",
+      "remove": "响应与请求辅助改用公开 DTO 类型后删除。"
+    },
+    {
+      "rule": "explicit-any",
+      "file": "routes/__tests__/trainingRoutes.test.ts",
+      "count": 1,
+      "reason": "养成路由测试的响应夹具使用 Record<string, any>。",
+      "remove": "响应夹具改用训练 DTO 后删除。"
+    },
+    {
+      "rule": "explicit-any",
+      "file": "services/__tests__/agentActionService.test.ts",
+      "count": 4,
+      "reason": "错误与结果提取辅助函数用 Record<string, any> 读取未类型化的领域结果。",
+      "remove": "领域结果类型可导出并用于测试断言后删除。"
+    },
+    {
+      "rule": "double-assertion",
+      "file": "__tests__/agentContractHttp.test.ts",
+      "count": 2,
+      "reason": "ajv-formats 的 CJS 默认导出声明差异，以及把生成的 OpenAPI 文档与 Ajv 校验结果比较。",
+      "remove": "ajv-formats 提供与运行时一致的 ESM 类型，或改为先做运行时校验再比较后删除。"
+    },
+    {
+      "rule": "double-assertion",
+      "file": "routes/__tests__/maintenanceRoutes.test.ts",
+      "count": 1,
+      "reason": "维护路由测试用最小对象冒充 Express Response 替身。",
+      "remove": "改用测试辅助函数构造符合 Response 接口的替身后删除。"
+    },
+    {
+      "rule": "double-assertion",
+      "file": "services/__tests__/activityFallbackService.test.ts",
+      "count": 1,
+      "reason": "活动回退测试用最小对象冒充 fetch 的 Response。",
+      "remove": "改用测试辅助函数构造 Response 替身后删除。"
+    },
+    {
+      "rule": "double-assertion",
+      "file": "services/__tests__/copilotPlanService.test.ts",
+      "count": 1,
+      "reason": "作业计划测试把假 fetch 实现断言为 typeof fetch。",
+      "remove": "假 fetch 改为返回类型明确的 Response 替身后删除。"
+    },
+    {
+      "rule": "double-assertion",
+      "file": "services/__tests__/resourceUpdateService.test.ts",
+      "count": 1,
+      "reason": "资源更新测试故意构造非法 Date 输入，验证解析回退。",
+      "remove": "被测函数接受 unknown 时间输入后删除。"
+    }
+  ]
+}
