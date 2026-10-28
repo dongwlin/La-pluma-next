@@ -31,7 +31,7 @@ import {
   getMaaExecutionLeaseSnapshot,
   withMaaExecutionLease
 } from '../../services/executionCoordinatorService.ts'
-import { getTodayOpenStages } from '../../services/notificationService.js'
+import { getTodayOpenStages } from '../../services/notificationService.ts'
 
 const quietLogger = {
   info() {},

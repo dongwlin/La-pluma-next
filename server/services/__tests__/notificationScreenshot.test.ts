@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   setNotificationConfig,
   shouldCaptureNotificationScreenshot
-} from '../notificationService.js';
+} from '../notificationService.ts';
 
 describe('notification screenshots', () => {
   it('does not capture when notifications are disabled', () => {

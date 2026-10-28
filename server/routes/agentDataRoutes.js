@@ -1,5 +1,5 @@
 import express from 'express';
-import { getTodayOpenStages } from '../services/notificationService.js';
+import { getTodayOpenStages } from '../services/notificationService.ts';
 import { getTodayDrops, getRecentDrops, getDropStatistics, MAX_DROP_HISTORY_DAYS } from '../services/dropRecordService.js';
 import { getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.js';
 import { asyncHandler, sendSuccess } from '../utils/apiHelper.ts';

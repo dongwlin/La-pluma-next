@@ -12,7 +12,7 @@ import {
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
 import { buildAgentRunSnapshot } from '../runSnapshotService.js';
 import { getTaskStatus } from '../maaProcessService.ts';
-import { getTodayOpenStages } from '../notificationService.js';
+import { getTodayOpenStages } from '../notificationService.ts';
 
 let testDir;
 let lockFile;

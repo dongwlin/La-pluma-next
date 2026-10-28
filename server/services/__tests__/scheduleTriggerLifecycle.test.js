@@ -13,7 +13,7 @@ import {
 import { createRuntimeLifecycle } from '../runtimeLifecycleService.ts';
 import { initializeRuntimeState } from '../runtimeInitializationService.js';
 import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
-import { getTodayOpenStages } from '../notificationService.js';
+import { getTodayOpenStages } from '../notificationService.ts';
 
 const silentLogger = {
   info() {},

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTaskCompletionMessage } from '../notificationService.js';
+import { buildTaskCompletionMessage } from '../notificationService.ts';
 
 describe('structured execution notifications', () => {
   it('includes task actions, report results and warnings', () => {

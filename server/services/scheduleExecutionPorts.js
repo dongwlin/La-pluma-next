@@ -7,7 +7,7 @@ import {
   sendTaskCompletionNotification,
   isStageOpenToday,
   shouldCaptureNotificationScreenshot
-} from './notificationService.js';
+} from './notificationService.ts';
 import { recordDrops } from './dropRecordService.js';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { updateSmartTrainingStages } from './scheduleSmartTrainingService.js';

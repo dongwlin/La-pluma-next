@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatTelegramMessage } from '../notificationService.js';
+import { formatTelegramMessage } from '../notificationService.ts';
 
 const fixedTime = new Date('2026-07-26T12:34:56.000Z');
 const formattedTime = fixedTime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });

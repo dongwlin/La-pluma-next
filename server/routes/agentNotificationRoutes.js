@@ -7,7 +7,7 @@ import {
   sendNotification,
   sendToChannel,
   testNotificationChannel
-} from '../services/notificationService.js';
+} from '../services/notificationService.ts';
 import {
   asyncHandler,
   agentError,

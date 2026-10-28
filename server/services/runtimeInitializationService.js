@@ -1,6 +1,6 @@
 import { loadUserConfig } from './configStorageService.ts';
 import { resolveConnection } from './connectionService.js';
-import { getNotificationConfig, setNotificationConfig } from './notificationService.js';
+import { getNotificationConfig, setNotificationConfig } from './notificationService.ts';
 import {
   attachScheduleTriggersToLifecycle,
   setupAutoUpdate,

@@ -9,7 +9,7 @@ import agentRouter from '../agent.js';
 import { createAgentNotificationRoutes } from '../agentNotificationRoutes.js';
 import { createLaPlumaApp } from '../../server.js';
 import { setConfigStorageDirForTests } from '../../services/configStorageService.ts';
-import { getNotificationConfig, setNotificationConfig } from '../../services/notificationService.js';
+import { getNotificationConfig, setNotificationConfig } from '../../services/notificationService.ts';
 import { apiErrorHandler } from '../../utils/apiHelper.ts';
 import { loggerManager } from '../../utils/logger.ts';
 

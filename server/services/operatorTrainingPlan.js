@@ -7,7 +7,7 @@
  */
 
 import { createLogger } from '../utils/logger.ts';
-import { getTodayOpenStages, isStageOpenToday } from './notificationService.js';
+import { getTodayOpenStages, isStageOpenToday } from './notificationService.ts';
 import { findBestFarmStage, getStageEstimate, loadPenguinDropData } from './dropDataService.js';
 import { calculateOperatorMaterials, trainingError } from './operatorTrainingModel.js';
 import {
