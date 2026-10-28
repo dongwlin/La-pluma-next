@@ -75,11 +75,11 @@ export function checkCoverageReport(output: string): { problems: string[]; total
   };
 }
 
-if (isDirectExecution(import.meta.url)) {
+async function main(): Promise<number> {
   const testFiles = await findTestFiles(serverRoot);
   if (testFiles.length === 0) {
     console.error('No server test files found.');
-    process.exit(1);
+    return 1;
   }
 
   console.log(
@@ -106,7 +106,7 @@ if (isDirectExecution(import.meta.url)) {
 
   if (result.error) {
     console.error(result.error.message);
-    process.exit(1);
+    return 1;
   }
 
   const output = result.stdout ?? '';
@@ -125,8 +125,13 @@ if (isDirectExecution(import.meta.url)) {
 
   if (result.signal) {
     console.error(`Coverage run terminated by ${result.signal}.`);
-    process.exit(1);
+    return 1;
   }
-  if (problems.length > 0) process.exit(1);
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (problems.length > 0) return 1;
+  return result.status ?? 1;
+}
+
+if (isDirectExecution(import.meta.url)) {
+  // 失败时也让 stdout/stderr 自然排空，保留报告末尾的真实错误与覆盖率汇总。
+  process.exitCode = await main();
 }

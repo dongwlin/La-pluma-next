@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -287,6 +288,49 @@ describe('coverage report scope', () => {
   it('keeps the exclude pattern and thresholds pinned to the recorded baseline', () => {
     assert.equal(COVERAGE_EXCLUDE, '**/__tests__/**');
     assert.deepEqual(COVERAGE_THRESHOLDS, { lines: 84, branches: 76, functions: 81 });
+  });
+
+  it('flushes a large failed run before exiting so CI retains the final diagnostics', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'la-pluma-coverage-output-'));
+    try {
+      const scripts = path.join(root, 'scripts');
+      await mkdir(scripts);
+      await mkdir(path.join(root, '__tests__'));
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
+      for (const file of ['coverage.ts', 'testFiles.ts', 'scriptSupport.ts']) {
+        await writeFile(path.join(scripts, file), await readFile(path.join(serverRoot, 'scripts', file)));
+      }
+      await writeFile(path.join(root, '__tests__', 'failure.test.ts'), [
+        "import { it } from 'node:test';",
+        "import assert from 'node:assert/strict';",
+        "it('reports the failed coverage fixture', () => {",
+        "  console.log('x'.repeat(256 * 1024));",
+        "  assert.fail('coverage-fixture-failure-marker');",
+        '});'
+      ].join('\n'));
+      const env = { ...process.env };
+      delete env.NODE_TEST_CONTEXT;
+      delete env.NODE_V8_COVERAGE;
+      const child = spawn(process.execPath, [path.join(scripts, 'coverage.ts')], {
+        cwd: root, env, stdio: ['ignore', 'pipe', 'pipe']
+      });
+      const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+        let output = '';
+        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('coverage fixture timed out')); }, 10_000);
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', (chunk: string) => { output += chunk; });
+        child.stderr.on('data', (chunk: string) => { output += chunk; });
+        child.once('error', error => { clearTimeout(timer); reject(error); });
+        child.once('close', code => { clearTimeout(timer); resolve({ code, output }); });
+      });
+      assert.equal(result.code, 1);
+      assert.match(result.output, /coverage-fixture-failure-marker/);
+      assert.match(result.output, /end of coverage report/);
+      assert.match(result.output, /Coverage totals:/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
