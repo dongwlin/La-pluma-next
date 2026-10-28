@@ -92,6 +92,7 @@ La-pluma-next/
 │   │   ├── agentDataRoutes.js # 今日关卡、掉落与本地游戏数据读取
 │   │   ├── agentTrainingRoutes.js # 养成队列、设置、候选与计划生成/应用
 │   │   ├── agentPreviewRoutes.js # 截图、WebRTC、方向与设备采样预览适配
+│   │   ├── agentNotificationRoutes.js # 通知频道配置、测试与发送适配
 │   │   ├── deviceStatus.js    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.js # 请求级连接覆盖解析
 │   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
