@@ -3,7 +3,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { mkdir, open, readFile, rename, unlink } from 'fs/promises';
+import { access, constants, mkdir, open, readFile, rename, stat, unlink } from 'fs/promises';
 import type { FileHandle } from 'fs/promises';
 import { basename, dirname, join, resolve } from 'path';
 
@@ -157,5 +157,104 @@ export async function deleteJsonFile(filePath: string): Promise<boolean> {
       if (getErrorCode(error) === 'ENOENT') return false;
       throw error;
     }
+  });
+}
+
+/**
+ * 读取文本文件；文件不存在返回 null，其余 IO 失败原样抛出，由调用方决定是否降级。
+ */
+async function readTextFileIfExists(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, 'utf-8');
+  } catch (error) {
+    if (getErrorCode(error) === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * 读取既有目标文件的权限位。原子替换会换成新的 inode，必须显式沿用旧权限；
+ * 目标不存在（ENOENT）时返回 null，由调用方使用新建文件的默认模式。
+ */
+async function resolveTargetMode(filePath: string): Promise<number | null> {
+  try {
+    const targetStat = await stat(filePath);
+    return targetStat.mode & 0o777;
+  } catch (error) {
+    if (getErrorCode(error) === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeTextFileAtomic(filePath: string, content: string): Promise<void> {
+  const targetPath = resolve(filePath);
+  const targetDir = dirname(targetPath);
+  await ensureDir(targetDir);
+
+  const targetMode = await resolveTargetMode(targetPath);
+  if (targetMode !== null) {
+    // 原子替换以目录写权限为准，会绕过目标文件自身的只读位；显式检查可写性，
+    // 保持直接写入时只读文件无法覆盖的行为。
+    await access(targetPath, constants.W_OK);
+  }
+  const tempPath = join(
+    targetDir,
+    `.${basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  let handle: FileHandle | null | undefined;
+
+  try {
+    handle = await open(tempPath, 'wx', targetMode ?? 0o666);
+    if (targetMode !== null) {
+      // open 的 mode 会经过 umask；显式 chmod 才能完整保留既有文件的权限位。
+      await handle.chmod(targetMode);
+    }
+    await handle.writeFile(content, 'utf-8');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+
+    await rename(tempPath, targetPath);
+    await syncDirectory(targetDir);
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    await unlink(tempPath).catch((cleanupError: unknown) => {
+      if (getErrorCode(cleanupError) !== 'ENOENT') throw cleanupError;
+    });
+    throw error;
+  }
+}
+
+/**
+ * 写入文本文件（临时文件 + 原子替换）。不解析内容，TOML/纯文本等非 JSON 载荷可直接使用；
+ * 替换后保留既有目标文件的权限位。
+ */
+export async function writeTextFile(filePath: string, content: string): Promise<void> {
+  try {
+    await enqueueFileMutation(filePath, () => writeTextFileAtomic(filePath, content));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`写入文本文件失败: ${message}`);
+  }
+}
+
+/**
+ * 安全地更新文本文件：读取、交给 updateFn 生成新内容、原子写回，三步在同一路径排队单元内完成，
+ * 同一文件的并发读改写不会互相覆盖。文件缺失时 current 为 null；updateFn 抛错或读取失败时不写回，
+ * 已有内容保持不变。
+ */
+export async function updateTextFile(
+  filePath: string,
+  updateFn: (current: string | null) => string | Promise<string>,
+): Promise<string> {
+  return enqueueFileMutation(filePath, async () => {
+    const current = await readTextFileIfExists(filePath);
+    const updated = await updateFn(current);
+    await writeTextFileAtomic(filePath, updated);
+    return updated;
   });
 }
