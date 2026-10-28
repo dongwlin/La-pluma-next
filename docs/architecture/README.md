@@ -86,7 +86,8 @@ La-pluma-next/
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由
 │   │   ├── agent.js           # 主 Agent API（聚合领域 router）
-│   │   ├── agentExecution.js  # tracked 执行、流程/作业集与目标停止
+│   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止
+│   │   ├── executionDto.ts   # 执行请求按端点收窄与 Run 响应载荷
 │   │   ├── agentStatusRoutes.js # 状态汇总与 Run 查询（ADB 探测有副作用）
 │   │   ├── agentLogRoutes.js  # 实时/历史日志读取、清空与清理
 │   │   ├── agentDataRoutes.js # 今日关卡、掉落与本地游戏数据读取
