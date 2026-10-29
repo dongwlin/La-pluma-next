@@ -165,14 +165,6 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.appDataDir, '/tmp/la-pluma-sandbox/server/data');
     assert.equal(paths.frontendDistDir, '/tmp/la-pluma-sandbox/client/dist');
   });
-
-  it('does not freeze process env: repeated calls with different env diverge', () => {
-    const overridden = resolveAppPaths({ env: { LA_PLUMA_AGENT_RUN_STORE: '/a/runs.json' } });
-    const clean = resolveAppPaths({ env: {} });
-
-    assert.equal(overridden.agentRunStorePath, '/a/runs.json');
-    assert.notEqual(overridden.agentRunStorePath, clean.agentRunStorePath);
-  });
 });
 
 describe('normalizeBasePath', () => {

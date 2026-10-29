@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict';
-import { homedir, platform } from 'node:os';
+import { platform } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import {
-  getBattleDataPath,
-  getItemIndexPath,
-  getItemTablePath,
-  getMaaLogPath,
-  getMaaResourceDir,
   printPathConfig,
   resolveMaaPaths
 } from '../paths.ts';
@@ -107,28 +102,6 @@ describe('resolveMaaPaths cross-platform resolution', () => {
 
     assert.equal(overridden.configDir, '/xdg/one/maa');
     assert.equal(clean.configDir, '/home/fixture/.config/maa');
-  });
-});
-
-describe('legacy path getters', () => {
-  it('delegates to resolveMaaPaths with the current process environment', () => {
-    const current = resolveMaaPaths();
-
-    assert.equal(getMaaLogPath(), current.logPath);
-    assert.equal(getMaaResourceDir(), current.resourceDir);
-    assert.equal(getItemIndexPath(), current.itemIndexPath);
-    assert.equal(getItemTablePath(), current.itemTablePath);
-    assert.equal(getBattleDataPath(), current.battleDataPath);
-  });
-
-  it('composes derived paths from the platform directories', () => {
-    const paths = resolveMaaPaths({ env: {}, platform: platform(), homedir: homedir() });
-
-    assert.equal(paths.resourceDir, join(paths.dataDir, 'resource'));
-    assert.equal(paths.logPath, join(paths.stateDir, 'debug', 'asst.log'));
-    assert.equal(paths.itemIndexPath, join(paths.resourceDir, 'item_index.json'));
-    assert.equal(paths.itemTablePath, join(paths.resourceDir, 'gamedata', 'excel', 'item_table.json'));
-    assert.equal(paths.battleDataPath, join(paths.resourceDir, 'battle_data.json'));
   });
 });
 

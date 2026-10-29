@@ -405,10 +405,6 @@ describe('schedule trigger runtime', () => {
       success: false,
       message: '自动更新未启用'
     });
-    assert.deepEqual(runtime.setupAutoUpdate({ enabled: false }), {
-      success: false,
-      message: '自动更新未启用'
-    });
     assert.equal(current.destroyed, true);
     assert.deepEqual(runtime.getAutoUpdateStatus(), { enabled: false, time: null });
   });

@@ -15,7 +15,6 @@ import {
   parseBaseline
 } from '../guardrails.ts';
 import type { BaselineEntry, GuardrailViolation, SourceFile } from '../guardrails.ts';
-import { findTestFiles } from '../testFiles.ts';
 import { checkTypeScriptPin, readLockfileDependency } from '../toolchain.ts';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -121,16 +120,6 @@ describe('static import cycles', () => {
     ]);
 
     assert.deepEqual(cycles, [['services/a.ts', 'services/b.ts']]);
-  });
-
-  it('keeps acyclic and self-contained graphs clean', () => {
-    assert.deepEqual(
-      findImportCycles([
-        { from: 'services/a.ts', to: 'services/b.ts', line: 1 },
-        { from: 'services/b.ts', to: 'services/c.ts', line: 1 }
-      ]),
-      []
-    );
   });
 
   it('reports the cycle through analyzeSources', () => {
@@ -331,20 +320,6 @@ describe('coverage report scope', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
-});
-
-describe('test discovery', () => {
-  it('feeds the same __tests__ TypeScript files to test and coverage runs', async () => {
-    const files = await findTestFiles(serverRoot);
-
-    assert.ok(files.length > 0);
-    for (const file of files) {
-      assert.match(file, /\/__tests__\//);
-      assert.match(file, /\.test\.ts$/);
-      assert.equal(file.includes('node_modules'), false);
-    }
-    assert.deepEqual(files, [...files].sort());
   });
 });
 

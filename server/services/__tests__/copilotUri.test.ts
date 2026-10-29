@@ -24,32 +24,42 @@ test('leaves local files, flags and unsupported codes unchanged', () => {
   }
 });
 
-test('keeps current and unsupported arguments unchanged for copilot commands', () => {
-  const args = ['prts://12', 'prts://s34', 'maa://56', '/tmp/local copilot.json', '--loop-times', '1'];
+test('normalizes job URIs only in copilot command arguments', () => {
+  const args = ['PRTS://S34', '--loop-times', '1'];
   for (const command of ['copilot', 'ssscopilot', 'paradoxcopilot']) {
-    assert.deepEqual(normalizeCopilotCommandArgs(command, args), args);
+    assert.deepEqual(normalizeCopilotCommandArgs(command, args), ['prts://s34', '--loop-times', '1'], command);
   }
   assert.equal(normalizeCopilotCommandArgs('run', args), args);
 });
 
-test('passes prts URIs to the CLI', { skip: process.platform === 'win32' }, async (t) => {
+test('passes normalized copilot URIs to the CLI', { skip: process.platform === 'win32' }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-uri-'));
   const executable = join(directory, 'maa');
-  const previousCli = process.env.MAA_CLI_PATH;
   const previousLock = process.env.LA_PLUMA_MAA_LOCK_FILE;
   await writeFile(executable, '#!/usr/bin/env node\nconsole.log(JSON.stringify(process.argv.slice(2)))\n');
   await chmod(executable, 0o755);
-  process.env.MAA_CLI_PATH = executable;
   process.env.LA_PLUMA_MAA_LOCK_FILE = join(directory, 'execution.lock');
   t.after(async () => {
-    if (previousCli === undefined) delete process.env.MAA_CLI_PATH;
-    else process.env.MAA_CLI_PATH = previousCli;
     if (previousLock === undefined) delete process.env.LA_PLUMA_MAA_LOCK_FILE;
     else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLock;
     await rm(directory, { recursive: true, force: true });
   });
   const { execMaaCommand } = await import('../maaExecutionService.ts');
-  const result = await execMaaCommand('copilot', ['prts://12', 'prts://s34', '--loop-times', '1'], null, null, true, true);
-  assert.deepEqual(JSON.parse(result.stdout), ['copilot', 'prts://12', 'prts://s34', '--loop-times', '1']);
-  assert.match(result.command, /copilot prts:\/\/12 prts:\/\/s34/);
+
+  const result = await execMaaCommand(
+    'copilot',
+    ['PRTS://S12', 'PRTS://S34', '--loop-times', '1'],
+    null,
+    null,
+    true,
+    true,
+    {},
+    { cliPath: executable }
+  );
+
+  assert.ok('stdout' in result, 'expected a completed foreground command');
+  assert.deepEqual(JSON.parse(String(result.stdout)), [
+    'copilot', 'prts://s12', 'prts://s34', '--loop-times', '1'
+  ]);
 });
+

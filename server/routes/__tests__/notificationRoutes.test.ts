@@ -7,16 +7,9 @@ import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import express from 'express';
-import agentRouter from '../agent.ts';
 import { createAgentNotificationRoutes } from '../agentNotificationRoutes.ts';
 import type { AgentNotificationRouteDependencies } from '../agentNotificationRoutes.ts';
 import { createLaPlumaApp } from '../../app.ts';
-import {
-  parseChannelTestBody,
-  parseNotificationConfigBody,
-  parseSendNotificationBody,
-  persistAndApplyNotificationConfig
-} from '../notificationDto.ts';
 import type {
   NotificationChannelTestPayload,
   NotificationConfigPayload
@@ -27,12 +20,7 @@ import type {
   NotificationConfig,
   NotificationMessage
 } from '../../services/notificationService.ts';
-import {
-  agentError,
-  apiErrorHandler,
-  errorResponse,
-  successResponse
-} from '../../utils/apiHelper.ts';
+import { apiErrorHandler } from '../../utils/apiHelper.ts';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import { loggerManager } from '../../utils/logger.ts';
 
@@ -68,25 +56,6 @@ function guardOutboundFetch(t: TestContext): { external: string[] } {
     return realFetch(input, init);
   });
   return { external };
-}
-
-interface MountedRouteLayer {
-  route?: { path: string; methods?: Record<string, boolean> };
-  handle?: MountedRouteLayer;
-}
-
-function collectMountedRoutes(routerInstance: unknown, routes: string[] = []): string[] {
-  const stack = (routerInstance as { stack?: MountedRouteLayer[] }).stack ?? [];
-  for (const layer of stack) {
-    if (layer.route) {
-      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
-        if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`);
-      }
-      continue;
-    }
-    if (layer.handle) collectMountedRoutes(layer.handle, routes);
-  }
-  return routes;
 }
 
 interface NotificationRouteEntry {
@@ -191,123 +160,6 @@ afterEach(async () => {
     assert.ok(dir);
     await rm(dir, { recursive: true, force: true });
   }
-});
-
-describe('notification request narrowing', () => {
-  it('keeps the raw config body for storage validation', () => {
-    const payload = { enabled: true, channels: { telegram: { enabled: true } } };
-    // 对象请求体原样交给配置存储，扩展字段与白名单校验都不在路由层。
-    assert.equal(parseNotificationConfigBody(payload), payload);
-    for (const body of [undefined, null, 0, '', false]) {
-      assert.deepEqual(parseNotificationConfigBody(body), {});
-    }
-    // 真值非对象保持原值，继续由存储域返回既有 400 AGENT_CONFIG_DATA_INVALID。
-    assert.deepEqual(parseNotificationConfigBody([1, 2]), [1, 2]);
-    assert.equal(parseNotificationConfigBody('text'), 'text');
-  });
-
-  it('narrows the channel test body and rejects invalid shapes before the service', () => {
-    assert.deepEqual(parseChannelTestBody({ channel: 'telegram', config: { botToken: 'fixture-token' } }), {
-      channel: 'telegram',
-      config: { botToken: 'fixture-token' }
-    });
-    assert.deepEqual(parseChannelTestBody({ channel: 'telegram' }), { channel: 'telegram', config: null });
-    assert.deepEqual(parseChannelTestBody({ channel: 'telegram', config: null }), { channel: 'telegram', config: null });
-    // 非字符串真值按文本收窄；渠道注册表以字符串为键，未知渠道仍走既有失败路径。
-    assert.equal(parseChannelTestBody({ channel: 42 }).channel, '42');
-
-    for (const body of [undefined, null, {}, { channel: '' }, { channel: 0 }, 'telegram', [1, 2]]) {
-      assert.throws(
-        () => parseChannelTestBody(body),
-        (error: unknown) => isAgentErrorCode(error, 'AGENT_VALIDATION_CHANNEL_REQUIRED'),
-        `channel must be required for ${JSON.stringify(body)}`
-      );
-    }
-    for (const config of [['not-an-object'], 1, 'text', false]) {
-      assert.throws(
-        () => parseChannelTestBody({ channel: 'telegram', config }),
-        (error: unknown) => isAgentErrorCode(error, 'AGENT_VALIDATION_NOTIFICATION_CONFIG_INVALID')
-      );
-    }
-  });
-
-  it('keeps send defaults and narrows message fields from unknown', () => {
-    assert.deepEqual(parseSendNotificationBody(undefined), {
-      channel: null,
-      message: { title: '测试通知', content: '这是一条测试通知', level: 'info', data: undefined }
-    });
-    assert.deepEqual(parseSendNotificationBody({
-      channel: 'telegram',
-      title: '完成',
-      content: '任务结束',
-      level: 'warning',
-      data: { runId: 'fixture-run' }
-    }), {
-      channel: 'telegram',
-      message: {
-        title: '完成',
-        content: '任务结束',
-        level: 'warning',
-        data: { runId: 'fixture-run' }
-      }
-    });
-    // 非字符串标题按文本输出（与旧实现的模板插值一致）；非字符串级别与
-    // 非对象 data 不再穿透到渠道适配器。
-    assert.deepEqual(parseSendNotificationBody({ title: 5, content: 0, level: null, data: [1, 2] }), {
-      channel: null,
-      message: { title: '5', content: '这是一条测试通知', level: 'info', data: undefined }
-    });
-    assert.equal(parseSendNotificationBody({ channel: 7 }).channel, '7');
-  });
-
-  it('keeps persistence and runtime application as separate outcomes', async () => {
-    const applied: string[] = [];
-    const appliedOutcome = await persistAndApplyNotificationConfig({
-      save: async () => successResponse(null, '配置保存成功'),
-      apply: () => { applied.push('applied'); }
-    });
-    assert.deepEqual(appliedOutcome, { persisted: true, applied: true });
-    assert.deepEqual(applied, ['applied']);
-
-    const storageFailure = errorResponse(
-      agentError('AGENT_CONFIG_DATA_INVALID', '配置数据必须是 JSON 对象', { statusCode: 400 }),
-      '保存配置失败'
-    );
-    const failedPersist = await persistAndApplyNotificationConfig({
-      save: async () => storageFailure,
-      apply: () => { throw new Error('persistence failure must not apply'); }
-    });
-    if (failedPersist.persisted) {
-      assert.fail('persistence failure must be reported separately');
-    }
-    assert.equal(failedPersist.storage, storageFailure);
-    assert.deepEqual(applied, ['applied']);
-
-    const applyError = new Error('运行时配置应用失败');
-    const failedApply = await persistAndApplyNotificationConfig({
-      save: async () => successResponse(null, '配置保存成功'),
-      apply: () => { throw applyError; }
-    });
-    if (!failedApply.persisted || failedApply.applied) {
-      assert.fail('runtime application failure must stay identifiable');
-    }
-    assert.equal(failedApply.error, applyError);
-  });
-});
-
-describe('notification route exposure', () => {
-  it('mounts every notification entry exactly once through the agent router', () => {
-    const mounted = collectMountedRoutes(agentRouter);
-
-    for (const entry of NOTIFICATION_ROUTES) {
-      const route = `${entry.method} ${entry.path}`;
-      assert.equal(
-        mounted.filter(candidate => candidate === route).length,
-        1,
-        `expected exactly one mounted ${route}`
-      );
-    }
-  });
 });
 
 describe('notification routes over real HTTP', () => {

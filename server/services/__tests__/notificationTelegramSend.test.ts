@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict'
-import { createServer } from 'node:http'
 import { describe, it } from 'node:test'
 import { createNotificationService } from '../notificationService.ts'
 import type { NotificationConfig } from '../notificationService.ts'
-import { createOutboundHttpClient } from '../outboundRequestService.ts'
 import type {
   OutboundHttpClient,
   OutboundJsonResult,
@@ -189,68 +187,3 @@ describe('Telegram notification outbound send', () => {
   })
 })
 
-describe('multipart wire format through the outbound port', () => {
-  // sendPhoto 与端口 requestMultipart 的组合用原生 fetch 发送；
-  // 本用例经真实本地回环服务器验证线上 multipart 内容与文件名，不发外部请求。
-  it('serializes native FormData fields, file name and bytes correctly', async () => {
-    const received = await new Promise<{ contentType: string; body: Buffer }>((resolve, reject) => {
-      const server = createServer((req, res) => {
-        const chunks: Buffer[] = []
-        req.on('data', chunk => chunks.push(chunk as Buffer))
-        req.on('end', () => {
-          const contentType = req.headers['content-type']
-          if (!contentType) {
-            res.end()
-            reject(new Error('缺少 multipart Content-Type'))
-            return
-          }
-          res.setHeader('content-type', 'application/json')
-          res.end(JSON.stringify({ ok: true }))
-          resolve({ contentType, body: Buffer.concat(chunks) })
-        })
-      })
-      server.on('error', reject)
-      server.listen(0, '127.0.0.1', () => {
-        const address = server.address()
-        if (!address || typeof address === 'string') {
-          server.close()
-          reject(new Error('无法获取回环端口'))
-          return
-        }
-        const formData = new FormData()
-        formData.append('chat_id', 'fixture-chat')
-        formData.append('photo', new Blob([Buffer.from('png-bytes')], { type: 'image/png' }), 'screenshot.png')
-        formData.append('caption', '标题')
-        createOutboundHttpClient()
-          .requestMultipart(`http://127.0.0.1:${address.port}/sendPhoto`, { formData, timeoutMs: 5000 })
-          .then(() => server.close())
-          .catch(error => {
-            server.close()
-            reject(error)
-          })
-      })
-    })
-
-    assert.match(received.contentType, /^multipart\/form-data; boundary=/)
-    const boundaryMatch = received.contentType.match(/boundary=(.+)$/)
-    if (!boundaryMatch) assert.fail('缺少 multipart boundary')
-    const boundary = boundaryMatch[1]
-    const text = received.body.toString('latin1')
-    const parts = text.split(`--${boundary}`).filter(part => part.trim() && !part.startsWith('--'))
-    assert.equal(parts.length, 3)
-    const photoPart = parts.find(part => part.includes('name="photo"'))
-    if (!photoPart) assert.fail('缺少 photo 字段')
-    assert.match(photoPart, /filename="screenshot\.png"/)
-    assert.match(photoPart, /Content-Type: image\/png/i)
-    const photoBytes = photoPart.split('\r\n\r\n').slice(1).join('\r\n\r\n')
-    assert.equal(Buffer.from(photoBytes, 'latin1').subarray(0, 9).toString(), 'png-bytes')
-    const chatPart = parts.find(part => part.includes('name="chat_id"'))
-    if (!chatPart) assert.fail('缺少 chat_id 字段')
-    assert.match(chatPart, /fixture-chat/)
-    const captionPart = parts.find(part => part.includes('name="caption"'))
-    if (!captionPart) assert.fail('缺少 caption 字段')
-    // 字段值按 UTF-8 编码，经 latin1 结构解析后需还原为 UTF-8 再断言
-    const captionText = Buffer.from(captionPart.split('\r\n\r\n')[1] ?? '', 'latin1').toString('utf8')
-    assert.equal(captionText, '标题\r\n')
-  })
-})

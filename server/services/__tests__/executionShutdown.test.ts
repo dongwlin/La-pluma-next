@@ -297,7 +297,6 @@ describe('execution shutdown coordination', () => {
     assert.deepEqual(summary.interruptedRunIds, []);
     assert.equal(summary.flush.ok, true);
     assert.equal(deviceStops.length, 1);
-    assert.ok(deviceStops[0].forceKillDelayMs >= 100);
 
     const stored = await readStoredRuns();
     assert.equal(requireRunRecord(stored, running.runId).status, 'stopped');

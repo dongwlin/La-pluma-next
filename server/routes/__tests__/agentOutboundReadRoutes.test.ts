@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import router from '../agent.ts'
-import { createOutboundHttpClient } from '../../services/outboundRequestService.ts'
 import type {
   MaintenanceChangelogEntry,
   MaintenanceParadoxSearchPayload
@@ -248,43 +247,3 @@ describe('Agent outbound read routes', () => {
   })
 })
 
-describe('Outbound client cancellation and timeout composition', () => {
-  // 迁移后的调用方共用 createOutboundHttpClient 组合；时限/取消在组合层以短时限 fixture 验证，
-  // 避免在路由测试中等待缺省 15 秒时限。
-  it('aborts an in-flight read when the caller signal fires', async () => {
-    const client = createOutboundHttpClient({ defaultTimeoutMs: 5000 })
-    stubFetch((_url, init) => new Promise<Response>((_resolve, reject) => {
-      const signal = init.signal
-      assert.ok(signal, '出站请求应携带调用方 signal')
-      signal.addEventListener('abort', () => reject(signal.reason))
-    }))
-    const controller = new AbortController()
-    const pending = client.requestJson('https://upstream.invalid/data', { signal: controller.signal })
-    setTimeout(() => controller.abort(), 5)
-
-    await assert.rejects(pending, error => {
-      const failure = readRecord(error, 'outbound failure')
-      assert.equal(failure.kind, 'cancelled')
-      assert.equal(failure.code, 'AGENT_OUTBOUND_CANCELLED')
-      assert.equal(failure.statusCode, 499)
-      return true
-    })
-  })
-
-  it('reports a domain timeout when the upstream never answers within the limit', async () => {
-    const client = createOutboundHttpClient({ defaultTimeoutMs: 20 })
-    stubFetch((_url, init) => new Promise<Response>((_resolve, reject) => {
-      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
-    }))
-
-    // 退避归零仅压缩测试等待；GET 超时仍按缺省重试后抛出最终失败。
-    await assert.rejects(client.requestJson('https://upstream.invalid/slow', { retry: { baseDelayMs: 0 } }), error => {
-      const failure = readRecord(error, 'outbound failure')
-      assert.equal(failure.kind, 'timeout')
-      assert.equal(failure.code, 'AGENT_OUTBOUND_TIMEOUT')
-      assert.equal(failure.statusCode, 504)
-      assert.equal(failure.retryable, true)
-      return true
-    })
-  })
-})

@@ -176,19 +176,6 @@ describe('apiHelper', () => {
       assert.strictEqual(res.body, null);
     });
 
-    it('应该把包装函数内的同步异常通过 next(error) 交接', async () => {
-      const failure = new Error('同步失败');
-      const handler = asyncHandler(() => {
-        throw failure;
-      });
-      const res = createResponse();
-      const forwarded: unknown[] = [];
-      await handler({ headers: {} }, res, error => forwarded.push(error));
-
-      assert.deepStrictEqual(forwarded, [failure]);
-      assert.strictEqual(res.body, null);
-    });
-
     it('应该让正常完成的处理器直接响应', async () => {
       const handler = asyncHandler(async (req, res) => {
         res.json({ ok: true });

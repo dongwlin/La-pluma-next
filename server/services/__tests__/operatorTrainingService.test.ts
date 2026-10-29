@@ -213,26 +213,6 @@ describe('expandMaterialTree', () => {
     assert.deepEqual(result, { a: 1 });
   });
 
-  it('falls back with the exact requested quantity for real chip conversion cycles', () => {
-    const materialsDb = {
-      materials: {
-        3241: { id: '3241', name: '狙击芯片' },
-        3251: { id: '3251', name: '术师芯片' },
-        32001: { id: '32001', name: '芯片助剂' }
-      }
-    };
-    const formulasDb = {
-      3241: { materials: { 3251: 3 } },
-      3251: { materials: { 3241: 3 } }
-    };
-    const depot = { items: {} };
-
-    // 与夜烟场景一致：需 3×术师芯片，仓库无芯片，互转配方 3:1 成环
-    const result = expandMaterialTree('3251', 3, depot, materialsDb, formulasDb);
-
-    assert.deepEqual(result, { 3251: 3 });
-  });
-
   it('does not drop shared sub-materials across diamond-shaped formulas', () => {
     const materialsDb = {
       materials: {

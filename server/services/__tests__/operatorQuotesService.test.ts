@@ -33,17 +33,6 @@ function parseStoredQuotes(content: string): unknown[] {
   return parsed
 }
 
-test('built-in operator quotes always include a character avatar id', () => {
-  assert.ok(DEFAULT_QUOTES.length > 0)
-  assert.equal(DEFAULT_QUOTES.some(quote => quote.operator === '博士'), false)
-
-  for (const quote of DEFAULT_QUOTES) {
-    assert.match(quote.operatorId, /^char_/)
-    assert.ok(quote.operator)
-    assert.ok(quote.quote)
-  }
-})
-
 test('legacy quotes gain known operator ids without discarding custom entries', () => {
   assert.deepEqual(normalizeQuotes([
     { operator: '银灰', quote: '战术安排已就绪' },

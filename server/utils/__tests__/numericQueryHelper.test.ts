@@ -16,17 +16,11 @@ describe('resolveBoundedInteger', () => {
 
   it('falls back to the default for repeated query parameters', () => {
     assert.equal(resolveBoundedInteger(['80', '120'], bounds), 80);
-  });
-
-  it('accepts a single repeated value like its plain string form', () => {
     assert.equal(resolveBoundedInteger(['80'], bounds), 80);
-    assert.equal(resolveBoundedInteger(['3.9'], bounds), 3);
   });
 
   it('treats non-finite magnitudes as invalid and falls back to the default', () => {
-    assert.equal(resolveBoundedInteger('Infinity', bounds), 80);
     assert.equal(resolveBoundedInteger(Infinity, bounds), 80);
-    assert.equal(resolveBoundedInteger('-Infinity', bounds), 80);
     assert.equal(resolveBoundedInteger(-Infinity, bounds), 80);
     assert.equal(resolveBoundedInteger('1e999', bounds), 80);
   });

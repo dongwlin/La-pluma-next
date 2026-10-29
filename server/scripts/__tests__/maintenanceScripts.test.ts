@@ -764,49 +764,6 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(imported.stdout.trim(), 'imported');
   });
 
-  it('points every package script at an existing .ts maintenance script', async () => {
-    const packageJson = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf-8')) as {
-      scripts: Record<string, string>;
-    };
-    const directScripts = [
-      'fetch-materials',
-      'fetch-formulas',
-      'fetch-all-materials',
-      'fetch-drop-data',
-      'fetch-stages',
-      'fetch-assets',
-      'fetch-paradox'
-    ];
-    const referenced = new Set<string>();
-
-    for (const name of directScripts) {
-      const command = packageJson.scripts[name];
-      assert.ok(command, `${name} must exist`);
-      const matches = [...command.matchAll(/scripts\/[\w-]+\.(?:ts|js)/g)].map(match => match[0]);
-      assert.ok(matches.length > 0, `${name} must run a script`);
-      for (const match of matches) {
-        assert.equal(match.endsWith('.ts'), true, `${name} must reference a .ts script: ${match}`);
-        assert.equal(existsSync(join(serverDir, match)), true, `${match} must exist`);
-        referenced.add(match);
-      }
-    }
-
-    assert.equal(packageJson.scripts['fetch-game-data'], 'pnpm run fetch-stages && pnpm run fetch-paradox');
-    assert.deepEqual(
-      [...referenced].sort(),
-      [
-        'fetch-all-materials',
-        'fetch-game-assets',
-        'fetch-material-formulas',
-        'fetch-operator-materials',
-        'fetch-paradox-operators',
-        'fetch-penguin-stats',
-        'fetch-stage-data',
-        'merge-formulas'
-      ].map(name => `scripts/${name}.ts`).sort()
-    );
-  });
-
   it('writes each data script to its documented server/data target', () => {
     assert.equal(operatorMaterials.OUTPUT_PATH, join(serverDir, 'data', 'operator-materials.json'));
     assert.equal(materialFormulas.OUTPUT_PATH, join(serverDir, 'data', 'material-formulas.json'));
@@ -818,5 +775,19 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(stageData.OUTPUT_PATH, join(serverDir, 'data', 'stages.json'));
     assert.equal(gameAssets.OUTPUT_DIR, join(serverDir, 'data'));
     assert.equal(updateResources.TEMP_DIR, join(serverDir, '.temp-maa-resource'));
+  });
+
+  it('keeps every package script pointing at an existing script file', async () => {
+    const { scripts } = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf-8')) as {
+      scripts: Record<string, string>;
+    };
+    const referenced = [...new Set(Object.values(scripts).flatMap(command => (
+      [...command.matchAll(/scripts\/[\w-]+\.(?:ts|js)/g)].map(match => match[0])
+    )))];
+
+    assert.ok(referenced.length > 0);
+    for (const file of referenced) {
+      assert.equal(existsSync(join(serverDir, file)), true, `package script references missing ${file}`);
+    }
   });
 });

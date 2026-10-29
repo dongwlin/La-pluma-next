@@ -3,17 +3,11 @@ import assert from 'node:assert/strict';
 import { getEnabledAwardItems, parseAwardExecutionActions } from '../awardResultService.ts';
 
 describe('award execution results', () => {
-  it('keeps all six MaaCore Award switches', () => {
-    const params = {
-      award: true,
-      mail: true,
-      recruit: true,
-      orundum: true,
-      mining: true,
-      specialaccess: true
-    };
+  it('maps every supported MaaCore award switch to an award item', () => {
+    const switches = ['award', 'mail', 'recruit', 'orundum', 'mining', 'specialaccess'];
+    const params = Object.fromEntries(switches.map(key => [key, true]));
 
-    assert.deepEqual(getEnabledAwardItems(params).map(item => item.key), Object.keys(params));
+    assert.deepEqual(getEnabledAwardItems(params).map(item => item.key), switches);
   });
 
   it('distinguishes claimed and unavailable Award items from MaaCore events', () => {
