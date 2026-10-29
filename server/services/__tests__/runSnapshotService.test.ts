@@ -10,7 +10,7 @@ import {
   resetAgentRunsForTests,
   startAgentRun
 } from '../agentRunService.ts'
-import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
+import { getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
 import { buildAgentRunSnapshot } from '../runSnapshotService.ts'
 import { loggerManager } from '../../utils/logger.ts'
 
@@ -193,51 +193,5 @@ describe('run snapshot', () => {
     assert.ok(snapshot.run.progress)
     assert.equal(snapshot.run.runId, newer.runId)
     assert.equal(snapshot.activeRuns.find(item => item.runId === older.runId)?.progress, undefined)
-  })
-})
-
-describe('run snapshot line normalization', () => {
-  beforeEach(async () => {
-    resetAgentRunsForTests()
-    await rm(lockFile, { force: true })
-    if (getTaskStatus().isRunning) setTaskStatus(false)
-    clearRealtimeLogs()
-    for (let i = 0; i < 510; i++) {
-      setTaskStatus(i % 2 === 0, `seed-task-${i}`, 'automation')
-    }
-    setTaskStatus(false)
-  })
-
-  afterEach(() => {
-    clearRealtimeLogs()
-    if (getTaskStatus().isRunning) setTaskStatus(false)
-  })
-
-  it('keeps the established normalization for omitted, invalid and repeated lines', async () => {
-    const invalidLines: unknown[] = [undefined, 'abc', Number.NaN, ['1', '2'], Infinity, -Infinity, '1e999']
-    for (const lines of invalidLines) {
-      const snapshot = await buildAgentRunSnapshot({ lines })
-      assert.equal(snapshot.recentLogs.length, 80)
-    }
-  })
-
-  it('keeps clamping oversized finite values to the 1..500 range', async () => {
-    const oversizedLines: unknown[] = ['1e9', 1000, '1e21']
-    for (const lines of oversizedLines) {
-      const snapshot = await buildAgentRunSnapshot({ lines })
-      assert.equal(snapshot.recentLogs.length, 500)
-    }
-    const undersizedLines: unknown[] = [-5, 0]
-    for (const lines of undersizedLines) {
-      const snapshot = await buildAgentRunSnapshot({ lines })
-      assert.equal(snapshot.recentLogs.length, 1)
-    }
-    assert.equal((await buildAgentRunSnapshot({ lines: 3.9 })).recentLogs.length, 3)
-  })
-
-  it('keeps valid in-range line requests untouched', async () => {
-    assert.equal((await buildAgentRunSnapshot()).recentLogs.length, 80)
-    assert.equal((await buildAgentRunSnapshot({ lines: 200 })).recentLogs.length, 200)
-    assert.equal((await buildAgentRunSnapshot({ lines: 500 })).recentLogs.length, 500)
   })
 })

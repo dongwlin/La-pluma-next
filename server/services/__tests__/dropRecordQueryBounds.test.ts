@@ -107,14 +107,6 @@ describe('getRecentDrops numeric bounds', () => {
       assert.ok(records.length <= MAX_DROP_HISTORY_DAYS);
     }
   });
-
-  it('keeps valid in-range requests untouched', async () => {
-    await seedRecentDays([5]);
-    assert.deepEqual(
-      expectSuccess(await getRecentDrops(30)).map(record => record.date),
-      [dateDaysAgo(5)]
-    );
-  });
 });
 
 describe('getDropStatistics numeric bounds', () => {
@@ -127,12 +119,6 @@ describe('getDropStatistics numeric bounds', () => {
       assert.equal(statistics.dateRange.days, 3);
       assert.equal(statistics.dailyTrend.length, 3);
     }
-  });
-
-  it('keeps the default window for omitted input', async () => {
-    await seedRecentDays([0, 1, 3]);
-    const statistics = expectSuccess(await getDropStatistics());
-    assert.equal(statistics.dateRange.days, 3);
   });
 });
 

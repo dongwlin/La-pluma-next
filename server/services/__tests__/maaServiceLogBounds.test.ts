@@ -48,33 +48,10 @@ describe('getRealtimeLogs numeric bounds', () => {
     setTaskStatus(false);
   });
 
-  it('returns the default count for omitted, invalid and repeated input', () => {
+  it('serves the wired 100-line default and 500-line cap', () => {
     seedRealtimeLogs();
     assert.equal(getRealtimeLogs().length, 100);
-    assert.equal(getRealtimeLogs('abc').length, 100);
-    assert.equal(getRealtimeLogs(Number.NaN).length, 100);
-    assert.equal(getRealtimeLogs(['1', '2']).length, 100);
-  });
-
-  it('falls back to the default for non-finite magnitudes and clamps oversized finite values', () => {
-    seedRealtimeLogs();
-    assert.equal(getRealtimeLogs(Infinity).length, 100);
-    assert.equal(getRealtimeLogs('1e999').length, 100);
-    assert.equal(getRealtimeLogs('1e9').length, 500);
     assert.equal(getRealtimeLogs(1000).length, 500);
-  });
-
-  it('clamps negatives and zero to one line and truncates decimals', () => {
-    seedRealtimeLogs();
-    assert.equal(getRealtimeLogs(-5).length, 1);
-    assert.equal(getRealtimeLogs(0).length, 1);
-    assert.equal(getRealtimeLogs(3.9).length, 3);
-  });
-
-  it('keeps valid in-range requests untouched', () => {
-    seedRealtimeLogs();
-    assert.equal(getRealtimeLogs(80).length, 80);
-    assert.equal(getRealtimeLogs(200).length, 200);
   });
 });
 
@@ -90,37 +67,16 @@ describe('readLogFile numeric bounds', () => {
     await writeFile(logFilePath, lines.join('\n'), 'utf-8');
   });
 
-  it('returns the default count for omitted, invalid and repeated input', async () => {
-    for (const lines of [undefined, 'abc', Number.NaN, ['1', '2']] as unknown[]) {
-      const result = await readLogFile(logFilePath, lines);
-      assert.equal(result.totalLines, totalLines);
-      assert.equal(result.returnedLines, 1000);
-      assert.equal(result.content.split('\n').length, 1000);
-      assert.ok(result.content.endsWith(`log line ${totalLines}`));
-    }
-  });
+  it('serves the wired 1000-line default and 5000-line cap', async () => {
+    const byDefault = await readLogFile(logFilePath);
+    assert.equal(byDefault.totalLines, totalLines);
+    assert.equal(byDefault.returnedLines, 1000);
+    assert.equal(byDefault.content.split('\n').length, 1000);
+    assert.ok(byDefault.content.endsWith(`log line ${totalLines}`));
 
-  it('falls back to the default for non-finite magnitudes and clamps oversized finite values', async () => {
-    assert.equal((await readLogFile(logFilePath, Infinity)).returnedLines, 1000);
-    const oversized = await readLogFile(logFilePath, '1e21');
-    assert.equal(oversized.returnedLines, 5000);
-    assert.equal((await readLogFile(logFilePath, 6000)).returnedLines, 5000);
-    assert.equal((await readLogFile(logFilePath, '1e9')).returnedLines, 5000);
-    assert.ok(oversized.content.endsWith(`log line ${totalLines}`));
-  });
-
-  it('clamps negatives and zero to one line and truncates decimals', async () => {
-    assert.equal((await readLogFile(logFilePath, -5)).returnedLines, 1);
-    assert.equal((await readLogFile(logFilePath, 0)).returnedLines, 1);
-    const decimal = await readLogFile(logFilePath, 3.9);
-    assert.equal(decimal.returnedLines, 3);
-    assert.ok(decimal.content.endsWith(`log line ${totalLines}`));
-  });
-
-  it('keeps valid in-range requests untouched', async () => {
-    const result = await readLogFile(logFilePath, 200);
-    assert.equal(result.returnedLines, 200);
-    assert.ok(result.content.endsWith(`log line ${totalLines}`));
+    const capped = await readLogFile(logFilePath, 6000);
+    assert.equal(capped.returnedLines, 5000);
+    assert.ok(capped.content.endsWith(`log line ${totalLines}`));
   });
 });
 

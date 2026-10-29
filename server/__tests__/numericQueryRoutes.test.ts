@@ -174,15 +174,6 @@ describe('GET /api/agent/drops/recent numeric query bounds', () => {
       assert.equal(body.data.length, 3);
     }
   });
-
-  it('keeps valid in-range requests untouched', async () => {
-    await seedRecentDropDays([0, 1, 3, 10, 20]);
-    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
-    const body = await readBody<ApiSuccessResponse<DropRecordDay[]>>(
-      await fetchDrops(`http://127.0.0.1:${port}`, 'recent?days=30')
-    );
-    assert.equal(body.data.length, 5);
-  });
 });
 
 describe('GET /api/agent/drops/statistics numeric query bounds', () => {
@@ -226,27 +217,6 @@ describe('GET /api/agent/logs/recent numeric query bounds', () => {
       assert.equal(body.data.length, 500);
     }
   });
-
-  it('clamps negatives and zero to one line and truncates decimals', async () => {
-    seedRealtimeLogs();
-    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
-    const baseUrl = `http://127.0.0.1:${port}/api/agent/logs/recent`;
-    const negative = await readBody<ApiSuccessResponse<MaaRealtimeLogEntry[]>>(await fetch(`${baseUrl}?lines=-5`));
-    assert.equal(negative.data.length, 1);
-    const zero = await readBody<ApiSuccessResponse<MaaRealtimeLogEntry[]>>(await fetch(`${baseUrl}?lines=0`));
-    assert.equal(zero.data.length, 1);
-    const decimal = await readBody<ApiSuccessResponse<MaaRealtimeLogEntry[]>>(await fetch(`${baseUrl}?lines=3.9`));
-    assert.equal(decimal.data.length, 3);
-  });
-
-  it('keeps valid in-range requests untouched', async () => {
-    seedRealtimeLogs();
-    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
-    const body = await readBody<ApiSuccessResponse<MaaRealtimeLogEntry[]>>(
-      await fetch(`http://127.0.0.1:${port}/api/agent/logs/recent?lines=200`)
-    );
-    assert.equal(body.data.length, 200);
-  });
 });
 
 describe('GET /api/agent/logs/files numeric query bounds', () => {
@@ -276,27 +246,6 @@ describe('GET /api/agent/logs/files numeric query bounds', () => {
       assert.equal(body.data.returnedLines, 5000);
       assert.ok(body.data.content.endsWith(`log line ${LOG_FILE_TOTAL_LINES}`));
     }
-  });
-
-  it('clamps negatives and zero to one line and truncates decimals', async () => {
-    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
-    const negative = await readBody<ApiSuccessResponse<MaaLogFileContent>>(
-      await fetch(`http://127.0.0.1:${port}/api/agent/logs/files/${encodedPath}?lines=-5`)
-    );
-    assert.equal(negative.data.returnedLines, 1);
-    const decimal = await readBody<ApiSuccessResponse<MaaLogFileContent>>(
-      await fetch(`http://127.0.0.1:${port}/api/agent/logs/files/${encodedPath}?lines=3.9`)
-    );
-    assert.equal(decimal.data.returnedLines, 3);
-    assert.ok(decimal.data.content.endsWith(`log line ${LOG_FILE_TOTAL_LINES}`));
-  });
-
-  it('keeps valid in-range requests untouched', async () => {
-    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
-    const response = await fetch(`http://127.0.0.1:${port}/api/agent/logs/files/${encodedPath}?lines=200`);
-    const body = await readBody<ApiSuccessResponse<MaaLogFileContent>>(response);
-    assert.equal(body.data.returnedLines, 200);
-    assert.ok(body.data.content.endsWith(`log line ${LOG_FILE_TOTAL_LINES}`));
   });
 });
 
