@@ -1145,6 +1145,11 @@
     white-space: nowrap;
   }
 
+  /* 时区说明比副标题长：允许在窄面板内换行，不撑破标题行。 */
+  .automation-schedule-heading p.automation-schedule-timezone {
+    white-space: normal;
+  }
+
   .automation-schedule-actions {
     display: flex;
     flex: 0 0 auto;

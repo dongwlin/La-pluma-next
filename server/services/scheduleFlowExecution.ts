@@ -37,10 +37,14 @@ import { createLogger } from '../utils/logger.ts';
  * - 同一进程只创建一个实例，异步流程只有一个执行所有者。
  */
 
-/** 执行只需要连接地址与 ADB 路径；profile 解析仍由连接服务负责。 */
+/**
+ * 执行只需要连接地址、ADB 路径与客户端类型；profile 解析仍由连接服务负责。
+ * `clientType` 可选：任务参数或连接 profile 未提供时按连接默认值判定游戏日。
+ */
 export interface ScheduleConnection {
   adbPath: string;
   address: string;
+  clientType?: string;
 }
 
 /** 命令输出：流程只读取 stdout/stderr 文本。 */
@@ -101,7 +105,7 @@ export interface ScheduleExecutionPorts {
   getGameClientState(adbPath: string, address: string, clientType: string): Promise<ScheduleGameClientState>;
   captureScreen(adbPath: string, address: string): Promise<ScheduleCapturedScreen>;
   replaceActivityCode(stage: string, clientType: string): Promise<string>;
-  isStageOpenToday(stage: string): ScheduleStageOpenState;
+  isStageOpenToday(stage: string, clientType: string): ScheduleStageOpenState;
   shouldCaptureNotificationScreenshot(): boolean;
   sendCompletionNotification(info: TaskCompletionInfo): Promise<unknown>;
   recordDrops(input: DropRecordInput): Promise<unknown>;
@@ -919,6 +923,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           if (command === 'fight' && args.length > 0) {
             const stageInput = args[0];
             const clientType = task.params.clientType || DEFAULT_CLIENT_TYPE;
+            // 关卡开放按连接 profile 的客户端游戏日判定；任务显式指定的类型优先。
+            const gameClientType = task.params.clientType || sharedConnection.clientType || DEFAULT_CLIENT_TYPE;
 
             // 解析关卡列表，格式：stage1:times1,stage2:times2 或 stage1,stage2
             const stageEntries = stageInput.split(',').map(s => {
@@ -956,7 +962,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 }
 
                 // 检查关卡是否开放
-                const openCheck = isStageOpenToday(stage);
+                const openCheck = isStageOpenToday(stage, gameClientType);
                 if (!openCheck.isOpen) {
                   logger.info('关卡今日未开放，跳过', {
                     scheduleId,
@@ -1101,7 +1107,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               const { stage, times } = stageEntries[0];
 
               // 检查关卡是否开放
-              const openCheck = isStageOpenToday(stage);
+              const openCheck = isStageOpenToday(stage, gameClientType);
               if (!openCheck.isOpen) {
                 logger.info('关卡今日未开放，跳过', {
                   scheduleId,

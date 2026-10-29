@@ -268,4 +268,47 @@ describe('schedule flow boundaries', () => {
     assert.equal(status.shouldStop, false);
     assert.equal(status.message, '任务流程已被用户终止');
   });
+
+  it('uses the connection client type for stage open checks unless the task overrides it', async () => {
+    const checks: Array<{ stage: string; clientType: string }> = [];
+    const { ports, calls } = createPorts({
+      resolveConnection: async () => ({
+        adbPath: 'adb',
+        address: '127.0.0.1:5555',
+        clientType: 'YoStarJP'
+      }),
+      isStageOpenToday: (stage, clientType) => {
+        checks.push({ stage, clientType });
+        return { isOpen: false, reason: '今日未开放' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    const fromProfile = completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'CE-6', times: '1' }] }
+      }
+    ], 'flow-client-profile'));
+
+    assert.deepEqual(checks, [{ stage: 'CE-6', clientType: 'YoStarJP' }]);
+    assert.equal(fromProfile.summary.skippedCount, 1);
+    assert.equal(calls.commands.length, 0);
+
+    checks.length = 0;
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-2',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'CE-6', times: '1' }], clientType: 'Bilibili' }
+      }
+    ], 'flow-client-override'));
+
+    assert.deepEqual(checks, [{ stage: 'CE-6', clientType: 'Bilibili' }]);
+  });
 });

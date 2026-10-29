@@ -190,6 +190,28 @@ describe('schedule trigger runtime', () => {
     assert.deepEqual(runtime.getStatus(), [{ scheduleId: 'default', times: ['09:30'], count: 1 }]);
   });
 
+  it('registers daily flows in the client service time zone', () => {
+    const { runtime, fakeCron } = createRuntime();
+
+    runtime.setupSchedule('default', ['08:00'], taskFlow, 'YoStarEN');
+    assert.equal(fakeCron.tasks[0].options.timezone, 'Etc/GMT+7');
+    assert.equal(runtime.describe().registrations[0].timezone, 'Etc/GMT+7');
+
+    runtime.setupSchedule('jp', ['08:00'], taskFlow, 'YoStarJP');
+    assert.equal(fakeCron.tasks[1].options.timezone, 'Asia/Tokyo');
+
+    runtime.setupSchedule('cn', ['08:00'], taskFlow, 'Bilibili');
+    assert.equal(fakeCron.tasks[2].options.timezone, 'Asia/Shanghai');
+
+    // 未指定客户端时按连接默认客户端（国服）注册。
+    runtime.setupSchedule('fallback', ['08:00'], taskFlow);
+    assert.equal(fakeCron.tasks[3].options.timezone, 'Asia/Shanghai');
+
+    // 自动更新是维护作业，不受游戏服务区时区影响。
+    runtime.setupAutoUpdate({ enabled: true, time: '06:00' });
+    assert.equal(fakeCron.tasks[4].options.timezone, 'Asia/Shanghai');
+  });
+
   it('keeps exactly one registration when the same configuration is repeated', () => {
     const { runtime, fakeCron } = createRuntime();
 

@@ -96,6 +96,9 @@ export interface TrainingPlanSummary {
   backlogCount: number;
   openStageCount: number;
   closedStageCount: number;
+  /** 计划判定所用的游戏日与客户端类型，与关卡开放结论同源。 */
+  gameDate: string;
+  clientType: string;
   todayOpenResourceStages: DailyOpenStage[];
   todayClosedResourceStages: DailyOpenStage[];
 }
@@ -483,11 +486,23 @@ interface StagePlan {
   isOpen: boolean;
 }
 
+/** 计划生成的查询选项：客户端类型决定关卡开放所依据的游戏日。 */
+export interface TrainingPlanOptions {
+  clientType?: string;
+}
+
 /**
  * 生成养成计划（刷取计划）
+ *
+ * 关卡开放按客户端服务区的游戏日判定；`clientType` 缺省时由通知服务回落
+ * 到连接默认客户端。
  */
-export async function generateTrainingPlan(mode: string = 'current'): Promise<TrainingPlan> {
+export async function generateTrainingPlan(
+  mode: string = 'current',
+  options: TrainingPlanOptions = {}
+): Promise<TrainingPlan> {
   if (mode !== 'current' && mode !== 'all') throw trainingError('计划模式必须为 current 或 all');
+  const now = new Date();
   const planMode: TrainingFlowMode = mode;
   const queueData = await loadTrainingQueue();
   const depot = await loadDepot();
@@ -669,11 +684,11 @@ export async function generateTrainingPlan(mode: string = 'current'): Promise<Tr
       totalTimes,
       sanity: totalTimes * stageData.apCost,
       // isStageOpenToday 返回 { isOpen, reason } 对象，这里取布尔值供客户端判断
-      isOpen: isStageOpenToday(stageData.stage).isOpen
+      isOpen: isStageOpenToday(stageData.stage, { now, clientType: options.clientType }).isOpen
     };
   });
   const totalSanity = stages.reduce((sum, stage) => sum + stage.sanity, 0);
-  const todayOpen = getTodayOpenStages();
+  const todayOpen = getTodayOpenStages({ now, clientType: options.clientType });
   const openStages = stages.filter(stage => stage.isOpen !== false);
   const closedStages = stages.filter(stage => stage.isOpen === false);
   const focusOperator = operators[0] || null;
@@ -696,6 +711,8 @@ export async function generateTrainingPlan(mode: string = 'current'): Promise<Tr
       backlogCount: Math.max(operators.length - 1, 0),
       openStageCount: openStages.length,
       closedStageCount: closedStages.length,
+      gameDate: todayOpen.gameDate,
+      clientType: todayOpen.clientType,
       todayOpenResourceStages: todayOpen.open,
       todayClosedResourceStages: todayOpen.closed
     }

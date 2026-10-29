@@ -329,7 +329,9 @@ router.get('/schedules/execution', asyncHandler<MaintenanceRequest, ApiResponseW
 
 router.post('/schedules', asyncHandler<MaintenanceRequest, ApiResponseWriter>(async (req, res) => {
   const { scheduleId, times, taskFlow } = parseScheduleSetupBody(req.body);
-  const result = setupSchedule(scheduleId, times, taskFlow);
+  // 执行时间按连接 profile 的客户端服务区时区触发；请求体与响应形状不变。
+  const { clientType } = await resolveMaintenanceConnection(req);
+  const result = setupSchedule(scheduleId, times, taskFlow, clientType);
   if (!result.success) {
     return sendError(res, req, agentError('AGENT_SCHEDULE_SETUP_FAILED', result.message, { statusCode: 400 }));
   }

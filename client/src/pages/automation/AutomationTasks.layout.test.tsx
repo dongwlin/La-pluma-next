@@ -342,6 +342,12 @@ describe('AutomationTasks layout surfaces', () => {
     expect(mocks.stopSchedule).not.toHaveBeenCalled()
   })
 
+  it('states that schedule times follow the game service time zone', async () => {
+    await renderPage()
+
+    expect(container.textContent).toContain('执行时间按游戏服务区时区，每日 04:00 刷新游戏日')
+  })
+
   it('adds schedule times from the noon-first candidate list up to the row limit', async () => {
     mocks.loadUserConfig.mockResolvedValue({
       success: true,

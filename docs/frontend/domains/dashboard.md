@@ -206,6 +206,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - activity 必须是对象且 `completion` 形状合法；支持 `isActive`、`available`、`code`/`id`、`name`/`displayName`/`stageName` 等既有字段。
 - schedule execution 必须是对象；`isRunning`/`running`/`executing` 归一为运行态，`lastResult`/`result`/`lastMessage` 走既有摘要格式化。
 - training queue 接受数组或 `{ queue }`；drops 接受数组或 `{ records }`；open-today 必须是 `{ open, closed }`，两组均为 `{ stage, name }` 数组（每组最多 100 项）。
+- open-today 的 `gameDate`（`YYYY-MM-DD`）、`clientType` 与 `weekday` 描述服务端判定所用的游戏日：`weekday` 是客户端服务区时区下、每日 04:00 日界之后的星期，不是浏览器或宿主日历星期。展示只读 `open`/`closed`，新增字段缺失也不影响归一。
 - 任一载荷缺失、形状不符或 completion 越界时返回 `null`；协调器不会提交部分结果。
 
 ### 3. 原子提交与失败策略

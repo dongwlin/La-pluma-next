@@ -127,6 +127,11 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 执行期间开关、增删、步进与启用项全部禁用；禁用事实来自只读 Run 投影，
 不是面板自己的运行状态。
 
+执行时间按连接 profile 的客户端服务区时区注册 cron（国服与繁中为
+`Asia/Shanghai`，其它服使用各自时区），非国服触发的绝对时刻会与浏览器本地时间
+不同；面板说明同时标注“每日 04:00 刷新游戏日”。`/agent/schedules` 的请求与
+响应形状不变，时区只进入注册日志与诊断投影。
+
 ### 5. 执行摘要
 
 `AutomationExecutionSummary` 只接收工作区选好的 `displaySummary` 与 `runId`：

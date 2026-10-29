@@ -102,6 +102,8 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../app.ts');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
+const { getGameDay } = await import('../services/gameCalendar.ts');
+const { DEFAULT_CLIENT_TYPE } = await import('../config/connectionDefaults.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
 // 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。
@@ -386,6 +388,37 @@ describe('moved agent read routes keep authentication and response contracts', (
       await fetch(`${baseUrl}/api/agent/data/operbox`)
     );
     assert.equal(operbox.success, true);
+  });
+
+  it('judges open-today stages in the requested client game day', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    // 游戏日在 04:00 边界切换；读取前后各取一次，跨边界时只要求落在其中一天。
+    const before = getGameDay(new Date(), 'YoStarJP');
+    const response = await fetch(`${baseUrl}/api/agent/stages/open-today?clientType=YoStarJP`);
+    assert.equal(response.status, 200);
+    const japanese = await readBody<ApiSuccessResponse<DailyStageOverview>>(response);
+    const after = getGameDay(new Date(), 'YoStarJP');
+
+    assert.equal(japanese.success, true);
+    assert.equal(japanese.data.clientType, 'YoStarJP');
+    if (before.date === after.date) {
+      assert.equal(japanese.data.gameDate, before.date);
+      assert.equal(japanese.data.weekday, before.weekday);
+    } else {
+      assert.ok([before.date, after.date].includes(japanese.data.gameDate));
+    }
+    assert.equal(
+      new Date(`${japanese.data.gameDate}T00:00:00.000Z`).getUTCDay(),
+      japanese.data.weekday,
+      'weekday must be the game-day weekday of gameDate'
+    );
+
+    const profile = await readBody<ApiSuccessResponse<DailyStageOverview>>(
+      await fetch(`${baseUrl}/api/agent/stages/open-today`)
+    );
+    assert.equal(profile.data.clientType, DEFAULT_CLIENT_TYPE);
   });
 
   it('keeps production static fallback behind the moved API routes', async () => {
