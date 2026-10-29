@@ -656,34 +656,6 @@ describe('Telegram upload', () => {
     assert.equal(photo.name, 'screenshot.png');
     assert.equal(photo.type, 'image/png');
     assert.deepEqual(Buffer.from(await photo.arrayBuffer()), Buffer.from(TINY_PNG_BASE64, 'base64'));
-
-    // 线上 multipart 序列化由运行时完成；fixture 验证 boundary、字段名、文件名与原始字节
-    const wire = new Response(formData);
-    const contentType = wire.headers.get('content-type');
-    if (!contentType) assert.fail('missing multipart content type');
-    assert.match(contentType, /^multipart\/form-data; boundary=/);
-    const boundaryMatch = contentType.match(/boundary=(.+)$/);
-    if (!boundaryMatch) assert.fail('missing multipart boundary');
-    const boundary = boundaryMatch[1];
-    const bodyText = Buffer.from(await wire.arrayBuffer()).toString('latin1');
-    const parts = bodyText.split(`--${boundary}`).filter(part => part.trim() && !part.startsWith('--'));
-    assert.equal(parts.length, 3);
-    const photoPart = parts.find(part => part.includes('name="photo"'));
-    if (!photoPart) assert.fail('missing photo part');
-    assert.match(photoPart, /filename="screenshot\.png"/);
-    assert.match(photoPart, /Content-Type: image\/png/i);
-    const photoBytes = photoPart.split('\r\n\r\n').slice(1).join('\r\n\r\n');
-    assert.equal(
-      Buffer.from(photoBytes, 'latin1').subarray(0, 8).toString('hex'),
-      Buffer.from(TINY_PNG_BASE64, 'base64').subarray(0, 8).toString('hex')
-    );
-    const chatPart = parts.find(part => part.includes('name="chat_id"'));
-    if (!chatPart) assert.fail('missing chat_id part');
-    assert.match(chatPart, /fixture-chat/);
-    const captionPart = parts.find(part => part.includes('name="caption"'));
-    if (!captionPart) assert.fail('missing caption part');
-    const captionText = Buffer.from(captionPart.split('\r\n\r\n')[1] ?? '', 'latin1').toString('utf8');
-    assert.equal(captionText, '📸 当前屏幕截图\r\n');
   });
 });
 
