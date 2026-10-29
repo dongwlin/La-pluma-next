@@ -776,4 +776,18 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(gameAssets.OUTPUT_DIR, join(serverDir, 'data'));
     assert.equal(updateResources.TEMP_DIR, join(serverDir, '.temp-maa-resource'));
   });
+
+  it('keeps every package script pointing at an existing script file', async () => {
+    const { scripts } = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf-8')) as {
+      scripts: Record<string, string>;
+    };
+    const referenced = [...new Set(Object.values(scripts).flatMap(command => (
+      [...command.matchAll(/scripts\/[\w-]+\.(?:ts|js)/g)].map(match => match[0])
+    )))];
+
+    assert.ok(referenced.length > 0);
+    for (const file of referenced) {
+      assert.equal(existsSync(join(serverDir, file)), true, `package script references missing ${file}`);
+    }
+  });
 });

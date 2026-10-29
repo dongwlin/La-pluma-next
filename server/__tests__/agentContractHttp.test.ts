@@ -532,7 +532,11 @@ describe('Agent API contract registry and mounted routes', () => {
       'POST /logs/cleanup',
       'GET /training/operators',
       'POST /copilot-sets/:id/execute',
-      'GET /device-stats'
+      'GET /device-stats',
+      // 以下入口的 HTTP 行为测试会触发宿主副作用或上游读取，只在这里守住挂载。
+      'POST /actions/open-config-directory',
+      'GET /paradox/operators',
+      'POST /copilot-sets/:id/reset-progress'
     ];
 
     for (const key of webUiOnlyRoutes) {

@@ -190,6 +190,20 @@ describe('schedule trigger runtime', () => {
     assert.deepEqual(runtime.getStatus(), [{ scheduleId: 'default', times: ['09:30'], count: 1 }]);
   });
 
+  it('keeps exactly one registration when the same configuration is repeated', () => {
+    const { runtime, fakeCron } = createRuntime();
+
+    assert.equal(runtime.setupSchedule('default', ['08:00', '12:00'], taskFlow).success, true);
+    const firstTasks = [...fakeCron.tasks];
+    assert.equal(runtime.setupSchedule('default', ['08:00', '12:00'], taskFlow).success, true);
+
+    assert.equal(firstTasks.every(task => task.destroyed), true);
+    assert.equal(fakeCron.tasks.filter(task => task.started).length, 2);
+    const status = runtime.getStatus();
+    assert.equal(status.length, 1);
+    assert.deepEqual(status[0], { scheduleId: 'default', times: ['08:00', '12:00'], count: 2 });
+  });
+
   it('rejects invalid input without touching the active registration', () => {
     const { runtime, fakeCron } = createRuntime();
     runtime.setupSchedule('default', ['08:00'], taskFlow);

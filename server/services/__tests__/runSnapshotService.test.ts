@@ -10,7 +10,7 @@ import {
   resetAgentRunsForTests,
   startAgentRun
 } from '../agentRunService.ts'
-import { getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
+import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
 import { buildAgentRunSnapshot } from '../runSnapshotService.ts'
 import { loggerManager } from '../../utils/logger.ts'
 
@@ -193,5 +193,25 @@ describe('run snapshot', () => {
     assert.ok(snapshot.run.progress)
     assert.equal(snapshot.run.runId, newer.runId)
     assert.equal(snapshot.activeRuns.find(item => item.runId === older.runId)?.progress, undefined)
+  })
+})
+
+describe('run snapshot recent log wiring', () => {
+  beforeEach(() => {
+    clearRealtimeLogs()
+    if (getTaskStatus().isRunning) setTaskStatus(false)
+    for (let index = 0; index < 510; index += 1) {
+      setTaskStatus(index % 2 === 0, `seed-task-${index}`, 'automation')
+    }
+    setTaskStatus(false)
+  })
+
+  afterEach(() => {
+    clearRealtimeLogs()
+  })
+
+  it('serves the default 80 lines and honors a requested count', async () => {
+    assert.equal((await buildAgentRunSnapshot()).recentLogs.length, 80)
+    assert.equal((await buildAgentRunSnapshot({ lines: 200 })).recentLogs.length, 200)
   })
 })

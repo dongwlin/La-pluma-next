@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { normalizeCopilotCommandArgs, normalizeCopilotUri, parseCopilotUri } from '../copilotUri.ts';
 
 test('parses prts single and set codes', () => {
@@ -28,3 +31,35 @@ test('normalizes job URIs only in copilot command arguments', () => {
   }
   assert.equal(normalizeCopilotCommandArgs('run', args), args);
 });
+
+test('passes normalized copilot URIs to the CLI', { skip: process.platform === 'win32' }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-uri-'));
+  const executable = join(directory, 'maa');
+  const previousLock = process.env.LA_PLUMA_MAA_LOCK_FILE;
+  await writeFile(executable, '#!/usr/bin/env node\nconsole.log(JSON.stringify(process.argv.slice(2)))\n');
+  await chmod(executable, 0o755);
+  process.env.LA_PLUMA_MAA_LOCK_FILE = join(directory, 'execution.lock');
+  t.after(async () => {
+    if (previousLock === undefined) delete process.env.LA_PLUMA_MAA_LOCK_FILE;
+    else process.env.LA_PLUMA_MAA_LOCK_FILE = previousLock;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const { execMaaCommand } = await import('../maaExecutionService.ts');
+
+  const result = await execMaaCommand(
+    'copilot',
+    ['PRTS://S12', 'PRTS://S34', '--loop-times', '1'],
+    null,
+    null,
+    true,
+    true,
+    {},
+    { cliPath: executable }
+  );
+
+  assert.ok('stdout' in result, 'expected a completed foreground command');
+  assert.deepEqual(JSON.parse(String(result.stdout)), [
+    'copilot', 'prts://s12', 'prts://s34', '--loop-times', '1'
+  ]);
+});
+
