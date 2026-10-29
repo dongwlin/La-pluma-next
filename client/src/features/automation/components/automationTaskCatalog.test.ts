@@ -69,6 +69,7 @@ describe('automation fight task catalog', () => {
     const series = fightParamField('series')
     expect(series.helper).toContain('连战倍率')
     expect(series.helper).toContain('与各关卡次数同时生效')
+    expect(series.helper).toContain('次数少于倍率不会开始任何一局（0 局）')
     expect(series.helper).toContain('不能整除剩余次数时最后一轮连战不会开始')
     expect(series.helper).toContain('实际局数会少于次数')
     expect(series.helper).toContain('自动')

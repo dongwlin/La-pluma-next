@@ -363,12 +363,12 @@ describe('schedule flow boundaries', () => {
     ];
 
     const plan = plannedResult(buildScheduledTaskFlowPlan(taskFlow));
-    assert.deepEqual(plan.steps[0].args, ['1-7:12', '--series', '6']);
+    assert.deepEqual(plan.steps[0].args, ['1-7:12', '--series=6']);
 
     const withoutTimes = plannedResult(buildScheduledTaskFlowPlan([
       { ...taskFlow[0], id: 'fight-2', params: { stages: [{ stage: '1-7' }], series: 6 } }
     ]));
-    assert.deepEqual(withoutTimes.steps[0].args, ['1-7', '--series', '6']);
+    assert.deepEqual(withoutTimes.steps[0].args, ['1-7', '--series=6']);
 
     const { ports, calls } = createPorts();
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
@@ -376,7 +376,7 @@ describe('schedule flow boundaries', () => {
     await completedResult(await executor.execute(taskFlow, 'flow-single-series'));
 
     assert.deepEqual(calls.commands.map(call => call.args), [
-      ['1-7', '--times', '12', '--series', '6']
+      ['1-7', '--times', '12', '--series=6']
     ]);
 
     calls.commands.length = 0;
@@ -404,7 +404,7 @@ describe('schedule flow boundaries', () => {
     ];
 
     const plan = plannedResult(buildScheduledTaskFlowPlan(taskFlow));
-    assert.deepEqual(plan.steps[0].args, ['1-7:12,CE-6:12', '--series', '6']);
+    assert.deepEqual(plan.steps[0].args, ['1-7:12,CE-6:12', '--series=6']);
 
     const { ports, calls } = createPorts();
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
@@ -412,8 +412,45 @@ describe('schedule flow boundaries', () => {
     await completedResult(await executor.execute(taskFlow, 'flow-multi-series'));
 
     assert.deepEqual(calls.commands.map(call => call.args), [
-      ['1-7', '--times', '12', '--series', '6'],
-      ['CE-6', '--times', '12', '--series', '6']
+      ['1-7', '--times', '12', '--series=6'],
+      ['CE-6', '--times', '12', '--series=6']
+    ]);
+  });
+
+  it('keeps series=-1 as a single clap token when times are set', async () => {
+    const singleStageFlow = [
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: '1-7', times: 12 }], series: '-1' }
+      }
+    ];
+
+    const plan = plannedResult(buildScheduledTaskFlowPlan(singleStageFlow));
+    assert.deepEqual(plan.steps[0].args, ['1-7:12', '--series=-1']);
+
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute(singleStageFlow, 'flow-single-series-disabled'));
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series=-1']
+    ]);
+
+    calls.commands.length = 0;
+    await completedResult(await executor.execute([
+      {
+        ...singleStageFlow[0],
+        id: 'fight-2',
+        params: { stages: [{ stage: '1-7', times: 12 }, { stage: 'CE-6', times: 12 }], series: '-1' }
+      }
+    ], 'flow-multi-series-disabled'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series=-1'],
+      ['CE-6', '--times', '12', '--series=-1']
     ]);
   });
 });
