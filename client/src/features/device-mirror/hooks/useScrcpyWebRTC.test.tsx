@@ -671,6 +671,45 @@ describe('useScrcpyWebRTC startup', () => {
     expect(container.querySelector('video')!.srcObject).toBeNull()
   })
 
+  it('surfaces a device scrcpy error with its first line and releases the transport', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const track = receiveTrack(pc)
+    const socket = MockWebSocket.instances[0]!
+    sendSocketMessage({
+      message_type: 'device_msg',
+      payload: {
+        type: 'scrcpy_error',
+        message: 'android.media.MediaCodec$CodecException: Error 0x80001001\n\tat android.media.MediaCodec.native_configure(Native Method)'
+      }
+    })
+
+    expect(hook!.status).toBe('error')
+    expect(hook!.error).toBe('android.media.MediaCodec$CodecException: Error 0x80001001')
+    expect(pc.close).toHaveBeenCalledOnce()
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED)
+    expect(hook!.mediaStream).toBeNull()
+  })
+
+  it('falls back to a stable message when a device scrcpy error has no message', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    sendSocketMessage({ message_type: 'device_msg', payload: { type: 'scrcpy_error' } })
+
+    expect(hook!.status).toBe('error')
+    expect(hook!.error).toBe('scrcpy 预览服务返回错误，请重新启动预览')
+    expect(pc.close).toHaveBeenCalledOnce()
+  })
+
+  it('caps a long device scrcpy error to one bounded line', async () => {
+    await openSignalingConnection()
+    await receiveOffer()
+    sendSocketMessage({ message_type: 'device_msg', payload: { type: 'scrcpy_error', message: 'E'.repeat(400) } })
+
+    expect(hook!.error).toBe(`${'E'.repeat(300)}…`)
+  })
+
   it('times out an open socket that never sends signaling configuration', async () => {
     await openSignalingConnection()
     await act(async () => vi.advanceTimersByTimeAsync(12000))

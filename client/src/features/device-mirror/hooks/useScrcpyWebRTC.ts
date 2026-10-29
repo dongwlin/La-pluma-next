@@ -50,6 +50,8 @@ const SIGNALING_ATTEMPT_TIMEOUT_MS = 4000
 const SIGNALING_PHASE_TIMEOUT_MS = 12000
 const WEBRTC_MEDIA_TIMEOUT_MS = 20000
 const INPUT_CHANNEL_BACKPRESSURE_BYTES = 64 * 1024
+const SCRCPY_ERROR_FALLBACK = 'scrcpy 预览服务返回错误，请重新启动预览'
+const SCRCPY_ERROR_MAX_LENGTH = 300
 
 interface SignalingEndpoints {
   httpBase: string
@@ -166,6 +168,21 @@ function shouldKeepCandidate(candidate: string, connectionPath: 'auto' | 'relay'
   if (ipPreference === 'ipv4' && candidateHasIpv6(candidate)) return false
   if (ipPreference === 'ipv6' && candidateHasIpv4(candidate)) return false
   return true
+}
+
+/**
+ * 设备端 scrcpy-server 的错误可能带 Java 堆栈或多行输出，预览面板只展示
+ * 首行并限长；缺失或空消息回退到稳定文案，不把原始载荷直接塞进界面。
+ */
+function readScrcpyErrorMessage(payload: unknown): string {
+  if (typeof payload !== 'object' || payload === null) return SCRCPY_ERROR_FALLBACK
+  const message = (payload as { message?: unknown }).message
+  if (typeof message !== 'string') return SCRCPY_ERROR_FALLBACK
+  const firstLine = message.trim().split(/\r?\n/, 1)[0]?.trim() ?? ''
+  if (!firstLine) return SCRCPY_ERROR_FALLBACK
+  return firstLine.length > SCRCPY_ERROR_MAX_LENGTH
+    ? `${firstLine.slice(0, SCRCPY_ERROR_MAX_LENGTH)}…`
+    : firstLine
 }
 
 export function useScrcpyWebRTC({
@@ -602,6 +619,8 @@ export function useScrcpyWebRTC({
               const candidate = payload.candidate.candidate
               if (!shouldKeepCandidate(candidate, connectionPath, ipPreference)) return
               void pcRef.current?.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {})
+            } else if (payload.type === 'scrcpy_error') {
+              finishConnection(generation, 'error', readScrcpyErrorMessage(payload))
             }
           }
 
