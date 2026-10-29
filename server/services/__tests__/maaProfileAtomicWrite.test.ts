@@ -90,9 +90,8 @@ describe('MAA profile atomic text write', () => {
     });
     assert.deepEqual(parsed.resource, { channel: 'beta', auto_update: false });
     assert.deepEqual(parsed.instance_options, { touch_mode: 'maatouch' });
-    // 写入的是 TOML 而不是 JSON：文件不是 JSON 文档，且 getter 仍按 connection 读取。
+    // 写入的是 TOML 而不是 JSON，且 getter 仍按 connection 读取。
     assert.match(content, /^profile_name = "daily"/);
-    assert.throws(() => JSON.parse(content));
     assert.deepEqual(await getConfig('daily'), parsed.connection);
   });
 

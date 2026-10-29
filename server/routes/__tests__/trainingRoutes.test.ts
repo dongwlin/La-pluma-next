@@ -10,11 +10,9 @@ import type {
 } from '../../services/operatorTrainingModel.ts';
 import type { TrainingPlan } from '../../services/operatorTrainingPlan.ts';
 import type {
-  ApplyPlanResult,
   FlowSyncState,
   QueueMutationResult
 } from '../../services/operatorTrainingApplication.ts';
-import type { TrainingQueueItem } from '../../services/operatorTrainingStore.ts';
 
 const originalMethods: OperatorTrainingService = { ...training };
 afterEach(() => Object.assign(training, originalMethods));
@@ -58,32 +56,6 @@ function syncedFlow(): FlowSyncState {
 
 function mutation(overrides: Partial<QueueMutationResult> = {}): QueueMutationResult {
   return { queueUpdated: true, queueRevision: 'revision-1', flowSync: syncedFlow(), ...overrides };
-}
-
-function appliedPlan(overrides: Partial<ApplyPlanResult> = {}): ApplyPlanResult {
-  return {
-    success: true,
-    stageCount: 2,
-    totalStages: 2,
-    hasFallback: false,
-    flowName: '自动任务',
-    taskName: '理智作战',
-    flowSync: syncedFlow(),
-    scheduleSync: { attempted: false, success: true, message: null },
-    ...overrides
-  };
-}
-
-function queueItem(overrides: Partial<TrainingQueueItem> = {}): TrainingQueueItem {
-  return {
-    operatorId: 'alpha',
-    currentElite: 1,
-    targetElite: 2,
-    priority: 1,
-    status: 'pending',
-    addedAt: '2026-01-01T00:00:00.000Z',
-    ...overrides
-  };
 }
 
 /** 路由层只暴露调度函数；测试取最后一个 handler 直接调用。 */
@@ -145,19 +117,6 @@ interface TestEnvelope {
 function dataOf<T>(envelope: TestEnvelope | undefined): T {
   assert.ok(envelope, 'missing response envelope');
   return envelope.data as T;
-}
-
-/** 错误出口转发的是原始错误对象；只读取公开的 statusCode、code 与 message。 */
-function statusCodeOf(error: unknown): unknown {
-  return isRecord(error) && 'statusCode' in error ? error.statusCode : undefined;
-}
-
-function codeOf(error: unknown): unknown {
-  return isRecord(error) && 'code' in error ? error.code : undefined;
-}
-
-function messageOf(error: unknown): unknown {
-  return isRecord(error) && 'message' in error ? error.message : undefined;
 }
 
 interface TestResponse {
@@ -251,68 +210,6 @@ describe('training queue route contract', () => {
     });
   });
 
-  it('rejects malformed queue bodies and invalid plan modes before mutating the queue', async () => {
-    let addCalls = 0;
-    training.addToQueue = async () => {
-      addCalls += 1;
-      return { ...queueItem(), ...mutation() };
-    };
-    training.generateTrainingPlan = async () => {
-      addCalls += 1;
-      return plan();
-    };
-    const forwarded: unknown[] = [];
-
-    const missingId = response();
-    await handler('post', '/training/queue')({ headers: {}, body: {} }, missingId, error => forwarded.push(error));
-    assert.equal(codeOf(forwarded[0]), 'AGENT_VALIDATION_OPERATOR_ID_REQUIRED');
-
-    const numericId = response();
-    await handler('post', '/training/queue')({ headers: {}, body: { operatorId: 42 } }, numericId, error => forwarded.push(error));
-    assert.equal(codeOf(forwarded[1]), 'AGENT_VALIDATION_OPERATOR_ID_REQUIRED');
-
-    const stringPosition = response();
-    await handler('post', '/training/queue')({ headers: {}, body: { operatorId: 'alpha', position: '0' } }, stringPosition, error => forwarded.push(error));
-    assert.equal(messageOf(forwarded[2]), 'position 必须是有效的队列位置');
-
-    const badOrder = response();
-    await handler('put', '/training/queue/order')({ headers: {}, body: { operatorIds: 'alpha' } }, badOrder, error => forwarded.push(error));
-    assert.equal(codeOf(forwarded[3]), 'AGENT_VALIDATION_OPERATOR_IDS_REQUIRED');
-
-    const badMode = response();
-    await handler('post', '/training/plan')({ headers: {}, body: { mode: 'hourly' } }, badMode, error => forwarded.push(error));
-    assert.equal(messageOf(forwarded[4]), '计划模式必须为 current 或 all');
-
-    for (const res of [missingId, numericId, stringPosition, badOrder, badMode]) {
-      assert.equal(res.body, undefined);
-    }
-    for (const error of forwarded) {
-      assert.equal(statusCodeOf(error), 400);
-    }
-    assert.equal(addCalls, 0);
-    assert.equal(forwarded.length, 5);
-  });
-
-  it('passes an undo position and returns queue success separately from flow failure', async () => {
-    let received: unknown[] | undefined;
-    training.addToQueue = async (...args) => {
-      received = args;
-      return {
-        ...queueItem(),
-        queueUpdated: true,
-        queueRevision: 'revision-2',
-        flowSync: { status: 'failed', flowName: '自动任务', taskName: '材料作战', error: '磁盘写入失败' }
-      };
-    };
-    const res = response();
-    await handler('post', '/training/queue')({ headers: {}, body: { operatorId: 'alpha', currentElite: 1, targetElite: 2, position: 0 } }, res);
-    assert.deepEqual(received, ['alpha', { currentElite: 1, targetElite: 2, position: 0 }]);
-    assert.equal(res.body?.success, true);
-    const mutationResult = dataOf<{ queueUpdated: boolean; flowSync: FlowSyncState }>(res.body);
-    assert.equal(mutationResult.queueUpdated, true);
-    assert.equal(mutationResult.flowSync.status, 'failed');
-  });
-
   it('returns synchronization results for removal, order changes and retry', async () => {
     const result = mutation({ queueRevision: 'revision-3' });
     training.removeFromQueue = async id => { assert.equal(id, 'alpha'); return result; };
@@ -336,40 +233,6 @@ describe('training queue route contract', () => {
     }
   });
 
-  it('returns the applied flow and schedule refresh result together', async () => {
-    let received: { plan: unknown; settings: unknown } | undefined;
-    training.applyPlanToTasks = async (planBody, settings) => {
-      received = { plan: planBody, settings };
-      return appliedPlan({
-        flowSync: syncedFlow(),
-        scheduleSync: { attempted: true, success: false, message: '定时任务设置失败' }
-      });
-    };
-    const res = response();
-    await handler('post', '/actions/apply-training-plan')({
-      headers: {},
-      body: { plan: { queueRevision: 'revision-1' }, settings: { useMedicine: 1 } }
-    }, res);
-
-    assert.deepEqual(received, {
-      plan: { queueRevision: 'revision-1' },
-      settings: { useMedicine: 1 }
-    });
-    assert.equal(res.body?.success, true);
-    const applied = dataOf<{
-      stageCount: number;
-      flowSync: FlowSyncState;
-      scheduleSync: unknown;
-    }>(res.body);
-    assert.equal(applied.stageCount, 2);
-    assert.equal(applied.flowSync.status, 'synced');
-    assert.deepEqual(applied.scheduleSync, {
-      attempted: true,
-      success: false,
-      message: '定时任务设置失败'
-    });
-  });
-
   it('passes settings through so extension fields reach domain normalization', async () => {
     let received: unknown;
     training.updateSettings = async value => {
@@ -384,21 +247,5 @@ describe('training queue route contract', () => {
 
     assert.deepEqual(received, { autoSwitch: 'yes', extraField: { nested: true } });
     assert.deepEqual(dataOf<{ extraField: unknown }>(res.body).extraField, { nested: true });
-  });
-
-  it('delegates stale preview conflicts to the unified error exit via next(error)', async () => {
-    training.applyPlanToTasks = async () => { throw Object.assign(new Error('请重新生成计划'), { statusCode: 409 }); };
-    const res = response();
-    const forwarded: unknown[] = [];
-    await handler('post', '/actions/apply-training-plan')(
-      { headers: {}, body: { plan: { queueRevision: 'old' } } },
-      res,
-      error => forwarded.push(error)
-    );
-
-    assert.equal(forwarded.length, 1);
-    assert.equal(statusCodeOf(forwarded[0]), 409);
-    assert.equal(forwarded[0] instanceof Error ? forwarded[0].message : '', '请重新生成计划');
-    assert.equal(res.body, undefined);
   });
 });

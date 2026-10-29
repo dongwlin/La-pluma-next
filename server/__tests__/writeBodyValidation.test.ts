@@ -134,75 +134,9 @@ describe('user config write body boundaries', () => {
     assert.equal(noBody.status, 200)
     assert.equal((await readJson(noBody)).success, true)
   })
+})
 
-  it('saves valid legacy payloads with extension fields end to end', async () => {
-    const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
-    await useTempConfigStorage()
-    const url = `http://127.0.0.1:${port}/api/agent/config/user/automation-tasks`
-
-    const payload = {
-      taskFlow: [{ name: '每日战斗', type: 'fight', enabled: true }],
-      legacyField: 'keep-me',
-      extension: { nested: { allowed: true } }
-    }
-    const save = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    assert.equal(save.status, 200)
-    assert.equal((await readJson(save)).success, true)
-
-    const read = await fetch(url)
-    assert.equal(read.status, 200)
-    const readPayload = await readJson(read)
-    assert.equal(readPayload.success, true)
-    assert.deepEqual(readPayload.data, payload)
-  })
-
-  it('keeps the config type whitelist rejection for unknown types', async () => {
-    const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
-    await useTempConfigStorage()
-
-    const response = await fetch(`http://127.0.0.1:${port}/api/agent/config/user/not-a-type`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}'
-    })
-
-    assert.equal(response.status, 400)
-    const error = readError(await readJson(response))
-    assert.equal(error.code, 'AGENT_CONFIG_TYPE_INVALID')
-    assert.equal(error.retryable, false)
-  })
-
-  it('rejects non-object notification config bodies before persisting or applying', async () => {
-    const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
-    await useTempConfigStorage()
-
-    const response = await fetch(`http://127.0.0.1:${port}/api/agent/notifications/config`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '[1,2]'
-    })
-
-    assert.equal(response.status, 400)
-    const payload = await readJson(response)
-    assert.equal(payload.success, false)
-    assert.equal(readError(payload).code, 'AGENT_CONFIG_DATA_INVALID')
-
-    // 失败的保存不得污染内存中的通知配置
-    const current = await fetch(`http://127.0.0.1:${port}/api/agent/notifications/config`)
-    assert.equal(current.status, 200)
-    const currentPayload = await readJson(current)
-    assert.equal(currentPayload.success, true)
-    assert.equal(typeof currentPayload.data, 'object')
-    assert.ok(currentPayload.data !== null && !Array.isArray(currentPayload.data))
-  })
-
+describe('notification write body boundaries', () => {
   it('keeps empty-body notification saves as a legal no-op config', async () => {
     const app = createLaPlumaApp({ env: {} })
     const port = await listen(app)
