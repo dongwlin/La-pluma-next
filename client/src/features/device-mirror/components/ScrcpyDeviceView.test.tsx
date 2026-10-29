@@ -346,6 +346,8 @@ describe('ScrcpyDeviceView automation availability', () => {
 
     expect(container.textContent).toContain('网络 RTT')
     expect(container.textContent).toContain('等待触控信息')
+    expect(container.textContent).toMatch(/网络 RTT\s*--/)
+    expect(container.textContent).toMatch(/码率\s*--/)
     expect(container.textContent).not.toContain('-- ms')
     expect(container.textContent).not.toContain('-- kbps')
 
