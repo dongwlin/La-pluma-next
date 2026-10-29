@@ -144,22 +144,36 @@ test('updates to different text paths do not share one queue', async () => {
   await withTempDir(async dir => {
     const firstPath = join(dir, 'daily.toml');
     const secondPath = join(dir, 'weekly.toml');
-    const events: string[] = [];
 
+    // first 的回调停在门上；second 必须能在 first 结束前独立完成，
+    // 证明两条路径各自排队而不是共享一条全局队列。
+    let releaseFirst: () => void = () => {};
+    const gate = new Promise<void>(resolve => {
+      releaseFirst = resolve;
+    });
     const first = updateTextFile(firstPath, async () => {
-      events.push('first-start');
-      await new Promise(resolve => setTimeout(resolve, 20));
-      events.push('first-end');
+      await gate;
       return 'profile_name = "daily"\n';
     });
-    const second = updateTextFile(secondPath, async () => {
-      events.push('second-start');
-      return 'profile_name = "weekly"\n';
+
+    const second = updateTextFile(secondPath, async () => 'profile_name = "weekly"\n');
+    // 共享队列时 second 只能排在被门挡住的 first 之后；用超时把这种情形转成明确失败，
+    // 而不是依赖两个文件的 I/O 完成顺序。finally 里放行门并清理计时器，
+    // 保证失败路径上 first 也能收尾，测试进程不会悬挂。
+    let cancelSharedQueueTimeout: () => void = () => {};
+    const sharedQueueTimeout = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('不同路径的更新被同一队列串行化')), 2000);
+      cancelSharedQueueTimeout = () => clearTimeout(timer);
     });
+    try {
+      await Promise.race([second, sharedQueueTimeout]);
+    } finally {
+      cancelSharedQueueTimeout();
+      releaseFirst();
+    }
 
-    await Promise.all([first, second]);
+    await first;
 
-    assert.deepEqual(events.slice(0, 2), ['first-start', 'second-start']);
     assert.equal(await readFile(firstPath, 'utf8'), 'profile_name = "daily"\n');
     assert.equal(await readFile(secondPath, 'utf8'), 'profile_name = "weekly"\n');
   });
