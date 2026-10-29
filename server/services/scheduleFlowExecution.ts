@@ -999,19 +999,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   currentArgs.push('--times', times);
                 }
 
-                // 添加其他参数（理智药、源石等）
-                // 如果填了次数，排除 --series 参数；否则保留所有参数
-                let otherArgs: string[];
-                if (times) {
-                  // 填了次数，过滤掉 --series
-                  otherArgs = args.slice(1).filter((arg, index, arr) => {
-                    return arg !== '--series' && (index === 0 || arr[index - 1] !== '--series');
-                  });
-                } else {
-                  // 没填次数，保留所有参数（包括 --series）
-                  otherArgs = args.slice(1);
-                }
-                currentArgs.push(...otherArgs);
+                // 添加其他参数（理智药、源石、连战倍率等）。
+                // 次数是该关卡的累计作战局数上限，连战倍率是每局代理的重复次数；
+                // 两者同时下发，由 MaaCore 按剩余次数裁决，不在本地丢弃用户选择。
+                currentArgs.push(...args.slice(1));
 
                 // 执行命令
                 try {
@@ -1144,15 +1135,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 args[0] = stage;
               }
 
-              // 如果有次数，添加 --times 参数，并移除 --series 参数
+              // 有次数时补 --times；次数是累计作战局数上限，连战倍率保留，
+              // 由 MaaCore 按剩余次数裁决。
               if (times && !args.includes('--times')) {
                 args.splice(1, 0, '--times', times);
-
-                // 移除 --series 参数（填了次数的关卡不使用连战）
-                const seriesIndex = args.indexOf('--series');
-                if (seriesIndex !== -1) {
-                  args.splice(seriesIndex, 2); // 移除 --series 和它的值
-                }
               }
             }
           }

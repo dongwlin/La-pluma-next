@@ -311,4 +311,70 @@ describe('schedule flow boundaries', () => {
 
     assert.deepEqual(checks, [{ stage: 'CE-6', clientType: 'Bilibili' }]);
   });
+
+  it('keeps the selected series when a single stage also sets times', async () => {
+    const taskFlow = [
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: '1-7', times: 12 }], series: 6 }
+      }
+    ];
+
+    const plan = plannedResult(buildScheduledTaskFlowPlan(taskFlow));
+    assert.deepEqual(plan.steps[0].args, ['1-7:12', '--series', '6']);
+
+    const withoutTimes = plannedResult(buildScheduledTaskFlowPlan([
+      { ...taskFlow[0], id: 'fight-2', params: { stages: [{ stage: '1-7' }], series: 6 } }
+    ]));
+    assert.deepEqual(withoutTimes.steps[0].args, ['1-7', '--series', '6']);
+
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute(taskFlow, 'flow-single-series'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series', '6']
+    ]);
+
+    calls.commands.length = 0;
+    await completedResult(await executor.execute([
+      { ...taskFlow[0], id: 'fight-3', params: { stages: [{ stage: '1-7', times: 12 }], series: '1' } }
+    ], 'flow-single-default-series'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12']
+    ]);
+  });
+
+  it('keeps the selected series for every stage in a multi-stage fight', async () => {
+    const taskFlow = [
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: {
+          stages: [{ stage: '1-7', times: 12 }, { stage: 'CE-6', times: 12 }],
+          series: 6
+        }
+      }
+    ];
+
+    const plan = plannedResult(buildScheduledTaskFlowPlan(taskFlow));
+    assert.deepEqual(plan.steps[0].args, ['1-7:12,CE-6:12', '--series', '6']);
+
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute(taskFlow, 'flow-multi-series'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series', '6'],
+      ['CE-6', '--times', '12', '--series', '6']
+    ]);
+  });
 });

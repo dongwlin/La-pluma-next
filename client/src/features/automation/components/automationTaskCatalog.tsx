@@ -52,7 +52,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       yituliu_id: ''
     },
     paramFields: [
-      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行' },
+      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数' },
       { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
       { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
       { key: 'expiringMedicine', label: '临期药数量', type: 'number', placeholder: '0', helper: '按瓶数设置可使用的临期理智药' },
@@ -66,7 +66,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: '4', label: '4次' },
         { value: '5', label: '5次' },
         { value: '6', label: '6次' }
-      ], helper: '单次代理作战重复次数（需要游戏支持）' },
+      ], helper: '本任务所有关卡共用的连战倍率（需要游戏支持，不支持时按 1 次执行）；与各关卡次数同时生效，指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整' },
     ]
   },
   {
