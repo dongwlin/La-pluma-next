@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { buildWebrtcBrowserProtocol } from '../agentPreviewRoutes.ts';
 import { DEFAULT_DEVICE_ID } from '../../services/webrtcService.ts';
 import { parseDeviceIdBody, parseOrientationBody } from '../previewDto.ts';
+
+describe('preview browser signaling contract', () => {
+  it('keeps the same-origin endpoint and connect payload the browser consumes', () => {
+    assert.deepEqual(buildWebrtcBrowserProtocol('preview-device'), {
+      websocket: '/webrtc-signaling/connect_client?token=',
+      connectMessage: { message_type: 'connect', device_id: 'preview-device' },
+      requestOfferPayload: { type: 'request-offer', ip_preference: 'ipv4' },
+      candidatePolicy: 'relay preferred / ipv4'
+    });
+  });
+});
 
 describe('preview request narrowing', () => {
   it('takes the device id from the body and falls back to the default', () => {
