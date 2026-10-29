@@ -364,7 +364,7 @@ describe('RoguelikeTasks execution', () => {
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'reclamation',
-      'Tales',
+      'Tales -m 1',
       null,
       null,
       '生息演算',
@@ -372,6 +372,83 @@ describe('RoguelikeTasks execution', () => {
       false,
       { idempotencyKey: expect.stringMatching(/^run_task-/) },
     )
+  })
+
+  it('shows and submits the same default reclamation mode without a saved config', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+
+    const modeSelect = container.querySelector<HTMLSelectElement>('select[name="maa-reclamation-mode"]')
+    expect(modeSelect?.value).toBe('1')
+
+    await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
+      'reclamation',
+      'Tales -m 1',
+      null,
+      null,
+      '生息演算',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+
+    await setControlValue('select[name="maa-reclamation-mode"]', '0', 'change')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
+      'reclamation',
+      'Tales -m 0',
+      null,
+      null,
+      '生息演算',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('shows the default reclamation mode for a legacy payload without one', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: { taskInputs: { reclamation: 'Tales' } },
+    })
+
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+
+    expect(container.querySelector<HTMLSelectElement>('select[name="maa-reclamation-mode"]')?.value)
+      .toBe('1')
+    expect(mocks.saveUserConfig).not.toHaveBeenCalled()
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'reclamation',
+      'Tales -m 1',
+      null,
+      null,
+      '生息演算',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('describes the requirements of both reclamation modes next to the select', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+
+    const modeSelect = container.querySelector<HTMLSelectElement>('select[name="maa-reclamation-mode"]')!
+    const describedBy = modeSelect.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+
+    const hint = document.getElementById(describedBy!)
+    expect(hint?.textContent).toContain('存档')
+    expect(hint?.textContent).toContain('开始演算')
+    expect(hint?.textContent).toContain('驻扎地')
   })
 
   it('rejects an empty theme before creating a run', async () => {
@@ -697,7 +774,19 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(mocks.saveUserConfig).toHaveBeenCalledWith('roguelike-tasks', {
       taskInputs: { roguelike: 'Phantom', reclamation: 'Tales' },
-      advancedParams: {},
+      advancedParams: { reclamation: { mode: '1' } },
+    })
+
+    // 显式选择模式 0 后，wire 保留用户选择而不是默认值。
+    await setControlValue('select[name="maa-reclamation-mode"]', '0', 'change')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    await flush()
+
+    expect(mocks.saveUserConfig).toHaveBeenLastCalledWith('roguelike-tasks', {
+      taskInputs: { roguelike: 'Phantom', reclamation: 'Tales' },
+      advancedParams: { reclamation: { mode: '0' } },
     })
 
     await click(findModeButton('集成战略')!)
