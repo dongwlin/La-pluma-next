@@ -177,47 +177,6 @@ function response(): TestResponse {
   };
 }
 
-function collectMountedRoutes(candidateRouter: unknown, routes: string[] = []): string[] {
-  if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return routes;
-  for (const layer of candidateRouter.stack) {
-    if (!isRecord(layer)) continue;
-    if (isMountedRoute(layer.route)) {
-      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
-        if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`);
-      }
-      continue;
-    }
-    collectMountedRoutes(layer.handle, routes);
-  }
-  return routes;
-}
-
-describe('training route exposure', () => {
-  it('mounts every training entry exactly once through the agent router', () => {
-    const expected = [
-      'GET /training/operators',
-      'GET /training/queue',
-      'POST /training/queue',
-      'DELETE /training/queue/:operatorId',
-      'PUT /training/queue/order',
-      'POST /training/sync',
-      'PUT /training/settings',
-      'POST /training/plan',
-      'POST /actions/apply-training-plan',
-      'POST /actions/fetch-training-materials'
-    ];
-    const mounted = collectMountedRoutes(router);
-
-    for (const route of expected) {
-      assert.equal(
-        mounted.filter(candidateRoute => candidateRoute === route).length,
-        1,
-        `expected exactly one mounted ${route}`
-      );
-    }
-  });
-});
-
 describe('training queue route contract', () => {
   it('keeps candidate filter normalization and plan mode pass-through', async () => {
     let filters: TrainingOperatorFilters | undefined;

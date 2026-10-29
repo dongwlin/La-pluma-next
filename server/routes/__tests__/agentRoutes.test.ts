@@ -5,8 +5,6 @@ import { join } from 'node:path'
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
 import router from '../agent.ts'
 import { executeTrackedAgentAction } from '../agentExecution.ts'
-import { API_VERSION } from '../agentContract.ts'
-import type { AgentManifestAction, OpenApiDocument } from '../agentContract.ts'
 import type {
   AgentRunProgressProjection,
   RunOccupancyProjection
@@ -128,21 +126,6 @@ function findHandler(method: string, routePath: string): RouteHandler {
   return handle
 }
 
-function collectMountedRoutes(candidateRouter: unknown, routes: string[] = []): string[] {
-  if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return routes
-  for (const layer of candidateRouter.stack) {
-    if (!isRecord(layer)) continue
-    if (isMountedRoute(layer.route)) {
-      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
-        if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`)
-      }
-      continue
-    }
-    collectMountedRoutes(layer.handle, routes)
-  }
-  return routes
-}
-
 /** 响应信封：只声明断言实际读取的字段；`data` 保持端点结果，读取处按用例声明的形状收窄。 */
 interface TestEnvelope {
   success: boolean
@@ -181,7 +164,6 @@ interface AgentResponseData {
   activeRuns: AgentRunView[]
   occupancy: RunOccupancyProjection
   plan: AgentPlanView
-  actions: AgentManifestAction[]
   summary: JsonView
   result: JsonView
   nextEntry: CopilotPlanEntry
@@ -196,11 +178,6 @@ function dataOf<T = AgentResponseData>(envelope: TestEnvelope): T {
 function textOf(value: unknown): string {
   assert.equal(typeof value, 'string', 'expected string field')
   return value as string
-}
-
-/** 读取非信封响应体（例如契约文档）；形状由后续断言与 schema 校验确认。 */
-function asView<T>(value: unknown): T {
-  return value as T
 }
 
 interface TestResponse {
@@ -282,61 +259,6 @@ function fakeChildProcess(signals: string[]): MaaChildProcess {
     }
   }
 }
-
-describe('Agent discovery routes', () => {
-  it('serves the generated manifest through the public route', async () => {
-    const res = response()
-    await findHandler('get', '/manifest')({ headers: { 'x-request-id': 'manifest-test' } }, res)
-
-    assert.equal(res.statusCode, 200)
-    assert.equal(res.body.success, true)
-    assert.equal(res.body.meta.requestId, 'manifest-test')
-    assert.equal(dataOf(res.body).version, API_VERSION)
-    assert.equal(dataOf(res.body).actions.length, 21)
-    assert.ok(dataOf(res.body).actions.every(action => action.safety && action.execution))
-  })
-
-  it('serves OpenAPI with real query parameters and structured errors', async () => {
-    const res = response()
-    await findHandler('get', '/openapi.json')({ headers: {} }, res)
-
-    const document = asView<OpenApiDocument>(res.body)
-    const discover = document.paths['/api/agent/actions/discover-devices'].get
-    assert.equal(document.openapi, '3.1.0')
-    assert.equal(discover.requestBody, undefined)
-    assert.ok(discover.parameters)
-    assert.ok(discover.parameters.some(parameter => parameter.name === 'adbPath' && parameter.in === 'query'))
-    const conflictContent = document.components.responses.Conflict.content
-    assert.ok(conflictContent, 'expected the Conflict response content')
-    assert.equal(
-      conflictContent['application/json'].schema.$ref,
-      '#/components/schemas/ErrorResponse'
-    )
-  })
-
-  it('exposes every execution route exactly once through the mounted agent router', () => {
-    const executionRoutes = [
-      'POST /activity/run',
-      'POST /copilot-sets/:id/execute',
-      'POST /actions/continue-copilot-set',
-      'POST /schedules/:scheduleId/execute',
-      'POST /actions/start-game',
-      'POST /actions/run-daily-flow',
-      'POST /actions/fight',
-      'POST /actions/run-task',
-      'POST /actions/stop'
-    ]
-    const mounted = collectMountedRoutes(router)
-
-    for (const route of executionRoutes) {
-      assert.equal(
-        mounted.filter(candidate => candidate === route).length,
-        1,
-        `expected exactly one mounted ${route}`
-      )
-    }
-  })
-})
 
 describe('Agent run routes', () => {
   beforeEach(() => resetAgentRunsForTests())

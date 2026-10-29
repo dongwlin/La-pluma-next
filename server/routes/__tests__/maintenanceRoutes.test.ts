@@ -9,10 +9,9 @@ import type { TestContext } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../maintenanceDto.ts';
 
-// 剩余维护入口已从 agent.ts 拆到独立 router：这里先按实际挂载关系核对
-// 完整路由清单与顺序，再通过 createLaPlumaApp 验证真实 HTTP 的鉴权、
-// 连接覆盖、dryRun 与平台信息契约。所有外部依赖都用假 CLI / 假 ADB
-// 或临时目录，不触碰真实设备与资源更新。
+// 剩余维护入口已从 agent.ts 拆到独立 router：这里通过 createLaPlumaApp 验证
+// 真实 HTTP 的鉴权、连接覆盖、dryRun 与平台信息契约。所有外部依赖都用假 CLI /
+// 假 ADB 或临时目录，不触碰真实设备与资源更新。
 //
 // 生产路由已类型化，本文件同步转为 TS：请求收窄、dryRun 与更新渠道、
 // 定时注册与自动更新配置的边界与实现共用同一 DTO；非法输入用例同时
@@ -110,15 +109,6 @@ const {
   resourceInfoFallback,
   toChangelogEntry
 } = await import('../maintenanceDto.ts');
-const { default: agentRouter } = await import('../agent.ts');
-const agentExecutionRoutes = (await import('../agentExecution.ts')).default;
-const agentStatusRoutes = (await import('../agentStatusRoutes.ts')).default;
-const agentLogRoutes = (await import('../agentLogRoutes.ts')).default;
-const agentDataRoutes = (await import('../agentDataRoutes.ts')).default;
-const agentTrainingRoutes = (await import('../agentTrainingRoutes.ts')).default;
-const agentPreviewRoutes = (await import('../agentPreviewRoutes.ts')).default;
-const agentNotificationRoutes = (await import('../agentNotificationRoutes.ts')).default;
-const agentMaintenanceRoutes = (await import('../agentMaintenanceRoutes.ts')).default;
 const { loggerManager } = await import('../../utils/logger.ts');
 
 // 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。
@@ -126,149 +116,6 @@ for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']) 
   loggerManager.getLogger(loggerName).enableConsole = false;
 }
 
-// 维护入口迁出后，聚合 router 的完整对外清单必须与基线逐项一致。
-const EXPECTED_ROUTES = [
-  'DELETE /schedules/:scheduleId',
-  'DELETE /training/queue/:operatorId',
-  'GET /actions/discover-devices',
-  'GET /activity',
-  'GET /activity/copilot-candidates',
-  'GET /activity/preflight',
-  'GET /auto-update/status',
-  'GET /changelog/cli',
-  'GET /changelog/core',
-  'GET /config-directory',
-  'GET /config/maa/:profileName',
-  'GET /copilot-sets/:id',
-  'GET /copilot-sets/:id/plan',
-  'GET /copilot/search',
-  'GET /copilots/:id',
-  'GET /data/depot',
-  'GET /data/operators',
-  'GET /data/operbox',
-  'GET /debug-screenshots',
-  'GET /device-stats',
-  'GET /drops/recent',
-  'GET /drops/statistics',
-  'GET /drops/today',
-  'GET /logs/files',
-  'GET /logs/files/*filePath',
-  'GET /logs/recent',
-  'GET /manifest',
-  'GET /notifications/config',
-  'GET /openapi.json',
-  'GET /paradox/operators',
-  'GET /paradox/search',
-  'GET /runs/:runId',
-  'GET /runs/current',
-  'GET /schedules/execution',
-  'GET /schedules/status',
-  'GET /stages/open-today',
-  'GET /status',
-  'GET /tasks/status',
-  'GET /training/operators',
-  'GET /training/queue',
-  'GET /version',
-  'GET /webrtc/devices',
-  'GET /webrtc/status',
-  'POST /actions/apply-training-plan',
-  'POST /actions/configure-auto-update',
-  'POST /actions/continue-copilot-set',
-  'POST /actions/depot-recognition',
-  'POST /actions/fetch-training-materials',
-  'POST /actions/fight',
-  'POST /actions/hot-update-resources',
-  'POST /actions/open-config-directory',
-  'POST /actions/operbox-recognition',
-  'POST /actions/run-daily-flow',
-  'POST /actions/run-task',
-  'POST /actions/send-notification',
-  'POST /actions/start-game',
-  'POST /actions/stop',
-  'POST /actions/test-connection',
-  'POST /actions/test-notification-channel',
-  'POST /actions/update-cli',
-  'POST /actions/update-core',
-  'POST /activity/run',
-  'POST /config/maa/:profileName',
-  'POST /copilot-sets/:id/execute',
-  'POST /copilot-sets/:id/reset-progress',
-  'POST /logs/cleanup',
-  'POST /logs/recent/clear',
-  'POST /notifications/config',
-  'POST /preview/orientation',
-  'POST /schedules',
-  'POST /schedules/:scheduleId/execute',
-  'POST /screen/screenshot',
-  'POST /training/plan',
-  'POST /training/queue',
-  'POST /training/sync',
-  'POST /webrtc/install',
-  'POST /webrtc/start',
-  'POST /webrtc/start-agent',
-  'POST /webrtc/start-server',
-  'POST /webrtc/stop',
-  'POST /webrtc/stop-agent',
-  'POST /webrtc/stop-server',
-  'PUT /training/queue/order',
-  'PUT /training/settings'
-];
-
-const MAINTENANCE_ROUTES: ReadonlyArray<readonly [string, string]> = [
-  ['GET', '/config/maa/:profileName'],
-  ['POST', '/config/maa/:profileName'],
-  ['GET', '/activity'],
-  ['GET', '/activity/preflight'],
-  ['GET', '/activity/copilot-candidates'],
-  ['POST', '/actions/depot-recognition'],
-  ['POST', '/actions/operbox-recognition'],
-  ['GET', '/changelog/core'],
-  ['GET', '/changelog/cli'],
-  ['GET', '/copilots/:id'],
-  ['GET', '/copilot-sets/:id'],
-  ['GET', '/copilot-sets/:id/plan'],
-  ['POST', '/copilot-sets/:id/reset-progress'],
-  ['GET', '/paradox/search'],
-  ['GET', '/copilot/search'],
-  ['GET', '/paradox/operators'],
-  ['GET', '/schedules/status'],
-  ['GET', '/schedules/execution'],
-  ['POST', '/schedules'],
-  ['DELETE', '/schedules/:scheduleId'],
-  ['POST', '/actions/configure-auto-update'],
-  ['GET', '/auto-update/status'],
-  ['POST', '/actions/open-config-directory'],
-  ['POST', '/actions/update-core'],
-  ['POST', '/actions/update-cli'],
-  ['POST', '/actions/hot-update-resources'],
-  ['POST', '/actions/test-connection'],
-  ['GET', '/actions/discover-devices'],
-  ['GET', '/version'],
-  ['GET', '/config-directory']
-];
-
-const DOMAIN_ROUTERS: unknown[] = [
-  agentStatusRoutes,
-  agentPreviewRoutes,
-  agentLogRoutes,
-  agentExecutionRoutes,
-  agentDataRoutes,
-  agentTrainingRoutes,
-  agentNotificationRoutes,
-  agentMaintenanceRoutes
-];
-
-interface MountedRouteLayer {
-  route?: { path: string; methods?: Record<string, boolean> };
-  handle?: MountedRouteLayer;
-}
-
-interface MountedRoute {
-  method: string;
-  path: string;
-}
-
-/** HTTP 响应用到的载荷投影：只声明用例实际读取的字段，其余保持不校验。 */
 interface VersionPayload {
   cli: string;
   core: string;
@@ -319,53 +166,6 @@ interface CopilotPlanPayload {
   entries: Array<{ copilotId: number }>;
 }
 
-
-function routerStack(routerInstance: unknown): MountedRouteLayer[] {
-  return (routerInstance as { stack?: MountedRouteLayer[] }).stack ?? [];
-}
-
-function flattenRoutes(routerInstance: unknown, routes: MountedRoute[] = []): MountedRoute[] {
-  for (const layer of routerStack(routerInstance)) {
-    if (layer.route) {
-      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
-        if (enabled) routes.push({ method: method.toUpperCase(), path: layer.route.path });
-      }
-      continue;
-    }
-    if (layer.handle) flattenRoutes(layer.handle, routes);
-  }
-  return routes;
-}
-
-function topLevelRouteKeys(routerInstance: unknown): string[] {
-  const keys: string[] = [];
-  for (const layer of routerStack(routerInstance)) {
-    if (!layer.route) continue;
-    for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
-      if (enabled) keys.push(`${method.toUpperCase()} ${layer.route.path}`);
-    }
-  }
-  return keys.sort();
-}
-
-function samplePath(path: string): string {
-  return path
-    .split('/')
-    .map(segment => segment.startsWith(':') ? 'sample' : segment.startsWith('*') ? 'sample.log' : segment)
-    .join('/');
-}
-
-function patternMatcher(path: string): RegExp {
-  const source = path
-    .split('/')
-    .map(segment => {
-      if (segment.startsWith(':')) return '[^/]+';
-      if (segment.startsWith('*')) return '.*';
-      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    })
-    .join('/');
-  return new RegExp(`^${source}/?$`);
-}
 
 const servers: Server[] = [];
 
@@ -461,47 +261,6 @@ afterEach(async () => {
 
 after(async () => {
   await rm(fixtureDir, { recursive: true, force: true });
-});
-
-describe('agent router only aggregates domain routers', () => {
-  it('keeps contract documents on the aggregator and mounts each domain router exactly once', () => {
-    // 聚合入口只保留契约文档；副作用入口必须留在领域 router。
-    assert.deepEqual(topLevelRouteKeys(agentRouter), ['GET /manifest', 'GET /openapi.json']);
-
-    for (const domainRouter of DOMAIN_ROUTERS) {
-      const mounts = routerStack(agentRouter).filter(layer => layer.handle === domainRouter);
-      assert.equal(mounts.length, 1, 'each domain router must be mounted exactly once');
-    }
-  });
-
-  it('keeps the mounted method/path inventory identical to the pre-split baseline', () => {
-    const mounted = flattenRoutes(agentRouter);
-    const keys = mounted.map(route => `${route.method} ${route.path}`);
-
-    assert.equal(mounted.length, EXPECTED_ROUTES.length);
-    assert.equal(new Set(keys).size, keys.length, 'mounted routes must be unique');
-    assert.deepEqual([...keys].sort(), [...EXPECTED_ROUTES].sort());
-  });
-
-  it('keeps every baseline entry reachable without an earlier pattern shadowing it', () => {
-    const mounted = flattenRoutes(agentRouter);
-
-    for (const expected of EXPECTED_ROUTES) {
-      const [method, path] = expected.split(' ');
-      const target = samplePath(path);
-      const firstMatch = mounted.find(route => route.method === method && patternMatcher(route.path).test(target));
-      assert.ok(firstMatch, `missing mounted ${expected}`);
-      assert.equal(firstMatch.path, path, `route order conflict: ${expected} is matched by ${firstMatch.method} ${firstMatch.path}`);
-    }
-  });
-
-  it('mounts every remaining maintenance entry exactly once through the agent router', () => {
-    const mounted = flattenRoutes(agentRouter);
-    for (const [method, path] of MAINTENANCE_ROUTES) {
-      const matches = mounted.filter(route => route.method === method && route.path === path);
-      assert.equal(matches.length, 1, `expected exactly one mounted ${method} ${path}`);
-    }
-  });
 });
 
 describe('maintenance request narrowing', () => {

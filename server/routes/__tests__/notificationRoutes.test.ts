@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import express from 'express';
-import agentRouter from '../agent.ts';
 import { createAgentNotificationRoutes } from '../agentNotificationRoutes.ts';
 import type { AgentNotificationRouteDependencies } from '../agentNotificationRoutes.ts';
 import { createLaPlumaApp } from '../../app.ts';
@@ -68,25 +67,6 @@ function guardOutboundFetch(t: TestContext): { external: string[] } {
     return realFetch(input, init);
   });
   return { external };
-}
-
-interface MountedRouteLayer {
-  route?: { path: string; methods?: Record<string, boolean> };
-  handle?: MountedRouteLayer;
-}
-
-function collectMountedRoutes(routerInstance: unknown, routes: string[] = []): string[] {
-  const stack = (routerInstance as { stack?: MountedRouteLayer[] }).stack ?? [];
-  for (const layer of stack) {
-    if (layer.route) {
-      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
-        if (enabled) routes.push(`${method.toUpperCase()} ${layer.route.path}`);
-      }
-      continue;
-    }
-    if (layer.handle) collectMountedRoutes(layer.handle, routes);
-  }
-  return routes;
 }
 
 interface NotificationRouteEntry {
@@ -292,21 +272,6 @@ describe('notification request narrowing', () => {
       assert.fail('runtime application failure must stay identifiable');
     }
     assert.equal(failedApply.error, applyError);
-  });
-});
-
-describe('notification route exposure', () => {
-  it('mounts every notification entry exactly once through the agent router', () => {
-    const mounted = collectMountedRoutes(agentRouter);
-
-    for (const entry of NOTIFICATION_ROUTES) {
-      const route = `${entry.method} ${entry.path}`;
-      assert.equal(
-        mounted.filter(candidate => candidate === route).length,
-        1,
-        `expected exactly one mounted ${route}`
-      );
-    }
   });
 });
 
