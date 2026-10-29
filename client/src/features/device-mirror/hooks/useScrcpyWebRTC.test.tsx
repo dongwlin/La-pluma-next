@@ -181,6 +181,146 @@ describe('useScrcpyWebRTC startup', () => {
     vi.useRealTimers()
   })
 
+  async function openTouchConnection(width?: number, height?: number) {
+    await openSignalingConnection()
+    if (width !== undefined) sendSocketMessage({
+      message_type: 'device_info', device_info: { displays: [{ x_res: width, y_res: height }] }
+    })
+    const pc = await receiveOffer()
+    const channel = {
+      label: 'input-channel', readyState: 'open', bufferedAmount: 0,
+      send: vi.fn(), close: vi.fn(), onopen: null, onclose: null, onerror: null,
+    }
+    act(() => pc.ondatachannel?.({ channel } as unknown as RTCDataChannelEvent))
+    const video = container.querySelector('video')!
+    Object.defineProperties(video, {
+      videoWidth: { value: 640, configurable: true },
+      videoHeight: { value: 360, configurable: true },
+    })
+    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({
+      left: 100, top: 50, width: 640, height: 360
+    } as DOMRect)
+    return { channel, video }
+  }
+
+  it('maps native landscape metadata to the landscape input space', async () => {
+    const { channel } = await openTouchConnection(1280, 720)
+    expect(hook!.sendTouch(0, 580, 140, 7)).toBe(true)
+    expect(JSON.parse(channel.send.mock.calls[0]![0])).toMatchObject({
+      action: 0, id: 7, x: 960, y: 180, w: 1280, h: 720
+    })
+  })
+
+  it('waits for valid device metadata before accepting a new gesture', async () => {
+    const { channel } = await openTouchConnection()
+    expect(hook!.inputReady).toBe(false)
+    expect(hook!.sendTouch(0, 580, 140, 7)).toBe(false)
+    expect(channel.send).not.toHaveBeenCalled()
+  })
+
+  it('cancels a held gesture before closing its channel and waits for fresh metadata after reconnecting', async () => {
+    const { channel } = await openTouchConnection(1280, 720)
+    expect(hook!.sendTouch(0, 580, 140, 7)).toBe(true)
+
+    act(() => hook!.disconnect())
+
+    expect(channel.send.mock.calls.map(([raw]) => JSON.parse(raw).action)).toEqual([0, 3])
+    expect(JSON.parse(channel.send.mock.calls[1]![0])).toMatchObject({
+      id: 7, x: 960, y: 180, w: 1280, h: 720
+    })
+    expect(channel.send.mock.invocationCallOrder[1]).toBeLessThan(channel.close.mock.invocationCallOrder[0]!)
+
+    const { channel: nextChannel } = await openTouchConnection()
+
+    expect(hook!.inputReady).toBe(false)
+    expect(hook!.sendTouch(0, 580, 140, 8)).toBe(false)
+    expect(hook!.sendTouch(1, 580, 140, 7)).toBe(false)
+    expect(nextChannel.send).not.toHaveBeenCalled()
+  })
+
+  it.each([3, 4, 187])('sends paired navigation key %s through the open input channel without shell replay', async keycode => {
+    const { channel } = await openTouchConnection()
+    const socket = MockWebSocket.instances[0]!
+    socket.send.mockClear()
+
+    expect(hook!.sendCommand(`input keyevent ${keycode}`)).toBe(true)
+
+    expect(channel.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+      { type: 'inject_keycode', action: 0, keycode, repeat: 0, meta: 0 },
+      { type: 'inject_keycode', action: 1, keycode, repeat: 0, meta: 0 }
+    ])
+    expect(socket.send).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the shell navigation command when the input channel is closed', async () => {
+    const { channel } = await openTouchConnection()
+    const socket = MockWebSocket.instances[0]!
+    socket.send.mockClear()
+    channel.readyState = 'closed'
+
+    expect(hook!.sendCommand('input keyevent 4')).toBe(true)
+
+    expect(channel.send).not.toHaveBeenCalled()
+    expect(socket.send).toHaveBeenCalledOnce()
+    expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({ message_type: 'command', command: 'input keyevent 4' })
+  })
+
+  it('falls back to the shell navigation command before an input channel arrives', async () => {
+    await openSignalingConnection()
+    const socket = MockWebSocket.instances[0]!
+    socket.send.mockClear()
+
+    expect(hook!.sendCommand('input keyevent 3')).toBe(true)
+
+    expect(socket.send).toHaveBeenCalledOnce()
+    expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({ message_type: 'command', command: 'input keyevent 3' })
+  })
+
+  it.each(['input keyevent 26', 'input keyevent 3 ', ' input keyevent 4', 'input keyevent 4; echo done', 'input keyevent 187\n'])(
+    'keeps other or non-exact commands on the shell path: %j', async command => {
+      const { channel } = await openTouchConnection()
+      const socket = MockWebSocket.instances[0]!
+      socket.send.mockClear()
+
+      expect(hook!.sendCommand(command)).toBe(true)
+
+      expect(channel.send).not.toHaveBeenCalled()
+      expect(socket.send).toHaveBeenCalledOnce()
+      expect(JSON.parse(socket.send.mock.calls[0]![0])).toMatchObject({ message_type: 'command', command })
+    }
+  )
+
+  it('does not replay a navigation command through the shell when key down cannot be sent', async () => {
+    const { channel } = await openTouchConnection()
+    const socket = MockWebSocket.instances[0]!
+    socket.send.mockClear()
+    channel.send.mockImplementationOnce(() => { throw new Error('input send failed') })
+
+    expect(hook!.sendCommand('input keyevent 4')).toBe(false)
+
+    expect(channel.send).toHaveBeenCalledOnce()
+    expect(JSON.parse(channel.send.mock.calls[0]![0])).toMatchObject({ action: 0, keycode: 4 })
+    expect(socket.send).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('retries navigation key release once after a failed up without shell replay (retry fails: %s)', async retryFails => {
+    const { channel } = await openTouchConnection()
+    const socket = MockWebSocket.instances[0]!
+    socket.send.mockClear()
+    channel.send.mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => { throw new Error('key up send failed') })
+      .mockImplementationOnce(() => { if (retryFails) throw new Error('retry send failed') })
+
+    expect(hook!.sendCommand('input keyevent 187')).toBe(false)
+
+    expect(channel.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+      { type: 'inject_keycode', action: 0, keycode: 187, repeat: 0, meta: 0 },
+      { type: 'inject_keycode', action: 1, keycode: 187, repeat: 0, meta: 0 },
+      { type: 'inject_keycode', action: 1, keycode: 187, repeat: 0, meta: 0 }
+    ])
+    expect(socket.send).not.toHaveBeenCalled()
+  })
+
   it('uses the same-click URL override and refreshes a stale cached token', async () => {
     window.localStorage.setItem('scrcpy_webrtc_auth_token', 'stale-token')
 
@@ -401,6 +541,58 @@ describe('useScrcpyWebRTC startup', () => {
     expect(hook!.status).toBe('disconnected')
   })
 
+  it('does not overlap slow statistics requests', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    receiveTrack(pc)
+    const pending = deferred<Map<string, object>>()
+    pc.getStats.mockReturnValue(pending.promise)
+
+    await act(async () => vi.advanceTimersByTimeAsync(3000))
+    expect(pc.getStats).toHaveBeenCalledOnce()
+
+    await act(async () => pending.resolve(new Map()))
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(pc.getStats).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores statistics that arrive after disconnect', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const pending = deferred<Map<string, object>>()
+    pc.getStats.mockReturnValue(pending.promise)
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+
+    act(() => hook!.disconnect())
+    await act(async () => pending.resolve(new Map([
+      ['video', { id: 'video', type: 'inbound-rtp', kind: 'video', timestamp: 1000, framesDecoded: 100, bytesReceived: 10000 }]
+    ])))
+
+    expect(hook!.stats).toBeNull()
+  })
+
+  it('starts a new statistics baseline after reconnecting', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    receiveTrack(pc)
+    const report = (timestamp: number, framesDecoded: number) => new Map([
+      ['video', { id: 'video', type: 'inbound-rtp', kind: 'video', timestamp, framesDecoded, bytesReceived: framesDecoded * 100 }]
+    ])
+    pc.getStats.mockResolvedValueOnce(report(1000, 100)).mockResolvedValueOnce(report(2000, 110))
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(hook!.stats?.fps).toBe(10)
+
+    act(() => hook!.disconnect())
+    await openSignalingConnection()
+    const nextPc = await receiveOffer()
+    receiveTrack(nextPc)
+    nextPc.getStats.mockResolvedValue(report(3000, 500))
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+
+    expect(hook!.stats?.fps).toBeNull()
+    expect(hook!.stats?.bitrate).toBeNull()
+  })
+
   it('stops receiver tracks even when their ontrack event has not arrived', async () => {
     await openSignalingConnection()
     const pc = await receiveOffer()
@@ -427,6 +619,7 @@ describe('useScrcpyWebRTC startup', () => {
       onopen: null, onclose: null, onerror: null,
     }
     act(() => pc.ondatachannel?.({ channel } as unknown as RTCDataChannelEvent))
+    sendSocketMessage({ message_type: 'device_info', device_info: { displays: [{ x_res: 1280, y_res: 720 }] } })
     expect(hook!.inputReady).toBe(true)
 
     await act(async () => remoteDescription.reject(new Error('invalid SDP')))

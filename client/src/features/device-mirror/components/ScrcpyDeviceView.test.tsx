@@ -5,6 +5,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
+import type { useScrcpyWebRTC } from '../hooks/useScrcpyWebRTC'
 import { usePreviewStore } from '../store/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -12,7 +13,7 @@ import { usePreviewStore } from '../store/previewStore'
 const webrtcMock = vi.hoisted(() => ({
   status: 'idle',
   error: null as string | null,
-  stats: null,
+  stats: null as ReturnType<typeof useScrcpyWebRTC>['stats'],
   inputReady: false,
   mediaStream: null as MediaStream | null,
   connect: vi.fn(),
@@ -82,6 +83,7 @@ describe('ScrcpyDeviceView automation availability', () => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     webrtcMock.status = 'idle'
     webrtcMock.error = null
+    webrtcMock.stats = null
     webrtcMock.inputReady = false
     webrtcMock.mediaStream = null
     webrtcMock.sendTouch.mockReturnValue(true)
@@ -308,22 +310,49 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(container.textContent).not.toContain('组件：未安装')
   })
 
-  it('applies preset FPS and marks manual quality changes as custom', async () => {
+  it.each(['full', 'compact'] as const)('applies preset FPS and marks manual quality changes as custom in %s view', async variant => {
     await act(async () => root.render(
       <ScrcpyDeviceView
         enabled={false}
+        variant={variant}
         infrastructureStatus={{ installed: true, built: true, serverRunning: false, agentRunning: false }}
       />
     ))
 
+    if (variant === 'compact') await act(async () => findButton('打开预览设置')?.click())
     await act(async () => findButton('均衡画质')?.click())
-    expect(container.textContent).toContain('1280p · 45 FPS')
+    expect(container.textContent).toContain('最长边 1280px · 45 FPS')
+    expect(findButton('均衡画质')?.textContent).toContain('1280px · 45 FPS · 8M')
+    expect(findButton('均衡画质')?.title).toBe('最长边 1280px · 45 FPS · 码率 8 Mbps')
     expect(container.textContent).toContain('画质已修改，重连预览后生效')
 
     await act(async () => findButton('60')?.click())
-    expect(container.textContent).toContain('自定义 · 1280p · 60 FPS')
+    expect(container.textContent).toContain('自定义 · 最长边 1280px · 60 FPS')
     expect(container.querySelector('[role="group"][aria-label="视频帧率"]')).not.toBeNull()
     expect(findButton('60')?.getAttribute('aria-label')).toBe('60 FPS')
+  })
+
+  it('shows unknown network statistics without units and preserves measured zero values', async () => {
+    webrtcMock.status = 'connected'
+    const stats: NonNullable<ReturnType<typeof useScrcpyWebRTC>['stats']> = {
+      fps: null, bitrate: null, rtt: null, connectionType: '--', lostCount: 0,
+      jitterBufferMs: null, decodeMs: null,
+      width: 640, height: 360, videoReadyState: 4, videoLive: true,
+      iceState: 'connected', peerState: 'connected', signalingState: 'stable', inputReady: false,
+    }
+    webrtcMock.stats = stats
+    const render = () => root.render(<ScrcpyDeviceView enabled />)
+    await act(async () => render())
+
+    expect(container.textContent).toContain('网络 RTT')
+    expect(container.textContent).toContain('等待触控信息')
+    expect(container.textContent).not.toContain('-- ms')
+    expect(container.textContent).not.toContain('-- kbps')
+
+    webrtcMock.stats = { ...stats, rtt: 0, bitrate: 0 }
+    await act(async () => render())
+    expect(container.textContent).toContain('0 ms')
+    expect(container.textContent).toContain('0 kbps')
   })
 
   it('tracks pointers independently, coalesces moves per frame, and releases every pointer', async () => {
@@ -460,6 +489,55 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(immersiveVideo?.srcObject).toBe(lateStream)
     await act(async () => document.body.querySelector<HTMLButtonElement>('[aria-label="退出全屏"]')?.click())
   })
+
+  it('cancels immersive pointers once on Escape without releasing another video gesture', async () => {
+    webrtcMock.status = 'connected'
+    webrtcMock.inputReady = true
+    let frameCallback: FrameRequestCallback | undefined
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      frameCallback = callback
+      return 1
+    }))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    await act(async () => root.render(<ScrcpyDeviceView enabled />))
+    const mainVideo = container.querySelector('video')!
+    const dispatchPointer = (video: HTMLVideoElement, type: string, id: number, clientX: number, clientY: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX, clientY })
+      Object.defineProperty(event, 'pointerId', { value: id })
+      video.dispatchEvent(event)
+    }
+    Object.assign(mainVideo, { setPointerCapture: vi.fn() })
+    act(() => dispatchPointer(mainVideo, 'pointerdown', 1, 10, 20))
+    await act(async () => findButton('全屏')?.click())
+    const immersiveVideo = document.body.querySelector<HTMLVideoElement>('[aria-label="模拟器沉浸画面"]')!
+    const releaseCapture = vi.fn((id: number) => dispatchPointer(immersiveVideo, 'lostpointercapture', id, 0, 0))
+    Object.assign(immersiveVideo, {
+      setPointerCapture: vi.fn(), hasPointerCapture: vi.fn(() => true), releasePointerCapture: releaseCapture,
+    })
+    act(() => {
+      dispatchPointer(immersiveVideo, 'pointerdown', 2, 30, 40)
+      dispatchPointer(immersiveVideo, 'pointermove', 2, 31, 41)
+      dispatchPointer(mainVideo, 'pointermove', 1, 11, 21)
+    })
+
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    expect(webrtcMock.sendTouch.mock.calls.filter(([action]) => action === 3)).toEqual([[3, 31, 41, 2, immersiveVideo]])
+    expect(releaseCapture).toHaveBeenCalledExactlyOnceWith(2)
+    act(() => {
+      frameCallback?.(0)
+      dispatchPointer(mainVideo, 'pointerup', 2, 32, 42)
+      dispatchPointer(mainVideo, 'pointerup', 1, 12, 22)
+    })
+    expect(webrtcMock.sendTouch).not.toHaveBeenCalledWith(2, 31, 41, 2, immersiveVideo)
+    expect(webrtcMock.sendTouch).not.toHaveBeenCalledWith(1, 32, 42, 2, immersiveVideo)
+    expect(webrtcMock.sendTouch).toHaveBeenCalledWith(2, 11, 21, 1, mainVideo)
+    expect(webrtcMock.sendTouch).toHaveBeenCalledWith(1, 12, 22, 1, mainVideo)
+    expect(webrtcMock.sendTouch.mock.calls.filter(([action]) => action === 3)).toHaveLength(1)
+  })
+
   it('can cancel startup before infrastructure responds and ignores the late result', async () => {
     let resolveStart: ((value: string) => void) | undefined
     const onStartInfrastructure = vi.fn(() => new Promise<string>(resolve => { resolveStart = resolve }))

@@ -194,6 +194,10 @@
     gap: var(--app-space-2);
   }
 
+  .scrcpy-quality-header {
+    flex-wrap: wrap;
+  }
+
   .scrcpy-control-title {
     display: flex;
     min-width: 0;
