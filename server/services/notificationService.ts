@@ -108,6 +108,11 @@ export interface DailyStageOverview {
 export interface StageDayQuery {
   now?: Date;
   clientType?: string;
+  /**
+   * 资源收集全开放活动期间为 true：所有资源本按开放处理，不再查周表。
+   * 缺省为 false；调用方按客户端服务区的活动窗口解析后传入。
+   */
+  allResourceStagesOpen?: boolean;
 }
 
 export interface StageOpenState {
@@ -296,6 +301,7 @@ const RESOURCE_STAGES: Record<string, ResourceStageSchedule> = {
 export function getTodayOpenStages(query: StageDayQuery = {}): DailyStageOverview {
   const now = query.now ?? new Date();
   const clientType = query.clientType ?? DEFAULT_CLIENT_TYPE;
+  const allResourceStagesOpen = query.allResourceStagesOpen === true;
   const gameDay = getGameDay(now, clientType);
   const open: DailyOpenStage[] = [];
   const closed: DailyOpenStage[] = [];
@@ -306,7 +312,7 @@ export function getTodayOpenStages(query: StageDayQuery = {}): DailyStageOvervie
     const item: DailyOpenStage = {
       stage,
       name: info.name,
-      isOpen: info.days.includes(gameDay.weekday)
+      isOpen: allResourceStagesOpen || info.days.includes(gameDay.weekday)
     };
 
     if (item.isOpen) {
@@ -327,7 +333,8 @@ export function getTodayOpenStages(query: StageDayQuery = {}): DailyStageOvervie
 
 /**
  * 检查关卡是否在游戏日开放。
- * “今日”指客户端服务区的游戏日（时区 + 04:00 日界），不是宿主日历日。
+ * “今日”指客户端服务区的游戏日（时区 + 04:00 日界），不是宿主日历日；
+ * 资源收集全开放活动期间所有资源本直接视为开放。
  */
 export function isStageOpenToday(stage: string, query: StageDayQuery = {}): StageOpenState {
   const stageKey = stage.toUpperCase();
@@ -335,10 +342,14 @@ export function isStageOpenToday(stage: string, query: StageDayQuery = {}): Stag
     return { isOpen: true, reason: null }; // 非资源本，默认开放
   }
 
+  const stageInfo = RESOURCE_STAGES[stageKey];
+  if (query.allResourceStagesOpen === true) {
+    return { isOpen: true, reason: null, stageName: stageInfo.name };
+  }
+
   const now = query.now ?? new Date();
   const clientType = query.clientType ?? DEFAULT_CLIENT_TYPE;
   const today = getGameDay(now, clientType).weekday; // 0=周日, 1=周一, ..., 6=周六
-  const stageInfo = RESOURCE_STAGES[stageKey];
   const isOpen = stageInfo.days.includes(today);
 
   return {

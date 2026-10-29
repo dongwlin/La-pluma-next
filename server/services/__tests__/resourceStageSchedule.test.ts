@@ -89,4 +89,35 @@ describe('resource stage schedule', () => {
     assert.equal(overview.clientType, 'txwy');
     assert.equal(overview.weekday, 3);
   });
+
+  it('reports every resource stage as open during a resource collection window', () => {
+    const overview = getTodayOpenStages({
+      now: new Date('2026-10-28T04:00:00+08:00'),
+      clientType: 'Official',
+      allResourceStagesOpen: true
+    });
+
+    // 周三按周表关闭 CE-6/AP-5/PR-A/PR-B；全开放期间只读 open。
+    assert.deepEqual(stageNames(overview.open), ['AP-5', 'CA-5', 'CE-6', 'LS-6', 'PR-A', 'PR-B', 'PR-C', 'PR-D', 'SK-5']);
+    assert.deepEqual(overview.closed, []);
+  });
+
+  it('short-circuits resource stages in a resource collection window only', () => {
+    assert.deepEqual(
+      isStageOpenToday('CE-6', {
+        now: new Date('2026-10-28T04:00:00+08:00'),
+        clientType: 'Official',
+        allResourceStagesOpen: true
+      }),
+      { isOpen: true, reason: null, stageName: '龙门币' }
+    );
+    assert.deepEqual(
+      isStageOpenToday('1-7', {
+        now: new Date('2026-10-28T04:00:00+08:00'),
+        clientType: 'Official',
+        allResourceStagesOpen: true
+      }),
+      { isOpen: true, reason: null }
+    );
+  });
 });

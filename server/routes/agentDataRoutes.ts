@@ -1,6 +1,7 @@
 import express from 'express';
 import { getTodayOpenStages } from '../services/notificationService.ts';
 import type { DailyStageOverview } from '../services/notificationService.ts';
+import { isResourceCollectionOpen } from '../services/maaActivityService.ts';
 import { getTodayDrops, getRecentDrops, getDropStatistics, MAX_DROP_HISTORY_DAYS } from '../services/dropRecordService.ts';
 import type { DropRecordDay, DropStatistics } from '../services/dropRecordService.ts';
 import { getDepotData, getOperBoxData, getAllOperators } from '../services/dataParserService.ts';
@@ -19,7 +20,8 @@ import { resolveRequestConnection } from './requestConnection.ts';
  * 仓库识别或干员识别；识别等有副作用的动作仍由独立动作入口承担。
  *
  * 今日开放关卡按连接 profile 的客户端类型判定游戏日；`?clientType=` 与其它
- * 读取入口一样可覆盖 profile，缺省值由连接服务补齐。
+ * 读取入口一样可覆盖 profile，缺省值由连接服务补齐。资源收集全开放活动期间
+ * 所有资源本按开放投影，窗口由活动服务按同一客户端类型解析。
  *
  * 掉落读取沿用服务的统一 envelope：成功时取 `data`、失败时原样返回
  * envelope，与拆分前的 `result.data || result` 选择一致；`days` 仍是单值
@@ -29,7 +31,8 @@ const router = express.Router();
 
 router.get('/stages/open-today', asyncHandler<ReadRequest, ApiResponseWriter>(async (req, res) => {
   const { clientType } = await resolveRequestConnection(req, { allowOverrides: true });
-  const payload: DailyStageOverview = getTodayOpenStages({ clientType });
+  const allResourceStagesOpen = await isResourceCollectionOpen(clientType);
+  const payload: DailyStageOverview = getTodayOpenStages({ clientType, allResourceStagesOpen });
   return sendSuccess(res, req, payload, '已获取今日开放日常关卡');
 }));
 

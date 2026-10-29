@@ -105,7 +105,7 @@ export interface ScheduleExecutionPorts {
   getGameClientState(adbPath: string, address: string, clientType: string): Promise<ScheduleGameClientState>;
   captureScreen(adbPath: string, address: string): Promise<ScheduleCapturedScreen>;
   replaceActivityCode(stage: string, clientType: string): Promise<string>;
-  isStageOpenToday(stage: string, clientType: string): ScheduleStageOpenState;
+  isStageOpenToday(stage: string, clientType: string): ScheduleStageOpenState | Promise<ScheduleStageOpenState>;
   shouldCaptureNotificationScreenshot(): boolean;
   sendCompletionNotification(info: TaskCompletionInfo): Promise<unknown>;
   recordDrops(input: DropRecordInput): Promise<unknown>;
@@ -961,8 +961,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   continue;
                 }
 
-                // 检查关卡是否开放
-                const openCheck = isStageOpenToday(stage, gameClientType);
+                // 检查关卡是否开放（资源收集全开放窗口由端口按客户端类型解析）
+                const openCheck = await isStageOpenToday(stage, gameClientType);
                 if (!openCheck.isOpen) {
                   logger.info('关卡今日未开放，跳过', {
                     scheduleId,
@@ -1098,7 +1098,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               const { stage, times } = stageEntries[0];
 
               // 检查关卡是否开放
-              const openCheck = isStageOpenToday(stage, gameClientType);
+              const openCheck = await isStageOpenToday(stage, gameClientType);
               if (!openCheck.isOpen) {
                 logger.info('关卡今日未开放，跳过', {
                   scheduleId,

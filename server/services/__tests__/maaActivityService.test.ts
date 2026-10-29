@@ -2,7 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getCurrentActivity,
-  parseMaaActivityGroups
+  isResourceCollectionOpen,
+  parseActivityTimestamp,
+  parseMaaActivityGroups,
+  parseResourceCollectionWindow
 } from '../maaActivityService.ts';
 import type { CachedActivity, MaaActivityRuntime } from '../maaActivityService.ts';
 
@@ -418,5 +421,71 @@ describe('getCurrentActivity status contract', () => {
       timestamp: NOW,
       ttl: TEN_MINUTES
     });
+  });
+});
+
+describe('resource collection window', () => {
+  const WINDOW = {
+    UtcStartTime: '2026/09/29 16:00:00',
+    UtcExpireTime: '2026/10/20 03:59:59',
+    TimeZone: 8,
+    IsResourceCollection: true
+  };
+
+  it('converts the region-local activity times to UTC instants', () => {
+    assert.equal(parseActivityTimestamp('2026/09/29 16:00:00', 8), Date.UTC(2026, 8, 29, 8, 0, 0));
+    assert.equal(parseActivityTimestamp('2026/07/30 10:00:00', -7), Date.UTC(2026, 6, 30, 17, 0, 0));
+    assert.equal(parseActivityTimestamp('not-a-time', 8), null);
+    assert.equal(parseActivityTimestamp(12345, 8), null);
+  });
+
+  it('parses the resourceCollection window and rejects malformed entries', () => {
+    assert.deepEqual(parseResourceCollectionWindow(WINDOW), {
+      startTime: Date.UTC(2026, 8, 29, 8, 0, 0),
+      endTime: Date.UTC(2026, 9, 19, 19, 59, 59)
+    });
+    assert.equal(parseResourceCollectionWindow(null), null);
+    assert.equal(parseResourceCollectionWindow({ UtcStartTime: '2026/09/29 16:00:00' }), null);
+    assert.equal(parseResourceCollectionWindow({
+      UtcStartTime: '2026/10/20 04:00:00',
+      UtcExpireTime: '2026/09/29 16:00:00',
+      TimeZone: 8
+    }), null);
+  });
+
+  it('is open only inside the window of the requested server zone', async () => {
+    const windows: Record<string, { startTime: number; endTime: number } | null> = {
+      // 官方 2026-10-19 12:00 UTC 处于窗口内；美服没有窗口。
+      Official: { startTime: Date.UTC(2026, 9, 18), endTime: Date.UTC(2026, 9, 20) },
+      YoStarEN: null
+    };
+    const seen: string[] = [];
+    const request = {
+      now: () => Date.UTC(2026, 9, 19, 12, 0, 0),
+      readWindow: async (clientType: string) => {
+        seen.push(clientType);
+        return windows[clientType] ?? null;
+      }
+    };
+
+    assert.equal(await isResourceCollectionOpen('Official', request), true);
+    assert.equal(await isResourceCollectionOpen('Bilibili', request), true, 'Bilibili uses the Official table');
+    assert.equal(await isResourceCollectionOpen('YoStarEN', request), false);
+    // 未知客户端规范化为 Official，与游戏日判定同一套服务区映射。
+    assert.equal(await isResourceCollectionOpen('unknown', request), true);
+    assert.deepEqual(seen, ['Official', 'Official', 'YoStarEN', 'Official']);
+  });
+
+  it('treats a missing window or read failure as not open', async () => {
+    assert.equal(await isResourceCollectionOpen('Official', {
+      now: () => NOW,
+      readWindow: async () => null
+    }), false);
+    assert.equal(await isResourceCollectionOpen('Official', {
+      now: () => NOW,
+      readWindow: async () => {
+        throw new Error('活动表不可读');
+      }
+    }), false);
   });
 });

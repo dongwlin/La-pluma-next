@@ -210,6 +210,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - schedule execution 必须是对象；`isRunning`/`running`/`executing` 归一为运行态，`lastResult`/`result`/`lastMessage` 走既有摘要格式化。
 - training queue 接受数组或 `{ queue }`；drops 接受数组或 `{ records }`；open-today 必须是 `{ open, closed }`，两组均为 `{ stage, name }` 数组（每组最多 100 项）。
 - open-today 的 `gameDate`（`YYYY-MM-DD`）、`clientType` 与 `weekday` 描述服务端判定所用的游戏日：`weekday` 是客户端服务区时区下、每日 04:00 日界之后的星期，不是浏览器或宿主日历星期。展示只读 `open`/`closed`，新增字段缺失也不影响归一。
+- 资源收集全开放活动期间，服务端按该客户端服务区在 MAA 活动表（`StageActivityV2.json`）中的 `resourceCollection` 窗口把所有资源本投影为开放，`closed` 为空；活动表不可读或不在窗口内时回落周表。该投影与养成计划、执行跳过同源，前端不区分全开放与周表开放。
 - 任一载荷缺失、形状不符或 completion 越界时返回 `null`；协调器不会提交部分结果。
 
 活动卡由 `model/activityView.ts` 投影为以下 phase：

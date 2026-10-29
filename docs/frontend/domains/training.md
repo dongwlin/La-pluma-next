@@ -112,7 +112,7 @@ OperatorTraining（页面壳）
 
 `getOpenStagePlan` 由 `planCommands.ts` 迁到展示模型，供页面渲染与应用提交共用；`planCommands` 仍负责应用编排并从这里导入，行为不变。这些模块不访问 React、Query、命令所有者或网络，可用纯 Node 测试覆盖。
 
-计划中的 `isOpen` 与 `summary.todayOpenResourceStages`/`todayClosedResourceStages` 由服务端按连接 profile 的客户端服务区游戏日（时区 + 每日 04:00 日界）判定，与总览、执行跳过同源；`summary.gameDate`/`summary.clientType` 标明本次判定的游戏日与客户端类型。
+计划中的 `isOpen` 与 `summary.todayOpenResourceStages`/`todayClosedResourceStages` 由服务端按连接 profile 的客户端服务区游戏日（时区 + 每日 04:00 日界）判定，与总览、执行跳过同源；`summary.gameDate`/`summary.clientType` 标明本次判定的游戏日与客户端类型。资源收集全开放活动期间（MAA 活动表 `StageActivityV2.json` 的 `resourceCollection` 窗口），服务端把该服务区的所有资源本按开放处理；计划生成未显式传入客户端类型时读取连接 profile，队列变更与 `POST /training/sync` 的自动同步因此不会退回连接默认时区。
 
 ### 6. 选择器焦点、键盘与弹层
 

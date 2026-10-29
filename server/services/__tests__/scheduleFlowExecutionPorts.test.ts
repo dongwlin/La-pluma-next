@@ -312,6 +312,45 @@ describe('schedule flow boundaries', () => {
     assert.deepEqual(checks, [{ stage: 'CE-6', clientType: 'Bilibili' }]);
   });
 
+  it('awaits asynchronous stage open checks before executing or skipping stages', async () => {
+    const checks: string[] = [];
+    const { ports, calls } = createPorts({
+      isStageOpenToday: async stage => {
+        checks.push(stage);
+        return { isOpen: false, reason: '资源本今日未开放' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    const multiStage = completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'CE-6', times: '1' }, { stage: 'AP-5', times: '1' }] }
+      }
+    ], 'flow-async-multi'));
+    assert.deepEqual(checks, ['CE-6', 'AP-5']);
+    assert.equal(multiStage.summary.skippedCount, 1);
+    assert.deepEqual(multiStage.summary.taskResults.map(task => task.status), ['skipped']);
+    assert.equal(calls.commands.length, 0);
+
+    checks.length = 0;
+    const singleStage = completedResult(await executor.execute([
+      {
+        id: 'fight-2',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'SK-5', times: '1' }] }
+      }
+    ], 'flow-async-single'));
+    assert.deepEqual(checks, ['SK-5']);
+    assert.equal(singleStage.summary.skippedCount, 1);
+    assert.equal(calls.commands.length, 0);
+  });
+
   it('keeps the selected series when a single stage also sets times', async () => {
     const taskFlow = [
       {

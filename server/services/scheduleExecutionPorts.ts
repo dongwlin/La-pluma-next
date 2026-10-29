@@ -1,7 +1,7 @@
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import { captureScreen, getGameClientState, testAdbConnection } from './maaDeviceService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
-import { replaceActivityCode } from './maaActivityService.ts';
+import { isResourceCollectionOpen, replaceActivityCode } from './maaActivityService.ts';
 import { resolveConnection } from './connectionService.ts';
 import {
   sendTaskCompletionNotification,
@@ -43,8 +43,11 @@ export function createScheduleExecutionPorts(
     captureScreen,
     // 执行器只传入字符串关卡；实现会对非字符串原样返回，字符串输入保持原值。
     replaceActivityCode: async (stage, clientType) => String(await replaceActivityCode(stage, clientType)),
-    // 关卡开放按客户端游戏日判定；端口只透传客户端类型与关卡代号。
-    isStageOpenToday: (stage, clientType) => isStageOpenToday(stage, { clientType }),
+    // 关卡开放按客户端游戏日判定；资源收集全开放期间同一客户端服务区全开。
+    isStageOpenToday: async (stage, clientType) => isStageOpenToday(stage, {
+      clientType,
+      allResourceStagesOpen: await isResourceCollectionOpen(clientType)
+    }),
     shouldCaptureNotificationScreenshot,
     sendCompletionNotification: sendTaskCompletionNotification,
     recordDrops,

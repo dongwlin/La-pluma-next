@@ -30,6 +30,7 @@ const xdgDataHome = join(fixtureDir, 'xdg-data');
 const xdgStateHome = join(fixtureDir, 'xdg-state');
 const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
+const maaCacheDir = join(fixtureDir, 'maa-cache');
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
 const adbCallLog = join(fixtureDir, 'adb-calls.log');
@@ -39,9 +40,23 @@ const logFilePath = join(maaLogDir, 'run.log');
 await mkdir(maaLogDir, { recursive: true });
 await mkdir(dropDir, { recursive: true });
 await mkdir(resourceDir, { recursive: true });
+await mkdir(maaCacheDir, { recursive: true });
 await writeFile(join(resourceDir, 'battle_data.json'), JSON.stringify({
   chars: {
     char_002_amiya: { name: '阿米娅', rarity: 4, profession: 'CASTER', position: 'RANGED' }
+  }
+}));
+// 活动表只给美服一个长期开放窗口，用于验证资源全开放投影不改变其它服务区。
+await writeFile(join(maaCacheDir, 'StageActivityV2.json'), JSON.stringify({
+  Official: {},
+  YoStarEN: {
+    resourceCollection: {
+      Tip: 'SUPPLIES & CHIPS EVERYDAY ACCESS',
+      UtcStartTime: '2020/01/01 00:00:00',
+      UtcExpireTime: '2030/01/01 00:00:00',
+      TimeZone: 0,
+      IsResourceCollection: true
+    }
   }
 }));
 await writeFile(logFilePath, 'line one\nline two', 'utf-8');
@@ -54,6 +69,8 @@ if (args[0] === 'version') {
   process.stdout.write(process.env.FAKE_MAA_LOG_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'config') {
   process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
+} else if (args[0] === 'dir' && args[1] === 'cache') {
+  process.stdout.write(process.env.FAKE_MAA_CACHE_DIR || '');
 } else {
   process.exit(1);
 }
@@ -87,6 +104,8 @@ process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.ADB_PATH = fakeAdbPath;
 process.env.FAKE_MAA_LOG_DIR = maaLogDir;
 process.env.FAKE_MAA_CONFIG_DIR = join(xdgConfigHome, 'maa');
+process.env.FAKE_MAA_CACHE_DIR = maaCacheDir;
+process.env.MAA_CACHE_DIR = maaCacheDir;
 process.env.FAKE_ADB_LOG = adbCallLog;
 process.env.FAKE_ADB_CONNECTED = adbConnectedMarker;
 process.env.FAKE_ADB_ADDRESS = '127.0.0.1:5555';
@@ -419,6 +438,32 @@ describe('moved agent read routes keep authentication and response contracts', (
       await fetch(`${baseUrl}/api/agent/stages/open-today`)
     );
     assert.equal(profile.data.clientType, DEFAULT_CLIENT_TYPE);
+  });
+
+  it('projects every resource stage as open during a server-zone resource collection window', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const english = await readBody<ApiSuccessResponse<DailyStageOverview>>(
+      await fetch(`${baseUrl}/api/agent/stages/open-today?clientType=YoStarEN`)
+    );
+    assert.equal(english.success, true);
+    assert.equal(english.data.clientType, 'YoStarEN');
+    assert.deepEqual(english.data.closed, []);
+    assert.deepEqual(
+      english.data.open.map(stage => stage.stage).sort(),
+      ['AP-5', 'CA-5', 'CE-6', 'LS-6', 'PR-A', 'PR-B', 'PR-C', 'PR-D', 'SK-5']
+    );
+
+    // 同一时刻其它服务区没有全开放窗口，仍按周表投影：任意游戏日都至少有一个资源本关闭。
+    const japanese = await readBody<ApiSuccessResponse<DailyStageOverview>>(
+      await fetch(`${baseUrl}/api/agent/stages/open-today?clientType=YoStarJP`)
+    );
+    assert.ok(japanese.data.closed.length > 0);
+    assert.deepEqual(
+      [...japanese.data.open, ...japanese.data.closed].map(stage => stage.stage).sort(),
+      ['AP-5', 'CA-5', 'CE-6', 'LS-6', 'PR-A', 'PR-B', 'PR-C', 'PR-D', 'SK-5']
+    );
   });
 
   it('keeps production static fallback behind the moved API routes', async () => {

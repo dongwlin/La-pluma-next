@@ -133,6 +133,9 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 不同；面板说明同时标注“每日 04:00 刷新游戏日”。`/agent/schedules` 的请求与
 响应形状不变，时区只进入注册日志与诊断投影。
 
+执行前的关卡开放检查与总览、养成计划共用同一游戏日判定；资源收集全开放活动
+期间，该服务区的资源本不会因周表未开放被跳过。
+
 ### 5. 执行摘要
 
 `AutomationExecutionSummary` 只接收工作区选好的 `displaySummary` 与 `runId`：

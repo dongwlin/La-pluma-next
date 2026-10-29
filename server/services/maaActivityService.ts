@@ -1,10 +1,11 @@
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { getFallbackActivity, supportsFallbackClient } from './activityFallbackService.ts';
 import { loadUserConfig, updateUserConfig } from './configStorageService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
+import { resolveGameZone } from './gameCalendar.ts';
 
 /**
  * 当前活动查询与关卡代号替换。
@@ -15,6 +16,8 @@ import { execMaaCommand } from './maaExecutionService.ts';
  * - 活动信息先读内存缓存，再读用户配置中的 `activity-cache`，最后查
  *   `maa activity`；只有 maa 无法给出肯定答案时才查备用数据源。
  * - CLI 的空输出不能单独证明“没有活动”：还要确认 MAA 活动表存在且未过期。
+ * - 资源收集全开放窗口同读 MAA 活动表的 `resourceCollection` 节点：不可读时
+ *   按“未开放”处理，关卡开放判定沿用周表。
  * - 持久化沿用 configStorageService 的受控类型，读改写合并其他服务区条目，
  *   不在这里另写文件；保存失败只告警，不否决本次读取。
  * - MAA 活动查询是非设备变更命令，不持有执行租约；本模块不保存任务状态。
@@ -244,6 +247,114 @@ async function readMaaActivityTable(): Promise<MaaActivityTableState> {
   } catch {
     return { exists: false, modifiedAt: null };
   }
+}
+
+/** 资源收集全开放窗口；时间为 UTC 毫秒时间戳，闭区间。 */
+export interface ResourceCollectionWindow {
+  startTime: number;
+  endTime: number;
+}
+
+/** 资源全开放读取端口；缺省读取 MAA 缓存的活动表，测试可整体替换。 */
+export interface ResourceCollectionRuntime {
+  now?: () => number;
+  readWindow?: (clientType: string) => Promise<ResourceCollectionWindow | null>;
+}
+
+/** 窗口缓存 TTL：总览轮询与逐关卡执行检查不需要每次都启动 CLI。 */
+const RESOURCE_COLLECTION_CACHE_TTL = 60 * 1000;
+
+const resourceCollectionCache = new Map<string, { timestamp: number; window: ResourceCollectionWindow | null }>();
+
+const ACTIVITY_DATE_TIME_PATTERN = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+
+/**
+ * 解析活动表时间：`yyyy/MM/dd HH:mm:ss` 是服务区当地时刻，减去 `TimeZone`
+ * 小时后得到 UTC 时间戳（与上游 StageManager 的折算一致）。
+ */
+export function parseActivityTimestamp(value: unknown, timeZone: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const match = ACTIVITY_DATE_TIME_PATTERN.exec(value.trim());
+  if (!match) return null;
+  const offsetHours = typeof timeZone === 'number' && Number.isFinite(timeZone) ? timeZone : 0;
+  return Date.UTC(
+    Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+    Number(match[4]), Number(match[5]), Number(match[6])
+  ) - offsetHours * 60 * 60 * 1000;
+}
+
+/** 从活动表的 `resourceCollection` 节点解析窗口；缺字段或区间倒置时返回 null。 */
+export function parseResourceCollectionWindow(entry: unknown): ResourceCollectionWindow | null {
+  if (!isRecord(entry)) return null;
+  const startTime = parseActivityTimestamp(entry.UtcStartTime, entry.TimeZone);
+  const endTime = parseActivityTimestamp(entry.UtcExpireTime, entry.TimeZone);
+  if (startTime === null || endTime === null || endTime <= startTime) return null;
+  return { startTime, endTime };
+}
+
+/** 活动表没有独立的 Bilibili 数据，繁中按国服服务区窗口读取。 */
+function activityTableClientKey(clientType: string): string {
+  const normalized = resolveGameZone(clientType).clientType;
+  return normalized === 'Bilibili' ? 'Official' : normalized;
+}
+
+/** MAA 缓存目录：显式 `MAA_CACHE_DIR` 优先，与任务缓存的解析顺序一致。 */
+async function readMaaCacheDir(): Promise<string | null> {
+  const configured = process.env.MAA_CACHE_DIR?.trim();
+  if (configured) return configured;
+  const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
+  return result.stdout.trim().split(/\r?\n/)[0]?.trim() || null;
+}
+
+async function readResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
+  const cacheDir = await readMaaCacheDir();
+  if (!cacheDir) return null;
+  const table: unknown = JSON.parse(await readFile(join(cacheDir, 'StageActivityV2.json'), 'utf-8'));
+  if (!isRecord(table) || !isRecord(table[clientType])) return null;
+  return parseResourceCollectionWindow(table[clientType].resourceCollection);
+}
+
+async function readCachedResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
+  const timestamp = Date.now();
+  const cached = resourceCollectionCache.get(clientType);
+  if (cached && timestamp - cached.timestamp < RESOURCE_COLLECTION_CACHE_TTL) return cached.window;
+
+  let window: ResourceCollectionWindow | null = null;
+  try {
+    window = await readResourceCollectionWindow(clientType);
+  } catch (error) {
+    logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
+      clientType,
+      error: errorMessageOf(error)
+    });
+  }
+  resourceCollectionCache.set(clientType, { timestamp, window });
+  return window;
+}
+
+/**
+ * 客户端服务区是否处于资源收集全开放活动。
+ *
+ * 活动表不可读时返回 false：未知状态不能当作全开放，宁可沿用周表。
+ */
+export async function isResourceCollectionOpen(
+  clientType: string = DEFAULT_CLIENT_TYPE,
+  runtime: ResourceCollectionRuntime = {}
+): Promise<boolean> {
+  const readWindow = runtime.readWindow ?? readCachedResourceCollectionWindow;
+  let window: ResourceCollectionWindow | null = null;
+  try {
+    window = await readWindow(activityTableClientKey(clientType));
+  } catch (error) {
+    logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
+      clientType,
+      error: errorMessageOf(error)
+    });
+    return false;
+  }
+  if (!window) return false;
+  const now = (runtime.now ?? Date.now)();
+  return now >= window.startTime && now <= window.endTime;
 }
 
 /** 持久化保存把当前服务区条目合并进已有记录，不再整份覆盖其他服务区。 */
