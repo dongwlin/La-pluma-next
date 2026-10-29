@@ -1,24 +1,38 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest'
+import type { AutomationActivityPayload } from '@/features/automation'
 import {
   normalizeDashboardSnapshot,
   type DashboardSnapshotPayloads,
 } from './snapshot'
 
-const validPayloads = (): DashboardSnapshotPayloads => ({
-  activity: {
-    isActive: true,
-    code: 'SSS',
-    name: '测试活动',
-    tip: '活动说明',
-    completion: {
-      known: true,
-      complete: false,
-      completedStages: ['SSS-1'],
-      totalStages: 3,
-    },
+const activityDto = (overrides: Partial<AutomationActivityPayload> = {}): AutomationActivityPayload => ({
+  status: 'active',
+  clientType: 'Official',
+  available: true,
+  message: '当前活动: 昨日海',
+  code: 'YW',
+  name: '昨日海',
+  source: 'maa',
+  startTime: null,
+  endTime: null,
+  stages: [],
+  lastSuccessAt: 1_760_000_000_000,
+  dataUpdatedAt: 1_760_000_000_000,
+  failure: null,
+  completion: {
+    known: true,
+    complete: false,
+    completedStages: ['YW-1'],
+    totalStages: 3,
+    source: 'local-activity-progress',
   },
+  ...overrides,
+})
+
+const validPayloads = (): DashboardSnapshotPayloads => ({
+  activity: activityDto(),
   scheduleExecution: {
     isRunning: true,
     taskName: '收取信用',
@@ -55,18 +69,28 @@ describe('normalizeDashboardSnapshot', () => {
     const snapshot = normalizeDashboardSnapshot(validPayloads())
 
     expect(snapshot).not.toBeNull()
-    expect(snapshot?.activitySummary).toEqual({
+    expect(snapshot?.activitySummary).toMatchObject({
       available: true,
-      code: 'SSS',
-      name: '测试活动',
-      tip: '活动说明',
+      status: 'active',
+      clientType: 'Official',
+      message: '当前活动: 昨日海',
+      code: 'YW',
+      name: '昨日海',
+      source: 'maa',
+      stages: [],
+      lastSuccessAt: 1_760_000_000_000,
+      dataUpdatedAt: 1_760_000_000_000,
       completion: {
         known: true,
         complete: false,
-        completedStages: ['SSS-1'],
+        completedStages: ['YW-1'],
         totalStages: 3,
+        source: 'local-activity-progress',
       },
     })
+    expect(snapshot?.activitySummary).not.toHaveProperty('tip')
+    expect(snapshot?.activitySummary.startTime).toBeUndefined()
+    expect(snapshot?.activitySummary.failure).toBeUndefined()
     expect(snapshot?.scheduleSummary).toEqual({
       isRunning: true,
       currentTask: '收取信用',
@@ -106,9 +130,89 @@ describe('normalizeDashboardSnapshot', () => {
     })
   })
 
-  it('accepts alternative activity and schedule fields', () => {
+  it('maps a successful empty activity to none without inventing a code', () => {
     const payloads = validPayloads()
-    payloads.activity = { available: false, id: 'act-1', displayName: '备用活动', description: '备用说明' }
+    payloads.activity = activityDto({
+      status: 'none',
+      available: false,
+      code: null,
+      name: null,
+      source: 'maa',
+      message: '当前没有刷关活动',
+      lastSuccessAt: 1_760_000_000_000,
+      dataUpdatedAt: 1_760_000_000_000,
+      completion: undefined,
+    })
+
+    const activity = normalizeDashboardSnapshot(payloads)?.activitySummary
+
+    expect(activity).toMatchObject({
+      available: false,
+      status: 'none',
+      clientType: 'Official',
+      source: 'maa',
+      message: '当前没有刷关活动',
+      lastSuccessAt: 1_760_000_000_000,
+    })
+    expect(activity?.code).toBeUndefined()
+    expect(activity?.name).toBeUndefined()
+    expect(activity?.failure).toBeUndefined()
+  })
+
+  it('preserves an unavailable activity failure instead of treating it as empty', () => {
+    const payloads = validPayloads()
+    payloads.activity = activityDto({
+      status: 'unavailable',
+      available: false,
+      code: null,
+      name: null,
+      source: null,
+      message: '无法获取活动信息: MAA 活动查询失败: 超时',
+      lastSuccessAt: null,
+      dataUpdatedAt: null,
+      failure: { source: 'maa', message: 'MAA 活动查询失败: 超时' },
+      completion: undefined,
+    })
+
+    const activity = normalizeDashboardSnapshot(payloads)?.activitySummary
+
+    expect(activity).toMatchObject({
+      available: false,
+      status: 'unavailable',
+      failure: { source: 'maa', message: 'MAA 活动查询失败: 超时' },
+    })
+    expect(activity?.code).toBeUndefined()
+    expect(activity?.lastSuccessAt).toBeUndefined()
+    expect(activity?.dataUpdatedAt).toBeUndefined()
+  })
+
+  it('preserves stale activity data and its last success time', () => {
+    const payloads = validPayloads()
+    payloads.activity = activityDto({
+      status: 'stale',
+      available: true,
+      code: 'OLD',
+      name: '旧活动',
+      lastSuccessAt: 1_700_000_000_000,
+      dataUpdatedAt: null,
+      failure: { source: 'penguin', message: '备用活动数据源不可用: 503' },
+    })
+
+    const activity = normalizeDashboardSnapshot(payloads)?.activitySummary
+
+    expect(activity).toMatchObject({
+      available: true,
+      status: 'stale',
+      code: 'OLD',
+      name: '旧活动',
+      lastSuccessAt: 1_700_000_000_000,
+      failure: { source: 'penguin', message: '备用活动数据源不可用: 503' },
+    })
+    expect(activity?.dataUpdatedAt).toBeUndefined()
+  })
+
+  it('accepts alternative schedule fields without alternative activity fields', () => {
+    const payloads = validPayloads()
     payloads.scheduleExecution = {
       running: true,
       currentTask: '备用任务',
@@ -119,13 +223,6 @@ describe('normalizeDashboardSnapshot', () => {
 
     const snapshot = normalizeDashboardSnapshot(payloads)
 
-    expect(snapshot?.activitySummary).toEqual({
-      available: true,
-      code: 'act-1',
-      name: '备用活动',
-      tip: '备用说明',
-      completion: undefined,
-    })
     expect(snapshot?.scheduleSummary).toEqual({
       isRunning: true,
       currentTask: '备用任务',
@@ -141,11 +238,43 @@ describe('normalizeDashboardSnapshot', () => {
     expect(snapshot).not.toBeNull()
   })
 
+  it('returns null when the activity DTO misses its status', () => {
+    const payloads = validPayloads()
+    const withoutStatus: Record<string, unknown> = { ...activityDto() }
+    delete withoutStatus.status
+    payloads.activity = withoutStatus
+
+    expect(normalizeDashboardSnapshot(payloads)).toBeNull()
+  })
+
+  it('returns null when the activity completion is out of bounds', () => {
+    const payloads = validPayloads()
+    payloads.activity = {
+      ...activityDto(),
+      completion: { known: true, totalStages: 1.5 },
+    }
+
+    expect(normalizeDashboardSnapshot(payloads)).toBeNull()
+  })
+
+  it('returns null when activity stages contain a non-string', () => {
+    const payloads = validPayloads()
+    payloads.activity = {
+      ...activityDto(),
+      stages: ['YW-1', 1],
+    }
+
+    expect(normalizeDashboardSnapshot(payloads)).toBeNull()
+  })
+
   it.each([
     ['activity is missing', { activity: undefined }],
     ['activity is not a record', { activity: 'ok' }],
-    ['activity completion is malformed', { activity: { completion: { totalStages: 1.5 } } }],
-    ['activity completion has non-string stages', { activity: { completion: { completedStages: ['A', 1] } } }],
+    ['activity status is unknown', { activity: activityDto({ status: 'running' as AutomationActivityPayload['status'] }) }],
+    ['activity message is missing', { activity: { ...activityDto(), message: undefined } }],
+    ['activity completion has non-string stages', {
+      activity: { ...activityDto(), completion: { completedStages: ['A', 1] } },
+    }],
     ['training queue is not an array', { trainingQueue: { queue: 'none' } }],
     ['training queue item is not a record', { trainingQueue: { queue: ['能天使'] } }],
     ['today drops is neither array nor records envelope', { todayDrops: { records: null } }],

@@ -11,6 +11,7 @@ import { Button, Card } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useDashboardFlowActions } from '../hooks/useDashboardFlowActions'
 import { buildDashboardFlowView } from '../model/flowView'
+import { buildDashboardActivityView } from '../model/activityView'
 
 const labelClass = 'text-secondary'
 const dashboardChipClass = 'brand-chip rounded-lg px-2.5 py-1 text-xs font-medium'
@@ -25,6 +26,9 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
   const activitySummary = useDashboardStore(state => state.activitySummary)
   const scheduleSummary = useDashboardStore(state => state.scheduleSummary)
   const openStageSummary = useDashboardStore(state => state.openStageSummary)
+  const lastUpdate = useDashboardStore(state => state.lastUpdate)
+  const lastRefreshError = useDashboardStore(state => state.lastRefreshError)
+  const isRefreshing = useDashboardStore(state => state.isRefreshing)
   const {
     status,
     isBusy,
@@ -54,6 +58,14 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     observationError,
   })
   const activityCompleted = activitySummary.completion?.complete === true
+  const activityView = buildDashboardActivityView({
+    summary: activitySummary,
+    hasSnapshot: lastUpdate !== null,
+    isRefreshing,
+    lastRefreshFailed: lastRefreshError !== null,
+    lastRefreshError,
+    lastUpdate,
+  })
 
   return (
     <div
@@ -79,7 +91,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
           <div className={`mt-1 truncate text-xs ${labelClass}`}>{view.commandDescription}</div>
         </div>
         <div className="dashboard-flow-actions">
-          {activitySummary.available && (
+          {activityView.canRunActivity && (
             <Button
               onClick={runCurrentActivity}
               variant="secondary"
@@ -127,15 +139,40 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         </div>
       )}
 
-      <div className="dashboard-flow-activity">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-3.5 w-3.5 text-(--app-accent-strong)" strokeWidth={1.8} aria-hidden="true" />
-          <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
+      <div className="dashboard-flow-activity" data-activity-status={activityView.phase}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <CalendarDays className="h-3.5 w-3.5 text-(--app-accent-strong)" strokeWidth={1.8} aria-hidden="true" />
+            <span className={`text-xs font-medium ${labelClass}`}>当前活动</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {activityView.phase === 'stale' && (
+              <span className={mutedChipClass}>可能已过期</span>
+            )}
+            {activityView.canRetry && (
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={isRefreshing}
+                loadingText="刷新中"
+                onClick={() => {
+                  void refreshDashboard()
+                }}
+              >
+                重试
+              </Button>
+            )}
+          </div>
         </div>
         <div className="mt-2 wrap-break-word text-sm font-bold text-primary">
-          {activitySummary.available ? (activitySummary.name || activitySummary.code || '进行中') : '暂无活动'}
+          {activityView.title}
         </div>
-        <div className={`mt-0.5 wrap-break-word text-xs ${labelClass}`}>{activitySummary.tip || '等待活动数据'}</div>
+        {activityView.detail && (
+          <div className={`mt-0.5 wrap-break-word text-xs ${labelClass}`}>{activityView.detail}</div>
+        )}
+        {activityView.meta && (
+          <div className={`mt-0.5 wrap-break-word text-[11px] ${labelClass}`}>{activityView.meta}</div>
+        )}
       </div>
 
       <div className="dashboard-flow-stages">

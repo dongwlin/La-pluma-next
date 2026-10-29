@@ -18,9 +18,13 @@ const isScheduleExecutionPayload = (payload: unknown): boolean => isRecord(paylo
 
 /**
  * 获取当前活动信息
+ *
+ * `clientType` 省略时不拼查询串，由服务端按连接 profile 的 `client_type`
+ * 解析；显式传入仍作为请求级覆盖。
  */
-export async function getActivity(clientType: string = 'Official', signal?: AbortSignal): Promise<ApiResponse> {
-  return readApiResponse(`${API_BASE_URL}/agent/activity?clientType=${clientType}`, {
+export async function getActivity(clientType?: string, signal?: AbortSignal): Promise<ApiResponse> {
+  const query = clientType ? `?clientType=${encodeURIComponent(clientType)}` : ''
+  return readApiResponse(`${API_BASE_URL}/agent/activity${query}`, {
     signal,
     validate: isActivityPayload,
     invalidPayloadMessage: '活动信息格式不正确',

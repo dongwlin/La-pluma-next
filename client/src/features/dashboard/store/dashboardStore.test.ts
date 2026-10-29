@@ -2,19 +2,28 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS } from '../constants'
+import type { DashboardBusinessSnapshot } from '../model/snapshot'
 
 const STORAGE_KEY = 'la-pluma-dashboard-cache'
 
 const snapshotFixture = {
   activitySummary: {
     available: true,
+    status: 'active' as const,
+    clientType: 'Official',
+    message: '当前活动: 测试活动',
     code: 'SSS',
     name: '测试活动',
+    source: 'maa',
+    stages: [],
+    lastSuccessAt: 1_760_000_000_000,
+    dataUpdatedAt: 1_760_000_000_000,
     completion: {
       known: true,
       complete: false,
       completedStages: ['SSS-1'],
       totalStages: 3,
+      source: 'local-activity-progress',
     },
   },
   scheduleSummary: {
@@ -236,11 +245,74 @@ describe('dashboardStore persistence', () => {
     const store = dashboardModule.useDashboardStore.getState()
 
     store.startRefresh()
-    store.finishRefresh(Date.now())
+    store.finishRefresh(Date.now(), undefined, '调度服务不可用')
 
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(successfulCache)
     expect(dashboardModule.useDashboardStore.getState().trainingSummary).toEqual(snapshotFixture.trainingSummary)
+    expect(dashboardModule.useDashboardStore.getState().activitySummary).toEqual(snapshotFixture.activitySummary)
     expect(dashboardModule.useDashboardStore.getState().lastUpdate).toBe(successfulAt)
+    expect(dashboardModule.useDashboardStore.getState().lastRefreshError).toBe('调度服务不可用')
+  })
+
+  it('clears the refresh error after a successful snapshot commit', async () => {
+    const dashboardModule = await import('./dashboardStore')
+    const store = dashboardModule.useDashboardStore.getState()
+    store.finishRefresh(Date.now(), undefined, '网络中断')
+    expect(dashboardModule.useDashboardStore.getState().lastRefreshError).toBe('网络中断')
+
+    store.finishRefresh(Date.now(), businessSnapshotFixture)
+
+    expect(dashboardModule.useDashboardStore.getState().lastRefreshError).toBeNull()
+  })
+
+  it('does not let an invalid snapshot replace the cached activity or clear the error', async () => {
+    const savedAt = Date.now()
+    const dashboardModule = await persistFixture(savedAt)
+    const successfulCache = window.localStorage.getItem(STORAGE_KEY)
+    const store = dashboardModule.useDashboardStore.getState()
+    const invalidSnapshot = {
+      ...businessSnapshotFixture,
+      activitySummary: { available: true, status: 'broken' },
+    } as unknown as DashboardBusinessSnapshot
+
+    store.finishRefresh(Date.now(), invalidSnapshot, '活动载荷非法')
+
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(successfulCache)
+    expect(dashboardModule.useDashboardStore.getState().activitySummary).toEqual(snapshotFixture.activitySummary)
+    expect(dashboardModule.useDashboardStore.getState().lastUpdate).toBe(savedAt)
+    expect(dashboardModule.useDashboardStore.getState().lastRefreshError).toBe('活动载荷非法')
+  })
+
+  it('restores a v1 activity summary without a status field', async () => {
+    const savedAt = Date.now()
+    await persistFixture(savedAt)
+    const persisted = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}')
+    persisted.snapshot.activitySummary = {
+      available: true,
+      code: 'OLD',
+      name: '旧活动',
+      completion: { known: true, complete: false, completedStages: ['OLD-1'], totalStages: 2 },
+    }
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted))
+
+    vi.resetModules()
+    const { useDashboardStore } = await import('./dashboardStore')
+    const restored = useDashboardStore.getState()
+
+    expect(restored.hasLoaded).toBe(true)
+    expect(restored.activitySummary).toMatchObject({ available: true, code: 'OLD', name: '旧活动' })
+    expect(restored.activitySummary.status).toBeUndefined()
+  })
+
+  it('clears the runtime refresh error on reset', async () => {
+    const dashboardModule = await import('./dashboardStore')
+    const store = dashboardModule.useDashboardStore.getState()
+    store.finishRefresh(Date.now(), undefined, '网络中断')
+
+    store.reset()
+
+    expect(dashboardModule.useDashboardStore.getState().lastRefreshError).toBeNull()
+    expect(dashboardModule.useDashboardStore.getState().activitySummary).toEqual({ available: false })
   })
 
   it('rejects timestamps beyond the clock-skew allowance', async () => {

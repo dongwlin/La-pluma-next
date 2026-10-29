@@ -3,7 +3,8 @@
  *
  * 职责边界：
  * - 完整业务快照由本协调器单飞刷新；五路全部有效才调用
- *   `dashboardStore.finishRefresh` 原子提交，单路失败只更新尝试时间。
+ *   `dashboardStore.finishRefresh` 原子提交，单路失败保留旧快照并记录
+ *   失败原因与尝试时间。
  * - 后端探针与其他五路并发，但它的失败不否决已成功的业务快照；
  *   探针自身有 revision 处理，可能被应用级监测取代。
  * - 设备采样不在本模块内，由 device-mirror 的轮询入口独立持有。
@@ -28,7 +29,7 @@ export interface DashboardSnapshotRefreshOptions {
 
 export interface DashboardSnapshotStoreAdapter {
   startRefresh: () => void
-  finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot) => void
+  finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot, error?: string) => void
 }
 
 export interface DashboardSnapshotRefresherDependencies {
@@ -53,6 +54,10 @@ const isExpectedSnapshotFailure = (error: unknown): boolean => (
   || (error instanceof Error && (error.name === 'CancelledError' || error.name === 'AbortError'))
 )
 
+const errorMessageOf = (error: unknown): string => (
+  error instanceof Error ? error.message : '加载 Dashboard 数据失败'
+)
+
 export function createDashboardSnapshotRefresher(
   dependencies: DashboardSnapshotRefresherDependencies,
 ): DashboardSnapshotRefresher {
@@ -70,8 +75,12 @@ export function createDashboardSnapshotRefresher(
 
     const request = (async () => {
       let snapshot: DashboardBusinessSnapshot | undefined
+      let refreshError: string | undefined
       try {
-        if (!dependencies.isOnline()) return
+        if (!dependencies.isOnline()) {
+          refreshError = '当前处于离线状态'
+          return
+        }
 
         const [, snapshotResult] = await Promise.allSettled([
           Promise.resolve().then(() => dependencies.probeBackend()),
@@ -80,13 +89,17 @@ export function createDashboardSnapshotRefresher(
 
         if (snapshotResult.status === 'fulfilled') {
           snapshot = snapshotResult.value
-        } else if (!isExpectedSnapshotFailure(snapshotResult.reason)) {
-          dependencies.logError('加载 Dashboard 数据失败:', snapshotResult.reason)
+        } else {
+          refreshError = errorMessageOf(snapshotResult.reason)
+          if (!isExpectedSnapshotFailure(snapshotResult.reason)) {
+            dependencies.logError('加载 Dashboard 数据失败:', snapshotResult.reason)
+          }
         }
       } catch (error) {
+        refreshError = errorMessageOf(error)
         dependencies.logError('加载 Dashboard 数据失败:', error)
       } finally {
-        dependencies.store.finishRefresh(attemptedAt, snapshot)
+        dependencies.store.finishRefresh(attemptedAt, snapshot, snapshot ? undefined : refreshError)
       }
     })()
 
@@ -103,8 +116,8 @@ export function createDashboardSnapshotRefresher(
 export const dashboardSnapshotRefresher = createDashboardSnapshotRefresher({
   store: {
     startRefresh: () => useDashboardStore.getState().startRefresh(),
-    finishRefresh: (attemptedAt, snapshot) => {
-      useDashboardStore.getState().finishRefresh(attemptedAt, snapshot)
+    finishRefresh: (attemptedAt, snapshot, error) => {
+      useDashboardStore.getState().finishRefresh(attemptedAt, snapshot, error)
     },
   },
   readSnapshot: client => client.fetchQuery(dashboardSnapshotQueryOptions()),

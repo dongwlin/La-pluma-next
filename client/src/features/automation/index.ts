@@ -17,8 +17,12 @@ export {
   activityQueryOptions,
   scheduleExecutionQueryOptions,
 } from './model/queries'
+export { normalizeActivityPayload } from './model/activity'
 export type { AutomationResource } from './model/queryKeys'
 export type {
+  ActivityFailure,
+  ActivityStatus,
+  AutomationActivityCompletion,
   AutomationActivityPayload,
-  AutomationScheduleExecutionPayload,
-} from './model/queries'
+} from './model/activity'
+export type { AutomationScheduleExecutionPayload } from './model/queries'

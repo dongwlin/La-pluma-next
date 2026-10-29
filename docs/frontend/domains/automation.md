@@ -27,6 +27,7 @@
 | 最近执行摘要 | `components/AutomationExecutionSummary.tsx` | 只接只读摘要与 run 身份；负责保留最后一份、展开/收起与失败自动展开 |
 | 拖拽/键盘排序的 React 接线 | `hooks/useTaskFlowSorting.ts` | 预览、pointer 生命周期、Escape、公告；规则仍来自 `model/taskFlowSort.ts` |
 | 当前活动展示 | `hooks/useAutomationActivity.ts` | 读取 `automation/activity` Query；失败只隐藏标签 |
+| 活动 DTO 校验 | `model/activity.ts` | 纯函数：校验 `/agent/activity` 的 status/来源时间/failure/completion，不推断活动状态 |
 | 逐项执行状态与摘要选择 | `model/flowExecution.ts` | 纯函数：活动期读 `progress`，空闲期回退流程终态摘要，单项状态/文案 |
 | 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 遵循配置协调器契约，维持 key、本地布局、wire 与完整提交条件 |
 | 执行提交、观察、停止与旧断点 | `task-execution` 控制器 + `useAutomationExecution` | 面板只读快照；不发送停止以外的执行写操作 |
@@ -149,13 +150,17 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 活动标签来自 `useAutomationActivity`：
 
-- 使用 `automation/activity` Query（`clientType` 进入 key），与总览完整快照
-  共用同一资源身份；
+- 使用 `automation/activity` Query；不传 `clientType` 时 key 为
+  `['automation','activity','profile']`，由服务端按连接 profile 的
+  `client_type` 解析；显式传入仍是请求级覆盖，与总览共用同一资源身份；
+- 载荷经 `normalizeActivityPayload` 校验；缺 status 或字段非法时按 Query
+  contract 失败处理；
 - 展示级读取显式 `retry: false`；失败只隐藏标签，不写全局状态、不阻塞配置
   或执行；
 - 页面与面板不再直接调用 `getActivity`；Activity 隐藏时观察者注销，恢复后
   按 `staleTime` 决定是否后台重取；
-- 活动名称缺失时回退显示活动 code。
+- 活动名称缺失时回退显示活动 code；无代号但有名称的主线活动仍显示标签，
+  但不提供可导航的执行按钮。
 
 ### 7. Activity 与兼容约束
 

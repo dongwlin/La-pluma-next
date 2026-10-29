@@ -45,8 +45,25 @@ vi.mock('@/features/statistics/api', async (importOriginal) => {
 
 const ok = (data: unknown) => ({ success: true, data })
 
+const activityDto = (overrides: Record<string, unknown> = {}) => ({
+  status: 'active',
+  clientType: 'Official',
+  available: true,
+  message: '当前活动: 测试活动',
+  code: 'TEST',
+  name: '测试活动',
+  source: 'maa',
+  startTime: null,
+  endTime: null,
+  stages: [],
+  lastSuccessAt: 1_760_000_000_000,
+  dataUpdatedAt: 1_760_000_000_000,
+  failure: null,
+  ...overrides,
+})
+
 const resolveAllFive = () => {
-  apiMocks.getActivity.mockResolvedValue(ok({ available: true, name: '测试活动' }))
+  apiMocks.getActivity.mockResolvedValue(ok(activityDto()))
   apiMocks.getScheduleExecutionStatus.mockResolvedValue(ok({ isRunning: false }))
   apiMocks.getTrainingQueue.mockResolvedValue(ok({ queue: [{ operatorName: '能天使' }] }))
   apiMocks.getTodayDrops.mockResolvedValue(ok([{ stageName: '1-7', drops: [{ name: '固源岩', count: 4 }] }]))
@@ -83,13 +100,13 @@ describe('dashboard snapshot queries', () => {
 
     expect(snapshot?.activitySummary.name).toBe('测试活动')
     expect(snapshot?.trainingSummary).toEqual({ count: 1, topNames: ['能天使'] })
-    expect(apiMocks.getActivity).toHaveBeenCalledWith('Official', expect.any(AbortSignal))
+    expect(apiMocks.getActivity).toHaveBeenCalledWith(undefined, expect.any(AbortSignal))
     expect(apiMocks.getScheduleExecutionStatus).toHaveBeenCalledWith(expect.any(AbortSignal))
     expect(apiMocks.getTrainingQueue).toHaveBeenCalledWith(expect.any(AbortSignal))
     expect(apiMocks.getTodayDrops).toHaveBeenCalledWith(expect.any(AbortSignal))
     expect(apiMocks.getOpenTodayStages).toHaveBeenCalledWith(expect.any(AbortSignal))
-    expect(client.getQueryData(automationKeys.query('activity', 'Official'))).toEqual({
-      available: true,
+    expect(client.getQueryData(automationKeys.query('activity', 'profile'))).toMatchObject({
+      status: 'active',
       name: '测试活动',
     })
     expect(client.getQueryData(automationKeys.query('schedule-execution'))).toEqual({ isRunning: false })
@@ -123,12 +140,28 @@ describe('dashboard snapshot queries', () => {
     expect(apiMocks.getTodayDrops).toHaveBeenCalledTimes(1)
   })
 
-  it('fails the whole snapshot when a successful payload has an invalid shape', async () => {
+  it('fails the whole snapshot when the activity payload violates its DTO', async () => {
     resolveAllFive()
     apiMocks.getActivity.mockResolvedValue(ok({
-      available: true,
-      name: '格式异常活动',
+      ...activityDto(),
       completion: { totalStages: 1.5 },
+    }))
+
+    const error = await readDashboardSnapshot(createQueryClient()).catch(cause => cause)
+
+    expect(error).toBeInstanceOf(ApiRequestError)
+    expect(error).toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: '活动信息格式不正确',
+    })
+  })
+
+  it('fails the whole snapshot when a non-activity payload has an invalid shape', async () => {
+    resolveAllFive()
+    apiMocks.getOpenTodayStages.mockResolvedValue(ok({
+      open: [],
+      closed: [{ stage: 'CE-6' }],
     }))
 
     const error = await readDashboardSnapshot(createQueryClient()).catch(cause => cause)

@@ -95,6 +95,19 @@ describe('automation resource reads', () => {
     expect(result.data?.code).toBe('ACT')
   })
 
+  it('omits the query string when the client type is undefined', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { code: 'ACT', name: '当前活动', available: true, stages: [] },
+    }))
+    const controller = new AbortController()
+
+    await getActivity(undefined, controller.signal)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/activity')
+    expect(fetchCall().init.signal).toBe(controller.signal)
+  })
+
   it('turns a malformed activity payload into a domain failure', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
       success: true,

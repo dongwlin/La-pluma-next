@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { getFallbackActivity, selectCurrentPenguinActivity } from '../activityFallbackService.ts';
+import { getFallbackActivity, selectCurrentPenguinActivity, supportsFallbackClient } from '../activityFallbackService.ts';
 
 const activeWindow = {
   CN: {
@@ -107,6 +107,30 @@ describe('activity fallback selection', () => {
 describe('fallback activity fetch', () => {
   const now = Date.now();
   const liveWindow = { exist: true, openTime: now - 60000, closeTime: now + 3600000 };
+
+  it('distinguishes supported servers from unsupported ones', () => {
+    assert.equal(supportsFallbackClient('Official'), true);
+    assert.equal(supportsFallbackClient('Bilibili'), true);
+    assert.equal(supportsFallbackClient('YoStarEN'), true);
+    assert.equal(supportsFallbackClient('Txwy'), false);
+    assert.equal(supportsFallbackClient('UnknownServer'), false);
+  });
+
+  it('keeps Bilibili on the CN server mapping', async (t) => {
+    const calls = stubFetch(t, url => {
+      const body = url.includes('/zones')
+        ? [{ zoneId: 'act_zone', type: 'ACTIVITY', zoneName: '矩阵活动', existence: { CN: liveWindow } }]
+        : [{ zoneId: 'act_zone', code: 'BD-1', existence: { CN: liveWindow } }];
+      return { status: 200, statusText: 'OK', body: JSON.stringify(body) };
+    });
+
+    const activity = await getFallbackActivity('Bilibili');
+
+    assert.ok(activity);
+    assert.equal(activity.code, 'BD');
+    assert.ok(calls.some(url => url.includes('/zones?server=CN')));
+    assert.ok(calls.some(url => url.includes('/stages?server=CN')));
+  });
 
   it('fetches penguin data through the outbound port and serves repeats from the cache', async (t) => {
     const calls = stubFetch(t, url => {

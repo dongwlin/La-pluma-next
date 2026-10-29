@@ -68,7 +68,7 @@ export default function AutomationTaskFlowPanel({
             </h3>
             <p className="automation-flow-meta">
               <span>按顺序执行，可拖拽调整</span>
-              {activity.code && (
+              {(activity.code || activity.name) && (
                 <span className="automation-flow-activity">
                   当前活动 · {activity.name || activity.code}
                 </span>

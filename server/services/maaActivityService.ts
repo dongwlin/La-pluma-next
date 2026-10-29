@@ -1,21 +1,41 @@
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
-import { getFallbackActivity } from './activityFallbackService.ts';
-import { loadUserConfig, saveUserConfig } from './configStorageService.ts';
+import { getFallbackActivity, supportsFallbackClient } from './activityFallbackService.ts';
+import { loadUserConfig, updateUserConfig } from './configStorageService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 
 /**
  * 当前活动查询与关卡代号替换。
  *
+ * - 读取结果是一份带状态的快照：`active`/`none` 表示来源给出了肯定答案，
+ *   `stale` 表示所有来源都失败但保留了上次成功的数据，`unavailable`
+ *   表示既没有可确认的结果也没有旧数据。
  * - 活动信息先读内存缓存，再读用户配置中的 `activity-cache`，最后查
- *   `maa activity`，失败时回落备用数据源；TTL 与活动结束时间取较早者。
- * - 持久化沿用 configStorageService 的受控类型，不在这里另写文件。
+ *   `maa activity`；只有 maa 无法给出肯定答案时才查备用数据源。
+ * - CLI 的空输出不能单独证明“没有活动”：还要确认 MAA 活动表存在且未过期。
+ * - 持久化沿用 configStorageService 的受控类型，读改写合并其他服务区条目，
+ *   不在这里另写文件；保存失败只告警，不否决本次读取。
  * - MAA 活动查询是非设备变更命令，不持有执行租约；本模块不保存任务状态。
  */
 
 const logger = createLogger('MaaService');
 
-const ACTIVITY_CACHE_TTL = 24 * 60 * 60 * 1000;
+/** 正缓存 TTL：缩短后活动结束到重新查询的窗口更小，调用频率由 CLI 自身控制。 */
+const ACTIVITY_CACHE_TTL = 10 * 60 * 1000;
+
+/** MAA 活动表的最大可信任年龄；超过后不能用“表里没有”断言当前没有活动。 */
+const ACTIVITY_TABLE_MAX_AGE = 24 * 60 * 60 * 1000;
+
+/** 活动读取的明确状态；`none` 不是失败，`stale`/`unavailable` 才是。 */
+export type MaaActivityStatus = 'active' | 'none' | 'unavailable' | 'stale';
+
+/** 某个来源失败的原因；多个来源失败时合并到同一条 message 中。 */
+export interface MaaActivityFailure {
+  source: 'maa' | 'penguin';
+  message: string;
+}
 
 /** 活动信息：无法确定的字段为 null，调用方不能把 null 当成已知值。 */
 export interface MaaActivityInfo {
@@ -27,13 +47,61 @@ export interface MaaActivityInfo {
   stages: string[];
 }
 
+/** 活动读取结果：在活动信息之外显式记录状态、来源时间与失败原因。 */
+export interface MaaActivitySnapshot extends MaaActivityInfo {
+  status: MaaActivityStatus;
+  clientType: string;
+  lastSuccessAt: number | null;
+  dataUpdatedAt: number | null;
+  failure: MaaActivityFailure | null;
+}
+
 /** 内存与持久化缓存条目：活动信息加写入时间与 TTL。 */
-interface CachedActivity extends MaaActivityInfo {
+export interface CachedActivity extends MaaActivityInfo {
   timestamp: number;
   ttl: number;
 }
 
+/** MAA 活动表在缓存目录中的存在性与修改时间。 */
+export interface MaaActivityTableState {
+  exists: boolean;
+  modifiedAt: number | null;
+}
+
+/** 读取依赖端口；缺省实现调用真实 CLI、文件系统与配置存储，测试可整体替换。 */
+export interface MaaActivityRuntime {
+  now?: () => number;
+  cache?: Map<string, CachedActivity>;
+  runActivity?: (clientType: string) => Promise<{ stdout: string }>;
+  readActivityTable?: () => Promise<MaaActivityTableState>;
+  readFallback?: (clientType: string) => Promise<unknown>;
+  supportsFallback?: (clientType: string) => boolean;
+  loadConfig?: () => Promise<unknown>;
+  saveConfig?: (payload: Record<string, unknown>) => Promise<unknown>;
+}
+
+/** 解析出的活动组：名称与代号来自同一组关卡，避免跨组借用。 */
+export interface MaaActivityGroup {
+  label: string;
+  name: string;
+  code: string | null;
+  stages: string[];
+}
+
+export interface ParsedMaaActivityOutput {
+  groups: MaaActivityGroup[];
+  sawActivitySection: boolean;
+  sawAnySection: boolean;
+}
+
 const activityCache = new Map<string, CachedActivity>();
+
+const ACTIVITY_SECTION_HEADER = 'Opening side story stages:';
+const SECTION_HEADER_PATTERN = /^Opening\s+[A-Za-z][A-Za-z0-9 ]*:\s*$/;
+const GROUP_LINE_PATTERN = /^-\s+(.+?)\s*$/;
+const STAGE_LINE_PATTERN = /^\s+-\s+(.+?)\s*$/;
+const STAGE_PREFIX_PATTERN = /^([A-Za-z][A-Za-z0-9]{1,7})-\d/;
+const QUOTED_NAME_PATTERN = /[「『]([^」』]+)[」』]/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -43,7 +111,7 @@ function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 活动信息来源（MAA、备用数据源或缓存）逐字段收窄；没code 视为无效。 */
+/** 活动信息来源（MAA、备用数据源或缓存）逐字段收窄；没 code 视为无效。 */
 function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
   if (!isRecord(value) || typeof value.code !== 'string' || !value.code) return null;
   return {
@@ -58,7 +126,7 @@ function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
   };
 }
 
-/** `activity-cache` 中的单条记录：必须带 code 与写入时间，ttl 非法时回落默认值。 */
+/** `activity-cache` 中的单条记录：必须带 code 与写入时间，旧 TTL 夹到当前上限。 */
 function readCachedActivity(value: unknown): CachedActivity | null {
   const info = normalizeActivityInfo(value);
   if (!info || !isRecord(value)) return null;
@@ -66,147 +134,349 @@ function readCachedActivity(value: unknown): CachedActivity | null {
     ? value.timestamp
     : null;
   if (timestamp === null) return null;
-  const ttl = typeof value.ttl === 'number' && Number.isFinite(value.ttl) && value.ttl !== 0
+  const storedTtl = typeof value.ttl === 'number' && Number.isFinite(value.ttl) && value.ttl > 0
     ? value.ttl
     : ACTIVITY_CACHE_TTL;
-  return { ...info, timestamp, ttl };
+  return { ...info, timestamp, ttl: Math.min(storedTtl, ACTIVITY_CACHE_TTL) };
 }
 
-function cacheActivity(clientType: string, activity: MaaActivityInfo): MaaActivityInfo {
-  const cached: CachedActivity = {
-    ...activity,
-    timestamp: Date.now(),
-    ttl: ACTIVITY_CACHE_TTL
-  };
-  activityCache.set(clientType, cached);
-  void saveUserConfig('activity-cache', { [clientType]: cached });
-  return { ...activity };
-}
-
-function getValidCachedActivity(
-  clientType: string,
-  cachedActivity: CachedActivity | null,
-  now = Date.now()
-): MaaActivityInfo | null {
-  if (!cachedActivity?.code) return null;
-  const ttlExpiresAt = cachedActivity.timestamp + (cachedActivity.ttl || ACTIVITY_CACHE_TTL);
-  const expiresAt = cachedActivity.endTime
-    ? Math.min(ttlExpiresAt, cachedActivity.endTime)
+/** 缓存条目是否仍可用于 `active`：TTL 与活动结束时间取较早者。 */
+function readFreshCachedActivity(cached: CachedActivity, now: number): MaaActivityInfo | null {
+  if (!cached.code) return null;
+  const ttlExpiresAt = cached.timestamp + Math.min(cached.ttl || ACTIVITY_CACHE_TTL, ACTIVITY_CACHE_TTL);
+  const expiresAt = cached.endTime !== null
+    ? Math.min(ttlExpiresAt, cached.endTime)
     : ttlExpiresAt;
   if (now >= expiresAt) return null;
   return {
-    code: cachedActivity.code,
-    name: cachedActivity.name,
-    source: cachedActivity.source,
-    startTime: cachedActivity.startTime,
-    endTime: cachedActivity.endTime,
-    stages: cachedActivity.stages
+    code: cached.code,
+    name: cached.name,
+    source: cached.source,
+    startTime: cached.startTime,
+    endTime: cached.endTime,
+    stages: cached.stages
   };
 }
 
+function newerCache(left: CachedActivity | null, right: CachedActivity | null): CachedActivity | null {
+  if (!left) return right;
+  if (!right) return left;
+  return right.timestamp > left.timestamp ? right : left;
+}
+
 /**
- * 获取当前活动代号和名称
+ * 按活动组解析 `maa activity` 文本。
+ *
+ * 段头是格式守卫：只解析 `Opening side story stages:` 之后的组；其他
+ * `Opening ...:` 段立即结束活动段。组名优先取「」/『』内文本；代号只从
+ * 同组关卡推导，避免第一组名称配上第二组代号。主线数字关卡不产生代号。
  */
-export async function getCurrentActivity(clientType: string = DEFAULT_CLIENT_TYPE): Promise<MaaActivityInfo> {
-  const now = Date.now();
-  const cachedActivity = activityCache.get(clientType) || null;
-  const cached = getValidCachedActivity(clientType, cachedActivity, now);
-  if (cached) {
-    logger.debug('使用缓存的活动信息', {
-      clientType, code: cached.code, name: cached.name, source: cached.source
-    });
-    return cached;
-  }
-  if (cachedActivity) {
-    activityCache.delete(clientType);
+export function parseMaaActivityGroups(output: string): ParsedMaaActivityOutput {
+  const groups: MaaActivityGroup[] = [];
+  let sawActivitySection = false;
+  let sawAnySection = false;
+  let inActivitySection = false;
+  let current: MaaActivityGroup | null = null;
+
+  for (const line of String(output ?? '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (SECTION_HEADER_PATTERN.test(trimmed)) {
+      sawAnySection = true;
+      inActivitySection = trimmed === ACTIVITY_SECTION_HEADER;
+      if (inActivitySection) sawActivitySection = true;
+      current = null;
+      continue;
+    }
+    if (!inActivitySection) continue;
+
+    const groupMatch = GROUP_LINE_PATTERN.exec(line);
+    if (groupMatch?.[1]) {
+      const label = groupMatch[1];
+      const nameMatch = QUOTED_NAME_PATTERN.exec(label);
+      current = {
+        label,
+        name: nameMatch?.[1]?.trim() || label,
+        code: null,
+        stages: []
+      };
+      groups.push(current);
+      continue;
+    }
+
+    const stageMatch = STAGE_LINE_PATTERN.exec(line);
+    if (stageMatch?.[1] && current) {
+      const stage = stageMatch[1].split(':', 1)[0]?.trim() || '';
+      if (stage) current.stages.push(stage);
+    }
   }
 
-  const persistedResult = await loadUserConfig('activity-cache');
-  const persistedData = persistedResult.success && isRecord(persistedResult.data)
-    ? persistedResult.data[clientType]
-    : null;
-  const persistedCache = readCachedActivity(persistedData);
-  const persisted = persistedCache ? getValidCachedActivity(clientType, persistedCache, now) : null;
-  if (persisted && persistedCache) {
-    activityCache.set(clientType, {
-      ...persisted,
-      timestamp: persistedCache.timestamp,
-      ttl: persistedCache.ttl || ACTIVITY_CACHE_TTL
-    });
-    logger.debug('使用持久化活动缓存', { clientType, code: persisted.code, name: persisted.name, source: persisted.source });
-    return persisted;
-  }
+  return {
+    groups: groups.map(group => ({ ...group, code: deriveActivityCode(group.stages) })),
+    sawActivitySection,
+    sawAnySection
+  };
+}
 
+/** 组内出现次数最多的关卡前缀；前置锚点保证 `ABCD-8` 不会被截成 `BCD`。 */
+function deriveActivityCode(stages: readonly string[]): string | null {
+  const counts = new Map<string, { count: number; order: number }>();
+  stages.forEach((stage, order) => {
+    const match = STAGE_PREFIX_PATTERN.exec(stage);
+    if (!match?.[1]) return;
+    const prefix = match[1].toUpperCase();
+    const existing = counts.get(prefix);
+    if (existing) existing.count += 1;
+    else counts.set(prefix, { count: 1, order });
+  });
+
+  return [...counts.entries()]
+    .sort((left, right) => right[1].count - left[1].count || left[1].order - right[1].order)[0]?.[0] ?? null;
+}
+
+/** `maa dir cache` 的输出只取首行；空目录也照原样返回，由 stat 判定是否存在。 */
+async function readMaaActivityTable(): Promise<MaaActivityTableState> {
+  const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
+  const cacheDir = result.stdout.trim().split(/\r?\n/)[0]?.trim();
+  if (!cacheDir) return { exists: false, modifiedAt: null };
   try {
-    // 获取活动信息
-    const result = await execMaaCommand('activity', [clientType], null, null, false, true);
-    const output = result.stdout;
+    const info = await stat(join(cacheDir, 'StageActivityV2.json'));
+    return { exists: true, modifiedAt: info.mtimeMs };
+  } catch {
+    return { exists: false, modifiedAt: null };
+  }
+}
 
+/** 持久化保存把当前服务区条目合并进已有记录，不再整份覆盖其他服务区。 */
+async function saveActivityConfig(payload: Record<string, unknown>): Promise<unknown> {
+  const result = await updateUserConfig('activity-cache', current => ({
+    ...(isRecord(current) ? current : {}),
+    ...payload
+  }));
+  if (!result.success) throw new Error(result.message || '保存活动缓存失败');
+  return result;
+}
+
+const defaultRuntime: Required<MaaActivityRuntime> = {
+  now: Date.now,
+  cache: activityCache,
+  runActivity: clientType => execMaaCommand('activity', [clientType], null, null, false, true),
+  readActivityTable: readMaaActivityTable,
+  readFallback: clientType => getFallbackActivity(clientType),
+  supportsFallback: supportsFallbackClient,
+  loadConfig: async () => {
+    const result = await loadUserConfig('activity-cache');
+    return result.success ? result.data : null;
+  },
+  saveConfig: saveActivityConfig
+};
+
+function snapshotOf(
+  clientType: string,
+  info: MaaActivityInfo,
+  status: MaaActivityStatus,
+  lastSuccessAt: number | null,
+  dataUpdatedAt: number | null,
+  failure: MaaActivityFailure | null
+): MaaActivitySnapshot {
+  return {
+    ...info,
+    status,
+    clientType,
+    lastSuccessAt,
+    dataUpdatedAt,
+    failure
+  };
+}
+
+function emptyActivityInfo(source: string | null = null): MaaActivityInfo {
+  return { code: null, name: null, source, startTime: null, endTime: null, stages: [] };
+}
+
+function combineFailures(
+  maaFailure: MaaActivityFailure | null,
+  fallbackFailure: MaaActivityFailure | null
+): MaaActivityFailure | null {
+  if (maaFailure && fallbackFailure) {
+    return {
+      source: maaFailure.source,
+      message: `${maaFailure.message}；${fallbackFailure.message}`
+    };
+  }
+  return maaFailure ?? fallbackFailure;
+}
+
+/**
+ * 读取当前活动快照。
+ *
+ * 读取顺序：新鲜内存/持久化缓存 → `maa activity` → 备用数据源。
+ * 只有活动表存在且未过期时，maa 的空结果才能作为 `none`；否则继续查备用源。
+ * 所有来源失败时，旧的成功缓存降级为 `stale`，没有旧数据才是 `unavailable`。
+ */
+export async function getCurrentActivity(
+  clientType: string = DEFAULT_CLIENT_TYPE,
+  overrides: MaaActivityRuntime = {}
+): Promise<MaaActivitySnapshot> {
+  const runtime = { ...defaultRuntime, ...overrides };
+  const now = runtime.now();
+  const cache = runtime.cache;
+
+  const memoryCandidate = cache.get(clientType) ?? null;
+  const memoryFresh = memoryCandidate ? readFreshCachedActivity(memoryCandidate, now) : null;
+  if (memoryCandidate && memoryFresh) {
+    logger.debug('使用缓存的活动信息', {
+      clientType, code: memoryFresh.code, name: memoryFresh.name, source: memoryFresh.source
+    });
+    return snapshotOf(clientType, memoryFresh, 'active', memoryCandidate.timestamp, null, null);
+  }
+
+  let persistedRecord: Record<string, unknown> | null = null;
+  let persistedCandidate: CachedActivity | null = null;
+  try {
+    const loaded = await runtime.loadConfig();
+    persistedRecord = isRecord(loaded) ? loaded : null;
+    persistedCandidate = readCachedActivity(persistedRecord?.[clientType]);
+  } catch (error) {
+    logger.warn('读取持久化活动缓存失败', { clientType, error: errorMessageOf(error) });
+  }
+
+  const newestCandidate = newerCache(memoryCandidate, persistedCandidate);
+  const newestFresh = newestCandidate ? readFreshCachedActivity(newestCandidate, now) : null;
+  if (newestFresh && newestCandidate) {
+    cache.set(clientType, newestCandidate);
+    logger.debug('使用持久化活动缓存', {
+      clientType, code: newestFresh.code, name: newestFresh.name, source: newestFresh.source
+    });
+    return snapshotOf(clientType, newestFresh, 'active', newestCandidate.timestamp, null, null);
+  }
+  if (newestCandidate) cache.delete(clientType);
+
+  let maaFailure: MaaActivityFailure | null = null;
+  let table: MaaActivityTableState | null = null;
+  try {
+    const result = await runtime.runActivity(clientType);
+    const output = String(result.stdout ?? '');
+    const parsed = parseMaaActivityGroups(output);
     logger.debug('maa activity 原始输出', { output });
 
-    let activityName: string | null = null;
-    let activityCode: string | null = null;
-
-    // 提取活动名称（从「」中提取）
-    const nameMatch = output.match(/「([^」]+)」/);
-    if (nameMatch && nameMatch[1]) {
-      activityName = nameMatch[1];
-    }
-
-    // 尝试多种解析方式提取代号
-    // 方式1: 匹配 (XX-数字) 格式
-    let match: RegExpMatchArray | null = output.match(/\(([A-Z]{2,3})-\d+/i);
-
-    // 方式2: 匹配 XX-数字 格式（不在括号内）
-    if (!match) {
-      match = output.match(/([A-Z]{2,3})-\d+/i);
-    }
-
-    // 方式3: 匹配 SideStory 后面的内容
-    if (!match) {
-      match = output.match(/SideStory[:\s]+.*?([A-Z]{2,3})-\d+/i);
-    }
-
-    // 方式4: 匹配任何 2-3 个大写字母后跟 -数字 的模式
-    if (!match) {
-      const allMatches = output.match(/\b([A-Z]{2,3})-\d+\b/gi);
-      if (allMatches && allMatches.length > 0) {
-        // 取第一个匹配
-        const firstMatch = allMatches[0];
-        match = [firstMatch, firstMatch.split('-')[0] ?? ''];
+    if (parsed.groups.length > 0) {
+      const group = parsed.groups[0];
+      try {
+        table = await runtime.readActivityTable();
+      } catch {
+        table = null;
       }
-    }
-
-    if (match && match[1]) {
-      activityCode = match[1].toUpperCase();
-      logger.debug('获取到活动信息', { code: activityCode, name: activityName });
-      return cacheActivity(clientType, {
-        code: activityCode,
-        name: activityName,
+      const activity: MaaActivityInfo = {
+        code: group.code,
+        name: group.name,
         source: 'maa',
         startTime: null,
         endTime: null,
+        // CLI 列出的是展示关卡，不是完整活动地图；完整 stages 待结构化活动表落地。
         stages: []
-      });
+      };
+      await persistActivity(runtime, persistedRecord, clientType, activity, now);
+      return snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
     }
 
-    logger.debug('MAA 活动表未返回当前活动，尝试备用数据源');
+    if (output.trim() && !parsed.sawAnySection) {
+      maaFailure = { source: 'maa', message: '无法识别 MAA 活动输出格式' };
+    } else {
+      try {
+        table = await runtime.readActivityTable();
+      } catch (error) {
+        maaFailure = {
+          source: 'maa',
+          message: `无法读取 MAA 活动数据表: ${errorMessageOf(error)}`
+        };
+      }
+      if (!maaFailure) {
+        if (!table?.exists || table.modifiedAt === null) {
+          maaFailure = { source: 'maa', message: 'MAA 活动数据表不存在或不可读' };
+        } else if (now - table.modifiedAt > ACTIVITY_TABLE_MAX_AGE) {
+          maaFailure = { source: 'maa', message: 'MAA 活动数据表已超过 24 小时未更新' };
+        } else {
+          const activity = emptyActivityInfo('maa');
+          return snapshotOf(clientType, activity, 'none', now, table.modifiedAt, null);
+        }
+      }
+    }
   } catch (error) {
-    logger.warn('获取 MAA 活动信息失败，尝试备用数据源', { error: errorMessageOf(error) });
+    maaFailure = {
+      source: 'maa',
+      message: `MAA 活动查询失败: ${errorMessageOf(error)}`
+    };
   }
 
+  let fallbackFailure: MaaActivityFailure | null = null;
+  if (!runtime.supportsFallback(clientType)) {
+    fallbackFailure = {
+      source: 'penguin',
+      message: `备用活动数据源不支持 ${clientType}`
+    };
+  } else {
+    try {
+      const fallbackActivity = normalizeActivityInfo(await runtime.readFallback(clientType));
+      if (fallbackActivity?.code) {
+        logger.info('从备用数据源获取到活动信息', fallbackActivity);
+        await persistActivity(runtime, persistedRecord, clientType, fallbackActivity, now);
+        return snapshotOf(clientType, fallbackActivity, 'active', now, now, null);
+      }
+      return snapshotOf(clientType, emptyActivityInfo('penguin'), 'none', now, now, null);
+    } catch (error) {
+      fallbackFailure = {
+        source: 'penguin',
+        message: `备用活动数据源不可用: ${errorMessageOf(error)}`
+      };
+    }
+  }
+
+  const failure = combineFailures(maaFailure, fallbackFailure);
+  if (newestCandidate) {
+    logger.warn('活动来源全部失败，返回上次成功的缓存', { clientType, failure });
+    return snapshotOf(
+      clientType,
+      {
+        code: newestCandidate.code,
+        name: newestCandidate.name,
+        source: newestCandidate.source,
+        startTime: newestCandidate.startTime,
+        endTime: newestCandidate.endTime,
+        stages: newestCandidate.stages
+      },
+      'stale',
+      newestCandidate.timestamp,
+      null,
+      failure
+    );
+  }
+
+  logger.warn('无法获取活动信息', { clientType, failure });
+  return snapshotOf(clientType, emptyActivityInfo(), 'unavailable', null, null, failure);
+}
+
+/** 写入内存与持久化缓存；保存失败只告警，返回结果仍以已读取的数据为准。 */
+async function persistActivity(
+  runtime: Required<MaaActivityRuntime>,
+  persistedRecord: Record<string, unknown> | null,
+  clientType: string,
+  activity: MaaActivityInfo,
+  now: number
+): Promise<void> {
+  if (!activity.code) return;
+  const cached: CachedActivity = {
+    ...activity,
+    timestamp: now,
+    ttl: ACTIVITY_CACHE_TTL
+  };
+  runtime.cache.set(clientType, cached);
   try {
-    const fallbackActivity: unknown = await getFallbackActivity(clientType);
-    const normalizedFallback = normalizeActivityInfo(fallbackActivity);
-    if (normalizedFallback?.code) {
-      logger.info('从备用数据源获取到活动信息', normalizedFallback);
-      return cacheActivity(clientType, normalizedFallback);
-    }
+    await runtime.saveConfig({
+      ...(persistedRecord ?? {}),
+      [clientType]: cached
+    });
   } catch (error) {
-    logger.warn('备用活动数据源不可用', { error: errorMessageOf(error) });
+    logger.warn('保存活动缓存失败', { clientType, error: errorMessageOf(error) });
   }
-
-  return { code: null, name: null, source: null, startTime: null, endTime: null, stages: [] };
 }
 
 /**
