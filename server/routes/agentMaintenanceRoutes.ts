@@ -6,6 +6,7 @@ import type { MaaCommandOutput } from '../services/maaProcessService.ts';
 import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.ts';
 import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
 import { getCurrentActivity } from '../services/maaActivityService.ts';
+import type { MaaActivitySnapshot } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
@@ -106,6 +107,21 @@ router.post('/config/maa/:profileName', asyncHandler<MaintenanceProfileRequest, 
 }));
 
 // 活动查询：当前活动与预检读取 MAA/活动导航的既有入口，不缓存在 router。
+function activityStatusMessage(activity: MaaActivitySnapshot): string {
+  const label = activity.name || activity.code || '未知活动';
+  switch (activity.status) {
+    case 'active':
+      return `当前活动: ${label}`;
+    case 'none':
+      return '当前没有刷关活动';
+    case 'stale':
+      return `活动信息可能已过期: ${label}`;
+    case 'unavailable':
+    default:
+      return `无法获取活动信息: ${activity.failure?.message || '未知原因'}`;
+  }
+}
+
 router.get('/activity', asyncHandler<MaintenanceRequest, ApiResponseWriter>(async (req, res) => {
   const { clientType } = await resolveMaintenanceConnection(req);
   const activityInfo = await getCurrentActivity(clientType);
@@ -119,7 +135,12 @@ router.get('/activity', asyncHandler<MaintenanceRequest, ApiResponseWriter>(asyn
     stages: activityInfo.stages || [],
     completion,
     available: !!activityInfo.code,
-    message: activityInfo.code ? `当前活动: ${activityInfo.name || activityInfo.code}` : '当前没有活动或无法获取活动信息'
+    message: activityStatusMessage(activityInfo),
+    status: activityInfo.status,
+    clientType: activityInfo.clientType,
+    lastSuccessAt: activityInfo.lastSuccessAt,
+    dataUpdatedAt: activityInfo.dataUpdatedAt,
+    failure: activityInfo.failure
   };
   return sendSuccess(res, req, payload);
 }));
@@ -329,7 +350,9 @@ router.get('/schedules/execution', asyncHandler<MaintenanceRequest, ApiResponseW
 
 router.post('/schedules', asyncHandler<MaintenanceRequest, ApiResponseWriter>(async (req, res) => {
   const { scheduleId, times, taskFlow } = parseScheduleSetupBody(req.body);
-  const result = setupSchedule(scheduleId, times, taskFlow);
+  // 执行时间按连接 profile 的客户端服务区时区触发；请求体与响应形状不变。
+  const { clientType } = await resolveMaintenanceConnection(req);
+  const result = setupSchedule(scheduleId, times, taskFlow, clientType);
   if (!result.success) {
     return sendError(res, req, agentError('AGENT_SCHEDULE_SETUP_FAILED', result.message, { statusCode: 400 }));
   }

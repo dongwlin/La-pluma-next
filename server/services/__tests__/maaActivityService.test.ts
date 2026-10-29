@@ -1,0 +1,640 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  getCurrentActivity,
+  isResourceCollectionOpen,
+  parseActivityTimestamp,
+  parseMaaActivityGroups,
+  parseResourceCollectionWindow,
+  readActivityTableState
+} from '../maaActivityService.ts';
+import type { CachedActivity, MaaActivityRuntime, MaaActivityTableState } from '../maaActivityService.ts';
+
+const NOW = 1_800_000_000_000;
+const CLIENT = 'Official';
+const TEN_MINUTES = 10 * 60 * 1000;
+const ONE_DAY = 24 * 60 * 60 * 1000;
+
+const OFFICIAL_MULTI_ACTIVITY = `Opening side story stages:
+- 主线「相变临界」
+  - 17-11: 固源岩
+  - 17-10: 源岩
+- SideStory「昨日海」
+  - YW-8: 液化高能气体
+  - YW-7: 转质盐组
+  - YW-6: 全新装置
+  - YW-4: 搓玉效率0.69
+Opening mini games:
+- 黑流树海刷钱`;
+
+const TXWY_ACTIVITY = `Opening side story stages:
+- SideStory「輓歌燃燒殆盡」復刻
+  - SSReopen-EA: 代理 1~8
+  - EA-8: 褐素纖維
+  - EA-7: 半自然溶劑
+  - EA-6: 研磨石
+  - EA-3: 搓玉用
+Opening mini games:
+- 衛戍協議：盟約`;
+
+const MINI_GAMES_ONLY = `Opening mini games:
+- 黑流树海刷钱`;
+
+function cachedActivity(overrides: Partial<CachedActivity> = {}): CachedActivity {
+  return {
+    code: 'YW',
+    name: '昨日海',
+    source: 'maa',
+    startTime: null,
+    endTime: null,
+    stages: [],
+    timestamp: NOW - 1000,
+    ttl: TEN_MINUTES,
+    ...overrides
+  };
+}
+
+function activityTable(overrides: Partial<MaaActivityTableState> = {}): MaaActivityTableState {
+  return { exists: true, modifiedAt: NOW - 1000, checkedAt: NOW - 1000, ...overrides };
+}
+
+function runtime(overrides: MaaActivityRuntime = {}): MaaActivityRuntime {
+  return {
+    now: () => NOW,
+    cache: new Map<string, CachedActivity>(),
+    runActivity: async () => ({ stdout: '' }),
+    readActivityTable: async () => activityTable(),
+    readFallback: async () => null,
+    supportsFallback: () => true,
+    loadConfig: async () => null,
+    saveConfig: async () => undefined,
+    ...overrides
+  };
+}
+
+describe('parseMaaActivityGroups', () => {
+  it('pairs each activity group name with its own stage code', () => {
+    const parsed = parseMaaActivityGroups(OFFICIAL_MULTI_ACTIVITY);
+
+    assert.equal(parsed.sawActivitySection, true);
+    assert.equal(parsed.sawAnySection, true);
+    assert.deepEqual(parsed.groups, [
+      {
+        label: '主线「相变临界」',
+        name: '相变临界',
+        code: null,
+        stages: ['17-11', '17-10']
+      },
+      {
+        label: 'SideStory「昨日海」',
+        name: '昨日海',
+        code: 'YW',
+        stages: ['YW-8', 'YW-7', 'YW-6', 'YW-4']
+      }
+    ]);
+  });
+
+  it('derives the reopened stage code from the same group and keeps stage labels', () => {
+    const parsed = parseMaaActivityGroups(TXWY_ACTIVITY);
+
+    assert.equal(parsed.groups.length, 1);
+    assert.equal(parsed.groups[0]?.name, '輓歌燃燒殆盡');
+    assert.equal(parsed.groups[0]?.code, 'EA');
+    assert.deepEqual(parsed.groups[0]?.stages, ['SSReopen-EA', 'EA-8', 'EA-7', 'EA-6', 'EA-3']);
+  });
+
+  it('keeps the full prefix of a four-letter stage code', () => {
+    const parsed = parseMaaActivityGroups(`Opening side story stages:
+- Critical Phase Transition
+  - ABCD-8: item
+  - ABCD-7: item`);
+
+    assert.equal(parsed.groups[0]?.name, 'Critical Phase Transition');
+    assert.equal(parsed.groups[0]?.code, 'ABCD');
+  });
+
+  it('reports sections without inventing an activity group', () => {
+    assert.deepEqual(parseMaaActivityGroups(MINI_GAMES_ONLY), {
+      groups: [],
+      sawActivitySection: false,
+      sawAnySection: true
+    });
+    assert.deepEqual(parseMaaActivityGroups(''), {
+      groups: [],
+      sawActivitySection: false,
+      sawAnySection: false
+    });
+  });
+});
+
+describe('getCurrentActivity status contract', () => {
+  it('serves a fresh memory cache without running the CLI', async () => {
+    const entry = cachedActivity();
+    let runCalls = 0;
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      cache: new Map([[CLIENT, entry]]),
+      runActivity: async () => {
+        runCalls += 1;
+        return { stdout: '' };
+      },
+      loadConfig: async () => {
+        throw new Error('不应读取持久化缓存');
+      }
+    }));
+
+    assert.equal(runCalls, 0);
+    assert.deepEqual(snapshot, {
+      code: 'YW',
+      name: '昨日海',
+      source: 'maa',
+      startTime: null,
+      endTime: null,
+      stages: [],
+      status: 'active',
+      clientType: CLIENT,
+      lastSuccessAt: entry.timestamp,
+      dataUpdatedAt: null,
+      failure: null
+    });
+  });
+
+  it('falls back to a fresh persisted cache and refills the memory cache', async () => {
+    const entry = cachedActivity();
+    const cache = new Map<string, CachedActivity>();
+    let runCalls = 0;
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      cache,
+      loadConfig: async () => ({ [CLIENT]: entry }),
+      runActivity: async () => {
+        runCalls += 1;
+        return { stdout: '' };
+      }
+    }));
+
+    assert.equal(runCalls, 0);
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'YW');
+    assert.equal(snapshot.lastSuccessAt, entry.timestamp);
+    assert.deepEqual(cache.get(CLIENT), entry);
+  });
+
+  it('reads an active CLI group and records the activity table timestamp', async () => {
+    const saved: Record<string, unknown>[] = [];
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- SideStory「昨日海」
+  - YW-8: 液化高能气体`
+      }),
+      readActivityTable: async () => activityTable({ modifiedAt: NOW - 5000, checkedAt: NOW - 5000 }),
+      saveConfig: async payload => {
+        saved.push(payload);
+      }
+    }));
+
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'YW');
+    assert.equal(snapshot.name, '昨日海');
+    assert.equal(snapshot.source, 'maa');
+    assert.deepEqual(snapshot.stages, []);
+    assert.equal(snapshot.lastSuccessAt, NOW);
+    assert.equal(snapshot.dataUpdatedAt, NOW - 5000);
+    assert.equal(snapshot.failure, null);
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0]?.[CLIENT], {
+      code: 'YW',
+      name: '昨日海',
+      source: 'maa',
+      startTime: null,
+      endTime: null,
+      stages: [],
+      timestamp: NOW,
+      ttl: TEN_MINUTES
+    });
+  });
+
+  it('rounds fractional activity table mtimes into integer snapshot timestamps', async () => {
+    const fractionalMtime = NOW - 1000 + 0.7917;
+
+    const noneSnapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+      readActivityTable: async () => activityTable({ modifiedAt: fractionalMtime, checkedAt: fractionalMtime })
+    }));
+    assert.equal(noneSnapshot.status, 'none');
+    assert.equal(noneSnapshot.dataUpdatedAt, NOW - 1000);
+
+    const activeSnapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- SideStory「昨日海」
+  - YW-8: 液化高能气体`
+      }),
+      readActivityTable: async () => activityTable({ modifiedAt: fractionalMtime, checkedAt: fractionalMtime })
+    }));
+    assert.equal(activeSnapshot.status, 'active');
+    assert.equal(activeSnapshot.dataUpdatedAt, NOW - 1000);
+    assert.ok(Number.isSafeInteger(activeSnapshot.dataUpdatedAt));
+  });
+
+  it('returns none only when the CLI output and a fresh activity table agree', async () => {
+    let fallbackCalls = 0;
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+      readActivityTable: async () => activityTable(),
+      readFallback: async () => {
+        fallbackCalls += 1;
+        return null;
+      }
+    }));
+
+    assert.equal(fallbackCalls, 0);
+    assert.equal(snapshot.status, 'none');
+    assert.equal(snapshot.code, null);
+    assert.equal(snapshot.source, 'maa');
+    assert.equal(snapshot.lastSuccessAt, NOW);
+    assert.equal(snapshot.dataUpdatedAt, NOW - 1000);
+    assert.equal(snapshot.failure, null);
+  });
+
+  it('does not treat an unrecognized non-empty CLI output as none', async () => {
+    let fallbackCalls = 0;
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: 'unexpected machine output' }),
+      readActivityTable: async () => activityTable(),
+      readFallback: async () => {
+        fallbackCalls += 1;
+        return {
+          code: 'BD',
+          name: '丛林症结',
+          source: 'penguin',
+          startTime: NOW - 1000,
+          endTime: NOW + 60_000,
+          stages: ['BD-1']
+        };
+      }
+    }));
+
+    assert.equal(fallbackCalls, 1);
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'BD');
+    assert.equal(snapshot.source, 'penguin');
+  });
+
+  it('uses the fallback source when the activity table is missing', async () => {
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: '' }),
+      readActivityTable: async () => activityTable({ exists: false, modifiedAt: null, checkedAt: null }),
+      readFallback: async () => ({
+        code: 'BD',
+        name: '丛林症结',
+        source: 'penguin',
+        startTime: NOW - 1000,
+        endTime: NOW + 60_000,
+        stages: ['BD-1', 'BD-8']
+      })
+    }));
+
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'BD');
+    assert.equal(snapshot.source, 'penguin');
+    assert.deepEqual(snapshot.stages, ['BD-1', 'BD-8']);
+    assert.equal(snapshot.lastSuccessAt, NOW);
+    assert.equal(snapshot.dataUpdatedAt, NOW);
+    assert.equal(snapshot.failure, null);
+  });
+
+  it('reports none from a supported fallback source instead of unavailable', async () => {
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: '' }),
+      readActivityTable: async () => activityTable({ exists: false, modifiedAt: null, checkedAt: null }),
+      readFallback: async () => null
+    }));
+
+    assert.equal(snapshot.status, 'none');
+    assert.equal(snapshot.source, 'penguin');
+    assert.equal(snapshot.code, null);
+    assert.equal(snapshot.failure, null);
+  });
+
+  it('queries the fallback source when the activity table is older than one day', async () => {
+    let fallbackCalls = 0;
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+      readActivityTable: async () => activityTable({ modifiedAt: NOW - ONE_DAY - 1, checkedAt: NOW - ONE_DAY - 1 }),
+      readFallback: async () => {
+        fallbackCalls += 1;
+        return {
+          code: 'BD',
+          name: '丛林症结',
+          source: 'penguin',
+          startTime: NOW - 1000,
+          endTime: null,
+          stages: ['BD-1']
+        };
+      }
+    }));
+
+    assert.equal(fallbackCalls, 1);
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'BD');
+  });
+
+  it('degrades to stale with the last successful activity when every source fails', async () => {
+    const entry = cachedActivity({ timestamp: NOW - 60 * 60 * 1000, ttl: ONE_DAY });
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      cache: new Map([[CLIENT, entry]]),
+      runActivity: async () => {
+        throw new Error('MAA 超时');
+      },
+      readFallback: async () => {
+        throw new Error('企鹅物流 503');
+      }
+    }));
+
+    assert.equal(snapshot.status, 'stale');
+    assert.equal(snapshot.code, 'YW');
+    assert.equal(snapshot.name, '昨日海');
+    assert.equal(snapshot.lastSuccessAt, entry.timestamp);
+    assert.equal(snapshot.dataUpdatedAt, null);
+    assert.equal(snapshot.failure?.source, 'maa');
+    assert.match(snapshot.failure?.message ?? '', /MAA 活动查询失败: MAA 超时/);
+    assert.match(snapshot.failure?.message ?? '', /备用活动数据源不可用: 企鹅物流 503/);
+  });
+
+  it('returns unavailable without mapping an unsupported client to another server', async () => {
+    let fallbackCalls = 0;
+    const snapshot = await getCurrentActivity('Txwy', runtime({
+      runActivity: async () => {
+        throw new Error('CLI 失败');
+      },
+      readFallback: async () => {
+        fallbackCalls += 1;
+        return {
+          code: 'CN',
+          name: '不应出现的国服活动',
+          source: 'penguin',
+          startTime: NOW,
+          endTime: null,
+          stages: []
+        };
+      },
+      supportsFallback: () => false
+    }));
+
+    assert.equal(fallbackCalls, 0);
+    assert.equal(snapshot.status, 'unavailable');
+    assert.equal(snapshot.code, null);
+    assert.equal(snapshot.name, null);
+    assert.equal(snapshot.lastSuccessAt, null);
+    assert.equal(snapshot.failure?.source, 'maa');
+    assert.match(snapshot.failure?.message ?? '', /备用活动数据源不支持 Txwy/);
+  });
+
+  it('never reports an expired cache entry as active even with a long stored ttl', async () => {
+    const entry = cachedActivity({
+      timestamp: NOW - TEN_MINUTES - 1000,
+      ttl: ONE_DAY
+    });
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      cache: new Map([[CLIENT, entry]]),
+      runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+      readActivityTable: async () => activityTable()
+    }));
+
+    assert.notEqual(snapshot.status, 'active');
+    assert.equal(snapshot.status, 'none');
+    assert.equal(snapshot.code, null);
+  });
+
+  it('keeps the read result when saving the activity cache fails', async () => {
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- SideStory「昨日海」
+  - YW-8: 液化高能气体`
+      }),
+      saveConfig: async () => {
+        throw new Error('磁盘只读');
+      }
+    }));
+
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'YW');
+  });
+
+  it('merges other client entries and clamps persisted ttl when saving', async () => {
+    const otherEntry = cachedActivity({ code: 'B', name: 'B服活动' });
+    const saved: Record<string, unknown>[] = [];
+    await getCurrentActivity(CLIENT, runtime({
+      loadConfig: async () => ({ Bilibili: otherEntry }),
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- SideStory「昨日海」
+  - YW-8: 液化高能气体`
+      }),
+      saveConfig: async payload => {
+        saved.push(payload);
+      }
+    }));
+
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0]?.Bilibili, otherEntry);
+    assert.deepEqual(saved[0]?.[CLIENT], {
+      code: 'YW',
+      name: '昨日海',
+      source: 'maa',
+      startTime: null,
+      endTime: null,
+      stages: [],
+      timestamp: NOW,
+      ttl: TEN_MINUTES
+    });
+  });
+});
+
+describe('activity table freshness', () => {
+  async function withCacheDir(run: (dir: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-'));
+    try {
+      await run(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** 写入活动表并指定内容 mtime；etagModifiedAt 为 null 时不写 ETag 旁注文件。 */
+  async function writeTable(dir: string, modifiedAt: number, etagModifiedAt: number | null): Promise<void> {
+    const tablePath = join(dir, 'StageActivityV2.json');
+    await writeFile(tablePath, '{}');
+    await utimes(tablePath, modifiedAt / 1000, modifiedAt / 1000);
+    if (etagModifiedAt === null) return;
+    const etagPath = `${tablePath}.etag`;
+    await writeFile(etagPath, '"fixture-etag"');
+    await utimes(etagPath, etagModifiedAt / 1000, etagModifiedAt / 1000);
+  }
+
+  it('reads the content mtime and the ETag confirmation time from the cache directory', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, NOW - 60_000);
+
+      const state = await readActivityTableState(dir);
+      assert.equal(state.exists, true);
+      assert.equal(Math.trunc(state.modifiedAt ?? 0), NOW - 3 * ONE_DAY);
+      assert.equal(Math.trunc(state.checkedAt ?? 0), NOW - 60_000);
+    });
+  });
+
+  it('reports a missing activity table without inventing timestamps', async () => {
+    await withCacheDir(async dir => {
+      assert.deepEqual(await readActivityTableState(dir), {
+        exists: false,
+        modifiedAt: null,
+        checkedAt: null
+      });
+    });
+  });
+
+  it('truncates the real file mtime before exposing it in the snapshot', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 5000 + 0.5, NOW - 5000 + 0.5);
+
+      const state = await readActivityTableState(dir);
+      assert.equal(Number.isSafeInteger(state.modifiedAt), false, 'fixture must keep a fractional mtime');
+
+      const snapshot = await getCurrentActivity(CLIENT, runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: async () => state
+      }));
+
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.dataUpdatedAt, NOW - 5000);
+      assert.ok(Number.isSafeInteger(snapshot.dataUpdatedAt));
+    });
+  });
+
+  it('reports none when the ETag confirmation is fresh even though the content is older than a day', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, NOW - 60_000);
+      let fallbackCalls = 0;
+
+      const snapshot = await getCurrentActivity(CLIENT, runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: () => readActivityTableState(dir),
+        readFallback: async () => {
+          fallbackCalls += 1;
+          return null;
+        }
+      }));
+
+      assert.equal(fallbackCalls, 0);
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.source, 'maa');
+      assert.equal(snapshot.dataUpdatedAt, Math.trunc(NOW - 3 * ONE_DAY));
+    });
+  });
+
+  it('reports none for a client without a fallback source when the ETag confirmation is fresh', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, NOW - 60_000);
+
+      const snapshot = await getCurrentActivity('Txwy', runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: () => readActivityTableState(dir),
+        supportsFallback: () => false
+      }));
+
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.source, 'maa');
+      assert.equal(snapshot.failure, null);
+    });
+  });
+
+  it('keeps refusing none when the table has no recent confirmation', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, null);
+      let fallbackCalls = 0;
+
+      const snapshot = await getCurrentActivity(CLIENT, runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: () => readActivityTableState(dir),
+        readFallback: async () => {
+          fallbackCalls += 1;
+          return null;
+        }
+      }));
+
+      assert.equal(fallbackCalls, 1);
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.source, 'penguin');
+    });
+  });
+});
+
+describe('resource collection window', () => {
+  const WINDOW = {
+    UtcStartTime: '2026/09/29 16:00:00',
+    UtcExpireTime: '2026/10/20 03:59:59',
+    TimeZone: 8,
+    IsResourceCollection: true
+  };
+
+  it('converts the region-local activity times to UTC instants', () => {
+    assert.equal(parseActivityTimestamp('2026/09/29 16:00:00', 8), Date.UTC(2026, 8, 29, 8, 0, 0));
+    assert.equal(parseActivityTimestamp('2026/07/30 10:00:00', -7), Date.UTC(2026, 6, 30, 17, 0, 0));
+    assert.equal(parseActivityTimestamp('not-a-time', 8), null);
+    assert.equal(parseActivityTimestamp(12345, 8), null);
+  });
+
+  it('parses the resourceCollection window and rejects malformed entries', () => {
+    assert.deepEqual(parseResourceCollectionWindow(WINDOW), {
+      startTime: Date.UTC(2026, 8, 29, 8, 0, 0),
+      endTime: Date.UTC(2026, 9, 19, 19, 59, 59)
+    });
+    assert.equal(parseResourceCollectionWindow(null), null);
+    assert.equal(parseResourceCollectionWindow({ UtcStartTime: '2026/09/29 16:00:00' }), null);
+    assert.equal(parseResourceCollectionWindow({
+      UtcStartTime: '2026/10/20 04:00:00',
+      UtcExpireTime: '2026/09/29 16:00:00',
+      TimeZone: 8
+    }), null);
+  });
+
+  it('is open only inside the window of the requested server zone', async () => {
+    const windows: Record<string, { startTime: number; endTime: number } | null> = {
+      // 官方 2026-10-19 12:00 UTC 处于窗口内；美服没有窗口。
+      Official: { startTime: Date.UTC(2026, 9, 18), endTime: Date.UTC(2026, 9, 20) },
+      YoStarEN: null
+    };
+    const seen: string[] = [];
+    const request = {
+      now: () => Date.UTC(2026, 9, 19, 12, 0, 0),
+      readWindow: async (clientType: string) => {
+        seen.push(clientType);
+        return windows[clientType] ?? null;
+      }
+    };
+
+    assert.equal(await isResourceCollectionOpen('Official', request), true);
+    assert.equal(await isResourceCollectionOpen('Bilibili', request), true, 'Bilibili uses the Official table');
+    assert.equal(await isResourceCollectionOpen('YoStarEN', request), false);
+    // 未知客户端规范化为 Official，与游戏日判定同一套服务区映射。
+    assert.equal(await isResourceCollectionOpen('unknown', request), true);
+    assert.deepEqual(seen, ['Official', 'Official', 'YoStarEN', 'Official']);
+  });
+
+  it('treats a missing window or read failure as not open', async () => {
+    assert.equal(await isResourceCollectionOpen('Official', {
+      now: () => NOW,
+      readWindow: async () => null
+    }), false);
+    assert.equal(await isResourceCollectionOpen('Official', {
+      now: () => NOW,
+      readWindow: async () => {
+        throw new Error('活动表不可读');
+      }
+    }), false);
+  });
+});

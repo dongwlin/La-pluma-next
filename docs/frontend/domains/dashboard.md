@@ -21,7 +21,8 @@
 | 设备采样投影 | `DashboardWorkspace` 内的 `DashboardDeviceSampleProjection` | 只调用一次 `useDashboardDeviceStats`，返回 `null`；样本更新不推动兄弟区域重渲染 |
 | 连接健康提示与重试 | `features/dashboard/components/DashboardConnectionAlert.tsx` | 离线/后端不可用时渲染；重试调用完整快照协调器 |
 | 流程区域（网格与预览入口） | `features/dashboard/components/DashboardFlowSection.tsx` | `useDashboardFlowLayout` 的网格测量与预览壳；预览入口始终挂载 |
-| 今日流程卡 | `features/dashboard/components/DashboardFlowPanel.tsx` | 订阅活动/定时/开放关卡摘要；持有预检/启动反馈 |
+| 今日流程卡 | `features/dashboard/components/DashboardFlowPanel.tsx` | 订阅活动/定时/开放关卡摘要与刷新错误；持有预检/启动反馈 |
+| 当前活动卡状态投影 | `features/dashboard/model/activityView.ts` | 纯函数：把活动快照、刷新状态与旧 v1 缺字段投影为 loading/active/none/unavailable/stale |
 | 流程操作入口 | `features/dashboard/hooks/useDashboardFlowActions.ts` | 组合 `useDashboardExecution` 与刷新回调；不写 store、不另发请求 |
 | 连接健康投影 | `features/dashboard/hooks/useDashboardServiceStatus.ts` | 把 `backendStatus` 与在线状态映射成文案；探针仍归 `runtime-status` |
 | 设备状态区域 | `features/dashboard/components/DashboardDeviceSection.tsx` | 只订阅 `deviceStats` 与 `temperatureHistory`；无样本时不渲染 |
@@ -35,12 +36,12 @@
 
 维护约束：
 
-- 不改变五个领域 Query key、`staleTime`/`gcTime`、自动重试、失效作用域与 5 分钟刷新节奏。
+- 不改变五个领域 Query 的资源归属、`staleTime`/`gcTime`、自动重试、失效作用域与 5 分钟刷新节奏；activity 不传 `clientType` 时 key 使用 `profile` 哨兵（见[Query 缓存与键规范](../../architecture/query-cache.md)）。
 - 不改变执行端点、幂等键、`scope: 'dashboard'`、预检响应语义与终态提示规则。
 - 不改变设备采样端点、5s 间隔、文档隐藏暂停、`refetchOnMount: 'always'` 与失败保旧。
-- 不改变 `la-pluma-dashboard-cache` v1 的字段或持久化条件；`lastDeviceSampleAt` 只是运行期去重标记，不写入 localStorage。
+- `la-pluma-dashboard-cache` 保持 v1 与 `la-pluma-dashboard-cache` key；活动摘要新增字段为可选增量，旧缓存缺 `status` 时首次挂载立即刷新，旧客户端忽略新字段。
 - 不把预检 loading、启动反馈、流程展示计算写入 `dashboardStore`、Query、localStorage 或 URL。
-- 不改变渲染结构、DOM/CSS 类名、文案或默认态视觉；既有 DOM/CSS 与视觉约束保持不变。
+- 除活动卡新增的状态/失败/重试文案外，不改变渲染结构、DOM/CSS 类名或默认态视觉；既有 DOM/CSS 与视觉约束保持不变。
 - 总览没有展开/折叠交互；没有跨面板展开状态需要提升为共享状态。局部交互状态只有预检/启动 loading 与反馈，就近放在流程卡。
 
 ### 2. 组合与订阅边界
@@ -144,18 +145,20 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 执行订阅与终态提示 | `task-execution` 控制器 + `useDashboardExecution` | 观察者随 Effects 重建，控制器继续观察；不发送停止 | 按持久化身份恢复，不重新提交 |
 | 设备采样 | `device-mirror/device-stats` Query | 观察者注销、计时器清理；恢复立即采样一次；缓存回放不重复追加温度点 | 新 Query 立即读取；持久化温度历史保留 |
 | 设备温度历史 | `dashboardStore` | 保留 | 随完整快照缓存恢复 |
-| 摘要与当前活动 | `dashboardStore` | 保留 | 随完整快照缓存恢复 |
+| 摘要与当前活动 | `dashboardStore` | 保留 | 随完整快照缓存恢复；`lastRefreshError` 只在运行期 |
+| 活动卡 phase（loading/active/none/unavailable/stale） | `model/activityView.ts` | 保留 | 由快照与运行期刷新错误重新投影 |
 | 预览会话 | `device-mirror` | 清理连接/截图 Effects，保留模式；恢复按模式重建 | 按 `autoStart` 规则恢复模式 |
 | 导航回调 | `DashboardWorkspace` | 稳定 | 重建 |
 
 ### 8. 兼容与维护约束
 
-- 保持端点、响应信封、`la-pluma-dashboard-cache` v1、store 字段与 DOM/CSS 兼容；Query key 与默认策略以[Query 缓存与键规范](../../architecture/query-cache.md)为准。
+- 保持端点、响应信封、`la-pluma-dashboard-cache` v1、store 字段与 DOM/CSS 兼容（运行期新增 `lastRefreshError`，不持久化）；Query key 与默认策略以[Query 缓存与键规范](../../architecture/query-cache.md)为准。
 - 行为变化：
  1. **温度点去重（缺陷修复）。** 迁移前 `useDashboardDeviceStats` 在 Activity 恢复重跑 Effect 时会把缓存中的同一份样本再追加一次，随后立即采样又追加一次，导致“近 N 秒”偏大。现在同一 `dataUpdatedAt` 的缓存回放只记录一次；新采样仍逐次追加。相关回归见 `useDashboardDeviceStats.test.tsx` 与 store 测试。
   2. **设备采样投影的启动时机。** 投影从页面顶层移到工作区（页面脱离骨架后）。骨架阶段没有设备区域，可见行为不变；采样间隔、暂停与失败保旧未变。
   3. **状态消息不再重渲染页面。** 流程卡只从 `useStatusStore` 取 `setMessage` 动作，总览不再因全局消息正文整体重渲染；显示内容与计时器仍由 `statusStore` 决定。
   4. **执行订阅随工作区挂载。** 首屏骨架期间不再建立流程卡的执行订阅；骨架期间完成的 run 不产生页面内终态提示，全局运行投影仍独立展示。页面正常装载后的观察、身份与提示规则不变。
+  5. **活动卡状态化。** `/agent/activity` 返回 `status`、`clientType`、来源时间与失败原因；卡片不再读取 `tip`/`description`/`isActive` 或用固定文案冒充加载态。成功空窗显示“暂无当前刷关活动”，来源失败显示“无法获取活动信息”与重试；刷新失败保留旧快照并标记“可能已过期”。
 
 ### 剩余边界
 
@@ -193,7 +196,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 | 资源 | 读取 |
 | --- | --- |
-| 当前活动 | `getActivity('Official', signal)` |
+| 当前活动 | `getActivity(undefined, signal)`；不传 `clientType`，由服务端按连接 profile 的 `client_type` 解析 |
 | 定时执行状态 | `getScheduleExecutionStatus(signal)` |
 | 养成队列 | `getTrainingQueue(signal)` |
 | 今日掉落 | `getTodayDrops(signal)` |
@@ -203,10 +206,24 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 `normalizeDashboardSnapshot` 负责兼容与校验：
 
-- activity 必须是对象且 `completion` 形状合法；支持 `isActive`、`available`、`code`/`id`、`name`/`displayName`/`stageName` 等既有字段。
+- activity 必须通过 `normalizeActivityPayload`：`status` 为 active/none/unavailable/stale，`clientType`、`available`、`message` 与可空代号/名称/来源/时间戳、`stages`、`failure`、可选 `completion` 均按 `/agent/activity` DTO 校验；旧 `isActive`/`tip`/`description` 不再参与投影。
 - schedule execution 必须是对象；`isRunning`/`running`/`executing` 归一为运行态，`lastResult`/`result`/`lastMessage` 走既有摘要格式化。
 - training queue 接受数组或 `{ queue }`；drops 接受数组或 `{ records }`；open-today 必须是 `{ open, closed }`，两组均为 `{ stage, name }` 数组（每组最多 100 项）。
+- open-today 的 `gameDate`（`YYYY-MM-DD`）、`clientType` 与 `weekday` 描述服务端判定所用的游戏日：`weekday` 是客户端服务区时区下、每日 04:00 日界之后的星期，不是浏览器或宿主日历星期。展示只读 `open`/`closed`，新增字段缺失也不影响归一。
+- 资源收集全开放活动期间，服务端按该客户端服务区在 MAA 活动表（`StageActivityV2.json`）中的 `resourceCollection` 窗口把所有资源本投影为开放，`closed` 为空；活动表不可读或不在窗口内时回落周表。该投影与养成计划、执行跳过同源，前端不区分全开放与周表开放。
 - 任一载荷缺失、形状不符或 completion 越界时返回 `null`；协调器不会提交部分结果。
+
+活动卡由 `model/activityView.ts` 投影为以下 phase：
+
+| phase | 条件 | 卡片行为 |
+| --- | --- | --- |
+| `loading` | 没有快照且正在刷新；或旧 v1 摘要缺 `status` 且未失败 | 显示真实刷新文案；不提供重试；旧快照 `available=true` 时仍可执行 |
+| `active` | 服务端 `status=active` 且最近一次快照刷新成功 | 显示名称/代号、地区、来源与更新时间；`available=true` 时可执行当前活动 |
+| `none` | 服务端 `status=none` 且最近一次快照刷新成功 | 显示“暂无当前刷关活动”，不提供执行 |
+| `unavailable` | 服务端 `status=unavailable`，或首轮刷新失败且没有旧快照 | 显示失败原因与重试；不提供执行 |
+| `stale` | 服务端 `status=stale`，或最近一次快照刷新失败但有旧快照 | 保留旧活动/“可能已过期”，显示上次成功与重试；`available=true` 时仍可执行 |
+
+`canRunActivity` 只对 `available=true` 且 phase 不是 `none`/`unavailable` 的快照为真；主线活动可以显示名称，但缺少可导航代号时不会出现“打当前活动”。
 
 ### 3. 原子提交与失败策略
 
@@ -216,8 +233,8 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 2. **force 补一次**：`force` 在在途读取结束后再补一次，覆盖“读取过程中收到失效”的情况。
 3. **后端探针不否决快照**：`probeBackendAvailability` 与五路并发，失败只影响连接健康展示；五路业务读取本身已证明后端可达。
 4. **离线上报尝试**：浏览器离线时不发业务请求，但仍记录本次尝试并结束刷新。
-5. **原子提交**：只有 `readDashboardSnapshot` 返回完整快照时调用 `dashboardStore.finishRefresh(attemptedAt, snapshot)`；失败调用无快照版本，保留旧业务值、旧 `lastUpdate` 与已持久化的完整缓存，只更新 `lastRefreshAttemptAt`。
-6. **预期失败静默**：`ApiRequestError`（API/contract/transport）与取消不写入控制台错误；只有未知异常记录，保持迁移前“单路失败保旧”的安静行为。
+5. **原子提交**：只有 `readDashboardSnapshot` 返回完整快照时调用 `dashboardStore.finishRefresh(attemptedAt, snapshot)`；失败调用 `finishRefresh(attemptedAt, undefined, message)`，保留旧业务值、旧 `lastUpdate` 与已持久化的完整缓存，只更新 `lastRefreshAttemptAt` 与运行期 `lastRefreshError`。
+6. **预期失败静默**：`ApiRequestError`（API/contract/transport）与取消不写入控制台错误；失败原因仍经 `lastRefreshError` 交给活动卡展示，只有未知异常记录。
 
 `dashboardStore` 仍执行第二道形状校验；非法快照不会覆盖缓存。完整快照提交时合并当前设备样本与温度历史，并写入 `la-pluma-dashboard-cache` v1。
 
@@ -234,7 +251,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 `useDashboardSnapshotRefresh` 是页面的唯一同步入口：
 
-- 首屏无缓存或距 `lastRefreshAttemptAt` 满 5 分钟时刷新，否则只安排下一次；刷新完成后串行安排下一轮。
+- 首屏无缓存、距 `lastRefreshAttemptAt` 满 5 分钟，或恢复的 v1 活动摘要缺少 `status` 时刷新，否则只安排下一次；刷新完成后串行安排下一轮。
 - 订阅 `dashboard-snapshot` 作用域：收到计划应用、识别完成、队列变更、资源/热更新等已批准的发布会 `force` 刷新；发布端仍按[共享资源归属与失效端口](../../architecture/resource-ownership.md)第 5 节列举作用域。
 - Activity 隐藏时清理计时器与失效订阅；恢复时若期间有发布，`useResourceInvalidation` 补发一次 `activity-resume`，触发一次完整刷新。真正卸载后重挂载按首屏/新鲜度规则重新读取。
 - 网络恢复（`online` 事件）`force` 刷新。
@@ -249,7 +266,8 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 五路资源读取 | 各自领域 Query 缓存 | 协调读取强制取最新值；默认策略见[Query 缓存与键规范](../../architecture/query-cache.md) |
 | 协调快照 | `dashboard/snapshot` | 只用于当前协调读取，不长期保留 |
 | 展示快照 | `dashboardStore` | 进程内；完整快照才更新 `lastUpdate` |
-| 持久化快照 | `la-pluma-dashboard-cache` v1 | 仅完整快照提交时写入；恢复校验版本/形状/语义边界/未来时钟偏差 |
+| 持久化快照 | `la-pluma-dashboard-cache` v1 | 仅完整快照提交时写入；恢复校验版本/形状/语义边界/未来时钟偏差；活动摘要新增字段随快照持久化，旧 v1 条目缺 `status` 仍可恢复 |
+| 刷新错误 | `dashboardStore.lastRefreshError` | 仅运行期；成功快照提交或 `reset()` 时清空 |
 | 设备样本 | `device-mirror/device-stats` Query + `dashboardStore` | 内存；不单独持久化，随完整快照夹带 |
 
 ### 7. 兼容与已知行为差异
@@ -259,7 +277,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - 设备轮询在文档隐藏时暂停，恢复可见后立即采样；迁移前每 5s 固定请求。轮询失败仍是静默保旧，不展示错误。
 - 设备采样不再由 Dashboard 页面直接轮询；`updateDeviceStats` 接受未知载荷并在 store 内校验，避免把端点形状当成可信类型。
 - Activity 恢复不再直接调用页面私有计时器；计时器由 Query 观察者与同步 hook 各自管理，隐藏时全部清理。
-- `automation/activity` 由自动化领域 Query 持有，自动化页与总览按各自需要读取；`schedule-execution` 仍由总览完整快照消费。
+- `automation/activity` 由自动化领域 Query 持有，自动化页与总览按各自需要读取；不传 `clientType` 时 key 使用 `profile` 哨兵并由服务端连接 profile 解析，`schedule-execution` 仍由总览完整快照消费。
 
 ## 回归与关联
 
@@ -269,17 +287,19 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | --- | --- |
 | `client/src/features/dashboard/model/flowView.test.ts` | 空闲/运行/等待/占用/未知/不可用/loading 的命令文案、按钮状态与禁用规则 |
 | `client/src/features/dashboard/model/deviceView.test.ts` | 使用率阈值、空历史、单点水平线、稳定区间、曲线几何与时长文案 |
+| `client/src/features/dashboard/model/activityView.test.ts` | loading/active/none/unavailable/stale 矩阵、首轮失败、v1 缺 status、刷新失败降级、地区/来源标签与重试/执行能力 |
 | `client/src/features/dashboard/hooks/useDashboardDeviceStats.test.tsx` | 首次样本投影到 store 与温度历史、Activity 恢复不重复追加、新时间戳追加、null 载荷保旧 |
 | `client/src/features/dashboard/components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留、效果重建与预览点击导航 |
 | `client/src/pages/dashboard/Dashboard.test.tsx` | 首屏/缓存/后台刷新与完整快照原子提交；四类失效（计划应用、识别、资源更新等）、Activity 隐藏期间失效恢复；单路失败/形状错误保旧、预检不写快照、启动后经协调器刷新；空流程导航、执行投影与控制器身份、设备样本投影、预览挂载与导航 |
 | `client/src/features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/语义边界/时钟偏差、设备样本合并与温度点去重、采样时间戳不持久化、失败刷新不覆盖成功缓存 |
 | `client/src/features/dashboard/model/queries.test.ts` | 五个领域 key 与 signal、协调快照 key/缓存参数、每次重读、单路失败与坏载荷整体失败、不继承自动重试 |
-| `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、兼容载荷、字段回退、单路缺失/形状错误/越界返回 null |
+| `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、真实活动 DTO 投影、none/unavailable/stale、字段回退、单路缺失/形状错误/越界返回 null |
 | `client/src/features/dashboard/model/snapshotRefresher.test.ts` | 单飞、force 补一次、原子提交、失败保旧、探针不否决、离线与预期失败静默 |
 | `client/src/features/device-mirror` 的预览测试 | 预览会话生命周期；采样间隔、失败保旧与 Activity 暂停恢复由下列采样测试覆盖 |
 | `client/src/features/device-mirror/model/queries.test.ts` | 设备 key、signal、null 载荷与失败信封 |
 | `client/src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询、恢复立即采样且只有一个计时器 |
-| `client/src/features/automation/model/queries.test.ts` | activity/schedule-execution key、clientType 参数、signal 与失败 |
+| `client/src/features/automation/model/queries.test.ts` | activity/schedule-execution key、`profile` 哨兵、显式 clientType、signal、DTO 校验与失败 |
+| `client/src/features/automation/model/activity.test.ts` | 真实活动 DTO 校验、可空字段保留、状态/时间戳/数组/failure/completion 边界 |
 | `client/src/features/statistics/model/queries.test.ts` | today-drops/open-stages key、signal、失败信封 |
 
 ### 验证命令

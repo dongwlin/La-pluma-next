@@ -37,10 +37,14 @@ import { createLogger } from '../utils/logger.ts';
  * - 同一进程只创建一个实例，异步流程只有一个执行所有者。
  */
 
-/** 执行只需要连接地址与 ADB 路径；profile 解析仍由连接服务负责。 */
+/**
+ * 执行只需要连接地址、ADB 路径与客户端类型；profile 解析仍由连接服务负责。
+ * `clientType` 可选：任务参数或连接 profile 未提供时按连接默认值判定游戏日。
+ */
 export interface ScheduleConnection {
   adbPath: string;
   address: string;
+  clientType?: string;
 }
 
 /** 命令输出：流程只读取 stdout/stderr 文本。 */
@@ -101,7 +105,7 @@ export interface ScheduleExecutionPorts {
   getGameClientState(adbPath: string, address: string, clientType: string): Promise<ScheduleGameClientState>;
   captureScreen(adbPath: string, address: string): Promise<ScheduleCapturedScreen>;
   replaceActivityCode(stage: string, clientType: string): Promise<string>;
-  isStageOpenToday(stage: string): ScheduleStageOpenState;
+  isStageOpenToday(stage: string, clientType: string): ScheduleStageOpenState | Promise<ScheduleStageOpenState>;
   shouldCaptureNotificationScreenshot(): boolean;
   sendCompletionNotification(info: TaskCompletionInfo): Promise<unknown>;
   recordDrops(input: DropRecordInput): Promise<unknown>;
@@ -919,6 +923,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           if (command === 'fight' && args.length > 0) {
             const stageInput = args[0];
             const clientType = task.params.clientType || DEFAULT_CLIENT_TYPE;
+            // 关卡开放按连接 profile 的客户端游戏日判定；任务显式指定的类型优先。
+            const gameClientType = task.params.clientType || sharedConnection.clientType || DEFAULT_CLIENT_TYPE;
 
             // 解析关卡列表，格式：stage1:times1,stage2:times2 或 stage1,stage2
             const stageEntries = stageInput.split(',').map(s => {
@@ -955,8 +961,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   continue;
                 }
 
-                // 检查关卡是否开放
-                const openCheck = isStageOpenToday(stage);
+                // 检查关卡是否开放（资源收集全开放窗口由端口按客户端类型解析）
+                const openCheck = await isStageOpenToday(stage, gameClientType);
                 if (!openCheck.isOpen) {
                   logger.info('关卡今日未开放，跳过', {
                     scheduleId,
@@ -993,19 +999,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   currentArgs.push('--times', times);
                 }
 
-                // 添加其他参数（理智药、源石等）
-                // 如果填了次数，排除 --series 参数；否则保留所有参数
-                let otherArgs: string[];
-                if (times) {
-                  // 填了次数，过滤掉 --series
-                  otherArgs = args.slice(1).filter((arg, index, arr) => {
-                    return arg !== '--series' && (index === 0 || arr[index - 1] !== '--series');
-                  });
-                } else {
-                  // 没填次数，保留所有参数（包括 --series）
-                  otherArgs = args.slice(1);
-                }
-                currentArgs.push(...otherArgs);
+                // 添加其他参数（理智药、源石、连战倍率等）。
+                // 次数是该关卡的累计作战局数上限，连战倍率是每局代理的重复次数；
+                // 两者同时下发，由 MaaCore 按剩余次数裁决，不在本地丢弃用户选择。
+                currentArgs.push(...args.slice(1));
 
                 // 执行命令
                 try {
@@ -1101,7 +1098,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               const { stage, times } = stageEntries[0];
 
               // 检查关卡是否开放
-              const openCheck = isStageOpenToday(stage);
+              const openCheck = await isStageOpenToday(stage, gameClientType);
               if (!openCheck.isOpen) {
                 logger.info('关卡今日未开放，跳过', {
                   scheduleId,
@@ -1138,15 +1135,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 args[0] = stage;
               }
 
-              // 如果有次数，添加 --times 参数，并移除 --series 参数
+              // 有次数时补 --times；次数是累计作战局数上限，连战倍率保留，
+              // 由 MaaCore 按剩余次数裁决。
               if (times && !args.includes('--times')) {
                 args.splice(1, 0, '--times', times);
-
-                // 移除 --series 参数（填了次数的关卡不使用连战）
-                const seriesIndex = args.indexOf('--series');
-                if (seriesIndex !== -1) {
-                  args.splice(seriesIndex, 2); // 移除 --series 和它的值
-                }
               }
             }
           }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ConfigStorageResult } from '../configStorageService.ts';
 import type { TrainingPlan, TrainingPlanOperator, TrainingPlanStage } from '../operatorTrainingPlan.ts';
+import operatorTrainingService from '../operatorTrainingService.ts';
 import {
   updateSmartTrainingStages
 } from '../scheduleSmartTrainingService.ts';
@@ -82,6 +83,8 @@ function makePlan(
       backlogCount: 0,
       openStageCount: stages.length,
       closedStageCount: 0,
+      gameDate: '2026-01-01',
+      clientType: 'Official',
       todayOpenResourceStages: [],
       todayClosedResourceStages: []
     }
@@ -320,5 +323,30 @@ describe('updateSmartTrainingStages', () => {
       { stage: 'CE-5', times: '4', smart: true, trainingOperators: ['Alpha'] },
       'CE-6'
     ]);
+  });
+
+  it('generates the plan for the connection client type', async () => {
+    const { logger } = createLogger();
+    const captured: Array<{ mode?: string; options?: { clientType?: string } }> = [];
+    const original = operatorTrainingService.generateTrainingPlan;
+    operatorTrainingService.generateTrainingPlan = async (mode, options) => {
+      captured.push({ mode, options });
+      return makePlan([makeStage('CE-5', 3)]);
+    };
+
+    try {
+      await updateSmartTrainingStages('default', {
+        loadConfig: async type => success(type === 'automation-tasks'
+          ? tasksConfig([{ stage: '1-7', smart: true }])
+          : { queue: [{ operatorId: 'a' }], settings: {} }),
+        saveConfig: async () => success(null),
+        resolveClientType: async () => 'YoStarJP',
+        runtimeLogger: logger
+      });
+    } finally {
+      operatorTrainingService.generateTrainingPlan = original;
+    }
+
+    assert.deepEqual(captured, [{ mode: 'current', options: { clientType: 'YoStarJP' } }]);
   });
 });

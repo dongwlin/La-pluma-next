@@ -13,6 +13,7 @@ import { useStatusStore } from '@/features/runtime-status'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import Dashboard from './Dashboard'
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '@/features/dashboard/constants'
+import type { AutomationActivityPayload } from '@/features/automation'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -176,6 +177,30 @@ const findButton = (text: string) => Array.from(container.querySelectorAll('butt
 
 const ok = (data: unknown) => ({ success: true, data })
 
+const activityDto = (overrides: Partial<AutomationActivityPayload> = {}): AutomationActivityPayload => ({
+  status: 'active',
+  clientType: 'Official',
+  available: true,
+  message: '当前活动: 测试活动',
+  code: 'TEST',
+  name: '测试活动',
+  source: 'maa',
+  startTime: null,
+  endTime: null,
+  stages: [],
+  lastSuccessAt: 1_760_000_000_000,
+  dataUpdatedAt: 1_760_000_000_000,
+  failure: null,
+  completion: {
+    known: false,
+    complete: false,
+    completedStages: [],
+    totalStages: 0,
+    source: 'local-activity-progress',
+  },
+  ...overrides,
+})
+
 function buildRun(overrides: Partial<AgentRun> = {}): AgentRun {
   return {
     runId: 'run-daily',
@@ -270,7 +295,7 @@ describe('Dashboard connectivity state', () => {
     trackedRunState = buildRun({ progress: { currentTask: '收取信用' } })
     apiMocks.getTaskStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
     apiMocks.getDeviceStats.mockResolvedValue({ success: false })
-    apiMocks.getActivity.mockResolvedValue({ success: true, data: { available: true, name: '测试活动' } })
+    apiMocks.getActivity.mockResolvedValue(ok(activityDto()))
     apiMocks.getScheduleExecutionStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
     apiMocks.getTrainingQueue.mockResolvedValue({ success: true, data: { queue: [] } })
     apiMocks.getTodayDrops.mockResolvedValue({ success: true, data: [] })
@@ -318,7 +343,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('uses the full dashboard skeleton only for the first uncached load', async () => {
-    let resolveActivity: ((value: { success: boolean; data: { available: boolean; name: string } }) => void) | undefined
+    let resolveActivity: ((value: { success: boolean; data: AutomationActivityPayload }) => void) | undefined
     apiMocks.getActivity.mockReturnValueOnce(new Promise(resolve => {
       resolveActivity = resolve
     }))
@@ -328,7 +353,7 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('loading')
     expect(renderSpies.dashboardSkeleton).toHaveBeenCalled()
 
-    await act(async () => resolveActivity?.({ success: true, data: { available: true, name: '首次活动' } }))
+    await act(async () => resolveActivity?.({ success: true, data: activityDto({ name: '首次活动' }) }))
     await flushDashboard()
 
     expect(container.textContent).not.toContain('loading')
@@ -336,7 +361,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('restores a fresh dashboard cache immediately without returning to the skeleton', async () => {
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '缓存活动' })))
 
     await act(async () => renderDashboard())
     await flushDashboard()
@@ -355,7 +380,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('keeps stale content visible while refreshing it in the background', async () => {
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '缓存活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '缓存活动' })))
 
     await act(async () => renderDashboard())
     await flushDashboard()
@@ -363,7 +388,7 @@ describe('Dashboard connectivity state', () => {
       lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
     })
 
-    let resolveActivity: ((value: { success: boolean; data: { available: boolean; name: string } }) => void) | undefined
+    let resolveActivity: ((value: { success: boolean; data: AutomationActivityPayload }) => void) | undefined
     apiMocks.getActivity.mockReturnValueOnce(new Promise(resolve => {
       resolveActivity = resolve
     }))
@@ -377,7 +402,7 @@ describe('Dashboard connectivity state', () => {
     expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(2)
 
-    await act(async () => resolveActivity?.({ success: true, data: { available: true, name: '更新活动' } }))
+    await act(async () => resolveActivity?.({ success: true, data: activityDto({ name: '更新活动' }) }))
     await flushDashboard()
 
     expect(container.textContent).toContain('更新活动')
@@ -420,7 +445,7 @@ describe('Dashboard connectivity state', () => {
     apiMocks.getTrainingQueue.mockClear()
     apiMocks.getTodayDrops.mockClear()
     apiMocks.getOpenTodayStages.mockClear()
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '恢复活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '恢复活动' })))
 
     await act(async () => renderDashboard('hidden'))
     await flushDashboard()
@@ -443,7 +468,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('keeps the last complete snapshot when one background request fails', async () => {
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '已确认活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '已确认活动' })))
 
     await act(async () => renderDashboard())
     await flushDashboard()
@@ -453,7 +478,7 @@ describe('Dashboard connectivity state', () => {
       lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
     })
 
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '未确认活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '未确认活动' })))
     apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
 
     await act(async () => root.render(<div>其他页面</div>))
@@ -467,7 +492,7 @@ describe('Dashboard connectivity state', () => {
   })
 
   it('keeps the last complete snapshot when a successful response has malformed data', async () => {
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '稳定活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '稳定活动' })))
 
     await act(async () => renderDashboard())
     await flushDashboard()
@@ -477,7 +502,7 @@ describe('Dashboard connectivity state', () => {
       lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
     })
 
-    apiMocks.getActivity.mockResolvedValueOnce({ success: true, data: { available: true, name: '异常活动' } })
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '异常活动' })))
     apiMocks.getOpenTodayStages.mockResolvedValueOnce({
       success: true,
       data: { open: [], closed: [{ stage: 'CE-6' }] },
@@ -864,5 +889,116 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('网络中断')
     expect(findButton('开始今日流程')?.disabled).toBe(true)
     expect(useStatusStore.getState().message).toBe('')
+  })
+
+  it('shows a distinct first-load activity failure and recovers through retry', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce({ success: false, message: '活动服务不可用' })
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    const failed = container.querySelector('[data-activity-status="unavailable"]')
+    expect(failed?.textContent).toContain('活动数据加载失败')
+    expect(failed?.textContent).toContain('活动服务不可用')
+    expect(failed?.textContent).not.toContain('暂无')
+    expect(useDashboardStore.getState().lastRefreshError).toBe('活动服务不可用')
+
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '恢复活动' })))
+    const retry = Array.from(failed?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('重试'))
+    await act(async () => retry?.click())
+    await flushDashboard()
+
+    expect(apiMocks.getActivity).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[data-activity-status="active"]')?.textContent)
+      .toContain('恢复活动')
+    expect(useDashboardStore.getState().lastRefreshError).toBeNull()
+  })
+
+  it('renders a confirmed empty activity without the old fixed loading copy', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({
+      status: 'none',
+      available: false,
+      code: null,
+      name: null,
+      source: 'maa',
+      message: '当前没有刷关活动',
+      completion: undefined,
+    })))
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    const empty = container.querySelector('[data-activity-status="none"]')
+    expect(empty?.textContent).toContain('暂无当前刷关活动')
+    expect(empty?.textContent).toContain('官服 · MAA 活动表')
+    expect(container.textContent).not.toContain('暂无活动')
+    expect(container.textContent).not.toContain('等待活动数据')
+    expect(findButton('打当前活动')).toBeUndefined()
+  })
+
+  it('renders an active activity name and source without a tip field', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({
+      name: '昨日海',
+      code: 'YW',
+      source: 'penguin',
+      dataUpdatedAt: 1_760_000_100_000,
+    })))
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    const active = container.querySelector('[data-activity-status="active"]')
+    expect(active?.textContent).toContain('昨日海')
+    expect(active?.textContent).toContain('官服 · 企鹅物流')
+    expect(active?.textContent).toContain('更新于')
+    expect(container.textContent).not.toContain('等待活动数据')
+  })
+
+  it('keeps the last active activity and marks it stale when a later refresh fails', async () => {
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '已确认活动' })))
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+    useDashboardStore.setState({
+      lastRefreshAttemptAt: Date.now() - DASHBOARD_REFRESH_INTERVAL_MS,
+    })
+
+    apiMocks.getActivity.mockResolvedValueOnce(ok(activityDto({ name: '未确认活动' })))
+    apiMocks.getTodayDrops.mockResolvedValueOnce({ success: false, message: '暂时不可用' })
+
+    await act(async () => root.render(<div>其他页面</div>))
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    const stale = container.querySelector('[data-activity-status="stale"]')
+    expect(stale?.textContent).toContain('已确认活动')
+    expect(stale?.textContent).toContain('可能已过期')
+    expect(stale?.textContent).toContain('上次成功')
+    expect(stale?.textContent).toContain('暂时不可用')
+    expect(stale?.textContent).not.toContain('未确认活动')
+    expect(stale?.querySelector('button')?.textContent).toContain('重试')
+  })
+
+  it('refreshes a restored v1 cache immediately when the activity status is missing', async () => {
+    const now = Date.now()
+    useDashboardStore.setState({
+      hasLoaded: true,
+      lastUpdate: now,
+      lastRefreshAttemptAt: now,
+      activitySummary: {
+        available: true,
+        code: 'OLD',
+        name: '旧活动',
+        completion: { known: false, complete: false, completedStages: [], totalStages: 0 },
+      },
+    })
+
+    await act(async () => renderDashboard())
+    await flushDashboard()
+
+    expect(renderSpies.dashboardSkeleton).not.toHaveBeenCalled()
+    expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('测试活动')
   })
 })

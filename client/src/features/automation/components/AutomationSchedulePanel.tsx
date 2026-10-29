@@ -83,6 +83,7 @@ export default function AutomationSchedulePanel({
           <div>
             <h3><Clock3 size={16} strokeWidth={1.8} aria-hidden="true" /><span>定时与通知</span></h3>
             <p>自动运行与结果推送</p>
+            <p className="automation-schedule-timezone">执行时间按游戏服务区时区，每日 04:00 刷新游戏日</p>
           </div>
           <div className="automation-schedule-actions">
             <Switch

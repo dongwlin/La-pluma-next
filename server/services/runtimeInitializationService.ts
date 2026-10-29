@@ -39,10 +39,12 @@ export interface RuntimeNotificationState {
   channels?: Record<string, NotificationChannelConfig>;
 }
 
-/** 连接解析端口只提供 Telegram 启动所需的连接字段。 */
+/** 连接解析端口提供 Telegram 启动与定时恢复所需的连接字段。 */
 export interface RuntimeConnectionSnapshot {
   adbPath?: string;
   address?: string;
+  /** 当前 profile 的客户端类型；缺失时定时任务按连接默认客户端注册。 */
+  clientType?: string;
 }
 
 /** Telegram 启动配置：持久渠道字段原样透传，另附解析后的连接信息。 */
@@ -66,7 +68,12 @@ export interface RuntimeInitializationPorts {
   loadConfig(configType: string): Promise<RuntimeConfigLoadOutcome>;
   applyNotificationConfig(config: unknown): unknown;
   readNotificationConfig(): RuntimeNotificationState;
-  registerSchedule(scheduleId: string, times: unknown, taskFlow: unknown): RuntimeSetupOutcome;
+  registerSchedule(
+    scheduleId: string,
+    times: unknown,
+    taskFlow: unknown,
+    clientType?: string
+  ): RuntimeSetupOutcome;
   registerAutoUpdate(config: AutoUpdateConfig): RuntimeSetupOutcome;
   attachScheduleLifecycle(lifecycle: RuntimeLifecycle): unknown;
   attachTelegramLifecycle(lifecycle: RuntimeLifecycle): unknown;
@@ -192,10 +199,23 @@ export async function initializeRuntimeState(
   signal?.throwIfAborted();
   if (persistedSchedule?.enabled) {
     try {
+      // 恢复的定时任务沿用当前 profile 的客户端时区；解析失败不阻断恢复。
+      let clientType: string | undefined;
+      try {
+        const connection = await waitWithAbort(() => dependencies.resolveRuntimeConnection(), signal);
+        signal?.throwIfAborted();
+        clientType = connection.clientType;
+      } catch (error) {
+        signal?.throwIfAborted();
+        dependencies.runtimeLogger.warn('读取连接配置失败，默认定时任务按默认客户端时区恢复', {
+          error: readErrorMessage(error)
+        });
+      }
       const result = dependencies.registerSchedule(
         'default',
         Array.isArray(persistedSchedule.times) ? persistedSchedule.times : [],
-        Array.isArray(automationConfig?.taskFlow) ? automationConfig.taskFlow : []
+        Array.isArray(automationConfig?.taskFlow) ? automationConfig.taskFlow : [],
+        clientType
       );
       summary.schedule = {
         restored: Boolean(result?.success),

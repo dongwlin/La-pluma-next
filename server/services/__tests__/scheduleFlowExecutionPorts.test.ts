@@ -268,4 +268,189 @@ describe('schedule flow boundaries', () => {
     assert.equal(status.shouldStop, false);
     assert.equal(status.message, '任务流程已被用户终止');
   });
+
+  it('uses the connection client type for stage open checks unless the task overrides it', async () => {
+    const checks: Array<{ stage: string; clientType: string }> = [];
+    const { ports, calls } = createPorts({
+      resolveConnection: async () => ({
+        adbPath: 'adb',
+        address: '127.0.0.1:5555',
+        clientType: 'YoStarJP'
+      }),
+      isStageOpenToday: (stage, clientType) => {
+        checks.push({ stage, clientType });
+        return { isOpen: false, reason: '今日未开放' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    const fromProfile = completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'CE-6', times: '1' }] }
+      }
+    ], 'flow-client-profile'));
+
+    assert.deepEqual(checks, [{ stage: 'CE-6', clientType: 'YoStarJP' }]);
+    assert.equal(fromProfile.summary.skippedCount, 1);
+    assert.equal(calls.commands.length, 0);
+
+    checks.length = 0;
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-2',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'CE-6', times: '1' }], clientType: 'Bilibili' }
+      }
+    ], 'flow-client-override'));
+
+    assert.deepEqual(checks, [{ stage: 'CE-6', clientType: 'Bilibili' }]);
+  });
+
+  it('awaits asynchronous stage open checks before executing or skipping stages', async () => {
+    const checks: string[] = [];
+    const { ports, calls } = createPorts({
+      isStageOpenToday: async stage => {
+        checks.push(stage);
+        return { isOpen: false, reason: '资源本今日未开放' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    const multiStage = completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'CE-6', times: '1' }, { stage: 'AP-5', times: '1' }] }
+      }
+    ], 'flow-async-multi'));
+    assert.deepEqual(checks, ['CE-6', 'AP-5']);
+    assert.equal(multiStage.summary.skippedCount, 1);
+    assert.deepEqual(multiStage.summary.taskResults.map(task => task.status), ['skipped']);
+    assert.equal(calls.commands.length, 0);
+
+    checks.length = 0;
+    const singleStage = completedResult(await executor.execute([
+      {
+        id: 'fight-2',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: 'SK-5', times: '1' }] }
+      }
+    ], 'flow-async-single'));
+    assert.deepEqual(checks, ['SK-5']);
+    assert.equal(singleStage.summary.skippedCount, 1);
+    assert.equal(calls.commands.length, 0);
+  });
+
+  it('keeps the selected series when a single stage also sets times', async () => {
+    const taskFlow = [
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: '1-7', times: 12 }], series: 6 }
+      }
+    ];
+
+    const plan = plannedResult(buildScheduledTaskFlowPlan(taskFlow));
+    assert.deepEqual(plan.steps[0].args, ['1-7:12', '--series=6']);
+
+    const withoutTimes = plannedResult(buildScheduledTaskFlowPlan([
+      { ...taskFlow[0], id: 'fight-2', params: { stages: [{ stage: '1-7' }], series: 6 } }
+    ]));
+    assert.deepEqual(withoutTimes.steps[0].args, ['1-7', '--series=6']);
+
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute(taskFlow, 'flow-single-series'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series=6']
+    ]);
+
+    calls.commands.length = 0;
+    await completedResult(await executor.execute([
+      { ...taskFlow[0], id: 'fight-3', params: { stages: [{ stage: '1-7', times: 12 }], series: '1' } }
+    ], 'flow-single-default-series'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12']
+    ]);
+  });
+
+  it('keeps the selected series for every stage in a multi-stage fight', async () => {
+    const taskFlow = [
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: {
+          stages: [{ stage: '1-7', times: 12 }, { stage: 'CE-6', times: 12 }],
+          series: 6
+        }
+      }
+    ];
+
+    const plan = plannedResult(buildScheduledTaskFlowPlan(taskFlow));
+    assert.deepEqual(plan.steps[0].args, ['1-7:12,CE-6:12', '--series=6']);
+
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute(taskFlow, 'flow-multi-series'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series=6'],
+      ['CE-6', '--times', '12', '--series=6']
+    ]);
+  });
+
+  it('keeps series=-1 as a single clap token when times are set', async () => {
+    const singleStageFlow = [
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: '1-7', times: 12 }], series: '-1' }
+      }
+    ];
+
+    const plan = plannedResult(buildScheduledTaskFlowPlan(singleStageFlow));
+    assert.deepEqual(plan.steps[0].args, ['1-7:12', '--series=-1']);
+
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute(singleStageFlow, 'flow-single-series-disabled'));
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series=-1']
+    ]);
+
+    calls.commands.length = 0;
+    await completedResult(await executor.execute([
+      {
+        ...singleStageFlow[0],
+        id: 'fight-2',
+        params: { stages: [{ stage: '1-7', times: 12 }, { stage: 'CE-6', times: 12 }], series: '-1' }
+      }
+    ], 'flow-multi-series-disabled'));
+
+    assert.deepEqual(calls.commands.map(call => call.args), [
+      ['1-7', '--times', '12', '--series=-1'],
+      ['CE-6', '--times', '12', '--series=-1']
+    ]);
+  });
 });

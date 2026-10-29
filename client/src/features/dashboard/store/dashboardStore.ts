@@ -48,12 +48,17 @@ interface DashboardCacheState extends DashboardSnapshot {
   isRefreshing: boolean
   lastRefreshAttemptAt: number | null
   /**
+   * 最近一次快照刷新失败的原因；只存在于运行期，不持久化。
+   * 卡片据此把旧活动标为可能过期，而不是把失败伪装成空活动。
+   */
+  lastRefreshError: string | null
+  /**
    * 最近一次投影到温度历史的采样时间（Query 的 `dataUpdatedAt`）。
    * 不持久化：只用于抑制 Activity 恢复或重挂载时同一份缓存样本重复追加。
    */
   lastDeviceSampleAt: number | null
   startRefresh: () => void
-  finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot) => void
+  finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot, error?: string) => void
   /** 设备采样来自只读端点，入 store 前在这里做语义校验。 */
   updateDeviceStats: (stats: unknown, sampleAt?: number) => void
   reset: () => void
@@ -87,15 +92,44 @@ const isPercentage = (value: unknown): value is number => (
 
 const isOptionalString = (value: unknown) => value === undefined || typeof value === 'string'
 const isOptionalBoolean = (value: unknown) => value === undefined || typeof value === 'boolean'
+const isOptionalTimestamp = (value: unknown) => value === undefined || isTimestamp(value)
 const isStringArray = (value: unknown, maxLength: number): value is string[] => (
   Array.isArray(value)
   && value.length <= maxLength
   && value.every(item => typeof item === 'string')
 )
 
+const ACTIVITY_STATUSES = ['active', 'none', 'unavailable', 'stale'] as const
+
+const isActivityStatus = (value: unknown): boolean => (
+  typeof value === 'string' && (ACTIVITY_STATUSES as readonly string[]).includes(value)
+)
+
+const isActivityFailure = (value: unknown): boolean => (
+  isRecord(value)
+  && typeof value.source === 'string'
+  && value.source.length > 0
+  && typeof value.message === 'string'
+)
+
 function isActivitySummary(value: unknown): value is ActivitySummary {
   if (!isRecord(value) || typeof value.available !== 'boolean') return false
-  if (!isOptionalString(value.code) || !isOptionalString(value.name) || !isOptionalString(value.tip)) return false
+  if (value.status !== undefined && !isActivityStatus(value.status)) return false
+  if (!isOptionalString(value.code)
+    || !isOptionalString(value.name)
+    || !isOptionalString(value.clientType)
+    || !isOptionalString(value.message)
+    || !isOptionalString(value.source)) {
+    return false
+  }
+  if (!isOptionalTimestamp(value.startTime)
+    || !isOptionalTimestamp(value.endTime)
+    || !isOptionalTimestamp(value.lastSuccessAt)
+    || !isOptionalTimestamp(value.dataUpdatedAt)) {
+    return false
+  }
+  if (value.stages !== undefined && !isStringArray(value.stages, MAX_COMPLETED_STAGES)) return false
+  if (value.failure !== undefined && !isActivityFailure(value.failure)) return false
   if (value.completion === undefined) return true
   if (!isRecord(value.completion)) return false
 
@@ -104,6 +138,7 @@ function isActivitySummary(value: unknown): value is ActivitySummary {
     && (value.completion.completedStages === undefined
       || isStringArray(value.completion.completedStages, MAX_COMPLETED_STAGES))
     && (value.completion.totalStages === undefined || isNonNegativeInteger(value.completion.totalStages))
+    && (value.completion.source === undefined || typeof value.completion.source === 'string')
 }
 
 function isScheduleSummary(value: unknown): value is ScheduleSummary {
@@ -242,6 +277,7 @@ function restoreDashboardCache() {
       hasLoaded: true,
       isRefreshing: false,
       lastRefreshAttemptAt: restoredAt,
+      lastRefreshError: null,
       lastDeviceSampleAt: null,
     }
   } catch {
@@ -275,6 +311,7 @@ const emptyCacheState = () => ({
   hasLoaded: false,
   isRefreshing: false,
   lastRefreshAttemptAt: null,
+  lastRefreshError: null,
   lastDeviceSampleAt: null,
 })
 
@@ -283,7 +320,7 @@ const initialCacheState = () => restoreDashboardCache() ?? emptyCacheState()
 export const useDashboardStore = create<DashboardCacheState>((set, get) => ({
   ...initialCacheState(),
   startRefresh: () => set({ isRefreshing: true }),
-  finishRefresh: (attemptedAt, snapshot) => {
+  finishRefresh: (attemptedAt, snapshot, error) => {
     const validSnapshot = snapshot && isDashboardBusinessSnapshot(snapshot) ? snapshot : undefined
     set(state => validSnapshot
       ? {
@@ -293,12 +330,14 @@ export const useDashboardStore = create<DashboardCacheState>((set, get) => ({
           hasLoaded: true,
           isRefreshing: false,
           lastRefreshAttemptAt: attemptedAt,
+          lastRefreshError: null,
           lastUpdate: attemptedAt,
         }
       : {
           hasLoaded: true,
           isRefreshing: false,
           lastRefreshAttemptAt: attemptedAt,
+          lastRefreshError: error ?? '刷新失败',
           lastUpdate: state.lastUpdate,
         })
     if (validSnapshot) persistDashboardCache(get())

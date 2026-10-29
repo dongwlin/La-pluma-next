@@ -193,7 +193,7 @@ function CombatWorkspace() {
 | 本地草稿 | `combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections` | `roguelikeTaskInputs`、`roguelikeAdvancedParams` | `maa-task-flow`、`maa-schedule` |
 | pending 键 | `combatConfigSyncPending` | `roguelikeConfigSyncPending` | `automationConfigSyncPending` |
 | 提交时机 | 300ms 去抖 | 300ms 去抖 | 编辑即入队（事件触发） |
-| 加载迁移 | `app`→`cli`；raid `1`/`2`→`raid`/`both` | 无 | `times`→`entries` 兼容；禁用项只留在本地 |
+| 加载迁移 | `app`→`cli`；raid `1`/`2`→`raid`/`both` | `advancedParams.reclamation.mode` 缺失或空值补为显式 `1`；不单独触发保存 | `times`→`entries` 兼容；禁用项只留在本地 |
 | 完整提交 | `saveUserConfig` | `saveUserConfig` | `saveUserConfig` + `setupSchedule`/`stopSchedule` |
 
 接入时的额外边界：
@@ -211,12 +211,13 @@ function CombatWorkspace() {
 | --- | --- |
 | 身份 | key `roguelike-tasks`；pending 键 `roguelikeConfigSyncPending` |
 | 本地草稿 | `roguelikeTaskInputs`、`roguelikeAdvancedParams`，逐字段写回原布局；单个损坏键清理后丢弃该字段，两个键都不可读才返回 null 并让协调器删除 pending 标记、改读服务端 |
-| wire | `{ taskInputs, advancedParams }`；解码时缺少字段按空草稿补齐，字段存在但类型不合法时整份载荷不可用并回退本地草稿 |
+| 加载迁移 | 解码与本地读取时把 `advancedParams.reclamation.mode` 的缺失或空值补为显式 `1`；编码与写本地草稿同样补齐，因此旧配置或新用户的下一次编辑提交一定包含该值。迁移不单独触发保存 |
+| wire | `{ taskInputs, advancedParams }`；解码时缺少字段按空草稿补齐并应用上述迁移，字段存在但类型不合法时整份载荷不可用并回退本地草稿 |
 | 提交时机 | `commitDelayMs = 300`，连续编辑只提交最后一次 |
 | 完整提交 | `saveUserConfig('roguelike-tasks', wire)` 成功即完成；失败或传输异常保留 pending 与重试入口 |
 | 页面派生 | `taskInputs`/`advancedParams` 从 `draft` 派生；错误文案取协调器 `error`，重试按钮的 loading 取 `syncState === 'saving'`；仅手动 `retry()` 返回 true 时提示“肉鸽配置已同步” |
 
-兼容约束：保留配置 key、本地键、pending 键与 wire 形状；迟到加载须由协调器按 revision/pending 裁决，不得覆盖当前编辑。
+兼容约束：保留配置 key、本地键、pending 键与 wire 形状；迟到加载须由协调器按 revision/pending 裁决，不得覆盖当前编辑。默认值补齐只增加 `reclamation.mode`，显式 `0` 原样保留；只使用集成战略的草稿在提交时也会携带该字段。
 
 ### 6.2 作业适配器
 

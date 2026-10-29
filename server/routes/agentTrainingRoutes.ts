@@ -16,6 +16,7 @@ import type {
   TrainingQueueRemoveRequest,
   TrainingRequest
 } from './trainingDto.ts';
+import { resolveRequestConnection } from './requestConnection.ts';
 
 /**
  * 养成路由：候选干员、队列、设置、计划生成与应用。
@@ -73,7 +74,10 @@ router.put('/training/settings', asyncHandler<TrainingRequest, ApiResponseWriter
 }));
 
 router.post('/training/plan', asyncHandler<TrainingRequest, ApiResponseWriter>(async (req, res) => {
-  const plan = await operatorTrainingService.generateTrainingPlan(parsePlanModeBody(req.body));
+  // 模式先校验：非法请求不解析连接；关卡开放按连接 profile 的客户端游戏日判定。
+  const mode = parsePlanModeBody(req.body);
+  const { clientType } = await resolveRequestConnection(req, { allowOverrides: true });
+  const plan = await operatorTrainingService.generateTrainingPlan(mode, { clientType });
   return sendSuccess(res, req, plan);
 }));
 

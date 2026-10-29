@@ -4,11 +4,16 @@
  * 材料配方展开、掉落估算、关卡代号转换和计划生成。计划只由队列、仓库、
  * 材料库与掉落数据算出，不写队列、不改自动化任务、不注册定时任务；
  * 数据读取经 operatorTrainingStore，应用计划在 operatorTrainingApplication。
+ *
+ * 关卡开放由客户端服务区游戏日与资源收集全开放窗口决定：调用方未显式传入
+ * `clientType` 时读取连接 profile，避免内部同步入口退回连接默认时区。
  */
 
 import { createLogger } from '../utils/logger.ts';
 import { getTodayOpenStages, isStageOpenToday } from './notificationService.ts';
 import type { DailyOpenStage } from './notificationService.ts';
+import { isResourceCollectionOpen } from './maaActivityService.ts';
+import { resolveConnection } from './connectionService.ts';
 import { findBestFarmStage, getStageEstimate, loadPenguinDropData } from './dropDataService.ts';
 import type { PenguinDropData, PenguinDropMetadata, StageDropEstimate } from './dropDataService.ts';
 import { calculateOperatorMaterials, trainingError } from './operatorTrainingModel.ts';
@@ -96,6 +101,9 @@ export interface TrainingPlanSummary {
   backlogCount: number;
   openStageCount: number;
   closedStageCount: number;
+  /** 计划判定所用的游戏日与客户端类型，与关卡开放结论同源。 */
+  gameDate: string;
+  clientType: string;
   todayOpenResourceStages: DailyOpenStage[];
   todayClosedResourceStages: DailyOpenStage[];
 }
@@ -483,11 +491,39 @@ interface StagePlan {
   isOpen: boolean;
 }
 
+/** 计划生成的查询选项：客户端类型决定关卡开放所依据的游戏日。 */
+export interface TrainingPlanOptions {
+  clientType?: string;
+  /** 资源收集全开放活动；缺省按客户端服务区的活动窗口解析。 */
+  allResourceStagesOpen?: boolean;
+}
+
+/**
+ * 读取连接 profile 的客户端类型；读取失败按连接默认客户端继续，不阻断计划生成。
+ */
+async function resolveDefaultClientType(): Promise<string | undefined> {
+  try {
+    return (await resolveConnection()).clientType;
+  } catch (error) {
+    logger.warn('读取连接配置失败，养成计划按默认客户端时区生成', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return undefined;
+  }
+}
+
 /**
  * 生成养成计划（刷取计划）
+ *
+ * 关卡开放按客户端服务区的游戏日判定；`clientType` 缺省时读取连接 profile，
+ * 资源收集全开放期间所有资源本按开放处理。
  */
-export async function generateTrainingPlan(mode: string = 'current'): Promise<TrainingPlan> {
+export async function generateTrainingPlan(
+  mode: string = 'current',
+  options: TrainingPlanOptions = {}
+): Promise<TrainingPlan> {
   if (mode !== 'current' && mode !== 'all') throw trainingError('计划模式必须为 current 或 all');
+  const now = new Date();
   const planMode: TrainingFlowMode = mode;
   const queueData = await loadTrainingQueue();
   const depot = await loadDepot();
@@ -656,6 +692,12 @@ export async function generateTrainingPlan(mode: string = 'current'): Promise<Tr
     );
   }
 
+  // 关卡开放按连接 profile 的服务区游戏日判定；未显式指定客户端类型时补解析，
+  // 避免内部同步入口（队列变更、POST /training/sync）退回连接默认时区。
+  const clientType = options.clientType ?? await resolveDefaultClientType();
+  const allResourceStagesOpen = options.allResourceStagesOpen
+    ?? await isResourceCollectionOpen(clientType);
+
   // 刷取次数 = 该关累计期望掉落向上取整；理智 = 次数 × 关卡真实理智消耗（企鹅物流 apCost）
   const stages: TrainingPlanStage[] = Array.from(stagesMap.values()).map(stageData => {
     const totalTimes = Math.ceil(stageData.expectedDrops);
@@ -669,11 +711,11 @@ export async function generateTrainingPlan(mode: string = 'current'): Promise<Tr
       totalTimes,
       sanity: totalTimes * stageData.apCost,
       // isStageOpenToday 返回 { isOpen, reason } 对象，这里取布尔值供客户端判断
-      isOpen: isStageOpenToday(stageData.stage).isOpen
+      isOpen: isStageOpenToday(stageData.stage, { now, clientType, allResourceStagesOpen }).isOpen
     };
   });
   const totalSanity = stages.reduce((sum, stage) => sum + stage.sanity, 0);
-  const todayOpen = getTodayOpenStages();
+  const todayOpen = getTodayOpenStages({ now, clientType, allResourceStagesOpen });
   const openStages = stages.filter(stage => stage.isOpen !== false);
   const closedStages = stages.filter(stage => stage.isOpen === false);
   const focusOperator = operators[0] || null;
@@ -696,6 +738,8 @@ export async function generateTrainingPlan(mode: string = 'current'): Promise<Tr
       backlogCount: Math.max(operators.length - 1, 0),
       openStageCount: openStages.length,
       closedStageCount: closedStages.length,
+      gameDate: todayOpen.gameDate,
+      clientType: todayOpen.clientType,
       todayOpenResourceStages: todayOpen.open,
       todayClosedResourceStages: todayOpen.closed
     }

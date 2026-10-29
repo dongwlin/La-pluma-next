@@ -52,7 +52,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       yituliu_id: ''
     },
     paramFields: [
-      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行' },
+      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数' },
       { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
       { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
       { key: 'expiringMedicine', label: '临期药数量', type: 'number', placeholder: '0', helper: '按瓶数设置可使用的临期理智药' },
@@ -66,7 +66,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: '4', label: '4次' },
         { value: '5', label: '5次' },
         { value: '6', label: '6次' }
-      ], helper: '单次代理作战重复次数（需要游戏支持）' },
+      ], helper: '本任务所有关卡共用的连战倍率（需要游戏支持，不支持时按 1 次执行）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整' },
     ]
   },
   {
@@ -193,12 +193,12 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       specialaccess: false
     },
     paramFields: [
-      { key: 'award', label: '每日奖励', type: 'checkbox' },
+      { key: 'award', label: '日常与周常奖励', type: 'checkbox' },
       { key: 'mail', label: '邮件奖励', type: 'checkbox' },
-      { key: 'recruit', label: '公招奖励', type: 'checkbox' },
+      { key: 'recruit', label: '限定池免费单抽', type: 'checkbox', helper: '活动期间领取限定池赠送的每日免费单抽；没有免费次数时不抽取' },
       { key: 'orundum', label: '合成玉奖励', type: 'checkbox' },
       { key: 'mining', label: '采矿奖励', type: 'checkbox' },
-      { key: 'specialaccess', label: '特别通行证', type: 'checkbox' },
+      { key: 'specialaccess', label: '周年赠送月卡', type: 'checkbox', helper: '领取周年活动赠送的月卡奖励' },
     ],
     taskType: 'Award'
   },

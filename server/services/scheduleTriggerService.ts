@@ -4,7 +4,8 @@ import { promisify } from 'util';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { updateMaaResources } from './resourceUpdateService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
-import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
+import { DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
+import { gameTimeZoneForClientType } from './gameCalendar.ts';
 import { createLogger } from '../utils/logger.ts';
 import type { ScheduledTask } from './scheduleFlowPlan.ts';
 
@@ -22,7 +23,8 @@ const logger = createLogger('Scheduler');
 // MAA CLI 路径
 const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 
-const SCHEDULE_TRIGGER_TIMEZONE = 'Asia/Shanghai';
+// 日常流程按客户端服务区时区注册；自动更新是维护作业，没有游戏日语义。
+const AUTO_UPDATE_TIMEZONE = 'Asia/Shanghai';
 const AUTO_UPDATE_SCHEDULE_ID = 'auto-update';
 
 /** 自动更新配置：缺省字段按未启用处理，扩展字段随注册快照保留。 */
@@ -108,6 +110,8 @@ export interface ScheduleTriggerStopSummary {
 
 export interface ScheduleRegistrationDescription extends ScheduleRegistrationStatus {
   kind: ScheduleRegistrationKind;
+  /** cron 注册使用的 IANA 时区；诊断字段，不进入 `/agent/schedules` 响应。 */
+  timezone: string;
   registeredAt: number;
 }
 
@@ -140,7 +144,12 @@ export interface ScheduleTriggerRuntimeOptions {
 }
 
 export interface ScheduleTriggerRuntime {
-  setupSchedule(scheduleId: string, times: unknown, taskFlow: unknown): ScheduleSetupResult;
+  setupSchedule(
+    scheduleId: string,
+    times: unknown,
+    taskFlow: unknown,
+    clientType?: string
+  ): ScheduleSetupResult;
   setupAutoUpdate(config?: AutoUpdateConfig): AutoUpdateSetupResult;
   stopSchedule(scheduleId: string): ScheduleSetupResult;
   stopAll(reason?: string): ScheduleTriggerStopSummary;
@@ -154,6 +163,7 @@ interface ScheduleRegistration {
   scheduleId: string;
   kind: ScheduleRegistrationKind;
   times: string[];
+  timeZone: string;
   taskFlow: ScheduledTask[] | null;
   config: AutoUpdateConfig | null;
   jobs: Array<{ time: string; job: CronTaskLike }>;
@@ -175,6 +185,7 @@ interface BuildRegistrationInput {
   scheduleId: string;
   kind: ScheduleRegistrationKind;
   times: string[];
+  timeZone: string;
   taskFlow?: ScheduledTask[] | null;
   config?: AutoUpdateConfig | null;
   makeRun: (registration: ScheduleRegistration, time: string, triggerScheduleId: string) => unknown;
@@ -324,8 +335,8 @@ export function createScheduleTriggerRuntime({
     return errors;
   }
 
-  function createCronTask(expression: string, callback: () => void): CronTaskLike {
-    const options = { timezone: SCHEDULE_TRIGGER_TIMEZONE };
+  function createCronTask(expression: string, callback: () => void, timeZone: string): CronTaskLike {
+    const options = { timezone: timeZone };
     if (typeof cronImpl.createTask === 'function') {
       // v4：createTask 只登记不启动，便于先构造后切换。
       return cronImpl.createTask(expression, callback, options);
@@ -386,11 +397,20 @@ export function createScheduleTriggerRuntime({
     };
   }
 
-  function buildRegistration({ scheduleId, kind, times, taskFlow = null, config = null, makeRun }: BuildRegistrationInput) {
+  function buildRegistration({
+    scheduleId,
+    kind,
+    times,
+    timeZone,
+    taskFlow = null,
+    config = null,
+    makeRun
+  }: BuildRegistrationInput) {
     const registration: ScheduleRegistration = {
       scheduleId,
       kind,
       times: [],
+      timeZone,
       // 注册时快照配置，之后的请求体或配置对象变动不影响已登记的触发。
       taskFlow: Array.isArray(taskFlow) ? [...taskFlow] : null,
       config: config && typeof config === 'object' ? { ...config } : config,
@@ -406,7 +426,8 @@ export function createScheduleTriggerRuntime({
       try {
         const job = createCronTask(
           cronExpressionForTime(time),
-          createTrigger(registration, time, triggerScheduleId, run)
+          createTrigger(registration, time, triggerScheduleId, run),
+          registration.timeZone
         );
         prepared.push({ time, job });
       } catch (error) {
@@ -455,7 +476,12 @@ export function createScheduleTriggerRuntime({
     return registration;
   }
 
-  function setupSchedule(scheduleId: string, times: unknown, taskFlow: unknown): ScheduleSetupResult {
+  function setupSchedule(
+    scheduleId: string,
+    times: unknown,
+    taskFlow: unknown,
+    clientType: string = DEFAULT_CLIENT_TYPE
+  ): ScheduleSetupResult {
     if (!Array.isArray(taskFlow)) {
       return { success: false, message: '任务流程格式无效' };
     }
@@ -468,10 +494,12 @@ export function createScheduleTriggerRuntime({
       return { success: false, message: '运行时正在关闭，无法设置定时任务' };
     }
 
+    const timeZone = gameTimeZoneForClientType(clientType);
     const { registration, prepared, failures } = buildRegistration({
       scheduleId,
       kind: 'schedule',
       times: normalizedTimes,
+      timeZone,
       taskFlow: taskFlow as ScheduledTask[],
       makeRun: (current, time, triggerScheduleId) => {
         runtimeLogger.info('定时任务触发执行', { scheduleId: triggerScheduleId, time });
@@ -490,7 +518,8 @@ export function createScheduleTriggerRuntime({
     runtimeLogger.info('定时任务已设置', {
       scheduleId,
       count: installed.jobs.length,
-      times: installed.times.join(', ')
+      times: installed.times.join(', '),
+      timezone: installed.timeZone
     });
     return {
       success: true,
@@ -524,6 +553,7 @@ export function createScheduleTriggerRuntime({
       scheduleId: AUTO_UPDATE_SCHEDULE_ID,
       kind: 'auto-update',
       times: [time],
+      timeZone: AUTO_UPDATE_TIMEZONE,
       config,
       makeRun: current => runAutoUpdate(current.config || {})
     });
@@ -624,6 +654,7 @@ export function createScheduleTriggerRuntime({
         kind: registration.kind,
         times: [...registration.times],
         count: registration.jobs.length,
+        timezone: registration.timeZone,
         registeredAt: registration.registeredAt
       })),
       closeSummary

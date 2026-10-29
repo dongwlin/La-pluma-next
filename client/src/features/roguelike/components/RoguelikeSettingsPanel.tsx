@@ -7,7 +7,7 @@
 
 import { Play, Square } from 'lucide-react'
 import { Button, Input, Select, SmoothPanel, Switch } from '@/shared/ui'
-import { getRoguelikeAdvancedOptions } from '../model/roguelikeTasks'
+import { getRoguelikeAdvancedOptions, resolveRoguelikeAdvancedValue } from '../model/roguelikeTasks'
 import type { RoguelikeAdvancedValues, RoguelikeTask } from '../types'
 
 interface RoguelikeExecutionControls {
@@ -48,30 +48,35 @@ export default function RoguelikeSettingsPanel({
       </div>
       <div className="roguelike-panel-body roguelike-settings-body">
         <div className="roguelike-field-grid">
-          {fieldOptions.map(option => (
-            <div key={option.key}>
-              {option.type === 'select' && option.options ? (
-                <Select
-                  id={`roguelike-${task.id}-${option.key}`}
-                  name={`maa-${task.id}-${option.key}`}
-                  label={option.label}
-                  value={String(advanced[option.key] ?? option.options[0]?.value ?? '')}
-                  onChange={(value: string) => onAdvancedChange(option.key, value)}
-                  options={option.options}
-                />
-              ) : (
-                <Input
-                  id={`roguelike-${task.id}-${option.key}`}
-                  name={`maa-${task.id}-${option.key}`}
-                  type={option.type === 'number' ? 'number' : 'text'}
-                  label={option.label}
-                  value={advanced[option.key] as string | number ?? ''}
-                  onChange={(value: string) => onAdvancedChange(option.key, value)}
-                  placeholder={option.placeholder}
-                />
-              )}
-            </div>
-          ))}
+          {fieldOptions.map(option => {
+            const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced) ?? '')
+            return (
+              <div key={option.key}>
+                {option.type === 'select' && option.options ? (
+                  <Select
+                    id={`roguelike-${task.id}-${option.key}`}
+                    name={`maa-${task.id}-${option.key}`}
+                    label={option.label}
+                    value={displayValue}
+                    onChange={(value: string) => onAdvancedChange(option.key, value)}
+                    options={option.options}
+                    hint={option.hint}
+                  />
+                ) : (
+                  <Input
+                    id={`roguelike-${task.id}-${option.key}`}
+                    name={`maa-${task.id}-${option.key}`}
+                    type={option.type === 'number' ? 'number' : 'text'}
+                    label={option.label}
+                    value={displayValue}
+                    onChange={(value: string) => onAdvancedChange(option.key, value)}
+                    placeholder={option.placeholder}
+                    hint={option.hint}
+                  />
+                )}
+              </div>
+            )
+          })}
         </div>
         {toggleOptions.length > 0 && (
           <div className="roguelike-toggle-list">
@@ -86,7 +91,7 @@ export default function RoguelikeSettingsPanel({
                 <Switch
                   id={`roguelike-${task.id}-${option.key}`}
                   name={`maa-${task.id}-${option.key}`}
-                  checked={advanced[option.key] as boolean || false}
+                  checked={resolveRoguelikeAdvancedValue(option, advanced) === true}
                   onChange={(checked: boolean) => onAdvancedChange(option.key, checked)}
                   label={option.label}
                 />

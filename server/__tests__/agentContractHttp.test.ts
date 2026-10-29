@@ -580,6 +580,51 @@ describe('Agent API contract registry and mounted routes', () => {
       compileSchema(success);
     }
   });
+
+  it('serves the seeded activity as an explicit status snapshot', async () => {
+    const response = await fetch(`${baseUrl}/api/agent/activity?clientType=${DEFAULT_CLIENT_TYPE}`);
+    assert.equal(response.status, 200);
+    const payload: unknown = await response.json();
+    assert.ok(isRecord(payload));
+    assert.equal(payload.success, true);
+    const data = payload.data;
+    assert.ok(isRecord(data));
+    assert.equal(data.status, 'active');
+    assert.equal(data.clientType, DEFAULT_CLIENT_TYPE);
+    assert.equal(data.available, true);
+    assert.equal(data.code, 'TEST');
+    assert.equal(data.name, 'Contract Fixture');
+    assert.equal(data.source, 'fixture');
+    assert.equal(data.startTime, null);
+    assert.equal(data.endTime, null);
+    assert.deepEqual(data.stages, []);
+    assert.equal(data.lastSuccessAt, seededAt);
+    assert.equal(data.dataUpdatedAt, null);
+    assert.equal(data.failure, null);
+    assert.equal(data.message, '当前活动: Contract Fixture');
+    assert.ok(isRecord(data.completion));
+    assert.equal(data.completion.known, false);
+  });
+
+  it('reports an unavailable activity without mapping an unsupported client to CN', async () => {
+    const response = await fetch(`${baseUrl}/api/agent/activity?clientType=Txwy`);
+    assert.equal(response.status, 200);
+    const payload: unknown = await response.json();
+    assert.ok(isRecord(payload));
+    assert.equal(payload.success, true);
+    const data = payload.data;
+    assert.ok(isRecord(data));
+    assert.equal(data.status, 'unavailable');
+    assert.equal(data.clientType, 'Txwy');
+    assert.equal(data.available, false);
+    assert.equal(data.code, null);
+    assert.equal(data.name, null);
+    assert.equal(data.lastSuccessAt, null);
+    assert.ok(isRecord(data.failure));
+    assert.equal(data.failure.source, 'maa');
+    assert.match(String(data.failure.message), /备用活动数据源不支持 Txwy/);
+    assert.match(String(data.message), /^无法获取活动信息: /);
+  });
 });
 
 describe('advertised operations over real HTTP', () => {

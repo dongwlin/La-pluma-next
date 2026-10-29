@@ -52,7 +52,7 @@ const AWARD_ITEMS: readonly AwardItem[] = [
   },
   {
     key: 'recruit',
-    label: '限定寻访奖励',
+    label: '限定池免费单抽',
     beginTask: 'RecruitingActivitiesBegin',
     claimedTasks: ['RecruitingActivitiesConfirm', 'RecruitingActivitiesRecruit']
   },
@@ -70,7 +70,7 @@ const AWARD_ITEMS: readonly AwardItem[] = [
   },
   {
     key: 'specialaccess',
-    label: '特别登录奖励',
+    label: '周年赠送月卡',
     beginTask: 'SpecialAccessActivitiesBegin',
     claimedTasks: ['SpecialAccessActivitiesConfirm']
   }

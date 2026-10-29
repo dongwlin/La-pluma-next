@@ -263,7 +263,9 @@ export function buildScheduledTaskCommand(
       params += ` --stone ${task.params.stone}`;
     }
     if (task.params.series !== undefined && task.params.series !== '' && task.params.series !== '1') {
-      params += ` --series ${task.params.series}`;
+      // maa-cli 用 clap 解析选项，空格分隔的负数会被当成未知选项（如 `--series -1`），
+      // 统一用 `=` 连接，`-1`（禁用连战切换）才能正常下发。
+      params += ` --series=${task.params.series}`;
     }
     const dropTargets = parseDropTargetEntries(task.params.drops);
     if (dropTargets === null) {

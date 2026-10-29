@@ -66,7 +66,7 @@ describe('dashboard snapshot refresher', () => {
     expect(harness.store.startRefresh).toHaveBeenCalledTimes(1)
     expect(harness.dependencies.probeBackend).toHaveBeenCalledTimes(1)
     expect(harness.dependencies.readSnapshot).toHaveBeenCalledWith(client)
-    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, snapshot('默认快照'))
+    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, snapshot('默认快照'), undefined)
   })
 
   it('keeps the previous snapshot when the coordinated read fails', async () => {
@@ -78,7 +78,7 @@ describe('dashboard snapshot refresher', () => {
 
     await harness.refresher.refresh({ client })
 
-    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, undefined)
+    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, undefined, '读取失败')
     expect(harness.dependencies.logError).toHaveBeenCalledWith('加载 Dashboard 数据失败:', error)
   })
 
@@ -90,7 +90,7 @@ describe('dashboard snapshot refresher', () => {
 
     await harness.refresher.refresh({ client })
 
-    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, undefined)
+    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, undefined, '暂时不可用')
     expect(harness.dependencies.logError).not.toHaveBeenCalled()
   })
 
@@ -103,7 +103,7 @@ describe('dashboard snapshot refresher', () => {
 
     await harness.refresher.refresh({ client })
 
-    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, snapshot('默认快照'))
+    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, snapshot('默认快照'), undefined)
     expect(harness.dependencies.logError).not.toHaveBeenCalled()
   })
 
@@ -115,7 +115,7 @@ describe('dashboard snapshot refresher', () => {
 
     expect(readSnapshot).not.toHaveBeenCalled()
     expect(harness.store.startRefresh).toHaveBeenCalledTimes(1)
-    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, undefined)
+    expect(harness.store.finishRefresh).toHaveBeenCalledWith(1_000, undefined, '当前处于离线状态')
   })
 
   it('shares one in-flight refresh for non-force callers', async () => {
@@ -160,8 +160,8 @@ describe('dashboard snapshot refresher', () => {
     secondRead.resolve(snapshot('第二次'))
     await forced
 
-    expect(harness.store.finishRefresh).toHaveBeenNthCalledWith(1, 1_000, snapshot('第一次'))
-    expect(harness.store.finishRefresh).toHaveBeenNthCalledWith(2, 1_000, snapshot('第二次'))
+    expect(harness.store.finishRefresh).toHaveBeenNthCalledWith(1, 1_000, snapshot('第一次'), undefined)
+    expect(harness.store.finishRefresh).toHaveBeenNthCalledWith(2, 1_000, snapshot('第二次'), undefined)
   })
 
   it('runs immediately when the caller is the only refresh', async () => {

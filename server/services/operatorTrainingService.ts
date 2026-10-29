@@ -52,7 +52,7 @@ import {
 } from './operatorTrainingStore.ts';
 import type { TrainingQueueItem } from './operatorTrainingStore.ts';
 import { generateTrainingPlan } from './operatorTrainingPlan.ts';
-import type { TrainingPlan } from './operatorTrainingPlan.ts';
+import type { TrainingPlan, TrainingPlanOptions } from './operatorTrainingPlan.ts';
 import {
   applyPlanToTasks,
   finishQueueMutation,
@@ -142,7 +142,7 @@ export interface OperatorTrainingService {
   updateQueueOrder(orderedOperatorIds: unknown): Promise<QueueMutationResult>;
   updateSettings(settings: unknown): Promise<TrainingSettings>;
   syncTrainingFlow(): Promise<TrainingFlowSyncResult>;
-  generateTrainingPlan(mode?: string): Promise<TrainingPlan>;
+  generateTrainingPlan(mode?: string, options?: TrainingPlanOptions): Promise<TrainingPlan>;
   applyPlanToTasks(plan: unknown, settings?: unknown, options?: ApplyPlanOptions): Promise<ApplyPlanResult>;
   calculateOperatorMaterials(
     operator: TrainingOperatorRequirements,

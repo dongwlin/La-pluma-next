@@ -7,10 +7,30 @@ import type { CombatStageObject, CombatTasksConfig } from '../operatorTrainingSt
 import { loggerManager } from '../../utils/logger.ts';
 
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-'));
+const fakeCliPath = path.join(dataDirectory, 'fake-maa-cli.js');
+const maaConfigDir = path.join(dataDirectory, 'maa-config');
+const maaCacheDir = path.join(dataDirectory, 'maa-cache');
+// 计划生成会读取连接 profile 与资源全开放窗口；固定到临时目录，避免依赖宿主机 MAA。
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
+process.env.MAA_CLI_PATH = fakeCliPath;
+process.env.MAA_CACHE_DIR = maaCacheDir;
+process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
+await mkdir(maaCacheDir, { recursive: true });
+await writeFile(path.join(maaCacheDir, 'StageActivityV2.json'), JSON.stringify({}));
+await writeFile(fakeCliPath, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args[0] === 'dir' && args[1] === 'config') {
+  process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
+} else if (args[0] === 'dir' && args[1] === 'cache') {
+  process.stdout.write(process.env.MAA_CACHE_DIR || '');
+} else {
+  process.exit(1);
+}
+`, { mode: 0o755 });
 const { default: training, summarizeScheduleSync } = await import('../operatorTrainingService.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
+loggerManager.getLogger('MaaService').enableConsole = false;
 
 const configPath = path.join(dataDirectory, 'user-configs/automation-tasks.json');
 const queuePath = path.join(dataDirectory, 'user-configs/training-queue.json');
@@ -69,7 +89,9 @@ beforeEach(async () => {
 });
 
 after(async () => {
-  delete process.env.LA_PLUMA_TRAINING_DATA_DIR;
+  for (const key of ['LA_PLUMA_TRAINING_DATA_DIR', 'MAA_CLI_PATH', 'MAA_CACHE_DIR', 'FAKE_MAA_CONFIG_DIR']) {
+    delete process.env[key];
+  }
   await rm(dataDirectory, { recursive: true, force: true });
 });
 

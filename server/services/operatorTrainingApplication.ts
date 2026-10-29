@@ -38,6 +38,7 @@ import type {
   TrainingQueueData
 } from './operatorTrainingStore.ts';
 import { generateTrainingPlan } from './operatorTrainingPlan.ts';
+import { resolveConnection } from './connectionService.ts';
 
 // 创建日志记录器（与养成领域其它模块共用同一命名 logger）
 const logger = createLogger('OperatorTraining');
@@ -254,6 +255,9 @@ export function summarizeScheduleSync(result: unknown, requestedTimes: unknown[]
  * automation-tasks 后必须重新注册，否则定时执行继续使用旧关卡；没有注册过的
  * 定时任务不会被这里顺带创建。
  *
+ * 重新注册沿用当前连接 profile 的客户端类型，避免非国服注册被退回默认时区；
+ * 连接解析失败时按默认客户端注册，不阻断流程同步。
+ *
  * 使用动态 import 避免 `schedulerService → operatorTrainingService` 的静态环。
  */
 async function refreshRegisteredSchedule(config: CombatTasksConfig): Promise<ScheduleSyncResult> {
@@ -264,10 +268,19 @@ async function refreshRegisteredSchedule(config: CombatTasksConfig): Promise<Sch
   const schedule = config.schedule;
   const times: unknown[] = Array.isArray(schedule?.times) ? schedule.times : [];
   if (schedule?.enabled && times.length > 0) {
+    let clientType: string | undefined;
+    try {
+      clientType = (await resolveConnection()).clientType;
+    } catch (error) {
+      logger.warn('读取连接配置失败，定时任务按默认客户端时区重新注册', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
     const result = setupSchedule(
       'default',
       times,
-      Array.isArray(config?.taskFlow) ? config.taskFlow : []
+      Array.isArray(config?.taskFlow) ? config.taskFlow : [],
+      clientType
     );
     return summarizeScheduleSync(result, times);
   }

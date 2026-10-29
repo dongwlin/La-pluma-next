@@ -3,6 +3,7 @@ import type { ConfigStorageResult } from './configStorageService.ts';
 import operatorTrainingService from './operatorTrainingService.ts';
 import type { TrainingPlan } from './operatorTrainingPlan.ts';
 import type { ScheduledTask, ScheduledTaskParams } from './scheduleFlowPlan.ts';
+import { resolveConnection } from './connectionService.ts';
 import { createLogger } from '../utils/logger.ts';
 
 // 流程结束后的智能养成关卡回写：读取养成队列、生成刷取计划并保存任务流程。
@@ -10,6 +11,8 @@ import { createLogger } from '../utils/logger.ts';
 //
 // 类型边界：配置从 `unknown` 读取，先确认对象与数组形态再按调度任务契约处理；
 // 计划来源只建模读取的字段，额外字段原样保留在配置中。
+//
+// 计划生成沿用连接 profile 的客户端类型：智能关卡与执行跳过按同一游戏日挑选。
 
 const logger = createLogger('Scheduler');
 
@@ -49,11 +52,30 @@ export interface SmartTrainingLogger {
   success(message: string, data?: unknown): unknown;
 }
 
+/** 计划生成的查询选项：客户端类型决定智能关卡所依据的游戏日。 */
+export interface SmartTrainingPlanOptions {
+  clientType?: string;
+}
+
 export interface SmartTrainingUpdateDependencies {
   loadConfig?: (configType: string) => Promise<ConfigStorageResult<unknown>>;
   saveConfig?: (configType: string, data: unknown) => Promise<ConfigStorageResult<null>>;
-  generateTrainingPlan?: (mode: string) => Promise<TrainingPlan>;
+  /** 连接 profile 的客户端类型；缺省读取当前连接，失败时返回 undefined。 */
+  resolveClientType?: () => Promise<string | undefined>;
+  generateTrainingPlan?: (mode: string, options?: SmartTrainingPlanOptions) => Promise<TrainingPlan>;
   runtimeLogger?: SmartTrainingLogger;
+}
+
+/** 连接解析失败时按默认客户端生成计划，不阻断流程回写。 */
+async function resolvePlanClientType(): Promise<string | undefined> {
+  try {
+    return (await resolveConnection()).clientType;
+  } catch (error) {
+    logger.warn('读取连接配置失败，智能养成按默认客户端生成计划', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return undefined;
+  }
 }
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
@@ -117,7 +139,12 @@ export async function updateSmartTrainingStages(
   {
     loadConfig = loadUserConfig,
     saveConfig = saveUserConfig,
-    generateTrainingPlan = (mode: string) => operatorTrainingService.generateTrainingPlan(mode),
+    // 客户端类型读取可注入，测试不需要真实连接 profile。
+    resolveClientType = resolvePlanClientType,
+    generateTrainingPlan = async (mode: string, options: SmartTrainingPlanOptions = {}) => {
+      const clientType = options.clientType ?? await resolveClientType();
+      return operatorTrainingService.generateTrainingPlan(mode, { clientType });
+    },
     runtimeLogger = logger
   }: SmartTrainingUpdateDependencies = {}
 ): Promise<void> {

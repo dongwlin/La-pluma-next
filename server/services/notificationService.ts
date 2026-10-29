@@ -9,11 +9,16 @@
  * - 出站响应经 `parseTelegramApiResponse` 收窄，发送结果只保留 ok/description/result
  *   与上游附加字段；渠道凭据（botToken）只存在于运行时配置，不进入发送结果 DTO 或日志；
  * - 发送器（出站客户端）由 `createNotificationService` 注入，测试不需要改写全局 fetch。
+ *
+ * 游戏日：所有“今日”判断按客户端服务区时区与每日 04:00 日界计算
+ * （`gameCalendar`），不读宿主进程时区；关卡周表仍由本模块拥有。
  */
 
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import type { OutboundHttpClient } from './outboundRequestService.ts';
 import { createLogger } from '../utils/logger.ts';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
+import { getGameDay, resolveGameZone } from './gameCalendar.ts';
 
 // 创建日志记录器
 const logger = createLogger('Notification');
@@ -89,9 +94,25 @@ export interface DailyOpenStage {
 }
 
 export interface DailyStageOverview {
+  /** 判定所用的游戏日（客户端服务区时区 + 04:00 日界）。 */
+  gameDate: string;
+  /** 判定所用的客户端类型；未知值规范化为 Official。 */
+  clientType: string;
+  /** 游戏日星期：0=周日, 1=周一, ..., 6=周六。 */
   weekday: number;
   open: DailyOpenStage[];
   closed: DailyOpenStage[];
+}
+
+/** 游戏日查询：时刻与客户端类型可注入，缺省取当前时刻与连接默认客户端。 */
+export interface StageDayQuery {
+  now?: Date;
+  clientType?: string;
+  /**
+   * 资源收集全开放活动期间为 true：所有资源本按开放处理，不再查周表。
+   * 缺省为 false；调用方按客户端服务区的活动窗口解析后传入。
+   */
+  allResourceStagesOpen?: boolean;
 }
 
 export interface StageOpenState {
@@ -254,11 +275,11 @@ interface ResourceStageSchedule {
   hidden?: boolean;
 }
 
-// 日常关卡开放时间表。days: 0=周日, 1=周一, ..., 6=周六
+// 资源本开放日表。days 是游戏日星期：0=周日, 1=周一, ..., 6=周六。
 const RESOURCE_STAGES: Record<string, ResourceStageSchedule> = {
   'CE-6': { name: '龙门币', days: [0, 2, 4, 6] }, // 周日、周二、周四、周六
-  'AP-5': { name: '采购凭证', days: [0, 1, 3, 5] }, // 周日、周一、周三、周五
-  'CA-5': { name: '技巧概要', days: [0, 2, 4, 6] }, // 周日、周二、周四、周六
+  'AP-5': { name: '采购凭证', days: [0, 1, 4, 6] }, // 周日、周一、周四、周六
+  'CA-5': { name: '技巧概要', days: [0, 2, 3, 5] }, // 周日、周二、周三、周五
   'LS-6': { name: '作战记录', days: [0, 1, 2, 3, 4, 5, 6] }, // 每天
 
   'PR-A': { name: '重装/医疗芯片', days: [0, 1, 4, 5] }, // 周日、周一、周四、周五
@@ -274,11 +295,14 @@ const RESOURCE_STAGES: Record<string, ResourceStageSchedule> = {
   'PR-D-1': { name: '近卫/特种芯片', days: [0, 2, 3, 6], hidden: true },
   'PR-D-2': { name: '近卫/特种芯片组', days: [0, 2, 3, 6], hidden: true },
 
-  'SK-5': { name: '碳', days: [0, 1, 3, 5] },     // 周日、周一、周三、周五
+  'SK-5': { name: '碳', days: [1, 3, 5, 6] },     // 周一、周三、周五、周六
 };
 
-export function getTodayOpenStages(): DailyStageOverview {
-  const today = new Date().getDay();
+export function getTodayOpenStages(query: StageDayQuery = {}): DailyStageOverview {
+  const now = query.now ?? new Date();
+  const clientType = query.clientType ?? DEFAULT_CLIENT_TYPE;
+  const allResourceStagesOpen = query.allResourceStagesOpen === true;
+  const gameDay = getGameDay(now, clientType);
   const open: DailyOpenStage[] = [];
   const closed: DailyOpenStage[] = [];
 
@@ -288,7 +312,7 @@ export function getTodayOpenStages(): DailyStageOverview {
     const item: DailyOpenStage = {
       stage,
       name: info.name,
-      isOpen: info.days.includes(today)
+      isOpen: allResourceStagesOpen || info.days.includes(gameDay.weekday)
     };
 
     if (item.isOpen) {
@@ -299,23 +323,33 @@ export function getTodayOpenStages(): DailyStageOverview {
   });
 
   return {
-    weekday: today,
+    gameDate: gameDay.date,
+    clientType: resolveGameZone(clientType).clientType,
+    weekday: gameDay.weekday,
     open,
     closed
   };
 }
 
 /**
- * 检查关卡是否在今天开放
+ * 检查关卡是否在游戏日开放。
+ * “今日”指客户端服务区的游戏日（时区 + 04:00 日界），不是宿主日历日；
+ * 资源收集全开放活动期间所有资源本直接视为开放。
  */
-export function isStageOpenToday(stage: string): StageOpenState {
+export function isStageOpenToday(stage: string, query: StageDayQuery = {}): StageOpenState {
   const stageKey = stage.toUpperCase();
   if (!RESOURCE_STAGES[stageKey]) {
     return { isOpen: true, reason: null }; // 非资源本，默认开放
   }
 
-  const today = new Date().getDay(); // 0=周日, 1=周一, ..., 6=周六
   const stageInfo = RESOURCE_STAGES[stageKey];
+  if (query.allResourceStagesOpen === true) {
+    return { isOpen: true, reason: null, stageName: stageInfo.name };
+  }
+
+  const now = query.now ?? new Date();
+  const clientType = query.clientType ?? DEFAULT_CLIENT_TYPE;
+  const today = getGameDay(now, clientType).weekday; // 0=周日, 1=周一, ..., 6=周六
   const isOpen = stageInfo.days.includes(today);
 
   return {

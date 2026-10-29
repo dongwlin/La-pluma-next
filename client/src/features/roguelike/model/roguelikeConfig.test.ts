@@ -64,16 +64,41 @@ describe('roguelike config adapter', () => {
 
     expect(wire).toEqual({
       taskInputs: { roguelike: 'Phantom' },
-      advancedParams: { roguelike: { mode: '0', useSupport: true, startCount: 3 } },
+      advancedParams: {
+        roguelike: { mode: '0', useSupport: true, startCount: 3 },
+        reclamation: { mode: '1' },
+      },
     })
     expect(Object.keys(wire).sort()).toEqual(['advancedParams', 'taskInputs'])
   })
 
   it('decodes the server payload and defaults fields that were never saved', () => {
     expect(roguelikeConfigAdapter.decodeDraft({ taskInputs: { roguelike: 'Sami' } }))
-      .toEqual({ taskInputs: { roguelike: 'Sami' }, advancedParams: {} })
+      .toEqual({
+        taskInputs: { roguelike: 'Sami' },
+        advancedParams: { reclamation: { mode: '1' } },
+      })
     expect(roguelikeConfigAdapter.decodeDraft({ advancedParams: { roguelike: { mode: '1' } } }))
-      .toEqual({ taskInputs: {}, advancedParams: { roguelike: { mode: '1' } } })
+      .toEqual({
+        taskInputs: {},
+        advancedParams: { roguelike: { mode: '1' }, reclamation: { mode: '1' } },
+      })
+  })
+
+  it('fills the reclamation mode when decoding old payloads', () => {
+    expect(roguelikeConfigAdapter.decodeDraft({ taskInputs: { reclamation: 'Tales' } }))
+      .toEqual({
+        taskInputs: { reclamation: 'Tales' },
+        advancedParams: { reclamation: { mode: '1' } },
+      })
+    expect(roguelikeConfigAdapter.decodeDraft({ advancedParams: { reclamation: { mode: '' } } }))
+      .toEqual({ taskInputs: {}, advancedParams: { reclamation: { mode: '1' } } })
+  })
+
+  it('keeps an explicitly selected reclamation mode while decoding', () => {
+    expect(roguelikeConfigAdapter.decodeDraft({
+      advancedParams: { reclamation: { mode: '0' } },
+    })?.advancedParams.reclamation?.mode).toBe('0')
   })
 
   it.each([
@@ -92,8 +117,35 @@ describe('roguelike config adapter', () => {
     expect(JSON.parse(localStorage.getItem(ROGUELIKE_TASK_INPUTS_KEY) ?? 'null'))
       .toEqual({ roguelike: 'Phantom' })
     expect(JSON.parse(localStorage.getItem(ROGUELIKE_ADVANCED_PARAMS_KEY) ?? 'null'))
-      .toEqual({ roguelike: { mode: '0', useSupport: true, startCount: 3 } })
-    expect(roguelikeConfigAdapter.readLocalDraft()).toEqual(draft)
+      .toEqual({
+        roguelike: { mode: '0', useSupport: true, startCount: 3 },
+        reclamation: { mode: '1' },
+      })
+    expect(roguelikeConfigAdapter.readLocalDraft()).toEqual({
+      taskInputs: { roguelike: 'Phantom' },
+      advancedParams: {
+        roguelike: { mode: '0', useSupport: true, startCount: 3 },
+        reclamation: { mode: '1' },
+      },
+    })
+  })
+
+  it('fills the reclamation mode when reading a legacy local draft', () => {
+    localStorage.setItem(ROGUELIKE_TASK_INPUTS_KEY, JSON.stringify({ reclamation: 'Tales' }))
+    localStorage.setItem(ROGUELIKE_ADVANCED_PARAMS_KEY, JSON.stringify({}))
+
+    expect(roguelikeConfigAdapter.readLocalDraft()).toEqual({
+      taskInputs: { reclamation: 'Tales' },
+      advancedParams: { reclamation: { mode: '1' } },
+    })
+  })
+
+  it('keeps an explicitly selected local reclamation mode', () => {
+    localStorage.setItem(ROGUELIKE_ADVANCED_PARAMS_KEY, JSON.stringify({
+      reclamation: { mode: '0' },
+    }))
+
+    expect(roguelikeConfigAdapter.readLocalDraft()?.advancedParams.reclamation?.mode).toBe('0')
   })
 
   it('drops only the damaged local section and keeps the readable one', () => {
@@ -102,7 +154,7 @@ describe('roguelike config adapter', () => {
 
     expect(roguelikeConfigAdapter.readLocalDraft()).toEqual({
       taskInputs: {},
-      advancedParams: { roguelike: { mode: '1' } },
+      advancedParams: { roguelike: { mode: '1' }, reclamation: { mode: '1' } },
     })
     expect(localStorage.getItem(ROGUELIKE_TASK_INPUTS_KEY)).toBeNull()
     expect(localStorage.getItem(ROGUELIKE_ADVANCED_PARAMS_KEY)).not.toBeNull()

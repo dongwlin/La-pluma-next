@@ -62,4 +62,30 @@ describe('award execution results', () => {
     assert.equal(actions[0].status, 'success');
     assert.match(actions[0].message, /已领取/);
   });
+
+  it('names the limited-banner free pull and the anniversary card reward', () => {
+    assert.deepEqual(
+      getEnabledAwardItems({ recruit: true, specialaccess: true }).map(item => item.label),
+      ['限定池免费单抽', '周年赠送月卡']
+    );
+  });
+
+  it('reports the recruit and specialaccess segments with their own names', () => {
+    const log = [
+      'run subtask 3 / 6 {"first":["RecruitingActivitiesBegin"],"taskchain":"Award"}',
+      'SubTaskStart {"details":{"task":"RecruitingActivitiesRecruit"},"first":["RecruitingActivitiesBegin"]}',
+      'run subtask 6 / 6 {"first":["SpecialAccessActivitiesBegin"],"taskchain":"Award"}',
+      'SubTaskStart {"details":{"task":"SpecialAccessActivitiesConfirm"},"first":["SpecialAccessActivitiesBegin"]}'
+    ].join('\n');
+
+    const actions = parseAwardExecutionActions('领取奖励', {
+      recruit: true,
+      specialaccess: true
+    }, log);
+
+    assert.deepEqual(actions.map(action => action.message), [
+      '限定池免费单抽已领取',
+      '周年赠送月卡已领取'
+    ]);
+  });
 });

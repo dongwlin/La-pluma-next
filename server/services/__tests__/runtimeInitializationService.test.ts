@@ -231,15 +231,19 @@ describe('runtime initialization', () => {
         calls.notification = config;
       },
       readNotificationConfig: () => notification,
-      registerSchedule: (scheduleId, times, taskFlow) => {
-        calls.schedule = { scheduleId, times, taskFlow };
+      registerSchedule: (scheduleId, times, taskFlow, clientType) => {
+        calls.schedule = { scheduleId, times, taskFlow, clientType };
         return { success: true, message: 'restored schedule' };
       },
       registerAutoUpdate: config => {
         calls.autoUpdate = config;
         return { success: true, message: 'restored auto update' };
       },
-      resolveRuntimeConnection: async () => ({ adbPath: '/usr/bin/adb', address: 'emulator:5555' }),
+      resolveRuntimeConnection: async () => ({
+        adbPath: '/usr/bin/adb',
+        address: 'emulator:5555',
+        clientType: 'YoStarJP'
+      }),
       startTelegramBot: config => {
         calls.telegram = config;
       },
@@ -250,7 +254,8 @@ describe('runtime initialization', () => {
     assert.deepEqual(calls.schedule, {
       scheduleId: 'default',
       times: ['04:30', '12:00'],
-      taskFlow: automation.taskFlow
+      taskFlow: automation.taskFlow,
+      clientType: 'YoStarJP'
     });
     assert.deepEqual(calls.autoUpdate, autoUpdate);
     assert.deepEqual(calls.telegram, {
@@ -264,6 +269,72 @@ describe('runtime initialization', () => {
       autoUpdate: { restored: true, message: 'restored auto update' },
       telegram: { initialized: true }
     });
+  });
+
+  it('restores the saved schedule with the default client when connection resolution fails', async () => {
+    const warnings: unknown[][] = [];
+    let scheduleArgs: { clientType?: string } | null = null;
+
+    const summary = await initializeRuntimeState({
+      loadConfig: async configType => ({
+        success: true,
+        data: configType === 'automation-tasks'
+          ? { taskFlow: [], schedule: { enabled: true, times: ['05:00'] } }
+          : null
+      }),
+      readNotificationConfig: () => ({ channels: {} }),
+      registerSchedule: (_scheduleId, _times, _taskFlow, clientType) => {
+        scheduleArgs = { clientType };
+        return { success: true, message: 'restored schedule' };
+      },
+      registerAutoUpdate: () => assert.fail('no auto update should be registered'),
+      resolveRuntimeConnection: async () => {
+        throw new Error('config unavailable');
+      },
+      startTelegramBot: () => assert.fail('no Telegram should start'),
+      runtimeLogger: {
+        info() {},
+        warn(message, data) {
+          warnings.push([message, data]);
+        },
+        error() {}
+      }
+    });
+
+    assert.deepEqual(scheduleArgs, { clientType: undefined });
+    assert.equal(summary.schedule.restored, true);
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0][0]), /默认定时任务按默认客户端时区恢复/);
+  });
+
+  it('abandons schedule restore when connection resolution finishes after cancellation', async () => {
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const connection = Promise.withResolvers<{ clientType?: string }>();
+    const restoring = initializeRuntimeState({
+      signal: controller.signal,
+      loadConfig: async configType => ({
+        success: true,
+        data: configType === 'automation-tasks'
+          ? { taskFlow: [], schedule: { enabled: true, times: ['05:00'] } }
+          : null
+      }),
+      readNotificationConfig: () => ({ channels: {} }),
+      registerSchedule: () => assert.fail('late schedule must not be registered'),
+      registerAutoUpdate: () => assert.fail('no auto update should be registered'),
+      resolveRuntimeConnection: async () => {
+        entered.resolve();
+        return connection.promise;
+      },
+      startTelegramBot: () => assert.fail('no Telegram should start'),
+      runtimeLogger: silentLogger
+    });
+
+    await entered.promise;
+    controller.abort(new Error('cancelled while resolving schedule connection'));
+    await assert.rejects(restoring, error => error === controller.signal.reason);
+    connection.resolve({ clientType: 'YoStarEN' });
+    await new Promise(resolve => setImmediate(resolve));
   });
 
   it('isolates restore failures so other persisted jobs still start', async () => {
@@ -300,7 +371,7 @@ describe('runtime initialization', () => {
       runtimeLogger: silentLogger
     });
 
-    assert.deepEqual(calls, ['schedule', 'auto-update']);
+    assert.deepEqual(calls, ['connection', 'schedule', 'auto-update']);
     assert.equal(summary.notification.restored, false);
     assert.equal(summary.schedule.restored, false);
     assert.equal(summary.schedule.error, 'invalid schedule');

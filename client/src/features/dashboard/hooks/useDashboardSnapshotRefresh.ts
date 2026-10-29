@@ -2,7 +2,8 @@
  * 总览完整快照的页面同步入口
  *
  * 页面不再自己组织请求、探针与失效订阅：
- * - 首屏/周期刷新按 `lastRefreshAttemptAt` 与 5 分钟间隔调度；
+ * - 首屏/周期刷新按 `lastRefreshAttemptAt` 与 5 分钟间隔调度；恢复的 v1
+ *   活动摘要缺少 `status` 时立即补一次刷新；
  * - 收到 `dashboard-snapshot` 失效（计划应用、识别、资源更新等发布端）
  *   时强制刷新；Activity 隐藏期间错过的发布在恢复时由失效 hook 补发；
  * - 网络恢复时强制刷新；
@@ -53,8 +54,10 @@ export function useDashboardSnapshotRefresh() {
     const cache = useDashboardStore.getState()
     const cacheIsStale = cache.lastRefreshAttemptAt === null
       || Date.now() - cache.lastRefreshAttemptAt >= DASHBOARD_REFRESH_INTERVAL_MS
+    // v1 缓存没有活动状态字段：挂载时立即补一次刷新，避免卡片长期停在刷新中。
+    const activityStatusMissing = cache.activitySummary.status === undefined
 
-    if (!cache.hasLoaded || cacheIsStale) refreshThenSchedule()
+    if (!cache.hasLoaded || cacheIsStale || activityStatusMissing) refreshThenSchedule()
     else scheduleNextRefresh()
 
     return () => {

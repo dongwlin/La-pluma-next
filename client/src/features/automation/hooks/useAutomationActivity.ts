@@ -15,7 +15,7 @@ export interface AutomationActivityProjection {
   name: string | null
 }
 
-export function useAutomationActivity(clientType = 'Official'): AutomationActivityProjection {
+export function useAutomationActivity(clientType?: string): AutomationActivityProjection {
   const { data } = useQuery({
     ...activityQueryOptions(clientType),
     retry: false,

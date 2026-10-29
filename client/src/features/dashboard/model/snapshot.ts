@@ -10,19 +10,29 @@
  */
 
 import { isRecord } from '@/shared/api'
+import {
+  normalizeActivityPayload,
+  type ActivityFailure,
+  type ActivityStatus,
+  type AutomationActivityCompletion,
+} from '@/features/automation'
 import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
 
 export interface ActivitySummary {
   available: boolean
+  status?: ActivityStatus
+  clientType?: string
+  message?: string
   code?: string
   name?: string
-  tip?: string
-  completion?: {
-    known?: boolean
-    complete?: boolean
-    completedStages?: string[]
-    totalStages?: number
-  }
+  source?: string
+  startTime?: number
+  endTime?: number
+  stages?: string[]
+  lastSuccessAt?: number
+  dataUpdatedAt?: number
+  failure?: ActivityFailure
+  completion?: AutomationActivityCompletion
 }
 
 export interface ScheduleSummary {
@@ -90,36 +100,6 @@ const asStageSummaryArray = (value: unknown): Array<{ stage: string; name: strin
   return value.map(item => ({ stage: item.stage as string, name: item.name as string }))
 }
 
-const isValidActivityCompletion = (value: unknown) => {
-  if (value == null) return true
-  if (!isRecord(value)) return false
-
-  return (value.known === undefined || typeof value.known === 'boolean')
-    && (value.complete === undefined || typeof value.complete === 'boolean')
-    && (value.completedStages === undefined
-      || (Array.isArray(value.completedStages)
-        && value.completedStages.length <= 500
-        && value.completedStages.every(stage => typeof stage === 'string')))
-    && (value.totalStages === undefined
-      || (typeof value.totalStages === 'number'
-        && Number.isSafeInteger(value.totalStages)
-        && value.totalStages >= 0))
-}
-
-const normalizeActivityCompletion = (
-  value: unknown,
-): ActivitySummary['completion'] => {
-  if (!isRecord(value)) return undefined
-  return {
-    known: typeof value.known === 'boolean' ? value.known : undefined,
-    complete: typeof value.complete === 'boolean' ? value.complete : undefined,
-    completedStages: Array.isArray(value.completedStages)
-      ? value.completedStages.filter((stage): stage is string => typeof stage === 'string')
-      : undefined,
-    totalStages: typeof value.totalStages === 'number' ? value.totalStages : undefined,
-  }
-}
-
 const formatDropItems = (value: unknown): string => {
   if (!Array.isArray(value) || value.length === 0) return ''
   return value
@@ -158,9 +138,9 @@ export function normalizeDashboardSnapshot(
   const openStages = isRecord(openTodayStages) ? asStageSummaryArray(openTodayStages.open) : null
   const closedStages = isRecord(openTodayStages) ? asStageSummaryArray(openTodayStages.closed) : null
 
-  const payloadsAreComplete = isRecord(activity)
+  const activityPayload = normalizeActivityPayload(activity)
+  const payloadsAreComplete = activityPayload !== null
     && isRecord(scheduleExecution)
-    && isValidActivityCompletion(activity.completion)
     && queue !== null
     && drops !== null
     && openStages !== null
@@ -168,14 +148,21 @@ export function normalizeDashboardSnapshot(
 
   if (!payloadsAreComplete) return null
 
-  const activityCode = firstString(activity.code, activity.id)
-  const activityName = firstString(activity.name, activity.displayName, activity.stageName)
   const activitySummary: ActivitySummary = {
-    available: activity.isActive === true || activity.available === true || Boolean(activityCode || activityName),
-    code: activityCode,
-    name: activityName,
-    tip: firstString(activity.tip, activity.description),
-    completion: normalizeActivityCompletion(activity.completion),
+    available: activityPayload.available,
+    status: activityPayload.status,
+    clientType: activityPayload.clientType,
+    message: activityPayload.message,
+    code: activityPayload.code ?? undefined,
+    name: activityPayload.name ?? undefined,
+    source: activityPayload.source ?? undefined,
+    startTime: activityPayload.startTime ?? undefined,
+    endTime: activityPayload.endTime ?? undefined,
+    stages: activityPayload.stages,
+    lastSuccessAt: activityPayload.lastSuccessAt ?? undefined,
+    dataUpdatedAt: activityPayload.dataUpdatedAt ?? undefined,
+    failure: activityPayload.failure ?? undefined,
+    completion: activityPayload.completion,
   }
 
   const rawLastResult = scheduleExecution.lastResult

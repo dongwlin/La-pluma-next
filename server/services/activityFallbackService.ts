@@ -20,6 +20,11 @@ const CLIENT_SERVERS: Record<string, string | undefined> = {
   YoStarKR: 'KR'
 };
 
+/** 该服务区是否有备用数据源映射；不支持时不能把 null 当成“没有活动”。 */
+export function supportsFallbackClient(clientType: string = DEFAULT_CLIENT_TYPE): boolean {
+  return typeof CLIENT_SERVERS[clientType] === 'string';
+}
+
 /** 备用数据源的活动：code 由关卡前缀推导，时间窗口缺失时 endTime 为 null。 */
 export interface PenguinActivity {
   code: string;

@@ -131,7 +131,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 单作业 `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 默认；强制预览读取 `staleTime: 0` |
 | 作业集 `copilotSetQueryOptions(id)` | `['combat','copilot-set',id]` | 同上 |
 | 作业集计划 `copilotSetPlanQueryOptions(id, raid)` | `['combat','copilot-set-plan',id,raid]` | 同上；重置进度后按 id 前缀失效 |
-| 活动 `activityQueryOptions(clientType)` | `['automation','activity',clientType]` | `clientType` 默认 `Official`；活动标签读取 `retry: false` |
+| 活动 `activityQueryOptions(clientType?)` | `['automation','activity',clientType ?? 'profile']` | 不传时由服务端连接 profile 解析，不硬编码 `Official`；活动标签读取 `retry: false` |
 | schedule 投影 `scheduleExecutionQueryOptions()` | `['automation','schedule-execution']` | 供总览协调读取 |
 | 完整快照 `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | `staleTime: 0`、`gcTime: 0`、`retry: false`；五路领域读取同样 `staleTime: 0`、`retry: false` |
 | 设备采样 `deviceStatsQueryOptions()` + `useDeviceStatsSample` | `['device-mirror','device-stats']` | hook 设置 5s `refetchInterval`、`staleTime: 0`、`retry: false`、`refetchOnMount: 'always'` |

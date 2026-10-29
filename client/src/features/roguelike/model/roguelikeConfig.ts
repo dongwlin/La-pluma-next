@@ -20,6 +20,7 @@ import {
   type ConfigPersistenceAdapter,
 } from '@/features/user-config'
 import type { RoguelikeAdvancedParams, RoguelikeTaskInputs } from '../types'
+import { normalizeRoguelikeAdvancedParams } from './roguelikeTasks'
 
 /** 服务端配置 key，与迁移前一致。 */
 export const ROGUELIKE_CONFIG_KEY = USER_CONFIG_KEYS.roguelikeTasks
@@ -75,7 +76,8 @@ function parseAdvancedParams(value: unknown): RoguelikeAdvancedParams | null {
 
 /**
  * 服务端载荷解码。缺省字段按空草稿处理（迁移前的加载路径同样只采用存在的字段）；
- * 字段存在但形状不合法时整份载荷不可用，协调器会回退本地草稿。
+ * 声明了默认值的高级字段在此补齐，字段存在但形状不合法时整份载荷不可用，
+ * 协调器会回退本地草稿。
  */
 function decodeRoguelikeConfig(payload: unknown): RoguelikeConfigDraft | null {
   if (!isRecord(payload)) return null
@@ -84,7 +86,7 @@ function decodeRoguelikeConfig(payload: unknown): RoguelikeConfigDraft | null {
     ? {}
     : parseAdvancedParams(payload.advancedParams)
   if (taskInputs === null || advancedParams === null) return null
-  return { taskInputs, advancedParams }
+  return { taskInputs, advancedParams: normalizeRoguelikeAdvancedParams(advancedParams) }
 }
 
 /** 读取单个本地键；缺失返回 null，损坏或形状不合法时清理该键并返回 null。 */
@@ -118,7 +120,10 @@ export const roguelikeConfigAdapter: ConfigPersistenceAdapter<
   commitDelayMs: ROGUELIKE_CONFIG_COMMIT_DELAY_MS,
 
   encodeDraft(draft) {
-    return { taskInputs: draft.taskInputs, advancedParams: draft.advancedParams }
+    return {
+      taskInputs: draft.taskInputs,
+      advancedParams: normalizeRoguelikeAdvancedParams(draft.advancedParams),
+    }
   },
 
   decodeDraft: decodeRoguelikeConfig,
@@ -128,12 +133,18 @@ export const roguelikeConfigAdapter: ConfigPersistenceAdapter<
     const advancedParams = readLocalSection(ROGUELIKE_ADVANCED_PARAMS_KEY, parseAdvancedParams)
     // 两个键都不可读时没有可恢复的草稿；单个键损坏只丢弃该字段，保留另一部分编辑。
     if (taskInputs === null && advancedParams === null) return null
-    return { taskInputs: taskInputs ?? {}, advancedParams: advancedParams ?? {} }
+    return {
+      taskInputs: taskInputs ?? {},
+      advancedParams: normalizeRoguelikeAdvancedParams(advancedParams ?? {}),
+    }
   },
 
   writeLocalDraft(draft) {
     localStorage.setItem(ROGUELIKE_TASK_INPUTS_KEY, JSON.stringify(draft.taskInputs))
-    localStorage.setItem(ROGUELIKE_ADVANCED_PARAMS_KEY, JSON.stringify(draft.advancedParams))
+    localStorage.setItem(
+      ROGUELIKE_ADVANCED_PARAMS_KEY,
+      JSON.stringify(normalizeRoguelikeAdvancedParams(draft.advancedParams)),
+    )
   },
 
   async commit(wire): Promise<ConfigCommitResult> {

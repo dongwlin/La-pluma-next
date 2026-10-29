@@ -10,6 +10,7 @@ import type {
 } from '../services/operatorTrainingService.ts'
 import { DEFAULT_TRAINING_SETTINGS } from '../services/operatorTrainingModel.ts'
 import type { ApplyPlanResult, FlowSyncState } from '../services/operatorTrainingApplication.ts'
+import type { TrainingPlan } from '../services/operatorTrainingPlan.ts'
 import type { TrainingQueueItem } from '../services/operatorTrainingStore.ts'
 
 const servers: Server[] = []
@@ -117,6 +118,18 @@ function appliedPlan(overrides: Partial<ApplyPlanResult> = {}): ApplyPlanResult 
   }
 }
 
+function trainingPlanFixture(): TrainingPlan {
+  return {
+    queueRevision: 'revision-1',
+    mode: 'current',
+    operators: [],
+    materialHierarchy: [],
+    stages: [],
+    totalSanity: 0,
+    warnings: []
+  }
+}
+
 afterEach(async () => {
   Object.assign(operatorTraining, originalMethods)
   console.error = originalConsoleError
@@ -194,6 +207,26 @@ describe('training routes over real HTTP', () => {
       assert.equal(payload.message, message)
     }
     assert.equal(calls.count, 0)
+  })
+
+  it('passes the resolved client type to plan generation', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+    let captured: { mode?: string; options?: { clientType?: string } } | null = null
+    operatorTraining.generateTrainingPlan = async (mode, options) => {
+      captured = { mode, options }
+      return trainingPlanFixture()
+    }
+
+    const response = await fetch(agentUrl(port, '/training/plan?clientType=YoStarEN'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'all' })
+    })
+
+    assert.equal(response.status, 200)
+    assert.equal((await readEnvelope(response)).success, true)
+    assert.deepEqual(captured, { mode: 'all', options: { clientType: 'YoStarEN' } })
   })
 
   it('keeps a saved queue distinguishable from failed flow and schedule synchronization', async () => {

@@ -107,7 +107,7 @@ const depot = unwrapApiResponse(result)
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
-| `getActivity(clientType?, signal?)` | `GET /agent/activity` | 对象 |
+| `getActivity(clientType?, signal?)` | `GET /agent/activity`（省略 clientType 时不带查询串） | 活动 DTO：`status`/`clientType`/`available`/`message`、可空 `code`/`name`/`source`/时间戳、`stages`、`failure` 与可选 `completion` |
 | `getScheduleExecutionStatus(signal?)` | `GET /agent/schedules/execution` | 对象 |
 
 ### Settings（`features/settings/api/index.ts`）

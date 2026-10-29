@@ -223,8 +223,14 @@ export function attachScheduleTriggersToLifecycle(
 }
 
 // 创建或更新定时任务；重复配置同一 scheduleId 替换旧注册，不叠加 job。
-export function setupSchedule(scheduleId: string, times: unknown, taskFlow: unknown): ScheduleSetupResult {
-  return scheduleTriggerRuntime.setupSchedule(scheduleId, times, taskFlow);
+// 日常流程按客户端服务区时区触发；未指定时使用连接默认客户端。
+export function setupSchedule(
+  scheduleId: string,
+  times: unknown,
+  taskFlow: unknown,
+  clientType?: string
+): ScheduleSetupResult {
+  return scheduleTriggerRuntime.setupSchedule(scheduleId, times, taskFlow, clientType);
 }
 
 // 停止定时任务
