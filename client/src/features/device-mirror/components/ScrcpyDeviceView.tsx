@@ -88,6 +88,11 @@ interface TrackedPointer {
   target: HTMLVideoElement
 }
 
+function formatStatistic(value: number | null | undefined, unit: string) {
+  if (value === undefined || value === null || !Number.isFinite(value)) return '--'
+  return `${value} ${unit}`
+}
+
 export default function ScrcpyDeviceView({
   automationAvailable = true,
   automationUnavailableMessage = '后端服务暂不可用，请稍后重试',
@@ -358,21 +363,40 @@ export default function ScrcpyDeviceView({
       overlayVideo.srcObject = sourceStream
       void overlayVideo.play().catch(() => {})
     }
+    const pendingPointerMoves = pendingPointerMovesRef.current
+    const trackedPointers = trackedPointersRef.current
 
     return () => {
-      if (overlayVideo) overlayVideo.srcObject = null
+      pendingPointerMoves.forEach((pointer, pointerId) => {
+        if (pointer.target === overlayVideo) pendingPointerMoves.delete(pointerId)
+      })
+      trackedPointers.forEach((pointer, pointerId) => {
+        if (pointer.target !== overlayVideo) return
+        trackedPointers.delete(pointerId)
+        sendTouchRef.current(3, pointer.clientX, pointer.clientY, pointerId, overlayVideo)
+        try {
+          if (overlayVideo.hasPointerCapture(pointerId)) overlayVideo.releasePointerCapture(pointerId)
+        } catch {
+          // The overlay may already be detached and have lost capture.
+        }
+      })
+      if (pendingPointerMoves.size === 0 && pointerMoveFrameRef.current !== null) {
+        window.cancelAnimationFrame(pointerMoveFrameRef.current)
+        pointerMoveFrameRef.current = null
+      }
+      overlayVideo.srcObject = null
     }
   }, [immersiveMode, webrtc.mediaStream])
 
-  const statusCards = [
+  const statusCards: [string, string | number, string?][] = [
     ['信令', statusLabel[webrtc.status] || webrtc.status],
     ['ICE', webrtc.stats?.iceState || '--'],
     ['视频', webrtc.stats?.videoLive ? 'live' : '--'],
     ['分辨率', webrtc.stats?.width ? `${webrtc.stats.width}×${webrtc.stats.height}` : '--'],
     ['FPS', webrtc.stats?.fps ?? '--'],
-    ['码率', webrtc.stats?.bitrate ? `${webrtc.stats.bitrate} kbps` : '--'],
-    ['延迟', webrtc.stats?.rtt ? `${webrtc.stats.rtt} ms` : '--'],
-    ['触控', webrtc.inputReady ? 'ready' : webrtc.status === 'connected' ? '等待通道' : '--']
+    ['码率', formatStatistic(webrtc.stats?.bitrate, 'kbps')],
+    ['网络 RTT', formatStatistic(webrtc.stats?.rtt, 'ms'), 'ICE 网络往返时间，不含设备输入处理与画面反馈时间'],
+    ['触控', webrtc.inputReady ? 'ready' : webrtc.status === 'connected' ? '等待触控信息' : '--']
   ]
   const unavailableInfrastructureLabel = resolvedInfrastructureState === 'loading' ? '检查中' : '未知'
   const componentStatusLabel = infrastructureKnown
@@ -429,8 +453,8 @@ export default function ScrcpyDeviceView({
         {!isCompact && <PreviewModeControls unavailable={!automationAvailable} />}
 
         {!isCompact && <div className="scrcpy-status-grid">
-          {statusCards.map(([label, value]) => (
-            <div key={label} className="surface-soft rounded-lg px-2 py-1.5">
+          {statusCards.map(([label, value, description]) => (
+            <div key={label} title={description} className="surface-soft rounded-lg px-2 py-1.5">
               <div className="text-tertiary">{label}</div>
               <div className="truncate font-medium text-primary">{value}</div>
             </div>
@@ -635,7 +659,7 @@ export default function ScrcpyDeviceView({
               <SlidersHorizontal className="h-4 w-4" strokeWidth={1.8} />
               <span>画质设置</span>
             </div>
-            <span className="scrcpy-quality-current">{quality === 'custom' ? '自定义 · ' : ''}{customMaxSize}p · {customFps} FPS</span>
+            <span className="scrcpy-quality-current">{quality === 'custom' ? '自定义 · ' : ''}最长边 {customMaxSize}px · {customFps} FPS</span>
           </div>
 
           <div className="scrcpy-quality-content">
@@ -650,10 +674,11 @@ export default function ScrcpyDeviceView({
                       onClick={() => applyPreset(key as QualityPreset)}
                       aria-pressed={quality === key}
                       aria-label={`${preset.label}画质`}
+                      title={`最长边 ${preset.maxSize}px · ${preset.fps} FPS · 码率 ${preset.bitrateMbps} Mbps`}
                       className={`scrcpy-preset-option ${quality === key ? 'is-active' : ''}`}
                     >
                       <span>{preset.label}</span>
-                      <small>{preset.maxSize}p · {preset.fps} FPS · {preset.bitrateMbps}M</small>
+                      <small>{preset.maxSize}px · {preset.fps} FPS · {preset.bitrateMbps}M</small>
                     </button>
                   ))}
                 </div>
