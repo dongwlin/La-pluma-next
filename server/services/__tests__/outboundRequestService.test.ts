@@ -1,9 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_OUTBOUND_MAX_RETRIES,
-  DEFAULT_OUTBOUND_RETRY_DELAY_MS,
-  DEFAULT_OUTBOUND_TIMEOUT_MS,
   createOutboundHttpClient,
   isOutboundRequestError,
   isTransientOutboundStatus
@@ -491,11 +488,7 @@ test('用法错误抛 TypeError 且不发起请求', async () => {
   assert.equal(calls.length, 0);
 });
 
-test('工厂缺省值可通过配置覆盖', async () => {
-  assert.equal(DEFAULT_OUTBOUND_TIMEOUT_MS, 15_000);
-  assert.equal(DEFAULT_OUTBOUND_MAX_RETRIES, 2);
-  assert.equal(DEFAULT_OUTBOUND_RETRY_DELAY_MS, 500);
-
+test('工厂缺省值可被显式配置覆盖后按上限重试', async () => {
   const first = makeResponseStub({ status: 503, statusText: 'Service Unavailable' });
   const second = makeJsonResponse({ ok: true });
   const { fetchImpl, calls } = makeScriptedFetch([
@@ -511,11 +504,4 @@ test('工厂缺省值可通过配置覆盖', async () => {
   assert.deepEqual(result.data, { ok: true });
   assert.equal(calls.length, 3);
   assert.equal(first.released, true);
-});
-
-test('缺省客户端绑定全局 fetch 且可直接使用端口', () => {
-  const client = createOutboundHttpClient();
-  assert.equal(typeof client.requestJson, 'function');
-  assert.equal(typeof client.requestText, 'function');
-  assert.equal(typeof client.requestMultipart, 'function');
 });

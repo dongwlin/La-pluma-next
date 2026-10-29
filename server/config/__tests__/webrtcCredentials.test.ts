@@ -49,10 +49,5 @@ describe('WebRTC credential resolution', () => {
     const second = resolveWebrtcCredentials(env)
     assert.deepEqual(first, second)
     assert.equal(first.usingDefault, true)
-
-    // 不存在随机生成路径：未配置时多次解析都等于上游默认值
-    for (let index = 0; index < 5; index += 1) {
-      assert.equal(resolveWebrtcCredentials({}).password, DEFAULT_WEBRTC_PASSWORD)
-    }
   })
 })

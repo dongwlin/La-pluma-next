@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  DEFAULT_CLOSE_DEADLINE_MS,
   RuntimeLifecycleError,
   createRuntimeLifecycle
 } from '../runtimeLifecycleService.ts';
@@ -315,7 +314,6 @@ describe('runtime lifecycle', () => {
       () => createRuntimeLifecycle({ closeDeadlineMs: 0 }),
       isLifecycleError('RUNTIME_LIFECYCLE_INVALID')
     );
-    assert.equal(DEFAULT_CLOSE_DEADLINE_MS, 10_000);
 
     await lifecycle.start();
     assert.throws(

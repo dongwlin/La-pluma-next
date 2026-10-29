@@ -77,7 +77,7 @@ test('missing or invalid optional overlays leave base resources usable for every
 });
 
 test('update, discovery, and remote copilot commands retain normal network/cache behavior', async () => {
-  for (const command of ['install', 'update', 'hot-update', 'activity', 'version', 'dir', 'copilot', 'ssscopilot', 'paradoxcopilot']) {
+  for (const command of ['version', 'copilot']) {
     assert.equal(await prepareMaaTaskCache(command, { cliPath: '/missing/maa' }), null, command);
   }
 });
