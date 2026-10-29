@@ -193,12 +193,12 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       specialaccess: false
     },
     paramFields: [
-      { key: 'award', label: '每日奖励', type: 'checkbox' },
+      { key: 'award', label: '日常与周常奖励', type: 'checkbox' },
       { key: 'mail', label: '邮件奖励', type: 'checkbox' },
-      { key: 'recruit', label: '公招奖励', type: 'checkbox' },
+      { key: 'recruit', label: '限定池免费单抽', type: 'checkbox', helper: '活动期间领取限定池赠送的每日免费单抽；没有免费次数时不抽取' },
       { key: 'orundum', label: '合成玉奖励', type: 'checkbox' },
       { key: 'mining', label: '采矿奖励', type: 'checkbox' },
-      { key: 'specialaccess', label: '特别通行证', type: 'checkbox' },
+      { key: 'specialaccess', label: '周年赠送月卡', type: 'checkbox', helper: '领取周年活动赠送的月卡奖励' },
     ],
     taskType: 'Award'
   },

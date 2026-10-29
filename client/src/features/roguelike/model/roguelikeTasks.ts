@@ -74,7 +74,7 @@ const ADVANCED_OPTIONS: Record<string, RoguelikeAdvancedOption[]> = {
     { key: 'mode', label: '模式', type: 'select', param: '--mode', options: [
       { value: '0', label: '刷分模式' },
       { value: '1', label: '刷源石锭' },
-      { value: '4', label: '3层后退出' },
+      { value: '4', label: '刷开局' },
     ]},
     { key: 'squad', label: '起始分队', type: 'text', param: '--squad', placeholder: '指挥分队' },
     { key: 'coreChar', label: '核心干员', type: 'text', param: '--core-char', placeholder: '维什戴尔' },

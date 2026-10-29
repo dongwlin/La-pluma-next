@@ -51,6 +51,17 @@ describe('roguelike task catalog', () => {
     expect(getRoguelikeAdvancedOptions('unknown')).toEqual([])
   })
 
+  it('names the roguelike mode options after their MaaCore behavior', () => {
+    const roguelikeMode = getRoguelikeAdvancedOptions('roguelike')
+      .find(option => option.key === 'mode')
+
+    expect(roguelikeMode?.options).toEqual([
+      { value: '0', label: '刷分模式' },
+      { value: '1', label: '刷源石锭' },
+      { value: '4', label: '刷开局' },
+    ])
+  })
+
   it('declares the reclamation mode default and its startup hint', () => {
     const reclamationMode = getRoguelikeAdvancedOptions('reclamation')
       .find(option => option.key === 'mode')
@@ -90,6 +101,14 @@ describe('buildRoguelikeCommandParams', () => {
       { roguelike: 'Sami' },
       { roguelike: { mode: '', useSupport: false } },
     )).toBe('Sami')
+  })
+
+  it('still passes model 4 as --mode 4 under its new name', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Phantom' },
+      { roguelike: { mode: '4' } },
+    )).toBe('Phantom --mode 4')
   })
 
   it('builds reclamation commands with its own parameters', () => {
