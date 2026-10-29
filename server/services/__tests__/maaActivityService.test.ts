@@ -1,13 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   getCurrentActivity,
   isResourceCollectionOpen,
   parseActivityTimestamp,
   parseMaaActivityGroups,
-  parseResourceCollectionWindow
+  parseResourceCollectionWindow,
+  readActivityTableState
 } from '../maaActivityService.ts';
-import type { CachedActivity, MaaActivityRuntime } from '../maaActivityService.ts';
+import type { CachedActivity, MaaActivityRuntime, MaaActivityTableState } from '../maaActivityService.ts';
 
 const NOW = 1_800_000_000_000;
 const CLIENT = 'Official';
@@ -53,12 +57,16 @@ function cachedActivity(overrides: Partial<CachedActivity> = {}): CachedActivity
   };
 }
 
+function activityTable(overrides: Partial<MaaActivityTableState> = {}): MaaActivityTableState {
+  return { exists: true, modifiedAt: NOW - 1000, checkedAt: NOW - 1000, ...overrides };
+}
+
 function runtime(overrides: MaaActivityRuntime = {}): MaaActivityRuntime {
   return {
     now: () => NOW,
     cache: new Map<string, CachedActivity>(),
     runActivity: async () => ({ stdout: '' }),
-    readActivityTable: async () => ({ exists: true, modifiedAt: NOW - 1000 }),
+    readActivityTable: async () => activityTable(),
     readFallback: async () => null,
     supportsFallback: () => true,
     loadConfig: async () => null,
@@ -181,7 +189,7 @@ describe('getCurrentActivity status contract', () => {
 - SideStory「昨日海」
   - YW-8: 液化高能气体`
       }),
-      readActivityTable: async () => ({ exists: true, modifiedAt: NOW - 5000 }),
+      readActivityTable: async () => activityTable({ modifiedAt: NOW - 5000, checkedAt: NOW - 5000 }),
       saveConfig: async payload => {
         saved.push(payload);
       }
@@ -208,11 +216,34 @@ describe('getCurrentActivity status contract', () => {
     });
   });
 
+  it('rounds fractional activity table mtimes into integer snapshot timestamps', async () => {
+    const fractionalMtime = NOW - 1000 + 0.7917;
+
+    const noneSnapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+      readActivityTable: async () => activityTable({ modifiedAt: fractionalMtime, checkedAt: fractionalMtime })
+    }));
+    assert.equal(noneSnapshot.status, 'none');
+    assert.equal(noneSnapshot.dataUpdatedAt, NOW - 1000);
+
+    const activeSnapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- SideStory「昨日海」
+  - YW-8: 液化高能气体`
+      }),
+      readActivityTable: async () => activityTable({ modifiedAt: fractionalMtime, checkedAt: fractionalMtime })
+    }));
+    assert.equal(activeSnapshot.status, 'active');
+    assert.equal(activeSnapshot.dataUpdatedAt, NOW - 1000);
+    assert.ok(Number.isSafeInteger(activeSnapshot.dataUpdatedAt));
+  });
+
   it('returns none only when the CLI output and a fresh activity table agree', async () => {
     let fallbackCalls = 0;
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
-      readActivityTable: async () => ({ exists: true, modifiedAt: NOW - 1000 }),
+      readActivityTable: async () => activityTable(),
       readFallback: async () => {
         fallbackCalls += 1;
         return null;
@@ -232,7 +263,7 @@ describe('getCurrentActivity status contract', () => {
     let fallbackCalls = 0;
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       runActivity: async () => ({ stdout: 'unexpected machine output' }),
-      readActivityTable: async () => ({ exists: true, modifiedAt: NOW - 1000 }),
+      readActivityTable: async () => activityTable(),
       readFallback: async () => {
         fallbackCalls += 1;
         return {
@@ -255,7 +286,7 @@ describe('getCurrentActivity status contract', () => {
   it('uses the fallback source when the activity table is missing', async () => {
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       runActivity: async () => ({ stdout: '' }),
-      readActivityTable: async () => ({ exists: false, modifiedAt: null }),
+      readActivityTable: async () => activityTable({ exists: false, modifiedAt: null, checkedAt: null }),
       readFallback: async () => ({
         code: 'BD',
         name: '丛林症结',
@@ -278,7 +309,7 @@ describe('getCurrentActivity status contract', () => {
   it('reports none from a supported fallback source instead of unavailable', async () => {
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       runActivity: async () => ({ stdout: '' }),
-      readActivityTable: async () => ({ exists: false, modifiedAt: null }),
+      readActivityTable: async () => activityTable({ exists: false, modifiedAt: null, checkedAt: null }),
       readFallback: async () => null
     }));
 
@@ -292,7 +323,7 @@ describe('getCurrentActivity status contract', () => {
     let fallbackCalls = 0;
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
-      readActivityTable: async () => ({ exists: true, modifiedAt: NOW - ONE_DAY - 1 }),
+      readActivityTable: async () => activityTable({ modifiedAt: NOW - ONE_DAY - 1, checkedAt: NOW - ONE_DAY - 1 }),
       readFallback: async () => {
         fallbackCalls += 1;
         return {
@@ -370,7 +401,7 @@ describe('getCurrentActivity status contract', () => {
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       cache: new Map([[CLIENT, entry]]),
       runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
-      readActivityTable: async () => ({ exists: true, modifiedAt: NOW - 1000 })
+      readActivityTable: async () => activityTable()
     }));
 
     assert.notEqual(snapshot.status, 'active');
@@ -420,6 +451,124 @@ describe('getCurrentActivity status contract', () => {
       stages: [],
       timestamp: NOW,
       ttl: TEN_MINUTES
+    });
+  });
+});
+
+describe('activity table freshness', () => {
+  async function withCacheDir(run: (dir: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-'));
+    try {
+      await run(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** 写入活动表并指定内容 mtime；etagModifiedAt 为 null 时不写 ETag 旁注文件。 */
+  async function writeTable(dir: string, modifiedAt: number, etagModifiedAt: number | null): Promise<void> {
+    const tablePath = join(dir, 'StageActivityV2.json');
+    await writeFile(tablePath, '{}');
+    await utimes(tablePath, modifiedAt / 1000, modifiedAt / 1000);
+    if (etagModifiedAt === null) return;
+    const etagPath = `${tablePath}.etag`;
+    await writeFile(etagPath, '"fixture-etag"');
+    await utimes(etagPath, etagModifiedAt / 1000, etagModifiedAt / 1000);
+  }
+
+  it('reads the content mtime and the ETag confirmation time from the cache directory', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, NOW - 60_000);
+
+      const state = await readActivityTableState(dir);
+      assert.equal(state.exists, true);
+      assert.equal(Math.trunc(state.modifiedAt ?? 0), NOW - 3 * ONE_DAY);
+      assert.equal(Math.trunc(state.checkedAt ?? 0), NOW - 60_000);
+    });
+  });
+
+  it('reports a missing activity table without inventing timestamps', async () => {
+    await withCacheDir(async dir => {
+      assert.deepEqual(await readActivityTableState(dir), {
+        exists: false,
+        modifiedAt: null,
+        checkedAt: null
+      });
+    });
+  });
+
+  it('truncates the real file mtime before exposing it in the snapshot', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 5000 + 0.5, NOW - 5000 + 0.5);
+
+      const state = await readActivityTableState(dir);
+      assert.equal(Number.isSafeInteger(state.modifiedAt), false, 'fixture must keep a fractional mtime');
+
+      const snapshot = await getCurrentActivity(CLIENT, runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: async () => state
+      }));
+
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.dataUpdatedAt, NOW - 5000);
+      assert.ok(Number.isSafeInteger(snapshot.dataUpdatedAt));
+    });
+  });
+
+  it('reports none when the ETag confirmation is fresh even though the content is older than a day', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, NOW - 60_000);
+      let fallbackCalls = 0;
+
+      const snapshot = await getCurrentActivity(CLIENT, runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: () => readActivityTableState(dir),
+        readFallback: async () => {
+          fallbackCalls += 1;
+          return null;
+        }
+      }));
+
+      assert.equal(fallbackCalls, 0);
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.source, 'maa');
+      assert.equal(snapshot.dataUpdatedAt, Math.trunc(NOW - 3 * ONE_DAY));
+    });
+  });
+
+  it('reports none for a client without a fallback source when the ETag confirmation is fresh', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, NOW - 60_000);
+
+      const snapshot = await getCurrentActivity('Txwy', runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: () => readActivityTableState(dir),
+        supportsFallback: () => false
+      }));
+
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.source, 'maa');
+      assert.equal(snapshot.failure, null);
+    });
+  });
+
+  it('keeps refusing none when the table has no recent confirmation', async () => {
+    await withCacheDir(async dir => {
+      await writeTable(dir, NOW - 3 * ONE_DAY, null);
+      let fallbackCalls = 0;
+
+      const snapshot = await getCurrentActivity(CLIENT, runtime({
+        runActivity: async () => ({ stdout: MINI_GAMES_ONLY }),
+        readActivityTable: () => readActivityTableState(dir),
+        readFallback: async () => {
+          fallbackCalls += 1;
+          return null;
+        }
+      }));
+
+      assert.equal(fallbackCalls, 1);
+      assert.equal(snapshot.status, 'none');
+      assert.equal(snapshot.source, 'penguin');
     });
   });
 });

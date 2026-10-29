@@ -15,7 +15,8 @@ import { resolveGameZone } from './gameCalendar.ts';
  *   表示既没有可确认的结果也没有旧数据。
  * - 活动信息先读内存缓存，再读用户配置中的 `activity-cache`，最后查
  *   `maa activity`；只有 maa 无法给出肯定答案时才查备用数据源。
- * - CLI 的空输出不能单独证明“没有活动”：还要确认 MAA 活动表存在且未过期。
+ * - CLI 的空输出不能单独证明“没有活动”：还要确认 MAA 活动表存在且在 24 小时内
+ *   与远端确认过（内容 mtime 只在表变化时前进，确认时间取 ETag 旁注文件）。
  * - 资源收集全开放窗口同读 MAA 活动表的 `resourceCollection` 节点：不可读时
  *   按“未开放”处理，关卡开放判定沿用周表。
  * - 持久化沿用 configStorageService 的受控类型，读改写合并其他服务区条目，
@@ -28,7 +29,7 @@ const logger = createLogger('MaaService');
 /** 正缓存 TTL：缩短后活动结束到重新查询的窗口更小，调用频率由 CLI 自身控制。 */
 const ACTIVITY_CACHE_TTL = 10 * 60 * 1000;
 
-/** MAA 活动表的最大可信任年龄；超过后不能用“表里没有”断言当前没有活动。 */
+/** 活动表最近确认时间的最大可信任年龄；超过后不能用“表里没有”断言当前没有活动。 */
 const ACTIVITY_TABLE_MAX_AGE = 24 * 60 * 60 * 1000;
 
 /** 活动读取的明确状态；`none` 不是失败，`stale`/`unavailable` 才是。 */
@@ -65,10 +66,17 @@ export interface CachedActivity extends MaaActivityInfo {
   ttl: number;
 }
 
-/** MAA 活动表在缓存目录中的存在性与修改时间。 */
+/** MAA 活动表在缓存目录中的存在性、内容修改时间与最近确认时间。 */
 export interface MaaActivityTableState {
   exists: boolean;
+  /** 活动表内容最后一次变化的时间；内容不变时不会前进。 */
   modifiedAt: number | null;
+  /**
+   * 最近一次与远端确认活动表一致的时间。maa-cli 的 ETag 热更新在 304 时只
+   * touch 旁注文件 `StageActivityV2.json.etag`，所以取该文件 mtime 与内容
+   * mtime 的较大者；没有旁注文件的旧缓存只有内容 mtime 可用。
+   */
+  checkedAt: number | null;
 }
 
 /** 读取依赖端口；缺省实现调用真实 CLI、文件系统与配置存储，测试可整体替换。 */
@@ -236,17 +244,40 @@ function deriveActivityCode(stages: readonly string[]): string | null {
     .sort((left, right) => right[1].count - left[1].count || left[1].order - right[1].order)[0]?.[0] ?? null;
 }
 
+/** 单个路径的修改时间（毫秒）；文件不存在或不可读时返回 null。 */
+async function readMtimeMs(path: string): Promise<number | null> {
+  try {
+    return (await stat(path)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 读取缓存目录中的活动表状态；不启动 CLI，目录由调用方解析。
+ *
+ * `modifiedAt` 是活动表内容 mtime，内容不变时不会前进。maa-cli 的热更新在
+ * 304 时只 touch ETag 旁注文件，因此“最近确认”取旁注文件与内容 mtime 的
+ * 较大者；没有旁注文件的旧缓存回落到内容 mtime，保持原先的保守判定。
+ */
+export async function readActivityTableState(cacheDir: string): Promise<MaaActivityTableState> {
+  const tablePath = join(cacheDir, 'StageActivityV2.json');
+  const modifiedAt = await readMtimeMs(tablePath);
+  if (modifiedAt === null) return { exists: false, modifiedAt: null, checkedAt: null };
+  const etagCheckedAt = await readMtimeMs(`${tablePath}.etag`);
+  return {
+    exists: true,
+    modifiedAt,
+    checkedAt: Math.max(modifiedAt, etagCheckedAt ?? modifiedAt)
+  };
+}
+
 /** `maa dir cache` 的输出只取首行；空目录也照原样返回，由 stat 判定是否存在。 */
 async function readMaaActivityTable(): Promise<MaaActivityTableState> {
   const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
   const cacheDir = result.stdout.trim().split(/\r?\n/)[0]?.trim();
-  if (!cacheDir) return { exists: false, modifiedAt: null };
-  try {
-    const info = await stat(join(cacheDir, 'StageActivityV2.json'));
-    return { exists: true, modifiedAt: info.mtimeMs };
-  } catch {
-    return { exists: false, modifiedAt: null };
-  }
+  if (!cacheDir) return { exists: false, modifiedAt: null, checkedAt: null };
+  return readActivityTableState(cacheDir);
 }
 
 /** 资源收集全开放窗口；时间为 UTC 毫秒时间戳，闭区间。 */
@@ -381,6 +412,16 @@ const defaultRuntime: Required<MaaActivityRuntime> = {
   saveConfig: saveActivityConfig
 };
 
+/**
+ * DTO 时间戳只接受安全整数：文件系统 mtime 是浮点毫秒，服务端缓存的时间戳
+ * 也可能带小数；快照边界统一取整，避免跨端契约在客户端被判为非法载荷。
+ */
+function toDtoTimestamp(value: number | null): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  const truncated = Math.trunc(value);
+  return Number.isSafeInteger(truncated) ? truncated : null;
+}
+
 function snapshotOf(
   clientType: string,
   info: MaaActivityInfo,
@@ -393,8 +434,10 @@ function snapshotOf(
     ...info,
     status,
     clientType,
-    lastSuccessAt,
-    dataUpdatedAt,
+    startTime: toDtoTimestamp(info.startTime),
+    endTime: toDtoTimestamp(info.endTime),
+    lastSuccessAt: toDtoTimestamp(lastSuccessAt),
+    dataUpdatedAt: toDtoTimestamp(dataUpdatedAt),
     failure
   };
 }
@@ -501,9 +544,10 @@ export async function getCurrentActivity(
         };
       }
       if (!maaFailure) {
-        if (!table?.exists || table.modifiedAt === null) {
+        const checkedAt = table?.checkedAt ?? table?.modifiedAt ?? null;
+        if (!table?.exists || checkedAt === null) {
           maaFailure = { source: 'maa', message: 'MAA 活动数据表不存在或不可读' };
-        } else if (now - table.modifiedAt > ACTIVITY_TABLE_MAX_AGE) {
+        } else if (now - checkedAt > ACTIVITY_TABLE_MAX_AGE) {
           maaFailure = { source: 'maa', message: 'MAA 活动数据表已超过 24 小时未更新' };
         } else {
           const activity = emptyActivityInfo('maa');
