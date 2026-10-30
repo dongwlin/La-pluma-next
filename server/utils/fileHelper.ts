@@ -63,19 +63,39 @@ export async function ensureDir(dirPath: string): Promise<void> {
   }
 }
 
+/** JSON 内容语法损坏（截断、手工编辑等）；与磁盘 IO 失败区分。 */
+export class JsonFileParseError extends Error {
+  readonly filePath: string;
+
+  constructor(filePath: string, cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    super(`读取 JSON 文件失败: ${message}`, { cause });
+    this.name = 'JsonFileParseError';
+    this.filePath = filePath;
+  }
+}
+
 /**
  * 读取 JSON 文件。返回值显式为 unknown，由调用方自行校验收窄，本函数不冒充校验。
+ * 文件缺失返回 defaultValue；语法损坏抛出 `JsonFileParseError`，磁盘错误保持普通失败，
+ * 由调用方决定是否可重试（不能把截断文件误判成临时 IO 失败）。
  */
 export async function readJsonFile(filePath: string, defaultValue: unknown = null): Promise<unknown> {
+  let content: string;
   try {
-    const content = await readFile(filePath, 'utf-8');
-    return JSON.parse(content);
+    content = await readFile(filePath, 'utf-8');
   } catch (error) {
     if (getErrorCode(error) === 'ENOENT') {
       return defaultValue;
     }
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`读取 JSON 文件失败: ${message}`);
+  }
+
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    throw new JsonFileParseError(filePath, error);
   }
 }
 

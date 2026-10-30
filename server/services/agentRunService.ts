@@ -16,7 +16,7 @@ import { createHash, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
-import { readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
+import { JsonFileParseError, readJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 import { waitWithAbort } from '../utils/abort.ts';
 import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
@@ -217,6 +217,16 @@ function errorCodeOf(error: unknown): unknown {
   return isRecord(error) ? error.code : undefined;
 }
 
+/** 存储内容损坏的结构化错误：跨读取、准入与关闭路径都保持不可重试。 */
+function isAgentRunStoreInvalidError(value: unknown): value is AgentError {
+  return isRecord(value)
+    && value.code === 'AGENT_RUN_STORE_INVALID'
+    && typeof value.message === 'string'
+    && typeof value.statusCode === 'number'
+    && isRecord(value.details)
+    && typeof value.retryable === 'boolean';
+}
+
 function isTerminalStatus(status: string): status is AgentRunTerminalStatus {
   return TERMINAL_STATUSES.has(status);
 }
@@ -237,6 +247,11 @@ function agentRunPersistenceError(error: unknown): AgentError {
   });
 }
 
+function agentRunStoreUnavailableError(): AgentError {
+  if (isAgentRunStoreInvalidError(persistenceError)) return persistenceError;
+  return agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
+}
+
 function persistenceErrorMessage(): string | null {
   if (!isRecord(persistenceError) || !persistenceError.message) return null;
   return String(persistenceError.message);
@@ -244,7 +259,7 @@ function persistenceErrorMessage(): string | null {
 
 function assertAgentRunStoreReadable(): void {
   if (persistence.required && !persistence.enabled) {
-    throw agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
+    throw agentRunStoreUnavailableError();
   }
 }
 
@@ -319,7 +334,7 @@ function scheduleAgentRunPersistence(): void {
 export async function flushAgentRunStore(): Promise<{ persisted: boolean; filePath: string }> {
   if (!persistence.enabled) {
     if (persistence.required) {
-      throw agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
+      throw agentRunStoreUnavailableError();
     }
     return { persisted: false, filePath: persistence.filePath };
   }
@@ -327,7 +342,7 @@ export async function flushAgentRunStore(): Promise<{ persisted: boolean; filePa
   while (true) {
     const pending = startPersistenceWriter();
     if (pending) await pending;
-    if (persistenceError) throw agentRunPersistenceError(persistenceError);
+    if (persistenceError) throw agentRunStoreUnavailableError();
     if (!persistenceDirty && !persistencePromise) {
       return { persisted: true, filePath: persistence.filePath };
     }
@@ -869,13 +884,22 @@ export async function initializeAgentRunStore(
     signal?.throwIfAborted();
     restored = restoreStoreSnapshot(snapshot);
   } catch (error) {
-    persistenceError = error;
+    // JSON 语法损坏（截断、手工编辑）属于不可重试的存储内容错误；磁盘临时错误
+    // 仍按可重试的持久化失败处理，调用方可以修复文件后重启或稍后重试。
+    const normalized = error instanceof JsonFileParseError
+      ? storeValidationError('Agent run 存储文件不是有效的 JSON', {
+          reason: 'invalid_json',
+          cause: describeError(error)
+        })
+      : error;
+    persistenceError = normalized;
     signal?.throwIfAborted();
     persistence.runtimeLogger.error('Agent run 存储恢复失败，执行接口将保持关闭', {
       filePath: persistence.filePath,
-      error: describeError(error)
+      error: describeError(normalized)
     });
-    throw errorCodeOf(error) === 'AGENT_RUN_STORE_INVALID' ? error : agentRunPersistenceError(error);
+    if (isAgentRunStoreInvalidError(normalized)) throw normalized;
+    throw agentRunPersistenceError(normalized);
   }
 
   runs.clear();
@@ -940,7 +964,7 @@ export function beginAgentRun({
     '服务正在关闭，不再接受新的设备执行'
   );
   if (persistence.required && !persistence.enabled) {
-    throw agentRunPersistenceError(persistenceError || new Error('Agent run 存储尚未就绪'));
+    throw agentRunStoreUnavailableError();
   }
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
 

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { readJsonFile, updateJsonFile, updateTextFile, writeJsonFile, writeTextFile } from '../fileHelper.ts';
+import { JsonFileParseError, readJsonFile, updateJsonFile, updateTextFile, writeJsonFile, writeTextFile } from '../fileHelper.ts';
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'la-pluma-file-'));
@@ -13,6 +13,27 @@ async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+test('readJsonFile distinguishes malformed JSON from disk errors', async () => {
+  await withTempDir(async dir => {
+    const filePath = join(dir, 'broken.json');
+    await writeFile(filePath, '{"version":1,"runs":[');
+
+    await assert.rejects(
+      readJsonFile(filePath),
+      error => error instanceof JsonFileParseError
+        && error.filePath === filePath
+        && /^读取 JSON 文件失败/.test(error.message)
+    );
+
+    await assert.rejects(
+      readJsonFile(dir),
+      error => !(error instanceof JsonFileParseError)
+        && error instanceof Error
+        && /^读取 JSON 文件失败/.test(error.message)
+    );
+  });
+});
 
 test('writeJsonFile atomically replaces the target and removes its temp file', async () => {
   await withTempDir(async dir => {
