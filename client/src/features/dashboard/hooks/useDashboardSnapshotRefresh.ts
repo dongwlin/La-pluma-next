@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { usePageVisible } from '@/shared/hooks/usePageVisible'
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '../constants'
@@ -24,7 +25,9 @@ const DASHBOARD_RESOURCE_SCOPES = ['dashboard-snapshot'] as const
 export function useDashboardSnapshotRefresh() {
   const client = useQueryClient()
   const isOnline = useOnlineStatus()
+  const visible = usePageVisible()
   const wasOnlineRef = useRef(isOnline)
+  const wasVisibleRef = useRef(visible)
 
   const refreshDashboard = useCallback(
     () => dashboardSnapshotRefresher.refresh({ client, force: true }),
@@ -32,10 +35,18 @@ export function useDashboardSnapshotRefresh() {
   )
 
   useResourceInvalidation(DASHBOARD_RESOURCE_SCOPES, () => {
+    // 文档隐藏时不发起读取；恢复可见时下面的 Effect 会补一次刷新。
+    if (!visible) return
     void dashboardSnapshotRefresher.refresh({ client, force: true })
   })
 
   useEffect(() => {
+    if (!visible) {
+      wasVisibleRef.current = false
+      return
+    }
+    const resumed = wasVisibleRef.current === false
+    wasVisibleRef.current = true
     let disposed = false
     let timer: number | null = null
 
@@ -57,21 +68,22 @@ export function useDashboardSnapshotRefresh() {
     // v1 缓存没有活动状态字段：挂载时立即补一次刷新，避免卡片长期停在刷新中。
     const activityStatusMissing = cache.activitySummary.status === undefined
 
-    if (!cache.hasLoaded || cacheIsStale || activityStatusMissing) refreshThenSchedule()
+    // 从隐藏恢复时立即刷新，补上隐藏期间错过的周期与失效事件。
+    if (resumed || !cache.hasLoaded || cacheIsStale || activityStatusMissing) refreshThenSchedule()
     else scheduleNextRefresh()
 
     return () => {
       disposed = true
       if (timer !== null) window.clearTimeout(timer)
     }
-  }, [client])
+  }, [client, visible])
 
   useEffect(() => {
-    if (isOnline && !wasOnlineRef.current) {
+    if (visible && isOnline && !wasOnlineRef.current) {
       void dashboardSnapshotRefresher.refresh({ client, force: true })
     }
     wasOnlineRef.current = isOnline
-  }, [client, isOnline])
+  }, [client, isOnline, visible])
 
   return { refreshDashboard }
 }
