@@ -4,7 +4,7 @@
 
 本文说明应用级 TanStack Query 基础设施：客户端与 Provider 的创建位置、默认重取/重试策略、领域 query key 约定、失效方式，以及它与 Zustand、配置草稿、执行控制器和 Dashboard 完整快照的边界。
 
-当前统计、养成队列与候选/计数、设置连接与系统资源、作业搜索/预览以及总览快照和设备采样均使用所属领域 Query；配置与执行写入仍由专门的命令所有者管理。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)，作业搜索/预览的取消与选段语义见[作业搜索与预览](../frontend/domains/combat.md#搜索与预览)，总览快照与设备采样见[总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)。
+当前统计、养成队列与候选/计数、设置连接与系统资源、作业搜索/预览、自动化活动与通知配置以及总览快照和设备采样均使用所属领域 Query；配置与执行写入仍由专门的命令所有者管理。资源请求的取消、信封与载荷校验契约见[资源请求错误与取消契约](resource-requests.md)，配置草稿与运行身份分别见[配置持久化协调器](config-persistence.md)与[前端执行客户端与控制器](execution-client.md)，作业搜索/预览的取消与选段语义见[作业搜索与预览](../frontend/domains/combat.md#搜索与预览)，总览快照与设备采样见[总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)。
 
 ## 1. 定位与边界
 
@@ -133,6 +133,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 作业集计划 `copilotSetPlanQueryOptions(id, raid)` | `['combat','copilot-set-plan',id,raid]` | 同上；重置进度后按 id 前缀失效 |
 | 活动 `activityQueryOptions(clientType?)` | `['automation','activity',clientType ?? 'profile']` | 不传时由服务端连接 profile 解析，不硬编码 `Official`；活动标签读取 `retry: false` |
 | schedule 投影 `scheduleExecutionQueryOptions()` | `['automation','schedule-execution']` | 供总览协调读取 |
+| 通知配置 `notificationConfigQueryOptions()` | `['automation','notification-config']` | 默认 30s `staleTime`；`retry: false`；保存成功后由 `NotificationSettings` 用 `setQueryData` 写回同一 key |
 | 完整快照 `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | `staleTime: 0`、`gcTime: 0`、`retry: false`；五路领域读取同样 `staleTime: 0`、`retry: false` |
 | 设备采样 `deviceStatsQueryOptions()` + `useDeviceStatsSample` | `['device-mirror','device-stats']` | hook 设置 5s `refetchInterval`、`staleTime: 0`、`retry: false`、`refetchOnMount: 'always'` |
 | 预览服务状态词汇 | `['device-mirror','webrtc-status']` | 保留资源 key，当前没有独立 Query 观察者 |
@@ -219,7 +220,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | 作业搜索与预览 | [作业搜索与预览](../frontend/domains/combat.md#搜索与预览)：计划优先、成员回退、会话取消、选段与终态刷新；预览不新建 key |
 | 总览与设备采样 | [总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)：完整提交、失败保旧、刷新协调与设备样本投影 |
 
-自动化活动标签的展示与失败处理见[页面、流程与执行摘要](../frontend/domains/automation.md#页面流程与执行摘要)；活动 key 与 Query 覆盖值统一见第 4 节。
+自动化活动标签的展示与失败处理见[页面、流程与执行摘要](../frontend/domains/automation.md#页面流程与执行摘要)；活动 key 与 Query 覆盖值统一见第 4 节。通知配置读取使用 `notificationConfigQueryOptions()`，保存成功后用 `setQueryData` 写回同一 key，不建立模块级快照。
 
 ## 12. 本层回归入口
 
@@ -229,6 +230,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | `client/src/shared/query/queryKeys.test.ts` | `[domain, resource, ...params]` 形状、同域 key 结构一致 |
 | `client/src/app/providers/QueryProvider.test.tsx` | Provider 重建保留同一缓存、同 key 单次请求与共享缓存、页面卸载/重挂载；Activity 隐藏后观察者注销、新鲜数据复用、超过 staleTime 重取、超过 gcTime 回收后重新加载；文档焦点不重取、重连重取过期资源 |
 | `client/src/app/App.test.tsx` | Activity 保活、隐藏工作区错误边界与恢复 |
+| `client/src/features/automation/components/NotificationSettings.test.tsx` | 通知配置 Query 读取与失败、保存成功后 `setQueryData` 回写、测试通知命令与会话清理 |
 
 基础设施的针对性复现命令（仓库根目录）：
 

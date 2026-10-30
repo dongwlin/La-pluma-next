@@ -23,7 +23,8 @@
 | 页头、全局状态指示与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只调用 `PageHeader`、`FloatingStatusIndicator` 与 `AutomationWorkspace` |
 | 配置订阅、Run 订阅、选中项、撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
 | 流程列表、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；页脚仍是任务挑选菜单的点击区域 |
-| 定时编辑与通知 | `components/AutomationSchedulePanel.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
+| 定时编辑 | `components/AutomationSchedulePanel.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
+| 通知配置读取与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；测试通知仍是显式命令 |
 | 最近执行摘要 | `components/AutomationExecutionSummary.tsx` | 只接只读摘要与 run 身份；负责保留最后一份、展开/收起与失败自动展开 |
 | 拖拽/键盘排序的 React 接线 | `hooks/useTaskFlowSorting.ts` | 预览、pointer 生命周期、Escape、公告；规则仍来自 `model/taskFlowSort.ts` |
 | 当前活动展示 | `hooks/useAutomationActivity.ts` | 读取 `automation/activity` Query；失败只隐藏标签 |
@@ -36,6 +37,7 @@
 
 - 配置 key、pending、本地布局与 wire 形状以[配置持久化协调器](../../architecture/config-persistence.md)
   为准；保持 `/agent/schedules/*`、通知端点和执行协议兼容。
+- 通知配置读取属于 automation Query（`['automation','notification-config']`）；保存成功后写回同一 key，不保留模块级永久缓存，也不把服务端配置复制进第二份可写状态。
 - 不改变任务参数默认值、智能养成参数、执行前校验顺序或执行身份。
 - 遵循既有渲染结构与 DOM/CSS 类名；表单 `id`/`aria-label`、菜单 `id`/`role`、
   焦点顺序与键盘行为保持。没有新增样式，也没有更新视觉基线。
@@ -67,6 +69,7 @@ AutomationTasks（页头 + 全局指示）
 | 拖拽预览、当前拖拽索引、公告 | `useTaskFlowSorting` | 清理 document 监听并丢弃进行中的预览 | 重置 |
 | 摘要保留与详情展开 | `AutomationExecutionSummary` | 保留；恢复时按当前摘要调整 | 重置 |
 | 活动信息 | `automation/activity` Query | 观察者注销，恢复后按新鲜度重取 | 缓存按 `gcTime` 回收 |
+| 通知配置 | `automation/notification-config` Query | 观察者注销，恢复后按新鲜度重取 | 缓存按 `gcTime` 回收 |
 | 菜单开关、外部点击、Escape 回焦 | `AutomationTaskPicker` | 保留；Effect 清理后恢复时重新注册 | 关闭 |
 
 - **配置写入仍然单通道。** 流程、定时和任务编辑都调用工作区的
@@ -165,7 +168,11 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 - 活动名称缺失时回退显示活动 code；无代号但有名称的主线活动仍显示标签，
   但不提供可导航的执行按钮。
 
-### 7. Activity 与兼容约束
+### 7. 通知配置读取与保存
+
+`NotificationSettings` 使用 `notificationConfigQueryOptions()` 读取 `automation/notification-config`（`['automation','notification-config']`），沿用全局默认 `staleTime` 并显式 `retry: false`。保存仍调用既有的 `saveNotificationConfig` 命令；成功后把本次提交快照通过 `setQueryData` 写回同一 key，不再用模块级永久缓存或第二份服务端副本。保存请求不绑定页面 `AbortSignal`，页面隐藏或卸载不会取消已经发出的保存；迟到响应按请求序号裁决。测试通知是独立命令，只中止自己的测试请求。
+
+### 8. Activity 与兼容约束
 
 - **Activity 隐藏/恢复**：流程排序的 document 监听随 Effect 清理并丢弃进行中
   的预览；摘要保留与展开状态保留；活动 Query 观察者注销；配置通道与执行
