@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
@@ -492,6 +492,46 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const autoUpdate = await readSuccess<AutoUpdateStatusPayload>(await fetch(`${baseUrl}/auto-update/status`));
     assert.equal(autoUpdate.data.enabled, false);
     assert.equal(autoUpdate.data.time, null);
+  });
+
+  it('returns parsed operator recognition in a single API envelope', async (t) => {
+    const trainingDataDir = join(fixtureDir, 'recognition-data');
+    process.env.LA_PLUMA_TRAINING_DATA_DIR = trainingDataDir;
+    t.after(() => {
+      delete process.env.LA_PLUMA_TRAINING_DATA_DIR;
+    });
+
+    const maaStateLog = join(xdgStateHome, 'maa', 'debug', 'asst.log');
+    await mkdir(dirname(maaStateLog), { recursive: true });
+    await writeFile(maaStateLog, [
+      '[2026-10-30 10:00:00] {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}]},"what":"OperBoxInfo"}'
+    ].join('\n'), 'utf-8');
+
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+    const response = await postJson(`${baseUrl}/actions/operbox-recognition`, {});
+    assert.equal(response.status, 200);
+
+    // 客户端直接读取 data.operCount/data.data；解析服务已带 envelope，
+    // HTTP 适配不能再套一层，否则前端会一直等到解析超时。
+    const body = await readSuccess<{
+      path: string;
+      operCount: number;
+      data: Array<Record<string, unknown>>;
+    }>(response);
+    assert.equal(body.data.operCount, 1);
+    assert.deepEqual(body.data.data, [{
+      id: 'char_1001_amiya',
+      name: '阿米娅',
+      rarity: 5,
+      elite: 2,
+      level: 90,
+      potential: 6,
+      own: true
+    }]);
+
+    const saved = JSON.parse(await readFile(join(trainingDataDir, 'operbox.json'), 'utf-8'));
+    assert.equal(saved.operCount, 1);
   });
 
   it('keeps connection test and device discovery on the existing ADB contract', async () => {
