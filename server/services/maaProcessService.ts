@@ -117,6 +117,8 @@ export type MaaSpawn = (
 export interface MaaExecFileOptions {
   env?: NodeJS.ProcessEnv;
   maxBuffer?: number;
+  timeout?: number;
+  killSignal?: NodeJS.Signals | number;
 }
 
 export interface MaaExecFileResult {
@@ -148,6 +150,7 @@ export interface MaaProcessPorts {
   cliPath?: string;
   spawn?: MaaSpawn;
   execFile?: MaaExecFile;
+  execFileTimeoutMs?: number;
 }
 
 export interface MaaStopOptions {
@@ -233,11 +236,35 @@ interface MaaTaskState extends MaaTaskStatus {
   forceKillTimer: MaaStopTimer | null;
 }
 
+/** 无任务名的诊断/配置类 execFile 调用统一使用短超时，避免 CLI 卡死拖住请求。 */
+export const MAA_CLI_EXEC_TIMEOUT_MS = 15_000;
+
+/** 给注入的 execFile 端口再套一层超时，端口忽略 timeout 选项时也不会永久 pending。 */
+function withExecFileTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`MAA CLI 命令执行超时（${timeoutMs}ms）`));
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  return Promise.race([operation, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function resolveExecFileTimeout(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : MAA_CLI_EXEC_TIMEOUT_MS;
+}
+
 // 默认进程端口：真实子进程、真实计时器与真实信号发送。测试传入同名键覆盖。
 const defaultProcessPorts: Required<MaaProcessPorts> = Object.freeze({
   cliPath: MAA_CLI_PATH,
   spawn,
-  execFile: execFilePromise
+  execFile: execFilePromise,
+  execFileTimeoutMs: MAA_CLI_EXEC_TIMEOUT_MS
 });
 
 const defaultStopPorts: Required<MaaStopPorts> = Object.freeze({
@@ -457,6 +484,52 @@ function errorStderrOf(error: unknown): string {
   return typeof stderr === 'string' ? stderr : '';
 }
 
+/** 捕获子进程输出时保留的尾部字节数；后台任务再长也不会无界增长。 */
+export const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
+
+/** 结束时写入实时日志的单条输出上限，避免整段缓冲塞进同一个日志条目。 */
+const MAX_COMPLETION_OUTPUT_CHARS = 8 * 1024;
+
+/**
+ * stdout/stderr 的尾部缓冲：只保留最后 MAX_CAPTURED_OUTPUT_BYTES 字节。
+ * 后台执行可能持续很久，直接拼接字符串会让内存随输出线性增长。
+ */
+class CapturedOutputBuffer {
+  private chunks: Buffer[] = [];
+  private size = 0;
+
+  append(chunk: Buffer): void {
+    if (chunk.length === 0) return;
+    this.chunks.push(chunk);
+    this.size += chunk.length;
+    while (this.size > MAX_CAPTURED_OUTPUT_BYTES && this.chunks.length > 0) {
+      const overflow = this.size - MAX_CAPTURED_OUTPUT_BYTES;
+      const first = this.chunks[0];
+      if (first.length <= overflow) {
+        this.chunks.shift();
+        this.size -= first.length;
+      } else {
+        this.chunks[0] = first.subarray(overflow);
+        this.size -= overflow;
+      }
+    }
+  }
+
+  toString(): string {
+    return Buffer.concat(this.chunks).toString('utf-8');
+  }
+}
+
+/** 结束时只记录有上限的尾部输出，不把整个捕获缓冲写成一条日志。 */
+function logCapturedOutput(level: MaaLogLevel, label: string, capture: CapturedOutputBuffer): void {
+  const text = capture.toString().trim();
+  if (!text) return;
+  const truncated = text.length > MAX_COMPLETION_OUTPUT_CHARS
+    ? `…（输出已截断，保留最后 ${MAX_COMPLETION_OUTPUT_CHARS} 字符）\n`
+    : '';
+  addLog(level, `${label}: ${truncated}${text.slice(-MAX_COMPLETION_OUTPUT_CHARS)}`);
+}
+
 interface CommandOutcomeInput {
   code?: number | null;
   signal?: NodeJS.Signals | null;
@@ -476,9 +549,9 @@ function createCommandOutcome({
   error = null,
   childProcess
 }: CommandOutcomeInput): MaaCommandOutcome {
-  const stopped = Boolean(
-    signal || childProcess.killed || (taskStatus.process === childProcess && taskStatus.stopRequested)
-  );
+  // 只有用户/流程明确请求停止时才是 stopped；外部信号（OOM、SIGSEGV、
+  // 被其他进程 kill）属于失败，必须保留退出码与信号信息交给上层诊断。
+  const stopped = taskStatus.process === childProcess && taskStatus.stopRequested;
   const result: MaaCommandResult = {
     stdout: stdout.trim(),
     stderr: stderr.trim(),
@@ -486,8 +559,12 @@ function createCommandOutcome({
     exitCode: code,
     signal: signal || null
   };
-  const failure: MaaCommandError | null = error || (code !== 0 && !stopped
-    ? Object.assign(new Error(`命令执行失败，退出码: ${code}`), {
+  const failedToExitCleanly = code !== 0 || signal !== null;
+  const failureMessage = signal
+    ? `命令执行失败，信号: ${signal}`
+    : `命令执行失败，退出码: ${code}`;
+  const failure: MaaCommandError | null = error || (failedToExitCleanly && !stopped
+    ? Object.assign(new Error(failureMessage), {
         stdout: result.stdout,
         stderr: result.stderr,
         exitCode: code,
@@ -644,13 +721,13 @@ function execMaaCommandWithEnv(
           stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        let stdout = '';
-        let stderr = '';
+        const stdout = new CapturedOutputBuffer();
+        const stderr = new CapturedOutputBuffer();
 
         // 实时捕获输出
         childProcess.stdout.on('data', (data) => {
+          stdout.append(data);
           const text = data.toString();
-          stdout += text;
 
           // 将输出按行分割并添加到日志
           const lines = text.split('\n').filter(line => line.trim());
@@ -660,8 +737,8 @@ function execMaaCommandWithEnv(
         });
 
         childProcess.stderr.on('data', (data) => {
+          stderr.append(data);
           const text = data.toString();
-          stderr += text;
 
           // 将错误输出按行分割并添加到日志
           const lines = text.split('\n').filter(line => line.trim());
@@ -679,8 +756,8 @@ function execMaaCommandWithEnv(
         const settle = (outcome: MaaCommandOutcome): void => {
           if (settled) return;
           settled = true;
-          if (stderr) {
-            addExecutionDiagnostics(stderr);
+          if (stderr.toString()) {
+            addExecutionDiagnostics(stderr.toString());
           }
           clearTaskStatusForProcess(childProcess);
           void onSettled?.(outcome);
@@ -697,16 +774,21 @@ function execMaaCommandWithEnv(
 
         // 在后台继续执行
         childProcess.on('close', (code, signal) => {
+          const stdoutText = stdout.toString();
+          const stderrText = stderr.toString();
           addLog('INFO', `命令执行完成: ${fullCommand}, 退出码: ${code}`);
-          if (stdout.trim()) {
-            addLog('INFO', `stdout: ${stdout.trim()}`);
-          }
-          if (stderr) {
-            addLog('WARN', `stderr: ${stderr.trim()}`);
-          }
+          logCapturedOutput('INFO', 'stdout', stdout);
+          logCapturedOutput('WARN', 'stderr', stderr);
 
-          const outcome = createCommandOutcome({ code, signal, stdout, stderr, command: fullCommand, childProcess });
-          if (code !== 0) {
+          const outcome = createCommandOutcome({
+            code,
+            signal,
+            stdout: stdoutText,
+            stderr: stderrText,
+            command: fullCommand,
+            childProcess
+          });
+          if (!outcome.stopped && (code !== 0 || signal)) {
             addLog('ERROR', `命令执行失败: ${fullCommand}`);
           }
           settle(outcome);
@@ -714,7 +796,13 @@ function execMaaCommandWithEnv(
 
         childProcess.on('error', (error) => {
           addLog('ERROR', `命令执行错误: ${fullCommand} - ${error.message}`);
-          settle(createCommandOutcome({ stdout, stderr, command: fullCommand, error, childProcess }));
+          settle(createCommandOutcome({
+            stdout: stdout.toString(),
+            stderr: stderr.toString(),
+            command: fullCommand,
+            error,
+            childProcess
+          }));
         });
       });
     }
@@ -727,13 +815,13 @@ function execMaaCommandWithEnv(
           stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        let stdout = '';
-        let stderr = '';
+        const stdout = new CapturedOutputBuffer();
+        const stderr = new CapturedOutputBuffer();
 
         // 实时捕获输出
         childProcess.stdout.on('data', (data) => {
+          stdout.append(data);
           const text = data.toString();
-          stdout += text;
 
           const lines = text.split('\n').filter(line => line.trim());
           lines.forEach(line => {
@@ -742,8 +830,8 @@ function execMaaCommandWithEnv(
         });
 
         childProcess.stderr.on('data', (data) => {
+          stderr.append(data);
           const text = data.toString();
-          stderr += text;
 
           const lines = text.split('\n').filter(line => line.trim());
           lines.forEach(line => {
@@ -767,39 +855,52 @@ function execMaaCommandWithEnv(
 
         // 等待命令完成
         childProcess.on('close', (code, signal) => {
-          const outcome = createCommandOutcome({ code, signal, stdout, stderr, command: fullCommand, childProcess });
+          const stdoutText = stdout.toString();
+          const stderrText = stderr.toString();
+          const outcome = createCommandOutcome({
+            code,
+            signal,
+            stdout: stdoutText,
+            stderr: stderrText,
+            command: fullCommand,
+            childProcess
+          });
           if (!settle(outcome)) return;
           addLog('INFO', `命令执行完成: ${fullCommand}, 退出码: ${code}`);
-          if (stdout.trim()) {
-            addLog('INFO', `stdout: ${stdout.trim()}`);
-          }
-          if (stderr) {
-            addExecutionDiagnostics(stderr);
-            addLog('WARN', `stderr: ${stderr.trim()}`);
+          logCapturedOutput('INFO', 'stdout', stdout);
+          if (stderrText) {
+            addExecutionDiagnostics(stderrText);
+            logCapturedOutput('WARN', 'stderr', stderr);
           }
 
           if (!outcome.ok) {
             addLog('ERROR', `命令执行失败: ${fullCommand}`);
-            const diagnostic = getMaaExecutionDiagnostics(stderr)[0];
+            const diagnostic = getMaaExecutionDiagnostics(stderrText)[0];
             const commandError: MaaCommandError = outcome.error || new Error(diagnostic?.message || '任务已终止');
             if (diagnostic && !outcome.stopped) commandError.message = diagnostic.message;
-            commandError.stdout = stdout.trim();
-            commandError.stderr = stderr.trim();
+            commandError.stdout = stdoutText.trim();
+            commandError.stderr = stderrText.trim();
             commandError.exitCode = code;
             commandError.signal = signal || null;
             commandError.stopped = outcome.stopped;
             reject(commandError);
           } else {
             resolve({
-              stdout: stdout.trim(),
-              stderr: stderr.trim(),
+              stdout: stdoutText.trim(),
+              stderr: stderrText.trim(),
               command: fullCommand
             });
           }
         });
 
         childProcess.on('error', (error) => {
-          const outcome = createCommandOutcome({ stdout, stderr, command: fullCommand, error, childProcess });
+          const outcome = createCommandOutcome({
+            stdout: stdout.toString(),
+            stderr: stderr.toString(),
+            command: fullCommand,
+            error,
+            childProcess
+          });
           if (!settle(outcome)) return;
           addLog('ERROR', `命令执行错误: ${fullCommand} - ${error.message}`);
           reject(error);
@@ -808,11 +909,17 @@ function execMaaCommandWithEnv(
     }
     // 没有任务名称，使用同步执行（用于配置查询等操作）
     else {
+      const execFileTimeoutMs = resolveExecFileTimeout(processPorts.execFileTimeoutMs);
       try {
-        const { stdout, stderr } = await processPorts.execFile(processPorts.cliPath, [command, ...finalArgs], {
-          env,
-          maxBuffer: 10 * 1024 * 1024
-        });
+        const { stdout, stderr } = await withExecFileTimeout(
+          processPorts.execFile(processPorts.cliPath, [command, ...finalArgs], {
+            env,
+            maxBuffer: 10 * 1024 * 1024,
+            timeout: execFileTimeoutMs,
+            killSignal: 'SIGKILL'
+          }),
+          execFileTimeoutMs
+        );
 
         return {
           stdout: stdout.trim(),
