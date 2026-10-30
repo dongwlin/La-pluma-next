@@ -81,7 +81,7 @@ pnpm dev:server  # 后端: http://localhost:3000
 
 #### 4. 访问应用
 
-打开浏览器访问 http://localhost:5173
+打开浏览器访问 [http://localhost:5173](http://localhost:5173)
 
 ### 方式 2: Docker 部署
 
@@ -105,7 +105,7 @@ docker run -d \
 
 `LA_PLUMA_TOKEN` 是必配项，用于保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。上面的端口映射只监听本机回环地址；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
 
-浏览器打开 http://localhost:3055。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
+浏览器打开 [http://localhost:3055](http://localhost:3055)。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
 
 ## ⚙️ 基础配置
 
