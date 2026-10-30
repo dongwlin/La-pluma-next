@@ -81,3 +81,74 @@ test('update, discovery, and remote copilot commands retain normal network/cache
     assert.equal(await prepareMaaTaskCache(command, { cliPath: '/missing/maa' }), null, command);
   }
 });
+
+test('resolves the cache directory once and merges concurrent lookups', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'la-pluma-cache-dir-'));
+  const cliPath = join(root, 'fake-maa-cli.js');
+  const callLog = join(root, 'calls.log');
+  const cacheDir = join(root, 'cache');
+  const taskCaches: MaaTaskCache[] = [];
+  try {
+    await mkdir(cacheDir);
+    const script = `#!${process.execPath}
+const fs = require('node:fs');
+fs.appendFileSync(${JSON.stringify(callLog)}, 'dir cache\\n');
+process.stdout.write(${JSON.stringify(cacheDir)});
+`;
+    await writeFile(cliPath, script, { mode: 0o755 });
+
+    const pending = await Promise.all([
+      prepareMaaTaskCache('fight', { cliPath }),
+      prepareMaaTaskCache('run', { cliPath }),
+      prepareMaaTaskCache('fight', { cliPath })
+    ]);
+    for (const taskCache of pending) {
+      assert.ok(taskCache);
+      taskCaches.push(taskCache);
+    }
+
+    const calls = (await readFile(callLog, 'utf-8')).split('\n').filter(Boolean);
+    assert.equal(calls.length, 1);
+
+    const later = await prepareMaaTaskCache('fight', { cliPath });
+    assert.ok(later);
+    taskCaches.push(later);
+    assert.equal((await readFile(callLog, 'utf-8')).split('\n').filter(Boolean).length, 1);
+  } finally {
+    for (const taskCache of taskCaches) await taskCache.cleanup();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('caches cache directory lookup failures for a cooldown and then retries', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  const root = await mkdtemp(join(tmpdir(), 'la-pluma-cache-dir-failure-'));
+  const cliPath = join(root, 'fake-maa-cli.js');
+  const callLog = join(root, 'calls.log');
+  const cacheDir = join(root, 'cache');
+  const readyMarker = join(root, 'ready');
+  let taskCache: MaaTaskCache | null = null;
+  try {
+    await mkdir(cacheDir);
+    const script = `#!${process.execPath}
+const fs = require('node:fs');
+fs.appendFileSync(${JSON.stringify(callLog)}, 'dir cache\\n');
+if (!fs.existsSync(${JSON.stringify(readyMarker)})) process.exit(1);
+process.stdout.write(${JSON.stringify(cacheDir)});
+`;
+    await writeFile(cliPath, script, { mode: 0o755 });
+
+    await assert.rejects(prepareMaaTaskCache('fight', { cliPath }));
+    await assert.rejects(prepareMaaTaskCache('fight', { cliPath }));
+    assert.equal((await readFile(callLog, 'utf-8')).split('\n').filter(Boolean).length, 1);
+
+    t.mock.timers.tick(30_001);
+    await writeFile(readyMarker, '1');
+    taskCache = await prepareMaaTaskCache('fight', { cliPath });
+    assert.ok(taskCache);
+    assert.equal((await readFile(callLog, 'utf-8')).split('\n').filter(Boolean).length, 2);
+  } finally {
+    await taskCache?.cleanup();
+    await rm(root, { recursive: true, force: true });
+  }
+});

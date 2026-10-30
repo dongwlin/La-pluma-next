@@ -11,7 +11,7 @@ import { execMaaCommandUnlocked } from './maaProcessService.ts';
  *
  * - 目录与 profile 路径都由 `maa dir config` 解析，名称经同一白名单校验，
  *   拒绝路径穿越。目录在一次进程生命周期内不变，首次查询后按进程缓存；
- *   并发调用共享同一次 CLI 查询，查询失败不缓存，下一次调用重新尝试。
+ *   并发调用共享同一次 CLI 查询，查询失败在短冷却期内复用同一个错误。
  * - 同一 profile 的读取、合并与写入在同一排队单元内完成；TOML 内容按文本
  *   原子替换，解析或写入失败时不写回，已有配置保持原样（与既有原子写契约
  *   一致）。
@@ -47,18 +47,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *
  * 配置目录由进程环境决定，一次进程生命周期内不会变化；设备采样等轮询接口
  * 会反复解析连接，没有缓存时每次轮询都会启动一次 CLI。这里保存进行中的
- * 查询本身，让并发请求共享同一次调用；失败时清空缓存，下一次调用重试。
+ * 查询本身，让并发请求共享同一次调用；成功结果按进程缓存。
+ *
+ * 查询失败时清空进行中的 Promise，并在短冷却期内直接返回同一个错误，
+ * 避免 CLI 故障时每 5 秒重新 spawn；冷却结束后的下一次调用重新尝试。
  */
+const CONFIG_DIR_FAILURE_TTL_MS = 30_000;
+
 let configDirPromise: Promise<string> | null = null;
+let configDirFailure: { error: unknown; at: number } | null = null;
 
 /**
  * 获取 MAA 配置目录
  */
 export function getMaaConfigDir(): Promise<string> {
+  const now = Date.now();
+  if (configDirFailure) {
+    if (now - configDirFailure.at < CONFIG_DIR_FAILURE_TTL_MS) {
+      return Promise.reject(configDirFailure.error);
+    }
+    configDirFailure = null;
+  }
   if (!configDirPromise) {
-    configDirPromise = execMaaCommandUnlocked('dir', ['config'])
+    // 目录查询是诊断类短命令：静默执行，避免故障期间每次重试都写一条执行日志。
+    configDirPromise = execMaaCommandUnlocked('dir', ['config'], null, null, false, true)
       .then(result => result.stdout)
       .catch(error => {
+        configDirFailure = { error, at: Date.now() };
         configDirPromise = null;
         throw error;
       });

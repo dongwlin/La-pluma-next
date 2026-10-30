@@ -9,10 +9,18 @@ import {
   execMaaCommandUnlocked,
   getRealtimeLogs,
   getTaskStatus,
+  MAA_CLI_EXEC_TIMEOUT_MS,
+  MAX_CAPTURED_OUTPUT_BYTES,
   setTaskStatus,
   stopCurrentTask
 } from '../maaProcessService.ts';
-import type { MaaChildProcess, MaaCommandOutcome, MaaProcessStarted } from '../maaProcessService.ts';
+import type {
+  MaaChildProcess,
+  MaaCommandError,
+  MaaCommandOutcome,
+  MaaExecFileOptions,
+  MaaProcessStarted
+} from '../maaProcessService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from '../maaLogFileService.ts';
 import type { MaaLogFileHandle } from '../maaLogFileService.ts';
 import { loggerManager } from '../../utils/logger.ts';
@@ -181,6 +189,135 @@ describe('MAA CLI process ports', () => {
     assert.deepEqual(result, { success: true, message: '已发送终止请求' });
     assert.deepEqual(signals, [`${child.pid}:SIGTERM`]);
     setTaskStatus(false);
+  });
+
+  it('times out an injected execFile port that never settles', async () => {
+    const startedAt = Date.now();
+    await assert.rejects(
+      execMaaCommandUnlocked('version', [], null, null, false, true, null, {}, {
+        cliPath: '/virtual/maa',
+        execFileTimeoutMs: 25,
+        execFile: () => new Promise(() => {})
+      }),
+      /MAA CLI 命令执行超时/
+    );
+    // 端口本身不会自己结束；超时包装必须让调用方拿到拒绝并释放等待。
+    assert.ok(Date.now() - startedAt < 1_000);
+  });
+
+  it('passes the exec timeout and kill signal to the execFile port', async () => {
+    let resolveOptions: (options: MaaExecFileOptions) => void = () => {};
+    const optionsReceived = new Promise<MaaExecFileOptions>(resolve => {
+      resolveOptions = resolve;
+    });
+    const result = await execMaaCommandUnlocked('version', [], null, null, false, true, null, {}, {
+      cliPath: '/virtual/maa',
+      execFile: async (_file, _args, options) => {
+        resolveOptions(options);
+        return { stdout: 'ok', stderr: '' };
+      }
+    });
+
+    assert.equal(result.stdout, 'ok');
+    const receivedOptions = await optionsReceived;
+    assert.equal(receivedOptions.timeout, MAA_CLI_EXEC_TIMEOUT_MS);
+    assert.equal(receivedOptions.killSignal, 'SIGKILL');
+  });
+
+  it('treats an externally signalled background exit as a failure, not a stop', async () => {
+    const child = createFakeChild();
+    let resolveOutcome: (outcome: MaaCommandOutcome) => void = () => {};
+    const settled = new Promise<MaaCommandOutcome>(resolve => {
+      resolveOutcome = resolve;
+    });
+
+    await execMaaCommandUnlocked(
+      'version', [], '外部信号', 'diagnostics', false, true, resolveOutcome, {},
+      { cliPath: '/virtual/maa', spawn: () => child }
+    );
+    child.stdout.emit('data', Buffer.from('before crash\n'));
+    child.emit('close', null, 'SIGSEGV');
+
+    const outcome = await settled;
+    assert.equal(outcome.stopped, false);
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.result.exitCode, null);
+    assert.equal(outcome.result.signal, 'SIGSEGV');
+    assert.match(outcome.error?.message ?? '', /信号: SIGSEGV/);
+  });
+
+  it('marks a process stopped only after an explicit stop request', async () => {
+    const child = createFakeChild();
+    let resolveOutcome: (outcome: MaaCommandOutcome) => void = () => {};
+    const settled = new Promise<MaaCommandOutcome>(resolve => {
+      resolveOutcome = resolve;
+    });
+
+    await execMaaCommandUnlocked(
+      'version', [], '停止判定', 'diagnostics', false, true, resolveOutcome, {},
+      { cliPath: '/virtual/maa', spawn: () => child }
+    );
+    const stopResult = stopCurrentTask({}, {
+      platform: 'win32',
+      killChild: () => {},
+      setTimeout: () => ({ unref() {} })
+    });
+    assert.equal(stopResult.success, true);
+
+    child.emit('close', null, 'SIGTERM');
+    const outcome = await settled;
+    assert.equal(outcome.stopped, true);
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.result.signal, 'SIGTERM');
+  });
+
+  it('keeps a bounded tail of background output and logs it in bounded entries', async () => {
+    const child = createFakeChild();
+    let resolveOutcome: (outcome: MaaCommandOutcome) => void = () => {};
+    const settled = new Promise<MaaCommandOutcome>(resolve => {
+      resolveOutcome = resolve;
+    });
+
+    clearRealtimeLogs();
+    await execMaaCommandUnlocked(
+      'version', [], '输出上限', 'diagnostics', false, true, resolveOutcome, {},
+      { cliPath: '/virtual/maa', spawn: () => child }
+    );
+
+    const line = `${'x'.repeat(1023)}\n`;
+    for (let index = 0; index < 400; index += 1) {
+      child.stdout.emit('data', Buffer.from(line));
+    }
+    child.stdout.emit('data', Buffer.from('TAIL-MARKER\n'));
+    child.emit('close', 0, null);
+
+    const outcome = await settled;
+    assert.equal(outcome.ok, true);
+    assert.ok(Buffer.byteLength(outcome.result.stdout, 'utf-8') <= MAX_CAPTURED_OUTPUT_BYTES);
+    assert.ok(outcome.result.stdout.endsWith('TAIL-MARKER'));
+
+    const messages = getRealtimeLogs(5000).map(entry => entry.message);
+    assert.ok(messages.some(message => message.includes('stdout:') && message.includes('TAIL-MARKER')));
+    assert.ok(messages.every(message => message.length <= 9 * 1024));
+  });
+
+  it('rejects a foreground command killed by an external signal with signal metadata', async () => {
+    const child = createFakeChild();
+    const execution = execMaaCommandUnlocked(
+      'version', [], '前台信号', 'diagnostics', true, true, null, {},
+      { cliPath: '/virtual/maa', spawn: () => child }
+    );
+
+    // 端口在 prepareMaaTaskCache 之后才注册 close 监听，等一个宏任务再触发退出。
+    await new Promise<void>(resolve => setImmediate(resolve));
+    child.emit('close', null, 'SIGKILL');
+    await assert.rejects(execution, error => {
+      const commandError = error as MaaCommandError;
+      assert.equal(commandError.stopped, false);
+      assert.equal(commandError.exitCode, null);
+      assert.equal(commandError.signal, 'SIGKILL');
+      return true;
+    });
   });
 });
 
