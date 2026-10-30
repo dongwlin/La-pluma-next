@@ -177,6 +177,8 @@ const taskFlowFixture = [
 const flush = async () => {
   await act(async () => {
     for (let index = 0; index < 8; index += 1) await Promise.resolve()
+    // 本地草稿写入按 250ms 去抖；等待最后一次编辑落盘后再断言 localStorage。
+    await new Promise(resolve => setTimeout(resolve, 260))
   })
 }
 

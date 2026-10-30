@@ -46,6 +46,11 @@ export function useUserConfig<TDraft, TWire>(
     void channel.hydrate()
   }, [autoHydrate, channel])
 
+  useEffect(() => () => {
+    // Activity 隐藏或页面真正卸载都会清理 Effects：把去抖中的本地草稿立即落盘。
+    channel.flushLocalDraft()
+  }, [channel])
+
   return {
     ...state,
     channel,

@@ -42,8 +42,13 @@ export const AUTOMATION_CONFIG_PENDING_KEY = USER_CONFIG_PENDING_KEYS[USER_CONFI
 /** 本地草稿键，保持迁移前的键名与布局。 */
 export const AUTOMATION_TASK_FLOW_KEY = 'maa-task-flow'
 export const AUTOMATION_SCHEDULE_KEY = 'maa-schedule'
-/** 与迁移前一致：每次编辑立即入队，不做去抖。 */
-export const AUTOMATION_CONFIG_COMMIT_DELAY_MS = 0
+/** 编辑到完整提交的去抖；与 combat/roguelike 的 300ms 策略一致。 */
+export const AUTOMATION_CONFIG_COMMIT_DELAY_MS = 300
+/**
+ * 本地草稿写入去抖：task flow 与 schedule 两份 JSON 的序列化与 setItem
+ * 在连续输入时成本明显，只写最后一次编辑。
+ */
+export const AUTOMATION_LOCAL_WRITE_DELAY_MS = 250
 
 const FALLBACK_ERROR_MESSAGE = '暂时无法连接服务器'
 
@@ -370,6 +375,7 @@ export const automationConfigAdapter: ConfigPersistenceAdapter<
   key: AUTOMATION_CONFIG_KEY,
   pendingKey: AUTOMATION_CONFIG_PENDING_KEY,
   commitDelayMs: AUTOMATION_CONFIG_COMMIT_DELAY_MS,
+  localWriteDelayMs: AUTOMATION_LOCAL_WRITE_DELAY_MS,
 
   encodeDraft(draft) {
     const wire = toAutomationWire(draft)
