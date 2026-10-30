@@ -92,14 +92,33 @@ export interface MaaPathPolicy {
 
 /**
  * 获取 MAA 日志目录
+ *
+ * 目录由进程环境决定，一次进程生命周期内不变；`/logs/files`、检查点与
+ * 增量读取共享同一次 CLI 查询。失败在短冷却期内复用同一个错误。
  */
+let logDirPromise: Promise<string> | null = null;
+let logDirFailure: { error: unknown; at: number } | null = null;
+
+/** 日志目录查询失败后的冷却时间，避免 CLI 故障时每次读取都重新 spawn。 */
+const LOG_DIR_FAILURE_TTL_MS = 30_000;
+
 async function getMaaLogDir(): Promise<string> {
-  try {
-    const result = await execMaaCommandUnlocked('dir', ['log'], null, null, false, true);
-    return result.stdout.trim();
-  } catch (error) {
-    throw new Error(`获取日志目录失败: ${error instanceof Error ? error.message : String(error)}`);
+  const now = Date.now();
+  if (logDirFailure) {
+    if (now - logDirFailure.at < LOG_DIR_FAILURE_TTL_MS) throw logDirFailure.error;
+    logDirFailure = null;
   }
+  if (!logDirPromise) {
+    logDirPromise = execMaaCommandUnlocked('dir', ['log'], null, null, false, true)
+      .then(result => result.stdout.trim())
+      .catch(error => {
+        const wrapped = new Error(`获取日志目录失败: ${error instanceof Error ? error.message : String(error)}`);
+        logDirFailure = { error: wrapped, at: Date.now() };
+        logDirPromise = null;
+        throw wrapped;
+      });
+  }
+  return logDirPromise;
 }
 
 async function collectMaaLogFiles(logDir: string): Promise<MaaLogFileEntry[]> {
