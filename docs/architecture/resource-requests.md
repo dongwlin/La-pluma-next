@@ -13,7 +13,7 @@
 | 响应信封解析、旧格式兼容 | `shared/api/apiResponse.ts` | 只读请求的失败归类 |
 | Query 缓存、失效、重试 | [Query 缓存与键规范](query-cache.md) | 本契约不引入 Query |
 
-本契约只覆盖**只读资源读取**：`GET` 端点，以及返回资源快照的读取函数。执行命令、停止、配置提交、通知配置读写、截图等 `POST`/`PUT`/`DELETE` 不在范围内。运行快照（`runs/current`、按 `runId` 查询）由执行控制器观察，`tasks/status` 由 runtime-status 健康探针读取；它们各有 signal 与观察处理，不按普通资源迁移。
+本契约只覆盖**只读资源读取**：`GET` 端点，以及返回资源快照的读取函数。执行命令、停止、配置提交、通知配置保存、截图等 `POST`/`PUT`/`DELETE` 不在范围内。运行快照（`runs/current`、按 `runId` 查询）由执行控制器观察，`tasks/status` 由 runtime-status 健康探针读取；它们各有 signal 与观察处理，不按普通资源迁移。
 
 ## 2. 两层入口
 
@@ -155,8 +155,9 @@ const depot = unwrapApiResponse(result)
 
 - 运行快照与按 `runId` 查询归执行控制器，`tasks/status` 归健康探针读取；已有 signal，不建立 Query 缓存。
 - `loadUserConfig` / `saveUserConfig`：配置协调器通道已有 signal 与适配器 `decodeDraft` 校验，配置草稿也不是普通资源缓存。
-- `features/automation/components/NotificationSettings.tsx` 自持通知配置草稿、保存与测试，不进入 Query，也不与 task flow/schedule 配置作为同一提交单元。
 - 所有 `POST`/`PUT`/`DELETE` 命令与截图：不属于只读资源。
+
+通知配置是 automation 域的只读资源：`features/automation/components/NotificationSettings.tsx` 读取 `automation/notification-config` Query；组件只保留编辑草稿，保存成功后用 `setQueryData` 回写同一 key。测试通知仍是显式命令，不与 task flow/schedule 配置作为同一提交单元。
 
 ## 6. 旧消费者兼容
 

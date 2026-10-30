@@ -11,11 +11,10 @@
  */
 
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import { createHash } from 'node:crypto';
 import { readJsonFile, writeJsonFile, updateJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
+import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import {
   DEFAULT_TRAINING_SETTINGS,
   isRecord,
@@ -37,14 +36,12 @@ import type {
   TrainingSettings
 } from './operatorTrainingModel.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // 创建日志记录器
 const logger = createLogger('OperatorTraining');
 
-// 配置文件路径
-const DATA_DIRECTORY = process.env.LA_PLUMA_TRAINING_DATA_DIR || path.join(__dirname, '../data');
+// 配置文件路径：与抓取脚本共用运行配置入口，默认 server/data，
+// 可由 LA_PLUMA_TRAINING_DATA_DIR 重定向。
+const DATA_DIRECTORY = resolveAppPaths().trainingDataDir;
 const TRAINING_QUEUE_PATH = path.join(DATA_DIRECTORY, 'user-configs/training-queue.json');
 const COMBAT_TASKS_PATH = path.join(DATA_DIRECTORY, 'user-configs/automation-tasks.json');
 const OPERATOR_MATERIALS_PATH = path.join(DATA_DIRECTORY, 'operator-materials.json');

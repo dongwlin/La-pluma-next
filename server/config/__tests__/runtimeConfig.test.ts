@@ -114,16 +114,16 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.tempResourceDir, join(serverRoot, '.temp-maa-resource'));
   });
 
-  it('names the built-in and parsed data files inside the data directory', () => {
+  it('names reference and training data files inside the training data directory', () => {
     const paths = resolveAppPaths({ env: {} });
 
-    assert.equal(paths.materialsPath, join(paths.appDataDir, 'materials.json'));
-    assert.equal(paths.materialFormulasPath, join(paths.appDataDir, 'material-formulas.json'));
-    assert.equal(paths.operatorMaterialsPath, join(paths.appDataDir, 'operator-materials.json'));
+    assert.equal(paths.materialsPath, join(paths.trainingDataDir, 'materials.json'));
+    assert.equal(paths.materialFormulasPath, join(paths.trainingDataDir, 'material-formulas.json'));
+    assert.equal(paths.operatorMaterialsPath, join(paths.trainingDataDir, 'operator-materials.json'));
     assert.equal(paths.operatorQuotesPath, join(paths.appDataDir, 'operatorQuotes.json'));
-    assert.equal(paths.penguinDropDataPath, join(paths.appDataDir, 'penguin-drop-data.json'));
-    assert.equal(paths.depotPath, join(paths.appDataDir, 'depot.json'));
-    assert.equal(paths.operboxPath, join(paths.appDataDir, 'operbox.json'));
+    assert.equal(paths.penguinDropDataPath, join(paths.trainingDataDir, 'penguin-drop-data.json'));
+    assert.equal(paths.depotPath, join(paths.trainingDataDir, 'depot.json'));
+    assert.equal(paths.operboxPath, join(paths.trainingDataDir, 'operbox.json'));
   });
 
   it('honors the existing LA_PLUMA_* override variables and empty-value fallbacks', () => {
@@ -140,8 +140,14 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.dropRecordsDir, '/custom/drop-records');
     assert.equal(paths.executionLockPath, '/custom/maa.lock');
     assert.equal(paths.trainingDataDir, '/custom/training');
+    assert.equal(paths.materialsPath, '/custom/training/materials.json');
+    assert.equal(paths.operatorMaterialsPath, '/custom/training/operator-materials.json');
+    assert.equal(paths.penguinDropDataPath, '/custom/training/penguin-drop-data.json');
+    assert.equal(paths.depotPath, '/custom/training/depot.json');
+    assert.equal(paths.operboxPath, '/custom/training/operbox.json');
     // 其余类别不受影响
     assert.equal(paths.userConfigsDir, join(paths.appDataDir, 'user-configs'));
+    assert.equal(paths.operatorQuotesPath, join(paths.appDataDir, 'operatorQuotes.json'));
 
     const emptyOverrides = resolveAppPaths({
       env: {

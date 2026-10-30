@@ -15,8 +15,6 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   errorMessage,
   expectArray,
@@ -26,10 +24,9 @@ import {
   isDirectExecution,
   optionalArray,
   optionalRecord,
-  optionalString
+  optionalString,
+  resolveTrainingDataPath
 } from './scriptSupport.ts';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PENGUIN_API_BASE = 'https://penguin-stats.io/PenguinStats/api/v2';
 const SERVER = 'CN';
@@ -38,7 +35,7 @@ const MATRIX_SOURCE = 'PenguinStats/result/matrix';
 const ZONE_SOURCE = 'PenguinStats/zones';
 
 /** 输出目标：penguin-drop-data.json。 */
-export const OUTPUT_PATH = join(__dirname, '../data/penguin-drop-data.json');
+export const OUTPUT_PATH = resolveTrainingDataPath('penguin-drop-data.json');
 
 const REQUEST_HEADERS: Record<string, string> = {
   'User-Agent': 'LaPlumaNext/1.0 (https://github.com/dongwlin/La-pluma-next)',

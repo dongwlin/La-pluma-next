@@ -190,12 +190,11 @@ describe('Agent API contract registry', () => {
     assert.equal(prop(must(byId.get('stop_task'), 'stop_task').body_schema, 'runId', 'stop_task body').format, 'uuid');
   });
 
-  it('advertises restart-safe local idempotency for exactly five execution actions', () => {
+  it('advertises restart-safe local idempotency for exactly four execution actions', () => {
     const manifest = buildAgentManifest(defaults);
     const runActions = manifest.actions.filter(item => item.execution.producesRun);
 
     assert.deepEqual(runActions.map(item => item.id), [
-      'run_current_activity_copilots',
       'start_game',
       'fight',
       'run_task',
@@ -232,6 +231,15 @@ describe('Agent API contract registry', () => {
       ).appliesWhen,
       { dryRun: false }
     );
+
+    // 活动作业入口始终同步返回，不能声明 202/接受响应。
+    const activityRun = findAction(manifest, 'run_current_activity_copilots');
+    assert.equal(activityRun.execution.producesRun, undefined);
+    const activityOperation = must(
+      getOpenApiOperation(buildOpenApiSpec(defaults), activityRun),
+      'run_current_activity_copilots OpenAPI operation'
+    );
+    assert.equal(activityOperation.responses['202'], undefined);
   });
 
   // 领域 router 以子 router 挂载在 agent router 上；这里遍历实际挂载关系，

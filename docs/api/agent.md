@@ -62,7 +62,24 @@ curl -X POST http://localhost:3000/api/agent/actions/run-daily-flow \
   -H 'Idempotency-Key: daily-flow-20260712-02' \
   -d '{"dryRun":false,"waitForCompletion":false}'
 
-# Web UI 使用的同步入口；同样支持 waitForCompletion=false
+# 轮询运行快照：当前 run、全部活动意图、最近终态与设备占用
+curl 'http://localhost:3000/api/agent/runs/current?lines=80'
+
+# 按启动响应中的 runId 查询本次执行，即使任务已经结束仍可读取终态
+curl 'http://localhost:3000/api/agent/runs/00000000-0000-4000-8000-000000000000'
+
+# 只终止指定 run，避免误停随后启动的其它任务；也可使用响应里的 stopUrl/links.stop
+curl -X POST http://localhost:3000/api/agent/actions/stop \
+  -H 'Content-Type: application/json' \
+  -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
+```
+
+### Web UI 专用端点（不在 Agent manifest）
+
+以下端点由 Web UI 使用，未在 `AGENT_OPERATIONS` 中注册，也不会出现在 manifest/OpenAPI 中；Agent 应使用上面的 manifest 动作，而不是依赖这些入口：
+
+```bash
+# 日常流程：Web UI 手动触发；默认同步，支持 waitForCompletion=false
 curl -X POST http://localhost:3000/api/agent/schedules/manual/execute \
   -H 'Content-Type: application/json' \
   -d '{"taskFlow":[...]}'
@@ -82,22 +99,11 @@ curl -X POST http://localhost:3000/api/agent/copilot-sets/12345/execute \
 curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
   -H 'Content-Type: application/json' \
   -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
-
-# 轮询运行快照：当前 run、全部活动意图、最近终态与设备占用
-curl 'http://localhost:3000/api/agent/runs/current?lines=80'
-
-# 按启动响应中的 runId 查询本次执行，即使任务已经结束仍可读取终态
-curl 'http://localhost:3000/api/agent/runs/00000000-0000-4000-8000-000000000000'
-
-# 只终止指定 run，避免误停随后启动的其它任务；也可使用响应里的 stopUrl/links.stop
-curl -X POST http://localhost:3000/api/agent/actions/stop \
-  -H 'Content-Type: application/json' \
-  -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
 ```
 
-所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。API 错误经过统一错误出口：`/api` 下未匹配的路径返回 404 `AGENT_ROUTE_NOT_FOUND`；无法解析的 JSON 请求体返回 400 `AGENT_REQUEST_BODY_INVALID`，超过大小限制返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`，字符集不支持返回 415 `AGENT_REQUEST_CHARSET_UNSUPPORTED`；路径参数解码失败返回 400 `AGENT_REQUEST_PATH_INVALID`；用户配置写接口（`POST /api/agent/config/user/{configType}` 与 `POST /api/agent/notifications/config`）的请求体必须是 JSON 对象，其他顶层类型返回 400 `AGENT_CONFIG_DATA_INVALID`。错误状态限制在 400–599；携带业务状态的错误保留其公开 `code`、`message`、`details` 与 `retryable`，`retryable` 只来自错误本身，不按 5xx 推导；未知内部错误统一返回 500 `AGENT_INTERNAL_ERROR`，不泄露内部 message、details 或堆栈。错误响应与错误日志不回显请求查询串。日常流程的 Agent 入口和 `/api/agent/schedules/{scheduleId}/execute` 共用 `run_daily_flow`：默认同步等待整个流程；传 `waitForCompletion=false` 时在流程获得执行租约后返回 202，并在 `data` 中给出 `accepted: true`、`scheduleId`、`totalSteps` 和 `runId`。旧同步响应字段保持不变。执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。API 错误经过统一错误出口：`/api` 下未匹配的路径返回 404 `AGENT_ROUTE_NOT_FOUND`；无法解析的 JSON 请求体返回 400 `AGENT_REQUEST_BODY_INVALID`，超过大小限制返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`，字符集不支持返回 415 `AGENT_REQUEST_CHARSET_UNSUPPORTED`；路径参数解码失败返回 400 `AGENT_REQUEST_PATH_INVALID`；用户配置写接口（`POST /api/agent/config/user/{configType}` 与 `POST /api/agent/notifications/config`）的请求体必须是 JSON 对象，其他顶层类型返回 400 `AGENT_CONFIG_DATA_INVALID`。错误状态限制在 400–599；携带业务状态的错误保留其公开 `code`、`message`、`details` 与 `retryable`，`retryable` 只来自错误本身，不按 5xx 推导；未知内部错误统一返回 500 `AGENT_INTERNAL_ERROR`，不泄露内部 message、details 或堆栈。错误响应与错误日志不回显请求查询串。日常流程的 Agent 入口是 `POST /api/agent/actions/run-daily-flow`；Web UI 另使用未在 manifest 中广告的 `/api/agent/schedules/{scheduleId}/execute`，两者共用 `run_daily_flow`：默认同步等待整个流程；传 `waitForCompletion=false` 时在流程获得执行租约后返回 202，并在 `data` 中给出 `accepted: true`、`scheduleId`、`totalSteps` 和 `runId`。旧同步响应字段保持不变。`POST /api/agent/activity/run`（`run_current_activity_copilots`）始终同步执行，不支持 `waitForCompletion`，也不会返回 202；其 manifest/OpenAPI 声明不包含后台接受响应。执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
-作业集入口 `/api/agent/copilot-sets/{setId}/execute` 使用 `run_copilot_set`。`mode` 可取 `continuous`（默认，旧 `app`/`cli` 也映射到这里）或 `manual`。`continuous` 默认同步返回旧字段并新增 `runId`、`run`、`mode`、`summary`；`waitForCompletion=false` 在取得执行租约后返回 202。`manual` 只执行第一个待办条目然后返回 `waitingForNext: true`、`nextEntry` 与逐项 `summary`，run 进入 `waiting`；等待期间不持有设备租约，其他执行可以占用设备。调用 `POST /api/agent/actions/continue-copilot-set` 携带该 `runId` 执行下一项；如果设备被占用，返回可重试的 409 `MAA_EXECUTION_BUSY` 且不消耗条目。`waiting` 的 run 可以用同一个 stop 接口停止：直接转为 `stopped`，不发送设备命令，未开始条目保持 `pending`。逐项状态为 `pending`/`running`/`success`/`failed`/`stopped`，失败汇总在 `summary.failedCount` 与 `summary.errors` 中。集合会话只在服务端进程内保存，服务重启后活动集合 run 转为 `interrupted`，不会自动续跑。
+作业集入口 `/api/agent/copilot-sets/{setId}/execute` 由 Web UI 使用，未在 Agent manifest 中广告；它使用 `run_copilot_set`。`mode` 可取 `continuous`（默认，旧 `app`/`cli` 也映射到这里）或 `manual`。`continuous` 默认同步返回旧字段并新增 `runId`、`run`、`mode`、`summary`；`waitForCompletion=false` 在取得执行租约后返回 202。`manual` 只执行第一个待办条目然后返回 `waitingForNext: true`、`nextEntry` 与逐项 `summary`，run 进入 `waiting`；等待期间不持有设备租约，其他执行可以占用设备。调用 `POST /api/agent/actions/continue-copilot-set` 携带该 `runId` 执行下一项；如果设备被占用，返回可重试的 409 `MAA_EXECUTION_BUSY` 且不消耗条目。`waiting` 的 run 可以用同一个 stop 接口停止：直接转为 `stopped`，不发送设备命令，未开始条目保持 `pending`。逐项状态为 `pending`/`running`/`success`/`failed`/`stopped`，失败汇总在 `summary.failedCount` 与 `summary.errors` 中。集合会话只在服务端进程内保存，服务重启后活动集合 run 转为 `interrupted`，不会自动续跑。
 
 请求关联与日志：请求头 `x-request-id` 可选，合法值为 1–64 位字母、数字与 `.`、`_`、`:`、`-`，首字符必须是字母或数字。合法值原样出现在响应头 `x-request-id`、响应 `meta.requestId` 与同一请求的 API 错误日志中；缺失、超长或含其他字符时服务端生成新 id 并在上述三处使用该新 id，非法输入不会回显。执行日志（含 MAA 子进程输出与响应返回后的后台收尾）在纳入 Run 时记录 `runId` 与 `operationId`，未纳入 Run 的直接调用不冒用其他执行的 id；HTTP 请求结束不代表执行完成，仍需以 run 终态或实际进程结果为准。API 错误按级别记录：携带状态且已归类的 4xx 为 WARN，未知内部 5xx 为 ERROR。日志不输出 Authorization、cookie、token、信令 ticket、密码与签名等凭据字段，也不回显请求查询串或请求体。
 
@@ -105,7 +111,7 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
 
 目标停止按 `runId` 保护：`accepted` 会被直接取消（`result.canceled=true`，不发设备命令）；`waiting` 的 manual 作业集直接转为 `stopped`（`waitingRunStopped: true`，`result.summary` 保留逐项结果）；`running` 的当前 run 转入 `stopping` 并发送停止；旧终态 run 返回 `alreadyTerminal`，不会影响新执行；重复停止保持成功。响应中的 `stopRequested` 表示停止意图已记录，`deviceStopRequested` 表示是否真的发出了设备停止命令。
 
-`Idempotency-Key` 是可选请求头，适用于活动作业、启动游戏、理智作战、通用任务、今日流程、作业集以及 `/api/agent/schedules/{scheduleId}/execute`。幂等键按 `operationId` 分区；日常流程的两个 HTTP 入口都使用 `run_daily_flow`，作业集的两个模式都使用 `run_copilot_set`；相同 key、相同输入重试时不会再次启动，而是返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。相同 key 搭配不同输入会返回 `AGENT_IDEMPOTENCY_KEY_REUSED`。执行前被占用或校验拒绝会释放键，允许修正后用同键重试；执行开始后的失败保留键。cron 触发没有调用方幂等键，每次触发都是一次独立执行意图。继续 manual 作业集的下一项不创建新 run，也不使用独立幂等键。Run 与幂等记录默认持久化到 `server/data/agent-runs.json`，正常重启后仍会保留；重启时尚未结束的 run 会变为不可自动重试的 `interrupted`，返回 `recovery` 说明记录可读但执行未恢复、设备状态未知，且不会自动续跑。终态最多保留 24 小时和 500 条，达到数量上限时可能提前淘汰；被淘汰的 `runId` 查询返回 404。
+`Idempotency-Key` 是可选请求头，适用于活动作业、启动游戏、理智作战、通用任务与今日流程；Web UI 专用的作业集入口和 `/api/agent/schedules/{scheduleId}/execute` 也支持。幂等键按 `operationId` 分区；日常流程的两个 HTTP 入口都使用 `run_daily_flow`，作业集的两个模式都使用 `run_copilot_set`；相同 key、相同输入重试时不会再次启动，而是返回原 `runId`，对象键顺序不影响比较，但显式参数差异会被视为不同输入。相同 key 搭配不同输入会返回 `AGENT_IDEMPOTENCY_KEY_REUSED`。执行前被占用或校验拒绝会释放键，允许修正后用同键重试；执行开始后的失败保留键。cron 触发没有调用方幂等键，每次触发都是一次独立执行意图。继续 manual 作业集的下一项不创建新 run，也不使用独立幂等键。Run 与幂等记录默认持久化到 `server/data/agent-runs.json`，正常重启后仍会保留；重启时尚未结束的 run 会变为不可自动重试的 `interrupted`，返回 `recovery` 说明记录可读但执行未恢复、设备状态未知，且不会自动续跑。终态最多保留 24 小时和 500 条，达到数量上限时可能提前淘汰；被淘汰的 `runId` 查询返回 404。
 
 
 当前持久化保证以单个 La Pluma Next 服务实例为边界。不要让多个 Node.js 进程同时读写同一个 Run 存储文件；需要修改路径时可设置 `LA_PLUMA_AGENT_RUN_STORE`。

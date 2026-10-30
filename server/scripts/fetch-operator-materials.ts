@@ -5,8 +5,6 @@
 
 import https from 'node:https';
 import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   errorMessage,
   expectNumber,
@@ -15,19 +13,17 @@ import {
   invalidPayload,
   isDirectExecution,
   optionalArray,
-  optionalString
+  optionalString,
+  resolveTrainingDataPath
 } from './scriptSupport.ts';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const GAMEDATA_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json';
 const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/item_table.json';
 const CHARACTER_SOURCE = 'character_table.json';
 const ITEM_SOURCE = 'item_table.json';
 
-/** 输出目标：与其他数据文件一致，写入 server/data。 */
-export const OUTPUT_PATH = path.join(__dirname, '../data/operator-materials.json');
+/** 输出目标：与其他养成数据文件一致，写入训练数据目录。 */
+export const OUTPUT_PATH = resolveTrainingDataPath('operator-materials.json');
 
 /** 单条精英化消耗。 */
 interface EvolveCost {

@@ -2,6 +2,8 @@
 
 维护脚本以 TypeScript 编写，由 Node.js 原生类型擦除直接运行（`node scripts/<name>.ts`）；导入脚本不会触发抓取或写文件，只有作为入口运行时才执行。
 
+材料与掉落脚本的输出目录与养成服务共用 `resolveAppPaths().trainingDataDir`：默认 `server/data`，设置 `LA_PLUMA_TRAINING_DATA_DIR` 时写入同一目录，避免服务读取目录与脚本输出目录分裂。
+
 ## fetch-operator-materials.ts
 
 自动从 [Kengxxiao/ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData) 获取干员材料数据。
@@ -21,7 +23,7 @@ pnpm --filter la-pluma-next-server fetch-materials
 
 ### 输出
 
-生成的文件：`server/data/operator-materials.json`
+生成的文件：`<trainingDataDir>/operator-materials.json`（默认 `server/data/operator-materials.json`）
 
 包含：
 - 123 个六星干员

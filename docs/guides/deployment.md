@@ -17,23 +17,27 @@ docker pull ghcr.io/dongwlin/la-pluma-next:latest
 # 运行容器
 docker run -d \
   --name la-pluma-next \
-  -p 3055:3000 \
+  -p 127.0.0.1:3055:3000 \
   -v /path/to/data:/app/server/data \
   -v /path/to/config:/root/.config/maa \
   -v /path/to/maacore:/root/.local/share/maa \
+  -v /path/to/maa-state:/root/.local/state/maa \
+  -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
   -e ADB_ADDRESS=192.168.x.x:5555 \
+  -e LA_PLUMA_TOKEN=change-me \
   ghcr.io/dongwlin/la-pluma-next:latest
-
-# 如需开启 API 鉴权，把下面一行插入到镜像名前：
-#   -e LA_PLUMA_TOKEN=change-me \
 
 # 访问应用
 # 浏览器打开 http://localhost:3055
 ```
 
+`LA_PLUMA_TOKEN` 是网络访问的必配项，保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。示例把端口绑定在 `127.0.0.1`，只允许本机访问；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
+
 > 首次发布后请在 GitHub Package settings 中把 `la-pluma-next` 镜像设为 Public；如果保持私有，拉取前需要先执行 `docker login ghcr.io`。
 
 `latest` 跟随最近发布的正式版本，预发布和 `main` 推送不会更新它；补发旧正式版本也会更新 `latest`。可以使用完整版本标签（如 `0.0.6`），同时提供 amd64 与 arm64 两个架构；预发布使用完整标签（如 `0.1.0-rc.1`）。Docker 标签可覆盖，需要固定镜像内容时使用 digest。
+
+镜像内的 maa-cli 固定到上游 release（当前 `v0.7.7`），并在构建时按目标架构校验 SHA-256；升级时通过 `MAA_CLI_VERSION` 与对应的 `MAA_CLI_SHA256_AMD64` / `MAA_CLI_SHA256_ARM64` 构建参数更新。首次启动的 `maa install` 仍会从上游解析并下载 MaaCore 与资源，需要完全可复现的 MaaCore 版本时请预置并复用数据卷。
 
 可选环境变量：
 
@@ -41,15 +45,22 @@ docker run -d \
 | --- | --- | --- |
 | `PORT` | 后端监听端口；必须为 0-65535 的整数，否则服务拒绝启动 | `3000` |
 | `LA_PLUMA_BASE_PATH` | 生产环境前端挂载路径，需与构建时 `VITE_BASE_PATH` 一致 | `/` |
-| `ADB_PATH` | ADB 可执行文件路径 | `/opt/homebrew/bin/adb` |
+| `ADB_PATH` | ADB 可执行文件路径 | Docker 为 `/usr/bin/adb`；本地按平台：macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe` |
 | `ADB_ADDRESS` | 默认 ADB 设备地址 | `127.0.0.1:16384` |
 | `MAA_CLI_PATH` | `maa` CLI 可执行文件路径 | 本地为 `maa`，Docker 为 `/usr/local/bin/maa` |
 | `MAA_CLIENT_TYPE` | 默认客户端类型 | `Official` |
 | `LA_PLUMA_TOKEN` | 设置后 `/api/*` 与 WebRTC 票据入口需要 Bearer Token 或 `X-La-Pluma-Token` | 空，不启用 |
 | `LA_PLUMA_AGENT_RUN_STORE` | Agent Run 与幂等记录的持久化文件 | `server/data/agent-runs.json` |
+| `LA_PLUMA_DROP_RECORDS_DIR` | 掉落记录目录 | `server/data/drop-records` |
+| `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `server/data/maa-execution.lock` |
+| `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `server/data` |
+| `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
+| `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动作业完成进度文件 | `server/data/activity-copilot-progress.json` |
+| `LA_PLUMA_OPERATOR_QUOTES_STORE` | 干员台词数据文件 | `server/data/operatorQuotes.json` |
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
-| `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC` |
+| `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC`（Docker 为 `/root/ScrcpyOverWebRTC`） |
 | `LA_PLUMA_WEBRTC_PORT` | ScrcpyOverWebRTC 本地端口 | `8443` |
+| `LA_PLUMA_WEBRTC_TURN_PORT` | 受管 TURN 服务端口 | `3478` |
 | `LA_PLUMA_WEBRTC_USERNAME` | 网关登录上游 ScrcpyOverWebRTC 的账号；必须与上游实际账号一致 | `admin` |
 | `LA_PLUMA_WEBRTC_PASSWORD` | 网关登录上游 ScrcpyOverWebRTC 的密码；不会自动生成或轮换 | `admin123` |
 | `LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS` | 最后一位观看者退出后释放设备 Agent 的等待时间（毫秒） | `3000` |
@@ -58,12 +69,19 @@ docker run -d \
 | `LA_PLUMA_WEBRTC_TURN_SERVER_PATH` | 本地 `turnserver` 可执行文件路径；默认探测常见安装位置 | 自动检测 |
 | `LA_PLUMA_WEBRTC_ICE_SERVERS` | 自定义 STUN/TURN 列表；未设置且无本地 TURN 时使用局域网直连 | 自动检测 |
 | `LA_PLUMA_WEBRTC_ARCHIVE` | 安装时使用的本地官方 `cloudphone-v0.4.1.zip`，同样校验 SHA-256 | 自动下载 |
+| `LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS` | 探测上游 ScrcpyOverWebRTC HTTP 接口的超时时间（毫秒） | `1500` |
+| `LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS` | 等待信令服务就绪的超时时间（毫秒） | `15000` |
+| `LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS` | 等待设备 Agent 就绪的超时时间（毫秒） | `20000` |
+| `LA_PLUMA_WEBRTC_TURN_START_TIMEOUT_MS` | 等待 TURN 监听就绪的超时时间（毫秒） | `5000` |
+| `LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS` | 启动就绪探测的轮询间隔（毫秒） | `250` |
 | `LA_PLUMA_HTTPS_CERT_PATH` | 可选 HTTPS 证书链路径，必须与私钥同时配置 | 空，使用 HTTP |
 | `LA_PLUMA_HTTPS_KEY_PATH` | 可选 HTTPS 私钥路径，必须与证书同时配置 | 空，使用 HTTP |
 
 ### 存活与就绪检查
 
 容器健康检查继续请求根路径 `/health`，只判断进程是否仍在应答。该端点不执行 ADB、MAA 或外网探测，设备离线不会让存活检查失败，也不会触发无意义的重启。
+
+首次启动会在 entrypoint 中执行 `maa install --force` 安装 MaaCore，通常需要 5-10 分钟。Dockerfile 与 Compose 的健康检查 `start-period` 均为 600 秒，安装期间不会因健康检查失败被判定为不健康或触发重启；安装完成后才进入常规探测。
 
 根路径 `/readiness` 表达是否应接收业务流量：运行时初始化未完成、Run 存储不可用或服务正在关闭（draining/closed）时返回 503，其余稳定运行状态返回 200。响应只包含生命周期、初始化与 Run 存储的粗粒度状态和稳定原因码，不包含文件路径、凭据或底层错误文本，并设置 `Cache-Control: no-store`。与 `/health` 一样，`/readiness` 不受 `LA_PLUMA_TOKEN` 约束，便于本机与编排探针直接调用；`/api` 的鉴权行为不变。
 
@@ -103,7 +121,7 @@ Docker 部署时把证书只读挂载到容器，并同时设置这两个变量�
 ```bash
 docker run -d \
   --name la-pluma-next \
-  -p 3055:3000 \
+  -p 127.0.0.1:3055:3000 \
   -v /path/to/certs:/app/certs:ro \
   -v /path/to/data:/app/server/data \
   -e LA_PLUMA_HTTPS_CERT_PATH=/app/certs/fullchain.pem \
@@ -112,7 +130,7 @@ docker run -d \
   ghcr.io/dongwlin/la-pluma-next:latest
 ```
 
-证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问建议始终配置 `LA_PLUMA_TOKEN`。
+证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问必须配置 `LA_PLUMA_TOKEN`。
 
 HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
 
@@ -151,15 +169,21 @@ docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
 git clone https://github.com/dongwlin/La-pluma-next.git
 cd La-pluma-next
 
-# 2. 编辑 docker-compose.yml，修改 volumes 和 ADB_ADDRESS
+# 2. 从示例创建环境文件，设置必配的 LA_PLUMA_TOKEN 和 ADB_ADDRESS
+cp .env.example .env
+nano .env
+
+# 3. 按需修改 docker-compose.yml 的 volumes 与端口绑定
 nano docker-compose.yml
 
-# 3. 启动服务（会自动拉取镜像）
+# 4. 启动服务（会自动拉取镜像；缺少 LA_PLUMA_TOKEN 时 Compose 拒绝启动）
 docker-compose up -d
 
-# 4. 查看日志
+# 5. 查看日志
 docker-compose logs -f
 ```
+
+Compose 默认把宿主机端口绑定到 `127.0.0.1:3055`，只允许本机访问；需要手机或局域网访问时，确认 `.env` 中的 `LA_PLUMA_TOKEN` 足够强并配合防火墙后再改为 `3055:3000`。
 
 ### 本地构建镜像
 
@@ -180,10 +204,30 @@ docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t la-pluma
 镜像默认使用 `registry.npmjs.org`，CI 也使用该默认值；`NPM_REGISTRY` 只影响构建时的依赖下载，不会写入运行环境。
 
 **配置说明**：
-- 宿主机端口：`3055`，容器内端口：`3000`
-- 数据持久化：`./docker-data/server/`、`./docker-data/maa-config/`、`./docker-data/maa-core/`
+- 宿主机端口：默认 `127.0.0.1:3055`（仅本机），容器内端口：`3000`
+- 数据持久化：`./docker-data/server/`、`./docker-data/maa-config/`、`./docker-data/maa-core/`、`./docker-data/maa-state/`、`./docker-data/webrtc/`
+  - `server/` 保存应用运行数据；`maa-config/`、`maa-core/`、`maa-state/` 分别对应 MAA 的配置、数据与状态目录（日志、缓存）
+  - `webrtc/` 保存 ScrcpyOverWebRTC 工作目录（`LA_PLUMA_WEBRTC_DIR`，容器内默认 `/root/ScrcpyOverWebRTC`），避免重建容器后重新下载或构建
 - ADB 连接：在 WebUI 中配置设备地址（如 `127.0.0.1:5555`）
 - 首次启动会自动下载 MaaCore（约 5-10 分钟）
+
+### 参考数据与运行数据
+
+镜像只包含程序，不包含游戏参考数据：`materials.json`、`material-formulas.json`、`operator-materials.json`、`penguin-drop-data.json` 都不随仓库或镜像发布。缺少这些文件时，养成与掉落相关页面会为空；容器启动时 entrypoint 会打印缺失警告，但不会自动联网生成。
+
+在宿主机仓库内生成后，把文件放入持久化数据目录（Compose 默认为 `./docker-data/server/`）：
+
+```bash
+pnpm --filter la-pluma-next-server fetch-all-materials
+pnpm --filter la-pluma-next-server fetch-formulas
+pnpm --filter la-pluma-next-server fetch-materials
+pnpm --filter la-pluma-next-server fetch-drop-data
+
+cp server/data/{materials.json,material-formulas.json,operator-materials.json,penguin-drop-data.json} \
+  ./docker-data/server/
+```
+
+也可以直接把生成好的 `server/data` 目录挂载到 `/app/server/data`。不要把 `user-configs/`、`depot.json`、`operbox.json`、`drop-records/`、`agent-runs.json` 等用户运行数据打进自定义镜像，它们只应通过数据卷持久化。
 
 **支持架构**：
 - `linux/amd64` - x86_64 服务器、PC

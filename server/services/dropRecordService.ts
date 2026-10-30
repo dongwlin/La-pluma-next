@@ -4,24 +4,22 @@
  */
 
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { readJsonFile, ensureDir, updateJsonFile } from '../utils/fileHelper.ts';
 import { successResponse, errorResponse } from '../utils/apiHelper.ts';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
+import { resolveAppPaths } from '../config/runtimeConfig.ts';
 
 const logger = createLogger('DropRecord');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const APP_PATHS = resolveAppPaths();
 
 // 历史查询按天读取记录文件，天数上限防止非法 query 触发无界文件读取；
 // 目录支持环境变量注入，供测试隔离运行数据。
 export const MAX_DROP_HISTORY_DAYS = 365;
-const DROP_RECORDS_DIR = process.env.LA_PLUMA_DROP_RECORDS_DIR
-  || path.join(__dirname, '../data/drop-records');
-const MATERIALS_PATH = path.join(__dirname, '../data/materials.json');
+const DROP_RECORDS_DIR = APP_PATHS.dropRecordsDir;
+const MATERIALS_PATH = APP_PATHS.materialsPath;
 
 /** 单次掉落中的一项材料。 */
 export interface DropItem {

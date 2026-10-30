@@ -1,6 +1,4 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   errorMessage,
   expectRecord,
@@ -8,17 +6,16 @@ import {
   isDirectExecution,
   optionalArray,
   optionalRecord,
+  resolveTrainingDataPath,
   type JsonRecord
 } from './scriptSupport.ts';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/item_table.json';
 const ITEM_SOURCE = 'item_table.json';
 const MATERIALS_SOURCE = 'materials.json';
 
 /** 材料数据文件路径。 */
-export const MATERIALS_PATH = join(__dirname, '../data/materials.json');
+export const MATERIALS_PATH = resolveTrainingDataPath('materials.json');
 
 /** 单个推荐关卡。 */
 export interface MaterialStage {

@@ -168,6 +168,7 @@ export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
   const env = options.env ?? process.env;
   const serverRoot = resolve(options.serverRoot ?? moduleServerRoot);
   const appDataDir = join(serverRoot, 'data');
+  const trainingDataDir = env.LA_PLUMA_TRAINING_DATA_DIR || appDataDir;
   return {
     serverRoot,
     appDataDir,
@@ -175,14 +176,14 @@ export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
     userConfigsDir: join(appDataDir, 'user-configs'),
     dropRecordsDir: env.LA_PLUMA_DROP_RECORDS_DIR || join(appDataDir, 'drop-records'),
     executionLockPath: env.LA_PLUMA_MAA_LOCK_FILE || join(appDataDir, 'maa-execution.lock'),
-    trainingDataDir: env.LA_PLUMA_TRAINING_DATA_DIR || appDataDir,
-    materialsPath: join(appDataDir, 'materials.json'),
-    materialFormulasPath: join(appDataDir, 'material-formulas.json'),
-    operatorMaterialsPath: join(appDataDir, 'operator-materials.json'),
+    trainingDataDir,
+    materialsPath: join(trainingDataDir, 'materials.json'),
+    materialFormulasPath: join(trainingDataDir, 'material-formulas.json'),
+    operatorMaterialsPath: join(trainingDataDir, 'operator-materials.json'),
     operatorQuotesPath: join(appDataDir, 'operatorQuotes.json'),
-    penguinDropDataPath: join(appDataDir, 'penguin-drop-data.json'),
-    depotPath: join(appDataDir, 'depot.json'),
-    operboxPath: join(appDataDir, 'operbox.json'),
+    penguinDropDataPath: join(trainingDataDir, 'penguin-drop-data.json'),
+    depotPath: join(trainingDataDir, 'depot.json'),
+    operboxPath: join(trainingDataDir, 'operbox.json'),
     tempResourceDir: join(serverRoot, '.temp-maa-resource'),
     frontendDistDir: resolve(serverRoot, '..', 'client', 'dist')
   };
@@ -238,19 +239,38 @@ export interface ConnectionDefaults {
   maaCliPath: string;
 }
 
-const FALLBACK_ADB_PATH = '/opt/homebrew/bin/adb';
+/** 本地安装默认值：与各平台官方/包管理器常见安装位置一致。 */
+const PLATFORM_ADB_PATHS: Partial<Record<NodeJS.Platform, string>> = {
+  darwin: '/opt/homebrew/bin/adb',
+  linux: '/usr/bin/adb',
+  win32: 'adb.exe'
+};
+/** 未知平台的保守回退；容器镜像始终安装 Debian 的 `/usr/bin/adb`。 */
+const FALLBACK_ADB_PATH = '/usr/bin/adb';
+const DOCKER_ADB_PATH = '/usr/bin/adb';
 const FALLBACK_ADB_ADDRESS = '127.0.0.1:16384';
 const FALLBACK_CLIENT_TYPE = 'Official';
 const DOCKER_MAA_CLI_PATH = '/usr/local/bin/maa';
 const LOCAL_MAA_CLI_PATH = 'maa';
 
+export interface ConnectionDefaultsOptions {
+  /** 覆盖目标平台；缺省 process.platform。 */
+  platform?: NodeJS.Platform;
+}
+
 /**
- * 解析连接默认值；缺失或空字符串回退，`DOCKER_ENV` 非空时 CLI 缺省为容器路径。
- * 与其余解析函数一致，显式入参优先，入参缺省时才读取当前进程环境。
+ * 解析连接默认值；缺失或空字符串回退，`DOCKER_ENV` 非空时 ADB 与 CLI
+ * 缺省为容器路径。与其余解析函数一致，显式入参优先，入参缺省时才读取
+ * 当前进程环境。
  */
-export function resolveConnectionDefaults(env: RuntimeEnvSource = process.env): ConnectionDefaults {
+export function resolveConnectionDefaults(
+  env: RuntimeEnvSource = process.env,
+  options: ConnectionDefaultsOptions = {}
+): ConnectionDefaults {
+  const platformName = options.platform ?? process.platform;
+  const localAdbPath = PLATFORM_ADB_PATHS[platformName] || FALLBACK_ADB_PATH;
   return {
-    adbPath: env.ADB_PATH || FALLBACK_ADB_PATH,
+    adbPath: env.ADB_PATH || (env.DOCKER_ENV ? DOCKER_ADB_PATH : localAdbPath),
     adbAddress: env.ADB_ADDRESS || FALLBACK_ADB_ADDRESS,
     clientType: env.MAA_CLIENT_TYPE || FALLBACK_CLIENT_TYPE,
     maaCliPath: env.MAA_CLI_PATH || (env.DOCKER_ENV ? DOCKER_MAA_CLI_PATH : LOCAL_MAA_CLI_PATH)

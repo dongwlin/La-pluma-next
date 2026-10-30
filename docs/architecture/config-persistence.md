@@ -35,7 +35,7 @@
 
 1. `revision` 递增；
 2. 生成新的同步 token，写入适配器的 `pendingKey`；
-3. 写入本地草稿；
+3. 按 `localWriteDelayMs` 安排写入本地草稿（默认立即写入，见 2.3）；
 4. 按适配器策略安排提交（见 2.3）。
 
 提交前后都重新校验「revision 未变 + 内存 token 未变 + 存储中的标记仍是该 token」。因此：
@@ -46,12 +46,12 @@
 
 wire 内容未变的 `setDraft` 会被跳过（默认对 `encodeDraft` 结果做 JSON 比较）；页面从表单状态派生草稿时不会造成重复提交。
 
-### 2.3 提交策略
+### 2.3 提交与本地写策略
 
-`commitDelayMs` 是唯一的时机参数：
+`commitDelayMs` 与 `localWriteDelayMs` 是两个独立的时机参数：
 
-- `0`：每次编辑立即入队（automation 的事件触发策略）；
-- 大于 `0`：去抖，只提交最后一次编辑（combat/roguelike 的 300ms 策略）。
+- `commitDelayMs`：`0` 表示每次编辑立即入队；大于 `0` 表示提交去抖，只提交最后一次编辑（combat/roguelike/automation 均为 300ms）。
+- `localWriteDelayMs`：本地草稿写入延迟，默认 `0`（立即写入）；大于 `0` 时只写最后一次草稿，减少连续输入时的序列化与 `localStorage.setItem` 开销。协调器在提交、`flush`、`dispose` 或页面卸载前强制落盘，因此去抖不会丢失最后一次编辑。automation 使用 250ms。
 
 无论哪种策略，同一 key 的提交都在一条 Promise 队列中串行。连续编辑时，队列中迟到的旧快照在发起请求前即被丢弃，只有最新 revision 会真正写入。
 
@@ -91,6 +91,8 @@ export interface ConfigPersistenceAdapter<TDraft, TWire = unknown> {
   readonly key: string
   readonly pendingKey: string
   readonly commitDelayMs?: number
+  /** 本地草稿写入去抖；默认 0（立即写入）。提交、flush、dispose 或页面卸载前强制落盘。 */
+  readonly localWriteDelayMs?: number
   readonly restoredMessage?: string
   readonly formatFailure?: (message: string) => string
   encodeDraft(draft: TDraft): TWire
@@ -109,7 +111,7 @@ export interface ConfigPersistenceAdapter<TDraft, TWire = unknown> {
 | `encodeDraft` | 只输出持久化需要的字段；界面字段（图标、参数表单）不得进入 wire，否则指纹与提交通道都被污染 |
 | `decodeDraft` | 同时承担旧值迁移与形状校验；返回 `null` 表示载荷不可用，协调器回退本地草稿。字段级合并与默认值策略属于适配器 |
 | `readLocalDraft` | 缺失或损坏时返回 `null` 并清理损坏键，不要抛出；存在 pending 标记但返回 `null` 时，协调器删除标记并继续读服务端 |
-| `writeLocalDraft` | 与读取对称；服务端加载成功、接受编辑、加载本地回退时都会被调用 |
+| `writeLocalDraft` | 与读取对称；服务端加载成功、接受编辑、加载本地回退时都会被调用。`localWriteDelayMs > 0` 时协调器去抖，并在提交、`flush`、`dispose` 或页面卸载前强制写入最后一次草稿 |
 | `commit` | **完整提交**：所有域内写入全部成功才返回 `ok`。返回 `{ ok: false, message }` 或抛出都会保留 pending 与重试入口 |
 | `fetch` | 应响应 `signal` 中止；结果只提供载荷，形状校验交给 `decodeDraft` |
 | `fingerprint` | 可选；默认对 wire 做 JSON 序列化。用于跳过内容等价的编辑 |
@@ -192,7 +194,7 @@ function CombatWorkspace() {
 | 配置 key | `combat-tasks` | `roguelike-tasks` | `automation-tasks` |
 | 本地草稿 | `combatTaskInputs`、`combatAdvancedParams`、`combatAutoFormation`、`combatCopilotSetExecutionMode`、`combatCopilotSetSelections` | `roguelikeTaskInputs`、`roguelikeAdvancedParams` | `maa-task-flow`、`maa-schedule` |
 | pending 键 | `combatConfigSyncPending` | `roguelikeConfigSyncPending` | `automationConfigSyncPending` |
-| 提交时机 | 300ms 去抖 | 300ms 去抖 | 编辑即入队（事件触发） |
+| 提交时机 | 300ms 提交去抖 | 300ms 提交去抖 | 300ms 提交去抖 + 250ms 本地写去抖 |
 | 加载迁移 | `app`→`cli`；raid `1`/`2`→`raid`/`both` | `advancedParams.reclamation.mode` 缺失或空值补为显式 `1`；不单独触发保存 | `times`→`entries` 兼容；禁用项只留在本地 |
 | 完整提交 | `saveUserConfig` | `saveUserConfig` | `saveUserConfig` + `setupSchedule`/`stopSchedule` |
 
@@ -245,7 +247,7 @@ function CombatWorkspace() {
 | 本地草稿 | `maa-task-flow`（任务数组）与 `maa-schedule`（`{ enabled, times, entries }`）；单个键损坏清理后丢弃该部分，两个键都不可读才返回 null 并让协调器删除 pending 标记、改读服务端 |
 | wire | `{ taskFlow, schedule: { enabled, times } }`；task flow 去掉 `icon`/`paramFields` 等界面字段，其余旧字段（如 `name`、`description`、`defaultParams`、`taskType`）原样保留；`times` 只包含启用的时间点 |
 | 加载迁移 | 兼容 `maa-schedule.entries` 与旧 `times`；`times` 为空时保留默认执行时间；任务参数迁移（`skip_robot`→`preserve_tags`、新旧字段补齐）、启动/关闭客户端类型同步、关闭游戏置底都在解码与本地读取时执行 |
-| 提交时机 | `commitDelayMs = 0`，每次编辑立即入队；同一 key 的提交仍串行 |
+| 提交时机 | `commitDelayMs = 300` + `localWriteDelayMs = 250`；连续编辑只提交最后一次，本地草稿也只写最后一次；提交、`flush`、`dispose` 或页面卸载前强制落盘 |
 | 草稿等价 | 适配器 `fingerprint` 比较 task flow 与本地 `schedule.entries`，而不是只看 wire；编辑或删除禁用时间点仍会接受草稿、写回本地并触发提交，不会被协调器当成无变化而静默丢弃。wire 未变化时这次提交内容与上一次相同，属于幂等写入 |
 | 完整提交 | `saveUserConfig('automation-tasks', wire)` 成功后再执行 `setupSchedule('default', times, taskFlow)`（启用且存在时间点）或 `stopSchedule('default')`；任一步失败都返回 `ok: false`，协调器保留 pending 与“重新同步”入口，重试重跑整段提交 |
 | 过期提交保护 | 配置保存期间若协调器接受了更新的草稿，适配器在 schedule 步骤前比对最新 wire 指纹并跳过旧 schedule；即使旧提交已经写入配置，协调器也不会用它的结果确认新 revision |
@@ -261,13 +263,13 @@ pending 标记存在但本地草稿不可读时，协调器必须删除该标记
 
 | 测试 | 覆盖 |
 | --- | --- |
-| `features/user-config/model/configCoordinator.test.ts` | 非 React：服务端加载与迁移、未同步草稿优先、损坏草稿回退、迟到加载丢弃、强制刷新中止旧加载、提交串行与旧提交不确认新草稿、标记被外部替换、去抖合并、内容等价跳过、完整提交失败与重试防重入、编辑中断重试、跨重挂载队列与状态、异构适配器拒绝、`settle` 写入屏障等待在途提交并报告失败草稿 |
+| `features/user-config/model/configCoordinator.test.ts` | 非 React：服务端加载与迁移、未同步草稿优先、损坏草稿回退、迟到加载丢弃、强制刷新中止旧加载、提交串行与旧提交不确认新草稿、标记被外部替换、提交去抖合并、本地写去抖与提交/卸载前 flush、内容等价跳过、完整提交失败与重试防重入、编辑中断重试、跨重挂载队列与状态、异构适配器拒绝、`settle` 写入屏障等待在途提交并报告失败草稿 |
 | `features/user-config/hooks/useUserConfig.test.tsx` | 首次加载与订阅渲染、编辑写回、`autoHydrate: false`、失败提示与重试后清空 |
 | `features/roguelike/model/roguelikeConfig.test.ts` | 肉鸽适配器：原 key/pending/本地键/300ms、wire 形状、缺省字段与非法载荷解码、本地键损坏清理、完整提交与读取失败信封 |
 | `pages/roguelike/RoguelikeTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、坏草稿回退服务端、迟到加载不覆盖编辑、Activity 隐藏/恢复 |
 | `features/combat/model/combatConfig.test.ts` | 作业适配器：原 key/pending/本地键/300ms、wire 形状、`app→cli` 与 raid `1`/`2` 迁移、缺省字段与非法载荷解码、本地键损坏清理、裸字符串执行方式、完整提交与读取失败信封 |
 | `pages/combat/CombatTasks.test.tsx` | 页面接线：pending 跨 remount + 重试、重试防重入与成功提示、提交串行与旧响应保护、迟到加载不覆盖编辑、坏草稿回退服务端、本地与服务端 `app→cli`/raid 迁移、set 模式与待执行索引回填、Activity 隐藏/恢复 |
-| `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键/立即提交、wire 去掉界面字段、`entries`/`times` 兼容、任务参数迁移与客户端类型同步、非法载荷解码、本地键损坏清理、配置+schedule 完整提交、schedule 半失败、保存期间新草稿跳过旧 schedule、禁用项参与的本地草稿指纹、读取失败信封 |
+| `features/automation/model/automationConfig.test.ts` | 自动化适配器：原 key/pending/本地键、300ms 提交去抖 + 250ms 本地写去抖、wire 去掉界面字段、`entries`/`times` 兼容、任务参数迁移与客户端类型同步、非法载荷解码、本地键损坏清理、配置+schedule 完整提交、schedule 半失败、保存期间新草稿跳过旧 schedule、禁用项参与的本地草稿指纹、读取失败信封 |
 | `pages/automation/AutomationTasks.config.test.tsx` | 页面接线：配置/schedule 全成功才清 pending、保存失败不碰 schedule、半失败页内重试、禁用与全禁用 schedule、编辑/删除禁用时间点仍写回本地、跨 remount 串行提交与旧响应保护、迟到加载、stale pending 回退服务端、计划失效重读等待在途保存、Activity 恢复补发及本地禁用时间点保留 |
 | `pages/automation/AutomationTasks.layout.test.tsx` | pending 本地优先、在途服务端响应不覆盖新草稿、hydrate 不重建 schedule、Activity 恢复、拖拽/表单接线 |
 | `pages/automation/AutomationTasks.execution.test.tsx` | Run 提交、停止、流程进度与旧断点只观察不重提 |

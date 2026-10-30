@@ -285,10 +285,15 @@ describe('coverage report scope', () => {
       const scripts = path.join(root, 'scripts');
       await mkdir(scripts);
       await mkdir(path.join(root, '__tests__'));
+      await mkdir(path.join(root, 'config'));
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
       for (const file of ['coverage.ts', 'testFiles.ts', 'scriptSupport.ts']) {
         await writeFile(path.join(scripts, file), await readFile(path.join(serverRoot, 'scripts', file)));
       }
+      await writeFile(
+        path.join(root, 'config', 'runtimeConfig.ts'),
+        await readFile(path.join(serverRoot, 'config', 'runtimeConfig.ts'))
+      );
       await writeFile(path.join(root, '__tests__', 'failure.test.ts'), [
         "import { it } from 'node:test';",
         "import assert from 'node:assert/strict';",

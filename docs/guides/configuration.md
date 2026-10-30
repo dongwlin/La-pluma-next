@@ -14,13 +14,15 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 服务器启动时会自动显示当前系统的路径配置。应用自身的运行数据（Run 存储、用户配置、掉落记录等）默认写入 `server/data/`，可通过部署指南中列出的 `LA_PLUMA_*` 变量重定向；生产环境前端静态资源默认读取 `client/dist/`。
 
+养成相关数据（队列、材料表、干员材料、仓库/干员识别结果）使用 `LA_PLUMA_TRAINING_DATA_DIR`，默认同为 `server/data/`。材料与掉落抓取脚本复用同一目录解析，重定向后脚本与服务读写同一位置。
+
 ## 应用配置
 
 ### ADB 连接配置
 
 在「日常」页面配置 ADB 连接：
 
-- **ADB 路径**：默认 `/opt/homebrew/bin/adb`
+- **ADB 路径**：按平台默认 macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe`；Docker 镜像为 `/usr/bin/adb`，也可用 `ADB_PATH` 覆盖
 - **设备地址**：
   - 本地模拟器：`emulator-5554` 或 `127.0.0.1:5555`
   - 远程设备：`192.168.x.x:16384`（需要开启网络 ADB）

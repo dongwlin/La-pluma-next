@@ -28,8 +28,14 @@ function runFixture(overrides: Record<string, string>): FixtureOutput {
   return JSON.parse(result.stdout) as FixtureOutput;
 }
 
+const PLATFORM_ADB_FALLBACKS: Partial<Record<NodeJS.Platform, string>> = {
+  darwin: '/opt/homebrew/bin/adb',
+  linux: '/usr/bin/adb',
+  win32: 'adb.exe'
+};
+
 const fallbacks = {
-  adbPath: '/opt/homebrew/bin/adb',
+  adbPath: PLATFORM_ADB_FALLBACKS[process.platform] ?? '/usr/bin/adb',
   adbAddress: '127.0.0.1:16384',
   clientType: 'Official',
   maaCliPath: 'maa'
@@ -44,6 +50,20 @@ describe('resolveConnectionDefaults', () => {
       MAA_CLIENT_TYPE: '',
       MAA_CLI_PATH: ''
     }), fallbacks);
+  });
+
+  it('uses the platform ADB default and the container path under DOCKER_ENV', () => {
+    assert.equal(resolveConnectionDefaults({}, { platform: 'darwin' }).adbPath, '/opt/homebrew/bin/adb');
+    assert.equal(resolveConnectionDefaults({}, { platform: 'linux' }).adbPath, '/usr/bin/adb');
+    assert.equal(resolveConnectionDefaults({}, { platform: 'win32' }).adbPath, 'adb.exe');
+    assert.equal(
+      resolveConnectionDefaults({ DOCKER_ENV: '1' }, { platform: 'darwin' }).adbPath,
+      '/usr/bin/adb'
+    );
+    assert.equal(
+      resolveConnectionDefaults({ DOCKER_ENV: '1', ADB_PATH: '/custom/adb' }, { platform: 'linux' }).adbPath,
+      '/custom/adb'
+    );
   });
 
   it('honors the documented connection variables', () => {
