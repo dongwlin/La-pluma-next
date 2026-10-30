@@ -125,3 +125,47 @@ export async function executeScheduleNow(
   })
   return parseJsonResponse(response)
 }
+
+/**
+ * 通知配置读取。配置是自动化域的只读资源，由 Query 缓存持有；载荷形状
+ * 交给 `normalizeNotificationConfig` 归一，这里只校验对象信封。
+ */
+export async function getNotificationConfig(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/notifications/config`, {
+    signal,
+    validate: payload => payload === null || isRecord(payload),
+    invalidPayloadMessage: '通知配置格式不正确',
+  })
+}
+
+/**
+ * 保存通知配置。请求不绑定页面生命周期：Activity 隐藏或组件卸载后仍应完成
+ * 落盘，成功后由调用方写回 Query 缓存。
+ */
+export async function saveNotificationConfig(
+  config: unknown,
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/notifications/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+    signal,
+  })
+  return parseJsonResponse(response)
+}
+
+/** 测试单个通知渠道；失败返回可展示的错误信封。 */
+export async function testNotificationChannel(
+  channel: string,
+  config: unknown,
+  signal?: AbortSignal,
+): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/test-notification-channel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel, config }),
+    signal,
+  })
+  return parseJsonResponse(response)
+}

@@ -15,9 +15,19 @@ export {
 export { AUTOMATION_DOMAIN, automationKeys } from './model/queryKeys'
 export {
   activityQueryOptions,
+  notificationConfigQueryOptions,
   scheduleExecutionQueryOptions,
 } from './model/queries'
 export { normalizeActivityPayload } from './model/activity'
+export {
+  cloneNotificationConfig,
+  emptyNotificationConfig,
+  normalizeNotificationConfig,
+} from './model/notificationConfig'
+export type {
+  NotificationConfig,
+  TelegramConfig,
+} from './model/notificationConfig'
 export type { AutomationResource } from './model/queryKeys'
 export type {
   ActivityFailure,
