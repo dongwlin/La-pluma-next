@@ -1,16 +1,84 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import {
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test, { after, beforeEach } from 'node:test';
+
+// `maa dir resource` 的解析在导入时读取 MAA_CLI_PATH；先准备假 CLI，再加载被测模块。
+const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-plan-'));
+const fakeMaaCliPath = join(fixtureDir, 'fake-maa-cli.js');
+const maaCallLog = join(fixtureDir, 'maa-calls.log');
+const baseResourceDir = join(fixtureDir, 'base-resource');
+await mkdir(join(baseResourceDir, 'Arknights-Tile-Pos'), { recursive: true });
+await writeFile(join(baseResourceDir, 'stages.json'), '[]');
+await writeFile(fakeMaaCliPath, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (process.env.FAKE_MAA_CALL_LOG) fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, args.join(' ') + '\\n');
+if (args[0] === 'dir' && args[1] === 'resource') {
+  process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
+} else {
+  process.exit(1);
+}
+`, { mode: 0o755 });
+process.env.MAA_CLI_PATH = fakeMaaCliPath;
+process.env.FAKE_MAA_CALL_LOG = maaCallLog;
+process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
+
+const {
   buildCopilotPlan,
   buildCurrentMapStageTasks,
   buildCopilotRepeatFiles,
   buildCopilotTaskParams,
   classifyCopilotEntryOutcomes,
+  ensurePresetFormationResource,
   extractLoadedCopilotFiles,
   getNavigationStage,
   isPresetFormationCopilot,
-  mergePresetFormationTasks
-} from '../copilotPlanService.ts';
+  mergePresetFormationTasks,
+  resetCopilotPlanCachesForTests
+} = await import('../copilotPlanService.ts');
+
+beforeEach(async () => {
+  resetCopilotPlanCachesForTests();
+  process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
+  await writeFile(maaCallLog, '');
+});
+
+after(async () => {
+  await rm(fixtureDir, { recursive: true, force: true });
+});
+
+async function readMaaCalls(): Promise<string[]> {
+  return (await readFile(maaCallLog, 'utf8')).trim().split('\n').filter(Boolean);
+}
+
+function readObject(value: unknown): Record<string, unknown> {
+  assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
+
+async function readUserTasks(configDir: string): Promise<Record<string, unknown>> {
+  const parsed: unknown = JSON.parse(await readFile(join(configDir, 'resource', 'tasks', 'tasks.json'), 'utf8'));
+  return readObject(parsed);
+}
+
+/** 作业站与企鹅物流都走同一 fetch 桩；计划只关心 stage_name 与 apCost。 */
+function stubPlanFetch(stageName: string): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: string | URL | Request) => {
+    const text = String(url);
+    const data = text.includes('/set/get')
+      ? { id: 1, name: 'set', copilot_ids: [10] }
+      : text.includes('penguin-stats.io')
+        ? []
+        : { content: JSON.stringify({ stage_name: stageName, doc: { title: 'T-1' }, opers: [{ name: 'A' }], groups: [] }) };
+    return new Response(JSON.stringify({ status_code: 200, data }), { status: 200 });
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
 
 test('preset formation stages are normal-only candidates', () => {
   assert.equal(isPresetFormationCopilot({
@@ -151,4 +219,79 @@ test('loaded files classify confirmed entries and stop the rest as pending', () 
     }).map(item => [item.entry.key, item.status]),
     [['a', 'pending'], ['b', 'pending'], ['c', 'pending']]
   );
+});
+
+test('buildCopilotPlan reuses the resource directory and stage catalog', async () => {
+  const resourceDir = join(fixtureDir, 'cached-resource');
+  const tileDir = join(resourceDir, 'Arknights-Tile-Pos');
+  const stagesPath = join(resourceDir, 'stages.json');
+  await mkdir(tileDir, { recursive: true });
+  await writeFile(stagesPath, JSON.stringify([
+    { stageId: 'act_cache_01', code: 'CA-1', apCost: 21 }
+  ]));
+  const stagesStat = await stat(stagesPath);
+  process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+  const restoreFetch = stubPlanFetch('act_cache_01');
+  try {
+    const first = await buildCopilotPlan('cache-set');
+    const second = await buildCopilotPlan('cache-set');
+    assert.equal(first.items[0]?.apCost, 21);
+    assert.equal(second.items[0]?.apCost, 21);
+    assert.equal((await readMaaCalls()).filter(line => line === 'dir resource').length, 1);
+
+    // 内容损坏但 mtime 未变时沿用已解析的目录快照，不重新读取 stages.json。
+    await writeFile(stagesPath, 'not-json');
+    await utimes(stagesPath, stagesStat.atimeMs / 1000, stagesStat.mtimeMs / 1000);
+    const sameVersion = await buildCopilotPlan('cache-set');
+    assert.equal(sameVersion.items[0]?.apCost, 21);
+
+    // mtime 前进后重新解析，拿到资源更新后的理智消耗。
+    await writeFile(stagesPath, JSON.stringify([
+      { stageId: 'act_cache_01', code: 'CA-1', apCost: 42 }
+    ]));
+    const updatedAt = new Date(Date.now() + 2000);
+    await utimes(stagesPath, updatedAt, updatedAt);
+    const updated = await buildCopilotPlan('cache-set');
+    assert.equal(updated.items[0]?.apCost, 42);
+    assert.equal((await readMaaCalls()).filter(line => line === 'dir resource').length, 1);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('ensurePresetFormationResource reuses cached resource reads', async () => {
+  const resourceDir = join(fixtureDir, 'preset-resource');
+  const tasksPath = join(resourceDir, 'tasks', 'tasks.json');
+  const configDir = join(fixtureDir, 'preset-config');
+  await mkdir(join(resourceDir, 'tasks'), { recursive: true });
+  await writeFile(tasksPath, JSON.stringify({
+    BattleStart: { postDelay: 1000 },
+    InstalledOnly: { action: 'DoNothing' }
+  }));
+  const tasksStat = await stat(tasksPath);
+  process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+
+  await ensurePresetFormationResource(configDir);
+  await ensurePresetFormationResource(configDir);
+  assert.equal((await readMaaCalls()).filter(line => line === 'dir resource').length, 1);
+
+  const firstUser = await readUserTasks(configDir);
+  const firstBattleStart = readObject(firstUser.BattleStart);
+  assert.equal(firstBattleStart.postDelay, 1000);
+  assert.ok(Array.isArray(firstBattleStart.next) && firstBattleStart.next.includes('LaPlumaPresetBattleConfirm'));
+
+  // 修改内容但保持 mtime：仍应使用缓存中的已安装任务。
+  await writeFile(tasksPath, JSON.stringify({ BattleStart: { postDelay: 999 } }));
+  await utimes(tasksPath, tasksStat.atimeMs / 1000, tasksStat.mtimeMs / 1000);
+  await rm(join(configDir, 'resource'), { recursive: true, force: true });
+  await ensurePresetFormationResource(configDir);
+  assert.equal(readObject((await readUserTasks(configDir)).BattleStart).postDelay, 1000);
+
+  // mtime 前进后重新读取已安装任务。
+  await writeFile(tasksPath, JSON.stringify({ BattleStart: { postDelay: 777 } }));
+  const updatedAt = new Date(Date.now() + 2000);
+  await utimes(tasksPath, updatedAt, updatedAt);
+  await rm(join(configDir, 'resource'), { recursive: true, force: true });
+  await ensurePresetFormationResource(configDir);
+  assert.equal(readObject((await readUserTasks(configDir)).BattleStart).postDelay, 777);
 });
