@@ -65,6 +65,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
     wget \
+    git \
     unzip \
     ca-certificates \
     android-tools-adb \
