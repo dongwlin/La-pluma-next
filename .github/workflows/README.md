@@ -10,9 +10,11 @@
 | main 推送 | 源码、独立类型门禁、覆盖率、样式预算、浏览器集成和视觉检查，不构建镜像 |
 | `v*` tag | 源码校验与原生双架构构建并行；启动检查和 `verify` 通过后合并并发布镜像 |
 
+`push`（main）通过 `paths-ignore` 排除 `docs/**`、`screenshots/**`、`**.md` 和 `LICENSE`；仅这些文件变更时不触发工作流。PR、tag 推送和手动运行不受路径过滤影响。
+
 源码检查按职责并行：`checks` 校验工作流与发布 tag，`client-checks` 运行客户端护栏、Lint、单测和样式预算，`client-build` 运行客户端类型检查、生产构建与预缓存校验，`server-checks` 运行服务端护栏、语法、类型和覆盖率测试。本地 `pnpm verify` 保持原有入口；CI 使用上述独立步骤，避免重复运行服务端测试与类型检查。
 
-`browser-checks` 只依赖 `client-build`，通过当前工作流的 `client-dist` artifact 复用前端产物，不等待客户端单测或服务端检查。产物缺失直接失败；集成与视觉入口都跳过重建，保持单 worker 与全部用例。tag 发布不上传浏览器产物，也不重复运行 PR/main 的浏览器检查。检查固定执行，不维护按文件路径选择任务的策略。
+`browser-checks` 只依赖 `client-build`，通过当前工作流的 `client-dist` artifact 复用前端产物，不等待客户端单测或服务端检查。产物缺失直接失败；集成与视觉入口都跳过重建，保持单 worker 与全部用例。tag 发布不上传浏览器产物，也不重复运行 PR/main 的浏览器检查。
 
 源码检查与镜像检查的宿主机 Node 版本在两个工作流中固定，并保持一致。该版本包含 [Node 测试运行器的反序列化修复](https://github.com/nodejs/node/pull/64706)，避免测试输出中的中文或 emoji 触发进程通信错误。更新版本时同时复核普通测试与覆盖率模式；应用运行时下限仍由根 `package.json` 的 `engines` 定义。
 

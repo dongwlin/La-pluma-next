@@ -6,7 +6,7 @@ La Pluma Next 是 [mps233/La-pluma](https://github.com/mps233/La-pluma) 的社�
 
 ## 分支与合并
 
-- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码、浏览器和适用的镜像检查。
+- `main` 是集成分支，已开启分支保护，要求 `verify` 状态检查通过，并禁止 force push 和删除。该汇总门禁定义在 `.github/workflows/ci.yml`，同时约束源码、浏览器和适用的镜像检查；纯文档变更合入 main 时不再重复触发 CI。
 - 日常改动使用主题分支，通过 Pull Request 合并。
 
 ## 发布流程
