@@ -21,7 +21,6 @@ for (const theme of THEMES) {
     await page.goto('/app/dashboard')
     await page.locator('.la-pluma-boot').waitFor({ state: 'visible' })
     await page.evaluate(() => document.fonts.ready)
-    await page.waitForTimeout(300)
 
     await expect(page).toHaveScreenshot(`boot-shell-${theme}.png`, {
       fullPage: false,
