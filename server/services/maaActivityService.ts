@@ -29,6 +29,12 @@ const logger = createLogger('MaaService');
 /** 正缓存 TTL：缩短后活动结束到重新查询的窗口更小，调用频率由 CLI 自身控制。 */
 const ACTIVITY_CACHE_TTL = 10 * 60 * 1000;
 
+/**
+ * 负缓存 TTL：`none` 与解析不出活动代号的短结果只短暂复用。
+ * 活动可能在下一分钟开始，因此不能沿用正缓存的十分钟。
+ */
+const NEGATIVE_ACTIVITY_CACHE_TTL = 60 * 1000;
+
 /** 活动表最近确认时间的最大可信任年龄；超过后不能用“表里没有”断言当前没有活动。 */
 const ACTIVITY_TABLE_MAX_AGE = 24 * 60 * 60 * 1000;
 
@@ -66,6 +72,12 @@ export interface CachedActivity extends MaaActivityInfo {
   ttl: number;
 }
 
+/** 短负缓存条目：保存完整快照，命中时保留原查询的确认时间与数据时间。 */
+export interface CachedNegativeActivity {
+  timestamp: number;
+  snapshot: MaaActivitySnapshot;
+}
+
 /** MAA 活动表在缓存目录中的存在性、内容修改时间与最近确认时间。 */
 export interface MaaActivityTableState {
   exists: boolean;
@@ -83,6 +95,10 @@ export interface MaaActivityTableState {
 export interface MaaActivityRuntime {
   now?: () => number;
   cache?: Map<string, CachedActivity>;
+  /** 负结果短缓存；测试注入独立 Map 以隔离用例。 */
+  negativeCache?: Map<string, CachedNegativeActivity>;
+  /** 在途读取；同一 clientType 的并发调用共享一次查询。 */
+  inflight?: Map<string, Promise<MaaActivitySnapshot>>;
   runActivity?: (clientType: string) => Promise<{ stdout: string }>;
   readActivityTable?: () => Promise<MaaActivityTableState>;
   readFallback?: (clientType: string) => Promise<unknown>;
@@ -106,6 +122,8 @@ export interface ParsedMaaActivityOutput {
 }
 
 const activityCache = new Map<string, CachedActivity>();
+const negativeActivityCache = new Map<string, CachedNegativeActivity>();
+const activityRequests = new Map<string, Promise<MaaActivitySnapshot>>();
 
 const ACTIVITY_SECTION_HEADER = 'Opening side story stages:';
 const SECTION_HEADER_PATTERN = /^Opening\s+[A-Za-z][A-Za-z0-9 ]*:\s*$/;
@@ -272,10 +290,35 @@ export async function readActivityTableState(cacheDir: string): Promise<MaaActiv
   };
 }
 
-/** `maa dir cache` 的输出只取首行；空目录也照原样返回，由 stat 判定是否存在。 */
+/**
+ * MAA 缓存目录：显式 `MAA_CACHE_DIR` 优先，与任务缓存的解析顺序一致。
+ *
+ * `maa dir cache` 在进程生命周期内结果稳定；这里缓存进行中的查询，让并发
+ * 调用共享同一次 CLI 查询，失败时清空缓存以便下一次重试。目录为空也是
+ * 有效结果，由活动表读取按“不存在”处理。
+ */
+let maaCacheDirRequest: { configured: string | null; promise: Promise<string | null> } | null = null;
+
+function resolveMaaCacheDir(): Promise<string | null> {
+  const configured = process.env.MAA_CACHE_DIR?.trim() || null;
+  if (maaCacheDirRequest?.configured === configured) return maaCacheDirRequest.promise;
+
+  let request: Promise<string | null>;
+  request = (async () => {
+    if (configured) return configured;
+    const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
+    return result.stdout.trim().split(/\r?\n/)[0]?.trim() || null;
+  })().catch(error => {
+    if (maaCacheDirRequest?.promise === request) maaCacheDirRequest = null;
+    throw error;
+  });
+  maaCacheDirRequest = { configured, promise: request };
+  return request;
+}
+
+/** 活动表状态读取只解析一次缓存目录，不再为每次轮询启动 `maa dir cache`。 */
 async function readMaaActivityTable(): Promise<MaaActivityTableState> {
-  const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
-  const cacheDir = result.stdout.trim().split(/\r?\n/)[0]?.trim();
+  const cacheDir = await resolveMaaCacheDir();
   if (!cacheDir) return { exists: false, modifiedAt: null, checkedAt: null };
   return readActivityTableState(cacheDir);
 }
@@ -290,12 +333,27 @@ export interface ResourceCollectionWindow {
 export interface ResourceCollectionRuntime {
   now?: () => number;
   readWindow?: (clientType: string) => Promise<ResourceCollectionWindow | null>;
+  /** 窗口缓存；测试注入独立 Map 以隔离用例。 */
+  cache?: Map<string, CachedResourceCollectionWindow>;
+  /** 在途读取；同一个活动表服务区的并发调用共享一次读取。 */
+  inflight?: Map<string, Promise<ResourceCollectionWindow | null>>;
+}
+
+/** 资源全开放窗口缓存条目；失败条目使用独立短 TTL，不写入成功缓存。 */
+export interface CachedResourceCollectionWindow {
+  timestamp: number;
+  window: ResourceCollectionWindow | null;
+  failed: boolean;
 }
 
 /** 窗口缓存 TTL：总览轮询与逐关卡执行检查不需要每次都启动 CLI。 */
 const RESOURCE_COLLECTION_CACHE_TTL = 60 * 1000;
 
-const resourceCollectionCache = new Map<string, { timestamp: number; window: ResourceCollectionWindow | null }>();
+/** 读取失败只短暂退避，活动表恢复后下一次轮询即可重新读取。 */
+const RESOURCE_COLLECTION_FAILURE_TTL = 5 * 1000;
+
+const resourceCollectionCache = new Map<string, CachedResourceCollectionWindow>();
+const resourceCollectionRequests = new Map<string, Promise<ResourceCollectionWindow | null>>();
 
 const ACTIVITY_DATE_TIME_PATTERN = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 
@@ -329,38 +387,63 @@ function activityTableClientKey(clientType: string): string {
   return normalized === 'Bilibili' ? 'Official' : normalized;
 }
 
-/** MAA 缓存目录：显式 `MAA_CACHE_DIR` 优先，与任务缓存的解析顺序一致。 */
-async function readMaaCacheDir(): Promise<string | null> {
-  const configured = process.env.MAA_CACHE_DIR?.trim();
-  if (configured) return configured;
-  const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
-  return result.stdout.trim().split(/\r?\n/)[0]?.trim() || null;
-}
-
 async function readResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
-  const cacheDir = await readMaaCacheDir();
+  const cacheDir = await resolveMaaCacheDir();
   if (!cacheDir) return null;
   const table: unknown = JSON.parse(await readFile(join(cacheDir, 'StageActivityV2.json'), 'utf-8'));
   if (!isRecord(table) || !isRecord(table[clientType])) return null;
   return parseResourceCollectionWindow(table[clientType].resourceCollection);
 }
 
-async function readCachedResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
-  const timestamp = Date.now();
-  const cached = resourceCollectionCache.get(clientType);
-  if (cached && timestamp - cached.timestamp < RESOURCE_COLLECTION_CACHE_TTL) return cached.window;
+interface ResourceCollectionReadOptions {
+  now: number;
+  readWindow: (clientType: string) => Promise<ResourceCollectionWindow | null>;
+  cache: Map<string, CachedResourceCollectionWindow>;
+  inflight: Map<string, Promise<ResourceCollectionWindow | null>>;
+}
 
-  let window: ResourceCollectionWindow | null = null;
-  try {
-    window = await readResourceCollectionWindow(clientType);
-  } catch (error) {
-    logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
-      clientType,
-      error: errorMessageOf(error)
-    });
+/**
+ * 带短缓存与单飞的窗口读取。
+ *
+ * 成功结果（包括“表里没有窗口”）缓存 60 秒；读取失败只写 5 秒失败缓存，
+ * 不把 `window: null` 当成一分钟内的确定答案。同一服务区的并发首次调用
+ * 共享同一次读取，避免同时启动多个 CLI。
+ */
+async function readCachedResourceCollectionWindow(
+  clientType: string,
+  { now, readWindow, cache, inflight }: ResourceCollectionReadOptions
+): Promise<ResourceCollectionWindow | null> {
+  const cached = cache.get(clientType);
+  if (cached) {
+    const ttl = cached.failed ? RESOURCE_COLLECTION_FAILURE_TTL : RESOURCE_COLLECTION_CACHE_TTL;
+    if (now - cached.timestamp < ttl) return cached.window;
   }
-  resourceCollectionCache.set(clientType, { timestamp, window });
-  return window;
+
+  const pending = inflight.get(clientType);
+  if (pending) return pending;
+
+  let request: Promise<ResourceCollectionWindow | null>;
+  request = Promise.resolve()
+    .then(() => readWindow(clientType))
+    .then(
+      window => {
+        cache.set(clientType, { timestamp: now, window, failed: false });
+        return window;
+      },
+      error => {
+        logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
+          clientType,
+          error: errorMessageOf(error)
+        });
+        cache.set(clientType, { timestamp: now, window: null, failed: true });
+        return null;
+      }
+    )
+    .finally(() => {
+      if (inflight.get(clientType) === request) inflight.delete(clientType);
+    });
+  inflight.set(clientType, request);
+  return request;
 }
 
 /**
@@ -372,19 +455,15 @@ export async function isResourceCollectionOpen(
   clientType: string = DEFAULT_CLIENT_TYPE,
   runtime: ResourceCollectionRuntime = {}
 ): Promise<boolean> {
-  const readWindow = runtime.readWindow ?? readCachedResourceCollectionWindow;
-  let window: ResourceCollectionWindow | null = null;
-  try {
-    window = await readWindow(activityTableClientKey(clientType));
-  } catch (error) {
-    logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
-      clientType,
-      error: errorMessageOf(error)
-    });
-    return false;
-  }
-  if (!window) return false;
   const now = (runtime.now ?? Date.now)();
+  const tableClientType = activityTableClientKey(clientType);
+  const window = await readCachedResourceCollectionWindow(tableClientType, {
+    now,
+    readWindow: runtime.readWindow ?? readResourceCollectionWindow,
+    cache: runtime.cache ?? resourceCollectionCache,
+    inflight: runtime.inflight ?? resourceCollectionRequests
+  });
+  if (!window) return false;
   return now >= window.startTime && now <= window.endTime;
 }
 
@@ -401,6 +480,8 @@ async function saveActivityConfig(payload: Record<string, unknown>): Promise<unk
 const defaultRuntime: Required<MaaActivityRuntime> = {
   now: Date.now,
   cache: activityCache,
+  negativeCache: negativeActivityCache,
+  inflight: activityRequests,
   runActivity: clientType => execMaaCommand('activity', [clientType], null, null, false, true),
   readActivityTable: readMaaActivityTable,
   readFallback: clientType => getFallbackActivity(clientType),
@@ -411,6 +492,19 @@ const defaultRuntime: Required<MaaActivityRuntime> = {
   },
   saveConfig: saveActivityConfig
 };
+
+/**
+ * 清理进程内活动缓存，供测试用例之间隔离；生产运行不调用。
+ * 活动查询依赖进程级目录与短缓存，测试需要显式的重置边界。
+ */
+export function resetMaaActivityCachesForTests(): void {
+  activityCache.clear();
+  negativeActivityCache.clear();
+  activityRequests.clear();
+  maaCacheDirRequest = null;
+  resourceCollectionCache.clear();
+  resourceCollectionRequests.clear();
+}
 
 /**
  * DTO 时间戳只接受安全整数：文件系统 mtime 是浮点毫秒，服务端缓存的时间戳
@@ -462,7 +556,8 @@ function combineFailures(
 /**
  * 读取当前活动快照。
  *
- * 读取顺序：新鲜内存/持久化缓存 → `maa activity` → 备用数据源。
+ * 同一 `clientType` 的并发调用共享同一次读取，避免轮询突发重复启动 CLI。
+ * 读取顺序：新鲜内存/持久化缓存 → 短负缓存 → `maa activity` → 备用数据源。
  * 只有活动表存在且未过期时，maa 的空结果才能作为 `none`；否则继续查备用源。
  * 所有来源失败时，旧的成功缓存降级为 `stale`，没有旧数据才是 `unavailable`。
  */
@@ -471,6 +566,23 @@ export async function getCurrentActivity(
   overrides: MaaActivityRuntime = {}
 ): Promise<MaaActivitySnapshot> {
   const runtime = { ...defaultRuntime, ...overrides };
+  const inflight = runtime.inflight;
+  const pending = inflight.get(clientType);
+  if (pending) return pending;
+
+  let request: Promise<MaaActivitySnapshot>;
+  request = loadCurrentActivity(clientType, runtime).finally(() => {
+    if (inflight.get(clientType) === request) inflight.delete(clientType);
+  });
+  inflight.set(clientType, request);
+  return request;
+}
+
+/** 单次活动读取；单飞与负缓存由 `getCurrentActivity` 的统一入口负责。 */
+async function loadCurrentActivity(
+  clientType: string,
+  runtime: Required<MaaActivityRuntime>
+): Promise<MaaActivitySnapshot> {
   const now = runtime.now();
   const cache = runtime.cache;
 
@@ -504,6 +616,15 @@ export async function getCurrentActivity(
   }
   if (newestCandidate) cache.delete(clientType);
 
+  const negative = runtime.negativeCache.get(clientType);
+  if (negative && now - negative.timestamp < NEGATIVE_ACTIVITY_CACHE_TTL) {
+    logger.debug('使用短负缓存的活动结果', {
+      clientType, status: negative.snapshot.status, source: negative.snapshot.source
+    });
+    return { ...negative.snapshot };
+  }
+  if (negative) runtime.negativeCache.delete(clientType);
+
   let maaFailure: MaaActivityFailure | null = null;
   let table: MaaActivityTableState | null = null;
   try {
@@ -528,8 +649,11 @@ export async function getCurrentActivity(
         // CLI 列出的是展示关卡，不是完整活动地图；完整 stages 待结构化活动表落地。
         stages: []
       };
-      await persistActivity(runtime, persistedRecord, clientType, activity, now);
-      return snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
+      const snapshot = snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
+      // 解析不出代号时无法写入正缓存；用短负缓存避免每次轮询重复启动 CLI。
+      if (activity.code) await persistActivity(runtime, persistedRecord, clientType, activity, now);
+      else rememberNegativeActivity(runtime, clientType, snapshot, now);
+      return snapshot;
     }
 
     if (output.trim() && !parsed.sawAnySection) {
@@ -551,7 +675,9 @@ export async function getCurrentActivity(
           maaFailure = { source: 'maa', message: 'MAA 活动数据表已超过 24 小时未更新' };
         } else {
           const activity = emptyActivityInfo('maa');
-          return snapshotOf(clientType, activity, 'none', now, table.modifiedAt, null);
+          const snapshot = snapshotOf(clientType, activity, 'none', now, table.modifiedAt, null);
+          rememberNegativeActivity(runtime, clientType, snapshot, now);
+          return snapshot;
         }
       }
     }
@@ -576,7 +702,9 @@ export async function getCurrentActivity(
         await persistActivity(runtime, persistedRecord, clientType, fallbackActivity, now);
         return snapshotOf(clientType, fallbackActivity, 'active', now, now, null);
       }
-      return snapshotOf(clientType, emptyActivityInfo('penguin'), 'none', now, now, null);
+      const snapshot = snapshotOf(clientType, emptyActivityInfo('penguin'), 'none', now, now, null);
+      rememberNegativeActivity(runtime, clientType, snapshot, now);
+      return snapshot;
     } catch (error) {
       fallbackFailure = {
         source: 'penguin',
@@ -609,6 +737,17 @@ export async function getCurrentActivity(
   return snapshotOf(clientType, emptyActivityInfo(), 'unavailable', null, null, failure);
 }
 
+/** 记录没有可用活动代号的短负结果；有代号的结果只写正缓存。 */
+function rememberNegativeActivity(
+  runtime: Required<MaaActivityRuntime>,
+  clientType: string,
+  snapshot: MaaActivitySnapshot,
+  now: number
+): void {
+  if (snapshot.code) return;
+  runtime.negativeCache.set(clientType, { timestamp: now, snapshot });
+}
+
 /** 写入内存与持久化缓存；保存失败只告警，返回结果仍以已读取的数据为准。 */
 async function persistActivity(
   runtime: Required<MaaActivityRuntime>,
@@ -624,6 +763,7 @@ async function persistActivity(
     ttl: ACTIVITY_CACHE_TTL
   };
   runtime.cache.set(clientType, cached);
+  runtime.negativeCache.delete(clientType);
   try {
     await runtime.saveConfig({
       ...(persistedRecord ?? {}),

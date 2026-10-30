@@ -247,6 +247,75 @@ describe('Telegram polling lifecycle', () => {
     assert.equal(service.getStatus().polling, false);
   });
 
+  it('skips progress ticks while the previous edit request is still in flight', async t => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    let editCalls = 0;
+    let releaseEdit!: () => void;
+    const editGate = new Promise<void>(resolve => {
+      releaseEdit = resolve;
+    });
+    const outbound = createOutboundFake(call => {
+      if (call.url.endsWith('/getUpdates')) return deliverOnce([messageUpdate(70, '/run automation')])(call);
+      if (call.url.endsWith('/sendMessage')) return telegramOk({ message_id: 123 });
+      if (call.url.endsWith('/editMessageText')) {
+        editCalls += 1;
+        return editCalls === 1 ? editGate.then(() => telegramOk()) : telegramOk();
+      }
+      return telegramOk();
+    });
+    let scheduleStarted = false;
+    const service = createService({
+      outbound: outbound.client,
+      loadUserConfig: async () => ({
+        success: true,
+        message: 'ok',
+        data: { taskFlow: [{ enabled: true }] },
+        meta: { requestId: null, dryRun: false }
+      }),
+      getScheduleExecutionStatus: () => ({
+        isRunning: true,
+        scheduleId: 'fixture',
+        runId: null,
+        currentStep: 0,
+        totalSteps: 2,
+        currentTask: '测试任务',
+        currentTaskId: null,
+        message: '',
+        startTime: Date.now(),
+        shouldStop: false,
+        lastResult: null,
+        taskResults: []
+      }),
+      executeScheduleNow: () => {
+        scheduleStarted = true;
+        return Promise.resolve({});
+      }
+    });
+
+    try {
+      service.init(BOT_CONFIG);
+      await waitFor(() => scheduleStarted);
+
+      t.mock.timers.tick(3000);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(editCalls, 1);
+
+      // 第一次编辑仍未完成：后续 tick 不应叠加新的编辑请求。
+      t.mock.timers.tick(3000);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(editCalls, 1);
+
+      releaseEdit();
+      await new Promise(resolve => setImmediate(resolve));
+      t.mock.timers.tick(3000);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(editCalls, 2);
+    } finally {
+      await service.stop('test-cleanup');
+      t.mock.timers.reset();
+    }
+  });
+
   it('cancels the retry wait after a polling failure without replaying the read', async () => {
     let getUpdatesCount = 0;
     const outbound = createOutboundFake(call => {

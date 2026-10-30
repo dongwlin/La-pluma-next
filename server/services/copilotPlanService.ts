@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir } from 'fs/promises';
+import { mkdir, readFile, readdir, stat } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
@@ -29,6 +29,100 @@ const progressStore = createCopilotProgressStore({
 
 // 作业站读取：服务内已有固定次数重试循环，端口侧关闭自动重试以保持总请求次数不变。
 const outboundHttp = createOutboundHttpClient();
+
+/**
+ * `maa dir resource` 的进程内缓存：资源目录在进程生命周期内稳定。
+ * 计划构建与预设编队写入共用解析结果；失败不缓存，下一次调用重新尝试。
+ */
+let resourceDirPromise: Promise<string> | null = null;
+
+function getMaaResourceDir(): Promise<string> {
+  if (!resourceDirPromise) {
+    resourceDirPromise = execMaaCommand('dir', ['resource'], null, null, false, true)
+      .then(result => result.stdout.trim())
+      .catch(error => {
+        resourceDirPromise = null;
+        throw error;
+      });
+  }
+  return resourceDirPromise;
+}
+
+/** 资源目录签名：目录或 `stages.json` 的修改时间变化时重新解析。 */
+interface StageCatalog {
+  signature: string;
+  filenames: string[];
+  stages: Map<string, StageCode>;
+}
+
+interface CachedInstalledTasks {
+  modifiedAt: number | null;
+  tasks: unknown;
+}
+
+const stageCatalogCache = new Map<string, StageCatalog>();
+const installedTasksCache = new Map<string, CachedInstalledTasks>();
+
+async function readPathMtimeMs(path: string): Promise<number | null> {
+  try {
+    return Math.trunc((await stat(path)).mtimeMs);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 读取资源目录中的关卡索引。
+ *
+ * `Arknights-Tile-Pos` 有数千个文件，`stages.json` 接近 1MB；这两项不能按
+ * 每次计划请求重新遍历与解析。目录/文件 mtime 不变时复用文件名列表和
+ * stageId → code/apCost 映射，资源更新后签名变化自然失效。
+ */
+async function loadStageCatalog(resourceDir: string): Promise<StageCatalog> {
+  const tileDir = join(resourceDir, 'Arknights-Tile-Pos');
+  const stagesPath = join(resourceDir, 'stages.json');
+  const signature = `${await readPathMtimeMs(tileDir) ?? 'missing'}:${await readPathMtimeMs(stagesPath) ?? 'missing'}`;
+  const cached = stageCatalogCache.get(resourceDir);
+  if (cached?.signature === signature) return cached;
+
+  const filenames = await readdir(tileDir);
+  const stages = new Map<string, StageCode>();
+  try {
+    const parsed: unknown = JSON.parse(await readFile(stagesPath, 'utf8'));
+    const entries = Array.isArray(parsed) ? parsed : [];
+    for (const stage of entries) {
+      const stageId = readOptionalStringField(stage, 'stageId');
+      const code = readOptionalStringField(stage, 'code');
+      if (!stageId || !code) continue;
+      stages.set(stageId, {
+        code,
+        apCost: Math.max(0, Number(isRecord(stage) ? stage.apCost : 0) || 0)
+      });
+    }
+  } catch {}
+  const catalog: StageCatalog = { signature, filenames, stages };
+  stageCatalogCache.set(resourceDir, catalog);
+  return catalog;
+}
+
+/** 已安装 `tasks.json` 的解析缓存；修改时间不变时不重复读取文件。 */
+async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
+  const tasksPath = join(resourceDir, 'tasks', 'tasks.json');
+  const modifiedAt = await readPathMtimeMs(tasksPath);
+  const cached = installedTasksCache.get(tasksPath);
+  if (cached && modifiedAt !== null && cached.modifiedAt === modifiedAt) return cached.tasks;
+
+  const tasks: unknown = JSON.parse(await readFile(tasksPath, 'utf8'));
+  installedTasksCache.set(tasksPath, { modifiedAt, tasks });
+  return tasks;
+}
+
+/** 清理进程内资源缓存，供测试用例之间隔离；生产运行不调用。 */
+export function resetCopilotPlanCachesForTests(): void {
+  resourceDirPromise = null;
+  stageCatalogCache.clear();
+  installedTasksCache.clear();
+}
 
 /** 执行模式：普通关卡或突袭。 */
 export type CopilotRaidMode = 'normal' | 'raid';
@@ -342,9 +436,11 @@ export function getNavigationStage(copilot: unknown = {}): string {
 
 async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<string, StageCode>> {
   try {
-    const resourceDir = (await execMaaCommand('dir', ['resource'], null, null, false, true)).stdout.trim();
+    const resourceDir = await getMaaResourceDir();
+    if (!resourceDir) return new Map();
     const tileDir = join(resourceDir, 'Arknights-Tile-Pos');
-    const filenames = await readdir(tileDir);
+    const catalog = await loadStageCatalog(resourceDir);
+    const filenames = catalog.filenames;
     const result = new Map<string, StageCode>();
     const requestedStageIds = [...new Set(stageIds.filter(
       (stageId): stageId is string => typeof stageId === 'string' && Boolean(stageId)
@@ -353,27 +449,22 @@ async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<strin
       const filename = filenames.find(name =>
         name.endsWith('.json') && (name.startsWith(`${stageId}-`) || name.startsWith(`${stageId}#`))
       );
-      if (!filename) return;
-      try {
-        const metadata: unknown = JSON.parse(await readFile(join(tileDir, filename), 'utf8'));
-        const code = readOptionalStringField(metadata, 'code');
-        if (code) result.set(stageId, { code, apCost: 0 });
-      } catch {}
-    }));
-    try {
-      const parsed: unknown = JSON.parse(await readFile(join(resourceDir, 'stages.json'), 'utf8'));
-      const stages = Array.isArray(parsed) ? parsed : [];
-      for (const stage of stages) {
-        const stageId = readOptionalStringField(stage, 'stageId');
-        const code = readOptionalStringField(stage, 'code');
-        if (!stageId || !code) continue;
+      if (filename) {
+        try {
+          const metadata: unknown = JSON.parse(await readFile(join(tileDir, filename), 'utf8'));
+          const code = readOptionalStringField(metadata, 'code');
+          if (code) result.set(stageId, { code, apCost: 0 });
+        } catch {}
+      }
+      const stage = catalog.stages.get(stageId);
+      if (stage) {
         const existing = result.get(stageId);
         result.set(stageId, {
-          code: existing?.code || code,
-          apCost: Math.max(0, Number(isRecord(stage) ? stage.apCost : 0) || 0)
+          code: existing?.code || stage.code,
+          apCost: stage.apCost
         });
       }
-    } catch {}
+    }));
     const missingStageIds = requestedStageIds.filter(stageId => !result.get(stageId)?.apCost);
     if (missingStageIds.length > 0) {
       try {
@@ -514,9 +605,9 @@ export async function ensureCurrentMapActivityResource(
   return { stageFile, stages: Object.keys(tasks) };
 }
 
-async function ensurePresetFormationResource(configDir: string): Promise<void> {
-  const installedResource = (await execMaaCommand('dir', ['resource'], null, null, false, true)).stdout.trim();
-  const installedTasks: unknown = JSON.parse(await readFile(join(installedResource, 'tasks', 'tasks.json'), 'utf8'));
+export async function ensurePresetFormationResource(configDir: string): Promise<void> {
+  const installedResource = await getMaaResourceDir();
+  const installedTasks = await loadInstalledTasks(installedResource);
   const userTasksPath = join(configDir, 'resource', 'tasks', 'tasks.json');
   // 用户 tasks.json 与安装资源的合并是共享资源读改写：读取、合并、写回在同一
   // 排队单元内原子完成；缺失文件按空任务合并，损坏文件报错且不覆盖原内容。

@@ -1,17 +1,46 @@
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
+import type {
+  CachedActivity,
+  MaaActivityRuntime,
+  MaaActivityTableState,
+  ResourceCollectionRuntime
+} from '../maaActivityService.ts';
+
+// 活动表目录解析在模块导入时读取 MAA_CLI_PATH；先准备假 CLI，再加载被测模块。
+const cliFixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-cli-'));
+const fakeMaaCliPath = join(cliFixtureDir, 'fake-maa.js');
+const maaCallLog = join(cliFixtureDir, 'maa-calls.log');
+await writeFile(fakeMaaCliPath, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (process.env.FAKE_MAA_CALL_LOG) fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, args.join(' ') + '\\n');
+if (args[0] === 'dir' && args[1] === 'cache' && !process.env.FAKE_MAA_CLI_FAIL) {
+  process.stdout.write(process.env.FAKE_MAA_CACHE_DIR || '');
+} else {
+  process.exit(1);
+}
+`, { mode: 0o755 });
+process.env.MAA_CLI_PATH = fakeMaaCliPath;
+process.env.FAKE_MAA_CALL_LOG = maaCallLog;
+delete process.env.MAA_CACHE_DIR;
+
+const {
   getCurrentActivity,
   isResourceCollectionOpen,
   parseActivityTimestamp,
   parseMaaActivityGroups,
   parseResourceCollectionWindow,
-  readActivityTableState
-} from '../maaActivityService.ts';
-import type { CachedActivity, MaaActivityRuntime, MaaActivityTableState } from '../maaActivityService.ts';
+  readActivityTableState,
+  resetMaaActivityCachesForTests
+} = await import('../maaActivityService.ts');
+
+after(async () => {
+  await rm(cliFixtureDir, { recursive: true, force: true });
+});
 
 const NOW = 1_800_000_000_000;
 const CLIENT = 'Official';
@@ -65,6 +94,8 @@ function runtime(overrides: MaaActivityRuntime = {}): MaaActivityRuntime {
   return {
     now: () => NOW,
     cache: new Map<string, CachedActivity>(),
+    negativeCache: new Map(),
+    inflight: new Map(),
     runActivity: async () => ({ stdout: '' }),
     readActivityTable: async () => activityTable(),
     readFallback: async () => null,
@@ -455,6 +486,199 @@ describe('getCurrentActivity status contract', () => {
   });
 });
 
+describe('activity lookup short caching', () => {
+  const NEGATIVE_TTL = 60 * 1000;
+
+  it('reuses a none result briefly instead of respawning the CLI', async () => {
+    let currentTime = NOW;
+    let runCalls = 0;
+    const overrides = runtime({
+      now: () => currentTime,
+      runActivity: async () => {
+        runCalls += 1;
+        return { stdout: MINI_GAMES_ONLY };
+      }
+    });
+
+    const first = await getCurrentActivity(CLIENT, overrides);
+    const second = await getCurrentActivity(CLIENT, overrides);
+
+    assert.equal(first.status, 'none');
+    assert.equal(second.status, 'none');
+    assert.equal(runCalls, 1);
+    assert.equal(second.lastSuccessAt, first.lastSuccessAt);
+    assert.equal(second.dataUpdatedAt, first.dataUpdatedAt);
+
+    // 负缓存到期后必须重新查询，避免活动开始后继续返回 none。
+    currentTime += NEGATIVE_TTL + 1;
+    const third = await getCurrentActivity(CLIENT, overrides);
+    assert.equal(third.status, 'none');
+    assert.equal(runCalls, 2);
+  });
+
+  it('reuses a code-less active result briefly and isolates the cache by clientType', async () => {
+    let runCalls = 0;
+    const overrides = runtime({
+      runActivity: async () => {
+        runCalls += 1;
+        return {
+          stdout: `Opening side story stages:
+- 主线「相变临界」
+  - 17-11: 固源岩`
+        };
+      }
+    });
+
+    const first = await getCurrentActivity(CLIENT, overrides);
+    const second = await getCurrentActivity(CLIENT, overrides);
+    assert.equal(first.status, 'active');
+    assert.equal(first.code, null);
+    assert.equal(second.status, 'active');
+    assert.equal(runCalls, 1);
+
+    // 负缓存按 clientType 分键，其他服务区仍要发起自己的查询。
+    const other = await getCurrentActivity('Bilibili', overrides);
+    assert.equal(other.status, 'active');
+    assert.equal(runCalls, 2);
+  });
+
+  it('shares one in-flight CLI query between concurrent callers', async () => {
+    let runCalls = 0;
+    let releaseRun!: (value: { stdout: string }) => void;
+    const runGate = new Promise<{ stdout: string }>(resolve => {
+      releaseRun = resolve;
+    });
+    const overrides = runtime({
+      runActivity: () => {
+        runCalls += 1;
+        return runGate;
+      }
+    });
+
+    const first = getCurrentActivity(CLIENT, overrides);
+    const second = getCurrentActivity(CLIENT, overrides);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(runCalls, 1);
+    releaseRun({ stdout: MINI_GAMES_ONLY });
+
+    const snapshots = await Promise.all([first, second]);
+    assert.equal(snapshots[0]?.status, 'none');
+    assert.equal(snapshots[1]?.status, 'none');
+    assert.equal(runCalls, 1);
+  });
+});
+
+describe('MAA cache directory resolution', () => {
+  /** 不注入 readActivityTable，让默认实现经 `maa dir cache` 解析活动表目录。 */
+  function runtimeUsingDefaultTable(overrides: MaaActivityRuntime = {}): MaaActivityRuntime {
+    return {
+      now: () => NOW,
+      cache: new Map<string, CachedActivity>(),
+      negativeCache: new Map(),
+      inflight: new Map(),
+      runActivity: async () => ({ stdout: '' }),
+      readFallback: async () => null,
+      supportsFallback: () => true,
+      loadConfig: async () => null,
+      saveConfig: async () => undefined,
+      ...overrides
+    };
+  }
+
+  async function withCacheDir(run: (dir: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-cache-'));
+    try {
+      const tablePath = join(dir, 'StageActivityV2.json');
+      await writeFile(tablePath, '{}');
+      await utimes(tablePath, NOW / 1000, NOW / 1000);
+      await run(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async function dirCacheCalls(): Promise<string[]> {
+    const lines = (await readFile(maaCallLog, 'utf-8')).trim().split('\n');
+    return lines.filter(line => line === 'dir cache');
+  }
+
+  it('prefers MAA_CACHE_DIR without running maa dir cache', async () => {
+    resetMaaActivityCachesForTests();
+    await withCacheDir(async dir => {
+      process.env.MAA_CACHE_DIR = dir;
+      await writeFile(maaCallLog, '');
+      try {
+        const snapshot = await getCurrentActivity(CLIENT, runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: MINI_GAMES_ONLY })
+        }));
+
+        assert.equal(snapshot.status, 'none');
+        assert.equal(snapshot.source, 'maa');
+        assert.deepEqual(await dirCacheCalls(), []);
+      } finally {
+        delete process.env.MAA_CACHE_DIR;
+      }
+    });
+  });
+
+  it('reuses the resolved cache directory across cached and concurrent reads', async () => {
+    resetMaaActivityCachesForTests();
+    await withCacheDir(async dir => {
+      process.env.FAKE_MAA_CACHE_DIR = dir;
+      await writeFile(maaCallLog, '');
+      try {
+        const overrides = runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: MINI_GAMES_ONLY })
+        });
+        const [official, bilibili] = await Promise.all([
+          getCurrentActivity(CLIENT, overrides),
+          getCurrentActivity('Bilibili', overrides)
+        ]);
+        assert.equal(official.status, 'none');
+        assert.equal(bilibili.status, 'none');
+        assert.equal((await dirCacheCalls()).length, 1);
+
+        // 后续顺序读取仍命中进程内目录缓存，不再启动 CLI。
+        const third = await getCurrentActivity('YoStarEN', overrides);
+        assert.equal(third.status, 'none');
+        assert.equal((await dirCacheCalls()).length, 1);
+      } finally {
+        delete process.env.FAKE_MAA_CACHE_DIR;
+      }
+    });
+  });
+
+  it('does not cache a failed maa dir cache query', async () => {
+    resetMaaActivityCachesForTests();
+    await withCacheDir(async dir => {
+      process.env.FAKE_MAA_CACHE_DIR = dir;
+      process.env.FAKE_MAA_CLI_FAIL = '1';
+      await writeFile(maaCallLog, '');
+      try {
+        const overrides = runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: '' })
+        });
+        const failed = await getCurrentActivity(CLIENT, overrides);
+        assert.equal(failed.status, 'none');
+        assert.equal(failed.source, 'penguin');
+
+        delete process.env.FAKE_MAA_CLI_FAIL;
+        // 换一个 clientType，避免第一条 none 的短负缓存掩盖目录查询结果。
+        const recovered = await getCurrentActivity('YoStarEN', runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: MINI_GAMES_ONLY })
+        }));
+        assert.equal(recovered.status, 'none');
+        assert.equal(recovered.source, 'maa');
+        assert.equal((await dirCacheCalls()).length, 2);
+      } finally {
+        delete process.env.FAKE_MAA_CLI_FAIL;
+        delete process.env.FAKE_MAA_CACHE_DIR;
+      }
+    });
+  });
+});
+
 describe('activity table freshness', () => {
   async function withCacheDir(run: (dir: string) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-'));
@@ -574,6 +798,16 @@ describe('activity table freshness', () => {
 });
 
 describe('resource collection window', () => {
+  /** 每个用例独立的窗口缓存，避免模块级 60 秒缓存跨用例命中。 */
+  function resourceRuntime(overrides: ResourceCollectionRuntime = {}): ResourceCollectionRuntime {
+    return {
+      now: () => NOW,
+      cache: new Map(),
+      inflight: new Map(),
+      ...overrides
+    };
+  }
+
   const WINDOW = {
     UtcStartTime: '2026/09/29 16:00:00',
     UtcExpireTime: '2026/10/20 03:59:59',
@@ -609,32 +843,79 @@ describe('resource collection window', () => {
       YoStarEN: null
     };
     const seen: string[] = [];
-    const request = {
+    const request = resourceRuntime({
       now: () => Date.UTC(2026, 9, 19, 12, 0, 0),
       readWindow: async (clientType: string) => {
         seen.push(clientType);
         return windows[clientType] ?? null;
       }
-    };
+    });
 
     assert.equal(await isResourceCollectionOpen('Official', request), true);
     assert.equal(await isResourceCollectionOpen('Bilibili', request), true, 'Bilibili uses the Official table');
     assert.equal(await isResourceCollectionOpen('YoStarEN', request), false);
     // 未知客户端规范化为 Official，与游戏日判定同一套服务区映射。
     assert.equal(await isResourceCollectionOpen('unknown', request), true);
-    assert.deepEqual(seen, ['Official', 'Official', 'YoStarEN', 'Official']);
+    // 同一活动表服务区只读取一次；Bilibili 与未知客户端复用 Official 的缓存。
+    assert.deepEqual(seen, ['Official', 'YoStarEN']);
   });
 
   it('treats a missing window or read failure as not open', async () => {
-    assert.equal(await isResourceCollectionOpen('Official', {
+    assert.equal(await isResourceCollectionOpen('Official', resourceRuntime({
       now: () => NOW,
       readWindow: async () => null
-    }), false);
-    assert.equal(await isResourceCollectionOpen('Official', {
+    })), false);
+    assert.equal(await isResourceCollectionOpen('Official', resourceRuntime({
       now: () => NOW,
       readWindow: async () => {
         throw new Error('活动表不可读');
       }
-    }), false);
+    })), false);
+  });
+
+  it('caches a failed window read only for the short failure TTL', async () => {
+    let currentTime = NOW;
+    let readCalls = 0;
+    const window = { startTime: NOW - 1000, endTime: NOW + 60_000 };
+    const request = resourceRuntime({
+      now: () => currentTime,
+      readWindow: async () => {
+        readCalls += 1;
+        if (readCalls === 1) throw new Error('活动表不可读');
+        return window;
+      }
+    });
+
+    assert.equal(await isResourceCollectionOpen('Official', request), false);
+    assert.equal(await isResourceCollectionOpen('Official', request), false);
+    assert.equal(readCalls, 1, '失败结果在短 TTL 内只读取一次');
+
+    // 失败缓存 5 秒后过期，活动表恢复即可重新读取，而不是等满 60 秒。
+    currentTime += 5 * 1000 + 1;
+    assert.equal(await isResourceCollectionOpen('Official', request), true);
+    assert.equal(readCalls, 2);
+  });
+
+  it('shares one window read between concurrent callers', async () => {
+    let readCalls = 0;
+    let releaseRead!: (window: { startTime: number; endTime: number } | null) => void;
+    const readGate = new Promise<{ startTime: number; endTime: number } | null>(resolve => {
+      releaseRead = resolve;
+    });
+    const request = resourceRuntime({
+      readWindow: () => {
+        readCalls += 1;
+        return readGate;
+      }
+    });
+
+    const first = isResourceCollectionOpen('Official', request);
+    const second = isResourceCollectionOpen('Bilibili', request);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(readCalls, 1);
+
+    releaseRead({ startTime: NOW - 1000, endTime: NOW + 60_000 });
+    assert.deepEqual(await Promise.all([first, second]), [true, true]);
+    assert.equal(readCalls, 1);
   });
 });
