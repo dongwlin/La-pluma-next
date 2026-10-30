@@ -49,9 +49,16 @@ docker run -d \
 | `MAA_CLIENT_TYPE` | 默认客户端类型 | `Official` |
 | `LA_PLUMA_TOKEN` | 设置后 `/api/*` 与 WebRTC 票据入口需要 Bearer Token 或 `X-La-Pluma-Token` | 空，不启用 |
 | `LA_PLUMA_AGENT_RUN_STORE` | Agent Run 与幂等记录的持久化文件 | `server/data/agent-runs.json` |
+| `LA_PLUMA_DROP_RECORDS_DIR` | 掉落记录目录 | `server/data/drop-records` |
+| `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `server/data/maa-execution.lock` |
+| `LA_PLUMA_TRAINING_DATA_DIR` | 养成数据目录（队列、材料表、仓库/干员识别结果） | `server/data` |
+| `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
+| `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动作业完成进度文件 | `server/data/activity-copilot-progress.json` |
+| `LA_PLUMA_OPERATOR_QUOTES_STORE` | 干员台词数据文件 | `server/data/operatorQuotes.json` |
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
-| `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC` |
+| `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC`（Docker 为 `/root/ScrcpyOverWebRTC`） |
 | `LA_PLUMA_WEBRTC_PORT` | ScrcpyOverWebRTC 本地端口 | `8443` |
+| `LA_PLUMA_WEBRTC_TURN_PORT` | 受管 TURN 服务端口 | `3478` |
 | `LA_PLUMA_WEBRTC_USERNAME` | 网关登录上游 ScrcpyOverWebRTC 的账号；必须与上游实际账号一致 | `admin` |
 | `LA_PLUMA_WEBRTC_PASSWORD` | 网关登录上游 ScrcpyOverWebRTC 的密码；不会自动生成或轮换 | `admin123` |
 | `LA_PLUMA_WEBRTC_VIEWER_IDLE_GRACE_MS` | 最后一位观看者退出后释放设备 Agent 的等待时间（毫秒） | `3000` |
@@ -60,6 +67,11 @@ docker run -d \
 | `LA_PLUMA_WEBRTC_TURN_SERVER_PATH` | 本地 `turnserver` 可执行文件路径；默认探测常见安装位置 | 自动检测 |
 | `LA_PLUMA_WEBRTC_ICE_SERVERS` | 自定义 STUN/TURN 列表；未设置且无本地 TURN 时使用局域网直连 | 自动检测 |
 | `LA_PLUMA_WEBRTC_ARCHIVE` | 安装时使用的本地官方 `cloudphone-v0.4.1.zip`，同样校验 SHA-256 | 自动下载 |
+| `LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS` | 探测上游 ScrcpyOverWebRTC HTTP 接口的超时时间（毫秒） | `1500` |
+| `LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS` | 等待信令服务就绪的超时时间（毫秒） | `15000` |
+| `LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS` | 等待设备 Agent 就绪的超时时间（毫秒） | `20000` |
+| `LA_PLUMA_WEBRTC_TURN_START_TIMEOUT_MS` | 等待 TURN 监听就绪的超时时间（毫秒） | `5000` |
+| `LA_PLUMA_WEBRTC_START_POLL_INTERVAL_MS` | 启动就绪探测的轮询间隔（毫秒） | `250` |
 | `LA_PLUMA_HTTPS_CERT_PATH` | 可选 HTTPS 证书链路径，必须与私钥同时配置 | 空，使用 HTTP |
 | `LA_PLUMA_HTTPS_KEY_PATH` | 可选 HTTPS 私钥路径，必须与证书同时配置 | 空，使用 HTTP |
 
