@@ -10,8 +10,10 @@
  */
 
 import { AsyncLocalStorage } from 'async_hooks';
-import { mkdir, open, readFile, unlink } from 'fs/promises';
-import { dirname, join } from 'path';
+import { randomUUID } from 'crypto';
+import { link, mkdir, open, readFile, unlink } from 'fs/promises';
+import type { FileHandle } from 'fs/promises';
+import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 
@@ -108,13 +110,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 读取并解析锁文件；文件缺失、IO 失败或 JSON 无法解析都返回 null，由调用方区分快照状态。 */
-async function readOwner(lockPath: string = getLockPath()): Promise<unknown> {
+/** 锁文件的读取结果；`unknown` 表示文件存在但无法解释，与“缺失”严格区分。 */
+type LeaseFileRead =
+  | { state: 'missing' }
+  | { state: 'unreadable'; reason: string }
+  | { state: 'invalid'; reason: string }
+  | { state: 'present'; owner: MaaExecutionOwner };
+
+async function readLeaseFile(lockPath: string): Promise<LeaseFileRead> {
+  let raw: string;
   try {
-    return JSON.parse(await readFile(lockPath, 'utf8'));
-  } catch {
-    return null;
+    raw = await readFile(lockPath, 'utf8');
+  } catch (error) {
+    if (errorCodeOf(error) === 'ENOENT') return { state: 'missing' };
+    return { state: 'unreadable', reason: errorCodeOf(error) || 'read_failed' };
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: 'invalid', reason: 'invalid_json' };
+  }
+  const owner = normalizeLeaseOwner(parsed);
+  // 没有可核实 PID 的记录无法判断持有进程是否存活，按 unknown 拒绝而不是 stale 回收。
+  if (!owner || owner.pid === null) return { state: 'invalid', reason: 'invalid_owner' };
+  return { state: 'present', owner };
 }
 
 /** 锁元数据来自磁盘，逐字段从 unknown 收窄；整体不是对象时按无法解释处理。 */
@@ -140,36 +161,58 @@ function stringField(value: unknown): string | null {
  * `unknown` means the file exists but cannot be interpreted.
  */
 export async function getMaaExecutionLeaseSnapshot(): Promise<MaaExecutionLeaseSnapshot> {
-  let raw: string;
-  try {
-    raw = await readFile(getLockPath(), 'utf8');
-  } catch (error) {
-    if (errorCodeOf(error) === 'ENOENT') return { state: 'free', owner: null };
-    return { state: 'unknown', owner: null, reason: errorCodeOf(error) || 'read_failed' };
+  const read = await readLeaseFile(getLockPath());
+  if (read.state === 'missing') return { state: 'free', owner: null };
+  if (read.state === 'unreadable' || read.state === 'invalid') {
+    return { state: 'unknown', owner: null, reason: read.reason };
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { state: 'unknown', owner: null, reason: 'invalid_json' };
-  }
-
-  const owner = normalizeLeaseOwner(parsed);
-  if (!owner) return { state: 'unknown', owner: null, reason: 'invalid_owner' };
   return {
-    state: isProcessAlive(owner.pid) ? 'held' : 'stale',
-    owner
+    state: isProcessAlive(read.owner.pid) ? 'held' : 'stale',
+    owner: read.owner
   };
 }
 
-async function removeStaleLock(lockPath: string): Promise<MaaExecutionOwner | null> {
-  const owner = normalizeLeaseOwner(await readOwner(lockPath));
-  if (owner && isProcessAlive(owner.pid)) return owner;
+/**
+ * 回收一个确认已失效的锁；未知内容一律视为仍被占用并拒绝获取。
+ * 返回值只用于 live owner：null 表示可以继续尝试创建，owner 表示锁仍被活进程持有。
+ */
+async function reclaimLockIfStale(lockPath: string): Promise<MaaExecutionOwner | null> {
+  const read = await readLeaseFile(lockPath);
+  if (read.state === 'missing') return null;
+  if (read.state === 'unreadable' || read.state === 'invalid') {
+    // 无法核实的锁不能当作 stale：内容损坏也可能是另一个进程正在写入或持有。
+    throw new MaaExecutionBusyError(null);
+  }
+  if (isProcessAlive(read.owner.pid)) return read.owner;
   await unlink(lockPath).catch(error => {
     if (errorCodeOf(error) !== 'ENOENT') throw error;
   });
   return null;
+}
+
+/**
+ * 先把完整内容写入同目录临时文件，再用 link() 原子发布为锁文件。
+ * link 在目标已存在时返回 EEXIST，因此不会覆盖正在持有的锁；锁文件从出现的第一刻
+ * 起就是完整 JSON，不存在“先创建空文件再写入”的可见窗口。
+ */
+async function publishLockFile(lockPath: string, metadata: MaaExecutionLeaseMetadata): Promise<void> {
+  const tempPath = join(
+    dirname(lockPath),
+    `.${basename(lockPath)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  let handle: FileHandle | null | undefined;
+  try {
+    handle = await open(tempPath, 'wx', 0o600);
+    await handle.writeFile(JSON.stringify(metadata, null, 2), 'utf8');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await link(tempPath, lockPath);
+  } finally {
+    await handle?.close().catch(() => undefined);
+    // 临时文件清理失败不影响已发布的锁；残留的 .tmp 不含锁语义。
+    await unlink(tempPath).catch(() => undefined);
+  }
 }
 
 export async function acquireMaaExecutionLease(
@@ -207,9 +250,7 @@ export async function acquireMaaExecutionLease(
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const handle = await open(lockPath, 'wx');
-      await handle.writeFile(JSON.stringify(metadata, null, 2));
-      await handle.close();
+      await publishLockFile(lockPath, metadata);
       let released = false;
       return {
         owner: metadata,
@@ -218,8 +259,10 @@ export async function acquireMaaExecutionLease(
         release: async () => {
           if (released) return;
           released = true;
-          const currentOwner = await readOwner(lockPath);
-          if (!currentOwner || currentOwnerPid(currentOwner) === process.pid) {
+          const current = await readLeaseFile(lockPath);
+          // 只删除仍由本进程持有的锁；无法解析的文件不能证明属于自己，保留以免
+          // 误删其他进程的租约，由下一次获取按 unknown 拒绝并要求人工确认。
+          if (current.state === 'present' && current.owner.pid === process.pid) {
             await unlink(lockPath).catch(error => {
               if (errorCodeOf(error) !== 'ENOENT') throw error;
             });
@@ -228,17 +271,13 @@ export async function acquireMaaExecutionLease(
       };
     } catch (error) {
       if (errorCodeOf(error) !== 'EEXIST') throw error;
-      const liveOwner = await removeStaleLock(lockPath);
+      const liveOwner = await reclaimLockIfStale(lockPath);
       if (liveOwner) throw new MaaExecutionBusyError(liveOwner);
     }
   }
 
-  throw new MaaExecutionBusyError(normalizeLeaseOwner(await readOwner(lockPath)));
-}
-
-/** 释放前复核锁文件仍归本进程；原始 pid 可能不是数字，按严格相等比较。 */
-function currentOwnerPid(owner: unknown): unknown {
-  return isRecord(owner) ? owner.pid : undefined;
+  const read = await readLeaseFile(lockPath);
+  throw new MaaExecutionBusyError(read.state === 'present' ? read.owner : null);
 }
 
 export async function withMaaExecutionLease<T>(
