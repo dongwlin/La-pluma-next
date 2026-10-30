@@ -4,6 +4,8 @@ set -e
 echo "=== MAA WebUI Docker 启动脚本 ==="
 
 # 检查 MaaCore 是否已安装
+# 注意：maa-cli 已在镜像构建时固定到具体 release，但首次 maa install 仍会从
+# 上游解析并下载当前 MaaCore/资源；需要完全可复现时请预置 maa-data 与 maa-state 卷。
 if ! maa version 2>/dev/null | grep -q "MaaCore"; then
     echo "⚠️  MaaCore 未安装或损坏，开始安装..."
     echo "这可能需要几分钟时间，请耐心等待..."

@@ -37,6 +37,8 @@ docker run -d \
 
 `latest` 跟随最近发布的正式版本，预发布和 `main` 推送不会更新它；补发旧正式版本也会更新 `latest`。可以使用完整版本标签（如 `0.0.6`），同时提供 amd64 与 arm64 两个架构；预发布使用完整标签（如 `0.1.0-rc.1`）。Docker 标签可覆盖，需要固定镜像内容时使用 digest。
 
+镜像内的 maa-cli 固定到上游 release（当前 `v0.7.7`），并在构建时按目标架构校验 SHA-256；升级时通过 `MAA_CLI_VERSION` 与对应的 `MAA_CLI_SHA256_AMD64` / `MAA_CLI_SHA256_ARM64` 构建参数更新。首次启动的 `maa install` 仍会从上游解析并下载 MaaCore 与资源，需要完全可复现的 MaaCore 版本时请预置并复用数据卷。
+
 可选环境变量：
 
 | 变量 | 说明 | 默认值 |

@@ -1,6 +1,7 @@
 services:
   la-pluma-next:
     # 使用 GHCR 预构建镜像（推荐）
+    # 生产环境建议固定 digest，例如 ghcr.io/dongwlin/la-pluma-next@sha256:...
     image: ghcr.io/dongwlin/la-pluma-next:latest
 
     # 或者本地构建（如果需要修改代码）

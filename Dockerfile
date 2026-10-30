@@ -47,6 +47,12 @@ FROM node:24-slim
 ARG VITE_BASE_PATH=/
 ARG BUILD_REVISION=unknown
 ARG NPM_REGISTRY=https://registry.npmjs.org
+# maa-cli 固定到上游 release，避免 main 分支安装脚本与 stable 渠道漂移。
+# 版本和 SHA-256 来源：https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.7
+ARG MAA_CLI_VERSION=0.7.7
+ARG MAA_CLI_SHA256_AMD64=b582dd79c3f9b42c3a9b4fb6bcf76cc25bfc96600e83028881c97b0c621876a1
+ARG MAA_CLI_SHA256_ARM64=dc38518a1b6111bb0b7a8eea63578dacaebc89651bbbc2f7d568c3484e16fb56
+ARG TARGETARCH
 
 LABEL org.opencontainers.image.title="La Pluma Next" \
       org.opencontainers.image.description="MAA CLI 的现代化 WebUI 与本地 Agent 控制台" \
@@ -75,10 +81,20 @@ RUN apt-get update && \
 # 创建 MAA CLI 持久化目录
 RUN mkdir -p /opt/maa-cli/bin
 
-# 使用官方安装脚本安装 MAA CLI
-RUN wget -qO- https://raw.githubusercontent.com/MaaAssistantArknights/maa-cli/main/install.sh | \
-    MAA_INSTALL_DIR=/opt/maa-cli/bin bash && \
-    ln -s /opt/maa-cli/bin/maa /usr/local/bin/maa && \
+# 从固定 release 安装 MAA CLI，并按目标架构校验 SHA-256。
+RUN set -eux; \
+    case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) maa_target="x86_64-unknown-linux-gnu"; maa_sha256="${MAA_CLI_SHA256_AMD64}" ;; \
+      arm64|aarch64) maa_target="aarch64-unknown-linux-gnu"; maa_sha256="${MAA_CLI_SHA256_ARM64}" ;; \
+      *) echo "Unsupported TARGETARCH: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac; \
+    wget -qO /tmp/maa-cli.tar.gz "https://github.com/MaaAssistantArknights/maa-cli/releases/download/v${MAA_CLI_VERSION}/maa_cli-v${MAA_CLI_VERSION}-${maa_target}.tar.gz"; \
+    echo "${maa_sha256}  /tmp/maa-cli.tar.gz" | sha256sum -c -; \
+    mkdir -p /tmp/maa-cli; \
+    tar -xzf /tmp/maa-cli.tar.gz -C /tmp/maa-cli; \
+    install -m 0755 /tmp/maa-cli/maa /opt/maa-cli/bin/maa; \
+    rm -rf /tmp/maa-cli /tmp/maa-cli.tar.gz; \
+    ln -s /opt/maa-cli/bin/maa /usr/local/bin/maa; \
     maa --version
 
 # 创建 MAA 配置目录
