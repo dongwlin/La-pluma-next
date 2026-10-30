@@ -9,7 +9,7 @@
  * - `scope` 标记 run 的领域归属，避免把其它页面发起的 run 展示成自动战斗执行。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import type { StatusMessageType } from '@/features/runtime-status'
 import {
@@ -124,7 +124,9 @@ export function useCombatExecution({
   // 身份已持久化但快照还没返回：保守地按运行中处理，刷新后不能因此重复提交。
   const unresolved = owned && Boolean(ownedRunId) && execution.identity === 'tracked' && !trackedRun
   const isRunning = Boolean(activeRun) || unresolved
-  const setRun = readCopilotSetRunProjection(trackedRun)
+  // 投影每次渲染都会新建对象；缓存到 trackedRun 变化为止，避免三个 Effect
+  // 因同一份服务端快照的引用变化而重复执行。
+  const setRun = useMemo(() => readCopilotSetRunProjection(trackedRun), [trackedRun])
   const isWaitingForNext = Boolean(setRun?.isWaiting)
   const isSubmitting = execution.submission === 'pending'
 
