@@ -105,6 +105,8 @@ docker run -d \
   -v /path/to/data:/app/server/data \
   -v /path/to/config:/root/.config/maa \
   -v /path/to/maacore:/root/.local/share/maa \
+  -v /path/to/maa-state:/root/.local/state/maa \
+  -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
   -e ADB_ADDRESS=192.168.x.x:5555 \
   ghcr.io/dongwlin/la-pluma-next:latest
 ```

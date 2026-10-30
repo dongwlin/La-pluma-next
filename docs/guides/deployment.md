@@ -21,6 +21,8 @@ docker run -d \
   -v /path/to/data:/app/server/data \
   -v /path/to/config:/root/.config/maa \
   -v /path/to/maacore:/root/.local/share/maa \
+  -v /path/to/maa-state:/root/.local/state/maa \
+  -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
   -e ADB_ADDRESS=192.168.x.x:5555 \
   ghcr.io/dongwlin/la-pluma-next:latest
 
@@ -183,7 +185,9 @@ docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t la-pluma
 
 **配置说明**：
 - 宿主机端口：`3055`，容器内端口：`3000`
-- 数据持久化：`./docker-data/server/`、`./docker-data/maa-config/`、`./docker-data/maa-core/`
+- 数据持久化：`./docker-data/server/`、`./docker-data/maa-config/`、`./docker-data/maa-core/`、`./docker-data/maa-state/`、`./docker-data/webrtc/`
+  - `server/` 保存应用运行数据；`maa-config/`、`maa-core/`、`maa-state/` 分别对应 MAA 的配置、数据与状态目录（日志、缓存）
+  - `webrtc/` 保存 ScrcpyOverWebRTC 工作目录（`LA_PLUMA_WEBRTC_DIR`，容器内默认 `/root/ScrcpyOverWebRTC`），避免重建容器后重新下载或构建
 - ADB 连接：在 WebUI 中配置设备地址（如 `127.0.0.1:5555`）
 - 首次启动会自动下载 MaaCore（约 5-10 分钟）
 

@@ -16,6 +16,10 @@ services:
       - ./docker-data/maa-config:/root/.config/maa
       # 持久化 MAA 数据目录（MaaCore、资源文件等）
       - ./docker-data/maa-core:/root/.local/share/maa
+      # 持久化 MAA 状态目录（日志、缓存等，Linux 默认 ~/.local/state/maa）
+      - ./docker-data/maa-state:/root/.local/state/maa
+      # 持久化 ScrcpyOverWebRTC 工作目录（源码构建、设备 Agent 与日志）
+      - ./docker-data/webrtc:/root/ScrcpyOverWebRTC
       # 可选：HTTPS 证书目录，只读挂载
       # - ./certs:/app/certs:ro
     environment:
