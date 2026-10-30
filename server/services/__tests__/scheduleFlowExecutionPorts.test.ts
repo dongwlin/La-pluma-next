@@ -38,10 +38,12 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     checkpoints: 0,
     reads: 0,
     notifications: [] as TaskCompletionInfo[],
+    notificationLeaseStates: [] as boolean[],
     drops: [] as DropRecordInput[],
     refreshes: [] as string[],
     leases: [] as MaaExecutionLeaseRequest[]
   };
+  let leaseActive = false;
 
   const ports: ScheduleExecutionPorts = {
     executeCommand: async (command, args, taskName) => {
@@ -69,6 +71,7 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     shouldCaptureNotificationScreenshot: () => false,
     sendCompletionNotification: async payload => {
       calls.notifications.push(payload);
+      calls.notificationLeaseStates.push(leaseActive);
     },
     recordDrops: async payload => {
       calls.drops.push(payload);
@@ -79,7 +82,12 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     },
     withExecutionLease: async <T>(context: MaaExecutionLeaseRequest, run: () => Promise<T>): Promise<T> => {
       calls.leases.push(context);
-      return run();
+      leaseActive = true;
+      try {
+        return await run();
+      } finally {
+        leaseActive = false;
+      }
     },
     ...overrides
   };
@@ -237,9 +245,16 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.leases.length, 1);
     assert.equal(calls.leases[0].source, 'schedule');
 
+    // 执行期间只准备通知载荷，不能在租约内调用通知或养成回写。
+    assert.equal(calls.refreshes.length, 0);
+    assert.equal(calls.notifications.length, 0);
+    const completion = await executor.dispatchCompletion(result);
+    assert.equal(completion.performed, true);
+    assert.deepEqual(completion.errors, []);
     assert.equal(calls.refreshes.length, 1);
     assert.equal(calls.refreshes[0], 'flow-ports');
     assert.equal(calls.notifications.length, 1);
+    assert.deepEqual(calls.notificationLeaseStates, [false]);
     assert.equal(calls.notifications[0].totalTasks, 3);
     assert.equal(calls.notifications[0].successTasks, 1);
     assert.equal(calls.notifications[0].failedTasks, 1);
@@ -353,6 +368,31 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.commands.length, 0, 'a stopped flow must not start the next task');
   });
 
+  it('reports completion side-effect failures after the lease and consumes the completion once', async () => {
+    const { ports } = createPorts({
+      refreshSmartTrainingStages: async () => {
+        throw new Error('config write failed');
+      },
+      sendCompletionNotification: async () => {
+        throw new Error('telegram timeout');
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const result = completedResult(await executor.execute([
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-completion-errors'));
+
+    const completion = await executor.dispatchCompletion(result);
+    assert.deepEqual(completion, {
+      performed: true,
+      errors: [
+        '动态更新智能养成关卡失败: config write failed',
+        '发送通知失败: telegram timeout'
+      ]
+    });
+    assert.deepEqual(await executor.dispatchCompletion(result), { performed: false, errors: [] });
+  });
+
   it('keeps a single execution owner and stops before the next step', async () => {
     const { ports, calls } = createPorts();
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
@@ -374,6 +414,8 @@ describe('schedule flow boundaries', () => {
     assert.equal(result.summary.successCount, 1);
     assert.deepEqual(result.summary.taskResults.map(task => task.status), ['success', 'pending']);
     assert.equal(calls.commands.length, 1, 'the queued task must not start after the stop');
+    const completion = await executor.dispatchCompletion(result);
+    assert.equal(completion.performed, false);
     assert.equal(calls.notifications.length, 0, 'stopped flows skip the completion notification');
 
     const status = executor.getStatus();

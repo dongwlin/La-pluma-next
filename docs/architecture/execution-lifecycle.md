@@ -181,6 +181,7 @@ waiting ──stop──> stopped
 - 流程在步间等待（延迟、截图、解析）时子进程可以是 idle，Run 保持 `running`，`progress.currentStep/totalSteps` 来自 `scheduleExecutionStatus`；这不发布整个流程完成。
 - 停止按第 4 节执行：`accepted` 直接取消，`running` 转入 `stopping` 后由流程的 `shouldStop`/中止信号结束；停止后不得启动下一项，最终结果为 `stopped`，`result.summary.taskResults` 保留已完成项。
 - 首个请求的幂等键由 `Idempotency-Key` 提供，作用于 `run_daily_flow` 动作；相同 key、相同 `scheduleId` 与 `taskFlow` 重放同一 run。cron 触发没有幂等键，每次触发都是一次新的执行意图；并发触发由执行租约拒绝，被拒绝的触发会留下一个 `failed` 的 `run_daily_flow` 记录。
+- 完成通知与智能养成回写不属于执行本身。执行器持有租约期间只准备通知载荷；设备租约释放且 Run 终态落盘之后，才由调度入口触发这些副作用（cron 在结算后执行，HTTP/Telegram 入口不等待它们完成，避免通知超时阻塞响应）。副作用失败只记录日志并保留在完成副作用的错误摘要中，不改变已经结算的 Run 终态。
 - 不经过上述 Run 包装、直接调用 `executeScheduleNow` 的入口（当前为 Telegram）不会获得 `runId`；它以 `occupancy.state=external` 出现在快照中，不能当作本契约已覆盖。
 - Web UI 入口的提交方式：Dashboard 快捷入口以 `waitForCompletion=false` 提交 `run_daily_flow`，把响应的 `runId` 交给前端控制器观察；活动作业入口保持同步（`waitForCompletion` 不适用），响应中的 `runId` 同样被采纳。两者都不再由前端判断“是否在运行”，全局展示只读 `/runs/current` 快照。
 - 兼容细节：旧 `/schedules/{scheduleId}/execute` 曾把校验失败也报成 409 `AGENT_SCHEDULE_ALREADY_RUNNING`。现在占用仍保留该旧码，校验失败改为 400 `AGENT_DAILY_FLOW_REJECTED`；这修正了错误分类，未删除同步入口。
