@@ -24,12 +24,13 @@ export const createNavigateFallbackDenylist = (basePath: string): RegExp[] => {
   const denylist = [
     /^\/api(?:[/?]|$)/,
     /^\/health(?:[/?]|$)/,
+    /^\/readiness(?:[/?]|$)/,
     /^\/webrtc-signaling(?:[/?]|$)/,
   ]
 
   if (basePath !== '/') {
     const escapedBasePath = basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    denylist.push(new RegExp(`^${escapedBasePath}(?:api|health|webrtc-signaling)(?:[/?]|$)`))
+    denylist.push(new RegExp(`^${escapedBasePath}(?:api|health|readiness|webrtc-signaling)(?:[/?]|$)`))
   }
 
   return denylist
