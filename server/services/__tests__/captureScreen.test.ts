@@ -1,10 +1,33 @@
 import assert from 'node:assert/strict';
+import childProcess from 'node:child_process';
+import type { ExecFileOptions } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, describe, it } from 'node:test';
-import { captureScreen } from '../maaDeviceService.ts';
+import { after, describe, it, mock } from 'node:test';
+import { promisify } from 'node:util';
 import { loggerManager } from '../../utils/logger.ts';
+
+const testTimeoutMs = 1000;
+type CommandOptions = Pick<ExecFileOptions, 'timeout' | 'killSignal'>;
+const requestedOptions = new Map<string, CommandOptions[]>();
+const realExecFile = promisify(childProcess.execFile);
+
+// Keep real subprocesses and Node's timeout/kill behavior, while checking the
+// production deadlines separately instead of waiting 3 + 5 + 8 seconds.
+const testExecFile = Object.assign(childProcess.execFile.bind(childProcess), childProcess.execFile, {
+  [promisify.custom]: (file: string, args: readonly string[], options: ExecFileOptions) => {
+    requestedOptions.get(file)?.push({ timeout: options.timeout, killSignal: options.killSignal });
+    return realExecFile(file, args, { ...options, timeout: testTimeoutMs });
+  }
+});
+const execFileMock = mock.property(childProcess, 'execFile', testExecFile);
+syncBuiltinESMExports();
+const { captureScreen } = await import('../maaDeviceService.ts').finally(() => {
+  execFileMock.mock.restore();
+  syncBuiltinESMExports();
+});
 
 const fixtureDirectories: string[] = [];
 const address = 'capture-device';
@@ -17,6 +40,7 @@ interface AdbFixture {
   adbPath: string;
   pidPath: string;
   callsPath: string;
+  options: CommandOptions[];
 }
 
 async function createAdbFixture(
@@ -27,6 +51,8 @@ async function createAdbFixture(
   const adbPath = join(directory, 'adb');
   const pidPath = join(directory, 'hanging.pid');
   const callsPath = join(directory, 'calls.jsonl');
+  const options: CommandOptions[] = [];
+  requestedOptions.set(adbPath, options);
   await writeFile(adbPath, `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
@@ -44,7 +70,7 @@ if (step === ${JSON.stringify(hang)}) {
   process.stdout.write(Buffer.from(${JSON.stringify([...image])}));
 }
 `, { mode: 0o755 });
-  return { adbPath, pidPath, callsPath };
+  return { adbPath, pidPath, callsPath, options };
 }
 
 after(async () => {
@@ -77,6 +103,8 @@ describe('captureScreen bounded ADB steps', () => {
         ...connected ? [] : [['connect', address]],
         ['-s', address, 'exec-out', 'screencap', '-p']
       ]);
+      assert.deepEqual(fixture.options, [3000, ...connected ? [] : [5000], 8000]
+        .map(timeout => ({ timeout, killSignal: 'SIGKILL' })));
     });
   }
 
@@ -85,7 +113,7 @@ describe('captureScreen bounded ADB steps', () => {
     ['connect', 5000, '连接设备'],
     ['screencap', 8000, '读取屏幕画面']
   ] as const) {
-    it(`terminates an unresponsive ${step} process and rejects within its deadline`, { timeout: timeoutMs + 5000 }, async () => {
+    it(`terminates an unresponsive ${step} process and rejects within its deadline`, { timeout: 5000 }, async () => {
       const fixture = await createAdbFixture({ hang: step, connected: step !== 'connect' });
       const startedAt = Date.now();
       await assert.rejects(captureScreen(fixture.adbPath, address), error => {
@@ -97,7 +125,9 @@ describe('captureScreen bounded ADB steps', () => {
         return true;
       });
       const elapsed = Date.now() - startedAt;
-      assert.ok(elapsed >= timeoutMs - 100 && elapsed < timeoutMs + 3000, `unexpected ${step} timeout duration: ${elapsed}ms`);
+      assert.ok(elapsed >= testTimeoutMs - 100 && elapsed < testTimeoutMs + 3000, `unexpected ${step} timeout duration: ${elapsed}ms`);
+      assert.deepEqual(fixture.options, (step === 'devices' ? [3000] : [3000, timeoutMs])
+        .map(timeout => ({ timeout, killSignal: 'SIGKILL' })));
       const pid = Number(await readFile(fixture.pidPath, 'utf8'));
       assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
       await rm(fixture.pidPath);

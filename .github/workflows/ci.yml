@@ -18,7 +18,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,11 +28,9 @@ jobs:
         uses: docker://rhysd/actionlint:1.7.12
         with:
           args: -color
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24.22.1
-          cache: pnpm
       - name: Check release version and main ancestry
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -41,40 +39,115 @@ jobs:
           version=$(node -p "require('./package.json').version")
           test "$RELEASE_TAG" = "v$version"
           git merge-base --is-ancestor HEAD origin/main
+
+  client-checks:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Verify source, tests and production build
-        run: pnpm verify
-      # 类型门禁独立于 pnpm verify：先确认 CI 解析到的编译器就是锁定的 6.0.3，
-      # 再单独运行服务端 typecheck，版本漂移与类型错误分别定位。
+      - name: Check client guardrails
+        run: pnpm --filter la-pluma-next-client guardrails
+      - name: Lint the client
+        run: pnpm --filter la-pluma-next-client lint
+      - name: Test the client
+        run: pnpm --filter la-pluma-next-client test
+      - name: Check stylesheet budget
+        run: pnpm --filter la-pluma-next-client stylelint:ratchet
+
+  client-build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # build includes TypeScript and precache checks; browser tests only need this job.
+      - name: Type-check and build the client
+        run: pnpm --filter la-pluma-next-client build
+      - name: Upload the client build for browser tests
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  server-checks:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check server guardrails
+        run: pnpm --filter la-pluma-next-server guardrails
+      - name: Check server syntax
+        run: pnpm --filter la-pluma-next-server check
       - name: Type-check the server with the pinned compiler
         run: |
           reported=$(pnpm --filter la-pluma-next-server exec tsc --version)
           echo "TypeScript compiler: $reported"
           test "$reported" = "Version 6.0.3"
           pnpm --filter la-pluma-next-server typecheck
-      - name: Enforce server coverage thresholds
+      # Coverage runs the complete test suite and propagates test failures.
+      - name: Test the server and enforce coverage thresholds
         run: pnpm --filter la-pluma-next-server test:coverage
-      - name: Check stylesheet budget
-        run: pnpm --filter la-pluma-next-client stylelint:ratchet
-      # Browser checks already run on PRs and main; avoid repeating them for tags.
+
+  browser-checks:
+    needs: client-build
+    # Browser checks already run on PRs and main; avoid repeating them for tags.
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
       - name: Pull the matching Playwright image
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: |
           version=$(node -p "require('./client/node_modules/@playwright/test/package.json').version")
           docker pull "mcr.microsoft.com/playwright:v${version}-noble"
       - name: Cross-page behavior
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
           INTEGRATION_SKIP_BUILD: '1'
         run: pnpm --filter la-pluma-next-client test:integration
       - name: Visual baseline comparison
-        # 依赖前序 verify 产出的 client/dist；verify 失败时跳过，避免级联假失败。
-        if: ${{ success() && !startsWith(github.ref, 'refs/tags/v') }}
         env:
           VISUAL_SKIP_BUILD: '1'
         run: pnpm visual
       - name: Upload browser failure evidence
-        if: ${{ failure() && !startsWith(github.ref, 'refs/tags/v') }}
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-test-results
@@ -126,7 +199,7 @@ jobs:
 
   # Preserve the required check name used by branch protection.
   verify:
-    needs: [checks, build, release-build]
+    needs: [checks, client-checks, client-build, server-checks, browser-checks, build, release-build]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -134,16 +207,26 @@ jobs:
       - name: Require the applicable checks to succeed
         env:
           CHECKS_RESULT: ${{ needs.checks.result }}
+          CLIENT_CHECKS_RESULT: ${{ needs.client-checks.result }}
+          CLIENT_BUILD_RESULT: ${{ needs.client-build.result }}
+          SERVER_CHECKS_RESULT: ${{ needs.server-checks.result }}
+          BROWSER_CHECKS_RESULT: ${{ needs.browser-checks.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           RELEASE_RESULT: ${{ needs.release-build.result }}
           IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           test "$CHECKS_RESULT" = success
+          test "$CLIENT_CHECKS_RESULT" = success
+          test "$CLIENT_BUILD_RESULT" = success
+          test "$SERVER_CHECKS_RESULT" = success
           if [ "$IS_RELEASE" = true ]; then
             test "$RELEASE_RESULT" = success
-          elif [ "$EVENT_NAME" != push ]; then
-            test "$BUILD_RESULT" = success
+          else
+            test "$BROWSER_CHECKS_RESULT" = success
+            if [ "$EVENT_NAME" != push ]; then
+              test "$BUILD_RESULT" = success
+            fi
           fi
 
   publish:

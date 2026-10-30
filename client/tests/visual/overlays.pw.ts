@@ -29,7 +29,6 @@ for (const theme of THEMES) {
 
       await page.getByRole('button', { name: '拥有状态' }).first().click()
       await page.getByRole('menu', { name: '拥有状态筛选' }).waitFor({ state: 'visible' })
-      await page.waitForTimeout(300)
 
       await expect(page).toHaveScreenshot(`statistics-filter-menu-${theme}.png`, {
         animations: 'disabled',
@@ -48,7 +47,6 @@ for (const theme of THEMES) {
 
       await page.getByRole('button', { name: '添加干员' }).first().click()
       await page.getByRole('dialog').waitFor({ state: 'visible' })
-      await page.waitForTimeout(300)
 
       await expect(page).toHaveScreenshot(`training-operator-modal-${theme}.png`, {
         animations: 'disabled',
@@ -73,7 +71,6 @@ for (const theme of THEMES) {
 
       await page.locator('[aria-label="安装 La Pluma Next"], #pwa-prompt-title').first()
         .waitFor({ state: 'visible' })
-      await page.waitForTimeout(300)
 
       await expect(page).toHaveScreenshot(`pwa-install-prompt-${theme}.png`, {
         animations: 'disabled',
