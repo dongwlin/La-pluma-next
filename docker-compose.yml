@@ -29,17 +29,18 @@ services:
       # - LA_PLUMA_BASE_PATH=/la-pluma-next/
       # ADB 设备地址（bridge 模式下使用宿主机 IP，按实际环境修改）
       - ADB_ADDRESS=${ADB_ADDRESS:-192.168.1.100:5555}
-      # 可选：保护 /api/* 与 WebRTC 同源网关票据入口
-      # - LA_PLUMA_TOKEN=change-me
+      # 必配：保护 /api/* 与 WebRTC 同源网关票据入口；复制 .env.example 为 .env 后设置
+      - LA_PLUMA_TOKEN=${LA_PLUMA_TOKEN:?set LA_PLUMA_TOKEN in .env or the shell}
       # 可选：实时日志内存缓存上限，默认 5000 行
       # - LA_PLUMA_MAX_REALTIME_LOGS=5000
       # 可选：手机安装 PWA 时使用可信 HTTPS，证书与私钥必须同时配置
       # - LA_PLUMA_HTTPS_CERT_PATH=/app/certs/fullchain.pem
       # - LA_PLUMA_HTTPS_KEY_PATH=/app/certs/privkey.pem
 
-    # 使用 bridge 网络模式
+    # 默认只绑定回环地址，避免把未加密的管理界面暴露到局域网。
+    # 需要手机/局域网访问时，应配置 LA_PLUMA_TOKEN 后再改为 "3055:3000"，并用防火墙限制来源。
     ports:
-      - "3055:3000"  # 宿主机 3055 映射到容器 3000
+      - "127.0.0.1:3055:3000"  # 宿主机 3055 映射到容器 3000
 
     restart: unless-stopped
     healthcheck:

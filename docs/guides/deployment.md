@@ -17,21 +17,21 @@ docker pull ghcr.io/dongwlin/la-pluma-next:latest
 # 运行容器
 docker run -d \
   --name la-pluma-next \
-  -p 3055:3000 \
+  -p 127.0.0.1:3055:3000 \
   -v /path/to/data:/app/server/data \
   -v /path/to/config:/root/.config/maa \
   -v /path/to/maacore:/root/.local/share/maa \
   -v /path/to/maa-state:/root/.local/state/maa \
   -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
   -e ADB_ADDRESS=192.168.x.x:5555 \
+  -e LA_PLUMA_TOKEN=change-me \
   ghcr.io/dongwlin/la-pluma-next:latest
-
-# 如需开启 API 鉴权，把下面一行插入到镜像名前：
-#   -e LA_PLUMA_TOKEN=change-me \
 
 # 访问应用
 # 浏览器打开 http://localhost:3055
 ```
+
+`LA_PLUMA_TOKEN` 是网络访问的必配项，保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。示例把端口绑定在 `127.0.0.1`，只允许本机访问；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
 
 > 首次发布后请在 GitHub Package settings 中把 `la-pluma-next` 镜像设为 Public；如果保持私有，拉取前需要先执行 `docker login ghcr.io`。
 
@@ -119,7 +119,7 @@ Docker 部署时把证书只读挂载到容器，并同时设置这两个变量�
 ```bash
 docker run -d \
   --name la-pluma-next \
-  -p 3055:3000 \
+  -p 127.0.0.1:3055:3000 \
   -v /path/to/certs:/app/certs:ro \
   -v /path/to/data:/app/server/data \
   -e LA_PLUMA_HTTPS_CERT_PATH=/app/certs/fullchain.pem \
@@ -128,7 +128,7 @@ docker run -d \
   ghcr.io/dongwlin/la-pluma-next:latest
 ```
 
-证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问建议始终配置 `LA_PLUMA_TOKEN`。
+证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问必须配置 `LA_PLUMA_TOKEN`。
 
 HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
 
@@ -167,15 +167,21 @@ docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
 git clone https://github.com/dongwlin/La-pluma-next.git
 cd La-pluma-next
 
-# 2. 编辑 docker-compose.yml，修改 volumes 和 ADB_ADDRESS
+# 2. 从示例创建环境文件，设置必配的 LA_PLUMA_TOKEN 和 ADB_ADDRESS
+cp .env.example .env
+nano .env
+
+# 3. 按需修改 docker-compose.yml 的 volumes 与端口绑定
 nano docker-compose.yml
 
-# 3. 启动服务（会自动拉取镜像）
+# 4. 启动服务（会自动拉取镜像；缺少 LA_PLUMA_TOKEN 时 Compose 拒绝启动）
 docker-compose up -d
 
-# 4. 查看日志
+# 5. 查看日志
 docker-compose logs -f
 ```
+
+Compose 默认把宿主机端口绑定到 `127.0.0.1:3055`，只允许本机访问；需要手机或局域网访问时，确认 `.env` 中的 `LA_PLUMA_TOKEN` 足够强并配合防火墙后再改为 `3055:3000`。
 
 ### 本地构建镜像
 
@@ -196,7 +202,7 @@ docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t la-pluma
 镜像默认使用 `registry.npmjs.org`，CI 也使用该默认值；`NPM_REGISTRY` 只影响构建时的依赖下载，不会写入运行环境。
 
 **配置说明**：
-- 宿主机端口：`3055`，容器内端口：`3000`
+- 宿主机端口：默认 `127.0.0.1:3055`（仅本机），容器内端口：`3000`
 - 数据持久化：`./docker-data/server/`、`./docker-data/maa-config/`、`./docker-data/maa-core/`、`./docker-data/maa-state/`、`./docker-data/webrtc/`
   - `server/` 保存应用运行数据；`maa-config/`、`maa-core/`、`maa-state/` 分别对应 MAA 的配置、数据与状态目录（日志、缓存）
   - `webrtc/` 保存 ScrcpyOverWebRTC 工作目录（`LA_PLUMA_WEBRTC_DIR`，容器内默认 `/root/ScrcpyOverWebRTC`），避免重建容器后重新下载或构建

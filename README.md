@@ -101,15 +101,18 @@ docker pull ghcr.io/dongwlin/la-pluma-next:latest
 
 docker run -d \
   --name la-pluma-next \
-  -p 3055:3000 \
+  -p 127.0.0.1:3055:3000 \
   -v /path/to/data:/app/server/data \
   -v /path/to/config:/root/.config/maa \
   -v /path/to/maacore:/root/.local/share/maa \
   -v /path/to/maa-state:/root/.local/state/maa \
   -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
   -e ADB_ADDRESS=192.168.x.x:5555 \
+  -e LA_PLUMA_TOKEN=change-me \
   ghcr.io/dongwlin/la-pluma-next:latest
 ```
+
+`LA_PLUMA_TOKEN` 是必配项，用于保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。上面的端口映射只监听本机回环地址；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
 
 浏览器打开 http://localhost:3055。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
 
