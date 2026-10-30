@@ -2,7 +2,7 @@
 // network, user data, schedules or device access. Only MaaCore presence is faked.
 //
 // Scenarios (all against the image built by the Dockerfile):
-// - runtime contents: Node.js floor, no TypeScript compiler or dev type packages,
+// - runtime contents: MAA CLI and Git, Node.js floor, no TypeScript compiler or dev type packages,
 //   `node --check` parses the TS entry without a compiler;
 // - HTTP: health, readiness, static assets under the configured base path,
 //   API authentication and error envelopes, same-origin signaling rejections;
@@ -75,6 +75,7 @@ function compareVersions(actual, minimum) {
  */
 function assertRuntimeContents() {
   checked(['run', '--rm', '--network=none', '--entrypoint', 'maa', image, '--version'])
+  checked(['run', '--rm', '--network=none', '--entrypoint', 'git', image, '--version'])
   const inspect = [
     "const fs = require('node:fs');",
     "const compiler = ['/app/node_modules/typescript', '/app/server/node_modules/typescript', '/app/node_modules/.bin/tsc', '/app/server/node_modules/.bin/tsc'].filter(path => fs.existsSync(path));",
