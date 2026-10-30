@@ -442,6 +442,32 @@ describe('agent run registry', () => {
     assert.deepEqual(getActiveAgentRuns(), []);
   });
 
+  it('does not let a stale stopping run outrank a newer running owner', () => {
+    const originalNow = Date.now;
+    let now = Date.parse('2026-07-12T00:00:00.000Z');
+    Date.now = () => now;
+    try {
+      const stale = beginAgentRun({ operationId: 'fight' }).run;
+      startAgentRun(stale.runId);
+      markAgentRunStopping(stale.runId);
+
+      now += 1;
+      const current = beginAgentRun({ operationId: 'run_task' }).run;
+      startAgentRun(current.runId);
+
+      assert.equal(currentRun().runId, current.runId);
+      assert.deepEqual(
+        getActiveAgentRuns().map(run => [run.runId, run.state]),
+        [
+          [current.runId, 'running'],
+          [stale.runId, 'stopping']
+        ]
+      );
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
   it('lists every active run by stop priority and the latest terminal run by completion time', () => {
     const originalNow = Date.now;
     let now = Date.parse('2026-07-12T00:00:00.000Z');

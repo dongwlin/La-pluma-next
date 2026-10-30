@@ -1054,12 +1054,40 @@ export function markAgentRunStopping(runId: string): AgentRunDto {
   return transition(runId, 'stopping', ['accepted', 'running']);
 }
 
-const RUN_STOP_PRIORITY: Record<AgentRunActiveStatus, number> = {
-  stopping: 4,
-  running: 3,
+/**
+ * 设备持有状态：只有 running/stopping 持有执行租约并拥有设备变更权。
+ * 快照的 current 必须先按这个集合对齐，不能仅按状态优先级排序：滞留在
+ * stopping 的旧 run 不能压过之后真正 running 的新 run，否则全局停止会
+ * 把设备命令发给新 run 却只记录旧 run 的停止意图。
+ */
+export function isDeviceOwningAgentRunStatus(status: AgentRunStatus): boolean {
+  return status === 'running' || status === 'stopping';
+}
+
+/** 非设备持有意图的相对顺序；accepted 比 waiting 更接近执行权。 */
+const PENDING_RUN_PRIORITY: Record<'accepted' | 'waiting', number> = {
   accepted: 2,
   waiting: 1
 };
+
+/** 活动 run 排序：设备持有者优先（按开始时间取最新），其余 accepted 优先于 waiting。 */
+function compareActiveRuns(left: AgentRunStoreRecord, right: AgentRunStoreRecord): number {
+  const leftOwning = isDeviceOwningAgentRunStatus(left.run.status);
+  const rightOwning = isDeviceOwningAgentRunStatus(right.run.status);
+  if (leftOwning !== rightOwning) return leftOwning ? -1 : 1;
+
+  if (leftOwning) {
+    const startedDelta = (right.startedAtMs ?? 0) - (left.startedAtMs ?? 0);
+    if (startedDelta !== 0) return startedDelta;
+  } else {
+    const leftPending = left.run.status as 'accepted' | 'waiting';
+    const rightPending = right.run.status as 'accepted' | 'waiting';
+    const priorityDelta = PENDING_RUN_PRIORITY[rightPending] - PENDING_RUN_PRIORITY[leftPending];
+    if (priorityDelta !== 0) return priorityDelta;
+  }
+
+  return right.sequence - left.sequence;
+}
 
 /**
  * Records a stop intent for one run without sending any device command.
@@ -1208,13 +1236,7 @@ export function getActiveAgentRuns(): AgentRunDto[] {
   if (pruneTerminalRuns() > 0) scheduleAgentRunPersistence();
   return [...runs.values()]
     .filter(record => isActiveStatus(record.run.status))
-    .sort((left, right) => {
-      // 过滤后状态已收窄到活动集合，排序只按停止优先级与创建顺序。
-      const leftStatus = left.run.status as AgentRunActiveStatus;
-      const rightStatus = right.run.status as AgentRunActiveStatus;
-      return RUN_STOP_PRIORITY[rightStatus] - RUN_STOP_PRIORITY[leftStatus]
-        || right.sequence - left.sequence;
-    })
+    .sort(compareActiveRuns)
     .map(record => toAgentRunDto(record.run));
 }
 

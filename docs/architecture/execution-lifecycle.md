@@ -55,8 +55,8 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 
 | 字段 | 含义 |
 | --- | --- |
-| `run` | 当前活动 run；排序为 `stopping` > `running` > `accepted` > `waiting`，同级取最新 |
-| `activeRuns` | 全部活动 run，按同一顺序。长度大于 1 表示还有额外 accepted/waiting 意图，调用方不能把它们当作同一个执行 |
+| `run` | 当前活动 run；`running`/`stopping` 的设备持有者优先并按开始时间取最新（同级取最新序号），没有持有者时 `accepted` 优先于 `waiting`，同级取最新 |
+| `activeRuns` | 全部活动 run，按同一顺序。长度大于 1 表示还有额外 accepted/waiting 意图，调用方不能把它们当作同一个执行。滞留在 `stopping` 的旧 run 不会压过之后开始的新 `running`，全局停止只作用于设备持有者中最新的 run |
 | `lastRun` | 按 `finishedAt` 取最近终态；只用于展示，不是调用方自己的身份 |
 | `occupancy` | 设备占用投影：`state`、`runId`、`runState`、`sources`、`lease`、`task`、`schedule` |
 | `isRunning`/`taskName`/`startTime`/`taskType`/`stopRequested`/`logs` | 旧客户端的任务进程字段，原样保留 |

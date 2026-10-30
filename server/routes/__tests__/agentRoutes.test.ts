@@ -22,6 +22,7 @@ import {
   getCurrentAgentRun,
   initializeAgentRunStore,
   listAgentRuns,
+  markAgentRunStopping,
   resetAgentRunsForTests,
   shutdownAgentRunStoreForTests,
   startAgentRun
@@ -832,6 +833,31 @@ describe('Agent run routes', () => {
     assert.equal(res.body.error.code, 'AGENT_RUN_NOT_CURRENT')
     assert.equal(res.body.error.details.requestedRunId, older.runId)
     assert.equal(res.body.error.details.currentRunId, current.runId)
+  })
+
+  it('does not let a stale stopping run become current or receive a new device stop', async () => {
+    const signals: string[] = []
+    const stale = beginAgentRun({ operationId: 'fight' }).run
+    startAgentRun(stale.runId)
+    markAgentRunStopping(stale.runId)
+
+    const current = beginAgentRun({ operationId: 'run_task' }).run
+    startAgentRun(current.runId)
+    setTaskStatus(true, '新任务', 'agent', fakeChildProcess(signals))
+
+    assert.equal(getCurrentAgentRun()?.runId, current.runId)
+    const res = response()
+    await findHandler('post', '/actions/stop')({
+      headers: {},
+      body: { runId: stale.runId }
+    }, res, () => {})
+
+    assert.equal(res.statusCode, 200)
+    assert.equal(dataOf(res.body).alreadyStopping, true)
+    assert.equal(dataOf(res.body).deviceStopRequested, false)
+    assert.deepEqual(signals, [])
+    assert.equal(requireRun(current.runId).state, 'running')
+    assert.equal(requireRun(stale.runId).state, 'stopping')
   })
 
   it('cancels an accepted run without touching an untracked legacy process', async () => {
