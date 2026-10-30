@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CachedActivity, MaaActivityRuntime, MaaActivityTableState } from '../maaActivityService.ts';
+import type {
+  CachedActivity,
+  MaaActivityRuntime,
+  MaaActivityTableState,
+  ResourceCollectionRuntime
+} from '../maaActivityService.ts';
 
 // 活动表目录解析在模块导入时读取 MAA_CLI_PATH；先准备假 CLI，再加载被测模块。
 const cliFixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-cli-'));
@@ -793,6 +798,16 @@ describe('activity table freshness', () => {
 });
 
 describe('resource collection window', () => {
+  /** 每个用例独立的窗口缓存，避免模块级 60 秒缓存跨用例命中。 */
+  function resourceRuntime(overrides: ResourceCollectionRuntime = {}): ResourceCollectionRuntime {
+    return {
+      now: () => NOW,
+      cache: new Map(),
+      inflight: new Map(),
+      ...overrides
+    };
+  }
+
   const WINDOW = {
     UtcStartTime: '2026/09/29 16:00:00',
     UtcExpireTime: '2026/10/20 03:59:59',
@@ -828,32 +843,79 @@ describe('resource collection window', () => {
       YoStarEN: null
     };
     const seen: string[] = [];
-    const request = {
+    const request = resourceRuntime({
       now: () => Date.UTC(2026, 9, 19, 12, 0, 0),
       readWindow: async (clientType: string) => {
         seen.push(clientType);
         return windows[clientType] ?? null;
       }
-    };
+    });
 
     assert.equal(await isResourceCollectionOpen('Official', request), true);
     assert.equal(await isResourceCollectionOpen('Bilibili', request), true, 'Bilibili uses the Official table');
     assert.equal(await isResourceCollectionOpen('YoStarEN', request), false);
     // 未知客户端规范化为 Official，与游戏日判定同一套服务区映射。
     assert.equal(await isResourceCollectionOpen('unknown', request), true);
-    assert.deepEqual(seen, ['Official', 'Official', 'YoStarEN', 'Official']);
+    // 同一活动表服务区只读取一次；Bilibili 与未知客户端复用 Official 的缓存。
+    assert.deepEqual(seen, ['Official', 'YoStarEN']);
   });
 
   it('treats a missing window or read failure as not open', async () => {
-    assert.equal(await isResourceCollectionOpen('Official', {
+    assert.equal(await isResourceCollectionOpen('Official', resourceRuntime({
       now: () => NOW,
       readWindow: async () => null
-    }), false);
-    assert.equal(await isResourceCollectionOpen('Official', {
+    })), false);
+    assert.equal(await isResourceCollectionOpen('Official', resourceRuntime({
       now: () => NOW,
       readWindow: async () => {
         throw new Error('活动表不可读');
       }
-    }), false);
+    })), false);
+  });
+
+  it('caches a failed window read only for the short failure TTL', async () => {
+    let currentTime = NOW;
+    let readCalls = 0;
+    const window = { startTime: NOW - 1000, endTime: NOW + 60_000 };
+    const request = resourceRuntime({
+      now: () => currentTime,
+      readWindow: async () => {
+        readCalls += 1;
+        if (readCalls === 1) throw new Error('活动表不可读');
+        return window;
+      }
+    });
+
+    assert.equal(await isResourceCollectionOpen('Official', request), false);
+    assert.equal(await isResourceCollectionOpen('Official', request), false);
+    assert.equal(readCalls, 1, '失败结果在短 TTL 内只读取一次');
+
+    // 失败缓存 5 秒后过期，活动表恢复即可重新读取，而不是等满 60 秒。
+    currentTime += 5 * 1000 + 1;
+    assert.equal(await isResourceCollectionOpen('Official', request), true);
+    assert.equal(readCalls, 2);
+  });
+
+  it('shares one window read between concurrent callers', async () => {
+    let readCalls = 0;
+    let releaseRead!: (window: { startTime: number; endTime: number } | null) => void;
+    const readGate = new Promise<{ startTime: number; endTime: number } | null>(resolve => {
+      releaseRead = resolve;
+    });
+    const request = resourceRuntime({
+      readWindow: () => {
+        readCalls += 1;
+        return readGate;
+      }
+    });
+
+    const first = isResourceCollectionOpen('Official', request);
+    const second = isResourceCollectionOpen('Bilibili', request);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(readCalls, 1);
+
+    releaseRead({ startTime: NOW - 1000, endTime: NOW + 60_000 });
+    assert.deepEqual(await Promise.all([first, second]), [true, true]);
+    assert.equal(readCalls, 1);
   });
 });

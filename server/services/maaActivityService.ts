@@ -333,12 +333,27 @@ export interface ResourceCollectionWindow {
 export interface ResourceCollectionRuntime {
   now?: () => number;
   readWindow?: (clientType: string) => Promise<ResourceCollectionWindow | null>;
+  /** 窗口缓存；测试注入独立 Map 以隔离用例。 */
+  cache?: Map<string, CachedResourceCollectionWindow>;
+  /** 在途读取；同一个活动表服务区的并发调用共享一次读取。 */
+  inflight?: Map<string, Promise<ResourceCollectionWindow | null>>;
+}
+
+/** 资源全开放窗口缓存条目；失败条目使用独立短 TTL，不写入成功缓存。 */
+export interface CachedResourceCollectionWindow {
+  timestamp: number;
+  window: ResourceCollectionWindow | null;
+  failed: boolean;
 }
 
 /** 窗口缓存 TTL：总览轮询与逐关卡执行检查不需要每次都启动 CLI。 */
 const RESOURCE_COLLECTION_CACHE_TTL = 60 * 1000;
 
-const resourceCollectionCache = new Map<string, { timestamp: number; window: ResourceCollectionWindow | null }>();
+/** 读取失败只短暂退避，活动表恢复后下一次轮询即可重新读取。 */
+const RESOURCE_COLLECTION_FAILURE_TTL = 5 * 1000;
+
+const resourceCollectionCache = new Map<string, CachedResourceCollectionWindow>();
+const resourceCollectionRequests = new Map<string, Promise<ResourceCollectionWindow | null>>();
 
 const ACTIVITY_DATE_TIME_PATTERN = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 
@@ -380,22 +395,55 @@ async function readResourceCollectionWindow(clientType: string): Promise<Resourc
   return parseResourceCollectionWindow(table[clientType].resourceCollection);
 }
 
-async function readCachedResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
-  const timestamp = Date.now();
-  const cached = resourceCollectionCache.get(clientType);
-  if (cached && timestamp - cached.timestamp < RESOURCE_COLLECTION_CACHE_TTL) return cached.window;
+interface ResourceCollectionReadOptions {
+  now: number;
+  readWindow: (clientType: string) => Promise<ResourceCollectionWindow | null>;
+  cache: Map<string, CachedResourceCollectionWindow>;
+  inflight: Map<string, Promise<ResourceCollectionWindow | null>>;
+}
 
-  let window: ResourceCollectionWindow | null = null;
-  try {
-    window = await readResourceCollectionWindow(clientType);
-  } catch (error) {
-    logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
-      clientType,
-      error: errorMessageOf(error)
-    });
+/**
+ * 带短缓存与单飞的窗口读取。
+ *
+ * 成功结果（包括“表里没有窗口”）缓存 60 秒；读取失败只写 5 秒失败缓存，
+ * 不把 `window: null` 当成一分钟内的确定答案。同一服务区的并发首次调用
+ * 共享同一次读取，避免同时启动多个 CLI。
+ */
+async function readCachedResourceCollectionWindow(
+  clientType: string,
+  { now, readWindow, cache, inflight }: ResourceCollectionReadOptions
+): Promise<ResourceCollectionWindow | null> {
+  const cached = cache.get(clientType);
+  if (cached) {
+    const ttl = cached.failed ? RESOURCE_COLLECTION_FAILURE_TTL : RESOURCE_COLLECTION_CACHE_TTL;
+    if (now - cached.timestamp < ttl) return cached.window;
   }
-  resourceCollectionCache.set(clientType, { timestamp, window });
-  return window;
+
+  const pending = inflight.get(clientType);
+  if (pending) return pending;
+
+  let request: Promise<ResourceCollectionWindow | null>;
+  request = Promise.resolve()
+    .then(() => readWindow(clientType))
+    .then(
+      window => {
+        cache.set(clientType, { timestamp: now, window, failed: false });
+        return window;
+      },
+      error => {
+        logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
+          clientType,
+          error: errorMessageOf(error)
+        });
+        cache.set(clientType, { timestamp: now, window: null, failed: true });
+        return null;
+      }
+    )
+    .finally(() => {
+      if (inflight.get(clientType) === request) inflight.delete(clientType);
+    });
+  inflight.set(clientType, request);
+  return request;
 }
 
 /**
@@ -407,19 +455,15 @@ export async function isResourceCollectionOpen(
   clientType: string = DEFAULT_CLIENT_TYPE,
   runtime: ResourceCollectionRuntime = {}
 ): Promise<boolean> {
-  const readWindow = runtime.readWindow ?? readCachedResourceCollectionWindow;
-  let window: ResourceCollectionWindow | null = null;
-  try {
-    window = await readWindow(activityTableClientKey(clientType));
-  } catch (error) {
-    logger.debug('读取资源全开放窗口失败，按周表判定关卡开放', {
-      clientType,
-      error: errorMessageOf(error)
-    });
-    return false;
-  }
-  if (!window) return false;
   const now = (runtime.now ?? Date.now)();
+  const tableClientType = activityTableClientKey(clientType);
+  const window = await readCachedResourceCollectionWindow(tableClientType, {
+    now,
+    readWindow: runtime.readWindow ?? readResourceCollectionWindow,
+    cache: runtime.cache ?? resourceCollectionCache,
+    inflight: runtime.inflight ?? resourceCollectionRequests
+  });
+  if (!window) return false;
   return now >= window.startTime && now <= window.endTime;
 }
 
@@ -458,6 +502,8 @@ export function resetMaaActivityCachesForTests(): void {
   negativeActivityCache.clear();
   activityRequests.clear();
   maaCacheDirRequest = null;
+  resourceCollectionCache.clear();
+  resourceCollectionRequests.clear();
 }
 
 /**
