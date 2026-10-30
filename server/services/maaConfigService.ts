@@ -10,7 +10,8 @@ import { execMaaCommandUnlocked } from './maaProcessService.ts';
  * MAA profile 配置的读取与写入。
  *
  * - 目录与 profile 路径都由 `maa dir config` 解析，名称经同一白名单校验，
- *   拒绝路径穿越。
+ *   拒绝路径穿越。目录在一次进程生命周期内不变，首次查询后按进程缓存；
+ *   并发调用共享同一次 CLI 查询，查询失败不缓存，下一次调用重新尝试。
  * - 同一 profile 的读取、合并与写入在同一排队单元内完成；TOML 内容按文本
  *   原子替换，解析或写入失败时不写回，已有配置保持原样（与既有原子写契约
  *   一致）。
@@ -42,11 +43,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * `maa dir config` 的进程内缓存。
+ *
+ * 配置目录由进程环境决定，一次进程生命周期内不会变化；设备采样等轮询接口
+ * 会反复解析连接，没有缓存时每次轮询都会启动一次 CLI。这里保存进行中的
+ * 查询本身，让并发请求共享同一次调用；失败时清空缓存，下一次调用重试。
+ */
+let configDirPromise: Promise<string> | null = null;
+
+/**
  * 获取 MAA 配置目录
  */
-export async function getMaaConfigDir(): Promise<string> {
-  const result = await execMaaCommandUnlocked('dir', ['config']);
-  return result.stdout;
+export function getMaaConfigDir(): Promise<string> {
+  if (!configDirPromise) {
+    configDirPromise = execMaaCommandUnlocked('dir', ['config'])
+      .then(result => result.stdout)
+      .catch(error => {
+        configDirPromise = null;
+        throw error;
+      });
+  }
+  return configDirPromise;
 }
 
 /**
