@@ -154,7 +154,6 @@ export default function ScrcpyDeviceView({
   const resolvedInfrastructureState = infrastructureStatusState || (infrastructureStatus ? 'ready' : 'loading')
   const infrastructureKnown = infrastructureStatus !== null && infrastructureStatus !== undefined
   const infrastructureBusy = infrastructureLoading !== null && infrastructureLoading !== undefined
-  const needsInstall = infrastructureKnown && (!infrastructureStatus.installed || !infrastructureStatus.built)
   const visibleError = (webrtc.mode === 'live' ? webrtc.error : snapshot.error) || infrastructureError
   const previewStatusLabel = webrtc.mode === 'off' ? '预览已关闭' : webrtc.paused ? '后台已暂停' : webrtc.mode === 'snapshot' ? '画面快照 · 10s' : webrtc.starting ? '正在启动' : statusLabel[webrtc.status] || webrtc.status
   const statusDotClass = visibleError
@@ -508,36 +507,11 @@ export default function ScrcpyDeviceView({
                 <div className="scrcpy-empty-title mb-1 text-sm font-semibold text-primary">
                   {webrtc.mode === 'off' ? '预览已关闭' : visibleError ? '预览启动失败' : previewBusy ? '正在连接实时画面' : webrtc.mode === 'snapshot' ? '正在获取快照' : '等待实时画面'}
                 </div>
-                <div className="scrcpy-empty-description mx-auto max-w-md text-xs leading-5 text-secondary">
-                  {visibleError || (!automationAvailable
-                    ? automationUnavailableMessage
-                    : isCompact
-                    ? '选择快照或实时，也可以点击下方按钮启动。'
-                    : '选择快照每 10 秒查看画面，或启动实时预览以操作模拟器。')}
-                </div>
-                <div className="scrcpy-empty-actions mt-4 flex flex-wrap justify-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    className="scrcpy-empty-action min-w-32 px-4"
-                    icon={needsInstall
-                      ? <Package className="h-3.5 w-3.5" strokeWidth={1.8} />
-                      : <Plug className="h-3.5 w-3.5" strokeWidth={1.8} />}
-                    onClick={needsInstall
-                      ? () => runInfrastructureAction(onInstall)
-                      : connectFromControl}
-                    disabled={!automationAvailable || infrastructureBusy || isConnecting}
-                    title={!automationAvailable ? automationUnavailableMessage : undefined}
-                    loading={infrastructureLoading === 'install' || infrastructureLoading === 'preview' || isConnecting}
-                  >
-                    {needsInstall
-                      ? '安装预览组件'
-                      : visibleError
-                        ? '重试预览'
-                        : '启动预览'}
-                  </Button>
-                  {(webrtc.mode !== 'off' || previewBusy) && <Button size="sm" variant="secondary" onClick={webrtc.disconnect}>{previewBusy ? '取消启动' : '关闭预览'}</Button>}
-                </div>
+                {(visibleError || !automationAvailable) && (
+                  <div className="scrcpy-empty-description mx-auto max-w-md text-xs leading-5 text-secondary">
+                    {visibleError || automationUnavailableMessage}
+                  </div>
+                )}
               </div>
             </div>
           )}
