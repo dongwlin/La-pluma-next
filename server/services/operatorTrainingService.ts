@@ -20,6 +20,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
+import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import { getAllOperators } from './dataParserService.ts';
 import {
   buildTrainingCandidates,
@@ -72,6 +73,8 @@ export { summarizeScheduleSync } from './operatorTrainingApplication.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+// 养成数据目录：抓取脚本与存储层使用同一解析结果，避免读写目录分裂。
+const TRAINING_DATA_DIR = resolveAppPaths().trainingDataDir;
 
 // 创建日志记录器
 const logger = createLogger('OperatorTraining');
@@ -375,7 +378,7 @@ const FETCH_SCRIPT_TIMEOUT_MS = 5 * 60 * 1000;
  * 统计数据文件中的条目数（文件缺失或解析失败时返回 null）
  */
 async function countDataFileEntries(fileName: string): Promise<number | null> {
-  const data = await readJsonFile(path.join(__dirname, '../data', fileName), null);
+  const data = await readJsonFile(path.join(TRAINING_DATA_DIR, fileName), null);
   if (typeof data !== 'object' || data === null) return null;
   const record = data as Record<string, unknown>;
   if (isRecord(record.operators)) return Object.keys(record.operators).length;

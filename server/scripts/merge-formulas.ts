@@ -1,19 +1,16 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   errorMessage,
   expectRecord,
   isDirectExecution,
   optionalRecord,
+  resolveTrainingDataPath,
   type JsonRecord
 } from './scriptSupport.ts';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/** 输出/读取路径：materials.json 与 material-formulas.json 同在 server/data。 */
-export const MATERIALS_PATH = join(__dirname, '../data/materials.json');
-export const FORMULAS_PATH = join(__dirname, '../data/material-formulas.json');
+/** 输出/读取路径：materials.json 与 material-formulas.json 同属养成数据目录。 */
+export const MATERIALS_PATH = resolveTrainingDataPath('materials.json');
+export const FORMULAS_PATH = resolveTrainingDataPath('material-formulas.json');
 
 /** 合并后的配方表。 */
 export type RecipeTable = Record<string, JsonRecord>;

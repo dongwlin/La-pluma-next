@@ -5,11 +5,20 @@
  * 只有作为入口运行时才触发抓取或写入，导入本身不产生副作用。
  */
 
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveAppPaths } from '../config/runtimeConfig.ts';
 
 /** 已解析的 JSON 对象。 */
 export type JsonRecord = Record<string, unknown>;
+
+/**
+ * 参考数据输出路径：与养成服务共用 `resolveAppPaths().trainingDataDir`，
+ * 默认 `server/data`，可由 `LA_PLUMA_TRAINING_DATA_DIR` 重定向。
+ */
+export function resolveTrainingDataPath(fileName: string): string {
+  return join(resolveAppPaths().trainingDataDir, fileName);
+}
 
 /** 判断值是否为非数组的 JSON 对象。 */
 export function isRecord(value: unknown): value is JsonRecord {

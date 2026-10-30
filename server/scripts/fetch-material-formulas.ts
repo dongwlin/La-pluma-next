@@ -1,16 +1,13 @@
 import { writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   errorMessage,
   expectRecord,
   isDirectExecution,
   optionalArray,
   optionalRecord,
-  optionalString
+  optionalString,
+  resolveTrainingDataPath
 } from './scriptSupport.ts';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BUILDING_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/building_data.json';
 const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/item_table.json';
@@ -18,7 +15,7 @@ const BUILDING_SOURCE = 'building_data.json';
 const ITEM_SOURCE = 'item_table.json';
 
 /** 输出目标：material-formulas.json。 */
-export const OUTPUT_PATH = join(__dirname, '../data/material-formulas.json');
+export const OUTPUT_PATH = resolveTrainingDataPath('material-formulas.json');
 
 /** 配方消耗项。 */
 interface FormulaCost {

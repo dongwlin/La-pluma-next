@@ -777,6 +777,32 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(updateResources.TEMP_DIR, join(serverDir, '.temp-maa-resource'));
   });
 
+  it('routes material data outputs through LA_PLUMA_TRAINING_DATA_DIR', () => {
+    const trainingDirectory = join(tmpdir(), 'la-pluma-training-reference');
+    const scripts = [
+      ['fetch-all-materials.ts', 'MATERIALS_PATH', 'materials.json'],
+      ['fetch-material-formulas.ts', 'OUTPUT_PATH', 'material-formulas.json'],
+      ['merge-formulas.ts', 'MATERIALS_PATH', 'materials.json'],
+      ['fetch-operator-materials.ts', 'OUTPUT_PATH', 'operator-materials.json'],
+      ['fetch-penguin-stats.ts', 'OUTPUT_PATH', 'penguin-drop-data.json']
+    ] as const;
+
+    for (const [script, exportName, fileName] of scripts) {
+      const moduleUrl = pathToFileURL(join(serverDir, 'scripts', script)).href;
+      const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', `const module = await import(${JSON.stringify(moduleUrl)}); process.stdout.write(module.${exportName});`],
+        {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: { ...process.env, LA_PLUMA_TRAINING_DATA_DIR: trainingDirectory }
+        }
+      );
+      assert.equal(result.status, 0, `${script} import failed: ${result.stderr}`);
+      assert.equal(result.stdout, join(trainingDirectory, fileName));
+    }
+  });
+
   it('keeps every package script pointing at an existing script file', async () => {
     const { scripts } = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf-8')) as {
       scripts: Record<string, string>;
