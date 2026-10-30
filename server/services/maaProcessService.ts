@@ -7,6 +7,7 @@ import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { normalizeCopilotCommandArgs } from './copilotUri.ts';
 import { prepareMaaTaskCache } from './maaTaskCacheService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
+import { parsePositiveInteger } from '../config/runtimeConfig.ts';
 
 /**
  * MAA CLI 子进程执行与进程状态投影。
@@ -33,7 +34,21 @@ const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 // 两者独立；对外契约（/logs/recent 与 /runs/current）按 MAX_REALTIME_LOG_LINES 声明。
 export const MAX_REALTIME_LOG_LINES = 500;
 
-const MAX_REALTIME_LOGS = Number(process.env.LA_PLUMA_MAX_REALTIME_LOGS || 5000);
+const DEFAULT_MAX_REALTIME_LOGS = 5000;
+
+/** 实时日志内存缓冲上限；非法环境变量回落默认值，不能变成 NaN 让裁剪失效。 */
+function resolveMaxRealtimeLogs(raw: string | undefined): number {
+  try {
+    return parsePositiveInteger(raw, {
+      name: 'LA_PLUMA_MAX_REALTIME_LOGS',
+      fallback: DEFAULT_MAX_REALTIME_LOGS
+    });
+  } catch {
+    return DEFAULT_MAX_REALTIME_LOGS;
+  }
+}
+
+const MAX_REALTIME_LOGS = resolveMaxRealtimeLogs(process.env.LA_PLUMA_MAX_REALTIME_LOGS);
 
 // 创建日志记录器
 const logger = createLogger('MaaService');
