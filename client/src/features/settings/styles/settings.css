@@ -7,10 +7,6 @@
     box-shadow: none;
   }
 
-  .la-pluma-app .config-editor-card .app-card-content > section.surface-soft {
-    border-top: 1px solid var(--app-border);
-  }
-
   .la-pluma-app .config-update-card .app-card-content {
     /* S3: 配置更新卡内部使用 0 间距分组，需压过调用处的 gap-*。 */
     gap: 0 !important;
