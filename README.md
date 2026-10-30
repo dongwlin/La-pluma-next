@@ -8,10 +8,6 @@
   [![GHCR](https://img.shields.io/badge/GHCR-la--pluma--next-2496ED?logo=github)](https://github.com/dongwlin/La-pluma-next/pkgs/container/la-pluma-next)
 </div>
 
-La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台：前端负责配置、编排和可视化，后端负责调用 `maa` CLI、ADB、ScrcpyOverWebRTC 和本地 JSON 配置，把日常任务集中到一个页面里完成。
-
-项目主要面向 macOS 与 Linux 的本地部署：既可以直接运行源码，也可以使用 Docker 镜像；架构、设计、功能、部署与配置等说明见下方文档索引。
-
 ## ✨ 特性
 
 以下是最常用的能力，完整功能列表见 [功能概览](docs/guides/features.md)。
@@ -31,21 +27,16 @@ La Pluma Next 是一个面向《明日方舟》自动化的本地 Web 控制台�
 
 ## 📸 界面预览
 
-### Web 端
-
-<p align="center">
-  <img src="screenshots/automation-web-theme-split.png" alt="日常任务桌面端" width="92%" />
-  <br />
-  <em>日常任务桌面端</em>
-</p>
-
-### 移动端
-
-<p align="center">
-  <img src="screenshots/automation-mobile-theme-split.png" alt="日常任务移动端" width="36%" />
-  <br />
-  <em>日常任务移动端</em>
-</p>
+<table>
+  <tr>
+    <td width="76%" valign="top">
+      <img src="screenshots/automation-web-theme-split.png" alt="日常任务桌面端" width="100%" />
+    </td>
+    <td width="24%" valign="top">
+      <img src="screenshots/automation-mobile-theme-split.png" alt="日常任务移动端" width="100%" />
+    </td>
+  </tr>
+</table>
 
 ## 📋 前置要求
 
