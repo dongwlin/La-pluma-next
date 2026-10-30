@@ -117,7 +117,7 @@ docker run -d \
 
 在「日常」页面配置 ADB 连接：
 
-- **ADB 路径**：默认 `/opt/homebrew/bin/adb`
+- **ADB 路径**：按平台默认 macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe`；Docker 镜像为 `/usr/bin/adb`
 - **设备地址**：本地模拟器填 `emulator-5554` 或 `127.0.0.1:5555`；远程设备填 `192.168.x.x:16384`（需要开启网络 ADB）
 
 ### Telegram 通知与 Bot

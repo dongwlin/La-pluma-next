@@ -41,7 +41,7 @@ docker run -d \
 | --- | --- | --- |
 | `PORT` | 后端监听端口；必须为 0-65535 的整数，否则服务拒绝启动 | `3000` |
 | `LA_PLUMA_BASE_PATH` | 生产环境前端挂载路径，需与构建时 `VITE_BASE_PATH` 一致 | `/` |
-| `ADB_PATH` | ADB 可执行文件路径 | `/opt/homebrew/bin/adb` |
+| `ADB_PATH` | ADB 可执行文件路径 | Docker 为 `/usr/bin/adb`；本地按平台：macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe` |
 | `ADB_ADDRESS` | 默认 ADB 设备地址 | `127.0.0.1:16384` |
 | `MAA_CLI_PATH` | `maa` CLI 可执行文件路径 | 本地为 `maa`，Docker 为 `/usr/local/bin/maa` |
 | `MAA_CLIENT_TYPE` | 默认客户端类型 | `Official` |

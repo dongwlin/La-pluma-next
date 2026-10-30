@@ -20,7 +20,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 在「日常」页面配置 ADB 连接：
 
-- **ADB 路径**：默认 `/opt/homebrew/bin/adb`
+- **ADB 路径**：按平台默认 macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe`；Docker 镜像为 `/usr/bin/adb`，也可用 `ADB_PATH` 覆盖
 - **设备地址**：
   - 本地模拟器：`emulator-5554` 或 `127.0.0.1:5555`
   - 远程设备：`192.168.x.x:16384`（需要开启网络 ADB）
