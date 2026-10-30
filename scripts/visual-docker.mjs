@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-// 视觉基线运行入口：把"截图生成与比对"统一钉进 mcr.microsoft.com/playwright
-// 官方镜像（版本 = client 实际安装的 @playwright/test 版本），使本地与 CI 的
-// 字体、浏览器完全一致——一致性是构造出来的，不是碰运气。
+// Playwright 截图运行入口：把视觉基线与 README 展示图的生成统一钉进
+// mcr.microsoft.com/playwright 官方镜像（版本 = client 实际安装的
+// @playwright/test 版本），使本地与 CI 的字体、浏览器完全一致。
 //
 // 前置：镜像需要 chromium 之外无其他依赖；仓库（含 node_modules 与 dist）挂载进容器。
 // 用法：
-//   pnpm visual            # 比对模式（CI / 日常验收）
-//   pnpm visual:update     # 重新生成基线截图
+//   pnpm visual            # 视觉基线比对模式（CI / 日常验收）
+//   pnpm visual:update     # 重新生成视觉基线截图
+//   pnpm screenshots:readme # 重新生成 README 展示截图
 //   pnpm visual -- --grep "dashboard"   # 透传任意 playwright 参数
+//   pnpm visual -- --config <path>      # 使用其他 Playwright 配置
 // 环境变量：
 //   PLAYWRIGHT_IMAGE   覆盖镜像（默认按已装版本拼 v<version>-noble）
 //   VISUAL_SKIP_BUILD  跳过容器外的 client 构建
@@ -24,7 +26,26 @@ const version = JSON.parse(
 ).version
 
 const image = process.env.PLAYWRIGHT_IMAGE || `mcr.microsoft.com/playwright:v${version}-noble`
-const passthroughArgs = process.argv.slice(2)
+
+function parseConfigArg(args) {
+  const index = args.indexOf('--config')
+  if (index === -1) {
+    return { configArg: 'client/tests/visual/playwright.config.ts', args }
+  }
+  const configArg = args[index + 1]
+  if (!configArg) {
+    console.error('--config 需要配置文件路径')
+    process.exit(1)
+  }
+  return { configArg, args: [...args.slice(0, index), ...args.slice(index + 2)] }
+}
+
+const { configArg, args: passthroughArgs } = parseConfigArg(process.argv.slice(2))
+const configPath = path.relative(repoRoot, path.resolve(repoRoot, configArg)).replaceAll('\\', '/')
+if (configPath.startsWith('..')) {
+  console.error(`Playwright 配置不在仓库内：${configArg}`)
+  process.exit(1)
+}
 
 // 基线截图只针对构建产物（与生产一致），先在宿主机构建（esbuild/rollup 的
 // 原生二进制按宿主机环境安装，不在容器内复用）。
@@ -82,10 +103,10 @@ const dockerArgs = [
   image,
   'node', `/work/${playwrightCliRel}`,
   'test',
-  '--config', 'client/tests/visual/playwright.config.ts',
+  '--config', configPath,
   ...passthroughArgs,
 ]
 
-console.log(`[visual] ${image}`)
+console.log(`[playwright] ${image} (${configPath})`)
 const result = spawnSync('docker', dockerArgs, { stdio: 'inherit' })
 process.exit(result.status ?? 1)

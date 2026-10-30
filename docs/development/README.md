@@ -51,6 +51,21 @@ pnpm visual:update   # 有意的视觉改动后重新生成基线截图
 pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
 ```
 
+### README 界面截图
+
+README 的「界面预览」由 `client/tests/screenshots/` 单独生成，只输出浅色主题；它复用视觉基线的固定 fixture、固定时间与 Playwright 镜像，不读取本机配置。
+
+```bash
+pnpm screenshots:readme
+```
+
+- 桌面：1440×900，输出 `screenshots/automation-web-light.png`
+- 移动：440×956，输出 `screenshots/automation-mobile-light.png`
+- 展示用任务流在 `client/tests/screenshots/fixtures.ts` 覆盖；基础接口继续复用 `client/tests/visual/fixtures.ts`
+- 截图展示“无最近执行”的空闲状态，不包含示例执行结果
+- 桌面截图侧栏身份固定为阿米娅；头像使用 `client/tests/screenshots/assets/amiya.png`，不依赖外部图片网络
+- 这是文档资产生成器，不加入 `pnpm visual` / `pnpm verify` 的检查链，也没有 CI 截图门禁；更新后审阅图片差异并随文档提交
+
 ### Tailwind v4 与样式分层
 
 当前约定：

@@ -30,10 +30,10 @@
 <table>
   <tr>
     <td width="76%" valign="top">
-      <img src="screenshots/automation-web-theme-split.png" alt="日常任务桌面端" width="100%" />
+      <img src="screenshots/automation-web-light.png" alt="日常任务桌面端（浅色）" width="100%" />
     </td>
     <td width="24%" valign="top">
-      <img src="screenshots/automation-mobile-theme-split.png" alt="日常任务移动端" width="100%" />
+      <img src="screenshots/automation-mobile-light.png" alt="日常任务移动端（浅色）" width="100%" />
     </td>
   </tr>
 </table>

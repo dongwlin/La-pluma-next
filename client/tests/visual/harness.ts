@@ -94,8 +94,8 @@ const MOTION_FREEZE_SCRIPT = `
   })()
 `
 
-function matchFixture(method: string, pathname: string): ApiFixture['payload'] | undefined {
-  for (const fixture of apiFixtures) {
+function matchFixture(method: string, pathname: string, fixtures: ApiFixture[]): ApiFixture['payload'] | undefined {
+  for (const fixture of fixtures) {
     if ((fixture.method ?? 'GET') !== method) continue
     const pattern = fixture.path.split('/').filter(Boolean)
     const actual = pathname.split('/').filter(Boolean)
@@ -107,7 +107,12 @@ function matchFixture(method: string, pathname: string): ApiFixture['payload'] |
   return undefined
 }
 
-export async function installDeterministicEnvironment(page: Page, options: { nativeClock?: boolean } = {}) {
+/** 安装确定性环境；`fixtures` 可替换整套 `/api` 响应（README 截图使用）。 */
+export async function installDeterministicEnvironment(
+  page: Page,
+  options: { nativeClock?: boolean; fixtures?: ApiFixture[] } = {},
+) {
+  const fixtures = options.fixtures ?? apiFixtures
   const unmatchedApiCalls: string[] = []
 
   await page.addInitScript(NO_SW_SCRIPT)
@@ -133,7 +138,7 @@ export async function installDeterministicEnvironment(page: Page, options: { nat
     const request = route.request()
     const url = new URL(request.url())
     const pathname = url.pathname.replace(/^\/api/, '') || '/'
-    const payload = matchFixture(request.method(), pathname)
+    const payload = matchFixture(request.method(), pathname, fixtures)
     if (payload === undefined) {
       unmatchedApiCalls.push(`${request.method()} /api${pathname}`)
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) })

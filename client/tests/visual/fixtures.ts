@@ -10,7 +10,7 @@
 export const FIXED_NOW = new Date('2026-10-24T04:00:00+08:00')
 
 /** 统一的成功响应包装。 */
-const ok = (data: unknown) => ({ success: true, data })
+export const ok = (data: unknown) => ({ success: true, data })
 
 export interface ApiFixture {
   /** 相对 API_BASE_URL 的路径（不含 /api 前缀），支持 `:id` 段匹配。 */

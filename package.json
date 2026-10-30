@@ -27,6 +27,7 @@
     "verify": "pnpm -r verify",
     "visual": "node scripts/visual-docker.mjs",
     "visual:update": "node scripts/visual-docker.mjs --update-snapshots",
+    "screenshots:readme": "node scripts/visual-docker.mjs --config client/tests/screenshots/playwright.config.ts",
     "start": "pnpm --filter la-pluma-next-server start"
   }
 }
