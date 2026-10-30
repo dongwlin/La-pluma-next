@@ -231,7 +231,9 @@ jobs:
 
   publish:
     needs: verify
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Tag 运行会跳过 build/browser-checks；若 if 不带状态函数，GitHub 会把
+    # 该跳过沿 needs 链传播到 publish，导致正式版本永远不会发布。
+    if: ${{ !cancelled() && needs.verify.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
