@@ -1,17 +1,41 @@
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
+import type { CachedActivity, MaaActivityRuntime, MaaActivityTableState } from '../maaActivityService.ts';
+
+// 活动表目录解析在模块导入时读取 MAA_CLI_PATH；先准备假 CLI，再加载被测模块。
+const cliFixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-cli-'));
+const fakeMaaCliPath = join(cliFixtureDir, 'fake-maa.js');
+const maaCallLog = join(cliFixtureDir, 'maa-calls.log');
+await writeFile(fakeMaaCliPath, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (process.env.FAKE_MAA_CALL_LOG) fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, args.join(' ') + '\\n');
+if (args[0] === 'dir' && args[1] === 'cache' && !process.env.FAKE_MAA_CLI_FAIL) {
+  process.stdout.write(process.env.FAKE_MAA_CACHE_DIR || '');
+} else {
+  process.exit(1);
+}
+`, { mode: 0o755 });
+process.env.MAA_CLI_PATH = fakeMaaCliPath;
+process.env.FAKE_MAA_CALL_LOG = maaCallLog;
+delete process.env.MAA_CACHE_DIR;
+
+const {
   getCurrentActivity,
   isResourceCollectionOpen,
   parseActivityTimestamp,
   parseMaaActivityGroups,
   parseResourceCollectionWindow,
-  readActivityTableState
-} from '../maaActivityService.ts';
-import type { CachedActivity, MaaActivityRuntime, MaaActivityTableState } from '../maaActivityService.ts';
+  readActivityTableState,
+  resetMaaActivityCachesForTests
+} = await import('../maaActivityService.ts');
+
+after(async () => {
+  await rm(cliFixtureDir, { recursive: true, force: true });
+});
 
 const NOW = 1_800_000_000_000;
 const CLIENT = 'Official';
@@ -537,6 +561,116 @@ describe('activity lookup short caching', () => {
     assert.equal(snapshots[0]?.status, 'none');
     assert.equal(snapshots[1]?.status, 'none');
     assert.equal(runCalls, 1);
+  });
+});
+
+describe('MAA cache directory resolution', () => {
+  /** 不注入 readActivityTable，让默认实现经 `maa dir cache` 解析活动表目录。 */
+  function runtimeUsingDefaultTable(overrides: MaaActivityRuntime = {}): MaaActivityRuntime {
+    return {
+      now: () => NOW,
+      cache: new Map<string, CachedActivity>(),
+      negativeCache: new Map(),
+      inflight: new Map(),
+      runActivity: async () => ({ stdout: '' }),
+      readFallback: async () => null,
+      supportsFallback: () => true,
+      loadConfig: async () => null,
+      saveConfig: async () => undefined,
+      ...overrides
+    };
+  }
+
+  async function withCacheDir(run: (dir: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(join(tmpdir(), 'la-pluma-activity-cache-'));
+    try {
+      const tablePath = join(dir, 'StageActivityV2.json');
+      await writeFile(tablePath, '{}');
+      await utimes(tablePath, NOW / 1000, NOW / 1000);
+      await run(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async function dirCacheCalls(): Promise<string[]> {
+    const lines = (await readFile(maaCallLog, 'utf-8')).trim().split('\n');
+    return lines.filter(line => line === 'dir cache');
+  }
+
+  it('prefers MAA_CACHE_DIR without running maa dir cache', async () => {
+    resetMaaActivityCachesForTests();
+    await withCacheDir(async dir => {
+      process.env.MAA_CACHE_DIR = dir;
+      await writeFile(maaCallLog, '');
+      try {
+        const snapshot = await getCurrentActivity(CLIENT, runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: MINI_GAMES_ONLY })
+        }));
+
+        assert.equal(snapshot.status, 'none');
+        assert.equal(snapshot.source, 'maa');
+        assert.deepEqual(await dirCacheCalls(), []);
+      } finally {
+        delete process.env.MAA_CACHE_DIR;
+      }
+    });
+  });
+
+  it('reuses the resolved cache directory across cached and concurrent reads', async () => {
+    resetMaaActivityCachesForTests();
+    await withCacheDir(async dir => {
+      process.env.FAKE_MAA_CACHE_DIR = dir;
+      await writeFile(maaCallLog, '');
+      try {
+        const overrides = runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: MINI_GAMES_ONLY })
+        });
+        const [official, bilibili] = await Promise.all([
+          getCurrentActivity(CLIENT, overrides),
+          getCurrentActivity('Bilibili', overrides)
+        ]);
+        assert.equal(official.status, 'none');
+        assert.equal(bilibili.status, 'none');
+        assert.equal((await dirCacheCalls()).length, 1);
+
+        // 后续顺序读取仍命中进程内目录缓存，不再启动 CLI。
+        const third = await getCurrentActivity('YoStarEN', overrides);
+        assert.equal(third.status, 'none');
+        assert.equal((await dirCacheCalls()).length, 1);
+      } finally {
+        delete process.env.FAKE_MAA_CACHE_DIR;
+      }
+    });
+  });
+
+  it('does not cache a failed maa dir cache query', async () => {
+    resetMaaActivityCachesForTests();
+    await withCacheDir(async dir => {
+      process.env.FAKE_MAA_CACHE_DIR = dir;
+      process.env.FAKE_MAA_CLI_FAIL = '1';
+      await writeFile(maaCallLog, '');
+      try {
+        const overrides = runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: '' })
+        });
+        const failed = await getCurrentActivity(CLIENT, overrides);
+        assert.equal(failed.status, 'none');
+        assert.equal(failed.source, 'penguin');
+
+        delete process.env.FAKE_MAA_CLI_FAIL;
+        // 换一个 clientType，避免第一条 none 的短负缓存掩盖目录查询结果。
+        const recovered = await getCurrentActivity('YoStarEN', runtimeUsingDefaultTable({
+          runActivity: async () => ({ stdout: MINI_GAMES_ONLY })
+        }));
+        assert.equal(recovered.status, 'none');
+        assert.equal(recovered.source, 'maa');
+        assert.equal((await dirCacheCalls()).length, 2);
+      } finally {
+        delete process.env.FAKE_MAA_CLI_FAIL;
+        delete process.env.FAKE_MAA_CACHE_DIR;
+      }
+    });
   });
 });
 

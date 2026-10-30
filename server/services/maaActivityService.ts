@@ -290,10 +290,35 @@ export async function readActivityTableState(cacheDir: string): Promise<MaaActiv
   };
 }
 
-/** `maa dir cache` 的输出只取首行；空目录也照原样返回，由 stat 判定是否存在。 */
+/**
+ * MAA 缓存目录：显式 `MAA_CACHE_DIR` 优先，与任务缓存的解析顺序一致。
+ *
+ * `maa dir cache` 在进程生命周期内结果稳定；这里缓存进行中的查询，让并发
+ * 调用共享同一次 CLI 查询，失败时清空缓存以便下一次重试。目录为空也是
+ * 有效结果，由活动表读取按“不存在”处理。
+ */
+let maaCacheDirRequest: { configured: string | null; promise: Promise<string | null> } | null = null;
+
+function resolveMaaCacheDir(): Promise<string | null> {
+  const configured = process.env.MAA_CACHE_DIR?.trim() || null;
+  if (maaCacheDirRequest?.configured === configured) return maaCacheDirRequest.promise;
+
+  let request: Promise<string | null>;
+  request = (async () => {
+    if (configured) return configured;
+    const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
+    return result.stdout.trim().split(/\r?\n/)[0]?.trim() || null;
+  })().catch(error => {
+    if (maaCacheDirRequest?.promise === request) maaCacheDirRequest = null;
+    throw error;
+  });
+  maaCacheDirRequest = { configured, promise: request };
+  return request;
+}
+
+/** 活动表状态读取只解析一次缓存目录，不再为每次轮询启动 `maa dir cache`。 */
 async function readMaaActivityTable(): Promise<MaaActivityTableState> {
-  const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
-  const cacheDir = result.stdout.trim().split(/\r?\n/)[0]?.trim();
+  const cacheDir = await resolveMaaCacheDir();
   if (!cacheDir) return { exists: false, modifiedAt: null, checkedAt: null };
   return readActivityTableState(cacheDir);
 }
@@ -347,16 +372,8 @@ function activityTableClientKey(clientType: string): string {
   return normalized === 'Bilibili' ? 'Official' : normalized;
 }
 
-/** MAA 缓存目录：显式 `MAA_CACHE_DIR` 优先，与任务缓存的解析顺序一致。 */
-async function readMaaCacheDir(): Promise<string | null> {
-  const configured = process.env.MAA_CACHE_DIR?.trim();
-  if (configured) return configured;
-  const result = await execMaaCommand('dir', ['cache'], null, null, false, true);
-  return result.stdout.trim().split(/\r?\n/)[0]?.trim() || null;
-}
-
 async function readResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
-  const cacheDir = await readMaaCacheDir();
+  const cacheDir = await resolveMaaCacheDir();
   if (!cacheDir) return null;
   const table: unknown = JSON.parse(await readFile(join(cacheDir, 'StageActivityV2.json'), 'utf-8'));
   if (!isRecord(table) || !isRecord(table[clientType])) return null;
@@ -431,6 +448,17 @@ const defaultRuntime: Required<MaaActivityRuntime> = {
   },
   saveConfig: saveActivityConfig
 };
+
+/**
+ * 清理进程内活动缓存，供测试用例之间隔离；生产运行不调用。
+ * 活动查询依赖进程级目录与短缓存，测试需要显式的重置边界。
+ */
+export function resetMaaActivityCachesForTests(): void {
+  activityCache.clear();
+  negativeActivityCache.clear();
+  activityRequests.clear();
+  maaCacheDirRequest = null;
+}
 
 /**
  * DTO 时间戳只接受安全整数：文件系统 mtime 是浮点毫秒，服务端缓存的时间戳
