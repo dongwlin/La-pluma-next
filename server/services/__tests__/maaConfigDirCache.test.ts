@@ -30,6 +30,7 @@ process.env.FAKE_MAA_CONFIG_DIR = configDir;
 process.env.FAKE_MAA_FAIL_MARKER = failMarker;
 
 const { getMaaConfigDir } = await import('../maaConfigService.ts');
+const { clearRealtimeLogs, getRealtimeLogs } = await import('../maaProcessService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
@@ -43,19 +44,20 @@ after(async () => {
   await rm(fixtureDir, { recursive: true, force: true });
 });
 
-test('a failed config directory lookup is not cached', async () => {
+test('a failed config directory lookup is cached briefly and then retried', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  clearRealtimeLogs();
   await writeFile(failMarker, '1', 'utf-8');
   await assert.rejects(getMaaConfigDir(), /命令执行失败/);
 
-  await writeFile(failMarker, '1', 'utf-8');
+  // 目录查询是诊断类短命令：失败重试不应持续写“执行命令”日志。
+  assert.ok(!getRealtimeLogs(100).some(entry => entry.message.includes('执行命令')));
+
+  // 冷却期内不重新启动 CLI，直接复用同一个失败结果。
   await assert.rejects(getMaaConfigDir(), /命令执行失败/);
+  assert.equal(await callCount(), 1);
 
-  // 两次失败各调用一次 CLI：失败没有被缓存成结果。
-  assert.equal(await callCount(), 2);
-});
-
-test('concurrent lookups share one CLI call and later lookups reuse the cached directory', async () => {
-  const before = await callCount();
+  t.mock.timers.tick(30_001);
 
   const results = await Promise.all([
     getMaaConfigDir(),
@@ -63,8 +65,9 @@ test('concurrent lookups share one CLI call and later lookups reuse the cached d
     getMaaConfigDir()
   ]);
   assert.deepEqual(results, [configDir, configDir, configDir]);
-  assert.equal((await callCount()) - before, 1);
+  assert.equal(await callCount(), 2);
 
+  // 成功结果继续按进程缓存。
   assert.equal(await getMaaConfigDir(), configDir);
-  assert.equal((await callCount()) - before, 1);
+  assert.equal(await callCount(), 2);
 });
