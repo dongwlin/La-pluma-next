@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, posix, win32 } from 'node:path';
 import { after, before, beforeEach, afterEach, describe, it } from 'node:test';
@@ -8,8 +8,11 @@ import { after, before, beforeEach, afterEach, describe, it } from 'node:test';
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-log-bounds-'));
 const fakeLogDir = join(fixtureDir, 'maa-logs');
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
+const dirLookupLog = join(fixtureDir, 'dir-log-calls.log');
 await writeFile(fakeCliPath, `#!${process.execPath}
+const fs = require('node:fs');
 if (process.argv[2] === 'dir' && process.argv[3] === 'log') {
+  fs.appendFileSync(process.env.FAKE_MAA_DIR_LOG, 'dir log\\n');
   // 不显式 exit：stdout 为管道时立即 exit 可能截断输出
   process.stdout.write(process.env.FAKE_MAA_LOG_DIR || '');
 } else {
@@ -18,12 +21,18 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'log') {
 `, { mode: 0o755 });
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_LOG_DIR = fakeLogDir;
+process.env.FAKE_MAA_DIR_LOG = dirLookupLog;
 
 const { getRealtimeLogs, setTaskStatus, clearRealtimeLogs } = await import('../maaProcessService.ts');
-const { readLogFile, isPathOutsideDir } = await import('../maaLogFileService.ts');
+const { readLogFile, isPathOutsideDir, MAX_LOG_FILE_READ_BYTES } = await import('../maaLogFileService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
+
+async function dirLookupCount(): Promise<number> {
+  const content = await readFile(dirLookupLog, 'utf-8').catch(() => '');
+  return content.split('\n').filter(Boolean).length;
+}
 
 after(async () => {
   await rm(fixtureDir, { recursive: true, force: true });
@@ -77,6 +86,43 @@ describe('readLogFile numeric bounds', () => {
     const capped = await readLogFile(logFilePath, 6000);
     assert.equal(capped.returnedLines, 5000);
     assert.ok(capped.content.endsWith(`log line ${totalLines}`));
+  });
+
+  it('reads only a bounded tail of oversized files while preserving the last lines', async () => {
+    const largeLogPath = join(fakeLogDir, 'large.log');
+    const repeatedLine = `${'x'.repeat(10 * 1024)}\n`;
+    const repeatedCount = 500;
+    const content = `FIRST-LINE\n${repeatedLine.repeat(repeatedCount)}LAST-MARKER\n`;
+    await writeFile(largeLogPath, content, 'utf-8');
+
+    const result = await readLogFile(largeLogPath, 10);
+    assert.ok(content.length > MAX_LOG_FILE_READ_BYTES);
+    assert.ok(result.content.endsWith('LAST-MARKER\n'));
+    assert.ok(!result.content.includes('FIRST-LINE'));
+    assert.equal(result.returnedLines, 10);
+    // 换行数 + 1：首行、500 行大内容、末行与结尾换行后的空行。
+    assert.equal(result.totalLines, repeatedCount + 3);
+    assert.ok(Buffer.byteLength(result.content, 'utf-8') <= MAX_LOG_FILE_READ_BYTES);
+  });
+
+  it('preserves trailing newline handling when selecting the last lines', async () => {
+    const trailingPath = join(fakeLogDir, 'trailing.log');
+    await writeFile(trailingPath, 'a\nb\n', 'utf-8');
+
+    const result = await readLogFile(trailingPath, 2);
+    assert.equal(result.totalLines, 3);
+    assert.equal(result.returnedLines, 2);
+    assert.equal(result.content, 'b\n');
+  });
+
+  it('resolves the log directory once per process', async () => {
+    const before = await dirLookupCount();
+    assert.ok(before >= 1);
+
+    await readLogFile(logFilePath, 5);
+    await readLogFile(logFilePath, 5);
+
+    assert.equal(await dirLookupCount(), before);
   });
 });
 

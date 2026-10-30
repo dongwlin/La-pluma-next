@@ -22,6 +22,11 @@ const logger = createLogger('MaaService');
 // 读取日志文件时的行数上限；/logs/files 的 lines 参数按它夹取。
 export const MAX_LOG_FILE_LINES = 5000;
 
+/** 单次读取日志内容的最大字节数；尾部读取不会把整份大日志载入内存。 */
+export const MAX_LOG_FILE_READ_BYTES = 2 * 1024 * 1024;
+
+const LOG_READ_CHUNK_BYTES = 64 * 1024;
+
 /** 日志目录内的单个日志文件条目。 */
 export interface MaaLogFileEntry {
   name: string;
@@ -272,7 +277,61 @@ export function isPathOutsideDir(
 }
 
 /**
+ * 从文件尾部读取最多 MAX_LOG_FILE_READ_BYTES 字节，并标明是否从文件开头开始。
+ * 分块读取避免一次性分配整个文件大小的缓冲区。
+ */
+async function readLogTail(
+  handle: MaaLogFileHandle,
+  fileSize: number
+): Promise<{ text: string; startsAtBeginning: boolean; startsAtLineBoundary: boolean }> {
+  const bytesToRead = Math.min(fileSize, MAX_LOG_FILE_READ_BYTES);
+  const start = fileSize - bytesToRead;
+  const buffer = Buffer.alloc(bytesToRead);
+  let offset = 0;
+  while (offset < bytesToRead) {
+    const chunkSize = Math.min(LOG_READ_CHUNK_BYTES, bytesToRead - offset);
+    const { bytesRead } = await handle.read(buffer, offset, chunkSize, start + offset);
+    if (bytesRead <= 0) break;
+    offset += bytesRead;
+  }
+
+  let startsAtLineBoundary = start === 0;
+  if (start > 0) {
+    // 窗口可能从某行中间开始；先看窗口前一个字节，决定是否丢弃首行残片。
+    const boundary = Buffer.alloc(1);
+    const { bytesRead } = await handle.read(boundary, 0, 1, start - 1);
+    startsAtLineBoundary = bytesRead === 1 && boundary[0] === 0x0a;
+  }
+
+  return {
+    text: buffer.subarray(0, offset).toString('utf-8'),
+    startsAtBeginning: start === 0,
+    startsAtLineBoundary
+  };
+}
+
+/** 分块统计换行符，保留 `totalLines` 的既有语义且不把整份文件留在内存。 */
+async function countLogLines(handle: MaaLogFileHandle, fileSize: number): Promise<number> {
+  const buffer = Buffer.alloc(LOG_READ_CHUNK_BYTES);
+  let position = 0;
+  let newlines = 0;
+  while (position < fileSize) {
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, fileSize - position), position);
+    if (bytesRead <= 0) break;
+    for (let index = 0; index < bytesRead; index += 1) {
+      if (buffer[index] === 0x0a) newlines += 1;
+    }
+    position += bytesRead;
+  }
+  // split('\n') 语义：换行数 + 1，空文件也有一行空内容。
+  return newlines + 1;
+}
+
+/**
  * 读取日志文件内容
+ *
+ * 只从文件尾部按块读取，单次最多 MAX_LOG_FILE_READ_BYTES 字节；返回最后
+ * `lines` 行，并保留结尾换行对应的空行（与 split('\n') 的既有语义一致）。
  */
 export async function readLogFile(filePath: string, lines: unknown = 1000): Promise<MaaLogFileContent> {
   // 直接调用也受限：非法输入回落默认值，有限值截断并夹取到公开行数上限。
@@ -288,18 +347,33 @@ export async function readLogFile(filePath: string, lines: unknown = 1000): Prom
     if (isPathOutsideDir(logDir, requestedPath) || extname(requestedPath).toLowerCase() !== '.log') {
       throw new Error('只能读取 MAA 日志目录内的文件');
     }
-    const content = await readFile(requestedPath, 'utf-8');
-    const allLines = content.split('\n');
 
-    // 只返回最后 N 行
-    const startIndex = Math.max(0, allLines.length - lineCount);
-    const selectedLines = allLines.slice(startIndex);
+    const fileStats = await stat(requestedPath);
+    const handle = await open(requestedPath, 'r');
+    try {
+      const tail = await readLogTail(handle, fileStats.size);
+      const allLines = tail.text.split('\n');
+      if (!tail.startsAtBeginning && !tail.startsAtLineBoundary) {
+        // 首元素是从窗口起点截断的行残片，不属于“最后 N 行”。
+        allLines.shift();
+      }
 
-    return {
-      content: selectedLines.join('\n'),
-      totalLines: allLines.length,
-      returnedLines: selectedLines.length
-    };
+      const totalLines = tail.startsAtBeginning
+        ? tail.text.split('\n').length
+        : await countLogLines(handle, fileStats.size);
+
+      // 只返回最后 N 行
+      const startIndex = Math.max(0, allLines.length - lineCount);
+      const selectedLines = allLines.slice(startIndex);
+
+      return {
+        content: selectedLines.join('\n'),
+        totalLines,
+        returnedLines: selectedLines.length
+      };
+    } finally {
+      await handle.close();
+    }
   } catch (error) {
     throw new Error(`读取日志文件失败: ${error instanceof Error ? error.message : String(error)}`);
   }
