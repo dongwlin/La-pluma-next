@@ -10,7 +10,15 @@ import {
   stopScheduleExecution
 } from '../schedulerService.ts';
 import type { ScheduledDailyFlowRunResult } from '../schedulerService.ts';
-import { getAgentRun, listAgentRuns, resetAgentRunsForTests } from '../agentRunService.ts';
+import {
+  beginAgentRun,
+  completeAgentRun,
+  flushAgentRunStore,
+  getAgentRun,
+  listAgentRuns,
+  resetAgentRunsForTests,
+  startAgentRun
+} from '../agentRunService.ts';
 import type { AgentRunDto } from '../agentRunService.ts';
 import { buildAgentRunSnapshot } from '../runSnapshotService.ts';
 import { getTaskStatus } from '../maaProcessService.ts';
@@ -19,8 +27,10 @@ import type {
   ScheduleExecutionStatus,
   ScheduleFlowCompletedResult,
   ScheduleFlowExecutionResult,
+  ScheduleFlowExecutor,
   ScheduleFlowRejectedResult
 } from '../scheduleFlowExecution.ts';
+import type { FlowExecutionSummary } from '../scheduleFlowResult.ts';
 
 let testDir = '';
 let lockFile = '';
@@ -96,6 +106,116 @@ test('cron execution catches rejected task flows and leaves the scheduler reusab
   assert.equal(runs[0].state, 'failed');
   assert.ok(runs[0].error);
   assert.match(runs[0].error.message, /split/);
+});
+
+test('manual completion effects wait for the run terminal state and released lease', async () => {
+  const order: string[] = [];
+  let leaseActive = false;
+  const emptySummary: FlowExecutionSummary = {
+    successCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    durationMs: 0,
+    summaries: [],
+    reports: [],
+    actions: [],
+    errors: [],
+    warnings: [],
+    taskResults: []
+  };
+  const fakeExecutor: ScheduleFlowExecutor = {
+    async execute() {
+      leaseActive = true;
+      order.push('execute');
+      leaseActive = false;
+      return { success: true, stopped: false, message: '完成', summary: emptySummary };
+    },
+    getStatus: () => ({
+      isRunning: false,
+      scheduleId: null,
+      runId: null,
+      currentStep: -1,
+      totalSteps: 0,
+      currentTask: null,
+      currentTaskId: null,
+      message: '',
+      startTime: null,
+      shouldStop: false,
+      lastResult: null,
+      taskResults: []
+    }),
+    stop: () => false,
+    async dispatchCompletion() {
+      const run = listAgentRuns({ operationId: 'run_daily_flow' })[0];
+      order.push(`dispatch:${run?.state || 'missing'}:${leaseActive}`);
+      return { performed: true, errors: [] };
+    }
+  };
+
+  const reservation = beginAgentRun({ operationId: 'run_daily_flow', input: { scheduleId: 'manual-order' } });
+  startAgentRun(reservation.run.runId);
+  await executeScheduleNow('manual-order', fastTaskFlow, {}, { runId: reservation.run.runId }, { executor: fakeExecutor });
+  // 模拟 HTTP/后台调用方在 execute 返回后的微任务里结算 Run。
+  completeAgentRun(reservation.run.runId, { success: true });
+  await flushAgentRunStore();
+
+  await waitForCondition(() => order.length === 2);
+  assert.deepEqual(order, ['execute', 'dispatch:succeeded:false']);
+});
+
+test('cron dispatches completion side effects only after the run is settled', async () => {
+  const order: string[] = [];
+  const emptySummary: FlowExecutionSummary = {
+    successCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    durationMs: 0,
+    summaries: [],
+    reports: [],
+    actions: [],
+    errors: [],
+    warnings: [],
+    taskResults: []
+  };
+  const fakeExecutor: ScheduleFlowExecutor = {
+    async execute(_taskFlow, _scheduleId, lifecycle) {
+      await lifecycle?.onBeforeStart?.();
+      lifecycle?.onStarted?.();
+      order.push('execute');
+      return { success: true, stopped: false, message: '完成', summary: emptySummary };
+    },
+    getStatus: () => ({
+      isRunning: false,
+      scheduleId: null,
+      runId: null,
+      currentStep: -1,
+      totalSteps: 0,
+      currentTask: null,
+      currentTaskId: null,
+      message: '',
+      startTime: null,
+      shouldStop: false,
+      lastResult: null,
+      taskResults: []
+    }),
+    stop: () => false,
+    async dispatchCompletion() {
+      const run = listAgentRuns({ operationId: 'run_daily_flow' })[0];
+      order.push(`dispatch:${run?.state || 'missing'}`);
+      return { performed: true, errors: [] };
+    }
+  };
+
+  const result = completedResult(await executeScheduledTaskFromCron(
+    fastTaskFlow,
+    'cron-completion-order',
+    { executor: fakeExecutor }
+  ));
+
+  assert.equal(result.success, true);
+  assert.deepEqual(order, ['execute', 'dispatch:succeeded']);
+  const run = listAgentRuns({ operationId: 'run_daily_flow' })[0];
+  assert.equal(run?.state, 'succeeded');
 });
 
 test('cron execution records one daily-flow run with its final result', async () => {

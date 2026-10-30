@@ -38,10 +38,12 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     checkpoints: 0,
     reads: 0,
     notifications: [] as TaskCompletionInfo[],
+    notificationLeaseStates: [] as boolean[],
     drops: [] as DropRecordInput[],
     refreshes: [] as string[],
     leases: [] as MaaExecutionLeaseRequest[]
   };
+  let leaseActive = false;
 
   const ports: ScheduleExecutionPorts = {
     executeCommand: async (command, args, taskName) => {
@@ -69,6 +71,7 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     shouldCaptureNotificationScreenshot: () => false,
     sendCompletionNotification: async payload => {
       calls.notifications.push(payload);
+      calls.notificationLeaseStates.push(leaseActive);
     },
     recordDrops: async payload => {
       calls.drops.push(payload);
@@ -79,12 +82,28 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     },
     withExecutionLease: async <T>(context: MaaExecutionLeaseRequest, run: () => Promise<T>): Promise<T> => {
       calls.leases.push(context);
-      return run();
+      leaseActive = true;
+      try {
+        return await run();
+      } finally {
+        leaseActive = false;
+      }
     },
     ...overrides
   };
 
   return { ports, calls };
+}
+
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void } {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 async function waitForCondition<T>(
@@ -226,9 +245,16 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.leases.length, 1);
     assert.equal(calls.leases[0].source, 'schedule');
 
+    // 执行期间只准备通知载荷，不能在租约内调用通知或养成回写。
+    assert.equal(calls.refreshes.length, 0);
+    assert.equal(calls.notifications.length, 0);
+    const completion = await executor.dispatchCompletion(result);
+    assert.equal(completion.performed, true);
+    assert.deepEqual(completion.errors, []);
     assert.equal(calls.refreshes.length, 1);
     assert.equal(calls.refreshes[0], 'flow-ports');
     assert.equal(calls.notifications.length, 1);
+    assert.deepEqual(calls.notificationLeaseStates, [false]);
     assert.equal(calls.notifications[0].totalTasks, 3);
     assert.equal(calls.notifications[0].successTasks, 1);
     assert.equal(calls.notifications[0].failedTasks, 1);
@@ -238,6 +264,133 @@ describe('schedule flow boundaries', () => {
     assert.equal(status.isRunning, false);
     assert.equal(status.scheduleId, null);
     assert.deepEqual(status.lastResult, result.summary);
+  });
+
+
+  it('aborts the closedown pre-depot delay when the flow is stopped', async () => {
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeDepotBeforeClose: true } },
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-delay-closedown-first');
+
+    await waitForCondition(() => executor.getStatus().currentTask === '关闭游戏');
+    const stoppedAt = Date.now();
+    assert.equal(executor.stop(), true);
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.ok(Date.now() - stoppedAt < 1_000, 'the 3s pre-depot delay must abort on stop');
+    assert.equal(calls.dynamicTasks.length, 0, 'a stopped flow must not start depot recognition');
+    assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command or the next task');
+  });
+
+  it('aborts the closedown post-depot delay when the flow is stopped', async () => {
+    const parsed = deferred<{ success: boolean; itemCount: number }>();
+    let parseStarted = false;
+    const { ports, calls } = createPorts({
+      parseDepotData: async () => {
+        parseStarted = true;
+        return parsed.promise;
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeDepotBeforeClose: true } },
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-delay-closedown-second');
+
+    await waitForCondition(() => parseStarted);
+    const stoppedAt = Date.now();
+    assert.equal(executor.stop(), true);
+    parsed.resolve({ success: true, itemCount: 0 });
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.ok(Date.now() - stoppedAt < 1_000, 'the 2s post-depot delay must abort on stop');
+    assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command or the next task');
+  });
+
+  it('aborts the startup retry delay when the flow is stopped', async () => {
+    const firstCommand = deferred<{ stdout: string; stderr: string }>();
+    let startupAttempts = 0;
+    const { ports, calls } = createPorts({
+      executeCommand: async (command, args, taskName) => {
+        calls.commands.push({ command, args, taskName });
+        if (command === 'startup') {
+          startupAttempts += 1;
+          if (startupAttempts === 1) return firstCommand.promise;
+        }
+        return { stdout: '', stderr: '' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'startup-1', commandId: 'startup', name: '启动游戏', enabled: true, params: {} },
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-delay-startup');
+
+    await waitForCondition(() => startupAttempts === 1);
+    const stoppedAt = Date.now();
+    assert.equal(executor.stop(), true);
+    firstCommand.reject(new Error('startup stopped'));
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.ok(Date.now() - stoppedAt < 1_000, 'the 3s startup retry delay must abort on stop');
+    assert.equal(startupAttempts, 1, 'a stopped startup must not enter another retry');
+  });
+
+  it('aborts the skipped-stage delay when the flow is stopped', async () => {
+    const openCheck = deferred<{ isOpen: boolean; reason: string }>();
+    const checks: string[] = [];
+    const { ports, calls } = createPorts({
+      isStageOpenToday: stage => {
+        checks.push(stage);
+        return openCheck.promise;
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'fight-1', commandId: 'fight', name: '理智作战', enabled: true, params: { stage: '1-7', times: 1 } },
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-delay-stage');
+
+    await waitForCondition(() => checks.length === 1);
+    const stoppedAt = Date.now();
+    assert.equal(executor.stop(), true);
+    openCheck.resolve({ isOpen: false, reason: '今日未开放' });
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.ok(Date.now() - stoppedAt < 1_000, 'the 2s skipped-stage delay must abort on stop');
+    assert.equal(calls.commands.length, 0, 'a stopped flow must not start the next task');
+  });
+
+  it('reports completion side-effect failures after the lease and consumes the completion once', async () => {
+    const { ports } = createPorts({
+      refreshSmartTrainingStages: async () => {
+        throw new Error('config write failed');
+      },
+      sendCompletionNotification: async () => {
+        throw new Error('telegram timeout');
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const result = completedResult(await executor.execute([
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-completion-errors'));
+
+    const completion = await executor.dispatchCompletion(result);
+    assert.deepEqual(completion, {
+      performed: true,
+      errors: [
+        '动态更新智能养成关卡失败: config write failed',
+        '发送通知失败: telegram timeout'
+      ]
+    });
+    assert.deepEqual(await executor.dispatchCompletion(result), { performed: false, errors: [] });
   });
 
   it('keeps a single execution owner and stops before the next step', async () => {
@@ -261,6 +414,8 @@ describe('schedule flow boundaries', () => {
     assert.equal(result.summary.successCount, 1);
     assert.deepEqual(result.summary.taskResults.map(task => task.status), ['success', 'pending']);
     assert.equal(calls.commands.length, 1, 'the queued task must not start after the stop');
+    const completion = await executor.dispatchCompletion(result);
+    assert.equal(completion.performed, false);
     assert.equal(calls.notifications.length, 0, 'stopped flows skip the completion notification');
 
     const status = executor.getStatus();

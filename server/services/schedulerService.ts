@@ -17,6 +17,7 @@ import { createScheduleFlowExecutor } from './scheduleFlowExecution.ts';
 import type {
   ScheduleFlowExecutionOptions,
   ScheduleFlowExecutionResult,
+  ScheduleFlowExecutor,
   ScheduleFlowLifecycle
 } from './scheduleFlowExecution.ts';
 import type { ScheduleExecutionStatus } from './scheduleFlowExecution.ts';
@@ -57,6 +58,11 @@ const scheduleTriggerRuntime = createTriggerRuntime({
 });
 
 export { buildScheduledTaskFlowPlan, validateScheduledTaskFlow };
+
+/** 测试与运行时装配可替换执行器；默认仍使用模块级单例。 */
+export interface ScheduledFlowExecutionContext {
+  executor?: ScheduleFlowExecutor;
+}
 
 /** 日常流程写入 Run 的结果：执行结果加上计划步骤数。 */
 export interface ScheduledDailyFlowRunResult {
@@ -148,10 +154,30 @@ async function flushDailyFlowRunStore(context: string, runId: string) {
   }
 }
 
+/**
+ * 完成通知与智能养成回写属于执行之后的副作用：租约已经释放、Run 已经结算后才运行。
+ * 副作用失败只记录并返回错误，不把已经成功的执行改写成失败。
+ */
+async function dispatchCompletionEffects(
+  executor: ScheduleFlowExecutor,
+  result: ScheduleFlowExecutionResult,
+  context: string
+): Promise<void> {
+  try {
+    const completion = await executor.dispatchCompletion(result);
+    if (!completion.performed) return;
+    for (const error of completion.errors) logger.error(context, { error });
+  } catch (error) {
+    logger.error(context, { error: errorMessageOf(error) });
+  }
+}
+
 export async function executeScheduledTaskFromCron(
   taskFlow: unknown,
-  scheduleId: string
+  scheduleId: string,
+  context: ScheduledFlowExecutionContext = {}
 ): Promise<ScheduleFlowExecutionResult> {
+  const executor = context.executor || scheduleFlowExecutor;
   let runId: string | undefined;
   try {
     const reservation = beginAgentRun({
@@ -183,12 +209,15 @@ export async function executeScheduledTaskFromCron(
     // 定时触发同样拥有 Run 身份：执行、终态结算与落盘日志都记录同一个
     // runId/operationId，关联生命周期跟随流程本身而不是触发时机。
     return await withExecutionLogContext({ runId, operationId: 'run_daily_flow' }, async () => {
-      const result = await scheduleFlowExecutor.execute(taskFlow, scheduleId, {
+      const result = await executor.execute(taskFlow, scheduleId, {
         onBeforeStart: () => startAgentRunForExecution(runId)
       }, { runId });
       const totalSteps = Array.isArray(taskFlow) ? taskFlow.filter(task => task?.enabled).length : 0;
       settleDailyFlowRun(runId, { ...result, scheduleId, totalSteps });
       await flushDailyFlowRunStore('定时流程终态持久化失败', runId);
+      // Run 已落终态并完成持久化，设备租约也已在 execute 返回时释放；通知与
+      // 智能养成回写不再位于执行关键路径。
+      await dispatchCompletionEffects(executor, result, '定时流程完成副作用失败');
       return result;
     });
   } catch (error) {
@@ -248,10 +277,29 @@ export async function executeScheduleNow(
   scheduleId: string,
   taskFlow: unknown,
   lifecycle: ScheduleFlowLifecycle = {},
-  options: ScheduleFlowExecutionOptions = {}
+  options: ScheduleFlowExecutionOptions = {},
+  context: ScheduledFlowExecutionContext = {}
 ): Promise<ScheduleFlowExecutionResult> {
   logger.info('手动触发执行', { scheduleId, runId: options.runId || null });
-  return await scheduleFlowExecutor.execute(taskFlow, scheduleId, lifecycle, options);
+  const executor = context.executor || scheduleFlowExecutor;
+  const result = await executor.execute(taskFlow, scheduleId, lifecycle, options);
+  const runId = typeof options.runId === 'string' && options.runId ? options.runId : null;
+  // 调用方（HTTP Run 结算或后台 onSettled）在 execute 返回后的微任务里写终态；
+  // 把副作用放到下一轮事件循环，并先 flush Run 存储，避免通知/养成占用租约或
+  // 早于 Run 终态落库。Telegram 等未纳管调用同样不阻塞命令响应。
+  setImmediate(() => {
+    void (async () => {
+      if (runId) {
+        try {
+          await flushAgentRunStore();
+        } catch (error) {
+          logger.error('手动流程完成副作用前 Run 落盘失败', { runId, error: errorMessageOf(error) });
+        }
+      }
+      await dispatchCompletionEffects(executor, result, '手动流程完成副作用失败');
+    })();
+  });
+  return result;
 }
 
 // 自动更新任务：重复配置替换旧注册，禁用时停止并移除。

@@ -62,12 +62,14 @@ export interface ScheduleSetupResult {
   success: boolean;
   message: string;
   times?: string[];
+  errors?: ScheduleTriggerDestroyError[];
 }
 
 export interface AutoUpdateSetupResult {
   success: boolean;
   message: string;
   config?: AutoUpdateConfig;
+  errors?: ScheduleTriggerDestroyError[];
 }
 
 export interface ScheduleRegistrationStatus {
@@ -270,6 +272,11 @@ function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** 把销毁错误汇总成稳定、可断言的文本；逐时间点保留，便于定位残留 job。 */
+function describeDestroyErrors(errors: ScheduleTriggerDestroyError[]): string {
+  return errors.map(entry => `${entry.time}: ${entry.error}`).join('; ');
+}
+
 /**
  * 创建定时触发源注册表（cron 计划与自动更新）。
  *
@@ -444,13 +451,17 @@ export function createScheduleTriggerRuntime({
 
   /**
    * 启动新 job 并切换到新注册。新 job 启动失败时不销毁旧注册；切换后旧 job 的排队
-   * 回调会因身份不匹配被丢弃。返回 null 表示没有任何 job 启动成功。
+   * 回调会因身份不匹配被丢弃。installed 为 null 表示没有任何 job 启动成功；
+   * destroyErrors 汇总旧注册销毁失败，调用方必须按部分失败上报。
    */
   function installRegistration({
     registration,
     prepared,
     failures
-  }: { registration: ScheduleRegistration; prepared: PreparedJob[]; failures: JobFailure[] }): ScheduleRegistration | null {
+  }: { registration: ScheduleRegistration; prepared: PreparedJob[]; failures: JobFailure[] }): {
+    installed: ScheduleRegistration | null;
+    destroyErrors: ScheduleTriggerDestroyError[];
+  } {
     const started: PreparedJob[] = [];
     for (const entry of prepared) {
       try {
@@ -466,14 +477,16 @@ export function createScheduleTriggerRuntime({
         });
       }
     }
-    if (started.length === 0) return null;
+    if (started.length === 0) return { installed: null, destroyErrors: [] };
 
     registration.times = started.map(entry => entry.time);
     registration.jobs = started;
     const previous = registrations.get(registration.scheduleId);
     registrations.set(registration.scheduleId, registration);
-    if (previous && previous !== registration) destroyRegistration(previous);
-    return registration;
+    const destroyErrors = previous && previous !== registration
+      ? destroyRegistration(previous)
+      : [];
+    return { installed: registration, destroyErrors };
   }
 
   function setupSchedule(
@@ -506,7 +519,7 @@ export function createScheduleTriggerRuntime({
         return runScheduleFlow!(current.taskFlow, triggerScheduleId);
       }
     });
-    const installed = installRegistration({ registration, prepared, failures });
+    const { installed, destroyErrors } = installRegistration({ registration, prepared, failures });
     if (!installed) {
       runtimeLogger.warn('定时任务未更新，保留上一份有效注册', {
         scheduleId,
@@ -521,6 +534,18 @@ export function createScheduleTriggerRuntime({
       times: installed.times.join(', '),
       timezone: installed.timeZone
     });
+    if (destroyErrors.length > 0) {
+      runtimeLogger.error('定时任务已更新，但旧任务销毁失败', {
+        scheduleId,
+        errors: destroyErrors
+      });
+      return {
+        success: false,
+        message: `定时任务已更新，但旧任务销毁失败: ${describeDestroyErrors(destroyErrors)}`,
+        times: [...installed.times],
+        errors: destroyErrors
+      };
+    }
     return {
       success: true,
       message: `已设置 ${installed.jobs.length} 个定时任务`,
@@ -536,7 +561,18 @@ export function createScheduleTriggerRuntime({
       const previous = registrations.get(AUTO_UPDATE_SCHEDULE_ID);
       if (previous) {
         registrations.delete(AUTO_UPDATE_SCHEDULE_ID);
-        destroyRegistration(previous);
+        const destroyErrors = destroyRegistration(previous);
+        if (destroyErrors.length > 0) {
+          const detail = describeDestroyErrors(destroyErrors);
+          runtimeLogger.error('自动更新已禁用，但旧任务销毁失败', {
+            errors: destroyErrors
+          });
+          return {
+            success: false,
+            message: `自动更新未启用，但旧任务销毁失败: ${detail}`,
+            errors: destroyErrors
+          };
+        }
       }
       return { success: false, message: '自动更新未启用' };
     }
@@ -557,7 +593,7 @@ export function createScheduleTriggerRuntime({
       config,
       makeRun: current => runAutoUpdate(current.config || {})
     });
-    const installed = installRegistration({ registration, prepared, failures });
+    const { installed, destroyErrors } = installRegistration({ registration, prepared, failures });
     if (!installed) {
       const reason = failures[0]?.error || '没有成功设置自动更新任务';
       runtimeLogger.error('自动更新设置失败', { error: reason });
@@ -565,6 +601,17 @@ export function createScheduleTriggerRuntime({
     }
 
     runtimeLogger.info('自动更新已设置', { time });
+    if (destroyErrors.length > 0) {
+      runtimeLogger.error('自动更新已设置，但旧任务销毁失败', {
+        errors: destroyErrors
+      });
+      return {
+        success: false,
+        message: `自动更新已设置，但旧任务销毁失败: ${describeDestroyErrors(destroyErrors)}`,
+        config,
+        errors: destroyErrors
+      };
+    }
     return {
       success: true,
       message: `自动更新已设置，每天 ${time} 执行`,
@@ -580,12 +627,21 @@ export function createScheduleTriggerRuntime({
       return { success: true, message: '定时任务已停止' };
     }
     registrations.delete(scheduleId);
-    destroyRegistration(registration);
+    const destroyErrors = destroyRegistration(registration);
     runtimeLogger.debug('定时任务已停止', {
       scheduleId,
       count: registration.jobs.length,
       times: registration.times.join(', ')
     });
+    if (destroyErrors.length > 0) {
+      const detail = describeDestroyErrors(destroyErrors);
+      runtimeLogger.error('定时任务停止失败', { scheduleId, errors: destroyErrors });
+      return {
+        success: false,
+        message: `定时任务停止失败: ${detail}`,
+        errors: destroyErrors
+      };
+    }
     return { success: true, message: '定时任务已停止' };
   }
 

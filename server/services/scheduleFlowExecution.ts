@@ -165,6 +165,17 @@ export interface ScheduleFlowCompletedResult {
   summary: FlowExecutionSummary;
 }
 
+/** 完成通知载荷：只由调度入口在租约释放后消费，不进入 Run 或 HTTP 结果。 */
+export interface ScheduleFlowCompletion extends TaskCompletionInfo {
+  scheduleId: string;
+}
+
+/** 完成副作用结果：错误显式返回，调用方记录后不得伪装成执行失败。 */
+export interface ScheduleFlowCompletionResult {
+  performed: boolean;
+  errors: string[];
+}
+
 export type ScheduleFlowExecutionResult = ScheduleFlowRejectedResult | ScheduleFlowCompletedResult;
 
 export interface ScheduleFlowExecutor {
@@ -176,6 +187,8 @@ export interface ScheduleFlowExecutor {
   ): Promise<ScheduleFlowExecutionResult>;
   getStatus(): ScheduleExecutionStatus;
   stop(): boolean;
+  /** 在调用方释放租约并结算 Run 之后执行通知与养成回写；每个结果只消费一次。 */
+  dispatchCompletion(result: ScheduleFlowExecutionResult): Promise<ScheduleFlowCompletionResult>;
 }
 
 export interface ScheduleFlowExecutorOptions {
@@ -275,6 +288,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
   let activeAbortController: AbortController | null = null;
   let activeExecutionToken: symbol | null = null;
   let activeTaskProgress: ScheduleTaskProgress | null = null;
+  const completionByResult = new WeakMap<object, ScheduleFlowCompletion>();
 
   function waitForDelay(delayMs: number): Promise<boolean> {
     return new Promise((resolve) => {
@@ -551,7 +565,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
           // 等待3秒确保游戏回到主界面
           logger.debug('等待游戏回到主界面', { scheduleId, waitSeconds: 3 });
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          if (!(await waitForDelay(3000))) break;
 
           updateStatus({
             message: '正在识别仓库...'
@@ -611,7 +625,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
           // 等待2秒
           logger.debug('等待后继续', { scheduleId, waitSeconds: 2 });
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (!(await waitForDelay(2000))) break;
         } catch (error) {
           logger.error('仓库识别异常', {
             scheduleId,
@@ -656,7 +670,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 retryCount,
                 maxRetries
               });
-              await new Promise(resolve => setTimeout(resolve, 3000)); // 重试前等待3秒
+              // 重试前等待3秒；停止信号必须在重试之间生效。
+              if (!(await waitForDelay(3000))) break;
             }
 
             const { command, params } = buildScheduledTaskCommand(task, adbConfig);
@@ -1117,7 +1132,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   taskName: task.name,
                   waitSeconds: 2
                 });
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                if (!(await waitForDelay(2000))) break;
                 continue; // 跳过这个任务
               }
 
@@ -1282,41 +1297,64 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
       return { success: true, stopped: true, message: completionMessage, summary: executionSummary };
     }
 
-    // 动态更新智能养成关卡（存储适配经由端口）
+    const completed: ScheduleFlowCompletedResult = {
+      success: true,
+      stopped: false,
+      message: completionMessage,
+      summary: executionSummary
+    };
+    // 通知与智能养成回写不属于执行本身：流程持有租约期间只准备载荷，
+    // 由调度入口在设备释放、Run 结算并落盘之后调用 dispatchCompletion。
+    completionByResult.set(completed, {
+      scheduleId,
+      taskName: `定时任务 ${scheduleId}`,
+      totalTasks: enabledTasks.length,
+      successTasks: successCount,
+      failedTasks: failedCount,
+      skippedTasks: skippedCount,
+      duration,
+      errors,
+      skipped,
+      summaries: taskSummaries,
+      actions: actionResults,
+      reports: reportResults,
+      warnings: [...executionWarnings],
+      screenshot
+    });
+    return completed;
+  }
+
+  async function dispatchCompletion(
+    result: ScheduleFlowExecutionResult
+  ): Promise<ScheduleFlowCompletionResult> {
+    if (!result.success || result.stopped) return { performed: false, errors: [] };
+    const completion = completionByResult.get(result);
+    if (!completion) return { performed: false, errors: [] };
+    completionByResult.delete(result);
+
+    const errors: string[] = [];
     try {
-      await refreshSmartTrainingStages(scheduleId);
+      await refreshSmartTrainingStages(completion.scheduleId);
     } catch (error) {
+      const message = errorMessageOf(error);
+      errors.push(`动态更新智能养成关卡失败: ${message}`);
       logger.error('动态更新智能养成关卡失败', {
-        scheduleId,
-        error: errorMessageOf(error)
+        scheduleId: completion.scheduleId,
+        error: message
       });
     }
 
-    // 发送完成通知（通知适配经由端口）
     try {
-      await sendCompletionNotification({
-        taskName: `定时任务 ${scheduleId}`,
-        totalTasks: enabledTasks.length,
-        successTasks: successCount,
-        failedTasks: failedCount,
-        skippedTasks: skippedCount,
-        duration,
-        errors,
-        skipped,
-        summaries: taskSummaries,
-        actions: actionResults,
-        reports: reportResults,
-        warnings: [...executionWarnings],
-        screenshot,
-      });
+      await sendCompletionNotification(completion);
     } catch (error) {
+      const message = errorMessageOf(error);
+      errors.push(`发送通知失败: ${message}`);
       logger.error('发送通知失败', {
-        scheduleId,
-        error: errorMessageOf(error)
+        scheduleId: completion.scheduleId,
+        error: message
       });
     }
-
-    return { success: true, stopped: false, message: completionMessage, summary: executionSummary };
+    return { performed: true, errors };
   }
 
   async function executeTaskFlow(
@@ -1396,6 +1434,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
   return {
     execute: executeTaskFlow,
     getStatus,
-    stop
+    stop,
+    dispatchCompletion
   };
 }

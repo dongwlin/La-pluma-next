@@ -55,8 +55,8 @@ Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.js
 
 | 字段 | 含义 |
 | --- | --- |
-| `run` | 当前活动 run；排序为 `stopping` > `running` > `accepted` > `waiting`，同级取最新 |
-| `activeRuns` | 全部活动 run，按同一顺序。长度大于 1 表示还有额外 accepted/waiting 意图，调用方不能把它们当作同一个执行 |
+| `run` | 当前活动 run；`running`/`stopping` 的设备持有者优先并按开始时间取最新（同级取最新序号），没有持有者时 `accepted` 优先于 `waiting`，同级取最新 |
+| `activeRuns` | 全部活动 run，按同一顺序。长度大于 1 表示还有额外 accepted/waiting 意图，调用方不能把它们当作同一个执行。滞留在 `stopping` 的旧 run 不会压过之后开始的新 `running`，全局停止只作用于设备持有者中最新的 run |
 | `lastRun` | 按 `finishedAt` 取最近终态；只用于展示，不是调用方自己的身份 |
 | `occupancy` | 设备占用投影：`state`、`runId`、`runState`、`sources`、`lease`、`task`、`schedule` |
 | `isRunning`/`taskName`/`startTime`/`taskType`/`stopRequested`/`logs` | 旧客户端的任务进程字段，原样保留 |
@@ -181,6 +181,7 @@ waiting ──stop──> stopped
 - 流程在步间等待（延迟、截图、解析）时子进程可以是 idle，Run 保持 `running`，`progress.currentStep/totalSteps` 来自 `scheduleExecutionStatus`；这不发布整个流程完成。
 - 停止按第 4 节执行：`accepted` 直接取消，`running` 转入 `stopping` 后由流程的 `shouldStop`/中止信号结束；停止后不得启动下一项，最终结果为 `stopped`，`result.summary.taskResults` 保留已完成项。
 - 首个请求的幂等键由 `Idempotency-Key` 提供，作用于 `run_daily_flow` 动作；相同 key、相同 `scheduleId` 与 `taskFlow` 重放同一 run。cron 触发没有幂等键，每次触发都是一次新的执行意图；并发触发由执行租约拒绝，被拒绝的触发会留下一个 `failed` 的 `run_daily_flow` 记录。
+- 完成通知与智能养成回写不属于执行本身。执行器持有租约期间只准备通知载荷；设备租约释放且 Run 终态落盘之后，才由调度入口触发这些副作用（cron 在结算后执行，HTTP/Telegram 入口不等待它们完成，避免通知超时阻塞响应）。副作用失败只记录日志并保留在完成副作用的错误摘要中，不改变已经结算的 Run 终态。
 - 不经过上述 Run 包装、直接调用 `executeScheduleNow` 的入口（当前为 Telegram）不会获得 `runId`；它以 `occupancy.state=external` 出现在快照中，不能当作本契约已覆盖。
 - Web UI 入口的提交方式：Dashboard 快捷入口以 `waitForCompletion=false` 提交 `run_daily_flow`，把响应的 `runId` 交给前端控制器观察；活动作业入口保持同步（`waitForCompletion` 不适用），响应中的 `runId` 同样被采纳。两者都不再由前端判断“是否在运行”，全局展示只读 `/runs/current` 快照。
 - 兼容细节：旧 `/schedules/{scheduleId}/execute` 曾把校验失败也报成 409 `AGENT_SCHEDULE_ALREADY_RUNNING`。现在占用仍保留该旧码，校验失败改为 400 `AGENT_DAILY_FLOW_REJECTED`；这修正了错误分类，未删除同步入口。
@@ -218,7 +219,7 @@ waiting ──stop──> stopped
 
 ### 5.2 外部占用
 
-- 协作占用通过锁文件表达。提交执行时租约不可用会返回 409：通用执行是 `MAA_EXECUTION_BUSY`，日常流程入口包装为 `AGENT_EXECUTION_BUSY`，旧定时执行接口返回 `AGENT_SCHEDULE_ALREADY_RUNNING`。错误 `details.owner` 给出占用者元数据。
+- 协作占用通过锁文件表达。提交执行时租约不可用会返回 409：通用执行是 `MAA_EXECUTION_BUSY`，日常流程入口包装为 `AGENT_EXECUTION_BUSY`，旧定时执行接口返回 `AGENT_SCHEDULE_ALREADY_RUNNING`。错误 `details.owner` 给出占用者元数据。锁文件先把完整内容写入同目录临时文件，再用 `link()` 原子发布；锁文件从可见的第一刻起就是完整 JSON，不存在空文件窗口。内容为空、无法解析或缺少可核实 PID 的锁按 `unknown` 拒绝获取，不能当作 `stale` 回收。
 - 对纳入 Run 的入口，占用属于执行前拒绝：run 为 `failed`，幂等键释放，调用方可用同键安全重试。
 - 未纳入 Run 的执行（更新任务、Telegram 指令、维护入口及直接调用 `run-task` 的旧调用方）也持有同一租约。此时 `runs/current.run` 为 `null`，`activeRuns` 为空，但 `occupancy.state` 为 `external`，`sources` 包含 `task`、`schedule` 或 `lease`。不能因为 Run 为空就认为设备空闲。定时日常流程与作业集已纳入 Run；若 `schedule.isRunning` 而 `schedule.runId` 为空，说明占用来自未纳管的直接调用方。等待下一关的 manual 作业集 run 为 `waiting`，同样不持有租约；只有其他执行占用时 `external` 才会出现。
 - `occupancy.lease.state=held` 表示租约记录的 PID 仍存活；`stale` 表示锁文件可回收，不算占用；`unknown` 表示锁文件无法解释，必须按“未知”处理而不是空闲。
@@ -249,7 +250,8 @@ waiting ──stop──> stopped
 - 启动时恢复 Run 存储：终态保留；所有 `accepted`/`waiting`/`running`/`stopping` 记录改为 `interrupted`，写入 `error.details.reason=server_restart`、`previousState` 和当前 `finishedAt`，不自动续跑。
 - `interrupted` 的 run 额外返回 `recovery`：`source`、`previousState`、`executionResumed=false`、`deviceState='unknown'`。可恢复的只有记录身份与终态；执行不会恢复，设备是否仍被旧进程占用无法证明。`/runs/current` 的 `lastRun` 会展示该记录，`occupancy` 不会因为存在终端 run 而把设备标成空闲以外的结论——它按新的任务/流程/租约观测重新判断。
 - 定时任务由运行时初始化按已保存的自动化配置重新注册；它与被中断的 Run 没有续跑关系，之后可以独立触发新的执行。
-- Run 存储文件损坏、版本不支持或启动恢复失败时，纳入 Run 的执行接口保持关闭（503），不能用无身份记录的方式继续执行。运行期写入失败按上一条处理：阻止新的准入并返回可重试的 503。
+- 定时触发源在停止、替换或禁用时不能静默丢弃旧 `job.destroy` 失败：停止返回 `success:false`，替换/禁用保留已经生效的新状态但返回失败与逐时间点 `errors`，与 `stopAll` 的 `ok=false` 语义一致。
+- Run 存储文件损坏、版本不支持或启动恢复失败时，纳入 Run 的执行接口保持关闭（503），不能用无身份记录的方式继续执行。JSON 语法损坏（截断、手工编辑）与形状/版本错误都属于不可重试的 `AGENT_RUN_STORE_INVALID`；只有磁盘读取/写入等临时错误才返回可重试的 `AGENT_RUN_PERSISTENCE_FAILED`。运行期写入失败按上一条处理：阻止新的准入并返回可重试的 503。
 - 正常关闭（SIGINT/SIGTERM）先进入 draining 再收尾活动执行：新提交的执行被拒绝，本实例记录的活动 run 收到停止意图，当前任务进程收到 SIGTERM（关闭预算不足时提前升级 SIGKILL），流程与作业集在下一项之前退出。关闭只处理本实例的内存记录与进程内任务进程/流程，不按端口或其他进程的 PID 终止进程。
 - 关闭在预算内等待执行器结算，**实际结果决定终态**：已结算的 run 保留执行器写入的 `succeeded`/`failed`/`stopped`；预算耗尽时仍未结算的 run 记为 `interrupted`（`recovery.source=server_shutdown`、`executionResumed=false`），不会写成成功。Run 存储在退出前等待落盘；落盘或执行收尾失败时关闭摘要 `ok=false`，进程以非零退出码结束，其余收尾步骤仍继续执行。
 - 重复信号复用同一次关闭，不会在收尾中途再次退出或重复写入停止意图；关闭完成后由新进程重新组装并重新开放准入。
@@ -320,18 +322,19 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 
 | 测试 | 固定的行为 |
 | --- | --- |
-| `server/services/__tests__/agentRunService.test.ts` | 生命周期转换、`waiting` 等待/恢复/停止、终态幂等、幂等键分区/重用拒绝、500 条与 24 小时保留、缺失 run 错误、活动集合与最近终态排序、accepted 取消、pre-start 门禁 |
-| `server/services/__tests__/agentRunPersistence.test.ts` | 重启后活动 run（含 `waiting`）变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、坏文件/坏版本 fail-closed、持久化失败可重试、cron 日常流程的终态结果写回磁盘 |
+| `server/services/__tests__/agentRunService.test.ts` | 生命周期转换、`waiting` 等待/恢复/停止、终态幂等、幂等键分区/重用拒绝、500 条与 24 小时保留、缺失 run 错误、活动集合与最近终态排序、current 与设备所有权对齐（旧 stopping 不压过新 running）、accepted 取消、pre-start 门禁 |
+| `server/services/__tests__/agentRunPersistence.test.ts` | 重启后活动 run（含 `waiting`）变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、JSON 语法损坏不可重试而磁盘错误可重试、坏版本 fail-closed、同 tick 迁移合并与终态 flush 去重、cron 日常流程的终态结果写回磁盘 |
 | `server/services/__tests__/runSnapshotService.test.ts` | 快照 idle/pending/run/external/unknown、`waiting` 作业集不占设备、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度（作业集 run 带自己的会话进度）、日常流程只投影自己持有的 `schedule.runId` |
 | `server/routes/__tests__/agentRoutes.test.ts` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/waiting 停止/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行；日常流程同步响应带终态 run、异步 202、步间 idle 时 run 仍活动、停止后不启动下一项、幂等重放与占用错误码映射、cron/旧码兼容；作业集连续同步/异步、app/cli 映射、manual 等待与继续、等待时不占租约、占用可重试不消耗条目、停止后不续跑、逐项汇总归属 runId、幂等重放与执行前占用 |
 | `server/routes/__tests__/agentContract.test.ts` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举（含 `waiting`）与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
 | `server/__tests__/agentContractHttp.test.ts` | 沿实际挂载的 router 图核对每个清单 operation 的唯一挂载与 method/path、Web UI 专用路由不进入 manifest、manifest/OpenAPI 同源输出；对每个公开 operation 用发布 schema 校验有效/无效请求与真实响应，并记录运行时兼容输入与静态 schema 的差异 |
 | `server/services/__tests__/copilotSetRunService.test.ts` | 连续集合逐项结果、manual 首项后转 `waiting`、等待释放租约、继续前占用返回 409 且不消耗条目、停止等待中的集合并保留逐项结果、条目失败后继续等待、停止后不启动下一项 |
 | `server/services/__tests__/copilotPlanService.test.ts` | 计划构建、重复文件展开、日志恢复、停止/失败下的逐项状态分类（`success`/`stopped`/`failed`/`pending`） |
-| `server/services/__tests__/executionCoordinatorService.test.ts` | 租约互斥、同异步流重入、死进程锁回收 |
+| `server/services/__tests__/executionCoordinatorService.test.ts` | 租约互斥、同异步流重入、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布 |
 | `server/services/__tests__/maaTaskExecution.test.ts` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
-| `server/services/__tests__/schedulerRecovery.test.ts` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、占用时 fail-closed |
-| `server/services/__tests__/scheduleTriggerLifecycle.test.ts` | 重复配置替换而不叠加、全部/部分注册失败、停止与销毁幂等、销毁失败上报关闭步骤、draining 后拒绝注册并丢弃已排队回调、活动流程终态仍由执行结算 |
+| `server/services/__tests__/scheduleFlowExecutionPorts.test.ts` | 流程步骤与端口边界、可中止的步间等待、完成通知/养成回写在租约释放后消费、副作用错误显式返回 |
+| `server/services/__tests__/schedulerRecovery.test.ts` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、完成副作用在 Run 结算后执行、占用时 fail-closed |
+| `server/services/__tests__/scheduleTriggerLifecycle.test.ts` | 重复配置替换而不叠加、全部/部分注册失败、停止与替换/禁用时的销毁失败上报、停止与销毁幂等、销毁失败上报关闭步骤、draining 后拒绝注册并丢弃已排队回调、活动流程终态仍由执行结算 |
 | `server/services/__tests__/telegramBotLifecycle.test.ts` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、未知 update 校验与 offset 推进、命令解析与领域输入缺省值、未知/失败命令与截图失败回复、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
 | `server/services/__tests__/webrtcPreviewOwnership.test.ts` | 外部 server/TURN/设备 Agent 不被停止、本实例 server/TURN/设备 Agent 的停止与 `ownership` 上报、关闭中止在途启动并终止本实例子进程、关闭取消 viewer 自动回收、重复关闭幂等、关闭后拒绝启动 |
 | `server/services/__tests__/webrtcSignalingGateway.test.ts` | 一次性票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、非法或越权升级不消耗票据、关闭断开观看连接并清空票据、重新挂接后旧票据不可用 |

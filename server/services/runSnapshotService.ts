@@ -1,4 +1,4 @@
-import { getActiveAgentRuns, getLatestTerminalAgentRun } from './agentRunService.ts';
+import { getActiveAgentRuns, getLatestTerminalAgentRun, isDeviceOwningAgentRunStatus } from './agentRunService.ts';
 import type { AgentRunDto, AgentRunStatus } from './agentRunService.ts';
 import { getCopilotSetRunProgress } from './copilotSetRunService.ts';
 import type { CopilotSetProgress } from './copilotSetRunService.ts';
@@ -17,7 +17,6 @@ import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
  */
 
 const ACTIVE_RUN_STATES = new Set<AgentRunStatus>(['accepted', 'waiting', 'running', 'stopping']);
-const DEVICE_OWNING_RUN_STATES = new Set<AgentRunStatus>(['running', 'stopping']);
 
 /**
  * 快照里的进程/流程进度投影：只描述当前拥有或等待执行权的那次执行，
@@ -191,7 +190,7 @@ export function enrichAgentRun(run: AgentRunDto | null): AgentRunSnapshotEntry |
  */
 function describeOccupancy({ activeRuns, task, schedule, lease }: OccupancyInput): RunOccupancyProjection {
   const current = activeRuns[0] || null;
-  const owningRun = activeRuns.find(run => DEVICE_OWNING_RUN_STATES.has(run.state)) || null;
+  const owningRun = activeRuns.find(run => isDeviceOwningAgentRunStatus(run.state)) || null;
 
   const sources: DeviceOccupancySource[] = [];
   if (activeRuns.length) sources.push('run');

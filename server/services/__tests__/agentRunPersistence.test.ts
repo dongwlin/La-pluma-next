@@ -289,8 +289,12 @@ describe('agent run persistence', () => {
     setAgentRunAcceptedResult(run.runId, { phase: 'accepted-result' });
     completeAgentRun(run.runId, { phase: 'complete' });
     await flushAgentRunStore();
+    // 终态落盘后重复 flush 不得重写整份快照。
+    await flushAgentRunStore();
+    await flushAgentRunStore();
 
     assert.equal(writes.length, 1);
+    assert.equal(getAgentRunStoreStatus().dirty, false);
     const [record] = writes[0].runs;
     assert.equal(record.run.runId, run.runId);
     assert.equal(record.run.status, 'succeeded');
@@ -430,26 +434,43 @@ describe('agent run persistence', () => {
     assert.notEqual(retry.run.runId, first.runId);
   });
 
-  it('fails closed when the persisted JSON is malformed', async () => {
-    await writeFile(storePath, '{"version":1,"runs":[', 'utf8');
+  it('fails closed with a non-retryable store error when the persisted JSON is malformed', async () => {
+    const original = '{"version":1,"runs":[';
+    await writeFile(storePath, original, 'utf8');
 
     await assert.rejects(
       initialize(),
-      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
         && errorFields(error).statusCode === 503
+        && errorFields(error).retryable === false
     );
+    assert.equal(await readFile(storePath, 'utf8'), original);
     assert.equal(getAgentRunStoreStatus().ready, false);
     assert.equal(getAgentRunStoreStatus().required, true);
     await assert.rejects(
       flushAgentRunStore(),
-      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
-        && errorFields(error).statusCode === 503
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
+        && errorFields(error).retryable === false
     );
     assert.throws(
       () => getAgentRun('unknown-run'),
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
+        && errorFields(error).retryable === false
+    );
+  });
+
+  it('keeps disk read failures retryable instead of treating them as corrupt JSON', async () => {
+    await assert.rejects(
+      initialize({
+        readStore: async () => {
+          throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+        }
+      }),
       error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
         && errorFields(error).statusCode === 503
+        && errorFields(error).retryable === true
     );
+    assert.equal(getAgentRunStoreStatus().ready, false);
   });
 
   it('fails closed rather than overwriting an unsupported store version', async () => {
@@ -465,8 +486,9 @@ describe('agent run persistence', () => {
     assert.equal(getAgentRunStoreStatus().ready, false);
     await assert.rejects(
       flushAgentRunStore(),
-      error => errorFields(error).code === 'AGENT_RUN_PERSISTENCE_FAILED'
+      error => errorFields(error).code === 'AGENT_RUN_STORE_INVALID'
         && errorFields(error).statusCode === 503
+        && errorFields(error).retryable === false
     );
   });
 

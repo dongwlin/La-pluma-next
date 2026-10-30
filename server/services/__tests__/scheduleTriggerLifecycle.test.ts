@@ -284,6 +284,52 @@ describe('schedule trigger runtime', () => {
     assert.deepEqual(runtime.getStatus(), [{ scheduleId: 'weekend', times: ['10:00'], count: 1 }]);
   });
 
+  it('reports destroy failures when stopping a schedule instead of claiming success', () => {
+    const { runtime, fakeCron } = createRuntime();
+    runtime.setupSchedule('default', ['08:00'], taskFlow);
+    fakeCron.tasks[0].destroy = () => {
+      throw new Error('destroy failed');
+    };
+
+    const result = runtime.stopSchedule('default');
+    assert.equal(result.success, false);
+    assert.match(result.message, /destroy failed/);
+    assert.deepEqual(result.errors, [{ time: '08:00', error: 'destroy failed' }]);
+    assert.deepEqual(runtime.getStatus(), []);
+
+    // 重试仍保持幂等：目标状态已经不存在。
+    assert.deepEqual(runtime.stopSchedule('default'), { success: true, message: '定时任务已停止' });
+  });
+
+  it('reports destroy failures when replacing a schedule but keeps the new registration', () => {
+    const { runtime, fakeCron } = createRuntime();
+    runtime.setupSchedule('default', ['08:00'], taskFlow);
+    fakeCron.tasks[0].destroy = () => {
+      throw new Error('old destroy failed');
+    };
+
+    const result = runtime.setupSchedule('default', ['09:00'], taskFlow);
+    assert.equal(result.success, false);
+    assert.match(result.message, /old destroy failed/);
+    assert.deepEqual(result.times, ['09:00']);
+    assert.deepEqual(result.errors, [{ time: '08:00', error: 'old destroy failed' }]);
+    assert.deepEqual(runtime.getStatus(), [{ scheduleId: 'default', times: ['09:00'], count: 1 }]);
+  });
+
+  it('reports destroy failures when disabling auto update', () => {
+    const { runtime, fakeCron } = createRuntime();
+    runtime.setupAutoUpdate({ enabled: true, time: '03:00' });
+    fakeCron.tasks[0].destroy = () => {
+      throw new Error('auto update destroy failed');
+    };
+
+    const result = runtime.setupAutoUpdate({ enabled: false });
+    assert.equal(result.success, false);
+    assert.match(result.message, /auto update destroy failed/);
+    assert.deepEqual(result.errors, [{ time: '03:00', error: 'auto update destroy failed' }]);
+    assert.deepEqual(runtime.getAutoUpdateStatus(), { enabled: false, time: null });
+  });
+
   it('destroys every trigger once and refuses new registrations afterwards', () => {
     const clock = createFakeClock(2_000);
     const { runtime, fakeCron } = createRuntime({ clock });
