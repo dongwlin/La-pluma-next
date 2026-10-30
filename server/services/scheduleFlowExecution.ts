@@ -551,7 +551,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
           // 等待3秒确保游戏回到主界面
           logger.debug('等待游戏回到主界面', { scheduleId, waitSeconds: 3 });
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          if (!(await waitForDelay(3000))) break;
 
           updateStatus({
             message: '正在识别仓库...'
@@ -611,7 +611,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
           // 等待2秒
           logger.debug('等待后继续', { scheduleId, waitSeconds: 2 });
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (!(await waitForDelay(2000))) break;
         } catch (error) {
           logger.error('仓库识别异常', {
             scheduleId,
@@ -656,7 +656,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 retryCount,
                 maxRetries
               });
-              await new Promise(resolve => setTimeout(resolve, 3000)); // 重试前等待3秒
+              // 重试前等待3秒；停止信号必须在重试之间生效。
+              if (!(await waitForDelay(3000))) break;
             }
 
             const { command, params } = buildScheduledTaskCommand(task, adbConfig);
@@ -1117,7 +1118,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   taskName: task.name,
                   waitSeconds: 2
                 });
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                if (!(await waitForDelay(2000))) break;
                 continue; // 跳过这个任务
               }
 
