@@ -470,7 +470,6 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
       stopAction: 'stop_task',
       preflightAction: 'activity_run_preflight',
       conflictsWith: ['maa-execution'],
-      producesRun: true,
       idempotency: idempotencyPolicy()
     }),
     body_schema: {

@@ -303,7 +303,7 @@ waiting ──stop──> stopped
 - `setupSchedule`/`stopSchedule`、`apply-training-plan`、配置保存是**配置写入**，不是执行，不产生 run。
 - `run-task` 的 `command=activity|list` 被强制为同步；其他命令可后台执行（202）。
 - WebRTC 启停、截图和连接测试只管理预览基础设施，不参与执行租约。
-- 只有 Agent API 的五个执行动作在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。
+- 只有 Agent API 的四个执行动作（`start_game`、`fight`、`run_task`、`run_daily_flow`）在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。活动作业入口 `run_current_activity_copilots` 始终同步返回，不声明 202。
 - `POST /api/agent/schedules/{scheduleId}/execute` 未在 Agent manifest 中广告，但同样创建 `run_daily_flow`；它和 Agent 入口共享 OperationId 与幂等命名空间。
 - `POST /api/agent/copilot-sets/{setId}/execute` 与 `POST /api/agent/actions/continue-copilot-set` 面向 Web UI，未在 Agent manifest 中广告；它们创建/推进 `run_copilot_set`，与其他执行共享同一租约与快照。
 - 定时流程与 HTTP 入口使用同一执行租约；同一时刻只有一个流程能进入 pre-start gate，第二个触发会得到占用失败而不是并行执行。
@@ -326,7 +326,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 | `server/services/__tests__/agentRunPersistence.test.ts` | 重启后活动 run（含 `waiting`）变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、JSON 语法损坏不可重试而磁盘错误可重试、坏版本 fail-closed、同 tick 迁移合并与终态 flush 去重、cron 日常流程的终态结果写回磁盘 |
 | `server/services/__tests__/runSnapshotService.test.ts` | 快照 idle/pending/run/external/unknown、`waiting` 作业集不占设备、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度（作业集 run 带自己的会话进度）、日常流程只投影自己持有的 `schedule.runId` |
 | `server/routes/__tests__/agentRoutes.test.ts` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/waiting 停止/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行；日常流程同步响应带终态 run、异步 202、步间 idle 时 run 仍活动、停止后不启动下一项、幂等重放与占用错误码映射、cron/旧码兼容；作业集连续同步/异步、app/cli 映射、manual 等待与继续、等待时不占租约、占用可重试不消耗条目、停止后不续跑、逐项汇总归属 runId、幂等重放与执行前占用 |
-| `server/routes/__tests__/agentContract.test.ts` | manifest/OpenAPI 同步、恰好五个执行动作声明 `producesRun`、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举（含 `waiting`）与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
+| `server/routes/__tests__/agentContract.test.ts` | manifest/OpenAPI 同步、恰好四个执行动作声明 `producesRun`、活动作业同步入口不声明 202、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举（含 `waiting`）与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
 | `server/__tests__/agentContractHttp.test.ts` | 沿实际挂载的 router 图核对每个清单 operation 的唯一挂载与 method/path、Web UI 专用路由不进入 manifest、manifest/OpenAPI 同源输出；对每个公开 operation 用发布 schema 校验有效/无效请求与真实响应，并记录运行时兼容输入与静态 schema 的差异 |
 | `server/services/__tests__/copilotSetRunService.test.ts` | 连续集合逐项结果、manual 首项后转 `waiting`、等待释放租约、继续前占用返回 409 且不消耗条目、停止等待中的集合并保留逐项结果、条目失败后继续等待、停止后不启动下一项 |
 | `server/services/__tests__/copilotPlanService.test.ts` | 计划构建、重复文件展开、日志恢复、停止/失败下的逐项状态分类（`success`/`stopped`/`failed`/`pending`） |
