@@ -22,5 +22,23 @@ else
     maa version
 fi
 
+# 参考数据不随镜像发布；缺失只提示，不自动联网生成。
+training_data_dir="${LA_PLUMA_TRAINING_DATA_DIR:-/app/server/data}"
+app_data_dir="/app/server/data"
+missing_reference=""
+for file in materials.json operator-materials.json; do
+    if [ ! -f "$training_data_dir/$file" ]; then
+        missing_reference="$missing_reference $file"
+    fi
+done
+if [ ! -f "$app_data_dir/penguin-drop-data.json" ]; then
+    missing_reference="$missing_reference penguin-drop-data.json"
+fi
+if [ -n "$missing_reference" ]; then
+    echo "⚠️  参考数据缺失:$missing_reference"
+    echo "   养成、掉落相关页面可能为空。请在宿主机生成后挂载到 /app/server/data，"
+    echo "   或参考 docs/guides/deployment.md 的“参考数据与运行数据”。"
+fi
+
 echo "=== 启动 Node.js 服务器 ==="
 exec "$@"

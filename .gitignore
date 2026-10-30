@@ -14,8 +14,9 @@ coverage
 .hermes/
 .hermes_probe
 
-# 用户配置和数据（包含敏感信息，不要提交）
-server/data/
+# 用户配置和数据（包含敏感信息，不要提交）；目录说明可入库
+server/data/*
+!server/data/README.md
 server/debug/
 
 # 资源更新脚本的临时克隆目录

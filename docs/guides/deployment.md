@@ -211,6 +211,24 @@ docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com -t la-pluma
 - ADB 连接：在 WebUI 中配置设备地址（如 `127.0.0.1:5555`）
 - 首次启动会自动下载 MaaCore（约 5-10 分钟）
 
+### 参考数据与运行数据
+
+镜像只包含程序，不包含游戏参考数据：`materials.json`、`material-formulas.json`、`operator-materials.json`、`penguin-drop-data.json` 都不随仓库或镜像发布。缺少这些文件时，养成与掉落相关页面会为空；容器启动时 entrypoint 会打印缺失警告，但不会自动联网生成。
+
+在宿主机仓库内生成后，把文件放入持久化数据目录（Compose 默认为 `./docker-data/server/`）：
+
+```bash
+pnpm --filter la-pluma-next-server fetch-all-materials
+pnpm --filter la-pluma-next-server fetch-formulas
+pnpm --filter la-pluma-next-server fetch-materials
+pnpm --filter la-pluma-next-server fetch-drop-data
+
+cp server/data/{materials.json,material-formulas.json,operator-materials.json,penguin-drop-data.json} \
+  ./docker-data/server/
+```
+
+也可以直接把生成好的 `server/data` 目录挂载到 `/app/server/data`。不要把 `user-configs/`、`depot.json`、`operbox.json`、`drop-records/`、`agent-runs.json` 等用户运行数据打进自定义镜像，它们只应通过数据卷持久化。
+
 **支持架构**：
 - `linux/amd64` - x86_64 服务器、PC
 - `linux/arm64` - ARM64 服务器、Apple Silicon
