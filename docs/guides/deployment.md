@@ -53,7 +53,7 @@ docker run -d \
 | `LA_PLUMA_AGENT_RUN_STORE` | Agent Run 与幂等记录的持久化文件 | `server/data/agent-runs.json` |
 | `LA_PLUMA_DROP_RECORDS_DIR` | 掉落记录目录 | `server/data/drop-records` |
 | `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `server/data/maa-execution.lock` |
-| `LA_PLUMA_TRAINING_DATA_DIR` | 养成数据目录（队列、材料表、仓库/干员识别结果） | `server/data` |
+| `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `server/data` |
 | `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
 | `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动作业完成进度文件 | `server/data/activity-copilot-progress.json` |
 | `LA_PLUMA_OPERATOR_QUOTES_STORE` | 干员台词数据文件 | `server/data/operatorQuotes.json` |

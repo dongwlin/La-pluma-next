@@ -168,6 +168,7 @@ export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
   const env = options.env ?? process.env;
   const serverRoot = resolve(options.serverRoot ?? moduleServerRoot);
   const appDataDir = join(serverRoot, 'data');
+  const trainingDataDir = env.LA_PLUMA_TRAINING_DATA_DIR || appDataDir;
   return {
     serverRoot,
     appDataDir,
@@ -175,14 +176,14 @@ export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
     userConfigsDir: join(appDataDir, 'user-configs'),
     dropRecordsDir: env.LA_PLUMA_DROP_RECORDS_DIR || join(appDataDir, 'drop-records'),
     executionLockPath: env.LA_PLUMA_MAA_LOCK_FILE || join(appDataDir, 'maa-execution.lock'),
-    trainingDataDir: env.LA_PLUMA_TRAINING_DATA_DIR || appDataDir,
-    materialsPath: join(appDataDir, 'materials.json'),
-    materialFormulasPath: join(appDataDir, 'material-formulas.json'),
-    operatorMaterialsPath: join(appDataDir, 'operator-materials.json'),
+    trainingDataDir,
+    materialsPath: join(trainingDataDir, 'materials.json'),
+    materialFormulasPath: join(trainingDataDir, 'material-formulas.json'),
+    operatorMaterialsPath: join(trainingDataDir, 'operator-materials.json'),
     operatorQuotesPath: join(appDataDir, 'operatorQuotes.json'),
-    penguinDropDataPath: join(appDataDir, 'penguin-drop-data.json'),
-    depotPath: join(appDataDir, 'depot.json'),
-    operboxPath: join(appDataDir, 'operbox.json'),
+    penguinDropDataPath: join(trainingDataDir, 'penguin-drop-data.json'),
+    depotPath: join(trainingDataDir, 'depot.json'),
+    operboxPath: join(trainingDataDir, 'operbox.json'),
     tempResourceDir: join(serverRoot, '.temp-maa-resource'),
     frontendDistDir: resolve(serverRoot, '..', 'client', 'dist')
   };

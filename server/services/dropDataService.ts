@@ -1,7 +1,8 @@
 /**
  * 企鹅物流掉落数据服务
  *
- * 数据文件 server/data/penguin-drop-data.json 由 scripts/fetch-penguin-stats.ts 生成
+ * 数据文件默认位于训练数据目录（`LA_PLUMA_TRAINING_DATA_DIR`，缺省
+ * `server/data/penguin-drop-data.json`），由 scripts/fetch-penguin-stats.ts 生成
  * （数据源企鹅物流公开 API v2，server=CN，抓取时间见 metadata.fetchedAt）。
  *
  * 提供两类查询：
@@ -11,16 +12,11 @@
  * 查询失败返回 null，由调用方决定回退策略——本服务不做任何硬编码兜底。
  */
 
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import { readJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
+import { resolveAppPaths } from '../config/runtimeConfig.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const PENGUIN_DROP_DATA_PATH = path.join(__dirname, '../data/penguin-drop-data.json');
+const PENGUIN_DROP_DATA_PATH = resolveAppPaths().penguinDropDataPath;
 
 const logger = createLogger('DropData');
 
