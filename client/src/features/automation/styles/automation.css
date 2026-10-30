@@ -396,11 +396,6 @@
     color: var(--app-text-soft);
   }
 
-  .automation-monitor-surface .scrcpy-empty-actions {
-    /* S3: 紧凑空状态操作区使用 12px 上间距，压过 mt-4。 */
-    margin-top: 0.75rem !important;
-  }
-
   .automation-monitor-surface .task-monitor-panel.is-compact .scrcpy-preview-toolbar {
     /* S3: 工具栏间距与内边距由紧凑投屏接管，需压过 gap-2 / px-2 / py-1。 */
     width: 100%;
@@ -471,10 +466,10 @@
 
       /* S3: 宽容器下放宽到 34rem，同样需要压过 max-w-sm。 */
       max-width: 34rem !important;
-      grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+      grid-template-columns: 2.75rem minmax(0, 1fr);
       grid-template-areas:
-        "icon title action"
-        "icon description action";
+        "icon title"
+        "icon description";
       align-items: center;
       column-gap: 1rem;
       text-align: left;
@@ -494,11 +489,6 @@
       grid-area: description;
       align-self: start;
       margin: 0;
-    }
-
-    .automation-monitor-surface .scrcpy-empty-actions {
-      grid-area: action;
-      margin: 0 !important;
     }
   }
 

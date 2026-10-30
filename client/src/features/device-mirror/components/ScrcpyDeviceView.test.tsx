@@ -100,7 +100,7 @@ describe('ScrcpyDeviceView automation availability', () => {
     vi.restoreAllMocks()
   })
 
-  it('disables startup, installation, connection, and device controls while unavailable', async () => {
+  it('disables mode switching, connection, and device controls while unavailable', async () => {
     const onStartInfrastructure = vi.fn().mockResolvedValue('/webrtc-signaling')
     const onInstall = vi.fn()
     const onToggleServer = vi.fn()
@@ -120,18 +120,19 @@ describe('ScrcpyDeviceView automation availability', () => {
       />
     ))
 
-    expect(findButton('安装预览组件')?.disabled).toBe(true)
+    expect(findButton('实时')?.disabled).toBe(true)
+    expect(findButton('快照')?.disabled).toBe(true)
     expect(findButton('启动服务')?.disabled).toBe(true)
     expect(findButton('连接 Agent')?.disabled).toBe(true)
     expect(findButton('安装组件')?.disabled).toBe(true)
-    expect(findButton('安装预览组件')?.title).toBe('正在检查后端服务，请稍候')
 
-    findButton('安装预览组件')?.click()
+    findButton('实时')?.click()
     findButton('启动服务')?.click()
     findButton('连接 Agent')?.click()
     findButton('安装组件')?.click()
     container.querySelector('video')?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
 
+    expect(usePreviewStore.getState().mode).toBe('off')
     expect(onStartInfrastructure).not.toHaveBeenCalled()
     expect(onInstall).not.toHaveBeenCalled()
     expect(onToggleServer).not.toHaveBeenCalled()
@@ -545,9 +546,13 @@ describe('ScrcpyDeviceView automation availability', () => {
     const onStartInfrastructure = vi.fn(() => new Promise<string>(resolve => { resolveStart = resolve }))
     const onCancelInfrastructure = vi.fn()
     await act(async () => root.render(<ScrcpyDeviceView enabled={false} onStartInfrastructure={onStartInfrastructure} onCancelInfrastructure={onCancelInfrastructure} />))
-    await act(async () => findButton('启动预览')?.click())
-    expect(findButton('取消启动')?.disabled).toBe(false)
-    await act(async () => findButton('取消启动')?.click())
+    await act(async () => {
+      findButton('实时')?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(onStartInfrastructure).toHaveBeenCalledOnce()
+    await act(async () => findButton('关闭')?.click())
     await act(async () => resolveStart?.('/webrtc-signaling'))
     expect(usePreviewStore.getState().mode).toBe('off')
     expect(onCancelInfrastructure).toHaveBeenCalled()
