@@ -556,6 +556,36 @@ describe('useScrcpyWebRTC startup', () => {
     expect(pc.getStats).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps the previous stats object when sampled values are unchanged', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    receiveTrack(pc)
+    pc.getStats.mockResolvedValue(new Map([
+      ['video', { id: 'video', type: 'inbound-rtp', kind: 'video', timestamp: 1000, framesDecoded: 100, bytesReceived: 10000 }]
+    ]))
+
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    const firstStats = hook!.stats
+    expect(firstStats).not.toBeNull()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+
+    expect(hook!.stats).toBe(firstStats)
+  })
+
+  it('stops sampling after the preview disconnects', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    receiveTrack(pc)
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    const callsWhileConnected = pc.getStats.mock.calls.length
+
+    act(() => hook!.disconnect())
+    await act(async () => vi.advanceTimersByTimeAsync(3000))
+
+    expect(pc.getStats.mock.calls.length).toBe(callsWhileConnected)
+  })
+
   it('ignores statistics that arrive after disconnect', async () => {
     await openSignalingConnection()
     const pc = await receiveOffer()
