@@ -80,7 +80,10 @@ vi.mock('@/features/user-config', async () => {
 vi.mock('@/features/settings', () => ({ testConnection: mocks.testConnection }))
 vi.mock('@/features/training', () => ({ generateTrainingPlan: mocks.generateTrainingPlan }))
 vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage }),
+  useStatusStore: (selector?: (state: { setMessage: typeof mocks.setMessage }) => unknown) => {
+    if (!selector) throw new Error('useStatusStore must be called with a selector')
+    return selector({ setMessage: mocks.setMessage })
+  },
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))

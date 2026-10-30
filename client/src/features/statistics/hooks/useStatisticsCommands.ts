@@ -34,7 +34,7 @@ export interface StatisticsCommands {
 
 export function useStatisticsCommands(): StatisticsCommands {
   const commandState = useStatisticsCommandState()
-  const { setMessage } = useStatusStore()
+  const setMessage = useStatusStore(state => state.setMessage)
   const queryClient = useQueryClient()
   const isRunning = isStatisticsCommandRunning(commandState)
 

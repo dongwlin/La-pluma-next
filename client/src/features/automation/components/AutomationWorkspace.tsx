@@ -84,7 +84,7 @@ interface DeletedTaskSnapshot {
 
 export default function AutomationWorkspace() {
   const shouldReduceMotion = useReducedMotion()
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
   const activity = useAutomationActivity()
   const {

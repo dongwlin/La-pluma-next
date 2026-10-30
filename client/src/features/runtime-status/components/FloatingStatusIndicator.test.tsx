@@ -47,7 +47,10 @@ vi.mock('@/shared/api', () => ({
 }))
 
 vi.mock('../store/statusStore', () => ({
-  useStatusStore: () => mocks.store,
+  useStatusStore: (selector?: (state: typeof mocks.store) => unknown) => {
+    if (!selector) throw new Error('useStatusStore must be called with a selector')
+    return selector(mocks.store)
+  },
 }))
 
 vi.mock('@/shared/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mocks.online }))

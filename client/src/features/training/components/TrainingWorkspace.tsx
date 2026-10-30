@@ -55,7 +55,7 @@ const TRAINING_RESOURCE_SCOPES = [
 ] as const
 
 export default function TrainingWorkspace() {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const queryClient = useQueryClient()
   // 设置的读取、串行提交与本地 revision 由 training 领域所有者持有；
   // 工作区只显示当前值，并把要应用的设置交给 apply 请求。
