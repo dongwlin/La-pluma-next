@@ -18,6 +18,7 @@ import { Plus } from 'lucide-react'
 import { Button, PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
+import { gameDataKeys } from '@/features/game-data'
 import { trainingKeys } from '../model/queryKeys'
 import { trainingQueueQueryOptions } from '../model/queries'
 import {
@@ -140,6 +141,14 @@ export default function TrainingWorkspace() {
     if (touchesPlan) invalidatePlan()
     if (touchesQueue) void reloadQueue()
     if (touchesOperators) {
+      // 候选/计数复用 game-data 的共享快照；先失效来源 key，再失效领域 query，
+      // 否则重取候选时仍会读到旧的目录/持有干员缓存。
+      if (resources.includes('catalog')) {
+        void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('catalog') })
+      }
+      if (resources.includes('operbox')) {
+        void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('operbox') })
+      }
       void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('candidates') })
       void queryClient.invalidateQueries({ queryKey: trainingKeys.resource('counts') })
     }

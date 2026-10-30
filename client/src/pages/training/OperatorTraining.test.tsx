@@ -65,11 +65,11 @@ vi.mock('@/features/training/api', () => ({
   retryTrainingSync: mocks.retryTrainingSync,
 }))
 
-vi.mock('@/features/game-data', () => ({
+vi.mock('@/features/game-data/api', () => ({
   getAllOperators: mocks.getAllOperators,
+  getDepotData: vi.fn(),
   getOperBoxData: mocks.getOperBoxData,
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
-  useItemIconCacheVersion: () => 0,
 }))
 
 vi.mock('@/features/runtime-status', () => ({
@@ -507,7 +507,8 @@ describe('OperatorTraining queue workspace', () => {
     await flush()
 
     expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
-    expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
+    // 目录失效后只重读共享目录；持有干员仍在新鲜期内，不从缓存外重复下载。
+    expect(mocks.getOperBoxData).not.toHaveBeenCalled()
     expect(mocks.getOperatorList).toHaveBeenCalledTimes(3)
     expect(mocks.getTrainingQueue).not.toHaveBeenCalled()
 
@@ -517,7 +518,7 @@ describe('OperatorTraining queue workspace', () => {
     await flush()
 
     expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(1)
-    expect(mocks.getAllOperators).toHaveBeenCalledTimes(2)
+    expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
   })
 
   it('refreshes only the queue for a queue invalidation while candidate queries stay cached', async () => {
