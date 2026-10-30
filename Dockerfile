@@ -117,8 +117,9 @@ ENV NODE_ENV=production \
     MAA_CONFIG_DIR=/root/.config/maa \
     DOCKER_ENV=true
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# 健康检查：首次启动由 entrypoint 执行 maa install --force，可能持续 5-10 分钟，
+# start-period 必须覆盖该窗口，避免安装期间被反复判为 unhealthy。
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
     CMD scheme=http; if [ -n "$LA_PLUMA_HTTPS_CERT_PATH" ]; then scheme=https; fi; curl -fk "$scheme://localhost:${PORT:-3000}/health" || exit 1
 
 # 启动服务器

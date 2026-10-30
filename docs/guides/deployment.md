@@ -65,6 +65,8 @@ docker run -d \
 
 容器健康检查继续请求根路径 `/health`，只判断进程是否仍在应答。该端点不执行 ADB、MAA 或外网探测，设备离线不会让存活检查失败，也不会触发无意义的重启。
 
+首次启动会在 entrypoint 中执行 `maa install --force` 安装 MaaCore，通常需要 5-10 分钟。Dockerfile 与 Compose 的健康检查 `start-period` 均为 600 秒，安装期间不会因健康检查失败被判定为不健康或触发重启；安装完成后才进入常规探测。
+
 根路径 `/readiness` 表达是否应接收业务流量：运行时初始化未完成、Run 存储不可用或服务正在关闭（draining/closed）时返回 503，其余稳定运行状态返回 200。响应只包含生命周期、初始化与 Run 存储的粗粒度状态和稳定原因码，不包含文件路径、凭据或底层错误文本，并设置 `Cache-Control: no-store`。与 `/health` 一样，`/readiness` 不受 `LA_PLUMA_TOKEN` 约束，便于本机与编排探针直接调用；`/api` 的鉴权行为不变。
 
 反向代理和编排应把 `/readiness` 用于摘除流量，不要用它重启容器：draining 期间 `/health` 仍为 200，进程正在停止执行并等待 Run 落盘。
