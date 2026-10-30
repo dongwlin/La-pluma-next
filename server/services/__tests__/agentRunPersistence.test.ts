@@ -289,8 +289,12 @@ describe('agent run persistence', () => {
     setAgentRunAcceptedResult(run.runId, { phase: 'accepted-result' });
     completeAgentRun(run.runId, { phase: 'complete' });
     await flushAgentRunStore();
+    // 终态落盘后重复 flush 不得重写整份快照。
+    await flushAgentRunStore();
+    await flushAgentRunStore();
 
     assert.equal(writes.length, 1);
+    assert.equal(getAgentRunStoreStatus().dirty, false);
     const [record] = writes[0].runs;
     assert.equal(record.run.runId, run.runId);
     assert.equal(record.run.status, 'succeeded');

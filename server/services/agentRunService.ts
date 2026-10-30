@@ -270,7 +270,10 @@ function buildStoreSnapshot(): AgentRunStoreSnapshot {
     runs: [...runs.values()]
       .sort((left, right) => left.sequence - right.sequence)
       .map(record => ({
-        run: cloneJson(record.run),
+        // 仅复制记录顶层：状态机只会替换 result/error 等嵌套引用，不会原地修改，
+        // 因此序列化期间不会把后续迁移写进本次快照；无需对每条 run 再做一次
+        // JSON 往返（整份快照最终由 writeStore 统一序列化）。
+        run: { ...record.run },
         sequence: record.sequence,
         createdAtMs: record.createdAtMs,
         startedAtMs: record.startedAtMs,
@@ -427,19 +430,19 @@ function toAgentRunDto(run: AgentRunRecord | null | undefined): AgentRunDto | nu
     acceptedAt: run.createdAt,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
-    result: cloneJson(run.result),
+    result: run.result,
     links: {
       self: `/api/agent/runs/${run.runId}`,
       stop: `/api/agent/actions/stop?runId=${encodeURIComponent(run.runId)}`
     }
   };
   if (run.durationMs !== null) dto.durationMs = run.durationMs;
-  if (run.progress) dto.progress = cloneJson(run.progress);
+  if (run.progress) dto.progress = run.progress;
   if (run.error) {
     dto.error = {
       code: run.error.code,
       message: run.error.message,
-      details: cloneJson(run.error.details),
+      details: run.error.details,
       retryable: run.error.retryable,
       statusCode: run.error.statusCode
     };
