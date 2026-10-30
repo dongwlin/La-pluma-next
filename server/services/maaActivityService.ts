@@ -29,6 +29,12 @@ const logger = createLogger('MaaService');
 /** 正缓存 TTL：缩短后活动结束到重新查询的窗口更小，调用频率由 CLI 自身控制。 */
 const ACTIVITY_CACHE_TTL = 10 * 60 * 1000;
 
+/**
+ * 负缓存 TTL：`none` 与解析不出活动代号的短结果只短暂复用。
+ * 活动可能在下一分钟开始，因此不能沿用正缓存的十分钟。
+ */
+const NEGATIVE_ACTIVITY_CACHE_TTL = 60 * 1000;
+
 /** 活动表最近确认时间的最大可信任年龄；超过后不能用“表里没有”断言当前没有活动。 */
 const ACTIVITY_TABLE_MAX_AGE = 24 * 60 * 60 * 1000;
 
@@ -66,6 +72,12 @@ export interface CachedActivity extends MaaActivityInfo {
   ttl: number;
 }
 
+/** 短负缓存条目：保存完整快照，命中时保留原查询的确认时间与数据时间。 */
+export interface CachedNegativeActivity {
+  timestamp: number;
+  snapshot: MaaActivitySnapshot;
+}
+
 /** MAA 活动表在缓存目录中的存在性、内容修改时间与最近确认时间。 */
 export interface MaaActivityTableState {
   exists: boolean;
@@ -83,6 +95,10 @@ export interface MaaActivityTableState {
 export interface MaaActivityRuntime {
   now?: () => number;
   cache?: Map<string, CachedActivity>;
+  /** 负结果短缓存；测试注入独立 Map 以隔离用例。 */
+  negativeCache?: Map<string, CachedNegativeActivity>;
+  /** 在途读取；同一 clientType 的并发调用共享一次查询。 */
+  inflight?: Map<string, Promise<MaaActivitySnapshot>>;
   runActivity?: (clientType: string) => Promise<{ stdout: string }>;
   readActivityTable?: () => Promise<MaaActivityTableState>;
   readFallback?: (clientType: string) => Promise<unknown>;
@@ -106,6 +122,8 @@ export interface ParsedMaaActivityOutput {
 }
 
 const activityCache = new Map<string, CachedActivity>();
+const negativeActivityCache = new Map<string, CachedNegativeActivity>();
+const activityRequests = new Map<string, Promise<MaaActivitySnapshot>>();
 
 const ACTIVITY_SECTION_HEADER = 'Opening side story stages:';
 const SECTION_HEADER_PATTERN = /^Opening\s+[A-Za-z][A-Za-z0-9 ]*:\s*$/;
@@ -401,6 +419,8 @@ async function saveActivityConfig(payload: Record<string, unknown>): Promise<unk
 const defaultRuntime: Required<MaaActivityRuntime> = {
   now: Date.now,
   cache: activityCache,
+  negativeCache: negativeActivityCache,
+  inflight: activityRequests,
   runActivity: clientType => execMaaCommand('activity', [clientType], null, null, false, true),
   readActivityTable: readMaaActivityTable,
   readFallback: clientType => getFallbackActivity(clientType),
@@ -462,7 +482,8 @@ function combineFailures(
 /**
  * 读取当前活动快照。
  *
- * 读取顺序：新鲜内存/持久化缓存 → `maa activity` → 备用数据源。
+ * 同一 `clientType` 的并发调用共享同一次读取，避免轮询突发重复启动 CLI。
+ * 读取顺序：新鲜内存/持久化缓存 → 短负缓存 → `maa activity` → 备用数据源。
  * 只有活动表存在且未过期时，maa 的空结果才能作为 `none`；否则继续查备用源。
  * 所有来源失败时，旧的成功缓存降级为 `stale`，没有旧数据才是 `unavailable`。
  */
@@ -471,6 +492,23 @@ export async function getCurrentActivity(
   overrides: MaaActivityRuntime = {}
 ): Promise<MaaActivitySnapshot> {
   const runtime = { ...defaultRuntime, ...overrides };
+  const inflight = runtime.inflight;
+  const pending = inflight.get(clientType);
+  if (pending) return pending;
+
+  let request: Promise<MaaActivitySnapshot>;
+  request = loadCurrentActivity(clientType, runtime).finally(() => {
+    if (inflight.get(clientType) === request) inflight.delete(clientType);
+  });
+  inflight.set(clientType, request);
+  return request;
+}
+
+/** 单次活动读取；单飞与负缓存由 `getCurrentActivity` 的统一入口负责。 */
+async function loadCurrentActivity(
+  clientType: string,
+  runtime: Required<MaaActivityRuntime>
+): Promise<MaaActivitySnapshot> {
   const now = runtime.now();
   const cache = runtime.cache;
 
@@ -504,6 +542,15 @@ export async function getCurrentActivity(
   }
   if (newestCandidate) cache.delete(clientType);
 
+  const negative = runtime.negativeCache.get(clientType);
+  if (negative && now - negative.timestamp < NEGATIVE_ACTIVITY_CACHE_TTL) {
+    logger.debug('使用短负缓存的活动结果', {
+      clientType, status: negative.snapshot.status, source: negative.snapshot.source
+    });
+    return { ...negative.snapshot };
+  }
+  if (negative) runtime.negativeCache.delete(clientType);
+
   let maaFailure: MaaActivityFailure | null = null;
   let table: MaaActivityTableState | null = null;
   try {
@@ -528,8 +575,11 @@ export async function getCurrentActivity(
         // CLI 列出的是展示关卡，不是完整活动地图；完整 stages 待结构化活动表落地。
         stages: []
       };
-      await persistActivity(runtime, persistedRecord, clientType, activity, now);
-      return snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
+      const snapshot = snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
+      // 解析不出代号时无法写入正缓存；用短负缓存避免每次轮询重复启动 CLI。
+      if (activity.code) await persistActivity(runtime, persistedRecord, clientType, activity, now);
+      else rememberNegativeActivity(runtime, clientType, snapshot, now);
+      return snapshot;
     }
 
     if (output.trim() && !parsed.sawAnySection) {
@@ -551,7 +601,9 @@ export async function getCurrentActivity(
           maaFailure = { source: 'maa', message: 'MAA 活动数据表已超过 24 小时未更新' };
         } else {
           const activity = emptyActivityInfo('maa');
-          return snapshotOf(clientType, activity, 'none', now, table.modifiedAt, null);
+          const snapshot = snapshotOf(clientType, activity, 'none', now, table.modifiedAt, null);
+          rememberNegativeActivity(runtime, clientType, snapshot, now);
+          return snapshot;
         }
       }
     }
@@ -576,7 +628,9 @@ export async function getCurrentActivity(
         await persistActivity(runtime, persistedRecord, clientType, fallbackActivity, now);
         return snapshotOf(clientType, fallbackActivity, 'active', now, now, null);
       }
-      return snapshotOf(clientType, emptyActivityInfo('penguin'), 'none', now, now, null);
+      const snapshot = snapshotOf(clientType, emptyActivityInfo('penguin'), 'none', now, now, null);
+      rememberNegativeActivity(runtime, clientType, snapshot, now);
+      return snapshot;
     } catch (error) {
       fallbackFailure = {
         source: 'penguin',
@@ -609,6 +663,17 @@ export async function getCurrentActivity(
   return snapshotOf(clientType, emptyActivityInfo(), 'unavailable', null, null, failure);
 }
 
+/** 记录没有可用活动代号的短负结果；有代号的结果只写正缓存。 */
+function rememberNegativeActivity(
+  runtime: Required<MaaActivityRuntime>,
+  clientType: string,
+  snapshot: MaaActivitySnapshot,
+  now: number
+): void {
+  if (snapshot.code) return;
+  runtime.negativeCache.set(clientType, { timestamp: now, snapshot });
+}
+
 /** 写入内存与持久化缓存；保存失败只告警，返回结果仍以已读取的数据为准。 */
 async function persistActivity(
   runtime: Required<MaaActivityRuntime>,
@@ -624,6 +689,7 @@ async function persistActivity(
     ttl: ACTIVITY_CACHE_TTL
   };
   runtime.cache.set(clientType, cached);
+  runtime.negativeCache.delete(clientType);
   try {
     await runtime.saveConfig({
       ...(persistedRecord ?? {}),

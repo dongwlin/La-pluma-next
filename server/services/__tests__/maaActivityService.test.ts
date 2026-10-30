@@ -65,6 +65,8 @@ function runtime(overrides: MaaActivityRuntime = {}): MaaActivityRuntime {
   return {
     now: () => NOW,
     cache: new Map<string, CachedActivity>(),
+    negativeCache: new Map(),
+    inflight: new Map(),
     runActivity: async () => ({ stdout: '' }),
     readActivityTable: async () => activityTable(),
     readFallback: async () => null,
@@ -452,6 +454,89 @@ describe('getCurrentActivity status contract', () => {
       timestamp: NOW,
       ttl: TEN_MINUTES
     });
+  });
+});
+
+describe('activity lookup short caching', () => {
+  const NEGATIVE_TTL = 60 * 1000;
+
+  it('reuses a none result briefly instead of respawning the CLI', async () => {
+    let currentTime = NOW;
+    let runCalls = 0;
+    const overrides = runtime({
+      now: () => currentTime,
+      runActivity: async () => {
+        runCalls += 1;
+        return { stdout: MINI_GAMES_ONLY };
+      }
+    });
+
+    const first = await getCurrentActivity(CLIENT, overrides);
+    const second = await getCurrentActivity(CLIENT, overrides);
+
+    assert.equal(first.status, 'none');
+    assert.equal(second.status, 'none');
+    assert.equal(runCalls, 1);
+    assert.equal(second.lastSuccessAt, first.lastSuccessAt);
+    assert.equal(second.dataUpdatedAt, first.dataUpdatedAt);
+
+    // 负缓存到期后必须重新查询，避免活动开始后继续返回 none。
+    currentTime += NEGATIVE_TTL + 1;
+    const third = await getCurrentActivity(CLIENT, overrides);
+    assert.equal(third.status, 'none');
+    assert.equal(runCalls, 2);
+  });
+
+  it('reuses a code-less active result briefly and isolates the cache by clientType', async () => {
+    let runCalls = 0;
+    const overrides = runtime({
+      runActivity: async () => {
+        runCalls += 1;
+        return {
+          stdout: `Opening side story stages:
+- 主线「相变临界」
+  - 17-11: 固源岩`
+        };
+      }
+    });
+
+    const first = await getCurrentActivity(CLIENT, overrides);
+    const second = await getCurrentActivity(CLIENT, overrides);
+    assert.equal(first.status, 'active');
+    assert.equal(first.code, null);
+    assert.equal(second.status, 'active');
+    assert.equal(runCalls, 1);
+
+    // 负缓存按 clientType 分键，其他服务区仍要发起自己的查询。
+    const other = await getCurrentActivity('Bilibili', overrides);
+    assert.equal(other.status, 'active');
+    assert.equal(runCalls, 2);
+  });
+
+  it('shares one in-flight CLI query between concurrent callers', async () => {
+    let runCalls = 0;
+    let releaseRun!: (value: { stdout: string }) => void;
+    const runGate = new Promise<{ stdout: string }>(resolve => {
+      releaseRun = resolve;
+    });
+    const overrides = runtime({
+      runActivity: () => {
+        runCalls += 1;
+        return runGate;
+      }
+    });
+
+    const first = getCurrentActivity(CLIENT, overrides);
+    const second = getCurrentActivity(CLIENT, overrides);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(runCalls, 1);
+    releaseRun({ stdout: MINI_GAMES_ONLY });
+
+    const snapshots = await Promise.all([first, second]);
+    assert.equal(snapshots[0]?.status, 'none');
+    assert.equal(snapshots[1]?.status, 'none');
+    assert.equal(runCalls, 1);
   });
 });
 
