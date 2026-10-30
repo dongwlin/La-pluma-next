@@ -1,17 +1,18 @@
-import { readFile, readdir, stat, unlink, realpath, open } from 'node:fs/promises';
+import { readdir, stat, unlink, realpath, open } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
+import { resolveMaaPaths } from '../config/paths.ts';
 import { execMaaCommandUnlocked } from './maaProcessService.ts';
-import { getMaaConfigDir } from './maaConfigService.ts';
 
 /**
  * MAA 日志文件 IO 与检查点。
  *
- * - 目录由 `maa dir log` 解析（非设备变更命令，不申请执行租约）。
+ * - 目录由 `maa dir log` 解析（非设备变更命令，不申请执行租约），并在
+ *   进程内缓存解析结果；失败在短冷却期内复用同一个错误。
  * - 读取只允许日志目录内、扩展名为 `.log` 的文件：先 realpath 再按目录边界
- *   判定，目录外符号链接与悬空目标都会被拒绝；行数上限与清理阈值保持既有
- *   对外契约。
+ *   判定，目录外符号链接与悬空目标都会被拒绝；内容从文件尾部按块读取并限制
+ *   最大字节数，行数上限与清理阈值保持既有对外契约。
  * - 检查点与增量读取接受日志目录、stat 与 open 端口注入，测试可以不依赖
  *   真实 MAA CLI 或真实日志目录验证“只读新增字节”的语义。
  * - 实时日志缓冲不在这里：它属于 maaProcessService 的子进程投影。
@@ -384,8 +385,9 @@ export async function readLogFile(filePath: string, lines: unknown = 1000): Prom
  */
 export async function getDebugScreenshots(): Promise<MaaDebugScreenshot[]> {
   try {
-    const configDir = await getMaaConfigDir();
-    const debugDir = join(configDir.trim(), '..', 'debug');
+    // MAA 的状态目录（Linux 为 XDG_STATE_HOME/maa）下才是调试产物目录；
+    // 不能用配置目录的相邻目录推算，否则会落到 ~/.config/debug。
+    const debugDir = join(resolveMaaPaths().stateDir, 'debug');
 
     logger.debug('调试目录', { debugDir });
 
@@ -397,14 +399,14 @@ export async function getDebugScreenshots(): Promise<MaaDebugScreenshot[]> {
       file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')
     );
 
-    // 获取文件信息
+    // 获取文件信息；响应只暴露文件名，不返回服务器绝对路径。
     const screenshots = await Promise.all(
       imageFiles.map(async (file) => {
         const filePath = join(debugDir, file);
         const stats = await stat(filePath);
         return {
           name: file,
-          path: filePath,
+          path: file,
           size: stats.size,
           modified: stats.mtime.toISOString()
         };
