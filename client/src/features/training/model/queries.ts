@@ -12,12 +12,11 @@
  * - 计数失败不展示错误，Query 保留上一次成功数据（同 key 重新读取失败时）。
  */
 
-import { keepPreviousData, queryOptions } from '@tanstack/react-query'
+import { keepPreviousData, queryOptions, type QueryClient } from '@tanstack/react-query'
 import { unwrapApiResponse } from '@/shared/api'
 import {
-  getAllOperators,
-  getOperBoxData,
-  type OperBoxData,
+  operBoxQueryOptions,
+  operatorCatalogQueryOptions,
   type OperatorDetailed,
 } from '@/features/game-data'
 import { getOperatorList, getTrainingQueue } from '../api'
@@ -66,13 +65,33 @@ const readCandidateRows = async (
   return extractOperatorRows(unwrapApiResponse(response))
 }
 
-const readOperatorCatalog = async (signal: AbortSignal): Promise<OperatorDetailed[]> => {
-  const data = unwrapApiResponse<OperatorDetailed[]>(await getAllOperators(signal))
-  return Array.isArray(data) ? data : []
+/**
+ * 目录与持有干员属于 `game-data` 的共享只读资源。这里通过 QueryClient 的
+ * `fetchQuery` 复用同一 key，缓存新鲜时不会重复下载大载荷，也避免与统计页
+ * 各自维护一份同义快照。
+ */
+const readOperatorCatalog = async (
+  client: QueryClient,
+  signal: AbortSignal,
+): Promise<OperatorDetailed[]> => {
+  const options = operatorCatalogQueryOptions()
+  return client.fetchQuery({
+    ...options,
+    // fetchQuery 没有外置 signal 参数；把调用方 signal 交给共享 queryFn，
+    // 训练请求取消时同时中止底层目录读取。
+    queryFn: context => options.queryFn!({ ...context, signal }),
+  })
 }
 
-const readOperBoxRows = async (signal: AbortSignal): Promise<OperatorDetailed[]> => {
-  const operBox = unwrapApiResponse<OperBoxData | null>(await getOperBoxData(signal))
+const readOperBoxRows = async (
+  client: QueryClient,
+  signal: AbortSignal,
+): Promise<OperatorDetailed[]> => {
+  const options = operBoxQueryOptions()
+  const operBox = await client.fetchQuery({
+    ...options,
+    queryFn: context => options.queryFn!({ ...context, signal }),
+  })
   return operBox?.data ?? []
 }
 
@@ -87,13 +106,13 @@ export const trainingCandidatesQueryOptions = (filters: TrainingCandidateFilters
     filters.rarity ?? null,
     filters.needsElite2 ?? false,
   ),
-  queryFn: async ({ signal }): Promise<TrainingOperator[]> => {
+  queryFn: async ({ client, signal }): Promise<TrainingOperator[]> => {
     const rows = await readCandidateRows(filters, signal)
     if (filters.status !== 'all' || rows.length > 0) return rows
 
     const [catalog, ownedOperators] = await Promise.all([
-      readOperatorCatalog(signal),
-      readOperBoxRows(signal),
+      readOperatorCatalog(client, signal),
+      readOperBoxRows(client, signal),
     ])
     return buildAllCandidateRows(catalog, ownedOperators, filters.rarity ?? null)
   },
@@ -108,12 +127,12 @@ export const trainingStatusCountsQueryOptions = (
   filters: TrainingStatusCountsFilters,
 ) => queryOptions({
   queryKey: trainingKeys.query('counts', filters.rarity ?? null, filters.needsElite2 ?? false),
-  queryFn: async ({ signal }): Promise<TrainingStatusCounts> => {
+  queryFn: async ({ client, signal }): Promise<TrainingStatusCounts> => {
     const [trainableRows, ownedRows, catalog, operBoxRows] = await Promise.all([
       readCandidateRows({ status: 'trainable', ...filters }, signal),
       readCandidateRows({ status: 'owned', ...filters }, signal),
-      readOperatorCatalog(signal),
-      readOperBoxRows(signal),
+      readOperatorCatalog(client, signal),
+      readOperBoxRows(client, signal),
     ])
 
     return buildTrainingStatusCounts({

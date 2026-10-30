@@ -65,7 +65,10 @@ vi.mock('@/features/training', () => ({
   generateTrainingPlan: vi.fn(),
 }))
 vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage }),
+  useStatusStore: (selector?: (state: { setMessage: typeof mocks.setMessage }) => unknown) => {
+    if (!selector) throw new Error('useStatusStore must be called with a selector')
+    return selector({ setMessage: mocks.setMessage })
+  },
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))

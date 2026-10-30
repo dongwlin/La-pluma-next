@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { Activity, act, useEffect, useRef } from 'react'
+import { clearAuthToken, setAuthToken } from '@/shared/api'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -166,6 +167,7 @@ describe('useScrcpyWebRTC startup', () => {
       json: vi.fn().mockResolvedValue({ token: 'fresh-token' })
     }))
     window.localStorage.clear()
+    clearAuthToken()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -340,7 +342,7 @@ describe('useScrcpyWebRTC startup', () => {
   })
 
   it('uses an authenticated same-origin ticket request when API auth is configured', async () => {
-    window.localStorage.setItem('laPlumaToken', 'la-pluma-secret')
+    setAuthToken('la-pluma-secret')
 
     act(() => hook!.connect('/webrtc-signaling'))
     await flushAsyncWork()
@@ -554,6 +556,36 @@ describe('useScrcpyWebRTC startup', () => {
     await act(async () => pending.resolve(new Map()))
     await act(async () => vi.advanceTimersByTimeAsync(1000))
     expect(pc.getStats).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the previous stats object when sampled values are unchanged', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    receiveTrack(pc)
+    pc.getStats.mockResolvedValue(new Map([
+      ['video', { id: 'video', type: 'inbound-rtp', kind: 'video', timestamp: 1000, framesDecoded: 100, bytesReceived: 10000 }]
+    ]))
+
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    const firstStats = hook!.stats
+    expect(firstStats).not.toBeNull()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+
+    expect(hook!.stats).toBe(firstStats)
+  })
+
+  it('stops sampling after the preview disconnects', async () => {
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    receiveTrack(pc)
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    const callsWhileConnected = pc.getStats.mock.calls.length
+
+    act(() => hook!.disconnect())
+    await act(async () => vi.advanceTimersByTimeAsync(3000))
+
+    expect(pc.getStats.mock.calls.length).toBe(callsWhileConnected)
   })
 
   it('ignores statistics that arrive after disconnect', async () => {

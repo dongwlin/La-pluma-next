@@ -20,7 +20,12 @@ interface FloatingStatusIndicatorProps {
  * 其他状态在原位置可见时显示在原位置，不可见时悬浮到右上角
  */
 export default function FloatingStatusIndicator({ className = '', textClassName = '' }: FloatingStatusIndicatorProps) {
-  const { message, messageType, runStatus, backendStatus, backendMessage } = useStatusStore()
+  // 逐字段订阅：任一无关字段变化都不会让全局指示器跟着重渲染。
+  const message = useStatusStore(state => state.message)
+  const messageType = useStatusStore(state => state.messageType)
+  const runStatus = useStatusStore(state => state.runStatus)
+  const backendStatus = useStatusStore(state => state.backendStatus)
+  const backendMessage = useStatusStore(state => state.backendMessage)
   const isOnline = useOnlineStatus()
   const shouldReduceMotion = useReducedMotion()
   const [readyQuote, setReadyQuote] = useState<OperatorQuote>(DEFAULT_RANDOM_OPERATOR_QUOTE)

@@ -5,6 +5,7 @@ import {
   AUTOMATION_CONFIG_COMMIT_DELAY_MS,
   AUTOMATION_CONFIG_KEY,
   AUTOMATION_CONFIG_PENDING_KEY,
+  AUTOMATION_LOCAL_WRITE_DELAY_MS,
   AUTOMATION_SCHEDULE_KEY,
   AUTOMATION_TASK_FLOW_KEY,
   automationConfigAdapter,
@@ -103,24 +104,27 @@ beforeEach(() => {
 })
 
 describe('automation config adapter', () => {
-  it('keeps the original config key, pending key, local keys, and immediate commit policy', () => {
+  it('keeps the original config key, pending key, local keys, and debounced persistence policy', () => {
     expect(automationConfigAdapter).toMatchObject({
       key: 'automation-tasks',
       pendingKey: 'automationConfigSyncPending',
-      commitDelayMs: 0,
+      commitDelayMs: 300,
+      localWriteDelayMs: 250,
     })
     expect({
       config: AUTOMATION_CONFIG_KEY,
       pending: AUTOMATION_CONFIG_PENDING_KEY,
       taskFlow: AUTOMATION_TASK_FLOW_KEY,
       schedule: AUTOMATION_SCHEDULE_KEY,
-      delay: AUTOMATION_CONFIG_COMMIT_DELAY_MS,
+      commitDelay: AUTOMATION_CONFIG_COMMIT_DELAY_MS,
+      localWriteDelay: AUTOMATION_LOCAL_WRITE_DELAY_MS,
     }).toEqual({
       config: 'automation-tasks',
       pending: 'automationConfigSyncPending',
       taskFlow: 'maa-task-flow',
       schedule: 'maa-schedule',
-      delay: 0,
+      commitDelay: 300,
+      localWriteDelay: 250,
     })
   })
 

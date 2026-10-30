@@ -8,9 +8,11 @@ import { MaterialTable, MaterialTree } from './MaterialViews'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-vi.mock('@/features/game-data', () => ({
+vi.mock('@/features/game-data/api', () => ({
+  getAllOperators: vi.fn(),
+  getDepotData: vi.fn(),
+  getOperBoxData: vi.fn(),
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
-  useItemIconCacheVersion: () => 0,
 }))
 
 const material = (id: string, name: string, stillNeeded: number): MaterialNode => ({

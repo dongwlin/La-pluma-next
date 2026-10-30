@@ -1,141 +1,66 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell, Save, Send } from 'lucide-react'
-import { API_BASE_URL, fetchWithAuth, parseJsonResponse } from '@/shared/api'
+import type { ApiResponse } from '@/shared/api'
 import { Switch } from '@/shared/ui'
+import { saveNotificationConfig, testNotificationChannel } from '../api'
+import {
+  cloneNotificationConfig,
+  type NotificationConfig,
+  type TelegramConfig,
+} from '../model/notificationConfig'
+import { notificationConfigQueryOptions } from '../model/queries'
 
-interface TelegramConfig {
-  enabled: boolean
-  botToken: string
-  chatId: string
-}
-
-interface NotificationConfig {
-  enabled: boolean
-  channels: {
-    telegram: TelegramConfig
-  }
-}
-
-const emptyConfig: NotificationConfig = {
-  enabled: false,
-  channels: {
-    telegram: {
-      enabled: false,
-      botToken: '',
-      chatId: ''
-    }
-  }
-}
-
-interface NotificationResponse {
-  success: boolean
-  data?: NotificationConfig
-  message?: string
-  error?: string
-  errorInfo?: { message?: string }
-}
-
-let cachedNotificationConfig: NotificationConfig | null = null
-let pendingNotificationConfig: Promise<NotificationConfig> | null = null
-
-const cloneConfig = (config: NotificationConfig = emptyConfig): NotificationConfig => ({
-  enabled: Boolean(config.enabled),
-  channels: {
-    telegram: {
-      enabled: Boolean(config.channels?.telegram?.enabled),
-      botToken: config.channels?.telegram?.botToken || '',
-      chatId: config.channels?.telegram?.chatId || '',
-    },
-  },
-})
-
-const getResponseMessage = (data: NotificationResponse, fallback: string) =>
+const getResponseMessage = (data: Partial<ApiResponse>, fallback: string) =>
   data.message || data.errorInfo?.message || data.error || fallback
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback
 
-const requestNotificationConfig = (force = false): Promise<NotificationConfig> => {
-  if (!force && cachedNotificationConfig) {
-    return Promise.resolve(cloneConfig(cachedNotificationConfig))
-  }
-  if (pendingNotificationConfig) {
-    return pendingNotificationConfig.then(cloneConfig)
-  }
-
-  const request = (async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/agent/notifications/config`)
-    const data = await parseJsonResponse<NotificationResponse>(response)
-    if (!data.success) throw new Error(getResponseMessage(data, '加载通知配置失败'))
-
-    const config = cloneConfig(data.data)
-    cachedNotificationConfig = config
-    return config
-  })()
-
-  const sharedRequest = request.finally(() => {
-    if (pendingNotificationConfig === sharedRequest) pendingNotificationConfig = null
-  })
-  pendingNotificationConfig = sharedRequest
-  return sharedRequest.then(cloneConfig)
-}
-
-const updateNotificationConfigCache = (config: NotificationConfig) => {
-  cachedNotificationConfig = cloneConfig(config)
-}
-
 export default function NotificationSettings() {
-  const [config, setConfig] = useState<NotificationConfig>(() => cloneConfig())
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const configQuery = useQuery(notificationConfigQueryOptions())
+  const [config, setConfig] = useState<NotificationConfig>(() => cloneNotificationConfig())
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const mountedRef = useRef(false)
   const activationRevisionRef = useRef(0)
   const draftRevisionRef = useRef(0)
   const committedRevisionRef = useRef(0)
-  const saveAbortRef = useRef<AbortController | null>(null)
+  const saveRequestIdRef = useRef(0)
   const testAbortRef = useRef<AbortController | null>(null)
+
+  const loading = configQuery.isPending
+  const loadError = configQuery.isError
+    ? getErrorMessage(configQuery.error, '加载通知配置失败')
+    : null
 
   useEffect(() => {
     const activationRevision = ++activationRevisionRef.current
     mountedRef.current = true
-    setSaving(false)
     setTesting(false)
 
     return () => {
       if (activationRevisionRef.current === activationRevision) activationRevisionRef.current += 1
       mountedRef.current = false
-      saveAbortRef.current?.abort()
+      // 仅中止可丢弃的“测试通知”；保存必须完成落盘并写回 Query 缓存。
       testAbortRef.current?.abort()
     }
   }, [])
 
-  const loadConfig = useCallback(async (force = false) => {
-    const activationRevision = activationRevisionRef.current
-    setLoading(true)
-    setLoadError(null)
-    if (force) setNotice(null)
-
-    try {
-      const loadedConfig = await requestNotificationConfig(force)
-      if (!mountedRef.current || activationRevision !== activationRevisionRef.current) return
-
-      if (draftRevisionRef.current === committedRevisionRef.current) {
-        setConfig(loadedConfig)
-      }
-    } catch (error) {
-      if (!mountedRef.current || activationRevision !== activationRevisionRef.current) return
-      setLoadError(getErrorMessage(error, '加载通知配置失败'))
-    } finally {
-      if (mountedRef.current && activationRevision === activationRevisionRef.current) setLoading(false)
-    }
-  }, [])
-
+  // 服务端快照到达或重读成功时采用它；有未保存编辑时保留本地草稿。
   useEffect(() => {
-    void loadConfig()
-  }, [loadConfig])
+    if (!configQuery.data) return
+    if (draftRevisionRef.current !== committedRevisionRef.current) return
+    setConfig(cloneNotificationConfig(configQuery.data))
+  }, [configQuery.data])
+
+  const refetchConfig = configQuery.refetch
+  const loadConfig = useCallback(async (force = false) => {
+    if (force) setNotice(null)
+    await refetchConfig()
+  }, [refetchConfig])
 
   const updateConfig = (updater: (current: NotificationConfig) => NotificationConfig) => {
     draftRevisionRef.current += 1
@@ -157,39 +82,31 @@ export default function NotificationSettings() {
   }
 
   const saveConfig = async () => {
-    const controller = new AbortController()
-    const configSnapshot = cloneConfig(config)
+    const configSnapshot = cloneNotificationConfig(config)
     const revisionSnapshot = draftRevisionRef.current
-    saveAbortRef.current?.abort()
-    saveAbortRef.current = controller
+    const requestId = ++saveRequestIdRef.current
     setSaving(true)
     setNotice(null)
 
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/agent/notifications/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(configSnapshot),
-        signal: controller.signal,
-      })
-      const data = await parseJsonResponse<NotificationResponse>(response)
-      if (controller.signal.aborted || !mountedRef.current || saveAbortRef.current !== controller) return
+      // 不绑定 AbortSignal：页面隐藏或卸载不能取消保存，否则服务端可能已落盘
+      // 而本地缓存仍是旧值。用请求序号裁决迟到响应。
+      const data = await saveNotificationConfig(configSnapshot)
+      if (saveRequestIdRef.current !== requestId) return
 
       if (data.success) {
-        updateNotificationConfigCache(configSnapshot)
+        queryClient.setQueryData(notificationConfigQueryOptions().queryKey, configSnapshot)
         committedRevisionRef.current = revisionSnapshot
-        setNotice({ type: 'success', text: data.message || '通知配置已保存' })
-      } else {
+        if (mountedRef.current) setNotice({ type: 'success', text: data.message || '通知配置已保存' })
+      } else if (mountedRef.current) {
         setNotice({ type: 'error', text: getResponseMessage(data, '通知配置保存失败') })
       }
     } catch (error) {
-      if (controller.signal.aborted || !mountedRef.current || saveAbortRef.current !== controller) return
-      setNotice({ type: 'error', text: getErrorMessage(error, '通知配置保存失败') })
-    } finally {
-      if (saveAbortRef.current === controller) {
-        saveAbortRef.current = null
-        if (mountedRef.current) setSaving(false)
+      if (saveRequestIdRef.current === requestId && mountedRef.current) {
+        setNotice({ type: 'error', text: getErrorMessage(error, '通知配置保存失败') })
       }
+    } finally {
+      if (saveRequestIdRef.current === requestId && mountedRef.current) setSaving(false)
     }
   }
 
@@ -202,13 +119,7 @@ export default function NotificationSettings() {
     setNotice(null)
 
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/test-notification-channel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: 'telegram', config: telegramSnapshot }),
-        signal: controller.signal,
-      })
-      const data = await parseJsonResponse<NotificationResponse>(response)
+      const data = await testNotificationChannel('telegram', telegramSnapshot, controller.signal)
       if (controller.signal.aborted || !mountedRef.current || testAbortRef.current !== controller) return
 
       setNotice(data.success
@@ -247,7 +158,7 @@ export default function NotificationSettings() {
       {loadError && (
         <div className="automation-notification-notice is-error flex min-h-11 flex-wrap items-center justify-between gap-2" role="alert">
           <span>{loadError}</span>
-          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--app-accent)" onClick={() => void loadConfig(true)} disabled={loading}>
+          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--app-accent)" onClick={() => void loadConfig(true)} disabled={loading || configQuery.isFetching}>
             重新加载
           </button>
         </div>

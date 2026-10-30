@@ -24,9 +24,11 @@ vi.mock('framer-motion', async () => {
   return { motion: { div: MotionDiv }, useReducedMotion: () => true }
 })
 
-vi.mock('@/features/game-data', () => ({
+vi.mock('@/features/game-data/api', () => ({
+  getAllOperators: vi.fn(),
+  getDepotData: vi.fn(),
+  getOperBoxData: vi.fn(),
   getItemIconUrl: (iconId: string) => `/items/${iconId}.png`,
-  useItemIconCacheVersion: () => 0,
 }))
 
 vi.mock('../api', () => ({

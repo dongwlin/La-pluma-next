@@ -100,7 +100,10 @@ vi.mock('@/features/training', () => ({
 }))
 
 vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage, setActive: mocks.setActive }),
+  useStatusStore: (selector?: (state: { setMessage: typeof mocks.setMessage; setActive: typeof mocks.setActive }) => unknown) => {
+    if (!selector) throw new Error('useStatusStore must be called with a selector')
+    return selector({ setMessage: mocks.setMessage, setActive: mocks.setActive })
+  },
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
@@ -177,6 +180,8 @@ const taskFlowFixture = [
 const flush = async () => {
   await act(async () => {
     for (let index = 0; index < 8; index += 1) await Promise.resolve()
+    // 本地草稿写入按 250ms 去抖；等待最后一次编辑落盘后再断言 localStorage。
+    await new Promise(resolve => setTimeout(resolve, 260))
   })
 }
 

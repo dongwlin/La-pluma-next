@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { keepPreviousData } from '@tanstack/react-query'
 import { ApiRequestError } from '@/shared/api'
 import { createQueryClient } from '@/shared/query'
+import { gameDataKeys } from '@/features/game-data'
 import { trainingCandidatesQueryOptions, trainingQueueQueryOptions, trainingStatusCountsQueryOptions } from './queries'
 import { TRAINING_DOMAIN, trainingKeys } from './queryKeys'
 
@@ -19,9 +20,11 @@ vi.mock('../api', () => ({
   getTrainingQueue: apiMocks.getTrainingQueue,
 }))
 
-vi.mock('@/features/game-data', () => ({
+vi.mock('@/features/game-data/api', () => ({
   getAllOperators: apiMocks.getAllOperators,
+  getDepotData: vi.fn(),
   getOperBoxData: apiMocks.getOperBoxData,
+  getItemIconUrl: () => '',
 }))
 
 const operatorRow = (id: string, rarity = 6) => ({
@@ -130,6 +133,19 @@ describe('training candidate query options', () => {
     ])
   })
 
+  it('reuses the shared game-data snapshots for the all-status fallback', async () => {
+    apiMocks.getOperatorList.mockResolvedValue({ success: true, data: { operators: [] } })
+    apiMocks.getAllOperators.mockResolvedValue({ success: true, data: [] })
+    apiMocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: [] } })
+    const client = createQueryClient()
+
+    await client.fetchQuery(trainingCandidatesQueryOptions({ status: 'all' }))
+    await client.fetchQuery(trainingCandidatesQueryOptions({ status: 'all', rarity: 5 }))
+
+    expect(apiMocks.getAllOperators).toHaveBeenCalledOnce()
+    expect(apiMocks.getOperBoxData).toHaveBeenCalledOnce()
+  })
+
   it('surfaces a failed candidate envelope without falling back to the catalogue', async () => {
     apiMocks.getOperatorList.mockResolvedValue({ success: false, message: '干员列表服务不可用' })
 
@@ -154,6 +170,24 @@ describe('training status count query options', () => {
       .toEqual(trainingKeys.query('counts', 6, true))
     expect(trainingStatusCountsQueryOptions({}).queryKey).toEqual(['training', 'counts', null, false])
     expect(trainingStatusCountsQueryOptions({ rarity: 6 }).placeholderData).toBe(keepPreviousData)
+  })
+
+  it('reads catalogue and operbox from the existing game-data cache', async () => {
+    apiMocks.getOperatorList.mockResolvedValue({ success: true, data: { operators: [operatorRow('char_a')] } })
+    const client = createQueryClient()
+    client.setQueryData(gameDataKeys.resource('catalog'), [
+      { id: 'char_a', name: 'A', rarity: 6, profession: 'SNIPER', level: 0, elite: 0, potential: 0 },
+    ])
+    client.setQueryData(gameDataKeys.resource('operbox'), {
+      operCount: 1,
+      data: [{ id: 'char_a', name: 'A', rarity: 6, profession: 'SNIPER', level: 80, elite: 2, potential: 0 }],
+      timestamp: '2026-10-26T00:00:00.000Z',
+    })
+
+    await client.fetchQuery(trainingStatusCountsQueryOptions({}))
+
+    expect(apiMocks.getAllOperators).not.toHaveBeenCalled()
+    expect(apiMocks.getOperBoxData).not.toHaveBeenCalled()
   })
 
   it('builds all three counts from the endpoint and shared snapshots', async () => {

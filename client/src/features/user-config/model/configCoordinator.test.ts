@@ -411,6 +411,58 @@ describe('commit ordering', () => {
   })
 })
 
+describe('local draft writes', () => {
+  it('debounces local writes and flushes the last draft before the commit', async () => {
+    vi.useFakeTimers()
+    harness = createHarness({ commitDelayMs: 300, localWriteDelayMs: 250 })
+    harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    const channel = harness.coordinator.channel(harness.adapter)
+    await channel.hydrate()
+
+    channel.setDraft({ value: 'a', mode: 'normal' })
+    channel.setDraft({ value: 'b', mode: 'normal' })
+
+    expect(harness.local.read()).toEqual({ value: 'server', mode: 'normal' })
+    await vi.advanceTimersByTimeAsync(249)
+    expect(harness.local.read()).toEqual({ value: 'server', mode: 'normal' })
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(harness.local.read()).toEqual({ value: 'b', mode: 'normal' })
+
+    await vi.advanceTimersByTimeAsync(50)
+    expect(harness.commitMock).toHaveBeenCalledWith({ value: 'b', mode: 'normal' })
+  })
+
+  it('flushes a debounced local draft before an immediate commit', async () => {
+    vi.useFakeTimers()
+    harness = createHarness({ localWriteDelayMs: 250 })
+    harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    const channel = harness.coordinator.channel(harness.adapter)
+    await channel.hydrate()
+
+    channel.setDraft({ value: 'latest', mode: 'normal' })
+    expect(harness.local.read()).toEqual({ value: 'server', mode: 'normal' })
+
+    await channel.commitNow()
+
+    expect(harness.local.read()).toEqual({ value: 'latest', mode: 'normal' })
+    expect(harness.commitMock).toHaveBeenCalledWith({ value: 'latest', mode: 'normal' })
+  })
+
+  it('flushes a debounced local draft when the channel is disposed', async () => {
+    vi.useFakeTimers()
+    harness = createHarness({ localWriteDelayMs: 250 })
+    harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'server', mode: 'normal' } })
+    const channel = harness.coordinator.channel(harness.adapter)
+    await channel.hydrate()
+
+    channel.setDraft({ value: 'latest', mode: 'normal' })
+    channel.dispose()
+
+    expect(harness.local.read()).toEqual({ value: 'latest', mode: 'normal' })
+  })
+})
+
 describe('failure and retry', () => {
   it('keeps the draft pending with a retryable message when the full commit fails', async () => {
     harness.fetchMock.mockResolvedValue({ ok: true, payload: { value: 'server', mode: 'normal' } })

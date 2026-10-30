@@ -95,7 +95,10 @@ vi.mock('@/features/settings', () => ({ testConnection: mocks.testConnection }))
 vi.mock('@/features/training', () => ({ generateTrainingPlan: mocks.generateTrainingPlan }))
 
 vi.mock('@/features/runtime-status', () => ({
-  useStatusStore: () => ({ setMessage: mocks.setMessage, setActive: mocks.setActive }),
+  useStatusStore: (selector?: (state: { setMessage: typeof mocks.setMessage; setActive: typeof mocks.setActive }) => unknown) => {
+    if (!selector) throw new Error('useStatusStore must be called with a selector')
+    return selector({ setMessage: mocks.setMessage, setActive: mocks.setActive })
+  },
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
@@ -146,8 +149,19 @@ const settle = async () => {
   })
 }
 
+const settleDebouncedDraft = async () => {
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 300))
+  })
+  await settle()
+}
+
 const click = async (element: HTMLElement) => {
   await act(async () => element.click())
+  // 协调器对本地草稿（250ms）与完整提交（300ms）都做了去抖，等待最后一次编辑落盘。
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 350))
+  })
   await settle()
 }
 
@@ -379,7 +393,7 @@ describe('AutomationTasks config persistence', () => {
       inputValueSetter?.call(hourInput, '15')
       hourInput?.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    await settle()
+    await settleDebouncedDraft()
 
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('15')
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({

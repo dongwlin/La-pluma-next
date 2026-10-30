@@ -5,7 +5,15 @@
  * feature 的 api/ 目录持有。
  */
 
-export { API_BASE_URL, fetchWithAuth, getErrorMessage, parseJsonResponse } from './client'
+export {
+  API_BASE_URL,
+  AUTH_TOKEN_STORAGE_KEY,
+  clearAuthToken,
+  fetchWithAuth,
+  getErrorMessage,
+  parseJsonResponse,
+  setAuthToken,
+} from './client'
 export {
   ApiRequestError,
   apiFailureResponse,

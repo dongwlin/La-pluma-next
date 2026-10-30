@@ -101,6 +101,17 @@ describe('statusStore', () => {
     unsubscribe()
   })
 
+  it('ignores identical backend status writes', () => {
+    useStatusStore.getState().setBackendStatus('available')
+    const subscriber = vi.fn()
+    const unsubscribe = useStatusStore.subscribe(subscriber)
+
+    useStatusStore.getState().setBackendStatus('available')
+
+    expect(subscriber).not.toHaveBeenCalled()
+    unsubscribe()
+  })
+
   it('keeps backend availability separate from temporary messages', () => {
     useStatusStore.getState().setBackendStatus('unavailable', '无法连接后端服务')
     useStatusStore.getState().setMessage('正在刷新', 'info')

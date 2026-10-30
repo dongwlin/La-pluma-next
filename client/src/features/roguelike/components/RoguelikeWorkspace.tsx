@@ -36,7 +36,7 @@ const EMPTY_ADVANCED_PARAMS: RoguelikeAdvancedParams = {}
 const EMPTY_ADVANCED_VALUES: RoguelikeAdvancedValues = {}
 
 export default function RoguelikeWorkspace() {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
   const {
     isRunning,

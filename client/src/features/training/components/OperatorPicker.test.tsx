@@ -39,11 +39,11 @@ vi.mock('../api', () => ({
   getTrainingQueue: vi.fn(),
 }))
 
-vi.mock('@/features/game-data', () => ({
+vi.mock('@/features/game-data/api', () => ({
   getAllOperators: mocks.getAllOperators,
+  getDepotData: vi.fn(),
   getOperBoxData: mocks.getOperBoxData,
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
-  useItemIconCacheVersion: () => 0,
 }))
 
 const operator = (id: string, name: string): TrainingOperator => ({

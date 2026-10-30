@@ -73,7 +73,7 @@ import type {
 const DEFAULT_COMBAT_CONFIG = createDefaultCombatDraft()
 
 export default function CombatWorkspace() {
-  const { setMessage: setStatusMessage } = useStatusStore()
+  const setStatusMessage = useStatusStore(state => state.setMessage)
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
   const {
     draft: configDraft,

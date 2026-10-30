@@ -55,6 +55,12 @@ export interface ConfigPersistenceAdapter<TDraft, TWire = unknown> {
    * 无论哪种策略，提交都在同一队列中串行。
    */
   readonly commitDelayMs?: number
+  /**
+   * 编辑到本地草稿写入的延迟，默认 `0`（立即写入）。较大的草稿在连续输入时
+   * 反复序列化与 `localStorage.setItem` 会阻塞主线程；设置该值后只写最后一次
+   * 草稿，并在提交、`flush`、`dispose` 或页面卸载前强制落盘。
+   */
+  readonly localWriteDelayMs?: number
   /** 挂载时发现本设备未同步草稿的提示；默认「上次更改已保存在此设备，但尚未同步到服务器。」 */
   readonly restoredMessage?: string
   /** 提交失败文案；默认「配置已保存在此设备，但尚未同步到服务器：<原因>」。 */
@@ -138,7 +144,9 @@ export interface ConfigChannel<TDraft> {
   readonly commitNow: () => Promise<boolean>
   /** 立即触发待提交的草稿并等待队列空闲。 */
   readonly flush: () => Promise<void>
-  /** 停止定时器与在途加载，不清除草稿或 pending 标记。 */
+  /** 立即把待写入的本地草稿落盘；页面卸载或隐藏前调用。 */
+  readonly flushLocalDraft: () => void
+  /** 停止定时器与在途加载，不清除草稿或 pending 标记；待写入草稿先落盘。 */
   readonly dispose: () => void
 }
 
@@ -234,6 +242,8 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
   private token: string | null = null
   private fingerprint: string | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
+  private localWriteTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingLocalDraft: TDraft | null = null
   private queueTail: Promise<void> = Promise.resolve()
   private loadSequence = 0
   private loadAbort: AbortController | null = null
@@ -298,7 +308,7 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
     this.pending = true
     this.syncState = 'queued'
 
-    this.writeLocalDraft(draft)
+    this.scheduleLocalDraftWrite(draft)
     this.storage.setItem(this.adapter.pendingKey, this.token)
     this.publish()
     this.scheduleCommit()
@@ -308,6 +318,7 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
     if (this.draft === null) return false
     const revision = this.revision
     this.cancelScheduledCommit()
+    this.flushLocalDraftWrite()
     // 只等待本次尝试：同一 key 后续 revision 的提交由它们自己排，不能阻塞重试结果。
     if (this.pending && this.token !== null) {
       await this.enqueueCommit()
@@ -316,6 +327,7 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
   }
 
   readonly flush = async (): Promise<void> => {
+    this.flushLocalDraftWrite()
     if (this.timer !== null) {
       this.cancelScheduledCommit()
       void this.enqueueCommit()
@@ -323,7 +335,12 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
     await this.queueTail
   }
 
+  readonly flushLocalDraft = (): void => {
+    this.flushLocalDraftWrite()
+  }
+
   readonly dispose = (): void => {
+    this.flushLocalDraftWrite()
     this.cancelScheduledCommit()
     this.abortLoad()
   }
@@ -415,6 +432,7 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
     this.pending = false
     this.syncState = 'idle'
     this.error = null
+    this.cancelScheduledLocalWrite()
     this.writeLocalDraft(draft)
   }
 
@@ -427,6 +445,38 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
       && !controller.signal.aborted
       && this.revision === startingRevision
       && this.readPendingToken() === null
+  }
+
+  /**
+   * 本地草稿写入去抖：连续输入只保留最后一次草稿。`0` 保持原立即写入语义。
+   * 待写入草稿在提交、`flush`、`dispose` 或页面卸载时由 `flushLocalDraftWrite`
+   * 强制落盘，因此不会因为去抖丢掉最后一次编辑。
+   */
+  private scheduleLocalDraftWrite(draft: TDraft): void {
+    const delay = this.adapter.localWriteDelayMs ?? 0
+    if (delay <= 0) {
+      this.writeLocalDraft(draft)
+      return
+    }
+    this.cancelScheduledLocalWrite()
+    this.pendingLocalDraft = draft
+    this.localWriteTimer = setTimeout(() => {
+      this.localWriteTimer = null
+      this.flushLocalDraftWrite()
+    }, delay)
+  }
+
+  private flushLocalDraftWrite(): void {
+    this.cancelScheduledLocalWrite()
+    const draft = this.pendingLocalDraft
+    this.pendingLocalDraft = null
+    if (draft !== null) this.writeLocalDraft(draft)
+  }
+
+  private cancelScheduledLocalWrite(): void {
+    if (this.localWriteTimer === null) return
+    clearTimeout(this.localWriteTimer)
+    this.localWriteTimer = null
   }
 
   private scheduleCommit(): void {
@@ -469,6 +519,9 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
 
     this.syncState = 'saving'
     this.publish()
+
+    // 提交前必须先落盘最新草稿：pending 标记已同步写入，本地副本不能落后。
+    this.flushLocalDraftWrite()
 
     try {
       const wire = this.adapter.encodeDraft(snapshot.draft)

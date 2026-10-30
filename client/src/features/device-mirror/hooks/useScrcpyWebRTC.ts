@@ -43,6 +43,26 @@ interface VideoStats extends WebRTCStatsMetrics {
   inputReady: boolean
 }
 
+/** 统计面板只消费这些标量字段；值相等时无需替换状态对象。 */
+function isSameVideoStats(previous: VideoStats | null, next: VideoStats): boolean {
+  if (!previous) return false
+  return previous.fps === next.fps
+    && previous.bitrate === next.bitrate
+    && previous.rtt === next.rtt
+    && previous.connectionType === next.connectionType
+    && previous.lostCount === next.lostCount
+    && previous.jitterBufferMs === next.jitterBufferMs
+    && previous.decodeMs === next.decodeMs
+    && previous.width === next.width
+    && previous.height === next.height
+    && previous.videoReadyState === next.videoReadyState
+    && previous.videoLive === next.videoLive
+    && previous.iceState === next.iceState
+    && previous.peerState === next.peerState
+    && previous.signalingState === next.signalingState
+    && previous.inputReady === next.inputReady
+}
+
 const SIGNALING_TOKEN_KEY = 'scrcpy_webrtc_auth_token'
 const DEFAULT_SIGNALING_PATH = '/webrtc-signaling'
 const SIGNALING_RETRY_DELAYS_MS = [300, 800]
@@ -683,6 +703,8 @@ export function useScrcpyWebRTC({
   }, [deviceId])
 
   useEffect(() => {
+    // 媒体流只在 PeerConnection 创建后存在；预览关闭或连接清理后不再保留空转计时器。
+    if (!mediaStream) return
     let cancelled = false
     let sampling = false
     const timer = window.setInterval(async () => {
@@ -696,7 +718,7 @@ export function useScrcpyWebRTC({
       const track = streamRef.current?.getVideoTracks()[0]
       const sample = sampleWebRTCStats(reports, prevStatsRef.current, track?.id)
       prevStatsRef.current = sample.counters
-      setStats({
+      const nextStats: VideoStats = {
         ...sample.metrics,
         width: video?.videoWidth || 0,
         height: video?.videoHeight || 0,
@@ -706,13 +728,16 @@ export function useScrcpyWebRTC({
         peerState: pc.connectionState || 'unknown',
         signalingState: pc.signalingState || 'unknown',
         inputReady
-      })
+      }
+      // 每秒采样通常只有计数器变化而展示值不变：值相等时保留旧对象，
+      // 避免宿主组件与面板按固定频率重渲染。
+      setStats(previous => isSameVideoStats(previous, nextStats) ? previous : nextStats)
     }, 1000)
     return () => {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [inputReady, videoRef])
+  }, [inputReady, mediaStream, videoRef])
 
   useEffect(() => disconnect, [disconnect])
 
