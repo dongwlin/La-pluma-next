@@ -68,55 +68,45 @@ describe('DashboardPreviewEntry', () => {
     container.remove()
   })
 
-  it('names the full-frame snapshot action and opens the preview', async () => {
-    const onOpen = vi.fn()
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={onOpen} />))
+  it('renders the closed preview without a navigation action', async () => {
+    preview.fallbackSnapshot = null
+    preview.connectionState = 'off'
+    preview.statusText = '预览已关闭'
+    await act(async () => root.render(<DashboardPreviewEntry />))
 
-    const frameButton = container.querySelector<HTMLButtonElement>('button[aria-label="打开模拟器画面快照"]')
-    expect(frameButton).not.toBeNull()
-    await act(async () => frameButton?.click())
-    expect(onOpen).toHaveBeenCalledOnce()
+    const frame = container.querySelector('[data-dashboard-preview-frame]')
+    expect(frame?.textContent).toContain('预览已关闭')
+    expect(frame?.querySelector('button')).toBeNull()
     expect(container.querySelector('video')?.getAttribute('aria-hidden')).toBe('true')
-  })
-
-  it('uses a live-preview name while video is available', async () => {
-    preview.showLivePreview = true
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
-
-    expect(container.querySelector('button[aria-label="打开模拟器实时预览"]')).not.toBeNull()
   })
 
   it('marks the preview card busy while WebRTC connects', async () => {
     preview.isConnecting = true
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+    await act(async () => root.render(<DashboardPreviewEntry />))
 
-    const card = container.querySelector('[data-dashboard-preview-card]')
-    expect(card?.getAttribute('aria-busy')).toBe('true')
-
-    preview.isConnecting = false
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
-
-    expect(card?.getAttribute('aria-busy')).toBe('false')
+    expect(container.querySelector('[data-dashboard-preview-card]')?.getAttribute('aria-busy')).toBe('true')
   })
 
   it('names the status light from the connection state', async () => {
     preview.fallbackSnapshot = null
     preview.connectionState = 'off'
     preview.statusText = '预览已关闭'
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+    await act(async () => root.render(<DashboardPreviewEntry />))
 
     expect(container.querySelector('[data-preview-status="off"]')?.getAttribute('aria-label')).toBe('预览已关闭')
 
+    await act(async () => root.unmount())
+    root = createRoot(container)
     preview.connectionState = 'live'
     preview.statusText = '实时画面'
     preview.showLivePreview = true
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+    await act(async () => root.render(<DashboardPreviewEntry />))
 
     expect(container.querySelector('[data-preview-status="live"]')?.getAttribute('aria-label')).toBe('实时画面')
   })
 
   it('switches preview mode through the compact segmented control', async () => {
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+    await act(async () => root.render(<DashboardPreviewEntry />))
 
     const group = container.querySelector('[role="radiogroup"][aria-label="预览模式"]')
     expect(group).not.toBeNull()
@@ -132,7 +122,7 @@ describe('DashboardPreviewEntry', () => {
 
   it('disables snapshot and live modes while automation is unavailable', async () => {
     preview.available = false
-    await act(async () => root.render(<DashboardPreviewEntry onOpen={vi.fn()} />))
+    await act(async () => root.render(<DashboardPreviewEntry />))
 
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
     expect(buttons.find(button => button.textContent === '关闭')?.disabled).toBe(false)

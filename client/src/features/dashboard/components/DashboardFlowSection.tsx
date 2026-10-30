@@ -25,7 +25,7 @@ export default function DashboardFlowSection({ refreshDashboard, onOpenAutomatio
       </div>
 
       <div ref={flowPreviewRef} className="min-w-0">
-        <DashboardPreviewEntry onOpen={onOpenAutomation} />
+        <DashboardPreviewEntry />
       </div>
     </div>
   )

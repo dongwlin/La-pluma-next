@@ -4,11 +4,7 @@ import { Button, SmoothPanel } from '@/shared/ui'
 import { useDashboardPreview } from '../hooks/useDashboardPreview'
 import { PreviewModeSegmented } from '@/features/device-mirror'
 
-interface DashboardPreviewEntryProps {
-  onOpen: () => void
-}
-
-const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: DashboardPreviewEntryProps) {
+const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
   const { videoRef, fallbackSnapshot, showLivePreview, isConnecting, connectionState, statusText, error, retry, available = true } = useDashboardPreview()
 
   return (
@@ -50,22 +46,20 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry({ onOpen }: Da
             className="absolute inset-0 h-full w-full select-none object-contain pointer-events-none"
           />
         )}
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={showLivePreview ? '打开模拟器实时预览' : fallbackSnapshot ? '打开模拟器画面快照' : '打开完整模拟器控制台'}
-          className={`absolute inset-0 flex items-center justify-center text-left ${showLivePreview || fallbackSnapshot ? 'bg-transparent' : 'dashboard-preview-empty'}`}
-        >
-          {!showLivePreview && !fallbackSnapshot && (
-            <div className="relative text-center">
+        {!showLivePreview && !fallbackSnapshot && (
+          <div
+            className="dashboard-preview-empty absolute inset-0 flex items-center justify-center px-4 text-center"
+            role="status"
+            aria-live="polite"
+          >
+            <div>
               <div className="device-preview-empty-icon mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg">
                 <Monitor size={17} strokeWidth={2} />
               </div>
               <div className="text-sm font-semibold text-primary">{statusText}</div>
-              <div className="mt-1 text-xs text-secondary">点击进入完整控制台</div>
             </div>
-          )}
-        </button>
+          </div>
+        )}
         {error && (
           <Button onClick={retry} variant="secondary" size="sm" className="absolute bottom-2 right-2">
             重试实时预览

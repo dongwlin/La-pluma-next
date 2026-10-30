@@ -88,12 +88,19 @@ describe('DashboardFlowSection preview lifecycle', () => {
     expect(container.querySelector('[data-dashboard-preview-card]')).not.toBeNull()
   })
 
-  it('opens automation from the preview frame', async () => {
+  it('keeps the preview frame non-navigating while header modes stay interactive', async () => {
     const onOpenAutomation = await renderSection('visible')
-    const frame = container.querySelector<HTMLButtonElement>('button[aria-label="打开完整模拟器控制台"]')
+    const frame = container.querySelector<HTMLElement>('[data-dashboard-preview-frame]')
     expect(frame).not.toBeNull()
 
     await act(async () => frame?.click())
-    expect(onOpenAutomation).toHaveBeenCalledOnce()
+    expect(onOpenAutomation).not.toHaveBeenCalled()
+
+    const live = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
+      .find(button => button.textContent === '实时')
+    await act(async () => live?.click())
+
+    expect(usePreviewStore.getState().mode).toBe('live')
+    expect(onOpenAutomation).not.toHaveBeenCalled()
   })
 })

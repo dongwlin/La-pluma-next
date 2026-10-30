@@ -121,11 +121,7 @@ vi.mock('@/features/dashboard/hooks/useDashboardFlowLayout', () => ({
 }))
 
 vi.mock('@/features/dashboard/components/DashboardPreviewEntry', () => ({
-  default: ({ onOpen }: { onOpen: () => void }) => (
-    <div data-dashboard-preview-card>
-      <button type="button" onClick={onOpen}>preview</button>
-    </div>
-  ),
+  default: () => <div data-dashboard-preview-card />,
 }))
 vi.mock('@/features/runtime-status', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/runtime-status')>()
@@ -584,9 +580,6 @@ describe('Dashboard connectivity state', () => {
 
     await act(async () => findButton('查看掉落数据')?.click())
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/statistics')
-
-    await act(async () => findButton('preview')?.click())
-    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/automation')
   })
 
   it('keeps the preview entry mounted across Activity hide and show', async () => {
