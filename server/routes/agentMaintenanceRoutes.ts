@@ -24,7 +24,11 @@ import {
   sendDryRun,
   sendError
 } from '../utils/apiHelper.ts';
-import type { ApiResponseWriter } from '../utils/apiHelper.ts';
+import type {
+  ApiErrorResponse,
+  ApiResponseWriter,
+  ApiSuccessResponse
+} from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts'
 import {
@@ -91,6 +95,30 @@ import type {
 const router = Router();
 const execFileAsync = promisify(execFile);
 const logger = createLogger('AgentRoutes');
+
+/** 识别解析服务已返回统一 envelope；HTTP 适配只保留一层信封并还原载荷。 */
+type RecognitionParseResult<T> = ApiSuccessResponse<T> | ApiErrorResponse | null;
+
+function sendRecognitionResult<T>(
+  res: ApiResponseWriter,
+  req: MaintenanceRequest,
+  result: RecognitionParseResult<T>,
+  message: string
+): void {
+  if (!result) {
+    sendSuccess(res, req, null, message);
+    return;
+  }
+  if (!result.success) {
+    sendError(res, req, agentError(result.error.code, result.message, {
+      statusCode: 500,
+      details: result.error.details,
+      retryable: result.error.retryable
+    }), result.message);
+    return;
+  }
+  sendSuccess(res, req, result.data, message);
+}
 
 // 出站读取入口（changelog/copilot/paradox 查询）统一经出站端口：
 // 显式时限、取消与受限重试由端口承担，错误经 asyncHandler 进入统一错误出口。
@@ -167,7 +195,7 @@ router.post('/actions/depot-recognition', asyncHandler<MaintenanceRequest, ApiRe
   if (parseDryRunBody(req.body).dryRun) {
     return sendDryRun(res, req, plan);
   }
-  return sendSuccess(res, req, await parseDepotData(), '仓库识别完成');
+  return sendRecognitionResult(res, req, await parseDepotData(), '仓库识别完成');
 }));
 
 router.post('/actions/operbox-recognition', asyncHandler<MaintenanceRequest, ApiResponseWriter>(async (req, res) => {
@@ -178,7 +206,7 @@ router.post('/actions/operbox-recognition', asyncHandler<MaintenanceRequest, Api
   if (parseDryRunBody(req.body).dryRun) {
     return sendDryRun(res, req, plan);
   }
-  return sendSuccess(res, req, await parseOperBoxData(), '干员识别完成');
+  return sendRecognitionResult(res, req, await parseOperBoxData(), '干员识别完成');
 }));
 
 // 更新日志与作业查询：只读上游，不写本地状态。

@@ -1,6 +1,5 @@
 import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.ts';
 import { successResponse, errorResponse, safeJsonParse } from '../utils/apiHelper.ts';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
@@ -11,19 +10,15 @@ import {
   getItemTablePath,
   getBattleDataPath
 } from '../config/paths.ts';
+import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const logger = createLogger('DataParser');
 
 // 物品表网络回源（GitHub raw JSON）统一经出站端口：显式时限与受限读取重试由端口承担。
 const outboundHttp = createOutboundHttpClient();
 
 const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/gamedata/excel/item_table.json';
-
-// 项目数据目录（仓库缓存 depot.json / operbox.json）
-const DATA_DIR = join(__dirname, '..', 'data');
 
 /** 物品索引中的单个物品；字段不符的条目按缺失处理。 */
 export interface ItemIndexEntry {
@@ -145,7 +140,9 @@ function createContext(ports: DataParserPorts): DataParserContext {
     itemTablePath: ports.itemTablePath || getItemTablePath(),
     battleDataPath: ports.battleDataPath || getBattleDataPath(),
     maaLogPath: ports.maaLogPath || getMaaLogPath(),
-    dataDir: ports.dataDir || DATA_DIR,
+    // 仓库/干员识别缓存与养成数据共用 LA_PLUMA_TRAINING_DATA_DIR；
+    // 未显式注入时每次按当前配置解析，测试与重定向部署不会写回源码目录。
+    dataDir: ports.dataDir || resolveAppPaths().trainingDataDir,
     fetchItemTable: ports.fetchItemTable || fetchItemTableFromNetwork
   };
 }
