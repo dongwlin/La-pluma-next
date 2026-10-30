@@ -54,6 +54,7 @@ function HookHarness() {
 }
 
 let online = true
+let visibility: DocumentVisibilityState = 'visible'
 let container: HTMLDivElement
 let root: Root
 
@@ -64,12 +65,22 @@ async function flushEffects() {
   })
 }
 
+function setDocumentVisibility(next: DocumentVisibilityState) {
+  visibility = next
+  document.dispatchEvent(new Event('visibilitychange'))
+}
+
 describe('useBackendStatusMonitor', () => {
   beforeEach(() => {
     online = true
+    visibility = 'visible'
     Object.defineProperty(window.navigator, 'onLine', {
       configurable: true,
       get: () => online,
+    })
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
     })
     apiMocks.getTaskStatus.mockReset()
     useStatusStore.getState().setBackendStatus('unknown')
@@ -83,6 +94,7 @@ describe('useBackendStatusMonitor', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    delete (document as unknown as Record<string, unknown>).visibilityState
     vi.useRealTimers()
     useStatusStore.getState().setBackendStatus('unknown')
     useStatusStore.getState().applyRunStatus(IDLE)
@@ -178,5 +190,42 @@ describe('useBackendStatusMonitor', () => {
       await vi.advanceTimersByTimeAsync(2_000)
     })
     expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(3)
+  })
+
+  it('pauses probing while the document is hidden and refreshes when it becomes visible', async () => {
+    vi.useFakeTimers()
+    apiMocks.getTaskStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
+    visibility = 'hidden'
+
+    act(() => root.render(<HookHarness />))
+    await flushEffects()
+    expect(apiMocks.getTaskStatus).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(apiMocks.getTaskStatus).not.toHaveBeenCalled()
+
+    await act(async () => setDocumentVisibility('visible'))
+    await flushEffects()
+    expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(apiMocks.getTaskStatus).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not notify store subscribers when a repeated probe keeps the same availability', async () => {
+    apiMocks.getTaskStatus.mockResolvedValue({ success: true, data: { isRunning: false } })
+    await expect(probeBackendAvailability({ showChecking: false })).resolves.toBe(true)
+    expect(useStatusStore.getState().backendStatus).toBe('available')
+
+    const subscriber = vi.fn()
+    const unsubscribe = useStatusStore.subscribe(subscriber)
+    await expect(probeBackendAvailability({ showChecking: false })).resolves.toBe(true)
+
+    expect(subscriber).not.toHaveBeenCalled()
+    unsubscribe()
   })
 })

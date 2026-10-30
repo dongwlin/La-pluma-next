@@ -108,6 +108,9 @@ export const useStatusStore = create<StatusState>((set, get) => {
       if (message && messageType) scheduleDismiss(messageType, messageRevision)
     },
     setBackendStatus: (backendStatus, backendMessage = '') => {
+      const current = get()
+      // 轮询每秒都会返回相同连接健康：值未变时不写 store，避免无意义的订阅通知。
+      if (current.backendStatus === backendStatus && current.backendMessage === backendMessage) return
       set({ backendStatus, backendMessage })
     },
   }

@@ -65,8 +65,10 @@ export function useBackendStatusMonitor() {
       window.clearTimeout(timer)
       timer = null
     }
+    const documentHidden = () => document.visibilityState === 'hidden'
     const scheduleNextProbe = () => {
-      if (disposed || !navigator.onLine) return
+      // 文档隐藏时暂停轮询：后台标签页不重复探测，恢复可见时再立即刷新。
+      if (disposed || !navigator.onLine || documentHidden()) return
       clearTimer()
       const delay = isDeviceBusy()
         ? ACTIVE_TASK_PROBE_INTERVAL_MS
@@ -74,6 +76,7 @@ export function useBackendStatusMonitor() {
       timer = window.setTimeout(() => void runProbe(false), delay)
     }
     const runProbe = async (showChecking: boolean) => {
+      if (documentHidden()) return
       clearTimer()
       controller?.abort()
       const requestController = new AbortController()
@@ -84,7 +87,9 @@ export function useBackendStatusMonitor() {
       scheduleNextProbe()
     }
 
-    const handleOnline = () => void runProbe(true)
+    const handleOnline = () => {
+      if (!documentHidden()) void runProbe(true)
+    }
     const handleOffline = () => {
       clearTimer()
       controller?.abort()
@@ -92,6 +97,16 @@ export function useBackendStatusMonitor() {
       invalidateBackendStatusProbe()
     }
     const handleFocus = () => {
+      if (navigator.onLine && !documentHidden()) void runProbe(false)
+    }
+    const handleVisibilityChange = () => {
+      if (documentHidden()) {
+        clearTimer()
+        controller?.abort()
+        controller = null
+        invalidateBackendStatusProbe()
+        return
+      }
       if (navigator.onLine) void runProbe(false)
     }
     const unsubscribeStatus = useStatusStore.subscribe((state, previousState) => {
@@ -99,10 +114,11 @@ export function useBackendStatusMonitor() {
       if (busy !== isRunStatusBusy(previousState.runStatus)) scheduleNextProbe()
     })
 
-    if (navigator.onLine) void runProbe(true)
+    if (navigator.onLine && !documentHidden()) void runProbe(true)
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
     window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       disposed = true
@@ -111,6 +127,7 @@ export function useBackendStatusMonitor() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
       window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       controller?.abort()
       invalidateBackendStatusProbe()
     }
