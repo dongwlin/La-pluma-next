@@ -571,15 +571,18 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 
   /**
    * 会话级定时器：停止时自动清理；回调异常不会变成未处理的 Promise 拒绝。
+   * 上一次回调尚未完成时跳过当前 tick，慢请求不会叠加成并发调用；
    * 返回的 stop 可提前结束定时器，重复调用幂等。
    */
   function startSessionInterval(target: TelegramBotSession, callback: () => unknown, ms: number): () => void {
     let timer: ReturnType<typeof setInterval> | null = null;
+    let running = false;
     const stopInterval = (): void => {
       if (timer !== null) {
         clearInterval(timer);
         timer = null;
       }
+      running = false;
       target.cleanups.delete(stopInterval);
     };
     timer = setInterval(() => {
@@ -587,12 +590,17 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
         stopInterval();
         return;
       }
+      if (running) return;
+      running = true;
       Promise.resolve()
         .then(callback)
         .catch(error => {
           if (isActive(target)) {
             dependencies.logger.error('Telegram 后台任务失败', { error: errorMessageOf(error) });
           }
+        })
+        .finally(() => {
+          running = false;
         });
     }, ms);
     target.cleanups.add(stopInterval);
