@@ -30,11 +30,16 @@ export default function StatisticsWorkspace() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('operbox')
   const command = useStatisticsCommands()
 
-  useResourceInvalidation(STATISTICS_RESOURCE_SCOPES, ({ resources }) => {
-    if (resources.includes('depot')) {
+  useResourceInvalidation(STATISTICS_RESOURCE_SCOPES, ({ resources, cause, detail }) => {
+    // 本页识别命令在发布前已写入权威快照；只有携带该标记的发布才跳过自身重取。
+    const recognizedSnapshotWritten = cause === 'recognition'
+      && typeof detail === 'object'
+      && detail !== null
+      && (detail as { authoritativeSnapshot?: unknown }).authoritativeSnapshot === true
+    if (resources.includes('depot') && !recognizedSnapshotWritten) {
       void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('depot') })
     }
-    if (resources.includes('operbox')) {
+    if (resources.includes('operbox') && !recognizedSnapshotWritten) {
       void queryClient.invalidateQueries({ queryKey: gameDataKeys.resource('operbox') })
     }
     if (resources.includes('catalog')) {

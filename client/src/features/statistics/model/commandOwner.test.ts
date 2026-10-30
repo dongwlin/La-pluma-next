@@ -169,6 +169,33 @@ describe('statistics command owner', () => {
     })
   })
 
+  it('applies the authoritative snapshot before publishing recognition invalidation', async () => {
+    const harness = createOwner()
+    harness.runCommand.mockResolvedValue({ success: true, data: {} })
+    harness.parseDepot.mockResolvedValue(depotPayload)
+    const order: string[] = []
+    const snapshotApplied = deferred<void>()
+    harness.publish.mockImplementation(() => {
+      order.push('publish')
+    })
+
+    const run = harness.owner.run('depot', {
+      applyRecognitionSnapshot: async snapshot => {
+        order.push(`apply:${snapshot.kind}`)
+        await snapshotApplied.promise
+        order.push('applied')
+      },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    // 快照写入尚未完成时不能发布失效，否则监听器会先发起旧 GET。
+    expect(order).toEqual(['apply:depot'])
+
+    snapshotApplied.resolve()
+    await expect(run).resolves.toMatchObject({ status: 'succeeded', kind: 'depot' })
+    expect(order).toEqual(['apply:depot', 'applied', 'publish'])
+  })
+
   it('publishes owned operator and shared training resources after operbox recognition', async () => {
     const harness = createOwner()
     harness.runCommand.mockResolvedValue({ success: true, data: {} })

@@ -93,9 +93,19 @@ export type StatisticsCommandResult =
   | { status: 'busy'; kind: StatisticsCommandKind; message: string }
   | { status: 'idle'; message: string }
 
+/** 识别成功后的权威快照；调用方必须在失效发布前写入唯一 Query 缓存。 */
+export type StatisticsRecognitionSnapshot =
+  | { kind: 'depot'; depot: DepotDataDetailed }
+  | { kind: 'operbox'; operBox: OperBoxData }
+
 export interface StatisticsCommandProgressOptions {
   /** 命令阶段变化时同步提示；即使 Activity 隐藏也会继续收到。 */
   onProgress?: (message: string) => void
+  /**
+   * 在发布识别资源失效前应用权威快照。实现方应先取消在途读取再写缓存，
+   * 避免监听器触发的旧 GET 覆盖刚解析出的结果。
+   */
+  applyRecognitionSnapshot?: (snapshot: StatisticsRecognitionSnapshot) => void | Promise<void>
 }
 
 export interface StatisticsCommandExecutionPort {
@@ -575,7 +585,9 @@ export class StatisticsCommandOwner {
         path: payload.path,
         timestamp: new Date().toISOString(),
       }
-      this.publishScopes(DEPOT_RECOGNITION_SCOPES)
+      // 先写权威快照再发布失效：监听器读取到的是同一份新数据，不会被旧 GET 覆盖。
+      const snapshotApplied = await this.applyRecognitionSnapshot(options, { kind: 'depot', depot })
+      this.publishScopes(DEPOT_RECOGNITION_SCOPES, snapshotApplied)
       const message = `识别完成！共识别 ${depot.itemCount} ${label.unit}`
       this.finishSuccess(kind, message, options)
       return { status: 'succeeded', kind: 'depot', message, depot }
@@ -587,7 +599,8 @@ export class StatisticsCommandOwner {
       path: payload.path,
       timestamp: new Date().toISOString(),
     }
-    this.publishScopes(OPERBOX_RECOGNITION_SCOPES)
+    const snapshotApplied = await this.applyRecognitionSnapshot(options, { kind: 'operbox', operBox })
+    this.publishScopes(OPERBOX_RECOGNITION_SCOPES, snapshotApplied)
     const message = `识别完成！共识别 ${operBox.operCount} ${label.unit}`
     this.finishSuccess(kind, message, options)
     return { status: 'succeeded', kind: 'operbox', message, operBox }
@@ -771,9 +784,34 @@ export class StatisticsCommandOwner {
     this.emit(options, message)
   }
 
-  private publishScopes(resources: readonly ResourceScope[]): void {
+  /**
+   * 快照写入失败不能把已成功的设备命令误报为失败：记录后继续发布失效，
+   * 读取方仍可通过普通 GET 恢复。实现方负责先取消在途读取。
+   */
+  private async applyRecognitionSnapshot(
+    options: StatisticsCommandProgressOptions,
+    snapshot: StatisticsRecognitionSnapshot,
+  ): Promise<boolean> {
+    if (!options.applyRecognitionSnapshot) return false
     try {
-      this.publish({ resources, cause: 'recognition' })
+      await options.applyRecognitionSnapshot(snapshot)
+      return true
+    } catch (error) {
+      console.error('应用识别快照失败', error)
+      return false
+    }
+  }
+
+  private publishScopes(
+    resources: readonly ResourceScope[],
+    authoritativeSnapshot = false,
+  ): void {
+    try {
+      this.publish({
+        resources,
+        cause: 'recognition',
+        ...(authoritativeSnapshot ? { detail: { authoritativeSnapshot: true } } : {}),
+      })
     } catch (error) {
       // 写入目标已经成功；失效发布失败不能让命令被误报为失败。
       console.error('发布识别资源失效失败', error)
