@@ -120,6 +120,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../app.ts');
+const { resetAgentStatusProbeCacheForTests } = await import('../routes/agentStatusRoutes.ts');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { getGameDay } = await import('../services/gameCalendar.ts');
 const { DEFAULT_CLIENT_TYPE } = await import('../config/connectionDefaults.ts');
@@ -269,6 +270,39 @@ describe('moved agent read routes keep authentication and response contracts', (
     // 不能把状态路由当成纯读取或设备空闲的证据。
     const adbCalls = await readFile(adbCallLog, 'utf-8');
     assert.match(adbCalls, /^connect 127\.0\.0\.1:5555$/m);
+  });
+
+  it('caches and coalesces status probes for the same device', async () => {
+    resetAgentStatusProbeCacheForTests();
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const query = new URLSearchParams({
+      adbPath: fakeAdbPath,
+      address: '127.0.0.1:5555'
+    });
+    const url = `http://127.0.0.1:${port}/api/agent/status?${query}`;
+    const adbCalls = async (): Promise<string[]> => (
+      (await readFile(adbCallLog, 'utf-8')).trim().split('\n').filter(Boolean)
+    );
+
+    await writeFile(adbCallLog, '');
+    const first = await readBody<ApiSuccessResponse<AgentStatusPayload>>(await fetch(url));
+    const afterFirst = await adbCalls();
+    assert.equal(afterFirst.filter(line => line === 'version').length, 1);
+
+    // TTL 内的第二个请求复用四项外部探测，不再启动 ADB。
+    const second = await readBody<ApiSuccessResponse<AgentStatusPayload>>(await fetch(url));
+    assert.deepEqual(await adbCalls(), afterFirst);
+    assert.deepEqual(second.data.device, first.data.device);
+    assert.deepEqual(second.data.screen, first.data.screen);
+
+    // 并发突发共享同一次在途探测，而不是每个请求各跑一遍 ADB。
+    resetAgentStatusProbeCacheForTests();
+    await writeFile(adbCallLog, '');
+    await Promise.all([fetch(url), fetch(url), fetch(url)]);
+    const concurrentCalls = await adbCalls();
+    assert.equal(concurrentCalls.filter(line => line === 'version').length, 1);
+
+    resetAgentStatusProbeCacheForTests();
   });
 
   it('keeps Run query composition and the unknown-run error mapping', async () => {
