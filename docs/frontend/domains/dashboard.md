@@ -111,7 +111,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 - `DashboardPreviewEntry` 始终渲染在流程网格的预览壳内，不按流程 loading、执行阶段、连接健康或设备样本条件卸载；网格测量依赖它提供的 `[data-dashboard-preview-card]` 与 `[data-dashboard-preview-frame]`。
 - 预览会话仍由 device-mirror 的 `usePreviewSession`/`usePreviewSnapshot` 持有：Activity 隐藏会清理连接与截图 Effects，保留所选模式；恢复时按所选模式重建。文档隐藏暂停不影响业务快照。
-- 点击预览画面仍导航到自动化页的完整控制台；该回调与“未保存流程”共用工作区提供的导航函数。
+- 点击预览画面不再导航，概览保持当前页；预览模式仍只由卡片头部的“关闭 / 快照 / 实时”控制切换，完整模拟器控制台从日常页进入。
 - 区域测试只验证流程区域不条件卸载预览入口；真正的连接/截图生命周期仍由 device-mirror 的预览测试覆盖。
 
 ### 6. 局部展示计算
@@ -289,8 +289,8 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | `client/src/features/dashboard/model/deviceView.test.ts` | 使用率阈值、空历史、单点水平线、稳定区间、曲线几何与时长文案 |
 | `client/src/features/dashboard/model/activityView.test.ts` | loading/active/none/unavailable/stale 矩阵、首轮失败、v1 缺 status、刷新失败降级、地区/来源标签与重试/执行能力 |
 | `client/src/features/dashboard/hooks/useDashboardDeviceStats.test.tsx` | 首次样本投影到 store 与温度历史、Activity 恢复不重复追加、新时间戳追加、null 载荷保旧 |
-| `client/src/features/dashboard/components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留、效果重建与预览点击导航 |
-| `client/src/pages/dashboard/Dashboard.test.tsx` | 首屏/缓存/后台刷新与完整快照原子提交；四类失效（计划应用、识别、资源更新等）、Activity 隐藏期间失效恢复；单路失败/形状错误保旧、预检不写快照、启动后经协调器刷新；空流程导航、执行投影与控制器身份、设备样本投影、预览挂载与导航 |
+| `client/src/features/dashboard/components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留、效果重建、预览画面不导航且头部模式可切换 |
+| `client/src/pages/dashboard/Dashboard.test.tsx` | 首屏/缓存/后台刷新与完整快照原子提交；四类失效（计划应用、识别、资源更新等）、Activity 隐藏期间失效恢复；单路失败/形状错误保旧、预检不写快照、启动后经协调器刷新；空流程导航、执行投影与控制器身份、设备样本投影、预览挂载 |
 | `client/src/features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/语义边界/时钟偏差、设备样本合并与温度点去重、采样时间戳不持久化、失败刷新不覆盖成功缓存 |
 | `client/src/features/dashboard/model/queries.test.ts` | 五个领域 key 与 signal、协调快照 key/缓存参数、每次重读、单路失败与坏载荷整体失败、不继承自动重试 |
 | `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、真实活动 DTO 投影、none/unavailable/stale、字段回退、单路缺失/形状错误/越界返回 null |
