@@ -86,8 +86,9 @@ La-pluma-next/
 ├── server/                    # 后端 (Node.js + Express)
 │   ├── routes/                # API 路由（路径映射与 router 装配）
 │   │   ├── agent.ts           # 主 Agent API（聚合领域 router）
+│   │   ├── agentContract.ts   # Agent API 公开契约：能力清单与 manifest/OpenAPI 生成
 │   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止（端点映射）
-│   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（端点映射与 envelope 装配）
+│   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（端点映射）
 │   │   ├── agentLogRoutes.ts  # 实时/历史日志读取、清空与清理（端点映射）
 │   │   ├── agentDataRoutes.ts # 今日关卡、掉落与本地游戏数据读取（端点映射）
 │   │   ├── agentTrainingRoutes.ts # 养成队列、设置、候选与计划生成/应用（端点映射）
@@ -108,7 +109,9 @@ La-pluma-next/
 │   │   ├── operatorQuotesController.ts # 台词请求校验与 400/404 判定
 │   │   ├── userConfigController.ts # 用户配置读写信封与存储错误适配
 │   │   ├── executionDto.ts    # 执行请求按端点收窄与 Run 响应载荷
-│   │   ├── readDto.ts         # 读取请求收窄与状态/掉落/游戏数据响应载荷
+│   │   ├── readDto.ts         # 读取域共享助手与掉落/游戏数据响应载荷
+│   │   ├── statusDto.ts       # /status 响应载荷、探测失败投影与 Run 查询请求
+│   │   ├── logDto.ts          # 日志请求收窄与清理输入解析
 │   │   ├── trainingDto.ts     # 养成请求按端点收窄与候选/计数响应载荷
 │   │   ├── previewDto.ts      # 预览设备/方向/dryRun 请求收窄与截图/状态载荷
 │   │   ├── notificationDto.ts # 通知请求收窄、保存/应用结果与响应载荷
