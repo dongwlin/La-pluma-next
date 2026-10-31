@@ -3,8 +3,9 @@
  *
  * 把 Express 的未知输入收窄成读取适配需要的类型：数值 query（`lines`/
  * `days`）按单值读取，原样交给 `resolveBoundedInteger` 统一回落/截断/
- * 夹取。掉落读取的载荷显式建模，掉落服务返回统一 envelope，读取路由
- * 沿用旧实现的 `result.data || result` 真值选择，不重建成功/失败结构。
+ * 夹取。掉落读取的载荷显式建模，掉落服务返回统一 envelope，读取控制器
+ * 经 `unwrapReadPayload` 沿用旧实现的 `result.data || result` 真值选择，
+ * 不重建成功/失败结构。
  * 状态与日志专属的请求收窄与响应载荷分别建模在 statusDto 与 logDto。
  */
 

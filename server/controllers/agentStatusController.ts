@@ -145,7 +145,7 @@ export async function buildStatus(req: ReadRequest): Promise<AgentStatusBody> {
  * 未命中权威 Run 存储时返回 `AGENT_RUN_NOT_FOUND`（404、携带 runId 详情、
  * 不可重试），由 readRun handler 交给 `sendError`；命中时返回 enriched 快照。
  */
-export async function lookupRun(runId: string): Promise<AgentRunLookup> {
+async function lookupRun(runId: string): Promise<AgentRunLookup> {
   const run = getAgentRun(runId);
   if (!run) {
     return {
