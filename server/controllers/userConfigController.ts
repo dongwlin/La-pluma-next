@@ -26,9 +26,9 @@ import { sendConfigStorageError } from './configStorageError.ts';
 /**
  * 配置路由依赖的最小请求结构：路径参数 `configType` 由路由声明收窄为
  * string，JSON 请求体保持 unknown，交给存储域的真实载荷校验收窄。
- * 与路由层保留的 UserConfigRequest 保持同一形状。
+ * 由路由层（routes/userConfig.ts）直接引用。
  */
-interface UserConfigRequest extends ApiRequestLike {
+export interface UserConfigRequest extends ApiRequestLike {
   params: { configType: string };
   body?: unknown;
 }

@@ -5,7 +5,8 @@ import {
   sendError
 } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
-import type { LogFileRequest, ReadRequest } from '../controllers/readDto.ts';
+import type { ReadRequest } from '../controllers/readDto.ts';
+import type { LogFileRequest } from '../controllers/logDto.ts';
 import * as agentLogController from '../controllers/agentLogController.ts';
 
 /**

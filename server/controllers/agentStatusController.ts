@@ -10,13 +10,13 @@ import { resolveRequestConnection } from './requestConnection.ts';
 import { getAdbSummary, getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.ts';
 import type { AdbSummary, AndroidDisplayState, WebrtcSummary } from './deviceStatus.ts';
 import { readErrorMessage } from './readDto.ts';
+import type { ReadRequest } from './readDto.ts';
 import type {
   AdbStatusFailure,
   AgentStatusPayload,
   MaaVersionFailure,
-  OrientationStatusFailure,
-  ReadRequest
-} from './readDto.ts';
+  OrientationStatusFailure
+} from './statusDto.ts';
 
 /**
  * 状态与 Run 查询控制器。
@@ -30,7 +30,7 @@ import type {
  * 控制器只返回业务载荷：`/status` 的 api 块（`la-pluma-agent-api` 兼容
  * 标识）由路由层装配并保持对象第一个键；成功/失败 envelope 也由路由层的
  * `sendSuccess` / `sendError` 统一封装。各探测失败时保留自己的兜底投影
- * （版本、ADB、显示状态互不替代），载荷结构显式建模在 readDto。
+ * （版本、ADB、显示状态互不替代），载荷结构显式建模在 statusDto。
  */
 
 /** 四项外部探测的短 TTL：轮询突发共享结果，设备变化最迟约 1.5 秒后重新探测。 */

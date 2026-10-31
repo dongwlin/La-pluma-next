@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
-import type { AgentStatusPayload } from '../controllers/readDto.ts';
+import type { AgentStatusPayload } from '../controllers/statusDto.ts';
 import type { AgentRunSnapshot } from '../services/runSnapshotService.ts';
 import type { MaaTaskStatus } from '../services/maaProcessService.ts';
 import type { MaaLogFileContent, MaaLogFileEntry } from '../services/maaLogFileService.ts';
@@ -246,6 +246,7 @@ describe('moved agent read routes keep authentication and response contracts', (
     const body = await readBody<ApiSuccessResponse<AgentStatusPayload>>(response);
 
     assert.equal(body.success, true);
+    assert.equal(Object.keys(body.data)[0], 'api');
     assert.equal(body.data.api.name, 'la-pluma-agent-api');
     assert.equal(body.data.api.manifest, '/api/agent/manifest');
     const version = body.data.maa.version;

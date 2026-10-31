@@ -9,7 +9,8 @@ import {
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { API_VERSION } from './agentContract.ts';
 import { readNumericQuery } from '../controllers/readDto.ts';
-import type { ReadRequest, RunLookupRequest } from '../controllers/readDto.ts';
+import type { ReadRequest } from '../controllers/readDto.ts';
+import type { RunLookupRequest } from '../controllers/statusDto.ts';
 import * as agentStatusController from '../controllers/agentStatusController.ts';
 
 /**
@@ -17,7 +18,7 @@ import * as agentStatusController from '../controllers/agentStatusController.ts'
  *
  * `/status` 的 api 块（`la-pluma-agent-api` 兼容标识）由本文件装配并保持
  * 对象第一个键；探测汇总、探测缓存与 `/runs/:runId` 的 404 映射在
- * controllers/agentStatusController.ts，响应结构显式建模在 readDto。
+ * controllers/agentStatusController.ts，响应结构显式建模在 statusDto。
  * `/runs/current` 与 `/tasks/status` 只透传快照与任务状态服务；
  * query 行数仍是单值，由快照层统一归一。
  */

@@ -16,8 +16,10 @@ import type {
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
-import { parseLogCleanupBody, readNumericQuery } from './readDto.ts';
-import type { LogFileRequest, ReadRequest } from './readDto.ts';
+import { readNumericQuery } from './readDto.ts';
+import type { ReadRequest } from './readDto.ts';
+import { parseLogCleanupBody } from './logDto.ts';
+import type { LogFileRequest } from './logDto.ts';
 
 /**
  * 日志读取与维护控制器。
