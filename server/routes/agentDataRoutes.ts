@@ -9,9 +9,9 @@ import type { DepotFile, OperBoxFile, OperatorSummary } from '../services/dataPa
 import { asyncHandler, sendSuccess } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
-import { readNumericQuery, readPayloadMessage, unwrapReadPayload } from './readDto.ts';
-import type { ReadPayload, ReadRequest } from './readDto.ts';
-import { resolveRequestConnection } from './requestConnection.ts';
+import { readNumericQuery, readPayloadMessage, unwrapReadPayload } from '../controllers/readDto.ts';
+import type { ReadPayload, ReadRequest } from '../controllers/readDto.ts';
+import { resolveRequestConnection } from '../controllers/requestConnection.ts';
 
 /**
  * 游戏数据读取路由：今日开放关卡、掉落记录与本地仓库/干员缓存。

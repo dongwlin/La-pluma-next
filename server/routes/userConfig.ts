@@ -5,9 +5,10 @@ import {
   loadUserConfig,
   saveUserConfig
 } from '../services/configStorageService.ts';
-import type { ConfigStorageResult, UserConfigStorage } from '../services/configStorageService.ts';
-import { asyncHandler, agentError, sendSuccess, sendError } from '../utils/apiHelper.ts';
-import type { ApiRequestLike, ApiResponseWriter, MaybeApiRequest } from '../utils/apiHelper.ts';
+import type { UserConfigStorage } from '../services/configStorageService.ts';
+import { asyncHandler, sendSuccess } from '../utils/apiHelper.ts';
+import type { ApiRequestLike, ApiResponseWriter } from '../utils/apiHelper.ts';
+import { sendConfigStorageError } from '../controllers/configStorageError.ts';
 
 /**
  * 配置路由依赖的最小请求结构：路径参数 `configType` 由路由声明收窄为
@@ -26,38 +27,6 @@ const defaultUserConfigStorage: UserConfigStorage = {
   getAllUserConfigs,
   deleteUserConfig
 };
-
-// 配置存储的 400 校验错误按原 code 透传；其余按存储失败处理
-const CONFIG_VALIDATION_CODES: ReadonlySet<string> = new Set([
-  'AGENT_CONFIG_TYPE_INVALID',
-  'AGENT_CONFIG_DATA_INVALID'
-]);
-
-/**
- * 配置存储结果的 HTTP 错误出口：400 校验错误保留原 code，
- * 其余按对应路由的存储失败 code 处理。通知配置等其余配置写入
- * 路由复用同一映射，保持错误码与状态一致。
- */
-export function sendConfigStorageError(
-  res: ApiResponseWriter,
-  req: MaybeApiRequest,
-  result: ConfigStorageResult<unknown> | null | undefined,
-  fallbackCode: string,
-  fallbackMessage: string
-): void {
-  const failure = result?.success === false ? result : null;
-  const errorCode = failure?.error?.code;
-  const isValidationError = errorCode !== undefined && CONFIG_VALIDATION_CODES.has(errorCode);
-  return sendError(res, req, agentError(
-    isValidationError ? errorCode : fallbackCode,
-    result?.message || fallbackMessage,
-    {
-      statusCode: isValidationError ? 400 : 500,
-      details: failure?.error?.details || {},
-      retryable: !isValidationError
-    }
-  ));
-}
 
 /**
  * 用户配置 HTTP 适配 router 工厂。存储实例经参数注入，缺省绑定

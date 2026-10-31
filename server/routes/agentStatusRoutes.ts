@@ -12,10 +12,10 @@ import {
 } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { API_VERSION } from './agentContract.ts';
-import { resolveRequestConnection } from './requestConnection.ts';
-import { getAdbSummary, getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.ts';
-import type { AdbSummary, AndroidDisplayState, WebrtcSummary } from './deviceStatus.ts';
-import { readErrorMessage, readNumericQuery } from './readDto.ts';
+import { resolveRequestConnection } from '../controllers/requestConnection.ts';
+import { getAdbSummary, getAndroidDisplayState, getWebrtcSummary } from '../controllers/deviceStatus.ts';
+import type { AdbSummary, AndroidDisplayState, WebrtcSummary } from '../controllers/deviceStatus.ts';
+import { readErrorMessage, readNumericQuery } from '../controllers/readDto.ts';
 import type {
   AdbStatusFailure,
   AgentStatusPayload,
@@ -23,7 +23,7 @@ import type {
   OrientationStatusFailure,
   ReadRequest,
   RunLookupRequest
-} from './readDto.ts';
+} from '../controllers/readDto.ts';
 
 /**
  * 状态与 Run 查询路由。

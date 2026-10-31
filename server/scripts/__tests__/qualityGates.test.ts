@@ -93,11 +93,24 @@ describe('layer direction', () => {
       source('utils/tool.ts', 'export const tool = 1;'),
       source('config/defaults.ts', "import { tool } from '../utils/tool.ts';\nexport const value = tool;"),
       source('services/demo.ts', "import { tool } from '../utils/tool.ts';\nexport const demo = tool;"),
-      source('routes/api.ts', "import { demo } from '../services/demo.ts';\nexport const api = demo;"),
+      source('controllers/status.ts', "import { tool } from '../utils/tool.ts';\nimport { demo } from '../services/demo.ts';\nexport const status = demo;"),
+      source('routes/api.ts', "import { demo } from '../services/demo.ts';\nimport { status } from '../controllers/status.ts';\nexport const api = demo;"),
       source('anywhere/__tests__/deep.test.ts', "import { api } from '../../routes/api.ts';\nexport const probe = api;")
     ]);
 
     assert.deepEqual(violations, []);
+  });
+
+  it('rejects controllers reaching upward into routes', () => {
+    const violations = analyzeSources([
+      source('controllers/status.ts', "import { api } from '../routes/api.ts';\nexport const status = api;"),
+      source('routes/api.ts', 'export const api = 1;')
+    ]);
+
+    const inversions = violations.filter(violation => violation.rule === 'layer-inversion');
+    assert.equal(inversions.length, 1);
+    assert.equal(inversions[0].file, 'controllers/status.ts');
+    assert.match(inversions[0].message, /controllers 不得依赖 routes/);
   });
 
   it('classifies every production directory and the entry files', () => {
@@ -106,6 +119,7 @@ describe('layer direction', () => {
     assert.equal(layerOf('utils/logger.ts'), 'utils');
     assert.equal(layerOf('config/paths.ts'), 'config');
     assert.equal(layerOf('services/agentRunService.ts'), 'services');
+    assert.equal(layerOf('controllers/agentStatusController.ts'), 'controllers');
     assert.equal(layerOf('routes/agent.ts'), 'routes');
     assert.equal(layerOf('scripts/check-syntax.ts'), 'scripts');
     assert.equal(layerOf('mystery.ts'), undefined);

@@ -22,8 +22,8 @@ import {
 } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
-import { parseLogCleanupBody, readNumericQuery } from './readDto.ts';
-import type { LogFileRequest, ReadRequest } from './readDto.ts';
+import { parseLogCleanupBody, readNumericQuery } from '../controllers/readDto.ts';
+import type { LogFileRequest, ReadRequest } from '../controllers/readDto.ts';
 
 /**
  * 日志读取与维护路由。

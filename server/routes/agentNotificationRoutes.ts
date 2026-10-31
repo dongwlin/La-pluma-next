@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { saveUserConfig } from '../services/configStorageService.ts';
-import { sendConfigStorageError } from './userConfig.ts';
+import { sendConfigStorageError } from '../controllers/configStorageError.ts';
 import {
   getNotificationConfig,
   setNotificationConfig,

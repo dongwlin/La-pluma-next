@@ -46,7 +46,7 @@ import {
 import type { MaybeApiRequest } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
 import { withExecutionLogContext } from '../utils/logContext.ts'
-import { resolveRequestConnection } from './requestConnection.ts';
+import { resolveRequestConnection } from '../controllers/requestConnection.ts';
 import {
   isRecord,
   isStopped,

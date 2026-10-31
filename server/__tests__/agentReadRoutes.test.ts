@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
-import type { AgentStatusPayload } from '../routes/readDto.ts';
+import type { AgentStatusPayload } from '../controllers/readDto.ts';
 import type { AgentRunSnapshot } from '../services/runSnapshotService.ts';
 import type { MaaTaskStatus } from '../services/maaProcessService.ts';
 import type { MaaLogFileContent, MaaLogFileEntry } from '../services/maaLogFileService.ts';

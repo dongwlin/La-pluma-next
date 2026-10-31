@@ -16,7 +16,7 @@ import type {
   TrainingQueueRemoveRequest,
   TrainingRequest
 } from './trainingDto.ts';
-import { resolveRequestConnection } from './requestConnection.ts';
+import { resolveRequestConnection } from '../controllers/requestConnection.ts';
 
 /**
  * 养成路由：候选干员、队列、设置、计划生成与应用。

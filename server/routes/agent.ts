@@ -11,7 +11,7 @@ import { sendSuccess } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { buildAgentManifest, buildOpenApiSpec } from './agentContract.ts';
-import type { ReadRequest } from './readDto.ts';
+import type { ReadRequest } from '../controllers/readDto.ts';
 
 /**
  * Agent API 聚合入口。
