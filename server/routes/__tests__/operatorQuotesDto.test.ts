@@ -5,7 +5,7 @@ import {
   parseOperatorName,
   parseQuoteText,
   parseUpdateQuoteBody
-} from '../operatorQuotesDto.ts'
+} from '../../controllers/operatorQuotesDto.ts'
 
 // 台词写接口的输入边界：合法输入 trim 后交给服务，非法输入保持旧业务文案，
 // 由 router 以裸 `{ error }` / 400 返回（HTTP 形状由台词持久化 fixture 覆盖）。
