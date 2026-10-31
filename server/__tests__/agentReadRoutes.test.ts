@@ -120,7 +120,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../app.ts');
-const { resetAgentStatusProbeCacheForTests } = await import('../routes/agentStatusRoutes.ts');
+const { resetAgentStatusProbeCacheForTests } = await import('../controllers/agentStatusController.ts');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { getGameDay } = await import('../services/gameCalendar.ts');
 const { DEFAULT_CLIENT_TYPE } = await import('../config/connectionDefaults.ts');
