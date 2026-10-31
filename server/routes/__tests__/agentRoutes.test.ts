@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test'
 import router from '../agent.ts'
-import { executeTrackedAgentAction } from '../agentExecution.ts'
+import { executeTrackedAgentAction } from '../../controllers/agentExecutionController.ts'
 import type {
   AgentRunProgressProjection,
   RunOccupancyProjection
@@ -53,7 +53,7 @@ import type {
   ExecutionOutcome,
   TrackedExecutionLifecycle,
   TrackedExecutionOptions
-} from '../agentExecution.ts'
+} from '../../controllers/agentExecutionController.ts'
 
 // 执行路由与 Run 生命周期已类型化，本文件同步转为 TS：反射取到的 handler
 // 以最小 RouteHandler 边界调用，响应体经统一信封读取；Run 与作业集断言使用

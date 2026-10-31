@@ -4,8 +4,8 @@
  * 只做静态事实判断，不运行服务端、不启动子进程：
  * - 类型逃生舱：显式 `any`、TypeScript 抑制指令（`@ts-` 系列注释）、经
  *   `any` / `unknown` 的双重断言；
- * - 分层方向：`utils` / `config` → `services` → `routes` → `app.ts` / `server.ts` 单向，
- *   `scripts/` 只作为工具入口，生产模块不得反向依赖它；
+ * - 分层方向：`utils` / `config` → `services` → `controllers` → `routes` →
+ *   `app.ts` / `server.ts` 单向，`scripts/` 只作为工具入口，生产模块不得反向依赖它；
  * - 静态导入环：静态 `import` / `export ... from` 形成的环（动态 `import()` 是
  *   有意的延迟加载断环手段，不在本检查范围，见 docs）；
  * - 未归层文件：新增顶层模块或目录必须先归入既有层，避免无声绕过依赖检查。
@@ -87,12 +87,13 @@ export const GUARDRAIL_RULES: readonly GuardrailRule[] = [
   'unlayered-file'
 ];
 
-type Layer = 'utils' | 'config' | 'services' | 'routes' | 'scripts' | 'entry';
+type Layer = 'utils' | 'config' | 'services' | 'controllers' | 'routes' | 'scripts' | 'entry';
 
 const LAYER_DIRECTORIES: ReadonlyArray<readonly [string, Layer]> = [
   ['utils/', 'utils'],
   ['config/', 'config'],
   ['services/', 'services'],
+  ['controllers/', 'controllers'],
   ['routes/', 'routes'],
   ['scripts/', 'scripts']
 ];
@@ -105,7 +106,8 @@ const ALLOWED_IMPORT_TARGETS: Record<Layer, readonly Layer[]> = {
   utils: ['utils', 'config'],
   config: ['config', 'utils'],
   services: ['utils', 'config', 'services'],
-  routes: ['utils', 'config', 'services', 'routes'],
+  controllers: ['utils', 'config', 'services', 'controllers'],
+  routes: ['utils', 'config', 'services', 'controllers', 'routes'],
   entry: ['utils', 'config', 'services', 'routes', 'scripts', 'entry'],
   scripts: ['utils', 'config', 'services', 'routes', 'scripts']
 };
@@ -322,7 +324,7 @@ export function analyzeSources(files: readonly SourceFile[]): GuardrailViolation
         'unlayered-file',
         file.path,
         1,
-        '文件未归入 utils/config/services/routes/scripts 或 app.ts/server.ts 入口；先确定所属层再新增模块'
+        '文件未归入 utils/config/services/controllers/routes/scripts 或 app.ts/server.ts 入口；先确定所属层再新增模块'
       );
     }
 

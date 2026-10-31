@@ -8,14 +8,15 @@
 | --- | --- |
 | `app.ts` | Express 应用装配：CORS、请求 id、认证与限流、信令登录入口、生产静态资源与路由挂载；`createLaPlumaApp` 是唯一组装入口 |
 | `server.ts` | HTTP/HTTPS 传输、WebRTC 信令网关挂载、启动初始化与关闭处理 |
-| `routes/` | 请求归一化、校验、响应与执行入口；`agent.ts` 只做契约文档与领域 router 聚合，tracked 执行、流程/作业集与目标停止在 `agentExecution.ts`（请求 DTO 在 `executionDto.ts`），状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentStatusRoutes.ts`、`agentLogRoutes.ts`、`agentDataRoutes.ts`（请求 DTO 在 `readDto.ts`，设备探测适配在 `deviceStatus.ts`）、`agentTrainingRoutes.ts`（请求 DTO 在 `trainingDto.ts`）、`agentPreviewRoutes.ts`（请求 DTO 在 `previewDto.ts`）、`agentNotificationRoutes.ts`（请求 DTO 在 `notificationDto.ts`）、`agentMaintenanceRoutes.ts`（请求 DTO 在 `maintenanceDto.ts`） |
+| `routes/` | 路径映射与 router 装配：`agent.ts` 只做契约文档与领域 router 聚合；tracked 执行、状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentExecution.ts`、`agentStatusRoutes.ts`、`agentLogRoutes.ts`、`agentDataRoutes.ts`、`agentTrainingRoutes.ts`、`agentPreviewRoutes.ts`、`agentNotificationRoutes.ts`、`agentMaintenanceRoutes.ts`，各 router 只做端点映射 |
+| `controllers/` | 请求解析、校验与响应封装（含成功/失败 envelope 装配）：各领域 `*Controller.ts` 按域承接对应 router 的 req/res 适配并自行写响应，`/status` 探测合并与短缓存在此层；请求/响应 DTO（`readDto.ts` 读取域共享助手与掉落/游戏数据载荷、`statusDto.ts` /status 响应载荷与 Run 查询请求、`logDto.ts` 日志请求收窄与清理输入、`executionDto.ts`、`maintenanceDto.ts`、`previewDto.ts`、`notificationDto.ts`、`trainingDto.ts`、`operatorQuotesDto.ts`）与共享适配（`deviceStatus.ts`、`requestConnection.ts`、`configStorageError.ts`）也归此层 |
 | `services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
 | `config/`、`utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
 | `scripts/` | 语法检查、类型检查、类型与依赖护栏、测试/覆盖率入口与游戏数据获取脚本 |
 
-- 路由沿用 `asyncHandler`、`sendSuccess`、`sendError` 与结构化 `agentError`；保留现有错误码、HTTP 状态和兼容响应字段。
+- 路由与控制器沿用 `asyncHandler`、`sendSuccess`、`sendError` 与结构化 `agentError`；保留现有错误码、HTTP 状态和兼容响应字段。
 - 向 Agent 公开能力时更新 `routes/agentContract.ts`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
-- 新业务逻辑放入对应 service，路由负责适配；回调解析与结果格式化沿用独立的 `*ResultService.ts`，避免继续堆入执行编排。
+- 新业务逻辑放入对应 service，请求适配与 envelope 装配由对应领域控制器承担，路由只做端点映射；回调解析与结果格式化沿用独立的 `*ResultService.ts`，避免继续堆入执行编排。
 
 ## 执行与回调边界
 
@@ -62,7 +63,7 @@
 | `explicit-any` | 不新增显式 `any` | 超出基线即失败 |
 | `suppression-directive` | 不使用 `@ts-` 抑制指令 | 超出基线即失败 |
 | `double-assertion` | 不写经 `any` / `unknown` 的双重断言 | 超出基线即失败 |
-| `layer-inversion` | `utils` / `config` → `services` → `routes` → `app.ts` / `server.ts` 单向；`scripts` 可调用业务代码，业务代码不得依赖 `scripts` | 直接失败 |
+| `layer-inversion` | `utils` / `config` → `services` → `controllers` → `routes` → `app.ts` / `server.ts` 单向；`scripts` 可调用业务代码，业务代码不得依赖 `scripts` | 直接失败 |
 | `import-cycle` | 静态 `import` / `export ... from` 不得成环 | 直接失败 |
 | `unlayered-file` | 新增顶层模块或目录必须先归入既有层 | 直接失败 |
 

@@ -1,4 +1,5 @@
 import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
+import { API_VERSION } from '../config/apiVersion.ts';
 
 /**
  * Agent API 公开契约
@@ -12,7 +13,8 @@ import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
  * 文件或设备状态。
  */
 
-export const API_VERSION = '2026-07-12';
+/** 版本常量的单一字面量来源在 config/apiVersion.ts；此处 re-export 保持既有导入路径。 */
+export { API_VERSION };
 
 /** 契约中可由 manifest 用当前运行配置替换的默认值键。 */
 export type RuntimeDefaultKey = 'adbPath' | 'adbAddress' | 'clientType';

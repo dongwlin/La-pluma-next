@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
-import type { AgentStatusPayload } from '../routes/readDto.ts';
+import type { AgentStatusPayload } from '../controllers/statusDto.ts';
 import type { AgentRunSnapshot } from '../services/runSnapshotService.ts';
 import type { MaaTaskStatus } from '../services/maaProcessService.ts';
 import type { MaaLogFileContent, MaaLogFileEntry } from '../services/maaLogFileService.ts';
@@ -120,7 +120,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { createLaPlumaApp } = await import('../app.ts');
-const { resetAgentStatusProbeCacheForTests } = await import('../routes/agentStatusRoutes.ts');
+const { resetAgentStatusProbeCacheForTests } = await import('../controllers/agentStatusController.ts');
 const { getLocalDateString } = await import('../services/dropRecordService.ts');
 const { getGameDay } = await import('../services/gameCalendar.ts');
 const { DEFAULT_CLIENT_TYPE } = await import('../config/connectionDefaults.ts');
@@ -246,6 +246,7 @@ describe('moved agent read routes keep authentication and response contracts', (
     const body = await readBody<ApiSuccessResponse<AgentStatusPayload>>(response);
 
     assert.equal(body.success, true);
+    assert.equal(Object.keys(body.data)[0], 'api');
     assert.equal(body.data.api.name, 'la-pluma-agent-api');
     assert.equal(body.data.api.manifest, '/api/agent/manifest');
     const version = body.data.maa.version;

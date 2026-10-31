@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, afterEach, describe, it } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { ExecutionRequest, ExecutionResponseWriter } from '../routes/executionDto.ts'
-import type { TrackedExecutionLifecycle } from '../routes/agentExecution.ts'
+import type { ExecutionRequest, ExecutionResponseWriter } from '../controllers/executionDto.ts'
+import type { TrackedExecutionLifecycle } from '../controllers/agentExecutionController.ts'
 
 // 假 MAA CLI 必须在导入服务模块之前就位（CLI 路径在模块导入时读取）。
 const root = await mkdtemp(join(tmpdir(), 'la-pluma-log-correlation-'))
@@ -31,7 +31,7 @@ process.exitCode = 0;
 `, { mode: 0o755 })
 
 const { createLaPlumaApp } = await import('../app.ts')
-const { executeTrackedAgentAction } = await import('../routes/agentExecution.ts')
+const { executeTrackedAgentAction } = await import('../controllers/agentExecutionController.ts')
 const operatorTraining = (await import('../services/operatorTrainingService.ts')).default
 const {
   clearRealtimeLogs,

@@ -13,7 +13,7 @@ import type {
   PreviewOrientationPlan,
   PreviewScreenshotPayload,
   PreviewWebrtcStatusPayload
-} from '../routes/previewDto.ts';
+} from '../controllers/previewDto.ts';
 
 // 真实 HTTP 回归：截图、WebRTC、方向与设备采样已从 agent.ts 拆到独立
 // 预览 router，这里通过 createLaPlumaApp 验证挂载、鉴权、body/query 归一化、

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildWebrtcBrowserProtocol } from '../agentPreviewRoutes.ts';
+import { buildWebrtcBrowserProtocol } from '../../controllers/agentPreviewController.ts';
 import { DEFAULT_DEVICE_ID } from '../../services/webrtcService.ts';
-import { parseDeviceIdBody, parseOrientationBody } from '../previewDto.ts';
+import { parseDeviceIdBody, parseOrientationBody } from '../../controllers/previewDto.ts';
 
 describe('preview browser signaling contract', () => {
   it('keeps the same-origin endpoint and connect payload the browser consumes', () => {
