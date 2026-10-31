@@ -20,7 +20,7 @@ import { updateJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
  * - 共享进度读改写经进度存储排队；失败与停止按数据返回，由调用方决定终态。
  */
 
-const dataDir = fileURLToPath(new URL('../data/', import.meta.url));
+const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 作业进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
 // 默认位置保持 server/data/copilot-progress.json，可用环境变量注入隔离。
 const progressStore = createCopilotProgressStore({

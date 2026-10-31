@@ -28,7 +28,7 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['succeeded', 'failed', '
 const ACTIVE_STATUSES: ReadonlySet<string> = new Set(['accepted', 'waiting', 'running', 'stopping']);
 const ALL_STATUSES: ReadonlySet<string> = new Set([...TERMINAL_STATUSES, ...ACTIVE_STATUSES]);
 const AGENT_RUN_STORE_VERSION = 1;
-const DEFAULT_AGENT_RUN_STORE_PATH = fileURLToPath(new URL('../data/agent-runs.json', import.meta.url));
+const DEFAULT_AGENT_RUN_STORE_PATH = fileURLToPath(new URL('../../data/agent-runs.json', import.meta.url));
 const logger = createLogger('AgentRunService');
 
 /** 活动状态：`accepted`/`waiting` 不持有执行权，`running`/`stopping` 持有到退出。 */

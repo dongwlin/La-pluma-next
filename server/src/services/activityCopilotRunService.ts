@@ -38,7 +38,7 @@ import { fileURLToPath } from 'url';
  * - 未选择或未就绪的计划不执行任何条目；完成进度只记录实际结算的条目。
  */
 
-const dataDir = fileURLToPath(new URL('../data/', import.meta.url));
+const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 活动完成进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
 // 默认位置保持 server/data/activity-copilot-progress.json，可用环境变量注入隔离。
 const activityProgressStore = createCopilotProgressStore({

@@ -6,16 +6,16 @@
 
 | 位置 | 修改边界 |
 | --- | --- |
-| `app.ts` | Express 应用装配：CORS、请求 id、认证与限流、信令登录入口、生产静态资源与路由挂载；`createLaPlumaApp` 是唯一组装入口 |
-| `server.ts` | HTTP/HTTPS 传输、WebRTC 信令网关挂载、启动初始化与关闭处理 |
-| `routes/` | 路径映射与 router 装配：`agent.ts` 只做契约文档与领域 router 聚合；tracked 执行、状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentExecution.ts`、`agentStatusRoutes.ts`、`agentLogRoutes.ts`、`agentDataRoutes.ts`、`agentTrainingRoutes.ts`、`agentPreviewRoutes.ts`、`agentNotificationRoutes.ts`、`agentMaintenanceRoutes.ts`，各 router 只做端点映射 |
-| `controllers/` | 请求解析、校验与响应封装（含成功/失败 envelope 装配）：各领域 `*Controller.ts` 按域承接对应 router 的 req/res 适配并自行写响应，`/status` 探测合并与短缓存在此层；请求/响应 DTO（`readDto.ts` 读取域共享助手与掉落/游戏数据载荷、`statusDto.ts` /status 响应载荷与 Run 查询请求、`logDto.ts` 日志请求收窄与清理输入、`executionDto.ts`、`maintenanceDto.ts`、`previewDto.ts`、`notificationDto.ts`、`trainingDto.ts`、`operatorQuotesDto.ts`）与共享适配（`deviceStatus.ts`、`requestConnection.ts`、`configStorageError.ts`）也归此层 |
-| `services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
-| `config/`、`utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
+| `src/app.ts` | Express 应用装配：CORS、请求 id、认证与限流、信令登录入口、生产静态资源与路由挂载；`createLaPlumaApp` 是唯一组装入口 |
+| `src/server.ts` | HTTP/HTTPS 传输、WebRTC 信令网关挂载、启动初始化与关闭处理 |
+| `src/routes/` | 路径映射与 router 装配：`agent.ts` 只做契约文档与领域 router 聚合；tracked 执行、状态与 Run 查询、日志、掉落与游戏数据读取、养成队列与计划、预览截图/WebRTC/方向与设备采样、通知频道配置与发送、连接/profile/资源更新/定时配置与维护动作分别在 `agentExecution.ts`、`agentStatusRoutes.ts`、`agentLogRoutes.ts`、`agentDataRoutes.ts`、`agentTrainingRoutes.ts`、`agentPreviewRoutes.ts`、`agentNotificationRoutes.ts`、`agentMaintenanceRoutes.ts`，各 router 只做端点映射 |
+| `src/controllers/` | 请求解析、校验与响应封装（含成功/失败 envelope 装配）：各领域 `*Controller.ts` 按域承接对应 router 的 req/res 适配并自行写响应，`/status` 探测合并与短缓存在此层；请求/响应 DTO（`readDto.ts` 读取域共享助手与掉落/游戏数据载荷、`statusDto.ts` /status 响应载荷与 Run 查询请求、`logDto.ts` 日志请求收窄与清理输入、`executionDto.ts`、`maintenanceDto.ts`、`previewDto.ts`、`notificationDto.ts`、`trainingDto.ts`、`operatorQuotesDto.ts`）与共享适配（`deviceStatus.ts`、`requestConnection.ts`、`configStorageError.ts`）也归此层 |
+| `src/services/` | MAA/ADB 子进程、Run、调度、作业集、养成、通知及领域解析 |
+| `src/config/`、`src/utils/` | 连接默认值、跨平台路径与响应、文件、日志工具 |
 | `scripts/` | 语法检查、类型检查、类型与依赖护栏、测试/覆盖率入口与游戏数据获取脚本 |
 
 - 路由与控制器沿用 `asyncHandler`、`sendSuccess`、`sendError` 与结构化 `agentError`；保留现有错误码、HTTP 状态和兼容响应字段。
-- 向 Agent 公开能力时更新 `routes/agentContract.ts`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
+- 向 Agent 公开能力时更新 `src/routes/agentContract.ts`；manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。Web UI 专用入口不必全部加入 manifest。
 - 新业务逻辑放入对应 service，请求适配与 envelope 装配由对应领域控制器承担，路由只做端点映射；回调解析与结果格式化沿用独立的 `*ResultService.ts`，避免继续堆入执行编排。
 
 ## 执行与回调边界
@@ -44,7 +44,7 @@
 | 后端类型检查 | `pnpm --filter la-pluma-next-server typecheck` |
 | 类型与依赖护栏 | `pnpm --filter la-pluma-next-server guardrails` |
 | 后端回归 | `pnpm --filter la-pluma-next-server test` |
-| 定向回归示例 | `node --test server/services/__tests__/maaCallbackService.test.ts` |
+| 定向回归示例 | `node --test server/src/services/__tests__/maaCallbackService.test.ts` |
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 
 `build` 仅执行语法检查（`node --check` 逐个解析 `.ts`，同时拒绝不可擦除语法，不依赖 TypeScript 编译器，只装生产依赖时也能运行）；类型检查由 `typecheck` 独立承担，覆盖全部 TS 文件（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；`guardrails` 承担类型与依赖职责检查，只约束正确性不变量，不引入格式或风格规则。`verify` 依次运行 `guardrails`、`check`、`typecheck`、`test`。常规测试入口逐文件、逐进程串行运行；不要为提速随意改成共享进程并行，以免模块单例和环境变量相互污染。`test:coverage` 与 `test` 使用同一批测试文件和同样的逐文件进程隔离，统计范围固定为 `**/*.ts` 排除 `**/__tests__/**`，阈值是只升不降的渐进下限；Node 只统计被测试加载过的文件，覆盖率不能替代行为测试。

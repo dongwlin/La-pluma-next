@@ -7,8 +7,8 @@
     "node": ">=24.12.0"
   },
   "scripts": {
-    "dev": "node server.ts",
-    "start": "node server.ts",
+    "dev": "node src/server.ts",
+    "start": "node src/server.ts",
     "check": "node scripts/check-syntax.ts",
     "typecheck": "node scripts/typecheck.ts",
     "guardrails": "node scripts/check-guardrails.ts",

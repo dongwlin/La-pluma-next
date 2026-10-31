@@ -158,7 +158,7 @@ export interface AppPaths {
 }
 
 // 纯路径计算，不构成导入副作用；锚定本模块位置使解析结果与 cwd 无关。
-const moduleServerRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const moduleServerRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
  * 解析应用运行路径。五个类别互不混用：持久数据、内置/解析数据共享 server/data

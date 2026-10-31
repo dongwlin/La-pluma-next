@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import {
@@ -15,7 +15,7 @@ import {
 } from '../runtimeConfig.ts';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const serverRoot = resolve(testDir, '..', '..');
+const serverRoot = resolve(testDir, '..', '..', '..');
 const fixturePath = join(testDir, 'fixtures', 'printResolvedPaths.ts');
 
 describe('parsePort', () => {
@@ -112,6 +112,18 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.trainingDataDir, join(serverRoot, 'data'));
     assert.equal(paths.frontendDistDir, resolve(serverRoot, '..', 'client', 'dist'));
     assert.equal(paths.tempResourceDir, join(serverRoot, '.temp-maa-resource'));
+  });
+
+  it('anchors the default server root at the server package directory, not src/', () => {
+    const paths = resolveAppPaths({ env: {} });
+
+    // 包目录名是布局契约（workspace 声明 packages: client/server）：
+    // 默认锚点必须停在 server/，否则运行数据会静默写入 server/src/data。
+    assert.equal(basename(paths.serverRoot), 'server');
+    // 源码树位于 <serverRoot>/src 之下；锚点既不能少算也不能多算一层。
+    assert.equal(resolve(paths.serverRoot, 'src', 'config', '__tests__'), testDir);
+    assert.equal(paths.appDataDir, join(paths.serverRoot, 'data'));
+    assert.equal(basename(dirname(paths.appDataDir)), 'server');
   });
 
   it('names reference and training data files inside the training data directory', () => {

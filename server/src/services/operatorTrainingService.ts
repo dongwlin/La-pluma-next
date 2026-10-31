@@ -391,14 +391,14 @@ async function countDataFileEntries(fileName: string): Promise<number | null> {
  */
 async function runMaterialFetchScript(config: MaterialFetchScriptConfig): Promise<MaterialFetchScriptResult> {
   const { name, script, output } = config;
-  const scriptPath = path.join(__dirname, '../scripts', script);
+  const scriptPath = path.join(__dirname, '../../scripts', script);
   const startedAt = Date.now();
   logger.info('执行材料数据抓取脚本', { name, script });
 
   try {
     // promisify 在调用时包装，便于测试中通过 mock 替换 execFile
     const { stdout } = await promisify(execFile)(process.execPath, [scriptPath], {
-      cwd: path.join(__dirname, '..'),
+      cwd: path.join(__dirname, '..', '..'),
       timeout: FETCH_SCRIPT_TIMEOUT_MS,
       // 脚本输出可能超出默认 1MiB，放宽缓冲避免以晦涩的错误失败
       maxBuffer: 10 * 1024 * 1024,

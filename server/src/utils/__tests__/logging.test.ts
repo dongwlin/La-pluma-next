@@ -1,6 +1,6 @@
 /**
  * 日志关联与脱敏工具测试（请求 id、日志上下文、脱敏规则）
- * 运行: node --test server/utils/__tests__/logging.test.ts
+ * 运行: node --test server/src/utils/__tests__/logging.test.ts
  */
 
 import { describe, it } from 'node:test';

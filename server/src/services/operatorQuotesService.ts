@@ -62,7 +62,7 @@ export interface OperatorQuotesService {
 
 // 数据目录按模块位置锚定，与 cwd 无关；`LA_PLUMA_OPERATOR_QUOTES_STORE`
 // 可重定向存储位置（测试隔离与部署需要），默认路径保持 server/data/operatorQuotes.json。
-const dataDir = fileURLToPath(new URL('../data/', import.meta.url))
+const dataDir = fileURLToPath(new URL('../../data/', import.meta.url))
 
 /**
  * 创建绑定单一台词 JSON 文件的存储实例。

@@ -95,7 +95,7 @@ function assertRuntimeContents() {
   }
 
   // 原生类型擦除由 Node 自己完成；生产镜像不装编译器也必须能解析入口。
-  checked(['run', '--rm', '--network=none', '--entrypoint', 'node', image, '--check', '/app/server/server.ts'])
+  checked(['run', '--rm', '--network=none', '--entrypoint', 'node', image, '--check', '/app/server/src/server.ts'])
   console.log(`Runtime image: Node ${facts.node}, no compiler, no dev type packages`)
 }
 

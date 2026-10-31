@@ -31,7 +31,7 @@ describe('type escape hatches', () => {
   it('flags explicit any, suppression comments and assertions through any/unknown', () => {
     const violations = analyzeSources([
       source(
-        'services/fixture.ts',
+        'src/services/fixture.ts',
         [
           'const loose: any = 1;',
           '// @ts-ignore',
@@ -55,7 +55,7 @@ describe('type escape hatches', () => {
   it('does not flag the word any in comments, strings or AbortSignal.any()', () => {
     const violations = analyzeSources([
       source(
-        'services/cleanFixture.ts',
+        'src/services/cleanFixture.ts',
         [
           '// any value here is a word, not a type',
           "const label = 'any';",
@@ -74,14 +74,14 @@ describe('type escape hatches', () => {
 describe('layer direction', () => {
   it('rejects lower layers importing upper layers and unlayered production files', () => {
     const violations = analyzeSources([
-      source('utils/tool.ts', "import { demo } from '../services/demo.ts';\nexport const tool = demo;"),
-      source('services/demo.ts', 'export const demo = 1;'),
+      source('src/utils/tool.ts', "import { demo } from '../services/demo.ts';\nexport const tool = demo;"),
+      source('src/services/demo.ts', 'export const demo = 1;'),
       source('mystery.ts', 'export const mystery = true;')
     ]);
 
     const inversions = violations.filter(violation => violation.rule === 'layer-inversion');
     assert.equal(inversions.length, 1);
-    assert.equal(inversions[0].file, 'utils/tool.ts');
+    assert.equal(inversions[0].file, 'src/utils/tool.ts');
     assert.match(inversions[0].message, /utils 不得依赖 services/);
 
     const unlayered = violations.filter(violation => violation.rule === 'unlayered-file');
@@ -90,12 +90,12 @@ describe('layer direction', () => {
 
   it('allows the documented downward direction and skips test files', () => {
     const violations = analyzeSources([
-      source('utils/tool.ts', 'export const tool = 1;'),
-      source('config/defaults.ts', "import { tool } from '../utils/tool.ts';\nexport const value = tool;"),
-      source('services/demo.ts', "import { tool } from '../utils/tool.ts';\nexport const demo = tool;"),
-      source('controllers/status.ts', "import { tool } from '../utils/tool.ts';\nimport { demo } from '../services/demo.ts';\nexport const status = demo;"),
-      source('routes/api.ts', "import { demo } from '../services/demo.ts';\nimport { status } from '../controllers/status.ts';\nexport const api = demo;"),
-      source('anywhere/__tests__/deep.test.ts', "import { api } from '../../routes/api.ts';\nexport const probe = api;")
+      source('src/utils/tool.ts', 'export const tool = 1;'),
+      source('src/config/defaults.ts', "import { tool } from '../utils/tool.ts';\nexport const value = tool;"),
+      source('src/services/demo.ts', "import { tool } from '../utils/tool.ts';\nexport const demo = tool;"),
+      source('src/controllers/status.ts', "import { tool } from '../utils/tool.ts';\nimport { demo } from '../services/demo.ts';\nexport const status = demo;"),
+      source('src/routes/api.ts', "import { demo } from '../services/demo.ts';\nimport { status } from '../controllers/status.ts';\nexport const api = demo;"),
+      source('anywhere/__tests__/deep.test.ts', "import { api } from '../../src/routes/api.ts';\nexport const probe = api;")
     ]);
 
     assert.deepEqual(violations, []);
@@ -103,24 +103,24 @@ describe('layer direction', () => {
 
   it('rejects controllers reaching upward into routes', () => {
     const violations = analyzeSources([
-      source('controllers/status.ts', "import { api } from '../routes/api.ts';\nexport const status = api;"),
-      source('routes/api.ts', 'export const api = 1;')
+      source('src/controllers/status.ts', "import { api } from '../routes/api.ts';\nexport const status = api;"),
+      source('src/routes/api.ts', 'export const api = 1;')
     ]);
 
     const inversions = violations.filter(violation => violation.rule === 'layer-inversion');
     assert.equal(inversions.length, 1);
-    assert.equal(inversions[0].file, 'controllers/status.ts');
+    assert.equal(inversions[0].file, 'src/controllers/status.ts');
     assert.match(inversions[0].message, /controllers 不得依赖 routes/);
   });
 
   it('classifies every production directory and the entry files', () => {
-    assert.equal(layerOf('app.ts'), 'entry');
-    assert.equal(layerOf('server.ts'), 'entry');
-    assert.equal(layerOf('utils/logger.ts'), 'utils');
-    assert.equal(layerOf('config/paths.ts'), 'config');
-    assert.equal(layerOf('services/agentRunService.ts'), 'services');
-    assert.equal(layerOf('controllers/agentStatusController.ts'), 'controllers');
-    assert.equal(layerOf('routes/agent.ts'), 'routes');
+    assert.equal(layerOf('src/app.ts'), 'entry');
+    assert.equal(layerOf('src/server.ts'), 'entry');
+    assert.equal(layerOf('src/utils/logger.ts'), 'utils');
+    assert.equal(layerOf('src/config/paths.ts'), 'config');
+    assert.equal(layerOf('src/services/agentRunService.ts'), 'services');
+    assert.equal(layerOf('src/controllers/agentStatusController.ts'), 'controllers');
+    assert.equal(layerOf('src/routes/agent.ts'), 'routes');
     assert.equal(layerOf('scripts/check-syntax.ts'), 'scripts');
     assert.equal(layerOf('mystery.ts'), undefined);
   });
@@ -129,17 +129,17 @@ describe('layer direction', () => {
 describe('static import cycles', () => {
   it('returns the modules of a two-node cycle', () => {
     const cycles = findImportCycles([
-      { from: 'services/a.ts', to: 'services/b.ts', line: 1 },
-      { from: 'services/b.ts', to: 'services/a.ts', line: 2 }
+      { from: 'src/services/a.ts', to: 'src/services/b.ts', line: 1 },
+      { from: 'src/services/b.ts', to: 'src/services/a.ts', line: 2 }
     ]);
 
-    assert.deepEqual(cycles, [['services/a.ts', 'services/b.ts']]);
+    assert.deepEqual(cycles, [['src/services/a.ts', 'src/services/b.ts']]);
   });
 
   it('reports the cycle through analyzeSources', () => {
     const violations = analyzeSources([
-      source('services/a.ts', "import { b } from './b.ts';\nexport const a = b;"),
-      source('services/b.ts', "import { a } from './a.ts';\nexport const b = a;")
+      source('src/services/a.ts', "import { b } from './b.ts';\nexport const a = b;"),
+      source('src/services/b.ts', "import { a } from './a.ts';\nexport const b = a;")
     ]);
 
     const cycles = violations.filter(violation => violation.rule === 'import-cycle');
@@ -151,7 +151,7 @@ describe('static import cycles', () => {
 describe('baseline handling', () => {
   const entry: BaselineEntry = {
     rule: 'explicit-any',
-    file: 'services/fixture.ts',
+    file: 'src/services/fixture.ts',
     count: 2,
     reason: 'fixture reason',
     remove: 'fixture removal'
@@ -171,7 +171,7 @@ describe('baseline handling', () => {
   it('fails above the allowed count and reports entries that can be lowered', () => {
     const violation = (line: number): GuardrailViolation => ({
       rule: 'explicit-any',
-      file: 'services/fixture.ts',
+      file: 'src/services/fixture.ts',
       line,
       message: 'fixture'
     });
@@ -182,12 +182,12 @@ describe('baseline handling', () => {
 
     const above = applyBaseline([violation(1), violation(2), violation(3)], parseBaseline({ version: 1, entries: [entry] }));
     assert.deepEqual(above.failures, [
-      { rule: 'explicit-any', file: 'services/fixture.ts', actual: 3, allowed: 2, lines: [1, 2, 3] }
+      { rule: 'explicit-any', file: 'src/services/fixture.ts', actual: 3, allowed: 2, lines: [1, 2, 3] }
     ]);
 
     const below = applyBaseline([violation(1)], parseBaseline({ version: 1, entries: [entry] }));
     assert.deepEqual(below.reductions, [
-      { rule: 'explicit-any', file: 'services/fixture.ts', actual: 1, allowed: 2 }
+      { rule: 'explicit-any', file: 'src/services/fixture.ts', actual: 1, allowed: 2 }
     ]);
   });
 });
@@ -270,7 +270,7 @@ describe('coverage report scope', () => {
   const report = [
     'ℹ start of coverage report',
     'ℹ file        | line % | branch % | funcs %',
-    'ℹ services/a.ts | 90.00 | 80.00 | 70.00',
+    'ℹ src/services/a.ts | 90.00 | 80.00 | 70.00',
     'ℹ all files   |  84.42 |   76.42 |   81.30',
     'ℹ end of coverage report'
   ].join('\n');
@@ -283,7 +283,7 @@ describe('coverage report scope', () => {
   });
 
   it('fails when test files leak into the report or the section is missing', () => {
-    const leaked = report.replace('services/a.ts', 'services/__tests__/a.test.ts');
+    const leaked = report.replace('src/services/a.ts', 'src/services/__tests__/a.test.ts');
     assert.match(checkCoverageReport(leaked).problems.join('\n'), new RegExp(`despite exclude pattern`));
     assert.deepEqual(checkCoverageReport('no report here').problems, ['coverage report section not found']);
   });
@@ -299,14 +299,14 @@ describe('coverage report scope', () => {
       const scripts = path.join(root, 'scripts');
       await mkdir(scripts);
       await mkdir(path.join(root, '__tests__'));
-      await mkdir(path.join(root, 'config'));
+      await mkdir(path.join(root, 'src', 'config'), { recursive: true });
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
       for (const file of ['coverage.ts', 'testFiles.ts', 'scriptSupport.ts']) {
         await writeFile(path.join(scripts, file), await readFile(path.join(serverRoot, 'scripts', file)));
       }
       await writeFile(
-        path.join(root, 'config', 'runtimeConfig.ts'),
-        await readFile(path.join(serverRoot, 'config', 'runtimeConfig.ts'))
+        path.join(root, 'src', 'config', 'runtimeConfig.ts'),
+        await readFile(path.join(serverRoot, 'src', 'config', 'runtimeConfig.ts'))
       );
       await writeFile(path.join(root, '__tests__', 'failure.test.ts'), [
         "import { it } from 'node:test';",
@@ -346,7 +346,7 @@ describe('guardrail gate over a fixture tree', () => {
   async function createTree(sourceText: string): Promise<string> {
     const root = await mkdtemp(path.join(tmpdir(), 'la-pluma-guardrails-'));
     const serverDir = path.join(root, 'server');
-    await mkdir(path.join(serverDir, 'utils'), { recursive: true });
+    await mkdir(path.join(serverDir, 'src', 'utils'), { recursive: true });
     await mkdir(path.join(serverDir, 'node_modules', 'typescript'), { recursive: true });
     await writeFile(path.join(serverDir, 'package.json'), JSON.stringify({ devDependencies: { typescript: '6.0.3' } }));
     await writeFile(path.join(serverDir, 'node_modules', 'typescript', 'package.json'), JSON.stringify({ version: '6.0.3' }));
@@ -363,7 +363,7 @@ describe('guardrail gate over a fixture tree', () => {
       ''
     ].join('\n'));
     await writeFile(path.join(serverDir, 'guardrails-baseline.json'), JSON.stringify({ version: 1, entries: [] }));
-    await writeFile(path.join(serverDir, 'utils', 'fixture.ts'), sourceText);
+    await writeFile(path.join(serverDir, 'src', 'utils', 'fixture.ts'), sourceText);
     return root;
   }
 

@@ -10,8 +10,8 @@ const __dirname = dirname(__filename)
 // GET 读取按端口缺省受限重试，显式时限与错误映射由端口承担。
 const outboundHttp = createOutboundHttpClient()
 
-const STAGES_PATH = join(__dirname, '../data/stages.json')
-const PARADOX_OPERATORS_PATH = join(__dirname, '../data/paradox-operators.json')
+const STAGES_PATH = join(__dirname, '../../data/stages.json')
+const PARADOX_OPERATORS_PATH = join(__dirname, '../../data/paradox-operators.json')
 const HANDBOOK_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/handbook_info_table.json'
 const CHARACTER_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json'
 

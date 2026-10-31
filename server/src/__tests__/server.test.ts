@@ -967,7 +967,7 @@ describe('Server runtime assembly', () => {
     const entry = new URL('../server.ts', import.meta.url).href
     const script = `await import(${JSON.stringify(entry)}); process.stdout.write('imported');`
     const child = spawn(process.execPath, ['--input-type=module', '--eval', script], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
       env: { ...process.env, NODE_ENV: 'test' },
       stdio: ['ignore', 'pipe', 'pipe']
     })

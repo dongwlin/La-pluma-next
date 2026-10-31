@@ -23,7 +23,7 @@ import ts from 'typescript';
 import { collectFiles, relativePath } from './sourceFiles.ts';
 
 export interface SourceFile {
-  /** 相对 server 根目录的 POSIX 路径，例如 `routes/agent.ts`。 */
+  /** 相对 server 根目录的 POSIX 路径，例如 `src/routes/agent.ts`。 */
   path: string;
   source: string;
 }
@@ -90,11 +90,11 @@ export const GUARDRAIL_RULES: readonly GuardrailRule[] = [
 type Layer = 'utils' | 'config' | 'services' | 'controllers' | 'routes' | 'scripts' | 'entry';
 
 const LAYER_DIRECTORIES: ReadonlyArray<readonly [string, Layer]> = [
-  ['utils/', 'utils'],
-  ['config/', 'config'],
-  ['services/', 'services'],
-  ['controllers/', 'controllers'],
-  ['routes/', 'routes'],
+  ['src/utils/', 'utils'],
+  ['src/config/', 'config'],
+  ['src/services/', 'services'],
+  ['src/controllers/', 'controllers'],
+  ['src/routes/', 'routes'],
   ['scripts/', 'scripts']
 ];
 
@@ -120,7 +120,7 @@ export function isTestFile(filePath: string): boolean {
 }
 
 /** 顶层入口模块：`app.ts` 只做应用装配，`server.ts` 负责传输与启动。 */
-const ENTRY_MODULES: ReadonlySet<string> = new Set(['app.ts', 'server.ts']);
+const ENTRY_MODULES: ReadonlySet<string> = new Set(['src/app.ts', 'src/server.ts']);
 
 /** 返回文件所属层；顶层入口只允许 `app.ts` 与 `server.ts`。 */
 export function layerOf(filePath: string): Layer | undefined {

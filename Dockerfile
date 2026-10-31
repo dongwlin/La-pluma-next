@@ -141,4 +141,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
 # 启动服务器
 WORKDIR /app/server
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "server.ts"]
+CMD ["node", "src/server.ts"]

@@ -7,7 +7,7 @@
 
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveAppPaths } from '../config/runtimeConfig.ts';
+import { resolveAppPaths } from '../src/config/runtimeConfig.ts';
 
 /** 已解析的 JSON 对象。 */
 export type JsonRecord = Record<string, unknown>;

@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 
 const serviceDir = dirname(fileURLToPath(import.meta.url));
-const defaultLockPath = join(serviceDir, '../data/maa-execution.lock');
+const defaultLockPath = join(serviceDir, '../../data/maa-execution.lock');
 
 /** 申请租约时可提供的描述字段；缺省值由本模块补齐。 */
 export interface MaaExecutionLeaseRequest {

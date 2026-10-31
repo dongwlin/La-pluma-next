@@ -1,6 +1,6 @@
 /**
  * apiHelper 工具类测试
- * 运行: node --test server/utils/__tests__/apiHelper.test.ts
+ * 运行: node --test server/src/utils/__tests__/apiHelper.test.ts
  */
 
 import { describe, it, afterEach } from 'node:test';

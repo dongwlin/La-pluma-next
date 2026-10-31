@@ -27,7 +27,7 @@ childProcess.execFile = (file: string, args: string[], options: ExecFileOptions,
   return originalExecFile(file, args, options, callback);
 };
 
-const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { default: operatorTrainingService, expandMaterialTree, estimateMaterialFarming } = await import('../operatorTrainingService.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
