@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
-import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../maintenanceDto.ts';
+import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../../controllers/maintenanceDto.ts';
 
 // 剩余维护入口已从 agent.ts 拆到独立 router：这里通过 createLaPlumaApp 验证
 // 真实 HTTP 的鉴权、连接覆盖、dryRun 与平台信息契约。所有外部依赖都用假 CLI /
@@ -108,7 +108,7 @@ const {
   projectParadoxCopilot,
   resourceInfoFallback,
   toChangelogEntry
-} = await import('../maintenanceDto.ts');
+} = await import('../../controllers/maintenanceDto.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
 // 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。

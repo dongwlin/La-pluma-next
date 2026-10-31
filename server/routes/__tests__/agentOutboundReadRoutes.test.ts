@@ -4,7 +4,7 @@ import router from '../agent.ts'
 import type {
   MaintenanceChangelogEntry,
   MaintenanceParadoxSearchPayload
-} from '../maintenanceDto.ts'
+} from '../../controllers/maintenanceDto.ts'
 
 // 出站读取入口已随维护路由迁出聚合入口：按实际挂载关系递归解析，
 // 证明入口仍通过聚合 router 暴露，而不是只存在于某个文件里。

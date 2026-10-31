@@ -31,7 +31,7 @@ import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import type { MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
 import type { ResourceInfo, ResourceUpdateResult } from '../services/resourceUpdateService.ts';
 import type { AutoUpdateConfig } from '../services/scheduleTriggerService.ts';
-import { resolveRequestConnection } from '../controllers/requestConnection.ts';
+import { resolveRequestConnection } from './requestConnection.ts';
 
 /** 维护路由处理器的请求端口：query/body 保持 unknown，由本模块按端点收窄。 */
 export interface MaintenanceRequest extends ApiRequestLike {
