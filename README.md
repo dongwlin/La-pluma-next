@@ -135,6 +135,7 @@ La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent
 | 文档 | 内容 |
 | --- | --- |
 | [架构与技术栈](docs/architecture/README.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
+| [服务端架构与请求契约](docs/server/README.md) | 服务端分层、请求管道、响应契约与测试入口 |
 | [Agent API 使用指南](docs/api/agent.md) | manifest/status/actions、执行流程、幂等与鉴权 |
 | [功能概览](docs/guides/features.md) | 控制台、自动化流程、作业与肉鸽、数据养成等详细功能 |
 | [部署指南](docs/guides/deployment.md) | Docker 镜像、环境变量、HTTPS/PWA、子路径与 Compose |

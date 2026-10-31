@@ -9,6 +9,7 @@ docs/
 ├── guides/          # 使用、配置与部署
 ├── architecture/    # 系统概览与跨域契约
 ├── api/             # Agent 接口使用
+├── server/          # 服务端架构与运行时
 ├── frontend/        # 前端架构、兼容与组件 API
 │   └── domains/     # 八个领域各维护一份文档
 └── development/     # 开发、检查、集成与维护
@@ -34,6 +35,17 @@ docs/
 | [资源请求错误与取消](architecture/resource-requests.md) | 请求信封、载荷校验、失败分类与取消 |
 | [Query 缓存与键规范](architecture/query-cache.md) | 唯一客户端、key 清单、默认策略与覆盖值 |
 | [共享资源归属与失效端口](architecture/resource-ownership.md) | 共享资源、跨域失效作用域及发布/接收映射 |
+
+## 服务端与运行时
+
+| 文档 | 内容 |
+| --- | --- |
+| [服务端架构与请求契约](server/README.md) | 分层方向、请求管道、响应契约与测试入口 |
+| [运行时初始化、就绪与关闭](server/runtime-lifecycle.md) | 组装启动、就绪判定、执行准入与关闭流程 |
+| [持久化与运行数据](server/persistence.md) | 数据位置与默认值、写入原子性、损坏 fail-closed 与恢复语义 |
+| [日常流程与定时触发](server/scheduling.md) | 任务流计划、执行编排、cron 触发与通知/养成回写 |
+| [MAA、ADB 与通知渠道](server/integrations.md) | MAA 子进程与日志、连接解析、回调解析与 Telegram 通知/Bot |
+| [设备预览与信令运行时](server/preview-webrtc.md) | 同源信令网关代理、viewer 租约与上游端口边界 |
 
 ## 前端与领域
 

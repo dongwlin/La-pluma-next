@@ -376,51 +376,21 @@ applyTrainingPlan({ plan: getOpenStagePlan(plan), settings: 所有者当前 sett
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：
+以下路径相对于 `client/src/`：领域回归在 `features/training` 与 `pages/training`；跨域联动回归在 `pages/dashboard/Dashboard.test.tsx`、`pages/automation/AutomationTasks.config.test.tsx` 与 `features/resource-invalidation/**`。入口命令见[验证命令](#验证命令)。
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `features/training/model/operatorRows.test.ts` | 搜索去空白/大小写、空搜索复制、72 行分批与剩余计数、0/负游标、空态优先级、卡片动作与蒙版状态 |
-| `features/training/model/materials.test.ts` | 龙门币末项与缺口计数、无 LMD 复用原数组、缺口筛选、空目标、已集齐、缺省进度 |
-| `features/training/model/planDisplay.test.ts` | `openStages` 优先与空数组、`stages` 回退、开放关卡计数、次数/理智回查、缺省元数据、焦点回退 |
-| `features/training/components/OperatorPicker.test.tsx` | 搜索与无结果空态、分批渲染与“继续显示”、关闭再打开保留搜索与游标 |
-| `features/training/components/MaterialViews.test.tsx` | 表格 role/列头/缺口与已齐、嵌套合成层级 |
-| `features/training/components/UndoToast.test.tsx` | portal 在页面容器外、`role="status"`/`aria-live`、8 秒关闭、悬停/焦点/pending 暂停、失焦恢复 |
-| `features/training/model/candidates.test.ts` | 兼容候选信封；目录与持有快照补齐、仅按稀有度筛选；非空端点行原样保留；`trainable`/`owned`/`all` 计数来源、精英新旧字段、`owned` 空时回退、`all` 忽略未精二、`all` 为 0 保旧、初始零计数 |
-| `features/training/model/queries.test.ts` | 队列唯一 key、signal、快照元数据与失败信封；候选/计数筛选 key、参数归一与 signal、旧数组载荷、空 `all` 在同一 queryFn 补齐、失败不伪装为空；三类计数读取与失败、结构共享使新 `all=0` 不覆盖旧值 |
-| `features/training/model/queueCommands.test.ts` | 并发排序按最新快照串行、重复添加合并、写后刷新失败 fallback/`uncertain`、写入失败不提交不发布、移除后撤销按原索引恢复、目标干员消失时拒绝排序、写前取消读取 |
-| `features/training/model/settingsCommands.test.ts` | 默认值；串行编辑与旧响应不覆盖新值；旧失败不打断新草稿；最新失败回滚；服务端归一化；缺省响应回退；等值编辑忽略；首次 hydrate 只采用一次；编辑后拒绝迟到快照；写入期间忽略快照、之后采用显式重载；reset 丢弃迟到写入；成功才发布 `training-plan`；失败原因兜底 |
-| `features/training/model/planValidity.test.ts` | basis 捕获与空 revision；队列/设置版本任一不符即失效；刷新失败、busy、无队列时禁止生成；版本失效、刷新失败、无计划时禁止应用 |
-| `features/training/model/planCommands.test.ts` | 生成前权威重读与 basis 冻结；采用外部设置后仍接受按新版本生成的计划；生成期间设置/队列版本变化丢弃旧响应；响应 queueRevision 不符；重复生成/应用只发一个请求；应用前排空 automation 配置并在 pending 时拒绝；排空后二次校验；应用成功发布三类作用域；部分成功（schedule 注册失败、应用后重读失败）；同步重试的失败/部分成功；外部 revision 作废旧计划 |
-| `pages/training/OperatorTraining.test.tsx` | 队列增删排序撤销、移除期间排队排序、fallback/警告/重载、跨页按作用域失效与自发布忽略；候选三类计数、候选/目录失败清空列表并保留计数、仅计数失败保留列表与旧计数、筛选迟到响应与 Activity 恢复不显示旧候选；设置串行写入与重挂载裁决、失败回滚/重试、设置变化与权威重读作废旧计划、按新设置预览/应用、生成期间设置变化丢弃旧计划、自身发布不清空写入期间新预览；队列/范围/revision 变化及撤销开始即作废预览、刷新失败禁止生成/应用且重载后需重新预览；应用等待 automation 保存、部分成功与重读入口、成功发布 automation/schedule/总览失效且不再派发 window 事件；选择器焦点与键盘、Activity 隐藏恢复、材料展示与错误重试 |
-| `pages/dashboard/Dashboard.test.tsx` | `dashboard-snapshot` 接收端完整刷新与单路失败保旧 |
-| `features/resource-invalidation/**` | 失效端口去重、revision、Activity 恢复补发 |
+关键不变量：
+
+- 队列命令串行且执行时读取最新快照：重复添加合并、排序不合并，写成功与刷新成功分开（`uncertain` fallback），写前取消在途读取，目标干员消失时拒绝排序。
+- 设置所有者串行提交并裁决旧响应：只有最新编辑能改变页面值，最新失败回滚到 `persisted`，首次 hydrate 只采用一次。
+- 计划有效期：`{ queueRevision, settingsRevision }` 任一变化即作废旧计划，队列命令开始即作废；应用前等待 automation 配置排空并在 pending 时拒绝；部分成功（schedule 注册失败、应用后重读失败）保留计划并提示。
+- 失效发布：写成功才发布，本页忽略自己的 `detail.source` 发布；显式应用发布 automation/调度/总览三类作用域，synced 队列写入只发布 `automation-config`。
 
 ### 验证命令
 
-在仓库根目录按检查范围选择：
+在仓库根目录执行：
 
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run src/features/training src/pages/training
-```
-
-```sh
-pnpm --filter la-pluma-next-client exec vitest run \
-  src/features/training/model/queueCommands.test.ts \
-  src/features/training/model/queries.test.ts \
-  src/pages/training/OperatorTraining.test.tsx \
-  src/pages/dashboard/Dashboard.test.tsx \
-  src/features/resource-invalidation
-```
-
-```sh
-pnpm --filter la-pluma-next-client exec vitest run \
-  src/features/training/model/settingsCommands.test.ts \
-  src/features/training/model/planValidity.test.ts \
-  src/features/training/model/planCommands.test.ts \
-  src/pages/training/OperatorTraining.test.tsx \
-  src/pages/automation/AutomationTasks.config.test.tsx \
-  src/pages/dashboard/Dashboard.test.tsx
 ```
 
 完整验证与视觉回归入口见[开发指南](../../development/README.md)。

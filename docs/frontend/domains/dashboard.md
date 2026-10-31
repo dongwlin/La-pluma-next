@@ -283,30 +283,18 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 ### 回归测试
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `client/src/features/dashboard/model/flowView.test.ts` | 空闲/运行/等待/占用/未知/不可用/loading 的命令文案、按钮状态与禁用规则 |
-| `client/src/features/dashboard/model/deviceView.test.ts` | 使用率阈值、空历史、单点水平线、稳定区间、曲线几何与时长文案 |
-| `client/src/features/dashboard/model/activityView.test.ts` | loading/active/none/unavailable/stale 矩阵、首轮失败、v1 缺 status、刷新失败降级、地区/来源标签与重试/执行能力 |
-| `client/src/features/dashboard/hooks/useDashboardDeviceStats.test.tsx` | 首次样本投影到 store 与温度历史、Activity 恢复不重复追加、新时间戳追加、null 载荷保旧 |
-| `client/src/features/dashboard/components/DashboardFlowSection.test.tsx` | 预览入口随 Activity 隐藏/恢复保留、效果重建、预览画面不导航且头部模式可切换 |
-| `client/src/pages/dashboard/Dashboard.test.tsx` | 首屏/缓存/后台刷新与完整快照原子提交；四类失效（计划应用、识别、资源更新等）、Activity 隐藏期间失效恢复；单路失败/形状错误保旧、预检不写快照、启动后经协调器刷新；空流程导航、执行投影与控制器身份、设备样本投影、预览挂载 |
-| `client/src/features/dashboard/store/dashboardStore.test.ts` | 缓存版本/形状/语义边界/时钟偏差、设备样本合并与温度点去重、采样时间戳不持久化、失败刷新不覆盖成功缓存 |
-| `client/src/features/dashboard/model/queries.test.ts` | 五个领域 key 与 signal、协调快照 key/缓存参数、每次重读、单路失败与坏载荷整体失败、不继承自动重试 |
-| `client/src/features/dashboard/model/snapshot.test.ts` | 五路归一、真实活动 DTO 投影、none/unavailable/stale、字段回退、单路缺失/形状错误/越界返回 null |
-| `client/src/features/dashboard/model/snapshotRefresher.test.ts` | 单飞、force 补一次、原子提交、失败保旧、探针不否决、离线与预期失败静默 |
-| `client/src/features/device-mirror` 的预览测试 | 预览会话生命周期；采样间隔、失败保旧与 Activity 暂停恢复由下列采样测试覆盖 |
-| `client/src/features/device-mirror/model/queries.test.ts` | 设备 key、signal、null 载荷与失败信封 |
-| `client/src/features/device-mirror/hooks/useDeviceStatsSample.test.tsx` | 5s 轮询、失败保旧、null 不覆盖、Activity 隐藏停轮询、恢复立即采样且只有一个计时器 |
-| `client/src/features/automation/model/queries.test.ts` | activity/schedule-execution key、`profile` 哨兵、显式 clientType、signal、DTO 校验与失败 |
-| `client/src/features/automation/model/activity.test.ts` | 真实活动 DTO 校验、可空字段保留、状态/时间戳/数组/failure/completion 边界 |
-| `client/src/features/statistics/model/queries.test.ts` | today-drops/open-stages key、signal、失败信封 |
+以下路径相对于 `client/src/`：领域回归在 `features/dashboard` 与 `pages/dashboard`，设备采样与预览会话回归在 `features/device-mirror`，跨域资源 key 回归在 `features/automation/model` 与 `features/statistics/model`；入口命令见[验证命令](#验证命令)。
+
+关键不变量：
+
+- 完整快照只做原子提交：单路失败、坏载荷或 completion 越界整体失败并保留旧快照；协调器单飞、`force` 补一次、探针不否决、预期失败静默。
+- 活动卡 phase（loading/active/none/unavailable/stale）矩阵与 `canRunActivity` 执行能力；`la-pluma-dashboard-cache` v1 的版本/形状/时钟偏差校验，失败刷新不覆盖成功缓存。
+- 设备采样：同一 `dataUpdatedAt` 的缓存回放不重复追加温度点，新时间戳逐次追加（最多 36 个），`null` 载荷与非法字段保旧。
+- 订阅隔离：采样投影返回 `null` 不推动兄弟区域重渲染，流程卡独占执行订阅与终态提示；预览入口不条件卸载、预览画面不导航。
 
 ### 验证命令
 
 以下命令均在仓库根目录执行。
-
-页面与面板：
 
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run \
@@ -317,17 +305,6 @@ pnpm --filter la-pluma-next-client exec vitest run \
   src/features/statistics/model \
   src/features/resource-invalidation \
   src/features/runtime-status
-```
-
-完整快照与设备采样：
-
-```sh
-pnpm --filter la-pluma-next-client exec vitest run \
-  src/features/dashboard \
-  src/pages/dashboard \
-  src/features/device-mirror \
-  src/features/automation/model \
-  src/features/statistics/model
 ```
 
 完整验证与视觉回归入口见[开发指南](../../development/README.md)。

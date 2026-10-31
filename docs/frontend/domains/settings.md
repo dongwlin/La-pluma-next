@@ -479,20 +479,14 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 
 ### 回归测试
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `client/src/pages/settings/ConfigManager.layout.test.tsx` | section 导航/存储/事件/清理、只读说明与入口、两个打开目录入口；初始读取失败、初始/refresh 不覆盖编辑、保存期间编辑/跨 section 保存、重置只改草稿、连接保存失败、Activity 保留草稿并重订阅；发现使用草稿 adb 路径/回填设备、查找与测试 loading 独立、失败反馈/重试、测试期间编辑不覆盖、隐藏取消而 section 切换不取消查找；版本/目录缓存复用、只读首屏一次目录读取、目录失败切只读不重试且保留重试入口；更新互斥、资源步骤失败重试、失败不发布/重试/推进图标 epoch、CLI 只重取版本、core/热更新发布四类失效并推进 epoch、提示先于重取、隐藏期间更新继续并在恢复重取版本；自动更新保存跨隐藏、迟到读取不覆盖编辑、保存/失败/调度失败边界；连接与更新反馈不串面板 |
-| `client/src/pages/settings/ConfigManager.subscriptions.test.tsx` | 设备/更新/自动更新/版本状态与全局消息不重渲染连接表单；自动更新编辑不重渲染组件更新面板；连接草稿编辑不重渲染更新/版本/目录面板；设备/更新动作不重渲染目录面板；目录缓存变化不重渲染连接/更新面板 |
-| `client/src/features/settings/components/ReadOnlyConfigPanel.test.tsx` | 只读头部复用过期目录缓存、不触发 getConfigDir；目录可用时“打开目录”保持可点 |
-| `client/src/features/settings/api/index.test.ts` | `getConfig` signal、profile 载荷校验、非法已知字段拒绝与未知字段保留 |
-| `client/src/features/settings/model/configNormalization.test.ts` | connection 默认值与非法字段回退、未知字段保留、整份草稿比较；auto-update 归一化与 `HH:MM` 校验 |
-| `client/src/features/settings/model/connectionConfig.test.ts` | 初始状态、编辑 revision/dirty、服务端采用条件、编辑期间迟到读取、脏草稿读取、保存前读取失效、保存在途读取、保存串行、保存期间编辑、失败保留与重试、未知字段回写、重置边界与保存中忽略、`settings/maa-config` key/signal/contract 失败/信封失败 |
-| `client/src/features/settings/model/configSection.test.ts` | 存储键与事件名、非法存储回退、写入不抛错、可编辑能力、合法事件过滤与注销 |
-| `client/src/features/settings/model/autoUpdateConfig.test.ts` | 服务端采用与本地缓存、后续成功读取清空旧回退警告、迟到读取不覆盖编辑/保存、确认保存后重挂载采用服务端副本、服务端失败本地回退/无回退错误、坏载荷/JSON；dirty/revision/反馈清理、无效时间、保存与调度完整成功、禁用仍要求调度成功、保存失败不碰调度、内层调度失败、保存期间编辑返回 superseded、保存互斥、抛错与 reset |
-| `client/src/features/settings/model/deviceConnection.test.ts` | 两条链初始/运行态、loading 互不影响、设备归一与坏条目、内层/信封/传输失败、取消与迟到响应、新请求取代旧请求、测试成功/未连接/请求失败、草稿 revision 与 `superseded`、选择回填保留未知字段与最新编辑、`cancelAll` 与 reset |
-| `client/src/features/settings/model/systemResources.test.ts` | `version`/`config-directory` key、signal、版本与目录归一化、旧字符串目录、空白路径与坏载荷 contract 失败、信封失败 |
-| `client/src/features/settings/model/updateCommands.test.ts` | 渠道目标策略、失败详情新/旧形状、资源重试条件、四条命令互斥与重复忽略、core/渠道/CLI/资源成功与失败文案、网络异常、CLI 不产生页内反馈、无自动重试、reset |
-| `client/src/features/game-data/model/itemIconCache.test.ts` | 图标 epoch 初始值、持久化恢复、坏值回退、单调推进、存储不可用与订阅注销 |
+以下路径相对于 `client/src/`：领域回归在 `features/settings` 与 `pages/settings`，物品图标 epoch 回归在 `features/game-data/model/itemIconCache.test.ts`；入口命令见[验证命令](#验证命令)。
+
+关键不变量：
+
+- connection 草稿裁决：初始读取与 refresh 不覆盖未保存编辑，保存期间编辑返回 `superseded`，重置推进 revision 且保存中忽略。
+- 设备命令：取消跟随页面/Activity 而不是 section，查找与测试 loading 互不影响，测试期间编辑标记 `test.superseded`，选择回填保留未知字段与最新编辑。
+- 更新互斥与失效：单槽位重复发起返回 `ignored`，core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新保存 = 写 user config + 应用调度，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
+- 目录缓存与订阅隔离：只读 section 头部只复用目录缓存不重取；设备/更新/版本状态与全局消息不重渲染连接表单。
 
 视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归；完整只读标记结构仍依赖代码审阅。
 
@@ -500,25 +494,10 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 
 以下命令均在仓库根目录执行。
 
-页面与面板：
-
-```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/settings src/pages/settings
-```
-
-完整客户端验证：
-
-```sh
-pnpm --filter la-pluma-next-client verify
-```
-
-组件更新与自动更新：
-
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run \
-  src/features/settings/model/updateCommands.test.ts \
-  src/features/settings/model/autoUpdateConfig.test.ts \
-  src/pages/settings/ConfigManager.layout.test.tsx \
+  src/features/settings \
+  src/pages/settings \
   src/features/game-data/model/itemIconCache.test.ts
 ```
 
