@@ -84,27 +84,39 @@ La-pluma-next/
 │   └── public/                # 静态资源（Logo、图标）
 ├── docs/                      # 项目文档（架构、Agent API、功能、配置、部署、开发、组件库、维护）
 ├── server/                    # 后端 (Node.js + Express)
-│   ├── routes/                # API 路由
+│   ├── routes/                # API 路由（路径映射与 router 装配）
 │   │   ├── agent.ts           # 主 Agent API（聚合领域 router）
-│   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止
-│   │   ├── executionDto.ts   # 执行请求按端点收窄与 Run 响应载荷
-│   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（ADB 探测有副作用）
-│   │   ├── agentLogRoutes.ts  # 实时/历史日志读取、清空与清理
-│   │   ├── agentDataRoutes.ts # 今日关卡、掉落与本地游戏数据读取
+│   │   ├── agentExecution.ts # tracked 执行、流程/作业集与目标停止（端点映射）
+│   │   ├── agentStatusRoutes.ts # 状态汇总与 Run 查询（端点映射与 envelope 装配）
+│   │   ├── agentLogRoutes.ts  # 实时/历史日志读取、清空与清理（端点映射）
+│   │   ├── agentDataRoutes.ts # 今日关卡、掉落与本地游戏数据读取（端点映射）
+│   │   ├── agentTrainingRoutes.ts # 养成队列、设置、候选与计划生成/应用（端点映射）
+│   │   ├── agentPreviewRoutes.ts # 截图、WebRTC、方向与设备采样（端点映射）
+│   │   ├── agentNotificationRoutes.ts # 通知频道配置、测试与发送（端点映射）
+│   │   ├── agentMaintenanceRoutes.ts # 连接/profile、资源与核心更新、定时配置及维护动作（端点映射）
+│   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
+│   │   └── operatorQuotes.ts  # 干员台词接口
+│   ├── controllers/           # 请求解析、校验与响应封装的业务适配
+│   │   ├── agentStatusController.ts # /status 探测合并与短缓存、Run 404 映射
+│   │   ├── agentExecutionController.ts # tracked 执行引擎、Run 生命周期与 202/幂等响应
+│   │   ├── agentLogController.ts # 日志读取归一、清理范围校验与错误构造
+│   │   ├── agentDataController.ts # 连接覆盖解析、游戏日判定与掉落载荷选择
+│   │   ├── agentTrainingController.ts # 养成请求收窄、流程同步与材料拉取 dryRun 分支
+│   │   ├── agentPreviewController.ts # 截图、WebRTC 启停与方向的 req/res 适配
+│   │   ├── agentNotificationController.ts # 通知请求校验与信封装配
+│   │   ├── agentMaintenanceController.ts # 维护动作解析、识别结果与 envelope 装配
+│   │   ├── operatorQuotesController.ts # 台词请求校验与 400/404 判定
+│   │   ├── userConfigController.ts # 用户配置读写信封与存储错误适配
+│   │   ├── executionDto.ts    # 执行请求按端点收窄与 Run 响应载荷
 │   │   ├── readDto.ts         # 读取请求收窄与状态/掉落/游戏数据响应载荷
-│   │   ├── agentTrainingRoutes.ts # 养成队列、设置、候选与计划生成/应用
 │   │   ├── trainingDto.ts     # 养成请求按端点收窄与候选/计数响应载荷
-│   │   ├── agentPreviewRoutes.ts # 截图、WebRTC、方向与设备采样预览适配
 │   │   ├── previewDto.ts      # 预览设备/方向/dryRun 请求收窄与截图/状态载荷
-│   │   ├── agentNotificationRoutes.ts # 通知频道配置、测试与发送适配
 │   │   ├── notificationDto.ts # 通知请求收窄、保存/应用结果与响应载荷
-│   │   ├── agentMaintenanceRoutes.ts # 连接/profile、资源与核心更新、定时配置及维护动作
 │   │   ├── maintenanceDto.ts  # 维护请求收窄、上游响应结构与维护动作载荷
+│   │   ├── operatorQuotesDto.ts # 台词请求按端点收窄与业务错误文案
 │   │   ├── deviceStatus.ts    # ADB/WebRTC/显示状态探测适配
 │   │   ├── requestConnection.ts # 请求级连接覆盖解析
-│   │   ├── userConfig.ts      # 用户配置 HTTP 适配（存储实例经应用组装注入）
-│   │   ├── operatorQuotes.ts  # 干员台词接口
-│   │   └── operatorQuotesDto.ts # 台词请求按端点收窄与业务错误文案
+│   │   └── configStorageError.ts # 配置存储错误的统一出口
 │   ├── services/              # 业务逻辑
 │   │   ├── maaProcessService.ts # MAA CLI 子进程、实时日志与停止
 │   │   ├── maaExecutionService.ts # 执行租约门禁、CLI 命令与动态任务

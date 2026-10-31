@@ -115,7 +115,7 @@ LogViewer（页面壳：PageHeader + FloatingStatusIndicator）
 | 项目 | 当前值 | 依据 |
 | --- | --- | --- |
 | 端点 | `GET /api/agent/logs/recent?lines=200` | `features/logs/api` 的 `getRealtimeLogs` |
-| 行数 | 客户端固定读取最近 200 行；服务端把 `lines` 限制在 1–500 | `REALTIME_LOG_LINES`、`server/routes/agentLogRoutes.ts` |
+| 行数 | 客户端固定读取最近 200 行；服务端把 `lines` 限制在 1–500 | `REALTIME_LOG_LINES`、`server/controllers/agentLogController.ts` |
 | 轮询间隔 | 1250ms | `REALTIME_LOG_INTERVAL_MS`，与迁移前页面计时器一致 |
 | 响应形状 | `LogEntry` 数组，每项含 `time`、`level`、`message` | 服务端 `getRealtimeLogs` 返回内存缓冲切片 |
 | 缓冲方式 | 每次响应整体替换当前 200 行快照，不追加 | 服务端只返回最近行，没有增量标识 |
