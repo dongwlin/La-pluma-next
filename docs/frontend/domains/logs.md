@@ -265,19 +265,15 @@ LogViewer（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 回归测试
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `client/src/pages/logs/LogViewer.test.tsx` | 实时/历史读取失败重试、后台失败保留行、切换竞态与旧响应丢弃；返回实时立即重读且不残留旧内容、模式与自动滚动生命期；清理确认/列表刷新、失败保持弹层与重试、清空失败保留行并恢复轮询；暂停/继续、暂停时重试先恢复、暂停后清空保持暂停、历史返回恢复；搜索跨模式保留、导出折叠前重复行与过滤为空时禁用 |
-| `client/src/pages/logs/LogViewer.activity.test.tsx` | Activity 隐藏停止并取消、显示立即重读、文档隐藏不发送、慢请求不叠加；手动暂停跨隐藏/恢复保留、继续立即读取；清空期间暂停与命令槽位、成功后立即重读、卸载取消本地等待；历史读取隐藏取消/恢复重试、历史模式不启动实时、列表刷新失败保留内容并重试 |
-| `client/src/features/logs/model/logCommands.test.ts` | 清空成功/失败/异常/取消时的 pause/clear/resume 次序、手动暂停时清空成功/失败均保持暂停；清理成功刷新与选择裁决、失败/取消不刷新、列表失败/取消不裁决 |
-| `client/src/features/logs/model/logExport.test.ts` | 导出行格式、空选择与 UTC 文件名 |
-| `client/src/features/logs/model/logModel.test.ts` | 级别别名、时间格式、实时/历史解析、任务回调摘要、命令与噪声行、级别/搜索过滤、重复折叠、空输入 |
-| `client/src/features/logs/model/realtimeLogStream.test.ts` | 200 行与 1250ms、慢请求不重叠、旧响应丢弃、失败保留缓冲、文档隐藏/可见、手动暂停粘性、停止/重启立即读取 |
-| `client/src/features/logs/model/historyLogSession.test.ts` | 列表成功/失败保留、列表旧响应、切换文件旧读取、返回实时丢弃、Activity 隐藏取消/恢复重试、成功/失败不自动重试、失败重试、清理后选择裁决、停止取消列表 |
-| `client/src/features/logs/hooks/useRealtimeLogs.test.tsx` | 手动暂停跨可见性保持、恢复立即读取、enabled 启停、文档隐藏取消在途读取 |
-| `client/src/features/logs/api/index.test.ts` | 实时/列表/文件读取 signal、清空/清理命令本地等待 signal、载荷校验、取消保持 AbortError |
+以下路径相对于 `client/src/`：领域回归在 `features/logs` 与 `pages/logs`；入口命令见[验证命令](#验证命令)。
 
-维护时重点检查暂停/继续、清空后保留暂停、历史返回立即重读、搜索过滤、导出和自动滚动；可复用的行为回归见上表。
+关键不变量：
+
+- 实时流：200 行/1250ms 快照整体替换、慢请求不叠加、旧响应丢弃、失败保留缓冲；手动暂停跨 Activity 与文档可见性保持，清空成功/失败均不解除手动暂停。
+- 历史会话：Activity 隐藏取消列表与读取并把进行中读取转为 `cancelled`，恢复重读列表并重试当前文件；列表失败保留上一次成功列表。
+- 返回实时由 `enabled` 驱动并立即重读，不残留进入历史前的旧行；搜索过滤跨实时/历史保留，导出使用折叠前的过滤行且过滤为空时禁用。
+
+维护时重点检查暂停/继续、清空后保留暂停、历史返回立即重读、搜索过滤、导出和自动滚动。
 
 ### 验证命令
 

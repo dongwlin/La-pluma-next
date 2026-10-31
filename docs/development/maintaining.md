@@ -87,6 +87,12 @@ WebRTC 安装会从 `hqw700/ScrcpyOverWebRTC` 的 GitHub Release 下载 `cloudph
 | 前端分层、状态所有者、URL 与 Activity | [前端架构](../frontend/README.md) |
 | Agent 对接流程与鉴权 | [Agent API](../api/agent.md) |
 | 服务端 Run 协议 / 前端控制器 | [执行生命周期](../architecture/execution-lifecycle.md) / [执行客户端](../architecture/execution-client.md) |
+| 服务端分层与请求契约 | [服务端架构与请求契约](../server/README.md) |
+| 服务端组装启动、就绪与关闭 | [运行时初始化、就绪与关闭](../server/runtime-lifecycle.md) |
+| 运行数据位置、写入与恢复 | [持久化与运行数据](../server/persistence.md) |
+| 日常流程计划与定时触发 | [日常流程与定时触发](../server/scheduling.md) |
+| MAA/ADB 集成与通知渠道 | [MAA、ADB 与通知渠道](../server/integrations.md) |
+| 设备预览链路与信令网关 | [设备预览与信令运行时](../server/preview-webrtc.md) |
 | 三域配置 key、wire、pending 与完整提交 | [配置持久化](../architecture/config-persistence.md) |
 | 请求错误与取消 / Query key 与缓存策略 | [资源请求](../architecture/resource-requests.md) / [Query 缓存](../architecture/query-cache.md) |
 | 共享资源所有权、跨域失效作用域与收发映射 | [资源归属与失效端口](../architecture/resource-ownership.md) |

@@ -70,9 +70,42 @@ import { Card, CardHeader, CardContent } from '@/shared/ui'
 </div>
 ```
 
-`Card` 支持 `className` 和显式的 `smoothCorners`。静态内容直接渲染，不提供整卡进场动画。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。非 `Card` 面板使用 `SmoothPanel`，大面板为 `20px / 80%`，紧凑信息卡通过 `cornerSize="compact"` 使用 `16px / 80%`。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 支持 `className`；紧凑提示容器使用语义类 `app-info-card` 配合对应状态类。
+`Card` 支持 `className` 和显式的 `smoothCorners`。静态内容直接渲染，不提供整卡进场动画。`smoothCorners` 使用 Lisse 的 `20px / 80%` 连续曲率，外层仍负责布局和阴影，内部表面负责裁切与材质；只在已经验证内部包裹不会破坏直接子元素布局语义的卡片上启用。不要直接给带外阴影的根元素调用 `useSmoothCorners`，也不要对需要保留原生结构的交互控件使用 `SmoothCorners asChild`。`CardHeader` 可传入 `actions`，`CardContent` 支持 `className`；紧凑提示容器使用语义类 `app-info-card` 配合对应状态类。
 
 控制台同类功能页在根节点添加 `ios-workspace-page`，并显式给 `PageHeader` 传 `mobileLayout="inline"`。手机端只有 `Card smoothCorners` 和 `SmoothPanel` 会获得无外描边的柔和阴影；不要给卡内 `surface-soft`、菜单、输入或列表项添加该页面级材质。
+
+---
+
+### SmoothPanel - 连续圆角面板
+
+**文件位置**：`client/src/shared/ui/SmoothPanel.tsx`
+
+**适用场景**：不使用 `Card` 语义的独立面板，例如工作区面板、设备卡片、通知提示和骨架占位。
+
+Props：
+
+- `cornerSize` (`'panel' | 'compact'`) - 连续圆角档位，`panel` 为 20px，`compact` 为 16px，平滑度固定 80%，默认 `'panel'`。
+- `surfaceClassName` (string) - 追加到内部裁切表面的类名，内容的内边距和材质类写在这里。
+- 其余 props 透传给外层 `div`（继承 `HTMLAttributes<HTMLDivElement>`），`className` 追加到外层 shell；`role`、`aria-*` 等语义属性因此落在外层。
+
+```tsx
+import { SmoothPanel } from '@/shared/ui'
+
+<SmoothPanel className="roguelike-theme-panel">
+  <p>面板内容</p>
+</SmoothPanel>
+
+<SmoothPanel
+  cornerSize="compact"
+  surfaceClassName="log-notice"
+  role="status"
+  aria-live="polite"
+>
+  <p>提示内容</p>
+</SmoothPanel>
+```
+
+外层 shell 持有 `surface-panel`，负责布局和阴影；内部 `SmoothSurface` 负责连续圆角裁切，所以内容内边距要通过 `surfaceClassName` 写在表面层。自动化调度面板、肉鸽主题面板和日志通知已使用该组件。
 
 ---
 
@@ -133,7 +166,7 @@ import { Input, Select, Checkbox, Switch } from '@/shared/ui'
 />
 ```
 
-`Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。二元启停使用 `Switch`，多选或参数组合使用 `Checkbox`；多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
+`Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
 
 ---
 
@@ -193,6 +226,26 @@ import { ConfirmDialog, Loading } from '@/shared/ui'
 
 ---
 
+### PageSkeleton
+
+**文件位置**：`client/src/shared/ui/Loading.tsx`，与 `Loading` 同文件导出。
+
+**适用场景**：懒加载路由的整页骨架占位。按 `variant` 复刻目标工作区的布局比例，减少加载完成后的跳动。
+
+Props：
+
+- `variant` (string, required) - 目标页面标识。内置 `automation`、`combat`、`roguelike`、`training`、`logs`、`statistics`、`config` 七种工作区骨架，其余取值只渲染页头骨架。
+
+```tsx
+import { PageSkeleton } from '@/shared/ui'
+
+<PageSkeleton variant="automation" />
+```
+
+输出为 `aria-busy="true"`、`aria-label="页面内容加载中"` 的忙碌区域，内部骨架标记 `aria-hidden="true"`；根节点携带目标页面的页面级类名（`app-page`、`ios-workspace-page` 及各页专属类）。控制台骨架由域内 `DashboardSkeleton` 提供，见上文。
+
+---
+
 ### useFluidTabIndicator
 
 **文件位置**：`client/src/shared/hooks/useFluidTabIndicator.ts`
@@ -247,11 +300,3 @@ className={`from-${tone}`}
 ```
 
 需要按状态切换样式时，使用明确的 class 映射，或优先使用已有语义类。
-
----
-
-## 参考资料
-
-- [Tailwind CSS 文档](https://tailwindcss.com/docs)
-- [Framer Motion 文档](https://www.framer.com/motion/)
-- [React 组件设计模式](https://reactpatterns.com/)

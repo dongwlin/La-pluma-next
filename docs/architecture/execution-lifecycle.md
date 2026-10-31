@@ -23,7 +23,7 @@
 | `recovery` | 重启恢复边界，仅 `interrupted` 存在 | 见 5.5 |
 | `progress` | 活动 run 的进度投影 | 读取时计算，不持久化 |
 
-Run 存储是**单实例**语义：默认持久化到 `server/data/agent-runs.json`，可通过 `LA_PLUMA_AGENT_RUN_STORE` 改路径。不要让多个 Node.js 进程同时读写同一文件。终态最多保留 24 小时和 500 条，先到期先淘汰；被淘汰后按 `runId` 查询返回 404，同键请求会创建新 run。
+Run 存储是**单实例**语义：不要让多个 Node.js 进程同时读写同一文件。存储位置（默认路径与 `LA_PLUMA_AGENT_RUN_STORE` 覆盖）及终态保留期限由[持久化与运行数据](../server/persistence.md#run-存储与幂等记录)维护；被淘汰后按 `runId` 查询返回 404，同键请求会创建新 run。
 
 同一执行可能同时被多个客户端观察，但同一时刻只应有一个由执行租约保护的设备变更者。Run 记录本身不提供跨实例协调。
 
@@ -135,7 +135,7 @@ waiting ──stop──> stopped
 - `Idempotency-Key` 可选；同一 `operationId` + 同键 + 同输入重放原 run，不重复执行；同键不同输入返回 `AGENT_IDEMPOTENCY_KEY_REUSED`（409）。
 - 幂等记录随 Run 持久化，正常重启后仍有效；重启时活动 run 变为 `interrupted`，同键重试只会重放该中断结果，**不会重新执行**；要重试必须换新键。
 - 执行中失败（`failed`）保留键，因此同键重试会重放失败；只有执行前拒绝（占用、校验、准入落库失败）会释放键。
-- 键的保证受 24 小时/500 条终态保留限制；记录被淘汰后同键请求会创建新 run。
+- 键的保证受终态保留限制（期限由[持久化与运行数据](../server/persistence.md#run-存储与幂等记录)维护）；记录被淘汰后同键请求会创建新 run。
 - 未提供键时，每次请求都是新 run；当前 Web UI 经执行控制器生成并复用逻辑提交的幂等键，具体接线见[执行客户端](execution-client.md)。
 - 执行准入前落库失败会阻止执行并把 run 置为 `failed`；服务启动时 Run 存储初始化失败则**纳入 Run 的执行接口**整体关闭（503），不会在无身份记录的情况下执行。运行期写入失败时，准入落库会失败并阻止执行，返回可重试的 503。
 
@@ -260,17 +260,13 @@ waiting ──stop──> stopped
 
 ### 5.6 运行时关闭与后台触发源
 
-- 进程入口在异步启动前安装关闭信号处理。初始化期间收到关闭时，立即关闭执行准入、进入 draining，并取消启动端口的 `signal`，不再开始后续启动步骤。Run 存储读取、配置读取与连接解析响应取消，异步等待返回后再次检查取消状态，防止迟到结果恢复定时任务、应用通知配置或启动 Telegram。已受理的 Run 原子写入仍由持久化队列收尾。
-- 关闭预算默认 10 秒，从第一次关闭请求或启动回滚开始计算；等待初始化退出与全部逆序释放共用同一截止时间。剩余预算按初始化等待及待释放步骤分配，已耗尽时传递零预算，不回退默认超时。初始化不响应取消时记录 `<step>:start` 的 `timeout`，结束启动等待并继续释放；关闭步骤份额耗尽时取消其 `signal`。失败与超时使关闭摘要 `ok=false`、进程非零退出。注入端口必须遵守取消约定，关闭后禁止登记或创建新资源。
-- 只有 `close` 的生命周期步骤表示资源已归本实例，注册时即纳入回收；带 `start` 的步骤在实际受理启动时才纳入，避免初始化期间登记的停止能力在关闭或回滚时遗漏。启动回滚与后续关闭复用同一次释放及其结果，不掩盖回滚失败。
-- 运行时初始化把默认定时计划与自动更新注册到同一个触发源注册表，并把停止步骤纳入运行时关闭流程。关闭开始（draining）后注册表拒绝新注册，已经排队的 cron 回调不再启动日常流程或自动更新。
-- 关闭顺序固定为：后台触发源与轮询 → 执行收尾（停止活动执行并等待 Run 落盘）→ HTTP 传输 → 预览资源。draining 一旦开始，Run 准入与设备租约都关闭，`beginAgentRun` 返回 503 `AGENT_EXECUTION_SHUTTING_DOWN`，直接申请设备变更权返回 503 `MAA_EXECUTION_SHUTTING_DOWN`；HTTP 执行入口、cron、Telegram 指令、维护更新与作业集继续都经过这两个闸门，不会因为入口不同而绕过。关闭期间的提交（包括携带相同幂等键的重放）返回 503，调用方应改为查询已有 run。读取类接口（查询 Run、任务状态、日志）不经过闸门。
-- 执行收尾在触发源停止之后进行：已开始的日常流程与作业集按 §5.5 结算，执行器在预算内写出的实际结果优先；截止时间到达仍未结算的 run 记为 `interrupted`，不会写成成功或重新排队。
-- HTTP 传输阶段先停止接受新连接，等待在途响应完成；响应结束后回收转为空闲的 keep-alive 连接。只有传输步骤预算耗尽才强制断开残留 HTTP 连接并记录超时；信令网关关闭失败仍执行 HTTP 排空。传输阶段之前的读取接口继续可用，便于查询执行收尾状态。
-- 同一 `scheduleId` 的重复配置替换旧任务而不叠加；全部时间点都注册失败时保留上一份有效注册，部分失败通过返回的 `times` 报告缺失时间点。重复停止是幂等的，目标未注册时也按已完成处理。重启后由运行时初始化按已保存配置重新注册，注册本身不执行流程。
-- Telegram Bot 的停止步骤在启动轮询前注册：关闭会中止在途 `getUpdates`、轮询间隔与命令内的等待，停止后不再派发迟到命令。重复初始化或改配置只保留一个轮询会话，offset、授权用户与命令语义保持不变。
-- WebRTC 预览的关闭步骤在启动前注册：关闭开始后不再启动新的预览资源，已排定的 viewer 自动回收计时器被取消，同源信令网关断开观看连接并清空一次性票据，本进程启动的信令服务、TURN、Agent 部署与构建子进程被终止。关闭会等待已受理的启动/停止退出，因此启动中关闭不会留下孤儿进程。
-- 预览启停只释放本实例拥有所有权的资源：服务启动前已存在的信令服务、TURN 与设备端 Agent 没有所有权记录，停止接口与关闭流程都不会终止它们；关闭也不通过 ADB 清理设备端 Agent。`/api/agent/webrtc/*` 状态中的 `ownership` 用 `managed`/`external`/`none` 区分本实例、外部资源与未运行。
+进程入口在异步启动前安装关闭信号处理；初始化取消、关闭预算分配、定时计划替换与重新注册、Telegram 轮询和 WebRTC 预览的停止挂接等完整机制见[运行时初始化、就绪与关闭](../server/runtime-lifecycle.md)。本节保留与执行契约相关的摘要：
+
+- **关闭顺序**：固定为后台触发源与轮询 → 执行收尾 → HTTP 传输 → 预览资源。执行收尾在触发源停止之后进行，按 §5.5 结算已开始的日常流程与作业集：执行器在预算内写出的实际结果优先，截止时间到达仍未结算的 run 记为 `interrupted`，不会写成成功或重新排队。传输阶段之前的读取接口（查询 Run、任务状态、日志）继续可用，便于查询执行收尾状态。
+- **draining**：关闭开始即关闭 Run 准入与设备租约申请，并拒绝注册新的触发源与生命周期步骤；已经排队的 cron 回调不再启动日常流程或自动更新，已开始的流程仍由实际执行结算。
+- **503**：draining 开始后 `beginAgentRun` 返回 503 `AGENT_EXECUTION_SHUTTING_DOWN`，直接申请设备变更权返回 503 `MAA_EXECUTION_SHUTTING_DOWN`；HTTP 执行入口、cron、Telegram 指令、维护更新与作业集继续都经过这两个闸门，不会因为入口不同而绕过。关闭期间的提交（包括携带相同幂等键的重放）返回 503，调用方应改为查询已有 run。
+- **预算**：关闭预算默认 10 秒，从第一次关闭请求或启动回滚开始统一计算；等待初始化退出与全部逆序释放共用同一截止时间，份额耗尽时传递零预算，不回退默认超时。失败与超时使关闭摘要 `ok=false`，进程以非零退出码结束。
+- **回滚**：只有 `close` 的生命周期步骤表示资源已归本实例，注册时即纳入回收；带 `start` 的步骤在实际受理启动时才纳入，尚未启动的资源不会被释放。启动步骤失败按注册逆序释放已受理资源，回滚与后续关闭复用同一次释放及其结果，不掩盖回滚失败。
 
 
 ## 6. 执行入口覆盖
@@ -314,35 +310,19 @@ waiting ──stop──> stopped
 
 Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；不支持任意旧版本的自动迁移。后续升级格式必须能读取旧文件，或提供明确迁移路径，并保留 `runId`、终态与幂等记录的一致性。服务端回退前必须确认目标版本能读取当前文件格式；不支持的格式应保持 fail-closed，不得删除 Run 文件来绕过准入关闭。
 
-回退前端前应确认正在执行的 Run、持久化身份与外部设备占用，并检查目标版本对 `waiting`、幂等键和按身份停止的支持。不得清空服务端记录或因为旧页面没有新字段就重提执行。终态记录的 24 小时/500 条保留限制及服务重启中断语义见第 1 节与 5.5。
+回退前端前应确认正在执行的 Run、持久化身份与外部设备占用，并检查目标版本对 `waiting`、幂等键和按身份停止的支持。不得清空服务端记录或因为旧页面没有新字段就重提执行。终态记录的保留限制由[持久化与运行数据](../server/persistence.md#run-存储与幂等记录)维护，服务重启中断语义见 5.5。
 
 ## 8. 契约测试清单
 
 ### 当前契约测试
 
-| 测试 | 固定的行为 |
-| --- | --- |
-| `server/src/services/__tests__/agentRunService.test.ts` | 生命周期转换、`waiting` 等待/恢复/停止、终态幂等、幂等键分区/重用拒绝、500 条与 24 小时保留、缺失 run 错误、活动集合与最近终态排序、current 与设备所有权对齐（旧 stopping 不压过新 running）、accepted 取消、pre-start 门禁 |
-| `server/src/services/__tests__/agentRunPersistence.test.ts` | 重启后活动 run（含 `waiting`）变 `interrupted` 与 `recovery` 字段、终态恢复、幂等重放跨重启、淘汰写回、JSON 语法损坏不可重试而磁盘错误可重试、坏版本 fail-closed、同 tick 迁移合并与终态 flush 去重、cron 日常流程的终态结果写回磁盘 |
-| `server/src/services/__tests__/runSnapshotService.test.ts` | 快照 idle/pending/run/external/unknown、`waiting` 作业集不占设备、租约 free/held/stale/unknown、`lastRun` 与当前身份分离、只有 current 带进度（作业集 run 带自己的会话进度）、日常流程只投影自己持有的 `schedule.runId` |
-| `server/src/routes/__tests__/agentRoutes.test.ts` | 按 id 查询、`current` 保留旧字段、快照活动/终态/外部占用、并发 accepted 暴露、租约占用、同步/后台重放、提前后台失败、准入落库失败、重启重放不执行、并发重放读取快照、目标停止矩阵（未知/终态/accepted 取消/waiting 停止/非当前/重复停止/查询参数）、旧 run 不误停新运行、取消后不执行；日常流程同步响应带终态 run、异步 202、步间 idle 时 run 仍活动、停止后不启动下一项、幂等重放与占用错误码映射、cron/旧码兼容；作业集连续同步/异步、app/cli 映射、manual 等待与继续、等待时不占租约、占用可重试不消耗条目、停止后不续跑、逐项汇总归属 runId、幂等重放与执行前占用 |
-| `server/src/routes/__tests__/agentContract.test.ts` | manifest/OpenAPI 同步、恰好四个执行动作声明 `producesRun`、活动作业同步入口不声明 202、202/`Location`/`X-La-Pluma-Run-Id`/`Idempotency-Replayed`、Run 状态枚举（含 `waiting`）与错误结构、快照/占用/恢复/目标停止 schema、`run_daily_flow` 的 `waitForCompletion` 与 `schedule.runId` |
-| `server/src/__tests__/agentContractHttp.test.ts` | 沿实际挂载的 router 图核对每个清单 operation 的唯一挂载与 method/path、Web UI 专用路由不进入 manifest、manifest/OpenAPI 同源输出；对每个公开 operation 用发布 schema 校验有效/无效请求与真实响应，并记录运行时兼容输入与静态 schema 的差异 |
-| `server/src/services/__tests__/copilotSetRunService.test.ts` | 连续集合逐项结果、manual 首项后转 `waiting`、等待释放租约、继续前占用返回 409 且不消耗条目、停止等待中的集合并保留逐项结果、条目失败后继续等待、停止后不启动下一项 |
-| `server/src/services/__tests__/copilotPlanService.test.ts` | 计划构建、重复文件展开、日志恢复、停止/失败下的逐项状态分类（`success`/`stopped`/`failed`/`pending`） |
-| `server/src/services/__tests__/executionCoordinatorService.test.ts` | 租约互斥、同异步流重入、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布 |
-| `server/src/services/__tests__/maaTaskExecution.test.ts` | 前后台执行路径、失败释放租约、后台缓存保留、pre-start 门禁在 spawn 前生效并释放租约 |
-| `server/src/services/__tests__/scheduleFlowExecutionPorts.test.ts` | 流程步骤与端口边界、可中止的步间等待、完成通知/养成回写在租约释放后消费、副作用错误显式返回 |
-| `server/src/services/__tests__/schedulerRecovery.test.ts` | 异常复位、定时错误可恢复、pre-start 门禁在任何步骤前终止流程、cron 产生单个 `run_daily_flow` 并带终态结果、cron 步间等待仍可观察活动 run、完成副作用在 Run 结算后执行、占用时 fail-closed |
-| `server/src/services/__tests__/scheduleTriggerLifecycle.test.ts` | 重复配置替换而不叠加、全部/部分注册失败、停止与替换/禁用时的销毁失败上报、停止与销毁幂等、销毁失败上报关闭步骤、draining 后拒绝注册并丢弃已排队回调、活动流程终态仍由执行结算 |
-| `server/src/services/__tests__/telegramBotLifecycle.test.ts` | 长轮询独立时限与会话取消、停止撤销退避等待、重复初始化只保留一个轮询者、停止后不执行迟到命令、授权与 offset/命令语义、未知 update 校验与 offset 推进、命令解析与领域输入缺省值、未知/失败命令与截图失败回复、原生 multipart 上传字段与文件名、运行时关闭步骤幂等 |
-| `server/src/services/__tests__/webrtcPreviewOwnership.test.ts` | 外部 server/TURN/设备 Agent 不被停止、本实例 server/TURN/设备 Agent 的停止与 `ownership` 上报、关闭中止在途启动并终止本实例子进程、关闭取消 viewer 自动回收、重复关闭幂等、关闭后拒绝启动 |
-| `server/src/services/__tests__/webrtcSignalingGateway.test.ts` | 一次性票据签发与重放拒绝、过期票据与路径白名单、按设备登记 viewer、非法或越权升级不消耗票据、关闭断开观看连接并清空票据、重新挂接后旧票据不可用 |
-| `server/src/services/__tests__/executionShutdown.test.ts` | draining 后 Run 准入与设备租约拒绝、cron 与租约入口（Telegram/维护更新共用）不可绕过、只停止本实例的活动执行与进程内任务、执行器实际结果优先、预算耗尽记为 `interrupted`（`server_shutdown`）、Run 落盘失败使关闭步骤失败、重复关闭复用摘要、等待中的作业集不再继续下一项、重启重放不续跑、SIGTERM/SIGINT 子进程退出码 |
-| `server/src/services/__tests__/executionShutdownMaa.test.ts` | 假 CLI 前台执行在关闭时收到 SIGTERM 并按实际结果结算为 `stopped`、忽略 SIGTERM 时在预算内升级 SIGKILL、租约释放 |
-| `server/src/services/__tests__/runtimeInitializationService.test.ts` | 调度停止端口先于持久配置恢复挂接、恢复只注册不执行、单项恢复失败与接入失败隔离 |
-| `server/src/services/__tests__/runtimeLifecycleService.test.ts` | 启动顺序与逆序回收、初始化取消与统一关闭截止时间、启动不响应取消和关闭步骤超时后继续回收、初始化期间登记的资源不被遗漏、尚未启动的资源不被释放 |
-| `server/src/__tests__/serverLifecycle.test.ts` | 构造与启动分离、重复启动幂等、恢复期间关闭不再监听、初始化响应或忽略取消时真实 SIGTERM 的退出结果、信令网关关闭失败仍释放 HTTP |
-| `server/src/__tests__/httpDrain.test.ts` | 在途流式响应完整结束、停止接受新连接、keep-alive 响应结束后回收、停滞响应超时强制断开并非零退出 |
+- **入口命令**：`pnpm --filter la-pluma-next-server test`（仓库根 `pnpm test` 会连同客户端一起运行）。测试只发现 `server/src` 各级 `__tests__` 目录下的 `*.test.ts`，逐文件、逐进程串行执行；本清单覆盖的契约测试分布在 `server/src/services/__tests__/`、`server/src/routes/__tests__/` 与 `server/src/__tests__/`。
+- **Run 状态机**：生命周期转换与终态幂等、`waiting` 等待/恢复/停止、accepted 取消、pre-start 门禁在 spawn 前生效并放弃启动；幂等键按 `operationId` 分区、同键不同输入拒绝、跨重启重放不重新执行；current 排序与设备所有权对齐（滞留 `stopping` 不压过新 `running`）。
+- **持久化与恢复**：重启后活动 run（含 `waiting`）转 `interrupted` 并带 `recovery`；终态保留淘汰与写回；JSON 语法损坏不可重试、磁盘错误可重试、坏版本 fail-closed；cron 日常流程终态写回磁盘。
+- **快照与占用**：`occupancy` 的 idle/pending/run/external/unknown 与租约 free/held/stale/unknown；`lastRun` 与当前身份分离；只有 current 带进度，日常流程只投影自己持有的 `schedule.runId`。
+- **HTTP 契约**：目标停止矩阵与“旧 run 不误停新运行”；同步/后台 202 与幂等重放响应头、错误码映射；manifest/OpenAPI 同源且与实际挂载 router 图一致，恰好四个执行动作声明 `producesRun`，公开 operation 按发布 schema 校验请求与真实响应；HTTP 排空（在途响应完整结束、keep-alive 回收、超时强制断开并非零退出）与信令网关关闭失败仍排空 HTTP。
+- **租约与执行**：租约互斥、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布；执行失败释放租约。
+- **作业集与流程**：continuous/manual 的等待、继续与停止语义，占用 409 可重试且不消耗条目，逐项结果归属 `runId`；计划构建与逐项状态分类；可中止的步间等待，完成副作用在租约释放且 Run 结算后消费；cron 产生单个带终态结果的 `run_daily_flow`，占用时 fail-closed；触发源重复配置替换、销毁失败上报、draining 后拒绝注册并丢弃排队回调。
+- **关闭与后台触发源**：draining 后 Run 准入与设备租约 503 且不可绕过；执行器实际结果优先，预算耗尽记为 `interrupted`；子进程 SIGTERM 与预算内升级 SIGKILL；重复信号复用同一次关闭；Telegram 停止后不执行迟到命令；外部预览资源不被停止，网关关闭断开观看连接并清空票据；启动逆序回收、初始化取消与统一关闭截止时间。
 
-客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](../development/integration.md)。本表只维护服务端身份、状态机、持久化与执行入口的契约测试。
+客户端控制器、各领域接线与全局投影的回归入口见[执行客户端](execution-client.md#7-回归清单)；跨页场景见[跨页面集成验收](../development/integration.md)。本节只维护服务端身份、状态机、持久化与执行入口的契约测试。

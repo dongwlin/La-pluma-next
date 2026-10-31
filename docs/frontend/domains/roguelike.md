@@ -91,11 +91,13 @@ RoguelikeTasks（页面壳：页头、预览布局）
 
 ### 回归测试
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `client/src/features/roguelike/model/roguelikeTasks.test.ts` | 任务目录、主题快捷项、高级选项表、生息演算默认模式与说明、命令顺序、空值过滤、默认值解析、显式 `-m`、归一化、输入不变性与校验 |
-| `client/src/features/roguelike/model/roguelikeConfig.test.ts` | 配置适配器原有回归（key、本地键、wire、载荷校验、提交与读取失败），以及生息演算默认模式在编码、解码与本地读写中的补齐 |
-| `client/src/pages/roguelike/RoguelikeTasks.test.tsx` | 模式键盘导航与标签关联、模式切换、高级字段进入命令、按当前模式提交、空配置与旧配置的显示/提交一致、模式说明的可访问性、空主题拒绝、跨模式草稿合并、Activity 隐藏/恢复与 remount 的模式生命期、配置 pending/重试/迟到加载、执行提交/停止/超时/失败/断线恢复 |
+以下路径相对于 `client/src/`：领域回归在 `features/roguelike` 与 `pages/roguelike`；入口命令见[验证命令](#验证命令)。
+
+关键不变量：
+
+- 命令拼接：空值与未勾选项不写入，声明 `defaultValue` 的字段始终写入（生息演算 `-m 1`），未声明默认值的 select 省略（集成战略 `--mode`）；归一化不修改入参，校验只 trim 判空。
+- 模式是局部状态：不进入配置 wire，跨模式草稿合并、空主题拒绝，Activity 隐藏保留而真正卸载回到 `roguelike`。
+- 执行接线：按当前模式提交，停止/超时/失败/断线恢复由控制器 runId 持有，不重新提交。
 
 ### 验证命令
 

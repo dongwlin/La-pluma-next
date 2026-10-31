@@ -30,7 +30,7 @@
 ## 持久化与运行时
 
 - Run 与幂等记录默认写入 `data/agent-runs.json`，仅支持单服务实例；不得让多个 Node 进程共用该文件。存储损坏或写入失败时维持执行准入关闭，不删文件绕过。重启恢复的是记录，活动 Run 转为 `interrupted`，不会自动续跑。正常关闭先进入 draining，经统一准入闸门拒绝新执行，停止本实例的活动执行并在退出前等待 Run 落盘。
-- 用户配置通过 `configStorageService.js` 的类型白名单读写；新增配置类型须同步校验。连接参数沿用 `connectionService.ts` 的 profile 解析与覆盖策略；资源和日志路径复用现有 getter，保留跨平台及 XDG 行为。
+- 用户配置通过 `configStorageService.ts` 的类型白名单读写；新增配置类型须同步校验。连接参数沿用 `connectionService.ts` 的 profile 解析与覆盖策略；资源和日志路径复用现有 getter，保留跨平台及 XDG 行为。
 - 配置保存、定时任务注册与实际执行是不同操作。养成计划应用必须校验 `queueRevision`，保留队列已保存但流程/定时同步失败的结果，不能将部分成功伪装成全成功。
 - 启动服务会恢复已保存的定时任务、自动更新和 Telegram 配置；测试 HTTP 行为优先使用 `createLaPlumaApp` 或注入初始化依赖，避免启动真实运行时。WebRTC 浏览器入口继续经过同源信令网关，不暴露上游管理端点。
 
@@ -75,5 +75,11 @@
 ## 延伸阅读
 
 - [服务端脚本与依赖](package.json)：查阅可执行脚本和依赖时读取，以实际配置为准。
+- [服务端架构与请求契约](../docs/server/README.md)：调整分层方向、请求管道、响应契约或测试入口时读取。
+- [运行时初始化、就绪与关闭](../docs/server/runtime-lifecycle.md)：修改启动组装、就绪判定、执行准入或关闭流程时必读。
+- [持久化与运行数据](../docs/server/persistence.md)：新增持久化数据、调整写入或恢复语义前必读。
+- [日常流程与定时触发](../docs/server/scheduling.md)：修改任务流计划、流程执行或定时注册时必读。
+- [MAA、ADB 与通知渠道](../docs/server/integrations.md)：调整 MAA 子进程、连接解析、回调解析或通知渠道时读取。
+- [设备预览与信令运行时](../docs/server/preview-webrtc.md)：修改预览链路、信令网关或 WebRTC 运行时前必读。
 - [执行身份与生命周期契约](../docs/architecture/execution-lifecycle.md)：修改执行身份、租约、停止、幂等、持久化或快照时必读；含契约测试分工。
 - [Agent API 使用指南](../docs/api/agent.md)：新增或修改公开接口、响应、连接参数及养成同步行为时读取。

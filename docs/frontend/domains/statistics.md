@@ -189,41 +189,21 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 ### 回归测试
 
-以下路径相对于 `client/src/`：
+以下路径相对于 `client/src/`：领域回归在 `features/statistics` 与 `pages/statistics`；跨域联动回归在 `features/training/api/index.test.ts`、`pages/training/OperatorTraining.test.tsx`、`pages/dashboard/Dashboard.test.tsx` 与 `features/resource-invalidation/**`。入口命令见[验证命令](#验证命令)。
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `features/statistics/components/FilterMenu.test.tsx` | portal 挂载、上下方向与边距、手机端右对齐、打开聚焦、方向键/Home/End、Escape 与选择后的焦点归还、外部关闭、aria 关联 |
-| `features/statistics/components/DropPanel.test.tsx` | 非当前 tab 仍启动首屏读取、周期切换进入 Query key、隐藏/恢复保留周期且不重复读取、失败重试 |
-| `features/statistics/components/DropRecords.test.tsx` | 平滑圆角、空态、加载、错误重试、刷新失败保留旧结果 |
-| `features/statistics/model/depotSummary.test.ts` | 分类标签、分组顺序与并列顺序、服务端物品数、材料种类、总量、最大库存、空快照 |
-| `features/statistics/model/dropRecords.test.ts` | 材料/关卡降序、并列顺序、图标身份、空记录、展示上限 |
-| `features/statistics/model/operatorFilters.test.ts` | 筛选/排序与阿米娅形态规则 |
-| `features/statistics/model/queries.test.ts` | 掉落 key 含天数、周期切换保留旧周期占位；掉落/今日掉落/开放关卡的 key、signal 与失败信封 |
-| `features/statistics/api/index.test.ts` | 解析端点的 signal 与 POST 形状；掉落/今日掉落/开放关卡读取与信封归一 |
-| `features/statistics/model/commandOwner.test.ts` | 控制器 intent/幂等键、仓库与干员快照、材料刷新、单飞、解析轮询、解析超时后继续不重提、命令超时后复用同一幂等键并等待回放 Run、失败/拒绝、取消后继续与成功发布 |
-| `pages/statistics/DataStatistics.layout.test.tsx` | tab 键盘切换、四路首屏并行、独立错误与重试、筛选跨 tab 保留、重挂载复用缓存；识别快照写入 Query，`depot`/`operbox`/`materials` 发布与按作用域失效，材料刷新不重读目录；命令状态订阅、运行中不重复提交、超时后“继续解析”不重执行、Activity 隐藏/恢复丢弃旧读取、图标失败回退 |
-| `features/training/api/index.test.ts` | 材料刷新脚本的 signal 与 POST 形状 |
-| `pages/training/OperatorTraining.test.tsx` | `materials`/`depot`/`operbox` 失效后重读队列、候选与计数并作废旧计划 |
-| `pages/dashboard/Dashboard.test.tsx` | `dashboard-snapshot` 失效触发完整快照刷新，单路失败保留旧快照 |
-| `features/resource-invalidation/hooks/useResourceInvalidation.test.tsx` | Activity 隐藏期间错过发布后的恢复补发 |
+关键不变量：
+
+- 命令所有者是模块级单例且单飞：Activity 隐藏/重挂载不重建、不重复提交设备命令；继续路径只确认、等待或轮询（幂等回放与“继续解析”），不重新执行设备命令。
+- 解析轮询：`data: null`、失败信封与坏载荷视为“尚未可用”，超时前继续轮询；取消只结束本地等待。
+- 解析成功才写入 `game-data` 快照并发布失效；命令失败、Run 失败、解析失败与超时都不发布。
+- 非当前 tab 面板仍启动首屏读取（`null` 渲染）；掉落周期切换进入 Query key，首次失败只展示错误，不伪造上个周期数据。
 
 ### 验证命令
 
-在仓库根目录按检查范围选择：
+在仓库根目录执行：
 
 ```sh
 pnpm --filter la-pluma-next-client exec vitest run src/features/statistics src/pages/statistics
-```
-
-```sh
-pnpm --filter la-pluma-next-client exec vitest run \
-  src/features/statistics \
-  src/pages/statistics \
-  src/features/resource-invalidation \
-  src/features/training/api/index.test.ts \
-  src/pages/training/OperatorTraining.test.tsx \
-  src/pages/dashboard/Dashboard.test.tsx
 ```
 
 完整验证与视觉回归入口见[开发指南](../../development/README.md)。

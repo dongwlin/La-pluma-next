@@ -387,24 +387,14 @@ AutomationTasks（页头 + 全局指示）
 
 ### 回归测试
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `client/src/features/automation/model/flowExecution.test.ts` | 摘要来源优先级、活动/空闲/提交在途的逐项结果、当前步骤映射、单项状态与文案 |
-| `client/src/features/automation/components/AutomationExecutionSummary.test.tsx` | 首次摘要前不渲染、提交在途保留上一份、失败自动展开、手动收起保持、新 run 重新展开、阶段/上报/警告详情 |
-| `client/src/pages/automation/AutomationTasks.layout.test.tsx` | 活动标签；定时从 12:00 起新增至 6 行上限与重复拒绝；拖拽成功、lostpointercapture 后提交、Escape/pointercancel 取消与键盘排序；布局与表单标签、picker 菜单/焦点/Activity 恢复后 Escape、智能养成接线、公招失焦归一化与摘要接线 |
-| `client/src/pages/automation/AutomationTasks.config.test.tsx` | 配置与 schedule 完整提交、半失败重试、跨 remount 串行、迟到加载与 Activity 恢复（Query Provider 包装） |
-| `client/src/pages/automation/AutomationTasks.execution.test.tsx` | 单次 `run_daily_flow` 幂等提交、停止、流程进度、旧断点、摘要与 Activity 恢复；自定义换班缺文件、非法掉落目标阻止提交并选中任务 |
-| `client/src/pages/automation/AutomationTasks.activity.test.tsx` | 流程结束时 Activity 隐藏再恢复，完成标记不丢失、不停止、不重提 |
-| `client/src/features/automation/model/taskFlowSort.test.ts` | 10px 阈值、向上/向下插入槽位、越界原引用、成员不变量、关闭游戏最后 |
-| `client/src/features/automation/model/automationSchedule.test.ts` | 解析/格式化/规范化边界、默认行独立性、12:00 起候选与跨午夜、24 小时占满、增删与启用、时/分循环与重复拒绝、`times` 往返兼容 |
-| `client/src/features/automation/model/taskFlowCommands.test.ts` | 命令身份回退、添加任务的 id/参数/关闭游戏继承、恢复索引夹取、删除/启用、关卡分组不变量、`clientType` 同步、执行校验优先级、JSON 序列化形状 |
-| `client/src/features/automation/model/dropTargets.test.ts` | 文本/对象形状、空白与规范化、非法条目、重复保留、格式化往返 |
-| `client/src/features/automation/model/automationConfig.test.ts` | 适配器原有回归，以及命令模型输出可被现有解码接受 |
-| `client/src/features/automation/utils/automationTaskProgress.test.ts` | 执行步骤映射 |
-| `client/src/features/automation/model/stageEditing.test.ts` | 默认/空列表、分组一次归类与多重集合、置顶/改名/次数/步进/删除、智能养成增删与生成项、干员摘要、不可达索引原引用 |
-| `client/src/features/automation/model/taskParamRules.test.ts` | 10 分钟取整、60–540 夹取、空串/非有限输入回退 |
-| `client/src/features/automation/components/AutomationStageEditor.test.tsx` | 智能养成插入顺序、空队列/计划失败/抛错/材料已齐失败路径、移除保留置顶与普通行、步进与置顶写回、运行态禁用 |
-| `client/src/features/automation/components/AutomationTaskPicker.test.tsx` | 目录渲染与计数、选择回调后关闭、页脚内按下不关闭/外部关闭、Escape 回焦、禁用收起 |
+以下路径相对于 `client/src/`：领域回归在 `features/automation` 与 `pages/automation`；入口命令见[验证命令](#验证命令)。
+
+关键不变量：
+
+- 执行提交幂等：一次启动只发出一次 `run_daily_flow`，停止按本页 runId；自定义换班缺文件与非法掉落目标阻止提交并选中任务。
+- 拖拽排序：10px 激活阈值、长度与成员多重集合不变量、无效移动返回原引用、关闭游戏置底；浏览器释放 pointer capture 后拖拽仍提交，Escape/`pointercancel` 取消。
+- 配置通道：schedule 完整单元提交、半失败重试、跨 remount 串行、迟到加载与 Activity 恢复不重读已 hydrate 的草稿。
+- 定时纯模型：12:00 起候选整点、6 行上限、重复拒绝、24/60 循环与旧 `times` 往返兼容。
 
 ### 验证命令
 

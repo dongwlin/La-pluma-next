@@ -261,19 +261,14 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 回归测试
 
-| 文件 | 覆盖 |
-| --- | --- |
-| `client/src/pages/combat/CombatTasks.test.tsx` | 配置迁移/pending/重试/迟到加载；三种模式、停止与超时、Activity；搜索/预览旧响应与 AbortSignal、选择写入配置并提交选中索引、推荐回填与预览、失败保留旧预览、搜索失败消息与运行状态隔离；逐项结果与等待进度；局部输入不推动列表渲染、局部状态跨模式保留；保全派驻/悖论命令接线 |
-| `client/src/features/combat/model/copilotSetView.test.ts` | Run 归属、重置作废、待执行求差、失败/已执行计数、下一关与自动停止、续跑/当前项回退、单作业预览 |
-| `client/src/features/combat/model/panelState.test.ts` | 初始值、通知、相同值抑制、退订、多订阅者、独立 store |
-| `client/src/features/combat/model/combatCommands.test.ts` | 高级参数表、编队/突袭规则、set 前缀改写、set options、app/cli 映射、输入校验 |
-| `client/src/features/combat/model/copilotSelection.test.ts` | 去重排序、待执行求差、突袭/两者/预设编队、本地选择与计划求交、全选/清空 |
-| `client/src/features/combat/model/copilotPreviewSession.test.ts` | loading/ready、旧响应取消、tracked key 取消、Activity 停止/恢复、静默刷新、进度视图 |
-| `client/src/features/combat/model/queries.test.ts` | 资源 key、signal 传递与取消、失败分类、计划优先/成员回退、探测、强制刷新 |
-| `client/src/features/combat/api/index.test.ts` | 领域 API 回归 |
-| `client/src/features/combat/utils/copilotUri.test.ts` | prts://、prts.plus、本地文件、多行输入与不支持输入 |
-| `client/src/features/combat/model/copilotPayload.test.ts` | 搜索/悖论载荷、PRTS 代理字符串/对象 content、缺失标题、成员 id 兼容、计划 completedModes 与非法载荷 |
-| `client/src/features/combat/model/copilotPreview.test.ts` | 自动/单个/作业集目标解析、prts.plus 探测、s 前缀、预览对象与旧兜底 |
+以下路径相对于 `client/src/`：领域回归在 `features/combat` 与 `pages/combat`；入口命令见[验证命令](#验证命令)。
+
+关键不变量：
+
+- 搜索/预览旧响应裁决：代次与 request id 不匹配一律静默返回 `cancelled`，取消经 tracked key 精确中止在途 fetch；请求/服务端失败显示网络或服务端消息，不再伪装成“作业不存在”。
+- 预览读取顺序：作业集计划优先、失败回退成员列表；`empty` 只用于成功但为空的真实内容。
+- 作业集视图：Run 归属与重置作废、待执行求差、`failed`/`stopped` 计入失败、续跑目标与当前项回退；`app`/`cli` 映射服务端 `continuous`。
+- 局部状态隔离：搜索/识别方式输入不推动作业集列表渲染，面板会话跨卡片卸载保留。
 
 ### 验证命令
 

@@ -70,22 +70,12 @@ pnpm screenshots:readme
 
 当前约定：
 
-- **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `client/postcss.config.js` 已退役。PostCSS 链路不再参与前端构建。
-- **入口与层序**：`client/src/styles/index.css` 在最前声明完整层序：
-  ```css
-  @layer theme, base, components, page, utilities;
-  @import "tailwindcss";
-  ```
-  `@import "tailwindcss";` 必须是字符串形式（stylelint 的 `import-notation` 在该行就地豁免）。`@custom-variant dark (&:is(.dark *));` 保持 class 深色模式；不再有 `@config` 指令，也没有 `client/tailwind.config.js`。
-- **配置迁移**：`@theme` 先用 `--radius-*: initial` 清掉 v4 默认圆角档位，再只把 `--radius-sm/md/lg/xl/full` 映射到 `--app-radius-*`（裸 `rounded`、`rounded-xs`、`rounded-2xl/3xl` 不再生成）；`gap-*` / `space-*` 由 `@utility` 定向映射到 `--app-space-*`（v4 的 gap/space/p/m 共用 `--spacing`，不能直接改 `--spacing-3/4/5/6`，否则 `p-*` / `m-*` 会被连带改变）。gap 定向工具带 `!important`，用于压过 Tailwind 同名类生成的默认声明；p/m 仍为默认 4px 节奏。映射表见 [设计规范](../../DESIGN.md)。
-- **content 检测**：v4 自动扫描 `index.html` 与 `src/**`，取代原 `content` glob。
+- **构建链路**：依赖为 `tailwindcss@^4` + `@tailwindcss/vite`，由 Vite 插件处理样式；`autoprefixer`、`postcss` 与 `client/postcss.config.js` 已退役，不再有 `@config` 指令与 `client/tailwind.config.js`。
+- **层序与 token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义，`ios-theme.css` 只保留 chrome/材质独有 token；项目语义 token 以 `index.css` 显式定义为准，不依赖 v4 默认色板。层序声明、`page` 层归属与 utilities 优先级详见 [设计规范](../../DESIGN.md) 的「层序与 token 单源」。
+- **映射即规范**：`@theme` 圆角压缩映射、`gap-*`/`space-*` 定向 `@utility` 及其 `!important` 覆盖限制、content 自动检测，以 [设计规范](../../DESIGN.md)「配置即规范」的映射表为唯一依据，不要按通用 v4 迁移指南改写这些类名。
 - **canonical 类名**：`eslint-plugin-tailwindcss` 的 `enforces-canonical-classname` 在 `client/eslint.config.js` 中对 `src/**/*.{ts,tsx}` 启用（只开这一条），由 `lint` 拦截非规范写法：CSS 变量写 `bg-(--app-surface-muted)` 而非 `bg-[var(--app-surface-muted)]`；`break-words` 写 `wrap-break-word`，`[overflow-wrap:anywhere]` 写 `wrap-anywhere`，两者同时出现时保留两个类。
-- **token 单源**：语义 token 只在 `index.css` 的 `:root`、`html.dark, #app-root.dark` 与对比度/透明度媒体查询中定义；`ios-theme.css` 只保留 chrome/材质独有 token，不再重定义同名语义 token。
-- **cascade layer**：`page` 位于 `components` 之后、`utilities` 之前——utilities 永远赢，页面 CSS 覆盖 base/preflight 与 components。页面/组件规则若确实要压过 utilities，使用带注释的 `!important`；不要再依赖未分层 CSS 或深选择器抢优先级。深色预览标题使用的 `dark:text-white!` 仍然有效。
-- **gap 覆盖限制**：`@utility` 的 `gap-3/4/5/6` 带 `!important`，同一元素不要再用 `gap-[...]` 或其他 gap 档位覆盖；需要任意值时改用组件类或显式样式。
-- **类名兼容**：v3 到 v4 的类名对应关系为（`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`!` 前缀改后缀、`flex-shrink-0→shrink-0`）。**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色；`space-x/y` 使用 `:not(:last-child)` 的 end margin 语义。
-- **默认色板**：v4 默认色板保留 OKLCH 校准值；项目语义 token 使用 `index.css` 中显式定义的颜色，不依赖默认色板。
-- **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor。`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
+- **v3→v4 类名**：`shadow-sm→shadow-xs`、`backdrop-blur-sm→backdrop-blur-xs`、`outline-none→outline-hidden`、`flex-shrink-0→shrink-0`，`!` 前缀改后缀（如 `dark:text-white!` 仍有效）；**`shadow-md` 及以上档位在 v4 中数值与 v3 相同，不要按 "shadow-lg→shadow-md" 的通用口诀改名**。`ring`、裸 `border`/`divide` 已显式给色。
+- **preflight 对齐**：v4 移除了按钮 `cursor: pointer` 与 `:disabled` 的 default cursor，并把 placeholder 改为 currentColor/50%、默认 border-color 改为 currentColor；`index.css` 的 base 层保留了 v3 等价规则（按钮 pointer、disabled default、placeholder gray-400、border gray-200），避免 cursor 这类截图捕获不到的行为回归。
 - **浏览器下限**：Tailwind v4 依赖原生 cascade layers、`color-mix()`、OKLCH 与 `@property`，前端最低支持 **Safari 16.4+ / Chrome 111+ / Firefox 128+**。低于该下限的浏览器不再保证样式正确。
 
 ## 测试治理
@@ -123,7 +113,9 @@ pnpm screenshots:readme
 
 ### 依赖与职责护栏
 
-`client/scripts/check-guardrails.ts` 检查功能域依赖环、公开面/深路径、`app → pages → features → shared` 分层方向、`task-execution` 反向依赖，以及页面文件直接持有传输/存储/轮询原语；同时输出 hooks/model/components/pages 的规模观察，并用 `size-budget.json` 拦截新增超阈值文件与同域页面疑似搬移（80% 阈值）。它已作为客户端 `verify` 的第一步，不依赖视觉基线。阈值依据、允许方向、更新规模基线与已知限制见[依赖与职责护栏](guardrails.md)。
+`client/scripts/check-guardrails.ts` 已作为客户端 `verify` 的第一步，检查功能域依赖环、公开面/深路径、`app → pages → features → shared` 分层方向、`task-execution` 反向依赖与页面文件直接持有传输/存储/轮询原语；不依赖视觉基线。
+
+规模观察与预算（hooks/model/components/pages 的规模输出，`size-budget.json` 拦截新增超阈值文件与同域页面疑似搬移）的规则明细、阈值依据、允许方向与规模基线更新见[依赖与职责护栏](guardrails.md)。
 
 ## 文件类型
 
