@@ -13,7 +13,7 @@ import { createLaPlumaApp } from '../../app.ts';
 import type {
   NotificationChannelTestPayload,
   NotificationConfigPayload
-} from '../notificationDto.ts';
+} from '../../controllers/notificationDto.ts';
 import { setConfigStorageDirForTests } from '../../services/configStorageService.ts';
 import { getNotificationConfig, setNotificationConfig } from '../../services/notificationService.ts';
 import type {
