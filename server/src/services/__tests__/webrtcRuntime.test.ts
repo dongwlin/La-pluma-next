@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   applyWebrtcReleaseLayout,
@@ -9,9 +9,20 @@ import {
   getWebrtcRuntimeBinary,
   readWebrtcRuntimeVersion,
   resolveWebrtcInstallAction,
+  validateWebrtcReleaseLayout,
+  WEBRTC_RELEASE_LAYOUT_INVALID,
   WEBRTC_RUNTIME_MARKER_FILENAME,
   writeWebrtcRuntimeMarker
 } from '../webrtcRuntime.ts';
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe('WebRTC runtime platform and network selection', () => {
   it('selects a native release binary and rejects unsupported architectures', () => {
@@ -92,29 +103,89 @@ describe('WebRTC install decision', () => {
     assert.equal(resolveWebrtcInstallAction({ ...checkout, runScriptPresent: false }), 'build');
   });
 
-  it('installs the release when runtime resources are missing', () => {
-    assert.equal(resolveWebrtcInstallAction({ ...installed, binaryPresent: false }), 'release');
-    assert.equal(resolveWebrtcInstallAction({ ...installed, assetsPresent: false }), 'release');
-    assert.equal(resolveWebrtcInstallAction({ ...installed, runScriptPresent: false }), 'release');
+  it('treats a partial old install as an upgrade instead of a fresh release', () => {
+    // 旧安装缺单项资源时不能按全新安装补齐：否则旧二进制保留、新版本标记照写，
+    // 此后安装会因“资源齐全且版本一致”永久跳过。缺哪一项都按升级覆盖。
+    assert.equal(resolveWebrtcInstallAction({ ...installed, markerVersion: null, runScriptPresent: false }), 'upgrade');
+    assert.equal(resolveWebrtcInstallAction({ ...installed, markerVersion: null, binaryPresent: false }), 'upgrade');
+    assert.equal(resolveWebrtcInstallAction({ ...installed, markerVersion: 'v0.4.1', assetsPresent: false }), 'upgrade');
+    // 版本一致但资源缺失同样按升级自愈。
+    assert.equal(resolveWebrtcInstallAction({ ...installed, runScriptPresent: false }), 'upgrade');
+  });
+
+  it('installs the release only when no runtime resource exists', () => {
+    const fresh = {
+      binaryPresent: false,
+      assetsPresent: false,
+      runScriptPresent: false,
+      buildScriptPresent: false,
+      markerVersion: null,
+      targetVersion: 'v0.4.3'
+    };
+    assert.equal(resolveWebrtcInstallAction(fresh), 'release');
+    assert.equal(resolveWebrtcInstallAction({ ...fresh, markerVersion: 'v0.4.3' }), 'release');
+  });
+});
+
+const STAGING_BIN_DIRS = ['bin/linux_amd64', 'bin/linux_arm64', 'bin/darwin_amd64', 'bin/darwin_arm64'];
+
+/** 构造与上游发布包一致的完整布局，供布局校验与落位测试复用。 */
+async function createStaging(): Promise<string> {
+  const staging = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-stage-'));
+  for (const relativeDir of STAGING_BIN_DIRS) {
+    await mkdir(join(staging, relativeDir), { recursive: true });
+    await writeFile(join(staging, relativeDir, 'webrtc-signaling'), '#!/bin/sh\necho staging\n');
+  }
+  await mkdir(join(staging, 'assets'), { recursive: true });
+  await writeFile(join(staging, 'assets', 'index.html'), '<!doctype html>');
+  await mkdir(join(staging, 'agentd'), { recursive: true });
+  await writeFile(join(staging, 'agentd', 'run.sh'), '#!/bin/bash\necho staging\n');
+  return staging;
+}
+
+describe('WebRTC release layout validation', () => {
+  it('accepts a complete release layout', async () => {
+    const staging = await createStaging();
+    try {
+      await assert.doesNotReject(validateWebrtcReleaseLayout(staging));
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a package whose binary, assets entry or run script is missing', async () => {
+    const staging = await createStaging();
+    try {
+      const platformBinary = getWebrtcRuntimeBinary(staging);
+      await rm(platformBinary);
+      await assert.rejects(validateWebrtcReleaseLayout(staging), error => {
+        const failure = error as { code?: string; message?: string };
+        return failure.code === WEBRTC_RELEASE_LAYOUT_INVALID
+          && failure.message?.includes('平台二进制') === true;
+      });
+
+      await writeFile(platformBinary, '#!/bin/sh\necho staging\n');
+      await rm(join(staging, 'assets', 'index.html'));
+      await assert.rejects(validateWebrtcReleaseLayout(staging), error => {
+        const failure = error as { code?: string; message?: string };
+        return failure.code === WEBRTC_RELEASE_LAYOUT_INVALID
+          && failure.message?.includes('静态资源入口') === true;
+      });
+
+      await writeFile(join(staging, 'assets', 'index.html'), '<!doctype html>');
+      await rm(join(staging, 'agentd', 'run.sh'));
+      await assert.rejects(validateWebrtcReleaseLayout(staging), error => {
+        const failure = error as { code?: string; message?: string };
+        return failure.code === WEBRTC_RELEASE_LAYOUT_INVALID
+          && failure.message?.includes('设备端部署脚本') === true;
+      });
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
   });
 });
 
 describe('WebRTC release layout apply', () => {
-  const STAGING_BIN_DIRS = ['bin/linux_amd64', 'bin/linux_arm64', 'bin/darwin_amd64', 'bin/darwin_arm64'];
-
-  async function createStaging(): Promise<string> {
-    const staging = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-stage-'));
-    for (const relativeDir of STAGING_BIN_DIRS) {
-      await mkdir(join(staging, relativeDir), { recursive: true });
-      await writeFile(join(staging, relativeDir, 'webrtc-signaling'), '#!/bin/sh\necho staging\n');
-    }
-    await mkdir(join(staging, 'assets'), { recursive: true });
-    await writeFile(join(staging, 'assets', 'index.html'), '<!doctype html>');
-    await mkdir(join(staging, 'agentd'), { recursive: true });
-    await writeFile(join(staging, 'agentd', 'run.sh'), '#!/bin/bash\necho staging\n');
-    return staging;
-  }
-
   it('keeps existing files on a fresh install and does not touch the marker', async () => {
     const staging = await createStaging();
     const target = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-target-'));
@@ -170,6 +241,92 @@ describe('WebRTC release layout apply', () => {
       await applyWebrtcReleaseLayout(staging, target, { overwrite: true });
 
       assert.equal(await readFile(join(target, 'agentd', 'run.sh.before-upgrade-unknown'), 'utf8'), '#!/bin/bash\necho existing\n');
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+      await rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it('upgrades a partial old install by filling the missing piece with new files', async () => {
+    // 回归场景：旧安装缺 agentd/run.sh 时曾按全新安装处理，旧二进制被保留却
+    // 写入新版本标记。升级路径必须补齐缺项并替换其余运行时文件。
+    const staging = await createStaging();
+    const target = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-target-'));
+    try {
+      const binaryDir = path.dirname(path.relative(staging, getWebrtcRuntimeBinary(staging)));
+      await mkdir(join(target, binaryDir), { recursive: true });
+      await mkdir(join(target, 'assets'), { recursive: true });
+      await writeFile(getWebrtcRuntimeBinary(target), 'old binary\n');
+      await writeFile(join(target, 'assets', 'index.html'), 'old assets\n');
+
+      await applyWebrtcReleaseLayout(staging, target, { overwrite: true, previousVersion: 'v0.4.1' });
+
+      assert.equal(await readFile(getWebrtcRuntimeBinary(target), 'utf8'), '#!/bin/sh\necho staging\n');
+      assert.equal(await readFile(join(target, 'assets', 'index.html'), 'utf8'), '<!doctype html>');
+      assert.equal(await readFile(join(target, 'agentd', 'run.sh'), 'utf8'), '#!/bin/bash\necho staging\n');
+      // 旧安装没有 run.sh，不留备份文件。
+      assert.equal(await pathExists(join(target, 'agentd', 'run.sh.before-upgrade-v0.4.1')), false);
+
+      // 升级完成后资源齐全、标记一致：下一次安装决策必须是 skip。
+      await writeWebrtcRuntimeMarker(target, 'v0.4.3');
+      assert.equal(resolveWebrtcInstallAction({
+        binaryPresent: true,
+        assetsPresent: true,
+        runScriptPresent: true,
+        buildScriptPresent: false,
+        markerVersion: await readWebrtcRuntimeVersion(target),
+        targetVersion: 'v0.4.3'
+      }), 'skip');
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+      await rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it('removes a stale backup area left behind by a killed upgrade', async () => {
+    const staging = await createStaging();
+    const target = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-target-'));
+    try {
+      await mkdir(join(target, 'agentd'), { recursive: true });
+      await writeFile(join(target, 'agentd', 'run.sh'), '#!/bin/bash\necho existing\n');
+      await mkdir(join(target, '.la-pluma-upgrade-backup', 'bin'), { recursive: true });
+      await writeFile(join(target, '.la-pluma-upgrade-backup', 'bin', 'leftover'), 'junk\n');
+
+      await applyWebrtcReleaseLayout(staging, target, { overwrite: true, previousVersion: 'v0.4.1' });
+
+      assert.equal(await pathExists(join(target, '.la-pluma-upgrade-backup')), false);
+      assert.equal(await readFile(join(target, 'agentd', 'run.sh'), 'utf8'), '#!/bin/bash\necho staging\n');
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+      await rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it('restores the previous layout when the upgrade fails midway', async () => {
+    // 故障注入：新布局里预置同名目录，使 run.sh 备份回填（事务最后一步）失败，
+    // 整个切换必须回滚为升级前的完整布局，不留备份区。
+    const staging = await createStaging();
+    const target = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-target-'));
+    try {
+      const binaryDir = path.dirname(path.relative(staging, getWebrtcRuntimeBinary(staging)));
+      await mkdir(join(target, binaryDir), { recursive: true });
+      await mkdir(join(target, 'assets'), { recursive: true });
+      await mkdir(join(target, 'agentd'), { recursive: true });
+      await writeFile(getWebrtcRuntimeBinary(target), 'old binary\n');
+      await writeFile(join(target, 'assets', 'index.html'), 'old assets\n');
+      await writeFile(join(target, 'agentd', 'run.sh'), '#!/bin/bash\necho existing\n');
+      // 与 previousVersion 派生的备份文件同名：copyFile 落在目录上必然失败。
+      await mkdir(join(staging, 'agentd', 'run.sh.before-upgrade-v0.4.1'), { recursive: true });
+
+      await assert.rejects(
+        applyWebrtcReleaseLayout(staging, target, { overwrite: true, previousVersion: 'v0.4.1' }),
+        error => (error as NodeJS.ErrnoException).code === 'EISDIR'
+      );
+
+      assert.equal(await readFile(getWebrtcRuntimeBinary(target), 'utf8'), 'old binary\n');
+      assert.equal(await readFile(join(target, 'assets', 'index.html'), 'utf8'), 'old assets\n');
+      assert.equal(await readFile(join(target, 'agentd', 'run.sh'), 'utf8'), '#!/bin/bash\necho existing\n');
+      assert.equal(await pathExists(join(target, '.la-pluma-upgrade-backup')), false);
     } finally {
       await rm(staging, { recursive: true, force: true });
       await rm(target, { recursive: true, force: true });

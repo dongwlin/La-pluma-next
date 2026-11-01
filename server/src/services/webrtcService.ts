@@ -207,6 +207,8 @@ const viewerLifecycle: WebrtcViewerLifecycle = createWebrtcViewerLifecycle({
     throw error;
   }),
   restore: deviceId => enqueueLifecycle(async () => {
+    // restore 只覆盖 idle 自动回收后的恢复：升级与显式停止会清空空闲停止
+    // 记录，此时恢复预览的唯一入口是显式 startWebrtc，不在此自动重启。
     const owner = idleStoppedAgentOwner;
     if (!owner || owner.deviceId !== deviceId) return;
     if (registeredAgentOwner) return;
@@ -992,6 +994,9 @@ async function enforceOwnedProcessesTerminated(children: readonly ChildProcess[]
 /**
  * 只释放本实例启动的预览资源：本进程的本地子进程，以及登记了所有权的设备端 Agent。
  * 启动前已存在的 server/TURN 与设备端 Agent 没有所有权记录，保持不动。
+ *
+ * 释放会同时清空空闲停止记录与所有权登记，viewer 的 restore 由此不再触发：
+ * 升级或显式停止之后，恢复预览的唯一入口是显式 `startWebrtc`。
  */
 async function releaseOwnedPreviewResourcesUnlocked(
   { stopDeviceAgent = false }: { stopDeviceAgent?: boolean } = {}
@@ -1078,8 +1083,9 @@ async function installWebrtcUnlocked(): Promise<WebrtcInstallResult> {
     await installWebrtcRelease(WEBRTC_DIR, {
       signal,
       overwrite: action === 'upgrade',
-      // 升级在校验通过后、替换文件前先停掉本实例的预览资源：信令服务随新
-      // 二进制重启，设备端旧 Agent 释放后由下一次 start 重新部署新版。
+      // 升级在校验通过后、替换文件前先停掉本实例的预览资源：受管信令服务与
+      // TURN 随旧二进制一并停止，设备端旧 Agent 释放并清空恢复记录。资源释放
+      // 后不会自动恢复，重新预览只能由用户显式 start（部署新版 Agent）。
       beforeApply: action === 'upgrade'
         ? async () => {
             assertPreviewOpen();

@@ -537,6 +537,30 @@ fi
     }
   });
 
+  it('keeps an explicitly stopped preview down when a viewer reconnects', async () => {
+    // 升级与显式停止共用 releaseOwnedPreviewResourcesUnlocked：空闲停止记录与
+    // 所有权一并清空，viewer 连接不是恢复入口；重新预览只能显式 start。
+    await service.waitForCondition(
+      async () => !(await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning,
+      { timeoutMs: 1000, pollIntervalMs: 10, timeoutMessage: 'previous agent did not stop' }
+    );
+    const spawnsBefore = await countLines(agentCountFile);
+
+    await service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath);
+    await service.stopWebrtc('fixture-device', fakeAdbPath);
+    assert.equal((await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning, false);
+
+    const viewer = service.registerWebrtcViewer('preview-device');
+    await viewer.ready;
+    assert.equal(await countLines(agentCountFile), spawnsBefore + 1);
+    assert.equal((await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning, false);
+
+    await service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath);
+    assert.equal((await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning, true);
+    assert.equal(await countLines(agentCountFile), spawnsBefore + 2);
+    viewer.release();
+  });
+
   it('rejects a nonzero agent deployment and cleans up the target address', async () => {
     const beforeFailure = await countLines(agentCountFile);
 
@@ -583,6 +607,7 @@ fi
 
   it('serializes start, start, and stop so no queued start resurrects the preview', async () => {
     const beforeInterleaving = await countLines(agentCountFile);
+    const serverSpawnsBefore = await countLines(serverCountFile);
     const results = await Promise.all([
       service.startWebrtc('queued-address', 'queued-device', fakeAdbPath),
       service.startWebrtc('queued-address', 'queued-device', fakeAdbPath),
@@ -604,6 +629,7 @@ fi
       pollIntervalMs: 10,
       timeoutMessage: 'fixture signaling server did not stop'
     });
-    assert.equal(await countLines(serverCountFile), 1);
+    // 交错的排队启动不得复活信令服务：相对本用例开始时没有新的 server spawn。
+    assert.equal(await countLines(serverCountFile), serverSpawnsBefore);
   });
 });

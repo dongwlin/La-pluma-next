@@ -237,7 +237,7 @@ export async function applyPreviewOrientation(req: PreviewRequest, res: ApiRespo
 export async function installWebrtcComponents(req: PreviewRequest, res: ApiResponseWriter): Promise<void> {
   const result = await installWebrtc();
   const message = result.upgraded && result.runtimeVersion
-    ? `WebRTC 运行时已升级到 ${result.runtimeVersion}，重新开始预览将部署新版设备 Agent`
+    ? `WebRTC 运行时已升级到 ${result.runtimeVersion}，预览已停止，重新开始预览将部署新版设备 Agent`
     : 'WebRTC 组件已安装';
   return sendSuccess(res, req, result, message);
 }

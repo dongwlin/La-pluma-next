@@ -5,11 +5,15 @@
  *   取得路径前抛出 `WEBRTC_UNSUPPORTED_PLATFORM`，不猜测兼容目录。
  * - 网络：`LA_PLUMA_WEBRTC_HOST_IP` 显式覆盖优先，且必须是 IPv4；否则按设备
  *   地址的 IPv4 网段匹配非内部网卡，再退回非容器网卡，最后是回环地址。
- * - 安装：下载/读取上游 zip 后按固定 SHA-256 校验，只复制 `bin`、`assets`
- *   与 `agentd` 运行时资源，保留既有 checkout 与持久数据；成功后写版本标记
- *   `la-pluma-runtime.json`。升级（overwrite）覆盖同名运行时文件，并先备份
- *   既有 `agentd/run.sh`；校验通过前不触碰既有目录，临时目录总是清理。
- *   下载、解压失败与包内容不完整都原样抛出，不删除已存在的运行目录。
+ * - 安装：下载/读取上游 zip 后按固定 SHA-256 校验，解压产物先做布局校验
+ *   （平台二进制、静态资源入口与 `agentd/run.sh` 必须真实存在），通过后才
+ *   停止既有预览资源并落位；只复制 `bin`、`assets` 与 `agentd` 运行时资源，
+ *   保留既有 checkout 与持久数据；成功后写版本标记 `la-pluma-runtime.json`。
+ *   升级（overwrite）采用事务性目录切换：既有运行时目录先整体改名让位到
+ *   `dir` 内的临时备份区（同文件系统，rename 原子），新布局就位并回填既有
+ *   `agentd/run.sh` 备份后才清理备份区；任一步失败回滚为升级前布局。
+ *   下载、解压、布局校验与切换任一步失败都不改变既有运行目录的最终内容，
+ *   临时目录与备份区总是清理。
  *
  * 进程与设备副作用不在这里：本模块只解析平台、网络与发布包，spawn、ADB 和
  * 预览子进程的所有权在 `webrtcService.ts`。
@@ -18,7 +22,7 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { access, chmod, copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -74,6 +78,60 @@ export function getWebrtcRuntimeBinary(
     throw error;
   }
   return path.join(dir, 'bin', `${platform}_${releaseArch}`, 'webrtc-signaling');
+}
+
+/** 发布包布局校验失败的稳定错误码；安装器据此拒绝坏包而不触碰既有运行目录。 */
+export const WEBRTC_RELEASE_LAYOUT_INVALID = 'WEBRTC_RELEASE_LAYOUT_INVALID';
+
+interface WebrtcLayoutRequirement {
+  label: string;
+  path: string;
+  present: boolean;
+}
+
+async function isFile(filePath: string): Promise<boolean> {
+  try {
+    return (await stat(filePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(filePath: string): Promise<boolean> {
+  try {
+    return (await stat(filePath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 校验发布包解压产物的布局：平台二进制、静态资源入口与设备端部署脚本必须
+ * 真实存在。静态资源入口与 `webrtcService.getWebrtcAssetsPath` 的识别保持
+ * 一致（旧版 `assets/v1` 目录或 `assets/index.html`）。调用方必须在停止既有
+ * 预览资源与写入任何文件之前完成校验，坏包才会被原样拒绝。
+ */
+export async function validateWebrtcReleaseLayout(extractedDir: string): Promise<void> {
+  const binaryPath = getWebrtcRuntimeBinary(extractedDir);
+  const assetsIndexPath = path.join(extractedDir, 'assets', 'index.html');
+  const legacyAssetsPath = path.join(extractedDir, 'assets', 'v1');
+  const runScriptPath = path.join(extractedDir, 'agentd', 'run.sh');
+  const requirements: WebrtcLayoutRequirement[] = [
+    { label: '平台二进制', path: binaryPath, present: await isFile(binaryPath) },
+    {
+      label: '静态资源入口',
+      path: assetsIndexPath,
+      present: await isFile(assetsIndexPath) || await isDirectory(legacyAssetsPath)
+    },
+    { label: '设备端部署脚本', path: runScriptPath, present: await isFile(runScriptPath) }
+  ];
+  const missing = requirements.filter(requirement => !requirement.present);
+  if (!missing.length) return;
+  const error = new Error(
+    `WebRTC 发布包布局不完整，缺少：${missing.map(entry => `${entry.label}（${entry.path}）`).join('、')}`
+  ) as WebrtcRuntimeError;
+  error.code = WEBRTC_RELEASE_LAYOUT_INVALID;
+  throw error;
 }
 
 function ipv4Number(address: string): number {
@@ -152,64 +210,130 @@ export interface WebrtcInstallDecision {
 
 /**
  * 决定安装动作。带 build.sh 的源码 checkout 永不下载发布包：资源齐全即跳过，
- * 缺失走构建。发布包安装要求资源齐全且标记版本一致才跳过；版本未知或不符的
- * 旧安装按升级处理，覆盖复制并备份既有 run.sh。
+ * 缺失走构建。发布包安装要求资源齐全且标记版本一致才跳过；只要存在任一旧
+ * 运行时资源且未达到该条件，一律按升级覆盖处理——资源不完整不等于全新安装，
+ * 否则缺项的旧安装会保留旧二进制却被写入新版本标记，升级判断从此失真。
  */
 export function resolveWebrtcInstallAction(input: WebrtcInstallDecision): WebrtcInstallAction {
   if (input.buildScriptPresent) {
     return input.binaryPresent && input.assetsPresent && input.runScriptPresent ? 'skip' : 'build';
   }
-  if (input.binaryPresent && input.assetsPresent && input.runScriptPresent) {
-    return input.markerVersion === input.targetVersion ? 'skip' : 'upgrade';
+  if (input.binaryPresent && input.assetsPresent && input.runScriptPresent
+    && input.markerVersion === input.targetVersion) {
+    return 'skip';
   }
-  return 'release';
+  const anyResourcePresent = input.binaryPresent || input.assetsPresent || input.runScriptPresent;
+  return anyResourcePresent ? 'upgrade' : 'release';
 }
 
 export interface WebrtcReleaseApplyOptions {
-  /** 升级既有安装：覆盖同名运行时文件，并把既有 agentd/run.sh 备份到同目录。 */
+  /** 升级既有安装：整体切换运行时目录，并把既有 agentd/run.sh 备份到同目录。 */
   overwrite?: boolean;
   /** 被升级安装的原版本标记；仅用于命名 run.sh 备份文件。 */
   previousVersion?: string | null;
 }
 
-async function backupRunScript(dir: string, previousVersion: string | null): Promise<void> {
-  const runScript = path.join(dir, 'agentd', 'run.sh');
+/** 升级切换使用的临时备份区；位于运行目录内，与目标同文件系统，rename 原子。 */
+const UPGRADE_BACKUP_DIRNAME = '.la-pluma-upgrade-backup';
+
+/**
+ * 回填既有 run.sh 备份到新布局的同目录位置；旧安装缺少 run.sh 时不留备份。
+ * 该文件是文档化的回退入口，回退旧版本时用它恢复部署脚本。
+ */
+async function restoreRunScriptArtifact(
+  backupRoot: string,
+  dir: string,
+  previousVersion: string | null
+): Promise<void> {
+  const backupRunScript = path.join(backupRoot, 'agentd', 'run.sh');
   try {
-    await access(runScript);
+    await access(backupRunScript);
   } catch {
     return;
   }
   const suffix = previousVersion?.replace(/[^A-Za-z0-9._-]/g, '') || 'unknown';
-  await copyFile(runScript, path.join(dir, 'agentd', `run.sh.before-upgrade-${suffix}`));
+  await copyFile(backupRunScript, path.join(dir, 'agentd', `run.sh.before-upgrade-${suffix}`));
 }
 
 /**
  * 把解压后的发布包布局落位到运行目录：只复制 `bin`、`assets` 与 `agentd`，
- * 既有 checkout 与运行数据一律不动。overwrite 是升级路径，先备份既有
- * agentd/run.sh 再覆盖同名文件，保留现场以便回退。
+ * 既有 checkout 与运行数据一律不动。
+ *
+ * overwrite 是升级路径，采用事务性目录切换：先清理遗留备份区，把既有运行时
+ * 目录逐项改名让位到备份区，新布局就位并回填既有 run.sh 备份，最后清理备份
+ * 区；任一步失败时清掉新布局残留、把让位目录改名还原，既有安装保持升级前的
+ * 完整布局（回滚自身失败时保留备份区供人工恢复，并抛出原始错误）。
  */
 export async function applyWebrtcReleaseLayout(
   extractedDir: string,
   dir: string,
   { overwrite = false, previousVersion = null }: WebrtcReleaseApplyOptions = {}
 ): Promise<void> {
+  // 布局先于任何写入校验：坏包不会触碰既有运行目录，也不会停止预览资源。
+  await validateWebrtcReleaseLayout(extractedDir);
   const binaryPath = getWebrtcRuntimeBinary(extractedDir);
   const binaryDir = path.dirname(path.relative(extractedDir, binaryPath));
-  if (overwrite) await backupRunScript(dir, previousVersion);
-  // Keep the existing checkout and persistent data; install only runtime resources.
-  for (const relativePath of [binaryDir, 'assets', 'agentd']) {
-    await cp(path.join(extractedDir, relativePath), path.join(dir, relativePath), {
-      recursive: true,
-      force: overwrite,
-      errorOnExist: false
-    });
+  const layoutPaths = [binaryDir, 'assets', 'agentd'] as const;
+  const backupRoot = path.join(dir, UPGRADE_BACKUP_DIRNAME);
+  // 遗留备份区只可能来自升级中途被杀的进程，新布局落位前一律清掉。
+  await rm(backupRoot, { recursive: true, force: true });
+  if (!overwrite) {
+    // Keep the existing checkout and persistent data; install only runtime resources.
+    for (const relativePath of layoutPaths) {
+      await cp(path.join(extractedDir, relativePath), path.join(dir, relativePath), {
+        recursive: true,
+        force: false,
+        errorOnExist: false
+      });
+    }
+    await chmod(getWebrtcRuntimeBinary(dir), 0o755);
+    return;
   }
-  await chmod(getWebrtcRuntimeBinary(dir), 0o755);
+
+  const displaced: string[] = [];
+  try {
+    for (const relativePath of layoutPaths) {
+      const targetPath = path.join(dir, relativePath);
+      try {
+        await access(targetPath);
+      } catch {
+        // 旧安装缺这一项：无需让位，由新布局直接补齐。
+        continue;
+      }
+      const backupPath = path.join(backupRoot, relativePath);
+      await mkdir(path.dirname(backupPath), { recursive: true });
+      await rename(targetPath, backupPath);
+      displaced.push(relativePath);
+    }
+    for (const relativePath of layoutPaths) {
+      await cp(path.join(extractedDir, relativePath), path.join(dir, relativePath), { recursive: true });
+    }
+    await chmod(getWebrtcRuntimeBinary(dir), 0o755);
+    await restoreRunScriptArtifact(backupRoot, dir, previousVersion);
+  } catch (error) {
+    // 回滚：新布局残留清掉后，让位目录改名回原位。回滚步骤自身失败时保留
+    // 备份区供人工恢复，但不掩盖触发回滚的原始错误。
+    try {
+      for (const relativePath of layoutPaths) {
+        await rm(path.join(dir, relativePath), { recursive: true, force: true });
+      }
+      for (const relativePath of displaced) {
+        await rename(path.join(backupRoot, relativePath), path.join(dir, relativePath));
+      }
+      await rm(backupRoot, { recursive: true, force: true });
+    } catch (rollbackError) {
+      if (error instanceof Error && isErrnoException(rollbackError)) {
+        error.cause = rollbackError;
+      }
+    }
+    throw error;
+  }
+  await rm(backupRoot, { recursive: true, force: true });
 }
 
 export interface WebrtcInstallOptions {
   signal?: AbortSignal;
-  /** 升级既有安装：覆盖同名运行时文件并备份 agentd/run.sh；缺省为不覆盖的全新安装。 */
+  /** 升级既有安装：事务性切换运行时目录并备份 agentd/run.sh；缺省为不覆盖的全新安装。 */
   overwrite?: boolean;
   /**
    * 发布包下载与校验全部通过后、替换既有文件前调用；升级路径用它停止受管
@@ -247,8 +371,9 @@ export async function installWebrtcRelease(
 
     const extractedDir = path.join(stagingDir, 'release');
     await execFileAsync('unzip', ['-q', archive, '-d', extractedDir], { timeout: 60000 });
-    // 包布局先于任何写入校验，坏包不会触碰既有运行目录。
-    getWebrtcRuntimeBinary(extractedDir);
+    // 包布局先于任何写入与停止操作校验：二进制、资源入口与部署脚本必须真实
+    // 存在，坏包在触碰既有运行目录之前就被拒绝。
+    await validateWebrtcReleaseLayout(extractedDir);
     if (beforeApply) await beforeApply();
     await mkdir(dir, { recursive: true });
     await applyWebrtcReleaseLayout(extractedDir, dir, {
