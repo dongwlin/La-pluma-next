@@ -15,7 +15,8 @@ import { parsePositiveInteger } from '../config/runtimeConfig.ts';
  * 本模块是唯一持有可写子进程状态（taskStatus）和实时日志缓冲的位置：
  * - taskStatus 只回答“当前是否有受管子进程、任务名与停止请求”，不能当作
  *   流程或 Run 终态；执行身份归 agentRunService，设备变更权归
- *   executionCoordinatorService 的租约，是彼此独立的对象。
+ *   executionCoordinatorService 的租约，是彼此独立的对象。后台 spawn 与
+ *   登记了受管任务名的维护 execFile 子进程（Core 安装/更新）都写入同一状态。
  * - 命令是否属于设备变更、是否需要先取得租约由 maaExecutionService 决定；
  *   本模块只提供 spawn/execFile 端口、状态更新、停止信号和输出诊断。
  * - spawn、execFile、停止信号与强制终止计时器都可经端口注入，测试可用假
@@ -129,7 +130,9 @@ export interface MaaExecFileResult {
 export type MaaExecFile = (
   file: string,
   args: readonly string[],
-  options: MaaExecFileOptions
+  options: MaaExecFileOptions,
+  /** 提供时在子进程对象创建后同步回调；默认端口用它把维护子进程交给调用方登记。 */
+  onChild?: (childProcess: MaaChildProcess) => void
 ) => Promise<MaaExecFileResult>;
 
 /** 强制终止计时器句柄；测试端口返回的假句柄只实现 unref。 */
@@ -151,6 +154,11 @@ export interface MaaProcessPorts {
   spawn?: MaaSpawn;
   execFile?: MaaExecFile;
   execFileTimeoutMs?: number;
+  /**
+   * execFile 分支登记的受管任务名：设置后子进程写入 taskStatus，停止请求与
+   * 关闭流程能按同一任务进程路径识别并终止它（Core 安装/更新维护命令使用）。
+   */
+  managedTaskName?: string | null;
 }
 
 export interface MaaStopOptions {
@@ -239,18 +247,74 @@ interface MaaTaskState extends MaaTaskStatus {
 /** 无任务名的诊断/配置类 execFile 调用统一使用短超时，避免 CLI 卡死拖住请求。 */
 export const MAA_CLI_EXEC_TIMEOUT_MS = 15_000;
 
-/** 给注入的 execFile 端口再套一层超时，端口忽略 timeout 选项时也不会永久 pending。 */
-function withExecFileTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+/** 维护命令（Core 安装/更新）的默认长超时：真实慢下载应在 15 分钟量级内完成。 */
+export const DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS = 900_000;
+
+/** 维护命令长超时的配置上限：单次更新不允许无限等待，超限配置收敛到上限。 */
+export const MAX_MAINTENANCE_EXEC_TIMEOUT_MS = 3_600_000;
+
+/**
+ * 维护命令专用长超时；缺失或空白回退默认值，非法值与实时日志上限一致静默
+ * 回退，超上限收敛到上限。只作用于 install / update 维护命令，短命令默认
+ * 15s 时限不受影响。
+ */
+export function resolveMaintenanceExecTimeoutMs(raw: string | undefined): number {
+  try {
+    const parsed = parsePositiveInteger(raw, {
+      name: 'LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS',
+      fallback: DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS
+    });
+    return Math.min(parsed, MAX_MAINTENANCE_EXEC_TIMEOUT_MS);
+  } catch {
+    return DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS;
+  }
+}
+
+export const MAINTENANCE_EXEC_TIMEOUT_MS = resolveMaintenanceExecTimeoutMs(process.env.LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS);
+
+/**
+ * 超时裁决后等待底层子进程退出的宽限：默认端口由 execFile 按 killSignal
+ * 终止子进程，close 通常毫秒级到达；端口忽略 timeout 选项时以本宽限兜底。
+ */
+export const EXEC_FILE_TIMEOUT_EXIT_GRACE_MS = 5_000;
+
+/**
+ * 给注入的 execFile 端口再套一层超时，端口忽略 timeout 选项时也不会永久 pending。
+ * 超时裁决后先等待底层操作结算（子进程已被终止并退出），再交给调用方超时错误：
+ * 调用方的租约与任务状态释放不早于子进程实际终止。
+ */
+async function withExecFileTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | null = null;
+  let timedOut = false;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
+      timedOut = true;
       reject(new Error(`MAA CLI 命令执行超时（${timeoutMs}ms）`));
     }, timeoutMs);
     timer.unref?.();
   });
-  return Promise.race([operation, timeout]).finally(() => {
+  try {
+    return await Promise.race([operation, timeout]);
+  } catch (error) {
+    if (!timedOut) throw error;
+    await new Promise<void>(resolve => {
+      const graceTimer = setTimeout(resolve, EXEC_FILE_TIMEOUT_EXIT_GRACE_MS);
+      graceTimer.unref?.();
+      void operation.then(
+        () => {
+          clearTimeout(graceTimer);
+          resolve();
+        },
+        () => {
+          clearTimeout(graceTimer);
+          resolve();
+        }
+      );
+    });
+    throw error;
+  } finally {
     if (timer) clearTimeout(timer);
-  });
+  }
 }
 
 function resolveExecFileTimeout(value: number | undefined): number {
@@ -259,12 +323,43 @@ function resolveExecFileTimeout(value: number | undefined): number {
     : MAA_CLI_EXEC_TIMEOUT_MS;
 }
 
+/**
+ * 默认 execFile 端口：与 promisify(execFile) 同形状，但需要时把子进程对象
+ * 同步交给调用方登记（维护命令写 taskStatus），错误对象保留 stdout/stderr。
+ */
+function execFileWithChild(
+  file: string,
+  args: readonly string[],
+  options: MaaExecFileOptions,
+  onChild?: (childProcess: MaaChildProcess) => void
+): Promise<MaaExecFileResult> {
+  if (!onChild) return execFilePromise(file, args, options);
+  return new Promise((resolve, reject) => {
+    const childProcess = execFile(file, args, options, (error, stdout, stderr) => {
+      if (error) {
+        Object.assign(error, { stdout, stderr });
+        reject(error);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+    // execFile 固定使用 pipe stdio：stdout/stderr 类型上可空，运行时是可读流。
+    const { stdout: stdoutStream, stderr: stderrStream } = childProcess;
+    if (!stdoutStream || !stderrStream) {
+      reject(new Error('MAA CLI execFile 子进程缺少管道输出流'));
+      return;
+    }
+    onChild(Object.assign(childProcess, { stdout: stdoutStream, stderr: stderrStream }));
+  });
+}
+
 // 默认进程端口：真实子进程、真实计时器与真实信号发送。测试传入同名键覆盖。
 const defaultProcessPorts: Required<MaaProcessPorts> = Object.freeze({
   cliPath: MAA_CLI_PATH,
   spawn,
-  execFile: execFilePromise,
-  execFileTimeoutMs: MAA_CLI_EXEC_TIMEOUT_MS
+  execFile: execFileWithChild,
+  execFileTimeoutMs: MAA_CLI_EXEC_TIMEOUT_MS,
+  managedTaskName: null
 });
 
 const defaultStopPorts: Required<MaaStopPorts> = Object.freeze({
@@ -910,14 +1005,30 @@ function execMaaCommandWithEnv(
     // 没有任务名称，使用同步执行（用于配置查询等操作）
     else {
       const execFileTimeoutMs = resolveExecFileTimeout(processPorts.execFileTimeoutMs);
+      // 维护命令（Core 安装/更新）经 managedTaskName 登记受管子进程：纳入
+      // taskStatus 后，停止请求与关闭流程按同一任务进程路径识别并终止它。
+      const managedTaskName = processPorts.managedTaskName || null;
+      let managedChildProcess: MaaChildProcess | null = null;
+      // TS 控制流看不到 onChild 回调内的赋值：finally 经闭包读取以保留联合类型。
+      const registeredChildProcess = (): MaaChildProcess | null => managedChildProcess;
       try {
         const { stdout, stderr } = await withExecFileTimeout(
-          processPorts.execFile(processPorts.cliPath, [command, ...finalArgs], {
-            env,
-            maxBuffer: 10 * 1024 * 1024,
-            timeout: execFileTimeoutMs,
-            killSignal: 'SIGKILL'
-          }),
+          processPorts.execFile(
+            processPorts.cliPath,
+            [command, ...finalArgs],
+            {
+              env,
+              maxBuffer: 10 * 1024 * 1024,
+              timeout: execFileTimeoutMs,
+              killSignal: 'SIGKILL'
+            },
+            managedTaskName
+              ? childProcess => {
+                  managedChildProcess = childProcess;
+                  setTaskStatus(true, managedTaskName, taskType, childProcess);
+                }
+              : undefined
+          ),
           execFileTimeoutMs
         );
 
@@ -952,6 +1063,20 @@ function execMaaCommandWithEnv(
         }
 
         throw new Error(`命令执行失败: ${errorMessage}`);
+      } finally {
+        const childProcess = registeredChildProcess();
+        if (childProcess) {
+          // 端口忽略 timeout 选项的兜底：子进程仍存活时强制终止，不留孤儿进程。
+          if (childProcess.exitCode === null && !childProcess.killed) {
+            try {
+              childProcess.kill('SIGKILL');
+            } catch {
+              // 子进程可能恰好在终止前自行退出。
+            }
+          }
+          // withExecFileTimeout 在超时后等待底层结算：到这里子进程已退出或已启动失败。
+          clearTaskStatusForProcess(childProcess);
+        }
       }
     }
   })();

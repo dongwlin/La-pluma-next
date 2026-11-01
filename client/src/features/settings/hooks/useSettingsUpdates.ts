@@ -89,13 +89,13 @@ export function useSettingsUpdates(
   }, [notify, owner, reloadVersion])
 
   const updateCore = useCallback(() => (
-    run('正在更新 MaaCore 并同步最新资源...', () => owner.updateCore())
+    run('正在更新 MaaCore 并同步最新资源（大包下载最长可能需要约 15 分钟）...', () => owner.updateCore())
   ), [owner, run])
 
   const switchCoreChannel = useCallback((currentCore?: string | null) => {
     const target = resolveCoreChannelSwitch(currentCore)
     return run(
-      `正在切换到 ${target.label} 渠道...`,
+      `正在切换到 ${target.label} 渠道（大包下载最长可能需要约 15 分钟）...`,
       () => owner.switchCoreChannel(currentCore),
     )
   }, [owner, run])

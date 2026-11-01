@@ -6,11 +6,16 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import {
   clearRealtimeLogs,
+  DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS,
+  EXEC_FILE_TIMEOUT_EXIT_GRACE_MS,
   execMaaCommandUnlocked,
   getRealtimeLogs,
   getTaskStatus,
   MAA_CLI_EXEC_TIMEOUT_MS,
+  MAINTENANCE_EXEC_TIMEOUT_MS,
   MAX_CAPTURED_OUTPUT_BYTES,
+  MAX_MAINTENANCE_EXEC_TIMEOUT_MS,
+  resolveMaintenanceExecTimeoutMs,
   setTaskStatus,
   stopCurrentTask
 } from '../maaProcessService.ts';
@@ -19,6 +24,7 @@ import type {
   MaaCommandError,
   MaaCommandOutcome,
   MaaExecFileOptions,
+  MaaExecFileResult,
   MaaProcessStarted
 } from '../maaProcessService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from '../maaLogFileService.ts';
@@ -201,8 +207,106 @@ describe('MAA CLI process ports', () => {
       }),
       /MAA CLI 命令执行超时/
     );
-    // 端口本身不会自己结束；超时包装必须让调用方拿到拒绝并释放等待。
-    assert.ok(Date.now() - startedAt < 1_000);
+    // 端口本身不会自己结束；超时裁决先按宽限等待底层结算，再让调用方拿到拒绝。
+    assert.ok(Date.now() - startedAt >= EXEC_FILE_TIMEOUT_EXIT_GRACE_MS);
+    assert.ok(Date.now() - startedAt < EXEC_FILE_TIMEOUT_EXIT_GRACE_MS + 5_000);
+  });
+
+  it('keeps the managed execFile status until the underlying port settles past the timeout', async () => {
+    const child = createFakeChild();
+    let resolveOperation: ((result: MaaExecFileResult) => void) | null = null;
+    // TS 控制流看不到 executor 内的赋值：经包装调用保留可调用性。
+    const resolveNow = (result: MaaExecFileResult) => resolveOperation?.(result);
+    const startedAt = Date.now();
+    const execution = execMaaCommandUnlocked('update', [], null, null, false, true, null, {}, {
+      cliPath: '/virtual/maa',
+      execFileTimeoutMs: 50,
+      managedTaskName: '更新 MaaCore 与资源',
+      execFile: (_file, _args, _options, onChild) => {
+        onChild?.(child);
+        return new Promise<MaaExecFileResult>(resolve => {
+          resolveOperation = resolve;
+        });
+      }
+    });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(getTaskStatus().isRunning, true);
+    assert.equal(getTaskStatus().taskName, '更新 MaaCore 与资源');
+
+    // 超时（50ms）已裁决，但底层端口 150ms 后才结算：状态与等待必须晚于结算释放。
+    await new Promise<void>(resolve => { setTimeout(resolve, 150); });
+    assert.ok(Date.now() - startedAt >= 150);
+    assert.equal(getTaskStatus().isRunning, true, '状态不得早于底层子进程结算而释放');
+
+    child.exitCode = 0;
+    resolveNow({ stdout: 'late success', stderr: '' });
+    await assert.rejects(execution, /MAA CLI 命令执行超时（50ms）/);
+    assert.equal(getTaskStatus().isRunning, false);
+  });
+
+  it('registers a managed execFile child for maintenance commands and clears it after exit', async () => {
+    const child = createFakeChild();
+    let rejectOperation: ((error: Error) => void) | null = null;
+    // TS 控制流看不到 executor 内的赋值：经包装调用保留可调用性。
+    const rejectNow = (error: Error) => rejectOperation?.(error);
+    clearRealtimeLogs();
+    const execution = execMaaCommandUnlocked('update', [], null, null, false, true, null, {}, {
+      cliPath: '/virtual/maa',
+      execFileTimeoutMs: 60_000,
+      managedTaskName: '更新 MaaCore 与资源',
+      execFile: (_file, _args, _options, onChild) => {
+        onChild?.(child);
+        return new Promise<MaaExecFileResult>((_resolve, reject) => {
+          rejectOperation = reject;
+        });
+      }
+    });
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    // 维护子进程写入同一条 taskStatus 投影：停止请求与关闭流程按该状态识别。
+    assert.equal(getTaskStatus().isRunning, true);
+    assert.equal(getTaskStatus().taskName, '更新 MaaCore 与资源');
+    assert.equal(getTaskStatus().stopRequested, false);
+
+    // 关闭流程按 stopCurrentTask 发送 SIGTERM；子进程随后退出，等待随之结束。
+    const signals: Array<NodeJS.Signals | number> = [];
+    const stopResult = stopCurrentTask({}, {
+      platform: 'win32',
+      killChild: (_target, signal) => {
+        signals.push(signal);
+        if (signal === 'SIGTERM') {
+          // 子进程因信号终止：killed 置位后兜底 SIGKILL 不应再触发。
+          child.killed = true;
+          rejectNow(Object.assign(new Error('Command failed: /virtual/maa update'), { killed: true, signal }));
+        }
+      },
+      setTimeout: () => ({ unref() {} })
+    });
+    assert.deepEqual(stopResult, { success: true, message: '已发送终止请求' });
+
+    await assert.rejects(execution, /命令执行失败/);
+    assert.deepEqual(signals, ['SIGTERM']);
+    assert.equal(getTaskStatus().isRunning, false);
+    assert.equal(getTaskStatus().stopRequested, false);
+  });
+
+  it('clears the managed execFile status when the command completes without signals', async () => {
+    const child = createFakeChild();
+    const result = await execMaaCommandUnlocked('update', [], null, null, false, true, null, {}, {
+      cliPath: '/virtual/maa',
+      execFileTimeoutMs: 60_000,
+      managedTaskName: '更新 MaaCore 与资源',
+      execFile: (_file, _args, _options, onChild) => {
+        onChild?.(child);
+        child.exitCode = 0;
+        return Promise.resolve({ stdout: 'MaaCore v6.9.9', stderr: '' });
+      }
+    });
+
+    assert.equal(result.stdout, 'MaaCore v6.9.9');
+    assert.equal(getTaskStatus().isRunning, false);
+    // 正常完成后不向子进程发送任何兜底信号。
+    assert.deepEqual(child.signals, []);
   });
 
   it('passes the exec timeout and kill signal to the execFile port', async () => {
@@ -222,6 +326,23 @@ describe('MAA CLI process ports', () => {
     const receivedOptions = await optionsReceived;
     assert.equal(receivedOptions.timeout, MAA_CLI_EXEC_TIMEOUT_MS);
     assert.equal(receivedOptions.killSignal, 'SIGKILL');
+  });
+
+  it('resolves the maintenance exec timeout with fallback and cap', () => {
+    const name = 'LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS';
+    assert.equal(resolveMaintenanceExecTimeoutMs(undefined), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('   '), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('60000'), 60_000);
+    // 超上限的配置收敛到上限，不允许单次更新无限等待。
+    assert.equal(resolveMaintenanceExecTimeoutMs(String(MAX_MAINTENANCE_EXEC_TIMEOUT_MS * 2)), MAX_MAINTENANCE_EXEC_TIMEOUT_MS);
+    // 非法值与实时日志上限一致静默回退，不阻断服务启动。
+    assert.equal(resolveMaintenanceExecTimeoutMs('not-a-number'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('0'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('-5'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('1.5'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS, 900_000);
+    assert.equal(MAX_MAINTENANCE_EXEC_TIMEOUT_MS, 3_600_000);
+    assert.ok(MAINTENANCE_EXEC_TIMEOUT_MS > MAA_CLI_EXEC_TIMEOUT_MS, name);
   });
 
   it('treats an externally signalled background exit as a failure, not a stop', async () => {

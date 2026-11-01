@@ -2,6 +2,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { execMaaCommand, getMaaVersion } from '../services/maaExecutionService.ts';
 import type { MaaCommandOutput } from '../services/maaProcessService.ts';
+import { MAINTENANCE_EXEC_TIMEOUT_MS } from '../services/maaProcessService.ts';
+import type { MaaProcessPorts } from '../services/maaProcessService.ts';
 import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.ts';
 import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
 import { getCurrentActivity } from '../services/maaActivityService.ts';
@@ -429,13 +431,19 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
   if (dryRun) return sendDryRun(res, req, plan);
 
   return withMaaExecutionLease({ source: 'core-update', taskName: '更新 MaaCore 与资源', command: 'update' }, async () => {
+    // Core 安装/更新是大包下载：走维护专用长超时，version 等短命令维持默认时限；
+    // 同时登记受管任务名，更新子进程写入 taskStatus，停止请求与关闭流程可识别并终止。
+    const maintenancePorts: MaaProcessPorts = {
+      execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
+      managedTaskName: '更新 MaaCore 与资源'
+    };
     let coreResult: MaaCommandOutput;
     try {
       coreResult = version === 'beta'
-        ? await execMaaCommand('install', ['beta', '--force'])
+        ? await execMaaCommand('install', ['beta', '--force'], null, null, undefined, undefined, undefined, maintenancePorts)
         : version === 'stable'
-          ? await execMaaCommand('install', ['stable', '--force'])
-          : await execMaaCommand('update', []);
+          ? await execMaaCommand('install', ['stable', '--force'], null, null, undefined, undefined, undefined, maintenancePorts)
+          : await execMaaCommand('update', [], null, null, undefined, undefined, undefined, maintenancePorts);
     } catch (error) {
       logger.error('更新 MaaCore 失败', { error: thrownMessage(error), version });
       return sendError(res, req, agentError('AGENT_MAA_UPDATE_CORE_FAILED', `MaaCore 更新失败: ${thrownMessage(error)}`, {

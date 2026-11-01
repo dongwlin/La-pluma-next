@@ -53,6 +53,7 @@ docker run -d \
 | `LA_PLUMA_AGENT_RUN_STORE` | Agent Run 与幂等记录的持久化文件 | `server/data/agent-runs.json` |
 | `LA_PLUMA_DROP_RECORDS_DIR` | 掉落记录目录 | `server/data/drop-records` |
 | `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `server/data/maa-execution.lock` |
+| `LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS` | Core 安装/更新维护命令的 execFile 超时；非法值回落默认，超上限收敛到上限 | `900000`（上限 `3600000`） |
 | `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `server/data` |
 | `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
 | `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动作业完成进度文件 | `server/data/activity-copilot-progress.json` |
@@ -133,6 +134,8 @@ docker run -d \
 证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问必须配置 `LA_PLUMA_TOKEN`。
 
 HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
+
+反向代理还需要容忍长时间的同步维护请求。Core 安装/更新（`POST /api/agent/actions/update-core`）按 `LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS` 同步执行并整体返回，耗时可达 15-60 分钟；Nginx 默认 `proxy_read_timeout 60s` 会在等待期间断开连接，浏览器表现为网络错误或 504，而服务端更新仍在继续，此时重试会因执行租约被占用返回 409 `MAA_EXECUTION_BUSY`。由反向代理转发 `/api` 时，应为该路径放宽读超时（不低于维护超时上限，例如 Nginx 的 `proxy_read_timeout 3700s;`），或改用支持长等待的配置；无法调整代理时，应在发起更新前预留足够的等待窗口，避免误判失败后重复触发。
 
 PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，但 MAA、ADB、实时预览、状态读取和所有自动化操作仍需要连接 La Pluma Next 后端；页面会持续显示断连状态并禁用控制台执行入口。
 

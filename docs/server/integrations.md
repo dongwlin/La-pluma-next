@@ -10,19 +10,20 @@
 
 MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次：Docker 缺省 `/usr/local/bin/maa`，本地缺省 `maa`（`server/src/config/connectionDefaults.ts:18-23`、`server/src/config/runtimeConfig.ts:271-276`）。
 
-- `maaProcessService` 是唯一持有可写子进程状态 `taskStatus` 与实时日志缓冲的模块（`server/src/services/maaProcessService.ts:281-291`）。对外投影 `getTaskStatus` 只回答"是否有受管子进程、任务名与停止请求"，不能当作流程或 Run 终态（`server/src/services/maaProcessService.ts:293-303`）。
+- `maaProcessService` 是唯一持有可写子进程状态 `taskStatus` 与实时日志缓冲的模块（`server/src/services/maaProcessService.ts:371-380`）。对外投影 `getTaskStatus` 只回答"是否有受管子进程、任务名与停止请求"，不能当作流程或 Run 终态（`server/src/services/maaProcessService.ts:383-393`）。
 - 命令按三种形态执行：
-  - 带任务名且不等待完成时用 `spawn` 后台执行：非 Windows 加 `detached`，stdio 为 `ignore/pipe/pipe`，spawn 后立即返回"任务已在后台启动"（`server/src/services/maaProcessService.ts:715-722,767-773`）。
-  - 带任务名且等待完成时同样 `spawn`，但等待 `close` 后才 resolve 或 reject，失败错误携带 stdout/stderr、退出码、信号与诊断信息（`server/src/services/maaProcessService.ts:810-908`）。
-  - 无任务名的诊断/配置类命令用 `execFile` 同步执行，缺省 15 秒超时并 SIGKILL（`server/src/services/maaProcessService.ts:240,910-922`）。
-- 子进程 stdout/stderr 按行写入实时缓冲；stderr 行内含 `ERROR` 或 `WARN` 时提升日志级别（`server/src/services/maaProcessService.ts:727-749`）。
-- 实时日志条目经脱敏后写入，并携带执行上下文的 `runId`/`operationId`——归属来自执行上下文而不是发起请求，请求返回后仍在运行的子进程输出继续携带同一标识（`server/src/services/maaProcessService.ts:333-347`）。
-- 实时缓冲的内存上限由 `LA_PLUMA_MAX_REALTIME_LOGS` 控制，缺省 5000，非法环境变量回落默认值（`server/src/services/maaProcessService.ts:37-51`）；对外单次返回行数上限为 `MAX_REALTIME_LOG_LINES` 500（`server/src/services/maaProcessService.ts:35,308-318`）。
-- 后台执行可能持续很久：捕获输出只保留最后 256 KB（`server/src/services/maaProcessService.ts:488-521`），任务结束时单条日志最多写入 8 KB 尾部输出（`server/src/services/maaProcessService.ts:491,524-531`）。
-- stderr 会匹配稳定的诊断码并写入日志：未知掉落、企鹅物流/一图流汇报失败、ADB 连接失败、账号切换失败、游戏启动失败（`server/src/services/maaProcessService.ts:377-434`）。
-- `stopCurrentTask` 先按进程组发 SIGTERM（非 Windows；ESRCH 回落到子进程信号），缺省 3000ms 未退出升级 SIGKILL；重复停止只返回等待中，不重复发送信号（`server/src/services/maaProcessService.ts:966-1029`）。
-- 退出语义：只有 `stopRequested` 置位的退出算 `stopped`；外部信号（OOM、SIGSEGV、被其他进程 kill）属于失败，保留退出码与信号信息（`server/src/services/maaProcessService.ts:543-580`）。
-- 生命周期回调 `onBeforeStart`/`onStarted`/`onSettled` 可注入；`onSettled` 只在子进程真实退出或启动失败时运行，后台 HTTP 返回不触发（`server/src/services/maaProcessService.ts:212-220`）。spawn、execFile、停止信号与强制终止计时器都是可注入端口（`server/src/services/maaProcessService.ts:148-154,262-279`）。
+  - 带任务名且不等待完成时用 `spawn` 后台执行：非 Windows 加 `detached`，stdio 为 `ignore/pipe/pipe`，spawn 后立即返回"任务已在后台启动"（`server/src/services/maaProcessService.ts:800-813,856-862`）。
+  - 带任务名且等待完成时同样 `spawn`，但等待 `close` 后才 resolve 或 reject，失败错误携带 stdout/stderr、退出码、信号与诊断信息（`server/src/services/maaProcessService.ts:898-997`）。
+  - 无任务名的命令用 `execFile` 同步执行，缺省 15 秒超时并 SIGKILL；Core 安装/更新等维护命令经 `managedTaskName` 端口传入受管任务名，子进程同样登记进 `taskStatus`，停止请求与关闭流程按同一任务进程路径识别并终止它，端口忽略 `timeout` 选项时在退出宽限内兜底 SIGKILL（`server/src/services/maaProcessService.ts:248,152-163,999-1080`）。
+  - `execFile` 的超时包装在超时裁决后先等待底层子进程实际退出（默认端口由 `execFile` 按 `killSignal` 终止，毫秒级结算；宽限上限 `EXEC_FILE_TIMEOUT_EXIT_GRACE_MS`）再交还超时错误：维护命令的租约与任务状态释放不早于子进程终止（`server/src/services/maaProcessService.ts:279-316`）。
+- 子进程 stdout/stderr 按行写入实时缓冲；stderr 行内含 `ERROR` 或 `WARN` 时提升日志级别（`server/src/services/maaProcessService.ts:817-839,911-933`）。
+- 实时日志条目经脱敏后写入，并携带执行上下文的 `runId`/`operationId`——归属来自执行上下文而不是发起请求，请求返回后仍在运行的子进程输出继续携带同一标识（`server/src/services/maaProcessService.ts:422-436`）。
+- 实时缓冲的内存上限由 `LA_PLUMA_MAX_REALTIME_LOGS` 控制，缺省 5000，非法环境变量回落默认值（`server/src/services/maaProcessService.ts:41-52`）；对外单次返回行数上限为 `MAX_REALTIME_LOG_LINES` 500（`server/src/services/maaProcessService.ts:36,397-407`）。
+- 后台执行可能持续很久：捕获输出只保留最后 256 KB（`server/src/services/maaProcessService.ts:576-610`），任务结束时单条日志最多写入 8 KB 尾部输出（`server/src/services/maaProcessService.ts:580,612-620`）。
+- stderr 会匹配稳定的诊断码并写入日志：未知掉落、企鹅物流/一图流汇报失败、ADB 连接失败、账号切换失败、游戏启动失败（`server/src/services/maaProcessService.ts:466-517`）。
+- `stopCurrentTask` 先按进程组发 SIGTERM（非 Windows；ESRCH 回落到子进程信号），缺省 3000ms 未退出升级 SIGKILL；重复停止只返回等待中，不重复发送信号（`server/src/services/maaProcessService.ts:1082-1118`）。
+- 退出语义：只有 `stopRequested` 置位的退出算 `stopped`；外部信号（OOM、SIGSEGV、被其他进程 kill）属于失败，保留退出码与信号信息（`server/src/services/maaProcessService.ts:632-669`）。
+- 生命周期回调 `onBeforeStart`/`onStarted`/`onSettled` 可注入；`onSettled` 只在子进程真实退出或启动失败时运行，后台 HTTP 返回不触发（`server/src/services/maaProcessService.ts:215-229`）。spawn、execFile、停止信号与强制终止计时器都是可注入端口（`server/src/services/maaProcessService.ts:152-163,351-369`）。
 
 ## 执行租约与命令构建
 
@@ -74,7 +75,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - 资源收集全开放窗口从活动表 `resourceCollection` 节点解析（服务区当地时刻减 `TimeZone` 小时得 UTC）；成功结果（包括"表里没有窗口"）缓存 60 秒，读取失败只退避 5 秒，窗口不可读时按周表判定关卡开放（`server/src/services/maaActivityService.ts:326-468`）。
 - `replaceActivityCode` 把 `hd-数字` 关卡代号替换为当前活动代号；取不到代号时保持原值（`server/src/services/maaActivityService.ts:780-802`）。
 - `maaTaskCacheService.prepareMaaTaskCache` 在执行本地资源命令前，把共享缓存中的热更新文件快照进 `mkdtemp` 临时目录并写入私有 ETag 旁注文件，使 maa-cli 强制的启动更新保持本地而不标记真实缓存为已远端确认；`MAA_CACHE_DIR` 环境变量优先于 `maa dir cache` 查询（`server/src/services/maaTaskCacheService.ts:17-19,50-69,106-134`）。
-- 该任务缓存由 `execMaaCommandUnlocked` 挂接：后台任务在子进程退出后清理，其余命令在返回前清理（`server/src/services/maaProcessService.ts:652-685`）。
+- 该任务缓存由 `execMaaCommandUnlocked` 挂接：后台任务在子进程退出后清理，其余命令在返回前清理（`server/src/services/maaProcessService.ts:730-775`）。
 
 ## 回调解析与领域结果服务
 
@@ -106,7 +107,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 ## 测试用假 CLI 与临时目录
 
-- 子进程测试不启动真实 CLI：spawn/execFile/停止端口注入同形状的假子进程，覆盖 close/error、退出码、信号与 kill 升级（`server/src/services/maaProcessService.ts:88-101`、`server/src/services/__tests__/maaServicePorts.test.ts:85`）。
+- 子进程测试不启动真实 CLI：spawn/execFile/停止端口注入同形状的假子进程，覆盖 close/error、退出码、信号与 kill 升级（`server/src/services/maaProcessService.ts:90-101`、`server/src/services/__tests__/maaServicePorts.test.ts:44-55`）。
 - 需要真实进程行为的测试在临时目录写入可执行的假 CLI 脚本，并在模块导入前设置 `MAA_CLI_PATH` 等环境变量；导入时读取的环境变量必须在导入前设置（`server/src/services/__tests__/maaConfigDirCache.test.ts:7-32`、`server/AGENTS.md:53`）。
 - MAA 缓存、profile 目录与任务缓存目录用 `mkdtemp` 隔离，用例结束后删除（`server/src/services/__tests__/maaConfigDirCache.test.ts:9,43-45`、`server/src/services/__tests__/maaTaskCacheService.test.ts:10`）。
 - 外部依赖整体可注入：活动查询的 runtime（`server/src/services/maaActivityService.ts:94-108`）、日志检查点的 stat/open 端口（`server/src/services/maaLogFileService.ts:61-69`）、通知服务的出站客户端（`server/src/services/notificationService.ts:574-580`）与 Telegram Bot 的全部依赖（`server/src/services/telegramBotService.ts:218-232`），测试不触碰真实网络、设备或 MAA CLI。
