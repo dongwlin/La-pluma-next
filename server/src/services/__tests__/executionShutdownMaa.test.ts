@@ -199,3 +199,42 @@ test('shutdown escalates to SIGKILL inside its budget when the fake CLI ignores 
   assert.ok(Date.now() - startedAt < 2000, 'forced shutdown should finish inside the drain budget');
   await assert.rejects(stat(lockPath), { code: 'ENOENT' });
 });
+
+test('shutdown stops a maintenance core update even without a run identity', async () => {
+  // Core 更新走无任务名的 execFile 分支且没有 Run 身份：受管任务名把它登记进
+  // taskStatus 后，关闭流程按同一任务进程路径识别并停止，等待实际退出后收尾。
+  const outcomes: ExecutionOutcome[] = [];
+  const execution = execMaaCommand('update', [], null, null, undefined, undefined, undefined, {
+    execFileTimeoutMs: 60_000,
+    managedTaskName: '更新 MaaCore 与资源'
+  })
+    .then((result): ExecutionOutcome => ({ ok: true, result }), (error: MaaCommandError): ExecutionOutcome => {
+      outcomes.push({ ok: false, error });
+      return { ok: false, error };
+    });
+
+  await waitForTaskRunning();
+  assert.equal(getTaskStatus().taskName, '更新 MaaCore 与资源');
+  await waitForCliReady();
+  const service = createExecutionShutdownService({
+    logger: quietLogger,
+    settleIntervalMs: 10,
+    flushReserveMs: 50,
+    defaultDrainBudgetMs: 1500
+  });
+
+  const startedAt = Date.now();
+  const summary = await service.drain({ reason: 'SIGTERM', timeoutMs: 1500 });
+  const outcome = await execution;
+
+  assert.equal(outcome.ok, false);
+  assert.ok(outcome.error);
+  assert.equal(getTaskStatus().isRunning, false);
+  // 维护更新没有 Run 身份：不写停止意图，也不产生中断记录。
+  assert.deepEqual(summary.interruptedRunIds, []);
+  assert.ok(summary.deviceStopCalls >= 1);
+  assert.ok(Date.now() - startedAt < 1500, 'drain should end once the maintenance child exits');
+  // 执行租约在子进程退出后释放。
+  await assert.rejects(stat(lockPath), { code: 'ENOENT' });
+  assert.equal(outcomes.length, 1);
+});

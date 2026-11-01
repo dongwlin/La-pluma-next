@@ -117,6 +117,19 @@ interface UpdateCoreErrorDetails {
   coreUpdated?: unknown;
 }
 
+interface TaskStatusEnvelope {
+  data?: {
+    isRunning?: unknown;
+    taskName?: unknown;
+  };
+}
+
+function isTaskStatusEnvelope(value: unknown): value is TaskStatusEnvelope {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as TaskStatusEnvelope).data === 'object';
+}
+
 describe('update-core maintenance timeout', () => {
   it('times out a core update beyond the injected maintenance timeout and releases the lease', async () => {
     // 2s 睡眠低于 15s 默认超时：若注入失效，这里会错误地等待默认时限。
@@ -165,6 +178,40 @@ describe('update-core maintenance timeout', () => {
       assert.equal(details.failedStep, 'resources');
       assert.equal(details.coreUpdated, true);
       assert.match(await readFile(cliCallLog, 'utf-8'), /^update$/m);
+    } finally {
+      delete process.env.FAKE_MAA_UPDATE_SLEEP_MS;
+    }
+  });
+
+  it('exposes the managed core update child through the task status projection', async () => {
+    // 更新子进程经受管任务名登记进 taskStatus：状态查询能看到维护任务，
+    // 子进程退出并释放租约后投影回到空闲——关闭流程按同一状态识别。
+    process.env.FAKE_MAA_UPDATE_SLEEP_MS = '2000';
+    try {
+      const port = await listen(createLaPlumaApp({ env: {} }));
+      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+      const updateRequest = postJson(`${baseUrl}/actions/update-core`, {});
+      let managedSeen = false;
+      for (let attempt = 0; attempt < 120 && !managedSeen; attempt += 1) {
+        const statusBody: unknown = await (await fetch(`${baseUrl}/tasks/status`)).json();
+        if (isTaskStatusEnvelope(statusBody) && statusBody.data?.isRunning === true) {
+          assert.equal(statusBody.data.taskName, '更新 MaaCore 与资源');
+          managedSeen = true;
+          break;
+        }
+        await new Promise(resolve => { setTimeout(resolve, 25); });
+      }
+      assert.equal(managedSeen, true);
+
+      const response = await updateRequest;
+      assert.equal(response.status, 500);
+      const body = await readError(response);
+      assert.equal(body.error.code, 'AGENT_MAA_UPDATE_CORE_FAILED');
+
+      const finalBody: unknown = await (await fetch(`${baseUrl}/tasks/status`)).json();
+      assert.ok(isTaskStatusEnvelope(finalBody));
+      assert.equal(finalBody.data?.isRunning, false);
     } finally {
       delete process.env.FAKE_MAA_UPDATE_SLEEP_MS;
     }

@@ -50,7 +50,7 @@ Run 存储的 `ready` 等于已启用且无持久化错误（`server/src/service
 - 纳入 Run 的入口在 `beginAgentRun` 处拒绝，断言先于幂等重放与存储可用性检查（`server/src/services/agentRunService.ts:963`），返回 503 `AGENT_EXECUTION_SHUTTING_DOWN`；携带相同幂等键的重放同样被拒绝，调用方应改为查询已有 run。
 - 直接占用设备租约的入口在 `acquireMaaExecutionLease` 处拒绝，返回 503 `MAA_EXECUTION_SHUTTING_DOWN`；没有 Run 身份的入口（Telegram 指令、维护更新）在同一处被拒绝，已持有的租约与重入调用不受影响（`server/src/services/executionCoordinatorService.ts:236`）。
 
-两种拒绝都是可重试的 503，`details.reason` 携带关闭原因（`server/src/services/executionAdmissionService.ts:57`）。闸门状态只描述本进程：`closed`、原因、关闭时间与被拒绝的准入次数（仅用于诊断与测试），不跨实例协调，也不停止任何资源（`server/src/services/executionAdmissionService.ts:21`）。HTTP 执行入口、cron、Telegram 指令、维护更新与作业集继续都经过同一闸门；读取类接口（查询 Run、任务状态、日志）不经过闸门。Core 安装/更新等维护命令在租约内使用独立的长超时（`LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS`，默认 15 分钟、上限 1 小时，见[部署指南](../guides/deployment.md)）；`version` 等短查询维持默认短时限，长更新不会拖住健康检查与状态查询。
+两种拒绝都是可重试的 503，`details.reason` 携带关闭原因（`server/src/services/executionAdmissionService.ts:57`）。闸门状态只描述本进程：`closed`、原因、关闭时间与被拒绝的准入次数（仅用于诊断与测试），不跨实例协调，也不停止任何资源（`server/src/services/executionAdmissionService.ts:21`）。HTTP 执行入口、cron、Telegram 指令、维护更新与作业集继续都经过同一闸门；读取类接口（查询 Run、任务状态、日志）不经过闸门。Core 安装/更新等维护命令在租约内使用独立的长超时（`LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS`，默认 15 分钟、上限 1 小时，见[部署指南](../guides/deployment.md)）；`version` 等短查询维持默认短时限，长更新不会拖住健康检查与状态查询。维护命令的更新子进程以受管任务名登记进任务状态（`managedTaskName`，`server/src/services/maaProcessService.ts:149-158`），没有 Run 身份也会被关闭流程按任务进程路径停止并等待实际退出，超时后的租约释放不早于子进程终止。
 
 ## draining
 
