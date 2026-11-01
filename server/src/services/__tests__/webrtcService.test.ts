@@ -5,6 +5,7 @@ import { arch, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import type { WebrtcRuntimeError, WebrtcStopSummary, WebrtcRunningStatus } from '../webrtcService.ts';
+import { WEBRTC_RUNTIME_MARKER_FILENAME } from '../webrtcRuntime.ts';
 
 const ENV_KEYS = [
   'LA_PLUMA_WEBRTC_DIR',
@@ -350,6 +351,23 @@ fi
         rm(buildMarker, { force: true }),
         mkdir(legacyAssetsDir, { recursive: true })
       ]);
+    }
+  });
+
+  it('treats a version-marker-less install as an upgrade candidate and keeps it intact on failure', async () => {
+    // fixture 目录此时是发布布局安装（二进制 + assets + agentd/run.sh）且没有
+    // 版本标记：安装动作应识别为升级；升级源不可用属于校验前失败，既有安装
+    // 必须原样保留，也不落版本标记。
+    const previousArchive = process.env.LA_PLUMA_WEBRTC_ARCHIVE;
+    process.env.LA_PLUMA_WEBRTC_ARCHIVE = join(fixtureDir, 'missing-upgrade-archive.zip');
+    try {
+      await assert.rejects(service.installWebrtc());
+      assert.equal(await service.pathExists(join(fixtureDir, 'agentd', 'run.sh')), true);
+      assert.equal(await service.pathExists(join(fixtureDir, WEBRTC_RUNTIME_MARKER_FILENAME)), false);
+      assert.equal(await service.pathExists(join(fixtureDir, 'agentd', 'run.sh.before-upgrade-unknown')), false);
+    } finally {
+      if (previousArchive === undefined) delete process.env.LA_PLUMA_WEBRTC_ARCHIVE;
+      else process.env.LA_PLUMA_WEBRTC_ARCHIVE = previousArchive;
     }
   });
 

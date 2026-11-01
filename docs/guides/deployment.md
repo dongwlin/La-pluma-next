@@ -68,7 +68,7 @@ docker run -d \
 | `LA_PLUMA_WEBRTC_HOST_IP` | 向设备公布的宿主机 IPv4 地址；默认优先选择与目标 ADB 地址同网段的网卡 | 自动检测 |
 | `LA_PLUMA_WEBRTC_TURN_SERVER_PATH` | 本地 `turnserver` 可执行文件路径；默认探测常见安装位置 | 自动检测 |
 | `LA_PLUMA_WEBRTC_ICE_SERVERS` | 自定义 STUN/TURN 列表；未设置且无本地 TURN 时使用局域网直连 | 自动检测 |
-| `LA_PLUMA_WEBRTC_ARCHIVE` | 安装时使用的本地官方 `cloudphone-v0.4.1.zip`，同样校验 SHA-256 | 自动下载 |
+| `LA_PLUMA_WEBRTC_ARCHIVE` | 安装/升级时使用的本地官方 `cloudphone-v0.4.3.zip`，同样校验 SHA-256 | 自动下载 |
 | `LA_PLUMA_WEBRTC_REQUEST_TIMEOUT_MS` | 探测上游 ScrcpyOverWebRTC HTTP 接口的超时时间（毫秒） | `1500` |
 | `LA_PLUMA_WEBRTC_SERVER_START_TIMEOUT_MS` | 等待信令服务就绪的超时时间（毫秒） | `15000` |
 | `LA_PLUMA_WEBRTC_AGENT_START_TIMEOUT_MS` | 等待设备 Agent 就绪的超时时间（毫秒） | `20000` |
