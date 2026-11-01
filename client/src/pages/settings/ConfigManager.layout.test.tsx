@@ -435,7 +435,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.updateMaaCore).toHaveBeenCalledOnce()
     expect(mocks.updateMaaCli).not.toHaveBeenCalled()
     expect(cliButton.disabled).toBe(true)
-    expect(mocks.setMessage).toHaveBeenCalledWith('正在更新 MaaCore 并同步最新资源...')
+    expect(mocks.setMessage).toHaveBeenCalledWith('正在更新 MaaCore 并同步最新资源（大包下载最长可能需要约 15 分钟）...')
 
     await act(async () => pendingCoreUpdate.resolve({ success: true, message: '已更新' }))
     await settle()
@@ -518,7 +518,7 @@ describe('ConfigManager layout surfaces', () => {
     await flush()
 
     expect(mocks.updateMaaCore).toHaveBeenCalledWith('beta')
-    expect(mocks.setMessage).toHaveBeenCalledWith('正在切换到 Beta 渠道...')
+    expect(mocks.setMessage).toHaveBeenCalledWith('正在切换到 Beta 渠道（大包下载最长可能需要约 15 分钟）...')
     expect(container.textContent).toContain('已切换到 Beta 渠道并同步最新资源')
     expect(mocks.getVersion).toHaveBeenCalledTimes(2)
     expect(invalidationEvents).toHaveLength(1)

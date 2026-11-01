@@ -239,6 +239,31 @@ interface MaaTaskState extends MaaTaskStatus {
 /** 无任务名的诊断/配置类 execFile 调用统一使用短超时，避免 CLI 卡死拖住请求。 */
 export const MAA_CLI_EXEC_TIMEOUT_MS = 15_000;
 
+/** 维护命令（Core 安装/更新）的默认长超时：真实慢下载应在 15 分钟量级内完成。 */
+export const DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS = 900_000;
+
+/** 维护命令长超时的配置上限：单次更新不允许无限等待，超限配置收敛到上限。 */
+export const MAX_MAINTENANCE_EXEC_TIMEOUT_MS = 3_600_000;
+
+/**
+ * 维护命令专用长超时；缺失或空白回退默认值，非法值与实时日志上限一致静默
+ * 回退，超上限收敛到上限。只作用于 install / update 维护命令，短命令默认
+ * 15s 时限不受影响。
+ */
+export function resolveMaintenanceExecTimeoutMs(raw: string | undefined): number {
+  try {
+    const parsed = parsePositiveInteger(raw, {
+      name: 'LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS',
+      fallback: DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS
+    });
+    return Math.min(parsed, MAX_MAINTENANCE_EXEC_TIMEOUT_MS);
+  } catch {
+    return DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS;
+  }
+}
+
+export const MAINTENANCE_EXEC_TIMEOUT_MS = resolveMaintenanceExecTimeoutMs(process.env.LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS);
+
 /** 给注入的 execFile 端口再套一层超时，端口忽略 timeout 选项时也不会永久 pending。 */
 function withExecFileTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | null = null;

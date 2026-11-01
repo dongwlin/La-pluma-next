@@ -6,11 +6,15 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import {
   clearRealtimeLogs,
+  DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS,
   execMaaCommandUnlocked,
   getRealtimeLogs,
   getTaskStatus,
   MAA_CLI_EXEC_TIMEOUT_MS,
+  MAINTENANCE_EXEC_TIMEOUT_MS,
   MAX_CAPTURED_OUTPUT_BYTES,
+  MAX_MAINTENANCE_EXEC_TIMEOUT_MS,
+  resolveMaintenanceExecTimeoutMs,
   setTaskStatus,
   stopCurrentTask
 } from '../maaProcessService.ts';
@@ -222,6 +226,23 @@ describe('MAA CLI process ports', () => {
     const receivedOptions = await optionsReceived;
     assert.equal(receivedOptions.timeout, MAA_CLI_EXEC_TIMEOUT_MS);
     assert.equal(receivedOptions.killSignal, 'SIGKILL');
+  });
+
+  it('resolves the maintenance exec timeout with fallback and cap', () => {
+    const name = 'LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS';
+    assert.equal(resolveMaintenanceExecTimeoutMs(undefined), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('   '), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('60000'), 60_000);
+    // 超上限的配置收敛到上限，不允许单次更新无限等待。
+    assert.equal(resolveMaintenanceExecTimeoutMs(String(MAX_MAINTENANCE_EXEC_TIMEOUT_MS * 2)), MAX_MAINTENANCE_EXEC_TIMEOUT_MS);
+    // 非法值与实时日志上限一致静默回退，不阻断服务启动。
+    assert.equal(resolveMaintenanceExecTimeoutMs('not-a-number'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('0'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('-5'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(resolveMaintenanceExecTimeoutMs('1.5'), DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS);
+    assert.equal(DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS, 900_000);
+    assert.equal(MAX_MAINTENANCE_EXEC_TIMEOUT_MS, 3_600_000);
+    assert.ok(MAINTENANCE_EXEC_TIMEOUT_MS > MAA_CLI_EXEC_TIMEOUT_MS, name);
   });
 
   it('treats an externally signalled background exit as a failure, not a stop', async () => {
