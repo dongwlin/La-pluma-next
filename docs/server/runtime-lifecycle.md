@@ -89,7 +89,7 @@ Telegram 的停止步骤在实际启动轮询之前挂接：仅当渠道启用�
 
 ## WebRTC 预览的关闭挂接
 
-组装时在启动前注册 `webrtc-preview` 关闭步骤（`server/src/services/webrtcService.ts:1350`）；挂接失败只记录警告，关闭时无法保证释放本地预览资源（`server/src/server.ts:262`）。关闭开始后不再启动新的预览资源；释放时先取消已排定的 viewer 自动回收计时器，再终止本进程拥有的信令服务、TURN、Agent 部署与构建子进程，并等待已受理的启动/停止退出，因此启动中关闭不会留下孤儿进程（`server/src/services/webrtcService.ts:1328`）。预览启停只释放本实例拥有所有权的资源：启动前已存在的信令服务、TURN 与设备端 Agent 没有所有权记录，关闭也不通过 ADB 清理设备端 Agent。预览的内部机制见 [preview-webrtc](preview-webrtc.md)。
+组装时在启动前注册 `webrtc-preview` 关闭步骤（`server/src/services/webrtcService.ts:1388`）；挂接失败只记录警告，关闭时无法保证释放本地预览资源（`server/src/server.ts:262`）。关闭开始后不再启动新的预览资源；释放时先取消已排定的 viewer 自动回收计时器，再终止本进程拥有的信令服务、TURN、Agent 部署与构建子进程，并等待已受理的启动/停止退出，因此启动中关闭不会留下孤儿进程（`server/src/services/webrtcService.ts:1366`）。预览启停只释放本实例拥有所有权的资源：启动前已存在的信令服务、TURN 与设备端 Agent 没有所有权记录，关闭也不通过 ADB 清理设备端 Agent。预览的内部机制见 [preview-webrtc](preview-webrtc.md)。
 
 ## 启动回滚与失败摘要
 

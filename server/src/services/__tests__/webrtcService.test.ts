@@ -5,6 +5,7 @@ import { arch, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import type { WebrtcRuntimeError, WebrtcStopSummary, WebrtcRunningStatus } from '../webrtcService.ts';
+import { WEBRTC_RUNTIME_MARKER_FILENAME } from '../webrtcRuntime.ts';
 
 const ENV_KEYS = [
   'LA_PLUMA_WEBRTC_DIR',
@@ -353,6 +354,23 @@ fi
     }
   });
 
+  it('treats a version-marker-less install as an upgrade candidate and keeps it intact on failure', async () => {
+    // fixture 目录此时是发布布局安装（二进制 + assets + agentd/run.sh）且没有
+    // 版本标记：安装动作应识别为升级；升级源不可用属于校验前失败，既有安装
+    // 必须原样保留，也不落版本标记。
+    const previousArchive = process.env.LA_PLUMA_WEBRTC_ARCHIVE;
+    process.env.LA_PLUMA_WEBRTC_ARCHIVE = join(fixtureDir, 'missing-upgrade-archive.zip');
+    try {
+      await assert.rejects(service.installWebrtc());
+      assert.equal(await service.pathExists(join(fixtureDir, 'agentd', 'run.sh')), true);
+      assert.equal(await service.pathExists(join(fixtureDir, WEBRTC_RUNTIME_MARKER_FILENAME)), false);
+      assert.equal(await service.pathExists(join(fixtureDir, 'agentd', 'run.sh.before-upgrade-unknown')), false);
+    } finally {
+      if (previousArchive === undefined) delete process.env.LA_PLUMA_WEBRTC_ARCHIVE;
+      else process.env.LA_PLUMA_WEBRTC_ARCHIVE = previousArchive;
+    }
+  });
+
   it('serializes concurrent starts and waits for authenticated device registration', async () => {
     const [first, second] = await Promise.all([
       service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath),
@@ -519,6 +537,30 @@ fi
     }
   });
 
+  it('keeps an explicitly stopped preview down when a viewer reconnects', async () => {
+    // 升级与显式停止共用 releaseOwnedPreviewResourcesUnlocked：空闲停止记录与
+    // 所有权一并清空，viewer 连接不是恢复入口；重新预览只能显式 start。
+    await service.waitForCondition(
+      async () => !(await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning,
+      { timeoutMs: 1000, pollIntervalMs: 10, timeoutMessage: 'previous agent did not stop' }
+    );
+    const spawnsBefore = await countLines(agentCountFile);
+
+    await service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath);
+    await service.stopWebrtc('fixture-device', fakeAdbPath);
+    assert.equal((await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning, false);
+
+    const viewer = service.registerWebrtcViewer('preview-device');
+    await viewer.ready;
+    assert.equal(await countLines(agentCountFile), spawnsBefore + 1);
+    assert.equal((await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning, false);
+
+    await service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath);
+    assert.equal((await service.getWebrtcStatus('fixture-device', fakeAdbPath)).agentRunning, true);
+    assert.equal(await countLines(agentCountFile), spawnsBefore + 2);
+    viewer.release();
+  });
+
   it('rejects a nonzero agent deployment and cleans up the target address', async () => {
     const beforeFailure = await countLines(agentCountFile);
 
@@ -565,6 +607,7 @@ fi
 
   it('serializes start, start, and stop so no queued start resurrects the preview', async () => {
     const beforeInterleaving = await countLines(agentCountFile);
+    const serverSpawnsBefore = await countLines(serverCountFile);
     const results = await Promise.all([
       service.startWebrtc('queued-address', 'queued-device', fakeAdbPath),
       service.startWebrtc('queued-address', 'queued-device', fakeAdbPath),
@@ -586,6 +629,7 @@ fi
       pollIntervalMs: 10,
       timeoutMessage: 'fixture signaling server did not stop'
     });
-    assert.equal(await countLines(serverCountFile), 1);
+    // 交错的排队启动不得复活信令服务：相对本用例开始时没有新的 server spawn。
+    assert.equal(await countLines(serverCountFile), serverSpawnsBefore);
   });
 });

@@ -26,7 +26,14 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 import { resolveWebrtcCredentials } from '../config/webrtcCredentials.ts';
-import { getWebrtcHostIp, getWebrtcRuntimeBinary, installWebrtcRelease } from './webrtcRuntime.ts';
+import {
+  getWebrtcHostIp,
+  getWebrtcRuntimeBinary,
+  installWebrtcRelease,
+  readWebrtcRuntimeVersion,
+  RELEASE_VERSION,
+  resolveWebrtcInstallAction
+} from './webrtcRuntime.ts';
 import type { RuntimeLifecycleStep } from './runtimeLifecycleService.ts';
 
 const execFileAsync = promisify(execFile);
@@ -73,6 +80,8 @@ export interface WebrtcLogPaths {
 export interface WebrtcStatus {
   installed: boolean;
   built: boolean;
+  /** 安装器写入的运行时版本标记；null 表示未安装或早于版本标记的旧安装。 */
+  runtimeVersion: string | null;
   dir: string;
   port: number;
   url: string;
@@ -198,6 +207,8 @@ const viewerLifecycle: WebrtcViewerLifecycle = createWebrtcViewerLifecycle({
     throw error;
   }),
   restore: deviceId => enqueueLifecycle(async () => {
+    // restore 只覆盖 idle 自动回收后的恢复：升级与显式停止会清空空闲停止
+    // 记录，此时恢复预览的唯一入口是显式 startWebrtc，不在此自动重启。
     const owner = idleStoppedAgentOwner;
     if (!owner || owner.deviceId !== deviceId) return;
     if (registeredAgentOwner) return;
@@ -983,6 +994,9 @@ async function enforceOwnedProcessesTerminated(children: readonly ChildProcess[]
 /**
  * 只释放本实例启动的预览资源：本进程的本地子进程，以及登记了所有权的设备端 Agent。
  * 启动前已存在的 server/TURN 与设备端 Agent 没有所有权记录，保持不动。
+ *
+ * 释放会同时清空空闲停止记录与所有权登记，viewer 的 restore 由此不再触发：
+ * 升级或显式停止之后，恢复预览的唯一入口是显式 `startWebrtc`。
  */
 async function releaseOwnedPreviewResourcesUnlocked(
   { stopDeviceAgent = false }: { stopDeviceAgent?: boolean } = {}
@@ -1023,6 +1037,7 @@ export async function getWebrtcStatus(
   return {
     installed: await pathExists(WEBRTC_DIR),
     built: await pathExists(binaryPath) && assetsPath !== null,
+    runtimeVersion: await readWebrtcRuntimeVersion(WEBRTC_DIR),
     dir: WEBRTC_DIR,
     port: WEBRTC_PORT,
     url: `http://127.0.0.1:${WEBRTC_PORT}`,
@@ -1044,30 +1059,53 @@ export async function getWebrtcStatus(
   };
 }
 
-async function installWebrtcUnlocked(): Promise<WebrtcStatus> {
+/** 安装结果：状态快照加本次是否执行了运行时升级（覆盖旧版本安装）。 */
+export type WebrtcInstallResult = WebrtcStatus & { upgraded: boolean };
+
+async function installWebrtcUnlocked(): Promise<WebrtcInstallResult> {
   const signal = getCloseSignal();
   assertPreviewOpen();
-  const fs = await import('node:fs/promises');
 
   const binaryPath = await getWebrtcBinaryPath();
   const assetsPath = await getWebrtcAssetsPath();
-  if (await pathExists(binaryPath) && assetsPath && await pathExists(path.join(WEBRTC_DIR, 'agentd', 'run.sh'))) {
-    return getWebrtcStatus();
-  }
+  const action = resolveWebrtcInstallAction({
+    binaryPresent: await pathExists(binaryPath),
+    assetsPresent: assetsPath !== null,
+    runScriptPresent: await pathExists(path.join(WEBRTC_DIR, 'agentd', 'run.sh')),
+    buildScriptPresent: await pathExists(path.join(WEBRTC_DIR, 'build.sh')),
+    markerVersion: await readWebrtcRuntimeVersion(WEBRTC_DIR),
+    targetVersion: RELEASE_VERSION
+  });
+  if (action === 'skip') return { ...await getWebrtcStatus(), upgraded: false };
+  if (action === 'build') return runWebrtcSourceBuild(signal);
 
+  try {
+    await installWebrtcRelease(WEBRTC_DIR, {
+      signal,
+      overwrite: action === 'upgrade',
+      // 升级在校验通过后、替换文件前先停掉本实例的预览资源：受管信令服务与
+      // TURN 随旧二进制一并停止，设备端旧 Agent 释放并清空恢复记录。资源释放
+      // 后不会自动恢复，重新预览只能由用户显式 start（部署新版 Agent）。
+      beforeApply: action === 'upgrade'
+        ? async () => {
+            assertPreviewOpen();
+            await releaseOwnedPreviewResourcesUnlocked({ stopDeviceAgent: true });
+          }
+        : undefined
+    });
+  } catch (error) {
+    if (signal.aborted) throw previewClosedError(error);
+    throw error;
+  }
+  const status = await getWebrtcStatus();
+  if (!status.built) throw new Error('WebRTC 发布包安装完成，但运行资源不完整');
+  return { ...status, upgraded: action === 'upgrade' };
+}
+
+/** 源码 checkout 的构建分支：行为与发布包安装独立，不写版本标记。 */
+async function runWebrtcSourceBuild(signal: AbortSignal): Promise<WebrtcInstallResult> {
+  const fs = await import('node:fs/promises');
   const buildScript = path.join(WEBRTC_DIR, 'build.sh');
-  if (!await pathExists(buildScript)) {
-    try {
-      await installWebrtcRelease(WEBRTC_DIR, { signal });
-    } catch (error) {
-      if (signal.aborted) throw previewClosedError(error);
-      throw error;
-    }
-    const status = await getWebrtcStatus();
-    if (!status.built) throw new Error('WebRTC 发布包安装完成，但运行资源不完整');
-    return status;
-  }
-
   await fs.chmod(buildScript, 0o755);
   assertPreviewOpen();
   await new Promise<void>((resolve, reject) => {
@@ -1115,10 +1153,10 @@ async function installWebrtcUnlocked(): Promise<WebrtcStatus> {
       retryable: false
     });
   }
-  return status;
+  return { ...status, upgraded: false };
 }
 
-export async function installWebrtc(): Promise<WebrtcStatus> {
+export async function installWebrtc(): Promise<WebrtcInstallResult> {
   return enqueueLifecycle(installWebrtcUnlocked);
 }
 
