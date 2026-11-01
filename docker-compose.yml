@@ -32,6 +32,8 @@ services:
       - ADB_ADDRESS=${ADB_ADDRESS:-192.168.1.100:5555}
       # 必配：保护 /api/* 与 WebRTC 同源网关票据入口；复制 .env.example 为 .env 后设置
       - LA_PLUMA_TOKEN=${LA_PLUMA_TOKEN:?set LA_PLUMA_TOKEN in .env or the shell}
+      # Core 安装/更新维护命令的超时（毫秒）；非法值回落默认，超上限收敛到上限
+      - LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS=${LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS:-900000}
       # 可选：实时日志内存缓存上限，默认 5000 行
       # - LA_PLUMA_MAX_REALTIME_LOGS=5000
       # 可选：手机安装 PWA 时使用可信 HTTPS，证书与私钥必须同时配置
