@@ -180,7 +180,7 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('TaskChainStart')
     expect(container.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('日志内容模式')
     const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    expect(modeTabs).toHaveLength(2)
+    expect(modeTabs).toHaveLength(3)
     expect(modeTabs[0]?.getAttribute('aria-selected')).toBe('true')
     await click(modeTabs[1]!)
     expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
@@ -193,7 +193,8 @@ describe('LogViewer recovery and controls', () => {
     expect(document.activeElement).toBe(modeTabs[0])
 
     const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
-    expect(switches.map(input => input.getAttribute('aria-label'))).toEqual(['自动滚动', '折叠重复日志'])
+    expect(switches.map(input => input.getAttribute('aria-label')))
+      .toEqual(['自动滚动', '只看本次执行', '折叠重复日志'])
     expect(switches.every(input => input.checked)).toBe(true)
   })
 
@@ -345,8 +346,8 @@ describe('LogViewer recovery and controls', () => {
 
     await renderComponent()
     const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    await click(modeTabs[1]!)
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
+    await click(modeTabs[2]!)
+    expect(modeTabs[2]?.getAttribute('aria-selected')).toBe('true')
     const autoScroll = () => Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
       .find(input => input.getAttribute('aria-label') === '自动滚动')
 
@@ -357,7 +358,7 @@ describe('LogViewer recovery and controls', () => {
 
     await click(container.querySelector<HTMLButtonElement>('[role="alert"] button')!)
     expect(container.textContent).toContain('原始模式内容')
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
+    expect(modeTabs[2]?.getAttribute('aria-selected')).toBe('true')
 
     const back = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent === '返回实时')
@@ -365,7 +366,7 @@ describe('LogViewer recovery and controls', () => {
 
     expect(autoScroll()?.checked).toBe(true)
     expect(autoScroll()?.disabled).toBe(false)
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
+    expect(modeTabs[2]?.getAttribute('aria-selected')).toBe('true')
   })
 
   it('keeps level filters across realtime and history views', async () => {

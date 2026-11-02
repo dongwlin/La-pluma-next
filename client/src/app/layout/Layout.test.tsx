@@ -11,7 +11,17 @@ import Layout from './Layout'
 
 const mocks = vi.hoisted(() => ({
   loadDailyOperatorQuote: vi.fn(),
+  executionBarVisible: false,
 }))
+
+vi.mock('@/features/task-execution', async () => {
+  const { createElement } = await import('react')
+  return {
+    ExecutionStatusBar: () => (mocks.executionBarVisible
+      ? createElement('section', { 'aria-label': '执行状态' }, '执行中')
+      : null),
+  }
+})
 
 vi.mock('framer-motion', async () => {
   const React = await import('react')
@@ -189,6 +199,7 @@ describe('top-level application navigation', () => {
     availableScroll = Number.POSITIVE_INFINITY
     clampViewportOnTabSwitch = false
     asyncNavigationGate = null
+    mocks.executionBarVisible = false
     window.history.replaceState({}, '', '/app/dashboard')
     window.matchMedia = vi.fn(mediaQueryList)
     Object.defineProperty(window, 'scrollY', {
@@ -486,7 +497,7 @@ describe('top-level application navigation', () => {
     expect(document.activeElement).toBe(trigger)
 
     await act(async () => trigger.click())
-    sheet = container.querySelector<HTMLElement>('#la-pluma-more-sheet')
+    sheet = container.querySelector('#la-pluma-more-sheet')
     const overflowLink = sheet?.querySelector<HTMLButtonElement>('button[data-app-tab="roguelike"]')
     expect(overflowLink).toBeTruthy()
 
@@ -495,5 +506,24 @@ describe('top-level application navigation', () => {
     expect(activeTabLabel()).toBe('roguelike')
     expect(container.querySelector('#la-pluma-more-sheet')).toBeNull()
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('keeps the shell free of the execution bar while no execution is active', async () => {
+    await renderLayout()
+
+    expect(container.querySelector('section[aria-label="执行状态"]')).toBeNull()
+  })
+
+  it('hosts the global execution bar inside the scroll workspace while a run is active', async () => {
+    mocks.executionBarVisible = true
+    await renderLayout()
+
+    const bar = container.querySelector('main section[aria-label="执行状态"]')
+    expect(bar).not.toBeNull()
+    expect(bar?.textContent).toContain('执行中')
+
+    // 状态条不随页面切换卸载：切换 tab 后仍然存在。
+    await act(async () => desktopLink('automation').click())
+    expect(container.querySelector('main section[aria-label="执行状态"]')).not.toBeNull()
   })
 })

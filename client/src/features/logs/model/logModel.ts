@@ -2,14 +2,17 @@
  * 日志解析、归一与展示纯模型
  *
  * 输入来自实时轮询数组或历史文件文本，输出统一的 `LogEntry`；摘要、级别/
- * 搜索过滤与重复折叠也在这里完成。本模块不依赖 React、网络或 DOM，页面只
- * 组合结果，因此可以直接对关键日志格式建立回归。
+ * 搜索过滤、run 过滤与重复折叠也在这里完成。MAA 回调行的语义摘要归
+ * `logCallbackSummary.ts`，本模块组合它并处理其余生命周期行。本模块不依赖
+ * React、网络或 DOM，页面只组合结果，因此可以直接对关键日志格式建立回归。
  */
 
 import type { LogEntry } from '../types'
+import { asRecord, getTaskName, summarizeCallback } from './logCallbackSummary'
 
 export type LogFilter = 'all' | LogEntry['level']
-export type LogContentMode = 'summary' | 'raw'
+/** 易读=语义与生命周期事件；详细=易读并附带可展开的原始内容；原始=原样输出。 */
+export type LogContentMode = 'readable' | 'detailed' | 'raw'
 
 export interface VisibleLog extends LogEntry {
   count: number
@@ -23,7 +26,7 @@ export interface LogViewOptions {
 }
 
 export interface LogView {
-  /** summary 模式下已丢弃无需关注的行；raw 模式保留全部。 */
+  /** 易读/详细模式下已丢弃无需关注的行；raw 模式保留全部。 */
   readonly readable: readonly LogEntry[]
   /** 应用级别与搜索条件后的行，用于导出。 */
   readonly filtered: readonly LogEntry[]
@@ -47,21 +50,6 @@ const LOG_LEVEL_ALIASES: Record<string, LogEntry['level']> = {
   TRACE: 'DEBUG',
 }
 
-const TASK_NAMES: Record<string, string> = {
-  StartUp: '启动游戏',
-  CloseDown: '关闭游戏',
-  Fight: '作战',
-  Award: '领取奖励',
-  Mall: '信用商店',
-  Recruit: '自动公招',
-  Infrast: '基建换班',
-  Depot: '仓库识别',
-  Roguelike: '集成战略',
-  ReclamationAlgorithm: '生息演算',
-  Copilot: '作业执行',
-  SSSCopilot: '保全作业',
-}
-
 export function normalizeLevel(value: unknown): LogEntry['level'] {
   const rawLevel = String(value || '').toUpperCase()
   const level = LOG_LEVEL_ALIASES[rawLevel] || rawLevel as LogEntry['level']
@@ -77,16 +65,26 @@ export function formatLogTime(value: unknown): string {
     .join(':')
 }
 
+/** 读取服务端执行上下文带来的 run 归属；缺失或非字符串字段不写入条目。 */
+function readLogIdentity(log: Record<string, unknown>): Pick<LogEntry, 'runId' | 'operationId'> {
+  const identity: Pick<LogEntry, 'runId' | 'operationId'> = {}
+  if (typeof log.runId === 'string' && log.runId) identity.runId = log.runId
+  if (typeof log.operationId === 'string' && log.operationId) identity.operationId = log.operationId
+  return identity
+}
+
 export function parseRealtimeLog(value: unknown): LogEntry {
   const log = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const message = String(log.message ?? '')
+  const identity = readLogIdentity(log)
   const parsedOutput = parseHistoryLine(message)
-  if (parsedOutput.time) return parsedOutput
+  if (parsedOutput.time) return { ...parsedOutput, ...identity }
 
   return {
     time: formatLogTime(log.time),
     level: normalizeLevel(log.level),
     message,
+    ...identity,
   }
 }
 
@@ -116,77 +114,6 @@ export function parseHistoryContent(content: unknown): LogEntry[] {
     .split('\n')
     .filter(line => line.trim())
     .map(parseHistoryLine)
-}
-
-function getTaskName(value: unknown): string {
-  const name = String(value || '').trim()
-  return TASK_NAMES[name] || name.replace(/Task(?:Plugin)?$/, '') || '未知任务'
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
-}
-
-function summarizeCallback(log: LogEntry): LogEntry | null {
-  const match = log.message.match(/^Assistant::append_callback \| (\w+)\s+(\{.*\})$/)
-  if (!match) return null
-
-  let payload: Record<string, unknown>
-  try {
-    payload = asRecord(JSON.parse(match[2] || '{}'))
-  } catch {
-    return log
-  }
-
-  const event = match[1]
-  const details = asRecord(payload.details)
-  const taskName = getTaskName(payload.taskchain || payload.subtask || payload.class)
-
-  switch (event) {
-    case 'TaskChainStart':
-      return { ...log, message: `任务开始：${taskName}` }
-    case 'TaskChainCompleted':
-      return { ...log, message: `任务完成：${taskName}` }
-    case 'TaskChainError':
-      return { ...log, level: 'ERROR', message: `任务失败：${taskName}` }
-    case 'SubTaskError':
-      return { ...log, level: 'ERROR', message: `执行步骤失败：${taskName}` }
-    case 'AllTasksCompleted':
-    case 'SubTaskStart':
-    case 'SubTaskCompleted':
-      return null
-    case 'SubTaskExtraInfo':
-      return payload.what === 'DepotInfo'
-        ? { ...log, message: '仓库识别数据已生成' }
-        : null
-    case 'AsyncCallInfo':
-      if (payload.what !== 'Connect') return null
-      return {
-        ...log,
-        message: details.ret === true
-          ? `设备连接完成${details.cost ? `，耗时 ${details.cost} ms` : ''}`
-          : '设备连接失败',
-        level: details.ret === true ? log.level : 'ERROR',
-      }
-    case 'ConnectionInfo':
-      switch (payload.what) {
-        case 'Connected':
-          return { ...log, message: `设备连接成功${details.address ? `：${details.address}` : ''}` }
-        case 'ResolutionGot':
-        case 'ResolutionInfo':
-          return details.width && details.height
-            ? { ...log, message: `设备分辨率：${details.width} x ${details.height}` }
-            : null
-        case 'FastestWayToScreencap':
-          return details.method
-            ? { ...log, message: `已选择截图方式：${details.method}${details.cost ? `（${details.cost} ms）` : ''}` }
-            : null
-        default:
-          return null
-      }
-    default:
-      return null
-  }
 }
 
 export function summarizeLog(log: LogEntry): LogEntry | null {
@@ -276,7 +203,46 @@ export function collapseRepeatedLogs(logs: readonly LogEntry[]): VisibleLog[] {
 }
 
 /**
- * 一次派生摘要/原始行、级别与搜索过滤，以及重复折叠后的渲染行。
+ * 滚动跟随用的内容指纹：行数 + 末行时间 + 末行文本。
+ * 快照每次轮询都会重建行数组，引用不可靠；只有该指纹变化才代表可见内容
+ * 变化（快照只整体替换且按时间追加，行数与末行足以识别新增与轮转）。
+ */
+export function buildLogContentFingerprint(logs: readonly LogEntry[]): string {
+  const last = logs[logs.length - 1]
+  return `${logs.length}|${last?.time ?? ''}|${last?.message ?? ''}`
+}
+
+/**
+ * 「只看本次执行」：有活动 run 时只保留该 run 的实时条目；没有活动 run
+ * （runId 为 null）时不过滤，原样返回同一引用。
+ */
+export function filterLogsByRunId(
+  logs: readonly LogEntry[],
+  runId: string | null,
+): readonly LogEntry[] {
+  if (!runId) return logs
+  return logs.filter(log => log.runId === runId)
+}
+
+/**
+ * 详细模式的展开内容：回调行把 JSON 段格式化为缩进结构，其余原样返回；
+ * JSON 非法时退回原始文本。
+ */
+export function formatLogRawDetail(raw: string): string {
+  const marker = 'Assistant::append_callback | '
+  if (!raw.startsWith(marker)) return raw
+  const jsonStart = raw.indexOf('{', marker.length)
+  if (jsonStart === -1) return raw
+  try {
+    const parsed = JSON.parse(raw.slice(jsonStart)) as unknown
+    return `${raw.slice(marker.length, jsonStart).trim()}\n${JSON.stringify(parsed, null, 2)}`
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * 一次派生易读/详细/原始行、级别与搜索过滤，以及重复折叠后的渲染行。
  * 页面不再各自实现这三步，导出使用 `filtered`，渲染使用 `visible`。
  */
 export function buildLogView(logs: readonly LogEntry[], options: LogViewOptions): LogView {
@@ -284,7 +250,12 @@ export function buildLogView(logs: readonly LogEntry[], options: LogViewOptions)
     ? logs
     : logs.flatMap(log => {
         const summarized = summarizeLog(log)
-        return summarized ? [summarized] : []
+        if (!summarized) return []
+        // 详细模式为被改写的行保留原始消息，供控制台展开查看。
+        if (options.mode === 'detailed' && summarized.message !== log.message) {
+          return [{ ...summarized, raw: log.message }]
+        }
+        return [summarized]
       })
 
   const query = options.search.trim().toLocaleLowerCase('zh-CN')

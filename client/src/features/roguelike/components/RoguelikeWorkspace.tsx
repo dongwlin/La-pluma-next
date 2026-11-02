@@ -12,6 +12,8 @@ import { useState } from 'react'
 import { Button, SmoothPanel } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { ScreenMonitor } from '@/features/device-mirror'
+import { CurrentRunLogPanel } from '@/features/logs'
+import { useExecutionSnapshot } from '@/features/task-execution'
 import { useUserConfig } from '@/features/user-config'
 import { roguelikeConfigAdapter } from '../model/roguelikeConfig'
 import {
@@ -20,7 +22,7 @@ import {
   buildRoguelikeCommandParams,
   validateRoguelikeTaskInput,
 } from '../model/roguelikeTasks'
-import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
+import { useRoguelikeExecution, ROGUELIKE_EXECUTION_SCOPE } from '../hooks/useRoguelikeExecution'
 import RoguelikeModePanel from './RoguelikeModePanel'
 import RoguelikeSettingsPanel from './RoguelikeSettingsPanel'
 import RoguelikeThemePanel from './RoguelikeThemePanel'
@@ -45,6 +47,11 @@ export default function RoguelikeWorkspace() {
     execute,
     stop,
   } = useRoguelikeExecution({ notify: setStatusMessage })
+  // 当前 run 信息只读消费应用级执行快照；只有本页 scope 的 run 归属肉鸽执行。
+  const execution = useExecutionSnapshot()
+  const trackedRun = execution.trackedScope === ROGUELIKE_EXECUTION_SCOPE
+    ? execution.trackedRun
+    : null
   const {
     draft: configDraft,
     syncState: configSyncState,
@@ -57,6 +64,8 @@ export default function RoguelikeWorkspace() {
   const advancedParams = configDraft?.advancedParams ?? EMPTY_ADVANCED_PARAMS
   const isRetryingConfigSave = configSyncState === 'saving'
   const [activeMode, setActiveMode] = useState<RoguelikeMode>(DEFAULT_ROGUELIKE_MODE)
+  // 「本次执行日志」迷你面板：默认折叠，只有面板本体入口。
+  const [runLogsOpen, setRunLogsOpen] = useState(false)
 
   const activeTask = ROGUELIKE_TASKS.find(task => task.id === activeMode) ?? ROGUELIKE_TASKS[0]
   if (!activeTask) return null
@@ -154,6 +163,14 @@ export default function RoguelikeWorkspace() {
             onExecute: () => void handleExecute(),
             onStop: () => void stop(),
           }}
+        />
+
+        {/* 本次执行日志：按本页 scope 的当前 Run 过滤，默认折叠。 */}
+        <CurrentRunLogPanel
+          className="roguelike-logs-area"
+          runId={trackedRun?.runId ?? null}
+          open={runLogsOpen}
+          onToggle={() => setRunLogsOpen(open => !open)}
         />
 
         <aside className="roguelike-monitor-column" aria-label="模拟器实时预览">

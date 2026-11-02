@@ -4,4 +4,5 @@
 
 import './styles/logs.css'
 
+export { default as CurrentRunLogPanel } from './components/CurrentRunLogPanel'
 export { default as LogsWorkspace } from './components/LogsWorkspace'

@@ -240,4 +240,113 @@ describe('RealtimeLogStream', () => {
 
     stream.stop()
   })
+
+  it('keeps the run identity from server entries and re-commits when it changes', async () => {
+    const read = vi.fn<(lines: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockResolvedValue({
+        success: true,
+        data: [{
+          time: '2026-07-22T10:11:12',
+          level: 'INFO',
+          message: '执行输出',
+          runId: 'run-1',
+          operationId: 'op-1',
+        }],
+      })
+    const stream = new RealtimeLogStream({ read })
+
+    stream.start()
+    await flush()
+    expect(stream.getState().logs).toEqual([{
+      time: '10:11:12',
+      level: 'INFO',
+      message: '执行输出',
+      runId: 'run-1',
+      operationId: 'op-1',
+    }])
+
+    // 相同文本但换了 run 归属：视为新内容并提交
+    read.mockResolvedValue({
+      success: true,
+      data: [{
+        time: '2026-07-22T10:11:12',
+        level: 'INFO',
+        message: '执行输出',
+        runId: 'run-2',
+        operationId: 'op-1',
+      }],
+    })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(stream.getState().logs[0]?.runId).toBe('run-2')
+
+    // 丢弃非字符串的归属字段
+    read.mockResolvedValue({
+      success: true,
+      data: [{ time: '2026-07-22T10:11:12', level: 'INFO', message: '无归属', runId: 7 }],
+    })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(stream.getState().logs).toEqual([{ time: '10:11:12', level: 'INFO', message: '无归属' }])
+
+    stream.stop()
+  })
+
+  it('keeps the logs reference and skips listeners when a poll returns identical content', async () => {
+    const read = vi.fn<(lines: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockResolvedValue({ success: true, data: [realtimeRow('same'), realtimeRow('稳定')] })
+    const stream = new RealtimeLogStream({ read })
+    const listener = vi.fn()
+    stream.subscribe(listener)
+
+    stream.start()
+    await flush()
+    const unchangedLogs = stream.getState().logs
+    expect(unchangedLogs).toHaveLength(2)
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(stream.getState().logs).toBe(unchangedLogs)
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(stream.getState().logs).toBe(unchangedLogs)
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    read.mockResolvedValue({ success: true, data: [realtimeRow('same'), realtimeRow('变化')] })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(stream.getState().logs).not.toBe(unchangedLogs)
+    expect(stream.getState().logs[1]?.message).toBe('变化')
+    expect(listener).toHaveBeenCalledTimes(2)
+
+    stream.stop()
+  })
+
+  it('still clears an error while keeping the logs reference when identical content follows a failure', async () => {
+    const read = vi.fn<(lines: number, signal?: AbortSignal) => Promise<ApiResponse<unknown>>>()
+      .mockResolvedValueOnce({ success: true, data: [realtimeRow('保留')] })
+      .mockResolvedValueOnce({ success: false, message: '后台刷新暂不可用' })
+      .mockResolvedValue({ success: true, data: [realtimeRow('保留')] })
+    const stream = new RealtimeLogStream({ read })
+
+    stream.start()
+    await flush()
+    const unchangedLogs = stream.getState().logs
+
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(stream.getState().error).toBe('后台刷新暂不可用')
+    expect(stream.getState().logs).toBe(unchangedLogs)
+
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    await flush()
+    expect(stream.getState().error).toBeNull()
+    expect(stream.getState().logs).toBe(unchangedLogs)
+
+    stream.stop()
+  })
 })

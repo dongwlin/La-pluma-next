@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { ScrollText } from 'lucide-react'
 import { Button } from '@/shared/ui'
 import { formatExecutionElapsed } from '../model/executionProgress'
 import type { ExecutionProgressView } from '../model/executionProgress'
@@ -16,6 +17,8 @@ interface CombatExecutionProgressPanelProps {
   progress: ExecutionProgressView | null
   isStopping: boolean
   onStop: () => void
+  /** 「查看本次日志」入口；提供时渲染，展开工作区内嵌的迷你日志面板。 */
+  onViewLogs?: () => void
 }
 
 /** 状态词的完整类名映射；动态状态不拼接 Tailwind 类名。 */
@@ -34,6 +37,7 @@ export default function CombatExecutionProgressPanel({
   progress,
   isStopping,
   onStop,
+  onViewLogs,
 }: CombatExecutionProgressPanelProps) {
   // 活动 Run 的已用时每秒推进；终态 Run 直接用服务端 durationMs，不再计时。
   const [now, setNow] = useState(() => Date.now())
@@ -71,18 +75,30 @@ export default function CombatExecutionProgressPanel({
     <section className="combat-workspace-section" aria-label="本次执行进度">
       <div className="flex items-center justify-between gap-2">
         <h5 className="text-sm font-semibold text-primary">本次执行进度</h5>
-        {progress.isActive && (
-          <Button
-            onClick={onStop}
-            disabled={isStopping}
-            loading={isStopping}
-            loadingText="正在终止"
-            variant="danger"
-            size="sm"
-          >
-            终止
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {onViewLogs && (
+            <Button
+              onClick={onViewLogs}
+              variant="outline"
+              size="sm"
+              icon={<ScrollText className="h-4 w-4" aria-hidden="true" />}
+            >
+              查看本次日志
+            </Button>
+          )}
+          {progress.isActive && (
+            <Button
+              onClick={onStop}
+              disabled={isStopping}
+              loading={isStopping}
+              loadingText="正在终止"
+              variant="danger"
+              size="sm"
+            >
+              终止
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">

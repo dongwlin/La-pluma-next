@@ -45,6 +45,10 @@ export interface RunProgress {
   currentStep?: number | null
   totalSteps?: number | null
   currentTask?: string | null
+  /** 作业集当前条目（服务端 CopilotPlanEntry 投影）；只有 run_copilot_set 提供。 */
+  currentEntry?: unknown
+  /** 作业集名称；只有 run_copilot_set 提供该字段。 */
+  name?: string | null
   nextEntry?: unknown
   shouldStop?: boolean
   phase?: 'starting' | 'running' | 'waiting_for_next' | string

@@ -2,7 +2,7 @@
 
 import { act, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import LogConsole from './LogConsole'
 import type { LogEntry } from '../types'
 
@@ -190,5 +190,84 @@ describe('LogConsole scroll following', () => {
 
     await renderConsole([...historyLogs, entry('历史三')], { viewingHistory: true, autoScroll: true })
     expect(node.scrollTop).toBe(100)
+  })
+})
+
+describe('LogConsole detailed raw content', () => {
+  beforeEach(() => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  it('renders an expandable raw section only for rows that carry one', async () => {
+    const rawLogs: LogEntry[] = [
+      entry('普通行'),
+      {
+        ...entry('任务开始：作战（Fight）'),
+        raw: 'Assistant::append_callback | TaskChainStart {"taskchain":"Fight"}',
+      },
+    ]
+    await renderConsole(rawLogs, {
+      view: {
+        readable: rawLogs,
+        filtered: rawLogs,
+        visible: rawLogs.map(log => ({ ...log, count: 1 })),
+      },
+    })
+
+    const details = container.querySelectorAll<HTMLDetailsElement>('details.log-raw')
+    expect(details).toHaveLength(1)
+    expect(details[0]?.querySelector('summary')?.textContent).toBe('原始内容')
+    const pre = details[0]?.querySelector('pre')
+    expect(pre?.textContent).toBe(
+      ['TaskChainStart', '{', '  "taskchain": "Fight"', '}'].join('\n'),
+    )
+  })
+})
+
+describe('LogConsole run-mini variant', () => {
+  beforeEach(() => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  it('labels the console as the current-run log and renders the collapse action', async () => {
+    const onCollapse = vi.fn()
+    await renderConsole(initialLogs, { variant: 'run-mini', onCollapse })
+
+    expect(container.textContent).toContain('本次执行日志')
+    expect(container.textContent).not.toContain('实时日志')
+    const collapse = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '收起')
+    expect(collapse).toBeDefined()
+    await act(async () => collapse?.click())
+    expect(onCollapse).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the default titles and hides the collapse action for the default variant', async () => {
+    await renderConsole(initialLogs)
+
+    expect(container.textContent).toContain('实时日志')
+    expect(container.textContent).not.toContain('本次执行日志')
+    expect(Array.from(container.querySelectorAll('button'))
+      .some(button => button.textContent?.trim() === '收起')).toBe(false)
+  })
+
+  it('shows the run-specific empty state while the run has no rows yet', async () => {
+    await renderConsole([], { variant: 'run-mini', onCollapse: () => {} })
+
+    expect(container.textContent).toContain('本次执行还没有日志')
   })
 })

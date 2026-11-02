@@ -51,6 +51,7 @@ const projection = (
   attemptedCount: 0,
   successCount: 0,
   failedCount: 0,
+  skippedCount: 0,
   stoppedCount: 0,
   pendingCount: 3,
   failures: [],
@@ -162,6 +163,28 @@ describe('deriveCopilotSetView', () => {
 
     expect(view.failedCount).toBe(2)
     expect(view.attemptedCount).toBe(3)
+    expect(view.pendingSelectedIndexes).toEqual([1, 2])
+  })
+
+  it('treats skipped items as neither executed nor failed', () => {
+    const run = projection({
+      itemStatuses: new Map([
+        [0, 'success'],
+        [1, 'skipped'],
+        [2, 'pending'],
+      ]),
+    })
+    const view = deriveCopilotSetView({
+      preview: preview(),
+      selected: new Set([0, 1, 2]),
+      setRun: run,
+      dismissedRunId: null,
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    expect(view.failedCount).toBe(0)
+    expect(view.attemptedCount).toBe(1)
     expect(view.pendingSelectedIndexes).toEqual([1, 2])
   })
 

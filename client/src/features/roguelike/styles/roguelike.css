@@ -20,6 +20,7 @@
       "mode"
       "theme"
       "settings"
+      "logs"
       "monitor";
     align-items: start;
     gap: var(--app-space-section);
@@ -36,6 +37,12 @@
 
   .roguelike-settings-panel {
     grid-area: settings;
+  }
+
+  /* 「本次执行日志」迷你面板；无当前 run 时组件整体不渲染，不占网格行。 */
+  .roguelike-logs-area {
+    grid-area: logs;
+    min-width: 0;
   }
 
   .roguelike-monitor-column {
@@ -229,6 +236,7 @@
       grid-template-areas:
         "mode mode"
         "theme settings"
+        "logs logs"
         "monitor monitor";
     }
   }
@@ -241,7 +249,8 @@
       grid-template-rows: calc(3.25rem + 0.5rem + 2px) auto;
       grid-template-areas:
         "mode mode monitor"
-        "theme settings monitor";
+        "theme settings monitor"
+        "logs logs logs";
     }
   }
 

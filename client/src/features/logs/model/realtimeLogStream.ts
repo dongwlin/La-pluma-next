@@ -3,7 +3,8 @@
  *
  * 实时日志是会话数据，不是可缓存的普通资源：接口只返回最近 N 行的快照，
  * 没有 cursor/offset，因此本模块按固定节奏重读并整体替换缓冲，不追加、不
- * 进入 Query。
+ * 进入 Query。快照内容与上次相同时保留既有引用并跳过提交，固定节奏的空
+ * 轮询不会驱动消费方重渲染。
  *
  * 生命周期由页面显式驱动：
  * - `start()`/`stop()` 对应页面 Activity 显示/隐藏；停止时清计时器并取消
@@ -61,6 +62,22 @@ const readFailureMessage = (response: ApiResponse<unknown>): string => (
 
 const catchFailureMessage = (error: unknown): string => (
   error instanceof Error && error.message ? error.message : initialReadFailure
+)
+
+/** 逐项比较两次快照的行内容；快照接口没有游标，只能按内容判断是否变化。 */
+const areLogsEqual = (
+  previous: readonly LogEntry[],
+  next: readonly LogEntry[],
+): boolean => (
+  previous.length === next.length
+  && previous.every((log, index) => {
+    const candidate = next[index]
+    return log.time === candidate?.time
+      && log.level === candidate?.level
+      && log.message === candidate?.message
+      && log.runId === candidate?.runId
+      && log.operationId === candidate?.operationId
+  })
 )
 
 export class RealtimeLogStream {
@@ -178,9 +195,18 @@ export class RealtimeLogStream {
     }
 
     const values = Array.isArray(response.data) ? response.data : []
+    const logs = values.map(parseRealtimeLog)
+    if (areLogsEqual(this.state.logs, logs)) {
+      // 内容未变时保留既有行数组引用并跳过提交：消费方（useSyncExternalStore、
+      // 滚动 Effect）靠引用与内容指纹区分「内容变化」与「仅轮询到达」，短路后
+      // 相同快照不再触发重渲染与全量重建。有错误待清除时仍需提交一次。
+      if (this.state.error === null) return
+      this.setState({ ...this.state, error: null })
+      return
+    }
     this.setState({
       ...this.state,
-      logs: values.map(parseRealtimeLog),
+      logs,
       error: null,
     })
   }

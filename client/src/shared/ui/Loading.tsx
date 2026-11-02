@@ -481,7 +481,7 @@ function LogsSkeleton() {
       <div className="app-workspace-segments app-liquid-tab-pill log-mode-shell" aria-hidden="true">
         <div className="app-workspace-segment-list log-mode-tabs">
           <div className="app-workspace-segment-indicator log-mode-skeleton-highlight" />
-          {[1, 2].map(item => (
+          {[1, 2, 3].map(item => (
             <div key={item} className="app-workspace-segment log-mode-button min-h-11">
               <span className="app-workspace-segment-icon log-mode-icon">
                 <Skeleton variant="circle" className="h-5 w-5" />

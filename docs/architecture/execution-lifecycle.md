@@ -198,7 +198,7 @@ waiting ──stop──> stopped
 
 - 未传 `mode` 的旧调用保持 `continuous`，响应继续包含 `plan`、`results`、`completed`、`pending`，并新增 `runId`、`run`、`state`、`pollUrl`、`stopUrl`、`mode`、`summary`。旧客户端只读原有字段时行为不变。
 - 旧 `app` 模式的页面内“失败继续/失败停止”属于页面编排，不再有独立服务端语义；映射到 `continuous` 后沿用旧 `cli` 行为：一个 MAA 命令失败会结束集合，Run 置为 `failed`，未开始的条目保持 `pending`。前端模式与失败策略见[执行客户端](execution-client.md)，不得重新引入页面逐项提交循环。
-- `continuous` 的逐项结果在 `summary.taskResults`：`status` 为 `pending`/`running`/`success`/`failed`/`stopped`。MAA 命令失败时 Run 为 `failed`，响应保留旧错误码 `COPILOT_PLAN_FAILED`（HTTP 422）与 `details.summary`；停止时返回 `stopped`，已完成项为 `success`，未开始项保持 `pending`。组与组之间检查停止意图，停止后不会启动下一组。
+- `continuous` 的逐项结果在 `summary.taskResults`：`status` 为 `pending`/`running`/`success`/`failed`/`skipped`/`stopped`；`skipped` 是计划中未选中且此前未完成、本次不执行的条目，`skippedCount` 与 `progress.currentStep`/`totalSteps`（按本次执行队列 1 基编号，跳过条目不参与）一并向后兼容新增。MAA 命令失败时 Run 为 `failed`，响应保留旧错误码 `COPILOT_PLAN_FAILED`（HTTP 422）与 `details.summary`；停止时返回 `stopped`，已完成项为 `success`，未开始项保持 `pending`。组与组之间检查停止意图，停止后不会启动下一组。
 - `manual` 在等待阶段返回 HTTP 200，`data.waitingForNext=true` 与 `data.nextEntry`；`run.state=waiting`，`progress.phase=waiting_for_next`。等待不持有租约，`occupancy` 不会把设备算作该 run 所有。
 - 继续下一项必须携带 runId。租约被占用时返回可重试的 409 `MAA_EXECUTION_BUSY`，run 保持 `waiting`，已完成条目、选中范围与下一项都不变；停止后继续返回 `alreadyTerminal`，不会启动任何条目。
 - `manual` 的条目失败记录在 `summary`（`failedCount`/`errors`/`taskResults`），集合继续等待下一项；全部条目尝试完毕后 Run 为 `succeeded`，是否整体成功由 `failedCount` 判断。集合级错误（计划获取失败、持久化失败）才使 Run 为 `failed`。

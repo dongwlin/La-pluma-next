@@ -33,7 +33,14 @@ const STOPPING_LABEL = '正在停止'
 const OCCUPIED_LABEL = '设备被其他任务占用'
 const UNKNOWN_LABEL = '执行状态未知'
 
-function readPrimaryRun(snapshot: RunSnapshot | null, trackedRun: AgentRun | null): AgentRun | null {
+/**
+ * 快照或已跟踪身份里的当前活动 run。快照 `run` 是服务端排定的当前执行，
+ * 其次取活动列表，最后回退到本客户端最后观察到的身份；供各展示投影复用。
+ */
+export function findPrimaryActiveRun(
+  snapshot: RunSnapshot | null,
+  trackedRun: AgentRun | null,
+): AgentRun | null {
   if (snapshot?.run && isActiveRunState(snapshot.run.state)) return snapshot.run
   const listed = snapshot?.activeRuns?.find(run => isActiveRunState(run.state))
   if (listed) return listed
@@ -54,7 +61,7 @@ function readRunLabel(run: AgentRun): string {
 }
 
 export function summarizeRunStatus(state: ExecutionControllerState): GlobalRunStatus {
-  const run = readPrimaryRun(state.snapshot, state.trackedRun)
+  const run = findPrimaryActiveRun(state.snapshot, state.trackedRun)
   const isRunning = Boolean(run) || Boolean(state.snapshot?.activeRuns?.length)
   const runId = run?.runId ?? null
 

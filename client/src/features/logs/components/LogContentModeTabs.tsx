@@ -1,5 +1,5 @@
 /**
- * 摘要/原始内容模式分段控件
+ * 易读/详细/原始内容模式分段控件
  *
  * 模式由工作区持有（过滤与导出共享同一份视图），本组件只负责受控分段、
  * 流体高亮与键盘导航。测量、ResizeObserver 与键盘规则跟随组件生命周期，
@@ -7,14 +7,21 @@
  */
 
 import { motion, useReducedMotion } from 'framer-motion'
-import { FileText, List } from 'lucide-react'
+import { Braces, FileText, List } from 'lucide-react'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type { LogContentMode } from '../model/logModel'
 
 const CONTENT_MODE_OPTIONS: ReadonlyArray<{ id: LogContentMode; label: string; description: string }> = [
-  { id: 'summary', label: '摘要', description: '关键事件' },
-  { id: 'raw', label: '原始', description: '完整内容' },
+  { id: 'readable', label: '易读', description: '语义与生命周期' },
+  { id: 'detailed', label: '详细', description: '可展开原始内容' },
+  { id: 'raw', label: '原始', description: '原样输出' },
 ]
+
+const CONTENT_MODE_ICONS: Readonly<Record<LogContentMode, typeof List>> = {
+  readable: List,
+  detailed: Braces,
+  raw: FileText,
+}
 
 interface LogContentModeTabsProps {
   readonly mode: LogContentMode
@@ -57,7 +64,7 @@ export default function LogContentModeTabs({ mode, onChange }: LogContentModeTab
         )}
         {CONTENT_MODE_OPTIONS.map(option => {
           const selected = mode === option.id
-          const ModeIcon = option.id === 'summary' ? List : FileText
+          const ModeIcon = CONTENT_MODE_ICONS[option.id]
           return (
             <button
               key={option.id}

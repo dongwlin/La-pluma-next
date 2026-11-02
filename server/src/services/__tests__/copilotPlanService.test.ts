@@ -3,20 +3,49 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { after, beforeEach } from 'node:test';
+import type { CopilotPlanEntry } from '../copilotPlanService.ts';
 
 // `maa dir resource` 的解析在导入时读取 MAA_CLI_PATH；先准备假 CLI，再加载被测模块。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-plan-'));
 const fakeMaaCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const maaCallLog = join(fixtureDir, 'maa-calls.log');
 const baseResourceDir = join(fixtureDir, 'base-resource');
+const maaConfigDir = join(fixtureDir, 'maa-config');
+const maaLogDir = join(fixtureDir, 'maa-logs');
+const maaAsstLog = join(maaLogDir, 'asst.log');
 await mkdir(join(baseResourceDir, 'Arknights-Tile-Pos'), { recursive: true });
+await mkdir(maaConfigDir, { recursive: true });
+await mkdir(maaLogDir, { recursive: true });
+await mkdir(join(fixtureDir, 'maa-cache'), { recursive: true });
+await mkdir(join(fixtureDir, 'drop-records'), { recursive: true });
 await writeFile(join(baseResourceDir, 'stages.json'), '[]');
+await writeFile(maaAsstLog, '');
 await writeFile(fakeMaaCliPath, `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 if (process.env.FAKE_MAA_CALL_LOG) fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, args.join(' ') + '\\n');
 if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
+} else if (args[0] === 'dir' && args[1] === 'config') {
+  process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
+} else if (args[0] === 'dir' && args[1] === 'log') {
+  process.stdout.write(process.env.FAKE_MAA_LOG_DIR || '');
+} else if (args[0] === 'run') {
+  const steps = JSON.parse(process.env.FAKE_RUN_STEPS || '[]');
+  const exitCode = Number(process.env.FAKE_RUN_EXIT_CODE || 0);
+  const exitDelay = Number(process.env.FAKE_RUN_EXIT_DELAY || 0);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const appendLoad = (file) => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | SubTaskExtraInfo | ' + JSON.stringify({
+    details: { file_name: file },
+    what: 'CopilotListLoadTaskFileSuccess'
+  }) + '\\n');
+  (async () => {
+    for (const step of steps) {
+      if (step.after) await sleep(step.after);
+      appendLoad(step.file);
+    }
+    if (exitDelay) await sleep(exitDelay);
+  })().then(() => process.exit(exitCode), () => process.exit(1));
 } else {
   process.exit(1);
 }
@@ -24,6 +53,14 @@ if (args[0] === 'dir' && args[1] === 'resource') {
 process.env.MAA_CLI_PATH = fakeMaaCliPath;
 process.env.FAKE_MAA_CALL_LOG = maaCallLog;
 process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
+// 作业进度、执行锁与掉落记录都重定向到临时目录：进度存储在导入时绑定路径。
+process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
+process.env.FAKE_MAA_LOG_DIR = maaLogDir;
+process.env.FAKE_MAA_LOG_FILE = maaAsstLog;
+process.env.MAA_CACHE_DIR = join(fixtureDir, 'maa-cache');
+process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
+process.env.LA_PLUMA_MAA_LOCK_FILE = join(fixtureDir, 'maa-execution.lock');
+process.env.LA_PLUMA_DROP_RECORDS_DIR = join(fixtureDir, 'drop-records');
 
 const {
   buildCopilotPlan,
@@ -32,17 +69,22 @@ const {
   buildCopilotTaskParams,
   classifyCopilotEntryOutcomes,
   ensurePresetFormationResource,
+  executeCopilotEntries,
   extractLoadedCopilotFiles,
   getNavigationStage,
   isPresetFormationCopilot,
   mergePresetFormationTasks,
-  resetCopilotPlanCachesForTests
+  resetCopilotPlanCachesForTests,
+  setCopilotFileLoadPollIntervalForTests
 } = await import('../copilotPlanService.ts');
 
 beforeEach(async () => {
   resetCopilotPlanCachesForTests();
   process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
   await writeFile(maaCallLog, '');
+  // 检查点读取 asst.log 的当前大小；缺失时观察与结算都没有增量可读。
+  await writeFile(maaAsstLog, '', { flag: 'a' });
+  await rm(join(fixtureDir, 'maa-execution.lock'), { force: true });
 });
 
 after(async () => {
@@ -294,4 +336,135 @@ test('ensurePresetFormationResource reuses cached resource reads', async () => {
   await rm(join(configDir, 'resource'), { recursive: true, force: true });
   await ensurePresetFormationResource(configDir);
   assert.equal(readObject((await readUserTasks(configDir)).BattleStart).postDelay, 777);
+});
+
+/** 同编队兼容组的两条普通作业条目：一次 MAA 命令按 copilot_list 顺序执行。 */
+function groupEntriesFor(): CopilotPlanEntry[] {
+  return [0, 1].map(itemIndex => ({
+    key: `${itemIndex}:${100 + itemIndex}:normal`,
+    itemIndex,
+    copilotId: 100 + itemIndex,
+    stageId: `main_01-0${itemIndex + 1}`,
+    displayStage: `1-${itemIndex + 1}`,
+    apCost: 6,
+    mode: 'normal' as const,
+    presetFormation: false
+  }));
+}
+
+/** 作业内容与计划文件路径都按执行端的写入约定推导；假 CLI 按这些路径回放加载回调。 */
+function planFileOf(setId: string, entry: CopilotPlanEntry): string {
+  return join(maaConfigDir, 'copilot-plans', setId, `${entry.itemIndex}-${entry.copilotId}-${entry.mode}-1.json`);
+}
+
+/** 作业站内容桩：prepareCopilotList 按 copilotId 抓取作业 JSON。 */
+function stubCopilotContent(): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: string | URL | Request) => {
+    const match = String(url).match(/copilot\/get\/(\d+)$/);
+    assert.ok(match, `unexpected outbound request: ${String(url)}`);
+    const data = {
+      content: JSON.stringify({
+        stage_name: `main_01-0${Number(match[1]) - 99}`,
+        doc: { title: 'T-1' },
+        opers: [{ name: 'A' }],
+        groups: []
+      })
+    };
+    return new Response(JSON.stringify({ status_code: 200, data }), { status: 200 });
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
+test('copilot group advances entries one by one as MAA loads each plan file', async () => {
+  const setId = 'observe-success';
+  const entries = groupEntriesFor();
+  process.env.FAKE_RUN_STEPS = JSON.stringify([
+    { file: planFileOf(setId, entries[0]), after: 60 },
+    { file: planFileOf(setId, entries[1]), after: 400 }
+  ]);
+  process.env.FAKE_RUN_EXIT_CODE = '0';
+  process.env.FAKE_RUN_EXIT_DELAY = '300';
+  setCopilotFileLoadPollIntervalForTests(20);
+  const restoreFetch = stubCopilotContent();
+
+  const events: string[] = [];
+  try {
+    const outcome = await executeCopilotEntries({
+      setId,
+      name: '观察作业集',
+      entries,
+      options: {},
+      lifecycle: {
+        // 生命周期签名接受更宽的条目类型；集合执行只会回传传入的计划条目。
+        onEntryStarted: entry => events.push(`started:${(entry as CopilotPlanEntry).key}`),
+        onEntrySettled: (entry, status) => events.push(`settled:${(entry as CopilotPlanEntry).key}:${status}`)
+      }
+    });
+
+    assert.equal(outcome.success, true);
+    assert.equal(outcome.stopped, false);
+    // 逐项 running：第二条目在它的计划文件被 MAA 加载后才开始，不随组批量置位。
+    assert.deepEqual(events.filter(event => event.startsWith('started:')), [
+      `started:${entries[0].key}`,
+      `started:${entries[1].key}`
+    ]);
+    // 逐项 success：第一条目在组结束前（第二条目文件加载时）已结算成功。
+    const startedSecond = events.indexOf(`started:${entries[1].key}`);
+    const settledFirst = events.indexOf(`settled:${entries[0].key}:success`);
+    assert.ok(settledFirst >= 0, 'first entry should settle before the group ends');
+    assert.ok(settledFirst < startedSecond, 'first entry should settle when the second plan file loads');
+    assert.deepEqual(outcome.summary.taskResults.map(result => [result.key, result.status]), [
+      [entries[0].key, 'success'],
+      [entries[1].key, 'success']
+    ]);
+    assert.deepEqual(outcome.completed, [entries[0].key, entries[1].key]);
+  } finally {
+    restoreFetch();
+    for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
+      delete process.env[key];
+    }
+  }
+});
+
+test('copilot group failure keeps confirmed entries as success and fails the rest', async () => {
+  const setId = 'observe-failure';
+  const entries = groupEntriesFor();
+  process.env.FAKE_RUN_STEPS = JSON.stringify([
+    { file: planFileOf(setId, entries[0]), after: 40 },
+    { file: planFileOf(setId, entries[1]), after: 160 }
+  ]);
+  process.env.FAKE_RUN_EXIT_CODE = '3';
+  process.env.FAKE_RUN_EXIT_DELAY = '60';
+  setCopilotFileLoadPollIntervalForTests(20);
+  const restoreFetch = stubCopilotContent();
+
+  try {
+    const outcome = await executeCopilotEntries({
+      setId,
+      name: '失败作业集',
+      entries,
+      options: {}
+    });
+
+    assert.equal(outcome.success, false);
+    assert.equal(outcome.stopped, false);
+    // 已完整加载（后续文件开始加载）的条目按逐项 success 结算，未完成的按 failed。
+    assert.deepEqual(outcome.summary.taskResults.map(result => [result.key, result.status]), [
+      [entries[0].key, 'success'],
+      [entries[1].key, 'failed']
+    ]);
+    assert.deepEqual(outcome.completed, [entries[0].key]);
+    assert.deepEqual(
+      outcome.results.map(result => [result.key, result.success, result.error !== undefined]),
+      [[entries[0].key, true, false], [entries[1].key, false, true]]
+    );
+  } finally {
+    restoreFetch();
+    for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
+      delete process.env[key];
+    }
+  }
 });

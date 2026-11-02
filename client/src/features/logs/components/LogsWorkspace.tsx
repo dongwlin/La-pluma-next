@@ -4,6 +4,8 @@
  * 页面唯一的日志领域容器：组合实时流、历史会话与清空/清理命令，并持有
  * 跨面板共享的纯视图状态：
  * - `contentMode`/`filter`/`search`/`collapseRepeats` 同时影响列表与导出；
+ * - `onlyCurrentRun` 按当前活动 run 的 runId 过滤实时条目（默认开启）；
+ *   历史文件没有 run 归属，进入历史后该开关禁用且不参与过滤；
  * - `autoScroll` 由工具栏开关、进入历史（关闭）与返回实时（打开）驱动，
  *   scrollTop Effect 靠近 `LogConsole` 的滚动容器；
  * - `notice`/`confirmAction` 只服务命令反馈与确认弹层；
@@ -12,13 +14,20 @@
  *
  * 工具栏、控制台与历史选择器都是受控展示组件：不订阅会话、不发请求、不
  * 持有历史选择。暂停只作用于实时轮询；返回实时会恢复被手动暂停的流，
- * 因为进入历史已清空实时缓冲。
+ * 因为进入历史已清空实时缓冲。当前 run 信息只读消费 `task-execution`
+ * 的应用级执行快照，本域不另行观察 run 状态。
  */
 
 import { useMemo, useState } from 'react'
+import { isActiveRunState, useExecutionSnapshot } from '@/features/task-execution'
 import { ConfirmDialog } from '@/shared/ui'
 import { useLogsSession } from '../hooks/useLogsSession'
-import { buildLogView, type LogContentMode, type LogFilter } from '../model/logModel'
+import {
+  buildLogView,
+  filterLogsByRunId,
+  type LogContentMode,
+  type LogFilter,
+} from '../model/logModel'
 import { buildLogExportFileName, formatLogExport } from '../model/logExport'
 import type { LogFile } from '../types'
 import HistoryLogPicker from './HistoryLogPicker'
@@ -32,8 +41,10 @@ type ConfirmAction = 'clear' | 'cleanup'
 export default function LogsWorkspace() {
   const session = useLogsSession()
   const { history, realtime } = session
+  const execution = useExecutionSnapshot()
   const [autoScroll, setAutoScroll] = useState(true)
-  const [contentMode, setContentMode] = useState<LogContentMode>('summary')
+  const [contentMode, setContentMode] = useState<LogContentMode>('readable')
+  const [onlyCurrentRun, setOnlyCurrentRun] = useState(true)
   const [filter, setFilter] = useState<LogFilter>('all')
   const [search, setSearch] = useState('')
   const [collapseRepeats, setCollapseRepeats] = useState(true)
@@ -45,12 +56,21 @@ export default function LogsWorkspace() {
   const actionBusy = session.commandPending !== null
   const activeError = viewingHistory ? history.error : realtime.error
 
-  const logView = useMemo(() => buildLogView(logs, {
+  // 当前活动 run：只有本客户端跟踪的 run 处于活动状态时才按它过滤；
+  // 没有活动 run 时展示全部。历史条目没有 runId，历史模式不过滤。
+  const trackedRun = execution.trackedRun
+  const currentRunId = trackedRun && isActiveRunState(trackedRun.state) ? trackedRun.runId : null
+  const runFilteredLogs = useMemo(
+    () => filterLogsByRunId(logs, viewingHistory || !onlyCurrentRun ? null : currentRunId),
+    [currentRunId, logs, onlyCurrentRun, viewingHistory],
+  )
+
+  const logView = useMemo(() => buildLogView(runFilteredLogs, {
     mode: contentMode,
     level: filter,
     search,
     collapseRepeats,
-  }), [collapseRepeats, contentMode, filter, logs, search])
+  }), [collapseRepeats, contentMode, filter, runFilteredLogs, search])
 
   const viewHistoryFile = (file: LogFile) => {
     setAutoScroll(false)
@@ -137,6 +157,8 @@ export default function LogsWorkspace() {
       <LogsToolbar
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
+        onlyCurrentRun={onlyCurrentRun}
+        onOnlyCurrentRunChange={setOnlyCurrentRun}
         collapseRepeats={collapseRepeats}
         onCollapseRepeatsChange={setCollapseRepeats}
         filter={filter}
@@ -157,7 +179,7 @@ export default function LogsWorkspace() {
         selectedFile={history.selectedFile}
         loading={loading}
         error={activeError}
-        logs={logs}
+        logs={runFilteredLogs}
         view={logView}
         autoScroll={autoScroll}
         paused={realtime.paused}

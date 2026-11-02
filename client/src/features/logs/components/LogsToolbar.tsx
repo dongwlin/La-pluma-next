@@ -1,10 +1,11 @@
 /**
  * 日志工具栏
  *
- * 自动滚动、折叠重复、级别、搜索与命令按钮全部是受控视图：状态由工作区
- * 持有，本组件只渲染控件并回调。暂停/继续只在实时模式出现，暂停针对实时
- * 轮询而不是历史读取；按钮的可访问名称随动作在“暂停实时日志/继续实时
- * 日志”之间切换。
+ * 自动滚动、只看本次执行、折叠重复、级别、搜索与命令按钮全部是受控视图：
+ * 状态由工作区持有，本组件只渲染控件并回调。暂停/继续只在实时模式出现，
+ * 暂停针对实时轮询而不是历史读取；按钮的可访问名称随动作在“暂停实时
+ * 日志/继续实时日志”之间切换。「只看本次执行」按当前活动 run 过滤实时
+ * 条目，历史文件没有 run 归属，因此在历史模式下禁用。
  */
 
 import { Download, Pause, Play, Search, Trash2 } from 'lucide-react'
@@ -14,6 +15,8 @@ import type { LogFilter } from '../model/logModel'
 interface LogsToolbarProps {
   readonly autoScroll: boolean
   readonly onAutoScrollChange: (value: boolean) => void
+  readonly onlyCurrentRun: boolean
+  readonly onOnlyCurrentRunChange: (value: boolean) => void
   readonly collapseRepeats: boolean
   readonly onCollapseRepeatsChange: (value: boolean) => void
   readonly filter: LogFilter
@@ -32,6 +35,8 @@ interface LogsToolbarProps {
 export default function LogsToolbar({
   autoScroll,
   onAutoScrollChange,
+  onlyCurrentRun,
+  onOnlyCurrentRunChange,
   collapseRepeats,
   onCollapseRepeatsChange,
   filter,
@@ -57,6 +62,16 @@ export default function LogsToolbar({
               checked={autoScroll}
               onChange={onAutoScrollChange}
               label="自动滚动"
+              disabled={viewingHistory}
+            />
+          </div>
+          <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3 ${viewingHistory ? 'opacity-50' : ''}`}>
+            <span className="truncate text-xs font-medium text-secondary">只看本次执行</span>
+            <Switch
+              compact
+              checked={onlyCurrentRun}
+              onChange={onOnlyCurrentRunChange}
+              label="只看本次执行"
               disabled={viewingHistory}
             />
           </div>

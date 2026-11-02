@@ -96,7 +96,9 @@ export function deriveCopilotSetView({
     pendingSelectedIndexes,
     pendingSelectedCount,
     failedCount: countStatuses(itemStatuses, 'failed', 'stopped'),
-    attemptedCount: [...itemStatuses.values()].filter(status => status !== 'pending').length,
+    // 跳过的条目没有执行，不计入“本次已执行”。
+    attemptedCount: [...itemStatuses.values()]
+      .filter(status => status !== 'pending' && status !== 'skipped').length,
     waitingEntry,
     waitingEntryIndex,
     waitingCopilot,

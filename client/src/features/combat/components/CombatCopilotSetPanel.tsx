@@ -1,13 +1,18 @@
 /**
  * 作业集预览与逐项结果面板
  *
- * 预览对象、选择与 Run 投影由工作区提供；本组件只把派生视图渲染成续跑
- * 进度、下一关卡片与逐项状态。勾选、全选、重置与继续都是工作区动作，
+ * 预览对象、选择与 Run 投影由工作区提供；本组件只把派生视图渲染成历史
+ * 续跑进度、下一关卡片与逐项状态。续跑进度统计含历史已通关记录，与
+ * “本次执行进度”面板分开；勾选、全选、重置与继续都是工作区动作，
  * 面板不创建第二份选择或执行状态。
+ *
+ * 当前执行项变化时把「执行中」行自动带入视野；用户刚手动滚动过则跳过
+ * 一次定位，避免抢走滚动位置。
  */
 
 import { FileText } from 'lucide-react'
 import { Button, EmptyState } from '@/shared/ui'
+import { useCopilotSetItemFollow } from '../hooks/useCopilotSetItemFollow'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CopilotSetInfo } from '../types'
 
@@ -42,6 +47,12 @@ export default function CombatCopilotSetPanel({
   onStartNext,
   onCancelSet,
 }: CombatCopilotSetPanelProps) {
+  // 当前项自动定位：列表容器与行标记由本面板渲染，跟随策略在 hook 内。
+  const listRef = useCopilotSetItemFollow({
+    currentIndex: view.currentIndex,
+    hasList: preview?.type === 'set' && !!preview.copilots?.length,
+  })
+
   return (
     <div className="combat-workspace-section combat-job-list-section flex flex-1 flex-col">
       <div className="flex items-center justify-between mb-3">
@@ -85,17 +96,17 @@ export default function CombatCopilotSetPanel({
               <div className="mb-3 border-y border-(--app-border) py-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <div className="text-xs font-medium text-tertiary">续跑进度</div>
+                    <div className="text-xs font-medium text-tertiary">历史续跑进度</div>
                     <div className="mt-1 text-sm font-semibold text-primary">
-                      {nextCopilot ? `下次从第 ${nextIndex + 1} 关继续` : '作业集已完成'}
+                      {nextCopilot ? `下次从第 ${nextIndex + 1} 关继续` : '没有待续跑的作业'}
                     </div>
                     <div className="mt-1 truncate text-xs text-tertiary">
-                      {view.attemptedCount > 0 ? `本次已执行 ${view.attemptedCount} 个` : `共 ${total} 个作业`}
+                      {view.attemptedCount > 0 ? `本次已执行 ${view.attemptedCount} 个` : `共 ${total} 个作业（含历史通关）`}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="rounded-md px-2 py-1 text-[11px] brand-chip">待 {pendingCount}</span>
-                    <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">完成 {completedCount}</span>
+                    <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">已通关 {completedCount}</span>
                     <span className={`rounded-md border px-2 py-1 text-[11px] ${failedCount > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-(--app-border) text-secondary'}`}>失败 {failedCount}</span>
                   </div>
                 </div>
@@ -159,27 +170,37 @@ export default function CombatCopilotSetPanel({
           )}
 
           {/* 作业列表 */}
-          <div className="flex-1 divide-y divide-(--app-border) overflow-hidden overflow-y-auto rounded-lg border border-(--app-border) bg-(--app-surface-solid)">
+          <div
+            ref={listRef}
+            data-copilot-set-list
+            className="flex-1 divide-y divide-(--app-border) overflow-hidden overflow-y-auto rounded-lg border border-(--app-border) bg-(--app-surface-solid)"
+          >
             {preview.copilots.map((copilot, idx) => {
               const runStatus = view.itemStatuses.get(idx)
               const isCompleted = runStatus === 'success' || runStatus === 'failed' || runStatus === 'stopped'
               const isSuccess = runStatus === 'success'
+              const isSkipped = runStatus === 'skipped'
               const isCurrent = runStatus === 'running'
               const isSelected = selected.has(idx)
-              const isPersistedDone = !isSelected && !isCompleted
+              const isPersistedDone = !isSelected && !isCompleted && !isSkipped
               const statusLabel = isCurrent
                 ? '执行中'
-                : isCompleted
-                  ? (isSuccess ? '已完成' : '待重试')
-                  : isPersistedDone
-                    ? '已完成/跳过'
-                    : '待执行'
+                : isSkipped
+                  ? '已跳过'
+                  : isCompleted
+                    ? (isSuccess ? '已完成' : '待重试')
+                    : isPersistedDone
+                      ? '历史已通关'
+                      : '待执行'
 
               return (
-                <div key={`${copilot.id}-${idx}`} className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
+                <div
+                  key={`${copilot.id}-${idx}`}
+                  data-copilot-item-index={idx}
+                  className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
                   isCurrent ? 'bg-(--app-accent-soft)' :
                   isCompleted ? (isSuccess ? 'bg-emerald-500/10' : 'bg-rose-500/10') :
-                  isPersistedDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
+                  isSkipped || isPersistedDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
                   'hover:bg-(--app-surface-muted)'
                 }`}>
                   <div className="flex min-w-0 items-center space-x-2">
@@ -207,10 +228,10 @@ export default function CombatCopilotSetPanel({
                     <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
                       isCurrent ? 'bg-(--app-accent) text-white animate-pulse' :
                       isCompleted ? (isSuccess ? 'bg-(--app-success) text-white' : 'bg-(--app-danger) text-white') :
-                      isPersistedDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
+                      isSkipped || isPersistedDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
                       'bg-black/5 text-secondary dark:bg-white/10'
                     }`}>
-                      {isCompleted ? (isSuccess ? '✓' : '✗') : isPersistedDone ? '✓' : idx + 1}
+                      {isCompleted ? (isSuccess ? '✓' : '✗') : isSkipped ? '–' : isPersistedDone ? '✓' : idx + 1}
                     </span>
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-1.5">

@@ -135,6 +135,34 @@ describe('CombatExecutionProgressPanel', () => {
     expect(Array.from(panel?.querySelectorAll('button') ?? [])).toEqual([])
   })
 
+  it('offers the run log entry only when a view handler is provided', async () => {
+    const onViewLogs = vi.fn()
+    await render(
+      <CombatExecutionProgressPanel
+        progress={progress()}
+        isStopping={false}
+        onStop={onStop}
+        onViewLogs={onViewLogs}
+      />,
+    )
+
+    const panel = container.querySelector('[aria-label="本次执行进度"]')
+    const viewLogs = Array.from(panel?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.trim() === '查看本次日志')
+    expect(viewLogs).toBeDefined()
+    await act(async () => viewLogs?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(onViewLogs).toHaveBeenCalledOnce()
+    // 终止入口与日志入口并存。
+    expect(Array.from(panel?.querySelectorAll('button') ?? [])
+      .some(button => button.textContent?.includes('终止'))).toBe(true)
+
+    // 未提供回调时没有日志入口（旧调用方不感知该入口）。
+    await render(
+      <CombatExecutionProgressPanel progress={progress()} isStopping={false} onStop={onStop} />,
+    )
+    expect(container.textContent).not.toContain('查看本次日志')
+  })
+
   it('stops counting elapsed time while the stop request is in flight', async () => {
     vi.useFakeTimers()
     try {

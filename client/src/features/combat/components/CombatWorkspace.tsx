@@ -12,12 +12,13 @@
  * - 真正卸载时工作区与面板局部状态一起销毁，Activity 隐藏/恢复保留。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
 import { Button, ConfirmDialog, SmoothPanel } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { ScreenMonitor } from '@/features/device-mirror'
+import { CurrentRunLogPanel } from '@/features/logs'
 import { isTerminalRunState } from '@/features/task-execution'
 import { useUserConfig } from '@/features/user-config'
 import { resetCopilotSetProgress as resetCopilotSetProgressRequest } from '../api'
@@ -45,6 +46,7 @@ import {
   toggleCopilotSelection,
 } from '../model/copilotSelection'
 import { deriveCopilotSetView } from '../model/copilotSetView'
+import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import { invalidateCopilotSetPlan } from '../model/queries'
@@ -57,6 +59,7 @@ import type {
   FormationMode,
 } from '../types'
 import CombatCopilotTaskPanel from './CombatCopilotTaskPanel'
+import CombatExecutionProgressPanel from './CombatExecutionProgressPanel'
 import CombatModeTabs from './CombatModeTabs'
 import CombatSpecialTaskPanel from './CombatSpecialTaskPanel'
 import { getCombatTask } from './CombatTaskCatalog'
@@ -119,6 +122,8 @@ export default function CombatWorkspace() {
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
   // 作业集任务选择状态（记录选中的索引）；跨列表与提交共享，归工作区。
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
+  // 「本次执行日志」迷你面板：默认折叠；进度面板与面板本体都能展开。
+  const [runLogsOpen, setRunLogsOpen] = useState(false)
   const [isResettingProgress, setIsResettingProgress] = useState(false)
   const [resetProgressDialogOpen, setResetProgressDialogOpen] = useState(false)
   const reconciledRunRef = useRef<string | null>(null)
@@ -140,6 +145,7 @@ export default function CombatWorkspace() {
     isContinuing,
     isSubmitting,
     setRun,
+    run: trackedRun,
     submitTask,
     submitSet,
     continueSet,
@@ -220,6 +226,13 @@ export default function CombatWorkspace() {
     isWaitingForNext,
     isAutoStopping,
   })
+
+  // 本次执行进度只绑定当前被跟踪的 Run（单作业与作业集都出现）；
+  // 没有 Run 或字段未投影时为 null，面板整块隐藏。
+  const executionProgress = useMemo(
+    () => deriveExecutionProgress(trackedRun, setRun),
+    [trackedRun, setRun],
+  )
 
   // 终态后按服务端计划进度重建“待执行”选择。成功的条目会被计划标记为已完成，
   // 失败的条目保留待重试；同步失败只影响展示，不把 run 结果解释成完成。
@@ -589,6 +602,21 @@ export default function CombatWorkspace() {
       <div className="task-monitor-layout">
         <div className="task-monitor-main">
           <CombatModeTabs activeMode={activeCombatMode} onSelect={setActiveCombatMode} />
+
+          {/* 本次执行进度：绑定当前被跟踪的 Run，与作业集的“历史续跑进度”分开。 */}
+          <CombatExecutionProgressPanel
+            progress={executionProgress}
+            isStopping={isStopping}
+            onStop={() => void handleStopTask()}
+            onViewLogs={() => setRunLogsOpen(true)}
+          />
+
+          {/* 本次执行日志：按当前被跟踪 Run 的 runId 过滤，默认折叠。 */}
+          <CurrentRunLogPanel
+            runId={trackedRun?.runId ?? null}
+            open={runLogsOpen}
+            onToggle={() => setRunLogsOpen(open => !open)}
+          />
 
           {/* 任务列表 */}
           <div className="app-stack-section">

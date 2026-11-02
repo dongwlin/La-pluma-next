@@ -8,7 +8,7 @@
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
 
-export type CopilotSetItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'stopped'
+export type CopilotSetItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
 
 export interface CopilotSetEntryProjection {
   key: string | null
@@ -49,16 +49,20 @@ export interface CopilotSetRunProjection {
   attemptedCount: number
   successCount: number
   failedCount: number
+  skippedCount: number
   stoppedCount: number
   pendingCount: number
   failures: CopilotSetFailureSummary[]
 }
 
+// 同一作业在突袭/普通模式下有多个条目时按最差结果折叠：执行中 > 失败 >
+// 终止 > 成功 > 跳过 > 待执行。跳过表示该模式未执行，不能盖过已成功的结果。
 const ITEM_STATUS_PRIORITY: Record<CopilotSetItemStatus, number> = {
-  running: 4,
-  failed: 3,
-  stopped: 2,
-  success: 1,
+  running: 5,
+  failed: 4,
+  stopped: 3,
+  success: 2,
+  skipped: 1,
   pending: 0,
 }
 
@@ -86,7 +90,11 @@ function normalizeRaid(value: string | null): 'normal' | 'raid' | 'both' | null 
 }
 
 function normalizeItemStatus(value: unknown): CopilotSetItemStatus {
-  return value === 'running' || value === 'success' || value === 'failed' || value === 'stopped'
+  return value === 'running'
+    || value === 'success'
+    || value === 'failed'
+    || value === 'skipped'
+    || value === 'stopped'
     ? value
     : 'pending'
 }
@@ -144,7 +152,10 @@ export function readCopilotSetRunProjection(run: AgentRun | null): CopilotSetRun
     ? readEntries(progress?.taskResults)
     : readEntries(summary?.taskResults)
   const itemStatuses = foldItemStatuses(entries)
-  const attemptedCount = entries.filter(entry => entry.status !== 'pending').length
+  // “已尝试”只统计真正执行过的条目；跳过的条目没有执行，不算在内部。
+  const attemptedCount = entries
+    .filter(entry => entry.status !== 'pending' && entry.status !== 'skipped')
+    .length
   const failures = entries
     .filter(entry => entry.status === 'failed')
     .map(entry => ({
@@ -183,6 +194,8 @@ export function readCopilotSetRunProjection(run: AgentRun | null): CopilotSetRun
     attemptedCount: asCount(summary?.attemptedCount) ?? attemptedCount,
     successCount: asCount(summary?.successCount) ?? asCount(progress?.successCount) ?? traceStatuses(entries, 'success'),
     failedCount: asCount(summary?.failedCount) ?? asCount(progress?.failedCount) ?? traceStatuses(entries, 'failed'),
+    // 服务端尚未投影 skipped 字段时按逐项结果回退统计，缺失就是 0。
+    skippedCount: asCount(summary?.skippedCount) ?? asCount(progress?.skippedCount) ?? traceStatuses(entries, 'skipped'),
     stoppedCount: asCount(summary?.stoppedCount) ?? asCount(progress?.stoppedCount) ?? traceStatuses(entries, 'stopped'),
     pendingCount: asCount(summary?.pendingCount) ?? asCount(progress?.pendingCount) ?? traceStatuses(entries, 'pending'),
     failures,
@@ -204,16 +217,17 @@ export function describeCopilotSetRunTerminal(
   const total = Math.max(projection.totalCount, projection.attemptedCount)
   const progress = `${projection.successCount}/${total} 成功`
   const failed = projection.failedCount ? `，${projection.failedCount} 项失败` : ''
+  const skipped = projection.skippedCount ? `，跳过 ${projection.skippedCount} 项` : ''
 
   if (run.state === 'succeeded') {
     if (projection.failedCount > 0) {
-      return { message: `作业集执行完成：${progress}${failed}`, type: 'warning' }
+      return { message: `作业集执行完成：${progress}${failed}${skipped}`, type: 'warning' }
     }
-    return { message: `作业集执行完成 (${progress})`, type: 'success' }
+    return { message: `作业集执行完成 (${progress})${skipped}`, type: 'success' }
   }
   if (run.state === 'stopped') {
     return {
-      message: projection.attemptedCount ? `作业集已终止：${progress}${failed}` : '作业集已终止',
+      message: projection.attemptedCount ? `作业集已终止：${progress}${failed}${skipped}` : '作业集已终止',
       type: 'warning',
     }
   }
