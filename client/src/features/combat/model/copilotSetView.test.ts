@@ -74,7 +74,7 @@ describe('deriveCopilotSetView', () => {
     expect(view.itemStatuses.size).toBe(0)
     expect(view.historyCompletedIndexes.size).toBe(0)
     expect(view.progress).toEqual({
-      total: 0, completed: 0, pending: 0, failed: 0, skipped: 0, running: 0,
+      total: 0, completed: 0, pending: 0, failed: 0, skipped: 0,
     })
     expect(view.pendingSelectedIndexes).toEqual([])
     expect(view.failedCount).toBe(0)
@@ -147,7 +147,7 @@ describe('deriveCopilotSetView', () => {
     expect(view.attemptedCount).toBe(2)
     expect(view.failedCount).toBe(0)
     expect(view.progress).toEqual({
-      total: 3, completed: 1, pending: 1, failed: 0, skipped: 0, running: 1,
+      total: 3, completed: 1, pending: 2, failed: 0, skipped: 0,
     })
     expect(view.currentIndex).toBe(1)
     expect(view.resumeIndex).toBe(1)
@@ -177,7 +177,7 @@ describe('deriveCopilotSetView', () => {
     expect(view.attemptedCount).toBe(3)
     expect(view.pendingSelectedIndexes).toEqual([1, 2])
     expect(view.progress).toEqual({
-      total: 3, completed: 1, pending: 0, failed: 2, skipped: 0, running: 0,
+      total: 3, completed: 1, pending: 2, failed: 2, skipped: 0,
     })
   })
 
@@ -203,7 +203,7 @@ describe('deriveCopilotSetView', () => {
     expect(view.attemptedCount).toBe(1)
     expect(view.pendingSelectedIndexes).toEqual([1, 2])
     expect(view.progress).toEqual({
-      total: 3, completed: 1, pending: 1, failed: 0, skipped: 1, running: 0,
+      total: 3, completed: 1, pending: 2, failed: 0, skipped: 1,
     })
   })
 
@@ -227,7 +227,7 @@ describe('deriveCopilotSetView', () => {
     })
 
     expect(view.progress).toEqual({
-      total: 3, completed: 0, pending: 0, failed: 0, skipped: 2, running: 1,
+      total: 3, completed: 0, pending: 1, failed: 0, skipped: 2,
     })
     // 未选中的作业仍在计划中，不能被选择状态解释为已通关。
     expect(view.historyCompletedIndexes.size).toBe(0)
@@ -253,7 +253,7 @@ describe('deriveCopilotSetView', () => {
 
     expect([...view.historyCompletedIndexes]).toEqual([0, 2])
     expect(view.progress).toEqual({
-      total: 3, completed: 2, pending: 1, failed: 0, skipped: 0, running: 0,
+      total: 3, completed: 2, pending: 1, failed: 0, skipped: 0,
     })
   })
 
@@ -277,7 +277,7 @@ describe('deriveCopilotSetView', () => {
 
     expect([...view.historyCompletedIndexes]).toEqual([1])
     expect(view.progress).toEqual({
-      total: 3, completed: 1, pending: 2, failed: 0, skipped: 0, running: 0,
+      total: 3, completed: 1, pending: 0, failed: 0, skipped: 0,
     })
   })
 

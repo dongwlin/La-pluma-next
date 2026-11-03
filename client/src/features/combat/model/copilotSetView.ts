@@ -8,8 +8,8 @@
  * - “待执行”= 页面选择减去本次 Run 已成功的条目（选择口径，信息面板使用）；
  * - 历史通关只来自服务端持久化的计划进度：`completedModes` 按当前 raid 规则
  *   解释，与页面是否选中无关；
- * - 续跑进度把预览中的每个作业互斥归入本次成功、历史通关、失败/终止、跳过、
- *   执行中或待执行，六类之和等于作业总数；
+ * - 续跑进度分别统计服务端通关事实（历史已通关与本次成功）、本次失败、本次
+ *   跳过与页面选择的待执行队列，不按总数差额反推完成数；
  * - 只有等待下一关且未处于按队列策略自动停止时才展示下一关；
  * - 续跑目标是等待项或第一个待执行项，信息面板当前项优先跟随 Run 的当前项；
  * - 失败数按作业索引折叠后的状态计算（完成/失败/终止都算已尝试）。
@@ -26,8 +26,9 @@ import type {
 } from './copilotSetRun'
 
 /**
- * 续跑进度：每个作业只归入一类，`completed` = 本次成功 ∪ 历史已通关。
- * 跳过与本次失败互不覆盖，也不从“未选中”推断。
+ * 续跑进度：`completed` 与服务端事实一致（历史已通关 ∪ 本次成功），
+ * `skipped`、`failed` 来自本次 Run，`pending` 是页面选择中尚未成功的队列。
+ * 四类互不推导；跳过不再被算成已通关。
  */
 export interface CopilotSetProgressCounts {
   readonly total: number
@@ -35,7 +36,6 @@ export interface CopilotSetProgressCounts {
   readonly pending: number
   readonly failed: number
   readonly skipped: number
-  readonly running: number
 }
 
 export interface CopilotSetViewInput {
@@ -104,7 +104,12 @@ export function deriveCopilotSetView({
   const historyCompletedIndexes = copilots.length
     ? new Set(copilots.map((_, index) => index).filter(index => !planPendingIndexes.has(index)))
     : EMPTY_HISTORY_INDEXES
-  const progress = deriveProgressCounts(copilots.length, itemStatuses, historyCompletedIndexes)
+  const progress = deriveProgressCounts(
+    copilots.length,
+    itemStatuses,
+    historyCompletedIndexes,
+    pendingSelectedIndexes.length,
+  )
 
   const setWaitingForNext = isWaitingForNext && !isAutoStopping
   const waitingEntry = setWaitingForNext ? activeSetRun?.nextEntry ?? null : null
@@ -144,23 +149,22 @@ export function deriveCopilotSetView({
 }
 
 /**
- * 逐作业互斥分类：本次成功、本次失败/终止、本次跳过、执行中优先，
- * 其次是历史已通关，其余为待执行，保证统计覆盖全部作业。
+ * 逐作业统计通关事实：同一作业既在持久化进度里、又在本场成功时不重复计数。
+ * 跳过、失败来自本场 Run；待执行来自选择队列，不由 total 差额推导。
  */
 function deriveProgressCounts(
   total: number,
   statuses: ReadonlyMap<number, CopilotSetItemStatus>,
   historyCompletedIndexes: ReadonlySet<number>,
+  pendingSelectedCount: number,
 ): CopilotSetProgressCounts {
-  const counts = { total, completed: 0, pending: 0, failed: 0, skipped: 0, running: 0 }
+  const counts = { total, completed: 0, pending: pendingSelectedCount, failed: 0, skipped: 0 }
   for (let index = 0; index < total; index += 1) {
     const status = statuses.get(index)
     if (status === 'success') counts.completed += 1
     else if (status === 'failed' || status === 'stopped') counts.failed += 1
     else if (status === 'skipped') counts.skipped += 1
-    else if (status === 'running') counts.running += 1
     else if (historyCompletedIndexes.has(index)) counts.completed += 1
-    else counts.pending += 1
   }
   return counts
 }

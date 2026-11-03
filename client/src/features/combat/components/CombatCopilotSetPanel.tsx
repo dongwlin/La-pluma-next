@@ -86,7 +86,7 @@ export default function CombatCopilotSetPanel({
       {preview?.type === 'set' && preview.copilots && preview.copilots.length > 0 ? (
         <>
           {(() => {
-            const { total, completed, pending, failed, skipped, running } = view.progress
+            const { total, completed, pending, failed, skipped } = view.progress
             const nextIndex = view.resumeIndex
             const nextCopilot = nextIndex >= 0 ? preview.copilots[nextIndex] ?? null : null
             return (
@@ -107,9 +107,6 @@ export default function CombatCopilotSetPanel({
                     <span className={`rounded-md border px-2 py-1 text-[11px] ${failed > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-(--app-border) text-secondary'}`}>失败 {failed}</span>
                     {skipped > 0 && (
                       <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-tertiary">跳过 {skipped}</span>
-                    )}
-                    {running > 0 && (
-                      <span className="rounded-md bg-(--app-accent-soft) px-2 py-1 text-[11px] brand-text">执行中 {running}</span>
                     )}
                   </div>
                 </div>

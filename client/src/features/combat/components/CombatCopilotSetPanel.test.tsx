@@ -258,7 +258,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.textContent).toContain('待 1')
     expect(container.textContent).toContain('已通关 0')
     expect(container.textContent).toContain('跳过 2')
-    expect(container.textContent).toContain('执行中 1')
   })
 
   it('keeps an unselected unfinished item pending instead of historical', async () => {
@@ -272,7 +271,7 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     const row = container.querySelector('[data-copilot-item-index="0"]')
     expect(row?.textContent).toContain('待执行')
     expect(row?.textContent).not.toContain('历史已通关')
-    expect(container.textContent).toContain('待 4')
+    expect(container.textContent).toContain('待 0')
     expect(container.textContent).toContain('已通关 0')
   })
 
@@ -287,6 +286,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.querySelector('[data-copilot-item-index="0"]')?.textContent).toContain('历史已通关')
     expect(container.querySelector('[data-copilot-item-index="1"]')?.textContent).toContain('待执行')
     expect(container.textContent).toContain('已通关 1')
-    expect(container.textContent).toContain('待 3')
+    expect(container.textContent).toContain('待 0')
   })
 })
