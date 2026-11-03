@@ -1044,9 +1044,9 @@ describe('CombatTasks execution', () => {
   it('supports roving focus across combat modes', async () => {
     await renderComponent()
 
-    const modeShell = container.querySelector('.combat-mode-shell')
-    expect(modeShell?.querySelector('[role="toolbar"]')).not.toBeNull()
-    const modeButtons = modeShell?.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button') ?? []
+    const modeToolbar = container.querySelector<HTMLElement>('[role="toolbar"][aria-label="作业类型"]')
+    expect(modeToolbar, 'combat mode toolbar').not.toBeNull()
+    const modeButtons = Array.from(modeToolbar!.querySelectorAll<HTMLButtonElement>('button'))
     expect(modeButtons).toHaveLength(3)
     expect(Array.from(modeButtons).filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
     expect(Array.from(modeButtons).map(button => button.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
@@ -1614,10 +1614,11 @@ describe('CombatTasks execution', () => {
     await click(buttonByText('预览')!)
     await flush()
 
-    const statusLabels = Array.from(container.querySelectorAll('span'))
-      .map(span => span.textContent?.trim())
-      .filter(text => text === '已完成' || text === '待重试' || text === '待执行')
-    expect(statusLabels).toEqual(['已完成', '待重试', '待执行'])
+    const setRowText = (index: number) => container
+      .querySelector<HTMLElement>(`[data-copilot-item-index="${index}"]`)?.textContent ?? ''
+    expect(setRowText(0)).toContain('已完成')
+    expect(setRowText(1)).toContain('待重试')
+    expect(setRowText(2)).toContain('待执行')
     expect(container.textContent).toContain('待 2')
     // 计划状态的汇总只在续跑进度展示，本次执行面板不重复计数。
     expect(container.textContent).toContain('已通关 1')
@@ -1630,7 +1631,7 @@ describe('CombatTasks execution', () => {
   it('executes the selected special task with its own command', async () => {
     await renderComponent()
     const modeButton = (label: string) => Array.from(
-      container.querySelectorAll<HTMLButtonElement>('.combat-mode-button'),
+      container.querySelectorAll<HTMLButtonElement>('[role="toolbar"][aria-label="作业类型"] button'),
     ).find(button => button.textContent?.includes(label))!
 
     await click(modeButton('保全派驻'))

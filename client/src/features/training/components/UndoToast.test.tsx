@@ -10,7 +10,7 @@ import UndoToast from './UndoToast'
 let container: HTMLDivElement
 let root: Root
 
-const toast = () => document.querySelector<HTMLElement>('.training-undo-toast')
+const toast = () => document.querySelector<HTMLElement>('[role="status"]')
 
 const renderToast = async (props: Partial<ComponentProps<typeof UndoToast>> = {}) => {
   await act(async () => root.render(

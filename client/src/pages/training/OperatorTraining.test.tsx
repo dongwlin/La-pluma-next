@@ -239,12 +239,22 @@ const queueButton = (label: string) => {
 const queueOrder = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]'))
   .map(button => button.getAttribute('aria-label')?.replace(/^移除/, ''))
 
-const statusCount = (label: string) => {
-  const segment = Array.from(document.querySelectorAll<HTMLButtonElement>('.training-status-segment'))
+const statusSegment = (label: string, scope: ParentNode = document) => {
+  const segment = Array.from(scope.querySelectorAll<HTMLButtonElement>('[role="toolbar"][aria-label="干员范围"] button'))
     .find(button => button.textContent?.includes(label))
   expect(segment, `status segment "${label}"`).toBeDefined()
-  return segment!.querySelector('.training-status-count')?.textContent
+  return segment!
 }
+
+const statusCount = (label: string) =>
+  statusSegment(label).querySelector<HTMLElement>('span[aria-label$=" 名"]')?.textContent
+
+const planPanelText = () => container
+  .querySelector<HTMLElement>('[aria-labelledby="training-plan-title"]')?.textContent ?? ''
+
+const undoToast = () => document
+  .querySelector('[aria-label="关闭移除提示"]')
+  ?.closest<HTMLElement>('[role="status"]') ?? null
 
 const selectRarity = async (dialog: HTMLElement, value: string) => {
   const select = dialog.querySelector<HTMLSelectElement>('select[aria-label="稀有度"]')
@@ -314,7 +324,7 @@ describe('OperatorTraining queue workspace', () => {
 
     await renderComponent()
 
-    expect(container.querySelector('.ios-workspace-page[data-page="training"]')).not.toBeNull()
+    expect(container.querySelector('[aria-labelledby="training-queue-title"]')).not.toBeNull()
     expect(queueOrder()).toEqual(['阿米娅'])
     expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(document.querySelector('input[aria-label="搜索干员名称"]')).toBeNull()
@@ -786,7 +796,7 @@ describe('OperatorTraining queue workspace', () => {
     await renderComponent()
     await click(queueButton('移除阿米娅'))
 
-    const toast = document.querySelector<HTMLElement>('.training-undo-toast')
+    const toast = undoToast()
     expect(toast).not.toBeNull()
     expect(container.contains(toast)).toBe(false)
     expect(buttonWithText('撤销', toast!)).toBeDefined()
@@ -794,7 +804,7 @@ describe('OperatorTraining queue workspace', () => {
     expect(close).not.toBeNull()
     await click(close!)
 
-    expect(document.querySelector('.training-undo-toast')).toBeNull()
+    expect(undoToast()).toBeNull()
     expect(queueOrder()).toEqual([])
     expect(mocks.addToTrainingQueue).not.toHaveBeenCalled()
   })
@@ -806,16 +816,16 @@ describe('OperatorTraining queue workspace', () => {
     vi.useFakeTimers()
     await click(queueButton('移除阿米娅'))
     await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
-    expect(document.querySelector('.training-undo-toast')).not.toBeNull()
+    expect(undoToast()).not.toBeNull()
 
     const undoButton = buttonWithText('撤销')
     await act(async () => undoButton.focus())
     await act(async () => { await vi.advanceTimersByTimeAsync(8000) })
-    expect(document.querySelector('.training-undo-toast')).not.toBeNull()
+    expect(undoToast()).not.toBeNull()
 
     await act(async () => undoButton.blur())
     await act(async () => { await vi.advanceTimersByTimeAsync(8000) })
-    expect(document.querySelector('.training-undo-toast')).toBeNull()
+    expect(undoToast()).toBeNull()
     expect(queueOrder()).toEqual([])
   })
 
@@ -971,7 +981,8 @@ describe('OperatorTraining queue workspace', () => {
     expect(mocks.generateTrainingPlan).toHaveBeenCalledOnce()
     expect(queueOrder()).toEqual(['能天使'])
     expect(container.querySelector('#training-materials-title')?.textContent).toBe('能天使的材料')
-    expect(container.querySelector('.training-plan-overview h3')?.textContent).toBe('能天使')
+    expect(planPanelText()).toContain('能天使')
+    expect(planPanelText()).toContain('今日可刷')
     expect(buttonWithText('应用到自动任务', container).disabled).toBe(false)
   })
 
@@ -992,8 +1003,8 @@ describe('OperatorTraining queue workspace', () => {
 
     expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(3)
     expect(queueOrder()).toEqual(['能天使'])
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('养成队列已变化，请重新预览计划')
-    expect(container.querySelector('.training-plan-overview')).toBeNull()
+    expect(container.textContent).toContain('养成队列已变化，请重新预览计划')
+    expect(planPanelText()).not.toContain('今日可刷')
     expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
     mocks.generateTrainingPlan.mockResolvedValueOnce({ success: true, data: newerPlan })
     await click(buttonWithText('预览刷图计划', container))
@@ -1028,7 +1039,7 @@ describe('OperatorTraining queue workspace', () => {
     expect(mocks.getTrainingQueue).toHaveBeenCalledTimes(3)
     expect(queueOrder()).toEqual(['能天使'])
     expect(container.contains(oldApplyButton)).toBe(false)
-    expect(container.querySelector('.training-plan-overview')).toBeNull()
+    expect(planPanelText()).not.toContain('今日可刷')
     await click(oldApplyButton)
     expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
     expect(container.textContent).toContain('已同步到自动任务')
@@ -1595,9 +1606,8 @@ describe('OperatorTraining queue workspace', () => {
 
     await renderComponent()
     const { dialog } = await openPicker()
-    const allButton = Array.from(dialog.querySelectorAll<HTMLButtonElement>('.training-status-segment'))
-      .find(button => button.textContent?.includes('全部'))
-    await click(allButton!)
+    const allButton = statusSegment('全部', dialog)
+    await click(allButton)
 
     expect(dialog.textContent).toContain('能天使')
     expect(statusCount('可养成')).toBe('1')
@@ -1779,7 +1789,7 @@ describe('OperatorTraining queue workspace', () => {
     await act(async () => generateRequest.resolve({ success: true, data: plan() }))
     await flush()
 
-    expect(container.querySelector('.training-plan-overview')).toBeNull()
+    expect(planPanelText()).not.toContain('今日可刷')
     expect(container.textContent).toContain('计划前提已变化，请重新预览计划')
     expect(mocks.applyTrainingPlan).not.toHaveBeenCalled()
   })
@@ -1792,14 +1802,15 @@ describe('OperatorTraining queue workspace', () => {
     expect(document.body.textContent).toContain('已移除 能天使')
 
     await click(buttonWithText('预览刷图计划', container))
-    expect(container.querySelector('.training-plan-overview')).not.toBeNull()
+    expect(planPanelText()).toContain('今日可刷')
 
     const undoRequest = deferred<{ success: boolean }>()
     mocks.addToTrainingQueue.mockReturnValueOnce(undoRequest.promise)
     await click(buttonWithText('撤销', document.body))
 
     // 撤销与增删/排序一样在命令开始时作废旧预览，不等待写后 revision。
-    expect(container.querySelector('.training-plan-overview')).toBeNull()
+    expect(planPanelText()).toContain('队列变更后需重新预览')
+    expect(planPanelText()).not.toContain('今日可刷')
     await act(async () => undoRequest.resolve({ success: false }))
     await flush()
   })

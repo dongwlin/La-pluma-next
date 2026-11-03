@@ -923,9 +923,9 @@ describe('RoguelikeTasks layout and config recovery', () => {
   it('keeps mode selection keyboard-navigable and toggles labelled', async () => {
     await renderPage()
 
-    const modeShell = container.querySelector('.roguelike-mode-shell')
-    expect(modeShell?.querySelector('[role="toolbar"]')).not.toBeNull()
-    const modeButtons = Array.from(modeShell?.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button') ?? [])
+    const modeToolbar = container.querySelector<HTMLElement>('[role="toolbar"][aria-label="肉鸽模式"]')
+    expect(modeToolbar, 'roguelike mode toolbar').not.toBeNull()
+    const modeButtons = Array.from(modeToolbar!.querySelectorAll<HTMLButtonElement>('button'))
     expect(modeButtons.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
 
     const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
