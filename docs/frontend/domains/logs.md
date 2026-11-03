@@ -15,7 +15,7 @@
 | 实时会话 | `model/realtimeLogStream.ts`、`hooks/useRealtimeLogs.ts` | 缓冲、计时器、取消、暂停、本地清屏和覆盖提示 |
 | 历史会话 | `model/historyLogSession.ts`、`hooks/useHistoryLogs.ts` | 文件列表、选择、读取与迟到响应裁决 |
 | 会话组合与清理 | `hooks/useLogsSession.ts`、`model/logCommands.ts` | 切换来源、历史清理请求与选择协调 |
-| 事实与投影 | `types/index.ts`、`model/logModel.ts`、`model/logCallbackSummary.ts` | 保留源记录，派生语义注解、事件选择与重复分组 |
+| 事实与投影 | `types/index.ts`、`model/logModel.ts`、`model/logCallbackSummary.ts`、`model/logCliSummary.ts` | 保留源记录，派生语义注解、事件选择与重复分组 |
 | 导出格式 | `model/logExport.ts` | 从选中的源事实生成文本 |
 
 ### 语义文案、选择与详情
@@ -25,6 +25,8 @@
 `LogEntry` 保存源事实：采集时间、原级别、源文本、来源、实时信封与可用的 `id`、`sequence`、`runId`、`operationId`。实时解析不会用消息内的 MaaCore 时间或级别覆盖采集信封；历史解析保留完整日期、毫秒、线程前缀与空行，行索引只标识本次文件快照内的位置。
 
 `LogAnnotation` 引用源记录，提供摘要、有效严重度、关键性和解析状态。语义转换不能修改事实，不能降低已有错误或警告；未知回调、未知警告/错误、截断 JSON 与缺字段采用原文兜底。明确识别的常规诊断事件才可默认隐藏。
+
+maa-cli 在命令结束时打印的 `Summary` 报告块由服务端合并为一条记录；列表把整块转成一条多行摘要：任务行包含开始/结束时间、耗时与结束原因，关键明细各占一行。分隔线和逐行明细保留在该条“原文与详情”中。旧服务端的逐行报告与历史记录使用同一套解释规则。`Error: Interrupted by user!` 呈现为“任务已按请求停止”，主动停止的命令呈现为“MAA 命令已停止”，不会把停止误报为失败。
 
 每条记录的“原文与详情”输出完整源文本——实时记录为采集信封的 `message`，历史记录为对应源行——同时给出原始时间戳、源级别、Run 与 operation；实时记录附带完整信封，无法完整解析时给出降级提示。
 

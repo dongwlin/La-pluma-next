@@ -419,7 +419,7 @@ describe('MAA CLI process ports', () => {
 
     const messages = getRealtimeLogs(5000).map(entry => entry.message);
     assert.ok(messages.includes('TAIL-MARKER'));
-    assert.ok(messages.some(message => message.includes('stdout:') && message.includes('聚合输出已截断')));
+    assert.ok(!messages.some(message => message.startsWith('stdout:')));
     assert.ok(messages.every(message => message.length <= 9 * 1024));
   });
 

@@ -595,9 +595,6 @@ export const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 /** 单条实时输出上限；超长行只记录截断标记，避免丢失凭据前缀后泄露尾部。 */
 export const MAX_REALTIME_LOG_LINE_BYTES = 64 * 1024;
 
-/** 结束时写入实时日志的单条输出上限，避免整段缓冲塞进同一个日志条目。 */
-const MAX_COMPLETION_OUTPUT_CHARS = 8 * 1024;
-
 /**
  * stdout/stderr 的尾部缓冲：只保留最后 MAX_CAPTURED_OUTPUT_BYTES 字节。
  * 后台执行可能持续很久，直接拼接字符串会让内存随输出线性增长。
@@ -605,14 +602,12 @@ const MAX_COMPLETION_OUTPUT_CHARS = 8 * 1024;
 class CapturedOutputBuffer {
   private chunks: Buffer[] = [];
   private size = 0;
-  private truncated = false;
 
   append(chunk: Buffer): void {
     if (chunk.length === 0) return;
     this.chunks.push(chunk);
     this.size += chunk.length;
     while (this.size > MAX_CAPTURED_OUTPUT_BYTES && this.chunks.length > 0) {
-      this.truncated = true;
       const overflow = this.size - MAX_CAPTURED_OUTPUT_BYTES;
       const first = this.chunks[0];
       if (first.length <= overflow) {
@@ -631,10 +626,6 @@ class CapturedOutputBuffer {
     // 淘汰旧字节时可能从字符中间开始；丢弃不完整的开头而不制造替换字符。
     while (offset < tail.length && (tail[offset]! & 0xc0) === 0x80) offset += 1;
     return tail.toString('utf-8', offset);
-  }
-
-  isTruncated(): boolean {
-    return this.truncated;
   }
 }
 
@@ -705,6 +696,10 @@ class OutputLineDecoder {
   }
 }
 
+/** maa-cli 在任务结束时打印的报告块标题；紧跟分隔线才按报告合并。 */
+const SUMMARY_BLOCK_TITLE = 'Summary';
+const SUMMARY_BLOCK_SEPARATOR = /^-{10,}$/;
+
 /** 两种 spawn 执行路径共用采集器；close/error 只冲刷一次未换行的尾部。 */
 function captureProcessOutput(childProcess: MaaChildProcess): {
   stdout: CapturedOutputBuffer;
@@ -713,7 +708,39 @@ function captureProcessOutput(childProcess: MaaChildProcess): {
 } {
   const stdout = new CapturedOutputBuffer();
   const stderr = new CapturedOutputBuffer();
-  const stdoutLines = new OutputLineDecoder(line => appendRealtimeLog('INFO', line));
+  let reportTitle: string[] | null = null;
+  let reportLines: string[] | null = null;
+
+  // 任务报告是一次性的结果而不是流事件：整块合并成一条实时日志，逐行明细仍保留在原文中。
+  const emitReport = (): void => {
+    if (!reportLines) return;
+    const text = reportLines.join('\n');
+    appendRealtimeLog('INFO', text.length > MAX_REALTIME_LOG_LINE_BYTES
+      ? `${SUMMARY_BLOCK_TITLE}: …（任务报告过长，已省略）`
+      : text);
+    reportLines = null;
+  };
+
+  const stdoutLines = new OutputLineDecoder(line => {
+    if (reportLines) {
+      reportLines.push(line);
+      return;
+    }
+    if (reportTitle) {
+      if (SUMMARY_BLOCK_SEPARATOR.test(line)) {
+        reportLines = [...reportTitle, line];
+        reportTitle = null;
+        return;
+      }
+      for (const pending of reportTitle) appendRealtimeLog('INFO', pending);
+      reportTitle = null;
+    }
+    if (line === SUMMARY_BLOCK_TITLE) {
+      reportTitle = [line];
+      return;
+    }
+    appendRealtimeLog('INFO', line);
+  });
   const stderrLines = new OutputLineDecoder((line, level) => appendRealtimeLog(level, line));
   let finished = false;
   childProcess.stdout.on('data', data => {
@@ -733,22 +760,14 @@ function captureProcessOutput(childProcess: MaaChildProcess): {
       if (finished) return;
       finished = true;
       stdoutLines.end();
+      if (reportTitle) {
+        for (const pending of reportTitle) appendRealtimeLog('INFO', pending);
+        reportTitle = null;
+      }
+      emitReport();
       stderrLines.end();
     }
   };
-}
-
-/** 结束时只记录有上限的尾部输出，不把整个捕获缓冲写成一条日志。 */
-function logCapturedOutput(level: MaaLogLevel, label: string, capture: CapturedOutputBuffer): void {
-  const text = capture.toString().trim();
-  // 切掉开头会丢失 token=/Authorization 等脱敏依据；短聚合完整脱敏，长聚合
-  // 只留标记。完整的普通输出行已由实时采集器逐行记录。
-  if (capture.isTruncated() || text.length > MAX_COMPLETION_OUTPUT_CHARS) {
-    addLog(level, `${label}: …（聚合输出已截断，内容已省略）`);
-    return;
-  }
-  if (!text) return;
-  addLog(level, `${label}: ${text}`);
 }
 
 interface CommandOutcomeInput {
@@ -974,10 +993,6 @@ function execMaaCommandWithEnv(
           flush();
           const stdoutText = stdout.toString();
           const stderrText = stderr.toString();
-          addLog('INFO', `命令执行完成: ${fullCommand}, 退出码: ${code}`);
-          logCapturedOutput('INFO', 'stdout', stdout);
-          logCapturedOutput('WARN', 'stderr', stderr);
-
           const outcome = createCommandOutcome({
             code,
             signal,
@@ -986,6 +1001,9 @@ function execMaaCommandWithEnv(
             command: fullCommand,
             childProcess
           });
+          addLog('INFO', outcome.stopped
+            ? `命令执行已停止: ${fullCommand}`
+            : `命令执行完成: ${fullCommand}, 退出码: ${code}`);
           if (!outcome.stopped && (code !== 0 || signal)) {
             addLog('ERROR', `命令执行失败: ${fullCommand}`);
           }
@@ -1045,15 +1063,15 @@ function execMaaCommandWithEnv(
             childProcess
           });
           if (!settle(outcome)) return;
-          addLog('INFO', `命令执行完成: ${fullCommand}, 退出码: ${code}`);
-          logCapturedOutput('INFO', 'stdout', stdout);
+          addLog('INFO', outcome.stopped
+            ? `命令执行已停止: ${fullCommand}`
+            : `命令执行完成: ${fullCommand}, 退出码: ${code}`);
           if (stderrText) {
             addExecutionDiagnostics(stderrText);
-            logCapturedOutput('WARN', 'stderr', stderr);
           }
 
           if (!outcome.ok) {
-            addLog('ERROR', `命令执行失败: ${fullCommand}`);
+            if (!outcome.stopped) addLog('ERROR', `命令执行失败: ${fullCommand}`);
             const diagnostic = getMaaExecutionDiagnostics(stderrText)[0];
             const commandError: MaaCommandError = outcome.error || new Error(diagnostic?.message || '任务已终止');
             if (diagnostic && !outcome.stopped) commandError.message = diagnostic.message;

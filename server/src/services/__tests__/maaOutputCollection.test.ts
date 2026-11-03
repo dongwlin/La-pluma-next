@@ -6,7 +6,8 @@ import {
   execMaaCommandUnlocked,
   getRealtimeLogs,
   MAX_CAPTURED_OUTPUT_BYTES,
-  MAX_REALTIME_LOG_LINE_BYTES
+  MAX_REALTIME_LOG_LINE_BYTES,
+  stopCurrentTask
 } from '../maaProcessService.ts';
 import type { MaaChildProcess, MaaCommandOutcome } from '../maaProcessService.ts';
 import { loggerManager } from '../../utils/logger.ts';
@@ -60,6 +61,63 @@ for (const waitForCompletion of [false, true]) {
       const outcome = await settled;
       assert.equal(outcome.result.stdout, callback);
       assert.equal((await result).error, null);
+    });
+
+    it('coalesces the maa-cli task report into one realtime entry', async () => {
+      const { child, settled, result } = await startOutputCollection(waitForCompletion);
+      child.stdout.emit('data', Buffer.from('before\nSummary\n----------------------------------------\n[Roguelike] 13:56:00 - Unfinished\nExplorations:\n'));
+      child.stdout.emit('data', Buffer.from('1. Unknown;\nSummary:\nUnknown 1\nTotal gained 0 exp\n'));
+      child.emit('close', 0, null);
+      await settled;
+      const messages = getRealtimeLogs(500).map(entry => entry.message);
+      const report = messages.find(message => message.startsWith('Summary\n'));
+      assert.ok(report);
+      assert.equal(report.split('\n').length, 8);
+      assert.ok(!messages.includes('Explorations:'));
+      assert.ok(messages.includes('before'));
+      assert.equal(messages.filter(message => message.includes('[Roguelike]')).length, 1);
+      assert.equal((await result).error, null);
+    });
+
+    it('streams a lone Summary line when no report separator follows', async () => {
+      const { child, settled, result } = await startOutputCollection(waitForCompletion);
+      child.stdout.emit('data', Buffer.from('Summary\nnot a report\n'));
+      child.emit('close', 0, null);
+      await settled;
+      const messages = getRealtimeLogs(500).map(entry => entry.message);
+      assert.ok(messages.includes('Summary'));
+      assert.ok(messages.includes('not a report'));
+      assert.ok(!messages.some(message => message.includes('\n')));
+      assert.equal((await result).error, null);
+    });
+
+    it('keeps streamed output as single lines without an aggregate duplicate', async () => {
+      const { child, settled, result } = await startOutputCollection(waitForCompletion);
+      child.stdout.emit('data', Buffer.from('第一行\n第二行\n'));
+      child.emit('close', 0, null);
+      await settled;
+      const messages = getRealtimeLogs(500).map(entry => entry.message);
+      assert.equal(messages.filter(message => message === '第一行').length, 1);
+      assert.equal(messages.filter(message => message === '第二行').length, 1);
+      assert.ok(!messages.some(message => message.startsWith('stdout:')));
+      assert.equal((await result).error, null);
+    });
+
+    it('reports an intentional stop instead of a failed completion', async () => {
+      const { child, settled } = await startOutputCollection(waitForCompletion);
+      const stopResult = stopCurrentTask({}, {
+        platform: 'win32',
+        killChild: () => {},
+        setTimeout: () => ({ unref() {} })
+      });
+      assert.equal(stopResult.success, true);
+      child.emit('close', 1, null);
+      const outcome = await settled;
+      assert.equal(outcome.stopped, true);
+      const messages = getRealtimeLogs(500).map(entry => entry.message);
+      assert.ok(messages.some(message => message.startsWith('命令执行已停止:')));
+      assert.ok(!messages.some(message => message.startsWith('命令执行完成:')));
+      assert.ok(!messages.some(message => message.startsWith('命令执行失败:')));
     });
 
     it('flushes the final line once before close settlement and preserves source spacing', async () => {
@@ -122,7 +180,7 @@ for (const waitForCompletion of [false, true]) {
       assert.equal((await result).error, null);
     });
 
-    it('never exposes credentials when line or aggregate capture loses the credential prefix', async () => {
+    it('never exposes credentials when a captured line loses its prefix', async () => {
       const { child, settled, result } = await startOutputCollection(waitForCompletion);
       const longSecret = 'long-secret-value';
       // This line exceeds both budgets; neither retained tail may become a log payload.
@@ -131,12 +189,11 @@ for (const waitForCompletion of [false, true]) {
       await settled;
       const messages = getRealtimeLogs(500).map(entry => entry.message);
       assert.ok(messages.some(message => message.includes('单行输出已截断')));
-      assert.ok(messages.some(message => message.includes('聚合输出已截断')));
       assert.ok(!messages.some(message => message.includes(longSecret)));
       assert.equal((await result).error, null);
     });
 
-    it('omits an oversized aggregate even when its complete source line fits the line budget', async () => {
+    it('logs a long source line once instead of repeating the aggregate', async () => {
       const { child, settled, result } = await startOutputCollection(waitForCompletion);
       const secret = 'aggregate-secret-value';
       const source = `token=${secret.repeat(800)}\n`;
@@ -146,8 +203,7 @@ for (const waitForCompletion of [false, true]) {
       await settled;
       const messages = getRealtimeLogs(500).map(entry => entry.message);
       assert.ok(messages.some(message => message.includes('[REDACTED]')));
-      assert.ok(messages.some(message => message.includes('聚合输出已截断')));
-      assert.ok(!messages.some(message => message.includes('单行输出已截断')));
+      assert.ok(!messages.some(message => message.startsWith('stdout:')));
       assert.ok(!messages.some(message => message.includes(secret)));
       assert.equal((await result).error, null);
     });

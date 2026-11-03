@@ -137,6 +137,61 @@ describe('semantic annotations', () => {
     expect(records.map(log => annotateLog(log).keyEvent)).toEqual([false, false, false, false, false])
   })
 
+  it('reads the maa-cli task summary as readable events and drops its separators', () => {
+    const records = ['Summary', '----------------------------------------',
+      '[Roguelike] 13:56:00 - Unfinished', 'Explorations:', '1. Unknown;', 'Summary:',
+      'Unknown 1', 'Total invest 0 originium ingotes', 'Total gained 0 exp',
+      'Error: Interrupted by user!'].map(line => annotateLog(entry(line)))
+    expect(records[0]!.keyEvent).toBe(false)
+    expect(records[1]!.keyEvent).toBe(false)
+    expect(records[2]!.summary).toBe('任务总结：集成战略 · 13:56:00 开始 · 未完成')
+    expect(records[3]!.summary).toBe('探索记录')
+    expect(records[4]!.summary).toBe('第 1 次探索：未知')
+    expect(records[5]!.keyEvent).toBe(false)
+    expect(records[6]!.summary).toBe('结局：未知 1')
+    expect(records[7]!.summary).toBe('累计投资 0 源石锭')
+    expect(records[8]!.summary).toBe('累计获得 0 经验')
+    expect(records[9]).toMatchObject({ summary: '任务已按请求停止', level: 'WARN', keyEvent: true })
+  })
+
+  it('summarizes the coalesced task report as one row', () => {
+    const block = ['Summary', '----------------------------------------',
+      '[Roguelike] 13:56:00 - Unfinished', 'Explorations:', '1. Unknown;', 'Summary:',
+      'Unknown 1', 'Total invest 0 originium ingotes', 'Total gained 0 exp'].join('\n')
+    expect(annotateLog(entry(block))).toMatchObject({
+      summary: [
+        '任务总结：集成战略 · 13:56:00 开始 · 未完成',
+        '结局：未知 1',
+        '投资 0 源石锭',
+        '经验 0',
+      ].join('\n'),
+      keyEvent: true,
+      parseStatus: 'parsed',
+    })
+  })
+
+  it('keeps a coalesced fight report to one line', () => {
+    const block = ['Summary', '----------------------------------------',
+      '[Fight] 10:00:00 - 10:05:30 (5m 30s) Completed',
+      'Fight 1-7 3 times, drops:', '1. 源岩 × 2, 龙门币 × 360',
+      'total drops: 源岩 × 2, 龙门币 × 360'].join('\n')
+    expect(annotateLog(entry(block)).summary)
+      .toBe([
+        '任务总结：作战 · 10:00:00 开始 · 10:05:30 结束 · 耗时 5m 30s · 完成',
+        '作战 1-7 ×3',
+        '合计掉落：源岩 × 2、龙门币 × 360',
+      ].join('\n'))
+  })
+
+  it('keeps summary timing and stop or failure semantics explicit', () => {
+    expect(annotateLog(entry('[Fight] 10:00:00 - 10:05:30 (5m 30s) Completed')).summary)
+      .toBe('任务总结：作战 · 10:00:00 开始 · 10:05:30 结束 · 耗时 5m 30s · 完成')
+    expect(annotateLog(entry('Error: Some error occurred during running task!')))
+      .toMatchObject({ summary: '任务执行期间发生错误', level: 'ERROR' })
+    expect(annotateLog(entry('命令执行已停止: maa fight')))
+      .toMatchObject({ summary: 'MAA 命令已停止', level: 'WARN' })
+  })
+
   it('retains unknown, timeless, warning and error records with a source fallback', () => {
     const records = [callback('FutureEvent', {}), callback('SubTaskExtraInfo', { what: 'FutureDetail' }),
       entry('timeless message', 'INFO', ''), entry('{}', 'WARN'), entry('load resource', 'ERROR'),

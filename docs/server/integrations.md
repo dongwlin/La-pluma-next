@@ -20,7 +20,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - 实时日志条目经脱敏后写入，并携带执行上下文的 `runId`/`operationId`——归属来自执行上下文而不是发起请求，请求返回后仍在运行的子进程输出继续携带同一标识（`server/src/services/maaProcessService.ts:422-436`）。
 - 实时条目同时携带进程实例身份和单调递增序号组成的 `id`、数值 `sequence`；同一记录在轮询快照中保持身份，清空和缓冲淘汰不重置序号，服务重启生成新实例身份。`logs/recent` 保留数组响应与最近窗口语义，不提供游标、按 Run 回读或持久归档。
 - 实时缓冲的内存上限由 `LA_PLUMA_MAX_REALTIME_LOGS` 控制，缺省 5000，非法环境变量回落默认值（`server/src/services/maaProcessService.ts:41-52`）；对外单次返回行数上限为 `MAX_REALTIME_LOG_LINES` 500（`server/src/services/maaProcessService.ts:36,397-407`）。
-- 后台执行可能持续很久：命令结果的捕获输出只保留最后 256 KB，裁剪从有效 UTF-8 字符边界开始。任务结束时，未截断且不超过 8 KB 字符的聚合输出可写入日志；发生捕获淘汰或超过聚合日志上限时只记录省略标记，不将失去凭据前缀的尾部再次写入日志。
+- 后台执行可能持续很久：命令结果的捕获输出只保留最后 256 KB，裁剪从有效 UTF-8 字符边界开始。stdout/stderr 逐行写入实时日志；maa-cli 在任务结束时打印的 `Summary` 报告块（标题、分隔线与任务明细）在采集器中合并成一条实时日志，任务结束时不再重复写入整段聚合输出。被捕获淘汰的旧字节不会重新写入日志，避免失去凭据前缀。
 - stderr 会匹配稳定的诊断码并写入日志：未知掉落、企鹅物流/一图流汇报失败、ADB 连接失败、账号切换失败、游戏启动失败（`server/src/services/maaProcessService.ts:466-517`）。
 - `stopCurrentTask` 先按进程组发 SIGTERM（非 Windows；ESRCH 回落到子进程信号），缺省 3000ms 未退出升级 SIGKILL；重复停止只返回等待中，不重复发送信号（`server/src/services/maaProcessService.ts:1082-1118`）。
 - 退出语义：只有 `stopRequested` 置位的退出算 `stopped`；外部信号（OOM、SIGSEGV、被其他进程 kill）属于失败，保留退出码与信号信息（`server/src/services/maaProcessService.ts:632-669`）。

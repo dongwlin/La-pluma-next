@@ -5,6 +5,7 @@
 
 import type { LogEntry } from '../types'
 import { asRecord, getTaskName, summarizeCallback } from './logCallbackSummary'
+import { summarizeMaaCliMessage, summarizeMaaCliSummaryBlock } from './logCliSummary'
 
 export type LogFilter = 'all' | LogEntry['level']
 export type LogEventFilter = 'key' | 'all'
@@ -126,6 +127,13 @@ function summarizeKnownMessage(log: LogEntry): LogEntry | null {
   const message = log.message.trim()
   if (!message) return null
 
+  // 任务总结是 maa-cli 的报告而不是事件：分隔线和块标题没有信息，其余行转成可读文案。
+  if (/^-{10,}$/.test(message) || message === 'Summary' || message === 'Summary:') return null
+  const report = summarizeMaaCliSummaryBlock(message)
+  if (report) return { ...log, ...report, level: report.level ?? log.level }
+  const cliSummary = summarizeMaaCliMessage(message)
+  if (cliSummary) return { ...log, ...cliSummary, level: cliSummary.level ?? log.level }
+
   if (/^执行命令:\s+maa\s+(?:dir log|activity\b)/.test(message)) return null
 
   const stateUpdate = message.match(/^任务状态更新:\s+(\{.*\})$/)
@@ -138,28 +146,6 @@ function summarizeKnownMessage(log: LogEntry): LogEntry | null {
         : { ...log, message: '任务执行结束' }
     } catch {
       return null
-    }
-  }
-
-  const commandStart = message.match(/^执行命令:\s+maa\s+(\w+)(?:\s+.*?)?,\s*等待完成:\s*(?:true|false)$/)
-  if (commandStart) {
-    const commandNames: Record<string, string> = {
-      run: '自动化任务',
-      startup: '启动游戏',
-      fight: '理智作战',
-      roguelike: '集成战略',
-      copilot: '作业执行',
-    }
-    return { ...log, message: `开始执行：${commandNames[commandStart[1] || ''] || commandStart[1]}` }
-  }
-
-  const commandEnd = message.match(/^命令执行完成:\s+maa\s+(.+?),\s*退出码:\s*(-?\d+)$/)
-  if (commandEnd) {
-    const exitCode = Number(commandEnd[2])
-    return {
-      ...log,
-      level: exitCode === 0 ? log.level : 'ERROR',
-      message: exitCode === 0 ? 'MAA 命令执行完成' : `MAA 命令执行失败，退出码 ${exitCode}`,
     }
   }
 
@@ -320,7 +306,7 @@ export function buildLogView(logs: readonly LogEntry[], options: LogViewOptions)
     return (options.level === 'all' || annotation.level === options.level)
       && (!query || [record.time, record.timestamp, record.level, annotation.level,
         annotation.summary, getLogSourceText(record), record.runId, record.operationId]
-        .join(' ').toLocaleLowerCase('zh-CN').includes(query))
+        .join(' ').replace(/\s+/g, ' ').toLocaleLowerCase('zh-CN').includes(query))
   })
   const selectedAnnotations = options.events === 'all' ? matches : matches.filter(annotation => annotation.keyEvent)
   return {
