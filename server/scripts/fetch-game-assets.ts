@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const GAME_DATA_BASE = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata';
 
-const CDN_BASE: string | null = null; 
+const CDN_BASE: string | null = null;
 export const OUTPUT_DIR = path.join(__dirname, '../data');
 
 const CHARACTER_SOURCE = 'character_table.json';

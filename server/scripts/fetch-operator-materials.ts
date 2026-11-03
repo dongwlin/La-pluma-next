@@ -208,7 +208,7 @@ export function parseOperatorMaterials(characterPayload: unknown, itemPayload: u
         const chips: MaterialCost[] = [];
 
         for (const cost of phase2.evolveCost) {
-          if (cost.id === '4001') continue; 
+          if (cost.id === '4001') continue;
           const item = toMaterialCost(cost, itemNames);
 
           if (cost.id.startsWith('32')) {
