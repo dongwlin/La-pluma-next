@@ -76,6 +76,9 @@ export default function RoguelikeSettingsPanel({
                     id={`roguelike-${task.id}-${option.key}`}
                     name={`maa-${task.id}-${option.key}`}
                     type={option.type === 'number' ? 'number' : 'text'}
+                    min={option.type === 'number' ? option.numberRange?.min : undefined}
+                    max={option.type === 'number' ? option.numberRange?.max : undefined}
+                    step={option.type === 'number' ? 1 : undefined}
                     label={option.label}
                     value={displayValue}
                     onChange={(value: string) => onAdvancedChange(option.key, value)}

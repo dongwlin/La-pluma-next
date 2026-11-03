@@ -13,6 +13,10 @@ import type {
 
 const DEFAULT_SQUAD: RoguelikeSelectOption = { value: '', label: '默认（指挥分队）' }
 
+/** maa-cli 数字参数使用的 Rust i32 边界。 */
+export const MAA_CLI_I32_MIN = -2_147_483_648
+export const MAA_CLI_I32_MAX = 2_147_483_647
+
 /** 各主题共有的通用分队；顺序沿用上游 GUI。 */
 const COMMON_SQUADS: readonly string[] = [
   '指挥分队',
@@ -148,13 +152,14 @@ const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     placeholder: '维什戴尔',
     hint: '填写单个干员中文名；留空由 MAA 按练度自动选择。',
   },
-  { key: 'startCount', label: '运行次数', type: 'number', param: '--start-count', placeholder: '无限' },
+  { key: 'startCount', label: '运行次数', type: 'number', param: '--start-count', placeholder: '无限', numberRange: { min: 1, max: MAA_CLI_I32_MAX } },
   {
     key: 'investmentsCount',
     label: '投资次数',
     type: 'number',
     param: '--investments-count',
     placeholder: '不限',
+    numberRange: { min: 1, max: MAA_CLI_I32_MAX },
     requires: { key: 'disableInvestment', equals: false },
   },
   {
@@ -278,8 +283,16 @@ const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     defaultValue: '1',
     hint: '模式 0 仅在没有存档时使用（有存档可能丢失进度），需在主界面右下角出现「开始演算」后启动；模式 1 需要已有存档，需在能看到驻扎地的页面启动，建议从新的计算日启动。',
   },
-  { key: 'toolsToCraft', label: '制作工具名称', type: 'text', param: '-C', placeholder: '荧光棒' },
-  { key: 'numBatches', label: '批次数', type: 'number', param: '--num-craft-batches', placeholder: '16' },
+  { key: 'toolsToCraft', label: '制作工具名称', type: 'text', param: '-C', placeholder: '荧光棒', modes: ['1'] },
+  {
+    key: 'numBatches',
+    label: '批次数',
+    type: 'number',
+    param: '--num-craft-batches',
+    placeholder: '16',
+    modes: ['1'],
+    numberRange: { min: 1, max: MAA_CLI_I32_MAX },
+  },
 ]
 
 const OPTION_TABLES: Record<string, readonly RoguelikeAdvancedOption[]> = {

@@ -48,6 +48,8 @@ export interface RoguelikeAdvancedOption {
   defaultValue?: string
   /** 字段下方的说明文案；由面板透传，语义留在模型。 */
   hint?: string
+  /** number 字段的闭区间；省略时按 CLI 的 i32 范围校验。 */
+  numberRange?: { min: number; max: number }
   /** 仅在这些主题下显示与下发；省略表示所有主题。 */
   themes?: readonly string[]
   /** 仅在这些模式下显示与下发；省略表示所有模式。 */

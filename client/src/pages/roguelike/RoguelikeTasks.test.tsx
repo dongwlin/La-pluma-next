@@ -490,6 +490,30 @@ describe('RoguelikeTasks execution', () => {
     )
   })
 
+  it('blocks non-integer counts before submitting', async () => {
+    await renderPage()
+    await setTheme('Phantom')
+    await setControlValue('input[name="maa-roguelike-startCount"]', '1.5')
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('运行次数需为整数')
+
+    await setControlValue('input[name="maa-roguelike-startCount"]', '3')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Phantom --roles 稳扎稳打 --start-count 3',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
   it('rejects the collapsal mode without expected paradigms and resets it on theme change', async () => {
     await renderPage()
     await setTheme('Sami')
@@ -572,6 +596,19 @@ describe('RoguelikeTasks execution', () => {
       false,
       { idempotencyKey: expect.stringMatching(/^run_task-/) },
     )
+  })
+
+  it('hides the reclamation tool fields in mode 0', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+
+    expect(container.querySelector('input[name="maa-reclamation-toolsToCraft"]')).not.toBeNull()
+    expect(container.querySelector('input[name="maa-reclamation-numBatches"]')).not.toBeNull()
+
+    await setControlValue('select[name="maa-reclamation-mode"]', '0', 'change')
+
+    expect(container.querySelector('input[name="maa-reclamation-toolsToCraft"]')).toBeNull()
+    expect(container.querySelector('input[name="maa-reclamation-numBatches"]')).toBeNull()
   })
 
   it('shows the default reclamation mode for a legacy payload without one', async () => {

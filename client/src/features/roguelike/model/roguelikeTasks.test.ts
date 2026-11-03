@@ -200,6 +200,15 @@ describe('isRoguelikeOptionVisible', () => {
     })).toBe(false)
   })
 
+  it('ties reclamation tool crafting fields to mode 1', () => {
+    for (const key of ['toolsToCraft', 'numBatches']) {
+      expect(isRoguelikeOptionVisible(option(key, 'reclamation'), 'reclamation', 'Tales', { mode: '1' }))
+        .toBe(true)
+      expect(isRoguelikeOptionVisible(option(key, 'reclamation'), 'reclamation', 'Tales', { mode: '0' }))
+        .toBe(false)
+    }
+  })
+
   it('ties the investment score option to the investment mode', () => {
     const moreScore = option('investmentWithMoreScore')
     expect(isRoguelikeOptionVisible(moreScore, 'roguelike', 'Sarkaz', { mode: '1' })).toBe(true)
@@ -313,6 +322,26 @@ describe('buildRoguelikeCommandParams', () => {
     )).toBe('Sarkaz')
   })
 
+  it('writes integer options and drops malformed numbers', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { startCount: ' 3 ', investmentsCount: 2 } },
+    )).toBe('Sarkaz --roles 稳扎稳打 --start-count 3 --investments-count 2')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { startCount: '1.5', investmentsCount: '2' } },
+    )).toBe('Sarkaz --roles 稳扎稳打 --investments-count 2')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { startCount: '-1' } },
+    )).toBe('Sarkaz --roles 稳扎稳打')
+  })
+
   it('writes list fields once per value', () => {
     expect(buildRoguelikeCommandParams(
       'roguelike',
@@ -375,8 +404,16 @@ describe('buildRoguelikeCommandParams', () => {
     expect(buildRoguelikeCommandParams(
       'reclamation',
       { reclamation: 'Tales' },
+      { reclamation: { mode: '1', toolsToCraft: '荧光棒', numBatches: 2 } },
+    )).toBe('Tales -m 1 -C 荧光棒 --num-craft-batches 2')
+  })
+
+  it('omits the tool crafting fields in reclamation mode 0', () => {
+    expect(buildRoguelikeCommandParams(
+      'reclamation',
+      { reclamation: 'Tales' },
       { reclamation: { mode: '0', toolsToCraft: '荧光棒', numBatches: 2 } },
-    )).toBe('Tales -m 0 -C 荧光棒 --num-craft-batches 2')
+    )).toBe('Tales -m 0')
   })
 
   it('always writes the reclamation mode, falling back to the declared default', () => {
@@ -514,6 +551,42 @@ describe('validateRoguelikeTaskInput', () => {
       { roguelike: 'Sami' },
       { roguelike: { squad: '永恒狩猎分队' } },
     )).toBeNull()
+  })
+
+  it('rejects non-integer and out-of-range numbers', () => {
+    const inputs = { roguelike: 'Sarkaz' }
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '1.5' } }))
+      .toBe('运行次数需为整数')
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '1e3' } }))
+      .toBe('运行次数需为整数')
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '-1' } }))
+      .toBe('运行次数需在 1–2147483647 之间')
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '0' } }))
+      .toBe('运行次数需在 1–2147483647 之间')
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '2147483648' } }))
+      .toBe('运行次数需在 1–2147483647 之间')
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { investmentsCount: '2.5' } }))
+      .toBe('投资次数需为整数')
+
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '3' } }))
+      .toBeNull()
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '' } }))
+      .toBeNull()
+    expect(validateRoguelikeTaskInput('roguelike', inputs, { roguelike: { startCount: '   ' } }))
+      .toBeNull()
+  })
+
+  it('validates the reclamation batch count only in mode 1', () => {
+    const inputs = { reclamation: 'Tales' }
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { mode: '1', numBatches: '0' },
+    })).toBe('批次数需在 1–2147483647 之间')
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { mode: '1', numBatches: '2.5' },
+    })).toBe('批次数需为整数')
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { mode: '0', numBatches: '0' },
+    })).toBeNull()
   })
 
   it('requires the expected collapsal paradigms in mode 5', () => {

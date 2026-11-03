@@ -12,6 +12,8 @@
  */
 
 import {
+  MAA_CLI_I32_MAX,
+  MAA_CLI_I32_MIN,
   getRoguelikeAdvancedOptions,
   getRoguelikeOptionChoices,
 } from './roguelikeOptions'
@@ -109,20 +111,44 @@ export function isRoguelikeOptionValueValid(
   return choices.some(choice => choice.value === String(value))
 }
 
-/** 返回第一个生效但不属于当前主题候选表的下拉字段错误；没有越界值时为 null。 */
-function findInvalidSelectValue(
+/** number 字段的取值错误：只接受整数且落在字段范围内；空值表示未设置。 */
+function getRoguelikeNumberError(
+  option: RoguelikeAdvancedOption,
+  value: string | number | boolean,
+): string | null {
+  const text = String(value).trim()
+  if (text === '') return null
+  if (!/^[+-]?\d+$/.test(text)) return `${option.label}需为整数`
+
+  const parsed = Number(text)
+  const min = option.numberRange?.min ?? MAA_CLI_I32_MIN
+  const max = option.numberRange?.max ?? MAA_CLI_I32_MAX
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    return `${option.label}需在 ${min}–${max} 之间`
+  }
+  return null
+}
+
+/** 返回第一个生效但取值越界的字段错误；没有越界值时为 null。 */
+function findInvalidOptionValue(
   taskId: string,
   theme: string,
   advanced: RoguelikeAdvancedValues,
 ): string | null {
   for (const option of getRoguelikeAdvancedOptions(taskId)) {
-    if (option.type !== 'select') continue
     if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
 
     const value = pickAdvancedValue(option, advanced)
     if (value === undefined || value === '') continue
-    if (isRoguelikeOptionValueValid(option, theme, value)) continue
 
+    if (option.type === 'number') {
+      const error = getRoguelikeNumberError(option, value)
+      if (error) return error
+      continue
+    }
+
+    if (option.type !== 'select') continue
+    if (isRoguelikeOptionValueValid(option, theme, value)) continue
     return `${option.label}「${String(value)}」不在当前主题的可选范围内，请重新选择`
   }
   return null
@@ -231,8 +257,8 @@ export function normalizeRoguelikeAdvancedParams(
 
 /**
  * 拼接执行参数：主题代号在前，字段按字段表顺序追加。
- * 空字符串、未勾选的 checkbox、未设置的字段与当前主题/模式不适用的字段不写入；
- * 声明了默认值的字段在缺失或为空时解析为默认值并始终写入。
+ * 空字符串、未勾选的 checkbox、未设置的字段、当前主题/模式不适用的字段、
+ * 越界的下拉值与非法整数不写入；声明了默认值的字段在缺失或为空时解析为默认值并始终写入。
  */
 export function buildRoguelikeCommandParams(
   taskId: string,
@@ -252,6 +278,14 @@ export function buildRoguelikeCommandParams(
 
     if (option.type === 'checkbox') {
       if (value === true) params += ` ${option.param}`
+      continue
+    }
+
+    if (option.type === 'number') {
+      if (getRoguelikeNumberError(option, value)) continue
+      const numeric = String(value).trim()
+      if (numeric === '') continue
+      params += ` ${option.param} ${numeric}`
       continue
     }
 
@@ -277,7 +311,7 @@ export function validateRoguelikeTaskInput(
 
   const theme = (taskInputs[taskId] || '').trim()
   const advanced = advancedParams[taskId] ?? {}
-  const invalidValue = findInvalidSelectValue(taskId, theme, advanced)
+  const invalidValue = findInvalidOptionValue(taskId, theme, advanced)
   if (invalidValue) return invalidValue
   if (taskId !== 'roguelike') return null
 
