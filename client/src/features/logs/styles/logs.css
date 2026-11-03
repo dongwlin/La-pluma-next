@@ -295,19 +295,6 @@
     font-size: 0.6875rem;
   }
 
-  .log-mode-shell {
-    width: min(100%, 56rem);
-  }
-
-  .log-mode-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .log-mode-skeleton-highlight {
-    inset: 0 auto auto 0;
-    width: calc((100% - 0.125rem) / 2);
-  }
-
   .log-coverage {
     margin: 0;
     color: var(--app-text-muted);

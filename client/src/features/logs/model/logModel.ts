@@ -1,13 +1,12 @@
 /**
  * 日志事实、语义注解、事件选择与展示分组。
- * 解析保留来源，注解只解释事实；呈现方式不会参与事件选择或导出。
+ * 解析保留来源，注解只解释事实；列表只呈现语义摘要，原文通过单条详情查看。
  */
 
 import type { LogEntry } from '../types'
 import { asRecord, getTaskName, summarizeCallback } from './logCallbackSummary'
 
 export type LogFilter = 'all' | LogEntry['level']
-export type LogContentMode = 'readable' | 'raw'
 export type LogEventFilter = 'key' | 'all'
 
 export interface LogAnnotation {
@@ -27,7 +26,6 @@ export interface VisibleLog {
 }
 
 export interface LogViewOptions {
-  readonly mode: LogContentMode
   readonly events?: LogEventFilter
   readonly level: LogFilter
   readonly search: string
@@ -36,7 +34,7 @@ export interface LogViewOptions {
 
 export interface LogView {
   readonly annotations: readonly LogAnnotation[]
-  /** 同一批选中事实用于两种呈现和导出；不受重复折叠影响。 */
+  /** 同一批选中事实用于列表呈现和导出；不受重复折叠影响。 */
   readonly selected: readonly LogEntry[]
   readonly visible: readonly VisibleLog[]
   /** 已匹配搜索和级别，但被关键事件筛选隐藏的记录数。 */
@@ -265,10 +263,7 @@ function canCollapse(previous: LogAnnotation, next: LogAnnotation): boolean {
 }
 
 /** 分组保留所有成员的事实和时间，既不跨 Run，也不合并不同载荷。 */
-export function collapseRepeatedLogs(
-  annotations: readonly LogAnnotation[],
-  mode: LogContentMode = 'readable',
-): VisibleLog[] {
+export function collapseRepeatedLogs(annotations: readonly LogAnnotation[]): VisibleLog[] {
   const groups: VisibleLog[] = []
   for (const annotation of annotations) {
     const previous = groups[groups.length - 1]
@@ -280,17 +275,17 @@ export function collapseRepeatedLogs(
         members: [...previous.members, annotation],
       }
     } else {
-      groups.push(presentLog(annotation, mode))
+      groups.push(presentLog(annotation))
     }
   }
   return groups
 }
 
-function presentLog(annotation: LogAnnotation, mode: LogContentMode): VisibleLog {
+function presentLog(annotation: LogAnnotation): VisibleLog {
   return {
     time: annotation.record.time,
     level: annotation.level,
-    message: mode === 'raw' ? getLogSourceText(annotation.record) : annotation.summary,
+    message: annotation.summary,
     count: 1,
     members: [annotation],
   }
@@ -332,8 +327,8 @@ export function buildLogView(logs: readonly LogEntry[], options: LogViewOptions)
     annotations,
     selected: selectedAnnotations.map(annotation => annotation.record),
     visible: options.collapseRepeats
-      ? collapseRepeatedLogs(selectedAnnotations, options.mode)
-      : selectedAnnotations.map(annotation => presentLog(annotation, options.mode)),
+      ? collapseRepeatedLogs(selectedAnnotations)
+      : selectedAnnotations.map(presentLog),
     hiddenMatchCount: query ? matches.length - selectedAnnotations.length : 0,
   }
 }

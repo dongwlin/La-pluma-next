@@ -16,7 +16,7 @@ import type { LogEntry } from '../types'
 
 const entry = (message: string, level: LogEntry['level'] = 'INFO', time = '10:00:00'): LogEntry => ({ time, level, message })
 const callback = (event: string, payload: unknown) => entry(`Assistant::append_callback | ${event} ${JSON.stringify(payload)}`)
-const options = { mode: 'readable', events: 'key', level: 'all', search: '', collapseRepeats: false } as const
+const options = { events: 'key', level: 'all', search: '', collapseRepeats: false } as const
 
 describe('log facts', () => {
   it('normalizes known aliases and falls back safely', () => {
@@ -191,26 +191,21 @@ describe('semantic annotations', () => {
 describe('unified log selection and grouping', () => {
   const records = [callback('TaskChainError', { taskchain: 'Fight' }), entry('load resource'), entry('plain')]
 
-  it('uses identical facts, order and severity in both presentation modes', () => {
-    const readable = buildLogView(records, { ...options, level: 'ERROR' })
-    const raw = buildLogView(records, { ...options, mode: 'raw', level: 'ERROR' })
-    expect(raw.selected).toEqual(readable.selected)
-    expect(raw.selected).toEqual([records[0]])
-    expect(raw.visible.map(log => log.level)).toEqual(readable.visible.map(log => log.level))
-    expect(readable.visible[0]!.message).toBe('任务失败：作战')
-    expect(raw.visible[0]!.message).toBe(records[0]!.message)
+  it('filters by effective severity and shows the semantic summary', () => {
+    const errors = buildLogView(records, { ...options, level: 'ERROR' })
+    expect(errors.selected).toEqual([records[0]])
+    expect(errors.visible.map(log => log.message)).toEqual(['任务失败：作战'])
+    expect(buildLogView(records, { ...options, level: 'INFO' }).selected).toEqual([records[2]])
   })
 
-  it('can render all events readably and critical events as source text', () => {
+  it('selects only key events unless all events are requested', () => {
+    expect(buildLogView(records, options).selected).toEqual([records[0], records[2]])
     expect(buildLogView(records, { ...options, events: 'all' }).selected).toEqual(records)
-    expect(buildLogView(records, { ...options, mode: 'raw' }).selected).toEqual([records[0], records[2]])
   })
 
-  it('searches both semantic and source text independently of presentation', () => {
-    for (const mode of ['readable', 'raw'] as const) {
-      expect(buildLogView(records, { ...options, mode, search: 'taskchain' }).selected).toEqual([records[0]])
-      expect(buildLogView(records, { ...options, mode, search: '任务失败' }).selected).toEqual([records[0]])
-    }
+  it('searches both semantic and source text', () => {
+    expect(buildLogView(records, { ...options, search: 'taskchain' }).selected).toEqual([records[0]])
+    expect(buildLogView(records, { ...options, search: '任务失败' }).selected).toEqual([records[0]])
   })
 
   it('reports source matches hidden by the key-event filter', () => {

@@ -178,19 +178,6 @@ describe('LogViewer recovery and controls', () => {
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('TaskChainStart')
-    expect(container.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('日志内容模式')
-    const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    expect(modeTabs).toHaveLength(2)
-    expect(modeTabs[0]?.getAttribute('aria-selected')).toBe('true')
-    await click(modeTabs[1]!)
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
-
-    await act(async () => {
-      modeTabs[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-    })
-    await flush()
-    expect(modeTabs[0]?.getAttribute('aria-selected')).toBe('true')
-    expect(document.activeElement).toBe(modeTabs[0])
 
     const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
     expect(switches.map(input => input.getAttribute('aria-label')))
@@ -336,18 +323,15 @@ describe('LogViewer recovery and controls', () => {
     expect(newerRow?.getAttribute('aria-current')).toBe('true')
   })
 
-  it('keeps content mode and auto-scroll across history switching and retry', async () => {
+  it('keeps auto-scroll across history switching and retry', async () => {
     const target = historyFile('maa.log')
     mocks.getLogFiles.mockResolvedValue({ success: true, data: [target] })
     mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [] })
     mocks.readLogFile
       .mockResolvedValueOnce({ success: false, message: '日志文件读取失败' })
-      .mockResolvedValueOnce({ success: true, data: { content: historyLine('原始模式内容') } })
+      .mockResolvedValueOnce({ success: true, data: { content: historyLine('历史内容') } })
 
     await renderComponent()
-    const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    await click(modeTabs[1]!)
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
     const autoScroll = () => Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
       .find(input => input.getAttribute('aria-label') === '自动滚动')
 
@@ -357,8 +341,7 @@ describe('LogViewer recovery and controls', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('日志文件读取失败')
 
     await click(container.querySelector<HTMLButtonElement>('[role="alert"] button')!)
-    expect(container.textContent).toContain('原始模式内容')
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
+    expect(container.textContent).toContain('历史内容')
 
     const back = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent === '返回实时')
@@ -366,7 +349,6 @@ describe('LogViewer recovery and controls', () => {
 
     expect(autoScroll()?.checked).toBe(true)
     expect(autoScroll()?.disabled).toBe(false)
-    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
   })
 
   it('keeps level filters across realtime and history views', async () => {

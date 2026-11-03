@@ -1,4 +1,4 @@
-/** 日志页是日志观察的唯一工作区；范围、事件选择与内容呈现各自独立。 */
+/** 日志页是日志观察的唯一工作区；范围、事件选择与折叠彼此独立。 */
 
 import { useMemo, useState } from 'react'
 import { useExecutionSnapshot } from '@/features/task-execution'
@@ -7,7 +7,6 @@ import { useLogsSession } from '../hooks/useLogsSession'
 import {
   buildLogView,
   filterLogsByRunId,
-  type LogContentMode,
   type LogEventFilter,
   type LogFilter,
 } from '../model/logModel'
@@ -15,7 +14,6 @@ import { buildLogExportFileName, formatLogExport } from '../model/logExport'
 import type { LogFile } from '../types'
 import HistoryLogPicker from './HistoryLogPicker'
 import LogConsole from './LogConsole'
-import LogContentModeTabs from './LogContentModeTabs'
 import LogNotice, { type LogNoticeData } from './LogNotice'
 import LogsToolbar from './LogsToolbar'
 
@@ -24,7 +22,6 @@ export default function LogsWorkspace() {
   const { history, realtime } = session
   const execution = useExecutionSnapshot()
   const [autoScroll, setAutoScroll] = useState(true)
-  const [contentMode, setContentMode] = useState<LogContentMode>('readable')
   const [runId, setRunId] = useState('')
   const [events, setEvents] = useState<LogEventFilter>('key')
   const [clearVersion, setClearVersion] = useState(0)
@@ -50,12 +47,11 @@ export default function LogsWorkspace() {
   )
 
   const logView = useMemo(() => buildLogView(runFilteredLogs, {
-    mode: contentMode,
     events,
     level: filter,
     search,
     collapseRepeats,
-  }), [collapseRepeats, contentMode, events, filter, runFilteredLogs, search])
+  }), [collapseRepeats, events, filter, runFilteredLogs, search])
 
   const viewHistoryFile = (file: LogFile) => {
     setAutoScroll(false)
@@ -122,8 +118,6 @@ export default function LogsWorkspace() {
           onDismiss={() => setNotice(null)}
         />
       )}
-
-      <LogContentModeTabs mode={contentMode} onChange={setContentMode} />
 
       <LogsToolbar
         autoScroll={autoScroll}

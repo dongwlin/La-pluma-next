@@ -21,7 +21,7 @@ const baseProps = (logs: readonly LogEntry[]): ConsoleProps => ({
   loading: false,
   error: null,
   logs,
-  view: buildLogView(logs, { mode: 'readable', events: 'all', level: 'all', search: '', collapseRepeats: true }),
+  view: buildLogView(logs, { events: 'all', level: 'all', search: '', collapseRepeats: true }),
   autoScroll: true,
   paused: false,
   onRetry: () => {},
@@ -188,43 +188,43 @@ describe('LogConsole scroll following', () => {
     await renderConsole([...historyLogs, entry('历史三')], { viewingHistory: true, autoScroll: true })
     expect(node.scrollTop).toBe(100)
   })
-  it('keeps following when presentation or repeat grouping changes the rendered height', async () => {
+  it('keeps following when repeat grouping changes the rendered height', async () => {
     const repeated = [
       { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-1' },
       { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-2' },
     ]
-    const view = (mode: 'readable' | 'raw', collapseRepeats: boolean) => buildLogView(repeated, {
-      mode, events: 'all', level: 'all', search: '', collapseRepeats,
+    const view = (collapseRepeats: boolean) => buildLogView(repeated, {
+      events: 'all', level: 'all', search: '', collapseRepeats,
     })
-    await renderConsole(repeated, { view: view('readable', true) })
+    await renderConsole(repeated, { view: view(true) })
     const node = getLogNode()
     defineScrollBox(node, 1000, 400)
     node.scrollTop = 500
-    await renderConsole(repeated, { view: view('raw', true) })
+    await renderConsole(repeated, { view: view(false) })
     expect(node.scrollTop).toBe(1000)
     node.scrollTop = 500
-    await renderConsole(repeated, { view: view('raw', false) })
+    await renderConsole(repeated, { view: view(true) })
     expect(node.scrollTop).toBe(1000)
     expect(findFollowIndicator()).toBeUndefined()
   })
 
-  it('preserves a paused position and does not create unread arrivals for presentation changes', async () => {
+  it('preserves a paused position when repeat grouping changes', async () => {
     const repeated = [
       { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-1' },
       { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-2' },
     ]
-    const view = (mode: 'readable' | 'raw', collapseRepeats: boolean) => buildLogView(repeated, {
-      mode, events: 'all', level: 'all', search: '', collapseRepeats,
+    const view = (collapseRepeats: boolean) => buildLogView(repeated, {
+      events: 'all', level: 'all', search: '', collapseRepeats,
     })
-    await renderConsole(repeated, { view: view('readable', true) })
+    await renderConsole(repeated, { view: view(true) })
     const node = getLogNode()
     defineScrollBox(node, 1000, 400)
     node.scrollTop = 120
     await scrollNode(node)
-    await renderConsole(repeated, { view: view('raw', true) })
+    await renderConsole(repeated, { view: view(false) })
     expect(node.scrollTop).toBe(120)
     expect(findFollowIndicator()?.textContent).toBe('回到底部')
-    await renderConsole(repeated, { view: view('raw', false) })
+    await renderConsole(repeated, { view: view(true) })
     expect(node.scrollTop).toBe(120)
     expect(findFollowIndicator()?.textContent).toBe('回到底部')
   })
@@ -257,7 +257,7 @@ describe('LogConsole record details', () => {
     container.remove()
   })
 
-  it('keeps exact source, full timestamp and correlation in expandable details for either presentation', async () => {
+  it('keeps exact source, full timestamp and correlation in expandable details', async () => {
     const record: LogEntry = {
       ...entry('执行命令: maa fight, 等待完成: true'),
       id: 'event-1',
@@ -267,14 +267,12 @@ describe('LogConsole record details', () => {
       runId: 'run-1',
       operationId: 'op-1',
     }
-    for (const mode of ['readable', 'raw'] as const) {
-      await renderConsole([record], {
-        view: buildLogView([record], { mode, events: 'all', level: 'all', search: '', collapseRepeats: true }),
-      })
-      expect(container.querySelector('summary')?.textContent).toBe('记录详情')
-      expect(container.querySelector('pre')?.textContent).toBe(record.sourceText)
-      expect(container.textContent).toContain('2026-11-03T10:00:00.123Z')
-      expect(container.textContent).toContain('Run：run-1 · Operation：op-1')
-    }
+    await renderConsole([record], {
+      view: buildLogView([record], { events: 'all', level: 'all', search: '', collapseRepeats: true }),
+    })
+    expect(container.querySelector('summary')?.textContent).toBe('原文与详情')
+    expect(container.querySelector('pre')?.textContent).toBe(record.sourceText)
+    expect(container.textContent).toContain('2026-11-03T10:00:00.123Z')
+    expect(container.textContent).toContain('Run：run-1 · Operation：op-1')
   })
 })

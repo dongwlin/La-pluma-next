@@ -1,4 +1,4 @@
-/** 日志筛选与观察动作；呈现方式不改变这些筛选条件。 */
+/** 日志筛选与观察动作；筛选条件独立于列表文案。 */
 
 import { Download, Pause, Play, Search, Trash2 } from 'lucide-react'
 import { Button, Card, CardContent, Input, Select, Switch } from '@/shared/ui'

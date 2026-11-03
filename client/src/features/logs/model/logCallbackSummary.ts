@@ -146,7 +146,7 @@ function summarizeRoguelikeInvestment(log: LogEntry, details: Record<string, unk
 /**
  * 把一条 MaaCore 回调行改写成可读摘要：
  * - 返回 `null` 表示无需展示（常规子任务开始/结束等噪音）；
- * - JSON 非法时原样保留该行，交给详细/原始模式兜底。
+ * - JSON 非法时原样保留该行，交给详情兜底。
  */
 export function summarizeCallback(log: LogEntry): LogEntry | null {
   const match = log.message.match(/^Assistant::append_callback \| (\w+)\s+(\{.*\})$/)

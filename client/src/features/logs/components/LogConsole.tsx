@@ -71,7 +71,7 @@ export default function LogConsole({
     return () => node.removeEventListener('scroll', handleContainerScroll)
   }, [followEligible, handleContainerScroll])
 
-  // 只比较当前选定事实的身份；相同快照、无关事件与呈现切换不产生未读。
+  // 只比较当前选定事实的身份；相同快照、无关事件与折叠切换不产生未读。
   // 观察范围变化时清除上一个范围的跟随状态。
   const previousLogsRef = useRef(view.selected)
   const previousScopeRef = useRef(scopeKey)
@@ -86,7 +86,7 @@ export default function LogConsole({
     dispatchFollow({ type: 'append', count: countAppendedRows(previous, view.selected) })
   }, [scopeKey, view.selected])
 
-  // 呈现切换和重复分组也会改变高度；跟随依赖布局内容，未读仍只比较事实。
+  // 重复折叠与展开也会改变高度；跟随依赖布局内容，未读仍只比较事实。
   // 智能暂停时保留用户位置。
   useEffect(() => {
     if (!followEligible || follow.paused) return
@@ -197,7 +197,7 @@ export default function LogConsole({
                     <span>{log.message}</span>
                     {log.count > 1 && <span className="log-repeat">x{log.count}</span>}
                     <details className="log-raw">
-                      <summary>{log.count > 1 ? `查看 ${log.count} 条记录详情` : '记录详情'}</summary>
+                      <summary>{log.count > 1 ? `查看 ${log.count} 条原文与详情` : '原文与详情'}</summary>
                       {log.members.map((annotation, index) => {
                         const record = annotation.record
                         return (

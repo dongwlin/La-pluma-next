@@ -30,7 +30,7 @@ const record = (sequence: number, message: string, runId?: string): SourceLog =>
 
 const logRegion = (page: Page) => page.getByRole('log', { name: '日志内容' })
 
-test('日志呈现共享筛选事件，指定 Run 在终态和后续执行期间保持不变', async ({ page }) => {
+test('日志事件按固定 Run 范围筛选，指定 Run 在终态和后续执行期间保持不变', async ({ page }) => {
   const state = createScenarioState()
   const selectedRunId = state.runId
   const command = '执行命令: maa fight, 等待完成: true'
@@ -53,14 +53,7 @@ test('日志呈现共享筛选事件，指定 Run 在终态和后续执行期间
   await expect(logRegion(page).getByText('开始执行：理智作战', { exact: true })).toBeVisible()
   await expect(logRegion(page).getByText('固定范围事件', { exact: true }).first()).toBeVisible()
   await expect(logRegion(page).getByText('另一次执行记录', { exact: true })).toHaveCount(0)
-  await expect(logRegion(page).getByText('记录详情', { exact: true })).toHaveCount(2)
-
-  await page.getByRole('tab', { name: '原文', exact: false }).click()
-  await expect(logRegion(page).getByText(command, { exact: true }).first()).toBeVisible()
-  await expect(logRegion(page).getByText('记录详情', { exact: true })).toHaveCount(2)
-  await expect(scope).toHaveValue(selectedRunId)
-  await page.getByRole('tab', { name: '易读', exact: false }).click()
-  await expect(logRegion(page).getByText('开始执行：理智作战', { exact: true })).toBeVisible()
+  await expect(logRegion(page).getByText('原文与详情', { exact: true })).toHaveCount(2)
 
   state.runState = 'succeeded'
   const beforeTerminal = requestsFor(state, '/agent/runs/current', 'GET').length

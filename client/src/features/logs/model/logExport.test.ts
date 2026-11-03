@@ -33,7 +33,7 @@ describe('log export formatting', () => {
     expect(formatLogExport(parseHistoryContent(source))).toBe(source)
   })
 
-  it('exports realtime source envelopes with full timestamp and correlation metadata', () => {
+  it('exports source envelopes with full metadata regardless of repeat folding', () => {
     const envelope = {
       id: 'source:1', sequence: 1, time: '2026-07-22T10:11:12.345Z', level: 'INFO',
       message: 'Assistant::append_callback | TaskChainError {"taskchain":"Fight"}',
@@ -41,11 +41,13 @@ describe('log export formatting', () => {
     }
     const record = parseRealtimeLog(envelope)
     const options = { events: 'all', level: 'all', search: '', collapseRepeats: true } as const
-    const readable = buildLogView([record, record], { ...options, mode: 'readable' })
-    const raw = buildLogView([record, record], { ...options, mode: 'raw' })
-    expect(formatLogExport(readable.selected)).toBe(formatLogExport(raw.selected))
-    expect(readable.visible).toHaveLength(1)
-    expect(formatLogExport(readable.selected).split('\n').map(line => JSON.parse(line)))
+    const folded = buildLogView([record, record], options)
+    const expanded = buildLogView([record, record], { ...options, collapseRepeats: false })
+    expect(folded.visible).toHaveLength(1)
+    expect(folded.visible[0]!.message).toBe('任务失败：作战')
+    expect(expanded.selected).toEqual(folded.selected)
+    expect(formatLogExport(folded.selected)).not.toContain('任务失败')
+    expect(formatLogExport(folded.selected).split('\n').map(line => JSON.parse(line)))
       .toEqual([envelope, envelope])
   })
 
