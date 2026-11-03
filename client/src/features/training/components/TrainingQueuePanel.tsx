@@ -93,7 +93,7 @@ export default function TrainingQueuePanel({
               <span className="training-queue-rank">{String(index + 1).padStart(2, '0')}</span>
               <span className="training-avatar"><UserRoundSearch size={22} aria-hidden="true" /><img src={`https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${item.operatorId}.png`} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /></span>
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1"><h3 className="training-operator-name">{item.operator.name}</h3>{index === 0 && <span className="training-current-label">当前</span>}</div>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1"><h3 className="training-operator-name" data-training-operator-name>{item.operator.name}</h3>{index === 0 && <span className="training-current-label">当前</span>}</div>
                 <p className="training-queue-meta">精{item.currentElite} → 精{item.targetElite}<span>{selectMissingMaterials(getQueueMaterials(item)).length} 种缺口</span></p>
                 <div className="training-row-progress"><span className="training-progress-track" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, item.progress ?? 0))}%` }} /></span><span>{item.progress ?? 0}%</span><span className="sr-only">材料筹备进度</span></div>
               </div>

@@ -132,7 +132,7 @@ export default function AutomationTaskFlowPanel({
                     </span>
                   </span>
                   <span className="automation-sequence-copy">
-                    <strong>{task.name}</strong>
+                    <strong data-automation-sequence-name>{task.name}</strong>
                     <small data-automation-sequence-state-label>{describeFlowTaskExecutionState(executionState, execution.isRunning) || task.description}</small>
                   </span>
                 </button>

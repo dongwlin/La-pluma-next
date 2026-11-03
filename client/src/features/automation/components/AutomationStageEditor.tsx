@@ -170,6 +170,7 @@ export default function AutomationStageEditor({
             <div
               key={stageIndex}
               className={`automation-stage-item${isSmartStageRow ? ' is-smart' : ''}${isPinnedStage ? ' is-pinned' : ''}`}
+              data-automation-stage-kind={isSmartStageRow ? 'smart' : 'manual'}
             >
               <div className="automation-stage-row">
                 {isSmartStageRow ? (
@@ -199,6 +200,7 @@ export default function AutomationStageEditor({
                   placeholder={field.placeholder}
                   disabled={stageControlsDisabled || isSmartStageRow}
                   className="automation-stage-name-input"
+                  data-automation-stage-name
                 />
                 <datalist id={suggestionsId}>
                   {stageSuggestions.map(([value, description]) => (

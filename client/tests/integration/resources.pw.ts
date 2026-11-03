@@ -44,7 +44,7 @@ test('识别完成使隐藏养成与总览失效，应用计划后自动化读�
 
   // 先挂载各个 Activity，随后隐藏：验证恢复时消费失效，而非重建一份资源。
   await gotoScenario(page, 'dashboard')
-  await expect(page.locator('.dashboard-summary-card.is-training .dashboard-summary-number')).toHaveText('2')
+  await expect(page.locator('[data-dashboard-summary="training"] [data-dashboard-summary-number]')).toHaveText('2')
   await navigateTo(page, 'automation')
   await expect(page.getByRole('button', { name: '立即执行', exact: true })).toBeEnabled()
   await navigateTo(page, 'training')
@@ -66,14 +66,14 @@ test('识别完成使隐藏养成与总览失效，应用计划后自动化读�
   await expect.poll(() => requestsFor(state, '/agent/training/queue', 'GET').length).toBeGreaterThan(initialQueueReads)
   await page.getByRole('button', { name: '预览刷图计划', exact: true }).click()
   await expect(page.getByRole('button', { name: '应用到自动任务', exact: true })).toBeEnabled()
-  await expect(page.locator('.training-stage-row')).toContainText('CE-6')
+  await expect(page.locator('[data-training-stage-row]')).toContainText('CE-6')
   await page.getByRole('button', { name: '应用到自动任务', exact: true }).click()
   await expect.poll(() => state.applyCalls.length).toBe(1)
   await expect(page.getByText('已同步到自动任务', { exact: true })).toBeVisible()
 
   await navigateTo(page, 'automation')
-  await page.locator('.automation-sequence-select').filter({ hasText: '理智作战' }).click()
-  await expect(page.locator('.automation-stage-item.is-smart .automation-stage-name-input')).toHaveValue('CE-6')
+  await page.locator('button[aria-controls="automation-task-editor"]').filter({ hasText: '理智作战' }).click()
+  await expect(page.locator('[data-automation-stage-kind="smart"] [data-automation-stage-name]')).toHaveValue('CE-6')
   expect(state.automationSaveCalls).toHaveLength(0)
   const manualFlow = state.automationConfig.taskFlow as Array<{ commandId: string; params: { stages?: unknown[] } }>
   expect(manualFlow.find(task => task.commandId === 'fight')?.params.stages).toEqual([
@@ -82,7 +82,7 @@ test('识别完成使隐藏养成与总览失效，应用计划后自动化读�
   ])
 
   await navigateTo(page, 'dashboard')
-  await expect(page.locator('.dashboard-summary-card.is-training .dashboard-summary-number')).toHaveText('1')
+  await expect(page.locator('[data-dashboard-summary="training"] [data-dashboard-summary-number]')).toHaveText('1')
   await expect.poll(() => requestsFor(state, '/agent/drops/today', 'GET').length).toBeGreaterThan(initialDashboardReads)
   expect(state.submissions).toHaveLength(1)
   expect(state.applyCalls).toHaveLength(1)

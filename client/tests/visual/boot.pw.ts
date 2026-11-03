@@ -19,7 +19,7 @@ for (const theme of THEMES) {
     await page.route('**/assets/index-*.js', route => route.abort())
 
     await page.goto('/app/dashboard')
-    await page.locator('.la-pluma-boot').waitFor({ state: 'visible' })
+    await page.locator('[role="status"][aria-label="正在打开 La Pluma Next"]').waitFor({ state: 'visible' })
     await page.evaluate(() => document.fonts.ready)
 
     await expect(page).toHaveScreenshot(`boot-shell-${theme}.png`, {

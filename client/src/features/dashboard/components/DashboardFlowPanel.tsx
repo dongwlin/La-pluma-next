@@ -85,7 +85,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         </div>
       </div>
 
-      <div className="dashboard-flow-command">
+      <div className="dashboard-flow-command" data-dashboard-flow-command>
         <div className="min-w-0">
           <div className={`text-xs font-medium ${labelClass}`}>{view.statusLabel}</div>
           <div className="mt-0.5 truncate text-xl font-bold text-primary">{view.commandTitle}</div>

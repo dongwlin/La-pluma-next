@@ -80,6 +80,7 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
       />
       <div
         className={`floating-status-text min-w-0 flex-1 truncate leading-5 ${textClassName}`}
+        data-floating-status-text
         title={displayText}
       >
         {isReady ? (
