@@ -164,7 +164,6 @@ describe('operator quotes write body boundaries', () => {
       assert.equal(noBody.status, 400)
       assert.deepEqual(await noBody.json(), { error: '缺少干员名或台词' })
 
-      // JSON 顶层原始值按公共解析错误契约返回
       const nullBody = await fetch(origin, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

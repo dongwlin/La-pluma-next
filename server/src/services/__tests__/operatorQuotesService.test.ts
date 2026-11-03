@@ -119,7 +119,6 @@ describe('operator quotes service storage behaviour', () => {
     const updated = await quotes.updateQuote('阿米娅', '新台词')
     assert.deepEqual(updated, { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '新台词' })
 
-    // 文件写回完整数组，未命中的条目不受影响
     assert.deepEqual(parseStoredQuotes(await readFile(quotesPath, 'utf-8')), [
       { operatorId: 'char_002_amiya', operator: '阿米娅', quote: '新台词' },
       { operatorId: 'char_172_svrash', operator: '银灰', quote: '另一条' }

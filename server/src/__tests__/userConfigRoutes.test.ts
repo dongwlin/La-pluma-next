@@ -169,8 +169,6 @@ describe('user config routes mounted with injected storage', () => {
     const brokenJsonPayload = await readJson(brokenJson)
     assert.equal(readRecord(brokenJsonPayload.error, 'error').code, 'AGENT_REQUEST_BODY_INVALID')
 
-    // 非校验类存储失败按路由 fallback code 以 500 返回
-    // 只驱动读取路径；其余存储操作在断言失败前不会被调用。
     const failingStorage: UserConfigStorage = {
       loadUserConfig: async () => ({
         success: false,

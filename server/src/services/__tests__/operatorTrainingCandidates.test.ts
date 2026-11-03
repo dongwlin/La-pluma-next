@@ -48,7 +48,6 @@ describe('training candidate projection', () => {
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'trainable' }).length, 1);
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'owned' }).length, 3);
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'all' }).length, 5);
-    // 默认 status（未给出）与 all 一致
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, {}).length, 5);
   });
 

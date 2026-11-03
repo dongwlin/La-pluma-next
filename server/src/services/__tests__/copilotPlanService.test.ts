@@ -351,7 +351,6 @@ test('ensurePresetFormationResource reuses cached resource reads', async () => {
   await ensurePresetFormationResource(configDir);
   assert.equal(readObject((await readUserTasks(configDir)).BattleStart).postDelay, 1000);
 
-  // mtime 前进后重新读取已安装任务。
   await writeFile(tasksPath, JSON.stringify({ BattleStart: { postDelay: 777 } }));
   const updatedAt = new Date(Date.now() + 2000);
   await utimes(tasksPath, updatedAt, updatedAt);
