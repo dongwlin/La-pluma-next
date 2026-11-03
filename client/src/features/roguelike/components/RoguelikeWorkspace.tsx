@@ -18,6 +18,7 @@ import {
   DEFAULT_ROGUELIKE_MODE,
   ROGUELIKE_TASKS,
   buildRoguelikeCommandParams,
+  normalizeRoguelikeModeForTheme,
   validateRoguelikeTaskInput,
 } from '../model/roguelikeTasks'
 import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
@@ -73,7 +74,8 @@ export default function RoguelikeWorkspace() {
   const handleThemeChange = (value: string) => {
     updateConfig({
       taskInputs: { ...taskInputs, [activeTask.id]: value },
-      advancedParams,
+      // 只重置新主题不支持的模式（刷坍缩范式仅萨米），其余字段保留并按可见性隐藏。
+      advancedParams: normalizeRoguelikeModeForTheme(activeTask.id, value, advancedParams),
     })
   }
 
@@ -97,7 +99,7 @@ export default function RoguelikeWorkspace() {
     }
 
     // 输入校验与命令拼接由纯模型描述，页面/面板不复制字段语义。
-    const inputError = validateRoguelikeTaskInput(activeTask.id, taskInputs)
+    const inputError = validateRoguelikeTaskInput(activeTask.id, taskInputs, advancedParams)
     if (inputError) {
       setStatusMessage(inputError)
       return
@@ -143,6 +145,7 @@ export default function RoguelikeWorkspace() {
 
         <RoguelikeSettingsPanel
           task={activeTask}
+          theme={activeTheme}
           advanced={activeAdvanced}
           onAdvancedChange={handleAdvancedChange}
           execution={{

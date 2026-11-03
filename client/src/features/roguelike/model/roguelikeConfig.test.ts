@@ -65,7 +65,7 @@ describe('roguelike config adapter', () => {
     expect(wire).toEqual({
       taskInputs: { roguelike: 'Phantom' },
       advancedParams: {
-        roguelike: { mode: '0', useSupport: true, startCount: 3 },
+        roguelike: { mode: '0', useSupport: true, startCount: 3, roles: '稳扎稳打' },
         reclamation: { mode: '1' },
       },
     })
@@ -76,12 +76,18 @@ describe('roguelike config adapter', () => {
     expect(roguelikeConfigAdapter.decodeDraft({ taskInputs: { roguelike: 'Sami' } }))
       .toEqual({
         taskInputs: { roguelike: 'Sami' },
-        advancedParams: { reclamation: { mode: '1' } },
+        advancedParams: {
+          roguelike: { roles: '稳扎稳打' },
+          reclamation: { mode: '1' },
+        },
       })
     expect(roguelikeConfigAdapter.decodeDraft({ advancedParams: { roguelike: { mode: '1' } } }))
       .toEqual({
         taskInputs: {},
-        advancedParams: { roguelike: { mode: '1' }, reclamation: { mode: '1' } },
+        advancedParams: {
+          roguelike: { mode: '1', roles: '稳扎稳打' },
+          reclamation: { mode: '1' },
+        },
       })
   })
 
@@ -89,10 +95,19 @@ describe('roguelike config adapter', () => {
     expect(roguelikeConfigAdapter.decodeDraft({ taskInputs: { reclamation: 'Tales' } }))
       .toEqual({
         taskInputs: { reclamation: 'Tales' },
-        advancedParams: { reclamation: { mode: '1' } },
+        advancedParams: {
+          roguelike: { roles: '稳扎稳打' },
+          reclamation: { mode: '1' },
+        },
       })
     expect(roguelikeConfigAdapter.decodeDraft({ advancedParams: { reclamation: { mode: '' } } }))
-      .toEqual({ taskInputs: {}, advancedParams: { reclamation: { mode: '1' } } })
+      .toEqual({
+        taskInputs: {},
+        advancedParams: {
+          roguelike: { roles: '稳扎稳打' },
+          reclamation: { mode: '1' },
+        },
+      })
   })
 
   it('keeps an explicitly selected reclamation mode while decoding', () => {
@@ -118,13 +133,13 @@ describe('roguelike config adapter', () => {
       .toEqual({ roguelike: 'Phantom' })
     expect(JSON.parse(localStorage.getItem(ROGUELIKE_ADVANCED_PARAMS_KEY) ?? 'null'))
       .toEqual({
-        roguelike: { mode: '0', useSupport: true, startCount: 3 },
+        roguelike: { mode: '0', useSupport: true, startCount: 3, roles: '稳扎稳打' },
         reclamation: { mode: '1' },
       })
     expect(roguelikeConfigAdapter.readLocalDraft()).toEqual({
       taskInputs: { roguelike: 'Phantom' },
       advancedParams: {
-        roguelike: { mode: '0', useSupport: true, startCount: 3 },
+        roguelike: { mode: '0', useSupport: true, startCount: 3, roles: '稳扎稳打' },
         reclamation: { mode: '1' },
       },
     })
@@ -136,7 +151,10 @@ describe('roguelike config adapter', () => {
 
     expect(roguelikeConfigAdapter.readLocalDraft()).toEqual({
       taskInputs: { reclamation: 'Tales' },
-      advancedParams: { reclamation: { mode: '1' } },
+      advancedParams: {
+        roguelike: { roles: '稳扎稳打' },
+        reclamation: { mode: '1' },
+      },
     })
   })
 
@@ -154,7 +172,10 @@ describe('roguelike config adapter', () => {
 
     expect(roguelikeConfigAdapter.readLocalDraft()).toEqual({
       taskInputs: {},
-      advancedParams: { roguelike: { mode: '1' }, reclamation: { mode: '1' } },
+      advancedParams: {
+        roguelike: { mode: '1', roles: '稳扎稳打' },
+        reclamation: { mode: '1' },
+      },
     })
     expect(localStorage.getItem(ROGUELIKE_TASK_INPUTS_KEY)).toBeNull()
     expect(localStorage.getItem(ROGUELIKE_ADVANCED_PARAMS_KEY)).not.toBeNull()

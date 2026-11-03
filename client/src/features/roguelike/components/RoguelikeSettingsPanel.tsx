@@ -1,14 +1,20 @@
 /**
  * 肉鸽高级字段与运行操作面板
  *
- * 字段值来自配置协调器的草稿；运行/停止按钮只调用工作区注入的执行适配器，
- * 不在这里创建第二份执行状态机。
+ * 字段值来自配置协调器的草稿；字段表、主题候选项与适用条件都由纯模型描述，
+ * 面板只渲染当前生效的字段并回传编辑意图。运行/停止按钮只调用工作区注入的
+ * 执行适配器，不在这里创建第二份执行状态机。
  */
 
 import { Play, Square } from 'lucide-react'
 import { Button, Input, Select, SmoothPanel, Switch } from '@/shared/ui'
-import { getRoguelikeAdvancedOptions, resolveRoguelikeAdvancedValue } from '../model/roguelikeTasks'
-import type { RoguelikeAdvancedValues, RoguelikeTask } from '../types'
+import {
+  getRoguelikeAdvancedOptions,
+  getRoguelikeOptionChoices,
+  isRoguelikeOptionVisible,
+  resolveRoguelikeAdvancedValue,
+} from '../model/roguelikeTasks'
+import type { RoguelikeAdvancedOption, RoguelikeAdvancedValues, RoguelikeTask } from '../types'
 
 interface RoguelikeExecutionControls {
   isRunning: boolean
@@ -22,6 +28,7 @@ interface RoguelikeExecutionControls {
 
 interface RoguelikeSettingsPanelProps {
   task: RoguelikeTask
+  theme: string
   advanced: RoguelikeAdvancedValues
   onAdvancedChange: (key: string, value: string | number | boolean) => void
   execution: RoguelikeExecutionControls
@@ -29,11 +36,13 @@ interface RoguelikeSettingsPanelProps {
 
 export default function RoguelikeSettingsPanel({
   task,
+  theme,
   advanced,
   onAdvancedChange,
   execution,
 }: RoguelikeSettingsPanelProps) {
   const options = getRoguelikeAdvancedOptions(task.id)
+    .filter(option => isRoguelikeOptionVisible(option, task.id, theme, advanced))
   const fieldOptions = options.filter(option => option.type !== 'checkbox')
   const toggleOptions = options.filter(option => option.type === 'checkbox')
 
@@ -49,17 +58,17 @@ export default function RoguelikeSettingsPanel({
       <div className="roguelike-panel-body roguelike-settings-body">
         <div className="roguelike-field-grid">
           {fieldOptions.map(option => {
-            const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced) ?? '')
+            const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced, theme) ?? '')
             return (
               <div key={option.key}>
-                {option.type === 'select' && option.options ? (
+                {option.type === 'select' ? (
                   <Select
                     id={`roguelike-${task.id}-${option.key}`}
                     name={`maa-${task.id}-${option.key}`}
                     label={option.label}
                     value={displayValue}
                     onChange={(value: string) => onAdvancedChange(option.key, value)}
-                    options={option.options}
+                    options={selectOptionsFor(option, theme, displayValue)}
                     hint={option.hint}
                   />
                 ) : (
@@ -67,6 +76,9 @@ export default function RoguelikeSettingsPanel({
                     id={`roguelike-${task.id}-${option.key}`}
                     name={`maa-${task.id}-${option.key}`}
                     type={option.type === 'number' ? 'number' : 'text'}
+                    min={option.type === 'number' ? option.numberRange?.min : undefined}
+                    max={option.type === 'number' ? option.numberRange?.max : undefined}
+                    step={option.type === 'number' ? 1 : undefined}
                     label={option.label}
                     value={displayValue}
                     onChange={(value: string) => onAdvancedChange(option.key, value)}
@@ -82,18 +94,29 @@ export default function RoguelikeSettingsPanel({
           <div className="roguelike-toggle-list">
             {toggleOptions.map(option => (
               <div key={option.key} className="roguelike-toggle-row">
-                <label
-                  htmlFor={`roguelike-${task.id}-${option.key}`}
-                  className="roguelike-toggle-label min-h-11"
-                >
-                  {option.label}
-                </label>
+                <div className="min-w-0 flex-1">
+                  <label
+                    htmlFor={`roguelike-${task.id}-${option.key}`}
+                    className="roguelike-toggle-label min-h-11"
+                  >
+                    {option.label}
+                  </label>
+                  {option.hint && (
+                    <p
+                      id={`roguelike-${task.id}-${option.key}-hint`}
+                      className="pb-2 pr-2 text-xs leading-5 text-tertiary"
+                    >
+                      {option.hint}
+                    </p>
+                  )}
+                </div>
                 <Switch
                   id={`roguelike-${task.id}-${option.key}`}
                   name={`maa-${task.id}-${option.key}`}
-                  checked={resolveRoguelikeAdvancedValue(option, advanced) === true}
+                  checked={resolveRoguelikeAdvancedValue(option, advanced, theme) === true}
                   onChange={(checked: boolean) => onAdvancedChange(option.key, checked)}
                   label={option.label}
+                  aria-describedby={option.hint ? `roguelike-${task.id}-${option.key}-hint` : undefined}
                 />
               </div>
             ))}
@@ -132,4 +155,18 @@ export default function RoguelikeSettingsPanel({
       </div>
     </SmoothPanel>
   )
+}
+
+/**
+ * 下拉项来自当前主题；草稿里保留了旧主题的取值时补一项回显并标注不受支持，
+ * 避免原生 select 因为找不到匹配项而显示空白，也不把越界值伪装成合法候选。
+ */
+function selectOptionsFor(
+  option: RoguelikeAdvancedOption,
+  theme: string,
+  displayValue: string,
+) {
+  const choices = getRoguelikeOptionChoices(option, theme) ?? []
+  if (displayValue === '' || choices.some(choice => choice.value === displayValue)) return choices
+  return [...choices, { value: displayValue, label: `${displayValue}（不适用于当前主题）` }]
 }
