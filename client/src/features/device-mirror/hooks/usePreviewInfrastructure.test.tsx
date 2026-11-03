@@ -3,7 +3,7 @@
 import { Activity, act, useEffect, useEffectEvent } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import ScreenMonitor from './ScreenMonitor'
+import { usePreviewInfrastructure } from './usePreviewInfrastructure'
 import { usePreviewStore } from '../store/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -47,16 +47,15 @@ interface MockDeviceViewProps {
 
 let latestDeviceViewProps: MockDeviceViewProps | null = null
 
-vi.mock('./ScrcpyDeviceView', () => ({
-  default: function MockDeviceView(props: MockDeviceViewProps) {
-    const startInfrastructure = useEffectEvent(() => props.onStartInfrastructure?.())
-    useEffect(() => { latestDeviceViewProps = props })
-    useEffect(() => {
-      if (deviceViewBehavior.startLiveOnMount && usePreviewStore.getState().mode === 'live') {
-        void startInfrastructure()
-      }
-    }, [])
-    return (
+function MockDeviceView(props: MockDeviceViewProps) {
+  const startInfrastructure = useEffectEvent(() => props.onStartInfrastructure?.())
+  useEffect(() => { latestDeviceViewProps = props })
+  useEffect(() => {
+    if (deviceViewBehavior.startLiveOnMount && usePreviewStore.getState().mode === 'live') {
+      void startInfrastructure()
+    }
+  }, [])
+  return (
     <div
       data-available={String(props.automationAvailable)}
       data-message={props.automationUnavailableMessage}
@@ -72,9 +71,13 @@ vi.mock('./ScrcpyDeviceView', () => ({
       <button type="button" onClick={() => void props.onToggleServer?.()}>server</button>
       <button type="button" onClick={() => void props.onToggleAgent?.()}>agent</button>
     </div>
-    )
-  },
-}))
+  )
+}
+
+function InfrastructureHarness() {
+  const infrastructure = usePreviewInfrastructure()
+  return <MockDeviceView {...infrastructure.view} onStartInfrastructure={infrastructure.start} onCancelInfrastructure={infrastructure.cancel} />
+}
 
 let container: HTMLDivElement
 let root: Root
@@ -98,7 +101,7 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-describe('ScreenMonitor automation availability guard', () => {
+describe('usePreviewInfrastructure automation availability guard', () => {
   beforeEach(() => {
     deviceViewBehavior.startLiveOnMount = false
     usePreviewStore.getState().setMode('off')
@@ -132,11 +135,11 @@ describe('ScreenMonitor automation availability guard', () => {
     ['unavailable', '后端服务暂不可用，请确认服务已启动'],
   ])('blocks API side effects while backend is %s', async (_state, message) => {
     availabilityMock.unavailableMessage = message
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
 
-    expect(container.firstElementChild?.firstElementChild?.getAttribute('data-available')).toBe('false')
-    expect(container.firstElementChild?.firstElementChild?.getAttribute('data-message')).toBe(message)
+    expect(container.querySelector('[data-available]')?.getAttribute('data-available')).toBe('false')
+    expect(container.querySelector('[data-available]')?.getAttribute('data-message')).toBe(message)
 
     await click('start')
     await click('install')
@@ -157,7 +160,7 @@ describe('ScreenMonitor automation availability guard', () => {
       success: true,
       data: { installed: true, built: true, serverRunning: true, agentRunning: false },
     })
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
 
     await click('agent')
@@ -172,10 +175,10 @@ describe('ScreenMonitor automation availability guard', () => {
   it('reports an explicit error state instead of treating an unknown status as stopped', async () => {
     availabilityMock.isAvailable = true
     apiMocks.getWebrtcStatus.mockRejectedValueOnce(new Error('状态读取失败'))
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
 
-    const view = container.firstElementChild?.firstElementChild
+    const view = container.querySelector('[data-available]')
     expect(view?.getAttribute('data-status-state')).toBe('error')
     expect(view?.getAttribute('data-has-status')).toBe('false')
     expect(view?.getAttribute('data-error')).toBe('状态读取失败')
@@ -187,7 +190,7 @@ describe('ScreenMonitor automation availability guard', () => {
     apiMocks.installWebrtc.mockImplementationOnce(() => new Promise(resolve => {
       resolveInstall = resolve
     }))
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
 
     await click('install')
@@ -214,7 +217,7 @@ describe('ScreenMonitor automation availability guard', () => {
       success: true,
       data: { installed: true, built: true, serverRunning: true, agentRunning: false },
     })
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
 
     await click('agent')
@@ -238,15 +241,15 @@ describe('ScreenMonitor automation availability guard', () => {
       data: { signalingUrl: '/webrtc-signaling', serverRunning: true, agentRunning: true },
     })
 
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await click('start')
     await flush()
-    expect(container.firstElementChild?.firstElementChild?.getAttribute('data-server-running')).toBe('true')
+    expect(container.querySelector('[data-available]')?.getAttribute('data-server-running')).toBe('true')
 
     await act(async () => resolveInitial?.({ success: true, data: { serverRunning: false } }))
     await flush()
 
-    expect(container.firstElementChild?.firstElementChild?.getAttribute('data-server-running')).toBe('true')
+    expect(container.querySelector('[data-available]')?.getAttribute('data-server-running')).toBe('true')
   })
 
   it('does not read stopped status concurrently when an already-live child starts before its parent effect', async () => {
@@ -259,7 +262,7 @@ describe('ScreenMonitor automation availability guard', () => {
     }>()
     apiMocks.startWebrtc.mockReturnValueOnce(pending.promise)
 
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
     expect(apiMocks.startWebrtc).toHaveBeenCalledOnce()
     expect(apiMocks.getWebrtcStatus).not.toHaveBeenCalled()
@@ -278,20 +281,20 @@ describe('ScreenMonitor automation availability guard', () => {
     availabilityMock.isAvailable = true
     const pending = deferred<{ success: boolean; data: { signalingUrl: string; serverRunning: boolean } }>()
     apiMocks.startWebrtc.mockReturnValueOnce(pending.promise)
-    await act(async () => root.render(<Activity mode="visible"><ScreenMonitor /></Activity>))
+    await act(async () => root.render(<Activity mode="visible"><InfrastructureHarness /></Activity>))
     await flush()
     let result: ReturnType<NonNullable<MockDeviceViewProps['onStartInfrastructure']>>
     act(() => { result = latestDeviceViewProps!.onStartInfrastructure!() })
     expect(latestDeviceViewProps!.infrastructureLoading).toBe('preview')
 
-    await act(async () => root.render(<Activity mode="hidden"><ScreenMonitor /></Activity>))
+    await act(async () => root.render(<Activity mode="hidden"><InfrastructureHarness /></Activity>))
     await act(async () => pending.resolve({
       success: true,
       data: { signalingUrl: 'ws://stale-hidden-start', serverRunning: true },
     }))
     expect(await result!).toBeUndefined()
 
-    await act(async () => root.render(<Activity mode="visible"><ScreenMonitor /></Activity>))
+    await act(async () => root.render(<Activity mode="visible"><InfrastructureHarness /></Activity>))
     await flush()
     expect(latestDeviceViewProps!.infrastructureLoading).toBeNull()
     expect(latestDeviceViewProps!.infrastructureStatus?.serverRunning).toBe(false)
@@ -310,7 +313,7 @@ describe('ScreenMonitor automation availability guard', () => {
       success: true,
       data: { signalingUrl: 'ws://new-preview', serverRunning: true },
     })
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
     const controller = new AbortController()
     let cancelledResult: ReturnType<NonNullable<MockDeviceViewProps['onStartInfrastructure']>>
@@ -345,9 +348,9 @@ describe('ScreenMonitor automation availability guard', () => {
       success: true,
       data: { serverRunning: true, agentRunning: false },
     })
-    await act(async () => root.render(<ScreenMonitor />))
+    await act(async () => root.render(<InfrastructureHarness />))
     await flush()
-    const view = container.firstElementChild?.firstElementChild
+    const view = container.querySelector('[data-available]')
     expect(view?.getAttribute('data-agent-running')).toBe('true')
     await act(async () => vi.advanceTimersByTimeAsync(20000))
     expect(apiMocks.getWebrtcStatus).toHaveBeenCalledOnce()

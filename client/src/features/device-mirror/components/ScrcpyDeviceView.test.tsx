@@ -5,10 +5,15 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
+import { PreviewSessionProvider } from './PreviewSessionProvider'
+import { startWebrtc } from '../api'
 import type { useScrcpyWebRTC } from '../hooks/useScrcpyWebRTC'
 import { usePreviewStore } from '../store/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+vi.mock('@/features/runtime-status', () => ({ useAutomationAvailability: () => ({ isAvailable: true }) }))
+vi.mock('../api', () => ({ getWebrtcStatus: vi.fn().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } }), startWebrtc: vi.fn().mockResolvedValue({ success: true, data: { signalingUrl: '/webrtc-signaling' } }) }))
 
 const webrtcMock = vi.hoisted(() => ({
   status: 'idle',
@@ -90,7 +95,11 @@ describe('ScrcpyDeviceView automation availability', () => {
     vi.clearAllMocks()
     container = document.createElement('div')
     document.body.appendChild(container)
-    root = createRoot(container)
+    const renderer = createRoot(container)
+    root = {
+      render: children => renderer.render(<PreviewSessionProvider>{children}</PreviewSessionProvider>),
+      unmount: () => renderer.unmount(),
+    }
   })
 
   afterEach(async () => {
@@ -101,7 +110,6 @@ describe('ScrcpyDeviceView automation availability', () => {
   })
 
   it('disables mode switching, connection, and device controls while unavailable', async () => {
-    const onStartInfrastructure = vi.fn().mockResolvedValue('/webrtc-signaling')
     const onInstall = vi.fn()
     const onToggleServer = vi.fn()
     const onToggleAgent = vi.fn()
@@ -113,7 +121,6 @@ describe('ScrcpyDeviceView automation availability', () => {
         automationAvailable={false}
         automationUnavailableMessage="正在检查后端服务，请稍候"
         infrastructureStatus={{ installed: false, built: false, serverRunning: false, agentRunning: false }}
-        onStartInfrastructure={onStartInfrastructure}
         onInstall={onInstall}
         onToggleServer={onToggleServer}
         onToggleAgent={onToggleAgent}
@@ -133,16 +140,14 @@ describe('ScrcpyDeviceView automation availability', () => {
     container.querySelector('video')?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
 
     expect(usePreviewStore.getState().mode).toBe('off')
-    expect(onStartInfrastructure).not.toHaveBeenCalled()
     expect(onInstall).not.toHaveBeenCalled()
     expect(onToggleServer).not.toHaveBeenCalled()
     expect(onToggleAgent).not.toHaveBeenCalled()
     expect(webrtcMock.sendTouch).not.toHaveBeenCalled()
   })
 
-  it('resumes selected live mode after an Activity workspace is restored', async () => {
+  it('keeps selected live mode connected while an Activity workspace hides and restores', async () => {
     usePreviewStore.getState().setMode('live')
-    const onStartInfrastructure = vi.fn().mockResolvedValue('/webrtc-signaling')
     const renderMode = async (mode: 'visible' | 'hidden') => {
       await act(async () => {
         root.render(
@@ -151,8 +156,7 @@ describe('ScrcpyDeviceView automation availability', () => {
               enabled
               autoConnect
               infrastructureStatus={{ installed: true, built: true, serverRunning: true, agentRunning: true }}
-              onStartInfrastructure={onStartInfrastructure}
-            />
+                  />
           </Activity>,
         )
         await Promise.resolve()
@@ -166,8 +170,7 @@ describe('ScrcpyDeviceView automation availability', () => {
     await renderMode('hidden')
     await renderMode('visible')
 
-    expect(onStartInfrastructure).toHaveBeenCalledTimes(2)
-    expect(webrtcMock.connect).toHaveBeenCalledTimes(2)
+    expect(webrtcMock.connect).toHaveBeenCalledOnce()
   })
 
   it('marks the video frame busy only while the preview is connecting', async () => {
@@ -542,26 +545,24 @@ describe('ScrcpyDeviceView automation availability', () => {
   })
 
   it('can cancel startup before infrastructure responds and ignores the late result', async () => {
-    let resolveStart: ((value: string) => void) | undefined
-    const onStartInfrastructure = vi.fn(() => new Promise<string>(resolve => { resolveStart = resolve }))
-    const onCancelInfrastructure = vi.fn()
-    await act(async () => root.render(<ScrcpyDeviceView enabled={false} onStartInfrastructure={onStartInfrastructure} onCancelInfrastructure={onCancelInfrastructure} />))
+    let resolveStart: ((value: Awaited<ReturnType<typeof startWebrtc>>) => void) | undefined
+    vi.mocked(startWebrtc).mockImplementationOnce(() => new Promise(resolve => { resolveStart = resolve }))
+    await act(async () => root.render(<ScrcpyDeviceView enabled={false} />))
     await act(async () => {
       findButton('实时')?.click()
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(onStartInfrastructure).toHaveBeenCalledOnce()
+    expect(startWebrtc).toHaveBeenCalledOnce()
     await act(async () => findButton('关闭')?.click())
-    await act(async () => resolveStart?.('/webrtc-signaling'))
+    await act(async () => resolveStart?.({ success: true, data: { signalingUrl: '/webrtc-signaling' } } as Awaited<ReturnType<typeof startWebrtc>>))
     expect(usePreviewStore.getState().mode).toBe('off')
-    expect(onCancelInfrastructure).toHaveBeenCalled()
     expect(webrtcMock.connect).not.toHaveBeenCalled()
   })
 
   it('exposes shared mode controls in compact view while startup is busy', async () => {
     usePreviewStore.getState().setMode('live')
-    await act(async () => root.render(<ScrcpyDeviceView enabled variant="compact" infrastructureLoading="preview" onStartInfrastructure={() => new Promise(() => {})} />))
+    await act(async () => root.render(<ScrcpyDeviceView enabled variant="compact" infrastructureLoading="preview" />))
     const modes = container.querySelector('[role="radiogroup"][aria-label="预览模式"]')!
     const off = Array.from(modes.querySelectorAll('button')).find(button => button.textContent === '关闭')!
     expect(off.disabled).toBe(false)

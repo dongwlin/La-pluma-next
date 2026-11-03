@@ -87,7 +87,7 @@ vi.mock('@/features/runtime-status', () => ({
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
-vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => null }))
+vi.mock('@/features/device-mirror', () => ({ DeviceMonitorPanel: () => null }))
 vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => null }))
 
 const CONTROLLER_INTERVALS = { active: 1_000, idle: 5_000, disconnected: 2_000 }

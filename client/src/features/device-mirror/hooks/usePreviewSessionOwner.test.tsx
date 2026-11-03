@@ -4,7 +4,7 @@ import { Activity, act, useEffect, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePreviewStore } from '../store/previewStore'
-import { usePreviewSession } from './usePreviewSession'
+import { usePreviewSessionOwner } from './usePreviewSessionOwner'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -42,14 +42,14 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-let session: ReturnType<typeof usePreviewSession>
+let session: ReturnType<typeof usePreviewSessionOwner>
 let visibility: DocumentVisibilityState
 let container: HTMLDivElement
 let root: Root
 
 function Harness({ available = true }: { available?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const current = usePreviewSession({ videoRef, deviceId: 'preview-device', automationAvailable: available })
+  const current = usePreviewSessionOwner({ videoRef, deviceId: 'preview-device', automationAvailable: available })
   useEffect(() => { session = current })
   return <video ref={videoRef} data-preview-error={current.error} data-starting={current.starting} />
 }
@@ -62,7 +62,7 @@ async function selectMode(mode: 'off' | 'snapshot' | 'live') {
   await act(async () => usePreviewStore.getState().setMode(mode))
 }
 
-describe('usePreviewSession', () => {
+describe('usePreviewSessionOwner', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()

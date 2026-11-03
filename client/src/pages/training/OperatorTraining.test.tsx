@@ -35,6 +35,10 @@ const mocks = vi.hoisted(() => ({
   setMessage: vi.fn(),
 }))
 
+vi.mock('@/features/device-mirror', () => ({
+  DeviceMonitorLayout: ({ children }: { children: ReactNode }) => children,
+}))
+
 vi.mock('framer-motion', async () => {
   const React = await import('react')
   type MotionTestProps = Record<string, unknown> & { children?: ReactNode }

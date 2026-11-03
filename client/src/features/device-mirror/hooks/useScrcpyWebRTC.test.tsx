@@ -74,6 +74,7 @@ class MockPeerConnection extends EventTarget {
   connectionState: RTCPeerConnectionState = 'new'
   signalingState: RTCSignalingState = 'stable'
   iceGatheringState: RTCIceGatheringState = 'complete'
+  canTrickleIceCandidates = true
   ontrack: ((event: RTCTrackEvent) => void) | null = null
   onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null
   ondatachannel: ((event: RTCDataChannelEvent) => void) | null = null
@@ -778,6 +779,28 @@ describe('useScrcpyWebRTC startup', () => {
     expect(hook!.error).toContain('建立预览视频连接超时')
     expect(pc.close).toHaveBeenCalledOnce()
     expect(MockWebSocket.instances[0]!.readyState).toBe(MockWebSocket.CLOSED)
+  })
+
+  it.each([true, false])('sends an immediate answer and trickles candidates when SDP advertises trickle=%s', async (advertisesTrickle) => {
+    vi.stubGlobal('RTCPeerConnection', class extends MockPeerConnection {
+      override iceGatheringState = 'gathering' as const
+      override canTrickleIceCandidates = advertisesTrickle
+    })
+    await openSignalingConnection()
+    const pc = await receiveOffer()
+    const socket = MockWebSocket.instances[0]!
+    const answers = () => socket.send.mock.calls
+      .map(([message]) => JSON.parse(message as string))
+      .filter(message => message.payload?.type === 'answer')
+
+    expect(answers()).toHaveLength(1)
+    expect(pc.iceGatheringState).toBe('gathering')
+    act(() => pc.onicecandidate?.({
+      candidate: { candidate: 'candidate:1 1 udp 1 192.168.1.2 5000 typ relay', sdpMid: '0', sdpMLineIndex: 0 },
+    } as RTCPeerConnectionIceEvent))
+    expect(JSON.parse(socket.send.mock.calls[socket.send.mock.calls.length - 1]![0] as string).payload.type).toBe('ice-candidate')
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(answers()).toHaveLength(1)
   })
 
   it('times out a stalled answer and ignores its eventual result', async () => {

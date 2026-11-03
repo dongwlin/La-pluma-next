@@ -4,7 +4,7 @@ import { Activity, act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDashboardPreview } from './useDashboardPreview'
-import { usePreviewStore } from '@/features/device-mirror'
+import { PreviewSessionProvider, usePreviewStore } from '@/features/device-mirror'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -94,9 +94,9 @@ describe('useDashboardPreview Activity lifecycle', () => {
   const renderMode = async (mode: 'visible' | 'hidden') => {
     await act(async () => {
       root.render(
-        <Activity mode={mode}>
+        <PreviewSessionProvider><Activity mode={mode}>
           <PreviewHarness />
-        </Activity>,
+        </Activity></PreviewSessionProvider>,
       )
       await Promise.resolve()
       await Promise.resolve()
@@ -105,7 +105,7 @@ describe('useDashboardPreview Activity lifecycle', () => {
     })
   }
 
-  it('resumes only the explicitly selected live mode when the dashboard returns', async () => {
+  it('keeps the shared live connection while the dashboard hides and returns', async () => {
     usePreviewStore.getState().setMode('live')
     await renderMode('visible')
     expect(signalingConnections).toHaveLength(1)
@@ -113,7 +113,7 @@ describe('useDashboardPreview Activity lifecycle', () => {
     await renderMode('hidden')
     await renderMode('visible')
 
-    expect(signalingConnections).toHaveLength(2)
+    expect(signalingConnections).toHaveLength(1)
   })
 
   it('does not connect or capture a screenshot merely because the service is online', async () => {

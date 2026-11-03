@@ -87,7 +87,7 @@ vi.mock('@/features/logs/api', () => ({
   cleanupLogs: vi.fn(),
 }))
 
-vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
+vi.mock('@/features/device-mirror', () => ({ DeviceMonitorPanel: () => <div data-testid="screen-monitor" /> }))
 
 const CONTROLLER_INTERVALS = { active: 1_000, idle: 5_000, disconnected: 2_000 }
 

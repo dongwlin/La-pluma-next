@@ -13,10 +13,6 @@ interface ScrcpyDeviceViewProps {
   automationAvailable?: boolean
   automationUnavailableMessage?: string
   variant?: 'full' | 'compact'
-  deviceId?: string
-  signalingUrl?: string
-  onStartInfrastructure?: (signal?: AbortSignal) => Promise<string | undefined> | string | undefined
-  onCancelInfrastructure?: () => void
   autoConnect?: boolean
   onStatusChange?: (status: string, stats: any, error: string | null) => void
   infrastructureStatus?: {
@@ -97,10 +93,6 @@ export default function ScrcpyDeviceView({
   automationAvailable = true,
   automationUnavailableMessage = '后端服务暂不可用，请稍后重试',
   variant = 'full',
-  deviceId = 'mumu-la-pluma',
-  signalingUrl = '/webrtc-signaling',
-  onStartInfrastructure,
-  onCancelInfrastructure,
   onStatusChange,
   infrastructureStatus,
   infrastructureStatusState,
@@ -133,14 +125,7 @@ export default function ScrcpyDeviceView({
   const compactControlsId = `scrcpy-controls-${useId().replace(/:/g, '')}`
   const bitrateProgress = ((customBitrateMbps - 1) / (32 - 1)) * 100
   const webrtc = usePreviewSession({
-    deviceId,
-    signalingUrl,
     videoRef,
-    automationAvailable,
-    onStartInfrastructure,
-    onCancelInfrastructure,
-    connectionPath: 'auto',
-    ipPreference: 'ipv4',
   })
   const snapshot = usePreviewSnapshot(automationAvailable)
   const sendTouchRef = useRef(webrtc.sendTouch)

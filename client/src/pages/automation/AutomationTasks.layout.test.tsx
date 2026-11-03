@@ -109,8 +109,8 @@ vi.mock('@/features/runtime-status', () => ({
 }))
 
 vi.mock('@/features/device-mirror', () => ({
-  ScreenMonitor: ({ variant }: { variant?: 'full' | 'compact' }) => (
-    <div data-testid="screen-monitor" data-variant={variant || 'full'} />
+  DeviceMonitorPanel: () => (
+    <div data-testid="screen-monitor" data-variant="compact" />
   ),
 }))
 

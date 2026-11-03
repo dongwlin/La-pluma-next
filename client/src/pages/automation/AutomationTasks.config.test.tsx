@@ -103,7 +103,7 @@ vi.mock('@/features/runtime-status', () => ({
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
 
-vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
+vi.mock('@/features/device-mirror', () => ({ DeviceMonitorPanel: () => <div data-testid="screen-monitor" /> }))
 vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => <div /> }))
 
 class IntersectionObserverMock {

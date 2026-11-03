@@ -57,7 +57,7 @@ AutomationTasks（页头 + 全局指示）
    │  └─ AutomationExecutionSummary
    ├─ automation-task-editor（任务配置；同一草稿与执行投影）
    └─ automation-support-column
-      ├─ ScreenMonitor
+      ├─ DeviceMonitorPanel（共享实时会话）
       └─ AutomationSchedulePanel（定时编辑 + NotificationSettings）
 ```
 
