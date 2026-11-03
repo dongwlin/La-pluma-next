@@ -19,9 +19,10 @@
 | 当前模式、配置订阅、执行订阅与同步反馈 | `features/roguelike/components/RoguelikeWorkspace.tsx` | 跨面板状态的唯一容器；模式选择不写入持久化载荷 |
 | 模式分段控件的测量与键盘导航 | `features/roguelike/components/RoguelikeModePanel.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 主题快捷项与自定义代号 | `features/roguelike/components/RoguelikeThemePanel.tsx` | 从草稿派生值，编辑经回调交给工作区 |
-| 高级字段与运行/停止按钮 | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染选项表并调用注入的执行动作，不创建执行状态机 |
+| 高级字段与运行/停止按钮 | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染当前生效的字段并调用注入的执行动作，不创建执行状态机 |
 | 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | 配置适配器维持 key、本地键和 wire 协议 |
-| 任务目录、主题快捷项、高级选项与默认值、命令拼接、草稿归一化与输入校验 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
+| 策略字段表、主题相关下拉项与适用条件 | `features/roguelike/model/roguelikeOptions.ts` | 纯数据与候选项解析：主题分队、职业组、模式与难度 |
+| 任务目录、主题快捷项、可见性、默认值、命令拼接、草稿归一化与输入校验 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
 | 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图 |
 
 维护约束：
@@ -49,30 +50,38 @@ RoguelikeTasks（页面壳：页头、预览布局）
 
 ### 3. 纯命令模型
 
-`features/roguelike/model/roguelikeTasks.ts` 从页面移出以下规则：
+字段与候选项归 `features/roguelike/model/roguelikeOptions.ts`，命令规则归 `roguelikeTasks.ts`：
 
 | 导出 | 作用 |
 | --- | --- |
 | `ROGUELIKE_TASKS` | 集成战略/生息演算的任务名、命令、图标、占位与描述 |
 | `ROGUELIKE_THEME_PRESETS` | 各模式的主题快捷项；只影响界面，不进入 wire |
 | `DEFAULT_RECLAMATION_MODE` | 生息演算默认模式 `'1'`，与 CLI 的 `-m` 缺省一致 |
-| `getRoguelikeAdvancedOptions(taskId)` | 高级字段表及其 CLI 参数名，含可选的 `defaultValue` 与 `hint`；未知任务返回空表 |
-| `resolveRoguelikeAdvancedValue(option, advanced)` | 字段显示值：显式值优先，其次默认值，select 最后回落到首项 |
+| `getRoguelikeAdvancedOptions(taskId)` | 策略字段表及其 CLI 参数名，含 `defaultValue`、`hint`、`themes`、`modes` 与 `requires`；未知任务返回空表 |
+| `getRoguelikeOptionChoices(option, theme)` | 下拉项：模式、难度、分队与职业组按主题返回候选，其余字段用静态 `options` |
+| `resolveRoguelikeAdvancedValue(option, advanced, theme)` | 字段显示值：显式值优先，其次默认值，select 最后回落到当前主题的首项 |
+| `isRoguelikeOptionVisible(option, taskId, theme, advanced)` | 字段在当前主题、模式与依赖字段下是否生效；隐藏字段既不下发也不显示 |
+| `normalizeRoguelikeModeForTheme(taskId, theme, advancedParams)` | 切主题时把新主题不支持的模式重置为首项，其余字段保留 |
+| `splitRoguelikeListValue(value)` | 列表字段按逗号、顿号、分号与空白切分 |
 | `normalizeRoguelikeAdvancedParams(advancedParams)` | 补齐缺失或为空的默认值；无变化时返回原引用，不修改入参 |
-| `buildRoguelikeCommandParams(taskId, taskInputs, advancedParams)` | 主题代号在前，高级参数按选项表顺序追加 |
-| `validateRoguelikeTaskInput(taskId, taskInputs)` | 两个已知模式必须有非空主题；未知任务交给调用方 |
+| `buildRoguelikeCommandParams(taskId, taskInputs, advancedParams)` | 主题代号在前，生效字段按字段表顺序追加 |
+| `validateRoguelikeTaskInput(taskId, taskInputs, advancedParams)` | 两个已知模式必须有非空主题；刷坍缩范式模式还要求期望范式；未知任务交给调用方 |
 
 命令拼接规则：
 
-- 空字符串、未勾选的 checkbox 与未设置的字段不写入命令；checkbox 为 true 时只追加参数名。
-- 非 checkbox 字段追加 `参数名 值`。声明 `defaultValue` 的字段在缺失或为空时解析为默认值并始终写入：生息演算 `-m` 因此始终出现，缺省为 `1`。
-- 未声明默认值的 select 不写命令：集成战略 `--mode` 继续省略，与 CLI 缺省 `0` 一致；界面显示由 `resolveRoguelikeAdvancedValue` 回落到首项。
-- 例：`taskInputs.roguelike = 'Phantom'`，高级值 `{ mode: '1', squad: '指挥分队', useSupport: true }` 生成
-  `Phantom --mode 1 --squad 指挥分队 --use-support`；`taskInputs.reclamation = 'Tales'` 配合空高级值生成 `Tales -m 1`。
+- 空字符串、未勾选的 checkbox、未设置的字段与当前主题/模式不适用的字段不写入命令；checkbox 为 true 时只追加参数名。
+- 非 checkbox 字段追加 `参数名 值`；`list` 字段按切分后的每一项重复参数名（`--expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏`）。
+- 声明 `defaultValue` 的字段在缺失或为空时解析为默认值并始终写入：生息演算 `-m` 因此始终出现，缺省为 `1`；开局职业组缺省 `稳扎稳打`，避免空缺时 Core 按固定位置点选职业组、与核心干员的职业不匹配。
+- 未声明默认值的 select 不写命令：集成战略 `--mode` 继续省略，与 CLI 缺省 `0` 一致；界面显示由 `resolveRoguelikeAdvancedValue` 回落到当前主题的首项。
+- 字段的适用条件由字段表声明：`themes` 限定主题（如密文板只对萨米、指路鳞只对水月、种子只对萨卡兹刷源石锭），`modes` 限定模式（如凹直升只对刷开局、第五层前停止只对刷分），`requires` 依赖另一字段（如非好友助战依赖使用助战、投资次数依赖未禁用投资）。
+- 例：`taskInputs.roguelike = 'Sarkaz'`，高级值 `{ mode: '1', squad: '蓝图测绘分队', useSupport: true }` 生成
+  `Sarkaz --mode 1 --squad 蓝图测绘分队 --roles 稳扎稳打 --use-support`；`taskInputs.reclamation = 'Tales'` 配合空高级值生成 `Tales -m 1`。
 - 生息演算模式字段声明 `hint`，说明两种模式各自的存档与起始界面要求；面板只原样透传，文案归模型维护。
-- 校验只 trim 输入判断是否为空，不修改实际传给 CLI 的主题字符串。
+- 校验 trim 输入判断是否为空，不修改实际传给 CLI 的主题字符串。
 
-模型不读取配置通道或执行状态，因此可以用纯 Node 测试覆盖目录、参数顺序、空值过滤、默认值解析、归一化与校验。
+面板只渲染 `isRoguelikeOptionVisible` 过滤后的字段：主题、模式与开关变化会同时改变字段集合、命令参数与“N 项”计数。草稿里保留的旧主题取值不删除，切换主题后仅停止展示与下发；下拉项遇到草稿中不存在于当前候选的值时补一项回显，原生 `select` 不会因找不到匹配项显示空白。
+
+模型不读取配置通道或执行状态，因此可以用纯 Node 测试覆盖目录、参数顺序、可见性、空值过滤、默认值解析、归一化与校验。
 
 ### 4. Activity 与卸载
 
@@ -84,7 +93,8 @@ RoguelikeTasks（页面壳：页头、预览布局）
 
 - 配置 key、本地草稿、pending 与 wire 形状以[配置持久化协调器](../../architecture/config-persistence.md)为准；面板不另建持久化格式。
 - 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。
-- 保持渲染结构、DOM/CSS 类名与表单 `id`/`name`；这里的“默认态视觉”指样式与布局，字段的默认值语义以命令模型为准（生息演算默认模式为 `1`）。
+- 保持渲染结构、DOM/CSS 类名与表单 `id`/`name`；字段键沿用迁移后的 camelCase，新增字段按含义插入相应分组，不改动已有键与表单名。
+- 字段的默认值语义以命令模型为准：生息演算默认模式为 `1`，集成战略默认职业组为 `稳扎稳打`；两者都会写入 wire 与命令。
 - 面板只组合命令模型、配置适配器与执行控制器；不在页面恢复独立的配置或执行状态。
 
 ## 回归与关联
@@ -95,7 +105,10 @@ RoguelikeTasks（页面壳：页头、预览布局）
 
 关键不变量：
 
-- 命令拼接：空值与未勾选项不写入，声明 `defaultValue` 的字段始终写入（生息演算 `-m 1`），未声明默认值的 select 省略（集成战略 `--mode`）；归一化不修改入参，校验只 trim 判空。
+- 命令拼接：空值与未勾选项不写入，声明 `defaultValue` 的字段始终写入（生息演算 `-m 1`、集成战略 `--roles 稳扎稳打`），未声明默认值的 select 省略（集成战略 `--mode`），主题/模式不适用的字段不写入；列表字段逐项重复参数名。
+- 可见性：主题专属字段随主题切换隐藏并停止下发，模式专属字段随模式切换隐藏；`requires` 未满足时隐藏（含开关缺省为关的情况）。
+- 校验：主题 trim 后非空；刷坍缩范式模式缺少期望范式时拒绝提交，切换主题后模式重置为首项。
+- 归一化不修改入参；`resolveRoguelikeAdvancedValue` 的首项回落只用于显示，不参与命令构造。
 - 模式是局部状态：不进入配置 wire，跨模式草稿合并、空主题拒绝，Activity 隐藏保留而真正卸载回到 `roguelike`。
 - 执行接线：按当前模式提交，停止/超时/失败/断线恢复由控制器 runId 持有，不重新提交。
 
