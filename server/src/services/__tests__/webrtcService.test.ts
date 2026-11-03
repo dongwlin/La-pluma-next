@@ -27,7 +27,8 @@ const ENV_KEYS = [
   'TEST_WEBRTC_AGENT_PID_FILE',
   'TEST_WEBRTC_STOP_STARTED_FILE',
   'TEST_WEBRTC_SERVER_PID_FILE',
-  'TEST_WEBRTC_TURN_PID_FILE'
+  'TEST_WEBRTC_TURN_PID_FILE',
+  'TEST_WEBRTC_PREDEPLOY_PROBE_FILE'
 ];
 
 /** 断言里按错误形状读取字段：assert.rejects 的入参是 unknown。 */
@@ -197,6 +198,9 @@ fi
 if [[ "$*" == *"ps -A | grep cloudphone-agent"* ]] && ! grep -q '^\\[\\]$' "$TEST_WEBRTC_DEVICES_FILE"; then
   echo cloudphone-agent
 fi
+if [[ "$*" == *"ps -A | grep cloudphone-agent"* ]] && [ -n "$TEST_WEBRTC_PREDEPLOY_PROBE_FILE" ] && [ ! -f "$TEST_WEBRTC_AGENT_COUNT_FILE" ]; then
+  printf probe > "$TEST_WEBRTC_PREDEPLOY_PROBE_FILE"
+fi
 `);
     await Promise.all([chmod(signalingPath, 0o755), chmod(runScript, 0o755), chmod(turnServerPath, 0o755), chmod(fakeAdbPath, 0o755)]);
 
@@ -294,6 +298,21 @@ fi
     );
   });
 
+  it('checks the deployed device process only once per successful readiness poll', async () => {
+    let processChecks = 0;
+    const devices = await service.waitForWebrtcDevice('preview-device', {
+      childProcess: { exitCode: 0, signalCode: null },
+      getDevices: async () => ['preview-device'],
+      isAgentRunning: async () => {
+        processChecks += 1;
+        return true;
+      }
+    });
+
+    assert.deepEqual(devices, ['preview-device']);
+    assert.equal(processChecks, 1);
+  });
+
   it('waits for the selected ADB target and reports its actual state', async () => {
     assert.equal(service.parseAdbDeviceState(
       'List of devices attached\n127.0.0.1:5555\tdevice product:test\n',
@@ -372,6 +391,8 @@ fi
   });
 
   it('serializes concurrent starts and waits for authenticated device registration', async () => {
+    const predeployProbeFile = join(fixtureDir, 'predeploy-probe');
+    process.env.TEST_WEBRTC_PREDEPLOY_PROBE_FILE = predeployProbeFile;
     const [first, second] = await Promise.all([
       service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath),
       service.startWebrtc('fixture-device', 'preview-device', fakeAdbPath)
@@ -386,6 +407,9 @@ fi
     assert.deepEqual(await service.getWebrtcDevices({ throwOnError: true }), ['preview-device']);
     assert.equal(await countLines(serverCountFile), 1);
     assert.equal(await countLines(agentCountFile), 1);
+    assert.equal(await service.pathExists(predeployProbeFile), false,
+      'combined startup must not wait for an unused status ADB probe before Agent deployment');
+    delete process.env.TEST_WEBRTC_PREDEPLOY_PROBE_FILE;
     const serverArgs = JSON.parse(await readFile(serverArgsFile, 'utf8')) as string[];
     assert.equal(serverArgs.includes('-tls=false'), true);
     assert.deepEqual(serverArgs.slice(serverArgs.indexOf('-assets'), serverArgs.indexOf('-assets') + 2), [

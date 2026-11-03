@@ -845,14 +845,17 @@ export async function waitForWebrtcDevice(
     const failure = processStartupFailure(childProcess, 'WebRTC Agent 部署', { allowSuccessfulExit: true });
     if (failure) throw failure;
     if (childProcess && childProcess.exitCode !== 0) return false;
-    if (childProcess?.exitCode === 0 && isAgentRunning && !await isAgentRunning()) {
+    const agentRunning = childProcess?.exitCode === 0 && isAgentRunning
+      ? await isAgentRunning()
+      : null;
+    if (agentRunning === false) {
       throw createWebrtcError('WebRTC Agent 部署脚本已结束，但设备端进程未启动', 'WEBRTC_AGENT_DEPLOYMENT_FAILED', {
         retryable: true
       });
     }
     const devices = await getDevices();
     if (!devices.includes(deviceId)) return false;
-    if (isAgentRunning && !await isAgentRunning()) return false;
+    if (isAgentRunning && !(agentRunning ?? await isAgentRunning())) return false;
     return devices;
   }, {
     timeoutMs,
@@ -1160,11 +1163,12 @@ export async function installWebrtc(): Promise<WebrtcInstallResult> {
   return enqueueLifecycle(installWebrtcUnlocked);
 }
 
-async function startWebrtcServerUnlocked(address: string, adbPath: string): Promise<WebrtcStatus> {
+/** 只确保信令服务就绪；组合启动无需等待会被丢弃的设备状态快照。 */
+async function ensureWebrtcServerReadyUnlocked(address: string): Promise<void> {
   const signal = getCloseSignal();
   assertPreviewOpen();
   if (await isWebrtcServerReachable()) {
-    return getWebrtcStatus(address, adbPath);
+    return;
   }
   assertPreviewOpen();
 
@@ -1197,14 +1201,16 @@ async function startWebrtcServerUnlocked(address: string, adbPath: string): Prom
     clearManagedProcess('server', child);
     throw error;
   }
-  return getWebrtcStatus(address, adbPath);
 }
 
 export async function startWebrtcServer(
   address = DEFAULT_DEVICE_ADDRESS,
   adbPath = DEFAULT_ADB_PATH
 ): Promise<WebrtcStatus> {
-  return enqueueLifecycle(() => startWebrtcServerUnlocked(address, adbPath));
+  return enqueueLifecycle(async () => {
+    await ensureWebrtcServerReadyUnlocked(address);
+    return getWebrtcStatus(address, adbPath);
+  });
 }
 
 async function stopWebrtcServerUnlocked(address: string, adbPath: string): Promise<WebrtcStopResult> {
@@ -1409,7 +1415,7 @@ export async function startWebrtc(
   adbPath = DEFAULT_ADB_PATH
 ): Promise<WebrtcRunningStatus> {
   return enqueueLifecycle(async () => {
-    await startWebrtcServerUnlocked(address, adbPath);
+    await ensureWebrtcServerReadyUnlocked(address);
     return startWebrtcAgentUnlocked(address, deviceId, adbPath);
   });
 }

@@ -51,7 +51,7 @@
 - 受管 TURN：端口已被监听记为 external、不再启动；否则探测 `LA_PLUMA_WEBRTC_TURN_SERVER_PATH` 或常见安装位置启动 `turnserver`（无 TLS/DTLS，固定账号），默认 5s 内等待监听（`webrtcService.ts:920-963`）。ICE 列表优先 `LA_PLUMA_WEBRTC_ICE_SERVERS`，否则由 `turn:` / `stun:` 指向宿主 IPv4 拼出（`webrtcService.ts:886-891`）。
 - `startWebrtcAgent`：等待服务就绪与鉴权 `/devices` 接口；同设备 Agent 已在运行时仅重新登记所有权（新 generation）；否则按需 `adb connect`、等待设备就绪（offline / unauthorized / no_permissions 各有具名错误码）、停止上一所有者的设备端 Agent，再经 `agentd/run.sh` 启动并等待设备出现在 `/devices` 且 `cloudphone-agent` 进程存在（默认 20s）。失败时终止部署子进程并清理设备端进程（`webrtcService.ts:1223-1287`）。
 - 进程所有权：只终止本实例 spawn 的子进程；终止先杀进程组，SIGTERM 后 500ms 宽限期仍存活再 SIGKILL（`webrtcService.ts:392-406,57,984-992`）。所有就绪等待带显式时限与可注入轮询，失败抛具名错误码而不是把"还在等待"当成功（`waitForCondition`，`webrtcService.ts:475-522`）。
-- 组合入口：`startWebrtc` 在同一队列内先启动信令服务再启动设备端 Agent；`stopWebrtc` 依次停止 Agent 与服务，汇总去重后的 `released` 列表（`webrtcService.ts:1406-1429`）。自动回收以"设备标识 + Agent 代次"匹配，只回收登记时的那一代 Agent（`webrtcService.ts:1345-1355`）。
+- 组合入口：`startWebrtc` 在同一队列内先确保信令服务就绪，再启动设备端 Agent，最后生成一次状态快照；信令服务就绪后不提前采样尚未部署的设备进程。Agent 就绪轮询每轮复用同一次设备进程检查结果，同时保留部署退出、设备注册与进程存活校验。单独启动信令服务仍返回完整状态快照。`stopWebrtc` 依次停止 Agent 与服务，汇总去重后的 `released` 列表。自动回收以"设备标识 + Agent 代次"匹配，只回收登记时的那一代 Agent。
 
 ## webrtcRuntime：发布包、平台二进制与宿主地址
 
