@@ -38,7 +38,6 @@ import AutomationStageEditor from './AutomationStageEditor'
 import AutomationTaskFlowPanel from './AutomationTaskFlowPanel'
 import AutomationSchedulePanel from './AutomationSchedulePanel'
 import { AVAILABLE_TASKS } from './automationTaskCatalog'
-import { useAutomationActivity } from '../hooks/useAutomationActivity'
 import { useAutomationExecution } from '../hooks/useAutomationExecution'
 import { useTaskFlowSorting } from '../hooks/useTaskFlowSorting'
 import {
@@ -86,7 +85,6 @@ export default function AutomationWorkspace() {
   const shouldReduceMotion = useReducedMotion()
   const setStatusMessage = useStatusStore(state => state.setMessage)
   const { isAvailable: automationAvailable, unavailableMessage } = useAutomationAvailability()
-  const activity = useAutomationActivity()
   const {
     isRunning,
     isStopping,
@@ -405,7 +403,6 @@ export default function AutomationWorkspace() {
         <AutomationTaskFlowPanel
           tasks={displayedTaskFlow}
           activeTaskId={activeTaskId}
-          activity={activity}
           execution={{
             isRunning,
             isStopping,
@@ -441,7 +438,6 @@ export default function AutomationWorkspace() {
             <div className="automation-editor-heading">
               <div>
                 <h3><SlidersHorizontal size={16} strokeWidth={1.8} aria-hidden="true" /><span>任务配置</span></h3>
-                <p>选择流程步骤后调整参数</p>
               </div>
               {activeTaskId && (
                 <span>{String(displayedTaskFlow.findIndex(task => task.id === activeTaskId) + 1).padStart(2, '0')}</span>

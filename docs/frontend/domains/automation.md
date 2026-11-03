@@ -27,7 +27,6 @@
 | 通知配置读取与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；测试通知仍是显式命令 |
 | 最近执行摘要 | `components/AutomationExecutionSummary.tsx` | 只接只读摘要与 run 身份；负责保留最后一份、展开/收起与失败自动展开 |
 | 拖拽/键盘排序的 React 接线 | `hooks/useTaskFlowSorting.ts` | 预览、pointer 生命周期、Escape、公告；规则仍来自 `model/taskFlowSort.ts` |
-| 当前活动展示 | `hooks/useAutomationActivity.ts` | 读取 `automation/activity` Query；失败只隐藏标签 |
 | 活动 DTO 校验 | `model/activity.ts` | 纯函数：校验 `/agent/activity` 的 status/来源时间/failure/completion，不推断活动状态 |
 | 逐项执行状态与摘要选择 | `model/flowExecution.ts` | 纯函数：活动期读 `progress`，空闲期回退流程终态摘要，单项状态/文案 |
 | 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 遵循配置协调器契约，维持 key、本地布局、wire 与完整提交条件 |
@@ -40,7 +39,7 @@
 - 通知配置读取属于 automation Query（`['automation','notification-config']`）；保存成功后写回同一 key，不保留模块级永久缓存，也不把服务端配置复制进第二份可写状态。
 - 不改变任务参数默认值、智能养成参数、执行前校验顺序或执行身份。
 - 遵循既有渲染结构与 DOM/CSS 类名；表单 `id`/`aria-label`、菜单 `id`/`role`、
-  焦点顺序与键盘行为保持。没有新增样式，也没有更新视觉基线。
+  焦点顺序与键盘行为保持。
 - 任务配置编辑器（通用参数字段、高级设置与连接测试）仍与工作区同文件组合；
   它读取同一草稿、选中项与执行投影，表单结构与参数规则保持不变。
 
@@ -68,7 +67,6 @@ AutomationTasks（页头 + 全局指示）
 | 选中任务、撤销快照、连接反馈 | `AutomationWorkspace` | 保留 | 重置 |
 | 拖拽预览、当前拖拽索引、公告 | `useTaskFlowSorting` | 清理 document 监听并丢弃进行中的预览 | 重置 |
 | 摘要保留与详情展开 | `AutomationExecutionSummary` | 保留；恢复时按当前摘要调整 | 重置 |
-| 活动信息 | `automation/activity` Query | 观察者注销，恢复后按新鲜度重取 | 缓存按 `gcTime` 回收 |
 | 通知配置 | `automation/notification-config` Query | 观察者注销，恢复后按新鲜度重取 | 缓存按 `gcTime` 回收 |
 | 菜单开关、外部点击、Escape 回焦 | `AutomationTaskPicker` | 保留；Effect 清理后恢复时重新注册 | 关闭 |
 
@@ -152,47 +150,27 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 `selectFlowDisplaySummary` 的优先级：本页持有 run 的终态摘要 → 空闲时
 服务端流程投影 `schedule.lastResult` → 不展示。运行中或提交在途不展示旧摘要。
 
-### 6. 当前活动读取
-
-活动标签来自 `useAutomationActivity`：
-
-- 使用 `automation/activity` Query；不传 `clientType` 时 key 为
-  `['automation','activity','profile']`，由服务端按连接 profile 的
-  `client_type` 解析；显式传入仍是请求级覆盖，与总览共用同一资源身份；
-- 载荷经 `normalizeActivityPayload` 校验；缺 status 或字段非法时按 Query
-  contract 失败处理；
-- 展示级读取显式 `retry: false`；失败只隐藏标签，不写全局状态、不阻塞配置
-  或执行；
-- 页面与面板不再直接调用 `getActivity`；Activity 隐藏时观察者注销，恢复后
-  按 `staleTime` 决定是否后台重取；
-- 活动名称缺失时回退显示活动 code；无代号但有名称的主线活动仍显示标签，
-  但不提供可导航的执行按钮。
-
-### 7. 通知配置读取与保存
+### 6. 通知配置读取与保存
 
 `NotificationSettings` 使用 `notificationConfigQueryOptions()` 读取 `automation/notification-config`（`['automation','notification-config']`），沿用全局默认 `staleTime` 并显式 `retry: false`。保存仍调用既有的 `saveNotificationConfig` 命令；成功后把本次提交快照通过 `setQueryData` 写回同一 key，不再用模块级永久缓存或第二份服务端副本。保存请求不绑定页面 `AbortSignal`，页面隐藏或卸载不会取消已经发出的保存；迟到响应按请求序号裁决。测试通知是独立命令，只中止自己的测试请求。
 
-### 8. Activity 与兼容约束
+### 7. Activity 与兼容约束
 
 - **Activity 隐藏/恢复**：流程排序的 document 监听随 Effect 清理并丢弃进行中
-  的预览；摘要保留与展开状态保留；活动 Query 观察者注销；配置通道与执行
-  控制器不受影响。
+  的预览；摘要保留与展开状态保留；配置通道与执行控制器不受影响。
 - **真正卸载/刷新**：选中、撤销、拖拽预览、摘要与连接反馈重置；配置草稿、
   pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、wire 形状、调度与执行端点均未变化；旧草稿与服务端
   配置可直接读取。
-- 渲染结构、DOM/CSS 类名与默认态视觉未变化；未新增样式，也未更新视觉基线。
-- 唯一行为变化是 `lostpointercapture` 不再取消拖拽。它修复的是已记录缺陷，
-  不改变默认态视觉；回归用例覆盖成功提交，取消路径仍由 Escape/`pointercancel`
-  覆盖。
+- 流程列表、页脚与摘要沿用既有 DOM/CSS 类名；页头只保留标题与启用计数。
+- 取消拖拽仍由 Escape/`pointercancel` 覆盖；`lostpointercapture` 不取消拖拽，
+  也不改变默认态视觉。
 
 ### 剩余边界
 
 - 通用任务配置编辑器仍在 `AutomationWorkspace` 内组合；流程、定时
   与摘要在各自面板中，未改变其表单结构或参数规则。
 - 指针排序的性能比较必须先验证保存完成条件；旧版取消结果不可直接与成功保存耗时比较。采样方法见[性能采样工具](../../../client/tests/performance/README.md)。
-- 活动 Query 的刷新策略沿用全局 `staleTime`/`gcTime` 与观察者语义，不额外
-  轮询；活动周期切换的及时性以页面重新订阅或总览强制读取为准。
 
 ## 纯模型与排序
 

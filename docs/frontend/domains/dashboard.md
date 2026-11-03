@@ -277,7 +277,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - 设备轮询在文档隐藏时暂停，恢复可见后立即采样；迁移前每 5s 固定请求。轮询失败仍是静默保旧，不展示错误。
 - 设备采样不再由 Dashboard 页面直接轮询；`updateDeviceStats` 接受未知载荷并在 store 内校验，避免把端点形状当成可信类型。
 - Activity 恢复不再直接调用页面私有计时器；计时器由 Query 观察者与同步 hook 各自管理，隐藏时全部清理。
-- `automation/activity` 由自动化领域 Query 持有，自动化页与总览按各自需要读取；不传 `clientType` 时 key 使用 `profile` 哨兵并由服务端连接 profile 解析，`schedule-execution` 仍由总览完整快照消费。
+- `automation/activity` 由自动化领域 Query 持有，目前只由总览完整快照读取；不传 `clientType` 时 key 使用 `profile` 哨兵并由服务端连接 profile 解析，`schedule-execution` 仍由总览完整快照消费。
 
 ## 回归与关联
 

@@ -9,7 +9,6 @@ import type { KeyboardEvent, PointerEvent } from 'react'
 import type { AutomationAvailableTask, TaskFlowItem } from '../types'
 import type { AutomationExecutionSummary } from '../model/automationRun'
 import type { TaskExecutionResult } from '../utils/automationTaskProgress'
-import type { AutomationActivityProjection } from '../hooks/useAutomationActivity'
 
 /** 只读执行投影：来源是 task-execution 控制器，不包含任何可写字段。 */
 export interface AutomationFlowExecutionProjection {
@@ -40,7 +39,6 @@ export interface AutomationFlowSortingProjection {
 export interface AutomationTaskFlowPanelProps {
   tasks: TaskFlowItem[]
   activeTaskId: string | null
-  activity: AutomationActivityProjection
   execution: AutomationFlowExecutionProjection
   sorting: AutomationFlowSortingProjection
   lastDeletedTaskName: string | null

@@ -35,7 +35,6 @@ import type { AutomationTaskFlowPanelProps } from './automationPanelTypes'
 export default function AutomationTaskFlowPanel({
   tasks,
   activeTaskId,
-  activity,
   execution,
   sorting,
   lastDeletedTaskName,
@@ -66,14 +65,6 @@ export default function AutomationTaskFlowPanel({
               <ClipboardList size={16} strokeWidth={1.8} aria-hidden="true" />
               <span>任务流程</span>
             </h3>
-            <p className="automation-flow-meta">
-              <span>按顺序执行，可拖拽调整</span>
-              {(activity.code || activity.name) && (
-                <span className="automation-flow-activity">
-                  当前活动 · {activity.name || activity.code}
-                </span>
-              )}
-            </p>
           </div>
           <span className="automation-flow-summary">
             {enabledCount}/{tasks.length}

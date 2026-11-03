@@ -279,7 +279,7 @@ describe('AutomationTasks layout surfaces', () => {
     localStorage.clear()
     // 协调器是应用级单例：每个用例从空通道与空存储开始，避免跨用例沿用草稿/队列。
     userConfigCoordinator.dispose()
-    // 活动读取走 Query：每个用例独立客户端，避免复用上一个用例的 mock 结果。
+    // Query 客户端每个用例独立，避免复用上一个用例的缓存结果。
     queryClient = createQueryClient()
     mocks.getActivity.mockReset().mockResolvedValue({ success: false })
     mocks.getScheduleExecutionStatus.mockReset().mockResolvedValue({ success: true, data: { isRunning: false } })
@@ -315,61 +315,6 @@ describe('AutomationTasks layout surfaces', () => {
     await renderPage()
 
     expect(container.querySelector('[data-testid="screen-monitor"]')?.getAttribute('data-variant')).toBe('compact')
-  })
-
-  it('shows the current activity from the automation activity query', async () => {
-    mocks.getActivity.mockResolvedValue({
-      success: true,
-      data: {
-        status: 'active',
-        clientType: 'Official',
-        available: true,
-        message: '当前活动: 测试活动',
-        code: 'act-1',
-        name: '测试活动',
-        source: 'maa',
-        startTime: null,
-        endTime: null,
-        stages: [],
-        lastSuccessAt: 1_760_000_000_000,
-        dataUpdatedAt: 1_760_000_000_000,
-        failure: null,
-        completion: { known: false, complete: false, completedStages: [], totalStages: 0 },
-      },
-    })
-
-    await renderPage()
-
-    expect(container.querySelector('.automation-flow-activity')?.textContent)
-      .toContain('当前活动 · 测试活动')
-    expect(mocks.getActivity).toHaveBeenCalledOnce()
-    expect(mocks.getActivity).toHaveBeenCalledWith(undefined, expect.any(AbortSignal))
-  })
-
-  it('shows a mainline activity that has a name but no navigable code', async () => {
-    mocks.getActivity.mockResolvedValue({
-      success: true,
-      data: {
-        status: 'active',
-        clientType: 'Official',
-        available: false,
-        message: '当前活动: 相变临界',
-        code: null,
-        name: '相变临界',
-        source: 'maa',
-        startTime: null,
-        endTime: null,
-        stages: [],
-        lastSuccessAt: 1_760_000_000_000,
-        dataUpdatedAt: 1_760_000_000_000,
-        failure: null,
-      },
-    })
-
-    await renderPage()
-
-    expect(container.querySelector('.automation-flow-activity')?.textContent)
-      .toContain('当前活动 · 相变临界')
   })
 
   it('hydrates an enabled schedule without rebuilding the server schedule', async () => {

@@ -131,7 +131,7 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 单作业 `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 默认；强制预览读取 `staleTime: 0` |
 | 作业集 `copilotSetQueryOptions(id)` | `['combat','copilot-set',id]` | 同上 |
 | 作业集计划 `copilotSetPlanQueryOptions(id, raid)` | `['combat','copilot-set-plan',id,raid]` | 同上；重置进度后按 id 前缀失效 |
-| 活动 `activityQueryOptions(clientType?)` | `['automation','activity',clientType ?? 'profile']` | 不传时由服务端连接 profile 解析，不硬编码 `Official`；活动标签读取 `retry: false` |
+| 活动 `activityQueryOptions(clientType?)` | `['automation','activity',clientType ?? 'profile']` | 不传时由服务端连接 profile 解析，不硬编码 `Official`；目前只由总览完整快照消费 |
 | schedule 投影 `scheduleExecutionQueryOptions()` | `['automation','schedule-execution']` | 供总览协调读取 |
 | 通知配置 `notificationConfigQueryOptions()` | `['automation','notification-config']` | 默认 30s `staleTime`；`retry: false`；保存成功后由 `NotificationSettings` 用 `setQueryData` 写回同一 key |
 | 完整快照 `dashboardSnapshotQueryOptions()` | `['dashboard','snapshot']` | `staleTime: 0`、`gcTime: 0`、`retry: false`；五路领域读取同样 `staleTime: 0`、`retry: false` |
@@ -220,7 +220,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | 作业搜索与预览 | [作业搜索与预览](../frontend/domains/combat.md#搜索与预览)：计划优先、成员回退、会话取消、选段与终态刷新；预览不新建 key |
 | 总览与设备采样 | [总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)：完整提交、失败保旧、刷新协调与设备样本投影 |
 
-自动化活动标签的展示与失败处理见[页面、流程与执行摘要](../frontend/domains/automation.md#页面流程与执行摘要)；活动 key 与 Query 覆盖值统一见第 4 节。通知配置读取使用 `notificationConfigQueryOptions()`，保存成功后用 `setQueryData` 写回同一 key，不建立模块级快照。
+活动 key 与 Query 覆盖值统一见第 4 节；Read 与失败处理见[总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)。通知配置读取使用 `notificationConfigQueryOptions()`，保存成功后用 `setQueryData` 写回同一 key，不建立模块级快照。
 
 ## 12. 本层回归入口
 
