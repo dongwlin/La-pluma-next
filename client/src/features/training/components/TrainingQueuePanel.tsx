@@ -80,7 +80,7 @@ export default function TrainingQueuePanel({
     <>
       <section className="training-queue-section training-surface" aria-labelledby="training-queue-title">
         <div className="training-section-heading">
-          <div><h2 ref={queueHeadingRef} tabIndex={-1} id="training-queue-title">养成队列 <span className="text-secondary font-normal">{queue.length}</span></h2><p>按顺序筹备，第一位是当前目标</p></div>
+          <div><h2 ref={queueHeadingRef} tabIndex={-1} id="training-queue-title">养成队列 <span className="text-secondary font-normal">{queue.length}</span></h2></div>
           <ClipboardList size={20} className="text-tertiary" aria-hidden="true" />
         </div>
         {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
