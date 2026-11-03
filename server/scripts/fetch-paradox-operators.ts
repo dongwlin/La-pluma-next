@@ -17,7 +17,6 @@ const BASE = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/mast
 const HANDBOOK_SOURCE = 'handbook_info_table.json';
 const CHARACTER_SOURCE = 'character_table.json';
 
-/** 悖论模拟干员条目。 */
 export interface ParadoxOperator {
   id: string;
   name: string;
@@ -25,10 +24,8 @@ export interface ParadoxOperator {
   stage_name: string;
 }
 
-/** 输出目标：paradox-operators.json。 */
 export const OUTPUT_PATH = join(OUTPUT_DIR, 'paradox-operators.json');
 
-/** 从 handbook_info_table.json 与 character_table.json 解析悖论模拟干员。 */
 export function parseParadoxOperators(handbookPayload: unknown, characterPayload: unknown): ParadoxOperator[] {
   const handbook = expectRecord(handbookPayload, HANDBOOK_SOURCE);
   const characters = expectRecord(characterPayload, CHARACTER_SOURCE);
@@ -62,14 +59,12 @@ export function parseParadoxOperators(handbookPayload: unknown, characterPayload
   return operators.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
-/** 从游戏数据仓库获取 JSON。 */
 async function fetchJson(name: string): Promise<unknown> {
   const response = await fetch(`${BASE}/${name}`);
   if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
   return response.json();
 }
 
-/** 测试与手工运行可替换的副作用端口。 */
 export interface FetchParadoxOperatorsDeps {
   fetchJson?: (name: string) => Promise<unknown>;
   mkdir?: (directory: string) => Promise<void>;
@@ -78,7 +73,6 @@ export interface FetchParadoxOperatorsDeps {
   outputPath?: string;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchParadoxOperatorsDeps = {}): Promise<ParadoxOperator[]> {
   const fetchPayload = deps.fetchJson ?? fetchJson;
   const ensureDir = deps.mkdir ?? ((directory: string) => mkdir(directory, { recursive: true }));

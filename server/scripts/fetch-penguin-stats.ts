@@ -1,19 +1,3 @@
-/**
- * 从企鹅物流（penguin-stats.io）获取真实掉落统计数据
- *
- * 数据源：企鹅物流公开 API v2（无需鉴权，与 maa-cli --report-to-penguin 的上报渠道同源）
- * - /PenguinStats/api/v2/stages  关卡表：stageId、游戏内代号 code、理智消耗 apCost、所属章节
- * - /PenguinStats/api/v2/result/matrix  掉落矩阵：每关每物品的样本次数与总掉落数
- * - /PenguinStats/api/v2/zones  章节表：用于给关卡标记章节类型（主线/资源/别传等）
- *
- * 输出 server/data/penguin-drop-data.json：
- * - stages：stageId -> { code, apCost, zoneId, zoneType }
- * - dropMatrix：物品Id -> 该物品在各关卡的 { stageId, expected 期望掉落/次, samples 样本数 }（按样本数降序）
- *
- * 注意：企鹅物流矩阵只保留当前可刷关卡的数据，限时活动关过期后条目即被移除，
- * 因此矩阵条目本身就是「该关现在可刷」的过滤器，无需额外维护活动开放期数据。
- */
-
 import { writeFile } from 'node:fs/promises';
 import {
   errorMessage,
@@ -34,7 +18,6 @@ const STAGE_SOURCE = 'PenguinStats/stages';
 const MATRIX_SOURCE = 'PenguinStats/result/matrix';
 const ZONE_SOURCE = 'PenguinStats/zones';
 
-/** 输出目标：penguin-drop-data.json。 */
 export const OUTPUT_PATH = resolveTrainingDataPath('penguin-drop-data.json');
 
 const REQUEST_HEADERS: Record<string, string> = {
@@ -42,7 +25,6 @@ const REQUEST_HEADERS: Record<string, string> = {
   'Accept': 'application/json'
 };
 
-/** 关卡信息。 */
 export interface PenguinStageInfo {
   code: string;
   apCost: number;
@@ -50,14 +32,12 @@ export interface PenguinStageInfo {
   zoneType: string;
 }
 
-/** 单条掉落统计。 */
 export interface PenguinDropEntry {
   stageId: string;
   expected: number;
   samples: number;
 }
 
-/** penguin-drop-data.json 的完整结构。 */
 export interface PenguinDropData {
   metadata: {
     source: string;
@@ -71,7 +51,6 @@ export interface PenguinDropData {
   dropMatrix: Record<string, PenguinDropEntry[]>;
 }
 
-/** 从 URL 获取 JSON 数据。 */
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, { headers: REQUEST_HEADERS });
   if (!response.ok) {
@@ -80,9 +59,6 @@ async function fetchJson(url: string): Promise<unknown> {
   return response.json();
 }
 
-/**
- * 解析章节表：zoneId -> 章节类型。
- */
 export function parseZoneTypes(payload: unknown): Map<string, string> {
   const zoneList = expectArray(payload, ZONE_SOURCE, '章节列表');
   const zoneTypes = new Map<string, string>();
@@ -95,11 +71,6 @@ export function parseZoneTypes(payload: unknown): Map<string, string> {
   return zoneTypes;
 }
 
-/**
- * 解析关卡表：跳过无代号或无理智消耗的关卡（剧情关、教学关等不可刷关卡）
- * 以及磨难难度关（tough_*）：磨难与普通关显示代号相同（如 10-2），
- * 但 maa fight 只会跑普通难度，磨难关的掉落统计不能混入选关
- */
 export function parseStages(stageListPayload: unknown, zoneTypes: ReadonlyMap<string, string>): Record<string, PenguinStageInfo> {
   const stageList = expectArray(stageListPayload, STAGE_SOURCE, '关卡列表');
   const stages: Record<string, PenguinStageInfo> = {};
@@ -129,10 +100,6 @@ export function parseStages(stageListPayload: unknown, zoneTypes: ReadonlyMap<st
   return stages;
 }
 
-/**
- * 构建按物品聚合的掉落矩阵：
- * 同一 (stageId, itemId) 可能有多段统计窗口（活动复刻等），按 qty/time 加权合并
- */
 export function buildDropMatrix(matrixPayload: unknown): { dropMatrix: Record<string, PenguinDropEntry[]>; entryCount: number } {
   const matrix = expectRecord(matrixPayload, MATRIX_SOURCE);
   const entries = optionalArray(matrix.matrix, MATRIX_SOURCE, 'matrix') ?? [];
@@ -178,7 +145,6 @@ export function buildDropMatrix(matrixPayload: unknown): { dropMatrix: Record<st
   return { dropMatrix, entryCount };
 }
 
-/** 由三个接口载荷组装完整输出。 */
 export function buildPenguinDropData(
   stageListPayload: unknown,
   matrixPayload: unknown,
@@ -203,7 +169,6 @@ export function buildPenguinDropData(
   };
 }
 
-/** 测试与手工运行可替换的副作用端口。 */
 export interface FetchPenguinStatsDeps {
   fetchJson?: (url: string) => Promise<unknown>;
   writeFile?: (filePath: string, data: string) => Promise<void>;
@@ -211,7 +176,6 @@ export interface FetchPenguinStatsDeps {
   now?: () => Date;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchPenguinStatsDeps = {}): Promise<PenguinDropData> {
   const fetchPayload = deps.fetchJson ?? fetchJson;
   const write = deps.writeFile ?? ((filePath: string, data: string) => writeFile(filePath, data, 'utf-8'));

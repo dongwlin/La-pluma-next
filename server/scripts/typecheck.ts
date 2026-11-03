@@ -12,7 +12,6 @@ import {
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 用 tsconfig 的 include/exclude 解析程序范围，返回未被 tsc 纳入的源文件。 */
 function findFilesOutsideTypeCheck(rootDir: string, collected: readonly string[]): string[] {
   const configPath = path.join(rootDir, 'tsconfig.json');
   const readResult = ts.readConfigFile(configPath, ts.sys.readFile);

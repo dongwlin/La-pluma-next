@@ -1,16 +1,3 @@
-/**
- * 覆盖率门禁：固定测试集合、统计范围与阈值。
- *
- * - 测试集合来自 `testFiles.ts`，与 `run-tests` 完全一致；每个文件由 Node 测试
- *   运行器放进独立子进程，`--test-concurrency=1` 保持逐文件串行，进程隔离不变。
- * - 统计范围固定为服务端 TypeScript 源，测试与 fixture 目录不进入报告；脚本会
- *   在运行后复核报告，排除规则失效时直接失败，而不是悄悄把测试代码算进覆盖率。
- * - 阈值是渐进下限：以领取基线的实测值为依据向下取整，覆盖率上升后只上调；
- *   需要下调必须在评审中说明原因，不能为通过某次改动而降低。
- * - 已知限制：Node 只统计被测试加载过的文件，未被任何测试导入的模块不会出现在
- *   报告里；覆盖率因此不能替代行为测试，关键失败分支仍按契约补用例。
- */
-
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,17 +6,10 @@ import { findTestFiles } from './testFiles.ts';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 统计范围：服务端全部 TypeScript 源。 */
 export const COVERAGE_INCLUDE = '**/*.ts';
 
-/** 测试与 fixture 不计入覆盖率，也不允许出现在报告里。 */
 export const COVERAGE_EXCLUDE = '**/__tests__/**';
 
-/**
- * 渐进阈值（百分比整数）。同一范围内实测：领取基线 line 84.42 / branch 76.42 /
- * funcs 81.30，补齐智能养成失败分支与门禁自身用例后为 line 84.90 / branch 76.61 /
- * funcs 81.80；阈值取整为 84 / 76 / 81，后续只升不降。
- */
 export const COVERAGE_THRESHOLDS = {
   lines: 84,
   branches: 76,
@@ -42,10 +22,6 @@ export interface CoverageTotals {
   functions: number;
 }
 
-/**
- * 在覆盖率报告段落中核对范围并读取总计行。
- * 报告缺失、包含测试目录或缺少总计行都视为失败，避免范围变化被忽略。
- */
 export function checkCoverageReport(output: string): { problems: string[]; totals: CoverageTotals | null } {
   const start = output.indexOf('start of coverage report');
   const end = output.indexOf('end of coverage report');
