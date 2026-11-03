@@ -40,7 +40,6 @@ export function parseNotificationConfigBody(body: unknown): unknown {
   return body || {};
 }
 
-/** 渠道测试请求：渠道必须可用，覆盖配置只接受普通对象或省略。 */
 export interface NotificationChannelTestInput {
   channel: string;
   config: Record<string, unknown> | null;

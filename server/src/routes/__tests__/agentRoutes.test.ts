@@ -77,7 +77,6 @@ after(async () => {
   await rm(lockDir, { recursive: true, force: true })
 })
 
-/** Express router 与 route layer 的最小反射结构；只读取路由声明。 */
 type RouteHandler = (req: unknown, res: TestResponse, next?: (error?: unknown) => void) => unknown
 
 interface MountedRoute {
@@ -123,7 +122,6 @@ function findHandler(method: string, routePath: string): RouteHandler {
   return handle
 }
 
-/** 响应信封：只声明断言实际读取的字段；`data` 保持端点结果，读取处按用例声明的形状收窄。 */
 interface TestEnvelope {
   success: boolean
   message: string
@@ -145,7 +143,6 @@ interface AgentRunView extends AgentRunDto {
   result: { summary: { successCount: number; pendingCount: number } } & Record<string, unknown>
 }
 
-/** 计划视图：日常流程返回步骤数组，作业集返回带 `entries` 的计划对象。 */
 type AgentPlanView = Array<ScheduledTaskPlanStep & { taskConfig: Record<string, unknown> }> & {
   entries: CopilotPlanEntry[]
 }

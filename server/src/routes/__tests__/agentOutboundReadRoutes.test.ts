@@ -6,7 +6,6 @@ import type {
   MaintenanceParadoxSearchPayload
 } from '../../controllers/maintenanceDto.ts'
 
-/** Express 5 Router 的内部层结构：只声明本文件读取的字段。 */
 interface MountedRouteLayer {
   route?: { path: string; methods?: Record<string, boolean>; stack: HandlerLayer[] }
   handle?: MountedRouteLayer

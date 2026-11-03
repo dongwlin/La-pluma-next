@@ -151,5 +151,4 @@ export interface PreviewWebrtcStartPayload extends PreviewWebrtcStatusPayload {
   protocol: PreviewWebrtcProtocol;
 }
 
-/** 预览错误响应沿用统一错误出口的信封。 */
 export type PreviewErrorResponse = ApiErrorResponse;

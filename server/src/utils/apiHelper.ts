@@ -72,7 +72,6 @@ export interface ApiErrorResponse {
   meta: ResponseMeta;
 }
 
-/** 读取未知错误对象上的可选字段；非对象输入一律视为缺失。 */
 interface ErrorFields {
   message?: unknown;
   code?: unknown;

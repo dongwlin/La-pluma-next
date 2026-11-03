@@ -2,7 +2,6 @@ import { agentError, sendError } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter, MaybeApiRequest } from '../utils/apiHelper.ts';
 import type { ConfigStorageResult } from '../services/configStorageService.ts';
 
-// 配置存储的 400 校验错误按原 code 透传；其余按存储失败处理
 const CONFIG_VALIDATION_CODES: ReadonlySet<string> = new Set([
   'AGENT_CONFIG_TYPE_INVALID',
   'AGENT_CONFIG_DATA_INVALID'
