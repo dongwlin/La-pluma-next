@@ -63,7 +63,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `readLogFile` 先对日志目录与请求路径取 `realpath`，再按目录边界判定与扩展名检查：只允许日志目录内的 `.log` 文件，目录外符号链接与悬空目标都被拒绝（`server/src/services/maaLogFileService.ts:268-278,337-349`）。
 - 日志内容从文件尾部按 64 KB 分块读取，单次最多 2 MB；窗口起始于行中间时丢弃首行残片。`totalLines` 按 split 语义分块统计换行数；行数上限 `MAX_LOG_FILE_LINES` 5000（`server/src/services/maaLogFileService.ts:24,27,284-329,337-381`）。
 - `cleanupLogs` 按修改时间从新到旧累加，把超出保留上限的文件删除；上限限定 1–1024 MB（`server/src/services/maaLogFileService.ts:229-262`）。
-- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 当前字节数，失败返回 null 不抛错；`readMaaLogSince` 只读取检查点之后新增的字节（最多 `maxBytes`），失败返回空串（`server/src/services/maaLogFileService.ts:160-207`）。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果（`server/AGENTS.md:28`）。
+- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 当前字节数，失败返回 null 不抛错；`readMaaLogSince` 只读取检查点之后新增的字节（最多 `maxBytes`），失败返回空串（`server/src/services/maaLogFileService.ts:160-207`）。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果。
 - 调试截图列表从 MAA 状态目录的 `debug/` 读取图片文件；响应只暴露文件名，不返回服务器绝对路径（`server/src/services/maaLogFileService.ts:386-424`）。
 
 ## 活动查询与本地任务缓存
@@ -82,7 +82,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 - `maaCallbackService.parseMaaCallbackEvents` 只保留 `Assistant::append_callback | ` 标记行中 `taskchain` 与目标值一致的 JSON 对象载荷；断行、非法 JSON、非对象载荷与其他 taskchain 一律跳过，因此增量日志从半行开始也不会产生错误事件（`server/src/services/maaCallbackService.ts:12,34-69`）。
 - `details`、`what`、`class`、子任务名与字符串列表都由读取函数逐字段收窄；缺字段或类型不符按"未观察到"处理，不会中断解析（`server/src/services/maaCallbackService.ts:72-106`）。
-- 五个结果服务都只描述单次步骤的检查结论（`success`/`failed`/`skipped`），不能当作整个 Run 的终态；`skipped`、`failed` 与 `success` 不可混同（`server/AGENTS.md:28`）。
+- 五个结果服务都只描述单次步骤的检查结论（`success`/`failed`/`skipped`），不能当作整个 Run 的终态；`skipped`、`failed` 与 `success` 不可混同。
 - award 不依赖结构化回调：按日志中 `"first":["<BeginTask>"]` 分段和分段内 `"task":"..."` 事件判断六个领取项是否已领取；未启用任何项目返回单项 `skipped`，分段缺失时回退为"流程已完成"（`server/src/services/awardResultService.ts:84-153`）。
 - recruit 解析 `Recruit` taskchain：统计开始/收取/加急/刷新次数与最高星级，`TaskChainError` 为 `failed`，保留标签或许可不足为 `skipped`；无事件时回退"流程已完成"（`server/src/services/recruitResultService.ts:60-174`）。
 - infrast 解析 `Infrast` taskchain：按 `class` 字段映射九类设施，识别收产物、换班、无人机、线索收送与交流、专精训练；未选择设施返回 `skipped`（`server/src/services/infrastResultService.ts:60-192`）。
@@ -131,7 +131,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 ## 测试用假 CLI 与临时目录
 
 - 子进程测试不启动真实 CLI：spawn/execFile/停止端口注入同形状的假子进程，覆盖 close/error、退出码、信号与 kill 升级（`server/src/services/maaProcessService.ts:90-101`、`server/src/services/__tests__/maaServicePorts.test.ts:44-55`）。
-- 需要真实进程行为的测试在临时目录写入可执行的假 CLI 脚本，并在模块导入前设置 `MAA_CLI_PATH` 等环境变量；导入时读取的环境变量必须在导入前设置（`server/src/services/__tests__/maaConfigDirCache.test.ts:7-32`、`server/AGENTS.md:53`）。
+- 需要真实进程行为的测试在临时目录写入可执行的假 CLI 脚本，并在模块导入前设置 `MAA_CLI_PATH` 等环境变量；导入时读取的环境变量必须在导入前设置（`server/src/services/__tests__/maaConfigDirCache.test.ts:7-32`）。
 - MAA 缓存、profile 目录与任务缓存目录用 `mkdtemp` 隔离，用例结束后删除（`server/src/services/__tests__/maaConfigDirCache.test.ts:9,43-45`、`server/src/services/__tests__/maaTaskCacheService.test.ts:10`）。
 - 外部依赖整体可注入：活动查询的 runtime（`server/src/services/maaActivityService.ts:94-108`）、日志检查点的 stat/open 端口（`server/src/services/maaLogFileService.ts:61-69`）、通知服务的出站客户端（`server/src/services/notificationService.ts:574-580`）与 Telegram Bot 的全部依赖（`server/src/services/telegramBotService.ts:218-232`），测试不触碰真实网络、设备或 MAA CLI。
 - 测试入口、逐文件进程隔离与定向回归命令见[服务端架构与请求契约](README.md#测试入口)。
@@ -141,4 +141,3 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - [执行身份与生命周期契约](../architecture/execution-lifecycle.md)：Run 身份、租约、停止与持久化语义。
 - [Agent API 使用指南](../api/agent.md)：端点、命令白名单与错误码。
 - [持久化与运行数据](persistence.md)：MAA profile、日志与运行数据的落盘位置与恢复语义。
-- [服务端开发指南](../../server/AGENTS.md)：执行与回调边界的修改约束及验证命令。

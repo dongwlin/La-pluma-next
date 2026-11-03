@@ -4,7 +4,7 @@
  * 依次核对 TypeScript 版本三处一致，再分析类型逃生舱（any / 抑制指令 / 双重断言）、
  * 分层方向、未归层文件与静态导入环，并用 `guardrails-baseline.json` 解释存量例外。
  * 只做静态事实判断，不启动服务端、不执行测试；行为回归仍由 `test` 与 `test:coverage`
- * 负责。规则边界与例外格式见 server/AGENTS.md。
+ * 负责。
  */
 
 import { readFileSync } from 'node:fs';

@@ -12,10 +12,10 @@
 utils / config → services → controllers → routes → app.ts / server.ts
 ```
 
-- `utils/`、`config/` 提供连接默认值、跨平台路径与响应、文件、日志等工具；`services/` 持有 MAA/ADB 子进程、Run、调度、通知等业务逻辑；`controllers/` 承接请求解析、校验与响应封装（含成功/失败 envelope 装配）；`routes/` 只做端点映射与 router 装配；`app.ts`/`server.ts` 是仅有的两个顶层入口（`server/AGENTS.md:7-15`、`server/scripts/guardrails.ts:90-123`）。`server/src/routes/agent.ts` 是 Agent API 聚合入口，只声明契约文档与领域 router 的挂载清单，不缓存运行状态、不直接发起副作用（`server/src/routes/agent.ts:16-31`）。
-- 每层只允许导入同层或更低层，逐层允许目标表维护在 `server/scripts/guardrails.ts:106-112`；`scripts/` 是维护工具入口，可调用业务代码，业务代码不得依赖 `scripts`（`server/AGENTS.md:66`）。
-- `pnpm --filter la-pluma-next-server guardrails` 是服务端唯一的静态正确性门禁，也是 `verify` 的第一步：`layer-inversion` 检查分层方向、`import-cycle` 检查静态 `import` / `export ... from` 成环、`unlayered-file` 要求新增顶层模块或目录先归入既有层，三者直接失败；`explicit-any`、`suppression-directive`、`double-assertion` 超出 `guardrails-baseline.json` 登记数即失败，存量例外逐条写明理由与移除条件。动态 `import()` 不参与环检查，静态环必须为零（`server/AGENTS.md:57-73`）。
-- 测试与 fixture 不参与分层与依赖环检查，但仍检查类型逃生舱（`server/AGENTS.md:70`）。
+- `utils/`、`config/` 提供连接默认值、跨平台路径与响应、文件、日志等工具；`services/` 持有 MAA/ADB 子进程、Run、调度、通知等业务逻辑；`controllers/` 承接请求解析、校验与响应封装（含成功/失败 envelope 装配）；`routes/` 只做端点映射与 router 装配；`app.ts`/`server.ts` 是仅有的两个顶层入口（`server/scripts/guardrails.ts:90-123`）。`server/src/routes/agent.ts` 是 Agent API 聚合入口，只声明契约文档与领域 router 的挂载清单，不缓存运行状态、不直接发起副作用（`server/src/routes/agent.ts:16-31`）。
+- 每层只允许导入同层或更低层，逐层允许目标表维护在 `server/scripts/guardrails.ts:106-112`；`scripts/` 是维护工具入口，可调用业务代码，业务代码不得依赖 `scripts`。
+- `pnpm --filter la-pluma-next-server guardrails` 是服务端唯一的静态正确性门禁，也是 `verify` 的第一步：`layer-inversion` 检查分层方向、`import-cycle` 检查静态 `import` / `export ... from` 成环、`unlayered-file` 要求新增顶层模块或目录先归入既有层，三者直接失败；`explicit-any`、`suppression-directive`、`double-assertion` 超出 `guardrails-baseline.json` 登记数即失败，存量例外逐条写明理由与移除条件。动态 `import()` 不参与环检查，静态环必须为零（`server/scripts/guardrails.ts`、`server/guardrails-baseline.json`）。
+- 测试与 fixture 不参与分层与依赖环检查，但仍检查类型逃生舱（`server/scripts/guardrails.ts:118-120`）。
 
 ## 请求管道（createLaPlumaApp）
 
@@ -80,13 +80,13 @@ utils / config → services → controllers → routes → app.ts / server.ts
 
 ## 测试入口
 
-- 测试使用 `node:test` 与 `node:assert/strict`，放在相关模块的 `__tests__/*.test.ts`，TS 测试同样只使用可擦除语法；发现规则只认 `__tests__` 目录下的 `.test.ts`，跳过 `data`、`debug` 与 `node_modules`（`server/AGENTS.md:52-53`、`server/scripts/testFiles.ts:14,19-35`）。
-- HTTP 回归通过 `createLaPlumaApp` 组装应用，用临时监听器发起真实请求：`node:http` 的 `createServer` 包装应用并绑定 `127.0.0.1` 的端口 0，再对取得的地址发请求；不恢复调度、Telegram 或真实设备运行时（`server/src/__tests__/readiness.test.ts:59-71`、`server/AGENTS.md:35`）。
+- 测试使用 `node:test`，断言默认 `node:assert/strict`（存量个别文件仍用 `node:assert`）；放在相关模块的 `__tests__/*.test.ts`，TS 测试同样只使用可擦除语法；发现规则只认 `__tests__` 目录下的 `.test.ts`，跳过 `data`、`debug` 与 `node_modules`（`server/scripts/testFiles.ts:14,19-35`）。
+- HTTP 回归通过 `createLaPlumaApp` 组装应用，用临时监听器发起真实请求：`node:http` 的 `createServer` 包装应用并绑定 `127.0.0.1` 的端口 0，再对取得的地址发请求；不恢复调度、Telegram 或真实设备运行时（`server/src/__tests__/readiness.test.ts:59-71`）。
 - 组装与启动均支持依赖注入：应用级可注入 env、信令网关、前端静态目录、用户配置存储、readiness 快照与限流参数（窗口、阈值、假时钟）（`server/src/app.ts:29-45`）；服务器级可注入 Run 存储初始化、运行时初始化、日志、关闭截止时间与执行收尾选项（`server/src/server.ts:60-72`）。
 
 ### 验证命令
 
-以下命令从仓库根目录执行（`server/package.json`、`server/AGENTS.md:39-50`）：
+以下命令从仓库根目录执行（`server/package.json`）：
 
 | 目的 | 命令 |
 | --- | --- |
@@ -97,10 +97,9 @@ utils / config → services → controllers → routes → app.ts / server.ts
 | 覆盖率检查 | `pnpm --filter la-pluma-next-server test:coverage` |
 | 全部质量检查 | `pnpm --filter la-pluma-next-server verify` |
 
-`test` 逐文件、逐进程执行测试，避免模块单例与环境变量相互污染；`test:coverage` 使用同一批测试文件与同样的进程隔离。定向回归可直接 `node --test` 单个测试文件，例如 `node --test server/src/services/__tests__/maaCallbackService.test.ts`（`server/scripts/run-tests.ts:6-9`、`server/scripts/testFiles.ts:4-8`、`server/AGENTS.md:46-50`）。
+`test` 逐文件、逐进程执行测试，避免模块单例与环境变量相互污染；`test:coverage` 使用同一批测试文件与同样的进程隔离。定向回归可直接 `node --test` 单个测试文件，例如 `node --test server/src/services/__tests__/maaCallbackService.test.ts`（`server/scripts/run-tests.ts:6-9`、`server/scripts/testFiles.ts:4-8`）。
 
 ## 延伸阅读
 
-- [服务端开发指南](../../server/AGENTS.md)：修改 `server/` 时的分层边界、执行与回调约束及验证命令。
 - [Agent API 使用指南](../api/agent.md)：端点行为、幂等、鉴权与错误码的完整说明。
 - [执行身份与生命周期契约](../architecture/execution-lifecycle.md)：Run 身份、停止、占用与持久化语义。
