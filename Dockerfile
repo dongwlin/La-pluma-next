@@ -48,10 +48,10 @@ ARG VITE_BASE_PATH=/
 ARG BUILD_REVISION=unknown
 ARG NPM_REGISTRY=https://registry.npmjs.org
 # maa-cli 固定到上游 release，避免 main 分支安装脚本与 stable 渠道漂移。
-# 版本和 SHA-256 来源：https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.7
-ARG MAA_CLI_VERSION=0.7.7
-ARG MAA_CLI_SHA256_AMD64=b582dd79c3f9b42c3a9b4fb6bcf76cc25bfc96600e83028881c97b0c621876a1
-ARG MAA_CLI_SHA256_ARM64=dc38518a1b6111bb0b7a8eea63578dacaebc89651bbbc2f7d568c3484e16fb56
+# 版本和 SHA-256 来源：https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.8
+ARG MAA_CLI_VERSION=0.7.8
+ARG MAA_CLI_SHA256_AMD64=8ac10686a36bd227cd7b2f2625652cb8bbcf2b9ea001fc88d788030fedb05fbf
+ARG MAA_CLI_SHA256_ARM64=7aadb2ee402694c5c9f7ff0d391d546f2e71e02e32f0d545ad4a18df3e4510b4
 ARG TARGETARCH
 
 LABEL org.opencontainers.image.title="La Pluma Next" \
