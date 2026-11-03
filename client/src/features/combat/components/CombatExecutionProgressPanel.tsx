@@ -1,11 +1,3 @@
-/**
- * 本次执行进度面板
- *
- * 只补充其它位置没有的进度事实：本次第 N/M 个执行条目、当前关卡与已用时。
- * 运行状态与停止入口由执行卡片持有，逐项结果由作业列表与续跑进度持有，
- * 面板不复制这些内容，不推断完成语义，也不发起请求；缺少全部事实时整块隐藏。
- */
-
 import { useEffect, useState } from 'react'
 import { formatExecutionElapsed } from '../model/executionProgress'
 import type { ExecutionProgressView } from '../model/executionProgress'

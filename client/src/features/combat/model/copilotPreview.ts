@@ -1,15 +1,3 @@
-/**
- * 作业预览纯模型
- *
- * 负责三件事，全部脱离 React：
- * - 识别输入目标：显式 `prts://s<span>` 是作业集，显式 `prts://<span>` 是单作业，
- *   其它可解析输入（例如 prts.plus 链接）在“自动”模式下保留旧的无后缀探测。
- *   识别方式选择（自动/单个/作业集）可以覆盖推断结果。
- * - 构造预览对象：单作业、作业集（计划优先或成员详情回退）与旧接口的
- *   “按作业集处理”占位。
- * - 描述预览结果：页面只根据 outcome 设置提示，不自行推导缺失语义。
- */
-
 import type { ApiFailureKind } from '@/shared/api'
 import type { CopilotRaid, CopilotSetInfo, CopilotSetItem } from '../types'
 import { normalizeCopilotInput, parseCopilotUri } from '../utils/copilotUri'

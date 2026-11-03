@@ -1,10 +1,3 @@
-/**
- * 自动化任务参数字段规则
- *
- * 公招招募时长按 10 分钟取整并夹取在 60–540 分钟内；非有限输入回退默认值。
- * 规则不读取 React 状态、配置通道或执行控制器，页面只把结果写回草稿。
- */
-
 export const RECRUITMENT_TIME_MIN = 60
 export const RECRUITMENT_TIME_MAX = 540
 export const RECRUITMENT_TIME_STEP = 10

@@ -1,4 +1,3 @@
-/* 页面级样式：随 automation 功能域维护，统一收进 page 层；utilities 仍然优先。 */
 @layer page {
   .automation-flow-header {
     display: flex;
@@ -223,7 +222,6 @@
     }
   }
 
-  /* Automation workspace */
   .automation-workspace-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

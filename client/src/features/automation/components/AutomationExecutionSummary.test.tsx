@@ -91,11 +91,9 @@ describe('AutomationExecutionSummary', () => {
     await act(async () => detailsButton()?.click())
     expect(detailsButton()?.getAttribute('aria-expanded')).toBe('false')
 
-    // 同一 run 的同一内容重复到达，不覆盖用户手动收起。
     await render(<AutomationExecutionSummary summary={failedSummary()} runId="run-1" />)
     expect(detailsButton()?.getAttribute('aria-expanded')).toBe('false')
 
-    // 新一次执行即使内容相同，也按本次结果重新展开。
     await render(<AutomationExecutionSummary summary={failedSummary()} runId="run-2" />)
     expect(detailsButton()?.getAttribute('aria-expanded')).toBe('true')
   })

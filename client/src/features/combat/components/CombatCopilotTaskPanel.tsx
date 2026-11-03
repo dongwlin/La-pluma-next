@@ -1,11 +1,3 @@
-/**
- * 自动战斗单一作业卡
- *
- * 按作业输入/搜索、执行设置与预览结果组合工作区。配置草稿、预览
- * 会话、选择与执行投影都由工作区提供；本地输入状态由各面板订阅自己的
- * 会话存储，不推动无关列表重渲染。
- */
-
 import { Card } from '@/shared/ui'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CombatTask } from '../types'

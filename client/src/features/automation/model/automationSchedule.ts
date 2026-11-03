@@ -1,16 +1,3 @@
-/**
- * 自动化定时时间纯模型
- *
- * schedule 的解析、格式化、规范化与编辑规则集中在这里，页面只提交一次编辑结果：
- * - 时间点统一为 `HH:mm`，解析会夹取到 00:00–23:59，非法文本回退 00:00；
- * - 规范化去掉非法与重复时间点，`enabled` 缺省视为启用（与旧本地草稿一致）；
- * - 编辑小时/分钟按 24/60 循环，重复时间点返回 `duplicate` 而不修改草稿；
- * - 新增时间点沿用迁移前顺序：从 12:00 起逐小时查找第一个未占用时间；
- * - wire 只发送启用项，本地 `entries` 保留禁用项。
- *
- * 模型不访问 React、网络或存储。
- */
-
 export interface ScheduleTimeEntry {
   time: string
   enabled: boolean
@@ -53,7 +40,6 @@ export function parseScheduleTime(time: string): { hour: number; minute: number 
   }
 }
 
-/** 去掉非法时间与重复项；`enabled` 缺省视为启用，与迁移前一致。 */
 export function normalizeScheduleEntries(entries: ScheduleTimeEntry[]): ScheduleTimeEntry[] {
   const normalized: ScheduleTimeEntry[] = []
   const seen = new Set<string>()
@@ -103,7 +89,6 @@ export function removeScheduleEntry(
   return entries.filter((_, itemIndex) => itemIndex !== index)
 }
 
-/** 切换单行启用状态；越界索引不改变内容。 */
 export function setScheduleEntryEnabled(
   entries: readonly ScheduleTimeEntry[],
   index: number,

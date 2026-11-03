@@ -1,19 +1,3 @@
-/**
- * 自动化配置持久化适配器
- *
- * 把 task flow 与 schedule 的本地布局、服务端 wire 形状、加载迁移与完整提交条件
- * 集中到域内，页面只通过 user-config 协调器读写。配置 key、本地键、pending 键与
- * “编辑即入队”的提交时机都沿用迁移前的实现，因此旧版本的本地草稿与服务端配置
- * 无需迁移即可继续读取。
- *
- * 关键边界：
- * - task flow 的 `icon`、`paramFields` 属于界面派生字段，不进入草稿或 wire；
- * - schedule 的禁用项只保留在本地 `maa-schedule.entries`，wire 只发送启用时间点；
- * - 完整提交 = `saveUserConfig` 成功 + `setupSchedule`/`stopSchedule` 成功，
- *   只有两部分都完成才允许协调器确认 pending；
- * - 加载同时接受旧 `times` 与新 `entries`，并把任务参数迁移到当前默认形状。
- */
-
 import { getErrorMessage } from '@/shared/api'
 import {
   USER_CONFIG_KEYS,
@@ -300,10 +284,6 @@ function parseSchedule(value: unknown): AutomationScheduleDraft | null {
   return { enabled, entries: createDefaultScheduleEntries() }
 }
 
-/**
- * 服务端载荷解码。缺失字段按默认草稿补齐；已知字段形状不合法时整份载荷不可用，
- * 协调器会回退本地草稿。
- */
 function decodeAutomationConfig(payload: unknown): AutomationConfigDraft | null {
   if (!isRecord(payload)) return null
   const defaults = createDefaultAutomationDraft()
@@ -325,7 +305,6 @@ function decodeAutomationConfig(payload: unknown): AutomationConfigDraft | null 
   }
 }
 
-/** 读取单个 JSON 本地键；缺失返回 null，损坏或形状不合法时清理该键并返回 null。 */
 function readLocalSection<T>(key: string, parse: (value: unknown) => T | null): T | null {
   const stored = localStorage.getItem(key)
   if (stored === null) return null
@@ -347,14 +326,6 @@ function describeError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : FALLBACK_ERROR_MESSAGE
 }
 
-/**
- * 最近一次被编码（接受或提交）的 wire 指纹。
- *
- * 协调器在调用 `commit` 前已校验 revision，但 automation 的完整提交包含两次请求：
- * 配置保存期间用户仍可能产生新草稿。适配器在配置保存后比对指纹，若已出现更新的
- * 草稿就不再执行旧的 schedule 步骤，保留迁移前“配置保存后、schedule 前重新校验”
- * 的保护；迟到的旧提交由协调器按 revision/token 拒绝确认。
- */
 let latestEncodedWireFingerprint: string | null = null
 
 function toAutomationWire(draft: AutomationConfigDraft): AutomationConfigWire {

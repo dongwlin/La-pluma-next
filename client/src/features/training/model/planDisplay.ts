@@ -1,11 +1,3 @@
-/**
- * 养成计划展示纯规则
- *
- * “当日开放关卡”的取法同时决定页面展示与应用提交：优先使用服务端
- * `openStages`，缺失时回退到 `stages` 中 `isOpen !== false` 的条目。
- * 今日次数、理智与焦点干员都由计划快照派生，面板不复制这些规则。
- */
-
 import type { TrainingPlan, TrainingQueueItem } from '../types'
 
 /**
@@ -24,7 +16,6 @@ export type TrainingPlanStages = NonNullable<TrainingPlan['stages']>
 export const selectTodayStages = (plan: TrainingPlan | null): TrainingPlanStages =>
   plan ? getOpenStagePlan(plan).stages ?? [] : []
 
-/** 今日可刷关卡数；空计划返回 0。 */
 export const getOpenStageCount = (plan: TrainingPlan | null): number => {
   if (!plan) return 0
   return plan.openStages?.length

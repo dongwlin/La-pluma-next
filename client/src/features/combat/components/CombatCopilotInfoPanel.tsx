@@ -1,10 +1,3 @@
-/**
- * 作业信息面板
- *
- * 只展示当前预览与作业集视图派生结果；预览读取、选择与执行仍由工作区
- * 及其领域所有者持有。清除预览只结束本地展示，不影响后台 Run。
- */
-
 import { Info } from 'lucide-react'
 import { Button, EmptyState } from '@/shared/ui'
 import type { CopilotSetView } from '../model/copilotSetView'
@@ -41,7 +34,6 @@ export default function CombatCopilotInfoPanel({
                 <span className="text-xs text-tertiary">已选 {view.selectedCount}/{preview.copilots.length} 个</span>
               </div>
 
-              {/* 当前进度 */}
               <div className="flex items-center space-x-2 text-xs">
                 <span className="text-tertiary">进度</span>
                 <span className="font-medium brand-text">
@@ -49,7 +41,6 @@ export default function CombatCopilotInfoPanel({
                 </span>
               </div>
 
-              {/* 当前作业详情 */}
               {view.panelCopilot && (
                 <div className="border-t border-(--app-border) pt-2">
                   <div className="flex items-center justify-between mb-1">

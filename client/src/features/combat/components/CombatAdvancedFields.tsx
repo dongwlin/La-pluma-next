@@ -1,10 +1,3 @@
-/**
- * 作业高级字段
- *
- * 选项表来自 `model/combatCommands.ts`；本组件只渲染受控输入并把值交回
- * 所属卡片的配置回调，不读取或提交配置。
- */
-
 import { motion } from 'framer-motion'
 import { getCombatAdvancedOptions, type AdvancedValues } from '../model/combatCommands'
 

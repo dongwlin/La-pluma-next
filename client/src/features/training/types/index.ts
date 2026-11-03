@@ -1,8 +1,3 @@
-/**
- * 干员养成域类型
- */
-
-// 材料节点（层级结构）
 export interface MaterialNode {
   id: string
   name: string
@@ -14,7 +9,6 @@ export interface MaterialNode {
   children?: MaterialNode[]
 }
 
-// 干员训练信息
 export interface TrainingOperator {
   id: string
   name: string
@@ -32,7 +26,6 @@ export interface TrainingOperator {
   progress?: number
 }
 
-// 训练队列项
 export interface TrainingQueueItem {
   operatorId: string
   operator: {
@@ -54,7 +47,6 @@ export interface TrainingQueueItem {
   }
 }
 
-// 训练设置
 export interface TrainingSettings {
   useMedicine: number
   useStone: number
@@ -62,7 +54,6 @@ export interface TrainingSettings {
   notifyOnComplete: boolean
 }
 
-// 队列与任务流程的同步状态
 export interface TrainingFlowSync {
   status: 'not_applied' | 'synced' | 'failed'
   flowName: string
@@ -71,7 +62,6 @@ export interface TrainingFlowSync {
   syncedRevision?: string
 }
 
-// 养成队列快照（GET /agent/training/queue 的权威结果）
 export interface TrainingQueueSnapshot {
   queue: TrainingQueueItem[]
   settings?: TrainingSettings
@@ -85,7 +75,6 @@ export interface TrainingQueueSnapshot {
   uncertain?: string
 }
 
-// 队列写入接口返回的增量信息
 export interface TrainingQueueMutationData {
   queueUpdated?: boolean
   queueRevision?: string
@@ -94,7 +83,6 @@ export interface TrainingQueueMutationData {
   taskName?: string
 }
 
-// 训练计划
 export interface TrainingPlan {
   queueRevision?: string
   mode: 'current' | 'all'
@@ -161,24 +149,20 @@ export interface TrainingPlan {
   }
 }
 
-// 筛选条件
 export interface TrainingFilters {
   rarity: string
   needsElite2: boolean
   status: 'trainable' | 'owned' | 'all'
 }
 
-// 三种状态计数
 export interface TrainingStatusCounts {
   trainable: number
   owned: number
   all: number
 }
 
-// 计划模式
 export type TrainingPlanMode = 'current' | 'all'
 
-// 材料层级节点组件 Props
 export interface MaterialHierarchyNodeProps {
   node: MaterialNode
   depth?: number

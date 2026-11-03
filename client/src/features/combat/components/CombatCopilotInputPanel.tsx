@@ -1,11 +1,3 @@
-/**
- * 作业输入与识别方式面板
- *
- * 输入值仍来自工作区的配置草稿；“识别方式”是预览的局部选择，保存在
- * 工作区创建的会话存储中。切换识别方式只取消在途预览，不改变已显示内容，
- * 也不推动作业集列表重渲染。
- */
-
 import { Button } from '@/shared/ui'
 import { usePanelState } from '../hooks/usePanelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
@@ -87,7 +79,6 @@ export default function CombatCopilotInputPanel({
         </div>
       </div>
 
-      {/* 作业类型选择 */}
       <div className="flex items-center justify-between gap-3 px-4 text-xs">
         <span className="shrink-0 font-medium text-secondary">识别方式</span>
         <div className="flex min-w-0 max-w-full overflow-hidden rounded-lg border border-(--app-border) bg-(--app-surface-muted) p-0.5">

@@ -1,16 +1,6 @@
-/**
- * 自动化流程排序接线
- *
- * 指针排序的预览、键盘移动与 Escape 取消都集中在这里，排序规则仍由
- * `model/taskFlowSort.ts` 提供。拖拽期间只渲染本地预览，松手时才把最终顺序
- * 作为一次编辑交给配置 owner。
- *
- * 指针生命周期：浏览器在流程重新排序后可能释放 pointer capture（性能基线
- * 已记录该现象）。排序必须继续跟随指针，因此移动/抬起/取消事件挂在
- * `document` 上，`lostpointercapture` 不再等同于取消；只有 Escape、显式
- * pointercancel 或组件被 Activity 隐藏/卸载才恢复原顺序。capture 仍会尝试
- * 建立，用于指针离开手柄时的浏览器语义，但排序不依赖它。
- */
+// 浏览器在流程重新排序后可能释放 pointer capture：排序不依赖它，移动/抬起/
+// 取消事件挂在 document 上，lostpointercapture 不等于取消；只有 Escape、显式
+// pointercancel 或组件被 Activity 隐藏/卸载才恢复原顺序。
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TaskFlowItem } from '../types'
@@ -31,10 +21,8 @@ interface PointerSortSession {
 }
 
 interface UseTaskFlowSortingOptions {
-  /** 当前已提交的流程；拖拽预览基于它的副本。 */
   flow: TaskFlowItem[]
   disabled: boolean
-  /** 松手或键盘移动后交给配置 owner；参数是显示顺序，含图标/参数字段。 */
   onCommit: (flow: TaskFlowItem[]) => void
 }
 

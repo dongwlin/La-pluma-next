@@ -1,14 +1,3 @@
-/**
- * 自动化关卡编辑纯模型
- *
- * 关卡列表是 `string | StageConfig` 的历史兼容集合：旧草稿可以只有关卡名，
- * 编辑器写回对象形状。模型只处理数组与字段，不读取配置通道、Query 或执行
- * 控制器；写入仍由页面通过唯一配置 owner 提交。
- *
- * 分组规则（置顶 → 智能养成 → 普通 → 空白输入行）由编辑面板与
- * `orderStagesForEditing` 共用，每个条目只归类一次。
- */
-
 import type { StageConfig } from '../types'
 
 export type StageList = Array<string | StageConfig>

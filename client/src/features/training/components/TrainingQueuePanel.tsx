@@ -1,11 +1,3 @@
-/**
- * 养成队列面板
- *
- * 队列快照、命令与版本前提由工作区持有；面板只呈现列表、把行内操作交给
- * 回调，并在操作成功后把焦点还给队列标题。撤销提示属于移除流程，
- * 因此跟随本面板渲染（portal 仍在 `document.body`）。
- */
-
 import { useRef } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpToLine, ClipboardList, Plus, Trash2, UserRoundSearch } from 'lucide-react'
 import { Button, EmptyState, IconButton, Loading } from '@/shared/ui'

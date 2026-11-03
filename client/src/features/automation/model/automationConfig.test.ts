@@ -168,7 +168,6 @@ describe('automation config adapter', () => {
       recruitment_time: { '3': 540, '4': 540 },
     })
     expect(decoded!.taskFlow[1]?.params).not.toHaveProperty('skip_robot')
-    // 关闭游戏沿用启动游戏的客户端类型。
     expect(decoded!.taskFlow[2]?.params).toMatchObject({ clientType: 'Bilibili' })
     expect(decoded!.schedule).toEqual({
       enabled: true,
@@ -287,7 +286,6 @@ describe('automation config adapter', () => {
     const read = automationConfigAdapter.readLocalDraft()
     expect(read?.schedule).toEqual(draft.schedule)
     expect(read?.taskFlow.map(task => task.id)).toEqual(draft.taskFlow.map(task => task.id))
-    // 读取本地草稿同样执行旧参数迁移。
     expect(read?.taskFlow[1]?.params).toMatchObject({
       preserve_tags: '支援机械',
       recruitment_time: { '3': 540, '4': 540 },
@@ -376,7 +374,6 @@ describe('automation config adapter', () => {
     const wire = automationConfigAdapter.encodeDraft(draft)
 
     const commit = automationConfigAdapter.commit(wire)
-    // 模拟配置保存期间协调器接受了一份更新的草稿。
     automationConfigAdapter.encodeDraft({ ...draft, schedule: { enabled: false, entries: draft.schedule.entries } })
     await Promise.resolve()
     save.resolve({ success: true })

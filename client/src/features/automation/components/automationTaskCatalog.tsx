@@ -1,11 +1,3 @@
-/**
- * 自动化页面可添加的任务目录
- *
- * 名称、图标、描述、默认参数与参数字段只服务本域页面；执行前校验与流程
- * 命令仍由 `model/taskFlowCommands.ts` 持有。目录不读取配置、Query 或执行
- * 状态。
- */
-
 import Icons from '@/shared/ui/Icons'
 import type { AutomationAvailableTask } from '../types'
 

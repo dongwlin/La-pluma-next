@@ -1,14 +1,3 @@
-/**
- * 自动化任务流程面板
- *
- * 组合任务流程列表、拖拽手柄、启用/删除、撤销、页脚（添加任务、立即执行、
- * 终止执行）与最近执行摘要。显示顺序由工作区的排序 hook 提供（拖拽期间是
- * 本地预览）；逐项状态由 `model/flowExecution.ts` 从只读 Run 投影派生。
- * 面板不订阅配置、不持有执行身份，也不写任何存储。
- *
- * 页脚仍是任务挑选菜单的点击区域：运行/停止按钮等页脚内按下指针不关闭菜单。
- */
-
 import { useRef } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {

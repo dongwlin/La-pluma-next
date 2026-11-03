@@ -1,10 +1,3 @@
-/**
- * 作业集 Run 投影
- *
- * 服务端作业集 Run 已持有集合身份与逐项结果：活动期由 `progress` 投影，
- * 终态后由 `result.summary` 保留。页面只读这些事实，不自行推导“下一项”或完成语义。
- */
-
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
 

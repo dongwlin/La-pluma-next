@@ -123,7 +123,6 @@ describe('AutomationStageEditor', () => {
     await click('加入智能养成关卡')
 
     expect(mocks.generateTrainingPlan).toHaveBeenCalledWith({ mode: 'current' })
-    // 插入顺序与智能行形状由 model/stageEditing 覆盖，这里只验证页面把计划写回草稿。
     expect(onUpdate).toHaveBeenCalledWith(0, 'stages', expect.any(Array))
     expect(onSuccess).toHaveBeenCalledWith('已添加智能养成计划：1 个关卡')
     expect(container.textContent).toContain('正在养成：阿米娅')
@@ -178,7 +177,6 @@ describe('AutomationStageEditor', () => {
     expect(container.textContent).toContain('正在养成：阿米娅')
     await click('移除智能养成关卡')
 
-    // 保留哪些行的规则由 model/stageEditing 覆盖，这里只验证页面不再请求训练域。
     expect(onUpdate).toHaveBeenCalledWith(0, 'stages', expect.any(Array))
     expect(container.textContent).not.toContain('正在养成：阿米娅')
     expect(onSuccess).toHaveBeenCalledWith('已移除智能养成关卡')

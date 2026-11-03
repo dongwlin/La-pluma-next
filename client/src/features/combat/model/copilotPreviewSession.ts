@@ -1,21 +1,3 @@
-/**
- * 作业预览会话所有者
- *
- * 预览的唯一请求入口，负责“当前展示哪一次预览”，不持有搜索词、识别方式或
- * 选中索引：
- *
- * - 每次显式预览取消上一次读取，并只接受仍当前的响应；旧响应不能覆盖新输入。
- * - 取消通过 `AbortController` 与 `cancelQueries(tracked key)` 完成，Query
- *   的 `signal` 会真正传给 fetch；取消不计为失败。
- * - Activity 隐藏/页面卸载调用 `stop()`：取消在途读取并结束 loading，保留
- *   已显示预览；恢复 `start()` 不自动重放上一次请求（与迁移前一致）。
- * - 输入变化时 `clear()` 同时取消并清空预览。
- * - 作业集终态后的 `refreshSet()` 静默强制重读计划/成员，只在当前预览仍是
- *   同一作业集时合并逐项结果并触发选择恢复。
- *
- * 搜索、配置草稿与执行 Run 分别归各自所有者，本会话不读取也不写入它们。
- */
-
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import type { ApiFailureKind } from '@/shared/api'
 import type { CopilotRaid, CopilotSetInfo, CopilotSetItem } from '../types'

@@ -1,15 +1,3 @@
-/**
- * 本次执行进度投影
- *
- * 把当前被跟踪 Run 的服务端事实（`progress` 投影与计时字段）合成本次执行
- * 面板所需的只读视图：作业名、当前关卡、本次第 N/M 个执行条目与计时来源。
- *
- * 面板只补充其它展示位置没有的进度事实：运行状态与停止入口属于执行卡片，
- * 逐项结果属于作业列表与续跑进度，因此这里不再投影状态词与逐项计数。单作业
- * （`run_task`）没有条目位置与关卡数据时对应字段为 null，服务端未投影的
- * 字段同样降级为 null；模型不推断执行结果，也不读取 React、执行控制器或配置。
- */
-
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
 import type { CopilotSetRunProjection } from './copilotSetRun'

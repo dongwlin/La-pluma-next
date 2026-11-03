@@ -171,7 +171,6 @@ describe('useCombatExecution run projection', () => {
       message: '作业 2/3 执行失败: 作战失败，已按队列策略停止',
       type: 'error',
     })
-    // 跳过条目是计划推导的事实，不产生等待态或失败提示。
     expect(messages.some(({ message }) => message.includes('已跳过'))).toBe(false)
   })
 

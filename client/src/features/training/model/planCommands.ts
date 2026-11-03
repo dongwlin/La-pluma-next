@@ -1,20 +1,4 @@
-/**
- * 养成计划领域所有者
- *
- * 计划预览、版本前提、生成/应用/同步编排与跨域失效发布集中在这里，页面只
- * 订阅状态并发起动作。关键边界：
- *
- * - `queueRevision`（服务端队列）与 `settingsRevision`（设置所有者）共同构成
- *   一次预览的 basis；basis 变化、队列刷新失败或版本不符时旧计划不可应用。
- * - 生成前强制重读权威队列，并在重读完成后才冻结 basis；生成期间任何版本
- *   变化都会递增 generation，使迟到的计划响应被丢弃且给出可重试提示。
- * - 应用前先排空 automation 配置通道的在途提交（同一配置协调协议），仍有
- *   未确认草稿时拒绝应用；应用成功才发布 `automation-config` /
- *   `automation-schedule` / `dashboard-snapshot`，随后重读队列确认状态。
- * - 应用/同步已成功但随后读取队列失败时返回部分成功（`partial`），保留已
- *   生效结果并提供重试入口，不重复提交写请求。
- * - 寿命不跟随页面：Activity 隐藏或页面重挂载不会重建计划状态或取消写请求。
- */
+// 计划所有者是模块级单例：Activity 隐藏或页面重挂载不会重建计划状态或取消在途写请求。
 
 import { isRecord, type ApiResponse } from '@/shared/api'
 import {

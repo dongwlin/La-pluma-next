@@ -1,15 +1,3 @@
-/**
- * 作业集预览与逐项结果面板
- *
- * 预览对象、选择与 Run 投影由工作区提供；本组件只把派生视图渲染成历史
- * 续跑进度、下一关卡片与逐项状态。续跑进度统计含历史已通关记录，与
- * “本次执行进度”面板分开；勾选、全选、重置与继续都是工作区动作，
- * 面板不创建第二份选择或执行状态。
- *
- * 当前执行项变化时把「执行中」行自动带入视野；用户刚手动滚动过则跳过
- * 一次定位，避免抢走滚动位置。
- */
-
 import { FileText } from 'lucide-react'
 import { Button, EmptyState } from '@/shared/ui'
 import { useCopilotSetItemFollow } from '../hooks/useCopilotSetItemFollow'
@@ -47,7 +35,6 @@ export default function CombatCopilotSetPanel({
   onStartNext,
   onCancelSet,
 }: CombatCopilotSetPanelProps) {
-  // 当前项自动定位：列表容器与行标记由本面板渲染，跟随策略在 hook 内。
   const listRef = useCopilotSetItemFollow({
     currentIndex: view.currentIndex,
     hasList: preview?.type === 'set' && !!preview.copilots?.length,
@@ -82,7 +69,6 @@ export default function CombatCopilotSetPanel({
         )}
       </div>
 
-      {/* 作业集预览 */}
       {preview?.type === 'set' && preview.copilots && preview.copilots.length > 0 ? (
         <>
           {(() => {
@@ -136,7 +122,6 @@ export default function CombatCopilotSetPanel({
             )
           })()}
 
-          {/* 下一关卡片：等待态与下一项由服务端 run 持有 */}
           {view.waitingEntry && (
             <div className="mb-3 rounded-lg border border-(--app-accent) bg-(--app-accent-soft) p-3">
               <div className="flex items-center justify-between mb-2">
@@ -172,7 +157,6 @@ export default function CombatCopilotSetPanel({
             </div>
           )}
 
-          {/* 作业列表 */}
           <div
             ref={listRef}
             data-copilot-set-list
@@ -220,7 +204,6 @@ export default function CombatCopilotSetPanel({
                   'hover:bg-(--app-surface-muted)'
                 }`}>
                   <div className="flex min-w-0 items-center space-x-2">
-                    {/* 勾选框 */}
                     <button
                       type="button"
                       onClick={() => onToggle(idx)}

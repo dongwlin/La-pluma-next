@@ -1,10 +1,3 @@
-/**
- * 自动战斗执行设置面板
- *
- * 编队、突袭模式、作业集执行方式与高级字段都来自工作区传入的配置草稿；
- * 本组件只渲染受控值并调用域内更新回调。
- */
-
 import type {
   CombatTask,
   CopilotRaid,
@@ -47,7 +40,6 @@ export default function CombatSettingsPanel({
         <span>执行设置</span>
       </h5>
 
-      {/* 自动编队 */}
       <div className="mb-3 space-y-1.5">
         <div className="flex items-center space-x-2">
           <label htmlFor="combat-copilot-formation" className="w-12 shrink-0 text-xs text-secondary">编队</label>
@@ -68,7 +60,6 @@ export default function CombatSettingsPanel({
         </p>
       </div>
 
-      {/* 突袭模式 */}
       <div className="mb-3 flex items-center space-x-2">
         <label htmlFor="combat-copilot-raid" className="w-12 shrink-0 text-xs text-secondary">模式</label>
         <select
@@ -84,7 +75,6 @@ export default function CombatSettingsPanel({
         </select>
       </div>
 
-      {/* 作业集执行方式 */}
       <div className="space-y-1.5">
         <div className="flex items-center space-x-2">
           <label htmlFor="combat-copilot-set-mode" className="w-12 shrink-0 text-xs text-secondary">作业集</label>
@@ -105,7 +95,6 @@ export default function CombatSettingsPanel({
         </p>
       </div>
 
-      {/* 高级选项 */}
       {task.hasAdvanced && (
         <details className="combat-advanced-disclosure mt-4">
           <summary className="flex min-h-11 cursor-pointer list-none items-center px-3 text-sm font-medium text-secondary">

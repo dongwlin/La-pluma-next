@@ -1,16 +1,3 @@
-/**
- * 自动化任务流程命令纯模型
- *
- * 页面/面板只提供当前草稿与一次编辑动作，模型不读取配置通道、Query 或执行控制器：
- * - `resolveTaskCommandId` 统一 `commandId || id 前缀` 的兼容读取；
- * - 添加任务沿用旧 id 与参数形状，关闭游戏固定最后并继承启动游戏客户端类型；
- * - 恢复删除项按原索引插入，再经过同一条“关闭游戏固定最后”不变量；
- * - 更新参数时保持关卡分组顺序，并同步启动/关闭游戏的 `clientType`；
- * - 执行前校验按旧优先级返回第一个无效任务与提示。
- *
- * 模型不访问 React、网络或存储；配置提交、选择状态与提示展示仍归页面。
- */
-
 import type { AutomationAvailableTask, StageConfig, TaskFlowItem, TaskParams } from '../types'
 import { parseDropTargets } from './dropTargets'
 import { flattenStagesForEditing, splitStagesForEditing } from './stageEditing'
@@ -39,7 +26,6 @@ export function resolveTaskCommandId(task: { id: string; commandId?: string }): 
   return task.commandId || task.id.split('-')[0] || ''
 }
 
-/** 校验时同时接受 `commandId` 与 id 前缀，兼容旧草稿。 */
 const matchesCommand = (task: { id: string; commandId?: string }, commandId: string) => (
   task.commandId === commandId || task.id.split('-')[0] === commandId
 )
@@ -89,7 +75,6 @@ export function insertTaskFlowItem(
   return placeClosedownLast(restoredFlow)
 }
 
-/** 删除指定任务；越界索引不改变内容。 */
 export function removeTaskFlowItem(
   flow: readonly TaskFlowEntry[],
   index: number,

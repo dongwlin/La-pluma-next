@@ -1,18 +1,3 @@
-/**
- * 作业搜索与预览 Query 定义
- *
- * 只读资源由本域 Query 持有，执行状态仍归 task-execution 控制器：
- * - 搜索按提交的词区分缓存身份；页面显式搜索时用 `staleTime: 0` 读取，
- *   切换输入或页面隐藏时由调用方取消，旧响应只可能写入旧 key。
- * - 单作业/作业集/计划的 `queryFn` 都把 Query 的 `signal` 传到 fetch，
- *   取消保持 AbortError；失败归类沿用 shared/api。
- * - 预览是组合读取：计划优先，失败或为空时回退作业集成员 + 并发详情；
- *   无后缀输入保留旧的单作业/作业集探测。
- *
- * 预览组合本身不建立额外 key，也不写第二份资源状态；它只通过 `fetchQuery`
- * 读取/填充上面这些资源 key，由预览会话裁决哪一次响应可以展示。
- */
-
 import { queryOptions, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { ApiRequestError, unwrapApiResponse, type ApiFailureKind } from '@/shared/api'
 import {

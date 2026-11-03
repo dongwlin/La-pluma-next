@@ -1,8 +1,3 @@
-/**
- * 自动任务域 API 端点
- * 当前活动信息与定时任务（调度）管理。
- */
-
 import {
   API_BASE_URL,
   fetchWithAuth,
@@ -55,9 +50,6 @@ export async function runCurrentActivity(options: ActivityRunOptions = {}): Prom
   return parseJsonResponse(response)
 }
 
-/**
- * 设置定时任务
- */
 export async function setupSchedule(
   scheduleId: string = 'default',
   times: string[],
@@ -73,9 +65,6 @@ export async function setupSchedule(
   return parseJsonResponse(response)
 }
 
-/**
- * 停止定时任务
- */
 export async function stopSchedule(scheduleId: string = 'default'): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/schedules/${scheduleId}`, {
     method: 'DELETE',
@@ -83,9 +72,6 @@ export async function stopSchedule(scheduleId: string = 'default'): Promise<ApiR
   return parseJsonResponse(response)
 }
 
-/**
- * 获取定时任务执行状态
- */
 export async function getScheduleExecutionStatus(signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/schedules/execution`, {
     signal,

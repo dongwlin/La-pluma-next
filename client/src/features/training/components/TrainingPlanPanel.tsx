@@ -1,10 +1,3 @@
-/**
- * 刷图计划面板
- *
- * 计划状态、版本前提与生成/应用/同步编排由工作区注入；面板只持有计划范围
- * （`current`/`all`）这一局部交互状态，并用纯模型派生今日关卡、次数与理智。
- */
-
 import { useState } from 'react'
 import { Check, Sparkles } from 'lucide-react'
 import { Button, Select } from '@/shared/ui'

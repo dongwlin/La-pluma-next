@@ -68,7 +68,6 @@ describe('CombatExecutionProgressPanel', () => {
     expect(panel?.textContent).toContain('正在执行 本次第 2 / 3 项')
     expect(panel?.textContent).toContain('关卡: TEST-2')
     expect(panel?.textContent).toContain('已用时')
-    // 状态、逐项计数与停止入口由执行卡片和作业列表持有，面板不重复。
     expect(panel?.textContent).not.toContain('执行中')
     expect(panel?.textContent).not.toContain('已完成')
     expect(panel?.querySelectorAll('button')).toHaveLength(0)

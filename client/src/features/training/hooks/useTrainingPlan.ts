@@ -1,11 +1,3 @@
-/**
- * 养成计划所有者的 React 适配层
- *
- * 生成/应用/同步编排、版本裁决与失效发布由模块级 `TrainingPlanOwner` 持有；
- * 本 hook 只注入应用级 QueryClient、设置所有者与队列 pending 状态，并订阅
- * 状态。Activity 隐藏或页面重挂载不会重建所有者或取消已发出的写请求。
- */
-
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { trainingKeys } from '../model/queryKeys'

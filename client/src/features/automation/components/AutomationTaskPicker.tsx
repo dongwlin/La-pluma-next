@@ -1,11 +1,3 @@
-/**
- * 自动化任务挑选面板
- *
- * 菜单开关、点击外部关闭、Escape 关闭并回焦触发器都是本面板的局部交互状态；
- * 可添加任务目录来自 `automationTaskCatalog`。面板不写配置草稿：选中后通过
- * `onAddTask` 交给页面的唯一配置 owner。
- */
-
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Plus } from 'lucide-react'

@@ -43,7 +43,6 @@ function runWithTaskResults(taskResults: RunTaskResult[]): AgentRun {
   }
 }
 
-/** 走真实的投影与视图派生管道；running 条目所在作业就是当前项。 */
 function deriveView(
   statuses: Array<[number, ItemStatus]>,
   selected: ReadonlySet<number> = new Set([0, 1, 2, 3]),
@@ -134,7 +133,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
 
   const list = () => container.querySelector<HTMLElement>('[data-copilot-set-list]')
 
-  /** scrollIntoView 被调用时的目标行，按调用顺序排列。 */
   const scrolledRows = () =>
     scrollIntoView.mock.contexts.map(
       context => (context as HTMLElement | undefined)?.getAttribute('data-copilot-item-index'),
@@ -149,7 +147,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
       [2, 'pending'],
       [3, 'pending'],
     ]))
-    // 没有当前项时不定位。
     expect(scrollIntoView).not.toHaveBeenCalled()
 
     await renderPanel(deriveView([
@@ -179,8 +176,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     ]))
     expect(scrolledRows()).toEqual(['1'])
 
-    // 用户手动滚动（距离上次定位已超过定位守卫窗口）后，紧随的当前项变化
-    // 跳过一次定位，不抢滚动位置。
     nowMs += 1_000
     emitScroll()
     await renderPanel(deriveView([
@@ -191,7 +186,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     ]))
     expect(scrolledRows()).toEqual(['1'])
 
-    // 抑制窗口（几百毫秒）过去后，下一次变化恢复定位。
     nowMs += 1_000
     await renderPanel(deriveView([
       [0, 'success'],
@@ -211,7 +205,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     ]))
     expect(scrolledRows()).toEqual(['1'])
 
-    // 定位自身引发的 scroll 事件到达时不记作用户滚动，下一次变化仍会定位。
     emitScroll()
     await renderPanel(deriveView([
       [0, 'success'],
@@ -221,7 +214,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     ]))
     expect(scrolledRows()).toEqual(['1', '2'])
 
-    // 守卫窗口外的 scroll 事件才是用户滚动，会抑制下一次定位。
     nowMs += 1_000
     emitScroll()
     await renderPanel(deriveView([
@@ -243,7 +235,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
 
     expect(container.querySelector('[data-copilot-item-index="1"]')?.textContent).toContain('已跳过')
     expect(container.querySelector('[data-copilot-item-index="2"]')?.textContent).toContain('执行中')
-    // 定位跟随的是「执行中」行，而不是刚刚跳过的行。
     expect(scrolledRows()).toEqual(['2'])
   })
 
@@ -271,7 +262,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     const row = container.querySelector('[data-copilot-item-index="1"]')
     expect(row?.textContent).toContain('已终止')
     expect(row?.textContent).not.toContain('待重试')
-    // 主动终止与执行失败分开统计。
     expect(container.textContent).toContain('已终止 1')
     expect(container.textContent).toContain('失败 0')
   })
@@ -327,7 +317,6 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
 
     await renderPanel(view, new Set([0]))
 
-    // 普通已成功、突袭仍待执行：列表与续跑进度都不能显示已通关。
     const row = container.querySelector('[data-copilot-item-index="0"]')
     expect(row?.textContent).toContain('待执行')
     expect(row?.textContent).not.toContain('已完成')

@@ -1,11 +1,3 @@
-/**
- * 养成设置所有者的 React 适配层
- *
- * 设置状态、本地 revision 与串行写链由模块级 `TrainingSettingsOwner` 持有；
- * 本 hook 只订阅状态并暴露编辑/采用入口。Activity 隐藏或页面重挂载不会重建
- * 所有者，因此旧提交仍排在新提交之前。
- */
-
 import { useCallback, useSyncExternalStore } from 'react'
 import {
   trainingSettingsOwner,

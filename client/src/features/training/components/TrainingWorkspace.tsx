@@ -1,17 +1,3 @@
-/**
- * 养成工作区容器
- *
- * 跨面板的共享版本边界集中在这里：
- * - 队列快照是唯一可写真相，队列命令、写后刷新与失效发布由领域所有者持有；
- * - 队列 revision 与设置 revision 共同决定计划预览是否仍可应用；
- * - 识别/材料/资源更新只在工作区订阅一次，候选/计数按 key 失效、队列重读；
- * - 选择器开关、操作错误与移除后的撤销快照是跨面板的局部交互状态，
- *   不进入配置、Query、localStorage 或 URL，Activity 隐藏/恢复保留。
- *
- * 面板各自持有展示与局部交互：材料只看当前目标，计划持有范围选择，设置只把
- * 开关变化交给所有者，选择器持有筛选、搜索、分批与头像缓存。
- */
-
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
@@ -59,16 +45,12 @@ const TRAINING_RESOURCE_SCOPES = [
 export default function TrainingWorkspace() {
   const setStatusMessage = useStatusStore(state => state.setMessage)
   const queryClient = useQueryClient()
-  // 设置的读取、串行提交与本地 revision 由 training 领域所有者持有；
-  // 工作区只显示当前值，并把要应用的设置交给 apply 请求。
   const {
     settings,
     revision: settingsRevision,
     update: updateSettings,
   } = useTrainingSettings()
 
-  // 队列由 training 领域 query 持有唯一快照；写入、写后刷新与 fallback 都归
-  // queueCommands 领域命令，工作区不再维护第二份可写队列。
   const queueOptions = useMemo(() => trainingQueueQueryOptions(), [])
   const queueQuery = useQuery(queueOptions)
   const queueSnapshot = queueQuery.data
@@ -85,8 +67,6 @@ export default function TrainingWorkspace() {
   const refreshError = Boolean(queueUncertain)
     || (queueQuery.isError && Boolean(queueSnapshot))
 
-  // 计划预览、版本前提、生成/应用/同步编排与跨域失效发布由领域所有者持有；
-  // 工作区把自己的队列快照交给所有者观察，不创建第二个队列观察者。
   const {
     plan,
     basis: planBasis,

@@ -1,12 +1,3 @@
-/**
- * 作业集逐项清单的当前项跟随
- *
- * 当前执行项变化时把「执行中」行滚动进视野；用户刚手动滚动过则跳过一次，
- * 不与手动浏览抢滚动位置。定位自身引发的 scroll 事件在短守卫窗口内不算
- * 用户滚动。调用方渲染 overflow 列表容器（返回的 ref）与带
- * `data-copilot-item-index` 的行；本 hook 只负责跟随策略。
- */
-
 import { useEffect, useRef, type RefObject } from 'react'
 
 // 用户手动滚动后的抑制窗口：窗口内的当前项变化跳过定位。

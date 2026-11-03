@@ -1,16 +1,3 @@
-/**
- * 作业命令纯模型
- *
- * 把 CLI 参数拼接、高级选项表、编队/突袭规则、作业集执行选项与输入校验
- * 从页面移出。页面只提供当前配置字段，模型不读取 Query、配置通道或执行状态：
- *
- * - `buildCombatCommandArgs` 先拆分/归一输入，作业集输入未带 s 前缀时按
- *   预览的 `autoAddS` 改写为 `prts://s<id>`，再追加高级参数；
- * - 只有 copilot 会追加 `--formation`；raid 只在 copilot 且非普通模式时追加；
- * - 空值、未勾选的 checkbox 与没有参数名的选项不写入命令行；
- * - 作业集执行选项保持原字段与“app/cli → continuous、manual → manual”映射。
- */
-
 import type { CopilotSetRunMode } from '../api'
 import type {
   CombatAdvancedOption,
@@ -117,7 +104,6 @@ export interface CombatCommandOptions {
   readonly forceFormation?: boolean
 }
 
-/** 追加编队、raid 与高级参数；checkbox 只在 true 时写入。 */
 export function appendCombatCommandOptions(
   args: readonly string[],
   taskId: string,

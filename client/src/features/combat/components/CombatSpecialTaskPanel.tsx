@@ -1,10 +1,3 @@
-/**
- * 保全派驻 / 悖论模拟作业卡
- *
- * 输入、URI 计数、高级字段与执行概览只读取工作区传入的配置草稿与执行
- * 投影；悖论搜索面板持有自己的干员搜索词，点击推荐只回填配置。
- */
-
 import { Card } from '@/shared/ui'
 import type { AdvancedValues } from '../model/combatCommands'
 import { splitCopilotInputToArgs } from '../utils/copilotUri'

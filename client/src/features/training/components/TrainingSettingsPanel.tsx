@@ -1,10 +1,3 @@
-/**
- * 养成自动化设置面板
- *
- * 设置值与串行提交由 `useTrainingSettings` 的模块级所有者持有；面板只把
- * 开关变化组成完整设置交给 `onUpdate`，不维护草稿或本地副本。
- */
-
 import { Switch } from '@/shared/ui'
 import type { TrainingSettings } from '../types'
 

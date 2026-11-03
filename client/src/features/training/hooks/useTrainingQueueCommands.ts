@@ -1,11 +1,3 @@
-/**
- * 养成队列命令的 React 适配层
- *
- * 命令串行链与 pending 状态由模块级所有者持有；本 hook 只负责把应用级
- * QueryClient 的快照读写/取消能力注入命令上下文，并派生页面所需的 pending
- * 标记。Activity 隐藏或页面重挂载不会重建所有者。
- */
-
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { trainingKeys } from '../model/queryKeys'

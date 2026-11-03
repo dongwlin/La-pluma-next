@@ -1,11 +1,3 @@
-/**
- * 作业预览会话的 React 适配层
- *
- * 会话实例随页面挂载创建，Activity 隐藏时 `stop()` 取消在途预览，
- * 显示时重新 `start()` 但不自动重放。预览对象、loading 与请求裁决全部由
- * `CopilotPreviewSession` 持有；本 hook 只负责实例寿命、订阅与动作绑定。
- */
-
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { CopilotRaid, CopilotSetInfo, CopilotSetItem } from '../types'

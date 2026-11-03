@@ -1,10 +1,3 @@
-/**
- * 自动化 Run 投影
- *
- * 页面只展示服务端事实：活动 run 的 `progress` 给出当前步骤，匹配 runId 的
- * `schedule` 投影给出逐项结果；终态摘要只来自 run.result，不接受页面推断。
- */
-
 import {
   isActiveRunState,
   isTerminalRunState,

@@ -1,20 +1,3 @@
-/**
- * 作业配置持久化适配器
- *
- * 把作业草稿的本地布局、服务端 wire 形状与完整提交条件集中到域内，页面只通过
- * user-config 协调器读写。配置 key、本地键、pending 键与 300ms 去抖策略都沿用
- * 迁移前的实现，因此旧版本的本地草稿与服务端配置无需迁移即可继续读取。
- *
- * 加载时保留两条旧值迁移：
- * - 作业集执行方式 `app` → `cli`（服务端载荷与本地键都适用）；
- * - raid `1`/`2` → `raid`/`both`（服务端载荷与本地键都适用）。
- *
- * 服务端 wire 始终是
- * `{ taskInputs, advancedParams, autoFormation, copilotSetExecutionMode, copilotSetSelections }`；
- * 界面字段（搜索词、预览、选中索引的瞬时状态）不进入持久化载荷。形状校验在解码时完成，
- * 不可用的载荷返回 null，由协调器回退本地草稿。
- */
-
 import { getErrorMessage } from '@/shared/api'
 import {
   USER_CONFIG_KEYS,
@@ -160,10 +143,6 @@ function parseCopilotSetSelections(value: unknown): CopilotSetSelections | null 
   return selections
 }
 
-/**
- * 服务端载荷解码。缺失字段按默认草稿补齐（迁移前同样只采用存在的字段）；
- * 字段存在但形状不合法时整份载荷不可用，协调器会回退本地草稿。
- */
 function decodeCombatConfig(payload: unknown): CombatConfigDraft | null {
   if (!isRecord(payload)) return null
   const defaults = createDefaultCombatDraft()
@@ -201,7 +180,6 @@ function decodeCombatConfig(payload: unknown): CombatConfigDraft | null {
   }
 }
 
-/** 读取单个 JSON 本地键；缺失返回 null，损坏或形状不合法时清理该键并返回 null。 */
 function readJsonSection<T>(key: string, parse: (value: unknown) => T | null): T | null {
   const stored = localStorage.getItem(key)
   if (stored === null) return null
@@ -223,11 +201,6 @@ function describeError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : FALLBACK_ERROR_MESSAGE
 }
 
-/**
- * 本地草稿读取。至少有一个字段可读时返回完整草稿（缺失字段用默认值补齐）；
- * 全部缺失或损坏时返回 null，协调器会删除 pending 标记并改读服务端。
- * 单个损坏键只丢弃对应字段，与迁移前的逐键恢复一致。
- */
 function readCombatLocalDraft(): CombatConfigDraft | null {
   const defaults = createDefaultCombatDraft()
 

@@ -74,7 +74,6 @@ describe('deriveExecutionProgress', () => {
     expect(view?.isActive).toBe(true)
     expect(view?.stage).toBe('TEST-2')
     expect(view?.step).toEqual({ current: 2, total: 3 })
-    // 作业集名称由列表与续跑进度展示，本次执行面板不重复。
     expect(view?.name).toBeNull()
   })
 
@@ -95,7 +94,6 @@ describe('deriveExecutionProgress', () => {
       progress: {},
     }), setProjection({ currentItemIndex: 2 }))
 
-    // both 模式下作业索引与执行序号不同，缺失队列编号时不猜测位置。
     expect(view?.step).toBeNull()
   })
 

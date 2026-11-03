@@ -1,15 +1,5 @@
-/**
- * 养成状态计数纯规则
- *
- * 三种计数沿用迁移前的数据来源：
- * - `trainable` 取候选端点 `status=trainable` 的行数；
- * - `owned` 优先取 `status=owned` 的行数，为空时回退到持有干员快照；
- * - `all` 取全量目录按当前稀有度过滤后的行数，不应用“未精二”条件。
- *
- * 计数读取失败时页面静默保留上一次成功值；`all` 计算为 0 时也不把旧值
- * 覆盖成 0（例如目录暂不可用），由 `mergeTrainingStatusCounts` 保持与
- * 迁移前一致的保护。
- */
+// 计数沿用迁移前的来源：`trainable`/`owned` 取候选端点对应状态的行数（`owned`
+// 为空时回退持有干员快照），`all` 取全量目录按稀有度过滤后的行数、不应用“未精二”。
 
 import type { TrainingStatusCounts } from '../types'
 

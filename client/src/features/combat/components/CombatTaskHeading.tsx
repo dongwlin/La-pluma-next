@@ -1,10 +1,3 @@
-/**
- * 作业卡头部与执行按钮
- *
- * 只渲染任务名称、说明与当前执行投影；不创建执行状态机，也不判断停止
- * 目标。两份作业卡共用，仅保留迁移前各自的按钮间距。
- */
-
 import { Play, Square } from 'lucide-react'
 import { Button } from '@/shared/ui'
 import type { CombatTask } from '../types'

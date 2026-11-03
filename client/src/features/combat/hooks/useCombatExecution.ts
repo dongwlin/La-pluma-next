@@ -1,14 +1,3 @@
-/**
- * 自动战斗执行接线
- *
- * 页面只订阅统一执行控制器的快照并发送启动/继续/停止意图：
- * - 单作业与作业集都走服务端 Run，页面不再按 generation 编排连续执行；
- * - 作业集三模式映射为服务端 `continuous`/`manual`，逐项结果与失败汇总来自 Run；
- * - manual 的“开始下一关”只是继续请求，等待态与下一项都由服务端持有；
- * - 停止按本客户端持有的 runId 进行，确认期间由快照推进，页面隐藏/恢复不会遗留锁定按钮；
- * - `scope` 标记 run 的领域归属，避免把其它页面发起的 run 展示成自动战斗执行。
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import type { StatusMessageType } from '@/features/runtime-status'
@@ -80,7 +69,6 @@ export interface CombatExecution {
 
 interface UseCombatExecutionOptions {
   notify: (message: string, type?: StatusMessageType) => void
-  /** 作业集 manual 模式条目失败后是否按“失败后停止”策略结束 run。 */
   stopOnFailure?: boolean
   controller?: ExecutionController
 }
@@ -184,7 +172,6 @@ export function useCombatExecution({
     announceTerminal(trackedRun)
   }, [activeRun, announceTerminal, ownedRunId, trackedRun])
 
-  // 作业集逐项进度：服务端切换当前项时给一次短提示，不驱动任何执行决策。
   useEffect(() => {
     if (!setRun?.isActive || setRun.currentItemIndex === null) return
     const key = `${setRun.runId}:${setRun.currentItemIndex}`
