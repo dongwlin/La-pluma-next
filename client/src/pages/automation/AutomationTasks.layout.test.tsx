@@ -644,7 +644,7 @@ describe('AutomationTasks layout surfaces', () => {
     await renderPage()
     stubSequenceRects()
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 7 }))
     })
@@ -679,7 +679,7 @@ describe('AutomationTasks layout surfaces', () => {
     stubSequenceRects()
     const committedBefore = localStorage.getItem('maa-task-flow')
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 9 }))
     })
@@ -704,7 +704,7 @@ describe('AutomationTasks layout surfaces', () => {
     stubSequenceRects()
     const committedBefore = localStorage.getItem('maa-task-flow')
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 11 }))
     })
@@ -727,7 +727,7 @@ describe('AutomationTasks layout surfaces', () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
     await renderPage()
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     })

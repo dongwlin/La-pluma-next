@@ -313,12 +313,16 @@ const click = async (element: HTMLElement | null) => {
   await flush()
 }
 
-const runButton = () => container.querySelector<HTMLButtonElement>('.automation-run-button')
-const stopButton = () => container.querySelector<HTMLButtonElement>('.automation-stop-button')
-const sequenceLabels = () => Array.from(container.querySelectorAll('.automation-sequence-copy small'))
-  .map(node => node.textContent)
-const completedItems = () => container.querySelectorAll('.automation-sequence-item.is-completed')
-const runningSpinners = () => container.querySelectorAll('.automation-sequence-progress')
+const runButton = () => container.querySelector<HTMLButtonElement>(
+  'button[data-status-key="ready"], button[data-status-key="running"]',
+)
+const stopButton = () => container.querySelector<HTMLButtonElement>(
+  'button[data-status-key="stop-ready"], button[data-status-key="stopping"]',
+)
+const sequenceLabels = () => Array.from(container.querySelectorAll('[data-automation-sequence-state-label]'))
+  .map(item => item.textContent)
+const completedItems = () => container.querySelectorAll('[data-execution-state="completed"]')
+const runningItems = () => container.querySelectorAll('[data-execution-state="running"]')
 
 const refreshController = async (reason: 'poll' | 'reconnect' = 'poll') => {
   await act(async () => {
@@ -481,7 +485,7 @@ describe('AutomationTasks execution', () => {
     await renderPage()
     await click(runButton())
 
-    expect(runningSpinners()).toHaveLength(1)
+    expect(runningItems()).toHaveLength(1)
     expect(completedItems()).toHaveLength(0)
     expect(stopButton()).not.toBeNull()
 
@@ -491,7 +495,7 @@ describe('AutomationTasks execution', () => {
     })))
     await refreshController()
     expect(completedItems()).toHaveLength(1)
-    expect(runningSpinners()).toHaveLength(1)
+    expect(runningItems()).toHaveLength(1)
     expect(sequenceLabels()).toEqual(['已完成', '正在执行', '等待执行'])
 
     // 第二项已完成、流程处于两项之间的延迟：Run 仍活动，不能提前标成完成。
@@ -501,7 +505,7 @@ describe('AutomationTasks execution', () => {
     })))
     await refreshController()
     expect(completedItems()).toHaveLength(2)
-    expect(runningSpinners()).toHaveLength(0)
+    expect(runningItems()).toHaveLength(0)
     expect(sequenceLabels()).toEqual(['已完成', '已完成', '等待执行'])
     expect(stopButton()).not.toBeNull()
 
@@ -512,7 +516,7 @@ describe('AutomationTasks execution', () => {
     await refreshController()
 
     expect(completedItems()).toHaveLength(3)
-    expect(runningSpinners()).toHaveLength(0)
+    expect(runningItems()).toHaveLength(0)
     expect(stopButton()).toBeNull()
     expect(runButton()?.textContent).toContain('立即执行')
     expect(container.textContent).toContain('最近执行')
@@ -680,7 +684,7 @@ describe('AutomationTasks execution', () => {
     await renderActivityMode('visible')
 
     expect(completedItems()).toHaveLength(2)
-    expect(runningSpinners()).toHaveLength(1)
+    expect(runningItems()).toHaveLength(1)
 
     await renderActivityMode('hidden')
     api.fetchSnapshot.mockResolvedValue(ok(terminalSnapshot('succeeded', {
@@ -691,7 +695,7 @@ describe('AutomationTasks execution', () => {
     await renderActivityMode('visible')
 
     expect(completedItems()).toHaveLength(3)
-    expect(runningSpinners()).toHaveLength(0)
+    expect(runningItems()).toHaveLength(0)
     expect(api.stopRun).not.toHaveBeenCalled()
   })
 

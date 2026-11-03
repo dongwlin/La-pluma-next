@@ -211,10 +211,10 @@ it('keeps completed task marks after Activity hides a finishing run', async () =
   }
 
   await render('visible')
-  await act(async () => container.querySelector<HTMLButtonElement>('.automation-run-button')?.click())
+  await act(async () => container.querySelector<HTMLButtonElement>('button[data-status-key="ready"]')?.click())
   await flush()
 
-  expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(1)
+  expect(container.querySelectorAll('[data-execution-state="running"]')).toHaveLength(1)
 
   await render('hidden')
   api.fetchSnapshot.mockResolvedValue(ok(finishedSnapshot()))
@@ -224,9 +224,9 @@ it('keeps completed task marks after Activity hides a finishing run', async () =
   await flush()
   await render('visible')
 
-  expect(container.querySelectorAll('.automation-sequence-item.is-completed')).toHaveLength(6)
-  expect(container.querySelectorAll('.automation-sequence-progress')).toHaveLength(0)
-  expect(container.querySelector('.automation-run-button')?.textContent).toContain('立即执行')
+  expect(container.querySelectorAll('[data-execution-state="completed"]')).toHaveLength(6)
+  expect(container.querySelectorAll('[data-execution-state="running"]')).toHaveLength(0)
+  expect(container.querySelector('button[data-status-key="ready"]')?.textContent).toContain('立即执行')
   expect(api.stopRun).not.toHaveBeenCalled()
   expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
 })
