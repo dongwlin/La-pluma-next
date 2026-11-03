@@ -97,6 +97,37 @@ export function resolveRoguelikeAdvancedValue(
     ?? getRoguelikeOptionChoices(option, theme)?.[0]?.value
 }
 
+/** 下拉字段的取值是否属于当前主题的候选表；非下拉字段不做取值约束。 */
+export function isRoguelikeOptionValueValid(
+  option: RoguelikeAdvancedOption,
+  theme: string,
+  value: string | number | boolean,
+): boolean {
+  if (option.type !== 'select') return true
+  const choices = getRoguelikeOptionChoices(option, theme)
+  if (!choices) return true
+  return choices.some(choice => choice.value === String(value))
+}
+
+/** 返回第一个生效但不属于当前主题候选表的下拉字段错误；没有越界值时为 null。 */
+function findInvalidSelectValue(
+  taskId: string,
+  theme: string,
+  advanced: RoguelikeAdvancedValues,
+): string | null {
+  for (const option of getRoguelikeAdvancedOptions(taskId)) {
+    if (option.type !== 'select') continue
+    if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
+
+    const value = pickAdvancedValue(option, advanced)
+    if (value === undefined || value === '') continue
+    if (isRoguelikeOptionValueValid(option, theme, value)) continue
+
+    return `${option.label}「${String(value)}」不在当前主题的可选范围内，请重新选择`
+  }
+  return null
+}
+
 /** 模式取值：缺省按当前主题的首项解析，与界面显示一致。 */
 function resolveModeValue(taskId: string, theme: string, advanced: RoguelikeAdvancedValues): string {
   const modeOption = getRoguelikeAdvancedOptions(taskId).find(option => option.key === 'mode')
@@ -217,6 +248,7 @@ export function buildRoguelikeCommandParams(
 
     const value = pickAdvancedValue(option, advanced)
     if (value === undefined || value === '' || value === false) continue
+    if (option.type === 'select' && !isRoguelikeOptionValueValid(option, theme, value)) continue
 
     if (option.type === 'checkbox') {
       if (value === true) params += ` ${option.param}`
@@ -242,10 +274,13 @@ export function validateRoguelikeTaskInput(
 ): string | null {
   if (taskId !== 'roguelike' && taskId !== 'reclamation') return null
   if (!(taskInputs[taskId] || '').trim()) return '请输入主题名称'
+
+  const theme = (taskInputs[taskId] || '').trim()
+  const advanced = advancedParams[taskId] ?? {}
+  const invalidValue = findInvalidSelectValue(taskId, theme, advanced)
+  if (invalidValue) return invalidValue
   if (taskId !== 'roguelike') return null
 
-  const theme = (taskInputs.roguelike || '').trim()
-  const advanced = advancedParams.roguelike ?? {}
   if (resolveModeValue('roguelike', theme, advanced) !== '5') return null
   if (splitRoguelikeListValue(advanced.expectedCollapsalParadigms).length > 0) return null
   return '刷坍缩范式模式需要填写期望坍缩范式'

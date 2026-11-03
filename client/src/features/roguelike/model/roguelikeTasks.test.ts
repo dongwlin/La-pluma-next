@@ -246,6 +246,20 @@ describe('buildRoguelikeCommandParams', () => {
     )).toBe('Sarkaz --mode 1 --squad 点刺成锭分队 --roles 稳扎稳打 --start-with-seed 2b3c4d,rogue_1,120')
   })
 
+  it('does not write select values outside the active theme choices', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { squad: '蓝图测绘分队', difficulty: '18' } },
+    )).toBe('Sami --roles 稳扎稳打')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { roles: '灵活部署' } },
+    )).toBe('Sarkaz')
+  })
+
   it('writes list fields once per value', () => {
     expect(buildRoguelikeCommandParams(
       'roguelike',
@@ -388,6 +402,37 @@ describe('validateRoguelikeTaskInput', () => {
     expect(validateRoguelikeTaskInput('roguelike', {})).toBe('请输入主题名称')
     expect(validateRoguelikeTaskInput('roguelike', { roguelike: '   ' })).toBe('请输入主题名称')
     expect(validateRoguelikeTaskInput('reclamation', { reclamation: '' })).toBe('请输入主题名称')
+  })
+
+  it('rejects select values outside the active theme choices', () => {
+    expect(validateRoguelikeTaskInput(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { squad: '蓝图测绘分队' } },
+    )).toBe('起始分队「蓝图测绘分队」不在当前主题的可选范围内，请重新选择')
+    expect(validateRoguelikeTaskInput(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { roles: '灵活部署' } },
+    )).toBe('开局职业组「灵活部署」不在当前主题的可选范围内，请重新选择')
+    expect(validateRoguelikeTaskInput(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { difficulty: '18' } },
+    )).toBe('难度「18」不在当前主题的可选范围内，请重新选择')
+  })
+
+  it('ignores invalid values of fields hidden by the active theme', () => {
+    expect(validateRoguelikeTaskInput(
+      'roguelike',
+      { roguelike: 'Phantom' },
+      { roguelike: { difficulty: '18' } },
+    )).toBeNull()
+    expect(validateRoguelikeTaskInput(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { squad: '永恒狩猎分队' } },
+    )).toBeNull()
   })
 
   it('requires the expected collapsal paradigms in mode 5', () => {

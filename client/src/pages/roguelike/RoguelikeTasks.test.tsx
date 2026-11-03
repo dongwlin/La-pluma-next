@@ -450,6 +450,39 @@ describe('RoguelikeTasks execution', () => {
     )
   })
 
+  it('marks and rejects a squad left over from another theme', async () => {
+    await renderPage()
+    await setTheme('Sarkaz')
+    await setControlValue('select[name="maa-roguelike-squad"]', '蓝图测绘分队', 'change')
+
+    await setTheme('Sami')
+
+    const squad = container.querySelector<HTMLSelectElement>('select[name="maa-roguelike-squad"]')!
+    expect(squad.value).toBe('蓝图测绘分队')
+    expect(Array.from(squad.options).find(option => option.value === '蓝图测绘分队')?.textContent)
+      .toContain('不适用于当前主题')
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '起始分队「蓝图测绘分队」不在当前主题的可选范围内，请重新选择',
+    )
+
+    await setControlValue('select[name="maa-roguelike-squad"]', '指挥分队', 'change')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Sami --squad 指挥分队 --roles 稳扎稳打',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
   it('rejects the collapsal mode without expected paradigms and resets it on theme change', async () => {
     await renderPage()
     await setTheme('Sami')

@@ -155,8 +155,8 @@ export default function RoguelikeSettingsPanel({
 }
 
 /**
- * 下拉项来自当前主题；草稿里保留了旧主题的取值时补一项回显，
- * 避免原生 select 因为找不到匹配项而显示空白。
+ * 下拉项来自当前主题；草稿里保留了旧主题的取值时补一项回显并标注不受支持，
+ * 避免原生 select 因为找不到匹配项而显示空白，也不把越界值伪装成合法候选。
  */
 function selectOptionsFor(
   option: RoguelikeAdvancedOption,
@@ -165,5 +165,5 @@ function selectOptionsFor(
 ) {
   const choices = getRoguelikeOptionChoices(option, theme) ?? []
   if (displayValue === '' || choices.some(choice => choice.value === displayValue)) return choices
-  return [...choices, { value: displayValue, label: displayValue }]
+  return [...choices, { value: displayValue, label: `${displayValue}（不适用于当前主题）` }]
 }
