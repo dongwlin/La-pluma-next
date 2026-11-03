@@ -122,7 +122,6 @@ export const readUpdateFailureDetails = (
   return {}
 }
 
-/** 资源步骤失败或 core 已更新时，页面提供显式资源重试入口。 */
 export const shouldRetryUpdateResources = (result: ApiResponse): boolean => {
   const details = readUpdateFailureDetails(result)
   return details.failedStep === 'resources' || details.coreUpdated === true

@@ -17,7 +17,6 @@ export interface StatisticsCommands {
   /** 正在识别仓库/干员时的任务名；其他命令或空闲时为 null。 */
   activeTask: ActiveTask
   activeKind: StatisticsCommandKind | null
-  /** 识别按钮文案：立即执行 / 继续解析 / 重试识别。 */
   actionLabel: (kind: StatisticsRecognitionKind) => string
   startRecognition: (kind: StatisticsRecognitionKind) => void
   fetchMaterials: () => void

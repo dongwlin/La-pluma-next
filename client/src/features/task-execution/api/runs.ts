@@ -1,9 +1,6 @@
 import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
 import type { AgentRun, RunSnapshot, StopRunResult } from '../types'
 
-/**
- * 读取运行快照：当前活动 run、全部活动意图、最近终态与设备占用。
- */
 export async function getRunSnapshot(signal?: AbortSignal): Promise<ApiResponse<RunSnapshot>> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/runs/current`, { signal })
   return parseJsonResponse(response)

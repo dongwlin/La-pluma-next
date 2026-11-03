@@ -94,11 +94,9 @@ export interface ConfigCoordinatorState<TDraft> {
 }
 
 export type ConfigReloadReason =
-  /** 服务端或本地草稿已应用。 */
   | 'loaded'
   /** 未确认的本地草稿优先，未读取服务端。 */
   | 'local-draft'
-  /** 已加载过且未强制刷新。 */
   | 'skipped'
   /** 加载期间出现新草稿或新加载，本次结果被丢弃。 */
   | 'stale'

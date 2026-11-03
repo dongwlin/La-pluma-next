@@ -50,7 +50,6 @@ export interface OpenStageSummary {
   closed: Array<{ stage: string; name: string }>
 }
 
-/** 五路业务结果全部有效时才提交的完整快照。 */
 export interface DashboardBusinessSnapshot {
   activitySummary: ActivitySummary
   scheduleSummary: ScheduleSummary

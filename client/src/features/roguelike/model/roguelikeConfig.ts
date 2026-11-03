@@ -15,14 +15,12 @@ import {
 import type { RoguelikeAdvancedParams, RoguelikeTaskInputs } from '../types'
 import { normalizeRoguelikeAdvancedParams } from './roguelikeTasks'
 
-/** 服务端配置 key，与迁移前一致。 */
 export const ROGUELIKE_CONFIG_KEY = USER_CONFIG_KEYS.roguelikeTasks
 /** 本设备未同步草稿标记，成功提交后由协调器删除。 */
 export const ROGUELIKE_CONFIG_PENDING_KEY = USER_CONFIG_PENDING_KEYS[USER_CONFIG_KEYS.roguelikeTasks]
 /** 本地草稿键，逐字段保持原布局。 */
 export const ROGUELIKE_TASK_INPUTS_KEY = 'roguelikeTaskInputs'
 export const ROGUELIKE_ADVANCED_PARAMS_KEY = 'roguelikeAdvancedParams'
-/** 与迁移前一致：连续编辑只提交最后一次。 */
 export const ROGUELIKE_CONFIG_COMMIT_DELAY_MS = 300
 
 const FALLBACK_ERROR_MESSAGE = '暂时无法连接服务器'

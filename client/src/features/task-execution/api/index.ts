@@ -92,9 +92,6 @@ export async function executePredefinedTask(
   return executeCommand(taskType, args, taskConfig, signal, taskName, taskTypeLabel, waitForCompletion, options)
 }
 
-/**
- * 获取任务执行状态（旧客户端的进程投影）
- */
 export async function getTaskStatus(signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/tasks/status`, { signal })
   return parseJsonResponse(response)
