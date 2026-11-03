@@ -57,11 +57,12 @@ export default function CombatExecutionProgressPanel({
     progress.durationMs
       ?? (progress.startedAtMs === null ? null : Math.max(0, now - progress.startedAtMs)),
   )
-  // 跳过与待执行只在本场执行里出现时才展示，避免常显 0 值。
+  // 已终止、跳过与待执行只在本场执行里出现时才展示，避免常显 0 值。
   const countsText = progress.counts
     ? [
       `已完成 ${progress.counts.success}`,
       `失败 ${progress.counts.failed}`,
+      ...(progress.counts.stopped > 0 ? [`已终止 ${progress.counts.stopped}`] : []),
       ...(progress.counts.skipped > 0 ? [`跳过 ${progress.counts.skipped}`] : []),
       ...(progress.counts.pending > 0 ? [`待执行 ${progress.counts.pending}`] : []),
     ].join(' · ')

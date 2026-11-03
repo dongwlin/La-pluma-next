@@ -12,10 +12,14 @@ import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
 import type { CopilotSetRunProjection } from './copilotSetRun'
 
-/** 作业集逐项状态汇总；单作业或服务端未给出任何条目时为 null。 */
+/**
+ * 作业集逐项状态汇总：已完成、失败、已终止、跳过、待执行。
+ * 单作业或服务端未给出任何条目时为 null；每类都来自服务端事实，不互相推导。
+ */
 export interface ExecutionProgressCounts {
   success: number
   failed: number
+  stopped: number
   skipped: number
   pending: number
 }
@@ -125,6 +129,8 @@ export function deriveExecutionProgress(
     ? {
       success: set.successCount,
       failed: set.failedCount,
+      // 主动终止时已开始的条目同样是逐项结果；服务端未投影时为 0，不能静默丢弃。
+      stopped: set.stoppedCount,
       skipped: set.skippedCount,
       pending: set.pendingCount,
     }

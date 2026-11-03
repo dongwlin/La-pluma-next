@@ -19,7 +19,7 @@ function progress(overrides: Partial<ExecutionProgressView> = {}): ExecutionProg
     name: '作业集 48990',
     stage: 'TEST-2',
     step: { current: 2, total: 3 },
-    counts: { success: 1, failed: 1, skipped: 0, pending: 1 },
+    counts: { success: 1, failed: 1, stopped: 0, skipped: 0, pending: 1 },
     startedAtMs: Date.now() - 5_000,
     durationMs: null,
     ...overrides,
@@ -64,6 +64,7 @@ describe('CombatExecutionProgressPanel', () => {
     expect(panel?.textContent).toContain('关卡: TEST-2')
     expect(panel?.textContent).toContain('已完成 1 · 失败 1 · 待执行 1')
     expect(panel?.textContent).not.toContain('跳过')
+    expect(panel?.textContent).not.toContain('已终止')
     expect(panel?.textContent).toContain('已用时')
 
     const stop = Array.from(panel?.querySelectorAll('button') ?? [])
@@ -76,7 +77,7 @@ describe('CombatExecutionProgressPanel', () => {
   it('adds the skipped count only when skipped items exist', async () => {
     await render(
       <CombatExecutionProgressPanel
-        progress={progress({ counts: { success: 1, failed: 0, skipped: 2, pending: 1 } })}
+        progress={progress({ counts: { success: 1, failed: 0, stopped: 0, skipped: 2, pending: 1 } })}
         isStopping={false}
         onStop={onStop}
       />,
@@ -84,6 +85,30 @@ describe('CombatExecutionProgressPanel', () => {
 
     expect(container.querySelector('[aria-label="本次执行进度"]')?.textContent)
       .toContain('已完成 1 · 失败 0 · 跳过 2 · 待执行 1')
+  })
+
+  it('keeps the stopped count after the run is terminated', async () => {
+    await render(
+      <CombatExecutionProgressPanel
+        progress={progress({
+          state: 'stopped',
+          isActive: false,
+          stateLabel: '已终止',
+          stage: null,
+          step: null,
+          counts: { success: 1, failed: 0, stopped: 1, skipped: 0, pending: 1 },
+          startedAtMs: null,
+          durationMs: 30_000,
+        })}
+        isStopping={false}
+        onStop={onStop}
+      />,
+    )
+
+    const panel = container.querySelector('[aria-label="本次执行进度"]')
+    expect(panel?.textContent).toContain('已完成 1 · 失败 0 · 已终止 1 · 待执行 1')
+    expect(panel?.textContent).not.toContain('跳过')
+    expect(Array.from(panel?.querySelectorAll('button') ?? [])).toEqual([])
   })
 
   it('degrades a single task run to name and state only', async () => {
@@ -119,7 +144,7 @@ describe('CombatExecutionProgressPanel', () => {
           stateLabel: '已完成',
           stage: null,
           step: null,
-          counts: { success: 3, failed: 0, skipped: 0, pending: 0 },
+          counts: { success: 3, failed: 0, stopped: 0, skipped: 0, pending: 0 },
           startedAtMs: null,
           durationMs,
         })}

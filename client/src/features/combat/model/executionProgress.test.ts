@@ -89,7 +89,7 @@ describe('deriveExecutionProgress', () => {
     expect(view?.name).toBe('作业集 48990')
     expect(view?.stage).toBe('TEST-2')
     expect(view?.step).toEqual({ current: 2, total: 3 })
-    expect(view?.counts).toEqual({ success: 1, failed: 1, skipped: 1, pending: 1 })
+    expect(view?.counts).toEqual({ success: 1, failed: 1, stopped: 0, skipped: 1, pending: 1 })
   })
 
   it('numbers the step by the server queue while a set run waits', () => {
@@ -157,7 +157,26 @@ describe('deriveExecutionProgress', () => {
     }), setRun)
 
     expect(view?.step).toEqual({ current: 2, total: 2 })
-    expect(view?.counts).toEqual({ success: 1, failed: 0, skipped: 1, pending: 1 })
+    expect(view?.counts).toEqual({ success: 1, failed: 0, stopped: 0, skipped: 1, pending: 1 })
+  })
+
+  it('keeps stopped items visible after the run is terminated', () => {
+    const setRun = setProjection({
+      state: 'stopped',
+      isActive: false,
+      itemCount: 3,
+      totalCount: 3,
+      successCount: 1,
+      stoppedCount: 1,
+      pendingCount: 1,
+    })
+    const view = deriveExecutionProgress(run({
+      operationId: 'run_copilot_set',
+      state: 'stopped',
+      progress: { totalSteps: 3, successCount: 1, stoppedCount: 1, pendingCount: 1 },
+    }), setRun)
+
+    expect(view?.counts).toEqual({ success: 1, failed: 0, stopped: 1, skipped: 0, pending: 1 })
   })
 
   it('projects a single task run without step, stage or counts', () => {
