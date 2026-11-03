@@ -85,6 +85,9 @@ interface UseCombatExecutionOptions {
   controller?: ExecutionController
 }
 
+// “已结算”只统计真正执行过并得到结果的条目；服务端会按计划把未选中且此前
+// 未通关的条目推导成 skipped 追加在 taskResults 尾部，它们从 run 开始就存在、
+// 从未执行，不能当作“最近结算”参与自动停止与等待态提示。
 function isSettledEntry(entry: CopilotSetEntryProjection): boolean {
   return entry.status === 'success' || entry.status === 'failed' || entry.status === 'stopped'
 }

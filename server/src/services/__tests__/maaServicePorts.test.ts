@@ -418,7 +418,8 @@ describe('MAA CLI process ports', () => {
     assert.ok(outcome.result.stdout.endsWith('TAIL-MARKER'));
 
     const messages = getRealtimeLogs(5000).map(entry => entry.message);
-    assert.ok(messages.some(message => message.includes('stdout:') && message.includes('TAIL-MARKER')));
+    assert.ok(messages.includes('TAIL-MARKER'));
+    assert.ok(!messages.some(message => message.startsWith('stdout:')));
     assert.ok(messages.every(message => message.length <= 9 * 1024));
   });
 

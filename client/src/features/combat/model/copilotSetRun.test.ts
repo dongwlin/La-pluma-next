@@ -18,7 +18,7 @@ function run(overrides: Partial<AgentRun> = {}): AgentRun {
   }
 }
 
-type ItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'stopped'
+type ItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
 
 function entry(itemIndex: number, status: ItemStatus, overrides: Record<string, unknown> = {}) {
   return {
@@ -133,6 +133,165 @@ describe('readCopilotSetRunProjection', () => {
     expect(projection?.successCount).toBe(0)
     expect(projection?.failures).toEqual([])
   })
+
+  it('keeps skipped entries and never lets them outrank executed results', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'running',
+      progress: {
+        setId: '48990',
+        mode: 'continuous',
+        phase: 'running',
+        successCount: 1,
+        pendingCount: 1,
+        taskResults: [
+          entry(0, 'success', { mode: 'raid' }),
+          entry(0, 'skipped', { mode: 'normal' }),
+          entry(1, 'skipped'),
+          entry(2, 'pending'),
+        ],
+      },
+    }))
+
+    // 突袭已成功、普通被跳过：作业仍缺一个模式，不能折叠为成功。
+    expect(projection?.itemStatuses.get(0)).toBe('pending')
+    // 全部模式都跳过的作业保持已跳过。
+    expect(projection?.itemStatuses.get(1)).toBe('skipped')
+    // 服务端没有 skippedCount 字段时按逐项结果回退统计。
+    expect(projection?.skippedCount).toBe(2)
+    // 跳过的条目没有执行，不算已尝试。
+    expect(projection?.attemptedCount).toBe(1)
+  })
+
+  it('folds an item to success only after every mode succeeded', () => {
+    const partial = readCopilotSetRunProjection(run({
+      state: 'waiting',
+      progress: {
+        setId: '48990',
+        mode: 'manual',
+        phase: 'waiting_for_next',
+        taskResults: [
+          entry(0, 'success', { mode: 'normal' }),
+          entry(0, 'pending', { mode: 'raid' }),
+        ],
+      },
+    }))
+    expect(partial?.itemStatuses.get(0)).toBe('pending')
+
+    const completed = readCopilotSetRunProjection(run({
+      state: 'running',
+      progress: {
+        setId: '48990',
+        mode: 'continuous',
+        phase: 'running',
+        taskResults: [
+          entry(0, 'success', { mode: 'normal' }),
+          entry(0, 'success', { mode: 'raid' }),
+          entry(1, 'running'),
+        ],
+      },
+    }))
+    expect(completed?.itemStatuses.get(0)).toBe('success')
+    expect(completed?.itemStatuses.get(1)).toBe('running')
+  })
+
+  it('counts skipped entries from the terminal summary when provided', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'succeeded',
+      result: {
+        summary: {
+          setId: '48990',
+          mode: 'continuous',
+          totalEntries: 3,
+          attemptedCount: 1,
+          successCount: 1,
+          failedCount: 0,
+          skippedCount: 3,
+          pendingCount: 1,
+          taskResults: [
+            entry(0, 'success'),
+            entry(1, 'skipped'),
+            entry(2, 'pending'),
+          ],
+        },
+      },
+    }))
+
+    // 服务端汇总字段优先于逐项回退统计。
+    expect(projection?.skippedCount).toBe(3)
+    expect(projection?.attemptedCount).toBe(1)
+    expect(projection?.pendingCount).toBe(1)
+  })
+
+  it('degrades skipped counts to zero when the server has no such field', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'running',
+      progress: {
+        setId: '48990',
+        mode: 'continuous',
+        phase: 'running',
+        taskResults: [entry(0, 'success'), entry(1, 'pending')],
+      },
+    }))
+
+    expect(projection?.skippedCount).toBe(0)
+  })
+
+  it('distinguishes summary entries from the attempt queue', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'succeeded',
+      result: {
+        summary: {
+          setId: '48990',
+          mode: 'manual',
+          plannedEntries: 5,
+          queuedEntries: 1,
+          totalEntries: 5,
+          attemptedCount: 1,
+          successCount: 1,
+          failedCount: 0,
+          skippedCount: 4,
+          pendingCount: 0,
+          taskResults: [
+            entry(0, 'success'),
+            entry(1, 'skipped'),
+            entry(2, 'skipped'),
+            entry(3, 'skipped'),
+            entry(4, 'skipped'),
+          ],
+        },
+      },
+    }))
+
+    // 汇总条目覆盖本次执行与本次跳过，恒等于逐项结果数；队列只含本次尝试。
+    expect(projection?.totalCount).toBe(5)
+    expect(projection?.queuedCount).toBe(1)
+    expect(projection?.totalCount).toBe(projection?.entries.length)
+  })
+
+  it('reads the attempt queue from active progress steps', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'running',
+      progress: {
+        setId: '48990',
+        mode: 'continuous',
+        phase: 'running',
+        totalSteps: 1,
+        taskResults: [entry(0, 'running'), entry(1, 'skipped'), entry(2, 'skipped')],
+      },
+    }))
+
+    expect(projection?.totalCount).toBe(3)
+    expect(projection?.queuedCount).toBe(1)
+  })
+
+  it('leaves the queue total unknown when the server omits it', () => {
+    const projection = readCopilotSetRunProjection(run({
+      state: 'accepted',
+      result: { summary: { setId: '48990', totalEntries: 2, taskResults: [entry(0, 'success')] } },
+    }))
+
+    expect(projection?.queuedCount).toBeNull()
+  })
 })
 
 describe('terminal notices', () => {
@@ -153,6 +312,7 @@ describe('terminal notices', () => {
     expect(describeCopilotSetRunTerminal(run({ state: 'succeeded' }), {
       ...base,
       totalCount: 3,
+      queuedCount: 3,
       attemptedCount: 2,
       successCount: 1,
       failedCount: 1,
@@ -161,6 +321,7 @@ describe('terminal notices', () => {
     expect(describeCopilotSetRunTerminal(run({ state: 'succeeded' }), {
       ...base,
       totalCount: 2,
+      queuedCount: 2,
       attemptedCount: 2,
       successCount: 2,
       failedCount: 0,
@@ -171,10 +332,44 @@ describe('terminal notices', () => {
     expect(describeCopilotSetRunTerminal(run({ state: 'stopped' }), {
       ...base,
       totalCount: 2,
+      queuedCount: 2,
       attemptedCount: 1,
       successCount: 1,
       failedCount: 0,
     })).toEqual({ message: '作业集已终止：1/2 成功', type: 'warning' })
+  })
+
+  it('mentions skipped items in terminal summaries only when present', () => {
+    // 跳过的条目不在本次执行队列里，成功比例仍按队列计算。
+    expect(describeCopilotSetRunTerminal(run({ state: 'succeeded' }), {
+      ...base,
+      totalCount: 2,
+      queuedCount: 1,
+      attemptedCount: 1,
+      successCount: 1,
+      failedCount: 0,
+      skippedCount: 1,
+    })).toEqual({ message: '作业集执行完成 (1/1 成功)，跳过 1 项', type: 'success' })
+
+    expect(describeCopilotSetRunTerminal(run({ state: 'succeeded' }), {
+      ...base,
+      totalCount: 1,
+      queuedCount: 1,
+      attemptedCount: 1,
+      successCount: 1,
+      failedCount: 0,
+    })).toEqual({ message: '作业集执行完成 (1/1 成功)', type: 'success' })
+  })
+
+  it('falls back to attempted entries when the queue total is unknown', () => {
+    expect(describeCopilotSetRunTerminal(run({ state: 'succeeded' }), {
+      ...base,
+      totalCount: 4,
+      queuedCount: null,
+      attemptedCount: 2,
+      successCount: 2,
+      failedCount: 0,
+    })).toEqual({ message: '作业集执行完成 (2/2 成功)', type: 'success' })
   })
 
   it('describes single run_task terminals', () => {

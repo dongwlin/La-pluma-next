@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   executePredefinedTask: vi.fn(),
   loadUserConfig: vi.fn(),
   saveUserConfig: vi.fn(),
+  getRealtimeLogs: vi.fn(),
   setMessage: vi.fn(),
 }))
 
@@ -76,6 +77,14 @@ vi.mock('@/features/runtime-status', () => ({
   },
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+}))
+
+vi.mock('@/features/logs/api', () => ({
+  getRealtimeLogs: mocks.getRealtimeLogs,
+  clearRealtimeLogs: vi.fn(),
+  getLogFiles: vi.fn(),
+  readLogFile: vi.fn(),
+  cleanupLogs: vi.fn(),
 }))
 
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
@@ -276,6 +285,7 @@ describe('RoguelikeTasks execution', () => {
     mocks.executePredefinedTask.mockReset()
     mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
+    mocks.getRealtimeLogs.mockReset()
     mocks.setMessage.mockReset()
 
     api = createApi()
@@ -300,6 +310,19 @@ describe('RoguelikeTasks execution', () => {
     for (const release of releases) release()
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('keeps execution controls without a separate log observer or entry', async () => {
+    useIdentity({ runId: 'run-rl-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-rl-1')] })))
+    startController()
+    await flush()
+    await renderPage()
+
+    expect(buttonByText('终止执行')).toBeDefined()
+    expect(container.querySelector('[role="log"]')).toBeNull()
+    expect(container.textContent).not.toContain('查看本次日志')
+    expect(mocks.getRealtimeLogs).not.toHaveBeenCalled()
   })
 
   it('submits one idempotent run with the original command semantics', async () => {
@@ -696,6 +719,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     mocks.executePredefinedTask.mockReset()
     mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
+    mocks.getRealtimeLogs.mockReset()
     mocks.setMessage.mockReset()
 
     api = createApi()

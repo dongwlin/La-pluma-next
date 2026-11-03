@@ -205,6 +205,39 @@ function useRuntime({ plan = planFor(), executor }: { plan?: CopilotPlan; execut
   });
 }
 
+/** 整组成功的执行汇总：模拟真实执行端在命令正常退出时的逐项结算。 */
+function allSuccessOutcome(entries: readonly CopilotPlanEntry[]): CopilotEntriesOutcome {
+  const taskResults: CopilotTaskResult[] = entries.map(entry => ({
+    key: entry.key,
+    itemIndex: entry.itemIndex,
+    copilotId: entry.copilotId,
+    stageId: entry.stageId,
+    stage: entry.displayStage,
+    displayStage: entry.displayStage,
+    apCost: entry.apCost,
+    mode: entry.mode,
+    presetFormation: Boolean(entry.presetFormation),
+    status: 'success'
+  }));
+  return {
+    success: true,
+    stopped: false,
+    error: null,
+    results: [],
+    completed: taskResults.map(result => result.key),
+    pending: [],
+    loopTimes: 1,
+    summary: {
+      totalEntries: taskResults.length,
+      successCount: taskResults.length,
+      failedCount: 0,
+      stoppedCount: 0,
+      pendingCount: 0,
+      taskResults
+    }
+  };
+}
+
 function beginSetRun(): AgentRunDto {
   return beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42' } }).run;
 }
@@ -518,5 +551,226 @@ describe('copilot set runs', () => {
     assert.equal(result.summary.successCount, 1);
     assert.equal(result.summary.pendingCount, 2);
     assert.equal(hasCopilotSetSession(run.runId), false);
+  });
+
+  it('projects currentStep as the one-based position of the running or next entry', async () => {
+    const plan = planFor(3);
+    const run = beginSetRun();
+    const gates: Array<() => void> = [];
+    let heldCount = 0;
+    const executor = createEntryExecutor({
+      onExecute: async () => {
+        if (heldCount >= 2) return;
+        heldCount += 1;
+        await new Promise<void>(resolve => {
+          gates.push(resolve);
+        });
+      }
+    });
+    useRuntime({ plan, executor });
+
+    const started = startManualCopilotSet({
+      runId: run.runId,
+      setId: '42',
+      raid: 'normal',
+      selectedIndexes: [],
+      options: {},
+      lifecycle: lifecycleFor(run.runId)
+    });
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && gates.length < 1) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.ok(gates.length >= 1, 'first entry should start');
+    // 第一项执行中：currentStep 是它在待执行队列中的 1 基序号。
+    assert.equal(progressOf(run.runId).currentStep, 1);
+    assert.equal(progressOf(run.runId).totalSteps, 3);
+    gates[0]?.();
+
+    const first = waitingOutcome(await started);
+    assert.equal(first.waitingForNext, true);
+    // 等待下一关时 currentStep 已指向下一个待执行条目。
+    assert.equal(progressOf(run.runId).currentStep, 2);
+    assert.equal(progressOf(run.runId).nextEntry?.key, plan.entries[1].key);
+
+    const second = continueManualCopilotSet({ runId: run.runId });
+    while (Date.now() < deadline && gates.length < 2) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.ok(gates.length >= 2, 'second entry should start');
+    assert.equal(progressOf(run.runId).currentStep, 2);
+    gates[1]?.();
+
+    await second;
+    assert.equal(progressOf(run.runId).currentStep, 3);
+
+    const finished = await continueManualCopilotSet({ runId: run.runId });
+    assert.equal(finished.finished, true);
+    assert.equal(storedResult(run.runId).summary.successCount, 3);
+    assert.equal(storedResult(run.runId).summary.skippedCount, 0);
+  });
+
+  it('projects unselected unfinished entries as skipped', async () => {
+    const plan = planFor(3);
+    const run = beginSetRun();
+    const gates: Array<() => void> = [];
+    const gate = new Promise<void>(resolve => {
+      gates.push(resolve);
+    });
+    const executor = createEntryExecutor({ onExecute: () => gate });
+    useRuntime({ plan, executor });
+
+    const started = startManualCopilotSet({
+      runId: run.runId,
+      setId: '42',
+      raid: 'normal',
+      selectedIndexes: [plan.entries[1].itemIndex],
+      options: {},
+      lifecycle: lifecycleFor(run.runId)
+    });
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && runOf(run.runId).state !== 'running') {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    const progress = progressOf(run.runId);
+    // 队列里只有被选中的第二条目；未选中的未完成条目按 skipped 追加投影。
+    assert.equal(progress.totalSteps, 1);
+    assert.equal(progress.skippedCount, 2);
+    assert.equal(progress.currentStep, 1);
+    assert.deepEqual(progress.taskResults.map(item => [item.key, item.status]), [
+      [plan.entries[1].key, 'running'],
+      [plan.entries[0].key, 'skipped'],
+      [plan.entries[2].key, 'skipped']
+    ]);
+    gates[0]?.();
+
+    const startedOutcome = await started;
+    assert.equal(startedOutcome.finished, true);
+    // 汇总条目覆盖本次队列与本次跳过；本次尝试数与计划总数各自独立表达。
+    assert.equal(startedOutcome.result.summary.plannedEntries, 3);
+    assert.equal(startedOutcome.result.summary.queuedEntries, 1);
+    assert.equal(startedOutcome.result.summary.totalEntries, 3);
+    assert.equal(startedOutcome.result.summary.skippedCount, 2);
+    assert.deepEqual(storedResult(run.runId).summary.taskResults.map(item => [item.key, item.status]), [
+      [plan.entries[1].key, 'success'],
+      [plan.entries[0].key, 'skipped'],
+      [plan.entries[2].key, 'skipped']
+    ]);
+  });
+
+  it('does not mark previously completed entries as skipped', async () => {
+    const plan = planFor(3);
+    plan.entries[0].completed = true;
+    const run = beginSetRun();
+    const executor = createEntryExecutor();
+    useRuntime({ plan, executor });
+
+    const result = await runContinuousCopilotSet({
+      runId: run.runId,
+      setId: '42',
+      raid: 'normal',
+      selectedIndexes: [plan.entries[0].itemIndex, plan.entries[2].itemIndex],
+      options: {},
+      lifecycle: lifecycleFor(run.runId)
+    });
+
+    assert.deepEqual(executor.executed, [plan.entries[2].key]);
+    assert.equal(result.summary.alreadyCompletedCount, 1);
+    assert.equal(result.summary.skippedCount, 1);
+    assert.equal(result.summary.plannedEntries, 3);
+    assert.equal(result.summary.queuedEntries, 1);
+    assert.equal(result.summary.totalEntries, 2);
+    assert.equal(result.summary.totalEntries, result.summary.taskResults.length);
+    assert.deepEqual(result.summary.taskResults.map(item => [item.key, item.status]), [
+      [plan.entries[2].key, 'success'],
+      [plan.entries[1].key, 'skipped']
+    ]);
+  });
+
+  it('keeps only the truly executing entry as running while a group advances', async () => {
+    const plan = planFor(3);
+    const run = beginSetRun();
+    const gates: Array<() => void> = [];
+    const waitForGate = (): Promise<void> => new Promise<void>(resolve => {
+      gates.push(resolve);
+    });
+    const executor: EntryExecutor = {
+      executed: [],
+      execute: async ({ entries = [], lifecycle = {} }: ExecuteCopilotEntriesInput): Promise<CopilotEntriesOutcome> => {
+        const group = [...entries];
+        await withMaaExecutionLease({ source: 'copilot-set', taskName: '测试作业集', command: 'copilot-plan' }, async () => {
+          await lifecycle.onBeforeStart?.();
+          lifecycle.onStarted?.();
+          for (const [index, entry] of group.entries()) {
+            if (index > 0) {
+              // 模拟文件加载观察的推进方式：上一条目随下一份计划文件结算成功。
+              lifecycle.onEntrySettled?.(group[index - 1], 'success');
+              lifecycle.onEntryStarted?.(entry, [entry]);
+            } else {
+              lifecycle.onEntryStarted?.(entry, [entry]);
+            }
+            executor.executed.push(entry.key);
+            await waitForGate();
+          }
+          lifecycle.onEntrySettled?.(group[group.length - 1], 'success');
+        });
+        return allSuccessOutcome(group);
+      }
+    };
+    useRuntime({ plan, executor });
+
+    const runPromise = runContinuousCopilotSet({
+      runId: run.runId,
+      setId: '42',
+      raid: 'normal',
+      selectedIndexes: [],
+      options: {},
+      lifecycle: lifecycleFor(run.runId)
+    });
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && gates.length < 1) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.ok(gates.length >= 1, 'first entry should start');
+    let progress = progressOf(run.runId);
+    assert.deepEqual(progress.taskResults.map(item => [item.key, item.status]), [
+      [plan.entries[0].key, 'running'],
+      [plan.entries[1].key, 'pending'],
+      [plan.entries[2].key, 'pending']
+    ]);
+    assert.equal(progress.currentStep, 1);
+    gates[0]?.();
+
+    while (Date.now() < deadline && gates.length < 2) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.ok(gates.length >= 2, 'second entry should start');
+    progress = progressOf(run.runId);
+    assert.deepEqual(progress.taskResults.map(item => [item.key, item.status]), [
+      [plan.entries[0].key, 'success'],
+      [plan.entries[1].key, 'running'],
+      [plan.entries[2].key, 'pending']
+    ]);
+    assert.equal(progress.currentStep, 2);
+    assert.equal(progress.successCount, 1);
+    gates[1]?.();
+
+    while (Date.now() < deadline && gates.length < 3) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.ok(gates.length >= 3, 'third entry should start');
+    progress = progressOf(run.runId);
+    assert.equal(progress.currentStep, 3);
+    gates[2]?.();
+
+    const result = await runPromise;
+    assert.equal(result.finished, true);
+    assert.equal(result.summary.successCount, 3);
+    // 组结束时的统一结算与会话内已推进的逐项状态一致，重复结算幂等。
+    assert.deepEqual(result.summary.taskResults.map(item => [item.key, item.status]), [
+      [plan.entries[0].key, 'success'],
+      [plan.entries[1].key, 'success'],
+      [plan.entries[2].key, 'success']
+    ]);
   });
 });

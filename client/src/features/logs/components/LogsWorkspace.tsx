@@ -1,56 +1,57 @@
-/**
- * 日志工作区
- *
- * 页面唯一的日志领域容器：组合实时流、历史会话与清空/清理命令，并持有
- * 跨面板共享的纯视图状态：
- * - `contentMode`/`filter`/`search`/`collapseRepeats` 同时影响列表与导出；
- * - `autoScroll` 由工具栏开关、进入历史（关闭）与返回实时（打开）驱动，
- *   scrollTop Effect 靠近 `LogConsole` 的滚动容器；
- * - `notice`/`confirmAction` 只服务命令反馈与确认弹层；
- * - 导出读取 `logView.filtered`（折叠前），文本与文件名格式由
- *   `model/logExport.ts` 固定。
- *
- * 工具栏、控制台与历史选择器都是受控展示组件：不订阅会话、不发请求、不
- * 持有历史选择。暂停只作用于实时轮询；返回实时会恢复被手动暂停的流，
- * 因为进入历史已清空实时缓冲。
- */
+/** 日志页是日志观察的唯一工作区；范围、事件选择与折叠彼此独立。 */
 
 import { useMemo, useState } from 'react'
+import { useExecutionSnapshot } from '@/features/task-execution'
 import { ConfirmDialog } from '@/shared/ui'
 import { useLogsSession } from '../hooks/useLogsSession'
-import { buildLogView, type LogContentMode, type LogFilter } from '../model/logModel'
+import {
+  buildLogView,
+  filterLogsByRunId,
+  type LogEventFilter,
+  type LogFilter,
+} from '../model/logModel'
 import { buildLogExportFileName, formatLogExport } from '../model/logExport'
 import type { LogFile } from '../types'
 import HistoryLogPicker from './HistoryLogPicker'
 import LogConsole from './LogConsole'
-import LogContentModeTabs from './LogContentModeTabs'
 import LogNotice, { type LogNoticeData } from './LogNotice'
 import LogsToolbar from './LogsToolbar'
-
-type ConfirmAction = 'clear' | 'cleanup'
 
 export default function LogsWorkspace() {
   const session = useLogsSession()
   const { history, realtime } = session
+  const execution = useExecutionSnapshot()
   const [autoScroll, setAutoScroll] = useState(true)
-  const [contentMode, setContentMode] = useState<LogContentMode>('summary')
+  const [runId, setRunId] = useState('')
+  const [events, setEvents] = useState<LogEventFilter>('key')
+  const [clearVersion, setClearVersion] = useState(0)
   const [filter, setFilter] = useState<LogFilter>('all')
   const [search, setSearch] = useState('')
   const [collapseRepeats, setCollapseRepeats] = useState(true)
   const [notice, setNotice] = useState<LogNoticeData | null>(null)
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
+  const [confirmCleanup, setConfirmCleanup] = useState(false)
   const viewingHistory = history.viewing
   const logs = viewingHistory ? history.logs : realtime.logs
   const loading = history.readPhase === 'loading'
   const actionBusy = session.commandPending !== null
   const activeError = viewingHistory ? history.error : realtime.error
 
-  const logView = useMemo(() => buildLogView(logs, {
-    mode: contentMode,
+  const knownRunIds = useMemo(() => Array.from(new Set([
+    ...(runId ? [runId] : []),
+    ...(execution.trackedRun ? [execution.trackedRun.runId] : []),
+    ...realtime.logs.flatMap(log => log.runId ? [log.runId] : []),
+  ])), [execution.trackedRun, realtime.logs, runId])
+  const runFilteredLogs = useMemo(
+    () => filterLogsByRunId(logs, viewingHistory ? null : runId || null),
+    [logs, runId, viewingHistory],
+  )
+
+  const logView = useMemo(() => buildLogView(runFilteredLogs, {
+    events,
     level: filter,
     search,
     collapseRepeats,
-  }), [collapseRepeats, contentMode, filter, logs, search])
+  }), [collapseRepeats, events, filter, runFilteredLogs, search])
 
   const viewHistoryFile = (file: LogFile) => {
     setAutoScroll(false)
@@ -62,19 +63,11 @@ export default function LogsWorkspace() {
     session.backToRealtime()
   }
 
-  const clearLogs = async () => {
-    if (viewingHistory) return false
-    setNotice(null)
-    const outcome = await session.clearRealtimeLogs()
-    if (outcome.status === 'succeeded') {
-      setNotice({ type: 'success', text: outcome.message })
-      return true
-    }
-    if (outcome.status === 'failed') {
-      setNotice({ type: 'error', text: outcome.message })
-      throw new Error(outcome.message)
-    }
-    return false
+  const clearLogs = () => {
+    if (viewingHistory) return
+    realtime.clear()
+    setClearVersion(value => value + 1)
+    setNotice({ type: 'success', text: '已清屏，后续到达的日志会继续显示' })
   }
 
   const cleanupHistoryLogs = async () => {
@@ -91,14 +84,8 @@ export default function LogsWorkspace() {
     return false
   }
 
-  const handleConfirm = async () => {
-    if (confirmAction === 'clear') return clearLogs()
-    if (confirmAction === 'cleanup') return cleanupHistoryLogs()
-    return false
-  }
-
   const exportLogs = () => {
-    const logText = formatLogExport(logView.filtered)
+    const logText = formatLogExport(logView.selected)
     const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -132,11 +119,14 @@ export default function LogsWorkspace() {
         />
       )}
 
-      <LogContentModeTabs mode={contentMode} onChange={setContentMode} />
-
       <LogsToolbar
         autoScroll={autoScroll}
         onAutoScrollChange={setAutoScroll}
+        runId={runId}
+        runIds={knownRunIds}
+        onRunIdChange={setRunId}
+        events={events}
+        onEventsChange={setEvents}
         collapseRepeats={collapseRepeats}
         onCollapseRepeatsChange={setCollapseRepeats}
         filter={filter}
@@ -147,22 +137,36 @@ export default function LogsWorkspace() {
         paused={realtime.paused}
         onTogglePause={togglePause}
         actionBusy={actionBusy}
-        canExport={logView.filtered.length > 0}
-        onClear={() => setConfirmAction('clear')}
+        canExport={logView.selected.length > 0}
+        onClear={clearLogs}
         onExport={exportLogs}
       />
+
+      {viewingHistory && (
+        <p className="log-coverage">历史文件显示已加载的尾部内容；导出仅包含当前筛选结果。</p>
+      )}
+      {!viewingHistory && realtime.coverageNotice && (
+        <p className="log-coverage" role="status">{realtime.coverageNotice}</p>
+      )}
+      {logView.hiddenMatchCount > 0 && (
+        <div className="log-hidden-matches" role="status">
+          <span>{logView.hiddenMatchCount} 条匹配日志被关键事件筛选隐藏</span>
+          <button type="button" onClick={() => setEvents('all')}>显示全部事件</button>
+        </div>
+      )}
 
       <LogConsole
         viewingHistory={viewingHistory}
         selectedFile={history.selectedFile}
         loading={loading}
         error={activeError}
-        logs={logs}
+        logs={runFilteredLogs}
         view={logView}
         autoScroll={autoScroll}
         paused={realtime.paused}
         onRetry={retryActiveLogs}
         onBackToRealtime={backToRealtime}
+        scopeKey={JSON.stringify([viewingHistory ? history.selectedFile?.path : runId, events, filter, search, clearVersion])}
       />
 
       <HistoryLogPicker
@@ -171,19 +175,17 @@ export default function LogsWorkspace() {
         selectedFile={history.selectedFile}
         cleanupDisabled={actionBusy || history.files.length === 0 || viewingHistory}
         onSelect={viewHistoryFile}
-        onCleanup={() => setConfirmAction('cleanup')}
+        onCleanup={() => setConfirmCleanup(true)}
         onReload={() => void history.reloadFiles()}
       />
 
       <ConfirmDialog
-        isOpen={confirmAction !== null}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={handleConfirm}
-        title={confirmAction === 'clear' ? '清空实时日志？' : '清理旧日志文件？'}
-        message={confirmAction === 'clear'
-          ? '这会清空当前会话中的实时日志缓存，历史日志文件不会受到影响。'
-          : '系统会删除较旧的日志文件，只保留最新的 10 MB。此操作无法撤销。'}
-        confirmText={confirmAction === 'clear' ? '确认清空' : '确认清理'}
+        isOpen={confirmCleanup}
+        onClose={() => setConfirmCleanup(false)}
+        onConfirm={cleanupHistoryLogs}
+        title="清理旧日志文件？"
+        message="系统会删除较旧的日志文件，只保留最新的 10 MB。此操作无法撤销。"
+        confirmText="确认清理"
         variant="danger"
       />
     </>

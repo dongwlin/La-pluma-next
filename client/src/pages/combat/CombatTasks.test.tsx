@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   resetCopilotSetProgress: vi.fn(),
   searchCopilot: vi.fn(),
   searchParadoxCopilot: vi.fn(),
+  getRealtimeLogs: vi.fn(),
   setMessage: vi.fn(),
 }))
 
@@ -104,6 +105,14 @@ vi.mock('@/features/runtime-status', () => ({
   },
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
+}))
+
+vi.mock('@/features/logs/api', () => ({
+  getRealtimeLogs: mocks.getRealtimeLogs,
+  clearRealtimeLogs: vi.fn(),
+  getLogFiles: vi.fn(),
+  readLogFile: vi.fn(),
+  cleanupLogs: vi.fn(),
 }))
 
 vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
@@ -239,6 +248,7 @@ function setResult(
       mode: 'continuous',
       raid: 'normal',
       totalEntries: taskResults.length,
+      queuedEntries: taskResults.length,
       attemptedCount: taskResults.length - count('pending'),
       alreadyCompletedCount: 0,
       successCount: count('success'),
@@ -445,6 +455,7 @@ describe('CombatTasks execution', () => {
     mocks.resetCopilotSetProgress.mockReset()
     mocks.searchCopilot.mockReset()
     mocks.searchParadoxCopilot.mockReset()
+    mocks.getRealtimeLogs.mockReset()
     mocks.setMessage.mockReset()
     renderCounts.setPanel = 0
 
@@ -508,6 +519,28 @@ describe('CombatTasks execution', () => {
 
     expect(mocks.executeCopilotSetPlan).toHaveBeenCalledOnce()
     expect(buttonByText('终止执行')).toBeDefined()
+  })
+
+  it('keeps execution progress without a separate log observer or entry', async () => {
+    useIdentity({ runId: 'run-9', operationId: 'run_task', scope: 'combat' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      activeRuns: [activeRun('run-9', 'running', { progress: { currentTask: '自动战斗作业' } })],
+    })))
+    startController()
+    await flush()
+    await renderComponent()
+
+    expect(container.querySelector('[aria-label="本次执行进度"]')?.textContent).toContain('本次执行进度')
+    expect(container.querySelector('[role="log"]')).toBeNull()
+    expect(container.textContent).not.toContain('查看本次日志')
+    expect(mocks.getRealtimeLogs).not.toHaveBeenCalled()
+  })
+
+  it('does not offer a workspace log entry without a tracked run', async () => {
+    await renderComponent()
+
+    expect(container.querySelector('section[aria-label="本次执行日志"]')).toBeNull()
+    expect(container.textContent).not.toContain('查看本次日志')
   })
 
   it('maps the legacy app execution mode to a continuous server run', async () => {
@@ -1586,7 +1619,8 @@ describe('CombatTasks execution', () => {
       .filter(text => text === '已完成' || text === '待重试' || text === '待执行')
     expect(statusLabels).toEqual(['已完成', '待重试', '待执行'])
     expect(container.textContent).toContain('待 2')
-    expect(container.textContent).toContain('完成 1')
+    // 计划状态的汇总只在续跑进度展示，本次执行面板不重复计数。
+    expect(container.textContent).toContain('已通关 1')
     expect(container.textContent).toContain('失败 1')
     expect(container.textContent).toContain('本次已执行 2 个')
     expect(container.textContent).toContain('第 3 / 3 关')

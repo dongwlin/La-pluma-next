@@ -478,22 +478,6 @@ function TrainingSkeleton() {
 function LogsSkeleton() {
   return (
     <>
-      <div className="app-workspace-segments app-liquid-tab-pill log-mode-shell" aria-hidden="true">
-        <div className="app-workspace-segment-list log-mode-tabs">
-          <div className="app-workspace-segment-indicator log-mode-skeleton-highlight" />
-          {[1, 2].map(item => (
-            <div key={item} className="app-workspace-segment log-mode-button min-h-11">
-              <span className="app-workspace-segment-icon log-mode-icon">
-                <Skeleton variant="circle" className="h-5 w-5" />
-              </span>
-              <span className="app-workspace-segment-copy gap-1">
-                <Skeleton variant="text" className="h-3 w-12 max-w-full" />
-                <Skeleton variant="text" className="h-2.5 w-20 max-w-full" />
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
       <Card smoothCorners className="log-card log-toolbar-card p-0!">
         <div className="app-card-content log-toolbar">
           <div className="log-toolbar-controls">

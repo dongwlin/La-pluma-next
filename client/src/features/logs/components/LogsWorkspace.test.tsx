@@ -1,0 +1,174 @@
+// @vitest-environment jsdom
+
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import LogsWorkspace from './LogsWorkspace'
+import type { LogEntry } from '../types'
+import type { AgentRun } from '@/features/task-execution'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+const row = (message: string, runId?: string): LogEntry => ({
+  id: message,
+  time: '10:00:00',
+  level: 'INFO',
+  message,
+  ...(runId ? { runId } : {}),
+})
+
+const fixtureLogs: readonly LogEntry[] = [
+  row('本次执行的输出', 'run-1'),
+  row('上一次执行的输出', 'run-0'),
+  row('没有归属的输出'),
+]
+let realtimeLogs = fixtureLogs
+let viewingHistory = false
+let trackedRun: AgentRun | null = null
+const clearScreen = vi.fn()
+
+vi.mock('../hooks/useLogsSession', () => ({
+  useLogsSession: () => ({
+    realtime: {
+      logs: realtimeLogs,
+      error: null,
+      paused: false,
+      start: () => {},
+      stop: () => {},
+      refresh: () => {},
+      pause: () => {},
+      resume: () => {},
+      clear: clearScreen,
+    },
+    history: {
+      viewing: viewingHistory,
+      files: [],
+      filesPhase: 'ready',
+      filesError: null,
+      selectedFile: null,
+      logs: [row('历史文件输出')],
+      readPhase: 'idle',
+      error: null,
+      selectFile: () => {},
+      backToRealtime: () => {},
+      reloadFiles: async () => 'ready' as const,
+      retry: () => {},
+      reconcileSelection: () => false,
+    },
+    commandPending: null,
+    enterHistory: () => {},
+    backToRealtime: () => {},
+    cleanupHistoryLogs: async () => ({ status: 'succeeded', message: 'ok' }),
+  }),
+}))
+
+vi.mock('@/features/task-execution', () => ({
+  useExecutionSnapshot: () => ({ trackedRun }),
+}))
+
+let container: HTMLDivElement
+let root: Root
+
+const renderWorkspace = async () => {
+  await act(async () => root.render(<LogsWorkspace />))
+}
+
+const logText = () => container.querySelector('[role="log"]')?.textContent || ''
+const selectRun = async (runId: string) => {
+  const scope = container.querySelector<HTMLSelectElement>('[aria-label="执行范围"]')!
+  await act(async () => {
+    scope.value = runId
+    scope.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+const activeRun = (runId: string): AgentRun => ({
+  runId,
+  operationId: `op-${runId}`,
+  state: 'running',
+  links: { self: `/api/runs/${runId}` },
+})
+
+describe('LogsWorkspace observation scope', () => {
+  beforeEach(() => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    trackedRun = null
+    realtimeLogs = fixtureLogs
+    viewingHistory = false
+    clearScreen.mockClear()
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  it('starts with all collected logs, including unassociated records', async () => {
+    trackedRun = activeRun('run-1')
+    await renderWorkspace()
+    expect(logText()).toContain('本次执行的输出')
+    expect(logText()).toContain('上一次执行的输出')
+    expect(logText()).toContain('没有归属的输出')
+  })
+
+  it('pins an explicit run after completion and while a different run starts', async () => {
+    trackedRun = activeRun('run-1')
+    await renderWorkspace()
+    await selectRun('run-1')
+    expect(logText()).toContain('本次执行的输出')
+    expect(logText()).not.toContain('上一次执行的输出')
+    expect(logText()).not.toContain('没有归属的输出')
+
+    trackedRun = { ...activeRun('run-1'), state: 'succeeded' }
+    await renderWorkspace()
+    expect(logText()).not.toContain('上一次执行的输出')
+    trackedRun = activeRun('run-2')
+    realtimeLogs = [...fixtureLogs, row('新执行的输出', 'run-2')]
+    await renderWorkspace()
+    expect(logText()).toContain('本次执行的输出')
+    expect(logText()).not.toContain('新执行的输出')
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="执行范围"]')?.value).toBe('run-1')
+  })
+
+  it('returns to all logs explicitly and preserves pinned choice across file browsing', async () => {
+    await renderWorkspace()
+    await selectRun('run-1')
+    viewingHistory = true
+    await renderWorkspace()
+    expect(logText()).toContain('历史文件输出')
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="执行范围"]')?.disabled).toBe(true)
+    viewingHistory = false
+    await renderWorkspace()
+    expect(logText()).not.toContain('上一次执行的输出')
+    await selectRun('')
+    expect(logText()).toContain('上一次执行的输出')
+  })
+
+  it('clears the local observation without a server clear confirmation', async () => {
+    await renderWorkspace()
+    const clear = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '清屏')
+    await act(async () => clear?.click())
+    expect(clearScreen).toHaveBeenCalledOnce()
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(container.textContent).toContain('已清屏，后续到达的日志会继续显示')
+  })
+
+  it('offers matching diagnostic events hidden by the key-event filter', async () => {
+    realtimeLogs = [row('load diagnostic-needle')]
+    await renderWorkspace()
+    const search = container.querySelector<HTMLInputElement>('[aria-label="搜索日志内容"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, 'diagnostic-needle')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(container.textContent).toContain('1 条匹配日志被关键事件筛选隐藏')
+    const showAll = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '显示全部事件')
+    await act(async () => showAll?.click())
+    expect(logText()).toContain('load diagnostic-needle')
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="事件范围"]')?.value).toBe('all')
+  })
+})

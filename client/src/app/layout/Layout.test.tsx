@@ -486,7 +486,7 @@ describe('top-level application navigation', () => {
     expect(document.activeElement).toBe(trigger)
 
     await act(async () => trigger.click())
-    sheet = container.querySelector<HTMLElement>('#la-pluma-more-sheet')
+    sheet = container.querySelector('#la-pluma-more-sheet')
     const overflowLink = sheet?.querySelector<HTMLButtonElement>('button[data-app-tab="roguelike"]')
     expect(overflowLink).toBeTruthy()
 

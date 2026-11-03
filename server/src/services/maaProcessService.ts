@@ -1,4 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
 import { createLogger } from '../utils/logger.ts';
 import { getLogContext } from '../utils/logContext.ts';
@@ -50,6 +52,9 @@ function resolveMaxRealtimeLogs(raw: string | undefined): number {
 }
 
 const MAX_REALTIME_LOGS = resolveMaxRealtimeLogs(process.env.LA_PLUMA_MAX_REALTIME_LOGS);
+// 身份属于本次服务进程；清空和缓冲淘汰不重置序号，重启后使用新的前缀。
+const realtimeLogSourceId = randomUUID();
+let realtimeLogSequence = 0;
 
 // 创建日志记录器
 const logger = createLogger('MaaService');
@@ -74,6 +79,8 @@ export interface MaaExecutionDiagnostic {
 
 /** 实时日志缓冲条目；关联字段只在执行上下文中存在时写入。 */
 export interface MaaRealtimeLogEntry {
+  id: string;
+  sequence: number;
   time: string;
   level: MaaLogLevel;
   message: string;
@@ -429,7 +436,10 @@ function appendRealtimeLog(level: MaaLogLevel, message: string): MaaRealtimeLogE
   // 执行归属来自执行上下文而不是发起请求：请求返回后仍在运行的子进程
   // 输出继续携带同一个 runId/operationId。日志内容统一脱敏后再入缓冲。
   const context = getLogContext();
+  const sequence = ++realtimeLogSequence;
   const entry: MaaRealtimeLogEntry = {
+    id: `${realtimeLogSourceId}:${sequence}`,
+    sequence,
     time: new Date().toISOString(),
     level,
     message: redactLogText(message)
@@ -582,8 +592,8 @@ function errorStderrOf(error: unknown): string {
 /** 捕获子进程输出时保留的尾部字节数；后台任务再长也不会无界增长。 */
 export const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 
-/** 结束时写入实时日志的单条输出上限，避免整段缓冲塞进同一个日志条目。 */
-const MAX_COMPLETION_OUTPUT_CHARS = 8 * 1024;
+/** 单条实时输出上限；超长行只记录截断标记，避免丢失凭据前缀后泄露尾部。 */
+export const MAX_REALTIME_LOG_LINE_BYTES = 64 * 1024;
 
 /**
  * stdout/stderr 的尾部缓冲：只保留最后 MAX_CAPTURED_OUTPUT_BYTES 字节。
@@ -611,18 +621,175 @@ class CapturedOutputBuffer {
   }
 
   toString(): string {
-    return Buffer.concat(this.chunks).toString('utf-8');
+    const tail = Buffer.concat(this.chunks);
+    let offset = 0;
+    // 淘汰旧字节时可能从字符中间开始；丢弃不完整的开头而不制造替换字符。
+    while (offset < tail.length && (tail[offset]! & 0xc0) === 0x80) offset += 1;
+    return tail.toString('utf-8', offset);
   }
 }
 
-/** 结束时只记录有上限的尾部输出，不把整个捕获缓冲写成一条日志。 */
-function logCapturedOutput(level: MaaLogLevel, label: string, capture: CapturedOutputBuffer): void {
-  const text = capture.toString().trim();
-  if (!text) return;
-  const truncated = text.length > MAX_COMPLETION_OUTPUT_CHARS
-    ? `…（输出已截断，保留最后 ${MAX_COMPLETION_OUTPUT_CHARS} 字符）\n`
-    : '';
-  addLog(level, `${label}: ${truncated}${text.slice(-MAX_COMPLETION_OUTPUT_CHARS)}`);
+/** 按流重建 UTF-8 行；超过单行预算后省略载荷，不能先丢前缀再做脱敏。 */
+class OutputLineDecoder {
+  private readonly decoder = new StringDecoder('utf8');
+  private readonly onLine: (line: string, level: MaaLogLevel) => void;
+  private pending = '';
+  private pendingBytes = 0;
+  private truncated = false;
+  private level: MaaLogLevel = 'INFO';
+  private classificationTail = '';
+
+  constructor(onLine: (line: string, level: MaaLogLevel) => void) {
+    this.onLine = onLine;
+  }
+
+  write(chunk: Buffer): void {
+    this.consume(this.decoder.write(chunk));
+  }
+
+  end(): void {
+    this.consume(this.decoder.end());
+    this.emitLine();
+  }
+
+  private consume(text: string): void {
+    let start = 0;
+    let end = text.indexOf('\n');
+    while (end !== -1) {
+      this.append(text.slice(start, end));
+      this.emitLine(true);
+      start = end + 1;
+      end = text.indexOf('\n', start);
+    }
+    this.append(text.slice(start));
+  }
+
+  private append(text: string): void {
+    if (!text) return;
+    // 严重度匹配也跨 chunk，且不能因单行尾部裁剪而丢掉开头的 ERROR/WARN。
+    const classification = this.classificationTail + text;
+    if (classification.includes('ERROR')) this.level = 'ERROR';
+    else if (this.level !== 'ERROR' && classification.includes('WARN')) this.level = 'WARN';
+    this.classificationTail = classification.slice(-4);
+    if (this.truncated) return;
+    const bytes = Buffer.byteLength(text, 'utf8');
+    if (this.pendingBytes + bytes <= MAX_REALTIME_LOG_LINE_BYTES) {
+      this.pending += text;
+      this.pendingBytes += bytes;
+      return;
+    }
+    this.truncated = true;
+    this.pending = '';
+    this.pendingBytes = 0;
+  }
+
+  private emitLine(terminated = false): void {
+    const line = this.pending.endsWith('\r') ? this.pending.slice(0, -1) : this.pending;
+    if (terminated || this.pendingBytes > 0 || this.truncated) {
+      this.onLine(this.truncated ? '…（单行输出已截断，内容已省略）' : line, this.level);
+    }
+    this.pending = '';
+    this.pendingBytes = 0;
+    this.truncated = false;
+    this.level = 'INFO';
+    this.classificationTail = '';
+  }
+}
+
+/** maa-cli 在任务结束时打印的报告块标题；紧跟分隔线才按报告合并。 */
+const SUMMARY_BLOCK_TITLE = 'Summary';
+const SUMMARY_BLOCK_SEPARATOR = /^-{10,}$/;
+
+/** 两种 spawn 执行路径共用采集器；close/error 只冲刷一次未换行的尾部。 */
+function captureProcessOutput(childProcess: MaaChildProcess): {
+  stdout: CapturedOutputBuffer;
+  stderr: CapturedOutputBuffer;
+  flush: () => void;
+} {
+  const stdout = new CapturedOutputBuffer();
+  const stderr = new CapturedOutputBuffer();
+  let reportTitle: string[] | null = null;
+  let reportLines: string[] | null = null;
+  let reportBytes = 0;
+  let reportTruncated = false;
+
+  // 报告在进程结束才合并：按 UTF-8 字节（含行尾换行）累计，超出实时日志上限就丢弃明细，
+  // 避免报告块在内存里无界增长；保留标记让日志侧仍能看到结果。
+  const appendReportLine = (entry: string): void => {
+    if (!reportLines) return;
+    const bytes = Buffer.byteLength(entry, 'utf8') + 1;
+    if (reportBytes + bytes > MAX_REALTIME_LOG_LINE_BYTES) {
+      reportTruncated = true;
+      reportLines = null;
+      reportBytes = 0;
+      return;
+    }
+    reportBytes += bytes;
+    reportLines.push(entry);
+  };
+
+  // 任务报告是一次性的结果而不是流事件：整块合并成一条实时日志，逐行明细仍保留在原文中。
+  const emitReport = (): void => {
+    if (!reportLines && !reportTruncated) return;
+    appendRealtimeLog('INFO', reportLines
+      ? reportLines.join('\n')
+      : `${SUMMARY_BLOCK_TITLE}: …（任务报告过长，已省略）`);
+    reportLines = null;
+    reportBytes = 0;
+    reportTruncated = false;
+  };
+
+  const stdoutLines = new OutputLineDecoder(line => {
+    if (reportLines || reportTruncated) {
+      appendReportLine(line);
+      return;
+    }
+    if (reportTitle) {
+      if (SUMMARY_BLOCK_SEPARATOR.test(line)) {
+        reportLines = [];
+        reportBytes = 0;
+        reportTruncated = false;
+        for (const pending of reportTitle) appendReportLine(pending);
+        appendReportLine(line);
+        reportTitle = null;
+        return;
+      }
+      for (const pending of reportTitle) appendRealtimeLog('INFO', pending);
+      reportTitle = null;
+    }
+    if (line === SUMMARY_BLOCK_TITLE) {
+      reportTitle = [line];
+      return;
+    }
+    appendRealtimeLog('INFO', line);
+  });
+  const stderrLines = new OutputLineDecoder((line, level) => appendRealtimeLog(level, line));
+  let finished = false;
+  childProcess.stdout.on('data', data => {
+    if (finished) return;
+    stdout.append(data);
+    stdoutLines.write(data);
+  });
+  childProcess.stderr.on('data', data => {
+    if (finished) return;
+    stderr.append(data);
+    stderrLines.write(data);
+  });
+  return {
+    stdout,
+    stderr,
+    flush: () => {
+      if (finished) return;
+      finished = true;
+      stdoutLines.end();
+      if (reportTitle) {
+        for (const pending of reportTitle) appendRealtimeLog('INFO', pending);
+        reportTitle = null;
+      }
+      emitReport();
+      stderrLines.end();
+    }
+  };
 }
 
 interface CommandOutcomeInput {
@@ -816,32 +983,7 @@ function execMaaCommandWithEnv(
           stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        const stdout = new CapturedOutputBuffer();
-        const stderr = new CapturedOutputBuffer();
-
-        // 实时捕获输出
-        childProcess.stdout.on('data', (data) => {
-          stdout.append(data);
-          const text = data.toString();
-
-          // 将输出按行分割并添加到日志
-          const lines = text.split('\n').filter(line => line.trim());
-          lines.forEach(line => {
-            appendRealtimeLog('INFO', line.trim());
-          });
-        });
-
-        childProcess.stderr.on('data', (data) => {
-          stderr.append(data);
-          const text = data.toString();
-
-          // 将错误输出按行分割并添加到日志
-          const lines = text.split('\n').filter(line => line.trim());
-          lines.forEach(line => {
-            const level: MaaLogLevel = line.includes('ERROR') ? 'ERROR' : line.includes('WARN') ? 'WARN' : 'INFO';
-            appendRealtimeLog(level, line.trim());
-          });
-        });
+        const { stdout, stderr, flush } = captureProcessOutput(childProcess);
 
         // 设置任务开始状态
         setTaskStatus(true, taskName, taskType, childProcess);
@@ -869,12 +1011,10 @@ function execMaaCommandWithEnv(
 
         // 在后台继续执行
         childProcess.on('close', (code, signal) => {
+          if (settled) return;
+          flush();
           const stdoutText = stdout.toString();
           const stderrText = stderr.toString();
-          addLog('INFO', `命令执行完成: ${fullCommand}, 退出码: ${code}`);
-          logCapturedOutput('INFO', 'stdout', stdout);
-          logCapturedOutput('WARN', 'stderr', stderr);
-
           const outcome = createCommandOutcome({
             code,
             signal,
@@ -883,6 +1023,9 @@ function execMaaCommandWithEnv(
             command: fullCommand,
             childProcess
           });
+          addLog('INFO', outcome.stopped
+            ? `命令执行已停止: ${fullCommand}`
+            : `命令执行完成: ${fullCommand}, 退出码: ${code}`);
           if (!outcome.stopped && (code !== 0 || signal)) {
             addLog('ERROR', `命令执行失败: ${fullCommand}`);
           }
@@ -890,6 +1033,8 @@ function execMaaCommandWithEnv(
         });
 
         childProcess.on('error', (error) => {
+          if (settled) return;
+          flush();
           addLog('ERROR', `命令执行错误: ${fullCommand} - ${error.message}`);
           settle(createCommandOutcome({
             stdout: stdout.toString(),
@@ -910,30 +1055,7 @@ function execMaaCommandWithEnv(
           stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        const stdout = new CapturedOutputBuffer();
-        const stderr = new CapturedOutputBuffer();
-
-        // 实时捕获输出
-        childProcess.stdout.on('data', (data) => {
-          stdout.append(data);
-          const text = data.toString();
-
-          const lines = text.split('\n').filter(line => line.trim());
-          lines.forEach(line => {
-            appendRealtimeLog('INFO', line.trim());
-          });
-        });
-
-        childProcess.stderr.on('data', (data) => {
-          stderr.append(data);
-          const text = data.toString();
-
-          const lines = text.split('\n').filter(line => line.trim());
-          lines.forEach(line => {
-            const level: MaaLogLevel = line.includes('ERROR') ? 'ERROR' : line.includes('WARN') ? 'WARN' : 'INFO';
-            appendRealtimeLog(level, line.trim());
-          });
-        });
+        const { stdout, stderr, flush } = captureProcessOutput(childProcess);
 
         // 设置任务开始状态
         setTaskStatus(true, taskName, taskType, childProcess);
@@ -950,6 +1072,8 @@ function execMaaCommandWithEnv(
 
         // 等待命令完成
         childProcess.on('close', (code, signal) => {
+          if (settled) return;
+          flush();
           const stdoutText = stdout.toString();
           const stderrText = stderr.toString();
           const outcome = createCommandOutcome({
@@ -961,15 +1085,15 @@ function execMaaCommandWithEnv(
             childProcess
           });
           if (!settle(outcome)) return;
-          addLog('INFO', `命令执行完成: ${fullCommand}, 退出码: ${code}`);
-          logCapturedOutput('INFO', 'stdout', stdout);
+          addLog('INFO', outcome.stopped
+            ? `命令执行已停止: ${fullCommand}`
+            : `命令执行完成: ${fullCommand}, 退出码: ${code}`);
           if (stderrText) {
             addExecutionDiagnostics(stderrText);
-            logCapturedOutput('WARN', 'stderr', stderr);
           }
 
           if (!outcome.ok) {
-            addLog('ERROR', `命令执行失败: ${fullCommand}`);
+            if (!outcome.stopped) addLog('ERROR', `命令执行失败: ${fullCommand}`);
             const diagnostic = getMaaExecutionDiagnostics(stderrText)[0];
             const commandError: MaaCommandError = outcome.error || new Error(diagnostic?.message || '任务已终止');
             if (diagnostic && !outcome.stopped) commandError.message = diagnostic.message;
@@ -989,6 +1113,8 @@ function execMaaCommandWithEnv(
         });
 
         childProcess.on('error', (error) => {
+          if (settled) return;
+          flush();
           const outcome = createCommandOutcome({
             stdout: stdout.toString(),
             stderr: stderr.toString(),

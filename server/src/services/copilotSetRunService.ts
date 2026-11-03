@@ -30,6 +30,7 @@ import type {
  *   转 `waiting` 并释放设备租约；会话不持久化，进程重启后按 `interrupted` 恢复；
  * - 条目状态（会话内 `running` 与结算后的 `pending`/`success`/`failed`/`stopped`）
  *   与集合级结果（`waitingForNext`/`finished`/`stopped` 与汇总）分别建模；
+ *   `skipped` 不进入会话：未选中且此前未完成的条目在投影时按计划推导；
  * - 作业站计划、执行结果与错误载荷都来自已类型化的 `copilotPlanService`；
  *   Run 生命周期只经 `agentRunService` 的公开入口变更。
  */
@@ -47,8 +48,11 @@ export type CopilotSetMode = 'continuous' | 'manual';
 /** 集合会话内部阶段；`waiting` 表示 manual 集正在等待下一关。 */
 export type CopilotSetSessionPhase = 'starting' | 'running' | 'waiting' | 'finished' | 'stopped';
 
-/** 条目状态：`running` 是会话内的执行阶段，结算后收敛到执行结果状态。 */
-export type CopilotSetEntryStatus = 'running' | CopilotEntryOutcomeStatus;
+/**
+ * 条目状态：`running` 是会话内的执行阶段，结算后收敛到执行结果状态；
+ * `skipped` 表示计划中未选中且此前未完成、本次集合明确不执行的条目。
+ */
+export type CopilotSetEntryStatus = 'running' | 'skipped' | CopilotEntryOutcomeStatus;
 
 /** 单个条目的会话内结算状态；未结算条目缺省为 `pending`。 */
 export interface CopilotSetEntryState {
@@ -68,18 +72,27 @@ export interface CopilotSetSummaryError {
   error?: string;
 }
 
-/** 一次集合执行的逐项汇总。 */
+/**
+ * 一次集合执行的逐项汇总。三个条目总数各自独立，不靠差额互相推导：
+ * - `plannedEntries` 是计划中的全部执行条目（含历史已完成）；
+ * - `queuedEntries` 是本次执行队列（计划未完成且被选中）的条目数；
+ * - `totalEntries` 是本汇总实际列出的条目数，恒等于 `taskResults.length`，
+ *   即本次执行队列加上本次跳过（计划中未选中且此前未完成）的条目。
+ */
 export interface CopilotSetSummary {
   setId: string;
   name: string;
   mode: CopilotSetMode;
   raid: unknown;
+  plannedEntries: number;
+  queuedEntries: number;
   totalEntries: number;
   attemptedCount: number;
   alreadyCompletedCount: number;
   successCount: number;
   failedCount: number;
   stoppedCount: number;
+  skippedCount: number;
   pendingCount: number;
   durationMs: number;
   errors: CopilotSetSummaryError[];
@@ -145,6 +158,7 @@ export interface CopilotSetProgress {
   successCount: number;
   failedCount: number;
   stoppedCount: number;
+  skippedCount: number;
   pendingCount: number;
   message: string;
   taskResults: CopilotSetTaskResult[];
@@ -378,7 +392,8 @@ function mergeOutcome(session: CopilotSetSession, outcome: CopilotEntriesOutcome
   }
 }
 
-function buildTaskResults(session: CopilotSetSession): CopilotSetTaskResult[] {
+/** 本次集合实际执行（或将要执行）的条目投影，按队列顺序排列。 */
+function attemptedTaskResults(session: CopilotSetSession): CopilotSetTaskResult[] {
   return session.queue.map(entry => {
     const settled: CopilotSetEntryState = session.results.get(entry.key) || { status: 'pending' };
     return {
@@ -397,7 +412,33 @@ function buildTaskResults(session: CopilotSetSession): CopilotSetTaskResult[] {
   });
 }
 
+/** 计划中未选中且此前未完成的条目：本次集合明确跳过，状态固定为 `skipped`。 */
+function skippedEntriesOf(session: CopilotSetSession): CopilotPlanEntry[] {
+  const scopedKeys = new Set(session.scope.map(entry => entry.key));
+  return session.plan.entries.filter(entry => !entry.completed && !scopedKeys.has(entry.key));
+}
+
+function skippedTaskResults(session: CopilotSetSession): CopilotSetTaskResult[] {
+  return skippedEntriesOf(session).map(entry => ({
+    key: entry.key,
+    itemIndex: entry.itemIndex,
+    copilotId: entry.copilotId,
+    stageId: entry.stageId,
+    stage: entry.displayStage,
+    displayStage: entry.displayStage,
+    apCost: entry.apCost,
+    mode: entry.mode,
+    presetFormation: Boolean(entry.presetFormation),
+    status: 'skipped' as const
+  }));
+}
+
+function buildTaskResults(session: CopilotSetSession): CopilotSetTaskResult[] {
+  return [...attemptedTaskResults(session), ...skippedTaskResults(session)];
+}
+
 function buildSummary(session: CopilotSetSession): CopilotSetSummary {
+  const attempted = attemptedTaskResults(session);
   const taskResults = buildTaskResults(session);
   const count = (status: CopilotSetEntryStatus) =>
     taskResults.filter(result => result.status === status).length;
@@ -406,12 +447,15 @@ function buildSummary(session: CopilotSetSession): CopilotSetSummary {
     name: session.name,
     mode: session.mode,
     raid: session.raid,
+    plannedEntries: session.plan.entries.length,
+    queuedEntries: attempted.length,
     totalEntries: taskResults.length,
-    attemptedCount: taskResults.length - count('pending'),
+    attemptedCount: attempted.length - count('pending'),
     alreadyCompletedCount: session.alreadyCompletedCount,
     successCount: count('success'),
     failedCount: count('failed'),
     stoppedCount: count('stopped'),
+    skippedCount: count('skipped'),
     pendingCount: count('pending'),
     durationMs: Date.now() - session.startedAt,
     errors: taskResults
@@ -833,10 +877,18 @@ export function getCopilotSetRunProgress(runId: string): CopilotSetProgress | nu
   const session = sessions.get(runId);
   if (!session) return null;
 
+  const attempted = attemptedTaskResults(session);
   const taskResults = buildTaskResults(session);
   const count = (status: CopilotSetEntryStatus) =>
     taskResults.filter(result => result.status === status).length;
   const pendingEntry = nextPendingEntry(session);
+  const runningEntry = session.queue.find(entry => statusOf(session, entry) === 'running') || null;
+  // currentStep 是当前正在执行（无则下一个待执行）条目在待执行队列中的 1 基
+  // 序号；全部结算后收敛为 totalSteps。skipped 条目不在队列里，不参与编号。
+  const currentStepEntry = runningEntry || pendingEntry;
+  const currentStep = currentStepEntry
+    ? session.queue.findIndex(entry => entry.key === currentStepEntry.key) + 1
+    : attempted.length;
   const phase: CopilotSetProgressPhase = session.phase === 'starting' ? 'starting'
     : session.phase === 'waiting' ? 'waiting_for_next'
       : session.phase;
@@ -845,8 +897,8 @@ export function getCopilotSetRunProgress(runId: string): CopilotSetProgress | nu
     name: session.name,
     mode: session.mode,
     phase,
-    currentStep: taskResults.length - count('pending'),
-    totalSteps: taskResults.length,
+    currentStep,
+    totalSteps: attempted.length,
     currentTask: session.currentEntry
       ? `第 ${session.currentEntry.itemIndex + 1} 项 ${session.currentEntry.displayStage}`
       : null,
@@ -856,6 +908,7 @@ export function getCopilotSetRunProgress(runId: string): CopilotSetProgress | nu
     successCount: count('success'),
     failedCount: count('failed'),
     stoppedCount: count('stopped'),
+    skippedCount: count('skipped'),
     pendingCount: count('pending'),
     message: phase === 'waiting_for_next'
       ? '等待开始下一关'

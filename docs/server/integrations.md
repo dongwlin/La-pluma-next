@@ -16,10 +16,11 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
   - 带任务名且等待完成时同样 `spawn`，但等待 `close` 后才 resolve 或 reject，失败错误携带 stdout/stderr、退出码、信号与诊断信息（`server/src/services/maaProcessService.ts:898-997`）。
   - 无任务名的命令用 `execFile` 同步执行，缺省 15 秒超时并 SIGKILL；Core 安装/更新等维护命令经 `managedTaskName` 端口传入受管任务名，子进程同样登记进 `taskStatus`，停止请求与关闭流程按同一任务进程路径识别并终止它，端口忽略 `timeout` 选项时在退出宽限内兜底 SIGKILL（`server/src/services/maaProcessService.ts:248,152-163,999-1080`）。
   - `execFile` 的超时包装在超时裁决后先等待底层子进程实际退出（默认端口由 `execFile` 按 `killSignal` 终止，毫秒级结算；宽限上限 `EXEC_FILE_TIMEOUT_EXIT_GRACE_MS`）再交还超时错误：维护命令的租约与任务状态释放不早于子进程终止（`server/src/services/maaProcessService.ts:279-316`）。
-- 子进程 stdout/stderr 按行写入实时缓冲；stderr 行内含 `ERROR` 或 `WARN` 时提升日志级别（`server/src/services/maaProcessService.ts:817-839,911-933`）。
+- 两种 spawn 路径共用 UTF-8 按行采集器，跨 chunk 重建字符与回调，保留行内空白和空行，关闭或错误时冲刷末尾无换行内容且只结算一次。stderr 按完整行中的 `ERROR` / `WARN` 提升级别；单行超过 64 KB 时省略内容并写明确的截断标记，避免无换行输出无限积压或截掉凭据前缀后泄漏尾部。
 - 实时日志条目经脱敏后写入，并携带执行上下文的 `runId`/`operationId`——归属来自执行上下文而不是发起请求，请求返回后仍在运行的子进程输出继续携带同一标识（`server/src/services/maaProcessService.ts:422-436`）。
+- 实时条目同时携带进程实例身份和单调递增序号组成的 `id`、数值 `sequence`；同一记录在轮询快照中保持身份，清空和缓冲淘汰不重置序号，服务重启生成新实例身份。`logs/recent` 保留数组响应与最近窗口语义，不提供游标、按 Run 回读或持久归档。
 - 实时缓冲的内存上限由 `LA_PLUMA_MAX_REALTIME_LOGS` 控制，缺省 5000，非法环境变量回落默认值（`server/src/services/maaProcessService.ts:41-52`）；对外单次返回行数上限为 `MAX_REALTIME_LOG_LINES` 500（`server/src/services/maaProcessService.ts:36,397-407`）。
-- 后台执行可能持续很久：捕获输出只保留最后 256 KB（`server/src/services/maaProcessService.ts:576-610`），任务结束时单条日志最多写入 8 KB 尾部输出（`server/src/services/maaProcessService.ts:580,612-620`）。
+- 后台执行可能持续很久：命令结果的捕获输出只保留最后 256 KB，裁剪从有效 UTF-8 字符边界开始。stdout/stderr 逐行写入实时日志；maa-cli 在任务结束时打印的 `Summary` 报告块（标题、分隔线与任务明细）在采集器中合并成一条实时日志，任务结束时不再重复写入整段聚合输出。被捕获淘汰的旧字节不会重新写入日志，避免失去凭据前缀。
 - stderr 会匹配稳定的诊断码并写入日志：未知掉落、企鹅物流/一图流汇报失败、ADB 连接失败、账号切换失败、游戏启动失败（`server/src/services/maaProcessService.ts:466-517`）。
 - `stopCurrentTask` 先按进程组发 SIGTERM（非 Windows；ESRCH 回落到子进程信号），缺省 3000ms 未退出升级 SIGKILL；重复停止只返回等待中，不重复发送信号（`server/src/services/maaProcessService.ts:1082-1118`）。
 - 退出语义：只有 `stopRequested` 置位的退出算 `stopped`；外部信号（OOM、SIGSEGV、被其他进程 kill）属于失败，保留退出码与信号信息（`server/src/services/maaProcessService.ts:632-669`）。
@@ -87,6 +88,28 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - infrast 解析 `Infrast` taskchain：按 `class` 字段映射九类设施，识别收产物、换班、无人机、线索收送与交流、专精训练；未选择设施返回 `skipped`（`server/src/services/infrastResultService.ts:60-192`）。
 - mall 解析 `Mall` taskchain：好友访问、信用购物、信用作战三项严格 `false` 才整体跳过；购买计数只统计 `exec_times` 缺失或为 1 的 `CreditShop-Bought` 事件（`server/src/services/mallResultService.ts:40-139`）。
 - fight 基于任务总结、命令输出与错误文本：理智耗尽、关卡未开放、剿灭奖励已领完归为 `skipped`，其余错误为 `failed`；理智判定同时检查输出短语与 Summary 段（`server/src/services/fightResultService.ts:56-178`）。
+
+### 作业集逐项进度与文件加载事件
+
+作业集执行期间，服务端每 2 秒增量读取 `asst.log`，把 `CopilotListLoadTaskFileSuccess` 中的 `file_name` 映射到计划文件并推进逐项生命周期（`server/src/services/copilotPlanService.ts`）。出现第 k 份计划文件的加载时，此前尚未结算的条目结算为 `success`，该文件所属条目置为 `running`。
+
+载荷由共享回调解析器按 JSON 解析，`details.file_name` 是 JSON 转义后的原生路径（Windows 为 `C:\\...`），必须解码后再比较；计划文件路径由 `path.join` 生成，两者在分隔符、盘符与目录名大小写上可能不同，匹配前统一分隔符并在 Windows 上忽略大小写。
+
+这条推断依赖 MaaCore 的 `copilot_list` 执行顺序，依据是上游实现而不是集成协议文本：
+
+- `MultiCopilotTaskPlugin::_run` 在当前条目 `Copilot.load` 成功后、跳转关卡与战斗之前发回调，一轮只处理一份文件；
+- 每轮末尾的三星确认（`Copilot@WaitUntilEndOfAction`）失败会让 `PackageTask` 中止整条任务链，后续文件不再加载。
+
+因此下一份文件开始加载时，上一轮的全部完成检查已经通过。观察只是执行中的投影：组结束仍按命令退出码与最后加载的文件重新结算；读取窗口缺失或路径无法匹配时只会让更多条目留在未确认状态（失败记为 `failed`，停止记为 `stopped` 或 `pending`），不会把未确认条目算作成功。
+
+该前提随 MaaCore 版本变化。单元测试与假 CLI 只回放事件顺序，不能证明真实回调时序；合入相关改动或升级 MaaCore 后，应用真实设备执行并核对加载事件与最终完成事件的先后：
+
+| 场景 | 核对内容 |
+| --- | --- |
+| 多关连续作业 | 每关的加载事件出现在上一关完成之后，逐项状态与关卡顺序一致，不提前显示成功 |
+| 中途失败（未三星或任务失败） | 失败条目之后不再出现新的加载事件；已通过条目保留 `success`，其余为 `failed` |
+| 主动终止 | 终止后不再出现新的加载事件；已开始的条目按 `stopped` 处理，未开始的保持 `pending` |
+| 重复作业（循环次数 > 1） | 同一作业的多次重复只在后续条目加载或组结束时统一结算一次，不重复计数 |
 
 ## 通知发送与 Telegram Bot 轮询
 

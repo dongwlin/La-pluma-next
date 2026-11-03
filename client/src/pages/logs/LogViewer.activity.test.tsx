@@ -195,45 +195,38 @@ describe('LogViewer realtime lifecycle', () => {
     expect(container.textContent).toContain('下一次')
   })
 
-  it('pauses polling while clearing and resumes with an immediate read', async () => {
-    const clearing = deferred<ApiResponse<unknown>>()
-    const resumed = deferred<ApiResponse<unknown>>()
+  it('keeps cleared records hidden across polls and Activity restore without changing shared logs', async () => {
+    const before = { ...row('清屏前'), id: 'clear:1', sequence: 1 }
+    const after = { ...row('清屏后'), id: 'clear:2', sequence: 2 }
     mocks.getRealtimeLogs
-      .mockResolvedValueOnce({ success: true, data: [row('清空前')] })
-      .mockReturnValueOnce(resumed.promise)
-    mocks.clearRealtimeLogs.mockReturnValueOnce(clearing.promise)
+      .mockResolvedValueOnce({ success: true, data: [before] })
+      .mockResolvedValueOnce({ success: true, data: [before] })
+      .mockResolvedValue({ success: true, data: [before, after] })
 
     await renderMode('visible')
-    expect(container.textContent).toContain('清空前')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('清屏前')
 
     const clearButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '清空')
-    await act(async () => clearButton?.click())
+      .find(button => button.textContent === '清屏')
+    expect(clearButton).toBeDefined()
+    await act(async () => clearButton!.click())
     await flush()
 
-    const confirmButton = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '确认清空')
-    expect(confirmButton).toBeTruthy()
-    await act(async () => confirmButton?.click())
-    await flush()
-
-    const busyClearButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '清空')
-    expect(busyClearButton?.disabled).toBe(true)
-
-    await advance(5000)
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('清屏前')
+    expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
-
-    clearing.resolve({ success: true, message: '实时日志已清空' })
-    await flush()
+    await advance(1250)
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
-    expect(container.textContent).toContain('实时日志已清空')
-    expect(container.textContent).not.toContain('清空前')
-    expect(busyClearButton?.disabled).toBe(false)
-    expect(mocks.getLogFiles).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('清屏前')
 
-    resumed.resolve({ success: true, data: [] })
-    await flush()
+    await renderMode('hidden')
+    await advance(5000)
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    await renderMode('visible')
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(3)
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('清屏后')
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('清屏前')
+    expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
   })
 
   it('retries an in-flight history read on restore without leaving loading', async () => {
@@ -343,15 +336,15 @@ describe('LogViewer realtime lifecycle', () => {
     const action = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.getAttribute('aria-label') === label)
 
-    await act(async () => action('暂停实时日志')?.click())
+    await act(async () => action('暂停读取日志')?.click())
     await flush()
-    expect(action('继续实时日志')).toBeTruthy()
+    expect(action('继续读取日志')).toBeTruthy()
 
     await advance(5000)
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
     expect(container.textContent).not.toContain('第2次')
 
-    await act(async () => action('继续实时日志')?.click())
+    await act(async () => action('继续读取日志')?.click())
     await flush()
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('第2次')
@@ -366,7 +359,7 @@ describe('LogViewer realtime lifecycle', () => {
 
     await renderMode('visible')
     const pause = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.getAttribute('aria-label') === '暂停实时日志')
+      .find(button => button.getAttribute('aria-label') === '暂停读取日志')
     await act(async () => pause?.click())
     await flush()
 
@@ -377,34 +370,29 @@ describe('LogViewer realtime lifecycle', () => {
     expect(container.textContent).toContain('暂停中')
 
     const resume = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.getAttribute('aria-label') === '继续实时日志')
+      .find(button => button.getAttribute('aria-label') === '继续读取日志')
     await act(async () => resume?.click())
     await flush()
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
   })
 
-  it('aborts the local clear wait when the page unmounts', async () => {
-    const clearing = deferred<ApiResponse<unknown>>()
-    mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [row('清空前')] })
-    mocks.clearRealtimeLogs.mockReturnValueOnce(clearing.promise)
+  it('starts a new local observation after a true remount', async () => {
+    const retained = { ...row('服务端仍保留的行'), id: 'remount:1', sequence: 1 }
+    mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: [retained] })
 
     await renderMode('visible')
     const clearButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '清空')
-    await act(async () => clearButton?.click())
+      .find(button => button.textContent === '清屏')
+    await act(async () => clearButton!.click())
     await flush()
-    const confirmButton = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '确认清空')
-    await act(async () => confirmButton?.click())
-    await flush()
-
-    const signal = mocks.clearRealtimeLogs.mock.calls[0]?.[0] as AbortSignal | undefined
-    expect(signal?.aborted).toBe(false)
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('服务端仍保留的行')
 
     await act(async () => root.unmount())
-    expect(signal?.aborted).toBe(true)
+    root = createRoot(container)
+    await renderMode('visible')
 
-    clearing.resolve({ success: true, message: '实时日志已清空' })
-    await flush()
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('服务端仍保留的行')
+    expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
   })
 })

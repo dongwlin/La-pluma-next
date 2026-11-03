@@ -29,7 +29,7 @@ describe('serializeCopilotSelection', () => {
 })
 
 describe('pending selection', () => {
-  it('subtracts run successes from the selected indexes', () => {
+  it('subtracts completed indexes from the selected indexes', () => {
     expect(pendingCopilotItemIndexes(new Set([2, 0, 1]), new Set([1]))).toEqual([0, 2])
   })
 

@@ -12,7 +12,7 @@
  * - 真正卸载时工作区与面板局部状态一起销毁，Activity 隐藏/恢复保留。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
 import { Button, ConfirmDialog, SmoothPanel } from '@/shared/ui'
@@ -45,6 +45,7 @@ import {
   toggleCopilotSelection,
 } from '../model/copilotSelection'
 import { deriveCopilotSetView } from '../model/copilotSetView'
+import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import { invalidateCopilotSetPlan } from '../model/queries'
@@ -57,6 +58,7 @@ import type {
   FormationMode,
 } from '../types'
 import CombatCopilotTaskPanel from './CombatCopilotTaskPanel'
+import CombatExecutionProgressPanel from './CombatExecutionProgressPanel'
 import CombatModeTabs from './CombatModeTabs'
 import CombatSpecialTaskPanel from './CombatSpecialTaskPanel'
 import { getCombatTask } from './CombatTaskCatalog'
@@ -140,6 +142,7 @@ export default function CombatWorkspace() {
     isContinuing,
     isSubmitting,
     setRun,
+    run: trackedRun,
     submitTask,
     submitSet,
     continueSet,
@@ -217,9 +220,18 @@ export default function CombatWorkspace() {
     selected: selectedCopilotIndexes,
     setRun,
     dismissedRunId,
+    raid: normalizeRaidValue(advancedParams.copilot?.raid),
     isWaitingForNext,
     isAutoStopping,
   })
+
+  // 本次执行进度只绑定当前被跟踪的 Run（单作业与作业集都出现）；
+  // 没有 Run 或字段未投影时为 null，面板整块隐藏。
+  const executionProgress = useMemo(
+    () => deriveExecutionProgress(trackedRun, setRun),
+    [trackedRun, setRun],
+  )
+
 
   // 终态后按服务端计划进度重建“待执行”选择。成功的条目会被计划标记为已完成，
   // 失败的条目保留待重试；同步失败只影响展示，不把 run 结果解释成完成。
@@ -589,6 +601,9 @@ export default function CombatWorkspace() {
       <div className="task-monitor-layout">
         <div className="task-monitor-main">
           <CombatModeTabs activeMode={activeCombatMode} onSelect={setActiveCombatMode} />
+
+          {/* 本次执行进度：只补条目位置、关卡与已用时；状态与停止留在执行卡片。 */}
+          <CombatExecutionProgressPanel progress={executionProgress} />
 
           {/* 任务列表 */}
           <div className="app-stack-section">

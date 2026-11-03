@@ -3,8 +3,10 @@ import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import type { MaaDynamicTaskConfig } from './maaExecutionService.ts';
+import { getCallbackDetails, getCallbackStringField, parseMaaCallbackEvents } from './maaCallbackService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
+import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
@@ -117,11 +119,13 @@ async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
   return tasks;
 }
 
-/** 清理进程内资源缓存，供测试用例之间隔离；生产运行不调用。 */
+/** 清理进程内资源缓存与测试注入的观察间隔、路径平台，供测试用例之间隔离；生产运行不调用。 */
 export function resetCopilotPlanCachesForTests(): void {
   resourceDirPromise = null;
   stageCatalogCache.clear();
   installedTasksCache.clear();
+  fileLoadPollMsOverride = null;
+  pathPlatformOverride = null;
 }
 
 /** 执行模式：普通关卡或突袭。 */
@@ -635,11 +639,138 @@ function normalizeCopilotLoopTimes(value: unknown): number {
   return Math.max(1, Math.min(99, Number.parseInt(String(value || 1), 10) || 1));
 }
 
+/**
+ * 读取日志中成功加载的计划文件路径。
+ *
+ * MaaCore 把 `copilot_list` 收到的路径原文写进 `details.file_name`，整段载荷是
+ * 一行 JSON：Windows 路径在日志文本里是 `C:\\maa\\...`，只有按 JSON 语义解析才能
+ * 得到与 `path.join` 结果相同的 `C:\maa\...`。这里复用共享回调解析器，断行与
+ * 非法 JSON 行跳过。
+ */
 export function extractLoadedCopilotFiles(logText: unknown = ''): string[] {
-  // MAA writes `file_name` inside `details` before the trailing `what`
-  // discriminator for a successfully loaded copilot entry.
-  return [...String(logText).matchAll(/"file_name"\s*:\s*"([^"]+)"[\s\S]{0,500}?"what"\s*:\s*"CopilotListLoadTaskFileSuccess"/g)]
-    .map(match => match[1]);
+  return parseMaaCallbackEvents(String(logText ?? ''), 'Copilot')
+    .filter(event => event.callback === 'SubTaskExtraInfo'
+      && getCallbackStringField(event, 'what') === 'CopilotListLoadTaskFileSuccess')
+    .map(event => getCallbackDetails(event)?.file_name)
+    .filter((file): file is string => typeof file === 'string' && file.length > 0);
+}
+
+let pathPlatformOverride: NodeJS.Platform | null = null;
+
+/** 测试注入：按指定平台规范化计划文件路径；生产代码不调用。 */
+export function setCopilotPlanPathPlatformForTests(platform: NodeJS.Platform | null): void {
+  pathPlatformOverride = platform;
+}
+
+/**
+ * 计划文件路径的比较形式：分隔符统一为 `/`，Windows 上大小写不敏感。
+ *
+ * MaaCore 记录的是传入路径原文，计划文件路径由 `path.join` 生成；两边可能在
+ * 分隔符、盘符与目录名大小写上不同，直接按字面比较会漏掉当前执行的条目。
+ */
+function normalizeCopilotPlanPath(file: string): string {
+  const unified = file.replace(/\\/g, '/');
+  return (pathPlatformOverride ?? process.platform) === 'win32' ? unified.toLowerCase() : unified;
+}
+
+/** 按日志中的计划文件名定位执行条目；组结算与逐项观察共用同一条匹配规则。 */
+function findCopilotExecutionItemIndex(
+  executionItems: readonly { filename: string }[],
+  file: string
+): number {
+  const target = normalizeCopilotPlanPath(file);
+  if (!target) return -1;
+  return executionItems.findIndex(item => {
+    const planned = normalizeCopilotPlanPath(item.filename);
+    return Boolean(planned) && (target === planned || target.endsWith(planned));
+  });
+}
+
+/** 作业组执行中逐项观察的日志轮询间隔；MAA 回调落盘有延迟，过短只会空读。 */
+const COPILOT_FILE_LOAD_POLL_MS = 2000;
+
+let fileLoadPollMsOverride: number | null = null;
+
+/** 测试注入：缩短计划文件加载观察的轮询间隔；生产代码不调用。 */
+export function setCopilotFileLoadPollIntervalForTests(ms: number): void {
+  fileLoadPollMsOverride = ms;
+}
+
+/**
+ * 观察作业组执行期间 MAA 逐份加载的计划文件，推进逐项生命周期。
+ *
+ * MaaCore 的 `copilot_list` 按条目顺序执行：`MultiCopilotTaskPlugin::_run` 装载完
+ * 当前条目的作业文件后才发出 `CopilotListLoadTaskFileSuccess`，之后才跳转关卡并
+ * 战斗；每轮末尾的三星确认（`Copilot@WaitUntilEndOfAction`）失败会让任务链中止，
+ * 后续文件不会被加载。因此第 k 份文件开始加载时，此前每份文件的轮次都已通过
+ * 完成检查。据此把此前尚未结算的条目逐项结算为 success，并把第 k 份文件所属
+ * 条目置为 running。
+ *
+ * 该前提依赖 MaaCore 的 copilot_list 执行顺序，升级 MaaCore 或更换 CLI 后需按
+ * `docs/server/integrations.md` 的真实设备核对步骤复核。观察只是结算前的投影：
+ * 组结束仍按命令退出码与最后加载的文件重新结算，读取失败或事件落在读取窗口外
+ * 不会把未确认条目判为成功。
+ */
+function observeCopilotFileLoads({
+  checkpoint,
+  executionItems,
+  alreadyStartedKeys,
+  onEntryStarted,
+  onEntrySettled
+}: {
+  checkpoint: MaaLogCheckpoint | null;
+  executionItems: readonly CopilotExecutionItem<CopilotPlanEntry>[];
+  alreadyStartedKeys: readonly string[];
+  onEntryStarted?: CopilotExecutionLifecycle['onEntryStarted'];
+  onEntrySettled?: CopilotExecutionLifecycle['onEntrySettled'];
+}): () => void {
+  if (!onEntryStarted && !onEntrySettled) return () => {};
+
+  const startedKeys = new Set(alreadyStartedKeys);
+  const settledKeys = new Set<string>();
+  const processedFiles = new Set<string>();
+  // 条目各重复次数的文件在 executionItems 中连续；记录每个条目最后一份文件的位置。
+  const entryLastIndexes = new Map<string, number>();
+  for (const [index, item] of executionItems.entries()) {
+    entryLastIndexes.set(item.entry.key, index);
+  }
+  let observing = true;
+  let reading = false;
+
+  const poll = async (): Promise<void> => {
+    if (reading) return;
+    reading = true;
+    try {
+      const logText = await readMaaLogSince(checkpoint);
+      if (!logText || !observing) return;
+      for (const file of extractLoadedCopilotFiles(logText)) {
+        if (!observing || processedFiles.has(file)) continue;
+        processedFiles.add(file);
+        const itemIndex = findCopilotExecutionItemIndex(executionItems, file);
+        if (itemIndex < 0) continue;
+        for (const [key, lastIndex] of entryLastIndexes) {
+          if (lastIndex >= itemIndex || settledKeys.has(key)) continue;
+          settledKeys.add(key);
+          onEntrySettled?.(executionItems[lastIndex].entry, 'success');
+        }
+        const currentItem = executionItems[itemIndex].entry;
+        if (!startedKeys.has(currentItem.key)) {
+          startedKeys.add(currentItem.key);
+          onEntryStarted?.(currentItem, [currentItem]);
+        }
+      }
+    } finally {
+      reading = false;
+    }
+  };
+
+  const timer = setInterval(() => {
+    void poll().catch(() => {});
+  }, fileLoadPollMsOverride ?? COPILOT_FILE_LOAD_POLL_MS);
+  return () => {
+    observing = false;
+    clearInterval(timer);
+  };
 }
 
 export function buildCopilotRepeatFiles(
@@ -811,21 +942,36 @@ async function runCopilotGroup({
       return { statuses: group.entries.map(entry => ({ entry, status: 'success' })), error: null, stopped: false };
     }
 
-    lifecycle.onEntryStarted?.(group.entries[0], group.entries);
-    const taskId = `${taskPrefix}_${Date.now()}`;
-    const taskConfig: MaaDynamicTaskConfig = {
-      name: taskId,
-      type: 'Copilot',
-      params: buildCopilotTaskParams(prepared.list, group.presetFormation === true, options)
-    };
-    if (group.presetFormation) await ensurePresetFormationResource(configDir);
-    await execDynamicTask(taskId, taskConfig, `作业集 ${name}`, 'copilot', true, group.presetFormation || options.userResource === true);
+    // 只有真正开始执行的条目置为 running；组内后续条目由文件加载观察逐项推进。
+    lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
+    const stopObserving = observeCopilotFileLoads({
+      checkpoint,
+      executionItems,
+      alreadyStartedKeys: [group.entries[0].key],
+      onEntryStarted: lifecycle.onEntryStarted,
+      onEntrySettled: lifecycle.onEntrySettled
+    });
+    try {
+      const taskId = `${taskPrefix}_${Date.now()}`;
+      const taskConfig: MaaDynamicTaskConfig = {
+        name: taskId,
+        type: 'Copilot',
+        params: buildCopilotTaskParams(prepared.list, group.presetFormation === true, options)
+      };
+      if (group.presetFormation) await ensurePresetFormationResource(configDir);
+      await execDynamicTask(taskId, taskConfig, `作业集 ${name}`, 'copilot', true, group.presetFormation || options.userResource === true);
+    } finally {
+      // 观察在结算前停止：停止后未完成的日志读取不会再触发生命周期回调。
+      stopObserving();
+    }
+    // 命令正常退出说明 copilot_list 的每一轮都通过了轮末三星确认（未通过会在
+    // 轮末终止任务链并以非零码退出），组内条目按逐项 success 结算。
     return { statuses: group.entries.map(entry => ({ entry, status: 'success' })), error: null, stopped: false };
   } catch (error) {
     const logText = await readMaaLogSince(checkpoint).catch(() => '');
     const loadedFiles = extractLoadedCopilotFiles(logText);
     const currentFile = loadedFiles.at(-1) || '';
-    const currentIndex = executionItems.findIndex(item => currentFile === item.filename || currentFile.endsWith(item.filename));
+    const currentIndex = findCopilotExecutionItemIndex(executionItems, currentFile);
     const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
     const statuses = classifyCopilotEntryOutcomes({
       entries: group.entries,

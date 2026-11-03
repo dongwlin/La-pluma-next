@@ -29,8 +29,9 @@ PR/main 的 `browser-checks` job 在 `client-build` 成功后下载当前工作�
 | 同步活动预检 | 挂起活动执行响应，切日常再返回总览；另开没有发起方 loading/message 的浏览器页面观察快照；最后返回 `executed:false` 与导航阻断原因 | 响应前全局可观察预检 Run 并禁止重复入口；其他页面不冒充拥有它；阻断原因原样反馈，不伪造成执行成功 |
 | 配置半失败显式重试 | 增加第三个定时时间，配置 POST 成功而 schedule 返回失败；切页后点“重新同步” | 保留三项草稿与页内错误，恢复页面不自动重发；显式重试完整提交同一草稿，成功才清 pending，无设备执行 |
 | 识别到计划应用 | 先挂载总览/日常/养成再隐藏；数据页识别完成后权威队列从两项变一项，预览 `CE-6 ×3` 并应用 | 识别只提交一次；隐藏养成恢复后读新队列；应用只写一次，日常重读服务端配置显示智能关卡；总览完整刷新显示一个目标，日常不把旧配置反写覆盖计划 |
+| 日志固定范围与本地清屏 | 选择 Run 后推进终态与新活动 Run；清屏后轮询、隐藏日志页并释放迟到请求，再恢复 | 固定 Run 范围下事件集合不随终态或新活动 Run 漂移；不调用共享清空接口；旧记录不重现，隐藏期间不轮询，迟到响应不覆盖恢复窗口 |
 
-测试文件为 `client/tests/integration/execution.pw.ts` 与 `resources.pw.ts`。服务端目标停止保护的关键回归在 `server/src/routes/__tests__/agentRoutes.test.ts`；Run 状态、持久化、快照与契约分别由 `agentRunService.test.ts`、`agentRunPersistence.test.ts`、`runSnapshotService.test.ts`、`agentContract.test.ts` 与 `agentContractHttp.test.ts` 覆盖。
+测试文件为 `client/tests/integration/execution.pw.ts`、`resources.pw.ts` 与 `logs.pw.ts`。服务端目标停止保护的关键回归在 `server/src/routes/__tests__/agentRoutes.test.ts`；Run 状态、持久化、快照与契约分别由 `agentRunService.test.ts`、`agentRunPersistence.test.ts`、`runSnapshotService.test.ts`、`agentContract.test.ts` 与 `agentContractHttp.test.ts` 覆盖。
 
 ## 契约与覆盖边界
 
