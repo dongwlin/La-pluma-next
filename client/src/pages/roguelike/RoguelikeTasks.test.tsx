@@ -340,7 +340,7 @@ describe('RoguelikeTasks execution', () => {
     expect(mocks.executePredefinedTask).toHaveBeenCalledOnce()
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
-      'Phantom',
+      'Phantom --roles 稳扎稳打',
       null,
       null,
       '集成战略',
@@ -364,14 +364,14 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await setTheme('Phantom')
     await setControlValue('select[name="maa-roguelike-mode"]', '1', 'change')
-    await setControlValue('input[name="maa-roguelike-squad"]', '指挥分队')
+    await setControlValue('select[name="maa-roguelike-squad"]', '指挥分队', 'change')
     await toggleSwitch('input[name="maa-roguelike-useSupport"]')
 
     await click(buttonByText('立即执行')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'roguelike',
-      'Phantom --mode 1 --squad 指挥分队 --use-support',
+      'Phantom --mode 1 --squad 指挥分队 --roles 稳扎稳打 --use-support',
       null,
       null,
       '集成战略',
@@ -379,6 +379,80 @@ describe('RoguelikeTasks execution', () => {
       false,
       { idempotencyKey: expect.stringMatching(/^run_task-/) },
     )
+  })
+
+  it('submits the starting roles chosen in the panel', async () => {
+    await renderPage()
+    await setTheme('JieGarden')
+
+    const roles = container.querySelector<HTMLSelectElement>('select[name="maa-roguelike-roles"]')
+    expect(roles?.value).toBe('稳扎稳打')
+    await setControlValue('select[name="maa-roguelike-roles"]', '先手必胜', 'change')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'JieGarden --roles 先手必胜',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('swaps squad and theme-only fields with the active theme', async () => {
+    await renderPage()
+    await setTheme('Sami')
+
+    const samiSquads = Array.from(
+      container.querySelectorAll<HTMLOptionElement>('select[name="maa-roguelike-squad"] option'),
+    ).map(option => option.value)
+    expect(samiSquads).toContain('生活至上分队')
+    expect(container.querySelector('input[name="maa-roguelike-useFoldartal"]')).not.toBeNull()
+    expect(container.querySelector('input[name="maa-roguelike-startWithSeed"]')).toBeNull()
+
+    await setTheme('Sarkaz')
+
+    const sarkazSquads = Array.from(
+      container.querySelectorAll<HTMLOptionElement>('select[name="maa-roguelike-squad"] option'),
+    ).map(option => option.value)
+    expect(sarkazSquads).toContain('蓝图测绘分队')
+    expect(container.querySelector('input[name="maa-roguelike-useFoldartal"]')).toBeNull()
+
+    await setControlValue('select[name="maa-roguelike-mode"]', '1', 'change')
+    expect(container.querySelector('input[name="maa-roguelike-startWithSeed"]')).not.toBeNull()
+  })
+
+  it('rejects the collapsal mode without expected paradigms and resets it on theme change', async () => {
+    await renderPage()
+    await setTheme('Sami')
+    await setControlValue('select[name="maa-roguelike-mode"]', '5', 'change')
+
+    expect(container.querySelector('input[name="maa-roguelike-expectedCollapsalParadigms"]')).not.toBeNull()
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('刷坍缩范式模式需要填写期望坍缩范式')
+
+    await setControlValue('input[name="maa-roguelike-expectedCollapsalParadigms"]', '目空一些，图像损坏')
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Sami --mode 5 --roles 稳扎稳打 --expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+
+    await setTheme('Sarkaz')
+    expect(container.querySelector<HTMLSelectElement>('select[name="maa-roguelike-mode"]')?.value).toBe('0')
+    expect(container.querySelector('input[name="maa-roguelike-expectedCollapsalParadigms"]')).toBeNull()
   })
 
   it('submits the task selected by the active mode', async () => {
@@ -754,7 +828,10 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(modeButtons.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
 
     const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
-    expect(switches).toHaveLength(2)
+    expect(switches.length).toBeGreaterThanOrEqual(2)
+    expect(switches.map(input => input.name)).toEqual(
+      expect.arrayContaining(['maa-roguelike-useSupport', 'maa-roguelike-disableInvestment']),
+    )
     switches.forEach(input => {
       const label = Array.from(container.querySelectorAll<HTMLLabelElement>('label'))
         .find(candidate => candidate.htmlFor === input.id)
@@ -801,7 +878,10 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(mocks.saveUserConfig).toHaveBeenCalledWith('roguelike-tasks', {
       taskInputs: { roguelike: 'Phantom', reclamation: 'Tales' },
-      advancedParams: { reclamation: { mode: '1' } },
+      advancedParams: {
+        roguelike: { roles: '稳扎稳打' },
+        reclamation: { mode: '1' },
+      },
     })
 
     // 显式选择模式 0 后，wire 保留用户选择而不是默认值。
@@ -813,7 +893,10 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(mocks.saveUserConfig).toHaveBeenLastCalledWith('roguelike-tasks', {
       taskInputs: { roguelike: 'Phantom', reclamation: 'Tales' },
-      advancedParams: { reclamation: { mode: '0' } },
+      advancedParams: {
+        roguelike: { roles: '稳扎稳打' },
+        reclamation: { mode: '0' },
+      },
     })
 
     await click(findModeButton('集成战略')!)
