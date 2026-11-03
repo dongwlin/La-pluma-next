@@ -160,7 +160,9 @@ const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     param: '--start-foldartals',
     placeholder: '英雄，大地',
     themes: ['Sami'],
-    hint: '多个用逗号分隔；仅生活至上分队凹开局板子时生效。',
+    modes: ['4'],
+    requires: { key: 'squad', oneOf: ['生活至上分队'] },
+    hint: '多个用逗号分隔；仅在萨米刷开局模式与生活至上分队下生效，其他分队在开局奖励阶段不会获得密文板。',
   },
   {
     key: 'expectedCollapsalParadigms',

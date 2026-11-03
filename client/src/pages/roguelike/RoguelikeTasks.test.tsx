@@ -413,6 +413,13 @@ describe('RoguelikeTasks execution', () => {
     expect(samiSquads).toContain('生活至上分队')
     expect(container.querySelector('input[name="maa-roguelike-useFoldartal"]')).not.toBeNull()
     expect(container.querySelector('input[name="maa-roguelike-startWithSeed"]')).toBeNull()
+    expect(container.querySelector('input[name="maa-roguelike-startFoldartals"]')).toBeNull()
+
+    await setControlValue('select[name="maa-roguelike-mode"]', '4', 'change')
+    expect(container.querySelector('input[name="maa-roguelike-startFoldartals"]')).toBeNull()
+
+    await setControlValue('select[name="maa-roguelike-squad"]', '生活至上分队', 'change')
+    expect(container.querySelector('input[name="maa-roguelike-startFoldartals"]')).not.toBeNull()
 
     await setTheme('Sarkaz')
 

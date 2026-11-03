@@ -178,6 +178,26 @@ describe('isRoguelikeOptionVisible', () => {
     expect(isRoguelikeOptionVisible(option('stopAtBoss'), 'roguelike', 'Sarkaz', { mode: '1' })).toBe(false)
   })
 
+  it('ties the starting foldartals to the Sami collectible mode and squad', () => {
+    const foldartals = option('startFoldartals')
+    expect(isRoguelikeOptionVisible(foldartals, 'roguelike', 'Sami', {
+      mode: '4',
+      squad: '生活至上分队',
+    })).toBe(true)
+    expect(isRoguelikeOptionVisible(foldartals, 'roguelike', 'Sami', {
+      mode: '4',
+      squad: '指挥分队',
+    })).toBe(false)
+    expect(isRoguelikeOptionVisible(foldartals, 'roguelike', 'Sami', {
+      mode: '0',
+      squad: '生活至上分队',
+    })).toBe(false)
+    expect(isRoguelikeOptionVisible(foldartals, 'roguelike', 'Sarkaz', {
+      mode: '4',
+      squad: '生活至上分队',
+    })).toBe(false)
+  })
+
   it('follows the field a switch depends on, including the default-off case', () => {
     const investmentsCount = option('investmentsCount')
     expect(isRoguelikeOptionVisible(investmentsCount, 'roguelike', 'Sarkaz', {})).toBe(true)
@@ -244,6 +264,26 @@ describe('buildRoguelikeCommandParams', () => {
       { roguelike: 'Sarkaz' },
       { roguelike: { mode: '1', squad: '点刺成锭分队', startWithSeed: '2b3c4d,rogue_1,120' } },
     )).toBe('Sarkaz --mode 1 --squad 点刺成锭分队 --roles 稳扎稳打 --start-with-seed 2b3c4d,rogue_1,120')
+  })
+
+  it('writes starting foldartals only for the Sami collectible squad', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { mode: '4', squad: '生活至上分队', startFoldartals: '英雄，大地' } },
+    )).toBe('Sami --mode 4 --squad 生活至上分队 --roles 稳扎稳打 --start-foldartals 英雄 --start-foldartals 大地')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { mode: '4', squad: '指挥分队', startFoldartals: '英雄' } },
+    )).toBe('Sami --mode 4 --squad 指挥分队 --roles 稳扎稳打')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sami' },
+      { roguelike: { mode: '0', squad: '生活至上分队', startFoldartals: '英雄' } },
+    )).toBe('Sami --mode 0 --squad 生活至上分队 --roles 稳扎稳打')
   })
 
   it('does not write select values outside the active theme choices', () => {

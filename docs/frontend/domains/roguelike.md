@@ -76,6 +76,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 - 未声明默认值的 select 不写命令：集成战略 `--mode` 继续省略，与 CLI 缺省 `0` 一致；界面显示由 `resolveRoguelikeAdvancedValue` 回落到当前主题的首项。
 - 字段的适用条件由字段表声明：`themes` 限定主题（如密文板只对萨米、指路鳞只对水月、种子只对萨卡兹刷源石锭），`modes` 限定模式（如凹直升只对刷开局、第五层前停止只对刷分），`requires` 依赖另一字段（如非好友助战依赖使用助战、投资次数依赖未禁用投资；种子与凹开局密文板还通过 `oneOf` 限定分队）。
 - 种子开局是文本参数：命令追加 `--start-with-seed <种子>`（例如 `2b3c4d,rogue_1,120`），不是无值开关；仅在萨卡兹刷源石锭模式且分队为点刺成锭或后勤时显示与下发。
+- 凹开局密文板仅在萨米刷开局模式与生活至上分队下显示与下发；其他分队在开局奖励阶段不会获得密文板。
 - 例：`taskInputs.roguelike = 'Sarkaz'`，高级值 `{ mode: '1', squad: '蓝图测绘分队', useSupport: true }` 生成
   `Sarkaz --mode 1 --squad 蓝图测绘分队 --roles 稳扎稳打 --use-support`；`taskInputs.reclamation = 'Tales'` 配合空高级值生成 `Tales -m 1`。
 - 生息演算模式字段声明 `hint`，说明两种模式各自的存档与起始界面要求；面板只原样透传，文案归模型维护。
