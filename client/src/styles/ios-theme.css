@@ -1,7 +1,6 @@
 @layer base, components, page;
 
 @layer base {
-
   :root {
     --app-chrome-page-bg: #f2f2f7;
     --app-chrome-bg: rgba(255, 255, 255, 0.72);
