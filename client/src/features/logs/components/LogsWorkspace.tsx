@@ -142,11 +142,9 @@ export default function LogsWorkspace() {
         onExport={exportLogs}
       />
 
-      <p className="log-coverage">
-        {viewingHistory
-          ? '历史文件显示已加载的尾部内容；导出仅包含当前筛选结果。'
-          : '实时日志显示最近采集窗口；执行早期或暂停期间的记录可能已移出窗口。导出仅包含当前筛选结果。'}
-      </p>
+      {viewingHistory && (
+        <p className="log-coverage">历史文件显示已加载的尾部内容；导出仅包含当前筛选结果。</p>
+      )}
       {!viewingHistory && realtime.coverageNotice && (
         <p className="log-coverage" role="status">{realtime.coverageNotice}</p>
       )}
