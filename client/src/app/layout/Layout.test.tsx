@@ -475,7 +475,7 @@ describe('top-level application navigation', () => {
     expect(getScrollHost().style.overflow).toBe('')
 
     await act(async () => trigger.click())
-    await act(async () => container.querySelector<HTMLElement>('.sheet-backdrop')?.click())
+    await act(async () => container.querySelector<HTMLElement>('[data-app-sheet-backdrop]')?.click())
     expect(container.querySelector('#la-pluma-more-sheet')).toBeNull()
     expect(document.activeElement).toBe(trigger)
 

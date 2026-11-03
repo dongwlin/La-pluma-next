@@ -424,6 +424,7 @@ export default function Layout({ activeTab, children }: LayoutProps) {
               <motion.div
                 key="more-sheet-backdrop"
                 className="sheet-backdrop backdrop-in"
+                data-app-sheet-backdrop="true"
                 aria-hidden="true"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

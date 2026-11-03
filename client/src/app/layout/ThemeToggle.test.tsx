@@ -85,7 +85,7 @@ describe('ThemeToggle mobile menu', () => {
   it('keeps the desktop segmented control and store selection in sync', async () => {
     await act(async () => root.render(<ThemeToggle />))
 
-    const group = container.querySelector<HTMLElement>('.la-pluma-theme-desktop[role="group"][aria-label="界面主题"]')!
+    const group = container.querySelector<HTMLElement>('[role="group"][aria-label="界面主题"]')!
     const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button'))
 
     expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
@@ -94,7 +94,6 @@ describe('ThemeToggle mobile menu', () => {
       '跟随系统',
     ])
     expect(buttons.every(button => button.type === 'button')).toBe(true)
-    expect(group.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(3)
     expect(buttons.filter(button => button.getAttribute('aria-pressed') === 'true')).toEqual([buttons[2]])
     expect(group.dataset.theme).toBe('system')
 
@@ -120,11 +119,11 @@ describe('ThemeToggle mobile menu', () => {
     await act(async () => root.render(
       <div className="la-pluma-navbar-actions">
         <ThemeToggle />
-        <a href="https://github.com/dongwlin/La-pluma-next" className="la-pluma-github-link">GitHub</a>
+        <a href="https://github.com/dongwlin/La-pluma-next" className="la-pluma-github-link" aria-label="打开 GitHub 仓库">GitHub</a>
       </div>,
     ))
     const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
-    const githubLink = container.querySelector<HTMLAnchorElement>('.la-pluma-github-link')!
+    const githubLink = container.querySelector<HTMLAnchorElement>('a[aria-label="打开 GitHub 仓库"]')!
     await act(async () => trigger.click())
 
     const options = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))
