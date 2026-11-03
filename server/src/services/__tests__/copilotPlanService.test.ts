@@ -429,6 +429,45 @@ test('copilot group advances entries one by one as MAA loads each plan file', as
   }
 });
 
+test('copilot group failure does not settle an entry from its own plan file load', async () => {
+  const setId = 'observe-self-load';
+  const entries = groupEntriesFor();
+  // 只回放第一条目自己的文件加载，随后命令失败：自己的加载不能证明完成。
+  process.env.FAKE_RUN_STEPS = JSON.stringify([{ file: planFileOf(setId, entries[0]), after: 40 }]);
+  process.env.FAKE_RUN_EXIT_CODE = '3';
+  process.env.FAKE_RUN_EXIT_DELAY = '120';
+  setCopilotFileLoadPollIntervalForTests(20);
+  const restoreFetch = stubCopilotContent();
+
+  const events: string[] = [];
+  try {
+    const outcome = await executeCopilotEntries({
+      setId,
+      name: '自我加载',
+      entries,
+      options: {},
+      lifecycle: {
+        onEntryStarted: entry => events.push(`started:${(entry as CopilotPlanEntry).key}`),
+        onEntrySettled: (entry, status) => events.push(`settled:${(entry as CopilotPlanEntry).key}:${status}`)
+      }
+    });
+
+    assert.equal(outcome.success, false);
+    // 执行中的投影不把“已加载”当成“已通过”，失败结算也不会留下成功记录。
+    assert.deepEqual(events.filter(event => event.endsWith(':success')), []);
+    assert.deepEqual(outcome.summary.taskResults.map(result => [result.key, result.status]), [
+      [entries[0].key, 'failed'],
+      [entries[1].key, 'failed']
+    ]);
+    assert.deepEqual(outcome.completed, []);
+  } finally {
+    restoreFetch();
+    for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
+      delete process.env[key];
+    }
+  }
+});
+
 test('copilot group failure keeps confirmed entries as success and fails the rest', async () => {
   const setId = 'observe-failure';
   const entries = groupEntriesFor();

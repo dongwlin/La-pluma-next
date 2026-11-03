@@ -665,11 +665,17 @@ export function setCopilotFileLoadPollIntervalForTests(ms: number): void {
 /**
  * 观察作业组执行期间 MAA 逐份加载的计划文件，推进逐项生命周期。
  *
- * MAA 按顺序执行 copilot_list：第 k 份计划文件开始加载（`CopilotListLoadTaskFileSuccess`）
- * 意味着它之前每份文件的轮次已经完整通过——轮末的三星确认不通过会终止整条任务链，
- * 不会继续加载后续文件。因此第 k 份文件加载时，把此前尚未结算的条目逐项结算为
- * success，并把第 k 份文件所属条目置为 running。观察只是结算前的投影加速：读取
- * 失败或事件落在读取窗口外都不影响组结束时的最终结算。
+ * MaaCore 的 `copilot_list` 按条目顺序执行：`MultiCopilotTaskPlugin::_run` 装载完
+ * 当前条目的作业文件后才发出 `CopilotListLoadTaskFileSuccess`，之后才跳转关卡并
+ * 战斗；每轮末尾的三星确认（`Copilot@WaitUntilEndOfAction`）失败会让任务链中止，
+ * 后续文件不会被加载。因此第 k 份文件开始加载时，此前每份文件的轮次都已通过
+ * 完成检查。据此把此前尚未结算的条目逐项结算为 success，并把第 k 份文件所属
+ * 条目置为 running。
+ *
+ * 该前提依赖 MaaCore 的 copilot_list 执行顺序，升级 MaaCore 或更换 CLI 后需按
+ * `docs/server/integrations.md` 的真实设备核对步骤复核。观察只是结算前的投影：
+ * 组结束仍按命令退出码与最后加载的文件重新结算，读取失败或事件落在读取窗口外
+ * 不会把未确认条目判为成功。
  */
 function observeCopilotFileLoads({
   checkpoint,
