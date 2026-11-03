@@ -18,6 +18,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
   - `execFile` 的超时包装在超时裁决后先等待底层子进程实际退出（默认端口由 `execFile` 按 `killSignal` 终止，毫秒级结算；宽限上限 `EXEC_FILE_TIMEOUT_EXIT_GRACE_MS`）再交还超时错误：维护命令的租约与任务状态释放不早于子进程终止（`server/src/services/maaProcessService.ts:279-316`）。
 - 子进程 stdout/stderr 按行写入实时缓冲；stderr 行内含 `ERROR` 或 `WARN` 时提升日志级别（`server/src/services/maaProcessService.ts:817-839,911-933`）。
 - 实时日志条目经脱敏后写入，并携带执行上下文的 `runId`/`operationId`——归属来自执行上下文而不是发起请求，请求返回后仍在运行的子进程输出继续携带同一标识（`server/src/services/maaProcessService.ts:422-436`）。
+- 实时条目同时携带进程实例身份和单调递增序号组成的 `id`、数值 `sequence`；同一记录在轮询快照中保持身份，清空和缓冲淘汰不重置序号，服务重启生成新实例身份。`logs/recent` 保留数组响应与最近窗口语义，不提供游标、按 Run 回读或持久归档。
 - 实时缓冲的内存上限由 `LA_PLUMA_MAX_REALTIME_LOGS` 控制，缺省 5000，非法环境变量回落默认值（`server/src/services/maaProcessService.ts:41-52`）；对外单次返回行数上限为 `MAX_REALTIME_LOG_LINES` 500（`server/src/services/maaProcessService.ts:36,397-407`）。
 - 后台执行可能持续很久：捕获输出只保留最后 256 KB（`server/src/services/maaProcessService.ts:576-610`），任务结束时单条日志最多写入 8 KB 尾部输出（`server/src/services/maaProcessService.ts:580,612-620`）。
 - stderr 会匹配稳定的诊断码并写入日志：未知掉落、企鹅物流/一图流汇报失败、ADB 连接失败、账号切换失败、游戏启动失败（`server/src/services/maaProcessService.ts:466-517`）。

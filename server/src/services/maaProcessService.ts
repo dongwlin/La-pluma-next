@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createLogger } from '../utils/logger.ts';
 import { getLogContext } from '../utils/logContext.ts';
@@ -50,6 +51,9 @@ function resolveMaxRealtimeLogs(raw: string | undefined): number {
 }
 
 const MAX_REALTIME_LOGS = resolveMaxRealtimeLogs(process.env.LA_PLUMA_MAX_REALTIME_LOGS);
+// 身份属于本次服务进程；清空和缓冲淘汰不重置序号，重启后使用新的前缀。
+const realtimeLogSourceId = randomUUID();
+let realtimeLogSequence = 0;
 
 // 创建日志记录器
 const logger = createLogger('MaaService');
@@ -74,6 +78,8 @@ export interface MaaExecutionDiagnostic {
 
 /** 实时日志缓冲条目；关联字段只在执行上下文中存在时写入。 */
 export interface MaaRealtimeLogEntry {
+  id: string;
+  sequence: number;
   time: string;
   level: MaaLogLevel;
   message: string;
@@ -429,7 +435,10 @@ function appendRealtimeLog(level: MaaLogLevel, message: string): MaaRealtimeLogE
   // 执行归属来自执行上下文而不是发起请求：请求返回后仍在运行的子进程
   // 输出继续携带同一个 runId/operationId。日志内容统一脱敏后再入缓冲。
   const context = getLogContext();
+  const sequence = ++realtimeLogSequence;
   const entry: MaaRealtimeLogEntry = {
+    id: `${realtimeLogSourceId}:${sequence}`,
+    sequence,
     time: new Date().toISOString(),
     level,
     message: redactLogText(message)

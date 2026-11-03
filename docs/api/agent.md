@@ -107,6 +107,8 @@ curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
 
 请求关联与日志：请求头 `x-request-id` 可选，合法值为 1–64 位字母、数字与 `.`、`_`、`:`、`-`，首字符必须是字母或数字。合法值原样出现在响应头 `x-request-id`、响应 `meta.requestId` 与同一请求的 API 错误日志中；缺失、超长或含其他字符时服务端生成新 id 并在上述三处使用该新 id，非法输入不会回显。执行日志（含 MAA 子进程输出与响应返回后的后台收尾）在纳入 Run 时记录 `runId` 与 `operationId`，未纳入 Run 的直接调用不冒用其他执行的 id；HTTP 请求结束不代表执行完成，仍需以 run 终态或实际进程结果为准。API 错误按级别记录：携带状态且已归类的 4xx 为 WARN，未知内部 5xx 为 ERROR。日志不输出 Authorization、cookie、token、信令 ticket、密码与签名等凭据字段，也不回显请求查询串或请求体。
 
+`GET /api/agent/logs/recent` 仍返回最近记录数组，每条包含采集时间、原级别、脱敏消息及可用的执行归属，并增加稳定 `id` 与递增 `sequence`。清空缓冲不重用身份，服务重启生成新的实例前缀；该接口没有游标、完整 Run 归档或缺口回补能力。`POST /api/agent/logs/recent/clear` 清除服务端共享缓冲，是影响所有观察者的维护动作；Web 日志页的“清屏”只维护本地可见边界。
+
 `runs/current` 返回运行快照：`run` 是当前活动 run，`activeRuns` 列出全部活动意图，`lastRun` 是最近终态，`occupancy` 说明设备由 `run` 还是未纳管执行（`external`）占用，或只是 `pending`、`idle`、`unknown`；旧字段 `isRunning`、`taskName`、`schedule`、`recentLogs` 保持原样，`schedule.runId` 为 `null` 表示该流程没有 Run 身份。快照各字段、占用与租约投影、进度投影及“进程 idle 不代表流程完成”等判定规则的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
 目标停止按 `runId` 保护：未开始的 run 直接取消且不发送设备命令，`running` 的当前 run 转入 `stopping`，旧终态 run 返回 `alreadyTerminal`，不会影响新执行；重复停止保持成功。响应中的 `stopRequested` 表示停止意图已记录，`deviceStopRequested` 表示是否真的发出了设备停止命令；按目标状态区分的完整停止矩阵与取消语义见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
