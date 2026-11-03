@@ -13,15 +13,6 @@ import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.ts';
 import { updateJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 
-/**
- * 作业集计划与执行。
- *
- * - 作业站载荷按 unknown 收窄：计划条目只保留执行与进度判定需要的字段。
- * - 计划构建只读取作业站、MAA 资源与共享进度；真正的设备执行集中在
- *   `executeCopilotEntries`/`executeSelectedCopilotEntries`，两者都先取设备租约。
- * - 共享进度读改写经进度存储排队；失败与停止按数据返回，由调用方决定终态。
- */
-
 const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 作业进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
 // 默认位置保持 server/data/copilot-progress.json，可用环境变量注入隔离。
@@ -128,22 +119,17 @@ export function resetCopilotPlanCachesForTests(): void {
   pathPlatformOverride = null;
 }
 
-/** 执行模式：普通关卡或突袭。 */
 export type CopilotRaidMode = 'normal' | 'raid';
 
-/** 计划可请求的执行模式；`both` 按条目兼容性展开为普通与突袭。 */
 export type CopilotRaid = CopilotRaidMode | 'both';
 
-/** 作业站返回的作业内容：字段按使用处逐项收窄，未知字段原样交给执行端。 */
 export type CopilotContent = Record<string, unknown>;
 
-/** MAA 资源中解析出的关卡代号与理智消耗。 */
 export interface StageCode {
   code: string;
   apCost: number;
 }
 
-/** 作业集计划中的单个作业：由作业站内容收窄而来。 */
 export interface CopilotPlanItem {
   id: number;
   stageId: string;
@@ -171,7 +157,6 @@ export interface CopilotExecutionEntry {
   uri?: string;
 }
 
-/** 作业集计划条目：`key` 标识进度与逐项状态，`itemIndex` 标识原始作业序号。 */
 export interface CopilotPlanEntry extends CopilotExecutionEntry {
   key: string;
   itemIndex: number;
@@ -199,7 +184,6 @@ export interface CopilotExecutionOptions {
   raid?: unknown;
 }
 
-/** MAA Copilot 任务的 copilot_list 条目。 */
 export interface CopilotListEntry {
   id?: number;
   filename: string;
@@ -207,7 +191,6 @@ export interface CopilotListEntry {
   is_raid?: boolean;
 }
 
-/** 动态 Copilot 任务的参数：字段名与 MAA CLI 约定一致。 */
 export interface CopilotTaskParams extends Record<string, unknown> {
   copilot_list: readonly CopilotListEntry[];
   formation: boolean;
@@ -219,30 +202,25 @@ export interface CopilotTaskParams extends Record<string, unknown> {
   support_unit_name: string;
 }
 
-/** 单次重复执行的计划文件。 */
 export interface CopilotRepeatFile {
   repeat: number;
   filename: string;
 }
 
-/** 执行条目的结算状态：确认成功、失败、因停止未执行完或尚未执行。 */
 export type CopilotEntryOutcomeStatus = 'success' | 'failed' | 'stopped' | 'pending';
 
-/** 单个条目的结算结果。 */
 export interface CopilotEntrySettlement<TEntry extends { key: string } = CopilotPlanEntry> {
   entry: TEntry;
   status: CopilotEntryOutcomeStatus;
   error?: string;
 }
 
-/** 逐项结果：成功条目带 success:true，失败或停止条目带 error。 */
 export type CopilotExecutionResult = CopilotPlanEntry & {
   success: boolean;
   error?: string;
   stopped?: boolean;
 };
 
-/** 汇总中的单项状态投影。 */
 export interface CopilotTaskResult {
   key: string;
   itemIndex: number;
@@ -257,7 +235,6 @@ export interface CopilotTaskResult {
   error?: string;
 }
 
-/** 一次执行的逐项汇总。 */
 export interface CopilotExecutionSummary {
   totalEntries: number;
   successCount: number;
@@ -288,14 +265,12 @@ export interface CopilotExecutionLifecycle {
   onEntrySettled?: (entry: CopilotExecutionEntry, status: CopilotEntryOutcomeStatus, error?: string) => void;
 }
 
-/** 已写入计划文件的单个执行条目；`repeat` 为该条目第几次重复。 */
 export interface CopilotExecutionItem<TEntry extends CopilotExecutionEntry = CopilotExecutionEntry> {
   entry: TEntry;
   filename: string;
   repeat: number;
 }
 
-/** 按预设编队兼容性分组后的执行单元。 */
 export interface CopilotExecutionGroup<TEntry extends CopilotExecutionEntry> {
   presetFormation: boolean | undefined;
   entries: TEntry[];
@@ -322,7 +297,6 @@ export interface CopilotPlanRunResult {
   message?: string;
 }
 
-/** 作业集执行失败的错误：沿用统一错误信封字段，并附带已算出的计划与逐项结果。 */
 export interface CopilotPlanExecutionError extends Error {
   code?: string;
   statusCode?: number;
@@ -335,7 +309,6 @@ export interface CopilotPlanExecutionError extends Error {
   };
 }
 
-/** 已选活动条目的执行结果。 */
 export interface CopilotSelectedExecutionResult {
   success: true;
   results: (CopilotExecutionEntry & { success: true })[];
@@ -346,7 +319,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 读取结构化错误上的 message；非字符串按缺失处理，由调用方给兜底文案。 */
 function errorMessageOf(error: unknown): string | undefined {
   if (!isRecord(error) || typeof error.message !== 'string' || !error.message) return undefined;
   return error.message;
@@ -376,7 +348,6 @@ function readBooleanField(value: unknown, key: string): boolean | undefined {
   return typeof field === 'boolean' ? field : undefined;
 }
 
-/** 作业内容可能是 JSON 字符串或已解析对象；无法解析为对象时按空内容处理。 */
 function parseCopilotContent(data: unknown): CopilotContent {
   const content = isRecord(data) ? data.content : undefined;
   if (typeof content === 'string') {
@@ -390,7 +361,6 @@ function parseCopilotContent(data: unknown): CopilotContent {
   return isRecord(content) ? content : {};
 }
 
-/** 计划读取的进度形状：`{ [作业集id]: [已完成条目键] }`；非字符串条目键忽略。 */
 function readCompletedEntryKeys(progress: unknown, setId: string | number): string[] {
   if (!isRecord(progress)) return [];
   const entries = progress[String(setId)];
@@ -547,7 +517,6 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
 /** MAA 任务定义：字段原样透传，合并只覆盖入口任务与 `BattleStart.next`。 */
 export type MaaTaskDefinition = Record<string, unknown>;
 
-/** 合并后的 `tasks.json`：保证预设编队确认任务与 BattleStart 链存在。 */
 export interface MergedPresetFormationTasks {
   [taskName: string]: unknown;
   LaPlumaPresetBattleConfirm: MaaTaskDefinition;
@@ -577,7 +546,6 @@ export function mergePresetFormationTasks(installedTasks: unknown, userTasks: un
   };
 }
 
-/** 当前地图兜底关卡的 OCR 任务：关卡代号直接作为识别文本。 */
 export interface CurrentMapStageTask {
   text: string[];
 }
@@ -588,7 +556,6 @@ export function buildCurrentMapStageTasks(stages: unknown = []): Record<string, 
     .map(stage => [stage, { text: [stage] }]));
 }
 
-/** 当前地图兜底写入的关卡资源摘要。 */
 export interface CurrentMapActivityResource {
   stageFile: string;
   stages: string[];
@@ -784,7 +751,6 @@ export function buildCopilotRepeatFiles(
   }));
 }
 
-/** 已写入计划文件的条目集合；`executionItems` 保留条目与其重复次数。 */
 export interface PreparedCopilotList<TEntry extends CopilotExecutionEntry> {
   list: CopilotListEntry[];
   executionItems: CopilotExecutionItem<TEntry>[];
@@ -846,7 +812,6 @@ export function classifyCopilotEntryOutcomes<TEntry extends { key: string }>({
   });
 }
 
-/** 条目在本次执行中的结算状态；未结算条目的缺省状态为 pending。 */
 interface CopilotEntrySettlementState {
   status: CopilotEntryOutcomeStatus;
   error?: string;
@@ -907,7 +872,6 @@ function buildCopilotEntryOutcome({
   };
 }
 
-/** 单组执行结果：`error` 为原始抛出值，`stopped` 表示主动停止而非失败。 */
 interface CopilotGroupOutcome {
   statuses: CopilotEntrySettlement[];
   error: unknown;
@@ -1129,7 +1093,6 @@ async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[
   }
 }
 
-/** 相邻条目按预设编队兼容性分组；不改变条目顺序。 */
 function groupEntries<TEntry extends CopilotExecutionEntry>(
   entries: readonly TEntry[]
 ): CopilotExecutionGroup<TEntry>[] {
@@ -1142,7 +1105,6 @@ function groupEntries<TEntry extends CopilotExecutionEntry>(
   return groups;
 }
 
-/** 已选活动条目的执行输入；条目来自活动计划，不带作业集进度键。 */
 export interface ExecuteSelectedCopilotEntriesInput {
   planId: string | number;
   name: string;

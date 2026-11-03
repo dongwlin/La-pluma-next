@@ -1,14 +1,3 @@
-/**
- * 设备变更租约
- *
- * 协作进程通过锁文件表达“谁在变更设备”。租约只做互斥，不记录业务结果：
- * - `held`：锁记录的 PID 仍存活；
- * - `stale`：锁文件仍存在但记录的进程已不存活，可以回收；
- * - `unknown`：锁文件存在但无法解析，必须按未知处理，不能当作空闲。
- *
- * 同一异步流内的重入只增加深度，不重复写锁；关闭开始时拒绝新的设备变更权。
- */
-
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
 import { link, mkdir, open, readFile, unlink } from 'fs/promises';
@@ -20,7 +9,6 @@ import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 const serviceDir = dirname(fileURLToPath(import.meta.url));
 const defaultLockPath = join(serviceDir, '../../data/maa-execution.lock');
 
-/** 申请租约时可提供的描述字段；缺省值由本模块补齐。 */
 export interface MaaExecutionLeaseRequest {
   source?: string | null;
   taskName?: string | null;
@@ -36,7 +24,6 @@ export interface MaaExecutionOwner {
   startedAt: string | null;
 }
 
-/** 本进程实际写入的锁元数据：pid 与 source 一定存在。 */
 export interface MaaExecutionLeaseMetadata {
   pid: number;
   source: string;
@@ -110,7 +97,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 锁文件的读取结果；`unknown` 表示文件存在但无法解释，与“缺失”严格区分。 */
 type LeaseFileRead =
   | { state: 'missing' }
   | { state: 'unreadable'; reason: string }
@@ -138,7 +124,6 @@ async function readLeaseFile(lockPath: string): Promise<LeaseFileRead> {
   return { state: 'present', owner };
 }
 
-/** 锁元数据来自磁盘，逐字段从 unknown 收窄；整体不是对象时按无法解释处理。 */
 function normalizeLeaseOwner(owner: unknown): MaaExecutionOwner | null {
   if (!isRecord(owner)) return null;
   const pid = Number(owner.pid);

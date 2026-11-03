@@ -1,17 +1,5 @@
-/**
- * 领取奖励（Award）结果解析
- *
- * 类型边界：
- * - 输入为命令日志文本：只读取 `first` 分段标记与 `"task"` 事件，不依赖 MaaCore 结构化回调；
- *   日志缺失或分段不完整时回退为“流程已完成”的检查结论。
- * - 输出只描述本次领取步骤的检查结果（`success`/`skipped`；执行异常由流程层以同一形状记录
- *   `failed`），不能当作整个 Run 的终态。
- */
-
-/** 领取奖励的六个 MaaCore 开关。 */
 export type AwardItemKey = 'award' | 'mail' | 'recruit' | 'orundum' | 'mining' | 'specialaccess';
 
-/** 单个领取项目的日志分段定义。 */
 export interface AwardItem {
   readonly key: AwardItemKey;
   readonly label: string;
@@ -29,7 +17,6 @@ export interface AwardTaskParams {
   specialaccess?: unknown;
 }
 
-/** 单个领取项目的检查结果。 */
 export interface AwardExecutionAction {
   task: string;
   action: 'award';
@@ -92,7 +79,6 @@ function getTaskSegment(logOutput: string, item: AwardItem, nextItem: AwardItem 
   return end === -1 ? logOutput.slice(start) : logOutput.slice(start, end);
 }
 
-/** 返回配置中严格启用（值为 `true`）的领取项目。 */
 export function getEnabledAwardItems(params: AwardTaskParams = {}): AwardItem[] {
   return AWARD_ITEMS.filter(item => params[item.key] === true);
 }

@@ -7,23 +7,6 @@ import { loadUserConfig, updateUserConfig } from './configStorageService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { resolveGameZone } from './gameCalendar.ts';
 
-/**
- * 当前活动查询与关卡代号替换。
- *
- * - 读取结果是一份带状态的快照：`active`/`none` 表示来源给出了肯定答案，
- *   `stale` 表示所有来源都失败但保留了上次成功的数据，`unavailable`
- *   表示既没有可确认的结果也没有旧数据。
- * - 活动信息先读内存缓存，再读用户配置中的 `activity-cache`，最后查
- *   `maa activity`；只有 maa 无法给出肯定答案时才查备用数据源。
- * - CLI 的空输出不能单独证明“没有活动”：还要确认 MAA 活动表存在且在 24 小时内
- *   与远端确认过（内容 mtime 只在表变化时前进，确认时间取 ETag 旁注文件）。
- * - 资源收集全开放窗口同读 MAA 活动表的 `resourceCollection` 节点：不可读时
- *   按“未开放”处理，关卡开放判定沿用周表。
- * - 持久化沿用 configStorageService 的受控类型，读改写合并其他服务区条目，
- *   不在这里另写文件；保存失败只告警，不否决本次读取。
- * - MAA 活动查询是非设备变更命令，不持有执行租约；本模块不保存任务状态。
- */
-
 const logger = createLogger('MaaService');
 
 /** 正缓存 TTL：缩短后活动结束到重新查询的窗口更小，调用频率由 CLI 自身控制。 */
@@ -41,7 +24,6 @@ const ACTIVITY_TABLE_MAX_AGE = 24 * 60 * 60 * 1000;
 /** 活动读取的明确状态；`none` 不是失败，`stale`/`unavailable` 才是。 */
 export type MaaActivityStatus = 'active' | 'none' | 'unavailable' | 'stale';
 
-/** 某个来源失败的原因；多个来源失败时合并到同一条 message 中。 */
 export interface MaaActivityFailure {
   source: 'maa' | 'penguin';
   message: string;
@@ -57,7 +39,6 @@ export interface MaaActivityInfo {
   stages: string[];
 }
 
-/** 活动读取结果：在活动信息之外显式记录状态、来源时间与失败原因。 */
 export interface MaaActivitySnapshot extends MaaActivityInfo {
   status: MaaActivityStatus;
   clientType: string;
@@ -66,19 +47,16 @@ export interface MaaActivitySnapshot extends MaaActivityInfo {
   failure: MaaActivityFailure | null;
 }
 
-/** 内存与持久化缓存条目：活动信息加写入时间与 TTL。 */
 export interface CachedActivity extends MaaActivityInfo {
   timestamp: number;
   ttl: number;
 }
 
-/** 短负缓存条目：保存完整快照，命中时保留原查询的确认时间与数据时间。 */
 export interface CachedNegativeActivity {
   timestamp: number;
   snapshot: MaaActivitySnapshot;
 }
 
-/** MAA 活动表在缓存目录中的存在性、内容修改时间与最近确认时间。 */
 export interface MaaActivityTableState {
   exists: boolean;
   /** 活动表内容最后一次变化的时间；内容不变时不会前进。 */
@@ -91,11 +69,9 @@ export interface MaaActivityTableState {
   checkedAt: number | null;
 }
 
-/** 读取依赖端口；缺省实现调用真实 CLI、文件系统与配置存储，测试可整体替换。 */
 export interface MaaActivityRuntime {
   now?: () => number;
   cache?: Map<string, CachedActivity>;
-  /** 负结果短缓存；测试注入独立 Map 以隔离用例。 */
   negativeCache?: Map<string, CachedNegativeActivity>;
   /** 在途读取；同一 clientType 的并发调用共享一次查询。 */
   inflight?: Map<string, Promise<MaaActivitySnapshot>>;
@@ -107,7 +83,6 @@ export interface MaaActivityRuntime {
   saveConfig?: (payload: Record<string, unknown>) => Promise<unknown>;
 }
 
-/** 解析出的活动组：名称与代号来自同一组关卡，避免跨组借用。 */
 export interface MaaActivityGroup {
   label: string;
   name: string;
@@ -140,7 +115,6 @@ function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 活动信息来源（MAA、备用数据源或缓存）逐字段收窄；没 code 视为无效。 */
 function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
   if (!isRecord(value) || typeof value.code !== 'string' || !value.code) return null;
   return {
@@ -155,7 +129,6 @@ function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
   };
 }
 
-/** `activity-cache` 中的单条记录：必须带 code 与写入时间，旧 TTL 夹到当前上限。 */
 function readCachedActivity(value: unknown): CachedActivity | null {
   const info = normalizeActivityInfo(value);
   if (!info || !isRecord(value)) return null;
@@ -169,7 +142,6 @@ function readCachedActivity(value: unknown): CachedActivity | null {
   return { ...info, timestamp, ttl: Math.min(storedTtl, ACTIVITY_CACHE_TTL) };
 }
 
-/** 缓存条目是否仍可用于 `active`：TTL 与活动结束时间取较早者。 */
 function readFreshCachedActivity(cached: CachedActivity, now: number): MaaActivityInfo | null {
   if (!cached.code) return null;
   const ttlExpiresAt = cached.timestamp + Math.min(cached.ttl || ACTIVITY_CACHE_TTL, ACTIVITY_CACHE_TTL);
@@ -262,7 +234,6 @@ function deriveActivityCode(stages: readonly string[]): string | null {
     .sort((left, right) => right[1].count - left[1].count || left[1].order - right[1].order)[0]?.[0] ?? null;
 }
 
-/** 单个路径的修改时间（毫秒）；文件不存在或不可读时返回 null。 */
 async function readMtimeMs(path: string): Promise<number | null> {
   try {
     return (await stat(path)).mtimeMs;
@@ -323,23 +294,18 @@ async function readMaaActivityTable(): Promise<MaaActivityTableState> {
   return readActivityTableState(cacheDir);
 }
 
-/** 资源收集全开放窗口；时间为 UTC 毫秒时间戳，闭区间。 */
 export interface ResourceCollectionWindow {
   startTime: number;
   endTime: number;
 }
 
-/** 资源全开放读取端口；缺省读取 MAA 缓存的活动表，测试可整体替换。 */
 export interface ResourceCollectionRuntime {
   now?: () => number;
   readWindow?: (clientType: string) => Promise<ResourceCollectionWindow | null>;
-  /** 窗口缓存；测试注入独立 Map 以隔离用例。 */
   cache?: Map<string, CachedResourceCollectionWindow>;
-  /** 在途读取；同一个活动表服务区的并发调用共享一次读取。 */
   inflight?: Map<string, Promise<ResourceCollectionWindow | null>>;
 }
 
-/** 资源全开放窗口缓存条目；失败条目使用独立短 TTL，不写入成功缓存。 */
 export interface CachedResourceCollectionWindow {
   timestamp: number;
   window: ResourceCollectionWindow | null;
@@ -372,7 +338,6 @@ export function parseActivityTimestamp(value: unknown, timeZone: unknown): numbe
   ) - offsetHours * 60 * 60 * 1000;
 }
 
-/** 从活动表的 `resourceCollection` 节点解析窗口；缺字段或区间倒置时返回 null。 */
 export function parseResourceCollectionWindow(entry: unknown): ResourceCollectionWindow | null {
   if (!isRecord(entry)) return null;
   const startTime = parseActivityTimestamp(entry.UtcStartTime, entry.TimeZone);
@@ -578,7 +543,6 @@ export async function getCurrentActivity(
   return request;
 }
 
-/** 单次活动读取；单飞与负缓存由 `getCurrentActivity` 的统一入口负责。 */
 async function loadCurrentActivity(
   clientType: string,
   runtime: Required<MaaActivityRuntime>
@@ -646,7 +610,6 @@ async function loadCurrentActivity(
         source: 'maa',
         startTime: null,
         endTime: null,
-        // CLI 列出的是展示关卡，不是完整活动地图；完整 stages 待结构化活动表落地。
         stages: []
       };
       const snapshot = snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
@@ -737,7 +700,6 @@ async function loadCurrentActivity(
   return snapshotOf(clientType, emptyActivityInfo(), 'unavailable', null, null, failure);
 }
 
-/** 记录没有可用活动代号的短负结果；有代号的结果只写正缓存。 */
 function rememberNegativeActivity(
   runtime: Required<MaaActivityRuntime>,
   clientType: string,
@@ -748,7 +710,6 @@ function rememberNegativeActivity(
   runtime.negativeCache.set(clientType, { timestamp: now, snapshot });
 }
 
-/** 写入内存与持久化缓存；保存失败只告警，返回结果仍以已读取的数据为准。 */
 async function persistActivity(
   runtime: Required<MaaActivityRuntime>,
   persistedRecord: Record<string, unknown> | null,
@@ -774,15 +735,11 @@ async function persistActivity(
   }
 }
 
-/**
- * 替换关卡代号中的 hd 为实际活动代号
- */
 export async function replaceActivityCode(stage: unknown, clientType: string = DEFAULT_CLIENT_TYPE): Promise<unknown> {
   if (!stage || typeof stage !== 'string') {
     return stage;
   }
 
-  // 检查是否是 hd-数字 格式（不区分大小写）
   const hdMatch = stage.match(/^hd-(\d+)$/i);
   if (!hdMatch) {
     return stage;

@@ -3,24 +3,14 @@ import type { ActivityNavigationActivity, ActivityNavigationResult } from './act
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
-/**
- * 活动作业候选发现：先用活动预检确认导航资源，再按关卡查询作业站候选。
- *
- * 作业站响应统一按 unknown 收窄；候选只用于人工选择，本模块不启动作业，
- * 也不写执行进度。当前地图兜底只影响发现结果里的 navigationMode，
- * 真正的执行计划仍由调用方构建。
- */
-
 const PRTS_QUERY_URL = 'https://prts.maa.plus/copilot/query';
 const PRTS_TIMEOUT_MS = 12000;
 const MAX_STAGES = 12;
 const CANDIDATES_PER_STAGE = 3;
 const SET_CANDIDATE_LIMIT = 8;
 
-// 作业站读取/查询统一经出站端口；显式时限 12 秒保持不变。
 const outboundHttp = createOutboundHttpClient();
 
-/** 活动作业候选：字段由作业站载荷收窄而来，供人工选择与执行计划使用。 */
 export interface ActivityCopilotCandidate {
   id: number;
   uri: string;
@@ -36,7 +26,6 @@ export interface ActivityCopilotCandidate {
   views: number;
 }
 
-/** 单个关卡的候选查询结果：query 为实际请求地址，读取失败时记录 error。 */
 export interface ActivityCopilotStageResult {
   stage: string;
   query: string | null;
@@ -44,7 +33,6 @@ export interface ActivityCopilotStageResult {
   error?: string;
 }
 
-/** 作业集候选：成员内容覆盖当前活动全部主关卡时才返回。 */
 export interface ActivityCopilotSet {
   id: string;
   name: string;
@@ -54,7 +42,6 @@ export interface ActivityCopilotSet {
   source: 'prts-set-query';
 }
 
-/** 候选发现结果：preflight 保留导航判断，navigationMode 只在返回结果时出现。 */
 export interface ActivityCopilotDiscoveryResult {
   execution: { mode: 'manual-selection-required'; executable: false };
   source: { provider: 'prts.maa.plus'; endpoint: '/copilot/query'; orderBy: 'hot' };
@@ -77,7 +64,6 @@ function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-/** 只有结构化错误才暴露 message；其他抛出值不在这里编造文案。 */
 function readMessage(error: unknown): string | undefined {
   return isRecord(error) && typeof error.message === 'string' ? error.message : undefined;
 }
@@ -90,7 +76,6 @@ function readDocTitle(content: unknown): unknown {
   return isRecord(content) && isRecord(content.doc) ? content.doc.title : undefined;
 }
 
-/** 作业内容可能是 JSON 字符串或已解析对象；无法解析时按空对象处理。 */
 function parseContent(item: unknown): Record<string, unknown> {
   const content = isRecord(item) ? item.content : undefined;
   if (typeof content === 'string') {
@@ -207,7 +192,6 @@ async function findMatchingCopilotSet(
   )[0] || null;
 }
 
-/** 按评分、上传时间、热度与浏览量排序，只保留标题精确匹配当前关卡的候选。 */
 export function rankActivityCopilots(items: unknown, stage: string): ActivityCopilotCandidate[] {
   const list = Array.isArray(items) ? items : [];
   return list
@@ -260,7 +244,6 @@ async function queryStageCandidates(stage: string): Promise<ActivityCopilotStage
   };
 }
 
-/** 当前地图兜底只接受「导航资源不可用」且活动代号与关卡列表明确的预检结果。 */
 export function canUseCurrentMapFallback(preflight: unknown): boolean {
   if (!isRecord(preflight) || !isRecord(preflight.activity)) return false;
   const activity = preflight.activity;

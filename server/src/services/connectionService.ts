@@ -1,16 +1,3 @@
-/**
- * 连接 profile 解析与显式覆盖
- *
- * - profile 名称先经 `maaConfigService` 的同一白名单校验，拒绝路径穿越；
- *   不合法时抛出既有 `AGENT_VALIDATION_PROFILE_ID_INVALID`（400、不重试）。
- * - profile 配置来自 TOML 或 HTTP 请求体，按 `unknown` 收窄：`snake_case`
- *   优先、`camelCase` 兼容别名其次，只有非空字符串才作为连接值，其余回退
- *   到连接默认值适配（`config/connectionDefaults.ts`）。
- * - 显式覆盖只在调用方声明 `allowOverrides` 时生效，空白值不覆盖已保存配置。
- *
- * 执行、预览、定时与维护入口共用本模块，不各自拼装连接字段。
- */
-
 import { getConfig, validateMaaProfileName } from './maaConfigService.ts';
 import type { MaaProfileConnection } from './maaConfigService.ts';
 import { agentError } from '../utils/apiHelper.ts';
@@ -22,7 +9,6 @@ import {
 
 const DEFAULT_CONNECTION_PROFILE = 'default';
 
-/** 解析后的连接视图；执行与预览只依赖这三个连接字段。 */
 export interface ConnectionProfile {
   profileId: string;
   adbPath: string;
@@ -30,18 +16,15 @@ export interface ConnectionProfile {
   clientType: string;
 }
 
-/** profile 配置读取端口；缺省读取 MAA profile（`maaConfigService.getConfig`）。 */
 export type ConnectionConfigReader = (profileId: string) => Promise<MaaProfileConnection>;
 
 export interface ResolveConnectionOptions {
   readConfig?: ConnectionConfigReader;
 }
 
-/** profile 解析端口；测试可注入固定 profile，避免启动 CLI。 */
 export type ConnectionResolver = (profileId?: unknown) => Promise<ConnectionProfile>;
 
 export interface ResolveConnectionInputOptions {
-  /** 是否允许请求体/查询参数覆盖已保存的 profile 值 */
   allowOverrides?: boolean;
   resolver?: ConnectionResolver;
 }
@@ -50,7 +33,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 按优先级读取 profile 中的字符串连接值；空字符串与其他类型都不算已配置。 */
 function readProfileValue(config: MaaProfileConnection, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = config[key];
@@ -59,7 +41,6 @@ function readProfileValue(config: MaaProfileConnection, keys: readonly string[])
   return null;
 }
 
-/** 请求覆盖值：只有非空字符串生效，并去掉首尾空白。 */
 function readOverride(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();

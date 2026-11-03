@@ -1,15 +1,6 @@
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
 
-/**
- * Agent 动作用例与请求归一化
- *
- * 类型边界：HTTP 请求体、动态任务配置与执行器依赖都是 unknown 入口，
- * 由本模块按既有规则逐项收窄；命令白名单、动态任务 ID 规则、标签长度
- * 与 `waitForCompletion` 的布尔要求保持迁移前的错误码、文案与接受时机。
- * 执行器由调用方注入，本模块不直接启动子进程或持有 Run。
- */
-
 export const AGENT_TASK_COMMANDS = Object.freeze([
   'startup',
   'closedown',
@@ -35,7 +26,6 @@ const AGENT_TASK_COMMAND_SET: ReadonlySet<string> = new Set(AGENT_TASK_COMMANDS)
 const AGENT_QUERY_COMMANDS: ReadonlySet<string> = new Set(['activity', 'list']);
 const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
-/** 动态任务配置：`name`/`type` 必填，其余字段原样透传给 MAA。 */
 export interface AgentTaskConfig extends Record<string, unknown> {
   name: string;
   type: string;
@@ -69,7 +59,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 旧实现的模板字符串/属性访问按文本输出未知值，保留同一归一。 */
 function textOf(value: unknown): string {
   return typeof value === 'string' ? value : String(value);
 }
@@ -164,7 +153,6 @@ function normalizeOptionalLabel(value: unknown, field: string, fallback: string,
   return normalized || fallback;
 }
 
-/** 日常流程请求：`taskFlow` 保持 unknown[]，步骤校验仍由 scheduler 域判定。 */
 export interface NormalizedDailyFlowRequest {
   dryRun: boolean;
   scheduleId: string;
@@ -225,7 +213,6 @@ export function normalizeCopilotSetMode(value: unknown): CopilotSetMode {
   });
 }
 
-/** 作业集执行请求：选择按非负整数收窄，`options` 原样交给计划域读取。 */
 export interface NormalizedCopilotSetExecutionRequest {
   mode: CopilotSetMode;
   raid: CopilotSetRaid;
@@ -279,10 +266,6 @@ export function normalizeCopilotSetExecutionRequest(input: unknown = {}): Normal
   return { mode, raid, selectedIndexes: normalizedIndexes, options, waitForCompletion };
 }
 
-/**
- * Execute a command exposed through the Agent API after validating its
- * filesystem-sensitive dynamic-task inputs.
- */
 export async function executeAgentTask(
   input: unknown = {},
   dependencies: AgentTaskDependencies = {}

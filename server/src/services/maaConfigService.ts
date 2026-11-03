@@ -6,19 +6,6 @@ import { updateTextFile } from '../utils/fileHelper.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 import { execMaaCommandUnlocked } from './maaProcessService.ts';
 
-/**
- * MAA profile 配置的读取与写入。
- *
- * - 目录与 profile 路径都由 `maa dir config` 解析，名称经同一白名单校验，
- *   拒绝路径穿越。目录在一次进程生命周期内不变，首次查询后按进程缓存；
- *   并发调用共享同一次 CLI 查询，查询失败在短冷却期内复用同一个错误。
- * - 同一 profile 的读取、合并与写入在同一排队单元内完成；TOML 内容按文本
- *   原子替换，解析或写入失败时不写回，已有配置保持原样（与既有原子写契约
- *   一致）。
- * - 这里只执行非设备变更的 `dir` 查询，不申请执行租约；进程执行与状态归
- *   maaProcessService。
- */
-
 const logger = createLogger('MaaService');
 
 /**
@@ -27,7 +14,6 @@ const logger = createLogger('MaaService');
  */
 export type MaaProfileDocument = Record<string, unknown>;
 
-/** connection section 的读写形状；字段集合由 MAA profile 决定。 */
 export type MaaProfileConnection = Record<string, unknown>;
 
 /** TOML 默认导出把文档形状声明为未导出的内部 JsonMap；解析结果与之兼容。 */
@@ -57,9 +43,6 @@ const CONFIG_DIR_FAILURE_TTL_MS = 30_000;
 let configDirPromise: Promise<string> | null = null;
 let configDirFailure: { error: unknown; at: number } | null = null;
 
-/**
- * 获取 MAA 配置目录
- */
 export function getMaaConfigDir(): Promise<string> {
   const now = Date.now();
   if (configDirFailure) {
@@ -81,9 +64,6 @@ export function getMaaConfigDir(): Promise<string> {
   return configDirPromise;
 }
 
-/**
- * 获取配置文件路径
- */
 export function validateMaaProfileName(profileName: unknown = 'default'): string {
   if (typeof profileName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(profileName)) {
     throw new Error('连接配置名称不合法');
@@ -141,9 +121,6 @@ export function mergeMaaProfileConnection(
   };
 }
 
-/**
- * 读取配置文件
- */
 export async function getConfig(profileName: unknown = 'default'): Promise<MaaProfileConnection> {
   const normalizedProfileName = validateMaaProfileName(profileName);
   try {
@@ -162,9 +139,6 @@ export async function getConfig(profileName: unknown = 'default'): Promise<MaaPr
   }
 }
 
-/**
- * 保存配置文件
- */
 export async function saveConfig(profileName: unknown = 'default', config: unknown): Promise<void> {
   try {
     const normalizedProfileName = validateMaaProfileName(profileName);

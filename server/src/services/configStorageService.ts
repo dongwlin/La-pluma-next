@@ -25,7 +25,6 @@ export const USER_CONFIG_TYPES = [
   'training-queue'
 ] as const;
 
-/** 白名单内的合法配置类型。 */
 export type UserConfigType = (typeof USER_CONFIG_TYPES)[number];
 
 /**
@@ -42,7 +41,6 @@ export type UserConfigPayload = Record<string, unknown>;
 
 const ALLOWED_CONFIG_TYPES: ReadonlySet<string> = new Set(USER_CONFIG_TYPES);
 
-/** 判断输入是否为白名单内的配置类型；白名单即 USER_CONFIG_TYPES 全集。 */
 export function isUserConfigType(configType: unknown): configType is UserConfigType {
   return typeof configType === 'string' && ALLOWED_CONFIG_TYPES.has(configType);
 }
@@ -61,10 +59,6 @@ function isConfigPayload(data: unknown): data is UserConfigPayload {
   return Boolean(data) && typeof data === 'object' && !Array.isArray(data);
 }
 
-/**
- * 顶层载荷校验：只要求 JSON 对象，不限制字段，
- * 保留旧结构 payload 与扩展字段，同时挡住字符串、数组、null 等错误输入。
- */
 function validateConfigPayload(data: unknown): UserConfigPayload {
   if (!isConfigPayload(data)) {
     throw agentError('AGENT_CONFIG_DATA_INVALID', '配置数据必须是 JSON 对象', {
@@ -78,7 +72,6 @@ function validateConfigPayload(data: unknown): UserConfigPayload {
   return data;
 }
 
-/** 未知错误的 message 兜底：非 Error 输入按字符串记录。 */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -126,13 +119,11 @@ export interface UserConfigStorage {
   deleteUserConfig(configType: string): Promise<ConfigStorageResult<null>>;
 }
 
-/** 完整存储实例：在存储端口之上提供读改写与测试目录重定向。 */
 export interface UserConfigStore extends UserConfigStorage {
   updateUserConfig<T>(
     configType: string,
     updateFn: (current: unknown) => T | Promise<T>
   ): Promise<ConfigStorageResult<T>>;
-  /** 仅测试使用：重定向本实例的存储目录；传入空值恢复默认目录。 */
   setConfigDirForTests(dir: string | null): void;
 }
 
@@ -160,7 +151,6 @@ export function createUserConfigStorage({
 } = {}): UserConfigStore {
   let activeConfigDir = resolve(configDir);
 
-  // 获取配置文件路径
   function getConfigPath(configType: string) {
     const normalizedType = validateConfigType(configType);
     const configPath = resolve(activeConfigDir, `${normalizedType}.json`);
@@ -170,14 +160,12 @@ export function createUserConfigStorage({
     return configPath;
   }
 
-  // 保存用户配置（整份覆盖）
   async function saveUserConfig(configType: string, data: unknown): Promise<ConfigStorageResult<null>> {
     try {
       const payload = validateConfigPayload(data);
       await io.ensureDir(activeConfigDir);
       const configPath = getConfigPath(configType);
       await io.writeJsonFile(configPath, payload);
-      // 移除 DEBUG 日志，保存配置太频繁
       return successResponse(null, '配置保存成功');
     } catch (error) {
       logger.error('保存配置失败', { configType, error: errorMessage(error) });
@@ -185,7 +173,6 @@ export function createUserConfigStorage({
     }
   }
 
-  // 读取用户配置
   async function loadUserConfig(configType: string): Promise<ConfigStorageResult<unknown>> {
     try {
       const configPath = getConfigPath(configType);
@@ -197,7 +184,6 @@ export function createUserConfigStorage({
     }
   }
 
-  // 读改写用户配置（整体排队，策略见 createUserConfigStorage 说明）
   async function updateUserConfig<T>(
     configType: string,
     updateFn: (current: unknown) => T | Promise<T>
@@ -212,7 +198,6 @@ export function createUserConfigStorage({
     }
   }
 
-  // 获取所有配置
   async function getAllUserConfigs(): Promise<ConfigStorageResult<Record<string, unknown>>> {
     try {
       await io.ensureDir(activeConfigDir);
@@ -237,7 +222,6 @@ export function createUserConfigStorage({
     }
   }
 
-  // 删除配置
   async function deleteUserConfig(configType: string): Promise<ConfigStorageResult<null>> {
     try {
       const configPath = getConfigPath(configType);
@@ -261,7 +245,6 @@ export function createUserConfigStorage({
     updateUserConfig,
     getAllUserConfigs,
     deleteUserConfig,
-    // 仅测试使用：重定向本实例的存储目录；传入空值恢复默认目录。
     setConfigDirForTests(dir) {
       activeConfigDir = resolve(dir || defaultUserConfigsDir);
     }

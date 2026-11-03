@@ -1,16 +1,8 @@
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
-/**
- * 备用活动数据源：读取企鹅物流的当前活动与关卡窗口，选出进行中的最新活动。
- *
- * 上游载荷按 unknown 收窄；本地缓存按服务器保留 30 分钟，并发请求合并为
- * 一次在途请求。本模块只读，不写用户配置或执行状态。
- */
-
 const PENGUIN_API_BASE = 'https://penguin-stats.io/PenguinStats/api/v2';
 const CACHE_TTL = 30 * 60 * 1000;
-// 企鹅物流读取保持原 5 秒时限；GET 读取按端口缺省受限重试。
 const outboundHttp = createOutboundHttpClient({ defaultTimeoutMs: 5000 });
 const CLIENT_SERVERS: Record<string, string | undefined> = {
   Official: 'CN',
@@ -25,7 +17,6 @@ export function supportsFallbackClient(clientType: string = DEFAULT_CLIENT_TYPE)
   return typeof CLIENT_SERVERS[clientType] === 'string';
 }
 
-/** 备用数据源的活动：code 由关卡前缀推导，时间窗口缺失时 endTime 为 null。 */
 export interface PenguinActivity {
   code: string;
   name: string;
@@ -35,7 +26,6 @@ export interface PenguinActivity {
   stages: string[];
 }
 
-/** 服务器视角的活动窗口：openTime/closeTime 为毫秒时间戳。 */
 interface ActivityWindow {
   openTime: number;
   closeTime: number | null;
@@ -52,7 +42,6 @@ function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-/** 单个活动的服务器存在区间；未开始、已结束或字段非法时返回 null。 */
 function getActiveExistence(item: unknown, server: string, now: number): ActivityWindow | null {
   const existence = isRecord(item) && isRecord(item.existence) ? item.existence[server] : undefined;
   if (!isRecord(existence) || !existence.exist) return null;
@@ -81,7 +70,6 @@ function getStagePrefix(stageCodes: readonly string[]): string | null {
     .sort((left, right) => right[1] - left[1])[0]?.[0] || null;
 }
 
-/** 从企鹅物流的活动与关卡表中选出当前进行中的最新活动；无法确定时返回 null。 */
 export function selectCurrentPenguinActivity(
   zones: unknown,
   stages: unknown,

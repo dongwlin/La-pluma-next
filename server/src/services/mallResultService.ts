@@ -1,13 +1,3 @@
-/**
- * 信用收支（Mall）结果解析
- *
- * 类型边界：
- * - 参数来自未校验的任务配置：好友访问、信用购物、信用作战只有严格 `false` 才算关闭。
- * - 回调事件经 `maaCallbackService` 校验后再读取：任务名逐字段收窄，`exec_times` 缺失按单次
- *   计；缺字段或类型不符按“未观察到”处理。
- * - 输出只描述本次信用收支步骤（`success`/`failed`/`skipped`），不是整个 Run 的终态。
- */
-
 import {
   getCallbackDetails,
   getCallbackTaskName,
@@ -23,7 +13,6 @@ export interface MallTaskParams {
   [extension: string]: unknown;
 }
 
-/** 信用收支结果：计数与布尔只在回调可观察时置位。 */
 export interface MallExecutionAction {
   task: string;
   action: 'mall';
@@ -43,7 +32,6 @@ function isMallDisabled(params: MallTaskParams): boolean {
     && params.credit_fight === false;
 }
 
-/** 解析一次信用收支步骤的回调日志。 */
 export function parseMallExecutionAction(
   taskName: string,
   params: MallTaskParams = {},

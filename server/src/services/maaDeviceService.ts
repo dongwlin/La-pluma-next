@@ -7,17 +7,6 @@ import { dirname, join } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
-/**
- * ADB 设备探测、连接测试、游戏前台状态与截图。
- *
- * - ADB 路径与地址在进入子进程前统一校验，拒绝 shell 元字符与非法地址；
- *   截图按步骤设置超时并在超时时发送 SIGKILL。
- * - 设备发现只返回候选，不自动连接；候选与内置 ADB 的合并顺序保持既有
- *   契约（同名 serial 优先采用当前配置的 ADB 结果）。
- * - 这里不持有任务状态、执行租约或 Run 终态；设备变更权仍由执行租约决定，
- *   本模块只读设备事实。
- */
-
 const execFilePromise = promisify(execFile);
 
 const logger = createLogger('MaaService');
@@ -48,10 +37,8 @@ const GAME_PACKAGES: Readonly<Record<string, string>> = {
 /** adb devices 报告的连接状态；未知状态不能当作可用。 */
 export type AdbDeviceState = 'device' | 'offline' | 'unauthorized' | 'unknown';
 
-/** 设备来源：当前 ADB、模拟器内置 ADB 或本机端口候选。 */
 export type AdbDeviceSource = 'adb' | 'emulator-adb' | 'local-port';
 
-/** 设备发现条目；候选状态为 `candidate`，不会被自动连接。 */
 export interface AdbDevice {
   address: string;
   state: AdbDeviceState | 'candidate';
@@ -61,14 +48,12 @@ export interface AdbDevice {
   label?: string;
 }
 
-/** 模拟器内置 ADB 的安装位置。 */
 export interface AdbInstallation {
   adbPath: string;
   label: string;
   source: 'emulator-adb';
 }
 
-/** 设备发现结果；失败时 error 说明原因，设备列表为空。 */
 export interface AdbDiscoveryResult {
   success: boolean;
   adbAvailable: boolean;
@@ -79,14 +64,12 @@ export interface AdbDiscoveryResult {
   error?: string;
 }
 
-/** 游戏前台状态；running 只在期望包位于前台时为 true。 */
 export interface GameClientState {
   running: boolean;
   expectedPackage: string;
   foregroundPackage: string | null;
 }
 
-/** ADB 连接测试结果；connected 只在确认设备可用时给出。 */
 export interface AdbConnectionResult {
   success: boolean;
   message: string;
@@ -95,7 +78,6 @@ export interface AdbConnectionResult {
   output?: string;
 }
 
-/** 截图结果：base64 图像与采集时间。 */
 export interface CapturedScreen {
   image: string;
   timestamp: string;
@@ -149,7 +131,6 @@ function validateAdbAddress(address: unknown): string {
   return address;
 }
 
-/** 文本命令端口：输出按 utf8 读取；路径在进入子进程前校验。 */
 async function adbExecText(
   adbPath: unknown,
   args: readonly string[],
@@ -163,7 +144,6 @@ async function adbExecText(
   });
 }
 
-/** 二进制命令端口：截图按 buffer 读取原图。 */
 async function adbExecBuffer(
   adbPath: unknown,
   args: readonly string[],
@@ -460,15 +440,11 @@ export function parseForegroundPackage(output: unknown = ''): string | null {
   return packageMatch?.[1] || null;
 }
 
-/**
- * 测试 ADB 连接
- */
 export async function testAdbConnection(
   adbPath: unknown = DEFAULT_ADB_PATH,
   address: unknown = DEFAULT_ADB_ADDRESS
 ): Promise<AdbConnectionResult> {
   try {
-    // 检查 ADB 是否可用
     try {
       await adbExecText(adbPath, ['version'], { timeout: 5000, windowsHide: true });
     } catch (error) {
@@ -479,7 +455,6 @@ export async function testAdbConnection(
       };
     }
 
-    // 检查设备列表
     const deviceAddress = validateAdbAddress(address);
     const { stdout: devicesOutput } = await adbExecText(adbPath, ['devices'], { timeout: 6000, windowsHide: true });
     const deviceState = getAdbDeviceState(devicesOutput, deviceAddress);
@@ -508,14 +483,12 @@ export async function testAdbConnection(
       };
     }
 
-    // 尝试连接
     logger.debug('尝试连接设备', { address: deviceAddress });
     const { stdout: connectOutput } = await adbExecText(adbPath, ['connect', deviceAddress], { timeout: 8000, windowsHide: true });
 
     // 等待连接稳定
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 再次检查连接状态
     const { stdout: devicesOutput2 } = await adbExecText(adbPath, ['devices'], { timeout: 6000, windowsHide: true });
     const currentDeviceState = getAdbDeviceState(devicesOutput2, deviceAddress);
 
@@ -547,9 +520,6 @@ export async function testAdbConnection(
   }
 }
 
-/**
- * 通过 ADB 截取模拟器屏幕
- */
 export async function captureScreen(
   adbPath: unknown = DEFAULT_ADB_PATH,
   address: unknown = DEFAULT_ADB_ADDRESS
@@ -560,7 +530,6 @@ export async function captureScreen(
     const executable = validateAdbPath(adbPath);
     const deviceAddress = validateAdbAddress(address);
 
-    // 先检查设备是否已连接
     const { stdout: devicesOutput } = await adbExecText(executable, ['devices'], {
       timeout: timeoutMs,
       killSignal: 'SIGKILL',

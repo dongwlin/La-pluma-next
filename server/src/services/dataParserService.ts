@@ -20,7 +20,6 @@ const outboundHttp = createOutboundHttpClient();
 
 const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/gamedata/excel/item_table.json';
 
-/** 物品索引中的单个物品；字段不符的条目按缺失处理。 */
 export interface ItemIndexEntry {
   name: string;
   icon: string | null;
@@ -28,12 +27,10 @@ export interface ItemIndexEntry {
   sortId: number;
 }
 
-/** 游戏物品表中本服务读取的字段。 */
 export interface ItemTableEntry {
   iconId?: string;
 }
 
-/** getItemInfo 的返回值；未知物品没有 iconId。 */
 export interface GameItemInfo {
   id: string;
   name: string;
@@ -43,7 +40,6 @@ export interface GameItemInfo {
   sortId: number;
 }
 
-/** 仓库缓存中的一个物品。 */
 export interface DepotItem {
   id: string;
   name: string;
@@ -54,7 +50,6 @@ export interface DepotItem {
   sortId: number;
 }
 
-/** server/data/depot.json 的结构。 */
 export interface DepotFile {
   timestamp: string;
   itemCount: number;
@@ -71,7 +66,6 @@ export interface OperBoxFile {
   data: Record<string, unknown>[];
 }
 
-/** getAllOperators 返回的干员摘要。 */
 export interface OperatorSummary {
   id: string;
   name: string;
@@ -80,24 +74,18 @@ export interface OperatorSummary {
   position?: string;
 }
 
-/** 仓库识别动作的响应载荷。 */
 export interface DepotRecognitionResult {
   path: string;
   itemCount: number;
   items: DepotItem[];
 }
 
-/** 干员识别动作的响应载荷。 */
 export interface OperBoxRecognitionResult {
   path: string;
   operCount: number;
   data: Record<string, unknown>[];
 }
 
-/**
- * 路径与回源端口。缺省绑定 MAA 资源路径与共享出站端口；
- * 测试用临时目录和假回源验证本地/网络分支，不触发真实下载。
- */
 export interface DataParserPorts {
   itemIndexPath?: string;
   itemTablePath?: string;
@@ -152,7 +140,6 @@ async function fetchItemTableFromNetwork(): Promise<unknown> {
   return data;
 }
 
-/** 物品索引解析：缺少字符串 name 的条目视为不可用，其余字段补齐缺省值。 */
 export function parseItemIndex(value: unknown): Record<string, ItemIndexEntry> {
   if (!isRecord(value)) return {};
   const index: Record<string, ItemIndexEntry> = {};
@@ -170,7 +157,6 @@ export function parseItemIndex(value: unknown): Record<string, ItemIndexEntry> {
   return index;
 }
 
-/** 物品表解析：只读取 items 映射中的 iconId，其它字段不参与本服务逻辑。 */
 export function parseItemTable(value: unknown): Record<string, ItemTableEntry> {
   if (!isRecord(value) || !isRecord(value.items)) return {};
   const items: Record<string, ItemTableEntry> = {};
@@ -183,9 +169,6 @@ export function parseItemTable(value: unknown): Record<string, ItemTableEntry> {
   return items;
 }
 
-/**
- * 加载物品索引
- */
 async function loadItemIndex(context: DataParserContext): Promise<Record<string, ItemIndexEntry>> {
   if (itemIndexCache && itemIndexCache.path === context.itemIndexPath) {
     return itemIndexCache.value;
@@ -203,9 +186,6 @@ async function loadItemIndex(context: DataParserContext): Promise<Record<string,
   }
 }
 
-/**
- * 加载游戏物品表（包含 iconId）
- */
 async function loadItemTable(context: DataParserContext): Promise<Record<string, ItemTableEntry>> {
   if (itemTableCache && itemTableCache.path === context.itemTablePath) {
     return itemTableCache.value;
@@ -221,7 +201,6 @@ async function loadItemTable(context: DataParserContext): Promise<Record<string,
       return items;
     }
 
-    // 从网络获取
     logger.info('本地文件不存在，尝试从网络获取物品表...');
     const data = await context.fetchItemTable();
 
@@ -229,7 +208,6 @@ async function loadItemTable(context: DataParserContext): Promise<Record<string,
     itemTableCache = { path: context.itemTablePath, value: items };
     logger.success(`物品表从网络加载成功，共 ${Object.keys(items).length} 种物品`);
 
-    // 保存到本地
     await ensureDir(dirname(context.itemTablePath));
     await writeJsonFile(context.itemTablePath, data);
     logger.info('物品表已缓存到本地');
@@ -241,9 +219,6 @@ async function loadItemTable(context: DataParserContext): Promise<Record<string,
   }
 }
 
-/**
- * 根据物品 ID 获取物品信息
- */
 async function getItemInfo(itemId: string, context: DataParserContext): Promise<GameItemInfo> {
   const itemIndex = await loadItemIndex(context);
   const itemTable = await loadItemTable(context);
@@ -255,7 +230,7 @@ async function getItemInfo(itemId: string, context: DataParserContext): Promise<
       id: itemId,
       name: item.name,
       icon: item.icon,
-      iconId: gameItem?.iconId || itemId, // 使用游戏数据的 iconId，如果没有则使用 itemId
+      iconId: gameItem?.iconId || itemId,
       classifyType: item.classifyType,
       sortId: item.sortId
     };
@@ -281,7 +256,6 @@ export function parseDepotCounts(value: unknown): Record<string, number> | null 
   return Object.keys(counts).length > 0 ? counts : null;
 }
 
-/** 已保存仓库缓存的解析；结构不符返回 null，由调用方按缺失处理。 */
 export function parseDepotFile(value: unknown): DepotFile | null {
   if (!isRecord(value) || typeof value.timestamp !== 'string') return null;
   if (typeof value.itemCount !== 'number' || !Number.isFinite(value.itemCount)) return null;
@@ -308,7 +282,6 @@ export function parseDepotFile(value: unknown): DepotFile | null {
   return { timestamp: value.timestamp, itemCount: value.itemCount, items };
 }
 
-/** 已保存干员缓存的解析；条目原样保留，只校验信封与数组形态。 */
 export function parseOperBoxFile(value: unknown): OperBoxFile | null {
   if (!isRecord(value) || typeof value.timestamp !== 'string') return null;
   if (typeof value.operCount !== 'number' || !Number.isFinite(value.operCount)) return null;
@@ -323,7 +296,6 @@ export function parseOperBoxFile(value: unknown): OperBoxFile | null {
   return { timestamp: value.timestamp, operCount: value.operCount, data };
 }
 
-/** MAA 日志中的 OperBoxInfo 载荷解析；own_opers 缺失按空列表处理。 */
 export function parseOperBoxOperators(details: unknown): Record<string, unknown>[] | null {
   if (!isRecord(details)) return null;
   const own = details.own_opers;
@@ -338,7 +310,6 @@ export function parseOperBoxOperators(details: unknown): Record<string, unknown>
   return operators;
 }
 
-// 辅助函数：查找完成的 DepotInfo 数据
 function findCompletedDepotData(logContent: string, depotMatches: RegExpMatchArray[]): string | null {
   for (let i = depotMatches.length - 1; i >= 0; i--) {
     const match = depotMatches[i];
@@ -353,7 +324,6 @@ function findCompletedDepotData(logContent: string, depotMatches: RegExpMatchArr
   return null;
 }
 
-// 辅助函数：丰富仓库数据（添加物品信息）
 async function enrichDepotData(
   depotData: Record<string, number>,
   context: DataParserContext
@@ -377,9 +347,6 @@ async function enrichDepotData(
   return enrichedData;
 }
 
-/**
- * 解析 MAA 日志文件，提取 DepotInfo 数据
- */
 export async function parseDepotData(
   ports: DataParserPorts = {}
 ): Promise<ApiSuccessResponse<DepotRecognitionResult> | ApiErrorResponse | null> {
@@ -393,7 +360,6 @@ export async function parseDepotData(
     // 移除日志中的换行符（MAA 日志可能在单词中间换行）
     logContent = logContent.replace(/([a-zA-Z])\n([a-z])/g, '$1$2');
 
-    // 查找最后一次 DepotInfo 数据
     const depotMatches = [...logContent.matchAll(/"what"\s*:\s*"DepotInfo"[\s\S]*?"details"\s*:\s*\{[\s\S]*?"data"\s*:\s*"((?:[^"\\]|\\.)*)"/g)];
 
     if (depotMatches.length === 0) {
@@ -401,7 +367,6 @@ export async function parseDepotData(
       return null;
     }
 
-    // 取最后一次识别结果（done:true 的那个）
     let dataStr = findCompletedDepotData(logContent, depotMatches);
 
     if (!dataStr) {
@@ -411,7 +376,6 @@ export async function parseDepotData(
 
     logger.debug('数据字符串长度', { length: dataStr.length });
 
-    // 解析数据
     const unescapedStr = dataStr.replace(/\\"/g, '"');
     const depotCounts = parseDepotCounts(safeJsonParse(unescapedStr, null));
 
@@ -421,13 +385,10 @@ export async function parseDepotData(
 
     logger.success(`解析成功，物品数量: ${Object.keys(depotCounts).length}`);
 
-    // 加载物品索引，添加物品名称
     const enrichedData = await enrichDepotData(depotCounts, context);
 
-    // 按 sortId 排序
     const sortedData = Object.values(enrichedData).sort((a, b) => a.sortId - b.sortId);
 
-    // 保存到文件
     await ensureDir(context.dataDir);
     const outputPath = join(context.dataDir, 'depot.json');
 
@@ -451,9 +412,6 @@ export async function parseDepotData(
   }
 }
 
-/**
- * 解析 MAA 日志文件，提取 OperBoxInfo 数据
- */
 export async function parseOperBoxData(
   ports: DataParserPorts = {}
 ): Promise<ApiSuccessResponse<OperBoxRecognitionResult> | ApiErrorResponse | null> {
@@ -464,7 +422,6 @@ export async function parseOperBoxData(
 
     const logContent = await readFile(logPath, 'utf-8');
 
-    // 查找所有 OperBoxInfo 行
     const lines = logContent.split('\n');
     const operBoxLines = lines.filter(line => line.includes('"what":"OperBoxInfo"'));
 
@@ -473,17 +430,14 @@ export async function parseOperBoxData(
       return null;
     }
 
-    // 取最后一行
     const lastLine = operBoxLines[operBoxLines.length - 1];
     logger.info('找到 OperBoxInfo 数据');
 
-    // 找到 JSON 对象的开始位置
     const jsonStart = lastLine.indexOf('{"class');
     if (jsonStart === -1) {
       throw new Error('无法找到 JSON 数据起始位置');
     }
 
-    // 解析 JSON
     const jsonStr = lastLine.substring(jsonStart);
     const data = safeJsonParse(jsonStr);
 
@@ -491,7 +445,6 @@ export async function parseOperBoxData(
       throw new Error('解析 JSON 失败');
     }
 
-    // 检查是否完成
     if (!data.details.done) {
       logger.warn('识别未完成，使用部分数据');
     }
@@ -502,7 +455,6 @@ export async function parseOperBoxData(
     }
     logger.success(`解析成功，干员数量: ${opers.length}`);
 
-    // 保存到文件
     await ensureDir(context.dataDir);
     const outputPath = join(context.dataDir, 'operbox.json');
 
@@ -526,9 +478,6 @@ export async function parseOperBoxData(
   }
 }
 
-/**
- * 读取已保存的仓库数据
- */
 export async function getDepotData(ports: DataParserPorts = {}): Promise<DepotFile | null> {
   const context = createContext(ports);
   const filePath = join(context.dataDir, 'depot.json');
@@ -543,9 +492,6 @@ export async function getDepotData(ports: DataParserPorts = {}): Promise<DepotFi
   return depot;
 }
 
-/**
- * 读取已保存的干员数据
- */
 export async function getOperBoxData(ports: DataParserPorts = {}): Promise<OperBoxFile | null> {
   const context = createContext(ports);
   const filePath = join(context.dataDir, 'operbox.json');
@@ -570,9 +516,6 @@ function parseOperator(id: string, value: unknown): OperatorSummary | null {
   return operator;
 }
 
-/**
- * 获取所有干员列表（从 MAA 资源文件）
- */
 export async function getAllOperators(ports: DataParserPorts = {}): Promise<OperatorSummary[]> {
   try {
     const context = createContext(ports);
@@ -582,7 +525,6 @@ export async function getAllOperators(ports: DataParserPorts = {}): Promise<Oper
       throw new Error('无法读取干员数据');
     }
 
-    // 从 chars 对象中提取所有干员
     const operators: OperatorSummary[] = [];
     for (const [id, char] of Object.entries(data.chars)) {
       // 过滤条件：
@@ -597,7 +539,6 @@ export async function getAllOperators(ports: DataParserPorts = {}): Promise<Oper
     }
 
     operators.sort((a, b) => {
-      // 按星级降序，同星级按名称排序
       if (b.rarity !== a.rarity) {
         return b.rarity - a.rarity;
       }

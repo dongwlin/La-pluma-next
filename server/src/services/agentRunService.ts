@@ -1,17 +1,3 @@
-/**
- * Agent Run 记录、幂等与持久化
- *
- * Run 是执行身份与终态的唯一来源（见 docs/architecture/execution-lifecycle.md）。
- * 本模块只维护记录本身：创建/转换/停止意图/幂等与磁盘快照；设备租约、子进程与
- * 流程进度是另外的投影，由调用方组合。
- *
- * 类型边界：
- * - 生命周期状态是有穷联合，写入路径只接受已建模的转换；
- * - 磁盘快照从 `unknown` 逐字段校验；身份、状态、时间戳与序号不合法时 fail-closed，
- *   不删除文件、不绕开准入；
- * - 存储版本保持 `version: 1`，本模块不迁移旧格式。
- */
-
 import { createHash, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { agentError } from '../utils/apiHelper.ts';
@@ -150,7 +136,6 @@ export interface AgentRunStoreOverrides {
 
 export interface BeginAgentRunParams {
   operationId: string;
-  /** 调用方可能传入任意请求头值；由 normalizeIdempotencyKey 按既有规则收窄或拒绝。 */
   idempotencyKey?: unknown;
   input?: unknown;
   metadata?: unknown;
@@ -217,7 +202,6 @@ function errorCodeOf(error: unknown): unknown {
   return isRecord(error) ? error.code : undefined;
 }
 
-/** 存储内容损坏的结构化错误：跨读取、准入与关闭路径都保持不可重试。 */
 function isAgentRunStoreInvalidError(value: unknown): value is AgentError {
   return isRecord(value)
     && value.code === 'AGENT_RUN_STORE_INVALID'
@@ -458,7 +442,6 @@ function toAgentRunDto(run: AgentRunRecord | null | undefined): AgentRunDto | nu
   return cloneJson(dto);
 }
 
-/** 读取已持久化的可选字符串字段；非字符串按缺失处理，不把任意外部值透传到公开 DTO。 */
 function stringField(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
@@ -597,7 +580,6 @@ function transition(
   return toAgentRunDto(record.run);
 }
 
-/** 持久化错误对象只保证公开字段；缺省或类型不符时回退到稳定的默认值。 */
 function normalizeErrorFields(value: unknown): AgentRunError {
   const record = isRecord(value) ? value : {};
   return {
@@ -654,10 +636,6 @@ function finiteTimestamp(value: unknown, fallback: unknown, field: string, index
   return normalized;
 }
 
-/**
- * 从 unknown 恢复一条磁盘记录。身份、状态、时间戳与序号决定准入是否关闭；
- * 其余字段按类型边界归一化，已由本模块写出的记录不受影响。
- */
 function restoreRecord(item: unknown, index: number): AgentRunStoreRecord {
   if (!isRecord(item) || !item.run || typeof item.run !== 'object') {
     throw storeValidationError('Agent run 存储记录格式无效', { index });
@@ -1097,7 +1075,6 @@ const PENDING_RUN_PRIORITY: Record<'accepted' | 'waiting', number> = {
   waiting: 1
 };
 
-/** 活动 run 排序：设备持有者优先（按开始时间取最新），其余 accepted 优先于 waiting。 */
 function compareActiveRuns(left: AgentRunStoreRecord, right: AgentRunStoreRecord): number {
   const leftOwning = isDeviceOwningAgentRunStatus(left.run.status);
   const rightOwning = isDeviceOwningAgentRunStatus(right.run.status);
