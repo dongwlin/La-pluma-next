@@ -17,7 +17,7 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 页面壳、页头与全局状态指示 | `pages/statistics/DataStatistics.tsx` | 只渲染 `app-page`/`app-stack-section`、`PageHeader` 与工作区 |
-| 当前 tab、命令投影与失效订阅 | `features/statistics/components/StatisticsWorkspace.tsx` | 跨面板唯一容器；tab 不写入存储或 URL |
+| 当前 tab、命令投影与失效订阅 | `features/statistics/components/StatisticsWorkspace.tsx` | 跨面板唯一容器；tab 由 URL 查询串 `?tab=` 承载 |
 | tab 分段控件的测量与键盘导航 | `features/statistics/components/StatisticsTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 干员读取、筛选/排序、筛选菜单、头像缓存 | `features/statistics/components/OperatorPanel.tsx` | 读取 `operbox` 与 `catalog` 两路 Query |
 | 仓库读取、失败图标与分类展示 | `features/statistics/components/DepotPanel.tsx` | 汇总结果由纯模型派生 |
@@ -32,7 +32,7 @@
 维护约束：
 
 - 不改变四路读取的首屏时机、失效作用域与 Query key。
-- 不持久化 `activeTab`、筛选、排序或掉落统计周期；真正卸载/刷新后回到默认值。
+- `activeTab` 只由 URL 查询串承载，不写入配置、Query 或 localStorage；筛选、排序与掉落统计周期仍不持久化。
 - 不改变渲染结构、DOM/CSS 类名或默认态视觉。
 
 ### 2. 组合与状态边界
@@ -47,7 +47,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 ```
 
 - **三个面板随页面挂载而常驻**：非当前 tab 时面板在跑完 hooks 后返回 `null`，因此四路读取仍在页面首屏并行启动，与迁移前一致；tab 切换不会重建 Query 观察者，也不会丢失筛选、排序、打开菜单、掉落周期或图标缓存。面板的 `null` 渲染保证同一时刻只有当前 tab 的 DOM 存在，文本查询与像素结果不变。
-- **当前 tab** 是跨面板的局部交互状态，由工作区持有；它不进入配置、Query、localStorage 或 URL。`Activity` 隐藏/恢复保留；真正卸载或刷新后回到默认的 `operbox`。
+- **当前 tab** 由 URL 查询串 `?tab=` 决定，是跨页深链与浏览器前进/后退的唯一来源；缺失或未知值回落默认的 `operbox`，默认值不写入查询串。切换 tab 用 `replace` 更新当前历史项，不在历史里堆积同页 tab 记录；筛选等面板局部状态仍留在面板。总览掉落摘要使用 `statisticsTabRoute('drops')` 直达掉落记录。
 - **识别/材料命令**只有一份页面投影：`useStatisticsCommands()` 在工作区调用一次 `useStatisticsCommandState()`，把 `isRunning`、`activeTask`、`activeKind`、按钮文案与两个动作投影给干员/仓库面板。面板不创建第二份状态机；按钮的 loading/disabled 都从该投影派生，跨面板互斥仍由命令所有者的单飞保证。
 - **解析快照**由该 hook 写回 `gameDataKeys.resource('depot')` / `('operbox')`；跨域失效仍由命令所有者发布，工作区只订阅 `depot`/`operbox`/`catalog`/`drops` 四个作用域并按 key 失效。
 - **掉落视图** `DropRecords` 只接收 `dropStatistics`、`dropDays`、`setDropDays`、`onRefresh`、loading 与错误文案；周期状态与 Query 归 `DropPanel`。
@@ -83,16 +83,16 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 ### 5. Activity 与卸载
 
-- `Activity` 隐藏会清理页面与面板的 Effects（筛选菜单的 document/window 监听、Query 观察者、`useFluidTabIndicator` 的 ResizeObserver/resize 监听），但保留 React state：当前 tab、筛选、打开状态、掉落周期与图标缓存不变。恢复时 Query 按 `staleTime` 决定是否重取；筛选菜单若仍处于打开状态会重新附加监听并聚焦选中项。
+- `Activity` 隐藏会清理页面与面板的 Effects（筛选菜单的 document/window 监听、Query 观察者、`useFluidTabIndicator` 的 ResizeObserver/resize 监听），但保留 React state：筛选、打开状态、掉落周期与图标缓存不变；当前 tab 随 URL 保留。恢复时 Query 按 `staleTime` 决定是否重取；筛选菜单若仍处于打开状态会重新附加监听并聚焦选中项。
 - 命令所有者不随页面生命周期重建或中止：隐藏期间识别/材料命令继续完成，解析快照写入应用级 QueryClient；恢复后按失效 revision 补一次读取。页面不会因隐藏或重挂载重复提交设备命令。
-- 真正卸载/刷新会销毁 tab 与面板局部状态；Query 缓存（`game-data` 的 depot/operbox/catalog 与 `statistics` 的 drops）由应用级 QueryClient 持有，可在新鲜期内复用。
+- 真正卸载或刷新会销毁面板局部状态；当前 tab 从 URL 恢复，Query 缓存（`game-data` 的 depot/operbox/catalog 与 `statistics` 的 drops）由应用级 QueryClient 持有，可在新鲜期内复用。
 - 页面不使用业务 localStorage；执行控制器持久化的是 Run 身份，不属于本页。
 
 ### 6. 兼容与维护约束
 
 - 四路 Query key、失效作用域、`staleTime`/`gcTime`/重试策略未变；首屏仍同时启动四路读取。
 - 识别/材料命令的端点、幂等键、超时与失效发布未变；材料刷新仍不重读干员目录。
-- 保持渲染结构、DOM/CSS 类名、表单 `id` 与默认态视觉；筛选菜单、tab 导航和局部状态由下列回归测试覆盖。
+- 保持渲染结构、DOM/CSS 类名、表单 `id` 与默认态视觉；筛选菜单、tab 导航、URL 同步与局部状态由下列回归测试覆盖。
 
 ## 识别命令
 
@@ -196,6 +196,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 - 命令所有者是模块级单例且单飞：Activity 隐藏/重挂载不重建、不重复提交设备命令；继续路径只确认、等待或轮询（幂等回放与“继续解析”），不重新执行设备命令。
 - 解析轮询：`data: null`、失败信封与坏载荷视为“尚未可用”，超时前继续轮询；取消只结束本地等待。
 - 解析成功才写入 `game-data` 快照并发布失效；命令失败、Run 失败、解析失败与超时都不发布。
+- 当前 tab 跟随 URL：`?tab=drops` 直接打开掉落记录，未知取值回落默认 tab，选择默认 tab 时移除查询串。
 - 非当前 tab 面板仍启动首屏读取（`null` 渲染）；掉落周期切换进入 Query key，首次失败只展示错误，不伪造上个周期数据。
 
 ### 验证命令

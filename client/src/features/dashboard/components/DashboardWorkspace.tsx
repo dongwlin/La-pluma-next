@@ -14,6 +14,7 @@
 
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router'
+import { statisticsTabRoute } from '@/features/statistics'
 import { appTabRoute } from '@/shared/navigation'
 import { useDashboardDeviceStats } from '../hooks/useDashboardDeviceStats'
 import DashboardConnectionAlert from './DashboardConnectionAlert'
@@ -36,7 +37,7 @@ export default function DashboardWorkspace({ refreshDashboard }: DashboardWorksp
 
   const openAutomation = useCallback(() => navigate(appTabRoute('automation')), [navigate])
   const openTraining = useCallback(() => navigate(appTabRoute('training')), [navigate])
-  const openStatistics = useCallback(() => navigate(appTabRoute('statistics')), [navigate])
+  const openStatistics = useCallback(() => navigate(statisticsTabRoute('drops')), [navigate])
 
   return (
     <>

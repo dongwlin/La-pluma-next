@@ -17,7 +17,7 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 页面壳、首屏门禁、页头与全局状态指示 | `pages/dashboard/Dashboard.tsx` | 未加载时返回完整骨架；加载后组合工作区；只订阅 `hasLoaded` 并持有唯一的 `useDashboardSnapshotRefresh` |
-| 区域组合与导航回调 | `features/dashboard/components/DashboardWorkspace.tsx` | 组合连接提示、流程、设备与摘要区域；创建“打开自动化/养成/数据”三个回调 |
+| 区域组合与导航回调 | `features/dashboard/components/DashboardWorkspace.tsx` | 组合连接提示、流程、设备与摘要区域；创建“打开自动化/养成/数据（掉落记录）”三个回调 |
 | 设备采样投影 | `DashboardWorkspace` 内的 `DashboardDeviceSampleProjection` | 只调用一次 `useDashboardDeviceStats`，返回 `null`；样本更新不推动兄弟区域重渲染 |
 | 连接健康提示与重试 | `features/dashboard/components/DashboardConnectionAlert.tsx` | 离线/后端不可用时渲染；重试调用完整快照协调器 |
 | 流程区域（网格与预览入口） | `features/dashboard/components/DashboardFlowSection.tsx` | `useDashboardFlowLayout` 的网格测量与预览壳；预览入口始终挂载 |
@@ -65,7 +65,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - **执行只有一个订阅。** `DashboardFlowPanel` 通过 `useDashboardFlowActions` 调用一次 `useDashboardExecution`；连接提示、设备与摘要区域不订阅执行快照。
 - **摘要按卡片订阅。** 养成摘要更新只重渲染 `DashboardTrainingSummaryCard`，掉落摘要更新只重渲染 `DashboardDropSummaryCard`；摘要区域自身没有订阅。
 - **连接健康只影响使用它的区域。** `DashboardConnectionAlert` 与流程操作 hook 各自读取 `useDashboardServiceStatus`；后端状态或在线状态变化不会重渲染设备与摘要区域。
-- **导航回调只创建一份。** 工作区用同一 `navigate` 创建自动化/养成/数据回调，流程卡与摘要卡只接收函数，不直接依赖路由。
+- **导航回调只创建一份。** 工作区用同一 `navigate` 创建自动化/养成/数据回调，流程卡与摘要卡只接收函数，不直接依赖路由；掉落摘要的“数据”入口使用 `statisticsTabRoute('drops')`，直接落在数据页的掉落记录 tab。
 - 面板可调用所属领域 hook；流程展示与设备展示的规则留在纯模型，组件只负责渲染。
 
 订阅隔离（渲染边界的验收依据）：

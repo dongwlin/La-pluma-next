@@ -1,6 +1,7 @@
 /**
  * 数据统计域公开面
- * 公开面保持克制：页面工作区、被 Dashboard 消费的掉落/开放关卡读取，以及统计 query 定义。
+ * 公开面保持克制：页面工作区、被 Dashboard 消费的掉落/开放关卡读取、统计 query 定义
+ * 与数据页 tab 链接。
  * 仓库、持有干员与干员目录由 `features/game-data` 统一持有；识别/材料命令所有者
  * 与工作区/面板在域内相对导入，不对外暴露为跨域命令入口。
  */
@@ -8,6 +9,7 @@
 import './styles/statistics.css'
 
 export { default as StatisticsWorkspace } from './components/StatisticsWorkspace'
+export { statisticsTabRoute } from './model/tabNavigation'
 export {
   getOpenTodayStages,
   getTodayDrops,
