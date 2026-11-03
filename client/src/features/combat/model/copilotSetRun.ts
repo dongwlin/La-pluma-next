@@ -47,8 +47,13 @@ export interface CopilotSetRunProjection {
   itemStatuses: Map<number, CopilotSetItemStatus>
   /** 本次 Run 涉及的作业数量（突袭+普通只算一个作业）。 */
   itemCount: number
-  /** 本次 Run 涉及的执行条目数量（每个模式一条）。 */
+  /**
+   * 本次汇总列出的执行条目数（每个模式一条）：本次执行队列 ∪ 本次跳过，
+   * 与服务端 `summary.totalEntries` 及 `entries.length` 同源。
+   */
   totalCount: number
+  /** 本次执行队列的条目数；服务端未投影时为 null，不能回退成 `totalCount`。 */
+  queuedCount: number | null
   attemptedCount: number
   successCount: number
   failedCount: number
@@ -195,7 +200,8 @@ export function readCopilotSetRunProjection(run: AgentRun | null): CopilotSetRun
     entries,
     itemStatuses,
     itemCount,
-    totalCount: asCount(summary?.totalEntries) ?? asCount(progress?.totalSteps) ?? entries.length,
+    totalCount: asCount(summary?.totalEntries) ?? entries.length,
+    queuedCount: asCount(summary?.queuedEntries) ?? asCount(progress?.totalSteps),
     attemptedCount: asCount(summary?.attemptedCount) ?? attemptedCount,
     successCount: asCount(summary?.successCount) ?? asCount(progress?.successCount) ?? traceStatuses(entries, 'success'),
     failedCount: asCount(summary?.failedCount) ?? asCount(progress?.failedCount) ?? traceStatuses(entries, 'failed'),
@@ -214,12 +220,15 @@ export interface TerminalNotice {
 
 /**
  * 作业集终态通知。失败数来自 Run 汇总，不依赖页面保存的逐项结果。
+ *
+ * 成功比例只按本次执行队列计算：跳过的条目没有执行，已尝试数不超过队列，
+ * 二者都不能用汇总条目数（含跳过）作分母。
  */
 export function describeCopilotSetRunTerminal(
   run: AgentRun,
   projection: CopilotSetRunProjection,
 ): TerminalNotice {
-  const total = Math.max(projection.totalCount, projection.attemptedCount)
+  const total = Math.max(projection.queuedCount ?? projection.attemptedCount, projection.attemptedCount)
   const progress = `${projection.successCount}/${total} 成功`
   const failed = projection.failedCount ? `，${projection.failedCount} 项失败` : ''
   const skipped = projection.skippedCount ? `，跳过 ${projection.skippedCount} 项` : ''

@@ -72,12 +72,20 @@ export interface CopilotSetSummaryError {
   error?: string;
 }
 
-/** 一次集合执行的逐项汇总。 */
+/**
+ * 一次集合执行的逐项汇总。三个条目总数各自独立，不靠差额互相推导：
+ * - `plannedEntries` 是计划中的全部执行条目（含历史已完成）；
+ * - `queuedEntries` 是本次执行队列（计划未完成且被选中）的条目数；
+ * - `totalEntries` 是本汇总实际列出的条目数，恒等于 `taskResults.length`，
+ *   即本次执行队列加上本次跳过（计划中未选中且此前未完成）的条目。
+ */
 export interface CopilotSetSummary {
   setId: string;
   name: string;
   mode: CopilotSetMode;
   raid: unknown;
+  plannedEntries: number;
+  queuedEntries: number;
   totalEntries: number;
   attemptedCount: number;
   alreadyCompletedCount: number;
@@ -439,7 +447,9 @@ function buildSummary(session: CopilotSetSession): CopilotSetSummary {
     name: session.name,
     mode: session.mode,
     raid: session.raid,
-    totalEntries: attempted.length,
+    plannedEntries: session.plan.entries.length,
+    queuedEntries: attempted.length,
+    totalEntries: taskResults.length,
     attemptedCount: attempted.length - count('pending'),
     alreadyCompletedCount: session.alreadyCompletedCount,
     successCount: count('success'),

@@ -33,6 +33,7 @@ function setProjection(overrides: Partial<CopilotSetRunProjection> = {}): Copilo
     itemStatuses: new Map(),
     itemCount: 0,
     totalCount: 0,
+    queuedCount: 0,
     attemptedCount: 0,
     successCount: 0,
     failedCount: 0,

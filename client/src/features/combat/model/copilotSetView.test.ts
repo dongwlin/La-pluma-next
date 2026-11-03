@@ -51,6 +51,7 @@ const projection = (
   itemStatuses: new Map(),
   itemCount: 3,
   totalCount: 3,
+  queuedCount: 3,
   attemptedCount: 0,
   successCount: 0,
   failedCount: 0,

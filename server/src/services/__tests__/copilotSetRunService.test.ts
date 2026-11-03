@@ -646,7 +646,10 @@ describe('copilot set runs', () => {
 
     const startedOutcome = await started;
     assert.equal(startedOutcome.finished, true);
-    assert.equal(startedOutcome.result.summary.totalEntries, 1);
+    // 汇总条目覆盖本次队列与本次跳过；本次尝试数与计划总数各自独立表达。
+    assert.equal(startedOutcome.result.summary.plannedEntries, 3);
+    assert.equal(startedOutcome.result.summary.queuedEntries, 1);
+    assert.equal(startedOutcome.result.summary.totalEntries, 3);
     assert.equal(startedOutcome.result.summary.skippedCount, 2);
     assert.deepEqual(storedResult(run.runId).summary.taskResults.map(item => [item.key, item.status]), [
       [plan.entries[1].key, 'success'],
@@ -674,7 +677,10 @@ describe('copilot set runs', () => {
     assert.deepEqual(executor.executed, [plan.entries[2].key]);
     assert.equal(result.summary.alreadyCompletedCount, 1);
     assert.equal(result.summary.skippedCount, 1);
-    assert.equal(result.summary.totalEntries, 1);
+    assert.equal(result.summary.plannedEntries, 3);
+    assert.equal(result.summary.queuedEntries, 1);
+    assert.equal(result.summary.totalEntries, 2);
+    assert.equal(result.summary.totalEntries, result.summary.taskResults.length);
     assert.deepEqual(result.summary.taskResults.map(item => [item.key, item.status]), [
       [plan.entries[2].key, 'success'],
       [plan.entries[1].key, 'skipped']
