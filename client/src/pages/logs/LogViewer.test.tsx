@@ -89,7 +89,6 @@ const findButton = (label: string) => Array.from(container.querySelectorAll<HTML
 const findAction = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.getAttribute('aria-label') === label)
 
-/** 历史文件行按可见文件名定位，不依赖列表行的包裹类名。 */
 const findHistoryRow = (file: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.textContent?.includes(file))
 
@@ -616,7 +615,6 @@ describe('LogViewer recovery and controls', () => {
     mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: records })
 
     await renderComponent()
-    // 重复行折叠后页面只展示两条日志；计数与折叠标记都来自可见内容。
     expect(container.textContent).toContain('2 条')
     expect(container.querySelector('[role="log"]')?.textContent).toContain('x2')
 

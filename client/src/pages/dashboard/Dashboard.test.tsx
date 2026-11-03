@@ -37,8 +37,6 @@ const apiMocks = vi.hoisted(() => ({
   controllerRef: { current: null as ExecutionController | null },
 }))
 
-// 在端点边界 mock：页面与快照协调器使用真实的领域 query 定义（key、signal、
-// 信封归一与取消），只替换网络读取与执行入口。
 vi.mock('@/features/automation/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/automation/api')>()
   return {
@@ -55,8 +53,6 @@ vi.mock('@/features/device-mirror/api', async (importOriginal) => {
   return { ...actual, getDeviceStats: apiMocks.getDeviceStats }
 })
 
-// 真实 ExecutionController + 假 API：Dashboard 的执行接线按应用级控制器行为回归，
-// 网络请求、身份存储与轮询节奏由测试控制，每个用例拿到独立控制器。
 vi.mock('@/features/task-execution', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/task-execution')>()
   const createController = () => {
@@ -419,7 +415,6 @@ describe('Dashboard connectivity state', () => {
       expect(apiMocks.getTrainingQueue).toHaveBeenCalledTimes(1)
       expect(apiMocks.getTodayDrops).toHaveBeenCalledTimes(1)
       expect(apiMocks.getOpenTodayStages).toHaveBeenCalledTimes(1)
-      // 单路失败不提交半份快照，旧快照与时间戳保持不变。
       expect(useDashboardStore.getState().lastUpdate).toBe(lastSuccessfulUpdate)
     },
   )
@@ -646,7 +641,6 @@ describe('Dashboard connectivity state', () => {
     expect(flow?.getAttribute('aria-busy')).toBe('true')
     expect(status.message).toContain('当前活动')
     expect(status.messageType).toBe('info')
-    // 预检 loading/反馈是流程卡局部状态，不触发完整快照读取或提交。
     expect(apiMocks.getActivity).not.toHaveBeenCalled()
     expect(apiMocks.getScheduleExecutionStatus).not.toHaveBeenCalled()
     expect(apiMocks.getTrainingQueue).not.toHaveBeenCalled()
@@ -666,7 +660,6 @@ describe('Dashboard connectivity state', () => {
     }))
     await flushDashboard()
 
-    // 未实际执行时也不需要刷新，旧快照与时间戳继续有效。
     expect(apiMocks.getActivity).not.toHaveBeenCalled()
     expect(useDashboardStore.getState().lastUpdate).toBe(snapshotBefore.lastUpdate)
     expect(useDashboardStore.getState().activitySummary).toEqual(snapshotBefore.activitySummary)
@@ -743,7 +736,6 @@ describe('Dashboard connectivity state', () => {
     expect(container.querySelector('[data-dashboard-flow-feedback]')?.textContent).toBe('今日流程已开始执行')
     expect(findButton('正在运行')?.disabled).toBe(true)
     expect(controller().getState().trackedScope).toBe('dashboard')
-    // 启动成功后的刷新仍经完整快照协调器读取五路，不另建页面请求路径。
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
     expect(apiMocks.getScheduleExecutionStatus).toHaveBeenCalledTimes(1)
     expect(apiMocks.getTrainingQueue).toHaveBeenCalledTimes(1)
@@ -830,7 +822,6 @@ describe('Dashboard connectivity state', () => {
     expect(container.textContent).toContain('任务执行中')
     expect(findButton('正在运行')?.disabled).toBe(true)
 
-    // 该 run 结束但不属于本页：不产生“今日流程”终态提示，只回到空闲。
     apiMocks.executionApi.fetchSnapshot.mockResolvedValue(ok(buildSnapshot()))
     await act(async () => controller().refresh())
     await flushDashboard()

@@ -3,9 +3,6 @@
 // 的 globPatterns，产物里的 chunk 不会进入 sw.js 的 precache 清单，离线时
 // 对应资源加载失败、页面白屏。这里直接核对构建产物，而不是比对配置里的
 // chunk 名字符串——改个名不会误报，真正漏掉一个 chunk 才失败。
-//
-// 判定方式：dist/assets/*.js 的每个文件名都必须出现在 dist/sw.js 的
-// precacheAndRoute 清单里（workbox 生成 {url:"assets/index-xxxx.js",revision:...}）。
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

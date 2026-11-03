@@ -1,10 +1,3 @@
-/**
- * 肉鸽任务页
- *
- * 页面只组合页头、工作区与预览；配置草稿、执行订阅、模式与字段状态分别由
- * 工作区容器和领域所有者持有。
- */
-
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { RoguelikeWorkspace } from '@/features/roguelike'

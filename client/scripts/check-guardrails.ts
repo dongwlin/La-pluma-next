@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-// 依赖与职责护栏 CLI。
-//
-// 阻断项：
-// - 功能域依赖环、深路径/公开面绕过、shared/feature 反向分层依赖；
-// - task-execution 反向依赖其他功能域；
-// - 页面文件直接持有传输、存储或轮询原语。
-//
-// 辅助项：
-// - 输出 hooks/model/components/pages 的规模观察；
-// - 用 size-budget.json 冻结「超阈值大文件集合」，并检查同域页面缩减是否被
-//   搬进 hooks/model/components（缩减 ≥40 行且增长 ≥80%）。阈值依据冻结基线的分类分布，见
-//   docs/development/guardrails.md；正常的小幅增长不需要更新基线，确实需要新增一个大文件
-//   或有意的结构调整时运行：
-//   pnpm --filter la-pluma-next-client guardrails:size-baseline
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

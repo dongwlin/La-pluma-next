@@ -1,8 +1,5 @@
 import type { ReactNode } from 'react'
 
-/**
- * 页面标题组件 Props
- */
 interface PageHeaderProps {
   icon?: ReactNode
   title: string
@@ -11,10 +8,6 @@ interface PageHeaderProps {
   mobileLayout?: 'stack' | 'inline'
 }
 
-/**
- * 页面标题组件
- * 统一的页面标题样式，包含图标、标题、副标题
- */
 export default function PageHeader({
   icon,
   title,

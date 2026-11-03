@@ -1,15 +1,3 @@
-/**
- * 只读资源请求底座
- *
- * 负责三件事：
- * 1. 把调用方的 `AbortSignal` 完整传到 `fetchWithAuth`，取消时保持 `AbortError`；
- * 2. 校验统一响应信封与领域载荷，`success=false`、坏 JSON、非信封和非预期载荷
- *    都成为明确失败，而不是被当成成功数据；
- * 3. 把失败归类为 `api` / `contract` / `transport`，供调用方或 Query 统一处理。
- *
- * 本模块不包含任何业务端点；端点函数在各自 `features/<domain>/api/` 中调用它。
- */
-
 import { isAbortError } from './abort'
 import { parseJsonResponse } from './apiResponse'
 import { fetchWithAuth } from './client'
@@ -27,9 +15,7 @@ export interface ApiRequestErrorOptions {
   details?: unknown
 }
 
-/**
- * 只读请求的类型化失败。取消读取不会抛出本错误，而是保留 `AbortError`。
- */
+/** 只读请求的类型化失败；取消读取保持抛出 `AbortError`，不会成为本错误。 */
 export class ApiRequestError extends Error {
   readonly kind: ApiFailureKind
   readonly code: string
@@ -65,9 +51,7 @@ const createTransportError = (error: unknown): ApiRequestError =>
   })
 
 export interface ApiReadOptions extends Omit<RequestInit, 'signal'> {
-  /** 调用方取消读取；取消不产生 `ApiResponse` 失败。 */
   signal?: AbortSignal
-  /** 领域载荷校验；返回 false 时成为 `INVALID_DOMAIN_PAYLOAD`。 */
   validate?: (payload: unknown) => boolean
   invalidPayloadMessage?: string
 }
@@ -85,8 +69,8 @@ const resolveFailureMessage = (parsed: ApiResponse | undefined, status: number):
 }
 
 /**
- * 读取一个 Agent API 资源，成功返回领域数据，失败抛出 `ApiRequestError`。
- * 这是 Query 等新消费者的入口；取消（`AbortError`）不会被包装。
+ * 读取一个 Agent API 资源：成功返回领域数据，失败抛出 `ApiRequestError`；
+ * 取消（`AbortError`）不会被包装。
  */
 export async function readApiData<T = unknown>(
   input: RequestInfo | URL,
@@ -212,9 +196,6 @@ export async function readApiResponse<T = unknown>(
   }
 }
 
-/**
- * 把 `ApiResponse` 失败还原成类型化错误，供后续 Query 迁移直接消费。
- */
 export function unwrapApiResponse<T>(result: ApiResponse<T>): T {
   if (result.success) return result.data as T
 

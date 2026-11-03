@@ -7,9 +7,8 @@ import {
 } from './harness'
 
 /**
- * 启动壳视觉基线：abort 入口模块（assets/index-*.js），让 React 不执行，
- * 页面停在 index.html 的内联启动壳上。safe-area、dvh 与 standalone 的
- * viewport 变量只有在真实浏览器里才生效，这里按视口截图验收。
+ * 启动壳基线：abort 入口模块（assets/index-*.js）让 React 不执行，页面停在 index.html 的内联启动壳上。
+ * safe-area、dvh 与 standalone 的 viewport 变量只有在真实浏览器里才生效。
  */
 for (const theme of THEMES) {
   test(`boot-shell ${theme}`, async ({ page }) => {

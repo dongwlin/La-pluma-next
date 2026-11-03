@@ -1,15 +1,6 @@
-/**
- * 视觉基线 fixture：页面级拦截 /api 请求返回固定数据，让 UI 状态
- * 不依赖真实后端、不依赖 MAA 是否在跑、不依赖当天日期。
- *
- * 数据形状与 server/src/routes/agent.ts 的响应契约一致（以 client 端
- * 各 feature api 的消费方式为准），内容取"有数据的合理日常状态"。
- */
-
 /** 固定"现在"：2026-10-24 04:00:00 (UTC+8)，即明日方舟每日重置时刻。 */
 export const FIXED_NOW = new Date('2026-10-24T04:00:00+08:00')
 
-/** 统一的成功响应包装。 */
 export const ok = (data: unknown) => ({ success: true, data })
 
 export interface ApiFixture {
@@ -20,7 +11,6 @@ export interface ApiFixture {
 }
 
 export const apiFixtures: ApiFixture[] = [
-  // ===== 全局：后端探针 / 状态指示器 / 侧栏身份 =====
   { path: '/agent/tasks/status', payload: ok({ isRunning: false }) },
   {
     path: '/agent/runs/current',
@@ -95,7 +85,6 @@ export const apiFixtures: ApiFixture[] = [
   },
   { path: '/agent/webrtc/status', payload: ok({ installed: true, built: true, serverRunning: false, agentRunning: false }) },
 
-  // ===== 概览 =====
   {
     path: '/agent/drops/today',
     payload: ok([
@@ -134,7 +123,6 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
 
-  // ===== 用户配置（用户任务配置读写端点组） =====
   {
     path: '/agent/config/user/automation-tasks',
     payload: ok({
@@ -205,7 +193,6 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
 
-  // ===== 养成 =====
   {
     path: '/agent/training/queue',
     payload: ok({
@@ -256,7 +243,7 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
   {
-    // 注意：此端点的 data 是裸数组（DataStatistics 直接 Array.isArray 消费），
+    // 此端点的 data 是裸数组（DataStatistics 直接 Array.isArray 消费），
     // 训练页的 extractOperatorRows 两种形状都兼容。
     path: '/agent/data/operators',
     payload: ok([
@@ -269,7 +256,6 @@ export const apiFixtures: ApiFixture[] = [
     ]),
   },
 
-  // ===== 数据 =====
   {
     path: '/agent/data/operbox',
     payload: ok({
@@ -324,7 +310,6 @@ export const apiFixtures: ApiFixture[] = [
     }),
   },
 
-  // ===== 日志 =====
   {
     path: '/agent/logs/recent',
     payload: ok([
@@ -354,7 +339,6 @@ export const apiFixtures: ApiFixture[] = [
     payload: ok({ content: '[2026-10-24 04:00:21.000][INFO][yx] 任务执行完成，累计用时 12 分 38 秒' }),
   },
 
-  // ===== 配置管理 =====
   {
     path: '/agent/version',
     payload: ok({

@@ -36,7 +36,6 @@ const mocks = vi.hoisted(() => ({
   setMessage: vi.fn(),
 }))
 
-/** 作业集列表的渲染次数：用来验证搜索/识别方式输入不推动列表重渲染。 */
 const renderCounts = vi.hoisted(() => ({ setPanel: 0 }))
 
 vi.mock('framer-motion', async () => {
@@ -178,7 +177,6 @@ function runSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
 
 type ItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'stopped'
 
-/** 服务端作业集逐项结果的一条；同一作业在突袭/普通模式下会有多条。 */
 function planEntry(
   itemIndex: number,
   status: ItemStatus,
@@ -1137,7 +1135,6 @@ describe('CombatTasks execution', () => {
     expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
     expect(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')?.value).toBe('both')
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
-    // 服务端不可用时会采用并回写规范化后的本地草稿。
     expect(localStorage.getItem('combatCopilotSetExecutionMode')).toBe('cli')
     expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
       copilot: { raid: 'both' },
@@ -1167,7 +1164,6 @@ describe('CombatTasks execution', () => {
     expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
 
-    // 保存的待执行索引参与作业集回填：两项里只保留第二项。
     await previewSet('prts://s48990')
     expect(container.textContent).toContain('待 1')
     expect(container.textContent).toContain('共 2 个作业')
@@ -1207,7 +1203,6 @@ describe('CombatTasks execution', () => {
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接中断')
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
-    // 自动保存成功不弹成功提示；只有用户主动重试确认后才提示。
     expect(mocks.setMessage).not.toHaveBeenCalledWith('自动战斗配置已同步', 'success')
 
     const retrySave = deferred<{ success: boolean }>()
@@ -1498,14 +1493,11 @@ describe('CombatTasks execution', () => {
     renderCounts.setPanel = 0
     const stageInput = container.querySelector<HTMLInputElement>('input[name="maa-copilot-stage-search"]')!
     await setInputValue(stageInput, '1-7')
-    // 搜索词存在面板会话存储里：输入不推动作业集列表重渲染。
     expect(renderCounts.setPanel).toBe(0)
 
     await click(buttonByText('单个作业')!)
-    // 识别方式是预览的局部选择，同样不推动列表。
     expect(renderCounts.setPanel).toBe(0)
 
-    // 选择属于作业集列表自己的状态，仍应推动列表更新。
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="取消选择第 1 个作业"]')!)
     expect(renderCounts.setPanel).toBeGreaterThan(0)
   })
@@ -1620,7 +1612,6 @@ describe('CombatTasks execution', () => {
     expect(setRowText(1)).toContain('待重试')
     expect(setRowText(2)).toContain('待执行')
     expect(container.textContent).toContain('待 2')
-    // 计划状态的汇总只在续跑进度展示，本次执行面板不重复计数。
     expect(container.textContent).toContain('已通关 1')
     expect(container.textContent).toContain('失败 1')
     expect(container.textContent).toContain('本次已执行 2 个')

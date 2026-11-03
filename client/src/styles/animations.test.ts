@@ -58,7 +58,6 @@ function splitTopLevel(value: string): string[] {
   return parts
 }
 
-/** 从 animation/animation-name 的值里取出动画名（跳过时间、关键字与函数）。 */
 export function animationNames(value: string): string[] {
   return splitTopLevel(value.replace(/!\s*important/gi, '')).flatMap(part => {
     const name = part.trim().split(/\s+/).find(token => (

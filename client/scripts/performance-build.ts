@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Build an exported, immutable git source with a shared test-only profiling overlay. */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'

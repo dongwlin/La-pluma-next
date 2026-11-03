@@ -178,7 +178,6 @@ function mobileMoreTrigger() {
   return container.querySelector<HTMLButtonElement>('button[aria-label="更多页面"]')!
 }
 
-/** 侧边栏身份区以「干员：台词」作为无障碍名称，不依赖包裹类名。 */
 function sidebarIdentity() {
   return container.querySelector<HTMLElement>('aside [aria-label*="："]')!
 }
@@ -337,7 +336,6 @@ describe('top-level application navigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
-    // 页面内 navigate()（如概览快捷入口）也应在提交前保存旧页滚动位置。
     expect(getScrollHost().scrollTop).toBe(420)
   })
 
@@ -354,7 +352,6 @@ describe('top-level application navigation', () => {
     })
     expect(activeTabLabel()).toBe('dashboard')
 
-    // 导航还卡在 deferred 上，用户继续把概览滚到 800。
     currentScrollY = 800
     await act(async () => {
       getScrollHost().dispatchEvent(new Event('scroll'))
@@ -374,7 +371,6 @@ describe('top-level application navigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
-    // 恢复的必须是最新滚动位置，而不是点击瞬间的快照。
     expect(getScrollHost().scrollTop).toBe(800)
   })
 

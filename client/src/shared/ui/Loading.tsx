@@ -3,17 +3,11 @@ import ActivityIndicator from './ActivityIndicator'
 import { Card } from './Card'
 import SmoothPanel from './SmoothPanel'
 
-/**
- * 加载动画组件 Props
- */
 interface LoadingProps {
   size?: 'sm' | 'md' | 'lg'
   text?: string
 }
 
-/**
- * 加载动画组件
- */
 export default function Loading({
   size = 'md',
   text,
@@ -37,18 +31,12 @@ export default function Loading({
   )
 }
 
-/**
- * 骨架屏组件 Props
- */
 interface SkeletonProps {
   className?: string
   variant?: 'text' | 'title' | 'circle' | 'rect'
   style?: CSSProperties
 }
 
-/**
- * 骨架屏组件
- */
 export function Skeleton({ className = '', variant = 'text', style }: SkeletonProps) {
   const variantStyles: Record<string, string> = {
     text: 'h-4 rounded-sm',

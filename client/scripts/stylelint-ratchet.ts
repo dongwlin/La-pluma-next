@@ -1,11 +1,7 @@
 #!/usr/bin/env node
-// stylelint ratchet（预算制）：冻结存量违规数为基线，只拦净新增。
-//
-// - 基线文件 client/stylelint-baseline.json 按文件粒度记录（文件 -> 规则 -> 违规数），
-//   文件移动/改名时比单一总数更稳（Phase 1 计划把 index.css/ios-theme.css 迁入 src/styles/）。
-// - 存量违规在 .stylelintrc.json 里是 warning，不阻塞本地开发；本脚本负责拦净新增。
-// - 当前违规数 <= 基线则通过；超出则失败并指出哪个文件新增了什么。
-// - 基线需要更新（有意重构/迁移后）时：node scripts/stylelint-ratchet.ts --update-baseline
+// 基线文件 client/stylelint-baseline.json 按文件粒度记录（文件 -> 规则 -> 违规数），
+// 文件移动/改名时比单一总数更稳。存量违规在 .stylelintrc.json 里是 warning，
+// 不阻塞本地开发；本脚本冻结基线，只拦净新增。
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -40,7 +36,6 @@ const { results } = await stylelint.lint({
   formatter: 'json',
 })
 
-// 按文件粒度聚合：相对路径 -> { 规则名 -> 数量 }
 const current = new Map<string, FileViolations>()
 let total = 0
 for (const file of results) {
@@ -83,7 +78,6 @@ const baselineFiles = baseline.files ?? {}
 let failed = false
 const notes: string[] = []
 
-// 1) 新文件出现违规（基线里没有这个文件）。
 for (const [file, { byRule, warnings }] of current) {
   const base = baselineFiles[file]
   if (!base) {
@@ -102,7 +96,6 @@ for (const [file, { byRule, warnings }] of current) {
   }
 }
 
-// 2) 基线里存在、但当前已不存在的文件（迁移/删除后基线过期，提示更新但不阻塞）。
 for (const file of Object.keys(baselineFiles)) {
   if (!current.has(file)) {
     notes.push(`提示：基线中的 ${file} 已不在 ${GLOB} 范围内，可用 --update-baseline 清理基线。`)

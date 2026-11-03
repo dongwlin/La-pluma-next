@@ -1,9 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import ActivityIndicator from './ActivityIndicator'
 
-/**
- * 按钮组件 Props
- */
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'onClick' | 'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'> {
   children?: ReactNode
   variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'ghost' | 'outline'
@@ -18,9 +15,6 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'typ
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
 }
 
-/**
- * 图标按钮组件 Props
- */
 interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'onClick' | 'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'> {
   icon: ReactNode
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
@@ -30,10 +24,6 @@ interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
 }
 
-/**
- * 按钮组件
- * 统一的按钮样式，支持多种变体和状态
- */
 export default function Button({
   children,
   variant = 'primary',
@@ -110,10 +100,6 @@ export default function Button({
   )
 }
 
-/**
- * 图标按钮组件
- * 只显示图标的按钮
- */
 export function IconButton({
   icon,
   variant = 'ghost',

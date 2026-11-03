@@ -1,18 +1,9 @@
-/**
- * API 传输层底座
- * 同源地址探测、鉴权头合并与响应解析；不承载任何业务端点。
- */
-
 import { isAbortError } from './abort'
 import type { ApiResponse } from './types/api'
 
 export { parseJsonResponse } from './apiResponse'
 
-/**
- * 自动检测 API 地址
- * 始终使用当前页面同源地址。
- * 开发环境由 Vite proxy 转发 /api，生产环境由 Express 同源服务前端和 API。
- */
+/** 始终使用当前页面同源地址：开发由 Vite proxy 转发 /api，生产由 Express 同源服务前端和 API。 */
 const getApiBaseUrl = (): string => {
   return `${window.location.origin}/api`
 }
@@ -32,9 +23,8 @@ const normalizeToken = (value: string | null | undefined): string => {
 }
 
 /**
- * 模块级 token 缓存。`localStorage.getItem` 是同步阻塞调用，不能在每个请求上
- * 重复执行；登录/登出/显式设置 token 的入口必须调用 `setAuthToken`。
- * `null` 表示尚未从存储初始化。
+ * 模块级 token 缓存：`localStorage.getItem` 是同步阻塞调用，不能在每个请求上重复执行；
+ * 登录/登出/显式设置 token 的入口必须调用 `setAuthToken`。`null` 表示尚未从存储初始化。
  */
 let cachedToken: string | null = null
 
@@ -100,9 +90,6 @@ export const fetchWithAuth = async (input: RequestInfo | URL, init: RequestInit 
   }
 }
 
-/**
- * 从 API 响应信封中提取可读错误信息
- */
 export function getErrorMessage(result?: Partial<ApiResponse> | null): string {
   return result?.message || result?.errorInfo?.message || result?.error || '未知错误'
 }

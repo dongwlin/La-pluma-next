@@ -695,7 +695,6 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.textContent).toContain('当前资源来源保持不变')
     expect(container.querySelector('select')).toBeNull()
     expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.trim() === '保存')).toBe(false)
-    // 目录卡片与只读头部共享同一 Query，首屏只读取一次。
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
     const instanceButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('实例'))

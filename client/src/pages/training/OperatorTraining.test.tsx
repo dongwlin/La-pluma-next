@@ -526,7 +526,6 @@ describe('OperatorTraining queue workspace', () => {
     await flush()
 
     expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
-    // 目录失效后只重读共享目录；持有干员仍在新鲜期内，不从缓存外重复下载。
     expect(mocks.getOperBoxData).not.toHaveBeenCalled()
     expect(mocks.getOperatorList).toHaveBeenCalledTimes(3)
     expect(mocks.getTrainingQueue).not.toHaveBeenCalled()
@@ -1303,7 +1302,6 @@ describe('OperatorTraining queue workspace', () => {
           source: 'training-plan-owner',
         },
       })
-      // 旧 window 事件不再是跨页一致性的唯一机制。
       expect(onPlanApplied).not.toHaveBeenCalled()
     } finally {
       unsubscribe()
@@ -1579,7 +1577,6 @@ describe('OperatorTraining queue workspace', () => {
 
     await click(buttonWithText('重新加载', container))
 
-    // 显式重新加载会作废旧预览；恢复后必须重新预览才能应用。
     expect(buttonWithText('预览刷图计划', container).disabled).toBe(false)
     expect(Array.from(container.querySelectorAll('button'))
       .some(button => button.textContent?.trim() === '应用到自动任务')).toBe(false)
@@ -1770,7 +1767,6 @@ describe('OperatorTraining queue workspace', () => {
     expect(planSection!.textContent).toContain('定时任务刷新失败')
     expect(planSection!.textContent).toContain('定时任务设置失败')
 
-    // 计划仍保留且可直接重试应用；成功后清除定时失败提示。
     const retryApply = buttonWithText('应用到日常刷图', planSection!)
     expect(retryApply.disabled).toBe(false)
     await click(retryApply)

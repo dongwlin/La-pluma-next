@@ -304,7 +304,6 @@ export default function Layout({ activeTab, children }: LayoutProps) {
     }
   }, [])
 
-  // activeTab 提交后恢复目标 tab 的滚动位置；只在切换（含首次挂载）时执行一次。
   useLayoutEffect(() => {
     activeTabRef.current = activeTab
     restoreScroll(activeTab)

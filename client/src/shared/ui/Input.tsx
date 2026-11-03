@@ -1,9 +1,6 @@
 import { useId, type InputHTMLAttributes, type SelectHTMLAttributes, type ReactNode, type ChangeEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
 
-/**
- * 输入框组件 Props
- */
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   label?: string
   placeholder?: string
@@ -17,9 +14,6 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChan
   className?: string
 }
 
-/**
- * 选择框组件 Props
- */
 interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> {
   label?: string
   value: string | number
@@ -31,9 +25,6 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onC
   className?: string
 }
 
-/**
- * 复选框组件 Props
- */
 interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
   label?: string
   checked: boolean
@@ -42,10 +33,6 @@ interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onC
   className?: string
 }
 
-/**
- * 输入框组件
- * 统一的输入框样式
- */
 export default function Input({
   id,
   label,
@@ -119,9 +106,6 @@ export default function Input({
   )
 }
 
-/**
- * 选择框组件
- */
 export function Select({
   id,
   label,
@@ -196,9 +180,6 @@ export function Select({
   )
 }
 
-/**
- * 复选框组件
- */
 export function Checkbox({
   label,
   checked,

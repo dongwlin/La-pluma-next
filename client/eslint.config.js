@@ -72,10 +72,8 @@ export default defineConfig([
       'tailwindcss/enforces-canonical-classname': 'error',
     },
   },
-  // 分层护栏：app → pages → features → shared 只能单向依赖。
   // flat config 中同一规则后置块会整体覆盖前置块，因此每个块都写全该目录需要的 patterns。
   {
-    // 任何 src 文件都只能经 feature 的 index.ts 根 import，禁止 `@/features/<x>/...` 深路径。
     files: ['src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -87,7 +85,6 @@ export default defineConfig([
     },
   },
   {
-    // features/shared 不得反向依赖 app 或 pages 层。
     files: ['src/features/**/*.{ts,tsx}', 'src/shared/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -109,8 +106,7 @@ export default defineConfig([
     },
   },
   {
-    // shared 不感知任何功能域。`^@/features(?:/.*)?$` 同时覆盖根 import 与深路径，
-    // 因此这里不再重复列深路径 pattern，避免同一处 import 报两条错误。
+    // `^@/features(?:/.*)?$` 已同时覆盖根 import 与深路径，重复列深路径 pattern 会让同一处 import 报两条错误。
     files: ['src/shared/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -132,8 +128,6 @@ export default defineConfig([
     },
   },
   {
-    // pages 只向下组合：可以经功能域根入口与 shared，不得反向依赖 app；
-    // 页面内部不得跨域深路径，也不得深路径访问自身域内部。
     files: ['src/pages/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {

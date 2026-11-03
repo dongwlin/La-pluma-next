@@ -1,11 +1,3 @@
-/**
- * 控制台总览页
- *
- * 页面只负责首屏门禁与页头：未加载时展示完整骨架；加载后组合总览工作区，
- * 并持有唯一的完整快照刷新调度。连接提示、今日流程、设备状态与摘要分别
- * 由工作区和区域面板持有，页面不调用执行/采样 hook、不导航、不读写存储。
- */
-
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { DashboardSkeleton } from '@/features/dashboard'

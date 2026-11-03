@@ -1,11 +1,6 @@
 /**
- * 启动主题的单一真源。
- *
- * `createBootScript()` 负责在 Vite 构建期生成注入 index.html 的首帧脚本，
- * 运行时 store 直接复用 `applyTheme()`，两者共享同一组颜色与存储约定，
- * 避免首帧与 React 接管后出现两套实现漂移。
- *
- * 模块顶层不访问 document/window，构建期（Node）可安全导入。
+ * 启动主题的单一真源：构建期注入的首帧脚本与运行时 store 共用同一组颜色与存储约定，
+ * 避免两套实现漂移；模块顶层不访问 document/window，构建期（Node）可安全导入。
  */
 
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -67,11 +62,7 @@ export function applyTheme(theme: ThemeMode): void {
     ?.setAttribute('content', colors.statusBar)
 }
 
-/**
- * 生成可内联的启动脚本：standalone 视口标记 + 从 persist 存储恢复主题，
- * 解析失败时回退深色。颜色、存储 key 与默认值都从本模块常量插值，
- * 脚本自身不再另抄一份 hex。
- */
+/** 生成可内联的启动脚本（standalone 视口标记 + 主题恢复，解析失败回退深色）；颜色与存储 key 从本模块常量插值，脚本不另抄一份 hex。 */
 export function createBootScript(): string {
   const modeList = THEME_MODES.map(mode => JSON.stringify(mode)).join(', ')
   const { light, dark } = BOOT_THEME_COLORS

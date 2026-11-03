@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-/** Fixed-browser interaction sampling. Run from the repository root:
- * node client/scripts/performance-docker.ts
- * PERFORMANCE_SKIP_BUILD=1 node client/scripts/performance-docker.ts
- * No dependency installation, image pull, snapshot update, or production instrumentation.
- */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'

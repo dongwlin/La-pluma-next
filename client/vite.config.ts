@@ -8,7 +8,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
-// ES 模块中获取 __dirname
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -117,10 +116,6 @@ export const createWebManifest = (basePath: string): Partial<ManifestOptions> =>
   ]
 })
 
-/**
- * dev 中间件只使用 request 的 method/url 和 response 的最小写入面，按结构声明，
- * 测试即可直接构造替身，不必伪造整个 ViteDevServer。
- */
 export interface DevPwaMiddlewareRequest {
   method?: string
   url?: string
@@ -217,7 +212,6 @@ export const createBootAssetsPlugin = (): Plugin => ({
   },
 })
 
-// https://vite.dev/config/
 export const createViteConfig = (basePath: string): UserConfig => ({
   base: basePath,
   resolve: {
@@ -233,7 +227,7 @@ export const createViteConfig = (basePath: string): UserConfig => ({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: {
-        enabled: false // 开发模式下禁用 Service Worker
+        enabled: false
       },
       includeAssets: ['favicon-graphite.png', 'apple-touch-icon-graphite.png'],
       manifest: createWebManifest(basePath),
@@ -252,9 +246,9 @@ export const createViteConfig = (basePath: string): UserConfig => ({
     }
   },
   server: {
-    host: '0.0.0.0', // 监听所有网络接口，允许局域网访问
+    host: '0.0.0.0',
     port: 5173,
-    strictPort: false, // 如果端口被占用，自动尝试下一个可用端口
+    strictPort: false,
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

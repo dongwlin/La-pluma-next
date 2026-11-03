@@ -1,24 +1,8 @@
-/**
- * 依赖与职责护栏的分析核心。
- *
- * 这里只做静态事实判断，不运行应用、不读取 Query、不推断运行时所有权：
- * - 功能域公开面与分层方向：`app → pages → features → shared`，跨域只能经 `index.ts` 根入口；
- * - 页面由 `src/pages/<domain>/` 持有，只向下组合功能域与 shared；
- * - 功能域依赖环：把 feature 目录折叠成节点，求强连通分量；
- * - 非页面微域 `task-execution` 不得反向依赖任何功能域；
- * - 页面文件不得直接持有传输、存储与轮询原语，但可以调用所属领域的容器与 hook；
- * - hooks / model / components / pages 的规模作为辅助信号：新增超阈值文件与
- *   同域页面搬移（80% 阈值）会按预算失败，其余只报告。
- *
- * 规则边界与阈值依据见 docs/development/guardrails.md。测试文件不参与运行时依赖与规模统计，
- * 因为测试可以为了隔离而接触内部实现，不会进入生产包。
- */
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import ts from 'typescript'
 
 export interface SourceFile {
-  /** 相对 `client/src` 的 POSIX 路径，例如 `features/task-execution/index.ts`。 */
   path: string
   source: string
 }
@@ -31,24 +15,19 @@ export interface ImportEdge {
 
 export interface ImportBinding {
   specifier: string
-  /** 具名导入使用导出名；默认/命名空间导入分别为 `default` / `*`。 */
   imported: string
-  /** 页面内实际使用的本地名，用于分析命名空间导入的成员访问。 */
   localName: string
   typeOnly: boolean
 }
 
 export interface ImportReference {
   specifier: string
-  /** 整条 import/export 都是类型时跳过页面运行时检查。 */
   typeOnly: boolean
 }
 
 export interface ReExport {
   exportedName: string
-  /** 本地再导出的本地名：`export { local as exported }` 中为 local。 */
   localName?: string
-  /** `null` 表示本地 `export { ... }`，来源需沿同文件的 import 解析。 */
   specifier: string | null
   typeOnly: boolean
 }
@@ -78,7 +57,6 @@ const TEST_FILE_PATTERN = /\.(?:test|spec)\.(?:ts|tsx)$/
 const PAGE_FILE_PATTERN = /^pages\/[^/]+\/[^/]+\.(?:ts|tsx)$/
 const SIZE_CATEGORY_PATTERN = /^(?:features\/[^/]+\/(hooks|model|components)|pages\/[^/]+)\/.+\.(?:ts|tsx)$/
 
-/** 这些全局对象只能出现在页面之外的领域容器/hook 中。 */
 const TRANSPORT_GLOBALS = new Set(['fetch', 'WebSocket', 'EventSource', 'XMLHttpRequest'])
 const STORAGE_GLOBALS = new Set(['localStorage', 'sessionStorage', 'indexedDB'])
 const POLLING_GLOBALS = new Set(['setInterval'])
@@ -107,7 +85,6 @@ function parseSourceFile(file: SourceFile): ts.SourceFile {
 
 function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
   const clause = node.importClause
-  // 副作用 import 没有 importClause，但它仍然会在运行时加载模块。
   if (!clause) return false
   if (clause.isTypeOnly) return true
   if (clause.name) return false
@@ -126,11 +103,6 @@ function isTypeOnlyExportDeclaration(node: ts.ExportDeclaration): boolean {
     && clause.elements.every(element => element.isTypeOnly)
 }
 
-/**
- * 取出静态 import/export、副作用 import 与动态 import 的模块说明符，
- * 同时保留“整条导入只是类型”的信息，供页面职责检查使用。
- * 注释和字符串字面量不会被误判。
- */
 export function collectImportReferences(source: string, filePath = 'sample.tsx'): ImportReference[] {
   const sourceFile = parseSourceFile({ path: filePath, source })
   const references: ImportReference[] = []
@@ -168,10 +140,6 @@ export function collectImportSpecifiers(source: string, filePath = 'sample.tsx')
   return collectImportReferences(source, filePath).map(reference => reference.specifier)
 }
 
-/**
- * 取出 import 的具名绑定。页面职责检查用它在公开面 import 中区分
- * “领域端点”与领域 hook/组件，避免只拦字符串路径却放过 feature 根转发。
- */
 export function collectImportBindings(source: string, filePath = 'sample.tsx'): ImportBinding[] {
   const sourceFile = parseSourceFile({ path: filePath, source })
   const bindings: ImportBinding[] = []
@@ -221,13 +189,6 @@ export function collectImportBindings(source: string, filePath = 'sample.tsx'): 
   return bindings
 }
 
-/**
- * 取出公开面的再导出：
- * - `export { ... } from './module'`、`export * from './module'`
- *   与 `export * as ns from './module'`；
- * - 本地 `export { local }` 没有模块说明符，记录 `localName`，
- *   由调用方沿同文件的 import 解析来源。
- */
 export function collectReExports(source: string, filePath = 'sample.ts'): ReExport[] {
   const sourceFile = parseSourceFile({ path: filePath, source })
   const reExports: ReExport[] = []
@@ -263,7 +224,6 @@ export function collectReExports(source: string, filePath = 'sample.ts'): ReExpo
       continue
     }
 
-    // 本地再导出：`import { x } from './api'; export { x }`。
     if (!clause || !ts.isNamedExports(clause)) continue
     for (const element of clause.elements) {
       reExports.push({
@@ -278,13 +238,6 @@ export function collectReExports(source: string, filePath = 'sample.ts'): ReExpo
   return reExports
 }
 
-/**
- * 把模块说明符解析为 `client/src` 下的实际源码路径。
- *
- * 只处理别名（`@/`）和相对路径；外部包与样式等非 TS 资源返回 `null`，
- * 不进入依赖图。解析优先级与 TypeScript/Vite 的常见约定一致：
- * 精确文件、`.ts`、`.tsx`、目录 `index.ts`、目录 `index.tsx`。
- */
 export function resolveImport(
   specifier: string,
   fromFile: string,
@@ -332,10 +285,6 @@ function collectBindingNames(name: ts.BindingName, names: Set<string>): void {
   }
 }
 
-/**
- * 递归收集一个模块实际导出的运行时名字，用于展开 `export * from './api'`。
- * 只做静态声明扫描，不执行类型检查；类型声明与 `export type` 不计入端点集合。
- */
 function collectModuleExportedNames(
   filePath: string,
   filesByPath: ReadonlyMap<string, SourceFile>,
@@ -429,7 +378,6 @@ function featureDomainOf(filePath: string): string | null {
   return top === 'features' && domain ? domain : null
 }
 
-/** 页面路径 `pages/<domain>/...` 的所属领域；页面只组合对应功能域的公开面。 */
 function pageDomainOf(filePath: string): string | null {
   const match = /^pages\/([^/]+)\//.exec(filePath)
   return match?.[1] ?? null
@@ -478,10 +426,6 @@ function cyclePathForComponent(
   return visit(start) ?? [...component].sort()
 }
 
-/**
- * 功能域依赖环检测：每个 SCC 输出一条可读的环路径。
- * 只使用 feature → feature 边；`shared → feature` 等分层违规由另一条规则报告。
- */
 export function findDomainCycles(edges: readonly ImportEdge[]): string[][] {
   const graph = new Map<string, Set<string>>()
 
@@ -547,10 +491,6 @@ export function findDomainCycles(edges: readonly ImportEdge[]): string[][] {
     .sort((a, b) => a.join('/').localeCompare(b.join('/')))
 }
 
-/**
- * 依赖与公开面检查。返回的违规同时包含域环、深路径、分层反向依赖，
- * 以及 `task-execution` 反向依赖其他功能域。
- */
 export function analyzeDependencies(files: readonly SourceFile[]): DependencyAnalysis {
   const productionFiles = files.filter(file => !isTestFile(file.path))
   const edges = buildImportEdges(productionFiles)
@@ -560,7 +500,6 @@ export function analyzeDependencies(files: readonly SourceFile[]): DependencyAna
     const fromLayer = topLayerOf(edge.from)
     const toLayer = topLayerOf(edge.to)
 
-    // shared 只能依赖 shared 自身；feature 不能反向依赖 app。
     if (fromLayer === 'shared' && toLayer !== 'shared') {
       violations.push({
         rule: 'layer-direction',
@@ -680,7 +619,6 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   return current
 }
 
-/** 属性/字面量下标访问的静态成员名；计算表达式返回 `null`。 */
 function staticMemberName(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null {
   if (ts.isPropertyAccessExpression(node)) {
     return ts.isIdentifier(node.name) ? node.name.text : null
@@ -691,10 +629,8 @@ function staticMemberName(node: ts.PropertyAccessExpression | ts.ElementAccessEx
 }
 
 const GLOBAL_OBJECT_NAMES = new Set(['window', 'globalThis', 'self'])
-/** 这些属性返回同一个 Window 代理对象：`window.top`、`self.parent`、`window.frames`。 */
 const WINDOW_PROXY_PROPERTIES = new Set(['window', 'globalThis', 'self', 'top', 'parent', 'frames'])
 
-/** `document`、`window.document` 与 `globalThis['document']` 都指向文档对象。 */
 function isDocumentObjectExpression(expression: ts.Expression): boolean {
   const unwrapped = unwrapExpression(expression)
   if (ts.isIdentifier(unwrapped)) return unwrapped.text === 'document'
@@ -705,10 +641,6 @@ function isDocumentObjectExpression(expression: ts.Expression): boolean {
   return false
 }
 
-/**
- * `document.defaultView`（含 `window.document.defaultView` 等属性链）是 Window；
- * `document` 本身不是全局对象。
- */
 function isDocumentDefaultView(expression: ts.Expression): boolean {
   const unwrapped = unwrapExpression(expression)
   if (!ts.isPropertyAccessExpression(unwrapped) && !ts.isElementAccessExpression(unwrapped)) {
@@ -718,15 +650,6 @@ function isDocumentDefaultView(expression: ts.Expression): boolean {
   return isDocumentObjectExpression(unwrapped.expression)
 }
 
-/**
- * 判断表达式是否指向浏览器全局对象。除裸 `window`/`globalThis`/`self` 外，
- * 也接受 Window 代理属性链（`window.window`、`window.top`、`self.parent`）
- * 与 `document.defaultView`：这些表达式仍指向同一个全局对象。
- *
- * 属性/下标访问先解包 `as`/括号/非空/satisfies 再取成员名，
- * 因此 `window.window`、`window[('window')]` 与 `(window as any).top`
- * 都会继续按代理链递归判断，而不是只认裸标识符。
- */
 function isGlobalObjectExpression(expression: ts.Expression): boolean {
   const unwrapped = unwrapExpression(expression)
   if (isDocumentDefaultView(unwrapped)) return true
@@ -756,11 +679,6 @@ function isPropertyName(node: ts.Identifier): boolean {
   )
 }
 
-/**
- * 判断节点是否位于赋值解构左侧，可穿过嵌套对象/数组模式与包装表达式。
- * 用于把 `({ a: { fetch } } = props)` 中的简写属性名识别为写入目标，
- * 而不是对全局对象的引用。
- */
 function isAssignmentPatternExpression(node: ts.Node): boolean {
   const { parent } = node
 
@@ -793,7 +711,6 @@ function isAssignmentPatternExpression(node: ts.Node): boolean {
   return false
 }
 
-/** 赋值解构左侧的简写属性名是写入目标，不是全局引用。 */
 function isAssignmentPatternShorthand(node: ts.Identifier): boolean {
   const property = node.parent
   return ts.isShorthandPropertyAssignment(property)
@@ -801,7 +718,6 @@ function isAssignmentPatternShorthand(node: ts.Identifier): boolean {
     && isAssignmentPatternExpression(property)
 }
 
-/** 声明名、参数名与解构绑定不是对全局对象的引用。 */
 function isBindingName(node: ts.Identifier): boolean {
   const { parent } = node
   return (
@@ -824,7 +740,6 @@ function isBindingName(node: ts.Identifier): boolean {
   )
 }
 
-/** 解构键名：标识符、字符串字面量或字面量计算属性（`['fetch']`）。 */
 function literalPropertyName(name: ts.PropertyName | undefined): string | null {
   if (!name) return null
   if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text
@@ -835,13 +750,11 @@ function literalPropertyName(name: ts.PropertyName | undefined): string | null {
   return null
 }
 
-/** 解构键名：`{ fetch: f }` 取 fetch，`{ fetch }` 取 fetch。 */
 function bindingElementKey(node: ts.BindingElement): string | null {
   if (node.propertyName) return literalPropertyName(node.propertyName)
   return ts.isIdentifier(node.name) ? node.name.text : null
 }
 
-/** 赋值解构左侧的键名：`({ fetch: f } = window)` 取 fetch。 */
 function assignmentPropertyKey(
   node: ts.PropertyAssignment | ts.ShorthandPropertyAssignment,
 ): string | null {
@@ -849,17 +762,6 @@ function assignmentPropertyKey(
   return literalPropertyName(node.name)
 }
 
-/**
- * 找到解构目标实际解构的表达式。覆盖：
- * - 变量声明：`const { fetch: f } = window`
- * - 参数默认值：`function f({ fetch } = window)`
- * - 外层解构元素默认值：`const { g: { fetch } = window } = props`
- * - 赋值解构：`({ fetch: f } = window)`、`({ a: { fetch } } = window.window)`
- *
- * 绑定模式沿 `ObjectBindingPattern`/`ArrayBindingPattern` 向上找初值；
- * 赋值模式沿对象/数组字面量与包装表达式向上，只接受作为 `=` 左值的模式，
- * 因此 `x = { fetch: f }` 这类普通对象字面量不会被当作解构来源。
- */
 function findDestructuringSource(
   node: ts.BindingElement | ts.PropertyAssignment | ts.ShorthandPropertyAssignment,
 ): ts.Expression | undefined {
@@ -920,7 +822,6 @@ function unwrappedIdentifierName(expression: ts.Expression | undefined): string 
   return ts.isIdentifier(unwrapped) ? unwrapped.text : null
 }
 
-/** 取出回调函数本体，解开 `as`/括号/非空/satisfies 包装（`.then((m) => ...)`）。 */
 function functionExpressionOf(
   expression: ts.Expression | undefined,
 ): ts.ArrowFunction | ts.FunctionExpression | null {
@@ -929,14 +830,6 @@ function functionExpressionOf(
   return ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped) ? unwrapped : null
 }
 
-/**
- * 收集某个局部名字（命名空间变量、动态导入结果或它们在本文件中的别名）
- * 实际访问的模块成员。会解开 as/括号/非空/satisfies 包装，跟随变量、参数、
- * 解构默认值、赋值解构与简单赋值别名，并递归进入 `.then` 回调。
- *
- * 这不是完整的控制流或作用域分析：只跟踪本文件内以同一名字接收的值，
- * 把名字传给其他函数或经对象字段转存时无法判定。
- */
 function collectPropertyUsage(root: ts.Node, identifierName: string): Set<string> {
   const names = new Set<string>()
   const tracked = new Set([identifierName])
@@ -1013,7 +906,6 @@ function collectPropertyUsage(root: ts.Node, identifierName: string): Set<string
   return names
 }
 
-/** 收集对象解构模式中的属性名（含嵌套层），例如 `{ a: { fetch } }` 仍取 fetch。 */
 function collectObjectBindingKeys(pattern: ts.ObjectBindingPattern): Set<string> {
   const names = new Set<string>()
 
@@ -1032,7 +924,6 @@ function collectObjectBindingKeys(pattern: ts.ObjectBindingPattern): Set<string>
   return names
 }
 
-/** 收集赋值解构左侧对象字面量中的属性名（含嵌套层）。 */
 function collectObjectLiteralKeys(expression: ts.Expression): Set<string> {
   const names = new Set<string>()
   const unwrapped = unwrapExpression(expression)
@@ -1162,12 +1053,6 @@ function pageRuleForGlobal(name: string): GuardrailRule | null {
   return null
 }
 
-/**
- * 收集模块级值绑定名（import 与顶层变量/函数/类/枚举/模块），用于放行
- * `import { fetch } from '../model/http'; fetch()` 这类同名本地 helper。
- * 只做模块级近似，不解析嵌套作用域；同名声明会放行整个文件的裸引用，
- * 但若初值来自 `window.fetch` 等全局访问，仍会由属性/解构分支报出。
- */
 function collectModuleValueNames(sourceFile: ts.SourceFile): Set<string> {
   const names = new Set<string>()
 
@@ -1243,8 +1128,6 @@ function collectPageGlobalViolations(file: SourceFile, violations: GuardrailViol
   }
 
   const visit = (node: ts.Node): void => {
-    // 变量声明、参数默认值与赋值解构共用同一套来源解析：
-    // `const { fetch: f } = window.window`、`({ fetch: f } = window)`。
     if (ts.isBindingElement(node)) {
       const key = bindingElementKey(node)
       const source = findDestructuringSource(node)
@@ -1314,12 +1197,6 @@ function importsPageInfrastructure(
     || resolved.startsWith('shared/query/')
 }
 
-/**
- * 收集同文件 import 的本地名到模块说明符映射（含 default、namespace 与命名导入），
- * 用于解析 `import run from './api'; export { run }`、
- * `import * as api from './api'; export { api }`、
- * `import { x as local } from './api'; export { local }` 等本地再导出。
- */
 function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, string> {
   const sources = new Map<string, string>()
 
@@ -1351,14 +1228,6 @@ function collectLocalImportSources(sourceFile: ts.SourceFile): Map<string, strin
   return sources
 }
 
-/**
- * 收集各 feature 公开面中来自 `api/` 的导出名。
- *
- * 只禁 `@/features/x/api` 深路径不足以阻止页面直接调用端点：公开面可以把
- * `executeScheduleNow`、`saveUserConfig` 等端点再导出，也可能使用
- * `export * from './api'` 或同文件 `import ... from './api'; export { ... }`
- * 的本地命名/默认/命名空间转发。页面检查沿公开面定位来源，仍允许同一条公开面导出的领域 hook/组件。
- */
 function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<string>> {
   const filesByPath = new Map(files.map(file => [file.path, file]))
   const knownFiles = new Set(filesByPath.keys())
@@ -1398,7 +1267,6 @@ function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<st
       }
     }
 
-    // 本地默认转发：`import { executeScheduleNow } from './api'; export default executeScheduleNow`。
     for (const statement of sourceFile.statements) {
       if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue
       const localName = unwrappedIdentifierName(statement.expression)
@@ -1412,10 +1280,6 @@ function buildPublicApiExports(files: readonly SourceFile[]): Map<string, Set<st
   return apiExports
 }
 
-/**
- * 页面职责检查：页面只组合页头、工作区与领域容器，不亲自持有请求、存储或业务轮询。
- * 领域容器/hook（components、hooks）不受这些限制，因此页面调用所属领域的 hook 不会被误报。
- */
 export function checkPageGuardrails(files: readonly SourceFile[]): GuardrailViolation[] {
   const knownFiles = new Set(files.map(file => file.path))
   const publicApiExports = buildPublicApiExports(files)
@@ -1498,7 +1362,6 @@ export type SizeCategory = 'pages' | 'hooks' | 'model' | 'components'
 
 export const SIZE_CATEGORIES: readonly SizeCategory[] = ['pages', 'hooks', 'model', 'components']
 
-/** 首次生成预算或预算文件缺失时使用；常规检查以 size-budget.json 为准。 */
 export const DEFAULT_SIZE_THRESHOLDS: Record<SizeCategory, number> = {
   pages: 60,
   hooks: 220,
@@ -1514,7 +1377,6 @@ export interface SizeEntry {
 
 export interface DomainSizeTotals {
   pages: number
-  /** hooks + model + components 的总行数；不含 api/store/utils 等其他目录。 */
   nonPage: number
 }
 
@@ -1532,16 +1394,13 @@ export interface SizeReport {
   totalLines: number
   totalFiles: number
   entries: SizeEntry[]
-  /** 按功能域聚合 pages 与 hooks/model/components，用于识别“页面搬进新目录”。 */
   domainTotals: Record<string, DomainSizeTotals>
 }
 
 export interface SizeBaseline {
   thresholds: Record<SizeCategory, number>
   largeFiles: Record<SizeCategory, string[]>
-  /** 基线时各 feature 的 pages 总行数；旧版预算可缺失，此时跳过搬移检查。 */
   pageLines?: Record<string, number>
-  /** 基线时各 feature 的 hooks/model/components 总行数。 */
   nonPageLines?: Record<string, number>
 }
 
@@ -1549,7 +1408,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** 校验 size-budget.json；旧版预算允许缺少 pageLines/nonPageLines。 */
 export function isSizeBaseline(value: unknown): value is SizeBaseline {
   if (!isRecord(value) || !isRecord(value.thresholds) || !isRecord(value.largeFiles)) {
     return false
@@ -1655,20 +1513,9 @@ export function analyzeSize(
   }
 }
 
-/** 同一功能域 pages 缩减到这个行数以上才参与搬移判断，避免小修误报。 */
 export const RELOCATION_MIN_SHRINK_LINES = 40
-/** 非页面目录增长达到页面缩减量的这个比例时，视为疑似搬移。 */
 export const RELOCATION_GROWTH_RATIO = 0.8
 
-/**
- * 规模预算冻结「超过阈值的大文件集合」，并检查页面逻辑是否被整体搬进同域
- * 的非页面目录：
- * - 新增一个超过本类阈值、且不在基线中的文件 → 失败；
- * - 同一 feature 的 pages 缩减 ≥ 40 行，且 hooks/model/components 增长达到
- *   缩减量的 80% 以上 → 判为疑似搬移并失败；
- * - 基线文件降到阈值下或删除 → 只提示，可择机收紧基线；
- * - 各类总行数只报告，不作为失败条件。
- */
 export function evaluateSizeBudget(report: SizeReport, baseline: SizeBaseline): SizeBudgetResult {
   const violations: string[] = []
   const notes: string[] = []
@@ -1718,7 +1565,6 @@ export function evaluateSizeBudget(report: SizeReport, baseline: SizeBaseline): 
   return { violations, notes }
 }
 
-/** 递归读取 `src` 下的 TS/TSX 源文件，路径统一为相对 src 根的 POSIX 形式。 */
 export async function readSourceTree(srcRoot: string): Promise<SourceFile[]> {
   const files: SourceFile[] = []
 

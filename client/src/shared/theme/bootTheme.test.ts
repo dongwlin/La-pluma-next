@@ -142,10 +142,6 @@ interface CssDeclaration {
   line: number
 }
 
-/**
- * 在 `blockPattern` 命中的规则块里查找 property 的首个声明。
- * blockPattern 必须覆盖到块头并以 `{` 结尾，避免跨块误匹配。
- */
 function findDeclaration(
   source: string,
   blockPattern: RegExp,
@@ -178,17 +174,12 @@ function findDeclaration(
   }
 }
 
-// 首帧背景色横跨两套无法共享代码的层：构建期常量（BOOT_THEME_COLORS）与
-// 手写 CSS（index.html 的内联启动样式、index.css / ios-theme.css 的页面底色）。
-// 不一致时表现为首帧闪一下旧色，截图拍不到。这是 docs/development/README.md 中
-// 「禁止枚举式 grep CSS」的例外，用法与 animations.test.ts 相同：不枚举选择器
-// 清单，只核对同一语义在两处的取值是否一致。
-//
-// 深色页面底色的候选有两个：index.css 的 --app-bg: #000 与 ios-theme.css 的
-// --app-chrome-page-bg: #000000。两个文件同属 @layer base，ios-theme.css 后
-// 加载，其 html, body { background: var(--app-chrome-page-bg) } 简写覆盖了
-// index.css 的 background-color / background-image，所以真正画在页面上的
-// 是 --app-chrome-page-bg，这里校验后者。
+// 首帧背景色横跨两套无法共享代码的层：构建期常量（BOOT_THEME_COLORS）与手写 CSS
+// （index.html 内联启动样式、index.css / ios-theme.css 页面底色）；不一致时首帧会闪旧色。
+// 这是 docs/development/README.md「禁止枚举式 grep CSS」的例外（同 animations.test.ts）：
+// 不枚举选择器清单，只核对同一语义在两处的取值一致。深色页面底色候选有两个：
+// index.css 的 --app-bg 与 ios-theme.css 的 --app-chrome-page-bg；两者同属 @layer base，
+// ios-theme.css 后加载，其 html, body { background: ... } 简写覆盖前者，因此校验后者。
 describe('first-paint background colors', () => {
   const checks = [
     {

@@ -64,7 +64,6 @@ function locationLabel() {
 }
 
 async function renderWithRouter(router: 'memory' | 'browser', initialEntry?: string) {
-  // 仅在调用方给出显式入口时改写 URL；预置 URL 的用例自行负责初始地址。
   if (router === 'browser' && initialEntry) {
     window.history.replaceState({}, '', initialEntry)
   }

@@ -985,7 +985,6 @@ describe('RoguelikeTasks layout and config recovery', () => {
       },
     })
 
-    // 显式选择模式 0 后，wire 保留用户选择而不是默认值。
     await setControlValue('select[name="maa-reclamation-mode"]', '0', 'change')
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300)
@@ -1087,7 +1086,6 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接中断')
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
-    // 自动保存成功不弹成功提示；只有用户主动重试确认后才提示。
     expect(mocks.setMessage).not.toHaveBeenCalledWith('肉鸽配置已同步', 'success')
 
     const retrySave = deferred<{ success: boolean }>()

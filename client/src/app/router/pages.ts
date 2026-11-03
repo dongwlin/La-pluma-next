@@ -15,12 +15,6 @@ export interface AppRoute {
   Component: ComponentType
 }
 
-/**
- * 路由表：tab id、规范 URL 与页面组件的静态映射。
- *
- * 这里只描述数据；实际渲染由 VisitedWorkspaces 保活完成，不交给
- * <Routes>/useRoutes（见 AppRoutes 的说明）。
- */
 export const appRoutes = [
   { id: 'dashboard', path: appTabRoute('dashboard'), Component: Dashboard },
   { id: 'automation', path: appTabRoute('automation'), Component: AutomationTasks },

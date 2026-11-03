@@ -11,9 +11,6 @@ interface SmoothPanelProps extends HTMLAttributes<HTMLDivElement> {
   surfaceClassName?: string
 }
 
-/**
- * Continuous-corner panel with an unclipped shell for shadows and motion.
- */
 export default function SmoothPanel({
   children,
   className = '',
