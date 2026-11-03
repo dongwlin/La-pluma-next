@@ -55,10 +55,6 @@ import type {
   TrackedExecutionOptions
 } from '../../controllers/agentExecutionController.ts'
 
-// 执行路由与 Run 生命周期已类型化，本文件同步转为 TS：反射取到的 handler
-// 以最小 RouteHandler 边界调用，响应体经统一信封读取；Run 与作业集断言使用
-// 真实服务入口，假执行器只注入计划/条目执行端口。真实 HTTP 的鉴权、parser
-// 与错误出口由独立的 HTTP 回归文件覆盖，不用假 handler 冒充。
 const quietLogger = {
   info() {},
   error() {}
@@ -138,15 +134,12 @@ interface TestEnvelope {
   [key: string]: unknown
 }
 
-/** 任意 JSON 对象的断言视图：只做字段读取，叶子比较由 assert.* 承担。 */
 interface JsonView {
   [key: string]: JsonView
 }
 
-/** 快照进度：日常流程与作业集各投影自己的字段，用例按场景读取。 */
 type AgentRunProgressView = AgentRunProgressProjection & CopilotSetProgress
 
-/** Run 视图：DTO 字段原样保留；`progress` 与 `result.summary` 只声明断言实际读取的部分。 */
 interface AgentRunView extends AgentRunDto {
   progress: AgentRunProgressView
   result: { summary: { successCount: number; pendingCount: number } } & Record<string, unknown>
@@ -157,7 +150,6 @@ type AgentPlanView = Array<ScheduledTaskPlanStep & { taskConfig: Record<string, 
   entries: CopilotPlanEntry[]
 }
 
-/** 端点结果视图：只声明断言实际读取的结构字段，其余保持 unknown。 */
 interface AgentResponseData {
   [key: string]: unknown
   run: AgentRunView
@@ -170,12 +162,10 @@ interface AgentResponseData {
   nextEntry: CopilotPlanEntry
 }
 
-/** 读取端点结果：字段级别断言前由用例声明期望形状，未声明部分保持 unknown。 */
 function dataOf<T = AgentResponseData>(envelope: TestEnvelope): T {
   return envelope.data as T
 }
 
-/** 读取字符串标识：先断言类型再返回，供 requireRun/getAgentRun 等入参使用。 */
 function textOf(value: unknown): string {
   assert.equal(typeof value, 'string', 'expected string field')
   return value as string
@@ -227,7 +217,6 @@ function requireCurrentRun(): AgentRunDto {
   return run
 }
 
-/** Run 结果在断言侧是对象；先确认形状再读取端点字段。 */
 function runResult(run: AgentRunDto): JsonView {
   const result = run.result
   assert.ok(result !== null && typeof result === 'object' && !Array.isArray(result), 'expected object run result')

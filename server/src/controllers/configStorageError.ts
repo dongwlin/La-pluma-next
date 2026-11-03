@@ -1,11 +1,3 @@
-/**
- * 配置存储错误的共享 HTTP 适配。
- *
- * 用户配置与通知配置等写入路由共用同一错误映射：400 校验错误按原 code
- * 透传，其余按调用方给定的存储失败 code 处理。本模块只依赖 apiHelper 与
- * configStorageService 的结果类型，不归属单一配置领域。
- */
-
 import { agentError, sendError } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter, MaybeApiRequest } from '../utils/apiHelper.ts';
 import type { ConfigStorageResult } from '../services/configStorageService.ts';

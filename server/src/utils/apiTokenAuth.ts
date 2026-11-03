@@ -1,16 +1,3 @@
-/**
- * API 令牌鉴权
- *
- * `LA_PLUMA_TOKEN` 是本服务唯一的 API 访问凭据。比较必须：
- * - 只接受字符串请求头，数组/对象等异常类型一律视为未提供；
- * - 先做固定长度摘要，再使用 `timingSafeEqual`，不同长度不会抛错，
- *   也不会在比较时间上泄露预期值的长度；
- * - 失败响应只说明“需要有效令牌”，不回显预期值、变量名或长度；
- * - 认证失败按来源地址限流，有效令牌不参与失败计数，也不被失败计数阻塞。
- *
- * 本模块导入时无副作用，鉴权开关与限流器由组装入口注入。
- */
-
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { agentError, sendError } from './apiHelper.ts';
 import type { LoginThrottle } from './loginThrottle.ts';

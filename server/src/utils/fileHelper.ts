@@ -1,7 +1,3 @@
-/**
- * 文件操作辅助工具 - 统一的文件读写逻辑
- */
-
 import { randomUUID } from 'crypto';
 import { access, constants, mkdir, open, readFile, rename, stat, unlink } from 'fs/promises';
 import type { FileHandle } from 'fs/promises';
@@ -22,9 +18,6 @@ function enqueueFileMutation<T>(filePath: string, operation: () => Promise<T>): 
   });
 }
 
-/**
- * 未知错误的 errno 兜底读取：非对象或无字符串 code 时返回 undefined。
- */
 function getErrorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null || !('code' in error)) {
     return undefined;
@@ -50,9 +43,6 @@ async function syncDirectory(dirPath: string): Promise<void> {
   }
 }
 
-/**
- * 确保目录存在
- */
 export async function ensureDir(dirPath: string): Promise<void> {
   try {
     await mkdir(dirPath, { recursive: true });
@@ -137,9 +127,6 @@ async function writeJsonFileAtomic(filePath: string, data: unknown, pretty: bool
   }
 }
 
-/**
- * 写入 JSON 文件
- */
 export async function writeJsonFile(filePath: string, data: unknown, pretty: boolean = true): Promise<void> {
   try {
     await enqueueFileMutation(filePath, () => writeJsonFileAtomic(filePath, data, pretty));

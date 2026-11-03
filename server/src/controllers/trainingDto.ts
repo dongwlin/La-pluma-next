@@ -1,29 +1,3 @@
-/**
- * 养成 HTTP DTO
- *
- * 把 Express 的未知输入收窄成领域类型；router 只做适配，不重新持有队列。
- * - 队列 revision、计划有效性、部分同步结果与材料算法仍由
- *   operatorTrainingService / operatorTrainingApplication 判定；
- * - 设置归一化（旧 `notify` 映射与未知扩展字段透传）仍由
- *   normalizeTrainingSettings 承担，这里只把非对象请求体归一为空对象。
- *
- * 兼容策略（按端点分别处理）：
- * - 候选 query 的 `profession`/`owned`/`needsElite2` 按标量字符串处理，
- *   重复参数与对象值沿用旧实现的严格比较结果（`owned`/`needsElite2`
- *   视为省略）；例外是 `profession` 的重复参数从“不匹配任何干员”
- *   变为“不参与过滤”。
- * - `rarity` 沿用既有 parseInt 语义（`'5abc'` → 5，重复参数与对象值经
- *   String 后同样解析），无法解析时省略；旧实现的 0/NaN 同样不参与过滤。
- * - `status` 只识别 trainable/owned/all；其它真值沿用旧 switch 默认分支的
- *   “全量”结果，缺省为 trainable。
- * - 队列 `operatorId` 必须是字符串，否则返回既有的 400 校验错误；旧实现
- *   会把它当作属性键继续查找，数字会以数值写入队列。
- * - 非数值 `position` 与非 current/all 的计划模式以领域同一错误（400、同一
- *   文案）拒绝；整数、队列长度与 409 revision 校验仍由领域承担。
- * - 计划应用只校验 `plan` 是否存在，`queueRevision` 冲突由领域返回 409；
- *   `settings` 原样交给领域，未知扩展字段不会被路由丢弃。
- */
-
 import { agentError } from '../utils/apiHelper.ts';
 import type { ApiRequestLike } from '../utils/apiHelper.ts';
 import { isRecord, trainingError } from '../services/operatorTrainingModel.ts';
@@ -41,12 +15,10 @@ export interface TrainingRequest extends ApiRequestLike {
   params?: Record<string, string | undefined>;
 }
 
-/** 队列删除路由：`:operatorId` 由路由声明收窄为 string。 */
 export interface TrainingQueueRemoveRequest extends TrainingRequest {
   params: { operatorId: string };
 }
 
-/** `/training/operators` 响应：候选投影与同一投影的计数。 */
 export interface TrainingOperatorListPayload {
   operators: TrainingCandidate[];
   count: number;
@@ -74,12 +46,10 @@ function parseRarity(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** `profession` 只接受非空字符串，重复参数/对象值不再进入严格比较。 */
 function parseProfession(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined;
 }
 
-/** `owned` 只识别显式的 true/false 字符串，其余按省略处理。 */
 function parseOwned(value: unknown): boolean | undefined {
   if (value === 'true') return true;
   if (value === 'false') return false;
@@ -95,7 +65,6 @@ function parseCandidateStatus(value: unknown): TrainingCandidateStatus {
   return value ? 'all' : 'trainable';
 }
 
-/** 候选列表过滤：每项独立归一，缺省值保持旧响应语义。 */
 export function parseCandidateFilters(query: unknown): TrainingOperatorFilters {
   const source = isRecord(query) ? query : {};
   return {
@@ -107,7 +76,6 @@ export function parseCandidateFilters(query: unknown): TrainingOperatorFilters {
   };
 }
 
-/** 有限数值参与计算，其余值按省略处理（与领域的 toFiniteNumber 一致）。 */
 function toFiniteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }

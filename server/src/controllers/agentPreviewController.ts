@@ -40,21 +40,6 @@ import type {
   PreviewWebrtcStatusPayload
 } from './previewDto.ts';
 
-/**
- * 设备预览控制器：截图、WebRTC 启停与状态、方向设置和设备采样。
- *
- * 这里只做 HTTP 适配：截图调用 maaDeviceService 的既有用例，WebRTC 进程、
- * viewer 计时器、启动队列和资源所有权仍由 webrtcService/webrtcRuntime
- * 持有，方向设置复用同一 ADB 命令计划，设备采样只读 ADB。控制器不缓存
- * 运行状态、不另建子进程或租约；预览与截图按现行契约不参与设备自动化
- * 执行租约。浏览器实时预览继续经过同源 `/webrtc-signaling` 网关，上游
- * 管理端点不外露。
- *
- * 请求的未知值在 previewDto 按端点收窄（设备标识、方向/dryRun、连接
- * 选择各按既有规则）；响应载荷类型也由 previewDto 声明，错误继续经
- * 统一错误出口返回。路由层（agentPreviewRoutes.ts）只做端点映射；
- * req/res 解析、校验与成功/失败 envelope 都由本控制器的各 handler 装配。
- */
 const execFileAsync = promisify(execFile);
 
 const ORIENTATIONS: readonly PreviewOrientation[] = ['portrait', 'landscape', 'auto'];
@@ -137,7 +122,6 @@ interface ExecFailureText {
   stderr: string;
 }
 
-/** execFile 失败时读取既有字段；非错误对象按字符串消息归一。 */
 function readExecFailure(error: unknown): ExecFailureText {
   if (typeof error === 'object' && error !== null) {
     const fields = error as { message?: unknown; stdout?: unknown; stderr?: unknown };
@@ -281,13 +265,10 @@ async function getDeviceStats(adbPath: string, address: string): Promise<Preview
       cmd('top -b -n 1 -d 0.3 | head -5'),
     ]);
 
-    // CPU load from /proc/loadavg
     const loadParts = loadRaw.trim().split(/\s+/)
-    // CPU usage % from top output: "400%cpu  0%user ... 396%idle"
     const topTotal = topRaw.match(/(\d+)%cpu/i)
     const topIdle  = topRaw.match(/(\d+)%idle/i)
     const cpuPct = topTotal && topIdle ? Math.round(((parseInt(topTotal[1]) - parseInt(topIdle[1])) / parseInt(topTotal[1])) * 100) : null
-    // Memory from /proc/meminfo (kB)
     const memInfo: Record<string, number> = {};
     for (const line of memRaw.split('\n')) {
       const m = line.match(/^(\w+):\s+(\d+)/);

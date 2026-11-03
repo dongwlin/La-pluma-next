@@ -7,15 +7,9 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import type { ApiErrorResponse } from '../../utils/apiHelper.ts';
 
-// update-core 的非 dryRun 用例：Core 安装/更新必须走维护专用长超时，而
-// version 等短命令维持 15s 默认。本文件在环境变量注入后再动态导入 app，
-// 让 maaProcessService 在模块加载时解析到 500ms 的维护超时；假 CLI 用
-// 运行时读取的睡眠时长区分"低于上限完成"与"超过上限超时"两条路径，睡眠
-// 用 Atomics.wait 阻塞，保证 execFile 的 SIGKILL 超时语义被真实触发。
-//
-// 资源同步步骤经 update-maa-resources.ts 调用 `maa dir data`，假 CLI 对该
-// 参数固定退出 1，因此资源步骤在 fixture 下必然失败：既不触发真实下载，
-// 也顺带固定了"Core 已成功、资源失败分别报告"的分步语义。
+// 本文件在环境变量注入后再动态导入 app，让 maaProcessService 在模块加载时解析到 500ms 维护超时；
+// 假 CLI 用 Atomics.wait 阻塞睡眠，保证 execFile 的 SIGKILL 超时语义真实触发；其对 `maa dir data`
+// 固定退出 1，使资源步骤在 fixture 下必然失败、不触发真实下载。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-maintenance-update-core-'));
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');

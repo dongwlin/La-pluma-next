@@ -21,22 +21,6 @@ import type { ReadRequest } from './readDto.ts';
 import { parseLogCleanupBody } from './logDto.ts';
 import type { LogFileRequest } from './logDto.ts';
 
-/**
- * 日志读取与维护控制器。
- *
- * 读取只经 maaLogFileService 的日志边界：路径解码、目录越界判定与行数
- * 上限仍由该服务承担；实时缓冲的清空由 maaProcessService 承担。控制器只做
- * query 归一化。清空实时缓冲和按大小清理历史文件会改变运行数据，不是纯
- * 读取。文件名与行数上限的既有语义保持不变。
- *
- * 文件路径是 Express 5 命名通配符的路径段数组，join 还原为相对路径后交给
- * 日志边界；`lines` 仍是单值 query，重复参数与非法值由数值归一回落默认值。
- *
- * 成功/失败 envelope 由本控制器的 sendSuccess / sendError 统一装配；
- * `/logs/cleanup` 的范围校验错误也在控制器构造并交给 sendError。
- */
-
-/** `/logs/recent` 的实时日志读取：行数缺省 80，上限为进程缓冲的既有上限。 */
 export async function readRecentLogs(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   const lines = resolveBoundedInteger(readNumericQuery(req.query, 'lines'), {
     defaultValue: 80,
@@ -47,25 +31,21 @@ export async function readRecentLogs(req: ReadRequest, res: ApiResponseWriter): 
   return sendSuccess(res, req, payload);
 }
 
-/** `/logs/recent/clear`：清空实时缓冲，属改变运行数据的维护动作。 */
 export async function clearRecentLogs(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   clearRealtimeLogs();
   return sendSuccess(res, req, null, '实时日志已清空');
 }
 
-/** `/debug-screenshots`：调试截图清单读取。 */
 export async function readDebugScreenshots(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   const payload: MaaDebugScreenshot[] = await getDebugScreenshots();
   return sendSuccess(res, req, payload);
 }
 
-/** `/logs/files`：日志文件清单读取。 */
 export async function readLogFiles(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   const payload: MaaLogFileEntry[] = await getLogFiles();
   return sendSuccess(res, req, payload);
 }
 
-/** `/logs/files/*filePath` 的日志内容读取：行数缺省 1000，上限为日志边界上限。 */
 export async function readLogFileByPath(req: LogFileRequest, res: ApiResponseWriter): Promise<void> {
   // Express 5 命名通配符把捕获值作为路径段数组返回（如 ['sub', 'run.log']），
   // join 还原为相对路径后交给日志读取边界。

@@ -4,15 +4,6 @@ import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import type { PreviewRequest } from '../controllers/previewDto.ts';
 import * as agentPreviewController from '../controllers/agentPreviewController.ts';
 
-/**
- * 设备预览路由：只做端点映射，保持与抽离前一致的注册顺序。
- *
- * 截图、WebRTC 启停与状态、方向设置和设备采样的 req/res 解析、校验与
- * envelope 装配在 controllers/agentPreviewController.ts；请求的未知值
- * 收窄与响应载荷类型在 controllers/previewDto.ts。WebRTC 进程、viewer
- * 计时器与资源所有权仍由 webrtcService/webrtcRuntime 持有；浏览器实时
- * 预览继续经过同源 `/webrtc-signaling` 网关，上游管理端点不外露。
- */
 const router = Router();
 
 router.post('/screen/screenshot', asyncHandler<PreviewRequest, ApiResponseWriter>(agentPreviewController.takeScreenshot));

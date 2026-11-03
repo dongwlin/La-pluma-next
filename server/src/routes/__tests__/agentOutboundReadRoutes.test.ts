@@ -6,9 +6,6 @@ import type {
   MaintenanceParadoxSearchPayload
 } from '../../controllers/maintenanceDto.ts'
 
-// 出站读取入口已随维护路由迁出聚合入口：按实际挂载关系递归解析，
-// 证明入口仍通过聚合 router 暴露，而不是只存在于某个文件里。
-
 /** Express 5 Router 的内部层结构：只声明本文件读取的字段。 */
 interface MountedRouteLayer {
   route?: { path: string; methods?: Record<string, boolean>; stack: HandlerLayer[] }
@@ -115,14 +112,11 @@ function readRecord(value: unknown, label: string): Record<string, unknown> {
   return value
 }
 
-
-/** 成功信封的 data：载荷由端点 DTO 声明，信封只在此确认一次。 */
 function readData<T>(body: unknown): T {
   assert.ok(isRecord(body) && body.success === true, '响应应为成功信封')
   return body.data as T
 }
 
-/** 错误信封的 error 字段：码、details 与 retryable 由调用方逐项断言。 */
 function readErrorBody(body: unknown): Record<string, unknown> {
   assert.ok(isRecord(body) && body.success === false && isRecord(body.error), '响应应为错误信封')
   return body.error

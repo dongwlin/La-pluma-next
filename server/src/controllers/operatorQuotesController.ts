@@ -2,33 +2,14 @@ import OperatorQuotes from '../services/operatorQuotesService.ts'
 import type { OperatorQuote, StoredOperatorQuote } from '../services/operatorQuotesService.ts'
 import { parseCreateQuoteBody, parseUpdateQuoteBody } from './operatorQuotesDto.ts'
 
-/**
- * 台词控制器：承接台词路由的请求体收窄、参数校验与业务判定。
- *
- * 台词是旧裸 JSON 接口：控制器返回业务载荷或携带旧业务文案与 HTTP 状态的
- * 判别联合，`res.json` 序列化与状态码应用由路由层完成，不使用 agent 信封，
- * 校验失败保持旧 `{ error }` 业务 400 形状。持久化、归一化与存储错误码仍由
- * operatorQuotesService 持有，异步异常继续沿 asyncHandler 交给统一错误
- * 出口。URL、状态码与响应形状与类型化前逐项一致。
- */
-
-/**
- * 获取今日干员台词
- */
 export async function getDailyQuote(): Promise<OperatorQuote> {
   return OperatorQuotes.getDailyQuote()
 }
 
-/**
- * 获取所有干员台词
- */
 export async function getAllQuotes(): Promise<OperatorQuote[]> {
   return OperatorQuotes.getAllQuotes()
 }
 
-/**
- * 随机获取一条台词
- */
 export async function getRandomQuote(): Promise<OperatorQuote> {
   return OperatorQuotes.getRandomQuote()
 }
@@ -70,9 +51,6 @@ export type UpdateQuoteResult =
   | { ok: true; quote: OperatorQuote }
   | { ok: false; statusCode: 400 | 404; error: string }
 
-/**
- * 更新台词；保存失败经统一错误出口返回，不返回伪成功
- */
 export async function updateQuote(name: string, body: unknown): Promise<UpdateQuoteResult> {
   const parsed = parseUpdateQuoteBody(body)
   if (!parsed.ok) {
@@ -85,9 +63,6 @@ export async function updateQuote(name: string, body: unknown): Promise<UpdateQu
   return { ok: false, statusCode: 404, error: '未找到该干员的台词' }
 }
 
-/**
- * 删除台词；保存失败经统一错误出口返回，不返回伪成功
- */
 export async function deleteQuote(name: string): Promise<OperatorQuote[]> {
   return OperatorQuotes.deleteQuote(name)
 }

@@ -24,12 +24,8 @@ import { apiErrorHandler } from '../../utils/apiHelper.ts';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import { loggerManager } from '../../utils/logger.ts';
 
-// 通知 HTTP 适配已从 agent.ts 拆到独立 router：这里按 agent.ts 实际挂载
-// 关系验证入口存在，并通过真实 HTTP 验证鉴权、body 校验与统一错误出口。
-// 发送/测试路径只使用注入的假发送器或会在发起网络前失败的缺省配置；
-// 涉及发送的用例同时安装运行时出站守卫，证明回归不会发送真实通知消息。
-// 生产路由已类型化，本文件同步转为 TS：body 收窄、配置保存与应用结果、
-// 敏感字段/出站端口不进入测试与发送响应的断言与实现共用同一 DTO。
+// 发送/测试路径只用注入的假发送器或会在发起网络前失败的缺省配置；涉及发送的用例
+// 同时安装运行时出站守卫，回归不会发送真实通知消息。
 const savedConfig = getNotificationConfig();
 const tempDirs: string[] = [];
 const servers: Server[] = [];

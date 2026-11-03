@@ -105,7 +105,6 @@ test('writeTextFile keeps the permission bits of an existing target', { skip: pr
 test('a write failure rejects and leaves no temp file behind', async () => {
   await withTempDir(async dir => {
     const targetPath = join(dir, 'profile.toml');
-    // 目标被目录占用：临时文件写入成功，但最终替换失败。
     await mkdir(targetPath);
 
     await assert.rejects(

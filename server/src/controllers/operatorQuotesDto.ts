@@ -1,18 +1,5 @@
-/**
- * 台词 HTTP DTO
- *
- * 把 Express 的未知请求体按端点收窄成台词服务需要的字段；router 只做
- * HTTP 适配，持久化与归一化仍由 operatorQuotesService 持有。
- *
- * 字段规则与文案沿用既有写请求校验：非字符串或空白沿用“缺少……”文案，
- * 超长给出长度文案；合法输入两个端点都按 trim 后传给服务。校验失败仍以
- * 旧 `{ error }` 业务 400 格式返回，因此这里返回结果对象而不是抛统一
- * 信封错误，避免改变台词入口的成功/失败响应形状。
- */
-
 import type { OperatorQuoteDraft } from '../services/operatorQuotesService.ts'
 
-// 写接口的输入边界：字符串、非空（按 trim 判断）与长度上限
 const MAX_OPERATOR_NAME_LENGTH = 100
 const MAX_QUOTE_LENGTH = 2000
 
@@ -21,7 +8,6 @@ export type QuoteFieldResult =
   | { ok: true; value: string }
   | { ok: false; error: string }
 
-/** 新增台词请求体的收窄结果。 */
 export type CreateQuoteParseResult =
   | { ok: true; value: OperatorQuoteDraft }
   | { ok: false; error: string }

@@ -1,21 +1,3 @@
-/**
- * 执行 HTTP DTO
- *
- * 把 Express 请求中的未知输入收窄成执行适配需要的类型；router 只做 HTTP
- * 适配，Run 身份、幂等与设备租约仍由 agentRunService /
- * executionCoordinatorService 持有，接受后的终态由实际执行结果收尾。
- *
- * 请求侧按端点分别收窄：
- * - `Idempotency-Key` 头保持原值透传，键格式与合法性仍由 agentRunService
- *   的既有校验判定，不在适配层复制第二份规则；
- * - `waitForCompletion` 只接受布尔值，其它类型保留既有 400 文案与
- *   `receivedType` 详情；
- * - 目标停止与继续下一关的 `runId` 只接受非空字符串，缺失/非字符串按
- *   既有错误码拒绝；
- * - 响应载荷沿用 Run DTO 与执行结果字段，`result` 合并字段保持开放，
- *   不在这里补造或改写领域结果。
- */
-
 import type { AgentRunDto, AgentRunStatus } from '../services/agentRunService.ts';
 import type { ApiRequestLike, ApiResponseWriter } from '../utils/apiHelper.ts';
 import { agentError } from '../utils/apiHelper.ts';
@@ -28,12 +10,10 @@ export interface ExecutionRequest extends ApiRequestLike {
   params?: Record<string, string | undefined>;
 }
 
-/** 作业集执行/继续路由：`:id` 由路由声明收窄为 string。 */
 export interface ExecutionCopilotSetRequest extends ExecutionRequest {
   params: { id: string };
 }
 
-/** 定时流程执行路由：`:scheduleId` 由路由声明收窄为 string。 */
 export interface ExecutionScheduleRequest extends ExecutionRequest {
   params: { scheduleId: string };
 }
@@ -57,12 +37,10 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 读取对象字段；非对象输入按缺失处理，与旧实现的属性访问结果一致。 */
 export function readField(value: unknown, key: string): unknown {
   return isRecord(value) ? value[key] : undefined;
 }
 
-/** 领域结果上的公开 message：非字符串按缺失处理，由调用方使用兜底文案。 */
 export function resultMessage(result: unknown): string | null {
   const message = readField(result, 'message');
   return typeof message === 'string' ? message : null;
@@ -73,7 +51,6 @@ export function textOf(value: unknown): string {
   return typeof value === 'string' ? value : String(value);
 }
 
-/** 执行结果是否被终止；只读取对象的布尔标记，非对象按未终止处理。 */
 export function isStopped(value: unknown): boolean {
   return readField(value, 'stopped') === true;
 }
@@ -112,7 +89,6 @@ function parseRunId(requested: unknown): string {
   return requested.trim();
 }
 
-/** 继续下一关：只读取请求体中的 `runId`。 */
 export function parseContinueRunId(body: unknown): string {
   return parseRunId(readField(body, 'runId'));
 }

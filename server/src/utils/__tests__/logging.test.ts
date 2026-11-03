@@ -1,8 +1,3 @@
-/**
- * 日志关联与脱敏工具测试（请求 id、日志上下文、脱敏规则）
- * 运行: node --test server/src/utils/__tests__/logging.test.ts
- */
-
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getLogContext } from '../logContext.ts';
@@ -94,7 +89,6 @@ describe('logging', () => {
       assert.notEqual(fallbackReq.id, headerValue);
     }
 
-    // 响应对象缺少 setHeader 时仍建立上下文
     const bareReq: RequestIdRequestLike = { headers: {} };
     let bareInside: string | undefined;
     requestIdMiddleware(bareReq, {}, () => {

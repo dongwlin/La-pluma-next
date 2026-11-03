@@ -1,24 +1,9 @@
-/**
- * 日志脱敏工具：对结构化数据与文本中的凭据类字段做统一替换。
- *
- * 规则：
- * - 字段名命中凭据集合（授权头、cookie、token、密码、密钥、信令 ticket 等）时，
- *   值整体替换为 [REDACTED]，不保留长度或前缀；
- * - 文本中的 `key=value`、`"key": "value"`、`Authorization: Bearer ...` 与裸
- *   `Bearer/Basic <凭据>` 同样替换，只保留字段名；
- * - 只处理日志视图，不修改调用方对象；循环引用与过深层级以占位符截断。
- *
- * 该工具只负责“不原样输出”，不判断业务字段是否真的敏感：字段名匹配即替换，
- * 宁可少记录也不把凭据写进日志。
- */
-
 export const REDACTED = '[REDACTED]';
 
 /** 凭据类字段名：大小写不敏感，匹配字段名任意位置（botToken、apiKey、clientSecret 等）。 */
 const SENSITIVE_FIELD_PATTERN =
   /authorization|proxy-authorization|set-cookie|cookie|token|passwd|password|secret|credential|api[-_]?key|private[-_]?key|signature|ticket/i;
 
-/** 文本键值对中视为凭据的键名。 */
 const SENSITIVE_TEXT_KEYS = [
   'authorization',
   'proxy-authorization',
@@ -40,7 +25,6 @@ const SENSITIVE_TEXT_KEYS = [
   'ticket'
 ].join('|');
 
-/** `Bearer <credential>` / `Basic <credential>`：认证方案保留，凭据替换。 */
 const BEARER_TEXT_PATTERN = /\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{4,}/gi;
 
 /**
@@ -57,7 +41,6 @@ const MAX_ARRAY_ITEMS = 100;
 const TRUNCATED = '[Truncated]';
 const CIRCULAR = '[Circular]';
 
-/** 字段名是否属于凭据类，供结构化脱敏使用。 */
 export function isSensitiveLogKey(key: string): boolean {
   return SENSITIVE_FIELD_PATTERN.test(key);
 }

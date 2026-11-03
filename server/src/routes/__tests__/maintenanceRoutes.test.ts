@@ -9,16 +9,8 @@ import type { TestContext } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../../controllers/maintenanceDto.ts';
 
-// 剩余维护入口已从 agent.ts 拆到独立 router：这里通过 createLaPlumaApp 验证
-// 真实 HTTP 的鉴权、连接覆盖、dryRun 与平台信息契约。所有外部依赖都用假 CLI /
-// 假 ADB 或临时目录，不触碰真实设备与资源更新。
-//
-// 生产路由已类型化，本文件同步转为 TS：请求收窄、dryRun 与更新渠道、
-// 定时注册与自动更新配置的边界与实现共用同一 DTO；非法输入用例同时
-// 断言不产生 CLI/ADB 调用、不写 profile、不发起出站请求。
-//
-// DTO 在 env 注入后再动态导入：connectionDefaults 在模块加载时读取
-// MAA_CLI_PATH，静态值导入会让假 CLI 路径失效。
+// DTO 在 env 注入后再动态导入：connectionDefaults 在模块加载时读取 MAA_CLI_PATH，
+// 静态值导入会让假 CLI 路径失效。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-maintenance-routes-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const xdgDataHome = join(fixtureDir, 'xdg-data');
@@ -165,7 +157,6 @@ interface CopilotPlanPayload {
   name: string;
   entries: Array<{ copilotId: number }>;
 }
-
 
 const servers: Server[] = [];
 

@@ -1,20 +1,3 @@
-/**
- * 通知 HTTP DTO
- *
- * 把 Express 的未知输入收窄成通知适配需要的类型；router 只做 HTTP 适配，
- * 配置持久化仍由 configStorageService 的 `notification` 类型承担，运行时
- * 配置、渠道实例与发送语义仍由 notificationService 持有。
- * - 配置保存体：保持 `req.body || {}`，顶层对象校验、白名单与写盘仍由配置
- *   存储域判定；非对象与数组继续返回既有 400 校验错误，扩展字段原样透传。
- * - 渠道测试/发送：`channel` 沿用旧实现的真值判定，非字符串真值按文本收窄
- *   （渠道注册表以字符串为键，未知渠道仍走既有失败路径）。
- * - 标题/内容/级别沿用旧默认文案与“真值才覆盖”的语义；非字符串按文本输出，
- *   与旧实现进入模板插值后的结果一致。`data` 只保留普通对象，其余按省略处理。
- * - 响应类型只描述通知入口自己拼装的载荷；渠道配置、凭据与出站端口不进入
- *   测试/发送响应。配置读取仍按既有契约返回完整配置供设置页保存（设置页
- *   需要完整 token 才能原样提交），不在本适配层脱敏。
- */
-
 import { agentError } from '../utils/apiHelper.ts';
 import type { ApiRequestLike } from '../utils/apiHelper.ts';
 import type { ConfigStorageResult } from '../services/configStorageService.ts';

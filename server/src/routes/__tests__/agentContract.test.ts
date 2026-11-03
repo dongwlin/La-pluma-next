@@ -47,7 +47,6 @@ const expectedAdvertisedIds = [
   'get_current_activity'
 ];
 
-/** 断言取值存在：清单/OpenAPI 的嵌套字段在类型层可选，缺失即用例失败。 */
 function must<T>(value: T | undefined | null, label: string): T {
   if (value === undefined || value === null) assert.fail(`缺少 ${label}`);
   return value;

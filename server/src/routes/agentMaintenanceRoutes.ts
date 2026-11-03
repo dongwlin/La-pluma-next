@@ -9,15 +9,6 @@ import type {
 } from '../controllers/maintenanceDto.ts';
 import * as agentMaintenanceController from '../controllers/agentMaintenanceController.ts';
 
-/**
- * 维护与平台入口路由：只做端点映射。
- *
- * 连接/profile 配置、连接诊断、资源与 MAA 更新、定时与自动更新配置、
- * 识别动作，以及更新日志/作业/活动查询的 req/res 解析、校验与 envelope
- * 装配在 controllers/agentMaintenanceController.ts；请求与上游的未知值
- * 收窄在 controllers/maintenanceDto.ts。维护写入与实际执行是不同操作：
- * 带 `dryRun` 的维护动作只返回计划，不发起真实更新。
- */
 const router = Router();
 
 router.get('/config/maa/:profileName', asyncHandler<MaintenanceProfileRequest, ApiResponseWriter>(agentMaintenanceController.readProfile));
