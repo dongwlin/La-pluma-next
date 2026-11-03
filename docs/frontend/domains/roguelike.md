@@ -38,7 +38,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
    ├─ RoguelikeModePanel（受控分段控件 + 高亮测量）
    ├─ RoguelikeThemePanel（主题快捷项 + 自定义输入）
    ├─ RoguelikeSettingsPanel（高级字段 + 运行/停止按钮）
-   └─ aside（ScreenMonitor 预览）
+   └─ aside（DeviceMonitorPanel，共享实时会话）
 ```
 
 - **当前模式**是跨面板的局部交互状态：它决定主题与高级字段面板展示哪一份 `taskInputs`/`advancedParams`。它不进入配置 wire；`Activity` 隐藏/恢复保留，真正卸载或刷新后回到默认的 `roguelike`。

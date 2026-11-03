@@ -19,6 +19,7 @@ import { Button, PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator, useStatusStore } from '@/features/runtime-status'
 import { useResourceInvalidation } from '@/features/resource-invalidation'
 import { gameDataKeys } from '@/features/game-data'
+import { DeviceMonitorLayout } from '@/features/device-mirror'
 import { trainingKeys } from '../model/queryKeys'
 import { trainingQueueQueryOptions } from '../model/queries'
 import {
@@ -271,54 +272,56 @@ export default function TrainingWorkspace() {
   return (
     <>
       <PageHeader title="养成" subtitle="管理目标，筹备材料，安排下一次作战" actions={<><FloatingStatusIndicator /><Button onClick={() => setSelectorOpen(true)} icon={<Plus size={17} />}>添加干员</Button></>} />
-      <div className="training-workspace-grid">
-        <TrainingQueuePanel
-          queue={queue}
-          loading={queueLoading}
-          error={queueError}
-          uncertain={queueUncertain}
-          refreshError={refreshError}
-          operationError={operationError}
-          busy={busy}
-          pendingOperatorIds={pendingOperatorIds}
-          queueMutationPending={queueMutationPending}
-          recentlyRemoved={recentlyRemoved}
-          onRemove={handleRemoveFromQueue}
-          onReorder={handleReorder}
-          onUndo={handleUndoRemove}
-          onDismissUndo={() => setRecentlyRemoved(null)}
-          onRetryLoad={() => void reloadQueue()}
-          onReload={() => { invalidatePlan(); void reloadQueue() }}
-          onOpenPicker={() => setSelectorOpen(true)}
-        />
-
-        <div className="training-detail-column">
-          <TrainingMaterialsPanel target={currentTarget} />
-
-          <TrainingPlanPanel
-            plan={plan}
-            basisCurrent={planBasisCurrent}
-            error={planError}
-            warning={planWarning}
-            flowSync={flowSync}
-            generating={generating}
-            applying={applying}
-            syncing={syncing}
+      <DeviceMonitorLayout>
+        <div className="training-workspace-grid">
+          <TrainingQueuePanel
+            queue={queue}
+            loading={queueLoading}
+            error={queueError}
+            uncertain={queueUncertain}
+            refreshError={refreshError}
+            operationError={operationError}
             busy={busy}
-            hasQueue={queue.length > 0 && !queueError}
-            refreshFailed={refreshError}
-            queueLength={queue.length}
-            currentTarget={currentTarget}
-            onGenerate={handleGeneratePlan}
-            onApply={handleApplyPlan}
-            onRetrySync={handleRetrySync}
-            onReload={() => void reloadQueue()}
-            onInvalidate={invalidatePlan}
+            pendingOperatorIds={pendingOperatorIds}
+            queueMutationPending={queueMutationPending}
+            recentlyRemoved={recentlyRemoved}
+            onRemove={handleRemoveFromQueue}
+            onReorder={handleReorder}
+            onUndo={handleUndoRemove}
+            onDismissUndo={() => setRecentlyRemoved(null)}
+            onRetryLoad={() => void reloadQueue()}
+            onReload={() => { invalidatePlan(); void reloadQueue() }}
+            onOpenPicker={() => setSelectorOpen(true)}
           />
-        </div>
-      </div>
 
-      <TrainingSettingsPanel settings={settings} onUpdate={handleUpdateSettings} />
+          <div className="training-detail-column">
+            <TrainingMaterialsPanel target={currentTarget} />
+
+            <TrainingPlanPanel
+              plan={plan}
+              basisCurrent={planBasisCurrent}
+              error={planError}
+              warning={planWarning}
+              flowSync={flowSync}
+              generating={generating}
+              applying={applying}
+              syncing={syncing}
+              busy={busy}
+              hasQueue={queue.length > 0 && !queueError}
+              refreshFailed={refreshError}
+              queueLength={queue.length}
+              currentTarget={currentTarget}
+              onGenerate={handleGeneratePlan}
+              onApply={handleApplyPlan}
+              onRetrySync={handleRetrySync}
+              onReload={() => void reloadQueue()}
+              onInvalidate={invalidatePlan}
+            />
+          </div>
+        </div>
+
+        <TrainingSettingsPanel settings={settings} onUpdate={handleUpdateSettings} />
+      </DeviceMonitorLayout>
 
       <OperatorPicker
         isOpen={selectorOpen}

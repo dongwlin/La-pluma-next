@@ -37,7 +37,7 @@
 - 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等端点、Query key、配置 key、本地存储键或 wire 形状。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
 - 不把搜索词、识别方式、选中索引写进配置或 localStorage；不新增跨页共享。
-- 不改变渲染结构、DOM/CSS 类名、表单 `id`/`name` 或默认态视觉；既有 DOM/CSS 与视觉约束保持不变。
+- 表单 `id`/`name`、模式切换和执行动作保持稳定；作业输入与搜索在前，执行设置与预览结果在后，窄容器按阅读顺序纵向排列。
 - 页面壳不包含业务状态机；工作区是唯一领域容器，面板只接收投影。
 
 ### 2. 组合与状态边界
@@ -48,16 +48,15 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
    ├─ CombatModeTabs（受控分段 + 高亮测量）
    ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
-   │  ├─ CombatSettingsPanel → CombatAdvancedFields
-   │  ├─ CombatCopilotInputPanel（输入 + 识别方式）
+   │  ├─ 输入区：CombatCopilotInputPanel + CombatSearchPanel
+   │  ├─ 设置区：CombatSettingsPanel → CombatAdvancedFields
    │  ├─ CombatCopilotSetPanel（续跑进度 / 下一关 / 逐项结果）
-   │  ├─ CombatSearchPanel（关卡搜索 + 结果选择）
    │  └─ CombatCopilotInfoPanel（作业信息）
    ├─ CombatSpecialTaskPanel（保全派驻 / 悖论模拟卡）
    │  ├─ CombatAdvancedFields
    │  ├─ CombatParadoxSearchPanel（悖论干员搜索）
    │  └─ 执行/参数概览
-   └─ aside（ScreenMonitor 预览）
+   └─ aside（DeviceMonitorPanel，共享实时会话）
 ```
 
 | 状态 | 所有者 | 切换作业类型 | Activity 隐藏/恢复 | 真正卸载/刷新 |

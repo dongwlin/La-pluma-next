@@ -9,11 +9,6 @@ export function useDashboardPreview() {
   const { isAvailable } = useAutomationAvailability()
   const preview = usePreviewSession({
     videoRef,
-    deviceId: 'mumu-la-pluma',
-    signalingUrl: '/webrtc-signaling',
-    automationAvailable: isAvailable,
-    connectionPath: 'auto',
-    ipPreference: 'ipv4',
   })
   const snapshot = usePreviewSnapshot(isAvailable)
   const showLivePreview = preview.mode === 'live' && !preview.paused && preview.status === 'connected'

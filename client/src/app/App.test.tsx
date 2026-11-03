@@ -43,6 +43,7 @@ vi.mock('./layout/PWAInstallPrompt', () => ({ default: () => null }))
 vi.mock('@/features/runtime-status', () => ({
   useBackendStatusMonitor: () => undefined,
   useRunStatusProjection: () => undefined,
+  useAutomationAvailability: () => ({ isAvailable: true }),
 }))
 vi.mock('@/features/task-execution', () => ({ useExecutionObservation: () => undefined }))
 vi.mock('@/pages/dashboard/Dashboard', () => ({

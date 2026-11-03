@@ -19,6 +19,29 @@
     width: 100%;
   }
 
+  .combat-workspace-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--app-space-section);
+  }
+
+  .combat-main-column {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--app-space-section);
+    container-type: inline-size;
+  }
+
+  .combat-monitor-column {
+    min-width: 0;
+  }
+
+  .combat-monitor-panel {
+    width: 100%;
+  }
+
   .combat-copilot-layout,
   .combat-special-layout {
     display: grid;
@@ -71,6 +94,18 @@
     padding: 0;
   }
 
+  .combat-copilot-source,
+  .combat-copilot-results {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: var(--app-space-card);
+  }
+
+  .combat-copilot-results {
+    container-type: inline-size;
+  }
+
   .combat-workspace-section {
     min-width: 0;
     border-radius: var(--app-continuous-radius-compact);
@@ -95,12 +130,13 @@
 
   @container (min-width: 40rem) {
     .combat-copilot-layout {
-      grid-template-columns: minmax(16rem, 17rem) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
 
-    .combat-copilot-layout > :first-child {
-      grid-row: 1 / span 2;
-      align-self: stretch;
+    .combat-copilot-source {
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
     }
 
     .combat-special-layout {
@@ -113,7 +149,17 @@
 
   }
 
-  @media (max-width: 767px) {
+  @media (width >= 1360px) {
+    .combat-workspace-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .combat-main-column {
+      grid-column: span 2;
+    }
+  }
+
+  @media (width <= 767px) {
     .combat-task-heading {
       align-items: stretch;
       padding: var(--app-space-panel);

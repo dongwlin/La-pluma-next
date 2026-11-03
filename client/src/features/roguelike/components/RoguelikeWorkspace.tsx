@@ -9,9 +9,9 @@
  */
 
 import { useState } from 'react'
-import { Button, SmoothPanel } from '@/shared/ui'
+import { Button } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
-import { ScreenMonitor } from '@/features/device-mirror'
+import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { useUserConfig } from '@/features/user-config'
 import { roguelikeConfigAdapter } from '../model/roguelikeConfig'
 import {
@@ -157,14 +157,10 @@ export default function RoguelikeWorkspace() {
         />
 
         <aside className="roguelike-monitor-column" aria-label="模拟器实时预览">
-          <SmoothPanel
+          <DeviceMonitorPanel
             className="roguelike-monitor-panel"
-            surfaceClassName="automation-monitor-surface roguelike-monitor-surface"
-          >
-            <div className="task-monitor-panel is-compact">
-              <ScreenMonitor variant="compact" />
-            </div>
-          </SmoothPanel>
+            surfaceClassName="roguelike-monitor-surface"
+          />
         </aside>
       </div>
     </>

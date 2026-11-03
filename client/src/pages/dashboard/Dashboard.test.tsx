@@ -12,6 +12,7 @@ import { useDashboardStore } from '@/features/dashboard/store/dashboardStore'
 import { useStatusStore } from '@/features/runtime-status'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import Dashboard from './Dashboard'
+import { PreviewSessionProvider } from '@/features/device-mirror'
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '@/features/dashboard/constants'
 import type { AutomationActivityPayload } from '@/features/automation'
 
@@ -258,14 +259,14 @@ function LocationProbe() {
 
 function renderDashboard(mode: 'visible' | 'hidden' = 'visible') {
   root.render(
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={client}><PreviewSessionProvider>
       <MemoryRouter initialEntries={['/app/dashboard']}>
         <Activity mode={mode}>
           <Dashboard />
           <LocationProbe />
         </Activity>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </PreviewSessionProvider></QueryClientProvider>,
   )
 }
 

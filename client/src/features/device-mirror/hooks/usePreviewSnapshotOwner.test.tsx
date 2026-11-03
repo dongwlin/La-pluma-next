@@ -4,7 +4,7 @@ import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePreviewStore } from '../store/previewStore'
-import { usePreviewSnapshot } from './usePreviewSnapshot'
+import { usePreviewSnapshotOwner } from './usePreviewSnapshotOwner'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -26,13 +26,13 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-let snapshot: ReturnType<typeof usePreviewSnapshot>
+let snapshot: ReturnType<typeof usePreviewSnapshotOwner>
 let visibility: DocumentVisibilityState
 let container: HTMLDivElement
 let root: Root
 
 function Harness({ available = true }: { available?: boolean }) {
-  const current = usePreviewSnapshot(available)
+  const current = usePreviewSnapshotOwner(available)
   useEffect(() => { snapshot = current })
   return <span data-image={current.image} data-error={current.error} />
 }
@@ -45,7 +45,7 @@ async function selectMode(mode: 'off' | 'snapshot' | 'live') {
   await act(async () => usePreviewStore.getState().setMode(mode))
 }
 
-describe('usePreviewSnapshot', () => {
+describe('usePreviewSnapshotOwner', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.captureScreen.mockReset().mockResolvedValue(captured())

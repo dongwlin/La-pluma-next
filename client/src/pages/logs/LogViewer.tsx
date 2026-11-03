@@ -9,6 +9,7 @@
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { LogsWorkspace } from '@/features/logs'
+import { DeviceMonitorLayout } from '@/features/device-mirror'
 
 export default function LogViewer() {
   return (
@@ -21,7 +22,9 @@ export default function LogViewer() {
           actions={<FloatingStatusIndicator />}
         />
 
-        <LogsWorkspace />
+        <DeviceMonitorLayout>
+          <LogsWorkspace />
+        </DeviceMonitorLayout>
       </div>
     </div>
   )

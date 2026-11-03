@@ -9,6 +9,7 @@
 import { PageHeader } from '@/shared/ui'
 import { FloatingStatusIndicator } from '@/features/runtime-status'
 import { StatisticsWorkspace } from '@/features/statistics'
+import { DeviceMonitorLayout } from '@/features/device-mirror'
 
 export default function DataStatistics() {
   return (
@@ -29,7 +30,9 @@ export default function DataStatistics() {
           )}
         />
 
-        <StatisticsWorkspace />
+        <DeviceMonitorLayout>
+          <StatisticsWorkspace />
+        </DeviceMonitorLayout>
       </div>
     </div>
   )

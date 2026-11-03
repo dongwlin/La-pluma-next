@@ -72,7 +72,7 @@ vi.mock('@/features/runtime-status', () => ({
   FloatingStatusIndicator: () => null,
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
-vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => null }))
+vi.mock('@/features/device-mirror', () => ({ DeviceMonitorPanel: () => null }))
 vi.mock('@/features/automation/components/NotificationSettings', () => ({ default: () => null }))
 
 const ok = <T,>(data: T): ApiResponse<T> => ({ success: true, data })

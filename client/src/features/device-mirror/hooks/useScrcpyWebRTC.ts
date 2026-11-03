@@ -238,7 +238,6 @@ export function useScrcpyWebRTC({
   const attemptTimeoutRef = useRef<number | null>(null)
   const connectionTimeoutRef = useRef<number | null>(null)
   const authAbortControllerRef = useRef<AbortController | null>(null)
-  const iceGatheringCleanupRef = useRef<(() => void) | null>(null)
   const prevStatsRef = useRef<WebRTCStatsCounters | null>(null)
 
   const sendForward = useCallback((payload: unknown) => {
@@ -281,8 +280,6 @@ export function useScrcpyWebRTC({
     }
     authAbortControllerRef.current?.abort()
     authAbortControllerRef.current = null
-    iceGatheringCleanupRef.current?.()
-    iceGatheringCleanupRef.current = null
     inputChannelCleanupRef.current?.()
     inputChannelCleanupRef.current = null
     touchInput.reset()
@@ -604,32 +601,9 @@ export function useScrcpyWebRTC({
                   sdp = sdp.replace(/m=video (.*)\r\n/g, `m=video $1\r\nb=AS:${answerBitrateKbps}\r\n`)
                   await pc.setLocalDescription(new RTCSessionDescription({ type: 'answer', sdp }))
                   if (!isCurrentConnection()) return
-                  if (pc.iceGatheringState === 'complete') {
-                    if (!sendAnswer(pc)) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
-                    return
-                  }
-
-                  iceGatheringCleanupRef.current?.()
-                  let sent = false
-                  let timeoutId: number | null = null
-                  const handleGatheringChange = () => {
-                    if (pc.iceGatheringState === 'complete') finish()
-                  }
-                  const cleanup = () => {
-                    pc.removeEventListener('icegatheringstatechange', handleGatheringChange)
-                    if (timeoutId !== null) window.clearTimeout(timeoutId)
-                    timeoutId = null
-                    if (iceGatheringCleanupRef.current === cleanup) iceGatheringCleanupRef.current = null
-                  }
-                  const finish = () => {
-                    if (sent) return
-                    sent = true
-                    cleanup()
-                    if (isCurrentConnection() && !sendAnswer(pc)) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
-                  }
-                  pc.addEventListener('icegatheringstatechange', handleGatheringChange)
-                  timeoutId = window.setTimeout(finish, 2000)
-                  iceGatheringCleanupRef.current = cleanup
+                  // Scrcpy's signaling protocol forwards ICE candidates separately,
+                  // including when the device SDP omits ice-options:trickle.
+                  if (!sendAnswer(pc)) finishConnection(generation, 'error', '信令连接已中断，请重新启动预览')
                 } catch (err) {
                   if (!isCurrentConnection()) return
                   finishConnection(generation, 'error', `SDP 处理失败: ${err instanceof Error ? err.message : String(err)}`)

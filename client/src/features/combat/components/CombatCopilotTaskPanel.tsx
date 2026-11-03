@@ -1,7 +1,7 @@
 /**
  * 自动战斗单一作业卡
  *
- * 组合设置、输入/识别方式、作业集预览与搜索/信息三栏。配置草稿、预览
+ * 按作业输入/搜索、执行设置与预览结果组合工作区。配置草稿、预览
  * 会话、选择与执行投影都由工作区提供；本地输入状态由各面板订阅自己的
  * 会话存储，不推动无关列表重渲染。
  */
@@ -59,10 +59,22 @@ export default function CombatCopilotTaskPanel({
         onStop={execution.onStop}
       />
 
-      {/* 作业配置区 */}
       <div className="combat-copilot-layout">
-        {/* 左栏：设置项 */}
-        <div className="space-y-3 xl:sticky xl:top-4">
+        <div className="combat-copilot-source">
+          <div className="app-stack-card">
+            <CombatCopilotInputPanel
+              input={config.input}
+              isLoading={preview.loading}
+              previewModeStore={preview.modeStore}
+              onInputChange={config.onInputChange}
+              onPreview={preview.onPreview}
+              onCancelPreview={preview.onCancel}
+            />
+          </div>
+          <CombatSearchPanel {...search} />
+        </div>
+
+        <div className="combat-copilot-settings">
           <CombatSettingsPanel
             task={task}
             formationMode={config.formationMode}
@@ -76,17 +88,7 @@ export default function CombatCopilotTaskPanel({
           />
         </div>
 
-        {/* 中栏：输入框 + 作业列表 */}
-        <div className="flex min-w-0 flex-col space-y-3">
-          <CombatCopilotInputPanel
-            input={config.input}
-            isLoading={preview.loading}
-            previewModeStore={preview.modeStore}
-            onInputChange={config.onInputChange}
-            onPreview={preview.onPreview}
-            onCancelPreview={preview.onCancel}
-          />
-
+        <div className="combat-copilot-results">
           <CombatCopilotSetPanel
             preview={preview.info}
             view={view}
@@ -102,11 +104,6 @@ export default function CombatCopilotTaskPanel({
             onStartNext={execution.onStartNext}
             onCancelSet={execution.onCancelSet}
           />
-        </div>
-
-        {/* 右栏：搜索框 + 作业介绍 */}
-        <div className="space-y-3 xl:sticky xl:top-4">
-          <CombatSearchPanel {...search} />
           <CombatCopilotInfoPanel
             preview={preview.info}
             view={view}

@@ -91,7 +91,7 @@ export default function CombatCopilotSetPanel({
             const nextCopilot = nextIndex >= 0 ? preview.copilots[nextIndex] ?? null : null
             return (
               <div className="mb-3 border-y border-(--app-border) py-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3 @md:flex-row @md:items-start @md:justify-between">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-tertiary">历史续跑进度</div>
                     <div className="mt-1 text-sm font-semibold text-primary">

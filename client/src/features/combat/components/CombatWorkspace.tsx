@@ -15,9 +15,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
-import { Button, ConfirmDialog, SmoothPanel } from '@/shared/ui'
+import { Button, ConfirmDialog } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
-import { ScreenMonitor } from '@/features/device-mirror'
+import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { isTerminalRunState } from '@/features/task-execution'
 import { useUserConfig } from '@/features/user-config'
 import { resetCopilotSetProgress as resetCopilotSetProgressRequest } from '../api'
@@ -598,8 +598,8 @@ export default function CombatWorkspace() {
         </div>
       )}
 
-      <div className="task-monitor-layout">
-        <div className="task-monitor-main">
+      <div className="combat-workspace-grid">
+        <div className="combat-main-column">
           <CombatModeTabs activeMode={activeCombatMode} onSelect={setActiveCombatMode} />
 
           {/* 本次执行进度：只补条目位置、关卡与已用时；状态与停止留在执行卡片。 */}
@@ -628,34 +628,28 @@ export default function CombatWorkspace() {
             )}
 
             {/* 保全派驻 / 悖论模拟 */}
-            <div className="app-stack-section">
-              {specialTask && (
-                <CombatSpecialTaskPanel
-                  task={specialTask}
-                  input={taskInputs[specialTask.id] || ''}
-                  advanced={advancedParams[specialTask.id] ?? {}}
-                  onInputChange={value => handleInputChange(specialTask.id, value)}
-                  onAdvancedChange={(key, value) => handleAdvancedChange(specialTask.id, key, value)}
-                  paradoxSearch={specialTask.id === 'paradoxcopilot' ? paradoxSearch : undefined}
-                  execution={{
-                    ...baseExecution,
-                    onExecute: () => void handleExecute(specialTask),
-                  }}
-                />
-              )}
-            </div>
+            {specialTask && (
+              <CombatSpecialTaskPanel
+                task={specialTask}
+                input={taskInputs[specialTask.id] || ''}
+                advanced={advancedParams[specialTask.id] ?? {}}
+                onInputChange={value => handleInputChange(specialTask.id, value)}
+                onAdvancedChange={(key, value) => handleAdvancedChange(specialTask.id, key, value)}
+                paradoxSearch={specialTask.id === 'paradoxcopilot' ? paradoxSearch : undefined}
+                execution={{
+                  ...baseExecution,
+                  onExecute: () => void handleExecute(specialTask),
+                }}
+              />
+            )}
           </div>
         </div>
 
-        <aside className="task-monitor-column" aria-label="模拟器实时预览">
-          <SmoothPanel
+        <aside className="combat-monitor-column" aria-label="模拟器实时预览">
+          <DeviceMonitorPanel
             className="combat-monitor-panel"
-            surfaceClassName="automation-monitor-surface combat-monitor-surface"
-          >
-            <div className="task-monitor-panel is-compact">
-              <ScreenMonitor variant="compact" />
-            </div>
-          </SmoothPanel>
+            surfaceClassName="combat-monitor-surface"
+          />
         </aside>
       </div>
 

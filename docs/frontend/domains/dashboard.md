@@ -110,8 +110,8 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 ### 5. 预览生命期
 
 - `DashboardPreviewEntry` 始终渲染在流程网格的预览壳内，不按流程 loading、执行阶段、连接健康或设备样本条件卸载；网格测量依赖它提供的 `[data-dashboard-preview-card]` 与 `[data-dashboard-preview-frame]`。
-- 预览会话仍由 device-mirror 的 `usePreviewSession`/`usePreviewSnapshot` 持有：Activity 隐藏会清理连接与截图 Effects，保留所选模式；恢复时按所选模式重建。文档隐藏暂停不影响业务快照。
-- 点击预览画面不再导航，概览保持当前页；预览模式仍只由卡片头部的“关闭 / 快照 / 实时”控制切换，完整模拟器控制台从日常页进入。
+- 预览会话由 device-mirror 的应用级 `PreviewSessionProvider` 持有；总览经 `usePreviewSession`/`usePreviewSnapshot` 消费共享视频流与截图。Activity 隐藏只解除当前视频绑定，切页不重连；文档隐藏暂停不影响业务快照。
+- 点击预览画面不再导航，概览保持当前页；预览模式仍只由卡片头部的“关闭 / 快照 / 实时”控制切换，日常、作业、肉鸽、养成、数据和日志页提供完整模拟器控制台。
 - 区域测试只验证流程区域不条件卸载预览入口；真正的连接/截图生命周期仍由 device-mirror 的预览测试覆盖。
 
 ### 6. 局部展示计算
@@ -147,7 +147,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 设备温度历史 | `dashboardStore` | 保留 | 随完整快照缓存恢复 |
 | 摘要与当前活动 | `dashboardStore` | 保留 | 随完整快照缓存恢复；`lastRefreshError` 只在运行期 |
 | 活动卡 phase（loading/active/none/unavailable/stale） | `model/activityView.ts` | 保留 | 由快照与运行期刷新错误重新投影 |
-| 预览会话 | `device-mirror` | 清理连接/截图 Effects，保留模式；恢复按模式重建 | 按 `autoStart` 规则恢复模式 |
+| 预览会话 | `device-mirror` | 仅解除总览视频绑定；应用级会话与截图采样保持，返回复用 | 按 `autoStart` 规则恢复模式 |
 | 导航回调 | `DashboardWorkspace` | 稳定 | 重建 |
 
 ### 8. 兼容与维护约束

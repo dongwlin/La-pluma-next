@@ -1,21 +1,17 @@
 {
   "_comment": "stylelint ratchet 基线：按文件记录存量违规数（文件 -> 规则 -> 数量）。禁止手工放宽，仅可通过 `pnpm --filter la-pluma-next-client stylelint:baseline` 在违规数下降或有意的重构后重新生成。",
-  "_total": 825,
+  "_total": 802,
   "files": {
     "src/features/automation/styles/automation.css": {
-      "alpha-value-notation": 26,
-      "color-function-alias-notation": 26,
-      "color-function-notation": 28,
+      "alpha-value-notation": 23,
+      "color-function-alias-notation": 23,
+      "color-function-notation": 25,
       "declaration-block-no-redundant-longhand-properties": 4,
-      "declaration-empty-line-before": 2,
+      "declaration-empty-line-before": 1,
       "media-feature-range-notation": 6,
-      "no-descending-specificity": 42,
-      "no-duplicate-selectors": 1,
-      "property-no-vendor-prefix": 5,
+      "no-descending-specificity": 39,
+      "property-no-vendor-prefix": 4,
       "selector-not-notation": 1
-    },
-    "src/features/combat/styles/combat.css": {
-      "media-feature-range-notation": 1
     },
     "src/features/dashboard/styles/dashboard.css": {
       "alpha-value-notation": 11,
@@ -27,13 +23,7 @@
       "property-no-vendor-prefix": 3
     },
     "src/features/device-mirror/styles/device-mirror.css": {
-      "alpha-value-notation": 1,
-      "color-function-alias-notation": 1,
-      "color-function-notation": 1,
-      "declaration-empty-line-before": 3,
-      "media-feature-range-notation": 1,
-      "no-descending-specificity": 9,
-      "property-no-vendor-prefix": 1
+      "no-descending-specificity": 10
     },
     "src/features/logs/styles/logs.css": {
       "media-feature-range-notation": 1,

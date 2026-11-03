@@ -115,7 +115,7 @@ vi.mock('@/features/logs/api', () => ({
   cleanupLogs: vi.fn(),
 }))
 
-vi.mock('@/features/device-mirror', () => ({ ScreenMonitor: () => <div data-testid="screen-monitor" /> }))
+vi.mock('@/features/device-mirror', () => ({ DeviceMonitorPanel: () => <div data-testid="screen-monitor" /> }))
 
 vi.mock('@/features/combat/components/CombatCopilotSetPanel', async (importOriginal) => {
   const React = await import('react')

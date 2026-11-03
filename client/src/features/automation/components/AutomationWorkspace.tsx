@@ -28,7 +28,7 @@ import {
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react'
-import { ScreenMonitor } from '@/features/device-mirror'
+import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { Button, EmptyState, SmoothPanel, Switch } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { useUserConfig } from '@/features/user-config'
@@ -1102,14 +1102,9 @@ export default function AutomationWorkspace() {
 
         <div className="automation-support-column">
           <div className="automation-monitor-column">
-            <SmoothPanel
+            <DeviceMonitorPanel
               className="automation-monitor-panel"
-              surfaceClassName="automation-monitor-surface"
-            >
-              <div className="task-monitor-panel is-compact">
-                <ScreenMonitor variant="compact" />
-              </div>
-            </SmoothPanel>
+            />
           </div>
 
           <AutomationSchedulePanel
