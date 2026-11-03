@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router'
 import ThemeToggle from './ThemeToggle'
 import { appTabRoute, type AppTab } from '@/shared/navigation'
 import { appTabs, type AppTabDefinition } from '../router/tabs'
-import { ExecutionStatusBar } from '@/features/task-execution'
 import {
   DEFAULT_OPERATOR_QUOTE,
   getOperatorAvatarUrl,
@@ -391,7 +390,6 @@ export default function Layout({ activeTab, children }: LayoutProps) {
           </aside>
 
           <main className="la-pluma-scroll-host">
-            <ExecutionStatusBar />
             <div className="la-pluma-content app-shell">
               {children}
             </div>

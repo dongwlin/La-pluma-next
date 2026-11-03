@@ -3,8 +3,6 @@
  * 跨域共用的命令执行、Run 观察与目标停止端点，以及应用级执行控制器。
  */
 
-import './styles/execution-bar.css'
-
 export {
   executeCommand,
   executePredefinedTask,
@@ -32,20 +30,8 @@ export type {
 
 export { useExecutionObservation, useExecutionSnapshot } from './hooks/useExecutionController'
 
-export { default as ExecutionStatusBar } from './components/ExecutionStatusBar'
-
-export {
-  findPrimaryActiveRun,
-  summarizeRunStatus,
-} from './model/runStatus'
+export { summarizeRunStatus } from './model/runStatus'
 export type { GlobalRunPhase, GlobalRunStatus } from './model/runStatus'
-
-export {
-  formatExecutionElapsed,
-  readActiveExecutionView,
-  stopActiveExecutionRun,
-} from './model/activeRunDisplay'
-export type { ActiveExecutionView } from './model/activeRunDisplay'
 
 export {
   ACTIVE_RUN_STATES,
