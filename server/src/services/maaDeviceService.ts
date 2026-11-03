@@ -486,7 +486,6 @@ export async function testAdbConnection(
     logger.debug('尝试连接设备', { address: deviceAddress });
     const { stdout: connectOutput } = await adbExecText(adbPath, ['connect', deviceAddress], { timeout: 8000, windowsHide: true });
 
-    // 等待连接稳定
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const { stdout: devicesOutput2 } = await adbExecText(adbPath, ['devices'], { timeout: 6000, windowsHide: true });

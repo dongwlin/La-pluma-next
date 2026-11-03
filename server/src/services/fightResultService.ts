@@ -1,4 +1,3 @@
-/** 作战任务总结：来自 `parseTaskSummary`，旧格式或缺字段时各字段可缺省。 */
 export interface FightTaskSummary {
   stage?: unknown;
   times?: unknown;

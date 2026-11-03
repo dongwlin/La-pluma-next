@@ -199,10 +199,6 @@ export type CopilotSetRaid = 'normal' | 'raid' | 'both';
 
 const COPILOT_SET_RAIDS: ReadonlySet<string> = new Set<CopilotSetRaid>(['normal', 'raid', 'both']);
 
-/**
- * `app` was page-driven sequential execution and `cli` was maa-cli's native
- * multi-copilot run. Both are now one server-held continuous queue.
- */
 export function normalizeCopilotSetMode(value: unknown): CopilotSetMode {
   if (value === undefined || value === null || value === '') return 'continuous';
   if (value === 'continuous' || value === 'app' || value === 'cli') return 'continuous';

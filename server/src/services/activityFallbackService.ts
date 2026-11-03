@@ -118,7 +118,6 @@ async function fetchJson(url: string): Promise<unknown> {
   return data;
 }
 
-/** 按 clientType 读取备用活动；未知客户端、缓存命中或并发请求直接复用结果。 */
 export async function getFallbackActivity(
   clientType: string = DEFAULT_CLIENT_TYPE
 ): Promise<PenguinActivity | null> {

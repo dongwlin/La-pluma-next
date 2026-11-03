@@ -67,7 +67,6 @@ export interface AgentRunDto {
   recovery?: AgentRunRecovery;
 }
 
-/** 内存与磁盘共用的 Run 记录（内部字段不进入 DTO）。 */
 export interface AgentRunRecord {
   runId: string;
   operationId: string;

@@ -179,7 +179,6 @@ export function getCombatCopilotPreferences(combatTasks: unknown = {}): CombatCo
   };
 }
 
-/** 单个活动的关卡候选：执行计划只取每关第一份可靠候选。 */
 export interface ActivityStageCandidates {
   stage: string;
   candidates?: readonly ActivityCopilotCandidate[];
@@ -203,7 +202,6 @@ export interface ActivityCopilotRunEntry extends CopilotExecutionEntry {
   uri: string;
 }
 
-/** 未就绪的执行计划：原因必须能解释为何不执行任何条目。 */
 export interface ActivityBlockedRunPlan {
   state: 'blocked';
   reason: string;

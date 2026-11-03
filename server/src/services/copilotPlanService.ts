@@ -41,7 +41,6 @@ function getMaaResourceDir(): Promise<string> {
   return resourceDirPromise;
 }
 
-/** 资源目录签名：目录或 `stages.json` 的修改时间变化时重新解析。 */
 interface StageCatalog {
   signature: string;
   filenames: string[];
@@ -98,7 +97,6 @@ async function loadStageCatalog(resourceDir: string): Promise<StageCatalog> {
   return catalog;
 }
 
-/** 已安装 `tasks.json` 的解析缓存；修改时间不变时不重复读取文件。 */
 async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
   const tasksPath = join(resourceDir, 'tasks', 'tasks.json');
   const modifiedAt = await readPathMtimeMs(tasksPath);
@@ -640,7 +638,6 @@ function normalizeCopilotPlanPath(file: string): string {
   return (pathPlatformOverride ?? process.platform) === 'win32' ? unified.toLowerCase() : unified;
 }
 
-/** 按日志中的计划文件名定位执行条目；组结算与逐项观察共用同一条匹配规则。 */
 function findCopilotExecutionItemIndex(
   executionItems: readonly { filename: string }[],
   file: string
