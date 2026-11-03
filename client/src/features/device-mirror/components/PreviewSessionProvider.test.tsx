@@ -140,6 +140,39 @@ describe('PreviewSessionProvider workspace lifetime', () => {
     expect(mocks.connect).toHaveBeenCalledExactlyOnceWith('/webrtc-signaling')
   })
 
+  it('recovers known infrastructure after backend recovery triggers a failed live startup', async () => {
+    mocks.available = false
+    mocks.getWebrtcStatus.mockRejectedValueOnce(new Error('状态读取失败'))
+    await selectMode('live')
+    await renderWorkspace()
+    expect(infrastructure.view.infrastructureStatus).toBeNull()
+    expect(infrastructure.view.infrastructureError).toBe('状态读取失败')
+    expect(mocks.startWebrtc).not.toHaveBeenCalled()
+
+    const status = { success: true, data: { installed: true, built: true, serverRunning: true, agentRunning: false } }
+    const recoveryStatus = deferred<typeof status>()
+    const startup = deferred<{ success: boolean; message: string }>()
+    mocks.getWebrtcStatus.mockReturnValueOnce(recoveryStatus.promise).mockResolvedValue(status)
+    mocks.startWebrtc.mockReturnValueOnce(startup.promise)
+    mocks.available = true
+    await renderWorkspace('second')
+    expect(mocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+    expect(mocks.startWebrtc).toHaveBeenCalledOnce()
+
+    await act(async () => recoveryStatus.resolve(status))
+    expect(infrastructure.view.infrastructureStatus).toBeNull()
+    await act(async () => startup.resolve({ success: false, message: 'Agent 启动失败' }))
+
+    expect(infrastructure.view.infrastructureStatus).toEqual(status.data)
+    expect(infrastructure.view.infrastructureStatusState).toBe('ready')
+    expect(infrastructure.view.infrastructureLoading).toBeNull()
+    expect(infrastructure.view.infrastructureError).toBe('Agent 启动失败')
+    expect(session.error).toBe('Agent 启动失败')
+    expect(mocks.getWebrtcStatus).toHaveBeenCalledTimes(3)
+    expect(mocks.startWebrtc).toHaveBeenCalledOnce()
+    expect(mocks.connect).not.toHaveBeenCalled()
+  })
+
   it('attaches the same connected media stream to the next visible view without reconnecting', async () => {
     const stop = vi.fn()
     mocks.stream = { getTracks: () => [{ stop }] } as unknown as MediaStream

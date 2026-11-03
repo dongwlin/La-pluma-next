@@ -6,13 +6,15 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScrcpyDeviceView from './ScrcpyDeviceView'
 import { PreviewSessionProvider } from './PreviewSessionProvider'
-import { startWebrtc } from '../api'
+import ScreenMonitor from './ScreenMonitor'
+import { getWebrtcStatus, startWebrtc } from '../api'
 import type { useScrcpyWebRTC } from '../hooks/useScrcpyWebRTC'
 import { usePreviewStore } from '../store/previewStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-vi.mock('@/features/runtime-status', () => ({ useAutomationAvailability: () => ({ isAvailable: true }) }))
+const availabilityMock = vi.hoisted(() => ({ isAvailable: true }))
+vi.mock('@/features/runtime-status', () => ({ useAutomationAvailability: () => availabilityMock }))
 vi.mock('../api', () => ({ getWebrtcStatus: vi.fn().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } }), startWebrtc: vi.fn().mockResolvedValue({ success: true, data: { signalingUrl: '/webrtc-signaling' } }) }))
 
 const webrtcMock = vi.hoisted(() => ({
@@ -84,6 +86,8 @@ const findButton = (label: string) => Array.from(container.querySelectorAll('but
 
 describe('ScrcpyDeviceView automation availability', () => {
   beforeEach(() => {
+    availabilityMock.isAvailable = true
+    vi.mocked(getWebrtcStatus).mockReset().mockResolvedValue({ success: true, data: { installed: true, built: true, serverRunning: false, agentRunning: false } })
     usePreviewStore.setState({ mode: 'off', quality: 'power', fps: 15, maxSize: 640, bitrateMbps: 1.5, autoStart: false })
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     webrtcMock.status = 'idle'
@@ -144,6 +148,31 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(onToggleServer).not.toHaveBeenCalled()
     expect(onToggleAgent).not.toHaveBeenCalled()
     expect(webrtcMock.sendTouch).not.toHaveBeenCalled()
+  })
+
+  it('restores infrastructure controls after an initial status failure and backend recovery', async () => {
+    availabilityMock.isAvailable = false
+    vi.mocked(getWebrtcStatus).mockRejectedValueOnce(new Error('状态读取失败'))
+    await act(async () => root.render(<ScreenMonitor />))
+
+    expect(container.textContent).toContain('状态读取失败')
+    expect(findButton('启动服务')?.disabled).toBe(true)
+    expect(findButton('连接 Agent')?.disabled).toBe(true)
+    expect(findButton('安装组件')?.disabled).toBe(true)
+
+    vi.mocked(getWebrtcStatus).mockResolvedValue({
+      success: true,
+      data: { installed: true, built: true, serverRunning: true, agentRunning: false },
+    })
+    availabilityMock.isAvailable = true
+    await act(async () => root.render(<ScreenMonitor />))
+
+    expect(getWebrtcStatus).toHaveBeenCalledTimes(2)
+    expect(findButton('停止服务')?.disabled).toBe(false)
+    expect(findButton('连接 Agent')?.disabled).toBe(false)
+    expect(findButton('重装组件')?.disabled).toBe(false)
+    expect(container.textContent).not.toContain('状态读取失败')
+    expect(startWebrtc).not.toHaveBeenCalled()
   })
 
   it('keeps selected live mode connected while an Activity workspace hides and restores', async () => {

@@ -81,6 +81,7 @@ function InfrastructureHarness() {
 
 let container: HTMLDivElement
 let root: Root
+let visibility: DocumentVisibilityState
 
 const click = async (label: string) => {
   const button = Array.from(container.querySelectorAll('button'))
@@ -103,6 +104,8 @@ function deferred<T>() {
 
 describe('usePreviewInfrastructure automation availability guard', () => {
   beforeEach(() => {
+    visibility = 'visible'
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
     deviceViewBehavior.startLiveOnMount = false
     usePreviewStore.getState().setMode('off')
     availabilityMock.isAvailable = false
@@ -182,6 +185,76 @@ describe('usePreviewInfrastructure automation availability guard', () => {
     expect(view?.getAttribute('data-status-state')).toBe('error')
     expect(view?.getAttribute('data-has-status')).toBe('false')
     expect(view?.getAttribute('data-error')).toBe('状态读取失败')
+  })
+
+  it.each(['unknown', 'stopped'] as const)('resynchronizes %s infrastructure when the document becomes visible', async status => {
+    availabilityMock.isAvailable = true
+    if (status === 'unknown') apiMocks.getWebrtcStatus.mockRejectedValueOnce(new Error('状态读取失败'))
+    await act(async () => root.render(<InfrastructureHarness />))
+    await flush()
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledOnce()
+
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledOnce()
+    apiMocks.getWebrtcStatus.mockResolvedValue({
+      success: true,
+      data: { installed: true, built: true, serverRunning: true, agentRunning: false },
+    })
+    visibility = 'visible'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await flush()
+
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+    expect(latestDeviceViewProps?.infrastructureStatusState).toBe('ready')
+    expect(latestDeviceViewProps?.infrastructureStatus?.serverRunning).toBe(true)
+    expect(latestDeviceViewProps?.infrastructureError).toBeNull()
+  })
+
+  it('preserves an action failure across a successful background status refresh', async () => {
+    vi.useFakeTimers()
+    availabilityMock.isAvailable = true
+    apiMocks.getWebrtcStatus.mockResolvedValue({
+      success: true,
+      data: { installed: true, built: true, serverRunning: true, agentRunning: true },
+    })
+    apiMocks.installWebrtc.mockRejectedValueOnce(new Error('安装失败'))
+    await act(async () => root.render(<InfrastructureHarness />))
+    await click('install')
+    expect(latestDeviceViewProps?.infrastructureError).toBe('安装失败')
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+
+    await act(async () => vi.advanceTimersByTimeAsync(4000))
+
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(3)
+    expect(latestDeviceViewProps?.infrastructureStatusState).toBe('ready')
+    expect(latestDeviceViewProps?.infrastructureError).toBe('安装失败')
+  })
+
+  it('keeps an in-flight operation intact through backend and foreground recovery', async () => {
+    availabilityMock.isAvailable = true
+    const pending = deferred<{ success: boolean }>()
+    apiMocks.installWebrtc.mockReturnValueOnce(pending.promise)
+    await act(async () => root.render(<InfrastructureHarness />))
+    await click('install')
+    availabilityMock.isAvailable = false
+    await act(async () => root.render(<InfrastructureHarness />))
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    availabilityMock.isAvailable = true
+    await act(async () => root.render(<InfrastructureHarness />))
+    visibility = 'visible'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledOnce()
+    expect(latestDeviceViewProps?.infrastructureLoading).toBe('install')
+    await click('server')
+    expect(apiMocks.startWebrtcServer).not.toHaveBeenCalled()
+
+    await act(async () => pending.resolve({ success: true }))
+    expect(apiMocks.getWebrtcStatus).toHaveBeenCalledTimes(2)
+    expect(latestDeviceViewProps?.infrastructureLoading).toBeNull()
+    expect(latestDeviceViewProps?.infrastructureStatusState).toBe('ready')
   })
 
   it('serializes service operations so a second action cannot overtake the first', async () => {
