@@ -86,10 +86,7 @@ export default function CombatCopilotSetPanel({
       {preview?.type === 'set' && preview.copilots && preview.copilots.length > 0 ? (
         <>
           {(() => {
-            const total = preview.copilots.length
-            const pendingCount = view.pendingSelectedCount
-            const completedCount = total - pendingCount
-            const failedCount = view.failedCount
+            const { total, completed, pending, failed, skipped, running } = view.progress
             const nextIndex = view.resumeIndex
             const nextCopilot = nextIndex >= 0 ? preview.copilots[nextIndex] ?? null : null
             return (
@@ -104,17 +101,23 @@ export default function CombatCopilotSetPanel({
                       {view.attemptedCount > 0 ? `本次已执行 ${view.attemptedCount} 个` : `共 ${total} 个作业（含历史通关）`}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="rounded-md px-2 py-1 text-[11px] brand-chip">待 {pendingCount}</span>
-                    <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">已通关 {completedCount}</span>
-                    <span className={`rounded-md border px-2 py-1 text-[11px] ${failedCount > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-(--app-border) text-secondary'}`}>失败 {failedCount}</span>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    <span className="rounded-md px-2 py-1 text-[11px] brand-chip">待 {pending}</span>
+                    <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">已通关 {completed}</span>
+                    <span className={`rounded-md border px-2 py-1 text-[11px] ${failed > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-(--app-border) text-secondary'}`}>失败 {failed}</span>
+                    {skipped > 0 && (
+                      <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-tertiary">跳过 {skipped}</span>
+                    )}
+                    {running > 0 && (
+                      <span className="rounded-md bg-(--app-accent-soft) px-2 py-1 text-[11px] brand-text">执行中 {running}</span>
+                    )}
                   </div>
                 </div>
                 <div className="mt-3">
                   <div className="h-1.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
                     <div
                       className="h-full bg-(--app-accent) transition-all duration-300"
-                      style={{ width: `${total > 0 ? (completedCount / total) * 100 : 0}%` }}
+                      style={{ width: `${total > 0 ? (completed / total) * 100 : 0}%` }}
                     />
                   </div>
                   {nextCopilot ? (
@@ -182,14 +185,18 @@ export default function CombatCopilotSetPanel({
               const isSkipped = runStatus === 'skipped'
               const isCurrent = runStatus === 'running'
               const isSelected = selected.has(idx)
-              const isPersistedDone = !isSelected && !isCompleted && !isSkipped
+              // 历史通关只来自服务端持久化进度，取消选择不代表已通关。
+              const isHistoryDone = !isCurrent
+                && !isSkipped
+                && !isCompleted
+                && view.historyCompletedIndexes.has(idx)
               const statusLabel = isCurrent
                 ? '执行中'
                 : isSkipped
                   ? '已跳过'
                   : isCompleted
                     ? (isSuccess ? '已完成' : '待重试')
-                    : isPersistedDone
+                    : isHistoryDone
                       ? '历史已通关'
                       : '待执行'
 
@@ -200,7 +207,7 @@ export default function CombatCopilotSetPanel({
                   className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
                   isCurrent ? 'bg-(--app-accent-soft)' :
                   isCompleted ? (isSuccess ? 'bg-emerald-500/10' : 'bg-rose-500/10') :
-                  isSkipped || isPersistedDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
+                  isSkipped || isHistoryDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
                   'hover:bg-(--app-surface-muted)'
                 }`}>
                   <div className="flex min-w-0 items-center space-x-2">
@@ -228,10 +235,10 @@ export default function CombatCopilotSetPanel({
                     <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
                       isCurrent ? 'bg-(--app-accent) text-white animate-pulse' :
                       isCompleted ? (isSuccess ? 'bg-(--app-success) text-white' : 'bg-(--app-danger) text-white') :
-                      isSkipped || isPersistedDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
+                      isSkipped || isHistoryDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
                       'bg-black/5 text-secondary dark:bg-white/10'
                     }`}>
-                      {isCompleted ? (isSuccess ? '✓' : '✗') : isSkipped ? '–' : isPersistedDone ? '✓' : idx + 1}
+                      {isCompleted ? (isSuccess ? '✓' : '✗') : isSkipped ? '–' : isHistoryDone ? '✓' : idx + 1}
                     </span>
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-1.5">

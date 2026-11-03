@@ -65,12 +65,17 @@ describe('deriveCopilotSetView', () => {
       selected: new Set(),
       setRun: null,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
 
     expect(view.activeSetRun).toBeNull()
     expect(view.itemStatuses.size).toBe(0)
+    expect(view.historyCompletedIndexes.size).toBe(0)
+    expect(view.progress).toEqual({
+      total: 0, completed: 0, pending: 0, failed: 0, skipped: 0, running: 0,
+    })
     expect(view.pendingSelectedIndexes).toEqual([])
     expect(view.failedCount).toBe(0)
     expect(view.attemptedCount).toBe(0)
@@ -87,6 +92,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1]),
       setRun: otherSet,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -104,6 +110,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1]),
       setRun: run,
       dismissedRunId: 'run-1',
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -127,6 +134,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1, 2]),
       setRun: run,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -138,6 +146,9 @@ describe('deriveCopilotSetView', () => {
     expect(view.completedSelectedCount).toBe(1)
     expect(view.attemptedCount).toBe(2)
     expect(view.failedCount).toBe(0)
+    expect(view.progress).toEqual({
+      total: 3, completed: 1, pending: 1, failed: 0, skipped: 0, running: 1,
+    })
     expect(view.currentIndex).toBe(1)
     expect(view.resumeIndex).toBe(1)
     expect(view.panelIndex).toBe(1)
@@ -157,6 +168,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1, 2]),
       setRun: run,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -164,6 +176,9 @@ describe('deriveCopilotSetView', () => {
     expect(view.failedCount).toBe(2)
     expect(view.attemptedCount).toBe(3)
     expect(view.pendingSelectedIndexes).toEqual([1, 2])
+    expect(view.progress).toEqual({
+      total: 3, completed: 1, pending: 0, failed: 2, skipped: 0, running: 0,
+    })
   })
 
   it('treats skipped items as neither executed nor failed', () => {
@@ -179,6 +194,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1, 2]),
       setRun: run,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -186,6 +202,108 @@ describe('deriveCopilotSetView', () => {
     expect(view.failedCount).toBe(0)
     expect(view.attemptedCount).toBe(1)
     expect(view.pendingSelectedIndexes).toEqual([1, 2])
+    expect(view.progress).toEqual({
+      total: 3, completed: 1, pending: 1, failed: 0, skipped: 1, running: 0,
+    })
+  })
+
+  it('never counts unselected or skipped items as completed', () => {
+    const run = projection({
+      currentItemIndex: 1,
+      itemStatuses: new Map([
+        [0, 'skipped'],
+        [1, 'running'],
+        [2, 'skipped'],
+      ]),
+    })
+    const view = deriveCopilotSetView({
+      preview: preview(),
+      selected: new Set([1]),
+      setRun: run,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    expect(view.progress).toEqual({
+      total: 3, completed: 0, pending: 0, failed: 0, skipped: 2, running: 1,
+    })
+    // 未选中的作业仍在计划中，不能被选择状态解释为已通关。
+    expect(view.historyCompletedIndexes.size).toBe(0)
+  })
+
+  it('derives history completion from persisted plan progress, not the selection', () => {
+    const planned = preview({
+      copilots: [
+        { id: 101, completedModes: ['normal'] },
+        { id: 102 },
+        { id: 103, completedModes: ['normal', 'raid'] },
+      ],
+    })
+    const view = deriveCopilotSetView({
+      preview: planned,
+      selected: new Set([1]),
+      setRun: null,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    expect([...view.historyCompletedIndexes]).toEqual([0, 2])
+    expect(view.progress).toEqual({
+      total: 3, completed: 2, pending: 1, failed: 0, skipped: 0, running: 0,
+    })
+  })
+
+  it('requires both modes before a history completion counts under raid both', () => {
+    const planned = preview({
+      copilots: [
+        { id: 101, completedModes: ['normal'] },
+        { id: 102, completedModes: ['normal', 'raid'] },
+        { id: 103 },
+      ],
+    })
+    const view = deriveCopilotSetView({
+      preview: planned,
+      selected: new Set(),
+      setRun: null,
+      dismissedRunId: null,
+      raid: 'both',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    expect([...view.historyCompletedIndexes]).toEqual([1])
+    expect(view.progress).toEqual({
+      total: 3, completed: 1, pending: 2, failed: 0, skipped: 0, running: 0,
+    })
+  })
+
+  it('counts an item once when this run success is already persisted', () => {
+    const planned = preview({
+      copilots: [
+        { id: 101, completedModes: ['normal'] },
+        { id: 102 },
+        { id: 103 },
+      ],
+    })
+    const run = projection({
+      itemStatuses: new Map([[0, 'success']]),
+    })
+    const view = deriveCopilotSetView({
+      preview: planned,
+      selected: new Set([0, 1, 2]),
+      setRun: run,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    expect(view.progress.completed).toBe(1)
+    expect(view.progress.pending).toBe(2)
   })
 
   it('uses the waiting entry as next target and resolves its copilot', () => {
@@ -206,6 +324,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1, 2]),
       setRun: run,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: true,
       isAutoStopping: false,
     })
@@ -228,6 +347,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0, 1, 2]),
       setRun: run,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: true,
       isAutoStopping: true,
     })
@@ -244,6 +364,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([2]),
       setRun: null,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -257,6 +378,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set(),
       setRun: null,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })
@@ -271,6 +393,7 @@ describe('deriveCopilotSetView', () => {
       selected: new Set([0]),
       setRun: null,
       dismissedRunId: null,
+      raid: 'normal',
       isWaitingForNext: false,
       isAutoStopping: false,
     })

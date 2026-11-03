@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { AgentRun, RunTaskResult } from '@/features/task-execution'
 import { readCopilotSetRunProjection } from '../model/copilotSetRun'
 import { deriveCopilotSetView, type CopilotSetView } from '../model/copilotSetView'
-import type { CopilotSetInfo } from '../types'
+import type { CopilotSetInfo, CopilotSetItem } from '../types'
 import CombatCopilotSetPanel from './CombatCopilotSetPanel'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -44,20 +44,34 @@ function runWithTaskResults(taskResults: RunTaskResult[]): AgentRun {
 }
 
 /** 走真实的投影与视图派生管道；running 条目所在作业就是当前项。 */
-function deriveView(statuses: Array<[number, ItemStatus]>): CopilotSetView {
+function deriveView(
+  statuses: Array<[number, ItemStatus]>,
+  selected: ReadonlySet<number> = new Set([0, 1, 2, 3]),
+): CopilotSetView {
   const projection = readCopilotSetRunProjection(
     runWithTaskResults(statuses.map(([itemIndex, status]) => entry(itemIndex, status))),
   )
   if (!projection) throw new Error('run_copilot_set 投影不应为空')
   return deriveCopilotSetView({
     preview,
-    selected: new Set([0, 1, 2, 3]),
+    selected,
     setRun: projection,
     dismissedRunId: null,
+    raid: 'normal',
     isWaitingForNext: false,
     isAutoStopping: false,
   })
 }
+
+const plannedView = (items: CopilotSetItem[]): CopilotSetView => deriveCopilotSetView({
+  preview: { ...preview, copilots: items },
+  selected: new Set(),
+  setRun: null,
+  dismissedRunId: null,
+  raid: 'normal',
+  isWaitingForNext: false,
+  isAutoStopping: false,
+})
 
 const noop = () => {}
 
@@ -93,13 +107,16 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     }
   })
 
-  const renderPanel = async (view: CopilotSetView) => {
+  const renderPanel = async (
+    view: CopilotSetView,
+    selected: ReadonlySet<number> = new Set([0, 1, 2, 3]),
+  ) => {
     await act(async () => {
       root.render(
         <CombatCopilotSetPanel
           preview={preview}
           view={view}
-          selected={new Set([0, 1, 2, 3])}
+          selected={selected}
           isRunning
           isResetting={false}
           isContinuing={false}
@@ -228,5 +245,48 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.querySelector('[data-copilot-item-index="2"]')?.textContent).toContain('执行中')
     // 定位跟随的是「执行中」行，而不是刚刚跳过的行。
     expect(scrolledRows()).toEqual(['2'])
+  })
+
+  it('counts skipped items separately instead of as completed', async () => {
+    await renderPanel(deriveView([
+      [0, 'skipped'],
+      [1, 'running'],
+      [2, 'skipped'],
+      [3, 'pending'],
+    ], new Set([1])), new Set([1]))
+
+    expect(container.textContent).toContain('待 1')
+    expect(container.textContent).toContain('已通关 0')
+    expect(container.textContent).toContain('跳过 2')
+    expect(container.textContent).toContain('执行中 1')
+  })
+
+  it('keeps an unselected unfinished item pending instead of historical', async () => {
+    await renderPanel(deriveView([
+      [0, 'pending'],
+      [1, 'pending'],
+      [2, 'pending'],
+      [3, 'pending'],
+    ], new Set()), new Set())
+
+    const row = container.querySelector('[data-copilot-item-index="0"]')
+    expect(row?.textContent).toContain('待执行')
+    expect(row?.textContent).not.toContain('历史已通关')
+    expect(container.textContent).toContain('待 4')
+    expect(container.textContent).toContain('已通关 0')
+  })
+
+  it('marks only persisted plan progress as historical completion', async () => {
+    await renderPanel(plannedView([
+      { id: 101, name: '第一关', completedModes: ['normal'] },
+      { id: 102, name: '第二关' },
+      { id: 103, name: '第三关' },
+      { id: 104, name: '第四关' },
+    ]), new Set())
+
+    expect(container.querySelector('[data-copilot-item-index="0"]')?.textContent).toContain('历史已通关')
+    expect(container.querySelector('[data-copilot-item-index="1"]')?.textContent).toContain('待执行')
+    expect(container.textContent).toContain('已通关 1')
+    expect(container.textContent).toContain('待 3')
   })
 })

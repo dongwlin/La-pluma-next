@@ -220,6 +220,7 @@ export default function CombatWorkspace() {
     selected: selectedCopilotIndexes,
     setRun,
     dismissedRunId,
+    raid: normalizeRaidValue(advancedParams.copilot?.raid),
     isWaitingForNext,
     isAutoStopping,
   })
