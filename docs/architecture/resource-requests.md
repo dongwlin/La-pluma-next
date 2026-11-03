@@ -130,7 +130,7 @@ const depot = unwrapApiResponse(result)
 | `getLogFiles(signal?)` | `GET /agent/logs/files` | 数组 |
 | `readLogFile(filePath, lines?, signal?)` | `GET /agent/logs/files/:path` | `content` 为字符串 |
 
-目前实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`getRealtimeLogs` 的函数签名、端点与返回形状不变；缓冲是最近行快照而非 Query 资源。目前历史文件列表与读取由 `features/logs/model/historyLogSession.ts` 持有：列表与读取各自使用请求序号与 `AbortSignal`，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求；历史读取仍不进入 Query，协议也没有 cursor。清空/清理命令新增可选 `signal`，页面卸载时只取消本地等待，服务端已收到的命令不会被撤销。完整生命周期见[实时日志流生命周期](../frontend/domains/logs.md#实时流生命周期)与[历史日志与清理协调](../frontend/domains/logs.md#历史会话与清理)。
+目前实时轮询由 `features/logs/model/realtimeLogStream.ts` 持有，`getRealtimeLogs` 的函数签名、端点与返回形状不变；缓冲是最近行快照而非 Query 资源。目前历史文件列表与读取由 `features/logs/model/historyLogSession.ts` 持有：列表与读取各自使用请求序号与 `AbortSignal`，切换选择、返回实时、Activity 隐藏/卸载都会取消旧请求；历史读取仍不进入 Query，协议也没有 cursor。历史清理请求传递可选 `signal`，页面卸载时只取消本地等待，服务端已收到的删除不会被撤销；日志页的清屏只改变实时流的本地可见边界，不调用服务端共享缓冲清空接口。完整生命周期见[实时日志流生命周期](../frontend/domains/logs.md#实时流生命周期)与[历史日志与清理协调](../frontend/domains/logs.md#历史会话与清理)。
 
 ### Combat（`features/combat/api/index.ts`）
 

@@ -337,12 +337,12 @@ export async function installIntegrationScenario(page: Page, state: ScenarioStat
   await page.route('**/sw.js', route => route.fulfill({ status: 404, body: 'service worker disabled' }))
 }
 
-export async function navigateTo(page: Page, tab: 'dashboard' | 'automation' | 'training' | 'statistics'): Promise<void> {
+export async function navigateTo(page: Page, tab: 'dashboard' | 'automation' | 'training' | 'statistics' | 'logs'): Promise<void> {
   await page.locator(`[data-app-tab="${tab}"]:visible`).click()
   await expect(page).toHaveURL(new RegExp(`/app/${tab}$`))
 }
 
-export async function gotoScenario(page: Page, tab: 'dashboard' | 'automation' | 'training' | 'statistics'): Promise<void> {
+export async function gotoScenario(page: Page, tab: 'dashboard' | 'automation' | 'training' | 'statistics' | 'logs'): Promise<void> {
   await page.goto(`/app/${tab}`)
   await expect(page.locator(`[data-app-tab="${tab}"]:visible`)).toHaveAttribute('aria-current', 'page')
 }
