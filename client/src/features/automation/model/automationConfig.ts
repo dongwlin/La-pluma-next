@@ -280,7 +280,6 @@ function parseSchedule(value: unknown): AutomationScheduleDraft | null {
     }
   }
 
-  // 没有可用时间点时保留默认条目，与迁移前“空数组不覆盖默认行”的表现一致。
   return { enabled, entries: createDefaultScheduleEntries() }
 }
 
@@ -292,7 +291,6 @@ function decodeAutomationConfig(payload: unknown): AutomationConfigDraft | null 
   const schedule = payload.schedule === undefined ? defaults.schedule : parseSchedule(payload.schedule)
   if (taskFlow === null || schedule === null) return null
 
-  // 禁用时间点只存在于本设备；采用服务端副本时保留，避免外部写入后的重读静默丢失。
   const localSchedule = readLocalSection(AUTOMATION_SCHEDULE_KEY, parseSchedule)
   return {
     taskFlow,

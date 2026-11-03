@@ -528,7 +528,6 @@ export class TrainingQueueCommandOwner {
   }
 
   private publish(flowSync?: TrainingFlowSync): void {
-    // 队列写入会同步智能养成关卡；只有确认 synced 才声明 automation 配置变化。
     const resources = flowSync?.status === 'synced'
       ? [...TRAINING_QUEUE_MUTATION_SCOPES, ...TRAINING_QUEUE_FLOW_SYNC_SCOPES]
       : TRAINING_QUEUE_MUTATION_SCOPES

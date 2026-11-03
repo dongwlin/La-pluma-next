@@ -40,7 +40,6 @@ export interface AutomationExecution {
   isSubmitting: boolean
   run: AgentRun | null
   progress: AutomationFlowProgress | null
-  /** 本页实际拥有的 run 的终态摘要。 */
   summary: AutomationExecutionSummary | null
   /** 服务端流程投影的最近执行结果，仅用于空闲时展示，不代表本页身份。 */
   scheduleSummary: AutomationExecutionSummary | null

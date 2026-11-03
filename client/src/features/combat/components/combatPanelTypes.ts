@@ -12,7 +12,6 @@ import type {
   ParadoxSearchResult,
 } from '../types'
 
-/** 所有作业卡共用的执行按钮投影；回调由工作区注入。 */
 export interface CombatExecutionActions {
   automationAvailable: boolean
   unavailableMessage: string

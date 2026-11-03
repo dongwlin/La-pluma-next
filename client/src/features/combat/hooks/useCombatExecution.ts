@@ -47,7 +47,6 @@ export interface CombatSetSubmission {
 export interface CombatExecution {
   /** 本页发起且仍处于活动的 run（含等待下一关），或身份已持久化但快照尚未解析出来。 */
   isRunning: boolean
-  /** manual 作业集正在等待“开始下一关”。 */
   isWaitingForNext: boolean
   /** 按队列策略自动停止期间，不再展示可点击的“开始下一关”。 */
   isAutoStopping: boolean
@@ -59,7 +58,6 @@ export interface CombatExecution {
   isSubmitting: boolean
   /** 本页所属作业集 run 的投影；单作业运行或其它领域 run 时为 null。 */
   setRun: CopilotSetRunProjection | null
-  /** 本页所属 run 的最近记录，用于展示阶段与错误。 */
   run: AgentRun | null
   submitTask: (request: CombatTaskSubmission) => Promise<boolean>
   submitSet: (request: CombatSetSubmission) => Promise<boolean>

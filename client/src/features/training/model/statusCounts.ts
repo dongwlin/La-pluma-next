@@ -9,7 +9,6 @@ export const EMPTY_TRAINING_COUNTS: TrainingStatusCounts = {
   all: 0,
 }
 
-/** 计数只关心稀有度与精英等级；目录、持有干员与候选行都按需传入。 */
 export interface CountableOperator {
   rarity?: number
   currentElite?: number
