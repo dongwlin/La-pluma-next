@@ -249,12 +249,17 @@ const statusSegment = (label: string, scope: ParentNode = document) => {
 const statusCount = (label: string) =>
   statusSegment(label).querySelector<HTMLElement>('span[aria-label$=" 名"]')?.textContent
 
-const planPanelText = () => container
-  .querySelector<HTMLElement>('[aria-labelledby="training-plan-title"]')?.textContent ?? ''
+const planPanel = () => {
+  const section = container.querySelector<HTMLElement>('[aria-labelledby="training-plan-title"]')
+  expect(section, 'training plan section').not.toBeNull()
+  return section!
+}
 
-const undoToast = () => document
-  .querySelector('[aria-label="关闭移除提示"]')
-  ?.closest<HTMLElement>('[role="status"]') ?? null
+const planPanelText = () => planPanel().textContent ?? ''
+
+const undoToast = () => document.querySelector<HTMLElement>('[role="status"][aria-live="polite"]')
+
+const undoToastClose = () => document.querySelector('[aria-label="关闭移除提示"]')
 
 const selectRarity = async (dialog: HTMLElement, value: string) => {
   const select = dialog.querySelector<HTMLSelectElement>('select[aria-label="稀有度"]')
@@ -805,6 +810,7 @@ describe('OperatorTraining queue workspace', () => {
     await click(close!)
 
     expect(undoToast()).toBeNull()
+    expect(undoToastClose()).toBeNull()
     expect(queueOrder()).toEqual([])
     expect(mocks.addToTrainingQueue).not.toHaveBeenCalled()
   })
@@ -826,6 +832,7 @@ describe('OperatorTraining queue workspace', () => {
     await act(async () => undoButton.blur())
     await act(async () => { await vi.advanceTimersByTimeAsync(8000) })
     expect(undoToast()).toBeNull()
+    expect(undoToastClose()).toBeNull()
     expect(queueOrder()).toEqual([])
   })
 
