@@ -331,7 +331,6 @@ export function buildScheduledTaskFlowPlan(
   if (!validation.success) return validation;
 
   try {
-    // 校验只保证条目是对象；字段级结构按调度任务契约读取，缺失字段沿用执行期失败。
     const flow = taskFlow as ScheduledTask[];
     const steps = flow
       .filter(task => task.enabled)

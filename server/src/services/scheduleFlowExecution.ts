@@ -531,7 +531,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         }
       }
 
-      // 关闭前仓库识别是可选步骤。
       if (commandId === 'closedown' && task.params?.recognizeDepotBeforeClose === true) {
         try {
           logger.info('关闭游戏前先识别仓库', { scheduleId });
@@ -1098,15 +1097,12 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 args[0] = stage;
               }
 
-              // 有次数时补 --times；次数是累计作战局数上限，连战倍率保留，
-              // 由 MaaCore 按剩余次数裁决。
               if (times && !args.includes('--times')) {
                 args.splice(1, 0, '--times', times);
               }
             }
           }
 
-          // 定时任务需要等待命令完成才能获取输出
           const result = await executeCommand(command, args, task.name, null, true);
           if (command === 'closedown') {
             actionResults.push({
