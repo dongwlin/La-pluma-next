@@ -4,7 +4,8 @@
  * 页面与配置中的 `copilotSetSelections` 都用有序整数数组表示“待执行”索引。
  * 这里集中处理去重、排序、与 Run 成功项求差，以及按服务端计划进度恢复选择：
  *
- * - 服务端计划是“已完成”的唯一来源；成功条目从待执行中移除，失败与未开始保留。
+ * - 作业完成按所选 raid 规则要求的模式判断；持久化进度与本次成功模式合并后
+ *   覆盖全部所需模式才从待执行中移除，失败与未开始保留。
  * - 预设编队作业只要求普通模式；突袭/两者模式按作业支持的模式逐项判断。
  * - 已保存的本地选择与计划求交，避免把已完成关卡重新排入待执行。
  */
@@ -27,15 +28,19 @@ export function selectedCopilotItemIndexes(
   )
 }
 
-/** “待执行”= 页面选择减去本次 Run 已成功的条目。 */
+/** “待执行”= 页面选择减去已满足完成条件的作业索引。 */
 export function pendingCopilotItemIndexes(
   selected: Iterable<number>,
-  successIndexes: ReadonlySet<number>,
+  completedIndexes: ReadonlySet<number>,
 ): number[] {
-  return serializeCopilotSelection([...selected].filter(index => !successIndexes.has(index)))
+  return serializeCopilotSelection([...selected].filter(index => !completedIndexes.has(index)))
 }
 
-function requiredModesForItem(copilot: CopilotSetItem, raid: CopilotRaid): Array<'normal' | 'raid'> {
+/** 当前 raid 规则下作业必须完成的模式；预设编队作业只要求普通模式。 */
+export function requiredCopilotItemModes(
+  copilot: CopilotSetItem,
+  raid: CopilotRaid,
+): Array<'normal' | 'raid'> {
   if (copilot.presetFormation) return ['normal']
   if (raid === 'both') return ['normal', 'raid']
   return [raid === 'raid' ? 'raid' : 'normal']
@@ -49,7 +54,7 @@ export function pendingCopilotPlanIndexes(
   const pending: number[] = []
   copilots.forEach((copilot, index) => {
     const completedModes = copilot.completedModes ?? []
-    const pendingItem = requiredModesForItem(copilot, raid)
+    const pendingItem = requiredCopilotItemModes(copilot, raid)
       .some(mode => !completedModes.includes(mode))
     if (pendingItem) pending.push(index)
   })

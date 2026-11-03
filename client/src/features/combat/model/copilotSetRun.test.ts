@@ -152,13 +152,46 @@ describe('readCopilotSetRunProjection', () => {
       },
     }))
 
-    // 突袭已成功、普通被跳过的作业按成功折叠；单独跳过的作业保持已跳过。
-    expect(projection?.itemStatuses.get(0)).toBe('success')
+    // 突袭已成功、普通被跳过：作业仍缺一个模式，不能折叠为成功。
+    expect(projection?.itemStatuses.get(0)).toBe('pending')
+    // 全部模式都跳过的作业保持已跳过。
     expect(projection?.itemStatuses.get(1)).toBe('skipped')
     // 服务端没有 skippedCount 字段时按逐项结果回退统计。
     expect(projection?.skippedCount).toBe(2)
     // 跳过的条目没有执行，不算已尝试。
     expect(projection?.attemptedCount).toBe(1)
+  })
+
+  it('folds an item to success only after every mode succeeded', () => {
+    const partial = readCopilotSetRunProjection(run({
+      state: 'waiting',
+      progress: {
+        setId: '48990',
+        mode: 'manual',
+        phase: 'waiting_for_next',
+        taskResults: [
+          entry(0, 'success', { mode: 'normal' }),
+          entry(0, 'pending', { mode: 'raid' }),
+        ],
+      },
+    }))
+    expect(partial?.itemStatuses.get(0)).toBe('pending')
+
+    const completed = readCopilotSetRunProjection(run({
+      state: 'running',
+      progress: {
+        setId: '48990',
+        mode: 'continuous',
+        phase: 'running',
+        taskResults: [
+          entry(0, 'success', { mode: 'normal' }),
+          entry(0, 'success', { mode: 'raid' }),
+          entry(1, 'running'),
+        ],
+      },
+    }))
+    expect(completed?.itemStatuses.get(0)).toBe('success')
+    expect(completed?.itemStatuses.get(1)).toBe('running')
   })
 
   it('counts skipped entries from the terminal summary when provided', () => {

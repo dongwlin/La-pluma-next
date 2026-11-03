@@ -177,8 +177,12 @@ export default function CombatCopilotSetPanel({
           >
             {preview.copilots.map((copilot, idx) => {
               const runStatus = view.itemStatuses.get(idx)
-              const isCompleted = runStatus === 'success' || runStatus === 'failed' || runStatus === 'stopped'
-              const isSuccess = runStatus === 'success'
+              // 完成语义按所选模式的覆盖情况判定，单个模式成功不等于作业完成。
+              const isFailed = runStatus === 'failed'
+              const isStopped = runStatus === 'stopped'
+              const isFailure = isFailed || isStopped
+              const isSuccess = view.runCompletedIndexes.has(idx) && !isFailure
+              const isCompleted = isSuccess || isFailure
               const isSkipped = runStatus === 'skipped'
               const isCurrent = runStatus === 'running'
               const isSelected = selected.has(idx)
@@ -191,11 +195,13 @@ export default function CombatCopilotSetPanel({
                 ? '执行中'
                 : isSkipped
                   ? '已跳过'
-                  : isCompleted
-                    ? (isSuccess ? '已完成' : '待重试')
-                    : isHistoryDone
-                      ? '历史已通关'
-                      : '待执行'
+                  : isFailure
+                    ? '待重试'
+                    : isSuccess
+                      ? '已完成'
+                      : isHistoryDone
+                        ? '历史已通关'
+                        : '待执行'
 
               return (
                 <div
@@ -203,7 +209,8 @@ export default function CombatCopilotSetPanel({
                   data-copilot-item-index={idx}
                   className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
                   isCurrent ? 'bg-(--app-accent-soft)' :
-                  isCompleted ? (isSuccess ? 'bg-emerald-500/10' : 'bg-rose-500/10') :
+                  isSuccess ? 'bg-emerald-500/10' :
+                  isFailure ? 'bg-rose-500/10' :
                   isSkipped || isHistoryDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
                   'hover:bg-(--app-surface-muted)'
                 }`}>
@@ -231,11 +238,12 @@ export default function CombatCopilotSetPanel({
                     </button>
                     <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
                       isCurrent ? 'bg-(--app-accent) text-white animate-pulse' :
-                      isCompleted ? (isSuccess ? 'bg-(--app-success) text-white' : 'bg-(--app-danger) text-white') :
+                      isSuccess ? 'bg-(--app-success) text-white' :
+                      isFailure ? 'bg-(--app-danger) text-white' :
                       isSkipped || isHistoryDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
                       'bg-black/5 text-secondary dark:bg-white/10'
                     }`}>
-                      {isCompleted ? (isSuccess ? '✓' : '✗') : isSkipped ? '–' : isHistoryDone ? '✓' : idx + 1}
+                      {isSuccess ? '✓' : isFailure ? '✗' : isSkipped ? '–' : isHistoryDone ? '✓' : idx + 1}
                     </span>
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-1.5">
@@ -255,7 +263,7 @@ export default function CombatCopilotSetPanel({
                   <div className="flex shrink-0 items-center gap-2">
                     <span className={`min-w-[64px] rounded-md px-2 py-0.5 text-center text-[11px] ${
                       isCurrent ? 'brand-action text-white' :
-                      isCompleted && !isSuccess ? 'bg-rose-500/10 text-rose-500 dark:text-rose-300' :
+                      isFailure ? 'bg-rose-500/10 text-rose-500 dark:text-rose-300' :
                       isSelected ? 'brand-chip' :
                       'bg-black/5 text-secondary dark:bg-white/10'
                     }`}>

@@ -40,7 +40,10 @@ export interface CopilotSetRunProjection {
   currentItemIndex: number | null
   nextEntry: CopilotSetEntryProjection | null
   entries: CopilotSetEntryProjection[]
-  /** 同一作业在突袭/普通模式下有多个条目时，按最差结果折叠到作业索引。 */
+  /**
+   * 同一作业在突袭/普通模式下有多个条目时的展示状态，按最差结果折叠到作业索引。
+   * 只有每个模式都成功才折叠为 `success`；单个条目成功不代表作业完成。
+   */
   itemStatuses: Map<number, CopilotSetItemStatus>
   /** 本次 Run 涉及的作业数量（突袭+普通只算一个作业）。 */
   itemCount: number
@@ -55,15 +58,29 @@ export interface CopilotSetRunProjection {
   failures: CopilotSetFailureSummary[]
 }
 
-// 同一作业在突袭/普通模式下有多个条目时按最差结果折叠：执行中 > 失败 >
-// 终止 > 成功 > 跳过 > 待执行。跳过表示该模式未执行，不能盖过已成功的结果。
-const ITEM_STATUS_PRIORITY: Record<CopilotSetItemStatus, number> = {
-  running: 5,
-  failed: 4,
-  stopped: 3,
-  success: 2,
-  skipped: 1,
-  pending: 0,
+// 同一作业在突袭/普通模式下有多个条目时折叠成一条展示状态：执行中 > 失败 >
+// 终止 > 全部成功 > 全部跳过 > 待执行。部分模式成功时仍是待执行；单个跳过
+// 只说明该模式未执行，不能单独把作业标成已跳过。
+function foldItemStatuses(entries: CopilotSetEntryProjection[]): Map<number, CopilotSetItemStatus> {
+  const grouped = new Map<number, CopilotSetItemStatus[]>()
+  for (const entry of entries) {
+    if (entry.itemIndex === null) continue
+    const statuses = grouped.get(entry.itemIndex)
+    if (statuses) statuses.push(entry.status)
+    else grouped.set(entry.itemIndex, [entry.status])
+  }
+  const folded = new Map<number, CopilotSetItemStatus>()
+  for (const [itemIndex, statuses] of grouped) folded.set(itemIndex, foldStatuses(statuses))
+  return folded
+}
+
+function foldStatuses(statuses: readonly CopilotSetItemStatus[]): CopilotSetItemStatus {
+  if (statuses.includes('running')) return 'running'
+  if (statuses.includes('failed')) return 'failed'
+  if (statuses.includes('stopped')) return 'stopped'
+  if (statuses.every(status => status === 'success')) return 'success'
+  if (statuses.every(status => status === 'skipped')) return 'skipped'
+  return 'pending'
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -118,18 +135,6 @@ function readEntries(value: unknown): CopilotSetEntryProjection[] {
   return value
     .map(readEntry)
     .filter((entry): entry is CopilotSetEntryProjection => entry !== null)
-}
-
-function foldItemStatuses(entries: CopilotSetEntryProjection[]): Map<number, CopilotSetItemStatus> {
-  const folded = new Map<number, CopilotSetItemStatus>()
-  for (const entry of entries) {
-    if (entry.itemIndex === null) continue
-    const current = folded.get(entry.itemIndex)
-    if (current === undefined || ITEM_STATUS_PRIORITY[entry.status] > ITEM_STATUS_PRIORITY[current]) {
-      folded.set(entry.itemIndex, entry.status)
-    }
-  }
-  return folded
 }
 
 function traceStatuses(entries: CopilotSetEntryProjection[], status: CopilotSetItemStatus): number {

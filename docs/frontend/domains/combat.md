@@ -27,7 +27,7 @@
 | 作业信息详情 | `components/CombatCopilotInfoPanel.tsx` | 只渲染当前预览与视图派生 |
 | 保全派驻 / 悖论模拟卡片 | `components/CombatSpecialTaskPanel.tsx` | 输入、URI 计数、高级字段、搜索与概览；不创建执行状态 |
 | 卡片头部与运行/停止按钮 | `components/CombatTaskHeading.tsx` | 共享两种卡片的标题与执行投影 |
-| 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、待执行求差、下一关与信息面板当前项 |
+| 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、按模式判定完成、待执行求差、下一关与信息面板当前项 |
 | 面板会话状态 | `model/panelState.ts` + `hooks/usePanelState.ts` | 工作区创建、面板订阅；页面卸载时销毁 |
 | 命令、URI 与载荷模型 | `model/combatCommands.ts`、`utils/copilotUri.ts`、`model/copilotPayload.ts` | 纯命令与载荷模型，不改变执行协议 |
 
@@ -102,8 +102,9 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 规则 | 行为 |
 | --- | --- |
 | Run 归属 | 只有 `setRun.setId === preview.id` 且未被重置进度作废（`dismissedRunId`）的 Run 才提供逐项结果 |
-| 待执行 | 页面选择减去本次 Run 已成功的索引；失败与未开始保留 |
-| 失败/已执行 | 按 `itemStatuses` 折叠后的作业索引计数；`failed` 与 `stopped` 都计入失败 |
+| 待执行 | 页面选择减去已满足当前 raid 完成条件的作业（持久化 `completedModes` ∪ 本次成功条目的模式）；失败与未开始保留 |
+| 完成条件 | 当前 raid 要求的每个模式都被覆盖才算完成；普通成功、突袭待执行时作业仍是待执行 |
+| 失败/已执行 | 失败与终止按作业折叠状态计数；已执行按条目统计到作业，全部模式跳过或待执行的不计 |
 | 下一关 | 仅在 `isWaitingForNext` 且非 `isAutoStopping` 时展示；等待项与作业详情来自服务端投影 |
 | 续跑目标 | 等待项索引优先，否则第一个待执行索引，否则 `-1` |
 | 信息面板当前项 | 优先 Run 当前项，其次续跑目标，否则第一个作业；越界回退第一个作业 |
@@ -116,7 +117,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - **搜索选择**：普通搜索结果点击后写入 `copilot.uri`、规范化并立即预览；`copilotSearchSelection` 驱动“已选中”高亮；修改主输入会清除非匹配的高亮。推荐 URI 仍只在本次显式搜索成功后自动应用。
 - **三种作业集模式**：设置面板的 `app`/`manual`/`cli` 保持原选项与存储值；提交时 `app`/`cli` 映射为服务端 `continuous`，`manual` 保留逐关等待。取消/继续等待由 `useCombatExecution` 与服务端 Run 持有。
 - **停止**：卡片按钮只调用工作区的 `stop()`；控制器按本客户端持有的 `runId` 停止，停止确认超时逻辑未改。
-- **逐项结果**：作业集列表读取 `CopilotSetView.itemStatuses`，展示执行中/已完成/待重试/已完成跳过/待执行；页头计数来自同一视图。
+- **逐项结果**：作业集列表读取 `CopilotSetView.itemStatuses` 展示执行中/待重试/已跳过，读取 `runCompletedIndexes` 判定已完成，历史通关来自 `historyCompletedIndexes`；页头计数来自同一视图。
 - **重置进度**：确认后调用 reset 端点、把全部索引放回待执行、归零预览进度、失效该作业集计划缓存，并作废旧 Run 的逐项展示。
 
 ### 6. Activity 与卸载
@@ -228,7 +229,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 ### 5. 选择、配置与执行接线
 
 - 工作区持有当前 `selectedCopilotIndexes`；`copilotSetSelections[setId]` 仍由 `user-config` 协调器持久化，本地键与 wire 形状不变。
-- `serializeCopilotSelection` 去重、丢弃非整数并升序；`selectedCopilotItemIndexes` 把选择裁剪到当前列表；`pendingCopilotItemIndexes` 从页面选择中减去本次 Run 已成功的条目。
+- `serializeCopilotSelection` 去重、丢弃非整数并升序；`selectedCopilotItemIndexes` 把选择裁剪到当前列表；`pendingCopilotItemIndexes` 从页面选择中减去已满足当前 raid 完成条件的作业。
 - 预览成功（作业集）后按服务端计划进度恢复选择：`restorableCopilotIndexes` 以计划中“仍待执行”的索引为全集；没有保存过选择时使用全部待执行项，保存过则求交。预设编队只要求普通模式，突袭/两者按作业支持的模式判断。
 - 作业集 Run 终态后 `refreshSet` 强制重读计划并合并逐项结果，页面再用同一纯模型恢复选择；失败只影响展示，不把 Run 结果解释成完成。
 - 重置进度成功后：全部索引进入待执行、预览 `currentIndex` 归零、失效该作业集的计划缓存。

@@ -275,6 +275,51 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.textContent).toContain('已通关 0')
   })
 
+  it('keeps an item pending while one of its modes still waits', async () => {
+    const projection = readCopilotSetRunProjection({
+      runId: 'run-1',
+      operationId: 'run_copilot_set',
+      state: 'waiting',
+      links: { self: '/agent/runs/run-1' },
+      progress: {
+        setId: preview.id,
+        phase: 'waiting_for_next',
+        currentEntry: null,
+        nextEntry: { key: '0:101:raid', itemIndex: 0, copilotId: 101, displayStage: 'MAIN-1', mode: 'raid', status: 'pending' },
+        taskResults: [
+          { key: '0:101:normal', itemIndex: 0, copilotId: 101, displayStage: 'MAIN-1', mode: 'normal', status: 'success' },
+          { key: '0:101:raid', itemIndex: 0, copilotId: 101, displayStage: 'MAIN-1', mode: 'raid', status: 'pending' },
+          { key: '1:102:normal', itemIndex: 1, copilotId: 102, displayStage: 'MAIN-2', mode: 'normal', status: 'skipped' },
+          { key: '1:102:raid', itemIndex: 1, copilotId: 102, displayStage: 'MAIN-2', mode: 'raid', status: 'skipped' },
+          { key: '2:103:normal', itemIndex: 2, copilotId: 103, displayStage: 'MAIN-3', mode: 'normal', status: 'skipped' },
+          { key: '2:103:raid', itemIndex: 2, copilotId: 103, displayStage: 'MAIN-3', mode: 'raid', status: 'skipped' },
+          { key: '3:104:normal', itemIndex: 3, copilotId: 104, displayStage: 'MAIN-4', mode: 'normal', status: 'skipped' },
+          { key: '3:104:raid', itemIndex: 3, copilotId: 104, displayStage: 'MAIN-4', mode: 'raid', status: 'skipped' },
+        ],
+      },
+    })
+    if (!projection) throw new Error('run_copilot_set 投影不应为空')
+    const view = deriveCopilotSetView({
+      preview,
+      selected: new Set([0]),
+      setRun: projection,
+      dismissedRunId: null,
+      raid: 'both',
+      isWaitingForNext: true,
+      isAutoStopping: false,
+    })
+
+    await renderPanel(view, new Set([0]))
+
+    // 普通已成功、突袭仍待执行：列表与续跑进度都不能显示已通关。
+    const row = container.querySelector('[data-copilot-item-index="0"]')
+    expect(row?.textContent).toContain('待执行')
+    expect(row?.textContent).not.toContain('已完成')
+    expect(container.textContent).toContain('待 1')
+    expect(container.textContent).toContain('已通关 0')
+    expect(container.textContent).toContain('跳过 3')
+  })
+
   it('marks only persisted plan progress as historical completion', async () => {
     await renderPanel(plannedView([
       { id: 101, name: '第一关', completedModes: ['normal'] },
