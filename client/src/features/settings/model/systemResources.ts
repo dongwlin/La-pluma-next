@@ -1,11 +1,3 @@
-/**
- * 设置页版本与配置目录资源
- *
- * 两者都是只读服务端资源，由 `settings/version`、`settings/config-directory`
- * Query 持有；更新流程成功后可复用同一 key 重取版本，不再各自调用端点。
- * 配置目录的“打开”是带副作用的命令，不进入 Query，也不自动重取。
- */
-
 import { queryOptions } from '@tanstack/react-query'
 import {
   ApiRequestError,

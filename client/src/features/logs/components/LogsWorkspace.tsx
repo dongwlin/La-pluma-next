@@ -1,5 +1,3 @@
-/** 日志页是日志观察的唯一工作区；范围、事件选择与折叠彼此独立。 */
-
 import { useMemo, useState } from 'react'
 import { useExecutionSnapshot } from '@/features/task-execution'
 import { ConfirmDialog } from '@/shared/ui'

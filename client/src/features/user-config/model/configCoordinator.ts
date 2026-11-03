@@ -1,18 +1,6 @@
-/**
- * 用户配置持久化协调器
- *
- * 按配置 key 串行提交，状态与队列的寿命不跟随页面挂载：协调器实例由应用持有，
- * 页面卸载或 Activity 隐藏都不会让已排队的提交消失，重挂载也不会重建队列。
- *
- * 协调器不理解字段语义，也不把 `saveUserConfig` 成功直接当成完整持久化成功：
- * 一次提交要写入哪些端点、什么条件下才算完成，由域适配器的 `commit` 定义
- * （例如 automation 还必须完成 setup/stop schedule）。协调器只负责：
- *
- * - revision/token：旧提交的成功/失败都不能确认或覆盖更新的草稿；
- * - pending 标记：本地未确认草稿跨挂载优先于服务端副本；
- * - 提交次序：同一 key 的提交按入队顺序串行，可用去抖合并连续编辑；
- * - 迟到响应：加载与提交返回时都重新校验身份，过期结果不写状态。
- */
+// 按配置 key 串行提交，状态与队列的寿命不跟随页面：协调器实例由应用持有，重挂载不重建。
+// 协调器不理解字段语义，完整提交由适配器 `commit` 定义；旧提交的成功/失败不能确认或覆盖
+// 更新的草稿，本地未确认草稿跨挂载优先，迟到的加载/提交响应都重新校验身份。
 
 import { USER_CONFIG_PENDING_KEYS, type UserConfigKey } from './configKeys'
 
@@ -47,7 +35,6 @@ export type ConfigLoadResult =
 export interface ConfigPersistenceAdapter<TDraft, TWire = unknown> {
   /** 服务端配置 key（如 `combat-tasks`），同时是协调器中的唯一身份。 */
   readonly key: string
-  /** 本设备 pending 标记的存储键（如 `combatConfigSyncPending`）。 */
   readonly pendingKey: string
   /**
    * 编辑到提交的延迟。`0` 表示每次编辑立即入队（automation 的事件触发策略）；
@@ -61,9 +48,7 @@ export interface ConfigPersistenceAdapter<TDraft, TWire = unknown> {
    * 草稿，并在提交、`flush`、`dispose` 或页面卸载前强制落盘。
    */
   readonly localWriteDelayMs?: number
-  /** 挂载时发现本设备未同步草稿的提示；默认「上次更改已保存在此设备，但尚未同步到服务器。」 */
   readonly restoredMessage?: string
-  /** 提交失败文案；默认「配置已保存在此设备，但尚未同步到服务器：<原因>」。 */
   readonly formatFailure?: (message: string) => string
 
   /** draft → 服务端 wire 载荷。不得包含只属于界面的字段。 */
@@ -99,14 +84,12 @@ export interface ConfigCoordinatorState<TDraft> {
   readonly draft: TDraft | null
   /** 是否已有可用草稿（服务端、本地回退或恢复的未同步草稿）。读取失败仍为 false。 */
   readonly hydrated: boolean
-  /** 本设备存在尚未被完整提交确认的草稿。 */
   readonly pending: boolean
   readonly syncState: ConfigSyncState
   /** 最近一次同步失败的可展示原因；完整提交成功后清空。 */
   readonly error: string | null
   /** 每次接受新草稿递增；用于页面判断编辑与提交的对应关系。 */
   readonly revision: number
-  /** 最近一次完整提交成功的时间戳。 */
   readonly lastSavedAt: number | null
 }
 
@@ -174,9 +157,6 @@ function createNoopStorage(): ConfigKeyStorage {
   }
 }
 
-/**
- * 包装任意键值存储：隐私模式、配额或存储被禁用时，编辑仍应保留在内存中并允许重试。
- */
 function toSafeStorage(target: ConfigKeyStorage | null): ConfigKeyStorage {
   if (!target) return createNoopStorage()
   return {
@@ -257,10 +237,6 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
     this.nextToken = options.nextToken
   }
 
-  /**
-   * 页面重挂载会带来新的适配器实例；只替换实现，不重置状态与队列。
-   * pending 键不同意味着两份草稿协议无法共存，直接暴露契约错误。
-   */
   updateAdapter(adapter: ConfigPersistenceAdapter<TDraft, TWire>): void {
     if (adapter.pendingKey !== this.adapter.pendingKey) {
       throw new Error(
@@ -447,11 +423,6 @@ class ConfigKeyState<TDraft, TWire> implements ConfigChannel<TDraft> {
       && this.readPendingToken() === null
   }
 
-  /**
-   * 本地草稿写入去抖：连续输入只保留最后一次草稿。`0` 保持原立即写入语义。
-   * 待写入草稿在提交、`flush`、`dispose` 或页面卸载时由 `flushLocalDraftWrite`
-   * 强制落盘，因此不会因为去抖丢掉最后一次编辑。
-   */
   private scheduleLocalDraftWrite(draft: TDraft): void {
     const delay = this.adapter.localWriteDelayMs ?? 0
     if (delay <= 0) {

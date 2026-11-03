@@ -1,8 +1,5 @@
-/**
- * 运行快照类型
- * 与 server/src/routes/agentContract.ts 的 Run / RunSnapshot / RunOccupancy schema 对齐。
- * 这些类型只描述服务端事实；页面和控制器不得自行推导出额外的运行状态。
- */
+// 与 server/src/routes/agentContract.ts 的 Run / RunSnapshot / RunOccupancy schema 对齐；
+// 这些类型只描述服务端事实，页面和控制器不得自行推导出额外的运行状态。
 
 export const ACTIVE_RUN_STATES = ['accepted', 'waiting', 'running', 'stopping'] as const
 export const TERMINAL_RUN_STATES = ['succeeded', 'failed', 'stopped', 'interrupted'] as const

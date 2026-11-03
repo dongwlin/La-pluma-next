@@ -1,20 +1,6 @@
-/**
- * 设置页自动更新策略所有者
- *
- * 自动更新是“保存用户配置 + 应用服务端调度”的完整提交，不是只读资源：
- * 读取先走服务端 `auto-update` 用户配置，失败时回退本设备上次保存的草稿；
- * 只有显式保存才写服务端，两步都成功才算完整成功。
- *
- * - 读取携带开始时的 revision 与 `touched` 守卫：读取期间出现编辑或保存时，
- *   服务端/本地副本不会覆盖较新草稿；确认保存会推进 revision 并清除 touched，
- *   使真正重挂载后的显式读取可以重新采用服务端副本。
- * - 保存期间允许继续编辑；响应返回时只有 revision 未变才把当前草稿标记为
- *   已保存，否则返回 `superseded`，保留新草稿与“当前更改尚未保存”提示。
- * - 服务端调度以响应 data 中的 `success=false` 表示失败；配置已保存但调度
- *   失败不回滚配置，页面保留草稿与可重试入口。
- * - 保存请求不带 AbortSignal，Activity 隐藏或页面重挂载不会中断已提交的写入。
- * - 归一化与时间校验复用 `configNormalization.ts` 的自动更新策略模型。
- */
+// 自动更新是“保存用户配置 + 应用服务端调度”的完整提交：读取先走服务端 auto-update，
+// 失败回退本机草稿；只有显式保存才写服务端，两步都成功才算成功，调度失败不回滚配置。
+// 读取携带开始时的 revision 与 touched 守卫；保存期间允许编辑，响应仅 revision 未变时才确认。
 
 import {
   getErrorMessage,
@@ -109,7 +95,6 @@ export class AutoUpdateConfigOwner {
   private readonly listeners = new Set<() => void>()
   /** 本次所有者生命周期内是否出现过编辑；迟到读取不得覆盖它。 */
   private touched = false
-  /** 草稿可观察版本；只由编辑推进。 */
   private revision = 0
 
   constructor(options: AutoUpdateConfigOwnerOptions = {}) {

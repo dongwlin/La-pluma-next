@@ -1,18 +1,6 @@
-/**
- * 设置页设备发现与连接测试所有者
- *
- * 设备发现会探测本机 ADB 与常见模拟器端口，连接测试会尝试 `adb connect`，
- * 两者都是带副作用的显式命令，不是只读资源：不进入 Query，也不自动重试。
- * 本模块持有两条互不影响的命令链：
- *
- * - 两条链各自只有一次在途请求；重复发起会取消旧请求，旧响应不写状态。
- * - loading/error/取消分别属于 discovery 与 test，一个操作的进行或失败不会
- *   改写另一个操作的 loading。
- * - 页面隐藏或卸载时由 hook 调用 `cancelAll()`：只结束本地等待，不撤销服务端
- *   已发生的探测/连接；恢复后保留已完成的结果，用户可重新发起。
- * - 选择发现结果时只把 `adb_path`/`address` 合并进当前草稿，并记录当时的草稿
- *   revision；测试响应不写草稿，因此测试期间的新编辑不会被旧结果覆盖。
- */
+// 设备发现与连接测试是带副作用的显式命令，不进入 Query、不自动重试；两条链各自只有
+// 一次在途请求，重复发起取消旧请求，loading/error 互不影响。页面隐藏/卸载只取消本地
+// 等待，不撤销服务端已发生的探测/连接；选择结果只合并 adb_path/address 并记录草稿 revision。
 
 import { getErrorMessage, isAbortError, isRecord, type ApiResponse } from '@/shared/api'
 import {
@@ -57,9 +45,7 @@ export type DeviceOperationPhase =
 export interface DeviceDiscoveryState {
   readonly phase: DeviceOperationPhase
   readonly devices: readonly DiscoveredDevice[]
-  /** 可直接展示的提示；服务端 `message` 或本地失败说明。 */
   readonly message: string | null
-  /** 请求或服务端业务失败原因；成功与取消时为 null。 */
   readonly error: string | null
   /** 是否完成过一次查找；取消不算完成，页面据此显示空结果提示。 */
   readonly searched: boolean
@@ -68,10 +54,8 @@ export interface DeviceDiscoveryState {
 export interface ConnectionTestState {
   readonly phase: DeviceOperationPhase
   readonly address: string | null
-  /** 连接结果；请求失败与取消都为 false。 */
   readonly success: boolean
   readonly message: string | null
-  /** 请求级失败原因；连接未建立但请求完成时为 null。 */
   readonly error: string | null
   /** 发起测试时的草稿 revision，用于判断测试期间是否有新编辑。 */
   readonly draftRevision: number | null
@@ -193,7 +177,6 @@ const withTestFeedbackCleared = (test: ConnectionTestState): ConnectionTestState
   }
 }
 
-/** 一次测试的完成快照；地址在发起时已确定，不会为 null。 */
 interface ConnectionTestSnapshot {
   readonly phase: DeviceOperationPhase
   readonly address: string

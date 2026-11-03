@@ -1,17 +1,3 @@
-/**
- * 总览工作区
- *
- * 页面唯一的总览领域容器：连接提示、今日流程、设备状态与摘要区域在这里
- * 组合；导航回调只创建一份。
- *
- * - 完整快照刷新由页面持有的 `useDashboardSnapshotRefresh` 传入，工作区
- *   不再创建第二个计时器或失效订阅；
- * - 设备采样投影在独立的不渲染子组件中调用一次，采样本身仍由
- *   device-mirror 的 Query 持有；每 5s 的样本更新不会重渲染其它区域；
- * - 各区域只订阅自己使用的 store 切片或 runtime-status 投影，设备样本、
- *   摘要或连接状态变化不会推动无关区域重渲染。
- */
-
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { statisticsTabRoute } from '@/features/statistics'
@@ -26,7 +12,6 @@ interface DashboardWorkspaceProps {
   refreshDashboard: () => Promise<void>
 }
 
-/** 只运行采样投影，不订阅任何展示切片，也不产生 DOM。 */
 function DashboardDeviceSampleProjection() {
   useDashboardDeviceStats()
   return null

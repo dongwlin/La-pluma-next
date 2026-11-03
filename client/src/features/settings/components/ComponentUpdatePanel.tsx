@@ -1,11 +1,3 @@
-/**
- * 组件更新面板
- *
- * 版本由 `settings/version` Query 持有，core/渠道/CLI/资源四条命令由
- * `SettingsUpdateOwner` 持有；面板只订阅这两者并渲染版本、按钮 loading
- * 与反馈。自动更新策略由独立面板持有，不随更新命令状态重渲染。
- */
-
 import { Download, RefreshCw } from 'lucide-react'
 import { Button } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'

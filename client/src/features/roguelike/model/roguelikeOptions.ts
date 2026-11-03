@@ -1,11 +1,3 @@
-/**
- * 肉鸽策略字段表与主题相关选项
- *
- * 字段表只描述 CLI 参数与适用条件：`themes`/`modes`/`requires` 决定字段是否生效，
- * `choices` 标识取值随主题变化的选项表。命令构造、可见性与校验都读取同一份表，
- * 面板只负责渲染，不复制参数语义与候选列表。
- */
-
 import type {
   RoguelikeAdvancedOption,
   RoguelikeSelectOption,
@@ -17,7 +9,6 @@ const DEFAULT_SQUAD: RoguelikeSelectOption = { value: '', label: '默认（指�
 export const MAA_CLI_I32_MIN = -2_147_483_648
 export const MAA_CLI_I32_MAX = 2_147_483_647
 
-/** 各主题共有的通用分队；顺序沿用上游 GUI。 */
 const COMMON_SQUADS: readonly string[] = [
   '指挥分队',
   '后勤分队',
@@ -27,7 +18,6 @@ const COMMON_SQUADS: readonly string[] = [
   '破坏战术分队',
 ]
 
-/** 主题专属分队；不含通用分队与高规格分队。 */
 const THEME_SQUADS: Record<string, readonly string[]> = {
   Phantom: ['集群分队', '矛头分队', '研究分队'],
   Mizuki: ['集群分队', '矛头分队', '心胜于物分队', '物尽其用分队', '以人为本分队', '研究分队'],
@@ -66,7 +56,6 @@ const FLEXIBLE_DEPLOYMENT: RoguelikeSelectOption = { value: '灵活部署', labe
 const UNBREAKABLE: RoguelikeSelectOption = { value: '坚不可摧', label: '坚不可摧（重装、术师、医疗）' }
 const AS_YOUR_HEART_DESIRES: RoguelikeSelectOption = { value: '随心所欲', label: '随心所欲（三张随机）' }
 
-/** 主题允许的数值难度上限；傀影没有数值难度，不在表内。 */
 const THEME_MAX_DIFFICULTY: Record<string, number> = {
   Mizuki: 18,
   Sami: 15,

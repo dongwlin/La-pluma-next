@@ -1,18 +1,3 @@
-/**
- * 设置 section 的所有者
- *
- * section 是纯客户端导航状态：`laPlumaConfigSection` 是兼容存储键，
- * `la-pluma-config-section` 是外部切换 section 的 window 事件。两者只在
- * 这里读写，页面通过 `useConfigSection` 订阅，不各自注册监听器。
- *
- * 能力边界：
- * - `connection`：可编辑，草稿由 `ConnectionConfigOwner` 持有，显式保存；
- * - `resource` / `instance`：只读说明，不渲染保存/重置，也不产生写入。
- *
- * section 切换只改变渲染，不卸载草稿、不重读服务端；真正离开页面时由
- * hook 的 Effect 清理 window 监听。
- */
-
 export const CONFIG_SECTION_IDS = ['connection', 'resource', 'instance'] as const
 
 export type ConfigSectionId = (typeof CONFIG_SECTION_IDS)[number]

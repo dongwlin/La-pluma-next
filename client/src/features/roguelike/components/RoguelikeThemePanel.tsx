@@ -1,10 +1,3 @@
-/**
- * 肉鸽主题面板
- *
- * 主题快捷项与自定义输入都只编辑当前模式的 `taskInputs`；持久化仍由工作区通过
- * user-config 协调器提交，本面板不直接读写存储或服务端。
- */
-
 import { Check } from 'lucide-react'
 import { Input, SmoothPanel } from '@/shared/ui'
 import { ROGUELIKE_THEME_PRESETS } from '../model/roguelikeTasks'

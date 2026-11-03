@@ -1,8 +1,3 @@
-/**
- * 日志域 API 端点
- * 实时日志、日志文件列表与读取、手动清理。
- */
-
 import {
   API_BASE_URL,
   fetchWithAuth,
@@ -19,9 +14,6 @@ const isLogFilesPayload = (payload: unknown): boolean => Array.isArray(payload)
 const isLogFilePayload = (payload: unknown): boolean =>
   isRecord(payload) && typeof payload.content === 'string'
 
-/**
- * 获取实时日志
- */
 export async function getRealtimeLogs(lines: number = 100, signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/logs/recent?lines=${lines}`, {
     signal,
@@ -43,9 +35,6 @@ export async function clearRealtimeLogs(signal?: AbortSignal): Promise<ApiRespon
   return parseJsonResponse(response)
 }
 
-/**
- * 获取日志文件列表
- */
 export async function getLogFiles(signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/logs/files`, {
     signal,
@@ -54,9 +43,6 @@ export async function getLogFiles(signal?: AbortSignal): Promise<ApiResponse> {
   })
 }
 
-/**
- * 读取日志文件内容
- */
 export async function readLogFile(
   filePath: string,
   lines: number = 1000,

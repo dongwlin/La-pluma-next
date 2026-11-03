@@ -1,11 +1,3 @@
-/**
- * 总览设备状态区域
- *
- * 只订阅 `dashboardStore` 中由设备采样投影写入的 `deviceStats` 与
- * `temperatureHistory`；采样轮询归 device-mirror，投影与语义校验归
- * `useDashboardDeviceStats`/store。没有样本时区域不渲染，与迁移前一致。
- */
-
 import { Cpu, Database, HardDrive, Thermometer } from 'lucide-react'
 import { SmoothPanel } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'

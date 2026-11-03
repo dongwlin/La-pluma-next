@@ -1,14 +1,3 @@
-/**
- * 统计识别与材料刷新命令的页面投影
- *
- * 命令生命周期仍由模块级 `statisticsCommandOwner` 持有；本 hook 只把
- * 同一份状态投影给工作区和面板，并把解析成功后的权威快照写回唯一 Query：
- * - 识别成功先取消在途读取、写 `game-data` 的 `depot`/`operbox` key，再由
- *   所有者发布跨域失效，避免自失效触发的 GET 覆盖刚解析出的快照；
- * - busy/idle 等非终态结果只转成全局提示，不复制命令状态；
- * - 超时/取消后的按钮继续等待或重试确认，不会重新执行设备命令。
- */
-
 import { useQueryClient } from '@tanstack/react-query'
 import { gameDataKeys } from '@/features/game-data'
 import { useStatusStore } from '@/features/runtime-status'

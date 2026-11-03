@@ -1,5 +1,3 @@
-/** 日志列表、逐条取证详情与滚动跟随；仅消费工作区选定的事件。 */
-
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { AlertCircle, ArrowDown, ArrowLeft, FileText, Search } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, Loading } from '@/shared/ui'

@@ -1,11 +1,3 @@
-/**
- * 历史日志会话的 React 适配层
- *
- * 会话实例随页面真正挂载创建，Activity 隐藏时 `stop()` 取消在途列表/读取，
- * 显示时 `start()` 重读列表并重试被取消的当前文件。缓冲、请求裁决与选择
- * 全部由 `HistoryLogSession` 持有，本 hook 只负责实例寿命、订阅与动作绑定。
- */
-
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import {
   HistoryLogSession,

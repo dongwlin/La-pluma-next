@@ -14,11 +14,6 @@ interface FloatingStatusIndicatorProps {
   textClassName?: string
 }
 
-/**
- * 全局悬浮状态指示器
- * "就绪"状态始终显示在原位置
- * 其他状态在原位置可见时显示在原位置，不可见时悬浮到右上角
- */
 export default function FloatingStatusIndicator({ className = '', textClassName = '' }: FloatingStatusIndicatorProps) {
   // 逐字段订阅：任一无关字段变化都不会让全局指示器跟着重渲染。
   const message = useStatusStore(state => state.message)
@@ -40,7 +35,6 @@ export default function FloatingStatusIndicator({ className = '', textClassName 
     }
   }, [])
 
-  // 显示文本：连接健康优先，其次临时消息，再次唯一快照投影的运行状态，否则干员台词。
   const isBackendChecking = isOnline && (backendStatus === 'unknown' || backendStatus === 'checking')
   const connectionMessage = !isOnline
     ? '网络连接已断开，页面控制暂不可用'

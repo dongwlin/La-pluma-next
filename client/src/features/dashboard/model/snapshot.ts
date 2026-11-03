@@ -1,14 +1,3 @@
-/**
- * 总览完整业务快照的纯归一模型
- *
- * 五路业务读取（activity、schedule execution、training queue、today drops、
- * open-today stages）只有全部通过形状校验时才归一为一份完整快照；任一路
- * 缺失或格式不符都返回 `null`，由调用方保留上一份完整快照。
- *
- * 本模块不发起请求、不读写 store，设备采样也不参与业务快照有效性。
- * 端点读取与协调提交见 `model/queries.ts` 与 `model/snapshotRefresher.ts`。
- */
-
 import { isRecord } from '@/shared/api'
 import {
   normalizeActivityPayload,
@@ -70,7 +59,6 @@ export interface DashboardBusinessSnapshot {
   openStageSummary: OpenStageSummary
 }
 
-/** 协调器从各领域查询取得的原始载荷；形状在归一阶段统一裁决。 */
 export interface DashboardSnapshotPayloads {
   activity: unknown
   scheduleExecution: unknown

@@ -1,4 +1,3 @@
-/* 页面级样式：随 dashboard 功能域维护，统一收进 page 层；utilities 仍然优先。 */
 @layer page {
   .dashboard-flow-layout {
     display: grid;
@@ -777,8 +776,6 @@
       0 16px 36px rgba(0, 0, 0, 0.28);
   }
 
-  /* Primary workspaces share the large title above. The rules below remain
-     dashboard-specific because its status slot and card flow are unique. */
   @media (max-width: 639px) {
     .la-pluma-app .dashboard-page {
       --dashboard-card-gap: 1rem;

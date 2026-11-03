@@ -1,13 +1,3 @@
-/**
- * 掉落记录面板
- *
- * 面板持有统计周期与掉落 Query；周期天数进入 Query key，切换周期复用
- * `keepPreviousData` 行为。面板随页面挂载常驻，非当前 tab 时只返回 null：
- * 掉落读取仍在首屏启动，切回时保留已选周期。
- *
- * 排序与展示上限在 `model/dropRecords`，视图组件 `DropRecords` 只渲染结果。
- */
-
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'

@@ -1,19 +1,3 @@
-/**
- * 实时日志流的 React 适配层
- *
- * 缓冲、计时器与请求控制由 `RealtimeLogStream` 持有；本 hook 只负责实例
- * 寿命、订阅与可见性转发。
- *
- * - Activity 隐藏/页面卸载时 `stop()`：清计时器并取消在途读取，缓冲保留；
- *   恢复时 `start()` 立即重读并重建计时器。
- * - 浏览器文档隐藏时取消在途读取，计时器保留但不发请求；可见时立即重读。
- * - `enabled` 用于历史浏览等页面级暂停场景；关闭时停止轮询，重新开启时
- *   立即重读。它与手动 `pause()` 相互独立。
- *
- * 流实例随页面真正挂载创建，Activity 隐藏不会重建；真正重挂载/刷新后缓冲
- * 重新开始，与迁移前一致。
- */
-
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import {
   RealtimeLogStream,

@@ -283,7 +283,6 @@ describe('RealtimeLogStream', () => {
       operationId: 'op-1',
     }])
 
-    // 相同文本但换了 run 归属：视为新内容并提交
     read.mockResolvedValue({
       success: true,
       data: [{
@@ -298,7 +297,6 @@ describe('RealtimeLogStream', () => {
     await flush()
     expect(stream.getState().logs[0]?.runId).toBe('run-2')
 
-    // 丢弃非字符串的归属字段
     read.mockResolvedValue({
       success: true,
       data: [{ time: '2026-07-22T10:11:12', level: 'INFO', message: '无归属', runId: 7 }],

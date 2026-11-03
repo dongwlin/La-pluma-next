@@ -43,7 +43,6 @@ interface VideoStats extends WebRTCStatsMetrics {
   inputReady: boolean
 }
 
-/** 统计面板只消费这些标量字段；值相等时无需替换状态对象。 */
 function isSameVideoStats(previous: VideoStats | null, next: VideoStats): boolean {
   if (!previous) return false
   return previous.fps === next.fps
@@ -190,10 +189,6 @@ function shouldKeepCandidate(candidate: string, connectionPath: 'auto' | 'relay'
   return true
 }
 
-/**
- * 设备端 scrcpy-server 的错误可能带 Java 堆栈或多行输出，预览面板只展示
- * 首行并限长；缺失或空消息回退到稳定文案，不把原始载荷直接塞进界面。
- */
 function readScrcpyErrorMessage(payload: unknown): string {
   if (typeof payload !== 'object' || payload === null) return SCRCPY_ERROR_FALLBACK
   const message = (payload as { message?: unknown }).message

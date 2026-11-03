@@ -1,11 +1,3 @@
-/**
- * 肉鸽高级字段与运行操作面板
- *
- * 字段值来自配置协调器的草稿；字段表、主题候选项与适用条件都由纯模型描述，
- * 面板只渲染当前生效的字段并回传编辑意图。运行/停止按钮只调用工作区注入的
- * 执行适配器，不在这里创建第二份执行状态机。
- */
-
 import { Play, Square } from 'lucide-react'
 import { Button, Input, Select, SmoothPanel, Switch } from '@/shared/ui'
 import {
@@ -157,10 +149,6 @@ export default function RoguelikeSettingsPanel({
   )
 }
 
-/**
- * 下拉项来自当前主题；草稿里保留了旧主题的取值时补一项回显并标注不受支持，
- * 避免原生 select 因为找不到匹配项而显示空白，也不把越界值伪装成合法候选。
- */
 function selectOptionsFor(
   option: RoguelikeAdvancedOption,
   theme: string,

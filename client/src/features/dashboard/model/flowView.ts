@@ -1,21 +1,11 @@
-/**
- * 总览今日流程卡的展示投影
- *
- * 只把执行快照、加载态与连接健康映射成文案、按钮状态与忙碌标记，不读取
- * store、不发起请求、不持有定时器。完整快照与执行身份仍分别由
- * `snapshotRefresher`/`dashboardStore` 与 `useDashboardExecution` 持有。
- */
-
 import type { GlobalRunPhase } from '@/features/task-execution'
 
 export interface DashboardFlowViewInput {
-  /** 后端可用且在线；不可用时禁止启动并展示连接说明。 */
   readonly automationAvailable: boolean
   readonly connectionTitle: string
   readonly connectionDescription: string
   readonly quickStartLoading: boolean
   readonly activityPreflightLoading: boolean
-  /** 设备忙：有活动 run（含等待继续）或被未纳管执行占用。 */
   readonly deviceBusy: boolean
   readonly phase: GlobalRunPhase
   readonly runLabel?: string | null

@@ -1,8 +1,3 @@
-/**
- * 设置域 API 端点
- * 版本、配置目录、MAA 配置、连接测试、设备发现与更新管理。
- */
-
 import {
   API_BASE_URL,
   fetchWithAuth,
@@ -37,9 +32,6 @@ const isConfigPayload = (payload: unknown): boolean =>
 
 const isDeviceDiscoveryPayload = (payload: unknown): boolean => isRecord(payload)
 
-/**
- * 获取版本信息
- */
 export async function getVersion(signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/version`, {
     signal,
@@ -54,9 +46,6 @@ export async function getVersion(signal?: AbortSignal): Promise<ApiResponse> {
  */
 export type ConfigDirectoryValue = string | { path: string }
 
-/**
- * 获取配置目录
- */
 export async function getConfigDir(signal?: AbortSignal): Promise<ApiResponse<ConfigDirectoryValue>> {
   return readApiResponse<ConfigDirectoryValue>(`${API_BASE_URL}/agent/config-directory`, {
     signal,
@@ -65,17 +54,11 @@ export async function getConfigDir(signal?: AbortSignal): Promise<ApiResponse<Co
   })
 }
 
-/**
- * 在本机文件管理器中打开配置目录
- */
 export async function openConfigDir(): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/open-config-directory`, { method: 'POST' })
   return parseJsonResponse(response)
 }
 
-/**
- * 获取配置
- */
 export async function getConfig(profileName: string = 'default', signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/config/maa/${profileName}`, {
     signal,
@@ -84,9 +67,6 @@ export async function getConfig(profileName: string = 'default', signal?: AbortS
   })
 }
 
-/**
- * 保存配置
- */
 export async function saveConfig(profileName: string = 'default', config: any): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/config/maa/${profileName}`, {
     method: 'POST',
@@ -98,9 +78,6 @@ export async function saveConfig(profileName: string = 'default', config: any): 
   return parseJsonResponse(response)
 }
 
-/**
- * 测试 ADB 连接
- */
 export async function testConnection(adbPath?: string, address?: string, signal?: AbortSignal): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/test-connection`, {
     method: 'POST',
@@ -121,9 +98,6 @@ export async function discoverDevices(adbPath: string, signal?: AbortSignal): Pr
   })
 }
 
-/**
- * 更新 MaaCore
- */
 export async function updateMaaCore(version?: string): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/update-core`, {
     method: 'POST',
@@ -135,9 +109,6 @@ export async function updateMaaCore(version?: string): Promise<ApiResponse> {
   return parseJsonResponse(response)
 }
 
-/**
- * 更新 MAA CLI
- */
 export async function updateMaaCli(): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/update-cli`, {
     method: 'POST',
@@ -145,9 +116,6 @@ export async function updateMaaCli(): Promise<ApiResponse> {
   return parseJsonResponse(response)
 }
 
-/**
- * 热更新资源文件
- */
 export async function hotUpdateResources(): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/hot-update-resources`, {
     method: 'POST',
@@ -155,9 +123,6 @@ export async function hotUpdateResources(): Promise<ApiResponse> {
   return parseJsonResponse(response)
 }
 
-/**
- * 设置自动更新
- */
 export async function setupAutoUpdate(config: AutoUpdateConfig): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/configure-auto-update`, {
     method: 'POST',

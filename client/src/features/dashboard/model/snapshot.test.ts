@@ -233,7 +233,6 @@ describe('normalizeDashboardSnapshot', () => {
   })
 
   it('does not treat the backend probe as part of the five business payloads', () => {
-    // 归一函数只接收五路业务载荷；探针结果不会进入快照，也不会让快照失效。
     const snapshot = normalizeDashboardSnapshot(validPayloads())
     expect(snapshot).not.toBeNull()
   })

@@ -82,8 +82,6 @@ describe('useDashboardDeviceStats', () => {
 
     await renderActivity('hidden')
     await renderActivity('visible')
-    // 恢复时 Query 先回放缓存样本，同一 dataUpdatedAt 不应重复追加温度点；
-    // 新请求在途，尚未产生新样本。
     expect(apiMocks.getDeviceStats).toHaveBeenCalledTimes(2)
     expect(history()).toEqual([38])
 

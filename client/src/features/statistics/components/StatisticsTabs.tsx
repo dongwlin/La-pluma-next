@@ -1,10 +1,3 @@
-/**
- * 统计数据视图切换
- *
- * 当前 tab 由工作区持有（它决定渲染哪个面板），本组件只负责分段控件的
- * 测量、高亮与键盘导航；切换 tab 不卸载面板容器，筛选等局部状态因此保留。
- */
-
 import { motion, useReducedMotion } from 'framer-motion'
 import Icons from '@/shared/ui/Icons'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'

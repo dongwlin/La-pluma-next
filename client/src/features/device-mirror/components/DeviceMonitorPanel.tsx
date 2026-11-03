@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { SmoothPanel } from '@/shared/ui'
 import ScreenMonitor from './ScreenMonitor'
 
-/** Shared preview surface for workspace side columns. */
 export function DeviceMonitorPanel({ className = '', surfaceClassName = '' }: { className?: string; surfaceClassName?: string }) {
   return (
     <SmoothPanel className={className} surfaceClassName={`automation-monitor-surface ${surfaceClassName}`}>

@@ -92,7 +92,6 @@ export default function DropRecords({
 
   const { total, items, stages, dateRange } = dropStatistics
 
-  // 排序由纯模型持有：材料按掉落数量、关卡按战斗次数降序。
   const sortedItems = sortDropItems(items)
   const sortedStages = sortDropStages(stages)
   const metricCards = [
@@ -122,7 +121,6 @@ export default function DropRecords({
         </div>
       )}
 
-      {/* 顶部统计卡片 */}
       <div className="drop-records-metric-panel grid grid-cols-2 overflow-hidden rounded-xl surface-soft md:grid-cols-4">
         {metricCards.map((metric) => (
           <div key={metric.label} className="drop-records-metric-row min-w-0 p-4">
@@ -140,7 +138,6 @@ export default function DropRecords({
         ))}
       </div>
 
-      {/* 天数选择器 */}
       <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-sm text-secondary">统计周期</span>
@@ -177,7 +174,6 @@ export default function DropRecords({
         </Button>
       </div>
 
-      {/* 材料掉落统计 */}
       <div className="min-w-0">
         <Card smoothCorners className="drop-records-panel p-0!">
           <div className="drop-records-panel-content">
@@ -204,7 +200,6 @@ export default function DropRecords({
               key={itemData.name}
               className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-(--app-surface-muted)"
             >
-              {/* 物品图标 */}
               {itemData.iconId && (
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
                   {failedItemImages[itemData.name] ? (
@@ -222,7 +217,6 @@ export default function DropRecords({
                 </div>
               )}
               
-              {/* 物品信息 */}
               <div className="flex-1 min-w-0">
                 <div className="wrap-break-word text-sm font-bold text-primary wrap-anywhere" title={itemData.name}>
                   {itemData.name}
@@ -247,7 +241,6 @@ export default function DropRecords({
         </Card>
       </div>
 
-      {/* 关卡统计 */}
       <div className="min-w-0">
         <Card smoothCorners className="drop-records-panel p-0!">
           <div className="drop-records-panel-content">
@@ -288,7 +281,6 @@ export default function DropRecords({
                 </div>
               </div>
 
-              {/* 掉落物品 */}
               <div className="flex min-w-0 flex-wrap gap-2">
                 {Object.entries(stageData.items).length === 0 && (
                   <span className="text-sm text-tertiary">没有记录到掉落物</span>
@@ -310,7 +302,6 @@ export default function DropRecords({
         </Card>
       </div>
 
-      {/* 日期范围提示 */}
       {dateRange.start && dateRange.end && (
         <div className="wrap-break-word text-center text-sm text-secondary wrap-anywhere">
           统计时间: {dateRange.start} 至 {dateRange.end} (共 {dateRange.days} 天)

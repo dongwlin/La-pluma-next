@@ -1,24 +1,3 @@
-/**
- * 数据统计识别与材料刷新命令所有者
- *
- * 三个命令的启动、等待、解析、超时和取消都由本模块持有，页面只订阅状态并
- * 发起一次逻辑命令：
- *
- * - `depot` / `operbox`：通过应用级执行控制器生成幂等 intent，提交同步
- *   `run-task`；命令结果确认后，再轮询解析端点等待 MAA 日志可解析。解析成功
- *   才发布跨域失效；解析失败不会重新提交设备命令。
- * - `materials`：刷新材料缓存的脚本入口，不占设备租约，也不产生 Run。
- *
- * 关键不变量：
- * - 识别命令不是 Query：不会因为读取失败被自动重试；等待与解析的重试都在
- *   本模块内显式发生。
- * - 超时或本地取消只结束本地等待，不停止服务端执行；继续时如果命令结果
- *   不确定，复用同一幂等键让服务端回放已有 Run，绝不产生第二个设备命令。
- * - 命令已确认成功后，继续等待只重新解析，不再提交 `run-task`。
- * - 同一时刻只允许一个统计命令；页面隐藏、Activity 隐藏或重挂载都不会重建
- *   该所有者，因此不会因页面生命周期重复执行。
- */
-
 import { getErrorMessage, isAbortError, isRecord, type ApiResponse } from '@/shared/api'
 import {
   executionController as defaultExecutionController,
@@ -144,7 +123,6 @@ interface ResumableCommand {
   readonly kind: StatisticsRecognitionKind
   readonly idempotencyKey: string
   readonly runId: string | null
-  /** 命令是否已确认完成；`true` 时继续只等待/解析，`false` 时复用幂等键确认结果。 */
   readonly commandSucceeded: boolean
 }
 
@@ -285,7 +263,6 @@ class CommandOperation {
     return this.controller.signal
   }
 
-  /** 为当前阶段换上新的超时；成功进入下一阶段时重置计时。 */
   arm(timeoutMs: number): void {
     this.clearTimer()
     this.timedOut = false

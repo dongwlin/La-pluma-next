@@ -1,11 +1,3 @@
-/**
- * 总览今日流程卡
- *
- * 只渲染流程卡：执行投影、预检/启动反馈与开放关卡摘要。执行订阅和提交由
- * `useDashboardFlowActions` 复用领域所有者；卡片不直接调用 API、不写
- * `dashboardStore`，也不持有完整快照的刷新计时器。
- */
-
 import { Activity, CalendarDays, CheckCircle2, Play, Target } from 'lucide-react'
 import { Button, Card } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'

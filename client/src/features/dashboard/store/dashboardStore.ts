@@ -59,7 +59,6 @@ interface DashboardCacheState extends DashboardSnapshot {
   lastDeviceSampleAt: number | null
   startRefresh: () => void
   finishRefresh: (attemptedAt: number, snapshot?: DashboardBusinessSnapshot, error?: string) => void
-  /** 设备采样来自只读端点，入 store 前在这里做语义校验。 */
   updateDeviceStats: (stats: unknown, sampleAt?: number) => void
   reset: () => void
 }

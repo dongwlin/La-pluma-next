@@ -1,8 +1,3 @@
-/**
- * 历史日志清理命令。删除确认后刷新列表并裁决当前选择；页面清屏由实时流
- * 的本地可见边界负责，不调用服务端共享缓冲的清空接口。
- */
-
 import { isAbortError, type ApiResponse } from '@/shared/api'
 import { cleanupLogs as defaultCleanupLogs } from '../api'
 import type { HistoryFilesOutcome } from './historyLogSession'

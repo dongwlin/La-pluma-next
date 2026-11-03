@@ -1,13 +1,3 @@
-/**
- * 仓库识别面板
- *
- * 面板持有仓库读取、失败图标缓存与分类汇总展示；汇总规则在
- * `model/depotSummary`，识别命令仍由工作区投影注入。
- *
- * 与干员面板一样随页面挂载常驻，非当前 tab 时只返回 null：仓库读取的
- * 首屏时机不随 tab 变化，切回时不会重新加载或丢失图标失败状态。
- */
-
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -96,7 +86,6 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
             </div>
           </div>
 
-          {/* 识别结果展示 */}
           {!depotDataError && !depotData && (depotDataLoading || command.activeTask === 'depot') && (
             <div className="rounded-xl py-12 surface-soft" aria-live="polite">
               <Loading text={command.activeTask === 'depot' ? '正在识别仓库数据' : '正在读取仓库数据'} />
@@ -184,7 +173,6 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                 </section>
               )}
 
-              {/* 物品卡片网格 */}
               {depotData.items && depotData.items.length > 0 && (
                 <div className="data-statistics-item-grid grid grid-cols-1 overflow-hidden rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                   {depotData.items.map((item) => {
@@ -196,7 +184,6 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                         key={itemKey}
                         className="data-statistics-depot-item flex min-w-0 items-center gap-3 p-3"
                       >
-                        {/* 物品图标 */}
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
                           {failedDepotImages[imageKey] ? (
                             <span role="img" aria-label={`${item.name}图标不可用`}>
@@ -214,7 +201,6 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                           )}
                         </div>
 
-                        {/* 物品信息 */}
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-primary truncate" title={item.name}>
                             {item.name}

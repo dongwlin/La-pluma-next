@@ -13,7 +13,6 @@ type Options = Parameters<typeof useScrcpyWebRTC>[0] & {
 }
 
 const CONNECTING_STATUSES = new Set(['connecting', 'signaling', 'waiting_offer', 'connecting_webrtc'])
-/** 文档隐藏后保留当前连接的缓冲时间，期间恢复可见会继续使用同一连接。 */
 const HIDDEN_PREVIEW_STOP_DELAY_MS = 180_000
 
 /** The application owns one preview independently of workspace Activity effects. */

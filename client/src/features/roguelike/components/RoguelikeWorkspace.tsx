@@ -1,13 +1,3 @@
-/**
- * 肉鸽工作区容器
- *
- * 页面只负责壳层与页头；跨面板的配置草稿、执行订阅与当前模式集中在这里：
- * - 草稿由 user-config 通道持有，本组件只把 `taskInputs`/`advancedParams` 投影给面板；
- * - 执行由应用级控制器持有，`useRoguelikeExecution` 只创建一份页面适配器；
- * - 当前模式是跨面板的局部交互状态（决定主题与高级字段展示哪一份配置），
- *   不进入持久化载荷；真正卸载后回默认模式，Activity 隐藏/恢复保留。
- */
-
 import { useState } from 'react'
 import { Button } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
@@ -53,7 +43,6 @@ export default function RoguelikeWorkspace() {
     update: updateConfig,
     retry: retryConfigSave,
   } = useUserConfig(roguelikeConfigAdapter)
-  // 协调器负责草稿、pending 与提交队列；面板只从草稿派生当前字段并渲染同步状态。
   const taskInputs = configDraft?.taskInputs ?? EMPTY_TASK_INPUTS
   const advancedParams = configDraft?.advancedParams ?? EMPTY_ADVANCED_PARAMS
   const isRetryingConfigSave = configSyncState === 'saving'
@@ -74,7 +63,6 @@ export default function RoguelikeWorkspace() {
   const handleThemeChange = (value: string) => {
     updateConfig({
       taskInputs: { ...taskInputs, [activeTask.id]: value },
-      // 只重置新主题不支持的模式（刷坍缩范式仅萨米），其余字段保留并按可见性隐藏。
       advancedParams: normalizeRoguelikeModeForTheme(activeTask.id, value, advancedParams),
     })
   }
@@ -98,7 +86,6 @@ export default function RoguelikeWorkspace() {
       return
     }
 
-    // 输入校验与命令拼接由纯模型描述，页面/面板不复制字段语义。
     const inputError = validateRoguelikeTaskInput(activeTask.id, taskInputs, advancedParams)
     if (inputError) {
       setStatusMessage(inputError)

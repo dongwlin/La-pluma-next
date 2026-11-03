@@ -1,24 +1,6 @@
-/**
- * 历史日志会话所有者
- *
- * 历史文件列表、当前选择、读取内容与读取状态归本会话；实时缓冲仍归
- * `RealtimeLogStream`，两者互不写入。页面只组合两个会话的只读快照。
- *
- * 请求裁决：
- * - 文件列表与文件读取各自持有请求序号和 `AbortController`；新请求、返回
- *   实时、切页或会话停止都会取消旧请求，只有仍当前且未中止的响应可以写入。
- * - 历史读取只写历史快照，因此迟到的历史响应不可能覆盖新选择或实时缓冲。
- *
- * 生命周期：
- * - `start()`/`stop()` 对应页面 Activity 显示/隐藏。停止时取消在途列表与
- *   读取请求；进行中的读取转为 `cancelled` 而不是留下 `loading`，选择与
- *   已显示内容保留。恢复时重读文件列表；若上次读取被取消，自动重试当前
- *   文件。已经成功或明确失败的读取不在恢复时自动重试。
- * - 页面真正卸载同样调用 `stop()`，迟到的响应不会写回已卸载会话。
- *
- * 协议没有 cursor/offset：每次读取返回文件末尾 N 行，文件列表按路径标识；
- * “已有 cursor 状态”在本域表现为当前选择与读取相位，而不是分页游标。
- */
+// 历史读取的请求裁决：列表与读取各自持有请求序号和 `AbortController`，新请求、返回
+// 实时、切页或 `stop()` 都取消旧请求，只有仍当前且未中止的响应可写；停止时进行中的
+// 读取转为 `cancelled`。协议无 cursor/offset：每次读取文件末尾 N 行。
 
 import { isAbortError, isRecord, type ApiResponse } from '@/shared/api'
 import {
@@ -38,16 +20,13 @@ export type HistoryReadPhase = 'idle' | 'loading' | 'ready' | 'failed' | 'cancel
 export type HistoryFilesOutcome = 'ready' | 'failed' | 'cancelled'
 
 export interface HistoryLogState {
-  /** 是否处于历史浏览模式；由选择文件进入，由返回实时退出。 */
   readonly viewing: boolean
   readonly files: readonly LogFile[]
   readonly filesPhase: HistoryFilesPhase
-  /** 列表读取失败原因；成功与取消时为 null。 */
   readonly filesError: string | null
   readonly selectedFile: LogFile | null
   readonly logs: readonly LogEntry[]
   readonly readPhase: HistoryReadPhase
-  /** 当前文件读取失败原因；成功、进行中与取消时为 null。 */
   readonly error: string | null
 }
 

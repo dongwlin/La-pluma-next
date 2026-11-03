@@ -1,8 +1,3 @@
-/**
- * Run 查询与目标停止端点
- * `runs/current` 是应用级运行快照的唯一读取入口；按 runId 查询用于保留调用方自己的身份。
- */
-
 import { API_BASE_URL, fetchWithAuth, parseJsonResponse, type ApiResponse } from '@/shared/api'
 import type { AgentRun, RunSnapshot, StopRunResult } from '../types'
 

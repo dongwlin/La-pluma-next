@@ -99,7 +99,6 @@ describe('DropPanel state lifecycle', () => {
     await render(false)
     await flush()
 
-    // 读取时机属于页面首屏，而不是 tab 首次可见。
     expect(mocks.getDropStatistics).toHaveBeenCalledTimes(1)
     expect(mocks.getDropStatistics).toHaveBeenCalledWith(7, expect.any(AbortSignal))
     expect(container.querySelector('[role="tabpanel"]')).toBeNull()
@@ -117,7 +116,6 @@ describe('DropPanel state lifecycle', () => {
     expect(mocks.getDropStatistics).toHaveBeenLastCalledWith(14, expect.any(AbortSignal))
     expect(periodButton(14)?.getAttribute('aria-pressed')).toBe('true')
 
-    // 切走再回来：周期保留，query 观察者未重建，不重复读取。
     await render(false)
     expect(container.querySelector('[role="tabpanel"]')).toBeNull()
     await render(true)

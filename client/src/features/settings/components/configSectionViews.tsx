@@ -1,11 +1,3 @@
-/**
- * 配置 section 的展示元数据
- *
- * 与 `model/configSection.ts` 的导航状态分开：这里只有名称、说明与图标，
- * 不持有存储键、事件或能力判断。分段导航与只读 section 面板共用同一份
- * 文案，避免标题与导航名称漂移。
- */
-
 import {
   MonitorSmartphone,
   PackageOpen,

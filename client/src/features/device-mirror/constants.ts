@@ -1,7 +1,3 @@
-/**
- * 投屏/截图预览域常量
- */
-
 export const qualityPresets = {
   power: { label: '省电', fps: 15, maxSize: 640, bitrateMbps: 1.5, maxBitrateMbps: 3 },
   smooth: { label: '流畅', fps: 30, maxSize: 960, bitrateMbps: 4, maxBitrateMbps: 8 },

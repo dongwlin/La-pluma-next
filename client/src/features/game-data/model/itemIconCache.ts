@@ -1,15 +1,6 @@
-/**
- * 物品图标 URL 的浏览器缓存版本
- *
- * 物品图标来自外部静态资源仓库，同一路径在资源更新后可能替换为新图。浏览器
- * 按完整 URL 缓存图片，只失效 catalog/materials Query 不会替换仍被引用的旧图；
- * 这里维护一个持久化 epoch，资源更新确认成功后推进，`getItemIconUrl()` 把它
- * 作为查询参数，使新旧图片分属不同缓存条目。
- *
- * 该值不是业务资源，不进入 Query 缓存或 Zustand；订阅只用于让使用图标的组件
- * 在更新成功后重新渲染。epoch 使用时间戳而不是会话内计数，浏览器刷新后仍能
- * 与更新前的 URL 区分。
- */
+// 浏览器按完整 URL 缓存图片：只失效 catalog/materials Query 留不住旧图，故维护持久化
+// epoch 作 `?v=`，让新旧图片分属不同缓存条目。epoch 用时间戳而不是会话内计数，刷新后
+// 仍能与更新前的 URL 区分；该值不是业务资源，不进入 Query 或 Zustand，订阅只用于重渲染。
 
 export const ITEM_ICON_CACHE_STORAGE_KEY = 'laPlumaItemIconVersion'
 

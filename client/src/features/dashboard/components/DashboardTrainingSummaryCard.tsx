@@ -1,10 +1,3 @@
-/**
- * 总览养成摘要卡
- *
- * 只订阅 `trainingSummary`，并按需导航到养成页；不读取训练 Query，
- * 也不修改完整快照。
- */
-
 import { ChevronRight, Target } from 'lucide-react'
 import { Card, IconButton } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'

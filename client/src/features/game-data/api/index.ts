@@ -1,9 +1,3 @@
-/**
- * 游戏数据资源共享端点
- * 仓库、持有干员与干员目录同时被统计和养成页面消费，归本非页面微域持有；
- * 养成队列、设置、计划与掉落/开放关卡仍归各自页面域。
- */
-
 import {
   API_BASE_URL,
   isRecord,
@@ -31,9 +25,6 @@ const isOperBoxPayload = (payload: unknown): boolean =>
 
 const isAllOperatorsPayload = (payload: unknown): boolean => Array.isArray(payload)
 
-/**
- * 获取已保存的仓库数据
- */
 export async function getDepotData(signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/data/depot`, {
     signal,
@@ -42,9 +33,6 @@ export async function getDepotData(signal?: AbortSignal): Promise<ApiResponse> {
   })
 }
 
-/**
- * 获取已识别的持有干员数据
- */
 export async function getOperBoxData(signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/data/operbox`, {
     signal,
@@ -53,9 +41,6 @@ export async function getOperBoxData(signal?: AbortSignal): Promise<ApiResponse>
   })
 }
 
-/**
- * 获取全量干员目录
- */
 export async function getAllOperators(signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/data/operators`, {
     signal,

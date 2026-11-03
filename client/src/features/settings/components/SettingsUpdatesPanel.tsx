@@ -1,10 +1,3 @@
-/**
- * 组件更新卡片容器
- *
- * 自动更新策略与 core/CLI/资源更新是两个独立用例：两个子面板各自订阅
- * 自己的 owner/Query，卡片只提供共享标题与 0 间距内容布局。
- */
-
 import { Card, CardContent, CardHeader } from '@/shared/ui'
 import AutoUpdateConfigPanel from './AutoUpdateConfigPanel'
 import ComponentUpdatePanel from './ComponentUpdatePanel'

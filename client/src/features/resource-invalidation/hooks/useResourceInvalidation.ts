@@ -1,11 +1,3 @@
-/**
- * 跨域资源失效订阅 hook
- *
- * 订阅发生在 Effect 中，Activity 隐藏会随 Effect 清理注销，显示时重新订阅。
- * 隐藏期间若有发布，恢复时会补发一次 `activity-resume` 合成事件；
- * 页面首次挂载不补发（页面自己的首屏读取负责加载）。
- */
-
 import { useEffect, useEffectEvent, useRef } from 'react'
 import {
   resourceInvalidationHub,

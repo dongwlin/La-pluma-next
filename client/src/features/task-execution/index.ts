@@ -1,8 +1,3 @@
-/**
- * 任务执行微域公开面
- * 跨域共用的命令执行、Run 观察与目标停止端点，以及应用级执行控制器。
- */
-
 export {
   executeCommand,
   executePredefinedTask,

@@ -1,23 +1,9 @@
-/**
- * 实时日志智能跟随状态机
- *
- * 手动「自动滚动」开关之外的第二层：开关打开时，用户离开滚动容器底部会
- * 临时暂停跟随并开始累计新增行数，回到底部或点击未读指示即恢复。手动
- * 开关关闭=永不跟随，此时组件不驱动本状态机；本模块不感知 DOM 与轮询，
- * 只裁决事件后的跟随状态。
- *
- * 到达检测以源记录身份为准，相同快照、仅移除旧记录都不会产生未读。
- * 旧服务端没有事件 ID 时以内容多重集合降级检测；窗口外的记录不可回补，
- * 因此界面只提示有新日志，不承诺精确的到达总数。
- */
-
 import type { LogEntry } from '../types'
 import { getLogIdentity } from './logModel'
 
 export interface LogFollowState {
   /** 智能暂停：用户离开底部后为 true，滚动 Effect 与未读指示以此为准。 */
   readonly paused: boolean
-  /** 暂停以来累计的新增行数；恢复跟随即清零。 */
   readonly pendingCount: number
 }
 

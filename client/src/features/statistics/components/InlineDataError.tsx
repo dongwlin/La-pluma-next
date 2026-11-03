@@ -1,10 +1,3 @@
-/**
- * 统计面板的读取失败提示
- *
- * 干员与仓库面板共用同一套可恢复错误表面；重试按钮的 loading 由调用方
- * 从 Query 的 `isFetching` 派生。
- */
-
 import { Button } from '@/shared/ui'
 import Icons from '@/shared/ui/Icons'
 

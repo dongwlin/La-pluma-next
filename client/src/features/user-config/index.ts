@@ -1,8 +1,3 @@
-/**
- * 用户配置微域公开面
- * 跨域共用的用户任务配置读写端点，以及按配置 key 串行的持久化协调器。
- */
-
 export { loadUserConfig, saveUserConfig } from './api'
 
 export { USER_CONFIG_KEYS, USER_CONFIG_PENDING_KEYS } from './model/configKeys'

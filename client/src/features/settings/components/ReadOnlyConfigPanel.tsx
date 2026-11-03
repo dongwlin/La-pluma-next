@@ -1,12 +1,3 @@
-/**
- * 只读配置 section 面板
- *
- * `resource` 与 `instance` 没有可写入口，面板只渲染 MAA 管理的说明与
- * “打开目录”入口。目录路径/状态来自 `settings/config-directory` Query，
- * 与目录卡片共享同一缓存；这里只复用缓存，不在挂载时重取或重试，打开
- * 目录仍是显式命令，不触发 Query 重取。
- */
-
 import { FolderOpen, LockKeyhole } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'

@@ -1,11 +1,3 @@
-/**
- * 配置目录面板
- *
- * 路径读取由 `settings/config-directory` Query 持有；面板只渲染状态、重试
- * 与“打开目录”入口。打开目录是带副作用的显式命令，不进入 Query，也不
- * 自动重取；后台刷新失败保留最近一次成功路径。
- */
-
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { Button, Card, CardContent } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'

@@ -1,5 +1,3 @@
-/** 日志筛选与观察动作；筛选条件独立于列表文案。 */
-
 import { Download, Pause, Play, Search, Trash2 } from 'lucide-react'
 import { Button, Card, CardContent, Input, Select, Switch } from '@/shared/ui'
 import type { LogEventFilter, LogFilter } from '../model/logModel'

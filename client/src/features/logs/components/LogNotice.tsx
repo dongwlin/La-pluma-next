@@ -1,10 +1,3 @@
-/**
- * 日志页命令结果提示
- *
- * 只负责展示清空/清理/读取反馈；提示内容与自动消失时机仍由工作区在命令
- * 结论后写入。错误使用 assertive，成功使用 polite，关闭按钮有可访问名称。
- */
-
 import { AlertCircle, CheckCircle2, X } from 'lucide-react'
 import { IconButton, SmoothPanel } from '@/shared/ui'
 

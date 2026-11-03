@@ -1,11 +1,3 @@
-/**
- * 配置协调器的薄订阅入口
- *
- * 页面用返回的 `draft` 渲染、用 `update` 接受编辑；revision/token、pending 草稿、
- * 提交队列与重试都在协调器里。hook 只负责注册适配器、订阅状态和触发首次加载，
- * 因此 Activity 隐藏/恢复或重挂载都不会创建第二份提交队列。
- */
-
 import { useEffect, useSyncExternalStore } from 'react'
 import {
   userConfigCoordinator,

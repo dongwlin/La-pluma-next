@@ -27,7 +27,6 @@ interface HarnessProps {
   onSelect?: (value: string) => void
 }
 
-/** 受控包装：父级持有打开状态与当前值，与面板中的用法一致。 */
 function Harness({
   initialValue = 'all',
   mobileAlign,

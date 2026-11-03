@@ -1,14 +1,3 @@
-/**
- * 总览今日流程的操作入口
- *
- * 复用领域所有者，不新建第二套请求或运行状态：
- * - 执行订阅与提交仍由 `useDashboardExecution` → 应用级 task-execution 控制器持有；
- * - 启动/预检成功后的刷新走 `refreshDashboard`（完整快照协调器），
- *   不直接读取五路资源；
- * - 这里的 loading、在途守卫与反馈只是流程卡的局部交互状态，不写入
- *   `dashboardStore`，因此不会把半份快照或预检结果当成业务数据。
- */
-
 import { useCallback, useRef, useState } from 'react'
 import { useStatusStore, type StatusMessageType } from '@/features/runtime-status'
 import { loadUserConfig } from '@/features/user-config'
@@ -21,9 +10,7 @@ export interface DashboardFlowFeedback {
 }
 
 export interface DashboardFlowActionsOptions {
-  /** 完整快照协调器的强制刷新入口。 */
   refreshDashboard: () => Promise<void>
-  /** 未保存今日流程时导航到自动化页。 */
   onMissingFlow: () => void
 }
 

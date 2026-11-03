@@ -1,7 +1,3 @@
-/**
- * 投屏/截图预览域类型
- */
-
 export interface WebrtcStatusData {
   installed?: boolean
   built?: boolean

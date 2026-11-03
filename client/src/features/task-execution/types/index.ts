@@ -1,7 +1,3 @@
-/**
- * 任务执行微域类型公开面。
- */
-
 export {
   ACTIVE_RUN_STATES,
   TERMINAL_RUN_STATES,

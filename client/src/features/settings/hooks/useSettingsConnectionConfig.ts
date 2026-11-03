@@ -1,12 +1,3 @@
-/**
- * connection 配置草稿与服务端读取的 React 适配层
- *
- * 服务端副本由 `settings/maa-config` Query 持有，草稿、revision 与保存由
- * 模块级 `ConnectionConfigOwner` 持有。本 hook 只负责订阅、把 Query 快照
- * 交给 owner 裁决，以及暴露编辑/重置/保存入口；Activity 隐藏或 remount
- * 不重建 owner。
- */
-
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {

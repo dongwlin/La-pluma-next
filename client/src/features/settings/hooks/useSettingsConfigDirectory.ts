@@ -1,14 +1,3 @@
-/**
- * 配置目录资源的 React 适配层
- *
- * 路径读取由 `settings/config-directory` Query 持有；页面只渲染状态与重试。
- * “打开目录”是带副作用的命令，不进入 Query，也不自动重取。后台刷新失败时
- * 保留最近一次成功路径，只有从未成功读取过才显示错误。
- *
- * 只读 section 头部的第二个观察者只读缓存（`cacheOnly`）：挂载时不重取、
- * 失败时不重试，加载与重试入口仍只归目录卡片，避免切 section 改变请求时机。
- */
-
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
