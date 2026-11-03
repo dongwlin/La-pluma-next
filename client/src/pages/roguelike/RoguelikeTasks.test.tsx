@@ -423,7 +423,31 @@ describe('RoguelikeTasks execution', () => {
     expect(container.querySelector('input[name="maa-roguelike-useFoldartal"]')).toBeNull()
 
     await setControlValue('select[name="maa-roguelike-mode"]', '1', 'change')
+    expect(container.querySelector('input[name="maa-roguelike-startWithSeed"]')).toBeNull()
+
+    await setControlValue('select[name="maa-roguelike-squad"]', '点刺成锭分队', 'change')
     expect(container.querySelector('input[name="maa-roguelike-startWithSeed"]')).not.toBeNull()
+  })
+
+  it('submits the seed string for the eligible Sarkaz investment squad', async () => {
+    await renderPage()
+    await setTheme('Sarkaz')
+    await setControlValue('select[name="maa-roguelike-mode"]', '1', 'change')
+    await setControlValue('select[name="maa-roguelike-squad"]', '点刺成锭分队', 'change')
+    await setControlValue('input[name="maa-roguelike-startWithSeed"]', '2b3c4d,rogue_1,120')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Sarkaz --mode 1 --squad 点刺成锭分队 --roles 稳扎稳打 --start-with-seed 2b3c4d,rogue_1,120',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
   })
 
   it('rejects the collapsal mode without expected paradigms and resets it on theme change', async () => {

@@ -247,11 +247,13 @@ const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
   {
     key: 'startWithSeed',
     label: '种子开局',
-    type: 'checkbox',
+    type: 'text',
     param: '--start-with-seed',
+    placeholder: '2b3c4d,rogue_1,120',
     themes: ['Sarkaz'],
     modes: ['1'],
-    hint: '仅刷源石锭模式；沿用游戏内当前种子。',
+    requires: { key: 'squad', oneOf: ['点刺成锭分队', '后勤分队'] },
+    hint: '填写固定种子字符串（如 2b3c4d,rogue_1,120）；仅萨卡兹刷源石锭模式下的点刺成锭或后勤分队生效。',
   },
 ]
 

@@ -26,6 +26,8 @@ export interface RoguelikeOptionRequirement {
   key: string
   /** 需要依赖字段为 true，或等于给定值；省略时要求字段为真/非空。 */
   equals?: string | boolean
+  /** 需要依赖字段取所列值之一；用于分队等存在多个合法取值的条件。 */
+  oneOf?: readonly string[]
 }
 
 export type RoguelikeAdvancedOptionType = 'text' | 'number' | 'select' | 'checkbox' | 'list'

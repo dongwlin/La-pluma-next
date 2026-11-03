@@ -144,8 +144,26 @@ describe('isRoguelikeOptionVisible', () => {
     expect(isRoguelikeOptionVisible(option('useFoldartal'), 'roguelike', 'Sami', {})).toBe(true)
     expect(isRoguelikeOptionVisible(option('useFoldartal'), 'roguelike', 'Sarkaz', {})).toBe(false)
     expect(isRoguelikeOptionVisible(option('refreshTraderWithDice'), 'roguelike', 'Mizuki', {})).toBe(true)
-    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sarkaz', { mode: '1' })).toBe(true)
-    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sarkaz', { mode: '0' })).toBe(false)
+    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sarkaz', {
+      mode: '1',
+      squad: '点刺成锭分队',
+    })).toBe(true)
+    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sarkaz', {
+      mode: '1',
+      squad: '后勤分队',
+    })).toBe(true)
+    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sarkaz', {
+      mode: '1',
+      squad: '指挥分队',
+    })).toBe(false)
+    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sarkaz', {
+      mode: '0',
+      squad: '点刺成锭分队',
+    })).toBe(false)
+    expect(isRoguelikeOptionVisible(option('startWithSeed'), 'roguelike', 'Sami', {
+      mode: '1',
+      squad: '点刺成锭分队',
+    })).toBe(false)
     expect(isRoguelikeOptionVisible(option('difficulty'), 'roguelike', 'Phantom', {})).toBe(false)
   })
 
@@ -218,6 +236,14 @@ describe('buildRoguelikeCommandParams', () => {
       { roguelike: 'Sami' },
       { roguelike: { useFoldartal: true, difficulty: '6' } },
     )).toBe('Sami --difficulty 6 --roles 稳扎稳打 --use-foldartal')
+  })
+
+  it('passes the specified seed as an option value', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { mode: '1', squad: '点刺成锭分队', startWithSeed: '2b3c4d,rogue_1,120' } },
+    )).toBe('Sarkaz --mode 1 --squad 点刺成锭分队 --roles 稳扎稳打 --start-with-seed 2b3c4d,rogue_1,120')
   })
 
   it('writes list fields once per value', () => {

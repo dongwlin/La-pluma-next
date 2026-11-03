@@ -131,6 +131,7 @@ export function isRoguelikeOptionVisible(
   if (!target) return true
   const value = resolveRoguelikeAdvancedValue(target, advanced, normalizedTheme)
 
+  if (requires.oneOf) return requires.oneOf.includes(String(value ?? ''))
   if (typeof requires.equals === 'boolean') return Boolean(value) === requires.equals
   if (typeof requires.equals === 'string') return String(value ?? '') === requires.equals
   return Boolean(value)
