@@ -289,15 +289,17 @@ export function getRoguelikeOptionChoices(
   option: RoguelikeAdvancedOption,
   theme: string,
 ): RoguelikeSelectOption[] | undefined {
+  // 主题输入允许带空白，候选项按 trim 后的代号匹配，与可见性判断保持一致。
+  const normalizedTheme = theme.trim()
   switch (option.choices) {
     case 'modes':
-      return modeChoices(theme)
+      return modeChoices(normalizedTheme)
     case 'difficulty':
-      return difficultyChoices(theme)
+      return difficultyChoices(normalizedTheme)
     case 'squads':
-      return squadChoices(theme)
+      return squadChoices(normalizedTheme)
     case 'roles':
-      return roleChoices(theme)
+      return roleChoices(normalizedTheme)
     default:
       return option.options
   }

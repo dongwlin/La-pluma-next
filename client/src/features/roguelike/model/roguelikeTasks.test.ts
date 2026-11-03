@@ -120,6 +120,15 @@ describe('roguelike task catalog', () => {
       .toContain('特勤分队')
   })
 
+  it('matches theme choices after trimming the theme input', () => {
+    const mode = option('mode')
+    expect(getRoguelikeOptionChoices(mode, ' Sami ')).toHaveLength(4)
+    expect(getRoguelikeOptionChoices(option('squad'), 'Sarkaz ')).toContainEqual({
+      value: '蓝图测绘分队',
+      label: '蓝图测绘分队',
+    })
+  })
+
   it('lists numeric difficulty only for themes that have one', () => {
     const difficulty = option('difficulty')
     expect(difficulty.themes).not.toContain('Phantom')
