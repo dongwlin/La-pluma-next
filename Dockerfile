@@ -1,11 +1,3 @@
-# ============================================
-# 用于 GHCR 发布的 Dockerfile
-# 在镜像内构建前端，不依赖本地环境
-# ============================================
-
-# ============================================
-# 阶段 1: 构建前端
-# ============================================
 # 前端产物与目标架构无关，固定在构建机架构上执行，避免 QEMU 下运行 tsc/vite。
 # 同一 builder 可复用此阶段；两个原生 runner 各自构建一次。
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
@@ -17,13 +9,11 @@ ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 # --build-arg NPM_REGISTRY=https://registry.npmmirror.com 加速。
 ARG NPM_REGISTRY=https://registry.npmjs.org
 
-# 安装 pnpm（版本与 package.json 的 packageManager 保持一致）
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g pnpm@12.6.0 --registry=${NPM_REGISTRY}
 
 WORKDIR /app
 
-# 复制工作区依赖清单，充分利用 Docker 层缓存
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
@@ -33,15 +23,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter la-pluma-next-client... \
     --registry=${NPM_REGISTRY}
 
-# 复制前端源代码
 COPY client/ ./client/
 
-# 构建前端
 RUN pnpm --filter la-pluma-next-client build
 
-# ============================================
-# 阶段 2: 后端运行环境 + MAA CLI
-# ============================================
 FROM node:24-slim
 
 ARG VITE_BASE_PATH=/
@@ -62,11 +47,9 @@ LABEL org.opencontainers.image.title="La Pluma Next" \
 
 WORKDIR /app
 
-# 安装 pnpm（版本与 package.json 的 packageManager 保持一致）
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g pnpm@12.6.0 --registry=${NPM_REGISTRY}
 
-# 安装必要的系统依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
@@ -78,10 +61,8 @@ RUN apt-get update && \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建 MAA CLI 持久化目录
 RUN mkdir -p /opt/maa-cli/bin
 
-# 从固定 release 安装 MAA CLI，并按目标架构校验 SHA-256。
 RUN set -eux; \
     case "${TARGETARCH:-$(uname -m)}" in \
       amd64|x86_64) maa_target="x86_64-unknown-linux-gnu"; maa_sha256="${MAA_CLI_SHA256_AMD64}" ;; \
@@ -97,36 +78,27 @@ RUN set -eux; \
     ln -s /opt/maa-cli/bin/maa /usr/local/bin/maa; \
     maa --version
 
-# 创建 MAA 配置目录
 RUN mkdir -p /root/.config/maa
 
-# 复制工作区依赖清单
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
 
-# 安装后端生产依赖；store 走 BuildKit 缓存挂载
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod --filter la-pluma-next-server... \
     --registry=${NPM_REGISTRY}
 
-# 复制后端源代码
 COPY server/ ./server/
 
-# 从构建阶段复制前端构建产物
 COPY --from=frontend-builder /app/client/dist ./client/dist
 
-# 创建数据目录
 RUN mkdir -p /app/server/data/user-configs
 
-# 复制启动脚本
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# 暴露端口
 EXPOSE 3000
 
-# 设置环境变量
 ENV NODE_ENV=production \
     PORT=3000 \
     LA_PLUMA_BASE_PATH=${VITE_BASE_PATH} \
@@ -138,7 +110,6 @@ ENV NODE_ENV=production \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
     CMD scheme=http; if [ -n "$LA_PLUMA_HTTPS_CERT_PATH" ]; then scheme=https; fi; curl -fk "$scheme://localhost:${PORT:-3000}/health" || exit 1
 
-# 启动服务器
 WORKDIR /app/server
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "src/server.ts"]
