@@ -10,7 +10,6 @@ import type { ActivityCandidatePlan } from '../activityCopilotRunService.ts';
 import type { ActivityCopilotCandidate } from '../activityCopilotDiscoveryService.ts';
 import type { ActivityNavigationResult } from '../activityNavigationService.ts';
 
-/** 就绪预检的固定投影：计划只读取 activity 与 stages，不触发任何读取。 */
 const readyPreflight: ActivityNavigationResult = {
   state: 'ready',
   canPrepare: true,
@@ -21,7 +20,6 @@ const readyPreflight: ActivityNavigationResult = {
   navigation: { source: 'maa-resource', stageFile: 'tasks/Stages/BD.json', stageCount: 2, entryTask: 'BD-OpenOpt' }
 };
 
-/** 一份完整的作业站候选：字段与发现服务收窄后的投影一致。 */
 function candidate(id: number, stage: string): ActivityCopilotCandidate {
   return {
     id,

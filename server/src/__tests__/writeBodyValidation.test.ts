@@ -51,17 +51,12 @@ async function readJson(response: Response): Promise<JsonRecord> {
   return body
 }
 
-/** 统一错误信封的 error 字段；调用方逐项断言码、可重试位与 details。 */
 function readError(payload: JsonRecord): JsonRecord {
   const error = payload.error
   assert.ok(isRecord(error), '错误信封应包含 error 对象')
   return error
 }
 
-/**
- * 存储间谍：记录路由传入台词服务的写入载荷；测试结束后恢复原实现。
- * 服务方法已异步化，真实存储行为由台词持久化 HTTP 回归覆盖。
- */
 function spyQuoteStorage(): { saveCalls: unknown[]; restore(): void } {
   const originalAddQuote = OperatorQuotes.addQuote
   const originalUpdateQuote = OperatorQuotes.updateQuote

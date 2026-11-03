@@ -107,7 +107,6 @@ async function readUserTasks(configDir: string): Promise<Record<string, unknown>
   return readObject(parsed);
 }
 
-/** 作业站与企鹅物流都走同一 fetch 桩；计划只关心 stage_name 与 apCost。 */
 function stubPlanFetch(stageName: string): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url: string | URL | Request) => {
@@ -388,14 +387,12 @@ function windowsPlanFileOf(setId: string, entry: CopilotPlanEntry): string {
   return planFileOf(setId, entry).toUpperCase().replace(/\//g, '\\');
 }
 
-/** 回放加载回调后清理假 CLI 的执行环境。 */
 function clearRunEnvironment(): void {
   for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
     delete process.env[key];
   }
 }
 
-/** 作业站内容桩：prepareCopilotList 按 copilotId 抓取作业 JSON。 */
 function stubCopilotContent(): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url: string | URL | Request) => {

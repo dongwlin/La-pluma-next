@@ -361,7 +361,6 @@ describe('training queue and applied flow synchronization', () => {
     const result = await training.syncTrainingFlow();
     assert.equal(result.flowSync.status, 'failed');
     assert.deepEqual((await readConfig()).taskFlow, []);
-    // Explicit application can restore the task and establishes the new binding.
     await training.applyPlanToTasks(await training.generateTrainingPlan());
     assert.equal((await training.getTrainingQueue()).flowSync.status, 'synced');
   });
@@ -404,7 +403,6 @@ describe('training queue and applied flow synchronization', () => {
     assert.match(lmdOnly.warnings.join(' '), /不包含龙门币刷取估算/);
     assert.doesNotMatch(lmdOnly.warnings.join(' '), /已集齐/);
 
-    // Currency limitations remain visible alongside an ordinary farming plan.
     await writeJson(path.join(dataDirectory, 'depot.json'), { items: [{ id: '4001', count: 300 }] });
     const mixed = await training.generateTrainingPlan();
     assert.equal(mixed.stages.length, 1);

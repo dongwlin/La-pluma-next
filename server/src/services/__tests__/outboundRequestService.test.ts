@@ -12,10 +12,6 @@ import type {
   OutboundRequestError
 } from '../outboundRequestService.ts';
 
-// ---------------------------------------------------------------------------
-// fixture：注入 fetch、可控延迟与错误响应；不访问任何生产接口。
-// ---------------------------------------------------------------------------
-
 interface RecordedCall {
   url: string;
   method: string;
@@ -111,10 +107,6 @@ async function rejectsOutbound(
   check(caught);
 }
 
-// ---------------------------------------------------------------------------
-// 端口行为
-// ---------------------------------------------------------------------------
-
 test('requestJson 按缺省 GET 调用并解析 JSON 响应与状态', async () => {
   const { fetchImpl, calls } = makeScriptedFetch([
     () => makeJsonResponse({ ok: true, result: [1, 2] })
@@ -191,10 +183,6 @@ test('requestMultipart 默认 POST、formData 原样透传且不强制 Content-T
   assert.equal(calls[0].body, formDataStub);
   assert.equal(calls[0].headers['content-type'], 'multipart/form-data; boundary=caller-provided');
 });
-
-// ---------------------------------------------------------------------------
-// 错误映射：区分超时、主动取消、网络失败和非成功 HTTP
-// ---------------------------------------------------------------------------
 
 test('非成功 HTTP 映射为 http-error，携带状态与响应体片段且不重试', async () => {
   const notFound = makeResponseStub({ status: 404, statusText: 'Not Found', bodyText: 'no such resource' });
@@ -337,10 +325,6 @@ test('成功状态但响应体非法 JSON 映射为 invalid-response', async () 
   assert.equal(broken.released, true);
 });
 
-// ---------------------------------------------------------------------------
-// 长轮询与生命周期 signal
-// ---------------------------------------------------------------------------
-
 test('timeoutMs null 不套普通短超时，长轮询由调用方 signal 控制生命周期', async () => {
   const { fetchImpl, calls } = makeDelayedFetch(120, () => makeJsonResponse({ updates: [] }));
   // 工厂缺省时限刻意设短于长轮询时长，证明 null 不继承普通短超时。
@@ -356,10 +340,6 @@ test('timeoutMs null 不套普通短超时，长轮询由调用方 signal 控制
   assert.deepEqual(result.data, { updates: [] });
   assert.equal(calls.length, 1);
 });
-
-// ---------------------------------------------------------------------------
-// 重试：只有安全读取按有限次数重试，写入不自动重放
-// ---------------------------------------------------------------------------
 
 test('安全读取按有限次数重试瞬时失败后成功，失败响应已释放', async () => {
   const serviceUnavailable = makeResponseStub({ status: 503, statusText: 'Service Unavailable', bodyText: 'busy' });
@@ -451,10 +431,6 @@ test('重试退避期间取消立即中止，不再发起后续尝试', async ()
   await rejectsOutbound(pending, error => assert.equal(error.kind, 'cancelled'));
   assert.equal(calls.length, 1);
 });
-
-// ---------------------------------------------------------------------------
-// 用法错误与工厂缺省
-// ---------------------------------------------------------------------------
 
 test('用法错误抛 TypeError 且不发起请求', async () => {
   const { fetchImpl, calls } = makeScriptedFetch([

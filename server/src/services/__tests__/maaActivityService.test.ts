@@ -689,7 +689,6 @@ describe('activity table freshness', () => {
     }
   }
 
-  /** 写入活动表并指定内容 mtime；etagModifiedAt 为 null 时不写 ETag 旁注文件。 */
   async function writeTable(dir: string, modifiedAt: number, etagModifiedAt: number | null): Promise<void> {
     const tablePath = join(dir, 'StageActivityV2.json');
     await writeFile(tablePath, '{}');

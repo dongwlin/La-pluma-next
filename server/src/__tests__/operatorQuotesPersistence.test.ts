@@ -14,19 +14,16 @@ process.env.LA_PLUMA_OPERATOR_QUOTES_STORE = quotesPath
 
 const { createLaPlumaApp } = await import('../app.ts')
 
-/** 台词响应/存储条目：旧契约允许新增草稿缺少 operatorId。 */
 interface StoredQuoteEntry {
   operatorId?: string;
   operator: string;
   quote: string;
 }
 
-/** 业务失败沿用旧的裸 `{ error }` 形状。 */
 interface LegacyErrorPayload {
   error: string;
 }
 
-/** 统一错误出口的信封载荷，本文件只读取台词相关字段。 */
 interface ApiErrorPayload {
   success: false;
   message: string;
@@ -41,7 +38,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-/** 台词条目形状：新增草稿缺少 operatorId，其余字段必为字符串。 */
 function isQuoteEntry(value: unknown): value is StoredQuoteEntry {
   return isRecord(value)
     && typeof value.operator === 'string'
@@ -49,7 +45,6 @@ function isQuoteEntry(value: unknown): value is StoredQuoteEntry {
     && (value.operatorId === undefined || typeof value.operatorId === 'string')
 }
 
-/** fetch 的 JSON 载荷是 unknown：先确认数组与条目形状，再按台词条目断言。 */
 function readQuoteList(value: unknown): StoredQuoteEntry[] {
   assert.ok(Array.isArray(value), `expected a quote array: ${JSON.stringify(value)}`)
   const items: unknown[] = value

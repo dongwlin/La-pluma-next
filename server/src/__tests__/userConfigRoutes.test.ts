@@ -11,7 +11,6 @@ import type { UserConfigStorage, UserConfigStore } from '../services/configStora
 const servers: Server[] = []
 const tempDirs: string[] = []
 
-/** 断言用的 JSON 对象视图：非空、非数组对象本身就是该结构，谓词可靠收窄。 */
 type JsonRecord = Record<string, unknown>
 
 function isJsonRecord(value: unknown): value is JsonRecord {

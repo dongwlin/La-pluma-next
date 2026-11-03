@@ -97,7 +97,6 @@ describe('resource stage schedule', () => {
       allResourceStagesOpen: true
     });
 
-    // 周三按周表关闭 CE-6/AP-5/PR-A/PR-B；全开放期间只读 open。
     assert.deepEqual(stageNames(overview.open), ['AP-5', 'CA-5', 'CE-6', 'LS-6', 'PR-A', 'PR-B', 'PR-C', 'PR-D', 'SK-5']);
     assert.deepEqual(overview.closed, []);
   });

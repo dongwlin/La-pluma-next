@@ -20,7 +20,6 @@ const TELEGRAM_CONFIG: NotificationConfig = {
   }
 }
 
-// 发送用例会触发通知日志；控制台输出关闭，避免门禁输出被诊断行淹没。
 loggerManager.getLogger('Notification').enableConsole = false
 
 type CapturedCall =
@@ -74,7 +73,6 @@ describe('Telegram notification outbound send', () => {
 
     const result = await service.sendToChannel('telegram', { title: '构建完成', content: '任务已结束', level: 'success' })
 
-    // 渠道返回完整 Telegram 载荷（ok/result 包装），与原实现一致
     if (!isRecord(result)) assert.fail('expected a Telegram result object')
     assert.equal(result.ok, true)
     const messageResult = result.result

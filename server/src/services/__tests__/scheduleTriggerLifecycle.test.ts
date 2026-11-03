@@ -203,7 +203,6 @@ describe('schedule trigger runtime', () => {
     runtime.setupSchedule('cn', ['08:00'], taskFlow, 'Bilibili');
     assert.equal(fakeCron.tasks[2].options.timezone, 'Asia/Shanghai');
 
-    // 未指定客户端时按连接默认客户端（国服）注册。
     runtime.setupSchedule('fallback', ['08:00'], taskFlow);
     assert.equal(fakeCron.tasks[3].options.timezone, 'Asia/Shanghai');
 

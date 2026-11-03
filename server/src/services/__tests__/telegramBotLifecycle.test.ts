@@ -53,7 +53,6 @@ interface FakeOutbound {
   calls: CapturedCall[];
 }
 
-/** 假出站端口：记录调用并按 call 返回 Promise；sendPhoto 之外的响应均为 Telegram JSON 包装。 */
 function createOutboundFake(
   handler: (call: CapturedCall) => OutboundJsonResult | Promise<OutboundJsonResult>
 ): FakeOutbound {
@@ -149,7 +148,6 @@ function sendMessageCalls(calls: CapturedCall[]): JsonCall[] {
   return calls.filter((call): call is JsonCall => call.kind === 'json' && call.url.endsWith('/sendMessage'));
 }
 
-/** 请求体按 JSON 记录为 unknown，断言前显式收窄为对象。 */
 function readJsonBody(call: JsonCall): Record<string, unknown> {
   const body = call.options.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -181,7 +179,6 @@ function messageUpdate(updateId: number, text: string, overrides: MessageOverrid
   };
 }
 
-/** 第一轮返回给定更新，之后挂起直到会话停止，模拟真实长轮询。 */
 function deliverOnce(updates: unknown[]): (call: CapturedCall) => OutboundJsonResult | Promise<OutboundJsonResult> {
   let delivered = false;
   return call => {
@@ -437,7 +434,6 @@ describe('Telegram polling lifecycle', () => {
     service.init(BOT_CONFIG);
     await waitFor(() => sendBlocked);
 
-    // 命令停在“停止当前任务后等待进程释放”阶段时关闭会话
     await service.stop('test-close');
     releaseSend();
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -477,7 +473,6 @@ describe('Telegram polling lifecycle', () => {
     assert.deepEqual(execCalls, [['fight', ['1-7'], '刷关卡 1-7', 'combat']]);
     assert.equal(service.getStatus().offset, 12);
 
-    // 未授权用户的消息不产生回复；唯一回复来自授权用户的作战命令
     const messages = sentTexts(outbound);
     assert.equal(messages.length, 1);
     assert.match(messages[0], /已开始执行理智作战/);

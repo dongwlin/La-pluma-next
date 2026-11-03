@@ -1,4 +1,3 @@
-/** HTTP/HTTPS 传输与运行时装配；直接执行时先安装关闭信号，再开始异步初始化。 */
 import { createServer as createHttpServer } from 'node:http';
 import type { RequestListener, Server as HttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
@@ -56,7 +55,6 @@ export interface ServerLogger {
   error(message: string, data?: unknown): unknown;
 }
 
-/** 启动选项：生命周期预算、运行依赖注入口与应用路径覆盖。 */
 export interface StartLaPlumaServerOptions {
   env?: RuntimeEnvSource;
   host?: string;
@@ -71,7 +69,6 @@ export interface StartLaPlumaServerOptions {
   appPaths?: AppPaths;
 }
 
-/** 组装完成后的运行句柄：应用、传输、生命周期与统一关闭入口。 */
 export interface LaPlumaRuntime {
   app: Express;
   server: HttpServer | HttpsServer;
@@ -88,7 +85,6 @@ export interface LaPlumaServer extends LaPlumaRuntime {
   start(): Promise<LaPlumaRuntime>;
 }
 
-/** 关闭处理器读取的结果：整体成功位与步骤状态。 */
 export interface ShutdownStepOutcome {
   name: string;
   status: string;
@@ -312,7 +308,6 @@ export function createLaPlumaServer({
       // 不可就绪，直到完成一次完整初始化。
       readiness.markInitializationStarted();
       try {
-        // 后台领域通过传入的生命周期端口注册自己的停止能力。
         await initializeRuntime({ lifecycle, signal });
         signal.throwIfAborted();
         readiness.markInitializationCompleted();

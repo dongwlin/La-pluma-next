@@ -33,7 +33,6 @@ async function createTemporaryDirectory(prefix: string): Promise<string> {
 
 const now = new Date('2026-07-10T12:00:00.000Z');
 
-/** 假更新脚本子进程：按注入的信号决定何时退出，便于断言时限升级。 */
 class FakeUpdateChild extends EventEmitter implements ResourceUpdateChild {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
@@ -49,7 +48,6 @@ class FakeUpdateChild extends EventEmitter implements ResourceUpdateChild {
     return true;
   }
 
-  /** 按脚本输出顺序完成一次运行；`code` 非 0 表示失败。 */
   finish(code: number | null, { stdout = '', stderr = '' } = {}): void {
     queueMicrotask(() => {
       if (stdout) this.stdout.emit('data', Buffer.from(stdout));

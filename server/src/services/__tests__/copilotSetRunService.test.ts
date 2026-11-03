@@ -205,7 +205,6 @@ function useRuntime({ plan = planFor(), executor }: { plan?: CopilotPlan; execut
   });
 }
 
-/** 整组成功的执行汇总：模拟真实执行端在命令正常退出时的逐项结算。 */
 function allSuccessOutcome(entries: readonly CopilotPlanEntry[]): CopilotEntriesOutcome {
   const taskResults: CopilotTaskResult[] = entries.map(entry => ({
     key: entry.key,

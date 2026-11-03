@@ -23,7 +23,6 @@ import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.
 
 const servers: Server[] = []
 const tempDirs: string[] = []
-/** 组装与存储日志端口：静默实现，避免用例向 stdout 混入运行时日志。 */
 interface SilentLogger {
   log(): void
   info(): void
@@ -74,7 +73,6 @@ function fixedLifecycle(state: RuntimeLifecycleState): ReadinessLifecyclePort {
   return { getState: () => state }
 }
 
-/** 存储状态夹具：路径与错误只用于证明响应不泄露它们。 */
 interface RunStoreStatusFixture extends AgentRunStoreReadinessStatus {
   filePath?: string
   error?: string
@@ -89,7 +87,6 @@ function readyTracker() {
   return tracker
 }
 
-/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
 function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,

@@ -96,12 +96,10 @@ function malformedBodyRequest(port: number, headers: Record<string, string> = {}
   })
 }
 
-/** 执行适配器只读取 headers/query/body/get；其余字段由路由声明补齐。 */
 function createRequest(): ExecutionRequest {
   return { headers: {}, query: {}, body: {}, get: () => undefined }
 }
 
-/** 执行响应夹具：记录状态码与 JSON 载荷，供断言运行生命周期。 */
 interface TestResponse extends ExecutionResponseWriter {
   statusCode: number
   body: unknown
@@ -370,7 +368,6 @@ describe('run ownership correlation', () => {
     failWrites = false
     const req = createRequest()
     const res = createResponse()
-    // 执行回调在适配器内部运行，用数组收集实际注入的生命周期与上下文。
     const lifecycles: TrackedExecutionLifecycle[] = []
     const contexts: Array<{ runId?: string; operationId?: string }> = []
 

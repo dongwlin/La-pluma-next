@@ -70,7 +70,6 @@ interface ProbeOutput {
   cacheDir: string;
 }
 
-/** 假 CLI 输出是外部进程字节，逐字段收窄后才参与断言。 */
 function readProbeOutput(text: string): ProbeOutput {
   const value: unknown = JSON.parse(text);
   assert.ok(value !== null && typeof value === 'object');

@@ -129,7 +129,6 @@ describe('WebRTC install decision', () => {
 
 const STAGING_BIN_DIRS = ['bin/linux_amd64', 'bin/linux_arm64', 'bin/darwin_amd64', 'bin/darwin_arm64'];
 
-/** 构造与上游发布包一致的完整布局，供布局校验与落位测试复用。 */
 async function createStaging(): Promise<string> {
   const staging = await mkdtemp(join(tmpdir(), 'la-pluma-webrtc-stage-'));
   for (const relativeDir of STAGING_BIN_DIRS) {

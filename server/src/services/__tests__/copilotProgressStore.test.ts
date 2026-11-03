@@ -5,14 +5,12 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createCopilotProgressStore } from '../copilotProgressStore.ts';
 
-/** 测试内的进度文档收窄：存储层读取值为 unknown，非对象按空文档处理。 */
 function asProgress(current: unknown): Record<string, unknown> {
   return typeof current === 'object' && current !== null && !Array.isArray(current)
     ? current as Record<string, unknown>
     : {};
 }
 
-/** 读取已知键的条目键数组；非数组按空数组处理。 */
 function readKeys(progress: Record<string, unknown>, key: string): unknown[] {
   const entries = progress[key];
   return Array.isArray(entries) ? entries : [];
@@ -132,7 +130,6 @@ test('a failing write is reported and leaves the previous content intact', async
 test('progress written by previous versions stays readable and round-trips', async () => {
   await withTempDir(async dir => {
     const filePath = join(dir, 'copilot-progress.json');
-    // 旧实现以 JSON.stringify(progress, null, 2) 整份直写，形状为 {作业集: [条目键]}。
     const legacy = { '42': ['0:10:normal'], '43': ['1:11:raid'] };
     await writeFile(filePath, JSON.stringify(legacy, null, 2), 'utf8');
     const store = createCopilotProgressStore({ progressPath: filePath });
@@ -147,7 +144,6 @@ test('progress written by previous versions stays readable and round-trips', asy
     const after = asProgress(await store.load());
     assert.deepEqual(after['42'], ['0:10:normal', '0:10:raid']);
     assert.deepEqual(after['43'], ['1:11:raid']);
-    // 写回仍是可读的 pretty JSON，与旧文件可读性一致。
     assert.match(await readFile(filePath, 'utf8'), /^\{\n/);
   });
 });

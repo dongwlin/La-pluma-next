@@ -1,8 +1,3 @@
-/**
- * Express 应用装配：CORS、请求 id、认证与限流、信令登录入口、生产静态资源
- * 与 API 路由挂载都集中在这里。HTTP/HTTPS 传输与启动初始化见 server.ts；
- * 测试通过 createLaPlumaApp 注入 env、信令登录与 readiness，无需启动运行时。
- */
 import { extname, join } from 'node:path';
 import cors from 'cors';
 import express from 'express';
@@ -34,7 +29,6 @@ export interface LoginRateLimitOptions {
   now?: () => number;
 }
 
-/** 应用组装选项：运行配置、传输网关与测试注入口。 */
 export interface CreateLaPlumaAppOptions {
   env?: RuntimeEnvSource;
   signalingGateway?: Pick<WebrtcSignalingGateway, 'proxyPath' | 'handleLogin'>;
@@ -66,7 +60,6 @@ export function createLaPlumaApp({
   // 让查询参数保持单值扁平结构，不依赖嵌套对象解析。
   app.set('query parser', 'simple');
   const apiToken = env.LA_PLUMA_TOKEN || '';
-  // 认证失败与票据签发共享窗口长度、各自计数；测试可注入更小阈值与假时钟。
   const rateLimitWindowMs = loginRateLimit.windowMs ?? AUTH_RATE_LIMIT_WINDOW_MS;
   const authFailureThrottle = createLoginThrottle({
     windowMs: rateLimitWindowMs,
