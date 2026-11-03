@@ -845,6 +845,7 @@ export async function waitForWebrtcDevice(
     const failure = processStartupFailure(childProcess, 'WebRTC Agent 部署', { allowSuccessfulExit: true });
     if (failure) throw failure;
     if (childProcess && childProcess.exitCode !== 0) return false;
+    const devices = await getDevices();
     const agentRunning = childProcess?.exitCode === 0 && isAgentRunning
       ? await isAgentRunning()
       : null;
@@ -853,7 +854,6 @@ export async function waitForWebrtcDevice(
         retryable: true
       });
     }
-    const devices = await getDevices();
     if (!devices.includes(deviceId)) return false;
     if (isAgentRunning && !(agentRunning ?? await isAgentRunning())) return false;
     return devices;

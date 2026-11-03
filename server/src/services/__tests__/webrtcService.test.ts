@@ -313,6 +313,36 @@ fi
     assert.equal(processChecks, 1);
   });
 
+  it('rejects an Agent that exits while its device registration is being read', async () => {
+    const devicesReadStarted = Promise.withResolvers<void>();
+    const devicesRead = Promise.withResolvers<string[]>();
+    let agentRunning = true;
+    let processChecks = 0;
+    const readiness = service.waitForWebrtcDevice('preview-device', {
+      timeoutMs: 0,
+      childProcess: { exitCode: 0, signalCode: null },
+      getDevices: async () => {
+        devicesReadStarted.resolve();
+        return devicesRead.promise;
+      },
+      isAgentRunning: async () => {
+        processChecks += 1;
+        return agentRunning;
+      }
+    });
+
+    await devicesReadStarted.promise;
+    agentRunning = false;
+    devicesRead.resolve(['preview-device']);
+
+    await assert.rejects(readiness, error => {
+      const failure = readError(error);
+      return failure.code === 'WEBRTC_AGENT_START_TIMEOUT'
+        && readError(failure.cause).code === 'WEBRTC_AGENT_DEPLOYMENT_FAILED';
+    });
+    assert.equal(processChecks, 1);
+  });
+
   it('waits for the selected ADB target and reports its actual state', async () => {
     assert.equal(service.parseAdbDeviceState(
       'List of devices attached\n127.0.0.1:5555\tdevice product:test\n',
