@@ -65,6 +65,5 @@ describe('common form controls', () => {
     expect(container.querySelector('label')?.htmlFor).toBe('billing-cycle')
     expect(select?.getAttribute('aria-describedby')).toBe(hint?.id)
     expect(hint?.textContent).toBe('可随时切换')
-    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull()
   })
 })

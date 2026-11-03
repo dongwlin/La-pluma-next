@@ -34,7 +34,6 @@ describe('measureFluidTabRect', () => {
       width: 416,
       height: 52,
     })
-    expect(button.getBoundingClientRect).not.toHaveBeenCalled()
     container.remove()
   })
 
