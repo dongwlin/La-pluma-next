@@ -1,15 +1,7 @@
 /**
- * 养成计划应用与流程/定时同步
- *
- * 应用计划会写三处不同状态：自动化任务配置、训练队列中的应用标记、已注册的
- * 默认定时任务。三者可分别失败，调用方必须能识别部分成功：
- * - 队列写入 + 流程同步：返回 `queueUpdated` 与 `flowSync.status`；
- * - 配置与队列已落盘、定时注册失败：`scheduleSync.attempted=true, success=false`；
- * - 自动同步只改写智能关卡，不注册或重注册定时任务。
- *
- * 队列读写经 operatorTrainingStore，纯计算在 operatorTrainingModel/Plan。
- * automation-tasks 的读取值先经 parseCombatTasksConfig 校验，计划请求先校验
- * queueRevision 与关卡形态，未知结构不会进入写入。
+ * 应用计划会分别写自动化任务配置、训练队列中的应用标记与默认定时任务，三者可独立失败；
+ * 调用方必须能识别部分成功：配置与队列已落盘但定时注册失败时仍返回 success，并以
+ * `scheduleSync.attempted=true, success=false` 单独上报；自动同步只改智能关卡，不重注册定时任务。
  */
 
 import { createLogger } from '../utils/logger.ts';
@@ -40,10 +32,8 @@ import type {
 import { generateTrainingPlan } from './operatorTrainingPlan.ts';
 import { resolveConnection } from './connectionService.ts';
 
-// 创建日志记录器（与养成领域其它模块共用同一命名 logger）
 const logger = createLogger('OperatorTraining');
 
-/** 队列与已应用流程的同步状态。 */
 export type FlowSyncStatus = 'synced' | 'not_applied' | 'failed';
 
 export interface FlowSyncState {
@@ -63,7 +53,6 @@ export interface ScheduleSyncResult {
   missingTimes?: string[];
 }
 
-/** 已应用到训练流程的 fight 任务目标。 */
 export interface FlowTarget {
   config: CombatTasksConfig;
   task?: CombatTask;
@@ -99,7 +88,6 @@ export interface QueueSyncSummary {
   flowSync: FlowSyncState;
 }
 
-/** 队列变更结果：`queueUpdated=true`，流程同步结果单独上报。 */
 export interface QueueMutationResult extends QueueSyncSummary {
   queueUpdated: true;
 }
@@ -222,11 +210,8 @@ export async function finishQueueMutation<T extends object = Record<string, neve
 }
 
 /**
- * 把 setupSchedule 的结果规范化为可上报的 scheduleSync。
- *
- * setupSchedule 在至少创建一个 job 时返回 success:true；若某个时间点的 cron
- * 创建失败，只有比较请求时间与返回的 times 才能发现。任何缺失时间点都视为
- * 部分失败，让客户端保留计划并提示用户重试。
+ * `setupSchedule` 在至少创建一个 job 时返回 success；某个时间点的 cron 创建失败只能靠
+ * 比较请求时间与返回的 times 发现，缺失时间点按部分失败上报，让客户端保留计划并重试。
  */
 const scheduleTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
@@ -251,14 +236,9 @@ export function summarizeScheduleSync(result: unknown, requestedTimes: unknown[]
 }
 
 /**
- * 已注册的默认定时任务持有 setup 时的 taskFlow 快照。训练流程改写
- * automation-tasks 后必须重新注册，否则定时执行继续使用旧关卡；没有注册过的
- * 定时任务不会被这里顺带创建。
- *
- * 重新注册沿用当前连接 profile 的客户端类型，避免非国服注册被退回默认时区；
- * 连接解析失败时按默认客户端注册，不阻断流程同步。
- *
- * 使用动态 import 避免 `schedulerService → operatorTrainingService` 的静态环。
+ * 已注册的默认定时任务持有 setup 时的 taskFlow 快照，训练流程改写 automation-tasks 后
+ * 必须重新注册，否则继续按旧关卡运行，但不会顺带创建未注册的定时任务。重新注册沿用当前
+ * profile 的客户端类型，连接解析失败按默认客户端；动态 import 避免静态环。
  */
 async function refreshRegisteredSchedule(config: CombatTasksConfig): Promise<ScheduleSyncResult> {
   const { getScheduleStatus, setupSchedule, stopSchedule } = await import('./schedulerService.ts');
@@ -290,7 +270,6 @@ async function refreshRegisteredSchedule(config: CombatTasksConfig): Promise<Sch
   return { attempted: true, success: Boolean(result?.success), message: result?.message || null };
 }
 
-/** 校验计划请求中的干员名称，非字符串名称不写入智能关卡。 */
 function readPlanOperatorNames(planRecord: Record<string, unknown>): string[] {
   if (!Array.isArray(planRecord.operators)) return [];
   const names: string[] = [];
@@ -300,9 +279,6 @@ function readPlanOperatorNames(planRecord: Record<string, unknown>): string[] {
   return names;
 }
 
-/**
- * 应用养成计划到任务流程
- */
 export async function applyPlanToTasks(
   plan: unknown,
   settings: unknown = {},
@@ -335,7 +311,6 @@ export async function applyPlanToTasks(
 
       logger.debug('成功读取现有配置', { taskCount: config.taskFlow.length });
 
-      // 查找或创建 fight 任务
       config.taskFlow = Array.isArray(config.taskFlow) ? config.taskFlow : [];
       let fightTask: CombatTask | undefined;
       if (options.automatic) {
@@ -374,7 +349,6 @@ export async function applyPlanToTasks(
       fightTask.id ||= `fight-${Date.now()}`;
       fightTask.params ||= {};
 
-      // 获取现有的 stages，并分类
       const existingStages = fightTask.params.stages || [];
       const pinnedStages = existingStages.filter(stage => isCombatStageObject(stage) && stage.pinned && !stage.smart);
       const normalStages = existingStages.filter(stage => !isCombatStageObject(stage) || (!stage.pinned && !stage.smart));
@@ -385,7 +359,6 @@ export async function applyPlanToTasks(
         normal: normalStages.length
       });
 
-      // 构建新的智能养成关卡
       const smartStages: CombatStageObject[] = [];
 
       logger.debug('养成干员', { operators: trainingOperatorNames });
@@ -402,7 +375,6 @@ export async function applyPlanToTasks(
         logger.info('生成智能关卡', { count: smartStages.length });
       }
 
-      // 添加 fallback 关卡（理智用完后刷什么）
       if (queueData.queue.length > 0 && effectiveSettings.fallbackStage && effectiveSettings.fallbackStage.trim()) {
         smartStages.push({
           stage: effectiveSettings.fallbackStage.trim(),
@@ -413,7 +385,6 @@ export async function applyPlanToTasks(
         logger.debug('添加 fallback 关卡', { stage: effectiveSettings.fallbackStage });
       }
 
-      // 重新组合关卡顺序：置顶 -> 智能 -> 普通
       const newStages: CombatTaskStage[] = [...pinnedStages, ...smartStages, ...normalStages];
 
       logger.info('关卡重组完成', {
@@ -421,7 +392,6 @@ export async function applyPlanToTasks(
         smartStages: smartStages.length
       });
 
-      // 更新任务参数
       fightTask.params = {
         ...fightTask.params,
         stages: newStages,
@@ -457,8 +427,7 @@ export async function applyPlanToTasks(
     await saveTrainingQueue(queueData);
 
     // 配置与队列都已落盘；定时注册失败不回滚已生效的写入，而是作为部分失败上报，
-    // 让客户端保留计划并给出重试入口。自动队列同步只改写智能关卡，不在这里
-    // 顺带重注册定时任务（客户端计划应用才承诺同步 schedule）。
+    // 让客户端保留计划并重试。自动队列同步只改写智能关卡，不在此重注册定时任务。
     const refreshSchedule = options.refreshSchedule
       ?? (options.automatic ? null : refreshRegisteredSchedule);
     let scheduleSync: ScheduleSyncResult = { attempted: false, success: true, message: null };
@@ -488,7 +457,6 @@ export async function applyPlanToTasks(
   }
 }
 
-/** 已知错误取 message，其余值转为字符串；日志与错误字段不写入 undefined。 */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

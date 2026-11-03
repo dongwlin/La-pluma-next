@@ -1,8 +1,3 @@
-// 任务进度：把每个任务的步骤结论投影为轮询快照。
-//
-// 类型边界：任务身份用 `taskId`，同名任务不会互相覆盖；状态是有穷联合，
-// 跳过/失败/成功/取消（`stopped`）分别建模，未开始的任务保持 `pending`。
-
 /** 单个任务的步骤状态；`stopped` 表示执行在完成前被终止，不是失败。 */
 export type ScheduleTaskProgressStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped';
 

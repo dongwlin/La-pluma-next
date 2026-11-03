@@ -1,16 +1,7 @@
 /**
- * 干员养成领域接口
- *
- * 候选干员投影、队列读取与队列命令、计划生成/应用的对外入口，以及材料数据抓取。
- * 领域内的职责分工：
- * - 纯计算与设置有效性：operatorTrainingModel
- * - 刷取计划与掉落估算：operatorTrainingPlan
- * - 队列与游戏数据持久化：operatorTrainingStore
- * - 计划应用与流程/定时同步：operatorTrainingApplication
- *
  * 队列写入按 `serializeTrainingMutation` 串行，流程同步与应用计划复用同一把锁；
- * 接口仍只由本服务提供，不暴露可被其它模块直接改写的队列对象。
- * 队列命令的入参来自 HTTP 请求体，进入持久化前按领域类型校验。
+ * 本服务是养成领域唯一入口，不暴露可被其它模块直接改写的队列对象；队列命令入参
+ * 来自 HTTP 请求体，进入持久化前按领域类型校验。
  */
 
 import path from 'path';
@@ -76,10 +67,8 @@ const __dirname = dirname(__filename);
 // 养成数据目录：抓取脚本与存储层使用同一解析结果，避免读写目录分裂。
 const TRAINING_DATA_DIR = resolveAppPaths().trainingDataDir;
 
-// 创建日志记录器
 const logger = createLogger('OperatorTraining');
 
-/** 队列条目的响应投影：附带材料需求、进度与干员摘要。 */
 export interface TrainingQueueItemDetail extends TrainingQueueItem {
   operator: {
     id: string;
@@ -93,7 +82,6 @@ export interface TrainingQueueItemDetail extends TrainingQueueItem {
   progress: number;
 }
 
-/** `/training/queue` 的响应载荷。 */
 export interface TrainingQueueSnapshot {
   queue: TrainingQueueItemDetail[];
   settings: TrainingSettings;
@@ -109,14 +97,12 @@ export interface QueueAddOptions {
   position?: number;
 }
 
-/** 单个材料抓取脚本的配置。 */
 interface MaterialFetchScriptConfig {
   name: string;
   script: string;
   output: string;
 }
 
-/** 单个抓取脚本的执行结果。 */
 export interface MaterialFetchScriptResult {
   name: string;
   script: string;
@@ -127,7 +113,6 @@ export interface MaterialFetchScriptResult {
   error?: string;
 }
 
-/** `/actions/fetch-training-materials` 的响应载荷。 */
 export interface MaterialFetchSummary {
   scripts: MaterialFetchScriptResult[];
   operatorCount: number;
@@ -136,7 +121,6 @@ export interface MaterialFetchSummary {
   lastUpdated: string;
 }
 
-/** 领域接口：路由与调度经此调用养成能力。 */
 export interface OperatorTrainingService {
   getOperatorList(filters?: TrainingOperatorFilters): Promise<TrainingCandidate[]>;
   getTrainingQueue(): Promise<TrainingQueueSnapshot>;
@@ -158,14 +142,10 @@ function toFiniteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-/** 已知错误取 message，其余值转为字符串。 */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * 获取干员列表（全量干员为主，OperBox 和材料数据库补充养成状态）
- */
 async function getOperatorList(filters: TrainingOperatorFilters = {}): Promise<TrainingCandidate[]> {
   const operatorMaterialsData = await loadOperatorMaterials();
   const operBoxData = await loadOperBox();
@@ -188,15 +168,11 @@ async function getOperatorList(filters: TrainingOperatorFilters = {}): Promise<T
   return buildTrainingCandidates(allOperators, ownedOperators, operatorMaterialsData, filters);
 }
 
-/**
- * 获取养成队列
- */
 async function getTrainingQueue(): Promise<TrainingQueueSnapshot> {
   const queueData = await loadTrainingQueue();
   const depot = await loadDepot();
   const operatorMaterialsData = await loadOperatorMaterials();
 
-  // 为队列中的每个干员计算材料需求和进度
   const enrichedQueue: TrainingQueueItemDetail[] = [];
 
   for (const queueItem of queueData.queue) {
@@ -242,9 +218,6 @@ async function getTrainingQueue(): Promise<TrainingQueueSnapshot> {
   };
 }
 
-/**
- * 添加干员到养成队列
- */
 async function addToQueue(
   operatorId: string,
   options: QueueAddOptions = {}
@@ -258,17 +231,14 @@ async function addToQueue(
     throw new Error(`干员材料数据不存在，暂不支持该干员`);
   }
 
-  // 从 OperBox 获取干员名称
   const operBoxOp = getOperBoxOperators(operBoxData).find(op => op.id === operatorId);
   const operatorName = operBoxOp?.name || opData.name;
 
-  // 检查是否已在队列中
   const existingIndex = queueData.queue.findIndex(item => item.operatorId === operatorId);
   if (existingIndex !== -1) {
     throw new Error(`干员 ${operatorName} 已在养成队列中`);
   }
 
-  // 添加到队列
   const queueItem: TrainingQueueItem = {
     operatorId,
     currentElite: toFiniteNumber(options.currentElite) ?? operBoxOp?.elite ?? 0,
@@ -287,9 +257,6 @@ async function addToQueue(
   return finishQueueMutation(queueData, queueItem);
 }
 
-/**
- * 从养成队列中移除干员
- */
 async function removeFromQueue(operatorId: string): Promise<QueueMutationResult> {
   const queueData = await loadTrainingQueue();
 
@@ -298,14 +265,12 @@ async function removeFromQueue(operatorId: string): Promise<QueueMutationResult>
     throw new Error('干员不在养成队列中');
   }
 
-  // 获取被删除干员的名称（用于日志）
   const operatorMaterialsData = await loadOperatorMaterials();
   const opData = operatorMaterialsData.operators[operatorId];
   const operatorName = opData?.name || operatorId;
 
   queueData.queue.splice(index, 1);
 
-  // 重新调整优先级
   queueData.queue.forEach((item, idx) => {
     item.priority = idx + 1;
   });
@@ -314,9 +279,6 @@ async function removeFromQueue(operatorId: string): Promise<QueueMutationResult>
   return finishQueueMutation(queueData);
 }
 
-/**
- * 更新队列顺序
- */
 async function updateQueueOrder(orderedOperatorIds: unknown): Promise<QueueMutationResult> {
   const queueData = await loadTrainingQueue();
   const existingIds = queueData.queue.map(item => item.operatorId);
@@ -341,9 +303,6 @@ async function updateQueueOrder(orderedOperatorIds: unknown): Promise<QueueMutat
   return finishQueueMutation(queueData);
 }
 
-/**
- * 更新养成设置
- */
 async function updateSettings(settings: unknown): Promise<TrainingSettings> {
   const queueData = await loadTrainingQueue();
   queueData.settings = normalizeTrainingSettings({
@@ -354,15 +313,6 @@ async function updateSettings(settings: unknown): Promise<TrainingSettings> {
   return queueData.settings;
 }
 
-/**
- * 养成材料数据抓取脚本配置
- * 依赖 scripts/ 中现成的抓取逻辑（保持单一事实来源），按顺序执行：
- * 1. 生成 materials.json（材料表 + 最优关卡）
- * 2. 生成 material-formulas.json（合成配方）
- * 3. 将配方合并进 materials.json
- * 4. 生成 operator-materials.json（干员精英化材料需求）
- * 5. 生成 penguin-drop-data.json（企鹅物流真实掉落统计）
- */
 const MATERIAL_FETCH_SCRIPTS: MaterialFetchScriptConfig[] = [
   { name: 'fetch-all-materials', script: 'fetch-all-materials.ts', output: 'materials.json' },
   { name: 'fetch-material-formulas', script: 'fetch-material-formulas.ts', output: 'material-formulas.json' },
@@ -371,12 +321,8 @@ const MATERIAL_FETCH_SCRIPTS: MaterialFetchScriptConfig[] = [
   { name: 'fetch-penguin-stats', script: 'fetch-penguin-stats.ts', output: 'penguin-drop-data.json' }
 ];
 
-// 单个抓取脚本的超时时间（毫秒）
 const FETCH_SCRIPT_TIMEOUT_MS = 5 * 60 * 1000;
 
-/**
- * 统计数据文件中的条目数（文件缺失或解析失败时返回 null）
- */
 async function countDataFileEntries(fileName: string): Promise<number | null> {
   const data = await readJsonFile(path.join(TRAINING_DATA_DIR, fileName), null);
   if (typeof data !== 'object' || data === null) return null;
@@ -386,9 +332,6 @@ async function countDataFileEntries(fileName: string): Promise<number | null> {
   return Object.keys(record).length;
 }
 
-/**
- * 执行单个数据抓取脚本
- */
 async function runMaterialFetchScript(config: MaterialFetchScriptConfig): Promise<MaterialFetchScriptResult> {
   const { name, script, output } = config;
   const scriptPath = path.join(__dirname, '../../scripts', script);
@@ -419,9 +362,7 @@ async function runMaterialFetchScript(config: MaterialFetchScriptConfig): Promis
 }
 
 /**
- * 抓取并更新养成材料数据
- * 依次（串行，避免数据源限流）执行 scripts/ 下的抓取脚本，补齐三个数据文件；
- * 单个脚本失败时记录错误并继续跑剩余脚本，最后若有失败则整体抛错
+ * 串行执行抓取脚本（避免数据源限流）；单个脚本失败记录后继续，全部结束后整体抛错。
  */
 async function fetchOperatorMaterials(): Promise<MaterialFetchSummary> {
   logger.info('开始更新养成材料数据');

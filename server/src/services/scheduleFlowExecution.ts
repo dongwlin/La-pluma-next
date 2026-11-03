@@ -25,16 +25,9 @@ import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { createLogger } from '../utils/logger.ts';
 
 /**
- * 流程执行器
- *
- * 类型边界：
- * - 步骤结论是 `success`/`failed`/`skipped` 的有穷联合；执行被终止时进度记
- *   `stopped`，不会把取消伪装成失败；
- * - 日志检查点是 `MaaLogCheckpoint | null`，执行后只读取检查点之后的新增日志，
- *   旧任务日志不进入当前结果；
- * - 设备命令、通知、掉落记录与养成回写全部经端口注入，执行规则本身不直接
- *   读写设备、用户配置或通知实现；
- * - 同一进程只创建一个实例，异步流程只有一个执行所有者。
+ * 流程执行器：步骤结论用 `success`/`failed`/`skipped` 有穷联合，终止时进度记 `stopped`
+ * 而非失败；日志只读检查点之后的新增内容；设备命令、通知、掉落与养成回写全部经端口注入，
+ * 同一进程只创建一个实例。
  */
 
 /**
@@ -47,7 +40,6 @@ export interface ScheduleConnection {
   clientType?: string;
 }
 
-/** 命令输出：流程只读取 stdout/stderr 文本。 */
 export interface ScheduleCommandOutput {
   stdout: string;
   stderr: string;
@@ -67,7 +59,6 @@ export interface ScheduleCapturedScreen {
   image: string;
 }
 
-/** 仓库识别结果：流程只读取成功标志与条目数。 */
 export interface ScheduleDepotParseResult {
   success: boolean;
   itemCount?: number;
@@ -133,7 +124,6 @@ export interface ScheduleFlowExecutionOptions {
   runId?: unknown;
 }
 
-/** 轮询投影：进度、当前步骤与最近一次汇总，不携带设备句柄。 */
 export interface ScheduleExecutionStatus {
   isRunning: boolean;
   scheduleId: string | null;
@@ -224,12 +214,10 @@ function errorFieldOf(error: unknown, key: string): unknown {
   return error && typeof error === 'object' ? (error as Record<string, unknown>)[key] : undefined;
 }
 
-/** 错误对象上的命令输出按文本读取；非对象错误没有输出。 */
 function errorOutputOf(error: unknown): string {
   return String(errorFieldOf(error, 'stdout') || '') + String(errorFieldOf(error, 'stderr') || '');
 }
 
-/** 失败任务的配置关卡：第一段关卡对象的 stage 优先，其次单关卡 stage。 */
 function configuredStageOf(params: ScheduledTaskParams | undefined): string {
   const first = params?.stages?.[0];
   const stage = first && typeof first === 'object' ? first.stage : undefined;
@@ -268,7 +256,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     withExecutionLease
   } = ports as ScheduleExecutionPorts;
 
-  // 定时任务执行状态
   const executionStatus: ScheduleExecutionStatus = {
     isRunning: false,
     scheduleId: null,
@@ -314,16 +301,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     });
   }
 
-  /**
-   * 获取定时任务执行状态
-   */
   function getStatus(): ScheduleExecutionStatus {
     return { ...executionStatus };
   }
 
-  /**
-   * 停止当前正在执行的任务流程
-   */
   function stop(): boolean {
     if (executionStatus.isRunning) {
       logger.warn('设置停止标志，正在终止任务流程');
@@ -338,9 +319,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     return false;
   }
 
-  /**
-   * 更新定时任务执行状态
-   */
   function updateStatus(updates: Partial<ScheduleExecutionStatus>) {
     Object.assign(executionStatus, updates);
     logger.debug('定时任务状态更新', executionStatus);
@@ -365,7 +343,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     }
   }
 
-  // 执行任务流程
   async function runTaskFlow(
     taskFlow: unknown,
     scheduleId: string,
@@ -395,7 +372,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     const abortController = new AbortController();
     activeAbortController = abortController;
 
-    // 更新状态：开始执行
     updateStatus({
       isRunning: true,
       scheduleId,
@@ -406,7 +382,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
       currentTaskId: null,
       message: '开始执行任务流程',
       startTime: Date.now(),
-      shouldStop: false,  // 重置停止标志
+      shouldStop: false,
       lastResult: null,
       taskResults: []
     });
@@ -423,7 +399,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     let skippedCount = 0;
     const errors: FlowTaskError[] = [];
     const skipped: FlowTaskSkip[] = [];
-    const taskSummaries: FlowTaskSummary[] = []; // 收集任务总结信息
+    const taskSummaries: FlowTaskSummary[] = [];
     const reportResults: FightReportResult[] = [];
     const executionWarnings = new Set<string>();
     const actionResults: ScheduleStepAction[] = [];
@@ -458,7 +434,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
     for (let i = 0; i < enabledTasks.length; i++) {
       taskProgress.finish({ stopped: executionStatus.shouldStop });
-      // 检查是否需要停止
       if (executionStatus.shouldStop) {
         logger.warn('检测到停止信号，终止任务流程', { scheduleId });
         updateStatus({
@@ -478,11 +453,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         taskName: task.name
       });
 
-      // 更新状态：执行中
       updateStatus({
         currentStep: i,
         currentTask: task.name,
-        currentTaskId: task.id, // 添加任务 ID
+        currentTaskId: task.id,
         message: `正在执行: ${task.name} (${i + 1}/${enabledTasks.length})`
       });
 
@@ -557,9 +531,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         }
       }
 
-      // 关闭前仓库识别是可选步骤，不再作为隐藏的强制行为。
+      // 关闭前仓库识别是可选步骤。
       if (commandId === 'closedown' && task.params?.recognizeDepotBeforeClose === true) {
-        // 识别仓库
         try {
           logger.info('关闭游戏前先识别仓库', { scheduleId });
 
@@ -571,7 +544,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             message: '正在识别仓库...'
           });
 
-          // 构建 Depot 任务配置
           const depotTaskConfig = {
             name: '仓库识别',
             type: 'Depot',
@@ -580,13 +552,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             }
           };
 
-          // execDynamicTask 需要 JSON 字符串
-          // execDynamicTask 成功时不抛出异常，失败时抛出异常
           try {
             await executeDynamicTask('Depot_temp', JSON.stringify(depotTaskConfig), '仓库识别', 'depot', true);
             logger.success('仓库识别命令执行完成', { scheduleId });
 
-            // 解析并保存仓库数据
             logger.debug('开始解析仓库数据', { scheduleId });
             const parseResult = await parseDepotData();
             if (parseResult && parseResult.success) {
@@ -623,7 +592,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             // 即使识别失败也继续执行后续任务
           }
 
-          // 等待2秒
           logger.debug('等待后继续', { scheduleId, waitSeconds: 2 });
           if (!(await waitForDelay(2000))) break;
         } catch (error) {
@@ -641,7 +609,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         }
       }
 
-      // 如果是启动游戏任务，添加重试机制
       if (commandId === 'startup') {
         const connectionCheck = await testConnection(adbConfig.adbPath, adbConfig.address);
         if (!connectionCheck.success) {
@@ -734,7 +701,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           }
         }
 
-        // 启动游戏任务已处理完成，继续下一个任务
         continue;
       }
 
@@ -924,7 +890,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           // 定时任务需要等待命令完成才能获取输出
           const result = await executeDynamicTask(taskId, taskConfig, task.name, null, true);
 
-          // 尝试从输出中提取任务总结
           if (result.stdout) {
             const summary = parseTaskSummary(task.name, result.stdout, logger);
             if (summary) {
@@ -934,14 +899,12 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         } else {
           const args = params ? params.split(' ').filter(arg => arg) : [];
 
-          // 如果是 fight 命令，处理多个关卡
           if (command === 'fight' && args.length > 0) {
             const stageInput = args[0];
             const clientType = task.params.clientType || DEFAULT_CLIENT_TYPE;
             // 关卡开放按连接 profile 的客户端游戏日判定；任务显式指定的类型优先。
             const gameClientType = task.params.clientType || sharedConnection.clientType || DEFAULT_CLIENT_TYPE;
 
-            // 解析关卡列表，格式：stage1:times1,stage2:times2 或 stage1,stage2
             const stageEntries = stageInput.split(',').map(s => {
               const parts = s.trim().split(':');
               return {
@@ -951,7 +914,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             }).filter(s => s.stage);
 
             if (stageEntries.length > 1) {
-              // 多个关卡，依次执行
               logger.info('检测到多个关卡', {
                 scheduleId,
                 stages: stageEntries.map(e => `${e.stage}${e.times ? `:${e.times}` : ''}`).join(', ')
@@ -967,7 +929,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 }
                 const { stage, times } = stageEntries[i];
 
-                // 如果理智已耗尽，跳过剩余关卡
                 if (sanityDepleted) {
                   logger.info('理智已耗尽，跳过关卡', { scheduleId, stage });
                   addFightAction(createFightExecutionAction(`${task.name} (${stage})`, stage, {
@@ -976,7 +937,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   continue;
                 }
 
-                // 检查关卡是否开放（资源收集全开放窗口由端口按客户端类型解析）
                 const openCheck = await isStageOpenToday(stage, gameClientType);
                 if (!openCheck.isOpen) {
                   logger.info('关卡今日未开放，跳过', {
@@ -987,7 +947,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   addFightAction(createFightExecutionAction(`${task.name} (${stage})`, stage, {
                     skipReason: openCheck.reason
                   }));
-                  continue; // 跳过这个关卡
+                  continue;
                 }
 
                 logger.info('执行关卡', {
@@ -998,7 +958,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   times
                 });
 
-                // 替换活动代号
                 const realStage = await replaceActivityCode(stage, clientType);
                 if (realStage !== stage) {
                   logger.debug('关卡代号已替换', {
@@ -1008,18 +967,15 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   });
                 }
 
-                // 构建当前关卡的参数（移除第一个参数，添加当前关卡和次数）
                 const currentArgs: string[] = [realStage];
                 if (times) {
                   currentArgs.push('--times', times);
                 }
 
-                // 添加其他参数（理智药、源石、连战倍率等）。
-                // 次数是该关卡的累计作战局数上限，连战倍率是每局代理的重复次数；
-                // 两者同时下发，由 MaaCore 按剩余次数裁决，不在本地丢弃用户选择。
+                // 次数是累计作战局数上限，连战倍率是每局代理的重复次数；两者同时下发，
+                // 由 MaaCore 按剩余次数裁决，不在本地丢弃用户选择。
                 currentArgs.push(...args.slice(1));
 
-                // 执行命令
                 try {
                   const result = await executeCommand(command, currentArgs, `${task.name} (${stage})`, null, true);
                   if (executionStatus.shouldStop || abortController.signal.aborted) break;
@@ -1046,7 +1002,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                     logger.debug('未检测到理智耗尽', { scheduleId, stage });
                   }
 
-                  // 提取任务总结
                   const summary = result.stdout
                     ? parseTaskSummary(`${task.name} (${stage})`, result.stdout, logger)
                     : null;
@@ -1087,7 +1042,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   addFightAction(fightAction);
                 }
 
-                // 关卡之间等待2秒
                 if (i < stageEntries.length - 1) {
                   logger.debug('等待后继续下一个关卡', { scheduleId, waitSeconds: 2 });
                   const delayCompleted = await waitForDelay(2000);
@@ -1097,7 +1051,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
               countFightTaskResult(fightActions.slice(fightActionStartIndex));
 
-              // 所有关卡完成后的延迟
               const delayTime = 2000;
               logger.debug('任务完成，等待后继续', {
                 scheduleId,
@@ -1107,12 +1060,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               const delayCompleted = await waitForDelay(delayTime);
               if (!delayCompleted) break;
 
-              continue; // 跳过后面的单关卡处理
+              continue;
             } else {
-              // 单个关卡，检查是否开放
               const { stage, times } = stageEntries[0];
 
-              // 检查关卡是否开放
               const openCheck = await isStageOpenToday(stage, gameClientType);
               if (!openCheck.isOpen) {
                 logger.info('关卡今日未开放，跳过', {
@@ -1126,27 +1077,24 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 addFightAction(fightAction);
                 countFightTaskResult([fightAction]);
 
-                // 跳过后的延迟
                 logger.debug('任务已跳过，等待后继续', {
                   scheduleId,
                   taskName: task.name,
                   waitSeconds: 2
                 });
                 if (!(await waitForDelay(2000))) break;
-                continue; // 跳过这个任务
+                continue;
               }
 
-              // 替换活动代号
               const realStage = await replaceActivityCode(stage, clientType);
               if (realStage !== stage) {
-                args[0] = realStage; // 只保留关卡名，不要拼接次数
+                args[0] = realStage;
                 logger.debug('关卡代号已替换', {
                   scheduleId,
                   originalStage: stage,
                   realStage
                 });
               } else if (times) {
-                // 如果没有替换但有次数，也要更新 args[0] 为纯关卡名
                 args[0] = stage;
               }
 
@@ -1176,7 +1124,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             reportSummary.diagnostics.forEach(diagnostic => executionWarnings.add(diagnostic.message));
           }
 
-          // 尝试从输出中提取任务总结
           let parsedTaskSummary: FlowTaskSummary | null = null;
           if (result.stdout) {
             parsedTaskSummary = parseTaskSummary(task.name, result.stdout, logger);
@@ -1199,13 +1146,12 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
         if (commandId !== 'fight') successCount++;
 
-        // 任务完成后的延迟时间
         // 启动游戏需要更长的等待时间，确保游戏完全启动
         let delayTime = 2000;
         if (commandId === 'startup') {
-          delayTime = 15000; // 启动游戏等待15秒
+          delayTime = 15000;
         } else if (commandId === 'closedown') {
-          delayTime = 3000; // 关闭游戏等待3秒
+          delayTime = 3000;
         }
 
         logger.debug('任务完成，等待后继续', {
@@ -1250,7 +1196,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           taskName: task.name,
           error: errorMessageOf(error)
         });
-        // 继续执行下一个任务
       }
     }
 
@@ -1278,7 +1223,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
       durationSeconds: Math.floor(duration / 1000)
     });
 
-    // 更新状态：完成
     updateStatus({
       isRunning: false,
       currentStep: wasStopped ? executionStatus.currentStep : enabledTasks.length,

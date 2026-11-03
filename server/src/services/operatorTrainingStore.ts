@@ -1,13 +1,7 @@
 /**
- * 养成领域持久化
- *
- * 训练队列的读取、写入、写入串行化与 queueRevision，以及养成所需的游戏数据快照
- * （干员材料、材料库、合成配方、OperBox、仓库）和自动化任务配置的读写。
- *
- * 这里是该领域文件访问的唯一入口：领域命令与应用同步通过本模块读写，不自行拼路径。
- * 所有 JSON 读取结果先经本模块的解析函数校验为领域类型，损坏或结构不符的条目
- * 按各自策略回退（见各 load/parse 函数），不会以 unknown 进入计算。
- * 材料需求与设置归一化等纯计算在 operatorTrainingModel。
+ * 养成领域文件访问的唯一入口：所有 JSON 读取先经本模块解析函数校验为领域类型，
+ * 损坏或结构不符的条目按各 load/parse 策略回退，不以 unknown 进入计算；
+ * 训练队列写入经 `serializeTrainingMutation` 串行并维护 queueRevision。
  */
 
 import path from 'path';
@@ -36,7 +30,6 @@ import type {
   TrainingSettings
 } from './operatorTrainingModel.ts';
 
-// 创建日志记录器
 const logger = createLogger('OperatorTraining');
 
 // 配置文件路径：与抓取脚本共用运行配置入口，默认 server/data，
@@ -48,7 +41,6 @@ const OPERATOR_MATERIALS_PATH = path.join(DATA_DIRECTORY, 'operator-materials.js
 const OPERBOX_PATH = path.join(DATA_DIRECTORY, 'operbox.json');
 const DEPOT_PATH = path.join(DATA_DIRECTORY, 'depot.json');
 
-/** 已应用的训练流程绑定。 */
 export interface TrainingFlowBinding {
   taskId?: string;
   taskName?: string;
@@ -59,7 +51,6 @@ export interface TrainingFlowBinding {
   error?: string;
 }
 
-/** training-queue.json 中的单个队列条目。 */
 export interface TrainingQueueItem {
   operatorId: string;
   currentElite?: number;
@@ -80,7 +71,6 @@ export interface TrainingQueueData {
   [extension: string]: unknown;
 }
 
-/** automation-tasks.json 中的关卡条目：字符串关卡或带开关的对象。 */
 export interface CombatStageObject {
   stage?: string;
   times?: string;
@@ -128,7 +118,6 @@ export interface CombatTasksConfig {
   [extension: string]: unknown;
 }
 
-/** 判断关卡条目是否为带开关的对象（字符串关卡不参与 smart/pinned 分类）。 */
 export function isCombatStageObject(stage: CombatTaskStage): stage is CombatStageObject {
   return typeof stage === 'object' && stage !== null;
 }
@@ -174,9 +163,8 @@ function parseTrainingFlow(value: unknown): TrainingFlowBinding | null {
 }
 
 /**
- * 校验并规范化持久队列：缺少 operatorId 的条目忽略，数字/布尔字段类型不符时
- * 回退读取方默认值（`currentElite ?? 0`、`targetElite ?? 2`）。JSON 语法错误仍由
- * readJsonFile 抛出，不在这里吞掉。
+ * 校验并规范化持久队列：缺少 operatorId 的条目忽略，字段类型不符回退默认值；
+ * JSON 语法错误仍由 readJsonFile 抛出，不在这里吞掉。
  */
 export function parseTrainingQueue(value: unknown): TrainingQueueData {
   const record = isRecord(value) ? value : {};
@@ -216,9 +204,6 @@ export function getQueueRevision(queueData: TrainingQueueData): string {
   })))).digest('hex');
 }
 
-/**
- * 加载养成队列（默认设置与旧结构归一化在读取时完成）
- */
 export async function loadTrainingQueue(): Promise<TrainingQueueData> {
   const defaultQueue: TrainingQueueData = {
     queue: [],
@@ -230,9 +215,6 @@ export async function loadTrainingQueue(): Promise<TrainingQueueData> {
   return parseTrainingQueue(queueData);
 }
 
-/**
- * 保存养成队列
- */
 export async function saveTrainingQueue(queueData: TrainingQueueData): Promise<true> {
   try {
     queueData.lastUpdated = new Date().toISOString();
@@ -299,9 +281,6 @@ export function parseOperatorMaterials(value: unknown): OperatorMaterialsFile {
   return { operators, metadata };
 }
 
-/**
- * 加载干员材料数据库
- */
 export async function loadOperatorMaterials(): Promise<OperatorMaterialsFile> {
   try {
     const data = await readJsonFile(OPERATOR_MATERIALS_PATH, { operators: {}, metadata: {} });
@@ -351,9 +330,6 @@ export function parseMaterialsDatabase(value: unknown): TrainingMaterialsDatabas
   };
 }
 
-/**
- * 加载材料数据库（包含 recipes）
- */
 export async function loadMaterialsDatabase(): Promise<TrainingMaterialsDatabase> {
   try {
     const MATERIALS_DB_PATH = path.join(DATA_DIRECTORY, 'materials.json');
@@ -386,9 +362,6 @@ export function parseMaterialFormulas(value: unknown): MaterialFormulas {
   return formulas;
 }
 
-/**
- * 加载材料合成配方数据库
- */
 export async function loadMaterialFormulas(): Promise<MaterialFormulas> {
   try {
     const FORMULAS_PATH = path.join(DATA_DIRECTORY, 'material-formulas.json');
@@ -435,9 +408,6 @@ export function parseOperBox(value: unknown): OperBoxData {
   return { operators: [] };
 }
 
-/**
- * 加载 OperBox 识别结果
- */
 export async function loadOperBox(): Promise<OperBoxData> {
   try {
     const data = await readJsonFile(OPERBOX_PATH, { operators: [] });
@@ -467,9 +437,6 @@ export function parseDepot(value: unknown): DepotSnapshot {
   };
 }
 
-/**
- * 加载仓库数据
- */
 export async function loadDepot(): Promise<DepotSnapshot> {
   try {
     const data = await readJsonFile(DEPOT_PATH, { items: [], timestamp: null });
@@ -497,9 +464,8 @@ function parseCombatTask(value: unknown): CombatTask {
 }
 
 /**
- * 校验 automation-tasks.json 的最小结构：必须是对象，taskFlow 为数组，
- * 每个任务的 params/stages 形态合法。校验通过后保留原对象，写入时整体回写；
- * 格式无效时抛错，调用方保留队列与流程的部分成功结果，不覆盖原文件。
+ * 校验 automation-tasks.json 的最小结构（对象、taskFlow 数组、各任务 params/stages
+ * 形态）；通过后保留原对象整体回写，格式无效即抛错，调用方保留部分成功结果、不覆盖原文件。
  */
 export function parseCombatTasksConfig(value: unknown): CombatTasksConfig {
   if (!isRecord(value)) throw new Error('自动化任务配置格式无效');
@@ -532,7 +498,6 @@ export async function updateCombatTasksConfig(
   return updateJsonFile(COMBAT_TASKS_PATH, updateFn, defaultValue);
 }
 
-/** 已知错误取 message，其余值转为字符串；日志与错误字段不写入 undefined。 */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

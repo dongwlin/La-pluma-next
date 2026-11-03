@@ -1,12 +1,6 @@
 /**
- * 养成计算与刷取计划
- *
- * 材料配方展开、掉落估算、关卡代号转换和计划生成。计划只由队列、仓库、
- * 材料库与掉落数据算出，不写队列、不改自动化任务、不注册定时任务；
- * 数据读取经 operatorTrainingStore，应用计划在 operatorTrainingApplication。
- *
- * 关卡开放由客户端服务区游戏日与资源收集全开放窗口决定：调用方未显式传入
- * `clientType` 时读取连接 profile，避免内部同步入口退回连接默认时区。
+ * 养成计算与刷取计划：材料配方展开、掉落估算、关卡代号转换与计划生成；只读数据，
+ * 不写队列、不改自动化任务或定时任务。关卡开放按客户端服务区游戏日判定，clientType 缺省时读取连接 profile。
  */
 
 import { createLogger } from '../utils/logger.ts';
@@ -35,17 +29,14 @@ import {
   loadTrainingQueue
 } from './operatorTrainingStore.ts';
 
-// 创建日志记录器（与养成领域其它模块共用同一命名 logger）
 const logger = createLogger('OperatorTraining');
 
 // 经验估算兜底值：企鹅掉落数据不可用时沿用旧假设（掉率 50%、每关 18 理智）
 const FALLBACK_DROP_RATE = 0.5;
 const FALLBACK_SANITY_COST = 18;
 
-/** 刷取估算的数据来源：企鹅物流统计或经验回退。 */
 export type FarmEstimateSource = 'penguin-stats' | 'experience';
 
-/** 单个材料的刷取估算。 */
 export interface FarmEstimate {
   stage: string;
   stageId: string | null;
@@ -56,14 +47,12 @@ export interface FarmEstimate {
   fallbackReason: string | null;
 }
 
-/** 计划中某个刷取关卡需要产出的材料。 */
 export interface TrainingPlanStageMaterial {
   id: string;
   name: string;
   count: number;
 }
 
-/** 计划中的刷取关卡。 */
 export interface TrainingPlanStage {
   stage: string;
   stageId: string | null;
@@ -76,7 +65,6 @@ export interface TrainingPlanStage {
   isOpen: boolean;
 }
 
-/** 计划中的可刷取材料层级条目。 */
 export interface TrainingMaterialHierarchyEntry {
   id: string;
   name: string;
@@ -87,7 +75,6 @@ export interface TrainingMaterialHierarchyEntry {
   children: [];
 }
 
-/** 计划中仍缺材料的干员。 */
 export interface TrainingPlanOperator {
   id: string;
   name: string;
@@ -129,29 +116,22 @@ export interface TrainingPlan {
   summary?: TrainingPlanSummary;
 }
 
-/**
- * 关卡代号映射表
- * 将数据库中的关卡代号转换为 MAA 可识别的关卡名称
- */
 const STAGE_CODE_MAP: Record<string, string> = {
-  // 芯片关卡
-  'pro_a_1': 'PR-A-1', // 医疗/重装芯片
-  'pro_a_2': 'PR-A-2', // 医疗/重装芯片组
-  'pro_b_1': 'PR-B-1', // 术师/狙击芯片
-  'pro_b_2': 'PR-B-2', // 术师/狙击芯片组
-  'pro_c_1': 'PR-C-1', // 先锋/辅助芯片
-  'pro_c_2': 'PR-C-2', // 先锋/辅助芯片组
-  'pro_d_1': 'PR-D-1', // 近卫/特种芯片
-  'pro_d_2': 'PR-D-2', // 近卫/特种芯片组
+  'pro_a_1': 'PR-A-1',
+  'pro_a_2': 'PR-A-2',
+  'pro_b_1': 'PR-B-1',
+  'pro_b_2': 'PR-B-2',
+  'pro_c_1': 'PR-C-1',
+  'pro_c_2': 'PR-C-2',
+  'pro_d_1': 'PR-D-1',
+  'pro_d_2': 'PR-D-2',
 
-  // 技能书关卡
   'ca_1': 'CA-1',
   'ca_2': 'CA-2',
   'ca_3': 'CA-3',
   'ca_4': 'CA-4',
   'ca_5': 'CA-5',
 
-  // 龙门币关卡
   'ce_1': 'CE-1',
   'ce_2': 'CE-2',
   'ce_3': 'CE-3',
@@ -159,7 +139,6 @@ const STAGE_CODE_MAP: Record<string, string> = {
   'ce_5': 'CE-5',
   'ce_6': 'CE-6',
 
-  // 作战记录关卡
   'ls_1': 'LS-1',
   'ls_2': 'LS-2',
   'ls_3': 'LS-3',
@@ -167,14 +146,12 @@ const STAGE_CODE_MAP: Record<string, string> = {
   'ls_5': 'LS-5',
   'ls_6': 'LS-6',
 
-  // 采购凭证关卡
   'ap_1': 'AP-1',
   'ap_2': 'AP-2',
   'ap_3': 'AP-3',
   'ap_4': 'AP-4',
   'ap_5': 'AP-5',
 
-  // 碳关卡
   'sk_1': 'SK-1',
   'sk_2': 'SK-2',
   'sk_3': 'SK-3',
@@ -182,12 +159,7 @@ const STAGE_CODE_MAP: Record<string, string> = {
   'sk_5': 'SK-5',
 };
 
-/**
- * 芯片类型映射表
- * 根据芯片名称确定应该刷哪个关卡
- */
 const CHIP_STAGE_MAP: Record<string, string> = {
-  // 医疗/重装 (PR-A)
   '医疗芯片': 'PR-A-1',
   '医疗芯片组': 'PR-A-2',
   '医疗双芯片': 'PR-A-2',
@@ -195,7 +167,6 @@ const CHIP_STAGE_MAP: Record<string, string> = {
   '重装芯片组': 'PR-A-2',
   '重装双芯片': 'PR-A-2',
 
-  // 术师/狙击 (PR-B)
   '术师芯片': 'PR-B-1',
   '术师芯片组': 'PR-B-2',
   '术师双芯片': 'PR-B-2',
@@ -203,7 +174,6 @@ const CHIP_STAGE_MAP: Record<string, string> = {
   '狙击芯片组': 'PR-B-2',
   '狙击双芯片': 'PR-B-2',
 
-  // 先锋/辅助 (PR-C)
   '先锋芯片': 'PR-C-1',
   '先锋芯片组': 'PR-C-2',
   '先锋双芯片': 'PR-C-2',
@@ -211,7 +181,6 @@ const CHIP_STAGE_MAP: Record<string, string> = {
   '辅助芯片组': 'PR-C-2',
   '辅助双芯片': 'PR-C-2',
 
-  // 近卫/特种 (PR-D)
   '近卫芯片': 'PR-D-1',
   '近卫芯片组': 'PR-D-2',
   '近卫双芯片': 'PR-D-2',
@@ -220,46 +189,35 @@ const CHIP_STAGE_MAP: Record<string, string> = {
   '特种双芯片': 'PR-D-2',
 };
 
-/**
- * 转换关卡代号为 MAA 可识别的格式
- */
 function convertStageCode(stageCode: string): string {
   if (!stageCode) return stageCode;
 
-  // 如果已经是大写格式，直接返回
   if (stageCode.match(/^[A-Z]{2,3}-[A-Z0-9]-\d+$/)) {
     return stageCode;
   }
 
-  // 转换为小写进行匹配
   const lowerCode = stageCode.toLowerCase();
 
-  // 查找映射表
   if (STAGE_CODE_MAP[lowerCode]) {
     return STAGE_CODE_MAP[lowerCode];
   }
 
-  // 如果没有找到映射，尝试自动转换
-  // 例如: pro_a_1 -> PR-A-1
   const match = lowerCode.match(/^([a-z]+)_([a-z])_(\d+)$/);
   if (match) {
     const [, prefix, letter, number] = match;
     return `${prefix.toUpperCase()}-${letter.toUpperCase()}-${number}`;
   }
 
-  // 例如: ca_5 -> CA-5
   const match2 = lowerCode.match(/^([a-z]+)_(\d+)$/);
   if (match2) {
     const [, prefix, number] = match2;
     return `${prefix.toUpperCase()}-${number}`;
   }
 
-  // 无法转换，返回原值
   logger.warn('无法转换关卡代号', { stageCode });
   return stageCode;
 }
 
-/** 单个材料支路的展开结果。 */
 interface MaterialBranchResult {
   blocked: boolean;
   blockedMaterialName: string | null;
@@ -267,15 +225,8 @@ interface MaterialBranchResult {
 }
 
 /**
- * 展开单个材料支路，返回该支路的可刷取材料
- * @param materialId - 材料ID
- * @param needed - 需要数量
- * @param depot - 仓库数据
- * @param materialsDb - 材料数据库
- * @param formulasDb - 合成配方数据库
- * @param visiting - 当前递归路径上的材料ID，用于识别配方循环引用
- * @returns blocked 为 true 表示该支路的配方展开被循环引用阻断（farmable 为空），
- *   由上层放弃整条配方转换链并回退为「根材料本身直接刷取」
+ * 展开单个材料支路；`blocked` 表示配方展开被循环引用阻断（farmable 为空），
+ * 由上层放弃整条配方转换链并回退为根材料本身直接刷取。
  */
 function expandMaterialBranch(
   materialId: string,
@@ -291,7 +242,6 @@ function expandMaterialBranch(
     return { blocked: false, blockedMaterialName: null, farmable: {} };
   }
 
-  // 检查仓库中的数量
   const have = depot.items[materialId] || 0;
   const stillNeeded = Math.max(0, needed - have);
 
@@ -307,8 +257,7 @@ function expandMaterialBranch(
   }
 
   // 芯片特殊处理：芯片组不展开，直接刷取；双芯片需要展开合成
-  if (material.name.includes('芯片组')) { // 芯片组（如辅助芯片组）
-    // 芯片组直接刷芯片组关卡（PR-X-2），不展开合成
+  if (material.name.includes('芯片组')) {
     logger.debug('芯片组直接刷取', { materialName: material.name });
     return { blocked: false, blockedMaterialName: null, farmable: { [materialId]: stillNeeded } };
   }
@@ -320,7 +269,6 @@ function expandMaterialBranch(
   const formula = formulasDb[materialId];
 
   if (formula && formula.materials && Object.keys(formula.materials).length > 0) {
-    // 有合成配方，递归展开子材料
     logger.debug('材料需要合成，展开子材料', { materialName: material.name });
 
     const branchVisiting = new Set(visiting).add(materialId);
@@ -362,22 +310,14 @@ function expandMaterialBranch(
     return { blocked: false, blockedMaterialName: null, farmable: branchFarmable };
   }
 
-  // 没有合成配方，这是可以直接刷的材料
   logger.debug('可刷取材料', { materialName: material.name });
   return { blocked: false, blockedMaterialName: null, farmable: { [materialId]: stillNeeded } };
 }
 
 /**
- * 递归展开材料树，找到所有需要刷的原材料
- * 配方数据存在循环引用时（如芯片互转配方：狙击芯片 ↔ 术师芯片），
- * 被阻断的转换链会整体作废，回退为「展开根材料本身直接刷取」，
- * 由关卡映射（如 CHIP_STAGE_MAP）决定刷取关卡；仓库已覆盖的正常空结果不受影响
- * @param materialId - 材料ID
- * @param needed - 需要数量
- * @param depot - 仓库数据
- * @param materialsDb - 材料数据库
- * @param formulasDb - 合成配方数据库
- * @param farmableMaterials - 累积的可刷取材料 {materialId: quantity}
+ * 递归展开材料树。配方循环引用（如芯片互转）会作废整条被阻断的转换链，回退为
+ * 展开根材料本身直接刷取，由关卡映射（如 CHIP_STAGE_MAP）决定关卡；
+ * 仓库已覆盖的正常空结果不受影响。
  */
 export function expandMaterialTree(
   materialId: string,
@@ -409,9 +349,6 @@ export function expandMaterialTree(
   return farmableMaterials;
 }
 
-/**
- * 将掉落数据服务的关卡查询结果转换为刷取估算结果
- */
 function toEstimate(found: StageDropEstimate): FarmEstimate {
   return {
     stage: found.code,
@@ -425,16 +362,11 @@ function toEstimate(found: StageDropEstimate): FarmEstimate {
 }
 
 /**
- * 为单个材料选择刷取关卡并给出期望掉落与理智单价
- *
- * 数据来源：企鹅物流公开 API v2（server=CN），由 scripts/fetch-penguin-stats.ts
- * 抓取为 server/data/penguin-drop-data.json，数据版本见文件 metadata.fetchedAt：
- * - 芯片类材料刷取关卡固定（CHIP_STAGE_MAP），期望掉落取该关卡的真实统计；
- * - 其余材料在企鹅矩阵中按「期望理智消耗/个」（apCost / 期望掉落）反查最优永久关卡；
- * - 掉落数据缺失、该材料无样本或无候选关卡时，回退经验估算：
- *   掉率 50%、每关 18 理智（沿用 2026-10 之前的假设，误差大，仅保证计划不中断）。
- *
- * @returns null 表示无任何可用关卡，调用方应 warn 并跳过该材料
+ * 为单个材料选择刷取关卡并给出期望掉落与理智单价。数据来自企鹅物流掉落统计，
+ * 抓取为 server/data/penguin-drop-data.json：芯片类刷固定关卡，其余按
+ * 「期望理智消耗/个」（apCost / 期望掉落）反查最优永久关卡；数据缺失、无样本或
+ * 无候选关卡时回退经验估算（50% 掉率、18 理智/关），保证计划不中断。
+ * 返回 null 表示无任何可用关卡，调用方应 warn 并跳过该材料。
  */
 export function estimateMaterialFarming(
   material: TrainingMaterialDefinition,
@@ -479,7 +411,6 @@ export function estimateMaterialFarming(
   };
 }
 
-/** 计划生成过程中按关卡聚合的中间状态。 */
 interface StagePlan {
   stage: string;
   stageId: string | null;
@@ -498,9 +429,7 @@ export interface TrainingPlanOptions {
   allResourceStagesOpen?: boolean;
 }
 
-/**
- * 读取连接 profile 的客户端类型；读取失败按连接默认客户端继续，不阻断计划生成。
- */
+/** 读取连接 profile 的客户端类型；读取失败按连接默认客户端继续，不阻断计划生成。 */
 async function resolveDefaultClientType(): Promise<string | undefined> {
   try {
     return (await resolveConnection()).clientType;
@@ -513,9 +442,7 @@ async function resolveDefaultClientType(): Promise<string | undefined> {
 }
 
 /**
- * 生成养成计划（刷取计划）
- *
- * 关卡开放按客户端服务区的游戏日判定；`clientType` 缺省时读取连接 profile，
+ * 生成养成计划。关卡开放按客户端服务区的游戏日判定；`clientType` 缺省时读取连接 profile，
  * 资源收集全开放期间所有资源本按开放处理。
  */
 export async function generateTrainingPlan(
@@ -534,12 +461,10 @@ export async function generateTrainingPlan(
     throw new Error('养成队列为空');
   }
 
-  // 收集需要刷取的材料
   const materialNeeds: Record<string, number> = {};
   const operators: TrainingPlanOperator[] = [];
   let totalLmdNeeded = 0;
 
-  // 根据模式决定处理哪些干员
   const operatorsToProcess = planMode === 'current'
     ? [queueData.queue[0]]
     : queueData.queue;
@@ -564,7 +489,6 @@ export async function generateTrainingPlan(
     const materialCalc = calculateOperatorMaterials(operator, depot.items);
     totalLmdNeeded += materialCalc.lmd.needed;
 
-    // 只添加还需要材料的干员
     if (!materialCalc.isComplete) {
       operators.push({
         id: operator.id,
@@ -575,7 +499,6 @@ export async function generateTrainingPlan(
         materials: materialCalc.materials.filter(m => m.stillNeeded > 0)
       });
 
-      // 汇总材料需求
       materialCalc.materials.forEach(mat => {
         if (mat.stillNeeded > 0) {
           materialNeeds[mat.id] = (materialNeeds[mat.id] || 0) + mat.stillNeeded;
@@ -605,10 +528,8 @@ export async function generateTrainingPlan(
   logger.info('开始展开材料树', { materialCount: Object.keys(materialNeeds).length });
   logger.debug('原始材料需求', { materialNeeds });
 
-  // 加载合成配方数据库
   const formulasDb = await loadMaterialFormulas();
 
-  // 递归展开所有材料，找到需要刷的原材料
   const farmableMaterials: Record<string, number> = {};
   for (const [materialId, needed] of Object.entries(materialNeeds)) {
     expandMaterialTree(materialId, needed, depot, materialsDb, formulasDb, farmableMaterials);
@@ -626,12 +547,10 @@ export async function generateTrainingPlan(
     });
   }
 
-  // 生成刷取计划
   const materialHierarchy: TrainingMaterialHierarchyEntry[] = [];
   const stagesMap = new Map<string, StagePlan>();
   const fallbackMaterials: string[] = [];
 
-  // 为每个可刷取的材料生成关卡
   for (const [materialId, needed] of Object.entries(farmableMaterials)) {
     const material = materialsDb.materials[materialId];
     if (!material) {
@@ -672,7 +591,7 @@ export async function generateTrainingPlan(
           dataSource: estimate.dataSource,
           materials: [],
           expectedDrops: 0,
-          isOpen: true // 简化版本假设都开放
+          isOpen: true
         });
       }
 
@@ -710,7 +629,6 @@ export async function generateTrainingPlan(
       materials: stageData.materials,
       totalTimes,
       sanity: totalTimes * stageData.apCost,
-      // isStageOpenToday 返回 { isOpen, reason } 对象，这里取布尔值供客户端判断
       isOpen: isStageOpenToday(stageData.stage, { now, clientType, allResourceStagesOpen }).isOpen
     };
   });

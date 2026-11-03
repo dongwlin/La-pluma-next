@@ -1,17 +1,7 @@
 /**
- * 运行时就绪状态投影
- *
- * `/health` 只表达进程存活，供容器存活检查使用；本模块为根路径 `/readiness`
- * 提供独立的就绪判断。只有同时满足以下条件才是就绪：
- * - 运行时生命周期已进入 `running`（`idle`/`starting`/`draining`/`closed`/
- *   `start-failed` 都不是可服务的稳定状态）；
- * - 运行时初始化步骤已完成（尚未开始或正在执行都不可就绪，失败后保持不可就绪）；
- * - Run 存储已初始化且可用（初始化失败或后续写入失败都拒绝就绪）。
- *
- * 快照只读取进程内状态：生命周期状态、初始化阶段和 Run 存储状态投影。
- * 不执行 ADB/MAA 命令、不访问网络、不读取业务文件，也不返回存储路径、凭据或
- * 底层错误文本。设备与外部依赖的连通性属于诊断信息，不能用它判断进程是否存活，
- * 也不能因为设备离线触发容器重启。
+ * `/health` 只表达进程存活；`/readiness` 只由进程内状态判定（生命周期 `running`、
+ * 初始化完成、Run 存储可用），失败一律保持不就绪。不探测设备或外部依赖，设备离线
+ * 不得触发容器重启；快照不返回存储路径、凭据或底层错误文本。
  */
 
 import type { RuntimeLifecycleState } from './runtimeLifecycleService.ts';
@@ -46,7 +36,6 @@ export interface ReadinessLifecyclePort {
   getState(): RuntimeLifecycleState;
 }
 
-/** Run 存储状态投影；对应 `getAgentRunStoreStatus()` 的只读字段。 */
 export interface AgentRunStoreReadinessStatus {
   required?: boolean;
   ready?: boolean;
@@ -58,9 +47,7 @@ export interface RuntimeReadinessOptions {
 }
 
 export interface RuntimeReadinessTracker {
-  /** 运行时初始化步骤开始执行 */
   markInitializationStarted(): void;
-  /** 运行时初始化步骤正常返回 */
   markInitializationCompleted(): void;
   /** 运行时初始化步骤抛出错误；只记录阶段，不保存错误文本 */
   markInitializationFailed(): void;

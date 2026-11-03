@@ -9,18 +9,13 @@ import { gameTimeZoneForClientType } from './gameCalendar.ts';
 import { createLogger } from '../utils/logger.ts';
 import type { ScheduledTask } from './scheduleFlowPlan.ts';
 
-// 定时触发源：cron 注册、替换、停止与自动更新作业。触发回调只调用注入的
-// 执行入口，不持有流程状态；流程执行规则由 scheduleFlowExecution 负责。
-//
-// 类型边界：
-// - cron 实现与时钟可注入，注册表只依赖 `createTask`/`schedule` 与 start/stop/destroy；
-// - 注册对象在安装时快照任务流程与配置，后续请求体变动不影响已登记触发；
-// - `stopAll` 的摘要是有穷结构；重复关闭返回同一对象。
+// 定时触发源：cron 注册、替换、停止与自动更新作业；触发回调只调用注入的执行入口，
+// 不持有流程状态。cron 与时钟可注入；注册对象在安装时快照任务流程与配置，
+// `stopAll` 的摘要是有穷结构，重复关闭返回同一对象。
 
 const execAsync = promisify(exec);
 const logger = createLogger('Scheduler');
 
-// MAA CLI 路径
 const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 
 // 日常流程按客户端服务区时区注册；自动更新是维护作业，没有游戏日语义。
@@ -36,7 +31,6 @@ export interface AutoUpdateConfig {
   [extension: string]: unknown;
 }
 
-/** cron 任务的最小能力；node-cron v4 与兼容实现都满足。 */
 export interface CronTaskLike {
   start?(): void;
   stop?(): void;
@@ -207,7 +201,7 @@ function cronExpressionForTime(time: string): string {
 }
 
 /**
- * 执行一次自动更新。抽成独立函数供触发源注册表调用，注册本身不包含执行。
+ * 执行一次自动更新；抽成独立函数供注册表调用，注册本身不包含执行。
  */
 export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<void> {
   const { time, updateCore, updateCli } = config;
@@ -230,12 +224,10 @@ export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<v
       if (updateCli) {
         logger.info('开始更新 MAA CLI');
 
-        // 检查是否在 Docker 环境
         const isDocker = process.env.NODE_ENV === 'production' &&
           await execAsync('test -f /.dockerenv').then(() => true).catch(() => false);
 
         if (isDocker) {
-          // Docker 环境：支持更新，更新会持久化
           try {
             await execAsync(`${MAA_CLI_PATH} self update`);
             logger.success('MAA CLI 更新完成', { environment: 'Docker', persistent: true });
@@ -243,7 +235,6 @@ export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<v
             logger.error('MAA CLI 更新失败', { error: errorMessageOf(error) });
           }
         } else {
-          // 根据操作系统选择更新方式
           const os = await import('os');
           const platform = os.platform();
           let command: string;
@@ -278,17 +269,10 @@ function describeDestroyErrors(errors: ScheduleTriggerDestroyError[]): string {
 }
 
 /**
- * 创建定时触发源注册表（cron 计划与自动更新）。
- *
- * 语义：
- * - 按 scheduleId 原子替换：新 job 全部创建并启动成功后才销毁旧 job；全部失败时保留
- *   上一份有效注册，错误输入不会清空既有计划。
- * - 每个 job 的回调在触发时检查注册身份与运行时状态：重配、停止或销毁后已经排队的
- *   旧回调直接丢弃，不会按旧流程或关闭后的状态启动新的执行。
- * - 运行时进入 draining 后回调不再启动日常流程或自动更新；已开始的流程不被本注册表
- *   改写终态，仍由实际执行结算 Run。
- * - stopAll 停止并销毁全部 job，重复调用返回同一摘要；销毁后拒绝新的注册。
- * - cron 与时钟可注入，测试使用假 job 与假时钟。
+ * 创建定时触发源注册表（cron 计划与自动更新）。按 scheduleId 原子替换：新 job 全部创建
+ * 并启动成功后才销毁旧 job，全部失败时保留上一份有效注册；重配/停止/销毁后已排队的旧回调
+ * 按注册身份与运行时状态丢弃。进入 draining 后不再启动新的日常流程或自动更新，已开始的流程
+ * 仍由实际执行结算 Run；stopAll 后拒绝新注册，重复调用返回同一摘要。
  */
 export function createScheduleTriggerRuntime({
   cronImpl = cron,
@@ -450,9 +434,9 @@ export function createScheduleTriggerRuntime({
   }
 
   /**
-   * 启动新 job 并切换到新注册。新 job 启动失败时不销毁旧注册；切换后旧 job 的排队
-   * 回调会因身份不匹配被丢弃。installed 为 null 表示没有任何 job 启动成功；
-   * destroyErrors 汇总旧注册销毁失败，调用方必须按部分失败上报。
+   * 启动新 job 并切换到新注册。新 job 启动失败时不销毁旧注册；切换后旧 job 的排队回调
+   * 会因身份不匹配被丢弃。installed 为 null 表示没有 job 启动成功；destroyErrors 汇总
+   * 旧注册销毁失败，调用方必须按部分失败上报。
    */
   function installRegistration({
     registration,

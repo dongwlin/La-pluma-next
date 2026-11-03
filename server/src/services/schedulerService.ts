@@ -38,12 +38,8 @@ import type {
 } from './scheduleTriggerService.ts';
 
 // 流程编排的组装入口：纯计划/结果聚合、步骤执行、cron 触发源分别由独立模块持有，
-// 设备命令、通知与存储适配在端口模块接线。本模块只保留公开入口、Run 关联与
-// 手动/定时执行共用的用例，保证同一进程内流程只有一个执行所有者。
-//
-// 类型边界：HTTP 与 cron 共用同一个执行器与生命周期门禁；Run 身份由调用方创建，
-// 执行器只负责在取得租约后过准入、在结束时返回实际结果；终态写入（succeeded/
-// failed/stopped）由本模块按实际结果结算，不由触发时机推断。
+// 设备命令、通知与存储适配在端口模块接线。HTTP 与 cron 共用同一执行器与生命周期门禁，
+// 终态按实际执行结果结算，不由触发时机推断。
 
 const logger = createLogger('Scheduler');
 
@@ -51,8 +47,7 @@ const scheduleFlowExecutor = createScheduleFlowExecutor({
   ports: createScheduleExecutionPorts()
 });
 
-// 进程内定时触发源注册表（cron 计划与自动更新共用）。关闭流程、测试通过工厂
-// 注入假 cron 和假时钟，模块级函数仍保持既有调用面。
+// 进程内定时触发源注册表（cron 计划与自动更新共用）；测试经工厂注入假 cron 和假时钟。
 const scheduleTriggerRuntime = createTriggerRuntime({
   runScheduleFlow: executeScheduledTaskFromCron
 });
@@ -64,7 +59,6 @@ export interface ScheduledFlowExecutionContext {
   executor?: ScheduleFlowExecutor;
 }
 
-/** 日常流程写入 Run 的结果：执行结果加上计划步骤数。 */
 export interface ScheduledDailyFlowRunResult {
   success: boolean;
   message: string;
@@ -99,16 +93,10 @@ export async function getScheduledTaskFlowPlan(taskFlow: unknown): Promise<Sched
   return buildScheduledTaskFlowPlan(taskFlow, connection);
 }
 
-/**
- * 获取定时任务执行状态
- */
 export function getScheduleExecutionStatus(): ScheduleExecutionStatus {
   return scheduleFlowExecutor.getStatus();
 }
 
-/**
- * 停止当前正在执行的任务流程
- */
 export function stopScheduleExecution(): boolean {
   return scheduleFlowExecutor.stop();
 }
@@ -229,8 +217,7 @@ export async function executeScheduledTaskFromCron(
 }
 
 /**
- * 创建定时触发源注册表。默认执行入口为日常流程与自动更新；测试可注入假 cron、
- * 假时钟与执行端口。
+ * 创建定时触发源注册表；默认执行入口为日常流程与自动更新，测试可注入假 cron、假时钟与执行端口。
  */
 export function createScheduleTriggerRuntime(
   options: ScheduleTriggerRuntimeOptions = {}
@@ -241,9 +228,6 @@ export function createScheduleTriggerRuntime(
   });
 }
 
-/**
- * 把触发源注册表接入运行时生命周期；默认使用本模块的进程内注册表。
- */
 export function attachScheduleTriggersToLifecycle(
   lifecycle: ScheduleTriggerLifecycle | null | undefined,
   runtime: ScheduleTriggerRuntime = scheduleTriggerRuntime
@@ -262,17 +246,14 @@ export function setupSchedule(
   return scheduleTriggerRuntime.setupSchedule(scheduleId, times, taskFlow, clientType);
 }
 
-// 停止定时任务
 export function stopSchedule(scheduleId: string): ScheduleSetupResult {
   return scheduleTriggerRuntime.stopSchedule(scheduleId);
 }
 
-// 获取所有定时任务状态
 export function getScheduleStatus(): ScheduleRegistrationStatus[] {
   return scheduleTriggerRuntime.getStatus();
 }
 
-// 立即执行一次定时任务（用于测试）
 export async function executeScheduleNow(
   scheduleId: string,
   taskFlow: unknown,
@@ -307,7 +288,6 @@ export function setupAutoUpdate(config: AutoUpdateConfig = {}): AutoUpdateSetupR
   return scheduleTriggerRuntime.setupAutoUpdate(config);
 }
 
-// 获取自动更新状态
 export function getAutoUpdateStatus(): { enabled: boolean; time: string | null } {
   return scheduleTriggerRuntime.getAutoUpdateStatus();
 }

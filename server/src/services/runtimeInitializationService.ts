@@ -15,19 +15,13 @@ import { waitWithAbort } from '../utils/abort.ts';
 
 const logger = createLogger('RuntimeInitialization');
 
-/**
- * 恢复结果中使用的配置/注册返回值：真实服务返回带 message 的结果对象，
- * 测试注入的实现只关心成功位，因此这里按最小可用字段收窄。
- */
+/** 恢复结果的最小形状：真实服务返回带 message 的对象，测试注入只关心成功位。 */
 export interface RuntimeSetupOutcome {
   success?: unknown;
   message?: unknown;
 }
 
-/**
- * 持久配置读取结果的最小形状。写入磁盘的是用户配置文档，字段语义由各
- * 领域在其边界收窄；运行时恢复只读成功位、消息与未解析的 data。
- */
+/** 持久配置读取结果的最小形状；恢复只读成功位、消息与未解析的 `data`。 */
 export interface RuntimeConfigLoadOutcome {
   success?: unknown;
   message?: unknown;
@@ -39,7 +33,6 @@ export interface RuntimeNotificationState {
   channels?: Record<string, NotificationChannelConfig>;
 }
 
-/** 连接解析端口提供 Telegram 启动与定时恢复所需的连接字段。 */
 export interface RuntimeConnectionSnapshot {
   adbPath?: string;
   address?: string;
@@ -53,7 +46,6 @@ export type TelegramRuntimeConfig = NotificationChannelConfig & {
   adbAddress?: string;
 };
 
-/** 运行时初始化日志端口：只需三个级别。 */
 export interface RuntimeInitializationLogger {
   info(message: string, data?: unknown): unknown;
   warn(message: string, data?: unknown): unknown;
@@ -61,8 +53,8 @@ export interface RuntimeInitializationLogger {
 }
 
 /**
- * 运行时恢复的依赖端口：组装入口注入真实实现，测试只替换相关端口。
- * 端口按“本模块实际读取的能力”声明，不复制各领域的完整服务类型。
+ * 依赖端口按本模块实际读取的能力声明，不复制各领域完整服务类型；
+ * 组装入口注入真实实现，测试只替换相关端口。
  */
 export interface RuntimeInitializationPorts {
   loadConfig(configType: string): Promise<RuntimeConfigLoadOutcome>;
@@ -82,7 +74,6 @@ export interface RuntimeInitializationPorts {
   runtimeLogger: RuntimeInitializationLogger;
 }
 
-/** 可注入端口与生命周期；未提供的端口使用默认实现。 */
 export interface RuntimeInitializationOverrides extends Partial<RuntimeInitializationPorts> {
   lifecycle?: RuntimeLifecycle | null;
   signal?: AbortSignal;
@@ -104,7 +95,6 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 返回值只保留字符串 message；缺失或非字符串按无消息处理。 */
 function readOutcomeMessage(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null;
 }
@@ -134,22 +124,15 @@ async function readPersistedConfig(
 }
 
 /**
- * 恢复已保存的通知、定时任务、自动更新与 Telegram 配置。
- * 所有副作用通过 overrides 注入；组装入口同时传入 lifecycle 关闭端口，
- * 供具体领域把已启动后台任务的停止能力注册到同一次关闭流程。
- *
- * 调度触发源的停止端口在读取持久配置前挂接：即使没有已保存配置或恢复失败，
- * 关闭时也能停止之后通过 API 注册的 cron/自动更新。恢复只注册触发源，不执行流程。
- *
- * Telegram 的关闭步骤在实际启动轮询前挂接：只有启用了 Bot 才需要停止端口，
- * 挂接失败时不启动轮询，避免出现关闭流程无法回收的后台长轮询。
+ * 恢复已保存的通知、定时任务、自动更新与 Telegram 配置；只注册触发源，不执行流程。
+ * 调度停止端口在读取持久配置前挂接，Telegram 停止端口在启动轮询前挂接且失败即不启动，
+ * 否则关闭流程无法回收之后通过 API 注册的 cron/自动更新或后台长轮询。
  */
 export async function initializeRuntimeState(
   overrides: RuntimeInitializationOverrides = {}
 ): Promise<RuntimeInitializationSummary> {
   const { lifecycle, signal, ...dependencyOverrides } = overrides;
   signal?.throwIfAborted();
-  // 未提供的端口回落到真实实现；显式传入的实现优先，包括测试的假实现。
   const dependencies: RuntimeInitializationPorts = {
     loadConfig: dependencyOverrides.loadConfig ?? loadUserConfig,
     applyNotificationConfig: dependencyOverrides.applyNotificationConfig ?? setNotificationConfig,

@@ -1,19 +1,7 @@
 /**
- * 运行时生命周期协调端口
- *
- * 组装入口按启动顺序注册运行依赖，关闭时按注册的逆序释放，保证“后启动的先停止”。
- * 本模块只协调既有服务，不创建、不重启任何服务，也不替代各领域自己的 stop/close
- * 实现：领域任务把已有的停止能力包装成步骤注册进来即可。
- *
- * 语义：
- * - start：按注册顺序执行启动步骤；某步失败时先逆序回收已受理或已获资源的步骤，再抛出携带
- *   步骤名的错误。已被受理的启动请求重复调用返回同一结果，不重复执行。
- * - draining：close 一旦被请求即进入 draining；此后拒绝注册新步骤，启动循环不再
- *   开始新步骤，并通过 signal 取消初始化。
- * - deadline：从收到 close 起统一计算预算，等待初始化退出与逆序释放共用截止时间。
- *   启动不响应取消时记录 timeout，继续收尾；关闭步骤超时也会取消其 signal。
- * - 重复 close：第一次关闭的 Promise 被复用；重复调用不重复执行任何 close，返回同一
- *   关闭摘要。单步失败只记录结果，不抛出，避免吞掉仍可执行的后续清理。
+ * 启动按注册顺序、关闭按逆序；close 一旦请求即进入 draining，重复 close 复用同一
+ * Promise。所有关闭步骤共用从收到 close 起算的截止时间，单步失败只记录、不抛出不
+ * 中断后续清理。本模块只协调既有服务，不创建、不重启任何服务。
  */
 
 export type RuntimeLifecycleState =
@@ -35,10 +23,7 @@ export interface RuntimeLifecycleStep {
   name: string;
   /** 启动步骤；缺省表示资源在注册前已由组装入口启动 */
   start?: (context: RuntimeLifecycleStartContext) => unknown | Promise<unknown>;
-  /**
-   * 释放步骤；缺省表示该步骤没有需要释放的资源。
-   * 入参给出本步骤分到的预算与关闭原因，长耗时收尾可据此在超时前自行收束。
-   */
+  /** 释放步骤；缺省表示无资源需释放。入参给出本步骤分到的预算与关闭原因，长耗时收尾可据此自行收束。 */
   close?: (context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>;
 }
 
@@ -47,7 +32,6 @@ export interface RuntimeLifecycleStartContext {
 }
 
 export interface RuntimeLifecycleCloseContext {
-  /** 触发本次关闭的原因（信号名或调用方提供） */
   reason: string;
   /** 本步骤分到的时间预算；等于超时监控使用的时长 */
   timeoutMs: number;
@@ -58,7 +42,6 @@ export interface RuntimeLifecycleCloseContext {
 }
 
 export interface RuntimeLifecycleStartSummary {
-  /** 按执行顺序记录成功的步骤名 */
   started: string[];
   durationMs: number;
 }
@@ -85,9 +68,7 @@ export interface RuntimeLifecycleCloseSummary {
 
 export interface RuntimeLifecycleOptions {
   logger?: RuntimeLifecycleLogger;
-  /** 整次关闭的总预算，默认 10s */
   closeDeadlineMs?: number;
-  /** 时钟注入点，测试可用假时钟；默认 Date.now */
   now?: () => number;
 }
 
@@ -120,7 +101,6 @@ interface RegisteredStep {
   close: ((context: RuntimeLifecycleCloseContext) => unknown | Promise<unknown>) | null;
   /** 已受理启动（无论成功或失败）或已登记既有资源，需要纳入释放范围 */
   active: boolean;
-  /** 已执行过释放，重复关闭时跳过 */
   released: boolean;
 }
 
@@ -277,10 +257,7 @@ export function createRuntimeLifecycle({
     return { name: step.name, status: 'closed', durationMs };
   }
 
-  /**
-   * 逆序释放已获资源。每步按剩余预算均分；预算已耗尽时仍调用释放端口，
-   * 传入已取消的 signal 和零预算，不为后续步骤重新计时。
-   */
+  /** 逆序释放已获资源；每步按剩余预算均分，预算耗尽后仍传零预算和已取消的 signal。 */
   async function releaseAll(window: ShutdownWindow): Promise<RuntimeLifecycleCloseSummary> {
     const pending = steps.filter(step => step.active && !step.released && step.close).reverse();
     const results: RuntimeLifecycleCloseStepResult[] = startupProblem ? [startupProblem] : [];

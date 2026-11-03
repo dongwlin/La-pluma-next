@@ -1,13 +1,6 @@
 /**
- * 养成领域纯模型
- *
- * 训练设置默认值与归一化、候选干员的可用性判定、单干员材料需求与完成进度、
- * 计划关卡投影和领域错误工厂。这里只做数据投影与计算，不读取文件、
- * 不写队列、不触发流程或定时同步；持久化在 operatorTrainingStore，
- * 刷取计划在 operatorTrainingPlan，配置与调度副作用在 operatorTrainingApplication。
- *
- * 设置、队列条目与游戏数据文件的解析入口在本模块声明领域类型；文件读取方由
- * operatorTrainingStore 在 JSON 解析后调用对应的解析函数，未知值先校验再进入计算。
+ * 养成领域纯模型：只做数据投影与计算，不读取文件、不写队列、不触发流程或定时同步；
+ * 文件解析入口在这里声明领域类型，未知值先校验再进入计算。
  */
 
 /** 训练设置：已知字段有默认值，未知扩展字段原样保留。 */
@@ -28,7 +21,6 @@ export const DEFAULT_TRAINING_SETTINGS: TrainingSettings = {
   useStone: 0
 };
 
-/** 训练设置中由本模块校验的字段；其余键作为扩展字段透传。 */
 const KNOWN_SETTING_KEYS = new Set([
   'autoSwitch',
   'notifyOnComplete',
@@ -48,7 +40,6 @@ export function trainingError(message: string, statusCode = 400): TrainingError 
   return Object.assign(new Error(message), { statusCode });
 }
 
-/** 普通对象判定：数组与 null 不是领域记录。 */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -59,7 +50,7 @@ function toFiniteNumber(value: unknown): number | undefined {
 
 /**
  * 归一化训练设置：旧字段 `notify` 仅在缺少布尔 `notifyOnComplete` 时映射，
- * 已知字段类型不符时回退默认值，未知扩展字段原样保留。
+ * 已知字段类型不符回退默认值，未知扩展字段原样保留。
  */
 export function normalizeTrainingSettings(settings: unknown = {}): TrainingSettings {
   const source: Record<string, unknown> = isRecord(settings) ? { ...settings } : {};
@@ -91,7 +82,6 @@ export function normalizeTrainingSettings(settings: unknown = {}): TrainingSetti
   return normalized;
 }
 
-/** 材料需求条目（干员材料表与计算结果共用）。 */
 export interface TrainingMaterialRequirement {
   id: string;
   name: string;
@@ -105,7 +95,6 @@ export interface TrainingElitePlan {
   chips?: TrainingMaterialRequirement[];
 }
 
-/** operator-materials.json 中的单个干员。 */
 export interface OperatorMaterialData {
   id?: string;
   name: string;
@@ -115,13 +104,11 @@ export interface OperatorMaterialData {
   elite2?: TrainingElitePlan;
 }
 
-/** operator-materials.json 的结构。 */
 export interface OperatorMaterialsFile {
   operators: Record<string, OperatorMaterialData>;
   metadata?: Record<string, unknown>;
 }
 
-/** OperBox 识别结果中的单个干员；未知字段不参与养成计算。 */
 export interface OwnedOperator {
   id: string;
   name?: string;
@@ -133,19 +120,16 @@ export interface OwnedOperator {
   own?: boolean;
 }
 
-/** OperBox 文件：`data` 与 `operators` 都表示已识别干员数组。 */
 export interface OperBoxData {
   data?: OwnedOperator[];
   operators?: OwnedOperator[];
 }
 
-/** 仓库快照：物品数量按 id 建索引。 */
 export interface DepotSnapshot {
   items: Record<string, number>;
   timestamp?: string | null;
 }
 
-/** materials.json 中的单个材料。 */
 export interface TrainingMaterialDefinition {
   id?: string;
   name: string;
@@ -161,20 +145,17 @@ export interface TrainingMaterialsDatabase {
   stageSchedule?: Record<string, unknown>;
 }
 
-/** material-formulas.json 中的单条合成配方。 */
 export interface MaterialFormula {
   materials?: Record<string, number>;
 }
 
 export type MaterialFormulas = Record<string, MaterialFormula>;
 
-/** 候选干员不可养成的领域原因。 */
 export type TrainingDisabledReason = 'unowned' | 'missing_material_data' | 'already_elite2';
 
 /** 候选列表过滤状态，与 `/training/operators` 的 status 参数一致。 */
 export type TrainingCandidateStatus = 'trainable' | 'owned' | 'all';
 
-/** 全量干员目录中参与候选投影的字段（来自 dataParserService）。 */
 export interface TrainingBaseOperator {
   id: string;
   name: string;
@@ -196,7 +177,6 @@ export interface TrainingOperatorMaterials {
   elite2?: TrainingElitePlan;
 }
 
-/** 候选投影结果：`/training/operators` 的真实响应条目。 */
 export interface TrainingCandidate {
   id: string;
   name: string;
@@ -240,7 +220,6 @@ interface DisabledReasonInput {
 /** 计划模式：只刷当前首位干员或全部队列干员。 */
 export type TrainingFlowMode = 'current' | 'all';
 
-/** 计划中可执行关卡的投影：关卡代号与刷取次数。 */
 export interface ApplicableStage {
   stage: string;
   totalTimes: number;
@@ -293,9 +272,8 @@ export function getOperBoxOperators(operBoxData: OperBoxData | null | undefined)
 }
 
 /**
- * 候选干员投影与计数：全量干员为基底，OperBox 与材料数据补充持有/养成状态，
- * 再按过滤条件筛选并排序。纯函数，不读取目录、OperBox 或材料文件；
- * 读取失败时的降级由调用方决定传入哪份 baseOperators。
+ * 候选干员投影与计数：全量干员为基底，OperBox 与材料数据补充状态后筛选排序；
+ * 纯函数，不读取目录/OperBox/材料文件，读取失败的降级由调用方决定传入哪份 baseOperators。
  */
 export function buildTrainingCandidates(
   baseOperators: TrainingBaseOperator[],
@@ -356,7 +334,6 @@ export function buildTrainingCandidates(
     }
   });
 
-  // 排序：可养成优先，已拥有其次，未拥有最后；同组按稀有度和名称排序
   filteredOperators.sort((a, b) => {
     if (a.canTrain !== b.canTrain) return a.canTrain ? -1 : 1;
     if (a.owned !== b.owned) return a.owned ? -1 : 1;
@@ -368,7 +345,6 @@ export function buildTrainingCandidates(
   return filteredOperators;
 }
 
-/** 单个材料的材料需求与库存差额。 */
 export interface TrainingMaterialNeed {
   id: string;
   name: string;
@@ -377,7 +353,6 @@ export interface TrainingMaterialNeed {
   stillNeeded: number;
 }
 
-/** 龙门币需求与库存差额。 */
 export interface LmdRequirement {
   needed: number;
   have: number;
@@ -390,7 +365,6 @@ export interface MaterialCalculation {
   isComplete: boolean;
 }
 
-/** 计算材料需求所需的最小干员投影。 */
 export interface TrainingOperatorRequirements {
   id: string;
   name?: string;
@@ -401,9 +375,6 @@ export interface TrainingOperatorRequirements {
   materials: TrainingOperatorMaterials;
 }
 
-/**
- * 计算单个干员的材料需求
- */
 export function calculateOperatorMaterials(
   operator: TrainingOperatorRequirements,
   depot: Record<string, number> = {}
@@ -412,11 +383,9 @@ export function calculateOperatorMaterials(
   const totalLMD: LmdRequirement = { needed: 0, have: 0, stillNeeded: 0 };
   const targetElite = operator.targetElite ?? 2;
 
-  // 根据当前精英等级决定需要哪些材料
   const needElite1 = operator.currentElite < 1 && targetElite >= 1;
   const needElite2 = operator.currentElite < 2 && targetElite >= 2;
 
-  // 收集所有需要的材料
   const allMaterials: Record<string, number> = {};
   const elite1 = operator.materials.elite1;
   const elite2 = operator.materials.elite2;
@@ -438,12 +407,10 @@ export function calculateOperatorMaterials(
     });
   }
 
-  // 转换为数组并计算库存
   for (const [id, needed] of Object.entries(allMaterials)) {
     const have = depot[id] || 0;
     const stillNeeded = Math.max(0, needed - have);
 
-    // 从材料数据库获取材料名称
     const materialName = getMaterialName(id, operator.materials);
 
     materials.push({
@@ -455,7 +422,6 @@ export function calculateOperatorMaterials(
     });
   }
 
-  // 计算龙门币
   totalLMD.have = depot['4001'] || 0;
   totalLMD.stillNeeded = Math.max(0, totalLMD.needed - totalLMD.have);
 
@@ -466,23 +432,17 @@ export function calculateOperatorMaterials(
   };
 }
 
-/**
- * 从材料列表中获取材料名称
- */
 export function getMaterialName(id: string, operatorMaterials: TrainingOperatorMaterials): string {
-  // 尝试从精1材料中查找
   if (operatorMaterials.elite1?.materials) {
     const mat = operatorMaterials.elite1.materials.find(m => m.id === id);
     if (mat) return mat.name;
   }
 
-  // 尝试从精2材料中查找
   if (operatorMaterials.elite2?.materials) {
     const mat = operatorMaterials.elite2.materials.find(m => m.id === id);
     if (mat) return mat.name;
   }
 
-  // 尝试从精2芯片中查找
   if (operatorMaterials.elite2?.chips) {
     const mat = operatorMaterials.elite2.chips.find(m => m.id === id);
     if (mat) return mat.name;
@@ -491,11 +451,7 @@ export function getMaterialName(id: string, operatorMaterials: TrainingOperatorM
   return `材料_${id}`;
 }
 
-/**
- * 计算完成进度（百分比）
- */
 export function calculateProgress(materialCalc: MaterialCalculation): number {
-  // 计算总需求和总缺少
   const totalNeeded = materialCalc.materials.reduce((sum, m) => sum + m.needed, 0) +
                       (materialCalc.lmd.needed / 1000); // 龙门币按千计算
   const totalStillNeeded = materialCalc.materials.reduce((sum, m) => sum + m.stillNeeded, 0) +
@@ -503,7 +459,6 @@ export function calculateProgress(materialCalc: MaterialCalculation): number {
 
   if (totalNeeded === 0) return 100;
 
-  // 进度 = (总需求 - 还需要的) / 总需求 * 100
   const progress = ((totalNeeded - totalStillNeeded) / totalNeeded) * 100;
   return Math.min(100, Math.max(0, Math.round(progress)));
 }

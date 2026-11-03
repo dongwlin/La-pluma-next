@@ -1,11 +1,6 @@
 /**
- * 自动公招（Recruit）结果解析
- *
- * 类型边界：
- * - 回调事件经 `maaCallbackService` 校验后再读取：`what`、`details.task`、`details.tags`、
- *   `details.level` 逐字段收窄，缺字段或类型不符按“未观察到”处理，不会中断解析。
- * - 输出只描述本次公招步骤（`success`/`failed`/`skipped`），不是整个 Run 的终态；没有结构化
- *   回调（旧日志或增量日志不可用）时按“流程已完成”回退。
+ * 输出只描述本次公招步骤（`success`/`failed`/`skipped`），不是整个 Run 的终态；
+ * 没有结构化回调（旧日志或增量日志不可用）时按“流程已完成”回退。
  */
 
 import {
@@ -56,7 +51,6 @@ function hasWhat(event: MaaCallbackEvent, what: string): boolean {
   return getCallbackStringField(event, 'what') === what;
 }
 
-/** 解析一次自动公招步骤的回调日志。 */
 export function parseRecruitExecutionAction(
   taskName: string,
   params: RecruitTaskParams = {},

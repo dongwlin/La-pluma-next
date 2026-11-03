@@ -1,17 +1,9 @@
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 
 // 流程计划与命令构建：只处理任务流程数据，不读取设备连接、用户配置或通知状态。
-// 连接默认值由调用方解析后传入，调度入口与确认接口共用同一份构建规则。
-//
-// 类型边界：
-// - 任务流程来自持久配置或 HTTP 请求体，公开入口保持 `unknown`，先经
-//   `validateScheduledTaskFlow` 收窄为“对象数组”，再按调度任务契约读取字段；
-// - 校验只保证条目是对象，`id`/`name`/`params` 是执行期读取的契约字段，缺失时
-//   沿用既有失败（例如 `id.split` 抛出的 TypeError），类型层不补默认值；
-// - 参数值在构建时逐项按运行时类型分支处理，未知扩展字段原样保留；
-// - 计划步骤是纯数据，可直接交给执行器或确认接口，不携带设备或存储句柄。
+// 公开入口保持 `unknown`，只校验到“对象数组”，字段级结构按调度任务契约在执行期读取，
+// 缺失字段沿用既有失败；参数值逐项按运行时类型归一化、未知扩展字段原样保留，计划步骤是纯数据。
 
-/** 流程中的关卡条目：字符串关卡或带开关的对象（智能养成、固定关卡）。 */
 export interface ScheduledTaskStage {
   stage?: string;
   times?: string | number;
@@ -77,7 +69,6 @@ export interface ScheduledTask {
   [extension: string]: unknown;
 }
 
-/** 解析连接参数时只需要地址；其余字段由调用方决定是否传递。 */
 export interface ScheduleConnectionDefaults {
   address?: string;
   adbPath?: string;
@@ -92,12 +83,10 @@ export interface ScheduledTaskCommand {
   taskConfig?: string;
 }
 
-/** 关闭游戏前的可见预动作；确认接口与执行计划共用。 */
 export interface ScheduledTaskPreAction {
   action: 'depot-recognition';
 }
 
-/** 计划步骤：纯数据，不含设备或存储依赖。 */
 export interface ScheduledTaskPlanStep {
   index: number;
   id: string;
@@ -143,7 +132,6 @@ export function parseDropTargetEntries(value: unknown): string[] | null {
   return normalizedEntries;
 }
 
-/** 关卡条目归一化为 `stage`/`times`；无 stage 的条目保留为空串，由后续过滤丢弃。 */
 interface NormalizedStageEntry {
   stage: string;
   times: string | number;
@@ -158,13 +146,11 @@ function normalizeStageEntry(entry: ScheduledTaskStageEntry): NormalizedStageEnt
   return { stage: '', times: '' };
 }
 
-// 构建 MAA 命令
 export function buildScheduledTaskCommand(
   task: ScheduledTask,
   connectionDefaults: ScheduleConnectionDefaults = {}
 ): ScheduledTaskCommand {
   if (task.taskType) {
-    // MaaCore 内置任务类型
     const params: ScheduledTaskParams = { ...(task.params || {}) };
     if (task.taskType === 'Recruit') {
       if (params.preserve_tags === undefined && params.skip_robot === true) {
@@ -220,7 +206,6 @@ export function buildScheduledTaskCommand(
     };
   }
 
-  // 预定义命令
   const commandId = task.commandId || task.id.split('-')[0];
   let params = '';
   const extraArgs: string[] = [];
@@ -231,16 +216,13 @@ export function buildScheduledTaskCommand(
     if (address) {
       extraArgs.push(`-a ${address}`);
     }
-    // 添加账号切换参数
     if (commandId === 'startup' && task.params.accountName) {
       extraArgs.push(`--account-name ${task.params.accountName}`);
     }
   } else if (commandId === 'fight') {
-    // 支持多个关卡（stages 数组，每个元素是 {stage, times}）或单个关卡（stage 字符串）
     const stages: ScheduledTaskStageEntry[] = task.params.stages
       || [{ stage: task.params.stage || '', times: task.params.times || '' }];
 
-    // 构建关卡列表，格式：stage1:times1,stage2:times2
     const stageList = stages
       .map(normalizeStageEntry)
       .filter(entry => entry.stage && entry.stage.trim())

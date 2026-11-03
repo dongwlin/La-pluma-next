@@ -1,21 +1,7 @@
 /**
- * 同源 WebRTC 信令网关
- *
- * 浏览器不直连上游 ScrcpyOverWebRTC：网关先以一次性票据换取上游 token，再把
- * 只含 `connect_client` 的 WebSocket 升级代理到本机上游监听。
- *
- * 边界：
- * - socket 消息：升级请求的 URL、查询参数与 `head` 都是未校验输入。只接受
- *   `<proxyPath>/connect_client?token=...`；票据必须存在且未过期，`deviceId`
- *   必须是长度不超过 256 的字符串，否则按 404/401 结束连接。
- * - 上游返回：登录响应只取非空字符串 token；任何失败都返回固定 503，不回显
- *   上游错误或凭据。
- * - 凭据一致性：票据保存的是 `getWebrtcAuthToken()` 取得的同一上游 token，
- *   浏览器只看到代理票据；重放、过期与非客户端路径都不能建立上游连接。
- * - 隐藏端点：上游管理界面、`/api` 与 `/devices` 不经过本网关暴露，应用端口
- *   只挂载票据签发与 `connect_client` 升级。
- * - 会话归属：每个升级连接登记一个 viewer 租约，连接关闭或网关关闭时释放；
- *   网关关闭断开全部活动 socket 并清空票据。
+ * 浏览器不直连上游 ScrcpyOverWebRTC：网关用一次性票据换上游 token，只代理
+ * `<proxyPath>/connect_client` 升级。升级输入的 URL、查询参数与 `head` 均不可信；
+ * 票据须存在且未过期，上游失败只回固定 503，重放与隐藏端点都不能建立上游连接。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -43,7 +29,6 @@ export interface WebrtcSignalingGatewayOptions {
   targetPort?: number;
   /** 代理票据有效期；过期票据与已使用票据都不可重放 */
   ticketTtlMs?: number;
-  /** 等待上游 listener 接受连接的时间上限 */
   connectTimeoutMs?: number;
   maxTickets?: number;
   now?: () => number;
@@ -53,19 +38,16 @@ export interface WebrtcSignalingGatewayOptions {
   connect?: typeof connectTcp;
 }
 
-/** 浏览器可用的一次性票据；不含上游 token。 */
 interface SignalingTicket {
   upstreamToken: string;
   expiresAt: number;
 }
 
-/** 已校验的升级请求：票据与可选的设备标识。 */
 export interface WebrtcClientUpgrade {
   ticket: string;
   deviceId: string | null;
 }
 
-/** 只使用 upgrade 事件订阅；HTTP 与 HTTPS 传输服务器都满足。 */
 export interface WebrtcSignalingServer {
   on(
     event: 'upgrade',

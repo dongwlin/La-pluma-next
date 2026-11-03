@@ -14,11 +14,7 @@ import { updateSmartTrainingStages } from './scheduleSmartTrainingService.ts';
 import type { ScheduleExecutionPorts } from './scheduleFlowExecution.ts';
 
 /**
- * 流程执行端口：设备命令、日志检查点、通知与存储适配集中在组装处接线。
- * 执行模块只调用端口，不直接依赖设备、用户配置或通知实现；测试可传入假端口
- * 验证步骤结果，不需要 MAA CLI、ADB 或真实数据目录。
- *
- * 端口按执行器实际读取的字段收窄；例如关卡代号替换只接收字符串并返回字符串，
+ * 端口按执行器实际读取的字段收窄：如关卡代号替换只接收字符串并返回字符串，
  * 底层实现保留对任意输入的兼容。
  */
 export function createScheduleExecutionPorts(
@@ -29,7 +25,6 @@ export function createScheduleExecutionPorts(
     executeDynamicTask: execDynamicTask,
     createLogCheckpoint: createMaaLogCheckpoint,
     readLogSince: readMaaLogSince,
-    // 连接服务返回 profile 视图；执行器只使用其中的 ADB 路径、地址与客户端类型。
     resolveConnection: async () => {
       const connection = await resolveConnection();
       return {
@@ -41,7 +36,6 @@ export function createScheduleExecutionPorts(
     testConnection: testAdbConnection,
     getGameClientState,
     captureScreen,
-    // 执行器只传入字符串关卡；实现会对非字符串原样返回，字符串输入保持原值。
     replaceActivityCode: async (stage, clientType) => String(await replaceActivityCode(stage, clientType)),
     // 关卡开放按客户端游戏日判定；资源收集全开放期间同一客户端服务区全开。
     isStageOpenToday: async (stage, clientType) => isStageOpenToday(stage, {

@@ -1,17 +1,7 @@
 /**
- * 通知服务 - 支持多种通知渠道
- * 当前支持：Telegram
- * 未来可扩展：微信、钉钉、邮件、Bark 等
- *
- * 类型边界：
- * - 持久配置与渠道覆盖配置从 `unknown` 解析：顶层与渠道扩展字段原样保留，
- *   `enabled` 归一化为布尔值，缺失或非法渠道按未启用处理；
- * - 出站响应经 `parseTelegramApiResponse` 收窄，发送结果只保留 ok/description/result
- *   与上游附加字段；渠道凭据（botToken）只存在于运行时配置，不进入发送结果 DTO 或日志；
- * - 发送器（出站客户端）由 `createNotificationService` 注入，测试不需要改写全局 fetch。
- *
- * 游戏日：所有“今日”判断按客户端服务区时区与每日 04:00 日界计算
- * （`gameCalendar`），不读宿主进程时区；关卡周表仍由本模块拥有。
+ * 通知服务：持久配置与渠道覆盖从 unknown 解析，顶层与渠道扩展字段原样保留，缺失或非法渠道按未启用处理；
+ * 发送结果只保留 ok/description/result 与上游附加字段，渠道凭据只存在于运行时配置，不进入 DTO 或日志；
+ * 所有“今日”判断按客户端服务区时区与 04:00 日界（gameCalendar），不读宿主进程时区。
  */
 
 import { createOutboundHttpClient } from './outboundRequestService.ts';
@@ -20,7 +10,6 @@ import { createLogger } from '../utils/logger.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { getGameDay, resolveGameZone } from './gameCalendar.ts';
 
-// 创建日志记录器
 const logger = createLogger('Notification');
 
 const TELEGRAM_LEVEL_EMOJIS: Record<string, string> = {
@@ -36,7 +25,6 @@ export interface NotificationMessage {
   content: string;
   /** 兼容任意级别字符串；未匹配的级别回落到 info。 */
   level?: string;
-  /** 附加到消息尾部的键值详情；值按文本输出。 */
   data?: Record<string, unknown> | null;
   /** base64 图片；缺省或空串表示只发送文本。 */
   image?: string | null;
@@ -121,7 +109,6 @@ export interface StageOpenState {
   stageName?: string;
 }
 
-/** 结构化执行结果条目：只要求格式化实际读取的字段，其余由产生方自行维护。 */
 export interface NotificationTaskAction {
   task?: string;
   status?: string;
@@ -161,7 +148,6 @@ export interface NotificationTaskSkip {
   reason?: string;
 }
 
-/** 任务完成通知入参：全部字段可选，缺省值保持原有文案。 */
 export interface TaskCompletionInfo {
   taskName?: string;
   totalTasks?: number;
@@ -178,7 +164,6 @@ export interface TaskCompletionInfo {
   screenshot?: string | null;
 }
 
-/** 格式化后的完成通知：级别与详情已归一化，可直接交给渠道发送。 */
 export interface TaskCompletionMessage extends NotificationMessage {
   title: string;
   content: string;
@@ -187,7 +172,6 @@ export interface TaskCompletionMessage extends NotificationMessage {
   image?: string | null;
 }
 
-/** 解析边界：只接受普通对象，数组与 null 不是配置文档。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -275,27 +259,26 @@ interface ResourceStageSchedule {
   hidden?: boolean;
 }
 
-// 资源本开放日表。days 是游戏日星期：0=周日, 1=周一, ..., 6=周六。
 const RESOURCE_STAGES: Record<string, ResourceStageSchedule> = {
-  'CE-6': { name: '龙门币', days: [0, 2, 4, 6] }, // 周日、周二、周四、周六
-  'AP-5': { name: '采购凭证', days: [0, 1, 4, 6] }, // 周日、周一、周四、周六
-  'CA-5': { name: '技巧概要', days: [0, 2, 3, 5] }, // 周日、周二、周三、周五
-  'LS-6': { name: '作战记录', days: [0, 1, 2, 3, 4, 5, 6] }, // 每天
+  'CE-6': { name: '龙门币', days: [0, 2, 4, 6] },
+  'AP-5': { name: '采购凭证', days: [0, 1, 4, 6] },
+  'CA-5': { name: '技巧概要', days: [0, 2, 3, 5] },
+  'LS-6': { name: '作战记录', days: [0, 1, 2, 3, 4, 5, 6] },
 
-  'PR-A': { name: '重装/医疗芯片', days: [0, 1, 4, 5] }, // 周日、周一、周四、周五
+  'PR-A': { name: '重装/医疗芯片', days: [0, 1, 4, 5] },
   'PR-A-1': { name: '重装/医疗芯片', days: [0, 1, 4, 5], hidden: true },
   'PR-A-2': { name: '重装/医疗芯片组', days: [0, 1, 4, 5], hidden: true },
-  'PR-B': { name: '狙击/术师芯片', days: [1, 2, 5, 6] }, // 周一、周二、周五、周六
+  'PR-B': { name: '狙击/术师芯片', days: [1, 2, 5, 6] },
   'PR-B-1': { name: '狙击/术师芯片', days: [1, 2, 5, 6], hidden: true },
   'PR-B-2': { name: '狙击/术师芯片组', days: [1, 2, 5, 6], hidden: true },
-  'PR-C': { name: '先锋/辅助芯片', days: [0, 3, 4, 6] }, // 周日、周三、周四、周六
+  'PR-C': { name: '先锋/辅助芯片', days: [0, 3, 4, 6] },
   'PR-C-1': { name: '先锋/辅助芯片', days: [0, 3, 4, 6], hidden: true },
   'PR-C-2': { name: '先锋/辅助芯片组', days: [0, 3, 4, 6], hidden: true },
-  'PR-D': { name: '近卫/特种芯片', days: [0, 2, 3, 6] }, // 周日、周二、周三、周六
+  'PR-D': { name: '近卫/特种芯片', days: [0, 2, 3, 6] },
   'PR-D-1': { name: '近卫/特种芯片', days: [0, 2, 3, 6], hidden: true },
   'PR-D-2': { name: '近卫/特种芯片组', days: [0, 2, 3, 6], hidden: true },
 
-  'SK-5': { name: '碳', days: [1, 3, 5, 6] },     // 周一、周三、周五、周六
+  'SK-5': { name: '碳', days: [1, 3, 5, 6] },
 };
 
 export function getTodayOpenStages(query: StageDayQuery = {}): DailyStageOverview {
@@ -339,7 +322,7 @@ export function getTodayOpenStages(query: StageDayQuery = {}): DailyStageOvervie
 export function isStageOpenToday(stage: string, query: StageDayQuery = {}): StageOpenState {
   const stageKey = stage.toUpperCase();
   if (!RESOURCE_STAGES[stageKey]) {
-    return { isOpen: true, reason: null }; // 非资源本，默认开放
+    return { isOpen: true, reason: null };
   }
 
   const stageInfo = RESOURCE_STAGES[stageKey];
@@ -349,7 +332,7 @@ export function isStageOpenToday(stage: string, query: StageDayQuery = {}): Stag
 
   const now = query.now ?? new Date();
   const clientType = query.clientType ?? DEFAULT_CLIENT_TYPE;
-  const today = getGameDay(now, clientType).weekday; // 0=周日, 1=周一, ..., 6=周六
+  const today = getGameDay(now, clientType).weekday;
   const isOpen = stageInfo.days.includes(today);
 
   return {
@@ -367,29 +350,21 @@ const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
       botToken: '',
       chatId: '',
     },
-    // 预留其他通知渠道
     wechat: {
       enabled: false,
-      // 微信企业号配置
     },
     dingtalk: {
       enabled: false,
-      // 钉钉机器人配置
     },
     email: {
       enabled: false,
-      // 邮件配置
     },
     bark: {
       enabled: false,
-      // Bark 配置
     }
   }
 };
 
-/**
- * 通知接口 - 所有通知渠道都需要实现这个接口
- */
 class NotificationChannel {
   config: NotificationChannelConfig;
 
@@ -397,16 +372,10 @@ class NotificationChannel {
     this.config = config;
   }
 
-  /**
-   * 发送通知；返回渠道相关的公开结果，不包含渠道配置或凭据。
-   */
   async send(_message: NotificationMessage): Promise<unknown> {
     throw new Error('子类必须实现 send 方法');
   }
 
-  /**
-   * 测试连接
-   */
   async test(): Promise<NotificationChannelTestResult> {
     throw new Error('子类必须实现 test 方法');
   }
@@ -416,9 +385,6 @@ class NotificationChannel {
   }
 }
 
-/**
- * Telegram 通知渠道
- */
 class TelegramChannel extends NotificationChannel {
   botToken: string;
   chatId: string;
@@ -443,7 +409,6 @@ class TelegramChannel extends NotificationChannel {
 
     const { title, content, level = 'info', data, image } = message;
 
-    // 如果有图片，使用 sendPhoto API
     if (image) {
       return await this.sendPhoto(title, content, level, data, image);
     }
@@ -480,7 +445,6 @@ class TelegramChannel extends NotificationChannel {
 
     const url = `https://api.telegram.org/bot${this.botToken}/sendPhoto`;
 
-    // 将 base64 转换为 Buffer
     const imageBuffer = Buffer.from(imageBase64, 'base64');
 
     // 检查图片大小（Telegram 限制 10MB）
@@ -489,7 +453,6 @@ class TelegramChannel extends NotificationChannel {
 
     if (imageSizeMB > 10) {
       logger.warn('图片超过 10MB，尝试不发送图片', { sizeMB: imageSizeMB.toFixed(2) });
-      // 图片太大，改为发送纯文本消息
       return await this.send({ title, content, level, data });
     }
 
@@ -501,7 +464,6 @@ class TelegramChannel extends NotificationChannel {
     formData.append('caption', caption);
     formData.append('parse_mode', 'Markdown');
 
-    // 添加重试机制
     const maxRetries = 3;
     let lastError: Error | null = null;
 
@@ -511,7 +473,7 @@ class TelegramChannel extends NotificationChannel {
 
         const { data: payload } = await this.outboundHttp.requestMultipart(url, {
           formData,
-          timeoutMs: 30000, // 30秒超时
+          timeoutMs: 30000,
         });
 
         const result = parseTelegramApiResponse(payload);
@@ -530,15 +492,13 @@ class TelegramChannel extends NotificationChannel {
         });
 
         if (attempt < maxRetries) {
-          // 等待后重试
-          const waitTime = attempt * 2000; // 2秒、4秒
+          const waitTime = attempt * 2000;
           logger.debug('等待后重试', { waitMs: waitTime });
           await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       }
     }
 
-    // 所有重试都失败，尝试发送不带图片的消息
     logger.warn('发送图片失败，改为发送纯文本消息');
     try {
       return await this.send({ title, content, level, data });
@@ -573,7 +533,6 @@ export interface NotificationService {
 
 /** 服务依赖：出站发送端口可注入，测试不需要改写全局 fetch。 */
 export interface NotificationServiceDependencies {
-  /** 出站客户端；缺省绑定全局 fetch 的独立实例。 */
   outboundHttp?: OutboundHttpClient;
   /** 初始持久配置，走与 setConfig 相同的解析边界。 */
   config?: unknown;
@@ -584,9 +543,6 @@ type NotificationChannelFactory = (
   outboundHttp: OutboundHttpClient
 ) => NotificationChannel;
 
-/**
- * 通知管理器：持有配置、渠道注册表与出站端口。
- */
 class NotificationManager {
   config: NotificationConfig;
   outboundHttp: OutboundHttpClient;
@@ -600,17 +556,11 @@ class NotificationManager {
   }
 
   initChannels() {
-    // 注册 Telegram 渠道
     this.registerChannel(
       'telegram',
       (config, outboundHttp) => new TelegramChannel(config, outboundHttp)
     );
 
-    // 未来可以在这里注册更多渠道
-    // this.registerChannel('wechat', WeChatChannel);
-    // this.registerChannel('dingtalk', DingTalkChannel);
-    // this.registerChannel('email', EmailChannel);
-    // this.registerChannel('bark', BarkChannel);
   }
 
   registerChannel(name: string, factory: NotificationChannelFactory) {
@@ -639,9 +589,6 @@ class NotificationManager {
     return false;
   }
 
-  /**
-   * 发送通知到所有启用的渠道
-   */
   async sendToAll(message: NotificationMessage): Promise<NotificationDispatchResult> {
     if (!this.config.enabled) {
       logger.info('通知功能未启用');
@@ -682,9 +629,6 @@ class NotificationManager {
     };
   }
 
-  /**
-   * 发送到指定渠道
-   */
   async sendToChannel(channelName: string, message: NotificationMessage): Promise<unknown> {
     const factory = this.channels.get(channelName);
 
@@ -701,9 +645,6 @@ class NotificationManager {
     return await factory(channelConfig, this.outboundHttp).send(message);
   }
 
-  /**
-   * 测试指定渠道
-   */
   async testChannel(
     channelName: string,
     configOverride: unknown = null
@@ -728,8 +669,8 @@ class NotificationManager {
 }
 
 /**
- * 创建独立通知服务实例：配置、渠道注册表与出站端口均由实例持有。
- * 缺省实例绑定内置配置与全局 fetch；测试注入出站端口即可验证发送契约。
+ * 创建独立通知服务实例：配置、渠道注册表与出站端口均由实例持有；
+ * 缺省实例绑定全局 fetch，测试注入出站端口即可验证发送契约。
  */
 export function createNotificationService(
   dependencies: NotificationServiceDependencies = {}
@@ -752,19 +693,12 @@ export function createNotificationService(
   };
 }
 
-// 创建全局通知服务实例
 const defaultNotificationService = createNotificationService();
 
-/**
- * 设置通知配置
- */
 export function setNotificationConfig(config: unknown) {
   defaultNotificationService.setConfig(config);
 }
 
-/**
- * 获取通知配置
- */
 export function getNotificationConfig(): NotificationConfig {
   return defaultNotificationService.getConfig();
 }
@@ -773,23 +707,14 @@ export function shouldCaptureNotificationScreenshot(): boolean {
   return defaultNotificationService.shouldCaptureScreenshot();
 }
 
-/**
- * 发送通知
- */
 export async function sendNotification(message: NotificationMessage): Promise<NotificationDispatchResult> {
   return await defaultNotificationService.sendNotification(message);
 }
 
-/**
- * 发送到指定渠道
- */
 export async function sendToChannel(channelName: string, message: NotificationMessage): Promise<unknown> {
   return await defaultNotificationService.sendToChannel(channelName, message);
 }
 
-/**
- * 测试通知渠道
- */
 export async function testNotificationChannel(
   channelName: string,
   configOverride: unknown = null
@@ -797,9 +722,6 @@ export async function testNotificationChannel(
   return await defaultNotificationService.testChannel(channelName, configOverride);
 }
 
-/**
- * 发送任务完成通知
- */
 export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): TaskCompletionMessage {
   const {
     taskName = '自动化任务',
@@ -829,7 +751,6 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
   const hasFailure = failedTasks > 0 || hasStructuredFailure;
   const hasSkip = skippedTasks > 0 || hasStructuredSkip;
 
-  // 根据任务结果确定通知级别和标题
   let level: TaskCompletionMessage['level'] = 'success';
   let title = '任务完成';
 
@@ -875,13 +796,11 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
     });
   }
 
-  // 添加任务总结信息
   if (normalizedSummaries.length > 0) {
     content += '\n\n📋 *任务总结*';
     normalizedSummaries.forEach(summary => {
       content += `\n\n*${summary.task}*`;
 
-      // 理智作战总结
       if (summary.stage) {
         content += `\n• 关卡: ${summary.stage}`;
         if (summary.times) content += `\n• 次数: ${summary.times}`;
@@ -889,13 +808,11 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
         if (summary.medicine && summary.medicine !== '0') content += `\n• 理智药: ${summary.medicine}`;
         if (summary.stone && summary.stone !== '0') content += `\n• 源石: ${summary.stone}`;
 
-        // 掉落信息（已经是格式化的字符串）
         if (summary.drops) {
           content += `\n• 掉落: ${summary.drops}`;
         }
       }
 
-      // 公招总结
       if (summary.recruits) {
         content += '\n• 公招结果:';
         summary.recruits.forEach(recruit => {
@@ -903,14 +820,12 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
         });
       }
 
-      // 基建总结
       if (summary.infrast) {
         content += `\n• ${summary.infrast}`;
       }
     });
   }
 
-  // 跳过的任务（资源本未开放等）
   const representedTasks = new Set<string>();
   normalizedActions.forEach(action => {
     const task = readTextField(action, 'task');
@@ -931,7 +846,6 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
     });
   }
 
-  // 失败的任务
   const remainingErrors = normalizedErrors.filter(item => {
     const task = typeof item === 'string' ? item : readTextField(item, 'task');
     return !task || !representedTasks.has(task);
@@ -939,7 +853,6 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
   if (remainingErrors.length > 0) {
     content += `\n\n❌ *失败任务*`;
     remainingErrors.forEach(e => {
-      // 处理对象格式 { task: '任务名', error: '错误信息' } 或字符串格式
       const task = readTextField(e, 'task');
       if (task) {
         const error = readTextField(e, 'error');

@@ -1,28 +1,7 @@
 /**
- * Telegram Bot 服务 - 接收命令控制任务
- *
- * 轮询生命周期：
- * - 每个实例同一时刻只有一个有效轮询会话。重复初始化或改配置会先停止旧会话，
- *   再按新配置启动；旧会话停止后不再接受更新、不再派发命令。
- * - 会话持有独立的 AbortController：长轮询请求、轮询间隔、等待重试与命令内的
- *   倒计时都绑定同一个 signal，停止会立即取消在途请求和等待。
- * - 长轮询使用大于 Telegram 停留时长的独立时限（TELEGRAM_LONG_POLL_TIMEOUT_MS），
- *   不使用出站端口的缺省短时限。
- *
- * 出站调用统一经 outboundRequestService：getUpdates 是 POST，端口不自动重放；
- * 轮询失败只重新发起读取，不会重放已经派发的设备命令。offset 在派发更新时推进，
- * 与既有语义一致。
- *
- * 类型边界：
- * - 长轮询载荷与 Bot API 响应从 `unknown` 解析：getUpdates 的 `ok` 必须是字面量 true、
- *   `result` 必须是数组；发送类响应的 `ok`/`description`/`result` 按声明类型收窄，
- *   其余上游字段保留；
- * - 每个 update 先校验再派发：缺少整数 update_id 的条目无法推进 offset，直接忽略；
- *   非文本消息或缺少 chat/from 的条目只推进 offset，不执行命令；
- * - 文本先解析为 TelegramCommandInput（命令名、原始词元与命中来源），再形成带缺省值
- *   的领域输入 TelegramCommandRequest，执行分支只读取领域字段；
- * - 命令错误统一以既有文案回复；设备命令仍复用 execMaaCommand 与停止规则，
- *   未创建 HTTP Run 的 /run 流程入口按现行契约保留（直接调用 executeScheduleNow）。
+ * Telegram Bot：每个实例同一时刻只有一个有效轮询会话，重复初始化先停旧会话再按新配置启动；
+ * 会话的 AbortController 绑定长轮询、间隔、重试等待与倒计时，停止即取消在途请求与等待。
+ * 长轮询使用独立时限；出站读取失败只重新发起 getUpdates，不重放已派发的设备命令，offset 在派发时推进。
  */
 
 import { createOutboundHttpClient, isOutboundRequestError } from './outboundRequestService.ts';
@@ -43,7 +22,6 @@ import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../c
 
 const logger = createLogger('TelegramBot');
 
-/** Telegram getUpdates 的停留秒数。 */
 export const TELEGRAM_LONG_POLL_SECONDS = 30;
 /** 长轮询请求的唯一时限：必须大于停留秒数，避免正常长轮询被误判为超时。 */
 export const TELEGRAM_LONG_POLL_TIMEOUT_MS = 40_000;
@@ -67,7 +45,7 @@ const DEFAULT_CONFIG: TelegramBotConfig = {
   enabled: false,
   botToken: '',
   chatId: '',
-  allowedUserIds: [], // 允许的用户 ID 列表
+  allowedUserIds: [],
   adbPath: DEFAULT_ADB_PATH,
   adbAddress: DEFAULT_ADB_ADDRESS,
   allowedCommands: ['start', 'stop', 'status', 'fight', 'roguelike', 'copilot', 'startup', 'closedown', 'screenshot', 'help']
@@ -84,7 +62,6 @@ interface TelegramBotSession {
   cleanups: Set<() => void>;
 }
 
-/** 公开状态：与既有 getStatus 字段一致。 */
 export interface TelegramBotStatus {
   enabled: boolean;
   polling: boolean;
@@ -103,7 +80,6 @@ export interface TelegramLifecycleAttachment {
   duplicate: boolean;
 }
 
-/** 日志端口：保留既有四个级别，测试可注入静默或记录实现。 */
 export interface TelegramBotLogger {
   debug(message: string, data?: unknown): unknown;
   info(message: string, data?: unknown): unknown;
@@ -132,7 +108,6 @@ export type TelegramCommandExecutor = (
   waitForCompletion?: boolean
 ) => Promise<unknown>;
 
-/** 连接解析结果：截图只消费 ADB 路径与地址。 */
 export interface TelegramDeviceConnection {
   adbPath?: unknown;
   address?: unknown;
@@ -191,7 +166,6 @@ export type TelegramCommandSource =
 /** 命令解析结果：名称已识别时是稳定的命令标识，参数保持消息中的原始词元。 */
 export interface TelegramCommandInput {
   name: TelegramCommandName | null;
-  /** 未知命令回显用：已去掉 `/` 与参数。 */
   rawName: string;
   args: string[];
   source: TelegramCommandSource;
@@ -215,7 +189,6 @@ export type TelegramCommandRequest =
   | { kind: 'run'; flowType: string }
   | { kind: 'unknown'; rawName: string };
 
-/** 可注入依赖：出站、执行、状态、连接与配置读取全部经端口，测试不触网。 */
 export interface TelegramBotDependencies {
   outbound: OutboundHttpClient;
   execMaaCommand: TelegramCommandExecutor;
@@ -240,7 +213,6 @@ export interface TelegramBotService {
   getStatus(): TelegramBotStatus;
 }
 
-/** 解析边界：只接受普通对象，数组与 null 不是配置或上游载荷。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -250,8 +222,8 @@ function errorMessageOf(error: unknown): string {
 }
 
 /**
- * 配置补丁解析：已知字段按声明类型收窄，其余字段原样保留，未提供字段保持当前值。
- * 保留重新配置的浅合并语义；非数组 allowedUserIds 按未配置处理。
+ * 配置补丁：已知字段按声明类型收窄，其余字段原样保留，未提供字段保持当前值；
+ * 非数组 allowedUserIds 按未配置处理。
  */
 function applyConfigPatch(current: TelegramBotConfig, patch: unknown): TelegramBotConfig {
   if (!isRecord(patch)) return current;
@@ -326,7 +298,6 @@ function parseUpdate(value: unknown): TelegramMessageUpdate | null {
   return { updateId, message: parseMessageUpdate(value.message) };
 }
 
-/** 关键词映射表（只包含不带参数的命令）。 */
 const keywordMap: Record<string, TelegramCommandName> = {
   '截图': 'screenshot',
   '截屏': 'screenshot',
@@ -339,13 +310,11 @@ const keywordMap: Record<string, TelegramCommandName> = {
   '停止': 'stop',
   '停止任务': 'stop',
   'stop': 'stop',
-  // 不带参数的启动/关闭/肉鸽（使用默认值）
   '启动游戏': 'startup',
   '开启游戏': 'startup',
   '打开游戏': 'startup',
   '关闭游戏': 'closedown',
   '肉鸽': 'roguelike',
-  // 不带参数的任务流程（使用默认 automation）
   '运行': 'run',
   '运行流程': 'run',
   '执行流程': 'run',
@@ -390,7 +359,6 @@ function resolveSlashCommand(name: string): TelegramCommandName | null {
  * 无法识别为命令的文本返回 null（由调用方静默忽略）。
  */
 export function parseTelegramCommand(text: string): TelegramCommandInput | null {
-  // 检查作业 URI
   if (parseCopilotUri(text)) {
     return { name: 'copilot', rawName: 'copilot', args: [text], source: 'copilot-uri' };
   }
@@ -401,37 +369,30 @@ export function parseTelegramCommand(text: string): TelegramCommandInput | null 
     return { name: keyword, rawName: keyword, args: [], source: 'keyword' };
   }
 
-  // 检查是否是带参数的关键词命令
   const words = text.split(' ');
   const firstWord = words[0];
   const restWords = words.slice(1);
 
-  // 刷关卡：刷 1-7, 刷关卡 1-7, fight 1-7
   if (matchesFamily(firstWord, FIGHT_KEYWORDS, restWords)) {
     return { name: 'fight', rawName: 'fight', args: restWords, source: 'fight' };
   }
 
-  // 肉鸽：肉鸽 Sami, 刷肉鸽 Sami, roguelike Sami
   if (matchesFamily(firstWord, ROGUELIKE_KEYWORDS, restWords)) {
     return { name: 'roguelike', rawName: 'roguelike', args: restWords, source: 'roguelike' };
   }
 
-  // 启动游戏：启动 Official, 启动游戏 Official, 开启 Official, 打开 Official
   if (matchesFamily(firstWord, STARTUP_KEYWORDS, restWords)) {
     return { name: 'startup', rawName: 'startup', args: restWords, source: 'startup' };
   }
 
-  // 关闭游戏：关闭 Official, 关闭游戏 Official
   if (matchesFamily(firstWord, CLOSEDOWN_KEYWORDS, restWords)) {
     return { name: 'closedown', rawName: 'closedown', args: restWords, source: 'closedown' };
   }
 
-  // 运行流程：运行 automation, 运行流程 automation, run automation
   if (matchesFamily(firstWord, RUN_KEYWORDS, restWords)) {
     return { name: 'run', rawName: 'run', args: restWords, source: 'run' };
   }
 
-  // 检查是否是命令（以 / 开头）
   if (!text.startsWith('/')) {
     return null;
   }
@@ -446,7 +407,6 @@ export function parseTelegramCommand(text: string): TelegramCommandInput | null 
   };
 }
 
-/** 命令解析结果到领域输入的适配：缺省值与既有执行分支保持一致。 */
 export function resolveTelegramCommandRequest(input: TelegramCommandInput): TelegramCommandRequest {
   switch (input.name) {
     case 'start':
@@ -804,22 +764,14 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 处理更新：授权通过后把文本解析为命令领域输入，再交给执行层。
-   */
   async function handleUpdate(update: TelegramMessageUpdate, target: TelegramBotSession): Promise<void> {
     if (!isActive(target) || update.message === null) return;
     const message = update.message;
 
-    // 忽略 Bot 自己发送的消息
     if (message.isBot) {
       return;
     }
 
-    // 验证授权
-    // 1. 如果配置了 allowedUserIds，检查用户 ID 是否在列表中
-    // 2. 如果配置的是群组 ID（负数），验证 chat ID
-    // 3. 如果配置的是个人 ID（正数），验证 user ID
     if (!isAuthorized(message, target.config)) {
       dependencies.logger.warn('拒绝未授权的请求', {
         chatId: message.chatId,
@@ -859,7 +811,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     const config = target.config;
 
     try {
-      // 如果是执行新任务的命令，先停止当前任务
       if (TASK_COMMANDS.has(request.kind)) {
         const status = dependencies.getTaskStatus();
         if (status.isRunning) {
@@ -950,15 +901,11 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
       response = `❌ 执行失败: ${errorMessageOf(error)}`;
     }
 
-    // 如果 response 不为 null，才发送消息
     if (response !== null && isActive(target)) {
       await sendMessage(chatId, response, target);
     }
   }
 
-  /**
-   * 获取帮助信息
-   */
   function getHelpMessage(): string {
     return `🤖 La Pluma Next Bot 命令列表
 
@@ -1016,9 +963,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 • 关闭`;
   }
 
-  /**
-   * 获取状态
-   */
   async function getStatusText(): Promise<string> {
     try {
       const status = dependencies.getTaskStatus();
@@ -1027,7 +971,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
       let statusText = `📊 系统状态\n\n`;
       statusText += `✅ Bot 运行中\n`;
 
-      // 检查是否有任务流程在运行
       if (scheduleStatus.isRunning) {
         statusText += `🎮 正在执行任务流程\n`;
         statusText += `📝 流程: ${scheduleStatus.scheduleId || '未知'}\n`;
@@ -1036,14 +979,12 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
         const duration = Math.floor((Date.now() - (scheduleStatus.startTime ?? Date.now())) / 1000);
         statusText += `⏱️ 运行时间: ${duration} 秒\n`;
       }
-      // 检查是否有单个任务在运行
       else if (status.isRunning) {
         statusText += `🎮 正在执行任务\n`;
         statusText += `📝 当前任务: ${status.taskName || '未知'}\n`;
         const duration = Math.floor((Date.now() - (status.startTime ?? Date.now())) / 1000);
         statusText += `⏱️ 运行时间: ${duration} 秒\n`;
       }
-      // 没有任务在运行
       else {
         statusText += `⏰ 等待命令...\n`;
       }
@@ -1056,9 +997,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行启动游戏
-   */
   async function executeStartup(clientType: string, target: TelegramBotSession): Promise<string | null> {
     if (!isActive(target)) return null;
     try {
@@ -1073,9 +1011,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行关闭游戏
-   */
   async function executeClosedown(clientType: string, target: TelegramBotSession): Promise<string | null> {
     if (!isActive(target)) return null;
     try {
@@ -1087,23 +1022,17 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行截图
-   */
   async function executeScreenshot(chatId: string, target: TelegramBotSession): Promise<void> {
     if (!isActive(target)) return;
     try {
-      // 先发送提示消息
       await sendMessage(chatId, '📸 正在截图...', target);
 
-      // 执行截图
       const connection = await dependencies.resolveConnection();
       if (!isActive(target)) return;
       const result = await dependencies.captureScreen(connection.adbPath, connection.address);
       if (!isActive(target)) return;
 
       if (result.image) {
-        // 发送图片
         await sendPhoto(chatId, '📸 当前屏幕截图', result.image, target);
       } else {
         await sendMessage(chatId, '❌ 截图失败：未获取到图片数据', target);
@@ -1114,9 +1043,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行理智作战
-   */
   async function executeFight(stage: string, target: TelegramBotSession): Promise<string | null> {
     if (!isActive(target)) return null;
     try {
@@ -1130,9 +1056,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行肉鸽任务
-   */
   async function executeRoguelike(theme: string, target: TelegramBotSession): Promise<string | null> {
     if (!isActive(target)) return null;
     try {
@@ -1146,20 +1069,15 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行抄作业
-   */
   async function executeCopilot(uri: string, target: TelegramBotSession): Promise<string | null> {
     if (!isActive(target)) return null;
     const normalized = normalizeCopilotUri(uri);
     const config = target.config;
     try {
-      // 1. 获取关卡信息
       const stageInfo = await getStageInfoFromCopilot(normalized, target);
       if (!isActive(target)) return null;
       const displayName = stageInfo?.displayName || '对应关卡';
 
-      // 2. 提示用户手动导航
       await sendMessage(config.chatId, `✅ 准备执行抄作业
 📋 作业 URI：${normalized}
 📍 关卡：${displayName}
@@ -1168,10 +1086,8 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 
 倒计时开始...`, target);
 
-      // 3. 在后台执行倒计时和作业（不阻塞）
       (async () => {
         try {
-          // 倒计时提醒
           for (let i = 15; i > 0; i--) {
             if (!await waitForSession(target, 1000)) return;
             if (i === 10 || i === 5 || i === 3 || i === 1) {
@@ -1180,7 +1096,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
           }
 
           if (!isActive(target)) return;
-          // 执行作业
           await sendMessage(config.chatId, `🚀 开始执行作业！`, target);
           if (!isActive(target)) return;
           await dependencies.execMaaCommand('copilot', [normalized, '--formation'], `抄作业 ${normalized}`, 'copilot');
@@ -1199,12 +1114,8 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 内部关卡代号到显示名称的映射表
-   * 用于无法从标题获取关卡名的情况
-   */
+  /** 标题无法解析出关卡名时的兜底映射；活动关卡需按实际补充。 */
   const STAGE_NAME_MAP: Record<string, string> = {
-    // 活动关卡示例（需要根据实际情况补充）
     'act40side_ex08': 'OR-EX-8',
     'act40side_ex07': 'OR-EX-7',
     'act40side_ex06': 'OR-EX-6',
@@ -1213,7 +1124,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     'act40side_ex03': 'OR-EX-3',
     'act40side_ex02': 'OR-EX-2',
     'act40side_ex01': 'OR-EX-1',
-    // 可以继续添加其他活动关卡...
   };
 
   interface CopilotStageInfo {
@@ -1221,9 +1131,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     displayName: string | null;
   }
 
-  /**
-   * 从作业 URI 获取关卡信息
-   */
   async function getStageInfoFromCopilot(
     uri: string,
     target: TelegramBotSession
@@ -1253,30 +1160,22 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
           const title = doc && typeof doc.title === 'string' ? doc.title : '';
           dependencies.logger.debug('Copilot 作业标题', { title });
 
-          // 从标题提取显示名称（最重要）
           let displayName: string | null = null;
           if (title) {
-            // 尝试多种格式匹配
-            // 格式1: "OR-EX-8 xxx" 或 "OR-EX-8"
             let titleMatch = title.match(/^([A-Z]{1,3}-[A-Z]{1,3}-\d+)/);
             if (!titleMatch) {
-              // 格式2: "1-7 xxx" 或 "1-7"
               titleMatch = title.match(/^(\d+-\d+)/);
             }
             if (!titleMatch) {
-              // 格式3: "CE-6 xxx" 或 "CE-6"
               titleMatch = title.match(/^([A-Z]{1,3}-\d+)/);
             }
             if (!titleMatch) {
-              // 格式4: 标题中包含关卡名，如 "【OR-EX-8】xxx" 或 "[OR-EX-8] xxx"
               titleMatch = title.match(/[【\[]([A-Z]{1,3}-[A-Z]{1,3}-\d+)[】\]]/);
             }
             if (!titleMatch) {
-              // 格式5: 标题中包含关卡名，如 "【1-7】xxx"
               titleMatch = title.match(/[【\[](\d+-\d+)[】\]]/);
             }
             if (!titleMatch) {
-              // 格式6: 任何位置的关卡名模式
               titleMatch = title.match(/([A-Z]{1,3}-[A-Z]{1,3}-\d+)/);
             }
             if (!titleMatch) {
@@ -1292,7 +1191,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
             ? content.stage_name
             : null;
 
-          // 如果标题中没有找到，尝试从映射表查找
           if (!displayName && stageName) {
             displayName = STAGE_NAME_MAP[stageName] || null;
             if (displayName) {
@@ -1303,8 +1201,8 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
           dependencies.logger.debug('Copilot 关卡信息', { displayName, stageName });
 
           return {
-            stageName,        // 内部代号
-            displayName       // 显示名称（用于导航）
+            stageName,
+            displayName
           };
         }
       } else if (uri.endsWith('.json')) {
@@ -1324,9 +1222,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 执行定时任务
-   */
   function executeScheduleTask(): string {
     // Bot 无法取得 WebUI 中保存的 taskFlow，只提供明确的替代入口。
     return `❌ 暂不支持通过 Bot 执行定时任务
@@ -1336,9 +1231,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 /roguelike [主题] - 执行肉鸽任务`;
   }
 
-  /**
-   * 停止当前任务
-   */
   async function stopTask(): Promise<string> {
     try {
       const result = dependencies.stopCurrentTask();
@@ -1367,7 +1259,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
   ): Promise<string | null> {
     if (!isActive(target)) return null;
     try {
-      // 验证流程类型
       const validTypes = ['automation', 'combat', 'roguelike'];
       if (!validTypes.includes(flowType)) {
         return `❌ 无效的流程类型: ${flowType}
@@ -1378,7 +1269,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 • roguelike - 肉鸽流程`;
       }
 
-      // 获取流程名称
       const flowNames: Record<string, string> = {
         'automation': '日常流程',
         'combat': '作战流程',
@@ -1387,8 +1277,7 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 
       const flowName = flowNames[flowType];
 
-      // 任务流程配置经用户配置存储端口读取：类型在白名单内，缺失与损坏
-      // 都有明确结果，不再直读 data/user-configs 下的文件。
+      // 任务流程配置经用户配置存储端口读取：类型在白名单内，缺失与损坏都有明确结果。
       const configResult = await dependencies.loadUserConfig(`${flowType}-tasks`);
       if (!configResult.success) {
         throw new Error(configResult.message || '读取任务流程配置失败');
@@ -1396,7 +1285,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
       if (!isActive(target)) return null;
       const flowConfig: unknown = configResult.data;
 
-      // 获取任务流程：非数组按未配置处理，单条配置只读取对象条目。
       const taskFlow: unknown[] = isRecord(flowConfig) && Array.isArray(flowConfig.taskFlow)
         ? flowConfig.taskFlow
         : [];
@@ -1409,22 +1297,18 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 
       const enabledCount = taskFlow.filter(task => isRecord(task) && Boolean(task.enabled)).length;
 
-      // 发送初始状态消息
       const initialMessage = await sendMessage(config.chatId, `✅ 已开始执行${flowName}
 
 📊 准备执行 ${enabledCount} 个任务...`, target);
 
-      // 获取消息 ID 用于后续编辑
       const messageId = readMessageId(initialMessage);
 
-      // 在后台执行流程并实时更新状态
       if (messageId !== null) {
         let stopInterval: (() => void) | null = null;
         const updateProgress = async (): Promise<void> => {
           const scheduleStatus = dependencies.getScheduleExecutionStatus();
 
           if (!scheduleStatus.isRunning) {
-            // 任务完成，停止更新
             stopInterval?.();
             if (!isActive(target)) return;
             await editMessage(config.chatId, messageId, `✅ ${flowName}执行完成
@@ -1434,7 +1318,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
             return;
           }
 
-          // 构建状态文本
           const duration = Math.floor((Date.now() - (scheduleStatus.startTime ?? Date.now())) / 1000);
           const minutes = Math.floor(duration / 60);
           const seconds = duration % 60;
@@ -1450,7 +1333,7 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
 
           await editMessage(config.chatId, messageId, statusText, target);
         };
-        stopInterval = startSessionInterval(target, updateProgress, 3000); // 每3秒更新一次
+        stopInterval = startSessionInterval(target, updateProgress, 3000);
       }
 
       // 执行流程（不等待完成）；停止后不再启动新流程
@@ -1492,7 +1375,7 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
         body: {
           chat_id: chatId,
           text: text,
-          parse_mode: 'Markdown'  // 改用 Markdown 而不是 HTML
+          parse_mode: 'Markdown'
         },
         signal: target.controller.signal
       });
@@ -1502,7 +1385,7 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
         dependencies.logger.error('发送消息失败', { description: response.description });
       }
 
-      return response; // 返回完整响应，包含 message_id
+      return response;
     } catch (error) {
       if (isActive(target)) {
         dependencies.logger.error('发送消息错误', { error: errorMessageOf(error) });
@@ -1511,9 +1394,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     }
   }
 
-  /**
-   * 编辑消息
-   */
   async function editMessage(
     chatId: string,
     messageId: number,
@@ -1564,7 +1444,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     const url = `${dependencies.apiBaseUrl}/bot${target.config.botToken}/sendPhoto`;
 
     try {
-      // 将 base64 转换为 Buffer
       const imageBuffer = Buffer.from(imageBase64, 'base64');
 
       const formData = new FormData();
@@ -1596,13 +1475,9 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
     description: string;
   }
 
-  /**
-   * 设置 Bot 命令菜单
-   */
   async function setupBotCommands(target: TelegramBotSession): Promise<void> {
     const config = target.config;
 
-    // 先删除所有旧命令
     const deleteUrl = `${dependencies.apiBaseUrl}/bot${config.botToken}/deleteMyCommands`;
 
     try {
@@ -1618,7 +1493,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
       }
     }
 
-    // 设置新命令
     const url = `${dependencies.apiBaseUrl}/bot${config.botToken}/setMyCommands`;
 
     const commands: TelegramBotCommandMenuEntry[] = [
@@ -1661,7 +1535,6 @@ export function createTelegramBotService(overrides: TelegramBotServiceOverrides 
   };
 }
 
-/** 进程级默认实例：绑定真实出站端口、MAA 服务与配置存储。 */
 export const telegramBotService = createTelegramBotService();
 
 export const initTelegramBot = (config?: unknown): TelegramBotStatus => telegramBotService.init(config);
