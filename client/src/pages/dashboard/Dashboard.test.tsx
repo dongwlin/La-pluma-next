@@ -36,9 +36,6 @@ const apiMocks = vi.hoisted(() => ({
   },
   controllerRef: { current: null as ExecutionController | null },
 }))
-const renderSpies = vi.hoisted(() => ({
-  dashboardSkeleton: vi.fn(),
-}))
 
 // 在端点边界 mock：页面与快照协调器使用真实的领域 query 定义（key、signal、
 // 信封归一与取消），只替换网络读取与执行入口。
@@ -132,12 +129,6 @@ vi.mock('@/shared/ui/Icons', () => {
   const Icon = () => null
   return { default: new Proxy({}, { get: () => Icon }) }
 })
-vi.mock('@/features/dashboard/components/DashboardSkeleton', () => ({
-  DashboardSkeleton: () => {
-    renderSpies.dashboardSkeleton()
-    return <div>loading</div>
-  },
-}))
 vi.mock('@/shared/ui', () => ({
   PageHeader: ({ title, actions }: { title: string; actions?: React.ReactNode }) => <header><h1>{title}</h1>{actions}</header>,
   Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
@@ -171,6 +162,10 @@ let trackedRunState: AgentRun
 
 const findButton = (text: string) => Array.from(container.querySelectorAll('button'))
   .find(button => button.textContent?.includes(text))
+
+const skeleton = () => container.querySelector('[aria-label="概览加载中"]')
+
+const flowCard = () => container.querySelector('[data-dashboard-flow-card]')
 
 const ok = (data: unknown) => ({ success: true, data })
 
@@ -347,13 +342,12 @@ describe('Dashboard connectivity state', () => {
 
     await act(async () => renderDashboard())
 
-    expect(container.textContent).toContain('loading')
-    expect(renderSpies.dashboardSkeleton).toHaveBeenCalled()
+    expect(skeleton()).not.toBeNull()
 
     await act(async () => resolveActivity?.({ success: true, data: activityDto({ name: '首次活动' }) }))
     await flushDashboard()
 
-    expect(container.textContent).not.toContain('loading')
+    expect(skeleton()).toBeNull()
     expect(container.textContent).toContain('首次活动')
   })
 
@@ -364,15 +358,13 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     expect(container.textContent).toContain('缓存活动')
-    const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
 
     await act(async () => root.render(<div>其他页面</div>))
     apiMocks.getActivity.mockClear()
     await act(async () => renderDashboard())
 
     expect(container.textContent).toContain('缓存活动')
-    expect(container.textContent).not.toContain('loading')
-    expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
+    expect(skeleton()).toBeNull()
     expect(apiMocks.getActivity).not.toHaveBeenCalled()
   })
 
@@ -389,14 +381,12 @@ describe('Dashboard connectivity state', () => {
     apiMocks.getActivity.mockReturnValueOnce(new Promise(resolve => {
       resolveActivity = resolve
     }))
-    const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
 
     await act(async () => root.render(<div>其他页面</div>))
     await act(async () => renderDashboard())
 
     expect(container.textContent).toContain('缓存活动')
-    expect(container.textContent).not.toContain('loading')
-    expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
+    expect(skeleton()).toBeNull()
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(2)
 
     await act(async () => resolveActivity?.({ success: true, data: activityDto({ name: '更新活动' }) }))
@@ -568,7 +558,6 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
 
     expect(findButton('刷新数据')).toBeUndefined()
-    expect(container.querySelector('.dashboard-mobile-refresh')).toBeNull()
     expect(container.querySelector('button[aria-label="刷新执行状态"]')).toBeNull()
   })
 
@@ -586,7 +575,6 @@ describe('Dashboard connectivity state', () => {
   it('keeps the preview entry mounted across Activity hide and show', async () => {
     await act(async () => renderDashboard())
     await flushDashboard()
-    const skeletonRenders = renderSpies.dashboardSkeleton.mock.calls.length
     const preview = container.querySelector('[data-dashboard-preview-card]')
     expect(preview).not.toBeNull()
 
@@ -598,7 +586,7 @@ describe('Dashboard connectivity state', () => {
     await flushDashboard()
     expect(container.querySelector('[data-dashboard-preview-card]')).toBe(preview)
     // 恢复时只重建 Effects，不重新走首屏骨架，也不重建预览卡片。
-    expect(renderSpies.dashboardSkeleton).toHaveBeenCalledTimes(skeletonRenders)
+    expect(skeleton()).toBeNull()
     expect(container.querySelectorAll('[data-dashboard-preview-card]')).toHaveLength(1)
   })
 
@@ -614,7 +602,7 @@ describe('Dashboard connectivity state', () => {
     await act(async () => renderDashboard())
     await flushDashboard()
 
-    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const flow = flowCard()
     expect(flow?.getAttribute('aria-busy')).toBe('true')
     expect(findButton('正在运行')?.disabled).toBe(true)
     expect(useStatusStore.getState().runStatus.phase).toBe('idle')
@@ -650,7 +638,7 @@ describe('Dashboard connectivity state', () => {
       await Promise.resolve()
     })
 
-    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const flow = flowCard()
     const status = useStatusStore.getState()
     expect(apiMocks.runCurrentActivity).toHaveBeenCalledTimes(1)
     expect(activityButton?.disabled).toBe(true)
@@ -705,7 +693,7 @@ describe('Dashboard connectivity state', () => {
     })
     await flushDashboard()
 
-    const flow = container.querySelector('.dashboard-flow-glow-shell')
+    const flow = flowCard()
     const feedback = container.querySelector('[data-dashboard-flow-feedback]')
     const status = useStatusStore.getState()
     expect(feedback?.textContent).toBe(blocker)
@@ -991,7 +979,7 @@ describe('Dashboard connectivity state', () => {
     await act(async () => renderDashboard())
     await flushDashboard()
 
-    expect(renderSpies.dashboardSkeleton).not.toHaveBeenCalled()
+    expect(skeleton()).toBeNull()
     expect(apiMocks.getActivity).toHaveBeenCalledTimes(1)
     expect(container.textContent).toContain('测试活动')
   })

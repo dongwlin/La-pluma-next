@@ -71,6 +71,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     <div
       className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || activityPreflightLoading || view.isRunning ? 'is-active' : ''}`}
       aria-busy={quickStartLoading || activityPreflightLoading || view.isRunning}
+      data-dashboard-flow-card
     >
       <Card smoothCorners className="dashboard-flow-card p-0!">
       <div className="dashboard-flow-header">
@@ -175,7 +176,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         )}
       </div>
 
-      <div className="dashboard-flow-stages">
+      <div className="dashboard-flow-stages" data-dashboard-flow-stages>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="dashboard-flow-rail-dot" />

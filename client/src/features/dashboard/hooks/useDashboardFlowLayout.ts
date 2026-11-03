@@ -50,7 +50,7 @@ export function useDashboardFlowLayout(enabled = true) {
         const previewFrameRect = previewFrame.getBoundingClientRect()
         const feedbackRow = flowCard.querySelector<HTMLElement>('[data-dashboard-flow-feedback]')
         const feedbackRowHeight = feedbackRow?.getBoundingClientRect().height ?? 0
-        const stages = flowCard.querySelector<HTMLElement>('.dashboard-flow-stages')
+        const stages = flowCard.querySelector<HTMLElement>('[data-dashboard-flow-stages]')
         const stagesContent = stages?.lastElementChild
         let stagesExtraHeight = 0
 
