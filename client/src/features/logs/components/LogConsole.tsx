@@ -41,6 +41,9 @@ export default function LogConsole({
   const [follow, dispatchFollow] = useReducer(reduceLogFollow, initialLogFollowState)
   const followEligible = autoScroll && !viewingHistory
   const headingTitle = viewingHistory ? '历史日志' : '实时日志'
+  // 读取暂停、查看历史或上滑回顾旧行时都不应继续播报新增行，
+  // 否则屏幕阅读器会在用户主动停留的位置持续打断。
+  const liveRegionMuted = paused || viewingHistory || (followEligible && follow.paused)
 
   const layoutFingerprint = useMemo(() => JSON.stringify(view.visible.map(group => [
     group.time, group.level, group.message, group.count,
@@ -149,7 +152,7 @@ export default function LogConsole({
               className="log-console"
               role="log"
               aria-label="日志内容"
-              aria-live={paused ? 'off' : 'polite'}
+              aria-live={liveRegionMuted ? 'off' : 'polite'}
               aria-relevant="additions text"
             >
               {error && (

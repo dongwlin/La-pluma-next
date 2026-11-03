@@ -55,6 +55,9 @@ const scrollNode = async (node: HTMLElement) => {
   await act(async () => node.dispatchEvent(new Event('scroll')))
 }
 
+/** 实时区域的播报开关：用户在回顾旧内容时应静音，避免新行打断朗读。 */
+const liveMode = () => container.querySelector('[role="log"]')?.getAttribute('aria-live')
+
 const findFollowIndicator = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.textContent?.includes('有新日志') || button.textContent?.includes('回到底部'))
 
@@ -120,6 +123,29 @@ describe('LogConsole scroll following', () => {
     expect(findFollowIndicator()).toBeUndefined()
   })
 
+  it('mutes the live region while following is paused and restores it at the bottom', async () => {
+    await renderConsole(initialLogs)
+    expect(liveMode()).toBe('polite')
+
+    const node = getLogNode()
+    defineScrollBox(node, 1000, 400)
+
+    // 上滑离开底部：用户在看旧行，新增行不应再播报
+    node.scrollTop = 120
+    await scrollNode(node)
+    expect(liveMode()).toBe('off')
+
+    // 回到底部恢复跟随：重新播报
+    node.scrollTop = 1000
+    await scrollNode(node)
+    expect(liveMode()).toBe('polite')
+  })
+
+  it('mutes the live region while log reading is paused', async () => {
+    await renderConsole(initialLogs, { paused: true })
+    expect(liveMode()).toBe('off')
+  })
+
   it('resumes following and clears the count from the indicator click', async () => {
     await renderConsole(initialLogs)
     const node = getLogNode()
@@ -178,6 +204,8 @@ describe('LogConsole scroll following', () => {
   it('does not follow in history view', async () => {
     const historyLogs = [entry('历史一'), entry('历史二')]
     await renderConsole(historyLogs, { viewingHistory: true, autoScroll: true })
+    // 历史视图没有新增行可播报，实时区域应保持静音
+    expect(liveMode()).toBe('off')
     const node = getLogNode()
     defineScrollBox(node, 1000, 400)
 
