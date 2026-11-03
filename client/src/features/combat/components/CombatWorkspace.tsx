@@ -232,6 +232,7 @@ export default function CombatWorkspace() {
     [trackedRun, setRun],
   )
 
+
   // 终态后按服务端计划进度重建“待执行”选择。成功的条目会被计划标记为已完成，
   // 失败的条目保留待重试；同步失败只影响展示，不把 run 结果解释成完成。
   const activeSetRun = setView.activeSetRun
@@ -601,12 +602,8 @@ export default function CombatWorkspace() {
         <div className="task-monitor-main">
           <CombatModeTabs activeMode={activeCombatMode} onSelect={setActiveCombatMode} />
 
-          {/* 本次执行进度：绑定当前被跟踪的 Run，与作业集的“历史续跑进度”分开。 */}
-          <CombatExecutionProgressPanel
-            progress={executionProgress}
-            isStopping={isStopping}
-            onStop={() => void handleStopTask()}
-          />
+          {/* 本次执行进度：只补条目位置、关卡与已用时；状态与停止留在执行卡片。 */}
+          <CombatExecutionProgressPanel progress={executionProgress} />
 
           {/* 任务列表 */}
           <div className="app-stack-section">

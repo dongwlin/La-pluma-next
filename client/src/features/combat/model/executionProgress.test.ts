@@ -50,24 +50,10 @@ describe('deriveExecutionProgress', () => {
     expect(deriveExecutionProgress(null, null)).toBeNull()
   })
 
-  it('projects a set run with step, stage and per-item counts', () => {
+  it('projects a set run with the queue position and current stage', () => {
     const setRun = setProjection({
       itemCount: 3,
-      totalCount: 3,
-      successCount: 1,
-      failedCount: 1,
-      skippedCount: 1,
-      pendingCount: 1,
-      currentItemIndex: 1,
       entries: [
-        {
-          key: '0:101:normal',
-          itemIndex: 0,
-          copilotId: 101,
-          stage: 'TEST-1',
-          mode: 'normal',
-          status: 'success',
-        },
         {
           key: '1:102:normal',
           itemIndex: 1,
@@ -80,107 +66,49 @@ describe('deriveExecutionProgress', () => {
     })
     const view = deriveExecutionProgress(run({
       operationId: 'run_copilot_set',
-      progress: { name: '作业集 48990', totalSteps: 3 },
+      progress: { name: '作业集 48990', currentStep: 2, totalSteps: 3 },
     }), setRun)
 
     expect(view).not.toBeNull()
     expect(view?.state).toBe('running')
     expect(view?.isActive).toBe(true)
-    expect(view?.stateLabel).toBe('执行中')
-    expect(view?.name).toBe('作业集 48990')
     expect(view?.stage).toBe('TEST-2')
     expect(view?.step).toEqual({ current: 2, total: 3 })
-    expect(view?.counts).toEqual({ success: 1, failed: 1, stopped: 0, skipped: 1, pending: 1 })
+    // 作业集名称由列表与续跑进度展示，本次执行面板不重复。
+    expect(view?.name).toBeNull()
   })
 
   it('numbers the step by the server queue while a set run waits', () => {
-    const setRun = setProjection({
-      state: 'waiting',
-      isActive: true,
-      isWaiting: true,
-      waitingForNext: true,
-      itemCount: 2,
-      totalCount: 2,
-      successCount: 1,
-      pendingCount: 1,
-      nextEntry: {
-        key: '1:102:normal',
-        itemIndex: 1,
-        copilotId: 102,
-        stage: 'TEST-2',
-        mode: 'normal',
-        status: 'pending',
-      },
-    })
     const view = deriveExecutionProgress(run({
       operationId: 'run_copilot_set',
       state: 'waiting',
       progress: { currentStep: 2, totalSteps: 2 },
-    }), setRun)
+    }), setProjection({ state: 'waiting', isWaiting: true, waitingForNext: true }))
 
-    expect(view?.stateLabel).toBe('等待下一关')
     expect(view?.step).toEqual({ current: 2, total: 2 })
     expect(view?.stage).toBeNull()
   })
 
-  it('prefers the server queue position over the running item index', () => {
-    const setRun = setProjection({
-      itemCount: 3,
-      totalCount: 3,
-      currentItemIndex: 2,
-    })
+  it('does not substitute the item index for the queue position', () => {
     const view = deriveExecutionProgress(run({
       operationId: 'run_copilot_set',
-      progress: { currentStep: 2, totalSteps: 3 },
-    }), setRun)
+      progress: {},
+    }), setProjection({ currentItemIndex: 2 }))
 
-    expect(view?.step).toEqual({ current: 2, total: 3 })
+    // both 模式下作业索引与执行序号不同，缺失队列编号时不猜测位置。
+    expect(view?.step).toBeNull()
   })
 
-  it('keeps counting skipped items in the summary without breaking the step', () => {
-    const setRun = setProjection({
-      itemCount: 3,
-      totalCount: 2,
-      successCount: 1,
-      skippedCount: 1,
-      pendingCount: 1,
-      currentItemIndex: 1,
-    })
+  it('omits the total when the server only reports the current position', () => {
     const view = deriveExecutionProgress(run({
       operationId: 'run_copilot_set',
-      progress: {
-        currentStep: 2,
-        totalSteps: 2,
-        skippedCount: 1,
-        successCount: 1,
-        pendingCount: 1,
-      },
-    }), setRun)
+      progress: { currentStep: 2 },
+    }), setProjection())
 
-    expect(view?.step).toEqual({ current: 2, total: 2 })
-    expect(view?.counts).toEqual({ success: 1, failed: 0, stopped: 0, skipped: 1, pending: 1 })
+    expect(view?.step).toEqual({ current: 2, total: null })
   })
 
-  it('keeps stopped items visible after the run is terminated', () => {
-    const setRun = setProjection({
-      state: 'stopped',
-      isActive: false,
-      itemCount: 3,
-      totalCount: 3,
-      successCount: 1,
-      stoppedCount: 1,
-      pendingCount: 1,
-    })
-    const view = deriveExecutionProgress(run({
-      operationId: 'run_copilot_set',
-      state: 'stopped',
-      progress: { totalSteps: 3, successCount: 1, stoppedCount: 1, pendingCount: 1 },
-    }), setRun)
-
-    expect(view?.counts).toEqual({ success: 1, failed: 0, stopped: 1, skipped: 0, pending: 1 })
-  })
-
-  it('projects a single task run without step, stage or counts', () => {
+  it('projects a single task run without step or stage', () => {
     const view = deriveExecutionProgress(run({
       progress: { currentTask: '自动战斗作业' },
     }), null)
@@ -188,29 +116,25 @@ describe('deriveExecutionProgress', () => {
     expect(view?.name).toBe('自动战斗作业')
     expect(view?.stage).toBeNull()
     expect(view?.step).toBeNull()
-    expect(view?.counts).toBeNull()
-    expect(view?.stateLabel).toBe('执行中')
   })
 
   it('degrades to null fields when the server has not projected progress', () => {
     const view = deriveExecutionProgress(run({ state: 'accepted' }), null)
 
-    expect(view?.stateLabel).toBe('启动中')
     expect(view?.name).toBeNull()
     expect(view?.stage).toBeNull()
     expect(view?.step).toBeNull()
-    expect(view?.counts).toBeNull()
     expect(view?.startedAtMs).toBeNull()
     expect(view?.durationMs).toBeNull()
   })
 
-  it('hides counts until the set run has any entry facts', () => {
+  it('hides the stage until the set run reports an entry', () => {
     const view = deriveExecutionProgress(
       run({ operationId: 'run_copilot_set' }),
       setProjection(),
     )
 
-    expect(view?.counts).toBeNull()
+    expect(view?.stage).toBeNull()
     expect(view?.step).toBeNull()
   })
 

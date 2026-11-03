@@ -248,6 +248,7 @@ function setResult(
       mode: 'continuous',
       raid: 'normal',
       totalEntries: taskResults.length,
+      queuedEntries: taskResults.length,
       attemptedCount: taskResults.length - count('pending'),
       alreadyCompletedCount: 0,
       successCount: count('success'),
@@ -522,7 +523,9 @@ describe('CombatTasks execution', () => {
 
   it('keeps execution progress without a separate log observer or entry', async () => {
     useIdentity({ runId: 'run-9', operationId: 'run_task', scope: 'combat' })
-    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-9')] })))
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      activeRuns: [activeRun('run-9', 'running', { progress: { currentTask: '自动战斗作业' } })],
+    })))
     startController()
     await flush()
     await renderComponent()
@@ -1616,7 +1619,8 @@ describe('CombatTasks execution', () => {
       .filter(text => text === '已完成' || text === '待重试' || text === '待执行')
     expect(statusLabels).toEqual(['已完成', '待重试', '待执行'])
     expect(container.textContent).toContain('待 2')
-    expect(container.textContent).toContain('完成 1')
+    // 计划状态的汇总只在续跑进度展示，本次执行面板不重复计数。
+    expect(container.textContent).toContain('已通关 1')
     expect(container.textContent).toContain('失败 1')
     expect(container.textContent).toContain('本次已执行 2 个')
     expect(container.textContent).toContain('第 3 / 3 关')

@@ -23,6 +23,7 @@
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
 | 作业输入与识别方式 | `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；识别方式保存在面板会话存储 |
 | 普通搜索与悖论搜索 | `components/CombatSearchPanel.tsx`、`components/CombatParadoxSearchPanel.tsx` | 搜索词与“已选中”高亮在面板侧；结果、取消与推荐接线由工作区提供 |
+| 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业集预览、续跑进度、下一关与逐项结果 | `components/CombatCopilotSetPanel.tsx` | 只渲染 `CopilotSetView`；勾选/全选/重置/继续由工作区动作 |
 | 作业信息详情 | `components/CombatCopilotInfoPanel.tsx` | 只渲染当前预览与视图派生 |
 | 保全派驻 / 悖论模拟卡片 | `components/CombatSpecialTaskPanel.tsx` | 输入、URI 计数、高级字段、搜索与概览；不创建执行状态 |
@@ -45,6 +46,7 @@
 CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 └─ CombatWorkspace（模式、配置、预览/搜索、执行、选择、同步反馈、重置弹层）
    ├─ CombatModeTabs（受控分段 + 高亮测量）
+   ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
    │  ├─ CombatSettingsPanel → CombatAdvancedFields
    │  ├─ CombatCopilotInputPanel（输入 + 识别方式）
@@ -118,6 +120,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - **三种作业集模式**：设置面板的 `app`/`manual`/`cli` 保持原选项与存储值；提交时 `app`/`cli` 映射为服务端 `continuous`，`manual` 保留逐关等待。取消/继续等待由 `useCombatExecution` 与服务端 Run 持有。
 - **停止**：卡片按钮只调用工作区的 `stop()`；控制器按本客户端持有的 `runId` 停止，停止确认超时逻辑未改。
 - **逐项结果**：作业集列表读取 `CopilotSetView.itemStatuses` 展示执行中/待重试/已终止/已跳过，读取 `runCompletedIndexes` 判定已完成，历史通关来自 `historyCompletedIndexes`；页头计数来自同一视图，主动终止单列。
+- **本次执行与续跑进度分工**：`CombatExecutionProgressPanel` 只显示本次执行队列中的条目位置（`progress.currentStep`/`totalSteps`）、当前关卡与已用时，按“项”而不是“关”表述；运行状态与停止按钮留在执行卡片，逐项结果、历史通关与计划状态计数留在作业列表与续跑进度，不重复呈现。
 - **重置进度**：确认后调用 reset 端点、把全部索引放回待执行、归零预览进度、失效该作业集计划缓存，并作废旧 Run 的逐项展示。
 
 ### 6. Activity 与卸载

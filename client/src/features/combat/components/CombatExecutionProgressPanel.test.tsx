@@ -15,11 +15,9 @@ function progress(overrides: Partial<ExecutionProgressView> = {}): ExecutionProg
     operationId: 'run_copilot_set',
     state: 'running',
     isActive: true,
-    stateLabel: '执行中',
-    name: '作业集 48990',
+    name: null,
     stage: 'TEST-2',
     step: { current: 2, total: 3 },
-    counts: { success: 1, failed: 1, stopped: 0, skipped: 0, pending: 1 },
     startedAtMs: Date.now() - 5_000,
     durationMs: null,
     ...overrides,
@@ -29,7 +27,6 @@ function progress(overrides: Partial<ExecutionProgressView> = {}): ExecutionProg
 describe('CombatExecutionProgressPanel', () => {
   let container: HTMLDivElement
   let root: Root
-  const onStop = vi.fn()
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -48,70 +45,60 @@ describe('CombatExecutionProgressPanel', () => {
   }
 
   it('renders nothing without a tracked run', async () => {
-    await render(<CombatExecutionProgressPanel progress={null} isStopping={false} onStop={onStop} />)
+    await render(<CombatExecutionProgressPanel progress={null} />)
 
     expect(container.querySelector('[aria-label="本次执行进度"]')).toBeNull()
   })
 
-  it('shows the set run step, stage, counts and a stop entry', async () => {
-    await render(<CombatExecutionProgressPanel progress={progress()} isStopping={false} onStop={onStop} />)
+  it('renders nothing when the run has no progress facts to add', async () => {
+    await render(
+      <CombatExecutionProgressPanel
+        progress={progress({ state: 'accepted', name: null, stage: null, step: null, startedAtMs: null })}
+      />,
+    )
+
+    expect(container.querySelector('[aria-label="本次执行进度"]')).toBeNull()
+  })
+
+  it('shows the entry position, stage and elapsed time for a set run', async () => {
+    await render(<CombatExecutionProgressPanel progress={progress()} />)
 
     const panel = container.querySelector('[aria-label="本次执行进度"]')
     expect(panel?.textContent).toContain('本次执行进度')
-    expect(panel?.textContent).toContain('执行中')
-    expect(panel?.textContent).toContain('正在执行 第 2 / 3 关')
-    expect(panel?.textContent).toContain('作业集 48990')
+    expect(panel?.textContent).toContain('正在执行 本次第 2 / 3 项')
     expect(panel?.textContent).toContain('关卡: TEST-2')
-    expect(panel?.textContent).toContain('已完成 1 · 失败 1 · 待执行 1')
-    expect(panel?.textContent).not.toContain('跳过')
-    expect(panel?.textContent).not.toContain('已终止')
     expect(panel?.textContent).toContain('已用时')
-
-    const stop = Array.from(panel?.querySelectorAll('button') ?? [])
-      .find(button => button.textContent?.trim() === '终止')
-    expect(stop).toBeDefined()
-    await act(async () => stop?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(onStop).toHaveBeenCalledOnce()
+    // 状态、逐项计数与停止入口由执行卡片和作业列表持有，面板不重复。
+    expect(panel?.textContent).not.toContain('执行中')
+    expect(panel?.textContent).not.toContain('已完成')
+    expect(panel?.querySelectorAll('button')).toHaveLength(0)
   })
 
-  it('adds the skipped count only when skipped items exist', async () => {
+  it('counts entries rather than stages when raid and normal share one stage', async () => {
     await render(
       <CombatExecutionProgressPanel
-        progress={progress({ counts: { success: 1, failed: 0, stopped: 0, skipped: 2, pending: 1 } })}
-        isStopping={false}
-        onStop={onStop}
-      />,
-    )
-
-    expect(container.querySelector('[aria-label="本次执行进度"]')?.textContent)
-      .toContain('已完成 1 · 失败 0 · 跳过 2 · 待执行 1')
-  })
-
-  it('keeps the stopped count after the run is terminated', async () => {
-    await render(
-      <CombatExecutionProgressPanel
-        progress={progress({
-          state: 'stopped',
-          isActive: false,
-          stateLabel: '已终止',
-          stage: null,
-          step: null,
-          counts: { success: 1, failed: 0, stopped: 1, skipped: 0, pending: 1 },
-          startedAtMs: null,
-          durationMs: 30_000,
-        })}
-        isStopping={false}
-        onStop={onStop}
+        progress={progress({ step: { current: 3, total: 4 } })}
       />,
     )
 
     const panel = container.querySelector('[aria-label="本次执行进度"]')
-    expect(panel?.textContent).toContain('已完成 1 · 失败 0 · 已终止 1 · 待执行 1')
-    expect(panel?.textContent).not.toContain('跳过')
-    expect(Array.from(panel?.querySelectorAll('button') ?? [])).toEqual([])
+    expect(panel?.textContent).toContain('本次第 3 / 4 项')
+    expect(panel?.textContent).not.toContain('3 / 4 关')
   })
 
-  it('degrades a single task run to name and state only', async () => {
+  it('keeps the waiting entry position without claiming it is executing', async () => {
+    await render(
+      <CombatExecutionProgressPanel
+        progress={progress({ state: 'waiting', stage: null, step: { current: 2, total: 3 } })}
+      />,
+    )
+
+    const panel = container.querySelector('[aria-label="本次执行进度"]')
+    expect(panel?.textContent).toContain('本次第 2 / 3 项')
+    expect(panel?.textContent).not.toContain('正在执行')
+  })
+
+  it('degrades a single task run to its task name and elapsed time', async () => {
     await render(
       <CombatExecutionProgressPanel
         progress={progress({
@@ -119,64 +106,47 @@ describe('CombatExecutionProgressPanel', () => {
           name: '自动战斗作业',
           stage: null,
           step: null,
-          counts: null,
         })}
-        isStopping={false}
-        onStop={onStop}
       />,
     )
 
     const panel = container.querySelector('[aria-label="本次执行进度"]')
     expect(panel?.textContent).toContain('自动战斗作业')
-    expect(panel?.textContent).toContain('执行中')
-    expect(panel?.textContent).not.toContain('关')
-    expect(panel?.textContent).not.toContain('已完成')
+    expect(panel?.textContent).toContain('已用时')
+    expect(panel?.textContent).not.toContain('本次第')
     expect(panel?.textContent).not.toContain('关卡:')
   })
 
-  it('keeps a terminal run visible without a stop entry and uses its duration', async () => {
+  it('keeps a terminal run visible with its server duration', async () => {
     const durationMs = 65_000
     await render(
       <CombatExecutionProgressPanel
         progress={progress({
           state: 'succeeded',
           isActive: false,
-          stateLabel: '已完成',
           stage: null,
           step: null,
-          counts: { success: 3, failed: 0, stopped: 0, skipped: 0, pending: 0 },
           startedAtMs: null,
           durationMs,
         })}
-        isStopping={false}
-        onStop={onStop}
       />,
     )
 
     const panel = container.querySelector('[aria-label="本次执行进度"]')
-    expect(panel?.textContent).toContain('已完成')
-    expect(panel?.textContent).toContain('已完成 3 · 失败 0')
     expect(panel?.textContent).toContain(`已用时 ${formatExecutionElapsed(durationMs)}`)
-    expect(Array.from(panel?.querySelectorAll('button') ?? [])).toEqual([])
+    expect(panel?.querySelectorAll('button')).toHaveLength(0)
   })
 
-  it('stops counting elapsed time while the stop request is in flight', async () => {
+  it('advances the elapsed time while the run is active', async () => {
     vi.useFakeTimers()
     try {
       const startedAtMs = Date.now()
       await render(
-        <CombatExecutionProgressPanel
-          progress={progress({ state: 'stopping', stateLabel: '正在终止', startedAtMs })}
-          isStopping
-          onStop={onStop}
-        />,
+        <CombatExecutionProgressPanel progress={progress({ startedAtMs })} />,
       )
 
       const panel = () => container.querySelector('[aria-label="本次执行进度"]')
-      expect(panel()?.textContent).toContain('正在终止')
-      const stopButton = Array.from(panel()?.querySelectorAll('button') ?? [])
-        .find(button => button.textContent?.includes('正在终止'))
-      expect(stopButton?.disabled).toBe(true)
+      expect(panel()?.textContent).toContain('已用时 0 秒')
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2_000)

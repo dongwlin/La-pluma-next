@@ -128,7 +128,8 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 - 作业页已迁移到控制器，`scope: 'combat'`：
   - 单作业走 `run_task`（`waitForCompletion=false`），幂等键由控制器 intent 生成；作业集走 `run_copilot_set`，只有服务端持有的集合 run 一种身份。
   - 三种页面模式映射为两种服务端模式：`顺序执行` 与 `连续执行` 都提交 `mode=continuous`；`手动逐关` 提交 `mode=manual`，首项后 run 转 `waiting`，页面用 `progress.nextEntry` 渲染“开始下一关”，点击调用 `POST /api/agent/actions/continue-copilot-set`（不新建 run、不使用新幂等键）。
-  - 逐项状态与失败汇总只来自 `progress.taskResults`（活动）与 `result.summary`（终态），页面不维护第二份逐项结果；停止后未开始项保持 `pending`，页面不会再提交下一关。
+  - 逐项状态与失败汇总只来自 `progress.taskResults`（活动）与 `result.summary`（终态），页面不维护第二份逐项结果；停止后未开始项保持 `pending`，页面不会再提交下一关。终态通知的成功比例按 `summary.queuedEntries` 计算，`summary.totalEntries`（含本次跳过）不作分母。
+  - “本次执行进度”只补充其它位置没有的事实：`progress.currentStep`/`totalSteps` 给出的本次执行条目位置（`both` 模式下同一作业的普通与突袭各占一项，不能读作关数）、当前关卡与已用时。运行状态与停止入口留在执行卡片，逐项状态与计划状态计数留在作业列表和续跑进度，不重复呈现。
   - 继续下一关返回可重试的 409 `MAA_EXECUTION_BUSY` 时保持等待态并允许重试；`AGENT_COPILOT_SET_SESSION_LOST` 提示重新提交；拒绝与传输失败之后都先重新读取快照，不凭页面状态推断结果。
   - 作业集终态后页面按服务端计划进度重建“待执行”选择（成功项移出、失败项保留）；计划读取失败只影响展示，不据此宣告完成。`失败后停止` 策略在 manual 等待态遇到失败项时结束集合 run，不再提供“开始下一关”。
   - 作业页只消费全局运行投影；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复运行展示且不重提作业集。刷新后需要重新预览对应作业集才能恢复列表与“开始下一关”入口，`waiting` run 本身不会被重新提交。
