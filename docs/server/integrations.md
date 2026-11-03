@@ -93,12 +93,14 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 作业集执行期间，服务端每 2 秒增量读取 `asst.log`，把 `CopilotListLoadTaskFileSuccess` 中的 `file_name` 映射到计划文件并推进逐项生命周期（`server/src/services/copilotPlanService.ts`）。出现第 k 份计划文件的加载时，此前尚未结算的条目结算为 `success`，该文件所属条目置为 `running`。
 
+载荷由共享回调解析器按 JSON 解析，`details.file_name` 是 JSON 转义后的原生路径（Windows 为 `C:\\...`），必须解码后再比较；计划文件路径由 `path.join` 生成，两者在分隔符、盘符与目录名大小写上可能不同，匹配前统一分隔符并在 Windows 上忽略大小写。
+
 这条推断依赖 MaaCore 的 `copilot_list` 执行顺序，依据是上游实现而不是集成协议文本：
 
 - `MultiCopilotTaskPlugin::_run` 在当前条目 `Copilot.load` 成功后、跳转关卡与战斗之前发回调，一轮只处理一份文件；
 - 每轮末尾的三星确认（`Copilot@WaitUntilEndOfAction`）失败会让 `PackageTask` 中止整条任务链，后续文件不再加载。
 
-因此下一份文件开始加载时，上一轮的全部完成检查已经通过。观察只是执行中的投影：组结束仍按命令退出码与最后加载的文件重新结算，读取窗口缺失或路径不匹配不会改变最终结果，也不会在失败时把未确认条目算作成功。
+因此下一份文件开始加载时，上一轮的全部完成检查已经通过。观察只是执行中的投影：组结束仍按命令退出码与最后加载的文件重新结算；读取窗口缺失或路径无法匹配时只会让更多条目留在未确认状态（失败记为 `failed`，停止记为 `stopped` 或 `pending`），不会把未确认条目算作成功。
 
 该前提随 MaaCore 版本变化。单元测试与假 CLI 只回放事件顺序，不能证明真实回调时序；合入相关改动或升级 MaaCore 后，应用真实设备执行并核对加载事件与最终完成事件的先后：
 

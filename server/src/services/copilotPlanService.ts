@@ -3,6 +3,7 @@ import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import type { MaaDynamicTaskConfig } from './maaExecutionService.ts';
+import { getCallbackDetails, getCallbackStringField, parseMaaCallbackEvents } from './maaCallbackService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
@@ -118,12 +119,13 @@ async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
   return tasks;
 }
 
-/** 清理进程内资源缓存与测试注入的观察间隔，供测试用例之间隔离；生产运行不调用。 */
+/** 清理进程内资源缓存与测试注入的观察间隔、路径平台，供测试用例之间隔离；生产运行不调用。 */
 export function resetCopilotPlanCachesForTests(): void {
   resourceDirPromise = null;
   stageCatalogCache.clear();
   installedTasksCache.clear();
   fileLoadPollMsOverride = null;
+  pathPlatformOverride = null;
 }
 
 /** 执行模式：普通关卡或突袭。 */
@@ -637,11 +639,38 @@ function normalizeCopilotLoopTimes(value: unknown): number {
   return Math.max(1, Math.min(99, Number.parseInt(String(value || 1), 10) || 1));
 }
 
+/**
+ * 读取日志中成功加载的计划文件路径。
+ *
+ * MaaCore 把 `copilot_list` 收到的路径原文写进 `details.file_name`，整段载荷是
+ * 一行 JSON：Windows 路径在日志文本里是 `C:\\maa\\...`，只有按 JSON 语义解析才能
+ * 得到与 `path.join` 结果相同的 `C:\maa\...`。这里复用共享回调解析器，断行与
+ * 非法 JSON 行跳过。
+ */
 export function extractLoadedCopilotFiles(logText: unknown = ''): string[] {
-  // MAA writes `file_name` inside `details` before the trailing `what`
-  // discriminator for a successfully loaded copilot entry.
-  return [...String(logText).matchAll(/"file_name"\s*:\s*"([^"]+)"[\s\S]{0,500}?"what"\s*:\s*"CopilotListLoadTaskFileSuccess"/g)]
-    .map(match => match[1]);
+  return parseMaaCallbackEvents(String(logText ?? ''), 'Copilot')
+    .filter(event => event.callback === 'SubTaskExtraInfo'
+      && getCallbackStringField(event, 'what') === 'CopilotListLoadTaskFileSuccess')
+    .map(event => getCallbackDetails(event)?.file_name)
+    .filter((file): file is string => typeof file === 'string' && file.length > 0);
+}
+
+let pathPlatformOverride: NodeJS.Platform | null = null;
+
+/** 测试注入：按指定平台规范化计划文件路径；生产代码不调用。 */
+export function setCopilotPlanPathPlatformForTests(platform: NodeJS.Platform | null): void {
+  pathPlatformOverride = platform;
+}
+
+/**
+ * 计划文件路径的比较形式：分隔符统一为 `/`，Windows 上大小写不敏感。
+ *
+ * MaaCore 记录的是传入路径原文，计划文件路径由 `path.join` 生成；两边可能在
+ * 分隔符、盘符与目录名大小写上不同，直接按字面比较会漏掉当前执行的条目。
+ */
+function normalizeCopilotPlanPath(file: string): string {
+  const unified = file.replace(/\\/g, '/');
+  return (pathPlatformOverride ?? process.platform) === 'win32' ? unified.toLowerCase() : unified;
 }
 
 /** 按日志中的计划文件名定位执行条目；组结算与逐项观察共用同一条匹配规则。 */
@@ -649,7 +678,12 @@ function findCopilotExecutionItemIndex(
   executionItems: readonly { filename: string }[],
   file: string
 ): number {
-  return executionItems.findIndex(item => file === item.filename || file.endsWith(item.filename));
+  const target = normalizeCopilotPlanPath(file);
+  if (!target) return -1;
+  return executionItems.findIndex(item => {
+    const planned = normalizeCopilotPlanPath(item.filename);
+    return Boolean(planned) && (target === planned || target.endsWith(planned));
+  });
 }
 
 /** 作业组执行中逐项观察的日志轮询间隔；MAA 回调落盘有延迟，过短只会空读。 */

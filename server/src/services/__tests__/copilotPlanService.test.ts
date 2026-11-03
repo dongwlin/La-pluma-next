@@ -35,8 +35,9 @@ if (args[0] === 'dir' && args[1] === 'resource') {
   const exitCode = Number(process.env.FAKE_RUN_EXIT_CODE || 0);
   const exitDelay = Number(process.env.FAKE_RUN_EXIT_DELAY || 0);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const appendLoad = (file) => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | SubTaskExtraInfo | ' + JSON.stringify({
-    details: { file_name: file },
+  const appendLoad = (file) => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | SubTaskExtraInfo ' + JSON.stringify({
+    taskchain: 'Copilot',
+    details: { stage_name: 'main_01-01', file_name: file },
     what: 'CopilotListLoadTaskFileSuccess'
   }) + '\\n');
   (async () => {
@@ -75,7 +76,8 @@ const {
   isPresetFormationCopilot,
   mergePresetFormationTasks,
   resetCopilotPlanCachesForTests,
-  setCopilotFileLoadPollIntervalForTests
+  setCopilotFileLoadPollIntervalForTests,
+  setCopilotPlanPathPlatformForTests
 } = await import('../copilotPlanService.ts');
 
 beforeEach(async () => {
@@ -176,9 +178,30 @@ test('multi-copilot loop count expands into repeated native entries', () => {
   assert.ok(files[2].filename.endsWith('2-99-raid-3.json'));
 });
 
-test('copilot recovery finds MAA loaded files in callback field order', () => {
-  const log = '{"details":{"file_name":"/tmp/6-97353-normal-1.json"},"what":"CopilotListLoadTaskFileSuccess"}';
-  assert.deepEqual(extractLoadedCopilotFiles(log), ['/tmp/6-97353-normal-1.json']);
+test('copilot recovery decodes escaped plan paths from MAA callbacks', () => {
+  const windowsPlan = 'C:\\maa\\config\\copilot-plans\\7\\6-97353-normal-1.json';
+  const log = [
+    `[2026-07-10 19:55:00.000][INF] Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({
+      taskchain: 'Copilot',
+      taskid: 1,
+      details: { stage_name: 'main_01-07', file_name: windowsPlan, id: 0 },
+      what: 'CopilotListLoadTaskFileSuccess'
+    })}`,
+    // 增量日志的起点可能落在回调行中间：残缺 JSON 不产生条目。
+    '[2026-07-10 19:55:01.000][INF] Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Copilot","details":{"file_na',
+    // 其他 taskchain 的同名回调不属于本次作业集执行。
+    '[2026-07-10 19:55:02.000][INF] Assistant::append_callback | SubTaskExtraInfo {"taskchain":"ParadoxCopilot","details":{"file_name":"D:\\\\paradox.json"},"what":"CopilotListLoadTaskFileSuccess"}',
+    `[2026-07-10 19:55:03.000][INF] Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({
+      taskchain: 'Copilot',
+      details: { file_name: '/tmp/6-97353-normal-2.json' },
+      what: 'CopilotListLoadTaskFileSuccess'
+    })}`
+  ].join('\n');
+
+  // `C:\\maa\\...` 是 JSON 转义形式，解析后应与 path.join 生成的 `C:\maa\...` 相同。
+  assert.deepEqual(extractLoadedCopilotFiles(log), [windowsPlan, '/tmp/6-97353-normal-2.json']);
+  assert.equal(extractLoadedCopilotFiles(log)[0], 'C:\\maa\\config\\copilot-plans\\7\\6-97353-normal-1.json');
+  assert.deepEqual(extractLoadedCopilotFiles(''), []);
 });
 
 test('preset resource merge preserves existing user BattleStart settings', () => {
@@ -357,6 +380,21 @@ function planFileOf(setId: string, entry: CopilotPlanEntry): string {
   return join(maaConfigDir, 'copilot-plans', setId, `${entry.itemIndex}-${entry.copilotId}-${entry.mode}-1.json`);
 }
 
+/**
+ * Windows 上 MaaCore 记录的是 `path.join` 生成的同一路径，只是分隔符为 `\`，
+ * 且盘符与目录名大小写由系统决定；假 CLI 按这种形式回放加载回调。
+ */
+function windowsPlanFileOf(setId: string, entry: CopilotPlanEntry): string {
+  return planFileOf(setId, entry).toUpperCase().replace(/\//g, '\\');
+}
+
+/** 回放加载回调后清理假 CLI 的执行环境。 */
+function clearRunEnvironment(): void {
+  for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
+    delete process.env[key];
+  }
+}
+
 /** 作业站内容桩：prepareCopilotList 按 copilotId 抓取作业 JSON。 */
 function stubCopilotContent(): () => void {
   const originalFetch = globalThis.fetch;
@@ -505,5 +543,117 @@ test('copilot group failure keeps confirmed entries as success and fails the res
     for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
       delete process.env[key];
     }
+  }
+});
+
+/** 假 CLI 依次回放两条 Windows 路径的加载回调；平台语义按 win32 注入。 */
+function stubWindowsRun(setId: string, entries: CopilotPlanEntry[], exitCode: number, exitDelay: number): void {
+  setCopilotPlanPathPlatformForTests('win32');
+  process.env.FAKE_RUN_STEPS = JSON.stringify([
+    { file: windowsPlanFileOf(setId, entries[0]), after: 40 },
+    { file: windowsPlanFileOf(setId, entries[1]), after: 160 }
+  ]);
+  process.env.FAKE_RUN_EXIT_CODE = String(exitCode);
+  process.env.FAKE_RUN_EXIT_DELAY = String(exitDelay);
+  setCopilotFileLoadPollIntervalForTests(20);
+}
+
+test('copilot group advances Windows plan paths one by one', async () => {
+  const setId = 'win-success';
+  const entries = groupEntriesFor();
+  stubWindowsRun(setId, entries, 0, 300);
+  const restoreFetch = stubCopilotContent();
+  const events: string[] = [];
+
+  try {
+    const outcome = await executeCopilotEntries({
+      setId,
+      name: 'Windows 路径',
+      entries,
+      options: {},
+      lifecycle: {
+        onEntryStarted: entry => events.push(`started:${(entry as CopilotPlanEntry).key}`),
+        onEntrySettled: (entry, status) => events.push(`settled:${(entry as CopilotPlanEntry).key}:${status}`)
+      }
+    });
+
+    assert.equal(outcome.success, true);
+    assert.deepEqual(events.filter(event => event.startsWith('started:')), [
+      `started:${entries[0].key}`,
+      `started:${entries[1].key}`
+    ]);
+    // 大小写与分隔符不同不影响匹配：第一条目在第二条目的文件加载时结算。
+    assert.ok(events.indexOf(`settled:${entries[0].key}:success`) < events.indexOf(`started:${entries[1].key}`));
+    assert.deepEqual(outcome.summary.taskResults.map(result => [result.key, result.status]), [
+      [entries[0].key, 'success'],
+      [entries[1].key, 'success']
+    ]);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('copilot group stop settles Windows plan paths conservatively', async () => {
+  const setId = 'win-stopped';
+  const entries = groupEntriesFor();
+  stubWindowsRun(setId, entries, 3, 60);
+  const restoreFetch = stubCopilotContent();
+  let shouldStopChecks = 0;
+
+  try {
+    const outcome = await executeCopilotEntries({
+      setId,
+      name: 'Windows 停止',
+      entries,
+      options: {},
+      lifecycle: {
+        // 组启动前的检查放行；停止请求在命令结束时生效，模拟执行中被终止。
+        shouldStop: () => {
+          shouldStopChecks += 1;
+          return shouldStopChecks > 1;
+        }
+      }
+    });
+
+    assert.equal(outcome.stopped, true);
+    assert.equal(outcome.error, null);
+    // 当前条目的文件已加载（开始执行）按 stopped 结算，已确认的第一条保留 success。
+    assert.deepEqual(outcome.summary.taskResults.map(result => [result.key, result.status]), [
+      [entries[0].key, 'success'],
+      [entries[1].key, 'stopped']
+    ]);
+    assert.deepEqual(outcome.completed, [entries[0].key]);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('copilot group failure matches Windows plan paths before failing the rest', async () => {
+  const setId = 'win-failed';
+  const entries = groupEntriesFor();
+  stubWindowsRun(setId, entries, 3, 60);
+  const restoreFetch = stubCopilotContent();
+
+  try {
+    const outcome = await executeCopilotEntries({
+      setId,
+      name: 'Windows 失败',
+      entries,
+      options: {}
+    });
+
+    assert.equal(outcome.success, false);
+    assert.equal(outcome.stopped, false);
+    // 路径匹配成功，已确认条目才保留 success；不能因 Windows 分隔符把成功条目重判为失败。
+    assert.deepEqual(outcome.summary.taskResults.map(result => [result.key, result.status]), [
+      [entries[0].key, 'success'],
+      [entries[1].key, 'failed']
+    ]);
+    assert.deepEqual(outcome.completed, [entries[0].key]);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
   }
 });
