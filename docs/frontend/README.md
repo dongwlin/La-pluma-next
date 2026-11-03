@@ -61,14 +61,14 @@ Activity 隐藏保留页面 React 状态并清理 Effects；它与真正卸载�
 | 模块级配置和命令所有者 | 已接受草稿、串行提交、更新与计划命令继续由原所有者持有 | 订阅恢复；迟到响应仍须通过 revision 或版本裁决 |
 | Query 观察者 | 随 Effect 注销；取消行为由具体 Query 与使用的 signal 决定 | 按缓存新鲜度重取，不由页面另建一轮请求 |
 | 日志会话 | 实时流取消在途读取、停止计时并保留缓冲；历史会话取消读取并保留选择 | 立即重读实时；历史重读列表并重试被取消的当前读取；手动暂停不被恢复事件清除 |
-| 设备预览 | 应用级 `PreviewSessionProvider` 保持同一连接、截图采样与基础设施操作；页面只解除视频绑定 | 切页复用同一视频流；文档隐藏暂停、恢复重连；真正卸载释放资源，不影响 Run 身份或设备任务 |
+| 设备预览 | 应用级 `PreviewSessionProvider` 保持同一连接、截图采样与基础设施操作；页面只解除视频绑定 | 切页复用同一视频流；文档隐藏先保留 3 分钟缓冲，期间恢复继续使用同一连接，超时才释放并在恢复可见时重连；真正卸载立即释放资源，不影响 Run 身份或设备任务 |
 | 排序与模态交互 | 清理 document 事件、pointer/rAF、焦点与滚动副作用 | 保留的 UI 状态由所属面板恢复；不能留下后台交互监听 |
 
 更细的当前行为见[执行客户端](../architecture/execution-client.md)、[配置持久化协调器](../architecture/config-persistence.md)、[日志实时流](domains/logs.md#实时流生命周期)、[日志历史与清理](domains/logs.md#历史会话与清理)、[总览快照与设备采样](domains/dashboard.md#完整快照与设备采样)。默认 Query 策略不意味着所有会话都会随 `document.hidden` 停止；日志、预览及业务刷新各自有明确契约。
 
 ## 预览偏好与信令凭据
 
-`PreviewSessionProvider` 位于页面 Activity 边界之外，统一持有实时会话、截图采样与预览基础设施操作。总览、日常、作业、肉鸽、养成、数据和日志页经 `usePreviewSession` 绑定同一 MediaStream；切换到设置页也保留连接，不重复启动服务。日常、作业、肉鸽、养成、数据和日志使用相同的 `DeviceMonitorPanel`，宽屏右侧占工作区三分之一，窄屏改为纵向排列。显式关闭、后端不可用、文档隐藏或应用真正卸载仍会释放当前连接。
+`PreviewSessionProvider` 位于页面 Activity 边界之外，统一持有实时会话、截图采样与预览基础设施操作。总览、日常、作业、肉鸽、养成、数据和日志页经 `usePreviewSession` 绑定同一 MediaStream；切换到设置页也保留连接，不重复启动服务。日常、作业、肉鸽、养成、数据和日志使用相同的 `DeviceMonitorPanel`，宽屏右侧占工作区三分之一，窄屏改为纵向排列。显式关闭、后端不可用或应用真正卸载会立即释放当前连接；文档隐藏先进入 3 分钟缓冲，超时才释放。
 
 [`previewStore`](../../client/src/features/device-mirror/store/previewStore.ts)以 `preview-storage` version 1 持久化 `mode`、`autoStart`、`quality`、`fps`、`maxSize`、`bitrateMbps`。新应用加载时只有 `autoStart === true` 才恢复合法的 `mode`，否则从 `off` 开始；导航切页保留运行时偏好。预设画质使用预设数值，自定义值须通过字段范围校验。恢复、旧值迁移与坏值回退见[偏好测试](../../client/src/features/device-mirror/store/previewStore.test.ts)。
 

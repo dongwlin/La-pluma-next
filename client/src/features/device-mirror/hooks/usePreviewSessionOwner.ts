@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import { startWebrtc } from '../api'
 import { buildScrcpyOptions, usePreviewStore } from '../store/previewStore'
-import { usePageVisible } from '@/shared/hooks/usePageVisible'
+import { isPageHidden, usePageVisible } from '@/shared/hooks/usePageVisible'
 import { useScrcpyWebRTC } from './useScrcpyWebRTC'
 
 type Options = Parameters<typeof useScrcpyWebRTC>[0] & {
@@ -13,6 +13,8 @@ type Options = Parameters<typeof useScrcpyWebRTC>[0] & {
 }
 
 const CONNECTING_STATUSES = new Set(['connecting', 'signaling', 'waiting_offer', 'connecting_webrtc'])
+/** 文档隐藏后保留当前连接的缓冲时间，期间恢复可见会继续使用同一连接。 */
+const HIDDEN_PREVIEW_STOP_DELAY_MS = 180_000
 
 /** The application owns one preview independently of workspace Activity effects. */
 export function usePreviewSessionOwner({ automationAvailable = true, infrastructureBusy = false, startInfrastructure, cancelInfrastructure, ...options }: Options) {
@@ -25,9 +27,12 @@ export function usePreviewSessionOwner({ automationAvailable = true, infrastruct
   const [attempt, setAttempt] = useState(0)
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
+  const hiddenStopTimerRef = useRef<number | null>(null)
+  const connectionActiveRef = useRef(false)
   const scrcpyOptions = useMemo(() => buildScrcpyOptions({ quality, fps, maxSize, bitrateMbps }), [quality, fps, maxSize, bitrateMbps])
   const transport = useScrcpyWebRTC({ ...options, scrcpyOptions })
   const disconnectTransport = transport.disconnect
+  const transportStatus = transport.status
 
   const start = useEffectEvent(async (signal: AbortSignal) => {
     setStarting(true)
@@ -44,6 +49,7 @@ export function usePreviewSessionOwner({ automationAvailable = true, infrastruct
       if (signal.aborted) return
       if (!signalingUrl) throw new Error('预览服务未就绪，请重试')
       transport.connect(signalingUrl)
+      connectionActiveRef.current = true
     } catch (error) {
       if (!signal.aborted) setStartError(error instanceof Error ? error.message : '无法启动实时预览')
     } finally {
@@ -51,14 +57,41 @@ export function usePreviewSessionOwner({ automationAvailable = true, infrastruct
     }
   })
   const release = useEffectEvent(() => {
+    connectionActiveRef.current = false
     transport.disconnect()
     cancelInfrastructure?.()
   })
 
   useEffect(() => {
+    if (transportStatus !== 'error' && transportStatus !== 'disconnected') return
+    connectionActiveRef.current = false
+  }, [transportStatus])
+
+  useEffect(() => {
     setStarting(false)
     setStartError(null)
-    if (mode !== 'live' || !visible || !automationAvailable || infrastructureBusy) return
+    if (mode !== 'live' || !automationAvailable || infrastructureBusy) {
+      if (hiddenStopTimerRef.current !== null) {
+        window.clearTimeout(hiddenStopTimerRef.current)
+        hiddenStopTimerRef.current = null
+      }
+      if (connectionActiveRef.current) release()
+      return
+    }
+    if (!visible) {
+      if (hiddenStopTimerRef.current === null && connectionActiveRef.current) {
+        hiddenStopTimerRef.current = window.setTimeout(() => {
+          hiddenStopTimerRef.current = null
+          release()
+        }, HIDDEN_PREVIEW_STOP_DELAY_MS)
+      }
+      return
+    }
+    if (hiddenStopTimerRef.current !== null) {
+      window.clearTimeout(hiddenStopTimerRef.current)
+      hiddenStopTimerRef.current = null
+      if (connectionActiveRef.current) return
+    }
     const controller = new AbortController()
     const timeout = window.setTimeout(() => {
       controller.abort()
@@ -70,15 +103,31 @@ export function usePreviewSessionOwner({ automationAvailable = true, infrastruct
     return () => {
       controller.abort()
       clearTimeout(timeout)
+      if (connectionActiveRef.current && isPageHidden()) {
+        hiddenStopTimerRef.current = window.setTimeout(() => {
+          hiddenStopTimerRef.current = null
+          release()
+        }, HIDDEN_PREVIEW_STOP_DELAY_MS)
+        return
+      }
       release()
     }
   }, [mode, visible, automationAvailable, infrastructureBusy, attempt, options.deviceId, options.signalingUrl, options.connectionPath, options.ipPreference])
+
+  useEffect(() => () => {
+    if (hiddenStopTimerRef.current !== null) window.clearTimeout(hiddenStopTimerRef.current)
+  }, [])
 
   const connect = useCallback(() => {
     usePreviewStore.getState().setMode('live')
     setAttempt(value => value + 1)
   }, [])
   const disconnect = useCallback(() => {
+    if (hiddenStopTimerRef.current !== null) {
+      window.clearTimeout(hiddenStopTimerRef.current)
+      hiddenStopTimerRef.current = null
+    }
+    connectionActiveRef.current = false
     disconnectTransport()
     cancelInfrastructure?.()
     usePreviewStore.getState().setMode('off')
