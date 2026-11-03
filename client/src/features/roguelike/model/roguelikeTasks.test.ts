@@ -78,10 +78,12 @@ describe('roguelike task catalog', () => {
       { value: '0', label: '刷分模式' },
       { value: '1', label: '刷源石锭' },
       { value: '4', label: '刷开局' },
+      { value: '6', label: '刷月度小队' },
+      { value: '7', label: '刷深入调查' },
     ])
-    const samiModes = getRoguelikeOptionChoices(mode, 'Sami') ?? []
-    expect(samiModes[samiModes.length - 1]).toEqual({ value: '5', label: '刷坍缩范式' })
-    expect(getRoguelikeOptionChoices(mode, 'Sarkaz')).toHaveLength(3)
+    expect((getRoguelikeOptionChoices(mode, 'Sami') ?? []).map(choice => choice.value))
+      .toEqual(['0', '1', '4', '5', '6', '7'])
+    expect(getRoguelikeOptionChoices(mode, 'Sarkaz')).toHaveLength(5)
   })
 
   it('declares the reclamation mode default and its startup hint', () => {
@@ -122,7 +124,7 @@ describe('roguelike task catalog', () => {
 
   it('matches theme choices after trimming the theme input', () => {
     const mode = option('mode')
-    expect(getRoguelikeOptionChoices(mode, ' Sami ')).toHaveLength(4)
+    expect(getRoguelikeOptionChoices(mode, ' Sami ')).toHaveLength(6)
     expect(getRoguelikeOptionChoices(option('squad'), 'Sarkaz ')).toContainEqual({
       value: '蓝图测绘分队',
       label: '蓝图测绘分队',
@@ -331,6 +333,20 @@ describe('buildRoguelikeCommandParams', () => {
       { roguelike: 'Sarkaz' },
       { roguelike: { mode: '0', investmentWithMoreScore: true } },
     )).toBe('Sarkaz --mode 0 --roles 稳扎稳打')
+  })
+
+  it('passes the monthly squad and deep exploration modes to the CLI', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Mizuki' },
+      { roguelike: { mode: '6' } },
+    )).toBe('Mizuki --mode 6 --roles 稳扎稳打')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { mode: '7' } },
+    )).toBe('Sarkaz --mode 7 --roles 稳扎稳打')
   })
 
   it('keeps mode-specific switches out of other modes', () => {

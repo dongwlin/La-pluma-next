@@ -76,7 +76,11 @@ const BASE_MODES: readonly RoguelikeSelectOption[] = [
   { value: '0', label: '刷分模式' },
   { value: '1', label: '刷源石锭' },
   { value: '4', label: '刷开局' },
+  { value: '6', label: '刷月度小队' },
+  { value: '7', label: '刷深入调查' },
 ]
+
+const COLLAPSAL_MODE: RoguelikeSelectOption = { value: '5', label: '刷坍缩范式' }
 
 const BASE_ROLES: readonly RoguelikeSelectOption[] = [
   SLOW_AND_STEADY,
@@ -102,7 +106,7 @@ function roleChoices(theme: string): RoguelikeSelectOption[] {
 
 function modeChoices(theme: string): RoguelikeSelectOption[] {
   if (theme !== 'Sami') return [...BASE_MODES]
-  return [...BASE_MODES, { value: '5', label: '刷坍缩范式' }]
+  return [...BASE_MODES.slice(0, 3), COLLAPSAL_MODE, ...BASE_MODES.slice(3)]
 }
 
 function difficultyChoices(theme: string): RoguelikeSelectOption[] {
