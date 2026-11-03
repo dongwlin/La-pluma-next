@@ -89,6 +89,26 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - mall 解析 `Mall` taskchain：好友访问、信用购物、信用作战三项严格 `false` 才整体跳过；购买计数只统计 `exec_times` 缺失或为 1 的 `CreditShop-Bought` 事件（`server/src/services/mallResultService.ts:40-139`）。
 - fight 基于任务总结、命令输出与错误文本：理智耗尽、关卡未开放、剿灭奖励已领完归为 `skipped`，其余错误为 `failed`；理智判定同时检查输出短语与 Summary 段（`server/src/services/fightResultService.ts:56-178`）。
 
+### 作业集逐项进度与文件加载事件
+
+作业集执行期间，服务端每 2 秒增量读取 `asst.log`，把 `CopilotListLoadTaskFileSuccess` 中的 `file_name` 映射到计划文件并推进逐项生命周期（`server/src/services/copilotPlanService.ts`）。出现第 k 份计划文件的加载时，此前尚未结算的条目结算为 `success`，该文件所属条目置为 `running`。
+
+这条推断依赖 MaaCore 的 `copilot_list` 执行顺序，依据是上游实现而不是集成协议文本：
+
+- `MultiCopilotTaskPlugin::_run` 在当前条目 `Copilot.load` 成功后、跳转关卡与战斗之前发回调，一轮只处理一份文件；
+- 每轮末尾的三星确认（`Copilot@WaitUntilEndOfAction`）失败会让 `PackageTask` 中止整条任务链，后续文件不再加载。
+
+因此下一份文件开始加载时，上一轮的全部完成检查已经通过。观察只是执行中的投影：组结束仍以命令退出码与最后加载的文件重新结算，读取窗口缺失或路径不匹配只会让条目停留在未确认状态，不会把它判为成功。
+
+该前提随 MaaCore 版本变化。单元测试与假 CLI 只回放事件顺序，不能证明真实回调时序；合入相关改动或升级 MaaCore 后，应用真实设备执行并核对加载事件与最终完成事件的先后：
+
+| 场景 | 核对内容 |
+| --- | --- |
+| 多关连续作业 | 每关的加载事件出现在上一关完成之后，逐项状态与关卡顺序一致，不提前显示成功 |
+| 中途失败（未三星或任务失败） | 失败条目之后不再出现新的加载事件；已通过条目保留 `success`，其余为 `failed` |
+| 主动终止 | 终止后不再出现新的加载事件；已开始的条目按 `stopped` 处理，未开始的保持 `pending` |
+| 重复作业（循环次数 > 1） | 同一作业的多次重复只在后续条目加载或组结束时统一结算一次，不重复计数 |
+
 ## 通知发送与 Telegram Bot 轮询
 
 - `createNotificationService` 创建持有配置、渠道注册表与出站端口的实例；渠道注册表当前只有 `telegram`，微信、钉钉、邮件、Bark 为预留（`server/src/services/notificationService.ts:362-388,602-614,734-753`）。
