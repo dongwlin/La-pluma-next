@@ -260,6 +260,22 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.textContent).toContain('跳过 2')
   })
 
+  it('labels a stopped item as terminated instead of failed', async () => {
+    await renderPanel(deriveView([
+      [0, 'success'],
+      [1, 'stopped'],
+      [2, 'pending'],
+      [3, 'pending'],
+    ]))
+
+    const row = container.querySelector('[data-copilot-item-index="1"]')
+    expect(row?.textContent).toContain('已终止')
+    expect(row?.textContent).not.toContain('待重试')
+    // 主动终止与执行失败分开统计。
+    expect(container.textContent).toContain('已终止 1')
+    expect(container.textContent).toContain('失败 0')
+  })
+
   it('keeps an unselected unfinished item pending instead of historical', async () => {
     await renderPanel(deriveView([
       [0, 'pending'],

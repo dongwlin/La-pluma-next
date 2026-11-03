@@ -104,7 +104,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | Run 归属 | 只有 `setRun.setId === preview.id` 且未被重置进度作废（`dismissedRunId`）的 Run 才提供逐项结果 |
 | 待执行 | 页面选择减去已满足当前 raid 完成条件的作业（持久化 `completedModes` ∪ 本次成功条目的模式）；失败与未开始保留 |
 | 完成条件 | 当前 raid 要求的每个模式都被覆盖才算完成；普通成功、突袭待执行时作业仍是待执行 |
-| 失败/已执行 | 失败与终止按作业折叠状态计数；已执行按条目统计到作业，全部模式跳过或待执行的不计 |
+| 失败/终止/已执行 | 失败、已终止与跳过分别计数，主动终止不计入失败；已执行按条目统计到作业，全部模式跳过或待执行的不计 |
 | 下一关 | 仅在 `isWaitingForNext` 且非 `isAutoStopping` 时展示；等待项与作业详情来自服务端投影 |
 | 续跑目标 | 等待项索引优先，否则第一个待执行索引，否则 `-1` |
 | 信息面板当前项 | 优先 Run 当前项，其次续跑目标，否则第一个作业；越界回退第一个作业 |
@@ -117,7 +117,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 - **搜索选择**：普通搜索结果点击后写入 `copilot.uri`、规范化并立即预览；`copilotSearchSelection` 驱动“已选中”高亮；修改主输入会清除非匹配的高亮。推荐 URI 仍只在本次显式搜索成功后自动应用。
 - **三种作业集模式**：设置面板的 `app`/`manual`/`cli` 保持原选项与存储值；提交时 `app`/`cli` 映射为服务端 `continuous`，`manual` 保留逐关等待。取消/继续等待由 `useCombatExecution` 与服务端 Run 持有。
 - **停止**：卡片按钮只调用工作区的 `stop()`；控制器按本客户端持有的 `runId` 停止，停止确认超时逻辑未改。
-- **逐项结果**：作业集列表读取 `CopilotSetView.itemStatuses` 展示执行中/待重试/已跳过，读取 `runCompletedIndexes` 判定已完成，历史通关来自 `historyCompletedIndexes`；页头计数来自同一视图。
+- **逐项结果**：作业集列表读取 `CopilotSetView.itemStatuses` 展示执行中/待重试/已终止/已跳过，读取 `runCompletedIndexes` 判定已完成，历史通关来自 `historyCompletedIndexes`；页头计数来自同一视图，主动终止单列。
 - **重置进度**：确认后调用 reset 端点、把全部索引放回待执行、归零预览进度、失效该作业集计划缓存，并作废旧 Run 的逐项展示。
 
 ### 6. Activity 与卸载

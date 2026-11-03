@@ -12,7 +12,7 @@
  * - 历史通关只来自服务端持久化的计划进度：`completedModes` 按当前 raid 规则
  *   解释，与页面是否选中无关；
  * - 续跑进度分别统计服务端通关事实（历史已通关与本次完成）、本次失败、本次
- *   跳过与页面选择的待执行队列，不按总数差额反推完成数；
+ *   终止、本次跳过与页面选择的待执行队列，不按总数差额反推完成数；
  * - 只有等待下一关且未处于按队列策略自动停止时才展示下一关；
  * - 续跑目标是等待项或第一个待执行项，信息面板当前项优先跟随 Run 的当前项；
  * - 本次已执行数按条目统计到作业，只有全部模式都被跳过或待执行的作业不算执行。
@@ -34,14 +34,15 @@ import type {
 
 /**
  * 续跑进度：`completed` 与服务端事实一致（历史已通关 ∪ 本次完成的作业），
- * `skipped`、`failed` 来自本次 Run，`pending` 是页面选择中尚未完成条件的队列。
- * 各类互不推导；跳过不再被算成已通关。
+ * `skipped`、`failed`、`stopped` 来自本次 Run，`pending` 是页面选择中尚未完成
+ * 条件的队列。主动终止单独计数，不与执行失败混为一类；各类互不推导。
  */
 export interface CopilotSetProgressCounts {
   readonly total: number
   readonly completed: number
   readonly pending: number
   readonly failed: number
+  readonly stopped: number
   readonly skipped: number
 }
 
@@ -66,7 +67,6 @@ export interface CopilotSetView {
   readonly currentIndex: number | null
   readonly pendingSelectedIndexes: number[]
   readonly pendingSelectedCount: number
-  readonly failedCount: number
   readonly attemptedCount: number
   readonly waitingEntry: CopilotSetEntryProjection | null
   readonly waitingEntryIndex: number | null
@@ -147,7 +147,6 @@ export function deriveCopilotSetView({
     currentIndex,
     pendingSelectedIndexes,
     pendingSelectedCount,
-    failedCount: countStatuses(itemStatuses, 'failed', 'stopped'),
     attemptedCount,
     waitingEntry,
     waitingEntryIndex,
@@ -200,8 +199,8 @@ function deriveRunCompletedIndexes(
 
 /**
  * 逐作业统计通关事实：完成数与“待执行”同源于已满足完成条件的作业索引，
- * 同一作业既在持久化进度里、又在本场完成时不重复计数。失败与跳过来自本场
- * Run；待执行来自选择队列，不由 total 差额推导。
+ * 同一作业既在持久化进度里、又在本场完成时不重复计数。失败、终止与跳过来自
+ * 本场 Run，主动终止单列；待执行来自选择队列，不由 total 差额推导。
  */
 function deriveProgressCounts(
   total: number,
@@ -209,19 +208,20 @@ function deriveProgressCounts(
   completedIndexes: ReadonlySet<number>,
   pendingSelectedCount: number,
 ): CopilotSetProgressCounts {
-  const counts = { total, completed: 0, pending: pendingSelectedCount, failed: 0, skipped: 0 }
+  const counts = {
+    total,
+    completed: 0,
+    pending: pendingSelectedCount,
+    failed: 0,
+    stopped: 0,
+    skipped: 0,
+  }
   for (let index = 0; index < total; index += 1) {
     const status = statuses.get(index)
-    if (status === 'failed' || status === 'stopped') counts.failed += 1
+    if (status === 'failed') counts.failed += 1
+    else if (status === 'stopped') counts.stopped += 1
     else if (completedIndexes.has(index)) counts.completed += 1
     else if (status === 'skipped') counts.skipped += 1
   }
   return counts
-}
-
-function countStatuses(
-  statuses: ReadonlyMap<number, CopilotSetItemStatus>,
-  ...expected: CopilotSetItemStatus[]
-): number {
-  return [...statuses.values()].filter(status => expected.includes(status)).length
 }
