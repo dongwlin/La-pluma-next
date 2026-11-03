@@ -1,22 +1,17 @@
-/**
- * 日志工具栏
- *
- * 自动滚动、只看本次执行、折叠重复、级别、搜索与命令按钮全部是受控视图：
- * 状态由工作区持有，本组件只渲染控件并回调。暂停/继续只在实时模式出现，
- * 暂停针对实时轮询而不是历史读取；按钮的可访问名称随动作在“暂停实时
- * 日志/继续实时日志”之间切换。「只看本次执行」按当前活动 run 过滤实时
- * 条目，历史文件没有 run 归属，因此在历史模式下禁用。
- */
+/** 日志筛选与观察动作；呈现方式不改变这些筛选条件。 */
 
 import { Download, Pause, Play, Search, Trash2 } from 'lucide-react'
 import { Button, Card, CardContent, Input, Select, Switch } from '@/shared/ui'
-import type { LogFilter } from '../model/logModel'
+import type { LogEventFilter, LogFilter } from '../model/logModel'
 
 interface LogsToolbarProps {
   readonly autoScroll: boolean
   readonly onAutoScrollChange: (value: boolean) => void
-  readonly onlyCurrentRun: boolean
-  readonly onOnlyCurrentRunChange: (value: boolean) => void
+  readonly runId: string
+  readonly runIds: readonly string[]
+  readonly onRunIdChange: (value: string) => void
+  readonly events: LogEventFilter
+  readonly onEventsChange: (value: LogEventFilter) => void
   readonly collapseRepeats: boolean
   readonly onCollapseRepeatsChange: (value: boolean) => void
   readonly filter: LogFilter
@@ -35,8 +30,11 @@ interface LogsToolbarProps {
 export default function LogsToolbar({
   autoScroll,
   onAutoScrollChange,
-  onlyCurrentRun,
-  onOnlyCurrentRunChange,
+  runId,
+  runIds,
+  onRunIdChange,
+  events,
+  onEventsChange,
   collapseRepeats,
   onCollapseRepeatsChange,
   filter,
@@ -65,16 +63,6 @@ export default function LogsToolbar({
               disabled={viewingHistory}
             />
           </div>
-          <div className={`log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3 ${viewingHistory ? 'opacity-50' : ''}`}>
-            <span className="truncate text-xs font-medium text-secondary">只看本次执行</span>
-            <Switch
-              compact
-              checked={onlyCurrentRun}
-              onChange={onOnlyCurrentRunChange}
-              label="只看本次执行"
-              disabled={viewingHistory}
-            />
-          </div>
           <div className="log-toggle-control flex min-h-11 min-w-0 items-center justify-between gap-3">
             <span className="truncate text-xs font-medium text-secondary">折叠重复</span>
             <Switch
@@ -85,10 +73,31 @@ export default function LogsToolbar({
             />
           </div>
           <Select
+            value={runId}
+            onChange={onRunIdChange}
+            aria-label="执行范围"
+            className="col-span-2 w-full sm:col-auto sm:w-56"
+            disabled={viewingHistory}
+            options={[
+              { value: '', label: '全部执行与未关联日志' },
+              ...runIds.map(id => ({ value: id, label: `Run · ${id}` })),
+            ]}
+          />
+          <Select
+            value={events}
+            onChange={value => onEventsChange(value as LogEventFilter)}
+            aria-label="事件范围"
+            className="w-full sm:w-36"
+            options={[
+              { value: 'key', label: '关键事件' },
+              { value: 'all', label: '全部事件' },
+            ]}
+          />
+          <Select
             value={filter}
             onChange={value => onFilterChange(value as LogFilter)}
             aria-label="日志级别"
-            className="col-span-2 w-full sm:col-auto sm:w-36"
+            className="w-full sm:w-36"
             options={[
               { value: 'all', label: '全部级别' },
               { value: 'ERROR', label: '错误' },
@@ -116,7 +125,7 @@ export default function LogsToolbar({
                 ? <Play className="h-4 w-4" aria-hidden="true" />
                 : <Pause className="h-4 w-4" aria-hidden="true" />}
               disabled={actionBusy}
-              aria-label={paused ? '继续实时日志' : '暂停实时日志'}
+              aria-label={paused ? '继续读取日志' : '暂停读取日志'}
             >
               {paused ? '继续' : '暂停'}
             </Button>
@@ -129,7 +138,7 @@ export default function LogsToolbar({
               icon={<Trash2 className="h-4 w-4" aria-hidden="true" />}
               disabled={actionBusy}
             >
-              清空
+              清屏
             </Button>
           )}
           <Button
@@ -139,7 +148,7 @@ export default function LogsToolbar({
             icon={<Download className="h-4 w-4" aria-hidden="true" />}
             disabled={!canExport}
           >
-            导出
+            导出筛选结果
           </Button>
         </div>
       </CardContent>

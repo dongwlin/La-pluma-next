@@ -180,7 +180,7 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('TaskChainStart')
     expect(container.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('日志内容模式')
     const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    expect(modeTabs).toHaveLength(3)
+    expect(modeTabs).toHaveLength(2)
     expect(modeTabs[0]?.getAttribute('aria-selected')).toBe('true')
     await click(modeTabs[1]!)
     expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
@@ -194,7 +194,7 @@ describe('LogViewer recovery and controls', () => {
 
     const switches = Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
     expect(switches.map(input => input.getAttribute('aria-label')))
-      .toEqual(['自动滚动', '只看本次执行', '折叠重复日志'])
+      .toEqual(['自动滚动', '折叠重复日志'])
     expect(switches.every(input => input.checked)).toBe(true)
   })
 
@@ -346,8 +346,8 @@ describe('LogViewer recovery and controls', () => {
 
     await renderComponent()
     const modeTabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    await click(modeTabs[2]!)
-    expect(modeTabs[2]?.getAttribute('aria-selected')).toBe('true')
+    await click(modeTabs[1]!)
+    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
     const autoScroll = () => Array.from(container.querySelectorAll<HTMLInputElement>('[role="switch"]'))
       .find(input => input.getAttribute('aria-label') === '自动滚动')
 
@@ -358,7 +358,7 @@ describe('LogViewer recovery and controls', () => {
 
     await click(container.querySelector<HTMLButtonElement>('[role="alert"] button')!)
     expect(container.textContent).toContain('原始模式内容')
-    expect(modeTabs[2]?.getAttribute('aria-selected')).toBe('true')
+    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
 
     const back = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent === '返回实时')
@@ -366,7 +366,7 @@ describe('LogViewer recovery and controls', () => {
 
     expect(autoScroll()?.checked).toBe(true)
     expect(autoScroll()?.disabled).toBe(false)
-    expect(modeTabs[2]?.getAttribute('aria-selected')).toBe('true')
+    expect(modeTabs[1]?.getAttribute('aria-selected')).toBe('true')
   })
 
   it('keeps level filters across realtime and history views', async () => {
@@ -461,30 +461,33 @@ describe('LogViewer recovery and controls', () => {
     expect(container.textContent).toContain('清理完成')
   })
 
-  it('keeps realtime rows when clearing fails and resumes polling', async () => {
-    mocks.getRealtimeLogs.mockResolvedValue({
-      success: true,
-      data: [{ time: '2026-07-22T10:11:12', level: 'INFO', message: '清空失败前的行' }],
-    })
-    mocks.clearRealtimeLogs.mockResolvedValueOnce({
-      success: false,
-      message: '清空接口暂不可用',
-    })
+  it('clears the local display without mutating shared server logs', async () => {
+    const before = realtimeLine('清屏前的行')
+    const after = realtimeLine('清屏后的行')
+    mocks.getRealtimeLogs
+      .mockResolvedValueOnce({ success: true, data: [before] })
+      .mockResolvedValue({ success: true, data: [before, after] })
 
     await renderComponent()
-    expect(container.textContent).toContain('清空失败前的行')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('清屏前的行')
+    await click(findButton('清屏')!)
 
-    const clear = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '清空')
-    await click(clear!)
-    const confirm = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '确认清空')
-    await click(confirm!)
-
-    expect(container.textContent).toContain('清空接口暂不可用')
-    expect(container.textContent).toContain('清空失败前的行')
-    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('清屏前的行')
+    expect(container.textContent).toContain('已清屏，后续到达的日志会继续显示')
+    expect(document.body.textContent).not.toContain('确认清空')
+    expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
+    expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
     expect(mocks.getLogFiles).toHaveBeenCalledTimes(1)
+
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    visibility = 'visible'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await flush()
+
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('清屏后的行')
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('清屏前的行')
+    expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
   })
 
   it('pauses realtime polling from the toolbar and resumes through the same control', async () => {
@@ -494,16 +497,16 @@ describe('LogViewer recovery and controls', () => {
 
     await renderComponent()
     expect(container.textContent).toContain('暂停前')
-    const pause = findAction('暂停实时日志')
+    const pause = findAction('暂停读取日志')
     expect(pause?.textContent).toBe('暂停')
 
     await click(pause!)
-    expect(findAction('继续实时日志')?.textContent).toBe('继续')
+    expect(findAction('继续读取日志')?.textContent).toBe('继续')
 
-    await click(findAction('继续实时日志')!)
+    await click(findAction('继续读取日志')!)
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('恢复后')
-    expect(findAction('暂停实时日志')?.textContent).toBe('暂停')
+    expect(findAction('暂停读取日志')?.textContent).toBe('暂停')
   })
 
   it('resumes a paused stream when retrying the realtime error', async () => {
@@ -514,40 +517,38 @@ describe('LogViewer recovery and controls', () => {
     await renderComponent()
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('实时日志暂不可用')
 
-    await click(findAction('暂停实时日志')!)
-    expect(findAction('继续实时日志')).not.toBeUndefined()
+    await click(findAction('暂停读取日志')!)
+    expect(findAction('继续读取日志')).not.toBeUndefined()
 
     await click(container.querySelector<HTMLButtonElement>('[role="alert"] button')!)
 
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).toContain('恢复后的日志')
-    expect(findAction('暂停实时日志')).not.toBeUndefined()
+    expect(findAction('暂停读取日志')).not.toBeUndefined()
   })
 
-  it('keeps a manual pause after clearing realtime logs', async () => {
-    mocks.getRealtimeLogs.mockResolvedValue({
-      success: true,
-      data: [realtimeLine('暂停前的行')],
-    })
-    mocks.clearRealtimeLogs.mockResolvedValue({ success: true, message: '实时日志已清空' })
+  it('keeps a manual pause and the local display boundary after clearing', async () => {
+    const before = realtimeLine('暂停前的行')
+    const after = realtimeLine('继续后的新行')
+    mocks.getRealtimeLogs
+      .mockResolvedValueOnce({ success: true, data: [before] })
+      .mockResolvedValue({ success: true, data: [before, after] })
 
     await renderComponent()
-    await click(findAction('暂停实时日志')!)
-    await click(findButton('清空')!)
+    await click(findAction('暂停读取日志')!)
+    await click(findButton('清屏')!)
 
-    const confirm = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '确认清空')
-    await click(confirm!)
-
-    expect(mocks.clearRealtimeLogs).toHaveBeenCalledTimes(1)
-    expect(container.textContent).not.toContain('暂停前的行')
-    expect(container.textContent).toContain('实时日志已暂停，继续后重新读取')
+    expect(mocks.clearRealtimeLogs).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('暂停前的行')
+    expect(container.textContent).toContain('日志读取已暂停，继续后重新读取')
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(1)
-    expect(findAction('继续实时日志')).not.toBeUndefined()
+    expect(findAction('继续读取日志')).not.toBeUndefined()
 
-    await click(findAction('继续实时日志')!)
+    await click(findAction('继续读取日志')!)
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('继续后的新行')
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('暂停前的行')
   })
 
   it('resumes realtime polling when returning from history after a manual pause', async () => {
@@ -562,12 +563,12 @@ describe('LogViewer recovery and controls', () => {
       .mockResolvedValueOnce({ success: true, data: [realtimeLine('返回实时')] })
 
     await renderComponent()
-    await click(findAction('暂停实时日志')!)
+    await click(findAction('暂停读取日志')!)
     await click(findHistoryRow('maa.log')!)
 
     expect(container.textContent).toContain('历史内容')
-    expect(findAction('暂停实时日志')).toBeUndefined()
-    expect(findAction('继续实时日志')).toBeUndefined()
+    expect(findAction('暂停读取日志')).toBeUndefined()
+    expect(findAction('继续读取日志')).toBeUndefined()
     expect(findButton('清理旧日志')?.disabled).toBe(true)
 
     await click(findButton('返回实时')!)
@@ -575,7 +576,7 @@ describe('LogViewer recovery and controls', () => {
     expect(mocks.getRealtimeLogs).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('返回实时')
     expect(container.textContent).not.toContain('历史内容')
-    expect(findAction('暂停实时日志')).not.toBeUndefined()
+    expect(findAction('暂停读取日志')).not.toBeUndefined()
     expect(findButton('清理旧日志')?.disabled).toBe(false)
   })
 
@@ -621,29 +622,27 @@ describe('LogViewer recovery and controls', () => {
       value: revokeObjectURL,
     })
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    mocks.getRealtimeLogs.mockResolvedValue({
-      success: true,
-      data: [realtimeLine('重复行'), realtimeLine('重复行'), realtimeLine('其他行')],
-    })
+    const records = [
+      { ...realtimeLine('重复行'), id: 'export:1', sequence: 1 },
+      { ...realtimeLine('重复行'), id: 'export:2', sequence: 2 },
+      { ...realtimeLine('其他行'), id: 'export:3', sequence: 3 },
+    ]
+    mocks.getRealtimeLogs.mockResolvedValue({ success: true, data: records })
 
     await renderComponent()
     // 重复行折叠后页面只展示两条日志；计数与折叠标记都来自可见内容。
     expect(container.textContent).toContain('2 条')
     expect(container.querySelector('[role="log"]')?.textContent).toContain('x2')
 
-    await click(findButton('导出')!)
+    await click(findButton('导出筛选结果')!)
 
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     const blob = createObjectURL.mock.calls[0]?.[0] as Blob
-    expect(await readBlobText(blob)).toBe([
-      '[10:11:12] [INFO] 重复行',
-      '[10:11:12] [INFO] 重复行',
-      '[10:11:12] [INFO] 其他行',
-    ].join('\n'))
+    expect((await readBlobText(blob)).split('\n').map(line => JSON.parse(line))).toEqual(records)
     expect(clickSpy).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:log-export')
 
     await changeSelect(container.querySelector<HTMLSelectElement>('select[aria-label="日志级别"]')!, 'ERROR')
-    expect(findButton('导出')?.disabled).toBe(true)
+    expect(findButton('导出筛选结果')?.disabled).toBe(true)
   })
 })

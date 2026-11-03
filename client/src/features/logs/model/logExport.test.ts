@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildLogExportFileName, formatLogExport } from './logExport'
 import type { LogEntry } from '../types'
+import { buildLogView, parseHistoryContent, parseRealtimeLog } from './logModel'
 
 const entry = (
   message: string,
@@ -25,6 +26,27 @@ describe('log export formatting', () => {
 
   it('returns an empty string for an empty selection', () => {
     expect(formatLogExport([])).toBe('')
+  })
+
+  it('exports exact historical source lines including blank lines and prefixes', () => {
+    const source = '[2026-07-22 10:11:12.345][INF][thread] source  \n\nuntimed'
+    expect(formatLogExport(parseHistoryContent(source))).toBe(source)
+  })
+
+  it('exports realtime source envelopes with full timestamp and correlation metadata', () => {
+    const envelope = {
+      id: 'source:1', sequence: 1, time: '2026-07-22T10:11:12.345Z', level: 'INFO',
+      message: 'Assistant::append_callback | TaskChainError {"taskchain":"Fight"}',
+      runId: 'run-1', operationId: 'op-1',
+    }
+    const record = parseRealtimeLog(envelope)
+    const options = { events: 'all', level: 'all', search: '', collapseRepeats: true } as const
+    const readable = buildLogView([record, record], { ...options, mode: 'readable' })
+    const raw = buildLogView([record, record], { ...options, mode: 'raw' })
+    expect(formatLogExport(readable.selected)).toBe(formatLogExport(raw.selected))
+    expect(readable.visible).toHaveLength(1)
+    expect(formatLogExport(readable.selected).split('\n').map(line => JSON.parse(line)))
+      .toEqual([envelope, envelope])
   })
 
   it('builds a dated text file name from the UTC date', () => {

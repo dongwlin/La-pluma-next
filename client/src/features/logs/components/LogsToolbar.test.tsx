@@ -12,8 +12,11 @@ type ToolbarProps = ComponentProps<typeof LogsToolbar>
 const baseProps = (): ToolbarProps => ({
   autoScroll: true,
   onAutoScrollChange: () => {},
-  onlyCurrentRun: true,
-  onOnlyCurrentRunChange: () => {},
+  runId: '',
+  runIds: ['run-1'],
+  onRunIdChange: () => {},
+  events: 'key',
+  onEventsChange: () => {},
   collapseRepeats: true,
   onCollapseRepeatsChange: () => {},
   filter: 'all',
@@ -56,27 +59,38 @@ describe('LogsToolbar', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders the current-run switch as checked by default', async () => {
+  it('offers all logs or a specific run independently of the event filter', async () => {
     await renderToolbar()
-    const currentRunSwitch = findSwitchByLabel('只看本次执行')
-    expect(currentRunSwitch).toBeTruthy()
-    expect(currentRunSwitch?.checked).toBe(true)
-    expect(currentRunSwitch?.disabled).toBe(false)
+    const scope = container.querySelector<HTMLSelectElement>('[aria-label="执行范围"]')
+    expect(scope?.value).toBe('')
+    expect(Array.from(scope?.options || []).map(option => option.text)).toEqual(['全部执行与未关联日志', 'Run · run-1'])
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="事件范围"]')?.value).toBe('key')
   })
 
-  it('reports toggling the current-run switch', async () => {
-    const onOnlyCurrentRunChange = vi.fn()
-    await renderToolbar({ onlyCurrentRun: false, onOnlyCurrentRunChange })
-
-    const currentRunSwitch = findSwitchByLabel('只看本次执行')
-    expect(currentRunSwitch?.checked).toBe(false)
-    await act(async () => currentRunSwitch?.click())
-    expect(onOnlyCurrentRunChange).toHaveBeenCalledWith(true)
+  it('reports an explicit run selection', async () => {
+    const onRunIdChange = vi.fn()
+    await renderToolbar({ onRunIdChange })
+    const scope = container.querySelector<HTMLSelectElement>('[aria-label="执行范围"]')!
+    await act(async () => {
+      scope.value = 'run-1'
+      scope.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(onRunIdChange).toHaveBeenCalledWith('run-1')
   })
 
-  it('disables the current-run switch while viewing history', async () => {
+  it('disables run scope and following for files and keeps event selection available', async () => {
     await renderToolbar({ viewingHistory: true })
-    expect(findSwitchByLabel('只看本次执行')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="执行范围"]')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="事件范围"]')?.disabled).toBe(false)
     expect(findSwitchByLabel('自动滚动')?.disabled).toBe(true)
+  })
+
+  it('distinguishes clearing the screen and exporting selected records', async () => {
+    const onClear = vi.fn()
+    await renderToolbar({ onClear })
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    await act(async () => buttons.find(button => button.textContent?.trim() === '清屏')?.click())
+    expect(onClear).toHaveBeenCalledOnce()
+    expect(buttons.some(button => button.textContent === '导出筛选结果')).toBe(true)
   })
 })

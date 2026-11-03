@@ -4,6 +4,7 @@ import {
   initialLogFollowState,
   reduceLogFollow,
 } from './logFollow'
+import type { LogEntry } from '../types'
 
 const pausedWithCount = (count: number) => reduceLogFollow(
   reduceLogFollow(initialLogFollowState, { type: 'leave-bottom' }),
@@ -54,14 +55,24 @@ describe('reduceLogFollow', () => {
   })
 })
 
+const record = (id: string): LogEntry => ({ id, time: '10:00:00', level: 'INFO', message: 'same' })
+
 describe('countAppendedRows', () => {
-  it('counts positive row deltas between two content changes', () => {
-    expect(countAppendedRows([1, 2], [1, 2, 3, 4])).toBe(2)
-    expect(countAppendedRows([], [1])).toBe(1)
+  it('uses stable identities even for equal text and a rotating window', () => {
+    expect(countAppendedRows([record('a'), record('b')], [record('b'), record('c')])).toBe(1)
+    expect(countAppendedRows([record('a')], [record('a'), record('b'), record('c')])).toBe(2)
   })
 
-  it('counts at least one row when the buffer rotates or shrinks without growing', () => {
-    expect(countAppendedRows([1, 2, 3], [2, 3, 4])).toBe(1)
-    expect(countAppendedRows([1, 2, 3], [4])).toBe(1)
+  it('does not report unchanged snapshots, unrelated filtered changes, or removals', () => {
+    expect(countAppendedRows([record('a'), record('b')], [record('a'), record('b')])).toBe(0)
+    expect(countAppendedRows([record('a'), record('b')], [record('b')])).toBe(0)
+    expect(countAppendedRows([record('a')], [])).toBe(0)
+  })
+
+  it('falls back to source content with multiplicity for older servers', () => {
+    const old: LogEntry = { time: '10:00:00', level: 'WARN', message: 'retry' }
+    expect(countAppendedRows([old], [{ ...old }, { ...old }])).toBe(1)
+    expect(countAppendedRows([old, old], [{ ...old }])).toBe(0)
+    expect(countAppendedRows([old], [{ ...old, runId: 'other' }])).toBe(1)
   })
 })

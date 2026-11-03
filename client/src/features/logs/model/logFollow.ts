@@ -6,9 +6,13 @@
  * 开关关闭=永不跟随，此时组件不驱动本状态机；本模块不感知 DOM 与轮询，
  * 只裁决事件后的跟随状态。
  *
- * 计数语义：快照接口没有 cursor/offset，新增行数按相邻两次内容变化的行数
- * 差累计；等长轮转或收缩无法知道确切到达行数，按至少一条计。
+ * 到达检测以源记录身份为准，相同快照、仅移除旧记录都不会产生未读。
+ * 旧服务端没有事件 ID 时以内容多重集合降级检测；窗口外的记录不可回补，
+ * 因此界面只提示有新日志，不承诺精确的到达总数。
  */
+
+import type { LogEntry } from '../types'
+import { getLogIdentity } from './logModel'
 
 export interface LogFollowState {
   /** 智能暂停：用户离开底部后为 true，滚动 Effect 与未读指示以此为准。 */
@@ -30,15 +34,25 @@ export type LogFollowAction =
 export const initialLogFollowState: LogFollowState = { paused: false, pendingCount: 0 }
 
 /**
- * 两次内容变化之间到达的新增行数：行数差为正按差值计；行数未增长的内容
- * 变化（缓冲满轮转或整体收缩）按至少一条计。仅在指纹判定内容变化后调用。
+ * 统计下一快照中上次没有的源记录；多重集合保留旧 API 的重复记录数量。
  */
 export function countAppendedRows(
-  previous: readonly unknown[],
-  next: readonly unknown[],
+  previous: readonly LogEntry[],
+  next: readonly LogEntry[],
 ): number {
-  const delta = next.length - previous.length
-  return delta > 0 ? delta : 1
+  const remaining = new Map<string, number>()
+  for (const record of previous) {
+    const key = getLogIdentity(record)
+    remaining.set(key, (remaining.get(key) ?? 0) + 1)
+  }
+  let appended = 0
+  for (const record of next) {
+    const key = getLogIdentity(record)
+    const count = remaining.get(key) ?? 0
+    if (count > 0) remaining.set(key, count - 1)
+    else appended += 1
+  }
+  return appended
 }
 
 export function reduceLogFollow(state: LogFollowState, action: LogFollowAction): LogFollowState {

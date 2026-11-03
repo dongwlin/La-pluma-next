@@ -36,43 +36,42 @@ describe('LogContentModeTabs', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders the three content modes with readable as the described default tier', async () => {
+  it('renders two presentations with readable selected', async () => {
     await renderTabs()
     const tabs = getTabs()
     expect(tabs.map(tab => tab.textContent)).toEqual([
-      '易读语义与生命周期',
-      '详细可展开原始内容',
-      '原始原样输出',
+      '易读语义化呈现',
+      '原文采集记录原文',
     ])
-    expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
-    expect(tabs.map(tab => tab.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
+    expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+    expect(tabs.map(tab => tab.getAttribute('tabindex'))).toEqual(['0', '-1'])
   })
 
   it('marks the active mode and reports clicks as mode changes', async () => {
     const onChange = vi.fn()
-    await renderTabs({ mode: 'detailed', onChange })
+    await renderTabs({ mode: 'raw', onChange })
 
     const tabs = getTabs()
-    expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
+    expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true'])
 
-    await act(async () => tabs[2]?.click())
-    expect(onChange).toHaveBeenCalledWith('raw')
+    await act(async () => tabs[0]?.click())
+    expect(onChange).toHaveBeenCalledWith('readable')
   })
 
-  it('moves the selection with arrow keys across the three modes', async () => {
+  it('moves the selection with arrow keys across the two presentations', async () => {
     const onChange = vi.fn()
     await renderTabs({ mode: 'raw', onChange })
     const tabs = getTabs()
-    expect(tabs).toHaveLength(3)
+    expect(tabs).toHaveLength(2)
 
-    await act(async () => tabs[2]?.dispatchEvent(
+    await act(async () => tabs[1]?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
     ))
     expect(onChange).toHaveBeenCalledWith('readable')
 
-    await act(async () => tabs[2]?.dispatchEvent(
+    await act(async () => tabs[1]?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }),
     ))
-    expect(onChange).toHaveBeenCalledWith('detailed')
+    expect(onChange).toHaveBeenCalledWith('readable')
   })
 })

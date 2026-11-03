@@ -11,8 +11,8 @@
  *   在途请求，恢复时立即重读，再按固定间隔轮询。
  * - `setDocumentVisible()` 对应浏览器文档隐藏/可见；隐藏时只取消在途请求，
  *   计时器保留但不再发请求，可见时立即重读。
- * - `pause()`/`resume()` 是手动暂停；暂停状态不会被文档或页面可见性覆盖，
- *   恢复时立即重读。清空实时日志在提交前暂停、成功后清缓冲、finally 恢复。
+ * - `pause()`/`resume()` 冻结当前列表；暂停状态不会被文档或页面可见性覆盖，
+ *   恢复时立即重读。`clear()` 只设置本地清屏边界，不改服务端共享缓冲。
  *
  * 同一时刻最多一次在途请求：慢请求期间到点的轮询被跳过，不叠加请求。每次
  * 请求持有独立的 AbortController；只有仍是当前请求的响应才能写入状态，
@@ -21,7 +21,7 @@
 
 import { isAbortError, type ApiResponse } from '@/shared/api'
 import { getRealtimeLogs } from '../api'
-import { parseRealtimeLog } from './logModel'
+import { getLogIdentity, parseRealtimeLog } from './logModel'
 import type { LogEntry } from '../types'
 
 /** 实时快照请求行数；服务端把 lines 限制在 1–500。 */
@@ -44,6 +44,8 @@ export interface RealtimeLogStreamState {
   readonly logs: readonly LogEntry[]
   readonly error: string | null
   readonly paused: boolean
+  /** 已观察快照之间失去连续性；不是完整 Run 归档。 */
+  readonly coverageNotice: string | null
 }
 
 interface ActiveRequest {
@@ -64,7 +66,7 @@ const catchFailureMessage = (error: unknown): string => (
   error instanceof Error && error.message ? error.message : initialReadFailure
 )
 
-/** 逐项比较两次快照的行内容；快照接口没有游标，只能按内容判断是否变化。 */
+/** 逐项比较源事实与信封，相同快照保留既有引用。 */
 const areLogsEqual = (
   previous: readonly LogEntry[],
   next: readonly LogEntry[],
@@ -72,20 +74,34 @@ const areLogsEqual = (
   previous.length === next.length
   && previous.every((log, index) => {
     const candidate = next[index]
-    return log.time === candidate?.time
-      && log.level === candidate?.level
-      && log.message === candidate?.message
-      && log.runId === candidate?.runId
-      && log.operationId === candidate?.operationId
+    return candidate !== undefined && JSON.stringify(log) === JSON.stringify(candidate)
   })
 )
+
+function hasSnapshotGap(previous: readonly LogEntry[], next: readonly LogEntry[]): boolean {
+  const last = previous[previous.length - 1]
+  const first = next[0]
+  if (!last?.id || !first?.id) return false
+  if (next.some(record => record.id === last.id)) return false
+  const previousSequence = last.envelope?.sequence
+  const nextSequence = first.envelope?.sequence
+  const previousSource = last.id.slice(0, last.id.lastIndexOf(':'))
+  const nextSource = first.id.slice(0, first.id.lastIndexOf(':'))
+  if (previousSource !== nextSource) return true
+  return typeof previousSequence === 'number' && typeof nextSequence === 'number'
+    ? nextSequence > previousSequence + 1
+    : true
+}
 
 export class RealtimeLogStream {
   private readonly read: RealtimeLogReader
   private readonly lines: number
   private readonly intervalMs: number
 
-  private state: RealtimeLogStreamState = { logs: [], error: null, paused: false }
+  private state: RealtimeLogStreamState = { logs: [], error: null, paused: false, coverageNotice: null }
+  private latestSnapshot: readonly LogEntry[] = []
+  private coverageSnapshot: readonly LogEntry[] = []
+  private clearedIdentities = new Set<string>()
   private readonly listeners = new Set<() => void>()
   private timer: ReturnType<typeof setInterval> | null = null
   private active: ActiveRequest | null = null
@@ -159,10 +175,20 @@ export class RealtimeLogStream {
     this.fetchIfAllowed()
   }
 
-  /** 清空本地缓冲；服务端缓存清空由调用方命令成功后调用。 */
+  /** 本地清屏：记住当前快照边界，后续轮询不重新显示已清除的记录。 */
   clear(): void {
+    this.clearedIdentities = new Set(this.latestSnapshot.map(getLogIdentity))
     if (this.state.logs.length === 0 && this.state.error === null) return
     this.setState({ ...this.state, logs: [], error: null })
+  }
+
+  /** 进入另一来源时丢弃实时观察会话；返回实时从当前窗口重新开始。 */
+  reset(): void {
+    this.abortActive()
+    this.latestSnapshot = []
+    this.coverageSnapshot = []
+    this.clearedIdentities.clear()
+    this.setState({ ...this.state, logs: [], error: null, coverageNotice: null })
   }
 
   private setState(next: RealtimeLogStreamState): void {
@@ -194,9 +220,22 @@ export class RealtimeLogStream {
       return
     }
 
-    const values = Array.isArray(response.data) ? response.data : []
-    const logs = values.map(parseRealtimeLog)
-    if (areLogsEqual(this.state.logs, logs)) {
+    if (!Array.isArray(response.data)) {
+      this.setState({ ...this.state, error: '实时日志响应格式无效' })
+      return
+    }
+    const values: unknown[] = response.data
+    const snapshot = values.map(parseRealtimeLog)
+    const lostContinuity = hasSnapshotGap(this.coverageSnapshot, snapshot)
+    const coverageNotice = lostContinuity
+      ? '实时日志窗口已失去连续性，期间可能有未加载的记录；当前内容不代表完整执行日志。'
+      : this.state.coverageNotice
+    this.latestSnapshot = snapshot
+    if (snapshot.length > 0) this.coverageSnapshot = snapshot
+    const currentIds = new Set(snapshot.map(getLogIdentity))
+    this.clearedIdentities = new Set([...this.clearedIdentities].filter(id => currentIds.has(id)))
+    const logs = snapshot.filter(log => !this.clearedIdentities.has(getLogIdentity(log)))
+    if (areLogsEqual(this.state.logs, logs) && coverageNotice === this.state.coverageNotice) {
       // 内容未变时保留既有行数组引用并跳过提交：消费方（useSyncExternalStore、
       // 滚动 Effect）靠引用与内容指纹区分「内容变化」与「仅轮询到达」，短路后
       // 相同快照不再触发重渲染与全量重建。有错误待清除时仍需提交一次。
@@ -208,6 +247,7 @@ export class RealtimeLogStream {
       ...this.state,
       logs,
       error: null,
+      coverageNotice,
     })
   }
 

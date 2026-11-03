@@ -46,7 +46,7 @@ describe('RealtimeLogStream', () => {
 
     expect(read).toHaveBeenCalledTimes(1)
     expect(read.mock.calls[0]?.[0]).toBe(REALTIME_LOG_LINES)
-    expect(stream.getState().logs).toEqual([{ time: '10:11:12', level: 'INFO', message: 'first' }])
+    expect(stream.getState().logs).toMatchObject([{ time: '10:11:12', level: 'INFO', message: 'first' }])
     expect(stream.getState().error).toBeNull()
 
     await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
@@ -57,7 +57,7 @@ describe('RealtimeLogStream', () => {
 
     read.mockResolvedValue({ success: true, data: [realtimeRow('second')] })
     await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
-    expect(stream.getState().logs).toEqual([{ time: '10:11:12', level: 'INFO', message: 'second' }])
+    expect(stream.getState().logs).toMatchObject([{ time: '10:11:12', level: 'INFO', message: 'second' }])
 
     stream.stop()
   })
@@ -132,6 +132,24 @@ describe('RealtimeLogStream', () => {
     expect(stream.getState().logs[0]?.message).toBe('恢复')
     expect(stream.getState().error).toBeNull()
 
+    stream.stop()
+  })
+
+  it('keeps the observed window when a successful response has an invalid payload', async () => {
+    const read = vi.fn()
+      .mockResolvedValueOnce({ success: true, data: [realtimeRow('保留')] })
+      .mockResolvedValueOnce({ success: true, data: { logs: [] } })
+      .mockResolvedValue({ success: true, data: [] })
+    const stream = new RealtimeLogStream({ read })
+    stream.start()
+    await flush()
+    const observed = stream.getState().logs
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().logs).toBe(observed)
+    expect(stream.getState().error).toContain('格式无效')
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().logs).toEqual([])
+    expect(stream.getState().error).toBeNull()
     stream.stop()
   })
 
@@ -257,7 +275,7 @@ describe('RealtimeLogStream', () => {
 
     stream.start()
     await flush()
-    expect(stream.getState().logs).toEqual([{
+    expect(stream.getState().logs).toMatchObject([{
       time: '10:11:12',
       level: 'INFO',
       message: '执行输出',
@@ -287,7 +305,7 @@ describe('RealtimeLogStream', () => {
     })
     await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
     await flush()
-    expect(stream.getState().logs).toEqual([{ time: '10:11:12', level: 'INFO', message: '无归属' }])
+    expect(stream.getState().logs).toMatchObject([{ time: '10:11:12', level: 'INFO', message: '无归属' }])
 
     stream.stop()
   })
@@ -349,4 +367,48 @@ describe('RealtimeLogStream', () => {
 
     stream.stop()
   })
+  it('clears only local visibility and keeps cleared records hidden on later polls', async () => {
+    const first = { ...realtimeRow('old'), id: 'source:1', sequence: 1 }
+    const next = { ...realtimeRow('new'), id: 'source:2', sequence: 2 }
+    const read = vi.fn().mockResolvedValue({ success: true, data: [first] })
+    const stream = new RealtimeLogStream({ read })
+    stream.start()
+    await flush()
+    stream.clear()
+    expect(stream.getState().logs).toEqual([])
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().logs).toEqual([])
+    read.mockResolvedValue({ success: true, data: [first, next] })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().logs.map(log => log.id)).toEqual(['source:2'])
+    expect(stream.getState().coverageNotice).toBeNull()
+    stream.reset()
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().logs.map(log => log.id)).toEqual(['source:1', 'source:2'])
+    stream.stop()
+  })
+
+  it('reports missed windows and server restarts without claiming full coverage', async () => {
+    const row = (source: string, sequence: number) => ({ ...realtimeRow('same'), id: `${source}:${sequence}`, sequence })
+    const read = vi.fn().mockResolvedValue({ success: true, data: [row('source', 1)] })
+    const stream = new RealtimeLogStream({ read })
+    stream.start()
+    await flush()
+    read.mockResolvedValue({ success: true, data: [row('source', 2)] })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().coverageNotice).toBeNull()
+    read.mockResolvedValue({ success: true, data: [row('source', 5)] })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().coverageNotice).toContain('失去连续性')
+    stream.reset()
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    read.mockResolvedValue({ success: true, data: [] })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().logs).toEqual([])
+    read.mockResolvedValue({ success: true, data: [row('restart', 1)] })
+    await vi.advanceTimersByTimeAsync(REALTIME_LOG_INTERVAL_MS)
+    expect(stream.getState().coverageNotice).toContain('失去连续性')
+    stream.stop()
+  })
+
 })

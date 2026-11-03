@@ -520,47 +520,20 @@ describe('CombatTasks execution', () => {
     expect(buttonByText('终止执行')).toBeDefined()
   })
 
-  it('embeds a current-run log panel filtered by the tracked run id', async () => {
-    mocks.getRealtimeLogs.mockResolvedValue(ok([
-      { time: '2026-11-01T10:11:12', level: 'INFO', message: 'Assistant::append_callback | TaskChainStart {"taskchain":"Fight"}', runId: 'run-9' },
-      { time: '2026-11-01T10:11:13', level: 'INFO', message: '开始执行：自动战斗', runId: 'run-9' },
-      { time: '2026-11-01T10:11:14', level: 'INFO', message: '其它 run 的日志', runId: 'run-other' },
-      { time: '2026-11-01T10:11:15', level: 'INFO', message: '无归属日志' },
-    ]))
+  it('keeps execution progress without a separate log observer or entry', async () => {
     useIdentity({ runId: 'run-9', operationId: 'run_task', scope: 'combat' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-9')] })))
     startController()
     await flush()
     await renderComponent()
 
-    // 折叠态：进度面板提供入口，迷你面板本体只有入口按钮且不轮询。
-    const progressPanel = container.querySelector('[aria-label="本次执行进度"]')
-    expect(progressPanel?.textContent).toContain('本次执行进度')
-    const miniPanel = container.querySelector<HTMLElement>('section[aria-label="本次执行日志"]')
-    expect(miniPanel?.textContent).toContain('查看本次日志')
+    expect(container.querySelector('[aria-label="本次执行进度"]')?.textContent).toContain('本次执行进度')
     expect(container.querySelector('[role="log"]')).toBeNull()
+    expect(container.textContent).not.toContain('查看本次日志')
     expect(mocks.getRealtimeLogs).not.toHaveBeenCalled()
-
-    // 进度面板入口展开：只显示当前 runId 的行，且默认易读模式。
-    const progressEntry = Array.from(progressPanel?.querySelectorAll<HTMLButtonElement>('button') ?? [])
-      .find(button => button.textContent?.trim() === '查看本次日志')
-    await click(progressEntry!)
-    await flush()
-
-    expect(container.querySelector('[role="log"]')).not.toBeNull()
-    expect(container.textContent).toContain('任务开始：作战（Fight）')
-    expect(container.textContent).toContain('开始执行：自动战斗')
-    expect(container.textContent).not.toContain('其它 run 的日志')
-    expect(container.textContent).not.toContain('无归属日志')
-    expect(mocks.getRealtimeLogs).toHaveBeenCalled()
-
-    // 控制台标题行的「收起」回到折叠态。
-    await click(buttonByText('收起')!)
-    expect(container.querySelector('[role="log"]')).toBeNull()
-    expect(miniPanel?.textContent).toContain('查看本次日志')
   })
 
-  it('keeps the run log panel hidden without a tracked run', async () => {
+  it('does not offer a workspace log entry without a tracked run', async () => {
     await renderComponent()
 
     expect(container.querySelector('section[aria-label="本次执行日志"]')).toBeNull()

@@ -312,41 +312,17 @@ describe('RoguelikeTasks execution', () => {
     vi.restoreAllMocks()
   })
 
-  it('embeds a current-run log panel filtered by the tracked roguelike run', async () => {
-    mocks.getRealtimeLogs.mockResolvedValue(ok([
-      { time: '2026-11-01T10:11:12', level: 'INFO', message: 'Assistant::append_callback | TaskChainStart {"taskchain":"Roguelike"}', runId: 'run-rl-1' },
-      { time: '2026-11-01T10:11:13', level: 'INFO', message: '开始执行：肉鸽任务', runId: 'run-rl-1' },
-      { time: '2026-11-01T10:11:14', level: 'INFO', message: '其它 run 的日志', runId: 'run-other' },
-      { time: '2026-11-01T10:11:15', level: 'INFO', message: '无归属日志' },
-    ]))
+  it('keeps execution controls without a separate log observer or entry', async () => {
     useIdentity({ runId: 'run-rl-1', operationId: 'run_task', scope: 'roguelike' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-rl-1')] })))
     startController()
     await flush()
     await renderPage()
 
-    // 折叠态：只有「查看本次日志」入口，不轮询实时日志。
-    const miniPanel = container.querySelector<HTMLElement>('section[aria-label="本次执行日志"]')
-    expect(miniPanel?.textContent).toContain('查看本次日志')
+    expect(buttonByText('终止执行')).toBeDefined()
     expect(container.querySelector('[role="log"]')).toBeNull()
+    expect(container.textContent).not.toContain('查看本次日志')
     expect(mocks.getRealtimeLogs).not.toHaveBeenCalled()
-
-    // 展开后只显示当前 runId 的行，且默认易读模式。
-    const entry = Array.from(miniPanel?.querySelectorAll<HTMLButtonElement>('button') ?? [])
-      .find(button => button.textContent?.includes('查看本次日志'))
-    await click(entry!)
-    await flush()
-
-    expect(container.querySelector('[role="log"]')).not.toBeNull()
-    expect(container.textContent).toContain('任务开始：集成战略')
-    expect(container.textContent).toContain('开始执行：肉鸽任务')
-    expect(container.textContent).not.toContain('其它 run 的日志')
-    expect(container.textContent).not.toContain('无归属日志')
-    expect(mocks.getRealtimeLogs).toHaveBeenCalled()
-
-    await click(buttonByText('收起')!)
-    expect(container.querySelector('[role="log"]')).toBeNull()
-    expect(miniPanel?.textContent).toContain('查看本次日志')
   })
 
   it('submits one idempotent run with the original command semantics', async () => {
@@ -557,8 +533,6 @@ describe('RoguelikeTasks execution', () => {
 
     expect(buttonByText('立即执行')).toBeDefined()
     expect(buttonByText('终止执行')).toBeUndefined()
-    // 其它领域发起的 run 也不属于肉鸽页的「本次执行日志」。
-    expect(container.querySelector('section[aria-label="本次执行日志"]')).toBeNull()
   })
 
   it('stops by runId once and keeps confirming until the run reaches a terminal state', async () => {

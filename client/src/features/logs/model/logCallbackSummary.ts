@@ -34,7 +34,7 @@ export function getTaskName(value: unknown): string {
 
 /** 收窄未知载荷为对象；数组、标量与 null 一律按空对象处理。 */
 export function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
 /** 读取回调载荷里的非空字符串字段；缺失或非字符串返回 null。 */
@@ -162,6 +162,12 @@ export function summarizeCallback(log: LogEntry): LogEntry | null {
   const event = match[1]
   const details = asRecord(payload.details)
   const taskName = getTaskName(payload.taskchain || payload.subtask || payload.class)
+  const taskIdentity = readTextField(payload, 'taskchain')
+    ?? readTextField(payload, 'subtask')
+    ?? readTextField(payload, 'class')
+  if (['TaskChainStart', 'TaskChainCompleted', 'TaskChainError', 'SubTaskError'].includes(event || '') && !taskIdentity) {
+    return { ...log, level: event?.endsWith('Error') ? 'ERROR' : log.level }
+  }
 
   switch (event) {
     case 'TaskChainStart': {
@@ -216,6 +222,7 @@ export function summarizeCallback(log: LogEntry): LogEntry | null {
     }
     case 'AsyncCallInfo':
       if (payload.what !== 'Connect') return null
+      if (typeof details.ret !== 'boolean') return log
       return {
         ...log,
         message: details.ret === true

@@ -8,10 +8,12 @@
 
 import type { LogEntry } from '../types'
 
-/** 每行 `[时间] [级别] 消息`，保持迁移前的导出格式。 */
+/** 实时记录保留完整信封，历史记录保留完整源行；兼容旧条目的文本格式。 */
 export function formatLogExport(entries: readonly LogEntry[]): string {
   return entries
-    .map(log => `[${log.time}] [${log.level}] ${log.message}`)
+    .map(log => log.envelope
+      ? JSON.stringify(log.envelope)
+      : log.sourceText ?? `[${log.time}] [${log.level}] ${log.message}`)
     .join('\n')
 }
 

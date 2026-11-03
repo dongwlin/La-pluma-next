@@ -18,7 +18,6 @@ import { getErrorMessage } from '@/shared/api'
 import { Button, ConfirmDialog, SmoothPanel } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { ScreenMonitor } from '@/features/device-mirror'
-import { CurrentRunLogPanel } from '@/features/logs'
 import { isTerminalRunState } from '@/features/task-execution'
 import { useUserConfig } from '@/features/user-config'
 import { resetCopilotSetProgress as resetCopilotSetProgressRequest } from '../api'
@@ -122,8 +121,6 @@ export default function CombatWorkspace() {
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
   // 作业集任务选择状态（记录选中的索引）；跨列表与提交共享，归工作区。
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
-  // 「本次执行日志」迷你面板：默认折叠；进度面板与面板本体都能展开。
-  const [runLogsOpen, setRunLogsOpen] = useState(false)
   const [isResettingProgress, setIsResettingProgress] = useState(false)
   const [resetProgressDialogOpen, setResetProgressDialogOpen] = useState(false)
   const reconciledRunRef = useRef<string | null>(null)
@@ -608,14 +605,6 @@ export default function CombatWorkspace() {
             progress={executionProgress}
             isStopping={isStopping}
             onStop={() => void handleStopTask()}
-            onViewLogs={() => setRunLogsOpen(true)}
-          />
-
-          {/* 本次执行日志：按当前被跟踪 Run 的 runId 过滤，默认折叠。 */}
-          <CurrentRunLogPanel
-            runId={trackedRun?.runId ?? null}
-            open={runLogsOpen}
-            onToggle={() => setRunLogsOpen(open => !open)}
           />
 
           {/* 任务列表 */}

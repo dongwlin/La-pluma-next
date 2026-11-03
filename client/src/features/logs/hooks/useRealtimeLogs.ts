@@ -34,6 +34,7 @@ export interface UseRealtimeLogsResult extends RealtimeLogStreamState {
   readonly pause: () => void
   readonly resume: () => void
   readonly clear: () => void
+  readonly reset: () => void
 }
 
 export function useRealtimeLogs({
@@ -66,6 +67,7 @@ export function useRealtimeLogs({
   const pause = useCallback(() => instance.pause(), [instance])
   const resume = useCallback(() => instance.resume(), [instance])
   const clear = useCallback(() => instance.clear(), [instance])
+  const reset = useCallback(() => instance.reset(), [instance])
 
   return {
     ...state,
@@ -75,5 +77,6 @@ export function useRealtimeLogs({
     pause,
     resume,
     clear,
+    reset,
   }
 }

@@ -2,9 +2,10 @@
 
 import { act, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import LogConsole from './LogConsole'
 import type { LogEntry } from '../types'
+import { buildLogView } from '../model/logModel'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -20,11 +21,7 @@ const baseProps = (logs: readonly LogEntry[]): ConsoleProps => ({
   loading: false,
   error: null,
   logs,
-  view: {
-    readable: logs,
-    filtered: logs,
-    visible: logs.map(log => ({ ...log, count: 1 })),
-  },
+  view: buildLogView(logs, { mode: 'readable', events: 'all', level: 'all', search: '', collapseRepeats: true }),
   autoScroll: true,
   paused: false,
   onRetry: () => {},
@@ -59,7 +56,7 @@ const scrollNode = async (node: HTMLElement) => {
 }
 
 const findFollowIndicator = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-  .find(button => button.textContent?.includes('条新日志') || button.textContent?.includes('回到底部'))
+  .find(button => button.textContent?.includes('有新日志') || button.textContent?.includes('回到底部'))
 
 describe('LogConsole scroll following', () => {
   beforeEach(() => {
@@ -105,12 +102,12 @@ describe('LogConsole scroll following', () => {
     // 暂停期间内容变化：不抢滚动位置，新增行累计为未读数
     await renderConsole([...initialLogs, entry('新增一'), entry('新增二')])
     expect(node.scrollTop).toBe(120)
-    expect(findFollowIndicator()?.textContent).toBe('2 条新日志')
+    expect(findFollowIndicator()?.textContent).toBe('有新日志')
 
     // 暂停中继续上滑不重置计数
     node.scrollTop = 60
     await scrollNode(node)
-    expect(findFollowIndicator()?.textContent).toBe('2 条新日志')
+    expect(findFollowIndicator()?.textContent).toBe('有新日志')
 
     // 回到底部：恢复跟随并清零
     node.scrollTop = 1000
@@ -133,7 +130,7 @@ describe('LogConsole scroll following', () => {
     await renderConsole([...initialLogs, entry('新增一')])
 
     const indicator = findFollowIndicator()
-    expect(indicator?.textContent).toBe('1 条新日志')
+    expect(indicator?.textContent).toBe('有新日志')
     await act(async () => indicator?.click())
     await act(async () => {
       await Promise.resolve()
@@ -191,47 +188,64 @@ describe('LogConsole scroll following', () => {
     await renderConsole([...historyLogs, entry('历史三')], { viewingHistory: true, autoScroll: true })
     expect(node.scrollTop).toBe(100)
   })
-})
-
-describe('LogConsole detailed raw content', () => {
-  beforeEach(() => {
-    container = document.createElement('div')
-    document.body.appendChild(container)
-    root = createRoot(container)
-  })
-
-  afterEach(async () => {
-    await act(async () => root.unmount())
-    container.remove()
-  })
-
-  it('renders an expandable raw section only for rows that carry one', async () => {
-    const rawLogs: LogEntry[] = [
-      entry('普通行'),
-      {
-        ...entry('任务开始：作战（Fight）'),
-        raw: 'Assistant::append_callback | TaskChainStart {"taskchain":"Fight"}',
-      },
+  it('keeps following when presentation or repeat grouping changes the rendered height', async () => {
+    const repeated = [
+      { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-1' },
+      { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-2' },
     ]
-    await renderConsole(rawLogs, {
-      view: {
-        readable: rawLogs,
-        filtered: rawLogs,
-        visible: rawLogs.map(log => ({ ...log, count: 1 })),
-      },
+    const view = (mode: 'readable' | 'raw', collapseRepeats: boolean) => buildLogView(repeated, {
+      mode, events: 'all', level: 'all', search: '', collapseRepeats,
     })
-
-    const details = container.querySelectorAll<HTMLDetailsElement>('details.log-raw')
-    expect(details).toHaveLength(1)
-    expect(details[0]?.querySelector('summary')?.textContent).toBe('原始内容')
-    const pre = details[0]?.querySelector('pre')
-    expect(pre?.textContent).toBe(
-      ['TaskChainStart', '{', '  "taskchain": "Fight"', '}'].join('\n'),
-    )
+    await renderConsole(repeated, { view: view('readable', true) })
+    const node = getLogNode()
+    defineScrollBox(node, 1000, 400)
+    node.scrollTop = 500
+    await renderConsole(repeated, { view: view('raw', true) })
+    expect(node.scrollTop).toBe(1000)
+    node.scrollTop = 500
+    await renderConsole(repeated, { view: view('raw', false) })
+    expect(node.scrollTop).toBe(1000)
+    expect(findFollowIndicator()).toBeUndefined()
   })
+
+  it('preserves a paused position and does not create unread arrivals for presentation changes', async () => {
+    const repeated = [
+      { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-1' },
+      { ...entry('执行命令: maa fight, 等待完成: true'), id: 'event-2' },
+    ]
+    const view = (mode: 'readable' | 'raw', collapseRepeats: boolean) => buildLogView(repeated, {
+      mode, events: 'all', level: 'all', search: '', collapseRepeats,
+    })
+    await renderConsole(repeated, { view: view('readable', true) })
+    const node = getLogNode()
+    defineScrollBox(node, 1000, 400)
+    node.scrollTop = 120
+    await scrollNode(node)
+    await renderConsole(repeated, { view: view('raw', true) })
+    expect(node.scrollTop).toBe(120)
+    expect(findFollowIndicator()?.textContent).toBe('回到底部')
+    await renderConsole(repeated, { view: view('raw', false) })
+    expect(node.scrollTop).toBe(120)
+    expect(findFollowIndicator()?.textContent).toBe('回到底部')
+  })
+
+  it('does not mark equal selected facts unread and resets when the scope changes', async () => {
+    await renderConsole(initialLogs, { scopeKey: 'run-1' })
+    const node = getLogNode()
+    defineScrollBox(node, 1000, 400)
+    node.scrollTop = 120
+    await scrollNode(node)
+    await renderConsole(initialLogs.map(log => ({ ...log })), { scopeKey: 'run-1' })
+    expect(findFollowIndicator()?.textContent).toBe('回到底部')
+    await renderConsole([...initialLogs, entry('新增一')], { scopeKey: 'run-1' })
+    expect(findFollowIndicator()?.textContent).toBe('有新日志')
+    await renderConsole([entry('另一执行')], { scopeKey: 'run-2' })
+    expect(findFollowIndicator()).toBeUndefined()
+  })
+
 })
 
-describe('LogConsole run-mini variant', () => {
+describe('LogConsole record details', () => {
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -243,31 +257,24 @@ describe('LogConsole run-mini variant', () => {
     container.remove()
   })
 
-  it('labels the console as the current-run log and renders the collapse action', async () => {
-    const onCollapse = vi.fn()
-    await renderConsole(initialLogs, { variant: 'run-mini', onCollapse })
-
-    expect(container.textContent).toContain('本次执行日志')
-    expect(container.textContent).not.toContain('实时日志')
-    const collapse = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent?.trim() === '收起')
-    expect(collapse).toBeDefined()
-    await act(async () => collapse?.click())
-    expect(onCollapse).toHaveBeenCalledOnce()
-  })
-
-  it('keeps the default titles and hides the collapse action for the default variant', async () => {
-    await renderConsole(initialLogs)
-
-    expect(container.textContent).toContain('实时日志')
-    expect(container.textContent).not.toContain('本次执行日志')
-    expect(Array.from(container.querySelectorAll('button'))
-      .some(button => button.textContent?.trim() === '收起')).toBe(false)
-  })
-
-  it('shows the run-specific empty state while the run has no rows yet', async () => {
-    await renderConsole([], { variant: 'run-mini', onCollapse: () => {} })
-
-    expect(container.textContent).toContain('本次执行还没有日志')
+  it('keeps exact source, full timestamp and correlation in expandable details for either presentation', async () => {
+    const record: LogEntry = {
+      ...entry('执行命令: maa fight, 等待完成: true'),
+      id: 'event-1',
+      timestamp: '2026-11-03T10:00:00.123Z',
+      sourceText: '[2026-11-03 10:00:00.123][INF][thread-1] 执行命令: maa fight, 等待完成: true',
+      source: 'realtime',
+      runId: 'run-1',
+      operationId: 'op-1',
+    }
+    for (const mode of ['readable', 'raw'] as const) {
+      await renderConsole([record], {
+        view: buildLogView([record], { mode, events: 'all', level: 'all', search: '', collapseRepeats: true }),
+      })
+      expect(container.querySelector('summary')?.textContent).toBe('记录详情')
+      expect(container.querySelector('pre')?.textContent).toBe(record.sourceText)
+      expect(container.textContent).toContain('2026-11-03T10:00:00.123Z')
+      expect(container.textContent).toContain('Run：run-1 · Operation：op-1')
+    }
   })
 })
