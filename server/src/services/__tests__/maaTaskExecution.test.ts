@@ -19,7 +19,7 @@ process.env.LA_PLUMA_MAA_LOCK_FILE = join(root, 'maa.lock');
 await mkdir(sharedCache);
 await writeFile(cliPath, `#!${process.execPath}
 import { writeSync } from 'node:fs';
-import { readFile, writeFile, stat } from 'node:fs/promises';
+import { readFile, rename, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 const args = process.argv.slice(2);
@@ -32,7 +32,8 @@ for (const file of ['StageActivityV2.json', 'resource/tasks/tasks.json', 'resour
 const output = JSON.stringify({ args, cacheDir });
 if (args.includes('--hold')) {
   const marker = args[args.indexOf('--hold') + 1];
-  await writeFile(marker, output);
+  await writeFile(marker + '.tmp', output);
+  await rename(marker + '.tmp', marker);
   for (let n = 0; n < 500; n++) {
     if (await stat(marker + '.release').then(() => true, () => false)) break;
     await delay(10);
@@ -78,6 +79,17 @@ function readProbeOutput(text: string): ProbeOutput {
   return { args: fields.args.map(String), cacheDir: String(fields.cacheDir) };
 }
 
+/** 后台标记文件在子进程发布前可能缺失或读到不完整内容，未就绪时返回 null 交给轮询重试。 */
+async function readProbeOutputWhenReady(path: string): Promise<ProbeOutput | null> {
+  const text = await readFile(path, 'utf-8').catch(() => null);
+  if (text === null) return null;
+  try {
+    return readProbeOutput(text);
+  } catch {
+    return null;
+  }
+}
+
 function readErrorField(error: unknown, key: string): unknown {
   if (typeof error !== 'object' || error === null || !(key in error)) return undefined;
   return (error as Record<string, unknown>)[key];
@@ -121,13 +133,13 @@ test('a background fight retains its cache until the child has actually exited',
   assert.equal(started.message, '任务已在后台启动');
 
   let output: ProbeOutput | null = null;
-  for (let n = 0; n < 100; n++) {
-    output = await readFile(marker, 'utf-8').then(content => readProbeOutput(content), () => null);
-    if (output) break;
-    await delay(10);
-  }
   let cacheDirectory = '';
   try {
+    for (let n = 0; n < 100; n++) {
+      output = await readProbeOutputWhenReady(marker);
+      if (output) break;
+      await delay(10);
+    }
     assert.ok(output, 'the background CLI should start');
     cacheDirectory = output.cacheDir;
     assert.ok((await stat(cacheDirectory)).isDirectory());
