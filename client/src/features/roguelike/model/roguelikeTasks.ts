@@ -170,7 +170,7 @@ export function isRoguelikeOptionVisible(
 
 /**
  * 主题切换后把当前主题不再支持的模式重置为首项（集成战略的刷坍缩范式只对萨米开放）。
- * 其余字段保留原值，只按可见性隐藏与停止下发。
+ * 其余字段保留原值；仍生效但越界的下拉值交由执行前校验拒绝。
  */
 export function normalizeRoguelikeModeForTheme(
   taskId: string,
