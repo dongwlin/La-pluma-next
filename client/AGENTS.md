@@ -50,7 +50,6 @@
 
 - 浏览器用例使用 `*.pw.ts`，与 Vitest 单元测试分开。
 - 测试断言可访问性、可见状态、回调/请求参数、store 与导航结果；不要锁 CSS 类名、包裹层或子元素顺序。`html.dark` 是主题契约例外，视觉效果交给浏览器像素基线。
-- 真实缺陷的表征测试使用 `it.fails` 保留目标不变量；修复后移除 `.fails`，保留断言。
 - 视觉与集成测试使用匹配已安装 Playwright 版本的 Docker 镜像；截图不可跨环境复用。更新样式/规模基线必须有实际清理或结构调整依据，不用重录掩盖非预期回归。
 
 ## 延伸阅读
@@ -61,6 +60,7 @@
 | --- | --- |
 | [前端架构与所有权](../docs/frontend/README.md) | 新增领域、路由或调整状态归属时；也作为各领域详细契约的导航。 |
 | [依赖与职责护栏](../docs/development/guardrails.md) | import、页面职责或规模检查失败，以及有意调整结构与基线时。 |
+| [开发指南](../docs/development/README.md) | 查询测试治理（含已知缺陷的 `it.fails` 约定）、样式治理与文件类型规则时。 |
 | [共享资源归属与失效端口](../docs/architecture/resource-ownership.md) | 新增共享资源、写后刷新或跨页一致性修改前，核对发布与接收范围。 |
 | [Query 缓存与键规范](../docs/architecture/query-cache.md) | 新增或调整资源 key、缓存策略、Provider 与重试时。 |
 | [资源请求错误与取消契约](../docs/architecture/resource-requests.md) | 修改只读端点、载荷校验、signal 或错误展示时。 |

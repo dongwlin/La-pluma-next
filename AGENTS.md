@@ -1,55 +1,116 @@
 # 仓库开发指南
 
-## 项目与工作范围
+## 项目快照
 
-La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台。React + TypeScript 前端负责配置、编排和可视化；Node.js + Express 后端调用 `maa` CLI、ADB 和 ScrcpyOverWebRTC，管理本地 JSON 数据。执行与日志状态通过 HTTP 轮询读取，设备预览使用同源 WebRTC 信令网关。
+La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：React + TypeScript 前端负责配置、编排与可视化，Node.js + Express 后端调用 `maa` CLI、ADB 与 ScrcpyOverWebRTC 并维护本地 JSON 数据。执行进度、状态与日志通过 HTTP 轮询读取，业务状态没有推送订阅；实时通道只有设备预览的 WebRTC，信令经同源 `/webrtc-signaling` 网关。仓库没有共享类型包或接口代码生成，前后端各自维护契约两侧。
 
-从本指南开始，按任务读取「延伸阅读」中的子指南和专题文档。
-
-| 位置 | 职责 |
+| 顶层目录 | 职责 |
 | --- | --- |
-| `client/` | 页面、领域逻辑、共享 UI、浏览器测试和 PWA 构建 |
-| `server/` | HTTP API、任务执行、调度、设备连接、通知和持久化 |
-| `docs/` | 现行架构、领域契约、开发与运维说明 |
-| `scripts/` | 根工作区的 Docker 视觉测试入口与容器启动检查 |
-| `.github/workflows/` | 质量检查、视觉比对与 GHCR 镜像发布 |
+| `client/` | 前端应用、领域逻辑、共享 UI、浏览器测试与 PWA 构建 |
+| `server/` | HTTP API、任务执行与调度、设备连接、通知与持久化 |
+| `docs/` | 现行架构、领域契约、开发与运维文档 |
+| `scripts/` | 根级 Docker 化视觉测试入口 |
+| `.github/workflows/` | 质量门禁、浏览器检查与镜像发布 |
 
 ## 环境与常用命令
 
-使用 Node.js 24.12+ 和根工作区固定的 pnpm 12.6.0。依赖统一从仓库根目录安装；依赖变更同步维护根锁文件，不引入子包锁文件。
-
-以下命令均在仓库根目录执行，完整脚本以各包的 `scripts` 为准。
+使用 Node.js 24.12+ 和 `packageManager` 固定的 pnpm 12.6.0。依赖只在仓库根目录安装，仓库只保留根 `pnpm-lock.yaml`，不引入子包锁文件；以下命令均在仓库根目录执行。
 
 | 目的 | 命令 |
 | --- | --- |
 | 安装依赖 | `pnpm install`（复现 CI 时加 `--frozen-lockfile`） |
-| 同时启动前后端 | `pnpm dev` |
-| 只启动前端 / 后端 | `pnpm dev:client` / `pnpm dev:server` |
-| 构建与检查 | `pnpm build`：前端类型检查、构建与 precache 校验；后端语法检查 |
-| 全仓单元测试 | `pnpm test` |
-| 全仓主要质量检查 | `pnpm verify`：客户端护栏、Lint、类型检查、测试、构建，以及服务端语法检查、类型检查与测试 |
+| 启动前后端 | `pnpm dev`；单独启动 `pnpm dev:client` / `pnpm dev:server` |
+| 构建 | `pnpm build`：客户端类型检查、构建与 precache 校验；服务端语法检查 |
+| 测试 | `pnpm test`：客户端 Vitest + 服务端 `node:test` |
+| 主要质量检查 | `pnpm verify`：两个包的 guardrails、类型检查、测试与构建，客户端另含 ESLint |
+| 样式预算 | `pnpm --filter la-pluma-next-client stylelint:ratchet` |
+| 视觉基线比对 / 更新 | `pnpm visual` / `pnpm visual:update`（需 Docker） |
+| 生产启动 | `pnpm start` |
 
-`pnpm verify` 不包含样式预算、视觉比对和浏览器集成检查；涉及前端时按客户端指南补充。真实设备联调还需要 MAA CLI、MaaCore 及资源、ADB；普通单元测试与使用 fixture 的浏览器测试不代表真实设备已验证。
+`pnpm verify` 不覆盖样式预算、浏览器集成、视觉比对、服务端覆盖率与容器启动检查；前端改动需自行补跑对应命令，CI 会全部执行。
 
-## 修改与交付
+## 开发工作流
 
-- 先定位已有领域、服务和状态所有者，再扩展对应实现；跨前后端的功能同步核对请求、响应和持久化契约。
-- 新行为、Bug 修复及执行/异步边界的改动应新增或更新对应回归测试；格式沿用所改文件，检查使用现有脚本。
-- 代码改动先运行定向检查，再运行全仓主要质量检查；纯文档改动核对事实、路径、链接与差异即可。交付时说明实际验证结果及未验证的环境依赖。
-- 保持已有兼容标识：环境变量 `LA_PLUMA_*`、CSS 类名与 localStorage key `la-pluma-*`、HTTP 头 `x-la-pluma-*`、Agent API 标识 `la-pluma-agent-api`。品牌或目录重命名不能顺带改动这些对外约定。
-- 子路径部署时，构建端 `VITE_BASE_PATH` 与运行端 `LA_PLUMA_BASE_PATH` 保持一致；`/api`、`/health` 与 `/webrtc-signaling` 仍使用同源根路径。
-- `server/data/`、`server/debug/`、`.env*` 中的运行数据和凭据不入库；打包时保持运行数据与源码隔离。真实设备执行、调度或通知调试需处于当前任务授权范围内。
-- 文档只保留现行约束与可复现方法；优先更新已有归属文档，其他位置保留导航。新增主题须有独立长期价值和维护归属，准入与复核规则见[维护说明](docs/development/maintaining.md#项目文档与过程档案)。移动文档时同步修复索引及源码、脚本中的引用。
-- 实施计划、任务交接、逐项验收和一次性证据留在仓库外的私有工作区，原始采样放忽略输出目录。私有任务编号、路径及会话标识不得进入源码/注释、测试/fixture、文档、文件名、分支、提交说明或 PR；提交前核对暂存差异与拟用文案，具体标识检查规则留在私有工作区。
-- 维护本指南时只保留全局规则、必要命令与导航；子指南仅承载所在目录的独立规则，指南间引用保持自顶向下。普通文档不增加反向 AGENTS 引用。
+1. 从 `main` 切主题分支，先定位既有领域、服务与状态所有者，再决定改动落在哪一层。
+2. 实现与回归测试一起提交，按「提交前验证」自检。
+3. 提 PR，等 CI 门禁通过后合入 `main`；`main` 受分支保护，必须 `verify` 状态。
+4. 版本提升用单独 PR 只改根 `package.json`，合入后对合并提交打 annotated tag。
+
+推送到 `main` 时，仅 `docs/`、`screenshots/`、Markdown 与 `LICENSE` 变更不触发 CI；PR 不受该过滤影响，照样运行完整检查。
+
+## 代码组织与惯例
+
+- 保持现有单向分层：客户端 `app → pages → features → shared`，服务端 `utils`/`config → services → controllers → routes → 入口`。新增代码归入既有层，不为绕过检查新建平行层或第二份数据源。
+- 源码全部是 TypeScript ESM：Node 直接运行 `.ts`，只写可擦除语法（不用 `enum`、`namespace`、构造器参数属性），服务端相对导入带 `.ts` 后缀。
+- 命名沿用现状：React 组件 PascalCase，hooks 用 `use` 前缀，服务端函数与变量 camelCase。
+
+## 注释规范
+
+默认零注释。除以下三类外不写任何注释：
+
+- 许可证头，且仅当仓库确实需要时。
+- 无法从代码推导的「为什么」：隐藏约束、微妙不变量、特定 Bug 的 workaround，并指得出具体 issue。
+- 项目已有的公共 API docstring 惯例：跟随存量风格，不新增惯例。
+
+以下写法一律禁止：
+
+- `TODO`、`FIXME`、`XXX` 等待办占位。
+- 空 `pass`、空 catch 块。
+- 装饰性分隔注释，如 `// ===== 分隔 =====`。
+- 注释掉的代码。
+- 复述代码行为的注释（例如在循环上方写「遍历列表」）。
+- 不加解释的行内注释；生产代码不因「逻辑不直观」加注释，先用命名、拆分函数、提取常量与测试表达，仍无法表达且属于上述例外才写。
+- 通过注释与用户对话，或用注释描述本次改动；改动说明只进 commit message 与 PR 描述。
+
+本节约束新增与改动的代码；不要为符合本节发起存量注释清理。
+
+## 测试规范
+
+- 修 Bug 先写失败测试：先补一个能在当前代码上复现问题的测试并确认它失败，再改实现。
+- 不得用 mock 把被测逻辑替换成恒真断言。mock 只允许替换真实边界依赖：子进程、网络、时钟、文件系统、浏览器 API。
+- 不得为覆盖率堆砌无意义测试。断言必须验证行为（输入 → 可观察结果），不锁实现细节、内部调用次数或私有字段。
+- 更新快照、像素基线或覆盖率阈值必须有对应的真实变化与结构依据，不得用重录或降阈值掩盖回归。
+
+## 修改须知
+
+- 改前后端共有行为时同步核对请求、响应、错误码与持久化格式，两侧各自补测试；契约以现有 envelope 为准，不新增平行字段。
+- 向 Agent 公开能力时更新 `server/src/routes/agentContract.ts`，manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。
+- 保持对外标识不变：环境变量 `LA_PLUMA_*`、CSS 类名与 localStorage key `la-pluma-*`、HTTP 头 `x-la-pluma-*`、Agent API 标识 `la-pluma-agent-api`。重命名不能顺带改这些约定。
+- 子路径部署时构建端 `VITE_BASE_PATH` 与运行端 `LA_PLUMA_BASE_PATH` 保持一致；`/api`、`/health`、`/readiness`、`/webrtc-signaling` 仍挂在同源根路径，不随子路径前缀移动。
+- 运行数据与凭据不入库：`server/data/`（默认持久数据根目录）、`.env*` 以及仓库外的 MAA 状态目录（日志与调试截图）。打包时保持运行数据与源码隔离。
+- 文档改动落到该主题的归属文档，其他位置只留导航，不复制参数表与状态机；移动文档时同步修正索引及源码、脚本中的引用。
+- 普通文档、README 与源码不引用 AGENTS.md，也不要求读者先读 AGENTS.md；本指南只维护根与子目录两层，引用方向始终自顶向下。
+- 计划、交接、验收与一次性证据留在仓库外的私有工作区。私有任务编号、路径与会话标识不得进入源码/注释、测试/fixture、文档、文件名、分支、commit 或 PR 文案。
+
+## 重要约束与风险
+
+- 真实设备链路依赖 `maa` CLI、MaaCore 及资源、ADB；单元测试与 fixture 浏览器测试不能证明设备侧可用，交付时须写明未验证范围。
+- 本地 `pnpm verify` 是 CI 的子集：CI 另跑样式预算、浏览器集成、视觉比对、服务端覆盖率与双架构容器启动。
+- 执行是否完成只由 Run 终态决定，这是前后端共同契约：HTTP 返回、子进程 idle、断网或页面卸载都不构成完成信号。
+
+## 提交前验证
+
+1. 跑定向检查：改动包的测试、类型检查与对应专项脚本。
+2. 跑 `pnpm verify`。
+3. 改前端样式、布局或构建配置时补 `stylelint:ratchet` 与 `pnpm visual`；改基线须说明依据。
+4. 纯文档改动核对命令、路径、链接与完整 diff；CI 不会替你发现文档事实错误。
+5. 交付说明写清实际执行过哪些检查、哪些仍未验证。
 
 ## Git 规范
 
-- 日常改动在主题分支开发，通过 Pull Request 合入 `main`。
-- Commit message 使用英文并遵循 Conventional Commits，例如 `docs: document repository agent guidance`。
-- 每个 commit 聚焦当前任务，不混入无关重构。
-- Branch 使用 `<type>/<kebab-case-description>`，`<type>` 与本次主要修改类型一致；不使用 Agent、模型或工具名称作为 branch prefix。例如 `test/agent-server-callback-test`。
-- `<type>` 优先采用 Development Guide 定义的 change type vocabulary。当前开发文档尚未列出该词表，采用 Git 历史已使用的 `build`、`chore`、`ci`、`docs`、`feat`、`fix`、`refactor`、`test`，不另造冲突规则。
+- commit message 使用英文并遵循 Conventional Commits，例如 `docs: document repository agent guidance`。
+- 每个 commit 只包含当前任务相关的改动，不混入无关重构。
+- branch 使用 `<type>/<kebab-case-description>`，`<type>` 取 `feat`、`fix`、`docs`、`refactor`、`test`、`ci`、`chore`，与本次主要改动类型一致。
+- 不使用 Agent、模型或工具名称作为 branch prefix。示例：`test/agent-server-callback-test`。
+
+## 子目录指南路由
+
+这些指南只承载所在目录的独立规则，按任务读取，不必预先通读。
+
+| 目录 | 该目录 AGENTS.md 覆盖什么 | 什么任务下需要读它 |
+| --- | --- | --- |
+| `client/` | 前端分层与所有权、状态与生命周期、UI/样式/PWA 规则、按改动选择验证 | 修改 `client/` 的页面、领域、共享组件、样式、构建配置或前端测试 |
+| `server/` | 服务端分层与控制器边界、执行与回调、持久化与运行时、类型与依赖护栏、后端测试边界 | 修改 `server/` 的 API、执行与调度、设备连接、存储或后端测试 |
 
 ## 延伸阅读
 
@@ -57,12 +118,10 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台。Reac
 
 | 入口 | 用途与阅读时机 |
 | --- | --- |
-| [客户端指南](client/AGENTS.md) | 修改 `client/` 时，了解前端分层、所有权、样式及专项验证 |
-| [服务端指南](server/AGENTS.md) | 修改 `server/` 时，了解 API、执行、回调、持久化及测试边界 |
 | [项目 README](README.md) | 首次安装、启动或准备真实设备联调 |
-| [文档索引](docs/README.md) | 按任务查找领域契约、配置、部署及 API 文档 |
-| [整体架构](docs/architecture/README.md) | 修改跨前后端边界或确认模块职责 |
-| [开发指南](docs/development/README.md) | 查询检查方法、测试治理及工具约束 |
-| [维护说明](docs/development/maintaining.md) | 发布、兼容性变更、外部运行时依赖或文档归属调整 |
-| [部署指南](docs/guides/deployment.md) | 修改 Docker、HTTPS、反向代理、PWA 或子路径部署 |
-| [CI 工作流](.github/workflows/ci.yml) | 调整质量门禁、镜像构建或发布时核对真实触发条件与 job 依赖 |
+| [文档索引](docs/README.md) | 按任务定位领域契约、配置、部署与 API 文档 |
+| [整体架构](docs/architecture/README.md) | 修改跨前后端边界或确认模块职责、技术栈 |
+| [开发指南](docs/development/README.md) | 查询样式治理、测试治理、文件类型与专项检查细节 |
+| [维护说明](docs/development/maintaining.md) | 发布流程、兼容性标识、外部运行时依赖与文档归属规则 |
+| [部署指南](docs/guides/deployment.md) | 修改 Docker、HTTPS/PWA、反向代理或子路径部署 |
+| [CI 与工作流说明](.github/workflows/README.md) | 调整质量门禁或确认某项检查在 CI 中的触发条件 |

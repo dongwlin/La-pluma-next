@@ -49,7 +49,7 @@
 
 `build` 仅执行语法检查（`node --check` 逐个解析 `.ts`，同时拒绝不可擦除语法，不依赖 TypeScript 编译器，只装生产依赖时也能运行）；类型检查由 `typecheck` 独立承担，覆盖全部 TS 文件（`tsconfig.json` 的 `include`/`exclude` 为静态范围声明）；`guardrails` 承担类型与依赖职责检查，只约束正确性不变量，不引入格式或风格规则。`verify` 依次运行 `guardrails`、`check`、`typecheck`、`test`。常规测试入口逐文件、逐进程串行运行；不要为提速随意改成共享进程并行，以免模块单例和环境变量相互污染。`test:coverage` 与 `test` 使用同一批测试文件和同样的逐文件进程隔离，统计范围固定为 `**/*.ts` 排除 `**/__tests__/**`，阈值是只升不降的渐进下限；Node 只统计被测试加载过的文件，覆盖率不能替代行为测试。
 
-- 测试使用 `node:test` 与 `node:assert/strict`，放在相关模块的 `__tests__/*.test.ts`；新增文件须符合测试入口的发现规则，TS 测试同样只使用可擦除语法。
+- 测试使用 `node:test`，断言默认 `node:assert/strict`（存量个别文件仍在用 `node:assert`，新测试不沿用）；放在相关模块的 `__tests__/*.test.ts`；新增文件须符合测试入口的发现规则，TS 测试同样只使用可擦除语法。
 - 执行、持久化或子进程测试沿用临时目录、假 CLI 和依赖注入；隔离 Run 存储、执行锁、养成数据等路径，清理单例并恢复环境变量。模块导入时读取的环境变量须在导入前设置。
 - 修改行为或修复 Bug 时补对应的契约/回归场景，尤其是停止竞态、后台失败、存储失败、重启恢复及部分同步失败；修改后运行定向回归及后端语法检查、完整回归。
 - 数据获取脚本访问外部数据源并重写数据文件，不能作为普通验证步骤运行。
@@ -63,7 +63,7 @@
 | `explicit-any` | 不新增显式 `any` | 超出基线即失败 |
 | `suppression-directive` | 不使用 `@ts-` 抑制指令 | 超出基线即失败 |
 | `double-assertion` | 不写经 `any` / `unknown` 的双重断言 | 超出基线即失败 |
-| `layer-inversion` | `utils` / `config` → `services` → `controllers` → `routes` → `app.ts` / `server.ts` 单向；`scripts` 可调用业务代码，业务代码不得依赖 `scripts` | 直接失败 |
+| `layer-inversion` | `utils` / `config` → `services` → `controllers` → `routes` → `app.ts` / `server.ts` 单向；入口只依赖 `utils`、`config`、`services`、`routes`、`scripts` 与其他入口，不直接依赖 `controllers`；`scripts` 可调用业务代码，业务代码不得依赖 `scripts` | 直接失败 |
 | `import-cycle` | 静态 `import` / `export ... from` 不得成环 | 直接失败 |
 | `unlayered-file` | 新增顶层模块或目录必须先归入既有层 | 直接失败 |
 
