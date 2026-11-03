@@ -198,6 +198,17 @@ describe('isRoguelikeOptionVisible', () => {
     })).toBe(false)
   })
 
+  it('ties the investment score option to the investment mode', () => {
+    const moreScore = option('investmentWithMoreScore')
+    expect(isRoguelikeOptionVisible(moreScore, 'roguelike', 'Sarkaz', { mode: '1' })).toBe(true)
+    expect(isRoguelikeOptionVisible(moreScore, 'roguelike', 'Sarkaz', { mode: '0' })).toBe(false)
+    expect(isRoguelikeOptionVisible(moreScore, 'roguelike', 'Sarkaz', { mode: '4' })).toBe(false)
+    expect(isRoguelikeOptionVisible(moreScore, 'roguelike', 'Sarkaz', {
+      mode: '1',
+      disableInvestment: true,
+    })).toBe(false)
+  })
+
   it('follows the field a switch depends on, including the default-off case', () => {
     const investmentsCount = option('investmentsCount')
     expect(isRoguelikeOptionVisible(investmentsCount, 'roguelike', 'Sarkaz', {})).toBe(true)
@@ -306,6 +317,20 @@ describe('buildRoguelikeCommandParams', () => {
       { roguelike: 'Sami' },
       { roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些，图像损坏' } },
     )).toBe('Sami --mode 5 --roles 稳扎稳打 --expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏')
+  })
+
+  it('writes the investment score option only in the investment mode', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { mode: '1', investmentWithMoreScore: true } },
+    )).toBe('Sarkaz --mode 1 --roles 稳扎稳打 --investment-with-more-score')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { mode: '0', investmentWithMoreScore: true } },
+    )).toBe('Sarkaz --mode 0 --roles 稳扎稳打')
   })
 
   it('keeps mode-specific switches out of other modes', () => {

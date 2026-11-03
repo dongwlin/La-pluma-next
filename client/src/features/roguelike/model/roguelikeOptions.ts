@@ -200,7 +200,9 @@ const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     label: '投资时多刷分',
     type: 'checkbox',
     param: '--investment-with-more-score',
+    modes: ['1'],
     requires: { key: 'disableInvestment', equals: false },
+    hint: '仅在刷源石锭模式生效；启用后投资时尝试购物以获取更多分数。',
   },
   {
     key: 'noStopWhenInvestmentFull',
