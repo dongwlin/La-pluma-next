@@ -710,25 +710,47 @@ function captureProcessOutput(childProcess: MaaChildProcess): {
   const stderr = new CapturedOutputBuffer();
   let reportTitle: string[] | null = null;
   let reportLines: string[] | null = null;
+  let reportBytes = 0;
+  let reportTruncated = false;
+
+  // 报告在进程结束才合并：按 UTF-8 字节（含行尾换行）累计，超出实时日志上限就丢弃明细，
+  // 避免报告块在内存里无界增长；保留标记让日志侧仍能看到结果。
+  const appendReportLine = (entry: string): void => {
+    if (!reportLines) return;
+    const bytes = Buffer.byteLength(entry, 'utf8') + 1;
+    if (reportBytes + bytes > MAX_REALTIME_LOG_LINE_BYTES) {
+      reportTruncated = true;
+      reportLines = null;
+      reportBytes = 0;
+      return;
+    }
+    reportBytes += bytes;
+    reportLines.push(entry);
+  };
 
   // 任务报告是一次性的结果而不是流事件：整块合并成一条实时日志，逐行明细仍保留在原文中。
   const emitReport = (): void => {
-    if (!reportLines) return;
-    const text = reportLines.join('\n');
-    appendRealtimeLog('INFO', text.length > MAX_REALTIME_LOG_LINE_BYTES
-      ? `${SUMMARY_BLOCK_TITLE}: …（任务报告过长，已省略）`
-      : text);
+    if (!reportLines && !reportTruncated) return;
+    appendRealtimeLog('INFO', reportLines
+      ? reportLines.join('\n')
+      : `${SUMMARY_BLOCK_TITLE}: …（任务报告过长，已省略）`);
     reportLines = null;
+    reportBytes = 0;
+    reportTruncated = false;
   };
 
   const stdoutLines = new OutputLineDecoder(line => {
-    if (reportLines) {
-      reportLines.push(line);
+    if (reportLines || reportTruncated) {
+      appendReportLine(line);
       return;
     }
     if (reportTitle) {
       if (SUMMARY_BLOCK_SEPARATOR.test(line)) {
-        reportLines = [...reportTitle, line];
+        reportLines = [];
+        reportBytes = 0;
+        reportTruncated = false;
+        for (const pending of reportTitle) appendReportLine(pending);
+        appendReportLine(line);
         reportTitle = null;
         return;
       }

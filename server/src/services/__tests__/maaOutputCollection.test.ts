@@ -79,6 +79,41 @@ for (const waitForCompletion of [false, true]) {
       assert.equal((await result).error, null);
     });
 
+    it('omits a report block whose UTF-8 bytes exceed the realtime line budget', async () => {
+      const { child, settled, result } = await startOutputCollection(waitForCompletion);
+      // 字符数仍低于单行上限，但 UTF-8 字节数加块头后超限：按 length 判断会漏截断。
+      const payload = '中'.repeat(Math.floor(MAX_REALTIME_LOG_LINE_BYTES / 3) - 1);
+      assert.ok(payload.length < MAX_REALTIME_LOG_LINE_BYTES);
+      assert.ok(Buffer.byteLength(payload, 'utf8') <= MAX_REALTIME_LOG_LINE_BYTES);
+      child.stdout.emit('data', Buffer.from(
+        `Summary\n----------------------------------------\n${payload}\n`
+      ));
+      child.emit('close', 0, null);
+      await settled;
+      const messages = getRealtimeLogs(500).map(entry => entry.message);
+      assert.ok(messages.includes('Summary: …（任务报告过长，已省略）'));
+      assert.ok(!messages.some(message => message.includes(payload.slice(0, 16))));
+      assert.equal((await result).error, null);
+    });
+
+    it('omits a report block accumulated past the budget across lines', async () => {
+      const { child, settled, result } = await startOutputCollection(waitForCompletion);
+      const chunk = '中'.repeat(8000);
+      assert.ok(chunk.length * 3 < MAX_REALTIME_LOG_LINE_BYTES);
+      assert.ok(Buffer.byteLength(chunk, 'utf8') * 3 > MAX_REALTIME_LOG_LINE_BYTES);
+      child.stdout.emit('data', Buffer.from(
+        `Summary\n----------------------------------------\n${chunk}\n${chunk}\n`
+      ));
+      child.stdout.emit('data', Buffer.from(`${chunk}\nreport tail\n`));
+      child.emit('close', 0, null);
+      await settled;
+      const messages = getRealtimeLogs(500).map(entry => entry.message);
+      assert.equal(messages.filter(message => message === 'Summary: …（任务报告过长，已省略）').length, 1);
+      assert.ok(!messages.some(message => message.includes(chunk.slice(0, 16))));
+      assert.ok(!messages.includes('report tail'));
+      assert.equal((await result).error, null);
+    });
+
     it('streams a lone Summary line when no report separator follows', async () => {
       const { child, settled, result } = await startOutputCollection(waitForCompletion);
       child.stdout.emit('data', Buffer.from('Summary\nnot a report\n'));
