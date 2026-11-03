@@ -3,6 +3,7 @@
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/shared/query'
 import { gameDataKeys } from '@/features/game-data'
@@ -143,11 +144,16 @@ const flush = async () => {
   })
 }
 
-const renderPage = async () => {
+const DEFAULT_ENTRY = '/app/statistics'
+
+const renderPage = async (initialEntries: string[] = [DEFAULT_ENTRY], extra?: ReactNode) => {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <DataStatistics />
+        <MemoryRouter initialEntries={initialEntries}>
+          <DataStatistics />
+          {extra}
+        </MemoryRouter>
       </QueryClientProvider>,
     )
   })
@@ -157,9 +163,11 @@ const renderWithActivity = async (mode: 'visible' | 'hidden') => {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <Activity mode={mode}>
-          <DataStatistics />
-        </Activity>
+        <MemoryRouter initialEntries={[DEFAULT_ENTRY]}>
+          <Activity mode={mode}>
+            <DataStatistics />
+          </Activity>
+        </MemoryRouter>
       </QueryClientProvider>,
     )
   })
@@ -178,6 +186,24 @@ const selectTab = async (tab: string) => {
     .find(button => button.textContent?.includes(tab))
   expect(target).toBeDefined()
   await click(target!)
+}
+
+const selectedTab = () => Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+  .find(button => button.getAttribute('aria-selected') === 'true')
+
+/** 模拟工作区已打开时又收到一次指向掉落记录 tab 的导航。 */
+function RequestDropsNavigation() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" onClick={() => navigate('/app/statistics?tab=drops')}>
+      请求掉落记录
+    </button>
+  )
+}
+
+function RouteProbe() {
+  const location = useLocation()
+  return <output data-testid="route">{location.pathname + location.search}</output>
 }
 
 const deferred = <T,>() => {
@@ -268,6 +294,53 @@ describe('DataStatistics layout surfaces', () => {
     expect(depotTab?.getAttribute('aria-selected')).toBe('true')
     expect(document.activeElement).toBe(depotTab)
     expect(container.textContent).toContain('仓库识别')
+  })
+
+  it('opens the tab named by the url of the page entry', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+    mocks.getDropStatistics.mockResolvedValue({
+      success: true,
+      data: {
+        total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
+        items: {},
+        stages: {},
+        dateRange: { start: '2026-07-20', end: '2026-07-20', days: 1 },
+      },
+    })
+
+    await renderPage(['/app/statistics?tab=drops'])
+    await flush()
+
+    expect(selectedTab()?.textContent).toContain('掉落记录')
+    expect(container.querySelector('[data-testid="drop-records"]')?.textContent).toContain('掉落数据已加载')
+  })
+
+  it('switches to the tab of a later navigation without reloading the page', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+
+    await renderPage(undefined, <RequestDropsNavigation />)
+    await flush()
+    expect(selectedTab()?.textContent).toContain('干员识别')
+
+    await click(findButton('请求掉落记录')!)
+
+    expect(selectedTab()?.textContent).toContain('掉落记录')
+  })
+
+  it('keeps the selected tab in the url and drops the default one', async () => {
+    mocks.getAllOperators.mockResolvedValue(catalogFixture)
+    mocks.getOperBoxData.mockResolvedValue(ownedOperatorFixture)
+
+    await renderPage(undefined, <RouteProbe />)
+    await flush()
+
+    await selectTab('掉落记录')
+    expect(container.querySelector('[data-testid="route"]')?.textContent).toBe('/app/statistics?tab=drops')
+
+    await selectTab('干员识别')
+    expect(container.querySelector('[data-testid="route"]')?.textContent).toBe('/app/statistics')
   })
 
   it('shows local loading and recovers from an operator data error with retry', async () => {

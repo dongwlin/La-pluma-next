@@ -254,7 +254,7 @@ function controller() {
 
 function LocationProbe() {
   const location = useLocation()
-  return <output data-testid="location">{location.pathname}</output>
+  return <output data-testid="location">{location.pathname + location.search}</output>
 }
 
 function renderDashboard(mode: 'visible' | 'hidden' = 'visible') {
@@ -580,7 +580,7 @@ describe('Dashboard connectivity state', () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/training')
 
     await act(async () => findButton('查看掉落数据')?.click())
-    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/statistics')
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/app/statistics?tab=drops')
   })
 
   it('keeps the preview entry mounted across Activity hide and show', async () => {
