@@ -402,6 +402,34 @@ describe('deriveCopilotSetView', () => {
     expect(view.progress.completed).toBe(0)
   })
 
+  it('keeps an item pending when a successful entry has no recognised mode', () => {
+    for (const raid of ['both', 'normal', 'raid'] as const) {
+      const run = projection({
+        itemStatuses: new Map([[0, 'success']]),
+        entries: [
+          { ...entry(0, 'success'), mode: null },
+          { ...entry(1, 'success'), mode: 'challenge' },
+        ],
+      })
+      const view = deriveCopilotSetView({
+        preview: preview(),
+        selected: new Set([0, 1]),
+        setRun: run,
+        dismissedRunId: null,
+        raid,
+        isWaitingForNext: false,
+        isAutoStopping: false,
+      })
+
+      // 模式缺失或无法识别时不能说明满足哪一项要求，不能扩展成两种模式都完成。
+      expect(view.runCompletedIndexes.size).toBe(0)
+      expect(view.pendingSelectedIndexes).toEqual([0, 1])
+      expect(view.progress).toEqual({
+        total: 3, completed: 0, pending: 2, failed: 0, stopped: 0, skipped: 0,
+      })
+    }
+  })
+
   it('uses the waiting entry as next target and resolves its copilot', () => {
     const next = entry(2, 'pending')
     const run = normalRun([

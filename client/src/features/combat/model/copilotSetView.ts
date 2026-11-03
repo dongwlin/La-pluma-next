@@ -7,7 +7,8 @@
  * - 只有属于当前预览作业集、且未被“重置进度”作废的 Run 才提供逐项结果；
  * - 作业完成按当前 raid 规则要求的模式判断：持久化 `completedModes` 与本次
  *   成功的条目模式合并后覆盖全部所需模式才算完成，单条执行条目成功不等于
- *   作业完成；
+ *   作业完成；成功条目未投影出可识别的模式时不能证明任一模式通过，保持
+ *   待执行；
  * - “待执行”= 页面选择减去已满足完成条件的作业（选择口径，信息面板使用）；
  * - 历史通关只来自服务端持久化的计划进度：`completedModes` 按当前 raid 规则
  *   解释，与页面是否选中无关；
@@ -163,6 +164,9 @@ export function deriveCopilotSetView({
 /**
  * 本次 Run 的作业级完成：当前 raid 要求的所有模式都由持久化进度或本次成功的
  * 条目模式覆盖。同一作业的普通与突袭条目分开判断，单条成功不能算作业完成。
+ *
+ * 模式是完成条件的归因键：条目未投影出 `normal`/`raid` 时，无法说明它满足
+ * 哪一个模式要求，因此不计入任何模式。缺失事实不能被扩展成两种模式都通过。
  */
 function deriveRunCompletedIndexes(
   copilots: readonly CopilotSetItem[],
@@ -172,15 +176,9 @@ function deriveRunCompletedIndexes(
   const successModes = new Map<number, Set<'normal' | 'raid'>>()
   for (const entry of entries) {
     if (entry.itemIndex === null || entry.status !== 'success') continue
+    if (entry.mode !== 'normal' && entry.mode !== 'raid') continue
     const modes = successModes.get(entry.itemIndex) ?? new Set<'normal' | 'raid'>()
-    // 条目未投影模式时无法区分普通/突袭，按覆盖全部所需模式处理，避免把本次
-    // 已执行的作业退回待执行。
-    if (entry.mode === 'raid') modes.add('raid')
-    else if (entry.mode === 'normal') modes.add('normal')
-    else {
-      modes.add('normal')
-      modes.add('raid')
-    }
+    modes.add(entry.mode)
     successModes.set(entry.itemIndex, modes)
   }
 
