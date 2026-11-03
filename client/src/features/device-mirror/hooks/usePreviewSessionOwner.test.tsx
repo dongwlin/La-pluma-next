@@ -133,6 +133,58 @@ describe('usePreviewSessionOwner', () => {
     expect(mocks.connect).not.toHaveBeenCalled()
   })
 
+  it('keeps a connected preview through a short page hide and stops it after the grace period', async () => {
+    await renderActivity()
+    await selectMode('live')
+    expect(mocks.connect).toHaveBeenCalledOnce()
+
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(session.paused).toBe(true)
+    expect(mocks.disconnect).not.toHaveBeenCalled()
+
+    await act(async () => vi.advanceTimersByTimeAsync(179_000))
+    expect(mocks.disconnect).not.toHaveBeenCalled()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(mocks.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('reuses the connection when the page returns within the grace period', async () => {
+    await renderActivity()
+    await selectMode('live')
+
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    visibility = 'visible'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(session.paused).toBe(false)
+    expect(mocks.disconnect).not.toHaveBeenCalled()
+    expect(mocks.startWebrtc).toHaveBeenCalledOnce()
+    expect(mocks.connect).toHaveBeenCalledOnce()
+
+    await act(async () => vi.advanceTimersByTimeAsync(180_000))
+    expect(mocks.disconnect).not.toHaveBeenCalled()
+  })
+
+  it('reconnects after the hidden grace period expired', async () => {
+    await renderActivity()
+    await selectMode('live')
+
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => vi.advanceTimersByTimeAsync(180_000))
+    expect(mocks.disconnect).toHaveBeenCalledOnce()
+
+    visibility = 'visible'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(session.paused).toBe(false)
+    expect(mocks.startWebrtc).toHaveBeenCalledTimes(2)
+    expect(mocks.connect).toHaveBeenCalledTimes(2)
+  })
+
   it('resumes live mode when Activity returns and remains stopped if mode changed while hidden', async () => {
     await renderActivity()
     await selectMode('live')

@@ -1,6 +1,10 @@
 import { useSyncExternalStore } from 'react'
 
-const readPageVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+export function isPageHidden() {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
+
+const readPageVisible = () => !isPageHidden()
 
 function subscribePageVisible(onChange: () => void) {
   document.addEventListener('visibilitychange', onChange)

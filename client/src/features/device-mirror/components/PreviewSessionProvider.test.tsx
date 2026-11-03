@@ -299,15 +299,42 @@ describe('PreviewSessionProvider workspace lifetime', () => {
     expect(mocks.startWebrtc).toHaveBeenCalledTimes(2)
   })
 
-  it('pauses for actual document visibility and resumes one shared connection', async () => {
+  it('pauses the shared preview for actual document visibility and stops it after the grace period', async () => {
     await selectMode('live')
     await renderWorkspace()
     visibility = 'hidden'
     await act(async () => document.dispatchEvent(new Event('visibilitychange')))
     expect(session.paused).toBe(true)
-    expect(mocks.disconnect).toHaveBeenCalledOnce()
+    expect(mocks.disconnect).not.toHaveBeenCalled()
     await renderWorkspace('second')
     expect(mocks.startWebrtc).toHaveBeenCalledOnce()
+
+    await act(async () => vi.advanceTimersByTimeAsync(180_000))
+    expect(mocks.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the shared connection when the page returns within the grace period', async () => {
+    await selectMode('live')
+    await renderWorkspace()
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    visibility = 'visible'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(session.paused).toBe(false)
+    expect(mocks.disconnect).not.toHaveBeenCalled()
+    expect(mocks.startWebrtc).toHaveBeenCalledOnce()
+    expect(mocks.connect).toHaveBeenCalledOnce()
+  })
+
+  it('reconnects after the hidden grace period expired', async () => {
+    await selectMode('live')
+    await renderWorkspace()
+    visibility = 'hidden'
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => vi.advanceTimersByTimeAsync(180_000))
+    expect(mocks.disconnect).toHaveBeenCalledOnce()
 
     visibility = 'visible'
     await act(async () => document.dispatchEvent(new Event('visibilitychange')))
