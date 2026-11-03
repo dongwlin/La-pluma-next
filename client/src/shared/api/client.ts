@@ -41,7 +41,6 @@ const getAuthToken = (): string => {
   return cachedToken
 }
 
-/** 登录、登出或设置 token 后显式更新缓存与持久化，避免下一次请求读到旧值。 */
 export function setAuthToken(token: string | null): void {
   const normalized = normalizeToken(token)
   cachedToken = normalized

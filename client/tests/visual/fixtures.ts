@@ -361,7 +361,6 @@ export const apiFixtures: ApiFixture[] = [
   },
 ]
 
-/** 外部图片（GitHub 游戏资源）：统一返回固定占位 PNG，保证与网络无关且逐字节稳定。 */
 export const EXTERNAL_IMAGE_HOSTS = ['raw.githubusercontent.com']
 
 /**

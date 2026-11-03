@@ -112,7 +112,6 @@ export async function installDeterministicEnvironment(
     })
   }
 
-  // /api/**：返回 fixture；未匹配 = harness 缺口，记录并稍后判失败。
   let deviceStatsCalls = 0
   await page.route('**/api/**', async (route: Route) => {
     const request = route.request()
@@ -136,7 +135,6 @@ export async function installDeterministicEnvironment(
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) })
   })
 
-  // 时间固定：Date 从首帧起固定，定时器照常运行（详见文件头说明）。
   if (options.nativeClock) {
     // Performance sampling needs native sub-ms performance.now(), rAF and timers.
     // Playwright setFixedTime installs a real-time advancing clock facade which

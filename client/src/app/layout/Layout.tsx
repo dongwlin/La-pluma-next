@@ -26,7 +26,6 @@ interface LayoutProps {
 }
 
 // Keep the compact mobile rail focused on the four destinations used most often.
-// The remaining workspaces stay available from the adjacent more control.
 const mobileTabs = appTabs.filter(tab => ['dashboard', 'automation', 'combat', 'config'].includes(tab.id))
 const overflowTabs = appTabs.filter(tab => !mobileTabs.some(primary => primary.id === tab.id))
 

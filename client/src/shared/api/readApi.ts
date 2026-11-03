@@ -160,9 +160,6 @@ export async function readApiData<T = unknown>(
   return { data: parsed.data as T, message: parsed.message, meta: parsed.meta }
 }
 
-/**
- * 把失败转换回旧消费者使用的 `ApiResponse` 失败信封。
- */
 export function apiFailureResponse<T = unknown>(error: ApiRequestError): ApiResponse<T> {
   return {
     success: false,

@@ -7,7 +7,6 @@ interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onCha
   compact?: boolean
 }
 
-/** Native checkbox semantics with the shared app switch presentation. */
 export default function Switch({
   id,
   checked,
