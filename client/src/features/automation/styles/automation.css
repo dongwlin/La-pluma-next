@@ -344,6 +344,12 @@
     flex-direction: column;
   }
 
+  /* useSmoothCorners 把圆角写成内联 clip-path，会裁掉流程页脚上方的固定定位菜单；
+     菜单展开期间交回 overflow 圆角裁剪，关闭后恢复连续圆角。 */
+  .automation-sequence-surface:has(.automation-task-picker) {
+    clip-path: none !important;
+  }
+
   .automation-sequence-surface > .automation-flow-header {
     flex: 0 0 auto;
   }
@@ -731,10 +737,7 @@
   }
 
   .automation-task-picker {
-    position: absolute;
-    right: 0.75rem;
-    bottom: calc(100% + 0.5rem);
-    left: 0.75rem;
+    position: fixed;
     z-index: 20;
     display: grid;
     max-height: 14rem;
