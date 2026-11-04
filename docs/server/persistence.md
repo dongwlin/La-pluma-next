@@ -12,7 +12,7 @@
 - JSON 写入是临时文件加原子替换：同目录独占创建 `.tmp`、fsync、`rename` 覆盖、fsync 目录；失败清理临时文件，原内容不变（`server/src/utils/fileHelper.ts:102-138`）。同一路径的写入、读改写与删除按路径排队串行；`updateJsonFile` 把读取、更新、写回作为同一排队单元，并发读改写不会互相覆盖（`server/src/utils/fileHelper.ts:10-23,155-166`）。
 - JSON 读取：文件缺失返回调用方默认值；语法损坏抛出 `JsonFileParseError`，与磁盘 IO 失败可区分（`server/src/utils/fileHelper.ts:67-100`）。
 - 执行租约锁文件不用替换写入，而是 `link()` 原子发布：完整内容先写临时文件再硬链接，目标已存在即失败，锁文件从可见的第一刻起就是完整 JSON（`server/src/services/executionCoordinatorService.ts:198-214`）。
-- 多数持久模块（进度、台词、用户配置默认实例）在模块导入时读取环境变量绑定路径，覆盖变量须在导入前生效（`server/src/services/copilotPlanService.ts:25-28`、`server/src/services/activityCopilotRunService.ts:43-47`、`server/src/services/operatorQuotesService.ts:87`、`server/src/services/configStorageService.ts:87`）；Run 存储的 `LA_PLUMA_AGENT_RUN_STORE` 在 `initializeAgentRunStore` 调用时读取，覆盖可在服务启动前注入（`server/src/services/agentRunService.ts:860-872`）。
+- 多数持久模块（进度、台词、用户配置默认实例）在模块导入时读取环境变量绑定路径，覆盖变量须在导入前生效（`server/src/services/copilotPlanService.ts:25-28`、`server/src/services/activityCompletionService.ts:5-10`、`server/src/services/operatorQuotesService.ts:87`、`server/src/services/configStorageService.ts:87`）；Run 存储的 `LA_PLUMA_AGENT_RUN_STORE` 在 `initializeAgentRunStore` 调用时读取，覆盖可在服务启动前注入（`server/src/services/agentRunService.ts:860-872`）。
 
 ## 数据类别总表
 
@@ -24,7 +24,7 @@
 | 自动化任务配置 | `operatorTrainingStore` | `<trainingDataDir>/user-configs/automation-tasks.json`（`server/src/services/operatorTrainingStore.ts:46`） | 结构无效抛错，不覆盖原文件 |
 | 养成数据快照 | `operatorTrainingStore`（脚本/识别产物） | `<trainingDataDir>/` 下 `materials.json`、`material-formulas.json`、`operator-materials.json`、`depot.json`、`operbox.json` | 结构不符回退空表 |
 | 掉落记录 | `dropRecordService` | `server/data/drop-records/<YYYY-MM-DD>.json`；`LA_PLUMA_DROP_RECORDS_DIR`（`server/src/config/runtimeConfig.ts:177`） | 写入遇损坏 fail-closed；读取历史跳过损坏日 |
-| 作业集/活动完成进度 | `copilotPlanService`、`activityCopilotRunService` | `server/data/copilot-progress.json`；`LA_PLUMA_COPILOT_PROGRESS_STORE`（`server/src/services/copilotPlanService.ts:25-28`）、`server/data/activity-copilot-progress.json`；`LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE`（`server/src/services/activityCopilotRunService.ts:43-47`） | 损坏抛错，不静默清零 |
+| 作业集/活动完成进度 | `copilotPlanService`、`activityCompletionService` | `server/data/copilot-progress.json`；`LA_PLUMA_COPILOT_PROGRESS_STORE`（`server/src/services/copilotPlanService.ts:25-28`）、`server/data/activity-copilot-progress.json`；`LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE`（`server/src/services/activityCompletionService.ts:5-10`） | 损坏抛错，不静默清零 |
 | 干员台词 | `operatorQuotesService` | `server/data/operatorQuotes.json`；`LA_PLUMA_OPERATOR_QUOTES_STORE`（`server/src/services/operatorQuotesService.ts:87`） | 缺失用内置兜底文案；损坏读写报错，不用兜底覆盖 |
 | 执行租约 | `executionCoordinatorService` | `server/data/maa-execution.lock`；`LA_PLUMA_MAA_LOCK_FILE`（`server/src/services/executionCoordinatorService.ts:21,89-91`） | PID 存活即占用；不存活可回收；无法解析按 `unknown` |
 | MAA 日志与调试截图 | MAA CLI 产物；`maaLogFileService` 只读 | `maa dir log` 解析的日志目录；MAA 状态目录 `debug/` | 不恢复；检查点仅在内存 |
@@ -55,6 +55,7 @@
 - 队列内容指纹 `queueRevision` 是条目列表的 SHA-256（`server/src/services/operatorTrainingStore.ts:211-217`）；养成计划应用必须校验它，并保留「队列已保存但流程/定时同步失败」的部分成功结果，不伪装成全成功。
 - 自动化任务配置读取时校验最小结构（对象、`taskFlow` 数组、任务 `params/stages` 形态），无效抛错；写回经 fileHelper 路径队列整体替换，不丢弃本领域未读取的字段（`server/src/services/operatorTrainingStore.ts:493-533`）。
 - 养成数据快照（材料库、合成配方、干员材料、OperBox、仓库）结构不符时按空表处理并告警，不抛错（`server/src/services/operatorTrainingStore.ts:288-300,335-366,441-481`）。
+- 仓库/干员识别缓存只接受当前任务链最后一条 `details.done=true` 的载荷；未完成、跨事件或上一轮运行的旧结果不写盘，保留上一份完整快照（`server/src/services/dataParserService.ts`）。
 
 ## 掉落记录
 
@@ -65,8 +66,8 @@
 
 ## copilot 与 activity 进度
 
-- 两个进度文件都是「单文件多键」的共享状态：原子替换、路径排队与完整读改写由 fileHelper 承担，不同键的并发更新互不覆盖（`server/src/services/copilotProgressStore.ts:1-50`）。
-- 读取值显式为 `unknown`，由各领域服务在读取处收窄；损坏文件抛出可识别错误而不是静默清零，避免后续写入把已有进度清零（`server/src/services/copilotProgressStore.ts:42-48`）。
+- 两个进度文件都是「单文件多键」的共享状态：原子替换、路径排队与完整读改写由 fileHelper 承担（`server/src/services/copilotProgressStore.ts:1-50`）。copilot 进度仍会写入；activity 进度只读历史数据，供 `/api/agent/activity` 的 completion 展示。
+- 读取值显式为 `unknown`，由各领域服务在读取处收窄；损坏文件抛出可识别错误而不是静默清零（`server/src/services/copilotProgressStore.ts:42-48`）。
 
 ## 干员台词
 

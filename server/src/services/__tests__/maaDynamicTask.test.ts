@@ -24,6 +24,7 @@ function createRuntime({ background = false }: { background?: boolean } = {}): R
       return { release: async () => { events.push(['release']) } }
     },
     getConfigDir: async () => '/virtual/config',
+    resolveClientType: async () => 'Official',
     mkdir: async path => { events.push(['mkdir', path]) },
     writeFile: async (path, content) => { events.push(['write', path, content]) },
     unlink: async path => { events.push(['unlink', path]) },
@@ -62,6 +63,16 @@ describe('dynamic task lifecycle', () => {
       const decoded = parse(String(taskFile[2]))
       assert.deepEqual(decoded.tasks, [config])
     }
+  })
+
+  it('writes the connected profile client type into the generated task file', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'YoStarEN'
+    await execDynamicTask('award', { name: '领取奖励', type: 'Award', params: {} }, '领取奖励', 'agent', true, false, runtime)
+    const taskFile = events.find(event => event[0] === 'write')
+    assert.ok(taskFile)
+    const decoded = parse(String(taskFile[2]))
+    assert.equal(decoded.client_type, 'YoStarEN')
   })
 
   it('reads only the execution checkpoint and rejects a partial operator failure despite CLI success', async () => {

@@ -19,7 +19,15 @@ export interface MaaPaths {
   battleDataPath: string;
 }
 
+/** 与 maa-cli 一致：显式目录变量优先于 XDG，空值按未设置处理。 */
+function readDirOverride(env: RuntimeEnvSource, name: string): string | null {
+  const value = env[name]?.trim();
+  return value ? value : null;
+}
+
 function resolveMaaConfigDir(env: RuntimeEnvSource, platformName: NodeJS.Platform, home: string): string {
+  const override = readDirOverride(env, 'MAA_CONFIG_DIR');
+  if (override) return override;
   switch (platformName) {
     case 'darwin':
       return join(home, 'Library', 'Application Support', 'com.loong.maa');
@@ -33,6 +41,8 @@ function resolveMaaConfigDir(env: RuntimeEnvSource, platformName: NodeJS.Platfor
 }
 
 function resolveMaaDataDir(env: RuntimeEnvSource, platformName: NodeJS.Platform, home: string): string {
+  const override = readDirOverride(env, 'MAA_DATA_DIR');
+  if (override) return override;
   switch (platformName) {
     case 'darwin':
       return join(home, 'Library', 'Application Support', 'com.loong.maa');
@@ -46,6 +56,8 @@ function resolveMaaDataDir(env: RuntimeEnvSource, platformName: NodeJS.Platform,
 }
 
 function resolveMaaStateDir(env: RuntimeEnvSource, platformName: NodeJS.Platform, home: string): string {
+  const override = readDirOverride(env, 'MAA_STATE_DIR');
+  if (override) return override;
   switch (platformName) {
     case 'darwin':
       return join(home, 'Library', 'Application Support', 'com.loong.maa');

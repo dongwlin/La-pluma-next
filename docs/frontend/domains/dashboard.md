@@ -21,7 +21,7 @@
 | 设备采样投影 | `DashboardWorkspace` 内的 `DashboardDeviceSampleProjection` | 只调用一次 `useDashboardDeviceStats`，返回 `null`；样本更新不推动兄弟区域重渲染 |
 | 连接健康提示与重试 | `features/dashboard/components/DashboardConnectionAlert.tsx` | 离线/后端不可用时渲染；重试调用完整快照协调器 |
 | 流程区域（网格与预览入口） | `features/dashboard/components/DashboardFlowSection.tsx` | `useDashboardFlowLayout` 的网格测量与预览壳；预览入口始终挂载 |
-| 今日流程卡 | `features/dashboard/components/DashboardFlowPanel.tsx` | 订阅活动/定时/开放关卡摘要与刷新错误；持有预检/启动反馈 |
+| 今日流程卡 | `features/dashboard/components/DashboardFlowPanel.tsx` | 订阅活动/定时/开放关卡摘要与刷新错误；持有启动反馈 |
 | 当前活动卡状态投影 | `features/dashboard/model/activityView.ts` | 纯函数：把活动快照、刷新状态与旧 v1 缺字段投影为 loading/active/none/unavailable/stale |
 | 流程操作入口 | `features/dashboard/hooks/useDashboardFlowActions.ts` | 组合 `useDashboardExecution` 与刷新回调；不写 store、不另发请求 |
 | 连接健康投影 | `features/dashboard/hooks/useDashboardServiceStatus.ts` | 把 `backendStatus` 与在线状态映射成文案；探针仍归 `runtime-status` |
@@ -37,12 +37,12 @@
 维护约束：
 
 - 不改变五个领域 Query 的资源归属、`staleTime`/`gcTime`、自动重试、失效作用域与 5 分钟刷新节奏；activity 不传 `clientType` 时 key 使用 `profile` 哨兵（见[Query 缓存与键规范](../../architecture/query-cache.md)）。
-- 不改变执行端点、幂等键、`scope: 'dashboard'`、预检响应语义与终态提示规则。
+- 不改变执行端点、幂等键、`scope: 'dashboard'` 与终态提示规则。
 - 不改变设备采样端点、5s 间隔、文档隐藏暂停、`refetchOnMount: 'always'` 与失败保旧。
 - `la-pluma-dashboard-cache` 保持 v1 与 `la-pluma-dashboard-cache` key；活动摘要新增字段为可选增量，旧缓存缺 `status` 时首次挂载立即刷新，旧客户端忽略新字段。
-- 不把预检 loading、启动反馈、流程展示计算写入 `dashboardStore`、Query、localStorage 或 URL。
+- 不把启动 loading、反馈与流程展示计算写入 `dashboardStore`、Query、localStorage 或 URL。
 - 除活动卡新增的状态/失败/重试文案外，不改变渲染结构、DOM/CSS 类名或默认态视觉；既有 DOM/CSS 与视觉约束保持不变。
-- 总览没有展开/折叠交互；没有跨面板展开状态需要提升为共享状态。局部交互状态只有预检/启动 loading 与反馈，就近放在流程卡。
+- 总览没有展开/折叠交互；没有跨面板展开状态需要提升为共享状态。局部交互状态只有启动 loading 与反馈，就近放在流程卡。
 
 ### 2. 组合与订阅边界
 
@@ -52,7 +52,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
    ├─ DashboardDeviceSampleProjection（采样投影，返回 null）
    ├─ DashboardConnectionAlert（连接健康 + 重试）
    ├─ DashboardFlowSection（网格测量 + 预览入口）
-   │  ├─ DashboardFlowPanel（执行/预检/摘要 + flowView）
+   │  ├─ DashboardFlowPanel（执行/摘要 + flowView）
    │  └─ DashboardPreviewEntry（device-mirror 预览会话）
    ├─ DashboardDeviceSection（deviceStats + temperatureHistory）
    └─ DashboardSummarySection
@@ -73,7 +73,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 状态变化 | 会重渲染 | 不会重渲染 |
 | --- | --- | --- |
 | 活动/定时/开放关卡快照提交 | `DashboardFlowPanel` | 设备、摘要、连接提示 |
-| 预检/启动 loading 或流程反馈 | `DashboardFlowPanel` | 设备、摘要、连接提示 |
+| 启动 loading 或流程反馈 | `DashboardFlowPanel` | 设备、摘要、连接提示 |
 | 执行控制器快照（运行/停止/占用） | `DashboardFlowPanel` | 设备、摘要、连接提示 |
 | 设备样本（每 5s） | `DashboardDeviceSampleProjection`、`DashboardDeviceSection`（仅在有样本时） | 流程、摘要、连接提示 |
 | 养成摘要 | `DashboardTrainingSummaryCard` | 掉落卡、流程、设备、连接提示 |
@@ -82,7 +82,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 页面不再整体订阅状态消息：流程卡从 `useStatusStore` 只取 `setMessage` 动作，因此成功/警告消息不会重渲染总览工作区。全局状态指示器仍自行订阅消息。
 
-### 3. 今日流程入口与预检
+### 3. 今日流程入口
 
 `useDashboardFlowActions` 保留迁移前的用户路径，只把接线移到区域附近：
 
@@ -90,11 +90,10 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | --- | --- | --- |
 | 开始今日流程 | 校验在线/后端可用 → `loadUserConfig('automation-tasks')` → 空流程时提示并导航自动化 → `startFlow(flow)` 经控制器提交 `run_daily_flow` | `user-config` 读取 + `task-execution` 控制器 |
 | 启动成功后的刷新 | `await refreshDashboard()`（`force` 完整快照） | `dashboardSnapshotRefresher` |
-| 打当前活动 | 同步调用 `/agent/activity/run`；只有 `executed=true` 才刷新 | `task-execution` 控制器 + automation 域端点 |
 | 设备忙/提交在途 | 按钮禁用或返回 warning；同一时刻只允许一次提交 | 控制器 `submission` + 区域在途 ref |
 
-- `quickStartLoading`、`activityPreflightLoading` 与反馈只存在于流程区域；预检期间不读取五路资源、不调用 `finishRefresh`，因此不会产生半份快照或提前更新时间戳。
-- 成功启动或实际执行活动后才经协调器刷新；刷新失败仍由协调器保留旧完整快照。
+- `quickStartLoading` 与反馈只存在于流程区域；启动期间不读取五路资源、不调用 `finishRefresh`，因此不会产生半份快照或提前更新时间戳。
+- 成功启动后才经协调器刷新；刷新失败仍由协调器保留旧完整快照。
 - 终态提示与运行/占用/未知阶段仍来自 `useDashboardExecution` 的唯一控制器快照；流程卡只增加展示投影。
 - 未保存流程时导航到自动化页的行为、提示文案与警告类型与迁移前一致。
 
@@ -121,9 +120,9 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 输出 | 规则 |
 | --- | --- |
 | `isRunning` | `phase` 为 `running`/`waiting` |
-| `controlsDisabled` | 任一 loading、设备忙或后端不可用 |
+| `controlsDisabled` | 启动 loading、设备忙或后端不可用 |
 | `statusLabel` | 有活动 run 时为“当前任务”；否则 loading 时为“当前操作”；否则“运行状态” |
-| `commandTitle` | 不可用 → 连接标题；预检/启动 loading → 对应进行中文案；再按 `waiting`/`running`（标签 → 当前任务 → 默认）/`occupied`/`unknown`/`idle` 回退 |
+| `commandTitle` | 不可用 → 连接标题；启动 loading → 对应进行中文案；再按 `waiting`/`running`（标签 → 当前任务 → 默认）/`occupied`/`unknown`/`idle` 回退 |
 | `commandDescription` | 不可用 → 连接说明；loading → 对应说明；再按阶段回退到运行说明、计划消息或待命文案 |
 | `primaryActionLabel` / `statusKey` | `waiting` → “等待继续”；运行 → “正在运行”；否则“开始今日流程”；loading 时状态为 `starting` |
 
@@ -141,7 +140,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 状态 | 所有者 | Activity 隐藏 / 恢复 | 真正卸载 / 刷新 |
 | --- | --- | --- | --- |
 | 完整业务快照与 `lastRefreshAttemptAt` | `dashboardStore` + 协调器 | 页面的刷新计时器与失效订阅清理；在途协调读取继续并原子提交；恢复按时间戳决定刷新 | 从 `la-pluma-dashboard-cache` v1 恢复，再按 5 分钟规则刷新 |
-| 预检/启动 loading 与反馈 | `DashboardFlowPanel` 本地状态 | 保留；显示时继续可见 | 重置 |
+| 启动 loading 与反馈 | `DashboardFlowPanel` 本地状态 | 保留；显示时继续可见 | 重置 |
 | 执行订阅与终态提示 | `task-execution` 控制器 + `useDashboardExecution` | 观察者随 Effects 重建，控制器继续观察；不发送停止 | 按持久化身份恢复，不重新提交 |
 | 设备采样 | `device-mirror/device-stats` Query | 观察者注销、计时器清理；恢复立即采样一次；缓存回放不重复追加温度点 | 新 Query 立即读取；持久化温度历史保留 |
 | 设备温度历史 | `dashboardStore` | 保留 | 随完整快照缓存恢复 |
@@ -217,13 +216,13 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 
 | phase | 条件 | 卡片行为 |
 | --- | --- | --- |
-| `loading` | 没有快照且正在刷新；或旧 v1 摘要缺 `status` 且未失败 | 显示真实刷新文案；不提供重试；旧快照 `available=true` 时仍可执行 |
-| `active` | 服务端 `status=active` 且最近一次快照刷新成功 | 显示名称/代号、地区、来源与更新时间；`available=true` 时可执行当前活动 |
-| `none` | 服务端 `status=none` 且最近一次快照刷新成功 | 显示“暂无当前刷关活动”，不提供执行 |
-| `unavailable` | 服务端 `status=unavailable`，或首轮刷新失败且没有旧快照 | 显示失败原因与重试；不提供执行 |
-| `stale` | 服务端 `status=stale`，或最近一次快照刷新失败但有旧快照 | 保留旧活动/“可能已过期”，显示上次成功与重试；`available=true` 时仍可执行 |
+| `loading` | 没有快照且正在刷新；或旧 v1 摘要缺 `status` 且未失败 | 显示真实刷新文案；不提供重试 |
+| `active` | 服务端 `status=active` 且最近一次快照刷新成功 | 显示名称/代号、地区、来源与更新时间 |
+| `none` | 服务端 `status=none` 且最近一次快照刷新成功 | 显示“暂无当前刷关活动” |
+| `unavailable` | 服务端 `status=unavailable`，或首轮刷新失败且没有旧快照 | 显示失败原因与重试 |
+| `stale` | 服务端 `status=stale`，或最近一次快照刷新失败但有旧快照 | 保留旧活动/“可能已过期”，显示上次成功与重试 |
 
-`canRunActivity` 只对 `available=true` 且 phase 不是 `none`/`unavailable` 的快照为真；主线活动可以显示名称，但缺少可导航代号时不会出现“打当前活动”。
+当前活动卡只读展示；页面唯一的执行入口是“开始今日流程”。
 
 ### 3. 原子提交与失败策略
 
@@ -257,7 +256,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - 网络恢复（`online` 事件）`force` 刷新。
 - 在途协调读取不因 Activity 隐藏中止；结果仍写入 store，隐藏期间完成的快照在恢复后直接可用。
 
-统一执行入口的接线为：`useDashboardExecution` 调用 `executionController.submitExecution`，日常流程使用 `run_daily_flow` 与 `scope: 'dashboard'`，活动预检使用 `run_current_activity_copilots`。操作成功后的刷新仍走 `refreshDashboard`（force），不另建页面请求路径。目前该接线由 `DashboardFlowPanel` 经 `useDashboardFlowActions` 调用，刷新调度仍只有页面/工作区一份，语义不变（见[总览领域面板](#页面与面板)）。
+统一执行入口的接线为：`useDashboardExecution` 调用 `executionController.submitExecution`，日常流程使用 `run_daily_flow` 与 `scope: 'dashboard'`。操作成功后的刷新仍走 `refreshDashboard`（force），不另建页面请求路径。目前该接线由 `DashboardFlowPanel` 经 `useDashboardFlowActions` 调用，刷新调度仍只有页面/工作区一份，语义不变（见[总览领域面板](#页面与面板)）。
 
 ### 6. 缓存与持久化边界
 
@@ -288,7 +287,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 关键不变量：
 
 - 完整快照只做原子提交：单路失败、坏载荷或 completion 越界整体失败并保留旧快照；协调器单飞、`force` 补一次、探针不否决、预期失败静默。
-- 活动卡 phase（loading/active/none/unavailable/stale）矩阵与 `canRunActivity` 执行能力；`la-pluma-dashboard-cache` v1 的版本/形状/时钟偏差校验，失败刷新不覆盖成功缓存。
+- 活动卡 phase（loading/active/none/unavailable/stale）矩阵；`la-pluma-dashboard-cache` v1 的版本/形状/时钟偏差校验，失败刷新不覆盖成功缓存。
 - 设备采样：同一 `dataUpdatedAt` 的缓存回放不重复追加温度点，新时间戳逐次追加（最多 36 个），`null` 载荷与非法字段保旧。
 - 订阅隔离：采样投影返回 `null` 不推动兄弟区域重渲染，流程卡独占执行订阅与终态提示；预览入口不条件卸载、预览画面不导航。
 

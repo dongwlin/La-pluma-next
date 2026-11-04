@@ -168,14 +168,13 @@ waiting ──stop──> stopped
 
 ### 4.1 日常流程提交与异步接受
 
-手动、Dashboard、cron 与 Agent 日常流程入口共用 `run_daily_flow` 一个执行动作和同一条 Run 生命周期；活动作业入口已有自己的 tracked 动作：
+手动、Dashboard、cron 与 Agent 日常流程入口共用 `run_daily_flow` 一个执行动作和同一条 Run 生命周期：
 
 | 入口 | 提交方式 | Run | 同步兼容 |
 | --- | --- | --- | --- |
 | `POST /api/agent/actions/run-daily-flow` | Agent API；`waitForCompletion` 默认 `true` | 是 | 默认同步返回整个流程结果 |
 | `POST /api/agent/schedules/{scheduleId}/execute` | Web UI 手动（`manual`）、Dashboard 快捷（`dashboard-quick-start`）及旧调用方 | 是 | 默认同步；响应保留原 `data` 字段并新增 `runId`/`run`/`pollUrl`/`stopUrl` |
 | 定时触发（cron） | `schedulerService.executeScheduledTaskFromCron` | 是 | 无 HTTP 调用方；Run 在流程开始前创建，完成后可从 `/runs/current` 的 `lastRun` 或保留记录查询 |
-| `POST /api/agent/activity/run` | 当前活动作业 | 是（`run_current_activity_copilots`） | 已有同步入口；`waitForCompletion` 不适用 |
 
 - `waitForCompletion=false` 时，入口在流程获得执行租约并通过 pre-start gate 后返回 HTTP 202；`data` 同时带 `accepted: true`、`scheduleId`、`totalSteps` 与 `runId`。需要计划内容的 Agent 调用还会返回 `plan`。在此之前发生的占用或校验失败仍同步返回 409/400，run 记为 `failed` 并释放幂等键。
 - 流程在步间等待（延迟、截图、解析）时子进程可以是 idle，Run 保持 `running`，`progress.currentStep/totalSteps` 来自 `scheduleExecutionStatus`；这不发布整个流程完成。
@@ -183,7 +182,7 @@ waiting ──stop──> stopped
 - 首个请求的幂等键由 `Idempotency-Key` 提供，作用于 `run_daily_flow` 动作；相同 key、相同 `scheduleId` 与 `taskFlow` 重放同一 run。cron 触发没有幂等键，每次触发都是一次新的执行意图；并发触发由执行租约拒绝，被拒绝的触发会留下一个 `failed` 的 `run_daily_flow` 记录。
 - 完成通知与智能养成回写不属于执行本身。执行器持有租约期间只准备通知载荷；设备租约释放且 Run 终态落盘之后，才由调度入口触发这些副作用（cron 在结算后执行，HTTP/Telegram 入口不等待它们完成，避免通知超时阻塞响应）。副作用失败只记录日志并保留在完成副作用的错误摘要中，不改变已经结算的 Run 终态。
 - 不经过上述 Run 包装、直接调用 `executeScheduleNow` 的入口（当前为 Telegram）不会获得 `runId`；它以 `occupancy.state=external` 出现在快照中，不能当作本契约已覆盖。
-- Web UI 入口的提交方式：Dashboard 快捷入口以 `waitForCompletion=false` 提交 `run_daily_flow`，把响应的 `runId` 交给前端控制器观察；活动作业入口保持同步（`waitForCompletion` 不适用），响应中的 `runId` 同样被采纳。两者都不再由前端判断“是否在运行”，全局展示只读 `/runs/current` 快照。
+- Web UI 入口的提交方式：Dashboard 快捷入口以 `waitForCompletion=false` 提交 `run_daily_flow`，把响应的 `runId` 交给前端控制器观察；响应中的 `runId` 由前端控制器采纳，不再由前端判断“是否在运行”，全局展示只读 `/runs/current` 快照。
 - 兼容细节：旧 `/schedules/{scheduleId}/execute` 曾把校验失败也报成 409 `AGENT_SCHEDULE_ALREADY_RUNNING`。现在占用仍保留该旧码，校验失败改为 400 `AGENT_DAILY_FLOW_REJECTED`；这修正了错误分类，未删除同步入口。
 
 ### 4.2 作业集提交、模式与等待下一关
@@ -277,7 +276,6 @@ waiting ──stop──> stopped
 
 | 入口 | 端点/调用方 | Run | 租约/执行方式 | 进度来源 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| 活动作业 | `POST /api/agent/activity/run` | 是（`run_current_activity_copilots`） | 流程全程持有 | run 进度 | Agent API，同步 |
 | 启动游戏 | `POST /api/agent/actions/start-game` | 是（`start_game`） | 命令期间持有 | run 进度 | 支持 `waitForCompletion=false` |
 | 理智作战 | `POST /api/agent/actions/fight` | 是（`fight`） | 命令期间持有 | run 进度 | 支持 dry-run |
 | 单任务/通用任务 | `POST /api/agent/actions/run-task` | 是（`run_task`） | 命令期间持有 | run 进度 | Web UI 的单作业、肉鸽、仓库/干员识别都走这里 |
@@ -301,7 +299,7 @@ waiting ──stop──> stopped
 - `setupSchedule`/`stopSchedule`、`apply-training-plan`、配置保存是**配置写入**，不是执行，不产生 run。
 - `run-task` 的 `command=activity|list` 被强制为同步；其他命令可后台执行（202）。
 - WebRTC 启停、截图和连接测试只管理预览基础设施，不参与执行租约。
-- 只有 Agent API 的四个执行动作（`start_game`、`fight`、`run_task`、`run_daily_flow`）在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。活动作业入口 `run_current_activity_copilots` 始终同步返回，不声明 202。
+- 只有 Agent API 的四个执行动作（`start_game`、`fight`、`run_task`、`run_daily_flow`）在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。
 - `POST /api/agent/schedules/{scheduleId}/execute` 未在 Agent manifest 中广告，但同样创建 `run_daily_flow`；它和 Agent 入口共享 OperationId 与幂等命名空间。
 - `POST /api/agent/copilot-sets/{setId}/execute` 与 `POST /api/agent/actions/continue-copilot-set` 面向 Web UI，未在 Agent manifest 中广告；它们创建/推进 `run_copilot_set`，与其他执行共享同一租约与快照。
 - 定时流程与 HTTP 入口使用同一执行租约；同一时刻只有一个流程能进入 pre-start gate，第二个触发会得到占用失败而不是并行执行。

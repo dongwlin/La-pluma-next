@@ -429,57 +429,6 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     }
   }),
   operation({
-    id: 'activity_run_preflight',
-    method: 'GET',
-    path: '/api/agent/activity/preflight',
-    description: 'Check the current activity and whether MAA has reliable home-screen navigation. This never starts a copilot.',
-    tags: ['Activity'],
-    query_schema: {
-      type: 'object',
-      properties: {
-        profileId: profileIdProperty,
-        clientType: { type: 'string', ...runtimeDefault('clientType') }
-      }
-    }
-  }),
-  operation({
-    id: 'activity_copilot_candidates',
-    method: 'GET',
-    path: '/api/agent/activity/copilot-candidates',
-    description: 'Find manual-selection copilot candidates for the current activity. This never starts a copilot.',
-    tags: ['Activity'],
-    query_schema: {
-      type: 'object',
-      properties: {
-        profileId: profileIdProperty,
-        clientType: { type: 'string', ...runtimeDefault('clientType') }
-      }
-    }
-  }),
-  operation({
-    id: 'run_current_activity_copilots',
-    method: 'POST',
-    path: '/api/agent/activity/run',
-    description: 'Run the server-built current-activity copilot plan. It blocks when navigation or a reliable candidate is unavailable.',
-    tags: ['Activity'],
-    safety: consequential(['start_game_automation', 'consume_in_game_resources']),
-    execution: execution({
-      mode: 'long-running',
-      pollAction: 'get_current_run',
-      stopAction: 'stop_task',
-      preflightAction: 'activity_run_preflight',
-      conflictsWith: ['maa-execution'],
-      idempotency: idempotencyPolicy()
-    }),
-    body_schema: {
-      type: 'object',
-      properties: {
-        profileId: profileIdProperty,
-        clientType: { type: 'string', ...runtimeDefault('clientType') }
-      }
-    }
-  }),
-  operation({
     id: 'start_game',
     method: 'POST',
     path: '/api/agent/actions/start-game',

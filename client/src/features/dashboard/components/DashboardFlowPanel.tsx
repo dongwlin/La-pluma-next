@@ -1,4 +1,4 @@
-import { Activity, CalendarDays, CheckCircle2, Play, Target } from 'lucide-react'
+import { Activity, CalendarDays, Play } from 'lucide-react'
 import { Button, Card } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'
 import { useDashboardFlowActions } from '../hooks/useDashboardFlowActions'
@@ -29,10 +29,8 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     connectionTitle,
     connectionDescription,
     quickStartLoading,
-    activityPreflightLoading,
     feedback,
     runTodayFlow,
-    runCurrentActivity,
   } = useDashboardFlowActions({ refreshDashboard, onMissingFlow })
 
   const view = buildDashboardFlowView({
@@ -40,7 +38,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     connectionTitle,
     connectionDescription,
     quickStartLoading,
-    activityPreflightLoading,
     deviceBusy: isBusy,
     phase: status.phase,
     runLabel: status.label,
@@ -49,7 +46,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     scheduleMessage: scheduleSummary.message,
     observationError,
   })
-  const activityCompleted = activitySummary.completion?.complete === true
   const activityView = buildDashboardActivityView({
     summary: activitySummary,
     hasSnapshot: lastUpdate !== null,
@@ -61,8 +57,8 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
 
   return (
     <div
-      className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || activityPreflightLoading || view.isRunning ? 'is-active' : ''}`}
-      aria-busy={quickStartLoading || activityPreflightLoading || view.isRunning}
+      className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || view.isRunning ? 'is-active' : ''}`}
+      aria-busy={quickStartLoading || view.isRunning}
       data-dashboard-flow-card
     >
       <Card smoothCorners className="dashboard-flow-card p-0!">
@@ -84,29 +80,6 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
           <div className={`mt-1 truncate text-xs ${labelClass}`}>{view.commandDescription}</div>
         </div>
         <div className="dashboard-flow-actions">
-          {activityView.canRunActivity && (
-            <Button
-              onClick={runCurrentActivity}
-              variant="secondary"
-              disabled={view.controlsDisabled}
-              loading={activityPreflightLoading}
-              loadingText="检查中"
-              statusKey={view.activityActionStatusKey}
-              className={`dashboard-flow-activity-action justify-center whitespace-nowrap ${activityCompleted ? 'is-completed' : ''}`}
-              title={activityCompleted ? '重新执行当前活动' : '检查活动导航并执行已保存偏好的活动作业'}
-              aria-label={activityCompleted ? '重新执行当前活动' : '打当前活动'}
-              icon={activityCompleted
-                ? <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
-                : <Target className="h-4 w-4" strokeWidth={2} />}
-            >
-              {activityCompleted ? (
-                <>
-                  <span className="dashboard-flow-activity-completed-label">活动已通关</span>
-                  <span className="dashboard-flow-activity-run-label">打当前活动</span>
-                </>
-              ) : '打当前活动'}
-            </Button>
-          )}
           <Button
             onClick={runTodayFlow}
             variant="primary"
