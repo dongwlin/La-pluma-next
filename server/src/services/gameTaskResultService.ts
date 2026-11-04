@@ -75,7 +75,7 @@ function parseProgress(taskName: string, events: MaaCallbackEvent[]): GameTaskEx
   const detailFailed = details.filter(detail => detail.result === 'Failed').length;
   const failed = events.some(event => event.callback === 'TaskChainError') || detailFailed > 0
     || (summary !== undefined && isCount(summary.failed) && summary.failed > 0);
-  const observed = failed || summary !== undefined || details.length > 0;
+  const observed = failed || summary !== undefined;
   const base: GameTaskExecutionAction = {
     task: taskName,
     action: 'operprogress',
@@ -83,7 +83,7 @@ function parseProgress(taskName: string, events: MaaCallbackEvent[]): GameTaskEx
     observed,
     message: '游戏内培养进程已完成，游戏结果未确认'
   };
-  if (!observed) return base;
+  if (!observed && details.length === 0) return base;
 
   const successCount = summary && isCount(summary.success)
     ? summary.success : details.filter(detail => detail.result === 'Success').length;

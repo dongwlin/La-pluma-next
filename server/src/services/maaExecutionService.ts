@@ -15,6 +15,12 @@ import type {
   MaaSettledHandler
 } from './maaProcessService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
+import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
+import type { MaaLogCheckpoint } from './maaLogFileService.ts';
+import { parseGameTaskExecutionAction } from './gameTaskResultService.ts';
+import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
+import { validateGameTaskParams } from './gameTaskConfigService.ts';
+import { agentError } from '../utils/apiHelper.ts';
 
 const logger = createLogger('MaaService');
 
@@ -67,6 +73,12 @@ export interface MaaDynamicTaskRuntime {
   executeCommand?: MaaDynamicTaskExecutor;
   createNonce?: () => string;
   lifecycle?: MaaProcessLifecycle;
+  createLogCheckpoint?: () => Promise<MaaLogCheckpoint | null>;
+  readLogSince?: (checkpoint: MaaLogCheckpoint | null) => Promise<string>;
+}
+
+export interface MaaDynamicTaskOutput extends MaaCommandOutput {
+  actions?: GameTaskExecutionAction[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -250,7 +262,7 @@ export async function execDynamicTask(
   waitForCompletion = false,
   userResource = false,
   runtime: MaaDynamicTaskRuntime = {}
-): Promise<MaaCommandOutput | MaaBackgroundStart> {
+): Promise<MaaDynamicTaskOutput | MaaBackgroundStart> {
   const acquireExecutionLease = runtime.acquireExecutionLease || acquireMaaExecutionLease;
   const resolveConfigDir = runtime.getConfigDir || getMaaConfigDir;
   const makeDirectory = runtime.mkdir || mkdir;
@@ -259,6 +271,30 @@ export async function execDynamicTask(
   const executeCommand: MaaDynamicTaskExecutor = runtime.executeCommand || execMaaCommandUnlocked;
   const createNonce = runtime.createNonce || (() => `${process.pid}_${Date.now()}_${randomBytes(6).toString('hex')}`);
   const lifecycle = runtime.lifecycle || {};
+  const configObj = normalizeDynamicTaskConfig(taskConfig);
+  const validationMessage = validateGameTaskParams(configObj.type, configObj.params ?? {});
+  if (validationMessage) {
+    throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { statusCode: 400 });
+  }
+  const gameTaskType: GameTaskType | null = configObj.type === 'OperProgress' || configObj.type === 'SwitchTheme'
+    ? configObj.type
+    : null;
+  let logCheckpoint: MaaLogCheckpoint | null = null;
+  const gameTaskAction = async (): Promise<GameTaskExecutionAction | null> => {
+    if (!gameTaskType) return null;
+    let logOutput = '';
+    try {
+      logOutput = await (runtime.readLogSince || readMaaLogSince)(logCheckpoint);
+    } catch (error) {
+      logger.warn('读取游戏任务结果失败', { error: errorMessageOf(error) });
+    }
+    return parseGameTaskExecutionAction(taskName || configObj.name, gameTaskType, logOutput);
+  };
+  const gameTaskFailure = (action: GameTaskExecutionAction): MaaCommandError => agentError(
+    'AGENT_GAME_TASK_FAILED',
+    action.message,
+    { statusCode: 422, details: { actions: [action] }, retryable: false }
+  );
 
   const lease = await acquireExecutionLease({
     source: taskType || 'dynamic-task',
@@ -297,8 +333,6 @@ export async function execDynamicTask(
     const taskFileId = `${taskPrefix}_temp_${createNonce()}`;
     tempTaskFile = join(tasksDir, `${taskFileId}.toml`);
 
-    const configObj = normalizeDynamicTaskConfig(taskConfig);
-
     const tomlContent = generateTaskToml(configObj);
 
     await writeTaskFile(tempTaskFile, tomlContent, 'utf-8');
@@ -306,6 +340,13 @@ export async function execDynamicTask(
     addLog('DEBUG', `任务内容:\n${tomlContent}`);
 
     const runArgs = [taskFileId];
+    if (gameTaskType) {
+      try {
+        logCheckpoint = await (runtime.createLogCheckpoint || createMaaLogCheckpoint)();
+      } catch (error) {
+        logger.warn('创建游戏任务日志检查点失败', { error: errorMessageOf(error) });
+      }
+    }
     if (userResource) runArgs.push('--user-resource');
     if (taskName && !waitForCompletion) {
       const { onSettled: lifecycleOnSettled, ...processLifecycle } = lifecycle;
@@ -317,13 +358,32 @@ export async function execDynamicTask(
         false,
         false,
         async (outcome: MaaCommandOutcome) => {
+          let enrichedOutcome = outcome;
+          try {
+            if (!outcome.stopped) {
+              const action = await gameTaskAction();
+              if (action) {
+                const result = { ...outcome.result, actions: [action] };
+                if (outcome.error) {
+                  outcome.error.details = { ...(isRecord(outcome.error.details) ? outcome.error.details : {}), actions: [action] };
+                }
+                enrichedOutcome = {
+                  ...outcome,
+                  result,
+                  ...(outcome.ok && action.status === 'failed' ? { ok: false, error: gameTaskFailure(action) } : {})
+                };
+              }
+            }
+          } catch (error) {
+            logger.warn('读取游戏任务结果失败', { error: errorMessageOf(error) });
+          }
           try {
             await cleanupAndRelease();
           } catch (error) {
             logger.error('释放动态任务资源失败', { error: errorMessageOf(error) });
           }
           try {
-            await lifecycleOnSettled?.(outcome);
+            await lifecycleOnSettled?.(enrichedOutcome);
           } catch (error) {
             logger.error('处理动态任务终态失败', { error: errorMessageOf(error) });
           }
@@ -334,11 +394,22 @@ export async function execDynamicTask(
       return result;
     }
 
-    return await executeCommand('run', runArgs, taskName, taskType, waitForCompletion, false, null, lifecycle);
+    const result = await executeCommand('run', runArgs, taskName, taskType, waitForCompletion, false, null, lifecycle);
+    const action = await gameTaskAction();
+    if (action?.status === 'failed') throw gameTaskFailure(action);
+    return action ? { ...result, actions: [action] } : result;
   } catch (error) {
     addLog('ERROR', `执行动态任务失败: ${errorMessageOf(error)}`);
     const fields = isRecord(error) ? error : {};
     if (fields.code === 'MAA_EXECUTION_BUSY' || fields.stopped) throw error;
+    if (gameTaskType && fields.code !== 'AGENT_GAME_TASK_FAILED') {
+      const action = await gameTaskAction();
+      if (action) {
+        const failure = commandErrorFields(error, `执行动态任务失败: ${errorMessageOf(error)}`);
+        failure.details = { ...(isRecord(fields.details) ? fields.details : {}), actions: [action] };
+        throw failure;
+      }
+    }
     throw commandErrorFields(error, `执行动态任务失败: ${errorMessageOf(error)}`);
   } finally {
     if (releaseOnReturn) await cleanupAndRelease();

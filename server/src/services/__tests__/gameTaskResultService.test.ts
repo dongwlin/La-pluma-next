@@ -104,6 +104,7 @@ describe('game task results', () => {
       }));
 
     assert.equal(action.status, 'success');
+    assert.equal(action.observed, false);
     assert.equal(action.successCount, 1);
     assert.equal(action.details?.[0]?.skillLevel, 7);
     assert.match(action.message, /完整结果未确认/);

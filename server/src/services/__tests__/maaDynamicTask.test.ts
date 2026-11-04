@@ -4,6 +4,7 @@ import { execDynamicTask } from '../maaExecutionService.ts'
 import type { MaaDynamicTaskRuntime } from '../maaExecutionService.ts'
 import type { MaaCommandOutcome, MaaSettledHandler } from '../maaProcessService.ts'
 import { MaaExecutionBusyError } from '../executionCoordinatorService.ts'
+import { parse } from '@iarna/toml'
 
 type RuntimeEvent = [string, ...unknown[]]
 
@@ -46,6 +47,108 @@ function eventArgs(event: RuntimeEvent | undefined): unknown[] {
 }
 
 describe('dynamic task lifecycle', () => {
+  it('serializes nested operator targets and theme candidates as native TOML values', async () => {
+    const plans = [{ role: 'Warrior', name: '陈', elite: 2, skill_level: 7, skill_mastery: [0, 3, 0] }]
+    for (const config of [
+      { name: '游戏内培养', type: 'OperProgress', params: { plans } },
+      { name: '主题更换', type: 'SwitchTheme', params: { themes: ['默认', '简约'] } }
+    ]) {
+      const { events, runtime } = createRuntime()
+      runtime.createLogCheckpoint = async () => null
+      runtime.readLogSince = async () => ''
+      await execDynamicTask('game-task', config, config.name, 'automation', true, false, runtime)
+      const taskFile = events.find(event => event[0] === 'write')
+      assert.ok(taskFile)
+      const decoded = parse(String(taskFile[2]))
+      assert.deepEqual(decoded.tasks, [config])
+    }
+  })
+
+  it('reads only the execution checkpoint and rejects a partial operator failure despite CLI success', async () => {
+    const { runtime } = createRuntime()
+    const checkpoint = { logPath: '/virtual/asst.log', size: 120 }
+    runtime.createLogCheckpoint = async () => checkpoint
+    runtime.readLogSince = async requested => {
+      assert.deepEqual(requested, checkpoint)
+      return 'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":1,"failed":1,"skipped":0}}'
+    }
+    await assert.rejects(
+      execDynamicTask('operprogress', { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', elite: 2 }] } }, '培养', 'automation', true, false, runtime),
+      error => {
+        assert.ok(error instanceof Error && 'code' in error && 'details' in error)
+        assert.equal(error.code, 'AGENT_GAME_TASK_FAILED')
+        assert.deepEqual((error.details as { actions: Array<{ status: string; failedCount: number }> }).actions.map(action => [action.status, action.failedCount]), [['failed', 1]])
+        return true
+      }
+    )
+  })
+
+  it('retains skipped and unconfirmed outcomes in the returned actions', async () => {
+    for (const [logOutput, status, observed] of [
+      ['Assistant::append_callback | SubTaskExtraInfo {"taskchain":"SwitchTheme","what":"SwitchThemeSkipped"}', 'skipped', true],
+      ['', 'success', false]
+    ] as const) {
+      const { runtime } = createRuntime()
+      runtime.createLogCheckpoint = async () => null
+      runtime.readLogSince = async () => logOutput
+      const result = await execDynamicTask('switchtheme', { name: '主题', type: 'SwitchTheme', params: { themes: [] } }, '主题', 'automation', true, false, runtime)
+      assert.ok('actions' in result && result.actions)
+      assert.equal(result.actions[0].status, status)
+      assert.equal(result.actions[0].observed, observed)
+    }
+  })
+
+  it('settles a background game failure through the existing lifecycle after the process exits', async () => {
+    const { events, runtime, getSettled } = createRuntime({ background: true })
+    runtime.createLogCheckpoint = async () => null
+    runtime.readLogSince = async () => 'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":0,"failed":1,"skipped":0}}'
+    const outcomes: MaaCommandOutcome[] = []
+    runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
+    await execDynamicTask('operprogress', { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', elite: 2 }] } }, '培养', 'automation', false, false, runtime)
+    assert.equal(outcomes.length, 0)
+    assert.equal(events.some(event => event[0] === 'release'), false)
+    const settle = getSettled()
+    assert.ok(settle)
+    await settle({ ok: true, stopped: false, result: { command: 'run', stdout: '', stderr: '', exitCode: 0, signal: null }, error: null })
+    assert.equal(outcomes[0].ok, false)
+    assert.equal(outcomes[0].error?.code, 'AGENT_GAME_TASK_FAILED')
+    assert.equal(events.at(-1)?.[0], 'release')
+  })
+
+  it('keeps log boundary failures unconfirmed while allowing the task process to finish', async () => {
+    const { runtime } = createRuntime()
+    runtime.createLogCheckpoint = async () => { throw new Error('log unavailable') }
+    runtime.readLogSince = async () => { throw new Error('log unavailable') }
+    const result = await execDynamicTask('switchtheme', { name: '主题', type: 'SwitchTheme', params: { themes: ['默认'] } }, '主题', 'automation', true, false, runtime)
+    assert.ok('actions' in result && result.actions)
+    assert.equal(result.actions[0].observed, false)
+    assert.match(result.actions[0].message, /游戏结果未确认/)
+  })
+
+  it('preserves nonzero process diagnostics and never parses a stopped game task as completed', async () => {
+    for (const stopped of [false, true]) {
+      const { runtime, getSettled } = createRuntime({ background: true })
+      runtime.createLogCheckpoint = async () => null
+      let logRead = false
+      runtime.readLogSince = async () => {
+        logRead = true
+        return 'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":0,"failed":1,"skipped":0}}'
+      }
+      const outcomes: MaaCommandOutcome[] = []
+      runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
+      await execDynamicTask('operprogress', { name: '培养', type: 'OperProgress', params: { plans: [] } }, '培养', 'automation', false, false, runtime)
+      const settle = getSettled()
+      assert.ok(settle)
+      const error = Object.assign(new Error('Core failed'), { code: 'CORE_PROCESS_FAILED', exitCode: 3 })
+      await settle({ ok: false, stopped, result: { command: 'run', stdout: '', stderr: 'Core failed', exitCode: 3, signal: null }, error })
+      assert.equal(outcomes[0].ok, false)
+      assert.equal(outcomes[0].stopped, stopped)
+      assert.equal(outcomes[0].error?.code, 'CORE_PROCESS_FAILED')
+      assert.equal(outcomes[0].error?.exitCode, 3)
+      assert.equal(logRead, !stopped)
+    }
+  })
+
   it('locks before writing, uses a unique task id, and removes the file after a foreground run', async () => {
     const { events, runtime } = createRuntime()
     const result = await execDynamicTask(

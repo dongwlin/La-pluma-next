@@ -113,6 +113,7 @@ export interface NotificationTaskAction {
   task?: string;
   status?: string;
   message?: string;
+  observed?: boolean;
 }
 
 export interface NotificationTaskReport {
@@ -748,6 +749,7 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
   const hasStructuredFailure = normalizedActions.some(action => readTextField(action, 'status') === 'failed')
     || normalizedReports.some(report => readTextField(report, 'status') === 'failed');
   const hasStructuredSkip = normalizedActions.some(action => readTextField(action, 'status') === 'skipped');
+  const hasUnconfirmed = normalizedActions.some(action => isRecord(action) && action.observed === false);
   const hasFailure = failedTasks > 0 || hasStructuredFailure;
   const hasSkip = skippedTasks > 0 || hasStructuredSkip;
 
@@ -763,6 +765,9 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
   } else if (hasSkip) {
     level = 'info';
     title = '任务完成（部分跳过）';
+  } else if (hasUnconfirmed) {
+    level = 'info';
+    title = '任务完成（游戏结果未确认）';
   }
 
   let content = `*${taskName}* 执行完成`;
@@ -772,7 +777,8 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
     content += '\n\n🔎 *执行结果*';
     normalizedActions.forEach(action => {
       const status = readTextField(action, 'status');
-      const icon = statusIcons[status ?? ''] || '•';
+      const icon = status === 'success' && isRecord(action) && action.observed === false
+        ? '•' : statusIcons[status ?? ''] || '•';
       const taskLabel = readTextField(action, 'task');
       content += `\n${icon} ${taskLabel ? `${taskLabel}: ` : ''}${readTextField(action, 'message') || '状态未知'}`;
     });

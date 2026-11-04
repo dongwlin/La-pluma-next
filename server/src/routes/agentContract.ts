@@ -1,5 +1,6 @@
 import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
 import { API_VERSION } from '../config/apiVersion.ts';
+import { GAME_OPERATOR_ROLES } from '../services/gameTaskConfigService.ts';
 
 /**
  * 能力清单与 manifest/OpenAPI 生成器共用同一份 `AGENT_OPERATIONS`，生成器只做纯投影、
@@ -24,11 +25,14 @@ export interface JsonSchema {
   items?: JsonSchema;
   oneOf?: readonly JsonSchema[];
   allOf?: readonly JsonSchema[];
+  if?: JsonSchema;
+  then?: JsonSchema;
   enum?: readonly (string | number | boolean | null)[];
   const?: unknown;
   minimum?: number;
   maximum?: number;
   minItems?: number;
+  maxItems?: number;
   minLength?: number;
   maxLength?: number;
   pattern?: string;
@@ -551,7 +555,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     id: 'run_task',
     method: 'POST',
     path: '/api/agent/actions/run-task',
-    description: 'Run one whitelisted maa-cli task with explicit args. Prefer semantic actions when available.',
+    description: 'Run one whitelisted maa-cli command or a dynamic Core task. OperProgress performs in-game operator upgrades and may consume materials or red certificates; it is separate from training material preparation. SwitchTheme changes the game interface theme. Both require maa-cli 0.7.8+ and compatible Core/resources; use command=run with taskConfig. Prefer semantic actions when available.',
     tags: ['Execution'],
     safety: consequential(['run_maa_command']),
     execution: execution({
@@ -576,14 +580,72 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
               required: ['name', 'type'],
               properties: {
                 name: { type: 'string', minLength: 1 },
-                type: { type: 'string', minLength: 1 },
+                type: { type: 'string', minLength: 1, examples: ['OperProgress', 'SwitchTheme'] },
                 params: { type: 'object', additionalProperties: true }
               },
+              allOf: [
+                {
+                  if: { properties: { type: { const: 'OperProgress' } }, required: ['type'] },
+                  then: {
+                    required: ['params'],
+                    properties: {
+                      params: {
+                        type: 'object',
+                        required: ['plans'],
+                        properties: {
+                          plans: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              required: ['name'],
+                              properties: {
+                                role: { type: 'string', enum: [...GAME_OPERATOR_ROLES], description: 'Operator profession. Omit only when Core can infer a unique role from the name.' },
+                                name: { type: 'string', minLength: 1 },
+                                elite: { type: 'integer', minimum: 1, maximum: 2 },
+                                skill_level: { type: 'integer', minimum: 2, maximum: 7 },
+                                skill_mastery: {
+                                  type: 'array', minItems: 3, maxItems: 3,
+                                  items: { type: 'integer', minimum: 0, maximum: 3 },
+                                  description: 'S1/S2/S3 target mastery levels; 0 leaves a skill unchanged. Starting training does not mean its training timer has finished.'
+                                }
+                              },
+                              additionalProperties: false
+                            }
+                          }
+                        },
+                        additionalProperties: true
+                      }
+                    }
+                  }
+                },
+                {
+                  if: { properties: { type: { const: 'SwitchTheme' } }, required: ['type'] },
+                  then: {
+                    required: ['params'],
+                    properties: {
+                      params: {
+                        type: 'object', required: ['themes'],
+                        properties: {
+                          themes: {
+                            type: 'array', items: { type: 'string', minLength: 1 },
+                            description: 'Exact in-game theme names. Multiple candidates select one at random; an empty list is skipped.'
+                          }
+                        },
+                        additionalProperties: true
+                      }
+                    }
+                  }
+                }
+              ],
               additionalProperties: true
             },
             { type: 'string', description: 'A JSON-encoded task configuration object.' }
           ],
-          description: 'When supplied, La Pluma Next writes a validated temporary MAA task and executes it.'
+          description: 'When supplied, La Pluma Next writes a validated temporary MAA task and executes it. Game task outcomes are available in actions; failed operator sub-actions fail a standalone Run even when the CLI exits successfully. Missing callbacks leave the game result unconfirmed.',
+          examples: [
+            { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ role: 'Caster', name: '阿米娅', elite: 2, skill_level: 7 }] } },
+            { name: '游戏界面主题更换', type: 'SwitchTheme', params: { themes: ['默认'] } }
+          ]
         },
         taskName: { type: 'string', maxLength: 160, description: 'Human-readable task name exposed through task status.' },
         taskType: { type: 'string', maxLength: 64, description: 'Caller-defined task category exposed through task status.' },

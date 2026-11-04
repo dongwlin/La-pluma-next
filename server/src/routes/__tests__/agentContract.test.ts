@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import agentRouter from '../agent.ts';
 import {
   API_VERSION,
@@ -175,6 +176,24 @@ describe('Agent API contract registry', () => {
     assert.equal(properties.taskName.type, 'string');
     assert.equal(properties.taskType.type, 'string');
     assert.equal(properties.userResource.type, 'boolean');
+    assert.match(action.description, /OperProgress/);
+    assert.match(action.description, /material preparation/);
+    assert.match(action.description, /SwitchTheme/);
+    assert.equal(taskConfigVariant.allOf?.length, 2);
+    assert.deepEqual(properties.taskConfig.examples?.map(value => typeof value === 'object' && value !== null && 'type' in value ? value.type : null), ['OperProgress', 'SwitchTheme']);
+  });
+
+  it('validates game task target shapes without restricting other dynamic Core task types', () => {
+    const action = findAction(buildAgentManifest(defaults), 'run_task');
+    const validate = new Ajv2020({ strict: false }).compile(must(action.body_schema, 'run_task body'));
+    const request = (type: string, params: Record<string, unknown>) => ({ command: 'run', taskConfig: { name: '动态任务', type, params } });
+    assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', role: 'Unknown', elite: 2, skill_mastery: [0, 3, 0] }] })), true);
+    assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', skill_level: 8 }] })), false);
+    assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', skill_mastery: [3] }] })), false);
+    assert.equal(validate(request('SwitchTheme', { themes: ['默认'] })), true);
+    assert.equal(validate(request('SwitchTheme', { themes: [] })), true);
+    assert.equal(validate(request('SwitchTheme', { themes: '默认' })), false);
+    assert.equal(validate(request('FutureCoreTask', { nested: [{ value: true }] })), true);
   });
 
   it('documents retained run lookup and guarded stopping', () => {

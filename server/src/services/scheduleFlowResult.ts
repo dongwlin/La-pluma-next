@@ -7,6 +7,7 @@ import type { MallExecutionAction } from './mallResultService.ts';
 import type { FightExecutionAction } from './fightResultService.ts';
 import type { DropItem } from './dropRecordService.ts';
 import type { ScheduleTaskProgressResult } from './scheduleTaskProgress.ts';
+import type { GameTaskExecutionAction } from './gameTaskResultService.ts';
 
 // 流程结果聚合：从命令输出与任务日志提炼执行结果，不读取设备、存储或通知配置。
 // 外部文本解析结果逐字段可选、缺失不补占位值；步骤结果用有穷联合区分跳过/失败/成功，
@@ -77,6 +78,7 @@ export type ScheduleStepAction =
   | InfrastExecutionAction
   | MallExecutionAction
   | FightExecutionAction
+  | GameTaskExecutionAction
   | ScheduleBuiltinStepAction
   | ScheduleFailureStepAction;
 

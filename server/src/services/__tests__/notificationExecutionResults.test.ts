@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import { buildTaskCompletionMessage } from '../notificationService.ts';
 
 describe('structured execution notifications', () => {
+  it('marks unconfirmed game outcomes without a success checkmark', () => {
+    const message = buildTaskCompletionMessage({
+      taskName: '游戏培养流程', totalTasks: 1, successTasks: 1,
+      actions: [{ task: '游戏内培养', status: 'success', observed: false, message: '培养进程已完成，游戏结果未确认' }]
+    });
+    assert.equal(message.level, 'info');
+    assert.match(message.title, /游戏结果未确认/);
+    assert.match(message.content, /• 游戏内培养:/);
+    assert.doesNotMatch(message.content, /✅ 游戏内培养:/);
+  });
+
   it('includes task actions, report results and warnings', () => {
     const message = buildTaskCompletionMessage({
       taskName: '晚间流程',

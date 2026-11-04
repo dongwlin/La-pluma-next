@@ -12,6 +12,8 @@ import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } fr
 import type { TaskCompletionInfo } from '../notificationService.ts';
 import type { DropRecordInput } from '../dropRecordService.ts';
 import type { MaaExecutionLeaseRequest } from '../executionCoordinatorService.ts';
+import { parseGameTaskExecutionAction } from '../gameTaskResultService.ts';
+import type { GameTaskType } from '../gameTaskResultService.ts';
 
 const silentLogger = {
   info() {},
@@ -120,6 +122,51 @@ async function waitForCondition<T>(
 }
 
 describe('schedule flow boundaries', () => {
+  it('counts observed game outcomes and leaves absent callbacks explicitly unconfirmed', async () => {
+    const { ports } = createPorts({
+      executeDynamicTask: async (_taskId, taskConfig, taskName) => {
+        const config = JSON.parse(taskConfig) as { type: GameTaskType; params: { themes?: string[] } };
+        const name = taskName || '';
+        const log = name === '培养成功'
+          ? 'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":1,"failed":0,"skipped":0}}'
+          : name === '培养部分失败'
+            ? 'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":1,"failed":1,"skipped":0}}'
+            : name === '主题跳过'
+              ? 'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"SwitchTheme","what":"SwitchThemeSkipped"}'
+              : '';
+        const action = parseGameTaskExecutionAction(name, config.type, log);
+        if (name === '主题跳过') assert.deepEqual(config.params.themes, []);
+        if (action.status === 'failed') throw Object.assign(new Error(action.message), { details: { actions: [action] } });
+        return { stdout: '', stderr: '', actions: [action] };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const tasks = [
+      { name: '培养成功', taskType: 'OperProgress', params: { plans: [{ name: '阿米娅', elite: 2 }] } },
+      { name: '培养部分失败', taskType: 'OperProgress', params: { plans: [{ name: '阿米娅', elite: 2 }] } },
+      { name: '主题跳过', taskType: 'SwitchTheme', params: { themes: [] } },
+      { name: '主题结果未知', taskType: 'SwitchTheme', params: { themes: ['默认'] } }
+    ].map((task, index) => ({ ...task, id: `game-${index}`, enabled: true }));
+    const result = completedResult(await executor.execute(tasks, 'game-flow'));
+    assert.deepEqual([result.summary.successCount, result.summary.failedCount, result.summary.skippedCount], [2, 1, 1]);
+    assert.deepEqual(result.summary.taskResults.map(task => task.status), ['success', 'failed', 'skipped', 'success']);
+    assert.deepEqual(result.summary.actions.map(action => action.status), ['success', 'failed', 'skipped', 'success']);
+    assert.match(result.summary.warnings[0], /游戏结果未确认/);
+    assert.equal(result.summary.errors.length, 1);
+  });
+
+  it('rejects invalid game task plans while retaining generic dynamic tasks', () => {
+    const makeTask = (taskType: string, params: Record<string, unknown>) => [{
+      id: 'dynamic-1', name: '动态任务', enabled: true, taskType, params
+    }];
+    assert.equal(validateScheduledTaskFlow(makeTask('OperProgress', { plans: [{ name: '陈', skill_level: 8 }] })).success, false);
+    assert.equal(validateScheduledTaskFlow(makeTask('SwitchTheme', { themes: '默认' })).success, false);
+    assert.equal(validateScheduledTaskFlow(makeTask('FutureCoreTask', { arbitrary: { nested: true } })).success, true);
+    assert.deepEqual(plannedResult(buildScheduledTaskFlowPlan(makeTask('SwitchTheme', { themes: [] }))).steps[0].taskConfig, {
+      name: '动态任务', type: 'SwitchTheme', params: { themes: [] }
+    });
+  });
+
   it('plans commands and aggregates results without device, storage or notification ports', () => {
     const plan = plannedResult(buildScheduledTaskFlowPlan([
       {
