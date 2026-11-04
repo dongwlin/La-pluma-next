@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type TaskCommandId = 'startup' | 'fight' | 'infrast' | 'recruit' | 'mall' | 'award' | 'closedown'
+export type TaskCommandId = 'startup' | 'fight' | 'infrast' | 'recruit' | 'mall' | 'award' | 'operprogress' | 'switchtheme' | 'closedown'
 
 export type TaskParamFieldType =
   | 'text'
@@ -11,6 +11,16 @@ export type TaskParamFieldType =
   | 'stage-with-times'
   | 'star-select'
   | 'facility-select'
+  | 'oper-progress-plans'
+  | 'theme-list'
+
+export interface OperProgressPlan {
+  role?: string
+  name: string
+  elite?: number
+  skill_level?: number
+  skill_mastery?: [number, number, number]
+}
 
 export interface TaskParamField {
   key: string
@@ -36,6 +46,8 @@ export interface StageConfig {
 }
 
 export interface TaskParams {
+  plans?: OperProgressPlan[]
+  themes?: string[]
   clientType?: string
   adbPath?: string
   address?: string

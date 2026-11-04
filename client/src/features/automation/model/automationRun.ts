@@ -6,6 +6,22 @@ import {
 } from '@/features/task-execution'
 import type { TaskExecutionResult, TaskExecutionState } from '../utils/automationTaskProgress'
 
+export interface GameTaskDetail {
+  name: string
+  role?: string
+  result: 'Success' | 'Failed' | 'Skipped'
+  resultDetail: string
+  elite?: number
+  skillLevel?: number
+  skillMastery?: [number, number, number]
+}
+
+export interface GameTaskDeferredMastery {
+  name: string
+  role?: string
+  skillMastery: [number, number, number]
+}
+
 export interface AutomationExecutionSummary {
   taskResults?: TaskExecutionResult[]
   successCount: number
@@ -27,9 +43,13 @@ export interface AutomationExecutionSummary {
   }>
   actions: Array<{
     task: string
-    action: 'startup' | 'closedown' | 'depot' | 'award' | 'recruit' | 'infrast' | 'mall' | 'fight'
+    action: 'startup' | 'closedown' | 'depot' | 'award' | 'recruit' | 'infrast' | 'mall' | 'fight' | 'operprogress' | 'switchtheme'
     status: 'success' | 'skipped' | 'failed'
     message: string
+    observed?: boolean
+    details?: GameTaskDetail[]
+    deferredMastery?: GameTaskDeferredMastery[]
+    deferredCount?: number
     startedCount?: number
     collectedCount?: number
     expeditedCount?: number

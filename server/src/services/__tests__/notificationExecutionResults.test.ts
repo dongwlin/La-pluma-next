@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import { buildTaskCompletionMessage } from '../notificationService.ts';
 
 describe('structured execution notifications', () => {
+  it('marks unconfirmed game outcomes without a success checkmark', () => {
+    const message = buildTaskCompletionMessage({
+      taskName: '游戏培养流程', totalTasks: 1, successTasks: 1,
+      actions: [{ task: '游戏内培养', status: 'success', observed: false, message: '培养进程已完成，游戏结果未确认' }]
+    });
+    assert.equal(message.level, 'info');
+    assert.match(message.title, /游戏结果未确认/);
+    assert.match(message.content, /• 游戏内培养:/);
+    assert.doesNotMatch(message.content, /✅ 游戏内培养:/);
+  });
+
   it('includes task actions, report results and warnings', () => {
     const message = buildTaskCompletionMessage({
       taskName: '晚间流程',
@@ -57,5 +68,63 @@ describe('structured execution notifications', () => {
 
     assert.match(message.content, /失败任务/);
     assert.match(message.content, /未知任务 - 连接失败/);
+  });
+
+  it('renders per-operator game task details under the action line', () => {
+    const message = buildTaskCompletionMessage({
+      taskName: '游戏培养流程', totalTasks: 1, successTasks: 1,
+      actions: [{
+        task: '游戏内培养', status: 'success', observed: true,
+        message: '游戏内培养流程结束：成功 4，失败 2，跳过 1',
+        details: [
+          { name: '阿米娅', role: 'Caster', result: 'Success', resultDetail: 'Completed', skillMastery: [0, 0, 1] },
+          { name: '德克萨斯', role: 'Pioneer', result: 'Success', resultDetail: 'Completed' },
+          { name: '能天使', role: 'Sniper', result: 'Success', resultDetail: 'PrerequisiteTraining', skillMastery: [0, 1, 0] },
+          { name: '艾雅法拉', role: 'Caster', result: 'Success', resultDetail: 'AlreadySatisfied' },
+          { name: '陈', result: 'Failed', resultDetail: 'ResourceInsufficient' },
+          { name: '白面鸮', role: 'Medic', result: 'Skipped', resultDetail: 'TrainingRoomBusy' },
+          { name: '银灰', role: 'Unknown', result: 'Failed', resultDetail: 'ChipNotCraftable' },
+          { name: '玫兰莎', result: 'Interrupted' }
+        ]
+      }]
+    });
+
+    assert.match(message.content, /✅ 游戏内培养: 游戏内培养流程结束：成功 4，失败 2，跳过 1/);
+    assert.match(message.content, /\n {3}◦ 阿米娅（术师）：培养成功（已启动目标专精训练，等待完成）/);
+    assert.match(message.content, /\n {3}◦ 德克萨斯（先锋）：培养成功（已完成）/);
+    assert.match(message.content, /\n {3}◦ 能天使（狙击）：培养成功（已启动前置专精训练）/);
+    assert.match(message.content, /\n {3}◦ 艾雅法拉（术师）：培养成功（已达到目标）/);
+    assert.match(message.content, /\n {3}◦ 陈：培养失败（材料不足）/);
+    assert.match(message.content, /\n {3}◦ 白面鸮（医疗）：训练室已被占用，已跳过/);
+    assert.match(message.content, /\n {3}◦ 银灰：培养失败（无法合成芯片）/);
+    assert.match(message.content, /\n {3}◦ 玫兰莎：Interrupted/);
+  });
+
+  it('renders deferred mastery targets as pending follow-up lines', () => {
+    const message = buildTaskCompletionMessage({
+      taskName: '游戏培养流程', totalTasks: 1, successTasks: 1,
+      actions: [{
+        task: '游戏内培养', status: 'success', observed: true,
+        message: '游戏内培养流程结束：成功 1，失败 0，跳过 0',
+        deferredMastery: [
+          { name: '陈', role: 'Warrior', skillMastery: [0, 1, 0] },
+          { name: '白面鸮' }
+        ]
+      }]
+    });
+
+    assert.match(message.content, /\n {3}◦ 陈（近卫）：专精目标待处理，需后续运行/);
+    assert.match(message.content, /\n {3}◦ 白面鸮：专精目标待处理，需后续运行/);
+  });
+
+  it('keeps the previous output when an action has no operator details', () => {
+    const message = buildTaskCompletionMessage({
+      taskName: '晚间流程', totalTasks: 1, successTasks: 1, duration: 5000,
+      actions: [{ task: '理智作战', status: 'success', message: '作战完成：1-7 × 3' }]
+    });
+
+    assert.equal(message.level, 'success');
+    assert.equal(message.title, '任务完成');
+    assert.equal(message.content, '*晚间流程* 执行完成\n\n🔎 *执行结果*\n✅ 理智作战: 作战完成：1-7 × 3');
   });
 });

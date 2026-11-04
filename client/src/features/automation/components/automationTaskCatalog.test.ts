@@ -59,6 +59,17 @@ describe('automation award task catalog', () => {
   })
 })
 
+describe('automation game task catalog', () => {
+  it('adds dynamic game tasks without preselecting consumptive targets', () => {
+    expect(AVAILABLE_TASKS.find(task => task.id === 'operprogress')).toMatchObject({
+      name: '游戏内培养', taskType: 'OperProgress', defaultParams: { plans: [] },
+    })
+    expect(AVAILABLE_TASKS.find(task => task.id === 'switchtheme')).toMatchObject({
+      name: '更换游戏主题', taskType: 'SwitchTheme', defaultParams: { themes: [] },
+    })
+  })
+})
+
 describe('automation fight task catalog', () => {
   it('explains that stage times and the series multiplier apply together', () => {
     const stages = fightParamField('stages')

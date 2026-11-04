@@ -113,6 +113,25 @@ export interface NotificationTaskAction {
   task?: string;
   status?: string;
   message?: string;
+  observed?: boolean;
+  details?: NotificationTaskDetail[];
+  deferredMastery?: NotificationTaskDeferred[];
+}
+
+export interface NotificationTaskDetail {
+  name?: string;
+  role?: string;
+  result?: string;
+  resultDetail?: string;
+  elite?: number;
+  skillLevel?: number;
+  skillMastery?: number[];
+}
+
+export interface NotificationTaskDeferred {
+  name?: string;
+  role?: string;
+  skillMastery?: number[];
 }
 
 export interface NotificationTaskReport {
@@ -722,6 +741,77 @@ export async function testNotificationChannel(
   return await defaultNotificationService.testChannel(channelName, configOverride);
 }
 
+const gameTaskResultLabels: Record<string, string> = {
+  Success: '培养成功',
+  Failed: '培养失败',
+  Skipped: '已跳过'
+};
+
+const gameTaskResultDetailLabels: Record<string, string> = {
+  ResourceInsufficient: '材料不足',
+  OperatorNotFound: '未找到干员',
+  TrainingRoomBusy: '训练室已被占用',
+  PrerequisiteTraining: '已启动前置专精训练',
+  AlreadySatisfied: '已达到目标',
+  Completed: '已完成',
+  PrerequisiteNotMet: '前置条件未满足',
+  ChipNotCraftable: '无法合成芯片',
+  FormulaLocked: '配方未解锁',
+  RecognitionFailed: '识别失败',
+  Unsupported: '不支持的计划',
+  Interrupt: '已中断'
+};
+
+const operatorRoleLabels: Record<string, string> = {
+  Pioneer: '先锋',
+  Warrior: '近卫',
+  Tank: '重装',
+  Sniper: '狙击',
+  Caster: '术师',
+  Medic: '医疗',
+  Support: '辅助',
+  Special: '特种'
+};
+
+function operatorDisplayName(detail: unknown): string | null {
+  if (!isRecord(detail)) return null;
+  const name = readTextField(detail, 'name');
+  if (!name) return null;
+  const role = readTextField(detail, 'role');
+  const roleLabel = role ? operatorRoleLabels[role] : undefined;
+  return roleLabel ? `${name}（${roleLabel}）` : name;
+}
+
+function hasStartedMasteryTraining(detail: Record<string, unknown>): boolean {
+  return Array.isArray(detail.skillMastery)
+    && detail.skillMastery.some(level => typeof level === 'number' && level > 0);
+}
+
+function resolveGameTaskResultDetailLabel(detail: Record<string, unknown>, resultDetail: string | null): string | null {
+  if (!resultDetail) return null;
+  if (resultDetail === 'Completed' && hasStartedMasteryTraining(detail)) return '已启动目标专精训练，等待完成';
+  return gameTaskResultDetailLabels[resultDetail] ?? resultDetail;
+}
+
+function gameTaskDetailLine(detail: unknown): string | null {
+  if (!isRecord(detail)) return null;
+  const operator = operatorDisplayName(detail);
+  const result = readTextField(detail, 'result');
+  if (!operator || !result) return null;
+  const resultLabel = gameTaskResultLabels[result] ?? result;
+  const resultDetail = readTextField(detail, 'resultDetail');
+  const resultDetailLabel = resolveGameTaskResultDetailLabel(detail, resultDetail);
+  if (result === 'Skipped' && resultDetailLabel) return `   ◦ ${operator}：${resultDetailLabel}，${resultLabel}`;
+  return resultDetailLabel
+    ? `   ◦ ${operator}：${resultLabel}（${resultDetailLabel}）`
+    : `   ◦ ${operator}：${resultLabel}`;
+}
+
+function gameTaskDeferredLine(deferred: unknown): string | null {
+  const operator = operatorDisplayName(deferred);
+  return operator ? `   ◦ ${operator}：专精目标待处理，需后续运行` : null;
+}
+
 export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): TaskCompletionMessage {
   const {
     taskName = '自动化任务',
@@ -748,6 +838,7 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
   const hasStructuredFailure = normalizedActions.some(action => readTextField(action, 'status') === 'failed')
     || normalizedReports.some(report => readTextField(report, 'status') === 'failed');
   const hasStructuredSkip = normalizedActions.some(action => readTextField(action, 'status') === 'skipped');
+  const hasUnconfirmed = normalizedActions.some(action => isRecord(action) && action.observed === false);
   const hasFailure = failedTasks > 0 || hasStructuredFailure;
   const hasSkip = skippedTasks > 0 || hasStructuredSkip;
 
@@ -763,6 +854,9 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
   } else if (hasSkip) {
     level = 'info';
     title = '任务完成（部分跳过）';
+  } else if (hasUnconfirmed) {
+    level = 'info';
+    title = '任务完成（游戏结果未确认）';
   }
 
   let content = `*${taskName}* 执行完成`;
@@ -772,9 +866,24 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
     content += '\n\n🔎 *执行结果*';
     normalizedActions.forEach(action => {
       const status = readTextField(action, 'status');
-      const icon = statusIcons[status ?? ''] || '•';
+      const icon = status === 'success' && isRecord(action) && action.observed === false
+        ? '•' : statusIcons[status ?? ''] || '•';
       const taskLabel = readTextField(action, 'task');
       content += `\n${icon} ${taskLabel ? `${taskLabel}: ` : ''}${readTextField(action, 'message') || '状态未知'}`;
+      if (isRecord(action)) {
+        if (Array.isArray(action.details)) {
+          for (const detail of action.details) {
+            const line = gameTaskDetailLine(detail);
+            if (line) content += `\n${line}`;
+          }
+        }
+        if (Array.isArray(action.deferredMastery)) {
+          for (const deferred of action.deferredMastery) {
+            const line = gameTaskDeferredLine(deferred);
+            if (line) content += `\n${line}`;
+          }
+        }
+      }
     });
   }
 

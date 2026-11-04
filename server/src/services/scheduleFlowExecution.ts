@@ -16,6 +16,8 @@ import { parseRecruitExecutionAction } from './recruitResultService.ts';
 import { parseInfrastExecutionAction } from './infrastResultService.ts';
 import { parseMallExecutionAction } from './mallResultService.ts';
 import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.ts';
+import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
+import type { GameTaskExecutionAction } from './gameTaskResultService.ts';
 import type { FightExecutionAction } from './fightResultService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import type { MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
@@ -43,6 +45,7 @@ export interface ScheduleConnection {
 export interface ScheduleCommandOutput {
   stdout: string;
   stderr: string;
+  actions?: GameTaskExecutionAction[];
 }
 
 export interface ScheduleAdbTestResult {
@@ -879,6 +882,43 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           logger.error('信用收支执行失败', { scheduleId, taskName: task.name, error: errorMessageOf(error) });
           continue;
         }
+      }
+
+      if (task.taskType === 'OperProgress' || task.taskType === 'SwitchTheme') {
+        let action: GameTaskExecutionAction;
+        try {
+          const { params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
+          const result = await executeDynamicTask(params, taskConfig || '', task.name, null, true);
+          if (executionStatus.shouldStop) break;
+          action = result.actions?.[0]
+            || parseGameTaskExecutionAction(task.name, task.taskType, '', readOperProgressPlans(task.params));
+        } catch (error) {
+          if (executionStatus.shouldStop) break;
+          const fields = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};
+          const details = typeof fields.details === 'object' && fields.details !== null
+            ? fields.details as Record<string, unknown>
+            : {};
+          const observed = Array.isArray(details.actions) ? details.actions[0] as GameTaskExecutionAction | undefined : undefined;
+          action = {
+            ...(observed
+              || parseGameTaskExecutionAction(task.name, task.taskType, '', readOperProgressPlans(task.params))),
+            status: 'failed',
+            message: observed?.status === 'failed' ? observed.message : errorMessageOf(error)
+          };
+        }
+        actionResults.push(action);
+        if (action.status === 'failed') {
+          failedCount++;
+          errors.push({ task: task.name, error: action.message });
+        } else if (action.status === 'skipped') {
+          skippedCount++;
+          skipped.push({ task: task.name, reason: action.message });
+        } else {
+          successCount++;
+          if (!action.observed) executionWarnings.add(action.message);
+        }
+        if (!await waitForDelay(2000)) break;
+        continue;
       }
 
       try {

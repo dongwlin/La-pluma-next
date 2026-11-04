@@ -1,4 +1,5 @@
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
+import { validateGameTaskParams } from './gameTaskConfigService.ts';
 
 // 流程计划与命令构建：只处理任务流程数据，不读取设备连接、用户配置或通知状态。
 // 公开入口保持 `unknown`，只校验到“对象数组”，字段级结构按调度任务契约在执行期读取，
@@ -152,6 +153,8 @@ export function buildScheduledTaskCommand(
 ): ScheduledTaskCommand {
   if (task.taskType) {
     const params: ScheduledTaskParams = { ...(task.params || {}) };
+    const validationMessage = validateGameTaskParams(task.taskType, params);
+    if (validationMessage) throw new Error(validationMessage);
     if (task.taskType === 'Recruit') {
       if (params.preserve_tags === undefined && params.skip_robot === true) {
         params.preserve_tags = ['支援机械'];
@@ -183,7 +186,8 @@ export function buildScheduledTaskCommand(
       if (typeof value === 'boolean') {
         taskConfigParams[key] = value;
       } else if (Array.isArray(value)) {
-        if (value.length > 0) {
+        if (value.length > 0 || (task.taskType === 'OperProgress' && key === 'plans')
+          || (task.taskType === 'SwitchTheme' && key === 'themes')) {
           taskConfigParams[key] = value;
         }
       } else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
@@ -296,6 +300,13 @@ export function validateScheduledTaskFlow(taskFlow: unknown): ScheduledTaskFlowV
       message: '任务流程中的每一项都必须是对象',
       details: { index: invalidTaskIndex }
     };
+  }
+
+  for (const task of flow) {
+    const entry = task as Record<string, unknown>;
+    if (entry.enabled === false || typeof entry.taskType !== 'string') continue;
+    const message = validateGameTaskParams(entry.taskType, isRecordValue(entry.params) ? entry.params : {});
+    if (message) return { success: false, message };
   }
 
   const invalidCustomInfrast = flow.find(task => {

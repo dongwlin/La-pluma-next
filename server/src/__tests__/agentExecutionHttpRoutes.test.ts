@@ -19,6 +19,7 @@ const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
 const cliCallLog = join(fixtureDir, 'maa-calls.log');
 
 await mkdir(maaLogDir, { recursive: true });
+await writeFile(join(maaLogDir, 'asst.log'), '');
 await mkdir(maaCacheDir, { recursive: true });
 await mkdir(join(xdgConfigHome, 'maa'), { recursive: true });
 
@@ -36,12 +37,24 @@ if (args[0] === 'dir') {
   process.exit(0);
 }
 fs.appendFileSync(process.env.FAKE_MAA_LOG, args.join(' ') + '\\n');
-const delay = Number(process.env.FAKE_MAA_SLEEP_MS || 0);
-if (delay > 0) {
-  setTimeout(() => process.exit(0), delay);
-} else {
+if (args[0] === 'run') {
+  const path = require('node:path');
+  const taskFile = path.join(process.env.FAKE_MAA_CONFIG_DIR, 'tasks', args[1] + '.toml');
+  if (fs.existsSync(taskFile)) fs.appendFileSync(process.env.FAKE_MAA_TASK_LOG, fs.readFileSync(taskFile, 'utf8') + '\\n');
+}
+const finish = () => {
+  if (process.env.FAKE_MAA_CALLBACK) {
+    const path = require('node:path');
+    fs.appendFileSync(path.join(process.env.FAKE_MAA_LOG_DIR, 'asst.log'), process.env.FAKE_MAA_CALLBACK + '\\n');
+  }
   process.stdout.write('fake output\\n');
   process.exit(0);
+};
+const delay = Number(process.env.FAKE_MAA_SLEEP_MS || 0);
+if (delay > 0) {
+  setTimeout(finish, delay);
+} else {
+  finish();
 }
 `, { mode: 0o755 });
 
@@ -52,6 +65,7 @@ process.stdout.write('Android Debug Bridge version 1.0.41\\n');
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.ADB_PATH = fakeAdbPath;
 process.env.FAKE_MAA_LOG = cliCallLog;
+process.env.FAKE_MAA_TASK_LOG = join(fixtureDir, 'task-files.log');
 process.env.MAA_CACHE_DIR = maaCacheDir;
 process.env.FAKE_MAA_CACHE_DIR = maaCacheDir;
 process.env.FAKE_MAA_LOG_DIR = maaLogDir;
@@ -85,6 +99,8 @@ interface RunSnapshotPayload {
 interface RunLookupPayload {
   runId: string;
   state: string;
+  result?: { actions?: Array<{ status: string; observed: boolean }> };
+  error?: { code: string; details: { actions?: Array<{ status: string }> } };
 }
 
 interface DryRunPlanPayload {
@@ -191,6 +207,7 @@ async function waitForRunState(
 
 afterEach(async () => {
   delete process.env.FAKE_MAA_SLEEP_MS;
+  delete process.env.FAKE_MAA_CALLBACK;
   while (servers.length) {
     const server = servers.pop();
     assert.ok(server);
@@ -206,6 +223,66 @@ after(async () => {
 });
 
 describe('agent execution HTTP adapter', () => {
+  it('executes both game task types and preserves their actual outcomes in foreground and background Runs', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const scenarios = [
+      {
+        config: { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ name: '阿米娅', role: 'Caster', elite: 2 }] } },
+        callback: 'SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":1,"failed":0,"skipped":0}}',
+        state: 'succeeded', status: 'success'
+      },
+      {
+        config: { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ name: '阿米娅', elite: 2 }] } },
+        callback: 'SubTaskExtraInfo {"taskchain":"OperProgress","what":"OperProgressSummary","details":{"success":1,"failed":1,"skipped":0}}',
+        state: 'failed', status: 'failed'
+      },
+      {
+        config: { name: '游戏主题', type: 'SwitchTheme', params: { themes: ['默认'] } },
+        callback: 'SubTaskCompleted {"taskchain":"SwitchTheme","details":{"task":"SwitchThemeByNameConfirmTheme"}}',
+        state: 'succeeded', status: 'success'
+      },
+      {
+        config: { name: '游戏主题', type: 'SwitchTheme', params: { themes: [] } },
+        callback: 'SubTaskExtraInfo {"taskchain":"SwitchTheme","what":"SwitchThemeSkipped"}',
+        state: 'succeeded', status: 'skipped'
+      }
+    ];
+    for (const waitForCompletion of [true, false]) {
+      for (const scenario of scenarios) {
+        process.env.FAKE_MAA_CALLBACK = `Assistant::append_callback | ${scenario.callback}`;
+        process.env.FAKE_MAA_SLEEP_MS = waitForCompletion ? '0' : '75';
+        const response = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+          command: 'run', args: ['game-task'], taskConfig: scenario.config, waitForCompletion,
+          taskName: scenario.config.name, taskType: 'automation'
+        });
+        let runId: string;
+        if (waitForCompletion && scenario.state === 'failed') {
+          assert.equal(response.status, 422);
+          const body = await readError(response);
+          assert.equal(body.error.code, 'AGENT_GAME_TASK_FAILED');
+          runId = String(body.error.details.runId);
+        } else {
+          assert.equal(response.status, waitForCompletion ? 200 : 202);
+          runId = (await readSuccess<TaskExecutorPayload>(response)).data.runId;
+        }
+        const terminal = await waitForRunState(baseUrl, runId, [scenario.state]);
+        assert.equal(terminal.state, scenario.state);
+        if (scenario.state === 'failed') {
+          assert.equal(terminal.error?.code, 'AGENT_GAME_TASK_FAILED');
+          assert.equal(terminal.error?.details.actions?.[0].status, 'failed');
+        } else {
+          assert.equal(terminal.result?.actions?.[0].status, scenario.status);
+          assert.equal(terminal.result?.actions?.[0].observed, true);
+        }
+      }
+    }
+    const submittedTasks = await readFile(process.env.FAKE_MAA_TASK_LOG || '', 'utf8');
+    assert.match(submittedTasks, /type = "OperProgress"/);
+    assert.match(submittedTasks, /plans = \[\{ "name" = "阿米娅"/);
+    assert.match(submittedTasks, /type = "SwitchTheme"/);
+  });
+
   it('requires the API token before parsing any execution entry', async () => {
     const port = await listen(createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
@@ -255,6 +332,14 @@ describe('agent execution HTTP adapter', () => {
       ['/api/agent/actions/run-daily-flow', { dryRun: 'false' }, 'AGENT_VALIDATION_DRY_RUN_INVALID'],
       ['/api/agent/actions/run-daily-flow', { taskFlow: {} }, 'AGENT_VALIDATION_TASK_FLOW_INVALID'],
       ['/api/agent/actions/fight', {}, 'AGENT_VALIDATION_MISSING_STAGES'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { name: '游戏内培养', type: 'OperProgress', params: { plans: [] } }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ name: '阿米娅' }] } }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
       ['/api/agent/actions/stop', { runId: 42 }, 'AGENT_VALIDATION_RUN_ID_INVALID']
     ];
 

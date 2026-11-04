@@ -251,7 +251,7 @@ export default function TrainingWorkspace() {
 
   return (
     <>
-      <PageHeader title="养成" subtitle="管理目标，筹备材料，安排下一次作战" actions={<><FloatingStatusIndicator /><Button onClick={() => setSelectorOpen(true)} icon={<Plus size={17} />}>添加干员</Button></>} />
+      <PageHeader title="养成材料筹备" subtitle="管理材料目标并安排刷取计划；游戏内培养请在日常中添加任务" actions={<><FloatingStatusIndicator /><Button onClick={() => setSelectorOpen(true)} icon={<Plus size={17} />}>添加干员</Button></>} />
       <DeviceMonitorLayout>
         <div className="training-workspace-grid">
           <TrainingQueuePanel

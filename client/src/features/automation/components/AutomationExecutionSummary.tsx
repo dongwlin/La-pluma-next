@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleMinus } from 'lucide-react'
-import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
+import { formatExecutionActionSummary, isUnconfirmedGameAction } from '@/shared/utils/executionSummary'
 import {
   executionSummaryHasFailure,
   type AutomationExecutionSummary as AutomationExecutionSummaryData,
 } from '../model/automationRun'
+import { describeDeferredMastery, describeGameTaskDetail } from '../model/gameTaskResultText'
 
 interface AutomationExecutionSummaryProps {
   summary: AutomationExecutionSummaryData | null
@@ -59,8 +60,8 @@ export default function AutomationExecutionSummary({
       <div className="mt-2 flex min-w-0 items-center gap-2">
         {executionSummaryHasFailure(lastSummary)
           ? <AlertTriangle size={14} className="shrink-0 text-red-500" strokeWidth={2} />
-          : lastSummary.skippedCount > 0 && lastSummary.successCount === 0
-            ? <CircleMinus size={14} className="shrink-0 text-gray-400" strokeWidth={2} />
+          : lastSummary.actions.some(isUnconfirmedGameAction) || (lastSummary.skippedCount > 0 && lastSummary.successCount === 0)
+            ? <CircleMinus size={14} className="shrink-0 text-gray-400" strokeWidth={2} role="img" aria-label={lastSummary.actions.some(isUnconfirmedGameAction) ? '游戏结果未确认' : '任务已跳过'} />
             : <CheckCircle2 size={14} className="shrink-0 text-emerald-500" strokeWidth={2} />}
         <span className="min-w-0 flex-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
           {formatExecutionActionSummary(lastSummary.actions)
@@ -132,19 +133,56 @@ export default function AutomationExecutionSummary({
 
           {lastSummary.actions?.length > 0 && (
             <div className="mt-2 space-y-1.5 border-t border-(--app-border) pt-2">
-              {lastSummary.actions.map((action, actionIndex) => (
-                <div
-                  key={`${action.action}-${action.task}-${actionIndex}`}
-                  className={`flex min-w-0 items-start gap-2 text-xs ${action.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : action.status === 'skipped' ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}`}
-                >
-                  {action.status === 'success'
-                    ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
-                    : action.status === 'skipped'
-                      ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
-                      : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
-                  <span className="min-w-0 wrap-break-word">{action.message}</span>
-                </div>
-              ))}
+              {lastSummary.actions.map((action, actionIndex) => {
+                const unconfirmed = isUnconfirmedGameAction(action)
+                return (
+                  <div key={`${action.action}-${action.task}-${actionIndex}`} className="min-w-0">
+                    <div
+                      className={`flex min-w-0 items-start gap-2 text-xs ${unconfirmed ? 'text-gray-500 dark:text-gray-400' : action.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : action.status === 'skipped' ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}`}
+                    >
+                      {unconfirmed
+                        ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                        : action.status === 'success'
+                        ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                        : action.status === 'skipped'
+                          ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                          : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
+                      <span className="min-w-0 wrap-break-word">{action.message}</span>
+                    </div>
+                    {action.action === 'operprogress' && action.details && action.details.length > 0 && (
+                      <div className="mt-1 space-y-1 pl-5">
+                        {action.details.map((detail, detailIndex) => (
+                          <div
+                            key={`${detail.name}-${detailIndex}`}
+                            className={`flex min-w-0 items-start gap-2 text-xs ${unconfirmed || detail.result === 'Skipped' ? 'text-gray-500 dark:text-gray-400' : detail.result === 'Success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}
+                          >
+                            {unconfirmed || detail.result === 'Skipped'
+                              ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                              : detail.result === 'Success'
+                                ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                                : <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />}
+                            <span className="min-w-0 wrap-break-word">{describeGameTaskDetail(detail)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {action.action === 'operprogress' && action.deferredMastery && action.deferredMastery.length > 0 && (
+                      <div className="mt-1 space-y-1 pl-5">
+                        <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">待处理</p>
+                        {action.deferredMastery.map((entry, deferredIndex) => (
+                          <div
+                            key={`${entry.name}-${deferredIndex}`}
+                            className="flex min-w-0 items-start gap-2 text-xs text-amber-600 dark:text-amber-400"
+                          >
+                            <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                            <span className="min-w-0 wrap-break-word">{describeDeferredMastery(entry)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
 

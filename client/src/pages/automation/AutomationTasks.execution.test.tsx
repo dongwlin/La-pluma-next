@@ -385,6 +385,35 @@ afterEach(async () => {
 })
 
 describe('AutomationTasks execution', () => {
+  it('restores and submits dynamic game tasks with an omitted profession and observes their Run terminal result', async () => {
+    const gameFlow: TaskFlowItem[] = [
+      { ...flow[0]!, id: 'operprogress-1', commandId: 'operprogress', name: '游戏内培养', taskType: 'OperProgress', params: { plans: [{ name: '阿米娅', skill_level: 7, skill_mastery: [0, 3, 0] }] } },
+      { ...flow[0]!, id: 'switchtheme-1', commandId: 'switchtheme', name: '更换游戏主题', taskType: 'SwitchTheme', params: { themes: ['明日方舟', '新主题'] } },
+    ]
+    mocks.loadUserConfig.mockResolvedValue(ok({ taskFlow: gameFlow }))
+    api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot()))
+    useIdentity()
+    await renderPage()
+    await click(runButton())
+    expect(mocks.executeScheduleNow).toHaveBeenCalledOnce()
+    expect(mocks.executeScheduleNow.mock.calls[0]?.[1]).toEqual(gameFlow.map(({ icon: _icon, paramFields: _fields, defaultParams: _defaults, description: _description, ...task }) => task))
+    expect(stopButton()).not.toBeNull()
+    const result = summary(['success', 'skipped'], {
+      actions: [
+        { task: '游戏内培养', action: 'operprogress', status: 'success', message: '已启动专精训练' },
+        { task: '更换游戏主题', action: 'switchtheme', status: 'skipped', message: '主题已设置' },
+      ],
+      taskResults: gameFlow.map((task, index) => ({ taskId: task.id, task: task.name, status: index === 0 ? 'success' : 'skipped' })),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(snapshot({ lastRun: dailyRun('run-1', 'succeeded', { result: { summary: result } }) })))
+    await refreshController()
+    expect(stopButton()).toBeNull()
+    expect(container.textContent).toContain('游戏任务 · 成功 1 项 · 跳过 1 项')
+    await click(container.querySelector<HTMLButtonElement>('[aria-label="展开执行详情"]'))
+    expect(container.textContent).toContain('已启动专精训练')
+    expect(container.textContent).toContain('主题已设置')
+  })
+
   it('submits one background daily flow with an idempotency key', async () => {
     api.fetchSnapshot.mockResolvedValue(ok(activeSnapshot({
       progress: { currentStep: 0, totalSteps: 3, currentTask: '启动游戏', message: '今日流程执行中' },

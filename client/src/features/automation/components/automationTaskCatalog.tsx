@@ -1,4 +1,5 @@
 import Icons from '@/shared/ui/Icons'
+import { GraduationCap, Palette } from 'lucide-react'
 import type { AutomationAvailableTask } from '../types'
 
 export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
@@ -193,6 +194,24 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       { key: 'specialaccess', label: '周年赠送月卡', type: 'checkbox', helper: '领取周年活动赠送的月卡奖励' },
     ],
     taskType: 'Award'
+  },
+  {
+    id: 'operprogress',
+    name: '游戏内培养',
+    icon: <GraduationCap size={16} />,
+    description: '在游戏内提升精英阶段、技能等级或启动专精训练',
+    defaultParams: { plans: [] },
+    paramFields: [{ key: 'plans', label: '培养计划', type: 'oper-progress-plans' }],
+    taskType: 'OperProgress',
+  },
+  {
+    id: 'switchtheme',
+    name: '更换游戏主题',
+    icon: <Palette size={16} />,
+    description: '从候选主题中随机选择一个游戏界面主题',
+    defaultParams: { themes: [] },
+    paramFields: [{ key: 'themes', label: '候选主题', type: 'theme-list' }],
+    taskType: 'SwitchTheme',
   },
   {
     id: 'closedown' as const,

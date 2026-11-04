@@ -54,6 +54,17 @@ const render = async (node: ReactNode) => {
 const detailsButton = () => container.querySelector<HTMLButtonElement>('[aria-label="展开执行详情"], [aria-label="收起执行详情"]')
 
 describe('AutomationExecutionSummary', () => {
+  it('shows missing game callbacks as an unconfirmed game result', async () => {
+    await render(<AutomationExecutionSummary summary={summary({
+      successCount: 1,
+      actions: [{ action: 'operprogress', task: '游戏内培养', status: 'success', observed: false, message: '培养进程已结束，游戏结果未确认' }],
+    })} runId="run-game" />)
+    expect(container.textContent).toContain('培养进程已结束，游戏结果未确认')
+    expect(container.querySelector('[aria-label="游戏结果未确认"]')).not.toBeNull()
+    await act(async () => detailsButton()?.click())
+    expect(container.textContent).not.toContain('培养目标已完成')
+  })
+
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -116,5 +127,50 @@ describe('AutomationExecutionSummary', () => {
     expect(container.textContent).toContain('源岩 2')
     expect(container.textContent).toContain('已上传')
     expect(container.textContent).toContain('当前活动已结束')
+  })
+
+  it('renders per-operator operprogress details in the expanded actions', async () => {
+    await render(<AutomationExecutionSummary summary={summary({
+      successCount: 1,
+      failedCount: 1,
+      actions: [{
+        task: '游戏内培养',
+        action: 'operprogress',
+        status: 'failed',
+        observed: true,
+        message: '游戏内培养执行失败：成功 1，失败 1，跳过 0',
+        details: [
+          { name: '阿米娅', role: 'Caster', result: 'Success', resultDetail: 'Completed' },
+          { name: '陈', role: 'Warrior', result: 'Failed', resultDetail: 'ResourceInsufficient' },
+        ],
+      }],
+    })} runId="run-operprogress" />)
+
+    expect(detailsButton()?.getAttribute('aria-expanded')).toBe('true')
+    expect(container.textContent).toContain('阿米娅（术师）：培养成功 · 已完成')
+    expect(container.textContent).toContain('陈（近卫）：培养失败 · 材料不足')
+  })
+
+  it('renders deferred mastery targets as a pending group', async () => {
+    await render(<AutomationExecutionSummary summary={summary({
+      successCount: 2,
+      actions: [{
+        task: '游戏内培养',
+        action: 'operprogress',
+        status: 'success',
+        observed: true,
+        message: '游戏内培养流程结束：成功 2，失败 0，跳过 0',
+        deferredMastery: [{ name: '白面鸮', role: 'Medic', skillMastery: [0, 0, 2] }],
+        deferredCount: 1,
+      }],
+    })} runId="run-deferred" />)
+
+    expect(detailsButton()?.getAttribute('aria-expanded')).toBe('false')
+    expect(container.textContent).toContain('1 项专精待处理')
+    expect(container.textContent).not.toContain('培养失败')
+    await act(async () => detailsButton()?.click())
+    expect(container.textContent).toContain('待处理')
+    expect(container.textContent).toContain('白面鸮（医疗）：专精目标待处理，训练室占用，需后续运行 · 专精 S3 Lv2')
+    expect(container.textContent).not.toContain('执行失败')
   })
 })

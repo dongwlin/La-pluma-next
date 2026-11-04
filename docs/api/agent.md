@@ -138,7 +138,37 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 认证失败返回 401 `AGENT_AUTH_REQUIRED`，失败限流返回 429 `AGENT_RATE_LIMITED`，未设置令牌时信令票据入口拒绝跨源请求并返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`。令牌比较、按来源限流与信令来源规则的完整约定见[部署指南](../guides/deployment.md#跨域与访问来源)；信令凭据与上游账号的迁移要求见[部署指南](../guides/deployment.md#信令凭据与上游端口边界)。
 
-## 养成队列与任务流程
+### 游戏内培养与游戏主题
+
+`OperProgress`（游戏内培养）与 `SwitchTheme`（游戏界面主题更换）使用 maa-cli 0.7.8+ 的动态任务通路。页面在“日常”的任务目录中提供两项配置，可加入已有流程；Agent 通过 `run_task` 提交，不使用专用 CLI 子命令。
+
+```bash
+# 在游戏内执行培养，会消耗材料与龙门币
+curl -X POST http://localhost:3000/api/agent/actions/run-task \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: operator-progress-01' \
+  -d '{"command":"run","taskConfig":{"name":"游戏内培养","type":"OperProgress","params":{"plans":[{"role":"Warrior","name":"银灰","elite":2,"skill_level":7,"skill_mastery":[0,0,1]}]}},"waitForCompletion":false}'
+
+# 多个候选主题由 Core 随机选取一个，名称与游戏内显示一致
+curl -X POST http://localhost:3000/api/agent/actions/run-task \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: switch-game-theme-01' \
+  -d '{"command":"run","taskConfig":{"name":"游戏界面主题更换","type":"SwitchTheme","params":{"themes":["夜间","银凇"]}},"waitForCompletion":false}'
+```
+
+培养计划 `plans` 的每项使用游戏内干员名 `name`；`role` 可省略或设为 `Unknown` 由 Core 推断，也可指定 `Pioneer`、`Warrior`、`Tank`、`Sniper`、`Caster`、`Medic`、`Support`、`Special`。可选目标为精英阶段 `elite`（1–2）、技能等级 `skill_level`（2–7）与专精 `skill_mastery`（三个 0–3 的整数，依次对应三个技能，0 表示不处理）。未配置的目标不执行。`plans` 不能为空，每项计划也必须至少选择一个培养目标（`elite`、`skill_level` 或至少一个大于 0 的专精槽位），否则请求在执行前被拒绝。培养可能自动合成材料，缺少双芯片时可能消耗采购凭证购买芯片助剂；专精结果中的“已启动训练”不代表训练完成或最终目标已达成。
+
+Core 每轮执行最多启动一项专精训练。本次已经启动训练，或训练室在本轮开始前已被占用时，同一计划剩余的专精槽位与后续计划的专精目标本轮都不会执行。已发出的训练结果仍保留在 `details`；没有回调的剩余目标以动作的 `deferredMastery` 与 `deferredCount` 标出，需在后续运行中再次提交。
+
+两类任务沿用现有 Run 身份、幂等、轮询与目标停止。结果动作的 `action` 分别为 `operprogress`、`switchtheme`，保留 `success`、`failed`、`skipped` 区别。独立任务成功或跳过的明细在 `run.result.actions`；确认游戏任务失败时返回 `AGENT_GAME_TASK_FAILED`（HTTP 422，`retryable: false`），Run 为 `failed`，明细保留在 `run.error.details.actions`。日常流程将动作合并到现有结果摘要，按步骤分别计数。
+
+`operprogress` 动作的 `details` 逐条保留干员名、职业、培养结果与原因，以及该条的精英阶段、技能等级或专精目标；执行详情按干员展示这些条目，`deferredMastery` 列出没有回调的剩余专精目标，`deferredCount` 为其数量。`Completed` 在精英化与技能等级条目中表示目标已达成，在专精条目中只表示目标等级的专精训练已启动，训练完成仍需游戏内时间，展示时不能当作已完成。`switchtheme` 不产生逐条明细。
+
+培养会读取 Core 汇总，部分培养失败不会仅因 CLI 正常退出而报告成功；缺少完整有效回调时 `observed: false`，仅确认进程已结束，游戏结果仍未确认。事件粒度取决于实际 Core 与资源组合，不能仅凭静态契约确认设备侧可用。
+
+## 养成材料筹备队列与任务流程
+
+`/training/*` 管理培养目标所需的材料筹备与刷关计划，不在游戏内执行精英化、技能升级或专精。游戏内培养使用上面的 `OperProgress` 动态任务。
 
 添加目标和生成预览不会首次应用任务流程。先调用 `POST /api/agent/training/plan`（`mode` 为 `current` 或 `all`），再将返回的计划原样放入 `POST /api/agent/actions/apply-training-plan` 的 `plan` 字段。必须保留 `queueRevision`；队列已变化或缺少版本时应用返回 HTTP `409`，需要重新预览。应用成功后服务端会按更新后的 automation 配置重新注册已存在的默认定时任务；响应中的可选 `scheduleSync` 为 `{ attempted, success, message, missingTimes? }`；`attempted: true, success: false` 表示配置与队列已应用但定时注册失败（包括只有部分时间点创建成功，`missingTimes` 列出未注册时间点），客户端应保留计划并给出重试入口。普通队列同步（`/training/sync` 或队列写入触发的自动同步）不会创建或重注册定时任务。
 

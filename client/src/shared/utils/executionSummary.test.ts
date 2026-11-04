@@ -1,7 +1,54 @@
 import { describe, expect, it } from 'vitest'
-import { formatExecutionActionSummary, formatExecutionSummary, getExecutionLastTask } from './executionSummary'
+import { formatExecutionActionSummary, formatExecutionSummary, getExecutionLastTask, isUnconfirmedGameAction } from './executionSummary'
 
 describe('execution summary formatting', () => {
+  it('separates an unconfirmed game outcome from successful steps in a mixed flow', () => {
+    expect(formatExecutionActionSummary([
+      { action: 'startup', status: 'success' },
+      { action: 'operprogress', status: 'success', observed: false },
+    ])).toBe('流程执行完成 · 成功 1 项 · 游戏结果未确认 1 项')
+  })
+
+  it('keeps a failed process without game callbacks classified as failed', () => {
+    const action = { action: 'operprogress', status: 'failed', observed: false, message: '培养进程执行失败' }
+    expect(isUnconfirmedGameAction(action)).toBe(false)
+    expect(formatExecutionActionSummary([action])).toBe('游戏内培养 · 失败 1 项')
+  })
+
+  it('keeps cultivation task outcomes distinct from completed training targets', () => {
+    expect(formatExecutionActionSummary([
+      { action: 'operprogress', status: 'success', message: '已启动专精训练' },
+      { action: 'operprogress', status: 'failed' },
+    ])).toBe('游戏内培养 · 成功 1 项 · 失败 1 项')
+    expect(formatExecutionActionSummary([{ action: 'switchtheme', status: 'skipped' }]))
+      .toBe('更换游戏主题 · 跳过 1 项')
+    expect(formatExecutionActionSummary([{ action: 'operprogress', status: 'success', observed: false, message: '培养进程已结束，游戏结果未确认' }]))
+      .toBe('培养进程已结束，游戏结果未确认')
+  })
+
+  it('surfaces deferred mastery targets in the oper progress summary only', () => {
+    expect(formatExecutionActionSummary([
+      { action: 'operprogress', status: 'success', deferredCount: 1 },
+    ])).toBe('游戏内培养 · 成功 1 项 · 1 项专精待处理')
+    expect(formatExecutionActionSummary([
+      { action: 'operprogress', status: 'success' },
+      { action: 'operprogress', status: 'success', deferredCount: 2 },
+    ])).toBe('游戏内培养 · 成功 2 项 · 2 项专精待处理')
+    expect(formatExecutionActionSummary([
+      { action: 'startup', status: 'success' },
+      { action: 'operprogress', status: 'success', deferredCount: 1 },
+    ])).toBe('流程执行完成 · 成功 2 项 · 1 项专精待处理')
+    expect(formatExecutionActionSummary([
+      { action: 'fight', status: 'success', stage: '1-7', times: 1, deferredCount: 1 },
+    ])).toBe('作战完成 · 1-7 1 次')
+    expect(isUnconfirmedGameAction({
+      action: 'operprogress',
+      status: 'success',
+      deferredCount: 1,
+      deferredMastery: [{ name: '白面鸮', skillMastery: [0, 0, 2] }],
+    })).toBe(false)
+  })
+
   it('formats the structured scheduler result as renderable text', () => {
     expect(formatExecutionSummary({
       successCount: 0,
