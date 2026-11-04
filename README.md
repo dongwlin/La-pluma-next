@@ -8,7 +8,7 @@
   [![GHCR](https://img.shields.io/badge/GHCR-la--pluma--next-2496ED?logo=github)](https://github.com/dongwlin/La-pluma-next/pkgs/container/la-pluma-next)
 </div>
 
-## 📸 界面预览
+## 界面预览
 
 <table>
   <tr>
@@ -21,7 +21,7 @@
   </tr>
 </table>
 
-## 🚀 快速开始
+## 快速开始
 
 支持 Docker 与本地安装两种方式：Docker 适合直接部署，本地安装适合开发调试。
 
@@ -69,7 +69,7 @@ pnpm dev
 
 `pnpm dev` 同时启动前端 [http://localhost:5173](http://localhost:5173) 与后端 [http://localhost:3000](http://localhost:3000)；也可以分别使用 `pnpm dev:client` 或 `pnpm dev:server`。开发文档与常用检查见 [开发文档](docs/development/README.md)。
 
-## 📚 文档
+## 文档
 
 完整索引见 [文档索引](docs/README.md)，常用文档如下：
 
@@ -82,15 +82,15 @@ pnpm dev
 | [架构与技术栈](docs/architecture/README.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
 | [开发文档](docs/development/README.md) | 主要技术点、样式与测试治理、常用检查命令 |
 
-## 🤝 贡献
+## 贡献
 
 欢迎提交 Issue 和 Pull Request！开发环境与常用检查见 [开发文档](docs/development/README.md)，分支管理、发布流程和兼容性约定见 [维护说明](docs/development/maintaining.md)。
 
-## 📄 许可证
+## 许可证
 
 本项目基于 La Pluma 开发，采用 [MIT License](LICENSE) 发布，保留上游作者的版权声明。
 
-## 🙏 致谢
+## 致谢
 
 La Pluma Next 是 [La Pluma 原项目](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新；项目名沿用《明日方舟》五星近卫干员 La Pluma（羽毛笔），上游作者：miaopasi、mps233。
 
