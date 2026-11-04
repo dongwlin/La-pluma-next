@@ -1,5 +1,6 @@
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
+import { validateGameTaskParams } from './gameTaskConfigService.ts';
 
 export const AGENT_TASK_COMMANDS = Object.freeze([
   'startup',
@@ -121,6 +122,11 @@ function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
       'taskConfig.params 必须是对象',
       { reason: 'params_object_required' }
     );
+  }
+
+  const validationMessage = validateGameTaskParams(normalized.type.trim(), params ?? {});
+  if (validationMessage) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { reason: 'game_task_params_invalid' });
   }
 
   return {

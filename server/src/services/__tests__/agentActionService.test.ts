@@ -45,6 +45,47 @@ function resultOf(value: unknown): Record<string, unknown> {
 }
 
 describe('executeAgentTask', () => {
+  it('preserves nested game task plans and theme candidates on the dynamic path', async () => {
+    const { calls, dependencies } = createExecutors();
+    const configs = [
+      { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ name: '陈', role: 'Warrior', elite: 2, skill_mastery: [0, 3, 0] }] } },
+      { name: '游戏界面主题', type: 'SwitchTheme', params: { themes: ['默认', '简约'] } }
+    ];
+    for (const taskConfig of configs) {
+      await executeAgentTask({ command: 'run', taskConfig }, dependencies);
+    }
+    assert.deepEqual(calls.map(call => (call.args as unknown[])[1]), configs);
+  });
+
+  it('allows Core to infer an omitted or Unknown profession', async () => {
+    const { calls, dependencies } = createExecutors();
+    for (const plan of [{ name: '陈', elite: 2 }, { name: '陈', role: 'Unknown', elite: 2 }]) {
+      const taskConfig = { name: '游戏内培养', type: 'OperProgress', params: { plans: [plan] } };
+      await executeAgentTask({ command: 'run', taskConfig }, dependencies);
+      assert.deepEqual((calls.at(-1)?.args as unknown[])[1], taskConfig);
+    }
+  });
+
+  it('rejects malformed game targets before invoking either executor', async () => {
+    const { calls, dependencies } = createExecutors();
+    const invalidConfigs = [
+      { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', elite: 0 }] } },
+      { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', skill_level: 8 }] } },
+      { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', skill_mastery: [3] }] } },
+      { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', skill_level: '7' }] } },
+      { name: '培养', type: 'OperProgress', params: { plans: [{ name: ' ', elite: 2 }] } },
+      { name: '主题', type: 'SwitchTheme', params: { themes: '默认' } },
+      { name: '主题', type: 'SwitchTheme', params: { themes: [false] } }
+    ];
+    for (const taskConfig of invalidConfigs) {
+      await assert.rejects(
+        executeAgentTask({ command: 'run', taskConfig }, dependencies),
+        error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
+      );
+    }
+    assert.deepEqual(calls, []);
+  });
+
   it('executes a dynamic task with normalized config and all metadata', async () => {
     const { calls, dependencies } = createExecutors();
 
