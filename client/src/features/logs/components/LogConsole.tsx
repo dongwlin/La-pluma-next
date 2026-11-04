@@ -1,5 +1,3 @@
-/** 日志列表、逐条取证详情与滚动跟随；仅消费工作区选定的事件。 */
-
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { AlertCircle, ArrowDown, ArrowLeft, FileText, Search } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, Loading } from '@/shared/ui'
@@ -191,13 +189,13 @@ export default function LogConsole({
                 </div>
               )}
               {visibleLogs.map((log, index) => (
-                <div className="log-row" key={log.members[0]!.record.id || `${getLogIdentity(log.members[0]!.record)}-${index}`}>
+                <div className="log-row" data-log-row key={log.members[0]!.record.id || `${getLogIdentity(log.members[0]!.record)}-${index}`}>
                   <div className="log-row-meta">
                     {log.time && <time>{log.time}</time>}
                     <span className={`log-level is-${log.level.toLowerCase()}`}>{log.level}</span>
                   </div>
                   <div className="log-message">
-                    <span>{log.message}</span>
+                    <span data-log-message>{log.message}</span>
                     {log.count > 1 && <span className="log-repeat">x{log.count}</span>}
                     <details className="log-raw">
                       <summary>{log.count > 1 ? `查看 ${log.count} 条原文与详情` : '原文与详情'}</summary>

@@ -1,11 +1,3 @@
-/**
- * 普通关卡搜索面板
- *
- * 搜索词与"已选中"高亮是搜索面板的局部状态，保存在工作区创建的会话
- * 存储中；结果、loading 与取消由工作区持有的领域搜索入口提供。输入变化
- * 只取消在途搜索并更新本面板，不重建作业集列表。
- */
-
 import { Button } from '@/shared/ui'
 import { usePanelState } from '../hooks/usePanelState'
 import type { PanelStateStore } from '../model/panelState'
@@ -77,7 +69,6 @@ export default function CombatSearchPanel({
       </div>
       <p className="mt-2 text-xs text-tertiary">支持关卡代号或关卡名，例如 1-7、CE-6。</p>
 
-      {/* 搜索结果 */}
       {result && result.copilots && (
         <div className="mt-3 max-h-32 space-y-1 overflow-y-auto">
           {result.copilots.slice(0, 5).map((copilot, idx) => (

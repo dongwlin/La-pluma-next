@@ -68,13 +68,11 @@ const HOT_UPDATE_FILES: readonly string[] = [
   ])
 ];
 
-/** 私有任务缓存的对外形状：替换后的环境变量与清理入口。 */
 export interface MaaTaskCache {
   env: NodeJS.ProcessEnv;
   cleanup(): Promise<void>;
 }
 
-/** 缓存准备端口：CLI 路径与环境变量可覆盖，测试可用临时目录替代共享缓存。 */
 export interface MaaTaskCacheOptions {
   cliPath?: string;
   env?: NodeJS.ProcessEnv;

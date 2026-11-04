@@ -1,12 +1,7 @@
-/**
- * API 辅助工具 - 统一的响应格式和错误处理
- */
-
 import { createLogger } from './logger.ts';
 import { withRequestLogContext } from './logContext.ts';
 import { normalizeRequestId } from './requestContext.ts';
 
-/** Express NextFunction 的最小结构端口，仅约束错误透传调用。 */
 export type NextLike = (error?: unknown) => void;
 
 /**
@@ -25,17 +20,14 @@ export interface ApiRequestLike {
 
 export type MaybeApiRequest = ApiRequestLike | null | undefined;
 
-/** 仅支持 res.json 的响应端口（sendSuccess 使用）。 */
 export interface JsonResponseWriter {
   json(body: object): unknown;
 }
 
-/** 支持 res.status().json() 链式写入的响应端口（sendError 使用）。 */
 export interface StatusableJsonWriter extends JsonResponseWriter {
   status(statusCode: number): JsonResponseWriter;
 }
 
-/** 错误出口使用的响应端口，额外要求可读的 headersSent。 */
 export interface ApiResponseWriter extends StatusableJsonWriter {
   headersSent: boolean;
 }
@@ -80,7 +72,6 @@ export interface ApiErrorResponse {
   meta: ResponseMeta;
 }
 
-/** 读取未知错误对象上的可选字段；非对象输入一律视为缺失。 */
 interface ErrorFields {
   message?: unknown;
   code?: unknown;
@@ -142,9 +133,6 @@ export function agentError(code?: string, message?: string, options: AgentErrorO
   return error;
 }
 
-/**
- * 成功响应
- */
 export function successResponse<T>(data: T, message = '操作成功', meta: Record<string, unknown> = {}): ApiSuccessResponse<T> {
   return {
     success: true,
@@ -154,9 +142,6 @@ export function successResponse<T>(data: T, message = '操作成功', meta: Reco
   };
 }
 
-/**
- * 错误响应
- */
 export function errorResponse(error: unknown, message?: string, meta: Record<string, unknown> = {}): ApiErrorResponse {
   const normalized = typeof error === 'string'
     ? agentError('AGENT_INTERNAL_ERROR', error)
@@ -206,9 +191,6 @@ export function sendError(res: StatusableJsonWriter, req: MaybeApiRequest, error
   });
 }
 
-/**
- * 异步处理器包装 - 通过 next(error) 交给统一错误出口
- */
 export function asyncHandler<Req extends ApiRequestLike = ApiRequestLike, Res extends ApiResponseWriter = ApiResponseWriter>(
   fn: (req: Req, res: Res, next: NextLike) => unknown
 ): (req: Req, res: Res, next: NextLike) => Promise<void> {
@@ -221,17 +203,11 @@ export function asyncHandler<Req extends ApiRequestLike = ApiRequestLike, Res ex
   };
 }
 
-/**
- * HTTP 状态归一：错误响应状态限制在 400-599，其余一律按 500 处理
- */
 function normalizeErrorStatus(value: unknown): number {
   const status = Number(value);
   return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500;
 }
 
-/**
- * 请求框架错误（body 解析等）到稳定 JSON 错误的映射
- */
 interface RequestFrameworkErrorMapping {
   type: string;
   code: string;
@@ -343,9 +319,6 @@ export function apiErrorHandler(error: unknown, req: MaybeApiRequest, res: ApiRe
   }));
 }
 
-/**
- * 验证必需参数
- */
 export function validateRequired(data: Record<string, unknown>, requiredFields: readonly string[]): void {
   const missing = requiredFields.filter(field => !data[field]);
   if (missing.length > 0) {

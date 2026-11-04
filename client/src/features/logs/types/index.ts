@@ -1,7 +1,3 @@
-/**
- * 日志域类型
- */
-
 export interface LogEntry {
   readonly time: string
   readonly level: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG'

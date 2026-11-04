@@ -9,18 +9,11 @@ import type { DropItem } from './dropRecordService.ts';
 import type { ScheduleTaskProgressResult } from './scheduleTaskProgress.ts';
 
 // 流程结果聚合：从命令输出与任务日志提炼执行结果，不读取设备、存储或通知配置。
-// 纯函数便于脱离设备验证步骤结果与完成消息。
-//
-// 类型边界：
-// - 命令输出与日志是外部文本，解析结果逐字段可选；缺失字段不补占位值；
-// - 步骤结果使用有穷联合：跳过、失败、成功分别建模，取消由流程进度
-//   （`scheduleTaskProgress`）的 `stopped` 表达，二者不混同；
-// - 完成消息优先级固定：停止 > 掉落汇报失败 > 任务失败 > 正常完成。
+// 外部文本解析结果逐字段可选、缺失不补占位值；步骤结果用有穷联合区分跳过/失败/成功，
+// 取消由流程进度的 `stopped` 表达；完成消息优先级：停止 > 掉落汇报失败 > 任务失败 > 正常完成。
 
-/** 解析出的任务总结；字段按 MAA 输出可选出现。 */
 export interface FlowTaskSummary {
   task: string;
-  /** 保留解析器可能补充的扩展字段，供步骤结果与通知共用。 */
   [extension: string]: unknown;
   stage?: string;
   times?: string;
@@ -33,7 +26,6 @@ export interface FlowTaskSummary {
   infrast?: string;
 }
 
-/** 掉落汇报结论：成功或失败，两个汇报渠道分别建模。 */
 export interface FightReportResult {
   provider: 'penguin' | 'yituliu';
   stage: string;
@@ -50,7 +42,6 @@ export interface FightReportTaskLike {
   };
 }
 
-/** 命令输出：只读取 stdout/stderr 文本。 */
 export interface FightReportOutputLike {
   stdout?: unknown;
   stderr?: unknown;
@@ -61,7 +52,6 @@ export interface FlowSummaryLogger {
   debug?(message: string, data?: unknown): unknown;
 }
 
-/** 流程内直接构造的步骤结果：启动、关闭与关闭前仓库识别。 */
 export interface ScheduleBuiltinStepAction {
   task: string;
   action: 'startup' | 'closedown' | 'depot';
@@ -100,7 +90,6 @@ export interface FlowTaskSkip {
   reason: string;
 }
 
-/** 一次流程执行的汇总：计数、明细与通知载荷共用。 */
 export interface FlowExecutionSummary {
   successCount: number;
   failedCount: number;
@@ -189,9 +178,6 @@ export function getFightReportResults(
   return { reportResults, diagnostics };
 }
 
-/**
- * 解析 MAA 任务总结信息
- */
 export function parseTaskSummary(
   taskName: string,
   output: string,
@@ -199,32 +185,24 @@ export function parseTaskSummary(
 ): FlowTaskSummary | null {
   const summary: FlowTaskSummary = { task: taskName };
 
-  // 调试：打印原始输出
   logger?.debug?.('解析任务总结', {
     taskName,
     outputLength: output.length
   });
   logger?.debug?.('任务总结完整输出', { output });
 
-  // 解析 MAA 的实际输出格式
-  // 格式示例: Fight OR-7 1 times, drops:
-
-  // 提取关卡和次数
   const fightMatch = output.match(/Fight\s+([A-Z0-9-]+)\s+(\d+)\s+times?/i);
   if (fightMatch) {
     summary.stage = fightMatch[1];
     summary.times = fightMatch[2];
   }
 
-  // 提取掉落信息
-  // 格式: total drops: "生香" × 21, 全新装置 × 1, 龙门币 × 252
   const totalDropsMatch = output.match(/total drops:\s*(.+?)(?:\n|$)/i);
   if (totalDropsMatch) {
     const dropsText = totalDropsMatch[1].trim();
-    // 解析每个物品
     const itemMatches = dropsText.matchAll(/(?:"([^"]+)"|([^\s,×]+))\s*×\s*(\d+)/g);
     const drops: string[] = [];
-    const dropItems: DropItem[] = []; // 用于记录的结构化数据
+    const dropItems: DropItem[] = [];
     for (const match of itemMatches) {
       const itemName = match[1] || match[2];
       const count = parseInt(match[3]);
@@ -233,11 +211,10 @@ export function parseTaskSummary(
     }
     if (drops.length > 0) {
       summary.drops = drops.join(', ');
-      summary.dropItems = dropItems; // 保存结构化数据
+      summary.dropItems = dropItems;
     }
   }
 
-  // 提取理智药和源石使用（如果有的话）
   const medicineMatch = output.match(/medicine[:\s]+(\d+)/i);
   if (medicineMatch) {
     summary.medicine = medicineMatch[1];
@@ -248,13 +225,11 @@ export function parseTaskSummary(
     summary.stone = stoneMatch[1];
   }
 
-  // 提取执行时间
   const timeMatch = output.match(/\[Fight\]\s+([\d:]+)\s+-\s+([\d:]+)\s+\(([^)]+)\)/);
   if (timeMatch) {
     summary.duration = timeMatch[3];
   }
 
-  // 解析公招总结
   if (output.includes('Recruit')) {
     const recruitMatches = output.matchAll(/Recruit[:\s]+\[([^\]]+)\]\s*->\s*(\d+)\*/gi);
     const recruits: Array<{ tags: string; stars: string }> = [];
@@ -269,7 +244,6 @@ export function parseTaskSummary(
     }
   }
 
-  // 解析基建总结
   if (output.includes('Infrast')) {
     const infrastMatch = output.match(/Infrast[:\s]+([^\n]+)/i);
     if (infrastMatch) {

@@ -1,16 +1,3 @@
-/**
- * 肉鸽任务目录、选项解析与命令纯模型
- *
- * 页面与面板只提供当前草稿，模型不读取配置通道、执行控制器或任何 React 状态：
- *
- * - `ROGUELIKE_TASKS` 是模式选择器与配置表单共用的任务目录；
- * - `ROGUELIKE_THEME_PRESETS` 只描述界面上可点的主题快捷项，服务端载荷仍以
- *   `taskInputs` 里的主题代号为准；
- * - 字段表与主题相关候选项由 `roguelikeOptions` 维护，本模块负责可见性、
- *   默认值、命令拼接与输入校验；
- * - 输入校验要求两个已知模式有非空主题，刷坍缩范式模式还要求填写期望范式。
- */
-
 import {
   MAA_CLI_I32_MAX,
   MAA_CLI_I32_MIN,
@@ -62,7 +49,6 @@ export interface RoguelikeThemePreset {
   label: string
 }
 
-/** 界面上的主题快捷项；模式与配置 key 保持一致。 */
 export const ROGUELIKE_THEME_PRESETS: Record<RoguelikeMode, readonly RoguelikeThemePreset[]> = {
   roguelike: [
     { value: 'Phantom', label: '傀影' },
@@ -76,7 +62,6 @@ export const ROGUELIKE_THEME_PRESETS: Record<RoguelikeMode, readonly RoguelikeTh
   ],
 }
 
-/** 显式值优先；未设置或空字符串回落到选项声明的默认值。 */
 function pickAdvancedValue(
   option: RoguelikeAdvancedOption,
   advanced: RoguelikeAdvancedValues,
@@ -111,7 +96,6 @@ export function isRoguelikeOptionValueValid(
   return choices.some(choice => choice.value === String(value))
 }
 
-/** number 字段的取值错误：只接受整数且落在字段范围内；空值表示未设置。 */
 function getRoguelikeNumberError(
   option: RoguelikeAdvancedOption,
   value: string | number | boolean,
@@ -129,7 +113,6 @@ function getRoguelikeNumberError(
   return null
 }
 
-/** 返回第一个生效但取值越界的字段错误；没有越界值时为 null。 */
 function findInvalidOptionValue(
   taskId: string,
   theme: string,
@@ -154,7 +137,6 @@ function findInvalidOptionValue(
   return null
 }
 
-/** 模式取值：缺省按当前主题的首项解析，与界面显示一致。 */
 function resolveModeValue(taskId: string, theme: string, advanced: RoguelikeAdvancedValues): string {
   const modeOption = getRoguelikeAdvancedOptions(taskId).find(option => option.key === 'mode')
   if (!modeOption) return ''

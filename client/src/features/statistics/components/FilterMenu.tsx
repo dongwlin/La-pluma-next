@@ -1,13 +1,3 @@
-/**
- * 统计筛选菜单
- *
- * 面板只传入当前值与选项；触发器的测量、portal 定位、焦点恢复和
- * 菜单内的键盘导航都由本组件持有，规则与迁移前一致：
- * - 菜单挂到 document.body，按视口空间选择上下方向并夹在安全边距内；
- * - 打开时聚焦已选项（不存在则第一项），Escape 关闭并归还触发器焦点；
- * - ArrowUp/Down 循环、Home/End 跳转，外部 pointerdown/focusin 关闭。
- */
-
 import {
   useCallback,
   useEffect,

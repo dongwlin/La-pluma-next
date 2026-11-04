@@ -33,7 +33,6 @@ export function measureFluidTabRect(
   }
 }
 
-/** Keeps an animated tab highlight aligned with its active button. */
 export function useFluidTabIndicator<T extends string>(activeTab: T) {
   const containerRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Partial<Record<T, HTMLButtonElement | null>>>({})

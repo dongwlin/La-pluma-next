@@ -6,12 +6,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 4300)
 
 /**
- * 视觉基线 harness 配置。
- *
- * 运行环境钉死：本 harness 只允许在 mcr.microsoft.com/playwright 官方镜像
- * （版本与 @playwright/test 完全一致）内运行，通过仓库根的
- * `pnpm visual` / `pnpm visual:update` 包装脚本进入。字体与浏览器由此
- * 构造为"本地 = CI"，基线截图为 Linux/Chromium 专属，换环境必须重新生成。
+ * 视觉基线 harness 配置：只允许在与 @playwright/test 版本一致的官方 Playwright
+ * 镜像内运行（经仓库根 `pnpm visual` 包装脚本进入），字体与浏览器构造为“本地 = CI”，
+ * 基线截图为 Linux/Chromium 专属，换环境必须重新生成。
  */
 export default defineConfig({
   testDir: __dirname,

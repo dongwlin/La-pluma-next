@@ -1,7 +1,3 @@
-/**
- * 战斗任务域类型
- */
-
 import type { ReactNode } from 'react'
 
 /** 作业页的三种入口；模式切换不写入配置。 */
@@ -34,10 +30,8 @@ export interface CombatTaskInputs {
 /** 作业集执行方式；`app` 是旧值，仅在加载时迁移为 `cli`。 */
 export type CopilotSetExecutionMode = 'app' | 'manual' | 'cli'
 
-/** 作业预览/计划请求的模式参数；服务端接受普通、突袭或两者。 */
 export type CopilotRaid = 'normal' | 'raid' | 'both'
 
-/** 每个作业集已保存的待执行索引。 */
 export type CopilotSetSelections = Record<string, number[]>
 
 export interface CombatAdvancedParams {
@@ -52,7 +46,6 @@ export interface AutoFormationConfig {
   [taskId: string]: boolean | FormationMode
 }
 
-// 作业集中的单个作业信息
 export interface CopilotSetItem {
   id: number
   name?: string
@@ -73,9 +66,7 @@ export interface CopilotSetInfo {
   operators?: string
   note?: string
   autoAddS?: boolean
-  // 作业集包含的作业列表
   copilots?: CopilotSetItem[]
-  // 当前执行到的作业索引（用于顺序执行）
   currentIndex?: number
 }
 

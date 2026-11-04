@@ -20,7 +20,6 @@ import { getExecutionAdmissionGate } from '../services/executionAdmissionService
 import operatorTraining from '../services/operatorTrainingService.ts'
 import OperatorQuotes from '../services/operatorQuotesService.ts'
 
-/** 用例注册的 HTTP/TCP 监听器：关闭时按需断开空闲连接。 */
 type TrackedServer = NetServer & {
   closeIdleConnections?(): void
   closeAllConnections?(): void
@@ -48,7 +47,6 @@ function readError(payload: JsonRecord): JsonRecord {
   return readNested(payload, 'error')
 }
 
-/** 信令网关桩：只实现被组装入口读取的端口，不建立 WebRTC 连接。 */
 interface StubGatewayOptions {
   handleLogin?: WebrtcSignalingGateway['handleLogin']
   attach?: WebrtcSignalingGateway['attach']

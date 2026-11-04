@@ -1,16 +1,3 @@
-/**
- * 统计数据工作区
- *
- * 跨面板状态集中在这里：
- * - 当前 tab 由 URL 查询串决定（页面链接可直达某个 tab），并决定筛选/排序等
- *   面板局部状态的生命期；
- * - 识别与材料命令只有一份投影（`useStatisticsCommands`），解析快照写回 Query；
- * - 四类资源的跨域失效订阅只建一次，各面板各自持有自己的 Query。
- *
- * 三个面板始终挂载（非当前 tab 返回 null），因此首屏四路读取的时机与
- * 迁移前一致，tab 切换不会重建 query 或丢失面板状态。
- */
-
 import { useCallback } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -29,7 +16,6 @@ import OperatorPanel from './OperatorPanel'
 import StatisticsTabs from './StatisticsTabs'
 import type { ActiveTab } from '../types'
 
-/** 读取由 Query 持有，失效到达后按作用域精确保废对应资源。 */
 const STATISTICS_RESOURCE_SCOPES = ['depot', 'operbox', 'catalog', 'drops'] as const
 
 export default function StatisticsWorkspace() {
@@ -76,7 +62,6 @@ export default function StatisticsWorkspace() {
       <StatisticsTabs activeTab={activeTab} onTabChange={selectTab} />
 
       <div>
-        {/* 功能卡片 */}
         <div className="min-w-0 app-stack-section">
           <OperatorPanel isActive={activeTab === 'operbox'} command={command} />
           <DepotPanel isActive={activeTab === 'depot'} command={command} />

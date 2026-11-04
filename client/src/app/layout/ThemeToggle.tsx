@@ -18,7 +18,6 @@ const themeOptions: Array<{ value: ThemeMode; label: string; icon: LucideIcon }>
 ]
 
 export default function ThemeToggle() {
-  // 使用 UI Store 管理主题
   const theme = useUIStore(state => state.theme)
   const setTheme = useUIStore(state => state.setTheme)
   const shouldReduceMotion = useReducedMotion()

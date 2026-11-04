@@ -28,7 +28,6 @@ function createExecutors() {
   };
 }
 
-/** 用例错误对象经 assert.rejects 回调传入，按公开字段读取。 */
 function errorField(error: unknown, key: string): unknown {
   return typeof error === 'object' && error !== null && key in error
     ? (error as Record<string, unknown>)[key]

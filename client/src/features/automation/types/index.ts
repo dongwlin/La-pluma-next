@@ -1,7 +1,3 @@
-/**
- * 自动任务域类型
- */
-
 import type { ReactNode } from 'react'
 
 export type TaskCommandId = 'startup' | 'fight' | 'infrast' | 'recruit' | 'mall' | 'award' | 'closedown'
@@ -40,14 +36,12 @@ export interface StageConfig {
 }
 
 export interface TaskParams {
-  // 启动游戏
   clientType?: string
   adbPath?: string
   address?: string
   accountName?: string
   recognizeDepotBeforeClose?: boolean
 
-  // 理智作战
   stage?: string
   stages?: Array<string | StageConfig>
   medicine?: number | string
@@ -62,7 +56,6 @@ export interface TaskParams {
   report_to_yituliu?: boolean
   yituliu_id?: string
 
-  // 基建
   mode?: string
   facility?: string[]
   drones?: string
@@ -77,7 +70,6 @@ export interface TaskParams {
   reception_clue_exchange?: boolean
   reception_send_clue?: boolean
 
-  // 公招
   refresh?: boolean
   force_refresh?: boolean
   select?: number[]
@@ -92,7 +84,6 @@ export interface TaskParams {
   /** @deprecated Migrated to preserve_tags when loading saved tasks. */
   skip_robot?: boolean
 
-  // 信用收支
   visit_friends?: boolean
   shopping?: boolean
   buy_first?: string
@@ -103,7 +94,6 @@ export interface TaskParams {
   credit_fight?: boolean
   formation_index?: number | string
 
-  // 领取奖励
   award?: boolean
   mail?: boolean
   recruit?: boolean
@@ -111,7 +101,6 @@ export interface TaskParams {
   mining?: boolean
   specialaccess?: boolean
 
-  // 其他
   [key: string]: any
 }
 
@@ -126,7 +115,6 @@ export interface AutomationAvailableTask {
 }
 
 export interface TaskFlowItem {
-  // 从 AutomationAvailableTask 继承的属性
   name: string
   icon: ReactNode
   description: string
@@ -134,9 +122,8 @@ export interface TaskFlowItem {
   paramFields: TaskParamField[]
   taskType?: string
 
-  // TaskFlowItem 特有的属性
-  id: string // 唯一标识符（如 "startup-1234567890"）
-  commandId: TaskCommandId // 任务命令 ID
+  id: string
+  commandId: TaskCommandId
   params: TaskParams
   enabled: boolean
 }

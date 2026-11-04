@@ -1,8 +1,3 @@
-/**
- * 游戏数据资源共享类型
- * 仓库、持有干员与干员目录的载荷形状；页面筛选与展示状态仍归各页面域。
- */
-
 export interface DepotItem {
   id: string
   name: string

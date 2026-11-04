@@ -1,10 +1,3 @@
-/**
- * 队列移除后的撤销提示
- *
- * 提示通过 portal 挂在 `document.body`，不打断队列工作区的滚动容器；
- * 8 秒后自动关闭，鼠标悬停、键盘焦点或撤销请求进行中都会暂停关闭。
- */
-
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, X } from 'lucide-react'

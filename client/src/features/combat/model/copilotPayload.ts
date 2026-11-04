@@ -1,18 +1,3 @@
-/**
- * 作业搜索与预览载荷解析
- *
- * 服务端在 `/agent` 信封里返回 PRTS 代理对象；旧调用与测试数据也可能直接给
- * 代理对象本身。这里集中做形状归一，Query 与预览会话只消费归一化后的值：
- *
- * - 搜索：`{ stage|operator, copilots[], recommended }`；条目缺 uri 时丢弃，
- *   `views`/`hotScore` 缺失按 0，`recommended` 只有带 uri 才可用于自动填充。
- * - 单作业：`status_code`/`data.content`（content 是 JSON 字符串或对象）；
- *   `doc.title` 缺失回退“未命名作业”，`opers`/`groups` 拼成展示文本。
- * - 作业集：`data.copilot_ids` 接受数字或数字字符串，只保留正整数。
- * - 作业集计划：`items` 与 `entries` 同时存在；`completed` 的条目按
- *   `itemIndex` 折叠成每个作业的已完成模式。
- */
-
 import { isRecord } from '@/shared/api'
 import type {
   CopilotSearchItem,

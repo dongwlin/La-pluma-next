@@ -15,10 +15,6 @@ import type {
   PreviewWebrtcStatusPayload
 } from '../controllers/previewDto.ts';
 
-// 真实 HTTP 回归：截图、WebRTC、方向与设备采样已从 agent.ts 拆到独立
-// 预览 router，这里通过 createLaPlumaApp 验证挂载、鉴权、body/query 归一化、
-// dry-run 与统一错误出口保持不变。只使用临时目录、假 MAA CLI 和假 ADB，
-// 不连接真实设备、不启动真实 WebRTC 服务。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-preview-routes-'));
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
@@ -128,7 +124,6 @@ function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
   return typeof (value as { success?: unknown }).success === 'boolean';
 }
 
-/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
 async function readBody<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
   assert.ok(isApiEnvelope(body));

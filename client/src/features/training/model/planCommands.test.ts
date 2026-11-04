@@ -492,7 +492,6 @@ describe('plan application', () => {
 
   it('keeps the applied plan and exposes a retryable warning when the follow-up queue read fails', async () => {
     await generatePreview()
-    // 第一次 refetch 是生成前读取；应用后的权威读取失败。
     harness.enqueueRefetch(null)
 
     await expect(harness.owner.apply(harness.context)).resolves.toMatchObject({

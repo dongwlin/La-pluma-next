@@ -1,21 +1,7 @@
 /**
- * WebRTC 预览运行时：本地信令服务、TURN、设备端 Agent 与 viewer 会话
- *
- * - 进程所有权：只终止本实例启动的 server/TURN/Agent 部署/构建子进程，设备端
- *   Agent 只停止已登记所有权的地址；启动前已存在的资源记为 external，停止与
- *   关闭流程都不会杀掉它们。停止与关闭对托管子进程先 SIGTERM，短宽限期后
- *   以 SIGKILL 收尾，不依赖子进程对 SIGTERM 的响应时机。
- * - viewer 生命周期：同一设备最后一个浏览器离开后按 idle 宽限期回收 Agent；
- *   新 viewer 会取消排队中的回收并在建立上游连接前确认（必要时恢复）Agent。
- * - 启动队列：所有启动/停止/安装串行执行；关闭一旦开始，排队中与在途的步骤
- *   都以 `WEBRTC_PREVIEW_CLOSED` 结束，不再派生或占用新资源。
- * - 超时：等待上游就绪、ADB 设备、TURN 监听与设备注册都带显式时限与可注入
- *   轮询，失败时抛出具名错误码，不能把“还在等待”当成成功。
- * - 外部边界：上游 `/api/login` 与 `/devices` 的 JSON、设备标识和子进程退出
- *   状态都按 unknown 收窄；无效值按既有格式错误处理，不使用宽泛 any。
- *
- * 同源网关（`webrtcSignalingGateway.ts`）只通过 `registerWebrtcViewer`、
- * `getWebrtcAuthToken` 与本模块交互，不直接持有进程或计时器。
+ * 预览运行时：只终止本实例启动或登记所有权的进程，启动前已存在的资源记为 external 且不被杀死；
+ * 托管子进程先 SIGTERM、宽限后 SIGKILL。viewer 最后离开后按 idle 宽限回收 Agent，新 viewer 会取消回收；
+ * 启动/停止/安装串行，关闭开始后以 `WEBRTC_PREVIEW_CLOSED` 结束排队与在途步骤。
  */
 
 import { execFile, spawn } from 'node:child_process';
@@ -102,7 +88,6 @@ export interface WebrtcStatus {
 /** Agent 启动成功后的状态；agentRunning 由本模块确认，不来自上游推断。 */
 export type WebrtcRunningStatus = WebrtcStatus & { agentRunning: true };
 
-/** 停止/关闭响应：状态快照加上本次实际释放的资源。 */
 export interface WebrtcStopResult extends WebrtcStatus {
   released: WebrtcReleasedResource[];
 }
@@ -123,7 +108,6 @@ export interface WebrtcRuntimeError extends Error {
   code: string;
   retryable?: boolean;
   cause?: unknown;
-  /** build.sh 非零退出时保留的退出码 */
   exitCode?: number | null;
 }
 
@@ -326,7 +310,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 读取错误码而不信任 catch 值的形状。 */
 function readErrorCode(value: unknown): string | null {
   if (!isRecord(value) && !(value instanceof Error)) return null;
   const code = (value as { code?: unknown }).code;
@@ -521,7 +504,6 @@ export async function waitForCondition<Result>(
   }
 }
 
-/** ADB 子命令的静默结果；失败时保留 stdout/stderr 与错误码供上层分支。 */
 interface QuietExecResult {
   stdout: string;
   stderr: string;
@@ -706,7 +688,6 @@ export async function getWebrtcAuthToken({ throwOnError = false }: { throwOnErro
   }
 }
 
-/** 从上游设备条目读取设备标识；字符串条目与 `device_id`/`id` 对象条目都兼容。 */
 function parseWebrtcDeviceId(value: unknown): string | null {
   if (typeof value === 'string') return value === '' ? null : value;
   if (!isRecord(value)) return null;
@@ -1062,7 +1043,6 @@ export async function getWebrtcStatus(
   };
 }
 
-/** 安装结果：状态快照加本次是否执行了运行时升级（覆盖旧版本安装）。 */
 export type WebrtcInstallResult = WebrtcStatus & { upgraded: boolean };
 
 async function installWebrtcUnlocked(): Promise<WebrtcInstallResult> {
@@ -1163,7 +1143,6 @@ export async function installWebrtc(): Promise<WebrtcInstallResult> {
   return enqueueLifecycle(installWebrtcUnlocked);
 }
 
-/** 只确保信令服务就绪；组合启动无需等待会被丢弃的设备状态快照。 */
 async function ensureWebrtcServerReadyUnlocked(address: string): Promise<void> {
   const signal = getCloseSignal();
   assertPreviewOpen();
@@ -1324,7 +1303,6 @@ export async function stopWebrtcAgent(
   return enqueueLifecycle(() => stopWebrtcAgentUnlocked(address, adbPath));
 }
 
-/** 把上游设备条目收窄为设备标识与观看者计数；未知或缺失字段按 0/无观看者处理。 */
 function parseWebrtcDeviceDetails(entry: unknown): WebrtcDeviceDetails | null {
   if (!isRecord(entry)) return null;
   const deviceId = parseWebrtcDeviceId(entry);

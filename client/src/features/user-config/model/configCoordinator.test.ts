@@ -52,7 +52,6 @@ function memoryDraftStore(initial: Draft | null = null) {
   }
 }
 
-/** 与领域适配器同形：decode 承担旧值迁移（`1` → `raid`）与形状校验。 */
 function decodeDraft(payload: unknown): Draft | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
   const record = payload as { value?: unknown; mode?: unknown }
@@ -154,7 +153,6 @@ describe('hydrate', () => {
       error: DEFAULT_RESTORED_MESSAGE,
     })
 
-    // 恢复的草稿可以按原令牌重试，并在完整成功后清掉标记。
     await expect(channel.commitNow()).resolves.toBe(true)
     expect(harness.commitMock).toHaveBeenCalledWith({ value: 'local', mode: 'normal' })
     expect(harness.storage.getItem(PENDING_KEY)).toBeNull()
@@ -179,7 +177,6 @@ describe('hydrate', () => {
     const channel = harness.coordinator.channel(harness.adapter)
     await channel.hydrate()
 
-    // 例如本会话删除标记失败或另一写入者留下 pending：标记指向的草稿仍然优先。
     harness.local.write({ value: 'unconfirmed', mode: 'normal' })
     harness.storage.setItem(PENDING_KEY, 'leftover-token')
 
@@ -563,7 +560,6 @@ describe('channel lifetime', () => {
     first.setDraft({ value: 'first', mode: 'normal' })
     await tick()
 
-    // 模拟页面真实卸载后重挂载：新适配器实例，同一配置 key。
     const remountCommit = vi.fn<(wire: Wire) => Promise<ConfigCommitResult>>(async () => ok)
     const second = harness.coordinator.channel({ ...harness.adapter, commit: remountCommit })
     expect(second).toBe(first)

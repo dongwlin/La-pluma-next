@@ -1,9 +1,3 @@
-/**
- * README 展示截图专用 fixture。
- *
- * 基础接口继续复用视觉基线 fixture，只覆盖自动化任务流：README 需要比
- * 回归基线更完整的日常流程，同时保持固定数据、不读取本机运行时配置。
- */
 import { apiFixtures, ok, type ApiFixture } from '../visual/fixtures'
 
 // README 截图展示“尚无最近执行”的空闲状态，避免把视觉基线的示例执行结果带进主图。

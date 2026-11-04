@@ -1,17 +1,3 @@
-/**
- * 企鹅物流掉落数据服务
- *
- * 数据文件默认位于训练数据目录（`LA_PLUMA_TRAINING_DATA_DIR`，缺省
- * `server/data/penguin-drop-data.json`），由 scripts/fetch-penguin-stats.ts 生成
- * （数据源企鹅物流公开 API v2，server=CN，抓取时间见 metadata.fetchedAt）。
- *
- * 提供两类查询：
- * - findBestFarmStage：全矩阵按物品反查最优刷取关卡（仅限永久关卡，避免计划排进随时会关闭的限时活动关）
- * - getStageEstimate：指定关卡的指定物品期望掉落（用于芯片等固定映射关卡）
- *
- * 查询失败返回 null，由调用方决定回退策略——本服务不做任何硬编码兜底。
- */
-
 import { readJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
@@ -36,21 +22,18 @@ export interface PenguinDropStage {
   zoneType: string;
 }
 
-/** 掉落矩阵的单个关卡条目：expected 为期望掉落/次，samples 为样本数。 */
 export interface PenguinDropMatrixEntry {
   stageId: string;
   expected: number;
   samples: number;
 }
 
-/** 解析后的企鹅物流掉落数据文件。 */
 export interface PenguinDropData {
   metadata?: PenguinDropMetadata;
   stages: Record<string, PenguinDropStage>;
   dropMatrix: Record<string, PenguinDropMatrixEntry[]>;
 }
 
-/** 查询结果为调用方所需的期望掉落投影。 */
 export interface StageDropEstimate {
   stageId: string;
   code: string;
@@ -59,7 +42,6 @@ export interface StageDropEstimate {
   samples: number;
 }
 
-/** 读取入口的路径覆盖，供测试指向临时 fixture 而不触碰运行数据。 */
 export interface DropDataLoadPorts {
   dataPath?: string;
 }

@@ -18,7 +18,6 @@ interface StubResponse {
   body: string;
 }
 
-/** 以 t.mock.method 安装全局 fetch 替身，用例结束自动恢复；返回记录到的请求地址。 */
 function stubFetch(t: TestContext, respond: (url: string) => StubResponse): string[] {
   const calls: string[] = [];
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
@@ -33,7 +32,6 @@ function stubFetch(t: TestContext, respond: (url: string) => StubResponse): stri
   return calls;
 }
 
-/** assert.rejects 的入参是 unknown；出站错误按结构化字段读取。 */
 function readFailureFields(error: unknown): { kind?: unknown; statusCode?: unknown } {
   return typeof error === 'object' && error !== null
     ? error as { kind?: unknown; statusCode?: unknown }

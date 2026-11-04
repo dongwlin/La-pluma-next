@@ -1,10 +1,3 @@
-/**
- * 悖论模拟干员搜索面板
- *
- * 干员搜索词、结果展示与点击填充属于悖论卡片的局部交互；搜索请求、
- * 取消与推荐填充由工作区持有的领域搜索入口接线。
- */
-
 import { Button } from '@/shared/ui'
 import { usePanelState } from '../hooks/usePanelState'
 import type { PanelStateStore } from '../model/panelState'

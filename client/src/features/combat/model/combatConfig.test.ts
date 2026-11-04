@@ -116,7 +116,6 @@ describe('combat config adapter', () => {
 
     expect(decoded?.copilotSetExecutionMode).toBe('cli')
     expect(decoded?.advancedParams.copilot?.raid).toBe('raid')
-    // 只有 copilot 的 raid 有旧值迁移；其它任务的字段原样保留。
     expect(decoded?.advancedParams.ssscopilot?.loopTimes).toBe('2')
   })
 

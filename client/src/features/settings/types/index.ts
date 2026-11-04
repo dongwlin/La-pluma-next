@@ -1,7 +1,3 @@
-/**
- * 设置域类型
- */
-
 import type { ReactNode } from 'react'
 import type { ConfigSectionId } from '../model/configSection'
 

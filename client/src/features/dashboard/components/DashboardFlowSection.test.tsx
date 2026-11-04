@@ -81,7 +81,6 @@ describe('DashboardFlowSection preview lifecycle', () => {
     expect(container.querySelector('[data-dashboard-preview-card]')).not.toBeNull()
 
     await renderSection('hidden')
-    // Activity 隐藏保留 DOM 与组件状态，预览入口不因流程/快照区域而条件卸载。
     expect(container.querySelector('[data-dashboard-preview-card]')).not.toBeNull()
 
     await renderSection('visible')

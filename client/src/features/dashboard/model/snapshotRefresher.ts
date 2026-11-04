@@ -1,19 +1,3 @@
-/**
- * 总览完整快照刷新协调器
- *
- * 职责边界：
- * - 完整业务快照由本协调器单飞刷新；五路全部有效才调用
- *   `dashboardStore.finishRefresh` 原子提交，单路失败保留旧快照并记录
- *   失败原因与尝试时间。
- * - 后端探针与其他五路并发，但它的失败不否决已成功的业务快照；
- *   探针自身有 revision 处理，可能被应用级监测取代。
- * - 设备采样不在本模块内，由 device-mirror 的轮询入口独立持有。
- *
- * `force` 与既有行为一致：若已有刷新在途，先等它结束再补一次，避免
- * 失效发生在读取过程中时丢失。协调器不因页面 Activity 隐藏而中止读取，
- * 结果仍写入 store；页面只负责停止自己的计时器。
- */
-
 import type { QueryClient } from '@tanstack/react-query'
 import { ApiRequestError } from '@/shared/api'
 import { probeBackendAvailability, useStatusStore } from '@/features/runtime-status'

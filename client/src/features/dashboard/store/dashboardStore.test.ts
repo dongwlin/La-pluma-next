@@ -170,7 +170,6 @@ describe('dashboardStore persistence', () => {
     const dashboardModule = await import('./dashboardStore')
     const store = dashboardModule.useDashboardStore.getState()
 
-    // Activity 恢复回放的是 Query 缓存里的同一个样本对象。
     const restoredSample = { cpuPct: 44, temp: 39 }
     store.updateDeviceStats(restoredSample, 1_000)
     store.updateDeviceStats(restoredSample, 1_000)

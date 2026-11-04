@@ -11,7 +11,6 @@ import type { UserConfigStorage, UserConfigStore } from '../services/configStora
 const servers: Server[] = []
 const tempDirs: string[] = []
 
-/** 断言用的 JSON 对象视图：非空、非数组对象本身就是该结构，谓词可靠收窄。 */
 type JsonRecord = Record<string, unknown>
 
 function isJsonRecord(value: unknown): value is JsonRecord {
@@ -170,8 +169,6 @@ describe('user config routes mounted with injected storage', () => {
     const brokenJsonPayload = await readJson(brokenJson)
     assert.equal(readRecord(brokenJsonPayload.error, 'error').code, 'AGENT_REQUEST_BODY_INVALID')
 
-    // 非校验类存储失败按路由 fallback code 以 500 返回
-    // 只驱动读取路径；其余存储操作在断言失败前不会被调用。
     const failingStorage: UserConfigStorage = {
       loadUserConfig: async () => ({
         success: false,

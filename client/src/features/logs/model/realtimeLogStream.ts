@@ -1,23 +1,6 @@
-/**
- * 实时日志流所有者
- *
- * 实时日志是会话数据，不是可缓存的普通资源：接口只返回最近 N 行的快照，
- * 没有 cursor/offset，因此本模块按固定节奏重读并整体替换缓冲，不追加、不
- * 进入 Query。快照内容与上次相同时保留既有引用并跳过提交，固定节奏的空
- * 轮询不会驱动消费方重渲染。
- *
- * 生命周期由页面显式驱动：
- * - `start()`/`stop()` 对应页面 Activity 显示/隐藏；停止时清计时器并取消
- *   在途请求，恢复时立即重读，再按固定间隔轮询。
- * - `setDocumentVisible()` 对应浏览器文档隐藏/可见；隐藏时只取消在途请求，
- *   计时器保留但不再发请求，可见时立即重读。
- * - `pause()`/`resume()` 冻结当前列表；暂停状态不会被文档或页面可见性覆盖，
- *   恢复时立即重读。`clear()` 只设置本地清屏边界，不改服务端共享缓冲。
- *
- * 同一时刻最多一次在途请求：慢请求期间到点的轮询被跳过，不叠加请求。每次
- * 请求持有独立的 AbortController；只有仍是当前请求的响应才能写入状态，
- * 已中止、被新请求取代或隐藏期间返回的旧响应一律丢弃。
- */
+// 实时日志按固定节奏整体重读（接口只返回最近 N 行、无 cursor/offset），内容未变时
+// 保留引用并跳过提交；同一时刻最多一个在途请求，已中止/被取代/隐藏期间返回的旧响应
+// 一律丢弃。页面与文档可见性分别驱动 start/stop 与 setDocumentVisible，暂停不被覆盖。
 
 import { isAbortError, type ApiResponse } from '@/shared/api'
 import { getRealtimeLogs } from '../api'
@@ -66,7 +49,6 @@ const catchFailureMessage = (error: unknown): string => (
   error instanceof Error && error.message ? error.message : initialReadFailure
 )
 
-/** 逐项比较源事实与信封，相同快照保留既有引用。 */
 const areLogsEqual = (
   previous: readonly LogEntry[],
   next: readonly LogEntry[],

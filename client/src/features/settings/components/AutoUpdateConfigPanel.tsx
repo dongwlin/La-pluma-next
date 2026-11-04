@@ -1,10 +1,3 @@
-/**
- * 自动更新策略面板
- *
- * 草稿、本地回退与完整提交由 `AutoUpdateConfigOwner` 持有；面板只订阅
- * 自动更新状态并渲染表单/反馈，不读取版本或组件更新命令状态。
- */
-
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Clock3, Save } from 'lucide-react'
 import {

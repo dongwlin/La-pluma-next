@@ -1,18 +1,6 @@
-/**
- * 作业搜索的领域入口
- *
- * 搜索结果由 `combat` 域 Query 持有；本 hook 只提供“提交一个词并等待这次
- * 搜索的结论”的语义：
- *
- * - 搜索词未提交前不发起请求；输入框变化由页面调用 `cancel()`，取消在途
- *   Query，旧响应不会写入新一次搜索的展示状态。
- * - 显式搜索使用 `staleTime: 0`，即使同一词在 30s 内再次提交也会重新读取；
- *   结果按搜索词区分缓存身份，切换词不会复用旧结果。
- * - 返回的 outcome 带请求代次：被取消/被新搜索取代的 Promise 得到
- *   `cancelled`，页面不展示提示，也不自动填充推荐。
- * - Activity 隐藏/卸载时 Effect 清理调用 `cancel()`，恢复后不自动重放
- *   搜索；已成功的结果仍在 Query 缓存中。
- */
+// 显式搜索使用 `staleTime: 0`，同一搜索词再次提交也会重新读取；返回的 outcome
+// 带请求代次，被取消或被新搜索取代的 Promise 返回 `cancelled`。Activity 隐藏/卸载
+// 只取消在途搜索、不自动重放，已成功的结果仍留在 Query 缓存。
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'

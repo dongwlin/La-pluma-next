@@ -30,27 +30,6 @@ import type {
   NotificationRequest
 } from './notificationDto.ts';
 
-/**
- * 通知控制器：频道配置读写、渠道测试与发送。
- *
- * 这里只做 HTTP 适配。配置持久化仍由 configStorageService 的
- * `notification` 类型承担，运行时配置、渠道实例与发送语义仍由
- * notificationService 持有，出站请求继续经 outboundRequestService
- * 端口；控制器不缓存配置、不直接发起网络请求。
- *
- * 请求体在 notificationDto 按端点从 unknown 收窄（配置体、渠道名称与
- * 覆盖配置、发送消息各按既有规则）；响应载荷复用 notificationService
- * 的公开 DTO，测试/发送响应不携带渠道配置、凭据或出站端口。
- *
- * 通知配置的读取、应用、测试与发送函数可由工厂注入，缺省绑定
- * notificationService 的单例；测试用注入发送器证明 HTTP 回归不会
- * 触达真实通知渠道。配置持久化与运行时应用是两个结果：持久化成功但
- * 运行时应用失败时，请求经统一错误出口返回失败，不能把“已落盘但未生效”
- * 报告成保存成功。路由层（agentNotificationRoutes.ts）只做端点映射；
- * req/res 解析、校验与成功/失败 envelope 都由本控制器的各 handler 装配。
- */
-
-/** 通知控制器的可注入入口：与路由依赖同一形状，缺省绑定 notificationService 单例。 */
 export interface AgentNotificationControllerDependencies {
   getNotificationConfig?: () => NotificationConfig;
   setNotificationConfig?: (config: unknown) => void;
@@ -62,10 +41,6 @@ export interface AgentNotificationControllerDependencies {
   sendToChannel?: (channelName: string, message: NotificationMessage) => Promise<unknown>;
 }
 
-/**
- * 创建通知控制器：注入点与缺省绑定在此收拢，路由工厂委托本工厂装配，
- * 缺省调用时绑定的仍是 notificationService 的单例导出。
- */
 export function createAgentNotificationController(
   notification: AgentNotificationControllerDependencies = {}
 ) {

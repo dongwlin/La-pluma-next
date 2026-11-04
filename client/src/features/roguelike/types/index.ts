@@ -1,7 +1,3 @@
-/**
- * 肉鸽任务域类型
- */
-
 /** 两个模式各自有独立的主题目录与高级字段。 */
 export type RoguelikeMode = 'roguelike' | 'reclamation'
 
@@ -46,7 +42,6 @@ export interface RoguelikeAdvancedOption {
    * 并始终显式写入命令参数。未声明时保持“未设置即省略”的行为。
    */
   defaultValue?: string
-  /** 字段下方的说明文案；由面板透传，语义留在模型。 */
   hint?: string
   /** number 字段的闭区间；省略时按 CLI 的 i32 范围校验。 */
   numberRange?: { min: number; max: number }

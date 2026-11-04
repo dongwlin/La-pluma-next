@@ -1,14 +1,3 @@
-/**
- * 作战（Fight）结果解析
- *
- * 类型边界：
- * - 输入是任务总结、命令输出与错误对象等外部数据：总结字段逐个按 `unknown` 收窄，缺失或
- *   类型不符回落到 0/空串；错误对象只读取 `message`/`stdout`/`stderr` 文本。
- * - 输出只描述本次作战步骤（`success`/`skipped`/`failed`），就算理智耗尽也只是步骤结论，
- *   整个 Run 的终态仍由 Run 记录。
- */
-
-/** 作战任务总结：来自 `parseTaskSummary`，旧格式或缺字段时各字段可缺省。 */
 export interface FightTaskSummary {
   stage?: unknown;
   times?: unknown;
@@ -20,7 +9,6 @@ export interface FightTaskSummary {
   [extension: string]: unknown;
 }
 
-/** 作战步骤的输入：总结、命令输出、错误与外部跳过原因。 */
 export interface FightActionOptions {
   summary?: FightTaskSummary | null;
   output?: string | null;
@@ -28,7 +16,6 @@ export interface FightActionOptions {
   skipReason?: string | null;
 }
 
-/** 作战结果：数量、理智与掉落只在可观察时置位。 */
 export interface FightExecutionAction {
   task: string;
   action: 'fight';
@@ -52,7 +39,6 @@ function getErrorText(error: unknown): string {
   return [record.message, record.stdout, record.stderr].filter(Boolean).join('\n');
 }
 
-/** 判断日志或错误文本是否表示理智不足或无可执行作战。 */
 export function isFightSanityDepleted(output: string | null | undefined, stage: string | null | undefined = ''): boolean {
   const text = String(output || '');
   if (!text) return false;
@@ -81,7 +67,6 @@ export function isFightSanityDepleted(output: string | null | undefined, stage: 
   return false;
 }
 
-/** 解析一次作战步骤的总结、输出与错误。 */
 export function createFightExecutionAction(
   taskName: string,
   requestedStage: string | null | undefined,

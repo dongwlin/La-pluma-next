@@ -1,10 +1,3 @@
-/**
- * 当前目标材料面板
- *
- * 队列当前目标（第一位）的材料缺口与合成需求只从纯模型派生；面板不读取
- * 队列、不发起请求，也不保存材料副本。
- */
-
 import { Check } from 'lucide-react'
 import { summarizeTargetMaterials } from '../model/materials'
 import { MaterialTable, MaterialTree } from './MaterialViews'

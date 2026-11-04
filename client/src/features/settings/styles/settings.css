@@ -1,4 +1,3 @@
-/* 页面级样式：随 settings 功能域维护，统一收进 page 层；utilities 仍然优先。 */
 @layer page {
   .la-pluma-app :is(.config-editor-card, .config-update-card) section.surface-soft {
     /* S3: 配置卡片内部分组使用直角，压过 rounded-[...] utilities。 */

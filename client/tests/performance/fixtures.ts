@@ -1,6 +1,5 @@
 import { apiFixtures } from '../visual/fixtures'
 
-// Keep the standard page fixture unchanged; only these interaction responses differ.
 export const SEARCH_RESULT = {
   success: true,
   data: {

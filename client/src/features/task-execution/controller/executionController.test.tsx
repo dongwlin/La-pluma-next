@@ -258,8 +258,6 @@ describe('execution controller observation', () => {
     await flush()
     expect(api.fetchSnapshot).toHaveBeenCalledTimes(1)
 
-    // 同步提交（活动作业）在请求返回前没有 runId：意图开始时先读一次快照，
-    // 让服务端已经创建的 run 尽快进入全局观察。
     controller.beginExecutionIntent('run_current_activity_copilots')
     await flush()
     expect(api.fetchSnapshot).toHaveBeenCalledTimes(2)

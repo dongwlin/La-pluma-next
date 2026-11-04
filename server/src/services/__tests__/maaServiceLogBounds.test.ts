@@ -100,7 +100,6 @@ describe('readLogFile numeric bounds', () => {
     assert.ok(result.content.endsWith('LAST-MARKER\n'));
     assert.ok(!result.content.includes('FIRST-LINE'));
     assert.equal(result.returnedLines, 10);
-    // 换行数 + 1：首行、500 行大内容、末行与结尾换行后的空行。
     assert.equal(result.totalLines, repeatedCount + 3);
     assert.ok(Buffer.byteLength(result.content, 'utf-8') <= MAX_LOG_FILE_READ_BYTES);
   });

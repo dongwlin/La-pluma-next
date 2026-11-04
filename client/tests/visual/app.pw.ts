@@ -8,12 +8,6 @@ import {
   waitForPageReady,
 } from './harness'
 
-/**
- * 视觉基线：8 个 tab × 深/浅主题 × 桌面/平板/移动视口 = 48 张。
- *
- * 确定性的构造方式（固定数据、外部资源、时间、动效、主题）见 harness.ts
- * 文件头；本文件只负责导航到每个 tab、等就绪标记、整页截图。
- */
 for (const theme of THEMES) {
   test.describe(`theme: ${theme}`, () => {
     test.beforeEach(async ({ page }) => {

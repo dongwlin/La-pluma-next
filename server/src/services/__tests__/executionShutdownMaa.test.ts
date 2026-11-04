@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { after, afterEach, beforeEach, test } from 'node:test';
 import type { MaaCommandError } from '../maaProcessService.ts';
 
-/** execMaaCommand 的结局：成功结果或带 stopped/signal 的命令错误。 */
 interface ExecutionOutcome {
   ok: boolean;
   result?: unknown;

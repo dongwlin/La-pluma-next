@@ -1,10 +1,3 @@
-/**
- * 干员候选行纯规则
- *
- * 选择器只负责渲染；搜索匹配、分批渲染、空态文案与卡片动作都由这里决定。
- * 这些规则不访问 React、Query 或命令所有者，可脱离页面测试。
- */
-
 import type { TrainingFilters, TrainingOperator } from '../types'
 
 /** 选择器一次渲染的干员行数；与迁移前的页面常量一致。 */
@@ -26,13 +19,10 @@ export const filterOperatorRows = (
 }
 
 export interface VisibleOperatorRows {
-  /** 当前可见的行。 */
   rows: TrainingOperator[]
-  /** 尚未渲染的行数，用于“继续显示”按钮与计数。 */
   hiddenCount: number
 }
 
-/** 分批渲染：只暴露前 `limit` 行，并报告剩余数量。 */
 export const paginateOperatorRows = (
   operators: readonly TrainingOperator[],
   limit: number,

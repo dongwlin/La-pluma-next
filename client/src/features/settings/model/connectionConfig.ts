@@ -1,19 +1,6 @@
-/**
- * MAA connection 配置的草稿、保存与服务端读取
- *
- * 读取走 `settings/maa-config` Query，草稿与保存由模块级
- * `ConnectionConfigOwner` 持有：
- *
- * - 草稿寿命不跟随页面 section 切换，Activity 隐藏或页面重挂载也不会重建；
- * - Query 返回时只有「读取开始后没有新编辑/新保存」的快照才能采用，迟到读取
- *   不会覆盖加载期间的编辑，refresh 也不会覆盖未保存草稿；
- * - 保存显式触发，同一时刻只有一次写入；保存期间的新编辑不会让旧响应把当前
- *   草稿误报为已保存；写入成功后 revision 继续推进，使保存前发出的读取失效；
- * - 重置只把草稿恢复为页面原有默认值，不写服务端；下一次显式保存才持久化。
- *
- * 保存沿用原 wire：`POST /agent/config/maa/:profileName`，请求体
- * `{ connection: snapshot }`；profile 的未知 connection 字段随快照回写。
- */
+// 草稿与保存由模块级 owner 持有，寿命不跟随页面：只有「读取开始后没有新编辑/新保存」
+// 的快照才能采用，refresh 不覆盖未保存草稿；保存显式触发、同一时刻一次，保存期间
+// 的新编辑使旧响应只能标记 superseded；重置只改草稿，不写服务端。
 
 import { queryOptions } from '@tanstack/react-query'
 import {
@@ -33,17 +20,13 @@ import { settingsKeys } from './queryKeys'
 export type ConnectionConfigSyncState = 'idle' | 'saving' | 'failed'
 
 export interface ConnectionConfigState {
-  /** 页面当前可编辑的草稿。 */
   readonly draft: MaaConnectionConfig
-  /** 最近一次服务端读取采用或成功写入的值。 */
   readonly persisted: MaaConnectionConfig
   /** 草稿可观察版本；编辑、重置、采用服务端值与保存成功都会推进。 */
   readonly revision: number
-  /** 草稿与最近确认的服务端副本是否存在差异。 */
   readonly dirty: boolean
   readonly syncState: ConnectionConfigSyncState
   readonly error: string | null
-  /** 是否已成功采用服务端读取或完成一次保存。 */
   readonly loaded: boolean
   readonly lastSavedAt: number | null
 }

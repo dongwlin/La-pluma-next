@@ -1,7 +1,5 @@
 /**
- * Shared Navigation - tab 词汇表与 router-relative 路径助手
- *
- * 路径助手只处理已去掉 Vite base path 的 pathname，与 useLocation() 的返回值一致；
+ * 路径助手只处理已去掉 Vite base path 的 pathname（与 useLocation() 的返回值一致）；
  * 部署 base 由 App 传给 BrowserRouter 的 basename 统一处理（见 routerBasename()）。
  */
 

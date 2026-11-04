@@ -1,18 +1,8 @@
-/**
- * 状态 HTTP DTO
- *
- * `/status` 响应载荷：api 块（`la-pluma-agent-api` 兼容标识）是载荷的
- * 第一个键；状态探测失败时保留各自的兜底投影，不能互相替代。
- * `/runs/:runId` 的路径参数收窄为 RunLookupRequest；共享读取请求与助手
- * 仍由 readDto 提供。
- */
-
 import type { AdbSummary, AndroidDisplayState, WebrtcSummary } from './deviceStatus.ts';
 import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import type { MaaRealtimeLogEntry, MaaTaskStatus } from '../services/maaProcessService.ts';
 import type { ReadRequest } from './readDto.ts';
 
-/** `/runs/:runId`：路径参数由路由声明收窄为 string。 */
 export interface RunLookupRequest extends ReadRequest {
   params: { runId: string };
 }
@@ -29,10 +19,8 @@ export interface AdbStatusFailure extends StatusProbeFailure {
   connected: false;
 }
 
-/** `/status` 的显示状态兜底。 */
 export type OrientationStatusFailure = StatusProbeFailure;
 
-/** 版本探测失败时的既有投影。 */
 export interface MaaVersionFailure {
   error: string;
 }

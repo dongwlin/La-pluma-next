@@ -20,21 +20,6 @@ import type {
   RunLookupRequest
 } from './statusDto.ts';
 
-/**
- * 状态与 Run 查询控制器。
- *
- * `/status` 汇总 MAA 版本、任务状态、ADB、WebRTC 与设备显示状态；其中 ADB
- * 摘要会执行 `adb connect` 等现有探测，WebRTC 摘要会访问本地服务，因此不能
- * 按无副作用的纯读取端点处理，也不能用其探测结果推断设备空闲或执行成功。
- * `/runs/:runId` 只投影 agentRunService 与 runSnapshotService 的权威快照，
- * 不复制状态机，也不自行推断流程终态。
- *
- * 成功/失败 envelope 由本控制器的 `sendSuccess` / `sendError` 统一装配：
- * `/status` 的 api 块（`la-pluma-agent-api` 兼容标识）在响应载荷中保持对象
- * 第一个键，版本常量来自 config/apiVersion.ts。各探测失败时保留自己的兜底
- * 投影（版本、ADB、显示状态互不替代），载荷结构显式建模在 statusDto。
- */
-
 /** 四项外部探测的短 TTL：轮询突发共享结果，设备变化最迟约 1.5 秒后重新探测。 */
 const STATUS_PROBE_CACHE_TTL = 1500;
 
@@ -91,16 +76,13 @@ async function readStatusProbes(adbPath: string, address: string): Promise<Statu
   return request;
 }
 
-/** 测试清理进程内探测缓存；生产调用无副作用。 */
 export function resetAgentStatusProbeCacheForTests(): void {
   statusProbeCache.clear();
   statusProbeRequests.clear();
 }
 
-/** `/status` 的业务载荷：api 块由 readStatus 装配，探测汇总不携带兼容标识。 */
 export type AgentStatusBody = Omit<AgentStatusPayload, 'api'>;
 
-/** `/runs/:runId` 的查询出口：命中时携带 enriched 快照，未命中时携带 404 错误。 */
 export type AgentRunLookup =
   | { found: true; run: AgentRunSnapshotEntry }
   | { found: false; error: AgentError };
@@ -173,12 +155,10 @@ export async function readStatus(req: ReadRequest, res: ApiResponseWriter): Prom
   });
 }
 
-/** `/runs/current`：快照与行数归一透传给 runSnapshotService。 */
 export async function readCurrentRun(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   return sendSuccess(res, req, await buildAgentRunSnapshot({ lines: readNumericQuery(req.query, 'lines') }));
 }
 
-/** `/runs/:runId`：未命中时 404（AGENT_RUN_NOT_FOUND），命中时返回 enriched 快照。 */
 export async function readRun(req: RunLookupRequest, res: ApiResponseWriter): Promise<void> {
   const lookup = await lookupRun(req.params.runId);
   if (!lookup.found) {
@@ -187,7 +167,6 @@ export async function readRun(req: RunLookupRequest, res: ApiResponseWriter): Pr
   return sendSuccess(res, req, lookup.run);
 }
 
-/** `/tasks/status`：任务状态透传。 */
 export async function readTaskStatus(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   return sendSuccess(res, req, getTaskStatus());
 }

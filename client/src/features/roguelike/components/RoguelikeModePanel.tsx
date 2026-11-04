@@ -1,10 +1,3 @@
-/**
- * 肉鸽模式选择面板
- *
- * 模式选择器的当前值由父级工作区持有（它决定相邻主题/高级字段面板展示哪一份配置），
- * 本面板只负责分段控件的测量、键盘导航与呈现。
- */
-
 import { motion, useReducedMotion } from 'framer-motion'
 import Icons from '@/shared/ui/Icons'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'

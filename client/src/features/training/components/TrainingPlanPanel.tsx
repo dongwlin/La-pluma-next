@@ -1,10 +1,3 @@
-/**
- * 刷图计划面板
- *
- * 计划状态、版本前提与生成/应用/同步编排由工作区注入；面板只持有计划范围
- * （`current`/`all`）这一局部交互状态，并用纯模型派生今日关卡、次数与理智。
- */
-
 import { useState } from 'react'
 import { Check, Sparkles } from 'lucide-react'
 import { Button, Select } from '@/shared/ui'
@@ -83,7 +76,7 @@ export default function TrainingPlanPanel({
       {plan && basisCurrent ? <>
         <div className="training-plan-overview"><div><h3>{getPlanFocusName(plan, currentTarget)}</h3><p>今日可刷 {today.openStageCount} 个关卡 · {today.runCount} 次{today.sanity > 0 ? ` · 约 ${today.sanity} 理智` : ''}</p><p>完整计划约 {plan.totalSanity ?? 0} 理智（含未开放关卡）</p></div></div>
         {!!plan.warnings?.length && <div role="note" className="training-plan-warnings status-warning">{plan.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
-        {today.stages.length > 0 ? <div className="training-stage-list">{today.stages.map((stage, index) => <div key={`${stage.stage}-${index}`} className="training-stage-row"><div><strong>{stage.stage}</strong><p>{stage.materials?.map(material => `${material.name} ×${material.count ?? material.needed ?? 0}`).join('、') || '今日可直接推进'}</p></div><span className="tabular-nums font-semibold">×{stage.totalTimes ?? 0}</span></div>)}</div> : <p className="training-inline-empty">{currentMissingCount === 0 ? '当前材料已齐，无需刷取。' : '今天没有可直接推进的开放关卡，查看详情安排后续刷取。'}</p>}
+        {today.stages.length > 0 ? <div className="training-stage-list">{today.stages.map((stage, index) => <div key={`${stage.stage}-${index}`} className="training-stage-row" data-training-stage-row><div><strong>{stage.stage}</strong><p>{stage.materials?.map(material => `${material.name} ×${material.count ?? material.needed ?? 0}`).join('、') || '今日可直接推进'}</p></div><span className="tabular-nums font-semibold">×{stage.totalTimes ?? 0}</span></div>)}</div> : <p className="training-inline-empty">{currentMissingCount === 0 ? '当前材料已齐，无需刷取。' : '今天没有可直接推进的开放关卡，查看详情安排后续刷取。'}</p>}
         <div className="training-apply"><Button onClick={() => void onApply()} disabled={!applyAvailable || !today.openStageCount} loading={applying} loadingText="应用中" icon={<Check size={16} />} fullWidth>应用到{flowSync.flowName}</Button><p>写入{flowSync.taskName ? `「${flowSync.taskName}」` : '作战任务'}的智能养成关卡，保留普通关卡。</p></div>
         <details className="training-disclosure"><summary>查看完整材料、未开放关卡与计算详情</summary>
           {!!plan.closedStages?.length && <div className="training-closed-stages"><h3>今日未开放</h3>{plan.closedStages.map((stage, index) => <p key={`${stage.stage}-${index}`}><strong>{stage.stage}</strong><span>{stage.totalTimes ?? 0} 次 · 等待开放</span></p>)}</div>}

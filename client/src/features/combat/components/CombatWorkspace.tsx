@@ -1,17 +1,3 @@
-/**
- * 作业工作区
- *
- * 页面唯一的作业领域容器：配置草稿、预览会话、搜索入口、执行订阅、作业集
- * 选择与重置进度都在这里接线。页面壳只组合本组件；卡片与面板只接收投影：
- *
- * - `activeCombatMode` 决定展示普通作业、保全派驻或悖论模拟，不写入配置；
- * - `selectedCopilotIndexes` 是跨面板的当前选择，提交与进度展示共用；
- * - 搜索词、识别方式与搜索选中项由工作区创建会话存储、面板订阅，输入变化
- *   不推动工作区或作业集列表重渲染；
- * - 作业集列表的续跑/失败/下一关视图由 `deriveCopilotSetView` 纯模型派生；
- * - 真正卸载时工作区与面板局部状态一起销毁，Activity 隐藏/恢复保留。
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/shared/api'
@@ -85,7 +71,6 @@ export default function CombatWorkspace() {
     channel: configChannel,
     retry: retryConfigSave,
   } = useUserConfig(combatConfigAdapter)
-  // 协调器负责草稿、pending、提交队列与加载次序；页面只从草稿派生当前字段并渲染同步状态。
   const {
     taskInputs,
     advancedParams,
@@ -95,7 +80,6 @@ export default function CombatWorkspace() {
   } = configDraft ?? DEFAULT_COMBAT_CONFIG
   const isRetryingConfigSave = configSyncState === 'saving'
   const queryClient = useQueryClient()
-  // 预览、取消与旧响应裁决由域会话持有；工作区只消费预览快照与动作。
   const {
     preview,
     isLoading: isLoadingSet,
@@ -105,7 +89,6 @@ export default function CombatWorkspace() {
     cancel: cancelCopilotPreview,
     clear: clearCopilotPreview,
   } = useCopilotPreview()
-  // 搜索词、输入与选中项在面板侧；结果、取消与代次裁决仍由域 Query 入口持有。
   const {
     result: copilotSearchResult,
     searching: isSearchingCopilot,
@@ -119,7 +102,6 @@ export default function CombatWorkspace() {
     cancel: cancelParadoxSearch,
   } = useParadoxSearch()
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
-  // 作业集任务选择状态（记录选中的索引）；跨列表与提交共享，归工作区。
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
   const [isResettingProgress, setIsResettingProgress] = useState(false)
   const [resetProgressDialogOpen, setResetProgressDialogOpen] = useState(false)
@@ -225,13 +207,10 @@ export default function CombatWorkspace() {
     isAutoStopping,
   })
 
-  // 本次执行进度只绑定当前被跟踪的 Run（单作业与作业集都出现）；
-  // 没有 Run 或字段未投影时为 null，面板整块隐藏。
   const executionProgress = useMemo(
     () => deriveExecutionProgress(trackedRun, setRun),
     [trackedRun, setRun],
   )
-
 
   // 终态后按服务端计划进度重建“待执行”选择。成功的条目会被计划标记为已完成，
   // 失败的条目保留待重试；同步失败只影响展示，不把 run 结果解释成完成。
@@ -270,7 +249,6 @@ export default function CombatWorkspace() {
     await continueSet()
   }
 
-  // 取消等待中的作业集：结束服务端 run，未开始的条目不会再执行。
   const handleCancelCopilotSet = () => {
     void stop()
   }
@@ -285,7 +263,6 @@ export default function CombatWorkspace() {
       return
     }
 
-    // 输入校验与 SSS 单 URI 限制由纯命令模型描述。
     const inputValue = taskInputs[task.id] || ''
     const inputError = validateCombatInput(task.id, inputValue)
     if (inputError) {
@@ -302,7 +279,6 @@ export default function CombatWorkspace() {
       }
     }
 
-    // 作业集模式：整段队列交给服务端 Run，页面不再逐项编排。
     if (task.id === 'copilot' && preview?.type === 'set' && preview.copilots?.length) {
       const selectedIndexes = getSelectedCopilotIndexes()
       if (!selectedIndexes.length) {
@@ -324,7 +300,6 @@ export default function CombatWorkspace() {
       return
     }
 
-    // 单个作业模式
     await submitTask({
       command: task.command,
       args: buildCommandArgs(task),
@@ -421,7 +396,6 @@ export default function CombatWorkspace() {
     await requestCopilotPreview(normalizedUri)
   }
 
-  // 搜索悖论模拟作业
   const handleSearchParadox = async (operatorName: string) => {
     if (isSearchingParadox) return
     if (!operatorName.trim()) {
@@ -449,7 +423,6 @@ export default function CombatWorkspace() {
     }
 
     setStatusMessage(`找到 ${result.copilots.length} 个作业`)
-    // 自动填充推荐作业
     const recommendedUri = result.recommended?.uri
     if (recommendedUri) {
       updateCombatConfig(current => ({
@@ -459,7 +432,6 @@ export default function CombatWorkspace() {
     }
   }
 
-  // 搜索普通关卡作业
   const handleSearchCopilot = async (term: string) => {
     if (isSearchingCopilot) return
     if (!term.trim()) {
@@ -486,7 +458,6 @@ export default function CombatWorkspace() {
       return
     }
 
-    // 自动填充并预览推荐作业
     if (result.recommended?.uri) {
       await applyCopilotUri(result.recommended.uri)
     } else {
@@ -602,12 +573,9 @@ export default function CombatWorkspace() {
         <div className="combat-main-column">
           <CombatModeTabs activeMode={activeCombatMode} onSelect={setActiveCombatMode} />
 
-          {/* 本次执行进度：只补条目位置、关卡与已用时；状态与停止留在执行卡片。 */}
           <CombatExecutionProgressPanel progress={executionProgress} />
 
-          {/* 任务列表 */}
           <div className="app-stack-section">
-            {/* 自动抄作业 - 单独一行 */}
             {activeCombatMode === 'copilot' && (
               <CombatCopilotTaskPanel
                 task={copilotTask}
@@ -627,7 +595,6 @@ export default function CombatWorkspace() {
               />
             )}
 
-            {/* 保全派驻 / 悖论模拟 */}
             {specialTask && (
               <CombatSpecialTaskPanel
                 task={specialTask}

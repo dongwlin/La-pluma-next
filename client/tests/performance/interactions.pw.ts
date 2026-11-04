@@ -277,7 +277,7 @@ for (const scenario of SCENARIOS) {
       await page.goto(`/app/${tab}`)
       // Keep the original benchmark's post-navigation freeze and settling period.
       await page.addStyleTag({ content: MOTION_FREEZE_CSS })
-      if (scenario === 'log-append') await expect(page.locator('.log-row')).toHaveCount(180)
+      if (scenario === 'log-append') await expect(page.locator('[data-log-row]')).toHaveCount(180)
       else await waitForPageReady(page, tab)
       await page.evaluate(() => document.fonts.ready)
       expect(await page.evaluate(() => ({
@@ -309,7 +309,7 @@ for (const scenario of SCENARIOS) {
         const handle = page.getByRole('button', { name: '调整启动游戏顺序，当前第 1 位', exact: true })
         await handle.scrollIntoViewIfNeeded()
         const from = await handle.boundingBox()
-        const target = await page.locator('.automation-sequence-item').nth(2).boundingBox()
+        const target = await page.locator('[data-execution-state]').nth(2).boundingBox()
         expect(from).not.toBeNull()
         expect(target).not.toBeNull()
         drag = { fromX: from!.x + from!.width / 2, fromY: from!.y + from!.height / 2, toY: target!.y + target!.height / 2 + 8 }
@@ -345,7 +345,7 @@ for (const scenario of SCENARIOS) {
           pointerEvents = await page.evaluate(() => (window as unknown as { __pointerEvents: PointerEvidence[] }).__pointerEvents)
           expect(pointerEvents.filter(event => event.type === 'pointerdown')).toHaveLength(1)
           expect(pointerEvents.filter(event => event.type === 'pointerup')).toHaveLength(1)
-          finalOrder = await page.locator('.automation-sequence-select strong').allTextContents()
+          finalOrder = await page.locator('[data-automation-sequence-name]').allTextContents()
           expect([...finalOrder].sort()).toEqual([...requestedOrder].sort())
           dragOutcome = JSON.stringify(finalOrder) === JSON.stringify(requestedOrder)
             ? 'completed'
@@ -363,21 +363,21 @@ for (const scenario of SCENARIOS) {
           await expect(page.getByRole('button', { name: '搜索', exact: true })).toBeEnabled()
         } else if (scenario === 'log-append') {
           append = true // Production's next 1250 ms poll receives the expanded snapshot.
-          await expect(page.locator('.log-row')).toHaveCount(200)
-          await expect(page.getByText('追加日志 020：关卡 1-7 任务状态已同步', { exact: true })).toBeVisible()
+          await expect(page.locator('[data-log-row]')).toHaveCount(200)
+          await expect(page.locator('[data-log-message]').filter({ hasText: '追加日志 020：关卡 1-7 任务状态已同步' })).toBeVisible()
         } else {
           await page.getByRole('button', { name: '下移艾雅法拉', exact: true }).click()
-          await expect(page.locator('.training-operator-name')).toHaveText(['塞雷娅', '艾雅法拉'])
+          await expect(page.locator('[data-training-operator-name]')).toHaveText(['塞雷娅', '艾雅法拉'])
           await expect(page.getByRole('button', { name: '下移塞雷娅', exact: true })).toBeEnabled()
         }
         if (scenario === 'automation-keyboard' || (scenario === 'automation-drag' && dragOutcome === 'completed')) {
-          await expect(page.locator('.automation-sequence-select strong')).toHaveText(requestedOrder)
+          await expect(page.locator('[data-automation-sequence-name]')).toHaveText(requestedOrder)
           await expect.poll(() => api.since(start).filter(request => request.method === 'POST'
             && request.path === '/api/agent/config/user/automation-tasks').length).toBe(1)
           await expect.poll(() => page.evaluate(() => localStorage.getItem('automationConfigSyncPending'))).toBeNull()
           const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('maa-task-flow') || '[]').map((task: { id: string }) => task.id))
           expect(stored).toEqual(requestedIds)
-          finalOrder = await page.locator('.automation-sequence-select strong').allTextContents()
+          finalOrder = await page.locator('[data-automation-sequence-name]').allTextContents()
         }
         await expect.poll(() => api.pendingSince(start)).toBe(0)
       })

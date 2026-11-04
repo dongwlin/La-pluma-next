@@ -1,11 +1,3 @@
-/**
- * 应用级执行控制器
- *
- * 唯一职责：保存调用方自己的 runId，按 Run 快照观察执行，并按 runId 停止。
- * 它不属于任何页面：页面隐藏、Activity 清理或订阅者卸载都不改变它的观察循环。
- * 控制器不写 runtime-status 的 statusStore，也不把“进程 idle / 请求失败”解释成完成。
- */
-
 import { getErrorMessage, type ApiResponse } from '@/shared/api'
 import { getRun, getRunSnapshot, stopRun } from '../api'
 import {

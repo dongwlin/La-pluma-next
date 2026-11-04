@@ -1,11 +1,3 @@
-/**
- * 养成材料纯规则
- *
- * 队列项的材料明细、缺口筛选与当前目标摘要由这里派生；材料表与材料树
- * 只负责展示。龙门币不是 `materials` 的一行，而是由 `lmd` 追加为末项，
- * 保持迁移前“缺龙门币也算一种缺口”的展示与计数语义。
- */
-
 import type { MaterialNode, TrainingQueueItem } from '../types'
 
 /** 队列项的完整材料明细；龙门币追加在普通材料之后。 */
@@ -22,7 +14,6 @@ export const getQueueMaterials = (item: TrainingQueueItem): MaterialNode[] => {
     : materials
 }
 
-/** 仍有缺口的材料；顺序与输入一致。 */
 export const selectMissingMaterials = (
   materials: readonly MaterialNode[],
 ): MaterialNode[] => materials.filter(material => material.stillNeeded > 0)

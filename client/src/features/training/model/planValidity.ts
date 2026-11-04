@@ -1,14 +1,6 @@
-/**
- * 养成计划有效期纯规则
- *
- * 一次预览只在生成时的版本前提下有效：
- * - `queueRevision` 是服务端队列成员与精英目标的版本（含命令与外部变化）；
- * - `settingsRevision` 来自 `TrainingSettingsOwner`，设置值每次变化都会递增。
- *
- * 版本不同或队列刷新失败时，页面不得生成新计划，也不得应用旧计划。这里只做
- * 比较与可用性判断，不持有计划、不发起请求；计划生成与应用编排由
- * `planCommands.ts` 的 `TrainingPlanOwner` 负责，`useTrainingPlan` 提供 React 适配。
- */
+// `queueRevision` 覆盖服务端队列成员与精英目标（含命令与外部变化）；
+// `settingsRevision` 在设置值每次变化时递增。版本不同或队列刷新失败时，
+// 页面不得生成新计划，也不得应用旧计划。
 
 export interface TrainingPlanBasis {
   readonly queueRevision: string | null

@@ -1,11 +1,3 @@
-/**
- * maa-cli 任务总结与命令行错误的语义文案
- *
- * maa-cli 在命令结束时把任务报告打印到 stdout（`Summary`、分隔线、任务行与明细），
- * 收到终止信号时以 `Error: Interrupted by user!` 退出。本模块只把这些外部文本改写成
- * 可读文案；未识别的行返回 null，由调用方保留原文。
- */
-
 import type { LogEntry } from '../types'
 import { getTaskName } from './logCallbackSummary'
 
@@ -17,7 +9,6 @@ export interface LogMessageRewrite {
 const SUMMARY_BLOCK_TITLE = 'Summary'
 const SUMMARY_BLOCK_SEPARATOR = /^-{10,}$/
 
-/** maa-cli 任务总结的结束原因；已停止与未完成不是失败。 */
 const TASK_SUMMARY_REASONS: Record<string, LogMessageRewrite> = {
   Completed: { message: '完成' },
   Stopped: { message: '已停止', level: 'WARN' },
@@ -33,7 +24,6 @@ const EXPLORATION_STATE_TEXT: Record<string, string> = {
   Unknown: '未知',
 }
 
-/** maa-cli 结束时的任务行：`[Roguelike] 13:56:00 - Unfinished`，时间与耗时都可缺省。 */
 function summarizeTaskSummaryLine(message: string): LogMessageRewrite | null {
   const match = message.match(/^\[([^\]]+)\](.*)$/)
   const reason = match?.[2]?.match(/\s(Completed|Stopped|Error|Unfinished|Unstarted)$/)?.[1]
@@ -53,7 +43,6 @@ function summarizeTaskSummaryLine(message: string): LogMessageRewrite | null {
   return { message: parts.filter(Boolean).join(' · '), level: reasonText.level }
 }
 
-/** maa-cli 任务总结的明细行；未识别的行保持原文。 */
 function summarizeSummaryDetail(message: string): LogMessageRewrite | null {
   if (message === 'Explorations:') return { message: '探索记录' }
   if (message === 'Detected tags:') return { message: '识别候选标签' }
@@ -152,7 +141,6 @@ function summarizeCommand(message: string): LogMessageRewrite | null {
     : { message: `MAA 命令执行失败，退出码 ${exitCode}`, level: 'ERROR' }
 }
 
-/** 合并块里的明细保持一行：标题省略，可被聚合行替代的明细不重复展开。 */
 function compactSummaryDetails(details: readonly string[]): string[] {
   const hasTotalDrops = details.some(text => text.startsWith('合计掉落：'))
   const explorations = details.filter(text => /^第 \d+ 次探索：/.test(text))

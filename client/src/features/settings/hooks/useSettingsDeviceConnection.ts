@@ -1,14 +1,5 @@
-/**
- * 设备发现与连接测试的 React 适配层
- *
- * 命令状态由模块级 `DeviceConnectionOwner` 持有；本 hook 只订阅状态并转发
- * 动作，不持有本地命令状态。
- *
- * 设备的取消仍跟随页面/Activity 生命周期，而不是面板可见性：设备面板随
- * connection section 显示/隐藏，若在它的 cleanup 中取消，切到只读 section
- * 就会中断在途查找/测试。取消统一由 `useDeviceConnectionActivityCleanup`
- * 在工作区持有。
- */
+// 设备命令的取消跟随页面/Activity 生命周期，而不是面板可见性：设备面板随 section
+// 显示/隐藏，若在它的 cleanup 中取消，切到只读 section 就会中断在途查找/测试。
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import {

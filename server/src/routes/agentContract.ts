@@ -2,15 +2,8 @@ import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
 import { API_VERSION } from '../config/apiVersion.ts';
 
 /**
- * Agent API 公开契约
- *
- * 能力清单与 manifest/OpenAPI 生成器共用同一份 `AGENT_OPERATIONS`：生成器只
- * 投影这些定义，不另维护第二份 schema。这里的类型覆盖清单实际使用的 JSON
- * Schema 关键字（OpenAPI 3.1 采用 draft 2020-12），用于在编译期约束定义；
- * 运行期输出与类型化前保持一致，URL、字段名和 schema 内容不变。
- *
- * 生成器只做纯投影：运行时连接默认值由调用方传入，模块本身不读取环境变量、
- * 文件或设备状态。
+ * 能力清单与 manifest/OpenAPI 生成器共用同一份 `AGENT_OPERATIONS`，生成器只做纯投影、
+ * 不另维护第二份 schema；模块本身不读取环境变量、文件或设备状态。
  */
 
 /** 版本常量的单一字面量来源在 config/apiVersion.ts；此处 re-export 保持既有导入路径。 */
@@ -122,7 +115,6 @@ export interface AgentOperationDefinition {
   path_schema?: JsonSchema;
 }
 
-/** `operation()` 补齐默认值后的注册项，`AGENT_OPERATIONS` 的元素类型。 */
 export interface RegisteredAgentOperation extends AgentOperationDefinition {
   advertised: boolean;
   safety: AgentOperationSafety;
@@ -181,7 +173,6 @@ export interface OpenApiResponse {
   content?: Record<string, OpenApiMediaType>;
 }
 
-/** OpenAPI 参数既可以是内联定义，也可以是组件引用。 */
 export interface OpenApiParameter {
   $ref?: string;
   name?: string;

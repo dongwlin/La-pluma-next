@@ -23,7 +23,6 @@ import ts from 'typescript';
 import { collectFiles, relativePath } from './sourceFiles.ts';
 
 export interface SourceFile {
-  /** 相对 server 根目录的 POSIX 路径，例如 `src/routes/agent.ts`。 */
   path: string;
   source: string;
 }
@@ -119,10 +118,8 @@ export function isTestFile(filePath: string): boolean {
   return /(?:^|\/)__tests__\//.test(filePath);
 }
 
-/** 顶层入口模块：`app.ts` 只做应用装配，`server.ts` 负责传输与启动。 */
 const ENTRY_MODULES: ReadonlySet<string> = new Set(['src/app.ts', 'src/server.ts']);
 
-/** 返回文件所属层；顶层入口只允许 `app.ts` 与 `server.ts`。 */
 export function layerOf(filePath: string): Layer | undefined {
   if (ENTRY_MODULES.has(filePath)) return 'entry';
   for (const [prefix, layer] of LAYER_DIRECTORIES) {
@@ -131,7 +128,6 @@ export function layerOf(filePath: string): Layer | undefined {
   return undefined;
 }
 
-/** 读取服务端全部 TypeScript 源；范围与类型门禁一致。 */
 export function collectServerSources(rootDir: string): SourceFile[] {
   return collectFiles(rootDir, ['.ts'])
     .map(filePath => ({
@@ -166,7 +162,6 @@ function unwrapParentheses(expression: ts.Expression): ts.Expression {
   return current;
 }
 
-/** 显式 any、抑制指令与经 any/unknown 的双重断言。 */
 function collectTypeEscapes(sourceFile: SourceFile, parsed: ts.SourceFile, violations: GuardrailViolation[]): void {
   const visit = (node: ts.Node): void => {
     if (node.kind === ts.SyntaxKind.AnyKeyword) {
@@ -247,7 +242,6 @@ function collectStaticImports(
   return edges;
 }
 
-/** 求静态导入图的强连通分量；只返回包含多个模块的分量。 */
 export function findImportCycles(edges: readonly ImportEdge[]): string[][] {
   const adjacency = new Map<string, string[]>();
   for (const edge of edges) {
@@ -298,7 +292,6 @@ export function findImportCycles(edges: readonly ImportEdge[]): string[][] {
   return components;
 }
 
-/** 分析一组源码，返回全部规则命中的原始违规（尚未应用基线）。 */
 export function analyzeSources(files: readonly SourceFile[]): GuardrailViolation[] {
   const violations: GuardrailViolation[] = [];
   const parsedFiles = new Map<string, ts.SourceFile>();
@@ -363,7 +356,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 校验基线文件结构；未知规则、重复条目或缺少理由/移除条件都直接报错。 */
 export function parseBaseline(value: unknown): GuardrailsBaseline {
   if (!isRecord(value)) throw new Error('guardrails baseline 必须是对象');
   if (value.version !== 1) throw new Error('guardrails baseline 的 version 必须为 1');
@@ -401,7 +393,6 @@ function baselineKey(rule: GuardrailRule, file: string): string {
   return `${rule}\u0000${file}`;
 }
 
-/** 用基线解释存量违规：超出登记数量失败，低于登记数量提示下调。 */
 export function applyBaseline(
   violations: readonly GuardrailViolation[],
   baseline: GuardrailsBaseline

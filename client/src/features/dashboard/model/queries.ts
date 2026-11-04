@@ -1,15 +1,3 @@
-/**
- * 总览完整业务快照的组合读取
- *
- * 五路资源仍由各自领域 Query 持有：activity 与 schedule-execution 归
- * `automation`，queue 归 `training`，today-drops 与 open-stages 归
- * `statistics`。本模块只做一次协调读取，不把任一查询的逐块结果直接写入
- * `dashboardStore`；只有五路都 fulfilled 且载荷归一成功才返回完整快照。
- *
- * 每路读取都显式 `staleTime: 0` 且不叠加自动重试：总览的周期刷新与失效
- * 入口本身就是重试路径，单路失败时保留上一份完整快照，避免半份数据展示。
- */
-
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import { ApiRequestError } from '@/shared/api'
 import { activityQueryOptions, scheduleExecutionQueryOptions } from '@/features/automation'

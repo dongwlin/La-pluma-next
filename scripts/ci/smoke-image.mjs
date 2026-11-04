@@ -1,15 +1,3 @@
-// Exercise the real image entrypoint and production HTTP server with no external
-// network, user data, schedules or device access. Only MaaCore presence is faked.
-//
-// Scenarios (all against the image built by the Dockerfile):
-// - runtime contents: MAA CLI and Git, Node.js floor, no TypeScript compiler or dev type packages,
-//   `node --check` parses the TS entry without a compiler;
-// - HTTP: health, readiness, static assets under the configured base path,
-//   API authentication and error envelopes, same-origin signaling rejections;
-// - HTTPS: the same checks over TLS with a throwaway self-signed certificate, and
-//   no plaintext listener on the same port;
-// - legacy data volume: a temporary volume pre-seeded with older user data keeps
-//   loading after startup and the files survive a graceful stop.
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -337,7 +325,6 @@ function readDataFile(name, path) {
   return checked(['exec', name, 'cat', `/app/server/data/${path}`])
 }
 
-/** 启动不改写既有配置，也不破坏 Run 存储版本。 */
 function assertLegacyDataLoadedUnchanged(name) {
   for (const [path, content] of Object.entries(legacyFiles)) {
     const parsed = JSON.parse(readDataFile(name, path))
@@ -350,7 +337,6 @@ function assertLegacyDataLoadedUnchanged(name) {
   }
 }
 
-/** 回滚安全：优雅停止后数据卷文件仍在，且 Run 存储停止时落盘为合法 JSON。 */
 function assertDataVolumeIntact() {
   for (const path of Object.keys(legacyFiles)) {
     assert(existsSync(join(legacyData, path)), `${path} was removed from the data volume`)

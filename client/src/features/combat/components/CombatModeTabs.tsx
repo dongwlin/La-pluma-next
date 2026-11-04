@@ -1,10 +1,3 @@
-/**
- * 作业类型分段控件
- *
- * 只负责当前模式的受控展示、流体高亮测量与方向键导航；模式本身由工作区
- * 持有，不写入配置或存储。
- */
-
 import { motion, useReducedMotion } from 'framer-motion'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import type { CombatMode } from '../types'

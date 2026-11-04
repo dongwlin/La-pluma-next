@@ -1,11 +1,3 @@
-/**
- * 模拟器查找与连接测试面板
- *
- * 命令状态由 `useSettingsDeviceConnection` 订阅的模块级 owner 持有；面板
- * 只接收当前草稿的 adb 路径与地址作为动作参数，不维护第二份草稿。选择
- * 发现结果仍由 owner 合并进 connection 草稿并立即测试，响应不写草稿。
- */
-
 import { Cable, Search } from 'lucide-react'
 import { Button } from '@/shared/ui'
 import { useSettingsDeviceConnection } from '../hooks/useSettingsDeviceConnection'

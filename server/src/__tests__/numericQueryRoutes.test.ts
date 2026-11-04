@@ -12,13 +12,8 @@ import type { MaaRealtimeLogEntry } from '../services/maaProcessService.ts';
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 import { loggerManager } from '../utils/logger.ts';
 
-// 相关环境变量均在模块导入前设置：MAA_CLI_PATH 与 LA_PLUMA_DROP_RECORDS_DIR
-// 由被测模块在导入时读取，测试因此使用假 CLI 与临时目录，不触碰真实运行数据。
-// 注意：webrtcSignalingGateway 及其传递依赖会在导入时读取 MAA_CLI_PATH，
+// webrtcSignalingGateway 及其传递依赖会在导入时读取 MAA_CLI_PATH，
 // 必须等环境变量就绪后再动态导入，不能用顶层静态导入。
-//
-// 本文件锁定数值 query 的既有边界：重复参数是数组、NaN/Infinity 等非有限值
-// 回落默认值，有限值截断并夹取；响应按各端点声明的 DTO 读取。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-numeric-query-'));
 const dropDir = join(fixtureDir, 'drop-records');
 const maaLogDir = join(fixtureDir, 'maa-logs');
@@ -109,7 +104,6 @@ function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
   return typeof (value as { success?: unknown }).success === 'boolean';
 }
 
-/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
 async function readBody<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
   assert.ok(isApiEnvelope(body));
@@ -249,7 +243,6 @@ describe('GET /api/agent/logs/files numeric query bounds', () => {
   });
 });
 
-/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
 function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,

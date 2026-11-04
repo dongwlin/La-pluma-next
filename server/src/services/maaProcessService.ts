@@ -30,7 +30,6 @@ import { parsePositiveInteger } from '../config/runtimeConfig.ts';
 
 const execFilePromise = promisify(execFile);
 
-// MAA CLI 路径
 const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 
 // 读取实时日志和日志文件时的行数上限。MAX_REALTIME_LOGS 是内存保留缓冲，
@@ -56,13 +55,10 @@ const MAX_REALTIME_LOGS = resolveMaxRealtimeLogs(process.env.LA_PLUMA_MAX_REALTI
 const realtimeLogSourceId = randomUUID();
 let realtimeLogSequence = 0;
 
-// 创建日志记录器
 const logger = createLogger('MaaService');
 
-/** 实时日志与结构化日志的级别；未知级别在 addLog 回落为 info。 */
 export type MaaLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS';
 
-/** 结构化日志诊断项；code 是稳定的机器可读标识。 */
 export type MaaExecutionDiagnosticCode =
   | 'UNKNOWN_DROPS'
   | 'PENGUIN_REPORT_FAILED'
@@ -77,7 +73,6 @@ export interface MaaExecutionDiagnostic {
   message: string;
 }
 
-/** 实时日志缓冲条目；关联字段只在执行上下文中存在时写入。 */
 export interface MaaRealtimeLogEntry {
   id: string;
   sequence: number;
@@ -88,15 +83,10 @@ export interface MaaRealtimeLogEntry {
   operationId?: string;
 }
 
-/** 子进程 stdout/stderr 的最小读取端口。 */
 export interface MaaChildOutputStream {
   on(event: 'data', listener: (chunk: Buffer) => void): unknown;
 }
 
-/**
- * 受管子进程的最小能力。真实 spawn 返回 ChildProcess；测试可用同形状的
- * 假子进程覆盖 close/error、退出码与 kill，不依赖进程组。
- */
 export interface MaaChildProcess {
   readonly pid?: number | undefined;
   exitCode: number | null;
@@ -121,7 +111,6 @@ export type MaaSpawn = (
   options: MaaProcessSpawnOptions
 ) => MaaChildProcess;
 
-/** 同步命令（execFile）端口选项；输出按 utf8 字符串返回。 */
 export interface MaaExecFileOptions {
   env?: NodeJS.ProcessEnv;
   maxBuffer?: number;
@@ -142,12 +131,10 @@ export type MaaExecFile = (
   onChild?: (childProcess: MaaChildProcess) => void
 ) => Promise<MaaExecFileResult>;
 
-/** 强制终止计时器句柄；测试端口返回的假句柄只实现 unref。 */
 export interface MaaStopTimer {
   unref?(): void;
 }
 
-/** 停止端口：平台、进程组/子进程信号与升级计时器均可注入。 */
 export interface MaaStopPorts {
   platform?: NodeJS.Platform;
   killProcessGroup?(pid: number, signal: NodeJS.Signals): void;
@@ -155,7 +142,6 @@ export interface MaaStopPorts {
   setTimeout?(callback: () => void, delayMs: number): MaaStopTimer;
 }
 
-/** 进程端口：CLI 路径、spawn 与 execFile 可覆盖。 */
 export interface MaaProcessPorts {
   cliPath?: string;
   spawn?: MaaSpawn;
@@ -172,13 +158,11 @@ export interface MaaStopOptions {
   forceKillDelayMs?: number;
 }
 
-/** 停止请求结果；重复停止只返回等待中，不重复发送信号。 */
 export interface MaaStopResult {
   success: boolean;
   message: string;
 }
 
-/** 前台命令（同步或等待完成）的输出。 */
 export interface MaaCommandOutput {
   stdout: string;
   stderr: string;
@@ -190,20 +174,17 @@ export interface MaaBackgroundStart extends MaaCommandOutput {
   message: string;
 }
 
-/** 子进程真实退出（或启动失败）后的结果；signal 与退出码都显式保留。 */
 export interface MaaCommandResult extends MaaCommandOutput {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
 }
 
-/** 命令错误额外字段：后台执行失败时可在不抛出的情况下观察退出信息。 */
 export interface MaaCommandError extends Error {
   code?: string | number | null;
   statusCode?: number | null;
   details?: unknown;
   retryable?: boolean;
   exitCode?: number | null;
-  /** 退出信号来自子进程或外部错误字段，保持字符串而非信号字面量联合。 */
   signal?: string | null;
   stopped?: boolean;
   stdout?: string;
@@ -218,7 +199,6 @@ export interface MaaCommandOutcome {
   error: MaaCommandError | null;
 }
 
-/** 子进程已启动的回调载荷。 */
 export interface MaaProcessStarted {
   childProcess: MaaChildProcess;
   command: string;
@@ -236,7 +216,6 @@ export interface MaaProcessLifecycle {
 
 export type MaaSettledHandler = (outcome: MaaCommandOutcome) => void | Promise<void>;
 
-/** 对外任务状态投影；不含子进程与计时器引用。 */
 export interface MaaTaskStatus {
   isRunning: boolean;
   taskName: string | null;
@@ -360,7 +339,6 @@ function execFileWithChild(
   });
 }
 
-// 默认进程端口：真实子进程、真实计时器与真实信号发送。测试传入同名键覆盖。
 const defaultProcessPorts: Required<MaaProcessPorts> = Object.freeze({
   cliPath: MAA_CLI_PATH,
   spawn,
@@ -385,11 +363,11 @@ const taskStatus: MaaTaskState = {
   isRunning: false,
   taskName: null,
   startTime: null,
-  taskType: null, // 'automation', 'combat', 'roguelike'
-  process: null, // 保存子进程引用
+  taskType: null,
+  process: null,
   stopRequested: false,
   forceKillTimer: null,
-  logs: [] // 保存实时日志
+  logs: []
 };
 
 /** 按字段返回投影；logs 与子进程状态共享同一缓冲，不复制第二份状态。 */
@@ -404,9 +382,6 @@ export function getTaskStatus(): MaaTaskStatus {
   };
 }
 
-/**
- * 获取实时日志
- */
 export function getRealtimeLogs(lines: unknown = 100): MaaRealtimeLogEntry[] {
   // 直接调用也受限：非法输入回落默认值，有限值截断并夹取到公开行数上限。
   const lineCount = resolveBoundedInteger(lines, {
@@ -414,14 +389,10 @@ export function getRealtimeLogs(lines: unknown = 100): MaaRealtimeLogEntry[] {
     min: 1,
     max: MAX_REALTIME_LOG_LINES
   });
-  // 返回最后 N 行日志
   const startIndex = Math.max(0, taskStatus.logs.length - lineCount);
   return taskStatus.logs.slice(startIndex);
 }
 
-/**
- * 清空实时日志
- */
 export function clearRealtimeLogs(): void {
   taskStatus.logs = [];
 }
@@ -458,7 +429,6 @@ function appendRealtimeLog(level: MaaLogLevel, message: string): MaaRealtimeLogE
  */
 export function addLog(level: MaaLogLevel, message: string): void {
   const entry = appendRealtimeLog(level, message);
-  // 使用结构化日志，不再使用 console.log；复用已脱敏的文本。
   switch (level) {
     case 'DEBUG':
       logger.debug(entry.message);
@@ -538,9 +508,6 @@ function addExecutionDiagnostics(stderr: unknown): void {
   });
 }
 
-/**
- * 设置任务状态
- */
 export function setTaskStatus(
   isRunning: boolean,
   taskName: string | null = null,
@@ -582,7 +549,6 @@ function errorCodeOf(error: unknown): string | null {
   return typeof code === 'string' ? code : null;
 }
 
-/** execFile 失败的 stderr 来自错误对象，逐字段收窄后按字符串读取。 */
 function errorStderrOf(error: unknown): string {
   if (typeof error !== 'object' || error === null || !('stderr' in error)) return '';
   const stderr = (error as { stderr?: unknown }).stderr;
@@ -968,12 +934,10 @@ function execMaaCommandWithEnv(
   return (async () => {
     await lifecycle.onBeforeStart?.();
 
-    // 静默模式下不输出日志（用于健康检查等频繁调用）
     if (!silent) {
       addLog('INFO', `执行命令: ${fullCommand}, 等待完成: ${waitForCompletion}`);
     }
 
-    // 如果有任务名称且不需要等待完成，使用后台异步执行
     if (taskName && !waitForCompletion) {
       return new Promise<MaaBackgroundStart>((resolve) => {
         // 使用 spawn 而不是 exec，这样可以独立运行
@@ -985,7 +949,6 @@ function execMaaCommandWithEnv(
 
         const { stdout, stderr, flush } = captureProcessOutput(childProcess);
 
-        // 设置任务开始状态
         setTaskStatus(true, taskName, taskType, childProcess);
         lifecycle.onStarted?.({ childProcess, command: fullCommand });
 
@@ -1001,7 +964,6 @@ function execMaaCommandWithEnv(
           void lifecycle.onSettled?.(outcome);
         };
 
-        // 立即返回，不等待命令完成
         resolve({
           stdout: '',
           stderr: '',
@@ -1009,7 +971,6 @@ function execMaaCommandWithEnv(
           message: '任务已在后台启动'
         });
 
-        // 在后台继续执行
         childProcess.on('close', (code, signal) => {
           if (settled) return;
           flush();
@@ -1046,7 +1007,6 @@ function execMaaCommandWithEnv(
         });
       });
     }
-    // 需要等待完成（任务流程中的串行执行）
     else if (taskName && waitForCompletion) {
       return new Promise<MaaCommandOutput>((resolve, reject) => {
         const childProcess = processPorts.spawn(processPorts.cliPath, [command, ...finalArgs], {
@@ -1057,7 +1017,6 @@ function execMaaCommandWithEnv(
 
         const { stdout, stderr, flush } = captureProcessOutput(childProcess);
 
-        // 设置任务开始状态
         setTaskStatus(true, taskName, taskType, childProcess);
         lifecycle.onStarted?.({ childProcess, command: fullCommand });
 
@@ -1070,7 +1029,6 @@ function execMaaCommandWithEnv(
           return true;
         };
 
-        // 等待命令完成
         childProcess.on('close', (code, signal) => {
           if (settled) return;
           flush();
@@ -1128,7 +1086,6 @@ function execMaaCommandWithEnv(
         });
       });
     }
-    // 没有任务名称，使用同步执行（用于配置查询等操作）
     else {
       const execFileTimeoutMs = resolveExecFileTimeout(processPorts.execFileTimeoutMs);
       // 维护命令（Core 安装/更新）经 managedTaskName 登记受管子进程：纳入
@@ -1168,7 +1125,6 @@ function execMaaCommandWithEnv(
         const stderr = errorStderrOf(error);
         const combinedError = `${errorMessage}\n${stderr}`;
 
-        // 检测常见错误类型
         if (combinedError.includes('Copilot Error')) {
           if (combinedError.includes('Some error occurred during running task')) {
             throw new Error('作业执行失败：干员不满足要求或编队配置有误');

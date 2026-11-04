@@ -55,7 +55,6 @@ const scrollNode = async (node: HTMLElement) => {
   await act(async () => node.dispatchEvent(new Event('scroll')))
 }
 
-/** 实时区域的播报开关：用户在回顾旧内容时应静音，避免新行打断朗读。 */
 const liveMode = () => container.querySelector('[role="log"]')?.getAttribute('aria-live')
 
 const findFollowIndicator = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
@@ -82,12 +81,10 @@ describe('LogConsole scroll following', () => {
     await renderConsole(grownLogs)
     expect(node.scrollTop).toBe(1000)
 
-    // 引用变化但内容不变：不再强制滚回底部
     node.scrollTop = 500
     await renderConsole(grownLogs.map(log => ({ ...log })))
     expect(node.scrollTop).toBe(500)
 
-    // 内容再次变化：恢复跟随
     await renderConsole([...grownLogs, entry('第五行')])
     expect(node.scrollTop).toBe(1000)
   })
@@ -97,27 +94,22 @@ describe('LogConsole scroll following', () => {
     const node = getLogNode()
     defineScrollBox(node, 1000, 400)
 
-    // 用户上滑离开底部：进入智能暂停，指示可见且未读为 0
     node.scrollTop = 120
     await scrollNode(node)
     expect(findFollowIndicator()?.textContent).toBe('回到底部')
 
-    // 暂停期间内容变化：不抢滚动位置，新增行累计为未读数
     await renderConsole([...initialLogs, entry('新增一'), entry('新增二')])
     expect(node.scrollTop).toBe(120)
     expect(findFollowIndicator()?.textContent).toBe('有新日志')
 
-    // 暂停中继续上滑不重置计数
     node.scrollTop = 60
     await scrollNode(node)
     expect(findFollowIndicator()?.textContent).toBe('有新日志')
 
-    // 回到底部：恢复跟随并清零
     node.scrollTop = 1000
     await scrollNode(node)
     expect(findFollowIndicator()).toBeUndefined()
 
-    // 恢复后内容变化继续跟随
     await renderConsole([...initialLogs, entry('新增一'), entry('新增二'), entry('新增三')])
     expect(node.scrollTop).toBe(1000)
     expect(findFollowIndicator()).toBeUndefined()
@@ -130,12 +122,10 @@ describe('LogConsole scroll following', () => {
     const node = getLogNode()
     defineScrollBox(node, 1000, 400)
 
-    // 上滑离开底部：用户在看旧行，新增行不应再播报
     node.scrollTop = 120
     await scrollNode(node)
     expect(liveMode()).toBe('off')
 
-    // 回到底部恢复跟随：重新播报
     node.scrollTop = 1000
     await scrollNode(node)
     expect(liveMode()).toBe('polite')
@@ -204,7 +194,6 @@ describe('LogConsole scroll following', () => {
   it('does not follow in history view', async () => {
     const historyLogs = [entry('历史一'), entry('历史二')]
     await renderConsole(historyLogs, { viewingHistory: true, autoScroll: true })
-    // 历史视图没有新增行可播报，实时区域应保持静音
     expect(liveMode()).toBe('off')
     const node = getLogNode()
     defineScrollBox(node, 1000, 400)

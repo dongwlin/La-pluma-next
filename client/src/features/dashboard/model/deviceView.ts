@@ -1,10 +1,3 @@
-/**
- * 总览设备卡的展示投影
- *
- * 使用率阈值与温度曲线几何都脱离 React 计算：采样本身仍由 device-mirror
- * 的 Query 持有，`dashboardStore` 仍负责语义校验与温度历史。
- */
-
 export type UsageTone = 'danger' | 'warning' | 'normal'
 
 /** 使用率只影响颜色语义，不改变数值或进度条宽度。 */
@@ -16,14 +9,12 @@ export function getUsageTone(pct?: number | null): UsageTone {
 }
 
 export interface TemperatureSeries {
-  /** 用于 aria 文案的原始最小/最大值。 */
   readonly min: number
   readonly max: number
   /** SVG 折线点，坐标范围 x 0–100、y 0–28。 */
   readonly points: string
   readonly areaPoints: string
   readonly lastPoint: readonly string[] | null
-  /** “近 N 秒”区间文案；单点也按一次采样间隔展示。 */
   readonly durationLabel: string
 }
 

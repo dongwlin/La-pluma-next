@@ -1,12 +1,3 @@
-/**
- * 作业集逐项清单的当前项跟随
- *
- * 当前执行项变化时把「执行中」行滚动进视野；用户刚手动滚动过则跳过一次，
- * 不与手动浏览抢滚动位置。定位自身引发的 scroll 事件在短守卫窗口内不算
- * 用户滚动。调用方渲染 overflow 列表容器（返回的 ref）与带
- * `data-copilot-item-index` 的行；本 hook 只负责跟随策略。
- */
-
 import { useEffect, useRef, type RefObject } from 'react'
 
 // 用户手动滚动后的抑制窗口：窗口内的当前项变化跳过定位。
@@ -23,11 +14,9 @@ export function useCopilotSetItemFollow({
 }): RefObject<HTMLDivElement | null> {
   const listRef = useRef<HTMLDivElement | null>(null)
   const lastUserScrollAtRef = useRef(0)
-  // 程序定位引发 scroll 事件的截止时间；该时间前的 scroll 事件不记作用户滚动。
   const ownScrollUntilRef = useRef(0)
 
-  // 记录用户主动滚动：定位自身的 scroll 事件在守卫窗口内不算，其余都视作
-  // 用户在浏览列表。容器随预览挂载，因此监听跟随列表的存在性。
+  // 记录用户主动滚动；容器随预览挂载，因此监听跟随列表的存在性。
   useEffect(() => {
     if (!hasList) return
     const list = listRef.current
@@ -40,8 +29,6 @@ export function useCopilotSetItemFollow({
     return () => list.removeEventListener('scroll', handleScroll)
   }, [hasList])
 
-  // 当前执行项变化时把「执行中」行带入视野；用户刚滚动过则跳过一次，让
-  // 手动浏览不被打断。
   useEffect(() => {
     if (currentIndex === null) return
     const list = listRef.current

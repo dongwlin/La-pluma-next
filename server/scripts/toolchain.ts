@@ -1,16 +1,6 @@
-/**
- * 工具链版本一致性检查。
- *
- * 服务端类型门禁固定 TypeScript 6.0.3，三处必须一致：`server/package.json` 的
- * 精确声明（不带 `^` / `~`）、根 `pnpm-lock.yaml` 中 server importer 的解析值、
- * 以及 `typecheck` 实际调用的服务端本地编译器版本。任何一处漂移都会让“编译器版本
- * 固定”失去意义，因此这里失败而不是警告。
- */
-
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-/** 全仓固定的 TypeScript 版本。 */
 export const EXPECTED_TYPESCRIPT_VERSION = '6.0.3';
 
 export interface LockfileDependency {
@@ -87,7 +77,6 @@ function readJson(filePath: string): unknown {
   return JSON.parse(readFileSync(filePath, 'utf8'));
 }
 
-/** 核对三处 TypeScript 版本；`problems` 为空才表示一致。 */
 export function checkTypeScriptPin({ serverDir, repoRoot }: { serverDir: string; repoRoot: string }): TypeScriptPinResult {
   const problems: string[] = [];
   const facts: TypeScriptPinFacts = {};

@@ -7,9 +7,8 @@ import {
 } from './harness'
 
 /**
- * 启动壳视觉基线：abort 入口模块（assets/index-*.js），让 React 不执行，
- * 页面停在 index.html 的内联启动壳上。safe-area、dvh 与 standalone 的
- * viewport 变量只有在真实浏览器里才生效，这里按视口截图验收。
+ * 启动壳基线：abort 入口模块（assets/index-*.js）让 React 不执行，页面停在 index.html 的内联启动壳上。
+ * safe-area、dvh 与 standalone 的 viewport 变量只有在真实浏览器里才生效。
  */
 for (const theme of THEMES) {
   test(`boot-shell ${theme}`, async ({ page }) => {
@@ -19,7 +18,7 @@ for (const theme of THEMES) {
     await page.route('**/assets/index-*.js', route => route.abort())
 
     await page.goto('/app/dashboard')
-    await page.locator('.la-pluma-boot').waitFor({ state: 'visible' })
+    await page.locator('[role="status"][aria-label="正在打开 La Pluma Next"]').waitFor({ state: 'visible' })
     await page.evaluate(() => document.fonts.ready)
 
     await expect(page).toHaveScreenshot(`boot-shell-${theme}.png`, {

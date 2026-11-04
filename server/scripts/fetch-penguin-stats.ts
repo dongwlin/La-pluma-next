@@ -34,7 +34,6 @@ const STAGE_SOURCE = 'PenguinStats/stages';
 const MATRIX_SOURCE = 'PenguinStats/result/matrix';
 const ZONE_SOURCE = 'PenguinStats/zones';
 
-/** 输出目标：penguin-drop-data.json。 */
 export const OUTPUT_PATH = resolveTrainingDataPath('penguin-drop-data.json');
 
 const REQUEST_HEADERS: Record<string, string> = {
@@ -42,7 +41,6 @@ const REQUEST_HEADERS: Record<string, string> = {
   'Accept': 'application/json'
 };
 
-/** 关卡信息。 */
 export interface PenguinStageInfo {
   code: string;
   apCost: number;
@@ -50,14 +48,12 @@ export interface PenguinStageInfo {
   zoneType: string;
 }
 
-/** 单条掉落统计。 */
 export interface PenguinDropEntry {
   stageId: string;
   expected: number;
   samples: number;
 }
 
-/** penguin-drop-data.json 的完整结构。 */
 export interface PenguinDropData {
   metadata: {
     source: string;
@@ -71,7 +67,6 @@ export interface PenguinDropData {
   dropMatrix: Record<string, PenguinDropEntry[]>;
 }
 
-/** 从 URL 获取 JSON 数据。 */
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, { headers: REQUEST_HEADERS });
   if (!response.ok) {
@@ -80,9 +75,6 @@ async function fetchJson(url: string): Promise<unknown> {
   return response.json();
 }
 
-/**
- * 解析章节表：zoneId -> 章节类型。
- */
 export function parseZoneTypes(payload: unknown): Map<string, string> {
   const zoneList = expectArray(payload, ZONE_SOURCE, '章节列表');
   const zoneTypes = new Map<string, string>();
@@ -178,7 +170,6 @@ export function buildDropMatrix(matrixPayload: unknown): { dropMatrix: Record<st
   return { dropMatrix, entryCount };
 }
 
-/** 由三个接口载荷组装完整输出。 */
 export function buildPenguinDropData(
   stageListPayload: unknown,
   matrixPayload: unknown,
@@ -203,7 +194,6 @@ export function buildPenguinDropData(
   };
 }
 
-/** 测试与手工运行可替换的副作用端口。 */
 export interface FetchPenguinStatsDeps {
   fetchJson?: (url: string) => Promise<unknown>;
   writeFile?: (filePath: string, data: string) => Promise<void>;
@@ -211,7 +201,6 @@ export interface FetchPenguinStatsDeps {
   now?: () => Date;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchPenguinStatsDeps = {}): Promise<PenguinDropData> {
   const fetchPayload = deps.fetchJson ?? fetchJson;
   const write = deps.writeFile ?? ((filePath: string, data: string) => writeFile(filePath, data, 'utf-8'));

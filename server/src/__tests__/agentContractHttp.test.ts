@@ -15,23 +15,6 @@ import type {
   RegisteredAgentOperation
 } from '../routes/agentContract.ts';
 
-/**
- * 公开契约与真实 HTTP 的一致性回归。
- *
- * 能力清单、manifest 与 OpenAPI 由 `routes/agentContract.ts` 的同一份
- * `AGENT_OPERATIONS` 生成；本文件只通过 `createLaPlumaApp` 发起真实 HTTP，
- * 用发布出来的 JSON Schema 校验请求与响应 fixture，不再抄写第二份字段表。
- *
- * 校验器为 ajv 8.20.0 的 `ajv/dist/2020` 入口（JSON Schema draft 2020-12，
- * 与 OpenAPI 3.1 的 `$schema` 一致）；`ajv-formats` 3.0.1 只补公开文档实际
- * 使用的 `uuid`/`date-time`/`uri-reference` 格式。校验输入是生成器输出的
- * `components`，`$ref` 直接指向同一份文档。
- *
- * 设备动作全部使用临时目录、假 MAA CLI 与假 ADB，不连接真实设备；WebRTC
- * 组件目录为空，因此启停只验证本实例所有权与错误出口，不启动外部进程。
- * 活动缓存由夹具写入，预检与作业发现不会访问上游数据源。
- */
-
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-contract-http-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const maaCacheDir = join(fixtureDir, 'maa-cache');
@@ -144,7 +127,6 @@ const {
 } = await import('../routes/agentContract.ts');
 const { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } = await import('../config/connectionDefaults.ts');
 
-// 真实 HTTP 用例会产生服务日志；关闭控制台输出，保持门禁输出可读。
 for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'AgentRunService', 'Scheduler', 'DropRecord', 'DataParser']) {
   loggerManager.getLogger(loggerName).enableConsole = false;
 }
@@ -213,7 +195,6 @@ function assertViolatesSchema(schema: JsonSchema, value: unknown, label: string)
   assert.notEqual(errors, '', `${label} must be rejected by the published schema`);
 }
 
-/** Express router 与 route layer 是带属性的函数/对象；两者都按对象读取。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (typeof value === 'object' || typeof value === 'function')
     && value !== null
@@ -234,7 +215,6 @@ function isJsonSchema(value: unknown): value is JsonSchema {
   return isRecord(value);
 }
 
-/** 读取 OpenAPI 操作在某个状态码声明的 JSON Schema。 */
 function responseSchema(operation: OpenApiOperation, status: number): JsonSchema {
   const response = operation.responses[String(status)];
   assert.ok(response, `${operation.operationId} must declare status ${status}`);
@@ -268,7 +248,6 @@ function isMountedRoute(value: unknown): value is MountedRoute {
   return Array.isArray(value.stack);
 }
 
-/** 遍历实际挂载的 router 图，统计 `METHOD path` 出现次数。 */
 function collectMountedRoutes(router: unknown, counts = new Map<string, number>()): Map<string, number> {
   if (!isRecord(router) || !Array.isArray(router.stack)) return counts;
   for (const layer of router.stack) {
@@ -308,7 +287,6 @@ interface RequestFixture {
 }
 
 interface ValidFixture extends RequestFixture {
-  /** 供失败信息定位；与 operationId 一起构成每条公开能力的 HTTP 对照。 */
   note?: string;
 }
 
@@ -380,11 +358,6 @@ const invalidFixtures: readonly ErrorFixture[] = [
   { operationId: 'get_current_activity', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' }
 ];
 
-/**
- * 运行时解析与静态 schema 的已知差异。用例同时断言两侧：请求确实不满足
- * 发布 schema，但既有运行时仍按兼容语义接受。任何一侧变化都会让用例失败，
- * 从而迫使实现与公开契约同步决定。
- */
 interface DivergenceFixture extends RequestFixture {
   errorCode?: string;
   reason: string;
@@ -570,7 +543,6 @@ describe('Agent API contract registry and mounted routes', () => {
     const documentSchema = openApiSpec.components.schemas.OpenApiDocument;
     assert.ok(documentSchema);
     assertMatchesSchema(documentSchema, openApiBody, 'served OpenAPI document');
-    // 发布文档中的每个 $ref 都必须在同一份文档内可解析。
     for (const operation of AGENT_OPERATIONS) {
       const generated = openApiOperationsById.get(operation.id);
       assert.ok(generated);

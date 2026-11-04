@@ -33,7 +33,6 @@ const operatorMaterials: OperatorMaterialsFile = {
   }
 };
 
-// char_a 可养成；char_b 已精二；char_c 缺材料数据；char_e 未持有但有材料数据；char_d 未持有
 const owned: OwnedOperator[] = [
   { id: 'char_a', name: '甲', rarity: 6, elite: 0, level: 50, potential: 2 },
   { id: 'char_b', name: '乙', rarity: 5, elite: 2, level: 60, potential: 1 },
@@ -49,7 +48,6 @@ describe('training candidate projection', () => {
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'trainable' }).length, 1);
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'owned' }).length, 3);
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'all' }).length, 5);
-    // 默认 status（未给出）与 all 一致
     assert.equal(buildTrainingCandidates(catalog, owned, operatorMaterials, {}).length, 5);
   });
 
@@ -86,7 +84,6 @@ describe('training candidate projection', () => {
     const needsElite2 = buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'all', needsElite2: true });
     assert.deepEqual(ids(needsElite2), ['char_a', 'char_c', 'char_e', 'char_d']);
 
-    // 计数使用的组合筛选在各状态内独立成立
     assert.deepEqual(
       ids(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'trainable', rarity: 6 })),
       ['char_a']

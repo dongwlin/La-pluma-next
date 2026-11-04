@@ -1,12 +1,3 @@
-/**
- * 旧版自动化断点的一次性迁移
- *
- * `localStorage['maa-task-flow-execution']` 是旧版 Automation 页面流程引擎留下的断点，
- * 包含 `isExecuting`、`tasks`、`currentIndex` 与 `startTime`。它没有 runId，不能当作
- * 执行身份；这里只在页面启动时读取一次，尝试关联服务端 Run，然后删除旧键。
- * 无论关联成功与否都不会提交执行——失效或冲突时由用户重新开始。
- */
-
 import {
   isActiveRunState,
   isTerminalRunState,

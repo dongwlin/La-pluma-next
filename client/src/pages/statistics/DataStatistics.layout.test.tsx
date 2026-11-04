@@ -48,7 +48,6 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-// 在端点边界 mock：页面使用真实的领域 query 定义（key、signal、信封归一）。
 vi.mock('@/features/game-data/api', () => ({
   getAllOperators: mocks.getAllOperators,
   getDepotData: mocks.getDepotData,
@@ -66,7 +65,6 @@ vi.mock('@/features/training', () => ({
   fetchOperatorMaterials: mocks.fetchOperatorMaterials,
 }))
 
-// 只替换执行入口，保留真实的 Run 类型判断；控制器替身记录幂等 intent 供断言。
 vi.mock('@/features/task-execution', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/task-execution')>()
   let sequence = 0
@@ -191,7 +189,6 @@ const selectTab = async (tab: string) => {
 const selectedTab = () => Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
   .find(button => button.getAttribute('aria-selected') === 'true')
 
-/** 模拟工作区已打开时又收到一次指向掉落记录 tab 的导航。 */
 function RequestDropsNavigation() {
   const navigate = useNavigate()
   return (
@@ -536,7 +533,6 @@ describe('DataStatistics layout surfaces', () => {
     expect(mocks.getDepotData).toHaveBeenCalledTimes(1)
     expect(mocks.getOperBoxData).toHaveBeenCalledTimes(1)
     expect(mocks.getAllOperators).toHaveBeenCalledTimes(1)
-    // 掉落读取也在首屏启用，不依赖掉落 tab 打开。
     expect(mocks.getDropStatistics).toHaveBeenCalledTimes(1)
   })
 
@@ -595,7 +591,6 @@ describe('DataStatistics layout surfaces', () => {
     await click(findButton('立即执行')!)
     await flush()
 
-    // 命令参数与失效发布由 commandOwner 覆盖；页面只负责把解析快照写回 Query 并提示。
     expect(mocks.executeCommand).toHaveBeenCalledOnce()
     expect(mocks.parseDepotData).toHaveBeenCalledOnce()
     expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 3 种物品')
@@ -644,8 +639,6 @@ describe('DataStatistics layout surfaces', () => {
     command.resolve({ success: true })
     await flush()
 
-    // 命令参数、幂等键与失效发布由 commandOwner 覆盖；页面只负责把解析快照
-    // 写回 Query 并提示。
     expect(mocks.parseOperBoxData).toHaveBeenCalledOnce()
     expect(mocks.setMessage).toHaveBeenCalledWith('识别完成！共识别 2 名干员')
     expect(client.getQueryData(gameDataKeys.resource('operbox'))).toMatchObject({

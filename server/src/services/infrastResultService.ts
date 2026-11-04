@@ -1,23 +1,11 @@
-/**
- * 基建（Infrast）结果解析
- *
- * 类型边界：
- * - 设施配置来自未校验的任务参数：只有数组才视为已选择，非数组或空数组按未选择处理。
- * - 回调事件经 `maaCallbackService` 校验后再读取：任务名、任务类名逐字段收窄，缺字段按
- *   “未观察到”处理；未知设施类不影响其他结论。
- * - 输出只描述本次基建步骤（`success`/`failed`/`skipped`），不是整个 Run 的终态。
- */
-
 import {
   getCallbackStringField,
   getStartedTaskNames,
   parseMaaCallbackEvents
 } from './maaCallbackService.ts';
 
-/** 基建设施的领域键。 */
 export type FacilityKey = 'Mfg' | 'Trade' | 'Power' | 'Control' | 'Reception' | 'Office' | 'Dorm' | 'Processing' | 'Training';
 
-/** 基建任务的参数：`facility` 为已选择的设施类别数组，其余字段不参与解析。 */
 export interface InfrastTaskParams {
   facility?: unknown;
   [extension: string]: unknown;
@@ -73,12 +61,10 @@ function uniqueStrings(values: readonly unknown[]): string[] {
   return [...new Set(values.filter((value): value is string => typeof value === 'string' && value !== ''))];
 }
 
-/** 按出现顺序去重设施键。 */
 function uniqueFacilityKeys(values: readonly FacilityKey[]): FacilityKey[] {
   return [...new Set(values)];
 }
 
-/** 解析一次基建步骤的回调日志。 */
 export function parseInfrastExecutionAction(
   taskName: string,
   params: InfrastTaskParams = {},

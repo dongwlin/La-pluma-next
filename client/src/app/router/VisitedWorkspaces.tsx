@@ -48,9 +48,6 @@ class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, { hasErr
   }
 }
 
-/**
- * 保活渲染：访问过的页面持续挂载，仅切换可见性
- */
 export function VisitedWorkspaces({ activeTab }: { activeTab: AppTab }) {
   const [visitedPages] = useState(() => new Set<AppTab>([activeTab]))
   // The active tab prop already drives renders; keep history mutable to avoid a second render on navigation.

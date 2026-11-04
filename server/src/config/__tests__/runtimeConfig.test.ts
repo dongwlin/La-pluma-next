@@ -120,7 +120,6 @@ describe('resolveAppPaths', () => {
     // 包目录名是布局契约（workspace 声明 packages: client/server）：
     // 默认锚点必须停在 server/，否则运行数据会静默写入 server/src/data。
     assert.equal(basename(paths.serverRoot), 'server');
-    // 源码树位于 <serverRoot>/src 之下；锚点既不能少算也不能多算一层。
     assert.equal(resolve(paths.serverRoot, 'src', 'config', '__tests__'), testDir);
     assert.equal(paths.appDataDir, join(paths.serverRoot, 'data'));
     assert.equal(basename(dirname(paths.appDataDir)), 'server');
@@ -157,7 +156,6 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.penguinDropDataPath, '/custom/training/penguin-drop-data.json');
     assert.equal(paths.depotPath, '/custom/training/depot.json');
     assert.equal(paths.operboxPath, '/custom/training/operbox.json');
-    // 其余类别不受影响
     assert.equal(paths.userConfigsDir, join(paths.appDataDir, 'user-configs'));
     assert.equal(paths.operatorQuotesPath, join(paths.appDataDir, 'operatorQuotes.json'));
 
@@ -263,7 +261,6 @@ describe('cwd independence and import purity', () => {
     assert.equal(result.dropRecordsDir, join(serverRoot, 'data', 'drop-records'));
     assert.equal(result.executionLockPath, join(serverRoot, 'data', 'maa-execution.lock'));
     assert.equal(result.trainingDataDir, join(serverRoot, 'data'));
-    // 注入的 MAA 平台参数独立于真实运行平台
     assert.equal(result.maaConfigDir, '/fixture-home/.config/maa');
   });
 });

@@ -1,28 +1,3 @@
-/**
- * 预览 HTTP DTO
- *
- * 把 Express 的未知输入收窄成预览适配需要的类型；router 只做 HTTP 适配，
- * 不持有 WebRTC 进程、viewer 计时器或设备租约。
- * - 设备标识：请求体 `deviceId` 只接受非空字符串，其它值（空串、数值、
- *   对象）回退到 DEFAULT_DEVICE_ID；WebRTC 进程仍由 webrtcService 启动，
- *   路由不缓存设备状态。
- * - 方向：保留原始 orientation 值，由 buildOrientationPlan 沿用旧规则
- *   （`String(value || '').trim().toLowerCase()` 后只接受
- *   portrait/landscape/auto）校验；非法值仍以同一 400 错误返回，原始值
- *   进入 details。
- * - dryRun：沿用旧实现的真值判定（`Boolean`），既有输入的干跑/执行选择
- *   与之前一致。
- * - 连接选择：query 与 body 按既有顺序合并后交给 connectionService 的
- *   profile 解析，`allowOverrides` 保持 true；adbPath/address/profileId
- *   的覆盖优先级与响应字段不变。
- *
- * 响应类型只描述预览 router 自己拼装的载荷；截图内容来自
- * maaDeviceService，WebRTC 状态与设备列表来自 webrtcService，方向观测
- * 来自 deviceStatus，本模块不复制这些域的业务判定。错误响应沿用统一
- * 错误出口的信封（`AGENT_VALIDATION_ORIENTATION_INVALID`、
- * `AGENT_INTERNAL_ERROR` 等原样保留）。
- */
-
 import { DEFAULT_DEVICE_ID } from '../services/webrtcService.ts';
 import type { CapturedScreen } from '../services/maaDeviceService.ts';
 import type { ConnectionProfile } from '../services/connectionService.ts';
@@ -41,10 +16,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-/**
- * 连接选择沿用请求级连接覆盖解析：query 与 body 合并后按 profile 解析，
- * 允许 adbPath/address/clientType 覆盖。
- */
 export function resolvePreviewConnection(request: PreviewRequest): Promise<ConnectionProfile> {
   return resolveRequestConnection(request, { allowOverrides: true });
 }
@@ -70,7 +41,6 @@ export function parseOrientationBody(body: unknown): PreviewOrientationInput {
   };
 }
 
-/** 方向设置的有效输入；校验与错误细节仍由 buildOrientationPlan 决定。 */
 export type PreviewOrientation = 'portrait' | 'landscape' | 'auto';
 
 /** 同源浏览器预览协议：只公布本服务信令路径，不含上游管理端点。 */
@@ -87,7 +57,6 @@ export interface PngDimensions {
   height: number | null;
 }
 
-/** `POST /screen/screenshot` 响应：截图内容加连接与尺寸元数据。 */
 export interface PreviewScreenshotPayload extends CapturedScreen, PngDimensions {
   mediaType: 'image/png';
   adbPath: string;
@@ -125,7 +94,6 @@ export interface PreviewOrientationCommandResult {
  */
 export type PreviewDisplayState = AndroidDisplayState;
 
-/** `POST /preview/orientation` 的已执行结果：计划、命令结果与观测。 */
 export interface PreviewOrientationApplyResult extends PreviewOrientationPlan {
   results: PreviewOrientationCommandResult[];
   observed: PreviewDisplayState;
@@ -168,23 +136,19 @@ export interface WebrtcSummary extends Partial<WebrtcStatus> {
   note: string;
 }
 
-/** `GET /webrtc/status` 响应：摘要加 profile 与设备列表。 */
 export interface PreviewWebrtcStatusPayload extends WebrtcSummary {
   profileId: string;
   devices: string[];
 }
 
-/** `GET /webrtc/devices` 响应。 */
 export interface PreviewWebrtcDevicesPayload {
   devices: string[];
 }
 
-/** `POST /webrtc/start` 响应：摘要、运行状态、连接与同源协议。 */
 export interface PreviewWebrtcStartPayload extends PreviewWebrtcStatusPayload {
   deviceId: string;
   address: string;
   protocol: PreviewWebrtcProtocol;
 }
 
-/** 预览错误响应沿用统一错误出口的信封。 */
 export type PreviewErrorResponse = ApiErrorResponse;

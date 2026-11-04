@@ -147,7 +147,6 @@ vi.mock('@/features/user-config', () => ({
   saveUserConfig: mocks.saveUserConfig,
 }))
 
-// 保留真实 status store：更新/设备的全局提示不应把连接表单一起重渲染。
 vi.mock('@/features/runtime-status', async importOriginal => {
   const actual = await importOriginal<typeof import('@/features/runtime-status')>()
   return {
@@ -288,7 +287,6 @@ describe('ConfigManager panel subscriptions', () => {
     expect(afterDevice.version).toBe(initial.version)
     expect(afterDevice.directory).toBe(initial.directory)
 
-    // 自动更新策略与组件更新是两个面板：编辑时间只重渲染自动更新面板。
     await setInputValue(
       container.querySelector<HTMLInputElement>('input[placeholder="HH:MM"]')!,
       '05:30',

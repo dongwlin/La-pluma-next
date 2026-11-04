@@ -14,17 +14,14 @@ const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGam
 const ITEM_SOURCE = 'item_table.json';
 const MATERIALS_SOURCE = 'materials.json';
 
-/** 材料数据文件路径。 */
 export const MATERIALS_PATH = resolveTrainingDataPath('materials.json');
 
-/** 单个推荐关卡。 */
 export interface MaterialStage {
   stage: string;
   efficiency: number;
   dropRate: number | null;
 }
 
-/** 单个材料条目。 */
 export interface MaterialEntry {
   id: string;
   name: string;
@@ -32,7 +29,6 @@ export interface MaterialEntry {
   bestStages?: MaterialStage[];
 }
 
-/** materials.json 中本脚本维护的结构。 */
 export interface MaterialsDatabase {
   materials: Record<string, MaterialEntry>;
   recipes: JsonRecord;
@@ -50,7 +46,6 @@ function toDropRate(occPer: unknown): number | null {
   return Number.parseFloat((value / 10000).toFixed(4));
 }
 
-/** 解析最多 3 个推荐关卡。 */
 function readBestStages(value: unknown, itemId: string): MaterialStage[] {
   const drops = optionalArray(value, ITEM_SOURCE, `物品 ${itemId} 的 stageDropList`);
   if (drops === undefined) return [];
@@ -70,7 +65,6 @@ function readBestStages(value: unknown, itemId: string): MaterialStage[] {
   return bestStages;
 }
 
-/** 从 item_table.json 提取材料信息（只处理材料类型）。 */
 export function parseMaterials(payload: unknown): Record<string, MaterialEntry> {
   const table = expectRecord(payload, ITEM_SOURCE);
   const items = optionalRecord(table.items, ITEM_SOURCE, 'items') ?? {};
@@ -79,7 +73,6 @@ export function parseMaterials(payload: unknown): Record<string, MaterialEntry> 
   for (const [itemId, raw] of Object.entries(items)) {
     const item = expectRecord(raw, ITEM_SOURCE, `物品 ${itemId}`);
 
-    // 只处理材料类型（itemType === 'MATERIAL'）
     if (item.itemType !== 'MATERIAL' || item.classifyType !== 'MATERIAL') continue;
 
     const name = typeof item.name === 'string' ? item.name : undefined;
@@ -97,7 +90,6 @@ export function parseMaterials(payload: unknown): Record<string, MaterialEntry> 
   return materials;
 }
 
-/** 合并材料信息，保留已有的 recipes 与 stageSchedule。 */
 export function buildMaterialsDatabase(materials: Record<string, MaterialEntry>, existingPayload: unknown): MaterialsDatabase {
   const existing = existingPayload === undefined
     ? {}
@@ -108,7 +100,6 @@ export function buildMaterialsDatabase(materials: Record<string, MaterialEntry>,
   return { materials, recipes, stageSchedule };
 }
 
-/** 从 URL 获取 JSON 数据。 */
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url);
   if (!response.ok) {
@@ -125,7 +116,6 @@ export interface FetchAllMaterialsDeps {
   materialsPath?: string;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchAllMaterialsDeps = {}): Promise<MaterialsDatabase> {
   const fetchPayload = deps.fetchJson ?? fetchJson;
   const read = deps.readFile ?? ((filePath: string) => readFile(filePath, 'utf-8'));
@@ -149,7 +139,6 @@ export async function main(deps: FetchAllMaterialsDeps = {}): Promise<MaterialsD
 
   console.log(`\n提取了 ${Object.keys(materials).length} 个材料`);
 
-  // 读取现有的 materials.json；文件缺失或无法解析时使用空结构
   let existingData: unknown;
   try {
     existingData = JSON.parse(await read(materialsPath));
@@ -159,13 +148,11 @@ export async function main(deps: FetchAllMaterialsDeps = {}): Promise<MaterialsD
 
   const newData = buildMaterialsDatabase(materials, existingData);
 
-  // 保存到文件
   await write(materialsPath, JSON.stringify(newData, null, 2));
 
   console.log(`✅ 材料信息已保存到: ${materialsPath}`);
   console.log(`总共 ${Object.keys(newData.materials).length} 个材料`);
 
-  // 特别检查异铁
   const iron = newData.materials['30042'];
   if (iron) {
     console.log('\n✅ 找到异铁 (30042):');

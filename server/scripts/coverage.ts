@@ -19,17 +19,10 @@ import { findTestFiles } from './testFiles.ts';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 统计范围：服务端全部 TypeScript 源。 */
 export const COVERAGE_INCLUDE = '**/*.ts';
 
-/** 测试与 fixture 不计入覆盖率，也不允许出现在报告里。 */
 export const COVERAGE_EXCLUDE = '**/__tests__/**';
 
-/**
- * 渐进阈值（百分比整数）。同一范围内实测：领取基线 line 84.42 / branch 76.42 /
- * funcs 81.30，补齐智能养成失败分支与门禁自身用例后为 line 84.90 / branch 76.61 /
- * funcs 81.80；阈值取整为 84 / 76 / 81，后续只升不降。
- */
 export const COVERAGE_THRESHOLDS = {
   lines: 84,
   branches: 76,
@@ -42,10 +35,6 @@ export interface CoverageTotals {
   functions: number;
 }
 
-/**
- * 在覆盖率报告段落中核对范围并读取总计行。
- * 报告缺失、包含测试目录或缺少总计行都视为失败，避免范围变化被忽略。
- */
 export function checkCoverageReport(output: string): { problems: string[]; totals: CoverageTotals | null } {
   const start = output.indexOf('start of coverage report');
   const end = output.indexOf('end of coverage report');

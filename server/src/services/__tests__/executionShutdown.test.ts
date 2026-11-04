@@ -154,7 +154,6 @@ function realRunRuntime(
   };
 }
 
-/** 汇总条目：会话只读取 key/status/error，其余字段按条目原值投影。 */
 function taskResult(entry: CopilotPlanEntry): CopilotTaskResult {
   return {
     key: entry.key,
@@ -170,7 +169,6 @@ function taskResult(entry: CopilotPlanEntry): CopilotTaskResult {
   };
 }
 
-/** 作业集计划夹具：两条待执行条目，key 标识进度。 */
 function planEntries(): CopilotPlanEntry[] {
   return [
     {
@@ -870,7 +868,6 @@ process.stdout.write(JSON.stringify({ runId: run.runId, port: runtime.port }) + 
   });
 });
 
-/** 持久记录按 runId 读取；缺失即用例失败。 */
 function requireRunRecord(stored: Map<string, AgentRunRecord>, runId: string): AgentRunRecord {
   const record = stored.get(runId);
   assert.ok(record, `stored run ${runId} 不存在`);

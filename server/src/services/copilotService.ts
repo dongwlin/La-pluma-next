@@ -15,14 +15,12 @@ const PARADOX_OPERATORS_PATH = join(__dirname, '../../data/paradox-operators.jso
 const HANDBOOK_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/handbook_info_table.json'
 const CHARACTER_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json'
 
-/** 关卡表条目：本服务只用 id/code/name 匹配关键字。 */
 export interface StageRecord {
   id?: string;
   code?: string;
   name?: string;
 }
 
-/** 悖论模拟干员条目。 */
 export interface ParadoxOperator {
   id: string;
   name: string;
@@ -30,12 +28,10 @@ export interface ParadoxOperator {
   stage_name: string;
 }
 
-/** 出站读取端口的最小返回结构。 */
 export interface CopilotJsonResponse {
   data: unknown;
 }
 
-/** 本地数据路径与回源的覆盖入口；测试用临时文件与假端口，不触发真实下载。 */
 export interface CopilotServicePorts {
   stagesPath?: string;
   paradoxOperatorsPath?: string;
@@ -61,7 +57,6 @@ function normalizeStageIdForPrts(stageId = '') {
   return String(stageId).replace(/#[fn]#/g, '')
 }
 
-/** 读取本地 JSON；文件缺失时返回 fallback，其它读取/解析错误原样抛出。 */
 async function loadLocalJson(filePath: string, fallback: unknown): Promise<unknown> {
   try {
     return JSON.parse(await readFile(filePath, 'utf-8'))
@@ -71,7 +66,6 @@ async function loadLocalJson(filePath: string, fallback: unknown): Promise<unkno
   }
 }
 
-/** 关卡表解析：保留可匹配字段，其它字段不透出。 */
 export function parseStageTable(value: unknown): Record<string, StageRecord> {
   if (!isRecord(value)) return {}
   const stages: Record<string, StageRecord> = {}
@@ -98,7 +92,6 @@ function parseParadoxOperator(value: unknown): ParadoxOperator | null {
   }
 }
 
-/** 已缓存的干员列表解析：结构不符的条目被忽略，不把整份缓存判坏。 */
 export function parseParadoxOperatorList(value: unknown): ParadoxOperator[] {
   if (!Array.isArray(value)) return []
   const operators: ParadoxOperator[] = []
@@ -109,10 +102,6 @@ export function parseParadoxOperatorList(value: unknown): ParadoxOperator[] {
   return operators
 }
 
-/**
- * 从游戏数据表生成悖论模拟干员列表。
- * 上游载荷缺失对应段时按空表处理（与原实现的可选访问一致）。
- */
 export function parseParadoxOperators(handbook: unknown, characters: unknown): ParadoxOperator[] {
   const handbookRecord = isRecord(handbook) ? handbook : {}
   const handbookStages = isRecord(handbookRecord.handbookStageData) ? handbookRecord.handbookStageData : {}

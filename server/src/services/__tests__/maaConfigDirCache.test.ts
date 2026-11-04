@@ -67,7 +67,6 @@ test('a failed config directory lookup is cached briefly and then retried', asyn
   assert.deepEqual(results, [configDir, configDir, configDir]);
   assert.equal(await callCount(), 2);
 
-  // 成功结果继续按进程缓存。
   assert.equal(await getMaaConfigDir(), configDir);
   assert.equal(await callCount(), 2);
 });

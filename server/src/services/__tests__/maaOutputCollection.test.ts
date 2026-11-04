@@ -21,7 +21,6 @@ class FakeChild extends EventEmitter implements MaaChildProcess {
   kill(): boolean { return true; }
 }
 
-/** Await the registered handlers, keeping foreground execution pending until close/error. */
 async function startOutputCollection(waitForCompletion: boolean) {
   clearRealtimeLogs();
   const child = new FakeChild();

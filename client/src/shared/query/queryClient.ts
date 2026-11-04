@@ -1,13 +1,6 @@
 /**
- * 应用级 Query 客户端与默认策略
- *
- * 只负责服务端只读资源的缓存基础设施：
- * - 一个应用生命周期内稳定复用同一个客户端，页面 remount 不重建缓存；
- * - 只对可恢复的传输/服务端失败自动重试，contract 失败与调用方取消不重试；
- * - 默认不因文档可见性变化自动重取；Activity 隐藏会清理 Effects 并注销 Query 观察者，
- *   恢复时按 refetchOnMount/staleTime 决定是否重取；网络重连时重取过期数据。
- *
- * 配置草稿、执行 Run 与日志/轮询会话都不属于本层，见 docs/architecture/query-cache.md。
+ * 默认不因文档可见性变化自动重取：Activity 隐藏会清理 Effects 并注销 Query 观察者，
+ * 恢复时按 refetchOnMount/staleTime 决定是否重取，因此 `refetchOnWindowFocus: false`。
  */
 
 import { QueryClient, type DefaultOptions } from '@tanstack/react-query'
@@ -40,7 +33,6 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
   return error.kind === 'transport' || (error.kind === 'api' && error.retryable)
 }
 
-/** 500ms 起指数退避，单次等待上限 4s。 */
 export function queryRetryDelay(failureCount: number): number {
   return Math.min(QUERY_RETRY_BASE_DELAY_MS * 2 ** failureCount, QUERY_RETRY_MAX_DELAY_MS)
 }
@@ -56,14 +48,13 @@ export const queryDefaultOptions: DefaultOptions = {
     refetchOnReconnect: true,
     networkMode: 'online',
   },
-  // 写请求（配置提交、执行命令）不走 Query mutation；即便未来使用，也不自动重试。
+  // 写请求（配置提交、执行命令）不走 Query mutation，也不自动重试。
   mutations: {
     retry: false,
     networkMode: 'online',
   },
 }
 
-/** 每个调用方独立的新客户端；测试或隔离环境使用。 */
 export function createQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: queryDefaultOptions })
 }

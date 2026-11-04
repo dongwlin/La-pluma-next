@@ -1,8 +1,3 @@
-/**
- * 战斗任务域 API 端点
- * 普通关卡作业与悖论模拟作业搜索，以及作业集 Run 的提交与继续。
- */
-
 import {
   API_BASE_URL,
   fetchWithAuth,
@@ -21,9 +16,6 @@ const isCopilotProxyPayload = (payload: unknown): boolean => isRecord(payload)
 const isCopilotSetPlanPayload = (payload: unknown): boolean =>
   isRecord(payload) && Array.isArray(payload.items) && Array.isArray(payload.entries)
 
-/**
- * 搜索普通关卡作业
- */
 export async function searchCopilot(stageName: string, signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/copilot/search?stage=${encodeURIComponent(stageName)}`, {
     signal,
@@ -32,9 +24,6 @@ export async function searchCopilot(stageName: string, signal?: AbortSignal): Pr
   })
 }
 
-/**
- * 搜索悖论模拟作业
- */
 export async function searchParadoxCopilot(operatorName: string, signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/paradox/search?name=${encodeURIComponent(operatorName)}`, {
     signal,
@@ -55,9 +44,6 @@ export async function getCopilotInfo(copilotId: string, signal?: AbortSignal): P
   })
 }
 
-/**
- * 获取作业集信息（通过后端代理，避免 CORS）
- */
 export async function getCopilotSet(copilotId: string, signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/copilot-sets/${copilotId}`, {
     signal,

@@ -1,14 +1,5 @@
-/**
- * 连接配置面板
- *
- * 服务端读取与草稿保存由 `useSettingsConnectionConfig` 背后的 Query/owner
- * 持有；面板只渲染表单、按钮 loading 与页内/全局反馈，不维护第二份草稿
- * 或 revision。
- *
- * 非 connection section 时返回 null，但组件保持挂载：section 切换不重建
- * Query 观察者，也不清空草稿与保存/读取反馈。设备状态由设备面板单独订阅，
- * 更新与自动更新由更新面板单独订阅，互不驱动对方的渲染。
- */
+// 非 connection section 时返回 null 但组件保持挂载：section 切换不重建 Query 观察者，
+// 也不清空草稿与保存/读取反馈。
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RotateCcw, Save } from 'lucide-react'

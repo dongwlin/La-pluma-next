@@ -1,11 +1,3 @@
-/**
- * 总览当前活动卡的纯展示模型
- *
- * 卡片只消费 `dashboardStore` 的完整快照与刷新状态，不根据名称/代号猜测
- * 加载态。服务端状态、首轮失败、旧 v1 缓存和最近一次刷新失败在这里投影为
- * 明确的 phase；面板只负责渲染。
- */
-
 import type { ActivitySummary } from './snapshot'
 
 export type DashboardActivityPhase = 'loading' | 'active' | 'none' | 'unavailable' | 'stale'

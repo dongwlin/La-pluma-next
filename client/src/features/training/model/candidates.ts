@@ -1,14 +1,3 @@
-/**
- * 养成候选列表纯规则
- *
- * 候选列表以 `/agent/training/operators` 的返回为主；旧服务端在
- * `status=all` 返回空列表时，页面此前会用共享干员目录与持有干员快照补齐。
- * 该补齐规则不依赖 React，放在领域模型里直接测试，页面只消费 Query 结果。
- *
- * 旧载荷兼容：端点允许返回 `operators` 数组或顶层数组；补齐路径中持有干员
- * 与目录都是共享资源域已经归一过的数组。
- */
-
 import type { OperatorDetailed } from '@/features/game-data'
 import type { TrainingFilters, TrainingOperator } from '../types'
 

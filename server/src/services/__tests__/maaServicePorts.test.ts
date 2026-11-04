@@ -142,7 +142,6 @@ describe('MAA CLI process ports', () => {
     assert.deepEqual(signals, [[child.pid, 'SIGTERM']]);
     assert.equal(getTaskStatus().stopRequested, true);
 
-    // 重复停止只返回进行中，不重复发送信号。
     assert.deepEqual(stopCurrentTask(), { success: true, message: '终止请求已发送，正在等待任务退出' });
     assert.equal(signals.length, 1);
 
@@ -268,7 +267,6 @@ describe('MAA CLI process ports', () => {
     assert.equal(getTaskStatus().taskName, '更新 MaaCore 与资源');
     assert.equal(getTaskStatus().stopRequested, false);
 
-    // 关闭流程按 stopCurrentTask 发送 SIGTERM；子进程随后退出，等待随之结束。
     const signals: Array<NodeJS.Signals | number> = [];
     const stopResult = stopCurrentTask({}, {
       platform: 'win32',
@@ -305,7 +303,6 @@ describe('MAA CLI process ports', () => {
 
     assert.equal(result.stdout, 'MaaCore v6.9.9');
     assert.equal(getTaskStatus().isRunning, false);
-    // 正常完成后不向子进程发送任何兜底信号。
     assert.deepEqual(child.signals, []);
   });
 

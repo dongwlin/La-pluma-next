@@ -1,15 +1,3 @@
-/**
- * 作业集选段纯模型
- *
- * 页面与配置中的 `copilotSetSelections` 都用有序整数数组表示“待执行”索引。
- * 这里集中处理去重、排序、与 Run 成功项求差，以及按服务端计划进度恢复选择：
- *
- * - 作业完成按所选 raid 规则要求的模式判断；持久化进度与本次成功模式合并后
- *   覆盖全部所需模式才从待执行中移除，失败与未开始保留。
- * - 预设编队作业只要求普通模式；突袭/两者模式按作业支持的模式逐项判断。
- * - 已保存的本地选择与计划求交，避免把已完成关卡重新排入待执行。
- */
-
 import type { CopilotRaid, CopilotSetItem } from '../types'
 
 /** 去重、丢弃非整数并升序，作为选择写入配置与执行请求的唯一形状。 */
@@ -86,7 +74,6 @@ export function toggleCopilotSelection(
   return next
 }
 
-/** 全选与清空共用：当前已全选时清空，否则选中全部。 */
 export function toggleAllCopilotSelection(
   selection: ReadonlySet<number>,
   itemCount: number,

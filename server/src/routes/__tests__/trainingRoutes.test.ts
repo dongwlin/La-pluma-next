@@ -88,8 +88,6 @@ function handler(method: string, routePath: string): RouteHandler {
   return handle;
 }
 
-// 养成入口由独立子 router 承担：按 agent.ts 的实际挂载关系递归解析，
-// 证明这些路径仍通过聚合 router 暴露，而不是只存在于某个文件里。
 function findMountedRoute(candidateRouter: unknown, method: string, routePath: string): MountedRoute | null {
   if (!isRecord(candidateRouter) || !Array.isArray(candidateRouter.stack)) return null;
   for (const layer of candidateRouter.stack) {
@@ -113,7 +111,6 @@ interface TestEnvelope {
   meta?: unknown;
 }
 
-/** 端点结果按用例声明的字段读取；未声明的字段保持 unknown。 */
 function dataOf<T>(envelope: TestEnvelope | undefined): T {
   assert.ok(envelope, 'missing response envelope');
   return envelope.data as T;

@@ -1,20 +1,5 @@
-/**
- * 自动化任务流程排序纯模型
- *
- * 拖拽排序、键盘排序与“关闭游戏固定最后”的规则集中在这里：
- * - 指针移动超过 10px 才视为拖拽，避免点击排序手柄时误触发；
- * - 目标索引按“移除被拖拽项后的插入槽位”计算，向上/向下拖动使用同一语义；
- * - `moveTaskFlowItem` 对同位置与越界输入返回原数组，页面可用引用相等判断无变化；
- * - `placeClosedownLast` 是流程不变量：解码、添加与恢复任务都必须经过它。
- *
- * 模型不访问 React、网络或存储；`hooks/useTaskFlowSorting.ts` 负责 pointer 生命周期、
- * 预览与提交，capture 丢失不取消排序。
- */
-
-/** 拖拽激活阈值（像素）。 */
 export const POINTER_SORT_ACTIVATION_PX = 10
 
-/** 指针位移是否已达到拖拽阈值；对角线位移按欧氏距离计算。 */
 export const hasPointerSortActivated = (
   startX: number,
   startY: number,

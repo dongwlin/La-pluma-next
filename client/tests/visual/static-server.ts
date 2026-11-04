@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * 视觉基线专用静态服务器：伺服 client/dist（vite build 产物），
- * 并对 /app/* 做 SPA 回退。不用 vite preview，避免 dev/preview
- * 差异与 PWA dev 插件等额外变量；缓存全部禁用，保证每次请求一致。
+ * 视觉基线专用静态服务器：伺服 client/dist（vite build 产物）并对 /app/* 做 SPA 回退。
+ * 不用 vite preview，避免 dev/preview 差异与 PWA dev 插件等额外变量。
  */
 import { createServer } from 'node:http'
 import { readFile, stat } from 'node:fs/promises'
@@ -61,7 +60,6 @@ const server = createServer(async (request, response) => {
       fileStat = await stat(filePath).catch(() => null)
     }
     if (!fileStat) {
-      // SPA 回退：非资源路径（如 /app/dashboard）回退到 index.html。
       filePath = path.join(distDir, 'index.html')
       fileStat = await stat(filePath).catch(() => null)
     }

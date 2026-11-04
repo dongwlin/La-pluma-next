@@ -8,15 +8,10 @@ import { createLogger } from '../utils/logger.ts';
 
 // 流程结束后的智能养成关卡回写：读取养成队列、生成刷取计划并保存任务流程。
 // 这是流程执行之外的存储适配，执行模块只通过端口请求刷新，不直接读写配置。
-//
-// 类型边界：配置从 `unknown` 读取，先确认对象与数组形态再按调度任务契约处理；
-// 计划来源只建模读取的字段，额外字段原样保留在配置中。
-//
-// 计划生成沿用连接 profile 的客户端类型：智能关卡与执行跳过按同一游戏日挑选。
+// 计划生成沿用连接 profile 的客户端类型，智能关卡与执行跳过按同一游戏日挑选。
 
 const logger = createLogger('Scheduler');
 
-/** 计划里读取的关卡字段；缺失或不合法时不参与智能关卡生成。 */
 export interface SmartTrainingStageSource {
   stage?: string;
   times?: unknown;
@@ -24,14 +19,12 @@ export interface SmartTrainingStageSource {
   isOpen?: unknown;
 }
 
-/** 计划与队列的最小读取视图；其他字段不参与智能关卡生成。 */
 export interface SmartTrainingPlanSource {
   openStages?: SmartTrainingStageSource[];
   stages?: SmartTrainingStageSource[];
   operators?: Array<{ name?: string }>;
 }
 
-/** 写回 automation-tasks 的智能关卡条目。 */
 export interface SmartTrainingStage {
   stage: string;
   times: string;
@@ -52,7 +45,6 @@ export interface SmartTrainingLogger {
   success(message: string, data?: unknown): unknown;
 }
 
-/** 计划生成的查询选项：客户端类型决定智能关卡所依据的游戏日。 */
 export interface SmartTrainingPlanOptions {
   clientType?: string;
 }
@@ -130,10 +122,6 @@ export function clearSmartTrainingStagesFromTask(task: SmartTrainingTask) {
   task.params.stages = newStages.length > 0 ? newStages : [{ stage: '', times: '' }];
 }
 
-/**
- * 动态更新智能养成关卡
- * 在任务执行完成后，重新生成刷取计划并更新任务流程
- */
 export async function updateSmartTrainingStages(
   scheduleId: string,
   {
@@ -151,7 +139,6 @@ export async function updateSmartTrainingStages(
   runtimeLogger.info('智能养成开始动态更新关卡', { scheduleId });
 
   try {
-    // 1. 加载当前的任务流程配置
     const configResult = await loadConfig('automation-tasks');
     const configData = configResult.success && isRecordValue(configResult.data) ? configResult.data : null;
     if (!configData || !configData.taskFlow) {
@@ -163,7 +150,6 @@ export async function updateSmartTrainingStages(
       ? configData.taskFlow as ScheduledTask[]
       : [];
 
-    // 2. 查找包含智能养成关卡的任务
     let fightTaskIndex = -1;
 
     for (let i = 0; i < taskFlow.length; i++) {
@@ -185,7 +171,6 @@ export async function updateSmartTrainingStages(
 
     runtimeLogger.info('智能养成找到智能养成关卡，开始重新生成刷取计划', { scheduleId });
 
-    // 3. 加载养成队列
     const queueResult = await loadConfig('training-queue');
     const queueData = queueResult.success && isRecordValue(queueResult.data) ? queueResult.data : null;
     const queue: Array<Record<string, unknown>> = queueData && Array.isArray(queueData.queue)
@@ -206,7 +191,6 @@ export async function updateSmartTrainingStages(
     const trainingSettings = queueData.settings || {};
     const shouldAutoSwitch = isRecordValue(trainingSettings) ? trainingSettings.autoSwitch !== false : true;
 
-    // 4. 重新生成刷取计划（仅当前干员）
     const plan = await generateTrainingPlan('current');
     if (!plan || !plan.stages) {
       runtimeLogger.warn('智能养成生成刷取计划失败', { scheduleId });
@@ -215,13 +199,10 @@ export async function updateSmartTrainingStages(
 
     const openSmartStages = buildSmartTrainingStages(plan);
 
-    // 5. 检查是否还有需要刷的关卡
     if (plan.stages.length === 0) {
       runtimeLogger.info('智能养成当前干员材料已集齐，检查是否需要切换到下一个干员', { scheduleId });
 
-      // 6. 自动切换到下一个干员
       if (shouldAutoSwitch && queue.length > 1) {
-        // 移除第一个干员（已完成）
         const completedOperator: Record<string, unknown> = queue.shift() || {};
         await saveConfig('training-queue', {
           ...queueData,
@@ -235,7 +216,6 @@ export async function updateSmartTrainingStages(
           nextOperator: queue[0].name || queue[0].operatorId
         });
 
-        // 重新生成刷取计划
         const newPlan = await generateTrainingPlan('current');
         const newSmartStages = buildSmartTrainingStages(newPlan || {});
         if (newPlan && newPlan.stages && newPlan.stages.length > 0 && newSmartStages.length > 0) {
@@ -279,7 +259,6 @@ export async function updateSmartTrainingStages(
 
       await saveConfig('automation-tasks', { taskFlow, schedule: configData.schedule });
     } else {
-      // 7. 还有关卡需要刷，更新关卡和次数
       runtimeLogger.info('智能养成更新剩余关卡', {
         scheduleId,
         stageCount: openSmartStages.length

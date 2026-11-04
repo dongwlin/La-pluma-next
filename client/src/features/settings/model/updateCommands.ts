@@ -1,19 +1,6 @@
-/**
- * 设置页组件更新命令所有者
- *
- * core 更新、core 渠道切换、CLI 更新与资源热更新都是带副作用的显式命令，
- * 不是可自动重取的只读资源：不进入 Query，失败也不自动重试。
- *
- * - 四条命令共用一条在途槽位：任意一条运行期间再次发起（包括同一命令）返回
- *   `ignored`，不会发出第二个请求；页面据此禁用全部更新按钮并只让实际运行的
- *   按钮显示 loading。
- * - core 更新与渠道切换在服务端会同时安装组件并同步资源；成功后报告
- *   `resourcesChanged`，由 React 适配层发布跨域失效，而不是由命令自己清空缓存。
- * - core/热更新的失败可标记 `resourceRetry`（资源步骤失败或 core 已更新），
- *   页面提供显式“重试资源同步”入口；该入口仍是用户动作，不是自动重试。
- * - CLI 更新沿用迁移前只有全局提示、没有页内反馈的行为。
- * - 寿命不跟随页面：Activity 隐藏或页面重挂载不取消在途命令，完成后仍写状态。
- */
+// core 更新、渠道切换、CLI 更新与资源热更新都是显式命令：四条共用一条在途槽位，并发
+// 调用返回 ignored；成功后的跨域失效由 React 适配层发布，命令自己不清缓存；寿命不跟随
+// 页面，Activity 隐藏或重挂载不取消在途命令。
 
 import {
   getErrorMessage,
@@ -135,7 +122,6 @@ export const readUpdateFailureDetails = (
   return {}
 }
 
-/** 资源步骤失败或 core 已更新时，页面提供显式资源重试入口。 */
 export const shouldRetryUpdateResources = (result: ApiResponse): boolean => {
   const details = readUpdateFailureDetails(result)
   return details.failedStep === 'resources' || details.coreUpdated === true

@@ -1,30 +1,3 @@
-/**
- * 维护 HTTP DTO
- *
- * 把 Express 与上游的未知输入收窄成维护适配需要的类型；router 只做 HTTP 适配，
- * 连接/profile 解析、资源与核心更新、定时注册、识别动作与出站查询仍由各自服务
- * 所有者承担。
- *
- * 请求侧按端点分别收窄：
- * - profile 保存体保持旧实现的 `req.body || {}`，顶层形状、字段白名单与原子写入
- *   仍由 maaConfigService 判定，非对象请求体继续以同一 500 失败；
- * - `dryRun` 沿用旧实现的真值判定（`Boolean`），字符串 `'false'` 仍按真值处理；
- * - 更新渠道只与 `beta`/`stable` 全等比较，其它值保持原样进入计划、错误详情与
- *   完成文案，不在这里改写；
- * - 定时注册的 `scheduleId` 沿用旧默认值 `default`（仅在缺省时生效），非字符串
- *   按文本收窄；`times`/`taskFlow` 保持 unknown，校验与注册仍由
- *   schedulerService 判定；
- * - 自动更新配置按既有 `AutoUpdateConfig` 透传：启用判定读取 `enabled`/`time`
- *   的真值，扩展字段原样保留并在响应中回显；
- * - 查询参数（悖论干员名、作业关卡、计划 raid）按标量字符串收窄，缺失时保持
- *   旧实现的空值语义。
- *
- * 上游侧只做结构收窄：GitHub releases 必须为数组（非数组按上游响应异常抛出，
- * 由调用方映射既有 502），PRTS 作业查询信封保留 `status_code`/`has_next` 原值，
- * 非对象条目跳过。字段本身未经运行期校验，按 unknown 原样透传，本层不补造或
- * 改写上游值。
- */
-
 import type { ApiRequestLike } from '../utils/apiHelper.ts';
 import type { ConnectionProfile } from '../services/connectionService.ts';
 import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
@@ -39,17 +12,14 @@ export interface MaintenanceRequest extends ApiRequestLike {
   query?: unknown;
 }
 
-/** 连接/profile 路由：`:profileName` 由路由声明收窄为 string。 */
 export interface MaintenanceProfileRequest extends MaintenanceRequest {
   params: { profileName: string };
 }
 
-/** 作业集/作业读取路由：`:id` 由路由声明收窄为 string。 */
 export interface MaintenanceCopilotRequest extends MaintenanceRequest {
   params: { id: string };
 }
 
-/** 定时停止路由：`:scheduleId` 由路由声明收窄为 string。 */
 export interface MaintenanceScheduleStopRequest extends MaintenanceRequest {
   params: { scheduleId: string };
 }
@@ -69,10 +39,6 @@ export function thrownMessage(error: unknown): string | undefined {
   return typeof message === 'string' ? message : String(message);
 }
 
-/**
- * 连接选择沿用请求级连接覆盖解析：query 与 body 合并后按 profile 解析，
- * 允许 adbPath/address/clientType 覆盖。
- */
 export function resolveMaintenanceConnection(request: MaintenanceRequest): Promise<ConnectionProfile> {
   return resolveRequestConnection(request, { allowOverrides: true });
 }
@@ -140,7 +106,6 @@ export function parseAutoUpdateBody(body: unknown): MaintenanceAutoUpdateConfig 
   return (isRecord(body) ? body : {}) as MaintenanceAutoUpdateConfig;
 }
 
-/** 悖论模拟查询：干员名去掉首尾空白，缺失时为空串（沿用旧校验分支）。 */
 export interface MaintenanceParadoxSearchInput {
   name: string;
 }
@@ -150,7 +115,6 @@ export function parseParadoxSearchQuery(query: unknown): MaintenanceParadoxSearc
   return { name: String(source.name || '').trim() };
 }
 
-/** 作业查询：关卡名去掉首尾空白，缺失时为空串（沿用旧校验分支）。 */
 export interface MaintenanceCopilotSearchInput {
   stage: string;
 }
@@ -160,7 +124,6 @@ export function parseCopilotSearchQuery(query: unknown): MaintenanceCopilotSearc
   return { stage: String(source.stage || '').trim() };
 }
 
-/** 作业集计划模式：只识别 normal/raid/both，其它值与缺失值都回落到 normal。 */
 export type MaintenanceCopilotRaid = 'normal' | 'raid' | 'both';
 
 const COPILOT_RAID_MODES: readonly MaintenanceCopilotRaid[] = ['normal', 'raid', 'both'];
@@ -192,7 +155,6 @@ export function resourceInfoFallback(error: unknown): ResourceInfo {
   };
 }
 
-/** 活动响应载荷：只描述本入口拼装的字段，stages 原样取自活动查询。 */
 export interface MaintenanceActivityCompletion {
   known: boolean;
   complete: boolean;
@@ -234,7 +196,6 @@ export interface MaintenanceChangelogEntry {
   prerelease: unknown;
 }
 
-/** GitHub releases 条目：只保留本入口读取或回显的字段。 */
 export interface GithubReleaseRecord {
   tagName: unknown;
   name: unknown;
@@ -292,7 +253,6 @@ export function parsePrtsCopilotQueryPayload(value: unknown): PrtsCopilotQueryPa
   };
 }
 
-/** 作业条目投影：上游字段原样透传，只补展示用的 uri 与标题。 */
 export interface MaintenanceCopilotEntry {
   id: unknown;
   uri: string;
@@ -302,12 +262,10 @@ export interface MaintenanceCopilotEntry {
   title: unknown;
 }
 
-/** 关卡查询条目额外回显作业自带的关卡名。 */
 export interface MaintenanceCopilotSearchEntry extends MaintenanceCopilotEntry {
   stageName: unknown;
 }
 
-/** 关卡查询候选：条目加用于匹配请求关卡的标题代号。 */
 export interface MaintenanceCopilotSearchCandidate {
   entry: MaintenanceCopilotSearchEntry;
   titleStageCode: string;
@@ -331,7 +289,6 @@ function resolveCopilotTitle(initial: unknown, content: unknown, fallback: strin
   return title;
 }
 
-/** 悖论模拟作业条目。 */
 export function projectParadoxCopilot(item: Record<string, unknown>): MaintenanceCopilotEntry {
   return {
     id: item.id,
@@ -379,7 +336,6 @@ export function projectCopilotSearchItem(
   };
 }
 
-/** `GET /paradox/search` 响应。 */
 export interface MaintenanceParadoxSearchPayload {
   operator: string;
   stageId: string;
@@ -387,7 +343,6 @@ export interface MaintenanceParadoxSearchPayload {
   recommended: MaintenanceCopilotEntry;
 }
 
-/** `GET /copilot/search` 响应。 */
 export interface MaintenanceCopilotSearchPayload {
   stage: string;
   copilots: MaintenanceCopilotSearchEntry[];
@@ -418,7 +373,6 @@ export interface MaintenanceHotUpdateResourcesPlan {
   script: string;
 }
 
-/** 核心更新响应：计划、两步结果与更新后的运行时版本。 */
 export interface MaintenanceUpdateCorePayload {
   plan: MaintenanceUpdateCorePlan;
   steps: {
@@ -428,23 +382,19 @@ export interface MaintenanceUpdateCorePayload {
   runtime: MaintenanceVersionPayload;
 }
 
-/** CLI 更新响应：命令输出与计划。 */
 export interface MaintenanceUpdateCliPayload {
   output: string;
   plan: MaintenanceUpdateCliPlan;
 }
 
-/** 资源热更新响应：资源更新结果与计划。 */
 export interface MaintenanceHotUpdateResourcesPayload extends ResourceUpdateResult {
   plan: MaintenanceHotUpdateResourcesPlan;
 }
 
-/** `/version` 响应：MAA 版本信息加资源投影。 */
 export interface MaintenanceVersionPayload extends MaaVersionInfo {
   resource: ResourceInfo;
 }
 
-/** `/config-directory` 与打开配置目录动作的响应。 */
 export interface MaintenanceConfigDirectoryPayload {
   path: string;
 }

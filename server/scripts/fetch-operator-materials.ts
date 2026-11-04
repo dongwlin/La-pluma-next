@@ -1,8 +1,3 @@
-/**
- * 从 Kengxxiao/ArknightsGameData 获取干员材料数据
- * 自动生成 operator-materials.json
- */
-
 import https from 'node:https';
 import { writeFile } from 'node:fs/promises';
 import {
@@ -22,21 +17,17 @@ const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGam
 const CHARACTER_SOURCE = 'character_table.json';
 const ITEM_SOURCE = 'item_table.json';
 
-/** 输出目标：与其他养成数据文件一致，写入训练数据目录。 */
 export const OUTPUT_PATH = resolveTrainingDataPath('operator-materials.json');
 
-/** 单条精英化消耗。 */
 interface EvolveCost {
   id: string;
   count: number;
 }
 
-/** 干员精英化阶段中本脚本读取的字段。 */
 interface CharacterPhase {
   evolveCost?: EvolveCost[];
 }
 
-/** character_table.json 中本脚本读取的干员字段。 */
 interface CharacterEntry {
   name?: string;
   rarity?: string | number;
@@ -45,28 +36,23 @@ interface CharacterEntry {
   isNotObtainable: boolean;
 }
 
-/** item_table.json 中的物品名称映射。 */
 type ItemNames = Record<string, string | undefined>;
 
-/** 干员材料条目。 */
 export interface MaterialCost {
   id: string;
   name: string;
   count: number;
 }
 
-/** 精英 1 材料需求。 */
 export interface EliteMaterials {
   lmd: number;
   materials: MaterialCost[];
 }
 
-/** 精英 2 材料需求，芯片单独分组。 */
 export interface Elite2Materials extends EliteMaterials {
   chips: MaterialCost[];
 }
 
-/** 单个干员的材料数据。 */
 export interface OperatorMaterialEntry {
   id: string;
   name: string;
@@ -76,7 +62,6 @@ export interface OperatorMaterialEntry {
   elite2?: Elite2Materials;
 }
 
-/** operator-materials.json 的完整结构。 */
 export interface OperatorMaterialsOutput {
   operators: Record<string, OperatorMaterialEntry>;
   metadata: {
@@ -88,7 +73,6 @@ export interface OperatorMaterialsOutput {
   };
 }
 
-/** 职业映射。 */
 const professionMap: Record<string, string> = {
   'PIONEER': '先锋',
   'WARRIOR': '近卫',
@@ -100,7 +84,6 @@ const professionMap: Record<string, string> = {
   'SPECIAL': '特种'
 };
 
-/** 从 URL 获取 JSON 数据。 */
 function fetchJson(url: string): Promise<unknown> {
   return new Promise((resolvePromise, rejectPromise) => {
     https.get(url, (response) => {
@@ -121,7 +104,6 @@ function fetchJson(url: string): Promise<unknown> {
   });
 }
 
-/** 解析单条精英化消耗。 */
 function readEvolveCost(value: unknown, charId: string, phaseIndex: number, costIndex: number): EvolveCost {
   const label = `干员 ${charId} 的 phases[${phaseIndex}].evolveCost[${costIndex}]`;
   const cost = expectRecord(value, CHARACTER_SOURCE, label);
@@ -130,7 +112,6 @@ function readEvolveCost(value: unknown, charId: string, phaseIndex: number, cost
   return { id, count };
 }
 
-/** 解析单个精英化阶段。 */
 function readPhase(value: unknown, charId: string, index: number): CharacterPhase {
   const phase = expectRecord(value, CHARACTER_SOURCE, `干员 ${charId} 的 phases[${index}]`);
   const evolveCosts = optionalArray(phase.evolveCost, CHARACTER_SOURCE, `干员 ${charId} 的 phases[${index}].evolveCost`);
@@ -140,7 +121,6 @@ function readPhase(value: unknown, charId: string, index: number): CharacterPhas
   };
 }
 
-/** 解析单个干员条目，未使用的字段不入对象。 */
 function readCharacterEntry(value: unknown, charId: string): CharacterEntry {
   const entry = expectRecord(value, CHARACTER_SOURCE, `干员 ${charId}`);
   const phases = optionalArray(entry.phases, CHARACTER_SOURCE, `干员 ${charId} 的 phases`)
@@ -155,7 +135,6 @@ function readCharacterEntry(value: unknown, charId: string): CharacterEntry {
   };
 }
 
-/** 解析 item_table.json 中的物品名称。 */
 function readItemNames(payload: unknown): ItemNames {
   const table = expectRecord(payload, ITEM_SOURCE);
   const items = expectRecord(table.items, ITEM_SOURCE, 'items');
@@ -176,7 +155,6 @@ function readRarity(rarity: CharacterEntry['rarity']): number {
   return 0;
 }
 
-/** 组装单条材料消耗。 */
 function toMaterialCost(cost: EvolveCost, itemNames: ItemNames): MaterialCost {
   return {
     id: cost.id,
@@ -185,7 +163,6 @@ function toMaterialCost(cost: EvolveCost, itemNames: ItemNames): MaterialCost {
   };
 }
 
-/** 解析干员材料数据。 */
 export function parseOperatorMaterials(characterPayload: unknown, itemPayload: unknown): Record<string, OperatorMaterialEntry> {
   const characterTable = expectRecord(characterPayload, CHARACTER_SOURCE);
   const itemNames = readItemNames(itemPayload);
@@ -194,13 +171,11 @@ export function parseOperatorMaterials(characterPayload: unknown, itemPayload: u
   for (const [charId, value] of Object.entries(characterTable)) {
     const charInfo = readCharacterEntry(value, charId);
 
-    // 只处理可招募的干员（排除敌人、NPC等）
     if (!charInfo.phases || charInfo.phases.length === 0) continue;
     if (charInfo.isNotObtainable) continue;
 
     const rarity = readRarity(charInfo.rarity);
 
-    // 只处理 4 星及以上
     if (rarity < 4) continue;
 
     if (charInfo.name === undefined) {
@@ -214,7 +189,6 @@ export function parseOperatorMaterials(characterPayload: unknown, itemPayload: u
       profession: professionMap[charInfo.profession ?? ''] || charInfo.profession
     };
 
-    // 解析精英化材料
     if (charInfo.phases.length >= 2) {
       const phase1 = charInfo.phases[1];
       if (phase1.evolveCost) {
@@ -234,11 +208,9 @@ export function parseOperatorMaterials(characterPayload: unknown, itemPayload: u
         const chips: MaterialCost[] = [];
 
         for (const cost of phase2.evolveCost) {
-          if (cost.id === '4001') continue; // 跳过龙门币
-
+          if (cost.id === '4001') continue;
           const item = toMaterialCost(cost, itemNames);
 
-          // 芯片组单独分类
           if (cost.id.startsWith('32')) {
             chips.push(item);
           } else {
@@ -254,7 +226,6 @@ export function parseOperatorMaterials(characterPayload: unknown, itemPayload: u
       }
     }
 
-    // 只保存有精英化数据的干员
     if (operator.elite1 || operator.elite2) {
       operators[charId] = operator;
     }
@@ -263,7 +234,6 @@ export function parseOperatorMaterials(characterPayload: unknown, itemPayload: u
   return operators;
 }
 
-/** 组装输出文件内容。 */
 export function buildOperatorMaterialsOutput(
   operators: Record<string, OperatorMaterialEntry>,
   lastUpdated: string
@@ -280,7 +250,6 @@ export function buildOperatorMaterialsOutput(
   };
 }
 
-/** 测试与手工运行可替换的副作用端口。 */
 export interface FetchOperatorMaterialsDeps {
   fetchJson?: (url: string) => Promise<unknown>;
   writeFile?: (filePath: string, data: string) => Promise<void>;
@@ -288,7 +257,6 @@ export interface FetchOperatorMaterialsDeps {
   now?: () => Date;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchOperatorMaterialsDeps = {}): Promise<OperatorMaterialsOutput> {
   const fetchPayload = deps.fetchJson ?? fetchJson;
   const write = deps.writeFile ?? ((filePath: string, data: string) => writeFile(filePath, data, 'utf-8'));
@@ -314,7 +282,6 @@ export async function main(deps: FetchOperatorMaterialsDeps = {}): Promise<Opera
   console.log(`✓ 成功！数据已保存到: ${outputPath}`);
   console.log(`\n统计信息:`);
 
-  // 统计各稀有度数量
   const rarityCount: Record<number, number> = {};
   for (const op of Object.values(operators)) {
     rarityCount[op.rarity] = (rarityCount[op.rarity] || 0) + 1;

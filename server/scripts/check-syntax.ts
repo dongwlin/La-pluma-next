@@ -28,7 +28,6 @@ export function collectJavaScriptSources(rootDir: string): string[] {
   return collectFiles(rootDir, JAVASCRIPT_EXTENSIONS).sort();
 }
 
-/** 逐个文件运行 `node --check`，返回失败项与其输出。 */
 export function checkSyntax(files: string[]): Array<{ file: string; output: string }> {
   const failures: Array<{ file: string; output: string }> = [];
   for (const file of files) {

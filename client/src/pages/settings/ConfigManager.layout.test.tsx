@@ -692,11 +692,9 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const editor = container.querySelector('.config-editor-card')
-    expect(editor?.textContent).toContain('当前资源来源保持不变')
-    expect(editor?.querySelector('select')).toBeNull()
-    expect(Array.from(editor?.querySelectorAll('button') ?? []).some(button => button.textContent?.trim() === '保存')).toBe(false)
-    // 目录卡片与只读头部共享同一 Query，首屏只读取一次。
+    expect(container.textContent).toContain('当前资源来源保持不变')
+    expect(container.querySelector('select')).toBeNull()
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.trim() === '保存')).toBe(false)
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
     const instanceButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('实例'))
@@ -704,8 +702,8 @@ describe('ConfigManager layout surfaces', () => {
       instanceButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    expect(editor?.textContent).toContain('触摸模式等实例选项保持当前设置')
-    expect(editor?.querySelector('select')).toBeNull()
+    expect(container.textContent).toContain('触摸模式等实例选项保持当前设置')
+    expect(container.querySelector('select')).toBeNull()
   })
 
   it('reports an initial connection read failure in place and globally', async () => {
@@ -714,7 +712,7 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const alert = container.querySelector('.config-editor-card [role="alert"]')
+    const alert = container.querySelector('[role="alert"]')
     expect(alert?.textContent).toContain('连接配置读取失败: 配置不可读')
     expect(mocks.setMessage).toHaveBeenCalledWith('连接配置读取失败: 配置不可读', 'error')
   })
@@ -801,14 +799,13 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const editor = container.querySelector('.config-editor-card')
-    expect(editor?.textContent).toContain('触摸模式等实例选项保持当前设置')
+    expect(container.textContent).toContain('触摸模式等实例选项保持当前设置')
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'resource' }))
     })
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('resource')
-    expect(editor?.textContent).toContain('当前资源来源保持不变')
+    expect(container.textContent).toContain('当前资源来源保持不变')
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'unknown' }))
@@ -819,9 +816,7 @@ describe('ConfigManager layout surfaces', () => {
       .find(button => button.textContent?.includes('连接'))
     await act(async () => connectionButton?.click())
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('connection')
-    // 连接与只读 section 是两个独立面板；切回连接后重新取当前编辑器。
-    const connectionEditor = container.querySelector('.config-editor-card')
-    expect(connectionEditor?.querySelector('select')).not.toBeNull()
+    expect(container.querySelector('select')).not.toBeNull()
 
     await act(async () => {
       root.render(null)
@@ -884,8 +879,9 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => buttonByText('更新 MaaCore')?.click())
     await flush()
 
-    const editorAlert = container.querySelector('.config-editor-card [role="alert"]')
-    const updateAlert = container.querySelector('.config-update-card [role="alert"]')
+    const alerts = Array.from(container.querySelectorAll<HTMLElement>('[role="alert"]'))
+    const editorAlert = alerts.find(alert => alert.textContent?.includes('连接配置保存失败'))
+    const updateAlert = alerts.find(alert => alert.textContent?.includes('下载失败'))
     expect(editorAlert?.textContent).toContain('连接配置保存失败: 磁盘只读')
     expect(updateAlert?.textContent).toContain('下载失败')
     expect(editorAlert?.textContent).not.toContain('下载失败')

@@ -1,10 +1,3 @@
-/**
- * 作业集 Run 投影
- *
- * 服务端作业集 Run 已持有集合身份与逐项结果：活动期由 `progress` 投影，
- * 终态后由 `result.summary` 保留。页面只读这些事实，不自行推导“下一项”或完成语义。
- */
-
 import type { AgentRun, RunState } from '@/features/task-execution'
 import { isActiveRunState } from '@/features/task-execution'
 
@@ -40,10 +33,6 @@ export interface CopilotSetRunProjection {
   currentItemIndex: number | null
   nextEntry: CopilotSetEntryProjection | null
   entries: CopilotSetEntryProjection[]
-  /**
-   * 同一作业在突袭/普通模式下有多个条目时的展示状态，按最差结果折叠到作业索引。
-   * 只有每个模式都成功才折叠为 `success`；单个条目成功不代表作业完成。
-   */
   itemStatuses: Map<number, CopilotSetItemStatus>
   /** 本次 Run 涉及的作业数量（突袭+普通只算一个作业）。 */
   itemCount: number

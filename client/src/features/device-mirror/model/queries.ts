@@ -1,10 +1,3 @@
-/**
- * 投屏/截图预览域只读资源 Query 定义
- *
- * 设备采样是独立于总览业务快照的轮询资源：失败静默保留上一份样本，
- * 不参与五路业务快照的有效性判定，也不写入总览的持久化缓存。
- */
-
 import { queryOptions } from '@tanstack/react-query'
 import { unwrapApiResponse } from '@/shared/api'
 import { getDeviceStats } from '../api'

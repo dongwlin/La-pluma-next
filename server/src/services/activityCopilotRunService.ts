@@ -52,13 +52,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 读取结构化错误上的 message；非字符串按缺失处理。 */
 function errorMessageOf(error: unknown): string | undefined {
   if (!isRecord(error) || typeof error.message !== 'string') return undefined;
   return error.message;
 }
 
-/** 活动预检中与刷新判断有关的字段；不要求完整预检结果。 */
 export interface ActivityRefreshPreflight {
   reasonCode?: string | null;
   activity?: { code?: string | null } | null;
@@ -74,7 +72,6 @@ export function shouldRefreshActivityNavigation(
     now - lastAttemptAt >= RESOURCE_REFRESH_INTERVAL;
 }
 
-/** 活动完成度投影：只暴露本地进度能确认的关卡。 */
 export interface ActivityCompletionSummary {
   known: boolean;
   complete: boolean;
@@ -83,13 +80,11 @@ export interface ActivityCompletionSummary {
   source: 'local-activity-progress';
 }
 
-/** 活动代号在持久进度中的记录：关卡代号与最后一次写入时间。 */
 export interface ActivityProgressEntry {
   stages: string[];
   updatedAt?: string;
 }
 
-/** 持久进度条目中的已完成关卡；非数组或非字符串条目按缺失处理。 */
 function readCompletedStages(value: unknown): string[] {
   const entry = isRecord(value) ? value : {};
   return Array.isArray(entry.stages)
@@ -97,7 +92,6 @@ function readCompletedStages(value: unknown): string[] {
     : [];
 }
 
-/** 读取单个活动代号的进度记录；非对象条目按缺失处理。 */
 function readActivityProgressEntry(progress: unknown, code: string): ActivityProgressEntry | null {
   if (!isRecord(progress) || !isRecord(progress[code])) return null;
   const entry = progress[code];
@@ -139,7 +133,6 @@ export async function getActivityCompletion(activity: unknown = {}): Promise<Act
   return summarizeActivityCompletion(activity, await activityProgressStore.load());
 }
 
-/** 记录已完成条目；返回写回后的进度文档，其他活动代号的原始键原样保留。 */
 export async function recordActivityCompletion(
   activity: unknown,
   entries: unknown
@@ -166,7 +159,6 @@ function normalizeRaid(value: unknown): CopilotRaid {
   return 'normal';
 }
 
-/** 战斗配置中的作业偏好：原始值保持 unknown，由执行选项与任务参数各自收窄。 */
 export interface CombatCopilotPreferences {
   raid: CopilotRaid;
   loopTimes: unknown;
@@ -197,13 +189,11 @@ export function getCombatCopilotPreferences(combatTasks: unknown = {}): CombatCo
   };
 }
 
-/** 单个活动的关卡候选：执行计划只取每关第一份可靠候选。 */
 export interface ActivityStageCandidates {
   stage: string;
   candidates?: readonly ActivityCopilotCandidate[];
 }
 
-/** 执行计划依赖的候选发现投影：预检、关卡候选与可选的匹配作业集。 */
 export interface ActivityCandidatePlan {
   state?: unknown;
   reason?: unknown;
@@ -213,7 +203,6 @@ export interface ActivityCandidatePlan {
   navigationMode?: 'current-map-fallback' | 'home-navigation';
 }
 
-/** 活动作业执行条目：由候选收窄而来，交给已选条目执行入口。 */
 export interface ActivityCopilotRunEntry extends CopilotExecutionEntry {
   copilotId: number;
   displayStage: string;
@@ -223,14 +212,12 @@ export interface ActivityCopilotRunEntry extends CopilotExecutionEntry {
   uri: string;
 }
 
-/** 未就绪的执行计划：原因必须能解释为何不执行任何条目。 */
 export interface ActivityBlockedRunPlan {
   state: 'blocked';
   reason: string;
   entries: ActivityCopilotRunEntry[];
 }
 
-/** 就绪的执行计划：`activity` 与逐关条目可直接交给执行入口。 */
 export interface ActivityReadyRunPlan {
   state: 'ready';
   reason: string;
@@ -331,7 +318,6 @@ export interface ActivityRunNotExecuted extends ActivityRunBase {
   plan: ActivityBlockedRunPlan;
 }
 
-/** 已执行：`execution` 为作业集或已选条目两条执行入口之一的原始结果。 */
 export interface ActivityRunExecuted extends ActivityRunBase {
   executed: true;
   source: 'matching-set' | 'composed-candidates';
@@ -341,7 +327,6 @@ export interface ActivityRunExecuted extends ActivityRunBase {
 
 export type ActivityCopilotRunResult = ActivityRunNotExecuted | ActivityRunExecuted;
 
-/** 作业集执行失败时，错误上附带已结算的逐项结果。 */
 function readCopilotPlanResults(error: unknown): unknown[] {
   if (!isRecord(error)) return [];
   const copilotPlan = error.copilotPlan;

@@ -1,10 +1,3 @@
-/**
- * 配置 section 导航
- *
- * section 的存储与 window 事件由 `useConfigSection` 订阅；这里只渲染分段
- * 按钮与流体高亮，键盘导航与容器测量仍复用 `useFluidTabIndicator`。
- */
-
 import { motion, useReducedMotion } from 'framer-motion'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
 import {

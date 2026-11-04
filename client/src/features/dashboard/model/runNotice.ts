@@ -1,10 +1,3 @@
-/**
- * Dashboard 执行提示
- *
- * 只描述本页发起的日常流程 run 的终态文案；身份归属由执行控制器的
- * `trackedScope` 决定，这里不判断“是不是本页的 run”。
- */
-
 import { isTerminalRunState, type AgentRun } from '@/features/task-execution'
 import type { StatusMessageType } from '@/features/runtime-status'
 

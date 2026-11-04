@@ -287,7 +287,6 @@ describe('parseDepotData', () => {
     const cached = expectSuccess(await parseDepotData(fixture.ports));
     assert.equal(cached.items[0].name, '源岩', 'the per-path index cache is reused within one process');
 
-    // 另一路径不复用上面的缓存：新路径读取自己的索引。
     const other = await createFixture();
     await writeFile(other.itemIndexPath, JSON.stringify({
       30011: { name: '另一份索引', icon: '30011.png', classifyType: 'NORMAL', sortId: 10001 }

@@ -1,10 +1,3 @@
-/**
- * 总览今日掉落摘要卡
- *
- * 只订阅 `dropSummary`，并按需导航到数据页；不读取统计 Query，也不修改
- * 完整快照。
- */
-
 import { ChevronRight, PackageOpen } from 'lucide-react'
 import { Card, IconButton } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'

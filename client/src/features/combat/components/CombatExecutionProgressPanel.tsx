@@ -1,11 +1,3 @@
-/**
- * 本次执行进度面板
- *
- * 只补充其它位置没有的进度事实：本次第 N/M 个执行条目、当前关卡与已用时。
- * 运行状态与停止入口由执行卡片持有，逐项结果由作业列表与续跑进度持有，
- * 面板不复制这些内容，不推断完成语义，也不发起请求；缺少全部事实时整块隐藏。
- */
-
 import { useEffect, useState } from 'react'
 import { formatExecutionElapsed } from '../model/executionProgress'
 import type { ExecutionProgressView } from '../model/executionProgress'
@@ -20,7 +12,6 @@ export default function CombatExecutionProgressPanel({
   // 活动 Run 的已用时每秒推进；终态 Run 直接用服务端 durationMs，不再计时。
   const [now, setNow] = useState(() => Date.now())
   const isActiveRun = (progress?.isActive ?? false) && progress?.startedAtMs !== null
-  // 已用时按秒推进：Run 出现后先对齐一次当前时刻，再按固定间隔走秒。
   useEffect(() => {
     if (!isActiveRun) return undefined
     const tick = () => setNow(Date.now())
@@ -38,7 +29,6 @@ export default function CombatExecutionProgressPanel({
     progress.durationMs
       ?? (progress.startedAtMs === null ? null : Math.max(0, now - progress.startedAtMs)),
   )
-  // 条目位置按本次执行队列编号；both 作业的两个模式各占一项，不能读作关卡数。
   const stepText = progress.step
     ? `本次第 ${progress.step.current}${progress.step.total !== null ? ` / ${progress.step.total}` : ''} 项`
     : null

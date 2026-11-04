@@ -1,20 +1,8 @@
-/**
- * 统一日志服务
- * 提供结构化的日志记录和管理
- *
- * 适配职责：本模块是所有结构化日志的统一出口。
- * - 从日志上下文补齐 requestId/runId/operationId，使同一请求或同一执行
- *   的日志可以互相核对（控制台用 req=/run=/op= 短标签，结构化字段保持全名）；
- * - 对 message 与 data 统一脱敏，凭据类字段不进入内存日志或控制台；
- * - WARN/ERROR 写入 stderr，其余级别写入 stdout。
- */
-
 import { getLogContext } from './logContext.ts';
 import { redactLogData, redactLogText } from './logRedaction.ts';
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS';
 
-/** 单条内存日志的公开字段。 */
 export interface LogEntry {
   time: string;
   level: LogLevel;
@@ -41,13 +29,10 @@ class Logger {
   constructor(name: string, options: LoggerOptions = {}) {
     this.name = name;
     this.logs = [];
-    this.maxLogs = options.maxLogs || 1000; // 最多保留的日志条数
-    this.enableConsole = options.enableConsole !== false; // 默认输出到控制台
+    this.maxLogs = options.maxLogs || 1000;
+    this.enableConsole = options.enableConsole !== false;
   }
 
-  /**
-   * 记录日志
-   */
   log(level: LogLevel, message: string, data: unknown = null): LogEntry {
     const context = getLogContext();
     const entry: LogEntry = {
@@ -64,10 +49,8 @@ class Logger {
       entry.data = redactLogData(data);
     }
 
-    // 添加到内存日志
     this.logs.push(entry);
 
-    // 限制日志数量
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
@@ -96,9 +79,6 @@ class Logger {
     return entry;
   }
 
-  /**
-   * 获取日志级别对应的 emoji
-   */
   getLevelEmoji(level: LogLevel): string {
     const emojis: Record<LogLevel, string> = {
       DEBUG: '🔍',
@@ -110,9 +90,6 @@ class Logger {
     return emojis[level] || 'ℹ️';
   }
 
-  /**
-   * 便捷方法
-   */
   debug(message: string, data?: unknown): LogEntry {
     return this.log('DEBUG', message, data);
   }
@@ -133,38 +110,23 @@ class Logger {
     return this.log('SUCCESS', message, data);
   }
 
-  /**
-   * 获取最近的日志
-   */
   getRecentLogs(count: number = 100): LogEntry[] {
     const startIndex = Math.max(0, this.logs.length - count);
     return this.logs.slice(startIndex);
   }
 
-  /**
-   * 获取所有日志
-   */
   getAllLogs(): LogEntry[] {
     return [...this.logs];
   }
 
-  /**
-   * 清空日志
-   */
   clear(): void {
     this.logs = [];
   }
 
-  /**
-   * 按级别过滤日志
-   */
   filterByLevel(level: LogLevel): LogEntry[] {
     return this.logs.filter(log => log.level === level);
   }
 
-  /**
-   * 按时间范围过滤日志
-   */
   filterByTimeRange(startTime: Date, endTime: Date): LogEntry[] {
     return this.logs.filter(log => {
       const logTime = new Date(log.time);
@@ -173,9 +135,6 @@ class Logger {
   }
 }
 
-/**
- * 全局日志管理器
- */
 class LoggerManager {
   loggers: Map<string, Logger>;
 
@@ -183,9 +142,6 @@ class LoggerManager {
     this.loggers = new Map();
   }
 
-  /**
-   * 获取或创建 Logger 实例
-   */
   getLogger(name: string, options?: LoggerOptions): Logger {
     if (!this.loggers.has(name)) {
       this.loggers.set(name, new Logger(name, options));
@@ -193,21 +149,14 @@ class LoggerManager {
     return this.loggers.get(name)!;
   }
 
-  /**
-   * 获取所有日志（合并所有 Logger）
-   */
   getAllLogs(): LogEntry[] {
     const allLogs: LogEntry[] = [];
     for (const logger of this.loggers.values()) {
       allLogs.push(...logger.getAllLogs());
     }
-    // 按时间排序
     return allLogs.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   }
 
-  /**
-   * 清空所有日志
-   */
   clearAll(): void {
     for (const logger of this.loggers.values()) {
       logger.clear();
@@ -215,12 +164,8 @@ class LoggerManager {
   }
 }
 
-// 导出全局实例
 export const loggerManager = new LoggerManager();
 
-/**
- * 创建 Logger 的便捷函数
- */
 export function createLogger(name: string, options?: LoggerOptions): Logger {
   return loggerManager.getLogger(name, options);
 }

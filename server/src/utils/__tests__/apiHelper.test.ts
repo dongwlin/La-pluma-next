@@ -1,10 +1,5 @@
-/**
- * apiHelper 工具类测试
- * 运行: node --test server/src/utils/__tests__/apiHelper.test.ts
- */
-
 import { describe, it, afterEach } from 'node:test';
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import express from 'express';
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
@@ -242,7 +237,6 @@ describe('apiHelper', () => {
         details: { owner: 'run-1' },
         retryable: true
       });
-      // 已知 4xx 按 WARN 记录，日志行保留原有方法/路径/状态/code 信息
       assert.ok(consoleLines[0].includes('[Api][WARN]'));
       assert.ok(consoleLines[0].includes('[API] POST /api/agent/actions/start -> 409 MAA_EXECUTION_BUSY MAA 正在被其他任务使用'));
     });
@@ -276,7 +270,6 @@ describe('apiHelper', () => {
       });
       assert.ok(!JSON.stringify(res.body).includes('内部堆栈泄露标记'));
       assert.ok(!consoleLines.join('\n').includes('内部堆栈泄露标记'));
-      // 未知 5xx 按 ERROR 记录，与已知 4xx 的 WARN 分级区分
       assert.ok(consoleLines[0].includes('[Api][ERROR]'));
     });
 
@@ -462,7 +455,6 @@ describe('apiHelper', () => {
       }));
       app.use('/api', apiErrorHandler);
       app.use((error: unknown, _req: unknown, _res: unknown, _next: unknown) => {
-        // 响应已完成，这里只记录错误链收到的异常，不再向下转发
         forwarded.push(error);
       });
 

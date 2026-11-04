@@ -1,10 +1,3 @@
-/**
- * 通知配置的领域形状与归一
- *
- * 通知开关与 Telegram 凭据是自动化域的只读资源，由 Query 缓存持有；
- * 保存成功后写回同一 key，不把配置复制进模块级缓存或 Zustand。
- */
-
 export interface TelegramConfig {
   enabled: boolean
   botToken: string

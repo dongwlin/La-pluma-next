@@ -22,19 +22,6 @@ import type {
   ExecuteCopilotEntriesInput
 } from './copilotPlanService.ts';
 
-/**
- * 作业集会话
- *
- * 类型边界：
- * - 会话只描述集合自己的持有范围：`continuous` 全程持有，`manual` 在条目之间
- *   转 `waiting` 并释放设备租约；会话不持久化，进程重启后按 `interrupted` 恢复；
- * - 条目状态（会话内 `running` 与结算后的 `pending`/`success`/`failed`/`stopped`）
- *   与集合级结果（`waitingForNext`/`finished`/`stopped` 与汇总）分别建模；
- *   `skipped` 不进入会话：未选中且此前未完成的条目在投影时按计划推导；
- * - 作业站计划、执行结果与错误载荷都来自已类型化的 `copilotPlanService`；
- *   Run 生命周期只经 `agentRunService` 的公开入口变更。
- */
-
 const TERMINAL_RUN_STATES: ReadonlySet<AgentRunStatus> = new Set<AgentRunStatus>([
   'succeeded',
   'failed',
@@ -42,10 +29,8 @@ const TERMINAL_RUN_STATES: ReadonlySet<AgentRunStatus> = new Set<AgentRunStatus>
   'interrupted'
 ]);
 
-/** 集合执行模式：连续执行整队列，或在条目之间等待用户继续。 */
 export type CopilotSetMode = 'continuous' | 'manual';
 
-/** 集合会话内部阶段；`waiting` 表示 manual 集正在等待下一关。 */
 export type CopilotSetSessionPhase = 'starting' | 'running' | 'waiting' | 'finished' | 'stopped';
 
 /**
@@ -54,18 +39,15 @@ export type CopilotSetSessionPhase = 'starting' | 'running' | 'waiting' | 'finis
  */
 export type CopilotSetEntryStatus = 'running' | 'skipped' | CopilotEntryOutcomeStatus;
 
-/** 单个条目的会话内结算状态；未结算条目缺省为 `pending`。 */
 export interface CopilotSetEntryState {
   status: CopilotSetEntryStatus;
   error?: string;
 }
 
-/** 逐项结果投影：字段与 MAA 执行汇总一致，状态额外包含会话内的 `running`。 */
 export interface CopilotSetTaskResult extends Omit<CopilotTaskResult, 'status'> {
   status: CopilotSetEntryStatus;
 }
 
-/** 失败汇总中的一条错误。 */
 export interface CopilotSetSummaryError {
   key: string;
   stage: string;
@@ -106,7 +88,6 @@ export interface CopilotSetEntryResult extends CopilotPlanEntry {
   stopped?: boolean;
 }
 
-/** 集合 Run 的结果载荷：随 Run 终态或等待状态写入。 */
 export interface CopilotSetRunResult {
   success: true;
   stopped: boolean;
@@ -125,7 +106,6 @@ export interface CopilotSetRunResult {
   summary: CopilotSetSummary;
 }
 
-/** manual 会话继续/开始后的返回：等待下一关、已完成，或已被停止。 */
 export interface CopilotSetWaitingOutcome {
   waitingForNext: boolean;
   finished: boolean;
@@ -172,7 +152,6 @@ export interface CopilotSetStopOutcome {
   run: AgentRunDto;
 }
 
-/** 计划准备完成后交给调用方的摘要，用于先返回接受响应。 */
 export interface CopilotSetPreparedInfo {
   setId: string;
   name: string;
@@ -182,7 +161,6 @@ export interface CopilotSetPreparedInfo {
   selectedCount: number;
 }
 
-/** 集合生命周期：执行钩子沿用 `CopilotExecutionLifecycle`，另加计划准备回调。 */
 export interface CopilotSetLifecycle extends CopilotExecutionLifecycle {
   onPrepared?: (info: CopilotSetPreparedInfo) => void;
 }
@@ -201,7 +179,6 @@ export interface ContinueCopilotSetInput {
   lifecycle?: CopilotSetLifecycle;
 }
 
-/** 会话内存状态：持有范围只覆盖当前进程内的集合队列。 */
 export interface CopilotSetSession {
   runId: string;
   setId: string;
@@ -222,10 +199,6 @@ export interface CopilotSetSession {
   startedAt: number;
 }
 
-/**
- * 运行依赖：默认接线真实实现；测试替换计划读取与条目执行，同时保留真实 Run
- * 记录与设备租约，使等待/停止编排仍走生产路径。
- */
 export interface CopilotSetRuntime {
   buildCopilotPlan(setId: string | number, raid?: unknown): Promise<CopilotPlan>;
   executeCopilotEntries(input: ExecuteCopilotEntriesInput): Promise<CopilotEntriesOutcome>;
@@ -273,7 +246,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 读取结构化错误上的字符串字段；非字符串按缺失处理。 */
 function readOptionalString(value: unknown, key: string): string | undefined {
   if (!isRecord(value)) return undefined;
   const field = value[key];
@@ -292,7 +264,6 @@ function readRecordField(value: unknown, key: string): Record<string, unknown> {
   return isRecord(field) ? field : {};
 }
 
-/** 错误文案：优先 `message`，否则退回字符串化后的原值。 */
 function describeError(error: unknown): string {
   return readOptionalString(error, 'message') || String(error);
 }
@@ -392,7 +363,6 @@ function mergeOutcome(session: CopilotSetSession, outcome: CopilotEntriesOutcome
   }
 }
 
-/** 本次集合实际执行（或将要执行）的条目投影，按队列顺序排列。 */
 function attemptedTaskResults(session: CopilotSetSession): CopilotSetTaskResult[] {
   return session.queue.map(entry => {
     const settled: CopilotSetEntryState = session.results.get(entry.key) || { status: 'pending' };
@@ -412,7 +382,6 @@ function attemptedTaskResults(session: CopilotSetSession): CopilotSetTaskResult[
   });
 }
 
-/** 计划中未选中且此前未完成的条目：本次集合明确跳过，状态固定为 `skipped`。 */
 function skippedEntriesOf(session: CopilotSetSession): CopilotPlanEntry[] {
   const scopedKeys = new Set(session.scope.map(entry => entry.key));
   return session.plan.entries.filter(entry => !entry.completed && !scopedKeys.has(entry.key));
@@ -883,8 +852,6 @@ export function getCopilotSetRunProgress(runId: string): CopilotSetProgress | nu
     taskResults.filter(result => result.status === status).length;
   const pendingEntry = nextPendingEntry(session);
   const runningEntry = session.queue.find(entry => statusOf(session, entry) === 'running') || null;
-  // currentStep 是当前正在执行（无则下一个待执行）条目在待执行队列中的 1 基
-  // 序号；全部结算后收敛为 totalSteps。skipped 条目不在队列里，不参与编号。
   const currentStepEntry = runningEntry || pendingEntry;
   const currentStep = currentStepEntry
     ? session.queue.findIndex(entry => entry.key === currentStepEntry.key) + 1

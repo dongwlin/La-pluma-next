@@ -1,10 +1,6 @@
-/* La Pluma Next iOS 26 material and application chrome. */
-
 @layer base, components, page;
 
 @layer base {
-  /* La Pluma Next's iOS 26-inspired material and application chrome. */
-
   :root {
     --app-chrome-page-bg: #f2f2f7;
     --app-chrome-bg: rgba(255, 255, 255, 0.72);
@@ -210,12 +206,12 @@
 
   html,
   body {
-    /* S3: 无需 !important，base 层内本规则位于 index.css 之后。 */
+    /* 无需 !important，base 层内本规则位于 index.css 之后。 */
     background: var(--app-chrome-page-bg);
   }
 
   body {
-    /* S3: 无需 !important，这里覆盖 index.css 的同层 body 规则。 */
+    /* 无需 !important，这里覆盖 index.css 的同层 body 规则。 */
     overflow: hidden;
     background-image: none;
     padding-bottom: 0;
@@ -380,7 +376,7 @@
   .la-pluma-theme-mobile {
     display: flex;
 
-    /* S3: 44px 固定命中目标，压过 flex-none 工具类。 */
+    /* 44px 固定命中目标，压过 flex-none 工具类。 */
     flex: 0 0 2.75rem !important;
     align-items: center;
     justify-content: center;
@@ -1098,7 +1094,7 @@
   }
 
   .la-pluma-app .la-pluma-tabbar-pill .la-pluma-tab-link.is-mobile-tab svg {
-    /* S3: tabbar 图标固定 24px，需压过导航图标上的 w-5 / h-5 utilities。 */
+    /* tabbar 图标固定 24px，需压过导航图标上的 w-5 / h-5 utilities。 */
     width: 1.5rem !important;
     height: 1.5rem !important;
     flex: 0 0 auto;
@@ -1254,7 +1250,7 @@
   }
 
   .la-pluma-app .app-page-header-icon {
-    /* S3: 页头图标不再使用圆角底色，压过 rounded-* utilities。 */
+    /* 页头图标不再使用圆角底色，压过 rounded-* utilities。 */
     border-radius: 0 !important;
     background: transparent;
     color: var(--app-text-muted);
@@ -1283,7 +1279,7 @@
      layout and shadow shell. This preserves grid/flex semantics and keeps the
      soft outer shadow outside the clipped region. */
   .la-pluma-app .app-card[data-smooth-corners='true'] {
-    /* S3: smooth 卡片由外壳裁剪，卡片本身保持 visible，压过页面级 overflow 规则。 */
+    /* smooth 卡片由外壳裁剪，卡片本身保持 visible，压过页面级 overflow 规则。 */
     display: flex;
     border: 0;
     border-radius: var(--app-continuous-radius);
@@ -1363,7 +1359,7 @@
   }
 
   .la-pluma-app .app-empty-state-icon {
-    /* S3: 空状态/页头图标使用无底色方形视觉，压过 rounded-* utilities。 */
+    /* 空状态/页头图标使用无底色方形视觉，压过 rounded-* utilities。 */
     border-radius: 0 !important;
     background: transparent;
     color: var(--app-text-soft);
@@ -1702,7 +1698,7 @@
 
     .la-pluma-app .app-page-header.is-mobile-inline .floating-status-anchor,
     .la-pluma-app .app-page-header.is-mobile-inline .floating-status-indicator {
-      /* S3: 移动端状态指示器必须收在页头操作区内，压过 100vw 的 max-w 工具类。 */
+      /* 移动端状态指示器必须收在页头操作区内，压过 100vw 的 max-w 工具类。 */
       width: fit-content !important;
       min-width: 0 !important;
       max-width: 100% !important;
@@ -1805,7 +1801,7 @@
      the shared controls. Opt-in semantics keep compact, specialized controls
      (time pickers, sliders, and task editors) unchanged. */
   :is(.la-pluma-app .la-pluma-content, .app-modal-layer) .app-native-control {
-    /* S3: 原生控件的字体与尺寸是组件基线，压过调用处的 font-mono / text-sm 等 utilities。 */
+    /* 原生控件的字体与尺寸是组件基线，压过调用处的 font-mono / text-sm 等 utilities。 */
     box-sizing: border-box;
     min-height: var(--app-control-height-md);
     border: 1px solid var(--app-border-strong);
@@ -1837,7 +1833,7 @@
     background-repeat: no-repeat;
     background-size: 1rem 1rem;
 
-    /* S3: 下拉框需要为箭头留出右侧空间，压过通用控件 padding。 */
+    /* 下拉框需要为箭头留出右侧空间，压过通用控件 padding。 */
     padding-right: 2.5rem !important;
   }
 
@@ -1851,7 +1847,7 @@
     [data-automation-tasks],
     [data-workbench-tasks]
   ) select.app-native-control:not(.form-error-surface) {
-    /* S3: 无边框工作区的下拉框使用 500 字重，压过通用控件的 400。 */
+    /* 无边框工作区的下拉框使用 500 字重，压过通用控件的 400。 */
     font-weight: 500 !important;
   }
 
@@ -1892,7 +1888,7 @@
   }
 
   .la-pluma-app .la-pluma-content .app-native-button {
-    /* S3: 原生按钮的 iOS 尺寸/排版是组件基线，需压过页面级按钮覆盖。 */
+    /* 原生按钮的 iOS 尺寸/排版是组件基线，需压过页面级按钮覆盖。 */
     display: inline-flex;
     min-height: var(--app-control-height-md) !important;
     align-items: center;
@@ -1931,7 +1927,7 @@
   }
 
   .la-pluma-app .la-pluma-content .app-native-button-primary {
-    /* S3: 主按钮的前景色是组件语义，需压过页面级 .is-primary 覆盖。 */
+    /* 主按钮的前景色是组件语义，需压过页面级 .is-primary 覆盖。 */
     border-color: var(--app-accent-action);
     background: var(--app-accent-action);
     color: #fff !important;
@@ -1955,7 +1951,6 @@
       min-height: var(--app-control-height-md) !important;
     }
   }
-
 
   html,
   body,
@@ -1989,7 +1984,7 @@
 
 }
 
-  /* Root/standalone height chain (S3: moved from base so the component
+  /* Root/standalone height chain (moved from base so the component
      page shell cannot override it; same cascade as the former unlayered rule). */
 @layer page {
   /* Only summoned, overlapping layers receive Liquid Glass. Ordinary cards and

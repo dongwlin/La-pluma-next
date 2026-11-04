@@ -1,10 +1,3 @@
-/**
- * 作业页的任务目录与模式展示项
- *
- * 命令名、名称、占位与描述只服务本域页面；执行参数拼接仍在
- * `model/combatCommands.ts`。目录不读取配置、Query 或执行状态。
- */
-
 import type { ReactNode } from 'react'
 import Icons from '@/shared/ui/Icons'
 import type { CombatMode, CombatTask } from '../types'

@@ -1,11 +1,3 @@
-/**
- * 游戏数据共享 Query 定义
- *
- * 仓库、持有干员与干员目录由 statistics 与 training 共同读取，
- * query key、端点与载荷归一都归本域，页面不再各自维护加载状态。
- * 默认启用：页面首屏并行读取，是否读取不取决于当前 tab。
- */
-
 import { queryOptions } from '@tanstack/react-query'
 import { unwrapApiResponse } from '@/shared/api'
 import { getAllOperators, getDepotData, getOperBoxData } from '../api'

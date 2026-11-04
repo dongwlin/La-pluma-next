@@ -19,12 +19,9 @@ export type ExecutionAdmissionErrorCode =
   | 'MAA_EXECUTION_SHUTTING_DOWN';
 
 export interface ExecutionAdmissionStatus {
-  /** 闸门已关闭：拒绝新的设备执行 */
   closed: boolean;
-  /** 关闭原因（信号名或调用方提供的原因） */
   reason: string | null;
   closedAt: string | null;
-  /** 本闸门关闭后拒绝的准入次数，仅用于诊断与测试 */
   rejected: number;
 }
 
@@ -74,7 +71,6 @@ export function createExecutionAdmissionGate(): ExecutionAdmissionGate {
 
 let activeGate: ExecutionAdmissionGate | null = null;
 
-/** 安装新闸门；组装入口在挂接执行关闭步骤时调用。缺省创建处于打开状态的新闸门。 */
 export function installExecutionAdmissionGate(
   gate: ExecutionAdmissionGate = createExecutionAdmissionGate()
 ): ExecutionAdmissionGate {

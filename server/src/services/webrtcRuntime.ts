@@ -1,22 +1,7 @@
 /**
- * WebRTC 预览运行时资源：平台二进制、宿主网络地址与上游发布包安装
- *
- * - 平台：只支持上游发布包提供的 linux/darwin 的 amd64/arm64，其他组合在
- *   取得路径前抛出 `WEBRTC_UNSUPPORTED_PLATFORM`，不猜测兼容目录。
- * - 网络：`LA_PLUMA_WEBRTC_HOST_IP` 显式覆盖优先，且必须是 IPv4；否则按设备
- *   地址的 IPv4 网段匹配非内部网卡，再退回非容器网卡，最后是回环地址。
- * - 安装：下载/读取上游 zip 后按固定 SHA-256 校验，解压产物先做布局校验
- *   （平台二进制、静态资源入口与 `agentd/run.sh` 必须真实存在），通过后才
- *   停止既有预览资源并落位；只复制 `bin`、`assets` 与 `agentd` 运行时资源，
- *   保留既有 checkout 与持久数据；成功后写版本标记 `la-pluma-runtime.json`。
- *   升级（overwrite）采用事务性目录切换：既有运行时目录先整体改名让位到
- *   `dir` 内的临时备份区（同文件系统，rename 原子），新布局就位并回填既有
- *   `agentd/run.sh` 备份后才清理备份区；任一步失败回滚为升级前布局。
- *   下载、解压、布局校验与切换任一步失败都不改变既有运行目录的最终内容，
- *   临时目录与备份区总是清理。
- *
- * 进程与设备副作用不在这里：本模块只解析平台、网络与发布包，spawn、ADB 和
- * 预览子进程的所有权在 `webrtcService.ts`。
+ * 预览运行时资源：只支持上游发布包的 linux/darwin amd64/arm64，其余平台在取路径前抛
+ * `WEBRTC_UNSUPPORTED_PLATFORM`。安装按固定 SHA-256 校验、先做布局校验再触碰既有运行
+ * 目录；升级用同文件系统 rename 做事务性切换，任一步失败回滚且总是清理临时区。
  */
 
 import { createHash } from 'node:crypto';
@@ -45,7 +30,6 @@ export interface WebrtcNetworkInterface {
   internal: boolean;
 }
 
-/** 以网卡名索引的接口表；缺省来自当前进程。 */
 export type WebrtcNetworkInterfaceMap = Readonly<
   Record<string, readonly WebrtcNetworkInterface[] | undefined>
 >;
@@ -169,7 +153,6 @@ export function getWebrtcHostIp(
   return lanInterface?.address || candidates[0]?.address || '127.0.0.1';
 }
 
-/** 运行时版本标记内容；`version` 是安装器固定的上游发布版本。 */
 export interface WebrtcRuntimeMarker {
   version: string;
   installedAt: string;
@@ -229,7 +212,6 @@ export function resolveWebrtcInstallAction(input: WebrtcInstallDecision): Webrtc
 export interface WebrtcReleaseApplyOptions {
   /** 升级既有安装：整体切换运行时目录，并把既有 agentd/run.sh 备份到同目录。 */
   overwrite?: boolean;
-  /** 被升级安装的原版本标记；仅用于命名 run.sh 备份文件。 */
   previousVersion?: string | null;
 }
 

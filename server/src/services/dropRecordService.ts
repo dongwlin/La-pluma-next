@@ -1,8 +1,3 @@
-/**
- * 掉落记录服务
- * 记录和管理每日的材料掉落数据
- */
-
 import path from 'path';
 import { readJsonFile, ensureDir, updateJsonFile } from '../utils/fileHelper.ts';
 import { successResponse, errorResponse } from '../utils/apiHelper.ts';
@@ -21,13 +16,11 @@ export const MAX_DROP_HISTORY_DAYS = 365;
 const DROP_RECORDS_DIR = APP_PATHS.dropRecordsDir;
 const MATERIALS_PATH = APP_PATHS.materialsPath;
 
-/** 单次掉落中的一项材料。 */
 export interface DropItem {
   name: string;
   count: number;
 }
 
-/** 记录一次掉落的输入；缺省字段沿用既有默认值。 */
 export interface DropRecordInput {
   stage: string;
   times?: number;
@@ -39,7 +32,6 @@ export interface DropRecordInput {
   mode?: string;
 }
 
-/** 落盘的单条掉落记录。 */
 export interface DropRecordEntry {
   timestamp: string;
   stage: string;
@@ -52,7 +44,6 @@ export interface DropRecordEntry {
   mode: string;
 }
 
-/** 单日汇总；itemsSummary 以材料名累计数量。 */
 export interface DropRecordSummary {
   totalSanity: number;
   totalMedicine: number;
@@ -61,20 +52,17 @@ export interface DropRecordSummary {
   itemsSummary: Record<string, number>;
 }
 
-/** 单日记录文件。 */
 export interface DropRecordDay {
   date: string;
   records: DropRecordEntry[];
   summary: DropRecordSummary;
 }
 
-/** 材料表中统计需要的字段；缺失时统计输出 null。 */
 export interface MaterialEntry {
   iconId?: string;
   rarity?: number;
 }
 
-/** 统计结果的物品视图。 */
 export interface DropStatisticsItem {
   count: number;
   stages: Record<string, number>;
@@ -82,14 +70,12 @@ export interface DropStatisticsItem {
   rarity: number | null;
 }
 
-/** 统计结果的关卡视图。 */
 export interface DropStatisticsStage {
   battles: number;
   sanity: number;
   items: Record<string, number>;
 }
 
-/** 统计结果的每日趋势条目。 */
 export interface DropStatisticsDailyTrend {
   date: string;
   sanity: number;
@@ -99,7 +85,6 @@ export interface DropStatisticsDailyTrend {
   items: Record<string, number>;
 }
 
-/** 掉落统计响应体。 */
 export interface DropStatistics {
   dateRange: {
     start: string | null;
@@ -117,7 +102,6 @@ export interface DropStatistics {
   dailyTrend: DropStatisticsDailyTrend[];
 }
 
-/** 记录目录与材料表路径的覆盖入口，供测试指向临时 fixture。 */
 export interface DropRecordPorts {
   recordsDir?: string;
   materialsPath?: string;
@@ -233,12 +217,10 @@ export function parseDropRecordDay(value: unknown): DropRecordDay | null {
   return { date: value.date, records, summary };
 }
 
-// 获取今天的记录文件路径
 function getTodayRecordPath(recordsDir: string): string {
   return path.join(recordsDir, `${getLocalDateString()}.json`);
 }
 
-// 创建空记录结构
 function createEmptyRecord(date = getLocalDateString()): DropRecordDay {
   return {
     date,
@@ -257,9 +239,6 @@ function resolveRecordsDir(ports: DropRecordPorts): string {
   return ports.recordsDir || DROP_RECORDS_DIR;
 }
 
-/**
- * 记录掉落数据
- */
 export async function recordDrops(
   dropData: DropRecordInput,
   ports: DropRecordPorts = {}
@@ -269,7 +248,6 @@ export async function recordDrops(
     await ensureDir(recordsDir);
     const recordPath = getTodayRecordPath(recordsDir);
 
-    // 使用 updateJsonFile 简化读取-修改-写入流程
     const todayRecord = await updateJsonFile<DropRecordDay>(
       recordPath,
       (existingRecord) => {
@@ -279,7 +257,6 @@ export async function recordDrops(
           throw new Error('掉落记录格式无效');
         }
 
-        // 添加新记录
         const newRecord: DropRecordEntry = {
           timestamp: new Date().toISOString(),
           stage: dropData.stage,
@@ -294,13 +271,11 @@ export async function recordDrops(
 
         record.records.push(newRecord);
 
-        // 更新汇总数据
         record.summary.totalSanity += newRecord.sanity;
         record.summary.totalMedicine += newRecord.medicine;
         record.summary.totalStone += newRecord.stone;
         record.summary.totalBattles += newRecord.times;
 
-        // 更新物品汇总
         for (const item of newRecord.items) {
           if (!record.summary.itemsSummary[item.name]) {
             record.summary.itemsSummary[item.name] = 0;
@@ -323,9 +298,6 @@ export async function recordDrops(
   }
 }
 
-/**
- * 获取今天的掉落记录
- */
 export async function getTodayDrops(
   ports: DropRecordPorts = {}
 ): Promise<ApiSuccessResponse<DropRecordDay> | ApiErrorResponse> {
@@ -334,7 +306,6 @@ export async function getTodayDrops(
     await ensureDir(recordsDir);
     const recordPath = getTodayRecordPath(recordsDir);
     const rawRecord = await readJsonFile(recordPath, null);
-    // 文件不存在时沿用既有行为：返回当天的空记录。
     const record = rawRecord === null ? createEmptyRecord() : parseDropRecordDay(rawRecord);
     if (!record) {
       throw new Error('掉落记录格式无效');
@@ -348,9 +319,6 @@ export async function getTodayDrops(
   }
 }
 
-/**
- * 获取指定日期范围的掉落记录
- */
 export async function getRecentDrops(
   days: unknown = 7,
   ports: DropRecordPorts = {}
@@ -395,9 +363,6 @@ export async function getRecentDrops(
   }
 }
 
-/**
- * 获取掉落统计（按物品汇总）
- */
 export async function getDropStatistics(
   days: unknown = 7,
   ports: DropRecordPorts = {}
@@ -410,7 +375,6 @@ export async function getDropStatistics(
 
     const records = recentResult.data;
 
-    // 汇总统计
     const statistics: DropStatistics = {
       dateRange: {
         start: records.length > 0 ? records[records.length - 1].date : null,
@@ -428,10 +392,8 @@ export async function getDropStatistics(
       dailyTrend: []
     };
 
-    // 加载材料数据
     const materialsMap = await loadMaterialsMap(ports);
 
-    // 遍历每天的记录
     for (const dayRecord of records) {
       const dailyData: DropStatisticsDailyTrend = {
         date: dayRecord.date,
@@ -444,19 +406,16 @@ export async function getDropStatistics(
 
       statistics.dailyTrend.push(dailyData);
 
-      // 累加总计
       statistics.total.sanity += dayRecord.summary.totalSanity;
       statistics.total.medicine += dayRecord.summary.totalMedicine;
       statistics.total.stone += dayRecord.summary.totalStone;
       statistics.total.battles += dayRecord.summary.totalBattles;
 
-      // 遍历每条记录
       for (const record of dayRecord.records) {
         processRecordForStatistics(record, statistics, materialsMap);
       }
     }
 
-    // 反转 dailyTrend，使其按时间正序排列
     statistics.dailyTrend.reverse();
 
     return successResponse(statistics);
@@ -476,7 +435,6 @@ function parseMaterialEntry(value: unknown): { name: string; entry: MaterialEntr
   return { name: value.name, entry };
 }
 
-// 加载材料数据映射
 async function loadMaterialsMap(ports: DropRecordPorts): Promise<Record<string, MaterialEntry>> {
   try {
     const materialsPath = ports.materialsPath || MATERIALS_PATH;
@@ -501,7 +459,6 @@ async function loadMaterialsMap(ports: DropRecordPorts): Promise<Record<string, 
   }
 }
 
-// 处理单条记录的统计
 function processRecordForStatistics(
   record: DropRecordEntry,
   statistics: DropStatistics,
@@ -509,7 +466,6 @@ function processRecordForStatistics(
 ): void {
   const stageName = record.stage;
 
-  // 统计关卡数据
   if (!statistics.stages[stageName]) {
     statistics.stages[stageName] = {
       battles: 0,
@@ -520,11 +476,9 @@ function processRecordForStatistics(
   statistics.stages[stageName].battles += record.times;
   statistics.stages[stageName].sanity += record.sanity;
 
-  // 统计物品数据
   for (const item of record.items) {
     const itemName = item.name;
 
-    // 全局物品统计
     if (!statistics.items[itemName]) {
       statistics.items[itemName] = {
         count: 0,
@@ -535,13 +489,11 @@ function processRecordForStatistics(
     }
     statistics.items[itemName].count += item.count;
 
-    // 物品在各关卡的掉落统计
     if (!statistics.items[itemName].stages[stageName]) {
       statistics.items[itemName].stages[stageName] = 0;
     }
     statistics.items[itemName].stages[stageName] += item.count;
 
-    // 关卡的物品掉落统计
     if (!statistics.stages[stageName].items[itemName]) {
       statistics.stages[stageName].items[itemName] = 0;
     }

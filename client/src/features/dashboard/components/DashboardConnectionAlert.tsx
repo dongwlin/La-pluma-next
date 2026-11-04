@@ -1,10 +1,3 @@
-/**
- * 总览连接提示
- *
- * 只在离线或后端不可用时渲染；连接健康来自 runtime-status，重试仍调用
- * 完整快照协调器的强制刷新，而不是页面另发请求。
- */
-
 import { ServerOff, WifiOff } from 'lucide-react'
 import { Button, SmoothPanel } from '@/shared/ui'
 import Icons from '@/shared/ui/Icons'

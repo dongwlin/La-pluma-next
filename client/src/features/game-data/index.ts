@@ -1,8 +1,3 @@
-/**
- * 游戏数据微域公开面
- * 仓库、持有干员与干员目录的唯一 API、类型与 query key 归属。
- */
-
 export { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from './api'
 export { useItemIconCacheVersion } from './hooks/useItemIconCacheVersion'
 export {

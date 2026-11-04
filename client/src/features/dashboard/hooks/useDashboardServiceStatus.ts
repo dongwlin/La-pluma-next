@@ -1,11 +1,3 @@
-/**
- * 总览的连接健康投影
- *
- * 只把 runtime-status 的 `backendStatus` 与浏览器在线状态映射成页面文案；
- * 连接探针仍由应用级 `useBackendStatusMonitor` 持有。连接提示与流程卡各自
- * 订阅所需切片，状态变化不会推动设备或摘要区域重渲染。
- */
-
 import { useOnlineStatus } from '@/shared/hooks/useOnlineStatus'
 import { useStatusStore } from '@/features/runtime-status'
 

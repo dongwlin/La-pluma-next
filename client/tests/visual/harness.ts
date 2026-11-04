@@ -8,25 +8,9 @@ import {
 } from './fixtures'
 
 /**
- * 视觉基线 harness 的公共部分：固定数据、外部资源、时间、动效与主题种子。
- *
- * 确定性手段：
- * 1. 数据解耦 — page.route 拦截 /api/**，全部返回 fixtures.ts 固定数据；
- *    未匹配的 /api 请求视为 harness 缺口直接判失败，防止静默假状态。
- * 2. 外部资源 — raw.githubusercontent.com 头像/物品图返回固定占位 PNG；
- *    Service Worker 注册在文档起点被替换为永久挂起的 promise，
- *    基线环境无 SW、也无 PWA 注册提示。
- * 3. 时间 — page.clock.setFixedTime 固定 Date 到 FIXED_NOW（2026-10-24
- *    04:00 UTC+8，明日方舟每日重置时刻），日期敏感内容不随当天变化。
- *    不暂停/推进时钟，保持真实时间速率，避免动画与可见性轮询停摆。
- *    Playwright 的 fixedTime 仍会安装整毫秒 clock facade；性能采样通过
- *    nativeClock 选项只替换 Date，保留原生 performance/timers/rAF。
- *    会随真实时间累积的数据（概览温度历史，5s 轮询）改为只应答首次
- *    请求、后续请求 abort，从机制上消除采样数漂移。
- * 4. 动效 — reducedMotion: 'reduce'（MotionConfig reducedMotion="user"
- *    据此即时完成动画）+ 文档级注入禁用 CSS 动画/过渡的样式，双保险。
- * 5. 主题 — 预置 zustand persist 的 localStorage（ui-storage），与
- *    index.html 内联启动脚本使用同一 key，首帧即目标主题，无闪变。
+ * 视觉基线 harness：固定数据、外部资源、时间、动效与主题种子。未匹配的 /api 请求
+ * 视为 harness 缺口直接失败，防止静默假状态；Service Worker 注册在文档起点被替换为
+ * 永久挂起的 promise；page.clock.setFixedTime 不暂停/推进时钟，保持真实时间速率。
  */
 
 export const THEMES = ['dark', 'light'] as const
@@ -53,10 +37,7 @@ export function themeSeedScript(theme: Theme) {
   `
 }
 
-/**
- * 禁用 CSS 动画/过渡的兜底样式（framer-motion 已由 reduced motion 覆盖，
- * 这里覆盖纯 CSS 的 keyframes/transition，避免截图瞬间处于动画中间态）。
- */
+/** 禁用 CSS 动画/过渡的兜底样式：framer-motion 已由 reduced motion 覆盖，这里覆盖纯 CSS keyframes/transition，避免截图截在动画中间态。 */
 const MOTION_FREEZE_CSS = `
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -121,7 +102,6 @@ export async function installDeterministicEnvironment(
   // 双保险：即便 SW 脚本请求发生，也直接 404（register 已在文档起点被替换为挂起 promise）。
   await page.route('**/sw.js', route => route.fulfill({ status: 404, body: 'sw disabled' }))
 
-  // 外部游戏资源图（头像/物品图标）：返回固定占位 PNG。
   for (const host of EXTERNAL_IMAGE_HOSTS) {
     await page.route(`https://${host}/**`, (route: Route) => {
       void route.fulfill({
@@ -132,7 +112,6 @@ export async function installDeterministicEnvironment(
     })
   }
 
-  // /api/**：返回 fixture；未匹配 = harness 缺口，记录并稍后判失败。
   let deviceStatsCalls = 0
   await page.route('**/api/**', async (route: Route) => {
     const request = route.request()
@@ -156,7 +135,6 @@ export async function installDeterministicEnvironment(
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) })
   })
 
-  // 时间固定：Date 从首帧起固定，定时器照常运行（详见文件头说明）。
   if (options.nativeClock) {
     // Performance sampling needs native sub-ms performance.now(), rAF and timers.
     // Playwright setFixedTime installs a real-time advancing clock facade which

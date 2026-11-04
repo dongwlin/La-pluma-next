@@ -47,7 +47,6 @@ export interface ExecutionShutdownRuntime {
   requestRunStop(runId: string): { disposition: string };
   /** 作业集 run 先经过集合会话，避免留下可用于“继续下一关”的会话 */
   requestCopilotSetStop(runId: string): { disposition?: string } | null;
-  /** 截止时间到达后仍未结算的 run 记为中断，返回最新 DTO */
   interruptRun(runId: string, details: { reason: string; message: string }): { state?: string } | null;
   flushRunStore(): Promise<unknown>;
   stopDeviceTask(options: { forceKillDelayMs: number }): unknown;
@@ -62,9 +61,7 @@ export interface ExecutionShutdownSummary {
   reason: string;
   budgetMs: number;
   admission: ExecutionAdmissionStatus | null;
-  /** 已写入停止意图的 run 及处理方式 */
   stoppedRuns: Array<{ runId: string; disposition: string }>;
-  /** 预算内未结算、已由本流程记为中断的 run */
   interruptedRunIds: string[];
   deviceStopCalls: number;
   scheduleStopCalls: number;
@@ -75,13 +72,9 @@ export interface ExecutionShutdownSummary {
 export interface ExecutionShutdownOptions {
   runtime?: Partial<ExecutionShutdownRuntime>;
   logger?: RuntimeLifecycleLogger;
-  /** 观察执行器结算的轮询间隔 */
   settleIntervalMs?: number;
-  /** 等待结算时为落盘保留的预算 */
   flushReserveMs?: number;
-  /** 关闭时任务进程收到 SIGTERM 后升级为 SIGKILL 的等待时间 */
   forceKillDelayMs?: number;
-  /** 没有生命周期份额时（直接调用）使用的等待预算 */
   defaultDrainBudgetMs?: number;
 }
 

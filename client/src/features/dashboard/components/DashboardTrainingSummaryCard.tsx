@@ -1,10 +1,3 @@
-/**
- * 总览养成摘要卡
- *
- * 只订阅 `trainingSummary`，并按需导航到养成页；不读取训练 Query，
- * 也不修改完整快照。
- */
-
 import { ChevronRight, Target } from 'lucide-react'
 import { Card, IconButton } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'
@@ -39,10 +32,10 @@ export default function DashboardTrainingSummaryCard({ onOpenTraining }: Dashboa
           className="dashboard-summary-action"
         />
       </div>
-      <div className="dashboard-summary-body">
+      <div className="dashboard-summary-body" data-dashboard-summary="training">
         <div className="dashboard-summary-statline">
           <div>
-            <div className="dashboard-summary-number">{trainingSummary.count}</div>
+            <div className="dashboard-summary-number" data-dashboard-summary-number>{trainingSummary.count}</div>
             <div className="dashboard-summary-number-label">培养目标</div>
           </div>
           <div className="dashboard-summary-copy">

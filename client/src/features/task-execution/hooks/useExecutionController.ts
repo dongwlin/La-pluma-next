@@ -1,10 +1,3 @@
-/**
- * 执行控制器的薄订阅入口。
- *
- * 页面只订阅稳定快照并展示/发起操作；观察循环由应用组装层通过
- * useExecutionObservation 启动，不随页面或 Activity 的挂载状态创建第二份。
- */
-
 import { useEffect, useSyncExternalStore } from 'react'
 import {
   executionController,

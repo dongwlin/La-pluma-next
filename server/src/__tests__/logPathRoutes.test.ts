@@ -12,9 +12,8 @@ import { loggerManager } from '../utils/logger.ts';
 
 // 相关环境变量均在模块导入前设置：MAA_CLI_PATH 由被测模块在导入时读取，
 // 测试因此使用假 CLI 与临时日志目录，不读取真实设备日志。
-// 注意：webrtcSignalingGateway 及其传递依赖会在导入时读取 MAA_CLI_PATH，
+// webrtcSignalingGateway 及其传递依赖会在导入时读取 MAA_CLI_PATH，
 // 必须等环境变量就绪后再动态导入，不能用顶层静态导入。
-// 响应按日志边界的领域类型读取；越界与解码失败按统一错误信封收窄。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-log-path-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const outsideDir = join(fixtureDir, 'outside');
@@ -31,9 +30,6 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'log') {
 }
 `, { mode: 0o755 });
 
-// 文件名固定覆盖：嵌套目录、结尾为 % 的名字、字面 %20 的名字与含空格的名字。
-// 客户端把文件列表返回的绝对路径做一次 encodeURIComponent 后请求，
-// 服务端必须只解码一次。
 const NESTED_LOG = join(maaLogDir, 'sub', 'run-1.log');
 const TRAILING_PERCENT_LOG = join(maaLogDir, '100%.log');
 const LITERAL_PERCENT_LOG = join(maaLogDir, 'a%20b.log');
@@ -77,7 +73,6 @@ async function listenAndFetch(pathSuffix: string): Promise<Response> {
   return fetch(`http://127.0.0.1:${port}/api/agent/logs/files/${pathSuffix}`);
 }
 
-/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
 function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,
@@ -99,7 +94,6 @@ function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
   return typeof (value as { success?: unknown }).success === 'boolean';
 }
 
-/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
 async function readBody<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
   assert.ok(isApiEnvelope(body));
@@ -140,7 +134,6 @@ describe('GET /api/agent/logs/files/:filePath single URL decoding', () => {
   });
 
   it('decodes encoded path separators exactly once', async () => {
-    // 客户端形态：encodeURIComponent 把目录分隔符与文件名一起编码
     const response = await listenAndFetch(encodeURIComponent(NESTED_LOG));
     assert.equal(response.status, 200);
     const body = await readLogContent(response);
@@ -195,7 +188,6 @@ describe('GET /api/agent/logs/files file listing round trip', () => {
 });
 
 describe('GET /api/agent/logs/files/:filePath path boundary', () => {
-  // 越界与失败走统一错误出口：普通 Error 无公开状态，按现有契约返回 500 与稳定错误码
   async function assertRejected(pathSuffix: string, expectedStatus = 500): Promise<ApiErrorResponse> {
     const response = await listenAndFetch(pathSuffix);
     assert.equal(response.status, expectedStatus);

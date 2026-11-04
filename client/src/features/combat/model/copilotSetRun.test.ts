@@ -152,13 +152,9 @@ describe('readCopilotSetRunProjection', () => {
       },
     }))
 
-    // 突袭已成功、普通被跳过：作业仍缺一个模式，不能折叠为成功。
     expect(projection?.itemStatuses.get(0)).toBe('pending')
-    // 全部模式都跳过的作业保持已跳过。
     expect(projection?.itemStatuses.get(1)).toBe('skipped')
-    // 服务端没有 skippedCount 字段时按逐项结果回退统计。
     expect(projection?.skippedCount).toBe(2)
-    // 跳过的条目没有执行，不算已尝试。
     expect(projection?.attemptedCount).toBe(1)
   })
 
@@ -216,7 +212,6 @@ describe('readCopilotSetRunProjection', () => {
       },
     }))
 
-    // 服务端汇总字段优先于逐项回退统计。
     expect(projection?.skippedCount).toBe(3)
     expect(projection?.attemptedCount).toBe(1)
     expect(projection?.pendingCount).toBe(1)
@@ -262,7 +257,6 @@ describe('readCopilotSetRunProjection', () => {
       },
     }))
 
-    // 汇总条目覆盖本次执行与本次跳过，恒等于逐项结果数；队列只含本次尝试。
     expect(projection?.totalCount).toBe(5)
     expect(projection?.queuedCount).toBe(1)
     expect(projection?.totalCount).toBe(projection?.entries.length)
@@ -340,7 +334,6 @@ describe('terminal notices', () => {
   })
 
   it('mentions skipped items in terminal summaries only when present', () => {
-    // 跳过的条目不在本次执行队列里，成功比例仍按队列计算。
     expect(describeCopilotSetRunTerminal(run({ state: 'succeeded' }), {
       ...base,
       totalCount: 2,

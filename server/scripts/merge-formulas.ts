@@ -8,21 +8,17 @@ import {
   type JsonRecord
 } from './scriptSupport.ts';
 
-/** 输出/读取路径：materials.json 与 material-formulas.json 同属养成数据目录。 */
 export const MATERIALS_PATH = resolveTrainingDataPath('materials.json');
 export const FORMULAS_PATH = resolveTrainingDataPath('material-formulas.json');
 
-/** 合并后的配方表。 */
 export type RecipeTable = Record<string, JsonRecord>;
 
-/** 合并结果。 */
 export interface MergeFormulasResult {
   materials: JsonRecord;
   recipes: RecipeTable;
   mergedCount: number;
 }
 
-/** 校验配方表为“Id -> 配方对象”的结构。 */
 function readRecipeTable(value: unknown, source: string, label: string): RecipeTable {
   const table = expectRecord(value, source, label);
   const recipes: RecipeTable = {};
@@ -44,7 +40,6 @@ export function mergeFormulaRecipes(materialsPayload: unknown, formulasPayload: 
     ? {}
     : readRecipeTable(existingRecipes, 'materials.json', 'recipes');
 
-  // 合并配方（新配方会覆盖旧配方）
   const recipes: RecipeTable = {
     ...existing,
     ...incoming
@@ -57,7 +52,6 @@ export function mergeFormulaRecipes(materialsPayload: unknown, formulasPayload: 
   };
 }
 
-/** 测试与手工运行可替换的副作用端口。 */
 export interface MergeFormulasDeps {
   readFile?: (filePath: string) => Promise<string>;
   writeFile?: (filePath: string, data: string) => Promise<void>;
@@ -65,7 +59,6 @@ export interface MergeFormulasDeps {
   formulasPath?: string;
 }
 
-/** 主函数：读取两个数据文件，合并配方后写回 materials.json。 */
 export async function main(deps: MergeFormulasDeps = {}): Promise<MergeFormulasResult> {
   const read = deps.readFile ?? ((filePath: string) => readFile(filePath, 'utf-8'));
   const write = deps.writeFile ?? ((filePath: string, data: string) => writeFile(filePath, data, 'utf-8'));
@@ -74,10 +67,8 @@ export async function main(deps: MergeFormulasDeps = {}): Promise<MergeFormulasR
 
   console.log('正在读取文件...');
 
-  // 读取 materials.json
   const materialsData: unknown = JSON.parse(await read(materialsPath));
 
-  // 读取 material-formulas.json
   const formulasData: unknown = JSON.parse(await read(formulasPath));
 
   const materialsRecord = expectRecord(materialsData, 'materials.json');
@@ -92,12 +83,10 @@ export async function main(deps: MergeFormulasDeps = {}): Promise<MergeFormulasR
 
   console.log(`合并后共有 ${result.mergedCount} 个配方`);
 
-  // 保存回 materials.json
   await write(materialsPath, JSON.stringify(result.materials, null, 2));
 
   console.log('✅ 配方已成功合并到 materials.json');
 
-  // 验证 D32钢
   const d32 = result.recipes['30135'];
   if (d32) {
     console.log('\n✅ D32钢 (30135) 配方:');

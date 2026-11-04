@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** 真实 Chromium 的跨页集成入口。使用既有、已审核的 Playwright 镜像，不拉取依赖。 */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'

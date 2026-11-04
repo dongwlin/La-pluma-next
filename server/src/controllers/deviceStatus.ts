@@ -10,17 +10,6 @@ import {
 import type { WebrtcStatus } from '../services/webrtcService.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH } from '../config/connectionDefaults.ts';
 
-/**
- * 设备状态读取适配：ADB 摘要、WebRTC 摘要与 Android 显示状态。
- *
- * 这些函数不是无副作用的纯读取：ADB 摘要会运行 `adb version`/`devices`，
- * 并在设备未就绪时执行 `adb connect`；显示状态会执行 adb shell；WebRTC
- * 摘要会探测本地服务端口。`/status` 汇总与预览方向观测共用同一适配，
- * 调用方不能把探测结果当作设备空闲或执行成功的证据。
- *
- * 三个投影各自独立：ADB 摘要只描述连接与前台窗口，显示状态只描述屏幕与
- * 方向，WebRTC 摘要只描述本地服务；任何一项都不能替代 Run、进程或租约。
- */
 const execFileAsync = promisify(execFile);
 
 /** ADB 摘要；连接失败时 connected 为 false，message 保留探测文本。 */
@@ -29,9 +18,7 @@ export interface AdbSummary {
   address: string;
   connected: boolean;
   message: string;
-  /** mCurrentFocus/mFocusedApp 行；未连接或读取失败时为 null。 */
   foreground: string | null;
-  /** `adb devices -l` 的原始列表；命令失败时保留失败文本。 */
   devices: string;
 }
 
@@ -71,7 +58,6 @@ function readExecText(value: unknown): string {
   return '';
 }
 
-/** execFile 的拒绝值为 Error；其它值按文本归一，保留既有失败文案前缀。 */
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

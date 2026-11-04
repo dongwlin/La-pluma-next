@@ -11,9 +11,8 @@ import type { ScheduleExecutionStatus } from './scheduleFlowExecution.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 
 /**
- * 运行快照投影。Run 身份与终态只来自 agentRunService；进程、流程与设备租约
- * 是并列的独立投影，本模块只负责把它们汇总成可观察快照，不复制状态机，
- * 也不从探测结果推断执行成功。
+ * Run 身份与终态只来自 agentRunService；进程、流程与设备租约是并列的独立投影，
+ * 本模块只汇总成可观察快照，不复制状态机，也不从探测结果推断执行成功。
  */
 
 const ACTIVE_RUN_STATES = new Set<AgentRunStatus>(['accepted', 'waiting', 'running', 'stopping']);
@@ -59,7 +58,6 @@ export interface OccupancyTaskProjection {
   stopRequested: boolean;
 }
 
-/** 占用里的流程投影：只描述调度流程自己的步骤与停止意图。 */
 export interface OccupancyScheduleProjection {
   isRunning: boolean;
   scheduleId: string | null;
@@ -107,10 +105,7 @@ function normalizeLineCount(lines: unknown): number {
   return resolveBoundedInteger(lines, { defaultValue: 80, min: 1, max: 500 });
 }
 
-/**
- * 未由本模块投影的 Run 原样进入快照。Run DTO 在领域层把 `progress` 保留为
- * unknown（投影由快照层追加），这里在快照边界收窄成已知的进度类型。
- */
+/** Run DTO 在领域层把 `progress` 保留为 unknown（投影由快照层追加），这里在快照边界收窄。 */
 function asSnapshotEntry(run: AgentRunDto): AgentRunSnapshotEntry {
   return run as AgentRunSnapshotEntry;
 }
@@ -180,14 +175,6 @@ export function enrichAgentRun(run: AgentRunDto | null): AgentRunSnapshotEntry |
   };
 }
 
-/**
- * Describes device ownership without guessing: `run` means a tracked run owns
- * execution, `external` means device activity is visible without such a run
- * (flows, jobs or another cooperating process), `pending` means only active
- * intents exist that do not own the device (accepted or waiting runs), `idle`
- * means nothing is visible, and `unknown` means the lease file exists but
- * cannot be verified.
- */
 function describeOccupancy({ activeRuns, task, schedule, lease }: OccupancyInput): RunOccupancyProjection {
   const current = activeRuns[0] || null;
   const owningRun = activeRuns.find(run => isDeviceOwningAgentRunStatus(run.state)) || null;

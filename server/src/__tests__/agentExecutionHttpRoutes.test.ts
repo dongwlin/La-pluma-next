@@ -8,12 +8,6 @@ import { after, afterEach, describe, it } from 'node:test';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 
-// 执行入口已从 agent.ts 拆到独立 router 并类型化：这里通过 createLaPlumaApp
-// 验证真实 HTTP 的鉴权、body/query 收窄、统一错误出口、dryRun、幂等与目标
-// 停止。外部依赖只有临时目录与假 MAA CLI，不连接真实设备或 MAA 运行时。
-//
-// 请求体与查询参数是 unknown 边界：非法输入必须在创建 Run、取得设备租约或
-// 启动子进程之前被既有校验拒绝，本文件同时断言 CLI 调用日志为空。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-execution-http-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const xdgDataHome = join(fixtureDir, 'xdg-data');
@@ -88,7 +82,6 @@ interface RunSnapshotPayload {
   activeRuns: Array<{ runId: string }>;
 }
 
-/** `GET /runs/:runId` 返回平铺的 Run DTO；`runs/current` 才带 `run` 字段。 */
 interface RunLookupPayload {
   runId: string;
   state: string;
@@ -132,7 +125,6 @@ async function readError(response: Response): Promise<ApiErrorResponse> {
   return body;
 }
 
-/** 信令网关只用于创建应用；本文件不建立 WebRTC 连接。 */
 function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,

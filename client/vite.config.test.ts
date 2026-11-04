@@ -13,7 +13,6 @@ import {
 } from './vite.config.ts'
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
-/** 服务 worker 脚本通过 self.addEventListener 注册；测试只关心 waitUntil 生命周期。 */
 type ServiceWorkerListener = (event: { waitUntil: (work: Promise<unknown>) => void }) => void
 
 describe('boot theme asset injection', () => {

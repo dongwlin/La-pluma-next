@@ -4,14 +4,6 @@ import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { getCurrentActivity } from './maaActivityService.ts';
 
-/**
- * 活动预检：确认当前活动存在，且 MAA 资源包含从主页进入活动关卡的完整导航链。
- *
- * 活动来源与第三方关卡列表都按 unknown 收窄；预检只读取 MAA 资源目录
- * （`maa dir resource` 是非设备变更命令），不启动执行、不复制执行进度状态。
- */
-
-/** 预检投影中的活动信息：无法确认的字段为 null，stages 只保留字符串关卡代号。 */
 export interface ActivityNavigationActivity {
   code: string | null;
   name: string | null;
@@ -19,7 +11,6 @@ export interface ActivityNavigationActivity {
   stages: string[];
 }
 
-/** 就绪时的导航资源摘要：entryTask 是主页入口任务键。 */
 export interface ActivityNavigationResource {
   source: 'maa-resource';
   stageFile: string;
@@ -27,7 +18,6 @@ export interface ActivityNavigationResource {
   entryTask: string;
 }
 
-/** 活动预检结果：ready 时 navigation 非空，blocked 时给出 reasonCode 与原因。 */
 export interface ActivityNavigationResult {
   state: 'ready' | 'blocked';
   canPrepare: boolean;
@@ -42,7 +32,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 活动对象按字段收窄；缺 code 视为无法确认活动，调用方据此返回 activity-unavailable。 */
 function readActivity(value: unknown): ActivityNavigationActivity {
   if (!isRecord(value)) {
     return { code: null, name: null, source: null, stages: [] };
@@ -57,7 +46,6 @@ function readActivity(value: unknown): ActivityNavigationActivity {
   };
 }
 
-/** MAA 资源中的 next/sub 链接只认字符串条目；其他类型不构成导航链。 */
 function toStringList(value: unknown): string[] {
   const entries = Array.isArray(value) ? value : value ? [value] : [];
   return entries.filter((entry): entry is string => typeof entry === 'string');
@@ -152,7 +140,6 @@ export function assessActivityNavigation(activity: unknown, tasks: unknown): Act
   };
 }
 
-/** 读取 MAA 资源中的活动关卡文件；文件内容按 unknown 交给预检收窄。 */
 async function loadActivityStageTasks(code: string): Promise<unknown> {
   const resourceDir = (await execMaaCommand('dir', ['resource'], null, null, false, true)).stdout.trim();
   if (!resourceDir) throw new Error('无法读取 MAA 资源目录');

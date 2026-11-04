@@ -72,30 +72,6 @@ import type {
   MaintenanceVersionPayload
 } from './maintenanceDto.ts';
 
-/**
- * 维护与平台入口控制器：连接/profile 配置、连接诊断、资源与 MAA 更新、
- * 定时与自动更新配置、识别动作，以及更新日志/作业/活动查询。
- *
- * 这里只做 HTTP 适配。profile 读写复用 maaConfigService 的既有解析与覆盖
- * 策略；资源/核心/CLI 更新复用 resourceUpdateService、maaExecutionService
- * 与执行租约；
- * 定时与自动更新只调用 schedulerService 的注册入口，不自行持有定时器或
- * 执行状态；识别动作调用 dataParserService 的既有用例。控制器不缓存运行
- * 状态、不另建子进程或锁。
- *
- * 维护写入与实际执行是不同操作：`/actions/configure-auto-update` 与
- * `POST /schedules` 只注册配置，执行仍走执行路由；带 `dryRun` 的维护
- * 动作只返回计划，不发起真实更新。出站查询（更新日志、作业、悖论）统一
- * 经出站端口，显式时限、取消与受限重试由端口承担。
- *
- * 请求与上游的未知值在 maintenanceDto 按端点收窄（profile 保存体、dryRun、
- * 更新渠道、定时注册、自动更新配置与查询参数各按既有规则）；响应载荷复用
- * 领域服务的公开结果，错误继续经统一错误出口返回。
- *
- * 路由层（agentMaintenanceRoutes.ts）只做端点映射；req/res 解析、校验与
- * 成功/失败 envelope 都由本控制器的各 handler 装配，识别解析结果保留
- * 服务已返回的单层信封（见 sendRecognitionResult）。
- */
 const execFileAsync = promisify(execFile);
 const logger = createLogger('AgentRoutes');
 
@@ -127,7 +103,6 @@ function sendRecognitionResult<T>(
 // 显式时限、取消与受限重试由端口承担，错误经 asyncHandler 进入统一错误出口。
 const outboundHttp = createOutboundHttpClient();
 
-// 连接与 profile：读写仍由 maaConfigService 的 profile 解析与原子写入承担。
 export async function readProfile(req: MaintenanceProfileRequest, res: ApiResponseWriter): Promise<void> {
   return sendSuccess(res, req, await getConfig(req.params.profileName));
 }
@@ -137,7 +112,6 @@ export async function saveProfile(req: MaintenanceProfileRequest, res: ApiRespon
   return sendSuccess(res, req, null, '配置保存成功');
 }
 
-// 活动查询：当前活动与预检读取 MAA/活动导航的既有入口，不缓存在控制器。
 function activityStatusMessage(activity: MaaActivitySnapshot): string {
   const label = activity.name || activity.code || '未知活动';
   switch (activity.status) {
@@ -188,8 +162,6 @@ export async function readActivityCopilotCandidates(req: MaintenanceRequest, res
   return sendSuccess(res, req, candidates, candidates.reason);
 }
 
-// 识别动作：解析 MAA 日志并更新本地缓存，属于有副作用的维护动作，
-// 与只读的游戏数据路由分开；dryRun 只返回计划。
 export async function runDepotRecognition(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   const plan: MaintenanceRecognitionPlan = {
     action: 'depot-recognition',
@@ -212,7 +184,6 @@ export async function runOperboxRecognition(req: MaintenanceRequest, res: ApiRes
   return sendRecognitionResult(res, req, await parseOperBoxData(), '干员识别完成');
 }
 
-// 更新日志与作业查询：只读上游，不写本地状态。
 export async function readCoreChangelog(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   try {
     const { data } = await outboundHttp.requestJson(
@@ -369,8 +340,6 @@ export async function readParadoxOperators(req: MaintenanceRequest, res: ApiResp
   return sendSuccess(res, req, await loadParadoxOperators());
 }
 
-// 定时与自动更新配置：只注册/查询 schedulerService 的触发源，
-// 实际执行仍由执行路由与调度触发源承担，这里不启动任务。
 export async function readScheduleStatus(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   return sendSuccess(res, req, getScheduleStatus());
 }
@@ -402,8 +371,6 @@ export async function readAutoUpdateStatus(req: MaintenanceRequest, res: ApiResp
   return sendSuccess(res, req, getAutoUpdateStatus());
 }
 
-// 资源、核心与 CLI 维护：进程副作用经既有 maaExecutionService/
-// resourceUpdateService 与执行租约，dryRun 只返回计划。
 export async function openConfigDirectory(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   const configDir = await getMaaConfigDir();
   const command = process.platform === 'darwin'
@@ -516,7 +483,6 @@ export async function hotUpdateResources(req: MaintenanceRequest, res: ApiRespon
   }
 }
 
-// 连接诊断与平台信息：连接覆盖沿用请求级解析，设备探测复用 maaDeviceService。
 export async function testConnection(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   const { adbPath, address } = await resolveMaintenanceConnection(req)
   return sendSuccess(res, req, await testAdbConnection(adbPath, address));

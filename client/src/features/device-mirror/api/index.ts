@@ -1,8 +1,3 @@
-/**
- * 投屏/截图预览域 API 端点
- * WebRTC 服务管理、组合启动、截图与设备状态。
- */
-
 import {
   API_BASE_URL,
   fetchWithAuth,

@@ -1,8 +1,3 @@
-/**
- * 自动任务域公开面
- * 公开面保持克制：仅导出页面组合所需的工作区，以及被其他域消费的调度端点。
- */
-
 import './styles/automation.css'
 
 export { default as AutomationWorkspace } from './components/AutomationWorkspace'

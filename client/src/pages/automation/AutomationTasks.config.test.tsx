@@ -404,7 +404,6 @@ describe('AutomationTasks config persistence', () => {
       ],
     })
     expect(pendingDraft()).not.toBeNull()
-    // 禁用项不进入 wire：times 仍是唯一启用时间，但本地草稿与后续提交都已发生。
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
     expect(mocks.saveUserConfig.mock.calls[0]?.[1]).toMatchObject({
       schedule: { enabled: true, times: ['08:00'] },
@@ -494,7 +493,6 @@ describe('AutomationTasks config persistence', () => {
     expect(JSON.parse(localStorage.getItem('maa-task-flow') || '[]')).toEqual([])
   })
 
-  // 协调器在 pending 标记指向的本地草稿不可读时删除标记并继续读服务端。
   it('loads the server copy when a pending marker has no local draft', async () => {
     localStorage.setItem('automationConfigSyncPending', 'stale-token')
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
@@ -524,7 +522,6 @@ describe('AutomationTasks config persistence', () => {
     await click(retryButton!)
     await settle()
 
-    // 重试重新执行完整提交：配置再次保存，schedule 也再次设置。
     expect(mocks.saveUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.setupSchedule).toHaveBeenCalledTimes(2)
     expect(pendingDraft()).toBeNull()
@@ -597,7 +594,6 @@ describe('AutomationTasks config persistence', () => {
     await act(async () => pendingSave.resolve({ success: true }))
     await settle()
 
-    // 保存成功后强制重读服务端；刚保存的编辑（启用的定时）与新计划一起被采用。
     expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.setupSchedule).toHaveBeenCalledWith(
       'default',
@@ -631,7 +627,6 @@ describe('AutomationTasks config persistence', () => {
     })
     await settle()
 
-    // 禁用项不进入 wire；外部计划重读后仍保留本设备独有的禁用时间点。
     expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('14')
   })
@@ -702,7 +697,6 @@ describe('AutomationTasks config persistence', () => {
     await renderAutomation()
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
 
-    // 清除本地回退副本，使强制重读在服务端失败后确实返回 failed。
     localStorage.clear()
     await act(async () => {
       publishPlanApplied()
@@ -740,7 +734,6 @@ describe('AutomationTasks config persistence', () => {
 
     expect(mocks.loadUserConfig).toHaveBeenCalledTimes(2)
     expect(mocks.setMessage).toHaveBeenCalledWith('智能养成计划已更新：3 个关卡', 'success')
-    // 强制重读后页面采用服务端的新内容，而不只是提示成功。
     expect(container.textContent).toContain('信用收支')
   })
 })

@@ -1,11 +1,5 @@
-/**
- * 历史日志文件选择器
- *
- * 只渲染文件列表、当前选择、列表失败重试与清理入口；列表/选择/读取由
- * `HistoryLogSession` 持有，清理命令由工作区触发。历史模式下清理入口保持
- * 禁用：清理成功后的选择裁决可能绕过页面的“返回实时”，在未恢复自动滚动
- * 前不开放该路径。
- */
+// 历史模式下清理入口保持禁用：清理成功后的选择裁决可能绕过页面的“返回实时”，
+// 在未恢复自动滚动前不开放该路径。
 
 import { AlertCircle, ChevronRight, FileText, Trash2 } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader } from '@/shared/ui'

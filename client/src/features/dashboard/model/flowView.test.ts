@@ -85,7 +85,6 @@ describe('buildDashboardFlowView', () => {
     const preflight = view({ activityPreflightLoading: true, phase: 'running' })
     expect(preflight).toMatchObject({
       controlsDisabled: true,
-      // 原页面先判断“有活动 run”，加载中仍显示当前任务。
       statusLabel: '当前任务',
       commandTitle: '正在检查当前活动',
       commandDescription: '正在确认当前活动与可用作业',

@@ -205,7 +205,6 @@ const deferred = <T,>() => {
 const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.textContent?.includes(label))
 
-/** 关卡编辑器的无障碍名称来自 legend，用它定位整个分组。 */
 const findStageEditor = () => Array.from(container.querySelectorAll('fieldset'))
   .find(fieldset => fieldset.querySelector('legend')?.textContent === '关卡计划')
 
@@ -219,7 +218,6 @@ const clickSequenceTask = async (taskName: string) => {
   return button
 }
 
-/** 拖拽手柄的无障碍名称同时带有任务名与当前位次，可直接读出序列顺序。 */
 const sequenceOrder = () => Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label^="调整"]'))
   .map(button => button.getAttribute('aria-label')?.match(/^调整(.+)顺序，当前第 \d+ 位$/)?.[1] ?? '')
 
@@ -238,7 +236,6 @@ const pointerEvent = (
   return event
 }
 
-/** 让每行占 80px 高、间隔 20px，便于按 clientY 计算中线。 */
 const stubSequenceRects = () => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const rows = Array.from(container.querySelectorAll('[data-execution-state]'))
@@ -398,7 +395,6 @@ describe('AutomationTasks layout surfaces', () => {
     })
     await flush()
 
-    // 纯模型拒绝重复时间点，面板不产生写入，受控输入保持上一次合法值。
     expect(mocks.setMessage).toHaveBeenCalledWith('该执行时间已经存在', 'error')
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('12')
     expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('30')
@@ -644,7 +640,7 @@ describe('AutomationTasks layout surfaces', () => {
     await renderPage()
     stubSequenceRects()
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 7 }))
     })
@@ -652,7 +648,6 @@ describe('AutomationTasks layout surfaces', () => {
       document.dispatchEvent(pointerEvent('pointermove', { clientY: 260, pointerId: 7 }))
     })
 
-    // 拖拽期间只渲染预览，尚未写入配置。
     expect(sequenceOrder()).toEqual(['理智作战', '自动公招', '启动游戏'])
     expect(savedFlowIds()).toEqual(['startup-1', 'fight-1', 'recruit-1'])
 
@@ -679,7 +674,7 @@ describe('AutomationTasks layout surfaces', () => {
     stubSequenceRects()
     const committedBefore = localStorage.getItem('maa-task-flow')
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 9 }))
     })
@@ -704,7 +699,7 @@ describe('AutomationTasks layout surfaces', () => {
     stubSequenceRects()
     const committedBefore = localStorage.getItem('maa-task-flow')
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(pointerEvent('pointerdown', { clientY: 0, pointerId: 11 }))
     })
@@ -727,7 +722,7 @@ describe('AutomationTasks layout surfaces', () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
     await renderPage()
 
-    const handle = container.querySelectorAll<HTMLButtonElement>('.automation-sequence-drag')[0]!
+    const handle = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="调整"]')[0]!
     await act(async () => {
       handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     })

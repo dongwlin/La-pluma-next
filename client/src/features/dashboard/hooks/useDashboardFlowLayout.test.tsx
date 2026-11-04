@@ -37,7 +37,7 @@ function Harness({ showFeedback, showStages = false }: { showFeedback: boolean; 
       <div ref={flowCardRef} data-testid="flow">
         {showFeedback && <div data-dashboard-flow-feedback />}
         {showStages && (
-          <div className="dashboard-flow-stages" style={{ paddingBottom: 12 }}>
+          <div data-dashboard-flow-stages style={{ paddingBottom: 12 }}>
             <div data-testid="stages-content" />
           </div>
         )}
@@ -123,7 +123,7 @@ describe('useDashboardFlowLayout', () => {
 
     const grid = container.querySelector<HTMLElement>('[data-testid="grid"]')!
     const flow = container.querySelector<HTMLElement>('[data-testid="flow"]')!
-    const stages = container.querySelector<HTMLElement>('.dashboard-flow-stages')!
+    const stages = container.querySelector<HTMLElement>('[data-dashboard-flow-stages]')!
     const stagesContent = container.querySelector<HTMLElement>('[data-testid="stages-content"]')!
     const previewCard = container.querySelector<HTMLElement>('[data-dashboard-preview-card]')!
     const previewFrame = container.querySelector<HTMLElement>('[data-dashboard-preview-frame]')!

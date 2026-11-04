@@ -47,7 +47,6 @@ function isApiEnvelope(value: unknown): value is ApiEnvelope {
     && 'message' in value
 }
 
-/** fetch 的 JSON 载荷是 unknown；测试只读取统一成功/错误信封。 */
 async function readEnvelope<T = unknown>(response: Response): Promise<ApiEnvelope<T>> {
   const body: unknown = await response.json()
   assert.ok(isApiEnvelope(body))

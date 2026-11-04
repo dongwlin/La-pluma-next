@@ -1,16 +1,5 @@
-/**
- * MAA 回调行的语义摘要
- *
- * `Assistant::append_callback | <事件> {JSON}` 是 MaaCore 的结构化回调输出；
- * 本模块把其中值得展示的事件改写成可读文案，字段名以 MaaCore 回调 JSON
- * 为准（Copilot 作业、StageDrops 掉落与肉鸽结算等），字段缺失时降级为可
- * 读文案，不输出 undefined/null。任务链名称对照与通用载荷读取也在这里。
- * 本模块不依赖 React、网络或 DOM。
- */
-
 import type { LogEntry } from '../types'
 
-/** MaaCore taskchain/task 名称到展示名的对照。 */
 const TASK_NAMES: Record<string, string> = {
   StartUp: '启动游戏',
   CloseDown: '关闭游戏',
@@ -37,7 +26,6 @@ export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-/** 读取回调载荷里的非空字符串字段；缺失或非字符串返回 null。 */
 function readTextField(record: Record<string, unknown>, key: string): string | null {
   const value = record[key]
   if (typeof value !== 'string') return null
@@ -45,13 +33,11 @@ function readTextField(record: Record<string, unknown>, key: string): string | n
   return trimmed ? trimmed : null
 }
 
-/** 读取回调载荷里的有限数字字段；缺失或非有限数字返回 null。 */
 function readNumberField(record: Record<string, unknown>, key: string): number | null {
   const value = record[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-/** StageDrops 关卡结算的星级与险情标记（出现在 SubTaskStart 任务名与 what 里）。 */
 function summarizeStageClear(log: LogEntry, marker: unknown): LogEntry | null {
   switch (marker) {
     case 'StageDrops-Stars-3':
@@ -64,7 +50,6 @@ function summarizeStageClear(log: LogEntry, marker: unknown): LogEntry | null {
   }
 }
 
-/** CopilotListLoadTaskFileSuccess：作业文件加载完成。 */
 function summarizeCopilotFileLoad(log: LogEntry, details: Record<string, unknown>): LogEntry {
   const stageName = readTextField(details, 'stage_name')
   const fileName = readTextField(details, 'file_name')
@@ -74,7 +59,6 @@ function summarizeCopilotFileLoad(log: LogEntry, details: Record<string, unknown
   return { ...log, message: '开始加载作业文件' }
 }
 
-/** CopilotAction：战斗动作进行中（details.action/target/doc/elapsed_time）。 */
 function summarizeCopilotAction(log: LogEntry, details: Record<string, unknown>): LogEntry {
   const target = readTextField(details, 'target')
   const elapsed = readNumberField(details, 'elapsed_time')
@@ -84,7 +68,6 @@ function summarizeCopilotAction(log: LogEntry, details: Record<string, unknown>)
   return { ...log, message: '战斗进行中' }
 }
 
-/** StageDrops：按本局掉落列表拼接物品名与数量。 */
 function summarizeStageDrops(log: LogEntry, details: Record<string, unknown>): LogEntry | null {
   const drops = Array.isArray(details.drops) ? details.drops : []
   const parts: string[] = []
@@ -98,7 +81,6 @@ function summarizeStageDrops(log: LogEntry, details: Record<string, unknown>): L
   return parts.length > 0 ? { ...log, message: `掉落：${parts.join('、')}` } : null
 }
 
-/** RoguelikeSettlement：结算面板 OCR 出来的层数/步数/招募/得分，字段可能缺失。 */
 function summarizeRoguelikeSettlement(log: LogEntry, details: Record<string, unknown>): LogEntry {
   const floor = readNumberField(details, 'floor')
   const step = readNumberField(details, 'step')
@@ -117,7 +99,6 @@ function summarizeRoguelikeSettlement(log: LogEntry, details: Record<string, unk
   return { ...log, message: parts.length > 0 ? `肉鸽结算：${parts.join(' · ')}` : '肉鸽结算完成' }
 }
 
-/** BlackFlowRoutingDecision：肉鸽路径决策遥测。 */
 function summarizeBlackFlowRouting(
   log: LogEntry,
   details: Record<string, unknown>,
@@ -133,7 +114,6 @@ function summarizeBlackFlowRouting(
   return parts.length > 0 ? { ...log, message: parts.join(' · ') } : null
 }
 
-/** RoguelikeInvestment：投资次数与当前存款（存款未知时 MAA 写 -1）。 */
 function summarizeRoguelikeInvestment(log: LogEntry, details: Record<string, unknown>): LogEntry {
   const count = readNumberField(details, 'count')
   const deposit = readNumberField(details, 'deposit')
@@ -186,7 +166,6 @@ export function summarizeCallback(log: LogEntry): LogEntry | null {
     case 'SubTaskError':
       return { ...log, level: 'ERROR', message: `执行步骤失败：${taskName}` }
     case 'SubTaskStart':
-      // 关卡结算标记任务走 SubTaskStart 的 details.task（如 Copilot@ 前缀已被剥离）。
       return summarizeStageClear(log, details.task)
         ?? (typeof details.task === 'string' && details.task.endsWith('FightMissionFailed')
           ? { ...log, level: 'ERROR', message: '作战失败' }

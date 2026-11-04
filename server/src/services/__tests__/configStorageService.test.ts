@@ -14,7 +14,6 @@ import {
   validateConfigType
 } from '../configStorageService.ts';
 
-/** 读改写用例使用的最小存储形状：{ count: number }。 */
 function isCountDocument(value: unknown): value is { count: number } {
   return typeof value === 'object' && value !== null && 'count' in value
     && typeof value.count === 'number';

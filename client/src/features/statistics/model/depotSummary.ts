@@ -1,10 +1,3 @@
-/**
- * 仓库汇总纯模型
- *
- * 分类标签、分类分组、库存总量与「库存最多」都在这里计算；仓库面板只渲染结果。
- * 分组顺序沿用迁移前的稳定排序：按库存件数降序，件数相同保留物品首次出现的顺序。
- */
-
 import type { DepotDataDetailed, DepotItem } from '@/features/game-data'
 
 export const DEPOT_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -31,9 +24,7 @@ export function getDepotTypeLabel(classifyType?: string): string {
 export interface DepotTypeGroup {
   type: string
   label: string
-  /** 该分类下的物品种类数。 */
   kinds: number
-  /** 该分类下的库存总件数。 */
   count: number
 }
 

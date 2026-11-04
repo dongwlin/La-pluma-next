@@ -58,7 +58,6 @@ function invoke(guard: SignalingLoginGuard, req: SignalingLoginRequestLike): Rec
   return { ...recorder, nextCalls }
 }
 
-/** 响应体按统一错误信封收窄；拒绝只来自守卫本身。 */
 function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
   if (typeof value !== 'object' || value === null) return false
   const record = value as { success?: unknown; message?: unknown; error?: unknown }

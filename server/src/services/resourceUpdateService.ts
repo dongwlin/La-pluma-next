@@ -1,25 +1,7 @@
 /**
- * MAA 资源信息读取与资源同步
- *
- * 两类操作分开建模：
- * - **读取**（`getResourceInfo`）：查询 `maa dir resource` 并解析 `version.json`，
- *   可重复执行；CLI 输出、JSON 内容都从 `unknown` 收窄，解析失败向调用方抛出，
- *   模块内部不重试。
- * - **更新**（`updateResources`）：运行资源更新脚本并重新读取资源信息。写操作
- *   具备以下显式语义：
- *   - 执行互斥：整次更新持有 `executionCoordinatorService` 的设备变更租约，
- *     与 MAA 命令串行；租约只在实际结束后释放。
- *   - 单次共享（single-flight）：并发调用共享同一个进行中的 Promise，只启动
- *     一个脚本进程，所有调用方得到相同结果或相同失败，不排队、不重放。
- *   - 时限：`timeoutMs` 缺省为 `null`（资源下载时长不可预知，不擅自中断写操作）；
- *     调用方显式设置时，超时先 SIGTERM，宽限后升级 SIGKILL，失败向上抛出，
- *     不自动重试。
- *   - 取消：写操作不支持调用方取消（中断更新可能留下不完整资源）；单个调用方
- *     放弃等待只影响该调用方，不终止共享的底层更新。
- *
- * 更新脚本的临时目录由脚本自身锚定（`server/.temp-maa-resource`，与运行路径
- * 入口的 `tempResourceDir` 一致）；脚本路径与工作目录经运行路径入口解析，不
- * 依赖进程 cwd。
+ * 资源信息读取与同步：读取可重复执行，CLI/JSON 均从 unknown 收窄、失败抛出且内部不重试；
+ * 写操作持有设备变更租约，并发调用共享同一个进行中的 Promise（single-flight，不排队不重放），
+ * 时限缺省为 null，显式超时先 SIGTERM 再升级 SIGKILL，失败不重试，且不支持调用方取消。
  */
 
 import { spawn } from 'node:child_process';
@@ -54,24 +36,20 @@ export interface ResourceVersionMetadata {
   gacha: unknown;
 }
 
-/** 更新结果：脚本输出与更新后重新读取的资源信息。 */
 export interface ResourceUpdateResult {
   output: string;
   resource: ResourceInfo;
 }
 
-/** 版本文件读取结果；`modifiedAt` 保留文件系统修改时间。 */
 export interface ResourceVersionFile {
   content: string;
   modifiedAt: Date;
 }
 
-/** 更新脚本子进程的输出流端口。 */
 export interface ResourceUpdateOutputStream {
   on(event: 'data', listener: (chunk: unknown) => void): unknown;
 }
 
-/** 更新脚本子进程的最小能力；与 `maaProcessService` 的子进程端口同形状。 */
 export interface ResourceUpdateChild {
   readonly stdout: ResourceUpdateOutputStream | null;
   readonly stderr: ResourceUpdateOutputStream | null;
@@ -108,25 +86,15 @@ export type MaaExecutionLeaseRunner = (
 ) => Promise<ResourceUpdateResult>;
 
 export interface ResourceUpdateServicePorts {
-  /** `maa dir resource` 解析端口；缺省执行 MAA CLI */
   resolveResourceDir?: () => Promise<string>;
-  /** `version.json` 读取端口；缺省读取真实文件 */
   readVersionFile?: (versionPath: string) => Promise<ResourceVersionFile>;
-  /** 当前时间；缺省 `new Date()` */
   now?: () => Date;
-  /** 更新脚本子进程端口；缺省 `child_process.spawn` */
   spawn?: ResourceUpdateSpawn;
-  /** 时限与升级计时器端口；缺省全局计时器 */
   timers?: ResourceUpdateTimers;
-  /** 更新脚本路径；缺省按运行路径入口锚定 */
   scriptPath?: string;
-  /** 更新脚本工作目录；缺省运行路径入口的 `serverRoot` */
   cwd?: string;
-  /** 显式时限（毫秒）；缺省 null 表示不设时限 */
   timeoutMs?: number | null;
-  /** SIGTERM 后升级 SIGKILL 的宽限（毫秒） */
   forceKillDelayMs?: number;
-  /** 执行租约端口；缺省 `withMaaExecutionLease` */
   withLease?: MaaExecutionLeaseRunner;
 }
 
@@ -152,7 +120,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 从 `unknown` 值收窄版本元数据；非对象或缺失字段按未知处理。 */
 function normalizeVersionMetadata(value: unknown): ResourceVersionMetadata {
   const record = isRecord(value) ? value : {};
   return {
@@ -167,7 +134,6 @@ export function parseResourceVersion(content: string): ResourceVersionMetadata {
   return normalizeVersionMetadata(JSON.parse(content));
 }
 
-/** 由已收窄的版本元数据构建资源信息；`last_updated` 规则与既有版本输出一致。 */
 function buildResourceInfoFromMetadata(
   metadata: ResourceVersionMetadata,
   modifiedAt: unknown,
@@ -198,9 +164,8 @@ function buildResourceInfoFromMetadata(
 }
 
 /**
- * 由版本元数据构建资源信息。`versionData` 来自文件或注入值，按 `unknown`
- * 收窄；`modifiedAt` 同样按未知输入处理，只有真正的 `Date` 才进入输出。
- * `last_updated` 的解析规则与既有版本输出保持一致。
+ * 由版本元数据构建资源信息；`versionData` 与 `modifiedAt` 均按 unknown 收窄，
+ * 只有真正的 `Date` 才进入输出，`last_updated` 规则与既有版本输出一致。
  */
 export function buildResourceInfo(
   versionData: unknown = {},
@@ -215,7 +180,6 @@ const defaultTimers: Required<ResourceUpdateTimers> = {
   clearTimeout: timer => clearTimeout(timer as NodeJS.Timeout)
 };
 
-/** `maa dir resource`：CLI 输出只取首尾空白外的一行目录。 */
 async function readMaaResourceDirFromCli(): Promise<string> {
   const result = await execMaaCommand('dir', ['resource'], null, null, false, true);
   return result.stdout.trim();
@@ -235,8 +199,7 @@ const spawnResourceUpdateScript: ResourceUpdateSpawn = (command, args, options) 
 );
 
 /**
- * 创建资源服务实例。单次共享状态保存在实例内，测试可创建隔离实例；
- * 模块级 `getMaaResourceInfo`/`updateMaaResources` 使用缺省实例。
+ * 创建资源服务实例；single-flight 状态保存在实例内，测试可创建隔离实例。
  */
 export function createResourceUpdateService(ports: ResourceUpdateServicePorts = {}): ResourceUpdateService {
   const resolveResourceDir = ports.resolveResourceDir ?? readMaaResourceDirFromCli;

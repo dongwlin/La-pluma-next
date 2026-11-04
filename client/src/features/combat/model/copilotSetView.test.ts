@@ -62,7 +62,6 @@ const projection = (
   ...overrides,
 })
 
-/** 按普通模式的逐项结果构造 Run：条目与折叠状态同时给出。 */
 const normalRun = (
   statuses: Array<[number, EntryStatus]>,
   overrides: Partial<CopilotSetRunProjection> = {},
@@ -112,7 +111,6 @@ describe('deriveCopilotSetView', () => {
 
     expect(view.activeSetRun).toBeNull()
     expect(view.itemStatuses.size).toBe(0)
-    // 选择仍在，但没有本次 Run 的成功项可以扣除。
     expect(view.pendingSelectedIndexes).toEqual([0, 1])
   })
 
@@ -182,7 +180,6 @@ describe('deriveCopilotSetView', () => {
       isAutoStopping: false,
     })
 
-    // 主动终止仍要重打，但不属于执行失败。
     expect(view.attemptedCount).toBe(3)
     expect(view.pendingSelectedIndexes).toEqual([1, 2])
     expect(view.progress).toEqual({
@@ -232,7 +229,6 @@ describe('deriveCopilotSetView', () => {
     expect(view.progress).toEqual({
       total: 3, completed: 0, pending: 1, failed: 0, stopped: 0, skipped: 2,
     })
-    // 未选中的作业仍在计划中，不能被选择状态解释为已通关。
     expect(view.historyCompletedIndexes.size).toBe(0)
   })
 
@@ -340,7 +336,6 @@ describe('deriveCopilotSetView', () => {
       isAutoStopping: false,
     })
 
-    // 普通已成功、突袭仍待执行：作业未满足两种模式，不能提前算作已通关。
     expect(view.runCompletedIndexes.size).toBe(0)
     expect(view.historyCompletedIndexes.has(0)).toBe(false)
     expect(view.pendingSelectedIndexes).toEqual([0, 1, 2])
@@ -422,7 +417,6 @@ describe('deriveCopilotSetView', () => {
         isAutoStopping: false,
       })
 
-      // 模式缺失或无法识别时不能说明满足哪一项要求，不能扩展成两种模式都完成。
       expect(view.runCompletedIndexes.size).toBe(0)
       expect(view.pendingSelectedIndexes).toEqual([0, 1])
       expect(view.progress).toEqual({

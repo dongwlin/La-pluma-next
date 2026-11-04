@@ -12,23 +12,14 @@
 
 import { readJsonFile, updateJsonFile } from '../utils/fileHelper.ts';
 
-/** 存储注入参数：只绑定单一进度文件路径。 */
 export interface CopilotProgressStoreOptions {
   /** 进度文件的绝对路径；运行时必须是非空字符串。 */
   progressPath?: string;
 }
 
-/**
- * 绑定单一 JSON 进度文件的存储实例。路径可注入：服务默认位置保持
- * `server/data/<名称>.json`，测试通过独立实例指向临时目录，运行环境可通过
- * `LA_PLUMA_*` 覆盖变量重定向（见各服务的默认路径绑定）。
- */
 export interface CopilotProgressStore {
-  /** 绑定的进度文件绝对路径。 */
   path: string;
-  /** 读取整份进度：缺失文件按空进度处理，损坏文件抛出可识别错误。 */
   load(): Promise<unknown>;
-  /** 读改写整份进度：读取、更新与写回在同一排队单元内完成。 */
   update<T>(updateFn: (current: unknown) => T | Promise<T>): Promise<T>;
 }
 

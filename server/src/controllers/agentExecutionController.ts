@@ -64,23 +64,11 @@ import type {
   ExecutionScheduleRequest
 } from './executionDto.ts';
 
-/**
- * 执行控制器：tracked 执行引擎与 Run 生命周期衔接的领域归属地。任务、流程、
- * 作业集的执行编排、目标停止/当前停止与 202/幂等响应语义在本模块实现；Run
- * 与设备租约仍由 agentRunService / executionCoordinatorService 唯一持有。
- *
- * 类型边界：请求体、查询与会话输入在 executionDto 按端点收窄；本模块做
- * HTTP 适配与 Run 生命周期衔接，成功/失败 envelope 经 utils/apiHelper 的
- * sendSuccess/sendError 写出，X-La-Pluma-Run-Id、Idempotency-Replayed 与
- * Location 响应头保持原字段与顺序。端点注册顺序由路由层 agentExecution.ts
- * 保持与抽离前一致。
- */
 const logger = createLogger('AgentRoutes');
 
 const ACTIVE_RUN_STATES: ReadonlySet<AgentRunStatus> = new Set<AgentRunStatus>(['accepted', 'waiting', 'running', 'stopping']);
 const TERMINAL_RUN_STATES: ReadonlySet<AgentRunStatus> = new Set<AgentRunStatus>(['succeeded', 'failed', 'stopped', 'interrupted']);
 
-/** 执行结果的后台/同步收尾信息：只声明适配层实际读取的字段。 */
 export interface ExecutionOutcome {
   ok?: boolean;
   stopped?: boolean;
@@ -88,14 +76,12 @@ export interface ExecutionOutcome {
   error?: unknown;
 }
 
-/** 执行生命周期：进程启动前的门禁、已启动回调与终态收尾。 */
 export interface TrackedExecutionLifecycle {
   onBeforeStart?(): void | Promise<void>;
   onStarted?(): void;
   onSettled?(outcome: ExecutionOutcome): void | Promise<void>;
 }
 
-/** 目标停止/当前停止的响应：保留旧字段组合，`run` 为停止后的 Run 投影。 */
 export interface ExecutionStopPayload extends Record<string, unknown> {
   stopRequested: boolean;
   deviceStopRequested: boolean;
@@ -533,7 +519,6 @@ export async function executeTrackedAgentAction(
   }
 }
 
-/** 旧实现按 `error.code` 把忙碌错误映射到兼容码，其余错误原样抛出。 */
 function mapLegacyBusyError(error: unknown, legacyCode: string | null): unknown {
   if (!error || !legacyCode || readField(error, 'code') !== 'AGENT_EXECUTION_BUSY') return error;
   return agentError(legacyCode, errorMessageOf(error), {
@@ -1247,11 +1232,6 @@ async function stopCurrentExecution(
   }, deviceStopRequested ? '已发送终止请求' : '当前没有可终止的任务');
 }
 
-/**
- * 端点入口：与 agentExecution.ts 的注册一一对应，按原注册顺序排列。
- */
-
-/** `/activity/run`：执行当前活动作业，默认同步等待完成。 */
 export async function runCurrentActivity(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1266,7 +1246,6 @@ export async function runCurrentActivity(
   });
 }
 
-/** `/copilot-sets/:id/execute`：校验作业集 id 后按 manual/continuous 模式分流。 */
 export async function executeCopilotSet(
   req: ExecutionCopilotSetRequest,
   res: ExecutionResponseWriter
@@ -1287,7 +1266,6 @@ export async function executeCopilotSet(
   return executeContinuousCopilotSet(req, res, { setId, raid, selectedIndexes, options, waitForCompletion });
 }
 
-/** `/actions/continue-copilot-set`：解析目标 runId 与等待语义后进入作业集续跑。 */
 export async function continueCopilotSetAction(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1297,7 +1275,6 @@ export async function continueCopilotSetAction(
   return continueCopilotSet(req, res, { runId, waitForCompletion });
 }
 
-/** `/schedules/:scheduleId/execute`：校验任务流程后执行定时流程。 */
 export async function executeSchedule(
   req: ExecutionScheduleRequest,
   res: ExecutionResponseWriter
@@ -1324,7 +1301,6 @@ export async function executeSchedule(
   });
 }
 
-/** `/actions/start-game`：启动游戏命令，支持后台接受与同步等待。 */
 export async function startGame(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1350,7 +1326,6 @@ export async function startGame(
   });
 }
 
-/** `/actions/run-daily-flow`：今日流程的计划校验、dry run 与 tracked 执行。 */
 export async function runDailyFlow(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1402,7 +1377,6 @@ export async function runDailyFlow(
   });
 }
 
-/** `/actions/fight`：理智作战参数归一、dry run 与 tracked 执行。 */
 export async function runFight(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1458,7 +1432,6 @@ export async function runFight(
   });
 }
 
-/** `/actions/run-task`：通用任务执行入口，activity/list 命令强制等待完成。 */
 export async function runTask(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1490,7 +1463,6 @@ export async function runTask(
   });
 }
 
-/** `/actions/stop`：目标停止优先；请求体与查询都缺省时停止当前执行。 */
 export async function stopExecution(
   req: ExecutionRequest,
   res: ExecutionResponseWriter

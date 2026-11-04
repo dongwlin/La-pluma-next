@@ -1,13 +1,3 @@
-/**
- * 肉鸽执行接线
- *
- * 页面只订阅统一执行控制器的快照并发送启动/停止意图：
- * - 运行状态来自服务端 Run，不在页面内维护第二份执行状态机；
- * - 提交使用应用级控制器的幂等 intent，重复点击不会并发提交；
- * - 停止按本客户端持有的 runId 进行，确认期间由快照推进，页面隐藏/恢复不会遗留锁定按钮；
- * - `scope` 标记 run 的领域归属，避免把其它页面发起的 run 展示成肉鸽执行。
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import type { StatusMessageType } from '@/features/runtime-status'

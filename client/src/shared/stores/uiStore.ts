@@ -1,7 +1,3 @@
-/**
- * UI Store - 管理主题偏好
- */
-
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { applyTheme, THEME_STORAGE_KEY, type ThemeMode } from '../theme/bootTheme'

@@ -1,14 +1,3 @@
-/**
- * 读取域共享助手 + 掉落/游戏数据载荷
- *
- * 把 Express 的未知输入收窄成读取适配需要的类型：数值 query（`lines`/
- * `days`）按单值读取，原样交给 `resolveBoundedInteger` 统一回落/截断/
- * 夹取。掉落读取的载荷显式建模，掉落服务返回统一 envelope，读取控制器
- * 经 `unwrapReadPayload` 沿用旧实现的 `result.data || result` 真值选择，
- * 不重建成功/失败结构。
- * 状态与日志专属的请求收窄与响应载荷分别建模在 statusDto 与 logDto。
- */
-
 import type {
   ApiErrorResponse,
   ApiRequestLike,
@@ -40,7 +29,6 @@ export function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 读取服务返回的统一 envelope；读取路由不重建成功/失败结构。 */
 export type ReadResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 /**
@@ -53,7 +41,6 @@ export function unwrapReadPayload<T>(result: ReadResult<T>): ReadPayload<T> {
   return result.success && result.data ? result.data : result;
 }
 
-/** 成功与失败 envelope 都带 message；缺省仍回落“操作成功”。 */
 export function readPayloadMessage(result: { message?: string }): string {
   return result.message || '操作成功';
 }

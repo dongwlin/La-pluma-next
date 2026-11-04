@@ -1,5 +1,3 @@
-/** Application-owned preview infrastructure and serialized service operations. */
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import {

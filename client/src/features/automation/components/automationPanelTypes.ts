@@ -1,10 +1,3 @@
-/**
- * 自动化流程/定时/摘要面板的投影类型
- *
- * 面板只接收工作区提供的只读 Run 投影、配置草稿投影与回调，不持有配置
- * 提交队列、执行身份或第二份运行状态。
- */
-
 import type { KeyboardEvent, PointerEvent } from 'react'
 import type { AutomationAvailableTask, TaskFlowItem } from '../types'
 import type { AutomationExecutionSummary } from '../model/automationRun'

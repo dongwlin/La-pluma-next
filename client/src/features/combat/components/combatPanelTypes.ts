@@ -1,9 +1,7 @@
 /**
  * 作业面板的共享 props 契约
  *
- * 工作区只把当前配置、预览、选择、搜索与执行投影传给面板；面板不创建
- * 第二份配置、预览会话或执行状态。搜索词与识别方式通过会话存储传递，
- * 工作区不订阅，避免输入推动大列表重渲染。
+ * 搜索词与识别方式通过会话存储传递，工作区不订阅，避免输入推动大列表重渲染。
  */
 
 import type {
@@ -20,7 +18,6 @@ import type {
   ParadoxSearchResult,
 } from '../types'
 
-/** 所有作业卡共用的执行按钮投影；回调由工作区注入。 */
 export interface CombatExecutionActions {
   automationAvailable: boolean
   unavailableMessage: string

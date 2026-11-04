@@ -1,8 +1,3 @@
-/**
- * 日志事实、语义注解、事件选择与展示分组。
- * 解析保留来源，注解只解释事实；列表只呈现语义摘要，原文通过单条详情查看。
- */
-
 import type { LogEntry } from '../types'
 import { asRecord, getTaskName, summarizeCallback } from './logCallbackSummary'
 import { summarizeMaaCliMessage, summarizeMaaCliSummaryBlock } from './logCliSummary'
@@ -38,7 +33,6 @@ export interface LogView {
   /** 同一批选中事实用于列表呈现和导出；不受重复折叠影响。 */
   readonly selected: readonly LogEntry[]
   readonly visible: readonly VisibleLog[]
-  /** 已匹配搜索和级别，但被关键事件筛选隐藏的记录数。 */
   readonly hiddenMatchCount: number
 }
 
@@ -177,7 +171,6 @@ function summarizeKnownMessage(log: LogEntry): LogEntry | null {
   return { ...log, message }
 }
 
-/** 明确认识的常规回调才默认隐藏；未知回调保留原文。 */
 function isRoutineCallback(message: string): boolean {
   const match = message.match(/^Assistant::append_callback \| (\w+)\s+(\{.*\})$/)
   if (!match) return false

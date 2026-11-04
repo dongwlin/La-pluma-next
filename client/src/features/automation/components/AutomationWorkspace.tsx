@@ -1,19 +1,3 @@
-/**
- * 自动化工作区
- *
- * 页面唯一的自动化领域容器：配置草稿订阅、Run 执行订阅、选中项、排序预览、
- * 撤销、连接测试与跨域失效都在这里接线；页面壳只组合页头与本组件。
- *
- * - task flow 与 schedule 共用 `useUserConfig(automationConfigAdapter)` 的
- *   唯一草稿通道；本文件与面板都不另建保存队列或第二份草稿。
- * - 流程列表、定时与执行摘要分别由 `AutomationTaskFlowPanel`、
- *   `AutomationSchedulePanel`、`AutomationExecutionSummary` 渲染；面板只接
- *   收投影与回调，排序预览通过 `useTaskFlowSorting` 与编辑器共享。
- * - 执行状态全部来自 task-execution 控制器的只读快照；页面不轮询、不写
- *   localStorage、不直接调用领域 API。
- * - 任务配置编辑器仍在本容器内组合：它读取同一草稿、选中项与执行投影。
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getErrorMessage, isRecord } from '@/shared/api'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -97,7 +81,6 @@ export default function AutomationWorkspace() {
     stop: stopTaskFlow,
   } = useAutomationExecution({ notify: setStatusMessage })
 
-  // 辅助函数：显示消息
   const showSuccess = (msg: string) => {
     setStatusMessage(msg, 'success')
   }
@@ -306,7 +289,6 @@ export default function AutomationWorkspace() {
     }
   }
 
-  // schedule 编辑与 task flow 写入同一条草稿通道：协调器负责本地草稿、完整提交与重试。
   const updateSchedule = (next: { enabled?: boolean; entries?: ScheduleTimeEntry[] }) => {
     const current = currentDraft()
     updateConfig({
@@ -362,7 +344,6 @@ export default function AutomationWorkspace() {
     void handleAutomationInvalidation(invalidation)
   })
 
-  // 监听页面可见性变化，切换回来时重试尚未成功的加载（已加载时协调器直接跳过）。
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (!document.hidden) {
@@ -432,7 +413,6 @@ export default function AutomationWorkspace() {
           onRestoreDeletedTask={restoreDeletedTask}
         />
 
-        {/* 当前任务配置 */}
         <div ref={editorColumnRef} id="automation-task-editor" className="automation-editor-column" tabIndex={-1}>
           <SmoothPanel className="automation-editor-panel">
             <div className="automation-editor-heading">
@@ -499,7 +479,6 @@ export default function AutomationWorkspace() {
                       </div>
                     </div>
 
-                    {/* 参数配置区域 */}
                     {task.paramFields && task.paramFields.length > 0 && (
                       <div className={`automation-param-fields${usesGroupedParameterRows ? ' is-grouped' : ''}`}>
                         {task.paramFields.map((field) => {
@@ -1042,7 +1021,6 @@ export default function AutomationWorkspace() {
                       </details>
                     )}
 
-                    {/* 启动游戏任务的测试连接按钮 */}
                     {task.commandId === 'startup' && (
                       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
                         <Button
@@ -1066,7 +1044,6 @@ export default function AutomationWorkspace() {
                           {connectionFeedback ? '重新测试' : '测试连接'}
                         </Button>
 
-                        {/* 连接状态显示 */}
                         <AnimatePresence initial={false}>
                           {connectionFeedback && (
                             <motion.div

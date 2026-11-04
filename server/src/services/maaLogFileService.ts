@@ -5,19 +5,6 @@ import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { resolveMaaPaths } from '../config/paths.ts';
 import { execMaaCommandUnlocked } from './maaProcessService.ts';
 
-/**
- * MAA 日志文件 IO 与检查点。
- *
- * - 目录由 `maa dir log` 解析（非设备变更命令，不申请执行租约），并在
- *   进程内缓存解析结果；失败在短冷却期内复用同一个错误。
- * - 读取只允许日志目录内、扩展名为 `.log` 的文件：先 realpath 再按目录边界
- *   判定，目录外符号链接与悬空目标都会被拒绝；内容从文件尾部按块读取并限制
- *   最大字节数，行数上限与清理阈值保持既有对外契约。
- * - 检查点与增量读取接受日志目录、stat 与 open 端口注入，测试可以不依赖
- *   真实 MAA CLI 或真实日志目录验证“只读新增字节”的语义。
- * - 实时日志缓冲不在这里：它属于 maaProcessService 的子进程投影。
- */
-
 const logger = createLogger('MaaService');
 
 // 读取日志文件时的行数上限；/logs/files 的 lines 参数按它夹取。
@@ -28,7 +15,6 @@ export const MAX_LOG_FILE_READ_BYTES = 2 * 1024 * 1024;
 
 const LOG_READ_CHUNK_BYTES = 64 * 1024;
 
-/** 日志目录内的单个日志文件条目。 */
 export interface MaaLogFileEntry {
   name: string;
   path: string;
@@ -36,18 +22,15 @@ export interface MaaLogFileEntry {
   modified: string;
 }
 
-/** 执行后增量读取的起点；size 是创建检查点时的文件字节数。 */
 export interface MaaLogCheckpoint {
   logPath: string;
   size: number;
 }
 
-/** stat 端口只读取文件大小。 */
 export interface MaaLogFileStats {
   size: number;
 }
 
-/** open 端口返回的读取句柄；调用方负责 close。 */
 export interface MaaLogFileHandle {
   read(
     buffer: Buffer,
@@ -68,20 +51,17 @@ export interface MaaLogReadPorts {
   open?(path: string, flags: 'r'): Promise<MaaLogFileHandle>;
 }
 
-/** readLogFile 的输出；只返回文件末尾的行。 */
 export interface MaaLogFileContent {
   content: string;
   totalLines: number;
   returnedLines: number;
 }
 
-/** cleanupLogs 的删除统计。 */
 export interface MaaLogCleanupResult {
   deletedCount: number;
   freedSpace: number;
 }
 
-/** MAA 调试截图条目。 */
 export interface MaaDebugScreenshot {
   name: string;
   path: string;
@@ -153,10 +133,6 @@ async function collectMaaLogFiles(logDir: string): Promise<MaaLogFileEntry[]> {
   return files;
 }
 
-/**
- * 记录 asst.log 当前大小，供执行后只读取新增内容。
- * ports.resolveLogDir / ports.stat 可覆盖目录解析与文件状态读取。
- */
 export async function createMaaLogCheckpoint(
   ports: MaaLogCheckpointPorts = {}
 ): Promise<MaaLogCheckpoint | null> {
@@ -172,10 +148,6 @@ export async function createMaaLogCheckpoint(
   }
 }
 
-/**
- * 读取检查点之后新增的日志字节（最多 maxBytes）。
- * ports.stat / ports.open 可覆盖文件状态与打开操作。
- */
 export async function readMaaLogSince(
   checkpoint: MaaLogCheckpoint | null,
   maxBytes = 2 * 1024 * 1024,
@@ -206,14 +178,10 @@ export async function readMaaLogSince(
   }
 }
 
-/**
- * 获取日志文件列表
- */
 export async function getLogFiles(): Promise<MaaLogFileEntry[]> {
   try {
     const logDir = await getMaaLogDir();
     const files = await collectMaaLogFiles(logDir);
-    // 按修改时间倒序排序
     files.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
     return files;
@@ -223,9 +191,6 @@ export async function getLogFiles(): Promise<MaaLogFileEntry[]> {
   }
 }
 
-/**
- * 手动清理日志文件
- */
 export async function cleanupLogs(maxSizeMB: unknown = 10): Promise<MaaLogCleanupResult> {
   try {
     const sizeLimit = Number(maxSizeMB);
@@ -363,7 +328,6 @@ export async function readLogFile(filePath: string, lines: unknown = 1000): Prom
         ? tail.text.split('\n').length
         : await countLogLines(handle, fileStats.size);
 
-      // 只返回最后 N 行
       const startIndex = Math.max(0, allLines.length - lineCount);
       const selectedLines = allLines.slice(startIndex);
 
@@ -380,9 +344,6 @@ export async function readLogFile(filePath: string, lines: unknown = 1000): Prom
   }
 }
 
-/**
- * 获取 MAA 调试截图列表
- */
 export async function getDebugScreenshots(): Promise<MaaDebugScreenshot[]> {
   try {
     // MAA 的状态目录（Linux 为 XDG_STATE_HOME/maa）下才是调试产物目录；
@@ -391,10 +352,8 @@ export async function getDebugScreenshots(): Promise<MaaDebugScreenshot[]> {
 
     logger.debug('调试目录', { debugDir });
 
-    // 读取 debug 目录下的所有文件
     const files = await readdir(debugDir);
 
-    // 筛选图片文件
     const imageFiles = files.filter(file =>
       file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')
     );
@@ -413,7 +372,6 @@ export async function getDebugScreenshots(): Promise<MaaDebugScreenshot[]> {
       })
     );
 
-    // 按修改时间倒序排序
     screenshots.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
     return screenshots;

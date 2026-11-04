@@ -1,13 +1,6 @@
 /**
- * 登录/认证失败限流
- *
- * 固定窗口、按来源键计数，用于保护只有少量入口的凭据交换路径：
- * - 信令票据签发（每次签发都会登录一次上游）；
- * - API 令牌认证失败（只统计失败，不阻止有效令牌）。
- *
- * 计数只保存在当前进程内，不写入磁盘；键按来源地址归一，条目数量有上限，
- * 过期窗口在插入时清理，避免攻击者用大量来源地址撑大内存。
- * 这是单实例的防暴力破解措施，不承担多实例共享限流的职责。
+ * 进程内固定窗口限流，条目数有上限并在插入时清理过期窗口；仅供单实例防暴力破解，
+ * 不承担多实例共享限流，也不写盘。
  */
 
 /** 触发本次判断的来源键；只用于内存计数，不写入日志或响应。 */
@@ -17,13 +10,9 @@ export interface ClientAddressRequestLike {
 }
 
 export interface LoginThrottleOptions {
-  /** 统计窗口长度，毫秒 */
   windowMs?: number;
-  /** 单个来源在窗口内允许的次数 */
   maxAttempts?: number;
-  /** 内存中最多保留的来源条目数 */
   maxEntries?: number;
-  /** 可注入的时钟，便于测试窗口推进 */
   now?: () => number;
 }
 
@@ -36,9 +25,7 @@ export interface LoginThrottleDecision {
 export interface LoginThrottle {
   /** 记录一次尝试并给出判断；被拒绝时不会延长当前窗口 */
   tryAcquire(key: string): LoginThrottleDecision;
-  /** 清除指定来源或全部计数 */
   reset(key?: string): void;
-  /** 当前保留的来源条目数，供边界测试使用 */
   size(): number;
 }
 

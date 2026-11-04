@@ -20,7 +20,6 @@ import { assertExecutionAdmissionOpen } from './executionAdmissionService.ts';
 const serviceDir = dirname(fileURLToPath(import.meta.url));
 const defaultLockPath = join(serviceDir, '../../data/maa-execution.lock');
 
-/** 申请租约时可提供的描述字段；缺省值由本模块补齐。 */
 export interface MaaExecutionLeaseRequest {
   source?: string | null;
   taskName?: string | null;
@@ -36,7 +35,6 @@ export interface MaaExecutionOwner {
   startedAt: string | null;
 }
 
-/** 本进程实际写入的锁元数据：pid 与 source 一定存在。 */
 export interface MaaExecutionLeaseMetadata {
   pid: number;
   source: string;
@@ -110,7 +108,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 锁文件的读取结果；`unknown` 表示文件存在但无法解释，与“缺失”严格区分。 */
 type LeaseFileRead =
   | { state: 'missing' }
   | { state: 'unreadable'; reason: string }
@@ -138,7 +135,6 @@ async function readLeaseFile(lockPath: string): Promise<LeaseFileRead> {
   return { state: 'present', owner };
 }
 
-/** 锁元数据来自磁盘，逐字段从 unknown 收窄；整体不是对象时按无法解释处理。 */
 function normalizeLeaseOwner(owner: unknown): MaaExecutionOwner | null {
   if (!isRecord(owner)) return null;
   const pid = Number(owner.pid);

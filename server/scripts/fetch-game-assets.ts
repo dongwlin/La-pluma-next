@@ -1,8 +1,3 @@
-/**
- * 获取明日方舟游戏资源数据
- * 包括：干员、技能、物品/材料等
- */
-
 import fetch from 'node-fetch';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -20,28 +15,23 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 游戏数据仓库
 const GAME_DATA_BASE = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata';
 
-// CDN 基础路径
-// 注意：官方 CDN 上只有 avatar/ 目录（用户头像），没有干员、技能、物品图片
-// 这些图片需要从第三方来源获取，或使用降级方案（首字母、图标等）
-const CDN_BASE: string | null = null; // 设置为 null 表示不生成图片 URL
-
-// 输出路径
+// 官方 CDN 上只有 avatar/ 目录（用户头像），没有干员、技能、物品图片；
+// 这些图片需要从第三方来源获取，或使用降级方案（首字母、图标等）。
+// 设为 null 表示不生成图片 URL。
+const CDN_BASE: string | null = null;
 export const OUTPUT_DIR = path.join(__dirname, '../data');
 
 const CHARACTER_SOURCE = 'character_table.json';
 const SKILL_SOURCE = 'skill_table.json';
 const ITEM_SOURCE = 'item_table.json';
 
-/** 干员技能条目。 */
 export interface CharacterSkill {
   skillId?: string;
   levelUpCostCond: unknown;
 }
 
-/** 干员数据。 */
 export interface CharacterRecord {
   id: string;
   name: string;
@@ -54,7 +44,6 @@ export interface CharacterRecord {
   skills: CharacterSkill[];
 }
 
-/** 技能等级数据。 */
 export interface SkillLevel {
   name?: string;
   description?: string;
@@ -62,7 +51,6 @@ export interface SkillLevel {
   duration?: number;
 }
 
-/** 技能数据。 */
 export interface SkillRecord {
   id: string;
   name: string;
@@ -70,7 +58,6 @@ export interface SkillRecord {
   levels: SkillLevel[];
 }
 
-/** 物品数据。 */
 export interface ItemRecord {
   id: string;
   name?: string;
@@ -82,7 +69,6 @@ export interface ItemRecord {
   obtainApproach?: string;
 }
 
-/** 获取游戏数据仓库中的 JSON。 */
 async function fetchJson(name: string): Promise<unknown> {
   const response = await fetch(`${GAME_DATA_BASE}/excel/${name}`);
   if (!response.ok) {
@@ -91,7 +77,6 @@ async function fetchJson(name: string): Promise<unknown> {
   return response.json();
 }
 
-/** 解析干员数据。 */
 export function parseCharacterData(payload: unknown): Record<string, CharacterRecord> {
   console.log('🔄 正在解析干员数据...');
 
@@ -102,7 +87,6 @@ export function parseCharacterData(payload: unknown): Record<string, CharacterRe
     const char = expectRecord(raw, CHARACTER_SOURCE, `干员 ${charId}`);
     const name = optionalString(char.name);
 
-    // 跳过非干员数据
     if (!name || charId.startsWith('trap_') || charId.startsWith('token_')) {
       continue;
     }
@@ -131,7 +115,6 @@ export function parseCharacterData(payload: unknown): Record<string, CharacterRe
       portrait: null,
       fullPortrait: null,
 
-      // 技能列表
       skills
     };
   }
@@ -140,7 +123,6 @@ export function parseCharacterData(payload: unknown): Record<string, CharacterRe
   return characters;
 }
 
-/** 解析技能数据。 */
 export function parseSkillData(payload: unknown): Record<string, SkillRecord> {
   console.log('🔄 正在解析技能数据...');
 
@@ -166,10 +148,8 @@ export function parseSkillData(payload: unknown): Record<string, SkillRecord> {
       id: skillId,
       name: levels[0]?.name || skillId,
 
-      // 技能图标
       icon: `${CDN_BASE}/skill_icon/${optionalString(skillRecord.iconId) || skillId}.png`,
 
-      // 技能等级数据
       levels
     };
   }
@@ -178,7 +158,6 @@ export function parseSkillData(payload: unknown): Record<string, SkillRecord> {
   return skills;
 }
 
-/** 解析物品数据。 */
 export function parseItemData(payload: unknown): Record<string, ItemRecord> {
   console.log('🔄 正在解析物品数据...');
 
@@ -196,13 +175,10 @@ export function parseItemData(payload: unknown): Record<string, ItemRecord> {
       rarity: optionalString(item.rarity),
       itemType: optionalString(item.itemType),
 
-      // 物品图标
       icon: `${CDN_BASE}/item_icon/${optionalString(item.iconId) || itemId}.png`,
 
-      // 分类
       classifyType: optionalString(item.classifyType),
 
-      // 是否可以在商店购买
       obtainApproach: optionalString(item.obtainApproach)
     };
   }
@@ -211,7 +187,6 @@ export function parseItemData(payload: unknown): Record<string, ItemRecord> {
   return items;
 }
 
-/** 保存数据到文件。 */
 export async function saveData(
   filename: string,
   data: Record<string, { name?: string; id?: string }>,
@@ -233,14 +208,12 @@ export async function saveData(
   }
 }
 
-/** 保存数据的副作用端口。 */
 export interface SaveDataDeps {
   mkdir?: (directory: string) => Promise<void>;
   writeFile?: (filePath: string, data: string) => Promise<void>;
   outputDir?: string;
 }
 
-/** 显示示例数据。 */
 function showExamples(data: Record<string, { name?: string; id?: string }>, count = 5): void {
   const examples = Object.keys(data).slice(0, count);
   console.log('\n示例数据:');
@@ -250,12 +223,10 @@ function showExamples(data: Record<string, { name?: string; id?: string }>, coun
   });
 }
 
-/** 抓取与主流程的副作用端口。 */
 export interface FetchGameAssetsDeps extends SaveDataDeps {
   fetchJson?: (name: string) => Promise<unknown>;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchGameAssetsDeps = {}): Promise<{
   characters: Record<string, CharacterRecord>;
   skills: Record<string, SkillRecord>;
@@ -267,7 +238,6 @@ export async function main(deps: FetchGameAssetsDeps = {}): Promise<{
   console.log('   明日方舟游戏资源数据获取工具');
   console.log('========================================\n');
 
-  // 1. 获取干员数据
   console.log('【1/3】处理干员数据');
   console.log('─────────────────────────────────────');
   const characterTable = await fetchPayload('character_table.json');
@@ -277,7 +247,6 @@ export async function main(deps: FetchGameAssetsDeps = {}): Promise<{
 
   console.log('\n');
 
-  // 2. 获取技能数据
   console.log('【2/3】处理技能数据');
   console.log('─────────────────────────────────────');
   const skillTable = await fetchPayload('skill_table.json');
@@ -287,7 +256,6 @@ export async function main(deps: FetchGameAssetsDeps = {}): Promise<{
 
   console.log('\n');
 
-  // 3. 获取物品数据
   console.log('【3/3】处理物品数据');
   console.log('─────────────────────────────────────');
   const itemTable = await fetchPayload('item_table.json');

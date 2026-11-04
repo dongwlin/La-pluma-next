@@ -1,14 +1,3 @@
-/**
- * 自动化执行接线
- *
- * 页面只订阅统一执行控制器的快照并发送启动/停止意图：
- * - 手动启动一次日常流程，提交 `waitForCompletion=false`，由服务端 Run 持有整个流程；
- * - 活动进度来自 run.progress，逐项结果只读取持有同一 runId 的流程投影；
- * - 停止按本页持有的 runId 进行，确认期间由快照推进；
- * - 旧 `maa-task-flow-execution` 断点只读一次，关联到 Run 时只观察、不重提；
- * - `scope` 标记 run 的领域归属，避免把其它页面发起的 run 展示成日常流程。
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '@/shared/api'
 import type { StatusMessageType } from '@/features/runtime-status'
@@ -51,7 +40,6 @@ export interface AutomationExecution {
   isSubmitting: boolean
   run: AgentRun | null
   progress: AutomationFlowProgress | null
-  /** 本页实际拥有的 run 的终态摘要。 */
   summary: AutomationExecutionSummary | null
   /** 服务端流程投影的最近执行结果，仅用于空闲时展示，不代表本页身份。 */
   scheduleSummary: AutomationExecutionSummary | null
@@ -62,7 +50,6 @@ export interface AutomationExecution {
 interface UseAutomationExecutionOptions {
   notify: (message: string, type?: StatusMessageType) => void
   controller?: ExecutionController
-  /** 仅用于测试或嵌入式场景；缺省使用 localStorage。 */
   storage?: LegacyFlowCheckpointStorage | null
 }
 

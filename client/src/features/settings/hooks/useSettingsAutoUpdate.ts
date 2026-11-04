@@ -1,11 +1,3 @@
-/**
- * 自动更新策略的 React 适配层
- *
- * 草稿、读取守卫与完整提交由模块级 `AutoUpdateConfigOwner` 持有；本 hook
- * 只订阅状态、在真正挂载时读取一次策略，并把 owner 产生的反馈转发到全局
- * 状态提示。Activity 恢复不重复读取；在途保存不因 cleanup 取消。
- */
-
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   settingsAutoUpdateOwner,

@@ -1,14 +1,3 @@
-/**
- * Dashboard 执行接线
- *
- * 日常与活动入口共用应用级执行控制器的唯一快照：
- * - 日常流程提交一次 `run_daily_flow`（`waitForCompletion=false`），由服务端 Run 持有流程；
- * - 活动入口保留领域预检：同步调用 `/agent/activity/run`，服务端先做活动预检再执行，
- *   响应中的 `runId` 交给控制器保存身份；
- * - 运行/等待/外部占用/断线未知都来自同一投影，页面和浮动指示器不再各自维护运行状态；
- * - `scope: 'dashboard'` 标记归属，其它域或未纳管执行只作为全局占用展示。
- */
-
 import { useCallback, useEffect, useRef } from 'react'
 import { getErrorMessage, type ApiResponse } from '@/shared/api'
 import { executeScheduleNow, runCurrentActivity } from '@/features/automation'

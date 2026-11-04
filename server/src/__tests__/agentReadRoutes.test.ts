@@ -20,9 +20,6 @@ import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.
 // 日志路径与生产静态 fallback 顺序保持不变。
 // 环境变量必须在导入被测模块前就绪：MAA_CLI_PATH 与 XDG_* 由服务在导入或
 // 调用时读取，测试只使用临时目录与假 CLI / 假 ADB，不触碰真实设备。
-//
-// 响应按各端点声明的 DTO 读取：状态汇总的探测兜底与成功投影分别收窄，
-// Run 快照直接复用 runSnapshotService 的快照类型，掉落与游戏数据复用领域类型。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-read-routes-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const dropDir = join(fixtureDir, 'drop-records');
@@ -126,7 +123,6 @@ const { getGameDay } = await import('../services/gameCalendar.ts');
 const { DEFAULT_CLIENT_TYPE } = await import('../config/connectionDefaults.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
-// 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。
 for (const loggerName of ['Api', 'MaaService', 'DropRecord', 'DataParser']) {
   loggerManager.getLogger(loggerName).enableConsole = false;
 }
@@ -145,7 +141,6 @@ async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number>
   return address.port;
 }
 
-/** 信令网关桩：应用只读取 proxyPath 与登录入口，本文件不建立 WebRTC 连接。 */
 function stubSignalingGateway(): WebrtcSignalingGateway {
   return {
     proxyPath: WEBRTC_SIGNALING_PATH,
@@ -167,7 +162,6 @@ function isApiEnvelope(value: unknown): value is ApiEnvelopeLike {
   return typeof (value as { success?: unknown }).success === 'boolean';
 }
 
-/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
 async function readBody<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
   assert.ok(isApiEnvelope(body));

@@ -1,8 +1,3 @@
-/**
- * 数据统计域类型
- * 仓库、持有干员与干员目录的载荷类型由 `features/game-data` 持有。
- */
-
 export interface DropStatistics {
   total: {
     sanity: number
@@ -40,7 +35,6 @@ export interface DropRecordsProps {
   onRefresh: () => void
 }
 
-// 筛选、排序与阿米娅形态规则见 `../model/operatorFilters`
 export type ActiveTask = 'depot' | 'operbox' | null
 export type ActiveTab = 'operbox' | 'depot' | 'drops'
 export type OpenMenu = 'ownership' | 'rarity' | 'profession' | 'elite' | 'potential' | 'sort' | null

@@ -26,7 +26,6 @@ interface LayoutProps {
 }
 
 // Keep the compact mobile rail focused on the four destinations used most often.
-// The remaining workspaces stay available from the adjacent more control.
 const mobileTabs = appTabs.filter(tab => ['dashboard', 'automation', 'combat', 'config'].includes(tab.id))
 const overflowTabs = appTabs.filter(tab => !mobileTabs.some(primary => primary.id === tab.id))
 
@@ -304,7 +303,6 @@ export default function Layout({ activeTab, children }: LayoutProps) {
     }
   }, [])
 
-  // activeTab 提交后恢复目标 tab 的滚动位置；只在切换（含首次挂载）时执行一次。
   useLayoutEffect(() => {
     activeTabRef.current = activeTab
     restoreScroll(activeTab)
@@ -424,6 +422,7 @@ export default function Layout({ activeTab, children }: LayoutProps) {
               <motion.div
                 key="more-sheet-backdrop"
                 className="sheet-backdrop backdrop-in"
+                data-app-sheet-backdrop="true"
                 aria-hidden="true"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

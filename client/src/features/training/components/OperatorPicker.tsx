@@ -1,12 +1,3 @@
-/**
- * 添加干员选择器
- *
- * 候选列表与三种状态计数由 training Query 持有；搜索、稀有度、未精二、
- * 分批渲染、头像加载缓存与状态分段测量都是选择器的局部交互状态，
- * 因此跟随本组件，而不是页面或工作区。弹层关闭只卸载 Modal 内容，
- * 选择器本身仍挂载，筛选与“继续显示”游标在再次打开时保留。
- */
-
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
@@ -145,7 +136,6 @@ export default function OperatorPicker({
     <Modal isOpen={isOpen} onClose={onClose} title="添加干员" size="xl" footer={<div className="flex w-full items-center justify-between gap-3"><span className="text-sm text-secondary">已加入 {queueLength} 名干员</span><Button onClick={onClose} variant="secondary">完成选择</Button></div>}>
       {operationError && <div role="alert" className="training-feedback status-danger">{operationError}</div>}
       <div className="space-y-4">
-        {/* 搜索和过滤 */}
         <div className="flex flex-col gap-3">
           <div className="app-workspace-segments app-liquid-tab-pill training-status-shell">
             <div
@@ -243,7 +233,6 @@ export default function OperatorPicker({
         </div>
         </div>
 
-        {/* 干员卡片列表 */}
         {operatorsLoading ? (
           <div className="flex min-h-65 items-center justify-center">
             <Loading text="正在读取干员..." />
@@ -268,11 +257,9 @@ export default function OperatorPicker({
                     key={operator.id}
                     className={`training-operator-item relative overflow-hidden p-2.5 ${!row.isOwned ? 'opacity-75' : ''}`}
                   >
-                  {/* 干员头像 */}
                   <div className="relative mb-2.5 aspect-square w-full overflow-hidden rounded-xl surface-panel">
                     {operator.id ? (
                       <>
-                        {/* 骨架屏 */}
                         {!imageLoaded && (
                           <div className="app-skeleton absolute inset-0 surface-soft" />
                         )}
@@ -292,16 +279,13 @@ export default function OperatorPicker({
                             if (!currentSrc.includes('_2.png') && !currentSrc.includes('_1.png')) {
                               target.src = `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${operator.id}_2.png`;
                             } else if (currentSrc.includes('_2.png')) {
-                              // 如果 _2 也失败，尝试 _1
                               target.src = `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${operator.id}_1.png`;
                             } else {
-                              // 都失败了，隐藏图片并标记为已加载
                               target.style.display = 'none';
                               setLoadedImages(prev => prev[operator.id] ? prev : ({ ...prev, [operator.id]: true }));
                             }
                           }}
                         />
-                        {/* 不可添加时的半透明蒙版 */}
                         {!row.canAdd && imageLoaded && (
                           <div className={`absolute inset-0 ${row.isOwned ? 'bg-(--app-surface)/25' : 'bg-(--app-surface)/50'}`} />
                         )}
@@ -311,7 +295,6 @@ export default function OperatorPicker({
                         无头像
                       </div>
                     )}
-                    {/* 稀有度标识 */}
                     {operator.rarity !== undefined && operator.rarity > 0 && (
                       <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold surface-panel brand-text">
                         {operator.rarity}★
@@ -331,7 +314,6 @@ export default function OperatorPicker({
                       )}
                     </div>
 
-                    {/* 添加按钮 */}
                     <Button
                       onClick={() => void onAdd(operator)}
                       aria-label={row.canAdd ? `添加${operator.name}` : undefined}

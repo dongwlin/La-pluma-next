@@ -1,27 +1,7 @@
 /**
- * 统一 HTTP 出站请求端口：带显式时限、取消与受限重试的出站调用底座。
- *
- * 三个显式端口：
- * - requestJson：JSON 请求体（自动序列化并补默认 Content-Type），响应按 JSON 解析；
- * - requestText：请求体原样透传，响应返回文本；
- * - requestMultipart：multipart 表单（原生 FormData 或 form-data 实例原样透传，
- *   不在本端口内构造编码），响应按 JSON 解析。
- *
- * 时限：timeoutMs 覆盖整次交换（连接、响应与响应体读取），每次尝试独立计时；
- * timeoutMs: null 表示不设时限（长轮询等由上游约定停留时长的调用），
- * 此时生命周期完全由调用方传入的 signal 控制；缺省时限 DEFAULT_OUTBOUND_TIMEOUT_MS，
- * 可用工厂 defaultTimeoutMs 按领域覆盖。
- *
- * 错误映射：所有失败抛出 OutboundRequestError，kind 区分
- * timeout / cancelled / network / http-error / invalid-response；
- * code/statusCode/details/retryable 字段与 apiHelper 统一错误信封兼容，
- * 可直接交给 errorResponse/sendError 出口。错误信息与 details 不包含请求 URL
- * （部分上游 URL 内嵌凭据），响应体片段截断保存用于上游诊断。
- *
- * 重试：仅安全读取（GET/HEAD）按有限次数重试瞬时失败
- * （网络错误、超时、408/429/502/503/504 状态），退避按 baseDelayMs 指数递增；
- * 执行/更新/通知等写入强制不自动重放，即使调用方显式传入 retry 配置也不生效；
- * 重试退避期间调用方 signal 取消会立即中止，不再发起后续尝试。
+ * 统一出站请求端口：`timeoutMs` 覆盖整次交换且每次尝试独立计时，null 表示不设时限；
+ * 所有失败抛 `OutboundRequestError`（kind 区分 timeout/cancelled/network/http-error/
+ * invalid-response），错误不包含请求 URL；仅安全读取按有限次数重试，写入强制不自动重放。
  */
 
 /** 注入 fetch 的最小请求结构端口；body 保持 unknown 以兼容原生 FormData 与 form-data 实例。 */
@@ -40,7 +20,6 @@ export interface FetchResponseLike {
   text(): Promise<string>;
 }
 
-/** 可注入替换的出站 fetch 端口；缺省绑定 Node 全局 fetch。 */
 export type FetchLike = (url: string, init?: FetchInitLike) => Promise<FetchResponseLike>;
 
 /** 出站失败类别：显式时限、主动取消、网络失败、非成功 HTTP、成功状态的非法响应体。 */
@@ -77,7 +56,6 @@ const KIND_STATUS_CODES: Record<OutboundRequestErrorKind, number> = {
   'invalid-response': 502
 };
 
-/** 判断错误是否为出站请求端口产出的结构化失败。 */
 export function isOutboundRequestError(error: unknown): error is OutboundRequestError {
   if (!error || typeof error !== 'object') return false;
   const candidate = error as Partial<OutboundRequestError>;
@@ -106,19 +84,14 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 缺省时限：单次尝试的整段交换上限（毫秒）。 */
 export const DEFAULT_OUTBOUND_TIMEOUT_MS = 15_000;
 
-/** 缺省最大重试次数（不含首次尝试），仅安全读取生效。 */
 export const DEFAULT_OUTBOUND_MAX_RETRIES = 2;
 
-/** 缺省重试基础退避毫秒数，按 2 的指数递增。 */
 export const DEFAULT_OUTBOUND_RETRY_DELAY_MS = 500;
 
-/** 视为瞬时的上游状态：请求超时、限流与常见网关错误。 */
 const TRANSIENT_HTTP_STATUSES: ReadonlySet<number> = new Set([408, 429, 502, 503, 504]);
 
-/** 判断上游 HTTP 状态是否视为瞬时失败（仅影响安全读取的重试与 retryable 标记）。 */
 export function isTransientOutboundStatus(status: number): boolean {
   return TRANSIENT_HTTP_STATUSES.has(status);
 }
@@ -129,7 +102,6 @@ function isSafeMethod(method: string): boolean {
   return SAFE_RETRY_METHODS.has(method.toUpperCase());
 }
 
-/** 上游状态收窄到 400-599 作为本服务的 HTTP 出口状态，越界值按 502 处理。 */
 function clampUpstreamStatusCode(status: number): number {
   return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502;
 }
@@ -193,13 +165,9 @@ export interface OutboundJsonResult {
 }
 
 export interface OutboundHttpConfig {
-  /** 可注入的出站 fetch；缺省绑定 Node 全局 fetch。 */
   fetch?: FetchLike;
-  /** 缺省时限毫秒数；调用方 timeoutMs 覆盖。 */
   defaultTimeoutMs?: number;
-  /** 安全读取的缺省最大重试次数。 */
   maxRetries?: number;
-  /** 缺省重试基础退避毫秒数。 */
   baseRetryDelayMs?: number;
 }
 
@@ -221,10 +189,8 @@ interface RequestPlan {
   url: string;
   method: string;
   headers: Record<string, string>;
-  /** undefined 表示无请求体。 */
   body: unknown;
   callerSignal: AbortSignal | undefined;
-  /** null 表示不设时限。 */
   timeoutMs: number | null;
   maxRetries: number;
   baseDelayMs: number;
@@ -448,9 +414,8 @@ const defaultFetch: FetchLike = (url, init) => globalThis.fetch(url, {
 });
 
 /**
- * 创建独立出站请求客户端实例：fetch 与时限/重试缺省值均可注入，
- * 实例之间不共享可变状态。领域服务应通过工厂持有自己的实例，
- * 便于测试注入与按领域覆盖超时配置。
+ * 创建独立出站客户端：fetch 与时限/重试缺省值可注入，实例间不共享可变状态；
+ * 领域服务通过工厂持有自己的实例，便于测试注入与按领域覆盖超时。
  */
 export function createOutboundHttpClient(config: OutboundHttpConfig = {}): OutboundHttpClient {
   const fetchImpl = config.fetch ?? defaultFetch;
@@ -490,5 +455,4 @@ export function createOutboundHttpClient(config: OutboundHttpConfig = {}): Outbo
   };
 }
 
-/** 缺省出站客户端：绑定 Node 全局 fetch 与缺省时限/重试配置。 */
 export const outboundHttpClient: OutboundHttpClient = createOutboundHttpClient();

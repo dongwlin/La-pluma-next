@@ -14,7 +14,6 @@ describe('login throttle', () => {
     assert.deepEqual(throttle.tryAcquire('127.0.0.1'), { allowed: true, retryAfterSeconds: 0 })
     assert.deepEqual(throttle.tryAcquire('127.0.0.1'), { allowed: true, retryAfterSeconds: 0 })
     assert.deepEqual(throttle.tryAcquire('127.0.0.1'), { allowed: false, retryAfterSeconds: 1 })
-    // 其它来源不受影响
     assert.deepEqual(throttle.tryAcquire('192.0.2.10'), { allowed: true, retryAfterSeconds: 0 })
 
     currentTime += 600

@@ -337,7 +337,6 @@ describe('top-level application navigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
-    // 页面内 navigate()（如概览快捷入口）也应在提交前保存旧页滚动位置。
     expect(getScrollHost().scrollTop).toBe(420)
   })
 
@@ -354,7 +353,6 @@ describe('top-level application navigation', () => {
     })
     expect(activeTabLabel()).toBe('dashboard')
 
-    // 导航还卡在 deferred 上，用户继续把概览滚到 800。
     currentScrollY = 800
     await act(async () => {
       getScrollHost().dispatchEvent(new Event('scroll'))
@@ -374,7 +372,6 @@ describe('top-level application navigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
-    // 恢复的必须是最新滚动位置，而不是点击瞬间的快照。
     expect(getScrollHost().scrollTop).toBe(800)
   })
 
@@ -475,7 +472,7 @@ describe('top-level application navigation', () => {
     expect(getScrollHost().style.overflow).toBe('')
 
     await act(async () => trigger.click())
-    await act(async () => container.querySelector<HTMLElement>('.sheet-backdrop')?.click())
+    await act(async () => container.querySelector<HTMLElement>('[data-app-sheet-backdrop]')?.click())
     expect(container.querySelector('#la-pluma-more-sheet')).toBeNull()
     expect(document.activeElement).toBe(trigger)
 

@@ -1,11 +1,3 @@
-/**
- * 总览今日流程卡
- *
- * 只渲染流程卡：执行投影、预检/启动反馈与开放关卡摘要。执行订阅和提交由
- * `useDashboardFlowActions` 复用领域所有者；卡片不直接调用 API、不写
- * `dashboardStore`，也不持有完整快照的刷新计时器。
- */
-
 import { Activity, CalendarDays, CheckCircle2, Play, Target } from 'lucide-react'
 import { Button, Card } from '@/shared/ui'
 import { useDashboardStore } from '../store/dashboardStore'
@@ -71,6 +63,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
     <div
       className={`dashboard-flow-glow-shell status-border-beam ${quickStartLoading || activityPreflightLoading || view.isRunning ? 'is-active' : ''}`}
       aria-busy={quickStartLoading || activityPreflightLoading || view.isRunning}
+      data-dashboard-flow-card
     >
       <Card smoothCorners className="dashboard-flow-card p-0!">
       <div className="dashboard-flow-header">
@@ -84,7 +77,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         </div>
       </div>
 
-      <div className="dashboard-flow-command">
+      <div className="dashboard-flow-command" data-dashboard-flow-command>
         <div className="min-w-0">
           <div className={`text-xs font-medium ${labelClass}`}>{view.statusLabel}</div>
           <div className="mt-0.5 truncate text-xl font-bold text-primary">{view.commandTitle}</div>
@@ -175,7 +168,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         )}
       </div>
 
-      <div className="dashboard-flow-stages">
+      <div className="dashboard-flow-stages" data-dashboard-flow-stages>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="dashboard-flow-rail-dot" />

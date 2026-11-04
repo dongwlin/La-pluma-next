@@ -1,11 +1,3 @@
-/**
- * 自动任务域的活动 DTO
- *
- * 服务端 `/agent/activity` 返回带状态的快照：空活动、来源失败与首轮失败
- * 各有独立状态，地区、来源时间与失败原因随载荷一起返回。本模块只做形状
- * 收窄，不推断“有没有活动”，也不把缺失字段补成看似成功的结果。
- */
-
 import { isRecord } from '@/shared/api'
 
 export type ActivityStatus = 'active' | 'none' | 'unavailable' | 'stale'

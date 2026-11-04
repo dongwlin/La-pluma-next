@@ -222,7 +222,6 @@ describe('runtime initialization', () => {
       'automation-tasks': automation,
       'auto-update': autoUpdate
     };
-    // 捕获注入的端口收到什么；readNotificationConfig 返回应用后的当前配置。
     const calls: { notification?: unknown; schedule?: unknown; autoUpdate?: unknown; telegram?: unknown } = {};
 
     const summary = await initializeRuntimeState({

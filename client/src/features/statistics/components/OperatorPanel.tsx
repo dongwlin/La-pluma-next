@@ -1,14 +1,3 @@
-/**
- * 干员识别面板
- *
- * 面板持有：持有干员/干员目录两路读取、筛选与排序状态、打开中的筛选菜单，
- * 以及头像加载/失败缓存。筛选与排序规则在 `model/operatorFilters`，菜单的
- * portal/焦点/键盘规则在 `FilterMenu`。
- *
- * 面板随页面挂载而常驻，非当前 tab 时只返回 null：读取时机不随 tab 变化，
- * 筛选与头像缓存在 tab 切换后仍保留；真正卸载/刷新才重置。
- */
-
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -142,7 +131,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({})
 
-  // 筛选、排序与阿米娅形态规则由纯模型持有，面板只传目录、持有快照与筛选状态。
   const filteredOperators = useMemo(
     () => selectOperators({ catalog: allOperators, operBox: operBoxData, filters }),
     [allOperators, operBoxData, filters],
@@ -250,7 +238,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
             </div>
           </div>
 
-          {/* 识别结果展示 */}
           {!operatorDataError && !operBoxData && (operatorDataLoading || command.activeTask === 'operbox') && (
             <div className="rounded-xl py-12 surface-soft" aria-live="polite">
               <Loading text={command.activeTask === 'operbox' ? '正在识别干员数据' : '正在读取干员数据'} />
@@ -316,7 +303,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                 </div>
 
                 <div className="flex w-full flex-wrap items-center gap-2">
-                  {/* 拥有状态 */}
                   <FilterMenu
                     menuKey="ownership"
                     label={ownershipLabels[filters.ownership]}
@@ -328,7 +314,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     onSelect={value => setFilters(current => ({ ...current, ownership: value as FilterOwnership }))}
                   />
 
-                  {/* 星级 */}
                   <FilterMenu
                     menuKey="rarity"
                     label={filters.rarity === 'all' ? '星级' : `${filters.rarity}星`}
@@ -341,7 +326,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     onSelect={value => setFilters(current => ({ ...current, rarity: value as FilterRarity }))}
                   />
 
-                  {/* 职业 */}
                   <FilterMenu
                     menuKey="profession"
                     label={professionLabels[filters.profession]}
@@ -354,7 +338,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     onSelect={value => setFilters(current => ({ ...current, profession: value as FilterProfession }))}
                   />
 
-                  {/* 精英化 */}
                   <FilterMenu
                     menuKey="elite"
                     label={filters.elite === 'all' ? '精英化' : `精英${filters.elite}`}
@@ -367,7 +350,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     onSelect={value => setFilters(current => ({ ...current, elite: value as FilterElite }))}
                   />
 
-                  {/* 潜能 */}
                   <FilterMenu
                     menuKey="potential"
                     label={filters.potential === 'all' ? '潜能' : `潜能${filters.potential}`}
@@ -380,7 +362,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     onSelect={value => setFilters(current => ({ ...current, potential: value as FilterPotential }))}
                   />
 
-                  {/* 排序 */}
                   <FilterMenu
                     menuKey="sort"
                     label={sortLabels[filters.sortBy]}
@@ -393,7 +374,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     onSelect={value => setFilters(current => ({ ...current, sortBy: value as SortBy }))}
                   />
 
-                  {/* 重置按钮 */}
                   {filtersActive && (
                     <Button
                       onClick={resetOperatorFilters}
@@ -408,7 +388,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                 </div>
               </section>
 
-              {/* 干员卡片网格 */}
               {filteredOperators.length === 0 ? (
                 <EmptyState
                   compact
@@ -437,18 +416,15 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                             : 'opacity-70 grayscale-[0.15]'
                         }`}
                       >
-                        {/* 未拥有标识 */}
                         {!isOwned && (
                           <div className="control-surface absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-semibold text-secondary">
                             未拥有
                           </div>
                         )}
 
-                        {/* 干员头像 */}
                         <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-xl bg-(--app-surface-muted)">
                           {oper.id ? (
                             <>
-                              {/* 骨架屏 */}
                               {!imageLoaded && (
                                 <div className="absolute inset-0 animate-pulse bg-(--app-surface-muted)"></div>
                               )}
@@ -472,7 +448,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                                   }
                                 }}
                               />
-                              {/* 未拥有白色半透明蒙版 */}
                               {!isOwned && imageLoaded && (
                                 <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--app-bg)_62%,transparent)]"></div>
                               )}
@@ -482,7 +457,6 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                               无头像
                             </div>
                           )}
-                          {/* 稀有度标识 */}
                           {oper.rarity !== undefined && oper.rarity > 0 && (
                             <div className="brand-chip absolute right-1.5 top-1.5 rounded-full px-2 py-0.5 text-xs font-semibold">
                               {Math.min(oper.rarity, 6)}★

@@ -1,12 +1,3 @@
-/**
- * 自动化定时与通知面板
- *
- * 定时编辑直接绑定 `model/automationSchedule.ts`：新增时间点、时/分循环、
- * 重复拒绝、启用/删除与上限都由纯模型决定；面板只把结果交给配置 owner 的
- * `onChange`，不复制草稿、不提交配置、不读写存储。通知设置在面板内组合，
- * 仍由自身所有者管理。
- */
-
 import { motion, useReducedMotion } from 'framer-motion'
 import { ChevronDown, ChevronUp, CircleMinus, Clock3 } from 'lucide-react'
 import { IconButton, SmoothPanel, Switch } from '@/shared/ui'
@@ -29,7 +20,6 @@ export interface AutomationScheduleChange {
 interface AutomationSchedulePanelProps {
   enabled: boolean
   entries: ScheduleTimeEntry[]
-  /** 执行期间禁用全部编辑；由只读 Run 投影派生。 */
   disabled: boolean
   onChange: (next: AutomationScheduleChange) => void
   onError: (message: string) => void

@@ -1,15 +1,3 @@
-/**
- * 自动化执行摘要面板
- *
- * 只接收工作区选好的最近执行摘要与本次 run 身份，负责保留最后一份可展示
- * 结果、展开/收起详情，以及失败时自动展开。摘要内容本身来自服务端 Run，
- * 面板不推断完成、不写配置、不触发请求。
- *
- * 保留规则：摘要变为 `null`（例如新一次提交在途）时继续显示上一份；同一
- * run 的相同内容不重置用户手动收起的详情；新 run 身份到达时按本次结果
- * 重新决定是否展开。
- */
-
 import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleMinus } from 'lucide-react'

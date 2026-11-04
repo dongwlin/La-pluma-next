@@ -31,7 +31,6 @@ const ENV_KEYS = [
   'TEST_WEBRTC_PREDEPLOY_PROBE_FILE'
 ];
 
-/** 断言里按错误形状读取字段：assert.rejects 的入参是 unknown。 */
 function readError(error: unknown): WebrtcRuntimeError {
   return error as WebrtcRuntimeError;
 }

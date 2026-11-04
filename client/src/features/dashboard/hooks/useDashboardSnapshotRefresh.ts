@@ -1,16 +1,3 @@
-/**
- * 总览完整快照的页面同步入口
- *
- * 页面不再自己组织请求、探针与失效订阅：
- * - 首屏/周期刷新按 `lastRefreshAttemptAt` 与 5 分钟间隔调度；恢复的 v1
- *   活动摘要缺少 `status` 时立即补一次刷新；
- * - 收到 `dashboard-snapshot` 失效（计划应用、识别、资源更新等发布端）
- *   时强制刷新；Activity 隐藏期间错过的发布在恢复时由失效 hook 补发；
- * - 网络恢复时强制刷新；
- * - Activity 隐藏会清理本 hook 的计时器与失效订阅，恢复时重建且只保留
- *   一个计时器；在途协调读取不因隐藏中止。
- */
-
 import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePageVisible } from '@/shared/hooks/usePageVisible'

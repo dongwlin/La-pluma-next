@@ -14,21 +14,17 @@ const ITEM_TABLE_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGam
 const BUILDING_SOURCE = 'building_data.json';
 const ITEM_SOURCE = 'item_table.json';
 
-/** 输出目标：material-formulas.json。 */
 export const OUTPUT_PATH = resolveTrainingDataPath('material-formulas.json');
 
-/** 配方消耗项。 */
 interface FormulaCost {
   id?: string;
   count?: number;
 }
 
-/** 配方详情中本脚本读取的字段。 */
 interface FormulaDetail {
   costs?: FormulaCost[];
 }
 
-/** item_table.json 中的产物信息。 */
 interface ProductEntry {
   roomType?: string;
   formulaId?: string;
@@ -39,7 +35,6 @@ interface ItemEntry {
   buildingProductList?: ProductEntry[];
 }
 
-/** 单个材料合成配方。 */
 export interface MaterialFormula {
   id: string;
   name?: string;
@@ -47,10 +42,8 @@ export interface MaterialFormula {
   materials: Record<string, number>;
 }
 
-/** material-formulas.json 的完整结构：物品 Id 到配方。 */
 export type MaterialFormulaTable = Record<string, MaterialFormula>;
 
-/** 解析 building_data.json 中的配方表。 */
 function readFormulaTable(value: unknown, label: string): Record<string, FormulaDetail> {
   const table = optionalRecord(value, BUILDING_SOURCE, label) ?? {};
   const formulas: Record<string, FormulaDetail> = {};
@@ -71,7 +64,6 @@ function readFormulaTable(value: unknown, label: string): Record<string, Formula
   return formulas;
 }
 
-/** 解析 item_table.json 中本脚本读取的物品字段。 */
 function readItems(payload: unknown): Record<string, ItemEntry> {
   const table = expectRecord(payload, ITEM_SOURCE);
   const items = optionalRecord(table.items, ITEM_SOURCE, 'items') ?? {};
@@ -103,7 +95,6 @@ export function extractMaterialFormulas(buildingPayload: unknown, itemPayload: u
   const workshopFormulas = readFormulaTable(building.workshopFormulas, 'workshopFormulas');
   const manufactFormulas = readFormulaTable(building.manufactFormulas, 'manufactFormulas');
 
-  // 建立 formulaId -> 配方详情 的映射
   const formulaMap = new Map<string, FormulaDetail>();
   for (const [formulaId, formula] of Object.entries(workshopFormulas)) {
     formulaMap.set(`WORKSHOP_${formulaId}`, formula);
@@ -116,7 +107,6 @@ export function extractMaterialFormulas(buildingPayload: unknown, itemPayload: u
   const recipes: MaterialFormulaTable = {};
 
   for (const [itemId, item] of Object.entries(items)) {
-    // 取第一个配方
     const productInfo = item.buildingProductList?.[0];
     if (!productInfo?.roomType || !productInfo.formulaId) continue;
 
@@ -143,7 +133,6 @@ export function extractMaterialFormulas(buildingPayload: unknown, itemPayload: u
   return recipes;
 }
 
-/** 从 URL 获取 JSON 数据。 */
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url);
   if (!response.ok) {
@@ -152,14 +141,12 @@ async function fetchJson(url: string): Promise<unknown> {
   return response.json();
 }
 
-/** 测试与手工运行可替换的副作用端口。 */
 export interface FetchMaterialFormulasDeps {
   fetchJson?: (url: string) => Promise<unknown>;
   writeFile?: (filePath: string, data: string) => Promise<void>;
   outputPath?: string;
 }
 
-/** 主函数。 */
 export async function main(deps: FetchMaterialFormulasDeps = {}): Promise<MaterialFormulaTable> {
   const fetchPayload = deps.fetchJson ?? fetchJson;
   const write = deps.writeFile ?? ((filePath: string, data: string) => writeFile(filePath, data, 'utf-8'));
@@ -187,12 +174,10 @@ export async function main(deps: FetchMaterialFormulasDeps = {}): Promise<Materi
 
   console.log(`\n提取了 ${Object.keys(recipes).length} 个合成配方`);
 
-  // 保存到文件
   await write(outputPath, JSON.stringify(recipes, null, 2));
 
   console.log(`✅ 材料合成配方已保存到: ${outputPath}`);
 
-  // 特别检查 D32钢
   const d32 = recipes['30135'];
   if (d32) {
     console.log('\n✅ 找到 D32钢 (30135) 的合成配方:');

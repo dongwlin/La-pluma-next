@@ -1,11 +1,3 @@
-/**
- * 自动化关卡编辑面板
- *
- * 关卡列表、置顶、次数步进与智能养成合成规则在 `model/stageEditing.ts`；
- * 本面板只持有智能养成的在途标记，并经领域能力读取养成队列/生成计划。
- * 参数写回通过 `onUpdate` 交给页面的唯一配置 owner，面板不拥有提交队列。
- */
-
 import { useState } from 'react'
 import { CircleMinus, CirclePlus, GraduationCap, ListPlus, Minus, Pin, Plus, Trash2 } from 'lucide-react'
 import { Button, IconButton } from '@/shared/ui'
@@ -170,6 +162,7 @@ export default function AutomationStageEditor({
             <div
               key={stageIndex}
               className={`automation-stage-item${isSmartStageRow ? ' is-smart' : ''}${isPinnedStage ? ' is-pinned' : ''}`}
+              data-automation-stage-kind={isSmartStageRow ? 'smart' : 'manual'}
             >
               <div className="automation-stage-row">
                 {isSmartStageRow ? (
@@ -199,6 +192,7 @@ export default function AutomationStageEditor({
                   placeholder={field.placeholder}
                   disabled={stageControlsDisabled || isSmartStageRow}
                   className="automation-stage-name-input"
+                  data-automation-stage-name
                 />
                 <datalist id={suggestionsId}>
                   {stageSuggestions.map(([value, description]) => (

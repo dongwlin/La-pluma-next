@@ -9,10 +9,9 @@ import {
 
 /**
  * 弹层视觉基线：portal 渲染到 document.body 的 Modal、筛选菜单与 PWA 提示。
- *
- * 这些表面不在 `.la-pluma-app` 作用域内，材质/遮罩/定位只由 portal 处的
- * CSS 决定；tab 基线只截默认状态，覆盖不到，所以单独截"打开"状态。
- * 均为视口截图（弹层按视口定位，fullPage 会把 fixed 元素拉到整页顶部）。
+ * 这些表面不在 `.la-pluma-app` 作用域内，材质/遮罩/定位只由 portal 处的 CSS 决定；
+ * tab 基线只截默认状态覆盖不到，所以单独截"打开"状态，且均为视口截图
+ * （弹层按视口定位，fullPage 会把 fixed 元素拉到整页顶部）。
  */
 for (const theme of THEMES) {
   test.describe(`overlays: ${theme}`, () => {

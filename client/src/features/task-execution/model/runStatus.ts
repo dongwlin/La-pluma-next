@@ -1,11 +1,3 @@
-/**
- * 全局运行状态投影
- *
- * 从执行控制器的唯一快照派生跨页展示需要的运行阶段、身份与一行标签。
- * 它只读控制器状态，不写任何 store，也不是 Run 的副本：调用方不能据此判断
- * 某次执行是否属于自己（归属看控制器的 `trackedScope`）。
- */
-
 import type { ExecutionControllerState } from '../controller/executionController'
 import { isActiveRunState, type AgentRun, type RunSnapshot } from '../types'
 
@@ -19,11 +11,8 @@ export interface GlobalRunStatus {
   phase: GlobalRunPhase
   /** 快照（或已跟踪 run）里仍有活动 run。断线时保留最后已知值，不能当作完成。 */
   isRunning: boolean
-  /** 当前或最后已知活动 run 的身份；没有已知身份时为 null。 */
   runId: string | null
-  /** 面向用户的短标签；`idle` 时为 null。 */
   label: string | null
-  /** 活动 run 自己的进度说明（服务端 `progress.message`）；没有时为 null。 */
   detail: string | null
 }
 

@@ -59,7 +59,6 @@ function invoke(middleware: ApiAuthMiddleware, req: ApiAuthRequestLike): Recorde
   return { ...recorder, nextCalls }
 }
 
-/** 响应体按统一错误信封收窄；失败只能来自鉴权中间件本身。 */
 function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
   if (typeof value !== 'object' || value === null) return false
   const record = value as { success?: unknown; message?: unknown; error?: unknown }

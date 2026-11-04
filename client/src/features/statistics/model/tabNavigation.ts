@@ -1,10 +1,3 @@
-/**
- * 数据页 tab 与 URL 的映射
- *
- * tab 只由查询串承载：跨页入口可以直接链接到某个 tab，刷新、深链和
- * Activity 恢复都读取同一来源；缺失或未知值回落到默认的 operbox。
- */
-
 import { appTabRoute } from '@/shared/navigation'
 import type { ActiveTab } from '../types'
 

@@ -1,9 +1,3 @@
-/**
- * 资源读取失败提示
- *
- * 队列与干员候选共用：保留 `role="alert"` 与显式“重新加载”入口，不自动重试。
- */
-
 import { AlertCircle } from 'lucide-react'
 import { Button } from '@/shared/ui'
 
