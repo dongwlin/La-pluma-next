@@ -423,8 +423,6 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       ['GET', '/config/maa/default'],
       ['POST', '/config/maa/default'],
       ['GET', '/activity'],
-      ['GET', '/activity/preflight'],
-      ['GET', '/activity/copilot-candidates'],
       ['POST', '/actions/depot-recognition'],
       ['POST', '/actions/operbox-recognition'],
       ['GET', '/changelog/core'],

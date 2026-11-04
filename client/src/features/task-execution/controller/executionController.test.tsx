@@ -258,7 +258,7 @@ describe('execution controller observation', () => {
     await flush()
     expect(api.fetchSnapshot).toHaveBeenCalledTimes(1)
 
-    controller.beginExecutionIntent('run_current_activity_copilots')
+    controller.beginExecutionIntent('run_daily_flow')
     await flush()
     expect(api.fetchSnapshot).toHaveBeenCalledTimes(2)
     expect(controller.getState().submission).toBe('pending')

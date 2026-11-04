@@ -75,7 +75,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `hasActiveRun` | 快照 `activeRuns` 非空，或已跟踪的 run 仍处于活动状态 |
 | `occupancy` | 服务端设备占用投影，可直接展示但不能据此推断执行结果 |
 
-轮询间隔：有活动意图或提交在途时 2s，空闲 30s，断线重试 10s。`beginExecutionIntent` 会立即刷新一次快照：同步提交（活动作业）在请求返回前拿不到 `runId`，但服务端可能已经创建 run，全局展示要尽早看到它。观察只走 HTTP 轮询；没有推送通道。
+轮询间隔：有活动意图或提交在途时 2s，空闲 30s，断线重试 10s。`beginExecutionIntent` 会立即刷新一次快照：同步提交在请求返回前拿不到 `runId`，但服务端可能已经创建 run，全局展示要尽早看到它。观察只走 HTTP 轮询；没有推送通道。
 
 ### 全局运行状态投影
 
@@ -142,8 +142,8 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
 - Dashboard 已迁移到控制器，`scope: 'dashboard'`：
   - 日常入口提交一次 `run_daily_flow`（`POST /api/agent/schedules/dashboard-quick-start/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后不再等待请求返回，卡片按共享快照显示运行或等待。
-  - 活动入口保留领域预检：仍同步调用 `POST /api/agent/activity/run`，服务端先检查导航链、活动作业候选与偏好，`executed=false` 时返回原因；响应中的 `runId` 由控制器采纳。该端点不支持 `waitForCompletion`，页面不据此假设执行会异步开始。
-  - 两个入口的禁用与运行文案只来自共享投影：活动 run（含其它域发起的）和未纳管占用都会禁用启动；断线时显示“执行状态未知”并按最后已知活动 run 保留禁用。Dashboard 只消费全局运行投影，也不再用 `schedules/execution.isRunning` 判断运行。
+  - Dashboard 只展示当前活动，不提供活动作业执行入口。
+  - 启动入口的禁用与运行文案只来自共享投影：活动 run（含其它域或 Agent 发起的）和未纳管占用都会禁用启动；断线时显示“执行状态未知”并按最后已知活动 run 保留禁用。Dashboard 只消费全局运行投影，也不再用 `schedules/execution.isRunning` 判断运行。
   - 本页发起的日常流程终态只在“实际观察过活动”后提示一次；其它域或未纳管执行不产生“今日流程完成”提示。页面隐藏/卸载不发送停止，控制器继续观察。
 - 数据统计页已迁移到控制器，`scope: 'statistics'`：
   - 仓库/干员识别通过 `beginExecutionIntent('run_task', { scope: 'statistics' })` 生成幂等键，以 `waitForCompletion=true` 提交；命令确认成功后才轮询解析端点等待 MAA 日志可解析。
@@ -173,13 +173,12 @@ const result = await executionController.submitExecution('run_task', ({ idempote
 | `features/runtime-status/hooks/useBackendStatusMonitor.test.tsx` | 探针只写连接健康，不写运行状态；投影进入忙态后探针改按 2s 间隔 |
 | `features/runtime-status/components/FloatingStatusIndicator.test.tsx` | 连接健康 > 临时消息 > 运行投影（标签与颜色）> 干员台词；运行/等待为 info，占用/未知为 warning |
 | `features/runtime-status/store/statusStore.test.ts` | 运行字段只接受投影；忙态保留消息，离开忙态才恢复自动消失；相同投影不重复通知；连接健康与消息互不影响 |
-| `pages/dashboard/Dashboard.test.tsx` | 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；在途重复点击不产生第二个提交；终态通知只宣告实际观察过的本页 run；其它域启动/停止不冒充本页执行但全局保持一致；外部占用与断线未知禁用启动入口；活动预检阻断保留领域原因 |
+| `pages/dashboard/Dashboard.test.tsx` | 日常入口单次异步 `run_daily_flow` 幂等提交（`scope: dashboard`）；在途重复点击不产生第二个提交；终态通知只宣告实际观察过的本页 run；其它域启动/停止不冒充本页执行但全局保持一致；外部占用与断线未知禁用启动入口 |
 
 ## 8. 当前限制
 
 - 自动化页只展示本页发起并持有的 run。cron、Dashboard 或 Telegram 发起的流程不会变成自动化页的 `trackedRun`；全局展示由运行状态投影提供，但各页的启动按钮仍只按本域身份禁用，跨页同时启动由服务端执行租约拒绝。
 - 作业页刷新后不会自动恢复作业集预览：需要用户重新预览对应作业集才能看到列表与“开始下一关”；`waiting` run 本身仍可观察且不会被重提。
-- 活动作业入口始终保持同步，Dashboard 在响应返回前拿不到 `runId`；控制器在提交在途时按 2s 刷新快照，因此全局展示最迟约一个间隔后才能确认该活动 run。预检阻断原因只在同步响应里出现，不会写进 run 结果。
 - 作业集 `waiting` 在全局投影里按“设备忙、等待继续”处理，Dashboard 会禁用启动入口；是否允许在等待期间启动其它流程仍由服务端租约决定，界面暂不提供跨页继续入口。
 - Dashboard 完整业务快照由 `features/dashboard/model/snapshotRefresher.ts` 协调，设备采样归 `device-mirror`；页面只投影。所有权与失败保旧规则见[总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)。
 - 前端 fixture 性能测试不覆盖真实后端 `runs/current` 读取租约文件的 I/O 成本，也不覆盖提交在途额外刷新的服务端成本；这部分需要真实后端采样。
