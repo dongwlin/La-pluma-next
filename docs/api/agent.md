@@ -123,16 +123,18 @@ Run 存储以单个 La Pluma Next 服务实例为边界，需要修改路径时�
 优先使用 `fight`、`run-daily-flow` 等语义化动作。只有明确知道 MAA CLI 参数时，才使用高风险的通用白名单入口：
 
 ```bash
-# 执行白名单 maa-cli 任务
+# 执行白名单 maa-cli 子命令
 curl -X POST http://localhost:3000/api/agent/actions/run-task \
   -H 'Content-Type: application/json' \
-  -d '{"command":"award","args":[],"taskName":"领取奖励","waitForCompletion":true}'
+  -d '{"command":"reclamation","args":["Tales","-m","1"],"taskName":"生息演算","waitForCompletion":true}'
 
 # 执行动态任务配置
 curl -X POST http://localhost:3000/api/agent/actions/run-task \
   -H 'Content-Type: application/json' \
   -d '{"command":"run","args":["agent-award"],"taskConfig":{"name":"领取奖励","type":"Award","params":{"award":true}},"waitForCompletion":true}'
 ```
+
+`command` 只接受 maa-cli 子命令；`Award`、`Depot`、`OperBox`、`Infrast`、`Recruit`、`Mall` 等 Core 任务类型没有对应的 CLI 子命令，必须使用 `command: "run"` 与 `taskConfig` 走动态任务通路，`args` 首项用作临时任务文件名前缀。
 
 如果设置了 `LA_PLUMA_TOKEN`，Agent API、其它 `/api/*` 以及 WebRTC 同源网关的票据入口都需要 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`。未设置时认证关闭。
 

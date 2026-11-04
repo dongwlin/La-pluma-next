@@ -167,6 +167,7 @@ describe('Agent API contract registry', () => {
 
     assert.ok(must(properties.command.enum, 'run_task command enum').includes('run'));
     assert.ok(must(properties.command.enum, 'run_task command enum').includes('list'));
+    assert.ok(must(properties.command.enum, 'run_task command enum').includes('reclamation'));
     const taskConfigVariant = must(must(must(properties.taskConfig.oneOf, 'taskConfig oneOf')[0], 'taskConfig variant'), 'taskConfig variant');
     assert.deepEqual(taskConfigVariant.required, ['name', 'type']);
     assert.equal(prop(taskConfigVariant, 'params', 'taskConfig variant').type, 'object');
