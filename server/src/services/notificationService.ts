@@ -114,6 +114,24 @@ export interface NotificationTaskAction {
   status?: string;
   message?: string;
   observed?: boolean;
+  details?: NotificationTaskDetail[];
+  deferredMastery?: NotificationTaskDeferred[];
+}
+
+export interface NotificationTaskDetail {
+  name?: string;
+  role?: string;
+  result?: string;
+  resultDetail?: string;
+  elite?: number;
+  skillLevel?: number;
+  skillMastery?: number[];
+}
+
+export interface NotificationTaskDeferred {
+  name?: string;
+  role?: string;
+  skillMastery?: number[];
 }
 
 export interface NotificationTaskReport {
@@ -723,6 +741,66 @@ export async function testNotificationChannel(
   return await defaultNotificationService.testChannel(channelName, configOverride);
 }
 
+const gameTaskResultLabels: Record<string, string> = {
+  Success: '培养成功',
+  Failed: '培养失败',
+  Skipped: '已跳过'
+};
+
+const gameTaskResultDetailLabels: Record<string, string> = {
+  ResourceInsufficient: '材料不足',
+  OperatorNotFound: '未找到干员',
+  TrainingRoomBusy: '训练室已被占用',
+  PrerequisiteTraining: '已启动前置专精训练',
+  AlreadySatisfied: '已达到目标',
+  Completed: '已完成',
+  PrerequisiteNotMet: '前置条件未满足',
+  ChipNotCraftable: '无法合成芯片',
+  FormulaLocked: '配方未解锁',
+  RecognitionFailed: '识别失败',
+  Unsupported: '不支持的计划',
+  Interrupt: '已中断'
+};
+
+const operatorRoleLabels: Record<string, string> = {
+  Pioneer: '先锋',
+  Warrior: '近卫',
+  Tank: '重装',
+  Sniper: '狙击',
+  Caster: '术师',
+  Medic: '医疗',
+  Support: '辅助',
+  Special: '特种'
+};
+
+function operatorDisplayName(detail: unknown): string | null {
+  if (!isRecord(detail)) return null;
+  const name = readTextField(detail, 'name');
+  if (!name) return null;
+  const role = readTextField(detail, 'role');
+  const roleLabel = role ? operatorRoleLabels[role] : undefined;
+  return roleLabel ? `${name}（${roleLabel}）` : name;
+}
+
+function gameTaskDetailLine(detail: unknown): string | null {
+  if (!isRecord(detail)) return null;
+  const operator = operatorDisplayName(detail);
+  const result = readTextField(detail, 'result');
+  if (!operator || !result) return null;
+  const resultLabel = gameTaskResultLabels[result] ?? result;
+  const resultDetail = readTextField(detail, 'resultDetail');
+  const resultDetailLabel = resultDetail ? gameTaskResultDetailLabels[resultDetail] ?? resultDetail : null;
+  if (result === 'Skipped' && resultDetailLabel) return `   ◦ ${operator}：${resultDetailLabel}，${resultLabel}`;
+  return resultDetailLabel
+    ? `   ◦ ${operator}：${resultLabel}（${resultDetailLabel}）`
+    : `   ◦ ${operator}：${resultLabel}`;
+}
+
+function gameTaskDeferredLine(deferred: unknown): string | null {
+  const operator = operatorDisplayName(deferred);
+  return operator ? `   ◦ ${operator}：专精目标待处理，需后续运行` : null;
+}
+
 export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): TaskCompletionMessage {
   const {
     taskName = '自动化任务',
@@ -781,6 +859,20 @@ export function buildTaskCompletionMessage(taskInfo: TaskCompletionInfo = {}): T
         ? '•' : statusIcons[status ?? ''] || '•';
       const taskLabel = readTextField(action, 'task');
       content += `\n${icon} ${taskLabel ? `${taskLabel}: ` : ''}${readTextField(action, 'message') || '状态未知'}`;
+      if (isRecord(action)) {
+        if (Array.isArray(action.details)) {
+          for (const detail of action.details) {
+            const line = gameTaskDetailLine(detail);
+            if (line) content += `\n${line}`;
+          }
+        }
+        if (Array.isArray(action.deferredMastery)) {
+          for (const deferred of action.deferredMastery) {
+            const line = gameTaskDeferredLine(deferred);
+            if (line) content += `\n${line}`;
+          }
+        }
+      }
     });
   }
 
