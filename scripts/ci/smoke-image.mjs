@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -33,7 +33,7 @@ const directory = mkdtempSync(join(tmpdir(), 'la-pluma-smoke-'))
 const maaFixture = join(directory, 'maa')
 const certificates = join(directory, 'certs')
 const legacyData = join(directory, 'legacy-data')
-const minimumNode = '24.12.0'
+const minimumNode = resolveNodeFloor()
 
 function docker(args, timeout = 120_000) {
   return spawnSync('docker', args, { encoding: 'utf8', timeout })
@@ -55,6 +55,15 @@ function compareVersions(actual, minimum) {
     throw new Error(`Unparsable Node.js version: ${actual}`)
   }
   return actualMajor - minimumMajor || actualMinor - minimumMinor || actualPatch - minimumPatch
+}
+
+/** 下限以根 `package.json` 的 `engines.node` 为唯一来源，避免与镜像检查里写死的版本漂移。 */
+function resolveNodeFloor() {
+  const { engines } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+  const range = engines?.node
+  const matched = typeof range === 'string' ? /(\d+)\.(\d+)\.(\d+)/.exec(range) : null
+  if (!matched) throw new Error(`package.json engines.node must contain a full version: ${String(range)}`)
+  return matched.slice(1, 4).join('.')
 }
 
 /**
