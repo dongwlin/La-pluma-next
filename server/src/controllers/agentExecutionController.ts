@@ -35,6 +35,12 @@ import type { AgentRunDto, AgentRunStatus } from '../services/agentRunService.ts
 import type { ScheduleFlowExecutionResult } from '../services/scheduleFlowExecution.ts';
 import { enrichAgentRun } from '../services/runSnapshotService.ts';
 import {
+  buildFightStagePlans,
+  executeFightStages,
+  normalizeFightStages
+} from '../services/fightExecutionService.ts';
+import type { FightRequestOptions, FightStageEntry } from '../services/fightExecutionService.ts';
+import {
   agentError,
   sendSuccess,
   sendDryRun,
@@ -1043,35 +1049,75 @@ interface FightOptions extends Record<string, unknown> {
   series?: unknown;
 }
 
-function readStageEntry(item: unknown): { stage: unknown; times: unknown } {
-  if (typeof item === 'string') return { stage: item, times: '' };
-  return { stage: readField(item, 'stage'), times: readField(item, 'times') };
+function isAgentRunStopRequested(runId: string): boolean {
+  const run = getAgentRun(runId);
+  return !run || run.state === 'stopping' || TERMINAL_RUN_STATES.has(run.state);
 }
 
-function buildFightArgs({
+interface StartFightBackgroundOptions {
+  runId: string;
+  stages: readonly FightStageEntry[];
+  options: FightRequestOptions;
+  lifecycle: TrackedExecutionLifecycle;
+  plan: unknown;
+  acceptedResult: unknown;
+}
+
+function startFightBackground({
+  runId,
   stages,
-  stage,
-  times,
-  medicine = 0,
-  expiringMedicine = 0,
-  stone = 0,
-  series = 0
-}: FightOptions = {}): string[] {
-  const rawStages: unknown[] = Array.isArray(stages) ? stages : [{ stage: stage || '', times: times || '' }];
-  const stageList = rawStages
-    .map(readStageEntry)
-    .filter(item => item.stage && String(item.stage).trim())
-    .map(item => `${String(item.stage).trim()}${item.times !== undefined && item.times !== '' && item.times !== null ? `:${String(item.times)}` : ''}`)
-    .join(',');
+  options,
+  lifecycle,
+  plan,
+  acceptedResult
+}: StartFightBackgroundOptions): Promise<unknown> {
+  if (typeof lifecycle.onSettled !== 'function') {
+    throw new Error('后台理智作战需要 onSettled 生命周期');
+  }
 
-  if (!stageList) return [];
+  return new Promise((resolve, reject) => {
+    let started = false;
+    let settled = false;
+    const settle = (outcome: ExecutionOutcome): void => {
+      if (settled) return;
+      settled = true;
+      Promise.resolve(lifecycle.onSettled?.(outcome)).catch(error => {
+        logger.error('后台理智作战终态处理失败', { error: errorMessageOf(error) });
+      });
+    };
 
-  const args = [stageList];
-  if (medicine !== undefined && medicine !== '' && medicine !== null) args.push('-m', String(medicine));
-  if (expiringMedicine !== undefined && expiringMedicine !== '' && expiringMedicine !== null) args.push('--expiring-medicine', String(expiringMedicine));
-  if (stone !== undefined && stone !== '' && stone !== null) args.push('--stone', String(stone));
-  if (series !== undefined && series !== '' && series !== null && String(series) !== '1') args.push('--series', String(series));
-  return args;
+    const task = executeFightStages({
+      stages,
+      options,
+      taskName: 'Agent: 理智作战',
+      lifecycle: {
+        onBeforeStart: () => lifecycle.onBeforeStart?.(),
+        onStarted: () => {
+          started = true;
+          lifecycle.onStarted?.();
+          resolve(acceptedResult);
+        }
+      },
+      shouldStop: () => isAgentRunStopRequested(runId)
+    });
+    task.then(result => {
+      if (!started) {
+        if (result.stopped) {
+          reject(Object.assign(new Error('执行在开始前已被停止，未向设备发送任何命令'), { stopped: true }));
+          return;
+        }
+        reject(new Error(result.message || '理智作战未能开始'));
+        return;
+      }
+      settle({ ok: !result.stopped, stopped: result.stopped, result: { ...result, plan } });
+    }, error => {
+      if (!started) {
+        reject(error);
+        return;
+      }
+      settle({ ok: false, stopped: isStopped(error), error });
+    });
+  });
 }
 
 async function loadAutomationTaskFlow(overrideTaskFlow: unknown = null): Promise<unknown[]> {
@@ -1371,24 +1417,29 @@ export async function runFight(
   const waitForCompletion = parseWaitForCompletion(requestOptions.waitForCompletion);
   const fightOptions: FightOptions = { ...requestOptions };
   delete fightOptions.waitForCompletion;
-  const args = buildFightArgs(fightOptions);
-  if (!args.length) {
+  const stages = normalizeFightStages(fightOptions.stages, fightOptions.stage, fightOptions.times);
+  if (!stages.length) {
     return sendError(res, req, agentError('AGENT_VALIDATION_MISSING_STAGES', '至少需要一个有效关卡', {
       statusCode: 400,
       details: { fightOptions },
       retryable: false
     }));
   }
+  const stageOptions: FightRequestOptions = {
+    medicine: fightOptions.medicine ?? 0,
+    expiringMedicine: fightOptions.expiringMedicine ?? 0,
+    stone: fightOptions.stone ?? 0,
+    series: fightOptions.series ?? 0
+  };
+  const stagePlans = buildFightStagePlans(stages, stageOptions);
+  const rawStages: unknown[] = Array.isArray(fightOptions.stages)
+    ? fightOptions.stages
+    : [{ stage: fightOptions.stage || '', times: fightOptions.times || '' }];
   const plan = {
     command: 'fight',
-    args,
-    semantic: {
-      stages: Array.isArray(fightOptions.stages) ? fightOptions.stages : [{ stage: fightOptions.stage || '', times: fightOptions.times || '' }],
-      medicine: fightOptions.medicine ?? 0,
-      expiringMedicine: fightOptions.expiringMedicine ?? 0,
-      stone: fightOptions.stone ?? 0,
-      series: fightOptions.series ?? 0
-    }
+    args: stagePlans[0].args,
+    stages: stagePlans,
+    semantic: { stages: rawStages, ...stageOptions }
   };
 
   if (dryRun) {
@@ -1400,20 +1451,38 @@ export async function runFight(
     input: { ...plan.semantic, waitForCompletion },
     waitForCompletion,
     metadata: { taskName: 'Agent: 理智作战', taskType: 'agent', plan },
-    execute: async lifecycle => ({
-      ...(await execMaaCommand(
-        'fight',
-        args,
-        'Agent: 理智作战',
-        'agent',
-        waitForCompletion,
-        false,
-        lifecycle
-      )),
-      plan
-    }),
+    execute: async (lifecycle, { runId }) => {
+      if (!waitForCompletion) {
+        return startFightBackground({
+          runId,
+          stages,
+          options: stageOptions,
+          lifecycle,
+          plan,
+          acceptedResult: {
+            success: true,
+            accepted: true,
+            stopped: false,
+            command: 'fight',
+            stdout: '',
+            stderr: '',
+            plan,
+            message: '理智作战已接受'
+          }
+        });
+      }
+      const result = await executeFightStages({
+        stages,
+        options: stageOptions,
+        taskName: 'Agent: 理智作战',
+        lifecycle,
+        shouldStop: () => isAgentRunStopRequested(runId)
+      });
+      return { ...result, plan };
+    },
     successMessage: '理智作战执行完成',
-    acceptedMessage: '理智作战已接受'
+    acceptedMessage: '理智作战已接受',
+    stoppedMessage: result => resultMessage(result) || '理智作战已停止'
   });
 }
 

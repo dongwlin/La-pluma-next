@@ -458,7 +458,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     id: 'fight',
     method: 'POST',
     path: '/api/agent/actions/fight',
-    description: 'Semantic action for 理智作战. Agents can pass stages/medicine/stone/series without knowing maa-cli flags.',
+    description: 'Semantic action for 理智作战. Executes one maa-cli fight command per stage with --times, sequentially under one Run. Agents can pass stages/medicine/stone/series without knowing maa-cli flags.',
     tags: ['Execution'],
     safety: consequential(['start_game_automation', 'consume_sanity', 'optionally_consume_medicine_or_originium']),
     execution: execution({
@@ -486,7 +486,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
                 required: ['stage'],
                 properties: {
                   stage: { type: 'string', examples: ['CE-6'] },
-                  times: { type: ['integer', 'string'], description: 'Optional per-stage run count.' }
+                  times: { type: ['integer', 'string'], description: 'Optional per-stage run count, passed as --times to that stage command.' }
                 }
               }
             ]
@@ -496,7 +496,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
         medicine: { type: ['integer', 'string'], default: 0, description: 'Normal sanity medicine count for -m.' },
         expiringMedicine: { type: ['integer', 'string'], default: 0, description: 'Expiring sanity medicine count.' },
         stone: { type: ['integer', 'string'], default: 0, description: 'Originium stone count.' },
-        series: { type: ['integer', 'string'], default: 0, description: 'MAA --series value; omit or set 1 to use maa-cli default.' },
+        series: { type: ['integer', 'string'], default: 0, description: 'MAA --series value; default 0 is auto. Set 1 to omit the flag and use the maa-cli default.' },
         dryRun: { type: 'boolean', default: false },
         waitForCompletion: { type: 'boolean', default: true }
       }

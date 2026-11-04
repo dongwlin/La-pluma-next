@@ -42,6 +42,10 @@ if (args[0] === 'run') {
   const taskFile = path.join(process.env.FAKE_MAA_CONFIG_DIR, 'tasks', args[1] + '.toml');
   if (fs.existsSync(taskFile)) fs.appendFileSync(process.env.FAKE_MAA_TASK_LOG, fs.readFileSync(taskFile, 'utf8') + '\\n');
 }
+if (args[0] === 'fight' && args[1] === 'FAIL-FIGHT') {
+  process.stderr.write('fake fight failure\\n');
+  process.exit(7);
+}
 const finish = () => {
   if (process.env.FAKE_MAA_CALLBACK) {
     const path = require('node:path');
@@ -117,6 +121,12 @@ interface TaskExecutorPayload {
   run: { state: string };
 }
 
+interface FightExecutorPayload extends TaskExecutorPayload {
+  plan: { stages: Array<{ args: string[] }> };
+  stages: Array<{ stage: string; status: string; stdout: string; stderr: string }>;
+  stdout: string;
+}
+
 function isApiSuccess(value: unknown): value is ApiSuccessResponse<unknown> {
   return typeof value === 'object'
     && value !== null
@@ -183,6 +193,16 @@ async function postJson(
 
 async function callCliLog(): Promise<string> {
   return await readFile(cliCallLog, 'utf-8').catch(() => '');
+}
+
+async function waitForFightCalls(count: number, timeoutMs = 8000): Promise<string[]> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
+    if (calls.length >= count) return calls;
+    await new Promise<void>(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`fight CLI calls did not reach ${count} before timeout`);
 }
 
 async function waitForRunState(
@@ -443,13 +463,14 @@ describe('agent execution HTTP adapter', () => {
       times: 3
     });
     assert.equal(fight.status, 200);
-    const fightBody = await readSuccess<{ plan: { command: string; args: string[] } }>(fight);
+    const fightBody = await readSuccess<{ plan: { command: string; args: string[]; stages: Array<{ args: string[] }> } }>(fight);
     assert.equal(fightBody.meta.dryRun, true);
     assert.equal(fightBody.data.plan.command, 'fight');
-    // 既有 buildFightArgs 对缺省数值参数仍显式输出 0；dryRun 只展示计划。
+    // 缺省数值参数仍显式输出 0；dryRun 只展示计划。
     assert.deepEqual(fightBody.data.plan.args, [
-      '1-7:3', '-m', '0', '--expiring-medicine', '0', '--stone', '0', '--series', '0'
+      '1-7', '--times', '3', '-m', '0', '--expiring-medicine', '0', '--stone', '0', '--series=0'
     ]);
+    assert.deepEqual(fightBody.data.plan.stages.map(stage => stage.args), [fightBody.data.plan.args]);
 
     const snapshot = await fetch(`${baseUrl}/api/agent/runs/current`, { headers: authorizedHeaders() });
     const snapshotBody = await readSuccess<RunSnapshotPayload>(snapshot);
@@ -481,6 +502,152 @@ describe('agent execution HTTP adapter', () => {
 
     const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('startup'));
     assert.equal(calls.length, 1, 'the idempotent replay must not spawn a second command');
+  });
+
+  it('executes every fight stage as its own command under one foreground run', async () => {
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const response = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      stages: [{ stage: '1-7', times: 3 }, { stage: 'CE-6', times: 2 }],
+      medicine: 1,
+      series: 1,
+      waitForCompletion: true
+    });
+    assert.equal(response.status, 200);
+    const body = await readSuccess<FightExecutorPayload>(response);
+    assert.equal(body.data.run.state, 'succeeded');
+    assert.deepEqual(body.data.plan.stages.map(stage => stage.args), [
+      ['1-7', '--times', '3', '-m', '1', '--expiring-medicine', '0', '--stone', '0'],
+      ['CE-6', '--times', '2', '-m', '1', '--expiring-medicine', '0', '--stone', '0']
+    ]);
+    assert.deepEqual(body.data.stages.map(stage => stage.status), ['success', 'success']);
+    assert.equal(body.data.stdout, 'fake output\nfake output');
+
+    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
+    assert.deepEqual(calls, [
+      'fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0',
+      'fight CE-6 --times 2 -m 1 --expiring-medicine 0 --stone 0'
+    ]);
+  });
+
+  it('keeps a background multi-stage fight in one run until every stage settles', async () => {
+    process.env.FAKE_MAA_SLEEP_MS = '20';
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const response = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      stages: [{ stage: '1-7', times: 3 }, { stage: 'CE-6', times: 2 }],
+      medicine: 1,
+      series: 1,
+      waitForCompletion: false
+    });
+    assert.equal(response.status, 202);
+    const body = await readSuccess<FightExecutorPayload>(response);
+    assert.equal(body.data.run.state, 'running');
+
+    const terminal = await waitForRunState(baseUrl, body.data.runId, ['succeeded'], 12_000);
+    assert.equal(terminal.state, 'succeeded');
+    const calls = await waitForFightCalls(2);
+    assert.deepEqual(calls, [
+      'fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0',
+      'fight CE-6 --times 2 -m 1 --expiring-medicine 0 --stone 0'
+    ]);
+  });
+
+  it('fails the whole run and does not start later stages when one fight stage fails', async () => {
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const response = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      stages: [{ stage: '1-7', times: 1 }, { stage: 'FAIL-FIGHT', times: 1 }, { stage: 'CE-6', times: 1 }],
+      medicine: 1,
+      series: 1,
+      waitForCompletion: true
+    });
+    assert.equal(response.status, 500);
+    const payload = await readError(response);
+    assert.equal(payload.error.code, 'AGENT_RUN_FAILED');
+    const run = payload.error.details?.run as { state: string; error: { details: { stage: string; stages: Array<{ stage: string; status: string }> } } };
+    assert.equal(run.state, 'failed');
+    assert.equal(run.error.details.stage, 'FAIL-FIGHT');
+    assert.deepEqual(run.error.details.stages.map(stage => [stage.stage, stage.status]), [
+      ['1-7', 'success'],
+      ['FAIL-FIGHT', 'failed'],
+      ['CE-6', 'pending']
+    ]);
+
+    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
+    assert.deepEqual(calls, [
+      'fight 1-7 --times 1 -m 1 --expiring-medicine 0 --stone 0',
+      'fight FAIL-FIGHT --times 1 -m 1 --expiring-medicine 0 --stone 0'
+    ]);
+  });
+
+  it('stops a multi-stage fight before the next stage starts and settles the run as stopped', async () => {
+    process.env.FAKE_MAA_SLEEP_MS = '20';
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const started = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      stages: [{ stage: '1-7', times: 3 }, { stage: 'CE-6', times: 2 }],
+      medicine: 1,
+      series: 1,
+      waitForCompletion: false
+    });
+    assert.equal(started.status, 202);
+    const startedBody = await readSuccess<FightExecutorPayload>(started);
+    assert.equal(startedBody.data.run.state, 'running');
+    await waitForFightCalls(1);
+
+    const stopped = await postJson(`${baseUrl}/api/agent/actions/stop`, { runId: startedBody.data.runId });
+    assert.equal(stopped.status, 200);
+    const stoppedBody = await readSuccess<{ stopRequested: boolean; run: { state: string } }>(stopped);
+    assert.equal(stoppedBody.data.stopRequested, true);
+
+    const terminal = await waitForRunState(baseUrl, startedBody.data.runId, ['stopped'], 12_000);
+    assert.equal(terminal.state, 'stopped');
+    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
+    assert.deepEqual(calls, ['fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0']);
+  });
+
+  it('stops the current fight stage and prevents the next stage from starting', async () => {
+    process.env.FAKE_MAA_SLEEP_MS = '3000';
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const started = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      stages: [{ stage: '1-7', times: 3 }, { stage: 'CE-6', times: 2 }],
+      medicine: 1,
+      series: 1,
+      waitForCompletion: false
+    });
+    assert.equal(started.status, 202);
+    const startedBody = await readSuccess<FightExecutorPayload>(started);
+    await waitForFightCalls(1);
+
+    const stopped = await postJson(`${baseUrl}/api/agent/actions/stop`, { runId: startedBody.data.runId });
+    assert.equal(stopped.status, 200);
+    const terminal = await waitForRunState(baseUrl, startedBody.data.runId, ['stopped'], 12_000);
+    assert.equal(terminal.state, 'stopped');
+
+    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
+    assert.deepEqual(calls, ['fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0']);
   });
 
   it('stops a targeted background run over real HTTP', async () => {

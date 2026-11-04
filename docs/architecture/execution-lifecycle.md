@@ -277,7 +277,7 @@ waiting ──stop──> stopped
 | 入口 | 端点/调用方 | Run | 租约/执行方式 | 进度来源 | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | 启动游戏 | `POST /api/agent/actions/start-game` | 是（`start_game`） | 命令期间持有 | run 进度 | 支持 `waitForCompletion=false` |
-| 理智作战 | `POST /api/agent/actions/fight` | 是（`fight`） | 命令期间持有 | run 进度 | 支持 dry-run |
+| 理智作战 | `POST /api/agent/actions/fight` | 是（`fight`） | 逐关执行全程持有 | run 进度 | 支持 dry-run；多关卡按顺序逐关执行 |
 | 单任务/通用任务 | `POST /api/agent/actions/run-task` | 是（`run_task`） | 命令期间持有 | run 进度 | Web UI 的单作业、肉鸽、仓库/干员识别都走这里 |
 | 日常流程（Agent API） | `POST /api/agent/actions/run-daily-flow` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影进 run 进度 | 默认同步；`waitForCompletion=false` 返回 202；dry-run 不创建 run |
 | 日常流程（Web UI 手动） | `POST /api/agent/schedules/manual/execute` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 默认同步兼容原响应；自动化页以 `waitForCompletion=false` 提交并观察 Run；异步模式返回 202；重复提交可用幂等键 |
