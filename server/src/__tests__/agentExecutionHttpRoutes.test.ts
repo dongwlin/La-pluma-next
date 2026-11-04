@@ -283,6 +283,27 @@ describe('agent execution HTTP adapter', () => {
     assert.match(submittedTasks, /type = "SwitchTheme"/);
   });
 
+  it('passes the connected profile client type to generated dynamic task files', async () => {
+    const profileDir = join(process.env.FAKE_MAA_CONFIG_DIR || '', 'profiles');
+    const profilePath = join(profileDir, 'default.toml');
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(profilePath, '[connection]\nclient_type = "YoStarEN"\n', 'utf-8');
+    try {
+      const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+      const response = await postJson(`http://127.0.0.1:${port}/api/agent/actions/run-task`, {
+        command: 'run',
+        taskConfig: { name: '领取奖励', type: 'Award', params: { award: true } },
+        waitForCompletion: true
+      });
+      assert.equal(response.status, 200);
+      await readSuccess(response);
+      const submittedTasks = await readFile(process.env.FAKE_MAA_TASK_LOG || '', 'utf8');
+      assert.match(submittedTasks, /^client_type = "YoStarEN"$/m);
+    } finally {
+      await rm(profilePath, { force: true });
+    }
+  });
+
   it('requires the API token before parsing any execution entry', async () => {
     const port = await listen(createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
