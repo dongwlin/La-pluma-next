@@ -7,7 +7,6 @@ export interface DashboardActivityView {
   title: string
   detail: string
   meta: string
-  canRunActivity: boolean
   canRetry: boolean
 }
 
@@ -76,70 +75,62 @@ export function buildDashboardActivityView(
   const lastSuccessAt = summary.lastSuccessAt ?? lastUpdate
   const lastSuccessText = lastSuccessAt !== null ? `上次成功 ${formatTimestamp(lastSuccessAt)}` : ''
   const lastUpdateText = lastUpdate !== null ? `上次成功 ${formatTimestamp(lastUpdate)}` : ''
-  const withRunCapability = (
-    view: Omit<DashboardActivityView, 'canRunActivity'>,
-  ): DashboardActivityView => ({
-    ...view,
-    canRunActivity: summary.available === true
-      && view.phase !== 'none'
-      && view.phase !== 'unavailable',
-  })
 
   if (!hasSnapshot) {
     if (isRefreshing) {
-      return withRunCapability({
+      return {
         phase: 'loading',
         title: '正在获取活动信息',
         detail: '',
         meta: '',
         canRetry: false,
-      })
+      }
     }
     if (lastRefreshFailed) {
-      return withRunCapability({
+      return {
         phase: 'unavailable',
         title: '活动数据加载失败',
         detail: lastRefreshError || '无法获取活动信息',
         meta: '',
         canRetry: true,
-      })
+      }
     }
-    return withRunCapability({
+    return {
       phase: 'unavailable',
       title: '无法获取活动信息',
       detail: lastRefreshError || '尚未获取活动信息',
       meta: '',
       canRetry: true,
-    })
+    }
   }
 
   if (summary.status === undefined) {
     if (lastRefreshFailed) {
-      return withRunCapability({
+      return {
         phase: 'stale',
         title: '活动信息可能已过期',
         detail: lastRefreshError || '最近一次刷新失败',
         meta: joinParts(origin, lastUpdateText),
         canRetry: true,
-      })
+      }
     }
-    return withRunCapability({
+    return {
       phase: 'loading',
       title: '正在获取活动信息',
       detail: '',
       meta: '',
       canRetry: false,
-    })
+    }
   }
 
   if (summary.status === 'unavailable') {
-    return withRunCapability({
+    return {
       phase: 'unavailable',
       title: '无法获取活动信息',
       detail: summary.failure?.message || summary.message || '未知原因',
       meta: lastUpdateText,
       canRetry: true,
-    })
+    }
   }
 
   if (summary.status === 'stale' || lastRefreshFailed) {
@@ -149,30 +140,30 @@ export function buildDashboardActivityView(
     const detail = lastRefreshFailed
       ? (lastRefreshError || '最近一次刷新失败')
       : (summary.failure?.message || summary.message || '最近一次刷新失败')
-    return withRunCapability({
+    return {
       phase: 'stale',
       title,
       detail,
       meta: joinParts(origin, lastRefreshFailed ? lastUpdateText : lastSuccessText),
       canRetry: true,
-    })
+    }
   }
 
   if (summary.status === 'none') {
-    return withRunCapability({
+    return {
       phase: 'none',
       title: '暂无当前刷关活动',
       detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : ''),
       meta: '',
       canRetry: false,
-    })
+    }
   }
 
-  return withRunCapability({
+  return {
     phase: 'active',
     title: summary.name || summary.code || '当前活动',
     detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : ''),
     meta: '',
     canRetry: false,
-  })
+  }
 }

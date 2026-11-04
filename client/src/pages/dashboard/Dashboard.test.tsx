@@ -25,7 +25,6 @@ const apiMocks = vi.hoisted(() => ({
   getScheduleExecutionStatus: vi.fn(),
   loadUserConfig: vi.fn(),
   executeScheduleNow: vi.fn(),
-  runCurrentActivity: vi.fn(),
   getTrainingQueue: vi.fn(),
   getTodayDrops: vi.fn(),
   getOpenTodayStages: vi.fn(),
@@ -44,7 +43,6 @@ vi.mock('@/features/automation/api', async (importOriginal) => {
     getActivity: apiMocks.getActivity,
     getScheduleExecutionStatus: apiMocks.getScheduleExecutionStatus,
     executeScheduleNow: apiMocks.executeScheduleNow,
-    runCurrentActivity: apiMocks.runCurrentActivity,
   }
 })
 
@@ -298,7 +296,6 @@ describe('Dashboard connectivity state', () => {
       accepted: true,
       run: trackedRunState,
     }))
-    apiMocks.runCurrentActivity.mockResolvedValue(ok({ runId: 'run-activity', state: 'succeeded', executed: true }))
     apiMocks.executionApi.fetchSnapshot.mockImplementation(async () => ok(buildSnapshot()))
     apiMocks.executionApi.fetchRun.mockImplementation(async (runId: string) => ok({ ...trackedRunState, runId }))
     apiMocks.executionApi.stopRun.mockImplementation(async () => ok({
@@ -517,14 +514,12 @@ describe('Dashboard connectivity state', () => {
 
     expect(container.textContent).toContain('准备就绪')
     expect(findButton('开始今日流程')?.disabled).toBe(false)
-    expect(findButton('打当前活动')?.disabled).toBe(false)
 
     online = false
     act(() => window.dispatchEvent(new Event('offline')))
 
     expect(container.textContent).toContain('当前网络离线')
     expect(findButton('开始今日流程')?.disabled).toBe(true)
-    expect(findButton('打当前活动')?.disabled).toBe(true)
   })
 
   it('shows a retry action and recovers after the backend becomes available', async () => {
@@ -538,14 +533,12 @@ describe('Dashboard connectivity state', () => {
     expect(useDashboardStore.getState().lastUpdate).not.toBeNull()
     expect(findButton('重试连接')).toBeDefined()
     expect(findButton('开始今日流程')?.disabled).toBe(true)
-    expect(findButton('打当前活动')?.disabled).toBe(true)
 
     await act(async () => findButton('重试连接')?.click())
     await flushDashboard()
 
     expect(container.textContent).toContain('准备就绪')
     expect(findButton('开始今日流程')?.disabled).toBe(false)
-    expect(findButton('打当前活动')?.disabled).toBe(false)
   })
 
   it('omits redundant manual refresh controls', async () => {
@@ -601,98 +594,6 @@ describe('Dashboard connectivity state', () => {
     expect(flow?.getAttribute('aria-busy')).toBe('true')
     expect(findButton('正在运行')?.disabled).toBe(true)
     expect(useStatusStore.getState().runStatus.phase).toBe('idle')
-  })
-
-  it('shows immediate preflight feedback while checking the current activity', async () => {
-    trackedRunState = buildRun({
-      runId: 'run-activity',
-      operationId: 'run_current_activity_copilots',
-      state: 'succeeded',
-    })
-    let resolveRun: ((value: {
-      success: boolean
-      data: { runId: string; state: string; executed: boolean; plan: { reason: string } }
-    }) => void) | undefined
-    apiMocks.runCurrentActivity.mockReturnValueOnce(new Promise(resolve => {
-      resolveRun = resolve
-    }))
-
-    await act(async () => renderDashboard())
-    await flushDashboard()
-
-    const snapshotBefore = useDashboardStore.getState()
-    apiMocks.getActivity.mockClear()
-    apiMocks.getScheduleExecutionStatus.mockClear()
-    apiMocks.getTrainingQueue.mockClear()
-    apiMocks.getTodayDrops.mockClear()
-    apiMocks.getOpenTodayStages.mockClear()
-
-    const activityButton = container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')
-    await act(async () => {
-      activityButton?.click()
-      await Promise.resolve()
-    })
-
-    const flow = flowCard()
-    const status = useStatusStore.getState()
-    expect(apiMocks.runCurrentActivity).toHaveBeenCalledTimes(1)
-    expect(activityButton?.disabled).toBe(true)
-    expect(activityButton?.textContent).toContain('检查中')
-    expect(flow?.getAttribute('aria-busy')).toBe('true')
-    expect(status.message).toContain('当前活动')
-    expect(status.messageType).toBe('info')
-    expect(apiMocks.getActivity).not.toHaveBeenCalled()
-    expect(apiMocks.getScheduleExecutionStatus).not.toHaveBeenCalled()
-    expect(apiMocks.getTrainingQueue).not.toHaveBeenCalled()
-    expect(apiMocks.getTodayDrops).not.toHaveBeenCalled()
-    expect(apiMocks.getOpenTodayStages).not.toHaveBeenCalled()
-    expect(useDashboardStore.getState().lastUpdate).toBe(snapshotBefore.lastUpdate)
-    expect(useDashboardStore.getState().activitySummary).toEqual(snapshotBefore.activitySummary)
-
-    await act(async () => resolveRun?.({
-      success: true,
-      data: {
-        runId: 'run-activity',
-        state: 'succeeded',
-        executed: false,
-        plan: { reason: '测试结束' },
-      },
-    }))
-    await flushDashboard()
-
-    expect(apiMocks.getActivity).not.toHaveBeenCalled()
-    expect(useDashboardStore.getState().lastUpdate).toBe(snapshotBefore.lastUpdate)
-    expect(useDashboardStore.getState().activitySummary).toEqual(snapshotBefore.activitySummary)
-  })
-
-  it('surfaces the exact activity preflight blocker as a warning', async () => {
-    const blocker = 'AD「红丝绒」的资源未包含从主页进入活动关卡的完整导航链。'
-    trackedRunState = buildRun({
-      runId: 'run-activity',
-      operationId: 'run_current_activity_copilots',
-      state: 'succeeded',
-    })
-    apiMocks.runCurrentActivity.mockResolvedValueOnce(ok({
-      runId: 'run-activity',
-      state: 'succeeded',
-      executed: false,
-      plan: { reason: blocker },
-    }))
-
-    await act(async () => renderDashboard())
-    await flushDashboard()
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>('button[aria-label="打当前活动"]')?.click()
-    })
-    await flushDashboard()
-
-    const flow = flowCard()
-    const feedback = container.querySelector('[data-dashboard-flow-feedback]')
-    const status = useStatusStore.getState()
-    expect(feedback?.textContent).toBe(blocker)
-    expect(status.message).toBe(blocker)
-    expect(status.messageType).toBe('warning')
-    expect(flow?.getAttribute('aria-busy')).toBe('false')
   })
 
   it('submits the daily flow once as an async run with a dashboard scope key', async () => {
@@ -839,7 +740,6 @@ describe('Dashboard connectivity state', () => {
 
     expect(container.textContent).toContain('设备被其他任务占用')
     expect(findButton('开始今日流程')?.disabled).toBe(true)
-    expect(findButton('打当前活动')?.disabled).toBe(true)
   })
 
   it('keeps the unknown phase and the last active run when observation disconnects', async () => {
@@ -907,7 +807,6 @@ describe('Dashboard connectivity state', () => {
     expect(empty?.textContent).toContain('官服 · MAA 活动表')
     expect(container.textContent).not.toContain('暂无活动')
     expect(container.textContent).not.toContain('等待活动数据')
-    expect(findButton('打当前活动')).toBeUndefined()
   })
 
   it('renders an active activity name and source without a tip field', async () => {

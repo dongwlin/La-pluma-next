@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getActivity, getScheduleExecutionStatus, executeScheduleNow, runCurrentActivity } from './index'
+import { getActivity, getScheduleExecutionStatus, executeScheduleNow } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -45,32 +45,6 @@ describe('automation schedule execution api', () => {
       taskFlow: [{ id: 'startup-1' }],
       waitForCompletion: false,
     })
-  })
-})
-
-describe('automation activity execution api', () => {
-  beforeEach(() => {
-    window.localStorage.clear()
-    vi.restoreAllMocks()
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data: null }))
-  })
-
-  it('keeps the synchronous activity run without a key by default', async () => {
-    await runCurrentActivity()
-
-    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/activity/run')
-    expect(fetchCall().init.method).toBe('POST')
-    expect(readHeaders(fetchCall().init).get('Idempotency-Key')).toBeNull()
-    expect(fetchCall().init.body).toBeUndefined()
-  })
-
-  it('forwards the controller idempotency key and abort signal', async () => {
-    const signal = new AbortController().signal
-    await runCurrentActivity({ idempotencyKey: 'run_current_activity_copilots-20261025-01', signal })
-
-    expect(readHeaders(fetchCall().init).get('Idempotency-Key')).toBe('run_current_activity_copilots-20261025-01')
-    expect(fetchCall().init.signal).toBe(signal)
-    expect(fetchCall().init.body).toBeUndefined()
   })
 })
 

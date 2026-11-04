@@ -56,7 +56,7 @@ docker run -d \
 | `LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS` | Core 安装/更新维护命令的 execFile 超时；非法值回落默认，超上限收敛到上限 | `900000`（上限 `3600000`） |
 | `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `server/data` |
 | `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
-| `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动作业完成进度文件 | `server/data/activity-copilot-progress.json` |
+| `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动通关进度文件（只读历史数据） | `server/data/activity-copilot-progress.json` |
 | `LA_PLUMA_OPERATOR_QUOTES_STORE` | 干员台词数据文件 | `server/data/operatorQuotes.json` |
 | `LA_PLUMA_MAX_REALTIME_LOGS` | 实时日志内存缓存最大行数 | `5000` |
 | `LA_PLUMA_WEBRTC_DIR` | ScrcpyOverWebRTC 工作目录 | `$HOME/ScrcpyOverWebRTC`（Docker 为 `/root/ScrcpyOverWebRTC`） |

@@ -6,7 +6,6 @@ const base: DashboardFlowViewInput = {
   connectionTitle: '正在检查服务',
   connectionDescription: '正在确认自动化服务状态',
   quickStartLoading: false,
-  activityPreflightLoading: false,
   deviceBusy: false,
   phase: 'idle',
   runLabel: null,
@@ -28,7 +27,6 @@ describe('buildDashboardFlowView', () => {
       commandDescription: '设备待命，可以开始今天的自动化任务',
       primaryActionLabel: '开始今日流程',
       primaryActionStatusKey: 'ready',
-      activityActionStatusKey: 'ready',
     })
   })
 
@@ -82,15 +80,6 @@ describe('buildDashboardFlowView', () => {
   })
 
   it('prioritizes loading feedback over the execution phase', () => {
-    const preflight = view({ activityPreflightLoading: true, phase: 'running' })
-    expect(preflight).toMatchObject({
-      controlsDisabled: true,
-      statusLabel: '当前任务',
-      commandTitle: '正在检查当前活动',
-      commandDescription: '正在确认当前活动与可用作业',
-      activityActionStatusKey: 'running',
-    })
-
     const quickStart = view({ quickStartLoading: true, phase: 'waiting' })
     expect(quickStart).toMatchObject({
       controlsDisabled: true,
@@ -100,7 +89,6 @@ describe('buildDashboardFlowView', () => {
       primaryActionStatusKey: 'starting',
     })
 
-    expect(view({ activityPreflightLoading: true }).statusLabel).toBe('当前操作')
     expect(view({ quickStartLoading: true }).statusLabel).toBe('当前操作')
   })
 
