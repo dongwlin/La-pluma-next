@@ -24,7 +24,7 @@
 - 带 `taskType` 的 MaaCore 动态任务生成 `run` 命令加序列化 `taskConfig`；Recruit 把 `skip_robot` 归一为 `preserve_tags: ['支援机械']`、招募时间转为数字；`mode=10000` 的基建缺文件路径直接抛错，`plan_index` 缺省为 0（`server/src/services/scheduleFlowPlan.ts:166-221`）。
 - 预定义命令取 `commandId` 或 `id` 首段：`startup`/`closedown` 携带客户端类型与连接地址（及启动时的账号切换），`fight` 把多关卡折叠为 `stage1:times1,stage2:times2`，追加理智药、源石、连战倍率（负数统一用 `=` 连接下发）、掉落目标与企鹅物流/一图流汇报开关（`server/src/services/scheduleFlowPlan.ts:224-294`）。
 
-`buildScheduledTaskFlowPlan` 把启用条目映射为纯数据计划步骤（`index`/`command`/`args`/`taskConfig`/`preActions`），执行器与确认接口共用同一份构建规则；连接默认值由调用方解析后传入，`getScheduledTaskFlowPlan` 仅在流程启用 `startup`/`closedown` 时解析连接（`server/src/services/scheduleFlowPlan.ts:100-110,344-377`、`server/src/services/schedulerService.ts:87-100`）。Agent API `run-daily-flow` 的 dry run 返回的 `plan` 即该计划（`server/src/controllers/agentExecutionController.ts:1398-1410`）。
+`buildScheduledTaskFlowPlan` 把启用条目映射为纯数据计划步骤（`index`/`command`/`args`/`taskConfig`/`preActions`），执行器与确认接口共用同一份构建规则；连接默认值由调用方解析后传入，`getScheduledTaskFlowPlan` 仅在流程启用 `startup`/`closedown` 时解析连接（`server/src/services/scheduleFlowPlan.ts:100-110,344-377`、`server/src/services/schedulerService.ts:87-100`）。Agent API `run-daily-flow` 的 dry run 返回的 `plan` 即该计划（`server/src/controllers/agentExecutionController.ts:1360-1393`）。
 
 ## 步骤编排
 

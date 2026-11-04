@@ -11,7 +11,7 @@ process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(tempDir, 'copilot-progress.js
 process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(tempDir, 'activity-copilot-progress.json');
 
 const { resetCopilotPlanProgress } = await import('../copilotPlanService.ts');
-const { getActivityCompletion, recordActivityCompletion } = await import('../activityCopilotRunService.ts');
+const { getActivityCompletion } = await import('../activityCompletionService.ts');
 
 const planProgressPath = process.env.LA_PLUMA_COPILOT_PROGRESS_STORE;
 const activityProgressPath = process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE;
@@ -49,45 +49,11 @@ test('activity completion reads legacy progress files', async () => {
   assert.deepEqual(completion.completedStages, ['BD-1']);
 });
 
-test('concurrent activity completions for different codes keep both', async () => {
-  await writeFile(activityProgressPath, JSON.stringify({}, null, 2), 'utf8');
-
-  await Promise.all([
-    recordActivityCompletion({ code: 'bd' }, [{ displayStage: 'BD-1', success: true }]),
-    recordActivityCompletion({ code: 'RO' }, [{ displayStage: 'RO-1', success: true }])
-  ]);
-
-  const progress = JSON.parse(await readFile(activityProgressPath, 'utf8'));
-  assert.deepEqual(progress.BD, { stages: ['BD-1'], updatedAt: progress.BD.updatedAt });
-  assert.deepEqual(progress.RO, { stages: ['RO-1'], updatedAt: progress.RO.updatedAt });
-  assert.match(progress.BD.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
-});
-
-test('activity completion drops failed entries and keeps prior stages', async () => {
-  await writeFile(activityProgressPath, JSON.stringify({
-    BD: { stages: ['BD-1'], updatedAt: '2026-01-01T00:00:00.000Z' }
-  }, null, 2), 'utf8');
-
-  await recordActivityCompletion({ code: 'BD' }, [
-    { displayStage: 'BD-2', success: true },
-    { displayStage: 'BD-3', success: false }
-  ]);
-
-  assert.deepEqual(
-    JSON.parse(await readFile(activityProgressPath, 'utf8')).BD.stages,
-    ['BD-1', 'BD-2']
-  );
-});
-
 test('corrupted progress files surface errors instead of empty progress', async () => {
   await writeFile(activityProgressPath, 'not-json', 'utf8');
 
   await assert.rejects(
     getActivityCompletion({ code: 'BD', stages: ['BD-1'] }),
-    /读取 JSON 文件失败/
-  );
-  await assert.rejects(
-    recordActivityCompletion({ code: 'BD' }, [{ displayStage: 'BD-1', success: true }]),
     /读取 JSON 文件失败/
   );
   // 损坏内容保持原样，不被空进度覆盖。

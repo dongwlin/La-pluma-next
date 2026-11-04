@@ -28,9 +28,6 @@ const expectedAdvertisedIds = [
   'get_status',
   'test_connection',
   'discover_devices',
-  'activity_run_preflight',
-  'activity_copilot_candidates',
-  'run_current_activity_copilots',
   'start_game',
   'fight',
   'run_task',
@@ -98,7 +95,7 @@ function getOpenApiOperation(
 
 describe('Agent API contract registry', () => {
   it('keeps operation ids and method/path pairs unique', () => {
-    assert.equal(AGENT_OPERATIONS.length, 23);
+    assert.equal(AGENT_OPERATIONS.length, 20);
     assert.equal(new Set(AGENT_OPERATIONS.map(item => item.id)).size, AGENT_OPERATIONS.length);
     assert.equal(
       new Set(AGENT_OPERATIONS.map(item => `${item.method} ${item.path}`)).size,
@@ -112,7 +109,7 @@ describe('Agent API contract registry', () => {
     assert.equal(manifest.version, API_VERSION);
     assert.deepEqual(manifest.defaults, defaults);
     assert.deepEqual(manifest.actions.map(item => item.id), expectedAdvertisedIds);
-    assert.equal(manifest.actions.length, 21);
+    assert.equal(manifest.actions.length, 18);
     assert.ok(!manifest.actions.some(item => item.id === 'get_manifest'));
     assert.ok(!manifest.actions.some(item => item.id === 'get_openapi'));
   });
@@ -170,6 +167,7 @@ describe('Agent API contract registry', () => {
 
     assert.ok(must(properties.command.enum, 'run_task command enum').includes('run'));
     assert.ok(must(properties.command.enum, 'run_task command enum').includes('list'));
+    assert.ok(must(properties.command.enum, 'run_task command enum').includes('reclamation'));
     const taskConfigVariant = must(must(must(properties.taskConfig.oneOf, 'taskConfig oneOf')[0], 'taskConfig variant'), 'taskConfig variant');
     assert.deepEqual(taskConfigVariant.required, ['name', 'type']);
     assert.equal(prop(taskConfigVariant, 'params', 'taskConfig variant').type, 'object');
@@ -255,15 +253,6 @@ describe('Agent API contract registry', () => {
       ).appliesWhen,
       { dryRun: false }
     );
-
-    // 活动作业入口始终同步返回，不能声明 202/接受响应。
-    const activityRun = findAction(manifest, 'run_current_activity_copilots');
-    assert.equal(activityRun.execution.producesRun, undefined);
-    const activityOperation = must(
-      getOpenApiOperation(buildOpenApiSpec(defaults), activityRun),
-      'run_current_activity_copilots OpenAPI operation'
-    );
-    assert.equal(activityOperation.responses['202'], undefined);
   });
 
   // 领域 router 以子 router 挂载在 agent router 上；这里遍历实际挂载关系，

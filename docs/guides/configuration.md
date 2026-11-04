@@ -4,7 +4,7 @@
 
 ## 运行平台
 
-La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统解析外部 MAA 的目录，路径解析锚定服务端安装位置，与启动时的工作目录无关：
+La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统解析外部 MAA 的目录，路径解析锚定服务端安装位置，与启动时的工作目录无关。与 maa-cli 一致，`MAA_CONFIG_DIR`、`MAA_DATA_DIR`、`MAA_STATE_DIR` 优先于下表的平台默认值，空值按未设置处理；资源目录始终为数据目录下的 `resource/`。
 
 | MAA 目录 | macOS | Linux（XDG 标准） | Windows |
 | --- | --- | --- | --- |

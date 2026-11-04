@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { getErrorMessage, type ApiResponse } from '@/shared/api'
-import { executeScheduleNow, runCurrentActivity } from '@/features/automation'
+import { getErrorMessage } from '@/shared/api'
+import { executeScheduleNow } from '@/features/automation'
 import {
   executionController as defaultExecutionController,
   isActiveRunState,
@@ -25,15 +25,6 @@ export interface DashboardFlowStartOutcome {
   type: StatusMessageType
 }
 
-export interface DashboardActivityOutcome {
-  /** 是否真的发出了请求；设备忙或重复提交时为 false。 */
-  submitted: boolean
-  /** 服务端是否实际执行了活动作业；预检阻断、失败或未提交时为 false。 */
-  executed: boolean
-  message: string
-  type: StatusMessageType
-}
-
 export interface DashboardExecution {
   /** 唯一快照的运行状态投影，和全局浮动指示器同源。 */
   status: GlobalRunStatus
@@ -44,7 +35,6 @@ export interface DashboardExecution {
   /** 观察最后失败的原因，仅用于“无法确认”时的说明。 */
   observationError: string | null
   startFlow: (flow: unknown[]) => Promise<DashboardFlowStartOutcome>
-  runActivity: () => Promise<DashboardActivityOutcome>
 }
 
 interface UseDashboardExecutionOptions {
@@ -140,74 +130,11 @@ export function useDashboardExecution({
     }
   }, [controller, isBusy, notify])
 
-  const runActivity = useCallback(async (): Promise<DashboardActivityOutcome> => {
-    if (controller.getState().submission === 'pending') {
-      return { submitted: false, executed: false, message: '正在提交上一次执行，请稍候。', type: 'info' }
-    }
-    if (isBusy) {
-      return {
-        submitted: false,
-        executed: false,
-        message: '设备正在执行其它任务，请等待结束或先停止。',
-        type: 'warning',
-      }
-    }
-
-    let response: ApiResponse | null = null
-    try {
-      response = await controller.submitExecution(
-        'run_current_activity_copilots',
-        ({ idempotencyKey, signal }) => runCurrentActivity({ idempotencyKey, signal }),
-        { scope: DASHBOARD_EXECUTION_SCOPE },
-      )
-    } catch (error) {
-      return {
-        submitted: true,
-        executed: false,
-        message: `无法确认执行状态: ${(error as Error).message || '当前活动检查失败'}`,
-        type: 'warning',
-      }
-    }
-
-    if (!response.success) {
-      return {
-        submitted: true,
-        executed: false,
-        message: getErrorMessage(response) || '当前活动检查失败',
-        type: 'error',
-      }
-    }
-
-    const runData = response.data as {
-      executed?: boolean
-      plan?: { reason?: string }
-      execution?: { results?: unknown[] }
-    } | undefined
-
-    if (!runData?.executed) {
-      return {
-        submitted: true,
-        executed: false,
-        message: runData?.plan?.reason || getErrorMessage(response) || '当前活动暂未准备就绪。',
-        type: 'warning',
-      }
-    }
-
-    const completedCount = Array.isArray(runData.execution?.results) ? runData.execution.results.length : 0
-    return {
-      submitted: true,
-      executed: true,
-      message: completedCount > 0 ? `当前活动作业已完成 ${completedCount} 项。` : '当前活动作业已完成。',
-      type: 'success',
-    }
-  }, [controller, isBusy])
-
   return {
     status,
     isBusy,
     ownedRun,
     observationError: execution.lastError,
     startFlow,
-    runActivity,
   }
 }

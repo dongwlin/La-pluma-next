@@ -296,14 +296,6 @@ const validFixtures: readonly ValidFixture[] = [
   { operationId: 'get_status', status: 200, query: { adbPath: fakeAdbPath, address: deviceAddress } },
   { operationId: 'test_connection', status: 200, body: { adbPath: fakeAdbPath, address: deviceAddress } },
   { operationId: 'discover_devices', status: 200, query: { adbPath: fakeAdbPath } },
-  { operationId: 'activity_run_preflight', status: 200, query: { clientType: DEFAULT_CLIENT_TYPE } },
-  { operationId: 'activity_copilot_candidates', status: 200, query: { clientType: DEFAULT_CLIENT_TYPE } },
-  {
-    operationId: 'run_current_activity_copilots',
-    status: 200,
-    body: { clientType: DEFAULT_CLIENT_TYPE },
-    expectRun: true
-  },
   {
     operationId: 'start_game',
     status: 200,
@@ -311,7 +303,7 @@ const validFixtures: readonly ValidFixture[] = [
     expectRun: true
   },
   { operationId: 'fight', status: 200, body: { stages: ['1-7'], dryRun: true } },
-  { operationId: 'run_task', status: 200, body: { command: 'award' }, expectRun: true },
+  { operationId: 'run_task', status: 200, body: { command: 'reclamation', args: ['Tales', '-m', '1'] }, expectRun: true },
   { operationId: 'stop_task', status: 200, body: {} },
   { operationId: 'get_current_run', status: 200, query: { lines: 2 } },
   { operationId: 'get_run', status: 404, pathParams: { runId: missingRunId } },
@@ -342,9 +334,6 @@ const invalidFixtures: readonly ErrorFixture[] = [
   { operationId: 'get_status', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
   { operationId: 'test_connection', status: 400, body: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
   { operationId: 'discover_devices', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
-  { operationId: 'activity_run_preflight', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
-  { operationId: 'activity_copilot_candidates', status: 400, query: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
-  { operationId: 'run_current_activity_copilots', status: 400, body: { profileId: 'bad id!' }, errorCode: 'AGENT_VALIDATION_PROFILE_ID_INVALID' },
   { operationId: 'start_game', status: 400, body: { waitForCompletion: 'later' }, errorCode: 'AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID' },
   { operationId: 'fight', status: 400, body: {}, errorCode: 'AGENT_VALIDATION_MISSING_STAGES' },
   { operationId: 'run_task', status: 400, body: { command: 'not-a-command' }, errorCode: 'AGENT_VALIDATION_COMMAND_NOT_ALLOWED' },
@@ -701,7 +690,7 @@ describe('advertised operations over real HTTP', () => {
     const created = await fetch(`${baseUrl}/api/agent/actions/run-task`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ command: 'award' })
+      body: JSON.stringify({ command: 'startup' })
     });
     assert.equal(created.status, 200);
     const createdBody: unknown = await created.json();

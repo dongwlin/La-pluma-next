@@ -2,7 +2,6 @@ import { execMaaCommand, execDynamicTask } from '../services/maaExecutionService
 import { stopCurrentTask } from '../services/maaProcessService.ts';
 import { executeScheduleNow, getScheduledTaskFlowPlan, stopScheduleExecution } from '../services/schedulerService.ts';
 import { loadUserConfig } from '../services/configStorageService.ts';
-import { runCurrentActivityCopilots } from '../services/activityCopilotRunService.ts';
 import {
   createDailyFlowExecutionError,
   executeAgentTask,
@@ -1276,20 +1275,6 @@ async function stopCurrentExecution(
     deviceStopRequested,
     run: enrichAgentRun(currentRun)
   }, deviceStopRequested ? '已发送终止请求' : '当前没有可终止的任务');
-}
-
-export async function runCurrentActivity(
-  req: ExecutionRequest,
-  res: ExecutionResponseWriter
-): Promise<unknown> {
-  const { clientType } = await resolveRequestConnection(req, { allowOverrides: true });
-  return executeTrackedAgentAction(req, res, {
-    operationId: 'run_current_activity_copilots',
-    input: { clientType },
-    metadata: { taskName: '当前活动作业', taskType: 'activity' },
-    execute: lifecycle => runCurrentActivityCopilots(clientType, lifecycle),
-    successMessage: '当前活动作业执行完成'
-  });
 }
 
 export async function executeCopilotSet(

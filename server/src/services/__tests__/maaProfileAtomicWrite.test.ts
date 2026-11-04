@@ -31,9 +31,11 @@ const sampleProfile = `profile_name = "daily"
 [connection]
 adb_path = "adb"
 address = "127.0.0.1:5555"
-auto_reconnect = true
 retry_count = 3
 ports = [5555, 16384]
+
+[behavior]
+auto_reconnect = true
 
 [resource]
 channel = "beta"
@@ -83,16 +85,83 @@ describe('MAA profile atomic text write', () => {
     assert.deepEqual(parsed.connection, {
       adb_path: 'adb',
       address: '192.168.1.10:5555',
-      auto_reconnect: false,
       retry_count: 3,
       ports: [5555, 16384],
       probe: 'kept'
     });
+    assert.deepEqual(parsed.behavior, { auto_reconnect: false });
     assert.deepEqual(parsed.resource, { channel: 'beta', auto_update: false });
     assert.deepEqual(parsed.instance_options, { touch_mode: 'maatouch' });
-    // 写入的是 TOML 而不是 JSON，且 getter 仍按 connection 读取。
+    // 写入的是 TOML 而不是 JSON，auto_reconnect 由 behavior 段回到 connection 读取视图。
     assert.match(content, /^profile_name = "daily"/);
-    assert.deepEqual(await getConfig('daily'), parsed.connection);
+    assert.deepEqual(await getConfig('daily'), {
+      ...parsed.connection,
+      auto_reconnect: false
+    });
+  });
+
+  it('migrates a legacy connection auto_reconnect value into behavior', async () => {
+    await writeProfile('legacy', `[connection]
+address = "127.0.0.1:5555"
+auto_reconnect = false
+`);
+
+    assert.deepEqual(await getConfig('legacy'), {
+      address: '127.0.0.1:5555',
+      auto_reconnect: false
+    });
+
+    await saveConfig('legacy', { connection: { address: '10.0.0.2:5555' } });
+
+    const parsed = TOML.parse(await readProfile('legacy'));
+    assert.deepEqual(parsed.connection, { address: '10.0.0.2:5555' });
+    assert.deepEqual(parsed.behavior, { auto_reconnect: false });
+    assert.deepEqual(await getConfig('legacy'), {
+      address: '10.0.0.2:5555',
+      auto_reconnect: false
+    });
+  });
+
+  it('reads behavior auto_reconnect ahead of a stale connection value', async () => {
+    await writeProfile('mixed', `[connection]
+address = "127.0.0.1:5555"
+auto_reconnect = false
+
+[behavior]
+auto_reconnect = true
+`);
+
+    assert.deepEqual(await getConfig('mixed'), {
+      address: '127.0.0.1:5555',
+      auto_reconnect: true
+    });
+  });
+
+  it('keeps unrelated behavior fields and rejects a non-table behavior section', async () => {
+    await writeProfile('behavior-extra', `[connection]
+address = "127.0.0.1:5555"
+
+[behavior]
+auto_reconnect = true
+probe = "kept"
+`);
+    await saveConfig('behavior-extra', { connection: { auto_reconnect: false } });
+
+    const parsed = TOML.parse(await readProfile('behavior-extra'));
+    assert.deepEqual(parsed.connection, { address: '127.0.0.1:5555' });
+    assert.deepEqual(parsed.behavior, { auto_reconnect: false, probe: 'kept' });
+
+    const corrupted = `behavior = "not-a-table"
+
+[connection]
+address = "127.0.0.1:5555"
+`;
+    await writeProfile('corrupted-behavior', corrupted);
+    await assert.rejects(
+      saveConfig('corrupted-behavior', { connection: { auto_reconnect: true } }),
+      /保存配置失败: 现有 behavior section 格式不合法/
+    );
+    assert.equal(await readProfile('corrupted-behavior'), corrupted);
   });
 
   it('creates a missing profile with only the connection section', async () => {

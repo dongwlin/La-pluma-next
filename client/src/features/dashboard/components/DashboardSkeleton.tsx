@@ -92,7 +92,6 @@ export function DashboardSkeleton() {
                     <Skeleton variant="text" className="h-2.5 w-52 max-w-full" />
                   </div>
                   <div className="dashboard-flow-actions">
-                    <Skeleton variant="rect" className="dashboard-flow-activity-action h-11 rounded-xl" />
                     <Skeleton variant="rect" className="dashboard-flow-primary-action h-11 rounded-xl" />
                   </div>
                 </div>
