@@ -38,7 +38,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 - MAA 配置目录由 `maa dir config` 解析并按进程缓存：并发调用共享同一次查询，失败在 30 秒冷却期内复用同一错误，避免 CLI 故障期间反复 spawn（`server/src/services/maaConfigService.ts:46-65`）。
 - profile 名必须匹配 `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`；配置路径经 `resolve` 后校验未越出 `profiles/` 目录，拒绝路径穿越（`server/src/services/maaConfigService.ts:67-83`）。
-- 读取 profile 时返回 `connection` section，并把 `[behavior]` 的 `auto_reconnect` 并入返回视图；旧版误写在 `[connection].auto_reconnect` 的值只在没有 `[behavior]` 值时兼容读取；文件不存在或读取失败时返回环境默认连接 `adb_path`/`address`/`config`（`server/src/services/maaConfigService.ts:105-122,174-188`）。
+- 读取 profile 时返回 `connection` section，并把 `[behavior]` 的 `auto_reconnect` 并入返回视图；旧版误写在 `[connection].auto_reconnect` 的值只在 `[behavior].auto_reconnect` 缺失时兼容读取；文件不存在或读取失败时返回环境默认连接 `adb_path`/`address`/`config`（`server/src/services/maaConfigService.ts:105-122,174-188`）。
 - 保存配置走 `updateTextFile` 的读改写排队单元与文本原子替换：同一 profile 的读取、合并与写入串行完成，解析或写入失败时不写回、已有配置保持原样；`auto_reconnect` 写入 `[behavior]`，旧版 `[connection].auto_reconnect` 在保存时迁移过去，其余未知 connection 字段原样保留（`server/src/services/maaConfigService.ts:124-172,190-207`）。
 - `connectionService.resolveConnection` 是执行、预览、定时与维护入口共用的连接解析：profile 值按 `snake_case` 优先、`camelCase` 兼容，只有非空字符串生效，其余回落连接默认值；profile 名不合法抛 400 `AGENT_VALIDATION_PROFILE_ID_INVALID`（`server/src/services/connectionService.ts:73-96`）。
 - `resolveConnectionInput` 只在调用方声明 `allowOverrides` 时应用请求级显式覆盖；空白或缺失的覆盖值保留 profile 值（`server/src/services/connectionService.ts:102-117`）。
