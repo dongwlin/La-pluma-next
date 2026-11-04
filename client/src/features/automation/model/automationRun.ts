@@ -27,9 +27,10 @@ export interface AutomationExecutionSummary {
   }>
   actions: Array<{
     task: string
-    action: 'startup' | 'closedown' | 'depot' | 'award' | 'recruit' | 'infrast' | 'mall' | 'fight'
+    action: 'startup' | 'closedown' | 'depot' | 'award' | 'recruit' | 'infrast' | 'mall' | 'fight' | 'operprogress' | 'switchtheme'
     status: 'success' | 'skipped' | 'failed'
     message: string
+    observed?: boolean
     startedCount?: number
     collectedCount?: number
     expeditedCount?: number

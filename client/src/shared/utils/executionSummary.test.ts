@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { formatExecutionActionSummary, formatExecutionSummary, getExecutionLastTask } from './executionSummary'
+import { formatExecutionActionSummary, formatExecutionSummary, getExecutionLastTask, isUnconfirmedGameAction } from './executionSummary'
 
 describe('execution summary formatting', () => {
+  it('keeps a failed process without game callbacks classified as failed', () => {
+    const action = { action: 'operprogress', status: 'failed', observed: false, message: '培养进程执行失败' }
+    expect(isUnconfirmedGameAction(action)).toBe(false)
+    expect(formatExecutionActionSummary([action])).toBe('游戏内培养 · 失败 1 项')
+  })
+
+  it('keeps cultivation task outcomes distinct from completed training targets', () => {
+    expect(formatExecutionActionSummary([
+      { action: 'operprogress', status: 'success', message: '已启动专精训练' },
+      { action: 'operprogress', status: 'failed' },
+    ])).toBe('游戏内培养 · 成功 1 项 · 失败 1 项')
+    expect(formatExecutionActionSummary([{ action: 'switchtheme', status: 'skipped' }]))
+      .toBe('更换游戏主题 · 跳过 1 项')
+    expect(formatExecutionActionSummary([{ action: 'operprogress', status: 'success', observed: false, message: '培养进程已结束，游戏结果未确认' }]))
+      .toBe('培养进程已结束，游戏结果未确认')
+  })
+
   it('formats the structured scheduler result as renderable text', () => {
     expect(formatExecutionSummary({
       successCount: 0,

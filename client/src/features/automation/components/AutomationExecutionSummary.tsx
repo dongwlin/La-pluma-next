@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleMinus } from 'lucide-react'
-import { formatExecutionActionSummary } from '@/shared/utils/executionSummary'
+import { formatExecutionActionSummary, isUnconfirmedGameAction } from '@/shared/utils/executionSummary'
 import {
   executionSummaryHasFailure,
   type AutomationExecutionSummary as AutomationExecutionSummaryData,
@@ -59,8 +59,8 @@ export default function AutomationExecutionSummary({
       <div className="mt-2 flex min-w-0 items-center gap-2">
         {executionSummaryHasFailure(lastSummary)
           ? <AlertTriangle size={14} className="shrink-0 text-red-500" strokeWidth={2} />
-          : lastSummary.skippedCount > 0 && lastSummary.successCount === 0
-            ? <CircleMinus size={14} className="shrink-0 text-gray-400" strokeWidth={2} />
+          : lastSummary.actions.some(isUnconfirmedGameAction) || (lastSummary.skippedCount > 0 && lastSummary.successCount === 0)
+            ? <CircleMinus size={14} className="shrink-0 text-gray-400" strokeWidth={2} role="img" aria-label={lastSummary.actions.some(isUnconfirmedGameAction) ? '游戏结果未确认' : '任务已跳过'} />
             : <CheckCircle2 size={14} className="shrink-0 text-emerald-500" strokeWidth={2} />}
         <span className="min-w-0 flex-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
           {formatExecutionActionSummary(lastSummary.actions)
@@ -135,9 +135,11 @@ export default function AutomationExecutionSummary({
               {lastSummary.actions.map((action, actionIndex) => (
                 <div
                   key={`${action.action}-${action.task}-${actionIndex}`}
-                  className={`flex min-w-0 items-start gap-2 text-xs ${action.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : action.status === 'skipped' ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}`}
+                  className={`flex min-w-0 items-start gap-2 text-xs ${isUnconfirmedGameAction(action) ? 'text-gray-500 dark:text-gray-400' : action.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : action.status === 'skipped' ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}`}
                 >
-                  {action.status === 'success'
+                  {isUnconfirmedGameAction(action)
+                    ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                    : action.status === 'success'
                     ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
                     : action.status === 'skipped'
                       ? <CircleMinus size={14} className="mt-0.5 shrink-0" strokeWidth={2} />

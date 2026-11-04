@@ -54,6 +54,17 @@ const render = async (node: ReactNode) => {
 const detailsButton = () => container.querySelector<HTMLButtonElement>('[aria-label="展开执行详情"], [aria-label="收起执行详情"]')
 
 describe('AutomationExecutionSummary', () => {
+  it('shows missing game callbacks as an unconfirmed game result', async () => {
+    await render(<AutomationExecutionSummary summary={summary({
+      successCount: 1,
+      actions: [{ action: 'operprogress', task: '游戏内培养', status: 'success', observed: false, message: '培养进程已结束，游戏结果未确认' }],
+    })} runId="run-game" />)
+    expect(container.textContent).toContain('培养进程已结束，游戏结果未确认')
+    expect(container.querySelector('[aria-label="游戏结果未确认"]')).not.toBeNull()
+    await act(async () => detailsButton()?.click())
+    expect(container.textContent).not.toContain('培养目标已完成')
+  })
+
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)

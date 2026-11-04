@@ -2,6 +2,7 @@ import type { AutomationAvailableTask, StageConfig, TaskFlowItem, TaskParams } f
 import { parseDropTargets } from './dropTargets'
 import { flattenStagesForEditing, splitStagesForEditing } from './stageEditing'
 import { placeClosedownLast } from './taskFlowSort'
+import { validateOperProgressPlans, validateThemes } from './gameTaskParams'
 
 /**
  * 流程条目：草稿态没有界面字段，展示态可以带上；两种形状都能传入模型。
@@ -173,6 +174,17 @@ export function findTaskFlowValidationFailure(
       taskId: invalidFightDrops.id,
       message: '掉落目标格式应为物品 ID=数量，多个目标用逗号分隔',
     }
+  }
+
+  for (const task of flow) {
+    if (!task.enabled) continue
+    const commandId = resolveTaskCommandId(task)
+    const message = commandId === 'operprogress' || task.taskType === 'OperProgress'
+      ? validateOperProgressPlans(task.params.plans)
+      : commandId === 'switchtheme' || task.taskType === 'SwitchTheme'
+        ? validateThemes(task.params.themes)
+        : null
+    if (message) return { taskId: task.id, message }
   }
 
   return null

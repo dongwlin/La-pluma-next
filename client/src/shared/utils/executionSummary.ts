@@ -11,6 +11,8 @@ interface ExecutionSummaryLike {
 interface ExecutionActionLike {
   action?: unknown
   status?: unknown
+  observed?: unknown
+  message?: unknown
   startedCount?: unknown
   collectedCount?: unknown
   expeditedCount?: unknown
@@ -37,6 +39,13 @@ interface ExecutionActionLike {
   times?: unknown
   dropCount?: unknown
   sanityDepleted?: unknown
+}
+
+export function isUnconfirmedGameAction(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const action = value as ExecutionActionLike
+  return (action.action === 'operprogress' || action.action === 'switchtheme')
+    && action.status === 'success' && action.observed === false
 }
 
 const toFiniteNumber = (value: unknown) => {
@@ -100,6 +109,22 @@ export function formatExecutionActionSummary(actions: unknown): string | undefin
   const successCount = normalizedActions.filter(action => action.status === 'success').length
   const skippedCount = normalizedActions.filter(action => action.status === 'skipped').length
   const failedCount = normalizedActions.filter(action => action.status === 'failed').length
+  if (normalizedActions.every(action => action.action === 'operprogress' || action.action === 'switchtheme')) {
+    const unconfirmed = normalizedActions.filter(isUnconfirmedGameAction)
+    if (normalizedActions.length === 1 && unconfirmed.length === 1 && typeof unconfirmed[0]?.message === 'string') {
+      return unconfirmed[0].message
+    }
+    const title = normalizedActions.every(action => action.action === 'operprogress')
+      ? '游戏内培养'
+      : normalizedActions.every(action => action.action === 'switchtheme') ? '更换游戏主题' : '游戏任务'
+    const parts = [title]
+    const confirmedSuccessCount = normalizedActions.filter(action => action.status === 'success' && !isUnconfirmedGameAction(action)).length
+    if (confirmedSuccessCount > 0) parts.push(`成功 ${confirmedSuccessCount} 项`)
+    if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 项`)
+    if (failedCount > 0) parts.push(`失败 ${failedCount} 项`)
+    if (unconfirmed.length > 0) parts.push(`游戏结果未确认 ${unconfirmed.length} 项`)
+    return parts.join(' · ')
+  }
   if (isRecruitResult) {
     const startedCount = normalizedActions.reduce((sum, action) => sum + (toFiniteNumber(action.startedCount) || 0), 0)
     const collectedCount = normalizedActions.reduce((sum, action) => sum + (toFiniteNumber(action.collectedCount) || 0), 0)
