@@ -493,7 +493,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const maaStateLog = join(xdgStateHome, 'maa', 'debug', 'asst.log');
     await mkdir(dirname(maaStateLog), { recursive: true });
     await writeFile(maaStateLog, [
-      '[2026-10-30 10:00:00] {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}]},"what":"OperBoxInfo"}'
+      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}]},"subtask":"OperBoxRecognitionTask","taskchain":"OperBox","taskid":1,"uuid":"fixture","what":"OperBoxInfo"}'
     ].join('\n'), 'utf-8');
 
     const port = await listen(createLaPlumaApp({ env: {} }));
