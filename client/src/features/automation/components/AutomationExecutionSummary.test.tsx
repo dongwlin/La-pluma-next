@@ -170,7 +170,7 @@ describe('AutomationExecutionSummary', () => {
     expect(container.textContent).not.toContain('培养失败')
     await act(async () => detailsButton()?.click())
     expect(container.textContent).toContain('待处理')
-    expect(container.textContent).toContain('白面鸮（医疗）：专精目标待处理，本轮已启动其他专精训练 · 专精 S3 Lv2')
+    expect(container.textContent).toContain('白面鸮（医疗）：专精目标待处理，训练室占用，需后续运行 · 专精 S3 Lv2')
     expect(container.textContent).not.toContain('执行失败')
   })
 })

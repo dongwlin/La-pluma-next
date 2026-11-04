@@ -88,6 +88,6 @@ describe('game task result text', () => {
 
   it('describes deferred mastery targets with their mastery summary', () => {
     expect(describeDeferredMastery({ name: '白面鸮', role: 'Medic', skillMastery: [0, 0, 2] }))
-      .toBe('白面鸮（医疗）：专精目标待处理，本轮已启动其他专精训练 · 专精 S3 Lv2')
+      .toBe('白面鸮（医疗）：专精目标待处理，训练室占用，需后续运行 · 专精 S3 Lv2')
   })
 })

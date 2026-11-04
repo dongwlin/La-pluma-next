@@ -80,7 +80,7 @@ export function describeGameTaskDetail(detail: GameTaskDetail): string {
 
 export function describeDeferredMastery(entry: GameTaskDeferredMastery): string {
   return [
-    `${operatorLabel(entry.name, entry.role)}：专精目标待处理，本轮已启动其他专精训练`,
+    `${operatorLabel(entry.name, entry.role)}：专精目标待处理，训练室占用，需后续运行`,
     targetSummary({ skillMastery: entry.skillMastery }),
   ].filter((part): part is string => Boolean(part)).join(' · ')
 }

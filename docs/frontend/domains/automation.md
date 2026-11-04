@@ -145,7 +145,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 - 相同 `runId` + 相同内容不重置用户手动收起的详情；
 - 新 `runId` 到达时，即使内容相同，也按本次结果重新决定是否展开；
 - 失败（`failedCount`/`errors`/失败动作/失败上报）自动展开详情；
-- 游戏任务动作在汇总行下按干员展开 `details`（培养结果与原因）与 `deferredMastery`（本轮未执行的专精目标，单独标为待处理，不计入失败）；专精条目的 `Completed` 显示为已启动目标专精训练，只有未带专精等级的 `Completed` 才显示已完成；
+- 游戏任务动作在汇总行下按干员展开 `details`（培养结果与原因）与 `deferredMastery`（本轮未执行的专精目标，单独标为待处理，不计入失败）；专精条目的 `Completed` 显示为已启动目标专精训练，只有未带专精等级的 `Completed` 才显示已完成；延后目标按训练室占用说明，不声称本轮已启动训练；
 - 阶段、掉落、上报、动作、错误与警告都直接来自服务端摘要，不推断成功。
 
 `selectFlowDisplaySummary` 的优先级：本页持有 run 的终态摘要 → 空闲时
