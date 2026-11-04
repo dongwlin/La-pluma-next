@@ -15,6 +15,26 @@
 
 前端 UI 的具体规则见根目录 [设计规范](../../DESIGN.md)，组件 API 见 [通用组件库](../frontend/components.md)。
 
+## 多 worktree 开发
+
+每个 worktree 在自己的仓库根目录安装依赖、运行检查。默认 `pnpm dev` 使用前端 5173 和后端 3000；同时启动另一个 worktree 时，为它指定不同的前后端端口：
+
+```sh
+PORT=3100 LA_PLUMA_DEV_PORT=5273 pnpm dev
+```
+
+浏览器打开 `http://localhost:5273`，`/api` 和 `/webrtc-signaling` 都代理到该实例的 `http://localhost:3100`。前端端口被占用时启动失败，不自动换端口。
+
+| 环境变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `PORT` | `3000` | 后端监听端口，也用于推导开发代理目标 |
+| `LA_PLUMA_DEV_PORT` | `5173` | Vite 开发服务器端口 |
+| `LA_PLUMA_DEV_API_TARGET` | `http://localhost:<PORT>` | 显式指定两路开发代理的后端 HTTP(S) origin，优先于 `PORT` |
+
+这些变量通过启动命令或 shell 的 `export` 传入；只给客户端配置端口不会启动或修改另一个后端。单独运行前端连接已有后端时，例如 `LA_PLUMA_DEV_PORT=5273 LA_PLUMA_DEV_API_TARGET=http://localhost:3100 pnpm dev:client`。开发变量不会注入浏览器代码；子路径仍使用 `VITE_BASE_PATH` 和 `LA_PLUMA_BASE_PATH`，见[部署指南](../guides/deployment.md)。
+
+应用数据默认位于各 worktree 自己的 `server/data/`，不要把该目录软链为共享的可写目录。MAA 配置、资源、ADB 和设备预览仍可能使用同一套外部运行时；普通 PR 验证使用浏览器 fixture，真实设备联调由一个指定实例执行。
+
 ## 样式治理
 
 ### 全局样式冻结
@@ -31,7 +51,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet   # 预算校验（CI 同�
 pnpm --filter la-pluma-next-client stylelint:baseline  # 违规数下降或有意的迁移/重构后重新生成基线
 ```
 
-`pnpm verify` 本身不包含样式预算检查。CI 将客户端检查、客户端构建与服务端检查拆成并行任务，`stylelint:ratchet` 归客户端检查；服务端保留编译器版本断言和一次 `typecheck`，完整测试通过 `test:coverage` 运行一次，同时检查行为与覆盖率阈值（见 `.github/workflows/ci.yml`）。
+`pnpm verify` 包含样式预算检查。CI 将客户端检查、客户端构建与服务端检查拆成并行任务，`stylelint:ratchet` 归客户端检查；服务端保留编译器版本断言和一次 `typecheck`，完整测试通过 `test:coverage` 运行一次，同时检查行为与覆盖率阈值（见 `.github/workflows/ci.yml`）。
 
 CI 在 PR/main 运行浏览器跨页集成和视觉检查，只等待客户端构建，通过 artifact 复用产物；PR 和发布还验证两种原生架构的容器启动。纯文档变更合入 main 时不再重复触发 CI。发布不重复运行浏览器检查。必选的 `verify` 状态是适用任务的汇总结果，详见[工作流说明](../../.github/workflows/README.md)。
 
@@ -48,8 +68,10 @@ CI 在 PR/main 运行浏览器跨页集成和视觉检查，只等待客户端�
 ```bash
 pnpm visual          # 比对模式：与入库基线比对，diff 非零即失败（CI 同款）
 pnpm visual:update   # 有意的视觉改动后重新生成基线截图
-pnpm visual -- --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
+pnpm visual --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分用例
 ```
+
+视觉测试的浏览器与静态服务运行在同一 Docker 容器中，使用容器自己的网络，不占用宿主机 4300 端口；不同 worktree 可以同时运行。基线更新只选择实际受影响的用例，例如 `pnpm visual:update --grep dashboard`，更新后审核图片差异。同一 worktree 的构建产物和测试输出仍共用目录，不并发启动多个构建或同类浏览器检查。
 
 ### README 界面截图
 
@@ -152,10 +174,10 @@ pnpm --filter la-pluma-next-client guardrails
 # 有意的结构调整后需要冻结新的规模基线
 pnpm --filter la-pluma-next-client guardrails:size-baseline
 
-# 全仓 guardrails + lint + 类型 + 测试 + 构建（本地完整检查入口）
+# 全仓 guardrails + lint + 样式预算 + 类型 + 测试 + 构建（本地完整检查入口）
 pnpm verify
 
-# 样式预算与视觉基线（配合 pnpm verify 使用）
+# 样式预算可单独定位；视觉基线需配合 pnpm verify 运行
 pnpm --filter la-pluma-next-client stylelint:ratchet
 pnpm visual
 ```

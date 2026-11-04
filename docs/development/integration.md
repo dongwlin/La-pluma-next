@@ -13,7 +13,7 @@ pnpm --filter la-pluma-next-client stylelint:ratchet
 pnpm visual
 ```
 
-集成和视觉测试复用已安装 `@playwright/test` 对应版本的 `mcr.microsoft.com/playwright:v<version>-noble` 镜像。集成入口要求本机已有镜像，不自动拉取。默认先构建客户端；已经构建时可用 `INTEGRATION_SKIP_BUILD=1` 跳过。Docker 需要本机 daemon 权限。集成端口默认 4318，视觉端口独立；集成顺序运行，避免共享场景竞态。
+集成和视觉测试复用已安装 `@playwright/test` 对应版本的 `mcr.microsoft.com/playwright:v<version>-noble` 镜像。集成入口要求本机已有镜像，不自动拉取。默认先构建客户端；已经构建时可用 `INTEGRATION_SKIP_BUILD=1` 跳过。Docker 需要本机 daemon 权限。浏览器与静态服务运行在同一个容器内，使用 Docker 默认隔离网络，不发布宿主端口，也不继承宿主 `PORT`；集成端口在容器内为 4318，视觉端口为 4300。不同 worktree 可并行运行，各自使用独立的构建产物与结果目录；同一个 worktree 内仍应顺序运行，避免同时覆盖构建与测试产物。每次集成测试内部按顺序执行，避免共享场景竞态。
 
 PR/main 的 `browser-checks` job 在 `client-build` 成功后下载当前工作流的前端产物，拉取匹配镜像，再跳过重建运行集成和视觉测试；它不等待其他源码检查，失败会阻止 `verify` 汇总通过。tag 发布不重复运行浏览器检查。CI 中禁止 `test.only`，避免意外只运行单个场景。
 

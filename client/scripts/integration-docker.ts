@@ -22,7 +22,7 @@ if (!packageDirectory) throw new Error(`Installed playwright@${version} was not 
 const cli = `/work/node_modules/.pnpm/${packageDirectory}/node_modules/playwright/cli.js`
 
 const result = spawnSync('docker', [
-  'run', '--rm', '--pull=never', '--ipc=host', '--network=host',
+  'run', '--rm', '--pull=never', '--ipc=host',
   '--user', `${process.getuid!()}:${process.getgid!()}`,
   '-e', 'TZ=Asia/Shanghai', '-e', 'XDG_CACHE_HOME=/tmp', '-e', 'CI',
   '-v', `${repoRoot}:/work`, '-w', '/work', image,

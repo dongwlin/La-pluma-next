@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
-import {
+import viteConfig, {
   createBootThemeTags,
   createDevPwaMiddleware,
   createDevServiceWorkerCleanupScript,
   createManifestLinkTag,
   createNavigateFallbackDenylist,
+  createViteConfig,
   createWebManifest,
   createWorkboxConfig,
   normalizeBasePath,
@@ -14,6 +15,99 @@ import {
 import { BOOT_THEME_COLORS, createBootScript } from './src/shared/theme/bootTheme.ts'
 
 type ServiceWorkerListener = (event: { waitUntil: (work: Promise<unknown>) => void }) => void
+
+describe('development server configuration', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('keeps the default addresses and fails when the frontend port is occupied', () => {
+    const config = createViteConfig('/')
+
+    expect(config.server).toMatchObject({
+      port: 5173,
+      strictPort: true,
+      proxy: {
+        '/api': { target: 'http://localhost:3000', changeOrigin: true },
+        '/webrtc-signaling': { target: 'http://localhost:3000', changeOrigin: false, ws: true },
+      },
+    })
+  })
+
+  it('uses the selected frontend and backend ports for the same worktree', () => {
+    const config = createViteConfig('/la-pluma/', {
+      LA_PLUMA_DEV_PORT: '5273',
+      PORT: '3100',
+      LA_PLUMA_TOKEN: 'private-token',
+    })
+
+    expect(config.base).toBe('/la-pluma/')
+    expect(config.server).toMatchObject({
+      port: 5273,
+      proxy: {
+        '/api': { target: 'http://localhost:3100' },
+        '/webrtc-signaling': { target: 'http://localhost:3100' },
+      },
+    })
+    expect(config.define).toBeUndefined()
+    expect(config.envPrefix).toBeUndefined()
+  })
+
+  it('uses an explicit backend origin for both HTTP and WebSocket signaling', () => {
+    const config = createViteConfig('/', {
+      PORT: '3100',
+      LA_PLUMA_DEV_API_TARGET: 'https://backend.example:3443/',
+    })
+
+    expect(config.server?.proxy).toMatchObject({
+      '/api': { target: 'https://backend.example:3443' },
+      '/webrtc-signaling': { target: 'https://backend.example:3443', ws: true },
+    })
+  })
+
+  it('loads the shell environment while keeping the configured deployment base', async () => {
+    vi.stubEnv('LA_PLUMA_DEV_PORT', '5274')
+    vi.stubEnv('PORT', '3101')
+    vi.stubEnv('LA_PLUMA_DEV_API_TARGET', '')
+    vi.stubEnv('VITE_BASE_PATH', 'la-pluma')
+
+    if (typeof viteConfig !== 'function') throw new Error('Expected a Vite configuration factory')
+    const config = await viteConfig({ command: 'serve', mode: 'development' })
+
+    expect(config.base).toBe('/la-pluma/')
+    expect(config.server).toMatchObject({
+      port: 5274,
+      proxy: {
+        '/api': { target: 'http://localhost:3101' },
+        '/webrtc-signaling': { target: 'http://localhost:3101' },
+      },
+    })
+  })
+
+  it('builds with the configured base even when development addresses are invalid', async () => {
+    vi.stubEnv('LA_PLUMA_DEV_PORT', 'invalid')
+    vi.stubEnv('PORT', 'invalid')
+    vi.stubEnv('LA_PLUMA_DEV_API_TARGET', 'invalid')
+    vi.stubEnv('VITE_BASE_PATH', 'release')
+
+    if (typeof viteConfig !== 'function') throw new Error('Expected a Vite configuration factory')
+    const config = await viteConfig({ command: 'build', mode: 'production' })
+
+    expect(config.base).toBe('/release/')
+  })
+
+  it.each(['0', '65536', '-1', '5273.5', '5273suffix'])('rejects invalid frontend port %s', (port) => {
+    expect(() => createViteConfig('/', { LA_PLUMA_DEV_PORT: port })).toThrow('LA_PLUMA_DEV_PORT')
+  })
+
+  it.each(['0', '65536', '-1', '3100.5', '3100suffix'])('rejects invalid backend port %s', (port) => {
+    expect(() => createViteConfig('/', { PORT: port })).toThrow('PORT')
+  })
+
+  it.each(['backend:3100', 'ftp://backend.example', 'http://backend.example/api', 'http://backend.example?token=value'])('rejects invalid backend origin %s', (target) => {
+    expect(() => createViteConfig('/', { LA_PLUMA_DEV_API_TARGET: target })).toThrow('LA_PLUMA_DEV_API_TARGET')
+  })
+})
 
 describe('boot theme asset injection', () => {
   it('injects the boot metas before the generated boot script at the end of the document head', () => {

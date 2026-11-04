@@ -22,12 +22,12 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 | 启动前后端 | `pnpm dev`；单独启动 `pnpm dev:client` / `pnpm dev:server` |
 | 构建 | `pnpm build`：客户端类型检查、构建与 precache 校验；服务端语法检查 |
 | 测试 | `pnpm test`：客户端 Vitest + 服务端 `node:test` |
-| 主要质量检查 | `pnpm verify`：两个包的 guardrails、类型检查、测试与构建，客户端另含 ESLint |
+| 主要质量检查 | `pnpm verify`：两个包的 guardrails、类型检查、测试与构建，客户端另含 ESLint 与样式预算 |
 | 样式预算 | `pnpm --filter la-pluma-next-client stylelint:ratchet` |
 | 视觉基线比对 / 更新 | `pnpm visual` / `pnpm visual:update`（需 Docker） |
 | 生产启动 | `pnpm start` |
 
-`pnpm verify` 不覆盖样式预算、浏览器集成、视觉比对、服务端覆盖率与容器启动检查；前端改动需自行补跑对应命令，CI 会全部执行。
+`pnpm verify` 不覆盖浏览器集成、视觉比对、服务端覆盖率与容器启动检查；前端改动需自行补跑对应命令，CI 会全部执行。
 
 ## 开发工作流
 
@@ -83,14 +83,14 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 ## 重要约束与风险
 
 - 真实设备链路依赖 `maa` CLI、MaaCore 及资源、ADB；单元测试与 fixture 浏览器测试不能证明设备侧可用，交付时须写明未验证范围。
-- 本地 `pnpm verify` 是 CI 的子集：CI 另跑样式预算、浏览器集成、视觉比对、服务端覆盖率与双架构容器启动。
+- 本地 `pnpm verify` 是 CI 的子集：CI 另跑浏览器集成、视觉比对、服务端覆盖率与双架构容器启动。
 - 执行是否完成只由 Run 终态决定，这是前后端共同契约：HTTP 返回、子进程 idle、断网或页面卸载都不构成完成信号。
 
 ## 提交前验证
 
 1. 跑定向检查：改动包的测试、类型检查与对应专项脚本。
 2. 跑 `pnpm verify`。
-3. 改前端样式、布局或构建配置时补 `stylelint:ratchet` 与 `pnpm visual`；改基线须说明依据。
+3. 改前端样式、布局或构建配置时补 `pnpm visual`；样式预算已包含在 `pnpm verify` 中，改基线须说明依据。
 4. 纯文档改动核对命令、路径、链接与完整 diff；CI 不会替你发现文档事实错误。
 5. 交付说明写清实际执行过哪些检查、哪些仍未验证。
 
@@ -98,6 +98,8 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 
 - commit message 使用英文并遵循 Conventional Commits，例如 `docs: document repository agent guidance`。
 - 每个 commit 只包含当前任务相关的改动，不混入无关重构。
+- 分支推送后以追加 commit 完成修正，不 amend 或 rebase 已推送的提交。
+- 同步 `main` 默认先 `git fetch origin main`，再 `git merge origin/main`，随后普通 push。
 - branch 使用 `<type>/<kebab-case-description>`，`<type>` 取 `feat`、`fix`、`docs`、`refactor`、`test`、`ci`、`chore`，与本次主要改动类型一致。
 - 不使用 Agent、模型或工具名称作为 branch prefix。示例：`test/agent-server-callback-test`。
 

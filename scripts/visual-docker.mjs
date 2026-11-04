@@ -80,8 +80,6 @@ const dockerArgs = [
   '--rm',
   // Chromium 推荐共享宿主 /dev/shm，避免渲染进程共享内存不足。
   '--ipc=host',
-  // 与 CI（Linux runner）一致的宿主网络；容器内直接访问宿主回环地址不需要。
-  '--network=host',
   '-e', 'TZ=Asia/Shanghai',
   '-e', 'CI',
   '-v', `${repoRoot}:/work`,

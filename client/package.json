@@ -17,7 +17,7 @@
     "stylelint": "stylelint \"src/**/*.css\"",
     "stylelint:ratchet": "node scripts/stylelint-ratchet.ts",
     "stylelint:baseline": "node scripts/stylelint-ratchet.ts --update-baseline",
-    "verify": "pnpm run guardrails && pnpm run lint && pnpm run type-check && pnpm run test && pnpm run build"
+    "verify": "pnpm run guardrails && pnpm run lint && pnpm run stylelint:ratchet && pnpm run type-check && pnpm run test && pnpm run build"
   },
   "dependencies": {
     "@lisse/react": "^0.5.2",

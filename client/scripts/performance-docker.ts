@@ -99,7 +99,7 @@ const metadata = {
 }
 
 const result = spawnSync('docker', [
-  'run', '--rm', '--pull=never', '--ipc=host', '--network=host',
+  'run', '--rm', '--pull=never', '--ipc=host',
   '--user', `${process.getuid!()}:${process.getgid!()}`,
   '-e', 'TZ=Asia/Shanghai', '-e', 'XDG_CACHE_HOME=/tmp',
   '-e', `PERFORMANCE_METADATA=${JSON.stringify(metadata)}`,

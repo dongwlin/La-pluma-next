@@ -8,7 +8,7 @@ node client/scripts/performance-docker.ts
 PERFORMANCE_SKIP_BUILD=1 node client/scripts/performance-docker.ts
 ```
 
-入口使用已安装的 Playwright 对应官方 `-noble` 镜像，以 `--pull=never` 运行；缺依赖或镜像即失败，不安装、不升级。需要 Docker socket 访问权限。端口为 4317，临时结果放在容器 `/tmp/la-pluma-performance-results`。必须在 verify、视觉及集成检查结束后独占串行采样；采样期间不构建、不覆盖 dist、不运行其他高负载任务。
+入口使用已安装的 Playwright 对应官方 `-noble` 镜像，以 `--pull=never` 运行；缺依赖或镜像即失败，不安装、不升级。需要 Docker socket 访问权限。浏览器与静态服务位于同一个容器的默认隔离网络中，使用容器内端口 4317，不发布宿主端口，也不继承宿主 `PORT`；临时结果放在容器 `/tmp/la-pluma-performance-results`。必须在 verify、视觉及集成检查结束后独占串行采样；采样期间不构建、不覆盖 dist、不运行其他高负载任务，其他 worktree 的任务也会争用宿主资源。
 
 ## 固定环境与完成语义
 

@@ -212,7 +212,30 @@ export const createBootAssetsPlugin = (): Plugin => ({
   },
 })
 
-export const createViteConfig = (basePath: string): UserConfig => ({
+const parseDevPort = (value: string | undefined, fallback: number, name: string): number => {
+  const input = value?.trim()
+  if (!input) return fallback
+
+  const port = Number(input)
+  if (!/^\d+$/.test(input) || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer between 1 and 65535`)
+  }
+  return port
+}
+
+const resolveDevApiTarget = (env: Record<string, string | undefined>): string => {
+  const input = env.LA_PLUMA_DEV_API_TARGET?.trim()
+  if (!input) return `http://localhost:${parseDevPort(env.PORT, 3000, 'PORT')}`
+
+  const target = URL.canParse(input) ? new URL(input) : null
+  if (!target || !['http:', 'https:'].includes(target.protocol)
+    || target.username || target.password || target.pathname !== '/' || target.search || target.hash) {
+    throw new Error('LA_PLUMA_DEV_API_TARGET must be an HTTP or HTTPS origin without credentials, path, query or fragment')
+  }
+  return target.origin
+}
+
+export const createViteConfig = (basePath: string, env: Record<string, string | undefined> = {}): UserConfig => ({
   base: basePath,
   resolve: {
     alias: {
@@ -247,15 +270,15 @@ export const createViteConfig = (basePath: string): UserConfig => ({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173,
-    strictPort: false,
+    port: parseDevPort(env.LA_PLUMA_DEV_PORT, 5173, 'LA_PLUMA_DEV_PORT'),
+    strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: resolveDevApiTarget(env),
         changeOrigin: true,
       },
       '/webrtc-signaling': {
-        target: 'http://localhost:3000',
+        target: resolveDevApiTarget(env),
         // 保留浏览器看到的 Host：信令票据入口在无令牌模式下按 Origin/Host
         // 主机名限制签发来源，改写 Host 会把同一页面的请求误判为跨源。
         changeOrigin: false,
@@ -265,7 +288,8 @@ export const createViteConfig = (basePath: string): UserConfig => ({
   }
 })
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command, isPreview }) => {
   const env = loadEnv(mode, __dirname)
-  return createViteConfig(normalizeBasePath(env.VITE_BASE_PATH))
+  const devEnv = command === 'serve' && !isPreview ? process.env : {}
+  return createViteConfig(normalizeBasePath(env.VITE_BASE_PATH), devEnv)
 })

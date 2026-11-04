@@ -111,7 +111,7 @@ pnpm --filter la-pluma-next-client guardrails:size-baseline
 pnpm --filter la-pluma-next-client verify
 ```
 
-CI 的 `pnpm verify` 直接运行该检查；样式预算 `stylelint:ratchet` 仍是独立的 CI 步骤。
+本地 `pnpm verify` 包含护栏与样式预算 `stylelint:ratchet`；CI 将它们作为客户端检查的独立步骤运行。
 
 回归集中在 `client/scripts/guardrails.test.ts`：
 
