@@ -8,23 +8,6 @@
   [![GHCR](https://img.shields.io/badge/GHCR-la--pluma--next-2496ED?logo=github)](https://github.com/dongwlin/La-pluma-next/pkgs/container/la-pluma-next)
 </div>
 
-## ✨ 特性
-
-以下是最常用的能力，完整功能列表见 [功能概览](docs/guides/features.md)。
-
-- 🧭 **控制台总览** - 汇总今日活动、任务状态、实时预览和掉落信息
-- 🎮 **日常任务流程** - 启动游戏、理智作战、基建换班、自动公招、信用收支、领取奖励、关闭游戏
-- 🎯 **多关卡支持** - 每个关卡独立设置次数，支持活动关卡代号自动替换（HD-X → OR-X）
-- 🧠 **智能检测** - 日常/芯片本开放日检测、理智耗尽自动停止、游戏状态监控
-- ⏰ **定时任务** - 定时执行同一套日常流程，可设置多个时间点，并显示执行状态和进度
-- 🖥️ **模拟器预览** - 集成 ScrcpyOverWebRTC，支持网页内查看和基础设备控制
-- 📊 **数据与养成** - 识别仓库和干员 Box，统计掉落，生成干员养成材料计划
-- 📱 **Telegram 通知** - 任务完成后发送通知，包含截图和详细总结
-- 🤖 **Bot 远程控制** - 通过 Telegram Bot 远程执行任务
-- 🤖 **Agent API** - 通过 `/api/agent` 暴露 manifest/status/actions，方便 AI 或脚本调用
-- 🎨 **现代化 UI 与 PWA** - React 原生 iOS 26 风格壳层 + Tailwind CSS + Framer Motion，支持深色模式；在 HTTPS 或 localhost 下可安装，离线可打开已缓存界面
-- 🔄 **实时更新** - HTTP 轮询刷新任务状态和日志
-
 ## 📸 界面预览
 
 <table>
@@ -38,21 +21,46 @@
   </tr>
 </table>
 
-## 📋 前置要求
+## 🚀 快速开始
 
-- **操作系统**: macOS / Linux
-- **Node.js** 24.12+
-- **pnpm** 12.6.0（仓库通过 `packageManager` 固定版本，执行 `corepack enable` 会自动切换；也可 `npm install -g pnpm@12.6.0`）
+支持 Docker 与本地安装两种方式：Docker 适合直接部署，本地安装适合开发调试。
+
+### 方式 1: Docker 部署（推荐）
+
+使用 GHCR 预构建镜像，开箱即用。
+
+```bash
+docker pull ghcr.io/dongwlin/la-pluma-next:latest
+
+docker run -d \
+  --name la-pluma-next \
+  -p 127.0.0.1:3055:3000 \
+  -v /path/to/data:/app/server/data \
+  -v /path/to/config:/root/.config/maa \
+  -v /path/to/maacore:/root/.local/share/maa \
+  -v /path/to/maa-state:/root/.local/state/maa \
+  -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
+  -e ADB_ADDRESS=192.168.x.x:5555 \
+  -e LA_PLUMA_TOKEN=change-me \
+  ghcr.io/dongwlin/la-pluma-next:latest
+```
+
+`LA_PLUMA_TOKEN` 是必配项，用于保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。上面的端口映射只监听本机回环地址；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
+
+浏览器打开 [http://localhost:3055](http://localhost:3055)。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
+
+### 方式 2: 本地安装
+
+先准备本地环境：
+
+- **Node.js** 24+
+- **pnpm** 12+
 - **MAA CLI** 已安装
   - macOS: `brew install MaaAssistantArknights/tap/maa-cli`
   - Linux: 参考 [MAA CLI 文档](https://maa.plus/docs/manual/cli/)
 - 已执行 `maa install` 安装 MaaCore 及资源
 
-## 🚀 快速开始
-
-支持本地安装和 Docker 两种方式：本地安装适合开发调试，Docker 适合直接部署。
-
-### 方式 1: 本地安装（推荐）
+支持的系统与 MAA 目录位置见 [配置与跨平台支持](docs/guides/configuration.md)。
 
 #### 1. 克隆仓库
 
@@ -82,51 +90,6 @@ pnpm dev:server  # 后端: http://localhost:3000
 #### 4. 访问应用
 
 打开浏览器访问 [http://localhost:5173](http://localhost:5173)
-
-### 方式 2: Docker 部署
-
-使用 GHCR 预构建镜像，开箱即用。
-
-```bash
-docker pull ghcr.io/dongwlin/la-pluma-next:latest
-
-docker run -d \
-  --name la-pluma-next \
-  -p 127.0.0.1:3055:3000 \
-  -v /path/to/data:/app/server/data \
-  -v /path/to/config:/root/.config/maa \
-  -v /path/to/maacore:/root/.local/share/maa \
-  -v /path/to/maa-state:/root/.local/state/maa \
-  -v /path/to/webrtc:/root/ScrcpyOverWebRTC \
-  -e ADB_ADDRESS=192.168.x.x:5555 \
-  -e LA_PLUMA_TOKEN=change-me \
-  ghcr.io/dongwlin/la-pluma-next:latest
-```
-
-`LA_PLUMA_TOKEN` 是必配项，用于保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。上面的端口映射只监听本机回环地址；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
-
-浏览器打开 [http://localhost:3055](http://localhost:3055)。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
-
-## ⚙️ 基础配置
-
-### ADB 连接
-
-在「日常」页面配置 ADB 连接：
-
-- **ADB 路径**：按平台默认 macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe`；Docker 镜像为 `/usr/bin/adb`
-- **设备地址**：本地模拟器填 `emulator-5554` 或 `127.0.0.1:5555`；远程设备填 `192.168.x.x:16384`（需要开启网络 ADB）
-
-### Telegram 通知与 Bot
-
-在「通知设置」页面填入 Bot Token 和 Chat ID，即可接收任务完成通知并使用 Bot 远程控制。完整配置步骤、Bot 命令与运行平台说明见 [配置与跨平台支持](docs/guides/configuration.md)。
-
-Bot 只响应配置的 Chat ID，其他用户无法控制。
-
-## 🤖 Agent API
-
-La Pluma Next 提供一层给 AI/Agent 使用的轻量控制接口：`/api/agent` 以语义化的 manifest/status/actions 暴露能力发现、状态读取与动作执行，Manifest 与 OpenAPI 由同一份能力清单生成，并公开每个动作的风险、dry-run、轮询和停止方式。
-
-设置 `LA_PLUMA_TOKEN` 后，Agent API 与其它 `/api/*` 入口需要 Bearer Token 或 `X-La-Pluma-Token`。完整的接口说明、推荐执行流程、幂等与持久化约定见 [Agent API 使用指南](docs/api/agent.md)。
 
 ## 📚 文档
 
