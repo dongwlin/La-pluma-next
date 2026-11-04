@@ -573,7 +573,11 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
       type: 'object',
       required: ['command'],
       properties: {
-        command: { type: 'string', enum: [...AGENT_TASK_COMMANDS] },
+        command: {
+          type: 'string',
+          enum: [...AGENT_TASK_COMMANDS],
+          description: 'maa-cli subcommand. Core-only task types without a CLI subcommand (Award, Depot, OperBox, Infrast, Recruit, Mall) execute through command=run plus taskConfig.'
+        },
         args: { type: 'array', items: { type: 'string' }, default: [] },
         taskConfig: {
           oneOf: [

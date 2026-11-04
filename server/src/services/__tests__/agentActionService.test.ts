@@ -113,14 +113,28 @@ describe('executeAgentTask', () => {
     }]);
   });
 
-  it('falls back to the command for a dynamic depot task without args', async () => {
+  it('runs a Core-only task through the dynamic path with an explicit task id', async () => {
     const { calls, dependencies } = createExecutors();
 
-    await executeAgentTask({ command: 'depot', taskConfig: { name: '仓库识别', type: 'Depot' } }, dependencies);
+    await executeAgentTask(
+      { command: 'run', args: ['depot'], taskConfig: { name: '仓库识别', type: 'Depot' } },
+      dependencies
+    );
 
     assert.deepEqual(calls[0], {
       executor: 'dynamic',
-      args: ['depot', { name: '仓库识别', type: 'Depot', params: {} }, 'Agent: depot', 'agent', true, false]
+      args: ['depot', { name: '仓库识别', type: 'Depot', params: {} }, 'Agent: run', 'agent', true, false]
+    });
+  });
+
+  it('falls back to the command as the dynamic task id when no argument is given', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    await executeAgentTask({ command: 'run', taskConfig: { name: '仓库识别', type: 'Depot' } }, dependencies);
+
+    assert.deepEqual(calls[0], {
+      executor: 'dynamic',
+      args: ['run', { name: '仓库识别', type: 'Depot', params: {} }, 'Agent: run', 'agent', true, false]
     });
   });
 
@@ -151,6 +165,35 @@ describe('executeAgentTask', () => {
       executor: 'command',
       args: ['list', [], null, null, true]
     });
+  });
+
+  it('runs the reclamation CLI task with its own arguments', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    await executeAgentTask({
+      command: 'reclamation',
+      args: ['Tales', '-m', '1'],
+      taskName: '生息演算',
+      taskType: 'roguelike',
+      waitForCompletion: false
+    }, dependencies);
+
+    assert.deepEqual(calls[0], {
+      executor: 'command',
+      args: ['reclamation', ['Tales', '-m', '1'], '生息演算', 'roguelike', false]
+    });
+  });
+
+  it('keeps Core-only task types off the maa-cli command allowlist', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    for (const command of ['infrast', 'recruit', 'mall', 'award', 'depot', 'operbox']) {
+      await assert.rejects(
+        executeAgentTask({ command }, dependencies),
+        error => errorField(error, 'code') === 'AGENT_VALIDATION_COMMAND_NOT_ALLOWED'
+      );
+    }
+    assert.deepEqual(calls, []);
   });
 
   it('runs read-only activity queries without overwriting tracked task state', async () => {
@@ -232,11 +275,11 @@ describe('executeAgentTask', () => {
     const { dependencies } = createExecutors();
 
     await assert.rejects(
-      executeAgentTask({ command: 'award', taskName: { text: '领取奖励' } }, dependencies),
+      executeAgentTask({ command: 'startup', taskName: { text: '启动游戏' } }, dependencies),
       error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_NAME_INVALID'
     );
     await assert.rejects(
-      executeAgentTask({ command: 'award', waitForCompletion: 'false' }, dependencies),
+      executeAgentTask({ command: 'startup', waitForCompletion: 'false' }, dependencies),
       error => errorField(error, 'code') === 'AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID'
     );
     await assert.rejects(

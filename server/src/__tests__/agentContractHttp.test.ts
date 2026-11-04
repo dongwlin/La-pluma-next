@@ -311,7 +311,7 @@ const validFixtures: readonly ValidFixture[] = [
     expectRun: true
   },
   { operationId: 'fight', status: 200, body: { stages: ['1-7'], dryRun: true } },
-  { operationId: 'run_task', status: 200, body: { command: 'award' }, expectRun: true },
+  { operationId: 'run_task', status: 200, body: { command: 'reclamation', args: ['Tales', '-m', '1'] }, expectRun: true },
   { operationId: 'stop_task', status: 200, body: {} },
   { operationId: 'get_current_run', status: 200, query: { lines: 2 } },
   { operationId: 'get_run', status: 404, pathParams: { runId: missingRunId } },
@@ -701,7 +701,7 @@ describe('advertised operations over real HTTP', () => {
     const created = await fetch(`${baseUrl}/api/agent/actions/run-task`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ command: 'award' })
+      body: JSON.stringify({ command: 'startup' })
     });
     assert.equal(created.status, 200);
     const createdBody: unknown = await created.json();

@@ -423,8 +423,8 @@ export class StatisticsCommandOwner {
 
     try {
       const result = await this.runCommand(
-        kind,
-        [],
+        'run',
+        [kind],
         RECOGNITION_TASKS[kind],
         operation.signal,
         label.name,

@@ -142,8 +142,8 @@ describe('statistics command owner', () => {
       { operationId: 'run_task', idempotencyKey: 'key-1', scope: 'statistics' },
     ])
     expect(harness.runCommand).toHaveBeenCalledWith(
-      'depot',
-      [],
+      'run',
+      ['depot'],
       expect.objectContaining({ name: '仓库识别', type: 'Depot' }),
       expect.any(AbortSignal),
       '仓库识别',

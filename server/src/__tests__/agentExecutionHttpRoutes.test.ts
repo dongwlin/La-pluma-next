@@ -298,7 +298,7 @@ describe('agent execution HTTP adapter', () => {
       ['/api/agent/actions/start-game', JSON.stringify({})],
       ['/api/agent/actions/run-daily-flow', JSON.stringify({ dryRun: true })],
       ['/api/agent/actions/fight', JSON.stringify({ stage: '1-7' })],
-      ['/api/agent/actions/run-task', JSON.stringify({ command: 'award' })],
+      ['/api/agent/actions/run-task', JSON.stringify({ command: 'startup' })],
       ['/api/agent/actions/stop', JSON.stringify({ runId: 'unknown-run' })]
     ];
 
@@ -445,21 +445,21 @@ describe('agent execution HTTP adapter', () => {
     const baseUrl = `http://127.0.0.1:${port}`;
     const headers = { 'Idempotency-Key': 'http-task:replay:1' };
 
-    const first = await postJson(`${baseUrl}/api/agent/actions/run-task`, { command: 'award' }, headers);
+    const first = await postJson(`${baseUrl}/api/agent/actions/run-task`, { command: 'startup' }, headers);
     assert.equal(first.status, 200);
     const firstBody = await readSuccess<TaskExecutorPayload>(first);
     assert.equal(firstBody.data.run.state, 'succeeded');
     assert.equal(first.headers.get('Idempotency-Replayed'), 'false');
     const runId = firstBody.data.runId;
 
-    const replay = await postJson(`${baseUrl}/api/agent/actions/run-task`, { command: 'award' }, headers);
+    const replay = await postJson(`${baseUrl}/api/agent/actions/run-task`, { command: 'startup' }, headers);
     assert.equal(replay.status, 200);
     const replayBody = await readSuccess<TaskExecutorPayload>(replay);
     assert.equal(replayBody.data.runId, runId);
     assert.equal(replay.headers.get('Idempotency-Replayed'), 'true');
     assert.equal(replayBody.data.run.state, 'succeeded');
 
-    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('award'));
+    const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('startup'));
     assert.equal(calls.length, 1, 'the idempotent replay must not spawn a second command');
   });
 
@@ -472,7 +472,7 @@ describe('agent execution HTTP adapter', () => {
     const baseUrl = `http://127.0.0.1:${port}`;
 
     const started = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
-      command: 'award',
+      command: 'startup',
       waitForCompletion: false
     });
     if (started.status !== 202) {

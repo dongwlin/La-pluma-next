@@ -120,8 +120,8 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 | 命令 | 端点/任务 | 执行身份 | 完成条件 | 超时（默认） |
 | --- | --- | --- | --- | --- |
-| 仓库识别 `depot` | `POST /agent/actions/run-task`，`Depot`，`waitForCompletion=true` | `run_task` Run（`scope=statistics`） | 同步响应成功；若响应带活动 Run 则等终态 `succeeded`；随后解析端点返回带 `itemCount` 与 `items` 的快照 | 命令 5min / Run 5min / 解析 30s |
-| 干员识别 `operbox` | `POST /agent/actions/run-task`，`OperBox`，`waitForCompletion=true` | 同上 | 同步响应成功；Run 终态成功；解析端点返回带 `operCount` 与 `data` 的快照 | 同上 |
+| 仓库识别 `depot` | `POST /agent/actions/run-task`，`command=run` + `taskConfig`（`Depot`），`waitForCompletion=true` | `run_task` Run（`scope=statistics`） | 同步响应成功；若响应带活动 Run 则等终态 `succeeded`；随后解析端点返回带 `itemCount` 与 `items` 的快照 | 命令 5min / Run 5min / 解析 30s |
+| 干员识别 `operbox` | `POST /agent/actions/run-task`，`command=run` + `taskConfig`（`OperBox`），`waitForCompletion=true` | 同上 | 同步响应成功；Run 终态成功；解析端点返回带 `operCount` 与 `data` 的快照 | 同上 |
 | 材料刷新 `materials` | `POST /agent/actions/fetch-training-materials` | 无 Run（脚本入口） | 响应 `success=true`；材料缓存由服务端刷新 | 5min |
 
 解析端点的成功判定：

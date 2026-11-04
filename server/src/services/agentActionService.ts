@@ -2,20 +2,16 @@ import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
 import { validateGameTaskParams } from './gameTaskConfigService.ts';
 
+/** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
   'startup',
   'closedown',
   'fight',
-  'infrast',
-  'recruit',
-  'mall',
-  'award',
   'copilot',
   'ssscopilot',
   'paradoxcopilot',
   'roguelike',
-  'depot',
-  'operbox',
+  'reclamation',
   'activity',
   'run',
   'list'
