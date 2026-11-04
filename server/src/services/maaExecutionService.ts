@@ -15,6 +15,8 @@ import type {
   MaaSettledHandler
 } from './maaProcessService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
+import { resolveConnection } from './connectionService.ts';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
@@ -72,6 +74,7 @@ export interface MaaDynamicTaskRuntime {
   unlink?: (path: string) => Promise<unknown>;
   executeCommand?: MaaDynamicTaskExecutor;
   createNonce?: () => string;
+  resolveClientType?: () => Promise<string>;
   lifecycle?: MaaProcessLifecycle;
   createLogCheckpoint?: () => Promise<MaaLogCheckpoint | null>;
   readLogSince?: (checkpoint: MaaLogCheckpoint | null) => Promise<string>;
@@ -270,6 +273,8 @@ export async function execDynamicTask(
   const removeTaskFile = runtime.unlink || unlink;
   const executeCommand: MaaDynamicTaskExecutor = runtime.executeCommand || execMaaCommandUnlocked;
   const createNonce = runtime.createNonce || (() => `${process.pid}_${Date.now()}_${randomBytes(6).toString('hex')}`);
+  const resolveClientType = runtime.resolveClientType
+    || (async () => (await resolveConnection()).clientType);
   const lifecycle = runtime.lifecycle || {};
   const configObj = normalizeDynamicTaskConfig(taskConfig);
   const validationMessage = validateGameTaskParams(configObj.type, configObj.params ?? {});
@@ -328,6 +333,7 @@ export async function execDynamicTask(
 
   try {
     const configDir = await resolveConfigDir();
+    const clientType = (await resolveClientType()).trim() || DEFAULT_CLIENT_TYPE;
     const tasksDir = join(configDir.trim(), 'tasks');
 
     await makeDirectory(tasksDir, { recursive: true });
@@ -338,7 +344,7 @@ export async function execDynamicTask(
     const taskFileId = `${taskPrefix}_temp_${createNonce()}`;
     tempTaskFile = join(tasksDir, `${taskFileId}.toml`);
 
-    const tomlContent = generateTaskToml(configObj);
+    const tomlContent = generateTaskToml(configObj, clientType);
 
     await writeTaskFile(tempTaskFile, tomlContent, 'utf-8');
     addLog('INFO', `临时任务文件已创建: ${tempTaskFile}`);
@@ -446,8 +452,8 @@ function formatTomlValue(value: unknown): string {
   throw new TypeError(`不支持的 TOML 参数类型: ${typeof value}`);
 }
 
-function generateTaskToml(taskConfig: MaaDynamicTaskConfig): string {
-  let toml = '[[tasks]]\n';
+function generateTaskToml(taskConfig: MaaDynamicTaskConfig, clientType: string): string {
+  let toml = `client_type = ${formatTomlValue(clientType)}\n\n[[tasks]]\n`;
   toml += `name = ${formatTomlValue(taskConfig.name)}\n`;
   toml += `type = ${formatTomlValue(taskConfig.type)}\n`;
 
