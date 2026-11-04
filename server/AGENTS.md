@@ -2,7 +2,7 @@
 
 ## 职责与组织
 
-服务端运行在 Node.js 24.12+ 上，源码全部为 TypeScript ESM：Node 原生类型擦除直接运行 `.ts`，生产不经过编译器。相对导入使用真实 `.ts` 扩展名，且只使用可擦除语法（不用 `enum`、`namespace`、构造器参数属性和 `import =`）。类型门禁以 `tsc --noEmit` 独立执行（NodeNext、strict、noEmit、erasableSyntaxOnly、verbatimModuleSyntax，固定 TypeScript 6.0.3），覆盖 `server/**/*.ts`；`allowJs` 已移除，源码目录出现 `.js` / `.mjs` / `.cjs` 时 `typecheck` 直接失败，避免未检查文件被 tsc 全绿掩盖。`guardrails` 检查显式 `any`、类型抑制指令、经 any/unknown 的双重断言、分层方向与静态导入环；存量例外登记在 `guardrails-baseline.json`，每条含理由与移除条件。服务文件、函数与变量使用现有的 camelCase 命名。
+服务端运行在 Node.js 24+ 上，源码全部为 TypeScript ESM：Node 原生类型擦除直接运行 `.ts`，生产不经过编译器。相对导入使用真实 `.ts` 扩展名，且只使用可擦除语法（不用 `enum`、`namespace`、构造器参数属性和 `import =`）。类型门禁以 `tsc --noEmit` 独立执行（NodeNext、strict、noEmit、erasableSyntaxOnly、verbatimModuleSyntax，固定 TypeScript 6.0.3），覆盖 `server/**/*.ts`；`allowJs` 已移除，源码目录出现 `.js` / `.mjs` / `.cjs` 时 `typecheck` 直接失败，避免未检查文件被 tsc 全绿掩盖。`guardrails` 检查显式 `any`、类型抑制指令、经 any/unknown 的双重断言、分层方向与静态导入环；存量例外登记在 `guardrails-baseline.json`，每条含理由与移除条件。服务文件、函数与变量使用现有的 camelCase 命名。
 
 | 位置 | 修改边界 |
 | --- | --- |

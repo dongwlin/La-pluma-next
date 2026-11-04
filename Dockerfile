@@ -10,7 +10,7 @@ ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 ARG NPM_REGISTRY=https://registry.npmjs.org
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm install -g pnpm@12.6.0 --registry=${NPM_REGISTRY}
+    npm install -g pnpm@12 --registry=${NPM_REGISTRY}
 
 WORKDIR /app
 
@@ -48,7 +48,7 @@ LABEL org.opencontainers.image.title="La Pluma Next" \
 WORKDIR /app
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm install -g pnpm@12.6.0 --registry=${NPM_REGISTRY}
+    npm install -g pnpm@12 --registry=${NPM_REGISTRY}
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
