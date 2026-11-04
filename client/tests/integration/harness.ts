@@ -15,7 +15,6 @@ export interface ScenarioRequest {
 export interface ScenarioState {
   runState: 'running' | 'stopping' | 'stopped' | 'succeeded'
   runId: string
-  operationId: string
   staleRunId: string
   stopCalls: string[]
   submissions: ScenarioRequest[]
@@ -60,12 +59,11 @@ export function readData(path: string): Record<string, unknown> {
   return envelope.data
 }
 
-export function makeRun(state: ScenarioState['runState'], runId = stateRunId, operationId = 'run_daily_flow'): Record<string, unknown> {
+export function makeRun(state: ScenarioState['runState'], runId = stateRunId): Record<string, unknown> {
   const terminal = state === 'stopped' || state === 'succeeded'
-  const activity = operationId === 'run_current_activity_copilots'
   return {
     runId,
-    operationId,
+    operationId: 'run_daily_flow',
     state,
     acceptedAt: '2026-10-24T04:00:00.000Z',
     startedAt: '2026-10-24T04:00:01.000Z',
@@ -74,10 +72,10 @@ export function makeRun(state: ScenarioState['runState'], runId = stateRunId, op
       scheduleId: 'manual',
       currentStep: 1,
       totalSteps: 3,
-      currentTask: activity ? '活动作业预检' : '理智作战',
+      currentTask: '理智作战',
       currentTaskId: 'fight-integration',
       shouldStop: state === 'stopping',
-      message: state === 'stopping' ? '正在停止跨页场景任务' : activity ? '正在检查活动导航链' : '正在执行跨页场景任务',
+      message: state === 'stopping' ? '正在停止跨页场景任务' : '正在执行跨页场景任务',
     },
     ...(terminal ? {
       result: {
@@ -105,7 +103,7 @@ export function makeSnapshot(state: ScenarioState): Record<string, unknown> {
   const base = readData('/agent/runs/current')
   const schedule = base.schedule as Record<string, unknown>
   const occupancy = base.occupancy as Record<string, unknown>
-  const run = makeRun(state.runState, state.runId, state.operationId)
+  const run = makeRun(state.runState, state.runId)
   const active = state.runState === 'running' || state.runState === 'stopping'
   return {
     ...base,
@@ -182,7 +180,6 @@ export function createScenarioState(): ScenarioState {
   return {
     runState: 'running',
     runId: stateRunId,
-    operationId: 'run_daily_flow',
     staleRunId: 'run-cross-page-stale-terminal',
     stopCalls: [],
     submissions: [],
@@ -222,7 +219,7 @@ async function respondToApi(route: Route, state: ScenarioState): Promise<void> {
   state.requests.push({ method, path, body })
 
   if (path === '/agent/runs/current' && method === 'GET') return fulfill(route, ok(makeSnapshot(state)))
-  if (path === `/agent/runs/${state.runId}` && method === 'GET') return fulfill(route, ok(makeRun(state.runState, state.runId, state.operationId)))
+  if (path === `/agent/runs/${state.runId}` && method === 'GET') return fulfill(route, ok(makeRun(state.runState, state.runId)))
   if (path === `/agent/runs/${state.staleRunId}` && method === 'GET') return fulfill(route, ok(makeRun('stopped', state.staleRunId)))
   if (path === '/agent/runs/run-statistics-recognition' && method === 'GET') {
     return fulfill(route, ok({ ...makeRun('succeeded', 'run-statistics-recognition'), operationId: 'run_task' }))
