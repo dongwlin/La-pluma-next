@@ -26,6 +26,29 @@ describe('execution summary formatting', () => {
       .toBe('培养进程已结束，游戏结果未确认')
   })
 
+  it('surfaces deferred mastery targets in the oper progress summary only', () => {
+    expect(formatExecutionActionSummary([
+      { action: 'operprogress', status: 'success', deferredCount: 1 },
+    ])).toBe('游戏内培养 · 成功 1 项 · 1 项专精待处理')
+    expect(formatExecutionActionSummary([
+      { action: 'operprogress', status: 'success' },
+      { action: 'operprogress', status: 'success', deferredCount: 2 },
+    ])).toBe('游戏内培养 · 成功 2 项 · 2 项专精待处理')
+    expect(formatExecutionActionSummary([
+      { action: 'startup', status: 'success' },
+      { action: 'operprogress', status: 'success', deferredCount: 1 },
+    ])).toBe('流程执行完成 · 成功 2 项 · 1 项专精待处理')
+    expect(formatExecutionActionSummary([
+      { action: 'fight', status: 'success', stage: '1-7', times: 1, deferredCount: 1 },
+    ])).toBe('作战完成 · 1-7 1 次')
+    expect(isUnconfirmedGameAction({
+      action: 'operprogress',
+      status: 'success',
+      deferredCount: 1,
+      deferredMastery: [{ name: '白面鸮', skillMastery: [0, 0, 2] }],
+    })).toBe(false)
+  })
+
   it('formats the structured scheduler result as renderable text', () => {
     expect(formatExecutionSummary({
       successCount: 0,

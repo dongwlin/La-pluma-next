@@ -20,6 +20,7 @@ interface ExecutionActionLike {
   highestLevel?: unknown
   preservedTags?: unknown
   configuredFacilities?: unknown
+  deferredCount?: unknown
   rewardCollected?: unknown
   rotationApplied?: unknown
   droneUsed?: unknown
@@ -110,6 +111,10 @@ export function formatExecutionActionSummary(actions: unknown): string | undefin
   const successCount = normalizedActions.filter(action => action.status === 'success' && !isUnconfirmedGameAction(action)).length
   const skippedCount = normalizedActions.filter(action => action.status === 'skipped').length
   const failedCount = normalizedActions.filter(action => action.status === 'failed').length
+  const deferredCount = normalizedActions.reduce(
+    (sum, action) => sum + (toFiniteNumber(action.deferredCount) || 0),
+    0
+  )
   if (normalizedActions.every(action => action.action === 'operprogress' || action.action === 'switchtheme')) {
     if (normalizedActions.length === 1 && unconfirmed.length === 1 && typeof unconfirmed[0]?.message === 'string') {
       return unconfirmed[0].message
@@ -122,6 +127,7 @@ export function formatExecutionActionSummary(actions: unknown): string | undefin
     if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 项`)
     if (failedCount > 0) parts.push(`失败 ${failedCount} 项`)
     if (unconfirmed.length > 0) parts.push(`游戏结果未确认 ${unconfirmed.length} 项`)
+    if (deferredCount > 0) parts.push(`${deferredCount} 项专精待处理`)
     return parts.join(' · ')
   }
   if (isRecruitResult) {
@@ -228,6 +234,7 @@ export function formatExecutionActionSummary(actions: unknown): string | undefin
   if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 项`)
   if (failedCount > 0) parts.push(`失败 ${failedCount} 项`)
   if (unconfirmed.length > 0) parts.push(`游戏结果未确认 ${unconfirmed.length} 项`)
+  if (deferredCount > 0) parts.push(`${deferredCount} 项专精待处理`)
 
   return parts.join(' · ')
 }

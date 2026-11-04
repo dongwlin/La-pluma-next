@@ -34,7 +34,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
 
   return (
     <div className="@container space-y-4">
-      <p className="text-xs leading-5 text-secondary">在游戏内提升干员，按精英阶段、技能等级、专精的顺序处理。执行会消耗已有资源，可能自动合成材料或用采购凭证购买芯片助剂；专精会占用训练室。</p>
+      <p className="text-xs leading-5 text-secondary">在游戏内提升干员，按精英阶段、技能等级、专精的顺序处理。执行会消耗已有资源，可能自动合成材料或用采购凭证购买芯片助剂；专精会占用训练室。每轮执行最多启动一项专精训练，其余专精目标留待后续执行。</p>
       {plans.length === 0 && <p className="text-sm text-secondary">添加干员并选择培养目标。</p>}
       {plans.map((plan, index) => (
         <fieldset key={index} disabled={disabled} className="min-w-0 space-y-3 border-t border-(--app-border) pt-3">
