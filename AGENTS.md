@@ -14,7 +14,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 
 ## 环境与常用命令
 
-使用 Node.js 24+ 和 pnpm 12+（版本范围由根 `package.json` 的 `engines` 与 `devEngines` 校验）。依赖只在仓库根目录安装，仓库只保留根 `pnpm-lock.yaml`，不引入子包锁文件；以下命令均在仓库根目录执行。
+使用 Node.js 24+ 和 pnpm 12+（Node 下限由根 `package.json` 的 `engines.node` 声明；pnpm 版本由 `devEngines.packageManager` 校验，不匹配时直接失败）。依赖只在仓库根目录安装，仓库只保留根 `pnpm-lock.yaml`，不引入子包锁文件；以下命令均在仓库根目录执行。
 
 | 目的 | 命令 |
 | --- | --- |
