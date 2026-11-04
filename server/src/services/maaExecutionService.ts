@@ -17,7 +17,7 @@ import type {
 import { getMaaConfigDir } from './maaConfigService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
-import { parseGameTaskExecutionAction } from './gameTaskResultService.ts';
+import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
 import { validateGameTaskParams } from './gameTaskConfigService.ts';
 import { agentError } from '../utils/apiHelper.ts';
@@ -288,7 +288,12 @@ export async function execDynamicTask(
     } catch (error) {
       logger.warn('读取游戏任务结果失败', { error: errorMessageOf(error) });
     }
-    return parseGameTaskExecutionAction(taskName || configObj.name, gameTaskType, logOutput);
+    return parseGameTaskExecutionAction(
+      taskName || configObj.name,
+      gameTaskType,
+      logOutput,
+      readOperProgressPlans(configObj.params ?? {})
+    );
   };
   const gameTaskFailure = (action: GameTaskExecutionAction): MaaCommandError => agentError(
     'AGENT_GAME_TASK_FAILED',

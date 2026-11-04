@@ -16,7 +16,7 @@ import { parseRecruitExecutionAction } from './recruitResultService.ts';
 import { parseInfrastExecutionAction } from './infrastResultService.ts';
 import { parseMallExecutionAction } from './mallResultService.ts';
 import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.ts';
-import { parseGameTaskExecutionAction } from './gameTaskResultService.ts';
+import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction } from './gameTaskResultService.ts';
 import type { FightExecutionAction } from './fightResultService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
@@ -890,7 +890,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           const { params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
           const result = await executeDynamicTask(params, taskConfig || '', task.name, null, true);
           if (executionStatus.shouldStop) break;
-          action = result.actions?.[0] || parseGameTaskExecutionAction(task.name, task.taskType);
+          action = result.actions?.[0]
+            || parseGameTaskExecutionAction(task.name, task.taskType, '', readOperProgressPlans(task.params));
         } catch (error) {
           if (executionStatus.shouldStop) break;
           const fields = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};
@@ -899,7 +900,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             : {};
           const observed = Array.isArray(details.actions) ? details.actions[0] as GameTaskExecutionAction | undefined : undefined;
           action = {
-            ...(observed || parseGameTaskExecutionAction(task.name, task.taskType)),
+            ...(observed
+              || parseGameTaskExecutionAction(task.name, task.taskType, '', readOperProgressPlans(task.params))),
             status: 'failed',
             message: observed?.status === 'failed' ? observed.message : errorMessageOf(error)
           };

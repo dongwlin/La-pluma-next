@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGameTaskExecutionAction } from '../gameTaskResultService.ts';
-import type { GameTaskType } from '../gameTaskResultService.ts';
+import { parseGameTaskExecutionAction, readOperProgressPlans } from '../gameTaskResultService.ts';
+import type { GameTaskPlanTarget, GameTaskType } from '../gameTaskResultService.ts';
 
 function callback(taskchain: GameTaskType, type: string, payload: Record<string, unknown>): string {
   return `Assistant::append_callback | ${type} ${JSON.stringify({ taskchain, ...payload })}`;
@@ -223,5 +223,285 @@ describe('game task results', () => {
       assert.equal(action.observed, false);
       assert.match(action.message, /进程已完成，游戏结果未确认/);
     }
+  });
+
+  it('reads oper progress plans and skips malformed entries', () => {
+    assert.deepEqual(readOperProgressPlans({
+      plans: [
+        { name: '陈', role: 'Warrior', elite: 2, skill_level: 7, skill_mastery: [0, 2, 0] },
+        null,
+        { name: '' },
+        { name: '   ' },
+        { role: 'Caster' },
+        { name: '阿米娅', skill_mastery: [1, 0] }
+      ]
+    }), [
+      { name: '陈', role: 'Warrior', elite: 2, skillLevel: 7, skillMastery: [0, 2, 0] },
+      { name: '阿米娅' }
+    ]);
+    assert.deepEqual(readOperProgressPlans({}), []);
+  });
+
+  it('reports mastery targets that a later run must train after one training starts', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [0, 2, 0] },
+      { name: '阿米娅', role: 'Caster', skillMastery: [1, 0, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'PrerequisiteTraining',
+        skill_mastery: [0, 1, 0]
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.successCount, 1);
+    assert.equal(action.failedCount, 0);
+    assert.equal(action.skippedCount, 0);
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '阿米娅', role: 'Caster', skillMastery: [1, 0, 0] }
+    ]);
+    assert.match(action.message, /1 项专精目标本轮未执行，需后续运行/);
+  });
+
+  it('defers mastery of a later plan even when its elite goal was reported', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [0, 0, 1] },
+      { name: '能天使', role: 'Sniper', elite: 2, skillLevel: 7, skillMastery: [2, 0, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'Completed',
+        skill_mastery: [0, 0, 1]
+      }),
+      progress('OperProgressDetail', {
+        role: 'Sniper', name: '能天使', result: 'Success', result_detail: 'Completed', elite: 2
+      }),
+      progress('OperProgressSummary', { success: 2, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '能天使', role: 'Sniper', skillMastery: [2, 0, 0] }
+    ]);
+    assert.match(action.message, /1 项专精目标本轮未执行/);
+  });
+
+  it('defers remaining mastery slots of the same plan', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [1, 2, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'Completed',
+        skill_mastery: [1, 0, 0]
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '陈', role: 'Warrior', skillMastery: [0, 2, 0] }
+    ]);
+    assert.match(action.message, /1 项专精目标本轮未执行/);
+  });
+
+  it('does not defer mastery slots when no training was started', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [3, 0, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'AlreadySatisfied',
+        skill_mastery: [3, 0, 0]
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.deferredCount, undefined);
+    assert.equal(action.deferredMastery, undefined);
+    assert.doesNotMatch(action.message, /未执行/);
+  });
+
+  it('keeps previous behavior when no plans are supplied', () => {
+    const logOutput = [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'PrerequisiteTraining',
+        skill_mastery: [0, 2, 0]
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 0 })
+    ].join('\n');
+    const withoutPlans = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', logOutput);
+    const withEmptyPlans = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', logOutput, []);
+
+    assert.deepEqual(withEmptyPlans, withoutPlans);
+    assert.equal(withoutPlans.deferredCount, undefined);
+    assert.equal(withoutPlans.deferredMastery, undefined);
+    assert.doesNotMatch(withoutPlans.message, /未执行/);
+  });
+
+  it('defers later mastery plans after a busy training room without inflating skipped count', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [1, 0, 0] },
+      { name: '阿米娅', role: 'Caster', skillMastery: [0, 2, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Skipped', result_detail: 'TrainingRoomBusy'
+      }),
+      progress('OperProgressSummary', { success: 0, failed: 0, skipped: 1 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'skipped');
+    assert.equal(action.skippedCount, 1);
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '阿米娅', role: 'Caster', skillMastery: [0, 2, 0] }
+    ]);
+    assert.match(action.message, /1 项专精目标本轮未执行，需后续运行/);
+  });
+
+  it('defers a later plan of the same operator when only the first mastery training starts', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '阿米娅', role: 'Caster', skillMastery: [1, 0, 0] },
+      { name: '阿米娅', role: 'Caster', skillMastery: [0, 2, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Caster', name: '阿米娅', result: 'Success', result_detail: 'Completed',
+        skill_mastery: [1, 0, 0]
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.successCount, 1);
+    assert.equal(action.skippedCount, 0);
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '阿米娅', role: 'Caster', skillMastery: [0, 2, 0] }
+    ]);
+    assert.match(action.message, /1 项专精目标本轮未执行，需后续运行/);
+  });
+
+  it('defers a later plan of the same operator targeting the same skill slot', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '阿米娅', role: 'Caster', skillMastery: [1, 0, 0] },
+      { name: '阿米娅', role: 'Caster', skillMastery: [2, 0, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Caster', name: '阿米娅', result: 'Success', result_detail: 'Completed',
+        skill_mastery: [1, 0, 0]
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.skippedCount, 0);
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '阿米娅', role: 'Caster', skillMastery: [2, 0, 0] }
+    ]);
+  });
+
+  it('attributes the trigger to the plan whose mastery detail was reported', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '阿米娅', role: 'Caster', skillMastery: [3, 0, 0] },
+      { name: '阿米娅', role: 'Caster', skillMastery: [2, 0, 0] },
+      { name: '陈', role: 'Warrior', skillMastery: [0, 2, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Caster', name: '阿米娅', result: 'Success', result_detail: 'AlreadySatisfied',
+        skill_mastery: [3, 0, 0]
+      }),
+      progress('OperProgressDetail', {
+        role: 'Caster', name: '阿米娅', result: 'Success', result_detail: 'Completed',
+        skill_mastery: [2, 0, 0]
+      }),
+      progress('OperProgressSummary', { success: 2, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '陈', role: 'Warrior', skillMastery: [0, 2, 0] }
+    ]);
+  });
+
+  it('keeps the trigger on a plan that reported several mastery details', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [3, 1, 0] },
+      { name: '陈', role: 'Warrior', skillMastery: [2, 0, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'AlreadySatisfied',
+        skill_mastery: [3, 0, 0]
+      }),
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Success', result_detail: 'Completed',
+        skill_mastery: [0, 1, 0]
+      }),
+      progress('OperProgressSummary', { success: 2, failed: 0, skipped: 0 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '陈', role: 'Warrior', skillMastery: [2, 0, 0] }
+    ]);
+  });
+
+  it('defers remaining mastery slots after a busy room for a repeated operator', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '阿米娅', role: 'Caster', skillMastery: [1, 0, 0] },
+      { name: '阿米娅', role: 'Caster', skillMastery: [2, 1, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Caster', name: '阿米娅', result: 'Success', result_detail: 'AlreadySatisfied',
+        skill_mastery: [1, 0, 0]
+      }),
+      progress('OperProgressDetail', {
+        role: 'Caster', name: '阿米娅', result: 'Skipped', result_detail: 'TrainingRoomBusy'
+      }),
+      progress('OperProgressSummary', { success: 1, failed: 0, skipped: 1 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'success');
+    assert.equal(action.skippedCount, 1);
+    assert.equal(action.deferredCount, 1);
+    assert.deepEqual(action.deferredMastery, [
+      { name: '阿米娅', role: 'Caster', skillMastery: [0, 1, 0] }
+    ]);
+  });
+
+  it('does not defer a mastery slot already reported as failed before a busy room', () => {
+    const plans: GameTaskPlanTarget[] = [
+      { name: '陈', role: 'Warrior', skillMastery: [2, 1, 0] }
+    ];
+    const action = parseGameTaskExecutionAction('游戏内培养', 'OperProgress', [
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Failed', result_detail: 'RecognitionFailed'
+      }),
+      progress('OperProgressDetail', {
+        role: 'Warrior', name: '陈', result: 'Skipped', result_detail: 'TrainingRoomBusy'
+      }),
+      progress('OperProgressSummary', { success: 0, failed: 1, skipped: 1 })
+    ].join('\n'), plans);
+
+    assert.equal(action.status, 'failed');
+    assert.equal(action.failedCount, 1);
+    assert.equal(action.skippedCount, 1);
+    assert.equal(action.deferredCount, undefined);
+    assert.equal(action.deferredMastery, undefined);
+    assert.doesNotMatch(action.message, /未执行/);
   });
 });
