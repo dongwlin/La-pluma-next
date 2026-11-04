@@ -73,6 +73,23 @@ const dispatchPointerDown = async (target: EventTarget) => {
   })
 }
 
+const stubTriggerRect = (
+  element: HTMLButtonElement,
+  rect: { top: number; bottom: number; left: number; width: number },
+) => {
+  vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+    x: rect.left,
+    y: rect.top,
+    top: rect.top,
+    bottom: rect.bottom,
+    left: rect.left,
+    right: rect.left + rect.width,
+    width: rect.width,
+    height: rect.bottom - rect.top,
+    toJSON: () => ({}),
+  } as DOMRect)
+}
+
 describe('AutomationTaskPicker', () => {
   beforeEach(() => {
     onAddTask.mockReset()
@@ -84,6 +101,53 @@ describe('AutomationTaskPicker', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('anchors the menu above the footer when the viewport has room', async () => {
+    await act(async () => root.render(<Host />))
+    vi.stubGlobal('innerWidth', 390)
+    vi.stubGlobal('innerHeight', 844)
+    stubTriggerRect(trigger(), { top: 400, bottom: 444, left: 24, width: 320 })
+
+    await openPicker()
+
+    const surface = menu()!
+    expect(surface.dataset.placement).toBe('top')
+    expect(surface.style.bottom).toBe(`${844 - 400 + 8}px`)
+    expect(surface.style.top).toBe('')
+    expect(surface.style.left).toBe('24px')
+    expect(surface.style.width).toBe('320px')
+    expect(surface.style.maxHeight).toBe('224px')
+  })
+
+  it('flips the menu below the trigger when the footer sits near the top edge', async () => {
+    await act(async () => root.render(<Host />))
+    vi.stubGlobal('innerWidth', 390)
+    vi.stubGlobal('innerHeight', 600)
+    stubTriggerRect(trigger(), { top: 40, bottom: 84, left: 24, width: 320 })
+
+    await openPicker()
+
+    const surface = menu()!
+    expect(surface.dataset.placement).toBe('bottom')
+    expect(surface.style.top).toBe(`${84 + 8}px`)
+    expect(surface.style.bottom).toBe('')
+    expect(surface.style.maxHeight).toBe('224px')
+  })
+
+  it('keeps the menu inside the viewport width', async () => {
+    await act(async () => root.render(<Host />))
+    vi.stubGlobal('innerWidth', 360)
+    vi.stubGlobal('innerHeight', 844)
+    stubTriggerRect(trigger(), { top: 400, bottom: 444, left: 320, width: 200 })
+
+    await openPicker()
+
+    const surface = menu()!
+    expect(surface.style.left).toBe('148px')
+    expect(surface.style.width).toBe('200px')
   })
 
   it('adds a task through the page callback and closes the menu', async () => {
