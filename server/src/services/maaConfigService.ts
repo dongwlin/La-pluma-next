@@ -86,6 +86,41 @@ export function parseMaaProfile(content: unknown): MaaProfileDocument {
   return parseToml(String(content || ''));
 }
 
+const BEHAVIOR_KEYS = new Set(['auto_reconnect']);
+
+function splitProfileUpdates(updates: Record<string, unknown>): {
+  connection: Record<string, unknown>;
+  behavior: Record<string, unknown>;
+} {
+  const connection: Record<string, unknown> = {};
+  const behavior: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) continue;
+    if (BEHAVIOR_KEYS.has(key)) behavior[key] = value;
+    else connection[key] = value;
+  }
+  return { connection, behavior };
+}
+
+function toConnectionView(profile: MaaProfileDocument): MaaProfileConnection {
+  const connectionSection = profile.connection;
+  const connection = isRecord(connectionSection) ? connectionSection : profile;
+  const connectionValues: Record<string, unknown> = { ...connection };
+  const legacyAutoReconnect = connectionValues.auto_reconnect;
+  delete connectionValues.auto_reconnect;
+  if (!isRecord(connectionSection)) delete connectionValues.behavior;
+
+  const behavior = isRecord(profile.behavior) ? profile.behavior : null;
+  const autoReconnect = typeof behavior?.auto_reconnect === 'boolean'
+    ? behavior.auto_reconnect
+    : typeof legacyAutoReconnect === 'boolean'
+      ? legacyAutoReconnect
+      : undefined;
+  return autoReconnect === undefined
+    ? connectionValues
+    : { ...connectionValues, auto_reconnect: autoReconnect };
+}
+
 export function mergeMaaProfileConnection(
   profileDocument: unknown = {},
   config: unknown = {}
@@ -109,15 +144,30 @@ export function mergeMaaProfileConnection(
     throw new TypeError('现有 connection section 格式不合法');
   }
 
-  const normalizedUpdates = Object.fromEntries(
-    Object.entries(connectionUpdates).filter(([, value]) => value !== undefined)
-  );
+  const existingBehavior = profileDocument.behavior;
+  if (existingBehavior != null && !isRecord(existingBehavior)) {
+    throw new TypeError('现有 behavior section 格式不合法');
+  }
+
+  const { connection: connectionValues, behavior: behaviorValues } = splitProfileUpdates(connectionUpdates);
+
+  const connection = { ...(existingConnection || {}) };
+  const legacyAutoReconnect = connection.auto_reconnect;
+  delete connection.auto_reconnect;
+
+  const behavior = { ...(existingBehavior || {}) };
+  if (
+    !Object.prototype.hasOwnProperty.call(behavior, 'auto_reconnect')
+    && typeof legacyAutoReconnect === 'boolean'
+  ) {
+    behavior.auto_reconnect = legacyAutoReconnect;
+  }
+  Object.assign(behavior, behaviorValues);
+
   return {
     ...profileDocument,
-    connection: {
-      ...(existingConnection || {}),
-      ...normalizedUpdates
-    }
+    connection: { ...connection, ...connectionValues },
+    ...(Object.keys(behavior).length > 0 ? { behavior } : {})
   };
 }
 
@@ -126,9 +176,7 @@ export async function getConfig(profileName: unknown = 'default'): Promise<MaaPr
   try {
     const configPath = await getConfigPath(normalizedProfileName);
     const content = await readFile(configPath, 'utf-8');
-    const profile = parseMaaProfile(content);
-    const connection = profile.connection;
-    return isRecord(connection) ? connection : profile;
+    return toConnectionView(parseMaaProfile(content));
   } catch {
     logger.debug('配置文件不存在，返回环境默认配置');
     return {

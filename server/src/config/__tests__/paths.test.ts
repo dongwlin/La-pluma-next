@@ -53,6 +53,75 @@ describe('resolveMaaPaths cross-platform resolution', () => {
     assert.equal(missing.stateDir, empty.stateDir);
   });
 
+  it('prefers MAA_*_DIR overrides over XDG and platform defaults', () => {
+    const paths = resolveMaaPaths({
+      env: {
+        MAA_CONFIG_DIR: '/maa/config',
+        MAA_DATA_DIR: '/maa/data',
+        MAA_STATE_DIR: '/maa/state',
+        XDG_CONFIG_HOME: '/xdg/config',
+        XDG_DATA_HOME: '/xdg/data',
+        XDG_STATE_HOME: '/xdg/state'
+      },
+      platform: 'linux',
+      homedir: '/home/fixture'
+    });
+
+    assert.equal(paths.configDir, '/maa/config');
+    assert.equal(paths.dataDir, '/maa/data');
+    assert.equal(paths.stateDir, '/maa/state');
+    assert.equal(paths.resourceDir, '/maa/data/resource');
+    assert.equal(paths.logPath, '/maa/state/debug/asst.log');
+    assert.equal(paths.itemIndexPath, '/maa/data/resource/item_index.json');
+    assert.equal(paths.battleDataPath, '/maa/data/resource/battle_data.json');
+  });
+
+  it('applies MAA_*_DIR overrides on macOS and Windows', () => {
+    const mac = resolveMaaPaths({
+      env: {
+        MAA_CONFIG_DIR: '/maa/config',
+        MAA_DATA_DIR: '/maa/data',
+        MAA_STATE_DIR: '/maa/state'
+      },
+      platform: 'darwin',
+      homedir: '/Users/fixture'
+    });
+    const windows = resolveMaaPaths({
+      env: {
+        MAA_CONFIG_DIR: '/maa/config',
+        MAA_DATA_DIR: '/maa/data',
+        MAA_STATE_DIR: '/maa/state'
+      },
+      platform: 'win32',
+      homedir: 'C:\\Users\\fixture'
+    });
+
+    assert.equal(mac.configDir, '/maa/config');
+    assert.equal(mac.dataDir, '/maa/data');
+    assert.equal(mac.stateDir, '/maa/state');
+    assert.equal(windows.configDir, '/maa/config');
+    assert.equal(windows.dataDir, '/maa/data');
+    assert.equal(windows.stateDir, '/maa/state');
+  });
+
+  it('ignores empty or whitespace-only MAA_*_DIR values', () => {
+    const empty = resolveMaaPaths({
+      env: { MAA_CONFIG_DIR: '', MAA_DATA_DIR: '', MAA_STATE_DIR: '' },
+      platform: 'linux',
+      homedir: '/home/fixture'
+    });
+    const blank = resolveMaaPaths({
+      env: { MAA_CONFIG_DIR: '   ', MAA_DATA_DIR: '   ', MAA_STATE_DIR: '   ' },
+      platform: 'linux',
+      homedir: '/home/fixture'
+    });
+
+    assert.equal(empty.configDir, '/home/fixture/.config/maa');
+    assert.equal(empty.dataDir, '/home/fixture/.local/share/maa');
+    assert.equal(empty.stateDir, '/home/fixture/.local/state/maa');
+    assert.deepEqual(blank, empty);
+  });
+
   it('resolves macOS paths under Application Support', () => {
     const paths = resolveMaaPaths({ env: {}, platform: 'darwin', homedir: '/Users/fixture' });
 

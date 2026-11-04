@@ -153,6 +153,7 @@ ConfigManager（页面壳）
 - Query 只保存服务端只读快照，不直接写页面；`queryFn` 把 Query 的 `AbortSignal` 传给 `getConfig(profileName, signal)`，Activity 隐藏或卸载时由 Query 取消观察并按既有策略保留缓存。
 - `getConfig` 收紧载荷校验：`adb_path`、`address`、`config` 出现时必须是字符串，`auto_reconnect` 出现时必须是布尔；已知字段类型不合法返回 `INVALID_DOMAIN_PAYLOAD`。缺失字段是合法的 MAA profile 形态，由归一化模型补页面默认值。
 - 归一化保留 `connection` 段中的未知字段，保存时随快照原样回写；已知字段缺失或类型不合法时使用页面原有默认值（`/opt/homebrew/bin/adb`、`127.0.0.1:16384`、`CompatMac`、自动重连开启）。
+- `auto_reconnect` 在 MAA profile 中属于 `[behavior]` 段：服务端读取时并入 connection 视图，保存时写回 `[behavior]`，并兼容旧版写在 `[connection]` 的值。
 - Query 默认策略与失败分类沿用[Query 缓存与键规范](../../architecture/query-cache.md)。
 
 #### 2.2 草稿状态
