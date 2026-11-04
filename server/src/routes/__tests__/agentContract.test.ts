@@ -178,6 +178,8 @@ describe('Agent API contract registry', () => {
     assert.equal(properties.userResource.type, 'boolean');
     assert.match(action.description, /OperProgress/);
     assert.match(action.description, /material preparation/);
+    assert.match(action.description, /at most one mastery training/);
+    assert.match(action.description, /deferredMastery\/deferredCount/);
     assert.match(action.description, /SwitchTheme/);
     assert.equal(taskConfigVariant.allOf?.length, 2);
     assert.deepEqual(properties.taskConfig.examples?.map(value => typeof value === 'object' && value !== null && 'type' in value ? value.type : null), ['OperProgress', 'SwitchTheme']);
@@ -188,6 +190,10 @@ describe('Agent API contract registry', () => {
     const validate = new Ajv2020({ strict: false }).compile(must(action.body_schema, 'run_task body'));
     const request = (type: string, params: Record<string, unknown>) => ({ command: 'run', taskConfig: { name: '动态任务', type, params } });
     assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', role: 'Unknown', elite: 2, skill_mastery: [0, 3, 0] }] })), true);
+    assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', skill_level: 7 }] })), true);
+    assert.equal(validate(request('OperProgress', { plans: [] })), false);
+    assert.equal(validate(request('OperProgress', { plans: [{ name: '陈' }] })), false);
+    assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', skill_mastery: [0, 0, 0] }] })), false);
     assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', skill_level: 8 }] })), false);
     assert.equal(validate(request('OperProgress', { plans: [{ name: '陈', skill_mastery: [3] }] })), false);
     assert.equal(validate(request('SwitchTheme', { themes: ['默认'] })), true);

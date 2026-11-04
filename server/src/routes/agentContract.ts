@@ -24,9 +24,11 @@ export interface JsonSchema {
   additionalProperties?: boolean | JsonSchema;
   items?: JsonSchema;
   oneOf?: readonly JsonSchema[];
+  anyOf?: readonly JsonSchema[];
   allOf?: readonly JsonSchema[];
   if?: JsonSchema;
   then?: JsonSchema;
+  contains?: JsonSchema;
   enum?: readonly (string | number | boolean | null)[];
   const?: unknown;
   minimum?: number;
@@ -555,7 +557,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     id: 'run_task',
     method: 'POST',
     path: '/api/agent/actions/run-task',
-    description: 'Run one whitelisted maa-cli command or a dynamic Core task. OperProgress performs in-game operator upgrades and may consume materials or red certificates; it is separate from training material preparation. SwitchTheme changes the game interface theme. Both require maa-cli 0.7.8+ and compatible Core/resources; use command=run with taskConfig. Prefer semantic actions when available.',
+    description: 'Run one whitelisted maa-cli command or a dynamic Core task. OperProgress performs in-game operator upgrades and may consume materials or red certificates; it is separate from training material preparation. One OperProgress run starts at most one mastery training; mastery targets not executed in that run are reported as deferredMastery/deferredCount on the action. SwitchTheme changes the game interface theme. Both require maa-cli 0.7.8+ and compatible Core/resources; use command=run with taskConfig. Prefer semantic actions when available.',
     tags: ['Execution'],
     safety: consequential(['run_maa_command']),
     execution: execution({
@@ -595,6 +597,8 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
                         properties: {
                           plans: {
                             type: 'array',
+                            minItems: 1,
+                            description: 'Operator plans. Each plan must target elite, skill_level or at least one positive skill_mastery slot.',
                             items: {
                               type: 'object',
                               required: ['name'],
@@ -609,6 +613,16 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
                                   description: 'S1/S2/S3 target mastery levels; 0 leaves a skill unchanged. Starting training does not mean its training timer has finished.'
                                 }
                               },
+                              anyOf: [
+                                { required: ['elite'] },
+                                { required: ['skill_level'] },
+                                {
+                                  required: ['skill_mastery'],
+                                  properties: {
+                                    skill_mastery: { contains: { type: 'integer', minimum: 1 } }
+                                  }
+                                }
+                              ],
                               additionalProperties: false
                             }
                           }

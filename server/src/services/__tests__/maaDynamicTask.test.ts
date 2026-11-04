@@ -136,7 +136,7 @@ describe('dynamic task lifecycle', () => {
       }
       const outcomes: MaaCommandOutcome[] = []
       runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
-      await execDynamicTask('operprogress', { name: '培养', type: 'OperProgress', params: { plans: [] } }, '培养', 'automation', false, false, runtime)
+      await execDynamicTask('operprogress', { name: '培养', type: 'OperProgress', params: { plans: [{ name: '陈', elite: 2 }] } }, '培养', 'automation', false, false, runtime)
       const settle = getSettled()
       assert.ok(settle)
       const error = Object.assign(new Error('Core failed'), { code: 'CORE_PROCESS_FAILED', exitCode: 3 })

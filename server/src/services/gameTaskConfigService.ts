@@ -13,6 +13,10 @@ function integerBetween(value: unknown, minimum: number, maximum: number): boole
   return typeof value === 'number' && Number.isInteger(value) && value >= minimum && value <= maximum;
 }
 
+function hasMasteryTarget(value: unknown): boolean {
+  return Array.isArray(value) && value.some(level => integerBetween(level, 1, 3));
+}
+
 export function validateGameTaskParams(type: string, params: Record<string, unknown>): string | null {
   if (type === 'SwitchTheme') {
     return Array.isArray(params.themes) && params.themes.every(theme => typeof theme === 'string' && theme.trim())
@@ -21,6 +25,7 @@ export function validateGameTaskParams(type: string, params: Record<string, unkn
   }
   if (type !== 'OperProgress') return null;
   if (!Array.isArray(params.plans)) return 'OperProgress.params.plans 必须是培养计划数组';
+  if (params.plans.length === 0) return 'OperProgress.params.plans 至少包含一项培养计划';
   for (const [index, plan] of params.plans.entries()) {
     const prefix = `OperProgress.params.plans[${index}]`;
     if (!isRecord(plan)) return `${prefix} 必须是对象`;
@@ -37,6 +42,10 @@ export function validateGameTaskParams(type: string, params: Record<string, unkn
       || plan.skill_mastery.length !== 3
       || !plan.skill_mastery.every(level => integerBetween(level, 0, 3)))) {
       return `${prefix}.skill_mastery 必须是三个 0 至 3 的整数`;
+    }
+    if (plan.elite === undefined && plan.skill_level === undefined
+      && !hasMasteryTarget(plan.skill_mastery)) {
+      return `${prefix} 至少选择一个培养目标`;
     }
   }
   return null;

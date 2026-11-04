@@ -332,6 +332,14 @@ describe('agent execution HTTP adapter', () => {
       ['/api/agent/actions/run-daily-flow', { dryRun: 'false' }, 'AGENT_VALIDATION_DRY_RUN_INVALID'],
       ['/api/agent/actions/run-daily-flow', { taskFlow: {} }, 'AGENT_VALIDATION_TASK_FLOW_INVALID'],
       ['/api/agent/actions/fight', {}, 'AGENT_VALIDATION_MISSING_STAGES'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { name: '游戏内培养', type: 'OperProgress', params: { plans: [] } }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ name: '阿米娅' }] } }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
       ['/api/agent/actions/stop', { runId: 42 }, 'AGENT_VALIDATION_RUN_ID_INVALID']
     ];
 
