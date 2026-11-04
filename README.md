@@ -53,12 +53,8 @@ docker run -d \
 
 - **Node.js** 24+
 - **pnpm** 12+
-- **MAA CLI** 已安装
-  - macOS: `brew install MaaAssistantArknights/tap/maa-cli`
-  - Linux: 参考 [MAA CLI 文档](https://maa.plus/docs/manual/cli/)
+- **MAA CLI** 已安装（安装方法见 [MAA CLI 安装文档](https://docs.maa.plus/zh-cn/manual/cli/install.html)）
 - 已执行 `maa install` 安装 MaaCore 及资源
-
-支持的系统与 MAA 目录位置见 [配置与跨平台支持](docs/guides/configuration.md)。
 
 ```bash
 git clone https://github.com/dongwlin/La-pluma-next.git
