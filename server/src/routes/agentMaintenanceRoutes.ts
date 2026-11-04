@@ -17,10 +17,6 @@ router.post('/config/maa/:profileName', asyncHandler<MaintenanceProfileRequest, 
 
 router.get('/activity', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readActivity));
 
-router.get('/activity/preflight', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readActivityPreflight));
-
-router.get('/activity/copilot-candidates', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readActivityCopilotCandidates));
-
 router.post('/actions/depot-recognition', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.runDepotRecognition));
 
 router.post('/actions/operbox-recognition', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.runOperboxRecognition));

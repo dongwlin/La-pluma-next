@@ -13,9 +13,7 @@ import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpda
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
-import { getActivityRunPreflight } from '../services/activityNavigationService.ts';
-import { findActivityCopilotCandidates } from '../services/activityCopilotDiscoveryService.ts';
-import { getActivityCompletion } from '../services/activityCopilotRunService.ts';
+import { getActivityCompletion } from '../services/activityCompletionService.ts';
 import { withMaaExecutionLease } from '../services/executionCoordinatorService.ts';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
 import {
@@ -148,18 +146,6 @@ export async function readActivity(req: MaintenanceRequest, res: ApiResponseWrit
     failure: activityInfo.failure
   };
   return sendSuccess(res, req, payload);
-}
-
-export async function readActivityPreflight(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
-  const { clientType } = await resolveMaintenanceConnection(req);
-  const preflight = await getActivityRunPreflight(clientType);
-  return sendSuccess(res, req, preflight, preflight.reason);
-}
-
-export async function readActivityCopilotCandidates(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
-  const { clientType } = await resolveMaintenanceConnection(req);
-  const candidates = await findActivityCopilotCandidates(clientType);
-  return sendSuccess(res, req, candidates, candidates.reason);
 }
 
 export async function runDepotRecognition(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {

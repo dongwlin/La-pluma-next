@@ -30,7 +30,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 - `maaExecutionService` 维护固定的设备变更命令集合，`requiresMaaExecutionLease` 据此决定是否先取得 `executionCoordinatorService` 的执行租约（`server/src/services/maaExecutionService.ts:33-37,117-119`）。
 - `execMaaCommand` 在取得租约后先运行 `onBeforeStart` 门禁再 spawn；后台执行的租约在子进程实际退出（`onSettled`）后释放，HTTP 返回"已启动"响应不等于执行完成、也不释放租约（`server/src/services/maaExecutionService.ts:176-228`）。非设备变更命令直接进入子进程模块，不申请租约（`server/src/services/maaExecutionService.ts:186-188`）。
-- 动态任务 `execDynamicTask` 在 MAA 配置目录的 `tasks/` 下写临时 TOML 后以 `run` 执行：文件名净化为字母数字并附加随机 nonce；`[[tasks]]` 与 `[tasks.params]` 表由配置对象生成，字符串形式的数组参数会尝试 JSON 解析（`server/src/services/maaExecutionService.ts:270-376,381-442`）。
+- 动态任务 `execDynamicTask` 在 MAA 配置目录的 `tasks/` 下写临时 TOML 后以 `run` 执行：顶层 `client_type` 取连接 profile 的客户端类型，供 maa-cli 加载对应服务区资源并设置 MaaCore 客户端类型；文件名净化为字母数字并附加随机 nonce；`[[tasks]]` 与 `[tasks.params]` 表由配置对象生成，字符串形式的数组参数会尝试 JSON 解析（`server/src/services/maaExecutionService.ts:260-428,455-488`）。
 - 动态任务的临时文件与租约在失败和完成时都清理释放；`MAA_EXECUTION_BUSY` 与 `stopped` 错误原样抛出，其余错误重建字段后抛出（`server/src/services/maaExecutionService.ts:296-311,368-375`）。
 - `getMaaVersion` 执行 `maa version` 并解析输出中的 `maa-cli` 与 `MaaCore` 版本行（`server/src/services/maaExecutionService.ts:233-255`）。
 

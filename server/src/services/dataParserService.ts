@@ -11,6 +11,8 @@ import {
   getBattleDataPath
 } from '../config/paths.ts';
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
+import { getCallbackDetails, parseMaaCallbackEvents } from './maaCallbackService.ts';
+import type { MaaCallbackEvent } from './maaCallbackService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 
 const logger = createLogger('DataParser');
@@ -299,7 +301,6 @@ export function parseOperBoxFile(value: unknown): OperBoxFile | null {
 export function parseOperBoxOperators(details: unknown): Record<string, unknown>[] | null {
   if (!isRecord(details)) return null;
   const own = details.own_opers;
-  if (own === undefined) return [];
   if (!Array.isArray(own)) return null;
 
   const operators: Record<string, unknown>[] = [];
@@ -310,18 +311,88 @@ export function parseOperBoxOperators(details: unknown): Record<string, unknown>
   return operators;
 }
 
-function findCompletedDepotData(logContent: string, depotMatches: RegExpMatchArray[]): string | null {
-  for (let i = depotMatches.length - 1; i >= 0; i--) {
-    const match = depotMatches[i];
-    const contextStart = match.index ?? 0;
-    const contextEnd = Math.min(contextStart + 5000, logContent.length);
-    const context = logContent.substring(contextStart, contextEnd);
+interface RecognitionPayload {
+  details: Record<string, unknown>;
+  complete: boolean;
+}
 
-    if (context.includes('"done":true')) {
-      return match[1];
+function parseUnscopedRecognitionEvents(
+  logContent: string,
+  taskchain: string,
+  what: string
+): MaaCallbackEvent[] {
+  const events: MaaCallbackEvent[] = [];
+  for (const line of logContent.split('\n')) {
+    const jsonStart = line.indexOf('{');
+    if (jsonStart === -1) continue;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(line.slice(jsonStart));
+    } catch {
+      continue;
+    }
+
+    if (!isRecord(payload) || payload.what !== what) continue;
+    events.push({ ...payload, taskchain, callback: 'SubTaskExtraInfo' });
+  }
+  return events;
+}
+
+function readRecognitionEvents(logContent: string, taskchain: string, what: string): MaaCallbackEvent[] {
+  const events = parseMaaCallbackEvents(logContent, taskchain);
+  if (events.length > 0) return events;
+
+  // 旧日志可能缺少回调前缀或 taskchain；逐行解析载荷仍比跨事件正则可靠。
+  return parseUnscopedRecognitionEvents(logContent, taskchain, what);
+}
+
+function splitRunSegments(events: readonly MaaCallbackEvent[]): MaaCallbackEvent[][] {
+  const segments: MaaCallbackEvent[][] = [];
+  let current: MaaCallbackEvent[] = [];
+
+  for (const event of events) {
+    if (event.callback === 'TaskChainStart') {
+      if (current.length > 0) segments.push(current);
+      current = [event];
+      continue;
+    }
+
+    current.push(event);
+    if (event.callback === 'TaskChainCompleted' || event.callback === 'TaskChainError') {
+      segments.push(current);
+      current = [];
     }
   }
-  return null;
+
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
+function selectRecognitionPayload(
+  logContent: string,
+  taskchain: string,
+  what: string
+): RecognitionPayload | null {
+  const segments = splitRunSegments(readRecognitionEvents(logContent, taskchain, what));
+  const runEvents = segments[segments.length - 1] ?? [];
+  let incomplete: RecognitionPayload | null = null;
+
+  for (let i = runEvents.length - 1; i >= 0; i -= 1) {
+    const event = runEvents[i];
+    if (event.callback !== 'SubTaskExtraInfo' || event.what !== what) continue;
+    const details = getCallbackDetails(event);
+    if (!details) continue;
+    if (details.done === true) return { details, complete: true };
+    incomplete ??= { details, complete: false };
+  }
+  return incomplete;
+}
+
+function parseDepotPayloadCounts(details: Record<string, unknown>): Record<string, number> | null {
+  const data = details.data;
+  if (typeof data === 'string') return parseDepotCounts(safeJsonParse(data, null));
+  return parseDepotCounts(data);
 }
 
 async function enrichDepotData(
@@ -355,29 +426,21 @@ export async function parseDepotData(
     const logPath = context.maaLogPath;
     logger.info('开始解析仓库数据', { logPath });
 
-    let logContent = await readFile(logPath, 'utf-8');
+    const logContent = await readFile(logPath, 'utf-8');
 
-    // 移除日志中的换行符（MAA 日志可能在单词中间换行）
-    logContent = logContent.replace(/([a-zA-Z])\n([a-z])/g, '$1$2');
+    const payload = selectRecognitionPayload(logContent, 'Depot', 'DepotInfo');
 
-    const depotMatches = [...logContent.matchAll(/"what"\s*:\s*"DepotInfo"[\s\S]*?"details"\s*:\s*\{[\s\S]*?"data"\s*:\s*"((?:[^"\\]|\\.)*)"/g)];
-
-    if (depotMatches.length === 0) {
-      logger.warn('未找到 DepotInfo 数据');
+    if (!payload) {
+      logger.warn('当前运行未找到 DepotInfo 数据');
       return null;
     }
 
-    let dataStr = findCompletedDepotData(logContent, depotMatches);
-
-    if (!dataStr) {
-      dataStr = depotMatches[depotMatches.length - 1][1];
-      logger.info('使用最后一次 DepotInfo 数据');
+    if (!payload.complete) {
+      logger.warn('仓库识别未完成，保留已有缓存');
+      throw new Error('仓库识别未完成');
     }
 
-    logger.debug('数据字符串长度', { length: dataStr.length });
-
-    const unescapedStr = dataStr.replace(/\\"/g, '"');
-    const depotCounts = parseDepotCounts(safeJsonParse(unescapedStr, null));
+    const depotCounts = parseDepotPayloadCounts(payload.details);
 
     if (!depotCounts) {
       throw new Error('解析仓库数据失败');
@@ -422,36 +485,21 @@ export async function parseOperBoxData(
 
     const logContent = await readFile(logPath, 'utf-8');
 
-    const lines = logContent.split('\n');
-    const operBoxLines = lines.filter(line => line.includes('"what":"OperBoxInfo"'));
+    const payload = selectRecognitionPayload(logContent, 'OperBox', 'OperBoxInfo');
 
-    if (operBoxLines.length === 0) {
-      logger.warn('未找到 OperBoxInfo 数据');
+    if (!payload) {
+      logger.warn('当前运行未找到 OperBoxInfo 数据');
       return null;
     }
 
-    const lastLine = operBoxLines[operBoxLines.length - 1];
-    logger.info('找到 OperBoxInfo 数据');
-
-    const jsonStart = lastLine.indexOf('{"class');
-    if (jsonStart === -1) {
-      throw new Error('无法找到 JSON 数据起始位置');
+    if (!payload.complete) {
+      logger.warn('干员识别未完成，保留已有缓存');
+      throw new Error('干员识别未完成');
     }
 
-    const jsonStr = lastLine.substring(jsonStart);
-    const data = safeJsonParse(jsonStr);
-
-    if (!isRecord(data) || !isRecord(data.details)) {
-      throw new Error('解析 JSON 失败');
-    }
-
-    if (!data.details.done) {
-      logger.warn('识别未完成，使用部分数据');
-    }
-
-    const opers = parseOperBoxOperators(data.details);
-    if (!opers) {
-      throw new Error('解析 JSON 失败');
+    const opers = parseOperBoxOperators(payload.details);
+    if (!opers || opers.length === 0) {
+      throw new Error('解析干员数据失败');
     }
     logger.success(`解析成功，干员数量: ${opers.length}`);
 

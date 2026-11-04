@@ -10,7 +10,6 @@ import * as agentExecutionController from '../controllers/agentExecutionControll
 
 const router = Router();
 
-router.post('/activity/run', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(agentExecutionController.runCurrentActivity));
 router.post('/copilot-sets/:id/execute', asyncHandler<ExecutionCopilotSetRequest, ExecutionResponseWriter>(agentExecutionController.executeCopilotSet));
 router.post('/actions/continue-copilot-set', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(agentExecutionController.continueCopilotSetAction));
 router.post('/schedules/:scheduleId/execute', asyncHandler<ExecutionScheduleRequest, ExecutionResponseWriter>(agentExecutionController.executeSchedule));

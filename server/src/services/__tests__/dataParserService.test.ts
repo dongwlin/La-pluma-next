@@ -82,13 +82,59 @@ async function createFixture(): Promise<Fixture> {
   };
 }
 
-function depotLogLine(counts: Record<string, number>, done = true): string {
-  const escaped = JSON.stringify(counts).replace(/"/g, '\\"');
-  return `[2026-10-27 10:00:00] {"what": "DepotInfo", "details": {"done":${done}, "data": "${escaped}"}}`;
+const CALLBACK_PREFIX = '[2026-10-27 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | ';
+
+/** MaaCore 按字段名字典序序列化：`class`、`details`、`subtask`、`taskchain` 在前，`what` 在最后。 */
+function callbackLine(event: string, payload: Record<string, unknown>): string {
+  return `${CALLBACK_PREFIX}${event} ${JSON.stringify(payload)}`;
 }
 
-function operBoxLogLine(operators: Record<string, unknown>[], done = true): string {
-  return `[2026-10-27 10:00:00] {"class":"OperBoxInfo","what":"OperBoxInfo","details":{"done":${done},"own_opers":${JSON.stringify(operators)}}}`;
+function depotTaskLine(event: 'TaskChainStart' | 'TaskChainCompleted' | 'TaskChainError'): string {
+  return callbackLine(event, { taskchain: 'Depot', taskid: 1, uuid: 'fixture' });
+}
+
+function operBoxTaskLine(event: 'TaskChainStart' | 'TaskChainCompleted' | 'TaskChainError'): string {
+  return callbackLine(event, { taskchain: 'OperBox', taskid: 1, uuid: 'fixture' });
+}
+
+function depotInfoLine(counts: Record<string, unknown>, done = true): string {
+  return callbackLine('SubTaskExtraInfo', {
+    class: 'asst::DepotRecognitionTask',
+    details: { data: JSON.stringify(counts), done },
+    subtask: 'DepotRecognitionTask',
+    taskchain: 'Depot',
+    taskid: 1,
+    uuid: 'fixture',
+    what: 'DepotInfo'
+  });
+}
+
+function operBoxInfoLine(operators: Record<string, unknown>[], done = true): string {
+  return callbackLine('SubTaskExtraInfo', {
+    class: 'asst::OperBoxRecognitionTask',
+    details: { done, own_opers: operators },
+    subtask: 'OperBoxRecognitionTask',
+    taskchain: 'OperBox',
+    taskid: 1,
+    uuid: 'fixture',
+    what: 'OperBoxInfo'
+  });
+}
+
+function depotRun(counts: Record<string, unknown>, done = true): string[] {
+  return [
+    depotTaskLine('TaskChainStart'),
+    depotInfoLine(counts, done),
+    ...(done ? [depotTaskLine('TaskChainCompleted')] : [])
+  ];
+}
+
+function operBoxRun(operators: Record<string, unknown>[], done = true): string[] {
+  return [
+    operBoxTaskLine('TaskChainStart'),
+    operBoxInfoLine(operators, done),
+    ...(done ? [operBoxTaskLine('TaskChainCompleted')] : [])
+  ];
 }
 
 async function writeItemFixture(fixture: Fixture): Promise<void> {
@@ -190,7 +236,7 @@ describe('parseDepotData', () => {
     const fixture = await createFixture();
     await writeItemFixture(fixture);
     await writeFile(fixture.maaLogPath, [
-      depotLogLine({ 30011: 5, 99999: 2 }),
+      ...depotRun({ 30011: 5, 99999: 2 }),
       'unrelated log line'
     ].join('\n'), 'utf-8');
 
@@ -215,17 +261,129 @@ describe('parseDepotData', () => {
     assert.deepEqual(saved.items, result.items);
   });
 
-  it('prefers the last completed DepotInfo payload', async () => {
+  it('parses the real MaaCore field order where details precedes what', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    await writeFile(fixture.maaLogPath, depotInfoLine({ 30011: 5 }), 'utf-8');
+
+    const result = expectSuccess(await parseDepotData(fixture.ports));
+
+    assert.equal(result.items[0].count, 5);
+  });
+
+  it('parses a legacy bare payload line without a callback prefix or taskchain', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    await writeFile(fixture.maaLogPath, JSON.stringify({
+      what: 'DepotInfo',
+      details: { data: JSON.stringify({ 30011: 5 }), done: true }
+    }), 'utf-8');
+
+    const result = expectSuccess(await parseDepotData(fixture.ports));
+
+    assert.equal(result.items[0].count, 5);
+  });
+
+  it('does not pair a DepotInfo event with data from a later callback', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    const unrelated = callbackLine('SubTaskExtraInfo', {
+      class: 'asst::StageDropsTask',
+      details: { data: JSON.stringify({ 30011: 99 }), done: true },
+      subtask: 'Fight',
+      taskchain: 'Fight',
+      taskid: 2,
+      uuid: 'fixture',
+      what: 'StageDrops'
+    });
+    await writeFile(fixture.maaLogPath, [
+      ...depotRun({ 30011: 5 }),
+      unrelated
+    ].join('\n'), 'utf-8');
+
+    const result = expectSuccess(await parseDepotData(fixture.ports));
+
+    assert.equal(result.items[0].count, 5);
+  });
+
+  it('uses only the latest recognition run and keeps the previous cache when that run is incomplete', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    const previous = {
+      timestamp: '2026-10-26T00:00:00.000Z',
+      itemCount: 1,
+      items: [{ id: '30011', name: '源岩', count: 1, icon: '30011.png', iconId: 'ROCK', classifyType: 'NORMAL', sortId: 10001 }]
+    };
+    await writeFile(join(fixture.dataDir, 'depot.json'), JSON.stringify(previous), 'utf-8');
+    await writeFile(fixture.maaLogPath, [
+      ...depotRun({ 30011: 3 }),
+      ...depotRun({ 30011: 9 }, false)
+    ].join('\n'), 'utf-8');
+
+    expectError(await parseDepotData(fixture.ports), '解析仓库数据失败');
+
+    const cached = await getDepotData(fixture.ports);
+    assert.deepEqual(cached, previous);
+  });
+
+  it('keeps the last completed payload when a partial update follows in the same run', async () => {
     const fixture = await createFixture();
     await writeItemFixture(fixture);
     await writeFile(fixture.maaLogPath, [
-      depotLogLine({ 30011: 3 }, true),
-      depotLogLine({ 30011: 9 }, false)
+      depotTaskLine('TaskChainStart'),
+      depotInfoLine({ 30011: 3 }, true),
+      depotInfoLine({ 30011: 9 }, false)
     ].join('\n'), 'utf-8');
 
     const result = expectSuccess(await parseDepotData(fixture.ports));
 
     assert.equal(result.items[0].count, 3);
+  });
+
+  it('does not fall back to a completed run after a later truncated run fragment', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    const previous = {
+      timestamp: '2026-10-26T00:00:00.000Z',
+      itemCount: 1,
+      items: [{ id: '30011', name: '源岩', count: 1, icon: '30011.png', iconId: 'ROCK', classifyType: 'NORMAL', sortId: 10001 }]
+    };
+    await writeFile(join(fixture.dataDir, 'depot.json'), JSON.stringify(previous), 'utf-8');
+    await writeFile(fixture.maaLogPath, [
+      ...depotRun({ 30011: 3 }),
+      depotInfoLine({ 30011: 9 }, false)
+    ].join('\n'), 'utf-8');
+
+    expectError(await parseDepotData(fixture.ports), '解析仓库数据失败');
+
+    assert.deepEqual(await getDepotData(fixture.ports), previous);
+  });
+
+  it('returns null instead of the previous run when the latest run has no payload yet', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    await writeFile(fixture.maaLogPath, [
+      ...depotRun({ 30011: 3 }),
+      depotTaskLine('TaskChainStart')
+    ].join('\n'), 'utf-8');
+
+    assert.equal(await parseDepotData(fixture.ports), null);
+    assert.equal(await getDepotData(fixture.ports), null);
+  });
+
+  it('takes the last payload in a completed run after its progress events', async () => {
+    const fixture = await createFixture();
+    await writeItemFixture(fixture);
+    await writeFile(fixture.maaLogPath, [
+      depotTaskLine('TaskChainStart'),
+      depotInfoLine({ 30011: 3 }, false),
+      depotInfoLine({ 30011: 9 }, true),
+      depotTaskLine('TaskChainCompleted')
+    ].join('\n'), 'utf-8');
+
+    const result = expectSuccess(await parseDepotData(fixture.ports));
+
+    assert.equal(result.items[0].count, 9);
   });
 
   it('returns null when the log has no DepotInfo payload', async () => {
@@ -238,8 +396,7 @@ describe('parseDepotData', () => {
   it('fails the recognition when the DepotInfo payload is not a count map', async () => {
     const fixture = await createFixture();
     await writeItemFixture(fixture);
-    const escaped = JSON.stringify({ 30011: 'five' }).replace(/"/g, '\\"');
-    await writeFile(fixture.maaLogPath, `{"what": "DepotInfo", "details": {"done": true, "data": "${escaped}"}}`, 'utf-8');
+    await writeFile(fixture.maaLogPath, depotInfoLine({ 30011: 'five' }), 'utf-8');
 
     expectError(await parseDepotData(fixture.ports), '解析仓库数据失败');
   });
@@ -249,7 +406,7 @@ describe('parseDepotData', () => {
     await writeFile(fixture.itemIndexPath, JSON.stringify({
       30011: { name: '源岩', icon: '30011.png', classifyType: 'NORMAL', sortId: 10001 }
     }), 'utf-8');
-    await writeFile(fixture.maaLogPath, depotLogLine({ 30011: 1 }), 'utf-8');
+    await writeFile(fixture.maaLogPath, depotRun({ 30011: 1 }).join('\n'), 'utf-8');
 
     let fetchCount = 0;
     const ports: DataParserPorts = {
@@ -275,7 +432,7 @@ describe('parseDepotData', () => {
   it('keeps cached index data for a path after the file changes on disk', async () => {
     const fixture = await createFixture();
     await writeItemFixture(fixture);
-    await writeFile(fixture.maaLogPath, depotLogLine({ 30011: 1 }), 'utf-8');
+    await writeFile(fixture.maaLogPath, depotRun({ 30011: 1 }).join('\n'), 'utf-8');
 
     const first = expectSuccess(await parseDepotData(fixture.ports));
     assert.equal(first.items[0].name, '源岩');
@@ -293,7 +450,7 @@ describe('parseDepotData', () => {
     }), 'utf-8');
     await mkdir(join(other.dir, 'resource', 'gamedata', 'excel'), { recursive: true });
     await writeFile(other.itemTablePath, JSON.stringify({ items: { 30011: { iconId: 'ROCK' } } }), 'utf-8');
-    await writeFile(other.maaLogPath, depotLogLine({ 30011: 1 }), 'utf-8');
+    await writeFile(other.maaLogPath, depotRun({ 30011: 1 }).join('\n'), 'utf-8');
 
     const reloaded = expectSuccess(await parseDepotData(other.ports));
     assert.equal(reloaded.items[0].name, '另一份索引');
@@ -314,7 +471,7 @@ describe('parseOperBoxData', () => {
     const operators = [
       { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, elite: 0, level: 1, potential: 6, own: true }
     ];
-    await writeFile(fixture.maaLogPath, operBoxLogLine(operators), 'utf-8');
+    await writeFile(fixture.maaLogPath, operBoxRun(operators).join('\n'), 'utf-8');
 
     const result = expectSuccess(await parseOperBoxData(fixture.ports));
 
@@ -325,13 +482,29 @@ describe('parseOperBoxData', () => {
     assert.deepEqual(saved.data, operators);
   });
 
-  it('keeps partial results and still records them', async () => {
+  it('does not overwrite the cached operator list when the latest recognition is incomplete', async () => {
     const fixture = await createFixture();
-    await writeFile(fixture.maaLogPath, operBoxLogLine([{ id: 'char_1001_amiya', name: '阿米娅' }], false), 'utf-8');
+    const previous = {
+      timestamp: '2026-10-26T00:00:00.000Z',
+      operCount: 1,
+      data: [{ id: 'char_1001_amiya', name: '阿米娅', rarity: 5, own: true }]
+    };
+    await writeFile(join(fixture.dataDir, 'operbox.json'), JSON.stringify(previous), 'utf-8');
+    await writeFile(fixture.maaLogPath, operBoxRun([{ id: 'char_1001_amiya', name: '阿米娅' }], false).join('\n'), 'utf-8');
 
-    const result = expectSuccess(await parseOperBoxData(fixture.ports));
+    expectError(await parseOperBoxData(fixture.ports), '解析干员数据失败');
 
-    assert.equal(result.operCount, 1);
+    assert.deepEqual(await getOperBoxData(fixture.ports), previous);
+  });
+
+  it('returns null instead of the previous run when the latest run has no payload yet', async () => {
+    const fixture = await createFixture();
+    await writeFile(fixture.maaLogPath, [
+      ...operBoxRun([{ id: 'char_1001_amiya', name: '阿米娅' }]),
+      operBoxTaskLine('TaskChainStart')
+    ].join('\n'), 'utf-8');
+
+    assert.equal(await parseOperBoxData(fixture.ports), null);
   });
 
   it('returns null when the log has no OperBoxInfo payload', async () => {
@@ -343,11 +516,15 @@ describe('parseOperBoxData', () => {
 
   it('fails the recognition when own_opers is not a list', async () => {
     const fixture = await createFixture();
-    await writeFile(
-      fixture.maaLogPath,
-      '{"class":"OperBoxInfo","what":"OperBoxInfo","details":{"done":true,"own_opers":{"a":1}}}',
-      'utf-8'
-    );
+    await writeFile(fixture.maaLogPath, callbackLine('SubTaskExtraInfo', {
+      class: 'asst::OperBoxRecognitionTask',
+      details: { done: true, own_opers: { a: 1 } },
+      subtask: 'OperBoxRecognitionTask',
+      taskchain: 'OperBox',
+      taskid: 1,
+      uuid: 'fixture',
+      what: 'OperBoxInfo'
+    }), 'utf-8');
 
     expectError(await parseOperBoxData(fixture.ports), '解析干员数据失败');
   });
