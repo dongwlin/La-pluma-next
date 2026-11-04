@@ -1,3 +1,17 @@
+/**
+ * Agent Run 记录、幂等与持久化
+ *
+ * Run 是执行身份与终态的唯一来源（见 docs/architecture/execution-lifecycle.md）。
+ * 本模块只维护记录本身：创建/转换/停止意图/幂等与磁盘快照；设备租约、子进程与
+ * 流程进度是另外的投影，由调用方组合。
+ *
+ * 类型边界：
+ * - 生命周期状态是有穷联合，写入路径只接受已建模的转换；
+ * - 磁盘快照从 `unknown` 逐字段校验；身份、状态、时间戳与序号不合法时 fail-closed，
+ *   不删除文件、不绕开准入；
+ * - 存储版本保持 `version: 1`，本模块不迁移旧格式。
+ */
+
 import { createHash, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { agentError } from '../utils/apiHelper.ts';

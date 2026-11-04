@@ -11,6 +11,23 @@ import { prepareMaaTaskCache } from './maaTaskCacheService.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
 import { parsePositiveInteger } from '../config/runtimeConfig.ts';
 
+/**
+ * MAA CLI 子进程执行与进程状态投影。
+ *
+ * 本模块是唯一持有可写子进程状态（taskStatus）和实时日志缓冲的位置：
+ * - taskStatus 只回答“当前是否有受管子进程、任务名与停止请求”，不能当作
+ *   流程或 Run 终态；执行身份归 agentRunService，设备变更权归
+ *   executionCoordinatorService 的租约，是彼此独立的对象。后台 spawn 与
+ *   登记了受管任务名的维护 execFile 子进程（Core 安装/更新）都写入同一状态。
+ * - 命令是否属于设备变更、是否需要先取得租约由 maaExecutionService 决定；
+ *   本模块只提供 spawn/execFile 端口、状态更新、停止信号和输出诊断。
+ * - spawn、execFile、停止信号与强制终止计时器都可经端口注入，测试可用假
+ *   子进程验证状态与停止升级，不需要真实 MAA CLI 或进程组。
+ *
+ * 结构化日志服务名保持 `MaaService`：既有日志关联约定按该名称读取执行日志，
+ * 拆分模块不改变对外日志表面。
+ */
+
 const execFilePromise = promisify(execFile);
 
 const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;

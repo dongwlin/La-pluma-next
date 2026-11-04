@@ -1,3 +1,18 @@
+/**
+ * 执行关闭协调
+ *
+ * 运行时关闭中的执行收尾把“停止触发源之后的动作”集中到一处：
+ * 1. 关闭执行准入闸门：Run 准入与设备租约都拒绝新执行（见 executionAdmissionService）；
+ * 2. 只对本实例记录的活动 run 写入停止意图，并停止本进程当前的任务进程与流程；
+ * 3. 在预算内等待执行器按实际结果结算；仍未结算的 run 记为 `interrupted`
+ *    （`recovery.source=server_shutdown`），绝不写成成功；
+ * 4. 在关闭返回前等待 Run 存储落盘；落盘失败让本步骤失败，由组装入口明确上报。
+ *
+ * 预算来自生命周期为关闭步骤分配的份额（`RuntimeLifecycleCloseContext.timeoutMs`），
+ * 本模块只在该份额内等待，并预留一小段用于落盘。重复关闭由生命周期复用首次摘要，
+ * 本步骤不会重复写入停止意图；部分停止失败只记录并继续其余收尾。
+ */
+
 import {
   installExecutionAdmissionGate
 } from './executionAdmissionService.ts';

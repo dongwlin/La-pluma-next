@@ -1,3 +1,16 @@
+/**
+ * 覆盖率门禁：固定测试集合、统计范围与阈值。
+ *
+ * - 测试集合来自 `testFiles.ts`，与 `run-tests` 完全一致；每个文件由 Node 测试
+ *   运行器放进独立子进程，`--test-concurrency=1` 保持逐文件串行，进程隔离不变。
+ * - 统计范围固定为服务端 TypeScript 源，测试与 fixture 目录不进入报告；脚本会
+ *   在运行后复核报告，排除规则失效时直接失败，而不是悄悄把测试代码算进覆盖率。
+ * - 阈值是渐进下限：以领取基线的实测值为依据向下取整，覆盖率上升后只上调；
+ *   需要下调必须在评审中说明原因，不能为通过某次改动而降低。
+ * - 已知限制：Node 只统计被测试加载过的文件，未被任何测试导入的模块不会出现在
+ *   报告里；覆盖率因此不能替代行为测试，关键失败分支仍按契约补用例。
+ */
+
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

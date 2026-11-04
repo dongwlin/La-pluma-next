@@ -70,6 +70,7 @@ const { createLaPlumaApp } = await import('../app.ts');
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
+// 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。
 for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'Scheduler', 'AgentRunService']) {
   loggerManager.getLogger(loggerName).enableConsole = false;
 }

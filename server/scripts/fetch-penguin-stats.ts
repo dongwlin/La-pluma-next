@@ -1,3 +1,19 @@
+/**
+ * 从企鹅物流（penguin-stats.io）获取真实掉落统计数据
+ *
+ * 数据源：企鹅物流公开 API v2（无需鉴权，与 maa-cli --report-to-penguin 的上报渠道同源）
+ * - /PenguinStats/api/v2/stages  关卡表：stageId、游戏内代号 code、理智消耗 apCost、所属章节
+ * - /PenguinStats/api/v2/result/matrix  掉落矩阵：每关每物品的样本次数与总掉落数
+ * - /PenguinStats/api/v2/zones  章节表：用于给关卡标记章节类型（主线/资源/别传等）
+ *
+ * 输出 server/data/penguin-drop-data.json：
+ * - stages：stageId -> { code, apCost, zoneId, zoneType }
+ * - dropMatrix：物品Id -> 该物品在各关卡的 { stageId, expected 期望掉落/次, samples 样本数 }（按样本数降序）
+ *
+ * 注意：企鹅物流矩阵只保留当前可刷关卡的数据，限时活动关过期后条目即被移除，
+ * 因此矩阵条目本身就是「该关现在可刷」的过滤器，无需额外维护活动开放期数据。
+ */
+
 import { writeFile } from 'node:fs/promises';
 import {
   errorMessage,
@@ -71,6 +87,11 @@ export function parseZoneTypes(payload: unknown): Map<string, string> {
   return zoneTypes;
 }
 
+/**
+ * 解析关卡表：跳过无代号或无理智消耗的关卡（剧情关、教学关等不可刷关卡）
+ * 以及磨难难度关（tough_*）：磨难与普通关显示代号相同（如 10-2），
+ * 但 maa fight 只会跑普通难度，磨难关的掉落统计不能混入选关
+ */
 export function parseStages(stageListPayload: unknown, zoneTypes: ReadonlyMap<string, string>): Record<string, PenguinStageInfo> {
   const stageList = expectArray(stageListPayload, STAGE_SOURCE, '关卡列表');
   const stages: Record<string, PenguinStageInfo> = {};
@@ -100,6 +121,10 @@ export function parseStages(stageListPayload: unknown, zoneTypes: ReadonlyMap<st
   return stages;
 }
 
+/**
+ * 构建按物品聚合的掉落矩阵：
+ * 同一 (stageId, itemId) 可能有多段统计窗口（活动复刻等），按 qty/time 加权合并
+ */
 export function buildDropMatrix(matrixPayload: unknown): { dropMatrix: Record<string, PenguinDropEntry[]>; entryCount: number } {
   const matrix = expectRecord(matrixPayload, MATRIX_SOURCE);
   const entries = optionalArray(matrix.matrix, MATRIX_SOURCE, 'matrix') ?? [];

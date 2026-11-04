@@ -1,3 +1,22 @@
+/**
+ * 服务端类型与职责护栏的分析核心。
+ *
+ * 只做静态事实判断，不运行服务端、不启动子进程：
+ * - 类型逃生舱：显式 `any`、TypeScript 抑制指令（`@ts-` 系列注释）、经
+ *   `any` / `unknown` 的双重断言；
+ * - 分层方向：`utils` / `config` → `services` → `controllers` → `routes` →
+ *   `app.ts` / `server.ts` 单向，`scripts/` 只作为工具入口，生产模块不得反向依赖它；
+ * - 静态导入环：静态 `import` / `export ... from` 形成的环（动态 `import()` 是
+ *   有意的延迟加载断环手段，不在本检查范围，见 docs）；
+ * - 未归层文件：新增顶层模块或目录必须先归入既有层，避免无声绕过依赖检查。
+ *
+ * 测试与 fixture（`__tests__/` 下）不进入分层与依赖环分析，但仍检查类型逃生舱：
+ * 测试可以为了构造状态而接触内部实现，不能因此放宽生产代码的类型边界。
+ *
+ * 存量例外只允许登记在 `guardrails-baseline.json`：按规则与文件记录数量、理由和
+ * 移除条件。新文件或超出登记数量的违规直接失败；违规数下降后应同步下调基线。
+ */
+
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
@@ -27,7 +46,9 @@ export interface BaselineEntry {
   rule: GuardrailRule;
   file: string;
   count: number;
+  /** 为什么暂时保留；必须说明当前无法消除的具体原因。 */
   reason: string;
+  /** 移除条件：满足后删除该条目与对应违规。 */
   remove: string;
 }
 

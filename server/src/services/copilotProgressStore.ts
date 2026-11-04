@@ -1,3 +1,15 @@
+/**
+ * 共享作业进度的 JSON 读改写存储
+ *
+ * copilot-progress.json 与 activity-copilot-progress.json 都是"单文件多键"的
+ * 共享状态：不同键（作业集 / 活动代号）的并发更新必须互不覆盖，损坏文件必须
+ * 可识别而不是静默清零。原子替换、同路径排队串行与完整读改写全部由 fileHelper
+ * 承担，本模块只绑定存储路径并提供注入点。
+ *
+ * 读取值显式为 unknown：两种进度文件的键与值形状不同，由各领域服务在读取处
+ * 收窄；本模块不冒充校验，也不替调用方决定损坏数据的降级方式。
+ */
+
 import { readJsonFile, updateJsonFile } from '../utils/fileHelper.ts';
 
 export interface CopilotProgressStoreOptions {

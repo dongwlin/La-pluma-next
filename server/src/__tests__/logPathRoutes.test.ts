@@ -10,6 +10,10 @@ import type { MaaLogFileContent, MaaLogFileEntry } from '../services/maaLogFileS
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 import { loggerManager } from '../utils/logger.ts';
 
+// 相关环境变量均在模块导入前设置：MAA_CLI_PATH 由被测模块在导入时读取，
+// 测试因此使用假 CLI 与临时日志目录，不读取真实设备日志。
+// webrtcSignalingGateway 及其传递依赖会在导入时读取 MAA_CLI_PATH，
+// 必须等环境变量就绪后再动态导入，不能用顶层静态导入。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-log-path-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const outsideDir = join(fixtureDir, 'outside');

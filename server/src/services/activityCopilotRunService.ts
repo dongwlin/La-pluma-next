@@ -28,6 +28,16 @@ import { createCopilotProgressStore } from './copilotProgressStore.ts';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 
+/**
+ * 活动作业执行：把候选发现结果收窄为执行计划，再交给作业集或已选条目执行。
+ *
+ * - 候选、持久进度与用户配置都按 unknown 收窄；本模块不重新发现候选，
+ *   也不复制 MAA 执行状态。
+ * - 计划构建是纯函数；设备副作用只发生在 `runCurrentActivityCopilots` 的
+ *   兜底资源写入与实际执行（两者都在租约内或执行入口内）。
+ * - 未选择或未就绪的计划不执行任何条目；完成进度只记录实际结算的条目。
+ */
+
 const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 活动完成进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
 // 默认位置保持 server/data/activity-copilot-progress.json，可用环境变量注入隔离。

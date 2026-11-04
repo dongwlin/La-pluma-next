@@ -15,6 +15,11 @@ import type { DailyStageOverview } from '../services/notificationService.ts';
 import type { DepotFile, OperBoxFile, OperatorSummary } from '../services/dataParserService.ts';
 import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
 
+// 真实 HTTP 回归：状态、Run 查询、日志、掉落与游戏数据读取已从 agent.ts
+// 拆到独立 router，这里通过 createLaPlumaApp 验证挂载、鉴权、query 归一化、
+// 日志路径与生产静态 fallback 顺序保持不变。
+// 环境变量必须在导入被测模块前就绪：MAA_CLI_PATH 与 XDG_* 由服务在导入或
+// 调用时读取，测试只使用临时目录与假 CLI / 假 ADB，不触碰真实设备。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-read-routes-'));
 const maaLogDir = join(fixtureDir, 'maa-logs');
 const dropDir = join(fixtureDir, 'drop-records');
@@ -279,11 +284,13 @@ describe('moved agent read routes keep authentication and response contracts', (
     const afterFirst = await adbCalls();
     assert.equal(afterFirst.filter(line => line === 'version').length, 1);
 
+    // TTL 内的第二个请求复用四项外部探测，不再启动 ADB。
     const second = await readBody<ApiSuccessResponse<AgentStatusPayload>>(await fetch(url));
     assert.deepEqual(await adbCalls(), afterFirst);
     assert.deepEqual(second.data.device, first.data.device);
     assert.deepEqual(second.data.screen, first.data.screen);
 
+    // 并发突发共享同一次在途探测，而不是每个请求各跑一遍 ADB。
     resetAgentStatusProbeCacheForTests();
     await writeFile(adbCallLog, '');
     await Promise.all([fetch(url), fetch(url), fetch(url)]);

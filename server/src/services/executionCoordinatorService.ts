@@ -1,3 +1,14 @@
+/**
+ * 设备变更租约
+ *
+ * 协作进程通过锁文件表达“谁在变更设备”。租约只做互斥，不记录业务结果：
+ * - `held`：锁记录的 PID 仍存活；
+ * - `stale`：锁文件仍存在但记录的进程已不存活，可以回收；
+ * - `unknown`：锁文件存在但无法解析，必须按未知处理，不能当作空闲。
+ *
+ * 同一异步流内的重入只增加深度，不重复写锁；关闭开始时拒绝新的设备变更权。
+ */
+
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
 import { link, mkdir, open, readFile, unlink } from 'fs/promises';

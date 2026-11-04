@@ -17,6 +17,9 @@ const __dirname = path.dirname(__filename);
 
 const GAME_DATA_BASE = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata';
 
+// 官方 CDN 上只有 avatar/ 目录（用户头像），没有干员、技能、物品图片；
+// 这些图片需要从第三方来源获取，或使用降级方案（首字母、图标等）。
+// 设为 null 表示不生成图片 URL。
 const CDN_BASE: string | null = null;
 export const OUTPUT_DIR = path.join(__dirname, '../data');
 

@@ -1,3 +1,15 @@
+/**
+ * 服务端语法检查入口。
+ *
+ * 服务端源码全部为 TypeScript；Node 24 的类型擦除让 `node --check` 可以直接解析
+ * `.ts`，并顺带拒绝 `enum`、`namespace` 等不可擦除语法。本脚本逐个文件启动独立
+ * 进程，不依赖 TypeScript 编译器，因此 `build` 在只安装生产依赖时也能运行。
+ *
+ * 同时拒绝 `server/` 下残留的 `.js` / `.mjs` / `.cjs` 源码：Node 会直接运行它们，
+ * 但类型门禁与质量护栏都看不到，等于绕过检查。工具配置若确实只能写成 JavaScript，
+ * 需要在这里登记并说明理由，不能默默放入源码目录。
+ */
+
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

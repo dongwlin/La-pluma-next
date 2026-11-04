@@ -1,3 +1,17 @@
+/**
+ * 执行准入闸门
+ *
+ * 运行时关闭一旦开始，本实例不再接受新的设备执行。HTTP 执行入口、定时触发、
+ * Telegram 指令、维护更新与作业集继续都经过同一个闸门：
+ * - 纳入 Run 的入口在 `beginAgentRun` 处拒绝，返回 `AGENT_EXECUTION_SHUTTING_DOWN`；
+ * - 直接占用设备租约的入口在 `acquireMaaExecutionLease` 处拒绝，返回
+ *   `MAA_EXECUTION_SHUTTING_DOWN`。
+ *
+ * 闸门只描述本进程。已经开始的执行由关闭流程停止并按实际结果结算；闸门本身不
+ * 停止任何资源，也不跨实例协调。每次组装启动安装一个新的闸门，因此进程内重新
+ * 组装（测试或进程内重启）不会继承上一份关闭状态。
+ */
+
 import { agentError } from '../utils/apiHelper.ts';
 
 export type ExecutionAdmissionErrorCode =

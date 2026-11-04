@@ -60,6 +60,8 @@ export function createOperatorQuotesStore({ quotesPath }: { quotesPath: string }
     path: quotesPath,
     // 缺失文件按 null 返回（由服务层决定兜底语义）；解析失败抛“读取 JSON 文件失败”。
     load: () => readJsonFile(quotesPath, null),
+    // 读改写整体在同一排队单元内执行：并发修改互不丢失，写回为临时文件原子替换，
+    // 失败时保留原文件内容。updateFn 抛出错误即中断本次读改写且不产生写入。
     update: updateFn => updateJsonFile(quotesPath, updateFn, null)
   }
 }
