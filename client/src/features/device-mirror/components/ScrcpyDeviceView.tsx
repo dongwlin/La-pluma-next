@@ -406,7 +406,7 @@ export default function ScrcpyDeviceView({
                 aria-label={previewStatusLabel}
                 title={previewStatusLabel}
               />
-              <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white!">{isCompact ? '模拟器画面' : '模拟器实时预览'}</span>
+              <span className="scrcpy-view-title text-sm font-semibold text-gray-900 dark:text-white!">设备画面</span>
               {!isCompact && (
                 <span className="scrcpy-view-status text-xs text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                   {previewStatusLabel}

@@ -16,7 +16,7 @@ export function DeviceMonitorLayout({ children }: { children: ReactNode }) {
   return (
     <div className="task-monitor-layout">
       <div className="task-monitor-main">{children}</div>
-      <aside className="task-monitor-column" aria-label="模拟器实时预览">
+      <aside className="task-monitor-column" aria-label="设备画面">
         <DeviceMonitorPanel />
       </aside>
     </div>
