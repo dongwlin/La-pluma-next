@@ -82,12 +82,13 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 - `maaCallbackService.parseMaaCallbackEvents` 只保留 `Assistant::append_callback | ` 标记行中 `taskchain` 与目标值一致的 JSON 对象载荷；断行、非法 JSON、非对象载荷与其他 taskchain 一律跳过，因此增量日志从半行开始也不会产生错误事件（`server/src/services/maaCallbackService.ts:12,34-69`）。
 - `details`、`what`、`class`、子任务名与字符串列表都由读取函数逐字段收窄；缺字段或类型不符按"未观察到"处理，不会中断解析（`server/src/services/maaCallbackService.ts:72-106`）。
-- 五个结果服务都只描述单次步骤的检查结论（`success`/`failed`/`skipped`），不能当作整个 Run 的终态；`skipped`、`failed` 与 `success` 不可混同。
+- 六个结果服务都只描述单次步骤的检查结论（`success`/`failed`/`skipped`），不能当作整个 Run 的终态；`skipped`、`failed` 与 `success` 不可混同。
 - award 不依赖结构化回调：按日志中 `"first":["<BeginTask>"]` 分段和分段内 `"task":"..."` 事件判断六个领取项是否已领取；未启用任何项目返回单项 `skipped`，分段缺失时回退为"流程已完成"（`server/src/services/awardResultService.ts:84-153`）。
 - recruit 解析 `Recruit` taskchain：统计开始/收取/加急/刷新次数与最高星级，`TaskChainError` 为 `failed`，保留标签或许可不足为 `skipped`；无事件时回退"流程已完成"（`server/src/services/recruitResultService.ts:60-174`）。
 - infrast 解析 `Infrast` taskchain：按 `class` 字段映射九类设施，识别收产物、换班、无人机、线索收送与交流、专精训练；未选择设施返回 `skipped`（`server/src/services/infrastResultService.ts:60-192`）。
 - mall 解析 `Mall` taskchain：好友访问、信用购物、信用作战三项严格 `false` 才整体跳过；购买计数只统计 `exec_times` 缺失或为 1 的 `CreditShop-Bought` 事件（`server/src/services/mallResultService.ts:40-139`）。
 - fight 基于任务总结、命令输出与错误文本：理智耗尽、关卡未开放、剿灭奖励已领完归为 `skipped`，其余错误为 `failed`；理智判定同时检查输出短语与 Summary 段（`server/src/services/fightResultService.ts:56-178`）。
+- 游戏任务解析 `OperProgress` 与 `SwitchTheme` taskchain：培养按 `OperProgressDetail` 与 `OperProgressSummary` 汇总成功、失败与跳过，并按配置计划反推本轮未启动的专精目标为 `deferredMastery`（Core 每轮只启动一项专精训练且不发跳过回调）；主题按 `SwitchThemeByName*` 子任务与 `SwitchThemeNotFound`、`SwitchThemeSkipped` 判定；缺少有效回调时保持 `observed: false`（`server/src/services/gameTaskResultService.ts:79-301`）。
 
 ### 作业集逐项进度与文件加载事件
 
@@ -119,7 +120,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - Telegram 渠道文本消息用 `sendMessage` 加 Markdown；图片消息用原生 FormData/Blob 构造 multipart `sendPhoto`。图片超过 10MB 或三次重试（间隔 2 秒、4 秒）后仍失败时回退纯文本消息（`server/src/services/notificationService.ts:439-548`）。
 - 渠道凭据（botToken）只存在于运行时配置，不进入发送结果 DTO 或日志；`getConfig` 返回完整配置且与运行时配置不共享引用（`server/src/services/notificationService.ts:7-11,625-629`）。
 - `testChannel` 支持仅用于本次测试的配置覆盖，走同一解析边界，不写回运行时配置（`server/src/services/notificationService.ts:707-727`）。
-- `buildTaskCompletionMessage` 按 actions/reports 中的失败与跳过条目归一化通知级别与标题（success/warning/info），并组装执行结果、掉落汇报、任务总结、跳过与失败任务段落（`server/src/services/notificationService.ts:803-972`）。
+- `buildTaskCompletionMessage` 按 actions/reports 中的失败与跳过条目归一化通知级别与标题（success/warning/info），并组装执行结果、掉落汇报、任务总结、跳过与失败任务段落（`server/src/services/notificationService.ts:804-983`）；游戏任务动作在汇总行下追加逐干员的培养结果、原因与本轮未执行的专精目标。
 - Telegram Bot 是独立的命令接收通道，进程级默认实例绑定真实出站端口与 MAA 服务（`server/src/services/telegramBotService.ts:491-506,1664-1671`）。
 - 同一实例同一时刻只有一个轮询会话：`init` 先同步停止旧会话再按新配置启动；旧会话的在途请求被中止，迟到更新不再派发命令（`server/src/services/telegramBotService.ts:625-656`）。
 - 长轮询停留 30 秒、请求时限 40 秒，`getUpdates` 为 POST 且出站端口不自动重放；无更新间隔 2 秒、出错重试 5 秒；多实例 `Conflict: terminated by other getUpdates` 错误静默降级；offset 在派发更新时推进（`server/src/services/telegramBotService.ts:47-53,698-767`）。
