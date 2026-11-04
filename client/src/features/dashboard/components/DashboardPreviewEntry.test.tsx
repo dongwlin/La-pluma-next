@@ -87,6 +87,12 @@ describe('DashboardPreviewEntry', () => {
     expect(container.querySelector('[data-dashboard-preview-card]')?.getAttribute('aria-busy')).toBe('true')
   })
 
+  it('names the preview card header', async () => {
+    await act(async () => root.render(<DashboardPreviewEntry />))
+
+    expect(container.textContent).toContain('画面预览')
+  })
+
   it('names the status light from the connection state', async () => {
     preview.fallbackSnapshot = null
     preview.connectionState = 'off'

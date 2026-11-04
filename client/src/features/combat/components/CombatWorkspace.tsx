@@ -612,7 +612,7 @@ export default function CombatWorkspace() {
           </div>
         </div>
 
-        <aside className="combat-monitor-column" aria-label="模拟器实时预览">
+        <aside className="combat-monitor-column" aria-label="设备画面">
           <DeviceMonitorPanel
             className="combat-monitor-panel"
             surfaceClassName="combat-monitor-surface"

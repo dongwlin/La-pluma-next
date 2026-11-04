@@ -22,7 +22,7 @@ const DashboardPreviewEntry = memo(function DashboardPreviewEntry() {
             aria-label={statusText}
             title={statusText}
           />
-          <span className="truncate text-xs font-medium text-secondary">模拟器预览</span>
+          <span className="truncate text-xs font-medium text-secondary">画面预览</span>
         </div>
         <PreviewModeSegmented unavailable={!available} />
       </div>

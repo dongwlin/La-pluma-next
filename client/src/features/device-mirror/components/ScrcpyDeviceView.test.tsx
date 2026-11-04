@@ -589,6 +589,14 @@ describe('ScrcpyDeviceView automation availability', () => {
     expect(webrtcMock.connect).not.toHaveBeenCalled()
   })
 
+  it('labels the preview card as 设备画面 in both layouts', async () => {
+    await act(async () => root.render(<ScrcpyDeviceView enabled />))
+    expect(container.textContent).toContain('设备画面')
+
+    await act(async () => root.render(<ScrcpyDeviceView enabled variant="compact" />))
+    expect(container.textContent).toContain('设备画面')
+  })
+
   it('exposes shared mode controls in compact view while startup is busy', async () => {
     usePreviewStore.getState().setMode('live')
     await act(async () => root.render(<ScrcpyDeviceView enabled variant="compact" infrastructureLoading="preview" />))

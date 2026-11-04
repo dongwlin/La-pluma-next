@@ -146,7 +146,7 @@ export default function RoguelikeWorkspace() {
           }}
         />
 
-        <aside className="roguelike-monitor-column" aria-label="模拟器实时预览">
+        <aside className="roguelike-monitor-column" aria-label="设备画面">
           <DeviceMonitorPanel
             className="roguelike-monitor-panel"
             surfaceClassName="roguelike-monitor-surface"
