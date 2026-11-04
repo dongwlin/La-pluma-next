@@ -30,8 +30,6 @@
 使用 GHCR 预构建镜像，开箱即用。
 
 ```bash
-docker pull ghcr.io/dongwlin/la-pluma-next:latest
-
 docker run -d \
   --name la-pluma-next \
   -p 127.0.0.1:3055:3000 \
@@ -45,13 +43,13 @@ docker run -d \
   ghcr.io/dongwlin/la-pluma-next:latest
 ```
 
-`LA_PLUMA_TOKEN` 是必配项，用于保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。上面的端口映射只监听本机回环地址；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
+`LA_PLUMA_TOKEN` 是网络访问的必配项，用于保护 `/api/*` 与 WebRTC 票据入口；请替换为足够长的随机值。上面的端口映射只监听本机回环地址；需要手机或局域网访问时，确认 token 已配置并配合防火墙后再改为 `-p 3055:3000`。
 
 浏览器打开 [http://localhost:3055](http://localhost:3055)。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
 
 ### 方式 2: 本地安装
 
-先准备本地环境：
+先在本地准备好：
 
 - **Node.js** 24+
 - **pnpm** 12+
@@ -62,34 +60,14 @@ docker run -d \
 
 支持的系统与 MAA 目录位置见 [配置与跨平台支持](docs/guides/configuration.md)。
 
-#### 1. 克隆仓库
-
 ```bash
 git clone https://github.com/dongwlin/La-pluma-next.git
 cd La-pluma-next
-```
-
-#### 2. 安装依赖
-
-```bash
-# 安装前端与后端依赖（在仓库根目录执行一次即可）
 pnpm install
-```
-
-#### 3. 启动服务
-
-```bash
-# 同时启动前端和后端
 pnpm dev
-
-# 或分别启动
-pnpm dev:client  # 前端: http://localhost:5173
-pnpm dev:server  # 后端: http://localhost:3000
 ```
 
-#### 4. 访问应用
-
-打开浏览器访问 [http://localhost:5173](http://localhost:5173)
+`pnpm dev` 同时启动前端 [http://localhost:5173](http://localhost:5173) 与后端 [http://localhost:3000](http://localhost:3000)；也可以分别使用 `pnpm dev:client` 或 `pnpm dev:server`。开发文档与常用检查见 [开发文档](docs/development/README.md)。
 
 ## 📚 文档
 
@@ -97,16 +75,12 @@ pnpm dev:server  # 后端: http://localhost:3000
 
 | 文档 | 内容 |
 | --- | --- |
-| [架构与技术栈](docs/architecture/README.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
-| [服务端架构与请求契约](docs/server/README.md) | 服务端分层、请求管道、响应契约与测试入口 |
-| [Agent API 使用指南](docs/api/agent.md) | manifest/status/actions、执行流程、幂等与鉴权 |
 | [功能概览](docs/guides/features.md) | 控制台、自动化流程、作业与肉鸽、数据养成等详细功能 |
 | [部署指南](docs/guides/deployment.md) | Docker 镜像、环境变量、HTTPS/PWA、子路径与 Compose |
 | [配置与跨平台支持](docs/guides/configuration.md) | 运行平台、ADB 连接、Telegram 通知与 Bot 命令 |
-| [开发文档](docs/development/README.md) | 主要技术点与常用检查命令 |
-| [设计规范](DESIGN.md) | 设计原则、语义 token、布局、响应式与交互状态 |
-| [通用组件库](docs/frontend/components.md) | 通用组件 API、用法与组件接入约定 |
-| [维护说明](docs/development/maintaining.md) | 分支与合并、发布流程、容器镜像与兼容性标识 |
+| [Agent API 使用指南](docs/api/agent.md) | manifest/status/actions、执行流程、幂等与鉴权 |
+| [架构与技术栈](docs/architecture/README.md) | 整体架构、前端 UI 与响应式壳层、技术栈和项目结构 |
+| [开发文档](docs/development/README.md) | 主要技术点、样式与测试治理、常用检查命令 |
 
 ## 🤝 贡献
 
@@ -120,6 +94,5 @@ pnpm dev:server  # 后端: http://localhost:3000
 
 La Pluma Next 是 [La Pluma 原项目](https://github.com/mps233/La-pluma) 的社区维护分支，自 2026-10 起独立维护，不再跟随上游更新；项目名沿用《明日方舟》五星近卫干员 La Pluma（羽毛笔），上游作者：miaopasi、mps233。
 
-- [La Pluma 原项目](https://github.com/mps233/La-pluma) - 本项目的前身
 - [MAA (MaaAssistantArknights)](https://github.com/MaaAssistantArknights/MaaAssistantArknights) - 明日方舟游戏助手
 - [maa-cli](https://github.com/MaaAssistantArknights/maa-cli) - MAA 命令行工具
