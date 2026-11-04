@@ -782,6 +782,17 @@ function operatorDisplayName(detail: unknown): string | null {
   return roleLabel ? `${name}（${roleLabel}）` : name;
 }
 
+function hasStartedMasteryTraining(detail: Record<string, unknown>): boolean {
+  return Array.isArray(detail.skillMastery)
+    && detail.skillMastery.some(level => typeof level === 'number' && level > 0);
+}
+
+function resolveGameTaskResultDetailLabel(detail: Record<string, unknown>, resultDetail: string | null): string | null {
+  if (!resultDetail) return null;
+  if (resultDetail === 'Completed' && hasStartedMasteryTraining(detail)) return '已启动目标专精训练，等待完成';
+  return gameTaskResultDetailLabels[resultDetail] ?? resultDetail;
+}
+
 function gameTaskDetailLine(detail: unknown): string | null {
   if (!isRecord(detail)) return null;
   const operator = operatorDisplayName(detail);
@@ -789,7 +800,7 @@ function gameTaskDetailLine(detail: unknown): string | null {
   if (!operator || !result) return null;
   const resultLabel = gameTaskResultLabels[result] ?? result;
   const resultDetail = readTextField(detail, 'resultDetail');
-  const resultDetailLabel = resultDetail ? gameTaskResultDetailLabels[resultDetail] ?? resultDetail : null;
+  const resultDetailLabel = resolveGameTaskResultDetailLabel(detail, resultDetail);
   if (result === 'Skipped' && resultDetailLabel) return `   ◦ ${operator}：${resultDetailLabel}，${resultLabel}`;
   return resultDetailLabel
     ? `   ◦ ${operator}：${resultLabel}（${resultDetailLabel}）`

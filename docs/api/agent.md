@@ -162,7 +162,7 @@ Core 每轮执行最多启动一项专精训练。本次已经启动训练后，
 
 两类任务沿用现有 Run 身份、幂等、轮询与目标停止。结果动作的 `action` 分别为 `operprogress`、`switchtheme`，保留 `success`、`failed`、`skipped` 区别。独立任务成功或跳过的明细在 `run.result.actions`；确认游戏任务失败时返回 `AGENT_GAME_TASK_FAILED`（HTTP 422，`retryable: false`），Run 为 `failed`，明细保留在 `run.error.details.actions`。日常流程将动作合并到现有结果摘要，按步骤分别计数。
 
-`operprogress` 动作的 `details` 逐条保留干员名、职业、培养结果与原因，以及该条的精英阶段、技能等级或专精目标；执行详情按干员展示这些条目，`deferredMastery` 列出本轮未执行的专精目标，`deferredCount` 为其数量。`switchtheme` 不产生逐条明细。
+`operprogress` 动作的 `details` 逐条保留干员名、职业、培养结果与原因，以及该条的精英阶段、技能等级或专精目标；执行详情按干员展示这些条目，`deferredMastery` 列出本轮未执行的专精目标，`deferredCount` 为其数量。`Completed` 在精英化与技能等级条目中表示目标已达成，在专精条目中只表示目标等级的专精训练已启动，训练完成仍需游戏内时间，展示时不能当作已完成。`switchtheme` 不产生逐条明细。
 
 培养会读取 Core 汇总，部分培养失败不会仅因 CLI 正常退出而报告成功；缺少完整有效回调时 `observed: false`，仅确认进程已结束，游戏结果仍未确认。事件粒度取决于实际 Core 与资源组合，不能仅凭静态契约确认设备侧可用。
 

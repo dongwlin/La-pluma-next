@@ -69,6 +69,23 @@ describe('game task result text', () => {
     }))).toBe('阿米娅（术师）：培养失败 · 材料不足 · 精英二 / 技能 7 / 专精 S2 Lv2')
   })
 
+  it('labels a completed mastery target as a started training awaiting completion', () => {
+    expect(describeGameTaskDetail(detail({ skillMastery: [0, 0, 1] })))
+      .toBe('阿米娅：培养成功 · 已启动目标专精训练，等待完成 · 专精 S3 Lv1')
+  })
+
+  it('keeps 已完成 for completed goals without a mastery level', () => {
+    expect(describeGameTaskDetail(detail())).toBe('阿米娅：培养成功 · 已完成')
+    expect(describeGameTaskDetail(detail({ skillMastery: [0, 0, 0] }))).toBe('阿米娅：培养成功 · 已完成')
+  })
+
+  it('keeps prerequisite-training and already-satisfied labels alongside a mastery target', () => {
+    expect(describeGameTaskDetail(detail({ resultDetail: 'PrerequisiteTraining', skillMastery: [0, 1, 0] })))
+      .toBe('阿米娅：培养成功 · 已启动前置专精训练 · 专精 S2 Lv1')
+    expect(describeGameTaskDetail(detail({ resultDetail: 'AlreadySatisfied', skillMastery: [0, 1, 0] })))
+      .toBe('阿米娅：培养成功 · 已达到目标 · 专精 S2 Lv1')
+  })
+
   it('describes deferred mastery targets with their mastery summary', () => {
     expect(describeDeferredMastery({ name: '白面鸮', role: 'Medic', skillMastery: [0, 0, 2] }))
       .toBe('白面鸮（医疗）：专精目标待处理，本轮已启动其他专精训练 · 专精 S3 Lv2')

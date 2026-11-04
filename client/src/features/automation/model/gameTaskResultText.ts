@@ -32,8 +32,14 @@ export function gameTaskRoleLabel(role?: string): string | undefined {
   return OPER_PROGRESS_ROLES.find(option => option.value === role)?.label ?? role
 }
 
-export function gameTaskResultDetailLabel(resultDetail: string): string | undefined {
+export function gameTaskResultDetailLabel(
+  resultDetail: string,
+  skillMastery?: readonly number[],
+): string | undefined {
   if (!resultDetail) return undefined
+  if (resultDetail === 'Completed' && skillMastery?.some(level => level > 0)) {
+    return '已启动目标专精训练，等待完成'
+  }
   return RESULT_DETAIL_LABELS[resultDetail] ?? resultDetail
 }
 
@@ -67,7 +73,7 @@ function targetSummary(target: {
 export function describeGameTaskDetail(detail: GameTaskDetail): string {
   return [
     `${operatorLabel(detail.name, detail.role)}：${gameTaskResultLabel(detail.result)}`,
-    gameTaskResultDetailLabel(detail.resultDetail),
+    gameTaskResultDetailLabel(detail.resultDetail, detail.skillMastery),
     targetSummary(detail),
   ].filter((part): part is string => Boolean(part)).join(' · ')
 }

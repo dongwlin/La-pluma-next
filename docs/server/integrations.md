@@ -120,7 +120,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - Telegram 渠道文本消息用 `sendMessage` 加 Markdown；图片消息用原生 FormData/Blob 构造 multipart `sendPhoto`。图片超过 10MB 或三次重试（间隔 2 秒、4 秒）后仍失败时回退纯文本消息（`server/src/services/notificationService.ts:439-548`）。
 - 渠道凭据（botToken）只存在于运行时配置，不进入发送结果 DTO 或日志；`getConfig` 返回完整配置且与运行时配置不共享引用（`server/src/services/notificationService.ts:7-11,625-629`）。
 - `testChannel` 支持仅用于本次测试的配置覆盖，走同一解析边界，不写回运行时配置（`server/src/services/notificationService.ts:707-727`）。
-- `buildTaskCompletionMessage` 按 actions/reports 中的失败与跳过条目归一化通知级别与标题（success/warning/info），并组装执行结果、掉落汇报、任务总结、跳过与失败任务段落（`server/src/services/notificationService.ts:804-983`）；游戏任务动作在汇总行下追加逐干员的培养结果、原因与本轮未执行的专精目标。
+- `buildTaskCompletionMessage` 按 actions/reports 中的失败与跳过条目归一化通知级别与标题（success/warning/info），并组装执行结果、掉落汇报、任务总结、跳过与失败任务段落（`server/src/services/notificationService.ts:815-994`）；游戏任务动作在汇总行下追加逐干员的培养结果、原因与本轮未执行的专精目标，专精条目的 `Completed` 按已启动目标专精训练展示。
 - Telegram Bot 是独立的命令接收通道，进程级默认实例绑定真实出站端口与 MAA 服务（`server/src/services/telegramBotService.ts:491-506,1664-1671`）。
 - 同一实例同一时刻只有一个轮询会话：`init` 先同步停止旧会话再按新配置启动；旧会话的在途请求被中止，迟到更新不再派发命令（`server/src/services/telegramBotService.ts:625-656`）。
 - 长轮询停留 30 秒、请求时限 40 秒，`getUpdates` 为 POST 且出站端口不自动重放；无更新间隔 2 秒、出错重试 5 秒；多实例 `Conflict: terminated by other getUpdates` 错误静默降级；offset 在派发更新时推进（`server/src/services/telegramBotService.ts:47-53,698-767`）。
