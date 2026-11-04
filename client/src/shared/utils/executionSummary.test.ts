@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { formatExecutionActionSummary, formatExecutionSummary, getExecutionLastTask, isUnconfirmedGameAction } from './executionSummary'
 
 describe('execution summary formatting', () => {
+  it('separates an unconfirmed game outcome from successful steps in a mixed flow', () => {
+    expect(formatExecutionActionSummary([
+      { action: 'startup', status: 'success' },
+      { action: 'operprogress', status: 'success', observed: false },
+    ])).toBe('流程执行完成 · 成功 1 项 · 游戏结果未确认 1 项')
+  })
+
   it('keeps a failed process without game callbacks classified as failed', () => {
     const action = { action: 'operprogress', status: 'failed', observed: false, message: '培养进程执行失败' }
     expect(isUnconfirmedGameAction(action)).toBe(false)

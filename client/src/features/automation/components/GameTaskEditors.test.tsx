@@ -36,6 +36,13 @@ const setValue = async (name: string, value: string) => {
 }
 
 describe('game task editors', () => {
+  it('shows an omitted profession as automatic inference without losing saved targets', async () => {
+    await act(async () => root.render(<OperProgressPlansEditor plans={[{ name: '阿米娅', elite: 2 }]} disabled={false} onChange={onPlans} />))
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="培养计划 1 职业"]')?.value).toBe('Unknown')
+    await setValue('培养计划 1 技能等级', '7')
+    expect(onPlans).toHaveBeenLastCalledWith([{ name: '阿米娅', elite: 2, skill_level: 7 }])
+  })
+
   beforeEach(async () => {
     onPlans.mockReset()
     onThemes.mockReset()

@@ -15,7 +15,7 @@ export type TaskParamFieldType =
   | 'theme-list'
 
 export interface OperProgressPlan {
-  role: string
+  role?: string
   name: string
   elite?: number
   skill_level?: number

@@ -385,9 +385,9 @@ afterEach(async () => {
 })
 
 describe('AutomationTasks execution', () => {
-  it('submits both dynamic game task configurations once and observes their Run terminal result', async () => {
+  it('restores and submits dynamic game tasks with an omitted profession and observes their Run terminal result', async () => {
     const gameFlow: TaskFlowItem[] = [
-      { ...flow[0]!, id: 'operprogress-1', commandId: 'operprogress', name: '游戏内培养', taskType: 'OperProgress', params: { plans: [{ role: 'Caster', name: '阿米娅', skill_level: 7, skill_mastery: [0, 3, 0] }] } },
+      { ...flow[0]!, id: 'operprogress-1', commandId: 'operprogress', name: '游戏内培养', taskType: 'OperProgress', params: { plans: [{ name: '阿米娅', skill_level: 7, skill_mastery: [0, 3, 0] }] } },
       { ...flow[0]!, id: 'switchtheme-1', commandId: 'switchtheme', name: '更换游戏主题', taskType: 'SwitchTheme', params: { themes: ['明日方舟', '新主题'] } },
     ]
     mocks.loadUserConfig.mockResolvedValue(ok({ taskFlow: gameFlow }))

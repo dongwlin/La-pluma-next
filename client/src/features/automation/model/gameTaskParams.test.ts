@@ -20,6 +20,10 @@ const task = (taskType: string, params: TaskFlowEntry['params'], enabled = true)
 })
 
 describe('game task parameter validation', () => {
+  it('accepts an omitted profession for Core name-based inference', () => {
+    expect(validateOperProgressPlans([{ name: '阿米娅', elite: 2 }])).toBeNull()
+  })
+
   it('accepts each supported profession with combined explicit targets', () => {
     for (const { value: role } of OPER_PROGRESS_ROLES) {
       expect(validateOperProgressPlans([{ role, name: '阿米娅', elite: 2, skill_level: 7, skill_mastery: [0, 2, 3] }])).toBeNull()

@@ -44,7 +44,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
             <IconButton icon={<Trash2 size={16} />} title={`删除培养计划 ${index + 1}`} disabled={disabled} onClick={() => onChange(plans.filter((_, current) => current !== index))} />
           </div>
           <div className="grid min-w-0 gap-3 @sm:grid-cols-2">
-            <Select label="职业" aria-label={`培养计划 ${index + 1} 职业`} value={plan.role} options={OPER_PROGRESS_ROLES} disabled={disabled} onChange={role => updatePlan(index, { ...plan, role })} />
+            <Select label="职业" aria-label={`培养计划 ${index + 1} 职业`} value={plan.role ?? 'Unknown'} options={OPER_PROGRESS_ROLES} disabled={disabled} onChange={role => updatePlan(index, { ...plan, role })} />
             <Input label="干员姓名" aria-label={`培养计划 ${index + 1} 干员姓名`} value={plan.name} placeholder="游戏内完整姓名" disabled={disabled} onChange={name => updatePlan(index, { ...plan, name })} />
             <Select label="精英目标" aria-label={`培养计划 ${index + 1} 精英目标`} value={plan.elite ?? ''} options={eliteOptions} disabled={disabled} onChange={value => updatePlan(index, updateOperProgressTarget(plan, 'elite', value))} />
             <Select label="技能等级" aria-label={`培养计划 ${index + 1} 技能等级`} value={plan.skill_level ?? ''} options={skillOptions} disabled={disabled} onChange={value => updatePlan(index, updateOperProgressTarget(plan, 'skill_level', value))} />

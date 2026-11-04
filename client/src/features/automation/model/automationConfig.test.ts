@@ -104,11 +104,11 @@ beforeEach(() => {
 })
 
 describe('automation config adapter', () => {
-  it('round trips cultivation plans and theme candidates through local and server drafts', () => {
+  it('round trips cultivation plans with omitted professions and theme candidates through local and server drafts', () => {
     const gameDraft: AutomationConfigDraft = {
       ...createDefaultAutomationDraft(),
       taskFlow: [
-        { id: 'operprogress-1', commandId: 'operprogress', taskType: 'OperProgress', name: '游戏内培养', description: '', defaultParams: {}, enabled: true, params: { plans: [{ role: 'Caster', name: '阿米娅', elite: 2, skill_level: 7, skill_mastery: [0, 3, 0] }] } },
+        { id: 'operprogress-1', commandId: 'operprogress', taskType: 'OperProgress', name: '游戏内培养', description: '', defaultParams: {}, enabled: true, params: { plans: [{ name: '阿米娅', elite: 2, skill_level: 7, skill_mastery: [0, 3, 0] }] } },
         { id: 'switchtheme-1', commandId: 'switchtheme', taskType: 'SwitchTheme', name: '更换游戏主题', description: '', defaultParams: {}, enabled: true, params: { themes: ['明日方舟', '新主题'] } },
       ],
     }

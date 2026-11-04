@@ -22,7 +22,7 @@ export function validateOperProgressPlans(value: unknown): string | null {
     const prefix = `培养计划 ${index + 1}：`
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) return `${prefix}计划格式无效`
     if (typeof plan.name !== 'string' || !plan.name.trim()) return `${prefix}请填写干员姓名`
-    if (!OPER_PROGRESS_ROLES.some(role => role.value === plan.role)) return `${prefix}请选择有效职业`
+    if (plan.role !== undefined && !OPER_PROGRESS_ROLES.some(role => role.value === plan.role)) return `${prefix}请选择有效职业`
     if (plan.elite !== undefined && !isIntegerBetween(plan.elite, 1, 2)) return `${prefix}精英目标应为 1 或 2`
     if (plan.skill_level !== undefined && !isIntegerBetween(plan.skill_level, 2, 7)) return `${prefix}技能等级应为 2 至 7`
     if (plan.skill_mastery !== undefined && (
