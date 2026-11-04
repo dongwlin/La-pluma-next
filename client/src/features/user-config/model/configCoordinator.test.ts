@@ -9,6 +9,9 @@ import {
 } from './configCoordinator'
 import { USER_CONFIG_KEYS, USER_CONFIG_PENDING_KEYS } from './configKeys'
 
+// 协调器必须能脱离 React 验证竞态：这里只用内存存储与可控 Promise。
+// 每个用例显式驱动 microtask/timer，不依赖页面渲染或 Activity。
+
 interface Draft {
   value: string
   mode: 'normal' | 'raid'

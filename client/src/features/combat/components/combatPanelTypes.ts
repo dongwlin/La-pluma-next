@@ -1,3 +1,9 @@
+/**
+ * 作业面板的共享 props 契约
+ *
+ * 搜索词与识别方式通过会话存储传递，工作区不订阅，避免输入推动大列表重渲染。
+ */
+
 import type {
   AdvancedValues,
 } from '../model/combatCommands'

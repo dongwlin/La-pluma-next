@@ -234,7 +234,7 @@ test.afterAll(async () => {
     syntheticInteractionApiDelayMs: API_DELAY_MS,
     samples,
   }, null, 2)}\n`)
-  await rename(temporary, output)
+  await rename(temporary, output) // Complete, validated evidence becomes visible atomically.
 })
 
 for (const scenario of SCENARIOS) {

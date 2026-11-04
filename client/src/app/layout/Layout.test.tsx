@@ -178,6 +178,7 @@ function mobileMoreTrigger() {
   return container.querySelector<HTMLButtonElement>('button[aria-label="更多页面"]')!
 }
 
+/** 侧边栏身份区以「干员：台词」作为无障碍名称，不依赖包裹类名。 */
 function sidebarIdentity() {
   return container.querySelector<HTMLElement>('aside [aria-label*="："]')!
 }

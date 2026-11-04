@@ -36,6 +36,9 @@ const isTodayDropsPayload = (payload: unknown): boolean =>
     && Array.isArray(payload.records)
     && isRecord(payload.summary))
 
+/**
+ * `dailyTrend` 不由掉落面板消费；旧服务端/固定数据可能省略，不能据此判坏。
+ */
 const isDropStatisticsPayload = (payload: unknown): boolean =>
   isRecord(payload)
   && payload.success !== false

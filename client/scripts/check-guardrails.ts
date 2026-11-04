@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// 依赖与职责护栏 CLI。
+//
+// 阻断项与辅助项的边界、阈值依据见 docs/development/guardrails.md；确实需要新增一个大文件
+// 或有意的结构调整时运行 `pnpm --filter la-pluma-next-client guardrails:size-baseline`。
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

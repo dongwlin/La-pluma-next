@@ -26,6 +26,7 @@ export function resolveTaskCommandId(task: { id: string; commandId?: string }): 
   return task.commandId || task.id.split('-')[0] || ''
 }
 
+/** 校验时同时接受 `commandId` 与 id 前缀，兼容旧草稿。 */
 const matchesCommand = (task: { id: string; commandId?: string }, commandId: string) => (
   task.commandId === commandId || task.id.split('-')[0] === commandId
 )

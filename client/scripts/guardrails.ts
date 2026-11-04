@@ -1,3 +1,9 @@
+/**
+ * 依赖与职责护栏的分析核心。
+ *
+ * 规则边界与阈值依据见 docs/development/guardrails.md。测试文件不参与运行时依赖与规模统计，
+ * 因为测试可以为了隔离而接触内部实现，不会进入生产包。
+ */
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import ts from 'typescript'
