@@ -5,7 +5,6 @@ export {
   executeScheduleNow,
   getActivity,
   getScheduleExecutionStatus,
-  runCurrentActivity,
 } from './api'
 export { AUTOMATION_DOMAIN, automationKeys } from './model/queryKeys'
 export {

@@ -312,7 +312,6 @@ describe('agent execution HTTP adapter', () => {
     }));
     const baseUrl = `http://127.0.0.1:${port}`;
     const executionRoutes: ReadonlyArray<readonly [string, string]> = [
-      ['/api/agent/activity/run', JSON.stringify({})],
       ['/api/agent/copilot-sets/42/execute', JSON.stringify({ mode: 'continuous' })],
       ['/api/agent/actions/continue-copilot-set', JSON.stringify({ runId: 'unknown-run' })],
       ['/api/agent/schedules/manual/execute', JSON.stringify({ taskFlow: [] })],
