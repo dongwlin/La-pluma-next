@@ -4,7 +4,6 @@ import { buildCliUpdaterPlan, resolveCliInstallSource } from '../cliUpdaterServi
 
 const standalone = '/usr/local/bin/maa';
 const homebrewStable = '/opt/homebrew/Cellar/maa-cli/0.7.8/bin/maa';
-const homebrewBeta = '/opt/homebrew/Cellar/maa-cli-beta/0.8.0/bin/maa';
 const winget = '/home/user/AppData/Local/Microsoft/WinGet/Packages/MaaAssistantArknights.maa-cli/Maa/maa.exe';
 const container = '/opt/maa-cli/bin/maa';
 
@@ -57,7 +56,7 @@ describe('CLI updater selection', () => {
 
     const beta = await buildCliUpdaterPlan('beta', {
       cliPath: 'maa',
-      resolveExecutable: resolveTo(homebrewBeta)
+      resolveExecutable: resolveTo(homebrewStable)
     });
     assert.deepEqual(beta.args, ['upgrade', 'maa-cli-beta']);
 

@@ -66,14 +66,7 @@ async function resolveExecutable(command: string, env: NodeJS.ProcessEnv): Promi
   return null;
 }
 
-function formulaFromCellarPath(path: string): string | null {
-  const segments = path.split(/[\\/]+/).filter(Boolean);
-  const cellarIndex = segments.findIndex(segment => segment.toLowerCase() === 'cellar');
-  return cellarIndex >= 0 ? segments[cellarIndex + 1] || null : null;
-}
-
-function homebrewPlan(path: string, channel: CliUpdateChannel, force: boolean): CliUpdaterPlan {
-  const formula = formulaFromCellarPath(path);
+function homebrewPlan(channel: CliUpdateChannel): CliUpdaterPlan {
   if (channel === 'nightly') {
     return {
       source: 'homebrew',
@@ -84,14 +77,12 @@ function homebrewPlan(path: string, channel: CliUpdateChannel, force: boolean): 
       reason: 'Homebrew 没有 Nightly 渠道的 maa-cli 公式'
     };
   }
-  const target = channel === 'beta' ? 'maa-cli-beta' : 'maa-cli';
   return {
     source: 'homebrew',
     channel,
     command: 'brew',
-    args: ['upgrade', formula?.toLowerCase().includes('beta') ? formula : target],
-    supported: true,
-    ...(force ? { reason: '包管理器安装的 CLI 由包管理器决定版本' } : {})
+    args: ['upgrade', channel === 'beta' ? 'maa-cli-beta' : 'maa-cli'],
+    supported: true
   };
 }
 
@@ -176,7 +167,7 @@ export async function buildCliUpdaterPlan(
   }
 
   const force = options.force === true;
-  if (detected.source === 'homebrew') return homebrewPlan(detected.path, channel, force);
+  if (detected.source === 'homebrew') return homebrewPlan(channel);
   if (detected.source === 'winget') return wingetPlan(channel);
   return selfUpdatePlan(
     detected.source,
