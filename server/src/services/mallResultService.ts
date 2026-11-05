@@ -4,6 +4,7 @@ import {
   getStartedTaskNames,
   parseMaaCallbackEvents
 } from './maaCallbackService.ts';
+import type { MaaCallbackEvent } from './maaCallbackService.ts';
 
 /** 信用收支任务的参数：三项都为严格 `false` 时整体跳过。 */
 export interface MallTaskParams {
@@ -32,6 +33,24 @@ function isMallDisabled(params: MallTaskParams): boolean {
     && params.credit_fight === false;
 }
 
+const VISIT_TASKS = new Set(['VisitNext', 'VisitNextOcr']);
+
+function countVisits(startEvents: readonly MaaCallbackEvent[]): number {
+  let count = 0;
+  let previousTask: string | null = null;
+  for (const event of startEvents) {
+    if (event.callback !== 'SubTaskStart') continue;
+    const task = getCallbackTaskName(event);
+    if (!task || !VISIT_TASKS.has(task)) {
+      previousTask = null;
+      continue;
+    }
+    if (previousTask === null || task === previousTask) count++;
+    previousTask = task;
+  }
+  return count;
+}
+
 export function parseMallExecutionAction(
   taskName: string,
   params: MallTaskParams = {},
@@ -49,6 +68,21 @@ export function parseMallExecutionAction(
       visitLimited: false,
       noFriends: false,
       message: '未启用好友访问、信用购物或信用作战，已跳过'
+    };
+  }
+
+  if (logOutput === null || logOutput === undefined) {
+    return {
+      task: taskName,
+      action: 'mall',
+      status: 'failed',
+      visitedCount: 0,
+      creditCollected: false,
+      purchasedCount: 0,
+      noMoney: false,
+      visitLimited: false,
+      noFriends: false,
+      message: '无法读取信用收支执行日志，结果未确认'
     };
   }
 
@@ -70,7 +104,7 @@ export function parseMallExecutionAction(
 
   const startEvents = events.filter(event => event.callback === 'SubTaskStart');
   const taskNames = getStartedTaskNames(events);
-  const visitedCount = taskNames.filter(task => task === 'VisitNext' || task === 'VisitNextOcr').length;
+  const visitedCount = countVisits(startEvents);
   const creditCollected = taskNames.includes('CollectCredit');
   const purchasedCount = startEvents.filter(event => {
     if (getCallbackTaskName(event) !== 'CreditShop-Bought') return false;

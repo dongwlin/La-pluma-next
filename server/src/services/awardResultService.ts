@@ -1,3 +1,9 @@
+import {
+  getCallbackTaskName,
+  parseMaaCallbackEvents
+} from './maaCallbackService.ts';
+import type { MaaCallbackEvent } from './maaCallbackService.ts';
+
 export type AwardItemKey = 'award' | 'mail' | 'recruit' | 'orundum' | 'mining' | 'specialaccess';
 
 export interface AwardItem {
@@ -22,6 +28,7 @@ export interface AwardExecutionAction {
   action: 'award';
   status: 'success' | 'failed' | 'skipped';
   message: string;
+  observed?: boolean;
 }
 
 const AWARD_ITEMS: readonly AwardItem[] = [
@@ -63,20 +70,15 @@ const AWARD_ITEMS: readonly AwardItem[] = [
   }
 ];
 
-function hasTaskEvent(logSegment: string, taskName: string): boolean {
-  const escapedTaskName = taskName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`"task":"${escapedTaskName}"`).test(logSegment);
+function getEventFirstTasks(event: MaaCallbackEvent): string[] {
+  const first = event.first;
+  return Array.isArray(first)
+    ? first.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
-function getTaskSegment(logOutput: string, item: AwardItem, nextItem: AwardItem | undefined): string | null {
-  const startMarker = `"first":["${item.beginTask}"]`;
-  const start = logOutput.indexOf(startMarker);
-  if (start === -1) return null;
-
-  if (!nextItem) return logOutput.slice(start);
-  const nextMarker = `"first":["${nextItem.beginTask}"]`;
-  const end = logOutput.indexOf(nextMarker, start + startMarker.length);
-  return end === -1 ? logOutput.slice(start) : logOutput.slice(start, end);
+function belongsToItem(event: MaaCallbackEvent, item: AwardItem): boolean {
+  return getEventFirstTasks(event).includes(item.beginTask);
 }
 
 export function getEnabledAwardItems(params: AwardTaskParams = {}): AwardItem[] {
@@ -84,11 +86,11 @@ export function getEnabledAwardItems(params: AwardTaskParams = {}): AwardItem[] 
 }
 
 /**
- * 解析领取步骤的日志分段。
+ * 解析领取步骤的结构化回调。
  *
  * - 未启用任何项目：单项 `skipped`；
- * - 分段缺失（旧日志或增量日志不可用）：回退为“流程已完成，共检查 N 项”的 `success`；
- * - 其余按各分段中是否出现领取任务事件区分 `success`/`skipped`。
+ * - 日志不可用或没有结构化回调：`failed` 且 `observed: false`，不冒充已完成；
+ * - 只有观察到领取任务的 `SubTaskCompleted` 才确认 `success`。
  */
 export function parseAwardExecutionActions(
   taskName: string,
@@ -101,39 +103,60 @@ export function parseAwardExecutionActions(
       task: taskName,
       action: 'award',
       status: 'skipped',
+      observed: false,
       message: '未启用任何领取项目，已跳过'
     }];
   }
 
-  const actions: AwardExecutionAction[] = [];
-  let parsedItemCount = 0;
-  const log = String(logOutput || '');
-
-  enabledItems.forEach(item => {
-    const itemIndex = AWARD_ITEMS.findIndex(candidate => candidate.key === item.key);
-    const segment = getTaskSegment(log, item, AWARD_ITEMS[itemIndex + 1]);
-    if (!segment) return;
-    parsedItemCount++;
-
-    const claimed = item.claimedTasks.some(claimedTask => hasTaskEvent(segment, claimedTask));
-    actions.push({
-      task: taskName,
-      action: 'award',
-      status: claimed ? 'success' : 'skipped',
-      message: claimed
-        ? `${item.label}已领取`
-        : `${item.label}无可领取内容或当前未开放，已跳过`
-    });
-  });
-
-  if (parsedItemCount === 0) {
+  if (logOutput === null || logOutput === undefined || logOutput.trim() === '') {
     return [{
       task: taskName,
       action: 'award',
-      status: 'success',
-      message: `领取奖励流程已完成，共检查 ${enabledItems.length} 项`
+      status: 'failed',
+      observed: false,
+      message: `无法读取领取日志，${enabledItems.length} 项领取结果未确认`
     }];
   }
 
-  return actions;
+  const events = parseMaaCallbackEvents(logOutput, 'Award');
+  if (events.length === 0) {
+    return [{
+      task: taskName,
+      action: 'award',
+      status: 'failed',
+      observed: false,
+      message: `未观察到领取回调，${enabledItems.length} 项领取结果未确认`
+    }];
+  }
+
+  return enabledItems.map(item => {
+    const scopedEvents = events.filter(event => belongsToItem(event, item));
+    const claimed = scopedEvents.some(event => event.callback === 'SubTaskCompleted'
+      && item.claimedTasks.includes(getCallbackTaskName(event) || ''));
+    if (claimed) {
+      return {
+        task: taskName,
+        action: 'award',
+        status: 'success',
+        observed: true,
+        message: `${item.label}已领取`
+      };
+    }
+    if (scopedEvents.length > 0) {
+      return {
+        task: taskName,
+        action: 'award',
+        status: 'skipped',
+        observed: true,
+        message: `${item.label}已执行领取步骤，但未观察到完成回调，结果未确认`
+      };
+    }
+    return {
+      task: taskName,
+      action: 'award',
+      status: 'failed',
+      observed: false,
+      message: `${item.label}未观察到领取回调，结果未确认`
+    };
+  });
 }

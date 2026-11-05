@@ -2,6 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getEnabledAwardItems, parseAwardExecutionActions } from '../awardResultService.ts';
 
+const callback = (type: string, payload: Record<string, unknown>): string =>
+  `[2026-07-10 20:20:00.000][INF] Assistant::append_callback | ${type} ${JSON.stringify({
+    taskchain: 'Award',
+    ...payload
+  })}`;
+
 describe('award execution results', () => {
   it('maps every supported MaaCore award switch to an award item', () => {
     const switches = ['award', 'mail', 'recruit', 'orundum', 'mining', 'specialaccess'];
@@ -10,13 +16,12 @@ describe('award execution results', () => {
     assert.deepEqual(getEnabledAwardItems(params).map(item => item.key), switches);
   });
 
-  it('distinguishes claimed and unavailable Award items from MaaCore events', () => {
+  it('only confirms an item after its claim task completes', () => {
     const log = [
-      'run subtask 1 / 6 {"first":["AwardBegin"],"taskchain":"Award"}',
-      'SubTaskStart {"details":{"task":"ReceiveAward"},"first":["AwardBegin"]}',
-      'run subtask 2 / 6 {"first":["MailBegin"],"taskchain":"Award"}',
-      'SubTaskStart {"details":{"task":"MailWithoutAward"},"first":["MailBegin"]}',
-      'run subtask 3 / 6 {"first":["RecruitingActivitiesBegin"],"taskchain":"Award"}'
+      callback('SubTaskStart', { first: ['AwardBegin'], details: { task: 'ReceiveAward' } }),
+      callback('SubTaskCompleted', { first: ['AwardBegin'], details: { task: 'ReceiveAward' } }),
+      callback('SubTaskStart', { first: ['MailBegin'], details: { task: 'ReceiveMail' } }),
+      callback('TaskChainCompleted', { details: {} })
     ].join('\n');
 
     const actions = parseAwardExecutionActions('领取奖励', {
@@ -25,16 +30,44 @@ describe('award execution results', () => {
     }, log);
 
     assert.deepEqual(actions.map(action => action.status), ['success', 'skipped']);
+    assert.equal(actions[0].observed, true);
     assert.match(actions[0].message, /已领取/);
-    assert.match(actions[1].message, /已跳过/);
+    assert.match(actions[1].message, /未确认/);
   });
 
-  it('falls back to a completed check when incremental MaaCore logs are unavailable', () => {
-    const actions = parseAwardExecutionActions('领取奖励', { award: true, mail: true }, '');
-    assert.equal(actions.length, 1);
-    assert.equal(actions[0].status, 'success');
-    assert.match(actions[0].message, /共检查 2 项/);
-    assert.deepEqual(Object.keys(actions[0]).sort(), ['action', 'message', 'status', 'task']);
+  it('does not count a started claim as a confirmed result', () => {
+    const log = callback('SubTaskStart', {
+      first: ['AwardBegin'],
+      details: { task: 'ReceiveAward' }
+    });
+
+    const actions = parseAwardExecutionActions('领取奖励', { award: true }, log);
+    assert.equal(actions[0].status, 'skipped');
+    assert.equal(actions[0].observed, true);
+    assert.match(actions[0].message, /未观察到完成回调/);
+  });
+
+  it('treats an unavailable or empty log as unconfirmed instead of success', () => {
+    for (const log of [null, undefined, '']) {
+      const actions = parseAwardExecutionActions('领取奖励', { award: true, mail: true }, log);
+      assert.equal(actions.length, 1);
+      assert.equal(actions[0].status, 'failed');
+      assert.equal(actions[0].observed, false);
+      assert.match(actions[0].message, /未确认/);
+    }
+  });
+
+  it('reports an unconfirmed item when its segment is missing', () => {
+    const log = [
+      callback('SubTaskCompleted', {
+        first: ['AwardBegin'],
+        details: { task: 'ReceiveAward' }
+      })
+    ].join('\n');
+
+    const actions = parseAwardExecutionActions('领取奖励', { award: true, mail: true }, log);
+    assert.deepEqual(actions.map(action => action.status), ['success', 'failed']);
+    assert.match(actions[1].message, /邮件奖励.*未确认/);
   });
 
   it('skips execution when no Award item is enabled', () => {
@@ -50,10 +83,10 @@ describe('award execution results', () => {
     assert.match(actions[0].message, /未启用任何领取项目/);
   });
 
-  it('keeps the segment conclusion when a trailing callback line is truncated', () => {
+  it('keeps the completion evidence when a trailing callback line is truncated', () => {
     const log = [
-      'run subtask 1 / 6 {"first":["AwardBegin"],"taskchain":"Award"}',
-      'SubTaskStart {"details":{"task":"ReceiveAward"},"first":["AwardBegin"]'
+      callback('SubTaskCompleted', { first: ['AwardBegin'], details: { task: 'ReceiveAward' } }),
+      '[2026-07-10 20:20:01.000][INF] Assistant::append_callback | SubTaskStart {"taskchain":"Award","first":["AwardBegin"],"details":{"ta'
     ].join('\n');
 
     const actions = parseAwardExecutionActions('领取奖励', { award: true }, log);
@@ -72,10 +105,14 @@ describe('award execution results', () => {
 
   it('reports the recruit and specialaccess segments with their own names', () => {
     const log = [
-      'run subtask 3 / 6 {"first":["RecruitingActivitiesBegin"],"taskchain":"Award"}',
-      'SubTaskStart {"details":{"task":"RecruitingActivitiesRecruit"},"first":["RecruitingActivitiesBegin"]}',
-      'run subtask 6 / 6 {"first":["SpecialAccessActivitiesBegin"],"taskchain":"Award"}',
-      'SubTaskStart {"details":{"task":"SpecialAccessActivitiesConfirm"},"first":["SpecialAccessActivitiesBegin"]}'
+      callback('SubTaskCompleted', {
+        first: ['RecruitingActivitiesBegin'],
+        details: { task: 'RecruitingActivitiesRecruit' }
+      }),
+      callback('SubTaskCompleted', {
+        first: ['SpecialAccessActivitiesBegin'],
+        details: { task: 'SpecialAccessActivitiesConfirm' }
+      })
     ].join('\n');
 
     const actions = parseAwardExecutionActions('领取奖励', {

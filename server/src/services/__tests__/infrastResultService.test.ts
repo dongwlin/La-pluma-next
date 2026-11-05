@@ -89,4 +89,51 @@ describe('infrast execution results', () => {
     assert.equal(action.rewardCollected, false);
     assert.equal(action.droneUsed, true);
   });
+
+  it('preserves skip reasons and candidate lists from custom-infrast callbacks', () => {
+    const log = [
+      callback('SubTaskExtraInfo', {
+        what: 'CustomInfrastRoomOperators',
+        class: 'asst::InfrastMfgTask',
+        details: { names: ['能天使'], candidates: ['德克萨斯'] }
+      }),
+      callback('SubTaskExtraInfo', {
+        what: 'CustomInfrastRoomKeptUnchanged',
+        class: 'asst::InfrastMfgTask',
+        details: { reason: 'room_no_intent' }
+      }),
+      callback('SubTaskExtraInfo', {
+        what: 'CustomInfrastRoomGroupsMatchFailed',
+        class: 'asst::InfrastTradeTask',
+        details: { reason: 'all_unavailable', groups: ['贸易组'] }
+      }),
+      callback('SubTaskExtraInfo', {
+        what: 'CustomInfrastTraineeNotFound',
+        class: 'asst::InfrastTrainingTask',
+        details: { candidates: ['陈'] }
+      }),
+      callback('TaskChainCompleted', { details: {} })
+    ].join('\n');
+
+    const action = parseInfrastExecutionAction('基建换班', { facility: ['Mfg', 'Trade'] }, log);
+
+    assert.deepEqual(action.skippedRooms, [
+      { facility: 'Mfg', reason: 'room_no_intent' },
+      { facility: 'Trade', reason: 'all_unavailable', groups: ['贸易组'] },
+      { facility: 'Training', reason: 'CustomInfrastTraineeNotFound', candidates: ['陈'] }
+    ]);
+    assert.deepEqual(action.roomCandidates, [{
+      facility: 'Mfg',
+      names: ['能天使'],
+      candidates: ['德克萨斯']
+    }]);
+    assert.match(action.message, /跳过原因/);
+    assert.match(action.message, /候选干员 2 位/);
+  });
+
+  it('reports an unavailable log as an unconfirmed failure', () => {
+    const action = parseInfrastExecutionAction('基建换班', { facility: ['Mfg'] }, null);
+    assert.equal(action.status, 'failed');
+    assert.match(action.message, /结果未确认/);
+  });
 });
