@@ -4,7 +4,8 @@ import type { AwardExecutionAction } from './awardResultService.ts';
 import type { RecruitExecutionAction } from './recruitResultService.ts';
 import type { InfrastExecutionAction } from './infrastResultService.ts';
 import type { MallExecutionAction } from './mallResultService.ts';
-import type { FightExecutionAction } from './fightResultService.ts';
+import type { FightExecutionAction, FightStructuredStatistics } from './fightResultService.ts';
+import { getCallbackDetails, parseMaaCallbackEvents } from './maaCallbackService.ts';
 import type { DropItem } from './dropRecordService.ts';
 import type { ScheduleTaskProgressResult } from './scheduleTaskProgress.ts';
 import type { GameTaskExecutionAction } from './gameTaskResultService.ts';
@@ -256,6 +257,124 @@ export function parseTaskSummary(
   logger?.debug?.('任务总结解析结果', { summary });
 
   return Object.keys(summary).length > 1 ? summary : null;
+}
+
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function readStageCode(details: Record<string, unknown>): string {
+  const stage = details.stage;
+  if (typeof stage === 'string') return stage.trim();
+  if (!isRecordValue(stage)) return '';
+  const code = stage.stageCode;
+  if (typeof code === 'string' && code.trim() !== '') return code.trim();
+  const id = stage.stageId;
+  return typeof id === 'string' ? id.trim() : '';
+}
+
+function readDropItems(value: unknown): DropItem[] {
+  if (!Array.isArray(value)) return [];
+  const items = new Map<string, number>();
+  for (const rawItem of value) {
+    if (!isRecordValue(rawItem)) continue;
+    const name = rawItem.itemName;
+    const quantity = readFiniteNumber(rawItem.quantity);
+    if (typeof name !== 'string' || name.trim() === '' || quantity === null || quantity <= 0) continue;
+    items.set(name, (items.get(name) || 0) + quantity);
+  }
+  return [...items.entries()].map(([name, count]) => ({ name, count }));
+}
+
+/**
+ * 将 fight 任务的结构化回调折算为本次执行的实际消耗与掉落。
+ * `drops` 是每局增量，`stats` 是任务内累计；只累加增量事件，
+ * 累计值单独返回用于核对，避免把同一批掉落重复入账。
+ */
+export function parseFightStatistics(
+  logOutput: string | null | undefined,
+  fallbackStage = ''
+): FightStructuredStatistics | null {
+  const events = parseMaaCallbackEvents(logOutput, 'Fight');
+  if (events.length === 0) return null;
+
+  let stage = '';
+  let battles = 0;
+  let sanityPerBattle: number | null = null;
+  let maxTimesFinished = 0;
+  let sanityBeforeStage: number | null = null;
+  let maxSanity: number | null = null;
+  let cumulativeDrops: DropItem[] = [];
+  let observedStageDrops = false;
+  let observedFightTimes = false;
+  let observedSanity = false;
+  const incrementalDrops = new Map<string, number>();
+
+  for (const event of events) {
+    const details = getCallbackDetails(event);
+    if (!details) continue;
+
+    if (event.what === 'StageDrops') {
+      observedStageDrops = true;
+      stage = readStageCode(details) || stage;
+      battles += 1;
+      const drops = readDropItems(details.drops);
+      for (const item of drops) {
+        incrementalDrops.set(item.name, (incrementalDrops.get(item.name) || 0) + item.count);
+      }
+      const stats = readDropItems(details.stats);
+      if (stats.length > 0) cumulativeDrops = stats;
+      continue;
+    }
+
+    if (event.what === 'FightTimes') {
+      observedFightTimes = true;
+      const cost = readFiniteNumber(details.sanity_cost);
+      if (cost !== null && cost >= 0) sanityPerBattle = cost;
+      const finished = readFiniteNumber(details.times_finished);
+      if (finished !== null && finished > maxTimesFinished) maxTimesFinished = finished;
+      continue;
+    }
+
+    if (event.what === 'SanityBeforeStage') {
+      observedSanity = true;
+      const current = readFiniteNumber(details.current_sanity);
+      const max = readFiniteNumber(details.max_sanity);
+      if (current !== null) sanityBeforeStage = current;
+      if (max !== null) maxSanity = max;
+    }
+  }
+
+  if (!observedStageDrops && !observedFightTimes && !observedSanity) return null;
+  if (battles === 0 && maxTimesFinished > 0) battles = maxTimesFinished;
+  const resolvedStage = stage || fallbackStage.trim();
+  if (!resolvedStage) return null;
+
+  const drops = [...incrementalDrops.entries()].map(([name, count]) => ({ name, count }));
+  return {
+    stage: resolvedStage,
+    battles,
+    sanity: sanityPerBattle === null ? 0 : sanityPerBattle * battles,
+    drops,
+    cumulativeDrops,
+    ...(sanityBeforeStage === null ? {} : { sanityBeforeStage }),
+    ...(maxSanity === null ? {} : { maxSanity }),
+    observed: {
+      stageDrops: observedStageDrops,
+      fightTimes: observedFightTimes,
+      sanityBeforeStage: observedSanity
+    }
+  };
 }
 
 /**

@@ -145,6 +145,25 @@ describe('recordDrops', () => {
     assert.equal(today.summary.itemsSummary['源岩'], 24);
   });
 
+  it('deduplicates entries that carry the same record key', async () => {
+    const input = {
+      stage: '1-7',
+      times: 2,
+      sanity: 12,
+      items: [{ name: '源岩', count: 3 }],
+      recordKey: 'flow-1:fight-1:1-7:0'
+    };
+    expectSuccess(await recordDrops(input));
+    expectSuccess(await recordDrops(input));
+
+    const [today] = expectSuccess(await getRecentDrops(1));
+    assert.equal(today.records.length, 1);
+    assert.equal(today.summary.totalBattles, 2);
+    assert.equal(today.summary.totalSanity, 12);
+    assert.equal(today.summary.itemsSummary['源岩'], 3);
+    assert.equal(today.records[0].recordKey, input.recordKey);
+  });
+
   it('refuses to overwrite a record file it cannot parse', async () => {
     const todayPath = join(fixtureDir, `${dateDaysAgo(0)}.json`);
     const corrupted = JSON.stringify({ records: [] });
