@@ -1,14 +1,29 @@
 import {
+  getCallbackDetails,
   getCallbackStringField,
   getStartedTaskNames,
   parseMaaCallbackEvents
 } from './maaCallbackService.ts';
+import type { MaaCallbackEvent } from './maaCallbackService.ts';
 
 export type FacilityKey = 'Mfg' | 'Trade' | 'Power' | 'Control' | 'Reception' | 'Office' | 'Dorm' | 'Processing' | 'Training';
 
 export interface InfrastTaskParams {
   facility?: unknown;
   [extension: string]: unknown;
+}
+
+export interface InfrastSkippedRoom {
+  reason: string;
+  facility?: FacilityKey;
+  groups?: string[];
+  candidates?: string[];
+}
+
+export interface InfrastRoomCandidates {
+  facility?: FacilityKey;
+  names: string[];
+  candidates: string[];
 }
 
 /**
@@ -31,6 +46,8 @@ export interface InfrastExecutionAction {
   trainingContinued?: boolean;
   trainingCompleted?: boolean;
   trainingProcessing?: boolean;
+  skippedRooms?: InfrastSkippedRoom[];
+  roomCandidates?: InfrastRoomCandidates[];
 }
 
 const FACILITY_LABELS: Record<FacilityKey, string> = {
@@ -65,6 +82,18 @@ function uniqueFacilityKeys(values: readonly FacilityKey[]): FacilityKey[] {
   return [...new Set(values)];
 }
 
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? uniqueStrings(value.filter((item): item is string => typeof item === 'string'))
+    : [];
+}
+
+function getEventFacility(event: MaaCallbackEvent): FacilityKey | undefined {
+  const className = getCallbackStringField(event, 'class') || '';
+  const matchedClass = Object.keys(FACILITY_CLASSES).find(name => className.includes(name));
+  return matchedClass ? FACILITY_CLASSES[matchedClass] : undefined;
+}
+
 export function parseInfrastExecutionAction(
   taskName: string,
   params: InfrastTaskParams = {},
@@ -73,6 +102,17 @@ export function parseInfrastExecutionAction(
   const configuredFacilities = Array.isArray(params.facility)
     ? uniqueStrings(params.facility.map(String))
     : [];
+  if (logOutput === null || logOutput === undefined) {
+    return {
+      task: taskName,
+      action: 'infrast',
+      status: 'failed',
+      configuredFacilities,
+      observedFacilities: [],
+      message: '无法读取基建执行日志，结果未确认'
+    };
+  }
+
   const events = parseMaaCallbackEvents(logOutput, 'Infrast');
 
   if (configuredFacilities.length === 0) {
@@ -104,6 +144,45 @@ export function parseInfrastExecutionAction(
     const className = getCallbackStringField(event, 'class') || '';
     const matchedClass = Object.keys(FACILITY_CLASSES).find(name => className.includes(name));
     if (matchedClass) observedFacilities.push(FACILITY_CLASSES[matchedClass]);
+  }
+  const skippedRooms: InfrastSkippedRoom[] = [];
+  const roomCandidates: InfrastRoomCandidates[] = [];
+  for (const event of events) {
+    if (event.callback !== 'SubTaskExtraInfo') continue;
+    const what = getCallbackStringField(event, 'what');
+    if (!what) continue;
+    const details = getCallbackDetails(event) ?? {};
+    const facility = getEventFacility(event);
+    if (what === 'CustomInfrastRoomOperators') {
+      roomCandidates.push({
+        ...(facility ? { facility } : {}),
+        names: readStringList(details.names),
+        candidates: readStringList(details.candidates)
+      });
+    } else if (what === 'CustomInfrastRoomKeptUnchanged') {
+      skippedRooms.push({
+        ...(facility ? { facility } : {}),
+        reason: typeof details.reason === 'string' && details.reason ? details.reason : 'room_kept_unchanged'
+      });
+    } else if (what === 'CustomInfrastRoomGroupsMatchFailed') {
+      const reason = details.reason;
+      skippedRooms.push({
+        ...(facility ? { facility } : {}),
+        reason: typeof reason === 'string' && reason ? reason : 'operator_groups_unavailable',
+        groups: readStringList(details.groups)
+      });
+    } else if (what === 'CustomInfrastTraineeNotFound' || what === 'CustomInfrastAssistantNotFound') {
+      skippedRooms.push({
+        ...(facility ? { facility } : {}),
+        reason: what,
+        candidates: readStringList(details.candidates)
+      });
+    } else if (what === 'CustomInfrastRoomsNotConfigured' || what === 'NotEnoughStaff') {
+      skippedRooms.push({
+        ...(facility ? { facility } : {}),
+        reason: what
+      });
+    }
   }
   const failed = events.some(event => event.callback === 'TaskChainError');
   const entered = taskNames.includes('InfrastEnteredFlag')
@@ -143,7 +222,9 @@ export function parseInfrastExecutionAction(
     clueExchange,
     trainingContinued,
     trainingCompleted,
-    trainingProcessing
+    trainingProcessing,
+    ...(skippedRooms.length > 0 ? { skippedRooms } : {}),
+    ...(roomCandidates.length > 0 ? { roomCandidates } : {})
   };
 
   if (failed) {
@@ -166,6 +247,17 @@ export function parseInfrastExecutionAction(
   else if (trainingProcessing) details.push('专精训练进行中');
   if (baseAction.observedFacilities.length > 0) {
     details.push(`已处理：${baseAction.observedFacilities.map(facility => FACILITY_LABELS[facility] || facility).join('、')}`);
+  }
+  if (skippedRooms.length > 0) {
+    const reasons = [...new Set(skippedRooms.map(room => room.reason))];
+    details.push(`跳过原因：${reasons.join('、')}`);
+  }
+  if (roomCandidates.length > 0) {
+    const candidateCount = roomCandidates.reduce(
+      (total, room) => total + room.names.length + room.candidates.length,
+      0
+    );
+    if (candidateCount > 0) details.push(`候选干员 ${candidateCount} 位`);
   }
 
   return {

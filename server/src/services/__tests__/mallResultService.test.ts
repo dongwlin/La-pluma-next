@@ -22,10 +22,10 @@ describe('mall execution results', () => {
 
     const action = parseMallExecutionAction('信用收支', {}, log);
     assert.equal(action.status, 'success');
-    assert.equal(action.visitedCount, 2);
+    assert.equal(action.visitedCount, 1);
     assert.equal(action.creditCollected, true);
     assert.equal(action.purchasedCount, 1);
-    assert.match(action.message, /访问 2 位好友/);
+    assert.match(action.message, /访问 1 位好友/);
     assert.match(action.message, /购买 1 件商品/);
   });
 
@@ -95,5 +95,35 @@ describe('mall execution results', () => {
     assert.equal(action.status, 'success');
     assert.equal(action.creditCollected, false);
     assert.equal(action.visitedCount, 1);
+  });
+
+  it('deduplicates the template and OCR recognizers for the same visit', () => {
+    const log = [
+      callback('SubTaskStart', { details: { task: 'VisitNext' } }),
+      callback('SubTaskStart', { details: { task: 'VisitNextOcr' } }),
+      callback('SubTaskStart', { details: { task: 'CollectCredit' } }),
+      callback('SubTaskStart', { details: { task: 'VisitNext' } }),
+      callback('SubTaskStart', { details: { task: 'VisitNextOcr' } })
+    ].join('\n');
+
+    const action = parseMallExecutionAction('信用收支', {}, log);
+    assert.equal(action.visitedCount, 2);
+    assert.match(action.message, /访问 2 位好友/);
+  });
+
+  it('counts consecutive executions of the same visit task as separate visits', () => {
+    const log = [
+      callback('SubTaskStart', { details: { task: 'VisitNext', exec_times: 1 } }),
+      callback('SubTaskStart', { details: { task: 'VisitNext', exec_times: 2 } })
+    ].join('\n');
+
+    const action = parseMallExecutionAction('信用收支', {}, log);
+    assert.equal(action.visitedCount, 2);
+  });
+
+  it('reports an unavailable log as an unconfirmed failure', () => {
+    const action = parseMallExecutionAction('信用收支', {}, null);
+    assert.equal(action.status, 'failed');
+    assert.match(action.message, /结果未确认/);
   });
 });

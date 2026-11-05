@@ -106,4 +106,45 @@ describe('recruit execution results', () => {
     assert.equal(action.status, 'success');
     assert.match(action.message, /自动公招流程已完成/);
   });
+
+  it('reads the singular tag field emitted by preserved-tag callbacks', () => {
+    const log = [
+      callback('SubTaskExtraInfo', { what: 'RecruitTagsDetected', details: { tags: ['支援机械', '先锋干员'] } }),
+      callback('SubTaskExtraInfo', { what: 'RecruitPreservedTag', details: { tag: '支援机械' } }),
+      callback('TaskChainCompleted', { details: {} })
+    ].join('\n');
+
+    const action = parseRecruitExecutionAction('自动公招', { preserve_tags: ['支援机械'] }, log);
+    assert.equal(action.status, 'skipped');
+    assert.deepEqual(action.preservedTags, ['支援机械']);
+    assert.match(action.message, /支援机械/);
+  });
+
+  it('recognizes a no-permit result from the callback what field', () => {
+    const log = [
+      callback('SubTaskExtraInfo', { what: 'RecruitTagsDetected', details: { tags: ['先锋干员', '费用回复'] } }),
+      callback('SubTaskExtraInfo', { what: 'RecruitNoPermit', details: { continue: false } })
+    ].join('\n');
+
+    const action = parseRecruitExecutionAction('自动公招', {}, log);
+    assert.equal(action.status, 'skipped');
+    assert.equal(action.noPermit, true);
+    assert.match(action.message, /招聘许可不足/);
+    assert.doesNotMatch(action.message, /未匹配自动确认条件/);
+  });
+
+  it('does not turn a lone no-permit callback into success', () => {
+    const log = callback('SubTaskExtraInfo', { what: 'RecruitNoPermit', details: {} });
+    const action = parseRecruitExecutionAction('自动公招', {}, log);
+
+    assert.equal(action.status, 'skipped');
+    assert.equal(action.noPermit, true);
+    assert.match(action.message, /招聘许可不足/);
+  });
+
+  it('reports an unavailable log as an unconfirmed failure', () => {
+    const action = parseRecruitExecutionAction('自动公招', {}, null);
+    assert.equal(action.status, 'failed');
+    assert.match(action.message, /结果未确认/);
+  });
 });

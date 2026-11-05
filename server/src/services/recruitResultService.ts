@@ -36,6 +36,7 @@ export interface RecruitExecutionAction {
   finalTags?: string[];
   preservedTags?: string[];
   noRefresh?: boolean;
+  noPermit?: boolean;
 }
 
 function normalizePreserveTags(value: unknown): string[] {
@@ -48,7 +49,17 @@ function uniqueStrings(values: readonly unknown[]): string[] {
 }
 
 function hasWhat(event: MaaCallbackEvent, what: string): boolean {
-  return getCallbackStringField(event, 'what') === what;
+  return event.callback === 'SubTaskExtraInfo' && getCallbackStringField(event, 'what') === what;
+}
+
+function getCallbackTags(event: MaaCallbackEvent): string[] {
+  const details = getCallbackDetails(event);
+  if (!details) return [];
+  const tags = Array.isArray(details.tags)
+    ? details.tags.filter((item): item is string => typeof item === 'string')
+    : [];
+  if (typeof details.tag === 'string' && details.tag.trim() !== '') tags.push(details.tag);
+  return tags;
 }
 
 export function parseRecruitExecutionAction(
@@ -56,6 +67,15 @@ export function parseRecruitExecutionAction(
   params: RecruitTaskParams = {},
   logOutput: string | null | undefined = ''
 ): RecruitExecutionAction {
+  if (logOutput === null || logOutput === undefined) {
+    return {
+      task: taskName,
+      action: 'recruit',
+      status: 'failed',
+      message: '无法读取公招执行日志，结果未确认'
+    };
+  }
+
   const events = parseMaaCallbackEvents(logOutput, 'Recruit');
   if (events.length === 0) {
     return {
@@ -74,23 +94,22 @@ export function parseRecruitExecutionAction(
   const startedCount = taskNames.filter(task => task === 'RecruitConfirm').length;
   const collectedCount = taskNames.filter(task => task === 'RecruitFinish').length;
   const expeditedCount = taskNames.filter(task => task === 'RecruitNowConfirm').length;
-  const noPermit = taskNames.includes('RecruitNoPermit');
+  const noPermit = events.some(event => hasWhat(event, 'RecruitNoPermit'))
+    || taskNames.includes('RecruitNoPermit');
   const noRefresh = taskNames.includes('RecruitNoRefresh');
   const failed = events.some(event => event.callback === 'TaskChainError');
   const completed = events.some(event => event.callback === 'TaskChainCompleted');
-  const detectedTags = uniqueStrings(
-    detectedEvents.flatMap(event => getCallbackStringList(event, 'tags'))
-  );
+  const detectedTags = uniqueStrings(detectedEvents.flatMap(getCallbackTags));
   const finalDetectedEvent = detectedEvents.at(-1);
-  const finalTags = finalDetectedEvent ? uniqueStrings(getCallbackStringList(finalDetectedEvent, 'tags')) : [];
+  const finalTags = finalDetectedEvent ? uniqueStrings(getCallbackTags(finalDetectedEvent)) : [];
+  const resultTags = resultEvents.flatMap(event => getCallbackStringList(event, 'tags'));
+  if (finalTags.length === 0 && resultTags.length > 0) finalTags.push(...uniqueStrings(resultTags));
   const highestLevel = resultEvents.reduce(
     (highest, event) => Math.max(highest, Number(getCallbackDetails(event)?.level) || 0),
     0
   );
   const configuredPreserveTags = normalizePreserveTags(params.preserve_tags);
-  const preservedDetectedTags = uniqueStrings(
-    preservedEvents.flatMap(event => getCallbackStringList(event, 'tags'))
-  );
+  const preservedDetectedTags = uniqueStrings(preservedEvents.flatMap(getCallbackTags));
   const preservedTags = configuredPreserveTags.filter(tag => preservedDetectedTags.includes(tag));
   const effectivePreservedTags = preservedTags.length > 0 ? preservedTags : preservedDetectedTags;
 
@@ -105,7 +124,8 @@ export function parseRecruitExecutionAction(
     detectedTags,
     finalTags,
     preservedTags: effectivePreservedTags,
-    noRefresh
+    noRefresh,
+    noPermit
   };
 
   if (failed) {
