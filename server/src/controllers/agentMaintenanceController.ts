@@ -382,7 +382,7 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
       : { action: 'update-core', targetChannel: 'current', command: 'update', args: [] };
   const plan: MaintenanceUpdateCorePlan = {
     action: 'update-core-and-resources',
-    steps: [corePlan, { action: 'hot-update-resources', script: 'server/scripts/update-maa-resources.ts' }]
+    steps: [corePlan]
   };
 
   if (dryRun) return sendDryRun(res, req, plan);
@@ -410,33 +410,20 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
       }));
     }
 
-    try {
-      const resourceResult = await updateMaaResources();
-      const runtime = await getMaaVersion(true);
-      const payload: MaintenanceUpdateCorePayload = {
-        plan,
-        steps: {
-          core: { success: true, output: coreResult.stdout || coreResult.stderr || '' },
-          resources: { success: true, output: resourceResult.output }
-        },
-        runtime: { ...runtime, resource: resourceResult.resource }
-      };
-      return sendSuccess(res, req, payload, version ? `已切换到 ${String(version)} 渠道并同步最新资源` : 'MaaCore 和资源已更新');
-    } catch (error) {
-      const runtime = await getMaaVersion(true).catch(() => null);
-      const resource = await getMaaResourceInfo().catch(() => null);
-      logger.error('MaaCore 已更新，但资源同步失败', { error: thrownMessage(error), version });
-      return sendError(res, req, agentError('AGENT_MAA_UPDATE_RESOURCE_FAILED', `MaaCore 已更新，但资源同步失败: ${thrownMessage(error)}`, {
-        statusCode: 500,
-        retryable: true,
-        details: {
-          version,
-          failedStep: 'resources',
-          coreUpdated: true,
-          runtime: runtime ? { ...runtime, resource } : null
-        }
-      }));
-    }
+    // maa-cli 的 install/update 自带资源同步；这里只刷新投影，不能再跑一次资源更新。
+    const [runtime, resource] = await Promise.all([
+      getMaaVersion(true),
+      getMaaResourceInfo().catch(resourceInfoFallback)
+    ]);
+    const payload: MaintenanceUpdateCorePayload = {
+      plan,
+      steps: {
+        core: { success: true, output: coreResult.stdout || coreResult.stderr || '' },
+        resources: { success: true, output: '' }
+      },
+      runtime: { ...runtime, resource }
+    };
+    return sendSuccess(res, req, payload, version ? `已切换到 ${String(version)} 渠道并同步最新资源` : 'MaaCore 和资源已更新');
   });
 }
 
@@ -458,7 +445,7 @@ export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter)
 }
 
 export async function hotUpdateResources(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
-  const plan: MaintenanceHotUpdateResourcesPlan = { action: 'hot-update-resources', script: 'server/scripts/update-maa-resources.ts' };
+  const plan: MaintenanceHotUpdateResourcesPlan = { action: 'hot-update-resources', command: 'hot-update' };
   if (parseDryRunBody(req.body).dryRun) return sendDryRun(res, req, plan);
   try {
     const result = await updateMaaResources();

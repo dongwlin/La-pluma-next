@@ -31,7 +31,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 理智作战、基建、公招等本地任务使用已安装资源及已有热更新缓存。每次执行会创建独立的临时缓存，任务退出后清理，避免 maa-cli 启动时的热更新请求因网络故障而阻断日常流程；原缓存和连接配置保持不变。
 
-资源同步仍由「同步资源」或显式更新命令执行。远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
+资源同步由「同步资源」或显式更新命令经 `maa hot-update` 执行，下载源、分支、镜像与凭据都读取 maa-cli 的 `cli.toml`（`[resource.source]` 等），La Pluma 不另行硬编码仓库或覆盖配置。远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
 
 ### Telegram 通知配置
 

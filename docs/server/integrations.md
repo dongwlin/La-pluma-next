@@ -10,6 +10,7 @@
 
 MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次：Docker 缺省 `/usr/local/bin/maa`，本地缺省 `maa`（`server/src/config/connectionDefaults.ts:18-23`、`server/src/config/runtimeConfig.ts:271-276`）。
 
+- 资源热更新经 `maa hot-update` 原生执行，仓库、分支、镜像与凭据来自 maa-cli 配置；服务不再 clone MaaResource 覆盖基础资源。`maa install`/`maa update` 本身已同步资源，Core 更新完成后不追加第二次资源更新。
 - `maaProcessService` 是唯一持有可写子进程状态 `taskStatus` 与实时日志缓冲的模块（`server/src/services/maaProcessService.ts:371-380`）。对外投影 `getTaskStatus` 只回答"是否有受管子进程、任务名与停止请求"，不能当作流程或 Run 终态（`server/src/services/maaProcessService.ts:383-393`）。
 - 命令按三种形态执行：
   - 带任务名且不等待完成时用 `spawn` 后台执行：非 Windows 加 `detached`，stdio 为 `ignore/pipe/pipe`，spawn 后立即返回"任务已在后台启动"（`server/src/services/maaProcessService.ts:800-813,856-862`）。

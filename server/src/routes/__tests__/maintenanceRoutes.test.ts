@@ -44,6 +44,10 @@ if (args[0] === 'version') {
   process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
+} else if (args[0] === 'dir' && args[1] === 'hot-update') {
+  process.stdout.write('');
+} else if (args[0] === 'hot-update') {
+  process.stdout.write('Hot update completed successfully\\n');
 } else {
   process.exit(1);
 }
@@ -146,7 +150,7 @@ interface UpdateCliPayload {
 }
 
 interface DryRunPlanPayload {
-  plan: { action: string };
+  plan: { action: string; command?: string };
 }
 
 interface ProfilePayload {
@@ -582,6 +586,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const core = await postJson(`${baseUrl}/actions/update-core`, { dryRun: true, version: 'beta' });
     const coreBody = await readSuccess<UpdateCorePayload>(core);
     assert.equal(coreBody.data.plan.action, 'update-core-and-resources');
+    assert.equal(coreBody.data.plan.steps.length, 1);
     assert.equal(coreBody.data.plan.steps[0].targetChannel, 'beta');
     assert.equal(coreBody.meta.dryRun, true);
 
@@ -592,6 +597,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const resources = await postJson(`${baseUrl}/actions/hot-update-resources`, { dryRun: true });
     const resourceBody = await readSuccess<DryRunPlanPayload>(resources);
     assert.equal(resourceBody.data.plan.action, 'hot-update-resources');
+    assert.equal(resourceBody.data.plan.command, 'hot-update');
 
     for (const action of ['depot-recognition', 'operbox-recognition']) {
       const response = await postJson(`${baseUrl}/actions/${action}`, { dryRun: true });
@@ -603,6 +609,18 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     // dryRun 只返回计划：不能隐式触发 MAA 更新或识别动作的解析/缓存写入。
     assert.equal(await callCliLog(), cliBefore);
     assert.equal(await callAdbLog(), adbBefore);
+  });
+
+  it('runs native maa hot-update and refreshes resource metadata for manual sync', async () => {
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+    const response = await postJson(`${baseUrl}/actions/hot-update-resources`, {});
+    assert.equal(response.status, 200);
+    const body = await readSuccess<{ output: string; plan: { command: string } }>(response);
+    assert.match(body.data.output, /Hot update completed successfully/);
+    assert.equal(body.data.plan.command, 'hot-update');
+    assert.match(await readFile(cliCallLog, 'utf-8'), /^hot-update$/m);
   });
 
   it('treats any truthy dryRun value as plan-only without touching the CLI', async () => {

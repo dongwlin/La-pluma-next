@@ -12,6 +12,5 @@ process.stdout.write(JSON.stringify({
   dropRecordsDir: appPaths.dropRecordsDir,
   executionLockPath: appPaths.executionLockPath,
   trainingDataDir: appPaths.trainingDataDir,
-  tempResourceDir: appPaths.tempResourceDir,
   maaConfigDir: maaPaths.configDir
 }));

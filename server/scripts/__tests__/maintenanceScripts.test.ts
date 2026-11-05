@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -14,7 +14,6 @@ import * as paradox from '../fetch-paradox-operators.ts';
 import * as penguin from '../fetch-penguin-stats.ts';
 import * as stageData from '../fetch-stage-data.ts';
 import * as mergeFormulas from '../merge-formulas.ts';
-import * as updateResources from '../update-maa-resources.ts';
 
 const serverDir = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -649,80 +648,6 @@ describe('fetch-game-assets', () => {
   });
 });
 
-describe('update-maa-resources', () => {
-  it('resolves the resource directory from the MAA data directory command', () => {
-    assert.equal(updateResources.getMaaResourceDir(() => '/maa/data'), '/maa/data/resource');
-    assert.throws(() => updateResources.getMaaResourceDir(() => ''), /未返回数据目录/);
-  });
-
-  it('copies a directory recursively and removes it again', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'la-pluma-scripts-'));
-    try {
-      const source = join(root, 'source');
-      const destination = join(root, 'destination');
-      mkdirSync(join(source, 'nested'), { recursive: true });
-      writeFileSync(join(source, 'version.txt'), 'top');
-      writeFileSync(join(source, 'nested', 'version.txt'), 'nested');
-
-      updateResources.copyDir(source, destination);
-
-      assert.equal(await readFile(join(destination, 'version.txt'), 'utf-8'), 'top');
-      assert.equal(await readFile(join(destination, 'nested', 'version.txt'), 'utf-8'), 'nested');
-
-      updateResources.removeDir(destination);
-      assert.equal(existsSync(destination), false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('clones into the temp directory, copies resources and cleans up', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'la-pluma-scripts-'));
-    try {
-      const dataDir = join(root, 'maa-data');
-      const tempDir = join(root, 'temp-resource');
-      await mkdir(join(dataDir, 'resource'), { recursive: true });
-
-      await updateResources.updateResources({
-        run: () => dataDir,
-        tempDir,
-        clone: () => {
-          mkdirSync(join(tempDir, 'resource'), { recursive: true });
-          writeFileSync(join(tempDir, 'resource', 'version.txt'), 'fixture');
-        }
-      });
-
-      assert.equal(await readFile(join(dataDir, 'resource', 'version.txt'), 'utf-8'), 'fixture');
-      assert.equal(existsSync(tempDir), false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('cleans the temp directory when the clone fails', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'la-pluma-scripts-'));
-    try {
-      const dataDir = join(root, 'maa-data');
-      const tempDir = join(root, 'temp-resource');
-      await mkdir(join(dataDir, 'resource'), { recursive: true });
-
-      await assert.rejects(
-        updateResources.updateResources({
-          run: () => dataDir,
-          tempDir,
-          clone: () => {
-            throw new Error('clone failed');
-          }
-        }),
-        /Git 克隆失败/
-      );
-      assert.equal(existsSync(tempDir), false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('maintenance script entry safety and targets', () => {
   const scriptNames = [
     'fetch-all-materials',
@@ -732,8 +657,7 @@ describe('maintenance script entry safety and targets', () => {
     'fetch-paradox-operators',
     'fetch-penguin-stats',
     'fetch-stage-data',
-    'merge-formulas',
-    'update-maa-resources'
+    'merge-formulas'
   ];
 
   it('imports every maintenance script without running fetches or writes', () => {
@@ -774,7 +698,6 @@ describe('maintenance script entry safety and targets', () => {
     assert.equal(penguin.OUTPUT_PATH, join(serverDir, 'data', 'penguin-drop-data.json'));
     assert.equal(stageData.OUTPUT_PATH, join(serverDir, 'data', 'stages.json'));
     assert.equal(gameAssets.OUTPUT_DIR, join(serverDir, 'data'));
-    assert.equal(updateResources.TEMP_DIR, join(serverDir, '.temp-maa-resource'));
   });
 
   it('routes material data outputs through LA_PLUMA_TRAINING_DATA_DIR', () => {

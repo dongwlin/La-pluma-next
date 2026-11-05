@@ -6,7 +6,7 @@
 
 ## 路径解析与写入基元
 
-- 应用内路径由 `resolveAppPaths` 解析（`server/src/config/runtimeConfig.ts:167-190`）：锚定模块自身位置、与进程 cwd 无关，导入无副作用。应用持久数据根目录为 `server/data`（不入库），资源更新暂存目录为 `server/.temp-maa-resource`；养成数据目录默认与持久数据根目录相同，可被 `LA_PLUMA_TRAINING_DATA_DIR` 重定向（`server/src/config/runtimeConfig.ts:171`）。
+- 应用内路径由 `resolveAppPaths` 解析（`server/src/config/runtimeConfig.ts:167-190`）：锚定模块自身位置、与进程 cwd 无关，导入无副作用。应用持久数据根目录为 `server/data`（不入库）；养成数据目录默认与持久数据根目录相同，可被 `LA_PLUMA_TRAINING_DATA_DIR` 重定向（`server/src/config/runtimeConfig.ts:171`）。资源更新由 maa-cli 管理，应用不再维护本地克隆暂存目录。
 - 应用路径分五类互不混用：持久数据与内置/解析数据共享 `server/data` 根目录但由不同字段区分，临时目录与前端产物独立锚定；外部 MAA 路径见 `server/src/config/paths.ts`（`server/src/config/runtimeConfig.ts:163-165`）。内置/抓取数据包括企鹅物流掉落数据（脚本抓取，`server/src/config/runtimeConfig.ts:148`）等。
 - 外部 MAA 的配置/数据/状态目录按平台与 XDG 约定解析（`server/src/config/paths.ts:93-113`），MAA 主日志默认 `<状态目录>/debug/asst.log`（`server/src/config/paths.ts:108`）。
 - JSON 写入是临时文件加原子替换：同目录独占创建 `.tmp`、fsync、`rename` 覆盖、fsync 目录；失败清理临时文件，原内容不变（`server/src/utils/fileHelper.ts:102-138`）。同一路径的写入、读改写与删除按路径排队串行；`updateJsonFile` 把读取、更新、写回作为同一排队单元，并发读改写不会互相覆盖（`server/src/utils/fileHelper.ts:10-23,155-166`）。
