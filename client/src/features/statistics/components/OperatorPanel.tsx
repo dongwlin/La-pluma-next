@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  getOperatorAvatarUrl,
   operBoxQueryOptions,
   operatorCatalogQueryOptions,
+  useItemIconCacheVersion,
 } from '@/features/game-data'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Download, Play, RotateCcw } from 'lucide-react'
@@ -112,6 +114,7 @@ interface OperatorPanelProps {
 
 export default function OperatorPanel({ isActive, command }: OperatorPanelProps) {
   const shouldReduceMotion = useReducedMotion()
+  const itemIconVersion = useItemIconCacheVersion()
   const operBoxQuery = useQuery(operBoxQueryOptions())
   const operatorCatalogQuery = useQuery(operatorCatalogQueryOptions())
 
@@ -429,7 +432,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                                 <div className="absolute inset-0 animate-pulse bg-(--app-surface-muted)"></div>
                               )}
                               <img
-                                src={`https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${oper.id}.png`}
+                                src={getOperatorAvatarUrl(oper.id, 'base', itemIconVersion)}
                                 alt={oper.name}
                                 className={`h-full w-full object-cover transition-opacity duration-300 ${
                                   imageLoaded ? 'opacity-100' : 'opacity-0'
@@ -439,9 +442,9 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                                   const target = e.target as HTMLImageElement
                                   const currentSrc = target.src
                                   if (!currentSrc.includes('_2.png') && !currentSrc.includes('_1.png')) {
-                                    target.src = `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${oper.id}_2.png`
+                                    target.src = getOperatorAvatarUrl(oper.id, '2', itemIconVersion)
                                   } else if (currentSrc.includes('_2.png')) {
-                                    target.src = `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${oper.id}_1.png`
+                                    target.src = getOperatorAvatarUrl(oper.id, '1', itemIconVersion)
                                   } else {
                                     target.style.display = 'none'
                                     setLoadedImages(prev => ({ ...prev, [oper.id]: true }))

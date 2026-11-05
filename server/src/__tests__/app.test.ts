@@ -59,7 +59,7 @@ describe('Application route ownership', () => {
 
   it('excludes reserved paths from subpath static files and shell fallback', async () => {
     const origin = await productionApp('/console/')
-    for (const path of ['api/agent/manifest', 'api/missing', 'health/internal', 'readiness', 'webrtc-signaling']) {
+    for (const path of ['api/agent/manifest', 'api/missing', 'health/internal', 'readiness', 'webrtc-signaling', 'game-assets/item/30011.png']) {
       const response = await fetch(`${origin}/console/${path}`)
       assert.equal(response.status, 404, path)
       assert.doesNotMatch(await response.text(), /static .* shadow|Application shell fixture/)

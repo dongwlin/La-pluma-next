@@ -4,8 +4,11 @@ import express from 'express';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { normalizeBasePath, resolveAppPaths } from './config/runtimeConfig.ts';
 import type { RuntimeEnvSource } from './config/runtimeConfig.ts';
+import { resolveGameAssetPaths } from './config/gameAssetPaths.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
 import agentRoutes from './routes/agent.ts';
+import { createGameAssetRouter } from './routes/gameAssets.ts';
+import { GAME_ASSET_ROUTE_PREFIX } from './services/gameAssetService.ts';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
 import type { RuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
@@ -125,6 +128,12 @@ export function createLaPlumaApp({
     });
   });
 
+  // 图标与头像走同源只读路由，不经过 API 鉴权：<img> 无法附加令牌。
+  app.use(
+    GAME_ASSET_ROUTE_PREFIX,
+    createGameAssetRouter(resolveGameAssetPaths({ env }).rootDir)
+  );
+
   // API 独占自己的命名空间：鉴权先于 JSON 解析，稳定 404 与错误出口先于静态资源。
   // 探针、信令登录和前端资源不读取业务 JSON 请求体。
   const api = express.Router();
@@ -140,7 +149,7 @@ export function createLaPlumaApp({
 
   if (env.NODE_ENV === 'production') {
     const staticMountPath = basePath === '/' ? '/' : basePath.slice(0, -1);
-    const reservedPaths = ['/api', '/health', '/readiness', signalingPath];
+    const reservedPaths = ['/api', '/health', '/readiness', GAME_ASSET_ROUTE_PREFIX, signalingPath];
     const frontend = express.Router();
     // 子路径内也保留服务命名空间；文件与 SPA fallback 共用此边界。
     frontend.use((req, _res, next) => {

@@ -6,16 +6,36 @@ import {
 } from '@/shared/api'
 import { getItemIconCacheVersion } from '../model/itemIconCache'
 
+const GAME_ASSET_PATH = '/game-assets'
+
+const getGameAssetBaseUrl = (): string =>
+  typeof window === 'undefined' ? GAME_ASSET_PATH : `${window.location.origin}${GAME_ASSET_PATH}`
+
 /**
- * 物品图标来自外部静态资源仓库。函数只生成 URL，不发起请求；
- * 图片本身由浏览器 HTTP 缓存，不进入 Query 缓存。`?v=` 使用资源更新成功后
- * 推进的 epoch，避免同一路径的新图继续命中旧缓存。
+ * 本地图标与头像由服务端同源资源路由提供；函数只生成 URL，不发起请求。
+ * 图片由浏览器 HTTP 缓存，不进入 Query 缓存。`?v=` 使用资源更新成功后推进的
+ * epoch，避免同一路径的新图继续命中旧缓存。
  */
 export const getItemIconUrl = (
   iconId: string | number,
   version: number = getItemIconCacheVersion(),
 ): string =>
-  `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/${encodeURIComponent(String(iconId))}.png?v=${version}`
+  `${getGameAssetBaseUrl()}/item/${encodeURIComponent(String(iconId))}.png?v=${version}`
+
+export type OperatorAvatarVariant = 'base' | '1' | '2'
+
+const OPERATOR_AVATAR_SUFFIXES: Record<OperatorAvatarVariant, string> = {
+  base: '',
+  '1': '_1',
+  '2': '_2',
+}
+
+export const getOperatorAvatarUrl = (
+  operatorId: string,
+  variant: OperatorAvatarVariant = 'base',
+  version: number = getItemIconCacheVersion(),
+): string =>
+  `${getGameAssetBaseUrl()}/avatar/${encodeURIComponent(operatorId)}${OPERATOR_AVATAR_SUFFIXES[variant]}.png?v=${version}`
 
 const isDepotPayload = (payload: unknown): boolean =>
   payload === null || (isRecord(payload) && Array.isArray(payload.items))

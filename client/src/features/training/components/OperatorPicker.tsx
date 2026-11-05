@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Filter, Search, UserRoundSearch } from 'lucide-react'
+import { getOperatorAvatarUrl, useItemIconCacheVersion } from '@/features/game-data'
 import { Button, EmptyState, Input, Loading, Select } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
@@ -65,6 +66,7 @@ export default function OperatorPicker({
   onAdd,
 }: OperatorPickerProps) {
   const shouldReduceMotion = useReducedMotion()
+  const itemIconVersion = useItemIconCacheVersion()
   const [filters, setFilters] = useState<TrainingFilters>({
     rarity: '',
     status: 'trainable',
@@ -264,7 +266,7 @@ export default function OperatorPicker({
                           <div className="app-skeleton absolute inset-0 surface-soft" />
                         )}
                         <img
-                          src={`https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${operator.id}.png`}
+                          src={getOperatorAvatarUrl(operator.id, 'base', itemIconVersion)}
                           alt={operator.name}
                           loading={idx < 12 ? 'eager' : 'lazy'}
                           decoding="async"
@@ -277,9 +279,9 @@ export default function OperatorPicker({
                             const target = e.target as HTMLImageElement;
                             const currentSrc = target.src;
                             if (!currentSrc.includes('_2.png') && !currentSrc.includes('_1.png')) {
-                              target.src = `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${operator.id}_2.png`;
+                              target.src = getOperatorAvatarUrl(operator.id, '2', itemIconVersion);
                             } else if (currentSrc.includes('_2.png')) {
-                              target.src = `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${operator.id}_1.png`;
+                              target.src = getOperatorAvatarUrl(operator.id, '1', itemIconVersion);
                             } else {
                               target.style.display = 'none';
                               setLoadedImages(prev => prev[operator.id] ? prev : ({ ...prev, [operator.id]: true }));

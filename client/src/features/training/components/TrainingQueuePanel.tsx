@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpToLine, ClipboardList, Plus, Trash2, UserRoundSearch } from 'lucide-react'
+import { getOperatorAvatarUrl, useItemIconCacheVersion } from '@/features/game-data'
 import { Button, EmptyState, IconButton, Loading } from '@/shared/ui'
 import { getQueueMaterials, selectMissingMaterials } from '../model/materials'
 import TrainingLoadError from './TrainingLoadError'
@@ -54,6 +55,7 @@ export default function TrainingQueuePanel({
   onOpenPicker,
 }: TrainingQueuePanelProps) {
   const queueHeadingRef = useRef<HTMLHeadingElement>(null)
+  const itemIconVersion = useItemIconCacheVersion()
   const focusHeading = () => queueHeadingRef.current?.focus({ preventScroll: true })
 
   const handleRemove = async (operatorId: string) => {
@@ -83,7 +85,7 @@ export default function TrainingQueuePanel({
           {queue.map((item, index) => <li key={item.operatorId} className={`training-queue-row ${index === 0 ? 'is-current' : ''}`}>
             <div className="training-queue-identity">
               <span className="training-queue-rank">{String(index + 1).padStart(2, '0')}</span>
-              <span className="training-avatar"><UserRoundSearch size={22} aria-hidden="true" /><img src={`https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${item.operatorId}.png`} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /></span>
+              <span className="training-avatar"><UserRoundSearch size={22} aria-hidden="true" /><img src={getOperatorAvatarUrl(item.operatorId, 'base', itemIconVersion)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /></span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1"><h3 className="training-operator-name" data-training-operator-name>{item.operator.name}</h3>{index === 0 && <span className="training-current-label">当前</span>}</div>
                 <p className="training-queue-meta">精{item.currentElite} → 精{item.targetElite}<span>{selectMissingMaterials(getQueueMaterials(item)).length} 种缺口</span></p>

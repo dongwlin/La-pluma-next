@@ -51,7 +51,7 @@ vi.mock('@/features/operator-quotes', () => ({
     quote: '今天也请多指教',
   },
   getOperatorAvatarUrl: (operatorId: string) =>
-    `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${operatorId}.png`,
+    `http://localhost:3000/game-assets/avatar/${operatorId}.png`,
   loadDailyOperatorQuote: mocks.loadDailyOperatorQuote,
 }))
 

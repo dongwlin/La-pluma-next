@@ -10,6 +10,7 @@ import {
   getOperatorAvatarUrl,
   loadDailyOperatorQuote,
 } from '@/features/operator-quotes'
+import { useItemIconCacheVersion } from '@/features/game-data'
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -98,6 +99,7 @@ export default function Layout({ activeTab, children }: LayoutProps) {
   const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
   const [sidebarIdentity, setSidebarIdentity] = useState(DEFAULT_OPERATOR_QUOTE)
+  const itemIconVersion = useItemIconCacheVersion()
   const shouldReduceMotion = useReducedMotion()
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const scrollPositions = useRef(new Map<AppTab, number>())
@@ -369,7 +371,7 @@ export default function Layout({ activeTab, children }: LayoutProps) {
               <span className="la-pluma-sidebar-avatar" aria-hidden="true">
                 <img
                   key={sidebarIdentity.operatorId}
-                  src={getOperatorAvatarUrl(sidebarIdentity.operatorId)}
+                  src={getOperatorAvatarUrl(sidebarIdentity.operatorId, 'base', itemIconVersion)}
                   alt=""
                   decoding="async"
                   onError={(event) => {

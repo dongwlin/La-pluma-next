@@ -1,4 +1,5 @@
-export { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from './api'
+export { getAllOperators, getDepotData, getItemIconUrl, getOperatorAvatarUrl, getOperBoxData } from './api'
+export type { OperatorAvatarVariant } from './api'
 export { useItemIconCacheVersion } from './hooks/useItemIconCacheVersion'
 export {
   ITEM_ICON_CACHE_STORAGE_KEY,
