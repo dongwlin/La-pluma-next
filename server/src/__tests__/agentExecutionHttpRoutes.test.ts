@@ -85,6 +85,7 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress.json');
 
 const { createLaPlumaApp } = await import('../app.ts');
+const { listAgentRuns } = await import('../services/agentRunService.ts');
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
 const { loggerManager } = await import('../utils/logger.ts');
 
@@ -380,15 +381,37 @@ describe('agent execution HTTP adapter', () => {
         command: 'run',
         taskConfig: { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ name: '阿米娅' }] } }
       }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { name: '动态任务', type: 42 }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { name: '动态任务', type: 'Bad Type' }
+      }, 'AGENT_VALIDATION_TASK_TYPE_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'fight',
+        taskConfig: { name: '动态任务', type: 'Award' }
+      }, 'AGENT_VALIDATION_COMMAND_COMBINATION_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        userResource: true
+      }, 'AGENT_VALIDATION_COMMAND_COMBINATION_INVALID'],
       ['/api/agent/actions/stop', { runId: 42 }, 'AGENT_VALIDATION_RUN_ID_INVALID']
     ];
 
+    const runCountBefore = listAgentRuns({ operationId: 'run_task' }).length;
     for (const [path, body, code] of invalidRequests) {
       const response = await postJson(`${baseUrl}${path}`, body);
       assert.equal(response.status, 400, `${path} must reject malformed input`);
       const payload = await readError(response);
       assert.equal(payload.error.code, code, `${path} error code`);
     }
+    assert.equal(
+      listAgentRuns({ operationId: 'run_task' }).length,
+      runCountBefore,
+      'invalid requests must not create run records'
+    );
 
     const snapshot = await fetch(`${baseUrl}/api/agent/runs/current`, {
       headers: authorizedHeaders()

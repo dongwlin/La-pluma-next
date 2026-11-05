@@ -183,6 +183,31 @@ describe('Agent API contract registry', () => {
     assert.deepEqual(properties.taskConfig.examples?.map(value => typeof value === 'object' && value !== null && 'type' in value ? value.type : null), ['OperProgress', 'SwitchTheme']);
   });
 
+  it('rejects invalid task types and command combinations in the run_task schema', () => {
+    const action = findAction(buildAgentManifest(defaults), 'run_task');
+    const validate = new Ajv2020({ strict: false }).compile(must(action.body_schema, 'run_task body'));
+    const request = (body: Record<string, unknown>) => body;
+    const taskConfig = (type: string, params: Record<string, unknown> = {}) => ({
+      name: '动态任务',
+      type,
+      params
+    });
+
+    assert.equal(validate(request({ command: 'run', taskConfig: taskConfig('Award') })), true);
+    assert.equal(validate(request({
+      command: 'run',
+      taskConfig: taskConfig('OperProgress', { plans: [{ name: '陈', elite: 2 }] })
+    })), true);
+    assert.equal(validate(request({
+      command: 'run',
+      taskConfig: taskConfig('SwitchTheme', { themes: ['默认'] })
+    })), true);
+    assert.equal(validate(request({ command: 'run', taskConfig: taskConfig('Bad Type') })), false);
+    assert.equal(validate(request({ command: 'fight', taskConfig: taskConfig('Award') })), false);
+    assert.equal(validate(request({ command: 'list', taskConfig: taskConfig('Award') })), false);
+    assert.equal(validate(request({ command: 'run', userResource: true })), false);
+  });
+
   it('validates game task target shapes without restricting other dynamic Core task types', () => {
     const action = findAction(buildAgentManifest(defaults), 'run_task');
     const validate = new Ajv2020({ strict: false }).compile(must(action.body_schema, 'run_task body'));

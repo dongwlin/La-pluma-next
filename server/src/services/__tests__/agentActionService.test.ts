@@ -6,7 +6,8 @@ import {
   executeAgentTask,
   normalizeCopilotSetExecutionRequest,
   normalizeCopilotSetMode,
-  normalizeDailyFlowRequest
+  normalizeDailyFlowRequest,
+  preflightAgentTaskRequest
 } from '../agentActionService.ts';
 
 type ExecutorCall = Record<string, unknown>;
@@ -286,6 +287,74 @@ describe('executeAgentTask', () => {
       executeAgentTask({ command: 'run', taskConfig: {}, userResource: 1 }, dependencies),
       error => errorField(error, 'code') === 'AGENT_VALIDATION_USER_RESOURCE_INVALID'
     );
+  });
+});
+
+describe('preflightAgentTaskRequest', () => {
+  it('rejects invalid task types and game task params before any execution', () => {
+    const invalidInputs = [
+      { command: 'run', taskConfig: { name: '任务', type: 42 } },
+      { command: 'run', taskConfig: { name: '任务', type: 'Bad Type' } },
+      { command: 'run', taskConfig: { name: '培养', type: 'OperProgress', params: { plans: [] } } },
+      { command: 'run', taskConfig: { name: '主题', type: 'SwitchTheme', params: { themes: '默认' } } }
+    ];
+    for (const input of invalidInputs) {
+      assert.throws(
+        () => preflightAgentTaskRequest(input),
+        error => ['AGENT_VALIDATION_TASK_CONFIG_INVALID', 'AGENT_VALIDATION_TASK_TYPE_INVALID']
+          .includes(String(errorField(error, 'code')))
+      );
+    }
+  });
+
+  it('rejects invalid command combinations before run creation', () => {
+    const invalidInputs = [
+      { command: 'fight', taskConfig: { name: '任务', type: 'Award' } },
+      { command: 'list', taskConfig: { name: '任务', type: 'Award' } },
+      { command: 'run', userResource: true }
+    ];
+    for (const input of invalidInputs) {
+      assert.throws(
+        () => preflightAgentTaskRequest(input),
+        error => {
+          assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_COMMAND_COMBINATION_INVALID');
+          assert.equal(errorField(error, 'statusCode'), 400);
+          assert.equal(errorField(error, 'retryable'), false);
+          return true;
+        }
+      );
+    }
+  });
+
+  it('keeps OperProgress and SwitchTheme valid and normalizes legal requests', () => {
+    const progress = preflightAgentTaskRequest({
+      command: 'run',
+      taskConfig: {
+        name: '游戏内培养',
+        type: 'OperProgress',
+        params: { plans: [{ name: '陈', role: 'Unknown', elite: 2, skill_mastery: [0, 3, 0] }] }
+      },
+      taskName: ' 培养 ',
+      waitForCompletion: false
+    });
+    assert.equal(progress.command, 'run');
+    assert.equal(progress.taskName, '培养');
+    assert.equal(progress.waitForCompletion, false);
+    assert.deepEqual(progress.taskConfig, {
+      name: '游戏内培养',
+      type: 'OperProgress',
+      params: { plans: [{ name: '陈', role: 'Unknown', elite: 2, skill_mastery: [0, 3, 0] }] }
+    });
+
+    const theme = preflightAgentTaskRequest({
+      command: 'run',
+      taskConfig: { name: '游戏界面主题', type: 'SwitchTheme', params: { themes: ['默认', '简约'] } }
+    });
+    assert.deepEqual(theme.taskConfig, {
+      name: '游戏界面主题',
+      type: 'SwitchTheme',
+      params: { themes: ['默认', '简约'] }
+    });
   });
 });
 

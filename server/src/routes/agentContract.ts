@@ -1,6 +1,7 @@
-import { AGENT_TASK_COMMANDS } from '../services/agentActionService.ts';
+import { AGENT_TASK_COMMANDS, AGENT_TASK_DYNAMIC_COMMAND } from '../services/agentActionService.ts';
+import { AGENT_TASK_CONFIG_SCHEMA } from '../services/agentTaskContract.ts';
+import type { JsonSchema, RuntimeDefaultKey } from '../services/agentTaskContract.ts';
 import { API_VERSION } from '../config/apiVersion.ts';
-import { GAME_OPERATOR_ROLES } from '../services/gameTaskConfigService.ts';
 
 /**
  * 能力清单与 manifest/OpenAPI 生成器共用同一份 `AGENT_OPERATIONS`，生成器只做纯投影、
@@ -10,41 +11,7 @@ import { GAME_OPERATOR_ROLES } from '../services/gameTaskConfigService.ts';
 /** 版本常量的单一字面量来源在 config/apiVersion.ts；此处 re-export 保持既有导入路径。 */
 export { API_VERSION };
 
-/** 契约中可由 manifest 用当前运行配置替换的默认值键。 */
-export type RuntimeDefaultKey = 'adbPath' | 'adbAddress' | 'clientType';
-
-export type JsonSchemaType = 'object' | 'array' | 'string' | 'integer' | 'number' | 'boolean' | 'null';
-
-/** 能力清单使用的 JSON Schema 子集；未知关键字保持原样透传。 */
-export interface JsonSchema {
-  $ref?: string;
-  type?: JsonSchemaType | readonly JsonSchemaType[];
-  properties?: Record<string, JsonSchema>;
-  required?: readonly string[];
-  additionalProperties?: boolean | JsonSchema;
-  items?: JsonSchema;
-  oneOf?: readonly JsonSchema[];
-  anyOf?: readonly JsonSchema[];
-  allOf?: readonly JsonSchema[];
-  if?: JsonSchema;
-  then?: JsonSchema;
-  contains?: JsonSchema;
-  enum?: readonly (string | number | boolean | null)[];
-  const?: unknown;
-  minimum?: number;
-  maximum?: number;
-  minItems?: number;
-  maxItems?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  format?: string;
-  default?: unknown;
-  description?: string;
-  examples?: readonly unknown[];
-  /** 构建 manifest 时替换为当前运行配置；OpenAPI 文档不输出该标记。 */
-  'x-la-pluma-runtime-default'?: RuntimeDefaultKey;
-}
+export type { JsonSchema, JsonSchemaType, RuntimeDefaultKey } from '../services/agentTaskContract.ts';
 
 /** manifest 构建输入：只声明运行配置里会被写入 schema 默认值的字段。 */
 export interface AgentRuntimeDefaults {
@@ -528,97 +495,25 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
           description: 'maa-cli subcommand. Core-only task types without a CLI subcommand (Award, Depot, OperBox, Infrast, Recruit, Mall) execute through command=run plus taskConfig.'
         },
         args: { type: 'array', items: { type: 'string' }, default: [] },
-        taskConfig: {
-          oneOf: [
-            {
-              type: 'object',
-              required: ['name', 'type'],
-              properties: {
-                name: { type: 'string', minLength: 1 },
-                type: { type: 'string', minLength: 1, examples: ['OperProgress', 'SwitchTheme'] },
-                params: { type: 'object', additionalProperties: true }
-              },
-              allOf: [
-                {
-                  if: { properties: { type: { const: 'OperProgress' } }, required: ['type'] },
-                  then: {
-                    required: ['params'],
-                    properties: {
-                      params: {
-                        type: 'object',
-                        required: ['plans'],
-                        properties: {
-                          plans: {
-                            type: 'array',
-                            minItems: 1,
-                            description: 'Operator plans. Each plan must target elite, skill_level or at least one positive skill_mastery slot.',
-                            items: {
-                              type: 'object',
-                              required: ['name'],
-                              properties: {
-                                role: { type: 'string', enum: [...GAME_OPERATOR_ROLES], description: 'Operator profession. Omit only when Core can infer a unique role from the name.' },
-                                name: { type: 'string', minLength: 1 },
-                                elite: { type: 'integer', minimum: 1, maximum: 2 },
-                                skill_level: { type: 'integer', minimum: 2, maximum: 7 },
-                                skill_mastery: {
-                                  type: 'array', minItems: 3, maxItems: 3,
-                                  items: { type: 'integer', minimum: 0, maximum: 3 },
-                                  description: 'S1/S2/S3 target mastery levels; 0 leaves a skill unchanged. Starting training does not mean its training timer has finished.'
-                                }
-                              },
-                              anyOf: [
-                                { required: ['elite'] },
-                                { required: ['skill_level'] },
-                                {
-                                  required: ['skill_mastery'],
-                                  properties: {
-                                    skill_mastery: { contains: { type: 'integer', minimum: 1 } }
-                                  }
-                                }
-                              ],
-                              additionalProperties: false
-                            }
-                          }
-                        },
-                        additionalProperties: true
-                      }
-                    }
-                  }
-                },
-                {
-                  if: { properties: { type: { const: 'SwitchTheme' } }, required: ['type'] },
-                  then: {
-                    required: ['params'],
-                    properties: {
-                      params: {
-                        type: 'object', required: ['themes'],
-                        properties: {
-                          themes: {
-                            type: 'array', items: { type: 'string', minLength: 1 },
-                            description: 'Exact in-game theme names. Multiple candidates select one at random; an empty list is skipped.'
-                          }
-                        },
-                        additionalProperties: true
-                      }
-                    }
-                  }
-                }
-              ],
-              additionalProperties: true
-            },
-            { type: 'string', description: 'A JSON-encoded task configuration object.' }
-          ],
-          description: 'When supplied, La Pluma Next writes a validated temporary MAA task and executes it. Game task outcomes are available in actions; failed operator sub-actions fail a standalone Run even when the CLI exits successfully. Missing callbacks leave the game result unconfirmed.',
-          examples: [
-            { name: '游戏内培养', type: 'OperProgress', params: { plans: [{ role: 'Caster', name: '阿米娅', elite: 2, skill_level: 7 }] } },
-            { name: '游戏界面主题更换', type: 'SwitchTheme', params: { themes: ['默认'] } }
-          ]
-        },
+        taskConfig: AGENT_TASK_CONFIG_SCHEMA,
         taskName: { type: 'string', maxLength: 160, description: 'Human-readable task name exposed through task status.' },
         taskType: { type: 'string', maxLength: 64, description: 'Caller-defined task category exposed through task status.' },
         userResource: { type: 'boolean', default: false },
         waitForCompletion: { type: 'boolean', default: true }
-      }
+      },
+      allOf: [
+        {
+          if: { required: ['taskConfig'], properties: { taskConfig: { type: ['object', 'string'] } } },
+          then: {
+            required: ['command'],
+            properties: { command: { const: AGENT_TASK_DYNAMIC_COMMAND } }
+          }
+        },
+        {
+          if: { required: ['userResource'], properties: { userResource: { const: true } } },
+          then: { required: ['taskConfig'] }
+        }
+      ]
     }
   }),
   operation({
