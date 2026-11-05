@@ -22,6 +22,10 @@ import {
 import type { AgentRunStoreRestoreSummary } from './services/agentRunService.ts';
 import { initializeRuntimeState } from './services/runtimeInitializationService.ts';
 import type { RuntimeInitializationOverrides } from './services/runtimeInitializationService.ts';
+import {
+  cleanupStaleDynamicTaskDirectories
+} from './services/maaExecutionService.ts';
+import type { MaaDynamicTaskCleanupSummary } from './services/maaExecutionService.ts';
 import { closeExecutionAdmission } from './services/executionAdmissionService.ts';
 import { attachExecutionShutdownToLifecycle } from './services/executionShutdownService.ts';
 import type {
@@ -63,6 +67,8 @@ export interface StartLaPlumaServerOptions {
   initializeRunStore?: (context: RuntimeLifecycleStartContext) => Promise<AgentRunStoreRestoreSummary>;
   /** 运行时恢复端口；真实实现接收生命周期端口，测试可只返回 Promise。 */
   initializeRuntime?: (overrides: RuntimeInitializationOverrides) => unknown;
+  /** 启动清理端口；默认回收上次进程遗留且确认过期的动态任务目录。 */
+  cleanupDynamicTaskDirectories?: () => Promise<MaaDynamicTaskCleanupSummary>;
   logger?: ServerLogger;
   closeDeadlineMs?: number;
   executionShutdownOptions?: ExecutionShutdownOptions;
@@ -228,6 +234,7 @@ export function createLaPlumaServer({
   signalingGateway = createWebrtcSignalingGateway(),
   initializeRunStore = ({ signal }) => initializeAgentRunStore({ signal }),
   initializeRuntime = initializeRuntimeState,
+  cleanupDynamicTaskDirectories = cleanupStaleDynamicTaskDirectories,
   logger = console,
   closeDeadlineMs = DEFAULT_CLOSE_DEADLINE_MS,
   executionShutdownOptions = {},
@@ -308,7 +315,7 @@ export function createLaPlumaServer({
       // 不可就绪，直到完成一次完整初始化。
       readiness.markInitializationStarted();
       try {
-        await initializeRuntime({ lifecycle, signal });
+        await initializeRuntime({ lifecycle, signal, cleanupDynamicTaskDirectories });
         signal.throwIfAborted();
         readiness.markInitializationCompleted();
       } catch (error) {
