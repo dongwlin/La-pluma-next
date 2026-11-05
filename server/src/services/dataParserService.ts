@@ -352,6 +352,8 @@ function splitRunSegments(events: readonly MaaCallbackEvent[]): MaaCallbackEvent
   let current: MaaCallbackEvent[] = [];
 
   for (const event of events) {
+    if (event.callback === 'AllTasksCompleted') continue;
+
     if (event.callback === 'TaskChainStart') {
       if (current.length > 0) segments.push(current);
       current = [event];

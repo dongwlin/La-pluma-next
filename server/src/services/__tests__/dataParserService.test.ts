@@ -371,14 +371,16 @@ describe('parseDepotData', () => {
     assert.equal(await getDepotData(fixture.ports), null);
   });
 
-  it('takes the last payload in a completed run after its progress events', async () => {
+  it('takes the last payload after progress and assistant completion callbacks', async () => {
     const fixture = await createFixture();
     await writeItemFixture(fixture);
     await writeFile(fixture.maaLogPath, [
       depotTaskLine('TaskChainStart'),
       depotInfoLine({ 30011: 3 }, false),
       depotInfoLine({ 30011: 9 }, true),
-      depotTaskLine('TaskChainCompleted')
+      callbackLine('SubTaskCompleted', { subtask: 'DepotRecognitionTask', taskchain: 'Depot', taskid: 1, uuid: 'fixture' }),
+      depotTaskLine('TaskChainCompleted'),
+      callbackLine('AllTasksCompleted', { finished_tasks: [1], taskchain: 'Depot', taskid: 1, uuid: 'fixture' })
     ].join('\n'), 'utf-8');
 
     const result = expectSuccess(await parseDepotData(fixture.ports));
@@ -466,12 +468,19 @@ describe('parseDepotData', () => {
 });
 
 describe('parseOperBoxData', () => {
-  it('stores the identified operator list', async () => {
+  it('stores the identified operator list after assistant completion', async () => {
     const fixture = await createFixture();
     const operators = [
       { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, elite: 0, level: 1, potential: 6, own: true }
     ];
-    await writeFile(fixture.maaLogPath, operBoxRun(operators).join('\n'), 'utf-8');
+    await writeFile(fixture.maaLogPath, [
+      operBoxTaskLine('TaskChainStart'),
+      operBoxInfoLine(operators, false),
+      operBoxInfoLine(operators),
+      callbackLine('SubTaskCompleted', { subtask: 'OperBoxRecognitionTask', taskchain: 'OperBox', taskid: 1, uuid: 'fixture' }),
+      operBoxTaskLine('TaskChainCompleted'),
+      callbackLine('AllTasksCompleted', { finished_tasks: [1], taskchain: 'OperBox', taskid: 1, uuid: 'fixture' })
+    ].join('\n'), 'utf-8');
 
     const result = expectSuccess(await parseOperBoxData(fixture.ports));
 
