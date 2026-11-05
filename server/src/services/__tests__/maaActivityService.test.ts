@@ -34,6 +34,7 @@ const {
   parseActivityTimestamp,
   parseMaaActivityGroups,
   parseResourceCollectionWindow,
+  parseSideStoryStages,
   readActivityTableState,
   resetMaaActivityCachesForTests
 } = await import('../maaActivityService.ts');
@@ -69,6 +70,54 @@ const TXWY_ACTIVITY = `Opening side story stages:
 Opening mini games:
 - 衛戍協議：盟約`;
 
+const SIDE_STORY_TABLE = {
+  Official: {
+    sideStoryStage: {
+      SSReopen: {
+        Activity: {
+          Tip: 'SideStory「墟」复刻',
+          StageName: '墟',
+          UtcStartTime: '2026/08/22 04:00:00',
+          UtcExpireTime: '2026/09/01 03:59:59',
+          TimeZone: 8
+        },
+        Stages: [
+          { Display: 'SSReopen-AT', Value: 'SSReopen-AT' },
+          { Display: 'AT-8', Value: 'AT-8' },
+          { Display: 'AT-7', Value: 'AT-7' }
+        ]
+      },
+      TL: {
+        Activity: {
+          Tip: 'SideStory「时间啊，向前！」',
+          StageName: '时间啊，向前！',
+          UtcStartTime: '2026/11/01 12:00:00',
+          UtcExpireTime: '2026/11/22 03:59:59',
+          TimeZone: 8
+        },
+        Stages: [
+          { Display: 'TL-9', Value: 'TL-9' },
+          { Display: 'TL-8' }
+        ]
+      }
+    }
+  },
+  YoStarEN: {
+    sideStoryStage: {
+      MT: {
+        Activity: {
+          Tip: "The Masses' Travels - Rerun",
+          StageName: "The Masses' Travels",
+          UtcStartTime: '2026/11/05 08:00:00',
+          UtcExpireTime: '2026/11/15 03:59:59',
+          TimeZone: -7
+        },
+        Stages: [{ Value: 'SSReopen-MT' }, { Value: 'MT-10' }]
+      }
+    }
+  }
+};
+
 const MINI_GAMES_ONLY = `Opening mini games:
 - 黑流树海刷钱`;
 
@@ -80,6 +129,8 @@ function cachedActivity(overrides: Partial<CachedActivity> = {}): CachedActivity
     startTime: null,
     endTime: null,
     stages: [],
+    rerun: false,
+    activities: [],
     timestamp: NOW - 1000,
     ttl: TEN_MINUTES,
     ...overrides
@@ -161,6 +212,46 @@ describe('parseMaaActivityGroups', () => {
   });
 });
 
+describe('parseSideStoryStages', () => {
+  it('maps stage windows, stages, and rerun markers from the activity table', () => {
+    const entries = parseSideStoryStages(SIDE_STORY_TABLE, 'Official');
+
+    assert.equal(entries.length, 2);
+    assert.deepEqual(entries[0], {
+      key: 'SSReopen',
+      name: '墟',
+      tip: 'SideStory「墟」复刻',
+      startTime: Date.UTC(2026, 7, 21, 20, 0, 0),
+      endTime: Date.UTC(2026, 7, 31, 19, 59, 59),
+      stages: ['SSReopen-AT', 'AT-8', 'AT-7'],
+      rerun: true
+    });
+    assert.deepEqual(entries[1], {
+      key: 'TL',
+      name: '时间啊，向前！',
+      tip: 'SideStory「时间啊，向前！」',
+      startTime: Date.UTC(2026, 10, 1, 4, 0, 0),
+      endTime: Date.UTC(2026, 10, 21, 19, 59, 59),
+      stages: ['TL-9', 'TL-8'],
+      rerun: false
+    });
+  });
+
+  it('applies the client time zone without converting to the host zone', () => {
+    const [entry] = parseSideStoryStages(SIDE_STORY_TABLE, 'YoStarEN');
+
+    assert.equal(entry?.startTime, Date.UTC(2026, 10, 5, 15, 0, 0));
+    assert.equal(entry?.endTime, Date.UTC(2026, 10, 15, 10, 59, 59));
+    assert.equal(entry?.rerun, true);
+  });
+
+  it('reads Bilibili from the Official table and ignores unknown clients', () => {
+    assert.equal(parseSideStoryStages(SIDE_STORY_TABLE, 'Bilibili').length, 2);
+    assert.deepEqual(parseSideStoryStages(SIDE_STORY_TABLE, 'Txwy'), []);
+    assert.deepEqual(parseSideStoryStages(null, 'Official'), []);
+  });
+});
+
 describe('getCurrentActivity status contract', () => {
   it('serves a fresh memory cache without running the CLI', async () => {
     const entry = cachedActivity();
@@ -184,6 +275,8 @@ describe('getCurrentActivity status contract', () => {
       startTime: null,
       endTime: null,
       stages: [],
+      rerun: false,
+      activities: [],
       status: 'active',
       clientType: CLIENT,
       lastSuccessAt: entry.timestamp,
@@ -209,7 +302,17 @@ describe('getCurrentActivity status contract', () => {
     assert.equal(snapshot.status, 'active');
     assert.equal(snapshot.code, 'YW');
     assert.equal(snapshot.lastSuccessAt, entry.timestamp);
-    assert.deepEqual(cache.get(CLIENT), entry);
+    assert.deepEqual(cache.get(CLIENT), {
+      ...entry,
+      activities: [{
+        code: 'YW',
+        name: '昨日海',
+        startTime: null,
+        endTime: null,
+        stages: [],
+        rerun: false
+      }]
+    });
   });
 
   it('reads an active CLI group and records the activity table timestamp', async () => {
@@ -230,7 +333,18 @@ describe('getCurrentActivity status contract', () => {
     assert.equal(snapshot.code, 'YW');
     assert.equal(snapshot.name, '昨日海');
     assert.equal(snapshot.source, 'maa');
-    assert.deepEqual(snapshot.stages, []);
+    assert.deepEqual(snapshot.stages, ['YW-8']);
+    assert.equal(snapshot.rerun, false);
+    assert.deepEqual(snapshot.activities, [
+      {
+        code: 'YW',
+        name: '昨日海',
+        startTime: null,
+        endTime: null,
+        stages: ['YW-8'],
+        rerun: false
+      }
+    ]);
     assert.equal(snapshot.lastSuccessAt, NOW);
     assert.equal(snapshot.dataUpdatedAt, NOW - 5000);
     assert.equal(snapshot.failure, null);
@@ -241,10 +355,91 @@ describe('getCurrentActivity status contract', () => {
       source: 'maa',
       startTime: null,
       endTime: null,
-      stages: [],
+      stages: ['YW-8'],
+      rerun: false,
+      activities: [
+        {
+          code: 'YW',
+          name: '昨日海',
+          startTime: null,
+          endTime: null,
+          stages: ['YW-8'],
+          rerun: false
+        }
+      ],
       timestamp: NOW,
       ttl: TEN_MINUTES
     });
+  });
+
+  it('enriches every CLI group with table times, stages, and rerun markers', async () => {
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- 主线「相变临界」
+  - 17-11: 固源岩
+- SideStory「时间啊，向前！」
+  - TL-9: 电极单元
+- SideStory「墟」复刻
+  - SSReopen-AT: 代理1~8
+  - AT-8: 31093`
+      }),
+      readSideStoryStages: async () => parseSideStoryStages(SIDE_STORY_TABLE, 'Official')
+    }));
+
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'TL');
+    assert.equal(snapshot.name, '时间啊，向前！');
+    assert.equal(snapshot.startTime, Date.UTC(2026, 10, 1, 4, 0, 0));
+    assert.equal(snapshot.endTime, Date.UTC(2026, 10, 21, 19, 59, 59));
+    assert.deepEqual(snapshot.stages, ['TL-9', 'TL-8']);
+    assert.equal(snapshot.rerun, true);
+    assert.deepEqual(snapshot.activities, [
+      {
+        code: null,
+        name: '相变临界',
+        startTime: null,
+        endTime: null,
+        stages: ['17-11'],
+        rerun: false
+      },
+      {
+        code: 'TL',
+        name: '时间啊，向前！',
+        startTime: Date.UTC(2026, 10, 1, 4, 0, 0),
+        endTime: Date.UTC(2026, 10, 21, 19, 59, 59),
+        stages: ['TL-9', 'TL-8'],
+        rerun: false
+      },
+      {
+        code: 'AT',
+        name: '墟',
+        startTime: Date.UTC(2026, 7, 21, 20, 0, 0),
+        endTime: Date.UTC(2026, 7, 31, 19, 59, 59),
+        stages: ['SSReopen-AT', 'AT-8', 'AT-7'],
+        rerun: true
+      }
+    ]);
+  });
+
+  it('keeps CLI stages and null times when the side story table cannot be read', async () => {
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- SideStory「时间啊，向前！」
+  - TL-9: 电极单元`
+      }),
+      readSideStoryStages: async () => {
+        throw new Error('活动表损坏');
+      }
+    }));
+
+    assert.equal(snapshot.status, 'active');
+    assert.equal(snapshot.code, 'TL');
+    assert.equal(snapshot.startTime, null);
+    assert.equal(snapshot.endTime, null);
+    assert.deepEqual(snapshot.stages, ['TL-9']);
+    assert.equal(snapshot.activities[0]?.rerun, false);
   });
 
   it('rounds fractional activity table mtimes into integer snapshot timestamps', async () => {
@@ -374,7 +569,22 @@ describe('getCurrentActivity status contract', () => {
   });
 
   it('degrades to stale with the last successful activity when every source fails', async () => {
-    const entry = cachedActivity({ timestamp: NOW - 60 * 60 * 1000, ttl: ONE_DAY });
+    const entry = cachedActivity({
+      timestamp: NOW - 60 * 60 * 1000,
+      ttl: ONE_DAY,
+      startTime: NOW - 2 * ONE_DAY,
+      endTime: NOW + 2 * ONE_DAY,
+      stages: ['YW-8'],
+      rerun: true,
+      activities: [{
+        code: 'YW',
+        name: '昨日海',
+        startTime: NOW - 2 * ONE_DAY,
+        endTime: NOW + 2 * ONE_DAY,
+        stages: ['YW-8'],
+        rerun: true
+      }]
+    });
     const snapshot = await getCurrentActivity(CLIENT, runtime({
       cache: new Map([[CLIENT, entry]]),
       runActivity: async () => {
@@ -388,6 +598,9 @@ describe('getCurrentActivity status contract', () => {
     assert.equal(snapshot.status, 'stale');
     assert.equal(snapshot.code, 'YW');
     assert.equal(snapshot.name, '昨日海');
+    assert.deepEqual(snapshot.stages, ['YW-8']);
+    assert.equal(snapshot.rerun, true);
+    assert.deepEqual(snapshot.activities, entry.activities);
     assert.equal(snapshot.lastSuccessAt, entry.timestamp);
     assert.equal(snapshot.dataUpdatedAt, null);
     assert.equal(snapshot.failure?.source, 'maa');
@@ -479,7 +692,18 @@ describe('getCurrentActivity status contract', () => {
       source: 'maa',
       startTime: null,
       endTime: null,
-      stages: [],
+      stages: ['YW-8'],
+      rerun: false,
+      activities: [
+        {
+          code: 'YW',
+          name: '昨日海',
+          startTime: null,
+          endTime: null,
+          stages: ['YW-8'],
+          rerun: false
+        }
+      ],
       timestamp: NOW,
       ttl: TEN_MINUTES
     });

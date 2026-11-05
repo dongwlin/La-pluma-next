@@ -14,6 +14,8 @@ const realActivity = (overrides: Partial<AutomationActivityPayload> = {}): Autom
   startTime: null,
   endTime: null,
   stages: [],
+  rerun: false,
+  activities: [],
   lastSuccessAt: 1_760_000_000_000,
   dataUpdatedAt: 1_760_000_000_000,
   failure: null,
@@ -32,6 +34,42 @@ describe('normalizeActivityPayload', () => {
     const normalized = normalizeActivityPayload(realActivity())
 
     expect(normalized).toEqual(realActivity())
+  })
+
+  it('keeps structured activities and rerun flags for multiple activities', () => {
+    const normalized = normalizeActivityPayload(realActivity({
+      rerun: true,
+      activities: [
+        {
+          code: 'TL',
+          name: '时间啊，向前！',
+          startTime: 1_760_000_000_000,
+          endTime: 1_760_100_000_000,
+          stages: ['TL-9'],
+          rerun: false,
+        },
+        {
+          code: 'AT',
+          name: '墟',
+          startTime: 1_759_000_000_000,
+          endTime: 1_759_100_000_000,
+          stages: ['AT-8'],
+          rerun: true,
+        },
+      ],
+    }))
+
+    expect(normalized?.rerun).toBe(true)
+    expect(normalized?.activities).toHaveLength(2)
+    expect(normalized?.activities?.[1]).toMatchObject({ code: 'AT', rerun: true })
+  })
+
+  it('returns null when a structured activity is malformed', () => {
+    const payload: Record<string, unknown> = {
+      ...realActivity(),
+      activities: [{ code: 'TL', name: null, startTime: null, endTime: null, stages: ['TL-9'] }],
+    }
+    expect(normalizeActivityPayload(payload)).toBeNull()
   })
 
   it('preserves null code, name, and source without inventing values', () => {

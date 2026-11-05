@@ -25,6 +25,8 @@ const activityDto = (overrides: Partial<AutomationActivityPayload> = {}): Automa
   startTime: null,
   endTime: null,
   stages: [],
+  rerun: false,
+  activities: [],
   lastSuccessAt: 1_760_000_000_000,
   dataUpdatedAt: 1_760_000_000_000,
   failure: null,
