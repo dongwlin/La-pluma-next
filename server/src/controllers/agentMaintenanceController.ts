@@ -80,11 +80,13 @@ function sendRecognitionResult<T>(
   res: ApiResponseWriter,
   req: MaintenanceRequest,
   result: RecognitionParseResult<T>,
-  message: string
+  label: string
 ): void {
-  if (!result) {
-    sendSuccess(res, req, null, message);
-    return;
+  if (result === null) {
+    return sendError(res, req, agentError('AGENT_RECOGNITION_NO_RESULT', `未找到有效的${label}识别结果`, {
+      statusCode: 422,
+      retryable: true
+    }));
   }
   if (!result.success) {
     sendError(res, req, agentError(result.error.code, result.message, {
@@ -94,7 +96,7 @@ function sendRecognitionResult<T>(
     }), result.message);
     return;
   }
-  sendSuccess(res, req, result.data, message);
+  sendSuccess(res, req, result.data, `${label}识别完成`);
 }
 
 // 出站读取入口（changelog/copilot/paradox 查询）统一经出站端口：
@@ -156,7 +158,7 @@ export async function runDepotRecognition(req: MaintenanceRequest, res: ApiRespo
   if (parseDryRunBody(req.body).dryRun) {
     return sendDryRun(res, req, plan);
   }
-  return sendRecognitionResult(res, req, await parseDepotData(), '仓库识别完成');
+  return sendRecognitionResult(res, req, await parseDepotData(), '仓库');
 }
 
 export async function runOperboxRecognition(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
@@ -167,7 +169,7 @@ export async function runOperboxRecognition(req: MaintenanceRequest, res: ApiRes
   if (parseDryRunBody(req.body).dryRun) {
     return sendDryRun(res, req, plan);
   }
-  return sendRecognitionResult(res, req, await parseOperBoxData(), '干员识别完成');
+  return sendRecognitionResult(res, req, await parseOperBoxData(), '干员');
 }
 
 export async function readCoreChangelog(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {

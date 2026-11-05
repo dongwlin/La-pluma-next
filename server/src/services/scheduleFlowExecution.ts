@@ -62,10 +62,9 @@ export interface ScheduleCapturedScreen {
   image: string;
 }
 
-export interface ScheduleDepotParseResult {
-  success: boolean;
-  itemCount?: number;
-}
+export type ScheduleDepotParseResult =
+  | { success: true; data: { itemCount: number } }
+  | { success: false };
 
 export interface ScheduleStageOpenState {
   isOpen: boolean;
@@ -560,16 +559,17 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
 
             logger.debug('开始解析仓库数据', { scheduleId });
             const parseResult = await parseDepotData();
-            if (parseResult && parseResult.success) {
+            if (parseResult?.success) {
+              const { itemCount } = parseResult.data;
               logger.success('仓库数据已保存', {
                 scheduleId,
-                itemCount: parseResult.itemCount
+                itemCount
               });
               actionResults.push({
                 task: task.name,
                 action: 'depot',
                 status: 'success',
-                message: `关闭前仓库识别完成，共 ${parseResult.itemCount || 0} 项`
+                message: `关闭前仓库识别完成，共 ${itemCount} 项`
               });
             } else {
               logger.warn('仓库数据解析失败', { scheduleId });

@@ -18,6 +18,7 @@ const xdgStateHome = join(fixtureDir, 'xdg-state');
 const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const maaConfigDir = join(xdgConfigHome, 'maa');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
+const trainingDataDir = join(fixtureDir, 'recognition-data');
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
 const cliCallLog = join(fixtureDir, 'maa-calls.log');
@@ -77,6 +78,7 @@ process.env.FAKE_ADB_ADDRESS = '127.0.0.1:5555';
 process.env.XDG_DATA_HOME = xdgDataHome;
 process.env.XDG_STATE_HOME = xdgStateHome;
 process.env.XDG_CONFIG_HOME = xdgConfigHome;
+process.env.LA_PLUMA_TRAINING_DATA_DIR = trainingDataDir;
 process.env.LA_PLUMA_AGENT_RUN_STORE = join(fixtureDir, 'agent-runs.json');
 process.env.LA_PLUMA_MAA_LOCK_FILE = join(fixtureDir, 'maa-execution.lock');
 process.env.LA_PLUMA_WEBRTC_DIR = join(fixtureDir, 'webrtc');
@@ -483,13 +485,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     assert.equal(autoUpdate.data.time, null);
   });
 
-  it('returns parsed operator recognition in a single API envelope', async (t) => {
-    const trainingDataDir = join(fixtureDir, 'recognition-data');
-    process.env.LA_PLUMA_TRAINING_DATA_DIR = trainingDataDir;
-    t.after(() => {
-      delete process.env.LA_PLUMA_TRAINING_DATA_DIR;
-    });
-
+  it('returns parsed operator recognition in a single API envelope', async () => {
     const maaStateLog = join(xdgStateHome, 'maa', 'debug', 'asst.log');
     await mkdir(dirname(maaStateLog), { recursive: true });
     await writeFile(maaStateLog, [
@@ -521,6 +517,41 @@ describe('moved maintenance routes keep HTTP contracts', () => {
 
     const saved = JSON.parse(await readFile(join(trainingDataDir, 'operbox.json'), 'utf-8'));
     assert.equal(saved.operCount, 1);
+  });
+
+  it('reports missing recognition results and preserves the previous cache', async () => {
+    const maaStateLog = join(xdgStateHome, 'maa', 'debug', 'asst.log');
+    await mkdir(dirname(maaStateLog), { recursive: true });
+    await writeFile(maaStateLog, [
+      'Assistant::append_callback | TaskChainStart {"taskchain":"Depot"}',
+      'Assistant::append_callback | TaskChainCompleted {"taskchain":"Depot"}',
+      'Assistant::append_callback | TaskChainStart {"taskchain":"OperBox"}',
+      'Assistant::append_callback | TaskChainCompleted {"taskchain":"OperBox"}'
+    ].join('\n'), 'utf-8');
+
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent/actions`;
+    await mkdir(trainingDataDir, { recursive: true });
+    const timestamp = '2026-10-30T10:00:00.000Z';
+    const depot = {
+      timestamp,
+      itemCount: 1,
+      items: [{ id: '30011', name: '源岩', count: 20, icon: null, classifyType: 'MATERIAL', sortId: 1 }]
+    };
+    const operbox = { timestamp, operCount: 1, data: [{ id: 'char_1001_amiya' }] };
+    for (const [kind, label, cached] of [['depot', '仓库', depot], ['operbox', '干员', operbox]] as const) {
+      const cachePath = join(trainingDataDir, `${kind}.json`);
+      const cacheContent = JSON.stringify(cached);
+      await writeFile(cachePath, cacheContent, 'utf-8');
+
+      const response = await postJson(`${baseUrl}/${kind}-recognition`, {});
+      assert.equal(response.status, 422);
+      const body = await readError(response);
+      assert.equal(body.error.code, 'AGENT_RECOGNITION_NO_RESULT');
+      assert.equal(body.error.retryable, true);
+      assert.equal(body.message, `未找到有效的${label}识别结果`);
+      assert.equal(await readFile(cachePath, 'utf-8'), cacheContent);
+    }
   });
 
   it('keeps connection test and device discovery on the existing ADB contract', async () => {

@@ -78,7 +78,7 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     recordDrops: async payload => {
       calls.drops.push(payload);
     },
-    parseDepotData: async () => ({ success: true, itemCount: 0 }),
+    parseDepotData: async () => ({ success: true, data: { itemCount: 0 } }),
     refreshSmartTrainingStages: async scheduleId => {
       calls.refreshes.push(scheduleId);
     },
@@ -333,8 +333,8 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command or the next task');
   });
 
-  it('aborts the closedown post-depot delay when the flow is stopped', async () => {
-    const parsed = deferred<{ success: boolean; itemCount: number }>();
+  it('keeps the imported depot count when the flow is stopped during the post-depot delay', async () => {
+    const parsed = deferred<{ success: true; data: { itemCount: number } }>();
     let parseStarted = false;
     const { ports, calls } = createPorts({
       parseDepotData: async () => {
@@ -351,10 +351,16 @@ describe('schedule flow boundaries', () => {
     await waitForCondition(() => parseStarted);
     const stoppedAt = Date.now();
     assert.equal(executor.stop(), true);
-    parsed.resolve({ success: true, itemCount: 0 });
+    parsed.resolve({ success: true, data: { itemCount: 86 } });
 
     const result = completedResult(await execution);
     assert.equal(result.stopped, true);
+    assert.deepEqual(result.summary.actions, [{
+      task: '关闭游戏',
+      action: 'depot',
+      status: 'success',
+      message: '关闭前仓库识别完成，共 86 项'
+    }]);
     assert.ok(Date.now() - stoppedAt < 1_000, 'the 2s post-depot delay must abort on stop');
     assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command or the next task');
   });
