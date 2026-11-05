@@ -57,6 +57,16 @@ describe('award execution results', () => {
     }
   });
 
+  it('keeps the legacy completion fallback for a readable log without structured callbacks', () => {
+    const actions = parseAwardExecutionActions('领取奖励', { award: true, mail: true }, '[INF] Award flow finished\n');
+
+    assert.equal(actions.length, 1);
+    assert.equal(actions[0].status, 'success');
+    assert.equal(actions[0].observed, false);
+    assert.match(actions[0].message, /共检查 2 项/);
+    assert.match(actions[0].message, /结果未确认/);
+  });
+
   it('reports an unconfirmed item when its segment is missing', () => {
     const log = [
       callback('SubTaskCompleted', {
