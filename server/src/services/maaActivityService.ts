@@ -29,14 +29,31 @@ export interface MaaActivityFailure {
   message: string;
 }
 
-/** 活动信息：无法确定的字段为 null，调用方不能把 null 当成已知值。 */
-export interface MaaActivityInfo {
+/** 单个进行中的活动；顶层活动字段与 `activities[0]` 保持同一份主活动投影。 */
+export interface MaaActivityEntry {
   code: string | null;
   name: string | null;
-  source: string | null;
   startTime: number | null;
   endTime: number | null;
   stages: string[];
+  rerun: boolean;
+}
+
+/** 活动信息：无法确定的字段为 null，调用方不能把 null 当成已知值。 */
+export interface MaaActivityInfo extends MaaActivityEntry {
+  source: string | null;
+  activities: MaaActivityEntry[];
+}
+
+/** `StageActivityV2.json` 的 sideStoryStage 条目：时间已折算为 UTC 毫秒。 */
+export interface MaaSideStoryStage {
+  key: string;
+  name: string | null;
+  tip: string | null;
+  startTime: number | null;
+  endTime: number | null;
+  stages: string[];
+  rerun: boolean;
 }
 
 export interface MaaActivitySnapshot extends MaaActivityInfo {
@@ -77,6 +94,7 @@ export interface MaaActivityRuntime {
   inflight?: Map<string, Promise<MaaActivitySnapshot>>;
   runActivity?: (clientType: string) => Promise<{ stdout: string }>;
   readActivityTable?: () => Promise<MaaActivityTableState>;
+  readSideStoryStages?: (clientType: string) => Promise<MaaSideStoryStage[]>;
   readFallback?: (clientType: string) => Promise<unknown>;
   supportsFallback?: (clientType: string) => boolean;
   loadConfig?: () => Promise<unknown>;
@@ -115,17 +133,57 @@ function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
-  if (!isRecord(value) || typeof value.code !== 'string' || !value.code) return null;
+const RERUN_MARKER_PATTERN = /复刻|復刻|reopen|rerun|재개방/i;
+
+function marksRerun(...values: Array<string | null | undefined>): boolean {
+  return values.some(value => typeof value === 'string' && RERUN_MARKER_PATTERN.test(value));
+}
+
+function readActivityStages(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((stage): stage is string => typeof stage === 'string' && stage.length > 0)
+    : [];
+}
+
+function normalizeActivityEntry(value: unknown): MaaActivityEntry | null {
+  if (!isRecord(value)) return null;
+  const code = typeof value.code === 'string' && value.code ? value.code : null;
+  const name = typeof value.name === 'string' ? value.name : null;
+  const stages = readActivityStages(value.stages);
+  if (!code && !name && stages.length === 0) return null;
   return {
-    code: value.code,
-    name: typeof value.name === 'string' ? value.name : null,
-    source: typeof value.source === 'string' ? value.source : null,
+    code,
+    name,
     startTime: typeof value.startTime === 'number' && Number.isFinite(value.startTime) ? value.startTime : null,
     endTime: typeof value.endTime === 'number' && Number.isFinite(value.endTime) ? value.endTime : null,
-    stages: Array.isArray(value.stages)
-      ? value.stages.filter((stage): stage is string => typeof stage === 'string')
-      : []
+    stages,
+    rerun: value.rerun === true
+  };
+}
+
+function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
+  if (!isRecord(value) || typeof value.code !== 'string' || !value.code) return null;
+  const primary: MaaActivityEntry = {
+    code: value.code,
+    name: typeof value.name === 'string' ? value.name : null,
+    startTime: typeof value.startTime === 'number' && Number.isFinite(value.startTime) ? value.startTime : null,
+    endTime: typeof value.endTime === 'number' && Number.isFinite(value.endTime) ? value.endTime : null,
+    stages: readActivityStages(value.stages),
+    rerun: value.rerun === true
+  };
+  const storedActivities = Array.isArray(value.activities)
+    ? value.activities
+      .map(normalizeActivityEntry)
+      .filter((entry): entry is MaaActivityEntry => entry !== null)
+    : [];
+  const activities = storedActivities.length > 0
+    ? storedActivities
+    : [primary];
+  return {
+    ...primary,
+    source: typeof value.source === 'string' ? value.source : null,
+    rerun: typeof value.rerun === 'boolean' ? value.rerun : activities.some(entry => entry.rerun),
+    activities
   };
 }
 
@@ -155,7 +213,9 @@ function readFreshCachedActivity(cached: CachedActivity, now: number): MaaActivi
     source: cached.source,
     startTime: cached.startTime,
     endTime: cached.endTime,
-    stages: cached.stages
+    stages: [...cached.stages],
+    rerun: cached.rerun,
+    activities: cached.activities.map(entry => ({ ...entry, stages: [...entry.stages] }))
   };
 }
 
@@ -346,10 +406,62 @@ export function parseResourceCollectionWindow(entry: unknown): ResourceCollectio
   return { startTime, endTime };
 }
 
+function readSideStoryStageValue(stage: unknown): string | null {
+  if (!isRecord(stage)) return null;
+  const value = typeof stage.Value === 'string'
+    ? stage.Value
+    : typeof stage.Display === 'string' ? stage.Display : '';
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+/**
+ * 从活动表解析指定服务区的 sideStoryStage。
+ *
+ * 条目按表内顺序返回；`Stages[].Value` 是实际关卡代号，缺失时回落到
+ * `Display`。复刻同时看表键（`SSReopen`）、标题/提示与服务区译名
+ * （`复刻`、`Rerun`、`재개방`），避免只依赖单一文案。
+ */
+export function parseSideStoryStages(table: unknown, clientType: string): MaaSideStoryStage[] {
+  if (!isRecord(table)) return [];
+  const clientNode = table[activityTableClientKey(clientType)];
+  if (!isRecord(clientNode) || !isRecord(clientNode.sideStoryStage)) return [];
+  const entries: MaaSideStoryStage[] = [];
+  for (const [key, rawEntry] of Object.entries(clientNode.sideStoryStage)) {
+    if (!isRecord(rawEntry)) continue;
+    const activity = isRecord(rawEntry.Activity) ? rawEntry.Activity : {};
+    const name = typeof activity.StageName === 'string' && activity.StageName.trim()
+      ? activity.StageName.trim()
+      : null;
+    const tip = typeof activity.Tip === 'string' && activity.Tip.trim() ? activity.Tip.trim() : null;
+    const stages = Array.isArray(rawEntry.Stages)
+      ? [...new Set(rawEntry.Stages.map(readSideStoryStageValue)
+        .filter((stage): stage is string => stage !== null))]
+      : [];
+    entries.push({
+      key,
+      name,
+      tip,
+      startTime: parseActivityTimestamp(activity.UtcStartTime, activity.TimeZone),
+      endTime: parseActivityTimestamp(activity.UtcExpireTime, activity.TimeZone),
+      stages,
+      rerun: key.toUpperCase() === 'SSREOPEN' || marksRerun(key, name, tip, ...stages)
+    });
+  }
+  return entries;
+}
+
 /** 活动表没有独立的 Bilibili 数据，繁中按国服服务区窗口读取。 */
 function activityTableClientKey(clientType: string): string {
   const normalized = resolveGameZone(clientType).clientType;
   return normalized === 'Bilibili' ? 'Official' : normalized;
+}
+
+async function readMaaSideStoryStages(clientType: string): Promise<MaaSideStoryStage[]> {
+  const cacheDir = await resolveMaaCacheDir();
+  if (!cacheDir) return [];
+  const table: unknown = JSON.parse(await readFile(join(cacheDir, 'StageActivityV2.json'), 'utf-8'));
+  return parseSideStoryStages(table, clientType);
 }
 
 async function readResourceCollectionWindow(clientType: string): Promise<ResourceCollectionWindow | null> {
@@ -449,6 +561,7 @@ const defaultRuntime: Required<MaaActivityRuntime> = {
   inflight: activityRequests,
   runActivity: clientType => execMaaCommand('activity', [clientType], null, null, false, true),
   readActivityTable: readMaaActivityTable,
+  readSideStoryStages: readMaaSideStoryStages,
   readFallback: clientType => getFallbackActivity(clientType),
   supportsFallback: supportsFallbackClient,
   loadConfig: async () => {
@@ -481,6 +594,15 @@ function toDtoTimestamp(value: number | null): number | null {
   return Number.isSafeInteger(truncated) ? truncated : null;
 }
 
+function toDtoActivityEntry(entry: MaaActivityEntry): MaaActivityEntry {
+  return {
+    ...entry,
+    startTime: toDtoTimestamp(entry.startTime),
+    endTime: toDtoTimestamp(entry.endTime),
+    stages: [...entry.stages]
+  };
+}
+
 function snapshotOf(
   clientType: string,
   info: MaaActivityInfo,
@@ -491,10 +613,11 @@ function snapshotOf(
 ): MaaActivitySnapshot {
   return {
     ...info,
-    status,
-    clientType,
     startTime: toDtoTimestamp(info.startTime),
     endTime: toDtoTimestamp(info.endTime),
+    activities: info.activities.map(toDtoActivityEntry),
+    status,
+    clientType,
     lastSuccessAt: toDtoTimestamp(lastSuccessAt),
     dataUpdatedAt: toDtoTimestamp(dataUpdatedAt),
     failure
@@ -502,7 +625,69 @@ function snapshotOf(
 }
 
 function emptyActivityInfo(source: string | null = null): MaaActivityInfo {
-  return { code: null, name: null, source, startTime: null, endTime: null, stages: [] };
+  return {
+    code: null,
+    name: null,
+    source,
+    startTime: null,
+    endTime: null,
+    stages: [],
+    rerun: false,
+    activities: []
+  };
+}
+
+function findSideStoryStage(
+  group: MaaActivityGroup,
+  entries: readonly MaaSideStoryStage[],
+  usedKeys: ReadonlySet<string>
+): MaaSideStoryStage | null {
+  const code = group.code?.toUpperCase() ?? null;
+  const candidates = entries.filter(entry => !usedKeys.has(entry.key));
+  const stagePrefixMatch = code
+    ? candidates.find(entry => entry.key.toUpperCase() === code
+      || entry.stages.some(stage => stage.toUpperCase().startsWith(`${code}-`)))
+    : undefined;
+  if (stagePrefixMatch) return stagePrefixMatch;
+  return candidates.find(entry => {
+    if (!entry.name) return false;
+    return entry.name === group.name
+      || entry.tip?.includes(group.name) === true
+      || group.label.includes(entry.name);
+  }) ?? null;
+}
+
+function toActivityEntry(
+  group: MaaActivityGroup,
+  stageEntry: MaaSideStoryStage | null
+): MaaActivityEntry {
+  return {
+    code: group.code,
+    name: group.name || stageEntry?.name || null,
+    startTime: stageEntry?.startTime ?? null,
+    endTime: stageEntry?.endTime ?? null,
+    stages: stageEntry?.stages.length ? stageEntry.stages : group.stages,
+    rerun: stageEntry?.rerun === true || marksRerun(group.label, group.name)
+  };
+}
+
+function buildMaaActivityInfo(
+  groups: readonly MaaActivityGroup[],
+  sideStoryStages: readonly MaaSideStoryStage[]
+): MaaActivityInfo {
+  const usedKeys = new Set<string>();
+  const activities = groups.map(group => {
+    const stageEntry = findSideStoryStage(group, sideStoryStages, usedKeys);
+    if (stageEntry) usedKeys.add(stageEntry.key);
+    return toActivityEntry(group, stageEntry);
+  });
+  const primary = activities.find(activity => activity.code) ?? activities[0] ?? emptyActivityInfo('maa');
+  return {
+    ...primary,
+    source: 'maa',
+    rerun: activities.some(activity => activity.rerun),
+    activities
+  };
 }
 
 function combineFailures(
@@ -598,20 +783,21 @@ async function loadCurrentActivity(
     logger.debug('maa activity 原始输出', { output });
 
     if (parsed.groups.length > 0) {
-      const group = parsed.groups[0];
       try {
         table = await runtime.readActivityTable();
       } catch {
         table = null;
       }
-      const activity: MaaActivityInfo = {
-        code: group.code,
-        name: group.name,
-        source: 'maa',
-        startTime: null,
-        endTime: null,
-        stages: []
-      };
+      let sideStoryStages: MaaSideStoryStage[] = [];
+      try {
+        sideStoryStages = await runtime.readSideStoryStages(clientType);
+      } catch (error) {
+        logger.debug('读取 sideStoryStage 失败，保留 CLI 解析结果', {
+          clientType,
+          error: errorMessageOf(error)
+        });
+      }
+      const activity = buildMaaActivityInfo(parsed.groups, sideStoryStages);
       const snapshot = snapshotOf(clientType, activity, 'active', now, table?.modifiedAt ?? null, null);
       // 解析不出代号时无法写入正缓存；用短负缓存避免每次轮询重复启动 CLI。
       if (activity.code) await persistActivity(runtime, persistedRecord, clientType, activity, now);
@@ -687,7 +873,9 @@ async function loadCurrentActivity(
         source: newestCandidate.source,
         startTime: newestCandidate.startTime,
         endTime: newestCandidate.endTime,
-        stages: newestCandidate.stages
+        stages: [...newestCandidate.stages],
+        rerun: newestCandidate.rerun,
+        activities: newestCandidate.activities.map(entry => ({ ...entry, stages: [...entry.stages] }))
       },
       'stale',
       newestCandidate.timestamp,

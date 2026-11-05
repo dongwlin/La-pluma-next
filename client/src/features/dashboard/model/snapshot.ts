@@ -4,6 +4,7 @@ import {
   type ActivityFailure,
   type ActivityStatus,
   type AutomationActivityCompletion,
+  type AutomationActivityEntry,
 } from '@/features/automation'
 import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
 
@@ -18,6 +19,8 @@ export interface ActivitySummary {
   startTime?: number
   endTime?: number
   stages?: string[]
+  rerun?: boolean
+  activities?: AutomationActivityEntry[]
   lastSuccessAt?: number
   dataUpdatedAt?: number
   failure?: ActivityFailure
@@ -146,6 +149,8 @@ export function normalizeDashboardSnapshot(
     startTime: activityPayload.startTime ?? undefined,
     endTime: activityPayload.endTime ?? undefined,
     stages: activityPayload.stages,
+    rerun: activityPayload.rerun,
+    activities: activityPayload.activities,
     lastSuccessAt: activityPayload.lastSuccessAt ?? undefined,
     dataUpdatedAt: activityPayload.dataUpdatedAt ?? undefined,
     failure: activityPayload.failure ?? undefined,

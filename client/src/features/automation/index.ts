@@ -27,6 +27,7 @@ export type {
   ActivityFailure,
   ActivityStatus,
   AutomationActivityCompletion,
+  AutomationActivityEntry,
   AutomationActivityPayload,
 } from './model/activity'
 export type { AutomationScheduleExecutionPayload } from './model/queries'

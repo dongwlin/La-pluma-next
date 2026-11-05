@@ -190,6 +190,55 @@ describe('buildDashboardActivityView', () => {
     })
   })
 
+  it('renders multiple active activities with rerun markers and local times', () => {
+    const result = view({
+      summary: summary({
+        available: true,
+        status: 'active',
+        code: 'TL',
+        name: '时间啊，向前！',
+        source: 'maa',
+        startTime: 1_760_000_000_000,
+        endTime: 1_760_100_000_000,
+        stages: ['TL-9', 'TL-8'],
+        rerun: true,
+        activities: [
+          {
+            code: 'TL',
+            name: '时间啊，向前！',
+            startTime: 1_760_000_000_000,
+            endTime: 1_760_100_000_000,
+            stages: ['TL-9', 'TL-8'],
+            rerun: false,
+          },
+          {
+            code: 'AT',
+            name: '墟',
+            startTime: 1_759_000_000_000,
+            endTime: 1_759_100_000_000,
+            stages: ['AT-8'],
+            rerun: true,
+          },
+        ],
+      }),
+    })
+
+    expect(result.detail).toContain('复刻')
+    expect(result.detail).toContain('2 个关卡')
+    expect(result.activities).toEqual([
+      {
+        title: '时间啊，向前！',
+        detail: 'T1760000000000 ~ T1760100000000 · 2 个关卡',
+        rerun: false,
+      },
+      {
+        title: '墟',
+        detail: '复刻 · T1759000000000 ~ T1759100000000 · 1 个关卡',
+        rerun: true,
+      },
+    ])
+  })
+
   it('shows a mainline activity by name', () => {
     const result = view({
       summary: summary({

@@ -1,7 +1,7 @@
 import type { ApiRequestLike } from '../utils/apiHelper.ts';
 import type { ConnectionProfile } from '../services/connectionService.ts';
 import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
-import type { MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
+import type { MaaActivityEntry, MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
 import type { ResourceInfo, ResourceUpdateResult } from '../services/resourceUpdateService.ts';
 import type { AutoUpdateConfig } from '../services/scheduleTriggerService.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
@@ -170,6 +170,8 @@ export interface MaintenanceActivityPayload {
   startTime: number | null;
   endTime: number | null;
   stages: string[];
+  rerun: boolean;
+  activities: MaaActivityEntry[];
   completion: MaintenanceActivityCompletion;
   available: boolean;
   message: string;

@@ -15,6 +15,15 @@ export interface AutomationActivityCompletion {
   source?: string
 }
 
+export interface AutomationActivityEntry {
+  code: string | null
+  name: string | null
+  startTime: number | null
+  endTime: number | null
+  stages: string[]
+  rerun: boolean
+}
+
 export interface AutomationActivityPayload {
   status: ActivityStatus
   clientType: string
@@ -26,6 +35,8 @@ export interface AutomationActivityPayload {
   startTime: number | null
   endTime: number | null
   stages: string[]
+  rerun?: boolean
+  activities?: AutomationActivityEntry[]
   lastSuccessAt: number | null
   dataUpdatedAt: number | null
   failure: ActivityFailure | null
@@ -81,6 +92,30 @@ const normalizeCompletion = (value: unknown): AutomationActivityCompletion | und
   }
 }
 
+const isActivityEntry = (value: unknown): value is AutomationActivityEntry => (
+  isRecord(value)
+  && isNullableString(value.code)
+  && isNullableString(value.name)
+  && isNullableTimestamp(value.startTime)
+  && isNullableTimestamp(value.endTime)
+  && isStringArray(value.stages)
+  && typeof value.rerun === 'boolean'
+)
+
+const normalizeActivityEntries = (value: unknown): AutomationActivityEntry[] | null => {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > MAX_ACTIVITY_STAGES) return null
+  if (!value.every(isActivityEntry)) return null
+  return value.map(entry => ({
+    code: entry.code,
+    name: entry.name,
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+    stages: [...entry.stages],
+    rerun: entry.rerun,
+  }))
+}
+
 /**
  * 校验并归一 `/agent/activity` 载荷；任何必填字段缺失或类型不符返回 `null`。
  * 可空字段保留 `null` 的语义，不从名称/代号猜测状态。
@@ -97,6 +132,9 @@ export function normalizeActivityPayload(value: unknown): AutomationActivityPayl
   if (!isNullableTimestamp(value.startTime)) return null
   if (!isNullableTimestamp(value.endTime)) return null
   if (!isStringArray(value.stages)) return null
+  if (value.rerun !== undefined && typeof value.rerun !== 'boolean') return null
+  const activities = normalizeActivityEntries(value.activities)
+  if (activities === null) return null
   if (!isNullableTimestamp(value.lastSuccessAt)) return null
   if (!isNullableTimestamp(value.dataUpdatedAt)) return null
   if (value.completion !== undefined && value.completion !== null && !isActivityCompletion(value.completion)) {
@@ -119,6 +157,8 @@ export function normalizeActivityPayload(value: unknown): AutomationActivityPayl
     startTime: value.startTime,
     endTime: value.endTime,
     stages: [...value.stages],
+    rerun: value.rerun === true,
+    activities,
     lastSuccessAt: value.lastSuccessAt,
     dataUpdatedAt: value.dataUpdatedAt,
     failure,
