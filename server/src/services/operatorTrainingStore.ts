@@ -409,7 +409,7 @@ async function readOptionalLocalResourceJson(resourcePath: string): Promise<unkn
   }
 }
 
-function iconIdFromFilename(value: unknown, fallback: string): string | undefined {
+function iconIdFromFilename(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length === 0) return undefined;
   const basename = path.basename(value);
   return basename.toLowerCase().endsWith('.png') ? basename.slice(0, -4) : basename;
@@ -430,7 +430,7 @@ function parseLocalMaterialEntry(
 
   const material: TrainingMaterialDefinition = { id, name: raw.name };
   if (typeof raw.rarity === 'number' && Number.isFinite(raw.rarity)) material.rarity = raw.rarity;
-  const iconId = iconIdFromFilename(raw.iconId ?? raw.icon, id);
+  const iconId = iconIdFromFilename(raw.iconId ?? raw.icon);
   if (iconId !== undefined) material.iconId = iconId;
   return material;
 }
@@ -464,19 +464,21 @@ async function loadLocalMaterialSource(): Promise<LocalMaterialSource> {
     );
   }
 
-  const rawMaterials = itemTable ?? itemIndex;
-  if (!isRecord(rawMaterials)) {
-    throw new LocalResourceError(`本地资源字段缺失: ${itemTablePath} 缺少 items`, itemTablePath, 'items');
+  let entries: Record<string, unknown>;
+  let materialPath: string;
+  if (itemTable !== null) {
+    if (!isRecord(itemTable) || !isRecord(itemTable.items)) {
+      throw new LocalResourceError(`本地资源字段缺失: ${itemTablePath} 的 items`, itemTablePath, 'items');
+    }
+    entries = itemTable.items;
+    materialPath = itemTablePath;
+  } else {
+    if (!isRecord(itemIndex)) {
+      throw new LocalResourceError(`本地资源字段缺失: ${itemIndexPath} 的 items`, itemIndexPath, 'items');
+    }
+    entries = itemIndex;
+    materialPath = itemIndexPath;
   }
-
-  const entries: Record<string, unknown> = itemTable === null
-    ? rawMaterials
-    : isRecord(rawMaterials.items)
-      ? rawMaterials.items
-      : (() => {
-        throw new LocalResourceError(`本地资源字段缺失: ${itemTablePath} 的 items`, itemTablePath, 'items');
-      })();
-  const materialPath = itemTable === null ? itemIndexPath : itemTablePath;
 
   const materials: Record<string, TrainingMaterialDefinition> = {};
   for (const [id, raw] of Object.entries(entries)) {

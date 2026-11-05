@@ -10,8 +10,10 @@ const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-')
 const fakeCliPath = path.join(dataDirectory, 'fake-maa-cli.js');
 const maaConfigDir = path.join(dataDirectory, 'maa-config');
 const maaCacheDir = path.join(dataDirectory, 'maa-cache');
-// 计划生成会读取连接 profile 与资源全开放窗口；固定到临时目录，避免依赖宿主机 MAA。
+const maaDataDir = path.join(dataDirectory, 'maa-data');
+// 计划生成会读取连接 profile、本地 MAA 材料资源与资源全开放窗口；固定到临时目录，避免依赖宿主机 MAA。
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
+process.env.MAA_DATA_DIR = maaDataDir;
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.MAA_CACHE_DIR = maaCacheDir;
 process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
@@ -78,6 +80,12 @@ beforeEach(async () => {
       elite1: { lmd: 0, materials: [{ id: `test_${id}`, name: `${operator.name}材料`, count: 2 }] }
     }]))
   });
+  await mkdir(path.join(maaDataDir, 'resource'), { recursive: true });
+  await writeJson(path.join(maaDataDir, 'resource', 'item_index.json'), Object.fromEntries(
+    Object.entries(operators).map(([id, operator]) => [`test_${id}`, {
+      name: `${operator.name}材料`, classifyType: 'MATERIAL', icon: `test_${id}.png`
+    }])
+  ));
   await writeJson(path.join(dataDirectory, 'materials.json'), {
     materials: Object.fromEntries(Object.entries(operators).map(([id, operator]) => [`test_${id}`, {
       id: `test_${id}`, name: `${operator.name}材料`, bestStage: operator.stage
@@ -89,7 +97,7 @@ beforeEach(async () => {
 });
 
 after(async () => {
-  for (const key of ['LA_PLUMA_TRAINING_DATA_DIR', 'MAA_CLI_PATH', 'MAA_CACHE_DIR', 'FAKE_MAA_CONFIG_DIR']) {
+  for (const key of ['LA_PLUMA_TRAINING_DATA_DIR', 'MAA_DATA_DIR', 'MAA_CLI_PATH', 'MAA_CACHE_DIR', 'FAKE_MAA_CONFIG_DIR']) {
     delete process.env[key];
   }
   await rm(dataDirectory, { recursive: true, force: true });
