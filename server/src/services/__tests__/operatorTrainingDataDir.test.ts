@@ -31,7 +31,10 @@ childProcess.execFile = (
 };
 
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-data-'));
+const maaDataDirectory = path.join(dataDirectory, 'maa-data');
+const maaResourceDirectory = path.join(maaDataDirectory, 'resource');
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
+process.env.MAA_DATA_DIR = maaDataDirectory;
 
 const { default: operatorTrainingService } = await import('../operatorTrainingService.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
@@ -39,12 +42,19 @@ loggerManager.getLogger('OperatorTraining').enableConsole = false;
 after(async () => {
   childProcess.execFile = originalExecFile;
   delete process.env.LA_PLUMA_TRAINING_DATA_DIR;
+  delete process.env.MAA_DATA_DIR;
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
 describe('training data directory', () => {
   it('reads and reports fetched material data from LA_PLUMA_TRAINING_DATA_DIR', async () => {
     await mkdir(path.join(dataDirectory, 'user-configs'), { recursive: true });
+    await mkdir(maaResourceDirectory, { recursive: true });
+    await writeFile(path.join(maaResourceDirectory, 'item_index.json'), JSON.stringify({
+      '30011': { name: '固源岩', classifyType: 'MATERIAL', icon: '30011.png' },
+      '30012': { name: '固源岩组', classifyType: 'MATERIAL', icon: '30012.png', formula: { '30011': 3 } },
+      '30013': { name: '提纯源岩', classifyType: 'MATERIAL', icon: '30013.png', formula: { '30012': 3 } }
+    }));
     await writeFile(path.join(dataDirectory, 'materials.json'), JSON.stringify({
       materials: {
         '30011': { name: '固源岩' },

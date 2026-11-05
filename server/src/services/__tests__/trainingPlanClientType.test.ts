@@ -11,9 +11,11 @@ import type { CombatStageObject } from '../operatorTrainingStore.ts';
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-client-'));
 const maaConfigDir = path.join(dataDirectory, 'maa-config');
 const maaCacheDir = path.join(dataDirectory, 'maa-cache');
+const maaDataDir = path.join(dataDirectory, 'maa-data');
 const fakeCliPath = path.join(dataDirectory, 'fake-maa-cli.js');
 
 process.env.LA_PLUMA_TRAINING_DATA_DIR = dataDirectory;
+process.env.MAA_DATA_DIR = maaDataDir;
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.MAA_CACHE_DIR = maaCacheDir;
 process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
@@ -22,6 +24,11 @@ process.env.LA_PLUMA_MAA_LOCK_FILE = path.join(dataDirectory, 'maa.lock');
 await mkdir(path.join(dataDirectory, 'user-configs'), { recursive: true });
 await mkdir(path.join(maaConfigDir, 'profiles'), { recursive: true });
 await mkdir(maaCacheDir, { recursive: true });
+await mkdir(path.join(maaDataDir, 'resource'), { recursive: true });
+await writeFile(path.join(maaDataDir, 'resource', 'item_index.json'), JSON.stringify({
+  test_alpha: { name: '夜烟材料', classifyType: 'MATERIAL', icon: 'test_alpha.png' },
+  test_beta: { name: '调香师材料', classifyType: 'MATERIAL', icon: 'test_beta.png' }
+}));
 await writeFile(path.join(maaConfigDir, 'profiles', 'default.toml'), [
   '[connection]',
   'adb_path = "/fixture/adb"',
@@ -113,7 +120,7 @@ beforeEach(async () => {
 });
 
 after(async () => {
-  for (const key of ['LA_PLUMA_TRAINING_DATA_DIR', 'MAA_CLI_PATH', 'MAA_CACHE_DIR', 'FAKE_MAA_CONFIG_DIR', 'LA_PLUMA_MAA_LOCK_FILE']) {
+  for (const key of ['LA_PLUMA_TRAINING_DATA_DIR', 'MAA_DATA_DIR', 'MAA_CLI_PATH', 'MAA_CACHE_DIR', 'FAKE_MAA_CONFIG_DIR', 'LA_PLUMA_MAA_LOCK_FILE']) {
     delete process.env[key];
   }
   await rm(dataDirectory, { recursive: true, force: true });

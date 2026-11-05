@@ -133,6 +133,7 @@ export interface DepotSnapshot {
 export interface TrainingMaterialDefinition {
   id?: string;
   name: string;
+  rarity?: number;
   iconId?: string;
   bestStage?: string;
   bestStages?: { stage: string }[];
