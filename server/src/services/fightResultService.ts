@@ -1,3 +1,20 @@
+import type { DropItem } from './dropRecordService.ts';
+
+export interface FightStructuredStatistics {
+  stage: string;
+  battles: number;
+  sanity: number;
+  drops: DropItem[];
+  cumulativeDrops: DropItem[];
+  sanityBeforeStage?: number;
+  maxSanity?: number;
+  observed: {
+    stageDrops: boolean;
+    fightTimes: boolean;
+    sanityBeforeStage: boolean;
+  };
+}
+
 export interface FightTaskSummary {
   stage?: unknown;
   times?: unknown;
@@ -14,6 +31,7 @@ export interface FightActionOptions {
   output?: string | null;
   error?: unknown;
   skipReason?: string | null;
+  statistics?: FightStructuredStatistics | null;
 }
 
 export interface FightExecutionAction {
@@ -73,9 +91,14 @@ export function createFightExecutionAction(
   options: FightActionOptions = {}
 ): FightExecutionAction {
   const summary = options.summary || null;
-  const stage = String(summary?.stage || requestedStage || '').trim();
-  const times = Math.max(0, Number(summary?.times) || 0);
-  const dropCount = Array.isArray(summary?.dropItems) ? summary.dropItems.length : 0;
+  const statistics = options.statistics || null;
+  const stage = String(statistics?.stage || summary?.stage || requestedStage || '').trim();
+  const structuredDrops = statistics?.drops;
+  const summaryDrops = Array.isArray(summary?.dropItems) ? summary.dropItems : [];
+  const dropItems = statistics ? structuredDrops || [] : summaryDrops;
+  const times = Math.max(0, statistics ? statistics.battles : Number(summary?.times) || 0);
+  const dropCount = dropItems.length;
+  const dropsText = dropItems.map(item => `${item.name} × ${item.count}`).join(', ');
   const output = String(options.output || '');
   const errorText = getErrorText(options.error);
   const combinedOutput = [output, errorText].filter(Boolean).join('\n');
@@ -86,7 +109,7 @@ export function createFightExecutionAction(
     stage,
     times,
     dropCount,
-    drops: typeof summary?.drops === 'string' ? summary.drops : '',
+    drops: statistics ? dropsText : typeof summary?.drops === 'string' ? summary.drops : '',
     medicine: Math.max(0, Number(summary?.medicine) || 0),
     stone: Math.max(0, Number(summary?.stone) || 0),
     duration: typeof summary?.duration === 'string' ? summary.duration : '',

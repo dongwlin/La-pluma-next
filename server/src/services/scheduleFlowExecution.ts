@@ -2,7 +2,7 @@ import { createScheduleTaskProgress } from './scheduleTaskProgress.ts';
 import type { ScheduleTaskProgress, ScheduleTaskProgressResult } from './scheduleTaskProgress.ts';
 import { buildScheduledTaskCommand, validateScheduledTaskFlow } from './scheduleFlowPlan.ts';
 import type { ScheduledTask, ScheduledTaskParams } from './scheduleFlowPlan.ts';
-import { buildFlowExecutionOutcome, getFightReportResults, parseTaskSummary } from './scheduleFlowResult.ts';
+import { buildFlowExecutionOutcome, getFightReportResults, parseFightStatistics, parseTaskSummary } from './scheduleFlowResult.ts';
 import type {
   FightReportResult,
   FlowExecutionSummary,
@@ -18,7 +18,7 @@ import { parseMallExecutionAction } from './mallResultService.ts';
 import { createFightExecutionAction, isFightSanityDepleted } from './fightResultService.ts';
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction } from './gameTaskResultService.ts';
-import type { FightExecutionAction } from './fightResultService.ts';
+import type { FightExecutionAction, FightStructuredStatistics } from './fightResultService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import type { MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import type { DropRecordInput } from './dropRecordService.ts';
@@ -326,20 +326,35 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     logger.debug('定时任务状态更新', executionStatus);
   }
 
-  async function recordFightDrops(summary: FlowTaskSummary | null, scheduleId: string) {
-    if (!summary || !summary.stage || !Array.isArray(summary.dropItems) || summary.dropItems.length === 0) return;
+  async function recordFightDrops(
+    statistics: FightStructuredStatistics | null,
+    summary: FlowTaskSummary | null,
+    scheduleId: string,
+    recordKey: string
+  ) {
+    if (!statistics) return;
+    const stage = statistics.stage || summary?.stage || '';
+    if (!stage) return;
+    if (!statistics.observed.stageDrops && !statistics.observed.fightTimes) return;
 
     try {
-      const times = Math.max(1, Number(summary.times) || 1);
       await recordDrops({
-        stage: summary.stage,
-        times,
-        items: summary.dropItems,
-        sanity: times * 20,
-        medicine: Math.max(0, Number(summary.medicine) || 0),
-        stone: Math.max(0, Number(summary.stone) || 0)
+        stage,
+        times: statistics.battles,
+        items: statistics.drops,
+        sanity: statistics.sanity,
+        medicine: Math.max(0, Number(summary?.medicine) || 0),
+        stone: Math.max(0, Number(summary?.stone) || 0),
+        recordKey,
+        ...(statistics.sanityBeforeStage === undefined ? {} : { sanityBefore: statistics.sanityBeforeStage }),
+        ...(statistics.maxSanity === undefined ? {} : { maxSanity: statistics.maxSanity })
       });
-      logger.debug('掉落记录已保存', { scheduleId, stage: summary.stage });
+      logger.debug('掉落记录已保存', {
+        scheduleId,
+        stage,
+        times: statistics.battles,
+        sanity: statistics.sanity
+      });
     } catch (error) {
       logger.error('掉落记录保存失败', { scheduleId, error: errorMessageOf(error) });
     }
@@ -395,6 +410,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     lifecycle.onStarted?.();
 
     const startTime = Date.now();
+    const executionRecordKey = `${scheduleId}:${runId || startTime}`;
     const enabledTasks = tasks.filter(t => t.enabled);
     let successCount = 0;
     let failedCount = 0;
@@ -1016,6 +1032,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 currentArgs.push(...args.slice(1));
 
                 try {
+                  const logCheckpoint = await createLogCheckpoint();
                   const result = await executeCommand(command, currentArgs, `${task.name} (${stage})`, null, true);
                   if (executionStatus.shouldStop || abortController.signal.aborted) break;
                   const reportSummary = getFightReportResults(task, stage, result);
@@ -1044,13 +1061,21 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                   const summary = result.stdout
                     ? parseTaskSummary(`${task.name} (${stage})`, result.stdout, logger)
                     : null;
-                  if (summary) {
-                    taskSummaries.push(summary);
-                    await recordFightDrops(summary, scheduleId);
-                  }
+                  if (summary) taskSummaries.push(summary);
+                  const fightStatistics = parseFightStatistics(
+                    await readLogSince(logCheckpoint),
+                    stage
+                  );
+                  await recordFightDrops(
+                    fightStatistics,
+                    summary,
+                    scheduleId,
+                    `${executionRecordKey}:${task.id}:${stage}:${i}`
+                  );
                   addFightAction(createFightExecutionAction(`${task.name} (${stage})`, stage, {
                     summary,
-                    output
+                    output,
+                    statistics: fightStatistics
                   }));
                 } catch (error) {
                   if (executionStatus.shouldStop || abortController.signal.aborted) {
@@ -1143,6 +1168,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             }
           }
 
+          const fightLogCheckpoint = command === 'fight' ? await createLogCheckpoint() : null;
           const result = await executeCommand(command, args, task.name, null, true);
           if (command === 'closedown') {
             actionResults.push({
@@ -1163,17 +1189,25 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           let parsedTaskSummary: FlowTaskSummary | null = null;
           if (result.stdout) {
             parsedTaskSummary = parseTaskSummary(task.name, result.stdout, logger);
-            if (parsedTaskSummary) {
-              taskSummaries.push(parsedTaskSummary);
-              if (command === 'fight') await recordFightDrops(parsedTaskSummary, scheduleId);
-            }
+            if (parsedTaskSummary) taskSummaries.push(parsedTaskSummary);
           }
 
           if (command === 'fight') {
+            const fightStatistics = parseFightStatistics(
+              await readLogSince(fightLogCheckpoint),
+              fightStage
+            );
+            await recordFightDrops(
+              fightStatistics,
+              parsedTaskSummary,
+              scheduleId,
+              `${executionRecordKey}:${task.id}:${fightStage}:0`
+            );
             const output = (result.stdout || '') + (result.stderr || '');
             const fightAction = createFightExecutionAction(task.name, fightStage, {
               summary: parsedTaskSummary,
-              output
+              output,
+              statistics: fightStatistics
             });
             addFightAction(fightAction);
             countFightTaskResult([fightAction]);
