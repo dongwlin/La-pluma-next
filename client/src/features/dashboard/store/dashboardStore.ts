@@ -111,6 +111,16 @@ const isActivityFailure = (value: unknown): boolean => (
   && typeof value.message === 'string'
 )
 
+const isActivityEntry = (value: unknown): boolean => (
+  isRecord(value)
+  && (value.code === null || typeof value.code === 'string')
+  && (value.name === null || typeof value.name === 'string')
+  && (value.startTime === null || isTimestamp(value.startTime))
+  && (value.endTime === null || isTimestamp(value.endTime))
+  && isStringArray(value.stages, MAX_COMPLETED_STAGES)
+  && typeof value.rerun === 'boolean'
+)
+
 function isActivitySummary(value: unknown): value is ActivitySummary {
   if (!isRecord(value) || typeof value.available !== 'boolean') return false
   if (value.status !== undefined && !isActivityStatus(value.status)) return false
@@ -120,6 +130,14 @@ function isActivitySummary(value: unknown): value is ActivitySummary {
     || !isOptionalString(value.message)
     || !isOptionalString(value.source)) {
     return false
+  }
+  if (value.rerun !== undefined && typeof value.rerun !== 'boolean') return false
+  if (value.activities !== undefined) {
+    if (!Array.isArray(value.activities)
+      || value.activities.length > MAX_COMPLETED_STAGES
+      || !value.activities.every(isActivityEntry)) {
+      return false
+    }
   }
   if (!isOptionalTimestamp(value.startTime)
     || !isOptionalTimestamp(value.endTime)

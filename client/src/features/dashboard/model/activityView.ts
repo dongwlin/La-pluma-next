@@ -2,12 +2,19 @@ import type { ActivitySummary } from './snapshot'
 
 export type DashboardActivityPhase = 'loading' | 'active' | 'none' | 'unavailable' | 'stale'
 
+export interface DashboardActivityItem {
+  title: string
+  detail: string
+  rerun: boolean
+}
+
 export interface DashboardActivityView {
   phase: DashboardActivityPhase
   title: string
   detail: string
   meta: string
   canRetry: boolean
+  activities?: DashboardActivityItem[]
 }
 
 export interface DashboardActivityViewInput {
@@ -44,6 +51,41 @@ const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
 
 const formatDefaultTimestamp = (timestamp: number): string => TIMESTAMP_FORMATTER.format(timestamp)
 
+const formatWindow = (
+  startTime: number | undefined,
+  endTime: number | undefined,
+  formatTimestamp: (timestamp: number) => string,
+): string => {
+  if (startTime !== undefined && endTime !== undefined) {
+    return `${formatTimestamp(startTime)} ~ ${formatTimestamp(endTime)}`
+  }
+  if (startTime !== undefined) return `开始 ${formatTimestamp(startTime)}`
+  if (endTime !== undefined) return `结束 ${formatTimestamp(endTime)}`
+  return ''
+}
+
+const formatActivityDetail = (
+  summary: ActivitySummary,
+  formatTimestamp: (timestamp: number) => string,
+): string => joinParts(
+  summary.rerun ? '复刻' : '',
+  formatWindow(summary.startTime, summary.endTime, formatTimestamp),
+  summary.stages?.length ? `${summary.stages.length} 个关卡` : '',
+)
+
+const buildActivityItems = (
+  summary: ActivitySummary,
+  formatTimestamp: (timestamp: number) => string,
+): DashboardActivityItem[] => (summary.activities ?? []).map(activity => ({
+  title: activity.name || activity.code || '当前活动',
+  detail: joinParts(
+    activity.rerun ? '复刻' : '',
+    formatWindow(activity.startTime ?? undefined, activity.endTime ?? undefined, formatTimestamp),
+    activity.stages.length ? `${activity.stages.length} 个关卡` : '',
+  ),
+  rerun: activity.rerun,
+}))
+
 const joinParts = (...values: Array<string | null | undefined>): string => (
   values.filter((value): value is string => typeof value === 'string' && value.length > 0).join(' · ')
 )
@@ -70,6 +112,9 @@ export function buildDashboardActivityView(
 ): DashboardActivityView {
   const { summary, hasSnapshot, isRefreshing, lastRefreshFailed, lastRefreshError, lastUpdate } = input
   const formatTimestamp = input.formatTimestamp ?? formatDefaultTimestamp
+  const activityItems = buildActivityItems(summary, formatTimestamp)
+  const activityDetail = formatActivityDetail(summary, formatTimestamp)
+  const multiActivityItems = activityItems.length > 1 ? activityItems : undefined
   const origin = readOrigin(summary)
   const updatedAt = summary.dataUpdatedAt !== undefined ? formatTimestamp(summary.dataUpdatedAt) : ''
   const lastSuccessAt = summary.lastSuccessAt ?? lastUpdate
@@ -144,8 +189,9 @@ export function buildDashboardActivityView(
       phase: 'stale',
       title,
       detail,
-      meta: joinParts(origin, lastRefreshFailed ? lastUpdateText : lastSuccessText),
+      meta: joinParts(origin, lastRefreshFailed ? lastUpdateText : lastSuccessText, activityDetail),
       canRetry: true,
+      activities: multiActivityItems,
     }
   }
 
@@ -162,8 +208,9 @@ export function buildDashboardActivityView(
   return {
     phase: 'active',
     title: summary.name || summary.code || '当前活动',
-    detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : ''),
+    detail: joinParts(origin, updatedAt ? `更新于 ${updatedAt}` : '', activityDetail),
     meta: '',
     canRetry: false,
+    activities: multiActivityItems,
   }
 }

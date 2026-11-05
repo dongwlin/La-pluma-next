@@ -139,6 +139,19 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         {activityView.meta && (
           <div className={`mt-0.5 wrap-break-word text-[11px] ${labelClass}`}>{activityView.meta}</div>
         )}
+        {activityView.activities && activityView.activities.length > 1 && (
+          <div className="mt-2 flex flex-wrap gap-1.5" data-activity-list>
+            {activityView.activities.map((activity, index) => (
+              <span
+                key={`${activity.title}-${index}`}
+                className={activity.rerun ? dashboardChipClass : mutedChipClass}
+              >
+                {activity.rerun ? '复刻 · ' : ''}{activity.title}
+                {activity.detail ? ` · ${activity.detail}` : ''}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="dashboard-flow-stages" data-dashboard-flow-stages>

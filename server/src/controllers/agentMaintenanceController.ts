@@ -138,6 +138,8 @@ export async function readActivity(req: MaintenanceRequest, res: ApiResponseWrit
     startTime: activityInfo.startTime || null,
     endTime: activityInfo.endTime || null,
     stages: activityInfo.stages || [],
+    rerun: activityInfo.rerun,
+    activities: activityInfo.activities,
     completion,
     available: !!activityInfo.code,
     message: activityStatusMessage(activityInfo),
