@@ -30,8 +30,15 @@ describe('resolveCopilotPreviewTarget', () => {
   it('rejects inputs that are not copilot URIs or prts.plus links', () => {
     expect(resolveCopilotPreviewTarget('', 'auto')).toBeNull()
     expect(resolveCopilotPreviewTarget('/tmp/copilot.json', 'auto')).toBeNull()
-    expect(resolveCopilotPreviewTarget('maa://1234', 'auto')).toBeNull()
+    expect(resolveCopilotPreviewTarget('maa://1234s', 'auto')).toBeNull()
     expect(INVALID_COPILOT_URI_MESSAGE).toContain('prts://')
+  })
+
+  it('treats the legacy maa scheme as an explicit single copilot URI', () => {
+    expect(resolveCopilotPreviewTarget('maa://1234', 'auto'))
+      .toEqual({ id: '1234', kind: 'single', autoAddS: true })
+    expect(resolveCopilotPreviewTarget('maa://s1234', 'auto'))
+      .toEqual({ id: '1234', kind: 'set', autoAddS: false })
   })
 })
 

@@ -16,7 +16,7 @@ const preview: CopilotSetInfo = {
   id: '48990',
   name: '主线作业集',
   copilots: [
-    { id: 101, name: '第一关', stage: 'MAIN-1' },
+    { id: 101, name: '第一关', stage: 'MAIN-1', apCost: 21 },
     { id: 102, name: '第二关', stage: 'MAIN-2' },
     { id: 103, name: '第三关', stage: 'MAIN-3' },
     { id: 104, name: '第四关', stage: 'MAIN-4' },
@@ -323,6 +323,13 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.textContent).toContain('待 1')
     expect(container.textContent).toContain('已通关 0')
     expect(container.textContent).toContain('跳过 3')
+  })
+
+  it('shows a known stage cost and labels a missing one as unknown', async () => {
+    await renderPanel(deriveView([[0, 'pending']]))
+
+    expect(container.querySelector('[data-copilot-item-index="0"]')?.textContent).toContain('理智 21')
+    expect(container.querySelector('[data-copilot-item-index="1"]')?.textContent).toContain('理智 未知')
   })
 
   it('marks only persisted plan progress as historical completion', async () => {

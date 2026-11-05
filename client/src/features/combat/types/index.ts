@@ -51,6 +51,8 @@ export interface CopilotSetItem {
   name?: string
   stage?: string
   stageId?: string
+  /** 关卡理智消耗；资源数据缺失时为 null，展示为“未知”。 */
+  apCost?: number | null
   operators?: string
   uri?: string
   presetFormation?: boolean
