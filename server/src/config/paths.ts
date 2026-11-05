@@ -79,7 +79,7 @@ export function resolveMaaPaths(options: MaaPathOptions = {}): MaaPaths {
   const configDir = resolveMaaConfigDir(env, platformName, home);
   const dataDir = resolveMaaDataDir(env, platformName, home);
   const stateDir = resolveMaaStateDir(env, platformName, home);
-  const resourceDir = join(dataDir, 'resource');
+  const resourceDir = readDirOverride(env, 'MAA_RESOURCE_DIR') ?? join(dataDir, 'resource');
 
   return {
     configDir,
@@ -97,8 +97,23 @@ export function getMaaLogPath(): string {
   return resolveMaaPaths().logPath;
 }
 
+/**
+ * 本地 MAA 资源根目录的公共解析入口。资源消费者（材料/配方加载、物品图标路由等）
+ * 统一从这里取根目录，再按自身需要的相对路径拼接；解析规则与 `resolveMaaPaths`
+ * 完全一致（`MAA_RESOURCE_DIR` 优先，其次 `MAA_DATA_DIR` 下的 `resource`，
+ * 最后回退 XDG/平台默认值）。
+ */
+export function resolveResourceRoot(options: MaaPathOptions = {}): string {
+  return resolveMaaPaths(options).resourceDir;
+}
+
+/** 按资源根目录拼接相对路径；调用方不得再自行推断根目录。 */
+export function resolveResourceFile(relativePath: string, options: MaaPathOptions = {}): string {
+  return join(resolveResourceRoot(options), relativePath);
+}
+
 export function getMaaResourceDir(): string {
-  return resolveMaaPaths().resourceDir;
+  return resolveResourceRoot();
 }
 
 export function getItemIndexPath(): string {

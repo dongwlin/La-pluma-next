@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, it } from 'node:test';
+import { after, afterEach, describe, it } from 'node:test';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type { PenguinDropData } from '../dropDataService.ts';
@@ -28,12 +29,17 @@ childProcess.execFile = (file: string, args: string[], options: ExecFileOptions,
 };
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+process.env.MAA_RESOURCE_DIR = path.join(os.tmpdir(), `la-pluma-absent-resource-${process.pid}`);
 const { default: operatorTrainingService, expandMaterialTree, estimateMaterialFarming } = await import('../operatorTrainingService.ts');
 loggerManager.getLogger('OperatorTraining').enableConsole = false;
 loggerManager.getLogger('DropData').enableConsole = false;
 
 afterEach(() => {
   execFileOverride = null;
+});
+
+after(() => {
+  delete process.env.MAA_RESOURCE_DIR;
 });
 
 describe('fetchOperatorMaterials', () => {

@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import {
   printPathConfig,
-  resolveMaaPaths
+  resolveMaaPaths,
+  resolveResourceFile,
+  resolveResourceRoot
 } from '../paths.ts';
 
 describe('resolveMaaPaths cross-platform resolution', () => {
@@ -171,6 +173,23 @@ describe('resolveMaaPaths cross-platform resolution', () => {
 
     assert.equal(overridden.configDir, '/xdg/one/maa');
     assert.equal(clean.configDir, '/home/fixture/.config/maa');
+  });
+});
+
+describe('resource root contract', () => {
+  it('resolves the same root as resolveMaaPaths and joins relative resource paths', () => {
+    const options = { env: { MAA_DATA_DIR: '/maa/data' }, platform: 'linux' as const, homedir: '/home/fixture' };
+
+    assert.equal(resolveResourceRoot(options), '/maa/data/resource');
+    assert.equal(resolveResourceFile('item_index.json', options), '/maa/data/resource/item_index.json');
+    assert.equal(
+      resolveResourceFile(join('template', 'items', '30011.png'), options),
+      '/maa/data/resource/template/items/30011.png'
+    );
+    assert.equal(
+      resolveResourceRoot({ ...options, env: { MAA_RESOURCE_DIR: '/custom/resource' } }),
+      '/custom/resource'
+    );
   });
 });
 

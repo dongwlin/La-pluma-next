@@ -6,9 +6,11 @@
 
 import path from 'path';
 import { createHash } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
 import { readJsonFile, writeJsonFile, updateJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
+import { resolveResourceFile } from '../config/paths.ts';
 import {
   DEFAULT_TRAINING_SETTINGS,
   isRecord,
@@ -295,6 +297,7 @@ function parseMaterialDefinition(value: unknown): TrainingMaterialDefinition | n
   if (!isRecord(value) || typeof value.name !== 'string') return null;
   const material: TrainingMaterialDefinition = { name: value.name };
   if (typeof value.id === 'string') material.id = value.id;
+  if (typeof value.rarity === 'number' && Number.isFinite(value.rarity)) material.rarity = value.rarity;
   if (typeof value.iconId === 'string') material.iconId = value.iconId;
   if (typeof value.bestStage === 'string') material.bestStage = value.bestStage;
   if (Array.isArray(value.bestStages)) {
@@ -330,15 +333,228 @@ export function parseMaterialsDatabase(value: unknown): TrainingMaterialsDatabas
   };
 }
 
-export async function loadMaterialsDatabase(): Promise<TrainingMaterialsDatabase> {
-  try {
-    const MATERIALS_DB_PATH = path.join(DATA_DIRECTORY, 'materials.json');
-    const data = await readJsonFile(MATERIALS_DB_PATH, { materials: {}, recipes: {}, stageSchedule: {} });
-    return parseMaterialsDatabase(data);
-  } catch (error) {
-    logger.error('加载材料数据库失败', { error: errorMessage(error) });
-    return { materials: {}, recipes: {}, stageSchedule: {} };
+/** 本地资源缺失或字段不符时抛出；调用方必须显式处理，不能按空数据继续。 */
+export class LocalResourceError extends Error {
+  code: string;
+  resourcePath: string;
+  field?: string;
+
+  constructor(
+    message: string,
+    resourcePath: string,
+    field?: string,
+    code: string = 'LOCAL_RESOURCE_INVALID'
+  ) {
+    super(message);
+    this.name = 'LocalResourceError';
+    this.code = code;
+    this.resourcePath = resourcePath;
+    if (field !== undefined) this.field = field;
   }
+}
+
+interface LocalJsonCacheEntry {
+  signature: string;
+  value: unknown;
+}
+
+const localJsonCache = new Map<string, LocalJsonCacheEntry>();
+
+/** 仅供测试隔离；生产进程按文件 mtime/size 自然失效，不主动清缓存。 */
+export function resetLocalResourceCacheForTests(): void {
+  localJsonCache.clear();
+}
+
+async function readLocalResourceJson(resourcePath: string): Promise<unknown> {
+  let signature: string;
+  try {
+    const fileStat = await stat(resourcePath);
+    signature = `${fileStat.mtimeMs}:${fileStat.size}`;
+  } catch {
+    throw new LocalResourceError(
+      `本地资源文件缺失: ${resourcePath}`,
+      resourcePath,
+      undefined,
+      'LOCAL_RESOURCE_MISSING'
+    );
+  }
+
+  const cached = localJsonCache.get(resourcePath);
+  if (cached?.signature === signature) return cached.value;
+
+  let content: string;
+  try {
+    content = await readFile(resourcePath, 'utf8');
+  } catch {
+    throw new LocalResourceError(`本地资源文件不可读: ${resourcePath}`, resourcePath);
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new LocalResourceError(`本地资源文件不是合法 JSON: ${resourcePath}`, resourcePath);
+  }
+
+  localJsonCache.set(resourcePath, { signature, value });
+  return value;
+}
+
+async function readOptionalLocalResourceJson(resourcePath: string): Promise<unknown | null> {
+  try {
+    return await readLocalResourceJson(resourcePath);
+  } catch (error) {
+    if (error instanceof LocalResourceError && error.code === 'LOCAL_RESOURCE_MISSING') return null;
+    throw error;
+  }
+}
+
+function iconIdFromFilename(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  const basename = path.basename(value);
+  return basename.toLowerCase().endsWith('.png') ? basename.slice(0, -4) : basename;
+}
+
+function parseLocalMaterialEntry(
+  id: string,
+  raw: unknown,
+  resourcePath: string,
+  field: string
+): TrainingMaterialDefinition | null {
+  if (!isRecord(raw)) return null;
+  const kind = raw.itemType ?? raw.classifyType;
+  if (typeof kind === 'string' && kind !== 'MATERIAL') return null;
+  if (typeof raw.name !== 'string' || raw.name.length === 0) {
+    throw new LocalResourceError(`本地资源字段缺失: ${resourcePath} 的 ${field}.name`, resourcePath, `${field}.name`);
+  }
+
+  const material: TrainingMaterialDefinition = { id, name: raw.name };
+  if (typeof raw.rarity === 'number' && Number.isFinite(raw.rarity)) material.rarity = raw.rarity;
+  const iconId = iconIdFromFilename(raw.iconId ?? raw.icon);
+  if (iconId !== undefined) material.iconId = iconId;
+  return material;
+}
+
+function readFormula(value: unknown): Record<string, number> | null {
+  if (!isRecord(value)) return null;
+  const materials: Record<string, number> = {};
+  for (const [materialId, quantity] of Object.entries(value)) {
+    if (typeof quantity === 'number' && Number.isFinite(quantity)) materials[materialId] = quantity;
+  }
+  return Object.keys(materials).length > 0 ? materials : null;
+}
+
+interface LocalMaterialSource {
+  materials: Record<string, TrainingMaterialDefinition>;
+  recipes: MaterialFormulas;
+}
+
+async function loadLocalMaterialSource(): Promise<LocalMaterialSource> {
+  const itemTablePath = resolveResourceFile(path.join('gamedata', 'excel', 'item_table.json'));
+  const itemIndexPath = resolveResourceFile('item_index.json');
+  const itemTable = await readOptionalLocalResourceJson(itemTablePath);
+  const itemIndex = await readOptionalLocalResourceJson(itemIndexPath);
+
+  if (itemTable === null && itemIndex === null) {
+    throw new LocalResourceError(
+      `本地资源缺失: 未找到 ${itemTablePath} 或 ${itemIndexPath}，请先同步 MAA 资源`,
+      itemTablePath,
+      undefined,
+      'LOCAL_RESOURCE_MISSING'
+    );
+  }
+
+  let entries: Record<string, unknown>;
+  let materialPath: string;
+  if (itemTable !== null) {
+    if (!isRecord(itemTable) || !isRecord(itemTable.items)) {
+      throw new LocalResourceError(`本地资源字段缺失: ${itemTablePath} 的 items`, itemTablePath, 'items');
+    }
+    entries = itemTable.items;
+    materialPath = itemTablePath;
+  } else {
+    if (!isRecord(itemIndex)) {
+      throw new LocalResourceError(`本地资源字段缺失: ${itemIndexPath} 的 items`, itemIndexPath, 'items');
+    }
+    entries = itemIndex;
+    materialPath = itemIndexPath;
+  }
+
+  const materials: Record<string, TrainingMaterialDefinition> = {};
+  for (const [id, raw] of Object.entries(entries)) {
+    const material = parseLocalMaterialEntry(id, raw, materialPath, itemTable === null ? id : `items.${id}`);
+    if (material) materials[id] = material;
+  }
+  if (Object.keys(materials).length === 0) {
+    throw new LocalResourceError(`本地资源字段缺失: ${materialPath} 没有可用材料条目`, materialPath, 'items');
+  }
+
+  const recipes: MaterialFormulas = {};
+  const collectRecipes = (source: unknown): void => {
+    if (!isRecord(source)) return;
+    const table = isRecord(source.items) ? source.items : source;
+    for (const [id, raw] of Object.entries(table)) {
+      if (!isRecord(raw)) continue;
+      const formula = readFormula(raw.formula);
+      if (formula) recipes[id] = { materials: formula };
+    }
+  };
+  collectRecipes(itemTable);
+  collectRecipes(itemIndex);
+
+  return { materials, recipes };
+}
+
+async function loadTrainingSnapshotExtras(): Promise<{
+  bestStages: Record<string, Partial<TrainingMaterialDefinition>>;
+  stageSchedule: Record<string, unknown>;
+}> {
+  const snapshotPath = path.join(DATA_DIRECTORY, 'materials.json');
+  let snapshot: unknown;
+  try {
+    snapshot = await readJsonFile(snapshotPath, null);
+  } catch {
+    return { bestStages: {}, stageSchedule: {} };
+  }
+  if (!isRecord(snapshot)) return { bestStages: {}, stageSchedule: {} };
+
+  const bestStages: Record<string, Partial<TrainingMaterialDefinition>> = {};
+  if (isRecord(snapshot.materials)) {
+    for (const [id, raw] of Object.entries(snapshot.materials)) {
+      if (!isRecord(raw)) continue;
+      const extra: Partial<TrainingMaterialDefinition> = {};
+      if (typeof raw.bestStage === 'string') extra.bestStage = raw.bestStage;
+      if (Array.isArray(raw.bestStages)) {
+        const stages: { stage: string }[] = [];
+        for (const entry of raw.bestStages) {
+          if (isRecord(entry) && typeof entry.stage === 'string') stages.push({ stage: entry.stage });
+        }
+        if (stages.length > 0) extra.bestStages = stages;
+      }
+      if (Object.keys(extra).length > 0) bestStages[id] = extra;
+    }
+  }
+
+  return {
+    bestStages,
+    stageSchedule: isRecord(snapshot.stageSchedule) ? { ...snapshot.stageSchedule } : {}
+  };
+}
+
+export async function loadMaterialsDatabase(): Promise<TrainingMaterialsDatabase> {
+  const source = await loadLocalMaterialSource();
+  const extras = await loadTrainingSnapshotExtras();
+  for (const [id, extra] of Object.entries(extras.bestStages)) {
+    const material = source.materials[id];
+    if (!material) continue;
+    if (extra.bestStage !== undefined) material.bestStage = extra.bestStage;
+    if (extra.bestStages !== undefined) material.bestStages = extra.bestStages;
+  }
+  return {
+    materials: source.materials,
+    recipes: source.recipes,
+    stageSchedule: extras.stageSchedule
+  };
 }
 
 /**
@@ -363,14 +579,7 @@ export function parseMaterialFormulas(value: unknown): MaterialFormulas {
 }
 
 export async function loadMaterialFormulas(): Promise<MaterialFormulas> {
-  try {
-    const FORMULAS_PATH = path.join(DATA_DIRECTORY, 'material-formulas.json');
-    const data = await readJsonFile(FORMULAS_PATH, {});
-    return parseMaterialFormulas(data);
-  } catch (error) {
-    logger.error('加载材料合成配方失败', { error: errorMessage(error) });
-    return {};
-  }
+  return (await loadLocalMaterialSource()).recipes;
 }
 
 function parseOwnedOperator(value: unknown): OwnedOperator | null {
