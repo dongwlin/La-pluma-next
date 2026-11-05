@@ -55,6 +55,10 @@ router.post('/actions/open-config-directory', asyncHandler<MaintenanceRequest, A
 
 router.post('/actions/update-core', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.updateCore));
 
+router.get('/update-channels', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readChannels));
+
+router.post('/actions/update-channel', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.saveChannel));
+
 router.post('/actions/update-cli', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.updateCli));
 
 router.post('/actions/hot-update-resources', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.hotUpdateResources));

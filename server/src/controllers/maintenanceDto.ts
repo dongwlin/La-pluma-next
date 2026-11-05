@@ -76,6 +76,28 @@ export function parseUpdateCoreBody(body: unknown): MaintenanceUpdateCoreInput {
   return { version: source.version, dryRun: Boolean(source.dryRun) };
 }
 
+/** CLI 更新请求：`channel` 缺省时由服务端使用已持久化的渠道。 */
+export interface MaintenanceUpdateCliInput {
+  channel: unknown;
+  dryRun: boolean;
+}
+
+export function parseUpdateCliBody(body: unknown): MaintenanceUpdateCliInput {
+  const source = isRecord(body) ? body : {};
+  return { channel: source.channel, dryRun: Boolean(source.dryRun) };
+}
+
+/** 渠道设置请求：scope/channel 的取值由更新渠道域校验，这里只做形状收窄。 */
+export interface MaintenanceUpdateChannelInput {
+  scope: unknown;
+  channel: unknown;
+}
+
+export function parseUpdateChannelBody(body: unknown): MaintenanceUpdateChannelInput {
+  const source = isRecord(body) ? body : {};
+  return { scope: source.scope, channel: source.channel };
+}
+
 /** 定时注册请求：scheduleId 缺省为 `default`，流程与时间点仍由调度域校验。 */
 export interface MaintenanceScheduleSetupInput {
   scheduleId: string;
@@ -354,7 +376,7 @@ export interface MaintenanceCopilotSearchPayload {
 /** 维护动作计划：dryRun 只返回这些计划，不触发真实更新。 */
 export interface MaintenanceUpdatePlanStep {
   action: string;
-  targetChannel?: 'beta' | 'stable' | 'current';
+  targetChannel?: 'beta' | 'stable' | 'alpha' | 'current';
   command?: string;
   args?: string[];
 }
@@ -367,6 +389,11 @@ export interface MaintenanceUpdateCorePlan {
 export interface MaintenanceUpdateCliPlan {
   action: 'update-cli';
   command: string;
+  args?: string[];
+  channel?: string;
+  source?: string;
+  supported?: boolean;
+  reason?: string;
 }
 
 export interface MaintenanceHotUpdateResourcesPlan {
@@ -394,6 +421,10 @@ export interface MaintenanceHotUpdateResourcesPayload extends ResourceUpdateResu
 
 export interface MaintenanceVersionPayload extends MaaVersionInfo {
   resource: ResourceInfo;
+  updateChannels?: {
+    core: string;
+    cli: string;
+  };
 }
 
 export interface MaintenanceConfigDirectoryPayload {

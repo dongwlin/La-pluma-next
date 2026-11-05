@@ -6,6 +6,11 @@ import {
 } from '@/shared/api'
 import { getConfigDir, getVersion } from '../api'
 import { settingsKeys } from './queryKeys'
+import type {
+  CliUpdateChannel,
+  CoreUpdateChannel,
+  UpdateChannels,
+} from '../types'
 
 export interface MaaResourceInfo {
   lastUpdated: string | null
@@ -20,7 +25,11 @@ export interface MaaVersionInfo {
   core: string
   raw: string
   resource?: MaaResourceInfo
+  updateChannels?: UpdateChannels
 }
+
+const CORE_UPDATE_CHANNELS = ['stable', 'beta', 'alpha'] as const
+const CLI_UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const
 
 const RESOURCE_STATUSES = ['current', 'stale', 'unknown'] as const
 
@@ -47,6 +56,20 @@ const normalizeResourceInfo = (value: unknown): MaaResourceInfo | undefined => {
   }
 }
 
+const normalizeUpdateChannels = (value: unknown): UpdateChannels | undefined => {
+  if (!isRecord(value)) return undefined
+  const core = typeof value.core === 'string'
+    && (CORE_UPDATE_CHANNELS as readonly string[]).includes(value.core)
+    ? value.core as CoreUpdateChannel
+    : null
+  const cli = typeof value.cli === 'string'
+    && (CLI_UPDATE_CHANNELS as readonly string[]).includes(value.cli)
+    ? value.cli as CliUpdateChannel
+    : null
+  if (!core || !cli) return undefined
+  return { core, cli }
+}
+
 /** 只接受页面展示所需的已知字段；坏载荷返回 null 交给 Query 作为 contract 失败。 */
 export const normalizeMaaVersionInfo = (value: unknown): MaaVersionInfo | null => {
   if (!isRecord(value)) return null
@@ -55,11 +78,13 @@ export const normalizeMaaVersionInfo = (value: unknown): MaaVersionInfo | null =
   }
 
   const resource = normalizeResourceInfo(value.resource)
+  const updateChannels = normalizeUpdateChannels(value.updateChannels)
   return {
     cli: value.cli,
     core: value.core,
     raw: value.raw,
     ...(resource ? { resource } : {}),
+    ...(updateChannels ? { updateChannels } : {}),
   }
 }
 

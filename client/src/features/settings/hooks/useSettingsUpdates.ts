@@ -28,7 +28,7 @@ export interface UseSettingsUpdatesResult {
   readonly switchCoreChannel: (
     currentCore?: string | null,
   ) => Promise<UpdateCommandOutcome>
-  readonly updateCli: () => Promise<UpdateCommandOutcome>
+  readonly updateCli: (channel?: string) => Promise<UpdateCommandOutcome>
   readonly updateResources: () => Promise<UpdateCommandOutcome>
 }
 
@@ -85,8 +85,8 @@ export function useSettingsUpdates(
     )
   }, [owner, run])
 
-  const updateCli = useCallback(() => (
-    run('正在更新 MAA CLI...', () => owner.updateCli())
+  const updateCli = useCallback((channel?: string) => (
+    run('正在更新 MAA CLI...', () => owner.updateCli(channel))
   ), [owner, run])
 
   const updateResources = useCallback(() => (

@@ -633,7 +633,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     assert.equal(core.status, 200);
     const coreBody = await readSuccess<{ plan: MaintenanceUpdateCorePlan }>(core);
     assert.equal(coreBody.meta.dryRun, true);
-    assert.equal(coreBody.data.plan.steps[0].targetChannel, 'current');
+    assert.equal(coreBody.data.plan.steps[0].targetChannel, 'stable');
 
     const cli = await postJson(`${baseUrl}/actions/update-cli`, { dryRun: 1 });
     assert.equal(cli.status, 200);
@@ -688,6 +688,49 @@ describe('moved maintenance routes keep HTTP contracts', () => {
 
     const after = await readSuccess<unknown>(await fetch(`${baseUrl}/auto-update/status`));
     assert.deepEqual(after.data, before.data);
+  });
+
+  it('persists update channels and reuses them for parameterless updates', async () => {
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+    const cliConfigPath = join(maaConfigDir, 'cli.toml');
+    try {
+      const coreSaved = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'core', channel: 'beta' });
+      const coreBody = await readSuccess<{ core: string; cli: string }>(coreSaved);
+      assert.deepEqual(coreBody.data, { core: 'beta', cli: 'stable' });
+
+      const cliSaved = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'cli', channel: 'nightly' });
+      const cliBody = await readSuccess<{ core: string; cli: string }>(cliSaved);
+      assert.deepEqual(cliBody.data, { core: 'beta', cli: 'nightly' });
+
+      const channels = await readSuccess<{ core: string; cli: string }>(
+        await fetch(`${baseUrl}/update-channels`)
+      );
+      assert.deepEqual(channels.data, { core: 'beta', cli: 'nightly' });
+      const configContent = await readFile(cliConfigPath, 'utf-8');
+      assert.match(configContent, /channel = "Beta"/);
+      assert.match(configContent, /channel = "Nightly"/);
+
+      const corePlan = await readSuccess<UpdateCorePayload>(
+        await postJson(`${baseUrl}/actions/update-core`, { dryRun: true })
+      );
+      assert.equal(corePlan.data.plan.steps[0].targetChannel, 'beta');
+      assert.equal(corePlan.data.plan.steps[0].command, 'update');
+      assert.deepEqual(corePlan.data.plan.steps[0].args, []);
+
+      const cliPlan = await readSuccess<UpdateCliPayload>(
+        await postJson(`${baseUrl}/actions/update-cli`, { dryRun: true })
+      );
+      assert.equal(cliPlan.data.plan.channel, 'nightly');
+      assert.equal(cliPlan.data.plan.source, 'standalone');
+      assert.deepEqual(cliPlan.data.plan.args, ['self', 'update', 'nightly']);
+
+      const invalid = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'cli', channel: 'alpha' });
+      assert.equal(invalid.status, 400);
+      assert.equal((await readError(invalid)).error.code, 'AGENT_UPDATE_CHANNEL_INVALID');
+    } finally {
+      await rm(cliConfigPath, { force: true });
+    }
   });
 
   it('keeps profile read and write on the MAA config directory', async () => {

@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   loadUserConfig: vi.fn(),
   openConfigDir: vi.fn(),
   saveConfig: vi.fn(),
+  saveUpdateChannel: vi.fn(),
   saveUserConfig: vi.fn(),
   setupAutoUpdate: vi.fn(),
   testConnection: vi.fn(),
@@ -70,6 +71,7 @@ vi.mock('@/features/settings/api', () => ({
   hotUpdateResources: mocks.hotUpdateResources,
   openConfigDir: mocks.openConfigDir,
   saveConfig: mocks.saveConfig,
+  saveUpdateChannel: mocks.saveUpdateChannel,
   setupAutoUpdate: mocks.setupAutoUpdate,
   testConnection: mocks.testConnection,
   updateMaaCli: mocks.updateMaaCli,
@@ -175,7 +177,12 @@ describe('ConfigManager layout surfaces', () => {
     mocks.getConfigDir.mockReset().mockResolvedValue({ success: true, data: '/tmp/la-pluma' })
     mocks.getVersion.mockReset().mockResolvedValue({
       success: true,
-      data: { cli: '0.7.3', core: 'v5.0.0', raw: 'v5.0.0' },
+      data: {
+        cli: '0.7.3',
+        core: 'v5.0.0',
+        raw: 'v5.0.0',
+        updateChannels: { core: 'stable', cli: 'stable' },
+      },
     })
     mocks.discoverDevices.mockReset().mockResolvedValue({
       success: true,
@@ -198,6 +205,7 @@ describe('ConfigManager layout surfaces', () => {
     })
     mocks.openConfigDir.mockReset().mockResolvedValue({ success: true })
     mocks.saveConfig.mockReset().mockResolvedValue({ success: true })
+    mocks.saveUpdateChannel.mockReset().mockResolvedValue({ success: true, data: { core: 'stable', cli: 'beta' } })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.setupAutoUpdate.mockReset().mockResolvedValue({ success: true })
     mocks.updateMaaCore.mockReset().mockResolvedValue({ success: true })
@@ -510,6 +518,25 @@ describe('ConfigManager layout surfaces', () => {
     expect(invalidationEvents).toHaveLength(1)
   })
 
+  it('persists a changed update channel through the settings API', async () => {
+    await act(async () => root.render(page()))
+    await flush()
+
+    const cliSelect = container.querySelector<HTMLSelectElement>('select[aria-label="MAA CLI 更新渠道"]')
+    expect(cliSelect).not.toBeNull()
+    await act(async () => {
+      if (cliSelect) {
+        cliSelect.value = 'beta'
+        cliSelect.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    })
+    await settle()
+
+    expect(mocks.saveUpdateChannel).toHaveBeenCalledWith('cli', 'beta')
+    expect(mocks.setMessage).toHaveBeenCalledWith('更新渠道已保存')
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2)
+  })
+
   it('switches the core channel using the current version and publishes resources', async () => {
     await act(async () => root.render(page()))
     await flush()
@@ -693,7 +720,7 @@ describe('ConfigManager layout surfaces', () => {
     await flush()
 
     expect(container.textContent).toContain('当前资源来源保持不变')
-    expect(container.querySelector('select')).toBeNull()
+    expect(container.querySelector('.config-workspace-primary select')).toBeNull()
     expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.trim() === '保存')).toBe(false)
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
@@ -703,7 +730,7 @@ describe('ConfigManager layout surfaces', () => {
     })
 
     expect(container.textContent).toContain('触摸模式等实例选项保持当前设置')
-    expect(container.querySelector('select')).toBeNull()
+    expect(container.querySelector('.config-workspace-primary select')).toBeNull()
   })
 
   it('reports an initial connection read failure in place and globally', async () => {
