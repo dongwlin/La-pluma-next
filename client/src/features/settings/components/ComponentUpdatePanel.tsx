@@ -19,18 +19,6 @@ const CLI_CHANNEL_OPTIONS = [
   { value: 'nightly', label: 'Nightly' },
 ]
 
-const CORE_CHANNEL_LABELS: Record<CoreUpdateChannel, string> = {
-  stable: '正式版',
-  beta: '测试版',
-  alpha: 'Alpha',
-}
-
-const CLI_CHANNEL_LABELS: Record<CliUpdateChannel, string> = {
-  stable: '正式版',
-  beta: '测试版',
-  nightly: 'Nightly',
-}
-
 export default function ComponentUpdatePanel() {
   const setStatusMessage = useStatusStore(state => state.setMessage)
   const [channelSaving, setChannelSaving] = useState<UpdateChannelScope | null>(null)
@@ -93,11 +81,6 @@ export default function ComponentUpdatePanel() {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-primary">MaaCore</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.core}</span>}
-            {versionInfo && (
-              <span className={`rounded-full px-2 py-1 text-xs ${coreChannel === 'stable' ? 'status-success' : 'status-warning'}`}>
-                {CORE_CHANNEL_LABELS[coreChannel]}
-              </span>
-            )}
             <Select
               aria-label="MaaCore 更新渠道"
               value={coreChannel}
@@ -163,9 +146,6 @@ export default function ComponentUpdatePanel() {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-primary">MAA CLI</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.cli}</span>}
-            <span className={`rounded-full px-2 py-1 text-xs ${cliChannel === 'stable' ? 'status-success' : 'status-warning'}`}>
-              {CLI_CHANNEL_LABELS[cliChannel]}
-            </span>
             <Select
               aria-label="MAA CLI 更新渠道"
               value={cliChannel}
