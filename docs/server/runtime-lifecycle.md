@@ -76,7 +76,7 @@ HTTP 传输关闭先停止接受新连接，等待在途响应完成；每个响
 
 ## 后台触发源（cron 与自动更新）
 
-运行时初始化（`initializeRuntimeState`，`server/src/services/runtimeInitializationService.ts:147`）在读取任何持久配置之前先挂接调度触发源的停止端口——即使没有已保存配置或恢复失败，关闭时也能停止之后通过 API 注册的 cron/自动更新（`server/src/services/runtimeInitializationService.ts:141`）。随后并行读取通知、自动化任务与自动更新配置并逐项恢复；每个领域在摘要中独立记录成功位与失败原因，互不替代（`server/src/services/runtimeInitializationService.ts:91`）。恢复只注册触发源，不执行流程。
+运行时初始化（`initializeRuntimeState`，`server/src/services/runtimeInitializationService.ts:139`）在读取任何持久配置之前先挂接调度触发源的停止端口——即使没有已保存配置或恢复失败，关闭时也能停止之后通过 API 注册的 cron/自动更新（`server/src/services/runtimeInitializationService.ts:141`）。挂接后先执行动态任务目录的启动清理：仅回收确认过期且持有进程已不存活的残留目录，清理失败只记录警告，不阻断配置恢复（`server/src/services/runtimeInitializationService.ts:176`、`server/src/services/maaExecutionService.ts:320`）。随后并行读取通知、自动化任务与自动更新配置并逐项恢复；每个领域在摘要中独立记录成功位与失败原因，互不替代（`server/src/services/runtimeInitializationService.ts:91`）。恢复只注册触发源，不执行流程。
 
 - 定时计划仅在持久配置启用时恢复；恢复前解析当前 profile 的客户端类型，解析失败按默认客户端时区注册，不阻断恢复（`server/src/services/runtimeInitializationService.ts:198`）。
 - 同一 `scheduleId` 的重复配置替换旧任务而不叠加：新 job 全部创建并启动成功后才销毁旧 job，全部失败时保留上一份有效注册，部分失败通过返回的 `times` 报告缺失时间点；重复停止是幂等的，目标未注册时也按已完成处理（`server/src/services/scheduleTriggerService.ts:284`）。

@@ -1,4 +1,10 @@
-import { mkdir, writeFile, unlink } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createLogger } from '../utils/logger.ts';
@@ -53,6 +59,22 @@ export interface MaaDynamicTaskConfig {
   params?: Record<string, unknown>;
 }
 
+export const MAA_DYNAMIC_TASK_DIR_PREFIX = 'la-pluma-task-';
+export const MAA_DYNAMIC_TASK_OWNER_FILE = 'owner.json';
+export const MAA_DYNAMIC_TASK_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
+export interface MaaDynamicTaskCleanupSummary {
+  scanned: number;
+  removed: number;
+  retained: number;
+}
+
+export interface MaaDynamicTaskCleanupOptions {
+  getConfigDir?: () => Promise<string>;
+  now?: () => number;
+  expiryMs?: number;
+}
+
 /** 动态任务执行端口；签名与 execMaaCommandUnlocked 的实现契约一致。 */
 export type MaaDynamicTaskExecutor = (
   command: string,
@@ -71,7 +93,7 @@ export interface MaaDynamicTaskRuntime {
   getConfigDir?: () => Promise<string>;
   mkdir?: (path: string, options: { recursive: boolean }) => Promise<unknown>;
   writeFile?: (path: string, content: string, encoding: 'utf-8') => Promise<unknown>;
-  unlink?: (path: string) => Promise<unknown>;
+  removeDirectory?: (path: string, options: { recursive: boolean; force: boolean }) => Promise<unknown>;
   executeCommand?: MaaDynamicTaskExecutor;
   createNonce?: () => string;
   resolveClientType?: () => Promise<string>;
@@ -257,6 +279,85 @@ function normalizeDynamicTaskConfig(taskConfig: MaaDynamicTaskConfig | string): 
   return { name: parsed.name, type: parsed.type, params };
 }
 
+interface MaaDynamicTaskOwnerMarker {
+  pid: number;
+  startedAt: number;
+}
+
+function isLiveProcess(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return isRecord(error) && error.code === 'EPERM';
+  }
+}
+
+async function readDynamicTaskOwnerMarker(path: string): Promise<MaaDynamicTaskOwnerMarker | null> {
+  let raw: string;
+  try {
+    raw = await readFile(path, 'utf-8');
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  const startedAt = typeof parsed.startedAt === 'string' ? Date.parse(parsed.startedAt) : Number.NaN;
+  if (!Number.isInteger(parsed.pid) || !Number.isFinite(startedAt)) return null;
+  return { pid: Number(parsed.pid), startedAt };
+}
+
+/**
+ * 启动时回收上次进程遗留的动态任务目录。
+ * 只有同时满足“持有进程已不存活”与“超过有效期”才删除；无法确认归属或状态的目录一律保留。
+ */
+export async function cleanupStaleDynamicTaskDirectories(
+  options: MaaDynamicTaskCleanupOptions = {}
+): Promise<MaaDynamicTaskCleanupSummary> {
+  const resolveConfigDir = options.getConfigDir || getMaaConfigDir;
+  const now = options.now ? options.now() : Date.now();
+  const expiryMs = options.expiryMs ?? MAA_DYNAMIC_TASK_EXPIRY_MS;
+  const tasksDir = join((await resolveConfigDir()).trim(), 'tasks');
+
+  let entries;
+  try {
+    entries = await readdir(tasksDir, { withFileTypes: true });
+  } catch (error) {
+    if (isRecord(error) && error.code === 'ENOENT') return { scanned: 0, removed: 0, retained: 0 };
+    throw error;
+  }
+
+  const summary: MaaDynamicTaskCleanupSummary = { scanned: 0, removed: 0, retained: 0 };
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(MAA_DYNAMIC_TASK_DIR_PREFIX)) continue;
+    summary.scanned += 1;
+    const taskDir = join(tasksDir, entry.name);
+    const owner = await readDynamicTaskOwnerMarker(join(taskDir, MAA_DYNAMIC_TASK_OWNER_FILE));
+    if (owner === null || now - owner.startedAt < expiryMs || isLiveProcess(owner.pid)) {
+      summary.retained += 1;
+      continue;
+    }
+    try {
+      await rm(taskDir, { recursive: true, force: true });
+      summary.removed += 1;
+    } catch (error) {
+      if (isRecord(error) && error.code === 'ENOENT') {
+        summary.removed += 1;
+        continue;
+      }
+      summary.retained += 1;
+      logger.warn('清理过期动态任务目录失败', { taskDir, error: errorMessageOf(error) });
+    }
+  }
+  return summary;
+}
+
 export async function execDynamicTask(
   taskId: string,
   taskConfig: MaaDynamicTaskConfig | string,
@@ -270,7 +371,7 @@ export async function execDynamicTask(
   const resolveConfigDir = runtime.getConfigDir || getMaaConfigDir;
   const makeDirectory = runtime.mkdir || mkdir;
   const writeTaskFile = runtime.writeFile || writeFile;
-  const removeTaskFile = runtime.unlink || unlink;
+  const removeTaskDirectory = runtime.removeDirectory || rm;
   const executeCommand: MaaDynamicTaskExecutor = runtime.executeCommand || execMaaCommandUnlocked;
   const createNonce = runtime.createNonce || (() => `${process.pid}_${Date.now()}_${randomBytes(6).toString('hex')}`);
   const resolveClientType = runtime.resolveClientType
@@ -311,12 +412,12 @@ export async function execDynamicTask(
     taskName: taskName || String(taskId || 'dynamic-task'),
     command: 'run'
   });
-  let tempTaskFile: string | null = null;
+  let tempTaskDir: string | null = null;
   let releaseOnReturn = true;
 
   const cleanup = async (): Promise<void> => {
-    if (!tempTaskFile) return;
-    await removeTaskFile(tempTaskFile).catch(error => {
+    if (!tempTaskDir) return;
+    await removeTaskDirectory(tempTaskDir, { recursive: true, force: true }).catch(error => {
       if (!isRecord(error) || error.code !== 'ENOENT') throw error;
     });
   };
@@ -325,7 +426,7 @@ export async function execDynamicTask(
     try {
       await cleanup();
     } catch (error) {
-      logger.warn('清理动态任务文件失败', { tempTaskFile, error: errorMessageOf(error) });
+      logger.warn('清理动态任务目录失败', { tempTaskDir, error: errorMessageOf(error) });
     } finally {
       await lease.release();
     }
@@ -341,16 +442,23 @@ export async function execDynamicTask(
     const taskPrefix = String(taskId || 'dynamic-task')
       .replace(/[^A-Za-z0-9_-]/g, '_')
       .slice(0, 64) || 'dynamic-task';
-    const taskFileId = `${taskPrefix}_temp_${createNonce()}`;
-    tempTaskFile = join(tasksDir, `${taskFileId}.toml`);
+    const taskDirName = `${MAA_DYNAMIC_TASK_DIR_PREFIX}${taskPrefix}-${createNonce()}`;
+    tempTaskDir = join(tasksDir, taskDirName);
+
+    await makeDirectory(tempTaskDir, { recursive: true });
+
+    const taskFileId = 'task';
+    const taskFile = join(tempTaskDir, `${taskFileId}.toml`);
+    const ownerMarker = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
 
     const tomlContent = generateTaskToml(configObj, clientType);
 
-    await writeTaskFile(tempTaskFile, tomlContent, 'utf-8');
-    addLog('INFO', `临时任务文件已创建: ${tempTaskFile}`);
+    await writeTaskFile(join(tempTaskDir, MAA_DYNAMIC_TASK_OWNER_FILE), ownerMarker, 'utf-8');
+    await writeTaskFile(taskFile, tomlContent, 'utf-8');
+    addLog('INFO', `临时任务文件已创建: ${taskFile}`);
     addLog('DEBUG', `任务内容:\n${tomlContent}`);
 
-    const runArgs = [taskFileId];
+    const runArgs = [join(taskDirName, taskFileId)];
     if (gameTaskType) {
       try {
         logCheckpoint = await (runtime.createLogCheckpoint || createMaaLogCheckpoint)();
@@ -359,6 +467,7 @@ export async function execDynamicTask(
       }
     }
     if (userResource) runArgs.push('--user-resource');
+    runArgs.push('--batch');
     if (taskName && !waitForCompletion) {
       const { onSettled: lifecycleOnSettled, ...processLifecycle } = lifecycle;
       const result = await executeCommand(

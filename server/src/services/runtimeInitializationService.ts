@@ -46,6 +46,13 @@ export type TelegramRuntimeConfig = NotificationChannelConfig & {
   adbAddress?: string;
 };
 
+/** 启动清理只消费删除计数；未识别的字段不参与恢复摘要。 */
+export interface RuntimeDynamicTaskCleanupOutcome {
+  scanned?: unknown;
+  removed?: unknown;
+  retained?: unknown;
+}
+
 export interface RuntimeInitializationLogger {
   info(message: string, data?: unknown): unknown;
   warn(message: string, data?: unknown): unknown;
@@ -60,6 +67,7 @@ export interface RuntimeInitializationPorts {
   loadConfig(configType: string): Promise<RuntimeConfigLoadOutcome>;
   applyNotificationConfig(config: unknown): unknown;
   readNotificationConfig(): RuntimeNotificationState;
+  cleanupDynamicTaskDirectories(): Promise<RuntimeDynamicTaskCleanupOutcome>;
   registerSchedule(
     scheduleId: string,
     times: unknown,
@@ -137,6 +145,8 @@ export async function initializeRuntimeState(
     loadConfig: dependencyOverrides.loadConfig ?? loadUserConfig,
     applyNotificationConfig: dependencyOverrides.applyNotificationConfig ?? setNotificationConfig,
     readNotificationConfig: dependencyOverrides.readNotificationConfig ?? getNotificationConfig,
+    cleanupDynamicTaskDirectories: dependencyOverrides.cleanupDynamicTaskDirectories
+      ?? (async () => ({ removed: 0 })),
     registerSchedule: dependencyOverrides.registerSchedule ?? setupSchedule,
     registerAutoUpdate: dependencyOverrides.registerAutoUpdate ?? setupAutoUpdate,
     attachScheduleLifecycle: dependencyOverrides.attachScheduleLifecycle ?? attachScheduleTriggersToLifecycle,
@@ -160,6 +170,19 @@ export async function initializeRuntimeState(
     autoUpdate: { restored: false },
     telegram: { initialized: false }
   };
+
+  signal?.throwIfAborted();
+  try {
+    const cleanup = await waitWithAbort(() => dependencies.cleanupDynamicTaskDirectories(), signal);
+    signal?.throwIfAborted();
+    const removed = typeof cleanup?.removed === 'number' ? cleanup.removed : 0;
+    if (removed > 0) {
+      dependencies.runtimeLogger.info('已清理过期动态任务目录', { removed });
+    }
+  } catch (error) {
+    signal?.throwIfAborted();
+    dependencies.runtimeLogger.warn('清理过期动态任务目录失败', { error: readErrorMessage(error) });
+  }
 
   const [notificationConfig, automationConfig, autoUpdateConfig] = await Promise.all([
     readPersistedConfig('notification', dependencies.loadConfig, dependencies.runtimeLogger, signal),

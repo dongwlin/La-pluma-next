@@ -463,4 +463,61 @@ describe('runtime initialization', () => {
     assert.equal(summary.telegram.initialized, false);
     assert.equal(summary.telegram.error, 'lifecycle unavailable');
   });
+
+  it('cleans stale dynamic task directories before restoring persisted state', async () => {
+    const events: string[] = [];
+
+    await initializeRuntimeState({
+      cleanupDynamicTaskDirectories: async () => {
+        events.push('cleanup');
+        return { removed: 2 };
+      },
+      loadConfig: async configType => {
+        events.push(`load:${configType}`);
+        return { success: true, data: null };
+      },
+      readNotificationConfig: () => ({ channels: {} }),
+      resolveRuntimeConnection: async () => ({}),
+      startTelegramBot: () => events.push('telegram'),
+      runtimeLogger: silentLogger
+    });
+
+    assert.deepEqual(events, [
+      'cleanup',
+      'load:notification',
+      'load:automation-tasks',
+      'load:auto-update'
+    ]);
+  });
+
+  it('continues restoring persisted state when dynamic task cleanup fails', async () => {
+    const warnings: unknown[][] = [];
+
+    const summary = await initializeRuntimeState({
+      cleanupDynamicTaskDirectories: async () => {
+        throw new Error('tasks unavailable');
+      },
+      loadConfig: async configType => ({
+        success: true,
+        data: configType === 'automation-tasks'
+          ? { taskFlow: [], schedule: { enabled: true, times: ['05:00'] } }
+          : null
+      }),
+      readNotificationConfig: () => ({ channels: {} }),
+      registerSchedule: () => ({ success: true, message: 'restored schedule' }),
+      resolveRuntimeConnection: async () => ({}),
+      startTelegramBot: () => {},
+      runtimeLogger: {
+        info() {},
+        warn(message, data) {
+          warnings.push([message, data]);
+        },
+        error() {}
+      }
+    });
+
+    assert.equal(summary.schedule.restored, true);
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0][0]), /清理过期动态任务目录失败/);
+  });
 });

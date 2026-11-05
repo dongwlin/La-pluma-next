@@ -25,9 +25,9 @@ function createRuntime({ background = false }: { background?: boolean } = {}): R
     },
     getConfigDir: async () => '/virtual/config',
     resolveClientType: async () => 'Official',
-    mkdir: async path => { events.push(['mkdir', path]) },
+    mkdir: async (path, options) => { events.push(['mkdir', path, options]) },
     writeFile: async (path, content) => { events.push(['write', path, content]) },
-    unlink: async path => { events.push(['unlink', path]) },
+    removeDirectory: async (path, options) => { events.push(['removeDirectory', path, options]) },
     createNonce: () => `nonce_${++nonce}`,
     executeCommand: async (command, args, taskName, taskType, waitForCompletion, silent, onSettled) => {
       events.push(['execute', command, [...args], taskName, taskType, waitForCompletion, silent])
@@ -47,6 +47,12 @@ function eventArgs(event: RuntimeEvent | undefined): unknown[] {
   return args
 }
 
+function findTaskFileWrite(events: RuntimeEvent[]): RuntimeEvent {
+  const event = events.find(item => item[0] === 'write' && String(item[1]).endsWith('task.toml'))
+  assert.ok(event)
+  return event
+}
+
 describe('dynamic task lifecycle', () => {
   it('serializes nested operator targets and theme candidates as native TOML values', async () => {
     const plans = [{ role: 'Warrior', name: '陈', elite: 2, skill_level: 7, skill_mastery: [0, 3, 0] }]
@@ -58,8 +64,7 @@ describe('dynamic task lifecycle', () => {
       runtime.createLogCheckpoint = async () => null
       runtime.readLogSince = async () => ''
       await execDynamicTask('game-task', config, config.name, 'automation', true, false, runtime)
-      const taskFile = events.find(event => event[0] === 'write')
-      assert.ok(taskFile)
+      const taskFile = findTaskFileWrite(events)
       const decoded = parse(String(taskFile[2]))
       assert.deepEqual(decoded.tasks, [config])
     }
@@ -69,8 +74,7 @@ describe('dynamic task lifecycle', () => {
     const { events, runtime } = createRuntime()
     runtime.resolveClientType = async () => 'YoStarEN'
     await execDynamicTask('award', { name: '领取奖励', type: 'Award', params: {} }, '领取奖励', 'agent', true, false, runtime)
-    const taskFile = events.find(event => event[0] === 'write')
-    assert.ok(taskFile)
+    const taskFile = findTaskFileWrite(events)
     const decoded = parse(String(taskFile[2]))
     assert.equal(decoded.client_type, 'YoStarEN')
   })
@@ -160,7 +164,7 @@ describe('dynamic task lifecycle', () => {
     }
   })
 
-  it('locks before writing, uses a unique task id, and removes the file after a foreground run', async () => {
+  it('locks before writing, uses a unique task directory, and removes it after a foreground run', async () => {
     const { events, runtime } = createRuntime()
     const result = await execDynamicTask(
       'award',
@@ -174,13 +178,31 @@ describe('dynamic task lifecycle', () => {
 
     assert.deepEqual(result, { stdout: 'ok', stderr: '', command: 'run' })
     assert.equal(events[0][0], 'acquire')
-    const writeEvent = events.find(event => event[0] === 'write')
-    assert.ok(writeEvent)
-    const runId = String(eventArgs(events.find(event => event[0] === 'execute'))[0])
-    assert.equal(runId, 'award_temp_nonce_1')
-    assert.ok(String(writeEvent[1]).endsWith(`/tasks/${runId}.toml`))
-    assert.match(String(writeEvent[2]), /type = "Award"/)
-    assert.deepEqual(events.slice(-2).map(event => event[0]), ['unlink', 'release'])
+    const taskFile = findTaskFileWrite(events)
+    const executeArgs = eventArgs(events.find(event => event[0] === 'execute'))
+    assert.match(String(executeArgs[0]), /^la-pluma-task-award-nonce_1[\\/]task$/)
+    assert.equal(executeArgs[1], '--batch')
+    assert.match(String(taskFile[1]), /[\\/]tasks[\\/]la-pluma-task-award-nonce_1[\\/]task\.toml$/)
+    assert.match(String(taskFile[2]), /type = "Award"/)
+    assert.deepEqual(events.slice(-2).map(event => event[0]), ['removeDirectory', 'release'])
+  })
+
+  it('requests batch mode after the task path and keeps user resource ordering', async () => {
+    const { events, runtime } = createRuntime()
+    await execDynamicTask(
+      'award',
+      { name: '领取奖励', type: 'Award', params: {} },
+      '领取奖励',
+      'agent',
+      true,
+      true,
+      runtime
+    )
+
+    const executeArgs = eventArgs(events.find(event => event[0] === 'execute'))
+    assert.match(String(executeArgs[0]), /^la-pluma-task-award-nonce_1[\\/]task$/)
+    assert.equal(executeArgs[1], '--user-resource')
+    assert.equal(executeArgs[2], '--batch')
   })
 
   it('keeps the task file and lease until a background process settles', async () => {
@@ -196,7 +218,7 @@ describe('dynamic task lifecycle', () => {
     }
     await execDynamicTask('fight', { name: '理智作战', type: 'Fight', params: { stage: '1-7' } }, '理智作战', 'agent', false, false, runtime)
 
-    assert.equal(events.some(event => event[0] === 'unlink'), false)
+    assert.equal(events.some(event => event[0] === 'removeDirectory'), false)
     assert.equal(events.some(event => event[0] === 'release'), false)
     const settledHandler = getSettled()
     assert.equal(typeof settledHandler, 'function')
@@ -217,7 +239,7 @@ describe('dynamic task lifecycle', () => {
 
     releaseLifecycle()
     await settlement
-    assert.deepEqual(events.slice(-3).map(event => event[0]), ['unlink', 'release', 'lifecycle'])
+    assert.deepEqual(events.slice(-3).map(event => event[0]), ['removeDirectory', 'release', 'lifecycle'])
     assert.deepEqual(events.at(-1)?.[1], outcome)
   })
 
@@ -232,6 +254,10 @@ describe('dynamic task lifecycle', () => {
       .filter(event => event[0] === 'execute')
       .map(event => String(eventArgs(event)[0]))
     assert.equal(new Set(runIds).size, 2)
+    const taskDirs = events
+      .filter(event => event[0] === 'write' && String(event[1]).endsWith('task.toml'))
+      .map(event => String(event[1]).replace(/[\\/][^\\/]+$/, ''))
+    assert.equal(new Set(taskDirs).size, 2)
   })
 
   it('preserves a busy execution error before any task file is written', async () => {
