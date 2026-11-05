@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeCopilotCommandArgs, normalizeCopilotUri, parseCopilotUri } from '../copilotUri.ts';
 
-test('parses prts single and set codes', () => {
+test('parses prts and legacy maa single and set codes', () => {
   const cases: [string, string, boolean][] = [
     ['prts://1234', '1234', false],
     ['prts://s1234', '1234', true],
     ['PRTS://S1234', '1234', true],
+    ['maa://1234', '1234', false],
+    ['maa://s1234', '1234', true],
+    ['MAA://S1234', '1234', true],
   ];
   for (const [uri, id, isSet] of cases) {
     assert.deepEqual(parseCopilotUri(uri), { id, isSet }, uri);
@@ -18,16 +21,16 @@ test('parses prts single and set codes', () => {
 });
 
 test('leaves local files, flags and unsupported codes unchanged', () => {
-  for (const uri of ['/tmp/maa://1234', 'file:///tmp/copilot.json', '--formation', 'prts://1234s', 'prts://s', 'maa://1234', 'maa://1234s', 'maa://s1234']) {
+  for (const uri of ['/tmp/maa://1234', 'file:///tmp/copilot.json', '--formation', 'prts://1234s', 'prts://s', 'maa://1234s', 'maa://s']) {
     assert.equal(parseCopilotUri(uri), null, uri);
     assert.equal(normalizeCopilotUri(uri), uri);
   }
 });
 
 test('normalizes job URIs only in copilot command arguments', () => {
-  const args = ['PRTS://S34', '--loop-times', '1'];
+  const args = ['PRTS://S34', 'maa://56', '--loop-times', '1'];
   for (const command of ['copilot', 'ssscopilot', 'paradoxcopilot']) {
-    assert.deepEqual(normalizeCopilotCommandArgs(command, args), ['prts://s34', '--loop-times', '1'], command);
+    assert.deepEqual(normalizeCopilotCommandArgs(command, args), ['prts://s34', 'prts://56', '--loop-times', '1'], command);
   }
   assert.equal(normalizeCopilotCommandArgs('run', args), args);
 });
