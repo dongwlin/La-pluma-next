@@ -6,7 +6,8 @@ import {
   createDailyFlowExecutionError,
   executeAgentTask,
   normalizeCopilotSetExecutionRequest,
-  normalizeDailyFlowRequest
+  normalizeDailyFlowRequest,
+  preflightAgentTaskRequest
 } from '../services/agentActionService.ts';
 import type { AgentTaskConfig } from '../services/agentActionService.ts';
 import {
@@ -1490,26 +1491,23 @@ export async function runTask(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
 ): Promise<unknown> {
-  const input = isRecord(req.body) ? req.body : {};
-  const requestedWait = parseWaitForCompletion(input.waitForCompletion);
-  const waitForCompletion = input.command === 'activity' || input.command === 'list'
-    ? true
-    : requestedWait;
+  // 所有请求形状（TaskType、参数、命令组合）在创建 Run 之前完成校验；
+  // 非法请求直接走统一错误出口，不占用设备、不写入执行记录。
+  const request = preflightAgentTaskRequest(isRecord(req.body) ? req.body : {});
+  const waitForCompletion = request.waitForCompletion;
+
   return executeTrackedAgentAction(req, res, {
     operationId: 'run_task',
-    input: { ...input, waitForCompletion },
+    input: { ...(isRecord(req.body) ? req.body : {}), waitForCompletion },
     waitForCompletion,
-    metadata: {
-      taskName: input.taskName || `Agent: ${textOf(input.command || 'task')}`,
-      taskType: input.taskType || 'agent'
-    },
+    metadata: { taskName: request.taskName, taskType: request.taskType },
     execute: lifecycle => executeAgentTask(
-      { ...input, waitForCompletion },
+      request,
       {
-        execMaaCommand: (command, args, taskName, taskType, shouldWait, silent = false) =>
-          execMaaCommand(command, args, taskName, taskType, shouldWait, silent, lifecycle),
-        execDynamicTask: (taskId, taskConfig: AgentTaskConfig, taskName, taskType, shouldWait, userResource) =>
-          execDynamicTask(taskId, taskConfig, taskName, taskType, shouldWait, userResource, { lifecycle })
+        execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
+          execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, lifecycle),
+        execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
+          execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
       }
     ),
     successMessage: '任务执行完成',

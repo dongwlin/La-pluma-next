@@ -2,8 +2,23 @@ export const GAME_OPERATOR_ROLES = Object.freeze([
   'Unknown', 'Pioneer', 'Warrior', 'Tank', 'Sniper', 'Caster', 'Medic', 'Support', 'Special'
 ] as const);
 
+/** 游戏任务参数约束的唯一来源：运行时校验与 Agent 契约 schema 共用这些值。 */
+export const GAME_TASK_LIMITS = Object.freeze({
+  OperProgress: Object.freeze({
+    minPlans: 1,
+    nameMinLength: 1,
+    planFields: Object.freeze(['role', 'name', 'elite', 'skill_level', 'skill_mastery'] as const),
+    elite: Object.freeze({ minimum: 1, maximum: 2 }),
+    skillLevel: Object.freeze({ minimum: 2, maximum: 7 }),
+    mastery: Object.freeze({ length: 3, minimum: 0, maximum: 3, positiveMinimum: 1 })
+  }),
+  SwitchTheme: Object.freeze({
+    themeMinLength: 1
+  })
+});
+
 const operatorRoles: ReadonlySet<string> = new Set(GAME_OPERATOR_ROLES);
-const planFields = new Set(['role', 'name', 'elite', 'skill_level', 'skill_mastery']);
+const planFields = new Set<string>(GAME_TASK_LIMITS.OperProgress.planFields);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -14,10 +29,12 @@ function integerBetween(value: unknown, minimum: number, maximum: number): boole
 }
 
 function hasMasteryTarget(value: unknown): boolean {
-  return Array.isArray(value) && value.some(level => integerBetween(level, 1, 3));
+  return Array.isArray(value)
+    && value.some(level => integerBetween(level, GAME_TASK_LIMITS.OperProgress.mastery.positiveMinimum, GAME_TASK_LIMITS.OperProgress.mastery.maximum));
 }
 
 export function validateGameTaskParams(type: string, params: Record<string, unknown>): string | null {
+  const limits = GAME_TASK_LIMITS.OperProgress;
   if (type === 'SwitchTheme') {
     return Array.isArray(params.themes) && params.themes.every(theme => typeof theme === 'string' && theme.trim())
       ? null
@@ -34,13 +51,16 @@ export function validateGameTaskParams(type: string, params: Record<string, unkn
     if (plan.role !== undefined && (typeof plan.role !== 'string' || !operatorRoles.has(plan.role))) {
       return `${prefix}.role 必须是干员职业标识`;
     }
-    if (plan.elite !== undefined && !integerBetween(plan.elite, 1, 2)) return `${prefix}.elite 必须是 1 或 2`;
-    if (plan.skill_level !== undefined && !integerBetween(plan.skill_level, 2, 7)) {
+    if (plan.elite !== undefined && !integerBetween(plan.elite, limits.elite.minimum, limits.elite.maximum)) {
+      return `${prefix}.elite 必须是 1 或 2`;
+    }
+    if (plan.skill_level !== undefined
+      && !integerBetween(plan.skill_level, limits.skillLevel.minimum, limits.skillLevel.maximum)) {
       return `${prefix}.skill_level 必须是 2 至 7 的整数`;
     }
     if (plan.skill_mastery !== undefined && (!Array.isArray(plan.skill_mastery)
-      || plan.skill_mastery.length !== 3
-      || !plan.skill_mastery.every(level => integerBetween(level, 0, 3)))) {
+      || plan.skill_mastery.length !== limits.mastery.length
+      || !plan.skill_mastery.every(level => integerBetween(level, limits.mastery.minimum, limits.mastery.maximum)))) {
       return `${prefix}.skill_mastery 必须是三个 0 至 3 的整数`;
     }
     if (plan.elite === undefined && plan.skill_level === undefined

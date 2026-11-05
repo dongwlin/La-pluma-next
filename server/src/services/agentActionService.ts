@@ -19,9 +19,13 @@ export const AGENT_TASK_COMMANDS = Object.freeze([
 
 export type AgentTaskCommand = (typeof AGENT_TASK_COMMANDS)[number];
 
+/** 动态 Core 任务唯一允许的 maa-cli 子命令；运行时与 manifest/OpenAPI 共用该值。 */
+export const AGENT_TASK_DYNAMIC_COMMAND = 'run';
+
 const AGENT_TASK_COMMAND_SET: ReadonlySet<string> = new Set(AGENT_TASK_COMMANDS);
 const AGENT_QUERY_COMMANDS: ReadonlySet<string> = new Set(['activity', 'list']);
 const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const SAFE_TASK_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 export interface AgentTaskConfig extends Record<string, unknown> {
   name: string;
@@ -111,6 +115,15 @@ function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
     );
   }
 
+  const normalizedType = normalized.type.trim();
+  if (!SAFE_TASK_TYPE_PATTERN.test(normalizedType)) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_TYPE_INVALID',
+      'taskConfig.type 必须是 Core 任务类型标识（字母开头，仅含字母、数字和下划线）',
+      { type: normalized.type, pattern: SAFE_TASK_TYPE_PATTERN.source }
+    );
+  }
+
   const params = normalized.params;
   if (params !== undefined && !isRecord(params)) {
     throw invalidRequest(
@@ -120,7 +133,7 @@ function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
     );
   }
 
-  const validationMessage = validateGameTaskParams(normalized.type.trim(), params ?? {});
+  const validationMessage = validateGameTaskParams(normalizedType, params ?? {});
   if (validationMessage) {
     throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { reason: 'game_task_params_invalid' });
   }
@@ -128,7 +141,7 @@ function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
   return {
     ...normalized,
     name: normalized.name.trim(),
-    type: normalized.type.trim(),
+    type: normalizedType,
     params: params ?? {}
   };
 }
@@ -264,10 +277,21 @@ export function normalizeCopilotSetExecutionRequest(input: unknown = {}): Normal
   return { mode, raid, selectedIndexes: normalizedIndexes, options, waitForCompletion };
 }
 
-export async function executeAgentTask(
-  input: unknown = {},
-  dependencies: AgentTaskDependencies = {}
-): Promise<unknown> {
+export interface NormalizedAgentTaskRequest {
+  command: AgentTaskCommand;
+  args: string[];
+  taskConfig?: AgentTaskConfig;
+  taskName: string;
+  taskType: string;
+  waitForCompletion: boolean;
+  userResource: boolean;
+}
+
+/**
+ * 创建 Run 之前完成的请求校验与归一化。manifest/OpenAPI 的 run_task schema
+ * 与本函数共享命令、动态任务命令、任务类型与游戏任务参数规则。
+ */
+export function preflightAgentTaskRequest(input: unknown = {}): NormalizedAgentTaskRequest {
   const source = isRecord(input) ? input : {};
   const {
     command,
@@ -314,10 +338,27 @@ export async function executeAgentTask(
   const normalizedArgs = args.map(String);
   const normalizedTaskName = normalizeOptionalLabel(taskName, 'taskName', `Agent: ${command}`, 160);
   const normalizedTaskType = normalizeOptionalLabel(taskType, 'taskType', 'agent', 64);
-  const hasTaskConfig = taskConfig !== undefined && taskConfig !== null;
+  const hasTaskConfig = taskConfig !== undefined;
 
+  if (hasTaskConfig && command !== AGENT_TASK_DYNAMIC_COMMAND) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_COMMAND_COMBINATION_INVALID',
+      `taskConfig 仅支持 command=${AGENT_TASK_DYNAMIC_COMMAND}`,
+      { reason: 'task_config_requires_dynamic_command', command, expectedCommand: AGENT_TASK_DYNAMIC_COMMAND }
+    );
+  }
+
+  if (!hasTaskConfig && userResource) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_COMMAND_COMBINATION_INVALID',
+      `userResource 仅支持 command=${AGENT_TASK_DYNAMIC_COMMAND} 加 taskConfig 的动态任务`,
+      { reason: 'user_resource_requires_task_config', command }
+    );
+  }
+
+  let normalizedTaskConfig: AgentTaskConfig | undefined;
   if (hasTaskConfig) {
-    const normalizedTaskConfig = normalizeTaskConfig(taskConfig);
+    normalizedTaskConfig = normalizeTaskConfig(taskConfig);
     const requestedTaskId = normalizedArgs[0]?.trim();
     const taskId = requestedTaskId || command;
 
@@ -328,18 +369,38 @@ export async function executeAgentTask(
         { taskId, pattern: SAFE_TASK_ID_PATTERN.source }
       );
     }
+  }
 
+  return {
+    command: command as AgentTaskCommand,
+    args: normalizedArgs,
+    ...(normalizedTaskConfig ? { taskConfig: normalizedTaskConfig } : {}),
+    taskName: normalizedTaskName,
+    taskType: normalizedTaskType,
+    waitForCompletion: AGENT_QUERY_COMMANDS.has(command) ? true : waitForCompletion,
+    userResource
+  };
+}
+
+export async function executeAgentTask(
+  input: unknown = {},
+  dependencies: AgentTaskDependencies = {}
+): Promise<unknown> {
+  const request = preflightAgentTaskRequest(input);
+
+  if (request.taskConfig) {
     if (typeof dependencies.execDynamicTask !== 'function') {
       throw new TypeError('executeAgentTask requires execDynamicTask');
     }
 
+    const taskId = request.args[0]?.trim() || request.command;
     return dependencies.execDynamicTask(
       taskId,
-      normalizedTaskConfig,
-      normalizedTaskName,
-      normalizedTaskType,
-      waitForCompletion,
-      userResource
+      request.taskConfig,
+      request.taskName,
+      request.taskType,
+      request.waitForCompletion,
+      request.userResource
     );
   }
 
@@ -347,16 +408,16 @@ export async function executeAgentTask(
     throw new TypeError('executeAgentTask requires execMaaCommand');
   }
 
-  if (AGENT_QUERY_COMMANDS.has(command)) {
-    return dependencies.execMaaCommand(command, normalizedArgs, null, null, true);
+  if (AGENT_QUERY_COMMANDS.has(request.command)) {
+    return dependencies.execMaaCommand(request.command, request.args, null, null, true);
   }
 
   return dependencies.execMaaCommand(
-    command,
-    normalizedArgs,
-    normalizedTaskName,
-    normalizedTaskType,
-    waitForCompletion
+    request.command,
+    request.args,
+    request.taskName,
+    request.taskType,
+    request.waitForCompletion
   );
 }
 
