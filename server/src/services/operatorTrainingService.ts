@@ -37,7 +37,6 @@ import {
   loadDepot,
   loadOperatorMaterials,
   loadOperBox,
-  loadMaterialsDatabase,
   loadTrainingQueue,
   saveTrainingQueue,
   serializeTrainingMutation
@@ -332,6 +331,15 @@ async function countDataFileEntries(fileName: string): Promise<number | null> {
   return Object.keys(record).length;
 }
 
+async function countMaterialSnapshotEntries(): Promise<{ materialCount: number; recipeCount: number }> {
+  const data = await readJsonFile(path.join(TRAINING_DATA_DIR, 'materials.json'), null);
+  if (!isRecord(data)) return { materialCount: 0, recipeCount: 0 };
+  return {
+    materialCount: isRecord(data.materials) ? Object.keys(data.materials).length : 0,
+    recipeCount: isRecord(data.recipes) ? Object.keys(data.recipes).length : 0
+  };
+}
+
 async function runMaterialFetchScript(config: MaterialFetchScriptConfig): Promise<MaterialFetchScriptResult> {
   const { name, script, output } = config;
   const scriptPath = path.join(__dirname, '../../scripts', script);
@@ -379,12 +387,12 @@ async function fetchOperatorMaterials(): Promise<MaterialFetchSummary> {
   }
 
   const operatorMaterialsData = await loadOperatorMaterials();
-  const materialsDb = await loadMaterialsDatabase();
+  const snapshotCounts = await countMaterialSnapshotEntries();
   const summary: MaterialFetchSummary = {
     scripts: results,
     operatorCount: Object.keys(operatorMaterialsData.operators).length,
-    materialCount: Object.keys(materialsDb.materials).length,
-    recipeCount: Object.keys(materialsDb.recipes ?? {}).length,
+    materialCount: snapshotCounts.materialCount,
+    recipeCount: snapshotCounts.recipeCount,
     lastUpdated: new Date().toISOString()
   };
 
