@@ -127,7 +127,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 解析端点的成功判定：
 
 - `success=true` 且 `data` 是包含 `itemCount: number`、`items: array`（仓库）或 `operCount: number`、`data: array`（干员）的对象；
-- `data: null`、包裹在 `success=true` 内的失败信封、坏载荷与传输失败都视为“结果尚未可用”，在超时前继续轮询，而不是重新执行设备命令；
+- 未找到有效结果时，服务端返回 HTTP 422 和可重试的 `AGENT_RECOGNITION_NO_RESULT`，保留已有识别缓存。前端收到失败信封、旧服务端的 `data: null`、坏载荷或传输失败时，在超时前继续轮询解析端点；
 - 解析请求携带调用方 `AbortSignal`；取消只结束本地等待，不撤销服务端已完成的解析。
 
 ### 3. 执行控制器与幂等

@@ -121,6 +121,22 @@ describe('statistics resource reads', () => {
     expect(fetchCall(1).init.method).toBe('POST')
   })
 
+  it.each([
+    ['depot', parseDepotData],
+    ['operbox', parseOperBoxData],
+  ])('preserves a retryable no-result response for %s recognition', async (_, parse) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: false,
+      message: '未找到有效识别结果',
+      error: { code: 'AGENT_RECOGNITION_NO_RESULT', details: {}, retryable: true },
+    }, 422))
+
+    await expect(parse()).resolves.toMatchObject({
+      success: false,
+      errorInfo: { code: 'AGENT_RECOGNITION_NO_RESULT', retryable: true },
+    })
+  })
+
   it('forwards the abort signal for open stage reads without issuing a mutation', async () => {
     const abortError = new DOMException('The operation was aborted.', 'AbortError')
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(abortError)

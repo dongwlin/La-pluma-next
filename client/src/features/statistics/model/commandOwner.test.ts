@@ -249,7 +249,11 @@ describe('statistics command owner', () => {
     harness.runCommand.mockResolvedValue({ success: true, data: {} })
     harness.parseDepot
       .mockResolvedValueOnce({ success: true, data: null })
-      .mockResolvedValueOnce({ success: true, data: { success: false, message: '未找到 DepotInfo' } })
+      .mockResolvedValueOnce({
+        success: false,
+        message: '未找到有效仓库识别结果',
+        errorInfo: { code: 'AGENT_RECOGNITION_NO_RESULT', retryable: true },
+      })
       .mockResolvedValueOnce(depotPayload)
 
     const promise = harness.owner.run('depot')
