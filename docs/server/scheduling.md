@@ -61,7 +61,7 @@
 - 部分失败分两种：个别时间点注册失败时替换照常生效，返回仍为成功，缺失时间点靠返回的 `times` 暴露（`server/src/services/scheduleTriggerService.ts:482,549-553`）；旧 job 销毁失败时新注册同样已生效，但按 `success:false` 返回并附逐时间点错误（`server/src/services/scheduleTriggerService.ts:537-548`）。
 - 已排队的回调在触发时检查注册身份与 draining 状态，重配、停止或关闭后直接丢弃；`run()` 同步调用执行入口，避免 draining 从 Run 创建与执行之间插入（`server/src/services/scheduleTriggerService.ts:365-405`）。
 
-`stopSchedule` 对未注册目标幂等；`stopAll` 只在首次调用生成摘要，销毁后拒绝新注册（`server/src/services/scheduleTriggerService.ts:622-685`）。`attachScheduleTriggersToLifecycle` 先挂 draining 判断再注册关闭步骤，同一 lifecycle 重复接入返回 `duplicate`，挂接第二个注册表直接抛错（`server/src/services/scheduleTriggerService.ts:742-781`）。自动更新显式禁用或缺少时间点即停止并移除，无效输入不清空既有注册；作业本体在 MAA 执行租约内更新核心、资源与 CLI（`server/src/services/scheduleTriggerService.ts:212-269,556-577`）。
+`stopSchedule` 对未注册目标幂等；`stopAll` 只在首次调用生成摘要，销毁后拒绝新注册（`server/src/services/scheduleTriggerService.ts:622-685`）。`attachScheduleTriggersToLifecycle` 先挂 draining 判断再注册关闭步骤，同一 lifecycle 重复接入返回 `duplicate`，挂接第二个注册表直接抛错（`server/src/services/scheduleTriggerService.ts:742-781`）。自动更新显式禁用或缺少时间点即停止并移除，无效输入不清空既有注册；作业本体在 MAA 执行租约内更新核心与 CLI；核心更新命令自带资源同步，不再追加旧的资源脚本（`server/src/services/scheduleTriggerService.ts:212-269,556-577`）。
 
 ## 设备租约与 Run
 
