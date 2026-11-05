@@ -29,6 +29,7 @@ describe('development server configuration', () => {
       strictPort: true,
       proxy: {
         '/api': { target: 'http://localhost:3000', changeOrigin: true },
+        '/game-assets': { target: 'http://localhost:3000', changeOrigin: true },
         '/webrtc-signaling': { target: 'http://localhost:3000', changeOrigin: false, ws: true },
       },
     })
@@ -155,10 +156,13 @@ describe('PWA base path configuration', () => {
     expect(isDenied('/readiness?probe=1')).toBe(true)
     expect(isDenied('/webrtc-signaling/socket')).toBe(true)
     expect(isDenied('/webrtc-signaling?probe=1')).toBe(true)
+    expect(isDenied('/game-assets/item/30011.png')).toBe(true)
+    expect(isDenied('/game-assets?probe=1')).toBe(true)
     expect(isDenied('/la-pluma/api/agent/manifest')).toBe(true)
     expect(isDenied('/la-pluma/health?probe=1')).toBe(true)
     expect(isDenied('/la-pluma/readiness?probe=1')).toBe(true)
     expect(isDenied('/la-pluma/webrtc-signaling/socket')).toBe(true)
+    expect(isDenied('/la-pluma/game-assets/item/30011.png')).toBe(true)
     expect(isDenied('/la-pluma/automation')).toBe(false)
   })
 

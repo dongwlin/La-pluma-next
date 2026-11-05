@@ -49,8 +49,7 @@ const asOperatorQuote = (value: unknown, allowMissingOperatorId = false): Operat
   return { operatorId: operatorId || operator, operator, quote }
 }
 
-export const getOperatorAvatarUrl = (operatorId: string) =>
-  `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${encodeURIComponent(operatorId)}.png`
+export { getOperatorAvatarUrl } from '@/features/game-data'
 
 function loadQuote(
   path: 'daily' | 'random',

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -69,10 +71,10 @@ describe('operator quote service', () => {
     expect(mocks.fetchWithAuth).toHaveBeenCalledWith('/api/operator-quotes/random')
   })
 
-  it('builds an encoded operator avatar URL', async () => {
+  it('builds an encoded local operator avatar URL', async () => {
     const { getOperatorAvatarUrl } = await import('./operatorQuotes')
-    expect(getOperatorAvatarUrl('char_002 amiya')).toBe(
-      'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/char_002%20amiya.png',
+    expect(getOperatorAvatarUrl('char_002 amiya', 'base', 0)).toBe(
+      'http://localhost:3000/game-assets/avatar/char_002%20amiya.png?v=0',
     )
   })
 })

@@ -25,11 +25,12 @@ export const createNavigateFallbackDenylist = (basePath: string): RegExp[] => {
     /^\/health(?:[/?]|$)/,
     /^\/readiness(?:[/?]|$)/,
     /^\/webrtc-signaling(?:[/?]|$)/,
+    /^\/game-assets(?:[/?]|$)/,
   ]
 
   if (basePath !== '/') {
     const escapedBasePath = basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    denylist.push(new RegExp(`^${escapedBasePath}(?:api|health|readiness|webrtc-signaling)(?:[/?]|$)`))
+    denylist.push(new RegExp(`^${escapedBasePath}(?:api|health|readiness|webrtc-signaling|game-assets)(?:[/?]|$)`))
   }
 
   return denylist
@@ -274,6 +275,10 @@ export const createViteConfig = (basePath: string, env: Record<string, string | 
     strictPort: true,
     proxy: {
       '/api': {
+        target: resolveDevApiTarget(env),
+        changeOrigin: true,
+      },
+      '/game-assets': {
         target: resolveDevApiTarget(env),
         changeOrigin: true,
       },

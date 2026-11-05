@@ -112,6 +112,15 @@ export async function installDeterministicEnvironment(
     })
   }
 
+  // 图标与头像改由同源 /game-assets 路由提供，基线仍统一渲染占位图。
+  await page.route('**/game-assets/**', (route: Route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
+    })
+  })
+
   let deviceStatsCalls = 0
   await page.route('**/api/**', async (route: Route) => {
     const request = route.request()

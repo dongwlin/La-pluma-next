@@ -331,6 +331,11 @@ export async function installIntegrationScenario(page: Page, state: ScenarioStat
       body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
     }))
   }
+  await page.route('**/game-assets/**', route => route.fulfill({
+    status: 200,
+    contentType: 'image/png',
+    body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
+  }))
   await page.route('**/sw.js', route => route.fulfill({ status: 404, body: 'service worker disabled' }))
 }
 

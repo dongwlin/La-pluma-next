@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAllOperators, getDepotData, getItemIconUrl, getOperBoxData } from './index'
+import { getAllOperators, getDepotData, getItemIconUrl, getOperatorAvatarUrl, getOperBoxData } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -139,14 +139,37 @@ describe('game data resource reads', () => {
     expect(fetchCall().init.method).toBeUndefined()
   })
 
-  it('builds an encoded external item icon URL with the cache epoch without fetching it', () => {
+  it('builds encoded local icon and avatar URLs with the cache epoch without fetching them', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 
     expect(getItemIconUrl('30011', 0)).toBe(
-      'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/refs/heads/main/item/30011.png?v=0',
+      'http://localhost:3000/game-assets/item/30011.png?v=0',
     )
-    expect(getItemIconUrl(4001, 7)).toContain('/item/4001.png?v=7')
-    expect(getItemIconUrl('a b', 3)).toContain('/item/a%20b.png?v=3')
+    expect(getItemIconUrl(4001, 7)).toBe('http://localhost:3000/game-assets/item/4001.png?v=7')
+    expect(getItemIconUrl('a b', 3)).toBe('http://localhost:3000/game-assets/item/a%20b.png?v=3')
+    expect(getOperatorAvatarUrl('char_002_amiya', 'base', 0)).toBe(
+      'http://localhost:3000/game-assets/avatar/char_002_amiya.png?v=0',
+    )
+    expect(getOperatorAvatarUrl('char_002 ami ya', '2', 7)).toBe(
+      'http://localhost:3000/game-assets/avatar/char_002%20ami%20ya_2.png?v=7',
+    )
+    expect(getOperatorAvatarUrl('char_002_amiya', '1', 3)).toBe(
+      'http://localhost:3000/game-assets/avatar/char_002_amiya_1.png?v=3',
+    )
+    expect(getItemIconUrl('30011', 8)).not.toBe(getItemIconUrl('30011', 7))
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refreshes local icon and avatar URLs after the shared cache epoch advances', async () => {
+    const { invalidateItemIconCache } = await import('../model/itemIconCache')
+
+    const version = invalidateItemIconCache(1_700_000_000_000)
+
+    expect(getItemIconUrl('30011')).toBe(
+      `http://localhost:3000/game-assets/item/30011.png?v=${version}`,
+    )
+    expect(getOperatorAvatarUrl('char_002_amiya')).toBe(
+      `http://localhost:3000/game-assets/avatar/char_002_amiya.png?v=${version}`,
+    )
   })
 })
