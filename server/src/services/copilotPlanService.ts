@@ -88,7 +88,7 @@ async function loadStageCatalog(resourceDir: string): Promise<StageCatalog> {
       if (!stageId || !code) continue;
       stages.set(stageId, {
         code,
-        apCost: Math.max(0, Number(isRecord(stage) ? stage.apCost : 0) || 0)
+        apCost: readApCost(stage)
       });
     }
   } catch {}
@@ -125,14 +125,14 @@ export type CopilotContent = Record<string, unknown>;
 
 export interface StageCode {
   code: string;
-  apCost: number;
+  apCost: number | null;
 }
 
 export interface CopilotPlanItem {
   id: number;
   stageId: string;
   stage: string;
-  apCost: number;
+  apCost: number | null;
   presetFormation: boolean;
   supportsRaid: boolean;
   operators: unknown[];
@@ -149,7 +149,7 @@ export interface CopilotExecutionEntry {
   mode: string;
   itemIndex?: number;
   stageId?: string;
-  apCost?: number;
+  apCost?: number | null;
   presetFormation?: boolean;
   title?: string;
   uri?: string;
@@ -159,7 +159,7 @@ export interface CopilotPlanEntry extends CopilotExecutionEntry {
   key: string;
   itemIndex: number;
   stageId: string;
-  apCost: number;
+  apCost: number | null;
   mode: CopilotRaidMode;
   presetFormation: boolean;
   completed?: boolean;
@@ -177,6 +177,7 @@ export interface CopilotExecutionOptions {
   formationIndex?: unknown;
   supportUsage?: unknown;
   supportName?: unknown;
+  userAdditional?: unknown;
   loopTimes?: unknown;
   userResource?: unknown;
   raid?: unknown;
@@ -186,7 +187,14 @@ export interface CopilotListEntry {
   id?: number;
   filename: string;
   stage_name?: string;
+  /** MaaCore 的导航关卡名覆盖；缺省时导航使用作业文件内的 `stage_name`。 */
+  nav_name_override?: string;
   is_raid?: boolean;
+}
+
+export interface CopilotUserAdditional {
+  name: string;
+  skill?: number;
 }
 
 export interface CopilotTaskParams extends Record<string, unknown> {
@@ -198,6 +206,7 @@ export interface CopilotTaskParams extends Record<string, unknown> {
   formation_index: number;
   support_unit_usage: number;
   support_unit_name: string;
+  user_additional?: CopilotUserAdditional[];
 }
 
 export interface CopilotRepeatFile {
@@ -226,7 +235,7 @@ export interface CopilotTaskResult {
   stageId: string;
   stage: string;
   displayStage: string;
-  apCost: number;
+  apCost: number | null;
   mode: string;
   presetFormation: boolean;
   status: CopilotEntryOutcomeStatus;
@@ -334,6 +343,12 @@ function readOptionalNumberField(value: unknown, key: string): number | undefine
   return typeof field === 'number' && Number.isFinite(field) ? field : undefined;
 }
 
+/** 关卡理智消耗：缺失或非法时保留未知，不能折叠成 0 参与展示或记录。 */
+function readApCost(value: unknown): number | null {
+  const apCost = readOptionalNumberField(value, 'apCost');
+  return apCost !== undefined && apCost >= 0 ? apCost : null;
+}
+
 function readRecordField(value: unknown, key: string): Record<string, unknown> {
   if (!isRecord(value)) return {};
   const field = value[key];
@@ -425,7 +440,7 @@ async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<strin
         try {
           const metadata: unknown = JSON.parse(await readFile(join(tileDir, filename), 'utf8'));
           const code = readOptionalStringField(metadata, 'code');
-          if (code) result.set(stageId, { code, apCost: 0 });
+          if (code) result.set(stageId, { code, apCost: null });
         } catch {}
       }
       const stage = catalog.stages.get(stageId);
@@ -433,11 +448,11 @@ async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<strin
         const existing = result.get(stageId);
         result.set(stageId, {
           code: existing?.code || stage.code,
-          apCost: stage.apCost
+          apCost: stage.apCost ?? existing?.apCost ?? null
         });
       }
     }));
-    const missingStageIds = requestedStageIds.filter(stageId => !result.get(stageId)?.apCost);
+    const missingStageIds = requestedStageIds.filter(stageId => result.get(stageId)?.apCost == null);
     if (missingStageIds.length > 0) {
       try {
         const penguinStages = await fetchJson('https://penguin-stats.io/PenguinStats/api/v2/stages?server=CN');
@@ -448,7 +463,7 @@ async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<strin
           if (!stageId || !missingStageIds.includes(stageId) || !code) continue;
           result.set(stageId, {
             code,
-            apCost: Math.max(0, Number(isRecord(stage) ? stage.apCost : 0) || 0)
+            apCost: readApCost(stage)
           });
         }
       } catch {}
@@ -475,7 +490,7 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
       id: Number(id),
       stageId,
       stage: stageCodes.get(stageId)?.code || getNavigationStage(content) || `prts://${id}`,
-      apCost: stageCodes.get(stageId)?.apCost || 0,
+      apCost: stageCodes.get(stageId)?.apCost ?? null,
       presetFormation: isPresetFormationCopilot(content),
       supportsRaid: !isPresetFormationCopilot(content),
       operators: Array.isArray(content.opers) ? content.opers : [],
@@ -588,16 +603,39 @@ export function buildCopilotTaskParams(
   presetFormation: boolean,
   options: CopilotExecutionOptions = {}
 ): CopilotTaskParams {
+  const formation = presetFormation ? false : options.formationMode !== 'off';
+  const userAdditional = formation ? normalizeUserAdditional(options.userAdditional) : [];
   return {
     copilot_list: list,
-    formation: presetFormation ? false : options.formationMode !== 'off',
+    formation,
     ignore_requirements: options.ignoreRequirements !== false,
     use_sanity_potion: options.useSanityPotion === true,
     add_trust: options.addTrust === true,
     formation_index: Number(options.formationIndex || 0),
     support_unit_usage: Number(options.supportUsage || 0),
-    support_unit_name: String(options.supportName || '')
+    support_unit_name: String(options.supportName || ''),
+    ...(userAdditional.length > 0 ? { user_additional: userAdditional } : {})
   };
+}
+
+/**
+ * 追加干员仅在自动编队时生效；缺失姓名或技能不在 1–3 的条目按上游默认处理，
+ * 不向 MaaCore 写入无效值。
+ */
+function normalizeUserAdditional(value: unknown): CopilotUserAdditional[] {
+  const list = Array.isArray(value) ? value : [];
+  const entries: CopilotUserAdditional[] = [];
+  for (const item of list) {
+    const name = readOptionalStringField(item, 'name')?.trim();
+    if (!name) continue;
+    const skill = readOptionalNumberField(item, 'skill');
+    entries.push(
+      skill !== undefined && Number.isInteger(skill) && skill >= 1 && skill <= 3
+        ? { name, skill }
+        : { name }
+    );
+  }
+  return entries;
 }
 
 function normalizeCopilotLoopTimes(value: unknown): number {
@@ -753,6 +791,24 @@ export interface PreparedCopilotList<TEntry extends CopilotExecutionEntry> {
   executionItems: CopilotExecutionItem<TEntry>[];
 }
 
+/**
+ * `copilot_list` 条目的写入形状：`stage_name` 保留既有的展示关卡语义，
+ * `nav_name_override` 显式给出 MaaCore 导航时使用的关卡名。
+ */
+export function buildCopilotListEntry(
+  entry: Pick<CopilotExecutionEntry, 'displayStage' | 'mode'>,
+  filename: string,
+  id?: number
+): CopilotListEntry {
+  return {
+    ...(id !== undefined ? { id } : {}),
+    filename,
+    stage_name: entry.displayStage,
+    nav_name_override: entry.displayStage,
+    is_raid: entry.mode === 'raid'
+  };
+}
+
 async function prepareCopilotList<TEntry extends CopilotExecutionEntry>(
   entries: readonly TEntry[],
   { planDir, loopTimes }: { planDir: string; loopTimes: number }
@@ -764,12 +820,7 @@ async function prepareCopilotList<TEntry extends CopilotExecutionEntry>(
     const content = parseCopilotContent(data);
     for (const { repeat, filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
       await writeJsonFile(filename, content);
-      list.push({
-        id: executionItems.length,
-        filename,
-        stage_name: entry.displayStage,
-        is_raid: entry.mode === 'raid'
-      });
+      list.push(buildCopilotListEntry(entry, filename, executionItems.length));
       executionItems.push({ entry, filename, repeat });
     }
   }
@@ -1080,7 +1131,7 @@ async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[
     await recordDrops({
       stage: entry.displayStage,
       times: loopTimes,
-      sanity: entry.apCost * loopTimes,
+      sanity: (entry.apCost ?? 0) * loopTimes,
       medicine: 0,
       stone: 0,
       items: [],

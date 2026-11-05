@@ -65,6 +65,7 @@ process.env.LA_PLUMA_DROP_RECORDS_DIR = join(fixtureDir, 'drop-records');
 
 const {
   buildCopilotPlan,
+  buildCopilotListEntry,
   buildCurrentMapStageTasks,
   buildCopilotRepeatFiles,
   buildCopilotTaskParams,
@@ -168,6 +169,49 @@ test('native copilot plans keep all advanced execution options', () => {
     support_unit_usage: 2,
     support_unit_name: '逻各斯'
   });
+});
+
+test('copilot list entries carry the navigation stage name override', () => {
+  assert.deepEqual(
+    buildCopilotListEntry({ displayStage: 'BD-4', mode: 'normal' }, '/tmp/plan-1.json', 2),
+    {
+      id: 2,
+      filename: '/tmp/plan-1.json',
+      stage_name: 'BD-4',
+      nav_name_override: 'BD-4',
+      is_raid: false
+    }
+  );
+  assert.equal(buildCopilotListEntry({ displayStage: 'BD-4', mode: 'raid' }, '/tmp/plan-2.json').is_raid, true);
+});
+
+test('user_additional is only written when auto formation is enabled', () => {
+  const list = [{ filename: '/tmp/a.json' }];
+  const withFormation = buildCopilotTaskParams(list, false, {
+    formationMode: 'auto',
+    userAdditional: [
+      { name: ' 能天使 ', skill: 3 },
+      { name: '', skill: 2 },
+      { name: '银灰', skill: 9 }
+    ]
+  });
+  assert.deepEqual(withFormation.user_additional, [{ name: '能天使', skill: 3 }, { name: '银灰' }]);
+
+  const withoutFormation = buildCopilotTaskParams(list, false, {
+    formationMode: 'off',
+    userAdditional: [{ name: '能天使', skill: 3 }]
+  });
+  assert.equal('user_additional' in withoutFormation, false);
+});
+
+test('unknown stage costs stay unknown instead of becoming zero', async () => {
+  const restoreFetch = stubPlanFetch('unknown_stage_01');
+  try {
+    const plan = await buildCopilotPlan('unknown-ap-set');
+    assert.equal(plan.items[0]?.apCost, null);
+  } finally {
+    restoreFetch();
+  }
 });
 
 test('multi-copilot loop count expands into repeated native entries', () => {

@@ -5,6 +5,8 @@ describe('copilot URI handling', () => {
   it.each([
     ['prts://1234', 'prts://1234', false],
     ['PRTS://S1234', 'prts://s1234', true],
+    ['maa://1234', 'prts://1234', false],
+    ['MAA://S1234', 'prts://s1234', true],
     ['https://prts.plus/?op=1234', 'prts://1234', false],
     ['https://prts.plus/?op=s1234', 'prts://s1234', true],
     ['https://prts.plus/?op=106833&opset=1234', 'prts://s1234', true],
@@ -22,7 +24,7 @@ describe('copilot URI handling', () => {
     expect(normalizeCopilotInput(' prts://12\n\nprts://s34 ')).toBe('prts://12 prts://s34')
   })
 
-  it.each(['prts://1234s', 'prts://s', 'maa://1234', 'maa://1234s', '/tmp/copilot.json', 'file:///tmp/copilot.json'])(
+  it.each(['prts://1234s', 'prts://s', 'maa://1234s', 'maa://s', '/tmp/copilot.json', 'file:///tmp/copilot.json'])(
     'does not rewrite unsupported input %s', input => {
       expect(parseCopilotUri(input)).toBeNull()
       expect(normalizeCopilotUri(input)).toBe(input)

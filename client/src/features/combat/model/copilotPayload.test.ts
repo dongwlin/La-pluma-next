@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractCopilotOperators,
+  formatCopilotApCost,
   readCopilotInfoPayload,
   readCopilotPlanPayload,
   readCopilotSearchResult,
@@ -224,6 +225,24 @@ describe('copilot plan payload', () => {
         uri: 'prts://7',
       }],
     })
+  })
+
+  it('keeps known stage costs and reports missing costs as unknown', () => {
+    const result = readCopilotPlanPayload({
+      items: [
+        { id: 1, stage: '1-7', apCost: 6 },
+        { id: 2, stage: 'X-1', apCost: null },
+        { id: 3 },
+      ],
+      entries: [],
+    })
+
+    expect(result?.items[0]?.apCost).toBe(6)
+    expect(result?.items[1]?.apCost).toBeUndefined()
+    expect(result?.items[2]?.apCost).toBeUndefined()
+    expect(formatCopilotApCost(result?.items[0]?.apCost)).toBe('6')
+    expect(formatCopilotApCost(result?.items[1]?.apCost)).toBe('未知')
+    expect(formatCopilotApCost(result?.items[2]?.apCost)).toBe('未知')
   })
 
   it('rejects incomplete plans so callers can fall back to the set list', () => {

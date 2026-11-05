@@ -1,6 +1,7 @@
 import { FileText } from 'lucide-react'
 import { Button, EmptyState } from '@/shared/ui'
 import { useCopilotSetItemFollow } from '../hooks/useCopilotSetItemFollow'
+import { formatCopilotApCost } from '../model/copilotPayload'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CopilotSetInfo } from '../types'
 
@@ -245,7 +246,11 @@ export default function CombatCopilotSetPanel({
                           </span>
                         ))}
                       </div>
-                      {copilot.stage && <div className="mt-0.5 truncate text-xs text-tertiary">{copilot.stage}</div>}
+                      {copilot.stage && (
+                        <div className="mt-0.5 truncate text-xs text-tertiary">
+                          {copilot.stage} · 理智 {formatCopilotApCost(copilot.apCost)}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

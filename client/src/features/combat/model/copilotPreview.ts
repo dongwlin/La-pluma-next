@@ -58,7 +58,7 @@ export function resolveCopilotPreviewTarget(
 
   const inferred: CopilotPreviewKind = parsed.isSet
     ? 'set'
-    : /^prts:\/\//i.test(rawInput.trim())
+    : /^(?:prts|maa):\/\//i.test(rawInput.trim())
       ? 'single'
       : 'probe'
   return {
