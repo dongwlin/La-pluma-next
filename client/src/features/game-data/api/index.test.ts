@@ -159,4 +159,17 @@ describe('game data resource reads', () => {
     expect(getItemIconUrl('30011', 8)).not.toBe(getItemIconUrl('30011', 7))
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('refreshes local icon and avatar URLs after the shared cache epoch advances', async () => {
+    const { invalidateItemIconCache } = await import('../model/itemIconCache')
+
+    const version = invalidateItemIconCache(1_700_000_000_000)
+
+    expect(getItemIconUrl('30011')).toBe(
+      `http://localhost:3000/game-assets/item/30011.png?v=${version}`,
+    )
+    expect(getOperatorAvatarUrl('char_002_amiya')).toBe(
+      `http://localhost:3000/game-assets/avatar/char_002_amiya.png?v=${version}`,
+    )
+  })
 })

@@ -74,6 +74,7 @@ vi.mock('@/features/game-data/api', () => ({
   getDepotData: vi.fn(),
   getOperBoxData: mocks.getOperBoxData,
   getItemIconUrl: (id: string | number) => `/items/${id}.png`,
+  getOperatorAvatarUrl: (id: string) => `/avatars/${id}.png`,
 }))
 
 vi.mock('@/features/runtime-status', () => ({
