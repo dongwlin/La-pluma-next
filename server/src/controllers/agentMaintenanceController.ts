@@ -10,6 +10,14 @@ import { getCurrentActivity } from '../services/maaActivityService.ts';
 import type { MaaActivitySnapshot } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
 import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
+import { buildCliUpdaterPlan, runCliUpdater } from '../services/cliUpdaterService.ts';
+import {
+  isCliUpdateChannel,
+  isCoreUpdateChannel,
+  readCliUpdateCapabilities,
+  readUpdateChannels,
+  saveUpdateChannel
+} from '../services/updateChannelService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
@@ -28,7 +36,6 @@ import type {
   ApiSuccessResponse
 } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts'
-import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts'
 import {
   parseAutoUpdateBody,
   parseCopilotPlanQuery,
@@ -39,6 +46,8 @@ import {
   parseParadoxSearchQuery,
   parsePrtsCopilotQueryPayload,
   parseScheduleSetupBody,
+  parseUpdateChannelBody,
+  parseUpdateCliBody,
   parseUpdateCoreBody,
   projectCopilotSearchItem,
   projectParadoxCopilot,
@@ -375,11 +384,12 @@ export async function openConfigDirectory(req: MaintenanceRequest, res: ApiRespo
 
 export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   const { version, dryRun } = parseUpdateCoreBody(req.body);
-  const corePlan: MaintenanceUpdatePlanStep = version === 'beta'
-    ? { action: 'update-core', targetChannel: 'beta', command: 'install', args: ['beta', '--force'] }
-    : version === 'stable'
-      ? { action: 'update-core', targetChannel: 'stable', command: 'install', args: ['stable', '--force'] }
-      : { action: 'update-core', targetChannel: 'current', command: 'update', args: [] };
+  const channels = await readUpdateChannels();
+  const requestedChannel = isCoreUpdateChannel(version) ? version : null;
+  const targetChannel = requestedChannel ?? (version === undefined ? channels.core : 'current');
+  const corePlan: MaintenanceUpdatePlanStep = requestedChannel
+    ? { action: 'update-core', targetChannel: requestedChannel, command: 'install', args: [requestedChannel, '--force'] }
+    : { action: 'update-core', targetChannel, command: 'update', args: [] };
   const plan: MaintenanceUpdateCorePlan = {
     action: 'update-core-and-resources',
     steps: [corePlan]
@@ -396,11 +406,15 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
     };
     let coreResult: MaaCommandOutput;
     try {
-      coreResult = version === 'beta'
-        ? await execMaaCommand('install', ['beta', '--force'], null, null, undefined, undefined, undefined, maintenancePorts)
-        : version === 'stable'
-          ? await execMaaCommand('install', ['stable', '--force'], null, null, undefined, undefined, undefined, maintenancePorts)
-          : await execMaaCommand('update', [], null, null, undefined, undefined, undefined, maintenancePorts);
+      coreResult = requestedChannel
+        ? await execMaaCommand('install', [requestedChannel, '--force'], null, null, undefined, undefined, undefined, maintenancePorts)
+        : await execMaaCommand('update', [], null, null, undefined, undefined, undefined, maintenancePorts);
+      if (requestedChannel) {
+        // 切换渠道后持久化到 cli.toml，后续不带 version 的更新继续使用该渠道。
+        await saveUpdateChannel('core', requestedChannel).catch(error => {
+          logger.error('MaaCore 渠道持久化失败', { error: thrownMessage(error), version });
+        });
+      }
     } catch (error) {
       logger.error('更新 MaaCore 失败', { error: thrownMessage(error), version });
       return sendError(res, req, agentError('AGENT_MAA_UPDATE_CORE_FAILED', `MaaCore 更新失败: ${thrownMessage(error)}`, {
@@ -428,19 +442,57 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
 }
 
 export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const os = await import('os');
-  const execAsync = promisify(exec);
-  const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
-  const isDocker = process.env.NODE_ENV === 'production' && await execAsync('test -f /.dockerenv').then(() => true).catch(() => false);
-  const command = isDocker ? `${MAA_CLI_PATH} self update` : (os.platform() === 'darwin' ? 'brew upgrade maa-cli' : `${MAA_CLI_PATH} self update`);
-  const plan: MaintenanceUpdateCliPlan = { action: 'update-cli', command };
-  if (parseDryRunBody(req.body).dryRun) return sendDryRun(res, req, plan);
+  const { channel, dryRun } = parseUpdateCliBody(req.body);
+  const channels = await readUpdateChannels();
+  const explicitChannel = isCliUpdateChannel(channel) ? channel : null;
+  if (channel !== undefined && explicitChannel === null) {
+    return sendError(res, req, agentError('AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID', '不支持的 MAA CLI 更新渠道', {
+      statusCode: 400,
+      details: { channel }
+    }));
+  }
+  const targetChannel = explicitChannel ?? channels.cli;
+  const capabilities = await readCliUpdateCapabilities();
+  const updater = await buildCliUpdaterPlan(targetChannel, {
+    binaryEnabled: capabilities.binary,
+    force: explicitChannel !== null && explicitChannel !== channels.cli
+  });
+  const plan: MaintenanceUpdateCliPlan = {
+    action: 'update-cli',
+    command: updater.command,
+    args: updater.args,
+    channel: updater.channel,
+    source: updater.source,
+    supported: updater.supported,
+    ...(updater.reason ? { reason: updater.reason } : {})
+  };
+  if (dryRun) return sendDryRun(res, req, plan);
+  if (!updater.supported) {
+    return sendError(res, req, agentError('AGENT_MAA_UPDATE_CLI_UNSUPPORTED', updater.reason || '当前安装来源不支持更新 MAA CLI', {
+      statusCode: 409,
+      retryable: false,
+      details: { channel: targetChannel, source: updater.source }
+    }));
+  }
   return withMaaExecutionLease({ source: 'cli-update', taskName: '更新 MAA CLI', command: 'update-cli' }, async () => {
-    const { stdout, stderr } = await execAsync(command);
-    const payload: MaintenanceUpdateCliPayload = { output: stdout || stderr, plan };
-    return sendSuccess(res, req, payload, `MAA CLI 更新完成${isDocker ? '（Docker 环境）' : ''}`);
+    try {
+      const { stdout, stderr } = await runCliUpdater(updater);
+      if (explicitChannel) {
+        // 显式切换后持久化，后续无参更新从 cli.toml 读取同一渠道。
+        await saveUpdateChannel('cli', explicitChannel).catch(error => {
+          logger.error('MAA CLI 渠道持久化失败', { error: thrownMessage(error), channel });
+        });
+      }
+      const payload: MaintenanceUpdateCliPayload = { output: stdout || stderr, plan };
+      return sendSuccess(res, req, payload, `MAA CLI 更新完成（${updater.channel} 渠道）`);
+    } catch (error) {
+      logger.error('更新 MAA CLI 失败', { error: thrownMessage(error), channel: targetChannel });
+      return sendError(res, req, agentError('AGENT_MAA_UPDATE_CLI_FAILED', `MAA CLI 更新失败: ${thrownMessage(error)}`, {
+        statusCode: 500,
+        retryable: true,
+        details: { channel: targetChannel, source: updater.source }
+      }));
+    }
   });
 }
 
@@ -471,12 +523,36 @@ export async function discoverDevices(req: MaintenanceRequest, res: ApiResponseW
 }
 
 export async function readVersion(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
-  const [version, resource] = await Promise.all([
+  const [version, resource, updateChannels] = await Promise.all([
     getMaaVersion(true),
-    getMaaResourceInfo().catch(resourceInfoFallback)
+    getMaaResourceInfo().catch(resourceInfoFallback),
+    readUpdateChannels()
   ]);
-  const payload: MaintenanceVersionPayload = { ...version, resource };
+  const payload: MaintenanceVersionPayload = { ...version, resource, updateChannels };
   return sendSuccess(res, req, payload);
+}
+
+export async function readChannels(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+  return sendSuccess(res, req, await readUpdateChannels());
+}
+
+export async function saveChannel(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+  const { scope, channel } = parseUpdateChannelBody(req.body);
+  const targetScope = scope === 'core' || scope === 'cli' ? scope : null;
+  if (!targetScope) {
+    return sendError(res, req, agentError('AGENT_UPDATE_CHANNEL_SCOPE_INVALID', '更新渠道作用域不合法', {
+      statusCode: 400,
+      details: { scope }
+    }));
+  }
+  const validChannel = targetScope === 'core' ? isCoreUpdateChannel(channel) : isCliUpdateChannel(channel);
+  if (!validChannel) {
+    return sendError(res, req, agentError('AGENT_UPDATE_CHANNEL_INVALID', '更新渠道不合法', {
+      statusCode: 400,
+      details: { scope: targetScope, channel }
+    }));
+  }
+  return sendSuccess(res, req, await saveUpdateChannel(targetScope, channel), '更新渠道已保存');
 }
 
 export async function readConfigDirectory(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {

@@ -1,11 +1,11 @@
 import cron from 'node-cron';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
 import { getMaaResourceInfo } from './resourceUpdateService.ts';
+import { buildCliUpdaterPlan, runCliUpdater } from './cliUpdaterService.ts';
+import { readCliUpdateCapabilities, readUpdateChannels } from './updateChannelService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
-import { DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
+import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { gameTimeZoneForClientType } from './gameCalendar.ts';
 import { createLogger } from '../utils/logger.ts';
 import type { ScheduledTask } from './scheduleFlowPlan.ts';
@@ -14,10 +14,7 @@ import type { ScheduledTask } from './scheduleFlowPlan.ts';
 // 不持有流程状态。cron 与时钟可注入；注册对象在安装时快照任务流程与配置，
 // `stopAll` 的摘要是有穷结构，重复关闭返回同一对象。
 
-const execAsync = promisify(exec);
 const logger = createLogger('Scheduler');
-
-const MAA_CLI_PATH = DEFAULT_MAA_CLI_PATH;
 
 // 日常流程按客户端服务区时区注册；自动更新是维护作业，没有游戏日语义。
 const AUTO_UPDATE_TIMEZONE = 'Asia/Shanghai';
@@ -226,31 +223,25 @@ export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<v
       if (updateCli) {
         logger.info('开始更新 MAA CLI');
 
-        const isDocker = process.env.NODE_ENV === 'production' &&
-          await execAsync('test -f /.dockerenv').then(() => true).catch(() => false);
-
-        if (isDocker) {
-          try {
-            await execAsync(`${MAA_CLI_PATH} self update`);
-            logger.success('MAA CLI 更新完成', { environment: 'Docker', persistent: true });
-          } catch (error) {
-            logger.error('MAA CLI 更新失败', { error: errorMessageOf(error) });
-          }
-        } else {
-          const os = await import('os');
-          const platform = os.platform();
-          let command: string;
-
-          if (platform === 'darwin') {
-            command = 'brew upgrade maa-cli';
-          } else if (platform === 'linux' || platform === 'win32') {
-            command = `${MAA_CLI_PATH} self update`;
-          } else {
-            throw new Error(`不支持的操作系统: ${platform}`);
-          }
-
-          await execAsync(command);
-          logger.success('MAA CLI 更新完成', { platform });
+        const [channels, capabilities] = await Promise.all([
+          readUpdateChannels(),
+          readCliUpdateCapabilities()
+        ]);
+        const plan = await buildCliUpdaterPlan(channels.cli, {
+          binaryEnabled: capabilities.binary
+        });
+        try {
+          await runCliUpdater(plan);
+          logger.success('MAA CLI 更新完成', {
+            source: plan.source,
+            channel: plan.channel
+          });
+        } catch (error) {
+          logger.error('MAA CLI 更新失败', {
+            error: errorMessageOf(error),
+            source: plan.source,
+            channel: plan.channel
+          });
         }
       }
 

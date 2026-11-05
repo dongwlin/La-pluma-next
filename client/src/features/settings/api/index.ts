@@ -109,9 +109,27 @@ export async function updateMaaCore(version?: string): Promise<ApiResponse> {
   return parseJsonResponse(response)
 }
 
-export async function updateMaaCli(): Promise<ApiResponse> {
+export async function updateMaaCli(channel?: string): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/update-cli`, {
     method: 'POST',
+    headers: channel ? {
+      'Content-Type': 'application/json',
+    } : undefined,
+    body: channel ? JSON.stringify({ channel }) : undefined,
+  })
+  return parseJsonResponse(response)
+}
+
+export async function saveUpdateChannel(
+  scope: 'core' | 'cli',
+  channel: string,
+): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/update-channel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ scope, channel }),
   })
   return parseJsonResponse(response)
 }

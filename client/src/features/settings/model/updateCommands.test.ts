@@ -57,6 +57,7 @@ describe('core channel policy', () => {
     expect(resolveCoreChannelSwitch('v5.0.0-alpha.2')).toEqual({ version: 'stable', label: '正式版' })
     expect(resolveCoreChannelSwitch(null)).toEqual({ version: 'beta', label: 'Beta' })
     expect(coreChannelLabel('stable')).toBe('正式版')
+    expect(coreChannelLabel('alpha')).toBe('Alpha')
   })
 
   it('reads failure details from the current envelope and the legacy error shape', () => {
@@ -223,6 +224,17 @@ describe('SettingsUpdateOwner', () => {
     expect(failure.status).toBe('failed')
     expect(failure.feedback).toBeNull()
     expect(failure.message).toBe('更新失败: brew 不可用')
+  })
+
+  it('passes an explicit CLI channel through to the request', async () => {
+    const updateCli = vi.fn().mockResolvedValue({ success: true, message: 'MAA CLI 更新完成（测试版 渠道）' })
+    const owner = new SettingsUpdateOwner({ updateCli })
+
+    const outcome = await owner.updateCli('beta')
+
+    expect(updateCli).toHaveBeenCalledWith('beta')
+    expect(outcome.message).toBe('MAA CLI 更新成功')
+    expect(outcome.versionChanged).toBe(true)
   })
 
   it('switches channels with the current-version policy and reports the target label', async () => {

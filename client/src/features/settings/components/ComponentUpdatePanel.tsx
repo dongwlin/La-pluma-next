@@ -1,11 +1,39 @@
+import { useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { Button, Select } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
+import { saveUpdateChannel } from '../api'
+import type { CliUpdateChannel, CoreUpdateChannel, UpdateChannelScope } from '../types'
 import { useSettingsUpdates } from '../hooks/useSettingsUpdates'
 import { useSettingsVersion } from '../hooks/useSettingsVersion'
 
+const CORE_CHANNEL_OPTIONS = [
+  { value: 'stable', label: '正式版' },
+  { value: 'beta', label: 'Beta' },
+  { value: 'alpha', label: 'Alpha' },
+]
+
+const CLI_CHANNEL_OPTIONS = [
+  { value: 'stable', label: '正式版' },
+  { value: 'beta', label: 'Beta' },
+  { value: 'nightly', label: 'Nightly' },
+]
+
+const CORE_CHANNEL_LABELS: Record<CoreUpdateChannel, string> = {
+  stable: '正式版',
+  beta: '测试版',
+  alpha: 'Alpha',
+}
+
+const CLI_CHANNEL_LABELS: Record<CliUpdateChannel, string> = {
+  stable: '正式版',
+  beta: '测试版',
+  nightly: 'Nightly',
+}
+
 export default function ComponentUpdatePanel() {
   const setStatusMessage = useStatusStore(state => state.setMessage)
+  const [channelSaving, setChannelSaving] = useState<UpdateChannelScope | null>(null)
   const {
     version: versionInfo,
     reload: reloadVersion,
@@ -39,6 +67,25 @@ export default function ComponentUpdatePanel() {
     void updateResources()
   }
 
+  const coreChannel: CoreUpdateChannel = versionInfo?.updateChannels?.core
+    ?? (versionInfo?.core.includes('beta') || versionInfo?.core.includes('alpha') ? 'beta' : 'stable')
+  const cliChannel: CliUpdateChannel = versionInfo?.updateChannels?.cli ?? 'stable'
+  const channelSavingBusy = channelSaving !== null
+
+  const handleChannelChange = async (scope: UpdateChannelScope, channel: string) => {
+    setChannelSaving(scope)
+    setStatusMessage('正在保存更新渠道...', 'info')
+    const result = await saveUpdateChannel(scope, channel)
+    if (!result.success) {
+      setStatusMessage(`更新渠道保存失败: ${result.message || '未知错误'}`, 'error')
+      setChannelSaving(null)
+      return
+    }
+    setStatusMessage('更新渠道已保存')
+    await reloadVersion()
+    setChannelSaving(null)
+  }
+
   return (
     <>
       <div className="grid gap-(--app-space-card) md:grid-cols-2 xl:grid-cols-1">
@@ -47,10 +94,18 @@ export default function ComponentUpdatePanel() {
             <h3 className="text-base font-semibold text-primary">MaaCore</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.core}</span>}
             {versionInfo && (
-              <span className={`rounded-full px-2 py-1 text-xs ${versionInfo.core.includes('beta') || versionInfo.core.includes('alpha') ? 'status-warning' : 'status-success'}`}>
-                {versionInfo.core.includes('beta') || versionInfo.core.includes('alpha') ? '测试版' : '正式版'}
+              <span className={`rounded-full px-2 py-1 text-xs ${coreChannel === 'stable' ? 'status-success' : 'status-warning'}`}>
+                {CORE_CHANNEL_LABELS[coreChannel]}
               </span>
             )}
+            <Select
+              aria-label="MaaCore 更新渠道"
+              value={coreChannel}
+              options={CORE_CHANNEL_OPTIONS}
+              onChange={value => void handleChannelChange('core', value)}
+              disabled={channelSavingBusy}
+              className="ml-auto w-32"
+            />
           </div>
           <p className="mt-1 text-xs leading-5 text-secondary">核心组件与游戏资源</p>
           {versionInfo?.resource && (
@@ -71,7 +126,7 @@ export default function ComponentUpdatePanel() {
           <div className="mt-auto grid gap-2 pt-4 sm:grid-cols-2">
             <Button
               onClick={handleUpdateCore}
-              disabled={updateBusy}
+              disabled={updateBusy || channelSavingBusy}
               loading={updatingCore}
               loadingText="更新中"
               variant="primary"
@@ -83,7 +138,7 @@ export default function ComponentUpdatePanel() {
             <Button
               type="button"
               onClick={handleToggleCoreVersion}
-              disabled={updateBusy}
+              disabled={updateBusy || channelSavingBusy}
               variant="secondary"
               className="w-full"
               icon={<RefreshCw size={16} aria-hidden="true" />}
@@ -92,7 +147,7 @@ export default function ComponentUpdatePanel() {
             </Button>
             <Button
               onClick={handleHotUpdate}
-              disabled={updateBusy}
+              disabled={updateBusy || channelSavingBusy}
               loading={hotUpdating}
               loadingText="同步中"
               variant="outline"
@@ -108,13 +163,23 @@ export default function ComponentUpdatePanel() {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-primary">MAA CLI</h3>
             {versionInfo && <span className="text-sm brand-text">{versionInfo.cli}</span>}
-            <span className="status-success rounded-full px-2 py-1 text-xs">正式版</span>
+            <span className={`rounded-full px-2 py-1 text-xs ${cliChannel === 'stable' ? 'status-success' : 'status-warning'}`}>
+              {CLI_CHANNEL_LABELS[cliChannel]}
+            </span>
+            <Select
+              aria-label="MAA CLI 更新渠道"
+              value={cliChannel}
+              options={CLI_CHANNEL_OPTIONS}
+              onChange={value => void handleChannelChange('cli', value)}
+              disabled={channelSavingBusy}
+              className="ml-auto w-32"
+            />
           </div>
           <p className="mt-1 text-xs leading-5 text-secondary">命令行工具与任务运行入口</p>
           <div className="mt-auto pt-4">
             <Button
               onClick={handleUpdateCli}
-              disabled={updateBusy}
+              disabled={updateBusy || channelSavingBusy}
               loading={updatingCli}
               loadingText="更新中"
               variant="primary"
@@ -135,7 +200,7 @@ export default function ComponentUpdatePanel() {
               <Button
                 type="button"
                 onClick={handleHotUpdate}
-                disabled={updateBusy}
+                disabled={updateBusy || channelSavingBusy}
                 variant="ghost"
                 size="sm"
                 className="min-h-11! lg:min-h-0!"

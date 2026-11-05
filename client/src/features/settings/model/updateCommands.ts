@@ -59,15 +59,15 @@ export interface UpdateCommandOutcome {
   readonly versionChanged: boolean
 }
 
-export type CoreUpdateVersion = 'beta' | 'stable'
+export type CoreUpdateVersion = 'beta' | 'stable' | 'alpha'
 
 export interface CoreChannelSwitch {
   readonly version: CoreUpdateVersion
-  readonly label: 'Beta' | '正式版'
+  readonly label: 'Beta' | '正式版' | 'Alpha'
 }
 
 export const coreChannelLabel = (version: CoreUpdateVersion): CoreChannelSwitch['label'] => (
-  version === 'beta' ? 'Beta' : '正式版'
+  version === 'beta' ? 'Beta' : version === 'alpha' ? 'Alpha' : '正式版'
 )
 
 /**
@@ -84,10 +84,11 @@ export const resolveCoreChannelSwitch = (
 }
 
 type UpdateRequest = (version?: string) => Promise<ApiResponse>
+type CliUpdateRequest = (channel?: string) => Promise<ApiResponse>
 
 export interface SettingsUpdateOwnerOptions {
   readonly updateCore?: UpdateRequest
-  readonly updateCli?: () => Promise<ApiResponse>
+  readonly updateCli?: CliUpdateRequest
   readonly updateResources?: () => Promise<ApiResponse>
 }
 
@@ -201,10 +202,10 @@ export class SettingsUpdateOwner {
     })
   }
 
-  /** CLI 更新只改变版本，不影响游戏资源。 */
-  async updateCli(): Promise<UpdateCommandOutcome> {
+  /** CLI 更新只改变版本，不影响游戏资源；channel 缺省时服务端使用持久化渠道。 */
+  async updateCli(channel?: string): Promise<UpdateCommandOutcome> {
     return this.run('cli', async () => {
-      const result = await this.updateCliRequest()
+      const result = await this.updateCliRequest(channel)
       if (!result.success) {
         return {
           status: 'failed',

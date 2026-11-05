@@ -17,6 +17,17 @@ export interface AutoUpdateConfig {
   updateCli: boolean
 }
 
+export type UpdateChannelScope = 'core' | 'cli'
+
+export type CoreUpdateChannel = 'stable' | 'beta' | 'alpha'
+
+export type CliUpdateChannel = 'stable' | 'beta' | 'nightly'
+
+export interface UpdateChannels {
+  core: CoreUpdateChannel
+  cli: CliUpdateChannel
+}
+
 export interface ConfigSection {
   id: ConfigSectionId
   name: string
