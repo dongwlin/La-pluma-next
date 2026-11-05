@@ -357,7 +357,6 @@ export interface MaintenanceUpdatePlanStep {
   targetChannel?: 'beta' | 'stable' | 'current';
   command?: string;
   args?: string[];
-  script?: string;
 }
 
 export interface MaintenanceUpdateCorePlan {
@@ -372,7 +371,7 @@ export interface MaintenanceUpdateCliPlan {
 
 export interface MaintenanceHotUpdateResourcesPlan {
   action: 'hot-update-resources';
-  script: string;
+  command: 'hot-update';
 }
 
 export interface MaintenanceUpdateCorePayload {

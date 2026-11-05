@@ -111,7 +111,6 @@ describe('resolveAppPaths', () => {
     assert.equal(paths.executionLockPath, join(serverRoot, 'data', 'maa-execution.lock'));
     assert.equal(paths.trainingDataDir, join(serverRoot, 'data'));
     assert.equal(paths.frontendDistDir, resolve(serverRoot, '..', 'client', 'dist'));
-    assert.equal(paths.tempResourceDir, join(serverRoot, '.temp-maa-resource'));
   });
 
   it('anchors the default server root at the server package directory, not src/', () => {
@@ -247,7 +246,6 @@ describe('cwd independence and import purity', () => {
     assert.equal(fromTmpResult.serverRoot, inProcess.serverRoot);
     assert.equal(fromTmpResult.appDataDir, inProcess.appDataDir);
     assert.equal(fromTmpResult.frontendDistDir, inProcess.frontendDistDir);
-    assert.equal(fromTmpResult.tempResourceDir, inProcess.tempResourceDir);
   });
 
   it('does not freeze process env at import time', () => {

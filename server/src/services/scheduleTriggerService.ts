@@ -2,7 +2,8 @@ import cron from 'node-cron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { execMaaCommand } from './maaExecutionService.ts';
-import { updateMaaResources } from './resourceUpdateService.ts';
+import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
+import { getMaaResourceInfo } from './resourceUpdateService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { DEFAULT_CLIENT_TYPE, DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
 import { gameTimeZoneForClientType } from './gameCalendar.ts';
@@ -211,13 +212,14 @@ export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<v
   try {
     await withMaaExecutionLease({ source: 'auto-update', taskName: '自动更新 MAA', command: 'update' }, async () => {
       if (updateCore) {
-        logger.info('开始更新 MaaCore');
-        await execMaaCommand('update', []);
-        logger.success('MaaCore 更新完成');
-        logger.info('开始同步最新 MaaResource');
-        const resourceResult = await updateMaaResources();
-        logger.success('MaaResource 同步完成', {
-          lastUpdated: resourceResult.resource.lastUpdated
+        logger.info('开始更新 MaaCore 与资源');
+        await execMaaCommand('update', [], null, null, false, false, undefined, {
+          execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
+          managedTaskName: '自动更新 MAA'
+        });
+        const resource = await getMaaResourceInfo().catch(() => null);
+        logger.success('MaaCore 与资源更新完成', {
+          lastUpdated: resource?.lastUpdated ?? null
         });
       }
 

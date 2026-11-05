@@ -117,7 +117,6 @@ export interface AppPaths {
   penguinDropDataPath: string;
   depotPath: string;
   operboxPath: string;
-  tempResourceDir: string;
   frontendDistDir: string;
 }
 
@@ -148,7 +147,6 @@ export function resolveAppPaths(options: AppPathOptions = {}): AppPaths {
     penguinDropDataPath: join(trainingDataDir, 'penguin-drop-data.json'),
     depotPath: join(trainingDataDir, 'depot.json'),
     operboxPath: join(trainingDataDir, 'operbox.json'),
-    tempResourceDir: join(serverRoot, '.temp-maa-resource'),
     frontendDistDir: resolve(serverRoot, '..', 'client', 'dist')
   };
 }

@@ -1,19 +1,17 @@
 /**
  * 资源信息读取与同步：读取可重复执行，CLI/JSON 均从 unknown 收窄、失败抛出且内部不重试；
  * 写操作持有设备变更租约，并发调用共享同一个进行中的 Promise（single-flight，不排队不重放），
- * 时限缺省为 null，显式超时先 SIGTERM 再升级 SIGKILL，失败不重试，且不支持调用方取消。
+ * 更新经 maa-cli 原生 `hot-update` 执行，资源源与凭据由 cli.toml 决定。
  */
 
-import { spawn } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import type { MaaExecutionLease, MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
+import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
 
 const STALE_RESOURCE_DAYS = 14;
-const DEFAULT_FORCE_KILL_DELAY_MS = 5000;
 
 /** 资源新鲜度：`unknown` 表示无法读取版本时间，不能当成正常。 */
 export type ResourceStatus = 'current' | 'stale' | 'unknown';
@@ -46,39 +44,6 @@ export interface ResourceVersionFile {
   modifiedAt: Date;
 }
 
-export interface ResourceUpdateOutputStream {
-  on(event: 'data', listener: (chunk: unknown) => void): unknown;
-}
-
-export interface ResourceUpdateChild {
-  readonly stdout: ResourceUpdateOutputStream | null;
-  readonly stderr: ResourceUpdateOutputStream | null;
-  on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  on(event: 'error', listener: (error: Error) => void): unknown;
-  kill(signal?: NodeJS.Signals | number): boolean;
-}
-
-export interface ResourceUpdateSpawnOptions {
-  cwd: string;
-  stdio: ['ignore', 'pipe', 'pipe'];
-}
-
-export type ResourceUpdateSpawn = (
-  command: string,
-  args: readonly string[],
-  options: ResourceUpdateSpawnOptions
-) => ResourceUpdateChild;
-
-/** 计时器句柄；测试端口用假句柄时只需实现 unref。 */
-export interface ResourceUpdateTimer {
-  unref?(): void;
-}
-
-export interface ResourceUpdateTimers {
-  setTimeout?(callback: () => void, delayMs: number): ResourceUpdateTimer;
-  clearTimeout?(timer: ResourceUpdateTimer): void;
-}
-
 /** 执行租约端口：整次更新在租约回调内执行；缺省 `withMaaExecutionLease`。 */
 export type MaaExecutionLeaseRunner = (
   owner: MaaExecutionLeaseRequest,
@@ -86,34 +51,16 @@ export type MaaExecutionLeaseRunner = (
 ) => Promise<ResourceUpdateResult>;
 
 export interface ResourceUpdateServicePorts {
-  resolveResourceDir?: () => Promise<string>;
+  resolveResourceDirs?: () => Promise<string[]>;
   readVersionFile?: (versionPath: string) => Promise<ResourceVersionFile>;
   now?: () => Date;
-  spawn?: ResourceUpdateSpawn;
-  timers?: ResourceUpdateTimers;
-  scriptPath?: string;
-  cwd?: string;
-  timeoutMs?: number | null;
-  forceKillDelayMs?: number;
+  runHotUpdate?: () => Promise<string>;
   withLease?: MaaExecutionLeaseRunner;
 }
 
 export interface ResourceUpdateService {
   getResourceInfo(): Promise<ResourceInfo>;
   updateResources(): Promise<ResourceUpdateResult>;
-}
-
-/** 显式时限内更新进程未退出：已被终止，失败不重试。 */
-export class ResourceUpdateTimeoutError extends Error {
-  code: string;
-  timeoutMs: number;
-
-  constructor(timeoutMs: number) {
-    super(`资源更新超时（${timeoutMs}ms），已终止更新进程`);
-    this.name = 'ResourceUpdateTimeoutError';
-    this.code = 'MAA_RESOURCE_UPDATE_TIMEOUT';
-    this.timeoutMs = timeoutMs;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -134,18 +81,21 @@ export function parseResourceVersion(content: string): ResourceVersionMetadata {
   return normalizeVersionMetadata(JSON.parse(content));
 }
 
+function parseVersionTimestamp(lastUpdated: string | null): number | null {
+  if (!lastUpdated) return null;
+  const parsed = new Date(lastUpdated.replace(' ', 'T').replace(/\.000$/, 'Z'));
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null;
+}
+
 function buildResourceInfoFromMetadata(
   metadata: ResourceVersionMetadata,
   modifiedAt: unknown,
   now: Date
 ): ResourceInfo {
-  const parsedDate = metadata.lastUpdated
-    ? new Date(metadata.lastUpdated.replace(' ', 'T').replace(/\.000$/, 'Z'))
-    : null;
-  const hasValidDate = parsedDate !== null && Number.isFinite(parsedDate.getTime());
-  const ageDays = hasValidDate
-    ? Math.max(0, Math.floor((now.getTime() - parsedDate.getTime()) / 86400000))
-    : null;
+  const parsedTimestamp = parseVersionTimestamp(metadata.lastUpdated);
+  const ageDays = parsedTimestamp === null
+    ? null
+    : Math.max(0, Math.floor((now.getTime() - parsedTimestamp) / 86400000));
   const status: ResourceStatus = ageDays === null ? 'unknown' : ageDays > STALE_RESOURCE_DAYS ? 'stale' : 'current';
 
   return {
@@ -175,14 +125,20 @@ export function buildResourceInfo(
   return buildResourceInfoFromMetadata(normalizeVersionMetadata(versionData), modifiedAt, now);
 }
 
-const defaultTimers: Required<ResourceUpdateTimers> = {
-  setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
-  clearTimeout: timer => clearTimeout(timer as NodeJS.Timeout)
-};
-
-async function readMaaResourceDirFromCli(): Promise<string> {
-  const result = await execMaaCommand('dir', ['resource'], null, null, false, true);
+async function readMaaDir(name: string): Promise<string> {
+  const result = await execMaaCommand('dir', [name], null, null, false, true);
   return result.stdout.trim();
+}
+
+/**
+ * MaaCore 按“基础资源 → 热更新覆盖层”的顺序加载，热更新只写覆盖层。
+ * 两处都读、按 `last_updated` 取较新者，避免只读基础资源时看不到 `hot-update` 的结果。
+ */
+async function readMaaResourceDirsFromCli(): Promise<string[]> {
+  const resourceDir = await readMaaDir('resource');
+  const hotUpdateRoot = await readMaaDir('hot-update').catch(() => '');
+  const dirs = hotUpdateRoot ? [resourceDir, join(hotUpdateRoot, 'resource')] : [resourceDir];
+  return [...new Set(dirs.filter(dir => dir.length > 0))];
 }
 
 async function readResourceVersionFile(versionPath: string): Promise<ResourceVersionFile> {
@@ -193,95 +149,51 @@ async function readResourceVersionFile(versionPath: string): Promise<ResourceVer
   return { content, modifiedAt: fileStat.mtime };
 }
 
-/** 库边界收窄：`spawn` 返回的 ChildProcess 在本模块只用 close/error/data/kill。 */
-const spawnResourceUpdateScript: ResourceUpdateSpawn = (command, args, options) => (
-  spawn(command, [...args], { cwd: options.cwd, stdio: options.stdio }) as ResourceUpdateChild
-);
+async function runMaaHotUpdate(): Promise<string> {
+  const result = await execMaaCommand('hot-update', [], null, null, false, false, undefined, {
+    execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
+    managedTaskName: '同步 MAA 资源'
+  });
+  return result.stdout || result.stderr;
+}
 
 /**
  * 创建资源服务实例；single-flight 状态保存在实例内，测试可创建隔离实例。
  */
 export function createResourceUpdateService(ports: ResourceUpdateServicePorts = {}): ResourceUpdateService {
-  const resolveResourceDir = ports.resolveResourceDir ?? readMaaResourceDirFromCli;
+  const resolveResourceDirs = ports.resolveResourceDirs ?? readMaaResourceDirsFromCli;
   const readVersionFile = ports.readVersionFile ?? readResourceVersionFile;
   const now = ports.now ?? (() => new Date());
-  const spawnUpdate = ports.spawn ?? spawnResourceUpdateScript;
-  const timers: Required<ResourceUpdateTimers> = { ...defaultTimers, ...ports.timers };
+  const runHotUpdate = ports.runHotUpdate ?? runMaaHotUpdate;
   const runWithLease = ports.withLease ?? withMaaExecutionLease;
-  const timeoutMs = ports.timeoutMs ?? null;
-  const forceKillDelayMs = ports.forceKillDelayMs ?? DEFAULT_FORCE_KILL_DELAY_MS;
   let activeUpdate: Promise<ResourceUpdateResult> | null = null;
 
   async function getResourceInfo(): Promise<ResourceInfo> {
-    const resourceDir = await resolveResourceDir();
-    const versionPath = join(resourceDir.trim(), 'version.json');
-    const versionFile = await readVersionFile(versionPath);
-    return buildResourceInfoFromMetadata(parseResourceVersion(versionFile.content), versionFile.modifiedAt, now());
-  }
+    const resourceDirs = await resolveResourceDirs();
+    const readAt = now();
+    let selected: { info: ResourceInfo; timestamp: number | null } | null = null;
+    let lastError: unknown = null;
 
-  /** 运行一次更新脚本；时限到期先 SIGTERM，宽限后升级 SIGKILL，不做重试。 */
-  function runUpdateScript(): Promise<string> {
-    const appPaths = resolveAppPaths();
-    const scriptPath = ports.scriptPath ?? join(appPaths.serverRoot, 'scripts', 'update-maa-resources.ts');
-    const cwd = ports.cwd ?? appPaths.serverRoot;
-
-    return new Promise<string>((resolve, reject) => {
-      const child = spawnUpdate('node', [scriptPath], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
-      let timeoutTimer: ResourceUpdateTimer | null = null;
-      let forceKillTimer: ResourceUpdateTimer | null = null;
-      let timedOut = false;
-      let settled = false;
-
-      const clearTimers = (): void => {
-        if (timeoutTimer) timers.clearTimeout(timeoutTimer);
-        if (forceKillTimer) timers.clearTimeout(forceKillTimer);
-        timeoutTimer = null;
-        forceKillTimer = null;
-      };
-
-      const settle = (outcome: () => void): void => {
-        if (settled) return;
-        settled = true;
-        clearTimers();
-        outcome();
-      };
-
-      child.stdout?.on('data', chunk => { stdout += String(chunk); });
-      child.stderr?.on('data', chunk => { stderr += String(chunk); });
-
-      child.on('close', code => {
-        settle(() => {
-          if (timedOut) {
-            reject(new ResourceUpdateTimeoutError(timeoutMs ?? 0));
-            return;
-          }
-          if (code === 0) {
-            resolve(stdout);
-            return;
-          }
-          reject(new Error(stderr || stdout || `资源更新进程退出码 ${code}`));
-        });
-      });
-      child.on('error', error => {
-        settle(() => reject(error));
-      });
-
-      if (timeoutMs !== null) {
-        timeoutTimer = timers.setTimeout(() => {
-          timedOut = true;
-          child.kill('SIGTERM');
-          forceKillTimer = timers.setTimeout(() => {
-            child.kill('SIGKILL');
-          }, forceKillDelayMs);
-        }, timeoutMs);
+    for (const resourceDir of resourceDirs) {
+      try {
+        const versionFile = await readVersionFile(join(resourceDir, 'version.json'));
+        const metadata = parseResourceVersion(versionFile.content);
+        const timestamp = parseVersionTimestamp(metadata.lastUpdated);
+        const info = buildResourceInfoFromMetadata(metadata, versionFile.modifiedAt, readAt);
+        if (!selected || (timestamp ?? Number.NEGATIVE_INFINITY) >= (selected.timestamp ?? Number.NEGATIVE_INFINITY)) {
+          selected = { info, timestamp };
+        }
+      } catch (error) {
+        lastError = error;
       }
-    });
+    }
+
+    if (selected) return selected.info;
+    throw lastError ?? new Error('无法读取 MAA 资源版本');
   }
 
   async function performUpdate(): Promise<ResourceUpdateResult> {
-    const output = await runUpdateScript();
+    const output = await runHotUpdate();
     return {
       output,
       resource: await getResourceInfo()
@@ -309,7 +221,7 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
 
 const defaultService = createResourceUpdateService();
 
-/** 读取当前 MAA 资源信息；CLI 或版本文件不可读时抛出。 */
+/** 读取当前 MAA 资源信息；所有候选目录都不可读时抛出。 */
 export function getMaaResourceInfo(): Promise<ResourceInfo> {
   return defaultService.getResourceInfo();
 }

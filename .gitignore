@@ -19,9 +19,6 @@ server/data/*
 !server/data/README.md
 server/debug/
 
-# 资源更新脚本的临时克隆目录
-server/.temp-maa-resource/
-
 # Docker 数据目录
 docker-data/
 

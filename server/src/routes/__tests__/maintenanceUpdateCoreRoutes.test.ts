@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import type { ApiErrorResponse } from '../../utils/apiHelper.ts';
+import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 
 // 本文件在环境变量注入后再动态导入 app，让 maaProcessService 在模块加载时解析到 500ms 维护超时；
 // 假 CLI 用 Atomics.wait 阻塞睡眠，保证 execFile 的 SIGKILL 超时语义真实触发；其对 `maa dir data`
@@ -36,6 +36,10 @@ if (args[0] === 'version') {
   const sleepMs = Number(process.env.FAKE_MAA_UPDATE_SLEEP_MS || '0');
   if (sleepMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, sleepMs);
   process.stdout.write('MaaCore v6.9.9\\n');
+} else if (args[0] === 'dir' && args[1] === 'resource') {
+  process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
+} else if (args[0] === 'dir' && args[1] === 'hot-update') {
+  process.stdout.write('');
 } else {
   process.exit(1);
 }
@@ -48,6 +52,7 @@ process.exit(0);
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.ADB_PATH = fakeAdbPath;
 process.env.FAKE_MAA_LOG = cliCallLog;
+process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
 process.env.XDG_DATA_HOME = xdgDataHome;
 process.env.XDG_STATE_HOME = xdgStateHome;
 process.env.XDG_CONFIG_HOME = xdgConfigHome;
@@ -78,6 +83,12 @@ async function readError(response: Response): Promise<ApiErrorResponse> {
   const body: unknown = await response.json();
   assert.ok(isApiError(body));
   return body;
+}
+
+async function readSuccess<T>(response: Response): Promise<ApiSuccessResponse<T>> {
+  const body: unknown = await response.json();
+  assert.ok(typeof body === 'object' && body !== null && (body as { success?: unknown }).success === true);
+  return body as ApiSuccessResponse<T>;
 }
 
 async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
@@ -156,22 +167,25 @@ describe('update-core maintenance timeout', () => {
     }
   });
 
-  it('completes the core step within the limit and reports resource sync failure separately', async () => {
+  it('relies on the native core update for resources instead of running a second update', async () => {
     process.env.FAKE_MAA_UPDATE_SLEEP_MS = '50';
     try {
       const port = await listen(createLaPlumaApp({ env: {} }));
       const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
       const response = await postJson(`${baseUrl}/actions/update-core`, {});
-      assert.equal(response.status, 500);
-      const body = await readError(response);
-      // Core 步骤在维护上限内完成，失败只发生在资源同步步骤。
-      assert.equal(body.error.code, 'AGENT_MAA_UPDATE_RESOURCE_FAILED');
-      assert.match(body.message, /MaaCore 已更新，但资源同步失败/);
-      const details = body.error.details as UpdateCoreErrorDetails;
-      assert.equal(details.failedStep, 'resources');
-      assert.equal(details.coreUpdated, true);
-      assert.match(await readFile(cliCallLog, 'utf-8'), /^update$/m);
+      assert.equal(response.status, 200);
+      const body = await readSuccess<{
+        steps: { core: { success: boolean }; resources: { success: boolean } };
+        runtime: { resource: { status: string } };
+      }>(response);
+      assert.equal(body.data.steps.core.success, true);
+      assert.equal(body.data.steps.resources.success, true);
+      assert.equal(body.data.runtime.resource.status, 'current', JSON.stringify(body.data.runtime.resource));
+
+      const calls = await readFile(cliCallLog, 'utf-8');
+      assert.match(calls, /^update$/m);
+      assert.doesNotMatch(calls, /^hot-update$/m, 'Core 更新后不能重复执行资源更新');
     } finally {
       delete process.env.FAKE_MAA_UPDATE_SLEEP_MS;
     }

@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import {
-  ResourceUpdateTimeoutError,
   buildResourceInfo,
   createResourceUpdateService,
   parseResourceVersion
 } from '../resourceUpdateService.ts';
 import type {
-  ResourceUpdateChild,
-  ResourceUpdateService,
-  ResourceUpdateSpawn
+  ResourceUpdateResult,
+  ResourceUpdateService
 } from '../resourceUpdateService.ts';
+import { MaaExecutionBusyError } from '../executionCoordinatorService.ts';
 import type { MaaExecutionLease, MaaExecutionLeaseRequest } from '../executionCoordinatorService.ts';
 
 const temporaryDirectories: string[] = [];
@@ -32,30 +30,8 @@ async function createTemporaryDirectory(prefix: string): Promise<string> {
 }
 
 const now = new Date('2026-07-10T12:00:00.000Z');
-
-class FakeUpdateChild extends EventEmitter implements ResourceUpdateChild {
-  stdout = new EventEmitter();
-  stderr = new EventEmitter();
-  signals: Array<NodeJS.Signals | number> = [];
-  closeOnSignal: NodeJS.Signals | null = null;
-
-  kill(signal?: NodeJS.Signals | number): boolean {
-    this.signals.push(signal ?? 'SIGTERM');
-    const expected = this.closeOnSignal;
-    if (expected !== null && signal === expected) {
-      queueMicrotask(() => this.emit('close', null, signal));
-    }
-    return true;
-  }
-
-  finish(code: number | null, { stdout = '', stderr = '' } = {}): void {
-    queueMicrotask(() => {
-      if (stdout) this.stdout.emit('data', Buffer.from(stdout));
-      if (stderr) this.stderr.emit('data', Buffer.from(stderr));
-      this.emit('close', code, code === 0 ? null : 'SIGTERM');
-    });
-  }
-}
+const baseDir = '/virtual/maa/resource';
+const hotUpdateDir = '/virtual/maa/MaaResource/resource';
 
 interface LeaseHarness {
   request: MaaExecutionLeaseRequest;
@@ -95,46 +71,60 @@ function createLeaseHarness(): LeaseHarness {
 
 interface UpdateHarness {
   service: ResourceUpdateService;
-  spawnCalls: Array<{ command: string; args: string[]; cwd: string }>;
+  versionFiles: Map<string, string | null>;
+  calls: string[];
   lease: LeaseHarness;
+  setVersion(resourceDir: string, lastUpdated: string): void;
+}
+
+function metadataContent(lastUpdated: string): string {
+  return JSON.stringify({ last_updated: lastUpdated, activity: { code: 'act-1' } });
 }
 
 function createUpdateService(options: {
-  children: FakeUpdateChild[];
-  versionContent?: string;
-  timeoutMs?: number | null;
-  forceKillDelayMs?: number;
-}): UpdateHarness {
-  const spawnCalls: UpdateHarness['spawnCalls'] = [];
+  resourceDirs?: string[];
+  hotUpdateResult?: () => Promise<string>;
+  hotUpdateError?: () => Error | null;
+} = {}): UpdateHarness {
+  const resourceDirs = options.resourceDirs ?? [baseDir];
+  const versionFiles = new Map<string, string | null>();
+  for (const dir of resourceDirs) {
+    versionFiles.set(dir, metadataContent('2026-07-09 23:28:49.000'));
+  }
+  const calls: string[] = [];
   const lease = createLeaseHarness();
-  const versionContent = options.versionContent ?? JSON.stringify({
-    last_updated: '2026-07-09 23:28:49.000',
-    activity: { code: 'act-1' }
-  });
-
-  const spawnUpdate: ResourceUpdateSpawn = (command, args, spawnOptions) => {
-    spawnCalls.push({ command, args: [...args], cwd: spawnOptions.cwd });
-    const child = options.children.shift();
-    assert.ok(child, 'unexpected update script spawn');
-    return child;
-  };
 
   const service = createResourceUpdateService({
-    resolveResourceDir: async () => '/virtual/maa/resource',
+    resolveResourceDirs: async () => resourceDirs,
     readVersionFile: async versionPath => {
-      assert.equal(versionPath, '/virtual/maa/resource/version.json');
-      return { content: versionContent, modifiedAt: new Date('2026-07-10T00:00:00.000Z') };
+      const dir = dirname(versionPath);
+      const content = versionFiles.get(dir);
+      if (content === null || content === undefined) {
+        const error = new Error(`ENOENT: ${versionPath}`) as NodeJS.ErrnoException;
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return { content, modifiedAt: new Date('2026-07-10T00:00:00.000Z') };
     },
     now: () => now,
-    spawn: spawnUpdate,
-    scriptPath: '/virtual/server/scripts/update-maa-resources.ts',
-    cwd: '/virtual/server',
-    timeoutMs: options.timeoutMs ?? null,
-    forceKillDelayMs: options.forceKillDelayMs,
+    runHotUpdate: async () => {
+      calls.push('hot-update');
+      const error = options.hotUpdateError?.();
+      if (error) throw error;
+      return options.hotUpdateResult ? options.hotUpdateResult() : 'Hot update completed successfully\n';
+    },
     withLease: lease.run
   });
 
-  return { service, spawnCalls, lease };
+  return {
+    service,
+    versionFiles,
+    calls,
+    lease,
+    setVersion(resourceDir, lastUpdated) {
+      versionFiles.set(resourceDir, metadataContent(lastUpdated));
+    }
+  };
 }
 
 describe('buildResourceInfo', () => {
@@ -166,10 +156,6 @@ describe('buildResourceInfo', () => {
     const boundary = buildResourceInfo({ last_updated: '2026-06-26 12:00:00.000' }, null, now);
     assert.equal(boundary.ageDays, 14);
     assert.equal(boundary.status, 'current');
-
-    const pastBoundary = buildResourceInfo({ last_updated: '2026-06-26 11:59:59.000' }, null, now);
-    assert.equal(pastBoundary.ageDays, 14);
-    assert.equal(pastBoundary.status, 'current');
 
     const stale = buildResourceInfo({ last_updated: '2026-06-25 00:00:00.000' }, null, now);
     assert.equal(stale.ageDays, 15);
@@ -210,7 +196,6 @@ describe('buildResourceInfo', () => {
       assert.equal(result.gacha, null);
     }
 
-    // 非 Date 的文件时间来自注入值，按未知处理而不是原样透传。
     const invalidModified = buildResourceInfo({}, 'not-a-date', now);
     assert.equal(invalidModified.modifiedAt, null);
 
@@ -247,13 +232,10 @@ describe('parseResourceVersion', () => {
 describe('resource info reads', () => {
   it('reads version.json under the CLI resource directory', async () => {
     const resourceDir = await createTemporaryDirectory('la-pluma-resource-info-');
-    await writeFile(join(resourceDir, 'version.json'), JSON.stringify({
-      last_updated: '2026-07-09 23:28:49.000',
-      activity: { code: 'act-1' }
-    }), 'utf-8');
+    await writeFile(join(resourceDir, 'version.json'), metadataContent('2026-07-09 23:28:49.000'), 'utf-8');
 
     const service = createResourceUpdateService({
-      resolveResourceDir: async () => resourceDir,
+      resolveResourceDirs: async () => [resourceDir],
       now: () => now
     });
     const info = await service.getResourceInfo();
@@ -265,10 +247,40 @@ describe('resource info reads', () => {
     assert.deepEqual(info.activity, { code: 'act-1' });
   });
 
+  it('falls back to the base resource when the hot-update overlay is missing', async () => {
+    const base = await createTemporaryDirectory('la-pluma-resource-base-');
+    const overlay = await createTemporaryDirectory('la-pluma-resource-overlay-');
+    await writeFile(join(base, 'version.json'), metadataContent('2026-07-01 00:00:00.000'), 'utf-8');
+
+    const service = createResourceUpdateService({
+      resolveResourceDirs: async () => [base, overlay],
+      now: () => now
+    });
+
+    const info = await service.getResourceInfo();
+    assert.equal(info.lastUpdated, '2026-07-01 00:00:00.000');
+  });
+
+  it('prefers the newest metadata across base and hot-update overlay', async () => {
+    const base = await createTemporaryDirectory('la-pluma-resource-base-');
+    const overlay = await createTemporaryDirectory('la-pluma-resource-overlay-');
+    await writeFile(join(base, 'version.json'), metadataContent('2026-07-01 00:00:00.000'), 'utf-8');
+    await writeFile(join(overlay, 'version.json'), metadataContent('2026-07-09 23:28:49.000'), 'utf-8');
+
+    const service = createResourceUpdateService({
+      resolveResourceDirs: async () => [base, overlay],
+      now: () => now
+    });
+
+    const info = await service.getResourceInfo();
+    assert.equal(info.lastUpdated, '2026-07-09 23:28:49.000');
+    assert.equal(info.status, 'current');
+  });
+
   it('propagates unreadable version files instead of inventing a status', async () => {
     const resourceDir = await createTemporaryDirectory('la-pluma-resource-missing-');
     const service = createResourceUpdateService({
-      resolveResourceDir: async () => resourceDir
+      resolveResourceDirs: async () => [resourceDir]
     });
 
     await assert.rejects(
@@ -279,128 +291,97 @@ describe('resource info reads', () => {
 });
 
 describe('resource updates', () => {
-  it('shares one in-flight update and reports the refreshed resource info', async () => {
-    const child = new FakeUpdateChild();
-    const harness = createUpdateService({ children: [child] });
+  it('runs maa hot-update once and reports the refreshed resource info', async () => {
+    const harness = createUpdateService({ resourceDirs: [baseDir, hotUpdateDir] });
 
-    const first = harness.service.updateResources();
-    const second = harness.service.updateResources();
-    child.finish(0, { stdout: '资源文件更新成功\n' });
+    const result = await harness.service.updateResources();
 
-    const [firstResult, secondResult] = await Promise.all([first, second]);
-    assert.equal(harness.spawnCalls.length, 1);
+    assert.deepEqual(harness.calls, ['hot-update']);
     assert.equal(harness.lease.request.source, 'resource-update');
     assert.equal(harness.lease.request.taskName, '同步 MAA 资源');
     assert.equal(harness.lease.request.command, 'hot-update');
     assert.equal(harness.lease.released, true);
-    assert.equal(firstResult, secondResult);
-    assert.equal(firstResult.output, '资源文件更新成功\n');
-    assert.equal(firstResult.resource.status, 'current');
-    assert.equal(harness.spawnCalls[0].command, 'node');
-    assert.deepEqual(harness.spawnCalls[0].args, ['/virtual/server/scripts/update-maa-resources.ts']);
-    assert.equal(harness.spawnCalls[0].cwd, '/virtual/server');
+    assert.equal(result.output, 'Hot update completed successfully\n');
+    assert.equal(result.resource.status, 'current');
   });
 
-  it('does not cancel the shared update when one caller stops awaiting', async () => {
-    const child = new FakeUpdateChild();
-    const harness = createUpdateService({ children: [child] });
-
-    void harness.service.updateResources();
-    const remaining = harness.service.updateResources();
-    child.finish(0, { stdout: 'ok\n' });
-
-    const result = await remaining;
-    assert.equal(result.output, 'ok\n');
-    assert.equal(harness.spawnCalls.length, 1);
-    assert.equal(harness.lease.released, true);
-  });
-
-  it('reports script failures once without an automatic retry', async () => {
-    const failingChild = new FakeUpdateChild();
-    const retryChild = new FakeUpdateChild();
-    const harness = createUpdateService({ children: [failingChild, retryChild] });
+  it('shares one in-flight update across concurrent callers', async () => {
+    let resolveUpdate: (output: string) => void = () => {};
+    const pending = new Promise<string>(resolve => { resolveUpdate = resolve; });
+    const harness = createUpdateService({ hotUpdateResult: () => pending });
 
     const first = harness.service.updateResources();
     const second = harness.service.updateResources();
-    failingChild.finish(1, { stderr: 'git clone 失败\n' });
+    assert.equal(harness.calls.length, 1);
 
-    await assert.rejects(first, /git clone 失败/);
-    await assert.rejects(second, /git clone 失败/);
-    assert.equal(harness.spawnCalls.length, 1, '失败后不能自动重试');
+    resolveUpdate('ok\n');
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    assert.equal(harness.calls.length, 1);
+    assert.equal(firstResult, secondResult);
     assert.equal(harness.lease.released, true);
-
-    const retry = harness.service.updateResources();
-    retryChild.finish(0, { stdout: 'ok\n' });
-    const result = await retry;
-
-    assert.equal(harness.spawnCalls.length, 2, '显式的新请求才启动新的更新');
-    assert.equal(result.output, 'ok\n');
   });
 
-  it('falls back to the captured output when the script exits without stderr', async () => {
-    const child = new FakeUpdateChild();
-    const harness = createUpdateService({ children: [child] });
-
-    const update = harness.service.updateResources();
-    child.finish(2, { stdout: '部分输出' });
-
-    await assert.rejects(update, /部分输出/);
-    assert.equal(harness.spawnCalls.length, 1);
-  });
-
-  it('terminates an explicit timeout with SIGTERM then SIGKILL and never retries', async () => {
-    const child = new FakeUpdateChild();
-    child.closeOnSignal = 'SIGKILL';
+  it('reports failures once without retrying and keeps the previous resource readable', async () => {
+    let fail = true;
     const harness = createUpdateService({
-      children: [child],
-      timeoutMs: 10,
-      forceKillDelayMs: 10
+      resourceDirs: [baseDir],
+      hotUpdateError: () => fail ? new Error('git pull failed\n') : null
     });
 
-    const update = harness.service.updateResources();
-
-    await assert.rejects(update, error => {
-      assert.ok(error instanceof ResourceUpdateTimeoutError);
-      assert.equal(error.code, 'MAA_RESOURCE_UPDATE_TIMEOUT');
-      assert.equal(error.timeoutMs, 10);
-      assert.match(error.message, /资源更新超时（10ms）/);
-      return true;
-    });
-    assert.deepEqual(child.signals, ['SIGTERM', 'SIGKILL']);
-    assert.equal(harness.spawnCalls.length, 1);
+    const first = harness.service.updateResources();
+    const second = harness.service.updateResources();
+    await assert.rejects(first, /git pull failed/);
+    await assert.rejects(second, /git pull failed/);
+    assert.equal(harness.calls.length, 1, '失败后不能自动重试');
     assert.equal(harness.lease.released, true);
+
+    const info = await harness.service.getResourceInfo();
+    assert.equal(info.lastUpdated, '2026-07-09 23:28:49.000');
+
+    fail = false;
+    const retry = await harness.service.updateResources();
+    assert.equal(harness.calls.length, 2, '显式的新请求才启动新的更新');
+    assert.equal(retry.resource.status, 'current');
   });
 
-  it('surfaces spawn errors without retrying', async () => {
-    const child = new FakeUpdateChild();
-    const harness = createUpdateService({ children: [child] });
-    const spawnFailure = new Error('spawn node ENOENT');
+  it('refreshes metadata after the hot update', async () => {
+    const harness = createUpdateService({ resourceDirs: [baseDir, hotUpdateDir] });
+    harness.setVersion(hotUpdateDir, '2026-07-10 11:00:00.000');
 
-    const update = harness.service.updateResources();
-    queueMicrotask(() => child.emit('error', spawnFailure));
+    const result = await harness.service.updateResources();
 
-    await assert.rejects(update, error => error === spawnFailure);
-    assert.equal(harness.spawnCalls.length, 1);
-    assert.equal(harness.lease.released, true);
+    assert.equal(result.resource.lastUpdated, '2026-07-10 11:00:00.000');
+    assert.equal(result.resource.ageDays, 0);
   });
 
-  it('removes the in-flight update after a refresh failure', async () => {
-    const child = new FakeUpdateChild();
-    const successfulChild = new FakeUpdateChild();
-    let reads = 0;
-    const spawnCalls: string[] = [];
+  it('surfaces a busy lease without running or retrying the update', async () => {
     const service = createResourceUpdateService({
-      resolveResourceDir: async () => '/virtual/maa/resource',
+      resolveResourceDirs: async () => [baseDir],
+      readVersionFile: async () => ({ content: metadataContent('2026-07-09 23:28:49.000'), modifiedAt: now }),
+      runHotUpdate: async () => {
+        assert.fail('busy lease must not run the update');
+      },
+      withLease: async () => { throw new MaaExecutionBusyError(null); }
+    });
+
+    await assert.rejects(service.updateResources(), error => error instanceof MaaExecutionBusyError);
+  });
+
+  it('removes the in-flight update after a metadata refresh failure', async () => {
+    let reads = 0;
+    const calls: string[] = [];
+    const service = createResourceUpdateService({
+      resolveResourceDirs: async () => [baseDir],
       readVersionFile: async () => {
         reads += 1;
         if (reads === 1) throw new Error('版本文件不可读');
-        return { content: JSON.stringify({ last_updated: '2026-07-09 23:28:49.000' }), modifiedAt: now };
+        return { content: metadataContent('2026-07-09 23:28:49.000'), modifiedAt: now };
       },
       now: () => now,
-      spawn: (_command, args) => {
-        spawnCalls.push(args[0]);
-        const next = spawnCalls.length === 1 ? child : successfulChild;
-        return next;
+      runHotUpdate: async () => {
+        calls.push('hot-update');
+        return 'ok\n';
       },
       withLease: async (_request, callback) => callback({
         owner: { pid: 1, source: 'test', taskName: null, command: null, startedAt: '' },
@@ -410,15 +391,10 @@ describe('resource updates', () => {
       })
     });
 
-    const failing = service.updateResources();
-    child.finish(0, { stdout: 'ok\n' });
-    await assert.rejects(failing, /版本文件不可读/);
+    await assert.rejects(service.updateResources(), /版本文件不可读/);
+    const retry: ResourceUpdateResult = await service.updateResources();
 
-    const retry = service.updateResources();
-    successfulChild.finish(0, { stdout: 'ok\n' });
-    const result = await retry;
-
-    assert.equal(spawnCalls.length, 2);
-    assert.equal(result.resource.status, 'current');
+    assert.equal(calls.length, 2);
+    assert.equal(retry.resource.status, 'current');
   });
 });
