@@ -31,6 +31,8 @@ export interface DropRecordInput {
   source?: string;
   mode?: string;
   recordKey?: string;
+  sanityBefore?: number;
+  maxSanity?: number;
 }
 
 export interface DropRecordEntry {
@@ -44,6 +46,8 @@ export interface DropRecordEntry {
   source: string;
   mode: string;
   recordKey?: string;
+  sanityBefore?: number;
+  maxSanity?: number;
 }
 
 export interface DropRecordSummary {
@@ -164,6 +168,8 @@ function parseDropRecordEntry(value: unknown): DropRecordEntry | null {
   }
 
   const recordKey = readString(value.recordKey, '');
+  const sanityBefore = readNumber(value.sanityBefore);
+  const maxSanity = readNumber(value.maxSanity);
   return {
     timestamp: value.timestamp,
     stage: value.stage,
@@ -174,7 +180,9 @@ function parseDropRecordEntry(value: unknown): DropRecordEntry | null {
     items,
     source: readString(value.source, 'fight'),
     mode: readString(value.mode, 'normal'),
-    ...(recordKey ? { recordKey } : {})
+    ...(recordKey ? { recordKey } : {}),
+    ...(sanityBefore === null ? {} : { sanityBefore }),
+    ...(maxSanity === null ? {} : { maxSanity })
   };
 }
 
@@ -278,7 +286,13 @@ export async function recordDrops(
           items: dropData.items || [],
           source: dropData.source || 'fight',
           mode: dropData.mode || 'normal',
-          ...(recordKey ? { recordKey } : {})
+          ...(recordKey ? { recordKey } : {}),
+          ...(typeof dropData.sanityBefore === 'number' && Number.isFinite(dropData.sanityBefore)
+            ? { sanityBefore: dropData.sanityBefore }
+            : {}),
+          ...(typeof dropData.maxSanity === 'number' && Number.isFinite(dropData.maxSanity)
+            ? { maxSanity: dropData.maxSanity }
+            : {})
         };
 
         record.records.push(newRecord);

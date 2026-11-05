@@ -345,7 +345,9 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         sanity: statistics.sanity,
         medicine: Math.max(0, Number(summary?.medicine) || 0),
         stone: Math.max(0, Number(summary?.stone) || 0),
-        recordKey
+        recordKey,
+        ...(statistics.sanityBeforeStage === undefined ? {} : { sanityBefore: statistics.sanityBeforeStage }),
+        ...(statistics.maxSanity === undefined ? {} : { maxSanity: statistics.maxSanity })
       });
       logger.debug('掉落记录已保存', {
         scheduleId,
@@ -408,6 +410,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     lifecycle.onStarted?.();
 
     const startTime = Date.now();
+    const executionRecordKey = `${scheduleId}:${runId || startTime}`;
     const enabledTasks = tasks.filter(t => t.enabled);
     let successCount = 0;
     let failedCount = 0;
@@ -1067,7 +1070,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                     fightStatistics,
                     summary,
                     scheduleId,
-                    `${scheduleId}:${runId || 'manual'}:${task.id}:${stage}:${i}`
+                    `${executionRecordKey}:${task.id}:${stage}:${i}`
                   );
                   addFightAction(createFightExecutionAction(`${task.name} (${stage})`, stage, {
                     summary,
@@ -1198,7 +1201,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               fightStatistics,
               parsedTaskSummary,
               scheduleId,
-              `${scheduleId}:${runId || 'manual'}:${task.id}:${fightStage}:0`
+              `${executionRecordKey}:${task.id}:${fightStage}:0`
             );
             const output = (result.stdout || '') + (result.stderr || '');
             const fightAction = createFightExecutionAction(task.name, fightStage, {

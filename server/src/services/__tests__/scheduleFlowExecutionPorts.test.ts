@@ -608,6 +608,7 @@ describe('schedule flow boundaries', () => {
     const { ports, calls } = createPorts({
       readLogSince: async () => [
         callback('FightTimes', { times_finished: 1, sanity_cost: 21 }),
+        callback('SanityBeforeStage', { current_sanity: 50, max_sanity: 135 }),
         callback('StageDrops', {
           stage: { stageCode: 'CE-6' },
           stars: 3,
@@ -632,7 +633,9 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.drops[0].times, 1);
     assert.equal(calls.drops[0].sanity, 21);
     assert.deepEqual(calls.drops[0].items, []);
-    assert.equal(calls.drops[0].recordKey, 'flow-zero-drop:manual:fight-1:CE-6:0');
+    assert.equal(calls.drops[0].sanityBefore, 50);
+    assert.equal(calls.drops[0].maxSanity, 135);
+    assert.match(calls.drops[0].recordKey || '', /^flow-zero-drop:\d+:fight-1:CE-6:0$/);
   });
 
   it('keeps the selected series when a single stage also sets times', async () => {
