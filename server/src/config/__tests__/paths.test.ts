@@ -186,6 +186,10 @@ describe('resource root contract', () => {
       resolveResourceFile(join('template', 'items', '30011.png'), options),
       '/maa/data/resource/template/items/30011.png'
     );
+    assert.equal(
+      resolveResourceRoot({ ...options, env: { MAA_RESOURCE_DIR: '/custom/resource' } }),
+      '/custom/resource'
+    );
   });
 });
 
