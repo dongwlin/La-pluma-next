@@ -24,6 +24,7 @@ describe('automation award task catalog', () => {
       orundum: '合成玉奖励',
       mining: '采矿奖励',
       specialaccess: '周年赠送月卡',
+      signinevent: '限时签到活动奖励',
     })
     expect(award.paramFields.every(field => field.type === 'checkbox')).toBe(true)
     expect(award.taskType).toBe('Award')
@@ -33,7 +34,7 @@ describe('automation award task catalog', () => {
     if (!award) throw new Error('missing award task')
 
     expect(award.paramFields.map(field => field.key))
-      .toEqual(['award', 'mail', 'recruit', 'orundum', 'mining', 'specialaccess'])
+      .toEqual(['award', 'mail', 'recruit', 'orundum', 'mining', 'specialaccess', 'signinevent'])
     expect(award.defaultParams).toEqual({
       award: true,
       mail: true,
@@ -41,6 +42,7 @@ describe('automation award task catalog', () => {
       orundum: false,
       mining: false,
       specialaccess: false,
+      signinevent: false,
     })
   })
 
@@ -51,6 +53,7 @@ describe('automation award task catalog', () => {
 
     expect(helperOf('recruit')).toContain('限定池赠送的每日免费单抽')
     expect(helperOf('specialaccess')).toContain('周年活动赠送的月卡奖励')
+    expect(helperOf('signinevent')).toContain('限时签到活动')
 
     const labels = award.paramFields.map(field => field.label).join('')
     expect(labels).not.toContain('公招')
@@ -69,6 +72,31 @@ describe('automation game task catalog', () => {
     })
   })
 })
+
+
+  it('uses expiry days for the fight medicine and keeps the legacy key out of the catalog', () => {
+    const fight = AVAILABLE_TASKS.find(task => task.id === 'fight')
+    expect(fight?.defaultParams).toMatchObject({ medicineExpireDays: 0 })
+    expect(fight?.defaultParams).not.toHaveProperty('expiringMedicine')
+
+    const medicine = fightParamField('medicineExpireDays')
+    expect(medicine.label).toContain('天数')
+    expect(medicine.helper).toContain('0 表示不使用临期药')
+  });
+
+  it('adds the recruit permit reserve and the startup launch switch defaults', () => {
+    const recruit = AVAILABLE_TASKS.find(task => task.id === 'recruit')
+    const permitReserve = recruit?.paramFields.find(field => field.key === 'level3_recruitment_permit_reserve')
+    expect(recruit?.defaultParams).toMatchObject({ level3_recruitment_permit_reserve: 0 })
+    expect(permitReserve?.label).toBe('3 星保留招聘许可')
+    expect(permitReserve?.helper).toContain('0 表示不保留')
+
+    const startup = AVAILABLE_TASKS.find(task => task.id === 'startup')
+    const launchSwitch = startup?.paramFields.find(field => field.key === 'start_game_enabled')
+    expect(startup?.defaultParams).toMatchObject({ start_game_enabled: true })
+    expect(launchSwitch?.label).toBe('启动游戏客户端')
+    expect(launchSwitch?.helper).toContain('不会启动游戏客户端')
+  });
 
 describe('automation fight task catalog', () => {
   it('explains that stage times and the series multiplier apply together', () => {
@@ -93,7 +121,7 @@ describe('automation fight task catalog', () => {
     const series = fightParamField('series')
     expect(series.type).toBe('select')
     expect(series.options?.map(option => (typeof option === 'string' ? option : option.value)))
-      .toEqual(['-1', '0', '1', '2', '3', '4', '5', '6'])
+      .toEqual(['-1', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
     expect(series.visibleWhen).toBeUndefined()
     expect(series.hiddenWhen).toBeUndefined()
     expect(Object.keys(series)).not.toContain('disabled')

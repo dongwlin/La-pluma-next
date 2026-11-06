@@ -61,3 +61,38 @@ export function updateOperProgressMastery(plan: OperProgressPlan, skill: number,
   else delete next.skill_mastery
   return next
 }
+
+export const FIGHT_SERIES_MIN = -1
+export const FIGHT_SERIES_MAX = 10
+
+function optionalInteger(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? parsed : Number.NaN
+}
+
+export function validateFightSeries(value: unknown): string | null {
+  const parsed = optionalInteger(value)
+  if (parsed === null) return null
+  return Number.isNaN(parsed) || parsed < FIGHT_SERIES_MIN || parsed > FIGHT_SERIES_MAX
+    ? `连战倍率应为 ${FIGHT_SERIES_MIN} 至 ${FIGHT_SERIES_MAX} 的整数`
+    : null
+}
+
+export function validateFightMedicineExpireDays(value: unknown): string | null {
+  const parsed = optionalInteger(value)
+  if (parsed === null) return null
+  return Number.isNaN(parsed) || parsed < 0 ? '临期药天数应为不小于 0 的整数' : null
+}
+
+export function validateRecruitPermitReserve(value: unknown): string | null {
+  const parsed = optionalInteger(value)
+  if (parsed === null) return null
+  return Number.isNaN(parsed) || parsed < 0 ? '3 星保留招聘许可应为不小于 0 的整数' : null
+}
+
+export function validateRecruitExtraTagsMode(value: unknown): string | null {
+  const parsed = optionalInteger(value)
+  if (parsed === null) return null
+  return Number.isNaN(parsed) || ![0, 1, 2].includes(parsed) ? '公招多选 Tag 策略无效' : null
+}

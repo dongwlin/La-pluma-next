@@ -2,7 +2,14 @@ import type { AutomationAvailableTask, StageConfig, TaskFlowItem, TaskParams } f
 import { parseDropTargets } from './dropTargets'
 import { flattenStagesForEditing, splitStagesForEditing } from './stageEditing'
 import { placeClosedownLast } from './taskFlowSort'
-import { validateOperProgressPlans, validateThemes } from './gameTaskParams'
+import {
+  validateFightMedicineExpireDays,
+  validateFightSeries,
+  validateOperProgressPlans,
+  validateRecruitExtraTagsMode,
+  validateRecruitPermitReserve,
+  validateThemes,
+} from './gameTaskParams'
 
 /**
  * 流程条目：草稿态没有界面字段，展示态可以带上；两种形状都能传入模型。
@@ -183,7 +190,12 @@ export function findTaskFlowValidationFailure(
       ? validateOperProgressPlans(task.params.plans)
       : commandId === 'switchtheme' || task.taskType === 'SwitchTheme'
         ? validateThemes(task.params.themes)
-        : null
+        : commandId === 'fight'
+          ? validateFightSeries(task.params.series) ?? validateFightMedicineExpireDays(task.params.medicineExpireDays)
+          : commandId === 'recruit' || task.taskType === 'Recruit'
+            ? validateRecruitPermitReserve(task.params.level3_recruitment_permit_reserve)
+              ?? validateRecruitExtraTagsMode(task.params.extra_tags_mode)
+            : null
     if (message) return { taskId: task.id, message }
   }
 

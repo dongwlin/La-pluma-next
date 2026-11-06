@@ -152,7 +152,15 @@ export function migrateTaskParams<T extends Record<string, unknown>>(task: T): T
     delete params.adbPath
     delete params.address
   }
+  if (commandId === 'startup') {
+    params.start_game_enabled ??= true
+  }
   if (commandId === 'fight') {
+    if (params.medicineExpireDays === undefined && params.expiringMedicine !== undefined) {
+      params.medicineExpireDays = params.expiringMedicine
+    }
+    delete params.expiringMedicine
+    params.medicineExpireDays ??= 0
     params.drops ??= ''
     params.clientType ??= ''
     params.DrGrandet ??= false
@@ -169,6 +177,7 @@ export function migrateTaskParams<T extends Record<string, unknown>>(task: T): T
     params.force_refresh ??= true
     params.first_tags ??= ''
     params.extra_tags_mode ??= 0
+    params.level3_recruitment_permit_reserve ??= 0
     params.recruitment_time ??= { '3': 540, '4': 540 }
     delete params.skip_robot
   } else if (commandId === 'infrast') {
@@ -180,6 +189,8 @@ export function migrateTaskParams<T extends Record<string, unknown>>(task: T): T
     params.reception_message_board ??= true
     params.reception_clue_exchange ??= true
     params.reception_send_clue ??= true
+  } else if (commandId === 'award') {
+    params.signinevent ??= false
   } else if (commandId === 'mall') {
     params.visit_friends ??= true
     params.shopping ??= true
