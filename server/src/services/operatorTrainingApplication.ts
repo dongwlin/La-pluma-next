@@ -338,7 +338,7 @@ export async function applyPlanToTasks(
             stage: '1-7',
             stages: [],
             medicine: effectiveSettings.useMedicine || 0,
-            expiringMedicine: 0,
+            medicineExpireDays: 0,
             stone: effectiveSettings.useStone || 0,
             series: 0
           }
@@ -396,7 +396,7 @@ export async function applyPlanToTasks(
         ...fightTask.params,
         stages: newStages,
         medicine: effectiveSettings.useMedicine || 0,
-        expiringMedicine: 0,
+        medicineExpireDays: 0,
         stone: effectiveSettings.useStone || 0,
         series: fightTask.params.series || 0
       };

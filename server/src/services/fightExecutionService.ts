@@ -12,6 +12,8 @@ export interface FightStageEntry {
 
 export interface FightRequestOptions {
   medicine?: unknown;
+  medicineExpireDays?: unknown;
+  /** @deprecated 旧版按瓶数表达临期药；新调用方使用 medicineExpireDays。 */
   expiringMedicine?: unknown;
   stone?: unknown;
   series?: unknown;
@@ -129,7 +131,11 @@ export function buildFightStageArgs(
   const args = [entry.stage];
   if (entry.times) args.push('--times', entry.times);
   appendOption(args, '-m', options.medicine);
-  appendOption(args, '--expiring-medicine', options.expiringMedicine);
+  if (options.medicineExpireDays !== undefined && options.medicineExpireDays !== null && options.medicineExpireDays !== '') {
+    appendOption(args, '--medicine-expire-days', options.medicineExpireDays);
+  } else {
+    appendOption(args, '--expiring-medicine', options.expiringMedicine);
+  }
   appendOption(args, '--stone', options.stone);
   if (options.series !== undefined
     && options.series !== null

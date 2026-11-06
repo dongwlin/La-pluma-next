@@ -89,7 +89,7 @@ export interface CombatTaskParams {
   stage?: string;
   stages?: CombatTaskStage[];
   medicine?: number;
-  expiringMedicine?: number;
+  medicineExpireDays?: number;
   stone?: number;
   series?: number;
   [extension: string]: unknown;
