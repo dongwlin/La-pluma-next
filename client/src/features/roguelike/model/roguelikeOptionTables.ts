@@ -230,7 +230,7 @@ export const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     key: 'findPlayTimeTarget',
     label: '目标常乐节点',
     type: 'select',
-    coreParam: 'find_play_time_target',
+    coreParam: 'find_playTime_target',
     coreType: 'number',
     options: FIND_PLAYTIME_TARGETS,
     themes: ['JieGarden'],
