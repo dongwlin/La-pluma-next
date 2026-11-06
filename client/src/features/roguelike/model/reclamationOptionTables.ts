@@ -1,0 +1,60 @@
+import type { RoguelikeAdvancedOption } from '../types'
+import { MAA_CLI_I32_MAX } from './roguelikeOptionCatalog'
+
+export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
+  {
+    key: 'mode',
+    label: '模式',
+    type: 'select',
+    param: '-m',
+    coreParam: 'mode',
+    coreType: 'number',
+    choices: 'modes',
+    defaultValue: '1',
+    hint: '沙洲遗闻：模式 0 仅在没有存档时使用（有存档可能丢失进度），需在主界面右下角出现「开始演算」后启动；模式 1 需要已有存档，需在能看到驻扎地的页面启动。重启锚点：16 为 RA-1 精耕细作循环，32 为 RA-15 六十杀任务，48 为 RA-4 解锁区域并击杀 Boss。',
+  },
+  {
+    key: 'toolsToCraft',
+    label: '制作工具名称',
+    type: 'list',
+    param: '-C',
+    coreParam: 'tools_to_craft',
+    coreType: 'string-list',
+    placeholder: '荧光棒',
+    modes: ['1'],
+    hint: '多个工具用逗号分隔；留空则不制造。仅在沙洲遗闻模式 1 生效。',
+  },
+  {
+    key: 'incrementMode',
+    label: '加号点击方式',
+    type: 'select',
+    param: '--increment-mode',
+    coreParam: 'increment_mode',
+    coreType: 'number',
+    options: [
+      { value: '0', label: '连点（默认）' },
+      { value: '1', label: '长按' },
+    ],
+    modes: ['1'],
+    hint: '增加组装数量时与加号按钮的交互方式：连点逐次点击，长按按住连续增加。仅在沙洲遗闻模式 1 生效。',
+  },
+  {
+    key: 'numBatches',
+    label: '批次数',
+    type: 'number',
+    param: '--num-craft-batches',
+    coreParam: 'num_craft_batches',
+    coreType: 'number',
+    placeholder: '16',
+    modes: ['1'],
+    numberRange: { min: 1, max: MAA_CLI_I32_MAX },
+  },
+  {
+    key: 'clearStore',
+    label: '任务完成后清空商店',
+    type: 'checkbox',
+    coreParam: 'clear_store',
+    modes: ['0'],
+    hint: '任务完成后购买并清空商店商品；仅在沙洲遗闻模式 0 生效。',
+  },
+]

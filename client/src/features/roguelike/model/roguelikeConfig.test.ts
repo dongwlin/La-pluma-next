@@ -158,6 +158,44 @@ describe('roguelike config adapter', () => {
     })
   })
 
+  it("migrates a relaunch anchor draft to that theme's default mode", () => {
+    expect(roguelikeConfigAdapter.decodeDraft({
+      taskInputs: { reclamation: 'RelaunchAnchor' },
+    })).toEqual({
+      taskInputs: { reclamation: 'RelaunchAnchor' },
+      advancedParams: {
+        roguelike: { roles: '稳扎稳打' },
+        reclamation: { mode: '16' },
+      },
+    })
+  })
+
+  it('round-trips old drafts without dropping unknown advanced values', () => {
+    const payload = {
+      taskInputs: { roguelike: 'Sami', reclamation: 'Tales' },
+      advancedParams: {
+        roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些', legacyFlag: 'kept' },
+        reclamation: { mode: '0', legacyNumber: 3 },
+        unknownTask: { mode: '1' },
+      },
+    }
+
+    const decoded = roguelikeConfigAdapter.decodeDraft(payload)
+    expect(decoded?.advancedParams.roguelike).toMatchObject({ legacyFlag: 'kept' })
+    expect(decoded?.advancedParams.reclamation).toMatchObject({ mode: '0', legacyNumber: 3 })
+    expect(decoded?.advancedParams.unknownTask).toEqual({ mode: '1' })
+
+    const encoded = roguelikeConfigAdapter.encodeDraft(decoded!)
+    expect(encoded.taskInputs).toEqual(payload.taskInputs)
+    expect(encoded.advancedParams.unknownTask).toEqual({ mode: '1' })
+    expect(encoded.advancedParams.roguelike).toMatchObject({
+      mode: '5',
+      expectedCollapsalParadigms: '目空一些',
+      legacyFlag: 'kept',
+      roles: '稳扎稳打',
+    })
+  })
+
   it('keeps an explicitly selected local reclamation mode', () => {
     localStorage.setItem(ROGUELIKE_ADVANCED_PARAMS_KEY, JSON.stringify({
       reclamation: { mode: '0' },

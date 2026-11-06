@@ -1180,6 +1180,102 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(mocks.saveUserConfig).toHaveBeenCalledOnce()
   })
 
+  it('adds the reclamation increment mode and clear-store controls', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+    await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+
+    const increment = container.querySelector<HTMLSelectElement>(
+      'select[name="maa-reclamation-incrementMode"]',
+    )
+    expect(increment).not.toBeNull()
+    expect(increment?.value).toBe('0')
+
+    await setControlValue('select[name="maa-reclamation-mode"]', '0', 'change')
+    expect(container.querySelector('select[name="maa-reclamation-incrementMode"]')).toBeNull()
+    await toggleSwitch('input[name="maa-reclamation-clearStore"]')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
+      'run',
+      'reclamation',
+      {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 0, clear_store: true },
+      },
+      null,
+      '生息演算',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('switches the reclamation modes with the relaunch anchor theme', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+    await setControlValue('input[name="maa-reclamation-theme"]', 'RelaunchAnchor')
+
+    const modeSelect = container.querySelector<HTMLSelectElement>('select[name="maa-reclamation-mode"]')!
+    expect(modeSelect.value).toBe('16')
+    expect(Array.from(modeSelect.options).map(option => option.value)).toEqual(['16', '32', '48'])
+
+    await setControlValue('select[name="maa-reclamation-mode"]', '32', 'change')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
+      'run',
+      'reclamation',
+      {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'RelaunchAnchor', mode: 32 },
+      },
+      null,
+      '生息演算',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('submits core-only roguelike selections as a dynamic task', async () => {
+    await renderPage()
+    await setTheme('BlackFlow')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
+      'run',
+      'roguelike',
+      {
+        name: '集成战略',
+        type: 'Roguelike',
+        params: {
+          theme: 'BlackFlow',
+          roles: '稳扎稳打',
+          stop_when_investment_full: true,
+        },
+      },
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('rejects an unknown theme before creating a run', async () => {
+    await renderPage()
+    await setTheme('UnknownTheme')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '未知主题「UnknownTheme」，支持：Phantom、Mizuki、Sami、Sarkaz、JieGarden、BlackFlow',
+    )
+  })
+
   it('associates every form control with a label', async () => {
     await renderPage()
 

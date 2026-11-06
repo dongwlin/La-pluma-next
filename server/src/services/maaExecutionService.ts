@@ -27,7 +27,7 @@ import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts'
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
-import { validateGameTaskParams } from './gameTaskConfigService.ts';
+import { validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
 import { agentError } from '../utils/apiHelper.ts';
 
 const logger = createLogger('MaaService');
@@ -244,6 +244,10 @@ export async function execMaaCommand(
   lifecycle: MaaProcessLifecycle = {},
   ports: MaaProcessPorts = {}
 ): Promise<MaaCommandOutput | MaaBackgroundStart> {
+  const commandArgsError = validateRoguelikeCommandArgs(command, args);
+  if (commandArgsError) {
+    throw agentError('AGENT_VALIDATION_TASK_ARGS_INVALID', commandArgsError, { statusCode: 400, retryable: false });
+  }
   if (!requiresMaaExecutionLease(command)) {
     return execMaaCommandUnlocked(command, args, taskName, taskType, waitForCompletion, silent, null, lifecycle, ports);
   }
