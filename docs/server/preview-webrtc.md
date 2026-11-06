@@ -7,13 +7,13 @@
 ## 链路总览
 
 1. 预览启停与状态经 `/api/agent` 下的预览 router 进入（`server/src/routes/agentPreviewRoutes.ts` 只做端点映射，`server/src/controllers/agentPreviewController.ts` 做 HTTP 适配）；服务端经生命周期队列启动信令服务与设备端 Agent，启动响应带同源协议描述 `websocket: /webrtc-signaling/connect_client?token=` 等（`server/src/controllers/agentPreviewController.ts:66-73`）。
-2. 浏览器向 `POST /webrtc-signaling/api/login` 换取一次性票据。这是上游管理面唯一经应用端口暴露的部分：信令路径的其余请求一律固定 JSON 404，上游管理界面、`/api` 与 `/devices` 不外露（`server/src/app.ts:103-115`）。
+2. 浏览器向 `POST /webrtc-signaling/api/login` 换取一次性票据。这是上游管理面唯一经应用端口暴露的部分：信令路径的其余请求一律固定 JSON 404，上游管理界面、`/api` 与 `/devices` 不外露（`server/src/app.ts:126-138`）。
 3. 网关持票据换得的上游 token，把只含 `connect_client` 的 WebSocket 升级代理到 `127.0.0.1:$LA_PLUMA_WEBRTC_PORT`（默认 8443）的上游监听（`server/src/services/webrtcSignalingGateway.ts:150-162`、`server/src/services/webrtcService.ts:44`）。
 4. 每个升级连接登记一个 viewer 租约，连接关闭或网关关闭时释放（`webrtcSignalingGateway.ts:227-247,299-305`）。
 
 预览与截图只管理预览基础设施，不参与设备自动化执行租约（`docs/architecture/execution-lifecycle.md` 第 6 节）。
 
-网关路径固定挂在同源根路径，不随 `LA_PLUMA_BASE_PATH` 子路径偏移：生产静态资源把信令路径列入保留路径，先于 SPA fallback 处理（`server/src/app.ts:148-166`）。工作目录 `LA_PLUMA_WEBRTC_DIR` 默认 `$HOME/ScrcpyOverWebRTC`，信令服务、TURN 与设备端 Agent 的日志都写在该目录（`webrtcService.ts:43,663-669`）。
+网关路径固定挂在同源根路径，不随 `LA_PLUMA_BASE_PATH` 子路径偏移：生产静态资源把信令路径列入保留路径，先于 SPA fallback 处理（`server/src/app.ts:200-218`）。工作目录 `LA_PLUMA_WEBRTC_DIR` 默认 `$HOME/ScrcpyOverWebRTC`，信令服务、TURN 与设备端 Agent 的日志都写在该目录（`webrtcService.ts:43,663-669`）。
 
 ## 一次性票据与升级代理
 
@@ -28,11 +28,11 @@
 
 ## signalingLoginGuard：票据签发的访问边界
 
-票据入口前置 `optionalApiAuth` 与 `createSignalingLoginGuard`（`server/src/app.ts:103-107`）。
+票据入口前置 `optionalApiAuth` 与 `createSignalingLoginGuard`（`server/src/app.ts:126-130`）。
 
 - 令牌模式（配置 `LA_PLUMA_TOKEN`）：令牌已由前置中间件把关，来源不构成额外边界，守卫只限流（`server/src/services/signalingLoginGuard.ts:67-82`）。
 - 本地/LAN 模式（未配置令牌）只允许同源签发：无 `Origin` 的非浏览器调用视为同源；`Origin: null`、非法 URL、缺失或携带 userinfo/路径的 `Host` 一律拒绝；只比较主机名，端口与协议不参与（兼容本地开发代理与反向代理终止 TLS）。跨源返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`（`signalingLoginGuard.ts:50-65,82-88`）。
-- 签发频率独立于认证失败限流：每来源每 60 秒窗口 30 次，进程内固定窗口计数，键取 `req.ip`（未启用 trust proxy）；超限返回 429 并带 `Retry-After`（`server/src/app.ts:49-51,76-80`、`signalingLoginGuard.ts:90-98`、`server/src/utils/loginThrottle.ts:52-60`）。
+- 签发频率独立于认证失败限流：每来源每 60 秒窗口 30 次，进程内固定窗口计数，键取 `req.ip`（未启用 trust proxy）；超限返回 429 并带 `Retry-After`（`server/src/app.ts:53-55,83-87`、`signalingLoginGuard.ts:90-98`、`server/src/utils/loginThrottle.ts:52-60`）。
 
 认证与限流的通用规则（令牌头、失败限流、反向代理注意项）见[部署指南](../guides/deployment.md#跨域与访问来源)。
 

@@ -33,7 +33,7 @@
 
 ## 就绪判定（/health 与 /readiness）
 
-`/health` 只表示进程仍在应答，不执行 ADB、MAA 或外网探测，供容器存活检查使用（`server/src/app.ts:117`）。`/readiness` 提供独立的就绪判断，三个检查同时满足才返回 200（`server/src/services/runtimeReadinessService.ts:126`）：
+`/health` 只表示进程仍在应答，不执行 ADB、MAA 或外网探测，供容器存活检查使用（`server/src/app.ts:140`）。`/readiness` 提供独立的就绪判断，三个检查同时满足才返回 200（`server/src/services/runtimeReadinessService.ts:126`）：
 
 | 检查 | 就绪条件 | 不可就绪原因码 |
 | --- | --- | --- |
@@ -41,7 +41,7 @@
 | `initialization` | 阶段为 `completed` | `initialization_pending` / `initialization_in_progress` / `initialization_failed` |
 | `runStore` | 要求初始化时 `ready` | `run_store_unavailable`；未要求时为 `not_required` |
 
-Run 存储的 `ready` 等于已启用且无持久化错误（`server/src/services/agentRunService.ts:366`），启动恢复失败与运行期写入失败都会让它转为不可就绪。快照只读进程内状态，不探测设备与网络；响应只含粗粒度状态与稳定原因码，不含路径、凭据或底层错误文本，并设置 `Cache-Control: no-store`（`server/src/app.ts:124`）。设备与外部依赖的连通性属于诊断信息：设备离线不会让 `/readiness` 失败，也不应触发容器重启。`/health` 与 `/readiness` 均不受 `LA_PLUMA_TOKEN` 约束。关闭一旦开始，生命周期进入 `draining`，`/readiness` 立即不可就绪，而 `/health` 仍为 200；编排应用 `/readiness` 摘除流量，而不是重启容器。
+Run 存储的 `ready` 等于已启用且无持久化错误（`server/src/services/agentRunService.ts:366`），启动恢复失败与运行期写入失败都会让它转为不可就绪。快照只读进程内状态，不探测设备与网络；响应只含粗粒度状态与稳定原因码，不含路径、凭据或底层错误文本，并设置 `Cache-Control: no-store`（`server/src/app.ts:147`）。设备与外部依赖的连通性属于诊断信息：设备离线不会让 `/readiness` 失败，也不应触发容器重启。`/health` 与 `/readiness` 均不受 `LA_PLUMA_TOKEN` 约束。关闭一旦开始，生命周期进入 `draining`，`/readiness` 立即不可就绪，而 `/health` 仍为 200；编排应用 `/readiness` 摘除流量，而不是重启容器。
 
 ## 执行准入闸门与 503
 
