@@ -111,6 +111,19 @@ describe('mall execution results', () => {
     assert.match(action.message, /访问 2 位好友/);
   });
 
+  it('counts visits when the recognizers alternate without another task in between', () => {
+    const log = [
+      callback('SubTaskStart', { details: { task: 'VisitNext' } }),
+      callback('SubTaskStart', { details: { task: 'VisitNextOcr' } }),
+      callback('SubTaskStart', { details: { task: 'VisitNext' } }),
+      callback('SubTaskStart', { details: { task: 'VisitNextOcr' } })
+    ].join('\n');
+
+    const action = parseMallExecutionAction('信用收支', {}, log);
+    assert.equal(action.visitedCount, 2);
+    assert.match(action.message, /访问 2 位好友/);
+  });
+
   it('counts consecutive executions of the same visit task as separate visits', () => {
     const log = [
       callback('SubTaskStart', { details: { task: 'VisitNext', exec_times: 1 } }),
