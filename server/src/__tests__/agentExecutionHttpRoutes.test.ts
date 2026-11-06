@@ -956,4 +956,157 @@ describe('agent execution HTTP adapter', () => {
       }
     }
   });
+
+  it('attaches roguelike and reclamation result summaries to dynamic run taskConfigs', async () => {
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const roguelikeCallbacks = [
+      'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike"}',
+      'Assistant::append_callback | TaskChainCompleted {"taskchain":"Roguelike"}'
+    ];
+    const scenarios = [
+      {
+        taskId: 'roguelike',
+        config: { name: '萨卡兹肉鸽', type: 'Roguelike', params: { theme: 'Sarkaz', mode: 10001 } },
+        command: 'roguelike',
+        theme: 'Sarkaz',
+        callbacks: [
+          'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike"}',
+          'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"RoguelikeSettlement","details":{"floor":5,"step":31,"score":256}}',
+          'Assistant::append_callback | TaskChainCompleted {"taskchain":"Roguelike"}'
+        ],
+        settlement: { floor: 5, step: 31, score: 256 }
+      },
+      {
+        taskId: 'roguelike',
+        config: { name: '界园肉鸽', type: 'Roguelike', params: { theme: 'JieGarden', mode: 20001, find_playTime_target: 1 } },
+        command: 'roguelike',
+        theme: 'JieGarden',
+        callbacks: roguelikeCallbacks,
+        settlement: null
+      },
+      {
+        taskId: 'roguelike',
+        config: { name: '黑流树海', type: 'Roguelike', params: { theme: 'BlackFlow', mode: 30001 } },
+        command: 'roguelike',
+        theme: 'BlackFlow',
+        callbacks: roguelikeCallbacks,
+        settlement: null
+      },
+      {
+        taskId: 'roguelike',
+        config: {
+          name: '黑流树海 终局',
+          type: 'Roguelike',
+          params: { theme: 'BlackFlow', mode: 30003, blackflow_start_animals: [], blackflow_start_rewards: 0 }
+        },
+        command: 'roguelike',
+        theme: 'BlackFlow',
+        callbacks: roguelikeCallbacks,
+        settlement: null
+      },
+      {
+        taskId: 'reclamation',
+        config: { name: '重塑锚点', type: 'Reclamation', params: { theme: 'RelaunchAnchor', mode: 16 } },
+        command: 'reclamation',
+        theme: 'RelaunchAnchor',
+        callbacks: [
+          'Assistant::append_callback | SubTaskStart {"taskchain":"Reclamation"}',
+          'Assistant::append_callback | TaskChainCompleted {"taskchain":"Reclamation"}'
+        ],
+        settlement: null
+      },
+      {
+        taskId: 'roguelike',
+        config: { name: '默认主题肉鸽', type: 'Roguelike', params: { mode: 0 } },
+        command: 'roguelike',
+        theme: '',
+        callbacks: roguelikeCallbacks,
+        settlement: null
+      }
+    ];
+
+    for (const waitForCompletion of [true, false]) {
+      for (const scenario of scenarios) {
+        process.env.FAKE_MAA_CALLBACK = scenario.callbacks.join('\n');
+        process.env.FAKE_MAA_SLEEP_MS = waitForCompletion ? '0' : '60';
+        const response = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+          command: 'run',
+          args: [scenario.taskId],
+          taskConfig: scenario.config,
+          taskName: scenario.config.name,
+          waitForCompletion
+        });
+        assert.equal(response.status, waitForCompletion ? 200 : 202);
+        const runId = (await readSuccess<TaskExecutorPayload>(response)).data.runId;
+        const terminal = await waitForRunState(baseUrl, runId, ['succeeded']);
+
+        assert.equal(terminal.result?.summary?.command, scenario.command);
+        assert.equal(terminal.result?.summary?.theme, scenario.theme);
+        assert.equal(terminal.result?.summary?.status, 'success');
+        assert.equal(terminal.result?.summary?.observed, true);
+        if (scenario.settlement) {
+          assert.equal(terminal.result?.summary?.settlement?.floor, scenario.settlement.floor);
+          assert.equal(terminal.result?.summary?.settlement?.step, scenario.settlement.step);
+          assert.equal(terminal.result?.summary?.settlement?.score, scenario.settlement.score);
+        } else {
+          assert.equal(terminal.result?.summary?.settlement, null);
+        }
+      }
+    }
+
+    const submittedTasks = await readFile(process.env.FAKE_MAA_TASK_LOG || '', 'utf8');
+    assert.match(submittedTasks, /type = "Roguelike"/);
+    assert.match(submittedTasks, /type = "Reclamation"/);
+    assert.match(submittedTasks, /theme = "Sarkaz"/);
+    assert.match(submittedTasks, /find_playTime_target = 1/);
+    assert.match(submittedTasks, /blackflow_start_animals = \[\]/);
+    assert.match(submittedTasks, /mode = 30003/);
+  });
+
+  it('keeps dynamic run submissions outside single Roguelike/Reclamation taskConfigs free of result summaries', async () => {
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    process.env.FAKE_MAA_CALLBACK = [
+      'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike"}',
+      'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"RoguelikeSettlement","details":{"floor":3,"step":12,"score":64}}',
+      'Assistant::append_callback | TaskChainCompleted {"taskchain":"Roguelike"}'
+    ].join('\n');
+    const submissions = [
+      {
+        args: ['award'],
+        taskConfig: { name: '领取奖励', type: 'Award', params: { award: true } }
+      },
+      {
+        args: ['multi-roguelike'],
+        taskConfig: {
+          tasks: [
+            { name: '萨卡兹肉鸽', type: 'Roguelike', params: { theme: 'Sarkaz', mode: 10001 } },
+            { name: '领取奖励', type: 'Award', params: { award: true } }
+          ]
+        }
+      }
+    ];
+
+    for (const waitForCompletion of [true, false]) {
+      for (const submission of submissions) {
+        const response = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+          command: 'run',
+          args: submission.args,
+          taskConfig: submission.taskConfig,
+          waitForCompletion
+        });
+        assert.equal(response.status, waitForCompletion ? 200 : 202);
+        const runId = (await readSuccess<TaskExecutorPayload>(response)).data.runId;
+        const terminal = await waitForRunState(baseUrl, runId, ['succeeded']);
+        assert.equal(terminal.result?.summary, undefined);
+      }
+    }
+  });
 });
