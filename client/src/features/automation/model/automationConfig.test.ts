@@ -192,6 +192,31 @@ describe('automation config adapter', () => {
     })
   })
 
+  it('normalizes legacy custom infrastructure task parameters without touching the schedule file', () => {
+    const decoded = automationConfigAdapter.decodeDraft({
+      taskFlow: [{
+        id: 'infrast-1',
+        name: '基建换班',
+        commandId: 'infrast',
+        taskType: 'Infrast',
+        enabled: true,
+        params: { mode: '10000', filename: ' schedules/base.json ', plan_index: '2', facility: [] },
+      }],
+    })
+
+    expect(decoded).not.toBeNull()
+    expect(decoded!.taskFlow[0]?.params).toMatchObject({
+      filename: 'schedules/base.json',
+      plan_index: 2,
+      continue_training: false,
+      dorm_notstationed_enabled: false,
+      dorm_trust_enabled: false,
+      reception_message_board: true,
+      reception_clue_exchange: true,
+      reception_send_clue: true,
+    })
+  })
+
   it('keeps local-only disabled entries and falls back to default times', () => {
     const decoded = automationConfigAdapter.decodeDraft({
       schedule: {

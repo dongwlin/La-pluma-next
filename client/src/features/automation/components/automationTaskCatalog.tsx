@@ -106,8 +106,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       ], hiddenWhen: { key: 'mode', value: '10000' } },
       { key: 'threshold', label: '心情阈值', type: 'number', placeholder: '0.3', step: '0.1', min: '0', max: '1' },
       { key: 'replenish', label: '自动补货', type: 'checkbox' },
-      { key: 'filename', label: '排班文件', type: 'text', placeholder: 'schedules/base.json', helper: '自定义换班使用的排班配置文件路径', visibleWhen: { key: 'mode', value: '10000' } },
-      { key: 'plan_index', label: '方案序号', type: 'number', placeholder: '0', min: '0', helper: '配置文件中的方案序号，从 0 开始', visibleWhen: { key: 'mode', value: '10000' } },
+      { key: 'filename', label: '自定义排班', type: 'infrast-schedule', helper: '在 MAA 配置目录的 infrast 文件夹中选择或新建排班文件；相对路径与 maa-cli 一致', visibleWhen: { key: 'mode', value: '10000' } },
     ],
     taskType: 'Infrast'
   },

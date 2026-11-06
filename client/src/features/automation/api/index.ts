@@ -11,6 +11,14 @@ const isActivityPayload = (payload: unknown): boolean => isRecord(payload)
 
 const isScheduleExecutionPayload = (payload: unknown): boolean => isRecord(payload)
 
+const isInfrastScheduleListPayload = (payload: unknown): boolean => (
+  isRecord(payload) && typeof payload.directory === 'string' && Array.isArray(payload.schedules)
+)
+
+const isInfrastScheduleDocumentPayload = (payload: unknown): boolean => (
+  isRecord(payload) && typeof payload.name === 'string' && isRecord(payload.document)
+)
+
 /**
  * 获取当前活动信息
  *
@@ -130,4 +138,37 @@ export async function testNotificationChannel(
     signal,
   })
   return parseJsonResponse(response)
+}
+
+/**
+ * 自定义基建排班文件列表。文件位于 MAA 配置目录的 `infrast/` 下，
+ * 相对路径与 maa-cli 解析 `filename` 的规则一致。
+ */
+export async function listInfrastSchedules(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/infrast-schedules`, {
+    signal,
+    validate: isInfrastScheduleListPayload,
+    invalidPayloadMessage: '排班文件列表格式不正确',
+  })
+}
+
+/** 读取单个排班文件原文；文件不存在返回 404 失败信封。 */
+export async function readInfrastSchedule(name: string, signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(
+    `${API_BASE_URL}/agent/infrast-schedules/document?name=${encodeURIComponent(name)}`,
+    {
+      signal,
+      validate: isInfrastScheduleDocumentPayload,
+      invalidPayloadMessage: '排班文件格式不正确',
+    },
+  )
+}
+
+/** 保存排班文件；服务端按 Core 协议校验后原子写入。 */
+export async function saveInfrastSchedule(name: string, document: unknown): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/infrast-schedules/document`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, document }),
+  })
 }

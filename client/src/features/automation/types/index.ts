@@ -11,6 +11,7 @@ export type TaskParamFieldType =
   | 'stage-with-times'
   | 'star-select'
   | 'facility-select'
+  | 'infrast-schedule'
   | 'oper-progress-plans'
   | 'theme-list'
 
