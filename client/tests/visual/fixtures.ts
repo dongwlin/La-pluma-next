@@ -357,7 +357,21 @@ export const apiFixtures: ApiFixture[] = [
   { path: '/agent/config-directory', payload: ok({ path: '/opt/maa/config' }) },
   {
     path: '/agent/config/maa/default',
-    payload: ok({ adb_path: '/usr/bin/adb', address: 'emulator-5554', config: 'Official', auto_reconnect: true }),
+    payload: ok({
+      connection: {
+        adb_path: '/usr/bin/adb',
+        address: 'emulator-5554',
+        config: 'Official',
+        preset: 'ADB',
+        auto_reconnect: true,
+      },
+      instance_options: {
+        touch_mode: 'MaaTouch',
+        deployment_with_pause: false,
+        adb_lite_enabled: false,
+        kill_adb_on_exit: false,
+      },
+    }),
   },
 ]
 

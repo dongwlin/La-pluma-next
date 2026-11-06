@@ -32,6 +32,7 @@ describe('connection config normalization', () => {
       adb_path: '/usr/bin/adb',
       address: '127.0.0.1:5555',
       config: 'General',
+      preset: 'ADB',
       auto_reconnect: false,
       touch_mode: 'minitouch',
     })

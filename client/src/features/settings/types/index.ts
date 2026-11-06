@@ -1,12 +1,88 @@
 import type { ReactNode } from 'react'
 import type { ConfigSectionId } from '../model/configSection'
 
+/** maa-cli `[connection].preset` 的受支持取值；`PlayTools` 读取时归一为 `PlayCover`。 */
+export const MAA_CONNECTION_PRESETS = ['ADB', 'MuMuPro', 'PlayCover', 'Waydroid', 'Androws'] as const
+export type MaaConnectionPreset = (typeof MAA_CONNECTION_PRESETS)[number]
+
+/** maa-cli `[instance_options].touch_mode` 的受支持取值。 */
+export const MAA_TOUCH_MODES = ['Adb', 'MiniTouch', 'MaaTouch', 'MacPlayTools', 'MaaFwAdb'] as const
+export type MaaTouchMode = (typeof MAA_TOUCH_MODES)[number]
+
 export interface MaaConnectionConfig {
   adb_path: string
   address: string
   config: string
+  preset: MaaConnectionPreset
   auto_reconnect?: boolean
   /** MAA profile 的 connection 段可能包含本页不展示的选项，保存时原样回写。 */
+  [key: string]: unknown
+}
+
+export interface MaaInstanceOptions {
+  touch_mode: MaaTouchMode
+  deployment_with_pause: boolean
+  adb_lite_enabled: boolean
+  kill_adb_on_exit: boolean
+  /** MAA profile 的 instance_options 段同样可能包含未知选项。 */
+  [key: string]: unknown
+}
+
+export const RESOURCE_SOURCE_TYPES = ['git', 'mirrorchyan'] as const
+export type ResourceSourceType = (typeof RESOURCE_SOURCE_TYPES)[number]
+
+export const GIT_BACKENDS = ['git', 'libgit2'] as const
+export type GitBackend = (typeof GIT_BACKENDS)[number]
+
+/** maa-cli Secret 在 cli.toml 中的形态；页面只回显形态，不回显明文。 */
+export type ResourceSecretKind = 'none' | 'prompt' | 'plain' | 'env' | 'command'
+
+export interface ResourceGitSource {
+  backend: GitBackend
+  url: string
+  branch: string | null
+  useSshAgent: boolean
+  sshKey: string | null
+  passphraseKind: ResourceSecretKind
+}
+
+export interface ResourceMirrorChyanSource {
+  cdkKind: ResourceSecretKind
+  checkInterval: number
+}
+
+/** 服务端资源源视图（`GET /agent/config/resource-source`）。 */
+export interface ResourceSourceConfig {
+  autoUpdate: boolean
+  warnOnUpdateFailure: boolean
+  source: ResourceSourceType
+  git: ResourceGitSource
+  mirrorchyan: ResourceMirrorChyanSource
+}
+
+/**
+ * 页面草稿：凭据输入框为空表示保留服务端已保存的凭据，`*Kind` 只描述服务端
+ * 已保存的凭据形态，不随请求发送。
+ */
+export interface ResourceSourceDraft {
+  autoUpdate: boolean
+  warnOnUpdateFailure: boolean
+  source: ResourceSourceType
+  git: {
+    backend: GitBackend
+    url: string
+    branch: string
+    useSshAgent: boolean
+    sshKey: string
+    passphrase: string
+    passphraseKind: ResourceSecretKind
+  }
+  mirrorchyan: {
+    cdk: string
+    cdkKind: ResourceSecretKind
+    clearCdk: boolean
+    checkInterval: number
+  }
   [key: string]: unknown
 }
 

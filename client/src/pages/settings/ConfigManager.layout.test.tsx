@@ -12,6 +12,8 @@ import {
 } from '@/features/resource-invalidation'
 import { settingsAutoUpdateOwner } from '@/features/settings/model/autoUpdateConfig'
 import { settingsConnectionOwner } from '@/features/settings/model/connectionConfig'
+import { settingsInstanceOptionsOwner } from '@/features/settings/model/instanceOptions'
+import { settingsResourceSourceOwner } from '@/features/settings/model/resourceSource'
 import { CONFIG_SECTION_EVENT, CONFIG_SECTION_STORAGE_KEY } from '@/features/settings/model/configSection'
 import { settingsDeviceConnectionOwner } from '@/features/settings/model/deviceConnection'
 import { settingsUpdateOwner } from '@/features/settings/model/updateCommands'
@@ -23,10 +25,12 @@ const mocks = vi.hoisted(() => ({
   discoverDevices: vi.fn(),
   getConfig: vi.fn(),
   getConfigDir: vi.fn(),
+  getResourceSource: vi.fn(),
   getVersion: vi.fn(),
   loadUserConfig: vi.fn(),
   openConfigDir: vi.fn(),
   saveConfig: vi.fn(),
+  saveResourceSource: vi.fn(),
   saveUpdateChannel: vi.fn(),
   saveUserConfig: vi.fn(),
   setupAutoUpdate: vi.fn(),
@@ -67,10 +71,12 @@ vi.mock('@/features/settings/api', () => ({
   discoverDevices: mocks.discoverDevices,
   getConfig: mocks.getConfig,
   getConfigDir: mocks.getConfigDir,
+  getResourceSource: mocks.getResourceSource,
   getVersion: mocks.getVersion,
   hotUpdateResources: mocks.hotUpdateResources,
   openConfigDir: mocks.openConfigDir,
   saveConfig: mocks.saveConfig,
+  saveResourceSource: mocks.saveResourceSource,
   saveUpdateChannel: mocks.saveUpdateChannel,
   setupAutoUpdate: mocks.setupAutoUpdate,
   testConnection: mocks.testConnection,
@@ -171,10 +177,28 @@ describe('ConfigManager layout surfaces', () => {
         adb_path: '/opt/homebrew/bin/adb',
         address: '127.0.0.1:16384',
         config: 'CompatMac',
+        preset: 'ADB',
         auto_reconnect: true,
       },
     })
     mocks.getConfigDir.mockReset().mockResolvedValue({ success: true, data: '/tmp/la-pluma' })
+    mocks.getResourceSource.mockReset().mockResolvedValue({
+      success: true,
+      data: {
+        autoUpdate: false,
+        warnOnUpdateFailure: false,
+        source: 'git',
+        git: {
+          backend: 'git',
+          url: 'https://github.com/MaaAssistantArknights/MaaResource.git',
+          branch: null,
+          useSshAgent: false,
+          sshKey: null,
+          passphraseKind: 'none',
+        },
+        mirrorchyan: { cdkKind: 'none', checkInterval: 600 },
+      },
+    })
     mocks.getVersion.mockReset().mockResolvedValue({
       success: true,
       data: {
@@ -205,6 +229,7 @@ describe('ConfigManager layout surfaces', () => {
     })
     mocks.openConfigDir.mockReset().mockResolvedValue({ success: true })
     mocks.saveConfig.mockReset().mockResolvedValue({ success: true })
+    mocks.saveResourceSource.mockReset().mockResolvedValue({ success: true })
     mocks.saveUpdateChannel.mockReset().mockResolvedValue({ success: true, data: { core: 'stable', cli: 'beta' } })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.setupAutoUpdate.mockReset().mockResolvedValue({ success: true })
@@ -217,6 +242,8 @@ describe('ConfigManager layout surfaces', () => {
       invalidationEvents.push(event)
     })
     settingsConnectionOwner.reset()
+    settingsInstanceOptionsOwner.reset()
+    settingsResourceSourceOwner.reset()
     settingsDeviceConnectionOwner.reset()
     settingsAutoUpdateOwner.reset()
     settingsUpdateOwner.reset()
@@ -277,8 +304,8 @@ describe('ConfigManager layout surfaces', () => {
     expect(openButton?.disabled).toBe(false)
   })
 
-  it('does not retry a failed config-directory read when switching to a read-only section', async () => {
-    // 每次读取都失败：只读 section 的第二个观察者若在挂载时重试，调用次数会继续增加。
+  it('does not retry a failed config-directory read when switching sections', async () => {
+    // 每次读取都失败：切换 section 时若产生新的目录观察者，调用次数会继续增加。
     mocks.getConfigDir.mockResolvedValue({ success: false, message: '目录服务暂不可用' })
 
     await act(async () => root.render(page()))
@@ -300,7 +327,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(buttonByText('重试')).toBeDefined()
     const openButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .filter(button => button.textContent?.trim() === '打开目录')
-    expect(openButtons).toHaveLength(2)
+    expect(openButtons).toHaveLength(1)
     openButtons.forEach(button => expect(button.disabled).toBe(true))
   })
 
@@ -713,24 +740,76 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error')
   })
 
-  it('renders unsupported resource and instance settings as honest read-only guidance', async () => {
+  it('renders editable resource and instance forms for the active section', async () => {
     localStorage.setItem('laPlumaConfigSection', 'resource')
 
     await act(async () => root.render(page()))
     await flush()
 
-    expect(container.textContent).toContain('当前资源来源保持不变')
-    expect(container.querySelector('.config-workspace-primary select')).toBeNull()
-    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.trim() === '保存')).toBe(false)
+    expect(container.textContent).toContain('资源来源')
+    expect(container.querySelector('.config-workspace-primary select')).not.toBeNull()
+    expect(buttonByText('保存')).toBeDefined()
+    expect(mocks.getResourceSource).toHaveBeenCalledOnce()
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
 
     const instanceButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('实例'))
     await act(async () => {
       instanceButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
+    await flush()
 
-    expect(container.textContent).toContain('触摸模式等实例选项保持当前设置')
-    expect(container.querySelector('.config-workspace-primary select')).toBeNull()
+    expect(container.textContent).toContain('触控模式')
+    expect(container.textContent).toContain('部署时暂停')
+    expect(container.querySelector('.config-workspace-primary select')).not.toBeNull()
+  })
+
+  it('saves the resource source form without echoing credentials', async () => {
+    localStorage.setItem('laPlumaConfigSection', 'resource')
+    mocks.getResourceSource.mockResolvedValueOnce({
+      success: true,
+      data: {
+        autoUpdate: true,
+        warnOnUpdateFailure: false,
+        source: 'mirrorchyan',
+        git: { backend: 'git', url: 'https://github.com/MaaAssistantArknights/MaaResource.git', branch: null, useSshAgent: false, sshKey: null, passphraseKind: 'none' },
+        mirrorchyan: { cdkKind: 'plain', checkInterval: 600 },
+      },
+    })
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('保存')?.click())
+    await flush()
+
+    expect(mocks.saveResourceSource).toHaveBeenCalledWith(expect.objectContaining({
+      autoUpdate: true,
+      warnOnUpdateFailure: false,
+      source: 'mirrorchyan',
+      mirrorchyan: expect.objectContaining({ checkInterval: 600 }),
+    }))
+    expect(container.textContent).toContain('资源源配置保存成功')
+    expect(mocks.getResourceSource).toHaveBeenCalledTimes(2)
+  })
+
+  it('saves only the instance options section from the instance form', async () => {
+    localStorage.setItem('laPlumaConfigSection', 'instance')
+
+    await act(async () => root.render(page()))
+    await flush()
+
+    await act(async () => buttonByText('保存')?.click())
+    await flush()
+
+    expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
+      instance_options: {
+        touch_mode: 'Adb',
+        deployment_with_pause: false,
+        adb_lite_enabled: false,
+        kill_adb_on_exit: false,
+      },
+    })
+    expect(container.textContent).toContain('实例选项保存成功')
   })
 
   it('reports an initial connection read failure in place and globally', async () => {
@@ -814,6 +893,7 @@ describe('ConfigManager layout surfaces', () => {
         adb_path: '/opt/homebrew/bin/adb',
         address: '127.0.0.1:16384',
         config: 'CompatMac',
+        preset: 'ADB',
         auto_reconnect: true,
       },
     })
@@ -826,13 +906,13 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    expect(container.textContent).toContain('触摸模式等实例选项保持当前设置')
+    expect(container.textContent).toContain('触控模式')
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'resource' }))
     })
     expect(localStorage.getItem(CONFIG_SECTION_STORAGE_KEY)).toBe('resource')
-    expect(container.textContent).toContain('当前资源来源保持不变')
+    expect(container.textContent).toContain('资源来源')
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(CONFIG_SECTION_EVENT, { detail: 'unknown' }))
@@ -1190,7 +1270,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.textContent).toContain('/tmp/la-pluma')
   })
 
-  it('opens the config directory from the card and the read-only header entry', async () => {
+  it('opens the config directory from the directory card', async () => {
     await act(async () => root.render(page()))
     await flush()
 
@@ -1208,7 +1288,7 @@ describe('ConfigManager layout surfaces', () => {
 
     const openButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .filter(button => button.textContent?.trim() === '打开目录')
-    expect(openButtons).toHaveLength(2)
+    expect(openButtons).toHaveLength(1)
 
     mocks.openConfigDir.mockResolvedValueOnce({ success: false, message: '没有桌面环境' })
     await act(async () => openButtons[0]?.click())
