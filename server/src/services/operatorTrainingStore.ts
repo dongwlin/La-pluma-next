@@ -16,6 +16,7 @@ import {
   isRecord,
   normalizeTrainingSettings
 } from './operatorTrainingModel.ts';
+import { parseOperBoxCatalog } from './operatorCatalogModel.ts';
 import type {
   DepotSnapshot,
   MaterialFormula,
@@ -608,22 +609,33 @@ function parseOwnedOperators(value: unknown): OwnedOperator[] {
 }
 
 /**
- * 校验 OperBox 文件：保留原信封（`data` 或 `operators`），逐条校验干员。
+ * 校验 OperBox 文件：保留原信封（`data` 或 `operators`），逐条校验干员；
+ * 识别目录与目录总数只在存在时读取，旧快照仍按已识别拥有列表可用。
  */
 export function parseOperBox(value: unknown): OperBoxData {
   const record = isRecord(value) ? value : {};
-  if (Array.isArray(record.data)) return { data: parseOwnedOperators(record.data) };
-  if (Array.isArray(record.operators)) return { operators: parseOwnedOperators(record.operators) };
-  return { operators: [] };
+  const data: OperBoxData = Array.isArray(record.data)
+    ? { data: parseOwnedOperators(record.data) }
+    : { operators: Array.isArray(record.operators) ? parseOwnedOperators(record.operators) : [] };
+
+  const allOpers = parseOperBoxCatalog(record.allOpers);
+  if (allOpers && allOpers.length > 0) data.allOpers = allOpers;
+  if (typeof record.operTotal === 'number' && Number.isFinite(record.operTotal)) {
+    data.operTotal = record.operTotal;
+  }
+  if (typeof record.timestamp === 'string') data.timestamp = record.timestamp;
+  return data;
 }
 
-export async function loadOperBox(): Promise<OperBoxData> {
+/** 读取持有干员快照；文件缺失或损坏返回 null，由调用方区分为“尚未识别”。 */
+export async function loadOperBox(): Promise<OperBoxData | null> {
   try {
-    const data = await readJsonFile(OPERBOX_PATH, { operators: [] });
+    const data = await readJsonFile(OPERBOX_PATH, null);
+    if (data === null) return null;
     return parseOperBox(data);
   } catch (error) {
     logger.error('加载 OperBox 数据失败', { error: errorMessage(error) });
-    return { operators: [] };
+    return null;
   }
 }
 

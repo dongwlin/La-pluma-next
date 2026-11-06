@@ -115,13 +115,13 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 资源 / query 定义 | 完整缓存身份 | Query 覆盖或读取方式 |
 | --- | --- | --- |
 | 仓库 `depotQueryOptions()` | `['game-data','depot']` | 默认；保留 `null` 空快照 |
-| 持有干员 `operBoxQueryOptions()` | `['game-data','operbox']` | 默认；保留 `null` 空快照 |
+| 持有干员 `operBoxQueryOptions()` | `['game-data','operbox']` | 默认；保留 `null` 空快照；快照可带识别目录与 `recognition` 概要 |
 | 干员目录 `operatorCatalogQueryOptions()` | `['game-data','catalog']` | 默认 |
 | 掉落 `dropStatisticsQueryOptions(days)` | `['statistics','drops',days]` | `placeholderData: keepPreviousData` |
 | 今日掉落 `todayDropsQueryOptions()` | `['statistics','today-drops']` | 默认；总览协调读取时强制新鲜且不重试 |
 | 今日开放关卡 `openTodayStagesQueryOptions()` | `['statistics','open-stages']` | 同上 |
 | 队列 `trainingQueueQueryOptions()` | `['training','queue']` | 默认；计划所有者的权威重读使用 `staleTime: 0` |
-| 候选 `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | `rarity` 缺省为 `null`，`needsElite2` 缺省为 `false` |
+| 候选 `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | `rarity` 缺省为 `null`，`needsElite2` 缺省为 `false`；载荷附带 `recognition` 概要，不进入 key |
 | 计数 `trainingStatusCountsQueryOptions(filters)` | `['training','counts',rarity,needsElite2]` | 同上缺省值；`placeholderData: keepPreviousData`，`structuralSharing` 合并计数 |
 | connection `connectionConfigQueryOptions(profileName)` | `['settings','maa-config',profileName]` | 默认；快照采用须通过 owner 的读取令牌 |
 | 版本 `versionQueryOptions()` | `['settings','version']` | 默认 |

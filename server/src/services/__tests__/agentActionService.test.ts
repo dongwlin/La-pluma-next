@@ -24,6 +24,10 @@ function createExecutors() {
       execDynamicTask: async (...args: unknown[]) => {
         calls.push({ executor: 'dynamic', args });
         return { success: true, executor: 'dynamic' };
+      },
+      execDynamicTasks: async (...args: unknown[]) => {
+        calls.push({ executor: 'dynamic-batch', args });
+        return { success: true, executor: 'dynamic-batch' };
       }
     }
   };
@@ -139,6 +143,57 @@ describe('executeAgentTask', () => {
     });
   });
 
+  it('executes a tasks array through the batch executor in order', async () => {
+    const { calls, dependencies } = createExecutors();
+    const tasks = [
+      { name: '领取奖励', type: 'Award', params: { award: true } },
+      {
+        name: '基建换班',
+        type: 'Infrast',
+        params: { mode: 10000 },
+        strategy: 'merge',
+        variants: [
+          { condition: { type: 'Time', start: '18:00:00' }, params: { plan_index: 0 } },
+          { params: { plan_index: 1 } }
+        ]
+      }
+    ];
+
+    const result = await executeAgentTask({
+      command: 'run',
+      args: ['multi-task'],
+      taskConfig: { tasks },
+      taskName: '多任务',
+      taskType: 'automation',
+      waitForCompletion: false
+    }, dependencies);
+
+    assert.equal(resultOf(result).executor, 'dynamic-batch');
+    assert.deepEqual(calls, [{
+      executor: 'dynamic-batch',
+      args: [
+        'multi-task',
+        [
+          { name: '领取奖励', type: 'Award', params: { award: true } },
+          {
+            name: '基建换班',
+            type: 'Infrast',
+            params: { mode: 10000 },
+            strategy: 'merge',
+            variants: [
+              { condition: { type: 'Time', start: '18:00:00' }, params: { plan_index: 0 } },
+              { params: { plan_index: 1 } }
+            ]
+          }
+        ],
+        '多任务',
+        'automation',
+        false,
+        false
+      ]
+    }]);
+  });
+
   it('executes a regular task with string args and caller metadata', async () => {
     const { calls, dependencies } = createExecutors();
 
@@ -183,6 +238,40 @@ describe('executeAgentTask', () => {
       executor: 'command',
       args: ['reclamation', ['Tales', '-m', '1'], '生息演算', 'roguelike', false]
     });
+  });
+
+  it('rejects roguelike arguments the installed maa-cli cannot express', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    for (const request of [
+      { command: 'roguelike', args: ['BlackFlow'] },
+      { command: 'roguelike', args: ['Sarkaz', '--mode', '20001'] },
+      { command: 'reclamation', args: ['RelaunchAnchor', '--mode', '16'] }
+    ]) {
+      await assert.rejects(
+        executeAgentTask(request, dependencies),
+        error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_ARGS_INVALID'
+      );
+    }
+    assert.deepEqual(calls, []);
+  });
+
+  it('rejects Roguelike dynamic task configs with invalid parameter combinations', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    await assert.rejects(
+      executeAgentTask({
+        command: 'run',
+        args: ['roguelike'],
+        taskConfig: {
+          name: '集成战略',
+          type: 'Roguelike',
+          params: { theme: 'BlackFlow', mode: 30003 }
+        }
+      }, dependencies),
+      error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
+    );
+    assert.deepEqual(calls, []);
   });
 
   it('keeps Core-only task types off the maa-cli command allowlist', async () => {
@@ -355,6 +444,182 @@ describe('preflightAgentTaskRequest', () => {
       type: 'SwitchTheme',
       params: { themes: ['默认', '简约'] }
     });
+  });
+
+  it('normalizes a legacy single task with strategy and nested variants', () => {
+    const request = preflightAgentTaskRequest({
+      command: 'run',
+      taskConfig: {
+        name: ' 基建换班 ',
+        type: 'Infrast',
+        params: { mode: 10000 },
+        strategy: 'merge',
+        variants: [
+          { condition: { type: 'Time', start: '18:00:00' }, params: { plan_index: 0 } },
+          { params: { plan_index: 1 } }
+        ]
+      }
+    });
+
+    assert.equal(request.taskConfigs, undefined);
+    assert.deepEqual(request.taskConfig, {
+      name: '基建换班',
+      type: 'Infrast',
+      params: { mode: 10000 },
+      strategy: 'merge',
+      variants: [
+        { condition: { type: 'Time', start: '18:00:00' }, params: { plan_index: 0 } },
+        { params: { plan_index: 1 } }
+      ]
+    });
+  });
+
+  it('normalizes a tasks array into ordered task configs', () => {
+    const request = preflightAgentTaskRequest({
+      command: 'run',
+      args: ['multi-task'],
+      taskConfig: {
+        tasks: [
+          { name: ' 领取奖励 ', type: 'Award' },
+          {
+            name: '基建换班',
+            type: 'Infrast',
+            params: { mode: 10000 },
+            strategy: 'first',
+            variants: [{ params: { plan_index: 0 } }]
+          }
+        ]
+      }
+    });
+
+    assert.equal(request.taskConfig, undefined);
+    assert.deepEqual(request.taskConfigs, [
+      { name: '领取奖励', type: 'Award', params: {} },
+      {
+        name: '基建换班',
+        type: 'Infrast',
+        params: { mode: 10000 },
+        strategy: 'first',
+        variants: [{ params: { plan_index: 0 } }]
+      }
+    ]);
+
+    const encoded = preflightAgentTaskRequest({
+      command: 'run',
+      taskConfig: JSON.stringify({ tasks: [{ name: ' 奖励 ', type: 'Award' }] })
+    });
+    assert.deepEqual(encoded.taskConfigs, [{ name: '奖励', type: 'Award', params: {} }]);
+  });
+
+  it('rejects malformed batch and variant shapes before any execution', () => {
+    const invalidInputs: Array<{ input: Record<string, unknown>; reason: string }> = [
+      { input: { command: 'run', taskConfig: { tasks: 'Award' } }, reason: 'tasks_array_required' },
+      { input: { command: 'run', taskConfig: { tasks: [] } }, reason: 'tasks_empty' },
+      { input: { command: 'run', taskConfig: { tasks: ['Award'] } }, reason: 'task_object_required' },
+      {
+        input: { command: 'run', taskConfig: { tasks: [{ name: '领取奖励', type: 'Award' }], extra: true } },
+        reason: 'batch_field_unknown'
+      },
+      {
+        input: {
+          command: 'run',
+          taskConfig: { tasks: [{ name: '动态任务', type: 'Award', condition: { type: 'Time' } }] }
+        },
+        reason: 'condition_must_be_in_variants'
+      },
+      {
+        input: { command: 'run', taskConfig: { tasks: [{ name: '动态任务', type: 'Award', unknown: true }] } },
+        reason: 'task_field_unknown'
+      },
+      {
+        input: { command: 'run', taskConfig: { tasks: [{ name: '动态任务', type: 'Award', strategy: 'all' }] } },
+        reason: 'strategy_invalid'
+      },
+      {
+        input: { command: 'run', taskConfig: { tasks: [{ name: '动态任务', type: 'Award', variants: {} }] } },
+        reason: 'variants_array_required'
+      },
+      {
+        input: { command: 'run', taskConfig: { tasks: [{ name: '动态任务', type: 'Award', variants: ['always'] }] } },
+        reason: 'variant_object_required'
+      },
+      {
+        input: {
+          command: 'run',
+          taskConfig: { tasks: [{ name: '动态任务', type: 'Award', variants: [{ when: {} }] }] }
+        },
+        reason: 'variant_field_unknown'
+      },
+      {
+        input: {
+          command: 'run',
+          taskConfig: { tasks: [{ name: '动态任务', type: 'Award', variants: [{ condition: 'always' }] }] }
+        },
+        reason: 'variant_condition_object_required'
+      },
+      {
+        input: {
+          command: 'run',
+          taskConfig: { tasks: [{ name: '动态任务', type: 'Award', variants: [{ params: [] }] }] }
+        },
+        reason: 'variant_params_object_required'
+      },
+      {
+        input: {
+          command: 'run',
+          taskConfig: { tasks: [{ name: '培养', type: 'OperProgress', params: { plans: [] } }] }
+        },
+        reason: 'game_task_params_invalid'
+      },
+      { input: { command: 'run', taskConfig: { tasks: [{ name: '动态任务', type: 'Bad Type' }] } }, reason: 'invalid_type' }
+    ];
+
+    for (const { input, reason } of invalidInputs) {
+      assert.throws(
+        () => preflightAgentTaskRequest(input),
+        error => {
+          const code = String(errorField(error, 'code'));
+          assert.ok(
+            ['AGENT_VALIDATION_TASK_CONFIG_INVALID', 'AGENT_VALIDATION_TASK_TYPE_INVALID'].includes(code),
+            `unexpected error code ${code} for reason ${reason}`
+          );
+          const details = detailsOf(error);
+          if (reason === 'invalid_type') {
+            assert.ok(code === 'AGENT_VALIDATION_TASK_TYPE_INVALID');
+          } else {
+            assert.equal(details.reason, reason);
+          }
+          return true;
+        }
+      );
+    }
+  });
+
+  it('attributes batch validation failures to their task index', () => {
+    assert.throws(
+      () => preflightAgentTaskRequest({
+        command: 'run',
+        taskConfig: { tasks: [{ name: '领取奖励', type: 'Award' }, { name: '培养', type: 'OperProgress', params: { plans: [] } }] }
+      }),
+      error => {
+        assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID');
+        assert.equal(detailsOf(error).taskIndex, 1);
+        assert.equal(detailsOf(error).reason, 'game_task_params_invalid');
+        return true;
+      }
+    );
+  });
+
+  it('rejects top-level condition and unknown single task fields', () => {
+    for (const taskConfig of [
+      { name: '动态任务', type: 'Award', condition: { type: 'Time' } },
+      { name: '动态任务', type: 'Award', unknown: true }
+    ]) {
+      assert.throws(
+        () => preflightAgentTaskRequest({ command: 'run', taskConfig }),
+        error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
+      );
+    }
   });
 });
 

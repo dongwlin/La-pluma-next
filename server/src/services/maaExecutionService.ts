@@ -27,7 +27,7 @@ import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts'
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
-import { validateGameTaskParams } from './gameTaskConfigService.ts';
+import { validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
 import { agentError } from '../utils/apiHelper.ts';
 
 const logger = createLogger('MaaService');
@@ -53,10 +53,21 @@ export type MaaExecutionLeaseAcquirer = (
   request: MaaExecutionLeaseRequest
 ) => Promise<MaaExecutionLeaseHandle>;
 
+/** maa-cli 在上游 variants 匹配时的参数合并策略；默认 first。 */
+export type MaaDynamicTaskStrategy = 'first' | 'merge';
+
+/** 上游 variants 项：condition 决定是否匹配，匹配后的 params 合并进任务参数。 */
+export interface MaaDynamicTaskVariant {
+  condition?: Record<string, unknown>;
+  params?: Record<string, unknown>;
+}
+
 export interface MaaDynamicTaskConfig {
   name: string;
   type: string;
   params?: Record<string, unknown>;
+  strategy?: MaaDynamicTaskStrategy;
+  variants?: MaaDynamicTaskVariant[];
 }
 
 export const MAA_DYNAMIC_TASK_DIR_PREFIX = 'la-pluma-task-';
@@ -106,6 +117,31 @@ export interface MaaDynamicTaskOutput extends MaaCommandOutput {
   actions?: GameTaskExecutionAction[];
 }
 
+/** 多任务结果按 tasks 索引归档；pending 只出现在停止后的未开始任务。 */
+export type MaaDynamicTaskStepStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped';
+
+export interface MaaDynamicTaskStep extends MaaDynamicTaskConfig {
+  index: number;
+  status: MaaDynamicTaskStepStatus;
+  message: string;
+  stdout: string;
+  stderr: string;
+  actions?: GameTaskExecutionAction[];
+}
+
+export interface MaaDynamicTasksOutput extends MaaCommandOutput {
+  stopped: boolean;
+  tasks: MaaDynamicTaskStep[];
+  actions?: GameTaskExecutionAction[];
+  message?: string;
+}
+
+export interface MaaDynamicTasksBackgroundStart extends MaaBackgroundStart {
+  stopped: boolean;
+  tasks: MaaDynamicTaskStep[];
+  actions?: GameTaskExecutionAction[];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -132,6 +168,8 @@ function commandErrorFields(error: unknown, message: string): MaaCommandError {
     ? fields.signal
     : undefined;
   result.stopped = typeof fields.stopped === 'boolean' ? fields.stopped : undefined;
+  result.stdout = typeof fields.stdout === 'string' ? fields.stdout : undefined;
+  result.stderr = typeof fields.stderr === 'string' ? fields.stderr : undefined;
   return result;
 }
 
@@ -204,6 +242,10 @@ export async function execMaaCommand(
   lifecycle: MaaProcessLifecycle = {},
   ports: MaaProcessPorts = {}
 ): Promise<MaaCommandOutput | MaaBackgroundStart> {
+  const commandArgsError = validateRoguelikeCommandArgs(command, args);
+  if (commandArgsError) {
+    throw agentError('AGENT_VALIDATION_TASK_ARGS_INVALID', commandArgsError, { statusCode: 400, retryable: false });
+  }
   if (!requiresMaaExecutionLease(command)) {
     return execMaaCommandUnlocked(command, args, taskName, taskType, waitForCompletion, silent, null, lifecycle, ports);
   }
@@ -270,13 +312,49 @@ export async function getMaaVersion(silent = false): Promise<MaaVersionInfo> {
   return versions;
 }
 
+function normalizeDynamicTaskVariants(value: unknown): MaaDynamicTaskVariant[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('动态任务的 variants 必须是数组');
+  }
+  return value.map(variant => {
+    if (!isRecord(variant)) {
+      throw new TypeError('动态任务的 variants 每一项都必须是对象');
+    }
+    const condition = variant.condition;
+    if (condition !== undefined && !isRecord(condition)) {
+      throw new TypeError('动态任务 variant.condition 必须是对象');
+    }
+    const params = variant.params;
+    if (params !== undefined && !isRecord(params)) {
+      throw new TypeError('动态任务 variant.params 必须是对象');
+    }
+    return {
+      ...(condition ? { condition } : {}),
+      ...(params ? { params } : {})
+    };
+  });
+}
+
 function normalizeDynamicTaskConfig(taskConfig: MaaDynamicTaskConfig | string): MaaDynamicTaskConfig {
   const parsed: unknown = typeof taskConfig === 'string' ? JSON.parse(taskConfig) : taskConfig;
   if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.type !== 'string') {
     throw new TypeError('动态任务配置必须包含 name 与 type');
   }
   const params = isRecord(parsed.params) ? parsed.params : {};
-  return { name: parsed.name, type: parsed.type, params };
+  const strategy = parsed.strategy;
+  if (strategy !== undefined && strategy !== 'first' && strategy !== 'merge') {
+    throw new TypeError('动态任务 strategy 必须是 first 或 merge');
+  }
+  const variants = parsed.variants === undefined
+    ? undefined
+    : normalizeDynamicTaskVariants(parsed.variants);
+  return {
+    name: parsed.name,
+    type: parsed.type,
+    params,
+    ...(strategy ? { strategy } : {}),
+    ...(variants ? { variants } : {})
+  };
 }
 
 interface MaaDynamicTaskOwnerMarker {
@@ -561,37 +639,407 @@ function formatTomlValue(value: unknown): string {
   throw new TypeError(`不支持的 TOML 参数类型: ${typeof value}`);
 }
 
+function appendParamsToml(toml: string, table: string, params: Record<string, unknown>): string {
+  if (Object.keys(params).length === 0) return toml;
+  toml += `\n[${table}]\n`;
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+
+    addLog('DEBUG', `处理参数 ${key}: ${typeof value} ${String(value)}`);
+
+    if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
+      try {
+        const cleanValue = value.trim();
+        const arrayValue: unknown = JSON.parse(cleanValue);
+        if (Array.isArray(arrayValue)) {
+          addLog('DEBUG', `  -> 解析为数组: ${JSON.stringify(arrayValue)}`);
+          toml += `${key} = ${formatTomlValue(arrayValue)}\n`;
+          continue;
+        }
+      } catch (e) {
+        addLog('ERROR', `解析数组失败 ${key}: ${value} - ${errorMessageOf(e)}`);
+      }
+    }
+
+    toml += `${key} = ${formatTomlValue(value)}\n`;
+  }
+
+  return toml;
+}
+
 function generateTaskToml(taskConfig: MaaDynamicTaskConfig, clientType: string): string {
   let toml = `client_type = ${formatTomlValue(clientType)}\n\n[[tasks]]\n`;
   toml += `name = ${formatTomlValue(taskConfig.name)}\n`;
   toml += `type = ${formatTomlValue(taskConfig.type)}\n`;
+  if (taskConfig.strategy) {
+    toml += `strategy = ${formatTomlValue(taskConfig.strategy)}\n`;
+  }
 
   if (taskConfig.params && Object.keys(taskConfig.params).length > 0) {
-    toml += '\n[tasks.params]\n';
+    toml = appendParamsToml(toml, 'tasks.params', taskConfig.params);
+  }
 
-    for (const [key, value] of Object.entries(taskConfig.params)) {
-      if (value === undefined || value === null || value === '') continue;
-
-      addLog('DEBUG', `处理参数 ${key}: ${typeof value} ${String(value)}`);
-
-      if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
-        try {
-          const cleanValue = value.trim();
-          const arrayValue: unknown = JSON.parse(cleanValue);
-          if (Array.isArray(arrayValue)) {
-            addLog('DEBUG', `  -> 解析为数组: ${JSON.stringify(arrayValue)}`);
-            toml += `${key} = ${formatTomlValue(arrayValue)}\n`;
-            continue;
-          }
-        } catch (e) {
-          addLog('ERROR', `解析数组失败 ${key}: ${value} - ${errorMessageOf(e)}`);
-        }
-      }
-
-      toml += `${key} = ${formatTomlValue(value)}\n`;
+  for (const variant of taskConfig.variants ?? []) {
+    toml += '\n[[tasks.variants]]\n';
+    if (variant.condition && Object.keys(variant.condition).length > 0) {
+      toml += `condition = ${formatTomlValue(variant.condition)}\n`;
+    }
+    if (variant.params && Object.keys(variant.params).length > 0) {
+      toml = appendParamsToml(toml, 'tasks.variants.params', variant.params);
     }
   }
 
   addLog('DEBUG', `生成的 TOML:\n${toml}`);
   return toml;
+}
+
+function dynamicTaskStepActions(value: unknown): GameTaskExecutionAction[] | undefined {
+  if (!isRecord(value) || !Array.isArray(value.actions)) return undefined;
+  const actions = value.actions.filter((action): action is GameTaskExecutionAction =>
+    isRecord(action) && typeof action.task === 'string' && typeof action.status === 'string');
+  return actions.length > 0 ? actions : undefined;
+}
+
+function dynamicTaskErrorActions(error: unknown): GameTaskExecutionAction[] | undefined {
+  return isRecord(error) ? dynamicTaskStepActions(error.details) : undefined;
+}
+
+function dynamicTaskErrorText(error: unknown, field: 'stdout' | 'stderr'): string {
+  return isRecord(error) && typeof error[field] === 'string' ? error[field] : '';
+}
+
+function isDynamicTaskStop(error: unknown): boolean {
+  return isRecord(error) && error.stopped === true;
+}
+
+function isDynamicTaskPreStartStop(error: unknown): boolean {
+  return isRecord(error) && error.code === 'AGENT_RUN_STOPPED_BEFORE_START';
+}
+
+function dynamicTaskResultMessage(value: unknown): string | undefined {
+  return isRecord(value) && typeof value.message === 'string' ? value.message : undefined;
+}
+
+function dynamicTaskStepOf(config: MaaDynamicTaskConfig, index: number): MaaDynamicTaskStep {
+  return {
+    ...config,
+    index,
+    status: 'pending',
+    message: '未执行',
+    stdout: '',
+    stderr: ''
+  };
+}
+
+function buildDynamicTasksOutput(
+  steps: readonly MaaDynamicTaskStep[],
+  stopped: boolean,
+  message: string
+): MaaDynamicTasksOutput {
+  const actions = steps.flatMap(step => step.actions ?? []);
+  return {
+    stdout: steps.map(step => step.stdout).filter(Boolean).join('\n'),
+    stderr: steps.map(step => step.stderr).filter(Boolean).join('\n'),
+    command: 'run',
+    stopped,
+    tasks: [...steps],
+    ...(actions.length > 0 ? { actions } : {}),
+    message
+  };
+}
+
+function dynamicTasksFailure(error: unknown, steps: readonly MaaDynamicTaskStep[]): MaaCommandError {
+  const fields: Record<string, unknown> = isRecord(error) ? error : {};
+  const failedIndexes = steps.filter(step => step.status === 'failed').map(step => step.index);
+  const labels = failedIndexes.map(index => index + 1).join('、');
+  const cause = errorMessageOf(error);
+  const failure = commandErrorFields(
+    error,
+    `多任务执行失败：第 ${labels || '?'} 个任务未成功${cause ? `（${cause}）` : ''}`
+  );
+  failure.code = 'AGENT_DYNAMIC_TASKS_FAILED';
+  failure.statusCode = typeof fields.statusCode === 'number' ? fields.statusCode : 500;
+  failure.retryable = false;
+  failure.details = {
+    ...(isRecord(fields.details) ? fields.details : {}),
+    taskIndexes: failedIndexes,
+    tasks: [...steps],
+    ...(typeof fields.code === 'string' || typeof fields.code === 'number' ? { causeCode: fields.code } : {})
+  };
+  return failure;
+}
+
+/**
+ * 按任务数组顺序执行上游 task 模板，每项使用独立临时任务文件。
+ * 失败不终止后续任务，最终由聚合错误携带逐项结果；停止只终止当前任务并
+ * 把未开始项保持 pending，不再启动下一个任务。
+ */
+export async function execDynamicTasks(
+  taskId: string,
+  taskConfigs: readonly MaaDynamicTaskConfig[],
+  taskName: string | null = null,
+  taskType: string | null = null,
+  waitForCompletion = false,
+  userResource = false,
+  runtime: MaaDynamicTaskRuntime = {}
+): Promise<MaaDynamicTasksOutput | MaaDynamicTasksBackgroundStart> {
+  if (taskConfigs.length === 0) {
+    throw new TypeError('动态多任务至少需要一项');
+  }
+
+  const configs = taskConfigs.map(normalizeDynamicTaskConfig);
+  const acquireExecutionLease = runtime.acquireExecutionLease || acquireMaaExecutionLease;
+  const lifecycle = runtime.lifecycle || {};
+  const { onSettled: outerOnSettled, ...processLifecycle } = lifecycle;
+  const baseTaskName = (taskName || configs[0].name || String(taskId || 'dynamic-task')).trim();
+  const steps = configs.map((config, index) => dynamicTaskStepOf(config, index));
+  const stepName = (index: number): string => `${baseTaskName} (${index + 1}/${configs.length})`;
+
+  const lease = await acquireExecutionLease({
+    source: taskType || 'dynamic-task',
+    taskName: baseTaskName,
+    command: 'run'
+  });
+  const noLeaseRuntime: MaaDynamicTaskRuntime = {
+    ...runtime,
+    acquireExecutionLease: async () => ({ release: async () => {} })
+  };
+
+  const releaseLease = async (): Promise<void> => {
+    try {
+      await lease.release();
+    } catch (error) {
+      logger.warn('释放动态多任务执行锁失败', { error: errorMessageOf(error) });
+    }
+  };
+
+  const markPending = (startIndex: number, message = '任务已停止，未执行该任务'): void => {
+    for (let index = startIndex; index < steps.length; index += 1) {
+      if (steps[index].status !== 'pending') continue;
+      steps[index].status = 'pending';
+      steps[index].message = message;
+    }
+  };
+
+  if (waitForCompletion) {
+    let stopped = false;
+    let firstError: unknown = null;
+    try {
+      for (let index = 0; index < configs.length; index += 1) {
+        const step = steps[index];
+        if (stopped) {
+          step.status = 'pending';
+          step.message = '任务已停止，未执行该任务';
+          continue;
+        }
+        try {
+          const result = await execDynamicTask(
+            `${taskId}_${index + 1}`,
+            configs[index],
+            stepName(index),
+            taskType,
+            true,
+            userResource,
+            { ...noLeaseRuntime, lifecycle: processLifecycle }
+          );
+          step.stdout = result.stdout;
+          step.stderr = result.stderr;
+          const actions = dynamicTaskStepActions(result);
+          if (actions) step.actions = actions;
+          step.status = 'success';
+          step.message = actions?.[0]?.message ?? dynamicTaskResultMessage(result) ?? '任务执行完成';
+        } catch (error) {
+          step.stdout = dynamicTaskErrorText(error, 'stdout');
+          step.stderr = dynamicTaskErrorText(error, 'stderr');
+          const actions = dynamicTaskErrorActions(error);
+          if (actions) step.actions = actions;
+          if (isDynamicTaskStop(error)) {
+            stopped = true;
+            step.status = isDynamicTaskPreStartStop(error) ? 'pending' : 'stopped';
+            step.message = isDynamicTaskPreStartStop(error)
+              ? '任务已停止，未执行该任务'
+              : errorMessageOf(error);
+            continue;
+          }
+          step.status = 'failed';
+          step.message = errorMessageOf(error);
+          firstError ??= error;
+        }
+      }
+
+      if (stopped) {
+        const completed = steps.filter(step => step.status === 'success').length;
+        return buildDynamicTasksOutput(steps, true, `多任务执行已停止：已完成 ${completed}/${configs.length} 个任务`);
+      }
+      if (firstError) throw dynamicTasksFailure(firstError, steps);
+      return buildDynamicTasksOutput(steps, false, `多任务执行完成：${configs.length} 个任务已完成`);
+    } finally {
+      await releaseLease();
+    }
+  }
+
+  let stopped = false;
+  let firstError: unknown = null;
+  let stopError: unknown = null;
+  let finalized = false;
+
+  const finalizeTasksRun = async (): Promise<void> => {
+    if (finalized) return;
+    finalized = true;
+    await releaseLease();
+    const completed = steps.filter(step => step.status === 'success').length;
+    const result = stopped
+      ? buildDynamicTasksOutput(steps, true, `多任务执行已停止：已完成 ${completed}/${configs.length} 个任务`)
+      : firstError
+        ? buildDynamicTasksOutput(steps, false, `多任务执行结束：${completed}/${configs.length} 个任务成功`)
+        : buildDynamicTasksOutput(steps, false, `多任务执行完成：${configs.length} 个任务已完成`);
+    const outcomeResult: MaaCommandOutcome['result'] & MaaDynamicTasksOutput = {
+      ...result,
+      exitCode: null,
+      signal: null
+    };
+    const outcome: MaaCommandOutcome = stopped
+      ? { ok: false, stopped: true, result: outcomeResult, error: null }
+      : firstError
+        ? { ok: false, stopped: false, result: outcomeResult, error: dynamicTasksFailure(firstError, steps) }
+        : { ok: true, stopped: false, result: outcomeResult, error: null };
+    try {
+      await outerOnSettled?.(outcome);
+    } catch (error) {
+      logger.error('处理动态多任务终态失败', { error: errorMessageOf(error) });
+    }
+  };
+
+  const recordBackgroundOutcome = (index: number, outcome: MaaCommandOutcome): void => {
+    const step = steps[index];
+    step.stdout = outcome.result.stdout;
+    step.stderr = outcome.result.stderr;
+    const actions = dynamicTaskStepActions(outcome.result);
+    if (actions) step.actions = actions;
+
+    if (outcome.stopped) {
+      stopped = true;
+      step.status = 'stopped';
+      step.message = outcome.error ? errorMessageOf(outcome.error) : '任务已停止';
+      markPending(index + 1);
+      void finalizeTasksRun();
+      return;
+    }
+
+    if (outcome.ok) {
+      step.status = 'success';
+      step.message = actions?.[0]?.message ?? dynamicTaskResultMessage(outcome.result) ?? '任务执行完成';
+    } else {
+      step.status = 'failed';
+      step.message = errorMessageOf(outcome.error);
+      firstError ??= outcome.error;
+      const errorActions = dynamicTaskErrorActions(outcome.error);
+      if (errorActions) step.actions = errorActions;
+    }
+
+    void continueTaskChain(index + 1).catch(error => {
+      if (finalized) return;
+      firstError ??= error;
+      void finalizeTasksRun();
+    });
+  };
+
+  const startBackgroundTask = async (index: number): Promise<'started' | 'stopped' | 'failed'> => {
+    const step = steps[index];
+    try {
+      await execDynamicTask(
+        `${taskId}_${index + 1}`,
+        configs[index],
+        stepName(index),
+        taskType,
+        false,
+        userResource,
+        {
+          ...noLeaseRuntime,
+          lifecycle: {
+            ...processLifecycle,
+            onSettled: outcome => recordBackgroundOutcome(index, outcome)
+          }
+        }
+      );
+      if (step.status === 'pending') {
+        step.status = 'running';
+        step.message = '任务已开始，等待完成';
+      }
+      return 'started';
+    } catch (error) {
+      step.stdout = dynamicTaskErrorText(error, 'stdout');
+      step.stderr = dynamicTaskErrorText(error, 'stderr');
+      const actions = dynamicTaskErrorActions(error);
+      if (actions) step.actions = actions;
+      if (isDynamicTaskStop(error)) {
+        stopError = error;
+        step.status = 'pending';
+        step.message = '任务已停止，未执行该任务';
+        return 'stopped';
+      }
+      step.status = 'failed';
+      step.message = errorMessageOf(error);
+      firstError ??= error;
+      return 'failed';
+    }
+  };
+
+  async function continueTaskChain(index: number): Promise<void> {
+    if (finalized) return;
+    if (stopped) {
+      markPending(index);
+      await finalizeTasksRun();
+      return;
+    }
+    if (index >= configs.length) {
+      await finalizeTasksRun();
+      return;
+    }
+    const status = await startBackgroundTask(index);
+    if (status === 'started') return;
+    if (status === 'stopped') {
+      stopped = true;
+      markPending(index + 1);
+      await finalizeTasksRun();
+      return;
+    }
+    await continueTaskChain(index + 1);
+  }
+
+  let nextIndex = 0;
+  while (nextIndex < configs.length) {
+    const status = await startBackgroundTask(nextIndex);
+    if (status === 'started') break;
+    if (status === 'stopped') {
+      stopped = true;
+      markPending(nextIndex + 1);
+      await releaseLease();
+      throw stopError ?? Object.assign(new Error('执行在开始前已被停止'), {
+        code: 'AGENT_RUN_STOPPED_BEFORE_START',
+        statusCode: 409,
+        stopped: true,
+        retryable: false
+      });
+    }
+    nextIndex += 1;
+  }
+
+  if (nextIndex >= configs.length) {
+    await releaseLease();
+    throw dynamicTasksFailure(firstError, steps);
+  }
+
+  const acceptedSteps = steps.map(step => ({ ...step }));
+  const acceptedActions = acceptedSteps.flatMap(step => step.actions ?? []);
+  return {
+    stdout: '',
+    stderr: '',
+    command: 'run',
+    message: '多任务已在后台启动',
+    stopped: false,
+    tasks: acceptedSteps,
+    ...(acceptedActions.length > 0 ? { actions: acceptedActions } : {})
+  };
 }

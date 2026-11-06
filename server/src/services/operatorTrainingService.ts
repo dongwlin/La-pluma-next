@@ -25,6 +25,7 @@ import {
 import type {
   LmdRequirement,
   MaterialCalculation,
+  OwnedOperator,
   TrainingBaseOperator,
   TrainingCandidate,
   TrainingMaterialNeed,
@@ -32,6 +33,15 @@ import type {
   TrainingOperatorRequirements,
   TrainingSettings
 } from './operatorTrainingModel.ts';
+import {
+  buildOperatorRecognitionSummary,
+  mergeOperatorCatalog,
+  resolveRecognitionCoverage
+} from './operatorCatalogModel.ts';
+import type {
+  OperatorCatalogEntry,
+  OperatorRecognitionSummary
+} from './operatorCatalogModel.ts';
 import {
   getQueueRevision,
   loadDepot,
@@ -89,6 +99,12 @@ export interface TrainingQueueSnapshot {
   flowSync: FlowSyncState;
 }
 
+/** 候选列表及其识别完整度；识别概要不受候选筛选条件影响。 */
+export interface TrainingOperatorList {
+  operators: TrainingCandidate[];
+  recognition: OperatorRecognitionSummary;
+}
+
 /** 入队选项：来自请求体的值经有限数值校验后写入队列。 */
 export interface QueueAddOptions {
   currentElite?: number;
@@ -121,7 +137,7 @@ export interface MaterialFetchSummary {
 }
 
 export interface OperatorTrainingService {
-  getOperatorList(filters?: TrainingOperatorFilters): Promise<TrainingCandidate[]>;
+  getOperatorList(filters?: TrainingOperatorFilters): Promise<TrainingOperatorList>;
   getTrainingQueue(): Promise<TrainingQueueSnapshot>;
   addToQueue(operatorId: string, options?: QueueAddOptions): Promise<QueueMutationResult & TrainingQueueItem>;
   removeFromQueue(operatorId: string): Promise<QueueMutationResult>;
@@ -145,26 +161,90 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function getOperatorList(filters: TrainingOperatorFilters = {}): Promise<TrainingCandidate[]> {
-  const operatorMaterialsData = await loadOperatorMaterials();
+function toCatalogEntry(operator: OwnedOperator): OperatorCatalogEntry {
+  const entry: OperatorCatalogEntry = {
+    id: operator.id,
+    name: operator.name || operator.id
+  };
+  if (operator.rarity !== undefined) entry.rarity = operator.rarity;
+  if (operator.profession) entry.profession = operator.profession;
+  return entry;
+}
+
+/**
+ * 合并本地训练目录、识别目录与已识别干员：识别目录补充本地目录缺失的条目，
+ * 本地目录字段优先。识别快照缺失或没有目录时，未列出的干员保持拥有状态未知。
+ */
+async function buildOperatorCatalog(): Promise<{
+  operators: TrainingBaseOperator[];
+  owned: OwnedOperator[];
+  recognition: OperatorRecognitionSummary;
+}> {
   const operBoxData = await loadOperBox();
-
   const ownedOperators = getOperBoxOperators(operBoxData);
-  let allOperators: TrainingBaseOperator[] = [];
+  const recognizedCatalog = operBoxData?.allOpers ?? [];
 
+  let localOperators: TrainingBaseOperator[] = [];
   try {
-    allOperators = await getAllOperators();
+    localOperators = await getAllOperators();
   } catch (error) {
-    logger.warn('加载全量干员失败，降级为仅显示已识别干员', { error: errorMessage(error) });
-    allOperators = ownedOperators.map(operator => ({
-      id: operator.id,
-      name: operator.name ?? operator.id,
-      rarity: operator.rarity ?? 0,
-      profession: operator.profession || '未知'
-    }));
+    logger.warn('加载全量干员失败，改用识别目录与已识别干员', { error: errorMessage(error) });
   }
 
-  return buildTrainingCandidates(allOperators, ownedOperators, operatorMaterialsData, filters);
+  const merged = mergeOperatorCatalog(
+    localOperators,
+    recognizedCatalog,
+    ownedOperators.map(toCatalogEntry)
+  );
+  const baseOperators: TrainingBaseOperator[] = merged.map(entry => ({
+    id: entry.id,
+    name: entry.name,
+    rarity: entry.rarity ?? 0,
+    ...(entry.profession ? { profession: entry.profession } : {}),
+    ...(entry.position ? { position: entry.position } : {})
+  }));
+
+  const ownedIds = new Set(ownedOperators.map(operator => operator.id));
+  const hasSnapshot = operBoxData !== null
+    && (ownedOperators.length > 0 || recognizedCatalog.length > 0);
+  const coverage = resolveRecognitionCoverage(
+    baseOperators.map(operator => operator.id),
+    hasSnapshot
+      ? {
+          status: recognizedCatalog.length > 0 ? 'complete' : 'partial',
+          catalog: recognizedCatalog,
+          ownedIds
+        }
+      : null
+  );
+
+  return {
+    operators: baseOperators,
+    owned: ownedOperators,
+    recognition: buildOperatorRecognitionSummary(coverage, {
+      recognizedAt: operBoxData?.timestamp ?? null,
+      total: baseOperators.length,
+      owned: ownedIds.size
+    })
+  };
+}
+
+async function getOperatorList(filters: TrainingOperatorFilters = {}): Promise<TrainingOperatorList> {
+  const [operatorMaterialsData, catalog] = await Promise.all([
+    loadOperatorMaterials(),
+    buildOperatorCatalog()
+  ]);
+
+  return {
+    operators: buildTrainingCandidates(
+      catalog.operators,
+      catalog.owned,
+      operatorMaterialsData,
+      filters,
+      new Set(catalog.recognition.missing)
+    ),
+    recognition: catalog.recognition
+  };
 }
 
 async function getTrainingQueue(): Promise<TrainingQueueSnapshot> {

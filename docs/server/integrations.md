@@ -26,6 +26,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `stopCurrentTask` 先按进程组发 SIGTERM（非 Windows；ESRCH 回落到子进程信号），缺省 3000ms 未退出升级 SIGKILL；重复停止只返回等待中，不重复发送信号（`server/src/services/maaProcessService.ts:1082-1118`）。
 - 退出语义：只有 `stopRequested` 置位的退出算 `stopped`；外部信号（OOM、SIGSEGV、被其他进程 kill）属于失败，保留退出码与信号信息（`server/src/services/maaProcessService.ts:632-669`）。
 - 生命周期回调 `onBeforeStart`/`onStarted`/`onSettled` 可注入；`onSettled` 只在子进程真实退出或启动失败时运行，后台 HTTP 返回不触发（`server/src/services/maaProcessService.ts:215-229`）。spawn、execFile、停止信号与强制终止计时器都是可注入端口（`server/src/services/maaProcessService.ts:152-163,351-369`）。
+- Core/CLI/资源更新作为 Run 执行：Core 与资源更新经 `execMaaCommand` 的 `managedTaskName` 登记受管子进程；CLI 更新（`maa self update` 或 `brew`/`winget`）经 `runCliUpdater` 以带任务名的 spawn 同步执行，同样写入 `taskStatus`。三种更新的停止与关闭都走 `stopCurrentTask` 的同一任务进程路径（`server/src/services/updateExecutionService.ts`、`server/src/services/cliUpdaterService.ts`）。
 
 ## 执行租约与命令构建
 

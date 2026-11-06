@@ -28,18 +28,29 @@ export interface RoguelikeOptionRequirement {
 
 export type RoguelikeAdvancedOptionType = 'text' | 'number' | 'select' | 'checkbox' | 'list'
 
+/** 字段写入 MaaCore 动态任务时的值类型；省略时按字段 type 推断。 */
+export type RoguelikeCoreValueType = 'string' | 'number' | 'boolean' | 'string-list' | 'reward-bitmask'
+
 export interface RoguelikeAdvancedOption {
   key: string
   label: string
   type: RoguelikeAdvancedOptionType
-  param: string
+  /** maa-cli 参数名；省略表示 CLI 无法表达，只能通过动态任务下发。 */
+  param?: string
+  /** MaaCore 动态任务参数名。 */
+  coreParam: string
+  /** 动态任务的 值类型；省略时按字段 type 推断。 */
+  coreType?: RoguelikeCoreValueType
+  /** 为 true 时动态任务写入取反后的布尔值（CLI 开关与 Core 字段语义相反）。 */
+  coreInvert?: boolean
   placeholder?: string
-  options?: RoguelikeSelectOption[]
+  options?: readonly RoguelikeSelectOption[]
   /** 取值随主题变化的选项表，优先于 `options`。 */
   choices?: 'modes' | 'difficulty' | 'squads' | 'roles'
   /**
    * 声明后，缺失或空字符串在显示、草稿归一化与命令构造三处都解析为该值，
    * 并始终显式写入命令参数。未声明时保持“未设置即省略”的行为。
+   * select 的默认值不在当前主题候选表内时回落到候选表首项。
    */
   defaultValue?: string
   hint?: string
@@ -51,6 +62,10 @@ export interface RoguelikeAdvancedOption {
   modes?: readonly string[]
   /** 依赖另一字段；条件不满足时既不下发也不显示。 */
   requires?: RoguelikeOptionRequirement
+  /** list 字段允许的取值；value 是协议值，label 是可输入的中文别名。省略时不限制。 */
+  listChoices?: readonly RoguelikeSelectOption[]
+  /** list 字段允许的最大项数；省略时不限制。 */
+  listMaxItems?: number
 }
 
 export interface RoguelikeTaskInputs {

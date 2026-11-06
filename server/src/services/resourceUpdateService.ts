@@ -10,6 +10,7 @@ import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import type { MaaExecutionLease, MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
+import type { MaaProcessLifecycle } from './maaProcessService.ts';
 
 const STALE_RESOURCE_DAYS = 14;
 
@@ -54,13 +55,18 @@ export interface ResourceUpdateServicePorts {
   resolveResourceDirs?: () => Promise<string[]>;
   readVersionFile?: (versionPath: string) => Promise<ResourceVersionFile>;
   now?: () => Date;
-  runHotUpdate?: () => Promise<string>;
+  runHotUpdate?: (options?: ResourceUpdateRunOptions) => Promise<string>;
   withLease?: MaaExecutionLeaseRunner;
+}
+
+/** 一次资源更新的执行边界；`lifecycle` 由调用的 Run 提供，用于开始门禁与终态回调。 */
+export interface ResourceUpdateRunOptions {
+  lifecycle?: MaaProcessLifecycle;
 }
 
 export interface ResourceUpdateService {
   getResourceInfo(): Promise<ResourceInfo>;
-  updateResources(): Promise<ResourceUpdateResult>;
+  updateResources(options?: ResourceUpdateRunOptions): Promise<ResourceUpdateResult>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -149,8 +155,8 @@ async function readResourceVersionFile(versionPath: string): Promise<ResourceVer
   return { content, modifiedAt: fileStat.mtime };
 }
 
-async function runMaaHotUpdate(): Promise<string> {
-  const result = await execMaaCommand('hot-update', [], null, null, false, false, undefined, {
+async function runMaaHotUpdate(options: ResourceUpdateRunOptions = {}): Promise<string> {
+  const result = await execMaaCommand('hot-update', [], null, null, false, false, options.lifecycle, {
     execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
     managedTaskName: '同步 MAA 资源'
   });
@@ -192,22 +198,22 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
     throw lastError ?? new Error('无法读取 MAA 资源版本');
   }
 
-  async function performUpdate(): Promise<ResourceUpdateResult> {
-    const output = await runHotUpdate();
+  async function performUpdate(options: ResourceUpdateRunOptions): Promise<ResourceUpdateResult> {
+    const output = await runHotUpdate(options);
     return {
       output,
       resource: await getResourceInfo()
     };
   }
 
-  async function updateResources(): Promise<ResourceUpdateResult> {
+  async function updateResources(options: ResourceUpdateRunOptions = {}): Promise<ResourceUpdateResult> {
     if (activeUpdate) return activeUpdate;
 
     const run = runWithLease({
       source: 'resource-update',
       taskName: '同步 MAA 资源',
       command: 'hot-update'
-    }, () => performUpdate());
+    }, () => performUpdate(options));
     activeUpdate = run;
     try {
       return await run;
@@ -230,6 +236,27 @@ export function getMaaResourceInfo(): Promise<ResourceInfo> {
  * 同步 MAA 资源并返回更新后的信息。并发调用共享同一次更新；
  * 失败原样抛出且不自动重试。
  */
-export function updateMaaResources(): Promise<ResourceUpdateResult> {
-  return defaultService.updateResources();
+export function updateMaaResources(options: ResourceUpdateRunOptions = {}): Promise<ResourceUpdateResult> {
+  return defaultService.updateResources(options);
+}
+
+function errorMessageOf(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return String(error);
+}
+
+/** 资源信息读取失败时的既有兜底投影：状态按 `unknown` 处理，不能当成正常。 */
+export function buildResourceInfoFallback(error: unknown): ResourceInfo {
+  return {
+    lastUpdated: null,
+    modifiedAt: null,
+    ageDays: null,
+    status: 'unknown',
+    message: `资源版本读取失败: ${errorMessageOf(error)}`,
+    activity: null,
+    gacha: null
+  };
 }

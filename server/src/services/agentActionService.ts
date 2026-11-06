@@ -1,6 +1,6 @@
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
-import { validateGameTaskParams } from './gameTaskConfigService.ts';
+import { validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
 
 /** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
@@ -27,10 +27,23 @@ const AGENT_QUERY_COMMANDS: ReadonlySet<string> = new Set(['activity', 'list']);
 const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const SAFE_TASK_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 
+/** maa-cli 在多个 variants 同时匹配时的参数合并策略；默认 first。 */
+export const AGENT_TASK_STRATEGIES = Object.freeze(['first', 'merge'] as const);
+
+export type AgentTaskStrategy = (typeof AGENT_TASK_STRATEGIES)[number];
+
+/** 上游 variants 项：condition 决定是否匹配，params 在匹配后合并进任务参数。 */
+export interface AgentTaskVariant {
+  condition?: Record<string, unknown>;
+  params?: Record<string, unknown>;
+}
+
 export interface AgentTaskConfig extends Record<string, unknown> {
   name: string;
   type: string;
   params: Record<string, unknown>;
+  strategy?: AgentTaskStrategy;
+  variants?: AgentTaskVariant[];
 }
 
 /** 命令执行器端口：只转发已归一化的参数，设备与租约仍由实现持有。 */
@@ -51,9 +64,19 @@ export type AgentTaskDynamicExecutor = (
   userResource: boolean
 ) => Promise<unknown>;
 
+export type AgentTaskDynamicBatchExecutor = (
+  taskId: string,
+  taskConfigs: readonly AgentTaskConfig[],
+  taskName: string,
+  taskType: string,
+  waitForCompletion: boolean,
+  userResource: boolean
+) => Promise<unknown>;
+
 export interface AgentTaskDependencies {
   execMaaCommand?: AgentTaskCommandExecutor;
   execDynamicTask?: AgentTaskDynamicExecutor;
+  execDynamicTasks?: AgentTaskDynamicBatchExecutor;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,7 +103,193 @@ function invalidRequest(code: string, message: string, details: Record<string, u
   });
 }
 
-function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
+const STRATEGY_SET: ReadonlySet<string> = new Set(AGENT_TASK_STRATEGIES);
+
+function normalizeTaskVariants(value: unknown): AgentTaskVariant[] {
+  if (!Array.isArray(value)) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      'taskConfig.variants 必须是数组',
+      { reason: 'variants_array_required', receivedType: receivedTypeOf(value) }
+    );
+  }
+
+  return value.map((variant, variantIndex) => {
+    if (!isRecord(variant)) {
+      throw invalidRequest(
+        'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+        'taskConfig.variants 的每一项都必须是对象',
+        { reason: 'variant_object_required', variantIndex, receivedType: receivedTypeOf(variant) }
+      );
+    }
+
+    for (const key of Object.keys(variant)) {
+      if (key !== 'condition' && key !== 'params') {
+        throw invalidRequest(
+          'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+          `taskConfig.variants[${variantIndex}] 不支持字段 ${key}`,
+          { reason: 'variant_field_unknown', variantIndex, field: key, allowed: ['condition', 'params'] }
+        );
+      }
+    }
+
+    const condition = variant.condition;
+    if (condition !== undefined && !isRecord(condition)) {
+      throw invalidRequest(
+        'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+        'variant.condition 必须是对象',
+        { reason: 'variant_condition_object_required', variantIndex, receivedType: receivedTypeOf(condition) }
+      );
+    }
+
+    const params = variant.params;
+    if (params !== undefined && !isRecord(params)) {
+      throw invalidRequest(
+        'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+        'variant.params 必须是对象',
+        { reason: 'variant_params_object_required', variantIndex, receivedType: receivedTypeOf(params) }
+      );
+    }
+
+    return {
+      ...(condition ? { condition } : {}),
+      ...(params ? { params } : {})
+    };
+  });
+}
+
+function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: string): AgentTaskConfig {
+  if ('condition' in normalized) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      `${label}.condition 必须放在 variants 项内`,
+      { reason: 'condition_must_be_in_variants' }
+    );
+  }
+
+  for (const key of Object.keys(normalized)) {
+    if (key !== 'name' && key !== 'type' && key !== 'params' && key !== 'strategy' && key !== 'variants') {
+      throw invalidRequest(
+        'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+        `${label} 不支持字段 ${key}`,
+        { reason: 'task_field_unknown', field: key, allowed: ['name', 'type', 'params', 'strategy', 'variants'] }
+      );
+    }
+  }
+
+  if (typeof normalized.name !== 'string' || !normalized.name.trim()
+    || typeof normalized.type !== 'string' || !normalized.type.trim()) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      `${label}.name 和 ${label}.type 必须是非空字符串`,
+      { reason: 'name_and_type_required' }
+    );
+  }
+
+  const normalizedType = normalized.type.trim();
+  if (!SAFE_TASK_TYPE_PATTERN.test(normalizedType)) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_TYPE_INVALID',
+      `${label}.type 必须是 Core 任务类型标识（字母开头，仅含字母、数字和下划线）`,
+      { type: normalized.type, pattern: SAFE_TASK_TYPE_PATTERN.source }
+    );
+  }
+
+  const params = normalized.params;
+  if (params !== undefined && !isRecord(params)) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      `${label}.params 必须是对象`,
+      { reason: 'params_object_required' }
+    );
+  }
+
+  const strategy = normalized.strategy;
+  if (strategy !== undefined && (typeof strategy !== 'string' || !STRATEGY_SET.has(strategy))) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      `${label}.strategy 必须是 first 或 merge`,
+      { reason: 'strategy_invalid', strategy, allowed: [...AGENT_TASK_STRATEGIES] }
+    );
+  }
+
+  const variants = normalized.variants === undefined
+    ? undefined
+    : normalizeTaskVariants(normalized.variants);
+
+  const validationMessage = validateGameTaskParams(normalizedType, params ?? {});
+  if (validationMessage) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { reason: 'game_task_params_invalid' });
+  }
+
+  return {
+    ...normalized,
+    name: normalized.name.trim(),
+    type: normalizedType,
+    params: params ?? {},
+    ...(strategy ? { strategy: strategy as AgentTaskStrategy } : {}),
+    ...(variants ? { variants } : {})
+  };
+}
+
+function normalizeTaskBatch(normalized: Record<string, unknown>): AgentTaskConfig[] {
+  if ('name' in normalized || 'type' in normalized) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      'taskConfig 不能同时包含单任务字段与 tasks',
+      { reason: 'tasks_exclusive' }
+    );
+  }
+
+  for (const key of Object.keys(normalized)) {
+    if (key !== 'tasks') {
+      throw invalidRequest(
+        'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+        `多任务 taskConfig 不支持字段 ${key}`,
+        { reason: 'batch_field_unknown', field: key, allowed: ['tasks'] }
+      );
+    }
+  }
+
+  const tasks = normalized.tasks;
+  if (!Array.isArray(tasks)) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      'taskConfig.tasks 必须是数组',
+      { reason: 'tasks_array_required', receivedType: receivedTypeOf(tasks) }
+    );
+  }
+  if (tasks.length === 0) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+      'taskConfig.tasks 至少需要一项',
+      { reason: 'tasks_empty' }
+    );
+  }
+
+  return tasks.map((task, taskIndex) => {
+    if (!isRecord(task)) {
+      throw invalidRequest(
+        'AGENT_VALIDATION_TASK_CONFIG_INVALID',
+        'taskConfig.tasks 的每一项都必须是对象',
+        { reason: 'task_object_required', taskIndex, receivedType: receivedTypeOf(task) }
+      );
+    }
+    try {
+      return normalizeSingleTaskConfig(task, `tasks[${taskIndex}]`);
+    } catch (error) {
+      if (!isRecord(error) || typeof error.code !== 'string') throw error;
+      const details = isRecord(error.details) ? error.details : {};
+      throw agentError(error.code, errorMessageOf(error) || '任务配置无效', {
+        statusCode: typeof error.statusCode === 'number' ? error.statusCode : 400,
+        details: { ...details, taskIndex },
+        retryable: false
+      });
+    }
+  });
+}
+
+function normalizeTaskConfig(taskConfig: unknown): { taskConfig?: AgentTaskConfig; taskConfigs?: AgentTaskConfig[] } {
   let normalized: unknown = taskConfig;
 
   if (typeof taskConfig === 'string') {
@@ -106,44 +315,10 @@ function normalizeTaskConfig(taskConfig: unknown): AgentTaskConfig {
     );
   }
 
-  if (typeof normalized.name !== 'string' || !normalized.name.trim()
-    || typeof normalized.type !== 'string' || !normalized.type.trim()) {
-    throw invalidRequest(
-      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
-      'taskConfig.name 和 taskConfig.type 必须是非空字符串',
-      { reason: 'name_and_type_required' }
-    );
+  if ('tasks' in normalized) {
+    return { taskConfigs: normalizeTaskBatch(normalized) };
   }
-
-  const normalizedType = normalized.type.trim();
-  if (!SAFE_TASK_TYPE_PATTERN.test(normalizedType)) {
-    throw invalidRequest(
-      'AGENT_VALIDATION_TASK_TYPE_INVALID',
-      'taskConfig.type 必须是 Core 任务类型标识（字母开头，仅含字母、数字和下划线）',
-      { type: normalized.type, pattern: SAFE_TASK_TYPE_PATTERN.source }
-    );
-  }
-
-  const params = normalized.params;
-  if (params !== undefined && !isRecord(params)) {
-    throw invalidRequest(
-      'AGENT_VALIDATION_TASK_CONFIG_INVALID',
-      'taskConfig.params 必须是对象',
-      { reason: 'params_object_required' }
-    );
-  }
-
-  const validationMessage = validateGameTaskParams(normalizedType, params ?? {});
-  if (validationMessage) {
-    throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { reason: 'game_task_params_invalid' });
-  }
-
-  return {
-    ...normalized,
-    name: normalized.name.trim(),
-    type: normalizedType,
-    params: params ?? {}
-  };
+  return { taskConfig: normalizeSingleTaskConfig(normalized, 'taskConfig') };
 }
 
 function normalizeOptionalLabel(value: unknown, field: string, fallback: string, maxLength: number): string {
@@ -281,6 +456,7 @@ export interface NormalizedAgentTaskRequest {
   command: AgentTaskCommand;
   args: string[];
   taskConfig?: AgentTaskConfig;
+  taskConfigs?: AgentTaskConfig[];
   taskName: string;
   taskType: string;
   waitForCompletion: boolean;
@@ -336,6 +512,13 @@ export function preflightAgentTaskRequest(input: unknown = {}): NormalizedAgentT
   }
 
   const normalizedArgs = args.map(String);
+  const commandArgsError = validateRoguelikeCommandArgs(command, normalizedArgs);
+  if (commandArgsError) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_ARGS_INVALID', commandArgsError, {
+      reason: 'command_args_invalid',
+      command
+    });
+  }
   const normalizedTaskName = normalizeOptionalLabel(taskName, 'taskName', `Agent: ${command}`, 160);
   const normalizedTaskType = normalizeOptionalLabel(taskType, 'taskType', 'agent', 64);
   const hasTaskConfig = taskConfig !== undefined;
@@ -357,8 +540,11 @@ export function preflightAgentTaskRequest(input: unknown = {}): NormalizedAgentT
   }
 
   let normalizedTaskConfig: AgentTaskConfig | undefined;
+  let normalizedTaskConfigs: AgentTaskConfig[] | undefined;
   if (hasTaskConfig) {
-    normalizedTaskConfig = normalizeTaskConfig(taskConfig);
+    const normalizedConfig = normalizeTaskConfig(taskConfig);
+    normalizedTaskConfig = normalizedConfig.taskConfig;
+    normalizedTaskConfigs = normalizedConfig.taskConfigs;
     const requestedTaskId = normalizedArgs[0]?.trim();
     const taskId = requestedTaskId || command;
 
@@ -375,6 +561,7 @@ export function preflightAgentTaskRequest(input: unknown = {}): NormalizedAgentT
     command: command as AgentTaskCommand,
     args: normalizedArgs,
     ...(normalizedTaskConfig ? { taskConfig: normalizedTaskConfig } : {}),
+    ...(normalizedTaskConfigs ? { taskConfigs: normalizedTaskConfigs } : {}),
     taskName: normalizedTaskName,
     taskType: normalizedTaskType,
     waitForCompletion: AGENT_QUERY_COMMANDS.has(command) ? true : waitForCompletion,
@@ -382,18 +569,33 @@ export function preflightAgentTaskRequest(input: unknown = {}): NormalizedAgentT
   };
 }
 
-export async function executeAgentTask(
-  input: unknown = {},
+/** 执行已通过 preflight 的请求；控制器在创建 Run 前复用同一份归一化结果。 */
+export async function executePreflightAgentTask(
+  request: NormalizedAgentTaskRequest,
   dependencies: AgentTaskDependencies = {}
 ): Promise<unknown> {
-  const request = preflightAgentTaskRequest(input);
+  const taskId = request.args[0]?.trim() || request.command;
+
+  if (request.taskConfigs) {
+    if (typeof dependencies.execDynamicTasks !== 'function') {
+      throw new TypeError('executeAgentTask requires execDynamicTasks');
+    }
+
+    return dependencies.execDynamicTasks(
+      taskId,
+      request.taskConfigs,
+      request.taskName,
+      request.taskType,
+      request.waitForCompletion,
+      request.userResource
+    );
+  }
 
   if (request.taskConfig) {
     if (typeof dependencies.execDynamicTask !== 'function') {
       throw new TypeError('executeAgentTask requires execDynamicTask');
     }
 
-    const taskId = request.args[0]?.trim() || request.command;
     return dependencies.execDynamicTask(
       taskId,
       request.taskConfig,
@@ -419,6 +621,13 @@ export async function executeAgentTask(
     request.taskType,
     request.waitForCompletion
   );
+}
+
+export async function executeAgentTask(
+  input: unknown = {},
+  dependencies: AgentTaskDependencies = {}
+): Promise<unknown> {
+  return executePreflightAgentTask(preflightAgentTaskRequest(input), dependencies);
 }
 
 /**

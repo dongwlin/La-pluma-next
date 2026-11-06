@@ -13,6 +13,15 @@ import {
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import { getCallbackDetails, parseMaaCallbackEvents } from './maaCallbackService.ts';
 import type { MaaCallbackEvent } from './maaCallbackService.ts';
+import {
+  describeOperBoxRecognition,
+  parseOperBoxCatalog,
+  parseOperBoxRecognitionPayload
+} from './operatorCatalogModel.ts';
+import type {
+  OperBoxCatalogOperator,
+  OperBoxRecognitionInfo
+} from './operatorCatalogModel.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 
 const logger = createLogger('DataParser');
@@ -59,13 +68,17 @@ export interface DepotFile {
 }
 
 /**
- * server/data/operbox.json 的结构。条目本身是 MAA 识别结果，本服务只校验
- * 信封与数组形态，不解释干员字段，原样保存与返回。
+ * server/data/operbox.json 的结构。`data` 是 MAA 的 `own_opers`，条目原样保存；
+ * `allOpers` 是同一回调里的 `all_opers` 目录（含拥有标记与多语言名称），
+ * `recognition` 是按目录派生的识别概要，缺目录（旧快照或旧 Core）时为 partial。
  */
 export interface OperBoxFile {
   timestamp: string;
   operCount: number;
   data: Record<string, unknown>[];
+  allOpers?: OperBoxCatalogOperator[];
+  operTotal?: number;
+  recognition: OperBoxRecognitionInfo;
 }
 
 export interface OperatorSummary {
@@ -85,7 +98,10 @@ export interface DepotRecognitionResult {
 export interface OperBoxRecognitionResult {
   path: string;
   operCount: number;
+  operTotal: number;
   data: Record<string, unknown>[];
+  allOpers: OperBoxCatalogOperator[];
+  recognition: OperBoxRecognitionInfo;
 }
 
 export interface DataParserPorts {
@@ -284,6 +300,10 @@ export function parseDepotFile(value: unknown): DepotFile | null {
   return { timestamp: value.timestamp, itemCount: value.itemCount, items };
 }
 
+/**
+ * 校验 OperBox 快照：旧快照只有 `data`，按部分识别读取；新快照额外校验
+ * `allOpers` 与 `operTotal`，无效目录条目跳过而不是让整份快照失效。
+ */
 export function parseOperBoxFile(value: unknown): OperBoxFile | null {
   if (!isRecord(value) || typeof value.timestamp !== 'string') return null;
   if (typeof value.operCount !== 'number' || !Number.isFinite(value.operCount)) return null;
@@ -295,20 +315,23 @@ export function parseOperBoxFile(value: unknown): OperBoxFile | null {
     data.push(entry);
   }
 
-  return { timestamp: value.timestamp, operCount: value.operCount, data };
-}
+  const allOpers = parseOperBoxCatalog(value.allOpers) ?? undefined;
+  const operTotal = typeof value.operTotal === 'number' && Number.isFinite(value.operTotal)
+    ? value.operTotal
+    : allOpers?.length;
 
-export function parseOperBoxOperators(details: unknown): Record<string, unknown>[] | null {
-  if (!isRecord(details)) return null;
-  const own = details.own_opers;
-  if (!Array.isArray(own)) return null;
-
-  const operators: Record<string, unknown>[] = [];
-  for (const entry of own) {
-    if (!isRecord(entry)) return null;
-    operators.push(entry);
-  }
-  return operators;
+  return {
+    timestamp: value.timestamp,
+    operCount: value.operCount,
+    data,
+    ...(allOpers && allOpers.length > 0 ? { allOpers } : {}),
+    ...(operTotal !== undefined ? { operTotal } : {}),
+    recognition: describeOperBoxRecognition({
+      allOpers: allOpers && allOpers.length > 0 ? allOpers : null,
+      operTotal,
+      operCount: value.operCount
+    })
+  };
 }
 
 interface RecognitionPayload {
@@ -499,19 +522,29 @@ export async function parseOperBoxData(
       throw new Error('干员识别未完成');
     }
 
-    const opers = parseOperBoxOperators(payload.details);
-    if (!opers || opers.length === 0) {
+    const recognition = parseOperBoxRecognitionPayload(payload.details);
+    if (!recognition || recognition.owned.length === 0) {
       throw new Error('解析干员数据失败');
     }
-    logger.success(`解析成功，干员数量: ${opers.length}`);
+    logger.success(
+      `解析成功，已识别干员数量: ${recognition.owned.length}，目录数量: ${recognition.catalog.length}`
+    );
 
     await ensureDir(context.dataDir);
     const outputPath = join(context.dataDir, 'operbox.json');
 
+    const allOpers = recognition.catalog;
+    const operTotal = allOpers.length > 0 ? allOpers.length : recognition.owned.length;
     const output: OperBoxFile = {
       timestamp: new Date().toISOString(),
-      operCount: opers.length,
-      data: opers
+      operCount: recognition.owned.length,
+      data: recognition.owned,
+      ...(allOpers.length > 0 ? { allOpers, operTotal } : {}),
+      recognition: describeOperBoxRecognition({
+        allOpers: allOpers.length > 0 ? allOpers : null,
+        operTotal,
+        operCount: recognition.owned.length
+      })
     };
 
     await writeJsonFile(outputPath, output);
@@ -519,8 +552,11 @@ export async function parseOperBoxData(
 
     return successResponse({
       path: outputPath,
-      operCount: opers.length,
-      data: opers
+      operCount: recognition.owned.length,
+      operTotal,
+      data: recognition.owned,
+      allOpers,
+      recognition: output.recognition
     });
   } catch (error) {
     logger.error('解析干员数据失败', { error: errorMessage(error), stack: error instanceof Error ? error.stack : undefined });

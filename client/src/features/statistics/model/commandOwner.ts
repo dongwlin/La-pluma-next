@@ -17,7 +17,14 @@ import {
   type ResourceScope,
 } from '@/features/resource-invalidation'
 import { fetchOperatorMaterials as defaultFetchOperatorMaterials } from '@/features/training'
-import type { DepotDataDetailed, DepotItem, OperBoxData, OperatorDetailed } from '@/features/game-data'
+import type {
+  DepotDataDetailed,
+  DepotItem,
+  OperBoxCatalogOperator,
+  OperBoxData,
+  OperBoxRecognitionInfo,
+  OperatorDetailed,
+} from '@/features/game-data'
 import { parseDepotData, parseOperBoxData } from '../api'
 
 export const STATISTICS_COMMAND_SCOPE = 'statistics'
@@ -128,7 +135,15 @@ interface ResumableCommand {
 
 type RecognitionPayload =
   | { kind: 'depot'; itemCount: number; items: DepotItem[]; path?: string }
-  | { kind: 'operbox'; operCount: number; data: OperatorDetailed[]; path?: string }
+  | {
+      kind: 'operbox'
+      operCount: number
+      data: OperatorDetailed[]
+      path?: string
+      allOpers?: OperBoxCatalogOperator[]
+      operTotal?: number
+      recognition?: OperBoxRecognitionInfo
+    }
 
 const DEFAULT_TIMEOUTS: StatisticsCommandTimeouts = {
   command: STATISTICS_COMMAND_TIMEOUT_MS,
@@ -228,11 +243,23 @@ function readDepotPayload(data: unknown): Extract<RecognitionPayload, { kind: 'd
 function readOperBoxPayload(data: unknown): Extract<RecognitionPayload, { kind: 'operbox' }> | null {
   if (!isRecord(data) || data.success === false) return null
   if (typeof data.operCount !== 'number' || !Array.isArray(data.data)) return null
+  // 识别目录与概要随解析响应返回；旧服务端没有这些字段时保持缺省。
   return {
     kind: 'operbox',
     operCount: data.operCount,
     data: data.data as OperatorDetailed[],
     path: typeof data.path === 'string' ? data.path : undefined,
+    ...(Array.isArray(data.allOpers) ? { allOpers: data.allOpers as OperBoxCatalogOperator[] } : {}),
+    ...(typeof data.operTotal === 'number' ? { operTotal: data.operTotal } : {}),
+    ...(isRecord(data.recognition) && (data.recognition.status === 'complete' || data.recognition.status === 'partial')
+      ? {
+          recognition: {
+            status: data.recognition.status,
+            total: typeof data.recognition.total === 'number' ? data.recognition.total : data.operCount,
+            owned: typeof data.recognition.owned === 'number' ? data.recognition.owned : data.operCount,
+          } satisfies OperBoxRecognitionInfo,
+        }
+      : {}),
   }
 }
 
@@ -574,6 +601,9 @@ export class StatisticsCommandOwner {
       operCount: payload.operCount,
       data: payload.data,
       path: payload.path,
+      ...(payload.allOpers ? { allOpers: payload.allOpers } : {}),
+      ...(payload.operTotal !== undefined ? { operTotal: payload.operTotal } : {}),
+      ...(payload.recognition ? { recognition: payload.recognition } : {}),
       timestamp: new Date().toISOString(),
     }
     const snapshotApplied = await this.applyRecognitionSnapshot(options, { kind: 'operbox', operBox })

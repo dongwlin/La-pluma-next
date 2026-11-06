@@ -3,6 +3,8 @@
  * 文件解析入口在这里声明领域类型，未知值先校验再进入计算。
  */
 
+import type { OperatorCatalogEntry } from './operatorCatalogModel.ts';
+
 /** 训练设置：已知字段有默认值，未知扩展字段原样保留。 */
 export interface TrainingSettings {
   autoSwitch: boolean;
@@ -120,9 +122,16 @@ export interface OwnedOperator {
   own?: boolean;
 }
 
+/**
+ * 持有干员快照：`data`/`operators` 是已识别拥有的干员，`allOpers` 是识别目录
+ * （含拥有标记与多语言名称），缺目录的快照只能确认已识别拥有的干员。
+ */
 export interface OperBoxData {
   data?: OwnedOperator[];
   operators?: OwnedOperator[];
+  allOpers?: OperatorCatalogEntry[];
+  operTotal?: number;
+  timestamp?: string;
 }
 
 export interface DepotSnapshot {
@@ -152,7 +161,10 @@ export interface MaterialFormula {
 
 export type MaterialFormulas = Record<string, MaterialFormula>;
 
-export type TrainingDisabledReason = 'unowned' | 'missing_material_data' | 'already_elite2';
+export type TrainingDisabledReason = 'unowned' | 'unrecognized' | 'missing_material_data' | 'already_elite2';
+
+/** 干员的拥有状态：未确认与已确认未拥有不能混用。 */
+export type TrainingCandidateOwnership = 'owned' | 'unowned' | 'unknown';
 
 /** 候选列表过滤状态，与 `/training/operators` 的 status 参数一致。 */
 export type TrainingCandidateStatus = 'trainable' | 'owned' | 'all';
@@ -188,6 +200,7 @@ export interface TrainingCandidate {
   currentLevel: number;
   targetElite: number;
   owned: boolean;
+  ownership: TrainingCandidateOwnership;
   potential: number;
   hasMaterialData: boolean;
   materials: TrainingOperatorMaterials | null;
@@ -206,6 +219,7 @@ interface CandidateState {
   currentLevel: number;
   targetElite: number;
   owned: boolean;
+  ownership: TrainingCandidateOwnership;
   potential: number;
   hasMaterialData: boolean;
   materials: TrainingOperatorMaterials | null;
@@ -213,6 +227,7 @@ interface CandidateState {
 
 interface DisabledReasonInput {
   owned: boolean;
+  unrecognized: boolean;
   hasMaterialData: boolean;
   currentElite: number;
   targetElite: number;
@@ -259,6 +274,7 @@ function toApplicableStage(value: unknown): ApplicableStage | null {
 }
 
 export function getTrainingDisabledReason(operator: DisabledReasonInput): TrainingDisabledReason | null {
+  if (operator.unrecognized) return 'unrecognized';
   if (!operator.owned) return 'unowned';
   if (!operator.hasMaterialData) return 'missing_material_data';
   if (operator.currentElite >= operator.targetElite) return 'already_elite2';
@@ -274,18 +290,25 @@ export function getOperBoxOperators(operBoxData: OperBoxData | null | undefined)
 
 /**
  * 候选干员投影与计数：全量干员为基底，OperBox 与材料数据补充状态后筛选排序；
- * 纯函数，不读取目录/OperBox/材料文件，读取失败的降级由调用方决定传入哪份 baseOperators。
+ * `unknownOwnership` 是识别未能确认拥有状态的干员，这些条目在列表里按未识别处理，
+ * 不能与确认未拥有混同。纯函数，不读取目录/OperBox/材料文件。
  */
 export function buildTrainingCandidates(
   baseOperators: TrainingBaseOperator[],
   ownedOperators: OwnedOperator[],
   operatorMaterialsData: OperatorMaterialsFile,
-  filters: TrainingOperatorFilters = {}
+  filters: TrainingOperatorFilters = {},
+  unknownOwnership: ReadonlySet<string> = new Set<string>()
 ): TrainingCandidate[] {
   const ownedMap = new Map(ownedOperators.map(operator => [operator.id, operator]));
 
   const operators: TrainingCandidate[] = baseOperators.map(baseOperator => {
     const ownedOperator = ownedMap.get(baseOperator.id);
+    const ownership: TrainingCandidateOwnership = ownedOperator
+      ? 'owned'
+      : unknownOwnership.has(baseOperator.id)
+        ? 'unknown'
+        : 'unowned';
     const opData = operatorMaterialsData.operators[baseOperator.id];
     const operator: CandidateState = {
       id: baseOperator.id,
@@ -296,7 +319,8 @@ export function buildTrainingCandidates(
       currentElite: ownedOperator ? (ownedOperator.elite || 0) : 0,
       currentLevel: ownedOperator ? (ownedOperator.level || 1) : 0,
       targetElite: 2,
-      owned: Boolean(ownedOperator),
+      owned: ownership === 'owned',
+      ownership,
       potential: ownedOperator ? (ownedOperator.potential || 1) : 0,
       hasMaterialData: Boolean(opData),
       materials: opData ? {
@@ -305,16 +329,17 @@ export function buildTrainingCandidates(
       } : null
     };
 
-    const disabledReason = getTrainingDisabledReason(operator);
+    const disabledReason = getTrainingDisabledReason({
+      ...operator,
+      unrecognized: ownership === 'unknown'
+    });
     return {
       ...operator,
       canTrain: disabledReason === null,
       disabledReason,
       trainingStatus: disabledReason === null
         ? 'trainable'
-        : operator.owned
-          ? disabledReason
-          : 'unowned'
+        : disabledReason
     };
   });
 

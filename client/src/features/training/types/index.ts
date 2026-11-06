@@ -9,6 +9,15 @@ export interface MaterialNode {
   children?: MaterialNode[]
 }
 
+/** 干员拥有状态：`unknown` 表示识别未确认，不能当作已确认未拥有。 */
+export type TrainingOwnership = 'owned' | 'unowned' | 'unknown'
+
+export type TrainingDisabledReason =
+  | 'unowned'
+  | 'unrecognized'
+  | 'missing_material_data'
+  | 'already_elite2'
+
 export interface TrainingOperator {
   id: string
   name: string
@@ -18,12 +27,31 @@ export interface TrainingOperator {
   currentLevel?: number
   targetElite: number
   owned?: boolean
+  ownership?: TrainingOwnership
   hasMaterialData?: boolean
   canTrain?: boolean
-  disabledReason?: 'unowned' | 'missing_material_data' | 'already_elite2' | null
-  trainingStatus?: 'trainable' | 'unowned' | 'missing_material_data' | 'already_elite2'
+  disabledReason?: TrainingDisabledReason | null
+  trainingStatus?: 'trainable' | TrainingDisabledReason
   materials?: MaterialNode[]
   progress?: number
+}
+
+/** 识别完整度：`missing` 表示尚未识别，`partial` 表示存在未确认项。 */
+export type OperatorRecognitionStatus = 'complete' | 'partial' | 'missing'
+
+export interface OperatorRecognitionSummary {
+  status: OperatorRecognitionStatus
+  recognizedAt: string | null
+  total: number
+  owned: number
+  unknown: number
+  missing: string[]
+}
+
+/** 候选列表端点载荷：`operators` 之外的识别概要由同一响应返回。 */
+export interface TrainingCandidatePayload {
+  operators?: TrainingOperator[]
+  recognition?: OperatorRecognitionSummary
 }
 
 export interface TrainingQueueItem {

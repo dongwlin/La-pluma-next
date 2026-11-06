@@ -7,12 +7,14 @@ import {
 } from '@/features/game-data'
 import { getOperatorList, getTrainingQueue } from '../api'
 import type {
+  OperatorRecognitionSummary,
   TrainingOperator,
   TrainingQueueSnapshot,
   TrainingStatusCounts,
 } from '../types'
 import {
   buildAllCandidateRows,
+  extractOperatorRecognition,
   extractOperatorRows,
   type TrainingCandidateFilters,
 } from './candidates'
@@ -43,13 +45,28 @@ const toOperatorListFilters = (filters: TrainingCandidateFilters) => ({
   needsElite2: filters.needsElite2 ?? false,
 })
 
+/** 候选行与同一端点返回的识别概要；概要不受筛选条件影响。 */
+export interface TrainingCandidatePage {
+  operators: TrainingOperator[]
+  recognition: OperatorRecognitionSummary | null
+}
+
+const readCandidatePage = async (
+  filters: TrainingCandidateFilters,
+  signal: AbortSignal,
+): Promise<TrainingCandidatePage> => {
+  const response = await getOperatorList(toOperatorListFilters(filters), signal)
+  const payload = unwrapApiResponse(response)
+  return {
+    operators: extractOperatorRows(payload),
+    recognition: extractOperatorRecognition(payload),
+  }
+}
+
 const readCandidateRows = async (
   filters: TrainingCandidateFilters,
   signal: AbortSignal,
-): Promise<TrainingOperator[]> => {
-  const response = await getOperatorList(toOperatorListFilters(filters), signal)
-  return extractOperatorRows(unwrapApiResponse(response))
-}
+): Promise<TrainingOperator[]> => (await readCandidatePage(filters, signal)).operators
 
 /**
  * 目录与持有干员属于 `game-data` 的共享只读资源。这里通过 QueryClient 的
@@ -82,8 +99,8 @@ const readOperBoxRows = async (
 }
 
 /**
- * 候选列表按状态、稀有度与“未精二”条件区分缓存身份。
- * `status=all` 且端点返回空列表时沿用旧兼容补齐（目录 + 持有干员）。
+ * 候选列表按状态、稀有度与“未精二”条件区分缓存身份；识别概要沿用同一份
+ * 端点载荷，不参与缓存身份。`status=all` 且端点返回空列表时沿用旧兼容补齐。
  */
 export const trainingCandidatesQueryOptions = (filters: TrainingCandidateFilters) => queryOptions({
   queryKey: trainingKeys.query(
@@ -92,15 +109,18 @@ export const trainingCandidatesQueryOptions = (filters: TrainingCandidateFilters
     filters.rarity ?? null,
     filters.needsElite2 ?? false,
   ),
-  queryFn: async ({ client, signal }): Promise<TrainingOperator[]> => {
-    const rows = await readCandidateRows(filters, signal)
-    if (filters.status !== 'all' || rows.length > 0) return rows
+  queryFn: async ({ client, signal }): Promise<TrainingCandidatePage> => {
+    const page = await readCandidatePage(filters, signal)
+    if (filters.status !== 'all' || page.operators.length > 0) return page
 
     const [catalog, ownedOperators] = await Promise.all([
       readOperatorCatalog(client, signal),
       readOperBoxRows(client, signal),
     ])
-    return buildAllCandidateRows(catalog, ownedOperators, filters.rarity ?? null)
+    return {
+      operators: buildAllCandidateRows(catalog, ownedOperators, filters.rarity ?? null),
+      recognition: page.recognition,
+    }
   },
 })
 

@@ -180,7 +180,34 @@ describe('Agent API contract registry', () => {
     assert.match(action.description, /deferredMastery\/deferredCount/);
     assert.match(action.description, /SwitchTheme/);
     assert.equal(taskConfigVariant.allOf?.length, 2);
-    assert.deepEqual(properties.taskConfig.examples?.map(value => typeof value === 'object' && value !== null && 'type' in value ? value.type : null), ['OperProgress', 'SwitchTheme']);
+    assert.deepEqual(
+      properties.taskConfig.examples?.map(value => typeof value === 'object' && value !== null && 'type' in value ? value.type : null),
+      ['OperProgress', 'SwitchTheme', null]
+    );
+  });
+
+  it('accepts ordered tasks with strategy and nested variants', () => {
+    const action = findAction(buildAgentManifest(defaults), 'run_task');
+    const validate = new Ajv2020({ strict: false }).compile(must(action.body_schema, 'run_task body'));
+    const task = (overrides: Record<string, unknown> = {}) => ({ name: '任务', type: 'Award', ...overrides });
+    const batch = (tasks: unknown[]) => ({ command: 'run', taskConfig: { tasks } });
+    const variant = { condition: { type: 'Time', start: '18:00:00' }, params: { plan_index: 1 } };
+
+    assert.equal(validate(batch([task()])), true);
+    assert.equal(validate(batch([task({ strategy: 'merge', variants: [variant, {}] })])), true);
+    assert.equal(validate({
+      command: 'run',
+      taskConfig: task({ strategy: 'first', variants: [{ params: { stage: '1-7' } }] })
+    }), true);
+    assert.equal(validate({ command: 'run', taskConfig: { tasks: [task()], strategy: 'merge' } }), false);
+    assert.equal(validate({ command: 'run', taskConfig: { tasks: [task()], name: '任务', type: 'Award' } }), false);
+    assert.equal(validate(batch([])), false);
+    assert.equal(validate({ command: 'run', taskConfig: { tasks: [task()], tasks_extra: true } }), false);
+    assert.equal(validate({ command: 'run', taskConfig: task({ strategy: 'all' }) }), false);
+    assert.equal(validate(batch([task({ variants: [{ condition: 'always' }] })])), false);
+    assert.equal(validate(batch([task({ variants: [{ condition: { type: 'Time' }, unknown: true }] })])), false);
+    assert.equal(validate({ command: 'run', taskConfig: task({ condition: { type: 'Time', start: '08:00:00' } }) }), false);
+    assert.equal(validate(batch([task({ condition: { type: 'Time', start: '08:00:00' } })])), false);
   });
 
   it('rejects invalid task types and command combinations in the run_task schema', () => {
