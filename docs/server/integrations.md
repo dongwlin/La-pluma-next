@@ -131,7 +131,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。
 
-原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。
+原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。删除失败时按原生失败处理，日志检查点可用时回退到现有流程，不会带着可能过期的缓存执行。
 
 委托结果写在 `CopilotEntriesOutcome.delegation` 并透传到作业集 `summary.delegation`。`outcome` 显式给出最终走向：`native-succeeded`、`native-failed`、`native-stopped` 表示原生路径直接收尾；`fallback-succeeded`、`fallback-failed`、`fallback-stopped` 表示原生失败后已回退到现有流程，并按现有流程的结果收尾。`attempted` 恒为 `true`，`fallback` 为真表示发生过回退，`nativeError` 保留原生失败信息（仅回退时出现）；这些兼容字段保留给旧客户端，判断走向以 `outcome` 为准。回退成功后整体仍是成功；回退后现有流程也失败时 `outcome` 为 `fallback-failed`，与原生直接失败的 `native-failed` 区分。未委托的原因只在调试日志中记录。
 
