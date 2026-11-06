@@ -4,12 +4,10 @@ import express from 'express';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { normalizeBasePath, resolveAppPaths } from './config/runtimeConfig.ts';
 import type { RuntimeEnvSource } from './config/runtimeConfig.ts';
-import { resolveGameAssetPaths } from './config/gameAssetPaths.ts';
-import { resolveMaaPaths } from './config/paths.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
 import { createAgentRouter } from './routes/agent.ts';
 import { createGameAssetRouter } from './routes/gameAssets.ts';
-import { GAME_ASSET_ROUTE_PREFIX } from './services/gameAssetService.ts';
+import { createGameAssetDirsProvider, GAME_ASSET_ROUTE_PREFIX } from './services/gameAssetService.ts';
 import type { InfrastScheduleService } from './services/infrastScheduleService.ts';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
@@ -156,18 +154,11 @@ export function createLaPlumaApp({
   });
 
   // 图标与头像走同源只读路由，不经过 API 鉴权：<img> 无法附加令牌。
-  // 物品图标按物品 id 落盘，兼容 iconId 键；映射所需的 item_table/item_index
-  // 路径与资源解析一致，item_table 缺失时由 item_index 兜底。
-  const gameAssetPaths = resolveGameAssetPaths({ env });
-  const maaPaths = resolveMaaPaths({ env });
+  // 物品图标按物品 id 落盘，兼容 iconId 键；目录与别名映射文件按资源消费者的
+  // 共享解析取生效版本，item_table 缺失时由 item_index 兜底。
   app.use(
     GAME_ASSET_ROUTE_PREFIX,
-    createGameAssetRouter({
-      itemDir: gameAssetPaths.itemDir,
-      avatarDir: gameAssetPaths.avatarDir,
-      itemTablePath: maaPaths.itemTablePath,
-      itemIndexPath: maaPaths.itemIndexPath
-    })
+    createGameAssetRouter({ resolveDirs: createGameAssetDirsProvider({ env }) })
   );
 
   // API 独占自己的命名空间：鉴权先于 JSON 解析，稳定 404 与错误出口先于静态资源。

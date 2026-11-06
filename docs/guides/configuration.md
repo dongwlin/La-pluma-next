@@ -4,7 +4,9 @@
 
 ## 运行平台
 
-La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统解析外部 MAA 的目录，路径解析锚定服务端安装位置，与启动时的工作目录无关。与 maa-cli 一致，`MAA_CONFIG_DIR`、`MAA_DATA_DIR`、`MAA_STATE_DIR` 优先于下表的平台默认值，空值按未设置处理；资源目录始终为数据目录下的 `resource/`。
+La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统解析外部 MAA 的目录，路径解析锚定服务端安装位置，与启动时的工作目录无关。与 maa-cli 一致，`MAA_CONFIG_DIR`、`MAA_DATA_DIR`、`MAA_STATE_DIR` 优先于下表的平台默认值，空值按未设置处理；资源目录缺省为数据目录下的 `resource/`，显式设置 `MAA_RESOURCE_DIR` 可整体替换。
+
+服务端读取 MAA 游戏资源（干员目录、养成材料表、物品图标与头像、作业关卡目录）时跟随 MaaCore 的资源覆盖顺序：候选为 MaaCore 附带资源与 `cli.toml` 资源源定位的基础资源（Git 源 checkout 或 MirrorChyan 快照），按文件取更新层中的生效版本，更新层缺文件时回落基础资源；资源同步成功后立即生效。显式设置 `MAA_RESOURCE_DIR` 时独占使用该目录，不再叠加候选层。
 
 | MAA 目录 | macOS | Linux（XDG 标准） | Windows |
 | --- | --- | --- | --- |
@@ -14,7 +16,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 服务器启动时会自动显示当前系统的路径配置。应用自身的运行数据（Run 存储、用户配置、掉落记录等）默认写入 `server/data/`，可通过部署指南中列出的 `LA_PLUMA_*` 变量重定向；生产环境前端静态资源默认读取 `client/dist/`。
 
-物品图标与干员头像默认读取 MAA 资源目录下的 `template/items/`（文件按物品 id 命名）与 `template/avatar/`（按干员 id 命名的**基础头像**）；MAA 标准资源不提供 `_1`/`_2` 变体头像，需要变体时把 `LA_PLUMA_GAME_ASSET_DIR` 指向含 `item/`、`avatar/` 子目录的自定义目录，变体文件按 `<干员 id>_1.png`、`<干员 id>_2.png` 命名。请求键与文件名不一致时（例如仍是 item_table 的 iconId），服务端会借助本地 `item_table.json` 自动解析，`item_table.json` 缺失时回退到 `item_index.json` 的 `icon` 字段。
+物品图标与干员头像按上一段的资源覆盖顺序读取各候选资源层的 `template/items/`（文件按物品 id 命名）与 `template/avatar/`（按干员 id 命名的**基础头像**）；MAA 标准资源不提供 `_1`/`_2` 变体头像，需要变体时把 `LA_PLUMA_GAME_ASSET_DIR` 指向含 `item/`、`avatar/` 子目录的自定义目录（此时独占生效，不再叠加候选层），变体文件按 `<干员 id>_1.png`、`<干员 id>_2.png` 命名。请求键与文件名不一致时（例如仍是 item_table 的 iconId），服务端会借助本地 `item_table.json` 自动解析，`item_table.json` 缺失时回退到 `item_index.json` 的 `icon` 字段。
 
 养成相关数据（队列、材料表、干员材料、仓库/干员识别结果）使用 `LA_PLUMA_TRAINING_DATA_DIR`，默认同为 `server/data/`。材料与掉落抓取脚本复用同一目录解析，重定向后脚本与服务读写同一位置。
 

@@ -25,6 +25,7 @@ import {
   updateMaaResources
 } from './resourceUpdateService.ts';
 import type { ResourceInfo } from './resourceUpdateService.ts';
+import { resetEffectiveResourceDirsCache } from './resourceUpdateService.ts';
 import { saveUpdateChannel } from './updateChannelService.ts';
 import type { CliUpdateChannel, CoreUpdateChannel } from './updateChannelService.ts';
 
@@ -188,6 +189,9 @@ export async function runCoreUpdate({
       const coreResult: MaaCommandOutput = requestedChannel
         ? await execMaaCommand('install', [requestedChannel, '--force'], null, null, true, false, lifecycle, ports)
         : await execMaaCommand('update', [], null, null, true, false, lifecycle, ports);
+      // maa-cli 的 install/update 自带资源同步：资源源快照与 Core 附带资源都可能
+      // 迁移，先失效消费者的候选目录缓存再读取资源投影。
+      resetEffectiveResourceDirsCache();
       let channelPersisted = true;
       if (requestedChannel) {
         // 切换渠道后持久化到 cli.toml，后续不带 version 的更新继续使用该渠道。

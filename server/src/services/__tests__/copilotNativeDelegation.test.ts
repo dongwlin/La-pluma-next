@@ -88,6 +88,10 @@ const readTaskToml = () => {
     process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
     return 0;
   }
+  if (args[0] === 'dir' && (args[1] === 'hot-update' || args[1] === 'data')) {
+    process.stdout.write('');
+    return 0;
+  }
   if (args[0] === 'dir' && args[1] === 'config') {
     process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
     return 0;

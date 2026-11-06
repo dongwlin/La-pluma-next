@@ -10,7 +10,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { readJsonFile, writeJsonFile, updateJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
-import { resolveResourceFile } from '../config/paths.ts';
+import { resolveEffectiveResourceFilePath } from './resourceUpdateService.ts';
 import {
   DEFAULT_TRAINING_SETTINGS,
   isRecord,
@@ -451,8 +451,8 @@ interface LocalMaterialSource {
 }
 
 async function loadLocalMaterialSource(): Promise<LocalMaterialSource> {
-  const itemTablePath = resolveResourceFile(path.join('gamedata', 'excel', 'item_table.json'));
-  const itemIndexPath = resolveResourceFile('item_index.json');
+  const itemTablePath = await resolveEffectiveResourceFilePath(path.join('gamedata', 'excel', 'item_table.json'));
+  const itemIndexPath = await resolveEffectiveResourceFilePath(path.join('item_index.json'));
   const itemTable = await readOptionalLocalResourceJson(itemTablePath);
   const itemIndex = await readOptionalLocalResourceJson(itemIndexPath);
 

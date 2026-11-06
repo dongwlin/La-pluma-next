@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, stat } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import type { MaaDynamicTaskConfig } from './maaExecutionService.ts';
@@ -13,6 +13,10 @@ import { resolveConnection } from './connectionService.ts';
 import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.ts';
+import {
+  resolveEffectiveResourceFilePath,
+  resetEffectiveResourceDirsCache
+} from './resourceUpdateService.ts';
 import { updateJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
 import { createLogger } from '../utils/logger.ts';
 
@@ -29,21 +33,12 @@ const progressStore = createCopilotProgressStore({
 const outboundHttp = createOutboundHttpClient();
 
 /**
- * `maa dir resource` 的进程内缓存：资源目录在进程生命周期内稳定。
- * 计划构建与预设编队写入共用解析结果；失败不缓存，下一次调用重新尝试。
+ * 关卡目录所在的资源层：跟随资源消费者的共享解析（资源源优先，基础资源回落），
+ * `stages.json` 与 `Arknights-Tile-Pos` 同层发布。文件缺失时返回基础资源目录，
+ * 由调用方按目录缺失处理。
  */
-let resourceDirPromise: Promise<string> | null = null;
-
-function getMaaResourceDir(): Promise<string> {
-  if (!resourceDirPromise) {
-    resourceDirPromise = execMaaCommand('dir', ['resource'], null, null, false, true)
-      .then(result => result.stdout.trim())
-      .catch(error => {
-        resourceDirPromise = null;
-        throw error;
-      });
-  }
-  return resourceDirPromise;
+function getStageCatalogDir(): Promise<string> {
+  return resolveEffectiveResourceFilePath('stages.json').then(dirname);
 }
 
 interface StageCatalog {
@@ -102,8 +97,7 @@ async function loadStageCatalog(resourceDir: string): Promise<StageCatalog> {
   return catalog;
 }
 
-async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
-  const tasksPath = join(resourceDir, 'tasks', 'tasks.json');
+async function loadInstalledTasks(tasksPath: string): Promise<unknown> {
   const modifiedAt = await readPathMtimeMs(tasksPath);
   const cached = installedTasksCache.get(tasksPath);
   if (cached && modifiedAt !== null && cached.modifiedAt === modifiedAt) return cached.tasks;
@@ -115,7 +109,7 @@ async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
 
 /** 清理进程内资源缓存、委托状态日志的一次性标记与测试注入的观察间隔、路径平台，供测试用例之间隔离；生产运行不调用。 */
 export function resetCopilotPlanCachesForTests(): void {
-  resourceDirPromise = null;
+  resetEffectiveResourceDirsCache();
   stageCatalogCache.clear();
   installedTasksCache.clear();
   fileLoadPollMsOverride = null;
@@ -469,7 +463,7 @@ export function getNavigationStage(copilot: unknown = {}): string {
 
 async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<string, StageCode>> {
   try {
-    const resourceDir = await getMaaResourceDir();
+    const resourceDir = await getStageCatalogDir();
     if (!resourceDir) return new Map();
     const tileDir = join(resourceDir, 'Arknights-Tile-Pos');
     const catalog = await loadStageCatalog(resourceDir);
@@ -636,8 +630,8 @@ export async function ensureCurrentMapActivityResource(
 }
 
 export async function ensurePresetFormationResource(configDir: string): Promise<void> {
-  const installedResource = await getMaaResourceDir();
-  const installedTasks = await loadInstalledTasks(installedResource);
+  const installedTasksPath = await resolveEffectiveResourceFilePath(join('tasks', 'tasks.json'));
+  const installedTasks = await loadInstalledTasks(installedTasksPath);
   const userTasksPath = join(configDir, 'resource', 'tasks', 'tasks.json');
   // 用户 tasks.json 与安装资源的合并是共享资源读改写：读取、合并、写回在同一
   // 排队单元内原子完成；缺失文件按空任务合并，损坏文件报错且不覆盖原内容。
@@ -1116,7 +1110,7 @@ async function loadNativeStageCodes(stageIds: readonly string[]): Promise<Map<st
   let resourceDir: string;
   let catalog: StageCatalog;
   try {
-    resourceDir = await getMaaResourceDir();
+    resourceDir = await getStageCatalogDir();
     if (!resourceDir) return codes;
     catalog = await loadStageCatalog(resourceDir);
   } catch {

@@ -1,22 +1,15 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { isGameAssetKind, resolveGameAssetFile, resolveItemAssetFile } from '../services/gameAssetService.ts';
-import type { GameAssetKind } from '../services/gameAssetService.ts';
+import { isGameAssetKind, resolveItemAssetFile, resolveGameAssetFile } from '../services/gameAssetService.ts';
+import type { GameAssetDirs, GameAssetKind } from '../services/gameAssetService.ts';
 
 const GAME_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 export interface GameAssetRouterOptions {
-  itemDir: string;
-  avatarDir: string;
-  itemTablePath: string;
-  itemIndexPath?: string;
+  resolveDirs: () => Promise<GameAssetDirs>;
 }
 
 export function createGameAssetRouter(options: GameAssetRouterOptions): Router {
-  const kindDirs: Record<GameAssetKind, string> = {
-    item: options.itemDir,
-    avatar: options.avatarDir
-  };
   const router = Router();
 
   router.get('/:kind/:fileName', async (req: Request, res: Response): Promise<void> => {
@@ -26,14 +19,15 @@ export function createGameAssetRouter(options: GameAssetRouterOptions): Router {
       return;
     }
 
+    const dirs = await options.resolveDirs();
     const asset = kind === 'item'
       ? await resolveItemAssetFile({
-        itemDir: options.itemDir,
+        itemDirs: dirs.itemDirs,
         fileName,
-        itemTablePath: options.itemTablePath,
-        itemIndexPath: options.itemIndexPath
+        itemTablePath: dirs.itemTablePath,
+        itemIndexPath: dirs.itemIndexPath
       })
-      : await resolveGameAssetFile({ kindDir: kindDirs[kind], fileName });
+      : await resolveGameAssetFile({ kindDirs: dirs.avatarDirs, fileName });
     if (!asset) {
       res.status(404).end();
       return;
