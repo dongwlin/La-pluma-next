@@ -1,8 +1,9 @@
 /**
  * MAA 资源源配置（`cli.toml` 的 `[resource]`）：Git 与 MirrorChyan 两种来源，
  * 以及自动更新与失败告警开关。读取兼容旧版 `backend`/`remote` 写法；保存只写
- * maa-cli 0.7 的 `[resource.source]` 新格式并迁移旧字段。凭据只报告形态，
- * 不回传明文；请求未提供时保留已保存的凭据。
+ * maa-cli 0.7 的 `[resource.source]` 新格式并迁移旧字段。非活动来源的已保存键
+ * 与非本页管理的未知键一起保留在同一张 `[resource.source]` 表内。凭据只报告
+ * 形态，不回传明文；请求未提供时保留已保存的凭据。
  */
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
@@ -68,8 +69,7 @@ export interface ResourceSourceSaveInput {
 
 interface ExistingSourceRaw {
   source: ResourceSourceType;
-  git: Record<string, unknown>;
-  mirrorchyan: Record<string, unknown>;
+  table: Record<string, unknown>;
 }
 
 function invalidResourceSource(field: string, details: Record<string, unknown> = {}): AgentError {
@@ -141,18 +141,15 @@ function readMirrorChyanSource(raw: Record<string, unknown>): ResourceMirrorChya
 function readExistingSourceRaw(resource: Record<string, unknown>): ExistingSourceRaw {
   const source = readSourceSection(resource);
   if (source) {
-    const isMirrorChyan = source.type === 'mirrorchyan';
     return {
-      source: isMirrorChyan ? 'mirrorchyan' : 'git',
-      git: isMirrorChyan ? {} : source,
-      mirrorchyan: isMirrorChyan ? source : {}
+      source: source.type === 'mirrorchyan' ? 'mirrorchyan' : 'git',
+      table: source
     };
   }
   const remote = isCliConfigRecord(resource.remote) ? resource.remote : {};
   return {
     source: 'git',
-    git: { ...remote, ...(resource.backend === undefined ? {} : { backend: resource.backend }) },
-    mirrorchyan: {}
+    table: { ...remote, ...(resource.backend === undefined ? {} : { backend: resource.backend }) }
   };
 }
 
@@ -164,8 +161,8 @@ export function projectResourceSourceConfig(document: CliConfigDocument): Resour
     autoUpdate: resource.auto_update === true,
     warnOnUpdateFailure: resource.warn_on_update_failure === true,
     source: existing.source,
-    git: readGitSource(existing.git),
-    mirrorchyan: readMirrorChyanSource(existing.mirrorchyan)
+    git: readGitSource(existing.table),
+    mirrorchyan: readMirrorChyanSource(existing.table)
   };
 }
 
@@ -186,6 +183,24 @@ function readOptionalText(source: Record<string, unknown>, key: string, field: s
   return value.trim() === '' ? null : value;
 }
 
+const GIT_URL_SCHEMES = ['http', 'https', 'ssh', 'git', 'file'] as const;
+const GIT_URL_SCHEME_PATTERN = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/(.*)$/;
+const GIT_URL_OPAQUE_TRANSPORT_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*::/;
+const SCP_LIKE_GIT_URL_PATTERN = /^(?:[^@\s/:]+@)?[A-Za-z0-9._-]+:[^\s:][^\s]*$/;
+
+/** git 只接受受支持的 URL scheme 或 scp-like `[user@]host:path`，拒绝相对路径与其它的传输写法。 */
+function isSupportedGitUrl(value: string): boolean {
+  const scheme = GIT_URL_SCHEME_PATTERN.exec(value);
+  if (scheme) {
+    const rest = scheme[2];
+    return (GIT_URL_SCHEMES as readonly string[]).includes(scheme[1].toLowerCase())
+      && rest.trim() !== ''
+      && !/\s/.test(rest);
+  }
+  if (value.includes('://') || GIT_URL_OPAQUE_TRANSPORT_PATTERN.test(value)) return false;
+  return SCP_LIKE_GIT_URL_PATTERN.test(value);
+}
+
 function readGitInput(source: Record<string, unknown>): ResourceSourceSaveInput['git'] {
   const backend = source.backend;
   if (!(GIT_BACKENDS as readonly string[]).includes(String(backend))) {
@@ -198,9 +213,14 @@ function readGitInput(source: Record<string, unknown>): ResourceSourceSaveInput[
   if (!isBoolean(useSshAgent)) {
     throw invalidResourceSource('git.useSshAgent', { receivedType: typeof useSshAgent });
   }
+  const url = readOptionalText(source, 'url', 'git.url');
+  if (url !== null && !isSupportedGitUrl(url)) {
+    // 不回显 URL：其中可能包含用户名、口令或私有地址。
+    throw invalidResourceSource('git.url');
+  }
   return {
     backend: backend === 'libgit2' ? 'libgit2' : 'git',
-    url: readOptionalText(source, 'url', 'git.url') ?? DEFAULT_RESOURCE_GIT_URL,
+    url: url ?? DEFAULT_RESOURCE_GIT_URL,
     branch,
     useSshAgent,
     sshKey,
@@ -252,15 +272,12 @@ export function parseResourceSourceSaveInput(input: unknown): ResourceSourceSave
 function buildCdk(input: ResourceSourceSaveInput['mirrorchyan'], existing: ExistingSourceRaw): unknown {
   if (input.clearCdk === true) return false;
   if (input.cdk) return input.cdk;
-  if (existing.source === 'mirrorchyan' && existing.mirrorchyan.cdk !== undefined) {
-    return existing.mirrorchyan.cdk;
-  }
+  if (existing.table.cdk !== undefined) return existing.table.cdk;
   return false;
 }
 
-function buildGitTable(input: ResourceSourceSaveInput['git'], existing: ExistingSourceRaw): Record<string, unknown> {
-  // 保留同一来源里本页不认识的键；只覆盖表单管理的字段。
-  const table = existing.source === 'git' ? { ...existing.git } : {};
+function buildGitTable(input: ResourceSourceSaveInput['git'], table: Record<string, unknown>): Record<string, unknown> {
+  // 保留同一来源表里非本页管理的键（含非活动来源字段）；只覆盖表单管理的字段。
   table.type = 'git';
   if (input.backend === 'libgit2') table.backend = 'libgit2';
   else delete table.backend;
@@ -277,8 +294,8 @@ function buildGitTable(input: ResourceSourceSaveInput['git'], existing: Existing
 }
 
 function buildSourceTable(input: ResourceSourceSaveInput, existing: ExistingSourceRaw): Record<string, unknown> {
+  const table = { ...existing.table };
   if (input.source === 'mirrorchyan') {
-    const table = existing.source === 'mirrorchyan' ? { ...existing.mirrorchyan } : {};
     table.type = 'mirrorchyan';
     table.cdk = buildCdk(input.mirrorchyan, existing);
     if (input.mirrorchyan.checkInterval !== DEFAULT_MIRRORCHYAN_CHECK_INTERVAL) {
@@ -288,7 +305,7 @@ function buildSourceTable(input: ResourceSourceSaveInput, existing: ExistingSour
     }
     return table;
   }
-  return buildGitTable(input.git, existing);
+  return buildGitTable(input.git, table);
 }
 
 /**
