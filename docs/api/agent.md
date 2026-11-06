@@ -139,7 +139,7 @@ curl -X PUT http://localhost:3000/api/agent/infrast-schedules/document \
   -d '{"name":"daily.json","document":{"plans":[{"rooms":{}}]}}'
 ```
 
-`name` 相对 MAA 配置目录下的 `infrast/`，也可传入落在该目录内的绝对路径；`..`、非 `.json` 与符号链接逃逸均被拒绝。读取返回文件原文，不补默认值；保存只校验已知字段，未知扩展字段原样保留。文件位置、校验与协议字段见[日常流程与定时触发](../server/scheduling.md#自定义基建排班文件)。鉴权与限流同其他 `/api` 路由；参数或路径不合法、文件不存在、读写失败分别返回 `AGENT_INFRASTRUCT_SCHEDULE_INVALID`（400）、`AGENT_INFRASTRUCT_SCHEDULE_NOT_FOUND`（404）与 `AGENT_INFRASTRUCT_SCHEDULE_IO_FAILED`（500，`retryable: true`）。Agent 需要执行基建换班时应使用 `run-task` 的 `Infrast` 任务配置，而不是依赖这些端点。
+`name` 相对 MAA 配置目录下的 `infrast/`，也可传入落在该目录内的绝对路径；`..`、非 `.json` 与符号链接逃逸均被拒绝。读取返回原始 JSON，不补默认值；保存只校验已知字段，未知扩展字段原样保留。文件位置、校验与协议字段见[日常流程与定时触发](../server/scheduling.md#自定义基建排班文件)。鉴权与其他 `/api` 路由一致（`LA_PLUMA_TOKEN` 开启时需要令牌，认证失败限流同样适用）；参数或路径不合法、文件不存在、读写失败分别返回 `AGENT_INFRASTRUCT_SCHEDULE_INVALID`（400）、`AGENT_INFRASTRUCT_SCHEDULE_NOT_FOUND`（404）与 `AGENT_INFRASTRUCT_SCHEDULE_IO_FAILED`（500，`retryable: true`）。Agent 需要执行基建换班时应使用 `run-task` 的 `Infrast` 任务配置，而不是依赖这些端点。
 
 ### 维护更新端点（不在 Agent manifest）
 
