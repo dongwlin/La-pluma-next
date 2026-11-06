@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, before, describe, it } from 'node:test';
-import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
 import type { DiagnosticsReport } from '../services/diagnosticsService.ts';
-import type { WebrtcSignalingGateway } from '../services/webrtcSignalingGateway.ts';
+import {
+  agentApiBaseUrl,
+  closeHttpServers,
+  readError,
+  readSuccess,
+  silenceLoggers,
+  startHttpServer,
+  stubSignalingGateway
+} from './support/httpTestHelpers.ts';
 
 // 真实 HTTP 回归：/diagnostics 会启动 MAA 版本、ADB 与资源目录等多项外部探测。
 // 这里用记录调用的假 CLI / 假 ADB 验证并发合并、短 TTL 缓存、no-store 与匿名限流，
@@ -93,54 +99,10 @@ process.env.LA_PLUMA_WEBRTC_ICE_SERVERS = '';
 const { createLaPlumaApp } = await import('../app.ts');
 const { resetAgentDiagnosticsProbeCachesForTests } = await import('../controllers/agentDiagnosticsController.ts');
 const { WEBRTC_SIGNALING_PATH } = await import('../services/webrtcSignalingGateway.ts');
-const { loggerManager } = await import('../utils/logger.ts');
 
-for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'AgentRunService']) {
-  loggerManager.getLogger(loggerName).enableConsole = false;
-}
+silenceLoggers(['Api', 'MaaService', 'AgentRoutes', 'AgentRunService']);
 
 const servers: Server[] = [];
-
-function stubSignalingGateway(): WebrtcSignalingGateway {
-  return {
-    proxyPath: WEBRTC_SIGNALING_PATH,
-    async handleLogin(_req, res) {
-      res.json({ token: 'stub' });
-    },
-    async handleUpgrade() {},
-    attach() {},
-    close() {}
-  };
-}
-
-async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<string> {
-  const server = createServer(app);
-  servers.push(server);
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  return `http://127.0.0.1:${address.port}`;
-}
-
-function isApiEnvelope(value: unknown): value is { success: boolean } {
-  if (typeof value !== 'object' || value === null) return false;
-  return typeof (value as { success?: unknown }).success === 'boolean';
-}
-
-async function readBody<T>(response: Response): Promise<T> {
-  const body: unknown = await response.json();
-  assert.ok(isApiEnvelope(body));
-  return body as T;
-}
-
-async function readErrorBody(response: Response): Promise<ApiErrorResponse> {
-  const body = await readBody<ApiErrorResponse>(response);
-  assert.equal(body.success, false);
-  return body;
-}
 
 async function readCalls(logPath: string): Promise<string[]> {
   try {
@@ -167,18 +129,12 @@ async function probeCalls(): Promise<ProbeCalls> {
   return { cli: cli.sort(), adb: adb.sort() };
 }
 
-async function fetchDiagnostics(baseUrl: string, query = '?command=startup'): Promise<Response> {
-  return fetch(`${baseUrl}/api/agent/diagnostics${query}`);
+async function fetchDiagnostics(port: number, query = '?command=startup'): Promise<Response> {
+  return fetch(`${agentApiBaseUrl(port)}/diagnostics${query}`);
 }
 
 afterEach(async () => {
-  while (servers.length) {
-    const server = servers.pop();
-    assert.ok(server);
-    server.closeIdleConnections?.();
-    server.closeAllConnections?.();
-    await new Promise<void>(resolve => server.close(() => resolve()));
-  }
+  await closeHttpServers(servers);
 });
 
 after(async () => {
@@ -192,16 +148,19 @@ before(() => {
 describe('GET /api/agent/diagnostics probe amplification', () => {
   it('coalesces concurrent probes and serves the cached report as no-store', async () => {
     resetAgentDiagnosticsProbeCachesForTests();
-    const baseUrl = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const port = await startHttpServer(
+      createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH) }),
+      servers
+    );
 
     // 预热：连接配置等模块级缓存只在首次读取时解析，不计入本次探测调用次数。
-    assert.equal((await fetchDiagnostics(baseUrl)).status, 200);
+    assert.equal((await fetchDiagnostics(port)).status, 200);
 
     resetAgentDiagnosticsProbeCachesForTests();
     await clearCallLogs();
-    const single = await fetchDiagnostics(baseUrl);
+    const single = await fetchDiagnostics(port);
     assert.equal(single.status, 200);
-    const singleReport = await readBody<ApiSuccessResponse<DiagnosticsReport>>(single);
+    const singleReport = await readSuccess<DiagnosticsReport>(single);
     assert.equal(singleReport.data.ok, true);
     const singleCalls = await probeCalls();
     assert.deepEqual(singleCalls.cli.filter(line => line === 'version'), ['version']);
@@ -210,10 +169,10 @@ describe('GET /api/agent/diagnostics probe amplification', () => {
 
     // TTL 内的第二个请求复用同一批探测，不新增任何子进程。
     await clearCallLogs();
-    const cached = await fetchDiagnostics(baseUrl);
+    const cached = await fetchDiagnostics(port);
     assert.equal(cached.status, 200);
     assert.equal(cached.headers.get('cache-control'), 'no-store');
-    const cachedReport = await readBody<ApiSuccessResponse<DiagnosticsReport>>(cached);
+    const cachedReport = await readSuccess<DiagnosticsReport>(cached);
     assert.deepEqual(cachedReport.data.checks, singleReport.data.checks);
     assert.deepEqual(await probeCalls(), { cli: [], adb: [] });
 
@@ -221,9 +180,9 @@ describe('GET /api/agent/diagnostics probe amplification', () => {
     resetAgentDiagnosticsProbeCachesForTests();
     await clearCallLogs();
     const concurrent = await Promise.all([
-      fetchDiagnostics(baseUrl),
-      fetchDiagnostics(baseUrl),
-      fetchDiagnostics(baseUrl)
+      fetchDiagnostics(port),
+      fetchDiagnostics(port),
+      fetchDiagnostics(port)
     ]);
     for (const response of concurrent) assert.equal(response.status, 200);
     assert.deepEqual(await probeCalls(), singleCalls);
@@ -233,21 +192,21 @@ describe('GET /api/agent/diagnostics probe amplification', () => {
 
   it('rejects anonymous requests beyond the per-source diagnostics budget', async () => {
     resetAgentDiagnosticsProbeCachesForTests();
-    const baseUrl = await listen(createLaPlumaApp({
+    const port = await startHttpServer(createLaPlumaApp({
       env: {},
-      signalingGateway: stubSignalingGateway(),
+      signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH),
       loginRateLimit: { maxAnonymousDiagnostics: 2 }
-    }));
+    }), servers);
 
-    assert.equal((await fetchDiagnostics(baseUrl)).status, 200);
-    assert.equal((await fetchDiagnostics(baseUrl)).status, 200);
+    assert.equal((await fetchDiagnostics(port)).status, 200);
+    assert.equal((await fetchDiagnostics(port)).status, 200);
 
     await clearCallLogs();
-    const blocked = await fetchDiagnostics(baseUrl);
+    const blocked = await fetchDiagnostics(port);
     assert.equal(blocked.status, 429);
     assert.equal(blocked.headers.get('cache-control'), 'no-store');
     assert.ok(Number(blocked.headers.get('retry-after')) >= 1);
-    const blockedBody = await readErrorBody(blocked);
+    const blockedBody = await readError(blocked);
     assert.equal(blockedBody.error.code, 'AGENT_RATE_LIMITED');
     assert.equal(blockedBody.error.retryable, true);
     assert.ok(Number(blockedBody.error.details.retryAfterSeconds) >= 1);
@@ -259,19 +218,67 @@ describe('GET /api/agent/diagnostics probe amplification', () => {
 
   it('keeps the diagnostics budget out of token-protected deployments', async () => {
     resetAgentDiagnosticsProbeCachesForTests();
-    const baseUrl = await listen(createLaPlumaApp({
+    const port = await startHttpServer(createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
-      signalingGateway: stubSignalingGateway(),
+      signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH),
       loginRateLimit: { maxAnonymousDiagnostics: 1 }
-    }));
+    }), servers);
     const authorized = { headers: { Authorization: 'Bearer api-secret' } };
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await fetch(`${baseUrl}/api/agent/diagnostics`, authorized);
+      const response = await fetch(`${agentApiBaseUrl(port)}/diagnostics`, authorized);
       assert.equal(response.status, 200);
     }
-    const anonymous = await fetch(`${baseUrl}/api/agent/diagnostics`);
+    const anonymous = await fetch(`${agentApiBaseUrl(port)}/diagnostics`);
     assert.equal(anonymous.status, 401);
+
+    resetAgentDiagnosticsProbeCachesForTests();
+  });
+});
+
+describe('GET /api/agent/diagnostics HTTP contract', () => {
+  it('returns the four documented checks in a healthy environment', async () => {
+    resetAgentDiagnosticsProbeCachesForTests();
+    const port = await startHttpServer(
+      createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH) }),
+      servers
+    );
+
+    const response = await fetchDiagnostics(port);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /^application\/json/);
+    const body = await readSuccess<DiagnosticsReport>(response);
+    assert.equal(body.success, true);
+    const data = body.data;
+    assert.equal(data.ok, true);
+    assert.equal(data.status, 'ok');
+    assert.equal(data.conclusion, '运行环境正常，可以执行任务');
+    assert.match(data.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    assert.deepEqual(data.checks.map(check => check.id), ['runtime', 'connection', 'resource', 'execution']);
+    for (const check of data.checks) {
+      assert.equal(check.status, 'pass', `${check.id} must pass`);
+      assert.equal(typeof check.title, 'string');
+      assert.ok(Array.isArray(check.details));
+    }
+
+    resetAgentDiagnosticsProbeCachesForTests();
+  });
+
+  it('rejects an invalid profile id with a JSON validation error', async () => {
+    resetAgentDiagnosticsProbeCachesForTests();
+    const port = await startHttpServer(
+      createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH) }),
+      servers
+    );
+
+    const response = await fetch(`${agentApiBaseUrl(port)}/diagnostics?profileId=bad%20id!`);
+    assert.equal(response.status, 400);
+    assert.match(response.headers.get('content-type') ?? '', /^application\/json/);
+    const body = await readError(response);
+    assert.equal(body.success, false);
+    assert.equal(body.error.code, 'AGENT_VALIDATION_PROFILE_ID_INVALID');
+    assert.equal(body.error.retryable, false);
+    assert.deepEqual(body.error.details, { profileId: 'bad id!' });
 
     resetAgentDiagnosticsProbeCachesForTests();
   });

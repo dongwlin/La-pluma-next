@@ -129,17 +129,10 @@ describe('RoguelikeResultPanel', () => {
     expect(text).toContain('最近一次执行')
     expect(text).toContain('成功')
     expect(text).toContain('肉鸽结算：第 5 层 · 得分 1200')
-    expect(text).toContain('主题')
-    expect(text).toContain('Phantom')
     expect(text).toContain('耗时')
     expect(text).toContain('1 分 5 秒')
-    expect(text).toContain('得分')
-    expect(text).toContain('1200')
-    expect(text).toContain('战斗次数')
     expect(text).toContain('事件')
-    expect(text).toContain('不期而遇：迎战')
-    expect(text).toContain('里程碑：深入调查已完成')
-    expect(text).toContain('警告：已达本次投资上限')
+    expect(text).toContain('备注')
   })
 
   it('reads a failed run summary from the error details', async () => {

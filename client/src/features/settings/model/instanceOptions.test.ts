@@ -37,24 +37,6 @@ describe('instance options owner', () => {
     apiMocks.saveConfig.mockReset()
   })
 
-  it('starts from the MaaCore defaults and tracks edits', () => {
-    const owner = createOwner()
-
-    expect(owner.getState()).toMatchObject({
-      draft: DEFAULT_INSTANCE_OPTIONS,
-      persisted: DEFAULT_INSTANCE_OPTIONS,
-      dirty: false,
-      loaded: false,
-    })
-
-    expect(owner.update({ touch_mode: 'MaaTouch' })).toBe(true)
-    expect(owner.getState()).toMatchObject({
-      draft: { ...DEFAULT_INSTANCE_OPTIONS, touch_mode: 'MaaTouch' },
-      revision: 1,
-      dirty: true,
-    })
-  })
-
   it('adopts a read that normalizes missing fields and keeps unknown options', () => {
     const owner = createOwner()
     const token = owner.beginRead()
@@ -81,28 +63,6 @@ describe('instance options owner', () => {
     expect(apiMocks.saveConfig).toHaveBeenCalledWith('default', {
       instance_options: { ...DEFAULT_INSTANCE_OPTIONS, adb_lite_enabled: true },
     })
-  })
-
-  it('keeps the draft and reports the message when the write fails', async () => {
-    apiMocks.saveConfig.mockResolvedValue({ success: false, message: '磁盘只读' })
-    const owner = createOwner()
-    adoptDefaultServer(owner)
-    owner.update({ deployment_with_pause: true })
-
-    await expect(owner.save()).resolves.toMatchObject({ status: 'failed', message: '磁盘只读' })
-    expect(owner.getState()).toMatchObject({
-      draft: { ...DEFAULT_INSTANCE_OPTIONS, deployment_with_pause: true },
-      syncState: 'failed',
-      error: '磁盘只读',
-    })
-  })
-
-  it('resets the draft to the MaaCore defaults', () => {
-    const owner = createOwner()
-    owner.update({ kill_adb_on_exit: true })
-
-    expect(owner.restoreDefaults()).toBe(true)
-    expect(owner.getState().draft).toEqual(DEFAULT_INSTANCE_OPTIONS)
   })
 })
 

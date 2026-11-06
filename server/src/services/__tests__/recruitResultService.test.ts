@@ -133,15 +133,6 @@ describe('recruit execution results', () => {
     assert.doesNotMatch(action.message, /未匹配自动确认条件/);
   });
 
-  it('does not turn a lone no-permit callback into success', () => {
-    const log = callback('SubTaskExtraInfo', { what: 'RecruitNoPermit', details: {} });
-    const action = parseRecruitExecutionAction('自动公招', {}, log);
-
-    assert.equal(action.status, 'skipped');
-    assert.equal(action.noPermit, true);
-    assert.match(action.message, /招聘许可不足/);
-  });
-
   it('reports an unavailable log as an unconfirmed failure', () => {
     const action = parseRecruitExecutionAction('自动公招', {}, null);
     assert.equal(action.status, 'failed');

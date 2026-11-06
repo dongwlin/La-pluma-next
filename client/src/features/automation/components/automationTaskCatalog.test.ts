@@ -73,7 +73,7 @@ describe('automation game task catalog', () => {
   })
 })
 
-
+describe('automation task parameter defaults and copy', () => {
   it('uses expiry days for the fight medicine and keeps the legacy key out of the catalog', () => {
     const fight = AVAILABLE_TASKS.find(task => task.id === 'fight')
     expect(fight?.defaultParams).toMatchObject({ medicineExpireDays: 0 })
@@ -82,7 +82,7 @@ describe('automation game task catalog', () => {
     const medicine = fightParamField('medicineExpireDays')
     expect(medicine.label).toContain('天数')
     expect(medicine.helper).toContain('0 表示不使用临期药')
-  });
+  })
 
   it('adds the recruit permit reserve and the startup launch switch defaults', () => {
     const recruit = AVAILABLE_TASKS.find(task => task.id === 'recruit')
@@ -96,7 +96,8 @@ describe('automation game task catalog', () => {
     expect(startup?.defaultParams).toMatchObject({ start_game_enabled: true })
     expect(launchSwitch?.label).toBe('启动游戏客户端')
     expect(launchSwitch?.helper).toContain('不会启动游戏客户端')
-  });
+  })
+})
 
 describe('automation fight task catalog', () => {
   it('explains that stage times and the series multiplier apply together', () => {

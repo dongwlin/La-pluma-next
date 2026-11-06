@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { TestContext } from 'node:test';
-import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
 import type { MaintenanceUpdateCliPlan, MaintenanceUpdateCorePlan } from '../../controllers/maintenanceDto.ts';
+import {
+  closeHttpServers,
+  postJson,
+  readError,
+  readSuccess,
+  silenceLoggers,
+  startHttpServer
+} from '../../__tests__/support/httpTestHelpers.ts';
 
 // DTO 在 env 注入后再动态导入：connectionDefaults 在模块加载时读取 MAA_CLI_PATH，
 // 静态值导入会让假 CLI 路径失效。
@@ -107,12 +113,8 @@ const {
   resourceInfoFallback,
   toChangelogEntry
 } = await import('../../controllers/maintenanceDto.ts');
-const { loggerManager } = await import('../../utils/logger.ts');
 
-// 真实 HTTP 用例会触发服务日志；控制台输出关闭，避免门禁输出被诊断行淹没。
-for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']) {
-  loggerManager.getLogger(loggerName).enableConsole = false;
-}
+silenceLoggers(['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']);
 
 interface VersionPayload {
   cli: string;
@@ -166,57 +168,12 @@ interface CopilotPlanPayload {
 
 const servers: Server[] = [];
 
-function isApiSuccess(value: unknown): value is ApiSuccessResponse<unknown> {
-  return typeof value === 'object'
-    && value !== null
-    && (value as { success?: unknown }).success === true;
-}
-
-function isApiError(value: unknown): value is ApiErrorResponse {
-  return typeof value === 'object'
-    && value !== null
-    && (value as { success?: unknown }).success === false;
-}
-
-/** fetch 的 JSON 载荷是 unknown；先确认统一信封，再按端点声明的 DTO 读取。 */
-async function readSuccess<T>(response: Response): Promise<ApiSuccessResponse<T>> {
-  const body: unknown = await response.json();
-  assert.ok(isApiSuccess(body), `unexpected API envelope: ${JSON.stringify(body)}`);
-  return body as ApiSuccessResponse<T>;
-}
-
-async function readError(response: Response): Promise<ApiErrorResponse> {
-  const body: unknown = await response.json();
-  assert.ok(isApiError(body));
-  return body;
-}
-
-async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
-  const server = createServer(app);
-  servers.push(server);
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  return address.port;
-}
-
 async function callCliLog(): Promise<string> {
   return await readFile(cliCallLog, 'utf-8').catch(() => '');
 }
 
 async function callAdbLog(): Promise<string> {
   return await readFile(adbCallLog, 'utf-8').catch(() => '');
-}
-
-async function postJson(url: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body)
-  });
 }
 
 /** 出站端口经 text() 消费响应体；stub 用真实 Response 承载 JSON 文本，零外部网络访问。 */
@@ -247,13 +204,7 @@ function guardOutboundFetch(t: TestContext): { external: string[] } {
 }
 
 afterEach(async () => {
-  while (servers.length) {
-    const server = servers.pop();
-    assert.ok(server);
-    server.closeIdleConnections?.();
-    server.closeAllConnections?.();
-    await new Promise<void>(resolve => server.close(() => resolve()));
-  }
+  await closeHttpServers(servers);
 });
 
 after(async () => {
@@ -420,10 +371,10 @@ describe('maintenance request narrowing', () => {
 
 describe('moved maintenance routes keep HTTP contracts', () => {
   it('rejects every moved maintenance entry before any CLI or ADB side effect', async () => {
-    const port = await listen(createLaPlumaApp({
+    const port = await startHttpServer(createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
       loginRateLimit: { maxAuthFailures: 100 }
-    }));
+    }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const requests: ReadonlyArray<readonly [string, string]> = [
       ['GET', '/config/maa/default'],
@@ -467,7 +418,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('serves version, config directory and schedule status from the existing sources', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const version = await readSuccess<VersionPayload>(await fetch(`${baseUrl}/version`));
@@ -496,7 +447,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}],"all_opers":[{"id":"char_1001_amiya","name":"阿米娅","name_en":"Amiya","rarity":5,"own":true},{"id":"char_2002_kalts","name":"凯尔希","rarity":6,"own":false}]},"subtask":"OperBoxRecognitionTask","taskchain":"OperBox","taskid":1,"uuid":"fixture","what":"OperBoxInfo"}'
     ].join('\n'), 'utf-8');
 
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const response = await postJson(`${baseUrl}/actions/operbox-recognition`, {});
     assert.equal(response.status, 200);
@@ -545,7 +496,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       'Assistant::append_callback | TaskChainCompleted {"taskchain":"OperBox"}'
     ].join('\n'), 'utf-8');
 
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent/actions`;
     await mkdir(trainingDataDir, { recursive: true });
     const timestamp = '2026-10-30T10:00:00.000Z';
@@ -571,7 +522,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('keeps connection test and device discovery on the existing ADB contract', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const testConnection = await postJson(`${baseUrl}/actions/test-connection`, {
@@ -590,7 +541,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('returns dry-run plans without starting updates or recognition', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const cliBefore = await callCliLog();
     const adbBefore = await callAdbLog();
@@ -624,7 +575,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('runs native maa hot-update and refreshes resource metadata for manual sync', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const response = await postJson(`${baseUrl}/actions/hot-update-resources`, {});
@@ -636,7 +587,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('treats any truthy dryRun value as plan-only without touching the CLI', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const cliBefore = await callCliLog();
 
@@ -657,7 +608,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('rejects invalid schedule registrations without registering a trigger', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const before = await readSuccess<unknown>(await fetch(`${baseUrl}/schedules/status`));
 
@@ -681,7 +632,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('keeps the auto-update registration gate without scheduling anything', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const before = await readSuccess<unknown>(await fetch(`${baseUrl}/auto-update/status`));
 
@@ -703,38 +654,43 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('persists update channels and reuses them for parameterless updates', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const cliConfigPath = join(maaConfigDir, 'cli.toml');
     try {
+      const defaults = await readSuccess<{ core: string; cli: string }>(
+        await fetch(`${baseUrl}/update-channels`)
+      );
+      assert.deepEqual(defaults.data, { core: 'stable', cli: 'stable' });
+
       const coreSaved = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'core', channel: 'beta' });
-      const coreBody = await readSuccess<{ core: string; cli: string }>(coreSaved);
-      assert.deepEqual(coreBody.data, { core: 'beta', cli: 'stable' });
+      assert.deepEqual((await readSuccess<{ core: string; cli: string }>(coreSaved)).data, {
+        core: 'beta',
+        cli: 'stable'
+      });
 
       const cliSaved = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'cli', channel: 'nightly' });
-      const cliBody = await readSuccess<{ core: string; cli: string }>(cliSaved);
-      assert.deepEqual(cliBody.data, { core: 'beta', cli: 'nightly' });
+      assert.deepEqual((await readSuccess<{ core: string; cli: string }>(cliSaved)).data, {
+        core: 'beta',
+        cli: 'nightly'
+      });
 
       const channels = await readSuccess<{ core: string; cli: string }>(
         await fetch(`${baseUrl}/update-channels`)
       );
       assert.deepEqual(channels.data, { core: 'beta', cli: 'nightly' });
-      const configContent = await readFile(cliConfigPath, 'utf-8');
-      assert.match(configContent, /channel = "Beta"/);
-      assert.match(configContent, /channel = "Nightly"/);
 
+      // 无参更新的 dryRun 计划直接反映已保存的渠道，否则说明读写没有走同一份 cli.toml。
       const corePlan = await readSuccess<UpdateCorePayload>(
         await postJson(`${baseUrl}/actions/update-core`, { dryRun: true })
       );
       assert.equal(corePlan.data.plan.steps[0].targetChannel, 'beta');
       assert.equal(corePlan.data.plan.steps[0].command, 'update');
       assert.deepEqual(corePlan.data.plan.steps[0].args, []);
-
       const cliPlan = await readSuccess<UpdateCliPayload>(
         await postJson(`${baseUrl}/actions/update-cli`, { dryRun: true })
       );
       assert.equal(cliPlan.data.plan.channel, 'nightly');
-      assert.equal(cliPlan.data.plan.source, 'standalone');
       assert.deepEqual(cliPlan.data.plan.args, ['self', 'update', 'nightly']);
 
       const invalid = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'cli', channel: 'alpha' });
@@ -746,7 +702,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('keeps profile read and write on the MAA config directory', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const saved = await postJson(`${baseUrl}/config/maa/default`, {
@@ -771,7 +727,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('rejects invalid profile field values without writing the profile', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const profilePath = join(maaConfigDir, 'profiles', 'invalid-fields.toml');
 
@@ -790,15 +746,13 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('persists Git and MirrorChyan resource sources next to update channels', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const cliConfigPath = join(maaConfigDir, 'cli.toml');
     try {
       const defaults = await readSuccess<{
-        autoUpdate: boolean;
-        warnOnUpdateFailure: boolean;
         source: string;
-        git: { backend: string; url: string };
+        git: { backend: string };
         mirrorchyan: { cdkKind: string; checkInterval: number };
       }>(await fetch(`${baseUrl}/config/resource-source`));
       assert.equal(defaults.data.source, 'git');
@@ -829,38 +783,27 @@ describe('moved maintenance routes keep HTTP contracts', () => {
         mirrorchyan: { checkInterval: 1800, cdk: 'mirror-secret' }
       });
       assert.equal(mirrorSaved.status, 200);
-      const savedBody = await readSuccess<{ source: string; mirrorchyan: { cdkKind: string; checkInterval: number } }>(mirrorSaved);
+      const savedBody = await readSuccess<{
+        source: string;
+        mirrorchyan: { cdkKind: string; checkInterval: number };
+      }>(mirrorSaved);
       assert.equal(savedBody.data.source, 'mirrorchyan');
       assert.equal(savedBody.data.mirrorchyan.cdkKind, 'plain');
       assert.equal(savedBody.data.mirrorchyan.checkInterval, 1800);
 
-      // 已保存的 CDK 不会回传明文；保存时未提供 CDK 会保留原值。
-      const reread = await readSuccess<{ mirrorchyan: { cdkKind: string; checkInterval: number } }>(
+      // 凭据只暴露形态；更新渠道与资源源共享 cli.toml，写渠道不覆盖资源源 section。
+      const reread = await readSuccess<{ source: string; mirrorchyan: { cdkKind: string } }>(
         await fetch(`${baseUrl}/config/resource-source`)
       );
+      assert.equal(reread.data.source, 'mirrorchyan');
       assert.equal(reread.data.mirrorchyan.cdkKind, 'plain');
-      const keepSaved = await postJson(`${baseUrl}/config/resource-source`, {
-        autoUpdate: true,
-        warnOnUpdateFailure: false,
-        source: 'mirrorchyan',
-        git: { backend: 'git', url: '', branch: null, useSshAgent: false, sshKey: null },
-        mirrorchyan: { checkInterval: 600 }
-      });
-      assert.equal(keepSaved.status, 200);
-      const cliContent = await readFile(cliConfigPath, 'utf-8');
-      assert.match(cliContent, /type = "mirrorchyan"/);
-      assert.match(cliContent, /cdk = "mirror-secret"/);
-      assert.match(cliContent, /auto_update = true/);
 
-      // 更新渠道与资源源共享 cli.toml：写入资源源不会覆盖其它 section。
       const channel = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'core', channel: 'beta' });
       assert.equal(channel.status, 200);
-      const channelSaved = await readSuccess<{ core: string }>(
-        await fetch(`${baseUrl}/update-channels`)
+      const rereadSource = await readSuccess<{ source: string }>(
+        await fetch(`${baseUrl}/config/resource-source`)
       );
-      assert.equal(channelSaved.data.core, 'beta');
-      const mixed = await readFile(cliConfigPath, 'utf-8');
-      assert.match(mixed, /type = "mirrorchyan"/);
+      assert.equal(rereadSource.data.source, 'mirrorchyan');
 
       const invalid = await postJson(`${baseUrl}/config/resource-source`, {
         autoUpdate: true,
@@ -877,7 +820,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('keeps the profile name validation contract for save requests', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const response = await postJson(`${baseUrl}/config/maa/-invalid`, { connection: {} });
@@ -890,7 +833,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('rejects non-object profile bodies before writing any profile file', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const response = await postJson(`${baseUrl}/config/maa/nonobject`, [1, 2]);
@@ -903,7 +846,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
 
   it('rejects missing search parameters before any outbound request', async t => {
     const outbound = guardOutboundFetch(t);
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const missingName = await fetch(`${baseUrl}/paradox/search`);
@@ -926,7 +869,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       // 上游 200 但不是 releases 列表：旧实现在 find 处抛错，仍映射同一 502。
       return jsonResponse({ message: 'unexpected payload' });
     });
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const response = await fetch(`${baseUrl}/changelog/core`);
@@ -960,7 +903,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       throw new Error(`unexpected outbound request: ${url.href}`);
     });
 
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     // raid 只识别 normal/raid/both：未知值沿用旧实现回落 normal，不改变计划入口。

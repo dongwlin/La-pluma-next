@@ -4,11 +4,7 @@ import router from '../agent.ts';
 import training from '../../services/operatorTrainingService.ts';
 import type { OperatorTrainingService } from '../../services/operatorTrainingService.ts';
 import { DEFAULT_TRAINING_SETTINGS } from '../../services/operatorTrainingModel.ts';
-import type {
-  TrainingCandidate,
-  TrainingOperatorFilters
-} from '../../services/operatorTrainingModel.ts';
-import type { TrainingPlan } from '../../services/operatorTrainingPlan.ts';
+import type { TrainingOperatorFilters } from '../../services/operatorTrainingModel.ts';
 import type {
   FlowSyncState,
   QueueMutationResult
@@ -18,27 +14,6 @@ import type { OperatorRecognitionSummary } from '../../services/operatorCatalogM
 const originalMethods: OperatorTrainingService = { ...training };
 afterEach(() => Object.assign(training, originalMethods));
 
-function candidate(overrides: Partial<TrainingCandidate> = {}): TrainingCandidate {
-  return {
-    id: 'alpha',
-    name: 'Alpha',
-    rarity: 5,
-    profession: 'CASTER',
-    currentElite: 0,
-    currentLevel: 1,
-    targetElite: 2,
-    owned: true,
-    ownership: 'owned',
-    potential: 1,
-    hasMaterialData: true,
-    materials: null,
-    canTrain: true,
-    disabledReason: null,
-    trainingStatus: 'trainable',
-    ...overrides
-  };
-}
-
 function recognition(overrides: Partial<OperatorRecognitionSummary> = {}): OperatorRecognitionSummary {
   return {
     status: 'complete',
@@ -47,19 +22,6 @@ function recognition(overrides: Partial<OperatorRecognitionSummary> = {}): Opera
     owned: 1,
     unknown: 0,
     missing: [],
-    ...overrides
-  };
-}
-
-function plan(overrides: Partial<TrainingPlan> = {}): TrainingPlan {
-  return {
-    queueRevision: 'revision-1',
-    mode: 'current',
-    operators: [],
-    materialHierarchy: [],
-    stages: [],
-    totalSanity: 0,
-    warnings: [],
     ...overrides
   };
 }
@@ -148,42 +110,6 @@ function response(): TestResponse {
 }
 
 describe('training queue route contract', () => {
-  it('keeps candidate filter normalization and plan mode pass-through', async () => {
-    let filters: TrainingOperatorFilters | undefined;
-    let mode: string | undefined;
-    training.getOperatorList = async value => {
-      filters = value;
-      return { operators: [candidate()], recognition: recognition() };
-    };
-    training.generateTrainingPlan = async value => {
-      mode = value;
-      return plan({ mode: value === 'all' ? 'all' : 'current' });
-    };
-
-    const operatorsRes = response();
-    await handler('get', '/training/operators')({
-      headers: {},
-      query: { rarity: '5', profession: 'CASTER', owned: 'false', needsElite2: 'true', status: 'owned' }
-    }, operatorsRes);
-
-    assert.deepEqual(filters, {
-      rarity: 5, profession: 'CASTER', owned: false, needsElite2: true, status: 'owned'
-    });
-    assert.deepEqual(operatorsRes.body?.data, {
-      operators: [candidate()],
-      count: 1,
-      recognition: recognition()
-    });
-
-    const planRes = response();
-    await handler('post', '/training/plan')({ headers: {}, body: { mode: 'all' } }, planRes);
-    assert.equal(mode, 'all');
-    assert.equal(dataOf<{ mode: string }>(planRes.body).mode, 'all');
-
-    await handler('post', '/training/plan')({ headers: {}, body: {} }, response());
-    assert.equal(mode, 'current');
-  });
-
   it('normalizes omitted and malformed candidate filters without changing the domain policy', async () => {
     let filters: TrainingOperatorFilters | undefined;
     training.getOperatorList = async value => {
@@ -222,6 +148,18 @@ describe('training queue route contract', () => {
       owned: true,
       needsElite2: false,
       status: 'all'
+    });
+
+    await handler('get', '/training/operators')({
+      headers: {},
+      query: { profession: 'CASTER', owned: 'false', needsElite2: 'true', status: 'owned' }
+    }, response());
+    assert.deepEqual(filters, {
+      rarity: undefined,
+      profession: 'CASTER',
+      owned: false,
+      needsElite2: true,
+      status: 'owned'
     });
   });
 

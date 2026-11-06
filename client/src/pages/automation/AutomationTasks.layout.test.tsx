@@ -544,6 +544,9 @@ describe('AutomationTasks layout surfaces', () => {
     const accountNameLabel = container.querySelector<HTMLLabelElement>('label[for="automation-startup-1-accountName"]')
     expect(accountNameLabel?.textContent).toContain('切换账号')
 
+    expect(container.querySelector('label[for="automation-startup-1-start_game_enabled"]')?.textContent)
+      .toContain('启动游戏客户端')
+
     const taskDeleteButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="删除启动游戏"]')
     expect(taskDeleteButtons).toHaveLength(2)
 
@@ -592,9 +595,14 @@ describe('AutomationTasks layout surfaces', () => {
 
     await clickSequenceTask('理智作战')
     expect(container.querySelector('label[for="automation-fight-1-stages-0"]')?.textContent).toContain('关卡')
-    expect(container.querySelector('#automation-fight-1-stages-0')).not.toBeNull()
     expect(container.querySelector('[aria-label="关卡 2"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="关卡 2 执行次数"]')).not.toBeNull()
+    expect(container.querySelector('label[for="automation-fight-1-medicineExpireDays"]')?.textContent)
+      .toContain('临期药天数')
+
+    const series = container.querySelector<HTMLSelectElement>('#automation-fight-1-series')
+    expect(Array.from(series?.options ?? []).map(option => option.value))
+      .toEqual(['-1', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
 
     const stageLabel = container.querySelector<HTMLLabelElement>('label[for="automation-fight-1-stages-0"]')!
     const stageEditor = stageLabel.closest('fieldset')
@@ -604,8 +612,11 @@ describe('AutomationTasks layout surfaces', () => {
 
     await clickSequenceTask('自动公招')
     expect(container.querySelector('label[for="automation-recruit-1-refresh"]')).not.toBeNull()
-    expect(container.querySelector('#automation-recruit-1-refresh')).not.toBeNull()
     expect(container.querySelector('fieldset legend')?.textContent).toContain('招募星级')
+    expect(container.querySelector('label[for="automation-recruit-1-level3_recruitment_permit_reserve"]')?.textContent)
+      .toContain('3 星保留招聘许可')
+    expect(container.querySelector<HTMLSelectElement>('#recruit-1-extra-tags-mode')?.textContent)
+      .toContain('默认行为')
   })
 
   it('normalizes the recruitment duration when the field loses focus', async () => {
@@ -867,31 +878,6 @@ describe('AutomationTasks layout surfaces', () => {
 
     expect(container.querySelector('#automation-task-picker')).toBeNull()
     expect(document.activeElement).toBe(trigger)
-  })
-
-
-  it('renders the aligned daily task parameters and copy', async () => {
-    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
-
-    await renderPage()
-
-    await clickSequenceTask('启动游戏')
-    expect(container.querySelector('label[for="automation-startup-1-start_game_enabled"]')?.textContent)
-      .toContain('启动游戏客户端')
-
-    await clickSequenceTask('理智作战')
-    expect(container.querySelector('label[for="automation-fight-1-medicineExpireDays"]')?.textContent)
-      .toContain('临期药天数')
-    const series = container.querySelector<HTMLSelectElement>('#automation-fight-1-series')
-    expect(Array.from(series?.options ?? []).map(option => option.value))
-      .toEqual(['-1', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
-
-    await clickSequenceTask('自动公招')
-    expect(container.querySelector('label[for="automation-recruit-1-level3_recruitment_permit_reserve"]')?.textContent)
-      .toContain('3 星保留招聘许可')
-    expect(container.querySelector('#automation-recruit-1-force_refresh')).not.toBeNull()
-    expect(container.querySelector<HTMLSelectElement>('#recruit-1-extra-tags-mode')?.textContent)
-      .toContain('默认行为')
   })
 
   it('offers the new infrast facilities and the award sign-in switch', async () => {

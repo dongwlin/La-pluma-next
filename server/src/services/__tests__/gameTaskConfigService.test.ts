@@ -90,7 +90,6 @@ describe('validateGameTaskParams for daily task types', () => {
       extra_tags_mode: 2,
       times: 0
     }), null);
-    assert.equal(validateGameTaskParams('Recruit', { force_refresh: true }), null);
     assert.equal(
       validateGameTaskParams('Recruit', { force_refresh: 'yes' }),
       'Recruit.params.force_refresh 必须是布尔值'

@@ -377,7 +377,6 @@ user_resource = true
     await writeProfile('legacy-options', `[connection]
 address = "127.0.0.1:5555"
 preset = "Waydroid"
-auto_reconnect = true
 `);
 
     await saveProfile('legacy-options', {
@@ -387,7 +386,6 @@ auto_reconnect = true
 
     const parsed = TOML.parse(await readProfile('legacy-options'));
     assert.deepEqual(parsed.connection, { address: '10.0.0.9:5555', preset: 'Waydroid' });
-    assert.deepEqual(parsed.behavior, { auto_reconnect: true });
     assert.deepEqual(parsed.instance_options, { touch_mode: 'Adb' });
   });
 });

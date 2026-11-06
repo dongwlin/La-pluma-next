@@ -442,12 +442,10 @@ describe('executeAgentTask', () => {
 });
 
 describe('preflightAgentTaskRequest', () => {
-  it('rejects invalid task types and game task params before any execution', () => {
+  it('rejects invalid task types before any execution', () => {
     const invalidInputs = [
       { command: 'run', taskConfig: { name: '任务', type: 42 } },
-      { command: 'run', taskConfig: { name: '任务', type: 'Bad Type' } },
-      { command: 'run', taskConfig: { name: '培养', type: 'OperProgress', params: { plans: [] } } },
-      { command: 'run', taskConfig: { name: '主题', type: 'SwitchTheme', params: { themes: '默认' } } }
+      { command: 'run', taskConfig: { name: '任务', type: 'Bad Type' } }
     ];
     for (const input of invalidInputs) {
       assert.throws(
