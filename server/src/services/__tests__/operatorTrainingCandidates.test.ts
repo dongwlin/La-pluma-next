@@ -100,6 +100,30 @@ describe('training candidate projection', () => {
     assert.deepEqual(ids(buildTrainingCandidates(catalog, owned, operatorMaterials, { status: 'owned' })), ['char_a', 'char_c', 'char_b']);
   });
 
+  it('separates unrecognized ownership from confirmed unowned candidates', () => {
+    const rows = byId(buildTrainingCandidates(
+      catalog,
+      owned,
+      operatorMaterials,
+      { status: 'all' },
+      new Set(['char_e'])
+    ));
+
+    assert.equal(rows.char_e.ownership, 'unknown');
+    assert.equal(rows.char_e.disabledReason, 'unrecognized');
+    assert.equal(rows.char_e.trainingStatus, 'unrecognized');
+    assert.equal(rows.char_e.canTrain, false);
+    assert.equal(rows.char_d.ownership, 'unowned');
+    assert.equal(rows.char_d.disabledReason, 'unowned');
+    assert.deepEqual(ids(buildTrainingCandidates(
+      catalog,
+      owned,
+      operatorMaterials,
+      { status: 'owned' },
+      new Set(['char_e'])
+    )), ['char_a', 'char_c', 'char_b']);
+  });
+
   it('reads both operbox shapes and carries materials through', () => {
     assert.deepEqual(getOperBoxOperators({ data: owned }), owned);
     assert.deepEqual(getOperBoxOperators({ operators: owned }), owned);
