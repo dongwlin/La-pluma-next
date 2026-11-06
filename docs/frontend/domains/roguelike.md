@@ -70,7 +70,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 | `isRoguelikeOptionVisible(option, taskId, theme, advanced)` | 字段在当前主题、模式与依赖字段下是否生效；隐藏字段既不下发也不显示 |
 | `isRoguelikeOptionValueValid(option, theme, value, taskId)` | 下拉值是否属于当前主题的候选表；非下拉字段恒为有效 |
 | `isKnownRoguelikeTheme(taskId, theme)` | 主题代号是否属于该任务的已知目录 |
-| `normalizeRoguelikeModeForTheme(taskId, theme, advancedParams)` | 切主题时把新主题不支持的模式重置为首项，其余字段保留 |
+| `normalizeRoguelikeModeForTheme(taskId, theme, advancedParams)` | 切主题时把新主题不支持的模式重置为该主题的默认模式（沙洲遗闻 `1`、重启锚点 `16`），没有默认值才回落到首项，其余字段保留 |
 | `splitRoguelikeListValue(value)` | 列表字段按逗号、顿号、分号与空白切分 |
 | `normalizeRoguelikeAdvancedParams(advancedParams)` | 补齐缺失或为空的默认值；无变化时返回原引用，不修改入参 |
 | `buildRoguelikeCommandParams(taskId, taskInputs, advancedParams)` | 主题代号在前，生效字段按字段表顺序追加；只包含有 CLI 参数名的字段 |
@@ -155,7 +155,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 - 执行路径：主题、模式或字段全部被 maa-cli 支持时保持原 CLI 命令；黑流树海、`10001`/`20001`/`30001`/`30003`、重启锚点、`clearStore` 或任一只有 Core 参数名的开关生效时改写为 `run` + taskConfig，且动态参数补齐 CLI 缺省与 Core 缺省不一致的字段。
 - 可见性：主题专属字段随主题切换隐藏并停止下发，模式专属字段随模式切换隐藏；`requires` 未满足时隐藏（含开关缺省为关的情况）。
 - 取值有效性：生效下拉值必须属于当前主题候选表，越界值在面板中标注且执行被拒绝；数字字段只接受范围内的整数；隐藏字段的残留值不影响校验。
-- 校验：主题 trim 后非空且属于已知目录；生效下拉值越界、数字非整数或越界、列表项不在候选表、刷坍缩范式缺少期望范式、刷常乐节点缺少目标节点、黑流树海刷开局动物超过两项/羽蛇超过一项、培育目标与黑流策略不匹配时拒绝提交，切换主题后模式重置为首项。
+- 校验：主题 trim 后非空且属于已知目录；生效下拉值越界、数字非整数或越界、列表项不在候选表、刷坍缩范式缺少期望范式、刷常乐节点缺少目标节点、黑流树海刷开局动物超过两项/羽蛇超过一项、培育目标与黑流策略不匹配时拒绝提交，切换主题后模式重置为该主题的默认模式（沙洲遗闻 `1`、重启锚点 `16`，无默认值才回落到首项）。
 - 归一化不修改入参；`resolveRoguelikeAdvancedValue` 的首项回落只用于显示，不参与命令构造；重启锚点草稿缺少模式时归一化补 `16`。
 - 旧草稿：没有新字段的 wire 与本地草稿仍可读，未知扩展字段与显式值原样往返。
 - 模式是局部状态：不进入配置 wire，跨模式草稿合并、空主题拒绝，Activity 隐藏保留而真正卸载回到 `roguelike`。
