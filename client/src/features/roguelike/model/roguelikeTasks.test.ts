@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { RoguelikeAdvancedParams, RoguelikeAdvancedValues } from '../types'
 import {
   DEFAULT_RECLAMATION_MODE,
   DEFAULT_ROGUELIKE_MODE,
@@ -543,9 +544,47 @@ describe('normalizeRoguelikeModeForTheme', () => {
     const supported = { roguelike: { mode: '5' } }
     expect(normalizeRoguelikeModeForTheme('roguelike', 'Sami', supported)).toBe(supported)
 
-    const untouched = { reclamation: { mode: '1' } }
+    const talesModeZero = { reclamation: { mode: '0' } }
+    expect(normalizeRoguelikeModeForTheme('reclamation', 'Tales', talesModeZero)).toBe(talesModeZero)
+
+    const relaunchMode = { reclamation: { mode: '32' } }
+    expect(normalizeRoguelikeModeForTheme('reclamation', 'RelaunchAnchor', relaunchMode)).toBe(relaunchMode)
+
+    const untouched = { roguelike: { mode: '4' } }
     expect(normalizeRoguelikeModeForTheme('reclamation', 'Tales', untouched)).toBe(untouched)
   })
+
+  it('resets an unsupported reclamation mode to the declared default instead of the first choice', () => {
+    const draft = { reclamation: { mode: '16', toolsToCraft: '荧光棒' } }
+
+    expect(normalizeRoguelikeModeForTheme('reclamation', 'Tales', draft))
+      .toEqual({ reclamation: { mode: '1', toolsToCraft: '荧光棒' } })
+    expect(draft).toEqual({ reclamation: { mode: '16', toolsToCraft: '荧光棒' } })
+  })
+
+  it.each([
+    ['roguelike', 'Phantom', '5', '0'],
+    ['roguelike', 'Mizuki', '5', '0'],
+    ['roguelike', 'Sami', '10001', '0'],
+    ['roguelike', 'Sarkaz', '5', '0'],
+    ['roguelike', 'JieGarden', '5', '0'],
+    ['roguelike', 'BlackFlow', '5', '0'],
+    ['reclamation', 'Tales', '16', '1'],
+    ['reclamation', 'RelaunchAnchor', '0', '16'],
+    ['reclamation', 'RelaunchAnchor', '1', '16'],
+  ] as const)(
+    'resets %s mode when switching to the %s theme',
+    (taskId, theme, mode, expectedMode) => {
+      const retained: RoguelikeAdvancedValues = taskId === 'reclamation'
+        ? { toolsToCraft: '荧光棒' }
+        : { startCount: '3' }
+      const draft: RoguelikeAdvancedParams = { [taskId]: { ...retained, mode } }
+
+      expect(normalizeRoguelikeModeForTheme(taskId, theme, draft))
+        .toEqual({ [taskId]: { ...retained, mode: expectedMode } })
+      expect(draft).toEqual({ [taskId]: { ...retained, mode } })
+    },
+  )
 })
 
 describe('validateRoguelikeTaskInput', () => {

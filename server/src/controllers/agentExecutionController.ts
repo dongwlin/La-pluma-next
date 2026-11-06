@@ -9,7 +9,7 @@ import {
   normalizeDailyFlowRequest,
   preflightAgentTaskRequest
 } from '../services/agentActionService.ts';
-import type { AgentTaskConfig } from '../services/agentActionService.ts';
+import type { AgentTaskConfig, NormalizedAgentTaskRequest } from '../services/agentActionService.ts';
 import {
   continueManualCopilotSet,
   hasCopilotSetSession,
@@ -1519,10 +1519,30 @@ export async function runFight(
   });
 }
 
-interface RoguelikeResultCapture {
+interface RoguelikeResultTarget {
   command: 'roguelike' | 'reclamation';
   args: readonly string[];
+}
+
+interface RoguelikeResultCapture extends RoguelikeResultTarget {
   checkpoint: MaaLogCheckpoint | null;
+}
+
+function resolveRoguelikeResultTarget(
+  request: NormalizedAgentTaskRequest
+): RoguelikeResultTarget | null {
+  const taskConfig = request.taskConfig;
+  if (taskConfig) {
+    if (taskConfig.type !== 'Roguelike' && taskConfig.type !== 'Reclamation') return null;
+    const theme = taskConfig.params.theme;
+    return {
+      command: taskConfig.type === 'Reclamation' ? 'reclamation' : 'roguelike',
+      args: [typeof theme === 'string' ? theme.trim() : '']
+    };
+  }
+  return isRoguelikeCommand(request.command)
+    ? { command: request.command, args: request.args }
+    : null;
 }
 
 /**
@@ -1530,15 +1550,14 @@ interface RoguelikeResultCapture {
  * 保留执行本身，只是不产出摘要，不能用整份历史日志冒充本次结果。
  */
 async function openRoguelikeResultCapture(
-  command: string,
-  args: readonly string[]
+  target: RoguelikeResultTarget | null
 ): Promise<RoguelikeResultCapture | null> {
-  if (!isRoguelikeCommand(command)) return null;
+  if (!target) return null;
   try {
-    return { command, args, checkpoint: await createMaaLogCheckpoint() };
+    return { ...target, checkpoint: await createMaaLogCheckpoint() };
   } catch (error) {
     logger.warn('创建肉鸽结果日志检查点失败', { error: errorMessageOf(error) });
-    return { command, args, checkpoint: null };
+    return { ...target, checkpoint: null };
   }
 }
 
@@ -1595,7 +1614,7 @@ export async function runTask(
     waitForCompletion,
     metadata: { taskName: request.taskName, taskType: request.taskType },
     execute: async lifecycle => {
-      const capture = await openRoguelikeResultCapture(request.command, request.args);
+      const capture = await openRoguelikeResultCapture(resolveRoguelikeResultTarget(request));
       if (!capture) {
         return executePreflightAgentTask(
           request,
