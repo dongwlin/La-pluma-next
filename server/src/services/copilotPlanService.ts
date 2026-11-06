@@ -7,6 +7,7 @@ import { getCallbackDetails, getCallbackStringField, parseMaaCallbackEvents } fr
 import { getMaaConfigDir } from './maaConfigService.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
+import { invalidateCachedCopilotFiles } from './maaTaskCacheService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
@@ -118,7 +119,6 @@ export function resetCopilotPlanCachesForTests(): void {
   installedTasksCache.clear();
   fileLoadPollMsOverride = null;
   pathPlatformOverride = null;
-  nativeDelegationOverride = null;
 }
 
 export type CopilotRaidMode = 'normal' | 'raid';
@@ -272,11 +272,24 @@ export type CopilotDelegationReason =
   | 'unsupported-options'
   | 'stage-name-mismatch';
 
-/** 一次执行的委托报告；用于区分「原生失败已回退」与「整体失败」。 */
+/**
+ * 原生委托的最终走向：`native-*` 表示没有回退，`fallback-*` 表示原生失败后
+ * 回退到现有流程，并按现有流程的结果收尾。
+ */
+export type CopilotDelegationOutcome =
+  | 'native-succeeded'
+  | 'native-failed'
+  | 'native-stopped'
+  | 'fallback-succeeded'
+  | 'fallback-failed'
+  | 'fallback-stopped';
+
+/** 一次执行的委托报告；`outcome` 显式区分原生成功、原生失败与回退后的结果。 */
 export interface CopilotDelegationReport {
   attempted: boolean;
   reason?: CopilotDelegationReason;
   fallback?: boolean;
+  outcome: CopilotDelegationOutcome;
   nativeError?: string;
 }
 
@@ -1037,11 +1050,18 @@ async function runCopilotGroup({
   }
 }
 
-let nativeDelegationOverride: boolean | null = null;
+/**
+ * 原生委托默认启用；设置 `LA_PLUMA_COPILOT_NATIVE_DELEGATION` 为禁用值时整体
+ * 回退到现有流程，供真实设备验证或线上排障关闭，不必改代码重新部署。
+ */
+const COPILOT_NATIVE_DELEGATION_ENV = 'LA_PLUMA_COPILOT_NATIVE_DELEGATION';
+const COPILOT_NATIVE_DELEGATION_DISABLED_VALUES: ReadonlySet<string> = new Set([
+  '0', 'false', 'off', 'no', 'disabled'
+]);
 
-/** 测试注入：强制开关原生委托；生产代码不调用。 */
-export function setCopilotNativeDelegationForTests(enabled: boolean | null): void {
-  nativeDelegationOverride = enabled;
+function isCopilotNativeDelegationDisabled(): boolean {
+  const value = process.env[COPILOT_NATIVE_DELEGATION_ENV]?.trim().toLowerCase();
+  return value !== undefined && COPILOT_NATIVE_DELEGATION_DISABLED_VALUES.has(value);
 }
 
 /**
@@ -1105,7 +1125,7 @@ export async function evaluateCopilotNativeDelegation({
   entries,
   options = {}
 }: CopilotNativeDelegationInput): Promise<CopilotNativeDelegationDecision> {
-  if (nativeDelegationOverride === false) return { eligible: false, reason: 'disabled' };
+  if (isCopilotNativeDelegationDisabled()) return { eligible: false, reason: 'disabled' };
   if (entries.length === 0) return { eligible: false, reason: 'no-entries' };
   if (entries.length < 2) return { eligible: false, reason: 'single-entry' };
   if (entries.some(entry => entry.presetFormation)) {
@@ -1198,6 +1218,9 @@ async function runNativeCopilotGroup({
   }));
   const resolveItemIndex = (file: string): number => findNativeCopilotItemIndex(executionItems, file);
   try {
+    // maa-cli 命中 `<cache>/copilot/<id>.json` 时直接复用而不校验远端内容；
+    // 执行前删除本次条目的缓存，避免原生路径跑旧作业文件。
+    await invalidateCachedCopilotFiles(group.entries.map(entry => entry.copilotId));
     lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
     const stopObserving = observeCopilotFileLoads({
       checkpoint,
@@ -1258,6 +1281,16 @@ function canFallbackToExistingFlow(outcome: NativeCopilotGroupOutcome): boolean 
     && outcome.checkpointReady
     && outcome.observedLoads === 0
     && outcome.statuses.every(settled => settled.status !== 'success');
+}
+
+function nativeDelegationOutcome(outcome: NativeCopilotGroupOutcome): CopilotDelegationOutcome {
+  if (outcome.stopped) return 'native-stopped';
+  return outcome.error ? 'native-failed' : 'native-succeeded';
+}
+
+function fallbackDelegationOutcome(outcome: CopilotGroupOutcome): CopilotDelegationOutcome {
+  if (outcome.stopped) return 'fallback-stopped';
+  return outcome.error ? 'fallback-failed' : 'fallback-succeeded';
 }
 
 /** 执行作业集条目的输入；调用方拥有 Run，本函数只取设备租约。 */
@@ -1348,14 +1381,19 @@ export async function executeCopilotEntries({
             setId,
             error: errorMessageOf(nativeOutcome.error)
           });
+          groupOutcome = await runExistingGroup(group);
           delegation = {
             attempted: true,
             fallback: true,
-            nativeError: errorMessageOf(nativeOutcome.error) || '原生作业集执行失败'
+            nativeError: errorMessageOf(nativeOutcome.error) || '原生作业集执行失败',
+            outcome: fallbackDelegationOutcome(groupOutcome)
           };
-          groupOutcome = await runExistingGroup(group);
         } else {
-          delegation = { attempted: true, fallback: false };
+          delegation = {
+            attempted: true,
+            fallback: false,
+            outcome: nativeDelegationOutcome(nativeOutcome)
+          };
           groupOutcome = nativeOutcome;
         }
       } else {

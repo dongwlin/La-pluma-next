@@ -91,6 +91,19 @@ const readTaskToml = () => {
   }
   if (args[0] === 'copilot') {
     appendCall('copilot ' + args.slice(1).join(' '));
+    const copilotCacheDir = path.join(process.env.MAA_CACHE_DIR || '', 'copilot');
+    for (const uri of args.slice(1)) {
+      const id = /^prts:\\/\\/(\\d+)$/.exec(uri)?.[1];
+      if (!id) continue;
+      const cachedFile = path.join(copilotCacheDir, id + '.json');
+      if (fs.existsSync(cachedFile)) {
+        if (process.env.FAKE_NATIVE_LOG_CACHE) appendCall('cache-hit ' + id);
+        continue;
+      }
+      if (process.env.FAKE_NATIVE_LOG_CACHE) appendCall('cache-miss ' + id);
+      fs.mkdirSync(copilotCacheDir, { recursive: true });
+      fs.writeFileSync(cachedFile, JSON.stringify({ stage_name: 'main_01-01', fresh: true }));
+    }
     for (const step of JSON.parse(process.env.FAKE_NATIVE_LOADS || '[]')) {
       if (step.after) await sleep(step.after);
       appendLoad(path.join(process.env.MAA_CACHE_DIR || '', 'copilot', String(step.id) + '.json'));
@@ -131,7 +144,6 @@ const {
   evaluateCopilotNativeDelegation,
   executeCopilotEntries,
   resetCopilotPlanCachesForTests,
-  setCopilotNativeDelegationForTests,
   setCopilotFileLoadPollIntervalForTests
 } = await import('../copilotPlanService.ts');
 const {
@@ -144,6 +156,13 @@ const {
 const { beginAgentRun, resetAgentRunsForTests } = await import('../agentRunService.ts');
 
 setCopilotFileLoadPollIntervalForTests(40);
+
+const NATIVE_DELEGATION_ENV = 'LA_PLUMA_COPILOT_NATIVE_DELEGATION';
+
+function setNativeDelegationEnabled(enabled: boolean): void {
+  if (enabled) delete process.env[NATIVE_DELEGATION_ENV];
+  else process.env[NATIVE_DELEGATION_ENV] = 'off';
+}
 
 const originalFetch = globalThis.fetch;
 
@@ -169,9 +188,11 @@ beforeEach(async () => {
   setCopilotFileLoadPollIntervalForTests(40);
   stubCopilotSite();
   process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
+  delete process.env[NATIVE_DELEGATION_ENV];
   delete process.env.FAKE_NATIVE_LOADS;
   delete process.env.FAKE_NATIVE_EXIT_CODE;
   delete process.env.FAKE_NATIVE_EXIT_DELAY;
+  delete process.env.FAKE_NATIVE_LOG_CACHE;
   delete process.env.FAKE_RUN_LOADS;
   delete process.env.FAKE_RUN_EXIT_CODE;
   delete process.env.FAKE_RUN_EXIT_DELAY;
@@ -179,6 +200,7 @@ beforeEach(async () => {
   await writeFile(maaAsstLog, '');
   await rm(progressPath, { force: true });
   await rm(planDir, { recursive: true, force: true });
+  await rm(join(maaCacheDir, 'copilot'), { recursive: true, force: true });
   await rm(dropRecordsDir, { recursive: true, force: true });
   await mkdir(dropRecordsDir, { recursive: true });
   await rm(join(fixtureDir, 'maa-execution.lock'), { force: true });
@@ -374,12 +396,14 @@ describe('copilot native delegation conditions', () => {
     }
   });
 
-  test('supports an explicit kill switch', async () => {
-    setCopilotNativeDelegationForTests(false);
+  test('supports an explicit environment kill switch', async () => {
+    setNativeDelegationEnabled(false);
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
       eligible: false,
       reason: 'disabled'
     });
+    setNativeDelegationEnabled(true);
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
   });
 });
 
@@ -400,7 +424,11 @@ describe('copilot native delegation execution', () => {
     assert.deepEqual(await readMaaCalls(), [
       'copilot prts://101 prts://102 prts://103 --raid normal --formation --ignore-requirements --use-sanity-potion --add-trust --batch'
     ]);
-    assert.deepEqual(outcome.delegation, { attempted: true, fallback: false });
+    assert.deepEqual(outcome.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-succeeded'
+    });
     assert.equal(outcome.error, null);
     assert.deepEqual(
       outcome.summary.taskResults.map(result => result.status),
@@ -423,7 +451,7 @@ describe('copilot native delegation execution', () => {
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
     process.env.FAKE_RUN_EXIT_DELAY = '320';
     const existing = captureEvents();
-    setCopilotNativeDelegationForTests(false);
+    setNativeDelegationEnabled(false);
     await executeCopilotEntries({ setId: '42', name: 'set', entries: queueOf(), lifecycle: existing.lifecycle });
 
     assert.deepEqual(nativeProgress, existing.events.filter(event => event.startsWith('entry-')));
@@ -450,6 +478,7 @@ describe('copilot native delegation execution', () => {
     assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
     assert.equal(outcome.delegation?.attempted, true);
     assert.equal(outcome.delegation?.fallback, true);
+    assert.equal(outcome.delegation?.outcome, 'fallback-succeeded');
     assert.equal(typeof outcome.delegation?.nativeError, 'string');
     assert.equal(outcome.error, null);
     assert.deepEqual(
@@ -469,7 +498,11 @@ describe('copilot native delegation execution', () => {
     const calls = await readMaaCalls();
     assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
     assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
-    assert.deepEqual(outcome.delegation, { attempted: true, fallback: false });
+    assert.deepEqual(outcome.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-failed'
+    });
     assert.ok(outcome.error);
     assert.deepEqual(
       outcome.summary.taskResults.map(result => result.status),
@@ -497,11 +530,79 @@ describe('copilot native delegation execution', () => {
 
     assert.equal((await readMaaCalls()).filter(call => call.startsWith('run ')).length, 0);
     assert.equal(outcome.stopped, true);
-    assert.deepEqual(outcome.delegation, { attempted: true, fallback: false });
+    assert.deepEqual(outcome.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-stopped'
+    });
     assert.deepEqual(
       outcome.summary.taskResults.map(result => result.status),
       ['pending', 'pending', 'pending']
     );
+  });
+
+  test('distinguishes a failed fallback from a native-only failure', async () => {
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = '';
+
+    const failedFallback = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf()
+    });
+
+    assert.equal(failedFallback.success, false);
+    assert.ok(failedFallback.error);
+    assert.equal(failedFallback.delegation?.attempted, true);
+    assert.equal(failedFallback.delegation?.fallback, true);
+    assert.equal(failedFallback.delegation?.outcome, 'fallback-failed');
+    assert.equal(typeof failedFallback.delegation?.nativeError, 'string');
+    assert.deepEqual(
+      failedFallback.summary.taskResults.map(result => result.status),
+      ['failed', 'failed', 'failed']
+    );
+
+    await resetRunArtifacts();
+    delete process.env.FAKE_RUN_EXIT_CODE;
+    delete process.env.FAKE_RUN_LOADS;
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101], 10);
+
+    const nativeOnly = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf()
+    });
+
+    assert.equal(nativeOnly.success, false);
+    assert.equal(nativeOnly.delegation?.attempted, true);
+    assert.equal(nativeOnly.delegation?.fallback, false);
+    assert.equal(nativeOnly.delegation?.outcome, 'native-failed');
+    assert.equal(nativeOnly.delegation?.nativeError, undefined);
+    assert.notEqual(failedFallback.delegation?.outcome, nativeOnly.delegation?.outcome);
+  });
+
+  test('drops cached copilot files before delegating so the native command re-downloads them', async () => {
+    const cacheDir = join(maaCacheDir, 'copilot');
+    const staleFile = join(cacheDir, '101.json');
+    const unrelatedFile = join(cacheDir, '999.json');
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(staleFile, JSON.stringify({ stage_name: 'main_01-09', stale: true }));
+    await writeFile(unrelatedFile, JSON.stringify({ stage_name: 'main_01-09', stale: true }));
+    process.env.FAKE_NATIVE_LOG_CACHE = '1';
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 102, 103]);
+
+    const outcome = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf()
+    });
+
+    assert.equal(outcome.success, true);
+    const cacheCalls = (await readMaaCalls()).filter(call => call.startsWith('cache-'));
+    assert.deepEqual(cacheCalls, ['cache-miss 101', 'cache-miss 102', 'cache-miss 103']);
+    assert.deepEqual(JSON.parse(await readFile(staleFile, 'utf8')), { stage_name: 'main_01-01', fresh: true });
+    assert.deepEqual(JSON.parse(await readFile(unrelatedFile, 'utf8')), { stage_name: 'main_01-09', stale: true });
   });
 });
 
@@ -526,7 +627,7 @@ describe('copilot native delegation equivalence', () => {
       await resetRunArtifacts();
       if (seedProgress) await writeFile(progressPath, JSON.stringify({ 42: seedProgress }));
       configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => ({ ...plan, entries }) });
-      setCopilotNativeDelegationForTests(useNative);
+      setNativeDelegationEnabled(useNative);
       const files = entries.filter(entry => !entry.completed).map(entry =>
         join(planDir, `${entry.itemIndex}-${entry.copilotId}-normal-1.json`)
       );
@@ -561,7 +662,11 @@ describe('copilot native delegation equivalence', () => {
     assert.equal(selectedNative.result.summary.plannedEntries, 3);
     assert.equal(selectedNative.result.summary.queuedEntries, 2);
     assert.equal(selectedNative.result.summary.successCount, 2);
-    assert.deepEqual(selectedNative.result.summary.delegation, { attempted: true, fallback: false });
+    assert.deepEqual(selectedNative.result.summary.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-succeeded'
+    });
     assert.equal(selectedExisting.result.summary.delegation, undefined);
     assert.deepEqual(selectedNative.result.completed.sort(), selectedExisting.result.completed.sort());
 
@@ -614,7 +719,7 @@ describe('copilot native delegation equivalence', () => {
       await rm(progressPath, { force: true });
       await rm(dropRecordsDir, { recursive: true, force: true });
       await mkdir(dropRecordsDir, { recursive: true });
-      setCopilotNativeDelegationForTests(useNative);
+      setNativeDelegationEnabled(useNative);
       process.env.FAKE_NATIVE_LOADS = useNative ? nativeLoads([101, 102, 103]) : '';
       process.env.FAKE_NATIVE_EXIT_DELAY = '320';
       process.env.FAKE_RUN_LOADS = useNative ? '' : runLoads(planFiles());
