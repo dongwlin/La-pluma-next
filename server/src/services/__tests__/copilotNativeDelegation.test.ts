@@ -604,6 +604,25 @@ describe('copilot native delegation execution', () => {
     assert.deepEqual(JSON.parse(await readFile(staleFile, 'utf8')), { stage_name: 'main_01-01', fresh: true });
     assert.deepEqual(JSON.parse(await readFile(unrelatedFile, 'utf8')), { stage_name: 'main_01-09', stale: true });
   });
+
+  test('falls back to the existing flow when the copilot cache cannot be invalidated', async () => {
+    await writeFile(join(maaCacheDir, 'copilot'), 'not-a-directory');
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    const outcome = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf()
+    });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    assert.equal(outcome.success, true);
+    assert.equal(outcome.delegation?.fallback, true);
+    assert.equal(outcome.delegation?.outcome, 'fallback-succeeded');
+    assert.equal(typeof outcome.delegation?.nativeError, 'string');
+  });
 });
 
 describe('copilot native delegation equivalence', () => {
