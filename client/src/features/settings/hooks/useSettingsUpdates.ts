@@ -24,12 +24,15 @@ export interface UseSettingsUpdatesResult {
   readonly running: UpdateOperation | null
   readonly feedback: UpdateFeedback | null
   readonly busy: boolean
+  readonly canceling: boolean
   readonly updateCore: () => Promise<UpdateCommandOutcome>
   readonly switchCoreChannel: (
     currentCore?: string | null,
   ) => Promise<UpdateCommandOutcome>
   readonly updateCli: (channel?: string) => Promise<UpdateCommandOutcome>
   readonly updateResources: () => Promise<UpdateCommandOutcome>
+  /** 停止在途更新；停止意图记录后仍等待 run 终态，不把请求返回当作已停止。 */
+  readonly cancelUpdate: () => Promise<void>
 }
 
 export function useSettingsUpdates(
@@ -53,21 +56,19 @@ export function useSettingsUpdates(
       else notify(outcome.message)
     }
 
-    if (outcome.status === 'succeeded') {
-      if (outcome.resourcesChanged) {
-        // 图片 URL 与目录/材料数据是两套缓存：先推进图标 epoch，再发布
-        // 作用域，使接收方重新渲染时拿到新的 <img src>。
-        invalidateItemIconCache()
-        publishResourceInvalidation({
-          resources: SETTINGS_UPDATE_RESOURCE_SCOPES,
-          cause: 'resource-update',
-        })
-      }
-      if (outcome.versionChanged) {
-        // 版本资源的失效在后台继续；Activity 隐藏时保留失效标记，
-        // 恢复显示后重取。
-        await reloadVersion()
-      }
+    if (outcome.status === 'succeeded' && outcome.resourcesChanged) {
+      // 图片 URL 与目录/材料数据是两套缓存：先推进图标 epoch，再发布
+      // 作用域，使接收方重新渲染时拿到新的 <img src>。
+      invalidateItemIconCache()
+      publishResourceInvalidation({
+        resources: SETTINGS_UPDATE_RESOURCE_SCOPES,
+        cause: 'resource-update',
+      })
+    }
+    if ((outcome.status === 'succeeded' || outcome.status === 'canceled') && outcome.versionChanged) {
+      // 版本资源的失效在后台继续；Activity 隐藏时保留失效标记，
+      // 恢复显示后重取。
+      await reloadVersion()
     }
 
     return outcome
@@ -93,13 +94,24 @@ export function useSettingsUpdates(
     run('正在热更新资源文件...', () => owner.updateResources())
   ), [owner, run])
 
+  const cancelUpdate = useCallback(async () => {
+    const result = await owner.cancel()
+    if (!result.ok) {
+      if (result.message) notify(`停止更新失败: ${result.message}`, 'error')
+      return
+    }
+    notify('已发送停止请求，等待更新退出...', 'info')
+  }, [notify, owner])
+
   return {
     running: state.running,
     feedback: state.feedback,
     busy: state.running !== null,
+    canceling: state.canceling,
     updateCore,
     switchCoreChannel,
     updateCli,
     updateResources,
+    cancelUpdate,
   }
 }

@@ -4,6 +4,7 @@ import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import type { MaaActivityEntry, MaaActivityFailure, MaaActivityStatus } from '../services/maaActivityService.ts';
 import type { ResourceInfo, ResourceUpdateResult } from '../services/resourceUpdateService.ts';
 import type { AutoUpdateConfig } from '../services/scheduleTriggerService.ts';
+import { parseWaitForCompletion } from './executionDto.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
 
 /** 维护路由处理器的请求端口：query/body 保持 unknown，由本模块按端点收窄。 */
@@ -87,6 +88,14 @@ export function parseUpdateCliBody(body: unknown): MaintenanceUpdateCliInput {
   return { channel: source.channel, dryRun: Boolean(source.dryRun) };
 }
 
+/**
+ * 更新动作的提交语义：缺省同步等待完成，`waitForCompletion=false` 在更新取得
+ * 执行权后返回 202 与 runId。校验与执行入口共用同一错误码。
+ */
+export function parseUpdateWaitForCompletion(body: unknown, defaultValue = true): boolean {
+  return parseWaitForCompletion(isRecord(body) ? body.waitForCompletion : undefined, defaultValue);
+}
+
 /** 渠道设置请求：scope/channel 的取值由更新渠道域校验，这里只做形状收窄。 */
 export interface MaintenanceUpdateChannelInput {
   scope: unknown;
@@ -165,17 +174,7 @@ export function parseCopilotPlanQuery(query: unknown): MaintenanceCopilotPlanInp
 }
 
 /** 资源信息读取失败时的既有兜底投影：状态按 `unknown` 处理，不能当成正常。 */
-export function resourceInfoFallback(error: unknown): ResourceInfo {
-  return {
-    lastUpdated: null,
-    modifiedAt: null,
-    ageDays: null,
-    status: 'unknown',
-    message: `资源版本读取失败: ${thrownMessage(error)}`,
-    activity: null,
-    gacha: null
-  };
-}
+export { buildResourceInfoFallback as resourceInfoFallback } from '../services/resourceUpdateService.ts';
 
 export interface MaintenanceActivityCompletion {
   known: boolean;

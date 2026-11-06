@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { discoverDevices, getConfig, getConfigDir, getVersion } from './index'
+import {
+  discoverDevices,
+  getConfig,
+  getConfigDir,
+  getVersion,
+  hotUpdateResources,
+  updateMaaCli,
+  updateMaaCore,
+} from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -130,5 +138,25 @@ describe('settings resource reads', () => {
     expect(fetchCall().init.signal).toBe(controller.signal)
     expect(result.success).toBe(true)
     expect(result.data?.message).toBe('ADB 不可用')
+  })
+
+  it('submits update commands as background runs with their own domain fields', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: { runId: 'run-core' } }, 202))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: { runId: 'run-cli' } }, 202))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: { runId: 'run-resources' } }, 202))
+
+    const core = await updateMaaCore('beta')
+    const cli = await updateMaaCli('nightly')
+    const resources = await hotUpdateResources()
+
+    expect(fetchCall(0).input).toBe('http://localhost:3000/api/agent/actions/update-core')
+    expect(fetchCall(0).init.method).toBe('POST')
+    expect(JSON.parse(String(fetchCall(0).init.body))).toEqual({ version: 'beta', waitForCompletion: false })
+    expect(fetchCall(1).input).toBe('http://localhost:3000/api/agent/actions/update-cli')
+    expect(JSON.parse(String(fetchCall(1).init.body))).toEqual({ channel: 'nightly', waitForCompletion: false })
+    expect(fetchCall(2).input).toBe('http://localhost:3000/api/agent/actions/hot-update-resources')
+    expect(JSON.parse(String(fetchCall(2).init.body))).toEqual({ waitForCompletion: false })
+    expect(core.success && cli.success && resources.success).toBe(true)
   })
 })
