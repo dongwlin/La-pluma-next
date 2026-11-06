@@ -41,6 +41,7 @@ import {
   normalizeFightStages
 } from '../services/fightExecutionService.ts';
 import type { FightRequestOptions, FightStageEntry } from '../services/fightExecutionService.ts';
+import { validateGameTaskParams } from '../services/gameTaskConfigService.ts';
 import {
   agentError,
   sendSuccess,
@@ -1045,6 +1046,8 @@ interface FightOptions extends Record<string, unknown> {
   stage?: unknown;
   times?: unknown;
   medicine?: unknown;
+  medicineExpireDays?: unknown;
+  /** @deprecated 旧版按瓶数表达临期药；新调用方使用 medicineExpireDays。 */
   expiringMedicine?: unknown;
   stone?: unknown;
   series?: unknown;
@@ -1426,9 +1429,27 @@ export async function runFight(
       retryable: false
     }));
   }
+  const fightValidation = validateGameTaskParams('Fight', {
+    medicine: fightOptions.medicine,
+    medicine_expire_days: fightOptions.medicineExpireDays,
+    expiring_medicine: fightOptions.expiringMedicine,
+    series: fightOptions.series
+  });
+  if (fightValidation) {
+    return sendError(res, req, agentError('AGENT_VALIDATION_FIGHT_OPTIONS_INVALID', fightValidation, {
+      statusCode: 400,
+      details: { fightOptions },
+      retryable: false
+    }));
+  }
+  const hasLegacyExpiringMedicine = fightOptions.expiringMedicine !== undefined
+    && fightOptions.expiringMedicine !== null
+    && fightOptions.expiringMedicine !== '';
   const stageOptions: FightRequestOptions = {
     medicine: fightOptions.medicine ?? 0,
-    expiringMedicine: fightOptions.expiringMedicine ?? 0,
+    ...(hasLegacyExpiringMedicine && fightOptions.medicineExpireDays === undefined
+      ? { expiringMedicine: fightOptions.expiringMedicine }
+      : { medicineExpireDays: fightOptions.medicineExpireDays ?? 0 }),
     stone: fightOptions.stone ?? 0,
     series: fightOptions.series ?? 0
   };

@@ -625,7 +625,7 @@ describe('agent execution HTTP adapter', () => {
     assert.equal(fightBody.data.plan.command, 'fight');
     // 缺省数值参数仍显式输出 0；dryRun 只展示计划。
     assert.deepEqual(fightBody.data.plan.args, [
-      '1-7', '--times', '3', '-m', '0', '--expiring-medicine', '0', '--stone', '0', '--series=0'
+      '1-7', '--times', '3', '-m', '0', '--medicine-expire-days', '0', '--stone', '0', '--series=0'
     ]);
     assert.deepEqual(fightBody.data.plan.stages.map(stage => stage.args), [fightBody.data.plan.args]);
 
@@ -633,6 +633,51 @@ describe('agent execution HTTP adapter', () => {
     const snapshotBody = await readSuccess<RunSnapshotPayload>(snapshot);
     assert.equal(snapshotBody.data.run, null);
     assert.equal(await callCliLog(), '');
+  });
+
+  it('accepts the legacy expiry-medicine count and rejects out-of-range fight options', async () => {
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const legacy = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      dryRun: true,
+      stage: '1-7',
+      expiringMedicine: 5
+    });
+    assert.equal(legacy.status, 200);
+    const legacyBody = await readSuccess<{ plan: { args: string[] } }>(legacy);
+    assert.deepEqual(legacyBody.data.plan.args, [
+      '1-7', '-m', '0', '--expiring-medicine', '5', '--stone', '0', '--series=0'
+    ]);
+
+    const expiryDays = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      dryRun: true,
+      stage: '1-7',
+      medicineExpireDays: 2
+    });
+    const expiryDaysBody = await readSuccess<{ plan: { args: string[] } }>(expiryDays);
+    assert.deepEqual(expiryDaysBody.data.plan.args, [
+      '1-7', '-m', '0', '--medicine-expire-days', '2', '--stone', '0', '--series=0'
+    ]);
+
+    const invalidSeries = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      dryRun: true,
+      stage: '1-7',
+      series: 11
+    });
+    assert.equal(invalidSeries.status, 400);
+    assert.equal((await readError(invalidSeries)).error.code, 'AGENT_VALIDATION_FIGHT_OPTIONS_INVALID');
+
+    const invalidExpiryDays = await postJson(`${baseUrl}/api/agent/actions/fight`, {
+      dryRun: true,
+      stage: '1-7',
+      medicineExpireDays: -1
+    });
+    assert.equal(invalidExpiryDays.status, 400);
+    assert.match((await readError(invalidExpiryDays)).message, /medicine_expire_days/);
   });
 
   it('replays one idempotent task submission over real HTTP without executing twice', async () => {
@@ -678,16 +723,16 @@ describe('agent execution HTTP adapter', () => {
     const body = await readSuccess<FightExecutorPayload>(response);
     assert.equal(body.data.run.state, 'succeeded');
     assert.deepEqual(body.data.plan.stages.map(stage => stage.args), [
-      ['1-7', '--times', '3', '-m', '1', '--expiring-medicine', '0', '--stone', '0'],
-      ['CE-6', '--times', '2', '-m', '1', '--expiring-medicine', '0', '--stone', '0']
+      ['1-7', '--times', '3', '-m', '1', '--medicine-expire-days', '0', '--stone', '0'],
+      ['CE-6', '--times', '2', '-m', '1', '--medicine-expire-days', '0', '--stone', '0']
     ]);
     assert.deepEqual(body.data.stages.map(stage => stage.status), ['success', 'success']);
     assert.equal(body.data.stdout, 'fake output\nfake output');
 
     const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
     assert.deepEqual(calls, [
-      'fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0',
-      'fight CE-6 --times 2 -m 1 --expiring-medicine 0 --stone 0'
+      'fight 1-7 --times 3 -m 1 --medicine-expire-days 0 --stone 0',
+      'fight CE-6 --times 2 -m 1 --medicine-expire-days 0 --stone 0'
     ]);
   });
 
@@ -713,8 +758,8 @@ describe('agent execution HTTP adapter', () => {
     assert.equal(terminal.state, 'succeeded');
     const calls = await waitForFightCalls(2);
     assert.deepEqual(calls, [
-      'fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0',
-      'fight CE-6 --times 2 -m 1 --expiring-medicine 0 --stone 0'
+      'fight 1-7 --times 3 -m 1 --medicine-expire-days 0 --stone 0',
+      'fight CE-6 --times 2 -m 1 --medicine-expire-days 0 --stone 0'
     ]);
   });
 
@@ -745,8 +790,8 @@ describe('agent execution HTTP adapter', () => {
 
     const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
     assert.deepEqual(calls, [
-      'fight 1-7 --times 1 -m 1 --expiring-medicine 0 --stone 0',
-      'fight FAIL-FIGHT --times 1 -m 1 --expiring-medicine 0 --stone 0'
+      'fight 1-7 --times 1 -m 1 --medicine-expire-days 0 --stone 0',
+      'fight FAIL-FIGHT --times 1 -m 1 --medicine-expire-days 0 --stone 0'
     ]);
   });
 
@@ -777,7 +822,7 @@ describe('agent execution HTTP adapter', () => {
     const terminal = await waitForRunState(baseUrl, startedBody.data.runId, ['stopped'], 12_000);
     assert.equal(terminal.state, 'stopped');
     const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
-    assert.deepEqual(calls, ['fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0']);
+    assert.deepEqual(calls, ['fight 1-7 --times 3 -m 1 --medicine-expire-days 0 --stone 0']);
   });
 
   it('stops the current fight stage and prevents the next stage from starting', async () => {
@@ -804,7 +849,7 @@ describe('agent execution HTTP adapter', () => {
     assert.equal(terminal.state, 'stopped');
 
     const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('fight '));
-    assert.deepEqual(calls, ['fight 1-7 --times 3 -m 1 --expiring-medicine 0 --stone 0']);
+    assert.deepEqual(calls, ['fight 1-7 --times 3 -m 1 --medicine-expire-days 0 --stone 0']);
   });
 
   it('stops a targeted background run over real HTTP', async () => {

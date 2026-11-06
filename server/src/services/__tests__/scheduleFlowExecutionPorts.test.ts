@@ -41,7 +41,7 @@ function completedResult(result: ScheduleFlowExecutionResult): ScheduleFlowCompl
 function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
   const calls = {
     commands: [] as Array<{ command: string; args: readonly string[]; taskName: string | null }>,
-    dynamicTasks: [] as Array<{ taskId: string; taskConfig: string; taskName: string | null }>,
+    dynamicTasks: [] as Array<{ taskId: string; taskConfig: string; taskName: string | null; clientType?: string }>,
     checkpoints: 0,
     reads: 0,
     notifications: [] as TaskCompletionInfo[],
@@ -57,8 +57,8 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
       calls.commands.push({ command, args, taskName });
       return { stdout: '', stderr: '' };
     },
-    executeDynamicTask: async (taskId, taskConfig, taskName) => {
-      calls.dynamicTasks.push({ taskId, taskConfig, taskName });
+    executeDynamicTask: async (taskId, taskConfig, taskName, _taskType, _waitForCompletion, clientType) => {
+      calls.dynamicTasks.push({ taskId, taskConfig, taskName, clientType });
       return { stdout: '', stderr: '' };
     },
     createLogCheckpoint: async () => {
@@ -158,6 +158,38 @@ describe('schedule flow boundaries', () => {
     assert.deepEqual(result.summary.actions.map(action => action.status), ['success', 'failed', 'skipped', 'success']);
     assert.match(result.summary.warnings[0], /游戏结果未确认/);
     assert.equal(result.summary.errors.length, 1);
+  });
+
+
+  it('runs the startup launch switch as a Core StartUp task with the task client type', async () => {
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const result = completedResult(await executor.execute([{
+      id: 'startup-1',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: {
+        clientType: 'Bilibili',
+        accountName: '4567',
+        start_game_enabled: false
+      }
+    }], 'startup-flow'));
+
+    assert.equal(result.summary.successCount, 1);
+    assert.equal(calls.dynamicTasks.length, 1);
+    assert.equal(calls.dynamicTasks[0].taskId, 'startup');
+    assert.equal(calls.dynamicTasks[0].clientType, 'Bilibili');
+    assert.deepEqual(JSON.parse(calls.dynamicTasks[0].taskConfig), {
+      name: '启动游戏',
+      type: 'StartUp',
+      params: {
+        start_game_enabled: false,
+        account_name: '4567',
+        client_type: 'Bilibili'
+      }
+    });
+    assert.match(result.summary.actions[0].message, /已进入游戏主界面/);
   });
 
   it('rejects invalid game task plans while retaining generic dynamic tasks', () => {

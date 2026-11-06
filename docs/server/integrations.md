@@ -86,8 +86,8 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `details`、`what`、`class`、子任务名与字符串列表都由读取函数逐字段收窄；缺字段或类型不符按"未观察到"处理，不会中断解析（`server/src/services/maaCallbackService.ts:72-106`）。
 - 六个结果服务都只描述单次步骤的检查结论（`success`/`failed`/`skipped`），不能当作整个 Run 的终态；`skipped`、`failed` 与 `success` 不可混同。
 - award 不依赖结构化回调：按日志中 `"first":["<BeginTask>"]` 分段和分段内 `"task":"..."` 事件判断六个领取项是否已领取；未启用任何项目返回单项 `skipped`，分段缺失时回退为"流程已完成"（`server/src/services/awardResultService.ts:84-153`）。
-- recruit 解析 `Recruit` taskchain：统计开始/收取/加急/刷新次数与最高星级，`TaskChainError` 为 `failed`，保留标签或许可不足为 `skipped`；无事件时回退"流程已完成"（`server/src/services/recruitResultService.ts:60-174`）。
-- infrast 解析 `Infrast` taskchain：按 `class` 字段映射九类设施，识别收产物、换班、无人机、线索收送与交流、专精训练；未选择设施返回 `skipped`（`server/src/services/infrastResultService.ts:60-192`）。
+- recruit 解析 `Recruit` taskchain：统计开始/收取/加急/刷新次数与最高星级，`TaskChainError` 为 `failed`，保留标签或许可不足为 `skipped`；无事件时回退"流程已完成"。任务参数中的 `force_refresh` 与 `level3_recruitment_permit_reserve` 由 MaaCore 直接消费，结果解析不重算它们（`server/src/services/recruitResultService.ts:60-174`）。
+- infrast 解析 `Infrast` taskchain：按 `class` 字段映射十一类设施（含回收站与副手换人），识别收产物、换班、无人机、线索收送与交流、专精训练；未选择设施返回 `skipped`（`server/src/services/infrastResultService.ts:53-80,200-270`）。
 - mall 解析 `Mall` taskchain：好友访问、信用购物、信用作战三项严格 `false` 才整体跳过；购买计数只统计 `exec_times` 缺失或为 1 的 `CreditShop-Bought` 事件（`server/src/services/mallResultService.ts:40-139`）。
 - fight 基于任务总结、命令输出与错误文本：理智耗尽、关卡未开放、剿灭奖励已领完归为 `skipped`，其余错误为 `failed`；理智判定同时检查输出短语与 Summary 段（`server/src/services/fightResultService.ts:56-178`）。
 - 游戏任务解析 `OperProgress` 与 `SwitchTheme` taskchain：培养按 `OperProgressDetail` 与 `OperProgressSummary` 汇总成功、失败与跳过，并按配置计划反推没有回调的未执行专精目标为 `deferredMastery`（Core 每轮最多启动一项专精训练；训练室占用只对该目标发一条跳过回调，后续专精目标不再发回调）；主题按 `SwitchThemeByName*` 子任务与 `SwitchThemeNotFound`、`SwitchThemeSkipped` 判定；缺少有效回调时保持 `observed: false`（`server/src/services/gameTaskResultService.ts:79-301`）。

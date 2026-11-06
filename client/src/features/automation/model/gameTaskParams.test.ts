@@ -3,7 +3,11 @@ import {
   OPER_PROGRESS_ROLES,
   updateOperProgressMastery,
   updateOperProgressTarget,
+  validateFightMedicineExpireDays,
+  validateFightSeries,
   validateOperProgressPlans,
+  validateRecruitExtraTagsMode,
+  validateRecruitPermitReserve,
   validateThemes,
 } from './gameTaskParams'
 import { findTaskFlowValidationFailure, type TaskFlowEntry } from './taskFlowCommands'
@@ -68,5 +72,29 @@ describe('game task parameter validation', () => {
     expect(mastery).toEqual({ ...plan, skill_mastery: [0, 3, 0] })
     expect(updateOperProgressMastery(mastery, 1, '0')).toEqual(plan)
     expect(plan).toEqual({ role: 'Caster', name: '阿米娅', elite: 2 })
+  })
+})
+
+
+describe('daily task parameter validation', () => {
+  it('accepts the fight series range and rejects values outside it', () => {
+    for (const value of [-1, 0, 1, 10, '5', '', undefined]) {
+      expect(validateFightSeries(value)).toBeNull()
+    }
+    expect(validateFightSeries(11)).toContain('连战倍率')
+    expect(validateFightSeries('-2')).toContain('连战倍率')
+    expect(validateFightSeries('abc')).toContain('连战倍率')
+  })
+
+  it('accepts zero expiry days and rejects negative values', () => {
+    expect(validateFightMedicineExpireDays(0)).toBeNull()
+    expect(validateFightMedicineExpireDays('2')).toBeNull()
+    expect(validateFightMedicineExpireDays(-1)).toContain('临期药天数')
+    expect(validateRecruitPermitReserve(0)).toBeNull()
+    expect(validateRecruitPermitReserve(8)).toBeNull()
+    expect(validateRecruitPermitReserve(-1)).toContain('保留招聘许可')
+    expect(validateRecruitExtraTagsMode(0)).toBeNull()
+    expect(validateRecruitExtraTagsMode(2)).toBeNull()
+    expect(validateRecruitExtraTagsMode(3)).toContain('策略')
   })
 })

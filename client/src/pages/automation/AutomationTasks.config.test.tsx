@@ -126,7 +126,7 @@ const taskFlowFixture = [
     name: '理智作战',
     description: '自动刷关卡消耗理智',
     enabled: true,
-    params: { stages: [{ stage: '1-7', times: '1' }], drops: '', medicine: 0, expiringMedicine: 0, stone: 0, series: '1', clientType: '' },
+    params: { stages: [{ stage: '1-7', times: '1' }], drops: '', medicine: 0, medicineExpireDays: 0, stone: 0, series: '1', clientType: '' },
   },
 ]
 

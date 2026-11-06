@@ -148,7 +148,7 @@ const taskFlowFixture = [
       ],
       drops: '',
       medicine: 0,
-      expiringMedicine: 0,
+      medicineExpireDays: 0,
       stone: 0,
       series: '1',
       clientType: '',
@@ -867,6 +867,69 @@ describe('AutomationTasks layout surfaces', () => {
 
     expect(container.querySelector('#automation-task-picker')).toBeNull()
     expect(document.activeElement).toBe(trigger)
+  })
+
+
+  it('renders the aligned daily task parameters and copy', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderPage()
+
+    await clickSequenceTask('启动游戏')
+    expect(container.querySelector('label[for="automation-startup-1-start_game_enabled"]')?.textContent)
+      .toContain('启动游戏客户端')
+
+    await clickSequenceTask('理智作战')
+    expect(container.querySelector('label[for="automation-fight-1-medicineExpireDays"]')?.textContent)
+      .toContain('临期药天数')
+    const series = container.querySelector<HTMLSelectElement>('#automation-fight-1-series')
+    expect(Array.from(series?.options ?? []).map(option => option.value))
+      .toEqual(['-1', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
+
+    await clickSequenceTask('自动公招')
+    expect(container.querySelector('label[for="automation-recruit-1-level3_recruitment_permit_reserve"]')?.textContent)
+      .toContain('3 星保留招聘许可')
+    expect(container.querySelector('#automation-recruit-1-force_refresh')).not.toBeNull()
+    expect(container.querySelector<HTMLSelectElement>('#recruit-1-extra-tags-mode')?.textContent)
+      .toContain('默认行为')
+  })
+
+  it('offers the new infrast facilities and the award sign-in switch', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'infrast-1',
+            commandId: 'infrast',
+            name: '基建换班',
+            description: '自动基建换班收菜',
+            taskType: 'Infrast',
+            enabled: true,
+            params: { mode: '0', facility: ['Mfg', 'Recycle', 'AssistantChange'] },
+          },
+          {
+            id: 'award-1',
+            commandId: 'award',
+            name: '领取奖励',
+            description: '领取每日/每周奖励',
+            taskType: 'Award',
+            enabled: true,
+            params: { award: true, signinevent: true },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+
+    await clickSequenceTask('基建换班')
+    expect(container.querySelector('#automation-infrast-1-facility-Recycle')).not.toBeNull()
+    expect(container.querySelector('#automation-infrast-1-facility-AssistantChange')).not.toBeNull()
+
+    await clickSequenceTask('领取奖励')
+    expect(container.querySelector('label[for="automation-award-1-signinevent"]')?.textContent)
+      .toContain('限时签到活动奖励')
   })
 
   it('closes the add-task picker when pressing outside its region', async () => {

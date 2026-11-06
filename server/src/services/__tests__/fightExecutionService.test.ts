@@ -88,7 +88,7 @@ describe('fight stage planning', () => {
     const stages = normalizeFightStages([{ stage: '1-7', times: 3 }, 'CE-6']);
     const plans = buildFightStagePlans(stages, {
       medicine: 2,
-      expiringMedicine: 0,
+      medicineExpireDays: 0,
       stone: 0,
       series: 6
     });
@@ -97,15 +97,32 @@ describe('fight stage planning', () => {
       {
         stage: '1-7',
         times: '3',
-        args: ['1-7', '--times', '3', '-m', '2', '--expiring-medicine', '0', '--stone', '0', '--series=6']
+        args: ['1-7', '--times', '3', '-m', '2', '--medicine-expire-days', '0', '--stone', '0', '--series=6']
       },
       {
         stage: 'CE-6',
         times: '',
-        args: ['CE-6', '-m', '2', '--expiring-medicine', '0', '--stone', '0', '--series=6']
+        args: ['CE-6', '-m', '2', '--medicine-expire-days', '0', '--stone', '0', '--series=6']
       }
     ]);
     assert.equal(plans.some(plan => plan.args.some(arg => arg.includes(','))), false);
+  });
+
+  it('keeps the legacy expiring-medicine bottle count when a caller supplies it', () => {
+    const [plan] = buildFightStagePlans([{ stage: '1-7', times: '' }], {
+      expiringMedicine: 5
+    });
+
+    assert.deepEqual(plan.args, ['1-7', '--expiring-medicine', '5']);
+  });
+
+  it('prefers the expiry-day option when both expiry options are supplied', () => {
+    const [plan] = buildFightStagePlans([{ stage: '1-7', times: '' }], {
+      medicineExpireDays: 2,
+      expiringMedicine: 5
+    });
+
+    assert.deepEqual(plan.args, ['1-7', '--medicine-expire-days', '2']);
   });
 
   it('keeps a negative series value as one clap token', () => {

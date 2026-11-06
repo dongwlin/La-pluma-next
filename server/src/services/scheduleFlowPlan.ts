@@ -23,10 +23,13 @@ export type ScheduledTaskStageEntry = string | ScheduledTaskStage;
 export interface ScheduledTaskParams {
   clientType?: string;
   accountName?: string;
+  start_game_enabled?: boolean;
   stage?: string;
   times?: string | number;
   stages?: ScheduledTaskStageEntry[];
   medicine?: string | number;
+  medicineExpireDays?: string | number;
+  /** @deprecated 旧版按瓶数设置的临期药，迁移后由 medicineExpireDays 取代。 */
   expiringMedicine?: string | number;
   stone?: string | number;
   series?: string | number;
@@ -42,6 +45,9 @@ export interface ScheduledTaskParams {
   plan_index?: number;
   preserve_tags?: string | string[];
   skip_robot?: boolean;
+  level3_recruitment_permit_reserve?: string | number;
+  extra_tags_mode?: string | number;
+  force_refresh?: boolean;
   recruitment_time?: Record<string, string | number>;
   facility?: unknown[];
   award?: boolean;
@@ -50,6 +56,7 @@ export interface ScheduledTaskParams {
   orundum?: boolean;
   mining?: boolean;
   specialaccess?: boolean;
+  signinevent?: boolean;
   visit_friends?: boolean;
   shopping?: boolean;
   credit_fight?: boolean;
@@ -147,14 +154,47 @@ function normalizeStageEntry(entry: ScheduledTaskStageEntry): NormalizedStageEnt
   return { stage: '', times: '' };
 }
 
+interface TaskTypeSource {
+  taskType?: unknown;
+  commandId?: unknown;
+  id?: unknown;
+}
+
+/** 预定义命令对应的 Core 任务类型；只有这些类型有可复用的参数约束。 */
+function resolveTaskValidationType(task: TaskTypeSource): string | null {
+  if (typeof task.taskType === 'string' && task.taskType) return task.taskType;
+  const commandId = typeof task.commandId === 'string'
+    ? task.commandId
+    : String(task.id || '').split('-')[0];
+  if (commandId === 'fight') return 'Fight';
+  if (commandId === 'startup') return 'StartUp';
+  return null;
+}
+
+function isPresent(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function normalizeStartUpParams(params: ScheduledTaskParams): Record<string, unknown> {
+  const dynamicParams: Record<string, unknown> = {};
+  if (params.start_game_enabled !== undefined) dynamicParams.start_game_enabled = params.start_game_enabled;
+  if (params.accountName) dynamicParams.account_name = params.accountName;
+  if (params.clientType) dynamicParams.client_type = params.clientType;
+  return dynamicParams;
+}
+
 export function buildScheduledTaskCommand(
   task: ScheduledTask,
   connectionDefaults: ScheduleConnectionDefaults = {}
 ): ScheduledTaskCommand {
+  const validationType = resolveTaskValidationType(task);
+  if (validationType) {
+    const validationMessage = validateGameTaskParams(validationType, task.params || {});
+    if (validationMessage) throw new Error(validationMessage);
+  }
+
   if (task.taskType) {
     const params: ScheduledTaskParams = { ...(task.params || {}) };
-    const validationMessage = validateGameTaskParams(task.taskType, params);
-    if (validationMessage) throw new Error(validationMessage);
     if (task.taskType === 'Recruit') {
       if (params.preserve_tags === undefined && params.skip_robot === true) {
         params.preserve_tags = ['支援机械'];
@@ -179,29 +219,33 @@ export function buildScheduledTaskCommand(
       params: taskConfigParams
     };
 
-    Object.keys(params).forEach(key => {
-      const value = params[key];
-      if (value === undefined || value === '' || value === null) return;
+    if (task.taskType === 'StartUp') {
+      Object.assign(taskConfigParams, normalizeStartUpParams(params));
+    } else {
+      Object.keys(params).forEach(key => {
+        const value = params[key];
+        if (value === undefined || value === '' || value === null) return;
 
-      if (typeof value === 'boolean') {
-        taskConfigParams[key] = value;
-      } else if (Array.isArray(value)) {
-        if (value.length > 0 || (task.taskType === 'OperProgress' && key === 'plans')
-          || (task.taskType === 'SwitchTheme' && key === 'themes')) {
+        if (typeof value === 'boolean') {
+          taskConfigParams[key] = value;
+        } else if (Array.isArray(value)) {
+          if (value.length > 0 || (task.taskType === 'OperProgress' && key === 'plans')
+            || (task.taskType === 'SwitchTheme' && key === 'themes')) {
+            taskConfigParams[key] = value;
+          }
+        } else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
+          taskConfigParams[key] = value.trim();
+        } else if (typeof value === 'string' && (commaSeparatedArrayKeys.has(key) || (value.includes(',') && !value.includes('[')))) {
+          taskConfigParams[key] = value.split(',').map(v => v.trim()).filter(v => v);
+        } else if (typeof value === 'number') {
+          taskConfigParams[key] = value;
+        } else if (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '') {
+          taskConfigParams[key] = Number(value);
+        } else if (value) {
           taskConfigParams[key] = value;
         }
-      } else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
-        taskConfigParams[key] = value.trim();
-      } else if (typeof value === 'string' && (commaSeparatedArrayKeys.has(key) || (value.includes(',') && !value.includes('[')))) {
-        taskConfigParams[key] = value.split(',').map(v => v.trim()).filter(v => v);
-      } else if (typeof value === 'number') {
-        taskConfigParams[key] = value;
-      } else if (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '') {
-        taskConfigParams[key] = Number(value);
-      } else if (value) {
-        taskConfigParams[key] = value;
-      }
-    });
+      });
+    }
 
     return {
       command: 'run',
@@ -211,6 +255,20 @@ export function buildScheduledTaskCommand(
   }
 
   const commandId = task.commandId || task.id.split('-')[0];
+
+  // `maa startup` 只能启动游戏；关闭启动开关时改走 MaaCore StartUp 动态任务。
+  if (commandId === 'startup' && task.params.start_game_enabled === false) {
+    return {
+      command: 'run',
+      params: task.commandId || task.id,
+      taskConfig: JSON.stringify({
+        name: task.name,
+        type: 'StartUp',
+        params: normalizeStartUpParams(task.params)
+      })
+    };
+  }
+
   let params = '';
   const extraArgs: string[] = [];
 
@@ -242,7 +300,10 @@ export function buildScheduledTaskCommand(
     if (task.params.medicine !== undefined && task.params.medicine !== '' && task.params.medicine !== null) {
       params += ` -m ${task.params.medicine}`;
     }
-    if (task.params.expiringMedicine !== undefined && task.params.expiringMedicine !== '' && task.params.expiringMedicine !== null) {
+    if (isPresent(task.params.medicineExpireDays)) {
+      params += ` --medicine-expire-days ${task.params.medicineExpireDays}`;
+    } else if (isPresent(task.params.expiringMedicine)) {
+      // 旧草稿仍按瓶数保存；maa-cli 保留了该隐藏选项以兼容旧配置。
       params += ` --expiring-medicine ${task.params.expiringMedicine}`;
     }
     if (task.params.stone !== undefined && task.params.stone !== '' && task.params.stone !== null) {
@@ -304,8 +365,10 @@ export function validateScheduledTaskFlow(taskFlow: unknown): ScheduledTaskFlowV
 
   for (const task of flow) {
     const entry = task as Record<string, unknown>;
-    if (entry.enabled === false || typeof entry.taskType !== 'string') continue;
-    const message = validateGameTaskParams(entry.taskType, isRecordValue(entry.params) ? entry.params : {});
+    if (entry.enabled === false) continue;
+    const validationType = resolveTaskValidationType(entry);
+    if (!validationType) continue;
+    const message = validateGameTaskParams(validationType, isRecordValue(entry.params) ? entry.params : {});
     if (message) return { success: false, message };
   }
 

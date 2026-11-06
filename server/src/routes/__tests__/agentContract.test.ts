@@ -179,7 +179,7 @@ describe('Agent API contract registry', () => {
     assert.match(action.description, /at most one mastery training/);
     assert.match(action.description, /deferredMastery\/deferredCount/);
     assert.match(action.description, /SwitchTheme/);
-    assert.equal(taskConfigVariant.allOf?.length, 2);
+    assert.equal(taskConfigVariant.allOf?.length, 7);
     assert.deepEqual(
       properties.taskConfig.examples?.map(value => typeof value === 'object' && value !== null && 'type' in value ? value.type : null),
       ['OperProgress', 'SwitchTheme', null]
@@ -250,6 +250,32 @@ describe('Agent API contract registry', () => {
     assert.equal(validate(request('SwitchTheme', { themes: [] })), true);
     assert.equal(validate(request('SwitchTheme', { themes: '默认' })), false);
     assert.equal(validate(request('FutureCoreTask', { nested: [{ value: true }] })), true);
+  });
+
+  it('validates daily task parameters through the shared task config schema', () => {
+    const action = findAction(buildAgentManifest(defaults), 'run_task');
+    const validate = new Ajv2020({ strict: false }).compile(must(action.body_schema, 'run_task body'));
+    const request = (type: string, params: Record<string, unknown>) => ({
+      command: 'run',
+      taskConfig: { name: '日常任务', type, params }
+    });
+
+    assert.equal(validate(request('Fight', { series: 10, medicine_expire_days: 2 })), true);
+    assert.equal(validate(request('Fight', { series: 11 })), false);
+    assert.equal(validate(request('Fight', { medicine_expire_days: -1 })), false);
+    assert.equal(validate(request('Recruit', {
+      force_refresh: true,
+      level3_recruitment_permit_reserve: 8,
+      extra_tags_mode: 2
+    })), true);
+    assert.equal(validate(request('Recruit', { extra_tags_mode: 3 })), false);
+    assert.equal(validate(request('Recruit', { level3_recruitment_permit_reserve: -1 })), false);
+    assert.equal(validate(request('Infrast', { mode: 0, facility: ['Mfg', 'Recycle', 'AssistantChange'] })), true);
+    assert.equal(validate(request('Infrast', { facility: ['Unknown'] })), false);
+    assert.equal(validate(request('Award', { signinevent: true })), true);
+    assert.equal(validate(request('Award', { signinevent: 'yes' })), false);
+    assert.equal(validate(request('StartUp', { client_type: 'Official', start_game_enabled: false })), true);
+    assert.equal(validate(request('StartUp', { start_game_enabled: 'no' })), false);
   });
 
   it('documents retained run lookup and guarded stopping', () => {
