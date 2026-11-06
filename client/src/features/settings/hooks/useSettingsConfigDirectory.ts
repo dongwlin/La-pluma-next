@@ -11,14 +11,6 @@ export type OpenConfigDirectoryOutcome =
   | { readonly success: true }
   | { readonly success: false; readonly message: string }
 
-export interface UseSettingsConfigDirectoryOptions {
-  /**
-   * 只复用同一 Query 的缓存状态，不在挂载时重取或重试。用于只读 section
-   * 头部；目录卡片必须保持默认策略，否则失败后没有重试入口。
-   */
-  readonly cacheOnly?: boolean
-}
-
 export interface UseSettingsConfigDirectoryResult {
   readonly path: string
   readonly status: ConfigDirectoryStatus
@@ -35,13 +27,8 @@ const describeOpenError = (error: unknown): string => (
   error instanceof Error && error.message ? error.message : '未知错误'
 )
 
-export function useSettingsConfigDirectory(
-  options: UseSettingsConfigDirectoryOptions = {},
-): UseSettingsConfigDirectoryResult {
-  const queryOptions = configDirectoryQueryOptions()
-  const query = useQuery(options.cacheOnly
-    ? { ...queryOptions, refetchOnMount: false, retryOnMount: false }
-    : queryOptions)
+export function useSettingsConfigDirectory(): UseSettingsConfigDirectoryResult {
+  const query = useQuery(configDirectoryQueryOptions())
   const queryClient = useQueryClient()
 
   const reload = useCallback(async () => {

@@ -2,27 +2,29 @@
 // 也不清空草稿与保存/读取反馈。
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RotateCcw, Save } from 'lucide-react'
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  Input,
-  Select,
-  Switch,
-} from '@/shared/ui'
+import { Input, Select, Switch } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
 import { useClearConnectionTestFeedback } from '../hooks/useSettingsDeviceConnection'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
+import ConfigEditorCard from './ConfigEditorCard'
+import type { SettingsFeedback } from './ConfigEditorCard'
 import DeviceConnectionPanel from './DeviceConnectionPanel'
-import type { MaaConnectionConfig } from '../types'
+import { MAA_CONNECTION_PRESETS } from '../types'
+import type { MaaConnectionConfig, MaaConnectionPreset } from '../types'
 
-interface SettingsFeedback {
-  type: 'success' | 'error' | 'warning'
-  message: string
+const PRESET_LABELS: Record<MaaConnectionPreset, string> = {
+  ADB: 'ADB（通用）',
+  MuMuPro: 'MuMuPro（MuMu 模拟器）',
+  PlayCover: 'PlayCover（PlayTools）',
+  Waydroid: 'Waydroid',
+  Androws: 'Androws',
 }
+
+const PRESET_OPTIONS = MAA_CONNECTION_PRESETS.map(preset => ({
+  value: preset,
+  label: PRESET_LABELS[preset],
+}))
 
 export interface ConnectionConfigPanelProps {
   /** 只有 connection section 渲染可写表单；隐藏时仍保留订阅与本地反馈。 */
@@ -107,106 +109,76 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   if (!isActive) return null
 
   return (
-    <Card smoothCorners className="config-editor-card p-0!">
-      <CardHeader
-        title={CONFIG_SECTION_VIEWS.connection.name}
-        actions={(
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={handleReset}
-              disabled={connectionSaving}
-              variant="outline"
-              size="sm"
-              icon={<RotateCcw size={16} aria-hidden="true" />}
-            >
-              重置
-            </Button>
-            <Button
-              onClick={() => void handleSave()}
-              loading={connectionSaving}
-              loadingText="保存中"
-              variant="primary"
-              size="sm"
-              icon={<Save size={16} aria-hidden="true" />}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+    <ConfigEditorCard
+      title={CONFIG_SECTION_VIEWS.connection.name}
+      feedback={configFeedback}
+      saving={connectionSaving}
+      onSave={() => void handleSave()}
+      onReset={handleReset}
+    >
+      <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2">
+        <Input
+          label="ADB 路径"
+          value={configData.adb_path}
+          onChange={(value: string) => {
+            updateConnectionConfig({ adb_path: value })
+          }}
+          hint="ADB 可执行文件的完整路径"
+        />
+        <Input
+          label="连接地址"
+          value={configData.address}
+          onChange={(value: string) => {
+            updateConnectionConfig({ address: value })
+            clearTestFeedback()
+          }}
+          hint="模拟器地址，例如 127.0.0.1:16384"
+        />
+      </div>
+
+      <DeviceConnectionPanel
+        adbPath={configData.adb_path}
+        address={configData.address}
+        onSelectDeviceStart={clearConfigFeedback}
       />
-      <CardContent>
-        <div className="app-stack-card">
-          {configFeedback && (
-            <div
-              className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${
-                configFeedback.type === 'success'
-                  ? 'status-success'
-                  : configFeedback.type === 'warning'
-                    ? 'status-warning'
-                    : 'status-danger'
-              }`}
-              role={configFeedback.type === 'error' ? 'alert' : 'status'}
-            >
-              {configFeedback.message}
-            </div>
-          )}
 
-          <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2">
-            <Input
-              label="ADB 路径"
-              value={configData.adb_path}
-              onChange={(value: string) => {
-                updateConnectionConfig({ adb_path: value })
-              }}
-              hint="ADB 可执行文件的完整路径"
-            />
-            <Input
-              label="连接地址"
-              value={configData.address}
-              onChange={(value: string) => {
-                updateConnectionConfig({ address: value })
-                clearTestFeedback()
-              }}
-              hint="模拟器地址，例如 127.0.0.1:16384"
-            />
-          </div>
-
-          <DeviceConnectionPanel
-            adbPath={configData.adb_path}
-            address={configData.address}
-            onSelectDeviceStart={clearConfigFeedback}
-          />
-
-          <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2 md:items-end">
-            <Select
-              label="平台配置"
-              value={configData.config}
-              onChange={(value: string) => {
-                updateConnectionConfig({ config: value })
-              }}
-              options={[
-                { value: 'CompatMac', label: 'CompatMac (macOS)' },
-                { value: 'CompatPOSIXShell', label: 'CompatPOSIXShell (Linux)' },
-                { value: 'General', label: 'General (Windows)' },
-              ]}
-              hint="选择与服务器系统匹配的平台预设"
-            />
-            <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-primary">自动重连</div>
-                <div className="mt-1 text-xs leading-5 text-tertiary">连接中断后自动尝试恢复</div>
-              </div>
-              <Switch
-                label="启用自动重连"
-                checked={configData.auto_reconnect !== false}
-                onChange={(checked: boolean) => {
-                  updateConnectionConfig({ auto_reconnect: checked })
-                }}
-              />
-            </div>
-          </div>
+      <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2 md:items-end">
+        <Select
+          label="连接预设"
+          value={configData.preset}
+          onChange={(value: string) => {
+            updateConnectionConfig({ preset: value as MaaConnectionPreset })
+          }}
+          options={PRESET_OPTIONS}
+          hint="预设提供默认 ADB 路径与平台配置；显式填写的值优先"
+        />
+        <Select
+          label="平台配置"
+          value={configData.config}
+          onChange={(value: string) => {
+            updateConnectionConfig({ config: value })
+          }}
+          options={[
+            { value: 'CompatMac', label: 'CompatMac (macOS)' },
+            { value: 'CompatPOSIXShell', label: 'CompatPOSIXShell (Linux)' },
+            { value: 'General', label: 'General (Windows)' },
+          ]}
+          hint="选择与服务器系统匹配的平台预设"
+        />
+      </div>
+      <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-primary">自动重连</div>
+          <div className="mt-1 text-xs leading-5 text-tertiary">连接中断后自动尝试恢复</div>
         </div>
-      </CardContent>
-    </Card>
+        <Switch
+          label="启用自动重连"
+          checked={configData.auto_reconnect !== false}
+          onChange={(checked: boolean) => {
+            updateConnectionConfig({ auto_reconnect: checked })
+          }}
+        />
+      </div>
+    </ConfigEditorCard>
   )
 }

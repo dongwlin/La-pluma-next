@@ -176,9 +176,7 @@ describe('connection config owner', () => {
     const outcome = await saving
 
     expect(outcome).toMatchObject({ status: 'saved', superseded: true })
-    expect(write).toHaveBeenCalledWith('default', {
-      connection: connection({ address: '127.0.0.1:5555' }),
-    })
+    expect(write).toHaveBeenCalledWith('default', connection({ address: '127.0.0.1:5555' }))
     expect(owner.getState()).toMatchObject({
       draft: connection({ address: '127.0.0.1:6666' }),
       persisted: connection({ address: '127.0.0.1:5555' }),
@@ -240,9 +238,10 @@ describe('connection config owner', () => {
     owner.update({ address: '127.0.0.1:5555' })
     await owner.save()
 
-    expect(write).toHaveBeenCalledWith('default', {
-      connection: connection({ address: '127.0.0.1:5555', touch_mode: 'minitouch' }),
-    })
+    expect(write).toHaveBeenCalledWith('default', connection({
+      address: '127.0.0.1:5555',
+      touch_mode: 'minitouch',
+    }))
   })
 
   it('restores the page defaults as a draft without writing the server', async () => {

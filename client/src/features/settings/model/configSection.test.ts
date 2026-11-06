@@ -6,7 +6,6 @@ import {
   CONFIG_SECTION_STORAGE_KEY,
   DEFAULT_CONFIG_SECTION,
   isConfigSectionId,
-  isEditableConfigSection,
   readConfigSection,
   subscribeConfigSection,
   writeConfigSection,
@@ -58,9 +57,6 @@ describe('config section state', () => {
     expect(isConfigSectionId('resource')).toBe(true)
     expect(isConfigSectionId('instance')).toBe(true)
     expect(isConfigSectionId('updates')).toBe(false)
-    expect(isEditableConfigSection('connection')).toBe(true)
-    expect(isEditableConfigSection('resource')).toBe(false)
-    expect(isEditableConfigSection('instance')).toBe(false)
   })
 
   it('subscribes to valid section events and unsubscribes cleanly', () => {
