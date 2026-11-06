@@ -240,6 +240,40 @@ describe('executeAgentTask', () => {
     });
   });
 
+  it('rejects roguelike arguments the installed maa-cli cannot express', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    for (const request of [
+      { command: 'roguelike', args: ['BlackFlow'] },
+      { command: 'roguelike', args: ['Sarkaz', '--mode', '20001'] },
+      { command: 'reclamation', args: ['RelaunchAnchor', '--mode', '16'] }
+    ]) {
+      await assert.rejects(
+        executeAgentTask(request, dependencies),
+        error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_ARGS_INVALID'
+      );
+    }
+    assert.deepEqual(calls, []);
+  });
+
+  it('rejects Roguelike dynamic task configs with invalid parameter combinations', async () => {
+    const { calls, dependencies } = createExecutors();
+
+    await assert.rejects(
+      executeAgentTask({
+        command: 'run',
+        args: ['roguelike'],
+        taskConfig: {
+          name: '集成战略',
+          type: 'Roguelike',
+          params: { theme: 'BlackFlow', mode: 30003 }
+        }
+      }, dependencies),
+      error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
+    );
+    assert.deepEqual(calls, []);
+  });
+
   it('keeps Core-only task types off the maa-cli command allowlist', async () => {
     const { calls, dependencies } = createExecutors();
 

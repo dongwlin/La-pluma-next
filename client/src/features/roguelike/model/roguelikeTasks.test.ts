@@ -12,8 +12,9 @@ import {
   normalizeRoguelikeModeForTheme,
   resolveRoguelikeAdvancedValue,
   splitRoguelikeListValue,
-  validateRoguelikeTaskInput,
 } from './roguelikeTasks'
+import { buildRoguelikeExecutionPlan, requiresRoguelikeDynamicTask } from './roguelikeExecution'
+import { validateRoguelikeTaskInput } from './roguelikeValidation'
 
 const option = (key: string, taskId = 'roguelike') =>
   getRoguelikeAdvancedOptions(taskId).find(candidate => candidate.key === key)!
@@ -33,9 +34,10 @@ describe('roguelike task catalog', () => {
 
   it('provides the theme presets shown for each mode', () => {
     expect(ROGUELIKE_THEME_PRESETS.roguelike.map(theme => theme.value))
-      .toEqual(['Phantom', 'Mizuki', 'Sami', 'Sarkaz', 'JieGarden'])
+      .toEqual(['Phantom', 'Mizuki', 'Sami', 'Sarkaz', 'JieGarden', 'BlackFlow'])
     expect(ROGUELIKE_THEME_PRESETS.reclamation).toEqual([
       { value: 'Tales', label: '沙洲遗闻' },
+      { value: 'RelaunchAnchor', label: '重启锚点' },
     ])
   })
 
@@ -59,15 +61,29 @@ describe('roguelike task catalog', () => {
         ['startWithEliteTwo', '--start-with-elite-two'],
         ['onlyStartWithEliteTwo', '--only-start-with-elite-two'],
         ['stopAtBoss', '--stop-at-final-boss'],
+        ['stopAtMaxLevel', undefined],
         ['refreshTraderWithDice', '--refresh-trader-with-dice'],
         ['useFoldartal', '--use-foldartal'],
+        ['firstFloorFoldartal', undefined],
+        ['monthlySquadAutoIterate', undefined],
+        ['monthlySquadCheckComms', undefined],
+        ['deepExplorationAutoIterate', undefined],
+        ['collectibleModeShopping', undefined],
+        ['collectibleModeSquad', undefined],
+        ['findPlayTimeTarget', undefined],
+        ['blackflowStrategy', undefined],
+        ['blackflowCultivationTarget', undefined],
+        ['blackflowStartAnimals', undefined],
+        ['blackflowStartRewards', undefined],
         ['startWithSeed', '--start-with-seed'],
       ])
     expect(getRoguelikeAdvancedOptions('reclamation').map(entry => [entry.key, entry.param]))
       .toEqual([
         ['mode', '-m'],
         ['toolsToCraft', '-C'],
+        ['incrementMode', '--increment-mode'],
         ['numBatches', '--num-craft-batches'],
+        ['clearStore', undefined],
       ])
     expect(getRoguelikeAdvancedOptions('unknown')).toEqual([])
   })
@@ -83,7 +99,24 @@ describe('roguelike task catalog', () => {
     ])
     expect((getRoguelikeOptionChoices(mode, 'Sami') ?? []).map(choice => choice.value))
       .toEqual(['0', '1', '4', '5', '6', '7'])
-    expect(getRoguelikeOptionChoices(mode, 'Sarkaz')).toHaveLength(5)
+    expect((getRoguelikeOptionChoices(mode, 'Sarkaz') ?? []).map(choice => choice.value))
+      .toEqual(['0', '1', '4', '6', '7', '10001'])
+    expect((getRoguelikeOptionChoices(mode, 'JieGarden') ?? []).map(choice => choice.value))
+      .toEqual(['0', '1', '4', '6', '7', '20001'])
+    expect((getRoguelikeOptionChoices(mode, 'BlackFlow') ?? []).map(choice => choice.value))
+      .toEqual(['0', '1', '30001', '30003'])
+    expect((getRoguelikeOptionChoices(mode, 'BlackFlow') ?? []).map(choice => choice.label))
+      .toEqual(['刷分模式', '刷源石锭', '刷襁褓动物', '刷开局（保留目标局）'])
+  })
+
+  it('offers the reclamation modes of both themes', () => {
+    const mode = option('mode', 'reclamation')
+    expect((getRoguelikeOptionChoices(mode, 'Tales', 'reclamation') ?? []).map(choice => choice.value))
+      .toEqual(['0', '1'])
+    expect((getRoguelikeOptionChoices(mode, 'RelaunchAnchor', 'reclamation') ?? []).map(choice => choice.value))
+      .toEqual(['16', '32', '48'])
+    expect(getRoguelikeOptionChoices(mode, 'RelaunchAnchor', 'reclamation')?.[0]?.label)
+      .toContain('RA-1')
   })
 
   it('declares the reclamation mode default and its startup hint', () => {
@@ -603,5 +636,245 @@ describe('validateRoguelikeTaskInput', () => {
     expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'Phantom' })).toBeNull()
     expect(validateRoguelikeTaskInput('reclamation', { reclamation: 'Tales' })).toBeNull()
     expect(validateRoguelikeTaskInput('unknown', {})).toBeNull()
+  })
+})
+
+describe('advanced themes and modes', () => {
+  it('resolves the reclamation mode default per theme', () => {
+    expect(resolveRoguelikeAdvancedValue(option('mode', 'reclamation'), {}, '', 'reclamation')).toBe('1')
+    expect(resolveRoguelikeAdvancedValue(
+      option('mode', 'reclamation'),
+      {},
+      'RelaunchAnchor',
+      'reclamation',
+    )).toBe('16')
+    expect(resolveRoguelikeAdvancedValue(
+      option('mode', 'reclamation'),
+      { mode: '32' },
+      'RelaunchAnchor',
+      'reclamation',
+    )).toBe('32')
+  })
+
+  it('fills the theme-appropriate reclamation default when normalizing an old draft', () => {
+    expect(normalizeRoguelikeAdvancedParams({}, { reclamation: 'RelaunchAnchor' }))
+      .toEqual({ roguelike: { roles: '稳扎稳打' }, reclamation: { mode: '16' } })
+    expect(normalizeRoguelikeAdvancedParams({ reclamation: { mode: '48' } }, { reclamation: 'RelaunchAnchor' }))
+      .toEqual({ roguelike: { roles: '稳扎稳打' }, reclamation: { mode: '48' } })
+  })
+
+  it('shows the black-flow mode fields only for the black-flow theme and modes', () => {
+    const strategy = option('blackflowStrategy')
+    expect(isRoguelikeOptionVisible(strategy, 'roguelike', 'BlackFlow', { mode: '0' })).toBe(true)
+    expect(isRoguelikeOptionVisible(strategy, 'roguelike', 'Sarkaz', { mode: '0' })).toBe(false)
+
+    const animals = option('blackflowStartAnimals')
+    expect(isRoguelikeOptionVisible(animals, 'roguelike', 'BlackFlow', { mode: '30003' })).toBe(true)
+    expect(isRoguelikeOptionVisible(animals, 'roguelike', 'BlackFlow', { mode: '30001' })).toBe(false)
+
+    const playtime = option('findPlayTimeTarget')
+    expect(isRoguelikeOptionVisible(playtime, 'roguelike', 'JieGarden', { mode: '20001' })).toBe(true)
+    expect(isRoguelikeOptionVisible(playtime, 'roguelike', 'JieGarden', { mode: '0' })).toBe(false)
+  })
+
+  it('gates the new switches by mode', () => {
+    expect(isRoguelikeOptionVisible(option('stopAtMaxLevel'), 'roguelike', 'Sarkaz', {})).toBe(true)
+    expect(isRoguelikeOptionVisible(option('monthlySquadAutoIterate'), 'roguelike', 'Sarkaz', { mode: '6' }))
+      .toBe(true)
+    expect(isRoguelikeOptionVisible(option('monthlySquadAutoIterate'), 'roguelike', 'Sarkaz', { mode: '0' }))
+      .toBe(false)
+    expect(isRoguelikeOptionVisible(option('firstFloorFoldartal'), 'roguelike', 'Sami', {})).toBe(true)
+    expect(isRoguelikeOptionVisible(option('firstFloorFoldartal'), 'roguelike', 'Sarkaz', {})).toBe(false)
+    expect(isRoguelikeOptionVisible(option('clearStore', 'reclamation'), 'reclamation', 'Tales', { mode: '0' }))
+      .toBe(true)
+    expect(isRoguelikeOptionVisible(option('clearStore', 'reclamation'), 'reclamation', 'Tales', { mode: '1' }))
+      .toBe(false)
+  })
+})
+
+describe('dynamic task execution plan', () => {
+  it('keeps the CLI command while every field has a CLI parameter', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'Sami' }, {
+      roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些' },
+    })
+
+    expect(plan).toEqual({
+      command: 'roguelike',
+      params: 'Sami --mode 5 --roles 稳扎稳打 --expected-collapsal-paradigms 目空一些',
+      taskConfig: null,
+    })
+    expect(requiresRoguelikeDynamicTask('roguelike', { roguelike: 'Sami' }, {
+      roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些' },
+    })).toBe(false)
+  })
+
+  it('switches to a dynamic task for the black-flow theme', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'BlackFlow' }, {})
+
+    expect(plan.command).toBe('run')
+    expect(plan.params).toBe('roguelike')
+    expect(plan.taskConfig).toEqual({
+      name: '集成战略',
+      type: 'Roguelike',
+      params: {
+        theme: 'BlackFlow',
+        roles: '稳扎稳打',
+        stop_when_investment_full: true,
+      },
+    })
+  })
+
+  it('carries the black-flow start-run parameters as a dynamic task', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: {
+        mode: '30003',
+        blackflowStartAnimals: '襁褓猫,swaddled_dog',
+        blackflowStartRewards: '未编号物,调查预付款',
+      },
+    })
+
+    expect(plan.command).toBe('run')
+    expect(plan.taskConfig?.params).toMatchObject({
+      theme: 'BlackFlow',
+      mode: 30003,
+      blackflow_start_animals: ['swaddled_cat', 'swaddled_dog'],
+      blackflow_start_rewards: 1 + 2,
+      roles: '稳扎稳打',
+    })
+  })
+
+  it('writes the required empty start-run values for mode 30003', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '30003' },
+    })
+
+    expect(plan.taskConfig?.params).toMatchObject({
+      mode: 30003,
+      blackflow_start_animals: [],
+      blackflow_start_rewards: 0,
+    })
+  })
+
+  it('switches to a dynamic task for Core-only roguelike modes', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'JieGarden' }, {
+      roguelike: { mode: '20001', findPlayTimeTarget: '2', stopAtMaxLevel: true },
+    })
+
+    expect(plan.command).toBe('run')
+    expect(plan.taskConfig?.params).toMatchObject({
+      theme: 'JieGarden',
+      mode: 20001,
+      find_play_time_target: 2,
+      stop_at_max_level: true,
+      roles: '稳扎稳打',
+      stop_when_investment_full: true,
+    })
+  })
+
+  it('switches to a dynamic task for Core-only switches on CLI themes', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'Sarkaz' }, {
+      roguelike: { stopAtMaxLevel: true },
+    })
+
+    expect(plan.command).toBe('run')
+    expect(plan.taskConfig?.params.stop_at_max_level).toBe(true)
+    expect(plan.taskConfig?.params.theme).toBe('Sarkaz')
+  })
+
+  it('uses the CLI with the new increment mode and multiple crafting tools', () => {
+    const plan = buildRoguelikeExecutionPlan('reclamation', { reclamation: 'Tales' }, {
+      reclamation: { mode: '1', toolsToCraft: '荧光棒，发电机', incrementMode: '1', numBatches: 2 },
+    })
+
+    expect(plan).toEqual({
+      command: 'reclamation',
+      params: 'Tales -m 1 -C 荧光棒 -C 发电机 --increment-mode 1 --num-craft-batches 2',
+      taskConfig: null,
+    })
+  })
+
+  it('switches to a dynamic task for the relaunch anchor theme and clear-store mode', () => {
+    const relaunch = buildRoguelikeExecutionPlan('reclamation', { reclamation: 'RelaunchAnchor' }, {})
+    expect(relaunch.command).toBe('run')
+    expect(relaunch.taskConfig).toEqual({
+      name: '生息演算',
+      type: 'Reclamation',
+      params: { theme: 'RelaunchAnchor', mode: 16 },
+    })
+
+    const clearStore = buildRoguelikeExecutionPlan('reclamation', { reclamation: 'Tales' }, {
+      reclamation: { mode: '0', clearStore: true },
+    })
+    expect(clearStore.command).toBe('run')
+    expect(clearStore.taskConfig?.params).toEqual({ theme: 'Tales', mode: 0, clear_store: true })
+  })
+
+  it('keeps the CLI for reclamation mode 1 while no Core-only switch is set', () => {
+    expect(requiresRoguelikeDynamicTask('reclamation', { reclamation: 'Tales' }, {
+      reclamation: { mode: '1', incrementMode: '0' },
+    })).toBe(false)
+  })
+})
+
+describe('advanced theme and mode validation', () => {
+  it('rejects unknown themes with the supported list', () => {
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'Unknown' }))
+      .toBe('未知主题「Unknown」，支持：Phantom、Mizuki、Sami、Sarkaz、JieGarden、BlackFlow')
+    expect(validateRoguelikeTaskInput('reclamation', { reclamation: 'Fire' }))
+      .toBe('未知主题「Fire」，支持：Tales、RelaunchAnchor')
+  })
+
+  it('rejects mode values outside the active theme choices', () => {
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'Sami' }, {
+      roguelike: { mode: '10001' },
+    })).toBe('模式「10001」不在当前主题的可选范围内，请重新选择')
+    expect(validateRoguelikeTaskInput('reclamation', { reclamation: 'RelaunchAnchor' }, {
+      reclamation: { mode: '1' },
+    })).toBe('模式「1」不在当前主题的可选范围内，请重新选择')
+  })
+
+  it('requires the target node for the playtime mode', () => {
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'JieGarden' }, {
+      roguelike: { mode: '20001' },
+    })).toBe('刷常乐节点模式需要选择目标常乐节点')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'JieGarden' }, {
+      roguelike: { mode: '20001', findPlayTimeTarget: '3' },
+    })).toBeNull()
+  })
+
+  it('validates the black-flow animal and reward lists', () => {
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '30003', blackflowStartAnimals: '不存在的动物' },
+    })).toBe('开局动物组合「不存在的动物」不是可选值')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '30003', blackflowStartAnimals: '襁褓猫,襁褓狗,襁褓三头犬' },
+    })).toBe('开局动物组合最多选择 2 项')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '30003', blackflowStartAnimals: '襁褓羽蛇,襁褓羽蛇' },
+    })).toBe('开局动物组合最多包含一项襁褓羽蛇')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '30003', blackflowStartAnimals: '襁褓猫', blackflowStartRewards: '不存在的奖励' },
+    })).toBe('开局奖励「不存在的奖励」不是可选值')
+  })
+
+  it('rejects the cultivation target outside the cultivation strategy', () => {
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '0', blackflowStrategy: 'burn', blackflowCultivationTarget: 'swaddled_cat' },
+    })).toBe('培育目标动物仅在黑流策略为培育襁褓动物时生效，请调整策略或清空该字段')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '0', blackflowCultivationTarget: 'swaddled_dog' },
+    })).toBe('培育目标动物仅在黑流策略为培育襁褓动物时生效，请调整策略或清空该字段')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '0', blackflowStrategy: 'baby_animal', blackflowCultivationTarget: 'swaddled_dog' },
+    })).toBeNull()
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '30001', blackflowCultivationTarget: 'swaddled_dog' },
+    })).toBeNull()
+  })
+
+  it('rejects invalid increment mode values left in old drafts', () => {
+    expect(validateRoguelikeTaskInput('reclamation', { reclamation: 'Tales' }, {
+      reclamation: { mode: '1', incrementMode: '2' },
+    })).toBe('加号点击方式「2」不在当前主题的可选范围内，请重新选择')
   })
 })

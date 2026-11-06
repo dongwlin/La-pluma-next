@@ -1,6 +1,8 @@
 import {
   MAA_CLI_I32_MAX,
   MAA_CLI_I32_MIN,
+  RECLAMATION_THEMES,
+  ROGUELIKE_THEMES,
   getRoguelikeAdvancedOptions,
   getRoguelikeOptionChoices,
 } from './roguelikeOptions'
@@ -20,6 +22,7 @@ export const DEFAULT_ROGUELIKE_MODE: RoguelikeMode = 'roguelike'
 /**
  * 生息演算默认模式与 CLI 一致：`-m` 缺省为 1（有存档时制作工具）。
  * 模式 0 仅在没有存档时使用，已有存档时可能丢失进度。
+ * 重启锚点主题没有 `1`，草稿归一化会回落到该主题模式候选的首项 `16`。
  */
 export const DEFAULT_RECLAMATION_MODE = '1'
 
@@ -56,18 +59,49 @@ export const ROGUELIKE_THEME_PRESETS: Record<RoguelikeMode, readonly RoguelikeTh
     { value: 'Sami', label: '萨米' },
     { value: 'Sarkaz', label: '萨卡兹' },
     { value: 'JieGarden', label: '界园' },
+    { value: 'BlackFlow', label: '黑流树海' },
   ],
   reclamation: [
     { value: 'Tales', label: '沙洲遗闻' },
+    { value: 'RelaunchAnchor', label: '重启锚点' },
   ],
 }
 
-function pickAdvancedValue(
+/** 主题代号是否属于该任务已知的主题目录；隐藏字段与命令构造都以它为准。 */
+export function isKnownRoguelikeTheme(taskId: string, theme: string): boolean {
+  const themes = taskId === 'reclamation' ? RECLAMATION_THEMES : ROGUELIKE_THEMES
+  return themes.includes(theme.trim())
+}
+
+export function getThemesForTask(taskId: string): readonly string[] {
+  return taskId === 'reclamation' ? RECLAMATION_THEMES : ROGUELIKE_THEMES
+}
+
+export function getTaskDefinition(taskId: string): RoguelikeTask {
+  return ROGUELIKE_TASKS.find(task => task.id === taskId) ?? ROGUELIKE_TASKS[0]!
+}
+
+/** select 的默认值不在当前主题候选表内时回落到首项（如重启锚点没有模式 1）。 */
+function resolveOptionDefault(
+  option: RoguelikeAdvancedOption,
+  theme: string,
+  taskId: string,
+): string | undefined {
+  if (option.defaultValue === undefined) return undefined
+  if (option.type !== 'select') return option.defaultValue
+  const choices = getRoguelikeOptionChoices(option, theme, taskId) ?? []
+  if (choices.some(choice => choice.value === option.defaultValue)) return option.defaultValue
+  return choices[0]?.value
+}
+
+export function pickAdvancedValue(
   option: RoguelikeAdvancedOption,
   advanced: RoguelikeAdvancedValues,
+  theme = '',
+  taskId = 'roguelike',
 ): string | number | boolean | undefined {
   const value = advanced[option.key]
-  if (value === undefined || value === '') return option.defaultValue
+  if (value === undefined || value === '') return resolveOptionDefault(option, theme, taskId)
   return value
 }
 
@@ -79,9 +113,10 @@ export function resolveRoguelikeAdvancedValue(
   option: RoguelikeAdvancedOption,
   advanced: RoguelikeAdvancedValues,
   theme = '',
+  taskId = 'roguelike',
 ): string | number | boolean | undefined {
-  return pickAdvancedValue(option, advanced)
-    ?? getRoguelikeOptionChoices(option, theme)?.[0]?.value
+  return pickAdvancedValue(option, advanced, theme, taskId)
+    ?? getRoguelikeOptionChoices(option, theme, taskId)?.[0]?.value
 }
 
 /** 下拉字段的取值是否属于当前主题的候选表；非下拉字段不做取值约束。 */
@@ -89,14 +124,15 @@ export function isRoguelikeOptionValueValid(
   option: RoguelikeAdvancedOption,
   theme: string,
   value: string | number | boolean,
+  taskId = 'roguelike',
 ): boolean {
   if (option.type !== 'select') return true
-  const choices = getRoguelikeOptionChoices(option, theme)
+  const choices = getRoguelikeOptionChoices(option, theme, taskId)
   if (!choices) return true
   return choices.some(choice => choice.value === String(value))
 }
 
-function getRoguelikeNumberError(
+export function getRoguelikeNumberError(
   option: RoguelikeAdvancedOption,
   value: string | number | boolean,
 ): string | null {
@@ -113,43 +149,40 @@ function getRoguelikeNumberError(
   return null
 }
 
-function findInvalidOptionValue(
-  taskId: string,
-  theme: string,
-  advanced: RoguelikeAdvancedValues,
+export function resolveListChoice(option: RoguelikeAdvancedOption, item: string): string | null {
+  const choice = option.listChoices?.find(candidate => (
+    candidate.value === item || candidate.label === item
+  ))
+  return choice ? choice.value : null
+}
+
+export function getRoguelikeListError(
+  option: RoguelikeAdvancedOption,
+  value: string | number | boolean,
 ): string | null {
-  for (const option of getRoguelikeAdvancedOptions(taskId)) {
-    if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
-
-    const value = pickAdvancedValue(option, advanced)
-    if (value === undefined || value === '') continue
-
-    if (option.type === 'number') {
-      const error = getRoguelikeNumberError(option, value)
-      if (error) return error
-      continue
+  const items = splitRoguelikeListValue(value)
+  if (option.listChoices) {
+    for (const item of items) {
+      if (!resolveListChoice(option, item)) return `${option.label}「${item}」不是可选值`
     }
-
-    if (option.type !== 'select') continue
-    if (isRoguelikeOptionValueValid(option, theme, value)) continue
-    return `${option.label}「${String(value)}」不在当前主题的可选范围内，请重新选择`
+  }
+  if (option.listMaxItems !== undefined && items.length > option.listMaxItems) {
+    return `${option.label}最多选择 ${option.listMaxItems} 项`
+  }
+  if (option.key === 'blackflowStartAnimals') {
+    const serpents = items.filter(item => resolveListChoice(option, item) === 'swaddled_feathered_serpent')
+    if (serpents.length > 1) return `${option.label}最多包含一项襁褓羽蛇`
   }
   return null
 }
 
-function resolveModeValue(taskId: string, theme: string, advanced: RoguelikeAdvancedValues): string {
+export function resolveModeValue(taskId: string, theme: string, advanced: RoguelikeAdvancedValues): string {
   const modeOption = getRoguelikeAdvancedOptions(taskId).find(option => option.key === 'mode')
   if (!modeOption) return ''
-  const value = resolveRoguelikeAdvancedValue(modeOption, advanced, theme)
+  const value = resolveRoguelikeAdvancedValue(modeOption, advanced, theme, taskId)
   return value === undefined ? '' : String(value)
 }
 
-/**
- * 字段是否在当前主题与模式下生效。
- *
- * 主题取自任务输入（trim 后比较），模式与依赖字段按显示值解析：
- * 这样面板显示与命令下发判断同一份状态，隐藏字段的残留值不会写进命令。
- */
 export function isRoguelikeOptionVisible(
   option: RoguelikeAdvancedOption,
   taskId: string,
@@ -168,7 +201,7 @@ export function isRoguelikeOptionVisible(
 
   const target = getRoguelikeAdvancedOptions(taskId).find(candidate => candidate.key === requires.key)
   if (!target) return true
-  const value = resolveRoguelikeAdvancedValue(target, advanced, normalizedTheme)
+  const value = resolveRoguelikeAdvancedValue(target, advanced, normalizedTheme, taskId)
 
   if (requires.oneOf) return requires.oneOf.includes(String(value ?? ''))
   if (typeof requires.equals === 'boolean') return Boolean(value) === requires.equals
@@ -192,7 +225,7 @@ export function normalizeRoguelikeModeForTheme(
   const mode = resolveModeValue(taskId, theme, advanced)
   if (!mode) return advancedParams
 
-  const choices = getRoguelikeOptionChoices(modeOption, theme) ?? []
+  const choices = getRoguelikeOptionChoices(modeOption, theme, taskId) ?? []
   if (choices.some(choice => choice.value === mode)) return advancedParams
   return { ...advancedParams, [taskId]: { ...advanced, mode: choices[0]?.value ?? '' } }
 }
@@ -209,9 +242,11 @@ export function splitRoguelikeListValue(value: unknown): string[] {
 /**
  * 补齐声明了默认值但缺失或为空的字段。返回新对象，且只在确有补齐时复制；
  * 不修改入参，无变化时返回原引用以便草稿等价判断保持稳定。
+ * 传入任务输入时按当前主题解析默认值，旧草稿没有模式字段也能落到该主题的合法首项。
  */
 export function normalizeRoguelikeAdvancedParams(
   advancedParams: RoguelikeAdvancedParams,
+  taskInputs: RoguelikeTaskInputs = {},
 ): RoguelikeAdvancedParams {
   let normalized: RoguelikeAdvancedParams | null = null
 
@@ -220,13 +255,16 @@ export function normalizeRoguelikeAdvancedParams(
       .filter(option => option.defaultValue !== undefined)
     if (defaults.length === 0) continue
 
+    const theme = (taskInputs[taskId] || '').trim()
     const current = advancedParams[taskId]
     let taskValues: RoguelikeAdvancedValues | null = null
     for (const option of defaults) {
       const value = current?.[option.key]
       if (value !== undefined && value !== '') continue
+      const resolved = resolveOptionDefault(option, theme, taskId)
+      if (resolved === undefined) continue
       if (taskValues === null) taskValues = { ...current }
-      taskValues[option.key] = option.defaultValue as string
+      taskValues[option.key] = resolved
     }
     if (taskValues === null) continue
 
@@ -241,6 +279,7 @@ export function normalizeRoguelikeAdvancedParams(
  * 拼接执行参数：主题代号在前，字段按字段表顺序追加。
  * 空字符串、未勾选的 checkbox、未设置的字段、当前主题/模式不适用的字段、
  * 越界的下拉值与非法整数不写入；声明了默认值的字段在缺失或为空时解析为默认值并始终写入。
+ * 只能通过动态任务下发的字段（没有 CLI 参数名）不写进命令行。
  */
 export function buildRoguelikeCommandParams(
   taskId: string,
@@ -252,11 +291,12 @@ export function buildRoguelikeCommandParams(
   let params = theme
 
   for (const option of getRoguelikeAdvancedOptions(taskId)) {
+    if (!option.param) continue
     if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
 
-    const value = pickAdvancedValue(option, advanced)
+    const value = pickAdvancedValue(option, advanced, theme, taskId)
     if (value === undefined || value === '' || value === false) continue
-    if (option.type === 'select' && !isRoguelikeOptionValueValid(option, theme, value)) continue
+    if (option.type === 'select' && !isRoguelikeOptionValueValid(option, theme, value, taskId)) continue
 
     if (option.type === 'checkbox') {
       if (value === true) params += ` ${option.param}`
@@ -272,6 +312,7 @@ export function buildRoguelikeCommandParams(
     }
 
     if (option.type === 'list') {
+      if (getRoguelikeListError(option, value)) continue
       for (const item of splitRoguelikeListValue(value)) params += ` ${option.param} ${item}`
       continue
     }
@@ -280,24 +321,4 @@ export function buildRoguelikeCommandParams(
   }
 
   return params
-}
-
-/** 执行前校验；返回 null 表示可以提交。 */
-export function validateRoguelikeTaskInput(
-  taskId: string,
-  taskInputs: RoguelikeTaskInputs,
-  advancedParams: RoguelikeAdvancedParams = {},
-): string | null {
-  if (taskId !== 'roguelike' && taskId !== 'reclamation') return null
-  if (!(taskInputs[taskId] || '').trim()) return '请输入主题名称'
-
-  const theme = (taskInputs[taskId] || '').trim()
-  const advanced = advancedParams[taskId] ?? {}
-  const invalidValue = findInvalidOptionValue(taskId, theme, advanced)
-  if (invalidValue) return invalidValue
-  if (taskId !== 'roguelike') return null
-
-  if (resolveModeValue('roguelike', theme, advanced) !== '5') return null
-  if (splitRoguelikeListValue(advanced.expectedCollapsalParadigms).length > 0) return null
-  return '刷坍缩范式模式需要填写期望坍缩范式'
 }
