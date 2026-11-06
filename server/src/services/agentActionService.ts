@@ -1,6 +1,6 @@
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
-import { validateGameTaskParams } from './gameTaskConfigService.ts';
+import { validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
 
 /** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
@@ -336,6 +336,13 @@ export function preflightAgentTaskRequest(input: unknown = {}): NormalizedAgentT
   }
 
   const normalizedArgs = args.map(String);
+  const commandArgsError = validateRoguelikeCommandArgs(command, normalizedArgs);
+  if (commandArgsError) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_ARGS_INVALID', commandArgsError, {
+      reason: 'command_args_invalid',
+      command
+    });
+  }
   const normalizedTaskName = normalizeOptionalLabel(taskName, 'taskName', `Agent: ${command}`, 160);
   const normalizedTaskType = normalizeOptionalLabel(taskType, 'taskType', 'agent', 64);
   const hasTaskConfig = taskConfig !== undefined;
