@@ -146,6 +146,7 @@ const readTaskToml = () => {
 );
 `, { mode: 0o755 });
 
+delete process.env.MAA_CLIENT_TYPE;
 process.env.MAA_CLI_PATH = fakeMaaCliPath;
 process.env.FAKE_MAA_CALL_LOG = maaCallLog;
 process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
