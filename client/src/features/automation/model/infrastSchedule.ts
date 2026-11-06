@@ -33,9 +33,11 @@ export const INFRASTRUCT_MANUFACTURE_PRODUCTS = [
 export const INFRASTRUCT_TRADING_PRODUCTS = ['LMD', 'Orundum'] as const
 
 const ROOM_BOOLEAN_FIELDS = ['skip', 'autofill', 'sort', 'use_operator_groups'] as const
-const ROOM_OPERATOR_FIELDS = ['operators', 'candidates', 'operatorsA', 'operatorsB'] as const
+const ROOM_OPERATOR_FIELDS = ['operators', 'candidates'] as const
+const TRAINING_OPERATOR_FIELDS = ['operatorsA', 'operatorsB'] as const
+const ALL_OPERATOR_FIELDS = [...ROOM_OPERATOR_FIELDS, ...TRAINING_OPERATOR_FIELDS] as const
 
-export type InfrastRoomOperatorField = (typeof ROOM_OPERATOR_FIELDS)[number]
+export type InfrastRoomOperatorField = (typeof ALL_OPERATOR_FIELDS)[number]
 
 export interface InfrastRoom {
   skip?: boolean
@@ -90,8 +92,6 @@ export type InfrastScheduleParseResult =
   | { ok: true; document: InfrastScheduleDocument }
   | { ok: false; message: string }
 
-const HOUR_MINUTE_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
-
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(item => typeof item === 'string')
 }
@@ -107,11 +107,14 @@ function validateOptionalBoolean(value: unknown, label: string): string | null {
 function validatePeriod(value: unknown, label: string): string | null {
   if (value === undefined) return null
   if (!Array.isArray(value) || !value.every(slot => (
-    Array.isArray(slot)
-    && slot.length === 2
-    && slot.every(item => typeof item === 'string' && HOUR_MINUTE_PATTERN.test(item))
-  ))) return `${label}.period 必须是 [["HH:mm", "HH:mm"]] 数组`
+    Array.isArray(slot) && slot.length === 2 && slot.every(item => typeof item === 'string')
+  ))) return `${label}.period 必须是 [[开始时间, 结束时间]] 两元素字符串数组`
   return null
+}
+
+function isDronesIndex(value: unknown): boolean {
+  const numeric = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value
+  return Number.isInteger(numeric) && (numeric as number) >= 1 && (numeric as number) <= 5
 }
 
 function validateFiammetta(value: unknown, label: string): string | null {
@@ -133,8 +136,8 @@ function validateDrones(value: unknown, label: string): string | null {
   if (value.room !== undefined && value.room !== 'trading' && value.room !== 'manufacture') {
     return `${label}.drones.room 只能是 trading 或 manufacture`
   }
-  if (value.index !== undefined && (!Number.isInteger(value.index) || (value.index as number) < 1 || (value.index as number) > 5)) {
-    return `${label}.drones.index 必须是 1 至 5 的整数`
+  if (value.index !== undefined && !isDronesIndex(value.index)) {
+    return `${label}.drones.index 必须是 1 至 5 的整数或数字字符串`
   }
   if (value.rule !== undefined && typeof value.rule !== 'string') return `${label}.drones.rule 必须是字符串`
   if (value.order !== undefined && value.order !== 'pre' && value.order !== 'post') {
@@ -162,7 +165,7 @@ function validateRoom(value: unknown, label: string): string | null {
     const message = validateOptionalBoolean(value[field], `${label}.${field}`)
     if (message) return message
   }
-  for (const field of ROOM_OPERATOR_FIELDS) {
+  for (const field of ALL_OPERATOR_FIELDS) {
     if (value[field] !== undefined && !isStringArray(value[field])) {
       return `${label}.${field} 必须是干员名字符串数组`
     }
@@ -242,12 +245,21 @@ export function readInfrastFacilityRooms(plan: InfrastPlan, facility: string): I
   return Array.isArray(rooms) ? rooms : []
 }
 
-export function hasInfrastRoomIntent(room: InfrastRoom): boolean {
-  if (room.autofill === true) return true
-  return ROOM_OPERATOR_FIELDS.some(field => Array.isArray(room[field]) && (room[field] as unknown[]).length > 0)
+function hasNames(room: InfrastRoom, fields: readonly (keyof InfrastRoom)[]): boolean {
+  return fields.some(field => Array.isArray(room[field]) && (room[field] as unknown[]).length > 0)
 }
 
-export function getInfrastRoomState(room: InfrastRoom): InfrastRoomState {
+/**
+ * 训练室双槽位字段只在 training 设施里被 MaaCore 解析，其他设施写了也按无意图
+ * 处理；通用 operators/candidates 在所有设施都会被解析，但对训练室不参与选人。
+ */
+export function hasInfrastRoomIntent(room: InfrastRoom, facility: string): boolean {
+  if (room.autofill === true) return true
+  if (hasNames(room, ROOM_OPERATOR_FIELDS)) return true
+  return facility === 'training' && hasNames(room, TRAINING_OPERATOR_FIELDS)
+}
+
+export function getInfrastRoomState(room: InfrastRoom, facility: string): InfrastRoomState {
   if (room.skip === true) return 'skip'
-  return hasInfrastRoomIntent(room) ? 'shift' : 'keep'
+  return hasInfrastRoomIntent(room, facility) ? 'shift' : 'keep'
 }

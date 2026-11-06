@@ -379,15 +379,16 @@ Infrast 任务在 `mode=10000` 时仍以 `filename`/`plan_index` 两个 Core 字
 | --- | --- |
 | 设施键缺失 | 该设施未配置，MAA 走默认换班算法 |
 | 设施键为 `[]` | 整个设施保持原样，不换人也不换产物；会客室线索、训练室继续训练等设施级操作照常 |
-| 房间无选人意图 | `operators`/`candidates`/`operatorsA`/`operatorsB` 为空且未启用 `autofill` 时保持房间原样，不回落默认算法 |
-| `skip: true` | 跳过该房间的换人与换产物；无人机和设施级操作照常 |
-| 训练室 | 只认 `operatorsA`（协助者候选）与 `operatorsB`（训练位候选），通用 `operators`/`candidates` 对训练室无效 |
+| 房间无选人意图 | 通用 `operators`/`candidates` 为空（训练室还要求 `operatorsA`/`operatorsB` 为空）且未启用 `autofill` 时保持干员不动，不回落默认算法 |
+| 产物与排序 | 房间无选人意图时仍会处理 `product`/`sort`（Core 在空意图判定前先处理产物）；只有 `skip` 和整设施 `[]` 跳过这些字段。编辑器把该状态显示为“保持干员” |
+| `skip: true` | 跳过该房间的换人、换产物与排序；无人机和设施级操作照常 |
+| 训练室 | 只认 `operatorsA`（协助者候选）与 `operatorsB`（训练位候选）作为选人意图；通用 `operators`/`candidates` 仍会被 Core 解析并计入换人意图，但训练室选人并不使用它们 |
 | 回收站 | 写法同制造站，`product` 字段无效 |
 | 未知设施/扩展字段 | Core 会跳过未知设施；编辑器原样保留未知设施键、未知房间字段、`Fiammetta`/`drones`/`groups`/`period` 等未建模字段 |
 
 编辑与保存约束：
 
-1. `infrastScheduleEditing.ts` 的状态变更只返回新对象，且只增删目标字段；`operators` 输入为空表示“未给出选人意图”，不能写成清空房间的默认配置。
+1. `infrastScheduleEditing.ts` 的状态变更只返回新对象，且只增删目标字段；`operators` 输入为空表示“未给出选人意图”，不能写成清空房间的默认配置。房间三态显示为“更换干员 / 保持干员 / 跳过”，其中“保持干员”仍保留 `product`/`sort` 字段并按 Core 语义生效。
 2. 服务端在保存前按协议校验并原子写入；读取返回原文，不在读路径补默认值或改写字段。
 3. 任务参数迁移只在客户端 `migrateTaskParams` 内归一化旧草稿：`filename` 去空白、`plan_index` 从历史字符串转为非负整数，不读取或改写排班文件内容。
 4. 编辑器内不展示的字段（无人机、菲亚梅塔、干员编组、时间段、`layout`/`metadata` 等）保存时原样保留，由用户继续在原始 JSON 中维护。

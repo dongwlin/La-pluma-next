@@ -156,6 +156,12 @@ describe('validateInfrastScheduleDocument', () => {
         rooms: { trading: [] }
       }]
     }],
+    ['unpadded clock values from MAA bundled schedules', {
+      plans: [{ period: [['5:00', '20:59'], ['1:00', '4:59']], rooms: {} }]
+    }],
+    ['numeric-string drones index from MAA bundled schedules', {
+      plans: [{ drones: { room: 'manufacture', index: '3', enable: true }, rooms: {} }]
+    }],
     ['product on non-production facilities stays tolerated', {
       plans: [{ rooms: { recycle: [{ operators: ['芬'], product: 'LMD' }], power: [{ product: 'anything' }] } }]
     }],
@@ -197,7 +203,7 @@ describe('validateInfrastScheduleDocument', () => {
     ['non-string product', { plans: [{ rooms: { manufacture: [{ product: 1 }] } }] }, 'product 必须是字符串'],
     ['non-array period', { plans: [{ period: '22:00', rooms: {} }] }, 'period 必须是数组'],
     ['period entry with one time', { plans: [{ period: [['22:00']], rooms: {} }] }, '两元素数组'],
-    ['period entry with invalid clock', { plans: [{ period: [['25:00', '26:00']], rooms: {} }] }, 'hh:mm 格式'],
+    ['period entry with non-string time', { plans: [{ period: [['22:00', 23]], rooms: {} }] }, '两元素数组'],
     ['non-number duration', { plans: [{ duration: '360', rooms: {} }] }, 'duration 必须是数字'],
     ['non-object Fiammetta', { plans: [{ Fiammetta: 'on', rooms: {} }] }, 'Fiammetta 必须是 JSON 对象'],
     ['non-boolean Fiammetta enable', { plans: [{ Fiammetta: { enable: 'true' }, rooms: {} }] }, 'Fiammetta.enable 必须是布尔值'],
@@ -205,6 +211,10 @@ describe('validateInfrastScheduleDocument', () => {
     ['non-object drones', { plans: [{ drones: [], rooms: {} }] }, 'drones 必须是 JSON 对象'],
     ['invalid drones room', { plans: [{ drones: { room: 'power' }, rooms: {} }] }, 'drones.room'],
     ['drones index out of range', { plans: [{ drones: { index: 6 }, rooms: {} }] }, 'drones.index 必须是 1-5'],
+    ['zero drones index', { plans: [{ drones: { index: 0 }, rooms: {} }] }, 'drones.index 必须是 1-5'],
+    ['non-numeric drones index string', { plans: [{ drones: { index: 'abc' }, rooms: {} }] }, 'drones.index 必须是 1-5'],
+    ['out-of-range numeric-string drones index', { plans: [{ drones: { index: '6' }, rooms: {} }] }, 'drones.index 必须是 1-5'],
+    ['boolean drones index', { plans: [{ drones: { index: true }, rooms: {} }] }, 'drones.index 必须是 1-5'],
     ['non-array groups', { plans: [{ groups: {}, rooms: {} }] }, 'groups 必须是数组'],
     ['group without name', { plans: [{ groups: [{}], rooms: {} }] }, 'groups[0].name 必须是字符串'],
     ['group without operators', { plans: [{ groups: [{ name: '古+银' }], rooms: {} }] }, 'groups[0].operators 必须是字符串数组']
@@ -294,6 +304,24 @@ describe('infrast schedule service', () => {
     assert.ok(!raw.includes('"skip"'), 'missing skip must not be materialized as a default');
     assert.ok(!raw.includes('"autofill"'), 'missing autofill must not be materialized as a default');
     assert.ok(!raw.includes('"sort"'), 'missing sort must not be materialized as a default');
+  });
+
+  it('round-trips legacy period times and numeric-string drone index values unchanged', async () => {
+    const document = {
+      plans: [{
+        period: [['5:00', '20:59'], ['1:00', '4:59']],
+        drones: { room: 'manufacture', index: '3', enable: true, order: 'post' },
+        rooms: { manufacture: [{ operators: ['芬'] }] }
+      }]
+    };
+
+    await service.save('legacy.json', document);
+    assert.deepEqual((await service.read('legacy.json')).document, document);
+
+    const raw = await readFile(join(rootDir, 'legacy.json'), 'utf-8');
+    assert.ok(raw.includes('"5:00"'), 'unpadded clock values must not be normalized');
+    assert.ok(raw.includes('"index": "3"'), 'numeric-string drone index must stay a string');
+    assert.deepEqual((await service.list()).schedules.map(entry => entry.valid), [true]);
   });
 
   it('preserves product strings outside the documented editor list', async () => {

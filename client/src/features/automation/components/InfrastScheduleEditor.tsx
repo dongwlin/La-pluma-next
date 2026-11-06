@@ -49,7 +49,6 @@ export default function InfrastScheduleEditor({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const appliedRef = useRef<string | null>(null)
-
   const listQuery = useQuery(infrastScheduleListQueryOptions())
   const scheduleQuery = useQuery(infrastScheduleQueryOptions(loadName))
   const loading = scheduleQuery.isFetching && Boolean(loadName)
@@ -135,6 +134,7 @@ export default function InfrastScheduleEditor({
       appliedRef.current = savedName
       setName(savedName)
       setLoadName(savedName)
+      queryClient.setQueryData(infrastScheduleQueryOptions(savedName).queryKey, { name: savedName, document })
       void queryClient.invalidateQueries({ queryKey: infrastScheduleListQueryOptions().queryKey })
       onSaved({ filename: savedName, planIndex: normalizeInfrastPlanIndex(planIndex, document.plans.length) })
     } catch (saveError) {

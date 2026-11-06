@@ -99,6 +99,14 @@ const controlByLabel = (label: string) => {
   return element
 }
 
+const inputByVisibleLabel = (label: string) => {
+  const field = Array.from(document.querySelectorAll('label'))
+    .find(candidate => candidate.textContent?.trim() === label)
+  const element = field?.htmlFor ? document.getElementById(field.htmlFor) : null
+  if (!(element instanceof HTMLInputElement)) throw new Error(`missing labelled input: ${label}`)
+  return element
+}
+
 const setInputValue = async (input: HTMLInputElement, value: string) => {
   const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
   await act(async () => {
@@ -163,7 +171,7 @@ describe('InfrastScheduleEditor', () => {
     vi.restoreAllMocks()
   })
 
-  it('loads an existing schedule and saves it back without touching untouched rooms', async () => {
+  it('edits one room and saves without touching untouched rooms or extension fields', async () => {
     mocks.readInfrastSchedule.mockResolvedValue({
       success: true,
       data: { name: 'base.json', document: userDocument },
@@ -178,10 +186,45 @@ describe('InfrastScheduleEditor', () => {
     expect(inputByLabel('训练室房间 1训练位干员').value).toBe('银灰')
     expect(controlByLabel('回收站房间 1处理方式').value).toBe('skip')
 
+    await setInputValue(inputByLabel('制造站房间 1干员'), '克洛丝')
     await click(buttonByText('保存'))
 
-    expect(mocks.saveInfrastSchedule).toHaveBeenCalledWith('base.json', userDocument)
+    const savedDocument = mocks.saveInfrastSchedule.mock.calls[0]?.[1] as typeof userDocument
+    const originalPlan = userDocument.plans[0]
+    const savedPlan = savedDocument.plans[0]
+    expect(savedDocument.custom_top_field).toEqual({ keep: true })
+    expect(savedDocument.layout).toEqual(userDocument.layout)
+    expect(savedPlan?.rooms.manufacture?.[0]).toEqual({ operators: ['克洛丝'], custom_room: 'a' })
+    expect(savedPlan?.rooms.training).toEqual(originalPlan?.rooms.training)
+    expect(savedPlan?.rooms.recycle).toEqual(originalPlan?.rooms.recycle)
+    expect(savedPlan?.rooms.future_room).toEqual(originalPlan?.rooms.future_room)
     expect(onSaved).toHaveBeenCalledWith({ filename: 'base.json', planIndex: 0 })
+  })
+
+  it('keeps the saved document in the query cache when the editor is reopened', async () => {
+    mocks.readInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', document: userDocument },
+    })
+    mocks.saveInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', planCount: 1 },
+    })
+    await renderEditor({ filename: 'base.json' })
+
+    await setInputValue(inputByVisibleLabel('方案名称'), '晚班')
+    await click(buttonByText('保存'))
+    expect(mocks.readInfrastSchedule).toHaveBeenCalledTimes(1)
+
+    await act(async () => root.unmount())
+    container.remove()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    await renderEditor({ filename: 'base.json' })
+
+    expect(inputByVisibleLabel('方案名称').value).toBe('晚班')
+    expect(mocks.readInfrastSchedule).toHaveBeenCalledTimes(1)
   })
 
   it('creates a new file with an explicitly requested minimal plan', async () => {

@@ -44,7 +44,6 @@ export const INFRASTRUCT_SCHEDULE_ERROR_CODES = {
 
 export const MAX_INFRASTRUCT_SCHEDULE_DIRECTORY_DEPTH = 4;
 
-const HOUR_MINUTE_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_CANONICAL_SEGMENTS = 64;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -107,10 +106,16 @@ function validateOptionalIntegerInRange(
 ): string | null {
   const value = record[key];
   if (value === undefined) return null;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
-    return `${label}.${key} 必须是 ${min}-${max} 之间的整数`;
+  const message = `${label}.${key} 必须是 ${min}-${max} 之间的整数`;
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= min && value <= max ? null : message;
   }
-  return null;
+  // MAA 内置排班文件把 drones.index 写成数字字符串，Core 按同一数值处理。
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const numericValue = Number(value);
+    return numericValue >= min && numericValue <= max ? null : message;
+  }
+  return message;
 }
 
 function validateDuration(plan: Record<string, unknown>, label: string): string | null {
@@ -127,11 +132,9 @@ function validatePeriod(plan: Record<string, unknown>, label: string): string | 
   if (!Array.isArray(period)) return `${label}.period 必须是数组`;
   for (let index = 0; index < period.length; index += 1) {
     const range = period[index];
-    if (!Array.isArray(range) || range.length !== 2) {
+    if (!Array.isArray(range) || range.length !== 2 || range.some(value => typeof value !== 'string')) {
       return `${label}.period[${index}] 必须是 [开始时间, 结束时间] 两元素数组`;
     }
-    const hasValidTime = range.every(value => typeof value === 'string' && HOUR_MINUTE_PATTERN.test(value));
-    if (!hasValidTime) return `${label}.period[${index}] 的时间必须是 hh:mm 格式`;
   }
   return null;
 }

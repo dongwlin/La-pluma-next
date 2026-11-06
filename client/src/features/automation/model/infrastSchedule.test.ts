@@ -35,6 +35,19 @@ import {
 const minimal = (): InfrastScheduleDocument => ({ plans: [{ rooms: {} }] })
 
 describe('custom infrastructure schedule document validation', () => {
+  it('accepts MAA-bundled legacy quirks that Core tolerates', () => {
+    expect(validateInfrastScheduleDocument({
+      plans: [{
+        rooms: {},
+        period: [['5:00', '20:59']],
+        drones: { room: 'manufacture', index: '3', enable: true },
+      }],
+    })).toBeNull()
+    expect(validateInfrastScheduleDocument({
+      plans: [{ rooms: {}, drones: { index: '6' } }],
+    })).toBe('plans[0].drones.index 必须是 1 至 5 的整数或数字字符串')
+  })
+
   it('offers only the documented Core products for manufacture and trading', () => {
     expect([...INFRASTRUCT_MANUFACTURE_PRODUCTS])
       .toEqual(['Battle Record', 'Pure Gold', 'Dualchip', 'Originium Shard'])
@@ -100,8 +113,8 @@ describe('custom infrastructure schedule document validation', () => {
       .toBeNull()
     expect(validateInfrastScheduleDocument({ plans: [{ rooms: {}, groups: [{ operators: [] }] }] }))
       .toBe('plans[0].groups[0].name 必须是字符串')
-    expect(validateInfrastScheduleDocument({ plans: [{ rooms: {}, period: [['25:00', '06:00']] }] }))
-      .toBe('plans[0].period 必须是 [["HH:mm", "HH:mm"]] 数组')
+    expect(validateInfrastScheduleDocument({ plans: [{ rooms: {}, period: [['5:00', 6]] }] }))
+      .toBe('plans[0].period 必须是 [[开始时间, 结束时间]] 两元素字符串数组')
   })
 })
 
@@ -121,15 +134,16 @@ describe('room and facility states match MaaCore intent detection', () => {
   })
 
   it('treats skip, explicit operator intent and empty intent as three distinct room states', () => {
-    expect(getInfrastRoomState({})).toBe('keep')
-    expect(getInfrastRoomState({ skip: false })).toBe('keep')
-    expect(getInfrastRoomState({ use_operator_groups: true })).toBe('keep')
-    expect(getInfrastRoomState({ operators: [] })).toBe('keep')
-    expect(getInfrastRoomState({ candidates: ['银灰'] })).toBe('shift')
-    expect(getInfrastRoomState({ autofill: true })).toBe('shift')
-    expect(getInfrastRoomState({ operatorsA: ['杜宾'] })).toBe('shift')
-    expect(getInfrastRoomState({ operatorsB: ['银灰'] })).toBe('shift')
-    expect(getInfrastRoomState({ skip: true, operators: ['银灰'] })).toBe('skip')
+    expect(getInfrastRoomState({}, 'manufacture')).toBe('keep')
+    expect(getInfrastRoomState({ skip: false }, 'manufacture')).toBe('keep')
+    expect(getInfrastRoomState({ use_operator_groups: true }, 'manufacture')).toBe('keep')
+    expect(getInfrastRoomState({ operators: [] }, 'manufacture')).toBe('keep')
+    expect(getInfrastRoomState({ candidates: ['银灰'] }, 'manufacture')).toBe('shift')
+    expect(getInfrastRoomState({ autofill: true }, 'manufacture')).toBe('shift')
+    expect(getInfrastRoomState({ operatorsA: ['杜宾'] }, 'training')).toBe('shift')
+    expect(getInfrastRoomState({ operatorsB: ['银灰'] }, 'training')).toBe('shift')
+    expect(getInfrastRoomState({ operatorsA: ['杜宾'] }, 'manufacture')).toBe('keep')
+    expect(getInfrastRoomState({ skip: true, operators: ['银灰'] }, 'manufacture')).toBe('skip')
   })
 
   it('serializes states without writing defaults for keep or shift', () => {
@@ -213,9 +227,9 @@ describe('edits preserve untouched rooms and unknown fields', () => {
     expect(setInfrastFacilityState(plan, 'manufacture', 'keep')).toEqual({ rooms: { dormitory: [], manufacture: [] } })
   })
 
-  it('drops the facility key after the last configured room is removed', () => {
+  it('keeps the facility explicitly empty after the last configured room is removed', () => {
     const plan: InfrastPlan = { rooms: { trading: [{ operators: ['伺夜'] }] } }
-    expect(removeInfrastFacilityRoom(plan, 'trading', 0)).toEqual({ rooms: {} })
+    expect(removeInfrastFacilityRoom(plan, 'trading', 0)).toEqual({ rooms: { trading: [] } })
     expect(appendInfrastFacilityRoom({ rooms: {} }, 'trading')).toEqual({ rooms: { trading: [{}] } })
     expect(readInfrastFacilityRooms(plan, 'trading')).toHaveLength(1)
     expect(readInfrastFacilityRooms(plan, 'missing')).toEqual([])

@@ -40,8 +40,8 @@ const facilityStateOptions = [
 ]
 
 const roomStateOptions = [
-  { value: 'shift', label: '换班' },
-  { value: 'keep', label: '保持原样' },
+  { value: 'shift', label: '更换干员' },
+  { value: 'keep', label: '保持干员' },
   { value: 'skip', label: '跳过' },
 ]
 
@@ -52,9 +52,9 @@ const facilityStateLabels: Record<InfrastFacilityState, string> = {
 }
 
 const roomStateHints: Record<InfrastRoomState, string> = {
-  shift: '填写干员后生效；全部留空时 Core 视为保持原样，不会清空房间。',
-  keep: '不更换干员与产物，房间保持当前进驻。',
-  skip: '跳过该房间的换人与换产物；无人机和设施级操作照常。',
+  shift: '填写干员后生效；全部留空时 Core 视为保持干员，不会清空房间。',
+  keep: '不更换干员，保持当前进驻；产物、排序等房间字段仍按配置处理。',
+  skip: '跳过该房间的换人、换产物与排序；无人机和设施级操作照常。',
 }
 
 function productOptions(facility: InfrastFacilityKey) {
@@ -73,9 +73,13 @@ interface RoomEditorProps {
 }
 
 function RoomEditor({ facility, index, room, disabled, onChange, onRemove }: RoomEditorProps) {
-  const state = getInfrastRoomState(room)
+  const state = getInfrastRoomState(room, facility)
   const isTraining = facility === 'training'
   const products = productOptions(facility)
+  const currentProduct = typeof room.product === 'string' ? room.product : ''
+  const productChoices = currentProduct && !products.some(product => product === currentProduct)
+    ? [currentProduct, ...products]
+    : products
 
   return (
     <div className="space-y-3 rounded-lg border border-(--app-border) p-3">
@@ -161,7 +165,10 @@ function RoomEditor({ facility, index, room, disabled, onChange, onRemove }: Roo
               label="产物"
               aria-label={`${getInfrastFacilityLabel(facility)}房间 ${index + 1}产物`}
               value={typeof room.product === 'string' ? room.product : ''}
-              options={[{ value: '', label: '不指定' }, ...products.map(product => ({ value: product, label: product }))]}
+              options={[
+                { value: '', label: '不指定' },
+                ...productChoices.map(product => ({ value: product, label: product })),
+              ]}
               disabled={disabled}
               onChange={value => onChange(setInfrastRoomProduct(room, value))}
             />

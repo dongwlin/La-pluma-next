@@ -51,10 +51,7 @@ export function appendInfrastFacilityRoom(plan: InfrastPlan, facility: string): 
 
 export function removeInfrastFacilityRoom(plan: InfrastPlan, facility: string, index: number): InfrastPlan {
   const rooms = readInfrastFacilityRooms(plan, facility).filter((_, current) => current !== index)
-  const nextRooms = { ...plan.rooms }
-  if (rooms.length === 0) delete nextRooms[facility]
-  else nextRooms[facility] = rooms
-  return { ...plan, rooms: nextRooms }
+  return { ...plan, rooms: { ...plan.rooms, [facility]: rooms } }
 }
 
 export function setInfrastRoomState(room: InfrastRoom, state: InfrastRoomState): InfrastRoom {
