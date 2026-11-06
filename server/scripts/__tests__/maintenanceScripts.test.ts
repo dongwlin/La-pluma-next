@@ -240,6 +240,7 @@ const ALL_MATERIALS_FIXTURE = {
       name: '固源岩',
       itemType: 'MATERIAL',
       classifyType: 'MATERIAL',
+      iconId: 'MTL_SL_G1',
       rarity: '1',
       stageDropList: [
         { stageId: 'main_01-07', occPer: 5000 },
@@ -262,6 +263,7 @@ describe('fetch-all-materials', () => {
       id: '30011',
       name: '固源岩',
       rarity: 1,
+      iconId: 'MTL_SL_G1',
       bestStages: [
         { stage: 'main_01-07', efficiency: 1, dropRate: 0.5 },
         { stage: 'main_02-01', efficiency: 1, dropRate: 0.25 }
