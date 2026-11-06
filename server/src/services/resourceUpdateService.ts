@@ -232,6 +232,11 @@ export function getMaaResourceInfo(): Promise<ResourceInfo> {
   return defaultService.getResourceInfo();
 }
 
+/** 解析 MaaCore 资源候选目录（基础资源与 hot-update 覆盖层）；解析失败时抛出。 */
+export function getMaaResourceDirs(): Promise<string[]> {
+  return readMaaResourceDirsFromCli();
+}
+
 /**
  * 同步 MAA 资源并返回更新后的信息。并发调用共享同一次更新；
  * 失败原样抛出且不自动重试。

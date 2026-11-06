@@ -76,6 +76,9 @@ vi.mock('@/features/runtime-status', () => ({
     return selector({ setMessage: mocks.setMessage })
   },
   FloatingStatusIndicator: () => null,
+  RuntimeDiagnosticsPanel: ({ command }: { command?: string }) => (
+    <div data-testid="runtime-diagnostics" data-command={command ?? ''} />
+  ),
   useAutomationAvailability: () => ({ isAvailable: true, unavailableMessage: '' }),
 }))
 
@@ -109,6 +112,38 @@ function activeRun(runId: string, state: AgentRun['state'] = 'running'): AgentRu
       self: `/api/agent/runs/${runId}`,
       stop: `/api/agent/actions/stop?runId=${runId}`,
     },
+  }
+}
+
+function roguelikeSummary() {
+  return {
+    command: 'roguelike' as const,
+    theme: 'Phantom',
+    status: 'success' as const,
+    observed: true,
+    message: '肉鸽结算：第 5 层',
+    settlement: {
+      gamePass: true,
+      floor: 5,
+      step: 10,
+      combat: 4,
+      recruit: 2,
+      collection: 6,
+      boss: 1,
+      emergency: 1,
+      difficulty: 9,
+      score: 1200,
+      exp: 320,
+      skill: '后勤分队',
+    },
+    investment: null,
+    events: [],
+    coppers: [],
+    milestones: [],
+    warnings: [],
+    strategy: null,
+    combats: 4,
+    taskChain: { started: true, completed: true, failed: false, stopped: false },
   }
 }
 
@@ -699,6 +734,33 @@ describe('RoguelikeTasks execution', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('肉鸽任务执行成功', 'success')
   })
 
+  it('feeds the page-owned run and the active command into the result panel', async () => {
+    useIdentity({ runId: 'run-1', operationId: 'run_task', scope: 'roguelike' })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-1')] })))
+    startController()
+    await flush()
+    await renderPage()
+
+    const resultPanel = () => container.querySelector<HTMLElement>('[aria-label="执行结果"]')
+    expect(resultPanel()?.textContent).toContain('执行中')
+    expect(container.querySelector('[data-testid="runtime-diagnostics"]')?.getAttribute('data-command'))
+      .toBe('roguelike')
+
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
+      lastRun: {
+        ...activeRun('run-1', 'succeeded'),
+        durationMs: 60_000,
+        result: { summary: roguelikeSummary() },
+      },
+    })))
+    await refreshController()
+
+    expect(resultPanel()?.textContent).toContain('肉鸽结算：第 5 层')
+    expect(resultPanel()?.textContent).toContain('成功')
+    expect(resultPanel()?.textContent).toContain('1 分 0 秒')
+    expect(resultPanel()?.textContent).toContain('1200')
+  })
+
   it('does not present another domain run as a roguelike execution', async () => {
     useIdentity({ runId: 'run-combat', operationId: 'run_task', scope: 'combat' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [activeRun('run-combat')] })))
@@ -963,6 +1025,18 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(container.querySelector('input[name="maa-reclamation-theme"]')).not.toBeNull()
     expect(Array.from(container.querySelectorAll('button[aria-pressed]'))
       .some(option => option.textContent?.includes('沙洲遗闻'))).toBe(true)
+  })
+
+  it('passes the active mode command to the result panel diagnostics', async () => {
+    await renderPage()
+
+    const diagnosticsCommand = () => container
+      .querySelector('[data-testid="runtime-diagnostics"]')
+      ?.getAttribute('data-command')
+    expect(diagnosticsCommand()).toBe('roguelike')
+
+    await click(findModeButton('生息演算')!)
+    expect(diagnosticsCommand()).toBe('reclamation')
   })
 
   it('keeps per-mode drafts while switching modes', async () => {
