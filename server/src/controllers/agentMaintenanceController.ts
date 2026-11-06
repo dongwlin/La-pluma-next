@@ -476,9 +476,9 @@ function describeResourceUpdateConflict(error: unknown, rejectedRunId: string): 
 }
 
 /**
- * 后台更新：在取得租约并通过 pre-start 门禁后返回接受载荷，实际结果经 Run 的
- * onSettled 收尾；门禁失败仍同步抛回调用方。更新子进程由 taskStatus 登记，
- * 停止与关闭流程按同一路径终止。
+ * 后台更新：`onBeforeStart` 只通过 Run 的准入门禁，等子进程真正就绪后的
+ * `onStarted` 再标记开始、复查 Run 状态并返回接受载荷；这样 202 与 spawn
+ * 之间到达的停止请求仍能终止刚启动的子进程。实际结果经 onSettled 收尾。
  */
 function startTrackedUpdate({
   label,
@@ -501,8 +501,8 @@ function startTrackedUpdate({
       });
     };
     const updateLifecycle: MaaProcessLifecycle = {
-      onBeforeStart: async () => {
-        await lifecycle.onBeforeStart?.();
+      onBeforeStart: () => lifecycle.onBeforeStart?.(),
+      onStarted: () => {
         if (started) return;
         started = true;
         lifecycle.onStarted?.();

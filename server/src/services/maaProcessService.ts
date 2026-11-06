@@ -1091,7 +1091,19 @@ function execMaaCommandWithEnv(
       // 维护命令（Core 安装/更新）经 managedTaskName 登记受管子进程：纳入
       // taskStatus 后，停止请求与关闭流程按同一任务进程路径识别并终止它。
       const managedTaskName = processPorts.managedTaskName || null;
+      const startedHandler = lifecycle.onStarted;
       let managedChildProcess: MaaChildProcess | null = null;
+      let startedNotified = false;
+      // 子进程对象就绪后先登记 taskStatus，再通知生命周期：停止请求与关闭流程
+      // 按同一投影识别维护子进程，onStarted 里的 Run 状态复查也能对它发信号。
+      const registerChildProcess = (childProcess: MaaChildProcess): void => {
+        managedChildProcess = childProcess;
+        if (managedTaskName) setTaskStatus(true, managedTaskName, taskType, childProcess);
+        if (startedNotified) return;
+        startedNotified = true;
+        startedHandler?.({ childProcess, command: fullCommand });
+      };
+      const wantsChildProcess = Boolean(managedTaskName) || typeof startedHandler === 'function';
       // TS 控制流看不到 onChild 回调内的赋值：finally 经闭包读取以保留联合类型。
       const registeredChildProcess = (): MaaChildProcess | null => managedChildProcess;
       try {
@@ -1105,12 +1117,7 @@ function execMaaCommandWithEnv(
               timeout: execFileTimeoutMs,
               killSignal: 'SIGKILL'
             },
-            managedTaskName
-              ? childProcess => {
-                  managedChildProcess = childProcess;
-                  setTaskStatus(true, managedTaskName, taskType, childProcess);
-                }
-              : undefined
+            wantsChildProcess ? registerChildProcess : undefined
           ),
           execFileTimeoutMs
         );
@@ -1121,6 +1128,13 @@ function execMaaCommandWithEnv(
           command: fullCommand
         };
       } catch (error) {
+        const childProcess = registeredChildProcess();
+        const stopped = childProcess !== null
+          && taskStatus.process === childProcess
+          && taskStatus.stopRequested;
+        if (stopped) {
+          throw Object.assign(new Error('任务已终止'), { stopped: true });
+        }
         const errorMessage = errorMessageOf(error);
         const stderr = errorStderrOf(error);
         const combinedError = `${errorMessage}\n${stderr}`;
