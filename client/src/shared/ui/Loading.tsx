@@ -315,25 +315,27 @@ function RoguelikeSkeleton() {
   return (
     <div className="roguelike-workspace-grid workbench-skeleton" aria-hidden="true">
       <div className="roguelike-mode-area"><ModeControlSkeleton variant="roguelike" /></div>
-      <SmoothPanel className="roguelike-panel roguelike-theme-panel">
-        <PanelHeadingSkeleton className="roguelike-panel-heading" showIcon={false} />
-        <div className="roguelike-panel-body">
-          <div className="roguelike-theme-grid">
-            {Array.from({ length: 5 }, (_, index) => (
-              <div key={index} className="roguelike-theme-option">
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <Skeleton variant="text" className="h-3 w-20 max-w-full" />
-                  <Skeleton variant="text" className="h-2 w-14 max-w-full" />
+      <div className="roguelike-main-column">
+        <SmoothPanel className="roguelike-panel roguelike-theme-panel">
+          <PanelHeadingSkeleton className="roguelike-panel-heading" showIcon={false} />
+          <div className="roguelike-panel-body">
+            <div className="roguelike-theme-grid">
+              {Array.from({ length: 5 }, (_, index) => (
+                <div key={index} className="roguelike-theme-option">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Skeleton variant="text" className="h-3 w-20 max-w-full" />
+                    <Skeleton variant="text" className="h-2 w-14 max-w-full" />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="roguelike-custom-theme mt-4 space-y-2">
+              <Skeleton variant="text" className="h-2.5 w-24" />
+              <Skeleton variant="rect" className="h-10 rounded-xl" />
+            </div>
           </div>
-          <div className="roguelike-custom-theme mt-4 space-y-2">
-            <Skeleton variant="text" className="h-2.5 w-24" />
-            <Skeleton variant="rect" className="h-10 rounded-xl" />
-          </div>
-        </div>
-      </SmoothPanel>
+        </SmoothPanel>
+      </div>
       <SmoothPanel className="roguelike-panel roguelike-settings-panel">
         <PanelHeadingSkeleton className="roguelike-panel-heading" showIcon={false} />
         <div className="roguelike-panel-body roguelike-settings-body">
