@@ -78,7 +78,7 @@ const depot = unwrapApiResponse(result)
 
 仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标与干员头像不是端点：`getItemIconUrl` / `getOperatorAvatarUrl` 只生成同源 `/game-assets` URL，由浏览器缓存，不进入 Query；URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
 
-图片由服务端读取本地 MAA 资源：物品图标来自 `template/items/`，文件按**物品 id** 命名（`<itemId>.png`）；干员头像来自 `template/avatar/`，按**干员 id** 命名（`<operatorId>.png`，变体追加 `_1`、`_2`）。`getItemIconUrl` 的物品键使用物品 id；服务端同时接受 `item_table.json` 的 `iconId`（如 `GOLD`），在本地 item_table 可用时与物品 id 双向解析（大小写不敏感、重复 iconId 逐个尝试），因此沿用 iconId 的旧调用与按 iconId 命名的图片目录也能命中。item_table 不可用时只按文件名直连；未知键返回空 404，客户端隐藏该图并显示占位。`LA_PLUMA_GAME_ASSET_DIR` 可指向含 `item/`、`avatar/` 的自定义目录，文件名规则相同。
+图片由服务端读取本地 MAA 资源：物品图标来自 `template/items/`，文件按**物品 id** 命名（`<itemId>.png`）；干员头像来自 `template/avatar/`，按**干员 id** 命名（`<operatorId>.png`）。变体头像以 `_1`、`_2` 后缀命名，但 MAA 标准资源只提供基础头像，变体需由 `LA_PLUMA_GAME_ASSET_DIR` 指向的自定义目录提供。`getItemIconUrl` 的物品键使用物品 id；服务端同时接受 `item_table.json` 的 `iconId`（如 `GOLD`），在本地 item_table 可用时与物品 id 双向解析（大小写不敏感、重复 iconId 逐个尝试），因此沿用 iconId 的旧调用与按 iconId 命名的图片目录也能命中。item_table 不可用时只按文件名直连；未知键返回空 404，客户端隐藏该图并显示占位。`LA_PLUMA_GAME_ASSET_DIR` 可指向含 `item/`、`avatar/` 的自定义目录，文件名规则相同。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
@@ -116,9 +116,9 @@ const depot = unwrapApiResponse(result)
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
-| `getVersion(signal?)` | `GET /agent/version` | `cli`/`core`/`raw` 为字符串 |
+| `getVersion(signal?)` | `GET /agent/version` | `cli`/`core`/`raw` 为字符串；服务端另返回 `updateChannels`（`{ core, cli }`），旧服务端可能缺失，不参与载荷校验 |
 | `getConfigDir(signal?)` | `GET /agent/config-directory` | 非空字符串或含非空 `path` 的对象；返回类型 `string \| { path: string }` |
-| `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | `{ connection, instance_options }`：`connection` 为对象且已知字段出现时为正确类型（`adb_path`/`address`/`config`/`preset` 字符串，`auto_reconnect` 布尔），`instance_options` 出现时为对象；兼容旧版直接返回 connection 段的扁平载荷；缺失字段允许 |
+| `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | `{ connection, instance_options }`：`connection` 为对象且已知字段出现时为正确类型（`adb_path`/`address`/`config` 字符串，`auto_reconnect` 布尔），`instance_options` 出现时为对象；兼容旧版直接返回 connection 段的扁平载荷；缺失字段允许；`preset` 不在客户端校验范围内，由服务端读取时归一、保存时校验 |
 | `getResourceSource(signal?)` | `GET /agent/config/resource-source` | `{ autoUpdate, warnOnUpdateFailure, source, git, mirrorchyan }`：布尔开关、`source` 为 `git`/`mirrorchyan`、两个来源为对象 |
 | `discoverDevices(adbPath, signal?)` | `GET /agent/actions/discover-devices` | 对象（保留内层 `success=false` 的设备发现结果） |
 | `testConnection(adbPath?, address?, signal?)` | `POST /agent/actions/test-connection` | 命令；由调用方归一 `success`/`message`，不进入 Query |
