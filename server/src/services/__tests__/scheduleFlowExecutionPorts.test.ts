@@ -192,6 +192,47 @@ describe('schedule flow boundaries', () => {
     assert.match(result.summary.actions[0].message, /已进入游戏主界面/);
   });
 
+  it('normalizes a blank startup client type and falls back to the connection profile', async () => {
+    const checkedClientTypes: string[] = [];
+    const { ports, calls } = createPorts({
+      resolveConnection: async () => ({
+        adbPath: 'adb',
+        address: '127.0.0.1:5555',
+        clientType: 'YoStarJP'
+      }),
+      getGameClientState: async (_adbPath, _address, clientType) => {
+        checkedClientTypes.push(clientType);
+        return { running: true, foregroundPackage: 'com.hypergryph.arknights' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute([{
+      id: 'startup-blank',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: { clientType: '', start_game_enabled: false }
+    }], 'startup-blank-client'));
+
+    assert.equal(calls.dynamicTasks.length, 1);
+    assert.equal(calls.dynamicTasks[0].clientType, undefined);
+    assert.deepEqual(checkedClientTypes, ['YoStarJP']);
+
+    calls.dynamicTasks.length = 0;
+    checkedClientTypes.length = 0;
+    await completedResult(await executor.execute([{
+      id: 'startup-explicit',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: { clientType: 'Bilibili', start_game_enabled: false }
+    }], 'startup-explicit-client'));
+
+    assert.equal(calls.dynamicTasks[0].clientType, 'Bilibili');
+    assert.deepEqual(checkedClientTypes, ['Bilibili']);
+  });
+
   it('rejects invalid game task plans while retaining generic dynamic tasks', () => {
     const makeTask = (taskType: string, params: Record<string, unknown>) => [{
       id: 'dynamic-1', name: '动态任务', enabled: true, taskType, params
@@ -756,6 +797,99 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.drops[0].sanityBefore, 50);
     assert.equal(calls.drops[0].maxSanity, 135);
     assert.match(calls.drops[0].recordKey || '', /^flow-zero-drop:\d+:fight-1:CE-6:0$/);
+  });
+
+  it('falls back to the fight summary when structured callbacks are missing', async () => {
+    const { ports, calls } = createPorts({
+      readLogSince: async () => 'no structured fight callbacks',
+      executeCommand: async (command, args, taskName) => {
+        calls.commands.push({ command, args, taskName });
+        return { stdout: 'Fight 1-7 3 times, total drops: 龙门币 × 252', stderr: '' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: '1-7', times: 3 }
+      }
+    ], 'flow-summary-fallback'));
+
+    assert.equal(calls.drops.length, 1);
+    assert.equal(calls.drops[0].stage, '1-7');
+    assert.equal(calls.drops[0].times, 3);
+    assert.equal(calls.drops[0].sanity, 60);
+    assert.deepEqual(calls.drops[0].items, [{ name: '龙门币', count: 252 }]);
+    assert.equal(calls.drops[0].medicine, 0);
+    assert.equal(calls.drops[0].stone, 0);
+    assert.match(calls.drops[0].recordKey || '', /^flow-summary-fallback:\d+:fight-1:1-7:0$/);
+  });
+
+  it('warns instead of silently skipping fight results without drop information', async () => {
+    const warnings: Array<{ message: string; data?: unknown }> = [];
+    const { ports, calls } = createPorts({
+      readLogSince: async () => '',
+      executeCommand: async () => ({ stdout: '', stderr: '' })
+    });
+    const executor = createScheduleFlowExecutor({
+      ports,
+      logger: {
+        ...silentLogger,
+        warn: (message: string, data?: unknown) => {
+          warnings.push({ message, data });
+        }
+      }
+    });
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: 'CE-6', times: 1 }
+      }
+    ], 'flow-no-drop-info'));
+
+    assert.equal(calls.drops.length, 0);
+    assert.ok(warnings.some(warning => /掉落/.test(warning.message)
+      && (warning.data as { scheduleId?: string }).scheduleId === 'flow-no-drop-info'
+      && (warning.data as { stage?: string }).stage === 'CE-6'));
+  });
+
+  it('keeps structured fight statistics ahead of the stdout summary', async () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const { ports, calls } = createPorts({
+      readLogSince: async () => [
+        callback('FightTimes', { times_finished: 1, sanity_cost: 21 }),
+        callback('StageDrops', {
+          stage: { stageCode: 'CE-6' },
+          stars: 3,
+          drops: [],
+          stats: []
+        })
+      ].join('\n'),
+      executeCommand: async () => ({ stdout: 'Fight 1-7 3 times, total drops: 龙门币 × 252', stderr: '' })
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: '1-7', times: 3 }
+      }
+    ], 'flow-structured-priority'));
+
+    assert.equal(calls.drops.length, 1);
+    assert.equal(calls.drops[0].stage, 'CE-6');
+    assert.equal(calls.drops[0].times, 1);
+    assert.equal(calls.drops[0].sanity, 21);
+    assert.deepEqual(calls.drops[0].items, []);
   });
 
   it('keeps the selected series when a single stage also sets times', async () => {

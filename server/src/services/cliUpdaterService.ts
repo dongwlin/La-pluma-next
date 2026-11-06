@@ -1,4 +1,5 @@
-import { access, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, realpath, stat } from 'node:fs/promises';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
 import { execMaaCommandUnlocked } from './maaProcessService.ts';
@@ -37,7 +38,9 @@ export interface CliUpdaterRunOptions {
 
 async function isExecutable(path: string): Promise<boolean> {
   try {
-    await access(path);
+    const fileStat = await stat(path);
+    if (!fileStat.isFile()) return false;
+    await access(path, constants.X_OK);
     return true;
   } catch {
     return false;
@@ -46,10 +49,11 @@ async function isExecutable(path: string): Promise<boolean> {
 
 async function resolveExecutable(command: string, env: NodeJS.ProcessEnv): Promise<string | null> {
   if (isAbsolute(command)) {
+    if (!(await isExecutable(command))) return null;
     try {
       return await realpath(command);
     } catch {
-      return await isExecutable(command) ? command : null;
+      return command;
     }
   }
   if (command.includes('/') || command.includes('\\')) {

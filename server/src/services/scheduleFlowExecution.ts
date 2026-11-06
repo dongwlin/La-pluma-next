@@ -227,6 +227,11 @@ function configuredStageOf(params: ScheduledTaskParams | undefined): string {
   return String(stage || params?.stage || '');
 }
 
+function explicitClientTypeOf(value: unknown): string | undefined {
+  const clientType = typeof value === 'string' ? value.trim() : '';
+  return clientType || undefined;
+}
+
 /**
  * 创建流程执行器。每个实例独占一份执行状态、停止信号和任务进度，
  * 同一进程只应在组装处创建一个实例，保证异步流程只有一个执行所有者。
@@ -331,15 +336,14 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     statistics: FightStructuredStatistics | null,
     summary: FlowTaskSummary | null,
     scheduleId: string,
-    recordKey: string
+    recordKey: string,
+    fallbackStage = ''
   ) {
-    if (!statistics) return;
-    const stage = statistics.stage || summary?.stage || '';
-    if (!stage) return;
-    if (!statistics.observed.stageDrops && !statistics.observed.fightTimes) return;
+    const stage = statistics?.stage || String(summary?.stage || '').trim() || fallbackStage;
+    let input: DropRecordInput | null = null;
 
-    try {
-      await recordDrops({
+    if (stage && statistics && (statistics.observed.stageDrops || statistics.observed.fightTimes)) {
+      input = {
         stage,
         times: statistics.battles,
         items: statistics.drops,
@@ -349,12 +353,36 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         recordKey,
         ...(statistics.sanityBeforeStage === undefined ? {} : { sanityBefore: statistics.sanityBeforeStage }),
         ...(statistics.maxSanity === undefined ? {} : { maxSanity: statistics.maxSanity })
-      });
+      };
+    } else {
+      const summaryStage = String(summary?.stage || '').trim();
+      const summaryItems = summary && Array.isArray(summary.dropItems) ? summary.dropItems : [];
+      if (summaryStage && summaryItems.length > 0) {
+        const times = Math.max(1, Number(summary?.times) || 1);
+        input = {
+          stage: summaryStage,
+          times,
+          items: summaryItems,
+          sanity: times * 20,
+          medicine: Math.max(0, Number(summary?.medicine) || 0),
+          stone: Math.max(0, Number(summary?.stone) || 0),
+          recordKey
+        };
+      }
+    }
+
+    if (!input) {
+      logger.warn('未能获取战斗掉落信息，跳过掉落记录', { scheduleId, stage });
+      return;
+    }
+
+    try {
+      await recordDrops(input);
       logger.debug('掉落记录已保存', {
         scheduleId,
-        stage,
-        times: statistics.battles,
-        sanity: statistics.sanity
+        stage: input.stage,
+        times: input.times,
+        sanity: input.sanity
       });
     } catch (error) {
       logger.error('掉落记录保存失败', { scheduleId, error: errorMessageOf(error) });
@@ -671,8 +699,9 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             }
 
             const { command, params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
+            const startupClientType = explicitClientTypeOf(task.params.clientType);
             if (taskConfig) {
-              await executeDynamicTask(params, taskConfig, task.name, null, true, task.params.clientType);
+              await executeDynamicTask(params, taskConfig, task.name, null, true, startupClientType);
             } else {
               const args = params ? params.split(' ').filter(arg => arg) : [];
               await executeCommand(command, args, task.name, null, true);
@@ -686,7 +715,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               const gameState = await getGameClientState(
                 adbConfig.adbPath,
                 adbConfig.address,
-                task.params.clientType || DEFAULT_CLIENT_TYPE
+                startupClientType || sharedConnection.clientType || DEFAULT_CLIENT_TYPE
               );
               if (!gameState.running) {
                 throw new Error(`游戏未在前台，当前应用：${gameState.foregroundPackage || '未知'}`);
@@ -1089,7 +1118,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                     fightStatistics,
                     summary,
                     scheduleId,
-                    `${executionRecordKey}:${task.id}:${stage}:${i}`
+                    `${executionRecordKey}:${task.id}:${stage}:${i}`,
+                    stage
                   );
                   addFightAction(createFightExecutionAction(`${task.name} (${stage})`, stage, {
                     summary,
@@ -1220,7 +1250,8 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               fightStatistics,
               parsedTaskSummary,
               scheduleId,
-              `${executionRecordKey}:${task.id}:${fightStage}:0`
+              `${executionRecordKey}:${task.id}:${fightStage}:0`,
+              fightStage
             );
             const output = (result.stdout || '') + (result.stderr || '');
             const fightAction = createFightExecutionAction(task.name, fightStage, {

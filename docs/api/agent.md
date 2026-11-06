@@ -165,12 +165,14 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
 
 `update-cli`（body 可选 `channel`）与 `hot-update-resources` 共用同一响应形状：默认同步返回既有领域字段并新增 `runId`、`run`、`pollUrl`、`stopUrl`；`waitForCompletion=false` 在取得执行权后返回 202。失败保留既有 `AGENT_MAA_UPDATE_CORE_FAILED`、`AGENT_MAA_UPDATE_CLI_FAILED`、`AGENT_MAA_RESOURCE_UPDATE_FAILED` 错误码，并把同一错误模型写入 `run.error`。三类更新与自动化、日常流程共用执行租约，占用时返回 409；`dryRun` 仍只返回计划，不创建 Run。
 
+`update-core` 成功载荷的 `steps.core.success` 与 `steps.resources.success` 由实测状态派生（布尔值，不是固定 `true`），并携带 `channelPersisted`：核心安装/更新及其内置资源同步成功、但请求的渠道未能写入 `cli.toml` 时仍返回 200，`channelPersisted === false` 且 `message` 明确“渠道配置未能持久化”，不声称已切换。core 命令成功后的失败按失败步骤归因：资源状态无法确认返回 `AGENT_MAA_UPDATE_RESOURCE_FAILED`（`details.failedStep === 'resources'`、`coreUpdated === true`，实测 `runtime` 一并返回），版本刷新失败返回 `AGENT_MAA_UPDATE_CORE_FAILED`（`details.failedStep === 'runtime'`、`coreUpdated === true`）；只有 core 命令本身失败才写 `failedStep: 'core'` 与 `coreUpdated: false`。客户端据此在 core 已更新但资源未确认时提供资源重试入口。
+
 资源热更新在同一时间只执行一次，但不排队也不复用首个请求的结果：已有 `hot-update-resources` 进行中时，后到请求会先创建本次 Run，再立即以 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（`retryable: true`）失败，而不是等待首个更新结束后才报错。`error.details.activeRunId`/`activeRunState` 指向正在进行的 Run，`error.details.runId`/`run` 是本次被拒绝并写入 `failed` 的 Run，`message` 给出可读提示；首个更新结束（成功、失败或停止）后可用同一请求重新发起。
 
 维护端点还包括更新渠道与资源源配置。它们只读写 maa-cli 的 `cli.toml`，属于配置读写而不是执行动作：
 
 ```bash
-# 读取已保存的更新渠道；缺省或读取失败时回落到 stable
+# 读取已保存的更新渠道；cli.toml 缺失时回落到 stable，损坏或不可读时带 degraded 标记
 curl 'http://localhost:3000/api/agent/update-channels'
 
 # 保存更新渠道：scope 为 core（stable/beta/alpha）或 cli（stable/beta/nightly）
@@ -187,9 +189,9 @@ curl -X POST http://localhost:3000/api/agent/config/resource-source \
   -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git","url":"https://github.com/MaaAssistantArknights/MaaResource.git","branch":null,"useSshAgent":false,"sshKey":null},"mirrorchyan":{"checkInterval":600}}'
 ```
 
-`GET /api/agent/update-channels` 返回 `{ core, cli }`；`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`，响应只回显凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文；请求未提供凭据时保留已保存值。这四个端点与更新命令不同：它们不创建 Run、不占用执行租约，也不出现在 manifest/OpenAPI 中。
+`GET /api/agent/update-channels` 返回 `{ core, cli }`；`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`cli.toml` 缺失时按缺省值返回；文件损坏或不可读时同样返回缺省值，但额外携带 `degraded: true` 并记录错误日志，调用方据此提示“沿用默认渠道”而不是把默认值当成已保存配置。`GET /version` 的 `updateChannels` 沿用该形状；其 `resource` 在部分候选资源目录读取失败但仍有可用信息时也携带 `degraded: true`，仅当全部候选目录都不可读时版本信息才回退为 `unknown`。`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`，响应只回显凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文；请求未提供凭据时保留已保存值。切换 Git/MirrorChyan 来源时，非活动来源已保存的字段（SSH 凭据、CDK、检查间隔等）与非本页管理的未知键一起保留在同一张 `[resource.source]` 表内，并在之后的读取与切回时继续可见；`git.url` 保存时校验 scheme（`http`/`https`/`ssh`/`git`/`file` 或 `[user@]host:path`），其它写法返回 `AGENT_RESOURCE_SOURCE_INVALID`（`details.field === 'git.url'`，不回显 URL 以免泄露凭据），空白仍回落到官方仓库默认值。这四个端点与更新命令不同：它们不创建 Run、不占用执行租约，也不出现在 manifest/OpenAPI 中。
 
-更新相关端点另有参数错误码：`AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID`（400，`details.channel`）与 `AGENT_MAA_UPDATE_CLI_UNSUPPORTED`（409，`retryable: false`，`details.channel`/`source`；`dryRun` 不拦截不支持的安装来源）来自 `update-cli`；`AGENT_UPDATE_CHANNEL_SCOPE_INVALID`（400，`details.scope`）、`AGENT_UPDATE_CHANNEL_INVALID`（400，`details.scope`/`channel`）与 `AGENT_RESOURCE_SOURCE_INVALID`（400，`details.field`，`retryable: false`）来自渠道与资源源写入。
+更新相关端点另有参数错误码：`AGENT_MAA_UPDATE_CORE_CHANNEL_INVALID`（400，`details.version`，仅当显式传入且不是 `stable`/`beta`/`alpha`；校验先于读取 `cli.toml`）来自 `update-core`；`AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID`（400，`details.channel`）与 `AGENT_MAA_UPDATE_CLI_UNSUPPORTED`（409，`retryable: false`，`details.channel`/`source`；`dryRun` 不拦截不支持的安装来源）来自 `update-cli`；`AGENT_UPDATE_CHANNEL_SCOPE_INVALID`（400，`details.scope`）、`AGENT_UPDATE_CHANNEL_INVALID`（400，`details.scope`/`channel`）与 `AGENT_RESOURCE_SOURCE_INVALID`（400，`details.field`，`retryable: false`）来自渠道与资源源写入。
 
 理智作战按关卡逐条执行：`stages` 中每一项生成一次 `maa-cli fight <stage> [--times <n>]` 调用，共享 `medicine`/`medicineExpireDays`/`stone`/`series` 选项。`medicineExpireDays` 使用 `--medicine-expire-days` 按“过期天数”选择临期理智药；旧调用方仍可传 `expiringMedicine`（按瓶数），映射到已弃用但仍可用的 `--expiring-medicine`。`series` 范围为 `-1~10`，旧资源只接受 `-1~6`。参数超出范围或不是整数时返回 400 `AGENT_VALIDATION_FIGHT_OPTIONS_INVALID`；多个关卡不会拼接成逗号分隔的单个参数，含逗号的旧式关卡串仍会拆成逐关调用。整个 Run 由逐关执行结果统一结算，任一关真实失败或收到停止都会阻止后续关卡并写入终态；`waitForCompletion=false` 在首关取得执行权后返回 202，期间 Run 保持 `running`；按目标 `runId` 停止会终止当前关，最终为 `stopped`。同步完成响应与 Run 终态的 `result.stages` 逐关给出 `status`（`success`/`skipped`/`stopped`/`pending`）、`message` 与该关输出，`result.stopped` 表示整个 Run 是否因停止结束。关卡未开放记为 `skipped` 并继续下一关，理智耗尽记为 `skipped` 并跳过所有剩余关卡；活动代号映射（`hd-N`）与关卡开放预检属于日常流程任务，本入口按请求中的关卡代号原样下发。`dryRun` 的 `plan.stages` 列出每一关的完整参数，`plan.args` 保留首关参数以兼容既有读取方。
 
@@ -281,7 +283,7 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 - `tasks` 为非空数组，数组顺序即执行顺序。每项必须提供 `name` 与 `type`，`params` 可省略；可选 `strategy` 为 `first`（默认）或 `merge`，`variants` 为上游变体数组。
 - `condition` 是上游 `variants` 项的字段，只能写在 `variants[i].condition`；任务对象或 `tasks` 容器顶层出现 `condition`、未知字段或非法 `strategy` 都会在创建 Run 前返回 400。条件本身由 maa-cli 在每个任务开始时求值，La Pluma Next 只校验结构并透传。
 - 每个任务使用独立临时任务文件执行，但整个数组共享同一执行租约。结果按索引归档到 `run.result.tasks[i]`，字段为 `index`（0 基）、`name`、`type`、`status`（`success`/`failed`/`stopped`/`pending`）、`message`、`stdout`、`stderr`；游戏任务项另带 `actions`。顶层 `run.result.actions` 按顺序汇总所有任务的游戏动作。
-- 部分失败不会吞掉其它任务结果：某个任务失败后仍继续执行后续任务；全部结束后 Run 为 `failed`，错误码 `AGENT_DYNAMIC_TASKS_FAILED`，`error.details.taskIndexes` 给出失败任务索引，`error.details.tasks` 保留完整的逐项结果（已成功、失败与未执行项）。单任务失败仍沿用原有错误码（如 `AGENT_GAME_TASK_FAILED`）与结果字段。
+- 部分失败不会吞掉其它任务结果：某个任务失败后仍继续执行后续任务；全部结束后 Run 为 `failed`，错误码 `AGENT_DYNAMIC_TASKS_FAILED`，`error.details.taskIndexes` 给出失败任务索引，`error.details.tasks` 保留逐项结果（已成功、失败与未执行项）。为限制持久化的错误体积，`error.details.tasks[i].stdout`/`stderr` 每项截断到 4096 字符，并在被截断时带 `stdoutTruncated`/`stderrTruncated: true`；完整输出保留在同一次 Run 的 `result.tasks[i]`（后台执行经终态结果返回）。单任务失败仍沿用原有错误码（如 `AGENT_GAME_TASK_FAILED`）与结果字段。
 - 停止以 Run 为目标并保持幂等：正在执行的任务收到设备停止并记为 `stopped`，后续任务不再启动并保持 `pending`；重复停止沿用 Run 层的 `stopping`/终态保护。`waitForCompletion=false` 时任务链在后台继续，202 只表示首个任务已启动，终态仍以 Run 为准。
 - 变体条件全部不匹配的任务不会产生设备动作，maa-cli 正常退出时该项按成功结算。`variants` 与 `strategy` 只作用于动态任务通路，不改变 `fight`、`copilot` 等语义化动作的参数语义。
 ### 肉鸽与生息演算的高级参数

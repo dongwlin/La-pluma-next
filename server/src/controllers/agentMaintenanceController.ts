@@ -37,6 +37,7 @@ import {
   readUpdateChannels,
   saveUpdateChannel
 } from '../services/updateChannelService.ts';
+import type { CoreUpdateChannel } from '../services/updateChannelService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
@@ -476,9 +477,9 @@ function describeResourceUpdateConflict(error: unknown, rejectedRunId: string): 
 }
 
 /**
- * 后台更新：在取得租约并通过 pre-start 门禁后返回接受载荷，实际结果经 Run 的
- * onSettled 收尾；门禁失败仍同步抛回调用方。更新子进程由 taskStatus 登记，
- * 停止与关闭流程按同一路径终止。
+ * 后台更新：`onBeforeStart` 只通过 Run 的准入门禁，等子进程真正就绪后的
+ * `onStarted` 再标记开始、复查 Run 状态并返回接受载荷；这样 202 与 spawn
+ * 之间到达的停止请求仍能终止刚启动的子进程。实际结果经 onSettled 收尾。
  */
 function startTrackedUpdate({
   label,
@@ -501,8 +502,8 @@ function startTrackedUpdate({
       });
     };
     const updateLifecycle: MaaProcessLifecycle = {
-      onBeforeStart: async () => {
-        await lifecycle.onBeforeStart?.();
+      onBeforeStart: () => lifecycle.onBeforeStart?.(),
+      onStarted: () => {
         if (started) return;
         started = true;
         lifecycle.onStarted?.();
@@ -541,10 +542,25 @@ function coreUpdatePayload(
     plan,
     steps: {
       core: { success: true, output: result.output },
-      resources: { success: true, output: '' }
+      resources: { success: result.resource.status !== 'unknown', output: '' }
     },
+    channelPersisted: result.channelPersisted,
     runtime: { ...result.runtime, resource: result.resource }
   };
+}
+
+/** 渠道持久化失败不改变更新成功结论，但成功文案不能声称已切换渠道。 */
+function coreUpdateSuccessMessage(result: unknown, requestedChannel: CoreUpdateChannel | null): string {
+  const channelPersisted = !(typeof result === 'object'
+    && result !== null
+    && 'channelPersisted' in result
+    && result.channelPersisted === false);
+  if (requestedChannel) {
+    return channelPersisted
+      ? `已切换到 ${requestedChannel} 渠道并同步最新资源`
+      : `MaaCore 已更新并同步最新资源，但 ${requestedChannel} 渠道配置未能持久化，后续更新可能仍使用原渠道`;
+  }
+  return channelPersisted ? 'MaaCore 和资源已更新' : 'MaaCore 和资源已更新，但渠道配置未能持久化';
 }
 
 function cliUpdatePayload(
@@ -564,9 +580,16 @@ function resourceUpdatePayload(
 export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const { version, dryRun } = parseUpdateCoreBody(req.body);
   const waitForCompletion = parseUpdateWaitForCompletion(req.body);
-  const channels = await readUpdateChannels();
   const requestedChannel = isCoreUpdateChannel(version) ? version : null;
-  const targetChannel = requestedChannel ?? (version === undefined ? channels.core : 'current');
+  if (version !== undefined && version !== null && requestedChannel === null) {
+    return sendError(res, req, agentError('AGENT_MAA_UPDATE_CORE_CHANNEL_INVALID', '不支持的 MaaCore 更新渠道', {
+      statusCode: 400,
+      details: { version }
+    }));
+  }
+  const targetChannel = requestedChannel ?? (version === undefined
+    ? (await readUpdateChannels()).core
+    : 'current');
   const corePlan: MaintenanceUpdatePlanStep = requestedChannel
     ? { action: 'update-core', targetChannel: requestedChannel, command: 'install', args: [requestedChannel, '--force'] }
     : { action: 'update-core', targetChannel, command: 'update', args: [] };
@@ -595,7 +618,7 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
         task: run
       });
     },
-    successMessage: version ? `已切换到 ${String(version)} 渠道并同步最新资源` : 'MaaCore 和资源已更新',
+    successMessage: result => coreUpdateSuccessMessage(result, requestedChannel),
     acceptedMessage: 'MaaCore 更新已接受',
     stoppedMessage: 'MaaCore 更新已终止'
   });
@@ -604,7 +627,6 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
 export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const { channel, dryRun } = parseUpdateCliBody(req.body);
   const waitForCompletion = parseUpdateWaitForCompletion(req.body);
-  const channels = await readUpdateChannels();
   const explicitChannel = isCliUpdateChannel(channel) ? channel : null;
   if (channel !== undefined && explicitChannel === null) {
     return sendError(res, req, agentError('AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID', '不支持的 MAA CLI 更新渠道', {
@@ -612,6 +634,7 @@ export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter)
       details: { channel }
     }));
   }
+  const channels = await readUpdateChannels();
   const targetChannel = explicitChannel ?? channels.cli;
   const capabilities = await readCliUpdateCapabilities();
   const updater = await buildCliUpdaterPlan(targetChannel, {

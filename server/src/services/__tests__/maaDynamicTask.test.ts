@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { execDynamicTask, execDynamicTasks } from '../maaExecutionService.ts'
+import { MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS, execDynamicTask, execDynamicTasks } from '../maaExecutionService.ts'
 import type {
   MaaDynamicTaskRuntime,
+  MaaDynamicTaskErrorStep,
   MaaDynamicTasksBackgroundStart,
   MaaDynamicTasksOutput
 } from '../maaExecutionService.ts'
@@ -130,7 +131,11 @@ describe('dynamic task lifecycle', () => {
 
   it('prefers an explicit client type override for the generated task file', async () => {
     const { events, runtime } = createRuntime()
-    runtime.resolveClientType = async () => 'YoStarEN'
+    let resolved = 0
+    runtime.resolveClientType = async () => {
+      resolved += 1
+      return 'YoStarEN'
+    }
     runtime.clientType = 'Bilibili'
     await execDynamicTask(
       'startup',
@@ -148,6 +153,34 @@ describe('dynamic task lifecycle', () => {
       type: 'StartUp',
       params: { start_game_enabled: false }
     }])
+    assert.equal(resolved, 0)
+  });
+
+
+  it('falls back to the connection profile when the runtime client type is blank', async () => {
+    for (const blank of ['', '   ']) {
+      const { events, runtime } = createRuntime()
+      runtime.resolveClientType = async () => 'YoStarEN'
+      runtime.clientType = blank
+      await execDynamicTask('award', { name: '领取奖励', type: 'Award', params: {} }, '领取奖励', 'agent', true, false, runtime)
+      assert.equal(parse(String(findTaskFileWrite(events)[2])).client_type, 'YoStarEN')
+    }
+  })
+
+
+  it('falls back to the connection profile when the task config client type is blank', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'YoStarEN'
+    await execDynamicTask(
+      'startup',
+      { name: '启动游戏', type: 'StartUp', params: { start_game_enabled: false, client_type: '' } },
+      '启动游戏',
+      'automation',
+      true,
+      false,
+      runtime
+    )
+    assert.equal(parse(String(findTaskFileWrite(events)[2])).client_type, 'YoStarEN')
   });
 
 
@@ -480,6 +513,58 @@ describe('dynamic multi-task lifecycle', () => {
     assert.equal(events.filter(event => event[0] === 'execute').length, 3)
   })
 
+  it('bounds per-task stdout and stderr in the aggregate failure details', async () => {
+    const longOutput = 'x'.repeat(20_000)
+    const { runtime } = createRuntime()
+    runtime.executeCommand = async (command, args, taskName) => {
+      if (String(taskName).includes('(2/3)')) {
+        throw Object.assign(new Error('第二个任务失败'), {
+          code: 'CORE_PROCESS_FAILED',
+          statusCode: 500,
+          stdout: longOutput,
+          stderr: `err-${longOutput}`
+        })
+      }
+      return { stdout: `ok-${String(taskName)}`, stderr: '', command: 'run' }
+    }
+
+    await assert.rejects(
+      execDynamicTasks(
+        'multi',
+        [
+          { name: '领取奖励', type: 'Award', params: {} },
+          { name: '仓库识别', type: 'Depot', params: {} },
+          { name: '基建换班', type: 'Infrast', params: {} }
+        ],
+        '多任务',
+        'automation',
+        true,
+        false,
+        runtime
+      ),
+      error => {
+        assert.ok(error instanceof Error)
+        const failure = error as Error & {
+          details?: { tasks?: Array<MaaDynamicTaskErrorStep> }
+        }
+        const tasks = failure.details?.tasks
+        assert.ok(tasks)
+        assert.deepEqual(tasks.map(step => step.status), ['success', 'failed', 'success'])
+        assert.equal(tasks[0].stdout, 'ok-多任务 (1/3)')
+        assert.equal(tasks[0].stdoutTruncated, undefined)
+        assert.equal(tasks[0].stderrTruncated, undefined)
+        assert.equal(tasks[1].stdout.length, MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS)
+        assert.equal(tasks[1].stdoutTruncated, true)
+        assert.equal(tasks[1].stderr.length, MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS)
+        assert.equal(tasks[1].stderrTruncated, true)
+        assert.match(tasks[1].message, /第二个任务失败/)
+        assert.equal(tasks[1].index, 1)
+        assert.equal(tasks[2].stdoutTruncated, undefined)
+        return true
+      }
+    )
+  })
+
   it('stops the current task, keeps finished results and never starts the rest', async () => {
     const { events, runtime } = createRuntime()
     runtime.executeCommand = async (command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle) => {
@@ -619,6 +704,50 @@ describe('dynamic multi-task lifecycle', () => {
     const details = outcomes[0].error?.details as { taskIndexes?: number[]; tasks?: MaaDynamicTasksOutput['tasks'] } | undefined
     assert.deepEqual(details?.taskIndexes, [0])
     assert.deepEqual(details?.tasks?.map(step => step.status), ['failed', 'success'])
+  })
+
+  it('keeps the full per-task output in the background result while error details stay bounded', async () => {
+    const longOutput = 'y'.repeat(20_000)
+    const { runtime, getSettleds } = createRuntime({ background: true })
+    const outcomes: MaaCommandOutcome[] = []
+    runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
+
+    await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} }
+      ],
+      '多任务',
+      'automation',
+      false,
+      false,
+      runtime
+    ) as MaaDynamicTasksBackgroundStart
+
+    await getSettleds()[0]({
+      ok: false,
+      stopped: false,
+      result: { stdout: longOutput, stderr: longOutput, command: 'run', exitCode: 3, signal: null },
+      error: Object.assign(new Error('后台任务失败'), { code: 'CORE_PROCESS_FAILED', exitCode: 3 })
+    })
+    await waitFor(() => getSettleds().length === 2)
+    await getSettleds()[1](backgroundOutcome('second-out'))
+    await waitFor(() => outcomes.length === 1)
+
+    assert.equal(outcomes[0].ok, false)
+    const final = outcomes[0].result as MaaCommandResult & MaaDynamicTasksOutput
+    assert.equal(final.tasks[0].stdout, longOutput)
+    assert.equal(final.tasks[0].stderr, longOutput)
+    assert.equal(final.stdout, `${longOutput}\nsecond-out`)
+    const details = outcomes[0].error?.details as {
+      tasks?: Array<MaaDynamicTaskErrorStep>
+    } | undefined
+    assert.equal(details?.tasks?.[0].stdout.length, MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS)
+    assert.equal(details?.tasks?.[0].stdoutTruncated, true)
+    assert.equal(details?.tasks?.[0].stderrTruncated, true)
+    assert.equal(details?.tasks?.[1].stdout, 'second-out')
+    assert.equal(details?.tasks?.[1].stdoutTruncated, undefined)
   })
 
   it('stops a background chain when the running task is stopped', async () => {

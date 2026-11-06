@@ -47,6 +47,21 @@ describe('update channel persistence', () => {
     assert.deepEqual(await readCliUpdateCapabilities(), { binary: true });
   });
 
+  it('reports degraded defaults when cli.toml is corrupted', async () => {
+    await writeCliConfig('[core\nchannel = "Beta"\n');
+    assert.deepEqual(await readUpdateChannels(), { core: 'stable', cli: 'stable', degraded: true });
+    assert.deepEqual(await readCliUpdateCapabilities(), { binary: true, degraded: true });
+
+    await writeCliConfig('core = "beta"\n');
+    assert.deepEqual(await readUpdateChannels(), { core: 'stable', cli: 'stable', degraded: true });
+  });
+
+  it('reports degraded defaults when cli.toml cannot be read', async () => {
+    await mkdir(cliConfigPath, { recursive: true });
+    assert.deepEqual(await readUpdateChannels(), { core: 'stable', cli: 'stable', degraded: true });
+    assert.deepEqual(await readCliUpdateCapabilities(), { binary: true, degraded: true });
+  });
+
   it('reads canonical and aliased channel values', async () => {
     await writeCliConfig(`[core]
 channel = "Beta"

@@ -25,7 +25,8 @@ import type {
   MaaCommandOutcome,
   MaaExecFileOptions,
   MaaExecFileResult,
-  MaaProcessStarted
+  MaaProcessStarted,
+  MaaStopResult
 } from '../maaProcessService.ts';
 import { createMaaLogCheckpoint, readMaaLogIncrement, readMaaLogSince } from '../maaLogFileService.ts';
 import type { MaaLogFileHandle } from '../maaLogFileService.ts';
@@ -282,7 +283,69 @@ describe('MAA CLI process ports', () => {
     });
     assert.deepEqual(stopResult, { success: true, message: '已发送终止请求' });
 
-    await assert.rejects(execution, /命令执行失败/);
+    await assert.rejects(execution, error => {
+      assert.equal((error as MaaCommandError).stopped, true);
+      assert.match((error as Error).message, /任务已终止/);
+      return true;
+    });
+    assert.deepEqual(signals, ['SIGTERM']);
+    assert.equal(getTaskStatus().isRunning, false);
+    assert.equal(getTaskStatus().stopRequested, false);
+  });
+
+  it('notifies onStarted only after the managed execFile child is registered', async () => {
+    const child = createFakeChild();
+    const started: MaaProcessStarted[] = [];
+    const signals: Array<NodeJS.Signals | number> = [];
+    const startedCountAtPort: number[] = [];
+    let stopResult: MaaStopResult | null = null;
+    let runningAtStart = false;
+    let taskNameAtStart: string | null = null;
+    let rejectOperation: ((error: Error) => void) | null = null;
+    // TS 控制流看不到 executor 内的赋值：经包装调用保留可调用性。
+    const rejectNow = (error: Error) => rejectOperation?.(error);
+
+    const execution = execMaaCommandUnlocked('update', [], null, null, true, true, null, {
+      onStarted: payload => {
+        started.push(payload);
+        // onStarted 必须发生在子进程登记之后：此时停止请求能看到受管投影。
+        runningAtStart = getTaskStatus().isRunning;
+        taskNameAtStart = getTaskStatus().taskName;
+        // 模拟 spawn 后才发现 Run 已进入 stopping 的停止竞态。
+        stopResult = stopCurrentTask({}, {
+          platform: 'win32',
+          killChild: (_target, signal) => {
+            signals.push(signal);
+            child.killed = true;
+            rejectNow(Object.assign(new Error('Command failed: /virtual/maa update'), { killed: true, signal }));
+          },
+          setTimeout: () => ({ unref() {} })
+        });
+      }
+    }, {
+      cliPath: '/virtual/maa',
+      execFileTimeoutMs: 60_000,
+      managedTaskName: '更新 MaaCore 与资源',
+      execFile: (_file, _args, _options, onChild) => {
+        const operation = new Promise<MaaExecFileResult>((_resolve, reject) => {
+          rejectOperation = reject;
+        });
+        startedCountAtPort.push(started.length);
+        onChild?.(child);
+        return operation;
+      }
+    });
+
+    const error: unknown = await execution.then(() => null, (rejection: unknown) => rejection);
+    assert.ok(error instanceof Error);
+    assert.equal((error as MaaCommandError).stopped, true, '停止的维护命令必须以 stopped 结束');
+    assert.deepEqual(startedCountAtPort, [0], 'execFile 端口创建子进程前不能触发 onStarted');
+    assert.equal(started.length, 1);
+    assert.equal(started[0].childProcess, child);
+    assert.match(started[0].command, /\/virtual\/maa update/);
+    assert.equal(runningAtStart, true);
+    assert.equal(taskNameAtStart, '更新 MaaCore 与资源');
+    assert.deepEqual(stopResult, { success: true, message: '已发送终止请求' });
     assert.deepEqual(signals, ['SIGTERM']);
     assert.equal(getTaskStatus().isRunning, false);
     assert.equal(getTaskStatus().stopRequested, false);

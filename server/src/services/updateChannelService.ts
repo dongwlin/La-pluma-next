@@ -4,6 +4,9 @@ import {
   updateCliConfigDocument
 } from './cliConfigService.ts';
 import type { CliConfigDocument } from './cliConfigService.ts';
+import { createLogger } from '../utils/logger.ts';
+
+const logger = createLogger('MaaService');
 
 export const CORE_UPDATE_CHANNELS = ['stable', 'beta', 'alpha'] as const;
 export type CoreUpdateChannel = (typeof CORE_UPDATE_CHANNELS)[number];
@@ -16,10 +19,12 @@ export type UpdateChannelScope = 'core' | 'cli';
 export interface UpdateChannels {
   core: CoreUpdateChannel;
   cli: CliUpdateChannel;
+  degraded?: boolean;
 }
 
 export interface CliUpdateCapabilities {
   binary: boolean;
+  degraded?: boolean;
 }
 
 type ChannelDocument = CliConfigDocument;
@@ -65,6 +70,10 @@ function section(document: ChannelDocument, key: string): ChannelDocument {
   return value;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function readUpdateChannels(): Promise<UpdateChannels> {
   try {
     const document = await readCliConfigDocument();
@@ -72,8 +81,9 @@ export async function readUpdateChannels(): Promise<UpdateChannels> {
       core: normalizeCoreChannel(section(document, 'core').channel),
       cli: normalizeCliChannel(section(document, 'cli').channel)
     };
-  } catch {
-    return { core: 'stable', cli: 'stable' };
+  } catch (error) {
+    logger.error('读取更新渠道配置失败，使用默认渠道', { error: errorMessage(error) });
+    return { core: 'stable', cli: 'stable', degraded: true };
   }
 }
 
@@ -82,8 +92,9 @@ export async function readCliUpdateCapabilities(): Promise<CliUpdateCapabilities
     const document = await readCliConfigDocument();
     const components = section(section(document, 'cli'), 'components');
     return { binary: components.binary !== false };
-  } catch {
-    return { binary: true };
+  } catch (error) {
+    logger.error('读取 CLI 更新组件配置失败，使用默认能力', { error: errorMessage(error) });
+    return { binary: true, degraded: true };
   }
 }
 

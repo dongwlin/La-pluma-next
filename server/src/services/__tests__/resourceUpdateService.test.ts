@@ -259,6 +259,7 @@ describe('resource info reads', () => {
 
     const info = await service.getResourceInfo();
     assert.equal(info.lastUpdated, '2026-07-01 00:00:00.000');
+    assert.equal(info.degraded, undefined);
   });
 
   it('prefers the newest metadata across base and hot-update overlay', async () => {
@@ -287,6 +288,34 @@ describe('resource info reads', () => {
       service.getResourceInfo(),
       error => (error as NodeJS.ErrnoException).code === 'ENOENT'
     );
+  });
+
+  it('marks resource info as degraded when a candidate version file is corrupted', async () => {
+    const harness = createUpdateService({ resourceDirs: [baseDir, hotUpdateDir] });
+    harness.versionFiles.set(hotUpdateDir, '{not-json');
+
+    const info = await harness.service.getResourceInfo();
+
+    assert.equal(info.lastUpdated, '2026-07-09 23:28:49.000');
+    assert.equal(info.degraded, true);
+  });
+
+  it('keeps resource info undegraded when only the overlay is missing', async () => {
+    const harness = createUpdateService({ resourceDirs: [baseDir, hotUpdateDir] });
+    harness.versionFiles.set(hotUpdateDir, null);
+
+    const info = await harness.service.getResourceInfo();
+
+    assert.equal(info.lastUpdated, '2026-07-09 23:28:49.000');
+    assert.equal(info.degraded, undefined);
+  });
+
+  it('throws the last read failure when every candidate version file is corrupted', async () => {
+    const harness = createUpdateService({ resourceDirs: [baseDir, hotUpdateDir] });
+    harness.versionFiles.set(baseDir, '{not-json');
+    harness.versionFiles.set(hotUpdateDir, '{not-json');
+
+    await assert.rejects(harness.service.getResourceInfo(), SyntaxError);
   });
 });
 

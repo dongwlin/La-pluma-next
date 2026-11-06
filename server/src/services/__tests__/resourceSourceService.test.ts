@@ -36,6 +36,10 @@ async function readCliToml(): Promise<Record<string, unknown>> {
   return TOML.parse(await readFile(cliConfigPath, 'utf-8')) as Record<string, unknown>;
 }
 
+async function readSourceTable(): Promise<Record<string, unknown>> {
+  return ((await readCliToml()).resource as Record<string, unknown>).source as Record<string, unknown>;
+}
+
 after(async () => {
   await rm(fixtureDir, { recursive: true, force: true });
 });
@@ -264,6 +268,142 @@ future_option = "kept"
     assert.equal(source.future_option, 'kept');
     assert.equal(source.branch, 'main');
     assert.equal(source.url, 'https://git.example.com/Resource.git');
+  });
+
+  it('keeps inactive source keys while switching between git and mirrorchyan', async () => {
+    await writeCliConfig(`[resource.source]
+type = "git"
+backend = "libgit2"
+url = "https://git.example.com/Resource.git"
+branch = "main"
+use_ssh_agent = true
+ssh_key = "~/.ssh/id_ed25519"
+passphrase = { env = "MAA_GIT_PASSPHRASE" }
+cdk = "old-cdk"
+future_option = "kept"
+`);
+
+    await saveResourceSourceConfig({
+      autoUpdate: false,
+      warnOnUpdateFailure: false,
+      source: 'mirrorchyan',
+      git: gitInput,
+      mirrorchyan: { checkInterval: 600 }
+    });
+
+    assert.deepEqual(await readSourceTable(), {
+      type: 'mirrorchyan',
+      backend: 'libgit2',
+      url: 'https://git.example.com/Resource.git',
+      branch: 'main',
+      use_ssh_agent: true,
+      ssh_key: '~/.ssh/id_ed25519',
+      passphrase: { env: 'MAA_GIT_PASSPHRASE' },
+      cdk: 'old-cdk',
+      future_option: 'kept'
+    });
+    const mirrorchyanActive = await readResourceSourceConfig();
+    assert.equal(mirrorchyanActive.source, 'mirrorchyan');
+    assert.equal(mirrorchyanActive.git.sshKey, '~/.ssh/id_ed25519');
+    assert.equal(mirrorchyanActive.git.passphraseKind, 'env');
+    assert.equal(mirrorchyanActive.mirrorchyan.cdkKind, 'plain');
+
+    await saveResourceSourceConfig({
+      autoUpdate: false,
+      warnOnUpdateFailure: false,
+      source: 'git',
+      git: { ...gitInput, url: 'https://git.example.com/Resource2.git', branch: 'release' },
+      mirrorchyan: { checkInterval: 600 }
+    });
+
+    assert.equal((await readSourceTable()).type, 'git');
+    assert.equal((await readSourceTable()).cdk, 'old-cdk');
+    assert.equal((await readSourceTable()).future_option, 'kept');
+    const gitActive = await readResourceSourceConfig();
+    assert.equal(gitActive.source, 'git');
+    assert.equal(gitActive.mirrorchyan.cdkKind, 'plain');
+  });
+
+  it('keeps a previously stored CDK when switching to mirrorchyan with a blank CDK', async () => {
+    await writeCliConfig(`[resource.source]
+type = "git"
+url = "https://git.example.com/Resource.git"
+cdk = { cmd = ["pass", "show", "mirrorchyan"] }
+`);
+
+    await saveResourceSourceConfig({
+      autoUpdate: false,
+      warnOnUpdateFailure: false,
+      source: 'mirrorchyan',
+      git: gitInput,
+      mirrorchyan: { checkInterval: 120 }
+    });
+
+    const source = await readSourceTable();
+    assert.equal(source.type, 'mirrorchyan');
+    assert.deepEqual(source.cdk, { cmd: ['pass', 'show', 'mirrorchyan'] });
+    assert.equal(source.check_interval, 120);
+  });
+
+  it('validates the git URL scheme and scp-like form before writing cli.toml', async () => {
+    const original = `[resource]
+auto_update = true
+`;
+    const invalidUrls = [
+      'example.com/repo.git',
+      'ftp://example.com/repo.git',
+      "ext::sh -c 'echo pwn'",
+      'not a url',
+      'https://'
+    ];
+
+    for (const url of invalidUrls) {
+      await writeCliConfig(original);
+      await assert.rejects(
+        saveResourceSourceConfig({
+          autoUpdate: false,
+          warnOnUpdateFailure: false,
+          source: 'git',
+          git: { ...gitInput, url },
+          mirrorchyan: { checkInterval: 600 }
+        }),
+        (error: unknown) => {
+          const validationError = error as {
+            code?: unknown;
+            statusCode?: unknown;
+            details?: { field?: unknown };
+          };
+          assert.equal(validationError.code, 'AGENT_RESOURCE_SOURCE_INVALID');
+          assert.equal(validationError.statusCode, 400);
+          assert.equal(validationError.details?.field, 'git.url');
+          return true;
+        }
+      );
+      assert.equal(await readFile(cliConfigPath, 'utf-8'), original);
+    }
+
+    for (const url of ['git@example.org:custom/resources.git', 'file:///tmp/resource.git']) {
+      await saveResourceSourceConfig({
+        autoUpdate: false,
+        warnOnUpdateFailure: false,
+        source: 'git',
+        git: { ...gitInput, url },
+        mirrorchyan: { checkInterval: 600 }
+      });
+      assert.equal((await readResourceSourceConfig()).git.url, url);
+    }
+
+    await saveResourceSourceConfig({
+      autoUpdate: false,
+      warnOnUpdateFailure: false,
+      source: 'git',
+      git: { ...gitInput, url: '   ' },
+      mirrorchyan: { checkInterval: 600 }
+    });
+    assert.equal(
+      (await readResourceSourceConfig()).git.url,
+      'https://github.com/MaaAssistantArknights/MaaResource.git'
+    );
   });
 
   it('rejects invalid source values without rewriting cli.toml', async () => {
