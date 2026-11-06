@@ -75,7 +75,7 @@ cron 触发在执行前经 `beginAgentRun` 创建 `run_daily_flow` Run，`onBefo
 
 ## 完成通知与掉落汇报时序
 
-执行期间：每关解析出任务总结后立即写入掉落记录；开启图片通知时在领取奖励后截图（`server/src/services/scheduleFlowExecution.ts:349-366,526-537,1050-1060`）。流程持有租约期间只把完成载荷挂到结果对象上；`dispatchCompletion` 对每个结果只消费一次，在租约释放且 Run 结算落盘之后运行，先刷新智能养成关卡再发送完成通知，副作用错误显式返回、只记日志，不改写已结算的 Run 终态（`server/src/services/scheduleFlowExecution.ts:173-177,1300-1358`、`server/src/services/schedulerService.ts:157-173,216-221`）。cron 路径在 Run 结算后同步执行副作用；HTTP 手动路径把副作用放到 `setImmediate` 并先落盘 Run，避免通知占用租约或早于终态落库（`server/src/services/schedulerService.ts:286-301`）。
+执行期间：每关优先按结构化回调（`StageDrops`/`FightTimes`）写入掉落记录，结构化观测缺失或不完整时回退 stdout 任务总结（`stage`/`times`/`dropItems`/`medicine`/`stone`，理智按 `times * 20` 估算）；两者都无有效掉落信息时记录 `warn` 日志而不静默跳过。开启图片通知时在领取奖励后截图（`server/src/services/scheduleFlowExecution.ts:335-390,558-570,1102`）。流程持有租约期间只把完成载荷挂到结果对象上；`dispatchCompletion` 对每个结果只消费一次，在租约释放且 Run 结算落盘之后运行，先刷新智能养成关卡再发送完成通知，副作用错误显式返回、只记日志，不改写已结算的 Run 终态（`server/src/services/scheduleFlowExecution.ts:160-184,1391-1430`、`server/src/services/schedulerService.ts:157-173,216-221`）。cron 路径在 Run 结算后同步执行副作用；HTTP 手动路径把副作用放到 `setImmediate` 并先落盘 Run，避免通知占用租约或早于终态落库（`server/src/services/schedulerService.ts:286-301`）。
 
 ## 智能养成关卡回写
 
