@@ -43,7 +43,7 @@ export interface AutomationActivityPayload {
   completion?: AutomationActivityCompletion
 }
 
-const MAX_ACTIVITY_STAGES = 500
+export const MAX_ACTIVITY_STAGES = 500
 
 const ACTIVITY_STATUSES: readonly ActivityStatus[] = ['active', 'none', 'unavailable', 'stale']
 
@@ -71,7 +71,7 @@ const isActivityFailure = (value: unknown): value is ActivityFailure => (
   && typeof value.message === 'string'
 )
 
-const isActivityCompletion = (value: unknown): value is AutomationActivityCompletion => (
+export const isActivityCompletion = (value: unknown): value is AutomationActivityCompletion => (
   isRecord(value)
   && (value.known === undefined || typeof value.known === 'boolean')
   && (value.complete === undefined || typeof value.complete === 'boolean')
@@ -80,9 +80,9 @@ const isActivityCompletion = (value: unknown): value is AutomationActivityComple
   && (value.source === undefined || typeof value.source === 'string')
 )
 
-const normalizeCompletion = (value: unknown): AutomationActivityCompletion | undefined => {
+const normalizeCompletion = (value: unknown): AutomationActivityCompletion | undefined | null => {
   if (value === undefined || value === null) return undefined
-  if (!isActivityCompletion(value)) return undefined
+  if (!isActivityCompletion(value)) return null
   return {
     known: value.known,
     complete: value.complete,
@@ -92,7 +92,7 @@ const normalizeCompletion = (value: unknown): AutomationActivityCompletion | und
   }
 }
 
-const isActivityEntry = (value: unknown): value is AutomationActivityEntry => (
+export const isActivityEntry = (value: unknown): value is AutomationActivityEntry => (
   isRecord(value)
   && isNullableString(value.code)
   && isNullableString(value.name)
@@ -137,9 +137,8 @@ export function normalizeActivityPayload(value: unknown): AutomationActivityPayl
   if (activities === null) return null
   if (!isNullableTimestamp(value.lastSuccessAt)) return null
   if (!isNullableTimestamp(value.dataUpdatedAt)) return null
-  if (value.completion !== undefined && value.completion !== null && !isActivityCompletion(value.completion)) {
-    return null
-  }
+  const completion = normalizeCompletion(value.completion)
+  if (completion === null) return null
   let failure: ActivityFailure | null = null
   if (value.failure !== null) {
     if (!isActivityFailure(value.failure)) return null
@@ -162,6 +161,6 @@ export function normalizeActivityPayload(value: unknown): AutomationActivityPayl
     lastSuccessAt: value.lastSuccessAt,
     dataUpdatedAt: value.dataUpdatedAt,
     failure,
-    completion: normalizeCompletion(value.completion),
+    completion,
   }
 }

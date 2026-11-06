@@ -35,7 +35,7 @@ export const INFRASTRUCT_TRADING_PRODUCTS = ['LMD', 'Orundum'] as const
 const ROOM_BOOLEAN_FIELDS = ['skip', 'autofill', 'sort', 'use_operator_groups'] as const
 const ROOM_OPERATOR_FIELDS = ['operators', 'candidates'] as const
 const TRAINING_OPERATOR_FIELDS = ['operatorsA', 'operatorsB'] as const
-const ALL_OPERATOR_FIELDS = [...ROOM_OPERATOR_FIELDS, ...TRAINING_OPERATOR_FIELDS] as const
+export const ALL_OPERATOR_FIELDS = [...ROOM_OPERATOR_FIELDS, ...TRAINING_OPERATOR_FIELDS] as const
 
 export type InfrastRoomOperatorField = (typeof ALL_OPERATOR_FIELDS)[number]
 
@@ -219,10 +219,6 @@ export function validateInfrastScheduleDocument(value: unknown): string | null {
 export function parseInfrastScheduleDocument(value: unknown): InfrastScheduleParseResult {
   const message = validateInfrastScheduleDocument(value)
   return message ? { ok: false, message } : { ok: true, document: value as InfrastScheduleDocument }
-}
-
-export function readInfrastPlans(document: InfrastScheduleDocument | null | undefined): InfrastPlan[] {
-  return Array.isArray(document?.plans) ? document.plans : []
 }
 
 export function getInfrastFacilityLabel(facility: string): string {
