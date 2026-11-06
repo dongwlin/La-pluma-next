@@ -11,6 +11,7 @@ import type {
   CopilotPlan,
   CopilotPlanEntry
 } from '../copilotPlanService.ts';
+import { loggerManager } from '../../utils/logger.ts';
 
 // 假 CLI 同时承担 `run`（现有动态任务）与 `copilot`（原生委托）两条路径：
 // 两条路径都按检查点写入同样的 `CopilotListLoadTaskFileSuccess` 事件。
@@ -160,8 +161,8 @@ setCopilotFileLoadPollIntervalForTests(40);
 const NATIVE_DELEGATION_ENV = 'LA_PLUMA_COPILOT_NATIVE_DELEGATION';
 
 function setNativeDelegationEnabled(enabled: boolean): void {
-  if (enabled) delete process.env[NATIVE_DELEGATION_ENV];
-  else process.env[NATIVE_DELEGATION_ENV] = 'off';
+  if (enabled) process.env[NATIVE_DELEGATION_ENV] = '1';
+  else delete process.env[NATIVE_DELEGATION_ENV];
 }
 
 const originalFetch = globalThis.fetch;
@@ -345,10 +346,12 @@ async function resetRunArtifacts(): Promise<void> {
 
 describe('copilot native delegation conditions', () => {
   test('accepts a queue representable by the native copilot command', async () => {
+    setNativeDelegationEnabled(true);
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
   });
 
   test('rejects queues whose native command would change the MaaCore task params', async () => {
+    setNativeDelegationEnabled(true);
     const two = queueOf(2);
     const cases: { label: string; input: CopilotNativeDelegationInput; reason: CopilotDelegationReason }[] = [
       { label: 'single-entry', input: { entries: queueOf(1) }, reason: 'single-entry' },
@@ -396,19 +399,106 @@ describe('copilot native delegation conditions', () => {
     }
   });
 
-  test('supports an explicit environment kill switch', async () => {
-    setNativeDelegationEnabled(false);
+  test('defaults to the existing flow while the switch is unset', async () => {
+    delete process.env[NATIVE_DELEGATION_ENV];
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
       eligible: false,
       reason: 'disabled'
     });
-    setNativeDelegationEnabled(true);
-    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+  });
+
+  test('accepts the documented enable values regardless of case and surrounding spaces', async () => {
+    for (const value of ['1', 'true', 'TRUE', ' on ', 'Yes', 'enable', 'ENABLED\t']) {
+      process.env[NATIVE_DELEGATION_ENV] = value;
+      assert.deepEqual(
+        await evaluateCopilotNativeDelegation({ entries: queueOf(2) }),
+        { eligible: true },
+        JSON.stringify(value)
+      );
+    }
+  });
+
+  test('keeps the existing flow for explicit disable values', async () => {
+    for (const value of ['0', 'false', 'OFF', ' no ', 'disabled']) {
+      process.env[NATIVE_DELEGATION_ENV] = value;
+      assert.deepEqual(
+        await evaluateCopilotNativeDelegation({ entries: queueOf(2) }),
+        { eligible: false, reason: 'disabled' },
+        JSON.stringify(value)
+      );
+    }
+  });
+
+  test('keeps the existing flow for unrecognized or empty values', async () => {
+    for (const value of ['2', 'y', 'enable=false', '   ']) {
+      process.env[NATIVE_DELEGATION_ENV] = value;
+      assert.deepEqual(
+        await evaluateCopilotNativeDelegation({ entries: queueOf(2) }),
+        { eligible: false, reason: 'disabled' },
+        JSON.stringify(value)
+      );
+    }
+  });
+
+  test('logs the effective setting once on the first delegation decision', async () => {
+    const copilotLogs = () => loggerManager.getAllLogs().filter(entry => entry.service === 'CopilotPlan');
+
+    process.env[NATIVE_DELEGATION_ENV] = 'off';
+    const before = copilotLogs().length;
+    await evaluateCopilotNativeDelegation({ entries: queueOf(2) });
+    delete process.env[NATIVE_DELEGATION_ENV];
+    await evaluateCopilotNativeDelegation({ entries: queueOf(2) });
+    const disabledLogs = copilotLogs().slice(before);
+    assert.equal(disabledLogs.length, 1);
+    assert.match(disabledLogs[0].message, /未启用/);
+    assert.match(disabledLogs[0].message, /显式关闭/);
+
+    resetCopilotPlanCachesForTests();
+    process.env[NATIVE_DELEGATION_ENV] = 'true';
+    const enabledBefore = copilotLogs().length;
+    await evaluateCopilotNativeDelegation({ entries: queueOf(2) });
+    const enabledLogs = copilotLogs().slice(enabledBefore);
+    assert.equal(enabledLogs.length, 1);
+    assert.match(enabledLogs[0].message, /已启用/);
   });
 });
 
 describe('copilot native delegation execution', () => {
+  test('runs the existing flow and reports no delegation while the switch is unset', async () => {
+    delete process.env[NATIVE_DELEGATION_ENV];
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    assert.equal(outcome.success, true);
+    assert.equal(outcome.delegation, undefined);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['success', 'success', 'success']
+    );
+  });
+
+  test('runs the existing flow for explicit disable and unrecognized values', async () => {
+    for (const value of ['off', 'maybe']) {
+      await resetRunArtifacts();
+      process.env[NATIVE_DELEGATION_ENV] = value;
+      process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+      const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+      const calls = await readMaaCalls();
+      assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0, value);
+      assert.equal(calls.filter(call => call.startsWith('run ')).length, 1, value);
+      assert.equal(outcome.success, true, value);
+      assert.equal(outcome.delegation, undefined, value);
+    }
+  });
+
   test('runs the queue as one native command in queue order', async () => {
+    setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 102, 103]);
     process.env.FAKE_NATIVE_EXIT_DELAY = '200';
     const captured = captureEvents();
@@ -440,6 +530,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('reports per-entry progress from the same load events as the existing path', async () => {
+    setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 102, 103]);
     process.env.FAKE_NATIVE_EXIT_DELAY = '320';
     const native = captureEvents();
@@ -462,6 +553,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('falls back to the existing flow when the native command fails before any plan file loads', async () => {
+    setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_EXIT_CODE = '1';
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
     const captured = captureEvents();
@@ -489,6 +581,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('does not fall back once the native command loaded a plan file', async () => {
+    setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_LOADS = nativeLoads([101]);
     process.env.FAKE_NATIVE_EXIT_CODE = '1';
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
@@ -512,6 +605,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('treats a stop during the native command as stopped instead of falling back', async () => {
+    setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_EXIT_CODE = '1';
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
     let stopChecks = 0;
@@ -542,6 +636,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('distinguishes a failed fallback from a native-only failure', async () => {
+    setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_EXIT_CODE = '1';
     process.env.FAKE_RUN_EXIT_CODE = '1';
     process.env.FAKE_RUN_LOADS = '';
@@ -583,6 +678,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('drops cached copilot files before delegating so the native command re-downloads them', async () => {
+    setNativeDelegationEnabled(true);
     const cacheDir = join(maaCacheDir, 'copilot');
     const staleFile = join(cacheDir, '101.json');
     const unrelatedFile = join(cacheDir, '999.json');
@@ -606,6 +702,7 @@ describe('copilot native delegation execution', () => {
   });
 
   test('falls back to the existing flow when the copilot cache cannot be invalidated', async () => {
+    setNativeDelegationEnabled(true);
     await writeFile(join(maaCacheDir, 'copilot'), 'not-a-directory');
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
 
@@ -703,6 +800,7 @@ describe('copilot native delegation equivalence', () => {
   });
 
   test('manual handoff never delegates and keeps the waiting run flow', async () => {
+    setNativeDelegationEnabled(true);
     const plan: CopilotPlan = { setId: '42', name: '测试作业集', items: [], entries: queueOf(2) };
     configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => plan });
     process.env.FAKE_RUN_LOADS = runLoads([planFiles()[0]]);
