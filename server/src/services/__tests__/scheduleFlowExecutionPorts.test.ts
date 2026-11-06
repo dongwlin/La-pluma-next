@@ -385,23 +385,23 @@ describe('schedule flow boundaries', () => {
         commandId: 'award',
         name: '领取奖励',
         enabled: true,
-        params: { award: true, mail: true }
+        params: { award: true, mail: true, orundum: true }
       }
     ], 'flow-award-partial'));
 
     assert.equal(calls.commands.length, 1);
     assert.deepEqual(
       result.summary.actions.map(action => action.status),
-      ['success', 'failed']
+      ['success', 'failed', 'failed']
     );
     assert.equal(result.summary.failedCount, 1);
     assert.equal(result.summary.successCount, 0);
     assert.equal(result.summary.skippedCount, 0);
     assert.deepEqual(result.summary.taskResults.map(task => task.status), ['failed']);
-    assert.equal(result.summary.errors.length, 1);
+    assert.equal(result.summary.errors.length, 2);
     assert.match(result.summary.errors[0].error, /邮件奖励未观察到领取回调/);
+    assert.match(result.summary.errors[1].error, /合成玉活动奖励未观察到领取回调/);
   });
-
 
   it('aborts the closedown pre-depot delay when the flow is stopped', async () => {
     const { ports, calls } = createPorts();
