@@ -154,7 +154,7 @@ ConfigManager（页面壳）
 `maa-config` 的 profile 参数与 Query key 以[Query 缓存与键规范](../../architecture/query-cache.md)为准。
 
 - Query 只保存服务端只读快照，不直接写页面；`queryFn` 把 Query 的 `AbortSignal` 传给 `getConfig(profileName, signal)`，Activity 隐藏或卸载时由 Query 取消观察并按既有策略保留缓存。
-- `getConfig` 收紧载荷校验：profile 载荷为 `{ connection, instance_options }`，`connection` 已知字段出现时必须是正确类型（`adb_path`/`address`/`config`/`preset` 字符串、`auto_reconnect` 布尔），`instance_options` 出现时必须是对象；类型不合法返回 `INVALID_DOMAIN_PAYLOAD`。兼容旧版直接返回 connection 段的扁平载荷。缺失字段是合法的 MAA profile 形态，由归一化模型补页面默认值。
+- `getConfig` 收紧载荷校验：profile 载荷为 `{ connection, instance_options }`，`connection` 已知字段出现时必须是正确类型（`adb_path`/`address`/`config` 字符串、`auto_reconnect` 布尔），`instance_options` 出现时必须是对象；类型不合法返回 `INVALID_DOMAIN_PAYLOAD`。`preset` 不在客户端校验范围内，由服务端读取时归一别名、保存时校验。兼容旧版直接返回 connection 段的扁平载荷。缺失字段是合法的 MAA profile 形态，由归一化模型补页面默认值。
 - 归一化保留 `connection` 与 `instance_options` 段中的未知字段，保存时随快照原样回写；已知字段缺失或类型不合法时使用默认值：connection 为 `/opt/homebrew/bin/adb`、`127.0.0.1:16384`、`CompatMac`、`preset=ADB`、自动重连开启；实例选项为 MaaCore 默认值（`Adb`、三项开关关闭）。
 - `auto_reconnect` 在 MAA profile 中属于 `[behavior]` 段：服务端读取时并入 connection 视图，保存时写回 `[behavior]`，并兼容旧版写在 `[connection]` 的值。
 - `preset` 与 `touch_mode` 由服务端归一别名与大小写（`PlayTools`→`PlayCover`、`maatouch`→`MaaTouch`），页面只提供受支持的规范值；保存前服务端再次校验，非法值返回 400 `AGENT_CONFIG_PROFILE_INVALID`。
@@ -249,7 +249,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 ### 5. 兼容与维护约束
 
-- 端点、请求体、响应体与服务端 TOML 写入方式未改变；配置 key、profile 名与 section 存储键/事件名保持不变。
+- connection 与 instance 的端点、请求体与响应体未改变，服务端 TOML 写入方式不变；资源源配置使用新增的 `GET/POST /agent/config/resource-source`（不写 MAA profile）。配置 key、profile 名与 section 存储键/事件名保持不变。
 - Query 快照只存在于内存，浏览器刷新随缓存丢失；key 与参数清单见[Query 缓存与键规范](../../architecture/query-cache.md)。没有新增 localStorage 数据。
 - 载荷校验比迁移前严格：已知字段类型不合法时整份读取失败并显示错误，而旧页面会把异常值放入受控输入。未知 connection 字段仍原样保留。
 - 已知字段缺失时显示页面默认值，而旧页面会显示空输入；这是归一化模型的要求，正常服务端载荷（`getConfig` 自带默认值）不受影响。
@@ -423,6 +423,8 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 渠道切换目标由 `resolveCoreChannelSwitch(currentCore)` 决定：版本字符串包含 `beta`/`alpha` 时切到正式版，否则切到 Beta；版本尚未读取时默认 Beta。成功文案使用 `Beta`/`正式版` 标签。
 
+资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 只兼容旧服务端与旧 Run 记录：当前服务端在 core/渠道切换失败时统一写入 `{ version, failedStep: 'core', coreUpdated: false }`，`failedStep: 'resources'` 只由独立的资源热更新失败产生，`coreUpdated: true` 不再出现。因此现行实现下 core/渠道切换失败通常没有“重试资源同步”入口，只有资源热更新失败（策略恒为可重试）才提供该按钮；保留该判定是为了让升级前写入的旧 Run 仍能给出重试入口。
+
 ### 3. 成功后的版本与资源失效
 
 更新命令确认成功后，React 适配层执行三项副作用：
@@ -433,7 +435,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 完成提示（成功、失败或取消）在 Run 进入终态后立即发出，资源失效与版本重取随后执行；按钮在命令结束（Run 终态）时恢复可点，早于版本重取结束。停止请求本身不产生完成提示，只切换停止按钮与全局提示。因此用户立即发起第二条命令时，其开始提示不会被第一条的成功提示覆盖。
 
-图标 epoch 由本客户端发起的手动更新推进；服务端定时自动更新或其他客户端触发的资源变化不会主动通知本标签页，需等待浏览器缓存过期或本客户端下一次手动更新。干员头像仍是各页面直接构造的独立 URL，不在该机制内。
+图标 epoch 由本客户端发起的手动更新推进；服务端定时自动更新或其他客户端触发的资源变化不会主动通知本标签页，需等待浏览器缓存过期或本客户端下一次手动更新。干员头像由 `getOperatorAvatarUrl` 带同一 `?v=<epoch>` 构造，`app/layout/Layout.tsx`、`features/statistics/components/OperatorPanel.tsx` 等直接传入 `itemIconVersion`，因此也随 epoch 重渲染（与[共享资源归属与失效端口](../../architecture/resource-ownership.md)一致）。
 
 跨域作用域与接收方映射以[共享资源归属与失效端口](../../architecture/resource-ownership.md)为准。图标 epoch 是独立的本地缓存标记，由 `useItemIconCacheVersion()` 推动使用图标的组件重渲染；识别快照与掉落不由资源更新重写。
 
@@ -490,9 +492,9 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 ### 6. 兼容与维护约束
 
-- 端点未改变；更新命令请求体新增 `waitForCompletion:false`，响应新增 `runId`/`run`/`pollUrl`/`stopUrl`，同时保留既有领域字段。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
+- 三类更新命令的路径未变，请求体新增 `waitForCompletion:false`，响应新增 `runId`/`run`/`pollUrl`/`stopUrl`，同时保留既有领域字段；更新渠道与资源源另用 `GET /agent/update-channels`、`POST /agent/actions/update-channel` 与 `GET/POST /agent/config/resource-source` 配置端点（不创建 Run）。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
 - localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、每次编辑、保存成功）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
-- 无 Query key 新增；版本继续复用 `settings/version`；物品图标仍不进入 Query。
+- 本专题未新增 Query key；版本继续复用 `settings/version`；物品图标与头像仍不进入 Query。
 - 组件更新的图标缓存、版本同步与反馈时机见[成功后的版本与资源失效](#3-成功后的版本与资源失效)；自动更新草稿的读取、重挂载与保存裁决见[自动更新策略](#4-自动更新策略)。命令重试与生命周期以本专题第 2 节为准，Query 默认策略见[Query 缓存与键规范](../../architecture/query-cache.md)。
 
 ## 回归与关联

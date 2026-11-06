@@ -40,7 +40,7 @@ curl 'http://localhost:3000/api/agent/diagnostics?command=roguelike'
 | 资源状态 | `resource` | 资源版本新鲜度与关键目录条目（`version.json`、`tasks`、`template`） |
 | 任务预检 | `execution` | 可选 `command` 的参数预检、当前任务与执行租约 |
 
-响应 `data` 的每个检查条目包含 `status`（`pass`/`warn`/`fail`/`unknown`）、可读 `summary`、证据 `details`、可选 `hint` 与定位信息 `locations`；整体 `status` 为 `fail` 优先的 `error`/`warn`/`ok`，`ok` 仅在全部检查通过时为 `true`，`conclusion` 给出结论摘要。除探测 ADB 连接外不产生副作用，不创建 Run。
+响应 `data` 的每个检查条目包含 `status`（`pass`/`warn`/`fail`；类型仍保留 `unknown`，当前四项探测不会返回它）、可读 `summary`、证据 `details`、可选 `hint` 与定位信息 `locations`；整体 `status` 为 `fail` 优先的 `error`/`warn`/`ok`，`ok` 仅在全部检查通过时为 `true`，`conclusion` 给出结论摘要。除探测 ADB 连接外不产生副作用，不创建 Run。
 
 ## 推荐执行流程
 
@@ -127,10 +127,10 @@ curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
 Web UI 的基建排班编辑器通过下列端点读写 MAA 配置目录 `infrast/` 下的排班 JSON。它们同样属于 Web UI 专用入口，未在 `AGENT_OPERATIONS` 中注册，也不会出现在 manifest/OpenAPI 中：排班文件是编辑器维护的 MAA 配置，不是面向 Agent 的语义化动作，这些端点只读写文件，不创建 Run、不占用执行租约，也不做任务参数预检。
 
 ```bash
-# 列出排班文件；每项含 name、title、planCount、updatedAt 与 valid
+# 列出排班文件：返回 { directory, schedules }，schedules 每项含 name、title、planCount、updatedAt 与 valid
 curl 'http://localhost:3000/api/agent/infrast-schedules'
 
-# 读取单个文件原文，name 与 maa-cli 解析 filename 的规则一致
+# 读取单个文件：返回 { name, document }，name 与 maa-cli 解析 filename 的规则一致
 curl 'http://localhost:3000/api/agent/infrast-schedules/document?name=daily.json'
 
 # 保存文件：请求体为 { name, document }，服务端按 Core 协议校验后原子写入
@@ -139,7 +139,7 @@ curl -X PUT http://localhost:3000/api/agent/infrast-schedules/document \
   -d '{"name":"daily.json","document":{"plans":[{"rooms":{}}]}}'
 ```
 
-`name` 相对 MAA 配置目录下的 `infrast/`，也可传入落在该目录内的绝对路径；`..`、非 `.json` 与符号链接逃逸均被拒绝。读取返回原始 JSON，不补默认值；保存只校验已知字段，未知扩展字段原样保留。文件位置、校验与协议字段见[日常流程与定时触发](../server/scheduling.md#自定义基建排班文件)。鉴权与其他 `/api` 路由一致（`LA_PLUMA_TOKEN` 开启时需要令牌，认证失败限流同样适用）；参数或路径不合法、文件不存在、读写失败分别返回 `AGENT_INFRASTRUCT_SCHEDULE_INVALID`（400）、`AGENT_INFRASTRUCT_SCHEDULE_NOT_FOUND`（404）与 `AGENT_INFRASTRUCT_SCHEDULE_IO_FAILED`（500，`retryable: true`）。Agent 需要执行基建换班时应使用 `run-task` 的 `Infrast` 任务配置，而不是依赖这些端点。
+`name` 相对 MAA 配置目录下的 `infrast/`，也可传入落在该目录内的绝对路径；`..`、非 `.json` 与符号链接逃逸均被拒绝。读取返回 `{ name, document }`，`document` 是解析后的原始 JSON，不补默认值；保存只校验已知字段，未知扩展字段原样保留。文件位置、校验与协议字段见[日常流程与定时触发](../server/scheduling.md#自定义基建排班文件)。鉴权与其他 `/api` 路由一致（`LA_PLUMA_TOKEN` 开启时需要令牌，认证失败限流同样适用）；参数或路径不合法、文件不存在、读写失败分别返回 `AGENT_INFRASTRUCT_SCHEDULE_INVALID`（400）、`AGENT_INFRASTRUCT_SCHEDULE_NOT_FOUND`（404）与 `AGENT_INFRASTRUCT_SCHEDULE_IO_FAILED`（500，`retryable: true`）。Agent 需要执行基建换班时应使用 `run-task` 的 `Infrast` 任务配置，而不是依赖这些端点。
 
 ### 维护更新端点（不在 Agent manifest）
 
@@ -164,6 +164,30 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
 `update-cli`（body 可选 `channel`）与 `hot-update-resources` 共用同一响应形状：默认同步返回既有领域字段并新增 `runId`、`run`、`pollUrl`、`stopUrl`；`waitForCompletion=false` 在取得执行权后返回 202。失败保留既有 `AGENT_MAA_UPDATE_CORE_FAILED`、`AGENT_MAA_UPDATE_CLI_FAILED`、`AGENT_MAA_RESOURCE_UPDATE_FAILED` 错误码，并把同一错误模型写入 `run.error`。三类更新与自动化、日常流程共用执行租约，占用时返回 409；`dryRun` 仍只返回计划，不创建 Run。
 
 资源热更新在同一时间只执行一次，但不排队也不复用首个请求的结果：已有 `hot-update-resources` 进行中时，后到请求会先创建本次 Run，再立即以 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（`retryable: true`）失败，而不是等待首个更新结束后才报错。`error.details.activeRunId`/`activeRunState` 指向正在进行的 Run，`error.details.runId`/`run` 是本次被拒绝并写入 `failed` 的 Run，`message` 给出可读提示；首个更新结束（成功、失败或停止）后可用同一请求重新发起。
+
+维护端点还包括更新渠道与资源源配置。它们只读写 maa-cli 的 `cli.toml`，属于配置读写而不是执行动作：
+
+```bash
+# 读取已保存的更新渠道；缺省或读取失败时回落到 stable
+curl 'http://localhost:3000/api/agent/update-channels'
+
+# 保存更新渠道：scope 为 core（stable/beta/alpha）或 cli（stable/beta/nightly）
+curl -X POST http://localhost:3000/api/agent/actions/update-channel \
+  -H 'Content-Type: application/json' \
+  -d '{"scope":"core","channel":"beta"}'
+
+# 读取资源源配置（[resource] 开关、来源与凭据形态）
+curl 'http://localhost:3000/api/agent/config/resource-source'
+
+# 保存资源源配置：整体提交，空白凭据表示保留已保存值
+curl -X POST http://localhost:3000/api/agent/config/resource-source \
+  -H 'Content-Type: application/json' \
+  -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git","url":"https://github.com/MaaAssistantArknights/MaaResource.git","branch":null,"useSshAgent":false,"sshKey":null},"mirrorchyan":{"checkInterval":600}}'
+```
+
+`GET /api/agent/update-channels` 返回 `{ core, cli }`；`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`，响应只回显凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文；请求未提供凭据时保留已保存值。这四个端点与更新命令不同：它们不创建 Run、不占用执行租约，也不出现在 manifest/OpenAPI 中。
+
+更新相关端点另有参数错误码：`AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID`（400，`details.channel`）与 `AGENT_MAA_UPDATE_CLI_UNSUPPORTED`（409，`retryable: false`，`details.channel`/`source`；`dryRun` 不拦截不支持的安装来源）来自 `update-cli`；`AGENT_UPDATE_CHANNEL_SCOPE_INVALID`（400，`details.scope`）、`AGENT_UPDATE_CHANNEL_INVALID`（400，`details.scope`/`channel`）与 `AGENT_RESOURCE_SOURCE_INVALID`（400，`details.field`，`retryable: false`）来自渠道与资源源写入。
 
 理智作战按关卡逐条执行：`stages` 中每一项生成一次 `maa-cli fight <stage> [--times <n>]` 调用，共享 `medicine`/`medicineExpireDays`/`stone`/`series` 选项。`medicineExpireDays` 使用 `--medicine-expire-days` 按“过期天数”选择临期理智药；旧调用方仍可传 `expiringMedicine`（按瓶数），映射到已弃用但仍可用的 `--expiring-medicine`。`series` 范围为 `-1~10`，旧资源只接受 `-1~6`。参数超出范围或不是整数时返回 400 `AGENT_VALIDATION_FIGHT_OPTIONS_INVALID`；多个关卡不会拼接成逗号分隔的单个参数，含逗号的旧式关卡串仍会拆成逐关调用。整个 Run 由逐关执行结果统一结算，任一关真实失败或收到停止都会阻止后续关卡并写入终态；`waitForCompletion=false` 在首关取得执行权后返回 202，期间 Run 保持 `running`；按目标 `runId` 停止会终止当前关，最终为 `stopped`。同步完成响应与 Run 终态的 `result.stages` 逐关给出 `status`（`success`/`skipped`/`stopped`/`pending`）、`message` 与该关输出，`result.stopped` 表示整个 Run 是否因停止结束。关卡未开放记为 `skipped` 并继续下一关，理智耗尽记为 `skipped` 并跳过所有剩余关卡；活动代号映射（`hd-N`）与关卡开放预检属于日常流程任务，本入口按请求中的关卡代号原样下发。`dryRun` 的 `plan.stages` 列出每一关的完整参数，`plan.args` 保留首关参数以兼容既有读取方。
 

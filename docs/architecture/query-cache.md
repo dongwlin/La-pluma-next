@@ -217,7 +217,7 @@ queryFn: async ({ signal }) => unwrapApiResponse(await getDepotData(signal))
 | 消费领域 | 本文之外的权威契约 |
 | --- | --- |
 | 设置 connection | [设置配置编辑与保存](../frontend/domains/settings.md#配置编辑与保存)：快照采用令牌、草稿、保存、重置与 section 生命周期 |
-| 设置版本与目录 | [设置设备连接与系统资源](../frontend/domains/settings.md#设备连接与系统资源)：载荷归一、失败展示、只读头部缓存复用与设备命令 |
+| 设置版本与目录 | [设置设备连接与系统资源](../frontend/domains/settings.md#设备连接与系统资源)：载荷归一、失败展示、配置目录唯一观察者是目录卡片（`settings/config-directory`）与设备命令 |
 | 设置更新 | [设置组件更新与自动更新](../frontend/domains/settings.md#组件更新与自动更新)：显式命令、互斥与成功确认；失效映射见[资源所有权](resource-ownership.md) |
 | 作业搜索与预览 | [作业搜索与预览](../frontend/domains/combat.md#搜索与预览)：计划优先、成员回退、会话取消、选段与终态刷新；预览不新建 key |
 | 总览与设备采样 | [总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)：完整提交、失败保旧、刷新协调与设备样本投影 |
