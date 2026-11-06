@@ -1,6 +1,6 @@
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
-import { validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
+import { normalizeGameTaskParams, validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
 
 /** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
@@ -158,6 +158,26 @@ function normalizeTaskVariants(value: unknown): AgentTaskVariant[] {
   });
 }
 
+function normalizeVariantsParams(
+  type: string,
+  variants: AgentTaskVariant[] | undefined
+): AgentTaskVariant[] | undefined {
+  if (!variants) return undefined;
+  return variants.map((variant, variantIndex) => {
+    if (!variant.params) return variant;
+    const normalization = normalizeGameTaskParams(type, variant.params);
+    if (normalization.error) {
+      throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', normalization.error, {
+        reason: 'game_task_params_invalid',
+        variantIndex
+      });
+    }
+    return normalization.params === variant.params
+      ? variant
+      : { ...variant, params: normalization.params };
+  });
+}
+
 function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: string): AgentTaskConfig {
   if ('condition' in normalized) {
     throw invalidRequest(
@@ -204,6 +224,13 @@ function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: s
     );
   }
 
+  const normalizedParams = normalizeGameTaskParams(normalizedType, params ?? {});
+  if (normalizedParams.error) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', normalizedParams.error, {
+      reason: 'game_task_params_invalid'
+    });
+  }
+
   const strategy = normalized.strategy;
   if (strategy !== undefined && (typeof strategy !== 'string' || !STRATEGY_SET.has(strategy))) {
     throw invalidRequest(
@@ -216,8 +243,9 @@ function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: s
   const variants = normalized.variants === undefined
     ? undefined
     : normalizeTaskVariants(normalized.variants);
+  const normalizedVariants = normalizeVariantsParams(normalizedType, variants);
 
-  const validationMessage = validateGameTaskParams(normalizedType, params ?? {});
+  const validationMessage = validateGameTaskParams(normalizedType, normalizedParams.params);
   if (validationMessage) {
     throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { reason: 'game_task_params_invalid' });
   }
@@ -226,9 +254,9 @@ function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: s
     ...normalized,
     name: normalized.name.trim(),
     type: normalizedType,
-    params: params ?? {},
+    params: normalizedParams.params,
     ...(strategy ? { strategy: strategy as AgentTaskStrategy } : {}),
-    ...(variants ? { variants } : {})
+    ...(normalizedVariants ? { variants: normalizedVariants } : {})
   };
 }
 

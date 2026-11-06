@@ -27,7 +27,7 @@ import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts'
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
-import { validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
+import { normalizeGameTaskParams, validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
 import { agentError } from '../utils/apiHelper.ts';
 
 const logger = createLogger('MaaService');
@@ -359,6 +359,31 @@ function normalizeDynamicTaskConfig(taskConfig: MaaDynamicTaskConfig | string): 
   };
 }
 
+function normalizeDynamicTaskParamAliases(config: MaaDynamicTaskConfig): MaaDynamicTaskConfig {
+  const params = normalizeGameTaskParams(config.type, config.params ?? {});
+  if (params.error) {
+    throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', params.error, { statusCode: 400 });
+  }
+  const variants = config.variants?.map((variant, variantIndex) => {
+    if (!variant.params) return variant;
+    const variantParams = normalizeGameTaskParams(config.type, variant.params);
+    if (variantParams.error) {
+      throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', variantParams.error, {
+        statusCode: 400,
+        details: { variantIndex }
+      });
+    }
+    return variantParams.params === variant.params
+      ? variant
+      : { ...variant, params: variantParams.params };
+  });
+  return {
+    ...config,
+    params: params.params,
+    ...(variants ? { variants } : {})
+  };
+}
+
 interface MaaDynamicTaskOwnerMarker {
   pid: number;
   startedAt: number;
@@ -457,7 +482,7 @@ export async function execDynamicTask(
   const resolveClientType = runtime.resolveClientType
     || (async () => (await resolveConnection()).clientType);
   const lifecycle = runtime.lifecycle || {};
-  const configObj = normalizeDynamicTaskConfig(taskConfig);
+  const configObj = normalizeDynamicTaskParamAliases(normalizeDynamicTaskConfig(taskConfig));
   const validationMessage = validateGameTaskParams(configObj.type, configObj.params ?? {});
   if (validationMessage) {
     throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { statusCode: 400 });
@@ -792,7 +817,7 @@ export async function execDynamicTasks(
     throw new TypeError('动态多任务至少需要一项');
   }
 
-  const configs = taskConfigs.map(normalizeDynamicTaskConfig);
+  const configs = taskConfigs.map(normalizeDynamicTaskConfig).map(normalizeDynamicTaskParamAliases);
   const acquireExecutionLease = runtime.acquireExecutionLease || acquireMaaExecutionLease;
   const lifecycle = runtime.lifecycle || {};
   const { onSettled: outerOnSettled, ...processLifecycle } = lifecycle;

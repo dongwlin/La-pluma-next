@@ -23,13 +23,13 @@
 PORT=3100 LA_PLUMA_DEV_PORT=5273 pnpm dev
 ```
 
-浏览器打开 `http://localhost:5273`，`/api` 和 `/webrtc-signaling` 都代理到该实例的 `http://localhost:3100`。前端端口被占用时启动失败，不自动换端口。
+浏览器打开 `http://localhost:5273`，`/api`、`/game-assets` 和 `/webrtc-signaling` 都代理到该实例的 `http://localhost:3100`。前端端口被占用时启动失败，不自动换端口。
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `PORT` | `3000` | 后端监听端口，也用于推导开发代理目标 |
 | `LA_PLUMA_DEV_PORT` | `5173` | Vite 开发服务器端口 |
-| `LA_PLUMA_DEV_API_TARGET` | `http://localhost:<PORT>` | 显式指定两路开发代理的后端 HTTP(S) origin，优先于 `PORT` |
+| `LA_PLUMA_DEV_API_TARGET` | `http://localhost:<PORT>` | 显式指定三路开发代理的后端 HTTP(S) origin，优先于 `PORT` |
 
 这些变量通过启动命令或 shell 的 `export` 传入；只给客户端配置端口不会启动或修改另一个后端。单独运行前端连接已有后端时，例如 `LA_PLUMA_DEV_PORT=5273 LA_PLUMA_DEV_API_TARGET=http://localhost:3100 pnpm dev:client`。开发变量不会注入浏览器代码；子路径仍使用 `VITE_BASE_PATH` 和 `LA_PLUMA_BASE_PATH`，见[部署指南](../guides/deployment.md)。
 

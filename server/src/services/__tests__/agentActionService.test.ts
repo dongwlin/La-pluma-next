@@ -274,6 +274,68 @@ describe('executeAgentTask', () => {
     assert.deepEqual(calls, []);
   });
 
+  it('migrates legacy snake_case roguelike params before running a dynamic task', async () => {
+    const { calls, dependencies } = createExecutors();
+    const taskConfig = {
+      name: '集成战略',
+      type: 'Roguelike',
+      params: { theme: 'JieGarden', mode: 20001, find_play_time_target: 2 }
+    };
+
+    const request = preflightAgentTaskRequest({ command: 'run', args: ['roguelike'], taskConfig });
+    assert.deepEqual(request.taskConfig?.params, {
+      theme: 'JieGarden',
+      mode: 20001,
+      find_playTime_target: 2
+    });
+
+    await executeAgentTask({ command: 'run', args: ['roguelike'], taskConfig }, dependencies);
+    const call = calls[0];
+    assert.ok(call);
+    const args = call.args as unknown[];
+    const executed = args[1] as { params: Record<string, unknown> };
+    assert.deepEqual(executed.params, {
+      theme: 'JieGarden',
+      mode: 20001,
+      find_playTime_target: 2
+    });
+  });
+
+  it('migrates legacy roguelike params inside task variants', () => {
+    const request = preflightAgentTaskRequest({
+      command: 'run',
+      args: ['roguelike'],
+      taskConfig: {
+        name: '集成战略',
+        type: 'Roguelike',
+        params: { theme: 'JieGarden', mode: 20001, find_playTime_target: 2 },
+        variants: [{ params: { find_play_time_target: 3 } }]
+      }
+    });
+
+    assert.deepEqual(request.taskConfig?.variants, [{ params: { find_playTime_target: 3 } }]);
+  });
+
+  it('rejects conflicting legacy and authoritative roguelike params', async () => {
+    await assert.rejects(
+      executeAgentTask({
+        command: 'run',
+        args: ['roguelike'],
+        taskConfig: {
+          name: '集成战略',
+          type: 'Roguelike',
+          params: {
+            theme: 'JieGarden',
+            mode: 20001,
+            find_play_time_target: 1,
+            find_playTime_target: 2
+          }
+        }
+      }, createExecutors().dependencies),
+      error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
+    );
+  });
+
   it('keeps Core-only task types off the maa-cli command allowlist', async () => {
     const { calls, dependencies } = createExecutors();
 
