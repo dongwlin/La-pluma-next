@@ -1,13 +1,10 @@
-// 资源源表单只覆盖 maa-cli cli.toml 的 [resource] 段：Git / MirrorChyan 来源、
-// 自动更新开关与凭据。凭据输入框留空表示保留已保存的值，页面从不回显明文。
-
 import { Checkbox, Input, Select, Switch } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
 import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
-import { DEFAULT_RESOURCE_GIT_URL, DEFAULT_MIRRORCHYAN_CHECK_INTERVAL } from '../model/resourceSource'
+import { DEFAULT_MIRRORCHYAN_CHECK_INTERVAL, OFFICIAL_RESOURCE_GIT_URL } from '../model/resourceSource'
 import { GIT_BACKENDS, RESOURCE_SOURCE_TYPES } from '../types'
 import type {
   GitBackend,
@@ -36,19 +33,19 @@ const BACKEND_OPTIONS = GIT_BACKENDS.map(backend => ({
   label: BACKEND_LABELS[backend],
 }))
 
-const describeSecret = (kind: ResourceSecretKind, what: string): string => {
+const describeCdk = (kind: ResourceSecretKind): string => {
   switch (kind) {
     case 'plain':
-      return `已保存${what}，留空保持不变`
+      return '已保存 CDK，留空保持不变'
     case 'env':
-      return `${what}来自环境变量，留空保持不变`
+      return 'CDK 来自环境变量，留空保持不变'
     case 'command':
-      return `${what}由命令提供，留空保持不变`
+      return 'CDK 由命令提供，留空保持不变'
     case 'prompt':
-      return `${what}在运行时交互输入，留空保持不变`
+      return 'CDK 在运行时交互输入，留空保持不变'
     case 'none':
     default:
-      return `尚未保存${what}`
+      return '尚未保存 CDK'
   }
 }
 
@@ -130,7 +127,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
           setConfigFeedback(null)
         }}
         options={SOURCE_OPTIONS}
-        hint="MaaResource 由 maa-cli 的 hot-update 同步；Git 直连仓库，MirrorChyan 走镜像快照"
+        hint="Git 从官方仓库同步，MirrorChyan 使用镜像快照"
       />
 
       {draft.source === 'git' && (
@@ -142,17 +139,11 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
               updateGit({ backend: value as GitBackend })
             }}
             options={BACKEND_OPTIONS}
-            hint="系统 git 支持 SSH 口令；libgit2 内置于 maa-cli"
           />
-          <Input
-            label="仓库地址"
-            value={draft.git.url}
-            onChange={(value: string) => {
-              updateGit({ url: value })
-            }}
-            placeholder={DEFAULT_RESOURCE_GIT_URL}
-            hint="留空使用 MaaAssistantArknights/MaaResource 官方仓库"
-          />
+          <dl>
+            <dt className="mb-2 text-sm font-medium text-secondary">仓库地址</dt>
+            <dd className="wrap-anywhere font-mono text-sm text-primary">{OFFICIAL_RESOURCE_GIT_URL}</dd>
+          </dl>
           <Input
             label="分支"
             value={draft.git.branch}
@@ -161,39 +152,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             }}
             placeholder="默认分支"
             hint="留空跟随仓库默认分支"
-          />
-          <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-primary">使用 ssh-agent</div>
-              <div className="mt-1 text-xs leading-5 text-tertiary">通过 ssh-agent 提供克隆凭据，无需填写私钥</div>
-            </div>
-            <Switch
-              label="使用 ssh-agent"
-              checked={draft.git.useSshAgent}
-              onChange={(checked: boolean) => {
-                updateGit({ useSshAgent: checked })
-              }}
-            />
-          </div>
-          {!draft.git.useSshAgent && (
-            <Input
-              label="SSH 私钥路径"
-              value={draft.git.sshKey}
-              onChange={(value: string) => {
-                updateGit({ sshKey: value })
-              }}
-              placeholder="~/.ssh/id_ed25519"
-              hint="使用 SSH 地址克隆时填写；留空表示不需要证书"
-            />
-          )}
-          <Input
-            label="SSH 私钥口令"
-            type="password"
-            value={draft.git.passphrase}
-            onChange={(value: string) => {
-              updateGit({ passphrase: value })
-            }}
-            hint={describeSecret(draft.git.passphraseKind, '口令')}
           />
         </>
       )}
@@ -208,7 +166,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
               updateMirrorChyan({ cdk: value, clearCdk: false })
             }}
             disabled={draft.mirrorchyan.clearCdk}
-            hint={describeSecret(draft.mirrorchyan.cdkKind, ' CDK')}
+            hint={describeCdk(draft.mirrorchyan.cdkKind)}
           />
           {draft.mirrorchyan.cdkKind !== 'none' && (
             <Checkbox

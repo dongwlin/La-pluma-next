@@ -180,16 +180,22 @@ curl -X POST http://localhost:3000/api/agent/actions/update-channel \
   -H 'Content-Type: application/json' \
   -d '{"scope":"core","channel":"beta"}'
 
-# 读取资源源配置（[resource] 开关、来源与凭据形态）
+# 读取资源源配置、官方 Git 地址与 MirrorChyan 凭据形态
 curl 'http://localhost:3000/api/agent/config/resource-source'
 
-# 保存资源源配置：整体提交，空白凭据表示保留已保存值
+# 保存资源源配置；省略 MirrorChyan CDK 时保留已保存值
 curl -X POST http://localhost:3000/api/agent/config/resource-source \
   -H 'Content-Type: application/json' \
-  -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git","url":"https://github.com/MaaAssistantArknights/MaaResource.git","branch":null,"useSshAgent":false,"sshKey":null},"mirrorchyan":{"checkInterval":600}}'
+  -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git","branch":null},"mirrorchyan":{"checkInterval":600}}'
 ```
 
-`GET /api/agent/update-channels` 返回 `{ core, cli }`；`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`cli.toml` 缺失时按缺省值返回；文件损坏或不可读时同样返回缺省值，但额外携带 `degraded: true` 并记录错误日志，调用方据此提示“沿用默认渠道”而不是把默认值当成已保存配置。`GET /version` 的 `updateChannels` 沿用该形状；其 `resource` 在部分候选资源目录读取失败但仍有可用信息时也携带 `degraded: true`，仅当全部候选目录都不可读时版本信息才回退为 `unknown`。`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`，响应只回显凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文；请求未提供凭据时保留已保存值。切换 Git/MirrorChyan 来源时，非活动来源已保存的字段（SSH 凭据、CDK、检查间隔等）与非本页管理的未知键一起保留在同一张 `[resource.source]` 表内，并在之后的读取与切回时继续可见；`git.url` 保存时校验 scheme（`http`/`https`/`ssh`/`git`/`file` 或 `[user@]host:path`），其它写法返回 `AGENT_RESOURCE_SOURCE_INVALID`（`details.field === 'git.url'`，不回显 URL 以免泄露凭据），空白仍回落到官方仓库默认值。这四个端点与更新命令不同：它们不创建 Run、不占用执行租约，也不出现在 manifest/OpenAPI 中。
+`GET /api/agent/update-channels` 返回 `{ core, cli }`。`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`cli.toml` 缺失时返回缺省值，文件损坏或不可读时额外携带 `degraded: true` 并记录错误日志。`GET /version` 的 `updateChannels` 沿用该形状，其 `resource` 在部分候选资源目录读取失败但仍有可用信息时也携带 `degraded: true`。全部候选目录都不可读时，资源版本信息回退为 `unknown`。
+
+`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`。响应的 `git.url` 固定为 `https://github.com/MaaAssistantArknights/MaaResource.git`。请求的 `git` 对象只接受 `backend` 与 `branch`。提交 `url`、`useSshAgent`、`sshKey` 或 `passphrase` 会返回 400 `AGENT_RESOURCE_SOURCE_INVALID`，`error.details.field` 指向请求字段，响应省略传入的值。MirrorChyan 仍可作为独立来源，`mirrorchyan.cdkKind` 只回显 CDK 形态（`none`/`plain`/`env`/`command`/`prompt`）。省略或留空 `mirrorchyan.cdk` 会保留已保存的 CDK，`mirrorchyan.clearCdk: true` 会清除它。
+
+执行租约被占用时，保存返回 409 `MAA_EXECUTION_BUSY`，防止执行期间切换已核验的资源源。当前任务结束后可重试。
+
+这四个配置端点的契约以本节为准，供设置页和手动调用使用。
 
 更新相关端点另有参数错误码：`AGENT_MAA_UPDATE_CORE_CHANNEL_INVALID`（400，`details.version`，仅当显式传入且不是 `stable`/`beta`/`alpha`；校验先于读取 `cli.toml`）来自 `update-core`；`AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID`（400，`details.channel`）与 `AGENT_MAA_UPDATE_CLI_UNSUPPORTED`（409，`retryable: false`，`details.channel`/`source`；`dryRun` 不拦截不支持的安装来源）来自 `update-cli`；`AGENT_UPDATE_CHANNEL_SCOPE_INVALID`（400，`details.scope`）、`AGENT_UPDATE_CHANNEL_INVALID`（400，`details.scope`/`channel`）与 `AGENT_RESOURCE_SOURCE_INVALID`（400，`details.field`，`retryable: false`）来自渠道与资源源写入。
 

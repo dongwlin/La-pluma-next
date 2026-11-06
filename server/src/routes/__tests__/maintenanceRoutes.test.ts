@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,7 @@ const xdgStateHome = join(fixtureDir, 'xdg-state');
 const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const maaConfigDir = join(xdgConfigHome, 'maa');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
+const hotUpdateDir = join(xdgDataHome, 'maa', 'MaaResource');
 const trainingDataDir = join(fixtureDir, 'recognition-data');
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
@@ -51,7 +53,7 @@ if (args[0] === 'version') {
 } else if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'hot-update') {
-  process.stdout.write('');
+  process.stdout.write(process.env.FAKE_MAA_HOT_UPDATE_DIR || '');
 } else if (args[0] === 'hot-update') {
   process.stdout.write('Hot update completed successfully\\n');
 } else {
@@ -82,6 +84,7 @@ process.env.FAKE_MAA_LOG = cliCallLog;
 process.env.FAKE_MAA_LOG_DIR = maaLogDir;
 process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
 process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+process.env.FAKE_MAA_HOT_UPDATE_DIR = hotUpdateDir;
 process.env.FAKE_ADB_LOG = adbCallLog;
 process.env.FAKE_ADB_CONNECTED = adbConnectedMarker;
 process.env.FAKE_ADB_ADDRESS = '127.0.0.1:5555';
@@ -575,6 +578,12 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('runs native maa hot-update and refreshes resource metadata for manual sync', async () => {
+    await mkdir(hotUpdateDir, { recursive: true });
+    execFileSync('git', ['-C', hotUpdateDir, 'init', '--quiet']);
+    execFileSync('git', [
+      '-C', hotUpdateDir, 'remote', 'add', 'origin',
+      'https://github.com/MaaAssistantArknights/MaaResource.git'
+    ]);
     const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
@@ -773,11 +782,15 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     try {
       const defaults = await readSuccess<{
         source: string;
-        git: { backend: string };
+        git: { backend: string; url: string; branch: string | null };
         mirrorchyan: { cdkKind: string; checkInterval: number };
       }>(await fetch(`${baseUrl}/config/resource-source`));
       assert.equal(defaults.data.source, 'git');
-      assert.equal(defaults.data.git.backend, 'git');
+      assert.deepEqual(defaults.data.git, {
+        backend: 'git',
+        url: 'https://github.com/MaaAssistantArknights/MaaResource.git',
+        branch: null
+      });
       assert.equal(defaults.data.mirrorchyan.cdkKind, 'none');
       assert.equal(defaults.data.mirrorchyan.checkInterval, 600);
 
@@ -787,10 +800,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
         source: 'git',
         git: {
           backend: 'libgit2',
-          url: 'https://git.example.com/MaaResource.git',
-          branch: 'main',
-          useSshAgent: true,
-          sshKey: '/home/user/.ssh/id_ed25519'
+          branch: 'main'
         },
         mirrorchyan: { checkInterval: 600 }
       });
@@ -800,7 +810,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
         autoUpdate: false,
         warnOnUpdateFailure: true,
         source: 'mirrorchyan',
-        git: { backend: 'git', url: '', branch: null, useSshAgent: false, sshKey: null },
+        git: { backend: 'git', branch: null },
         mirrorchyan: { checkInterval: 1800, cdk: 'mirror-secret' }
       });
       assert.equal(mirrorSaved.status, 200);
@@ -826,11 +836,32 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       );
       assert.equal(rereadSource.data.source, 'mirrorchyan');
 
+      const original = await readFile(cliConfigPath, 'utf-8');
+      for (const [field, value] of Object.entries({
+        url: 'https://user:secret@other.example/Resource.git',
+        sshKey: '/home/user/.ssh/id_ed25519',
+        passphrase: 'ssh-secret',
+        useSshAgent: true
+      })) {
+        const forbidden = await postJson(`${baseUrl}/config/resource-source`, {
+          autoUpdate: true,
+          warnOnUpdateFailure: false,
+          source: 'git',
+          git: { backend: 'git', branch: null, [field]: value },
+          mirrorchyan: { checkInterval: 600 }
+        });
+        assert.equal(forbidden.status, 400);
+        const { error } = await readError(forbidden);
+        assert.equal(error.code, 'AGENT_RESOURCE_SOURCE_INVALID');
+        assert.deepEqual(error.details, { field: `git.${field}` });
+      }
+      assert.equal(await readFile(cliConfigPath, 'utf-8'), original);
+
       const invalid = await postJson(`${baseUrl}/config/resource-source`, {
         autoUpdate: true,
         warnOnUpdateFailure: false,
         source: 'ftp',
-        git: { backend: 'git', url: '', branch: null, useSshAgent: false, sshKey: null },
+        git: { backend: 'git', branch: null },
         mirrorchyan: { checkInterval: 600 }
       });
       assert.equal(invalid.status, 400);

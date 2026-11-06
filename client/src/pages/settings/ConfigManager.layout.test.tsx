@@ -192,9 +192,6 @@ describe('ConfigManager layout surfaces', () => {
           backend: 'git',
           url: 'https://github.com/MaaAssistantArknights/MaaResource.git',
           branch: null,
-          useSshAgent: false,
-          sshKey: null,
-          passphraseKind: 'none',
         },
         mirrorchyan: { cdkKind: 'none', checkInterval: 600 },
       },
@@ -741,13 +738,20 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error')
   })
 
-  it('renders editable resource and instance forms for the active section', async () => {
+  it('renders the official repository as text and keeps instance options editable', async () => {
     localStorage.setItem('laPlumaConfigSection', 'resource')
 
     await act(async () => root.render(page()))
     await flush()
 
     expect(container.textContent).toContain('资源来源')
+    expect(container.textContent).toContain('https://github.com/MaaAssistantArknights/MaaResource.git')
+    const fieldLabels = Array.from(container.querySelectorAll('input')).flatMap(input =>
+      Array.from(input.labels ?? [], label => label.textContent))
+    expect(fieldLabels).not.toContain('仓库地址')
+    expect(fieldLabels).not.toContain('SSH 私钥路径')
+    expect(fieldLabels).not.toContain('SSH 私钥口令')
+    expect(container.textContent).not.toContain('ssh-agent')
     expect(buttonByText('保存')).toBeDefined()
     expect(mocks.getResourceSource).toHaveBeenCalledOnce()
     expect(mocks.getConfigDir).toHaveBeenCalledOnce()
@@ -770,7 +774,7 @@ describe('ConfigManager layout surfaces', () => {
         autoUpdate: true,
         warnOnUpdateFailure: false,
         source: 'mirrorchyan',
-        git: { backend: 'git', url: 'https://github.com/MaaAssistantArknights/MaaResource.git', branch: null, useSshAgent: false, sshKey: null, passphraseKind: 'none' },
+        git: { backend: 'git', url: 'https://github.com/MaaAssistantArknights/MaaResource.git', branch: null },
         mirrorchyan: { cdkKind: 'plain', checkInterval: 600 },
       },
     })
@@ -778,6 +782,10 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
+    const cdk = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
+      .find(input => input.labels?.[0]?.textContent === 'MirrorChyan CDK')!
+    expect(cdk.value).toBe('')
+    expect(cdk.type).toBe('password')
     await act(async () => buttonByText('保存')?.click())
     await flush()
 
@@ -785,6 +793,7 @@ describe('ConfigManager layout surfaces', () => {
       autoUpdate: true,
       warnOnUpdateFailure: false,
       source: 'mirrorchyan',
+      git: { backend: 'git', branch: null },
       mirrorchyan: expect.objectContaining({ checkInterval: 600 }),
     }))
     expect(container.textContent).toContain('资源源配置保存成功')

@@ -10,7 +10,7 @@ if ! maa version 2>/dev/null | grep -q "MaaCore"; then
     echo "这可能需要几分钟时间，请耐心等待..."
     
     # 强制安装 MaaCore（避免残留文件导致的问题）
-    if maa install --force; then
+    if node /app/server/scripts/install-maa-core.ts; then
         echo "✅ MaaCore 安装成功"
     else
         echo "❌ MaaCore 安装失败，但服务仍会启动"

@@ -25,6 +25,7 @@ const xdgStateHome = join(fixtureDir, 'xdg-state');
 const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const maaConfigDir = join(xdgConfigHome, 'maa');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
+const hotUpdateDir = join(xdgDataHome, 'maa', 'MaaResource');
 
 await mkdir(maaConfigDir, { recursive: true });
 await mkdir(resourceDir, { recursive: true });
@@ -51,7 +52,7 @@ if (args[0] === 'version') {
 } else if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'hot-update') {
-  process.stdout.write('');
+  process.stdout.write(process.env.FAKE_MAA_HOT_UPDATE_DIR || '');
 } else {
   process.exit(1);
 }
@@ -65,6 +66,7 @@ process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.ADB_PATH = fakeAdbPath;
 process.env.FAKE_MAA_LOG = cliCallLog;
 process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+process.env.FAKE_MAA_HOT_UPDATE_DIR = hotUpdateDir;
 process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
 process.env.XDG_DATA_HOME = xdgDataHome;
 process.env.XDG_STATE_HOME = xdgStateHome;
@@ -259,6 +261,8 @@ describe('update-core maintenance timeout', () => {
 
   it('keeps a core update successful when the requested channel cannot be persisted', async () => {
     const cliConfigPath = join(maaConfigDir, 'cli.toml');
+    const effectiveConfigPath = join(maaConfigDir, 'cli.json');
+    await writeFile(effectiveConfigPath, '{}', 'utf-8');
     await writeFile(cliConfigPath, '[core\nchannel = ', 'utf-8');
     try {
       const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
@@ -285,6 +289,7 @@ describe('update-core maintenance timeout', () => {
       assert.equal(await readFile(cliConfigPath, 'utf-8'), '[core\nchannel = ');
     } finally {
       await rm(cliConfigPath, { force: true });
+      await rm(effectiveConfigPath, { force: true });
     }
   });
 });

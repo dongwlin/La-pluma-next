@@ -26,9 +26,14 @@ process.env.LA_PLUMA_MAA_LOCK_FILE = lockPath;
 process.env.FIXTURE_CLI_READY = readyMarker;
 
 await mkdir(cacheDir);
+await writeFile(join(root, 'cli.toml'), '[resource.source]\ntype = "mirrorchyan"\n');
 await writeFile(cliPath, `#!${process.execPath}
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
+if (args[0] === 'dir' && args[1] === 'config') {
+  process.stdout.write(${JSON.stringify(root)} + '\\n');
+  process.exit(0);
+}
 process.stdout.write('fixture cli started: ' + args.join(' ') + '\\n');
 if (args.includes('--ignore-term')) {
   process.on('SIGTERM', () => {});

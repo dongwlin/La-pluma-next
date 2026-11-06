@@ -1,12 +1,13 @@
 /**
  * MAA 资源源配置（`cli.toml` 的 `[resource]`）：Git 与 MirrorChyan 两种来源，
  * 以及自动更新与失败告警开关。读取兼容旧版 `backend`/`remote` 写法；保存只写
- * maa-cli 0.7 的 `[resource.source]` 新格式并迁移旧字段。非活动来源的已保存键
- * 与非本页管理的未知键一起保留在同一张 `[resource.source]` 表内。凭据只报告
- * 形态，不回传明文；请求未提供时保留已保存的凭据。
+ * maa-cli 0.7 的 `[resource.source]` 新格式并迁移旧字段。Git 地址固定为官方仓库。
+ * MirrorChyan 的 CDK 只报告形态，请求未提供时保留已保存的凭据。
  */
+import { OFFICIAL_RESOURCE_GIT_URL } from '../config/resourceRepository.ts';
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
+import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import {
   isCliConfigRecord,
   readCliConfigDocument,
@@ -20,7 +21,6 @@ export type ResourceSourceType = (typeof RESOURCE_SOURCE_TYPES)[number];
 export const GIT_BACKENDS = ['git', 'libgit2'] as const;
 export type GitBackend = (typeof GIT_BACKENDS)[number];
 
-export const DEFAULT_RESOURCE_GIT_URL = 'https://github.com/MaaAssistantArknights/MaaResource.git';
 export const DEFAULT_MIRRORCHYAN_CHECK_INTERVAL = 600;
 
 /** maa-cli Secret 的形态：`false` / `true` / 明文字符串 / `{ env }` / `{ cmd }`。 */
@@ -28,11 +28,8 @@ export type ResourceSecretKind = 'none' | 'prompt' | 'plain' | 'env' | 'command'
 
 export interface ResourceGitSource {
   backend: GitBackend;
-  url: string;
+  readonly url: typeof OFFICIAL_RESOURCE_GIT_URL;
   branch: string | null;
-  useSshAgent: boolean;
-  sshKey: string | null;
-  passphraseKind: ResourceSecretKind;
 }
 
 export interface ResourceMirrorChyanSource {
@@ -52,14 +49,7 @@ export interface ResourceSourceSaveInput {
   autoUpdate: boolean;
   warnOnUpdateFailure: boolean;
   source: ResourceSourceType;
-  git: {
-    backend: GitBackend;
-    url: string;
-    branch: string | null;
-    useSshAgent: boolean;
-    sshKey: string | null;
-    passphrase?: string | null;
-  };
+  git: Omit<ResourceGitSource, 'url'>;
   mirrorchyan: {
     checkInterval: number;
     cdk?: string | null;
@@ -120,11 +110,8 @@ function readSourceSection(resource: Record<string, unknown>): Record<string, un
 function readGitSource(raw: Record<string, unknown>): ResourceGitSource {
   return {
     backend: raw.backend === 'libgit2' ? 'libgit2' : 'git',
-    url: readString(raw.url) ?? DEFAULT_RESOURCE_GIT_URL,
-    branch: readString(raw.branch),
-    useSshAgent: raw.use_ssh_agent === true,
-    sshKey: readString(raw.ssh_key),
-    passphraseKind: readSecretKind(raw.passphrase)
+    url: OFFICIAL_RESOURCE_GIT_URL,
+    branch: readString(raw.branch)
   };
 }
 
@@ -183,49 +170,16 @@ function readOptionalText(source: Record<string, unknown>, key: string, field: s
   return value.trim() === '' ? null : value;
 }
 
-const GIT_URL_SCHEMES = ['http', 'https', 'ssh', 'git', 'file'] as const;
-const GIT_URL_SCHEME_PATTERN = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/(.*)$/;
-const GIT_URL_OPAQUE_TRANSPORT_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*::/;
-const SCP_LIKE_GIT_URL_PATTERN = /^(?:[^@\s/:]+@)?[A-Za-z0-9._-]+:[^\s:][^\s]*$/;
-
-/** git 只接受受支持的 URL scheme 或 scp-like `[user@]host:path`，拒绝相对路径与其它的传输写法。 */
-function isSupportedGitUrl(value: string): boolean {
-  const scheme = GIT_URL_SCHEME_PATTERN.exec(value);
-  if (scheme) {
-    const rest = scheme[2];
-    return (GIT_URL_SCHEMES as readonly string[]).includes(scheme[1].toLowerCase())
-      && rest.trim() !== ''
-      && !/\s/.test(rest);
-  }
-  if (value.includes('://') || GIT_URL_OPAQUE_TRANSPORT_PATTERN.test(value)) return false;
-  return SCP_LIKE_GIT_URL_PATTERN.test(value);
-}
-
 function readGitInput(source: Record<string, unknown>): ResourceSourceSaveInput['git'] {
+  const unsupportedField = Object.keys(source).find(key => key !== 'backend' && key !== 'branch');
+  if (unsupportedField !== undefined) throw invalidResourceSource(`git.${unsupportedField}`);
   const backend = source.backend;
-  if (!(GIT_BACKENDS as readonly string[]).includes(String(backend))) {
+  if (backend !== 'git' && backend !== 'libgit2') {
     throw invalidResourceSource('git.backend', { value: backend });
   }
   const branch = readOptionalText(source, 'branch', 'git.branch');
-  const sshKey = readOptionalText(source, 'sshKey', 'git.sshKey');
-  const passphrase = readOptionalText(source, 'passphrase', 'git.passphrase');
-  const useSshAgent = source.useSshAgent;
-  if (!isBoolean(useSshAgent)) {
-    throw invalidResourceSource('git.useSshAgent', { receivedType: typeof useSshAgent });
-  }
-  const url = readOptionalText(source, 'url', 'git.url');
-  if (url !== null && !isSupportedGitUrl(url)) {
-    // 不回显 URL：其中可能包含用户名、口令或私有地址。
-    throw invalidResourceSource('git.url');
-  }
-  return {
-    backend: backend === 'libgit2' ? 'libgit2' : 'git',
-    url: url ?? DEFAULT_RESOURCE_GIT_URL,
-    branch,
-    useSshAgent,
-    sshKey,
-    ...(passphrase === null ? {} : { passphrase })
-  };
+  if (branch?.startsWith('-')) throw invalidResourceSource('git.branch');
+  return { backend, branch };
 }
 
 function readMirrorChyanInput(source: Record<string, unknown>): ResourceSourceSaveInput['mirrorchyan'] {
@@ -277,19 +231,12 @@ function buildCdk(input: ResourceSourceSaveInput['mirrorchyan'], existing: Exist
 }
 
 function buildGitTable(input: ResourceSourceSaveInput['git'], table: Record<string, unknown>): Record<string, unknown> {
-  // 保留同一来源表里非本页管理的键（含非活动来源字段）；只覆盖表单管理的字段。
   table.type = 'git';
   if (input.backend === 'libgit2') table.backend = 'libgit2';
   else delete table.backend;
-  if (input.url !== DEFAULT_RESOURCE_GIT_URL) table.url = input.url;
-  else delete table.url;
+  table.url ??= OFFICIAL_RESOURCE_GIT_URL;
   if (input.branch) table.branch = input.branch;
   else delete table.branch;
-  if (input.useSshAgent) table.use_ssh_agent = true;
-  else delete table.use_ssh_agent;
-  if (input.sshKey) table.ssh_key = input.sshKey;
-  else delete table.ssh_key;
-  if (input.passphrase) table.passphrase = input.passphrase;
   return table;
 }
 
@@ -314,15 +261,17 @@ function buildSourceTable(input: ResourceSourceSaveInput, existing: ExistingSour
  */
 export async function saveResourceSourceConfig(input: unknown): Promise<ResourceSourceConfig> {
   const parsed = parseResourceSourceSaveInput(input);
-  await updateCliConfigDocument(document => {
-    const resource = { ...readResourceSection(document) };
-    const existing = readExistingSourceRaw(resource);
-    delete resource.backend;
-    delete resource.remote;
-    resource.auto_update = parsed.autoUpdate;
-    resource.warn_on_update_failure = parsed.warnOnUpdateFailure;
-    resource.source = buildSourceTable(parsed, existing);
-    return { ...document, resource };
+  return withMaaExecutionLease({ source: 'resource-source-config', taskName: '保存资源源配置' }, async () => {
+    await updateCliConfigDocument(document => {
+      const resource = { ...readResourceSection(document) };
+      const existing = readExistingSourceRaw(resource);
+      delete resource.backend;
+      delete resource.remote;
+      resource.auto_update = parsed.autoUpdate;
+      resource.warn_on_update_failure = parsed.warnOnUpdateFailure;
+      resource.source = buildSourceTable(parsed, existing);
+      return { ...document, resource };
+    });
+    return readResourceSourceConfig();
   });
-  return readResourceSourceConfig();
 }

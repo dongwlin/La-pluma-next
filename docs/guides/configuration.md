@@ -34,7 +34,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 | `[instance_options]` 未知字段 | 保留 | 不展示，保存时不覆盖 |
 | `[static_options].cpu_ocr` / `gpu_ocr` | 否 | 不进本页表单 |
 | profile `[resource]`（`global_resource` 等） | 否 | 属于资源加载覆盖，不是资源来源 |
-| cli.toml `[resource].auto_update` / `warn_on_update_failure` / `[resource.source]` | 是 | Git 与 MirrorChyan 两种来源；旧版 `backend`/`remote` 保存时迁移；非活动来源的键保留在同一张表内，`git.url` 需为受支持的 scheme 或 scp-like 写法 |
+| cli.toml `[resource].auto_update` / `warn_on_update_failure` / `[resource.source]` | 是 | Git 固定使用官方 HTTPS 仓库，MirrorChyan 独立配置。更新前检查和人工纠正位置见 [资源更新集成](../server/integrations.md#maa-cli-子进程与实时日志) |
 | cli.toml `[core]` / `[cli]` 更新渠道 | 是（组件更新卡片） | 由更新渠道表单维护 |
 | cli.toml `[hot_update]` | 否 | 任务缓存热更新，属另一功能 |
 | cli.toml `github_proxy` | 否 | 不进本页表单 |

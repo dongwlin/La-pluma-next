@@ -23,6 +23,10 @@ import { readFile, rename, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 const args = process.argv.slice(2);
+if (args[0] === 'dir' && args[1] === 'config') {
+  process.stdout.write(${JSON.stringify(root)} + '\\n');
+  process.exit(0);
+}
 const cacheDir = process.env.MAA_CACHE_DIR;
 for (const file of ['StageActivityV2.json', 'resource/tasks/tasks.json', 'resource/global/YoStarEN/resource/tasks/tasks.json']) {
   JSON.parse(await readFile(join(cacheDir, file), 'utf-8'));
