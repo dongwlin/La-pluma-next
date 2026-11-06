@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { prepareMaaTaskCache } from '../maaTaskCacheService.ts';
+import { prepareMaaTaskCache, invalidateCachedCopilotFiles } from '../maaTaskCacheService.ts';
 import type { MaaTaskCache } from '../maaTaskCacheService.ts';
 
 test('local tasks reuse stale hot updates without changing the shared cache', async () => {
@@ -79,6 +79,25 @@ test('missing or invalid optional overlays leave base resources usable for every
 test('update, discovery, and remote copilot commands retain normal network/cache behavior', async () => {
   for (const command of ['version', 'copilot']) {
     assert.equal(await prepareMaaTaskCache(command, { cliPath: '/missing/maa' }), null, command);
+  }
+});
+
+test('invalidates only the requested copilot cache files', async () => {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-cache-'));
+  try {
+    const copilotDir = join(cacheDir, 'copilot');
+    await mkdir(copilotDir, { recursive: true });
+    for (const id of [101, 102, 999]) {
+      await writeFile(join(copilotDir, `${id}.json`), '{}');
+    }
+
+    await invalidateCachedCopilotFiles([101, 101], { env: { MAA_CACHE_DIR: cacheDir } });
+
+    await assert.rejects(stat(join(copilotDir, '101.json')), { code: 'ENOENT' });
+    assert.ok((await stat(join(copilotDir, '102.json'))).isFile());
+    assert.ok((await stat(join(copilotDir, '999.json'))).isFile());
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
   }
 });
 

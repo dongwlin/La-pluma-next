@@ -130,3 +130,18 @@ export async function prepareMaaTaskCache(command: string, {
     throw error;
   }
 }
+
+/**
+ * 删除共享 MAA 缓存中指定 copilot 已下载的文件。
+ *
+ * maa-cli 命中 `<cache>/copilot/<id>.json` 时直接复用而不校验远端内容；原生
+ * 委托执行前删除本次条目的缓存，确保命令重新下载，避免跑旧作业文件。
+ */
+export async function invalidateCachedCopilotFiles(
+  copilotIds: readonly number[],
+  { cliPath = DEFAULT_MAA_CLI_PATH, env = process.env }: MaaTaskCacheOptions = {}
+): Promise<void> {
+  const cacheDir = await resolveMaaCacheDir(cliPath, env);
+  const ids = [...new Set(copilotIds.map(id => Number(id)).filter(id => Number.isInteger(id)))];
+  await Promise.all(ids.map(id => rm(join(cacheDir, 'copilot', `${id}.json`), { force: true })));
+}
