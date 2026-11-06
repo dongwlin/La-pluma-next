@@ -27,7 +27,7 @@ import type {
   MaaExecFileResult,
   MaaProcessStarted
 } from '../maaProcessService.ts';
-import { createMaaLogCheckpoint, readMaaLogSince } from '../maaLogFileService.ts';
+import { createMaaLogCheckpoint, readMaaLogIncrement, readMaaLogSince } from '../maaLogFileService.ts';
 import type { MaaLogFileHandle } from '../maaLogFileService.ts';
 import { loggerManager } from '../../utils/logger.ts';
 
@@ -482,5 +482,66 @@ describe('MAA log checkpoint ports', () => {
     assert.equal(await createMaaLogCheckpoint({ resolveLogDir: async () => directory }), null);
     assert.equal(await readMaaLogSince({ logPath: join(directory, 'asst.log'), size: 10 }), '');
     assert.equal(await createMaaLogCheckpoint({ resolveLogDir: async () => { throw new Error('no cli'); } }), null);
+  });
+
+  it('marks a fully read increment ok and partial increments truncated', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-increment-');
+    const logPath = join(directory, 'asst.log');
+    await writeFile(logPath, 'first', 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'ok', text: '' });
+
+    await appendFile(logPath, 'second', 'utf-8');
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'ok', text: 'second' });
+    assert.deepEqual(await readMaaLogIncrement(checkpoint, 3), { status: 'truncated', text: 'ond' });
+
+    await writeFile(logPath, 'fi', 'utf-8');
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'truncated', text: '' });
+  });
+
+  it('marks a short read of the available bytes truncated', async () => {
+    const handle: MaaLogFileHandle = {
+      read: async (buffer, offset, length) => {
+        buffer.write('del', offset, 'utf8');
+        return { bytesRead: Math.min(length, 3), buffer };
+      },
+      close: async () => {}
+    };
+
+    const increment = await readMaaLogIncrement(
+      { logPath: '/virtual/asst.log', size: 100 },
+      64,
+      { stat: async () => ({ size: 105 }), open: async () => handle }
+    );
+
+    assert.deepEqual(increment, { status: 'truncated', text: 'del' });
+  });
+
+  it('marks a missing checkpoint or unreadable log unreadable', async () => {
+    assert.deepEqual(await readMaaLogIncrement(null), { status: 'unreadable', text: '' });
+
+    assert.deepEqual(
+      await readMaaLogIncrement(
+        { logPath: '/virtual/asst.log', size: 10 },
+        64,
+        { stat: async () => { throw new Error('denied'); } }
+      ),
+      { status: 'unreadable', text: '' }
+    );
+
+    assert.deepEqual(
+      await readMaaLogIncrement(
+        { logPath: '/virtual/asst.log', size: 10 },
+        64,
+        {
+          stat: async () => ({ size: 20 }),
+          open: async () => { throw new Error('denied'); }
+        }
+      ),
+      { status: 'unreadable', text: '' }
+    );
   });
 });
