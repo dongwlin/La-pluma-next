@@ -21,7 +21,7 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'config') {
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.FAKE_MAA_CONFIG_DIR = configDir;
 
-const { getConfig, saveConfig } = await import('../maaConfigService.ts');
+const { getConfig, getProfile, saveConfig, saveProfile } = await import('../maaConfigService.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
 loggerManager.getLogger('MaaService').enableConsole = false;
@@ -274,5 +274,100 @@ address = "127.0.0.1:5555"
     }
 
     assert.deepEqual(await readdir(profilesDir), ['daily.toml']);
+  });
+});
+
+describe('MAA profile presets and instance options', () => {
+  beforeEach(async () => {
+    await rm(profilesDir, { recursive: true, force: true });
+  });
+
+  it('reads preset aliases and normalizes the touch mode casing', async () => {
+    await writeProfile('preset', `[connection]
+preset = "playtools"
+address = "127.0.0.1:5555"
+
+[instance_options]
+touch_mode = "maatouch"
+deployment_with_pause = false
+custom_flag = "kept"
+`);
+
+    const profile = await getProfile('preset');
+    assert.deepEqual(profile.connection, {
+      preset: 'PlayCover',
+      address: '127.0.0.1:5555'
+    });
+    assert.deepEqual(profile.instance_options, {
+      touch_mode: 'MaaTouch',
+      deployment_with_pause: false,
+      custom_flag: 'kept'
+    });
+  });
+
+  it('writes instance options without touching connection, behavior or other sections', async () => {
+    await writeProfile('daily', sampleProfile);
+
+    await saveProfile('daily', {
+      instance_options: { touch_mode: 'MiniTouch', adb_lite_enabled: true }
+    });
+
+    const parsed = TOML.parse(await readProfile('daily'));
+    assert.deepEqual(parsed.connection, {
+      adb_path: 'adb',
+      address: '127.0.0.1:5555',
+      retry_count: 3,
+      ports: [5555, 16384]
+    });
+    assert.deepEqual(parsed.behavior, { auto_reconnect: true });
+    assert.deepEqual(parsed.resource, { channel: 'beta', auto_update: false });
+    assert.deepEqual(parsed.instance_options, {
+      touch_mode: 'MiniTouch',
+      adb_lite_enabled: true
+    });
+  });
+
+  it('rejects unknown presets and touch modes without writing the profile', async () => {
+    await writeProfile('daily', sampleProfile);
+    const original = await readProfile('daily');
+
+    await assert.rejects(
+      saveProfile('daily', { connection: { preset: 'Nope' } }),
+      (error: unknown) => {
+        const validationError = error as { code?: unknown; statusCode?: unknown; details?: unknown };
+        assert.equal(validationError.code, 'AGENT_CONFIG_PROFILE_INVALID');
+        assert.equal(validationError.statusCode, 400);
+        assert.deepEqual(validationError.details, { field: 'connection.preset', value: 'Nope' });
+        return true;
+      }
+    );
+    await assert.rejects(
+      saveProfile('daily', { instance_options: { touch_mode: 'Unknown' } }),
+      (error: unknown) => {
+        const validationError = error as { code?: unknown; statusCode?: unknown };
+        assert.equal(validationError.code, 'AGENT_CONFIG_PROFILE_INVALID');
+        assert.equal(validationError.statusCode, 400);
+        return true;
+      }
+    );
+    assert.equal(await readProfile('daily'), original);
+  });
+
+  it('migrates legacy connection and instance options into their sections', async () => {
+    await writeProfile('legacy-options', `[connection]
+address = "127.0.0.1:5555"
+preset = "Waydroid"
+auto_reconnect = true
+`);
+
+    await saveProfile('legacy-options', {
+      connection: { address: '10.0.0.9:5555' },
+      instance_options: { touch_mode: 'Adb' }
+    });
+
+    const parsed = TOML.parse(await readProfile('legacy-options'));
+    assert.deepEqual(parsed.connection, { address: '10.0.0.9:5555', preset: 'Waydroid' });
+    assert.deepEqual(parsed.behavior, { auto_reconnect: true });
+    assert.deepEqual(parsed.instance_options, { touch_mode: 'Adb' });
   });
 });
