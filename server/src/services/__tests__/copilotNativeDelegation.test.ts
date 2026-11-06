@@ -1,0 +1,634 @@
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test, { after, beforeEach, describe } from 'node:test';
+import type {
+  CopilotDelegationReason,
+  CopilotExecutionEntry,
+  CopilotExecutionLifecycle,
+  CopilotNativeDelegationInput,
+  CopilotPlan,
+  CopilotPlanEntry
+} from '../copilotPlanService.ts';
+
+// 假 CLI 同时承担 `run`（现有动态任务）与 `copilot`（原生委托）两条路径：
+// 两条路径都按检查点写入同样的 `CopilotListLoadTaskFileSuccess` 事件。
+const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-native-'));
+const fakeMaaCliPath = join(fixtureDir, 'fake-maa-cli.js');
+const maaCallLog = join(fixtureDir, 'maa-calls.log');
+const baseResourceDir = join(fixtureDir, 'base-resource');
+const maaConfigDir = join(fixtureDir, 'maa-config');
+const maaLogDir = join(fixtureDir, 'maa-logs');
+const maaAsstLog = join(maaLogDir, 'asst.log');
+const maaCacheDir = join(fixtureDir, 'maa-cache');
+const dropRecordsDir = join(fixtureDir, 'drop-records');
+const progressPath = join(fixtureDir, 'copilot-progress.json');
+const planDir = join(maaConfigDir, 'copilot-plans', '42');
+
+await mkdir(join(baseResourceDir, 'Arknights-Tile-Pos'), { recursive: true });
+await mkdir(maaConfigDir, { recursive: true });
+await mkdir(maaLogDir, { recursive: true });
+await mkdir(maaCacheDir, { recursive: true });
+await mkdir(dropRecordsDir, { recursive: true });
+await writeFile(join(baseResourceDir, 'stages.json'), '[]');
+for (const code of ['1-1', '1-2', '1-3']) {
+  const stageId = `main_01-0${code.slice(-1)}`;
+  await writeFile(
+    join(baseResourceDir, 'Arknights-Tile-Pos', `${stageId}-${stageId}.json`),
+    JSON.stringify({ code })
+  );
+}
+await writeFile(maaAsstLog, '');
+
+await writeFile(fakeMaaCliPath, `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const appendCall = line => {
+  if (process.env.FAKE_MAA_CALL_LOG) fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, line + '\\n');
+};
+const appendLoad = file => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | SubTaskExtraInfo ' + JSON.stringify({
+  taskchain: 'Copilot',
+  details: { stage_name: 'main_01-01', file_name: file },
+  what: 'CopilotListLoadTaskFileSuccess'
+}) + '\\n');
+const readTaskToml = () => {
+  const walk = dir => {
+    let files = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) files = files.concat(walk(full));
+      else if (entry.name === 'task.toml') files.push(full);
+    }
+    return files;
+  };
+  try {
+    const root = path.join(process.env.FAKE_MAA_CONFIG_DIR || '', 'tasks');
+    const files = walk(root).sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs);
+    return files.length ? fs.readFileSync(files[files.length - 1], 'utf8') : '';
+  } catch {
+    return '';
+  }
+};
+(async () => {
+  if (args[0] === 'dir' && args[1] === 'resource') {
+    process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
+    return 0;
+  }
+  if (args[0] === 'dir' && args[1] === 'config') {
+    process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
+    return 0;
+  }
+  if (args[0] === 'dir' && args[1] === 'log') {
+    process.stdout.write(process.env.FAKE_MAA_LOG_DIR || '');
+    return 0;
+  }
+  if (args[0] === 'dir' && args[1] === 'cache') {
+    process.stdout.write(process.env.MAA_CACHE_DIR || '');
+    return 0;
+  }
+  if (args[0] === 'copilot') {
+    appendCall('copilot ' + args.slice(1).join(' '));
+    for (const step of JSON.parse(process.env.FAKE_NATIVE_LOADS || '[]')) {
+      if (step.after) await sleep(step.after);
+      appendLoad(path.join(process.env.MAA_CACHE_DIR || '', 'copilot', String(step.id) + '.json'));
+    }
+    if (process.env.FAKE_NATIVE_EXIT_DELAY) await sleep(Number(process.env.FAKE_NATIVE_EXIT_DELAY));
+    return Number(process.env.FAKE_NATIVE_EXIT_CODE || 0);
+  }
+  if (args[0] === 'run') {
+    appendCall('run ' + args.slice(1).join(' '));
+    appendCall('toml ' + JSON.stringify(readTaskToml()));
+    for (const step of JSON.parse(process.env.FAKE_RUN_LOADS || '[]')) {
+      if (step.after) await sleep(step.after);
+      appendLoad(step.file);
+    }
+    if (process.env.FAKE_RUN_EXIT_DELAY) await sleep(Number(process.env.FAKE_RUN_EXIT_DELAY));
+    return Number(process.env.FAKE_RUN_EXIT_CODE || 0);
+  }
+  return 1;
+})().then(
+  code => process.exit(code),
+  () => process.exit(1)
+);
+`, { mode: 0o755 });
+
+process.env.MAA_CLI_PATH = fakeMaaCliPath;
+process.env.FAKE_MAA_CALL_LOG = maaCallLog;
+process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
+process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
+process.env.FAKE_MAA_LOG_DIR = maaLogDir;
+process.env.FAKE_MAA_LOG_FILE = maaAsstLog;
+process.env.MAA_CACHE_DIR = maaCacheDir;
+process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = progressPath;
+process.env.LA_PLUMA_MAA_LOCK_FILE = join(fixtureDir, 'maa-execution.lock');
+process.env.LA_PLUMA_DROP_RECORDS_DIR = dropRecordsDir;
+process.env.LA_PLUMA_AGENT_RUN_STORE = join(fixtureDir, 'agent-runs.json');
+
+const {
+  evaluateCopilotNativeDelegation,
+  executeCopilotEntries,
+  resetCopilotPlanCachesForTests,
+  setCopilotNativeDelegationForTests,
+  setCopilotFileLoadPollIntervalForTests
+} = await import('../copilotPlanService.ts');
+const {
+  configureCopilotSetRuntimeForTests,
+  continueManualCopilotSet,
+  resetCopilotSetRunStateForTests,
+  runContinuousCopilotSet,
+  startManualCopilotSet
+} = await import('../copilotSetRunService.ts');
+const { beginAgentRun, resetAgentRunsForTests } = await import('../agentRunService.ts');
+
+setCopilotFileLoadPollIntervalForTests(40);
+
+const originalFetch = globalThis.fetch;
+
+function stubCopilotSite(): void {
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    status_code: 200,
+    data: {
+      content: JSON.stringify({
+        stage_name: 'main_01-01',
+        doc: { title: '1-1' },
+        opers: [{ name: 'A' }],
+        groups: []
+      })
+    }
+  }), { status: 200 });
+}
+
+beforeEach(async () => {
+  resetCopilotPlanCachesForTests();
+  resetCopilotSetRunStateForTests();
+  resetAgentRunsForTests();
+  configureCopilotSetRuntimeForTests();
+  setCopilotFileLoadPollIntervalForTests(40);
+  stubCopilotSite();
+  process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
+  delete process.env.FAKE_NATIVE_LOADS;
+  delete process.env.FAKE_NATIVE_EXIT_CODE;
+  delete process.env.FAKE_NATIVE_EXIT_DELAY;
+  delete process.env.FAKE_RUN_LOADS;
+  delete process.env.FAKE_RUN_EXIT_CODE;
+  delete process.env.FAKE_RUN_EXIT_DELAY;
+  await writeFile(maaCallLog, '');
+  await writeFile(maaAsstLog, '');
+  await rm(progressPath, { force: true });
+  await rm(planDir, { recursive: true, force: true });
+  await rm(dropRecordsDir, { recursive: true, force: true });
+  await mkdir(dropRecordsDir, { recursive: true });
+  await rm(join(fixtureDir, 'maa-execution.lock'), { force: true });
+});
+
+after(async () => {
+  globalThis.fetch = originalFetch;
+  await rm(fixtureDir, { recursive: true, force: true });
+});
+
+interface EntrySpec {
+  itemIndex: number;
+  copilotId: number;
+  stageCode: string;
+  mode?: 'normal' | 'raid';
+  presetFormation?: boolean;
+}
+
+function planEntry({ itemIndex, copilotId, stageCode, mode = 'normal', presetFormation = false }: EntrySpec): CopilotPlanEntry {
+  return {
+    key: `${itemIndex}:${copilotId}:${mode}`,
+    itemIndex,
+    copilotId,
+    stageId: `main_01-0${stageCode.slice(-1)}`,
+    displayStage: stageCode,
+    apCost: 6,
+    mode,
+    presetFormation,
+    completed: false
+  };
+}
+
+function queueOf(count = 3): CopilotPlanEntry[] {
+  return Array.from({ length: count }, (_, index) =>
+    planEntry({ itemIndex: index, copilotId: 101 + index, stageCode: `1-${index + 1}` })
+  );
+}
+
+async function readMaaCalls(): Promise<string[]> {
+  return (await readFile(maaCallLog, 'utf8')).split('\n').filter(Boolean);
+}
+
+async function readProgress(): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(progressPath, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+interface DropSummary {
+  stage: string;
+  times: number;
+  sanity: number;
+  mode: string;
+  source: string;
+}
+
+async function readDrops(): Promise<DropSummary[]> {
+  const files = (await readdir(dropRecordsDir)).filter(name => name.endsWith('.json')).sort();
+  const records: DropSummary[] = [];
+  for (const file of files) {
+    const parsed: unknown = JSON.parse(await readFile(join(dropRecordsDir, file), 'utf8'));
+    const entries = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as { records?: unknown }).records
+      : null;
+    for (const record of Array.isArray(entries) ? entries : []) {
+      if (!record || typeof record !== 'object') continue;
+      const fields = record as Record<string, unknown>;
+      records.push({
+        stage: String(fields.stage),
+        times: Number(fields.times),
+        sanity: Number(fields.sanity),
+        mode: String(fields.mode),
+        source: String(fields.source)
+      });
+    }
+  }
+  return records;
+}
+
+interface CapturedEvents {
+  events: string[];
+  lifecycle: CopilotExecutionLifecycle;
+}
+
+function captureEvents(): CapturedEvents {
+  const events: string[] = [];
+  const keyOf = (entry: CopilotExecutionEntry): string => (entry as CopilotPlanEntry).key;
+  return {
+    events,
+    lifecycle: {
+      onBeforeStart: () => {
+        events.push('before-start');
+      },
+      onStarted: () => {
+        events.push('started');
+      },
+      onEntryStarted: entry => {
+        events.push(`entry-started:${keyOf(entry)}`);
+      },
+      onEntrySettled: (entry, status) => {
+        events.push(`entry-settled:${keyOf(entry)}:${status}`);
+      }
+    }
+  };
+}
+
+function nativeLoads(ids: readonly number[], delay = 150): string {
+  return JSON.stringify(ids.map(id => ({ id, after: delay })));
+}
+
+function runLoads(files: readonly string[], delay = 150): string {
+  return JSON.stringify(files.map(file => ({ file, after: delay })));
+}
+
+function planFiles(count = 3): string[] {
+  return Array.from({ length: count }, (_, index) =>
+    join(planDir, `${index}-${101 + index}-normal-1.json`)
+  );
+}
+
+describe('copilot native delegation conditions', () => {
+  test('accepts a queue representable by the native copilot command', async () => {
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+  });
+
+  test('rejects queues whose native command would change the MaaCore task params', async () => {
+    const two = queueOf(2);
+    const cases: { label: string; input: CopilotNativeDelegationInput; reason: CopilotDelegationReason }[] = [
+      { label: 'single-entry', input: { entries: queueOf(1) }, reason: 'single-entry' },
+      { label: 'no-entries', input: { entries: [] }, reason: 'no-entries' },
+      {
+        label: 'preset-formation',
+        input: { entries: [two[0], { ...two[1], presetFormation: true }] },
+        reason: 'preset-formation'
+      },
+      {
+        label: 'mixed-raid-mode',
+        input: { entries: [two[0], { ...two[1], mode: 'raid' }] },
+        reason: 'mixed-raid-mode'
+      },
+      { label: 'formation-disabled', input: { entries: two, options: { formationMode: 'off' } }, reason: 'formation-disabled' },
+      { label: 'loop-times', input: { entries: two, options: { loopTimes: 2 } }, reason: 'loop-times' },
+      {
+        label: 'user-additional',
+        input: { entries: two, options: { userAdditional: [{ name: '银灰' }] } },
+        reason: 'user-additional'
+      },
+      {
+        label: 'duplicate-copilot',
+        input: { entries: [two[0], { ...two[1], copilotId: two[0].copilotId }] },
+        reason: 'duplicate-copilot'
+      },
+      {
+        label: 'unsupported-options',
+        input: { entries: two, options: { formationIndex: 'abc' } },
+        reason: 'unsupported-options'
+      },
+      {
+        label: 'stage-name-mismatch',
+        input: { entries: [two[0], { ...two[1], displayStage: '1-9' }] },
+        reason: 'stage-name-mismatch'
+      },
+      {
+        label: 'missing-stage-code',
+        input: { entries: [two[0], { ...two[1], stageId: 'act21mini_04' }] },
+        reason: 'stage-name-mismatch'
+      }
+    ];
+    for (const { label, input, reason } of cases) {
+      assert.deepEqual(await evaluateCopilotNativeDelegation(input), { eligible: false, reason }, label);
+    }
+  });
+
+  test('supports an explicit kill switch', async () => {
+    setCopilotNativeDelegationForTests(false);
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'disabled'
+    });
+  });
+});
+
+describe('copilot native delegation execution', () => {
+  test('runs the queue as one native command in queue order', async () => {
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 102, 103]);
+    process.env.FAKE_NATIVE_EXIT_DELAY = '200';
+    const captured = captureEvents();
+
+    const outcome = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf(),
+      options: { useSanityPotion: true, addTrust: true },
+      lifecycle: captured.lifecycle
+    });
+
+    assert.deepEqual(await readMaaCalls(), [
+      'copilot prts://101 prts://102 prts://103 --raid normal --formation --ignore-requirements --use-sanity-potion --add-trust --batch'
+    ]);
+    assert.deepEqual(outcome.delegation, { attempted: true, fallback: false });
+    assert.equal(outcome.error, null);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['success', 'success', 'success']
+    );
+    assert.deepEqual(outcome.completed, ['0:101:normal', '1:102:normal', '2:103:normal']);
+    assert.deepEqual((await readProgress())['42'], outcome.completed);
+    assert.deepEqual((await readDrops()).map(drop => drop.stage), ['1-1', '1-2', '1-3']);
+  });
+
+  test('reports per-entry progress from the same load events as the existing path', async () => {
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 102, 103]);
+    process.env.FAKE_NATIVE_EXIT_DELAY = '320';
+    const native = captureEvents();
+    await executeCopilotEntries({ setId: '42', name: 'set', entries: queueOf(), lifecycle: native.lifecycle });
+
+    const nativeProgress = native.events.filter(event => event.startsWith('entry-'));
+
+    process.env.FAKE_NATIVE_LOADS = '';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+    process.env.FAKE_RUN_EXIT_DELAY = '320';
+    const existing = captureEvents();
+    setCopilotNativeDelegationForTests(false);
+    await executeCopilotEntries({ setId: '42', name: 'set', entries: queueOf(), lifecycle: existing.lifecycle });
+
+    assert.deepEqual(nativeProgress, existing.events.filter(event => event.startsWith('entry-')));
+    assert.ok(
+      nativeProgress.indexOf('entry-settled:0:101:normal:success')
+        < nativeProgress.indexOf('entry-started:2:103:normal')
+    );
+  });
+
+  test('falls back to the existing flow when the native command fails before any plan file loads', async () => {
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+    const captured = captureEvents();
+
+    const outcome = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf(),
+      lifecycle: captured.lifecycle
+    });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    assert.equal(outcome.delegation?.attempted, true);
+    assert.equal(outcome.delegation?.fallback, true);
+    assert.equal(typeof outcome.delegation?.nativeError, 'string');
+    assert.equal(outcome.error, null);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['success', 'success', 'success']
+    );
+    assert.deepEqual((await readProgress())['42'], outcome.completed);
+  });
+
+  test('does not fall back once the native command loaded a plan file', async () => {
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101]);
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
+    assert.deepEqual(outcome.delegation, { attempted: true, fallback: false });
+    assert.ok(outcome.error);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['failed', 'failed', 'failed']
+    );
+    assert.deepEqual((await readProgress())['42'], []);
+  });
+
+  test('treats a stop during the native command as stopped instead of falling back', async () => {
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+    let stopChecks = 0;
+
+    const outcome = await executeCopilotEntries({
+      setId: '42',
+      name: '测试作业集',
+      entries: queueOf(),
+      lifecycle: {
+        shouldStop: () => {
+          stopChecks += 1;
+          return stopChecks > 1;
+        }
+      }
+    });
+
+    assert.equal((await readMaaCalls()).filter(call => call.startsWith('run ')).length, 0);
+    assert.equal(outcome.stopped, true);
+    assert.deepEqual(outcome.delegation, { attempted: true, fallback: false });
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['pending', 'pending', 'pending']
+    );
+  });
+});
+
+describe('copilot native delegation equivalence', () => {
+  test('stage selection and completed entries produce the same queue in both paths', async () => {
+    const plan: CopilotPlan = {
+      setId: '42',
+      name: '测试作业集',
+      items: [],
+      entries: [
+        planEntry({ itemIndex: 0, copilotId: 101, stageCode: '1-1' }),
+        planEntry({ itemIndex: 1, copilotId: 102, stageCode: '1-2' }),
+        planEntry({ itemIndex: 2, copilotId: 103, stageCode: '1-3' })
+      ]
+    };
+    configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => plan });
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 103]);
+    process.env.FAKE_NATIVE_EXIT_DELAY = '250';
+
+    const selectedRun = beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42' } }).run;
+    const selected = await runContinuousCopilotSet({
+      runId: selectedRun.runId,
+      setId: '42',
+      selectedIndexes: [0, 2]
+    });
+
+    assert.deepEqual(await readMaaCalls(), [
+      'copilot prts://101 prts://103 --raid normal --formation --ignore-requirements --batch'
+    ]);
+    assert.equal(selected.summary.plannedEntries, 3);
+    assert.equal(selected.summary.queuedEntries, 2);
+    assert.equal(selected.summary.alreadyCompletedCount, 0);
+    assert.equal(selected.summary.successCount, 2);
+    assert.deepEqual(selected.summary.delegation, { attempted: true, fallback: false });
+    assert.deepEqual(selected.completed.sort(), ['0:101:normal', '2:103:normal']);
+
+    await writeFile(maaCallLog, '');
+    await writeFile(maaAsstLog, '');
+    await rm(progressPath, { force: true });
+    await rm(dropRecordsDir, { recursive: true, force: true });
+    await mkdir(dropRecordsDir, { recursive: true });
+    await writeFile(progressPath, JSON.stringify({ 42: ['1:102:normal'] }));
+
+    const completedPlan: CopilotPlan = {
+      ...plan,
+      entries: plan.entries.map(entry => ({ ...entry, completed: entry.itemIndex === 1 }))
+    };
+    configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => completedPlan });
+    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 103]);
+
+    const completedRun = beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42' } }).run;
+    const completed = await runContinuousCopilotSet({ runId: completedRun.runId, setId: '42' });
+
+    assert.deepEqual(await readMaaCalls(), [
+      'copilot prts://101 prts://103 --raid normal --formation --ignore-requirements --batch'
+    ]);
+    assert.equal(completed.summary.plannedEntries, 3);
+    assert.equal(completed.summary.queuedEntries, 2);
+    assert.equal(completed.summary.alreadyCompletedCount, 1);
+    assert.equal(completed.summary.successCount, 2);
+    assert.deepEqual([...completed.completed].sort(), ['0:101:normal', '1:102:normal', '2:103:normal']);
+    assert.deepEqual(((await readProgress())['42'] as string[]).sort(), [...completed.completed].sort());
+  });
+
+  test('manual handoff never delegates and keeps the waiting run flow', async () => {
+    const plan: CopilotPlan = { setId: '42', name: '测试作业集', items: [], entries: queueOf(2) };
+    configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => plan });
+    process.env.FAKE_RUN_LOADS = runLoads([planFiles()[0]]);
+    process.env.FAKE_RUN_EXIT_DELAY = '100';
+
+    const run = beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42', mode: 'manual' } }).run;
+    const started = await startManualCopilotSet({ runId: run.runId, setId: '42' });
+
+    assert.ok('waitingForNext' in started);
+    assert.equal(started.waitingForNext, true);
+    assert.equal(started.nextEntry?.key, '1:102:normal');
+    assert.equal(started.result.summary.delegation, undefined);
+    assert.deepEqual((await readMaaCalls()).filter(call => call.startsWith('copilot ')), []);
+
+    process.env.FAKE_RUN_LOADS = runLoads([planFiles()[1]]);
+    const next = await continueManualCopilotSet({ runId: run.runId });
+
+    assert.ok('waitingForNext' in next);
+    assert.equal(next.waitingForNext, false);
+    assert.equal(next.finished, true);
+    assert.equal(next.result.summary.delegation, undefined);
+    assert.deepEqual((await readMaaCalls()).filter(call => call.startsWith('copilot ')), []);
+    assert.deepEqual(
+      next.result.summary.taskResults.map(result => result.status),
+      ['success', 'success']
+    );
+  });
+
+  test('the two paths produce the same observable outcome for one queue', async () => {
+    async function runOnce(useNative: boolean) {
+      await writeFile(maaCallLog, '');
+      await writeFile(maaAsstLog, '');
+      await rm(progressPath, { force: true });
+      await rm(dropRecordsDir, { recursive: true, force: true });
+      await mkdir(dropRecordsDir, { recursive: true });
+      setCopilotNativeDelegationForTests(useNative);
+      process.env.FAKE_NATIVE_LOADS = useNative ? nativeLoads([101, 102, 103]) : '';
+      process.env.FAKE_NATIVE_EXIT_DELAY = '320';
+      process.env.FAKE_RUN_LOADS = useNative ? '' : runLoads(planFiles());
+      process.env.FAKE_RUN_EXIT_DELAY = '320';
+      const captured = captureEvents();
+      const outcome = await executeCopilotEntries({
+        setId: '42',
+        name: '测试作业集',
+        entries: queueOf(),
+        options: { ignoreRequirements: false, useSanityPotion: true, formationIndex: '2' },
+        lifecycle: captured.lifecycle
+      });
+      return {
+        events: captured.events,
+        statuses: outcome.summary.taskResults.map(result => [result.key, result.status]),
+        completed: [...outcome.completed].sort(),
+        progress: (await readProgress())['42'],
+        drops: await readDrops(),
+        calls: await readMaaCalls()
+      };
+    }
+
+    const native = await runOnce(true);
+    const existing = await runOnce(false);
+
+    assert.deepEqual(native.events, existing.events);
+    assert.deepEqual(native.statuses, existing.statuses);
+    assert.deepEqual(native.completed, existing.completed);
+    assert.deepEqual(native.progress, existing.progress);
+    assert.deepEqual(native.drops, existing.drops);
+
+    const nativeCall = native.calls[0];
+    assert.ok(nativeCall?.startsWith('copilot '));
+    assert.equal(nativeCall.includes('--ignore-requirements'), false);
+    assert.ok(nativeCall.includes('--formation-index 2'));
+
+    const tomlLine = existing.calls.find(call => call.startsWith('toml '));
+    assert.ok(tomlLine);
+    const toml = JSON.parse(tomlLine.slice('toml '.length)) as string;
+    assert.match(toml, /formation = true/);
+    assert.match(toml, /ignore_requirements = false/);
+    assert.match(toml, /use_sanity_potion = true/);
+    assert.match(toml, /formation_index = 2/);
+    assert.match(toml, /"nav_name_override" = "1-1"/);
+  });
+});
