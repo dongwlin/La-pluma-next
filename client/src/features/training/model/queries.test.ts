@@ -98,7 +98,9 @@ describe('training candidate query options', () => {
       trainingCandidatesQueryOptions({ status: 'owned', rarity: 6, needsElite2: true }),
     )
 
-    expect(data).toEqual([operatorRow('char_1')])
+    expect(data.operators).toEqual([operatorRow('char_1')])
+    // 旧服务端没有识别概要时保留 null，页面不会伪造“完整识别”。
+    expect(data.recognition).toBeNull()
     expect(apiMocks.getOperatorList.mock.calls[0]?.[0])
       .toEqual({ status: 'owned', rarity: 6, needsElite2: true })
     expect(apiMocks.getAllOperators).not.toHaveBeenCalled()
@@ -127,7 +129,7 @@ describe('training candidate query options', () => {
       trainingCandidatesQueryOptions({ status: 'all' }),
     )
 
-    expect(data.map(operator => [operator.id, operator.name, operator.owned])).toEqual([
+    expect(data.operators.map(operator => [operator.id, operator.name, operator.owned])).toEqual([
       ['char_owned', '识别名', true],
       ['char_unowned', '未拥有', false],
     ])
@@ -144,6 +146,53 @@ describe('training candidate query options', () => {
 
     expect(apiMocks.getAllOperators).toHaveBeenCalledOnce()
     expect(apiMocks.getOperBoxData).toHaveBeenCalledOnce()
+  })
+
+  it('carries the recognition summary from the candidate endpoint', async () => {
+    apiMocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: {
+        operators: [operatorRow('char_1')],
+        recognition: {
+          status: 'partial',
+          recognizedAt: '2026-11-06T00:00:00.000Z',
+          total: 335,
+          owned: 120,
+          unknown: 215,
+          missing: ['char_2', 'char_3'],
+        },
+      },
+    })
+
+    const data = await createQueryClient().fetchQuery(
+      trainingCandidatesQueryOptions({ status: 'all' }),
+    )
+
+    expect(data.recognition).toEqual({
+      status: 'partial',
+      recognizedAt: '2026-11-06T00:00:00.000Z',
+      total: 335,
+      owned: 120,
+      unknown: 215,
+      missing: ['char_2', 'char_3'],
+    })
+    expect(data.operators).toEqual([operatorRow('char_1')])
+  })
+
+  it('drops a malformed recognition summary instead of trusting it', async () => {
+    apiMocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: {
+        operators: [operatorRow('char_1')],
+        recognition: { status: 'broken', total: 'many' },
+      },
+    })
+
+    const data = await createQueryClient().fetchQuery(
+      trainingCandidatesQueryOptions({ status: 'all' }),
+    )
+
+    expect(data.recognition).toBeNull()
   })
 
   it('surfaces a failed candidate envelope without falling back to the catalogue', async () => {

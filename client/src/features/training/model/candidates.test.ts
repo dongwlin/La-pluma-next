@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { OperatorDetailed } from '@/features/game-data'
-import { buildAllCandidateRows, extractOperatorRows } from './candidates'
+import { buildAllCandidateRows, extractOperatorRecognition, extractOperatorRows } from './candidates'
 import {
   EMPTY_TRAINING_COUNTS,
   buildTrainingStatusCounts,
@@ -33,6 +33,52 @@ describe('training candidate extraction', () => {
     expect(extractOperatorRows({ data: [row] })).toEqual([row])
     expect(extractOperatorRows(null)).toEqual([])
     expect(extractOperatorRows({ operators: 'not-an-array' })).toEqual([])
+  })
+})
+
+describe('training recognition extraction', () => {
+  it('reads the recognition summary carried by the candidate endpoint', () => {
+    expect(extractOperatorRecognition({
+      recognition: {
+        status: 'partial',
+        recognizedAt: '2026-11-06T00:00:00.000Z',
+        total: 335,
+        owned: 120,
+        unknown: 2,
+        missing: ['char_1', 'char_2'],
+      },
+    })).toEqual({
+      status: 'partial',
+      recognizedAt: '2026-11-06T00:00:00.000Z',
+      total: 335,
+      owned: 120,
+      unknown: 2,
+      missing: ['char_1', 'char_2'],
+    })
+  })
+
+  it('returns null for legacy payloads and normalizes malformed summaries', () => {
+    expect(extractOperatorRecognition({ operators: [] })).toBeNull()
+    expect(extractOperatorRecognition(null)).toBeNull()
+    expect(extractOperatorRecognition({ recognition: 'complete' })).toBeNull()
+    expect(extractOperatorRecognition({ recognition: { status: 'complete' } })).toEqual({
+      status: 'complete',
+      recognizedAt: null,
+      total: 0,
+      owned: 0,
+      unknown: 0,
+      missing: [],
+    })
+    expect(extractOperatorRecognition({
+      recognition: { status: 'partial', total: '335', missing: [1, 'char_1', null], owned: Number.NaN },
+    })).toEqual({
+      status: 'partial',
+      recognizedAt: null,
+      total: 0,
+      owned: 0,
+      unknown: 0,
+      missing: ['char_1'],
+    })
   })
 })
 
