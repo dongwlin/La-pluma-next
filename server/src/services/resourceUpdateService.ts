@@ -16,6 +16,8 @@ import type { MaaExecutionLease, MaaExecutionLeaseRequest } from './executionCoo
 import { execMaaCommand } from './maaExecutionService.ts';
 import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
 import type { MaaProcessLifecycle } from './maaProcessService.ts';
+import { RESOURCE_SOURCE_TYPES, readResourceSourceConfig } from './resourceSourceService.ts';
+import type { ResourceSourceType } from './resourceSourceService.ts';
 
 const logger = createLogger('MaaService');
 
@@ -163,24 +165,97 @@ async function readMaaDir(name: string): Promise<string> {
   return result.stdout.trim();
 }
 
-/**
- * MaaCore 按“基础资源 → 热更新覆盖层”的顺序加载，热更新只写覆盖层。
- * 两处都读、按 `last_updated` 取较新者，避免只读基础资源时看不到 `hot-update` 的结果。
- * 只有目录不存在（ENOENT）视为没有覆盖层；命令失败等其它错误必须抛出，不能静默降级。
- */
-async function readMaaResourceDirsFromCli(): Promise<string[]> {
-  const resourceDir = await readMaaDir('resource');
-  let hotUpdateRoot = '';
+/** ENOENT 视为该目录层不存在；命令失败等其它错误必须抛出，不能静默降级。 */
+async function readOptionalMaaDir(name: string): Promise<string> {
   try {
-    hotUpdateRoot = await readMaaDir('hot-update');
+    return await readMaaDir(name);
   } catch (error) {
     if (!isEnoentError(error)) {
-      logger.error('读取 MAA 热更新资源目录失败', { error: errorMessageOf(error) });
+      logger.error('读取 MAA 资源目录失败', { name, error: errorMessageOf(error) });
       throw error;
     }
+    return '';
   }
-  const dirs = hotUpdateRoot ? [resourceDir, join(hotUpdateRoot, 'resource')] : [resourceDir];
-  return [...new Set(dirs.filter(dir => dir.length > 0))];
+}
+
+/** MirrorChyan 快照根固定在数据目录的 `MirrorChyan/MaaResource` 下（与 maa-cli 一致）。 */
+function mirrorChyanSnapshotRoot(dataRoot: string): string {
+  return dataRoot.length > 0 ? join(dataRoot, 'MirrorChyan', 'MaaResource') : '';
+}
+
+/**
+ * 与 maa-cli 的 `active_snapshot` 一致：`current.json` 是 JSON 字符串，只认单段
+ * `snapshot-` 代目录名；缺失、非法或试图跳出快照根时回退代目录布局之前的快照根本身。
+ */
+export function selectMirrorChyanSnapshotDir(snapshotRoot: string, pointer: string | null): string {
+  if (snapshotRoot.length === 0) return '';
+  if (pointer === null) return snapshotRoot;
+  let generation: unknown;
+  try {
+    generation = JSON.parse(pointer);
+  } catch {
+    return snapshotRoot;
+  }
+  if (typeof generation === 'string'
+    && generation.startsWith('snapshot-')
+    && !generation.includes('/')
+    && !generation.includes('\\')) {
+    return join(snapshotRoot, generation);
+  }
+  return snapshotRoot;
+}
+
+function joinResourceDir(root: string): string {
+  return root.length > 0 ? join(root, 'resource') : '';
+}
+
+async function readMirrorChyanPointer(dataRoot: string): Promise<string | null> {
+  const pointerPath = join(mirrorChyanSnapshotRoot(dataRoot), 'current.json');
+  try {
+    return await readFile(pointerPath, 'utf-8');
+  } catch (error) {
+    if (isEnoentError(error)) return null;
+    throw error;
+  }
+}
+
+/** 单一来源的基础资源目录；`tolerateFailure` 供资源源配置不可读时的兜底探测使用。 */
+async function readBaseResourceDir(source: ResourceSourceType, tolerateFailure: boolean): Promise<string> {
+  try {
+    if (source === 'mirrorchyan') {
+      const dataRoot = await readMaaDir('data');
+      if (dataRoot.length === 0) return '';
+      const pointer = await readMirrorChyanPointer(dataRoot);
+      return joinResourceDir(selectMirrorChyanSnapshotDir(mirrorChyanSnapshotRoot(dataRoot), pointer));
+    }
+    return joinResourceDir(await readOptionalMaaDir('hot-update'));
+  } catch (error) {
+    if (!tolerateFailure) throw error;
+    logger.warn('探测 MAA 资源基础目录失败，跳过该来源', { source, error: errorMessageOf(error) });
+    return '';
+  }
+}
+
+/**
+ * MaaCore 按“MaaCore 附带资源 → 资源源基础资源”的顺序加载，后加载者覆盖同名文件；
+ * 基础资源由 cli.toml 的资源源决定：Git 源在 `maa dir hot-update` 的 checkout 里，
+ * MirrorChyan 源在数据目录下由 `current.json` 选择的代快照里。状态探测必须跟随
+ * 同一选择，否则会按已停用的 Git checkout 误报资源过期。资源源配置不可读时无法
+ * 确定生效来源，同时探测两种来源并各自容忍失败，不让配置损坏放大成资源状态不可用
+ * （与更新流程对频道持久化失败的降级口径一致）。
+ */
+async function readMaaResourceDirsFromCli(): Promise<string[]> {
+  let sources: readonly ResourceSourceType[];
+  try {
+    sources = [(await readResourceSourceConfig()).source];
+  } catch (error) {
+    logger.warn('读取 MAA 资源源配置失败，同时探测两种来源的资源目录', { error: errorMessageOf(error) });
+    sources = RESOURCE_SOURCE_TYPES;
+  }
+  const tolerateFailure = sources.length > 1;
+  const coreResourceDir = await readMaaDir('resource');
+  const baseResourceDirs = await Promise.all(sources.map(source => readBaseResourceDir(source, tolerateFailure)));
+  return [...new Set([coreResourceDir, ...baseResourceDirs].filter(dir => dir.length > 0))];
 }
 
 async function readResourceVersionFile(versionPath: string): Promise<ResourceVersionFile> {
@@ -278,7 +353,10 @@ export function getMaaResourceInfo(): Promise<ResourceInfo> {
   return defaultService.getResourceInfo();
 }
 
-/** 解析 MaaCore 资源候选目录（基础资源与 hot-update 覆盖层）；解析失败时抛出。 */
+/**
+ * 解析携带版本信息的资源候选目录（MaaCore 附带资源与资源源基础资源，按加载
+ * 顺序排列）；目录查询或资源源配置解析失败时抛出。
+ */
 export function getMaaResourceDirs(): Promise<string[]> {
   return readMaaResourceDirsFromCli();
 }

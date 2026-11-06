@@ -11,6 +11,7 @@
 MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次：Docker 缺省 `/usr/local/bin/maa`，本地缺省 `maa`（`server/src/config/connectionDefaults.ts:18-23`、`server/src/config/runtimeConfig.ts:271-276`）。
 
 - 资源热更新经 `maa hot-update` 原生执行。Git 使用官方 HTTPS 仓库，MirrorChyan 使用单独的镜像配置。`maa install`/`maa update` 本身已同步资源。Web UI 的「配置 → 资源」通过维护路由读写下文所述的资源源配置。
+- 资源状态探测与版本、更新结果共用同一候选目录解析：按 `cli.toml` 的资源源定位生效基础资源——Git 源读 `maa dir hot-update` 的 checkout，MirrorChyan 源读数据目录 `MirrorChyan/MaaResource` 下 `current.json` 指向的代快照（非法指针回退旧布局根）；连同 MaaCore 附带资源（`maa dir resource`）一起按 `last_updated` 取最新，与 MaaCore 的加载顺序一致。热更新补丁覆盖层只含 tasks 补丁文件、没有版本信息，不进入候选。目录查找失败不会被当成目录不存在静默降级；资源源配置不可读时改为同时探测两种来源，避免配置损坏放大成资源状态不可用。
 - Git 同步启动前读取 maa-cli 实际选用的配置，优先级为 `cli.json`、`cli.yaml`、`cli.yml`、`cli.toml`。检查已有资源 checkout 的 `origin`，以及系统 Git 和 libgit2 可读取的 Git URL 重写规则。遇到旧仓库地址、SSH 设置或会改变官方目标的规则时，错误会指出需要人工修正的位置，现有资源保留。Git 同步需要系统 Git 进行离线核验，系统 Git 无法核验时暂停同步。容器首装、Core 定时更新和任务中的 Git 自动更新也经过同一检查。MirrorChyan 独立使用其镜像配置。
 - `maaProcessService` 是唯一持有可写子进程状态 `taskStatus` 与实时日志缓冲的模块（`server/src/services/maaProcessService.ts:371-380`）。对外投影 `getTaskStatus` 只回答"是否有受管子进程、任务名与停止请求"，不能当作流程或 Run 终态（`server/src/services/maaProcessService.ts:383-393`）。
 - 命令按三种形态执行：
