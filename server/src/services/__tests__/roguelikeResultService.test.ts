@@ -108,6 +108,41 @@ describe('roguelike result summary', () => {
     assert.equal(summary.strategy?.profile, 'balanced');
   });
 
+  it('records the planned numeric choice when the theme never reports selected text', () => {
+    const log = [
+      extra('Roguelike', 'RoguelikeEvent', { name: '不和谐之音', default_choose: 2, choose_option: 2 }),
+      callback('Roguelike', 'TaskChainCompleted')
+    ].join('\n');
+
+    const summary = buildRoguelikeResultSummary(log, { command: 'roguelike', args: ['Sarkaz'] });
+
+    assert.deepEqual(summary.events, [{ name: '不和谐之音', option: '选项 2' }]);
+  });
+
+  it('upgrades the planned numeric choice with the selected option text', () => {
+    const log = [
+      extra('Roguelike', 'RoguelikeEvent', { name: '不和谐之音', choose_option: 2 }),
+      extra('Roguelike', 'RoguelikeEventSelected', { name: '不和谐之音', option_text: '接受' }),
+      callback('Roguelike', 'TaskChainCompleted')
+    ].join('\n');
+
+    const summary = buildRoguelikeResultSummary(log, { command: 'roguelike', args: ['JieGarden'] });
+
+    assert.deepEqual(summary.events, [{ name: '不和谐之音', option: '接受' }]);
+  });
+
+  it('keeps the recorded option when a selected event carries no readable text', () => {
+    const log = [
+      extra('Roguelike', 'RoguelikeEvent', { name: '不和谐之音', choose_option: 2 }),
+      extra('Roguelike', 'RoguelikeEventSelected', { name: '不和谐之音', choose_option: null }),
+      callback('Roguelike', 'TaskChainCompleted')
+    ].join('\n');
+
+    const summary = buildRoguelikeResultSummary(log, { command: 'roguelike', args: ['Sarkaz'] });
+
+    assert.deepEqual(summary.events, [{ name: '不和谐之音', option: '选项 2' }]);
+  });
+
   it('reports task chain failure with the callback error text', () => {
     const log = [
       callback('Roguelike', 'TaskChainStart'),

@@ -207,10 +207,16 @@ function readEventName(event: MaaCallbackEvent): string | null {
   return details ? readText(details.name) : null;
 }
 
+function readChoiceLabel(value: unknown): string | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
+    ? `选项 ${value}`
+    : null;
+}
+
 function readSelectedOption(event: MaaCallbackEvent): string | null {
   const details = getCallbackDetails(event);
   if (!details) return null;
-  return readText(details.option_text) ?? readText(details.choose_option) ?? null;
+  return readText(details.option_text) ?? readChoiceLabel(details.choose_option);
 }
 
 function readStrategy(event: MaaCallbackEvent): RoguelikeStrategySummary {
@@ -335,7 +341,14 @@ export function buildRoguelikeResultSummary(
     if (what === 'RoguelikeEvent') {
       const name = readEventName(event);
       if (name) {
-        roguelikeEvents.push({ name, option: null });
+        const details = getCallbackDetails(event);
+        const option = details ? readChoiceLabel(details.choose_option) : null;
+        const existing = roguelikeEvents.find(item => item.name === name);
+        if (existing) {
+          if (existing.option === null && option !== null) existing.option = option;
+        } else {
+          roguelikeEvents.push({ name, option });
+        }
         observed = true;
       }
       continue;
@@ -345,8 +358,9 @@ export function buildRoguelikeResultSummary(
       if (!name) continue;
       const option = readSelectedOption(event);
       const existing = roguelikeEvents.find(item => item.name === name);
-      if (existing) existing.option = option;
-      else roguelikeEvents.push({ name, option });
+      if (existing) {
+        if (option !== null) existing.option = option;
+      } else roguelikeEvents.push({ name, option });
       observed = true;
       continue;
     }
