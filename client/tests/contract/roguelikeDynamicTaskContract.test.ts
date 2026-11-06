@@ -7,6 +7,9 @@ import { buildRoguelikeExecutionPlan } from '../../src/features/roguelike/model/
 import type { RoguelikeAdvancedParams, RoguelikeTaskInputs } from '../../src/features/roguelike/types/index.ts'
 import { preflightAgentTaskRequest } from '../../../server/src/services/agentActionService.ts'
 import type { AgentTaskConfig } from '../../../server/src/services/agentActionService.ts'
+import { GAME_TASK_PARAM_KEYS } from '../../../server/src/services/gameTaskConfigService.ts'
+import { ROGUELIKE_OPTIONS } from '../../src/features/roguelike/model/roguelikeOptionTables.ts'
+import { RECLAMATION_OPTIONS } from '../../src/features/roguelike/model/reclamationOptionTables.ts'
 
 interface DynamicTaskCase {
   name: string
@@ -217,5 +220,27 @@ describe('client option table to server preflight contract', () => {
         params: { ...taskConfig.params, find_play_time_target: 1 }
       }
     })).toBe(400)
+  })
+})
+
+describe('client option table keys against the server validation registry', () => {
+  const tables = [
+    { type: 'Roguelike', options: ROGUELIKE_OPTIONS },
+    { type: 'Reclamation', options: RECLAMATION_OPTIONS }
+  ] as const
+
+  it('only emits parameter keys the server validates', () => {
+    for (const { type, options } of tables) {
+      const known = GAME_TASK_PARAM_KEYS[type]
+      expect(known, type).toBeDefined()
+      if (!known) continue
+      const clientKeys = [...new Set(
+        options
+          .map(option => option.coreParam)
+          .filter((key): key is string => typeof key === 'string')
+      )]
+      expect(clientKeys.length, type).toBeGreaterThan(0)
+      expect(clientKeys.filter(key => !known.has(key)), type).toEqual([])
+    }
   })
 })

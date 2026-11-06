@@ -318,7 +318,7 @@ const ROGUELIKE_BOOLEAN_FIELDS = Object.freeze([
 ] as const);
 const ROGUELIKE_STRING_FIELDS = Object.freeze([
   'squad', 'roles', 'core_char', 'first_floor_foldartal', 'collectible_mode_squad',
-  'collectible_mode_roles'
+  'collectible_mode_roles', 'start_with_seed'
 ] as const);
 const ROGUELIKE_INTEGER_FIELDS = Object.freeze(['starts_count', 'difficulty', 'investments_count'] as const);
 const ROGUELIKE_STRING_ARRAY_FIELDS = Object.freeze([
@@ -338,6 +338,37 @@ const ROGUELIKE_BLACKFLOW_CULTIVATION_TARGETS = Object.freeze([
   'swaddled_cat', 'swaddled_feathered_serpent', 'swaddled_dog', 'swaddled_cerberus'
 ] as const);
 const ROGUELIKE_START_LIST_KEYS = Object.freeze(['hot_water', 'shield', 'ingot', 'hope', 'random', 'key', 'dice', 'ideas'] as const);
+
+/**
+ * 已纳入校验的参数键清单。跨端契约测试据此确认客户端 option table 不会发出
+ * 服务端不认识的键，避免参数名漂移只被单侧测试掩盖。
+ */
+export const GAME_TASK_PARAM_KEYS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
+  Roguelike: new Set([
+    'theme',
+    'mode',
+    ...ROGUELIKE_BOOLEAN_FIELDS,
+    ...ROGUELIKE_STRING_FIELDS,
+    ...ROGUELIKE_INTEGER_FIELDS,
+    ...ROGUELIKE_STRING_ARRAY_FIELDS,
+    'core_char_list',
+    'collectible_mode_start_list',
+    'blackflow_strategy',
+    'blackflow_cultivation_target',
+    'blackflow_start_animals',
+    'blackflow_start_rewards',
+    'blackflow_start_reward_priority',
+    'find_playTime_target'
+  ]),
+  Reclamation: new Set([
+    'theme',
+    'mode',
+    'tools_to_craft',
+    'clear_store',
+    'increment_mode',
+    'num_craft_batches'
+  ])
+});
 
 function isIntegerValue(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value);

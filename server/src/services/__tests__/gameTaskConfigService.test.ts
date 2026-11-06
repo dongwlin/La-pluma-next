@@ -212,6 +212,10 @@ describe('validateGameTaskParams Roguelike', () => {
       'Roguelike.params.squad 必须是字符串'
     );
     assert.equal(
+      validateGameTaskParams('Roguelike', { theme: 'Sarkaz', mode: 1, start_with_seed: 1 }),
+      'Roguelike.params.start_with_seed 必须是字符串'
+    );
+    assert.equal(
       validateGameTaskParams('Roguelike', { starts_count: 1.5 }),
       'Roguelike.params.starts_count 必须是整数'
     );
