@@ -258,9 +258,9 @@ describe('GET /api/agent/diagnostics', () => {
     assert.equal(data.status, 'error');
     const connection = checkById(data, 'connection');
     assert.equal(connection.status, 'fail');
-    assert.match(connection.summary, /^ADB 未连接/);
+    assert.match(connection.summary, /^ADB 连接探测失败/);
     assert.deepEqual(connection.locations, [missingAdbPath, deviceAddress]);
-    assert.ok(connection.details.some(detail => detail.startsWith('message: ADB 不可用')));
+    assert.ok(connection.details.some(detail => detail.startsWith('error: ')));
   });
 
   it('rejects an invalid profile id through the shared validation error path', async () => {

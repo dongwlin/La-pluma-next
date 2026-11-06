@@ -21,6 +21,7 @@ const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
+const brokenAdbPath = join(fixtureDir, 'fake-adb-broken.js');
 const cliCallLog = join(fixtureDir, 'maa-calls.log');
 const adbCallLog = join(fixtureDir, 'adb-calls.log');
 const deviceAddress = '127.0.0.1:7555';
@@ -73,6 +74,11 @@ if (args[0] === 'version') {
     process.stdout.write('mCurrentFocus=Window{1a2b3c com.hypergryph.arknights/.MainActivity}\\n');
   }
 }
+`, { mode: 0o755 });
+
+await writeFile(brokenAdbPath, `#!${process.execPath}
+process.stderr.write('adb: cannot start daemon\\n');
+process.exit(1);
 `, { mode: 0o755 });
 
 process.env.MAA_CLI_PATH = fakeCliPath;
@@ -273,6 +279,26 @@ describe('GET /api/agent/diagnostics probe amplification', () => {
     const anonymous = await fetch(`${baseUrl}/api/agent/diagnostics`);
     assert.equal(anonymous.status, 401);
 
+    resetAgentDiagnosticsProbeCachesForTests();
+  });
+});
+
+describe('GET /api/agent/diagnostics connection probe failure', () => {
+  it('reports an ADB launch failure as the connection probe error', async () => {
+    resetAgentDiagnosticsProbeCachesForTests();
+    const baseUrl = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const query = new URLSearchParams({ adbPath: brokenAdbPath, address: deviceAddress });
+
+    const response = await fetch(`${baseUrl}/api/agent/diagnostics?${query}`);
+
+    assert.equal(response.status, 200);
+    const body = await readBody<ApiSuccessResponse<DiagnosticsReport>>(response);
+    const connection = body.data.checks.find(check => check.id === 'connection');
+    assert.ok(connection);
+    assert.equal(connection.status, 'fail');
+    assert.match(connection.summary, /ADB 连接探测失败/);
+    assert.ok(connection.details.some(detail => detail.startsWith('error: ')));
+    assert.ok(connection.details.some(detail => detail.includes('cannot start daemon')));
     resetAgentDiagnosticsProbeCachesForTests();
   });
 });
