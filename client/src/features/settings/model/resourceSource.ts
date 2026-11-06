@@ -16,7 +16,6 @@ import type { ConfigDraftState, ConfigSaveOutcome, ConfigSnapshot } from './conf
 import { GIT_BACKENDS, RESOURCE_SOURCE_TYPES } from '../types'
 import { settingsKeys } from './queryKeys'
 
-export const OFFICIAL_RESOURCE_GIT_URL = 'https://github.com/MaaAssistantArknights/MaaResource.git'
 export const DEFAULT_MIRRORCHYAN_CHECK_INTERVAL = 600
 
 export const DEFAULT_RESOURCE_SOURCE_DRAFT: ResourceSourceDraft = {

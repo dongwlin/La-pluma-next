@@ -4,7 +4,7 @@ import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
-import { DEFAULT_MIRRORCHYAN_CHECK_INTERVAL, OFFICIAL_RESOURCE_GIT_URL } from '../model/resourceSource'
+import { DEFAULT_MIRRORCHYAN_CHECK_INTERVAL } from '../model/resourceSource'
 import { GIT_BACKENDS, RESOURCE_SOURCE_TYPES } from '../types'
 import type {
   GitBackend,
@@ -140,10 +140,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             }}
             options={BACKEND_OPTIONS}
           />
-          <dl>
-            <dt className="mb-2 text-sm font-medium text-secondary">仓库地址</dt>
-            <dd className="wrap-anywhere font-mono text-sm text-primary">{OFFICIAL_RESOURCE_GIT_URL}</dd>
-          </dl>
           <Input
             label="分支"
             value={draft.git.branch}

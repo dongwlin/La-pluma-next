@@ -738,17 +738,17 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动更新设置应用失败: 无法创建定时任务', 'error')
   })
 
-  it('renders the official repository as text and keeps instance options editable', async () => {
+  it('hides the repository address and keeps instance options editable', async () => {
     localStorage.setItem('laPlumaConfigSection', 'resource')
 
     await act(async () => root.render(page()))
     await flush()
 
     expect(container.textContent).toContain('资源来源')
-    expect(container.textContent).toContain('https://github.com/MaaAssistantArknights/MaaResource.git')
+    expect(container.textContent).not.toContain('https://github.com/MaaAssistantArknights/MaaResource.git')
+    expect(container.textContent).not.toContain('仓库地址')
     const fieldLabels = Array.from(container.querySelectorAll('input')).flatMap(input =>
       Array.from(input.labels ?? [], label => label.textContent))
-    expect(fieldLabels).not.toContain('仓库地址')
     expect(fieldLabels).not.toContain('SSH 私钥路径')
     expect(fieldLabels).not.toContain('SSH 私钥口令')
     expect(container.textContent).not.toContain('ssh-agent')

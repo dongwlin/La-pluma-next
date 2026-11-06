@@ -24,7 +24,7 @@
 | section 展示文案 | `features/settings/components/configSectionViews.tsx` | 名称、说明与图标；不持有存储或事件 |
 | connection 表单、保存与读取反馈 | `features/settings/components/ConnectionConfigPanel.tsx` | Query/草稿适配、保存/重置、迟到读取提示；非 connection section 返回 null |
 | 模拟器查找与连接测试 | `features/settings/components/DeviceConnectionPanel.tsx` | 命令 owner 订阅、设备列表、独立 loading/反馈 |
-| resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、官方 Git 地址、自动更新开关与 MirrorChyan CDK |
+| resource 资源源表单 | `features/settings/components/ResourceSourcePanel.tsx` | Git / MirrorChyan 来源、自动更新开关与 MirrorChyan CDK |
 | instance 实例选项表单 | `features/settings/components/InstanceOptionsPanel.tsx` | 触控模式与三项实例开关 |
 | 配置编辑卡外壳 | `features/settings/components/ConfigEditorCard.tsx` | 标题、保存 / 重置按钮与页内反馈，三个 section 共用 |
 | 配置目录 | `features/settings/components/ConfigDirectoryPanel.tsx` | 路径三态、重试与“打开目录” |
@@ -221,8 +221,8 @@ ConfigManager（页面壳）
 #### 2.7 实例选项与资源源配置
 
 - **实例选项**（`model/instanceOptions.ts`、`hooks/useSettingsInstanceOptions.ts`）读写同一 MAA profile 的 `[instance_options]`，保存只提交 `{ instance_options: snapshot }`；字段为触控模式（`Adb`/`MiniTouch`/`MaaTouch`/`MacPlayTools`/`MaaFwAdb`）、`deployment_with_pause`、`adb_lite_enabled`、`kill_adb_on_exit`。profile 缺该 section 时按 MaaCore 默认值展示，未知字段原样保留。
-- **资源源**（`model/resourceSource.ts`、`hooks/useSettingsResourceSource.ts`）管理来源、自动更新与失败告警开关。Git 表单只读显示官方仓库地址，可编辑后端与分支。MirrorChyan 表单用 `cdkKind` 显示已保存的凭据形态，并用 `clearCdk` 请求显式清除。字段契约见 [Agent API](../../api/agent.md)。
-- 保存成功后 hook 重新读取同一 Query：服务端归一化的默认值（默认仓库地址、检查间隔）与凭据形态覆盖草稿，凭据输入框清空。
+- **资源源**（`model/resourceSource.ts`、`hooks/useSettingsResourceSource.ts`）管理来源、自动更新与失败告警开关。Git 表单提供后端与分支。MirrorChyan 表单用 `cdkKind` 显示已保存的凭据形态，并用 `clearCdk` 请求显式清除。字段契约见 [Agent API](../../api/agent.md)。
+- 保存成功后 hook 重新读取同一 Query，以服务端归一化的配置和凭据形态覆盖草稿，并清空凭据输入框。
 - 保存请求中空白凭据表示保留服务端已保存值；输入新值会替换为明文字符串；`clearCdk` 显式写回 `cdk = false`。页面从不接收或渲染已保存的明文凭据。
 
 ### 3. Section 状态与清理

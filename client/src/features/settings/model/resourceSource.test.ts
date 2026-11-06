@@ -6,7 +6,6 @@ import { createQueryClient } from '@/shared/query'
 import {
   DEFAULT_MIRRORCHYAN_CHECK_INTERVAL,
   DEFAULT_RESOURCE_SOURCE_DRAFT,
-  OFFICIAL_RESOURCE_GIT_URL,
   ResourceSourceOwner,
   buildResourceSourcePayload,
   normalizeResourceSourceDraft,
@@ -44,7 +43,7 @@ const serverView = (overrides: Record<string, unknown> = {}) => ({
   source: 'mirrorchyan',
   git: {
     backend: 'git',
-    url: OFFICIAL_RESOURCE_GIT_URL,
+    url: 'https://github.com/MaaAssistantArknights/MaaResource.git',
     branch: null,
   },
   mirrorchyan: { cdkKind: 'plain', checkInterval: 1800 },
