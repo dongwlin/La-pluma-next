@@ -30,7 +30,6 @@
     "scripts/**/*.ts",
     "tests/visual/**/*.ts",
     "tests/integration/**/*.ts",
-    "tests/performance/**/*.ts",
-    "tests/contract/**/*.ts"
+    "tests/performance/**/*.ts"
   ]
 }
