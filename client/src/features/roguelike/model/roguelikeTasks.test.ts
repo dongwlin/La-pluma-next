@@ -803,11 +803,12 @@ describe('dynamic task execution plan', () => {
     expect(plan.taskConfig?.params).toMatchObject({
       theme: 'JieGarden',
       mode: 20001,
-      find_play_time_target: 2,
+      find_playTime_target: 2,
       stop_at_max_level: true,
       roles: '稳扎稳打',
       stop_when_investment_full: true,
     })
+    expect(plan.taskConfig?.params).not.toHaveProperty('find_play_time_target')
   })
 
   it('switches to a dynamic task for Core-only switches on CLI themes', () => {

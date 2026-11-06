@@ -19,25 +19,25 @@ utils / config → services → controllers → routes → app.ts / server.ts
 
 ## 请求管道（createLaPlumaApp）
 
-`createLaPlumaApp(options)` 返回独立的 Express 应用，是唯一组装入口（`server/src/app.ts:53-168`）。中间件与挂载顺序：
+`createLaPlumaApp(options)` 返回独立的 Express 应用，是唯一组装入口（`server/src/app.ts:60-220`）。中间件与挂载顺序：
 
-1. 固定 `query parser` 为 `simple`：Express 5 的 `req.query` 是只读 getter，显式固定后查询参数保持单值扁平结构，不依赖嵌套对象解析（`server/src/app.ts:65-67`）。
-2. CORS：`origin: '*'`，只声明浏览器可跨域读取响应，不承担鉴权；预检在鉴权之前应答。服务不使用 Cookie，也不支持浏览器凭据模式，跨域调用一律通过 token 头鉴权（`server/src/app.ts:89-92`）。
-3. 请求 id 中间件，注册在鉴权与请求体解析之前（见下节；`server/src/app.ts:96`）。
-4. 信令票据签发入口：注册在 JSON parser 之前，登录不读取业务请求体。无令牌时只接受同源签发，设置 `LA_PLUMA_TOKEN` 后由令牌把关；Express 5 通配符必须命名（`*splat`），信令路径本身与其余子路径一律返回固定 JSON 404，上游管理端点不经公共应用端口暴露（`server/src/app.ts:100-115`、`docs/api/agent.md:137`）。
+1. 固定 `query parser` 为 `simple`：Express 5 的 `req.query` 是只读 getter，显式固定后查询参数保持单值扁平结构，不依赖嵌套对象解析（`server/src/app.ts:72-75`）。
+2. CORS：`origin: '*'`，只声明浏览器可跨域读取响应，不承担鉴权；预检在鉴权之前应答。服务不使用 Cookie，也不支持浏览器凭据模式，跨域调用一律通过 token 头鉴权。本地图标与头像 `/game-assets` 不参与 CORS，并声明 `Cross-Origin-Resource-Policy: same-origin`，跨源页面无法读取或嵌入（`server/src/app.ts:98-115`）。
+3. 请求 id 中间件，注册在鉴权与请求体解析之前（见下节；`server/src/app.ts:119`）。
+4. 信令票据签发入口：注册在 JSON parser 之前，登录不读取业务请求体。无令牌时只接受同源签发，设置 `LA_PLUMA_TOKEN` 后由令牌把关；Express 5 通配符必须命名（`*splat`），信令路径本身与其余子路径一律返回固定 JSON 404，上游管理端点不经公共应用端口暴露（`server/src/app.ts:121-138`、`docs/api/agent.md:207-209`）。
 5. `/health` 与 `/readiness` 探针（见「探针」）。
-6. `/api` 命名空间：router 内先 `optionalApiAuth` 再 `express.json()`，鉴权先于 JSON 解析；依次挂载用户配置、Agent 聚合与干员台词路由后，未匹配路径返回统一 JSON 404 `AGENT_ROUTE_NOT_FOUND`，最后挂统一错误出口（`server/src/app.ts:137-146`）。
-7. 生产静态资源：仅 `NODE_ENV=production` 时挂载。`/api`、`/health`、`/readiness` 与信令路径先经 `next('router')` 跳出命名空间；其余请求依次经 `express.static` 与 SPA fallback——无扩展名的路径返回 `index.html`；挂载点随 `LA_PLUMA_BASE_PATH` 的子路径偏移（`server/src/app.ts:148-166`）。
+6. `/api` 命名空间：router 内先 `optionalApiAuth` 再 `express.json()`，鉴权先于 JSON 解析；无令牌模式在鉴权后为 `/diagnostics` 增加每来源限流（默认每分钟 30 次，返回 429 `AGENT_RATE_LIMITED`），依次挂载用户配置、Agent 聚合与干员台词路由后，未匹配路径返回统一 JSON 404 `AGENT_ROUTE_NOT_FOUND`，最后挂统一错误出口（`server/src/app.ts:170-198`）。
+7. 生产静态资源：仅 `NODE_ENV=production` 时挂载。`/api`、`/health`、`/readiness`、`/game-assets` 与信令路径先经 `next('router')` 跳出命名空间；其余请求依次经 `express.static` 与 SPA fallback——无扩展名的路径返回 `index.html`；挂载点随 `LA_PLUMA_BASE_PATH` 的子路径偏移（`server/src/app.ts:200-218`）。
 
 ### 请求 id
 
-请求头 `x-request-id` 可选；合法值为 1–64 位字母、数字与 `.`、`_`、`:`、`-`，首字符必须是字母或数字。合法值原样沿用，同一值出现在响应头 `x-request-id`、响应 `meta.requestId` 与该请求的日志上下文中；缺失、超长或含其他字符时丢弃客户端值并生成 UUID，不回显非法输入（`server/src/utils/requestContext.ts:15-64`）。中间件位于鉴权与请求体解析之前，因此 401/400 等前置失败、响应 meta 与同一请求的日志共用同一个 id（`server/src/app.ts:94-96`）。
+请求头 `x-request-id` 可选；合法值为 1–64 位字母、数字与 `.`、`_`、`:`、`-`，首字符必须是字母或数字。合法值原样沿用，同一值出现在响应头 `x-request-id`、响应 `meta.requestId` 与该请求的日志上下文中；缺失、超长或含其他字符时丢弃客户端值并生成 UUID，不回显非法输入（`server/src/utils/requestContext.ts:15-64`）。中间件位于鉴权与请求体解析之前，因此 401/400 等前置失败、响应 meta 与同一请求的日志共用同一个 id（`server/src/app.ts:117-119`）。
 
 ### 认证与限流
 
-- 设置 `LA_PLUMA_TOKEN` 后，信令票据入口与 `/api` 都需要令牌，未设置时认证关闭；`/health`、`/readiness` 不经过鉴权（`server/src/app.ts:68,81,105,138`、`server/src/utils/apiTokenAuth.ts:54-63`）。
+- 设置 `LA_PLUMA_TOKEN` 后，信令票据入口与 `/api` 都需要令牌，未设置时认证关闭；`/health`、`/readiness` 与只读的 `/game-assets` 不经过鉴权（`server/src/app.ts:76,93,121-156`、`server/src/utils/apiTokenAuth.ts:54-63`）。
 - 令牌请求头、令牌比较、401/429 语义、认证失败与信令票据签发的限流阈值、窗口与来源判定的完整约定由[部署指南](../guides/deployment.md#跨域与访问来源)统一维护，本文不重复。
-- 实现细节：令牌比较先对两侧做 SHA-256 摘要再 `timingSafeEqual`，401 响应带 `WWW-Authenticate`；限流键优先取 `req.ip`，来源条目数量有上限，窗口、阈值与时钟可在组装时注入（`server/src/utils/apiTokenAuth.ts:42-47,97-101`、`server/src/utils/loginThrottle.ts:45-66,90-109`、`server/src/app.ts:47-51`）。
+- 实现细节：令牌比较先对两侧做 SHA-256 摘要再 `timingSafeEqual`，401 响应带 `WWW-Authenticate`；限流键优先取 `req.ip`，来源条目数量有上限，窗口、阈值与时钟可在组装时注入（`server/src/utils/apiTokenAuth.ts:42-47,97-101`、`server/src/utils/loginThrottle.ts:45-66,90-109`、`server/src/app.ts:51-58`）。
 
 ## 响应 envelope 与错误码
 
@@ -60,9 +60,9 @@ utils / config → services → controllers → routes → app.ts / server.ts
 
 | code | HTTP 状态 | 触发 |
 | --- | --- | --- |
-| `AGENT_ROUTE_NOT_FOUND` | 404 | `/api` 下未匹配路径（`server/src/app.ts:142-144`） |
+| `AGENT_ROUTE_NOT_FOUND` | 404 | `/api` 下未匹配路径（`server/src/app.ts:194-196`） |
 | `AGENT_AUTH_REQUIRED` | 401 | 令牌模式开启且未携带有效令牌（`server/src/utils/apiTokenAuth.ts:98-101`） |
-| `AGENT_RATE_LIMITED` | 429 | 认证失败次数超出窗口限制（`server/src/utils/apiTokenAuth.ts:85-94`） |
+| `AGENT_RATE_LIMITED` | 429 | 认证失败次数或匿名诊断请求超出窗口限制（`server/src/utils/apiTokenAuth.ts:85-94`、`server/src/app.ts:174-190`） |
 | `AGENT_REQUEST_BODY_INVALID` | 400 | 请求体不是有效 JSON（`server/src/utils/apiHelper.ts:244-247`） |
 | `AGENT_REQUEST_BODY_TOO_LARGE` | 413 | 请求体超过允许大小（`server/src/utils/apiHelper.ts:250-253`） |
 | `AGENT_REQUEST_CHARSET_UNSUPPORTED` | 415 | 请求字符集不支持（`server/src/utils/apiHelper.ts:256-259`） |
@@ -71,8 +71,8 @@ utils / config → services → controllers → routes → app.ts / server.ts
 
 ## 探针：/health 与 /readiness
 
-- `/health` 是存活探针，恒定返回 `{ success: true, status: 'ok' }`；容器存活检查继续使用它（`server/src/app.ts:117-119`）。
-- `/readiness` 反映初始化、Run 存储与 draining：可就绪返回 200，否则 503；响应带 `Cache-Control: no-store`，`status`/`checks`/`reasons` 来自进程内快照，不探测 ADB/MAA 或外网，也不含路径、凭据与错误文本（`server/src/app.ts:124-133`）。就绪投影在组装入口绑定生命周期与 Run 存储状态：初始化失败后保持不可就绪，直到完成一次完整初始化；关闭开始（draining）后立即转为不可就绪（`server/src/server.ts:242-248,308-325`）。
+- `/health` 是存活探针，恒定返回 `{ success: true, status: 'ok' }`；容器存活检查继续使用它（`server/src/app.ts:140-142`）。
+- `/readiness` 反映初始化、Run 存储与 draining：可就绪返回 200，否则 503；响应带 `Cache-Control: no-store`，`status`/`checks`/`reasons` 来自进程内快照，不探测 ADB/MAA 或外网，也不含路径、凭据与错误文本（`server/src/app.ts:147-156`）。就绪投影在组装入口绑定生命周期与 Run 存储状态：初始化失败后保持不可就绪，直到完成一次完整初始化；关闭开始（draining）后立即转为不可就绪（`server/src/server.ts:242-248,308-325`）。
 
 ## 传输与启动
 

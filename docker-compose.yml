@@ -36,6 +36,9 @@ services:
       - LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS=${LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS:-900000}
       # 可选：设为 1/true/on/yes/enable/enabled 时启用原生 copilot 委托（灰度，默认关闭，走现有流程）
       - LA_PLUMA_COPILOT_NATIVE_DELEGATION=${LA_PLUMA_COPILOT_NATIVE_DELEGATION:-}
+      # 可选：本地图标/头像根目录，需含 item/（物品 id）与 avatar/（干员 id，可带 _1/_2 变体）子目录；
+      # 留空时读取 MAA 数据目录（容器内 /root/.local/share/maa）下的 resource/template（items/ 与 avatar/）
+      - LA_PLUMA_GAME_ASSET_DIR=${LA_PLUMA_GAME_ASSET_DIR:-}
       # 可选：实时日志内存缓存上限，默认 5000 行
       # - LA_PLUMA_MAX_REALTIME_LOGS=5000
       # 可选：手机安装 PWA 时使用可信 HTTPS，证书与私钥必须同时配置
