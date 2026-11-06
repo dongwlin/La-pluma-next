@@ -1,6 +1,7 @@
 import express from 'express';
 import agentExecutionRoutes from './agentExecution.ts';
 import agentStatusRoutes from './agentStatusRoutes.ts';
+import agentDiagnosticsRoutes from './agentDiagnosticsRoutes.ts';
 import agentLogRoutes from './agentLogRoutes.ts';
 import agentDataRoutes from './agentDataRoutes.ts';
 import agentTrainingRoutes from './agentTrainingRoutes.ts';
@@ -32,6 +33,8 @@ router.get('/openapi.json', (_req: ReadRequest, res: ApiResponseWriter) => {
 });
 
 router.use(agentStatusRoutes);
+
+router.use(agentDiagnosticsRoutes);
 
 router.use(agentPreviewRoutes);
 
