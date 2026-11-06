@@ -245,6 +245,27 @@ cdk = "old"
     assert.equal((await readResourceSourceConfig()).mirrorchyan.cdkKind, 'none');
   });
 
+  it('keeps unknown keys inside the managed source table', async () => {
+    await writeCliConfig(`[resource.source]
+type = "git"
+url = "https://git.example.com/Resource.git"
+future_option = "kept"
+`);
+
+    await saveResourceSourceConfig({
+      autoUpdate: false,
+      warnOnUpdateFailure: false,
+      source: 'git',
+      git: { ...gitInput, url: 'https://git.example.com/Resource.git', branch: 'main' },
+      mirrorchyan: { checkInterval: 600 }
+    });
+
+    const source = ((await readCliToml()).resource as Record<string, unknown>).source as Record<string, unknown>;
+    assert.equal(source.future_option, 'kept');
+    assert.equal(source.branch, 'main');
+    assert.equal(source.url, 'https://git.example.com/Resource.git');
+  });
+
   it('rejects invalid source values without rewriting cli.toml', async () => {
     const original = `[resource]
 auto_update = true

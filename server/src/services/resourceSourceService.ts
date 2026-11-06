@@ -259,27 +259,32 @@ function buildCdk(input: ResourceSourceSaveInput['mirrorchyan'], existing: Exist
 }
 
 function buildGitTable(input: ResourceSourceSaveInput['git'], existing: ExistingSourceRaw): Record<string, unknown> {
-  const table: Record<string, unknown> = { type: 'git' };
+  // 保留同一来源里本页不认识的键；只覆盖表单管理的字段。
+  const table = existing.source === 'git' ? { ...existing.git } : {};
+  table.type = 'git';
   if (input.backend === 'libgit2') table.backend = 'libgit2';
+  else delete table.backend;
   if (input.url !== DEFAULT_RESOURCE_GIT_URL) table.url = input.url;
+  else delete table.url;
   if (input.branch) table.branch = input.branch;
+  else delete table.branch;
   if (input.useSshAgent) table.use_ssh_agent = true;
+  else delete table.use_ssh_agent;
   if (input.sshKey) table.ssh_key = input.sshKey;
+  else delete table.ssh_key;
   if (input.passphrase) table.passphrase = input.passphrase;
-  else if (existing.source === 'git' && existing.git.passphrase !== undefined) {
-    table.passphrase = existing.git.passphrase;
-  }
   return table;
 }
 
 function buildSourceTable(input: ResourceSourceSaveInput, existing: ExistingSourceRaw): Record<string, unknown> {
   if (input.source === 'mirrorchyan') {
-    const table: Record<string, unknown> = {
-      type: 'mirrorchyan',
-      cdk: buildCdk(input.mirrorchyan, existing)
-    };
+    const table = existing.source === 'mirrorchyan' ? { ...existing.mirrorchyan } : {};
+    table.type = 'mirrorchyan';
+    table.cdk = buildCdk(input.mirrorchyan, existing);
     if (input.mirrorchyan.checkInterval !== DEFAULT_MIRRORCHYAN_CHECK_INTERVAL) {
       table.check_interval = input.mirrorchyan.checkInterval;
+    } else {
+      delete table.check_interval;
     }
     return table;
   }
