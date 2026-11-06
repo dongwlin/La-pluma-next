@@ -13,6 +13,7 @@ import {
 } from '../model/roguelikeTasks'
 import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
 import RoguelikeModePanel from './RoguelikeModePanel'
+import RoguelikeResultPanel from './RoguelikeResultPanel'
 import RoguelikeSettingsPanel from './RoguelikeSettingsPanel'
 import RoguelikeThemePanel from './RoguelikeThemePanel'
 import type {
@@ -33,6 +34,7 @@ export default function RoguelikeWorkspace() {
     isRunning,
     isStopping,
     isSubmitting,
+    trackedRun,
     execute,
     stop,
   } = useRoguelikeExecution({ notify: setStatusMessage })
@@ -145,6 +147,8 @@ export default function RoguelikeWorkspace() {
             onStop: () => void stop(),
           }}
         />
+
+        <RoguelikeResultPanel run={trackedRun} command={activeTask.command} />
 
         <aside className="roguelike-monitor-column" aria-label="设备画面">
           <DeviceMonitorPanel

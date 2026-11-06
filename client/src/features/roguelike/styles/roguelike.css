@@ -19,6 +19,7 @@
       "mode"
       "theme"
       "settings"
+      "result"
       "monitor";
     align-items: start;
     gap: var(--app-space-section);
@@ -40,6 +41,10 @@
   .roguelike-monitor-column {
     grid-area: monitor;
     min-width: 0;
+  }
+
+  .roguelike-result-panel {
+    grid-area: result;
   }
 
   .roguelike-panel,
@@ -97,6 +102,121 @@
 
   .roguelike-panel-footer {
     padding: 0 var(--app-space-panel) var(--app-space-panel);
+  }
+
+  .roguelike-result-body {
+    display: grid;
+    gap: var(--app-space-card);
+  }
+
+  .roguelike-result-content {
+    display: grid;
+    gap: var(--app-space-card);
+  }
+
+  .roguelike-result-active {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    border-radius: var(--app-radius-md);
+    padding: 0.75rem 0.875rem;
+    background: var(--app-accent-soft);
+  }
+
+  .roguelike-result-message {
+    color: var(--app-text);
+    font-size: var(--app-font-body);
+    font-weight: 550;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .roguelike-result-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 0.5rem;
+  }
+
+  .roguelike-result-metric {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.625rem;
+    background: color-mix(in srgb, var(--app-surface-muted) 88%, transparent);
+  }
+
+  .roguelike-result-list {
+    display: grid;
+    gap: 0.375rem;
+  }
+
+  .roguelike-result-previous {
+    border-top: 1px solid var(--app-border);
+    padding-top: var(--app-space-card);
+  }
+
+  .roguelike-result-previous-note,
+  .roguelike-result-missing {
+    color: var(--app-text-muted);
+    font-size: var(--app-font-caption);
+    line-height: 1.5;
+  }
+
+  .roguelike-result-diagnostics {
+    border-top: 1px solid var(--app-border);
+    padding-top: var(--app-space-card);
+  }
+
+  .roguelike-result-active strong {
+    color: var(--app-accent-strong);
+    font-size: var(--app-font-body);
+    font-weight: 650;
+  }
+
+  .roguelike-result-active p {
+    min-width: 0;
+    color: var(--app-text-muted);
+    font-size: var(--app-font-caption);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .roguelike-result-metric dt {
+    color: var(--app-text-soft);
+    font-size: var(--app-font-meta);
+  }
+
+  .roguelike-result-metric dd {
+    min-width: 0;
+    color: var(--app-text);
+    font-size: var(--app-font-body);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .roguelike-result-list h4 {
+    color: var(--app-text-muted);
+    font-size: var(--app-font-caption);
+    font-weight: 650;
+  }
+
+  .roguelike-result-list ul {
+    display: grid;
+    gap: 0.25rem;
+    padding-left: 1rem;
+    color: var(--app-text-muted);
+    font-size: var(--app-font-caption);
+    line-height: 1.5;
+    list-style: disc;
+    overflow-wrap: anywhere;
+  }
+
+  .roguelike-result-previous h4 {
+    color: var(--app-text-soft);
+    font-size: var(--app-font-caption);
+    font-weight: 650;
   }
 
   .roguelike-run-button {
@@ -228,6 +348,7 @@
       grid-template-areas:
         "mode mode"
         "theme settings"
+        "result result"
         "monitor monitor";
     }
   }
@@ -237,10 +358,11 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
 
       /* Prevent the two-row preview from redistributing height into the mode row. */
-      grid-template-rows: calc(3.25rem + 0.5rem + 2px) auto;
+      grid-template-rows: calc(3.25rem + 0.5rem + 2px) auto auto;
       grid-template-areas:
         "mode mode monitor"
-        "theme settings monitor";
+        "theme settings monitor"
+        "result result result";
     }
   }
 
