@@ -18,6 +18,7 @@ import {
   type ScheduleTimeEntry,
 } from './automationSchedule'
 import { placeClosedownLast } from './taskFlowSort'
+import { normalizeInfrastTaskParams } from './infrastScheduleEditing'
 
 /** 服务端配置 key，与迁移前一致。 */
 export const AUTOMATION_CONFIG_KEY = USER_CONFIG_KEYS.automationTasks
@@ -172,8 +173,8 @@ export function migrateTaskParams<T extends Record<string, unknown>>(task: T): T
     params.recruitment_time ??= { '3': 540, '4': 540 }
     delete params.skip_robot
   } else if (commandId === 'infrast') {
-    params.filename ??= ''
-    params.plan_index ??= 0
+    // 旧草稿的 plan_index 可能是文本；只归一化任务参数，不读取或改写排班文件内容。
+    Object.assign(params, normalizeInfrastTaskParams(params))
     params.continue_training ??= false
     params.dorm_notstationed_enabled ??= false
     params.dorm_trust_enabled ??= false

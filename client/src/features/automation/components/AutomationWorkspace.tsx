@@ -19,6 +19,7 @@ import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
 import { testConnection as testAdbConnection } from '@/features/settings'
 import AutomationStageEditor from './AutomationStageEditor'
+import InfrastScheduleField from './InfrastScheduleField'
 import OperProgressPlansEditor from './OperProgressPlansEditor'
 import ThemeListEditor from './ThemeListEditor'
 import AutomationTaskFlowPanel from './AutomationTaskFlowPanel'
@@ -497,6 +498,14 @@ export default function AutomationWorkspace() {
                               <OperProgressPlansEditor plans={task.params.plans ?? []} disabled={isRunning || !task.enabled} onChange={plans => updateTaskParam(index, 'plans', plans)} />
                             ) : field.type === 'theme-list' ? (
                               <ThemeListEditor themes={task.params.themes ?? []} disabled={isRunning || !task.enabled} onChange={themes => updateTaskParam(index, 'themes', themes)} />
+                            ) : field.type === 'infrast-schedule' ? (
+                              <InfrastScheduleField
+                                fieldId={fieldId}
+                                filename={typeof task.params.filename === 'string' ? task.params.filename : ''}
+                                planIndex={task.params.plan_index ?? 0}
+                                disabled={isRunning || !task.enabled}
+                                onChange={(key, value) => updateTaskParam(index, key, value)}
+                              />
                             ) : field.type === 'checkbox' ? (
                               <label htmlFor={fieldId} className="group flex min-h-11 cursor-pointer items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
                                 <input
