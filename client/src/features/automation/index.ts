@@ -12,7 +12,12 @@ export {
   notificationConfigQueryOptions,
   scheduleExecutionQueryOptions,
 } from './model/queries'
-export { normalizeActivityPayload } from './model/activity'
+export {
+  MAX_ACTIVITY_STAGES,
+  isActivityCompletion,
+  isActivityEntry,
+  normalizeActivityPayload,
+} from './model/activity'
 export {
   cloneNotificationConfig,
   emptyNotificationConfig,

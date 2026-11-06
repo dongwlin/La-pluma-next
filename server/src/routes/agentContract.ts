@@ -1,7 +1,10 @@
 import { AGENT_TASK_COMMANDS, AGENT_TASK_DYNAMIC_COMMAND } from '../services/agentActionService.ts';
 import { AGENT_TASK_CONFIG_SCHEMA } from '../services/agentTaskContract.ts';
 import type { JsonSchema, RuntimeDefaultKey } from '../services/agentTaskContract.ts';
+import { GAME_TASK_LIMITS } from '../services/gameTaskConfigService.ts';
 import { API_VERSION } from '../config/apiVersion.ts';
+
+const FIGHT_LIMITS = GAME_TASK_LIMITS.Fight;
 
 /**
  * 能力清单与 manifest/OpenAPI 生成器共用同一份 `AGENT_OPERATIONS`，生成器只做纯投影、
@@ -379,8 +382,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
         address: { type: 'string', ...runtimeDefault('adbAddress') },
         command: {
           type: 'string',
-          enum: [...AGENT_TASK_COMMANDS],
-          description: 'Optional maa-cli command to preflight. Invalid values make the execution check fail with the allowed command list.'
+          description: 'Optional maa-cli command to preflight. Any string is accepted; unknown values make the execution check fail with the allowed command list.'
         }
       }
     }
@@ -481,19 +483,28 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
           },
           examples: [['HD-7', 'CE-6', 'AP-5']]
         },
-        medicine: { type: ['integer', 'string'], default: 0, description: 'Normal sanity medicine count for -m.' },
+        medicine: {
+          type: ['integer', 'string'],
+          minimum: FIGHT_LIMITS.medicineExpireDays.minimum,
+          default: 0,
+          description: 'Normal sanity medicine count for -m.'
+        },
         medicineExpireDays: {
           type: ['integer', 'string'],
+          minimum: FIGHT_LIMITS.medicineExpireDays.minimum,
           default: 0,
           description: 'Use sanity medicine expiring within this many days (--medicine-expire-days); 0 disables it.'
         },
         expiringMedicine: {
           type: ['integer', 'string'],
+          minimum: FIGHT_LIMITS.medicineExpireDays.minimum,
           description: 'Deprecated bottle count for older configurations; maps to --expiring-medicine. Prefer medicineExpireDays.'
         },
         stone: { type: ['integer', 'string'], default: 0, description: 'Originium stone count.' },
         series: {
           type: ['integer', 'string'],
+          minimum: FIGHT_LIMITS.series.minimum,
+          maximum: FIGHT_LIMITS.series.maximum,
           default: 0,
           description: 'MAA --series value (-1~10, older resources accept -1~6); default 0 is auto. Set 1 to omit the flag and use the maa-cli default.'
         },

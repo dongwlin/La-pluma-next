@@ -223,6 +223,14 @@ describe('drop history parsing', () => {
   });
 });
 
+function materialWarnings(): number {
+  return loggerManager
+    .getLogger('DropRecord')
+    .filterByLevel('WARN')
+    .filter(entry => entry.message.includes('材料'))
+    .length;
+}
+
 describe('drop statistics material table', () => {
   beforeEach(clearFixtureDir);
 
@@ -253,19 +261,88 @@ describe('drop statistics material table', () => {
     const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
 
     assert.equal(statistics.items['源岩'].count, 2);
+    assert.equal(statistics.items['源岩'].id, null);
     assert.equal(statistics.items['源岩'].iconId, '30012');
     assert.equal(statistics.items['源岩'].rarity, 3);
   });
 
-  it('keeps null icons for the object-format material table used by the fetch scripts', async () => {
+  it('exposes the material item id separately from the icon key', async () => {
     await seedOneDayWithItem();
-    const materialsPath = join(fixtureDir, 'materials-object.json');
-    await writeFile(materialsPath, JSON.stringify({ materials: {}, recipes: {} }), 'utf-8');
+    const materialsPath = join(fixtureDir, 'materials-object-id.json');
+    await writeFile(materialsPath, JSON.stringify({
+      materials: { '30011': { id: '30011', name: '源岩', rarity: 3, iconId: 'MTL_SL_G1' } }
+    }), 'utf-8');
 
     const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
 
+    assert.equal(statistics.items['源岩'].id, '30011');
+    assert.equal(statistics.items['源岩'].iconId, 'MTL_SL_G1');
+  });
+
+  it('enriches items from the object-format material table produced by the fetch scripts', async () => {
+    await seedOneDayWithItem();
+    const materialsPath = join(fixtureDir, 'materials-object.json');
+    await writeFile(materialsPath, JSON.stringify({
+      materials: { '30012': { id: '30012', name: '源岩', rarity: 3 } },
+      recipes: {},
+      stageSchedule: {}
+    }), 'utf-8');
+
+    const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
+
+    assert.equal(statistics.items['源岩'].count, 2);
+    assert.equal(statistics.items['源岩'].iconId, '30012');
+    assert.equal(statistics.items['源岩'].rarity, 3);
+  });
+
+  it('prefers the item icon alias recorded in the object entry', async () => {
+    await seedOneDayWithItem();
+    const materialsPath = join(fixtureDir, 'materials-object-alias.json');
+    await writeFile(materialsPath, JSON.stringify({
+      materials: { '30011': { id: '30011', name: '源岩', rarity: 3, iconId: 'MTL_SL_G1' } }
+    }), 'utf-8');
+
+    const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
+
+    assert.equal(statistics.items['源岩'].iconId, 'MTL_SL_G1');
+  });
+
+  it('degrades to null icons without throwing when the material table is unreadable', async () => {
+    await seedOneDayWithItem();
+    const materialsPath = join(fixtureDir, 'materials-unreadable.json');
+    await writeFile(materialsPath, '{"materials":', 'utf-8');
+
+    const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
+
+    assert.equal(statistics.items['源岩'].count, 2);
     assert.equal(statistics.items['源岩'].iconId, null);
     assert.equal(statistics.items['源岩'].rarity, null);
+  });
+
+  it('keeps valid material tables out of the warning log', async () => {
+    await seedOneDayWithItem();
+    const materialsPath = join(fixtureDir, 'materials-quiet.json');
+    await writeFile(materialsPath, JSON.stringify({
+      materials: { '30012': { id: '30012', name: '源岩', rarity: 3 } }
+    }), 'utf-8');
+
+    const before = materialWarnings();
+    expectSuccess(await getDropStatistics(1, { materialsPath }));
+    expectSuccess(await getDropStatistics(1, { materialsPath }));
+
+    assert.equal(materialWarnings(), before);
+  });
+
+  it('warns once for a damaged material table instead of on every statistics request', async () => {
+    await seedOneDayWithItem();
+    const materialsPath = join(fixtureDir, 'materials-damaged.json');
+    await writeFile(materialsPath, JSON.stringify('not a materials table'), 'utf-8');
+
+    const before = materialWarnings();
+    expectSuccess(await getDropStatistics(1, { materialsPath }));
+    expectSuccess(await getDropStatistics(1, { materialsPath }));
+
+    assert.equal(materialWarnings(), before + 1);
   });
 });
 

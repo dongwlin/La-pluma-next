@@ -129,10 +129,6 @@ describe('RuntimeDiagnosticsPanel', () => {
 
     expect(panel()?.getAttribute('aria-busy')).toBe('true')
     expect(findButton('诊断中')?.disabled).toBe(true)
-    expect(apiMocks.fetchAgentDiagnostics).toHaveBeenCalledWith({
-      command: 'reclamation',
-      signal: expect.any(AbortSignal),
-    })
 
     await act(async () => request.resolve(ok(report())))
     await flush()

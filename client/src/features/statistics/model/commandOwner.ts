@@ -240,10 +240,19 @@ function readDepotPayload(data: unknown): Extract<RecognitionPayload, { kind: 'd
   }
 }
 
+function readOperBoxRecognition(value: unknown): OperBoxRecognitionInfo | undefined {
+  if (!isRecord(value)) return undefined
+  const { status, total, owned } = value
+  if (status !== 'complete' && status !== 'partial') return undefined
+  if (typeof total !== 'number' || typeof owned !== 'number') return undefined
+  return { status, total, owned }
+}
+
 function readOperBoxPayload(data: unknown): Extract<RecognitionPayload, { kind: 'operbox' }> | null {
   if (!isRecord(data) || data.success === false) return null
   if (typeof data.operCount !== 'number' || !Array.isArray(data.data)) return null
   // 识别目录与概要随解析响应返回；旧服务端没有这些字段时保持缺省。
+  const recognition = readOperBoxRecognition(data.recognition)
   return {
     kind: 'operbox',
     operCount: data.operCount,
@@ -251,15 +260,7 @@ function readOperBoxPayload(data: unknown): Extract<RecognitionPayload, { kind: 
     path: typeof data.path === 'string' ? data.path : undefined,
     ...(Array.isArray(data.allOpers) ? { allOpers: data.allOpers as OperBoxCatalogOperator[] } : {}),
     ...(typeof data.operTotal === 'number' ? { operTotal: data.operTotal } : {}),
-    ...(isRecord(data.recognition) && (data.recognition.status === 'complete' || data.recognition.status === 'partial')
-      ? {
-          recognition: {
-            status: data.recognition.status,
-            total: typeof data.recognition.total === 'number' ? data.recognition.total : data.operCount,
-            owned: typeof data.recognition.owned === 'number' ? data.recognition.owned : data.operCount,
-          } satisfies OperBoxRecognitionInfo,
-        }
-      : {}),
+    ...(recognition ? { recognition } : {}),
   }
 }
 

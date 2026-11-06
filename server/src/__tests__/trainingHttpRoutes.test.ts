@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import { createLaPlumaApp } from '../app.ts'
+import { closeHttpServers, postJson, startHttpServer } from './support/httpTestHelpers.ts'
 import operatorTraining from '../services/operatorTrainingService.ts'
 import type {
   OperatorTrainingService,
@@ -20,18 +20,6 @@ import type { TrainingQueueItem } from '../services/operatorTrainingStore.ts'
 const servers: Server[] = []
 const originalMethods: OperatorTrainingService = { ...operatorTraining }
 const originalConsoleError = console.error
-
-async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
-  const server = createServer(app)
-  servers.push(server)
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  assert.ok(address && typeof address === 'object')
-  return address.port
-}
 
 function agentUrl(port: number, path: string): string {
   return `http://127.0.0.1:${port}/api/agent${path}`
@@ -136,12 +124,7 @@ function trainingPlanFixture(): TrainingPlan {
 afterEach(async () => {
   Object.assign(operatorTraining, originalMethods)
   console.error = originalConsoleError
-  while (servers.length) {
-    const server = servers.pop()
-    server?.closeIdleConnections()
-    server?.closeAllConnections()
-    if (server) await new Promise<void>(resolve => server.close(() => resolve()))
-  }
+  await closeHttpServers(servers)
 })
 
 describe('training routes over real HTTP', () => {
@@ -150,7 +133,7 @@ describe('training routes over real HTTP', () => {
       env: { LA_PLUMA_TOKEN: 'api-secret' },
       loginRateLimit: { maxAuthFailures: 100 }
     })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     const calls = { count: 0 }
     stubUnreachableService(calls)
 
@@ -184,7 +167,7 @@ describe('training routes over real HTTP', () => {
 
   it('rejects invalid training write bodies before calling the service', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     const calls = { count: 0 }
     stubUnreachableService(calls)
 
@@ -214,27 +197,30 @@ describe('training routes over real HTTP', () => {
 
   it('passes the resolved client type to plan generation', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
+    const modes: Array<string | undefined> = []
     let captured: { mode?: string; options?: { clientType?: string } } | null = null
     operatorTraining.generateTrainingPlan = async (mode, options) => {
+      modes.push(mode)
       captured = { mode, options }
       return trainingPlanFixture()
     }
 
-    const response = await fetch(agentUrl(port, '/training/plan?clientType=YoStarEN'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode: 'all' })
-    })
+    const response = await postJson(agentUrl(port, '/training/plan?clientType=YoStarEN'), { mode: 'all' })
 
     assert.equal(response.status, 200)
     assert.equal((await readEnvelope(response)).success, true)
     assert.deepEqual(captured, { mode: 'all', options: { clientType: 'YoStarEN' } })
+
+    // 请求体缺省 mode 时沿用领域默认的 current。
+    const defaultMode = await postJson(agentUrl(port, '/training/plan'), {})
+    assert.equal(defaultMode.status, 200)
+    assert.deepEqual(modes, ['all', 'current'])
   })
 
   it('keeps a saved queue distinguishable from failed flow and schedule synchronization', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     const flowSync: FlowSyncState = { status: 'failed', flowName: '自动任务', taskName: '材料作战', error: '磁盘写入失败' }
 
     operatorTraining.addToQueue = async () => ({
@@ -250,10 +236,11 @@ describe('training routes over real HTTP', () => {
       scheduleSync: { attempted: true, success: false, message: '定时任务设置失败' }
     })
 
-    const added = await fetch(agentUrl(port, '/training/queue'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ operatorId: 'alpha', currentElite: 1, targetElite: 2, position: 0 })
+    const added = await postJson(agentUrl(port, '/training/queue'), {
+      operatorId: 'alpha',
+      currentElite: 1,
+      targetElite: 2,
+      position: 0
     })
     assert.equal(added.status, 200)
     const addedBody = await readEnvelope<{
@@ -272,10 +259,8 @@ describe('training routes over real HTTP', () => {
     assert.equal(syncedBody.message, '任务流程同步失败，可重试')
     assert.equal(syncedBody.data?.flowSync.status, 'failed')
 
-    const applied = await fetch(agentUrl(port, '/actions/apply-training-plan'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ plan: { queueRevision: 'revision-2' } })
+    const applied = await postJson(agentUrl(port, '/actions/apply-training-plan'), {
+      plan: { queueRevision: 'revision-2' }
     })
     assert.equal(applied.status, 200)
     const appliedBody = await readEnvelope<{ flowSync: FlowSyncState; scheduleSync: unknown }>(applied)
@@ -290,7 +275,7 @@ describe('training routes over real HTTP', () => {
 
   it('returns candidate projections, their count and recognition completeness from the domain service', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     let filters: unknown
     operatorTraining.getOperatorList = async value => {
       filters = value
@@ -353,7 +338,7 @@ describe('training routes over real HTTP', () => {
 
   it('routes training service errors through the unified error exit', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     operatorTraining.getTrainingQueue = async () => {
       throw new Error('内部堆栈泄露标记')
     }
@@ -371,7 +356,7 @@ describe('training routes over real HTTP', () => {
 
   it('returns an actionable 503 when the real plan path cannot read local MAA resources', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     console.error = () => {}
     const previousDataDir = process.env.MAA_DATA_DIR
     const previousResourceDir = process.env.MAA_RESOURCE_DIR
@@ -409,12 +394,10 @@ describe('training routes over real HTTP', () => {
 
   it('maps corrupt local MAA resources to an actionable 503 and keeps unknown errors opaque', async () => {
     const app = createLaPlumaApp({ env: {} })
-    const port = await listen(app)
+    const port = await startHttpServer(app, servers)
     console.error = () => {}
-    const requestPlan = async (): Promise<Response> => fetch(agentUrl(port, '/training/plan'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode: 'current' })
+    const requestPlan = async (): Promise<Response> => postJson(agentUrl(port, '/training/plan'), {
+      mode: 'current'
     })
 
     operatorTraining.generateTrainingPlan = async () => {

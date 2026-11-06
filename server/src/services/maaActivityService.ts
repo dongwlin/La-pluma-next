@@ -182,7 +182,6 @@ function normalizeActivityInfo(value: unknown): MaaActivityInfo | null {
   return {
     ...primary,
     source: typeof value.source === 'string' ? value.source : null,
-    rerun: typeof value.rerun === 'boolean' ? value.rerun : activities.some(entry => entry.rerun),
     activities
   };
 }
@@ -685,7 +684,6 @@ function buildMaaActivityInfo(
   return {
     ...primary,
     source: 'maa',
-    rerun: activities.some(activity => activity.rerun),
     activities
   };
 }

@@ -393,7 +393,8 @@ describe('getCurrentActivity status contract', () => {
     assert.equal(snapshot.startTime, Date.UTC(2026, 10, 1, 4, 0, 0));
     assert.equal(snapshot.endTime, Date.UTC(2026, 10, 21, 19, 59, 59));
     assert.deepEqual(snapshot.stages, ['TL-9', 'TL-8']);
-    assert.equal(snapshot.rerun, true);
+    assert.equal(snapshot.rerun, false);
+    assert.deepEqual(snapshot.activities.map(activity => activity.rerun), [false, false, true]);
     assert.deepEqual(snapshot.activities, [
       {
         code: null,
@@ -420,6 +421,26 @@ describe('getCurrentActivity status contract', () => {
         rerun: true
       }
     ]);
+  });
+
+  it('scopes the top-level rerun flag to the primary activity', async () => {
+    const snapshot = await getCurrentActivity(CLIENT, runtime({
+      runActivity: async () => ({
+        stdout: `Opening side story stages:
+- 主线「相变临界」
+  - 17-11: 固源岩
+- SideStory「时间啊，向前！」
+  - TL-9: 电极单元
+- SideStory「墟」复刻
+  - SSReopen-AT: 代理1~8
+  - AT-8: 31093`
+      }),
+      readSideStoryStages: async () => parseSideStoryStages(SIDE_STORY_TABLE, 'Official')
+    }));
+
+    assert.equal(snapshot.code, 'TL');
+    assert.equal(snapshot.rerun, false);
+    assert.equal(snapshot.activities.find(activity => activity.code === 'AT')?.rerun, true);
   });
 
   it('keeps CLI stages and null times when the side story table cannot be read', async () => {

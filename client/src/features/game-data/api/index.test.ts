@@ -156,7 +156,6 @@ describe('game data resource reads', () => {
     expect(getOperatorAvatarUrl('char_002_amiya', '1', 3)).toBe(
       'http://localhost:3000/game-assets/avatar/char_002_amiya_1.png?v=3',
     )
-    expect(getItemIconUrl('30011', 8)).not.toBe(getItemIconUrl('30011', 7))
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

@@ -7,6 +7,7 @@ import {
   SettingsUpdateOwner,
   coreChannelLabel,
   readUpdateFailureDetails,
+  resolveCoreChannel,
   resolveCoreChannelSwitch,
   shouldRetryUpdateResources,
 } from './updateCommands'
@@ -68,18 +69,17 @@ describe('core channel policy', () => {
     expect(resolveCoreChannelSwitch(null)).toEqual({ version: 'beta', label: 'Beta' })
     expect(coreChannelLabel('stable')).toBe('正式版')
     expect(coreChannelLabel('alpha')).toBe('Alpha')
+    expect(resolveCoreChannel('v5.0.0')).toBe('stable')
+    expect(resolveCoreChannel('v5.0.0-beta.1')).toBe('beta')
+    expect(resolveCoreChannel('v5.0.0-alpha.2')).toBe('beta')
+    expect(resolveCoreChannel(undefined)).toBe('stable')
   })
 
-  it('reads failure details from the current envelope and the legacy error shape', () => {
+  it('reads failure details from the typed error envelope', () => {
     expect(readUpdateFailureDetails({
       success: false,
       errorInfo: { details: { failedStep: 'resources', coreUpdated: true } },
     })).toEqual({ failedStep: 'resources', coreUpdated: true })
-
-    expect(readUpdateFailureDetails({
-      success: false,
-      error: { details: { failedStep: 'core' } } as unknown as string,
-    })).toEqual({ failedStep: 'core' })
 
     expect(readUpdateFailureDetails({ success: false })).toEqual({})
   })
@@ -380,7 +380,6 @@ describe('SettingsUpdateOwner run semantics', () => {
   const terminal = (overrides: Partial<UpdateRunTerminal> = {}): UpdateRunTerminal => ({
     state: 'succeeded',
     message: null,
-    errorCode: null,
     errorDetails: {},
     ...overrides,
   })
@@ -412,8 +411,8 @@ describe('SettingsUpdateOwner run semantics', () => {
     const runPort = createRunPort(
       () => pendingTerminal.promise,
       {
-        adopt: response => {
-          adopted.push('update_core')
+        adopt: (response, operationId) => {
+          adopted.push(operationId)
           const data = response.data as { runId?: unknown } | undefined
           return typeof data?.runId === 'string' ? data.runId : null
         },
@@ -443,7 +442,6 @@ describe('SettingsUpdateOwner run semantics', () => {
     const runPort = createRunPort(() => Promise.resolve(terminal({
       state: 'failed',
       message: '资源同步失败: 下载超时',
-      errorCode: 'AGENT_MAA_RESOURCE_UPDATE_FAILED',
       errorDetails: { failedStep: 'resources' },
     })))
     const { owner } = createOwner({ updateResources: submitted('run-resources') }, runPort)
@@ -497,12 +495,16 @@ describe('SettingsUpdateOwner run semantics', () => {
 
   it('stops the tracked run and keeps the command pending until the terminal state', async () => {
     const pendingTerminal = deferred<UpdateRunTerminal>()
+    const waitStarted = deferred<void>()
     const cancel = vi.fn(() => Promise.resolve({ success: true, data: {} } as ApiResponse))
-    const runPort = createRunPort(() => pendingTerminal.promise, { cancel })
+    const runPort = createRunPort(() => {
+      waitStarted.resolve()
+      return pendingTerminal.promise
+    }, { cancel })
     const { owner } = createOwner({ updateCli: submitted('run-cli') }, runPort)
 
     const promise = owner.updateCli()
-    await new Promise(resolve => { setTimeout(resolve, 0) })
+    await waitStarted.promise
     const canceled = await owner.cancel()
 
     expect(canceled).toEqual({ ok: true, message: null })
@@ -518,15 +520,19 @@ describe('SettingsUpdateOwner run semantics', () => {
 
   it('restores the cancelable state when the stop request is rejected', async () => {
     const pendingTerminal = deferred<UpdateRunTerminal>()
+    const waitStarted = deferred<void>()
     const cancel = vi.fn(() => Promise.resolve({
       success: false,
       errorInfo: { code: 'AGENT_RUN_NOT_CURRENT', message: '目标 run 不是当前执行' },
     } as ApiResponse))
-    const runPort = createRunPort(() => pendingTerminal.promise, { cancel })
+    const runPort = createRunPort(() => {
+      waitStarted.resolve()
+      return pendingTerminal.promise
+    }, { cancel })
     const { owner } = createOwner({ updateCore: submitted('run-busy') }, runPort)
 
     const promise = owner.updateCore()
-    await new Promise(resolve => { setTimeout(resolve, 0) })
+    await waitStarted.promise
     const canceled = await owner.cancel()
 
     expect(canceled.ok).toBe(false)

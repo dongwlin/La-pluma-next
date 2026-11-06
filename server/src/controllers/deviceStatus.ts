@@ -67,6 +67,9 @@ export async function getAdbSummary(
   address: string = DEFAULT_ADB_ADDRESS
 ): Promise<AdbSummary> {
   const connection = await testAdbConnection(adbPath, address);
+  if (connection.error) {
+    throw new Error(connection.error);
+  }
   let foreground: string | null = null;
   let devices = '';
 

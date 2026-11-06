@@ -285,7 +285,7 @@ describe('dynamic task lifecycle', () => {
     }
   })
 
-  it('locks before writing, uses a unique task directory, and removes it after a foreground run', async () => {
+  it('locks before writing, requests batch mode with user resource ordering, and cleans up after a foreground run', async () => {
     const { events, runtime } = createRuntime()
     const result = await execDynamicTask(
       'award',
@@ -293,7 +293,7 @@ describe('dynamic task lifecycle', () => {
       '领取奖励',
       'agent',
       true,
-      false,
+      true,
       runtime
     )
 
@@ -302,28 +302,11 @@ describe('dynamic task lifecycle', () => {
     const taskFile = findTaskFileWrite(events)
     const executeArgs = eventArgs(events.find(event => event[0] === 'execute'))
     assert.match(String(executeArgs[0]), /^la-pluma-task-award-nonce_1[\\/]task$/)
-    assert.equal(executeArgs[1], '--batch')
+    assert.equal(executeArgs[1], '--user-resource')
+    assert.equal(executeArgs[2], '--batch')
     assert.match(String(taskFile[1]), /[\\/]tasks[\\/]la-pluma-task-award-nonce_1[\\/]task\.toml$/)
     assert.match(String(taskFile[2]), /type = "Award"/)
     assert.deepEqual(events.slice(-2).map(event => event[0]), ['removeDirectory', 'release'])
-  })
-
-  it('requests batch mode after the task path and keeps user resource ordering', async () => {
-    const { events, runtime } = createRuntime()
-    await execDynamicTask(
-      'award',
-      { name: '领取奖励', type: 'Award', params: {} },
-      '领取奖励',
-      'agent',
-      true,
-      true,
-      runtime
-    )
-
-    const executeArgs = eventArgs(events.find(event => event[0] === 'execute'))
-    assert.match(String(executeArgs[0]), /^la-pluma-task-award-nonce_1[\\/]task$/)
-    assert.equal(executeArgs[1], '--user-resource')
-    assert.equal(executeArgs[2], '--batch')
   })
 
   it('keeps the task file and lease until a background process settles', async () => {

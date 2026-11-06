@@ -1,3 +1,5 @@
+import type { Page, Route } from '@playwright/test'
+
 /** 固定"现在"：2026-10-24 04:00:00 (UTC+8)，即明日方舟每日重置时刻。 */
 export const FIXED_NOW = new Date('2026-10-24T04:00:00+08:00')
 
@@ -383,3 +385,15 @@ export const EXTERNAL_IMAGE_HOSTS = ['raw.githubusercontent.com']
  */
 export const PLACEHOLDER_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNcOnfpfwAH1QNYRxsAPQAAAABJRU5ErkJggg=='
+
+export async function installPlaceholderAssetRoutes(page: Page): Promise<void> {
+  const fulfill = (route: Route) => route.fulfill({
+    status: 200,
+    contentType: 'image/png',
+    body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
+  })
+  for (const host of EXTERNAL_IMAGE_HOSTS) {
+    await page.route(`https://${host}/**`, fulfill)
+  }
+  await page.route('**/game-assets/**', fulfill)
+}

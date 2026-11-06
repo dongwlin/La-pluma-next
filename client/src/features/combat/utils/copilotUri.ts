@@ -1,8 +1,14 @@
 /** `maa://` 是 maa-cli 已弃用的旧别名，解析后统一规范化为 `prts://`。 */
-const COPILOT_URI_PATTERN = /^(?:prts|maa):\/\/(s?)(\d+)$/i
+const COPILOT_URI_SCHEME_PATTERN = /^(?:prts|maa):\/\//i
+const COPILOT_URI_ID_PATTERN = /^(s?)(\d+)$/i
+
+export function hasCopilotUriScheme(value: string): boolean {
+  return COPILOT_URI_SCHEME_PATTERN.test(value)
+}
 
 export function parseCopilotUri(uri: string): { id: string; isSet: boolean } | null {
-  const current = uri.match(COPILOT_URI_PATTERN)
+  if (!hasCopilotUriScheme(uri)) return null
+  const current = uri.replace(COPILOT_URI_SCHEME_PATTERN, '').match(COPILOT_URI_ID_PATTERN)
   return current ? { id: current[2]!, isSet: Boolean(current[1]) } : null
 }
 

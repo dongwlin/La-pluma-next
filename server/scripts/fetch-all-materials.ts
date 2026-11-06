@@ -26,6 +26,7 @@ export interface MaterialEntry {
   id: string;
   name: string;
   rarity: number;
+  iconId?: string;
   bestStages?: MaterialStage[];
 }
 
@@ -79,10 +80,12 @@ export function parseMaterials(payload: unknown): Record<string, MaterialEntry> 
     if (name === undefined) throw invalidPayload(ITEM_SOURCE, `物品 ${itemId} 缺少名称`);
 
     const bestStages = readBestStages(item.stageDropList, itemId);
+    const iconId = typeof item.iconId === 'string' && item.iconId ? item.iconId : undefined;
     materials[itemId] = {
       id: itemId,
       name,
       rarity: Number.parseInt(String(item.rarity), 10) || 0,
+      ...(iconId ? { iconId } : {}),
       ...(bestStages.length > 0 ? { bestStages } : {})
     };
   }

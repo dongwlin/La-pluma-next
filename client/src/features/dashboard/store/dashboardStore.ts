@@ -1,4 +1,9 @@
 import { create } from 'zustand'
+import {
+  isActivityCompletion,
+  isActivityEntry,
+  MAX_ACTIVITY_STAGES,
+} from '@/features/automation'
 import { DASHBOARD_CACHE_MAX_FUTURE_SKEW_MS } from '../constants'
 import type {
   ActivitySummary,
@@ -12,7 +17,6 @@ import type {
 const DASHBOARD_CACHE_STORAGE_KEY = 'la-pluma-dashboard-cache'
 const DASHBOARD_CACHE_VERSION = 1
 
-const MAX_COMPLETED_STAGES = 500
 const MAX_TRAINING_NAMES = 10
 const MAX_RECENT_DROPS = 50
 const MAX_OPEN_STAGE_ITEMS = 100
@@ -90,7 +94,6 @@ const isPercentage = (value: unknown): value is number => (
 )
 
 const isOptionalString = (value: unknown) => value === undefined || typeof value === 'string'
-const isOptionalBoolean = (value: unknown) => value === undefined || typeof value === 'boolean'
 const isOptionalTimestamp = (value: unknown) => value === undefined || isTimestamp(value)
 const isStringArray = (value: unknown, maxLength: number): value is string[] => (
   Array.isArray(value)
@@ -111,16 +114,6 @@ const isActivityFailure = (value: unknown): boolean => (
   && typeof value.message === 'string'
 )
 
-const isActivityEntry = (value: unknown): boolean => (
-  isRecord(value)
-  && (value.code === null || typeof value.code === 'string')
-  && (value.name === null || typeof value.name === 'string')
-  && (value.startTime === null || isTimestamp(value.startTime))
-  && (value.endTime === null || isTimestamp(value.endTime))
-  && isStringArray(value.stages, MAX_COMPLETED_STAGES)
-  && typeof value.rerun === 'boolean'
-)
-
 function isActivitySummary(value: unknown): value is ActivitySummary {
   if (!isRecord(value) || typeof value.available !== 'boolean') return false
   if (value.status !== undefined && !isActivityStatus(value.status)) return false
@@ -134,7 +127,7 @@ function isActivitySummary(value: unknown): value is ActivitySummary {
   if (value.rerun !== undefined && typeof value.rerun !== 'boolean') return false
   if (value.activities !== undefined) {
     if (!Array.isArray(value.activities)
-      || value.activities.length > MAX_COMPLETED_STAGES
+      || value.activities.length > MAX_ACTIVITY_STAGES
       || !value.activities.every(isActivityEntry)) {
       return false
     }
@@ -145,17 +138,9 @@ function isActivitySummary(value: unknown): value is ActivitySummary {
     || !isOptionalTimestamp(value.dataUpdatedAt)) {
     return false
   }
-  if (value.stages !== undefined && !isStringArray(value.stages, MAX_COMPLETED_STAGES)) return false
+  if (value.stages !== undefined && !isStringArray(value.stages, MAX_ACTIVITY_STAGES)) return false
   if (value.failure !== undefined && !isActivityFailure(value.failure)) return false
-  if (value.completion === undefined) return true
-  if (!isRecord(value.completion)) return false
-
-  return isOptionalBoolean(value.completion.known)
-    && isOptionalBoolean(value.completion.complete)
-    && (value.completion.completedStages === undefined
-      || isStringArray(value.completion.completedStages, MAX_COMPLETED_STAGES))
-    && (value.completion.totalStages === undefined || isNonNegativeInteger(value.completion.totalStages))
-    && (value.completion.source === undefined || typeof value.completion.source === 'string')
+  return value.completion === undefined || isActivityCompletion(value.completion)
 }
 
 function isScheduleSummary(value: unknown): value is ScheduleSummary {

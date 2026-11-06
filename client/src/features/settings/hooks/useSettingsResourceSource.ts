@@ -15,7 +15,6 @@ export interface UseSettingsResourceSourceResult extends ResourceSourceState {
   readonly update: (patch: Partial<ResourceSourceDraft>) => void
   readonly restoreDefaults: () => boolean
   readonly save: () => Promise<ResourceSourceSaveOutcome>
-  readonly reload: () => Promise<void>
 }
 
 const describeLoadError = (error: unknown): string => (
@@ -42,10 +41,6 @@ export function useSettingsResourceSource(
 
   const restoreDefaults = useCallback(() => owner.restoreDefaults(), [owner])
 
-  const reload = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: options.queryKey })
-  }, [options.queryKey, queryClient])
-
   const save = useCallback(async () => {
     const outcome = await owner.save()
     if (outcome.status === 'saved' && !outcome.superseded) {
@@ -65,6 +60,5 @@ export function useSettingsResourceSource(
     update,
     restoreDefaults,
     save,
-    reload,
   }
 }

@@ -31,6 +31,7 @@ export interface ResolveItemAssetOptions {
   itemDir: string;
   fileName: string;
   itemTablePath: string;
+  itemIndexPath?: string;
 }
 
 export function isGameAssetKind(value: string): value is GameAssetKind {
@@ -98,9 +99,9 @@ export async function resolveGameAssetFile(options: ResolveGameAssetOptions): Pr
 }
 
 /**
- * 物品图标的解析入口：先按请求键直连，再借助本地 `item_table` 在 iconId 与物品 id
- * 之间互查。MAA 资源按物品 id 命名图标，兼容目录可能按 iconId 命名；映射缺失时
- * 只退化为直连，不把图片请求变成失败响应。
+ * 物品图标的解析入口：先按请求键直连，再借助本地 `item_table`（缺失时用
+ * `item_index`）在 iconId 与物品 id 之间互查。MAA 资源按物品 id 命名图标，
+ * 兼容目录可能按 iconId 命名；映射缺失时只退化为直连，不把图片请求变成失败响应。
  */
 export async function resolveItemAssetFile(options: ResolveItemAssetOptions): Promise<GameAssetFile | null> {
   const request = parseGameAssetRequest(options.fileName);
@@ -109,7 +110,7 @@ export async function resolveItemAssetFile(options: ResolveItemAssetOptions): Pr
   const direct = await resolveExistingAssetFile(options.itemDir, request.fileName);
   if (direct) return direct;
 
-  const aliases = await loadItemIconAliasTable(options.itemTablePath);
+  const aliases = await loadItemIconAliasTable(options.itemTablePath, options.itemIndexPath);
   for (const candidateKey of findItemIconAliases(aliases, request.stem)) {
     const candidateName = `${candidateKey}${request.extension}`;
     if (!isSafeFileName(candidateName)) continue;

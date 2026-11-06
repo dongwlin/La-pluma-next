@@ -45,7 +45,11 @@ function countVisits(startEvents: readonly MaaCallbackEvent[]): number {
       previousTask = null;
       continue;
     }
-    if (previousTask === null || task === previousTask) count++;
+    if (task === 'VisitNextOcr' && previousTask === 'VisitNext') {
+      previousTask = task;
+      continue;
+    }
+    count++;
     previousTask = task;
   }
   return count;

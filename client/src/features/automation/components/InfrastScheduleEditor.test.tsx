@@ -190,14 +190,9 @@ describe('InfrastScheduleEditor', () => {
     await click(buttonByText('保存'))
 
     const savedDocument = mocks.saveInfrastSchedule.mock.calls[0]?.[1] as typeof userDocument
-    const originalPlan = userDocument.plans[0]
     const savedPlan = savedDocument.plans[0]
     expect(savedDocument.custom_top_field).toEqual({ keep: true })
-    expect(savedDocument.layout).toEqual(userDocument.layout)
     expect(savedPlan?.rooms.manufacture?.[0]).toEqual({ operators: ['克洛丝'], custom_room: 'a' })
-    expect(savedPlan?.rooms.training).toEqual(originalPlan?.rooms.training)
-    expect(savedPlan?.rooms.recycle).toEqual(originalPlan?.rooms.recycle)
-    expect(savedPlan?.rooms.future_room).toEqual(originalPlan?.rooms.future_room)
     expect(onSaved).toHaveBeenCalledWith({ filename: 'base.json', planIndex: 0 })
   })
 

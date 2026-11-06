@@ -1,18 +1,20 @@
 import type {
   RoguelikeAdvancedOption,
   RoguelikeAdvancedParams,
-  RoguelikeAdvancedValues,
   RoguelikeTaskInputs,
 } from '../types'
 import { getBlackflowRewardChoices, getRoguelikeAdvancedOptions } from './roguelikeOptions'
 import {
+  CLI_RECLAMATION_MODE_VALUES,
+  CLI_RECLAMATION_THEMES,
+  CLI_ROGUELIKE_MODE_VALUES,
+  CLI_ROGUELIKE_THEMES,
+} from './roguelikeOptionCatalog'
+import {
   buildRoguelikeCommandParams,
-  getRoguelikeListError,
-  getRoguelikeNumberError,
   getTaskDefinition,
-  isRoguelikeOptionValueValid,
-  isRoguelikeOptionVisible,
   pickAdvancedValue,
+  readActiveRoguelikeOptions,
   resolveListChoice,
   resolveModeValue,
   splitRoguelikeListValue,
@@ -30,23 +32,13 @@ export interface RoguelikeExecutionPlan {
   taskConfig: RoguelikeDynamicTaskConfig | null
 }
 
-const CLI_ROGUELIKE_THEMES: ReadonlySet<string> = new Set(['Phantom', 'Mizuki', 'Sami', 'Sarkaz', 'JieGarden'])
-const CLI_ROGUELIKE_MODES: ReadonlySet<string> = new Set(['0', '1', '4', '5', '6', '7'])
-const CLI_RECLAMATION_THEMES: ReadonlySet<string> = new Set(['Tales'])
-const CLI_RECLAMATION_MODES: ReadonlySet<string> = new Set(['0', '1'])
+const CLI_ROGUELIKE_THEME_SET: ReadonlySet<string> = new Set(CLI_ROGUELIKE_THEMES)
+const CLI_ROGUELIKE_MODE_SET: ReadonlySet<string> = new Set(CLI_ROGUELIKE_MODE_VALUES)
+const CLI_RECLAMATION_THEME_SET: ReadonlySet<string> = new Set(CLI_RECLAMATION_THEMES)
+const CLI_RECLAMATION_MODE_SET: ReadonlySet<string> = new Set(CLI_RECLAMATION_MODE_VALUES)
 
 const BLACKFLOW_ANIMAL_PARAM = 'blackflow_start_animals'
 const BLACKFLOW_REWARD_PARAM = 'blackflow_start_rewards'
-
-function optionHasConfiguredValue(
-  option: RoguelikeAdvancedOption,
-  advanced: RoguelikeAdvancedValues,
-  theme: string,
-  taskId: string,
-): boolean {
-  const value = pickAdvancedValue(option, advanced, theme, taskId)
-  return value !== undefined && value !== '' && value !== false
-}
 
 /**
  * 当前选择是否有 CLI 无法表达的部分：主题或模式不在 maa-cli 的枚举里，
@@ -62,18 +54,15 @@ export function requiresRoguelikeDynamicTask(
   const mode = resolveModeValue(taskId, theme, advanced)
 
   if (taskId === 'reclamation') {
-    if (!CLI_RECLAMATION_THEMES.has(theme)) return true
-    if (!CLI_RECLAMATION_MODES.has(mode)) return true
+    if (!CLI_RECLAMATION_THEME_SET.has(theme)) return true
+    if (!CLI_RECLAMATION_MODE_SET.has(mode)) return true
   } else {
-    if (!CLI_ROGUELIKE_THEMES.has(theme)) return true
-    if (!CLI_ROGUELIKE_MODES.has(mode)) return true
+    if (!CLI_ROGUELIKE_THEME_SET.has(theme)) return true
+    if (!CLI_ROGUELIKE_MODE_SET.has(mode)) return true
   }
 
-  return getRoguelikeAdvancedOptions(taskId).some(option => (
-    option.param === undefined
-    && isRoguelikeOptionVisible(option, taskId, theme, advanced)
-    && optionHasConfiguredValue(option, advanced, theme, taskId)
-  ))
+  return readActiveRoguelikeOptions(taskId, theme, advanced)
+    .some(({ option }) => option.param === undefined)
 }
 
 function toCoreNumber(value: string | number | boolean): number {
@@ -144,13 +133,7 @@ export function buildRoguelikeDynamicTaskConfig(
   const mode = resolveModeValue(taskId, theme, advanced)
   const params: Record<string, unknown> = { theme }
 
-  for (const option of getRoguelikeAdvancedOptions(taskId)) {
-    if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
-    const value = pickAdvancedValue(option, advanced, theme, taskId)
-    if (value === undefined || value === '' || value === false) continue
-    if (option.type === 'select' && !isRoguelikeOptionValueValid(option, theme, value, taskId)) continue
-    if (option.type === 'number' && getRoguelikeNumberError(option, value)) continue
-    if (option.type === 'list' && getRoguelikeListError(option, value)) continue
+  for (const { option, value } of readActiveRoguelikeOptions(taskId, theme, advanced)) {
     params[option.coreParam] = toCoreValue(option, value)
   }
 
