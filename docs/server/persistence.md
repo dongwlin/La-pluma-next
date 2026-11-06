@@ -65,6 +65,7 @@
 - 按天一文件，业务日期取 `TZ` 时区、缺省 `Asia/Shanghai`（`server/src/services/dropRecordService.ts:127-136,237-239`）；单次记录经 `updateJsonFile` 排队读改写，同时增量累加当日汇总。
 - 写入时既有文件不可解析则按失败处理，不覆盖或清空历史；读取历史时单日文件损坏只跳过该天并告警（`server/src/services/dropRecordService.ts:272-280,377-387`）。
 - 旧记录缺 `source`/`mode` 时补默认值 `fight`/`normal`（`server/src/services/dropRecordService.ts:157-191`）；历史查询天数夹取到 1-`MAX_DROP_HISTORY_DAYS`（365，`server/src/services/dropRecordService.ts:20,361-365`）。
+- 后加字段 `recordKey`、`sanityBefore`、`maxSanity` 均可选（`server/src/services/dropRecordService.ts:33-48,167-189`）：`recordKey` 是同日记录的幂等键，同键重复写入被忽略；`sanityBefore`/`maxSanity` 记录开战前理智与理智上限。旧记录缺失或类型不符时按缺省处理，不使整份记录判为损坏；写盘时仅在请求提供合法值时落字段（`server/src/services/dropRecordService.ts:272-295`）。
 - 统计读取材料表仅接受数组格式，其他格式返回空映射（`server/src/services/dropRecordService.ts:480-502`）；同一 `materials.json` 由养成计算按 `{materials, recipes, stageSchedule}` 对象格式消费（`server/src/services/operatorTrainingStore.ts:335-366`）。
 
 ## copilot 与 activity 进度
