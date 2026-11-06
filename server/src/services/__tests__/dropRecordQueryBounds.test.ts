@@ -175,6 +175,23 @@ describe('recordDrops', () => {
     assert.equal(result.message, '记录掉落失败');
     assert.equal(await readFile(todayPath, 'utf-8'), corrupted);
   });
+
+  it('keeps the running summary when no sanity cost is confirmed', async () => {
+    expectSuccess(await recordDrops({
+      stage: '1-7',
+      times: 6,
+      items: [{ name: '源岩', count: 2 }]
+    }));
+
+    const [today] = expectSuccess(await getRecentDrops(1));
+
+    assert.equal(today.records.length, 1);
+    assert.equal(today.records[0].times, 6);
+    assert.equal(today.records[0].sanity, undefined);
+    assert.equal(today.summary.totalBattles, 6);
+    assert.equal(today.summary.totalSanity, 0);
+    assert.equal(today.summary.itemsSummary['源岩'], 2);
+  });
 });
 
 describe('drop history parsing', () => {
@@ -201,6 +218,29 @@ describe('drop history parsing', () => {
     assert.equal(today.records[0].source, 'fight');
     assert.equal(today.records[0].mode, 'normal');
     assert.equal(today.summary.itemsSummary['源岩'], 3);
+  });
+
+  it('reads records that omit the sanity cost', async () => {
+    const date = dateDaysAgo(0);
+    await writeDay(date, {
+      date,
+      records: [{
+        timestamp: '2026-10-23T01:40:38.710Z',
+        stage: '1-7',
+        times: 6,
+        medicine: 0,
+        stone: 0,
+        items: []
+      }],
+      summary: { totalSanity: 0, totalMedicine: 0, totalStone: 0, totalBattles: 6, itemsSummary: {} }
+    });
+
+    const [today] = expectSuccess(await getRecentDrops(1));
+
+    assert.equal(today.records[0].times, 6);
+    assert.equal(today.records[0].sanity, undefined);
+    assert.equal(today.summary.totalBattles, 6);
+    assert.equal(today.summary.totalSanity, 0);
   });
 
   it('skips a day file whose shape is not a record and keeps other days readable', async () => {

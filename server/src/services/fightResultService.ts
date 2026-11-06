@@ -3,7 +3,7 @@ import type { DropItem } from './dropRecordService.ts';
 export interface FightStructuredStatistics {
   stage: string;
   battles: number;
-  sanity: number;
+  sanity?: number;
   drops: DropItem[];
   cumulativeDrops: DropItem[];
   sanityBeforeStage?: number;

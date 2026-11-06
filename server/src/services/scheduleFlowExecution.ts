@@ -347,10 +347,10 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
         stage,
         times: statistics.battles,
         items: statistics.drops,
-        sanity: statistics.sanity,
         medicine: Math.max(0, Number(summary?.medicine) || 0),
         stone: Math.max(0, Number(summary?.stone) || 0),
         recordKey,
+        ...(statistics.sanity === undefined ? {} : { sanity: statistics.sanity }),
         ...(statistics.sanityBeforeStage === undefined ? {} : { sanityBefore: statistics.sanityBeforeStage }),
         ...(statistics.maxSanity === undefined ? {} : { maxSanity: statistics.maxSanity })
       };
@@ -363,7 +363,6 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           stage: summaryStage,
           times,
           items: summaryItems,
-          sanity: times * 20,
           medicine: Math.max(0, Number(summary?.medicine) || 0),
           stone: Math.max(0, Number(summary?.stone) || 0),
           recordKey
