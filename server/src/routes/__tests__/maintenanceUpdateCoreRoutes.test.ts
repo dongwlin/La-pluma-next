@@ -128,6 +128,7 @@ interface UpdateCoreErrorDetails {
   failedStep?: unknown;
   coreUpdated?: unknown;
   runId?: unknown;
+  runtime?: { core?: unknown; cli?: unknown };
 }
 
 interface RunDetail {
@@ -213,6 +214,9 @@ describe('update-core maintenance timeout', () => {
       const details = body.error.details as UpdateCoreErrorDetails;
       assert.equal(details.failedStep, 'resources');
       assert.equal(details.coreUpdated, true);
+      // 资源归因仍带上 core 命令成功后可用的实测版本投影。
+      assert.equal(details.runtime?.core, 'v6.2.3');
+      assert.equal(details.runtime?.cli, 'v0.7.0');
 
       const run = await readRun(baseUrl, String(details.runId));
       assert.equal(run.state, 'failed');
@@ -242,6 +246,7 @@ describe('update-core maintenance timeout', () => {
       const details = body.error.details as UpdateCoreErrorDetails;
       assert.equal(details.failedStep, 'runtime');
       assert.equal(details.coreUpdated, true);
+      assert.equal(details.version, 'beta');
 
       const run = await readRun(baseUrl, String(details.runId));
       assert.equal(run.state, 'failed');
