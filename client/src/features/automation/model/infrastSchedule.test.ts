@@ -99,7 +99,9 @@ describe('custom infrastructure schedule document validation', () => {
     expect(validateInfrastScheduleDocument({ plans: [{ rooms: { manufacture: [{ product: 'Future Product' }] } }] }))
       .toBeNull()
     expect(validateInfrastScheduleDocument({ plans: [{ rooms: {}, groups: [{ operators: [] }] }] }))
-      .toBe('plans[0].groups[0].name 必须是非空字符串')
+      .toBe('plans[0].groups[0].name 必须是字符串')
+    expect(validateInfrastScheduleDocument({ plans: [{ rooms: {}, period: [['25:00', '06:00']] }] }))
+      .toBe('plans[0].period 必须是 [["HH:mm", "HH:mm"]] 数组')
   })
 })
 

@@ -90,6 +90,8 @@ export type InfrastScheduleParseResult =
   | { ok: true; document: InfrastScheduleDocument }
   | { ok: false; message: string }
 
+const HOUR_MINUTE_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(item => typeof item === 'string')
 }
@@ -105,7 +107,9 @@ function validateOptionalBoolean(value: unknown, label: string): string | null {
 function validatePeriod(value: unknown, label: string): string | null {
   if (value === undefined) return null
   if (!Array.isArray(value) || !value.every(slot => (
-    Array.isArray(slot) && slot.length === 2 && slot.every(item => typeof item === 'string')
+    Array.isArray(slot)
+    && slot.length === 2
+    && slot.every(item => typeof item === 'string' && HOUR_MINUTE_PATTERN.test(item))
   ))) return `${label}.period 必须是 [["HH:mm", "HH:mm"]] 数组`
   return null
 }
@@ -144,8 +148,8 @@ function validateGroups(value: unknown, label: string): string | null {
   if (!Array.isArray(value)) return `${label}.groups 必须是数组`
   for (const [index, group] of value.entries()) {
     if (!isRecord(group)) return `${label}.groups[${index}] 必须是对象`
-    if (typeof group.name !== 'string' || !group.name.trim()) {
-      return `${label}.groups[${index}].name 必须是非空字符串`
+    if (typeof group.name !== 'string') {
+      return `${label}.groups[${index}].name 必须是字符串`
     }
     if (!isStringArray(group.operators)) return `${label}.groups[${index}].operators 必须是干员名数组`
   }
