@@ -8,46 +8,58 @@ import agentTrainingRoutes from './agentTrainingRoutes.ts';
 import agentPreviewRoutes from './agentPreviewRoutes.ts';
 import agentNotificationRoutes from './agentNotificationRoutes.ts';
 import agentMaintenanceRoutes from './agentMaintenanceRoutes.ts';
+import { createAgentInfrastScheduleRouter } from './agentInfrastScheduleRoutes.ts';
 import { sendSuccess } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import { DEFAULT_ADB_ADDRESS, DEFAULT_ADB_PATH, DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { buildAgentManifest, buildOpenApiSpec } from './agentContract.ts';
 import type { ReadRequest } from '../controllers/readDto.ts';
+import type { InfrastScheduleService } from '../services/infrastScheduleService.ts';
 
-const router = express.Router();
+export interface AgentRouterOptions {
+  infrastScheduleService?: InfrastScheduleService;
+}
 
-router.get('/manifest', (req: ReadRequest, res: ApiResponseWriter) => {
-  return sendSuccess(res, req, buildAgentManifest({
-    adbPath: DEFAULT_ADB_PATH,
-    adbAddress: DEFAULT_ADB_ADDRESS,
-    clientType: DEFAULT_CLIENT_TYPE
-  }));
-});
+export function createAgentRouter(options: AgentRouterOptions = {}): express.Router {
+  const router = express.Router();
 
-router.get('/openapi.json', (_req: ReadRequest, res: ApiResponseWriter) => {
-  res.json(buildOpenApiSpec({
-    adbPath: DEFAULT_ADB_PATH,
-    adbAddress: DEFAULT_ADB_ADDRESS,
-    clientType: DEFAULT_CLIENT_TYPE
-  }));
-});
+  router.get('/manifest', (req: ReadRequest, res: ApiResponseWriter) => {
+    return sendSuccess(res, req, buildAgentManifest({
+      adbPath: DEFAULT_ADB_PATH,
+      adbAddress: DEFAULT_ADB_ADDRESS,
+      clientType: DEFAULT_CLIENT_TYPE
+    }));
+  });
 
-router.use(agentStatusRoutes);
+  router.get('/openapi.json', (_req: ReadRequest, res: ApiResponseWriter) => {
+    res.json(buildOpenApiSpec({
+      adbPath: DEFAULT_ADB_PATH,
+      adbAddress: DEFAULT_ADB_ADDRESS,
+      clientType: DEFAULT_CLIENT_TYPE
+    }));
+  });
 
-router.use(agentDiagnosticsRoutes);
+  router.use(agentStatusRoutes);
 
-router.use(agentPreviewRoutes);
+  router.use(agentDiagnosticsRoutes);
 
-router.use(agentLogRoutes);
+  router.use(agentPreviewRoutes);
 
-router.use(agentExecutionRoutes);
+  router.use(agentLogRoutes);
 
-router.use(agentDataRoutes);
+  router.use(agentExecutionRoutes);
 
-router.use(agentTrainingRoutes);
+  router.use(agentDataRoutes);
 
-router.use(agentNotificationRoutes);
+  router.use(agentTrainingRoutes);
 
-router.use(agentMaintenanceRoutes);
+  router.use(createAgentInfrastScheduleRouter(options.infrastScheduleService));
 
-export default router;
+  router.use(agentNotificationRoutes);
+
+  router.use(agentMaintenanceRoutes);
+
+  return router;
+}
+
+export default createAgentRouter();

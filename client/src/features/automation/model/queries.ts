@@ -1,7 +1,18 @@
 import { queryOptions } from '@tanstack/react-query'
-import { ApiRequestError, unwrapApiResponse } from '@/shared/api'
-import { getActivity, getNotificationConfig, getScheduleExecutionStatus } from '../api'
+import { ApiRequestError, isRecord, unwrapApiResponse } from '@/shared/api'
+import {
+  getActivity,
+  getNotificationConfig,
+  getScheduleExecutionStatus,
+  listInfrastSchedules,
+  readInfrastSchedule,
+} from '../api'
 import { normalizeActivityPayload, type AutomationActivityPayload } from './activity'
+import {
+  parseInfrastScheduleDocument,
+  type InfrastScheduleDocument,
+  type InfrastScheduleListPayload,
+} from './infrastSchedule'
 import { normalizeNotificationConfig, type NotificationConfig } from './notificationConfig'
 import { automationKeys } from './queryKeys'
 
@@ -50,5 +61,61 @@ export const notificationConfigQueryOptions = () => queryOptions({
     if (!config) throw invalidNotificationConfigError()
     return config
   },
+  retry: false,
+})
+
+const invalidInfrastScheduleListError = () => new ApiRequestError({
+  kind: 'contract',
+  code: 'INVALID_DOMAIN_PAYLOAD',
+  message: '排班文件列表格式不正确',
+  retryable: false,
+})
+
+const invalidInfrastScheduleError = (message = '排班文件格式不正确') => new ApiRequestError({
+  kind: 'contract',
+  code: 'INVALID_DOMAIN_PAYLOAD',
+  message,
+  retryable: false,
+})
+
+/** 自定义基建排班文件列表，供编辑器选择已有文件。 */
+export const infrastScheduleListQueryOptions = () => queryOptions({
+  queryKey: automationKeys.resource('infrast-schedule-list'),
+  queryFn: async ({ signal }): Promise<InfrastScheduleListPayload> => {
+    const payload = unwrapApiResponse<unknown>(await listInfrastSchedules(signal))
+    if (!isRecord(payload) || typeof payload.directory !== 'string' || !Array.isArray(payload.schedules)) {
+      throw invalidInfrastScheduleListError()
+    }
+    return {
+      directory: payload.directory,
+      schedules: payload.schedules.filter((item): item is InfrastScheduleListPayload['schedules'][number] => (
+        isRecord(item)
+        && typeof item.name === 'string'
+        && (item.title === null || typeof item.title === 'string')
+        && typeof item.planCount === 'number'
+        && typeof item.valid === 'boolean'
+        && (item.updatedAt === null || typeof item.updatedAt === 'string')
+      )),
+    }
+  },
+  retry: false,
+})
+
+export interface InfrastSchedulePayload {
+  name: string
+  document: InfrastScheduleDocument
+}
+
+/** 单个自定义基建排班文件；只在有文件名时读取。 */
+export const infrastScheduleQueryOptions = (name: string) => queryOptions({
+  queryKey: automationKeys.query('infrast-schedule', name),
+  queryFn: async ({ signal }): Promise<InfrastSchedulePayload> => {
+    const payload = unwrapApiResponse<unknown>(await readInfrastSchedule(name, signal))
+    if (!isRecord(payload) || typeof payload.name !== 'string') throw invalidInfrastScheduleError()
+    const parsed = parseInfrastScheduleDocument(payload.document)
+    if (!parsed.ok) throw invalidInfrastScheduleError(parsed.message)
+    return { name: payload.name, document: parsed.document }
+  },
+  enabled: name.trim().length > 0,
   retry: false,
 })

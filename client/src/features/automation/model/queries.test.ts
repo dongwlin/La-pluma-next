@@ -4,12 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiRequestError } from '@/shared/api'
 import { createQueryClient } from '@/shared/query'
 import type { AutomationActivityPayload } from './activity'
-import { activityQueryOptions, scheduleExecutionQueryOptions } from './queries'
+import {
+  activityQueryOptions,
+  infrastScheduleListQueryOptions,
+  infrastScheduleQueryOptions,
+  scheduleExecutionQueryOptions,
+} from './queries'
 import { AUTOMATION_DOMAIN, automationKeys } from './queryKeys'
 
 const apiMocks = vi.hoisted(() => ({
   getActivity: vi.fn(),
+  getNotificationConfig: vi.fn(),
   getScheduleExecutionStatus: vi.fn(),
+  listInfrastSchedules: vi.fn(),
+  readInfrastSchedule: vi.fn(),
 }))
 
 vi.mock('../api', () => apiMocks)
@@ -37,6 +45,8 @@ describe('automation query options', () => {
   beforeEach(() => {
     apiMocks.getActivity.mockReset()
     apiMocks.getScheduleExecutionStatus.mockReset()
+    apiMocks.listInfrastSchedules.mockReset()
+    apiMocks.readInfrastSchedule.mockReset()
   })
 
   it('uses a profile sentinel when the client type is omitted', () => {
@@ -91,5 +101,58 @@ describe('automation query options', () => {
 
     expect(error).toBeInstanceOf(ApiRequestError)
     expect(error).toMatchObject({ kind: 'contract', code: 'INVALID_DOMAIN_PAYLOAD' })
+  })
+})
+
+describe('custom infrastructure schedule queries', () => {
+  beforeEach(() => {
+    apiMocks.listInfrastSchedules.mockReset()
+    apiMocks.readInfrastSchedule.mockReset()
+  })
+
+  it('keeps only well-formed schedule summaries from the list payload', async () => {
+    apiMocks.listInfrastSchedules.mockResolvedValue({
+      success: true,
+      data: {
+        directory: '/tmp/maa/infrast',
+        schedules: [
+          { name: 'base.json', title: '排班', planCount: 2, updatedAt: null, valid: true },
+          { name: 'broken.json', title: '', planCount: 0, updatedAt: '2026-11-06T00:00:00.000Z', valid: false },
+          { name: 3 },
+        ],
+      },
+    })
+
+    const data = await createQueryClient().fetchQuery(infrastScheduleListQueryOptions())
+
+    expect(data.directory).toBe('/tmp/maa/infrast')
+    expect(data.schedules.map(schedule => schedule.name)).toEqual(['base.json', 'broken.json'])
+  })
+
+  it('loads a valid schedule document and rejects an invalid one', async () => {
+    apiMocks.readInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', document: { plans: [{ rooms: { training: [{ operatorsB: ['银灰'] }] } }] } },
+    })
+    const client = createQueryClient()
+    const data = await client.fetchQuery(infrastScheduleQueryOptions('base.json'))
+    expect(data.name).toBe('base.json')
+    expect(data.document.plans).toHaveLength(1)
+    expect(apiMocks.readInfrastSchedule.mock.calls[0]?.[0]).toBe('base.json')
+
+    apiMocks.readInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'broken.json', document: { plans: [] } },
+    })
+    await expect(client.fetchQuery(infrastScheduleQueryOptions('broken.json'))).rejects.toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: 'plans 至少包含一个方案',
+      kind: 'contract',
+    })
+  })
+
+  it('does not request a document until a filename exists', () => {
+    expect(infrastScheduleQueryOptions('').enabled).toBe(false)
+    expect(infrastScheduleQueryOptions('base.json').enabled).toBe(true)
   })
 })

@@ -24,6 +24,12 @@
 - 带 `taskType` 的 MaaCore 动态任务生成 `run` 命令加序列化 `taskConfig`；Recruit 把 `skip_robot` 归一为 `preserve_tags: ['支援机械']`、招募时间转为数字；`mode=10000` 的基建缺文件路径直接抛错，`plan_index` 缺省为 0（`server/src/services/scheduleFlowPlan.ts:166-221`）。
 - 预定义命令取 `commandId` 或 `id` 首段：`startup`/`closedown` 携带客户端类型与连接地址（及启动时的账号切换），`fight` 把多关卡折叠为 `stage1:times1,stage2:times2`，追加理智药、源石、连战倍率（负数统一用 `=` 连接下发）、掉落目标与企鹅物流/一图流汇报开关（`server/src/services/scheduleFlowPlan.ts:224-294`）。
 
+## 自定义基建排班文件
+
+Infrast 任务在 `mode=10000` 时读取 `filename` 指向的 Core 排班 JSON，`plan_index` 选择方案序号。Web UI 的排班编辑器通过 `/api/agent/infrast-schedules` 读写该文件，服务端只在保存时校验并原子写入，读取返回原始 JSON，不补默认值（`server/src/services/infrastScheduleService.ts`）。文件根目录为 `maa dir config` 解析出的 MAA 配置目录下的 `infrast/`，与 maa-cli 对相对 `filename` 的解析一致；绝对路径只允许落在该目录内，`..`、非 `.json` 和符号链接逃逸均被拒绝。
+
+字段语义以 MAA [基建排班协议](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/zh-cn/protocol/base-scheduling-schema.md) 和 MaaCore `InfrastTask::parse_and_set_custom_config` 为准：设施键缺失走默认换班，`[]` 表示整个设施保持原样，房间无选人意图时只保持干员不动（`product`/`sort` 仍按配置处理），`skip: true` 跳过该房间；训练室使用 `operatorsA`/`operatorsB`，回收站写法同制造站。校验只覆盖文档中实际存在的已知字段类型与设施/房间结构；`period` 只校验两个字符串的形状（Core 不处理该字段，MAA 内置表有无补零时间），`drones.index` 接受 1–5 的整数或数字字符串，产物名只做字符串校验（Core 对未知产物保留 Unknown 并继续换人）；未知设施键和扩展字段（`author`、`layout`、`metadata` 等）在保存时原样保留。任务参数、执行器与流程校验不因编辑器改变：执行仍按 `filename`/`plan_index` 下发，`plan_index` 缺省为 0。
+
 `buildScheduledTaskFlowPlan` 把启用条目映射为纯数据计划步骤（`index`/`command`/`args`/`taskConfig`/`preActions`），执行器与确认接口共用同一份构建规则；连接默认值由调用方解析后传入，`getScheduledTaskFlowPlan` 仅在流程启用 `startup`/`closedown` 时解析连接（`server/src/services/scheduleFlowPlan.ts:100-110,344-377`、`server/src/services/schedulerService.ts:87-100`）。Agent API `run-daily-flow` 的 dry run 返回的 `plan` 即该计划（`server/src/controllers/agentExecutionController.ts:1360-1393`）。
 
 ## 步骤编排
