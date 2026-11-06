@@ -278,7 +278,7 @@ waiting ──stop──> stopped
 | --- | --- | --- | --- | --- | --- |
 | 启动游戏 | `POST /api/agent/actions/start-game` | 是（`start_game`） | 命令期间持有 | run 进度 | 支持 `waitForCompletion=false` |
 | 理智作战 | `POST /api/agent/actions/fight` | 是（`fight`） | 逐关执行全程持有 | run 进度 | 支持 dry-run；多关卡按顺序逐关执行 |
-| 单任务/通用任务 | `POST /api/agent/actions/run-task` | 是（`run_task`） | 命令期间持有 | run 进度 | Web UI 的单作业、肉鸽、仓库/干员识别都走这里 |
+| 单任务/通用任务 | `POST /api/agent/actions/run-task` | 是（`run_task`） | 命令期间持有；`{tasks:[...]}` 多任务在整个数组执行期间持有 | run 进度 | Web UI 的单作业、肉鸽、仓库/干员识别都走这里；多任务按顺序逐项执行并归档逐项结果 |
 | 日常流程（Agent API） | `POST /api/agent/actions/run-daily-flow` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影进 run 进度 | 默认同步；`waitForCompletion=false` 返回 202；dry-run 不创建 run |
 | 日常流程（Web UI 手动） | `POST /api/agent/schedules/manual/execute` | 是（`run_daily_flow`） | 流程全程持有 | `schedule` 投影 + `schedule.runId` | 默认同步兼容原响应；自动化页以 `waitForCompletion=false` 提交并观察 Run；异步模式返回 202；重复提交可用幂等键 |
 | 日常流程（Dashboard 快捷） | `POST /api/agent/schedules/dashboard-quick-start/execute` | 是（`run_daily_flow`） | 流程全程持有 | 同上 | 同上 |
@@ -298,6 +298,7 @@ waiting ──stop──> stopped
 
 - `setupSchedule`/`stopSchedule`、`apply-training-plan`、配置保存是**配置写入**，不是执行，不产生 run。
 - `run-task` 的 `command=activity|list` 被强制为同步；其他命令可后台执行（202）。
+- `run-task` 的 `{tasks:[...]}` 多任务在同一 Run 内按数组顺序逐项执行，整个数组共享租约；单项失败后继续后续任务，最终 Run 为 `failed` 且 `error.details.tasks` 保留全部逐项结果；停止后不再启动剩余任务，未开始项保持 `pending`。
 - WebRTC 启停、截图和连接测试只管理预览基础设施，不参与执行租约。
 - 只有 Agent API 的四个执行动作（`start_game`、`fight`、`run_task`、`run_daily_flow`）在 manifest/OpenAPI 中声明 `producesRun`，与上表一致。
 - `POST /api/agent/schedules/{scheduleId}/execute` 未在 Agent manifest 中广告，但同样创建 `run_daily_flow`；它和 Agent 入口共享 OperationId 与幂等命名空间。
