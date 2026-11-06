@@ -156,14 +156,17 @@ export function createLaPlumaApp({
   });
 
   // 图标与头像走同源只读路由，不经过 API 鉴权：<img> 无法附加令牌。
-  // 物品图标按物品 id 落盘，兼容 iconId 键；映射所需的 item_table 路径与资源解析一致。
+  // 物品图标按物品 id 落盘，兼容 iconId 键；映射所需的 item_table/item_index
+  // 路径与资源解析一致，item_table 缺失时由 item_index 兜底。
   const gameAssetPaths = resolveGameAssetPaths({ env });
+  const maaPaths = resolveMaaPaths({ env });
   app.use(
     GAME_ASSET_ROUTE_PREFIX,
     createGameAssetRouter({
       itemDir: gameAssetPaths.itemDir,
       avatarDir: gameAssetPaths.avatarDir,
-      itemTablePath: resolveMaaPaths({ env }).itemTablePath
+      itemTablePath: maaPaths.itemTablePath,
+      itemIndexPath: maaPaths.itemIndexPath
     })
   );
 

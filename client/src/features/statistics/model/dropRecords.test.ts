@@ -7,7 +7,7 @@ import {
 describe('drop item ordering', () => {
   it('sorts materials by count without losing their icon identity', () => {
     const entries = sortDropItems({
-      固源岩: { count: 6, iconId: 'rock' },
+      固源岩: { count: 6, id: '30011', iconId: 'MTL_SL_G1' },
       装置: { count: 12, iconId: 'device' },
       无图标材料: { count: 9 },
     })
@@ -15,7 +15,7 @@ describe('drop item ordering', () => {
     expect(entries).toEqual([
       { name: '装置', count: 12, iconId: 'device' },
       { name: '无图标材料', count: 9 },
-      { name: '固源岩', count: 6, iconId: 'rock' },
+      { name: '固源岩', count: 6, id: '30011', iconId: 'MTL_SL_G1' },
     ])
   })
 })
