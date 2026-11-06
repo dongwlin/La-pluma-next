@@ -453,32 +453,63 @@ export async function getDropStatistics(
   }
 }
 
-function parseMaterialEntry(value: unknown): { name: string; entry: MaterialEntry } | null {
+function resolveMaterialIconKey(value: Record<string, unknown>, itemId?: string): string | undefined {
+  if (typeof value.iconId === 'string' && value.iconId) return value.iconId;
+  if (typeof value.id === 'string' && value.id) return value.id;
+  return itemId || undefined;
+}
+
+function parseMaterialEntry(value: unknown, itemId?: string): { name: string; entry: MaterialEntry } | null {
   if (!isRecord(value) || typeof value.name !== 'string') return null;
   const entry: MaterialEntry = {};
-  if (typeof value.iconId === 'string') entry.iconId = value.iconId;
+  const iconKey = resolveMaterialIconKey(value, itemId);
+  if (iconKey) entry.iconId = iconKey;
   if (typeof value.rarity === 'number' && Number.isFinite(value.rarity)) entry.rarity = value.rarity;
   return { name: value.name, entry };
 }
 
-async function loadMaterialsMap(ports: DropRecordPorts): Promise<Record<string, MaterialEntry>> {
-  try {
-    const materialsPath = ports.materialsPath || MATERIALS_PATH;
-    const materials = await readJsonFile(materialsPath, []);
-    // 统计只读取既有数组格式的材料表；对象格式（含 materials/recipes 段）保持既有行为，返回空映射。
-    if (!Array.isArray(materials)) {
-      logger.warn('材料数据格式错误，应为数组', { type: typeof materials });
-      return {};
-    }
+function buildMaterialsMap(payload: unknown): Record<string, MaterialEntry> | null {
+  if (Array.isArray(payload)) {
     const map: Record<string, MaterialEntry> = {};
-    for (const item of materials) {
+    for (const item of payload) {
       const parsed = parseMaterialEntry(item);
-      if (!parsed) continue;
-      map[parsed.name] = parsed.entry;
+      if (parsed) map[parsed.name] = parsed.entry;
     }
     return map;
+  }
+
+  if (!isRecord(payload) || !isRecord(payload.materials)) return null;
+
+  const map: Record<string, MaterialEntry> = {};
+  for (const [itemId, value] of Object.entries(payload.materials)) {
+    const parsed = parseMaterialEntry(value, itemId);
+    if (parsed) map[parsed.name] = parsed.entry;
+  }
+  return map;
+}
+
+// 掉落统计被前端轮询，同一份材料表的问题只按路径告警一次；文件恢复正常后清除标记，再次损坏仍可观测。
+const warnedMaterialSources = new Set<string>();
+
+function warnMaterialSourceOnce(materialsPath: string, message: string, data: Record<string, unknown>): void {
+  if (warnedMaterialSources.has(materialsPath)) return;
+  warnedMaterialSources.add(materialsPath);
+  logger.warn(message, data);
+}
+
+async function loadMaterialsMap(ports: DropRecordPorts): Promise<Record<string, MaterialEntry>> {
+  const materialsPath = ports.materialsPath || MATERIALS_PATH;
+  try {
+    const materials = await readJsonFile(materialsPath, []);
+    const map = buildMaterialsMap(materials);
+    if (!map) {
+      warnMaterialSourceOnce(materialsPath, '材料数据格式错误，应为数组或 { materials } 对象', { type: typeof materials });
+      return {};
+    }
+    warnedMaterialSources.delete(materialsPath);
+    return map;
   } catch (error) {
-    logger.warn('无法加载材料数据', {
+    warnMaterialSourceOnce(materialsPath, '无法加载材料数据', {
       error: error instanceof Error ? error.message : String(error)
     });
     return {};
