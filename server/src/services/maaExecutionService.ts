@@ -73,6 +73,7 @@ export interface MaaDynamicTaskConfig {
 export const MAA_DYNAMIC_TASK_DIR_PREFIX = 'la-pluma-task-';
 export const MAA_DYNAMIC_TASK_OWNER_FILE = 'owner.json';
 export const MAA_DYNAMIC_TASK_EXPIRY_MS = 24 * 60 * 60 * 1000;
+export const MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS = 4096;
 
 export interface MaaDynamicTaskCleanupSummary {
   scanned: number;
@@ -129,6 +130,12 @@ export interface MaaDynamicTaskStep extends MaaDynamicTaskConfig {
   stdout: string;
   stderr: string;
   actions?: GameTaskExecutionAction[];
+}
+
+/** 聚合失败详情中的逐项结果：stdout/stderr 有界，完整输出只保留在 result.tasks。 */
+export interface MaaDynamicTaskErrorStep extends MaaDynamicTaskStep {
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 export interface MaaDynamicTasksOutput extends MaaCommandOutput {
@@ -783,6 +790,23 @@ function buildDynamicTasksOutput(
   };
 }
 
+function boundDynamicTaskOutput(value: string): { value: string; truncated: boolean } {
+  if (value.length <= MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS) return { value, truncated: false };
+  return { value: value.slice(0, MAX_DYNAMIC_TASK_ERROR_OUTPUT_CHARS), truncated: true };
+}
+
+function boundDynamicTaskStep(step: MaaDynamicTaskStep): MaaDynamicTaskErrorStep {
+  const stdout = boundDynamicTaskOutput(step.stdout);
+  const stderr = boundDynamicTaskOutput(step.stderr);
+  return {
+    ...step,
+    stdout: stdout.value,
+    stderr: stderr.value,
+    ...(stdout.truncated ? { stdoutTruncated: true } : {}),
+    ...(stderr.truncated ? { stderrTruncated: true } : {})
+  };
+}
+
 function dynamicTasksFailure(error: unknown, steps: readonly MaaDynamicTaskStep[]): MaaCommandError {
   const fields: Record<string, unknown> = isRecord(error) ? error : {};
   const failedIndexes = steps.filter(step => step.status === 'failed').map(step => step.index);
@@ -798,7 +822,7 @@ function dynamicTasksFailure(error: unknown, steps: readonly MaaDynamicTaskStep[
   failure.details = {
     ...(isRecord(fields.details) ? fields.details : {}),
     taskIndexes: failedIndexes,
-    tasks: [...steps],
+    tasks: steps.map(boundDynamicTaskStep),
     ...(typeof fields.code === 'string' || typeof fields.code === 'number' ? { causeCode: fields.code } : {})
   };
   return failure;
