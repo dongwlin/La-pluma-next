@@ -3,7 +3,7 @@
  * 读取失败但仍有可用信息时标记 `degraded`，全部失败才抛出且内部不重试；
  * 写操作持有设备变更租约，同一时间只允许一次真实更新：已有更新进行中时，并发调用立即以
  * `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS` 失败，不排队、不共享首个请求的结果；
- * 更新经 maa-cli 原生 `hot-update` 执行，资源源与凭据由 cli.toml 决定。
+ * 更新经 maa-cli 原生 `hot-update` 执行，Git 更新在启动子进程前核验官方仓库。
  */
 
 import { readFile, stat } from 'node:fs/promises';

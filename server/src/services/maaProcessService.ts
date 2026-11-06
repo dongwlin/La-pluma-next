@@ -8,6 +8,7 @@ import { redactLogText } from '../utils/logRedaction.ts';
 import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 import { normalizeCopilotCommandArgs } from './copilotUri.ts';
 import { prepareMaaTaskCache } from './maaTaskCacheService.ts';
+import { prepareResourceGitEnvironment } from './resourceGitTransport.ts';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
 import { parsePositiveInteger } from '../config/runtimeConfig.ts';
 
@@ -932,6 +933,7 @@ function execMaaCommandWithEnv(
   // Executors may be stopped while they are still pending. The gate runs after
   // the execution lease is held and before any process is spawned.
   return (async () => {
+    const commandEnv = await prepareResourceGitEnvironment(command, processPorts.cliPath, env);
     await lifecycle.onBeforeStart?.();
 
     if (!silent) {
@@ -942,7 +944,7 @@ function execMaaCommandWithEnv(
       return new Promise<MaaBackgroundStart>((resolve) => {
         // 使用 spawn 而不是 exec，这样可以独立运行
         const childProcess = processPorts.spawn(processPorts.cliPath, [command, ...finalArgs], {
-          env,
+          env: commandEnv,
           detached: process.platform !== 'win32',
           stdio: ['ignore', 'pipe', 'pipe']
         });
@@ -1010,7 +1012,7 @@ function execMaaCommandWithEnv(
     else if (taskName && waitForCompletion) {
       return new Promise<MaaCommandOutput>((resolve, reject) => {
         const childProcess = processPorts.spawn(processPorts.cliPath, [command, ...finalArgs], {
-          env,
+          env: commandEnv,
           detached: process.platform !== 'win32',
           stdio: ['ignore', 'pipe', 'pipe']
         });
@@ -1112,7 +1114,7 @@ function execMaaCommandWithEnv(
             processPorts.cliPath,
             [command, ...finalArgs],
             {
-              env,
+              env: commandEnv,
               maxBuffer: 10 * 1024 * 1024,
               timeout: execFileTimeoutMs,
               killSignal: 'SIGKILL'

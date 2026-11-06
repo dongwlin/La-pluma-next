@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { appendFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import {
   clearRealtimeLogs,
   DEFAULT_MAINTENANCE_EXEC_TIMEOUT_MS,
@@ -68,6 +68,21 @@ async function createTemporaryDirectory(prefix: string): Promise<string> {
 }
 
 describe('MAA CLI process ports', () => {
+  let maintenanceCliPath: string;
+
+  before(async () => {
+    const directory = await createTemporaryDirectory('la-pluma-maa-maintenance-');
+    maintenanceCliPath = join(directory, 'maa');
+    await writeFile(join(directory, 'cli.toml'), '[resource.source]\ntype = "mirrorchyan"\n');
+    await writeFile(maintenanceCliPath, `#!${process.execPath}
+if (process.argv[2] === 'dir' && process.argv[3] === 'config') {
+  process.stdout.write(${JSON.stringify(directory)} + '\\n');
+} else {
+  process.exitCode = 1;
+}
+`, { mode: 0o755 });
+  });
+
   it('spawns through the injected port and keeps one subprocess projection', async () => {
     const child = createFakeChild();
     const spawnCalls: Array<{ cliPath: string; args: string[]; options: unknown }> = [];
@@ -217,19 +232,21 @@ describe('MAA CLI process ports', () => {
     let resolveOperation: ((result: MaaExecFileResult) => void) | null = null;
     // TS 控制流看不到 executor 内的赋值：经包装调用保留可调用性。
     const resolveNow = (result: MaaExecFileResult) => resolveOperation?.(result);
-    const startedAt = Date.now();
+    const { promise: started, resolve: markStarted } = Promise.withResolvers<void>();
     const execution = execMaaCommandUnlocked('update', [], null, null, false, true, null, {}, {
-      cliPath: '/virtual/maa',
+      cliPath: maintenanceCliPath,
       execFileTimeoutMs: 50,
       managedTaskName: '更新 MaaCore 与资源',
       execFile: (_file, _args, _options, onChild) => {
         onChild?.(child);
+        markStarted();
         return new Promise<MaaExecFileResult>(resolve => {
           resolveOperation = resolve;
         });
       }
     });
-    await new Promise<void>(resolve => setImmediate(resolve));
+    await Promise.race([started, execution]);
+    const startedAt = Date.now();
     assert.equal(getTaskStatus().isRunning, true);
     assert.equal(getTaskStatus().taskName, '更新 MaaCore 与资源');
 
@@ -250,18 +267,20 @@ describe('MAA CLI process ports', () => {
     // TS 控制流看不到 executor 内的赋值：经包装调用保留可调用性。
     const rejectNow = (error: Error) => rejectOperation?.(error);
     clearRealtimeLogs();
+    const { promise: started, resolve: markStarted } = Promise.withResolvers<void>();
     const execution = execMaaCommandUnlocked('update', [], null, null, false, true, null, {}, {
-      cliPath: '/virtual/maa',
+      cliPath: maintenanceCliPath,
       execFileTimeoutMs: 60_000,
       managedTaskName: '更新 MaaCore 与资源',
       execFile: (_file, _args, _options, onChild) => {
         onChild?.(child);
+        markStarted();
         return new Promise<MaaExecFileResult>((_resolve, reject) => {
           rejectOperation = reject;
         });
       }
     });
-    await new Promise<void>(resolve => setImmediate(resolve));
+    await Promise.race([started, execution]);
 
     // 维护子进程写入同一条 taskStatus 投影：停止请求与关闭流程按该状态识别。
     assert.equal(getTaskStatus().isRunning, true);
@@ -276,7 +295,7 @@ describe('MAA CLI process ports', () => {
         if (signal === 'SIGTERM') {
           // 子进程因信号终止：killed 置位后兜底 SIGKILL 不应再触发。
           child.killed = true;
-          rejectNow(Object.assign(new Error('Command failed: /virtual/maa update'), { killed: true, signal }));
+          rejectNow(Object.assign(new Error(`Command failed: ${maintenanceCliPath} update`), { killed: true, signal }));
         }
       },
       setTimeout: () => ({ unref() {} })
@@ -317,13 +336,13 @@ describe('MAA CLI process ports', () => {
           killChild: (_target, signal) => {
             signals.push(signal);
             child.killed = true;
-            rejectNow(Object.assign(new Error('Command failed: /virtual/maa update'), { killed: true, signal }));
+            rejectNow(Object.assign(new Error(`Command failed: ${maintenanceCliPath} update`), { killed: true, signal }));
           },
           setTimeout: () => ({ unref() {} })
         });
       }
     }, {
-      cliPath: '/virtual/maa',
+      cliPath: maintenanceCliPath,
       execFileTimeoutMs: 60_000,
       managedTaskName: '更新 MaaCore 与资源',
       execFile: (_file, _args, _options, onChild) => {
@@ -342,7 +361,7 @@ describe('MAA CLI process ports', () => {
     assert.deepEqual(startedCountAtPort, [0], 'execFile 端口创建子进程前不能触发 onStarted');
     assert.equal(started.length, 1);
     assert.equal(started[0].childProcess, child);
-    assert.match(started[0].command, /\/virtual\/maa update/);
+    assert.equal(started[0].command.trimEnd(), `${maintenanceCliPath} update`);
     assert.equal(runningAtStart, true);
     assert.equal(taskNameAtStart, '更新 MaaCore 与资源');
     assert.deepEqual(stopResult, { success: true, message: '已发送终止请求' });
@@ -354,7 +373,7 @@ describe('MAA CLI process ports', () => {
   it('clears the managed execFile status when the command completes without signals', async () => {
     const child = createFakeChild();
     const result = await execMaaCommandUnlocked('update', [], null, null, false, true, null, {}, {
-      cliPath: '/virtual/maa',
+      cliPath: maintenanceCliPath,
       execFileTimeoutMs: 60_000,
       managedTaskName: '更新 MaaCore 与资源',
       execFile: (_file, _args, _options, onChild) => {

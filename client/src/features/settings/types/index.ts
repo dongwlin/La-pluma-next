@@ -39,11 +39,8 @@ export type ResourceSecretKind = 'none' | 'prompt' | 'plain' | 'env' | 'command'
 
 export interface ResourceGitSource {
   backend: GitBackend
-  url: string
+  readonly url: string
   branch: string | null
-  useSshAgent: boolean
-  sshKey: string | null
-  passphraseKind: ResourceSecretKind
 }
 
 export interface ResourceMirrorChyanSource {
@@ -61,8 +58,7 @@ export interface ResourceSourceConfig {
 }
 
 /**
- * 页面草稿：凭据输入框为空表示保留服务端已保存的凭据，`*Kind` 只描述服务端
- * 已保存的凭据形态，不随请求发送。
+ * 页面草稿：CDK 留空时保留已保存的值，除非显式选择清除。
  */
 export interface ResourceSourceDraft {
   autoUpdate: boolean
@@ -70,12 +66,6 @@ export interface ResourceSourceDraft {
   source: ResourceSourceType
   git: {
     backend: GitBackend
-    url: string
-    branch: string
-    useSshAgent: boolean
-    sshKey: string
-    passphrase: string
-    passphraseKind: ResourceSecretKind
   }
   mirrorchyan: {
     cdk: string

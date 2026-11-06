@@ -34,7 +34,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 | `[instance_options]` 未知字段 | 保留 | 不展示，保存时不覆盖 |
 | `[static_options].cpu_ocr` / `gpu_ocr` | 否 | 不进本页表单 |
 | profile `[resource]`（`global_resource` 等） | 否 | 属于资源加载覆盖，不是资源来源 |
-| cli.toml `[resource].auto_update` / `warn_on_update_failure` / `[resource.source]` | 是 | Git 与 MirrorChyan 两种来源；旧版 `backend`/`remote` 保存时迁移；非活动来源的键保留在同一张表内，`git.url` 需为受支持的 scheme 或 scp-like 写法 |
+| cli.toml `[resource].auto_update` / `warn_on_update_failure` / `[resource.source]` | 是 | Git 固定使用官方 HTTPS 仓库，MirrorChyan 独立配置。更新前检查和人工纠正位置见 [资源更新集成](../server/integrations.md#maa-cli-子进程与实时日志) |
 | cli.toml `[core]` / `[cli]` 更新渠道 | 是（组件更新卡片） | 由更新渠道表单维护 |
 | cli.toml `[hot_update]` | 否 | 任务缓存热更新，属另一功能 |
 | cli.toml `github_proxy` | 否 | 不进本页表单 |
@@ -57,7 +57,9 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 理智作战、基建、公招等本地任务使用已安装资源及已有热更新缓存。每次执行会创建独立的临时缓存，任务退出后清理，避免 maa-cli 启动时的热更新请求因网络故障而阻断日常流程；原缓存和连接配置保持不变。
 
-资源同步由「同步资源」或显式更新命令经 `maa hot-update` 执行，下载源、分支、镜像与凭据都读取 maa-cli 的 `cli.toml`（`[resource.source]` 等），La Pluma 不另行硬编码仓库。「配置 → 资源」可以直接编辑这段配置：来源（Git / MirrorChyan）、Git 仓库地址与分支、SSH 凭据、MirrorChyan CDK 与检查间隔、自动更新与失败告警。凭据只写入本地 `cli.toml`，页面只回显「已保存 / 来自环境变量」等形态，输入框留空表示保留已有值；旧版 `[resource]` 的 `backend`/`remote` 写法在保存时迁移为 `[resource.source]`。切换来源时，非活动来源的已保存键（Git 的 SSH 凭据与地址、MirrorChyan 的 CDK 与检查间隔）仍保留在同一张 `[resource.source]` 表内，切回后继续可见；Git 仓库地址需为 `http(s)`/`ssh`/`git`/`file` scheme 或 scp-like `[user@]host:path`，否则保存被拒绝且不落盘。远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
+「同步资源」通过 `maa hot-update` 执行。「配置 → 资源」可选 Git 或 MirrorChyan，并设置自动更新与失败告警。Git 使用官方 HTTPS 仓库，表单提供后端选择。MirrorChyan 表单提供 CDK 与检查间隔，CDK 输入框留空会保留已保存的值。资源同步的配置核验见 [MAA CLI 集成](../server/integrations.md#maa-cli-子进程与实时日志)。
+
+远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
 
 ### Telegram 通知配置
 

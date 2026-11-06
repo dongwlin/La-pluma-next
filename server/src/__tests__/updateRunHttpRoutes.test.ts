@@ -25,6 +25,7 @@ const xdgStateHome = join(fixtureDir, 'xdg-state');
 const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const maaConfigDir = join(xdgConfigHome, 'maa');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
+const resourceCheckoutDir = join(xdgDataHome, 'maa', 'MaaResource');
 const lockFile = join(fixtureDir, 'maa-execution.lock');
 
 await mkdir(maaConfigDir, { recursive: true });
@@ -42,8 +43,12 @@ const sleepFor = name => Number(process.env[name] || 0);
 if (args[0] === 'version') {
   process.stdout.write('maa-cli v0.7.0\\nMaaCore v6.2.3\\n');
 } else if (args[0] === 'dir') {
-  const dirs = { resource: process.env.FAKE_MAA_RESOURCE_DIR, 'hot-update': '' };
-  process.stdout.write(dirs[args[1]] || '');
+  const dirs = {
+    config: ${JSON.stringify(maaConfigDir)},
+    resource: ${JSON.stringify(resourceDir)},
+    'hot-update': ${JSON.stringify(resourceCheckoutDir)}
+  };
+  fs.writeSync(1, dirs[args[1]] || '');
 } else if (args[0] === 'update' || args[0] === 'install') {
   sleep(sleepFor('FAKE_UPDATE_SLEEP_MS'));
   if (process.env.FAKE_UPDATE_FAIL === '1') {
@@ -77,7 +82,9 @@ process.exit(0);
 process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.ADB_PATH = fakeAdbPath;
 process.env.FAKE_MAA_LOG = cliCallLog;
-process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+process.env.HOME = fixtureDir;
+process.env.GIT_CONFIG_GLOBAL = join(fixtureDir, 'gitconfig');
+process.env.GIT_CONFIG_NOSYSTEM = '1';
 process.env.XDG_DATA_HOME = xdgDataHome;
 process.env.XDG_STATE_HOME = xdgStateHome;
 process.env.XDG_CONFIG_HOME = xdgConfigHome;

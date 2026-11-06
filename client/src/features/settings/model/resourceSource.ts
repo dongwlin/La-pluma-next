@@ -1,7 +1,3 @@
-// 资源源配置是 cli.toml [resource] 的可写部分：Git 与 MirrorChyan 来源、共享的
-// 自动更新开关，以及只描述“是否已保存凭据”的形态字段。凭据输入框留空表示保留
-// 服务端已保存的值；保存成功后重新读取，用服务端归一化结果覆盖草稿。
-
 import { queryOptions } from '@tanstack/react-query'
 import {
   ApiRequestError,
@@ -20,7 +16,6 @@ import type { ConfigDraftState, ConfigSaveOutcome, ConfigSnapshot } from './conf
 import { GIT_BACKENDS, RESOURCE_SOURCE_TYPES } from '../types'
 import { settingsKeys } from './queryKeys'
 
-export const DEFAULT_RESOURCE_GIT_URL = 'https://github.com/MaaAssistantArknights/MaaResource.git'
 export const DEFAULT_MIRRORCHYAN_CHECK_INTERVAL = 600
 
 export const DEFAULT_RESOURCE_SOURCE_DRAFT: ResourceSourceDraft = {
@@ -29,12 +24,6 @@ export const DEFAULT_RESOURCE_SOURCE_DRAFT: ResourceSourceDraft = {
   source: 'git',
   git: {
     backend: 'git',
-    url: DEFAULT_RESOURCE_GIT_URL,
-    branch: '',
-    useSshAgent: false,
-    sshKey: '',
-    passphrase: '',
-    passphraseKind: 'none',
   },
   mirrorchyan: {
     cdk: '',
@@ -75,8 +64,6 @@ const isNonNegativeInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 )
 
-const readText = (value: unknown): string => (typeof value === 'string' ? value : '')
-
 const cloneDraft = (draft: ResourceSourceDraft): ResourceSourceDraft => ({
   ...draft,
   git: { ...draft.git },
@@ -84,8 +71,7 @@ const cloneDraft = (draft: ResourceSourceDraft): ResourceSourceDraft => ({
 })
 
 /**
- * 把服务端资源源视图归一化为页面草稿。凭据明文从不进入草稿：只保留服务端
- * 已保存凭据的形态，输入框始终为空。
+ * 把服务端资源源视图归一化为页面草稿。已保存的 CDK 只回显形态。
  */
 export const normalizeResourceSourceDraft = (value: unknown): ResourceSourceDraft | null => {
   if (!isRecord(value)) return null
@@ -99,12 +85,6 @@ export const normalizeResourceSourceDraft = (value: unknown): ResourceSourceDraf
     source: value.source,
     git: {
       backend: isGitBackend(git.backend) ? git.backend : 'git',
-      url: readText(git.url) || DEFAULT_RESOURCE_GIT_URL,
-      branch: readText(git.branch),
-      useSshAgent: git.useSshAgent === true,
-      sshKey: readText(git.sshKey),
-      passphrase: '',
-      passphraseKind: isSecretKind(git.passphraseKind) ? git.passphraseKind : 'none',
     },
     mirrorchyan: {
       cdk: '',
@@ -117,23 +97,14 @@ export const normalizeResourceSourceDraft = (value: unknown): ResourceSourceDraf
   }
 }
 
-/** 保存请求：空的可选字段被省略；空凭据表示保留服务端已保存值。 */
 export const buildResourceSourcePayload = (draft: ResourceSourceDraft): Record<string, unknown> => {
-  const passphrase = draft.git.passphrase.trim()
   const cdk = draft.mirrorchyan.cdk.trim()
-  const branch = draft.git.branch.trim()
-  const sshKey = draft.git.sshKey.trim()
   return {
     autoUpdate: draft.autoUpdate,
     warnOnUpdateFailure: draft.warnOnUpdateFailure,
     source: draft.source,
     git: {
       backend: draft.git.backend,
-      url: draft.git.url.trim(),
-      branch: branch === '' ? null : branch,
-      useSshAgent: draft.git.useSshAgent,
-      sshKey: sshKey === '' ? null : sshKey,
-      ...(passphrase === '' ? {} : { passphrase })
     },
     mirrorchyan: {
       checkInterval: draft.mirrorchyan.checkInterval,

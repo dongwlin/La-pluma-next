@@ -5,7 +5,6 @@ import { ApiRequestError } from '@/shared/api'
 import { createQueryClient } from '@/shared/query'
 import {
   DEFAULT_MIRRORCHYAN_CHECK_INTERVAL,
-  DEFAULT_RESOURCE_GIT_URL,
   DEFAULT_RESOURCE_SOURCE_DRAFT,
   ResourceSourceOwner,
   buildResourceSourcePayload,
@@ -44,11 +43,8 @@ const serverView = (overrides: Record<string, unknown> = {}) => ({
   source: 'mirrorchyan',
   git: {
     backend: 'git',
-    url: DEFAULT_RESOURCE_GIT_URL,
-    branch: null,
-    useSshAgent: false,
-    sshKey: null,
-    passphraseKind: 'none',
+    url: 'https://github.com/MaaAssistantArknights/MaaResource.git',
+    branch: 'saved-resource-branch',
   },
   mirrorchyan: { cdkKind: 'plain', checkInterval: 1800 },
   ...overrides,
@@ -56,7 +52,9 @@ const serverView = (overrides: Record<string, unknown> = {}) => ({
 
 describe('resource source normalization', () => {
   it('maps the server view into a draft without echoing credentials', () => {
-    const draft = normalizeResourceSourceDraft(serverView())
+    const draft = normalizeResourceSourceDraft(serverView({
+      mirrorchyan: { cdkKind: 'plain', cdk: 'stored-cdk', checkInterval: 1800 },
+    }))
 
     expect(draft).toEqual({
       autoUpdate: true,
@@ -64,12 +62,6 @@ describe('resource source normalization', () => {
       source: 'mirrorchyan',
       git: {
         backend: 'git',
-        url: DEFAULT_RESOURCE_GIT_URL,
-        branch: '',
-        useSshAgent: false,
-        sshKey: '',
-        passphrase: '',
-        passphraseKind: 'none',
       },
       mirrorchyan: { cdk: '', cdkKind: 'plain', clearCdk: false, checkInterval: 1800 },
     })
@@ -79,14 +71,14 @@ describe('resource source normalization', () => {
     const draft = normalizeResourceSourceDraft({
       autoUpdate: 'yes',
       source: 'git',
-      git: { backend: 'hg', url: '', branch: null, useSshAgent: 'no', sshKey: 42 },
+      git: { backend: 'hg', branch: null },
       mirrorchyan: { cdkKind: 'unknown', checkInterval: -1 },
     })
 
     expect(draft).toMatchObject({
       autoUpdate: false,
       source: 'git',
-      git: { backend: 'git', url: DEFAULT_RESOURCE_GIT_URL, useSshAgent: false, sshKey: '' },
+      git: { backend: 'git' },
       mirrorchyan: { cdkKind: 'none', checkInterval: DEFAULT_MIRRORCHYAN_CHECK_INTERVAL },
     })
     expect(normalizeResourceSourceDraft(null)).toBeNull()
@@ -96,7 +88,7 @@ describe('resource source normalization', () => {
     })
   })
 
-  it('omits blank secrets and empty optional fields from the save payload', () => {
+  it('saves the Git backend as the only Git setting', () => {
     const payload = buildResourceSourcePayload(DEFAULT_RESOURCE_SOURCE_DRAFT)
 
     expect(payload).toEqual({
@@ -105,31 +97,24 @@ describe('resource source normalization', () => {
       source: 'git',
       git: {
         backend: 'git',
-        url: DEFAULT_RESOURCE_GIT_URL,
-        branch: null,
-        useSshAgent: false,
-        sshKey: null,
       },
       mirrorchyan: { checkInterval: DEFAULT_MIRRORCHYAN_CHECK_INTERVAL },
     })
   })
 
-  it('sends typed credentials and the explicit clear flag', () => {
+  it.each([
+    { cdk: ' cdk-value ', clearCdk: false, expected: { cdk: 'cdk-value' } },
+    { cdk: '', clearCdk: true, expected: { clearCdk: true } },
+  ])('saves MirrorChyan CDK settings', ({ cdk, clearCdk, expected }) => {
     const payload = buildResourceSourcePayload({
       ...DEFAULT_RESOURCE_SOURCE_DRAFT,
       source: 'mirrorchyan',
-      git: {
-        ...DEFAULT_RESOURCE_SOURCE_DRAFT.git,
-        branch: ' dev ',
-        passphrase: ' secret ',
-      },
-      mirrorchyan: { cdk: ' cdk-value ', cdkKind: 'plain', clearCdk: true, checkInterval: 0 },
+      git: { backend: 'libgit2' },
+      mirrorchyan: { cdk, cdkKind: 'plain', clearCdk, checkInterval: 0 },
     })
 
-    expect(payload).toMatchObject({
-      git: { branch: 'dev', passphrase: 'secret' },
-      mirrorchyan: { cdk: 'cdk-value', clearCdk: true, checkInterval: 0 },
-    })
+    expect(payload.git).toEqual({ backend: 'libgit2' })
+    expect(payload.mirrorchyan).toEqual({ checkInterval: 0, ...expected })
   })
 })
 
