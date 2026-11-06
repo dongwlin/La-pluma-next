@@ -862,6 +862,9 @@ describe('advanced theme and mode validation', () => {
       roguelike: { mode: '0', blackflowStrategy: 'burn', blackflowCultivationTarget: 'swaddled_cat' },
     })).toBe('培育目标动物仅在黑流策略为培育襁褓动物时生效，请调整策略或清空该字段')
     expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { mode: '0', blackflowCultivationTarget: 'swaddled_dog' },
+    })).toBe('培育目标动物仅在黑流策略为培育襁褓动物时生效，请调整策略或清空该字段')
+    expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {
       roguelike: { mode: '0', blackflowStrategy: 'baby_animal', blackflowCultivationTarget: 'swaddled_dog' },
     })).toBeNull()
     expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'BlackFlow' }, {

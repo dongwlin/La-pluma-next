@@ -87,7 +87,7 @@ export function validateRoguelikeTaskInput(
   if (mode === '0') {
     const strategy = pickOptionValue('roguelike', theme, advanced, 'blackflowStrategy')
     const cultivationTarget = pickOptionValue('roguelike', theme, advanced, 'blackflowCultivationTarget')
-    if (cultivationTarget && strategy && strategy !== 'baby_animal') {
+    if (cultivationTarget && strategy !== 'baby_animal') {
       return '培育目标动物仅在黑流策略为培育襁褓动物时生效，请调整策略或清空该字段'
     }
   }
