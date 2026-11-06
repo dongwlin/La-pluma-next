@@ -102,6 +102,13 @@ const readTaskToml = () => {
   }
   if (args[0] === 'copilot') {
     appendCall('copilot ' + args.slice(1).join(' '));
+    if (process.env.FAKE_NATIVE_LOG_UNREADABLE) {
+      fs.rmSync(process.env.FAKE_MAA_LOG_FILE || '', { force: true });
+      fs.mkdirSync(process.env.FAKE_MAA_LOG_FILE || '');
+    }
+    if (process.env.FAKE_NATIVE_TRUNCATE_LOG) {
+      fs.writeFileSync(process.env.FAKE_MAA_LOG_FILE || '', '');
+    }
     const copilotCacheDir = path.join(process.env.MAA_CACHE_DIR || '', 'copilot');
     for (const uri of args.slice(1)) {
       const id = /^prts:\\/\\/(\\d+)$/.exec(uri)?.[1];
@@ -207,7 +214,10 @@ beforeEach(async () => {
   delete process.env.FAKE_RUN_LOADS;
   delete process.env.FAKE_RUN_EXIT_CODE;
   delete process.env.FAKE_RUN_EXIT_DELAY;
+  delete process.env.FAKE_NATIVE_LOG_UNREADABLE;
+  delete process.env.FAKE_NATIVE_TRUNCATE_LOG;
   await writeFile(maaCallLog, '');
+  await rm(maaAsstLog, { recursive: true, force: true });
   await writeFile(maaAsstLog, '');
   await setConnectionClientType(null);
   await rm(progressPath, { force: true });
@@ -648,6 +658,54 @@ describe('copilot native delegation execution', () => {
       ['failed', 'failed', 'failed']
     );
     assert.deepEqual((await readProgress())['42'], []);
+  });
+
+  test('does not fall back when the incremental log was truncated', async () => {
+    setNativeDelegationEnabled(true);
+    process.env.FAKE_NATIVE_TRUNCATE_LOG = '1';
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+    await writeFile(maaAsstLog, 'checkpoint-before-native');
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
+    assert.deepEqual(outcome.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-failed'
+    });
+    assert.ok(outcome.error);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['failed', 'failed', 'failed']
+    );
+  });
+
+  test('does not fall back when the incremental log is unreadable', async () => {
+    setNativeDelegationEnabled(true);
+    process.env.FAKE_NATIVE_LOG_UNREADABLE = '1';
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    try {
+      const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+      const calls = await readMaaCalls();
+      assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+      assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
+      assert.deepEqual(outcome.delegation, {
+        attempted: true,
+        fallback: false,
+        outcome: 'native-failed'
+      });
+      assert.ok(outcome.error);
+    } finally {
+      await rm(maaAsstLog, { recursive: true, force: true });
+      await writeFile(maaAsstLog, '');
+    }
   });
 
   test('treats a stop during the native command as stopped instead of falling back', async () => {

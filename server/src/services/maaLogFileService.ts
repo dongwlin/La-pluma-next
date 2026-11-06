@@ -27,6 +27,14 @@ export interface MaaLogCheckpoint {
   size: number;
 }
 
+export type MaaLogIncrementStatus = 'ok' | 'unreadable' | 'truncated';
+
+/** 增量日志读取结果；`text` 按原文返回，完整性由 `status` 标明。 */
+export interface MaaLogIncrement {
+  status: MaaLogIncrementStatus;
+  text: string;
+}
+
 export interface MaaLogFileStats {
   size: number;
 }
@@ -148,34 +156,51 @@ export async function createMaaLogCheckpoint(
   }
 }
 
-export async function readMaaLogSince(
+/**
+ * 读取检查点之后的增量日志并标明完整性：`ok` 表示拿到了全部新增字节，
+ * `unreadable` 表示检查点或文件不可读，`truncated` 表示只拿到部分新增内容
+ * （文件回绕变小、超出单次读取上限或单次读取不足）。依赖「没有读到某类回调」
+ * 下结论的调用方只能接受 `ok`。
+ */
+export async function readMaaLogIncrement(
   checkpoint: MaaLogCheckpoint | null,
   maxBytes = 2 * 1024 * 1024,
   ports: MaaLogReadPorts = {}
-): Promise<string> {
-  if (!checkpoint?.logPath) return '';
+): Promise<MaaLogIncrement> {
+  if (!checkpoint?.logPath) return { status: 'unreadable', text: '' };
 
   const statFile = ports.stat || stat;
   const openFile = ports.open || open;
   try {
     const logStats = await statFile(checkpoint.logPath);
-    if (logStats.size <= checkpoint.size) return '';
+    if (logStats.size < checkpoint.size) return { status: 'truncated', text: '' };
+    if (logStats.size === checkpoint.size) return { status: 'ok', text: '' };
 
     const availableBytes = logStats.size - checkpoint.size;
     const bytesToRead = Math.min(availableBytes, maxBytes);
     const start = logStats.size - bytesToRead;
     const buffer = Buffer.alloc(bytesToRead);
     const handle = await openFile(checkpoint.logPath, 'r');
+    let bytesRead = 0;
     try {
-      await handle.read(buffer, 0, bytesToRead, start);
+      ({ bytesRead } = await handle.read(buffer, 0, bytesToRead, start));
     } finally {
       await handle.close();
     }
-    return buffer.toString('utf-8');
+    const complete = bytesToRead === availableBytes && bytesRead === bytesToRead;
+    return { status: complete ? 'ok' : 'truncated', text: buffer.subarray(0, bytesRead).toString('utf-8') };
   } catch (error) {
     logger.debug('无法读取 Maa 增量日志', { error: error instanceof Error ? error.message : String(error) });
-    return '';
+    return { status: 'unreadable', text: '' };
   }
+}
+
+export async function readMaaLogSince(
+  checkpoint: MaaLogCheckpoint | null,
+  maxBytes = 2 * 1024 * 1024,
+  ports: MaaLogReadPorts = {}
+): Promise<string> {
+  return (await readMaaLogIncrement(checkpoint, maxBytes, ports)).text;
 }
 
 export async function getLogFiles(): Promise<MaaLogFileEntry[]> {

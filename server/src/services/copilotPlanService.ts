@@ -5,8 +5,8 @@ import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import type { MaaDynamicTaskConfig } from './maaExecutionService.ts';
 import { getCallbackDetails, getCallbackStringField, parseMaaCallbackEvents } from './maaCallbackService.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
-import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
-import type { MaaLogCheckpoint } from './maaLogFileService.ts';
+import { createMaaLogCheckpoint, readMaaLogIncrement, readMaaLogSince } from './maaLogFileService.ts';
+import type { MaaLogCheckpoint, MaaLogIncrementStatus } from './maaLogFileService.ts';
 import { invalidateCachedCopilotFiles } from './maaTaskCacheService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { resolveConnection } from './connectionService.ts';
@@ -1260,7 +1260,7 @@ function findNativeCopilotItemIndex(
 
 interface NativeCopilotGroupOutcome extends CopilotGroupOutcome {
   observedLoads: number;
-  checkpointReady: boolean;
+  logStatus: MaaLogIncrementStatus;
 }
 
 async function runNativeCopilotGroup({
@@ -1310,11 +1310,11 @@ async function runNativeCopilotGroup({
       error: null,
       stopped: false,
       observedLoads: 0,
-      checkpointReady: checkpoint !== null
+      logStatus: checkpoint ? 'ok' : 'unreadable'
     };
   } catch (error) {
-    const logText = await readMaaLogSince(checkpoint).catch(() => '');
-    const loadedFiles = extractLoadedCopilotFiles(logText);
+    const logIncrement = await readMaaLogIncrement(checkpoint);
+    const loadedFiles = extractLoadedCopilotFiles(logIncrement.text);
     const currentIndex = resolveItemIndex(loadedFiles.at(-1) || '');
     const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
     const statuses = classifyCopilotEntryOutcomes({
@@ -1329,7 +1329,7 @@ async function runNativeCopilotGroup({
       error: wasStopped ? null : error,
       stopped: wasStopped,
       observedLoads: loadedFiles.length,
-      checkpointReady: checkpoint !== null
+      logStatus: logIncrement.status
     };
   }
 }
@@ -1337,12 +1337,13 @@ async function runNativeCopilotGroup({
 /**
  * 计划文件加载发生在跳转关卡与开始战斗之前：原生失败时没有任何加载事件，说明
  * 原生执行没有进入关卡，回退不会重复消耗理智或重复结算关卡（游戏启动、编队等
- * 前置步骤可能已经执行）。检查点或日志不可读时无法确认，保守地不回退。
+ * 前置步骤可能已经执行）。只有完整读到检查点之后的增量日志才能确认这一点；
+ * 检查点缺失、日志不可读或只读到部分新增内容时保守地不回退。
  */
 function canFallbackToExistingFlow(outcome: NativeCopilotGroupOutcome): boolean {
   return Boolean(outcome.error)
     && !outcome.stopped
-    && outcome.checkpointReady
+    && outcome.logStatus === 'ok'
     && outcome.observedLoads === 0
     && outcome.statuses.every(settled => settled.status !== 'success');
 }
