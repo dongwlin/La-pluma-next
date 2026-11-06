@@ -120,6 +120,27 @@ interface UpdateCoreErrorDetails {
   version?: unknown;
   failedStep?: unknown;
   coreUpdated?: unknown;
+  runId?: unknown;
+}
+
+interface RunDetail {
+  runId: string;
+  state: string;
+  error?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+    details?: UpdateCoreErrorDetails;
+  };
+  result?: unknown;
+}
+
+async function readRun(baseUrl: string, runId: string): Promise<RunDetail> {
+  const body: unknown = await (await fetch(`${baseUrl}/runs/${encodeURIComponent(runId)}`)).json();
+  assert.ok(typeof body === 'object' && body !== null && (body as { success?: unknown }).success === true);
+  const data = (body as { data?: unknown }).data;
+  assert.ok(typeof data === 'object' && data !== null);
+  return data as RunDetail;
 }
 
 interface TaskStatusEnvelope {
@@ -164,6 +185,37 @@ describe('update-core maintenance timeout', () => {
       assert.match(await readFile(cliCallLog, 'utf-8'), /^update$/m);
     } finally {
       delete process.env.FAKE_MAA_UPDATE_SLEEP_MS;
+    }
+  });
+
+  it('attributes an unconfirmed resource step to a retryable resources failure', async () => {
+    // 资源目录无法解析时，`maa dir resource` 输出为空：core 已更新但资源状态无法确认，
+    // 失败必须归因到 resources（coreUpdated:true），客户端才能给出重试资源同步入口。
+    process.env.FAKE_MAA_RESOURCE_DIR = '';
+    try {
+      const port = await listen(createLaPlumaApp({ env: {} }));
+      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+      const response = await postJson(`${baseUrl}/actions/update-core`, {});
+      assert.equal(response.status, 500);
+      const body = await readError(response);
+      assert.equal(body.error.code, 'AGENT_MAA_UPDATE_RESOURCE_FAILED');
+      assert.equal(body.error.retryable, true);
+      assert.match(body.message, /MaaCore 已更新/);
+      assert.match(body.message, /资源/);
+      const details = body.error.details as UpdateCoreErrorDetails;
+      assert.equal(details.failedStep, 'resources');
+      assert.equal(details.coreUpdated, true);
+
+      const run = await readRun(baseUrl, String(details.runId));
+      assert.equal(run.state, 'failed');
+      assert.equal(run.error?.code, 'AGENT_MAA_UPDATE_RESOURCE_FAILED');
+      assert.equal(run.error?.details?.failedStep, 'resources');
+      assert.equal(run.error?.details?.coreUpdated, true);
+
+      assert.match(await readFile(cliCallLog, 'utf-8'), /^update$/m);
+    } finally {
+      process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
     }
   });
 

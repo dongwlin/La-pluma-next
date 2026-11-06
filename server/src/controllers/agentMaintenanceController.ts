@@ -541,7 +541,7 @@ function coreUpdatePayload(
     plan,
     steps: {
       core: { success: true, output: result.output },
-      resources: { success: true, output: '' }
+      resources: { success: result.resource.status !== 'unknown', output: '' }
     },
     runtime: { ...result.runtime, resource: result.resource }
   };

@@ -427,7 +427,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 渠道切换目标由 `resolveCoreChannelSwitch(currentCore)` 决定：版本字符串包含 `beta`/`alpha` 时切到正式版，否则切到 Beta；版本尚未读取时默认 Beta。成功文案使用 `Beta`/`正式版` 标签。
 
-资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 只兼容旧服务端与旧 Run 记录：当前服务端在 core/渠道切换失败时统一写入 `{ version, failedStep: 'core', coreUpdated: false }`，`failedStep: 'resources'` 只由独立的资源热更新失败产生，`coreUpdated: true` 不再出现。因此现行实现下 core/渠道切换失败通常没有“重试资源同步”入口，只有资源热更新失败（策略恒为可重试）才提供该按钮；保留该判定是为了让升级前写入的旧 Run 仍能给出重试入口。
+资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 不再只兼容旧服务端与旧 Run 记录：core/渠道切换命令已成功、但资源状态无法确认时，服务端写入 `{ version, failedStep: 'resources', coreUpdated: true }`，页面据此显示“重试资源同步”按钮；core 命令本身失败仍写 `{ version, failedStep: 'core', coreUpdated: false }`，不提供该入口。独立的资源热更新失败同样提供该按钮。升级前写入的旧 Run 沿用同一判定。
 
 ### 3. 成功后的版本与资源失效
 

@@ -403,8 +403,8 @@ export interface MaintenanceHotUpdateResourcesPlan {
 export interface MaintenanceUpdateCorePayload {
   plan: MaintenanceUpdateCorePlan;
   steps: {
-    core: { success: true; output: string };
-    resources: { success: true; output: string };
+    core: { success: boolean; output: string };
+    resources: { success: boolean; output: string };
   };
   runtime: MaintenanceVersionPayload;
 }

@@ -20,7 +20,6 @@ import type { MaaCommandOutput, MaaProcessLifecycle, MaaProcessPorts } from './m
 import { runCliUpdater } from './cliUpdaterService.ts';
 import type { CliUpdaterPlan } from './cliUpdaterService.ts';
 import {
-  buildResourceInfoFallback,
   getMaaResourceInfo,
   RESOURCE_UPDATE_IN_PROGRESS_CODE,
   updateMaaResources
@@ -116,6 +115,24 @@ function coreUpdateFailure(error: unknown, version: unknown): unknown {
   });
 }
 
+/**
+ * Core 命令已成功、资源状态却无法确认：保持旧版 `failedStep: 'resources'` +
+ * `coreUpdated: true` 归因，客户端据此重新提供资源重试入口。
+ */
+function coreResourceFailure(error: unknown, version: unknown, runtime: MaaVersionInfo): unknown {
+  return agentError('AGENT_MAA_UPDATE_RESOURCE_FAILED', `MaaCore 已更新，但资源同步未能确认: ${errorMessageOf(error)}`, {
+    statusCode: 500,
+    retryable: true,
+    details: { version, failedStep: 'resources', coreUpdated: true, runtime }
+  });
+}
+
+/** 已按失败步骤归一化的更新错误：外层兜底不能再改写成 core 步骤失败。 */
+function isUpdateFailureError(error: unknown): boolean {
+  const code = errorCodeOf(error);
+  return code === 'AGENT_MAA_UPDATE_CORE_FAILED' || code === 'AGENT_MAA_UPDATE_RESOURCE_FAILED';
+}
+
 function cliUpdateFailure(error: unknown, channel: CliUpdateChannel, source: string): unknown {
   if (isExecutionControlError(error)) return error;
   return agentError('AGENT_MAA_UPDATE_CLI_FAILED', `MAA CLI 更新失败: ${errorMessageOf(error)}`, {
@@ -165,10 +182,17 @@ export async function runCoreUpdate({
         });
       }
       // maa-cli 的 install/update 自带资源同步；这里只刷新投影，不能再跑一次资源更新。
-      const [runtime, resource] = await Promise.all([
-        getMaaVersion(true),
-        getMaaResourceInfo().catch(buildResourceInfoFallback)
-      ]);
+      // 只有 core 命令成功后才读取投影：读到的对象就是成功载荷里的实测状态。
+      const runtime = await getMaaVersion(true);
+      let resource: ResourceInfo;
+      try {
+        resource = await getMaaResourceInfo();
+      } catch (error) {
+        throw coreResourceFailure(error, version, runtime);
+      }
+      if (resource.status === 'unknown') {
+        throw coreResourceFailure(new Error(resource.message), version, runtime);
+      }
       return {
         output: coreResult.stdout || coreResult.stderr || '',
         runtime,
@@ -176,6 +200,7 @@ export async function runCoreUpdate({
       };
     });
   } catch (error) {
+    if (isUpdateFailureError(error)) throw error;
     throw coreUpdateFailure(error, version);
   }
 }
