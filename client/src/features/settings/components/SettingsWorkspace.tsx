@@ -28,10 +28,9 @@ export default function SettingsWorkspace() {
         )}
       />
 
-      <ConfigSectionNav section={section} onSelect={selectSection} />
-
       <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
         <div className="config-workspace-primary app-stack-section min-w-0">
+          <ConfigSectionNav section={section} onSelect={selectSection} />
           <ConnectionConfigPanel isActive={section === 'connection'} />
           <ResourceSourcePanel isActive={section === 'resource'} />
           <InstanceOptionsPanel isActive={section === 'instance'} />
