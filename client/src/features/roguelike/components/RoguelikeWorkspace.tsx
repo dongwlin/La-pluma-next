@@ -7,10 +7,10 @@ import { roguelikeConfigAdapter } from '../model/roguelikeConfig'
 import {
   DEFAULT_ROGUELIKE_MODE,
   ROGUELIKE_TASKS,
-  buildRoguelikeCommandParams,
   normalizeRoguelikeModeForTheme,
-  validateRoguelikeTaskInput,
 } from '../model/roguelikeTasks'
+import { buildRoguelikeExecutionPlan } from '../model/roguelikeExecution'
+import { validateRoguelikeTaskInput } from '../model/roguelikeValidation'
 import { useRoguelikeExecution } from '../hooks/useRoguelikeExecution'
 import RoguelikeModePanel from './RoguelikeModePanel'
 import RoguelikeSettingsPanel from './RoguelikeSettingsPanel'
@@ -92,9 +92,11 @@ export default function RoguelikeWorkspace() {
       return
     }
 
+    const plan = buildRoguelikeExecutionPlan(activeTask.id, taskInputs, advancedParams)
     await execute({
-      command: activeTask.command,
-      params: buildRoguelikeCommandParams(activeTask.id, taskInputs, advancedParams),
+      command: plan.command,
+      params: plan.params,
+      taskConfig: plan.taskConfig,
       taskName: activeTask.name,
     })
   }
