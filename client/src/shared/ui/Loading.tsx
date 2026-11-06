@@ -315,25 +315,27 @@ function RoguelikeSkeleton() {
   return (
     <div className="roguelike-workspace-grid workbench-skeleton" aria-hidden="true">
       <div className="roguelike-mode-area"><ModeControlSkeleton variant="roguelike" /></div>
-      <SmoothPanel className="roguelike-panel roguelike-theme-panel">
-        <PanelHeadingSkeleton className="roguelike-panel-heading" showIcon={false} />
-        <div className="roguelike-panel-body">
-          <div className="roguelike-theme-grid">
-            {Array.from({ length: 5 }, (_, index) => (
-              <div key={index} className="roguelike-theme-option">
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <Skeleton variant="text" className="h-3 w-20 max-w-full" />
-                  <Skeleton variant="text" className="h-2 w-14 max-w-full" />
+      <div className="roguelike-main-column">
+        <SmoothPanel className="roguelike-panel roguelike-theme-panel">
+          <PanelHeadingSkeleton className="roguelike-panel-heading" showIcon={false} />
+          <div className="roguelike-panel-body">
+            <div className="roguelike-theme-grid">
+              {Array.from({ length: 5 }, (_, index) => (
+                <div key={index} className="roguelike-theme-option">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Skeleton variant="text" className="h-3 w-20 max-w-full" />
+                    <Skeleton variant="text" className="h-2 w-14 max-w-full" />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="roguelike-custom-theme mt-4 space-y-2">
+              <Skeleton variant="text" className="h-2.5 w-24" />
+              <Skeleton variant="rect" className="h-10 rounded-xl" />
+            </div>
           </div>
-          <div className="roguelike-custom-theme mt-4 space-y-2">
-            <Skeleton variant="text" className="h-2.5 w-24" />
-            <Skeleton variant="rect" className="h-10 rounded-xl" />
-          </div>
-        </div>
-      </SmoothPanel>
+        </SmoothPanel>
+      </div>
       <SmoothPanel className="roguelike-panel roguelike-settings-panel">
         <PanelHeadingSkeleton className="roguelike-panel-heading" showIcon={false} />
         <div className="roguelike-panel-body roguelike-settings-body">
@@ -576,6 +578,8 @@ function StatisticsSkeleton() {
 function ConfigSkeleton() {
   return (
     <>
+      <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
+        <div className="config-workspace-primary app-stack-section min-w-0">
       <div className="app-workspace-segments app-liquid-tab-pill w-full" data-config-sections aria-hidden="true">
         <div className="app-workspace-segment-list grid-cols-3">
           {[1, 2, 3].map(item => (
@@ -591,8 +595,6 @@ function ConfigSkeleton() {
           ))}
         </div>
       </div>
-      <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
-        <div className="config-workspace-primary app-stack-section min-w-0">
       <Card smoothCorners className="config-editor-card p-0!">
         <CardHeaderSkeleton actionWidth="w-36" />
         <div className="app-card-content app-stack-card">

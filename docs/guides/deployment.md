@@ -55,6 +55,7 @@ docker run -d \
 | `LA_PLUMA_MAA_LOCK_FILE` | MAA 执行互斥锁文件 | `server/data/maa-execution.lock` |
 | `LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS` | Core 安装/更新维护命令的 execFile 超时；非法值回落默认，超上限收敛到上限 | `900000`（上限 `3600000`） |
 | `LA_PLUMA_TRAINING_DATA_DIR` | 养成与参考数据目录（队列、材料表、干员材料、掉落统计、仓库/干员识别结果） | `server/data` |
+| `LA_PLUMA_GAME_ASSET_DIR` | 本地图标与头像根目录（含 `item/`、`avatar/` 子目录）；缺省读取 MAA 资源的 `template/items`、`template/avatar` | MAA 资源目录下的 `template` |
 | `LA_PLUMA_COPILOT_PROGRESS_STORE` | 作业集共享进度文件 | `server/data/copilot-progress.json` |
 | `LA_PLUMA_COPILOT_NATIVE_DELEGATION` | 原生 `maa copilot` 委托开关；设为 `0`/`false`/`off`/`no`/`disabled` 时整体回退到现有流程 | 启用 |
 | `LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE` | 当前活动通关进度文件（只读历史数据） | `server/data/activity-copilot-progress.json` |
