@@ -11,7 +11,7 @@
 | 内容 | 唯一归属 | 说明 |
 | --- | --- | --- |
 | 仓库、持有干员、干员目录的只读端点、载荷类型与 query key | `features/game-data` | 非页面微域；`shared/api` 不新增业务端点 |
-| 物品图标 URL 与缓存版本 | `features/game-data` | 纯 URL 构造，不发起请求、不进入 Query；epoch 持久化在 localStorage，资源更新成功后推进 |
+| 物品图标/干员头像 URL 与缓存版本 | `features/game-data` | 纯 URL 构造，不发起请求、不进入 Query；epoch 持久化在 localStorage，资源更新成功后推进 |
 | 跨域资源失效发布/订阅 | `features/resource-invalidation` | 只传资源作用域，不持有资源数据 |
 | 养成队列、设置、计划、材料刷新端点 | `features/training` | 队列/设置/计划的写入与领域语义仍归 training；材料刷新的命令编排归 statistics |
 | 掉落统计、今日掉落、今日开放关卡、识别/材料命令所有者 | `features/statistics` | 只读掉落/关卡供 Dashboard 使用；统计页使用领域 Query，识别/材料命令所有者及失效范围见[统计识别命令与失效联动](../frontend/domains/statistics.md#识别命令) |
@@ -45,12 +45,12 @@ import {
 | 资源 | 唯一所有者 | 当前读取方 |
 | --- | --- | --- |
 | 仓库、持有干员、干员目录 | `game-data` | StatisticsWorkspace、TrainingWorkspace；识别后影响养成与总览 |
-| 物品图标 URL 与 epoch | `game-data` | 仓库、掉落记录、养成材料；不建立 Query |
+| 物品图标/干员头像 URL 与 epoch | `game-data` | 仓库、掉落记录、养成材料；不建立 Query |
 | 养成队列（含材料进度） | `training` | TrainingWorkspace、Dashboard 快照 |
 | 掉落/今日开放关卡 | `statistics` | StatisticsWorkspace、Dashboard 快照 |
 | 设备采样 | `device-mirror` | Dashboard |
 
-Query key、参数与缓存策略集中见[Query 缓存与键规范](query-cache.md)。物品图标由浏览器 HTTP/图片缓存；`getItemIconUrl` 带 `?v=<epoch>`，epoch 存储在 `laPlumaItemIconVersion`，使用 `useItemIconCacheVersion()` 的组件随 epoch 重渲染。干员头像仍使用独立 URL，不在该 epoch 内。
+Query key、参数与缓存策略集中见[Query 缓存与键规范](query-cache.md)。物品图标与干员头像由浏览器 HTTP/图片缓存；`getItemIconUrl` / `getOperatorAvatarUrl` 带 `?v=<epoch>`，epoch 存储在 `laPlumaItemIconVersion`，使用 `useItemIconCacheVersion()` 的组件随 epoch 重渲染。
 
 统计页的仓库、持有干员、目录与掉落读取由所属领域 Query 持有，页面不保存第二份资源副本；识别与材料命令通过第 4 节的端口发布失效。训练页的候选列表和状态计数使用 `training` 领域 Query，查询内经 `game-data` 公开面读取目录与持有干员；队列使用 `training/queue` Query，并由串行命令负责写入（见[养成队列命令与写后刷新](../frontend/domains/training.md#队列命令)）。Dashboard 经各领域 Query 读取五路业务数据，由 `features/dashboard/model` 协调完整快照（见[总览完整快照与设备采样](../frontend/domains/dashboard.md#完整快照与设备采样)）。识别命令与完成条件见[统计识别命令与失效联动](../frontend/domains/statistics.md#识别命令)。
 

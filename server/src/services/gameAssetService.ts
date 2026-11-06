@@ -1,5 +1,5 @@
 import { realpath, stat } from 'node:fs/promises';
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 export const GAME_ASSET_ROUTE_PREFIX = '/game-assets';
 
@@ -21,8 +21,7 @@ export interface GameAssetFile {
 }
 
 export interface ResolveGameAssetOptions {
-  rootDir: string;
-  kind: GameAssetKind;
+  kindDir: string;
   fileName: string;
 }
 
@@ -47,20 +46,19 @@ function isDirectChild(rootDir: string, filePath: string): boolean {
 }
 
 /**
- * 把请求中的资源类型与文件名解析为可发送的本地文件。
- * 只允许根目录直接子文件、白名单扩展名与真实路径仍位于类型目录内；
+ * 把请求中的资源文件名解析为可发送的本地文件。
+ * 只允许类型目录的直接子文件、白名单扩展名与真实路径仍位于该目录内；
  * 任何越界、目录、符号链接逃逸或缺失文件都返回 null，不向调用方暴露原因。
  */
 export async function resolveGameAssetFile(options: ResolveGameAssetOptions): Promise<GameAssetFile | null> {
   if (!gameAssetContentType(options.fileName) || !isSafeFileName(options.fileName)) return null;
 
-  const kindDir = join(options.rootDir, options.kind);
-  const rootDir = await realpath(kindDir).catch(() => null);
-  if (!rootDir) return null;
+  const kindRoot = await realpath(options.kindDir).catch(() => null);
+  if (!kindRoot) return null;
 
-  const requestedPath = resolve(kindDir, options.fileName);
+  const requestedPath = resolve(options.kindDir, options.fileName);
   const filePath = await realpath(requestedPath).catch(() => null);
-  if (!filePath || !isDirectChild(rootDir, filePath)) return null;
+  if (!filePath || !isDirectChild(kindRoot, filePath)) return null;
 
   const fileStats = await stat(filePath).catch(() => null);
   if (!fileStats?.isFile()) return null;

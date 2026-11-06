@@ -15,16 +15,25 @@ const assetRoot = join(fixtureDir, 'game-assets');
 const itemDir = join(assetRoot, 'item');
 const avatarDir = join(assetRoot, 'avatar');
 const outsideDir = join(fixtureDir, 'outside');
+// 真实 MAA 资源目录位于 `~/.local/share/maa`，点目录下的文件也必须能发送。
+const maaDataDir = join(fixtureDir, '.local', 'maa');
+const maaTemplateDir = join(maaDataDir, 'resource', 'template');
 
 const ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02]);
 const AVATAR_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x03, 0x04]);
+const MAA_ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x05, 0x06]);
+const MAA_AVATAR_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x07, 0x08]);
 const OUTSIDE_BYTES = Buffer.from('outside-secret');
 
 await mkdir(itemDir, { recursive: true });
 await mkdir(avatarDir, { recursive: true });
 await mkdir(outsideDir, { recursive: true });
+await mkdir(join(maaTemplateDir, 'items'), { recursive: true });
+await mkdir(join(maaTemplateDir, 'avatar'), { recursive: true });
 await writeFile(join(itemDir, '30011.png'), ITEM_BYTES);
 await writeFile(join(avatarDir, 'char_002_amiya.png'), AVATAR_BYTES);
+await writeFile(join(maaTemplateDir, 'items', '2001.png'), MAA_ITEM_BYTES);
+await writeFile(join(maaTemplateDir, 'avatar', 'char_4004_pudd.png'), MAA_AVATAR_BYTES);
 await writeFile(join(itemDir, 'notes.txt'), 'not an image');
 await writeFile(join(itemDir, '.hidden.png'), ITEM_BYTES);
 await writeFile(join(outsideDir, 'secret.png'), OUTSIDE_BYTES);
@@ -45,9 +54,9 @@ function stubSignalingGateway(): WebrtcSignalingGateway {
   };
 }
 
-async function listen(env: RuntimeEnvSource = {}): Promise<string> {
+async function listen(env: RuntimeEnvSource = { LA_PLUMA_GAME_ASSET_DIR: assetRoot }): Promise<string> {
   const server = createServer(createLaPlumaApp({
-    env: { LA_PLUMA_GAME_ASSET_DIR: assetRoot, ...env },
+    env,
     signalingGateway: stubSignalingGateway()
   }));
   servers.push(server);
@@ -88,6 +97,20 @@ describe('GET /game-assets local icon and avatar routes', () => {
     assert.equal(avatar.status, 200);
     assert.equal(avatar.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await avatar.arrayBuffer()), AVATAR_BYTES);
+  });
+
+  it('serves the MAA resource templates when no asset directory is configured', async () => {
+    const baseUrl = await listen({ MAA_DATA_DIR: maaDataDir });
+
+    const item = await fetch(`${baseUrl}/game-assets/item/2001.png`);
+    assert.equal(item.status, 200);
+    assert.equal(item.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await item.arrayBuffer()), MAA_ITEM_BYTES);
+
+    const avatar = await fetch(`${baseUrl}/game-assets/avatar/char_4004_pudd.png`);
+    assert.equal(avatar.status, 200);
+    assert.equal(avatar.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await avatar.arrayBuffer()), MAA_AVATAR_BYTES);
   });
 
   it('serves a replaced file at the new versioned URL', async () => {

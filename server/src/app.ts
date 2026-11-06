@@ -134,7 +134,7 @@ export function createLaPlumaApp({
   // 图标与头像走同源只读路由，不经过 API 鉴权：<img> 无法附加令牌。
   app.use(
     GAME_ASSET_ROUTE_PREFIX,
-    createGameAssetRouter(resolveGameAssetPaths({ env }).rootDir)
+    createGameAssetRouter(resolveGameAssetPaths({ env }))
   );
 
   // API 独占自己的命名空间：鉴权先于 JSON 解析，稳定 404 与错误出口先于静态资源。
