@@ -14,7 +14,6 @@ import { AUTOMATION_DOMAIN, automationKeys } from './queryKeys'
 
 const apiMocks = vi.hoisted(() => ({
   getActivity: vi.fn(),
-  getNotificationConfig: vi.fn(),
   getScheduleExecutionStatus: vi.fn(),
   listInfrastSchedules: vi.fn(),
   readInfrastSchedule: vi.fn(),
@@ -45,8 +44,6 @@ describe('automation query options', () => {
   beforeEach(() => {
     apiMocks.getActivity.mockReset()
     apiMocks.getScheduleExecutionStatus.mockReset()
-    apiMocks.listInfrastSchedules.mockReset()
-    apiMocks.readInfrastSchedule.mockReset()
   })
 
   it('uses a profile sentinel when the client type is omitted', () => {

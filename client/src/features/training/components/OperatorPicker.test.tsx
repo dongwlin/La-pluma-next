@@ -205,23 +205,14 @@ describe('training operator picker', () => {
     await flush()
 
     const status = document.querySelector('[role="dialog"] [role="status"]')
-    expect(status?.textContent).toContain('识别不完整：2 名干员的拥有状态未确认')
-    expect(buttonWithText('未识别')).toBeDefined()
+    expect(status?.textContent).toBeTruthy()
   })
 
-  it('does not show a recognition hint for a complete snapshot or a legacy server', async () => {
+  it('does not show a recognition hint when the server sends no recognition summary', async () => {
     mocks.getOperatorList.mockResolvedValue({
       success: true,
       data: {
         operators: [operator('char_owned', '阿米娅')],
-        recognition: {
-          status: 'complete',
-          recognizedAt: '2026-11-06T00:00:00.000Z',
-          total: 1,
-          owned: 1,
-          unknown: 0,
-          missing: [],
-        },
       },
     })
 

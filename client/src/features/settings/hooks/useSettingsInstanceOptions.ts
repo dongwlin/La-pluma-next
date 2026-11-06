@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   instanceOptionsQueryOptions,
   settingsInstanceOptionsOwner,
@@ -15,7 +15,6 @@ export interface UseSettingsInstanceOptionsResult extends InstanceOptionsState {
   readonly update: (patch: Partial<MaaInstanceOptions>) => void
   readonly restoreDefaults: () => boolean
   readonly save: () => Promise<InstanceOptionsSaveOutcome>
-  readonly reload: () => Promise<void>
 }
 
 const describeLoadError = (error: unknown): string => (
@@ -33,7 +32,6 @@ export function useSettingsInstanceOptions(
   )
   // 面板常驻挂载但只有可见 section 需要读取；未启用时不发起请求。
   const query = useQuery({ ...options, enabled })
-  const queryClient = useQueryClient()
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 
   useEffect(() => {
@@ -48,10 +46,6 @@ export function useSettingsInstanceOptions(
 
   const save = useCallback(() => owner.save(), [owner])
 
-  const reload = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: options.queryKey })
-  }, [options.queryKey, queryClient])
-
   const loadError = query.isError && !query.data && !state.loaded
     ? describeLoadError(query.error)
     : null
@@ -62,6 +56,5 @@ export function useSettingsInstanceOptions(
     update,
     restoreDefaults,
     save,
-    reload,
   }
 }

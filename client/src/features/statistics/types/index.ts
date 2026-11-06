@@ -8,7 +8,8 @@ export interface DropStatistics {
   items: {
     [itemName: string]: {
       count: number
-      iconId?: string
+      id?: string | null
+      iconId?: string | null
     }
   }
   stages: {

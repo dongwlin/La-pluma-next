@@ -502,14 +502,10 @@ describe('parseDepotData', () => {
 });
 
 describe('parseOperBoxData', () => {
-  it('stores the identified operator list and the recognition catalog after assistant completion', async () => {
+  it('stores the identified operator list without a catalog and keeps partial recognition', async () => {
     const fixture = await createFixture();
     const operators = [
       { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, elite: 0, level: 1, potential: 6, own: true }
-    ];
-    const catalog = [
-      { id: 'char_1001_amiya', name: '阿米娅', name_en: 'Amiya', name_jp: 'アーミヤ', rarity: 5, own: true },
-      { id: 'char_2002_kalts', name: '凯尔希', name_en: "Kal'tsit", rarity: 6, own: false }
     ];
     await writeFile(fixture.maaLogPath, [
       operBoxTaskLine('TaskChainStart'),

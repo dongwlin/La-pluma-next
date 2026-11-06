@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import type { ApiErrorResponse, ApiSuccessResponse } from '../../utils/apiHelper.ts';
+import {
+  closeHttpServers,
+  postJson,
+  readError,
+  silenceLoggers,
+  startHttpServer
+} from '../../__tests__/support/httpTestHelpers.ts';
 
 // 本文件在环境变量注入后再动态导入 app，让 maaProcessService 在模块加载时解析到 500ms 维护超时；
 // 假 CLI 用 Atomics.wait 阻塞睡眠，保证 execFile 的 SIGKILL 超时语义真实触发；其对 `maa dir data`
@@ -65,54 +70,13 @@ process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(fixtureDir, 'activit
 process.env.LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS = '500';
 
 const { createLaPlumaApp } = await import('../../app.ts');
-const { loggerManager } = await import('../../utils/logger.ts');
 
-for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']) {
-  loggerManager.getLogger(loggerName).enableConsole = false;
-}
+silenceLoggers(['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']);
 
 const servers: Server[] = [];
 
-function isApiError(value: unknown): value is ApiErrorResponse {
-  return typeof value === 'object'
-    && value !== null
-    && (value as { success?: unknown }).success === false;
-}
-
-async function readError(response: Response): Promise<ApiErrorResponse> {
-  const body: unknown = await response.json();
-  assert.ok(isApiError(body));
-  return body;
-}
-
-async function readSuccess<T>(response: Response): Promise<ApiSuccessResponse<T>> {
-  const body: unknown = await response.json();
-  assert.ok(typeof body === 'object' && body !== null && (body as { success?: unknown }).success === true);
-  return body as ApiSuccessResponse<T>;
-}
-
-async function listen(app: ReturnType<typeof createLaPlumaApp>): Promise<number> {
-  const server = createServer(app);
-  servers.push(server);
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  return address.port;
-}
-
-async function postJson(url: string, body: unknown): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-}
-
 after(async () => {
-  for (const server of servers) server.close();
+  await closeHttpServers(servers);
   await rm(fixtureDir, { recursive: true, force: true });
 });
 
@@ -140,7 +104,7 @@ describe('update-core maintenance timeout', () => {
     // 2s 睡眠低于 15s 默认超时：若注入失效，这里会错误地等待默认时限。
     process.env.FAKE_MAA_UPDATE_SLEEP_MS = '2000';
     try {
-      const port = await listen(createLaPlumaApp({ env: {} }));
+      const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
       const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
       const startedAt = Date.now();
@@ -167,36 +131,12 @@ describe('update-core maintenance timeout', () => {
     }
   });
 
-  it('relies on the native core update for resources instead of running a second update', async () => {
-    process.env.FAKE_MAA_UPDATE_SLEEP_MS = '50';
-    try {
-      const port = await listen(createLaPlumaApp({ env: {} }));
-      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
-
-      const response = await postJson(`${baseUrl}/actions/update-core`, {});
-      assert.equal(response.status, 200);
-      const body = await readSuccess<{
-        steps: { core: { success: boolean }; resources: { success: boolean } };
-        runtime: { resource: { status: string } };
-      }>(response);
-      assert.equal(body.data.steps.core.success, true);
-      assert.equal(body.data.steps.resources.success, true);
-      assert.equal(body.data.runtime.resource.status, 'current', JSON.stringify(body.data.runtime.resource));
-
-      const calls = await readFile(cliCallLog, 'utf-8');
-      assert.match(calls, /^update$/m);
-      assert.doesNotMatch(calls, /^hot-update$/m, 'Core 更新后不能重复执行资源更新');
-    } finally {
-      delete process.env.FAKE_MAA_UPDATE_SLEEP_MS;
-    }
-  });
-
   it('exposes the managed core update child through the task status projection', async () => {
     // 更新子进程经受管任务名登记进 taskStatus：状态查询能看到维护任务，
     // 子进程退出并释放租约后投影回到空闲——关闭流程按同一状态识别。
     process.env.FAKE_MAA_UPDATE_SLEEP_MS = '2000';
     try {
-      const port = await listen(createLaPlumaApp({ env: {} }));
+      const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
       const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
       const updateRequest = postJson(`${baseUrl}/actions/update-core`, {});

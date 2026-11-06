@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
-import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
+import {
+  closeHttpServers,
+  postJson,
+  readError,
+  readSuccess,
+  silenceLoggers,
+  startHttpServer
+} from './support/httpTestHelpers.ts';
 
 // 更新入口纳入 Run 后的 HTTP 契约：启动返回 runId、快照可观察、按 runId 停止、
 // 失败写入 failed 终态且保持既有错误码。假 CLI 用 Atomics.wait 阻塞，确保停止
@@ -83,11 +89,8 @@ process.env.LA_PLUMA_COPILOT_PROGRESS_STORE = join(fixtureDir, 'copilot-progress
 process.env.LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE = join(fixtureDir, 'activity-copilot-progress.json');
 
 const { createLaPlumaApp } = await import('../app.ts');
-const { loggerManager } = await import('../utils/logger.ts');
 
-for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'AgentRunService', 'UpdateService']) {
-  loggerManager.getLogger(loggerName).enableConsole = false;
-}
+silenceLoggers(['Api', 'MaaService', 'AgentRoutes', 'AgentRunService', 'UpdateService']);
 
 const servers: Server[] = [];
 const UPDATE_ENV_KEYS = [
@@ -118,6 +121,8 @@ interface UpdateSuccessPayload {
   run?: RunPayload;
   plan?: { action?: string };
   output?: string;
+  steps?: { core: { success: boolean }; resources: { success: boolean } };
+  runtime?: { resource: { status: string } };
 }
 
 interface RunSnapshotPayload {
@@ -125,49 +130,6 @@ interface RunSnapshotPayload {
   activeRuns: RunPayload[];
   lastRun: RunPayload | null;
   occupancy: { state: string; runId: string | null; sources: string[] };
-}
-
-function isApiError(value: unknown): value is ApiErrorResponse {
-  return typeof value === 'object'
-    && value !== null
-    && (value as { success?: unknown }).success === false;
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  return response.json();
-}
-
-async function readSuccess<T>(response: Response): Promise<ApiSuccessResponse<T>> {
-  const body = await readJson(response);
-  assert.ok(typeof body === 'object' && body !== null && (body as { success?: unknown }).success === true);
-  return body as ApiSuccessResponse<T>;
-}
-
-async function readError(response: Response): Promise<ApiErrorResponse> {
-  const body = await readJson(response);
-  assert.ok(isApiError(body));
-  return body;
-}
-
-async function listen(): Promise<number> {
-  const app = createLaPlumaApp({ env: {} });
-  const server = createServer(app);
-  servers.push(server);
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  return address.port;
-}
-
-async function postJson(url: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body)
-  });
 }
 
 async function getRun(baseUrl: string, runId: string): Promise<RunPayload> {
@@ -215,13 +177,14 @@ afterEach(() => {
 });
 
 after(async () => {
-  for (const server of servers) server.close();
+  await closeHttpServers(servers);
   await rm(fixtureDir, { recursive: true, force: true });
 });
 
 describe('tracked update runs', () => {
   it('records a synchronous core update as a queryable succeeded run', async () => {
-    const port = await listen();
+    await writeFile(cliCallLog, '', 'utf-8');
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const response = await postJson(`${baseUrl}/actions/update-core`, {});
@@ -232,6 +195,9 @@ describe('tracked update runs', () => {
     assert.equal(body.data.run?.operationId, 'update_core');
     assert.equal(body.data.run?.state, 'succeeded');
     assert.equal(body.data.plan?.action, 'update-core-and-resources');
+    assert.equal(body.data.steps?.core.success, true);
+    assert.equal(body.data.steps?.resources.success, true);
+    assert.equal(body.data.runtime?.resource.status, 'current');
     assert.equal(response.headers.get('x-la-pluma-run-id'), body.data.runId);
 
     const run = await getRun(baseUrl, String(body.data.runId));
@@ -243,11 +209,16 @@ describe('tracked update runs', () => {
     assert.equal(snapshot.data.occupancy.state, 'idle');
     assert.equal(snapshot.data.lastRun?.runId, body.data.runId);
     assert.equal(await pathExists(lockFile), false);
+
+    // maa-cli 的 update 自带资源同步：Core 更新后不能再启动第二次 hot-update。
+    const calls = await readFile(cliCallLog, 'utf-8');
+    assert.match(calls, /^update$/m);
+    assert.doesNotMatch(calls, /^hot-update$/m);
   });
 
   it('starts a core update in the background, owns occupancy, and stops by runId', async () => {
     process.env.FAKE_UPDATE_SLEEP_MS = '20000';
-    const port = await listen();
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const response = await postJson(`${baseUrl}/actions/update-core`, { waitForCompletion: false });
@@ -288,93 +259,121 @@ describe('tracked update runs', () => {
     assert.equal(repeatedBody.data.alreadyTerminal, true);
   });
 
-  it('normalizes core update failures into failed runs and keeps the failure details', async () => {
-    process.env.FAKE_UPDATE_FAIL = '1';
-    const port = await listen();
-    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+  const updateFailureCases = [
+    {
+      name: 'core update',
+      envKey: 'FAKE_UPDATE_FAIL',
+      path: '/actions/update-core',
+      body: { version: 'beta' },
+      code: 'AGENT_MAA_UPDATE_CORE_FAILED',
+      operationId: 'update_core',
+      details: { failedStep: 'core', coreUpdated: false, version: 'beta' }
+    },
+    {
+      name: 'CLI update',
+      envKey: 'FAKE_CLI_UPDATE_FAIL',
+      path: '/actions/update-cli',
+      body: {},
+      code: 'AGENT_MAA_UPDATE_CLI_FAILED',
+      operationId: 'update_cli'
+    },
+    {
+      name: 'resource update',
+      envKey: 'FAKE_HOT_UPDATE_FAIL',
+      path: '/actions/hot-update-resources',
+      body: {},
+      code: 'AGENT_MAA_RESOURCE_UPDATE_FAILED',
+      operationId: 'update_resources'
+    }
+  ];
 
-    const response = await postJson(`${baseUrl}/actions/update-core`, { version: 'beta' });
-    assert.equal(response.status, 500);
-    const body = await readError(response);
-    assert.equal(body.error.code, 'AGENT_MAA_UPDATE_CORE_FAILED');
-    assert.equal(body.error.retryable, true);
-    const details = body.error.details as { failedStep?: unknown; coreUpdated?: unknown; version?: unknown; runId?: unknown };
-    assert.equal(details.failedStep, 'core');
-    assert.equal(details.coreUpdated, false);
-    assert.equal(details.version, 'beta');
+  for (const failureCase of updateFailureCases) {
+    it(`normalizes ${failureCase.name} failures into failed runs with the existing error code`, async () => {
+      process.env[failureCase.envKey] = '1';
+      const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
+      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
-    const run = await getRun(baseUrl, String(details.runId));
-    assert.equal(run.operationId, 'update_core');
-    assert.equal(run.state, 'failed');
-    assert.equal(run.error?.code, 'AGENT_MAA_UPDATE_CORE_FAILED');
-    assert.equal(await pathExists(lockFile), false);
-  });
+      const response = await postJson(`${baseUrl}${failureCase.path}`, failureCase.body);
+      assert.equal(response.status, 500);
+      const body = await readError(response);
+      assert.equal(body.error.code, failureCase.code);
+      assert.equal(body.error.retryable, true);
 
-  it('normalizes CLI update failures into failed runs with the existing error code', async () => {
-    process.env.FAKE_CLI_UPDATE_FAIL = '1';
-    const port = await listen();
-    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+      const failureDetails = body.error.details as {
+        runId?: unknown;
+        failedStep?: unknown;
+        coreUpdated?: unknown;
+        version?: unknown;
+      };
+      if (failureCase.details) {
+        assert.equal(failureDetails.failedStep, failureCase.details.failedStep);
+        assert.equal(failureDetails.coreUpdated, failureCase.details.coreUpdated);
+        assert.equal(failureDetails.version, failureCase.details.version);
+      }
 
-    const response = await postJson(`${baseUrl}/actions/update-cli`, {});
-    assert.equal(response.status, 500);
-    const body = await readError(response);
-    assert.equal(body.error.code, 'AGENT_MAA_UPDATE_CLI_FAILED');
-    assert.equal(body.error.retryable, true);
+      const runId = String(failureDetails.runId);
+      assert.ok(runId && runId !== 'undefined');
+      const run = await getRun(baseUrl, runId);
+      assert.equal(run.operationId, failureCase.operationId);
+      assert.equal(run.state, 'failed');
+      assert.equal(run.error?.code, failureCase.code);
+      assert.equal(run.error?.retryable, true);
+      assert.equal(await pathExists(lockFile), false);
+    });
+  }
 
-    const runId = String((body.error.details as { runId?: unknown }).runId);
-    assert.ok(runId && runId !== 'undefined');
-    const run = await getRun(baseUrl, runId);
-    assert.equal(run.operationId, 'update_cli');
-    assert.equal(run.state, 'failed');
-    assert.equal(run.error?.code, 'AGENT_MAA_UPDATE_CLI_FAILED');
-    assert.equal(run.error?.retryable, true);
-  });
+  const backgroundStopCases = [
+    {
+      name: 'resource update',
+      envKey: 'FAKE_HOT_UPDATE_SLEEP_MS',
+      path: '/actions/hot-update-resources',
+      operationId: 'update_resources',
+      stopRunIdInQuery: true
+    },
+    {
+      name: 'CLI update',
+      envKey: 'FAKE_CLI_UPDATE_SLEEP_MS',
+      path: '/actions/update-cli',
+      operationId: 'update_cli',
+      stopRunIdInQuery: false
+    }
+  ];
 
-  it('normalizes resource update failures into failed runs with the existing error code', async () => {
-    process.env.FAKE_HOT_UPDATE_FAIL = '1';
-    const port = await listen();
-    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+  for (const stopCase of backgroundStopCases) {
+    it(`stops a background ${stopCase.name} and leaves the lease reusable`, async () => {
+      process.env[stopCase.envKey] = '20000';
+      const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
+      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
-    const response = await postJson(`${baseUrl}/actions/hot-update-resources`, {});
-    assert.equal(response.status, 500);
-    const body = await readError(response);
-    assert.equal(body.error.code, 'AGENT_MAA_RESOURCE_UPDATE_FAILED');
+      const response = await postJson(`${baseUrl}${stopCase.path}`, { waitForCompletion: false });
+      assert.equal(response.status, 202);
+      const body = await readSuccess<UpdateSuccessPayload>(response);
+      const runId = String(body.data.runId);
+      await waitForRun(baseUrl, runId, run => run.state === 'running');
 
-    const run = await getRun(baseUrl, String((body.error.details as { runId?: unknown }).runId));
-    assert.equal(run.operationId, 'update_resources');
-    assert.equal(run.state, 'failed');
-    assert.equal(run.error?.code, 'AGENT_MAA_RESOURCE_UPDATE_FAILED');
-    assert.equal(await pathExists(lockFile), false);
-  });
+      // 停止参数同时支持 body 与 query：两种入口都落到同一个 runId。
+      const stopUrl = stopCase.stopRunIdInQuery
+        ? `${baseUrl}/actions/stop?runId=${encodeURIComponent(runId)}`
+        : `${baseUrl}/actions/stop`;
+      const stop = await postJson(stopUrl, stopCase.stopRunIdInQuery ? {} : { runId });
+      assert.equal(stop.status, 200);
+      const stopped = await waitForRun(baseUrl, runId, run => run.state === 'stopped');
+      assert.equal(stopped.operationId, stopCase.operationId);
+      assert.equal(await pathExists(lockFile), false);
 
-  it('stops a background resource update and leaves the lease reusable', async () => {
-    process.env.FAKE_HOT_UPDATE_SLEEP_MS = '20000';
-    const port = await listen();
-    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
-
-    const response = await postJson(`${baseUrl}/actions/hot-update-resources`, { waitForCompletion: false });
-    assert.equal(response.status, 202);
-    const body = await readSuccess<UpdateSuccessPayload>(response);
-    const runId = String(body.data.runId);
-    await waitForRun(baseUrl, runId, run => run.state === 'running');
-
-    const stop = await postJson(`${baseUrl}/actions/stop?runId=${encodeURIComponent(runId)}`, {});
-    assert.equal(stop.status, 200);
-    const stopped = await waitForRun(baseUrl, runId, run => run.state === 'stopped');
-    assert.equal(stopped.operationId, 'update_resources');
-    assert.equal(await pathExists(lockFile), false);
-
-    delete process.env.FAKE_HOT_UPDATE_SLEEP_MS;
-    const next = await postJson(`${baseUrl}/actions/hot-update-resources`, {});
-    assert.equal(next.status, 200);
-    const nextBody = await readSuccess<UpdateSuccessPayload>(next);
-    assert.equal(nextBody.data.state, 'succeeded');
-  });
+      // 后台更新被停止后租约释放，下一轮更新可以正常开始。
+      delete process.env[stopCase.envKey];
+      const next = await postJson(`${baseUrl}${stopCase.path}`, {});
+      assert.equal(next.status, 200);
+      const nextBody = await readSuccess<UpdateSuccessPayload>(next);
+      assert.equal(nextBody.data.state, 'succeeded');
+    });
+  }
 
   it('rejects concurrent resource updates immediately instead of waiting for the first update', async () => {
     await writeFile(cliCallLog, '', 'utf-8');
     process.env.FAKE_HOT_UPDATE_SLEEP_MS = '20000';
-    const port = await listen();
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     let firstRunId: string | null = null;
 
@@ -431,27 +430,9 @@ describe('tracked update runs', () => {
     assert.equal(callsAfterRetry.match(/^hot-update$/gm)?.length, 2);
   });
 
-  it('stops a background CLI update and records a stopped run', async () => {
-    process.env.FAKE_CLI_UPDATE_SLEEP_MS = '20000';
-    const port = await listen();
-    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
-
-    const response = await postJson(`${baseUrl}/actions/update-cli`, { waitForCompletion: false });
-    assert.equal(response.status, 202);
-    const body = await readSuccess<UpdateSuccessPayload>(response);
-    const runId = String(body.data.runId);
-    await waitForRun(baseUrl, runId, run => run.state === 'running');
-
-    const stop = await postJson(`${baseUrl}/actions/stop`, { runId });
-    assert.equal(stop.status, 200);
-    const stopped = await waitForRun(baseUrl, runId, run => run.state === 'stopped');
-    assert.equal(stopped.operationId, 'update_cli');
-    assert.equal(await pathExists(lockFile), false);
-  });
-
   it('rejects concurrent updates with a failed run and releases the idempotency key', async () => {
     process.env.FAKE_UPDATE_SLEEP_MS = '20000';
-    const port = await listen();
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const first = await postJson(`${baseUrl}/actions/update-core`, { waitForCompletion: false });
@@ -493,7 +474,7 @@ describe('tracked update runs', () => {
 
   it('replays the same update run for the same idempotency key', async () => {
     await writeFile(cliCallLog, '', 'utf-8');
-    const port = await listen();
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const headers = { 'Idempotency-Key': 'update-core-replay-01' };
 

@@ -95,9 +95,23 @@ export interface AutoUpdateConfig {
 
 export type UpdateChannelScope = 'core' | 'cli'
 
-export type CoreUpdateChannel = 'stable' | 'beta' | 'alpha'
+export const CORE_UPDATE_CHANNELS = ['stable', 'beta', 'alpha'] as const
+export type CoreUpdateChannel = (typeof CORE_UPDATE_CHANNELS)[number]
 
-export type CliUpdateChannel = 'stable' | 'beta' | 'nightly'
+export const CLI_UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const
+export type CliUpdateChannel = (typeof CLI_UPDATE_CHANNELS)[number]
+
+export const CORE_UPDATE_CHANNEL_LABELS = {
+  stable: '正式版',
+  beta: 'Beta',
+  alpha: 'Alpha',
+} as const satisfies Record<CoreUpdateChannel, string>
+
+export const CLI_UPDATE_CHANNEL_LABELS = {
+  stable: '正式版',
+  beta: 'Beta',
+  nightly: 'Nightly',
+} as const satisfies Record<CliUpdateChannel, string>
 
 export interface UpdateChannels {
   core: CoreUpdateChannel

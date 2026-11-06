@@ -1,13 +1,12 @@
 // 资源源表单只覆盖 maa-cli cli.toml 的 [resource] 段：Git / MirrorChyan 来源、
 // 自动更新开关与凭据。凭据输入框留空表示保留已保存的值，页面从不回显明文。
 
-import { useEffect, useRef, useState } from 'react'
 import { Checkbox, Input, Select, Switch } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
+import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsResourceSource } from '../hooks/useSettingsResourceSource'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
-import type { SettingsFeedback } from './ConfigEditorCard'
 import { DEFAULT_RESOURCE_GIT_URL, DEFAULT_MIRRORCHYAN_CHECK_INTERVAL } from '../model/resourceSource'
 import { GIT_BACKENDS, RESOURCE_SOURCE_TYPES } from '../types'
 import type {
@@ -64,36 +63,25 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     draft,
     update,
     restoreDefaults,
-    save,
+    save: saveResourceSourceDraft,
     syncState,
     loadError,
     loaded,
   } = useSettingsResourceSource(undefined, isActive)
   const saving = syncState === 'saving'
-  const blockedSaveMessage = loadError
-    ? '资源源配置读取失败，暂时无法保存'
-    : '资源源配置正在读取，加载完成后才能保存'
-  const saveBlockedReason = loaded ? null : blockedSaveMessage
-  const [configFeedback, setConfigFeedback] = useState<SettingsFeedback | null>(null)
-  const reportedLoadFailureRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!loadError) return
-    const message = `资源源配置读取失败: ${loadError}（保存已禁用，请刷新页面后重试）`
-    if (reportedLoadFailureRef.current === message) return
-    reportedLoadFailureRef.current = message
-    // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setConfigFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
-  }, [loadError, setStatusMessage])
-
-  useEffect(() => {
-    if (!loaded || !reportedLoadFailureRef.current) return
-    const message = reportedLoadFailureRef.current
-    reportedLoadFailureRef.current = null
-    setConfigFeedback(current => (current?.message === message ? null : current))
-  }, [loaded])
+  const {
+    feedback: configFeedback,
+    setFeedback: setConfigFeedback,
+    saveBlockedReason,
+    save: saveResourceSource,
+  } = useConfigDraftPanel({
+    label: '资源源配置',
+    savingMessage: '正在保存资源源配置...',
+    loadError,
+    loaded,
+    saving,
+    save: saveResourceSourceDraft,
+  })
 
   const updateGit = (patch: Partial<ResourceSourceDraft['git']>) => {
     update({ git: { ...draft.git, ...patch } })
@@ -105,35 +93,8 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     setConfigFeedback(null)
   }
 
-  const handleSave = async () => {
-    if (!loaded) {
-      setConfigFeedback({ type: 'warning', message: blockedSaveMessage })
-      setStatusMessage(blockedSaveMessage, 'warning')
-      return
-    }
-    if (saving) return
-    setConfigFeedback(null)
-    setStatusMessage('正在保存资源源配置...', 'info')
-
-    const outcome = await save()
-    if (outcome.status === 'ignored') return
-
-    if (outcome.status === 'saved') {
-      if (outcome.superseded) {
-        const message = '此前资源源配置已保存，当前更改尚未保存'
-        setConfigFeedback({ type: 'warning', message })
-        setStatusMessage(message, 'warning')
-      } else {
-        const message = '资源源配置保存成功'
-        setConfigFeedback({ type: 'success', message })
-        setStatusMessage(message, 'success')
-      }
-      return
-    }
-
-    const message = `资源源配置保存失败: ${outcome.message ?? '未知错误'}`
-    setConfigFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
+  const handleSave = () => {
+    void saveResourceSource()
   }
 
   const handleReset = () => {
@@ -158,7 +119,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
       saving={saving}
       saveDisabled={!loaded}
       saveBlockedReason={saveBlockedReason}
-      onSave={() => void handleSave()}
+      onSave={handleSave}
       onReset={handleReset}
     >
       <Select

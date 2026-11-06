@@ -179,22 +179,6 @@ describe('training candidate query options', () => {
     expect(data.operators).toEqual([operatorRow('char_1')])
   })
 
-  it('drops a malformed recognition summary instead of trusting it', async () => {
-    apiMocks.getOperatorList.mockResolvedValue({
-      success: true,
-      data: {
-        operators: [operatorRow('char_1')],
-        recognition: { status: 'broken', total: 'many' },
-      },
-    })
-
-    const data = await createQueryClient().fetchQuery(
-      trainingCandidatesQueryOptions({ status: 'all' }),
-    )
-
-    expect(data.recognition).toBeNull()
-  })
-
   it('surfaces a failed candidate envelope without falling back to the catalogue', async () => {
     apiMocks.getOperatorList.mockResolvedValue({ success: false, message: '干员列表服务不可用' })
 

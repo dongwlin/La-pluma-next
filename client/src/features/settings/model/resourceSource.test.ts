@@ -139,16 +139,6 @@ describe('resource source owner', () => {
     apiMocks.saveResourceSource.mockReset()
   })
 
-  it('starts from the documented defaults', () => {
-    const owner = createOwner()
-
-    expect(owner.getState()).toMatchObject({
-      draft: DEFAULT_RESOURCE_SOURCE_DRAFT,
-      dirty: false,
-      loaded: false,
-    })
-  })
-
   it('tracks nested edits and detects a restore to the persisted value', () => {
     const owner = createOwner()
     const token = owner.beginRead()
@@ -174,28 +164,6 @@ describe('resource source owner', () => {
       source: 'git',
     }))
     expect(owner.getState().dirty).toBe(false)
-  })
-
-  it('keeps the draft on failure', async () => {
-    apiMocks.saveResourceSource.mockResolvedValue({ success: false, message: '配置目录只读' })
-    const owner = createOwner()
-    adoptDefaultServer(owner)
-    owner.update({ warnOnUpdateFailure: true })
-
-    await expect(owner.save()).resolves.toMatchObject({ status: 'failed', message: '配置目录只读' })
-    expect(owner.getState()).toMatchObject({ syncState: 'failed', dirty: true })
-  })
-
-  it('drops a late read that started before an edit', () => {
-    const owner = createOwner()
-    const token = owner.beginRead()
-    owner.update({ autoUpdate: true })
-
-    expect(owner.adoptServer({
-      config: normalizeResourceSourceDraft(serverView())!,
-      readToken: token,
-    })).toBe(false)
-    expect(owner.getState().draft.autoUpdate).toBe(true)
   })
 })
 

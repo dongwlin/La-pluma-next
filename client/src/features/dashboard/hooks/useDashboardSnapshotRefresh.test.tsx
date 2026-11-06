@@ -19,9 +19,10 @@ vi.mock('../model/snapshotRefresher', () => ({
   dashboardSnapshotRefresher: { refresh: mocks.refresh },
 }))
 
-vi.mock('@/features/resource-invalidation', () => ({
-  useResourceInvalidation: () => {},
-}))
+vi.mock('@/features/resource-invalidation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/resource-invalidation')>()
+  return { ...actual, useResourceInvalidation: () => {} }
+})
 
 let visibility: DocumentVisibilityState = 'visible'
 let container: HTMLDivElement

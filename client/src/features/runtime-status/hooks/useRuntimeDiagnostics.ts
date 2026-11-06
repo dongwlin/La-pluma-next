@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getErrorMessage, isAbortError } from '@/shared/api'
+import { getErrorMessage } from '@/shared/api'
 import {
   fetchAgentDiagnostics,
   type RuntimeDiagnosticsReport,
@@ -46,10 +46,6 @@ export function useRuntimeDiagnostics(command?: string): RuntimeDiagnosticsState
       })
       .catch((fetchError: unknown) => {
         if (requestId !== requestIdRef.current) return
-        if (isAbortError(fetchError)) {
-          setStatus(reportRef.current ? 'ready' : 'idle')
-          return
-        }
         setError(fetchError instanceof Error ? fetchError.message : '诊断请求失败')
         setStatus('error')
       })

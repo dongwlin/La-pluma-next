@@ -1,9 +1,8 @@
 import { expect, type Page, type Route } from '@playwright/test'
 import {
   apiFixtures,
-  EXTERNAL_IMAGE_HOSTS,
   FIXED_NOW,
-  PLACEHOLDER_PNG_BASE64,
+  installPlaceholderAssetRoutes,
   type ApiFixture,
 } from './fixtures'
 
@@ -102,24 +101,7 @@ export async function installDeterministicEnvironment(
   // 双保险：即便 SW 脚本请求发生，也直接 404（register 已在文档起点被替换为挂起 promise）。
   await page.route('**/sw.js', route => route.fulfill({ status: 404, body: 'sw disabled' }))
 
-  for (const host of EXTERNAL_IMAGE_HOSTS) {
-    await page.route(`https://${host}/**`, (route: Route) => {
-      void route.fulfill({
-        status: 200,
-        contentType: 'image/png',
-        body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
-      })
-    })
-  }
-
-  // 图标与头像改由同源 /game-assets 路由提供，基线仍统一渲染占位图。
-  await page.route('**/game-assets/**', (route: Route) => {
-    void route.fulfill({
-      status: 200,
-      contentType: 'image/png',
-      body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
-    })
-  })
+  await installPlaceholderAssetRoutes(page)
 
   let deviceStatsCalls = 0
   await page.route('**/api/**', async (route: Route) => {
