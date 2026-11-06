@@ -5,10 +5,8 @@ import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
-import { createLaPlumaApp } from '../../app.ts';
 import type { RuntimeEnvSource } from '../../config/runtimeConfig.ts';
 import type { WebrtcSignalingGateway } from '../../services/webrtcSignalingGateway.ts';
-import { WEBRTC_SIGNALING_PATH } from '../../services/webrtcSignalingGateway.ts';
 
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-game-assets-'));
 const assetRoot = join(fixtureDir, 'game-assets');
@@ -32,6 +30,48 @@ const MAA_AVATAR_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x07, 0x08]);
 const GOLD_ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x09, 0x0a]);
 const UPSTREAM_GOLD_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0b, 0x0c]);
 const OUTSIDE_BYTES = Buffer.from('outside-secret');
+const OVERLAY_ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0c, 0x0d]);
+
+// 更新层用例需要候选目录跟随资源源：假 CLI 在导前固定，app.ts 的模块链在导入时读取。
+const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
+const overlayCoreResourceDir = join(fixtureDir, 'overlay-maa', 'resource');
+const overlayCheckoutResourceDir = join(fixtureDir, 'overlay-checkout', 'resource');
+const overlayConfigDir = join(fixtureDir, 'overlay-config');
+
+await writeFile(fakeCliPath, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args[0] === 'dir') {
+  const outputs = {
+    resource: process.env.FAKE_MAA_CORE_RESOURCE_DIR,
+    'hot-update': process.env.FAKE_MAA_HOT_UPDATE_DIR,
+    data: process.env.FAKE_MAA_DATA_DIR,
+    config: process.env.FAKE_MAA_CONFIG_DIR
+  };
+  if (outputs[args[1]] === undefined) process.exit(1);
+  process.stdout.write(outputs[args[1]]);
+  process.exit(0);
+}
+process.exit(1);
+`, { mode: 0o755 });
+delete process.env.MAA_RESOURCE_DIR;
+process.env.MAA_CLI_PATH = fakeCliPath;
+process.env.FAKE_MAA_DATA_DIR = join(fixtureDir, 'overlay-data');
+await mkdir(overlayCoreResourceDir, { recursive: true });
+await mkdir(join(overlayCoreResourceDir, 'template', 'items'), { recursive: true });
+await mkdir(join(overlayCoreResourceDir, 'template', 'avatar'), { recursive: true });
+await mkdir(join(overlayCoreResourceDir, 'gamedata', 'excel'), { recursive: true });
+await mkdir(join(overlayCheckoutResourceDir, 'template', 'items'), { recursive: true });
+await mkdir(overlayConfigDir, { recursive: true });
+await writeFile(join(overlayCoreResourceDir, 'template', 'items', '2001.png'), MAA_ITEM_BYTES);
+await writeFile(join(overlayCoreResourceDir, 'template', 'avatar', 'char_4004_pudd.png'), MAA_AVATAR_BYTES);
+await writeFile(join(overlayCoreResourceDir, 'gamedata', 'excel', 'item_table.json'), JSON.stringify({
+  items: { 2001: { iconId: '2001' } }
+}));
+await writeFile(join(overlayCheckoutResourceDir, 'template', 'items', '2001.png'), OVERLAY_ITEM_BYTES);
+await writeFile(join(overlayConfigDir, 'cli.toml'), '[resource.source]\ntype = "git"\n', 'utf-8');
+
+const { WEBRTC_SIGNALING_PATH } = await import('../../services/webrtcSignalingGateway.ts');
+const { createLaPlumaApp } = await import('../../app.ts');
 
 await mkdir(itemDir, { recursive: true });
 await mkdir(avatarDir, { recursive: true });
@@ -128,7 +168,7 @@ describe('GET /game-assets local icon and avatar routes', () => {
   });
 
   it('serves the MAA resource templates when no asset directory is configured', async () => {
-    const baseUrl = await listen({ MAA_DATA_DIR: maaDataDir });
+    const baseUrl = await listen({ MAA_RESOURCE_DIR: join(maaDataDir, 'resource') });
 
     const item = await fetch(`${baseUrl}/game-assets/item/2001.png`);
     assert.equal(item.status, 200);
@@ -139,6 +179,32 @@ describe('GET /game-assets local icon and avatar routes', () => {
     assert.equal(avatar.status, 200);
     assert.equal(avatar.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await avatar.arrayBuffer()), MAA_AVATAR_BYTES);
+  });
+
+  it('serves update-layer templates first and falls back to the core-shipped layer per file', async () => {
+    const previous = {
+      core: process.env.FAKE_MAA_CORE_RESOURCE_DIR,
+      hotUpdate: process.env.FAKE_MAA_HOT_UPDATE_DIR,
+      config: process.env.FAKE_MAA_CONFIG_DIR
+    };
+    process.env.FAKE_MAA_CORE_RESOURCE_DIR = overlayCoreResourceDir;
+    process.env.FAKE_MAA_HOT_UPDATE_DIR = join(fixtureDir, 'overlay-checkout');
+    process.env.FAKE_MAA_CONFIG_DIR = overlayConfigDir;
+    try {
+      const baseUrl = await listen({});
+
+      const item = await fetch(`${baseUrl}/game-assets/item/2001.png`);
+      assert.equal(item.status, 200);
+      assert.deepEqual(Buffer.from(await item.arrayBuffer()), OVERLAY_ITEM_BYTES);
+
+      const avatar = await fetch(`${baseUrl}/game-assets/avatar/char_4004_pudd.png`);
+      assert.equal(avatar.status, 200);
+      assert.deepEqual(Buffer.from(await avatar.arrayBuffer()), MAA_AVATAR_BYTES);
+    } finally {
+      process.env.FAKE_MAA_CORE_RESOURCE_DIR = previous.core;
+      process.env.FAKE_MAA_HOT_UPDATE_DIR = previous.hotUpdate;
+      process.env.FAKE_MAA_CONFIG_DIR = previous.config;
+    }
   });
 
   it('serves item ids directly and resolves icon id keys through the local item table', async () => {

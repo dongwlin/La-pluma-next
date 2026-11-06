@@ -6,6 +6,9 @@ import { after, describe, it } from 'node:test';
 
 const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-local-resource-'));
 process.env.MAA_DATA_DIR = fixtureRoot;
+// 资源消费者解析先尝试 CLI 候选目录；用必然不存在的 CLI 固定回落到 MAA_DATA_DIR
+// 的纯 env 语义，测试不依赖开发机是否安装了真实 maa。
+process.env.MAA_CLI_PATH = path.join(fixtureRoot, 'missing-maa-cli');
 process.env.LA_PLUMA_TRAINING_DATA_DIR = path.join(fixtureRoot, 'training');
 await mkdir(process.env.LA_PLUMA_TRAINING_DATA_DIR, { recursive: true });
 

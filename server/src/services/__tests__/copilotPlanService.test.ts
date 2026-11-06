@@ -26,6 +26,8 @@ const args = process.argv.slice(2);
 if (process.env.FAKE_MAA_CALL_LOG) fs.appendFileSync(process.env.FAKE_MAA_CALL_LOG, args.join(' ') + '\\n');
 if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
+} else if (args[0] === 'dir' && (args[1] === 'hot-update' || args[1] === 'data')) {
+  process.stdout.write('');
 } else if (args[0] === 'dir' && args[1] === 'config') {
   process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'log') {

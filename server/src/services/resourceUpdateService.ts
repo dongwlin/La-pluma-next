@@ -6,8 +6,10 @@
  * 更新经 maa-cli 原生 `hot-update` 执行，Git 更新在启动子进程前核验官方仓库。
  */
 
-import { readFile, stat } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { resolveResourceRoot } from '../config/paths.ts';
+import type { RuntimeEnvSource } from '../config/runtimeConfig.ts';
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts';
@@ -258,6 +260,61 @@ async function readMaaResourceDirsFromCli(): Promise<string[]> {
   return [...new Set([coreResourceDir, ...baseResourceDirs].filter(dir => dir.length > 0))];
 }
 
+let effectiveDirsCache: Promise<string[]> | null = null;
+
+export interface EffectiveResourceDirsOptions {
+  env?: RuntimeEnvSource;
+}
+
+/**
+ * 资源消费者的候选目录，加载序即优先级升序（先加载者最低）。显式 `MAA_RESOURCE_DIR`
+ * 独占生效并完全跳过 CLI，保持资源路径重定向部署的确定性；否则与资源状态探测共用
+ * 同一份目录清单，不维护第二份目录模型。CLI 解析失败不缓存失败：本次回退到进程内
+ * 可解析的基础资源根（与既有单目录行为一致），下一次调用重新尝试。
+ */
+export async function getEffectiveResourceDirs(options: EffectiveResourceDirsOptions = {}): Promise<string[]> {
+  const env = options.env ?? process.env;
+  const pinned = env.MAA_RESOURCE_DIR?.trim();
+  if (pinned) return [pinned];
+  effectiveDirsCache ??= readMaaResourceDirsFromCli().catch(error => {
+    effectiveDirsCache = null;
+    logger.warn('解析 MAA 资源候选目录失败，回退到本地基础资源目录', { error: errorMessageOf(error) });
+    return [resolveResourceRoot({ env })];
+  });
+  return effectiveDirsCache;
+}
+
+/** 失效候选目录缓存；资源更新成功后由更新流程调用，让消费者跟随新目录。 */
+export function resetEffectiveResourceDirsCache(): void {
+  effectiveDirsCache = null;
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 按文件解析生效资源路径：候选目录自后向前取第一个存在的文件，与 MaaCore
+ * 「后加载者覆盖同名文件」的语义一致；全部缺失时返回首个候选目录下的同相对
+ * 路径，调用方按既有缺失语义处理（回退默认值、报错或网络回源），不做二次探测。
+ */
+export async function resolveEffectiveResourceFilePath(
+  relativePath: string,
+  options: EffectiveResourceDirsOptions = {}
+): Promise<string> {
+  const dirs = await getEffectiveResourceDirs(options);
+  for (let index = dirs.length - 1; index >= 0; index -= 1) {
+    const filePath = join(dirs[index], relativePath);
+    if (await pathExists(filePath)) return filePath;
+  }
+  return join(dirs[0] ?? resolveResourceRoot(options), relativePath);
+}
+
 async function readResourceVersionFile(versionPath: string): Promise<ResourceVersionFile> {
   const [content, fileStat] = await Promise.all([
     readFile(versionPath, 'utf-8'),
@@ -321,6 +378,9 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
 
   async function performUpdate(options: ResourceUpdateRunOptions): Promise<ResourceUpdateResult> {
     const output = await runHotUpdate(options);
+    // 资源同步可能迁移 MirrorChyan 快照或首次创建覆盖层目录：先失效候选目录缓存，
+    // 投影读取与后续消费者解析才能看到更新后的目录。
+    resetEffectiveResourceDirsCache();
     return {
       output,
       resource: await getResourceInfo()

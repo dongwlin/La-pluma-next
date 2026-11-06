@@ -1,15 +1,11 @@
-import { readFile } from 'fs/promises';
+import { readFile, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { readJsonFile, writeJsonFile, ensureDir } from '../utils/fileHelper.ts';
 import { successResponse, errorResponse, safeJsonParse } from '../utils/apiHelper.ts';
 import type { ApiErrorResponse, ApiSuccessResponse } from '../utils/apiHelper.ts';
 import { createLogger } from '../utils/logger.ts';
-import {
-  getMaaLogPath,
-  getItemIndexPath,
-  getItemTablePath,
-  getBattleDataPath
-} from '../config/paths.ts';
+import { getMaaLogPath } from '../config/paths.ts';
+import { resolveEffectiveResourceFilePath } from './resourceUpdateService.ts';
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import { getCallbackDetails, parseMaaCallbackEvents } from './maaCallbackService.ts';
 import type { MaaCallbackEvent } from './maaCallbackService.ts';
@@ -122,15 +118,25 @@ interface DataParserContext {
   fetchItemTable: () => Promise<unknown>;
 }
 
-// 物品索引/物品表缓存按文件路径保存：同一进程内不同路径互不复用，
-// 生产环境路径固定，行为与单一缓存一致。
+// 物品索引/物品表缓存按「路径 + 文件签名」保存：资源更新原地覆盖同名文件或
+// 让生效路径在基础资源与更新层之间迁移，签名不符时重新读取，不主动清缓存。
 interface PathCache<T> {
   path: string;
+  signature: string;
   value: T;
 }
 
 let itemIndexCache: PathCache<Record<string, ItemIndexEntry>> | null = null;
 let itemTableCache: PathCache<Record<string, ItemTableEntry>> | null = null;
+
+async function resourceFileSignature(path: string): Promise<string> {
+  try {
+    const fileStat = await stat(path);
+    return `${fileStat.mtimeMs}:${fileStat.size}`;
+  } catch {
+    return '';
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -140,11 +146,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function createContext(ports: DataParserPorts): DataParserContext {
+async function createContext(ports: DataParserPorts): Promise<DataParserContext> {
   return {
-    itemIndexPath: ports.itemIndexPath || getItemIndexPath(),
-    itemTablePath: ports.itemTablePath || getItemTablePath(),
-    battleDataPath: ports.battleDataPath || getBattleDataPath(),
+    itemIndexPath: ports.itemIndexPath || await resolveEffectiveResourceFilePath('item_index.json'),
+    itemTablePath: ports.itemTablePath || await resolveEffectiveResourceFilePath(join('gamedata', 'excel', 'item_table.json')),
+    battleDataPath: ports.battleDataPath || await resolveEffectiveResourceFilePath('battle_data.json'),
     maaLogPath: ports.maaLogPath || getMaaLogPath(),
     // 仓库/干员识别缓存与养成数据共用 LA_PLUMA_TRAINING_DATA_DIR；
     // 未显式注入时每次按当前配置解析，测试与重定向部署不会写回源码目录。
@@ -188,14 +194,15 @@ export function parseItemTable(value: unknown): Record<string, ItemTableEntry> {
 }
 
 async function loadItemIndex(context: DataParserContext): Promise<Record<string, ItemIndexEntry>> {
-  if (itemIndexCache && itemIndexCache.path === context.itemIndexPath) {
+  const signature = await resourceFileSignature(context.itemIndexPath);
+  if (itemIndexCache && itemIndexCache.path === context.itemIndexPath && itemIndexCache.signature === signature) {
     return itemIndexCache.value;
   }
 
   try {
     const rawIndex = await readJsonFile(context.itemIndexPath, {});
     const itemIndex = parseItemIndex(rawIndex);
-    itemIndexCache = { path: context.itemIndexPath, value: itemIndex };
+    itemIndexCache = { path: context.itemIndexPath, signature, value: itemIndex };
     logger.info(`物品索引加载成功，共 ${Object.keys(itemIndex).length} 种物品`);
     return itemIndex;
   } catch (error) {
@@ -205,7 +212,8 @@ async function loadItemIndex(context: DataParserContext): Promise<Record<string,
 }
 
 async function loadItemTable(context: DataParserContext): Promise<Record<string, ItemTableEntry>> {
-  if (itemTableCache && itemTableCache.path === context.itemTablePath) {
+  const signature = await resourceFileSignature(context.itemTablePath);
+  if (itemTableCache && itemTableCache.path === context.itemTablePath && itemTableCache.signature === signature) {
     return itemTableCache.value;
   }
 
@@ -214,7 +222,7 @@ async function loadItemTable(context: DataParserContext): Promise<Record<string,
     const localData = await readJsonFile(context.itemTablePath, null);
     if (localData) {
       const items = parseItemTable(localData);
-      itemTableCache = { path: context.itemTablePath, value: items };
+      itemTableCache = { path: context.itemTablePath, signature, value: items };
       logger.info(`物品表从本地加载成功，共 ${Object.keys(items).length} 种物品`);
       return items;
     }
@@ -223,7 +231,7 @@ async function loadItemTable(context: DataParserContext): Promise<Record<string,
     const data = await context.fetchItemTable();
 
     const items = parseItemTable(data);
-    itemTableCache = { path: context.itemTablePath, value: items };
+    itemTableCache = { path: context.itemTablePath, signature, value: items };
     logger.success(`物品表从网络加载成功，共 ${Object.keys(items).length} 种物品`);
 
     await ensureDir(dirname(context.itemTablePath));
@@ -447,7 +455,7 @@ export async function parseDepotData(
   ports: DataParserPorts = {}
 ): Promise<ApiSuccessResponse<DepotRecognitionResult> | ApiErrorResponse | null> {
   try {
-    const context = createContext(ports);
+    const context = await createContext(ports);
     const logPath = context.maaLogPath;
     logger.info('开始解析仓库数据', { logPath });
 
@@ -504,7 +512,7 @@ export async function parseOperBoxData(
   ports: DataParserPorts = {}
 ): Promise<ApiSuccessResponse<OperBoxRecognitionResult> | ApiErrorResponse | null> {
   try {
-    const context = createContext(ports);
+    const context = await createContext(ports);
     const logPath = context.maaLogPath;
     logger.info('开始解析干员数据', { logPath });
 
@@ -565,7 +573,7 @@ export async function parseOperBoxData(
 }
 
 export async function getDepotData(ports: DataParserPorts = {}): Promise<DepotFile | null> {
-  const context = createContext(ports);
+  const context = await createContext(ports);
   const filePath = join(context.dataDir, 'depot.json');
   const rawDepot = await readJsonFile(filePath, null);
   if (rawDepot === null) return null;
@@ -579,7 +587,7 @@ export async function getDepotData(ports: DataParserPorts = {}): Promise<DepotFi
 }
 
 export async function getOperBoxData(ports: DataParserPorts = {}): Promise<OperBoxFile | null> {
-  const context = createContext(ports);
+  const context = await createContext(ports);
   const filePath = join(context.dataDir, 'operbox.json');
   const rawOperBox = await readJsonFile(filePath, null);
   if (rawOperBox === null) return null;
@@ -604,7 +612,7 @@ function parseOperator(id: string, value: unknown): OperatorSummary | null {
 
 export async function getAllOperators(ports: DataParserPorts = {}): Promise<OperatorSummary[]> {
   try {
-    const context = createContext(ports);
+    const context = await createContext(ports);
     const data = await readJsonFile(context.battleDataPath);
 
     if (!isRecord(data) || !isRecord(data.chars)) {

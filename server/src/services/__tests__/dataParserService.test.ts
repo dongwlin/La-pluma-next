@@ -465,7 +465,7 @@ describe('parseDepotData', () => {
     assert.equal(fetchCount, 1, 'the downloaded item table is cached for later recognitions');
   });
 
-  it('keeps cached index data for a path after the file changes on disk', async () => {
+  it('re-reads cached index data when the file changes on disk', async () => {
     const fixture = await createFixture();
     await writeItemFixture(fixture);
     await writeFile(fixture.maaLogPath, depotRun({ 30011: 1 }).join('\n'), 'utf-8');
@@ -477,8 +477,8 @@ describe('parseDepotData', () => {
       30011: { name: '改名后的源岩', icon: '30011.png', classifyType: 'NORMAL', sortId: 10001 }
     }), 'utf-8');
 
-    const cached = expectSuccess(await parseDepotData(fixture.ports));
-    assert.equal(cached.items[0].name, '源岩', 'the per-path index cache is reused within one process');
+    const reloaded = expectSuccess(await parseDepotData(fixture.ports));
+    assert.equal(reloaded.items[0].name, '改名后的源岩', 'the file signature invalidates the cached index');
 
     const other = await createFixture();
     await writeFile(other.itemIndexPath, JSON.stringify({
@@ -488,8 +488,8 @@ describe('parseDepotData', () => {
     await writeFile(other.itemTablePath, JSON.stringify({ items: { 30011: { iconId: 'ROCK' } } }), 'utf-8');
     await writeFile(other.maaLogPath, depotRun({ 30011: 1 }).join('\n'), 'utf-8');
 
-    const reloaded = expectSuccess(await parseDepotData(other.ports));
-    assert.equal(reloaded.items[0].name, '另一份索引');
+    const fromOtherPath = expectSuccess(await parseDepotData(other.ports));
+    assert.equal(fromOtherPath.items[0].name, '另一份索引');
   });
 
   it('keeps the recognition cache untouched when the log file is missing', async () => {
