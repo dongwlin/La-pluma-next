@@ -26,6 +26,16 @@ const maaCacheDir = join(fixtureDir, 'maa-cache');
 const dropRecordsDir = join(fixtureDir, 'drop-records');
 const progressPath = join(fixtureDir, 'copilot-progress.json');
 const planDir = join(maaConfigDir, 'copilot-plans', '42');
+const maaProfilePath = join(maaConfigDir, 'profiles', 'default.toml');
+
+async function setConnectionClientType(clientType: string | null): Promise<void> {
+  if (!clientType) {
+    await rm(maaProfilePath, { force: true });
+    return;
+  }
+  await mkdir(join(maaConfigDir, 'profiles'), { recursive: true });
+  await writeFile(maaProfilePath, `[connection]\nclient_type = "${clientType}"\n`);
+}
 
 await mkdir(join(baseResourceDir, 'Arknights-Tile-Pos'), { recursive: true });
 await mkdir(maaConfigDir, { recursive: true });
@@ -92,6 +102,13 @@ const readTaskToml = () => {
   }
   if (args[0] === 'copilot') {
     appendCall('copilot ' + args.slice(1).join(' '));
+    if (process.env.FAKE_NATIVE_LOG_UNREADABLE) {
+      fs.rmSync(process.env.FAKE_MAA_LOG_FILE || '', { force: true });
+      fs.mkdirSync(process.env.FAKE_MAA_LOG_FILE || '');
+    }
+    if (process.env.FAKE_NATIVE_TRUNCATE_LOG) {
+      fs.writeFileSync(process.env.FAKE_MAA_LOG_FILE || '', '');
+    }
     const copilotCacheDir = path.join(process.env.MAA_CACHE_DIR || '', 'copilot');
     for (const uri of args.slice(1)) {
       const id = /^prts:\\/\\/(\\d+)$/.exec(uri)?.[1];
@@ -129,6 +146,7 @@ const readTaskToml = () => {
 );
 `, { mode: 0o755 });
 
+delete process.env.MAA_CLIENT_TYPE;
 process.env.MAA_CLI_PATH = fakeMaaCliPath;
 process.env.FAKE_MAA_CALL_LOG = maaCallLog;
 process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
@@ -197,8 +215,12 @@ beforeEach(async () => {
   delete process.env.FAKE_RUN_LOADS;
   delete process.env.FAKE_RUN_EXIT_CODE;
   delete process.env.FAKE_RUN_EXIT_DELAY;
+  delete process.env.FAKE_NATIVE_LOG_UNREADABLE;
+  delete process.env.FAKE_NATIVE_TRUNCATE_LOG;
   await writeFile(maaCallLog, '');
+  await rm(maaAsstLog, { recursive: true, force: true });
   await writeFile(maaAsstLog, '');
+  await setConnectionClientType(null);
   await rm(progressPath, { force: true });
   await rm(planDir, { recursive: true, force: true });
   await rm(join(maaCacheDir, 'copilot'), { recursive: true, force: true });
@@ -350,6 +372,19 @@ describe('copilot native delegation conditions', () => {
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
   });
 
+  test('rejects queues when the connection runs a non-Official client type', async () => {
+    setNativeDelegationEnabled(true);
+    await setConnectionClientType('YoStarEN');
+
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'unsupported-client-type'
+    });
+
+    await setConnectionClientType(null);
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+  });
+
   test('rejects queues whose native command would change the MaaCore task params', async () => {
     setNativeDelegationEnabled(true);
     const two = queueOf(2);
@@ -481,6 +516,28 @@ describe('copilot native delegation execution', () => {
     );
   });
 
+  test('keeps the existing flow when the connection client type is not the native default', async () => {
+    setNativeDelegationEnabled(true);
+    await setConnectionClientType('YoStarEN');
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    const tomlLine = calls.find(call => call.startsWith('toml '));
+    assert.ok(tomlLine);
+    const toml = JSON.parse(tomlLine.slice('toml '.length)) as string;
+    assert.match(toml, /client_type = "YoStarEN"/);
+    assert.equal(outcome.success, true);
+    assert.equal(outcome.delegation, undefined);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['success', 'success', 'success']
+    );
+  });
+
   test('runs the existing flow for explicit disable and unrecognized values', async () => {
     for (const value of ['off', 'maybe']) {
       await resetRunArtifacts();
@@ -602,6 +659,54 @@ describe('copilot native delegation execution', () => {
       ['failed', 'failed', 'failed']
     );
     assert.deepEqual((await readProgress())['42'], []);
+  });
+
+  test('does not fall back when the incremental log was truncated', async () => {
+    setNativeDelegationEnabled(true);
+    process.env.FAKE_NATIVE_TRUNCATE_LOG = '1';
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+    await writeFile(maaAsstLog, 'checkpoint-before-native');
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
+    assert.deepEqual(outcome.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-failed'
+    });
+    assert.ok(outcome.error);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['failed', 'failed', 'failed']
+    );
+  });
+
+  test('does not fall back when the incremental log is unreadable', async () => {
+    setNativeDelegationEnabled(true);
+    process.env.FAKE_NATIVE_LOG_UNREADABLE = '1';
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    try {
+      const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+      const calls = await readMaaCalls();
+      assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+      assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
+      assert.deepEqual(outcome.delegation, {
+        attempted: true,
+        fallback: false,
+        outcome: 'native-failed'
+      });
+      assert.ok(outcome.error);
+    } finally {
+      await rm(maaAsstLog, { recursive: true, force: true });
+      await writeFile(maaAsstLog, '');
+    }
   });
 
   test('treats a stop during the native command as stopped instead of falling back', async () => {

@@ -386,6 +386,58 @@ describe('schedule flow boundaries', () => {
     assert.deepEqual(status.lastResult, result.summary);
   });
 
+  it('counts unconfirmed award results as failed instead of skipped', async () => {
+    const { ports, calls } = createPorts({ readLogSince: async () => '' });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    const result = completedResult(await executor.execute([
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-award-unconfirmed'));
+
+    assert.equal(calls.commands.length, 1);
+    assert.equal(result.summary.failedCount, 1);
+    assert.equal(result.summary.skippedCount, 0);
+    assert.equal(result.summary.successCount, 0);
+    assert.deepEqual(result.summary.taskResults.map(task => task.status), ['failed']);
+    assert.equal(result.summary.errors.length, 1);
+    assert.match(result.summary.errors[0].error, /无法读取领取日志/);
+    assert.equal(result.summary.actions[0].status, 'failed');
+  });
+
+  it('counts a partially confirmed award task as failed rather than success', async () => {
+    const callback = (payload: Record<string, unknown>): string =>
+      `Assistant::append_callback | SubTaskCompleted ${JSON.stringify({
+        taskchain: 'Award',
+        ...payload
+      })}`;
+    const { ports, calls } = createPorts({
+      readLogSince: async () => callback({ first: ['AwardBegin'], details: { task: 'ReceiveAward' } })
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    const result = completedResult(await executor.execute([
+      {
+        id: 'award-1',
+        commandId: 'award',
+        name: '领取奖励',
+        enabled: true,
+        params: { award: true, mail: true, orundum: true }
+      }
+    ], 'flow-award-partial'));
+
+    assert.equal(calls.commands.length, 1);
+    assert.deepEqual(
+      result.summary.actions.map(action => action.status),
+      ['success', 'failed', 'failed']
+    );
+    assert.equal(result.summary.failedCount, 1);
+    assert.equal(result.summary.successCount, 0);
+    assert.equal(result.summary.skippedCount, 0);
+    assert.deepEqual(result.summary.taskResults.map(task => task.status), ['failed']);
+    assert.equal(result.summary.errors.length, 2);
+    assert.match(result.summary.errors[0].error, /邮件奖励未观察到领取回调/);
+    assert.match(result.summary.errors[1].error, /合成玉活动奖励未观察到领取回调/);
+  });
 
   it('aborts the closedown pre-depot delay when the flow is stopped', async () => {
     const { ports, calls } = createPorts();

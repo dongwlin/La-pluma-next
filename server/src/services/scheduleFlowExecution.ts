@@ -513,8 +513,18 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             await readLogSince(logCheckpoint)
           );
           actionResults.push(...awardActions);
-          if (awardActions.some(action => action.status === 'success')) successCount++;
-          else skippedCount++;
+          const failedAwardActions = awardActions.filter(action => action.status === 'failed');
+          if (failedAwardActions.length > 0) {
+            failedCount++;
+            for (const action of failedAwardActions) {
+              errors.push({ task: task.name, error: action.message });
+            }
+          } else if (awardActions.some(action => action.status === 'success')) {
+            successCount++;
+          } else {
+            skippedCount++;
+            skipped.push({ task: task.name, reason: awardActions[0].message });
+          }
 
           if (shouldCaptureNotificationScreenshot()) {
             logger.info('图片通知已启用，领取奖励完成后截图', { scheduleId });
