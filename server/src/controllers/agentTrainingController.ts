@@ -4,8 +4,7 @@ import type { TrainingSettings } from '../services/operatorTrainingModel.ts';
 import type { ApplyPlanResult, QueueMutationResult } from '../services/operatorTrainingApplication.ts';
 import type { TrainingPlan } from '../services/operatorTrainingPlan.ts';
 import { isRecord } from '../services/operatorTrainingModel.ts';
-import { LocalResourceError } from '../services/operatorTrainingStore.ts';
-import { agentError, sendDryRun, sendSuccess } from '../utils/apiHelper.ts';
+import { sendDryRun, sendSuccess } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
 import {
   parseApplyPlanBody,
@@ -66,31 +65,11 @@ export async function updateSettings(req: TrainingRequest, res: ApiResponseWrite
   return sendSuccess(res, req, payload, '设置已更新');
 }
 
-/**
- * 本地 MAA 资源是用户可修复的部署依赖：缺失或损坏时返回可行动的 503，
- * 而不是统一 500；其它异常原样交回统一错误出口。
- */
-function mapLocalResourceError(error: unknown): unknown {
-  if (!(error instanceof LocalResourceError)) return error;
-  const missing = error.code === 'LOCAL_RESOURCE_MISSING';
-  const message = missing
-    ? `本地 MAA 游戏资源缺失（${error.resourcePath}），请先获取游戏资源后重试，或检查 MAA 资源目录`
-    : `本地 MAA 游戏资源不可用（${error.message}），请检查 MAA 资源目录后重试，必要时重新获取游戏资源`;
-  const details: Record<string, unknown> = { resourcePath: error.resourcePath };
-  if (error.field !== undefined) details.field = error.field;
-  return agentError(error.code, message, { statusCode: 503, details, retryable: missing });
-}
-
 export async function generatePlan(req: TrainingRequest, res: ApiResponseWriter): Promise<void> {
   // 模式先校验：非法请求不解析连接；关卡开放按连接 profile 的客户端游戏日判定。
   const mode = parsePlanModeBody(req.body);
   const { clientType } = await resolveRequestConnection(req, { allowOverrides: true });
-  let payload: TrainingPlan;
-  try {
-    payload = await operatorTrainingService.generateTrainingPlan(mode, { clientType });
-  } catch (error) {
-    throw mapLocalResourceError(error);
-  }
+  const payload: TrainingPlan = await operatorTrainingService.generateTrainingPlan(mode, { clientType });
   return sendSuccess(res, req, payload);
 }
 

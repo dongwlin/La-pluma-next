@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/apiHelper.ts';
-import type { ApiResponseWriter } from '../utils/apiHelper.ts';
+import type { ApiResponseWriter, MaybeApiRequest, NextLike } from '../utils/apiHelper.ts';
 import type { TrainingQueueRemoveRequest, TrainingRequest } from '../controllers/trainingDto.ts';
 import * as agentTrainingController from '../controllers/agentTrainingController.ts';
+import { mapLocalResourceError } from '../controllers/trainingErrorMapping.ts';
 
 const router = Router();
 
@@ -25,5 +26,16 @@ router.post('/training/plan', asyncHandler<TrainingRequest, ApiResponseWriter>(a
 router.post('/actions/apply-training-plan', asyncHandler<TrainingRequest, ApiResponseWriter>(agentTrainingController.applyPlan));
 
 router.post('/actions/fetch-training-materials', asyncHandler<TrainingRequest, ApiResponseWriter>(agentTrainingController.fetchMaterials));
+
+function mapTrainingLocalResourceError(
+  error: unknown,
+  _req: MaybeApiRequest,
+  _res: ApiResponseWriter,
+  next: NextLike
+): void {
+  next(mapLocalResourceError(error));
+}
+
+router.use(mapTrainingLocalResourceError);
 
 export default router;
