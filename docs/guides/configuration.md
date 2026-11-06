@@ -28,7 +28,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 | --- | --- | --- |
 | `[connection].preset` | 是 | `ADB` / `MuMuPro` / `PlayCover` / `Waydroid` / `Androws` |
 | `[connection].adb_path` / `address` / `config` | 是 | 显式值优先于预设默认值 |
-| `[connection].type` / `device` 别名 | 原样透传保留 | 不做读取归一与保存校验；读取与保存都作为未知字段原样保留 |
+| `[connection].type` / `device` 旧别名 | 是（自动迁移） | 读取与保存都迁移为 `preset` / `address`；正名缺失时旧键值补位，两键并存时正名优先，保存后不再写回旧键 |
 | `[behavior].auto_reconnect` | 是 | 旧版写在 `[connection]` 的值只在 `[behavior]` 缺失时兼容读取 |
 | `[instance_options]` 四项 | 是 | `touch_mode`、`deployment_with_pause`、`adb_lite_enabled`、`kill_adb_on_exit` |
 | `[instance_options]` 未知字段 | 保留 | 不展示，保存时不覆盖 |
