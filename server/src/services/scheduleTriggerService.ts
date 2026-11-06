@@ -8,6 +8,10 @@ import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
 import { gameTimeZoneForClientType } from './gameCalendar.ts';
 import { createLogger } from '../utils/logger.ts';
+import type { CliUpdaterOptions, CliUpdaterPlan, CliUpdaterResult } from './cliUpdaterService.ts';
+import type { CliUpdateChannel, CliUpdateCapabilities, UpdateChannels } from './updateChannelService.ts';
+import type { MaaExecutionLease, MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
+import type { ResourceInfo } from './resourceUpdateService.ts';
 import type { ScheduledTask } from './scheduleFlowPlan.ts';
 
 // 定时触发源：cron 注册、替换、停止与自动更新作业；触发回调只调用注入的执行入口，
@@ -198,57 +202,108 @@ function cronExpressionForTime(time: string): string {
   return `${minute} ${hour} * * *`;
 }
 
+/** 自动更新作业的可替换边界；默认全部使用真实实现，cron 调用方只传配置。 */
+export interface AutoUpdateJobDependencies {
+  execUpdate?: () => Promise<unknown>;
+  getResourceInfo?: () => Promise<ResourceInfo>;
+  readChannels?: () => Promise<UpdateChannels>;
+  readCapabilities?: () => Promise<CliUpdateCapabilities>;
+  buildCliPlan?: (channel: CliUpdateChannel, options: CliUpdaterOptions) => Promise<CliUpdaterPlan>;
+  runCliUpdater?: (plan: CliUpdaterPlan) => Promise<CliUpdaterResult>;
+  withLease?: <T>(
+    owner: MaaExecutionLeaseRequest,
+    callback: (lease: MaaExecutionLease) => T | Promise<T>
+  ) => Promise<T>;
+}
+
 /**
  * 执行一次自动更新；抽成独立函数供注册表调用，注册本身不包含执行。
+ * 核心与 CLI 更新是独立开关，各自失败会汇总后整体抛错，让触发层记录失败终态。
  */
-export async function runAutoUpdateJob(config: AutoUpdateConfig = {}): Promise<void> {
+export async function runAutoUpdateJob(
+  config: AutoUpdateConfig = {},
+  dependencies: AutoUpdateJobDependencies = {}
+): Promise<void> {
   const { time, updateCore, updateCli } = config;
+  const {
+    execUpdate = () => execMaaCommand('update', [], null, null, false, false, undefined, {
+      execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
+      managedTaskName: '自动更新 MAA'
+    }),
+    getResourceInfo = getMaaResourceInfo,
+    readChannels = readUpdateChannels,
+    readCapabilities = readCliUpdateCapabilities,
+    buildCliPlan = buildCliUpdaterPlan,
+    runCliUpdater: runCli = runCliUpdater,
+    withLease = withMaaExecutionLease
+  } = dependencies;
+  const failures: string[] = [];
 
   logger.info('自动更新触发执行', { time });
 
   try {
-    await withMaaExecutionLease({ source: 'auto-update', taskName: '自动更新 MAA', command: 'update' }, async () => {
+    await withLease({ source: 'auto-update', taskName: '自动更新 MAA', command: 'update' }, async () => {
       if (updateCore) {
         logger.info('开始更新 MaaCore 与资源');
-        await execMaaCommand('update', [], null, null, false, false, undefined, {
-          execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
-          managedTaskName: '自动更新 MAA'
-        });
-        const resource = await getMaaResourceInfo().catch(() => null);
-        logger.success('MaaCore 与资源更新完成', {
-          lastUpdated: resource?.lastUpdated ?? null
-        });
+        let coreUpdated = false;
+        try {
+          await execUpdate();
+          coreUpdated = true;
+        } catch (error) {
+          failures.push(`MaaCore 与资源更新失败: ${errorMessageOf(error)}`);
+          logger.error('MaaCore 与资源更新失败', { error: errorMessageOf(error) });
+        }
+        if (coreUpdated) {
+          try {
+            const resource = await getResourceInfo();
+            logger.success('MaaCore 与资源更新完成', {
+              lastUpdated: resource.lastUpdated
+            });
+          } catch (error) {
+            failures.push(`读取 Maa 资源信息失败: ${errorMessageOf(error)}`);
+            logger.error('读取 Maa 资源信息失败', { error: errorMessageOf(error) });
+          }
+        }
       }
 
       if (updateCli) {
         logger.info('开始更新 MAA CLI');
-
-        const [channels, capabilities] = await Promise.all([
-          readUpdateChannels(),
-          readCliUpdateCapabilities()
-        ]);
-        const plan = await buildCliUpdaterPlan(channels.cli, {
-          binaryEnabled: capabilities.binary
-        });
+        let plan: CliUpdaterPlan | null = null;
         try {
-          await runCliUpdater(plan);
+          const [channels, capabilities] = await Promise.all([
+            readChannels(),
+            readCapabilities()
+          ]);
+          plan = await buildCliPlan(channels.cli, {
+            binaryEnabled: capabilities.binary
+          });
+          await runCli(plan);
           logger.success('MAA CLI 更新完成', {
             source: plan.source,
             channel: plan.channel
           });
         } catch (error) {
+          failures.push(`MAA CLI 更新失败: ${errorMessageOf(error)}`);
           logger.error('MAA CLI 更新失败', {
             error: errorMessageOf(error),
-            source: plan.source,
-            channel: plan.channel
+            ...(plan ? { source: plan.source, channel: plan.channel } : {})
           });
         }
       }
 
-      logger.success('所有自动更新任务完成');
+      if (failures.length > 0) {
+        logger.error('自动更新部分失败', { failures });
+      } else {
+        logger.success('所有自动更新任务完成');
+      }
     });
   } catch (error) {
     logger.error('自动更新失败', { error: errorMessageOf(error) });
+    throw error;
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`自动更新部分失败: ${failures.join('; ')}`);
   }
 }
 
