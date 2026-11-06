@@ -656,6 +656,27 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     assert.equal(await callCliLog(), cliBefore);
   });
 
+  it('rejects invalid update channels before reading or writing persisted configuration', async () => {
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+    const cliBefore = await callCliLog();
+
+    const invalidCore = await postJson(`${baseUrl}/actions/update-core`, { dryRun: true, version: 'nightly' });
+    assert.equal(invalidCore.status, 400);
+    const invalidCoreBody = await readError(invalidCore);
+    assert.equal(invalidCoreBody.error.code, 'AGENT_MAA_UPDATE_CORE_CHANNEL_INVALID');
+    assert.deepEqual(invalidCoreBody.error.details, { version: 'nightly' });
+
+    const invalidCli = await postJson(`${baseUrl}/actions/update-cli`, { dryRun: true, channel: 'alpha' });
+    assert.equal(invalidCli.status, 400);
+    const invalidCliBody = await readError(invalidCli);
+    assert.equal(invalidCliBody.error.code, 'AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID');
+    assert.deepEqual(invalidCliBody.error.details, { channel: 'alpha' });
+
+    // 参数校验先于配置读取与执行：不启动 CLI，也不留下 Run。
+    assert.equal(await callCliLog(), cliBefore);
+  });
+
   it('rejects invalid schedule registrations without registering a trigger', async () => {
     const port = await listen(createLaPlumaApp({ env: {} }));
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;

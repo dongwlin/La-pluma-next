@@ -564,9 +564,16 @@ function resourceUpdatePayload(
 export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const { version, dryRun } = parseUpdateCoreBody(req.body);
   const waitForCompletion = parseUpdateWaitForCompletion(req.body);
-  const channels = await readUpdateChannels();
   const requestedChannel = isCoreUpdateChannel(version) ? version : null;
-  const targetChannel = requestedChannel ?? (version === undefined ? channels.core : 'current');
+  if (version !== undefined && version !== null && requestedChannel === null) {
+    return sendError(res, req, agentError('AGENT_MAA_UPDATE_CORE_CHANNEL_INVALID', '不支持的 MaaCore 更新渠道', {
+      statusCode: 400,
+      details: { version }
+    }));
+  }
+  const targetChannel = requestedChannel ?? (version === undefined
+    ? (await readUpdateChannels()).core
+    : 'current');
   const corePlan: MaintenanceUpdatePlanStep = requestedChannel
     ? { action: 'update-core', targetChannel: requestedChannel, command: 'install', args: [requestedChannel, '--force'] }
     : { action: 'update-core', targetChannel, command: 'update', args: [] };
@@ -604,7 +611,6 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
 export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const { channel, dryRun } = parseUpdateCliBody(req.body);
   const waitForCompletion = parseUpdateWaitForCompletion(req.body);
-  const channels = await readUpdateChannels();
   const explicitChannel = isCliUpdateChannel(channel) ? channel : null;
   if (channel !== undefined && explicitChannel === null) {
     return sendError(res, req, agentError('AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID', '不支持的 MAA CLI 更新渠道', {
@@ -612,6 +618,7 @@ export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter)
       details: { channel }
     }));
   }
+  const channels = await readUpdateChannels();
   const targetChannel = explicitChannel ?? channels.cli;
   const capabilities = await readCliUpdateCapabilities();
   const updater = await buildCliUpdaterPlan(targetChannel, {
