@@ -201,7 +201,7 @@ describe('buildDashboardActivityView', () => {
         startTime: 1_760_000_000_000,
         endTime: 1_760_100_000_000,
         stages: ['TL-9', 'TL-8'],
-        rerun: true,
+        rerun: false,
         activities: [
           {
             code: 'TL',
@@ -223,7 +223,7 @@ describe('buildDashboardActivityView', () => {
       }),
     })
 
-    expect(result.detail).toContain('复刻')
+    expect(result.detail).not.toContain('复刻')
     expect(result.detail).toContain('2 个关卡')
     expect(result.activities).toEqual([
       {

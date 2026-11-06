@@ -27,6 +27,7 @@ const xdgConfigHome = join(fixtureDir, 'xdg-config');
 const resourceDir = join(xdgDataHome, 'maa', 'resource');
 const fakeCliPath = join(fixtureDir, 'fake-maa-cli.js');
 const fakeAdbPath = join(fixtureDir, 'fake-adb.js');
+const brokenAdbPath = join(fixtureDir, 'fake-adb-broken.js');
 const cliCallLog = join(fixtureDir, 'maa-calls.log');
 const adbCallLog = join(fixtureDir, 'adb-calls.log');
 const deviceAddress = '127.0.0.1:7555';
@@ -79,6 +80,11 @@ if (args[0] === 'version') {
     process.stdout.write('mCurrentFocus=Window{1a2b3c com.hypergryph.arknights/.MainActivity}\\n');
   }
 }
+`, { mode: 0o755 });
+
+await writeFile(brokenAdbPath, `#!${process.execPath}
+process.stderr.write('adb: cannot start daemon\\n');
+process.exit(1);
 `, { mode: 0o755 });
 
 process.env.MAA_CLI_PATH = fakeCliPath;
@@ -280,6 +286,50 @@ describe('GET /api/agent/diagnostics HTTP contract', () => {
     assert.equal(body.error.retryable, false);
     assert.deepEqual(body.error.details, { profileId: 'bad id!' });
 
+    resetAgentDiagnosticsProbeCachesForTests();
+  });
+});
+
+describe('GET /api/agent/diagnostics connection probe failure', () => {
+  it('reports an ADB launch failure as the connection probe error', async () => {
+    resetAgentDiagnosticsProbeCachesForTests();
+    const port = await startHttpServer(
+      createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH) }),
+      servers
+    );
+    const query = new URLSearchParams({ adbPath: brokenAdbPath, address: deviceAddress });
+
+    const response = await fetch(`${agentApiBaseUrl(port)}/diagnostics?${query}`);
+
+    assert.equal(response.status, 200);
+    const body = await readSuccess<DiagnosticsReport>(response);
+    const connection = body.data.checks.find(check => check.id === 'connection');
+    assert.ok(connection);
+    assert.equal(connection.status, 'fail');
+    assert.match(connection.summary, /ADB 连接探测失败/);
+    assert.ok(connection.details.some(detail => detail.startsWith('error: ')));
+    assert.ok(connection.details.some(detail => detail.includes('cannot start daemon')));
+    resetAgentDiagnosticsProbeCachesForTests();
+  });
+});
+
+describe('GET /api/agent/diagnostics execution preflight', () => {
+  it('accepts an unknown command and reports it in the execution check', async () => {
+    resetAgentDiagnosticsProbeCachesForTests();
+    const port = await startHttpServer(
+      createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway(WEBRTC_SIGNALING_PATH) }),
+      servers
+    );
+
+    const response = await fetch(`${agentApiBaseUrl(port)}/diagnostics?command=not-a-command`);
+
+    assert.equal(response.status, 200);
+    const body = await readSuccess<DiagnosticsReport>(response);
+    const execution = body.data.checks.find(check => check.id === 'execution');
+    assert.ok(execution);
+    assert.equal(execution.status, 'fail');
+    assert.match(execution.summary, /任务参数预检失败/);
+    assert.ok(execution.details.some(detail => detail.startsWith('allowed: ')));
     resetAgentDiagnosticsProbeCachesForTests();
   });
 });
