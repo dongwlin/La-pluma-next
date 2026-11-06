@@ -1,7 +1,7 @@
 /**
- * `cli.toml` 读写的单一入口：路径由 `maa dir config` 解析，读取失败回退空文档，
- * 更新沿 `updateTextFile` 的按路径排队与文本原子替换，避免不同 section 的写入
- * 互相覆盖。调用方只负责自己 section 的语义与校验。
+ * `cli.toml` 读写的单一入口：路径由 `maa dir config` 解析并要求绝对目录，仅文件
+ * 缺失时读取回退空文档；更新沿 `updateTextFile` 的按路径排队与文本原子替换，避免
+ * 不同 section 的写入互相覆盖。调用方只负责自己 section 的语义与校验。
  */
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
