@@ -164,7 +164,7 @@ waiting ──stop──> stopped
 - **停止可安全重试。** `stopping` 与终态的重复请求都返回 200；`stopping` 时会重新尝试设备停止。调用方仍需轮询到终态。
 - 停止请求先记录 run 意图，再发送设备命令。若子进程尚未 spawn，执行器在 pre-start gate 看到 `stopping` 会直接放弃启动并转为 `stopped`；若 spawn 已发生但事件尚未处理，`onStarted` 会补发进程/流程停止。
 - 停止过程中若子进程/流程正常退出，run 进入 `stopped`；若以错误结束，当前实现按 `stopping` 优先记为 `stopped`。不要在停止请求后把“进程退出”直接当作成功完成。
-- 更新 run 与其它执行共用同一停止矩阵：`running` 的更新 run 收到停止后终止受管更新子进程（Core/CLI/资源更新都登记 `managedTaskName`），最终结果为 `stopped`；`accepted` 的更新被直接取消，不启动子进程。停止不会把失败写成成功，也不会自动重试。
+- 更新 run 与其它执行共用同一停止矩阵：`running` 的更新 run 收到停止后终止受管更新子进程（Core/CLI/资源更新都登记进 `taskStatus`），最终结果为 `stopped`；`accepted` 的更新被直接取消，不启动子进程。停止不会把失败写成成功，也不会自动重试。
 - 本地 `AbortController` 中止、页面卸载、浏览器断线都**不等于停止**；服务端会继续执行。页面关闭后任务继续运行是预期行为。
 
 ### 4.1 日常流程提交与异步接受
@@ -273,7 +273,7 @@ waiting ──stop──> stopped
 
 ## 6. 执行入口覆盖
 
-“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/src/controllers/agentExecutionController.ts`、`server/src/routes/agent.ts` 与 `server/src/routes/agentContract.ts`。
+“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/src/controllers/agentExecutionController.ts`、`server/src/controllers/agentMaintenanceController.ts`、`server/src/routes/agent.ts` 与 `server/src/routes/agentContract.ts`。
 
 | 入口 | 端点/调用方 | Run | 租约/执行方式 | 进度来源 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -291,7 +291,7 @@ waiting ──stop──> stopped
 | 仓库/干员识别 | `POST /api/agent/actions/run-task`（`command=run` + `taskConfig`，`Depot`/`OperBox`） | 是 | 命令期间持有 | run 进度 | 后续 `depot-recognition`/`operbox-recognition` 只解析本地日志，不是设备执行 |
 | 材料数据更新 | `POST /api/agent/actions/fetch-training-materials` | 否 | 不占设备租约 | 无 | 拉取数据脚本，不是设备自动化 |
 | 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 是（`update_core`/`update_cli`/`update_resources`） | 全程持有 | run 进度（受管更新子进程） | 维护入口；默认同步，`waitForCompletion=false` 取得执行权后返回 202；支持按 `runId` 停止；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` |
-| 自动更新 | 定时任务 | 否 | 全程持有 | 无 | 直接调用更新服务，无 runId；与维护更新入口共享同一租约与任务进程投影 |
+| 自动更新 | 定时任务 | 否 | 全程持有 | 无 | 直接调用 Core/CLI 更新命令，无 runId；与维护更新入口共享同一租约与任务进程投影 |
 | Telegram 指令 | `telegramBotService` 命令 | 否 | 命令期间持有 | 无 | 外部客户端入口；未纳入 HTTP Run 统一包装 |
 | 预览/截图/连接测试 | `/webrtc/*`、`/screen/screenshot`、`test-connection` | 否 | 不属于设备自动化执行 | 预览会话/即时响应 | 不适用 Run |
 
