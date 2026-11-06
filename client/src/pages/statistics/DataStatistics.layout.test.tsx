@@ -952,4 +952,13 @@ describe('DataStatistics layout surfaces', () => {
     expect(container.querySelector('img[alt="固源岩"]')).toBeNull()
     expect(container.querySelector('[role="img"][aria-label="固源岩图标不可用"]')).not.toBeNull()
   })
+
+  it('requests depot icons with the item id used by local MAA assets', async () => {
+    await renderPage()
+    await flush()
+    await selectTab('仓库识别')
+
+    const image = container.querySelector<HTMLImageElement>('img[alt="固源岩"]')
+    expect(image?.getAttribute('src')).toBe('/items/30012.png')
+  })
 })

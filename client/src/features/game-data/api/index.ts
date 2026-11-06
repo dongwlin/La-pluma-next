@@ -13,14 +13,15 @@ const getGameAssetBaseUrl = (): string =>
 
 /**
  * 本地图标与头像由服务端同源资源路由提供；函数只生成 URL，不发起请求。
- * 图片由浏览器 HTTP 缓存，不进入 Query 缓存。`?v=` 使用资源更新成功后推进的
- * epoch，避免同一路径的新图继续命中旧缓存。
+ * 物品图标以 MAA 资源的物品 id 为文件名，服务端同时接受 item_table 的 iconId
+ * 并解析到物品 id。图片由浏览器 HTTP 缓存，不进入 Query 缓存。`?v=` 使用资源
+ * 更新成功后推进的 epoch，避免同一路径的新图继续命中旧缓存。
  */
 export const getItemIconUrl = (
-  iconId: string | number,
+  key: string | number,
   version: number = getItemIconCacheVersion(),
 ): string =>
-  `${getGameAssetBaseUrl()}/item/${encodeURIComponent(String(iconId))}.png?v=${version}`
+  `${getGameAssetBaseUrl()}/item/${encodeURIComponent(String(key))}.png?v=${version}`
 
 export type OperatorAvatarVariant = 'base' | '1' | '2'
 

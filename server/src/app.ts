@@ -5,6 +5,7 @@ import type { Express, NextFunction, Request, Response } from 'express';
 import { normalizeBasePath, resolveAppPaths } from './config/runtimeConfig.ts';
 import type { RuntimeEnvSource } from './config/runtimeConfig.ts';
 import { resolveGameAssetPaths } from './config/gameAssetPaths.ts';
+import { resolveMaaPaths } from './config/paths.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
 import { createAgentRouter } from './routes/agent.ts';
 import { createGameAssetRouter } from './routes/gameAssets.ts';
@@ -132,9 +133,15 @@ export function createLaPlumaApp({
   });
 
   // 图标与头像走同源只读路由，不经过 API 鉴权：<img> 无法附加令牌。
+  // 物品图标按物品 id 落盘，兼容 iconId 键；映射所需的 item_table 路径与资源解析一致。
+  const gameAssetPaths = resolveGameAssetPaths({ env });
   app.use(
     GAME_ASSET_ROUTE_PREFIX,
-    createGameAssetRouter(resolveGameAssetPaths({ env }))
+    createGameAssetRouter({
+      itemDir: gameAssetPaths.itemDir,
+      avatarDir: gameAssetPaths.avatarDir,
+      itemTablePath: resolveMaaPaths({ env }).itemTablePath
+    })
   );
 
   // API 独占自己的命名空间：鉴权先于 JSON 解析，稳定 404 与错误出口先于静态资源。
