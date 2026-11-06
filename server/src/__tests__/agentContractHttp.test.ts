@@ -294,6 +294,11 @@ const validFixtures: readonly ValidFixture[] = [
   { operationId: 'get_manifest', status: 200 },
   { operationId: 'get_openapi', status: 200 },
   { operationId: 'get_status', status: 200, query: { adbPath: fakeAdbPath, address: deviceAddress } },
+  {
+    operationId: 'get_diagnostics',
+    status: 200,
+    query: { adbPath: fakeAdbPath, address: deviceAddress, command: 'startup' }
+  },
   { operationId: 'test_connection', status: 200, body: { adbPath: fakeAdbPath, address: deviceAddress } },
   { operationId: 'discover_devices', status: 200, query: { adbPath: fakeAdbPath } },
   {

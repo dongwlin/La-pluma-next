@@ -108,18 +108,29 @@ interface RunSnapshotPayload {
   activeRuns: Array<{ runId: string }>;
 }
 
+interface RunSummaryPayload {
+  command: string;
+  theme: string;
+  status: string;
+  observed: boolean;
+  message: string;
+  settlement: { floor: number | null; step: number | null; score: number | null } | null;
+}
+
 interface RunLookupPayload {
   runId: string;
   state: string;
   result?: {
     actions?: Array<{ status: string; observed: boolean }>;
     tasks?: Array<{ index: number; name: string; status: string; stdout: string; stderr: string }>;
+    summary?: RunSummaryPayload;
   };
   error?: {
     code: string;
     details: {
       actions?: Array<{ status: string }>;
       tasks?: Array<{ index: number; name: string; status: string; stdout: string; stderr: string }>;
+      summary?: RunSummaryPayload;
     };
   };
 }
@@ -842,5 +853,62 @@ describe('agent execution HTTP adapter', () => {
     assert.equal(repeated.status, 200);
     const repeatedBody = await readSuccess<{ alreadyTerminal: boolean }>(repeated);
     assert.equal(repeatedBody.data.alreadyTerminal, true);
+  });
+
+  it('attaches roguelike and reclamation result summaries to foreground and background Runs', async () => {
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const scenarios = [
+      {
+        command: 'roguelike',
+        args: ['Mizuki'],
+        callbacks: [
+          'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike"}',
+          'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"RoguelikeSettlement","details":{"floor":4,"step":23,"score":128}}',
+          'Assistant::append_callback | TaskChainCompleted {"taskchain":"Roguelike"}'
+        ],
+        settlement: { floor: 4, step: 23, score: 128 }
+      },
+      {
+        command: 'reclamation',
+        args: ['Tales'],
+        callbacks: [
+          'Assistant::append_callback | SubTaskStart {"taskchain":"Reclamation"}',
+          'Assistant::append_callback | TaskChainCompleted {"taskchain":"Reclamation"}'
+        ],
+        settlement: null
+      }
+    ];
+
+    for (const waitForCompletion of [true, false]) {
+      for (const scenario of scenarios) {
+        process.env.FAKE_MAA_CALLBACK = scenario.callbacks.join('\n');
+        process.env.FAKE_MAA_SLEEP_MS = waitForCompletion ? '0' : '60';
+        const response = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+          command: scenario.command,
+          args: scenario.args,
+          waitForCompletion,
+          taskType: scenario.command
+        });
+        assert.equal(response.status, waitForCompletion ? 200 : 202);
+        const runId = (await readSuccess<TaskExecutorPayload>(response)).data.runId;
+        const terminal = await waitForRunState(baseUrl, runId, ['succeeded']);
+
+        assert.equal(terminal.result?.summary?.command, scenario.command);
+        assert.equal(terminal.result?.summary?.theme, scenario.args[0]);
+        assert.equal(terminal.result?.summary?.status, 'success');
+        assert.equal(terminal.result?.summary?.observed, true);
+        if (scenario.settlement) {
+          assert.equal(terminal.result?.summary?.settlement?.floor, scenario.settlement.floor);
+          assert.equal(terminal.result?.summary?.settlement?.step, scenario.settlement.step);
+          assert.equal(terminal.result?.summary?.settlement?.score, scenario.settlement.score);
+        } else {
+          assert.equal(terminal.result?.summary?.settlement, null);
+        }
+      }
+    }
   });
 });
