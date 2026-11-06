@@ -1,4 +1,5 @@
 import {
+  ALL_OPERATOR_FIELDS,
   getInfrastFacilityState,
   readInfrastFacilityRooms,
   validateInfrastScheduleDocument,
@@ -14,8 +15,6 @@ import {
  * 排班表的编辑操作：只改写用户触碰到的房间/字段，未编辑的房间和
  * 未识别的扩展字段保持原引用内容，避免把“保持原样”写成了默认值。
  */
-
-const OPERATOR_FIELDS = ['operators', 'candidates', 'operatorsA', 'operatorsB'] as const
 
 export function setInfrastFacilityState(
   plan: InfrastPlan,
@@ -62,7 +61,7 @@ export function setInfrastRoomState(room: InfrastRoom, state: InfrastRoomState):
   if (state === 'keep') {
     delete next.autofill
     delete next.use_operator_groups
-    for (const field of OPERATOR_FIELDS) delete next[field]
+    for (const field of ALL_OPERATOR_FIELDS) delete next[field]
   }
   return next
 }
@@ -125,7 +124,7 @@ export function updateInfrastPlanMeta(
     if (value.trim()) next[field] = value
     else delete next[field]
   }
-  return { ...next, rooms: plan.rooms }
+  return next
 }
 
 export function updateInfrastPlanAt(

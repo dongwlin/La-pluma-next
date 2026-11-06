@@ -1,6 +1,6 @@
 import type { ApiFailureKind } from '@/shared/api'
 import type { CopilotRaid, CopilotSetInfo, CopilotSetItem } from '../types'
-import { normalizeCopilotInput, parseCopilotUri } from '../utils/copilotUri'
+import { hasCopilotUriScheme, normalizeCopilotInput, parseCopilotUri } from '../utils/copilotUri'
 import type { CopilotDetail } from './copilotPayload'
 
 /** 页面的“识别方式”；与作业集执行模式无关。 */
@@ -58,7 +58,7 @@ export function resolveCopilotPreviewTarget(
 
   const inferred: CopilotPreviewKind = parsed.isSet
     ? 'set'
-    : /^(?:prts|maa):\/\//i.test(rawInput.trim())
+    : hasCopilotUriScheme(rawInput.trim())
       ? 'single'
       : 'probe'
   return {

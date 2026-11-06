@@ -3,21 +3,26 @@ import { Download, RefreshCw } from 'lucide-react'
 import { Button, Select } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
 import { saveUpdateChannel } from '../api'
+import { resolveCoreChannel } from '../model/updateCommandPolicy'
+import {
+  CLI_UPDATE_CHANNEL_LABELS,
+  CLI_UPDATE_CHANNELS,
+  CORE_UPDATE_CHANNEL_LABELS,
+  CORE_UPDATE_CHANNELS,
+} from '../types'
 import type { CliUpdateChannel, CoreUpdateChannel, UpdateChannelScope } from '../types'
 import { useSettingsUpdates } from '../hooks/useSettingsUpdates'
 import { useSettingsVersion } from '../hooks/useSettingsVersion'
 
-const CORE_CHANNEL_OPTIONS = [
-  { value: 'stable', label: '正式版' },
-  { value: 'beta', label: 'Beta' },
-  { value: 'alpha', label: 'Alpha' },
-]
+const CORE_CHANNEL_OPTIONS = CORE_UPDATE_CHANNELS.map(value => ({
+  value,
+  label: CORE_UPDATE_CHANNEL_LABELS[value],
+}))
 
-const CLI_CHANNEL_OPTIONS = [
-  { value: 'stable', label: '正式版' },
-  { value: 'beta', label: 'Beta' },
-  { value: 'nightly', label: 'Nightly' },
-]
+const CLI_CHANNEL_OPTIONS = CLI_UPDATE_CHANNELS.map(value => ({
+  value,
+  label: CLI_UPDATE_CHANNEL_LABELS[value],
+}))
 
 export default function ComponentUpdatePanel() {
   const setStatusMessage = useStatusStore(state => state.setMessage)
@@ -61,8 +66,8 @@ export default function ComponentUpdatePanel() {
     void cancelUpdate()
   }
 
-  const coreChannel: CoreUpdateChannel = versionInfo?.updateChannels?.core
-    ?? (versionInfo?.core.includes('beta') || versionInfo?.core.includes('alpha') ? 'beta' : 'stable')
+  const installedCoreChannel = resolveCoreChannel(versionInfo?.core)
+  const coreChannel: CoreUpdateChannel = versionInfo?.updateChannels?.core ?? installedCoreChannel
   const cliChannel: CliUpdateChannel = versionInfo?.updateChannels?.cli ?? 'stable'
   const channelSavingBusy = channelSaving !== null
 
@@ -132,7 +137,7 @@ export default function ComponentUpdatePanel() {
               className="w-full"
               icon={<RefreshCw size={16} aria-hidden="true" />}
             >
-              {versionInfo?.core.includes('beta') || versionInfo?.core.includes('alpha') ? '切换正式版' : '切换测试版'}
+              {installedCoreChannel === 'beta' ? '切换正式版' : '切换测试版'}
             </Button>
             <Button
               onClick={handleHotUpdate}

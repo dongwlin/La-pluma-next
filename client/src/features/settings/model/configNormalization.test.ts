@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_AUTO_UPDATE_CONFIG,
   DEFAULT_CONNECTION_CONFIG,
-  connectionConfigsEqual,
   isValidUpdateTime,
   normalizeAutoUpdateConfig,
   normalizeConnectionConfig,
@@ -42,14 +41,6 @@ describe('connection config normalization', () => {
     expect(normalizeConnectionConfig(null)).toBeNull()
     expect(normalizeConnectionConfig('adb')).toBeNull()
     expect(normalizeConnectionConfig([])).toBeNull()
-  })
-
-  it('compares the full normalized draft, including unknown fields', () => {
-    const base = { ...DEFAULT_CONNECTION_CONFIG }
-
-    expect(connectionConfigsEqual(base, { ...base })).toBe(true)
-    expect(connectionConfigsEqual(base, { ...base, address: '10.0.0.2:5555' })).toBe(false)
-    expect(connectionConfigsEqual(base, { ...base, touch_mode: 'minitouch' })).toBe(false)
   })
 })
 

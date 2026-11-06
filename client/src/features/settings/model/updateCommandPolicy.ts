@@ -6,6 +6,8 @@ import {
   type ApiResponse,
 } from '@/shared/api'
 import type { ResourceScope } from '@/features/resource-invalidation'
+import { CORE_UPDATE_CHANNEL_LABELS } from '../types'
+import type { CoreUpdateChannel } from '../types'
 import type { UpdateRunTerminal } from './updateRunPort'
 
 export type UpdateOperation = 'core' | 'core-channel' | 'cli' | 'resources'
@@ -55,15 +57,20 @@ export interface UpdateCommandOutcome {
   readonly versionChanged: boolean
 }
 
-export type CoreUpdateVersion = 'beta' | 'stable' | 'alpha'
-
 export interface CoreChannelSwitch {
-  readonly version: CoreUpdateVersion
-  readonly label: 'Beta' | '正式版' | 'Alpha'
+  readonly version: CoreUpdateChannel
+  readonly label: (typeof CORE_UPDATE_CHANNEL_LABELS)[CoreUpdateChannel]
 }
 
-export const coreChannelLabel = (version: CoreUpdateVersion): CoreChannelSwitch['label'] => (
-  version === 'beta' ? 'Beta' : version === 'alpha' ? 'Alpha' : '正式版'
+export const coreChannelLabel = (version: CoreUpdateChannel): CoreChannelSwitch['label'] => (
+  CORE_UPDATE_CHANNEL_LABELS[version]
+)
+
+/** 由已安装版本推断当前渠道；版本读取失败（`null`）时按正式版处理。 */
+export const resolveCoreChannel = (currentCore: string | null | undefined): CoreUpdateChannel => (
+  typeof currentCore === 'string' && (currentCore.includes('beta') || currentCore.includes('alpha'))
+    ? 'beta'
+    : 'stable'
 )
 
 /**
@@ -73,23 +80,15 @@ export const coreChannelLabel = (version: CoreUpdateVersion): CoreChannelSwitch[
 export const resolveCoreChannelSwitch = (
   currentCore: string | null | undefined,
 ): CoreChannelSwitch => {
-  const isBeta = typeof currentCore === 'string'
-    && (currentCore.includes('beta') || currentCore.includes('alpha'))
-  const version: CoreUpdateVersion = isBeta ? 'stable' : 'beta'
+  const version: CoreUpdateChannel = resolveCoreChannel(currentCore) === 'beta' ? 'stable' : 'beta'
   return { version, label: coreChannelLabel(version) }
 }
 
 export const readUpdateFailureDetails = (
   result: ApiResponse,
 ): Record<string, unknown> => {
-  const infoDetails = result.errorInfo?.details
-  if (isRecord(infoDetails)) return infoDetails
-
-  const legacyError = (result as { error?: unknown }).error
-  if (isRecord(legacyError) && isRecord(legacyError.details)) {
-    return legacyError.details
-  }
-  return {}
+  const details = result.errorInfo?.details
+  return isRecord(details) ? details : {}
 }
 
 export const shouldRetryUpdateResourcesFromDetails = (

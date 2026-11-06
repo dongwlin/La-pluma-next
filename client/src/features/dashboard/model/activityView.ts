@@ -65,12 +65,15 @@ const formatWindow = (
 }
 
 const formatActivityDetail = (
-  summary: ActivitySummary,
+  rerun: boolean,
+  startTime: number | undefined,
+  endTime: number | undefined,
+  stageCount: number,
   formatTimestamp: (timestamp: number) => string,
 ): string => joinParts(
-  summary.rerun ? '复刻' : '',
-  formatWindow(summary.startTime, summary.endTime, formatTimestamp),
-  summary.stages?.length ? `${summary.stages.length} 个关卡` : '',
+  rerun ? '复刻' : '',
+  formatWindow(startTime, endTime, formatTimestamp),
+  stageCount ? `${stageCount} 个关卡` : '',
 )
 
 const buildActivityItems = (
@@ -78,10 +81,12 @@ const buildActivityItems = (
   formatTimestamp: (timestamp: number) => string,
 ): DashboardActivityItem[] => (summary.activities ?? []).map(activity => ({
   title: activity.name || activity.code || '当前活动',
-  detail: joinParts(
-    activity.rerun ? '复刻' : '',
-    formatWindow(activity.startTime ?? undefined, activity.endTime ?? undefined, formatTimestamp),
-    activity.stages.length ? `${activity.stages.length} 个关卡` : '',
+  detail: formatActivityDetail(
+    activity.rerun,
+    activity.startTime ?? undefined,
+    activity.endTime ?? undefined,
+    activity.stages.length,
+    formatTimestamp,
   ),
   rerun: activity.rerun,
 }))
@@ -113,7 +118,13 @@ export function buildDashboardActivityView(
   const { summary, hasSnapshot, isRefreshing, lastRefreshFailed, lastRefreshError, lastUpdate } = input
   const formatTimestamp = input.formatTimestamp ?? formatDefaultTimestamp
   const activityItems = buildActivityItems(summary, formatTimestamp)
-  const activityDetail = formatActivityDetail(summary, formatTimestamp)
+  const activityDetail = formatActivityDetail(
+    summary.rerun ?? false,
+    summary.startTime,
+    summary.endTime,
+    summary.stages?.length ?? 0,
+    formatTimestamp,
+  )
   const multiActivityItems = activityItems.length > 1 ? activityItems : undefined
   const origin = readOrigin(summary)
   const updatedAt = summary.dataUpdatedAt !== undefined ? formatTimestamp(summary.dataUpdatedAt) : ''

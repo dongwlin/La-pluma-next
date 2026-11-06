@@ -139,7 +139,7 @@ export default function DashboardFlowPanel({ refreshDashboard, onMissingFlow }: 
         {activityView.meta && (
           <div className={`mt-0.5 wrap-break-word text-[11px] ${labelClass}`}>{activityView.meta}</div>
         )}
-        {activityView.activities && activityView.activities.length > 1 && (
+        {activityView.activities && (
           <div className="mt-2 flex flex-wrap gap-1.5" data-activity-list>
             {activityView.activities.map((activity, index) => (
               <span
