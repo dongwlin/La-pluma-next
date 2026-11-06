@@ -7,6 +7,7 @@ import {
   SettingsUpdateOwner,
   coreChannelLabel,
   readUpdateFailureDetails,
+  resolveCoreChannel,
   resolveCoreChannelSwitch,
   shouldRetryUpdateResources,
 } from './updateCommands'
@@ -68,18 +69,17 @@ describe('core channel policy', () => {
     expect(resolveCoreChannelSwitch(null)).toEqual({ version: 'beta', label: 'Beta' })
     expect(coreChannelLabel('stable')).toBe('正式版')
     expect(coreChannelLabel('alpha')).toBe('Alpha')
+    expect(resolveCoreChannel('v5.0.0')).toBe('stable')
+    expect(resolveCoreChannel('v5.0.0-beta.1')).toBe('beta')
+    expect(resolveCoreChannel('v5.0.0-alpha.2')).toBe('beta')
+    expect(resolveCoreChannel(undefined)).toBe('stable')
   })
 
-  it('reads failure details from the current envelope and the legacy error shape', () => {
+  it('reads failure details from the typed error envelope', () => {
     expect(readUpdateFailureDetails({
       success: false,
       errorInfo: { details: { failedStep: 'resources', coreUpdated: true } },
     })).toEqual({ failedStep: 'resources', coreUpdated: true })
-
-    expect(readUpdateFailureDetails({
-      success: false,
-      error: { details: { failedStep: 'core' } } as unknown as string,
-    })).toEqual({ failedStep: 'core' })
 
     expect(readUpdateFailureDetails({ success: false })).toEqual({})
   })
@@ -380,7 +380,6 @@ describe('SettingsUpdateOwner run semantics', () => {
   const terminal = (overrides: Partial<UpdateRunTerminal> = {}): UpdateRunTerminal => ({
     state: 'succeeded',
     message: null,
-    errorCode: null,
     errorDetails: {},
     ...overrides,
   })
@@ -443,7 +442,6 @@ describe('SettingsUpdateOwner run semantics', () => {
     const runPort = createRunPort(() => Promise.resolve(terminal({
       state: 'failed',
       message: '资源同步失败: 下载超时',
-      errorCode: 'AGENT_MAA_RESOURCE_UPDATE_FAILED',
       errorDetails: { failedStep: 'resources' },
     })))
     const { owner } = createOwner({ updateResources: submitted('run-resources') }, runPort)

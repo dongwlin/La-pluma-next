@@ -86,20 +86,6 @@ export const normalizeInstanceOptionsConfig = (value: unknown): MaaInstanceOptio
   }
 }
 
-/** 比较整份配置草稿，包含服务端未知字段；undefined 与缺失等价。 */
-export const configRecordsEqual = (
-  left: Record<string, unknown>,
-  right: Record<string, unknown>,
-): boolean => {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)])
-  for (const key of keys) {
-    if (left[key] !== right[key]) return false
-  }
-  return true
-}
-
-export const connectionConfigsEqual = configRecordsEqual
-
 /**
  * 归一化自动更新设置。非对象载荷返回 `null`；缺失或类型不合法字段沿用
  * 页面原有默认值。该形状与本地 `autoUpdateConfig` 回退格式一致。

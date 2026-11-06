@@ -33,8 +33,6 @@ export type ConnectionConfigReadToken = ConfigReadToken
 
 export type ConnectionConfigSnapshot = ConfigSnapshot<MaaConnectionConfig>
 
-export type ConnectionConfigSaveStatus = ConfigSaveOutcome<MaaConnectionConfig>['status']
-
 export type ConnectionConfigSaveOutcome = ConfigSaveOutcome<MaaConnectionConfig>
 
 export interface ConnectionConfigOwnerOptions {

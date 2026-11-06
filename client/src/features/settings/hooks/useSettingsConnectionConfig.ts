@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   connectionConfigQueryOptions,
   settingsConnectionOwner,
@@ -15,7 +15,6 @@ export interface UseSettingsConnectionConfigResult extends ConnectionConfigState
   readonly update: (patch: Partial<MaaConnectionConfig>) => void
   readonly restoreDefaults: () => boolean
   readonly save: () => Promise<ConnectionConfigSaveOutcome>
-  readonly reload: () => Promise<void>
 }
 
 const describeLoadError = (error: unknown): string => (
@@ -31,7 +30,6 @@ export function useSettingsConnectionConfig(
     [owner, profileName],
   )
   const query = useQuery(options)
-  const queryClient = useQueryClient()
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 
   useEffect(() => {
@@ -46,10 +44,6 @@ export function useSettingsConnectionConfig(
 
   const save = useCallback(() => owner.save(), [owner])
 
-  const reload = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: options.queryKey })
-  }, [options.queryKey, queryClient])
-
   const loadError = query.isError && !query.data && !state.loaded
     ? describeLoadError(query.error)
     : null
@@ -60,6 +54,5 @@ export function useSettingsConnectionConfig(
     update,
     restoreDefaults,
     save,
-    reload,
   }
 }

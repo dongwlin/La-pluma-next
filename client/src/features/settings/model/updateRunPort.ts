@@ -20,7 +20,6 @@ export type UpdateRunTerminalState =
 export interface UpdateRunTerminal {
   readonly state: UpdateRunTerminalState
   readonly message: string | null
-  readonly errorCode: string | null
   readonly errorDetails: Record<string, unknown>
 }
 
@@ -35,7 +34,7 @@ export interface SettingsUpdateRunPort {
   cancel(runId: string): Promise<ApiResponse<unknown> | null>
 }
 
-export const SETTINGS_UPDATE_SCOPE = 'settings'
+const SETTINGS_UPDATE_SCOPE = 'settings'
 
 /** 本域只使用控制器的身份采纳、观察与目标停止能力，测试可注入独立实例。 */
 export type SettingsUpdateRunController = Pick<
@@ -46,7 +45,6 @@ export type SettingsUpdateRunController = Pick<
 const UNKNOWN_TERMINAL: UpdateRunTerminal = {
   state: 'unknown',
   message: null,
-  errorCode: null,
   errorDetails: {},
 }
 
@@ -60,9 +58,8 @@ export const SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS = 30 * 60_000
 function terminalOf(run: AgentRun): UpdateRunTerminal {
   if (!isTerminalRunState(run.state)) return UNKNOWN_TERMINAL
   const message = typeof run.error?.message === 'string' ? run.error.message : null
-  const errorCode = typeof run.error?.code === 'string' ? run.error.code : null
   const errorDetails = isRecord(run.error?.details) ? run.error.details : {}
-  return { state: run.state, message, errorCode, errorDetails }
+  return { state: run.state, message, errorDetails }
 }
 
 export function createSettingsUpdateRunPort(

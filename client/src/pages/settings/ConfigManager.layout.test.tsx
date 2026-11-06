@@ -520,7 +520,8 @@ describe('ConfigManager layout surfaces', () => {
     mocks.updateMaaCore.mockResolvedValue({
       success: false,
       message: '资源同步失败',
-      error: { details: { failedStep: 'resources', coreUpdated: true } },
+      error: '资源同步失败',
+      errorInfo: { details: { failedStep: 'resources', coreUpdated: true } },
     })
     await act(async () => root.render(page()))
     await flush()
