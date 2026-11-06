@@ -7,6 +7,7 @@ import type {
   TrainingFlowMode,
   TrainingOperatorFilters
 } from '../services/operatorTrainingModel.ts';
+import type { OperatorRecognitionSummary } from '../services/operatorCatalogModel.ts';
 import type { QueueAddOptions } from '../services/operatorTrainingService.ts';
 
 /** 养成路由处理器的请求端口：query/body 保持 unknown，由本模块按端点收窄。 */
@@ -22,6 +23,7 @@ export interface TrainingQueueRemoveRequest extends TrainingRequest {
 export interface TrainingOperatorListPayload {
   operators: TrainingCandidate[];
   count: number;
+  recognition: OperatorRecognitionSummary;
 }
 
 /** 入队请求：领域仍负责材料数据、重复项与队列位置范围校验。 */

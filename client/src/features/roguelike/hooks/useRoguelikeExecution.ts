@@ -10,6 +10,7 @@ import {
   useExecutionSnapshot,
   type AgentRun,
   type ExecutionController,
+  type TaskConfig,
 } from '@/features/task-execution'
 
 export const ROGUELIKE_EXECUTION_SCOPE = 'roguelike'
@@ -20,6 +21,7 @@ export const ROGUELIKE_STOP_CONFIRM_TIMEOUT_MS = 15_000
 export interface RoguelikeExecutionRequest {
   command: string
   params: string
+  taskConfig: TaskConfig | null
   taskName: string
 }
 
@@ -116,7 +118,7 @@ export function useRoguelikeExecution({
     return () => window.clearTimeout(timer)
   }, [isRunning, notify, stopAcknowledged, trackedRun?.state])
 
-  const execute = useCallback(async ({ command, params, taskName }: RoguelikeExecutionRequest) => {
+  const execute = useCallback(async ({ command, params, taskConfig, taskName }: RoguelikeExecutionRequest) => {
     if (isRunning || controller.getState().submission === 'pending') return
 
     notify('正在执行命令...')
@@ -126,7 +128,7 @@ export function useRoguelikeExecution({
         ({ idempotencyKey }) => executePredefinedTask(
           command,
           params,
-          null,
+          taskConfig,
           null,
           taskName,
           'roguelike',

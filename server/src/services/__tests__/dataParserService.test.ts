@@ -109,10 +109,14 @@ function depotInfoLine(counts: Record<string, unknown>, done = true): string {
   });
 }
 
-function operBoxInfoLine(operators: Record<string, unknown>[], done = true): string {
+function operBoxInfoLine(
+  operators: Record<string, unknown>[],
+  done = true,
+  allOpers?: Record<string, unknown>[]
+): string {
   return callbackLine('SubTaskExtraInfo', {
     class: 'asst::OperBoxRecognitionTask',
-    details: { done, own_opers: operators },
+    details: allOpers === undefined ? { done, own_opers: operators } : { done, own_opers: operators, all_opers: allOpers },
     subtask: 'OperBoxRecognitionTask',
     taskchain: 'OperBox',
     taskid: 1,
@@ -129,10 +133,14 @@ function depotRun(counts: Record<string, unknown>, done = true): string[] {
   ];
 }
 
-function operBoxRun(operators: Record<string, unknown>[], done = true): string[] {
+function operBoxRun(
+  operators: Record<string, unknown>[],
+  done = true,
+  allOpers?: Record<string, unknown>[]
+): string[] {
   return [
     operBoxTaskLine('TaskChainStart'),
-    operBoxInfoLine(operators, done),
+    operBoxInfoLine(operators, done, allOpers),
     ...(done ? [operBoxTaskLine('TaskChainCompleted')] : [])
   ];
 }
@@ -219,6 +227,32 @@ describe('getDepotData / getOperBoxData', () => {
 
     assert.equal(operBox?.operCount, 1);
     assert.deepEqual(operBox?.data[0], entry);
+    // 旧快照没有识别目录，只能确认已识别拥有，未列出的干员按未确认上报。
+    assert.deepEqual(operBox?.recognition, { status: 'partial', total: 1, owned: 1 });
+    assert.equal(operBox?.allOpers, undefined);
+  });
+
+  it('reads a snapshot with the recognition catalog and reports complete recognition', async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.dataDir, 'operbox.json'), JSON.stringify({
+      timestamp: '2026-10-27T00:00:00.000Z',
+      operCount: 1,
+      data: [{ id: 'char_1001_amiya', name: '阿米娅', rarity: 5 }],
+      allOpers: [
+        { id: 'char_1001_amiya', name: '阿米娅', names: { en: 'Amiya' }, rarity: 5, owned: true },
+        { id: 'char_2002_kalts', name: '凯尔希', rarity: 6, owned: false }
+      ],
+      operTotal: 2
+    }), 'utf-8');
+
+    const operBox = await getOperBoxData(fixture.ports);
+
+    assert.deepEqual(operBox?.recognition, { status: 'complete', total: 2, owned: 1 });
+    assert.deepEqual(operBox?.allOpers?.map(operator => [operator.id, operator.owned]), [
+      ['char_1001_amiya', true],
+      ['char_2002_kalts', false]
+    ]);
+    assert.deepEqual(operBox?.allOpers?.[0].names, { en: 'Amiya' });
   });
 
   it('treats caches with an unexpected shape as missing instead of returning them', async () => {
@@ -468,10 +502,14 @@ describe('parseDepotData', () => {
 });
 
 describe('parseOperBoxData', () => {
-  it('stores the identified operator list after assistant completion', async () => {
+  it('stores the identified operator list and the recognition catalog after assistant completion', async () => {
     const fixture = await createFixture();
     const operators = [
       { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, elite: 0, level: 1, potential: 6, own: true }
+    ];
+    const catalog = [
+      { id: 'char_1001_amiya', name: '阿米娅', name_en: 'Amiya', name_jp: 'アーミヤ', rarity: 5, own: true },
+      { id: 'char_2002_kalts', name: '凯尔希', name_en: "Kal'tsit", rarity: 6, own: false }
     ];
     await writeFile(fixture.maaLogPath, [
       operBoxTaskLine('TaskChainStart'),
@@ -485,10 +523,43 @@ describe('parseOperBoxData', () => {
     const result = expectSuccess(await parseOperBoxData(fixture.ports));
 
     assert.equal(result.operCount, 1);
+    assert.equal(result.operTotal, 1);
     assert.deepEqual(result.data, operators);
+    assert.deepEqual(result.allOpers, []);
+    assert.deepEqual(result.recognition, { status: 'partial', total: 1, owned: 1 });
 
     const saved = JSON.parse(await readFile(join(fixture.dataDir, 'operbox.json'), 'utf-8'));
     assert.deepEqual(saved.data, operators);
+    assert.equal(saved.recognition.status, 'partial');
+    assert.equal(saved.allOpers, undefined);
+  });
+
+  it('persists the all_opers catalog with ownership markers and localized names', async () => {
+    const fixture = await createFixture();
+    const operators = [
+      { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, elite: 2, level: 90, potential: 6, own: true }
+    ];
+    const catalog = [
+      { id: 'char_1001_amiya', name: '阿米娅', name_en: 'Amiya', name_jp: 'アーミヤ', name_kr: '아미야', name_tw: '阿米婭', rarity: 5, own: true },
+      { id: 'char_2002_kalts', name: '凯尔希', rarity: 6, own: false }
+    ];
+    await writeFile(fixture.maaLogPath, operBoxRun(operators, true, catalog).join('\n'), 'utf-8');
+
+    const result = expectSuccess(await parseOperBoxData(fixture.ports));
+
+    assert.equal(result.operTotal, 2);
+    assert.deepEqual(result.recognition, { status: 'complete', total: 2, owned: 1 });
+    assert.deepEqual(result.allOpers?.map(operator => [operator.id, operator.owned]), [
+      ['char_1001_amiya', true],
+      ['char_2002_kalts', false]
+    ]);
+    // 缺失语种不补空值；只保留载荷里实际出现过的名称。
+    assert.deepEqual(result.allOpers?.[1].names, undefined);
+
+    const saved = JSON.parse(await readFile(join(fixture.dataDir, 'operbox.json'), 'utf-8'));
+    assert.equal(saved.operTotal, 2);
+    assert.deepEqual(saved.recognition, { status: 'complete', total: 2, owned: 1 });
+    assert.deepEqual(saved.allOpers?.[0].names, { en: 'Amiya', jp: 'アーミヤ', kr: '아미야', tw: '阿米婭' });
   });
 
   it('does not overwrite the cached operator list when the latest recognition is incomplete', async () => {
@@ -503,7 +574,12 @@ describe('parseOperBoxData', () => {
 
     expectError(await parseOperBoxData(fixture.ports), '解析干员数据失败');
 
-    assert.deepEqual(await getOperBoxData(fixture.ports), previous);
+    // 缓存仍按原样读取，只是在读取视图上补出“没有识别目录”的部分识别状态。
+    const cached = await getOperBoxData(fixture.ports);
+    assert.equal(cached?.timestamp, previous.timestamp);
+    assert.equal(cached?.operCount, previous.operCount);
+    assert.deepEqual(cached?.data, previous.data);
+    assert.deepEqual(cached?.recognition, { status: 'partial', total: 1, owned: 1 });
   });
 
   it('returns null instead of the previous run when the latest run has no payload yet', async () => {

@@ -14,4 +14,12 @@ export {
   operatorCatalogQueryOptions,
 } from './model/queries'
 export type { GameDataResource } from './model/queryKeys'
-export type { DepotDataDetailed, DepotItem, OperBoxData, OperatorDetailed } from './types'
+export type {
+  DepotDataDetailed,
+  DepotItem,
+  OperBoxCatalogOperator,
+  OperBoxData,
+  OperBoxRecognitionInfo,
+  OperatorDetailed,
+  OperatorNames,
+} from './types'

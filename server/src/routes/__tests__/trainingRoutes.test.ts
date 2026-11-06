@@ -13,6 +13,7 @@ import type {
   FlowSyncState,
   QueueMutationResult
 } from '../../services/operatorTrainingApplication.ts';
+import type { OperatorRecognitionSummary } from '../../services/operatorCatalogModel.ts';
 
 const originalMethods: OperatorTrainingService = { ...training };
 afterEach(() => Object.assign(training, originalMethods));
@@ -27,12 +28,25 @@ function candidate(overrides: Partial<TrainingCandidate> = {}): TrainingCandidat
     currentLevel: 1,
     targetElite: 2,
     owned: true,
+    ownership: 'owned',
     potential: 1,
     hasMaterialData: true,
     materials: null,
     canTrain: true,
     disabledReason: null,
     trainingStatus: 'trainable',
+    ...overrides
+  };
+}
+
+function recognition(overrides: Partial<OperatorRecognitionSummary> = {}): OperatorRecognitionSummary {
+  return {
+    status: 'complete',
+    recognizedAt: '2026-10-26T00:00:00.000Z',
+    total: 1,
+    owned: 1,
+    unknown: 0,
+    missing: [],
     ...overrides
   };
 }
@@ -139,7 +153,7 @@ describe('training queue route contract', () => {
     let mode: string | undefined;
     training.getOperatorList = async value => {
       filters = value;
-      return [candidate()];
+      return { operators: [candidate()], recognition: recognition() };
     };
     training.generateTrainingPlan = async value => {
       mode = value;
@@ -155,7 +169,11 @@ describe('training queue route contract', () => {
     assert.deepEqual(filters, {
       rarity: 5, profession: 'CASTER', owned: false, needsElite2: true, status: 'owned'
     });
-    assert.deepEqual(operatorsRes.body?.data, { operators: [candidate()], count: 1 });
+    assert.deepEqual(operatorsRes.body?.data, {
+      operators: [candidate()],
+      count: 1,
+      recognition: recognition()
+    });
 
     const planRes = response();
     await handler('post', '/training/plan')({ headers: {}, body: { mode: 'all' } }, planRes);
@@ -170,7 +188,7 @@ describe('training queue route contract', () => {
     let filters: TrainingOperatorFilters | undefined;
     training.getOperatorList = async value => {
       filters = value;
-      return [];
+      return { operators: [], recognition: recognition({ status: 'missing', recognizedAt: null, total: 0, owned: 0 }) };
     };
 
     await handler('get', '/training/operators')({ headers: {}, query: {} }, response());

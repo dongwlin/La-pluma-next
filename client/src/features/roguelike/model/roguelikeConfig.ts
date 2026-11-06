@@ -72,7 +72,7 @@ function decodeRoguelikeConfig(payload: unknown): RoguelikeConfigDraft | null {
     ? {}
     : parseAdvancedParams(payload.advancedParams)
   if (taskInputs === null || advancedParams === null) return null
-  return { taskInputs, advancedParams: normalizeRoguelikeAdvancedParams(advancedParams) }
+  return { taskInputs, advancedParams: normalizeRoguelikeAdvancedParams(advancedParams, taskInputs) }
 }
 
 function readLocalSection<T>(key: string, parse: (value: unknown) => T | null): T | null {
@@ -107,7 +107,7 @@ export const roguelikeConfigAdapter: ConfigPersistenceAdapter<
   encodeDraft(draft) {
     return {
       taskInputs: draft.taskInputs,
-      advancedParams: normalizeRoguelikeAdvancedParams(draft.advancedParams),
+      advancedParams: normalizeRoguelikeAdvancedParams(draft.advancedParams, draft.taskInputs),
     }
   },
 
@@ -118,9 +118,10 @@ export const roguelikeConfigAdapter: ConfigPersistenceAdapter<
     const advancedParams = readLocalSection(ROGUELIKE_ADVANCED_PARAMS_KEY, parseAdvancedParams)
     // 两个键都不可读时没有可恢复的草稿；单个键损坏只丢弃该字段，保留另一部分编辑。
     if (taskInputs === null && advancedParams === null) return null
+    const readableInputs = taskInputs ?? {}
     return {
-      taskInputs: taskInputs ?? {},
-      advancedParams: normalizeRoguelikeAdvancedParams(advancedParams ?? {}),
+      taskInputs: readableInputs,
+      advancedParams: normalizeRoguelikeAdvancedParams(advancedParams ?? {}, readableInputs),
     }
   },
 
@@ -128,7 +129,7 @@ export const roguelikeConfigAdapter: ConfigPersistenceAdapter<
     localStorage.setItem(ROGUELIKE_TASK_INPUTS_KEY, JSON.stringify(draft.taskInputs))
     localStorage.setItem(
       ROGUELIKE_ADVANCED_PARAMS_KEY,
-      JSON.stringify(normalizeRoguelikeAdvancedParams(draft.advancedParams)),
+      JSON.stringify(normalizeRoguelikeAdvancedParams(draft.advancedParams, draft.taskInputs)),
     )
   },
 

@@ -493,7 +493,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const maaStateLog = join(xdgStateHome, 'maa', 'debug', 'asst.log');
     await mkdir(dirname(maaStateLog), { recursive: true });
     await writeFile(maaStateLog, [
-      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}]},"subtask":"OperBoxRecognitionTask","taskchain":"OperBox","taskid":1,"uuid":"fixture","what":"OperBoxInfo"}'
+      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}],"all_opers":[{"id":"char_1001_amiya","name":"阿米娅","name_en":"Amiya","rarity":5,"own":true},{"id":"char_2002_kalts","name":"凯尔希","rarity":6,"own":false}]},"subtask":"OperBoxRecognitionTask","taskchain":"OperBox","taskid":1,"uuid":"fixture","what":"OperBoxInfo"}'
     ].join('\n'), 'utf-8');
 
     const port = await listen(createLaPlumaApp({ env: {} }));
@@ -506,9 +506,13 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const body = await readSuccess<{
       path: string;
       operCount: number;
+      operTotal: number;
       data: Array<Record<string, unknown>>;
+      allOpers: Array<{ id: string; owned: boolean; names?: { en?: string } }>;
+      recognition: { status: string; total: number; owned: number };
     }>(response);
     assert.equal(body.data.operCount, 1);
+    assert.equal(body.data.operTotal, 2);
     assert.deepEqual(body.data.data, [{
       id: 'char_1001_amiya',
       name: '阿米娅',
@@ -518,9 +522,17 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       potential: 6,
       own: true
     }]);
+    assert.deepEqual(body.data.allOpers.map(operator => [operator.id, operator.owned]), [
+      ['char_1001_amiya', true],
+      ['char_2002_kalts', false]
+    ]);
+    assert.deepEqual(body.data.allOpers[0]?.names, { en: 'Amiya' });
+    assert.deepEqual(body.data.recognition, { status: 'complete', total: 2, owned: 1 });
 
     const saved = JSON.parse(await readFile(join(trainingDataDir, 'operbox.json'), 'utf-8'));
     assert.equal(saved.operCount, 1);
+    assert.equal(saved.operTotal, 2);
+    assert.deepEqual(saved.recognition, { status: 'complete', total: 2, owned: 1 });
   });
 
   it('reports missing recognition results and preserves the previous cache', async () => {

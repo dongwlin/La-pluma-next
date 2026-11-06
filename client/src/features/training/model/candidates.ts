@@ -1,5 +1,10 @@
 import type { OperatorDetailed } from '@/features/game-data'
-import type { TrainingFilters, TrainingOperator } from '../types'
+import type {
+  OperatorRecognitionStatus,
+  OperatorRecognitionSummary,
+  TrainingFilters,
+  TrainingOperator,
+} from '../types'
 
 export interface TrainingCandidateFilters {
   status: TrainingFilters['status']
@@ -32,6 +37,39 @@ const rawOperatorRows = (payload: unknown): CandidateRow[] => {
  */
 export const extractOperatorRows = (payload: unknown): TrainingOperator[] =>
   rawOperatorRows(payload) as TrainingOperator[]
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+)
+
+const RECOGNITION_STATUSES: readonly OperatorRecognitionStatus[] = ['complete', 'partial', 'missing']
+
+const readFiniteNumber = (value: unknown): number => (
+  typeof value === 'number' && Number.isFinite(value) ? value : 0
+)
+
+/**
+ * 读取候选端点附带的识别概要。旧服务端没有该字段时返回 `null`，
+ * 由调用方按“未知”处理而不是伪造完整识别。
+ */
+export const extractOperatorRecognition = (payload: unknown): OperatorRecognitionSummary | null => {
+  if (!isRecord(payload) || !isRecord(payload.recognition)) return null
+  const recognition = payload.recognition
+  const status = recognition.status
+  if (typeof status !== 'string' || !RECOGNITION_STATUSES.includes(status as OperatorRecognitionStatus)) {
+    return null
+  }
+  return {
+    status: status as OperatorRecognitionStatus,
+    recognizedAt: typeof recognition.recognizedAt === 'string' ? recognition.recognizedAt : null,
+    total: readFiniteNumber(recognition.total),
+    owned: readFiniteNumber(recognition.owned),
+    unknown: readFiniteNumber(recognition.unknown),
+    missing: Array.isArray(recognition.missing)
+      ? recognition.missing.filter((id): id is string => typeof id === 'string')
+      : [],
+  }
+}
 
 /**
  * `status=all` 端点为空的兼容补齐：用全量目录与持有干员快照重建候选行。

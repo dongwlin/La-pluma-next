@@ -284,26 +284,36 @@ describe('training routes over real HTTP', () => {
     })
   })
 
-  it('returns candidate projections and their count from the domain service', async () => {
+  it('returns candidate projections, their count and recognition completeness from the domain service', async () => {
     const app = createLaPlumaApp({ env: {} })
     const port = await listen(app)
     let filters: unknown
     operatorTraining.getOperatorList = async value => {
       filters = value
-      return [
-        {
-          id: 'alpha', name: 'Alpha', rarity: 5, profession: 'CASTER',
-          currentElite: 0, currentLevel: 1, targetElite: 2, owned: true, potential: 1,
-          hasMaterialData: true, materials: null, canTrain: true, disabledReason: null,
-          trainingStatus: 'trainable'
-        },
-        {
-          id: 'beta', name: 'Beta', rarity: 4, profession: 'SNIPER',
-          currentElite: 0, currentLevel: 1, targetElite: 2, owned: false, potential: 0,
-          hasMaterialData: true, materials: null, canTrain: false, disabledReason: 'unowned',
-          trainingStatus: 'unowned'
+      return {
+        operators: [
+          {
+            id: 'alpha', name: 'Alpha', rarity: 5, profession: 'CASTER',
+            currentElite: 0, currentLevel: 1, targetElite: 2, owned: true, ownership: 'owned', potential: 1,
+            hasMaterialData: true, materials: null, canTrain: true, disabledReason: null,
+            trainingStatus: 'trainable'
+          },
+          {
+            id: 'beta', name: 'Beta', rarity: 4, profession: 'SNIPER',
+            currentElite: 0, currentLevel: 1, targetElite: 2, owned: false, ownership: 'unknown', potential: 0,
+            hasMaterialData: true, materials: null, canTrain: false, disabledReason: 'unrecognized',
+            trainingStatus: 'unrecognized'
+          }
+        ],
+        recognition: {
+          status: 'partial',
+          recognizedAt: '2026-10-26T00:00:00.000Z',
+          total: 2,
+          owned: 1,
+          unknown: 1,
+          missing: ['beta']
         }
-      ]
+      }
     }
 
     const response = await fetch(agentUrl(port, '/training/operators?rarity=5&status=owned'), {
@@ -312,7 +322,8 @@ describe('training routes over real HTTP', () => {
     assert.equal(response.status, 200)
     const payload = await readEnvelope<{
       count: number
-      operators: Array<{ id: string }>
+      operators: Array<{ id: string; ownership: string }>
+      recognition: { status: string; unknown: number; missing: string[] }
     }>(response)
     assert.deepEqual(filters, {
       rarity: 5,
@@ -322,7 +333,18 @@ describe('training routes over real HTTP', () => {
       status: 'owned'
     })
     assert.equal(payload.data?.count, 2)
-    assert.deepEqual(payload.data?.operators.map(operator => operator.id), ['alpha', 'beta'])
+    assert.deepEqual(payload.data?.operators.map(operator => [operator.id, operator.ownership]), [
+      ['alpha', 'owned'],
+      ['beta', 'unknown']
+    ])
+    assert.deepEqual(payload.data?.recognition, {
+      status: 'partial',
+      recognizedAt: '2026-10-26T00:00:00.000Z',
+      total: 2,
+      owned: 1,
+      unknown: 1,
+      missing: ['beta']
+    })
   })
 
   it('routes training service errors through the unified error exit', async () => {

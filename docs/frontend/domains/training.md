@@ -98,6 +98,7 @@ OperatorTraining（页面壳）
 
 - 候选失败时清空列表并展示可重试错误；计数失败不提示，同 key 保留上次成功值。共享目录读取失败同样会使候选读取失败；仅计数失败时保留候选列表。
 - 候选 `status=all` 且端点返回空列表时，在同一 queryFn 内读取 `game-data` 的目录与持有干员公开端点补齐；其它状态直接使用端点行，不建立第二套 key。
+- 候选端点同一响应返回 `recognition`（`status`、`total`、`owned`、`unknown`、`missing`）。非 `complete` 时选择器展示识别提示，未确认拥有状态的候选行显示“未识别”且不可加入队列；旧服务端缺少该字段时保持静默，不伪造完整识别。
 - `trainable`/`owned` 计数取候选端点行数，`owned` 为空时回退持有干员快照；`all` 取目录按稀有度过滤后的行数，不应用“未精二”。
 - 新 `all` 为 0 时不覆盖旧值；`mergeTrainingStatusCounts` 通过结构共享保持引用稳定，避免 `keepPreviousData` 占位反复通知。
 - 筛选切换由 key 隔离，旧 key 的迟到响应只写旧 key；Activity 隐藏/恢复按 Query 生命周期注销/恢复观察者。
@@ -106,7 +107,8 @@ OperatorTraining（页面壳）
 
 | 模块 | 导出 | 规则 |
 | --- | --- | --- |
-| `model/operatorRows.ts` | `filterOperatorRows`、`paginateOperatorRows`、`nextOperatorRenderLimit`、`resolveOperatorEmptyState`、`describeOperatorRow` | 搜索去空白并忽略大小写；空搜索返回新数组；每次渲染 72 行；空态优先搜索/稀有度，再按状态；已入队优先于未拥有/缺数据文案 |
+| `model/operatorRows.ts` | `filterOperatorRows`、`paginateOperatorRows`、`nextOperatorRenderLimit`、`resolveOperatorEmptyState`、`describeOperatorRow` | 搜索去空白并忽略大小写；空搜索返回新数组；每次渲染 72 行；空态优先搜索/稀有度，再按状态；已入队优先于未识别/未拥有/缺数据文案 |
+| `model/recognition.ts` | `describeRecognitionHint` | 完整识别不占位；`missing` 提示先完成识别；`partial` 按未确认数量提示；识别概要缺失（旧服务端）时静默 |
 | `model/materials.ts` | `getQueueMaterials`、`selectMissingMaterials`、`summarizeTargetMaterials` | 龙门币追加在普通材料之后并作为缺口计数；空队列返回固定标题与说明；进度保持服务端原值 |
 | `model/planDisplay.ts` | `getOpenStagePlan`、`selectTodayStages`、`getOpenStageCount`、`summarizeTodayPlan`、`getPlanFocusName` | `openStages` 优先（包括空数组），否则按 `isOpen !== false` 过滤；理智回查完整 `stages` 的 `sanityPerRun`；焦点顺序为计划焦点 → 计划首位 → 队列当前 → 未设置 |
 

@@ -50,7 +50,7 @@ export default function RoguelikeSettingsPanel({
       <div className="roguelike-panel-body roguelike-settings-body">
         <div className="roguelike-field-grid">
           {fieldOptions.map(option => {
-            const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced, theme) ?? '')
+            const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) ?? '')
             return (
               <div key={option.key}>
                 {option.type === 'select' ? (
@@ -60,7 +60,7 @@ export default function RoguelikeSettingsPanel({
                     label={option.label}
                     value={displayValue}
                     onChange={(value: string) => onAdvancedChange(option.key, value)}
-                    options={selectOptionsFor(option, theme, displayValue)}
+                    options={selectOptionsFor(option, theme, displayValue, task.id)}
                     hint={option.hint}
                   />
                 ) : (
@@ -105,7 +105,7 @@ export default function RoguelikeSettingsPanel({
                 <Switch
                   id={`roguelike-${task.id}-${option.key}`}
                   name={`maa-${task.id}-${option.key}`}
-                  checked={resolveRoguelikeAdvancedValue(option, advanced, theme) === true}
+                  checked={resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) === true}
                   onChange={(checked: boolean) => onAdvancedChange(option.key, checked)}
                   label={option.label}
                   aria-describedby={option.hint ? `roguelike-${task.id}-${option.key}-hint` : undefined}
@@ -157,8 +157,9 @@ function selectOptionsFor(
   option: RoguelikeAdvancedOption,
   theme: string,
   displayValue: string,
+  taskId: string,
 ) {
-  const choices = getRoguelikeOptionChoices(option, theme) ?? []
+  const choices = getRoguelikeOptionChoices(option, theme, taskId) ?? []
   if (displayValue === '' || choices.some(choice => choice.value === displayValue)) return choices
   return [...choices, { value: displayValue, label: `${displayValue}（不适用于当前主题）` }]
 }
