@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { execDynamicTask } from '../maaExecutionService.ts'
-import type { MaaDynamicTaskRuntime } from '../maaExecutionService.ts'
-import type { MaaCommandOutcome, MaaSettledHandler } from '../maaProcessService.ts'
+import { execDynamicTask, execDynamicTasks } from '../maaExecutionService.ts'
+import type {
+  MaaDynamicTaskRuntime,
+  MaaDynamicTasksBackgroundStart,
+  MaaDynamicTasksOutput
+} from '../maaExecutionService.ts'
+import type { MaaCommandOutcome, MaaCommandResult, MaaSettledHandler } from '../maaProcessService.ts'
 import { MaaExecutionBusyError } from '../executionCoordinatorService.ts'
 import { parse } from '@iarna/toml'
 
@@ -12,10 +16,12 @@ interface RuntimeHarness {
   events: RuntimeEvent[]
   runtime: MaaDynamicTaskRuntime
   getSettled(): MaaSettledHandler | null
+  getSettleds(): MaaSettledHandler[]
 }
 
 function createRuntime({ background = false }: { background?: boolean } = {}): RuntimeHarness {
   const events: RuntimeEvent[] = []
+  const settledHandlers: MaaSettledHandler[] = []
   let settled: MaaSettledHandler | null = null
   let nonce = 0
   const runtime: MaaDynamicTaskRuntime = {
@@ -29,15 +35,17 @@ function createRuntime({ background = false }: { background?: boolean } = {}): R
     writeFile: async (path, content) => { events.push(['write', path, content]) },
     removeDirectory: async (path, options) => { events.push(['removeDirectory', path, options]) },
     createNonce: () => `nonce_${++nonce}`,
-    executeCommand: async (command, args, taskName, taskType, waitForCompletion, silent, onSettled) => {
+    executeCommand: async (command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle) => {
+      await lifecycle?.onBeforeStart?.()
       events.push(['execute', command, [...args], taskName, taskType, waitForCompletion, silent])
       settled = onSettled
+      if (onSettled) settledHandlers.push(onSettled)
       return background
         ? { stdout: '', stderr: '', command: 'run', message: '任务已在后台启动' }
         : { stdout: 'ok', stderr: '', command: 'run' }
     }
   }
-  return { events, runtime, getSettled: () => settled }
+  return { events, runtime, getSettled: () => settled, getSettleds: () => settledHandlers }
 }
 
 function eventArgs(event: RuntimeEvent | undefined): unknown[] {
@@ -279,5 +287,338 @@ describe('dynamic task lifecycle', () => {
       }
     )
     assert.equal(events.some(event => event[0] === 'write'), false)
+  })
+})
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  assert.fail('condition was not met')
+}
+
+function backgroundOutcome(stdout: string): MaaCommandOutcome {
+  return {
+    ok: true,
+    stopped: false,
+    result: { stdout, stderr: '', command: 'run', exitCode: 0, signal: null },
+    error: null
+  }
+}
+
+describe('dynamic task variants', () => {
+  it('serializes strategy and nested variants into native TOML', async () => {
+    const { events, runtime } = createRuntime()
+    const variants = [
+      { condition: { type: 'Time', start: '18:00:00', end: '04:00:00' }, params: { plan_index: 0 } },
+      { condition: { type: 'And', conditions: [{ type: 'Weekday', weekdays: ['Mon', 'Thu'] }] }, params: { plan_index: 1 } },
+      { params: { plan_index: 2 } }
+    ]
+    await execDynamicTask(
+      'infrast',
+      { name: '基建换班', type: 'Infrast', params: { mode: 10000 }, strategy: 'merge', variants },
+      '基建换班',
+      'automation',
+      true,
+      false,
+      runtime
+    )
+
+    const decoded = parse(String(findTaskFileWrite(events)[2]))
+    assert.deepEqual(decoded.tasks, [{
+      name: '基建换班',
+      type: 'Infrast',
+      params: { mode: 10000 },
+      strategy: 'merge',
+      variants
+    }])
+  })
+})
+
+describe('dynamic multi-task lifecycle', () => {
+  it('runs tasks in array order under one lease and archives every result by index', async () => {
+    const { events, runtime } = createRuntime()
+    const result = await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} },
+        { name: '基建换班', type: 'Infrast', params: {}, variants: [{ params: { plan_index: 0 } }] }
+      ],
+      '多任务',
+      'automation',
+      true,
+      false,
+      runtime
+    ) as MaaDynamicTasksOutput
+
+    assert.equal(result.stopped, false)
+    assert.deepEqual(result.tasks.map(step => [step.index, step.name, step.status]), [
+      [0, '领取奖励', 'success'],
+      [1, '仓库识别', 'success'],
+      [2, '基建换班', 'success']
+    ])
+    assert.equal(events.filter(event => event[0] === 'acquire').length, 1)
+    assert.equal(events.filter(event => event[0] === 'release').length, 1)
+    const executes = events.filter(event => event[0] === 'execute')
+    assert.equal(executes.length, 3)
+    assert.ok(executes.every(event => event[5] === true))
+    assert.match(String(executes[1][3]), /2\/3/)
+    assert.equal(events.filter(event => event[0] === 'removeDirectory').length, 3)
+  })
+
+  it('keeps succeeded results and continues after a middle task failure', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.executeCommand = async (command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle) => {
+      await lifecycle?.onBeforeStart?.()
+      events.push(['execute', command, [...args], taskName, taskType, waitForCompletion, silent])
+      if (String(taskName).includes('(2/3)')) {
+        throw Object.assign(new Error('第二个任务失败'), {
+          code: 'CORE_PROCESS_FAILED',
+          statusCode: 500,
+          stdout: 'failed-out',
+          stderr: 'failed-err'
+        })
+      }
+      return { stdout: `ok-${String(taskName)}`, stderr: '', command: 'run' }
+    }
+
+    await assert.rejects(
+      execDynamicTasks(
+        'multi',
+        [
+          { name: '领取奖励', type: 'Award', params: {} },
+          { name: '仓库识别', type: 'Depot', params: {} },
+          { name: '基建换班', type: 'Infrast', params: {} }
+        ],
+        '多任务',
+        'automation',
+        true,
+        false,
+        runtime
+      ),
+      error => {
+        assert.ok(error instanceof Error)
+        const failure = error as Error & {
+          code?: string
+          details?: { taskIndexes?: number[]; causeCode?: string; tasks?: MaaDynamicTasksOutput['tasks'] }
+        }
+        assert.equal(failure.code, 'AGENT_DYNAMIC_TASKS_FAILED')
+        assert.deepEqual(failure.details?.taskIndexes, [1])
+        assert.equal(failure.details?.causeCode, 'CORE_PROCESS_FAILED')
+        assert.deepEqual(failure.details?.tasks?.map(step => step.status), ['success', 'failed', 'success'])
+        assert.equal(failure.details?.tasks?.[0].stdout, 'ok-多任务 (1/3)')
+        assert.equal(failure.details?.tasks?.[1].stdout, 'failed-out')
+        assert.equal(failure.details?.tasks?.[2].status, 'success')
+        return true
+      }
+    )
+    assert.equal(events.filter(event => event[0] === 'execute').length, 3)
+  })
+
+  it('stops the current task, keeps finished results and never starts the rest', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.executeCommand = async (command, args, taskName, taskType, waitForCompletion, silent, onSettled, lifecycle) => {
+      await lifecycle?.onBeforeStart?.()
+      events.push(['execute', command, [...args], taskName, taskType, waitForCompletion, silent])
+      if (String(taskName).includes('(2/3)')) {
+        throw Object.assign(new Error('任务已停止'), {
+          stopped: true,
+          stdout: '',
+          stderr: '',
+          exitCode: null,
+          signal: 'SIGTERM'
+        })
+      }
+      return { stdout: 'ok', stderr: '', command: 'run' }
+    }
+
+    const result = await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} },
+        { name: '基建换班', type: 'Infrast', params: {} }
+      ],
+      '多任务',
+      'automation',
+      true,
+      false,
+      runtime
+    ) as MaaDynamicTasksOutput
+
+    assert.equal(result.stopped, true)
+    assert.deepEqual(result.tasks.map(step => step.status), ['success', 'stopped', 'pending'])
+    assert.equal(result.tasks[2].message, '任务已停止，未执行该任务')
+    assert.equal(events.filter(event => event[0] === 'execute').length, 2)
+  })
+
+  it('treats a pre-start stop gate as stopping before the next task runs', async () => {
+    const { events, runtime } = createRuntime()
+    let started = 0
+    runtime.lifecycle = {
+      onBeforeStart: () => {
+        started += 1
+        if (started === 2) {
+          throw Object.assign(new Error('执行在开始前已被停止'), {
+            stopped: true,
+            code: 'AGENT_RUN_STOPPED_BEFORE_START',
+            statusCode: 409
+          })
+        }
+      }
+    }
+
+    const result = await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} },
+        { name: '基建换班', type: 'Infrast', params: {} }
+      ],
+      '多任务',
+      'automation',
+      true,
+      false,
+      runtime
+    ) as MaaDynamicTasksOutput
+
+    assert.equal(result.stopped, true)
+    assert.deepEqual(result.tasks.map(step => step.status), ['success', 'pending', 'pending'])
+    assert.equal(events.filter(event => event[0] === 'execute').length, 1)
+  })
+
+  it('chains background tasks and settles the run once after the last task', async () => {
+    const { events, runtime, getSettleds } = createRuntime({ background: true })
+    const outcomes: MaaCommandOutcome[] = []
+    runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
+
+    const accepted = await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} }
+      ],
+      '多任务',
+      'automation',
+      false,
+      false,
+      runtime
+    ) as MaaDynamicTasksBackgroundStart
+
+    assert.deepEqual(accepted.tasks.map(step => step.status), ['running', 'pending'])
+    assert.equal(getSettleds().length, 1)
+    await getSettleds()[0](backgroundOutcome('first-out'))
+    await waitFor(() => getSettleds().length === 2)
+    await getSettleds()[1](backgroundOutcome('second-out'))
+    await waitFor(() => outcomes.length === 1)
+
+    assert.equal(outcomes[0].ok, true)
+    const final = outcomes[0].result as MaaCommandResult & MaaDynamicTasksOutput
+    assert.deepEqual(final.tasks.map(step => step.status), ['success', 'success'])
+    assert.equal(final.stdout, 'first-out\nsecond-out')
+    assert.equal(events.filter(event => event[0] === 'removeDirectory').length, 2)
+    assert.equal(events.filter(event => event[0] === 'release').length, 1)
+  })
+
+  it('continues background tasks after a failure and reports the aggregate result', async () => {
+    const { runtime, getSettleds } = createRuntime({ background: true })
+    const outcomes: MaaCommandOutcome[] = []
+    runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
+
+    await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} }
+      ],
+      '多任务',
+      'automation',
+      false,
+      false,
+      runtime
+    ) as MaaDynamicTasksBackgroundStart
+
+    await getSettleds()[0]({
+      ok: false,
+      stopped: false,
+      result: { stdout: 'failed-out', stderr: 'err', command: 'run', exitCode: 3, signal: null },
+      error: Object.assign(new Error('后台任务失败'), { code: 'CORE_PROCESS_FAILED', exitCode: 3 })
+    })
+    await waitFor(() => getSettleds().length === 2)
+    await getSettleds()[1](backgroundOutcome('second-out'))
+    await waitFor(() => outcomes.length === 1)
+
+    assert.equal(outcomes[0].ok, false)
+    assert.equal(outcomes[0].stopped, false)
+    assert.equal(outcomes[0].error?.code, 'AGENT_DYNAMIC_TASKS_FAILED')
+    const details = outcomes[0].error?.details as { taskIndexes?: number[]; tasks?: MaaDynamicTasksOutput['tasks'] } | undefined
+    assert.deepEqual(details?.taskIndexes, [0])
+    assert.deepEqual(details?.tasks?.map(step => step.status), ['failed', 'success'])
+  })
+
+  it('stops a background chain when the running task is stopped', async () => {
+    const { runtime, getSettleds } = createRuntime({ background: true })
+    const outcomes: MaaCommandOutcome[] = []
+    runtime.lifecycle = { onSettled: outcome => { outcomes.push(outcome) } }
+
+    await execDynamicTasks(
+      'multi',
+      [
+        { name: '领取奖励', type: 'Award', params: {} },
+        { name: '仓库识别', type: 'Depot', params: {} }
+      ],
+      '多任务',
+      'automation',
+      false,
+      false,
+      runtime
+    )
+
+    await getSettleds()[0]({
+      ok: false,
+      stopped: true,
+      result: { stdout: '', stderr: '', command: 'run', exitCode: null, signal: 'SIGTERM' },
+      error: null
+    })
+    await waitFor(() => outcomes.length === 1)
+
+    assert.equal(outcomes[0].stopped, true)
+    const final = outcomes[0].result as MaaCommandResult & MaaDynamicTasksOutput
+    assert.deepEqual(final.tasks.map(step => step.status), ['stopped', 'pending'])
+    assert.equal(getSettleds().length, 1)
+  })
+
+  it('rejects before starting any task when the stop gate rejects the first background task', async () => {
+    const { events, runtime, getSettleds } = createRuntime({ background: true })
+    runtime.lifecycle = {
+      onBeforeStart: () => {
+        throw Object.assign(new Error('执行在开始前已被停止'), {
+          stopped: true,
+          code: 'AGENT_RUN_STOPPED_BEFORE_START',
+          statusCode: 409
+        })
+      }
+    }
+
+    await assert.rejects(
+      execDynamicTasks(
+        'multi',
+        [{ name: '领取奖励', type: 'Award', params: {} }],
+        '多任务',
+        'automation',
+        false,
+        false,
+        runtime
+      ),
+      error => {
+        assert.ok(error instanceof Error)
+        assert.equal((error as Error & { stopped?: boolean }).stopped, true)
+        return true
+      }
+    )
+    assert.equal(getSettleds().length, 0)
+    assert.equal(events.filter(event => event[0] === 'release').length, 1)
   })
 })

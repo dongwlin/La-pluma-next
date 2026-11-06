@@ -192,6 +192,31 @@ Core 每轮执行最多启动一项专精训练。本次已经启动训练，或
 
 培养会读取 Core 汇总，部分培养失败不会仅因 CLI 正常退出而报告成功；缺少完整有效回调时 `observed: false`，仅确认进程已结束，游戏结果仍未确认。事件粒度取决于实际 Core 与资源组合，不能仅凭静态契约确认设备侧可用。
 
+### 动态多任务与 variants
+
+`taskConfig` 仍支持旧的单任务对象；需要按数组顺序执行多个任务时，改为 `{tasks:[...]}`。每项与单任务同形，并可使用 maa-cli 上游的 `strategy` 与 `variants`：
+
+```bash
+curl -X POST http://localhost:3000/api/agent/actions/run-task \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: dynamic-tasks-01' \
+  -d '{"command":"run","args":["daily"],"taskConfig":{"tasks":[
+    {"name":"领取奖励","type":"Award","params":{"award":true}},
+    {"name":"基建换班","type":"Infrast","params":{"mode":10000},"strategy":"merge","variants":[
+      {"condition":{"type":"Time","start":"18:00:00","end":"04:00:00"},"params":{"plan_index":0}},
+      {"condition":{"type":"Weekday","weekdays":["Mon","Thu"]},"params":{"plan_index":1}},
+      {"params":{"plan_index":2}}
+    ]}
+  ]},"waitForCompletion":true}'
+```
+
+- `tasks` 为非空数组，数组顺序即执行顺序。每项必须提供 `name` 与 `type`，`params` 可省略；可选 `strategy` 为 `first`（默认）或 `merge`，`variants` 为上游变体数组。
+- `condition` 是上游 `variants` 项的字段，只能写在 `variants[i].condition`；任务对象或 `tasks` 容器顶层出现 `condition`、未知字段或非法 `strategy` 都会在创建 Run 前返回 400。条件本身由 maa-cli 在每个任务开始时求值，La Pluma Next 只校验结构并透传。
+- 每个任务使用独立临时任务文件执行，但整个数组共享同一执行租约。结果按索引归档到 `run.result.tasks[i]`，字段为 `index`（0 基）、`name`、`type`、`status`（`success`/`failed`/`stopped`/`pending`）、`message`、`stdout`、`stderr`；游戏任务项另带 `actions`。顶层 `run.result.actions` 按顺序汇总所有任务的游戏动作。
+- 部分失败不会吞掉其它任务结果：某个任务失败后仍继续执行后续任务；全部结束后 Run 为 `failed`，错误码 `AGENT_DYNAMIC_TASKS_FAILED`，`error.details.taskIndexes` 给出失败任务索引，`error.details.tasks` 保留完整的逐项结果（已成功、失败与未执行项）。单任务失败仍沿用原有错误码（如 `AGENT_GAME_TASK_FAILED`）与结果字段。
+- 停止以 Run 为目标并保持幂等：正在执行的任务收到设备停止并记为 `stopped`，后续任务不再启动并保持 `pending`；重复停止沿用 Run 层的 `stopping`/终态保护。`waitForCompletion=false` 时任务链在后台继续，202 只表示首个任务已启动，终态仍以 Run 为准。
+- 变体条件全部不匹配的任务不会产生设备动作，maa-cli 正常退出时该项按成功结算。`variants` 与 `strategy` 只作用于动态任务通路，不改变 `fight`、`copilot` 等语义化动作的参数语义。
+
 ## 养成材料筹备队列与任务流程
 
 `/training/*` 管理培养目标所需的材料筹备与刷关计划，不在游戏内执行精英化、技能升级或专精。游戏内培养使用上面的 `OperProgress` 动态任务。
