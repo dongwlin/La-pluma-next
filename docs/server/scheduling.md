@@ -17,11 +17,11 @@
 
 ## 流程配置与任务流模型
 
-任务流来自持久配置 `automation-tasks` 或 HTTP 请求体，公开入口保持 `unknown`，先经 `validateScheduledTaskFlow` 收窄为对象数组；`id`/`name`/`params` 是执行期读取的契约字段，缺失时沿用既有运行期失败。字段级校验复用 `gameTaskConfigService.ts` 的同一组限制：Fight 的 `series`（`-1~10`）与临期药天数、Recruit 的许可保留/多选 Tag 策略/`force_refresh`、Infrast 的设施与换班模式、Award 的领取开关（含签到）和 StartUp 的启动开关/账号/客户端类型；另保留启用且 `mode=10000` 的自定义基建换班排班文件校验与 fight 掉落目标格式校验（`server/src/services/scheduleFlowPlan.ts:150-200,320-390`）。
+任务流来自持久配置 `automation-tasks` 或 HTTP 请求体，公开入口保持 `unknown`，先经 `validateScheduledTaskFlow` 收窄为对象数组；`id`/`name`/`params` 是执行期读取的契约字段，缺失时沿用既有运行期失败。字段级校验复用 `gameTaskConfigService.ts` 的同一组限制：Fight 的 `series`（`-1~10`）与临期药天数、Recruit 的许可保留/多选 Tag 策略/`force_refresh`、Infrast 的设施与换班模式、Award 的领取开关（含签到）和 StartUp 的启动开关/账号/客户端类型；另保留启用且 `mode=10000` 的自定义基建换班排班文件校验与 fight 掉落目标格式校验（`server/src/services/scheduleFlowPlan.ts:164-200,351-390`）。
 
 `buildScheduledTaskCommand` 按条目分两类构建（`server/src/services/scheduleFlowPlan.ts:162-301`）：
 
-- 带 `taskType` 的 MaaCore 动态任务生成 `run` 命令加序列化 `taskConfig`；Recruit 把 `skip_robot` 归一为 `preserve_tags: ['支援机械']`、招募时间转为数字，`force_refresh` 与 `level3_recruitment_permit_reserve` 原样保留；StartUp 在动态通路里把 `clientType`/`accountName` 映射为 `client_type`/`account_name`；`mode=10000` 的基建缺文件路径直接抛错，`plan_index` 缺省为 0（`server/src/services/scheduleFlowPlan.ts:166-260`）。
+- 带 `taskType` 的 MaaCore 动态任务生成 `run` 命令加序列化 `taskConfig`；Recruit 把 `skip_robot` 归一为 `preserve_tags: ['支援机械']`、招募时间转为数字，`force_refresh` 与 `level3_recruitment_permit_reserve` 原样保留；StartUp 在动态通路里把 `clientType`/`accountName` 映射为 `client_type`/`account_name`；`mode=10000` 的基建缺文件路径直接抛错，`plan_index` 缺省为 0（`server/src/services/scheduleFlowPlan.ts:186-290`）。
 - 预定义命令取 `commandId` 或 `id` 首段：`startup`/`closedown` 携带客户端类型与连接地址（及启动时的账号切换），`startup` 在 `start_game_enabled=false` 时改走 MaaCore StartUp 动态任务，只连接运行中的游戏；`fight` 把多关卡折叠为 `stage1:times1,stage2:times2`，追加理智药、`--medicine-expire-days`、源石、连战倍率（负数统一用 `=` 连接下发）、掉落目标与企鹅物流/一图流汇报开关，旧配置的 `expiringMedicine` 仍回退为 `--expiring-medicine`（`server/src/services/scheduleFlowPlan.ts:260-340`）。
 
 `buildScheduledTaskFlowPlan` 把启用条目映射为纯数据计划步骤（`index`/`command`/`args`/`taskConfig`/`preActions`），执行器与确认接口共用同一份构建规则；连接默认值由调用方解析后传入，`getScheduledTaskFlowPlan` 仅在流程启用 `startup`/`closedown` 时解析连接（`server/src/services/scheduleFlowPlan.ts:100-110,344-377`、`server/src/services/schedulerService.ts:87-100`）。Agent API `run-daily-flow` 的 dry run 返回的 `plan` 即该计划（`server/src/controllers/agentExecutionController.ts:1360-1393`）。
