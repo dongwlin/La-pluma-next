@@ -53,7 +53,7 @@ const asId = (value: unknown): number | null => {
 
 /** 未知的理智消耗不折算成 0：资源缺少该关卡数据时展示为“未知”。 */
 export function formatCopilotApCost(apCost: number | null | undefined): string {
-  return typeof apCost === 'number' && Number.isFinite(apCost) ? String(apCost) : '未知'
+  return typeof apCost === 'number' ? String(apCost) : '未知'
 }
 
 /**

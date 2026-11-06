@@ -1,14 +1,14 @@
 // 非 connection section 时返回 null 但组件保持挂载：section 切换不重建 Query 观察者，
 // 也不清空草稿与保存/读取反馈。
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
 import { Input, Select, Switch } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
+import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsConnectionConfig } from '../hooks/useSettingsConnectionConfig'
 import { useClearConnectionTestFeedback } from '../hooks/useSettingsDeviceConnection'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
-import type { SettingsFeedback } from './ConfigEditorCard'
 import DeviceConnectionPanel from './DeviceConnectionPanel'
 import { MAA_CONNECTION_PRESETS } from '../types'
 import type { MaaConnectionConfig, MaaConnectionPreset } from '../types'
@@ -37,73 +37,34 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
     draft: configData,
     update: updateConnectionDraft,
     restoreDefaults,
-    save: saveConnectionConfig,
+    save: saveConnectionDraft,
     syncState: connectionSyncState,
     loadError: connectionLoadError,
     loaded: connectionLoaded,
   } = useSettingsConnectionConfig()
   const clearTestFeedback = useClearConnectionTestFeedback()
   const connectionSaving = connectionSyncState === 'saving'
-  const blockedSaveMessage = connectionLoadError
-    ? '连接配置读取失败，暂时无法保存'
-    : '连接配置正在读取，加载完成后才能保存'
-  const saveBlockedReason = connectionLoaded ? null : blockedSaveMessage
-  const [configFeedback, setConfigFeedback] = useState<SettingsFeedback | null>(null)
-  const reportedLoadFailureRef = useRef<string | null>(null)
-
-  // 初始读取失败保留旧的页内与全局提示；后台刷新失败不打断已有草稿。
-  useEffect(() => {
-    if (!connectionLoadError) return
-    const message = `连接配置读取失败: ${connectionLoadError}（保存已禁用，请刷新页面后重试）`
-    if (reportedLoadFailureRef.current === message) return
-    reportedLoadFailureRef.current = message
-    // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setConfigFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
-  }, [connectionLoadError, setStatusMessage])
-
-  useEffect(() => {
-    if (!connectionLoaded || !reportedLoadFailureRef.current) return
-    const message = reportedLoadFailureRef.current
-    reportedLoadFailureRef.current = null
-    setConfigFeedback(current => (current?.message === message ? null : current))
-  }, [connectionLoaded])
+  const {
+    feedback: configFeedback,
+    setFeedback: setConfigFeedback,
+    saveBlockedReason,
+    save: saveConnectionConfig,
+  } = useConfigDraftPanel({
+    label: '连接配置',
+    savingMessage: '正在保存配置...',
+    loadError: connectionLoadError,
+    loaded: connectionLoaded,
+    saving: connectionSaving,
+    save: saveConnectionDraft,
+  })
 
   const updateConnectionConfig = (patch: Partial<MaaConnectionConfig>) => {
     updateConnectionDraft(patch)
     setConfigFeedback(null)
   }
 
-  const handleSave = async () => {
-    if (!connectionLoaded) {
-      setConfigFeedback({ type: 'warning', message: blockedSaveMessage })
-      setStatusMessage(blockedSaveMessage, 'warning')
-      return
-    }
-    if (connectionSaving) return
-    setConfigFeedback(null)
-    setStatusMessage('正在保存配置...', 'info')
-
-    const outcome = await saveConnectionConfig()
-    if (outcome.status === 'ignored') return
-
-    if (outcome.status === 'saved') {
-      if (outcome.superseded) {
-        const message = '此前连接配置已保存，当前更改尚未保存'
-        setConfigFeedback({ type: 'warning', message })
-        setStatusMessage(message, 'warning')
-      } else {
-        const message = '连接配置保存成功'
-        setConfigFeedback({ type: 'success', message })
-        setStatusMessage(message, 'success')
-      }
-      return
-    }
-
-    const message = `连接配置保存失败: ${outcome.message ?? '未知错误'}`
-    setConfigFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
+  const handleSave = () => {
+    void saveConnectionConfig()
   }
 
   const handleReset = () => {
@@ -113,7 +74,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   }
 
   // 地址输入变更清除旧测试反馈；不取消在途测试，与迁移前一致。
-  const clearConfigFeedback = useCallback(() => setConfigFeedback(null), [])
+  const clearConfigFeedback = useCallback(() => setConfigFeedback(null), [setConfigFeedback])
 
   if (!isActive) return null
 
@@ -124,7 +85,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       saving={connectionSaving}
       saveDisabled={!connectionLoaded}
       saveBlockedReason={saveBlockedReason}
-      onSave={() => void handleSave()}
+      onSave={handleSave}
       onReset={handleReset}
     >
       <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2">

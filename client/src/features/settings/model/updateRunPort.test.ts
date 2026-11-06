@@ -14,7 +14,6 @@ import {
 const UNKNOWN_TERMINAL: UpdateRunTerminal = {
   state: 'unknown',
   message: null,
-  errorCode: null,
   errorDetails: {},
 }
 
@@ -93,7 +92,6 @@ describe('settings update run port', () => {
     await expect(port.wait(runId)).resolves.toEqual({
       state: 'failed',
       message: '资源同步失败',
-      errorCode: 'AGENT_MAA_RESOURCE_UPDATE_FAILED',
       errorDetails: { failedStep: 'resources' },
     })
   })
@@ -130,6 +128,24 @@ describe('settings update run port', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     expect(await pending).toEqual(UNKNOWN_TERMINAL)
+  })
+
+  it('only releases or stops the run it adopted', async () => {
+    const { controller, run, api } = createHarness()
+    const port = createSettingsUpdateRunPort(controller)
+    const runId = port.adopt(submission(run), 'update_core')
+    if (!runId) throw new Error('expected an adopted run id')
+
+    await expect(port.cancel('other-run')).resolves.toBeNull()
+    port.release('other-run')
+    expect(controller.getState().trackedRunId).toBe(runId)
+    expect(api.stopRun).not.toHaveBeenCalled()
+
+    await expect(port.cancel(runId)).resolves.toMatchObject({ success: true })
+    expect(api.stopRun).toHaveBeenCalledWith(runId)
+
+    port.release(runId)
+    expect(controller.getState().trackedRunId).toBeNull()
   })
 
   it('releases the pending update command instead of leaving it running forever', async () => {

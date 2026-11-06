@@ -6,8 +6,8 @@ import {
   getThemesForTask,
   isKnownRoguelikeTheme,
   isRoguelikeOptionValueValid,
-  isRoguelikeOptionVisible,
   pickAdvancedValue,
+  readActiveRoguelikeOptions,
   resolveModeValue,
   splitRoguelikeListValue,
 } from './roguelikeTasks'
@@ -17,12 +17,7 @@ function findInvalidOptionValue(
   theme: string,
   advanced: RoguelikeAdvancedValues,
 ): string | null {
-  for (const option of getRoguelikeAdvancedOptions(taskId)) {
-    if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
-
-    const value = pickAdvancedValue(option, advanced, theme, taskId)
-    if (value === undefined || value === '') continue
-
+  for (const { option, value } of readActiveRoguelikeOptions(taskId, theme, advanced)) {
     if (option.type === 'number') {
       const error = getRoguelikeNumberError(option, value)
       if (error) return error

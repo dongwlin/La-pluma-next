@@ -1,13 +1,12 @@
 // 实例选项与连接配置分属同一 MAA profile 的不同 section：面板只在 instance
 // section 渲染，但草稿与读取反馈由模块级 owner 持有，切换 section 不丢草稿。
 
-import { useEffect, useRef, useState } from 'react'
 import { Select, Switch } from '@/shared/ui'
 import { useStatusStore } from '@/features/runtime-status'
+import { useConfigDraftPanel } from '../hooks/useConfigDraftPanel'
 import { useSettingsInstanceOptions } from '../hooks/useSettingsInstanceOptions'
 import { CONFIG_SECTION_VIEWS } from './configSectionViews'
 import ConfigEditorCard from './ConfigEditorCard'
-import type { SettingsFeedback } from './ConfigEditorCard'
 import { MAA_TOUCH_MODES } from '../types'
 import type { MaaTouchMode } from '../types'
 
@@ -35,71 +34,33 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     draft,
     update,
     restoreDefaults,
-    save,
+    save: saveInstanceOptionsDraft,
     syncState,
     loadError,
     loaded,
   } = useSettingsInstanceOptions(undefined, 'default', isActive)
   const saving = syncState === 'saving'
-  const blockedSaveMessage = loadError
-    ? '实例选项读取失败，暂时无法保存'
-    : '实例选项正在读取，加载完成后才能保存'
-  const saveBlockedReason = loaded ? null : blockedSaveMessage
-  const [configFeedback, setConfigFeedback] = useState<SettingsFeedback | null>(null)
-  const reportedLoadFailureRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!loadError) return
-    const message = `实例选项读取失败: ${loadError}（保存已禁用，请刷新页面后重试）`
-    if (reportedLoadFailureRef.current === message) return
-    reportedLoadFailureRef.current = message
-    // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setConfigFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
-  }, [loadError, setStatusMessage])
-
-  useEffect(() => {
-    if (!loaded || !reportedLoadFailureRef.current) return
-    const message = reportedLoadFailureRef.current
-    reportedLoadFailureRef.current = null
-    setConfigFeedback(current => (current?.message === message ? null : current))
-  }, [loaded])
+  const {
+    feedback: configFeedback,
+    setFeedback: setConfigFeedback,
+    saveBlockedReason,
+    save: saveInstanceOptions,
+  } = useConfigDraftPanel({
+    label: '实例选项',
+    savingMessage: '正在保存实例选项...',
+    loadError,
+    loaded,
+    saving,
+    save: saveInstanceOptionsDraft,
+  })
 
   const updateInstanceOptions = (patch: Parameters<typeof update>[0]) => {
     update(patch)
     setConfigFeedback(null)
   }
 
-  const handleSave = async () => {
-    if (!loaded) {
-      setConfigFeedback({ type: 'warning', message: blockedSaveMessage })
-      setStatusMessage(blockedSaveMessage, 'warning')
-      return
-    }
-    if (saving) return
-    setConfigFeedback(null)
-    setStatusMessage('正在保存实例选项...', 'info')
-
-    const outcome = await save()
-    if (outcome.status === 'ignored') return
-
-    if (outcome.status === 'saved') {
-      if (outcome.superseded) {
-        const message = '此前实例选项已保存，当前更改尚未保存'
-        setConfigFeedback({ type: 'warning', message })
-        setStatusMessage(message, 'warning')
-      } else {
-        const message = '实例选项保存成功'
-        setConfigFeedback({ type: 'success', message })
-        setStatusMessage(message, 'success')
-      }
-      return
-    }
-
-    const message = `实例选项保存失败: ${outcome.message ?? '未知错误'}`
-    setConfigFeedback({ type: 'error', message })
-    setStatusMessage(message, 'error')
+  const handleSave = () => {
+    void saveInstanceOptions()
   }
 
   const handleReset = () => {
@@ -117,7 +78,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
       saving={saving}
       saveDisabled={!loaded}
       saveBlockedReason={saveBlockedReason}
-      onSave={() => void handleSave()}
+      onSave={handleSave}
       onReset={handleReset}
     >
       <Select

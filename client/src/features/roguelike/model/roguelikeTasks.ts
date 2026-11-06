@@ -47,25 +47,8 @@ export const ROGUELIKE_TASKS: readonly RoguelikeTask[] = [
   },
 ]
 
-export interface RoguelikeThemePreset {
-  value: string
-  label: string
-}
-
-export const ROGUELIKE_THEME_PRESETS: Record<RoguelikeMode, readonly RoguelikeThemePreset[]> = {
-  roguelike: [
-    { value: 'Phantom', label: '傀影' },
-    { value: 'Mizuki', label: '水月' },
-    { value: 'Sami', label: '萨米' },
-    { value: 'Sarkaz', label: '萨卡兹' },
-    { value: 'JieGarden', label: '界园' },
-    { value: 'BlackFlow', label: '黑流树海' },
-  ],
-  reclamation: [
-    { value: 'Tales', label: '沙洲遗闻' },
-    { value: 'RelaunchAnchor', label: '重启锚点' },
-  ],
-}
+export { ROGUELIKE_THEME_PRESETS } from './roguelikeOptionCatalog'
+export type { RoguelikeThemePreset } from './roguelikeOptionCatalog'
 
 /** 主题代号是否属于该任务已知的主题目录；隐藏字段与命令构造都以它为准。 */
 export function isKnownRoguelikeTheme(taskId: string, theme: string): boolean {
@@ -209,6 +192,27 @@ export function isRoguelikeOptionVisible(
   return Boolean(value)
 }
 
+export interface RoguelikeActiveOption {
+  readonly option: RoguelikeAdvancedOption
+  readonly value: string | number | boolean
+}
+
+/** 当前主题与模式下生效且已填写的字段；命令构造、动态任务与执行前校验共用同一口径。 */
+export function readActiveRoguelikeOptions(
+  taskId: string,
+  theme: string,
+  advanced: RoguelikeAdvancedValues,
+): RoguelikeActiveOption[] {
+  const active: RoguelikeActiveOption[] = []
+  for (const option of getRoguelikeAdvancedOptions(taskId)) {
+    if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
+    const value = pickAdvancedValue(option, advanced, theme, taskId)
+    if (value === undefined || value === '' || value === false) continue
+    active.push({ option, value })
+  }
+  return active
+}
+
 /**
  * 主题切换后把当前主题不再支持的模式重置为该主题声明的默认模式；没有默认值时才回落到首项
  * （集成战略的刷坍缩范式只对萨米开放，沙洲遗闻的默认模式是 `1` 而首项是 `0`）。
@@ -292,12 +296,8 @@ export function buildRoguelikeCommandParams(
   const advanced = advancedParams[taskId] || {}
   let params = theme
 
-  for (const option of getRoguelikeAdvancedOptions(taskId)) {
+  for (const { option, value } of readActiveRoguelikeOptions(taskId, theme, advanced)) {
     if (!option.param) continue
-    if (!isRoguelikeOptionVisible(option, taskId, theme, advanced)) continue
-
-    const value = pickAdvancedValue(option, advanced, theme, taskId)
-    if (value === undefined || value === '' || value === false) continue
     if (option.type === 'select' && !isRoguelikeOptionValueValid(option, theme, value, taskId)) continue
 
     if (option.type === 'checkbox') {

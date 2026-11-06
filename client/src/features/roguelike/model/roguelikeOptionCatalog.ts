@@ -1,4 +1,4 @@
-import type { RoguelikeSelectOption } from '../types'
+import type { RoguelikeMode, RoguelikeSelectOption } from '../types'
 
 const DEFAULT_SQUAD: RoguelikeSelectOption = { value: '', label: '默认（指挥分队）' }
 
@@ -17,6 +17,32 @@ export const ROGUELIKE_THEMES: readonly string[] = [
 ]
 
 export const RECLAMATION_THEMES: readonly string[] = ['Tales', 'RelaunchAnchor']
+
+export interface RoguelikeThemePreset {
+  value: string
+  label: string
+}
+
+const THEME_LABELS: Record<string, string> = {
+  Phantom: '傀影',
+  Mizuki: '水月',
+  Sami: '萨米',
+  Sarkaz: '萨卡兹',
+  JieGarden: '界园',
+  BlackFlow: '黑流树海',
+  Tales: '沙洲遗闻',
+  RelaunchAnchor: '重启锚点',
+}
+
+const themePresets = (themes: readonly string[]): RoguelikeThemePreset[] => themes.map(value => ({
+  value,
+  label: THEME_LABELS[value] ?? value,
+}))
+
+export const ROGUELIKE_THEME_PRESETS: Record<RoguelikeMode, readonly RoguelikeThemePreset[]> = {
+  roguelike: themePresets(ROGUELIKE_THEMES),
+  reclamation: themePresets(RECLAMATION_THEMES),
+}
 
 const COMMON_SQUADS: readonly string[] = [
   '指挥分队',
@@ -111,6 +137,20 @@ const RELAUNCH_ANCHOR_MODES: readonly RoguelikeSelectOption[] = [
   { value: '32', label: 'RA-15（60 杀任务）' },
   { value: '48', label: 'RA-4（解锁区域并击杀 Boss）' },
 ]
+
+/** 能直接用 CLI `-t`/`-m` 表达的取值；其余模式与主题只能走动态任务。 */
+export const CLI_ROGUELIKE_THEMES: readonly string[] = ROGUELIKE_THEMES
+  .filter(theme => theme !== 'BlackFlow')
+
+export const CLI_RECLAMATION_THEMES: readonly string[] = RECLAMATION_THEMES
+  .filter(theme => theme !== 'RelaunchAnchor')
+
+export const CLI_ROGUELIKE_MODE_VALUES: readonly string[] = [
+  ...BASE_MODES.map(choice => choice.value),
+  COLLAPSAL_MODE.value,
+]
+
+export const CLI_RECLAMATION_MODE_VALUES: readonly string[] = TALES_MODES.map(choice => choice.value)
 
 export const BLACKFLOW_ANIMALS: readonly RoguelikeSelectOption[] = [
   { value: 'swaddled_cat', label: '襁褓猫' },

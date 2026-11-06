@@ -6,6 +6,10 @@ import {
 } from '@/shared/api'
 import { getConfigDir, getVersion } from '../api'
 import { settingsKeys } from './queryKeys'
+import {
+  CLI_UPDATE_CHANNELS,
+  CORE_UPDATE_CHANNELS,
+} from '../types'
 import type {
   CliUpdateChannel,
   CoreUpdateChannel,
@@ -27,9 +31,6 @@ export interface MaaVersionInfo {
   resource?: MaaResourceInfo
   updateChannels?: UpdateChannels
 }
-
-const CORE_UPDATE_CHANNELS = ['stable', 'beta', 'alpha'] as const
-const CLI_UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const
 
 const RESOURCE_STATUSES = ['current', 'stale', 'unknown'] as const
 
