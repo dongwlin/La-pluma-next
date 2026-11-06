@@ -20,6 +20,8 @@ const maaDataDir = join(fixtureDir, '.local', 'maa');
 const maaTemplateDir = join(maaDataDir, 'resource', 'template');
 const aliasMaaDir = join(fixtureDir, 'alias-maa');
 const aliasItemTablePath = join(aliasMaaDir, 'resource', 'gamedata', 'excel', 'item_table.json');
+const fallbackMaaDir = join(fixtureDir, 'fallback-maa');
+const fallbackItemIndexPath = join(fallbackMaaDir, 'resource', 'item_index.json');
 const upstreamRoot = join(fixtureDir, 'upstream-assets');
 const upstreamItemDir = join(upstreamRoot, 'item');
 
@@ -47,6 +49,11 @@ await writeFile(aliasItemTablePath, JSON.stringify({
     '30011': { iconId: 'MTL_SL_G1' }
   }
 }));
+await mkdir(join(fallbackMaaDir, 'resource'), { recursive: true });
+await writeFile(fallbackItemIndexPath, JSON.stringify({
+  '4001': { name: '赤金', icon: 'GOLD.png' },
+  '30011': { name: '固源岩', icon: '30011.png' }
+}), 'utf-8');
 await mkdir(upstreamItemDir, { recursive: true });
 await mkdir(join(upstreamRoot, 'avatar'), { recursive: true });
 await writeFile(join(itemDir, '4001.png'), GOLD_ITEM_BYTES);
@@ -149,6 +156,24 @@ describe('GET /game-assets local icon and avatar routes', () => {
     const lowercase = await fetch(`${baseUrl}/game-assets/item/mtl_sl_g1.png`);
     assert.equal(lowercase.status, 200);
     assert.deepEqual(Buffer.from(await lowercase.arrayBuffer()), ITEM_BYTES);
+  });
+
+  it('resolves icon id keys through item_index when the item table is missing', async () => {
+    const baseUrl = await listen({ LA_PLUMA_GAME_ASSET_DIR: assetRoot, MAA_DATA_DIR: fallbackMaaDir });
+
+    const resolved = await fetch(`${baseUrl}/game-assets/item/GOLD.png`);
+
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await resolved.arrayBuffer()), GOLD_ITEM_BYTES);
+  });
+
+  it('resolves item ids through item_index when the item table is missing', async () => {
+    const baseUrl = await listen({ LA_PLUMA_GAME_ASSET_DIR: upstreamRoot, MAA_DATA_DIR: fallbackMaaDir });
+
+    const byItemId = await fetch(`${baseUrl}/game-assets/item/4001.png`);
+    assert.equal(byItemId.status, 200);
+    assert.deepEqual(Buffer.from(await byItemId.arrayBuffer()), UPSTREAM_GOLD_BYTES);
   });
 
   it('returns 404 when an item icon key cannot be resolved', async () => {

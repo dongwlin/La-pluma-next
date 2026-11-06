@@ -9,6 +9,7 @@ export interface GameAssetRouterOptions {
   itemDir: string;
   avatarDir: string;
   itemTablePath: string;
+  itemIndexPath?: string;
 }
 
 export function createGameAssetRouter(options: GameAssetRouterOptions): Router {
@@ -26,7 +27,12 @@ export function createGameAssetRouter(options: GameAssetRouterOptions): Router {
     }
 
     const asset = kind === 'item'
-      ? await resolveItemAssetFile({ itemDir: options.itemDir, fileName, itemTablePath: options.itemTablePath })
+      ? await resolveItemAssetFile({
+        itemDir: options.itemDir,
+        fileName,
+        itemTablePath: options.itemTablePath,
+        itemIndexPath: options.itemIndexPath
+      })
       : await resolveGameAssetFile({ kindDir: kindDirs[kind], fileName });
     if (!asset) {
       res.status(404).end();

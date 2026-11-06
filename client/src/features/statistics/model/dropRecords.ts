@@ -6,7 +6,8 @@ export const DROP_ITEM_DISPLAY_LIMIT = 20
 export interface DropItemEntry {
   name: string
   count: number
-  iconId?: string
+  id?: string | null
+  iconId?: string | null
 }
 
 export interface DropStageEntry {
@@ -18,7 +19,7 @@ export interface DropStageEntry {
 
 export function sortDropItems(items: DropStatistics['items']): DropItemEntry[] {
   return Object.entries(items)
-    .map(([name, item]) => ({ name, count: item.count, iconId: item.iconId }))
+    .map(([name, item]) => ({ name, count: item.count, id: item.id, iconId: item.iconId }))
     .sort((a, b) => b.count - a.count)
 }
 

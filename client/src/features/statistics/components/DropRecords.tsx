@@ -195,40 +195,44 @@ export default function DropRecords({
           />
         ) : (
         <div className="drop-records-item-grid grid min-w-0 grid-cols-1 overflow-hidden rounded-xl surface-soft sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {sortedItems.slice(0, DROP_ITEM_DISPLAY_LIMIT).map((itemData) => (
-            <div
-              key={itemData.name}
-              className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-(--app-surface-muted)"
-            >
-              {itemData.iconId && (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
-                  {failedItemImages[itemData.name] ? (
-                    <span role="img" aria-label={`${itemData.name}图标不可用`}>
-                      <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
+          {sortedItems.slice(0, DROP_ITEM_DISPLAY_LIMIT).map((itemData) => {
+            const iconKey = itemData.id ?? itemData.iconId
+
+            return (
+              <div
+                key={itemData.name}
+                className="drop-records-item-row group flex min-w-0 items-center gap-3 p-3 transition-colors hover:bg-(--app-surface-muted)"
+              >
+                {iconKey && (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--app-surface-muted)">
+                    {failedItemImages[itemData.name] ? (
+                      <span role="img" aria-label={`${itemData.name}图标不可用`}>
+                        <PackageIcon className="h-6 w-6 brand-text" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <img
+                        src={getItemIconUrl(iconKey, itemIconVersion)}
+                        alt={itemData.name}
+                        className="h-full w-full object-cover"
+                        onError={() => setFailedItemImages(previous => ({ ...previous, [itemData.name]: true }))}
+                      />
+                    )}
+                  </div>
+                )}
+                
+                <div className="flex-1 min-w-0">
+                  <div className="wrap-break-word text-sm font-bold text-primary wrap-anywhere" title={itemData.name}>
+                    {itemData.name}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="brand-chip rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap">
+                      ×{itemData.count.toLocaleString()}
                     </span>
-                  ) : (
-                    <img
-                      src={getItemIconUrl(itemData.iconId, itemIconVersion)}
-                      alt={itemData.name}
-                      className="h-full w-full object-cover"
-                      onError={() => setFailedItemImages(previous => ({ ...previous, [itemData.name]: true }))}
-                    />
-                  )}
-                </div>
-              )}
-              
-              <div className="flex-1 min-w-0">
-                <div className="wrap-break-word text-sm font-bold text-primary wrap-anywhere" title={itemData.name}>
-                  {itemData.name}
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="brand-chip rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap">
-                    ×{itemData.count.toLocaleString()}
-                  </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
         )}
 
