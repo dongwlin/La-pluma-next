@@ -69,7 +69,7 @@ Run 存储是**单实例**语义：不要让多个 Node.js 进程同时读写同
 | 值 | 含义 |
 | --- | --- |
 | `run` | 当前活动 run 为 `running`/`stopping`，设备归该 run |
-| `external` | 检测到任务进程、流程或存活租约，但没有持有执行权的 run（未纳管的直接调用方、更新、Telegram 等） |
+| `external` | 检测到任务进程、流程或存活租约，但没有持有执行权的 run（未纳管的直接调用方、自动更新定时任务、Telegram 等） |
 | `pending` | 只有不持有执行权的活动意图：`accepted` run，或等待下一关的 `waiting` 作业集 run |
 | `idle` | 没有活动 run、任务、流程或存活租约 |
 | `unknown` | 租约文件存在但无法解析；不能把它当作空闲 |
@@ -128,7 +128,7 @@ waiting ──stop──> stopped
 | 已停止 | 200 | 成功响应，`data.run.state=stopped` |
 | Run 持久化不可用 | 503 | `AGENT_RUN_PERSISTENCE_FAILED`（可重试）或 `AGENT_RUN_STORE_INVALID`（不可重试） |
 
-`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。作业集 run 读取服务端会话：`setId`、`mode`、`phase`（`starting`/`running`/`waiting_for_next`）、`currentStep`/`totalSteps`、`currentTask`、`nextEntry`、`shouldStop` 与逐项 `taskResults`；`waiting` 阶段显示 `等待开始下一关`，会话在服务重启后不存在时按状态回退为等待提示。其他执行读任务进程的 `taskName` 与 `stopRequested`。终态不追加进度。
+`enrichAgentRun` 会为活动 run 追加 `progress`：日常流程只有在自己持有 `schedule.runId` 时读取 `schedule.scheduleId/currentStep/totalSteps/currentTask/shouldStop/message`；尚未获得执行权时显示 `等待执行权`，流程状态尚未发布时显示 `等待流程状态`。作业集 run 读取服务端会话：`setId`、`mode`、`phase`（`starting`/`running`/`waiting_for_next`）、`currentStep`/`totalSteps`、`currentTask`、`nextEntry`、`shouldStop` 与逐项 `taskResults`；`waiting` 阶段显示 `等待开始下一关`，会话在服务重启后不存在时按状态回退为等待提示。Core/CLI/资源更新 run 读取 taskStatus 的受管更新子进程：`currentTask` 为受管任务名，`message` 区分等待执行权、执行中、停止中与收尾阶段；更新 run 没有步骤进度，不能把子进程 idle 读成更新完成。其他执行读任务进程的 `taskName` 与 `stopRequested`。终态不追加进度。
 
 ### 幂等与重试
 
@@ -164,6 +164,7 @@ waiting ──stop──> stopped
 - **停止可安全重试。** `stopping` 与终态的重复请求都返回 200；`stopping` 时会重新尝试设备停止。调用方仍需轮询到终态。
 - 停止请求先记录 run 意图，再发送设备命令。若子进程尚未 spawn，执行器在 pre-start gate 看到 `stopping` 会直接放弃启动并转为 `stopped`；若 spawn 已发生但事件尚未处理，`onStarted` 会补发进程/流程停止。
 - 停止过程中若子进程/流程正常退出，run 进入 `stopped`；若以错误结束，当前实现按 `stopping` 优先记为 `stopped`。不要在停止请求后把“进程退出”直接当作成功完成。
+- 更新 run 与其它执行共用同一停止矩阵：`running` 的更新 run 收到停止后终止受管更新子进程（Core/CLI/资源更新都登记进 `taskStatus`），最终结果为 `stopped`；`accepted` 的更新被直接取消，不启动子进程。停止不会把失败写成成功，也不会自动重试。
 - 本地 `AbortController` 中止、页面卸载、浏览器断线都**不等于停止**；服务端会继续执行。页面关闭后任务继续运行是预期行为。
 
 ### 4.1 日常流程提交与异步接受
@@ -223,7 +224,7 @@ waiting ──stop──> stopped
 
 - 协作占用通过锁文件表达。提交执行时租约不可用会返回 409：通用执行是 `MAA_EXECUTION_BUSY`，日常流程入口包装为 `AGENT_EXECUTION_BUSY`，旧定时执行接口返回 `AGENT_SCHEDULE_ALREADY_RUNNING`。错误 `details.owner` 给出占用者元数据。锁文件先把完整内容写入同目录临时文件，再用 `link()` 原子发布；锁文件从可见的第一刻起就是完整 JSON，不存在空文件窗口。内容为空、无法解析或缺少可核实 PID 的锁按 `unknown` 拒绝获取，不能当作 `stale` 回收。
 - 对纳入 Run 的入口，占用属于执行前拒绝：run 为 `failed`，幂等键释放，调用方可用同键安全重试。
-- 未纳入 Run 的执行（更新任务、Telegram 指令、维护入口及直接调用 `run-task` 的旧调用方）也持有同一租约。此时 `runs/current.run` 为 `null`，`activeRuns` 为空，但 `occupancy.state` 为 `external`，`sources` 包含 `task`、`schedule` 或 `lease`。不能因为 Run 为空就认为设备空闲。定时日常流程与作业集已纳入 Run；若 `schedule.isRunning` 而 `schedule.runId` 为空，说明占用来自未纳管的直接调用方。等待下一关的 manual 作业集 run 为 `waiting`，同样不持有租约；只有其他执行占用时 `external` 才会出现。
+- 未纳入 Run 的执行（Telegram 指令、自动更新定时任务及直接调用 `run-task` 的旧调用方）也持有同一租约。此时 `runs/current.run` 为 `null`，`activeRuns` 为空，但 `occupancy.state` 为 `external`，`sources` 包含 `task`、`schedule` 或 `lease`。不能因为 Run 为空就认为设备空闲。定时日常流程、作业集与 Core/CLI/资源更新已纳入 Run；若 `schedule.isRunning` 而 `schedule.runId` 为空，说明占用来自未纳管的直接调用方。等待下一关的 manual 作业集 run 为 `waiting`，同样不持有租约；只有其他执行占用时 `external` 才会出现。
 - `occupancy.lease.state=held` 表示租约记录的 PID 仍存活；`stale` 表示锁文件可回收，不算占用；`unknown` 表示锁文件无法解释，必须按“未知”处理而不是空闲。
 - 租约只约束协作进程。用户或其他工具直接用 MAA/ADB 操作设备不会被检测，系统不提供对非协作占用的排他保证。
 - 锁文件只在持有进程 PID 不存活时回收；PID 存活即视为占用。服务异常退出后，旧 MAA 子进程可能仍在运行，回收租约不代表设备已释放。
@@ -273,7 +274,7 @@ waiting ──stop──> stopped
 
 ## 6. 执行入口覆盖
 
-“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/src/controllers/agentExecutionController.ts`、`server/src/routes/agent.ts` 与 `server/src/routes/agentContract.ts`。
+“纳入 Run”指该入口通过 `beginAgentRun`/`executeTrackedAgentAction` 创建服务端 run，并在响应中返回 `runId`。判定依据见 `server/src/controllers/agentExecutionController.ts`、`server/src/controllers/agentMaintenanceController.ts`、`server/src/routes/agent.ts` 与 `server/src/routes/agentContract.ts`。
 
 | 入口 | 端点/调用方 | Run | 租约/执行方式 | 进度来源 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -290,8 +291,8 @@ waiting ──stop──> stopped
 | 旧断点迁移 | 页面启动读取 `maa-task-flow-execution` | 否（只关联已有 run） | 不获取 | 所关联 run 的 progress | 一次性；不重提，见 5.4 |
 | 仓库/干员识别 | `POST /api/agent/actions/run-task`（`command=run` + `taskConfig`，`Depot`/`OperBox`） | 是 | 命令期间持有 | run 进度 | 后续 `depot-recognition`/`operbox-recognition` 只解析本地日志，不是设备执行 |
 | 材料数据更新 | `POST /api/agent/actions/fetch-training-materials` | 否 | 不占设备租约 | 无 | 拉取数据脚本，不是设备自动化 |
-| 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 否 | 全程持有 | 无 | 维护入口；与自动化互斥 |
-| 自动更新 | 定时任务 | 否 | 全程持有 | 无 | 无 runId |
+| 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 是（`update_core`/`update_cli`/`update_resources`） | 全程持有 | run 进度（受管更新子进程） | 维护入口；默认同步，`waitForCompletion=false` 取得执行权后返回 202；支持按 `runId` 停止；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` |
+| 自动更新 | 定时任务 | 否 | 全程持有 | 无 | 直接调用 Core/CLI 更新命令，无 runId；与维护更新入口共享同一租约与任务进程投影 |
 | Telegram 指令 | `telegramBotService` 命令 | 否 | 命令期间持有 | 无 | 外部客户端入口；未纳入 HTTP Run 统一包装 |
 | 预览/截图/连接测试 | `/webrtc/*`、`/screen/screenshot`、`test-connection` | 否 | 不属于设备自动化执行 | 预览会话/即时响应 | 不适用 Run |
 
@@ -323,6 +324,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 - **快照与占用**：`occupancy` 的 idle/pending/run/external/unknown 与租约 free/held/stale/unknown；`lastRun` 与当前身份分离；只有 current 带进度，日常流程只投影自己持有的 `schedule.runId`。
 - **HTTP 契约**：目标停止矩阵与“旧 run 不误停新运行”；同步/后台 202 与幂等重放响应头、错误码映射；manifest/OpenAPI 同源且与实际挂载 router 图一致，恰好四个执行动作声明 `producesRun`，公开 operation 按发布 schema 校验请求与真实响应；HTTP 排空（在途响应完整结束、keep-alive 回收、超时强制断开并非零退出）与信令网关关闭失败仍排空 HTTP。
 - **租约与执行**：租约互斥、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布；执行失败释放租约。
+- **维护更新 Run**：Core/CLI/资源更新返回 `runId` 与可查询终态；`waitForCompletion=false` 在取得执行权、产生受管子进程前返回 202；`running` 的更新 run 作为 `occupancy.state=run` 出现，按 `runId` 停止终止受管更新子进程并释放租约；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` 写入 `failed` 终态，详情保持 `version`/`failedStep`/`coreUpdated`；相同幂等键重放原 run，不重复执行更新。
 - **作业集与流程**：continuous/manual 的等待、继续与停止语义，占用 409 可重试且不消耗条目，逐项结果归属 `runId`；计划构建与逐项状态分类；可中止的步间等待，完成副作用在租约释放且 Run 结算后消费；cron 产生单个带终态结果的 `run_daily_flow`，占用时 fail-closed；触发源重复配置替换、销毁失败上报、draining 后拒绝注册并丢弃排队回调。
 - **关闭与后台触发源**：draining 后 Run 准入与设备租约 503 且不可绕过；执行器实际结果优先，预算耗尽记为 `interrupted`；子进程 SIGTERM 与预算内升级 SIGKILL；重复信号复用同一次关闭；Telegram 停止后不执行迟到命令；外部预览资源不被停止，网关关闭断开观看连接并清空票据；启动逆序回收、初始化取消与统一关闭截止时间。
 

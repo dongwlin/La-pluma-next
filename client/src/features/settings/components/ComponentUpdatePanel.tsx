@@ -30,10 +30,12 @@ export default function ComponentUpdatePanel() {
     running: updateOperation,
     feedback: updateFeedback,
     busy: updateBusy,
+    canceling: updateCanceling,
     updateCore,
     switchCoreChannel,
     updateCli,
     updateResources,
+    cancelUpdate,
   } = useSettingsUpdates(setStatusMessage, reloadVersion)
   const updatingCore = updateOperation === 'core' || updateOperation === 'core-channel'
   const updatingCli = updateOperation === 'cli'
@@ -53,6 +55,10 @@ export default function ComponentUpdatePanel() {
 
   const handleHotUpdate = () => {
     void updateResources()
+  }
+
+  const handleCancelUpdate = () => {
+    void cancelUpdate()
   }
 
   const coreChannel: CoreUpdateChannel = versionInfo?.updateChannels?.core
@@ -171,6 +177,22 @@ export default function ComponentUpdatePanel() {
           </div>
         </section>
       </div>
+
+      {updateOperation && (
+        <div className="mt-3">
+          <Button
+            type="button"
+            onClick={handleCancelUpdate}
+            disabled={updateCanceling}
+            loading={updateCanceling}
+            loadingText="停止中"
+            variant="outline"
+            fullWidth
+          >
+            停止更新
+          </Button>
+        </div>
+      )}
 
       {updateFeedback && (
         <div className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${updateFeedback.type === 'success' ? 'status-success' : 'status-warning'}`} role={updateFeedback.type === 'error' ? 'alert' : 'status'}>

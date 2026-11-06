@@ -1,11 +1,9 @@
-import { execFile } from 'node:child_process';
 import { access, realpath } from 'node:fs/promises';
 import { delimiter, isAbsolute, join } from 'node:path';
-import { promisify } from 'node:util';
 import { DEFAULT_MAA_CLI_PATH } from '../config/connectionDefaults.ts';
+import { execMaaCommandUnlocked } from './maaProcessService.ts';
+import type { MaaProcessLifecycle, MaaProcessPorts } from './maaProcessService.ts';
 import type { CliUpdateChannel } from './updateChannelService.ts';
-
-const execFileAsync = promisify(execFile);
 
 export type CliInstallSource = 'standalone' | 'homebrew' | 'winget' | 'container';
 
@@ -29,6 +27,12 @@ export interface CliUpdaterOptions {
 export interface CliUpdaterResult {
   stdout: string;
   stderr: string;
+}
+
+/** CLI 更新执行端口：Run 生命周期与子进程端口可注入，测试不启动真实包管理器。 */
+export interface CliUpdaterRunOptions {
+  lifecycle?: MaaProcessLifecycle;
+  ports?: Pick<MaaProcessPorts, 'spawn' | 'execFile' | 'execFileTimeoutMs'>;
 }
 
 async function isExecutable(path: string): Promise<boolean> {
@@ -178,8 +182,20 @@ export async function buildCliUpdaterPlan(
   );
 }
 
-export async function runCliUpdater(plan: CliUpdaterPlan): Promise<CliUpdaterResult> {
+/**
+ * 执行更新命令。更新子进程登记为受管任务，停止与关闭流程按同一路径终止它；
+ * `plan.command` 是实际可执行文件（maa 自身或包管理器）。
+ */
+export async function runCliUpdater(
+  plan: CliUpdaterPlan,
+  options: CliUpdaterRunOptions = {}
+): Promise<CliUpdaterResult> {
   if (!plan.supported) throw new Error(plan.reason || '当前安装来源不支持更新 MAA CLI');
-  const { stdout, stderr } = await execFileAsync(plan.command, plan.args);
-  return { stdout, stderr };
+  const [command, ...args] = plan.args;
+  if (!command) throw new Error('更新命令为空');
+  const result = await execMaaCommandUnlocked(command, args, '更新 MAA CLI', 'maintenance', true, false, null, options.lifecycle ?? {}, {
+    ...options.ports,
+    cliPath: plan.command
+  });
+  return { stdout: result.stdout, stderr: result.stderr };
 }
