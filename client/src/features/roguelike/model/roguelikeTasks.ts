@@ -210,7 +210,8 @@ export function isRoguelikeOptionVisible(
 }
 
 /**
- * 主题切换后把当前主题不再支持的模式重置为首项（集成战略的刷坍缩范式只对萨米开放）。
+ * 主题切换后把当前主题不再支持的模式重置为该主题声明的默认模式；没有默认值时才回落到首项
+ * （集成战略的刷坍缩范式只对萨米开放，沙洲遗闻的默认模式是 `1` 而首项是 `0`）。
  * 其余字段保留原值；仍生效但越界的下拉值交由执行前校验拒绝。
  */
 export function normalizeRoguelikeModeForTheme(
@@ -227,7 +228,8 @@ export function normalizeRoguelikeModeForTheme(
 
   const choices = getRoguelikeOptionChoices(modeOption, theme, taskId) ?? []
   if (choices.some(choice => choice.value === mode)) return advancedParams
-  return { ...advancedParams, [taskId]: { ...advanced, mode: choices[0]?.value ?? '' } }
+  const fallback = resolveOptionDefault(modeOption, theme, taskId) ?? choices[0]?.value ?? ''
+  return { ...advancedParams, [taskId]: { ...advanced, mode: fallback } }
 }
 
 /** 列表参数按逗号、顿号、分号与空白切分；空串与重复分隔符不产生参数。 */
