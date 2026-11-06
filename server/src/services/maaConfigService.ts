@@ -103,6 +103,25 @@ function normalizeTouchMode(value: unknown): MaaTouchMode | undefined {
   return typeof value === 'string' ? TOUCH_MODE_ALIASES[value.trim().toLowerCase()] : undefined;
 }
 
+/**
+ * `[connection]` 的旧版正名 `type`/`device`（maa-cli 现以 `preset`/`address` 为正名、
+ * 旧名为别名）：serde 把正名与别名视为同一字段，两者同表并存会让 CLI 以
+ * duplicate field 拒绝加载整个 profile。迁移后旧键一律移除，正名已存在时保留
+ * 正名值，旧名值只在其缺失时补位。
+ */
+function migrateConnectionAliases(values: Record<string, unknown>): Record<string, unknown> {
+  const migrated = { ...values };
+  if (migrated.type !== undefined) {
+    if (migrated.preset === undefined) migrated.preset = migrated.type;
+    delete migrated.type;
+  }
+  if (migrated.device !== undefined) {
+    if (migrated.address === undefined) migrated.address = migrated.device;
+    delete migrated.device;
+  }
+  return migrated;
+}
+
 /** 读取时归一已知字段的别名与大小写；未知值保持原样，由页面按默认值展示。 */
 function normalizeConnectionValues(values: Record<string, unknown>): Record<string, unknown> {
   const preset = normalizePreset(values.preset);
@@ -239,7 +258,7 @@ function toConnectionView(profile: MaaProfileDocument): MaaProfileConnection {
     : typeof legacyAutoReconnect === 'boolean'
       ? legacyAutoReconnect
       : undefined;
-  const normalized = normalizeConnectionValues(connectionValues);
+  const normalized = normalizeConnectionValues(migrateConnectionAliases(connectionValues));
   return autoReconnect === undefined
     ? normalized
     : { ...normalized, auto_reconnect: autoReconnect };
@@ -321,7 +340,7 @@ export function mergeMaaProfileConnection(
 
   return {
     ...profileDocument,
-    connection: { ...connection, ...connectionValues },
+    connection: migrateConnectionAliases({ ...connection, ...connectionValues }),
     ...(Object.keys(behavior).length > 0 ? { behavior } : {})
   };
 }
