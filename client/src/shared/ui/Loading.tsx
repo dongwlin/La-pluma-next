@@ -576,6 +576,8 @@ function StatisticsSkeleton() {
 function ConfigSkeleton() {
   return (
     <>
+      <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
+        <div className="config-workspace-primary app-stack-section min-w-0">
       <div className="app-workspace-segments app-liquid-tab-pill w-full" data-config-sections aria-hidden="true">
         <div className="app-workspace-segment-list grid-cols-3">
           {[1, 2, 3].map(item => (
@@ -591,8 +593,6 @@ function ConfigSkeleton() {
           ))}
         </div>
       </div>
-      <div className="config-workspace-grid grid min-w-0 gap-(--app-space-section) xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:items-start">
-        <div className="config-workspace-primary app-stack-section min-w-0">
       <Card smoothCorners className="config-editor-card p-0!">
         <CardHeaderSkeleton actionWidth="w-36" />
         <div className="app-card-content app-stack-card">
