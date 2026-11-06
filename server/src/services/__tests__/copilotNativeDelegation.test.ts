@@ -304,6 +304,23 @@ function planFiles(count = 3): string[] {
   );
 }
 
+function nativeCopilotIds(call: string): number[] {
+  return [...call.matchAll(/prts:\/\/(\d+)/g)].map(match => Number(match[1]));
+}
+
+function plannedCopilotIds(toml: string): number[] {
+  return [...toml.matchAll(/(\d+)-(\d+)-(?:normal|raid)-(\d+)\.json/g)].map(match => Number(match[2]));
+}
+
+async function resetRunArtifacts(): Promise<void> {
+  await writeFile(maaCallLog, '');
+  await writeFile(maaAsstLog, '');
+  await rm(progressPath, { force: true });
+  await rm(planDir, { recursive: true, force: true });
+  await rm(dropRecordsDir, { recursive: true, force: true });
+  await mkdir(dropRecordsDir, { recursive: true });
+}
+
 describe('copilot native delegation conditions', () => {
   test('accepts a queue representable by the native copilot command', async () => {
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
@@ -500,53 +517,65 @@ describe('copilot native delegation equivalence', () => {
         planEntry({ itemIndex: 2, copilotId: 103, stageCode: '1-3' })
       ]
     };
-    configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => plan });
-    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 103]);
-    process.env.FAKE_NATIVE_EXIT_DELAY = '250';
 
-    const selectedRun = beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42' } }).run;
-    const selected = await runContinuousCopilotSet({
-      runId: selectedRun.runId,
-      setId: '42',
-      selectedIndexes: [0, 2]
-    });
+    async function runScenario(
+      entries: CopilotPlanEntry[],
+      useNative: boolean,
+      { selectedIndexes, seedProgress }: { selectedIndexes?: number[]; seedProgress?: string[] } = {}
+    ) {
+      await resetRunArtifacts();
+      if (seedProgress) await writeFile(progressPath, JSON.stringify({ 42: seedProgress }));
+      configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => ({ ...plan, entries }) });
+      setCopilotNativeDelegationForTests(useNative);
+      const files = entries.filter(entry => !entry.completed).map(entry =>
+        join(planDir, `${entry.itemIndex}-${entry.copilotId}-normal-1.json`)
+      );
+      process.env.FAKE_NATIVE_LOADS = useNative
+        ? nativeLoads(entries.filter(entry => !entry.completed).map(entry => entry.copilotId))
+        : '';
+      process.env.FAKE_RUN_LOADS = useNative ? '' : runLoads(files);
+      const run = beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42' } }).run;
+      const result = await runContinuousCopilotSet({
+        runId: run.runId,
+        setId: '42',
+        ...(selectedIndexes ? { selectedIndexes } : {})
+      });
+      const calls = await readMaaCalls();
+      const nativeCall = calls.find(call => call.startsWith('copilot ')) || '';
+      const tomlLine = calls.find(call => call.startsWith('toml ')) || '';
+      return {
+        result,
+        nativeIds: nativeCopilotIds(nativeCall),
+        existingIds: tomlLine
+          ? plannedCopilotIds(JSON.parse(tomlLine.slice('toml '.length)) as string)
+          : [],
+        progress: await readProgress()
+      };
+    }
 
-    assert.deepEqual(await readMaaCalls(), [
-      'copilot prts://101 prts://103 --raid normal --formation --ignore-requirements --batch'
-    ]);
-    assert.equal(selected.summary.plannedEntries, 3);
-    assert.equal(selected.summary.queuedEntries, 2);
-    assert.equal(selected.summary.alreadyCompletedCount, 0);
-    assert.equal(selected.summary.successCount, 2);
-    assert.deepEqual(selected.summary.delegation, { attempted: true, fallback: false });
-    assert.deepEqual(selected.completed.sort(), ['0:101:normal', '2:103:normal']);
+    const selectedNative = await runScenario(plan.entries, true, { selectedIndexes: [0, 2] });
+    const selectedExisting = await runScenario(plan.entries, false, { selectedIndexes: [0, 2] });
 
-    await writeFile(maaCallLog, '');
-    await writeFile(maaAsstLog, '');
-    await rm(progressPath, { force: true });
-    await rm(dropRecordsDir, { recursive: true, force: true });
-    await mkdir(dropRecordsDir, { recursive: true });
-    await writeFile(progressPath, JSON.stringify({ 42: ['1:102:normal'] }));
+    assert.deepEqual(selectedNative.nativeIds, [101, 103]);
+    assert.deepEqual(selectedExisting.existingIds, [101, 103]);
+    assert.equal(selectedNative.result.summary.plannedEntries, 3);
+    assert.equal(selectedNative.result.summary.queuedEntries, 2);
+    assert.equal(selectedNative.result.summary.successCount, 2);
+    assert.deepEqual(selectedNative.result.summary.delegation, { attempted: true, fallback: false });
+    assert.equal(selectedExisting.result.summary.delegation, undefined);
+    assert.deepEqual(selectedNative.result.completed.sort(), selectedExisting.result.completed.sort());
 
-    const completedPlan: CopilotPlan = {
-      ...plan,
-      entries: plan.entries.map(entry => ({ ...entry, completed: entry.itemIndex === 1 }))
-    };
-    configureCopilotSetRuntimeForTests({ buildCopilotPlan: async () => completedPlan });
-    process.env.FAKE_NATIVE_LOADS = nativeLoads([101, 103]);
+    const completedEntries = plan.entries.map(entry => ({ ...entry, completed: entry.itemIndex === 1 }));
+    const completedNative = await runScenario(completedEntries, true, { seedProgress: ['1:102:normal'] });
+    const completedExisting = await runScenario(completedEntries, false, { seedProgress: ['1:102:normal'] });
 
-    const completedRun = beginAgentRun({ operationId: 'run_copilot_set', input: { setId: '42' } }).run;
-    const completed = await runContinuousCopilotSet({ runId: completedRun.runId, setId: '42' });
-
-    assert.deepEqual(await readMaaCalls(), [
-      'copilot prts://101 prts://103 --raid normal --formation --ignore-requirements --batch'
-    ]);
-    assert.equal(completed.summary.plannedEntries, 3);
-    assert.equal(completed.summary.queuedEntries, 2);
-    assert.equal(completed.summary.alreadyCompletedCount, 1);
-    assert.equal(completed.summary.successCount, 2);
-    assert.deepEqual([...completed.completed].sort(), ['0:101:normal', '1:102:normal', '2:103:normal']);
-    assert.deepEqual(((await readProgress())['42'] as string[]).sort(), [...completed.completed].sort());
+    assert.deepEqual(completedNative.nativeIds, [101, 103]);
+    assert.deepEqual(completedExisting.existingIds, [101, 103]);
+    assert.equal(completedNative.result.summary.alreadyCompletedCount, 1);
+    assert.equal(completedNative.result.summary.queuedEntries, 2);
+    assert.deepEqual([...completedNative.result.completed].sort(), ['0:101:normal', '1:102:normal', '2:103:normal']);
+    assert.deepEqual(completedNative.result.completed.sort(), completedExisting.result.completed.sort());
+    assert.deepEqual(((completedNative.progress['42'] ?? []) as string[]).sort(), ((completedExisting.progress['42'] ?? []) as string[]).sort());
   });
 
   test('manual handoff never delegates and keeps the waiting run flow', async () => {
