@@ -94,7 +94,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 ### 作业集逐项进度与文件加载事件
 
-作业集执行期间，服务端每 2 秒增量读取 `asst.log`，把 `CopilotListLoadTaskFileSuccess` 中的 `file_name` 映射到计划文件并推进逐项生命周期（`server/src/services/copilotPlanService.ts`）。出现第 k 份计划文件的加载时，此前尚未结算的条目结算为 `success`，该文件所属条目置为 `running`。
+作业集执行期间，服务端每 2 秒增量读取 `asst.log`，把 `CopilotListLoadTaskFileSuccess` 中的 `file_name` 映射回条目并推进逐项生命周期（`server/src/services/copilotPlanService.ts`）。出现第 k 份计划文件的加载时，此前尚未结算的条目结算为 `success`，该文件所属条目置为 `running`。现有流程按计划文件路径映射，原生委托按文件名中的 copilot id 映射（见下节）；两条路径共用同一套观察、结算与进度汇总。
 
 载荷由共享回调解析器按 JSON 解析，`details.file_name` 是 JSON 转义后的原生路径（Windows 为 `C:\\...`），必须解码后再比较；计划文件路径由 `path.join` 生成，两者在分隔符、盘符与目录名大小写上可能不同，匹配前统一分隔符并在 Windows 上忽略大小写。
 
@@ -113,6 +113,26 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 | 中途失败（未三星或任务失败） | 失败条目之后不再出现新的加载事件；已通过条目保留 `success`，其余为 `failed` |
 | 主动终止 | 终止后不再出现新的加载事件；已开始的条目按 `stopped` 处理，未开始的保持 `pending` |
 | 重复作业（循环次数 > 1） | 同一作业的多次重复只在后续条目加载或组结束时统一结算一次，不重复计数 |
+
+### 原生 Copilot 委托与回退
+
+`executeCopilotEntries` 在取得设备租约后先判定整组条目能否交给原生 `maa copilot` 预设命令（`server/src/services/copilotPlanService.ts` 的 `evaluateCopilotNativeDelegation`）。原生命令按 uri 顺序生成一份 `copilot_list`：每条目一份计划文件、统一 `--raid`、多条目时强制编队、列表模式忽略 `loop_times`，并且没有 `user_additional`、`nav_name_override` 与逐条 `is_raid` 入口。因此只在下列条件同时成立时委托，其余一律走现有流程：
+
+| 条件 | 原因 |
+| --- | --- |
+| 条目数至少为 2 | 单条目会让原生命令改用 `filename` + `loop_times` 的单文件模式，不再下发 `stage_name`，也无法表达突袭 |
+| 全部非预设编队 | 预设编队会关闭自动编队并写入 `LaPlumaPresetBattleConfirm`，原生命令没有对应入口 |
+| `mode` 全组一致 | `--raid` 只有整组一个值，`both` 产生的 normal/raid 交替条目无法逐条表达 |
+| 自动编队开启（`formationMode !== 'off'`） | 多条目时原生命令强制 `formation = true` |
+| `loopTimes` 为 1 | 列表模式丢弃 `loop_times`，现有流程用重复计划文件表达循环 |
+| 无 `user_additional` | 原生命令没有该参数 |
+| 编队序号与助战参数为可表示的整数 | 0 值与缺省等价，非整数无法映射到命令行 |
+| copilot id 不重复 | 原生缓存文件按 `<id>.json` 命名，重复 id 无法区分条目 |
+| 每个条目的 `displayStage` 等于本地 `Arknights-Tile-Pos` 中该关卡的 `code` | 原生命令用这个代号作 `stage_name`，MaaCore 在缺省 `nav_name_override` 时同样按它导航；现有流程把 `displayStage` 作为 `nav_name_override` 下发 |
+
+原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。
+
+委托结果写在 `CopilotEntriesOutcome.delegation` 并透传到作业集 `summary.delegation`：`attempted` 表示本次执行尝试过原生路径，`fallback` 为真表示原生失败后已回退，`nativeError` 保留原生失败信息。回退成功后整体仍是成功；回退后现有流程也失败时，`fallback` 与 `nativeError` 同时存在，以便和「整体失败」区分。未委托的原因只在调试日志中记录。
 
 ## 通知发送与 Telegram Bot 轮询
 
