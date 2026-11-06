@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import { createLaPlumaApp } from '../app.ts'
 import operatorTraining from '../services/operatorTrainingService.ts'
@@ -11,6 +14,7 @@ import type {
 import { DEFAULT_TRAINING_SETTINGS } from '../services/operatorTrainingModel.ts'
 import type { ApplyPlanResult, FlowSyncState } from '../services/operatorTrainingApplication.ts'
 import type { TrainingPlan } from '../services/operatorTrainingPlan.ts'
+import { LocalResourceError } from '../services/operatorTrainingStore.ts'
 import type { TrainingQueueItem } from '../services/operatorTrainingStore.ts'
 
 const servers: Server[] = []
@@ -37,7 +41,7 @@ interface ApiEnvelope<T = unknown> {
   success: boolean
   message: string
   data?: T
-  error?: { code?: string }
+  error?: { code?: string; details?: Record<string, unknown>; retryable?: boolean }
 }
 
 function isApiEnvelope(value: unknown): value is ApiEnvelope {
@@ -363,5 +367,85 @@ describe('training routes over real HTTP', () => {
     assert.equal(body.error?.code, 'AGENT_INTERNAL_ERROR')
     assert.equal(body.message, '服务器内部错误')
     assert.ok(!JSON.stringify(body).includes('内部堆栈泄露标记'))
+  })
+
+  it('returns an actionable 503 when the real plan path cannot read local MAA resources', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+    console.error = () => {}
+    const previousDataDir = process.env.MAA_DATA_DIR
+    const previousResourceDir = process.env.MAA_RESOURCE_DIR
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'la-pluma-training-resource-'))
+    const resourceDir = path.join(tempRoot, 'resource')
+    process.env.MAA_DATA_DIR = tempRoot
+    process.env.MAA_RESOURCE_DIR = resourceDir
+
+    try {
+      const response = await fetch(agentUrl(port, '/training/plan'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'current' })
+      })
+
+      assert.equal(response.status, 503)
+      const body = await readEnvelope(response)
+      assert.equal(body.success, false)
+      assert.equal(body.error?.code, 'LOCAL_RESOURCE_MISSING')
+      assert.equal(body.error?.retryable, true)
+      assert.deepEqual(body.error?.details, {
+        resourcePath: path.join(resourceDir, 'gamedata', 'excel', 'item_table.json')
+      })
+      assert.match(body.message, /MAA 游戏资源/)
+      assert.match(body.message, /获取游戏资源/)
+      assert.match(body.message, /MAA 资源目录/)
+    } finally {
+      if (previousDataDir === undefined) delete process.env.MAA_DATA_DIR
+      else process.env.MAA_DATA_DIR = previousDataDir
+      if (previousResourceDir === undefined) delete process.env.MAA_RESOURCE_DIR
+      else process.env.MAA_RESOURCE_DIR = previousResourceDir
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('maps corrupt local MAA resources to an actionable 503 and keeps unknown errors opaque', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await listen(app)
+    console.error = () => {}
+    const requestPlan = async (): Promise<Response> => fetch(agentUrl(port, '/training/plan'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'current' })
+    })
+
+    operatorTraining.generateTrainingPlan = async () => {
+      throw new LocalResourceError(
+        '本地资源字段缺失: /opt/maa/resource/item_table.json 的 items',
+        '/opt/maa/resource/item_table.json',
+        'items'
+      )
+    }
+
+    const invalid = await requestPlan()
+    assert.equal(invalid.status, 503)
+    const invalidBody = await readEnvelope(invalid)
+    assert.equal(invalidBody.success, false)
+    assert.equal(invalidBody.error?.code, 'LOCAL_RESOURCE_INVALID')
+    assert.equal(invalidBody.error?.retryable, false)
+    assert.deepEqual(invalidBody.error?.details, {
+      resourcePath: '/opt/maa/resource/item_table.json',
+      field: 'items'
+    })
+    assert.match(invalidBody.message, /MAA 游戏资源不可用/)
+    assert.match(invalidBody.message, /MAA 资源目录/)
+
+    operatorTraining.generateTrainingPlan = async () => {
+      throw new Error('内部堆栈泄露标记')
+    }
+
+    const internal = await requestPlan()
+    assert.equal(internal.status, 500)
+    const internalBody = await readEnvelope(internal)
+    assert.equal(internalBody.error?.code, 'AGENT_INTERNAL_ERROR')
+    assert.ok(!JSON.stringify(internalBody).includes('内部堆栈泄露标记'))
   })
 })
