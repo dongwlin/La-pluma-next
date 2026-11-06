@@ -1,8 +1,7 @@
 import { expect, type Page, type Request, type Route } from '@playwright/test'
 import {
-  EXTERNAL_IMAGE_HOSTS,
-  PLACEHOLDER_PNG_BASE64,
   apiFixtures,
+  installPlaceholderAssetRoutes,
 } from '../visual/fixtures'
 import { expectNoBrowserErrors, recordBrowserErrors } from '../visual/browser-errors'
 
@@ -324,18 +323,7 @@ export async function installIntegrationScenario(page: Page, state: ScenarioStat
     if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {})
   })
   await page.route('**/api/**', route => respondToApi(route, state))
-  for (const host of EXTERNAL_IMAGE_HOSTS) {
-    await page.route(`https://${host}/**`, route => route.fulfill({
-      status: 200,
-      contentType: 'image/png',
-      body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
-    }))
-  }
-  await page.route('**/game-assets/**', route => route.fulfill({
-    status: 200,
-    contentType: 'image/png',
-    body: Buffer.from(PLACEHOLDER_PNG_BASE64, 'base64'),
-  }))
+  await installPlaceholderAssetRoutes(page)
   await page.route('**/sw.js', route => route.fulfill({ status: 404, body: 'service worker disabled' }))
 }
 
