@@ -203,6 +203,46 @@ function validateStartUpParams(params: Record<string, unknown>): string | null {
   return null;
 }
 
+export interface GameTaskParamsNormalization {
+  params: Record<string, unknown>;
+  error: string | null;
+}
+
+/**
+ * 旧草稿兼容：Roguelike 的常乐节点目标曾被写成 snake_case，而 MaaCore 只认
+ * `find_playTime_target`。读取时统一改写为 Core 的权威键；两种拼写同时出现且
+ * 取值不同时不猜测意图，由调用方报错而不是静默丢弃其中一个值。
+ */
+const GAME_TASK_PARAM_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
+  Roguelike: Object.freeze({ find_play_time_target: 'find_playTime_target' })
+});
+
+export function normalizeGameTaskParams(
+  type: string,
+  params: Record<string, unknown>
+): GameTaskParamsNormalization {
+  const aliases = GAME_TASK_PARAM_ALIASES[type];
+  if (!aliases) return { params, error: null };
+  let normalized = params;
+  for (const [legacyKey, canonicalKey] of Object.entries(aliases)) {
+    if (!Object.hasOwn(params, legacyKey)) continue;
+    normalized = normalized === params ? { ...params } : normalized;
+    if (Object.hasOwn(params, canonicalKey)) {
+      if (params[canonicalKey] !== params[legacyKey]) {
+        return {
+          params,
+          error: `${type}.params 同时包含 ${legacyKey} 与 ${canonicalKey} 且取值不同`
+        };
+      }
+      delete normalized[legacyKey];
+      continue;
+    }
+    normalized[canonicalKey] = params[legacyKey];
+    delete normalized[legacyKey];
+  }
+  return { params: normalized, error: null };
+}
+
 export function validateGameTaskParams(type: string, params: Record<string, unknown>): string | null {
   const limits = GAME_TASK_LIMITS.OperProgress;
   if (type === 'Roguelike') {

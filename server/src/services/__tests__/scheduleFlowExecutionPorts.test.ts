@@ -204,6 +204,42 @@ describe('schedule flow boundaries', () => {
     });
   });
 
+  it('migrates legacy roguelike params when planning and validating saved flows', () => {
+    const legacyFlow = [{
+      id: 'roguelike-1',
+      name: '刷常乐节点',
+      enabled: true,
+      taskType: 'Roguelike',
+      params: { theme: 'JieGarden', mode: 20001, find_play_time_target: 2 }
+    }];
+
+    assert.equal(validateScheduledTaskFlow(legacyFlow).success, true);
+    const step = plannedResult(buildScheduledTaskFlowPlan(legacyFlow)).steps[0];
+    assert.ok(step);
+    assert.deepEqual(step.taskConfig, {
+      name: '刷常乐节点',
+      type: 'Roguelike',
+      params: { theme: 'JieGarden', mode: 20001, find_playTime_target: 2 }
+    });
+
+    const conflictFlow = [{
+      id: 'roguelike-2',
+      name: '刷常乐节点',
+      enabled: true,
+      taskType: 'Roguelike',
+      params: {
+        theme: 'JieGarden',
+        mode: 20001,
+        find_play_time_target: 1,
+        find_playTime_target: 2
+      }
+    }];
+    assert.deepEqual(validateScheduledTaskFlow(conflictFlow), {
+      success: false,
+      message: 'Roguelike.params 同时包含 find_play_time_target 与 find_playTime_target 且取值不同'
+    });
+  });
+
   it('plans commands and aggregates results without device, storage or notification ports', () => {
     const plan = plannedResult(buildScheduledTaskFlowPlan([
       {

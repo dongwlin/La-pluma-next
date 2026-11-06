@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateGameTaskParams, validateRoguelikeCommandArgs } from '../gameTaskConfigService.ts';
+import {
+  normalizeGameTaskParams,
+  validateGameTaskParams,
+  validateRoguelikeCommandArgs
+} from '../gameTaskConfigService.ts';
 
 describe('validateGameTaskParams', () => {
   it('rejects an empty OperProgress plan list', () => {
@@ -420,5 +424,47 @@ describe('validateRoguelikeCommandArgs', () => {
     assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '2']), '生息演算 --mode 必须是 0 或 1');
     assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--increment-mode', '3']), '生息演算 --increment-mode 必须是 0 或 1');
     assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--num-craft-batches', '0']), '生息演算 --num-craft-batches 必须是正整数');
+  });
+});
+
+describe('normalizeGameTaskParams', () => {
+  it('migrates the legacy snake_case playtime target to the Core spelling', () => {
+    const normalization = normalizeGameTaskParams('Roguelike', {
+      theme: 'JieGarden',
+      mode: 20001,
+      find_play_time_target: 2
+    });
+    assert.deepEqual(normalization, {
+      params: { theme: 'JieGarden', mode: 20001, find_playTime_target: 2 },
+      error: null
+    });
+  });
+
+  it('keeps the authoritative value and drops only a matching legacy duplicate', () => {
+    const normalization = normalizeGameTaskParams('Roguelike', {
+      find_play_time_target: 3,
+      find_playTime_target: 3
+    });
+    assert.deepEqual(normalization, { params: { find_playTime_target: 3 }, error: null });
+  });
+
+  it('reports conflicting spellings instead of silently dropping one value', () => {
+    assert.deepEqual(normalizeGameTaskParams('Roguelike', {
+      find_play_time_target: 1,
+      find_playTime_target: 2
+    }), {
+      params: { find_play_time_target: 1, find_playTime_target: 2 },
+      error: 'Roguelike.params 同时包含 find_play_time_target 与 find_playTime_target 且取值不同'
+    });
+  });
+
+  it('leaves other task types and canonical params untouched', () => {
+    const fightParams = { stage: '1-7', times: 3 };
+    const fight = normalizeGameTaskParams('Fight', fightParams);
+    assert.equal(fight.params, fightParams);
+    assert.equal(fight.error, null);
+
+    const canonical = normalizeGameTaskParams('Roguelike', { find_playTime_target: 2 });
+    assert.deepEqual(canonical, { params: { find_playTime_target: 2 }, error: null });
   });
 });
