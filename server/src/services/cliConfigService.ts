@@ -14,6 +14,10 @@ export type CliConfigDocument = Record<string, unknown>;
 const parseToml: (text: string) => CliConfigDocument = TOML.parse;
 const stringifyToml = TOML.stringify as (document: CliConfigDocument) => string;
 
+function isMissingFileError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
 export function isCliConfigRecord(value: unknown): value is CliConfigDocument {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -30,13 +34,15 @@ export async function resolveCliConfigPath(): Promise<string> {
   return resolve(configDir.trim(), 'cli.toml');
 }
 
-/** 读取 cli.toml；文件缺失或不可读时返回空文档。非法 TOML 在调用方按失败处理。 */
+/** 读取 cli.toml；仅文件缺失回退空文档，其它读取失败与非法 TOML 一律抛出。 */
 export async function readCliConfigDocument(): Promise<CliConfigDocument> {
+  const path = await resolveCliConfigPath();
   let content: string;
   try {
-    content = await readFile(await resolveCliConfigPath(), 'utf-8');
-  } catch {
-    return {};
+    content = await readFile(path, 'utf-8');
+  } catch (error) {
+    if (isMissingFileError(error)) return {};
+    throw error;
   }
   return parseCliConfigText(content);
 }

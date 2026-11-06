@@ -170,7 +170,7 @@ curl -X POST http://localhost:3000/api/agent/actions/stop \
 维护端点还包括更新渠道与资源源配置。它们只读写 maa-cli 的 `cli.toml`，属于配置读写而不是执行动作：
 
 ```bash
-# 读取已保存的更新渠道；缺省或读取失败时回落到 stable
+# 读取已保存的更新渠道；cli.toml 缺失时回落到 stable，损坏或不可读时带 degraded 标记
 curl 'http://localhost:3000/api/agent/update-channels'
 
 # 保存更新渠道：scope 为 core（stable/beta/alpha）或 cli（stable/beta/nightly）
@@ -187,7 +187,7 @@ curl -X POST http://localhost:3000/api/agent/config/resource-source \
   -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git","url":"https://github.com/MaaAssistantArknights/MaaResource.git","branch":null,"useSshAgent":false,"sshKey":null},"mirrorchyan":{"checkInterval":600}}'
 ```
 
-`GET /api/agent/update-channels` 返回 `{ core, cli }`；`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`，响应只回显凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文；请求未提供凭据时保留已保存值。这四个端点与更新命令不同：它们不创建 Run、不占用执行租约，也不出现在 manifest/OpenAPI 中。
+`GET /api/agent/update-channels` 返回 `{ core, cli }`；`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`cli.toml` 缺失时按缺省值返回；文件损坏或不可读时同样返回缺省值，但额外携带 `degraded: true` 并记录错误日志，调用方据此提示“沿用默认渠道”而不是把默认值当成已保存配置。`GET /version` 的 `updateChannels` 沿用该形状；其 `resource` 在部分候选资源目录读取失败但仍有可用信息时也携带 `degraded: true`，仅当全部候选目录都不可读时版本信息才回退为 `unknown`。`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`，响应只回显凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文；请求未提供凭据时保留已保存值。这四个端点与更新命令不同：它们不创建 Run、不占用执行租约，也不出现在 manifest/OpenAPI 中。
 
 更新相关端点另有参数错误码：`AGENT_MAA_UPDATE_CLI_CHANNEL_INVALID`（400，`details.channel`）与 `AGENT_MAA_UPDATE_CLI_UNSUPPORTED`（409，`retryable: false`，`details.channel`/`source`；`dryRun` 不拦截不支持的安装来源）来自 `update-cli`；`AGENT_UPDATE_CHANNEL_SCOPE_INVALID`（400，`details.scope`）、`AGENT_UPDATE_CHANNEL_INVALID`（400，`details.scope`/`channel`）与 `AGENT_RESOURCE_SOURCE_INVALID`（400，`details.field`，`retryable: false`）来自渠道与资源源写入。
 

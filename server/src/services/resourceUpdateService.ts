@@ -9,11 +9,14 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
+import { createLogger } from '../utils/logger.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import type { MaaExecutionLease, MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
 import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
 import type { MaaProcessLifecycle } from './maaProcessService.ts';
+
+const logger = createLogger('MaaService');
 
 const STALE_RESOURCE_DAYS = 14;
 
@@ -44,6 +47,7 @@ export interface ResourceInfo {
   message: string;
   activity: unknown;
   gacha: unknown;
+  degraded?: boolean;
 }
 
 /** `version.json` 的已解析视图；只有 `last_updated` 参与新鲜度判断。 */
@@ -89,6 +93,10 @@ export interface ResourceUpdateService {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isEnoentError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 function normalizeVersionMetadata(value: unknown): ResourceVersionMetadata {
@@ -157,10 +165,19 @@ async function readMaaDir(name: string): Promise<string> {
 /**
  * MaaCore 按“基础资源 → 热更新覆盖层”的顺序加载，热更新只写覆盖层。
  * 两处都读、按 `last_updated` 取较新者，避免只读基础资源时看不到 `hot-update` 的结果。
+ * 只有目录不存在（ENOENT）视为没有覆盖层；命令失败等其它错误必须抛出，不能静默降级。
  */
 async function readMaaResourceDirsFromCli(): Promise<string[]> {
   const resourceDir = await readMaaDir('resource');
-  const hotUpdateRoot = await readMaaDir('hot-update').catch(() => '');
+  let hotUpdateRoot = '';
+  try {
+    hotUpdateRoot = await readMaaDir('hot-update');
+  } catch (error) {
+    if (!isEnoentError(error)) {
+      logger.error('读取 MAA 热更新资源目录失败', { error: errorMessageOf(error) });
+      throw error;
+    }
+  }
   const dirs = hotUpdateRoot ? [resourceDir, join(hotUpdateRoot, 'resource')] : [resourceDir];
   return [...new Set(dirs.filter(dir => dir.length > 0))];
 }
@@ -198,10 +215,12 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
     const readAt = now();
     let selected: { info: ResourceInfo; timestamp: number | null } | null = null;
     let lastError: unknown = null;
+    let degraded = false;
 
     for (const resourceDir of resourceDirs) {
+      const versionPath = join(resourceDir, 'version.json');
       try {
-        const versionFile = await readVersionFile(join(resourceDir, 'version.json'));
+        const versionFile = await readVersionFile(versionPath);
         const metadata = parseResourceVersion(versionFile.content);
         const timestamp = parseVersionTimestamp(metadata.lastUpdated);
         const info = buildResourceInfoFromMetadata(metadata, versionFile.modifiedAt, readAt);
@@ -210,11 +229,18 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
         }
       } catch (error) {
         lastError = error;
+        if (!isEnoentError(error)) {
+          degraded = true;
+          logger.warn('读取 MAA 资源版本文件失败，继续使用其它候选目录', {
+            path: versionPath,
+            error: errorMessageOf(error)
+          });
+        }
       }
     }
 
-    if (selected) return selected.info;
-    throw lastError ?? new Error('无法读取 MAA 资源版本');
+    if (!selected) throw lastError ?? new Error('无法读取 MAA 资源版本');
+    return degraded ? { ...selected.info, degraded: true } : selected.info;
   }
 
   async function performUpdate(options: ResourceUpdateRunOptions): Promise<ResourceUpdateResult> {
