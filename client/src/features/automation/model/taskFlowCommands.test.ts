@@ -305,6 +305,52 @@ describe('automation execution validation', () => {
     ])).toBeNull()
   })
 
+
+  it('rejects out-of-range fight series and expiry days before submission', () => {
+    expect(findTaskFlowValidationFailure([
+      flowItem('fight-1', 'fight', { params: { series: '11' } }),
+    ])).toEqual({
+      taskId: 'fight-1',
+      message: '连战倍率应为 -1 至 10 的整数',
+    })
+    expect(findTaskFlowValidationFailure([
+      flowItem('fight-1', 'fight', { params: { medicineExpireDays: '-1' } }),
+    ])).toEqual({
+      taskId: 'fight-1',
+      message: '临期药天数应为不小于 0 的整数',
+    })
+    expect(findTaskFlowValidationFailure([
+      flowItem('fight-1', 'fight', { params: { series: '10', medicineExpireDays: '3' } }),
+    ])).toBeNull()
+  })
+
+  it('rejects a negative recruit permit reserve and an unsupported tag strategy', () => {
+    expect(findTaskFlowValidationFailure([
+      flowItem('recruit-1', 'recruit', {
+        taskType: 'Recruit',
+        params: { level3_recruitment_permit_reserve: -1 },
+      }),
+    ])).toEqual({
+      taskId: 'recruit-1',
+      message: '3 星保留招聘许可应为不小于 0 的整数',
+    })
+    expect(findTaskFlowValidationFailure([
+      flowItem('recruit-1', 'recruit', {
+        taskType: 'Recruit',
+        params: { extra_tags_mode: 3 },
+      }),
+    ])).toEqual({
+      taskId: 'recruit-1',
+      message: '公招多选 Tag 策略无效',
+    })
+    expect(findTaskFlowValidationFailure([
+      flowItem('recruit-1', 'recruit', {
+        taskType: 'Recruit',
+        params: { force_refresh: true, level3_recruitment_permit_reserve: 8, extra_tags_mode: 2 },
+      }),
+    ])).toBeNull()
+  })
+
   it('reports the custom shift problem before a drop target problem', () => {
     const failure = findTaskFlowValidationFailure([
       flowItem('fight-1', 'fight', { params: { drops: 'invalid' } }),

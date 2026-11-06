@@ -639,9 +639,11 @@ export default function AutomationWorkspace() {
                                     { value: 'Control', label: '控制中枢' },
                                     { value: 'Reception', label: '会客室' },
                                     { value: 'Office', label: '办公室' },
+                                    { value: 'Recycle', label: '回收站' },
                                     { value: 'Dorm', label: '宿舍' },
                                     { value: 'Processing', label: '加工站' },
-                                    { value: 'Training', label: '训练室' }
+                                    { value: 'Training', label: '训练室' },
+                                    { value: 'AssistantChange', label: '副手换人' }
                                   ].map(facility => {
                                     const currentValue = Array.isArray(task.params[field.key]) ? task.params[field.key] : [];
                                     const isChecked = currentValue.includes(facility.value);
@@ -970,7 +972,7 @@ export default function AutomationWorkspace() {
 
                         <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
                           <div className="flex items-center gap-2">
-                            <label htmlFor={`${task.id}-extra-tags-mode`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">额外标签:</label>
+                            <label htmlFor={`${task.id}-extra-tags-mode`} className="w-24 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">多选 Tag 策略:</label>
                             <div className="automation-select-control min-w-0 flex-1">
                               <select
                                 id={`${task.id}-extra-tags-mode`}
@@ -978,13 +980,14 @@ export default function AutomationWorkspace() {
                                 onChange={(e) => updateTaskParam(index, 'extra_tags_mode', Number(e.target.value))}
                                 disabled={isRunning || !task.enabled}
                               >
-                                <option value="0">标准选择</option>
-                                <option value="1">选满 3 个标签</option>
-                                <option value="2">尽量多选高星标签</option>
+                                <option value="0">默认行为</option>
+                                <option value="1">选 3 个 Tags</option>
+                                <option value="2">尽量多选高星 Tag 组合</option>
                               </select>
                               <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
                             </div>
                           </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">默认行为只选能组成有效组合的 Tag；“选 3 个 Tags”会尽量凑满 3 个；“尽量多选高星 Tag 组合”优先保留高星组合，可能包含冲突标签。</p>
 
                           <div className="flex items-center gap-2">
                             <label htmlFor={`${task.id}-first-tags`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">三星首选:</label>

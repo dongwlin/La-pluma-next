@@ -87,6 +87,46 @@ describe('dynamic task lifecycle', () => {
     assert.equal(decoded.client_type, 'YoStarEN')
   })
 
+
+  it('prefers an explicit client type override for the generated task file', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'YoStarEN'
+    runtime.clientType = 'Bilibili'
+    await execDynamicTask(
+      'startup',
+      { name: '启动游戏', type: 'StartUp', params: { start_game_enabled: false } },
+      '启动游戏',
+      'automation',
+      true,
+      false,
+      runtime
+    )
+    const decoded = parse(String(findTaskFileWrite(events)[2]))
+    assert.equal(decoded.client_type, 'Bilibili')
+    assert.deepEqual(decoded.tasks, [{
+      name: '启动游戏',
+      type: 'StartUp',
+      params: { start_game_enabled: false }
+    }])
+  });
+
+
+  it('uses the task config client type when no explicit override is provided', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'YoStarEN'
+    await execDynamicTask(
+      'startup',
+      { name: '启动游戏', type: 'StartUp', params: { start_game_enabled: false, client_type: 'YoStarJP' } },
+      '启动游戏',
+      'automation',
+      true,
+      false,
+      runtime
+    )
+    const decoded = parse(String(findTaskFileWrite(events)[2]))
+    assert.equal(decoded.client_type, 'YoStarJP')
+  });
+
   it('reads only the execution checkpoint and rejects a partial operator failure despite CLI success', async () => {
     const { runtime } = createRuntime()
     const checkpoint = { logPath: '/virtual/asst.log', size: 120 }

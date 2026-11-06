@@ -27,6 +27,23 @@ describe('infrast execution results', () => {
     assert.match(action.message, /已收取产物/);
   });
 
+
+  it('maps the recycle station and assistant-change facilities', () => {
+    const log = [
+      callback('SubTaskStart', { class: 'asst::InfrastRecycleTask', details: {} }),
+      callback('SubTaskStart', { class: 'asst::InfrastAssistantChangeTask', details: {} }),
+      callback('TaskChainCompleted', { details: {} })
+    ].join('\n');
+
+    const action = parseInfrastExecutionAction('基建换班', {
+      facility: ['Recycle', 'AssistantChange']
+    }, log);
+
+    assert.deepEqual(action.observedFacilities, ['Recycle', 'AssistantChange']);
+    assert.match(action.message, /回收站/);
+    assert.match(action.message, /副手换人/);
+  });
+
   it('does not invent facility details when only completion is observable', () => {
     const log = callback('TaskChainCompleted', { details: {} });
     const action = parseInfrastExecutionAction('基建换班', { facility: ['Mfg', 'Trade'] }, log);

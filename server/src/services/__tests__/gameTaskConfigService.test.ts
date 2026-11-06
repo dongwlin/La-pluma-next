@@ -58,6 +58,91 @@ describe('validateGameTaskParams', () => {
   });
 });
 
+describe('validateGameTaskParams for daily task types', () => {
+  it('accepts the full fight series range and rejects values outside it', () => {
+    for (const series of [-1, 0, 1, 10, '5']) {
+      assert.equal(validateGameTaskParams('Fight', { series }), null, String(series));
+    }
+    assert.equal(validateGameTaskParams('Fight', { series: 11 }), 'Fight.params.series 必须是 -1 至 10 的整数');
+    assert.equal(validateGameTaskParams('Fight', { series: -2 }), 'Fight.params.series 必须是 -1 至 10 的整数');
+    assert.equal(validateGameTaskParams('Fight', { series: 1.5 }), 'Fight.params.series 必须是整数');
+  });
+
+  it('accepts expiry-day and legacy bottle-count medicine options', () => {
+    assert.equal(validateGameTaskParams('Fight', { medicine_expire_days: 0 }), null);
+    assert.equal(validateGameTaskParams('Fight', { medicineExpireDays: '3' }), null);
+    assert.equal(validateGameTaskParams('Fight', { expiring_medicine: 2 }), null);
+    assert.equal(
+      validateGameTaskParams('Fight', { medicine_expire_days: -1 }),
+      'Fight.params.medicine_expire_days 不能小于 0'
+    );
+  });
+
+  it('keeps force_refresh valid and checks the permit reserve and tag strategy', () => {
+    assert.equal(validateGameTaskParams('Recruit', {
+      refresh: true,
+      force_refresh: true,
+      level3_recruitment_permit_reserve: 8,
+      extra_tags_mode: 2,
+      times: 0
+    }), null);
+    assert.equal(validateGameTaskParams('Recruit', { force_refresh: true }), null);
+    assert.equal(
+      validateGameTaskParams('Recruit', { force_refresh: 'yes' }),
+      'Recruit.params.force_refresh 必须是布尔值'
+    );
+    assert.equal(
+      validateGameTaskParams('Recruit', { level3_recruitment_permit_reserve: -1 }),
+      'Recruit.params.level3_recruitment_permit_reserve 不能小于 0'
+    );
+    assert.equal(
+      validateGameTaskParams('Recruit', { extra_tags_mode: 3 }),
+      'Recruit.params.extra_tags_mode 必须是 0、1 或 2'
+    );
+  });
+
+  it('validates infrast facilities, modes and award sign-in switches', () => {
+    assert.equal(validateGameTaskParams('Infrast', {
+      mode: 0,
+      facility: ['Mfg', 'Recycle', 'Processing', 'AssistantChange']
+    }), null);
+    assert.match(
+      validateGameTaskParams('Infrast', { mode: 123, facility: ['Mfg'] }) ?? '',
+      /mode/
+    );
+    assert.match(
+      validateGameTaskParams('Infrast', { mode: 0, facility: ['Unknown'] }) ?? '',
+      /facility/
+    );
+    assert.equal(validateGameTaskParams('Award', { award: true, signinevent: true }), null);
+    assert.equal(
+      validateGameTaskParams('Award', { signinevent: 'yes' }),
+      'Award.params.signinevent 必须是布尔值'
+    );
+  });
+
+  it('validates the startup launch switch and account parameters', () => {
+    assert.equal(validateGameTaskParams('StartUp', {
+      client_type: 'Official',
+      account_name: '4567',
+      start_game_enabled: false
+    }), null);
+    assert.equal(validateGameTaskParams('StartUp', {
+      clientType: 'Bilibili',
+      accountName: '',
+      start_game_enabled: true
+    }), null);
+    assert.equal(
+      validateGameTaskParams('StartUp', { start_game_enabled: 'no' }),
+      'StartUp.params.start_game_enabled 必须是布尔值'
+    );
+    assert.equal(
+      validateGameTaskParams('StartUp', { client_type: 'Unknown' }),
+      'StartUp.params.client_type 必须是 Official/Bilibili/Txwy/YoStarEN/YoStarJP/YoStarKR 之一'
+    );
+  });
+});
+
 describe('validateGameTaskParams Roguelike', () => {
   it('accepts themes, modes and mode-specific parameters of the Core protocol', () => {
     for (const params of [

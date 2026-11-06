@@ -6,7 +6,7 @@ import {
 } from './maaCallbackService.ts';
 import type { MaaCallbackEvent } from './maaCallbackService.ts';
 
-export type FacilityKey = 'Mfg' | 'Trade' | 'Power' | 'Control' | 'Reception' | 'Office' | 'Dorm' | 'Processing' | 'Training';
+export type FacilityKey = 'Mfg' | 'Trade' | 'Power' | 'Control' | 'Reception' | 'Office' | 'Recycle' | 'Dorm' | 'Processing' | 'Training' | 'AssistantChange';
 
 export interface InfrastTaskParams {
   facility?: unknown;
@@ -57,9 +57,11 @@ const FACILITY_LABELS: Record<FacilityKey, string> = {
   Control: '控制中枢',
   Reception: '会客室',
   Office: '办公室',
+  Recycle: '回收站',
   Dorm: '宿舍',
   Processing: '加工站',
-  Training: '训练室'
+  Training: '训练室',
+  AssistantChange: '副手换人'
 };
 
 const FACILITY_CLASSES: Record<string, FacilityKey> = {
@@ -69,9 +71,11 @@ const FACILITY_CLASSES: Record<string, FacilityKey> = {
   InfrastControlTask: 'Control',
   InfrastReceptionTask: 'Reception',
   InfrastOfficeTask: 'Office',
+  InfrastRecycleTask: 'Recycle',
   InfrastDormTask: 'Dorm',
   InfrastProcessingTask: 'Processing',
-  InfrastTrainingTask: 'Training'
+  InfrastTrainingTask: 'Training',
+  InfrastAssistantChangeTask: 'AssistantChange'
 };
 
 function uniqueStrings(values: readonly unknown[]): string[] {

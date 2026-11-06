@@ -10,7 +10,8 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
     description: '启动游戏并进入主界面',
     defaultParams: {
       clientType: 'Official',
-      accountName: ''
+      accountName: '',
+      start_game_enabled: true
     },
     paramFields: [
       { key: 'clientType', label: '客户端类型', type: 'select', options: [
@@ -21,7 +22,8 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: 'YoStarKR', label: '韩服' },
         { value: 'Txwy', label: '繁中服' }
       ]},
-      { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"' }
+      { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"' },
+      { key: 'start_game_enabled', label: '启动游戏客户端', type: 'checkbox', helper: '关闭后只连接设备并进入已有游戏的主界面，不会启动游戏客户端' }
     ]
   },
   {
@@ -33,7 +35,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       stage: '1-7',
       stages: [{ stage: '1-7', times: '' }],
       medicine: 0,
-      expiringMedicine: 0,
+      medicineExpireDays: 0,
       stone: 0,
       series: '1',
       drops: '',
@@ -48,7 +50,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数' },
       { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
       { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
-      { key: 'expiringMedicine', label: '临期药数量', type: 'number', placeholder: '0', helper: '按瓶数设置可使用的临期理智药' },
+      { key: 'medicineExpireDays', label: '临期药天数', type: 'number', placeholder: '0', helper: '使用将在指定天数内过期的理智药；0 表示不使用临期药' },
       { key: 'stone', label: '源石', type: 'number', placeholder: '0', helper: '使用源石数量' },
       { key: 'series', label: '连战', type: 'select', options: [
         { value: '-1', label: '禁用' },
@@ -58,8 +60,12 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: '3', label: '3次' },
         { value: '4', label: '4次' },
         { value: '5', label: '5次' },
-        { value: '6', label: '6次' }
-      ], helper: '本任务所有关卡共用的连战倍率（需要游戏支持，不支持时按 1 次执行）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整' },
+        { value: '6', label: '6次' },
+        { value: '7', label: '7次' },
+        { value: '8', label: '8次' },
+        { value: '9', label: '9次' },
+        { value: '10', label: '10次' }
+      ], helper: '本任务所有关卡共用的连战倍率，范围 -1 至 10（旧资源只支持 -1 至 6）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整' },
     ]
   },
   {
@@ -121,18 +127,20 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       expedite: false,
       expedite_times: 0,
       preserve_tags: '支援机械',
+      level3_recruitment_permit_reserve: 0,
       recruitment_time: { '3': 540, '4': 540 }
     },
     paramFields: [
       { key: 'refresh', label: '刷新标签', type: 'checkbox' },
       { key: 'force_refresh', label: '无许可时仍刷新', type: 'checkbox', helper: '招聘许可耗尽后，仍会使用可用刷新次数', visibleWhen: { key: 'refresh', value: true } },
       { key: 'select', label: '招募星级', type: 'star-select', helper: '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合' },
-      { key: 'confirm', label: '确认星级', type: 'star-select', helper: '建议至少保留 5/6 星确认，避免高价值标签被跳过' },
-      { key: 'times', label: '招募次数', type: 'number', placeholder: '4' },
+      { key: 'confirm', label: '确认星级', type: 'star-select', helper: '建议至少保留 5/6 星确认，避免高价值标签被跳过；不勾选任何星级时只计算标签，不会确认招募' },
+      { key: 'times', label: '招募次数', type: 'number', placeholder: '4', helper: '设为 0 时只计算标签，不执行招募' },
       { key: 'set_time', label: '设置时间', type: 'checkbox' },
       { key: 'expedite', label: '使用加急', type: 'checkbox' },
       { key: 'expedite_times', label: '加急次数', type: 'number', placeholder: '0', visibleWhen: { key: 'expedite', value: true } },
       { key: 'preserve_tags', label: '保留标签', type: 'text', placeholder: '支援机械,高级资深干员', helper: '识别到任一标签时保留该公招槽位，多个标签用逗号分隔' },
+      { key: 'level3_recruitment_permit_reserve', label: '3 星保留招聘许可', type: 'number', placeholder: '0', min: '0', helper: '自动确认 3 星时保留的招聘许可数量；剩余许可小于等于该值时跳过 3 星招募，0 表示不保留' },
     ],
     taskType: 'Recruit'
   },
@@ -182,7 +190,8 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       recruit: false,
       orundum: false,
       mining: false,
-      specialaccess: false
+      specialaccess: false,
+      signinevent: false
     },
     paramFields: [
       { key: 'award', label: '日常与周常奖励', type: 'checkbox' },
@@ -191,6 +200,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       { key: 'orundum', label: '合成玉奖励', type: 'checkbox' },
       { key: 'mining', label: '采矿奖励', type: 'checkbox' },
       { key: 'specialaccess', label: '周年赠送月卡', type: 'checkbox', helper: '领取周年活动赠送的月卡奖励' },
+      { key: 'signinevent', label: '限时签到活动奖励', type: 'checkbox', helper: '领取限时签到活动的每日奖励（仅支持常见横向版型）' },
     ],
     taskType: 'Award'
   },

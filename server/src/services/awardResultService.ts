@@ -4,7 +4,7 @@ import {
 } from './maaCallbackService.ts';
 import type { MaaCallbackEvent } from './maaCallbackService.ts';
 
-export type AwardItemKey = 'award' | 'mail' | 'recruit' | 'orundum' | 'mining' | 'specialaccess';
+export type AwardItemKey = 'award' | 'mail' | 'recruit' | 'orundum' | 'mining' | 'specialaccess' | 'signinevent';
 
 export interface AwardItem {
   readonly key: AwardItemKey;
@@ -21,6 +21,7 @@ export interface AwardTaskParams {
   orundum?: unknown;
   mining?: unknown;
   specialaccess?: unknown;
+  signinevent?: unknown;
 }
 
 export interface AwardExecutionAction {
@@ -67,6 +68,12 @@ const AWARD_ITEMS: readonly AwardItem[] = [
     label: '周年赠送月卡',
     beginTask: 'SpecialAccessActivitiesBegin',
     claimedTasks: ['SpecialAccessActivitiesConfirm']
+  },
+  {
+    key: 'signinevent',
+    label: '限时签到活动奖励',
+    beginTask: 'SignInEventBegin',
+    claimedTasks: ['SignInEventClaim', 'SignInEventEarnRewards']
   }
 ];
 

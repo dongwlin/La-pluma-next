@@ -446,7 +446,7 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     id: 'fight',
     method: 'POST',
     path: '/api/agent/actions/fight',
-    description: 'Semantic action for 理智作战. Executes one maa-cli fight command per stage with --times, sequentially under one Run. Agents can pass stages/medicine/stone/series without knowing maa-cli flags.',
+    description: 'Semantic action for 理智作战. Executes one maa-cli fight command per stage with --times, sequentially under one Run. Agents can pass stages/medicine/medicineExpireDays/stone/series without knowing maa-cli flags. medicineExpireDays maps to --medicine-expire-days; the legacy expiringMedicine bottle count maps to the deprecated --expiring-medicine flag.',
     tags: ['Execution'],
     safety: consequential(['start_game_automation', 'consume_sanity', 'optionally_consume_medicine_or_originium']),
     execution: execution({
@@ -482,9 +482,21 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
           examples: [['HD-7', 'CE-6', 'AP-5']]
         },
         medicine: { type: ['integer', 'string'], default: 0, description: 'Normal sanity medicine count for -m.' },
-        expiringMedicine: { type: ['integer', 'string'], default: 0, description: 'Expiring sanity medicine count.' },
+        medicineExpireDays: {
+          type: ['integer', 'string'],
+          default: 0,
+          description: 'Use sanity medicine expiring within this many days (--medicine-expire-days); 0 disables it.'
+        },
+        expiringMedicine: {
+          type: ['integer', 'string'],
+          description: 'Deprecated bottle count for older configurations; maps to --expiring-medicine. Prefer medicineExpireDays.'
+        },
         stone: { type: ['integer', 'string'], default: 0, description: 'Originium stone count.' },
-        series: { type: ['integer', 'string'], default: 0, description: 'MAA --series value; default 0 is auto. Set 1 to omit the flag and use the maa-cli default.' },
+        series: {
+          type: ['integer', 'string'],
+          default: 0,
+          description: 'MAA --series value (-1~10, older resources accept -1~6); default 0 is auto. Set 1 to omit the flag and use the maa-cli default.'
+        },
         dryRun: { type: 'boolean', default: false },
         waitForCompletion: { type: 'boolean', default: true }
       }

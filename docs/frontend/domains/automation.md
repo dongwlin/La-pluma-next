@@ -43,6 +43,19 @@
 - 任务配置编辑器（通用参数字段、高级设置与连接测试）仍与工作区同文件组合；
   它读取同一草稿、选中项与执行投影，表单结构与参数规则保持不变。
 
+
+**日常任务参数对齐。** `automationTaskCatalog.tsx` 定义每类任务的默认参数与表单字段，`automationConfig.migrateTaskParams` 在读取本地或服务端旧草稿时补齐缺失字段：
+
+| 任务 | 参数与迁移规则 |
+| --- | --- |
+| Fight | 临期药使用 `medicineExpireDays`（天数，0 禁用）；旧 `expiringMedicine`（瓶数）在迁移时复制到新键并删除旧键。`series` 下拉提供 -1~10，旧资源只接受 -1~6；`-1` 仍以 `--series=-1` 单 token 下发 |
+| Recruit | 新增 `level3_recruitment_permit_reserve`（0 表示不保留）；`force_refresh` 仍有效且迁移只补默认值、不删除；招募次数 0 或不选确认星级表示只计算 Tags |
+| Award | 新增 `signinevent`（限时签到活动奖励） |
+| Infrast | 设施选择补充 `Recycle`（回收站）与 `AssistantChange`（副手换人），默认设施集合保持不变 |
+| StartUp | 新增 `start_game_enabled`（默认 `true`）；关闭时日常流程改走 MaaCore StartUp 动态任务，只连接运行中的游戏，`accountName` 迁移时保持原值 |
+
+服务端 `gameTaskConfigService.ts` 维护同一组限制（Fight 连战范围与天数、Recruit 许可保留/多选策略、Infrast 设施、Award/StartUp 开关），日常流程构建与 Agent `run_task` 共用；前端 `findTaskFlowValidationFailure` 在提交前给出同样的范围提示。
+
 ### 2. 组合与状态边界
 
 ```
@@ -277,6 +290,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 | 可添加任务目录 | `components/automationTaskCatalog.tsx` | 名称、图标、默认参数与参数字段；不读取配置/Query/执行状态 |
 | 关卡分组与智能养成合成 | `model/stageEditing.ts` | 纯模型；`orderStagesForEditing` 也复用同一分组 |
 | 公招招募时长校验 | `model/taskParamRules.ts` | 纯模型：10 分钟取整、60–540 夹取、非法输入回退 |
+| 日常任务参数与旧配置迁移 | `components/automationTaskCatalog.tsx` + `model/automationConfig.ts` + `model/gameTaskParams.ts` | 目录是默认值与表单文案的唯一来源；`migrateTaskParams` 补齐新字段并转换旧键；执行前校验复用 `gameTaskParams.ts` |
 | 自定义排班入口 | `components/InfrastScheduleField.tsx` | 在任务参数内维护 `filename`/`plan_index`，不把排班表写进任务配置 |
 | 自定义排班文件读取与保存 | `components/InfrastScheduleEditor.tsx` + `model/queries.ts` | 经 `/agent/infrast-schedules` 读取/保存 MAA 配置目录中的排班 JSON |
 | 排班表协议模型与编辑 | `model/infrastSchedule.ts` + `model/infrastScheduleEditing.ts` | 纯模型：Core 协议校验、房间三态、按字段更新与任务参数迁移 |
@@ -285,7 +299,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 维护约束：
 
 - 配置 key、pending、本地布局与 wire 形状以[配置持久化协调器](../../architecture/config-persistence.md)为准；保持 `/agent/schedules/*` 端点兼容。
-- 不改变任务参数默认值、智能养成计划生成参数、执行前校验顺序或执行身份。
+- 任务参数默认值、表单文案与旧配置迁移必须同步修改并在同一提交内补测试；智能养成计划生成参数、执行前校验顺序与执行身份保持不变。
 - 保持渲染结构、DOM/CSS 类名、表单 `id`/`aria-label`、菜单 `id`/`role`、焦点顺序与键盘行为；视觉回归遵循[开发指南](../../development/README.md)。
 - 挑选面板仍把“整条流程页脚”作为点击区域：在页脚内按下指针（包括运行/停止按钮）不关闭菜单，页脚之外按下才关闭，与迁移前一致。
 - 自定义排班编辑只改写用户实际触碰的字段；未编辑的房间、未识别的扩展字段与“保持原样”语义不得被默认值覆盖。排班文件本身仍由 MAA/maa-cli 执行侧读取。

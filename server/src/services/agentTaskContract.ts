@@ -1,4 +1,4 @@
-import { GAME_OPERATOR_ROLES, GAME_TASK_LIMITS } from './gameTaskConfigService.ts';
+import { GAME_OPERATOR_ROLES, GAME_TASK_FACILITIES, GAME_TASK_LIMITS } from './gameTaskConfigService.ts';
 
 /** 契约中可由 manifest 用当前运行配置替换的默认值键。 */
 export type RuntimeDefaultKey = 'adbPath' | 'adbAddress' | 'clientType';
@@ -39,6 +39,13 @@ export interface JsonSchema {
 
 const OPER_PROGRESS_LIMITS = GAME_TASK_LIMITS.OperProgress;
 const SWITCH_THEME_LIMITS = GAME_TASK_LIMITS.SwitchTheme;
+const FIGHT_LIMITS = GAME_TASK_LIMITS.Fight;
+const RECRUIT_LIMITS = GAME_TASK_LIMITS.Recruit;
+const RECRUIT_EXTRA_TAGS_MODES = RECRUIT_LIMITS.extraTagsMode;
+const RECRUIT_PERMIT_RESERVE_MINIMUM = RECRUIT_LIMITS.permitReserveMinimum;
+const RECRUIT_TIMES_MINIMUM = RECRUIT_LIMITS.timesMinimum;
+const INFRAST_MODES = GAME_TASK_LIMITS.Infrast.modes;
+const STARTUP_CLIENT_TYPES = GAME_TASK_LIMITS.StartUp.clientTypes;
 
 const AGENT_TASK_STRATEGY_SCHEMA = {
   type: 'string',
@@ -162,6 +169,126 @@ const AGENT_DYNAMIC_TASK_ENTRY_SCHEMA = {
               themes: {
                 type: 'array', items: { type: 'string', minLength: SWITCH_THEME_LIMITS.themeMinLength },
                 description: 'Exact in-game theme names. Multiple candidates select one at random; an empty list is skipped.'
+              }
+            },
+            additionalProperties: true
+          }
+        }
+      }
+    },
+    {
+      if: { properties: { type: { const: 'Fight' } }, required: ['type'] },
+      then: {
+        properties: {
+          params: {
+            type: 'object',
+            properties: {
+              series: {
+                type: 'integer',
+                minimum: FIGHT_LIMITS.series.minimum,
+                maximum: FIGHT_LIMITS.series.maximum,
+                description: 'Series multiplier -1~10; older resources only accept -1~6.'
+              },
+              medicine_expire_days: {
+                type: 'integer',
+                minimum: FIGHT_LIMITS.medicineExpireDays.minimum,
+                description: 'Use sanity medicine expiring within this many days; 0 disables it.'
+              },
+              expiring_medicine: {
+                type: 'integer',
+                minimum: FIGHT_LIMITS.medicineExpireDays.minimum,
+                description: 'Deprecated bottle-count alias for older configurations.'
+              }
+            },
+            additionalProperties: true
+          }
+        }
+      }
+    },
+    {
+      if: { properties: { type: { const: 'Recruit' } }, required: ['type'] },
+      then: {
+        properties: {
+          params: {
+            type: 'object',
+            properties: {
+              refresh: { type: 'boolean', description: 'Refresh three-star-only tag sets.' },
+              force_refresh: {
+                type: 'boolean',
+                description: 'Keep refreshing tags after recruitment permits run out; still supported by MaaCore.'
+              },
+              level3_recruitment_permit_reserve: {
+                type: 'integer',
+                minimum: RECRUIT_PERMIT_RESERVE_MINIMUM,
+                description: 'Skip three-star recruitment while the remaining permits are at or below this value; 0 disables it.'
+              },
+              extra_tags_mode: {
+                type: 'integer',
+                enum: [...RECRUIT_EXTRA_TAGS_MODES],
+                description: '0 selects no extra tags, 1 fills up to three, 2 prefers high-star combinations.'
+              },
+              times: { type: 'integer', minimum: RECRUIT_TIMES_MINIMUM, description: 'Recruit count; 0 calculates tags without recruiting.' },
+              set_time: { type: 'boolean' },
+              expedite: { type: 'boolean' },
+              select: { type: 'array', items: { type: 'integer' } },
+              confirm: { type: 'array', items: { type: 'integer' } }
+            },
+            additionalProperties: true
+          }
+        }
+      }
+    },
+    {
+      if: { properties: { type: { const: 'Infrast' } }, required: ['type'] },
+      then: {
+        properties: {
+          params: {
+            type: 'object',
+            properties: {
+              mode: { type: 'integer', enum: [...INFRAST_MODES] },
+              facility: {
+                type: 'array',
+                items: { type: 'string', enum: [...GAME_TASK_FACILITIES] },
+                description: 'Facility keys in MaaCore order; Recycle, Processing, Training and AssistantChange are supported.'
+              }
+            },
+            additionalProperties: true
+          }
+        }
+      }
+    },
+    {
+      if: { properties: { type: { const: 'Award' } }, required: ['type'] },
+      then: {
+        properties: {
+          params: {
+            type: 'object',
+            properties: {
+              award: { type: 'boolean' },
+              mail: { type: 'boolean' },
+              recruit: { type: 'boolean' },
+              orundum: { type: 'boolean' },
+              mining: { type: 'boolean' },
+              specialaccess: { type: 'boolean' },
+              signinevent: { type: 'boolean', description: 'Claim the limited-time sign-in event rewards.' }
+            },
+            additionalProperties: true
+          }
+        }
+      }
+    },
+    {
+      if: { properties: { type: { const: 'StartUp' } }, required: ['type'] },
+      then: {
+        properties: {
+          params: {
+            type: 'object',
+            properties: {
+              client_type: { type: 'string', enum: [...STARTUP_CLIENT_TYPES] },
+              account_name: { type: 'string', description: 'Switch to an already signed-in account matched by a unique fragment.' },
+              start_game_enabled: {
+                type: 'boolean',
+                description: 'Launch the game client before entering the main screen; false only attaches to a running client.'
               }
             },
             additionalProperties: true

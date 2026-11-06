@@ -53,11 +53,14 @@ export interface TaskParams {
   adbPath?: string
   address?: string
   accountName?: string
+  start_game_enabled?: boolean
   recognizeDepotBeforeClose?: boolean
 
   stage?: string
   stages?: Array<string | StageConfig>
   medicine?: number | string
+  medicineExpireDays?: number | string
+  /** @deprecated Migrated to medicineExpireDays when loading saved tasks. */
   expiringMedicine?: number | string
   stone?: number | string
   series?: number | string
@@ -93,6 +96,7 @@ export interface TaskParams {
   expedite?: boolean
   expedite_times?: number
   preserve_tags?: string | string[]
+  level3_recruitment_permit_reserve?: number | string
   recruitment_time?: Record<string, number | string>
   /** @deprecated Migrated to preserve_tags when loading saved tasks. */
   skip_robot?: boolean
@@ -113,6 +117,7 @@ export interface TaskParams {
   orundum?: boolean
   mining?: boolean
   specialaccess?: boolean
+  signinevent?: boolean
 
   [key: string]: any
 }

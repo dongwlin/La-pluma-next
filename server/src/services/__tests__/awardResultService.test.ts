@@ -10,7 +10,7 @@ const callback = (type: string, payload: Record<string, unknown>): string =>
 
 describe('award execution results', () => {
   it('maps every supported MaaCore award switch to an award item', () => {
-    const switches = ['award', 'mail', 'recruit', 'orundum', 'mining', 'specialaccess'];
+    const switches = ['award', 'mail', 'recruit', 'orundum', 'mining', 'specialaccess', 'signinevent'];
     const params = Object.fromEntries(switches.map(key => [key, true]));
 
     assert.deepEqual(getEnabledAwardItems(params).map(item => item.key), switches);
@@ -33,6 +33,21 @@ describe('award execution results', () => {
     assert.equal(actions[0].observed, true);
     assert.match(actions[0].message, /已领取/);
     assert.match(actions[1].message, /未确认/);
+  });
+
+
+  it('confirms the limited-time sign-in event after its claim completes', () => {
+    const log = [
+      callback('SubTaskStart', { first: ['SignInEventBegin'], details: { task: 'SignInEventClaim' } }),
+      callback('SubTaskCompleted', { first: ['SignInEventBegin'], details: { task: 'SignInEventEarnRewards' } })
+    ].join('\n');
+
+    const actions = parseAwardExecutionActions('领取奖励', { signinevent: true }, log);
+
+    assert.equal(actions.length, 1);
+    assert.equal(actions[0].status, 'success');
+    assert.equal(actions[0].observed, true);
+    assert.match(actions[0].message, /限时签到活动奖励已领取/);
   });
 
   it('does not count a started claim as a confirmed result', () => {

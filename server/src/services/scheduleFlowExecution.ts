@@ -89,7 +89,8 @@ export interface ScheduleExecutionPorts {
     taskConfig: string,
     taskName: string | null,
     taskType: string | null,
-    waitForCompletion: boolean
+    waitForCompletion: boolean,
+    clientType?: string
   ): Promise<ScheduleCommandOutput>;
   createLogCheckpoint(): Promise<MaaLogCheckpoint | null>;
   readLogSince(checkpoint: MaaLogCheckpoint | null): Promise<string>;
@@ -659,9 +660,13 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               if (!(await waitForDelay(3000))) break;
             }
 
-            const { command, params } = buildScheduledTaskCommand(task, adbConfig);
-            const args = params ? params.split(' ').filter(arg => arg) : [];
-            await executeCommand(command, args, task.name, null, true);
+            const { command, params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
+            if (taskConfig) {
+              await executeDynamicTask(params, taskConfig, task.name, null, true, task.params.clientType);
+            } else {
+              const args = params ? params.split(' ').filter(arg => arg) : [];
+              await executeCommand(command, args, task.name, null, true);
+            }
 
             logger.info('启动游戏命令执行完成', { scheduleId });
 
@@ -684,9 +689,13 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                 task: task.name,
                 action: 'startup',
                 status: 'success',
-                message: task.params.accountName
-                  ? `游戏已启动，账号 ${task.params.accountName} 已匹配`
-                  : '游戏已启动并进入前台'
+                message: task.params.start_game_enabled === false
+                  ? task.params.accountName
+                    ? `已进入游戏主界面，账号 ${task.params.accountName} 已匹配`
+                    : '已连接运行中的游戏并进入主界面'
+                  : task.params.accountName
+                    ? `游戏已启动，账号 ${task.params.accountName} 已匹配`
+                    : '游戏已启动并进入前台'
               });
             } catch (error) {
               logger.error('游戏可能已闪退', {
