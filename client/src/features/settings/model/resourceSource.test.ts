@@ -31,6 +31,13 @@ const createOwner = (write?: WriteRequest) => (
   new ResourceSourceOwner(write ? { write } : {})
 )
 
+const adoptDefaultServer = (owner: ResourceSourceOwner): void => {
+  owner.adoptServer({
+    config: normalizeResourceSourceDraft(DEFAULT_RESOURCE_SOURCE_DRAFT)!,
+    readToken: owner.beginRead(),
+  })
+}
+
 const serverView = (overrides: Record<string, unknown> = {}) => ({
   autoUpdate: true,
   warnOnUpdateFailure: false,
@@ -158,6 +165,7 @@ describe('resource source owner', () => {
   it('saves through the resource source endpoint and keeps nested values intact', async () => {
     apiMocks.saveResourceSource.mockResolvedValue({ success: true })
     const owner = createOwner()
+    adoptDefaultServer(owner)
     owner.update({ autoUpdate: true })
 
     await expect(owner.save()).resolves.toMatchObject({ status: 'saved', superseded: false })
@@ -171,6 +179,7 @@ describe('resource source owner', () => {
   it('keeps the draft on failure', async () => {
     apiMocks.saveResourceSource.mockResolvedValue({ success: false, message: '配置目录只读' })
     const owner = createOwner()
+    adoptDefaultServer(owner)
     owner.update({ warnOnUpdateFailure: true })
 
     await expect(owner.save()).resolves.toMatchObject({ status: 'failed', message: '配置目录只读' })

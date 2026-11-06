@@ -46,6 +46,10 @@ const createOwner = (
   write: WriteRequest = vi.fn(async () => ({ success: true })),
 ) => new ConnectionConfigOwner({ write })
 
+const adoptDefaultServer = (owner: ConnectionConfigOwner): void => {
+  owner.adoptServer({ config: connection(), readToken: owner.beginRead() })
+}
+
 describe('connection config owner', () => {
   it('starts from the settings page defaults without marking the draft dirty', () => {
     const owner = createOwner()
@@ -121,6 +125,7 @@ describe('connection config owner', () => {
 
   it('drops a read that started before a successful save', async () => {
     const owner = createOwner()
+    adoptDefaultServer(owner)
     const token = owner.beginRead()
 
     await owner.save()
@@ -135,6 +140,7 @@ describe('connection config owner', () => {
   it('does not adopt a read requested while a save is in flight', async () => {
     const pending = deferred<ApiResponse<unknown>>()
     const owner = createOwner(() => pending.promise)
+    adoptDefaultServer(owner)
     const saving = owner.save()
     const token = owner.beginRead()
 
@@ -152,6 +158,7 @@ describe('connection config owner', () => {
     const pending = deferred<ApiResponse<unknown>>()
     const write = vi.fn<WriteRequest>(() => pending.promise)
     const owner = createOwner(write)
+    adoptDefaultServer(owner)
 
     const first = owner.save()
     const second = await owner.save()
@@ -167,6 +174,7 @@ describe('connection config owner', () => {
     const pending = deferred<ApiResponse<unknown>>()
     const write = vi.fn<WriteRequest>(() => pending.promise)
     const owner = createOwner(write)
+    adoptDefaultServer(owner)
 
     owner.update({ address: '127.0.0.1:5555' })
     const saving = owner.save()
@@ -191,6 +199,7 @@ describe('connection config owner', () => {
       .mockResolvedValueOnce({ success: false, message: '磁盘只读' })
       .mockResolvedValueOnce({ success: true })
     const owner = createOwner(write)
+    adoptDefaultServer(owner)
 
     owner.update({ address: '127.0.0.1:5555' })
     const failed = await owner.save()
@@ -217,6 +226,7 @@ describe('connection config owner', () => {
     const owner = createOwner(vi.fn(async () => {
       throw new Error('网络中断')
     }))
+    adoptDefaultServer(owner)
 
     owner.update({ address: '127.0.0.1:5555' })
     await expect(owner.save()).resolves.toMatchObject({
@@ -271,6 +281,7 @@ describe('connection config owner', () => {
   it('ignores reset while a save is in flight', async () => {
     const pending = deferred<ApiResponse<unknown>>()
     const owner = createOwner(() => pending.promise)
+    adoptDefaultServer(owner)
     owner.update({ address: '127.0.0.1:5555' })
     const saving = owner.save()
     const revisionBefore = owner.getState().revision

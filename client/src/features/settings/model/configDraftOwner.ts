@@ -235,10 +235,20 @@ export class ConfigDraftOwner<T extends Record<string, unknown>> {
   /**
    * 显式保存当前草稿。
    *
-   * 保存期间允许继续编辑：响应返回时只有 revision 未变才把当前草稿视为
-   * 已保存；否则返回 `superseded`，页面保留新草稿并提示尚未保存。
+   * 首次服务端读取被采纳前（`loaded` 为 false）拒绝保存，避免把页面默认值
+   * 写回服务端；保存期间允许继续编辑：响应返回时只有 revision 未变才把当前
+   * 草稿视为已保存；否则返回 `superseded`，页面保留新草稿并提示尚未保存。
    */
   async save(): Promise<ConfigSaveOutcome<T>> {
+    if (!this.state.loaded) {
+      return {
+        status: 'ignored',
+        config: this.state.draft,
+        superseded: false,
+        message: '配置尚未从服务端加载完成，已取消保存',
+      }
+    }
+
     if (this.state.syncState === 'saving') {
       return {
         status: 'ignored',

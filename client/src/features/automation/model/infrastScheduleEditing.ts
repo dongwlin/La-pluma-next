@@ -1,6 +1,7 @@
 import {
   getInfrastFacilityState,
   readInfrastFacilityRooms,
+  validateInfrastScheduleDocument,
   type InfrastPlan,
   type InfrastRoom,
   type InfrastRoomOperatorField,
@@ -171,6 +172,35 @@ export function updateInfrastDocumentMeta(
 
 export function createEmptyInfrastScheduleDocument(): InfrastScheduleDocument {
   return { plans: [{ name: '方案 1', rooms: {} }] }
+}
+
+export type InfrastScheduleSaveRequest =
+  | { ok: true; target: string }
+  | { ok: false; message: string }
+
+/**
+ * 保存前置：文件名合法且仍是当前文档所属文件，文档通过 MaaCore 必读字段校验。
+ * 文件名不再匹配时拒绝保存，避免把已加载的文档写到另一个文件名上。
+ */
+export function resolveInfrastScheduleSaveRequest(
+  name: string,
+  documentName: string | null,
+  document: InfrastScheduleDocument | null,
+): InfrastScheduleSaveRequest {
+  const target = name.trim()
+  if (!target) return { ok: false, message: '请填写排班文件名' }
+  if (!target.toLowerCase().endsWith('.json')) {
+    return { ok: false, message: '排班文件名需要以 .json 结尾' }
+  }
+  const documentMessage = validateInfrastScheduleDocument(document)
+  if (documentMessage) return { ok: false, message: documentMessage }
+  if (documentName !== target) {
+    return {
+      ok: false,
+      message: `文件名已改动，当前编辑内容不属于「${target}」。请先点击“加载”读取该文件，或点击“新建排班”创建新文件后再保存`,
+    }
+  }
+  return { ok: true, target }
 }
 
 export function normalizeInfrastPlanIndex(value: unknown, planCount?: number): number {
