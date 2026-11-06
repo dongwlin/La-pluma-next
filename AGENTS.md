@@ -74,7 +74,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 - 改前后端共有行为时同步核对请求、响应、错误码与持久化格式，两侧各自补测试；契约以现有 envelope 为准，不新增平行字段。
 - 向 Agent 公开能力时更新 `server/src/routes/agentContract.ts`，manifest 与 OpenAPI 从同一能力清单生成，不分别维护副本。
 - 保持对外标识不变：环境变量 `LA_PLUMA_*`、CSS 类名与 localStorage key `la-pluma-*`、HTTP 头 `x-la-pluma-*`、Agent API 标识 `la-pluma-agent-api`。重命名不能顺带改这些约定。
-- 子路径部署时构建端 `VITE_BASE_PATH` 与运行端 `LA_PLUMA_BASE_PATH` 保持一致；`/api`、`/health`、`/readiness`、`/webrtc-signaling` 仍挂在同源根路径，不随子路径前缀移动。
+- 子路径部署时构建端 `VITE_BASE_PATH` 与运行端 `LA_PLUMA_BASE_PATH` 保持一致；`/api`、`/health`、`/readiness`、`/game-assets`、`/webrtc-signaling` 仍挂在同源根路径，不随子路径前缀移动。
 - 运行数据与凭据不入库：`server/data/`（默认持久数据根目录）、`.env*` 以及仓库外的 MAA 状态目录（日志与调试截图）。打包时保持运行数据与源码隔离。
 - 文档改动落到该主题的归属文档，其他位置只留导航，不复制参数表与状态机；移动文档时同步修正索引及源码、脚本中的引用。
 - 普通文档、README 与源码不引用 AGENTS.md，也不要求读者先读 AGENTS.md；本指南只维护根与子目录两层，引用方向始终自顶向下。

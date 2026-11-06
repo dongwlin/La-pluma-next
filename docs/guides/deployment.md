@@ -135,7 +135,7 @@ docker run -d \
 
 证书必须受访问设备信任，并覆盖实际使用的域名或 IP。仅在浏览器中临时忽略自签名证书警告，不能可靠满足 PWA 安装要求。网络访问必须配置 `LA_PLUMA_TOKEN`。
 
-HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。
+HTTPS 下的实时预览使用同源 `/webrtc-signaling` 网关并自动升级为 WSS，不再让浏览器直连不安全的 `ws://`。如果由 Caddy、Nginx 或 NAS 反向代理终止 TLS，需要把 `/api`、`/health`、`/readiness`、`/game-assets` 和 `/webrtc-signaling` 一并转发到 La Pluma Next，并允许 `/webrtc-signaling` 的 WebSocket Upgrade。`/game-assets` 只提供同源只读图标与头像，不需要 token，也不能省略：漏转发时页面其余功能正常，但图标与头像会全部 404。
 
 反向代理还需要容忍长时间的同步维护请求。Core 安装/更新（`POST /api/agent/actions/update-core`）默认按 `LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS` 同步执行并整体返回，耗时可达 15-60 分钟；Nginx 默认 `proxy_read_timeout 60s` 会在等待期间断开连接，浏览器表现为网络错误或 504，而服务端更新仍在继续，此时重试会因执行租约被占用返回 409 `MAA_EXECUTION_BUSY`。请求体传 `waitForCompletion:false` 时，维护更新会在取得执行权后立即返回 202 与 `runId`，随后用 `GET /api/agent/runs/{runId}` 轮询终态，避免代理读超时；不传该字段时仍保持同步整体返回的兼容行为。由反向代理转发 `/api` 时，若继续使用同步模式，应为该路径放宽读超时（不低于维护超时上限，例如 Nginx 的 `proxy_read_timeout 3700s;`），或改用支持长等待的配置；无法调整代理时，应在发起更新前预留足够的等待窗口，避免误判失败后重复触发。
 
@@ -147,6 +147,7 @@ PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，�
 
 - 鉴权只由 token 承担，CORS 不作为鉴权。`/api` 与 WebRTC 票据入口对任何来源应答 CORS 预检（`OPTIONS` 无需 token）并返回 `Access-Control-Allow-Origin: *`，但这只声明浏览器可跨域读取响应；`/api` 的来源不构成访问边界。配置 `LA_PLUMA_TOKEN` 后，`/api` 与票据入口要求 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`；网络访问建议始终配置该 token。
 - 本地图标与头像（`/game-assets`）只服务同源页面：响应不返回 `Access-Control-Allow-Origin`，并声明 `Cross-Origin-Resource-Policy: same-origin`，跨源页面无法读取或嵌入本机资源目录；同源 `<img>` 加载不受影响。
+- 未配置 `LA_PLUMA_TOKEN` 时，`/api/agent/diagnostics` 额外按来源地址限流（默认每分钟 30 次，超限返回 429 `AGENT_RATE_LIMITED` 并带 `Retry-After`），避免匿名并发请求放大 MAA/ADB 探测；配置 token 后由鉴权承担边界。
 - 令牌比较先对两侧做摘要再使用恒定时间比较：长度差异、非字符串请求头或格式错误只会返回 401 `AGENT_AUTH_REQUIRED`，不会抛错，也不会回显预期值、变量名或长度。认证失败按来源地址限流（默认每分钟 10 次），超限返回 429 `AGENT_RATE_LIMITED` 并带 `Retry-After`；有效令牌不参与失败计数，也不会被同一来源的失败额度阻塞。限额是进程内计数、重启清零，不跨实例共享；未启用 `trust proxy`，反向代理后所有客户端共享代理连接地址的额度。
 - 不支持浏览器凭据模式：服务端不使用 Cookie，不返回 `Access-Control-Allow-Credentials`。以 `credentials: 'include'` 发起的跨域请求会被浏览器拒绝；调用方应改用上述 token 头并保持默认的 `credentials: 'same-origin'`。关闭凭据并不限制请求来源——任何来源都可携带 token 调用开放接口，未携带有效 token 的 `/api` 请求一律 401。
 - 实时预览的 `/webrtc-signaling` 网关继续按同源方式使用：HTTP 票据入口受同一 token 保护，其余信令管理端点不通过应用端口暴露，WebSocket 升级只服务持一次性票据的观看连接。票据签发自成边界：未设置 `LA_PLUMA_TOKEN` 的本地/LAN 模式只接受同源签发，`Origin` 的主机名必须与 `Host` 一致（端口不参与比较，兼容本地开发代理）；无 `Origin` 的非浏览器调用保持可用，跨源请求返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`。设置 token 后由 token 把关，来源不再作为额外边界。两种模式都按来源地址限制签发频率（默认每分钟 30 次），反向代理需要保留原始 `Host` 主机名。
@@ -166,7 +167,7 @@ pnpm start
 docker build --build-arg VITE_BASE_PATH=/la-pluma-next/ -t la-pluma-next:local .
 ```
 
-本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health`、`/readiness` 与 `/webrtc-signaling`。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
+本地运行时要让 `LA_PLUMA_BASE_PATH` 与构建时的 `VITE_BASE_PATH` 保持一致；通过 Docker build arg 构建时，镜像会自动写入对应的运行时挂载路径。反向代理应保留 `/la-pluma-next/` 前缀转发，同时继续同源转发根路径 `/api`、`/health`、`/readiness`、`/game-assets` 与 `/webrtc-signaling`。`/game-assets` 是只读免 token 的同源资产命名空间，漏转发会让图标与头像在子路径部署下全部 404。路径建议以前导和结尾 `/` 表示，构建与服务端都会自动规范常见写法。
 
 ### 使用 Docker Compose（推荐）
 
