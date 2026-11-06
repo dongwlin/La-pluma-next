@@ -98,26 +98,27 @@ export async function discoverDevices(adbPath: string, signal?: AbortSignal): Pr
   })
 }
 
-export async function updateMaaCore(version?: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/update-core`, {
+/**
+ * 更新动作统一提交为服务端 Run：`waitForCompletion=false` 在取得执行权后返回
+ * runId，调用方按 runId 观察终态或停止；请求体只带该端点自己的领域参数。
+ */
+async function submitUpdateRun(path: string, body: Record<string, unknown> = {}): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent${path}`, {
     method: 'POST',
-    headers: version ? {
+    headers: {
       'Content-Type': 'application/json',
-    } : undefined,
-    body: version ? JSON.stringify({ version }) : undefined,
+    },
+    body: JSON.stringify({ ...body, waitForCompletion: false }),
   })
   return parseJsonResponse(response)
 }
 
+export async function updateMaaCore(version?: string): Promise<ApiResponse> {
+  return submitUpdateRun('/actions/update-core', version ? { version } : {})
+}
+
 export async function updateMaaCli(channel?: string): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/update-cli`, {
-    method: 'POST',
-    headers: channel ? {
-      'Content-Type': 'application/json',
-    } : undefined,
-    body: channel ? JSON.stringify({ channel }) : undefined,
-  })
-  return parseJsonResponse(response)
+  return submitUpdateRun('/actions/update-cli', channel ? { channel } : {})
 }
 
 export async function saveUpdateChannel(
@@ -135,10 +136,7 @@ export async function saveUpdateChannel(
 }
 
 export async function hotUpdateResources(): Promise<ApiResponse> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/agent/actions/hot-update-resources`, {
-    method: 'POST',
-  })
-  return parseJsonResponse(response)
+  return submitUpdateRun('/actions/hot-update-resources')
 }
 
 export async function setupAutoUpdate(config: AutoUpdateConfig): Promise<ApiResponse> {

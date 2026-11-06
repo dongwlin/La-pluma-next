@@ -186,7 +186,7 @@ export function enrichAgentRun(run: AgentRunDto | null): AgentRunSnapshotEntry |
           ? '等待执行权'
           : task.stopRequested
             ? '正在终止更新'
-            : task.isRunning ? `${updateLabel}进行中` : '更新收尾中'
+            : task.isRunning ? `${updateLabel}进行中` : '更新执行中'
       }
     };
   }

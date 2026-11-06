@@ -379,6 +379,48 @@ describe('tracked update runs', () => {
     assert.equal(await pathExists(lockFile), false);
   });
 
+  it('rejects concurrent updates with a failed run and releases the idempotency key', async () => {
+    process.env.FAKE_UPDATE_SLEEP_MS = '20000';
+    const port = await listen();
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+    const first = await postJson(`${baseUrl}/actions/update-core`, { waitForCompletion: false });
+    assert.equal(first.status, 202);
+    const firstBody = await readSuccess<UpdateSuccessPayload>(first);
+    const firstRunId = String(firstBody.data.runId);
+    await waitForRun(baseUrl, firstRunId, run => run.state === 'running');
+
+    const busy = await postJson(
+      `${baseUrl}/actions/update-core`,
+      {},
+      { 'Idempotency-Key': 'update-core-busy-01' }
+    );
+    assert.equal(busy.status, 409);
+    const busyBody = await readError(busy);
+    assert.equal(busyBody.error.code, 'MAA_EXECUTION_BUSY');
+    const busyRun = await getRun(
+      baseUrl,
+      String((busyBody.error.details as { runId?: unknown }).runId)
+    );
+    assert.equal(busyRun.state, 'failed');
+
+    const stop = await postJson(`${baseUrl}/actions/stop`, { runId: firstRunId });
+    assert.equal(stop.status, 200);
+    await waitForRun(baseUrl, firstRunId, run => run.state === 'stopped');
+
+    // 占用属于执行前拒绝：幂等键已释放，同键重试可以创建新 run。
+    delete process.env.FAKE_UPDATE_SLEEP_MS;
+    const retried = await postJson(
+      `${baseUrl}/actions/update-core`,
+      {},
+      { 'Idempotency-Key': 'update-core-busy-01' }
+    );
+    assert.equal(retried.status, 200);
+    const retriedBody = await readSuccess<UpdateSuccessPayload>(retried);
+    assert.equal(retriedBody.data.state, 'succeeded');
+    assert.notEqual(retriedBody.data.runId, busyRun.runId);
+  });
+
   it('replays the same update run for the same idempotency key', async () => {
     await writeFile(cliCallLog, '', 'utf-8');
     const port = await listen();
