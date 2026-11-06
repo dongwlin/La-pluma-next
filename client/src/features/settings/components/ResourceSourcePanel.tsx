@@ -122,7 +122,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
           setConfigFeedback(null)
         }}
         options={SOURCE_OPTIONS}
-        hint="Git 从官方仓库同步，MirrorChyan 使用镜像快照"
       />
 
       {draft.source === 'git' && (

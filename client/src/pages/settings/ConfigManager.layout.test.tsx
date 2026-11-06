@@ -747,6 +747,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.textContent).toContain('资源来源')
     expect(container.textContent).not.toContain('https://github.com/MaaAssistantArknights/MaaResource.git')
     expect(container.textContent).not.toContain('仓库地址')
+    expect(container.textContent).not.toContain('Git 从官方仓库同步')
     const fieldLabels = Array.from(container.querySelectorAll('input')).flatMap(input =>
       Array.from(input.labels ?? [], label => label.textContent))
     expect(fieldLabels).not.toContain('分支')
