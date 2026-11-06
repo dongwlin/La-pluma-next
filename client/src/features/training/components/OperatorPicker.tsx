@@ -17,6 +17,7 @@ import {
   resolveOperatorEmptyState,
   type OperatorEmptyState as OperatorEmptyStateContent,
 } from '../model/operatorRows'
+import { describeRecognitionHint } from '../model/recognition'
 import TrainingLoadError from './TrainingLoadError'
 import type { TrainingFilters, TrainingOperator } from '../types'
 
@@ -100,8 +101,11 @@ export default function OperatorPicker({
   )
   const candidatesQuery = useQuery(candidateOptions)
   const countsQuery = useQuery(countsOptions)
-  const operators = candidatesQuery.data ?? []
+  const operators = candidatesQuery.data?.operators ?? []
   const operatorsLoading = candidatesQuery.isPending
+  const recognitionHint = operatorsLoading
+    ? null
+    : describeRecognitionHint(candidatesQuery.data?.recognition ?? null)
   const operatorsError = candidatesQuery.isError
     ? (candidatesQuery.error instanceof Error && candidatesQuery.error.message
         ? candidatesQuery.error.message
@@ -234,6 +238,15 @@ export default function OperatorPicker({
           </Button>
         </div>
         </div>
+
+        {recognitionHint && (
+          <div
+            role="status"
+            className={`training-feedback ${recognitionHint.tone === 'warning' ? 'status-warning' : ''}`}
+          >
+            {recognitionHint.message}
+          </div>
+        )}
 
         {operatorsLoading ? (
           <div className="flex min-h-65 items-center justify-center">

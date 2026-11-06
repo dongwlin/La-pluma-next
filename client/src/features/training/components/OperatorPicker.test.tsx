@@ -182,6 +182,56 @@ describe('training operator picker', () => {
     expect(buttonWithText('继续显示 80 个')).toBeUndefined()
   })
 
+  it('explains when the operator recognition is incomplete', async () => {
+    mocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: {
+        operators: [
+          operator('char_owned', '阿米娅'),
+          { ...operator('char_unknown', '未知干员'), owned: false, ownership: 'unknown', canTrain: false, disabledReason: 'unrecognized', trainingStatus: 'unrecognized' },
+        ],
+        recognition: {
+          status: 'partial',
+          recognizedAt: '2026-11-06T00:00:00.000Z',
+          total: 3,
+          owned: 1,
+          unknown: 2,
+          missing: ['char_unknown', 'char_missing'],
+        },
+      },
+    })
+
+    await act(async () => root.render(<QueryClientProvider client={client}><Harness /></QueryClientProvider>))
+    await flush()
+
+    const status = document.querySelector('[role="dialog"] [role="status"]')
+    expect(status?.textContent).toContain('识别不完整：2 名干员的拥有状态未确认')
+    expect(buttonWithText('未识别')).toBeDefined()
+  })
+
+  it('does not show a recognition hint for a complete snapshot or a legacy server', async () => {
+    mocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: {
+        operators: [operator('char_owned', '阿米娅')],
+        recognition: {
+          status: 'complete',
+          recognizedAt: '2026-11-06T00:00:00.000Z',
+          total: 1,
+          owned: 1,
+          unknown: 0,
+          missing: [],
+        },
+      },
+    })
+
+    await act(async () => root.render(<QueryClientProvider client={client}><Harness /></QueryClientProvider>))
+    await flush()
+
+    expect(document.querySelector('[role="dialog"] [role="status"]')).toBeNull()
+    expect(buttonWithText('未识别')).toBeUndefined()
+  })
+
   it('keeps search and batch progress when the modal is closed and reopened', async () => {
     const rows = Array.from({ length: 80 }, (_, index) => operator(`char_${index}`, `干员${index}`))
     mocks.getOperatorList.mockResolvedValue({ success: true, data: { operators: rows } })

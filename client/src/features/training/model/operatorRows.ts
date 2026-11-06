@@ -85,25 +85,28 @@ export interface OperatorRowState {
 }
 
 /**
- * 卡片动作与蒙版状态。已入队优先于未拥有/缺数据，与迁移前的内联判断一致；
- * `disabledReason` 只在可训练但已经精二时影响文案。
+ * 卡片动作与蒙版状态。已入队优先于未识别/未拥有/缺数据；识别未确认的干员
+ * 不能标成“未拥有”，`disabledReason` 只在可训练但已经精二时影响文案。
  */
 export const describeOperatorRow = (
   operator: TrainingOperator,
   isInQueue: boolean,
 ): OperatorRowState => {
+  const isUnrecognized = operator.ownership === 'unknown'
   const isOwned = operator.owned !== false
   const isAlreadyElite2 = operator.disabledReason === 'already_elite2'
   const canAdd = Boolean(operator.canTrain) && !isInQueue
   const actionLabel = isInQueue
     ? '已添加'
-    : !isOwned
-      ? '未拥有'
-      : !operator.hasMaterialData
-        ? '暂无数据'
-        : isAlreadyElite2
-          ? '已完成'
-          : '添加'
+    : isUnrecognized
+      ? '未识别'
+      : !isOwned
+        ? '未拥有'
+        : !operator.hasMaterialData
+          ? '暂无数据'
+          : isAlreadyElite2
+            ? '已完成'
+            : '添加'
 
   return { isOwned, canAdd, actionLabel }
 }

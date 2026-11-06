@@ -99,4 +99,21 @@ describe('training operator rows', () => {
     expect(describeOperatorRow(operator('a', '阿米娅', { canTrain: false }), false).canAdd)
       .toBe(false)
   })
+
+  it('labels unrecognized ownership instead of claiming the operator is unowned', () => {
+    const unrecognized = operator('a', '阿米娅', {
+      owned: false,
+      ownership: 'unknown',
+      canTrain: false,
+      disabledReason: 'unrecognized',
+      trainingStatus: 'unrecognized',
+    })
+
+    expect(describeOperatorRow(unrecognized, false)).toEqual({
+      isOwned: false,
+      canAdd: false,
+      actionLabel: '未识别',
+    })
+    expect(describeOperatorRow(unrecognized, true).actionLabel).toBe('已添加')
+  })
 })

@@ -24,6 +24,7 @@ import {
   type OperatorFilters,
   type SortBy,
 } from '../model/operatorFilters'
+import { describeOperBoxRecognitionHint } from '../model/operatorRecognition'
 import FilterMenu, { type FilterMenuOption } from './FilterMenu'
 import InlineDataError from './InlineDataError'
 import type { StatisticsCommands } from '../hooks/useStatisticsCommands'
@@ -148,7 +149,12 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
     () => new Set((operBoxData?.data || []).map(operator => operator.id)).size,
     [operBoxData],
   )
-  const operatorCatalogCount = allOperators.length || ownedOperatorCount
+  // 档案分母优先用本地目录；只有识别快照带识别目录时才用快照总数，
+  // 旧快照的 recognition.total 只是已识别数量，不能当作完整目录。
+  const operatorCatalogCount = allOperators.length
+    || operBoxData?.operTotal
+    || ownedOperatorCount
+  const recognitionHint = describeOperBoxRecognitionHint(operBoxData?.recognition)
   const operatorCoverage = operatorCatalogCount > 0
     ? Math.round((ownedOperatorCount / operatorCatalogCount) * 100)
     : 0
@@ -297,6 +303,11 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                     {operBoxData.timestamp && (
                       <p className="mt-1 truncate text-xs text-tertiary">
                         更新于 {new Date(operBoxData.timestamp).toLocaleString('zh-CN')}
+                      </p>
+                    )}
+                    {recognitionHint && (
+                      <p role="status" className="mt-1 text-xs leading-5 text-(--app-warning)">
+                        {recognitionHint}
                       </p>
                     )}
                   </div>

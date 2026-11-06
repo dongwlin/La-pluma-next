@@ -1,5 +1,5 @@
 import operatorTrainingService from '../services/operatorTrainingService.ts';
-import type { TrainingQueueSnapshot } from '../services/operatorTrainingService.ts';
+import type { TrainingOperatorList, TrainingQueueSnapshot } from '../services/operatorTrainingService.ts';
 import type { TrainingSettings } from '../services/operatorTrainingModel.ts';
 import type { ApplyPlanResult, QueueMutationResult } from '../services/operatorTrainingApplication.ts';
 import type { TrainingPlan } from '../services/operatorTrainingPlan.ts';
@@ -22,8 +22,12 @@ import type {
 import { resolveRequestConnection } from './requestConnection.ts';
 
 export async function listCandidates(req: TrainingRequest, res: ApiResponseWriter): Promise<void> {
-  const operators = await operatorTrainingService.getOperatorList(parseCandidateFilters(req.query));
-  const payload: TrainingOperatorListPayload = { operators, count: operators.length };
+  const list: TrainingOperatorList = await operatorTrainingService.getOperatorList(parseCandidateFilters(req.query));
+  const payload: TrainingOperatorListPayload = {
+    operators: list.operators,
+    count: list.operators.length,
+    recognition: list.recognition
+  };
   return sendSuccess(res, req, payload);
 }
 

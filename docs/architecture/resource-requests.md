@@ -81,7 +81,7 @@ const depot = unwrapApiResponse(result)
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
 | `getDepotData(signal?)` | `GET /agent/data/depot` | `null` 或 `items` 数组 |
-| `getOperBoxData(signal?)` | `GET /agent/data/operbox` | `null` 或 `data` 数组 |
+| `getOperBoxData(signal?)` | `GET /agent/data/operbox` | `null` 或 `data` 数组；`allOpers`、`operTotal`、`recognition` 为可选附加字段 |
 | `getAllOperators(signal?)` | `GET /agent/data/operators` | 数组 |
 | `getItemIconUrl(iconId, version?)` | 无请求 | 只拼 URL、编码 `iconId` 并附加图标缓存 epoch |
 
@@ -99,7 +99,7 @@ const depot = unwrapApiResponse(result)
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
-| `getOperatorList(filters?, signal?)` | `GET /agent/training/operators` | `operators` 数组，或旧版顶层数组 |
+| `getOperatorList(filters?, signal?)` | `GET /agent/training/operators` | `operators` 数组，或旧版顶层数组；`recognition` 概要可选 |
 | `getTrainingQueue(signal?)` | `GET /agent/training/queue` | `queue` 数组 |
 | `fetchOperatorMaterials(signal?)` | `POST /agent/actions/fetch-training-materials` | 脚本摘要对象；`signal` 只结束本地等待，不占设备租约 |
 
