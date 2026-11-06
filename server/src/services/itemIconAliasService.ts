@@ -1,4 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
 
 const logger = createLogger('GameAsset');
@@ -51,6 +52,13 @@ function appendAlias(map: Map<string, string[]>, key: string, itemId: string): v
   if (!candidates.includes(itemId)) candidates.push(itemId);
 }
 
+function iconIdFromFileName(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const fileName = basename(value);
+  const iconId = fileName.toLowerCase().endsWith('.png') ? fileName.slice(0, -4) : fileName;
+  return SAFE_ASSET_KEY.test(iconId) ? iconId : null;
+}
+
 /**
  * 从 `item_table.json` 载荷建立映射：同时保留 iconId→物品 id（优先按物品表顺序、
  * 重复 iconId 为候选列表）与物品 id→iconId。缺少 `items` 或条目无效时跳过，
@@ -75,34 +83,101 @@ export function parseItemIconAliasTable(payload: unknown): ItemIconAliasTable {
   return { byIconId, byLowercaseIconId, byItemId };
 }
 
-async function readItemIconAliasTable(itemTablePath: string): Promise<ItemIconAliasTable> {
+/**
+ * 从 `item_index.json` 载荷建立映射。该文件没有独立 iconId：`icon` 字段是图片
+ * 文件名，去掉扩展名后同时充当 iconId 与物品 id 两边的键，供 item_table 缺失时
+ * 兜底。缺少可用图标名的条目跳过，从不抛出。
+ */
+export function parseItemIndexAliasTable(payload: unknown): ItemIconAliasTable {
+  if (!isRecord(payload)) return EMPTY_ITEM_ICON_ALIAS_TABLE;
+
+  const byIconId = new Map<string, string[]>();
+  const byLowercaseIconId = new Map<string, string[]>();
+  const byItemId = new Map<string, string>();
+
+  for (const [itemId, rawEntry] of Object.entries(payload)) {
+    if (!SAFE_ASSET_KEY.test(itemId) || !isRecord(rawEntry)) continue;
+    const iconId = iconIdFromFileName(rawEntry.icon);
+    if (!iconId) continue;
+    appendAlias(byIconId, iconId, itemId);
+    appendAlias(byLowercaseIconId, iconId.toLowerCase(), itemId);
+    if (!byItemId.has(itemId)) byItemId.set(itemId, iconId);
+  }
+
+  return { byIconId, byLowercaseIconId, byItemId };
+}
+
+async function readAliases<T>(
+  filePath: string,
+  parse: (payload: unknown) => T,
+  failureMessage: string
+): Promise<T | null> {
   try {
-    return parseItemIconAliasTable(JSON.parse(await readFile(itemTablePath, 'utf8')));
+    return parse(JSON.parse(await readFile(filePath, 'utf8')));
   } catch (error) {
-    logger.warn('物品图标映射读取失败，仅按文件名提供图标', {
-      path: itemTablePath,
-      error: errorMessage(error)
-    });
-    return EMPTY_ITEM_ICON_ALIAS_TABLE;
+    logger.warn(failureMessage, { path: filePath, error: errorMessage(error) });
+    return null;
   }
 }
 
+function hasAliases(table: ItemIconAliasTable | null): table is ItemIconAliasTable {
+  return table !== null && table.byItemId.size > 0;
+}
+
+async function loadAliasTable(
+  itemTablePath: string,
+  itemIndexPath: string | undefined,
+  itemTableSignature: string | null,
+  itemIndexSignature: string | null
+): Promise<ItemIconAliasTable> {
+  if (itemTableSignature !== null) {
+    const itemTable = await readAliases(
+      itemTablePath,
+      parseItemIconAliasTable,
+      '物品图标映射读取失败，改用物品索引'
+    );
+    if (hasAliases(itemTable)) return itemTable;
+  }
+  if (itemIndexPath && itemIndexSignature !== null) {
+    const itemIndex = await readAliases(
+      itemIndexPath,
+      parseItemIndexAliasTable,
+      '物品索引图标映射读取失败，仅按文件名提供图标'
+    );
+    if (hasAliases(itemIndex)) return itemIndex;
+  }
+  return EMPTY_ITEM_ICON_ALIAS_TABLE;
+}
+
+async function fileSignature(filePath: string): Promise<string | null> {
+  const fileStat = await stat(filePath).catch(() => null);
+  return fileStat ? `${fileStat.mtimeMs}:${fileStat.size}` : null;
+}
+
 /**
- * 读取本地 `item_table.json` 建立图标别名映射。文件缺失时静默返回空表（直连文件名
- * 仍然可用）；读取或解析失败按文件签名缓存空表，避免并发图片请求重复读取与刷日志。
+ * 读取本地图标别名映射：优先 `item_table.json`，缺失或不可解析时回退到
+ * `item_index.json` 的 `icon` 字段（MAA 默认资源只带后者）；两者都不可用时
+ * 返回空表，直连文件名仍然可用。读取结果按文件签名的组合缓存，并发图片请求
+ * 共享同一次读取，文件变化后自然失效。
  */
-export async function loadItemIconAliasTable(itemTablePath: string): Promise<ItemIconAliasTable> {
-  const fileStat = await stat(itemTablePath).catch(() => null);
-  if (!fileStat) {
-    aliasCache.delete(itemTablePath);
+export async function loadItemIconAliasTable(
+  itemTablePath: string,
+  itemIndexPath?: string
+): Promise<ItemIconAliasTable> {
+  const itemTableSignature = await fileSignature(itemTablePath);
+  const itemIndexSignature = itemIndexPath ? await fileSignature(itemIndexPath) : null;
+  const cacheKey = itemIndexPath ? `${itemTablePath}\u0000${itemIndexPath}` : itemTablePath;
+
+  if (!itemTableSignature && !itemIndexSignature) {
+    aliasCache.delete(cacheKey);
     return EMPTY_ITEM_ICON_ALIAS_TABLE;
   }
 
-  const signature = `${fileStat.mtimeMs}:${fileStat.size}`;
-  const cached = aliasCache.get(itemTablePath);
+  const signature = `${itemTableSignature ?? '-'}|${itemIndexSignature ?? '-'}`;
+  const cached = aliasCache.get(cacheKey);
   if (cached?.signature === signature) return cached.table;
 
-  const table = readItemIconAliasTable(itemTablePath);
-  aliasCache.set(itemTablePath, { signature, table });
+  const table = loadAliasTable(itemTablePath, itemIndexPath, itemTableSignature, itemIndexSignature);
+  aliasCache.set(cacheKey, { signature, table });
   return table;
 }

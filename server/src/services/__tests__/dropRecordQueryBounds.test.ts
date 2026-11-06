@@ -261,8 +261,22 @@ describe('drop statistics material table', () => {
     const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
 
     assert.equal(statistics.items['源岩'].count, 2);
+    assert.equal(statistics.items['源岩'].id, null);
     assert.equal(statistics.items['源岩'].iconId, '30012');
     assert.equal(statistics.items['源岩'].rarity, 3);
+  });
+
+  it('exposes the material item id separately from the icon key', async () => {
+    await seedOneDayWithItem();
+    const materialsPath = join(fixtureDir, 'materials-object-id.json');
+    await writeFile(materialsPath, JSON.stringify({
+      materials: { '30011': { id: '30011', name: '源岩', rarity: 3, iconId: 'MTL_SL_G1' } }
+    }), 'utf-8');
+
+    const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
+
+    assert.equal(statistics.items['源岩'].id, '30011');
+    assert.equal(statistics.items['源岩'].iconId, 'MTL_SL_G1');
   });
 
   it('enriches items from the object-format material table produced by the fetch scripts', async () => {

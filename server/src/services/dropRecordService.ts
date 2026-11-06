@@ -65,6 +65,7 @@ export interface DropRecordDay {
 }
 
 export interface MaterialEntry {
+  id?: string;
   iconId?: string;
   rarity?: number;
 }
@@ -72,6 +73,7 @@ export interface MaterialEntry {
 export interface DropStatisticsItem {
   count: number;
   stages: Record<string, number>;
+  id: string | null;
   iconId: string | null;
   rarity: number | null;
 }
@@ -459,9 +461,16 @@ function resolveMaterialIconKey(value: Record<string, unknown>, itemId?: string)
   return itemId || undefined;
 }
 
+function resolveMaterialItemId(value: Record<string, unknown>, itemId?: string): string | undefined {
+  if (typeof value.id === 'string' && value.id) return value.id;
+  return itemId || undefined;
+}
+
 function parseMaterialEntry(value: unknown, itemId?: string): { name: string; entry: MaterialEntry } | null {
   if (!isRecord(value) || typeof value.name !== 'string') return null;
   const entry: MaterialEntry = {};
+  const materialId = resolveMaterialItemId(value, itemId);
+  if (materialId) entry.id = materialId;
   const iconKey = resolveMaterialIconKey(value, itemId);
   if (iconKey) entry.iconId = iconKey;
   if (typeof value.rarity === 'number' && Number.isFinite(value.rarity)) entry.rarity = value.rarity;
@@ -540,6 +549,7 @@ function processRecordForStatistics(
       statistics.items[itemName] = {
         count: 0,
         stages: {},
+        id: materialsMap[itemName]?.id ?? null,
         iconId: materialsMap[itemName]?.iconId ?? null,
         rarity: materialsMap[itemName]?.rarity ?? null
       };

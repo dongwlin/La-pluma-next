@@ -78,7 +78,7 @@ const depot = unwrapApiResponse(result)
 
 仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标与干员头像不是端点：`getItemIconUrl` / `getOperatorAvatarUrl` 只生成同源 `/game-assets` URL，由浏览器缓存，不进入 Query；URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
 
-图片由服务端读取本地 MAA 资源：物品图标来自 `template/items/`，文件按**物品 id** 命名（`<itemId>.png`）；干员头像来自 `template/avatar/`，按**干员 id** 命名（`<operatorId>.png`）。变体头像以 `_1`、`_2` 后缀命名，但 MAA 标准资源只提供基础头像，变体需由 `LA_PLUMA_GAME_ASSET_DIR` 指向的自定义目录提供。`getItemIconUrl` 的物品键使用物品 id；服务端同时接受 `item_table.json` 的 `iconId`（如 `GOLD`），在本地 item_table 可用时与物品 id 双向解析（大小写不敏感、重复 iconId 逐个尝试），因此沿用 iconId 的旧调用与按 iconId 命名的图片目录也能命中。item_table 不可用时只按文件名直连；未知键返回空 404，客户端隐藏该图并显示占位。`LA_PLUMA_GAME_ASSET_DIR` 可指向含 `item/`、`avatar/` 的自定义目录，文件名规则相同。
+图片由服务端读取本地 MAA 资源：物品图标来自 `template/items/`，文件按**物品 id** 命名（`<itemId>.png`）；干员头像来自 `template/avatar/`，按**干员 id** 命名（`<operatorId>.png`）。变体头像以 `_1`、`_2` 后缀命名，但 MAA 标准资源只提供基础头像，变体需由 `LA_PLUMA_GAME_ASSET_DIR` 指向的自定义目录提供。`getItemIconUrl` 的物品键使用物品 id；服务端同时接受 `item_table.json` 的 `iconId`（如 `GOLD`），并与物品 id 双向解析（大小写不敏感、重复 iconId 逐个尝试），因此沿用 iconId 的旧调用与按 iconId 命名的图片目录也能命中。本地 `item_table.json` 缺失或不可解析时改用 `item_index.json` 的 `icon` 文件名建立同样的映射（MAA 默认资源只带该文件）；两类元数据都不可用时只按文件名直连，未知键返回空 404，客户端隐藏该图并显示占位。`LA_PLUMA_GAME_ASSET_DIR` 可指向含 `item/`、`avatar/` 的自定义目录，文件名规则相同。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |

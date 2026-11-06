@@ -103,6 +103,85 @@ describe('DropRecords read states', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
+  it('prefers the payload item id when building item icon urls', async () => {
+    await act(async () => root.render(
+      <DropRecords
+        dropStatistics={{
+          total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
+          items: { '固源岩': { count: 6, id: '30011', iconId: 'MTL_SL_G1' } },
+          stages: { '1-7': { battles: 3, sanity: 42, items: { '固源岩': 6 } } },
+          dateRange: { start: '2026-07-14', end: '2026-07-20', days: 7 },
+        }}
+        dropDays={7}
+        setDropDays={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    ))
+
+    const image = container.querySelector<HTMLImageElement>('img[alt="固源岩"]')
+    expect(image?.getAttribute('src')).toBe('/items/30011.png')
+  })
+
+  it('falls back to the payload icon id for older statistics payloads', async () => {
+    await act(async () => root.render(
+      <DropRecords
+        dropStatistics={{
+          total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
+          items: { '固源岩': { count: 6, iconId: 'rock' } },
+          stages: { '1-7': { battles: 3, sanity: 42, items: { '固源岩': 6 } } },
+          dateRange: { start: '2026-07-14', end: '2026-07-20', days: 7 },
+        }}
+        dropDays={7}
+        setDropDays={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    ))
+
+    const image = container.querySelector<HTMLImageElement>('img[alt="固源岩"]')
+    expect(image?.getAttribute('src')).toBe('/items/rock.png')
+  })
+
+  it('hides the item icon safely when the payload has no icon key', async () => {
+    await act(async () => root.render(
+      <DropRecords
+        dropStatistics={{
+          total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
+          items: { '固源岩': { count: 6 } },
+          stages: { '1-7': { battles: 3, sanity: 42, items: { '固源岩': 6 } } },
+          dateRange: { start: '2026-07-14', end: '2026-07-20', days: 7 },
+        }}
+        dropDays={7}
+        setDropDays={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    ))
+
+    expect(container.querySelector('img[alt="固源岩"]')).toBeNull()
+    expect(container.querySelector('[role="img"][aria-label="固源岩图标不可用"]')).toBeNull()
+  })
+
+  it('renders the icon placeholder when an item image fails', async () => {
+    await act(async () => root.render(
+      <DropRecords
+        dropStatistics={{
+          total: { sanity: 42, battles: 3, medicine: 0, stone: 0 },
+          items: { '固源岩': { count: 6, id: '30011' } },
+          stages: { '1-7': { battles: 3, sanity: 42, items: { '固源岩': 6 } } },
+          dateRange: { start: '2026-07-14', end: '2026-07-20', days: 7 },
+        }}
+        dropDays={7}
+        setDropDays={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    ))
+
+    const image = container.querySelector<HTMLImageElement>('img[alt="固源岩"]')
+    await act(async () => image?.dispatchEvent(new Event('error', { bubbles: true })))
+
+    expect(container.querySelector('img[alt="固源岩"]')).toBeNull()
+    expect(container.querySelector('[role="img"][aria-label="固源岩图标不可用"]')).not.toBeNull()
+  })
+
   it('keeps the last successful statistics visible when a refresh fails', async () => {
     await act(async () => root.render(
       <DropRecords
