@@ -122,6 +122,25 @@ curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
   -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
 ```
 
+### 自定义基建排班文件端点（不在 Agent manifest）
+
+Web UI 的基建排班编辑器通过下列端点读写 MAA 配置目录 `infrast/` 下的排班 JSON。它们同样属于 Web UI 专用入口，未在 `AGENT_OPERATIONS` 中注册，也不会出现在 manifest/OpenAPI 中：排班文件是编辑器维护的 MAA 配置，不是面向 Agent 的语义化动作，这些端点只读写文件，不创建 Run、不占用执行租约，也不做任务参数预检。
+
+```bash
+# 列出排班文件；每项含 name、title、planCount、updatedAt 与 valid
+curl 'http://localhost:3000/api/agent/infrast-schedules'
+
+# 读取单个文件原文，name 与 maa-cli 解析 filename 的规则一致
+curl 'http://localhost:3000/api/agent/infrast-schedules/document?name=daily.json'
+
+# 保存文件：请求体为 { name, document }，服务端按 Core 协议校验后原子写入
+curl -X PUT http://localhost:3000/api/agent/infrast-schedules/document \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"daily.json","document":{"plans":[{"rooms":{}}]}}'
+```
+
+`name` 相对 MAA 配置目录下的 `infrast/`，也可传入落在该目录内的绝对路径；`..`、非 `.json` 与符号链接逃逸均被拒绝。读取返回原始 JSON，不补默认值；保存只校验已知字段，未知扩展字段原样保留。文件位置、校验与协议字段见[日常流程与定时触发](../server/scheduling.md#自定义基建排班文件)。鉴权与其他 `/api` 路由一致（`LA_PLUMA_TOKEN` 开启时需要令牌，认证失败限流同样适用）；参数或路径不合法、文件不存在、读写失败分别返回 `AGENT_INFRASTRUCT_SCHEDULE_INVALID`（400）、`AGENT_INFRASTRUCT_SCHEDULE_NOT_FOUND`（404）与 `AGENT_INFRASTRUCT_SCHEDULE_IO_FAILED`（500，`retryable: true`）。Agent 需要执行基建换班时应使用 `run-task` 的 `Infrast` 任务配置，而不是依赖这些端点。
+
 ### 维护更新端点（不在 Agent manifest）
 
 Core/CLI/资源更新由 Web UI 的维护端点发起，同样创建服务端 Run；CLI 或自定义调用方可以使用同一套 API：
