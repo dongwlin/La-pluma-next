@@ -326,7 +326,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 - **快照与占用**：`occupancy` 的 idle/pending/run/external/unknown 与租约 free/held/stale/unknown；`lastRun` 与当前身份分离；只有 current 带进度，日常流程只投影自己持有的 `schedule.runId`。
 - **HTTP 契约**：目标停止矩阵与“旧 run 不误停新运行”；同步/后台 202 与幂等重放响应头、错误码映射；manifest/OpenAPI 同源且与实际挂载 router 图一致，恰好四个执行动作声明 `producesRun`，公开 operation 按发布 schema 校验请求与真实响应；HTTP 排空（在途响应完整结束、keep-alive 回收、超时强制断开并非零退出）与信令网关关闭失败仍排空 HTTP。
 - **租约与执行**：租约互斥、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布；执行失败释放租约。
-- **维护更新 Run**：Core/CLI/资源更新返回 `runId` 与可查询终态；`waitForCompletion=false` 在取得执行权、产生受管子进程前返回 202；`running` 的更新 run 作为 `occupancy.state=run` 出现，按 `runId` 停止终止受管更新子进程并释放租约；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` 写入 `failed` 终态，详情保持 `version`/`failedStep`/`coreUpdated`；资源热更新并发时后到请求立即得到 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（含当前更新 `activeRunId`/`activeRunState` 与本次被拒绝的 `runId`），首个更新结束后可重新开始且不启动第二次更新；相同幂等键重放原 run，不重复执行更新。
+- **维护更新 Run**：Core/CLI/资源更新返回 `runId` 与可查询终态；`waitForCompletion=false` 在取得执行权、产生受管子进程前返回 202；`running` 的更新 run 作为 `occupancy.state=run` 出现，按 `runId` 停止终止受管更新子进程并释放租约；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` 写入 `failed` 终态，详情保留各操作的领域字段（core 为 `version`/`failedStep`/`coreUpdated`，CLI 为 `channel`/`source`，资源为 `failedStep`）；资源热更新并发时后到请求立即得到 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（含当前更新 `activeRunId`/`activeRunState` 与本次被拒绝的 `runId`），首个更新结束后可重新开始且不启动第二次更新；相同幂等键重放原 run，不重复执行更新。
 - **作业集与流程**：continuous/manual 的等待、继续与停止语义，占用 409 可重试且不消耗条目，逐项结果归属 `runId`；计划构建与逐项状态分类；可中止的步间等待，完成副作用在租约释放且 Run 结算后消费；cron 产生单个带终态结果的 `run_daily_flow`，占用时 fail-closed；触发源重复配置替换、销毁失败上报、draining 后拒绝注册并丢弃排队回调。
 - **关闭与后台触发源**：draining 后 Run 准入与设备租约 503 且不可绕过；执行器实际结果优先，预算耗尽记为 `interrupted`；子进程 SIGTERM 与预算内升级 SIGKILL；重复信号复用同一次关闭；Telegram 停止后不执行迟到命令；外部预览资源不被停止，网关关闭断开观看连接并清空票据；启动逆序回收、初始化取消与统一关闭截止时间。
 
