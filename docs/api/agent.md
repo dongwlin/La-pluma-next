@@ -170,6 +170,27 @@ Core 每轮执行最多启动一项专精训练。本次已经启动训练，或
 
 培养会读取 Core 汇总，部分培养失败不会仅因 CLI 正常退出而报告成功；缺少完整有效回调时 `observed: false`，仅确认进程已结束，游戏结果仍未确认。事件粒度取决于实际 Core 与资源组合，不能仅凭静态契约确认设备侧可用。
 
+### 肉鸽与生息演算的高级参数
+
+`roguelike` 与 `reclamation` 的 CLI 参数只覆盖 maa-cli 0.7.8 支持的子集。MaaCore 新增的主题、模式与参数使用 `command=run` 加 `taskConfig` 动态任务下发，与 `OperProgress`/`SwitchTheme` 走同一通路：
+
+```bash
+# 黑流树海刷开局：准备局培育襁褓猫，目标局期望未编号物与调查预付款
+curl -X POST http://localhost:3000/api/agent/actions/run-task \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"run","args":["roguelike"],"taskConfig":{"name":"集成战略","type":"Roguelike","params":{"theme":"BlackFlow","mode":30003,"blackflow_start_animals":["swaddled_cat"],"blackflow_start_rewards":3,"roles":"稳扎稳打","stop_when_investment_full":true}},"waitForCompletion":false}'
+
+# 生息演算重启锚点 RA-1（maa-cli 没有该主题）
+curl -X POST http://localhost:3000/api/agent/actions/run-task \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"run","args":["reclamation"],"taskConfig":{"name":"生息演算","type":"Reclamation","params":{"theme":"RelaunchAnchor","mode":16}},"waitForCompletion":false}'
+```
+
+- `Roguelike.params.theme` 可为 `Phantom`、`Mizuki`、`Sami`、`Sarkaz`、`JieGarden` 或 `BlackFlow`；`mode` 必须属于主题：通用 `0`/`1`/`4`/`6`/`7`，萨米额外 `5`（刷坍缩范式），萨卡兹额外 `10001`（快速通过第一层），界园额外 `20001`（刷常乐节点），黑流树海为 `0`/`1`/`30001`（刷襁褓动物）/`30003`（刷开局并保留目标局）。
+- `mode=20001` 必填 `find_playTime_target`（`1` 令、`2` 黍、`3` 年）；`mode=30003` 必填 `blackflow_start_animals`（0 至 2 项，羽蛇最多一项）与 `blackflow_start_rewards`（0 至 4095 位掩码），启用 `blackflow_start_utopia` 时还需非空且不重复的 `blackflow_start_reward_priority`。
+- `Reclamation.params.theme` 可为 `Tales` 或 `RelaunchAnchor`；沙洲遗闻模式为 `0`/`1`，重启锚点为 `16`（RA-1）/`32`（RA-15）/`48`（RA-4）。`tools_to_craft` 必须是工具名数组，`increment_mode` 只能是 `0`/`1`，`num_craft_batches` 必须是正整数，`clear_store` 是布尔值。
+- CLI 通路在创建 Run 之前预检：主题、模式或加号点击方式超出 maa-cli 能力时返回 HTTP 400 `AGENT_VALIDATION_TASK_ARGS_INVALID`，并提示改用动态任务；动态任务参数非法返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。两条通路都不会把非法组合静默透传给 CLI/Core。
+
 ## 养成材料筹备队列与任务流程
 
 `/training/*` 管理培养目标所需的材料筹备与刷关计划，不在游戏内执行精英化、技能升级或专精。游戏内培养使用上面的 `OperProgress` 动态任务。
