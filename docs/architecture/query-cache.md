@@ -124,8 +124,10 @@ key 中只放服务端资源身份：筛选/排序等会改变响应的输入放
 | 候选 `trainingCandidatesQueryOptions(filters)` | `['training','candidates',status,rarity,needsElite2]` | `rarity` 缺省为 `null`，`needsElite2` 缺省为 `false`；载荷附带 `recognition` 概要，不进入 key |
 | 计数 `trainingStatusCountsQueryOptions(filters)` | `['training','counts',rarity,needsElite2]` | 同上缺省值；`placeholderData: keepPreviousData`，`structuralSharing` 合并计数 |
 | connection `connectionConfigQueryOptions(profileName)` | `['settings','maa-config',profileName]` | 默认；快照采用须通过 owner 的读取令牌 |
+| 实例选项 `instanceOptionsQueryOptions(profileName)` | `['settings','maa-instance-options',profileName]` | 默认；面板不可见时 `enabled: false` |
+| 资源源 `resourceSourceQueryOptions()` | `['settings','resource-source']` | 默认；面板不可见时 `enabled: false`；保存成功后主动重取同一 key |
 | 版本 `versionQueryOptions()` | `['settings','version']` | 默认 |
-| 配置目录 `configDirectoryQueryOptions()` | `['settings','config-directory']` | 默认；只读 section 头部 `cacheOnly` 观察者设 `refetchOnMount: false`、`retryOnMount: false` |
+| 配置目录 `configDirectoryQueryOptions()` | `['settings','config-directory']` | 默认；目录卡片是唯一观察者 |
 | 普通搜索 `copilotSearchQueryOptions(stage)` | `['combat','copilot-search',stage]` | 显式搜索 `fetchQuery({ staleTime: 0 })` |
 | 悖论搜索 `paradoxSearchQueryOptions(name)` | `['combat','paradox-search',name]` | 同上 |
 | 单作业 `copilotInfoQueryOptions(id)` | `['combat','copilot',id]` | 默认；强制预览读取 `staleTime: 0` |

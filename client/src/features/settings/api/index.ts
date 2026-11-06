@@ -19,16 +19,36 @@ const isConfigDirectoryPayload = (payload: unknown): boolean =>
     ? payload.trim().length > 0
     : isRecord(payload) && typeof payload.path === 'string' && payload.path.trim().length > 0
 
+const isOptionalString = (value: unknown): boolean => value === undefined || typeof value === 'string'
+
+const isConnectionSection = (value: unknown): boolean =>
+  isRecord(value)
+  && isOptionalString(value.adb_path)
+  && isOptionalString(value.address)
+  && isOptionalString(value.config)
+  && (value.auto_reconnect === undefined || typeof value.auto_reconnect === 'boolean')
+
 /**
- * MAA profile 的 connection 段允许缺省字段（MAA 会使用自身默认值），因此只
- * 校验出现字段的类型；缺失的已知字段由设置域归一化模型补齐，未知字段保留。
+ * MAA profile 载荷允许缺省字段（MAA 会使用自身默认值），因此只校验出现字段的
+ * 类型；缺失的已知字段由设置域归一化模型补齐，未知字段保留。兼容旧版直接返回
+ * connection 段的扁平形状。
  */
-const isConfigPayload = (payload: unknown): boolean =>
+const isConfigPayload = (payload: unknown): boolean => {
+  if (!isRecord(payload)) return false
+  if (payload.connection === undefined && payload.instance_options === undefined) {
+    return isConnectionSection(payload)
+  }
+  return isConnectionSection(payload.connection)
+    && (payload.instance_options === undefined || isRecord(payload.instance_options))
+}
+
+const isResourceSourcePayload = (payload: unknown): boolean =>
   isRecord(payload)
-  && (payload.adb_path === undefined || typeof payload.adb_path === 'string')
-  && (payload.address === undefined || typeof payload.address === 'string')
-  && (payload.config === undefined || typeof payload.config === 'string')
-  && (payload.auto_reconnect === undefined || typeof payload.auto_reconnect === 'boolean')
+  && typeof payload.autoUpdate === 'boolean'
+  && typeof payload.warnOnUpdateFailure === 'boolean'
+  && (payload.source === 'git' || payload.source === 'mirrorchyan')
+  && isRecord(payload.git)
+  && isRecord(payload.mirrorchyan)
 
 const isDeviceDiscoveryPayload = (payload: unknown): boolean => isRecord(payload)
 
@@ -67,8 +87,30 @@ export async function getConfig(profileName: string = 'default', signal?: AbortS
   })
 }
 
-export async function saveConfig(profileName: string = 'default', config: any): Promise<ApiResponse> {
+export async function saveConfig(
+  profileName: string = 'default',
+  config: Record<string, unknown>,
+): Promise<ApiResponse> {
   const response = await fetchWithAuth(`${API_BASE_URL}/agent/config/maa/${profileName}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(config),
+  })
+  return parseJsonResponse(response)
+}
+
+export async function getResourceSource(signal?: AbortSignal): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/config/resource-source`, {
+    signal,
+    validate: isResourceSourcePayload,
+    invalidPayloadMessage: '资源源配置格式不正确',
+  })
+}
+
+export async function saveResourceSource(config: Record<string, unknown>): Promise<ApiResponse> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/agent/config/resource-source`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

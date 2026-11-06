@@ -5,8 +5,11 @@ import {
   discoverDevices,
   getConfig,
   getConfigDir,
+  getResourceSource,
   getVersion,
   hotUpdateResources,
+  saveConfig,
+  saveResourceSource,
   updateMaaCli,
   updateMaaCore,
 } from './index'
@@ -122,6 +125,89 @@ describe('settings resource reads', () => {
     expect(result.errorInfo).toMatchObject({
       code: 'INVALID_DOMAIN_PAYLOAD',
       message: '连接配置格式不正确',
+    })
+  })
+
+  it('accepts the nested profile payload with instance options', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: {
+        connection: { adb_path: '/usr/bin/adb', address: '127.0.0.1:5555', preset: 'ADB' },
+        instance_options: { touch_mode: 'MaaTouch' },
+      },
+    }))
+
+    const result = await getConfig()
+
+    expect(result.success).toBe(true)
+    expect(result.data?.instance_options).toEqual({ touch_mode: 'MaaTouch' })
+  })
+
+  it('rejects a profile payload whose instance options section is not an object', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { connection: {}, instance_options: 'touch' },
+    }))
+
+    const result = await getConfig()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo?.code).toBe('INVALID_DOMAIN_PAYLOAD')
+  })
+
+  it('posts connection and instance option sections without reshaping them', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data: null }))
+
+    await saveConfig('daily', {
+      connection: { address: '127.0.0.1:5555' },
+      instance_options: { touch_mode: 'Adb' },
+    })
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/config/maa/daily')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(JSON.parse(String(fetchCall().init.body))).toEqual({
+      connection: { address: '127.0.0.1:5555' },
+      instance_options: { touch_mode: 'Adb' },
+    })
+  })
+
+  it('reads and saves the resource source view', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({
+        success: true,
+        data: {
+          autoUpdate: false,
+          warnOnUpdateFailure: true,
+          source: 'git',
+          git: { backend: 'git', url: 'https://github.com/MaaAssistantArknights/MaaResource.git' },
+          mirrorchyan: { cdkKind: 'none', checkInterval: 600 },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: null }))
+
+    const read = await getResourceSource()
+    expect(read.success).toBe(true)
+    expect(read.data?.source).toBe('git')
+    expect(fetchCall(0).input).toBe('http://localhost:3000/api/agent/config/resource-source')
+
+    await saveResourceSource({ source: 'mirrorchyan' })
+    expect(fetchCall(1).input).toBe('http://localhost:3000/api/agent/config/resource-source')
+    expect(fetchCall(1).init.method).toBe('POST')
+    expect(JSON.parse(String(fetchCall(1).init.body))).toEqual({ source: 'mirrorchyan' })
+  })
+
+  it('rejects a malformed resource source payload', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { autoUpdate: 'no', warnOnUpdateFailure: false, source: 'git', git: {}, mirrorchyan: {} },
+    }))
+
+    const result = await getResourceSource()
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: '资源源配置格式不正确',
     })
   })
 

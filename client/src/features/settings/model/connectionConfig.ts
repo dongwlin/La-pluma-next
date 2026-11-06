@@ -5,277 +5,64 @@
 import { queryOptions } from '@tanstack/react-query'
 import {
   ApiRequestError,
+  isRecord,
   unwrapApiResponse,
   type ApiResponse,
 } from '@/shared/api'
 import { getConfig, saveConfig } from '../api'
 import type { MaaConnectionConfig } from '../types'
+import { ConfigDraftOwner } from './configDraftOwner'
+import type {
+  ConfigDraftState,
+  ConfigReadToken,
+  ConfigSaveOutcome,
+  ConfigSnapshot,
+  ConfigSyncState,
+} from './configDraftOwner'
 import {
   DEFAULT_CONNECTION_CONFIG,
-  connectionConfigsEqual,
   normalizeConnectionConfig,
 } from './configNormalization'
 import { settingsKeys } from './queryKeys'
 
-export type ConnectionConfigSyncState = 'idle' | 'saving' | 'failed'
+export type ConnectionConfigSyncState = ConfigSyncState
 
-export interface ConnectionConfigState {
-  readonly draft: MaaConnectionConfig
-  readonly persisted: MaaConnectionConfig
-  /** 草稿可观察版本；编辑、重置、采用服务端值与保存成功都会推进。 */
-  readonly revision: number
-  readonly dirty: boolean
-  readonly syncState: ConnectionConfigSyncState
-  readonly error: string | null
-  readonly loaded: boolean
-  readonly lastSavedAt: number | null
-}
+export type ConnectionConfigState = ConfigDraftState<MaaConnectionConfig>
 
-/** 一次读取开始时的草稿版本；用于丢弃迟到响应。 */
-export interface ConnectionConfigReadToken {
-  readonly revision: number
-  readonly dirty: boolean
-  readonly saving: boolean
-}
+export type ConnectionConfigReadToken = ConfigReadToken
 
-export interface ConnectionConfigSnapshot {
-  readonly config: MaaConnectionConfig
-  readonly readToken: ConnectionConfigReadToken
-}
+export type ConnectionConfigSnapshot = ConfigSnapshot<MaaConnectionConfig>
 
-export type ConnectionConfigSaveStatus = 'saved' | 'failed' | 'ignored'
+export type ConnectionConfigSaveStatus = ConfigSaveOutcome<MaaConnectionConfig>['status']
 
-export interface ConnectionConfigSaveOutcome {
-  readonly status: ConnectionConfigSaveStatus
-  readonly config: MaaConnectionConfig
-  /** 保存期间出现了新编辑或新草稿，本次响应不代表当前页面值。 */
-  readonly superseded: boolean
-  readonly message?: string
-}
+export type ConnectionConfigSaveOutcome = ConfigSaveOutcome<MaaConnectionConfig>
 
 export interface ConnectionConfigOwnerOptions {
   readonly profileName?: string
   readonly write?: (
     profileName: string,
-    config: { connection: MaaConnectionConfig },
+    config: MaaConnectionConfig,
   ) => Promise<ApiResponse<unknown>>
 }
 
-const cloneConnectionConfig = (config: MaaConnectionConfig): MaaConnectionConfig => ({ ...config })
-
-const resolveFailureMessage = (response: ApiResponse<unknown>): string => {
-  const message = response.errorInfo?.message || response.message || response.error
-  return typeof message === 'string' && message.trim() ? message : '保存连接配置失败'
-}
-
-const describeError = (error: unknown): string => (
-  error instanceof Error && error.message ? error.message : '保存连接配置失败'
-)
-
-/**
- * 模块级 connection 草稿所有者。
- *
- * 寿命不跟随页面：真正卸载后重挂载仍能看到未保存草稿；Activity 隐藏只清理
- * Effects，不会取消已发出的保存。测试或明确的全局重置使用 `reset()`。
- */
-export class ConnectionConfigOwner {
-  private readonly profileName: string
-  private readonly writeRequest: NonNullable<ConnectionConfigOwnerOptions['write']>
-
-  private state: ConnectionConfigState = {
-    draft: cloneConnectionConfig(DEFAULT_CONNECTION_CONFIG),
-    persisted: cloneConnectionConfig(DEFAULT_CONNECTION_CONFIG),
-    revision: 0,
-    dirty: false,
-    syncState: 'idle',
-    error: null,
-    loaded: false,
-    lastSavedAt: null,
-  }
-
-  private readonly listeners = new Set<() => void>()
-
+export class ConnectionConfigOwner extends ConfigDraftOwner<MaaConnectionConfig> {
   constructor(options: ConnectionConfigOwnerOptions = {}) {
-    this.profileName = options.profileName ?? 'default'
-    this.writeRequest = options.write ?? ((profileName, config) => saveConfig(profileName, config))
-  }
-
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener)
-    return () => {
-      this.listeners.delete(listener)
-    }
-  }
-
-  getState = (): ConnectionConfigState => this.state
-
-  /** 仅用于测试与明确的全局重置；正常页面生命周期不调用。 */
-  reset(): void {
-    this.state = {
-      draft: cloneConnectionConfig(DEFAULT_CONNECTION_CONFIG),
-      persisted: cloneConnectionConfig(DEFAULT_CONNECTION_CONFIG),
-      revision: 0,
-      dirty: false,
-      syncState: 'idle',
-      error: null,
-      loaded: false,
-      lastSavedAt: null,
-    }
-    this.notify()
-  }
-
-  /** 记录一次服务端读取的起点，读取返回时交给 `adoptServer()` 裁决。 */
-  beginRead(): ConnectionConfigReadToken {
-    return {
-      revision: this.state.revision,
-      dirty: this.state.dirty,
-      saving: this.state.syncState === 'saving',
-    }
-  }
-
-  /**
-   * 采用服务端读取结果。
-   *
-   * 只有读取开始后没有新编辑、没有新保存、当前也没有未保存草稿时才接受；
-   * 保存成功后 revision 会推进，因此保存前发出的读取即使更晚返回也会被丢弃。
-   */
-  adoptServer(snapshot: ConnectionConfigSnapshot): boolean {
-    const normalized = normalizeConnectionConfig(snapshot.config)
-    if (!normalized) return false
-    if (this.state.syncState === 'saving') return false
-    if (snapshot.readToken.saving) return false
-    if (snapshot.readToken.revision !== this.state.revision) return false
-    if (snapshot.readToken.dirty || this.state.dirty) return false
-
-    const changed = !connectionConfigsEqual(normalized, this.state.draft)
-    const persistedChanged = !connectionConfigsEqual(normalized, this.state.persisted)
-    const loaded = this.state.loaded
-    if (!changed && !persistedChanged && loaded) return false
-
-    this.state = {
-      ...this.state,
-      draft: changed ? normalized : this.state.draft,
-      persisted: normalized,
-      revision: changed ? this.state.revision + 1 : this.state.revision,
-      syncState: 'idle',
-      error: null,
-      loaded: true,
-    }
-    this.notify()
-    return changed
-  }
-
-  /** 接受一次字段编辑；内容未变化时不推进 revision。 */
-  update(patch: Partial<MaaConnectionConfig>): boolean {
-    const next = { ...this.state.draft, ...patch }
-    if (connectionConfigsEqual(next, this.state.draft)) return false
-
-    this.state = {
-      ...this.state,
-      draft: next,
-      revision: this.state.revision + 1,
-      dirty: !connectionConfigsEqual(next, this.state.persisted),
-      syncState: this.state.syncState === 'saving' ? 'saving' : 'idle',
-      error: null,
-    }
-    this.notify()
-    return true
-  }
-
-  /**
-   * 恢复页面原有默认值。只改草稿，不写服务端；即使内容没变也推进 revision，
-   * 使重置前发出的读取不能把服务端旧值带回来。保存进行中时忽略。
-   */
-  restoreDefaults(): boolean {
-    if (this.state.syncState === 'saving') return false
-
-    const next = cloneConnectionConfig(DEFAULT_CONNECTION_CONFIG)
-    const changed = !connectionConfigsEqual(next, this.state.draft)
-    this.state = {
-      ...this.state,
-      draft: next,
-      revision: this.state.revision + 1,
-      dirty: !connectionConfigsEqual(next, this.state.persisted),
-      syncState: 'idle',
-      error: null,
-    }
-    this.notify()
-    return changed
-  }
-
-  /**
-   * 显式保存当前草稿。
-   *
-   * 保存期间允许继续编辑：响应返回时只有 revision 未变才把当前草稿视为
-   * 已保存；否则返回 `superseded`，页面保留新草稿并提示尚未保存。
-   */
-  async save(): Promise<ConnectionConfigSaveOutcome> {
-    if (this.state.syncState === 'saving') {
-      return {
-        status: 'ignored',
-        config: this.state.draft,
-        superseded: false,
-      }
-    }
-
-    const snapshot = cloneConnectionConfig(this.state.draft)
-    const revisionAtStart = this.state.revision
-    this.state = {
-      ...this.state,
-      syncState: 'saving',
-      error: null,
-    }
-    this.notify()
-
-    let response: ApiResponse<unknown> | null = null
-    let failure: string | null = null
-    try {
-      response = await this.writeRequest(this.profileName, { connection: snapshot })
-      if (!response.success) {
-        failure = resolveFailureMessage(response)
-      }
-    } catch (error) {
-      failure = describeError(error)
-    }
-
-    if (!failure && response?.success) {
-      const superseded = revisionAtStart !== this.state.revision
-      this.state = {
-        ...this.state,
-        persisted: snapshot,
-        revision: this.state.revision + 1,
-        dirty: !connectionConfigsEqual(this.state.draft, snapshot),
-        syncState: 'idle',
-        error: null,
-        loaded: true,
-        lastSavedAt: Date.now(),
-      }
-      this.notify()
-      return { status: 'saved', config: snapshot, superseded }
-    }
-
-    const message = failure ?? '保存连接配置失败'
-    const superseded = revisionAtStart !== this.state.revision
-    this.state = {
-      ...this.state,
-      syncState: 'failed',
-      error: message,
-    }
-    this.notify()
-    return {
-      status: 'failed',
-      config: this.state.draft,
-      superseded,
-      message,
-    }
-  }
-
-  private notify(): void {
-    for (const listener of [...this.listeners]) listener()
+    super({
+      profileName: options.profileName,
+      write: options.write ?? ((profileName, config) => saveConfig(profileName, { connection: config })),
+      normalize: normalizeConnectionConfig,
+      defaultValue: () => ({ ...DEFAULT_CONNECTION_CONFIG }),
+      failureMessage: '保存连接配置失败',
+    })
   }
 }
 
 export const settingsConnectionOwner = new ConnectionConfigOwner()
+
+/** 服务端 profile 载荷在 update 前保持 unknown；缺 `connection` 键时兼容旧扁平形状。 */
+const readProfileConnection = (payload: unknown): unknown => (
+  isRecord(payload) && isRecord(payload.connection) ? payload.connection : payload
+)
 
 /**
  * `settings/maa-config` 读取入口。
@@ -291,7 +78,7 @@ export const connectionConfigQueryOptions = (
   queryFn: async ({ signal }): Promise<ConnectionConfigSnapshot> => {
     const readToken = owner.beginRead()
     const response = await getConfig(profileName, signal)
-    const config = normalizeConnectionConfig(unwrapApiResponse<unknown>(response))
+    const config = normalizeConnectionConfig(readProfileConnection(unwrapApiResponse<unknown>(response)))
     if (!config) {
       throw new ApiRequestError({
         kind: 'contract',

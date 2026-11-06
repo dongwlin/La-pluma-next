@@ -154,8 +154,8 @@ interface DryRunPlanPayload {
 }
 
 interface ProfilePayload {
-  adb_path: unknown;
-  address: unknown;
+  connection: Record<string, unknown>;
+  instance_options: Record<string, unknown>;
 }
 
 interface CopilotPlanPayload {
@@ -750,15 +750,130 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
 
     const saved = await postJson(`${baseUrl}/config/maa/default`, {
-      connection: { adb_path: '/opt/adb', address: '127.0.0.1:6000' }
+      connection: { adb_path: '/opt/adb', address: '127.0.0.1:6000', preset: 'MuMuPro' },
+      instance_options: { touch_mode: 'MaaTouch', deployment_with_pause: true }
     });
     const savedBody = await readSuccess<null>(saved);
     assert.equal(savedBody.message, '配置保存成功');
 
     const read = await readSuccess<ProfilePayload>(await fetch(`${baseUrl}/config/maa/default`));
-    assert.equal(read.data.adb_path, '/opt/adb');
-    assert.equal(read.data.address, '127.0.0.1:6000');
-    assert.match(await readFile(join(maaConfigDir, 'profiles', 'default.toml'), 'utf-8'), /127\.0\.0\.1:6000/);
+    assert.equal(read.data.connection.adb_path, '/opt/adb');
+    assert.equal(read.data.connection.address, '127.0.0.1:6000');
+    assert.equal(read.data.connection.preset, 'MuMuPro');
+    assert.deepEqual(read.data.instance_options, {
+      touch_mode: 'MaaTouch',
+      deployment_with_pause: true
+    });
+    const content = await readFile(join(maaConfigDir, 'profiles', 'default.toml'), 'utf-8');
+    assert.match(content, /127\.0\.0\.1:6000/);
+    assert.match(content, /preset = "MuMuPro"/);
+    assert.match(content, /touch_mode = "MaaTouch"/);
+  });
+
+  it('rejects invalid profile field values without writing the profile', async () => {
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+    const profilePath = join(maaConfigDir, 'profiles', 'invalid-fields.toml');
+
+    for (const body of [
+      { connection: { preset: 'Nope' } },
+      { connection: { adb_path: 42 } },
+      { instance_options: { touch_mode: 'Unknown' } },
+      { instance_options: { kill_adb_on_exit: 'yes' } }
+    ]) {
+      const response = await postJson(`${baseUrl}/config/maa/invalid-fields`, body);
+      assert.equal(response.status, 400);
+      const error = await readError(response);
+      assert.equal(error.error.code, 'AGENT_CONFIG_PROFILE_INVALID');
+    }
+    await assert.rejects(readFile(profilePath, 'utf-8'), { code: 'ENOENT' });
+  });
+
+  it('persists Git and MirrorChyan resource sources next to update channels', async () => {
+    const port = await listen(createLaPlumaApp({ env: {} }));
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+    const cliConfigPath = join(maaConfigDir, 'cli.toml');
+    try {
+      const defaults = await readSuccess<{
+        autoUpdate: boolean;
+        warnOnUpdateFailure: boolean;
+        source: string;
+        git: { backend: string; url: string };
+        mirrorchyan: { cdkKind: string; checkInterval: number };
+      }>(await fetch(`${baseUrl}/config/resource-source`));
+      assert.equal(defaults.data.source, 'git');
+      assert.equal(defaults.data.git.backend, 'git');
+      assert.equal(defaults.data.mirrorchyan.cdkKind, 'none');
+      assert.equal(defaults.data.mirrorchyan.checkInterval, 600);
+
+      const gitSaved = await postJson(`${baseUrl}/config/resource-source`, {
+        autoUpdate: true,
+        warnOnUpdateFailure: true,
+        source: 'git',
+        git: {
+          backend: 'libgit2',
+          url: 'https://git.example.com/MaaResource.git',
+          branch: 'main',
+          useSshAgent: true,
+          sshKey: '/home/user/.ssh/id_ed25519'
+        },
+        mirrorchyan: { checkInterval: 600 }
+      });
+      assert.equal(gitSaved.status, 200);
+
+      const mirrorSaved = await postJson(`${baseUrl}/config/resource-source`, {
+        autoUpdate: false,
+        warnOnUpdateFailure: true,
+        source: 'mirrorchyan',
+        git: { backend: 'git', url: '', branch: null, useSshAgent: false, sshKey: null },
+        mirrorchyan: { checkInterval: 1800, cdk: 'mirror-secret' }
+      });
+      assert.equal(mirrorSaved.status, 200);
+      const savedBody = await readSuccess<{ source: string; mirrorchyan: { cdkKind: string; checkInterval: number } }>(mirrorSaved);
+      assert.equal(savedBody.data.source, 'mirrorchyan');
+      assert.equal(savedBody.data.mirrorchyan.cdkKind, 'plain');
+      assert.equal(savedBody.data.mirrorchyan.checkInterval, 1800);
+
+      // 已保存的 CDK 不会回传明文；保存时未提供 CDK 会保留原值。
+      const reread = await readSuccess<{ mirrorchyan: { cdkKind: string; checkInterval: number } }>(
+        await fetch(`${baseUrl}/config/resource-source`)
+      );
+      assert.equal(reread.data.mirrorchyan.cdkKind, 'plain');
+      const keepSaved = await postJson(`${baseUrl}/config/resource-source`, {
+        autoUpdate: true,
+        warnOnUpdateFailure: false,
+        source: 'mirrorchyan',
+        git: { backend: 'git', url: '', branch: null, useSshAgent: false, sshKey: null },
+        mirrorchyan: { checkInterval: 600 }
+      });
+      assert.equal(keepSaved.status, 200);
+      const cliContent = await readFile(cliConfigPath, 'utf-8');
+      assert.match(cliContent, /type = "mirrorchyan"/);
+      assert.match(cliContent, /cdk = "mirror-secret"/);
+      assert.match(cliContent, /auto_update = true/);
+
+      // 更新渠道与资源源共享 cli.toml：写入资源源不会覆盖其它 section。
+      const channel = await postJson(`${baseUrl}/actions/update-channel`, { scope: 'core', channel: 'beta' });
+      assert.equal(channel.status, 200);
+      const channelSaved = await readSuccess<{ core: string }>(
+        await fetch(`${baseUrl}/update-channels`)
+      );
+      assert.equal(channelSaved.data.core, 'beta');
+      const mixed = await readFile(cliConfigPath, 'utf-8');
+      assert.match(mixed, /type = "mirrorchyan"/);
+
+      const invalid = await postJson(`${baseUrl}/config/resource-source`, {
+        autoUpdate: true,
+        warnOnUpdateFailure: false,
+        source: 'ftp',
+        git: { backend: 'git', url: '', branch: null, useSshAgent: false, sshKey: null },
+        mirrorchyan: { checkInterval: 600 }
+      });
+      assert.equal(invalid.status, 400);
+      assert.equal((await readError(invalid)).error.code, 'AGENT_RESOURCE_SOURCE_INVALID');
+    } finally {
+      await rm(cliConfigPath, { force: true });
+    }
   });
 
   it('keeps the profile name validation contract for save requests', async () => {

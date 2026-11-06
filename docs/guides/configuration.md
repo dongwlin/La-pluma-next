@@ -18,20 +18,44 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 ## 应用配置
 
+### 配置能力范围
+
+设置页只暴露当前 maa-cli（0.7.x）与 MaaCore 实际支持的字段；不支持或不属本页职责的配置保持文件级维护：
+
+| 配置 | 设置页支持 | 说明 |
+| --- | --- | --- |
+| `[connection].preset` | 是 | `ADB` / `MuMuPro` / `PlayCover` / `Waydroid` / `Androws` |
+| `[connection].adb_path` / `address` / `config` | 是 | 显式值优先于预设默认值 |
+| `[connection].type` / `device` 别名 | 读取兼容 | 保存时作为未知字段原样保留 |
+| `[behavior].auto_reconnect` | 是 | 旧版写在 `[connection]` 的值只在 `[behavior]` 缺失时兼容读取 |
+| `[instance_options]` 四项 | 是 | `touch_mode`、`deployment_with_pause`、`adb_lite_enabled`、`kill_adb_on_exit` |
+| `[instance_options]` 未知字段 | 保留 | 不展示，保存时不覆盖 |
+| `[static_options].cpu_ocr` / `gpu_ocr` | 否 | 不进本页表单 |
+| profile `[resource]`（`global_resource` 等） | 否 | 属于资源加载覆盖，不是资源来源 |
+| cli.toml `[resource].auto_update` / `warn_on_update_failure` / `[resource.source]` | 是 | Git 与 MirrorChyan 两种来源；旧版 `backend`/`remote` 保存时迁移 |
+| cli.toml `[core]` / `[cli]` 更新渠道 | 是（组件更新卡片） | 由更新渠道表单维护 |
+| cli.toml `[hot_update]` | 否 | 任务缓存热更新，属另一功能 |
+| cli.toml `github_proxy` | 否 | 不进本页表单 |
+
 ### ADB 连接配置
 
-在「日常」页面配置 ADB 连接：
+在「配置 → 连接」页面配置 ADB 连接，保存后写入 maa-cli 的 profile（`maa dir config` 解析出的 `profiles/<profile>.toml`）：
 
+- **连接预设**：`ADB`、`MuMuPro`、`PlayCover`、`Waydroid`、`Androws`，对应 `[connection].preset`，提供各环境的默认 ADB 路径与平台配置；显式填写的字段优先
 - **ADB 路径**：按平台默认 macOS `/opt/homebrew/bin/adb`、Linux `/usr/bin/adb`、Windows `adb.exe`；Docker 镜像为 `/usr/bin/adb`，也可用 `ADB_PATH` 覆盖
 - **设备地址**：
   - 本地模拟器：`emulator-5554` 或 `127.0.0.1:5555`
   - 远程设备：`192.168.x.x:16384`（需要开启网络 ADB）
+- **平台配置**：写入 `[connection].config`（`CompatMac`/`CompatPOSIXShell`/`General`）
+- **自动重连**：写入 `[behavior].auto_reconnect`
+
+「配置 → 实例」写入同一 profile 的 `[instance_options]`：触控模式（`Adb`/`MiniTouch`/`MaaTouch`/`MacPlayTools`/`MaaFwAdb`）、部署时暂停、ADB Lite 与退出时结束 ADB。缺失字段按 MaaCore 默认值显示，保存时只覆盖表单涉及的字段，profile 中其它未知 section 原样保留。
 
 ### 日常任务与资源更新
 
 理智作战、基建、公招等本地任务使用已安装资源及已有热更新缓存。每次执行会创建独立的临时缓存，任务退出后清理，避免 maa-cli 启动时的热更新请求因网络故障而阻断日常流程；原缓存和连接配置保持不变。
 
-资源同步由「同步资源」或显式更新命令经 `maa hot-update` 执行，下载源、分支、镜像与凭据都读取 maa-cli 的 `cli.toml`（`[resource.source]` 等），La Pluma 不另行硬编码仓库或覆盖配置。远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
+资源同步由「同步资源」或显式更新命令经 `maa hot-update` 执行，下载源、分支、镜像与凭据都读取 maa-cli 的 `cli.toml`（`[resource.source]` 等），La Pluma 不另行硬编码仓库。「配置 → 资源」可以直接编辑这段配置：来源（Git / MirrorChyan）、Git 仓库地址与分支、SSH 凭据、MirrorChyan CDK 与检查间隔、自动更新与失败告警。凭据只写入本地 `cli.toml`，页面只回显「已保存 / 来自环境变量」等形态，输入框留空表示保留已有值；旧版 `[resource]` 的 `backend`/`remote` 写法在保存时迁移为 `[resource.source]`。远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
 
 ### Telegram 通知配置
 
