@@ -1248,9 +1248,9 @@ async function runNativeCopilotGroup({
 }
 
 /**
- * 计划文件加载是进入关卡与战斗之前的事件，原生失败时没有任何加载事件才说明
- * 没有产生设备副作用，可以安全回退。检查点或日志不可读时无法确认，保守地
- * 不回退。
+ * 计划文件加载发生在跳转关卡与开始战斗之前：原生失败时没有任何加载事件，说明
+ * 原生执行没有进入关卡，回退不会重复消耗理智或重复结算关卡（游戏启动、编队等
+ * 前置步骤可能已经执行）。检查点或日志不可读时无法确认，保守地不回退。
  */
 function canFallbackToExistingFlow(outcome: NativeCopilotGroupOutcome): boolean {
   return Boolean(outcome.error)

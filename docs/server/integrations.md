@@ -129,7 +129,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 | copilot id 不重复 | 原生缓存文件按 `<id>.json` 命名，重复 id 无法区分条目 |
 | 每个条目的 `displayStage` 等于本地 `Arknights-Tile-Pos` 中该关卡的 `code` | 原生命令用这个代号作 `stage_name`，MaaCore 在缺省 `nav_name_override` 时同样按它导航；现有流程把 `displayStage` 作为 `nav_name_override` 下发 |
 
-原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有进入关卡或开始战斗——才回退到现有流程；一旦观察到计划文件加载，就按原有规则结算失败，不再重跑，避免重复消耗理智。停止请求不算原生失败，按停止结算。
+原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。
 
 委托结果写在 `CopilotEntriesOutcome.delegation` 并透传到作业集 `summary.delegation`：`attempted` 表示本次执行尝试过原生路径，`fallback` 为真表示原生失败后已回退，`nativeError` 保留原生失败信息。回退成功后整体仍是成功；回退后现有流程也失败时，`fallback` 与 `nativeError` 同时存在，以便和「整体失败」区分。未委托的原因只在调试日志中记录。
 
