@@ -431,4 +431,65 @@ describe('training routes over real HTTP', () => {
     assert.equal(internalBody.error?.code, 'AGENT_INTERNAL_ERROR')
     assert.ok(!JSON.stringify(internalBody).includes('内部堆栈泄露标记'))
   })
+
+  it('maps local MAA resource failures to 503 across training endpoints without changing normal responses', async () => {
+    const app = createLaPlumaApp({ env: {} })
+    const port = await startHttpServer(app, servers)
+    console.error = () => {}
+    const resourcePath = '/opt/maa/resource/gamedata/excel/item_table.json'
+    const localResourceError = (): LocalResourceError =>
+      new LocalResourceError(`本地资源文件缺失: ${resourcePath}`, resourcePath, undefined, 'LOCAL_RESOURCE_MISSING')
+
+    operatorTraining.getTrainingQueue = async () => emptyQueueSnapshot()
+    operatorTraining.generateTrainingPlan = async () => trainingPlanFixture()
+    operatorTraining.syncTrainingFlow = async () => ({
+      queueUpdated: false, queueRevision: 'revision-1', flowSync: syncedFlow()
+    })
+    operatorTraining.applyPlanToTasks = async () => appliedPlan()
+    operatorTraining.fetchOperatorMaterials = async () => ({
+      scripts: [],
+      operatorCount: 0,
+      materialCount: 0,
+      recipeCount: 0,
+      lastUpdated: '2026-01-01T00:00:00.000Z'
+    })
+
+    const endpoints: Array<{ method: string; path: string; body?: unknown }> = [
+      { method: 'GET', path: '/training/queue' },
+      { method: 'POST', path: '/training/plan', body: { mode: 'current' } },
+      { method: 'POST', path: '/training/sync' },
+      { method: 'POST', path: '/actions/apply-training-plan', body: { plan: { queueRevision: 'revision-1' } } },
+      { method: 'POST', path: '/actions/fetch-training-materials', body: {} }
+    ]
+
+    const request = async ({ method, path, body }: { method: string; path: string; body?: unknown }): Promise<Response> =>
+      method === 'GET'
+        ? fetch(agentUrl(port, path))
+        : postJson(agentUrl(port, path), body ?? {})
+
+    for (const endpoint of endpoints) {
+      const normal = await request(endpoint)
+      assert.equal(normal.status, 200, `${endpoint.method} ${endpoint.path}`)
+      assert.equal((await readEnvelope(normal)).success, true)
+    }
+
+    operatorTraining.getTrainingQueue = async () => { throw localResourceError() }
+    operatorTraining.generateTrainingPlan = async () => { throw localResourceError() }
+    operatorTraining.syncTrainingFlow = async () => { throw localResourceError() }
+    operatorTraining.applyPlanToTasks = async () => { throw localResourceError() }
+    operatorTraining.fetchOperatorMaterials = async () => { throw localResourceError() }
+
+    for (const endpoint of endpoints) {
+      const response = await request(endpoint)
+      assert.equal(response.status, 503, `${endpoint.method} ${endpoint.path}`)
+      const payload = await readEnvelope(response)
+      assert.equal(payload.success, false)
+      assert.equal(payload.error?.code, 'LOCAL_RESOURCE_MISSING')
+      assert.equal(payload.error?.retryable, true)
+      assert.deepEqual(payload.error?.details, { resourcePath })
+      assert.match(payload.message, /MAA 游戏资源缺失/)
+      assert.match(payload.message, /获取游戏资源/)
+      assert.match(payload.message, /MAA 资源目录/)
+    }
+  })
 })
