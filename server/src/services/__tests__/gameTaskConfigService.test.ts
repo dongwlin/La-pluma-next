@@ -290,6 +290,11 @@ describe('validateRoguelikeCommandArgs', () => {
     assert.equal(validateRoguelikeCommandArgs('run', ['agent-award']), null);
   });
 
+  it('leaves unknown leading options to maa-cli instead of guessing the theme', () => {
+    assert.equal(validateRoguelikeCommandArgs('roguelike', ['--profile', 'custom', 'Sami']), null);
+    assert.equal(validateRoguelikeCommandArgs('roguelike', ['--mode', '9', 'Sami']), '集成战略 --mode 必须是 0、1、4、5、6 或 7');
+  });
+
   it('accepts arguments the installed maa-cli understands', () => {
     for (const [command, args] of [
       ['roguelike', ['Sami', '--mode', '5', '-P', '目空一些']],

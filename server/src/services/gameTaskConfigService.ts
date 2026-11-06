@@ -352,17 +352,17 @@ function pushCommandValue(values: Map<string, string[]>, name: string, value: st
   else values.set(name, [value]);
 }
 
-/** 只解析已知的带值参数与首个位置参数；未知参数保持透传，交给 maa-cli 自身报错。 */
+/**
+ * 只解析已知的带值参数与首个主题位置参数；未知参数保持透传，交给 maa-cli 自身报错。
+ * 主题只在第一项且不以 `-` 开头时识别，避免把未知开关的取值误判成主题。
+ */
 function parseCommandArgs(args: readonly string[], valueFlags: ReadonlySet<string>): ParsedCommandArgs {
   const values = new Map<string, string[]>();
-  let theme: string | null = null;
+  const first = args[0] ?? '';
+  const theme = first && !first.startsWith('-') ? first : null;
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index] ?? '';
-    if (token === '--') {
-      if (theme === null) theme = args[index + 1] ?? null;
-      break;
-    }
     if (token.startsWith('--')) {
       const separator = token.indexOf('=');
       const name = separator >= 0 ? token.slice(2, separator) : token.slice(2);
@@ -388,9 +388,7 @@ function parseCommandArgs(args: readonly string[], valueFlags: ReadonlySet<strin
       }
       pushCommandValue(values, name, args[index + 1]);
       index += 1;
-      continue;
     }
-    if (theme === null) theme = token;
   }
 
   return { theme, values };
