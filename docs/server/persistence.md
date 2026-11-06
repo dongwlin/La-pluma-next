@@ -29,6 +29,7 @@
 | 执行租约 | `executionCoordinatorService` | `server/data/maa-execution.lock`；`LA_PLUMA_MAA_LOCK_FILE`（`server/src/services/executionCoordinatorService.ts:21,89-91`） | PID 存活即占用；不存活可回收；无法解析按 `unknown` |
 | MAA 日志与调试截图 | MAA CLI 产物；`maaLogFileService` 只读 | `maa dir log` 解析的日志目录；MAA 状态目录 `debug/` | 不恢复；检查点仅在内存 |
 | MAA profile 连接参数 | `maaConfigService` | `maa dir config` 解析的 MAA 配置目录（TOML） | 在 MAA 侧持久化，不入 `server/data` |
+| 自定义基建排班文件 | `infrastScheduleService` | `maa dir config` 解析的 MAA 配置目录下 `infrast/*.json`（相对路径与 maa-cli 一致） | 读取返回原文；保存前按 Core 协议校验并原子替换，未知扩展字段原样保留 |
 
 `<trainingDataDir>` 默认 `server/data`；`LA_PLUMA_TRAINING_DATA_DIR` 同时重定向养成队列、自动化任务与养成数据快照的目录。
 

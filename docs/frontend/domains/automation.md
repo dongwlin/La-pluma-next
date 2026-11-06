@@ -277,6 +277,9 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 | 可添加任务目录 | `components/automationTaskCatalog.tsx` | 名称、图标、默认参数与参数字段；不读取配置/Query/执行状态 |
 | 关卡分组与智能养成合成 | `model/stageEditing.ts` | 纯模型；`orderStagesForEditing` 也复用同一分组 |
 | 公招招募时长校验 | `model/taskParamRules.ts` | 纯模型：10 分钟取整、60–540 夹取、非法输入回退 |
+| 自定义排班入口 | `components/InfrastScheduleField.tsx` | 在任务参数内维护 `filename`/`plan_index`，不把排班表写进任务配置 |
+| 自定义排班文件读取与保存 | `components/InfrastScheduleEditor.tsx` + `model/queries.ts` | 经 `/agent/infrast-schedules` 读取/保存 MAA 配置目录中的排班 JSON |
+| 排班表协议模型与编辑 | `model/infrastSchedule.ts` + `model/infrastScheduleEditing.ts` | 纯模型：Core 协议校验、房间三态、按字段更新与任务参数迁移 |
 | 配置提交、pending 与 schedule 完整单元 | `user-config` 协调器 + `automationConfig` 适配器 | 面板不调用 `saveUserConfig`、不写 localStorage、不拥有提交队列 |
 
 维护约束：
@@ -285,6 +288,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 - 不改变任务参数默认值、智能养成计划生成参数、执行前校验顺序或执行身份。
 - 保持渲染结构、DOM/CSS 类名、表单 `id`/`aria-label`、菜单 `id`/`role`、焦点顺序与键盘行为；视觉回归遵循[开发指南](../../development/README.md)。
 - 挑选面板仍把“整条流程页脚”作为点击区域：在页脚内按下指针（包括运行/停止按钮）不关闭菜单，页脚之外按下才关闭，与迁移前一致。
+- 自定义排班编辑只改写用户实际触碰的字段；未编辑的房间、未识别的扩展字段与“保持原样”语义不得被默认值覆盖。排班文件本身仍由 MAA/maa-cli 执行侧读取。
 
 ### 2. 组合与状态边界
 
@@ -363,6 +367,30 @@ AutomationTasks（页头 + 全局指示）
 - **真正卸载/刷新**：菜单回到关闭，在途标记重置；配置草稿、pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、迁移与 wire 形状未变化；旧草稿可直接读取。
 - 默认态视觉、表单标签、菜单焦点与键盘行为继续由下列组件/页面回归覆盖。
+
+### 6. 自定义基建排班编辑
+
+Infrast 任务在 `mode=10000` 时仍以 `filename`/`plan_index` 两个 Core 字段决定换班方案；新增的编辑器不向任务参数写入排班表内容，而是通过
+`/agent/infrast-schedules` 读写 `<maa config>/infrast/` 下的 JSON，路径规则与 maa-cli 解析 `filename` 一致。协议字段与语义以 MAA
+[基建排班协议](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/zh-cn/protocol/base-scheduling-schema.md)
+及 MaaCore `InfrastTask::parse_and_set_custom_config` / `InfrastAbstractTask::check_room_shift_intent` 为准。
+
+| 层级 | 规则 |
+| --- | --- |
+| 设施键缺失 | 该设施未配置，MAA 走默认换班算法 |
+| 设施键为 `[]` | 整个设施保持原样，不换人也不换产物；会客室线索、训练室继续训练等设施级操作照常 |
+| 房间无选人意图 | `operators`/`candidates`/`operatorsA`/`operatorsB` 为空且未启用 `autofill` 时保持房间原样，不回落默认算法 |
+| `skip: true` | 跳过该房间的换人与换产物；无人机和设施级操作照常 |
+| 训练室 | 只认 `operatorsA`（协助者候选）与 `operatorsB`（训练位候选），通用 `operators`/`candidates` 对训练室无效 |
+| 回收站 | 写法同制造站，`product` 字段无效 |
+| 未知设施/扩展字段 | Core 会跳过未知设施；编辑器原样保留未知设施键、未知房间字段、`Fiammetta`/`drones`/`groups`/`period` 等未建模字段 |
+
+编辑与保存约束：
+
+1. `infrastScheduleEditing.ts` 的状态变更只返回新对象，且只增删目标字段；`operators` 输入为空表示“未给出选人意图”，不能写成清空房间的默认配置。
+2. 服务端在保存前按协议校验并原子写入；读取返回原文，不在读路径补默认值或改写字段。
+3. 任务参数迁移只在客户端 `migrateTaskParams` 内归一化旧草稿：`filename` 去空白、`plan_index` 从历史字符串转为非负整数，不读取或改写排班文件内容。
+4. 编辑器内不展示的字段（无人机、菲亚梅塔、干员编组、时间段、`layout`/`metadata` 等）保存时原样保留，由用户继续在原始 JSON 中维护。
 
 ## 回归与关联
 
