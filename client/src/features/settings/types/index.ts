@@ -66,7 +66,6 @@ export interface ResourceSourceDraft {
   source: ResourceSourceType
   git: {
     backend: GitBackend
-    branch: string
   }
   mirrorchyan: {
     cdk: string

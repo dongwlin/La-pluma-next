@@ -80,11 +80,6 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     save: saveResourceSourceDraft,
   })
 
-  const updateGit = (patch: Partial<ResourceSourceDraft['git']>) => {
-    update({ git: { ...draft.git, ...patch } })
-    setConfigFeedback(null)
-  }
-
   const updateMirrorChyan = (patch: Partial<ResourceSourceDraft['mirrorchyan']>) => {
     update({ mirrorchyan: { ...draft.mirrorchyan, ...patch } })
     setConfigFeedback(null)
@@ -131,25 +126,15 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
       />
 
       {draft.source === 'git' && (
-        <>
-          <Select
-            label="Git 后端"
-            value={draft.git.backend}
-            onChange={(value: string) => {
-              updateGit({ backend: value as GitBackend })
-            }}
-            options={BACKEND_OPTIONS}
-          />
-          <Input
-            label="分支"
-            value={draft.git.branch}
-            onChange={(value: string) => {
-              updateGit({ branch: value })
-            }}
-            placeholder="默认分支"
-            hint="留空跟随仓库默认分支"
-          />
-        </>
+        <Select
+          label="Git 后端"
+          value={draft.git.backend}
+          onChange={(value: string) => {
+            update({ git: { backend: value as GitBackend } })
+            setConfigFeedback(null)
+          }}
+          options={BACKEND_OPTIONS}
+        />
       )}
 
       {draft.source === 'mirrorchyan' && (

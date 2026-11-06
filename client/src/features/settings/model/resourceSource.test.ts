@@ -44,7 +44,7 @@ const serverView = (overrides: Record<string, unknown> = {}) => ({
   git: {
     backend: 'git',
     url: 'https://github.com/MaaAssistantArknights/MaaResource.git',
-    branch: null,
+    branch: 'saved-resource-branch',
   },
   mirrorchyan: { cdkKind: 'plain', checkInterval: 1800 },
   ...overrides,
@@ -62,7 +62,6 @@ describe('resource source normalization', () => {
       source: 'mirrorchyan',
       git: {
         backend: 'git',
-        branch: '',
       },
       mirrorchyan: { cdk: '', cdkKind: 'plain', clearCdk: false, checkInterval: 1800 },
     })
@@ -79,7 +78,7 @@ describe('resource source normalization', () => {
     expect(draft).toMatchObject({
       autoUpdate: false,
       source: 'git',
-      git: { backend: 'git', branch: '' },
+      git: { backend: 'git' },
       mirrorchyan: { cdkKind: 'none', checkInterval: DEFAULT_MIRRORCHYAN_CHECK_INTERVAL },
     })
     expect(normalizeResourceSourceDraft(null)).toBeNull()
@@ -89,7 +88,7 @@ describe('resource source normalization', () => {
     })
   })
 
-  it('saves the Git backend and branch without a repository URL or credentials', () => {
+  it('saves the Git backend as the only Git setting', () => {
     const payload = buildResourceSourcePayload(DEFAULT_RESOURCE_SOURCE_DRAFT)
 
     expect(payload).toEqual({
@@ -98,7 +97,6 @@ describe('resource source normalization', () => {
       source: 'git',
       git: {
         backend: 'git',
-        branch: null,
       },
       mirrorchyan: { checkInterval: DEFAULT_MIRRORCHYAN_CHECK_INTERVAL },
     })
@@ -107,15 +105,15 @@ describe('resource source normalization', () => {
   it.each([
     { cdk: ' cdk-value ', clearCdk: false, expected: { cdk: 'cdk-value' } },
     { cdk: '', clearCdk: true, expected: { clearCdk: true } },
-  ])('saves MirrorChyan CDK settings with the selected branch', ({ cdk, clearCdk, expected }) => {
+  ])('saves MirrorChyan CDK settings', ({ cdk, clearCdk, expected }) => {
     const payload = buildResourceSourcePayload({
       ...DEFAULT_RESOURCE_SOURCE_DRAFT,
       source: 'mirrorchyan',
-      git: { backend: 'libgit2', branch: ' dev ' },
+      git: { backend: 'libgit2' },
       mirrorchyan: { cdk, cdkKind: 'plain', clearCdk, checkInterval: 0 },
     })
 
-    expect(payload.git).toEqual({ backend: 'libgit2', branch: 'dev' })
+    expect(payload.git).toEqual({ backend: 'libgit2' })
     expect(payload.mirrorchyan).toEqual({ checkInterval: 0, ...expected })
   })
 })

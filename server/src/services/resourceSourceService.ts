@@ -49,7 +49,10 @@ export interface ResourceSourceSaveInput {
   autoUpdate: boolean;
   warnOnUpdateFailure: boolean;
   source: ResourceSourceType;
-  git: Omit<ResourceGitSource, 'url'>;
+  git: {
+    backend: GitBackend;
+    branch?: string | null;
+  };
   mirrorchyan: {
     checkInterval: number;
     cdk?: string | null;
@@ -177,7 +180,7 @@ function readGitInput(source: Record<string, unknown>): ResourceSourceSaveInput[
   if (backend !== 'git' && backend !== 'libgit2') {
     throw invalidResourceSource('git.backend', { value: backend });
   }
-  const branch = readOptionalText(source, 'branch', 'git.branch');
+  const branch = source.branch === undefined ? undefined : readOptionalText(source, 'branch', 'git.branch');
   if (branch?.startsWith('-')) throw invalidResourceSource('git.branch');
   return { backend, branch };
 }
@@ -235,8 +238,8 @@ function buildGitTable(input: ResourceSourceSaveInput['git'], table: Record<stri
   if (input.backend === 'libgit2') table.backend = 'libgit2';
   else delete table.backend;
   table.url ??= OFFICIAL_RESOURCE_GIT_URL;
-  if (input.branch) table.branch = input.branch;
-  else delete table.branch;
+  if (input.branch === null) delete table.branch;
+  else if (input.branch !== undefined) table.branch = input.branch;
   return table;
 }
 

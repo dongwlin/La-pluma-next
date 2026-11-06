@@ -231,6 +231,47 @@ branch = "legacy"
     });
   });
 
+  it('preserves an omitted Git branch through legacy migration and source switches', async () => {
+    await writeCliConfig(`[resource.remote]
+branch = "release"
+`);
+    const input = {
+      autoUpdate: true,
+      warnOnUpdateFailure: false,
+      source: 'git',
+      git: { backend: 'libgit2' },
+      mirrorchyan: { checkInterval: 600 }
+    };
+
+    await saveResourceSourceConfig(input);
+    assert.equal((await readSourceTable()).branch, 'release');
+
+    await saveResourceSourceConfig({ ...input, source: 'mirrorchyan' });
+    const switchedBack = await saveResourceSourceConfig(input);
+    assert.equal(switchedBack.git.branch, 'release');
+    assert.equal((await readSourceTable()).branch, 'release');
+  });
+
+  it('clears an explicitly null or blank Git branch', async () => {
+    for (const branch of [null, '  ']) {
+      await writeCliConfig(`[resource.source]
+type = "git"
+branch = "release"
+`);
+
+      const saved = await saveResourceSourceConfig({
+        autoUpdate: false,
+        warnOnUpdateFailure: false,
+        source: 'git',
+        git: { backend: 'git', branch },
+        mirrorchyan: { checkInterval: 600 }
+      });
+
+      assert.equal(saved.git.branch, null);
+      assert.equal(Object.hasOwn(await readSourceTable(), 'branch'), false);
+    }
+  });
+
   it('preserves a stored CDK when the request leaves it blank', async () => {
     await writeCliConfig(`[resource.source]
 type = "mirrorchyan"

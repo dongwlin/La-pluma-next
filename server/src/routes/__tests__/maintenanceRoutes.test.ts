@@ -866,6 +866,18 @@ describe('moved maintenance routes keep HTTP contracts', () => {
       });
       assert.equal(invalid.status, 400);
       assert.equal((await readError(invalid)).error.code, 'AGENT_RESOURCE_SOURCE_INVALID');
+
+      const switchedBack = await postJson(`${baseUrl}/config/resource-source`, {
+        autoUpdate: true,
+        warnOnUpdateFailure: false,
+        source: 'git',
+        git: { backend: 'git' },
+        mirrorchyan: { checkInterval: 1800 }
+      });
+      assert.equal(switchedBack.status, 200);
+      const switchedBackBody = await readSuccess<{ source: string; git: { branch: string | null } }>(switchedBack);
+      assert.equal(switchedBackBody.data.source, 'git');
+      assert.equal(switchedBackBody.data.git.branch, 'main');
     } finally {
       await rm(cliConfigPath, { force: true });
     }

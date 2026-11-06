@@ -183,15 +183,15 @@ curl -X POST http://localhost:3000/api/agent/actions/update-channel \
 # 读取资源源配置、官方 Git 地址与 MirrorChyan 凭据形态
 curl 'http://localhost:3000/api/agent/config/resource-source'
 
-# 保存资源源配置；省略 MirrorChyan CDK 时保留已保存值
+# 保存资源源配置，省略分支与 MirrorChyan CDK 时保留已保存值
 curl -X POST http://localhost:3000/api/agent/config/resource-source \
   -H 'Content-Type: application/json' \
-  -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git","branch":null},"mirrorchyan":{"checkInterval":600}}'
+  -d '{"autoUpdate":false,"warnOnUpdateFailure":true,"source":"git","git":{"backend":"git"},"mirrorchyan":{"checkInterval":600}}'
 ```
 
 `GET /api/agent/update-channels` 返回 `{ core, cli }`。`POST /api/agent/actions/update-channel` 保存成功后返回同一形状。`cli.toml` 缺失时返回缺省值，文件损坏或不可读时额外携带 `degraded: true` 并记录错误日志。`GET /version` 的 `updateChannels` 沿用该形状，其 `resource` 在部分候选资源目录读取失败但仍有可用信息时也携带 `degraded: true`。全部候选目录都不可读时，资源版本信息回退为 `unknown`。
 
-`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`。响应的 `git.url` 固定为 `https://github.com/MaaAssistantArknights/MaaResource.git`。请求的 `git` 对象只接受 `backend` 与 `branch`。提交 `url`、`useSshAgent`、`sshKey` 或 `passphrase` 会返回 400 `AGENT_RESOURCE_SOURCE_INVALID`，`error.details.field` 指向请求字段，响应省略传入的值。MirrorChyan 仍可作为独立来源，`mirrorchyan.cdkKind` 只回显 CDK 形态（`none`/`plain`/`env`/`command`/`prompt`）。省略或留空 `mirrorchyan.cdk` 会保留已保存的 CDK，`mirrorchyan.clearCdk: true` 会清除它。
+`GET/POST /api/agent/config/resource-source` 读写同一文件的 `[resource]`。响应的 `git.url` 固定为 `https://github.com/MaaAssistantArknights/MaaResource.git`。请求的 `git` 对象只接受必填的 `backend` 和可选的 `branch`。省略 `git.branch` 会保留已有分支配置，提交 `null` 或空白字符串会清除它。提交 `url`、`useSshAgent`、`sshKey` 或 `passphrase` 会返回 400 `AGENT_RESOURCE_SOURCE_INVALID`，`error.details.field` 指向请求字段，响应省略传入的值。MirrorChyan 仍可作为独立来源，`mirrorchyan.cdkKind` 只回显 CDK 形态（`none`/`plain`/`env`/`command`/`prompt`）。省略或留空 `mirrorchyan.cdk` 会保留已保存的 CDK，`mirrorchyan.clearCdk: true` 会清除它。
 
 执行租约被占用时，保存返回 409 `MAA_EXECUTION_BUSY`，防止执行期间切换已核验的资源源。当前任务结束后可重试。
 

@@ -221,7 +221,7 @@ ConfigManager（页面壳）
 #### 2.7 实例选项与资源源配置
 
 - **实例选项**（`model/instanceOptions.ts`、`hooks/useSettingsInstanceOptions.ts`）读写同一 MAA profile 的 `[instance_options]`，保存只提交 `{ instance_options: snapshot }`；字段为触控模式（`Adb`/`MiniTouch`/`MaaTouch`/`MacPlayTools`/`MaaFwAdb`）、`deployment_with_pause`、`adb_lite_enabled`、`kill_adb_on_exit`。profile 缺该 section 时按 MaaCore 默认值展示，未知字段原样保留。
-- **资源源**（`model/resourceSource.ts`、`hooks/useSettingsResourceSource.ts`）管理来源、自动更新与失败告警开关。Git 表单提供后端与分支。MirrorChyan 表单用 `cdkKind` 显示已保存的凭据形态，并用 `clearCdk` 请求显式清除。字段契约见 [Agent API](../../api/agent.md)。
+- **资源源**（`model/resourceSource.ts`、`hooks/useSettingsResourceSource.ts`）管理来源、自动更新与失败告警开关。Git 表单提供后端选择，保存时沿用已有分支配置。MirrorChyan 表单用 `cdkKind` 显示已保存的凭据形态，并用 `clearCdk` 请求显式清除。字段契约见 [Agent API](../../api/agent.md)。
 - 保存成功后 hook 重新读取同一 Query，以服务端归一化的配置和凭据形态覆盖草稿，并清空凭据输入框。
 - 保存请求中空白凭据表示保留服务端已保存值；输入新值会替换为明文字符串；`clearCdk` 显式写回 `cdk = false`。页面从不接收或渲染已保存的明文凭据。
 

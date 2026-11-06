@@ -24,7 +24,6 @@ export const DEFAULT_RESOURCE_SOURCE_DRAFT: ResourceSourceDraft = {
   source: 'git',
   git: {
     backend: 'git',
-    branch: '',
   },
   mirrorchyan: {
     cdk: '',
@@ -65,8 +64,6 @@ const isNonNegativeInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 )
 
-const readText = (value: unknown): string => (typeof value === 'string' ? value : '')
-
 const cloneDraft = (draft: ResourceSourceDraft): ResourceSourceDraft => ({
   ...draft,
   git: { ...draft.git },
@@ -88,7 +85,6 @@ export const normalizeResourceSourceDraft = (value: unknown): ResourceSourceDraf
     source: value.source,
     git: {
       backend: isGitBackend(git.backend) ? git.backend : 'git',
-      branch: readText(git.branch),
     },
     mirrorchyan: {
       cdk: '',
@@ -103,14 +99,12 @@ export const normalizeResourceSourceDraft = (value: unknown): ResourceSourceDraf
 
 export const buildResourceSourcePayload = (draft: ResourceSourceDraft): Record<string, unknown> => {
   const cdk = draft.mirrorchyan.cdk.trim()
-  const branch = draft.git.branch.trim()
   return {
     autoUpdate: draft.autoUpdate,
     warnOnUpdateFailure: draft.warnOnUpdateFailure,
     source: draft.source,
     git: {
       backend: draft.git.backend,
-      branch: branch === '' ? null : branch,
     },
     mirrorchyan: {
       checkInterval: draft.mirrorchyan.checkInterval,

@@ -57,7 +57,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 理智作战、基建、公招等本地任务使用已安装资源及已有热更新缓存。每次执行会创建独立的临时缓存，任务退出后清理，避免 maa-cli 启动时的热更新请求因网络故障而阻断日常流程；原缓存和连接配置保持不变。
 
-「同步资源」通过 `maa hot-update` 执行。「配置 → 资源」可选 Git 或 MirrorChyan，并设置自动更新与失败告警。Git 使用官方 HTTPS 仓库，表单提供后端与分支。MirrorChyan 表单提供 CDK 与检查间隔，CDK 输入框留空会保留已保存的值。资源同步的配置核验见 [MAA CLI 集成](../server/integrations.md#maa-cli-子进程与实时日志)。
+「同步资源」通过 `maa hot-update` 执行。「配置 → 资源」可选 Git 或 MirrorChyan，并设置自动更新与失败告警。Git 使用官方 HTTPS 仓库，表单提供后端选择。MirrorChyan 表单提供 CDK 与检查间隔，CDK 输入框留空会保留已保存的值。资源同步的配置核验见 [MAA CLI 集成](../server/integrations.md#maa-cli-子进程与实时日志)。
 
 远程作业下载和活动查询使用原缓存及联网流程。若在 maa-cli 中显式禁用热更新缓存（`hot_update.check_interval = 0`）或启用资源自动更新（`resource.auto_update = true`），任务仍会遵循这些联网设置。
 
