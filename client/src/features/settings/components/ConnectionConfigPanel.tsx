@@ -44,13 +44,17 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   } = useSettingsConnectionConfig()
   const clearTestFeedback = useClearConnectionTestFeedback()
   const connectionSaving = connectionSyncState === 'saving'
+  const blockedSaveMessage = connectionLoadError
+    ? '连接配置读取失败，暂时无法保存'
+    : '连接配置正在读取，加载完成后才能保存'
+  const saveBlockedReason = connectionLoaded ? null : blockedSaveMessage
   const [configFeedback, setConfigFeedback] = useState<SettingsFeedback | null>(null)
   const reportedLoadFailureRef = useRef<string | null>(null)
 
   // 初始读取失败保留旧的页内与全局提示；后台刷新失败不打断已有草稿。
   useEffect(() => {
     if (!connectionLoadError) return
-    const message = `连接配置读取失败: ${connectionLoadError}`
+    const message = `连接配置读取失败: ${connectionLoadError}（保存已禁用，请刷新页面后重试）`
     if (reportedLoadFailureRef.current === message) return
     reportedLoadFailureRef.current = message
     // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。
@@ -72,6 +76,11 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
   }
 
   const handleSave = async () => {
+    if (!connectionLoaded) {
+      setConfigFeedback({ type: 'warning', message: blockedSaveMessage })
+      setStatusMessage(blockedSaveMessage, 'warning')
+      return
+    }
     if (connectionSaving) return
     setConfigFeedback(null)
     setStatusMessage('正在保存配置...', 'info')
@@ -113,6 +122,8 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       title={CONFIG_SECTION_VIEWS.connection.name}
       feedback={configFeedback}
       saving={connectionSaving}
+      saveDisabled={!connectionLoaded}
+      saveBlockedReason={saveBlockedReason}
       onSave={() => void handleSave()}
       onReset={handleReset}
     >

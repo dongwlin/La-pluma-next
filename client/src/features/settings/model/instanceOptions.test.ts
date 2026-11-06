@@ -27,6 +27,10 @@ const createOwner = (write?: WriteRequest) => (
   new InstanceOptionsOwner(write ? { write } : {})
 )
 
+const adoptDefaultServer = (owner: InstanceOptionsOwner): void => {
+  owner.adoptServer({ config: { ...DEFAULT_INSTANCE_OPTIONS }, readToken: owner.beginRead() })
+}
+
 describe('instance options owner', () => {
   beforeEach(() => {
     apiMocks.getConfig.mockReset()
@@ -69,6 +73,7 @@ describe('instance options owner', () => {
   it('saves only the instance options section by default', async () => {
     apiMocks.saveConfig.mockResolvedValue({ success: true })
     const owner = createOwner()
+    adoptDefaultServer(owner)
 
     owner.update({ adb_lite_enabled: true })
     await expect(owner.save()).resolves.toMatchObject({ status: 'saved', superseded: false })
@@ -81,6 +86,7 @@ describe('instance options owner', () => {
   it('keeps the draft and reports the message when the write fails', async () => {
     apiMocks.saveConfig.mockResolvedValue({ success: false, message: '磁盘只读' })
     const owner = createOwner()
+    adoptDefaultServer(owner)
     owner.update({ deployment_with_pause: true })
 
     await expect(owner.save()).resolves.toMatchObject({ status: 'failed', message: '磁盘只读' })
