@@ -192,6 +192,47 @@ describe('schedule flow boundaries', () => {
     assert.match(result.summary.actions[0].message, /已进入游戏主界面/);
   });
 
+  it('normalizes a blank startup client type and falls back to the connection profile', async () => {
+    const checkedClientTypes: string[] = [];
+    const { ports, calls } = createPorts({
+      resolveConnection: async () => ({
+        adbPath: 'adb',
+        address: '127.0.0.1:5555',
+        clientType: 'YoStarJP'
+      }),
+      getGameClientState: async (_adbPath, _address, clientType) => {
+        checkedClientTypes.push(clientType);
+        return { running: true, foregroundPackage: 'com.hypergryph.arknights' };
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+
+    await completedResult(await executor.execute([{
+      id: 'startup-blank',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: { clientType: '', start_game_enabled: false }
+    }], 'startup-blank-client'));
+
+    assert.equal(calls.dynamicTasks.length, 1);
+    assert.equal(calls.dynamicTasks[0].clientType, undefined);
+    assert.deepEqual(checkedClientTypes, ['YoStarJP']);
+
+    calls.dynamicTasks.length = 0;
+    checkedClientTypes.length = 0;
+    await completedResult(await executor.execute([{
+      id: 'startup-explicit',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: { clientType: 'Bilibili', start_game_enabled: false }
+    }], 'startup-explicit-client'));
+
+    assert.equal(calls.dynamicTasks[0].clientType, 'Bilibili');
+    assert.deepEqual(checkedClientTypes, ['Bilibili']);
+  });
+
   it('rejects invalid game task plans while retaining generic dynamic tasks', () => {
     const makeTask = (taskType: string, params: Record<string, unknown>) => [{
       id: 'dynamic-1', name: '动态任务', enabled: true, taskType, params

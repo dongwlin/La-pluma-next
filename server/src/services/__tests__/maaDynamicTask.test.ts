@@ -130,7 +130,11 @@ describe('dynamic task lifecycle', () => {
 
   it('prefers an explicit client type override for the generated task file', async () => {
     const { events, runtime } = createRuntime()
-    runtime.resolveClientType = async () => 'YoStarEN'
+    let resolved = 0
+    runtime.resolveClientType = async () => {
+      resolved += 1
+      return 'YoStarEN'
+    }
     runtime.clientType = 'Bilibili'
     await execDynamicTask(
       'startup',
@@ -148,6 +152,34 @@ describe('dynamic task lifecycle', () => {
       type: 'StartUp',
       params: { start_game_enabled: false }
     }])
+    assert.equal(resolved, 0)
+  });
+
+
+  it('falls back to the connection profile when the runtime client type is blank', async () => {
+    for (const blank of ['', '   ']) {
+      const { events, runtime } = createRuntime()
+      runtime.resolveClientType = async () => 'YoStarEN'
+      runtime.clientType = blank
+      await execDynamicTask('award', { name: '领取奖励', type: 'Award', params: {} }, '领取奖励', 'agent', true, false, runtime)
+      assert.equal(parse(String(findTaskFileWrite(events)[2])).client_type, 'YoStarEN')
+    }
+  })
+
+
+  it('falls back to the connection profile when the task config client type is blank', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'YoStarEN'
+    await execDynamicTask(
+      'startup',
+      { name: '启动游戏', type: 'StartUp', params: { start_game_enabled: false, client_type: '' } },
+      '启动游戏',
+      'automation',
+      true,
+      false,
+      runtime
+    )
+    assert.equal(parse(String(findTaskFileWrite(events)[2])).client_type, 'YoStarEN')
   });
 
 

@@ -227,6 +227,11 @@ function configuredStageOf(params: ScheduledTaskParams | undefined): string {
   return String(stage || params?.stage || '');
 }
 
+function explicitClientTypeOf(value: unknown): string | undefined {
+  const clientType = typeof value === 'string' ? value.trim() : '';
+  return clientType || undefined;
+}
+
 /**
  * 创建流程执行器。每个实例独占一份执行状态、停止信号和任务进度，
  * 同一进程只应在组装处创建一个实例，保证异步流程只有一个执行所有者。
@@ -671,8 +676,9 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             }
 
             const { command, params, taskConfig } = buildScheduledTaskCommand(task, adbConfig);
+            const startupClientType = explicitClientTypeOf(task.params.clientType);
             if (taskConfig) {
-              await executeDynamicTask(params, taskConfig, task.name, null, true, task.params.clientType);
+              await executeDynamicTask(params, taskConfig, task.name, null, true, startupClientType);
             } else {
               const args = params ? params.split(' ').filter(arg => arg) : [];
               await executeCommand(command, args, task.name, null, true);
@@ -686,7 +692,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
               const gameState = await getGameClientState(
                 adbConfig.adbPath,
                 adbConfig.address,
-                task.params.clientType || DEFAULT_CLIENT_TYPE
+                startupClientType || sharedConnection.clientType || DEFAULT_CLIENT_TYPE
               );
               if (!gameState.running) {
                 throw new Error(`游戏未在前台，当前应用：${gameState.foregroundPackage || '未知'}`);
