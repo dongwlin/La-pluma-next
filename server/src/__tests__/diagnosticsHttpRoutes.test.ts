@@ -302,3 +302,21 @@ describe('GET /api/agent/diagnostics connection probe failure', () => {
     resetAgentDiagnosticsProbeCachesForTests();
   });
 });
+
+describe('GET /api/agent/diagnostics execution preflight', () => {
+  it('accepts an unknown command and reports it in the execution check', async () => {
+    resetAgentDiagnosticsProbeCachesForTests();
+    const baseUrl = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+
+    const response = await fetch(`${baseUrl}/api/agent/diagnostics?command=not-a-command`);
+
+    assert.equal(response.status, 200);
+    const body = await readBody<ApiSuccessResponse<DiagnosticsReport>>(response);
+    const execution = body.data.checks.find(check => check.id === 'execution');
+    assert.ok(execution);
+    assert.equal(execution.status, 'fail');
+    assert.match(execution.summary, /任务参数预检失败/);
+    assert.ok(execution.details.some(detail => detail.startsWith('allowed: ')));
+    resetAgentDiagnosticsProbeCachesForTests();
+  });
+});

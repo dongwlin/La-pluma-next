@@ -17,7 +17,7 @@ import type {
   OpenApiParameter,
   OpenApiResponse
 } from '../agentContract.ts';
-import { AGENT_TASK_COMMANDS } from '../../services/agentActionService.ts';
+import { GAME_TASK_LIMITS } from '../../services/gameTaskConfigService.ts';
 
 const defaults = {
   adbPath: '/custom/platform-tools/adb',
@@ -182,7 +182,12 @@ describe('Agent API contract registry', () => {
       'command'
     ]);
     assert.equal(command.type, 'string');
-    assert.deepEqual(command.enum, [...AGENT_TASK_COMMANDS]);
+    assert.equal(command.enum, undefined);
+    const validateQuery = new Ajv2020({ strict: false }).compile(
+      must(action.query_schema, 'get_diagnostics query')
+    );
+    assert.equal(validateQuery({ command: 'startup' }), true);
+    assert.equal(validateQuery({ command: 'not-a-command' }), true);
   });
 
   it('documents the runtime-compatible task command and dynamic task fields', () => {
@@ -436,7 +441,7 @@ describe('Agent OpenAPI generation', () => {
     assert.equal(operation.requestBody, undefined);
     assert.equal(command.in, 'query');
     assert.equal(command.required, false);
-    assert.deepEqual(must(command.schema, 'diagnostics command schema').enum, [...AGENT_TASK_COMMANDS]);
+    assert.equal(must(command.schema, 'diagnostics command schema').enum, undefined);
     assert.equal(operation['x-la-pluma-safety'].level, 'low-risk-write');
     assert.equal(operation['x-la-pluma-execution'].producesRun, undefined);
     assert.equal(
@@ -469,6 +474,24 @@ describe('Agent OpenAPI generation', () => {
     assert.equal(requestBody.required, true);
     assert.deepEqual(schema.required, ['stages']);
     assert.equal(prop(schema, 'dryRun', 'fight body').default, false);
+  });
+
+  it('bounds fight series and medicine by the shared game task limits', () => {
+    const action = findAction(buildAgentManifest(defaults), 'fight');
+    const body = must(action.body_schema, 'fight body');
+    const validate = new Ajv2020({ strict: false }).compile(body);
+    const request = (overrides: Record<string, unknown>) => ({ stages: ['1-7'], ...overrides });
+
+    assert.equal(validate(request({ series: 10 })), true);
+    assert.equal(validate(request({ series: 11 })), false);
+    assert.equal(validate(request({ series: -2 })), false);
+    assert.equal(validate(request({ medicine: 0 })), true);
+    assert.equal(validate(request({ medicine: -1 })), false);
+
+    const series = prop(body, 'series', 'fight body');
+    assert.equal(series.minimum, GAME_TASK_LIMITS.Fight.series.minimum);
+    assert.equal(series.maximum, GAME_TASK_LIMITS.Fight.series.maximum);
+    assert.equal(prop(body, 'medicine', 'fight body').minimum, GAME_TASK_LIMITS.Fight.medicineExpireDays.minimum);
   });
 
   it('describes success, error, and response metadata envelopes', () => {
