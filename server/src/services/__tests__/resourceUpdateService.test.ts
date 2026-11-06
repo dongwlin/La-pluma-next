@@ -305,21 +305,33 @@ describe('resource updates', () => {
     assert.equal(result.resource.status, 'current');
   });
 
-  it('shares one in-flight update across concurrent callers', async () => {
+  it('rejects a concurrent update immediately while one is in flight', { timeout: 5000 }, async () => {
     let resolveUpdate: (output: string) => void = () => {};
     const pending = new Promise<string>(resolve => { resolveUpdate = resolve; });
     const harness = createUpdateService({ hotUpdateResult: () => pending });
 
     const first = harness.service.updateResources();
-    const second = harness.service.updateResources();
+    const rejected = harness.service.updateResources();
     assert.equal(harness.calls.length, 1);
+
+    await assert.rejects(rejected, error => {
+      const fields = error as { code?: string; statusCode?: number; retryable?: boolean; message?: string };
+      assert.equal(fields.code, 'AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS');
+      assert.equal(fields.statusCode, 409);
+      assert.equal(fields.retryable, true);
+      assert.match(fields.message ?? '', /已有资源更新正在进行/);
+      return true;
+    });
+    assert.equal(harness.calls.length, 1, '并发请求不能启动第二次更新');
 
     resolveUpdate('ok\n');
-    const [firstResult, secondResult] = await Promise.all([first, second]);
-
-    assert.equal(harness.calls.length, 1);
-    assert.equal(firstResult, secondResult);
+    const firstResult = await first;
+    assert.equal(firstResult.output, 'ok\n');
     assert.equal(harness.lease.released, true);
+
+    const next = await harness.service.updateResources();
+    assert.equal(harness.calls.length, 2, '首个结束后新请求可以重新开始');
+    assert.equal(next.output, 'ok\n');
   });
 
   it('reports failures once without retrying and keeps the previous resource readable', async () => {
@@ -331,8 +343,14 @@ describe('resource updates', () => {
 
     const first = harness.service.updateResources();
     const second = harness.service.updateResources();
-    await assert.rejects(first, /git pull failed/);
-    await assert.rejects(second, /git pull failed/);
+    const [firstOutcome, secondOutcome] = await Promise.allSettled([first, second]);
+    assert.equal(firstOutcome.status, 'rejected');
+    assert.match(String((firstOutcome as PromiseRejectedResult).reason), /git pull failed/);
+    assert.equal(secondOutcome.status, 'rejected');
+    assert.equal(
+      ((secondOutcome as PromiseRejectedResult).reason as { code?: string }).code,
+      'AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS'
+    );
     assert.equal(harness.calls.length, 1, '失败后不能自动重试');
     assert.equal(harness.lease.released, true);
 

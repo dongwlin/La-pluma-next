@@ -284,6 +284,31 @@ describe('SettingsUpdateOwner', () => {
     })
   })
 
+  it('shows the concurrent update conflict message and keeps the resource retry entry', async () => {
+    const message = '已有资源更新正在进行（runId: run-active，状态：执行中），请等待当前更新完成'
+    const { owner } = createOwner({
+      updateResources: Promise.resolve({
+        success: false,
+        message,
+        errorInfo: {
+          code: 'AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS',
+          details: { activeRunId: 'run-active', activeRunState: 'running', runId: 'run-rejected' },
+          retryable: true,
+          status: 409,
+        },
+      }),
+    })
+
+    const outcome = await owner.updateResources()
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      message,
+      messageType: 'error',
+      feedback: { type: 'error', message, resourceRetry: true },
+    })
+  })
+
   it('tracks the running slot for CLI and resource commands', async () => {
     const pendingCli = deferred<ApiResponse>()
     const pendingResources = deferred<ApiResponse>()

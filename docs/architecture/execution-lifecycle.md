@@ -200,7 +200,7 @@ waiting ──stop──> stopped
 - 旧 `app` 模式的页面内“失败继续/失败停止”属于页面编排，不再有独立服务端语义；映射到 `continuous` 后沿用旧 `cli` 行为：一个 MAA 命令失败会结束集合，Run 置为 `failed`，未开始的条目保持 `pending`。前端模式与失败策略见[执行客户端](execution-client.md)，不得重新引入页面逐项提交循环。
 - `continuous` 的逐项结果在 `summary.taskResults`：`status` 为 `pending`/`running`/`success`/`failed`/`skipped`/`stopped`；`skipped` 是计划中未选中且此前未完成、本次不执行的条目，`skippedCount` 与 `progress.currentStep`/`totalSteps`（按本次执行队列 1 基编号，跳过条目不参与）一并向后兼容新增。
 - `summary` 用三个独立字段表达条目总数，彼此不靠差额推导：`plannedEntries` 是计划中的全部执行条目（含历史已完成）；`queuedEntries` 是本次执行队列（计划未完成且被选中）的条目数；`totalEntries` 是本次汇总列出的条目数，恒等于 `taskResults.length`（本次队列 + 本次跳过）。成功比例按 `queuedEntries` 计算，不得用 `totalEntries` 充当分母。
-- `summary.delegation` 为可选字段，只在本次执行尝试过原生 `maa copilot` 路径时出现：`outcome` 显式区分 `native-succeeded`/`native-failed`/`native-stopped` 与回退后的 `fallback-succeeded`/`fallback-failed`/`fallback-stopped`；`attempted`（恒为 `true`）、`fallback` 与 `nativeError` 为兼容字段。旧客户端忽略该字段即可；条件、回退判据、缓存失效与关闭开关见[服务端集成](../server/integrations.md)。
+- `summary.delegation` 为可选字段，只在本次执行尝试过原生 `maa copilot` 路径时出现：`outcome` 显式区分 `native-succeeded`/`native-failed`/`native-stopped` 与回退后的 `fallback-succeeded`/`fallback-failed`/`fallback-stopped`；`attempted`（恒为 `true`）、`fallback` 与 `nativeError` 为兼容字段。旧客户端忽略该字段即可；条件、回退判据、缓存失效、灰度开启与回滚方式见[服务端集成](../server/integrations.md)。
 - MAA 命令失败时 Run 为 `failed`，响应保留旧错误码 `COPILOT_PLAN_FAILED`（HTTP 422）与 `details.summary`；停止时返回 `stopped`，已完成项为 `success`，未开始项保持 `pending`。组与组之间检查停止意图，停止后不会启动下一组。
 - `manual` 在等待阶段返回 HTTP 200，`data.waitingForNext=true` 与 `data.nextEntry`；`run.state=waiting`，`progress.phase=waiting_for_next`。等待不持有租约，`occupancy` 不会把设备算作该 run 所有。
 - 继续下一项必须携带 runId。租约被占用时返回可重试的 409 `MAA_EXECUTION_BUSY`，run 保持 `waiting`，已完成条目、选中范围与下一项都不变；停止后继续返回 `alreadyTerminal`，不会启动任何条目。
@@ -291,7 +291,7 @@ waiting ──stop──> stopped
 | 旧断点迁移 | 页面启动读取 `maa-task-flow-execution` | 否（只关联已有 run） | 不获取 | 所关联 run 的 progress | 一次性；不重提，见 5.4 |
 | 仓库/干员识别 | `POST /api/agent/actions/run-task`（`command=run` + `taskConfig`，`Depot`/`OperBox`） | 是 | 命令期间持有 | run 进度 | 后续 `depot-recognition`/`operbox-recognition` 只解析本地日志，不是设备执行 |
 | 材料数据更新 | `POST /api/agent/actions/fetch-training-materials` | 否 | 不占设备租约 | 无 | 拉取数据脚本，不是设备自动化 |
-| 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 是（`update_core`/`update_cli`/`update_resources`） | 全程持有 | run 进度（受管更新子进程） | 维护入口；默认同步，`waitForCompletion=false` 取得执行权后返回 202；支持按 `runId` 停止；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` |
+| 核心/CLI/资源更新 | `POST /api/agent/actions/update-core`、`update-cli`、`hot-update-resources` | 是（`update_core`/`update_cli`/`update_resources`） | 全程持有 | run 进度（受管更新子进程） | 维护入口；默认同步，`waitForCompletion=false` 取得执行权后返回 202；支持按 `runId` 停止；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED`；资源热更新并发时后到请求立即 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS` |
 | 自动更新 | 定时任务 | 否 | 全程持有 | 无 | 直接调用 Core/CLI 更新命令，无 runId；与维护更新入口共享同一租约与任务进程投影 |
 | Telegram 指令 | `telegramBotService` 命令 | 否 | 命令期间持有 | 无 | 外部客户端入口；未纳入 HTTP Run 统一包装 |
 | 预览/截图/连接测试 | `/webrtc/*`、`/screen/screenshot`、`test-connection` | 否 | 不属于设备自动化执行 | 预览会话/即时响应 | 不适用 Run |
@@ -306,6 +306,7 @@ waiting ──stop──> stopped
 - `POST /api/agent/schedules/{scheduleId}/execute` 未在 Agent manifest 中广告，但同样创建 `run_daily_flow`；它和 Agent 入口共享 OperationId 与幂等命名空间。
 - `POST /api/agent/copilot-sets/{setId}/execute` 与 `POST /api/agent/actions/continue-copilot-set` 面向 Web UI，未在 Agent manifest 中广告；它们创建/推进 `run_copilot_set`，与其他执行共享同一租约与快照。
 - 定时流程与 HTTP 入口使用同一执行租约；同一时刻只有一个流程能进入 pre-start gate，第二个触发会得到占用失败而不是并行执行。
+- 资源热更新在服务实例内 single-flight：已有 `hot-update-resources` 进行中时，后到请求不会排队等待首个结束，也不会复用首个结果，而是在创建本次 Run 后立即返回 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（`details.activeRunId`/`activeRunState` 指向进行中的 Run）；被拒绝的 Run 按执行前拒绝写入 `failed` 并释放幂等键，首个更新结束后可重新发起。
 
 ## 7. 契约演进与持久化维护
 
@@ -325,7 +326,7 @@ Run 存储当前使用 `version: 1`，只接受该版本并严格校验记录；
 - **快照与占用**：`occupancy` 的 idle/pending/run/external/unknown 与租约 free/held/stale/unknown；`lastRun` 与当前身份分离；只有 current 带进度，日常流程只投影自己持有的 `schedule.runId`。
 - **HTTP 契约**：目标停止矩阵与“旧 run 不误停新运行”；同步/后台 202 与幂等重放响应头、错误码映射；manifest/OpenAPI 同源且与实际挂载 router 图一致，恰好四个执行动作声明 `producesRun`，公开 operation 按发布 schema 校验请求与真实响应；HTTP 排空（在途响应完整结束、keep-alive 回收、超时强制断开并非零退出）与信令网关关闭失败仍排空 HTTP。
 - **租约与执行**：租约互斥、死进程锁回收、unknown/空锁拒绝获取、锁文件完整内容原子发布；执行失败释放租约。
-- **维护更新 Run**：Core/CLI/资源更新返回 `runId` 与可查询终态；`waitForCompletion=false` 在取得执行权、产生受管子进程前返回 202；`running` 的更新 run 作为 `occupancy.state=run` 出现，按 `runId` 停止终止受管更新子进程并释放租约；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` 写入 `failed` 终态，详情保持 `version`/`failedStep`/`coreUpdated`；相同幂等键重放原 run，不重复执行更新。
+- **维护更新 Run**：Core/CLI/资源更新返回 `runId` 与可查询终态；`waitForCompletion=false` 在取得执行权、产生受管子进程前返回 202；`running` 的更新 run 作为 `occupancy.state=run` 出现，按 `runId` 停止终止受管更新子进程并释放租约；失败归一化为 `AGENT_MAA_UPDATE_*_FAILED` 写入 `failed` 终态，详情保持 `version`/`failedStep`/`coreUpdated`；资源热更新并发时后到请求立即得到 409 `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（含当前更新 `activeRunId`/`activeRunState` 与本次被拒绝的 `runId`），首个更新结束后可重新开始且不启动第二次更新；相同幂等键重放原 run，不重复执行更新。
 - **作业集与流程**：continuous/manual 的等待、继续与停止语义，占用 409 可重试且不消耗条目，逐项结果归属 `runId`；计划构建与逐项状态分类；可中止的步间等待，完成副作用在租约释放且 Run 结算后消费；cron 产生单个带终态结果的 `run_daily_flow`，占用时 fail-closed；触发源重复配置替换、销毁失败上报、draining 后拒绝注册并丢弃排队回调。
 - **关闭与后台触发源**：draining 后 Run 准入与设备租约 503 且不可绕过；执行器实际结果优先，预算耗尽记为 `interrupted`；子进程 SIGTERM 与预算内升级 SIGKILL；重复信号复用同一次关闭；Telegram 停止后不执行迟到命令；外部预览资源不被停止，网关关闭断开观看连接并清空票据；启动逆序回收、初始化取消与统一关闭截止时间。
 

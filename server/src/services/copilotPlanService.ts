@@ -112,13 +112,14 @@ async function loadInstalledTasks(resourceDir: string): Promise<unknown> {
   return tasks;
 }
 
-/** 清理进程内资源缓存与测试注入的观察间隔、路径平台，供测试用例之间隔离；生产运行不调用。 */
+/** 清理进程内资源缓存、委托状态日志的一次性标记与测试注入的观察间隔、路径平台，供测试用例之间隔离；生产运行不调用。 */
 export function resetCopilotPlanCachesForTests(): void {
   resourceDirPromise = null;
   stageCatalogCache.clear();
   installedTasksCache.clear();
   fileLoadPollMsOverride = null;
   pathPlatformOverride = null;
+  copilotNativeDelegationSettingLogged = false;
 }
 
 export type CopilotRaidMode = 'normal' | 'raid';
@@ -1051,17 +1052,54 @@ async function runCopilotGroup({
 }
 
 /**
- * 原生委托默认启用；设置 `LA_PLUMA_COPILOT_NATIVE_DELEGATION` 为禁用值时整体
- * 回退到现有流程，供真实设备验证或线上排障关闭，不必改代码重新部署。
+ * 灰度期默认关闭：未设置、空值、显式关闭或无法识别的取值都走现有流程，
+ * 只有显式开启值才把满足等价条件的作业集交给原生 `maa copilot`。首次判定
+ * 委托时记录一次实际生效状态，便于在真实设备验证前确认实例配置，不必
+ * 改代码重新部署即可开启或回滚。
  */
 const COPILOT_NATIVE_DELEGATION_ENV = 'LA_PLUMA_COPILOT_NATIVE_DELEGATION';
+const COPILOT_NATIVE_DELEGATION_ENABLED_VALUES: ReadonlySet<string> = new Set([
+  '1', 'true', 'on', 'yes', 'enable', 'enabled'
+]);
 const COPILOT_NATIVE_DELEGATION_DISABLED_VALUES: ReadonlySet<string> = new Set([
   '0', 'false', 'off', 'no', 'disabled'
 ]);
 
-function isCopilotNativeDelegationDisabled(): boolean {
-  const value = process.env[COPILOT_NATIVE_DELEGATION_ENV]?.trim().toLowerCase();
-  return value !== undefined && COPILOT_NATIVE_DELEGATION_DISABLED_VALUES.has(value);
+type CopilotNativeDelegationSetting =
+  | { enabled: true; source: 'enabled'; value: string }
+  | { enabled: false; source: 'default' | 'disabled' | 'invalid'; value?: string };
+
+function readCopilotNativeDelegationSetting(): CopilotNativeDelegationSetting {
+  const raw = process.env[COPILOT_NATIVE_DELEGATION_ENV];
+  if (raw === undefined) return { enabled: false, source: 'default' };
+  const value = raw.trim().toLowerCase();
+  if (value === '') return { enabled: false, source: 'default' };
+  if (COPILOT_NATIVE_DELEGATION_ENABLED_VALUES.has(value)) return { enabled: true, source: 'enabled', value: raw };
+  if (COPILOT_NATIVE_DELEGATION_DISABLED_VALUES.has(value)) return { enabled: false, source: 'disabled', value: raw };
+  return { enabled: false, source: 'invalid', value: raw };
+}
+
+let copilotNativeDelegationSettingLogged = false;
+
+function logCopilotNativeDelegationSettingOnce(setting: CopilotNativeDelegationSetting): void {
+  if (copilotNativeDelegationSettingLogged) return;
+  copilotNativeDelegationSettingLogged = true;
+  if (setting.enabled) {
+    logger.info('原生 Copilot 委托已启用：满足等价条件的作业集交给 maa copilot', {
+      env: COPILOT_NATIVE_DELEGATION_ENV,
+      value: setting.value
+    });
+    return;
+  }
+  const sourceLabel = {
+    default: '未设置或空值，灰度默认关闭',
+    disabled: '环境变量显式关闭',
+    invalid: '环境变量取值无法识别，按关闭处理'
+  }[setting.source];
+  logger.info(`原生 Copilot 委托未启用（${sourceLabel}）：作业集走现有流程`, {
+    env: COPILOT_NATIVE_DELEGATION_ENV,
+    ...(setting.value === undefined ? {} : { value: setting.value })
+  });
 }
 
 /**
@@ -1125,7 +1163,9 @@ export async function evaluateCopilotNativeDelegation({
   entries,
   options = {}
 }: CopilotNativeDelegationInput): Promise<CopilotNativeDelegationDecision> {
-  if (isCopilotNativeDelegationDisabled()) return { eligible: false, reason: 'disabled' };
+  const setting = readCopilotNativeDelegationSetting();
+  logCopilotNativeDelegationSettingOnce(setting);
+  if (!setting.enabled) return { eligible: false, reason: 'disabled' };
   if (entries.length === 0) return { eligible: false, reason: 'no-entries' };
   if (entries.length < 2) return { eligible: false, reason: 'single-entry' };
   if (entries.some(entry => entry.presetFormation)) {

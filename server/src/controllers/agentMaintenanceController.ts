@@ -7,17 +7,24 @@ import { getMaaConfigDir, getProfile, saveProfile as saveMaaProfile } from '../s
 import { getCurrentActivity } from '../services/maaActivityService.ts';
 import type { MaaActivitySnapshot } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
-import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
+import {
+  createResourceUpdateInProgressError,
+  getMaaResourceInfo,
+  RESOURCE_UPDATE_IN_PROGRESS_CODE
+} from '../services/resourceUpdateService.ts';
 import { readResourceSourceConfig, saveResourceSourceConfig } from '../services/resourceSourceService.ts';
 import { buildCliUpdaterPlan, runCliUpdater } from '../services/cliUpdaterService.ts';
 import {
   CORE_UPDATE_TASK_NAME,
   CLI_UPDATE_TASK_NAME,
   RESOURCE_UPDATE_TASK_NAME,
+  UPDATE_OPERATION_IDS,
   runCliUpdate,
   runCoreUpdate,
   runResourceUpdate
 } from '../services/updateExecutionService.ts';
+import { getActiveAgentRuns } from '../services/agentRunService.ts';
+import type { AgentRunDto } from '../services/agentRunService.ts';
 import type {
   CliUpdateRunResult,
   CoreUpdateRunResult,
@@ -420,6 +427,54 @@ interface StartTrackedUpdateOptions {
   task: (lifecycle: MaaProcessLifecycle) => Promise<unknown>;
 }
 
+function errorCodeOf(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
+function findActiveResourceUpdateRun(rejectedRunId: string): AgentRunDto | null {
+  try {
+    return getActiveAgentRuns().find(run => (
+      run.operationId === UPDATE_OPERATION_IDS.resources && run.runId !== rejectedRunId
+    )) ?? null;
+  } catch (error) {
+    logger.error('读取进行中的资源更新 run 失败', { error: thrownMessage(error) });
+    return null;
+  }
+}
+
+function describeActiveRunState(state: string): string {
+  switch (state) {
+    case 'accepted':
+      return '已接受，等待开始';
+    case 'waiting':
+      return '等待执行';
+    case 'running':
+      return '执行中';
+    case 'stopping':
+      return '停止中';
+    default:
+      return state;
+  }
+}
+
+/**
+ * 并发资源更新冲突：把正在进行的更新 run 身份补进 409 响应，调用方可据此等待或观察；
+ * 被拒绝的 run 仍按执行前拒绝写入 failed 终态，且不启动第二次更新。
+ */
+function describeResourceUpdateConflict(error: unknown, rejectedRunId: string): unknown {
+  if (errorCodeOf(error) !== RESOURCE_UPDATE_IN_PROGRESS_CODE) return error;
+  const active = findActiveResourceUpdateRun(rejectedRunId);
+  const message = active
+    ? `已有资源更新正在进行（runId: ${active.runId}，状态：${describeActiveRunState(active.state)}），请等待当前更新完成`
+    : '已有资源更新正在进行，请等待当前更新完成';
+  return createResourceUpdateInProgressError(message, {
+    activeRunId: active?.runId ?? null,
+    activeRunState: active?.state ?? null
+  });
+}
+
 /**
  * 后台更新：在取得租约并通过 pre-start 门禁后返回接受载荷，实际结果经 Run 的
  * onSettled 收尾；门禁失败仍同步抛回调用方。更新子进程由 taskStatus 登记，
@@ -620,17 +675,21 @@ export async function hotUpdateResources(req: MaintenanceRequest, res: ApiRespon
     input: { waitForCompletion },
     waitForCompletion,
     metadata: { taskName: RESOURCE_UPDATE_TASK_NAME, taskType: 'maintenance' },
-    execute: lifecycle => {
+    execute: (lifecycle, { runId }) => {
       const run = async (updateLifecycle: MaaProcessLifecycle): Promise<MaintenanceHotUpdateResourcesPayload> => {
         const result = await runResourceUpdate({ lifecycle: updateLifecycle });
         return resourceUpdatePayload(plan, result);
       };
-      if (waitForCompletion) return run(toUpdateProcessLifecycle(lifecycle));
-      return startTrackedUpdate({
-        label: '资源更新',
-        acceptedResult: { accepted: true, plan },
-        lifecycle,
-        task: run
+      const started = waitForCompletion
+        ? run(toUpdateProcessLifecycle(lifecycle))
+        : startTrackedUpdate({
+            label: '资源更新',
+            acceptedResult: { accepted: true, plan },
+            lifecycle,
+            task: run
+          });
+      return started.catch(error => {
+        throw describeResourceUpdateConflict(error, runId);
       });
     },
     successMessage: '资源文件更新成功',

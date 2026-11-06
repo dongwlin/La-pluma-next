@@ -34,7 +34,7 @@ services:
       - LA_PLUMA_TOKEN=${LA_PLUMA_TOKEN:?set LA_PLUMA_TOKEN in .env or the shell}
       # Core 安装/更新维护命令的超时（毫秒）；非法值回落默认，超上限收敛到上限
       - LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS=${LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS:-900000}
-      # 可选：设为 off 时禁用原生 copilot 委托，整体回退到现有作业集流程
+      # 可选：设为 1/true/on/yes/enable/enabled 时启用原生 copilot 委托（灰度，默认关闭，走现有流程）
       - LA_PLUMA_COPILOT_NATIVE_DELEGATION=${LA_PLUMA_COPILOT_NATIVE_DELEGATION:-}
       # 可选：实时日志内存缓存上限，默认 5000 行
       # - LA_PLUMA_MAX_REALTIME_LOGS=5000

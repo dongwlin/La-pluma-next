@@ -51,6 +51,7 @@ import {
 import type { MaybeApiRequest } from '../utils/apiHelper.ts';
 import { createMaaLogCheckpoint, readMaaLogSince } from '../services/maaLogFileService.ts';
 import type { MaaLogCheckpoint } from '../services/maaLogFileService.ts';
+import { RESOURCE_UPDATE_IN_PROGRESS_CODE } from '../services/resourceUpdateService.ts';
 import {
   attachRoguelikeErrorSummary,
   attachRoguelikeResultSummary,
@@ -234,6 +235,7 @@ function isPreExecutionError(error: unknown): boolean {
     || code === 'AGENT_DAILY_FLOW_REJECTED'
     || code === 'AGENT_COPILOT_SET_UNAVAILABLE'
     || code === 'AGENT_COPILOT_SET_REJECTED'
+    || code === RESOURCE_UPDATE_IN_PROGRESS_CODE
     || code.startsWith('AGENT_VALIDATION_');
 }
 
