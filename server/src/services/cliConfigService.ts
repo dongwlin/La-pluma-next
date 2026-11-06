@@ -4,7 +4,7 @@
  * 互相覆盖。调用方只负责自己 section 的语义与校验。
  */
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import TOML from '@iarna/toml';
 import { updateTextFile } from '../utils/fileHelper.ts';
 import { getMaaConfigDir } from './maaConfigService.ts';
@@ -30,8 +30,10 @@ export function parseCliConfigText(content: string): CliConfigDocument {
 }
 
 export async function resolveCliConfigPath(): Promise<string> {
-  const configDir = await getMaaConfigDir();
-  return resolve(configDir.trim(), 'cli.toml');
+  const configDir = (await getMaaConfigDir()).trim();
+  if (!configDir) throw new Error('无法解析 MAA 配置目录：maa dir config 返回空路径');
+  if (!isAbsolute(configDir)) throw new Error(`MAA 配置目录必须是绝对路径: ${configDir}`);
+  return resolve(configDir, 'cli.toml');
 }
 
 /** 读取 cli.toml；仅文件缺失回退空文档，其它读取失败与非法 TOML 一律抛出。 */
