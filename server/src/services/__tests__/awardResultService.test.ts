@@ -31,10 +31,10 @@ describe('award execution results', () => {
 
     assert.deepEqual(actions.map(action => action.status), ['success', 'skipped']);
     assert.equal(actions[0].observed, true);
+    assert.equal(actions[1].observed, true);
     assert.match(actions[0].message, /已领取/);
-    assert.match(actions[1].message, /未确认/);
+    assert.match(actions[1].message, /未观察到完成回调/);
   });
-
 
   it('confirms the limited-time sign-in event after its claim completes', () => {
     const log = [
@@ -48,18 +48,6 @@ describe('award execution results', () => {
     assert.equal(actions[0].status, 'success');
     assert.equal(actions[0].observed, true);
     assert.match(actions[0].message, /限时签到活动奖励已领取/);
-  });
-
-  it('does not count a started claim as a confirmed result', () => {
-    const log = callback('SubTaskStart', {
-      first: ['AwardBegin'],
-      details: { task: 'ReceiveAward' }
-    });
-
-    const actions = parseAwardExecutionActions('领取奖励', { award: true }, log);
-    assert.equal(actions[0].status, 'skipped');
-    assert.equal(actions[0].observed, true);
-    assert.match(actions[0].message, /未观察到完成回调/);
   });
 
   it('treats an unavailable or empty log as unconfirmed instead of success', () => {
