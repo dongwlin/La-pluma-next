@@ -1,10 +1,10 @@
-import { execMaaCommand, execDynamicTask } from '../services/maaExecutionService.ts';
+import { execMaaCommand, execDynamicTask, execDynamicTasks } from '../services/maaExecutionService.ts';
 import { stopCurrentTask } from '../services/maaProcessService.ts';
 import { executeScheduleNow, getScheduledTaskFlowPlan, stopScheduleExecution } from '../services/schedulerService.ts';
 import { loadUserConfig } from '../services/configStorageService.ts';
 import {
   createDailyFlowExecutionError,
-  executeAgentTask,
+  executePreflightAgentTask,
   normalizeCopilotSetExecutionRequest,
   normalizeDailyFlowRequest,
   preflightAgentTaskRequest
@@ -1501,13 +1501,15 @@ export async function runTask(
     input: { ...(isRecord(req.body) ? req.body : {}), waitForCompletion },
     waitForCompletion,
     metadata: { taskName: request.taskName, taskType: request.taskType },
-    execute: lifecycle => executeAgentTask(
+    execute: lifecycle => executePreflightAgentTask(
       request,
       {
         execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
           execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, lifecycle),
         execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
-          execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
+          execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle }),
+        execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
+          execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
       }
     ),
     successMessage: '任务执行完成',

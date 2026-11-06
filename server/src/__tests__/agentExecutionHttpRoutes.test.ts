@@ -40,7 +40,14 @@ fs.appendFileSync(process.env.FAKE_MAA_LOG, args.join(' ') + '\\n');
 if (args[0] === 'run') {
   const path = require('node:path');
   const taskFile = path.join(process.env.FAKE_MAA_CONFIG_DIR, 'tasks', args[1] + '.toml');
-  if (fs.existsSync(taskFile)) fs.appendFileSync(process.env.FAKE_MAA_TASK_LOG, fs.readFileSync(taskFile, 'utf8') + '\\n');
+  if (fs.existsSync(taskFile)) {
+    const taskContent = fs.readFileSync(taskFile, 'utf8');
+    fs.appendFileSync(process.env.FAKE_MAA_TASK_LOG, taskContent + '\\n');
+    if (taskContent.includes('type = "FailTask"')) {
+      process.stderr.write('fake task failure\\n');
+      process.exit(3);
+    }
+  }
 }
 if (args[0] === 'fight' && args[1] === 'FAIL-FIGHT') {
   process.stderr.write('fake fight failure\\n');
@@ -104,8 +111,17 @@ interface RunSnapshotPayload {
 interface RunLookupPayload {
   runId: string;
   state: string;
-  result?: { actions?: Array<{ status: string; observed: boolean }> };
-  error?: { code: string; details: { actions?: Array<{ status: string }> } };
+  result?: {
+    actions?: Array<{ status: string; observed: boolean }>;
+    tasks?: Array<{ index: number; name: string; status: string; stdout: string; stderr: string }>;
+  };
+  error?: {
+    code: string;
+    details: {
+      actions?: Array<{ status: string }>;
+      tasks?: Array<{ index: number; name: string; status: string; stdout: string; stderr: string }>;
+    };
+  };
 }
 
 interface DryRunPlanPayload {
@@ -325,6 +341,112 @@ describe('agent execution HTTP adapter', () => {
     }
   });
 
+  it('executes ordered dynamic tasks and archives every result under result.tasks', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const tasks = [
+      { name: '领取奖励', type: 'Award', params: { award: true } },
+      {
+        name: '基建换班',
+        type: 'Infrast',
+        params: { mode: 10000 },
+        strategy: 'merge',
+        variants: [
+          { condition: { type: 'Time', start: '18:00:00' }, params: { plan_index: 0 } },
+          { params: { plan_index: 1 } }
+        ]
+      }
+    ];
+
+    for (const waitForCompletion of [true, false]) {
+      const response = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+        command: 'run',
+        args: ['multi'],
+        taskConfig: { tasks },
+        waitForCompletion
+      });
+      assert.equal(response.status, waitForCompletion ? 200 : 202);
+      const submission = await readSuccess<TaskExecutorPayload>(response);
+      const terminal = await waitForRunState(baseUrl, submission.data.runId, ['succeeded']);
+      assert.equal(terminal.state, 'succeeded');
+      assert.deepEqual(terminal.result?.tasks?.map(step => [step.index, step.name, step.status]), [
+        [0, '领取奖励', 'success'],
+        [1, '基建换班', 'success']
+      ]);
+    }
+
+    const submittedTasks = await readFile(process.env.FAKE_MAA_TASK_LOG || '', 'utf8');
+    assert.match(submittedTasks, /strategy = "merge"/);
+    assert.match(submittedTasks, /\[\[tasks\.variants\]\]/);
+    assert.match(submittedTasks, /condition = \{ "type" = "Time"/);
+  });
+
+  it('keeps per-task results when a later task fails', async () => {
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const response = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+      command: 'run',
+      args: ['multi-fail'],
+      taskConfig: {
+        tasks: [
+          { name: '领取奖励', type: 'Award', params: {} },
+          { name: '失败任务', type: 'FailTask', params: {} },
+          { name: '仓库识别', type: 'Depot', params: {} }
+        ]
+      }
+    });
+
+    assert.equal(response.status, 500);
+    const body = await readError(response);
+    assert.equal(body.error.code, 'AGENT_DYNAMIC_TASKS_FAILED');
+    const details = body.error.details as {
+      runId?: unknown;
+      tasks?: Array<{ index: number; name: string; status: string }>;
+    };
+    assert.deepEqual(details.tasks?.map(step => step.status), ['success', 'failed', 'success']);
+    assert.equal(details.tasks?.[0].name, '领取奖励');
+    assert.equal(details.tasks?.[2].name, '仓库识别');
+
+    const terminal = await waitForRunState(baseUrl, String(details.runId), ['failed']);
+    assert.equal(terminal.error?.code, 'AGENT_DYNAMIC_TASKS_FAILED');
+    assert.deepEqual(terminal.error?.details.tasks?.map(step => step.status), ['success', 'failed', 'success']);
+  });
+
+  it('stops a multi-task background run without starting later tasks', async () => {
+    process.env.FAKE_MAA_SLEEP_MS = '500';
+    const port = await listen(createLaPlumaApp({ env: {}, signalingGateway: stubSignalingGateway() }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const submit = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+      command: 'run',
+      args: ['multi-stop'],
+      taskConfig: {
+        tasks: [
+          { name: '领取奖励', type: 'Award', params: {} },
+          { name: '仓库识别', type: 'Depot', params: {} }
+        ]
+      },
+      waitForCompletion: false
+    });
+    assert.equal(submit.status, 202);
+    const runId = (await readSuccess<TaskExecutorPayload>(submit)).data.runId;
+
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const calls = (await callCliLog()).split('\n').filter(line => line.startsWith('run '));
+      if (calls.length >= 1) break;
+      await new Promise<void>(resolve => setTimeout(resolve, 10));
+    }
+
+    const stop = await postJson(`${baseUrl}/api/agent/actions/stop`, { runId });
+    assert.equal(stop.status, 200);
+    const terminal = await waitForRunState(baseUrl, runId, ['stopped']);
+    assert.deepEqual(terminal.result?.tasks?.map(step => step.status), ['stopped', 'pending']);
+
+    await new Promise<void>(resolve => setTimeout(resolve, 200));
+    const runCalls = (await callCliLog()).split('\n').filter(line => line.startsWith('run '));
+    assert.equal(runCalls.length, 1, 'remaining tasks must not start after stop');
+  });
+
   it('requires the API token before parsing any execution entry', async () => {
     const port = await listen(createLaPlumaApp({
       env: { LA_PLUMA_TOKEN: 'api-secret' },
@@ -389,6 +511,18 @@ describe('agent execution HTTP adapter', () => {
         command: 'run',
         taskConfig: { name: '动态任务', type: 'Bad Type' }
       }, 'AGENT_VALIDATION_TASK_TYPE_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { tasks: [] }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { tasks: [{ name: '动态任务', type: 'Award', condition: { type: 'Time' } }] }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
+      ['/api/agent/actions/run-task', {
+        command: 'run',
+        taskConfig: { tasks: [{ name: '动态任务', type: 'Award', strategy: 'all' }] }
+      }, 'AGENT_VALIDATION_TASK_CONFIG_INVALID'],
       ['/api/agent/actions/run-task', {
         command: 'fight',
         taskConfig: { name: '动态任务', type: 'Award' }
