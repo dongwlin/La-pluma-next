@@ -143,9 +143,10 @@ PWA 缓存范围仅包含界面资源。断网时可以打开已缓存页面，�
 
 ### 跨域与访问来源
 
-同源是默认且完整的支持方式：Web UI 与 `/api`、`/health`、`/readiness`、`/webrtc-signaling` 同源部署（根路径或反向代理后的同源子路径）时无需关心跨域头部。跨域调用按以下策略支持：
+同源是默认且完整的支持方式：Web UI 与 `/api`、`/health`、`/readiness`、`/game-assets`、`/webrtc-signaling` 同源部署（根路径或反向代理后的同源子路径）时无需关心跨域头部。跨域调用按以下策略支持：
 
-- 鉴权只由 token 承担，CORS 不作为鉴权。服务端对任何来源应答 CORS 预检（`OPTIONS` 无需 token）并返回 `Access-Control-Allow-Origin: *`，但这只声明浏览器可跨域读取响应；`/api` 的来源不构成访问边界。配置 `LA_PLUMA_TOKEN` 后，`/api` 与票据入口要求 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`；网络访问建议始终配置该 token。
+- 鉴权只由 token 承担，CORS 不作为鉴权。`/api` 与 WebRTC 票据入口对任何来源应答 CORS 预检（`OPTIONS` 无需 token）并返回 `Access-Control-Allow-Origin: *`，但这只声明浏览器可跨域读取响应；`/api` 的来源不构成访问边界。配置 `LA_PLUMA_TOKEN` 后，`/api` 与票据入口要求 `Authorization: Bearer <token>` 或 `X-La-Pluma-Token`；网络访问建议始终配置该 token。
+- 本地图标与头像（`/game-assets`）只服务同源页面：响应不返回 `Access-Control-Allow-Origin`，并声明 `Cross-Origin-Resource-Policy: same-origin`，跨源页面无法读取或嵌入本机资源目录；同源 `<img>` 加载不受影响。
 - 令牌比较先对两侧做摘要再使用恒定时间比较：长度差异、非字符串请求头或格式错误只会返回 401 `AGENT_AUTH_REQUIRED`，不会抛错，也不会回显预期值、变量名或长度。认证失败按来源地址限流（默认每分钟 10 次），超限返回 429 `AGENT_RATE_LIMITED` 并带 `Retry-After`；有效令牌不参与失败计数，也不会被同一来源的失败额度阻塞。限额是进程内计数、重启清零，不跨实例共享；未启用 `trust proxy`，反向代理后所有客户端共享代理连接地址的额度。
 - 不支持浏览器凭据模式：服务端不使用 Cookie，不返回 `Access-Control-Allow-Credentials`。以 `credentials: 'include'` 发起的跨域请求会被浏览器拒绝；调用方应改用上述 token 头并保持默认的 `credentials: 'same-origin'`。关闭凭据并不限制请求来源——任何来源都可携带 token 调用开放接口，未携带有效 token 的 `/api` 请求一律 401。
 - 实时预览的 `/webrtc-signaling` 网关继续按同源方式使用：HTTP 票据入口受同一 token 保护，其余信令管理端点不通过应用端口暴露，WebSocket 升级只服务持一次性票据的观看连接。票据签发自成边界：未设置 `LA_PLUMA_TOKEN` 的本地/LAN 模式只接受同源签发，`Origin` 的主机名必须与 `Host` 一致（端口不参与比较，兼容本地开发代理）；无 `Origin` 的非浏览器调用保持可用，跨源请求返回 403 `AGENT_SIGNALING_ORIGIN_FORBIDDEN`。设置 token 后由 token 把关，来源不再作为额外边界。两种模式都按来源地址限制签发频率（默认每分钟 30 次），反向代理需要保留原始 `Host` 主机名。

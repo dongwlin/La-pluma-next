@@ -86,10 +86,21 @@ export function createLaPlumaApp({
   // CORS 只声明浏览器可跨域读取响应，不承担鉴权；预检必须在鉴权之前应答，
   // 因此 cors 位于所有路由之前。服务不使用 Cookie，也不支持浏览器凭据模式
   // （credentials: 'include'），跨域调用一律通过 token 头鉴权。
-  app.use(cors({
+  // 本地图标与头像只服务同源页面：该命名空间不参与 CORS，并声明
+  // Cross-Origin-Resource-Policy: same-origin，跨源页面既读不到响应，也无法
+  // 通过 <img> 加载结果枚举本机资源目录；同源的 <img> 不受这两个头影响。
+  const corsMiddleware = cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE']
-  }));
+  });
+  app.use((req: Request, res: Response, next: NextFunction): void => {
+    if (req.path === GAME_ASSET_ROUTE_PREFIX || req.path.startsWith(`${GAME_ASSET_ROUTE_PREFIX}/`)) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+      next();
+      return;
+    }
+    corsMiddleware(req, res, next);
+  });
 
   // 请求 id 在鉴权与请求体解析之前建立：401/400 等前置失败、响应 meta 与
   // 同一请求的日志都使用同一个 id。客户端值需通过长度与字符集校验，否则丢弃重发。
