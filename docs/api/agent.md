@@ -21,6 +21,27 @@ curl http://localhost:3000/api/agent/status
 
 连接相关接口默认读取 `profileId: "default"` 对应的连接配置，也可以选择其它已保存配置。显式传入的 `adbPath`、`address` 或 `clientType` 会覆盖该配置中的同名字段。
 
+## 运行环境诊断
+
+```bash
+# 通用诊断
+curl 'http://localhost:3000/api/agent/diagnostics'
+
+# 附带任务预检：校验命令是否允许，并检查当前是否已有任务占用执行权
+curl 'http://localhost:3000/api/agent/diagnostics?command=roguelike'
+```
+
+`GET /api/agent/diagnostics` 返回只读诊断报告，供 Agent 在提交任务前判断能否执行。报告固定包含四项检查：
+
+| 检查 | `id` | 内容 |
+| --- | --- | --- |
+| 运行环境 | `runtime` | maa-cli 与 MaaCore 版本是否可读 |
+| 设备连接 | `connection` | ADB 设备是否可连接，附地址、设备摘要与前台包名 |
+| 资源状态 | `resource` | 资源版本新鲜度与关键目录条目（`version.json`、`tasks`、`template`） |
+| 任务预检 | `execution` | 可选 `command` 的参数预检、当前任务与执行租约 |
+
+响应 `data` 的每个检查条目包含 `status`（`pass`/`warn`/`fail`/`unknown`）、可读 `summary`、证据 `details`、可选 `hint` 与定位信息 `locations`；整体 `status` 为 `fail` 优先的 `error`/`warn`/`ok`，`ok` 仅在全部检查通过时为 `true`，`conclusion` 给出结论摘要。除探测 ADB 连接外不产生副作用，不创建 Run。
+
 ## 推荐执行流程
 
 ```bash
