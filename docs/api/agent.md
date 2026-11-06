@@ -313,7 +313,7 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 添加目标和生成预览不会首次应用任务流程。先调用 `POST /api/agent/training/plan`（`mode` 为 `current` 或 `all`），再将返回的计划原样放入 `POST /api/agent/actions/apply-training-plan` 的 `plan` 字段。必须保留 `queueRevision`；队列已变化或缺少版本时应用返回 HTTP `409`，需要重新预览。应用成功后服务端会按更新后的 automation 配置重新注册已存在的默认定时任务；响应中的可选 `scheduleSync` 为 `{ attempted, success, message, missingTimes? }`；`attempted: true, success: false` 表示配置与队列已应用但定时注册失败（包括只有部分时间点创建成功，`missingTimes` 列出未注册时间点），客户端应保留计划并给出重试入口。普通队列同步（`/training/sync` 或队列写入触发的自动同步）不会创建或重注册定时任务。
 
-预览计划依赖本地 MAA 游戏资源（`item_table.json` 或 `item_index.json`，路径解析见部署指南的 `MAA_DATA_DIR`/`MAA_RESOURCE_DIR`）。资源缺失或损坏时返回 HTTP `503`，错误码为 `LOCAL_RESOURCE_MISSING` 或 `LOCAL_RESOURCE_INVALID`；`message` 提示先获取游戏资源或检查 MAA 资源目录，`error.details.resourcePath`（字段不符时另有 `details.field`）指出具体文件，补齐资源后重试即可。可选材料快照、掉落数据等明确可降级的数据仍按既有策略继续（缺失时使用已有快照或经验估算），不阻断计划生成。
+养成端点共用同一本地资源错误映射：依赖本地 MAA 游戏资源（`item_table.json` 或 `item_index.json`，路径解析见部署指南的 `MAA_DATA_DIR`/`MAA_RESOURCE_DIR`）的操作在资源缺失或损坏时返回 HTTP `503`，错误码为 `LOCAL_RESOURCE_MISSING` 或 `LOCAL_RESOURCE_INVALID`；`message` 提示先获取游戏资源或检查 MAA 资源目录，`error.details.resourcePath`（字段不符时另有 `details.field`）指出具体文件，补齐资源后重试即可。生成计划是当前主要触发路径；其它训练异常仍走统一 500 出口。可选材料快照、掉落数据等明确可降级的数据仍按既有策略继续（缺失时使用已有快照或经验估算），不阻断计划生成。
 
 `GET /api/agent/training/operators` 返回 `operators`、`count` 与 `recognition`。`recognition.status` 为 `complete`（识别目录内每个干员的拥有状态已确认）、`partial`（存在未确认项）或 `missing`（尚未识别）；`total`/`owned`/`unknown` 为目录、已拥有与未确认数量，`missing` 列出未确认拥有状态的干员 id，`recognizedAt` 为识别快照时间。候选行的 `ownership` 为 `owned`、`unowned` 或 `unknown`；`unknown` 行以 `trainingStatus=unrecognized` 标记且不能加入队列。旧服务端载荷没有 `recognition` 时按未知处理，不得当作完整识别。
 
