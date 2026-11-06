@@ -14,7 +14,7 @@ La Pluma Next 支持 macOS、Linux 和 Windows 系统。服务器按操作系统
 
 服务器启动时会自动显示当前系统的路径配置。应用自身的运行数据（Run 存储、用户配置、掉落记录等）默认写入 `server/data/`，可通过部署指南中列出的 `LA_PLUMA_*` 变量重定向；生产环境前端静态资源默认读取 `client/dist/`。
 
-物品图标与干员头像默认读取 MAA 资源目录下的 `template/items/` 与 `template/avatar/`；如需改用其他本地图片目录，把 `LA_PLUMA_GAME_ASSET_DIR` 指向含 `item/`、`avatar/` 子目录的根目录。
+物品图标与干员头像默认读取 MAA 资源目录下的 `template/items/`（文件按物品 id 命名）与 `template/avatar/`（按干员 id 命名）；如需改用其他本地图片目录，把 `LA_PLUMA_GAME_ASSET_DIR` 指向含 `item/`、`avatar/` 子目录的根目录，文件名规则相同。请求键与文件名不一致时（例如仍是 item_table 的 iconId），服务端会在本地 `item_table.json` 可用时自动解析。
 
 养成相关数据（队列、材料表、干员材料、仓库/干员识别结果）使用 `LA_PLUMA_TRAINING_DATA_DIR`，默认同为 `server/data/`。材料与掉落抓取脚本复用同一目录解析，重定向后脚本与服务读写同一位置。
 

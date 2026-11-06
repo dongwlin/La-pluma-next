@@ -76,14 +76,16 @@ const depot = unwrapApiResponse(result)
 
 ### Game data（`features/game-data/api/index.ts`）
 
-仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标与干员头像不是端点：`getItemIconUrl` / `getOperatorAvatarUrl` 只生成同源 `/game-assets` URL，由浏览器缓存，不进入 Query；URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。图片由服务端从 MAA 资源的 `template/items/` 与 `template/avatar/` 读取，`LA_PLUMA_GAME_ASSET_DIR` 可指向按 `item/`、`avatar/` 布局准备的自定义目录。
+仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标与干员头像不是端点：`getItemIconUrl` / `getOperatorAvatarUrl` 只生成同源 `/game-assets` URL，由浏览器缓存，不进入 Query；URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
+
+图片由服务端读取本地 MAA 资源：物品图标来自 `template/items/`，文件按**物品 id** 命名（`<itemId>.png`）；干员头像来自 `template/avatar/`，按**干员 id** 命名（`<operatorId>.png`，变体追加 `_1`、`_2`）。`getItemIconUrl` 的物品键使用物品 id；服务端同时接受 `item_table.json` 的 `iconId`（如 `GOLD`），在本地 item_table 可用时与物品 id 双向解析（大小写不敏感、重复 iconId 逐个尝试），因此沿用 iconId 的旧调用与按 iconId 命名的图片目录也能命中。item_table 不可用时只按文件名直连；未知键返回空 404，客户端隐藏该图并显示占位。`LA_PLUMA_GAME_ASSET_DIR` 可指向含 `item/`、`avatar/` 的自定义目录，文件名规则相同。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |
 | `getDepotData(signal?)` | `GET /agent/data/depot` | `null` 或 `items` 数组 |
 | `getOperBoxData(signal?)` | `GET /agent/data/operbox` | `null` 或 `data` 数组；`allOpers`、`operTotal`、`recognition` 为可选附加字段 |
 | `getAllOperators(signal?)` | `GET /agent/data/operators` | 数组 |
-| `getItemIconUrl(iconId, version?)` | 无请求 | 只拼 URL、编码 `iconId` 并附加图标缓存 epoch |
+| `getItemIconUrl(key, version?)` | 无请求 | 只拼 URL、编码物品键（物品 id）并附加图标缓存 epoch |
 
 ### Statistics（`features/statistics/api/index.ts`）
 

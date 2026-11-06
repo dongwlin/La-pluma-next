@@ -18,11 +18,17 @@ const outsideDir = join(fixtureDir, 'outside');
 // 真实 MAA 资源目录位于 `~/.local/share/maa`，点目录下的文件也必须能发送。
 const maaDataDir = join(fixtureDir, '.local', 'maa');
 const maaTemplateDir = join(maaDataDir, 'resource', 'template');
+const aliasMaaDir = join(fixtureDir, 'alias-maa');
+const aliasItemTablePath = join(aliasMaaDir, 'resource', 'gamedata', 'excel', 'item_table.json');
+const upstreamRoot = join(fixtureDir, 'upstream-assets');
+const upstreamItemDir = join(upstreamRoot, 'item');
 
 const ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02]);
 const AVATAR_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x03, 0x04]);
 const MAA_ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x05, 0x06]);
 const MAA_AVATAR_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x07, 0x08]);
+const GOLD_ITEM_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x09, 0x0a]);
+const UPSTREAM_GOLD_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0b, 0x0c]);
 const OUTSIDE_BYTES = Buffer.from('outside-secret');
 
 await mkdir(itemDir, { recursive: true });
@@ -34,6 +40,17 @@ await writeFile(join(itemDir, '30011.png'), ITEM_BYTES);
 await writeFile(join(avatarDir, 'char_002_amiya.png'), AVATAR_BYTES);
 await writeFile(join(maaTemplateDir, 'items', '2001.png'), MAA_ITEM_BYTES);
 await writeFile(join(maaTemplateDir, 'avatar', 'char_4004_pudd.png'), MAA_AVATAR_BYTES);
+await mkdir(join(aliasMaaDir, 'resource', 'gamedata', 'excel'), { recursive: true });
+await writeFile(aliasItemTablePath, JSON.stringify({
+  items: {
+    '4001': { iconId: 'GOLD' },
+    '30011': { iconId: 'MTL_SL_G1' }
+  }
+}));
+await mkdir(upstreamItemDir, { recursive: true });
+await mkdir(join(upstreamRoot, 'avatar'), { recursive: true });
+await writeFile(join(itemDir, '4001.png'), GOLD_ITEM_BYTES);
+await writeFile(join(upstreamItemDir, 'GOLD.png'), UPSTREAM_GOLD_BYTES);
 await writeFile(join(itemDir, 'notes.txt'), 'not an image');
 await writeFile(join(itemDir, '.hidden.png'), ITEM_BYTES);
 await writeFile(join(outsideDir, 'secret.png'), OUTSIDE_BYTES);
@@ -54,7 +71,11 @@ function stubSignalingGateway(): WebrtcSignalingGateway {
   };
 }
 
-async function listen(env: RuntimeEnvSource = { LA_PLUMA_GAME_ASSET_DIR: assetRoot }): Promise<string> {
+async function listen(env: RuntimeEnvSource = {
+  LA_PLUMA_GAME_ASSET_DIR: assetRoot,
+  // 别名映射默认不读开发机的 MAA 资源，未显式注入时只按文件名直连。
+  MAA_DATA_DIR: join(fixtureDir, 'empty-maa')
+}): Promise<string> {
   const server = createServer(createLaPlumaApp({
     env,
     signalingGateway: stubSignalingGateway()
@@ -111,6 +132,57 @@ describe('GET /game-assets local icon and avatar routes', () => {
     assert.equal(avatar.status, 200);
     assert.equal(avatar.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await avatar.arrayBuffer()), MAA_AVATAR_BYTES);
+  });
+
+  it('serves item ids directly and resolves icon id keys through the local item table', async () => {
+    const baseUrl = await listen({ LA_PLUMA_GAME_ASSET_DIR: assetRoot, MAA_DATA_DIR: aliasMaaDir });
+
+    const direct = await fetch(`${baseUrl}/game-assets/item/30011.png`);
+    assert.equal(direct.status, 200);
+    assert.deepEqual(Buffer.from(await direct.arrayBuffer()), ITEM_BYTES);
+
+    const resolved = await fetch(`${baseUrl}/game-assets/item/GOLD.png?v=9`);
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await resolved.arrayBuffer()), GOLD_ITEM_BYTES);
+
+    const lowercase = await fetch(`${baseUrl}/game-assets/item/mtl_sl_g1.png`);
+    assert.equal(lowercase.status, 200);
+    assert.deepEqual(Buffer.from(await lowercase.arrayBuffer()), ITEM_BYTES);
+  });
+
+  it('returns 404 when an item icon key cannot be resolved', async () => {
+    const withItemTable = await listen({ LA_PLUMA_GAME_ASSET_DIR: assetRoot, MAA_DATA_DIR: aliasMaaDir });
+    const unknown = await fetch(`${withItemTable}/game-assets/item/UNKNOWN_ICON.png`);
+    assert.equal(unknown.status, 404);
+    assert.doesNotMatch(unknown.headers.get('content-type') ?? '', /text\/html/);
+
+    const withoutItemTable = await listen();
+    const unresolved = await fetch(`${withoutItemTable}/game-assets/item/GOLD.png`);
+    assert.equal(unresolved.status, 404);
+  });
+
+  it('resolves item ids to icon id file names for upstream-style asset directories', async () => {
+    const baseUrl = await listen({ LA_PLUMA_GAME_ASSET_DIR: upstreamRoot, MAA_DATA_DIR: aliasMaaDir });
+
+    const byItemId = await fetch(`${baseUrl}/game-assets/item/4001.png`);
+    assert.equal(byItemId.status, 200);
+    assert.deepEqual(Buffer.from(await byItemId.arrayBuffer()), UPSTREAM_GOLD_BYTES);
+
+    const byIconId = await fetch(`${baseUrl}/game-assets/item/GOLD.png`);
+    assert.equal(byIconId.status, 200);
+    assert.deepEqual(Buffer.from(await byIconId.arrayBuffer()), UPSTREAM_GOLD_BYTES);
+  });
+
+  it('returns an empty 404 for unmatched asset paths instead of an HTML shell', async () => {
+    const baseUrl = await listen();
+
+    for (const path of ['/game-assets/item/30011.png/extra', '/game-assets/unknown']) {
+      const response = await fetch(`${baseUrl}${path}`);
+      assert.equal(response.status, 404, path);
+      assert.doesNotMatch(response.headers.get('content-type') ?? '', /text\/html/, path);
+      assert.equal(await response.text(), '', path);
+    }
   });
 
   it('serves a replaced file at the new versioned URL', async () => {

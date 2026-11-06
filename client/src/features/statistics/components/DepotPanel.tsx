@@ -191,7 +191,7 @@ export default function DepotPanel({ isActive, command }: DepotPanelProps) {
                             </span>
                           ) : (
                             <img
-                              src={getItemIconUrl(item.iconId, itemIconVersion)}
+                              src={getItemIconUrl(item.id, itemIconVersion)}
                               alt={item.name}
                               className="w-full h-full object-cover"
                               onError={() => {
