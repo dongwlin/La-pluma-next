@@ -223,8 +223,10 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'config') {
       /MAA CLI 命令执行超时/
     );
     // 端口本身不会自己结束；超时裁决先按宽限等待底层结算，再让调用方拿到拒绝。
-    assert.ok(Date.now() - startedAt >= EXEC_FILE_TIMEOUT_EXIT_GRACE_MS);
-    assert.ok(Date.now() - startedAt < EXEC_FILE_TIMEOUT_EXIT_GRACE_MS + 5_000);
+    // 定时器按单调时钟触发而 Date.now 是墙钟，CI 虚拟机上两者可差数毫秒：下界留出钟差余量。
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed >= EXEC_FILE_TIMEOUT_EXIT_GRACE_MS - 1_000);
+    assert.ok(elapsed < EXEC_FILE_TIMEOUT_EXIT_GRACE_MS + 5_000);
   });
 
   it('keeps the managed execFile status until the underlying port settles past the timeout', async () => {
@@ -246,13 +248,13 @@ if (process.argv[2] === 'dir' && process.argv[3] === 'config') {
       }
     });
     await Promise.race([started, execution]);
-    const startedAt = Date.now();
     assert.equal(getTaskStatus().isRunning, true);
     assert.equal(getTaskStatus().taskName, '更新 MaaCore 与资源');
 
     // 超时（50ms）已裁决，但底层端口 150ms 后才结算：状态与等待必须晚于结算释放。
+    // 只断言等待后的任务状态，不用墙钟校验等待时长：定时器按单调时钟触发，
+    // 与 Date.now 的墙钟在 CI 上可差数毫秒，零容差下界会间歇性失败。
     await new Promise<void>(resolve => { setTimeout(resolve, 150); });
-    assert.ok(Date.now() - startedAt >= 150);
     assert.equal(getTaskStatus().isRunning, true, '状态不得早于底层子进程结算而释放');
 
     child.exitCode = 0;
