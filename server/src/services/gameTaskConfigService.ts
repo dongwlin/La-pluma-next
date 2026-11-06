@@ -203,6 +203,46 @@ function validateStartUpParams(params: Record<string, unknown>): string | null {
   return null;
 }
 
+export interface GameTaskParamsNormalization {
+  params: Record<string, unknown>;
+  error: string | null;
+}
+
+/**
+ * 旧草稿兼容：Roguelike 的常乐节点目标曾被写成 snake_case，而 MaaCore 只认
+ * `find_playTime_target`。读取时统一改写为 Core 的权威键；两种拼写同时出现且
+ * 取值不同时不猜测意图，由调用方报错而不是静默丢弃其中一个值。
+ */
+const GAME_TASK_PARAM_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
+  Roguelike: Object.freeze({ find_play_time_target: 'find_playTime_target' })
+});
+
+export function normalizeGameTaskParams(
+  type: string,
+  params: Record<string, unknown>
+): GameTaskParamsNormalization {
+  const aliases = GAME_TASK_PARAM_ALIASES[type];
+  if (!aliases) return { params, error: null };
+  let normalized = params;
+  for (const [legacyKey, canonicalKey] of Object.entries(aliases)) {
+    if (!Object.hasOwn(params, legacyKey)) continue;
+    normalized = normalized === params ? { ...params } : normalized;
+    if (Object.hasOwn(params, canonicalKey)) {
+      if (params[canonicalKey] !== params[legacyKey]) {
+        return {
+          params,
+          error: `${type}.params 同时包含 ${legacyKey} 与 ${canonicalKey} 且取值不同`
+        };
+      }
+      delete normalized[legacyKey];
+      continue;
+    }
+    normalized[canonicalKey] = params[legacyKey];
+    delete normalized[legacyKey];
+  }
+  return { params: normalized, error: null };
+}
+
 export function validateGameTaskParams(type: string, params: Record<string, unknown>): string | null {
   const limits = GAME_TASK_LIMITS.OperProgress;
   if (type === 'Roguelike') {
@@ -278,7 +318,7 @@ const ROGUELIKE_BOOLEAN_FIELDS = Object.freeze([
 ] as const);
 const ROGUELIKE_STRING_FIELDS = Object.freeze([
   'squad', 'roles', 'core_char', 'first_floor_foldartal', 'collectible_mode_squad',
-  'collectible_mode_roles'
+  'collectible_mode_roles', 'start_with_seed'
 ] as const);
 const ROGUELIKE_INTEGER_FIELDS = Object.freeze(['starts_count', 'difficulty', 'investments_count'] as const);
 const ROGUELIKE_STRING_ARRAY_FIELDS = Object.freeze([
@@ -298,6 +338,37 @@ const ROGUELIKE_BLACKFLOW_CULTIVATION_TARGETS = Object.freeze([
   'swaddled_cat', 'swaddled_feathered_serpent', 'swaddled_dog', 'swaddled_cerberus'
 ] as const);
 const ROGUELIKE_START_LIST_KEYS = Object.freeze(['hot_water', 'shield', 'ingot', 'hope', 'random', 'key', 'dice', 'ideas'] as const);
+
+/**
+ * 已纳入校验的参数键清单。跨端契约测试据此确认客户端 option table 不会发出
+ * 服务端不认识的键，避免参数名漂移只被单侧测试掩盖。
+ */
+export const GAME_TASK_PARAM_KEYS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
+  Roguelike: new Set([
+    'theme',
+    'mode',
+    ...ROGUELIKE_BOOLEAN_FIELDS,
+    ...ROGUELIKE_STRING_FIELDS,
+    ...ROGUELIKE_INTEGER_FIELDS,
+    ...ROGUELIKE_STRING_ARRAY_FIELDS,
+    'core_char_list',
+    'collectible_mode_start_list',
+    'blackflow_strategy',
+    'blackflow_cultivation_target',
+    'blackflow_start_animals',
+    'blackflow_start_rewards',
+    'blackflow_start_reward_priority',
+    'find_playTime_target'
+  ]),
+  Reclamation: new Set([
+    'theme',
+    'mode',
+    'tools_to_craft',
+    'clear_store',
+    'increment_mode',
+    'num_craft_batches'
+  ])
+});
 
 function isIntegerValue(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value);

@@ -247,4 +247,39 @@ describe('GET /game-assets local icon and avatar routes', () => {
 
     assert.equal(response.status, 404);
   });
+
+  it('serves local assets for same-origin pages only and keeps them out of CORS', async () => {
+    const baseUrl = await listen();
+    const crossOrigin = 'http://console.example:5173';
+
+    const sameOrigin = await fetch(`${baseUrl}/game-assets/item/30011.png`);
+    assert.equal(sameOrigin.status, 200);
+    assert.equal(sameOrigin.headers.get('cross-origin-resource-policy'), 'same-origin');
+    assert.equal(sameOrigin.headers.get('access-control-allow-origin'), null);
+
+    const crossOriginRead = await fetch(`${baseUrl}/game-assets/item/30011.png`, {
+      headers: { Origin: crossOrigin }
+    });
+    assert.equal(crossOriginRead.status, 200);
+    assert.equal(crossOriginRead.headers.get('cross-origin-resource-policy'), 'same-origin');
+    assert.equal(crossOriginRead.headers.get('access-control-allow-origin'), null);
+
+    const missing = await fetch(`${baseUrl}/game-assets/item/missing.png`, {
+      headers: { Origin: crossOrigin }
+    });
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get('cross-origin-resource-policy'), 'same-origin');
+    assert.equal(missing.headers.get('access-control-allow-origin'), null);
+
+    const preflight = await fetch(`${baseUrl}/game-assets/item/30011.png`, {
+      method: 'OPTIONS',
+      headers: { Origin: crossOrigin, 'Access-Control-Request-Method': 'GET' }
+    });
+    assert.equal(preflight.headers.get('access-control-allow-origin'), null);
+
+    // CORS 只保留给 /api：跨域 API 调用与预检行为不变。
+    const manifest = await fetch(`${baseUrl}/api/agent/manifest`, { headers: { Origin: crossOrigin } });
+    assert.equal(manifest.status, 200);
+    assert.equal(manifest.headers.get('access-control-allow-origin'), '*');
+  });
 });

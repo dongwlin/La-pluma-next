@@ -61,7 +61,47 @@ function findTaskFileWrite(events: RuntimeEvent[]): RuntimeEvent {
   return event
 }
 
+function errorField(error: unknown, key: string): unknown {
+  return typeof error === 'object' && error !== null && key in error
+    ? (error as Record<string, unknown>)[key]
+    : undefined
+}
+
 describe('dynamic task lifecycle', () => {
+  it('writes the authoritative Core spelling for a migrated legacy roguelike target', async () => {
+    const { events, runtime } = createRuntime()
+    await execDynamicTask('roguelike-legacy', {
+      name: '集成战略',
+      type: 'Roguelike',
+      params: { theme: 'JieGarden', mode: 20001, find_play_time_target: 2 }
+    }, '集成战略', 'automation', true, false, runtime)
+
+    const decoded = parse(String(findTaskFileWrite(events)[2]))
+    assert.deepEqual(decoded.tasks, [{
+      name: '集成战略',
+      type: 'Roguelike',
+      params: { theme: 'JieGarden', mode: 20001, find_playTime_target: 2 }
+    }])
+  })
+
+  it('rejects conflicting legacy and authoritative roguelike targets before writing the task file', async () => {
+    const { events, runtime } = createRuntime()
+    await assert.rejects(
+      execDynamicTask('roguelike-conflict', {
+        name: '集成战略',
+        type: 'Roguelike',
+        params: {
+          theme: 'JieGarden',
+          mode: 20001,
+          find_play_time_target: 1,
+          find_playTime_target: 2
+        }
+      }, '集成战略', 'automation', true, false, runtime),
+      error => errorField(error, 'statusCode') === 400
+    )
+    assert.equal(events.some(event => event[0] === 'write' && String(event[1]).endsWith('task.toml')), false)
+  })
+
   it('serializes nested operator targets and theme candidates as native TOML values', async () => {
     const plans = [{ role: 'Warrior', name: '陈', elite: 2, skill_level: 7, skill_mastery: [0, 3, 0] }]
     for (const config of [
