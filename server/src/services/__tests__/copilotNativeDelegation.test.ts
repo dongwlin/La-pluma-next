@@ -26,6 +26,16 @@ const maaCacheDir = join(fixtureDir, 'maa-cache');
 const dropRecordsDir = join(fixtureDir, 'drop-records');
 const progressPath = join(fixtureDir, 'copilot-progress.json');
 const planDir = join(maaConfigDir, 'copilot-plans', '42');
+const maaProfilePath = join(maaConfigDir, 'profiles', 'default.toml');
+
+async function setConnectionClientType(clientType: string | null): Promise<void> {
+  if (!clientType) {
+    await rm(maaProfilePath, { force: true });
+    return;
+  }
+  await mkdir(join(maaConfigDir, 'profiles'), { recursive: true });
+  await writeFile(maaProfilePath, `[connection]\nclient_type = "${clientType}"\n`);
+}
 
 await mkdir(join(baseResourceDir, 'Arknights-Tile-Pos'), { recursive: true });
 await mkdir(maaConfigDir, { recursive: true });
@@ -199,6 +209,7 @@ beforeEach(async () => {
   delete process.env.FAKE_RUN_EXIT_DELAY;
   await writeFile(maaCallLog, '');
   await writeFile(maaAsstLog, '');
+  await setConnectionClientType(null);
   await rm(progressPath, { force: true });
   await rm(planDir, { recursive: true, force: true });
   await rm(join(maaCacheDir, 'copilot'), { recursive: true, force: true });
@@ -350,6 +361,19 @@ describe('copilot native delegation conditions', () => {
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
   });
 
+  test('rejects queues when the connection runs a non-Official client type', async () => {
+    setNativeDelegationEnabled(true);
+    await setConnectionClientType('YoStarEN');
+
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'unsupported-client-type'
+    });
+
+    await setConnectionClientType(null);
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+  });
+
   test('rejects queues whose native command would change the MaaCore task params', async () => {
     setNativeDelegationEnabled(true);
     const two = queueOf(2);
@@ -473,6 +497,28 @@ describe('copilot native delegation execution', () => {
     const calls = await readMaaCalls();
     assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0);
     assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    assert.equal(outcome.success, true);
+    assert.equal(outcome.delegation, undefined);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['success', 'success', 'success']
+    );
+  });
+
+  test('keeps the existing flow when the connection client type is not the native default', async () => {
+    setNativeDelegationEnabled(true);
+    await setConnectionClientType('YoStarEN');
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    const tomlLine = calls.find(call => call.startsWith('toml '));
+    assert.ok(tomlLine);
+    const toml = JSON.parse(tomlLine.slice('toml '.length)) as string;
+    assert.match(toml, /client_type = "YoStarEN"/);
     assert.equal(outcome.success, true);
     assert.equal(outcome.delegation, undefined);
     assert.deepEqual(

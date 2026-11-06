@@ -9,6 +9,7 @@ import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts'
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { invalidateCachedCopilotFiles } from './maaTaskCacheService.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
+import { resolveConnection } from './connectionService.ts';
 import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.ts';
@@ -270,6 +271,7 @@ export type CopilotDelegationReason =
   | 'loop-times'
   | 'user-additional'
   | 'duplicate-copilot'
+  | 'unsupported-client-type'
   | 'unsupported-options'
   | 'stage-name-mismatch';
 
@@ -1152,12 +1154,31 @@ function hasRepresentableNumericOptions(options: CopilotExecutionOptions): boole
 }
 
 /**
+ * maa-cli 的 `copilot` 预设没有 `--client-type` 入口，任务参数未写 `client_type`
+ * 时固定把 MaaCore 客户端类型设为 Official；连接 profile 使用其它客户端时，
+ * 原生委托会按错误资源整组失败，而现有流程把 profile 的 client_type 写进 task.toml。
+ */
+const NATIVE_COPILOT_CLIENT_TYPE = 'Official';
+
+async function resolveNativeCopilotClientType(): Promise<string> {
+  try {
+    return String((await resolveConnection()).clientType || '').trim();
+  } catch (error) {
+    logger.debug('读取连接客户端类型失败，跳过原生 Copilot 委托', {
+      error: errorMessageOf(error)
+    });
+    return '';
+  }
+}
+
+/**
  * 判定整组条目能否交给原生 `maa copilot` 执行。
  *
  * 原生命令按 uri 顺序生成一份 `copilot_list`：每条目一份计划文件、统一
  * `--raid`、多条目时强制编队、列表模式忽略 `loop_times`，且没有
  * `user_additional` 与 `nav_name_override` 入口。只有这些差异都不影响实际
- * 下发给 MaaCore 的任务参数时才委托，否则回到现有流程。
+ * 下发给 MaaCore 的任务参数时才委托，否则回到现有流程；客户端类型不是
+ * Official 时同样不能委托。
  */
 export async function evaluateCopilotNativeDelegation({
   entries,
@@ -1168,6 +1189,9 @@ export async function evaluateCopilotNativeDelegation({
   if (!setting.enabled) return { eligible: false, reason: 'disabled' };
   if (entries.length === 0) return { eligible: false, reason: 'no-entries' };
   if (entries.length < 2) return { eligible: false, reason: 'single-entry' };
+  if (await resolveNativeCopilotClientType() !== NATIVE_COPILOT_CLIENT_TYPE) {
+    return { eligible: false, reason: 'unsupported-client-type' };
+  }
   if (entries.some(entry => entry.presetFormation)) {
     return { eligible: false, reason: 'preset-formation' };
   }
