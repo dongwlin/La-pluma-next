@@ -6,6 +6,7 @@ import {
   executionController,
   isTerminalRunState,
   type AgentRun,
+  type ExecutionController,
 } from '@/features/task-execution'
 import { isRecord, type ApiResponse } from '@/shared/api'
 
@@ -36,12 +37,25 @@ export interface SettingsUpdateRunPort {
 
 export const SETTINGS_UPDATE_SCOPE = 'settings'
 
+/** 本域只使用控制器的身份采纳、观察与目标停止能力，测试可注入独立实例。 */
+export type SettingsUpdateRunController = Pick<
+  ExecutionController,
+  'adoptSubmission' | 'getState' | 'subscribe' | 'observeRun' | 'stopTrackedRun'
+>
+
 const UNKNOWN_TERMINAL: UpdateRunTerminal = {
   state: 'unknown',
   message: null,
   errorCode: null,
   errorDetails: {},
 }
+
+/**
+ * 等待上限：身份失效会立即结算；这个上限只兜底控制器长时间无法确认终态的场景
+ * （例如页面从未恢复观察），避免命令槽位和“执行中”提示永久不结束。更新安装
+ * 可能持续十几分钟，因此不能取更短的值。
+ */
+export const SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS = 30 * 60_000
 
 function terminalOf(run: AgentRun): UpdateRunTerminal {
   if (!isTerminalRunState(run.state)) return UNKNOWN_TERMINAL
@@ -51,10 +65,12 @@ function terminalOf(run: AgentRun): UpdateRunTerminal {
   return { state: run.state, message, errorCode, errorDetails }
 }
 
-export function createSettingsUpdateRunPort(): SettingsUpdateRunPort {
+export function createSettingsUpdateRunPort(
+  controller: SettingsUpdateRunController = executionController,
+): SettingsUpdateRunPort {
   return {
     adopt(response, operationId) {
-      return executionController.adoptSubmission(response, operationId, {
+      return controller.adoptSubmission(response, operationId, {
         scope: SETTINGS_UPDATE_SCOPE,
       })
     },
@@ -62,33 +78,49 @@ export function createSettingsUpdateRunPort(): SettingsUpdateRunPort {
     wait(runId) {
       return new Promise<UpdateRunTerminal>(resolve => {
         let unsubscribe: () => void = () => undefined
+        let timer: ReturnType<typeof setTimeout> | null = null
+        let settled = false
         const finish = (terminal: UpdateRunTerminal) => {
+          if (settled) return
+          settled = true
+          if (timer !== null) {
+            clearTimeout(timer)
+            timer = null
+          }
           unsubscribe()
           resolve(terminal)
         }
         const read = () => {
-          const state = executionController.getState()
+          const state = controller.getState()
           if (state.trackedRunId !== runId) {
             finish(UNKNOWN_TERMINAL)
             return
           }
           const run = state.trackedRun
-          if (!run || !isTerminalRunState(run.state)) return
-          finish(terminalOf(run))
+          if (run && isTerminalRunState(run.state)) {
+            finish(terminalOf(run))
+            return
+          }
+          // 服务端按 id 查不到该 run 时控制器只标记 identity=unknown，仍保留
+          // trackedRunId 与最后一次快照；不在这里结算就会一直等下去。
+          if (state.identity !== 'tracked') finish(UNKNOWN_TERMINAL)
         }
-        unsubscribe = executionController.subscribe(read)
+        unsubscribe = controller.subscribe(read)
         read()
+        if (!settled) {
+          timer = setTimeout(() => finish(UNKNOWN_TERMINAL), SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS)
+        }
       })
     },
 
     release(runId) {
-      if (executionController.getState().trackedRunId !== runId) return
-      executionController.observeRun(null)
+      if (controller.getState().trackedRunId !== runId) return
+      controller.observeRun(null)
     },
 
     async cancel(runId) {
-      if (executionController.getState().trackedRunId !== runId) return null
-      return executionController.stopTrackedRun()
+      if (controller.getState().trackedRunId !== runId) return null
+      return controller.stopTrackedRun()
     },
   }
 }
