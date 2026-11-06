@@ -599,6 +599,15 @@ describe('execution shutdown coordination', () => {
 
 describe('assembled runtime shutdown', () => {
   it('closes admission synchronously when the runtime starts closing', async () => {
+    // 生命周期按剩余预算切出的份额既是 drain 的预算，也是 watchdog 的时长：
+    // 用墙钟等待时 drain 在内部截止时间后只剩 flushReserveMs 的余量，CI 的
+    // 事件循环停顿会让 watchdog 先触发。这里注入时钟推进 drain，并把首个
+    // settle 轮询当作同步点，让“关闭中”窗口由事件决定，而不是墙钟预算。
+    let clockMs = 0;
+    const settlingCompleted = Promise.withResolvers<void>();
+    const settlingReached = Promise.withResolvers<void>();
+    let settlingBlocked = false;
+
     const runtime = await startLaPlumaServer({
       env: {},
       host: '127.0.0.1',
@@ -614,7 +623,17 @@ describe('assembled runtime shutdown', () => {
         logger: quietLogger,
         settleIntervalMs: 10,
         flushReserveMs: 50,
-        defaultDrainBudgetMs: 1000
+        defaultDrainBudgetMs: 1000,
+        runtime: {
+          now: () => clockMs,
+          sleep: async ms => {
+            clockMs += ms;
+            if (settlingBlocked) return;
+            settlingBlocked = true;
+            settlingReached.resolve();
+            await settlingCompleted.promise;
+          }
+        }
       }
     });
 
@@ -629,6 +648,8 @@ describe('assembled runtime shutdown', () => {
         error => isRecord(error) && error.code === 'AGENT_EXECUTION_SHUTTING_DOWN'
       );
 
+      // drain 停在 settle 轮询上：执行关闭步骤仍在进行，传输层尚未断开。
+      await settlingReached.promise;
       const rejected = await fetch(`http://127.0.0.1:${runtime.port}/api/agent/actions/fight`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -643,6 +664,7 @@ describe('assembled runtime shutdown', () => {
       const current = await fetch(`http://127.0.0.1:${runtime.port}/api/agent/runs/current`);
       assert.equal(current.status, 200);
 
+      settlingCompleted.resolve();
       const summary = await closing;
       const step = summary.steps.find(entry => entry.name === 'execution-shutdown');
       assert.ok(step, 'execution-shutdown step should be part of the close summary');
@@ -650,6 +672,7 @@ describe('assembled runtime shutdown', () => {
       assert.equal(requireRun(run.runId).state, 'interrupted');
       assert.equal(summary.ok, true);
     } finally {
+      settlingCompleted.resolve();
       await runtime.close('cleanup');
     }
   });
