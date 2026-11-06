@@ -729,26 +729,25 @@ describe('schedule flow boundaries', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
     const log = [
-      callback('FightTimes', { times_finished: 0, sanity_cost: 6, series: 2 }),
+      callback('FightTimes', { times_finished: 0, sanity_cost: 6, series: 1 }),
       callback('SanityBeforeStage', { current_sanity: 30, max_sanity: 135 }),
       callback('StageDrops', {
         stage: { stageCode: '1-7' },
         stars: 3,
-        cur_times: 1,
         drops: [{ itemName: '源岩', quantity: 2 }],
         stats: [{ itemName: '源岩', quantity: 2, addQuantity: 2 }]
       }),
-      callback('FightTimes', { times_finished: 1, sanity_cost: 6 }),
+      callback('FightTimes', { times_finished: 1, sanity_cost: 6, series: 1 }),
       callback('StageDrops', {
         stage: { stageCode: '1-7' },
         stars: 3,
-        cur_times: 2,
         drops: [{ itemName: '固源岩', quantity: 1 }],
         stats: [
           { itemName: '源岩', quantity: 2, addQuantity: 0 },
           { itemName: '固源岩', quantity: 1, addQuantity: 1 }
         ]
-      })
+      }),
+      callback('FightTimes', { times_finished: 2, finished: true })
     ].join('\n');
 
     const statistics = parseFightStatistics(log, '1-7');
@@ -761,6 +760,138 @@ describe('schedule flow boundaries', () => {
     assert.deepEqual(statistics.drops, [{ name: '源岩', count: 2 }, { name: '固源岩', count: 1 }]);
     assert.deepEqual(statistics.cumulativeDrops, [{ name: '源岩', count: 2 }, { name: '固源岩', count: 1 }]);
     assert.deepEqual(statistics.observed, { stageDrops: true, fightTimes: true, sanityBeforeStage: true });
+  });
+
+  it('counts a six-run series batch as six battles with the batch sanity cost', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
+      callback('SanityBeforeStage', { current_sanity: 90, max_sanity: 135 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 6,
+        drops: [
+          { itemName: '源岩', quantity: 12 },
+          { itemName: '固源岩', quantity: 3 }
+        ],
+        stats: [
+          { itemName: '源岩', quantity: 12, addQuantity: 12 },
+          { itemName: '固源岩', quantity: 3, addQuantity: 3 }
+        ]
+      }),
+      callback('FightTimes', { times_finished: 6, finished: true })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7');
+    assert.ok(statistics);
+    assert.equal(statistics.stage, '1-7');
+    assert.equal(statistics.battles, 6);
+    assert.equal(statistics.sanity, 36);
+    assert.deepEqual(statistics.drops, [{ name: '源岩', count: 12 }, { name: '固源岩', count: 3 }]);
+    assert.deepEqual(statistics.observed, { stageDrops: true, fightTimes: true, sanityBeforeStage: true });
+  });
+
+  it('sums mixed series batches by actual battle count and per-batch sanity', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 6,
+        drops: [{ itemName: '源岩', quantity: 12 }],
+        stats: [{ itemName: '源岩', quantity: 12, addQuantity: 12 }]
+      }),
+      callback('FightTimes', { times_finished: 6, sanity_cost: 12, series: 2 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 2,
+        drops: [{ itemName: '源岩', quantity: 4 }],
+        stats: [{ itemName: '源岩', quantity: 16, addQuantity: 4 }]
+      }),
+      callback('FightTimes', { times_finished: 8, finished: true })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7');
+    assert.ok(statistics);
+    assert.equal(statistics.battles, 8);
+    assert.equal(statistics.sanity, 48);
+    assert.deepEqual(statistics.drops, [{ name: '源岩', count: 16 }]);
+  });
+
+  it('keeps the batch sanity when a battle screen is not recognized', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 6,
+        drops: [{ itemName: '源岩', quantity: 12 }],
+        stats: [{ itemName: '源岩', quantity: 12, addQuantity: 12 }]
+      }),
+      callback('FightTimes', { times_finished: 6, sanity_cost: 36, series: 6 }),
+      callback('FightTimes', { times_finished: 12, finished: true })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7');
+    assert.ok(statistics);
+    assert.equal(statistics.battles, 12);
+    assert.equal(statistics.sanity, 72);
+  });
+
+  it('leaves sanity unknown when a fought batch has no confirmed sanity cost', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 0 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        drops: [{ itemName: '源岩', quantity: 2 }],
+        stats: [{ itemName: '源岩', quantity: 2, addQuantity: 2 }]
+      }),
+      callback('FightTimes', { times_finished: 1, finished: true })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7');
+    assert.ok(statistics);
+    assert.equal(statistics.battles, 1);
+    assert.equal(statistics.sanity, undefined);
+  });
+
+  it('does not count batches that never fought toward the sanity total', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 6,
+        drops: [],
+        stats: []
+      }),
+      callback('FightTimes', { times_finished: 6, sanity_cost: 36, series: 6 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 6,
+        drops: [],
+        stats: []
+      }),
+      callback('FightTimes', { times_finished: 12, sanity_cost: 36, series: 6 })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7');
+    assert.ok(statistics);
+    assert.equal(statistics.battles, 12);
+    assert.equal(statistics.sanity, 72);
   });
 
   it('records zero-drop stages and uses the observed sanity cost', async () => {
@@ -821,11 +952,80 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.drops.length, 1);
     assert.equal(calls.drops[0].stage, '1-7');
     assert.equal(calls.drops[0].times, 3);
-    assert.equal(calls.drops[0].sanity, 60);
+    assert.equal(calls.drops[0].sanity, undefined);
     assert.deepEqual(calls.drops[0].items, [{ name: '龙门币', count: 252 }]);
     assert.equal(calls.drops[0].medicine, 0);
     assert.equal(calls.drops[0].stone, 0);
     assert.match(calls.drops[0].recordKey || '', /^flow-summary-fallback:\d+:fight-1:1-7:0$/);
+  });
+
+  it('persists the actual battle count and batch sanity for a six-run series', async () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const { ports, calls } = createPorts({
+      readLogSince: async () => [
+        callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
+        callback('SanityBeforeStage', { current_sanity: 90, max_sanity: 135 }),
+        callback('StageDrops', {
+          stage: { stageCode: '1-7' },
+          stars: 3,
+          cur_times: 6,
+          drops: [{ itemName: '源岩', quantity: 12 }],
+          stats: [{ itemName: '源岩', quantity: 12, addQuantity: 12 }]
+        }),
+        callback('FightTimes', { times_finished: 6, finished: true })
+      ].join('\n')
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: '1-7', times: 6, series: 6 }
+      }
+    ], 'flow-series-six'));
+
+    assert.equal(calls.drops.length, 1);
+    assert.equal(calls.drops[0].stage, '1-7');
+    assert.equal(calls.drops[0].times, 6);
+    assert.equal(calls.drops[0].sanity, 36);
+    assert.deepEqual(calls.drops[0].items, [{ name: '源岩', count: 12 }]);
+    assert.equal(calls.drops[0].sanityBefore, 90);
+    assert.equal(calls.drops[0].maxSanity, 135);
+  });
+
+  it('omits sanity from the drop record when no cost is confirmed', async () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const { ports, calls } = createPorts({
+      readLogSince: async () => [
+        callback('FightTimes', { times_finished: 0 }),
+        callback('StageDrops', {
+          stage: { stageCode: '1-7' },
+          stars: 3,
+          drops: [{ itemName: '源岩', quantity: 2 }],
+          stats: [{ itemName: '源岩', quantity: 2, addQuantity: 2 }]
+        }),
+        callback('FightTimes', { times_finished: 1, finished: true })
+      ].join('\n')
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: '1-7', times: 1 }
+      }
+    ], 'flow-sanity-unknown'));
+
+    assert.equal(calls.drops.length, 1);
+    assert.equal(calls.drops[0].times, 1);
+    assert.equal(calls.drops[0].sanity, undefined);
+    assert.deepEqual(calls.drops[0].items, [{ name: '源岩', count: 2 }]);
   });
 
   it('warns instead of silently skipping fight results without drop information', async () => {

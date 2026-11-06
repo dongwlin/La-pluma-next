@@ -39,7 +39,7 @@ export interface DropRecordEntry {
   timestamp: string;
   stage: string;
   times: number;
-  sanity: number;
+  sanity?: number;
   medicine: number;
   stone: number;
   items: DropItem[];
@@ -148,6 +148,7 @@ function parseDropItem(value: unknown): DropItem | null {
 
 /**
  * 单条记录解析。source/mode 是后加字段，旧记录缺失时按默认值补齐；
+ * sanity 可缺失，表示该条消耗未能确认，不补 0 冒充已知值。
  * 其余字段必须存在且类型正确，任何一项不符都让整份记录按损坏处理，
  * 避免按缺省值重算汇总而丢历史数量。
  */
@@ -160,7 +161,7 @@ function parseDropRecordEntry(value: unknown): DropRecordEntry | null {
   const sanity = readNumber(value.sanity);
   const medicine = readNumber(value.medicine);
   const stone = readNumber(value.stone);
-  if (times === null || sanity === null || medicine === null || stone === null) return null;
+  if (times === null || medicine === null || stone === null) return null;
 
   const items: DropItem[] = [];
   for (const rawItem of value.items) {
@@ -176,7 +177,7 @@ function parseDropRecordEntry(value: unknown): DropRecordEntry | null {
     timestamp: value.timestamp,
     stage: value.stage,
     times,
-    sanity,
+    ...(sanity === null ? {} : { sanity }),
     medicine,
     stone,
     items,
@@ -282,7 +283,9 @@ export async function recordDrops(
           timestamp: new Date().toISOString(),
           stage: dropData.stage,
           times: Math.max(0, dropData.times ?? 1),
-          sanity: dropData.sanity || 0,
+          ...(typeof dropData.sanity === 'number' && Number.isFinite(dropData.sanity)
+            ? { sanity: dropData.sanity }
+            : {}),
           medicine: dropData.medicine || 0,
           stone: dropData.stone || 0,
           items: dropData.items || [],
@@ -299,7 +302,7 @@ export async function recordDrops(
 
         record.records.push(newRecord);
 
-        record.summary.totalSanity += newRecord.sanity;
+        record.summary.totalSanity += newRecord.sanity ?? 0;
         record.summary.totalMedicine += newRecord.medicine;
         record.summary.totalStone += newRecord.stone;
         record.summary.totalBattles += newRecord.times;
@@ -540,7 +543,7 @@ function processRecordForStatistics(
     };
   }
   statistics.stages[stageName].battles += record.times;
-  statistics.stages[stageName].sanity += record.sanity;
+  statistics.stages[stageName].sanity += record.sanity ?? 0;
 
   for (const item of record.items) {
     const itemName = item.name;

@@ -298,8 +298,10 @@ function readDropItems(value: unknown): DropItem[] {
 
 /**
  * 将 fight 任务的结构化回调折算为本次执行的实际消耗与掉落。
- * `drops` 是每局增量，`stats` 是任务内累计；只累加增量事件，
- * 累计值单独返回用于核对，避免把同一批掉落重复入账。
+ * MAA 的 `FightTimes.sanity_cost` 是当前连战批次的理智总量，`times_finished`
+ * 按单场累计；消耗只在批次实际打完（出现下一批次计数推进或结算画面）后入账，
+ * 选中但未开打的批次不计。`drops` 是每局增量，`stats` 是任务内累计；
+ * 只累加增量事件，累计值单独返回用于核对，避免把同一批掉落重复入账。
  */
 export function parseFightStatistics(
   logOutput: string | null | undefined,
@@ -309,9 +311,12 @@ export function parseFightStatistics(
   if (events.length === 0) return null;
 
   let stage = '';
-  let battles = 0;
-  let sanityPerBattle: number | null = null;
+  let sanityTotal = 0;
+  let sanityUnknown = false;
   let maxTimesFinished = 0;
+  let stageDropBattles = 0;
+  let pendingBatchSanity: number | null = null;
+  let pendingBatchCounted = true;
   let sanityBeforeStage: number | null = null;
   let maxSanity: number | null = null;
   let cumulativeDrops: DropItem[] = [];
@@ -320,6 +325,16 @@ export function parseFightStatistics(
   let observedSanity = false;
   const incrementalDrops = new Map<string, number>();
 
+  const countPendingBatch = () => {
+    if (pendingBatchCounted) return;
+    pendingBatchCounted = true;
+    if (pendingBatchSanity === null) {
+      sanityUnknown = true;
+      return;
+    }
+    sanityTotal += pendingBatchSanity;
+  };
+
   for (const event of events) {
     const details = getCallbackDetails(event);
     if (!details) continue;
@@ -327,22 +342,29 @@ export function parseFightStatistics(
     if (event.what === 'StageDrops') {
       observedStageDrops = true;
       stage = readStageCode(details) || stage;
-      battles += 1;
+      const curTimes = readFiniteNumber(details.cur_times);
+      stageDropBattles += curTimes !== null && curTimes >= 1 ? curTimes : 1;
       const drops = readDropItems(details.drops);
       for (const item of drops) {
         incrementalDrops.set(item.name, (incrementalDrops.get(item.name) || 0) + item.count);
       }
       const stats = readDropItems(details.stats);
       if (stats.length > 0) cumulativeDrops = stats;
+      countPendingBatch();
       continue;
     }
 
     if (event.what === 'FightTimes') {
       observedFightTimes = true;
-      const cost = readFiniteNumber(details.sanity_cost);
-      if (cost !== null && cost >= 0) sanityPerBattle = cost;
       const finished = readFiniteNumber(details.times_finished);
-      if (finished !== null && finished > maxTimesFinished) maxTimesFinished = finished;
+      if (finished !== null && finished > maxTimesFinished) {
+        countPendingBatch();
+        maxTimesFinished = finished;
+      }
+      if (details.finished === true) continue;
+      const cost = readFiniteNumber(details.sanity_cost);
+      pendingBatchSanity = cost !== null && cost >= 0 ? cost : null;
+      pendingBatchCounted = false;
       continue;
     }
 
@@ -356,7 +378,7 @@ export function parseFightStatistics(
   }
 
   if (!observedStageDrops && !observedFightTimes && !observedSanity) return null;
-  if (battles === 0 && maxTimesFinished > 0) battles = maxTimesFinished;
+  const battles = Math.max(maxTimesFinished, stageDropBattles);
   const resolvedStage = stage || fallbackStage.trim();
   if (!resolvedStage) return null;
 
@@ -364,7 +386,7 @@ export function parseFightStatistics(
   return {
     stage: resolvedStage,
     battles,
-    sanity: sanityPerBattle === null ? 0 : sanityPerBattle * battles,
+    ...(sanityUnknown ? {} : { sanity: sanityTotal }),
     drops,
     cumulativeDrops,
     ...(sanityBeforeStage === null ? {} : { sanityBeforeStage }),
