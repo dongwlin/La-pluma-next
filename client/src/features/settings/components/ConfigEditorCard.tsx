@@ -11,6 +11,8 @@ export interface ConfigEditorCardProps {
   readonly title: string
   readonly feedback: SettingsFeedback | null
   readonly saving: boolean
+  readonly saveDisabled?: boolean
+  readonly saveBlockedReason?: string | null
   readonly onSave: () => void
   readonly onReset: () => void
   readonly children: ReactNode
@@ -21,10 +23,18 @@ export default function ConfigEditorCard({
   title,
   feedback,
   saving,
+  saveDisabled = false,
+  saveBlockedReason = null,
   onSave,
   onReset,
   children,
 }: ConfigEditorCardProps) {
+  const feedbackExplainsFailure = feedback?.type === 'error'
+  const blockedReason = saveBlockedReason && !feedbackExplainsFailure
+    && saveBlockedReason !== feedback?.message
+    ? saveBlockedReason
+    : null
+
   return (
     <Card smoothCorners className="config-editor-card p-0!">
       <CardHeader
@@ -43,6 +53,7 @@ export default function ConfigEditorCard({
             <Button
               onClick={onSave}
               loading={saving}
+              disabled={saveDisabled}
               loadingText="保存中"
               variant="primary"
               size="sm"
@@ -55,6 +66,14 @@ export default function ConfigEditorCard({
       />
       <CardContent>
         <div className="app-stack-card">
+          {blockedReason && (
+            <div
+              className="rounded-lg px-3 py-2.5 text-xs leading-5 status-warning"
+              role="status"
+            >
+              {blockedReason}
+            </div>
+          )}
           {feedback && (
             <div
               className={`rounded-lg px-3 py-2.5 text-xs leading-5 ${

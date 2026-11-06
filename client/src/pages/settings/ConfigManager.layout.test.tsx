@@ -820,7 +820,12 @@ describe('ConfigManager layout surfaces', () => {
 
     const alert = container.querySelector('[role="alert"]')
     expect(alert?.textContent).toContain('连接配置读取失败: 配置不可读')
-    expect(mocks.setMessage).toHaveBeenCalledWith('连接配置读取失败: 配置不可读', 'error')
+    expect(alert?.textContent).toContain('保存已禁用')
+    expect(buttonByText('保存')?.disabled).toBe(true)
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '连接配置读取失败: 配置不可读（保存已禁用，请刷新页面后重试）',
+      'error',
+    )
   })
 
   it('keeps a connection save running across section switches and reports later edits as unsaved', async () => {
