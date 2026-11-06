@@ -101,6 +101,28 @@ curl -X POST http://localhost:3000/api/agent/actions/continue-copilot-set \
   -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
 ```
 
+### 维护更新端点（不在 Agent manifest）
+
+Core/CLI/资源更新由 Web UI 的维护端点发起，同样创建服务端 Run；CLI 或自定义调用方可以使用同一套 API：
+
+```bash
+# 取得执行权、产生维护子进程前返回 202 与 runId
+curl -X POST http://localhost:3000/api/agent/actions/update-core \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: update-core-20260712-01' \
+  -d '{"waitForCompletion":false}'
+
+# 轮询终态与进度；更新进度来自受管维护子进程
+curl 'http://localhost:3000/api/agent/runs/00000000-0000-4000-8000-000000000000'
+
+# 按 runId 停止：终止受管维护子进程，终态为 stopped
+curl -X POST http://localhost:3000/api/agent/actions/stop \
+  -H 'Content-Type: application/json' \
+  -d '{"runId":"00000000-0000-4000-8000-000000000000"}'
+```
+
+`update-cli`（body 可选 `channel`）与 `hot-update-resources` 共用同一响应形状：默认同步返回既有领域字段并新增 `runId`、`run`、`pollUrl`、`stopUrl`；`waitForCompletion=false` 在取得执行权后返回 202。失败保留既有 `AGENT_MAA_UPDATE_CORE_FAILED`、`AGENT_MAA_UPDATE_CLI_FAILED`、`AGENT_MAA_RESOURCE_UPDATE_FAILED` 错误码，并把同一错误模型写入 `run.error`。三类更新与自动化、日常流程共用执行租约，占用时返回 409；`dryRun` 仍只返回计划，不创建 Run。
+
 理智作战按关卡逐条执行：`stages` 中每一项生成一次 `maa-cli fight <stage> [--times <n>]` 调用，共享 `medicine`/`expiringMedicine`/`stone`/`series` 选项；多个关卡不会拼接成逗号分隔的单个参数，含逗号的旧式关卡串仍会拆成逐关调用。整个 Run 由逐关执行结果统一结算，任一关真实失败或收到停止都会阻止后续关卡并写入终态；`waitForCompletion=false` 在首关取得执行权后返回 202，期间 Run 保持 `running`；按目标 `runId` 停止会终止当前关，最终为 `stopped`。同步完成响应与 Run 终态的 `result.stages` 逐关给出 `status`（`success`/`skipped`/`stopped`/`pending`）、`message` 与该关输出，`result.stopped` 表示整个 Run 是否因停止结束。关卡未开放记为 `skipped` 并继续下一关，理智耗尽记为 `skipped` 并跳过所有剩余关卡；活动代号映射（`hd-N`）与关卡开放预检属于日常流程任务，本入口按请求中的关卡代号原样下发。`dryRun` 的 `plan.stages` 列出每一关的完整参数，`plan.args` 保留首关参数以兼容既有读取方。
 
 所有标准响应都包含 `success`、`message` 和 `meta`。真实执行响应还包含稳定的 `runId`、`run`、`pollUrl` 和 `stopUrl`；后台接受执行时返回 HTTP `202`。Dry-run 响应会设置 `meta.dryRun: true`；失败响应的 `error` 包含稳定的 `code`、`details` 与 `retryable`，执行器忙碌时返回 HTTP `409`。API 错误经过统一错误出口：`/api` 下未匹配的路径返回 404 `AGENT_ROUTE_NOT_FOUND`；无法解析的 JSON 请求体返回 400 `AGENT_REQUEST_BODY_INVALID`，超过大小限制返回 413 `AGENT_REQUEST_BODY_TOO_LARGE`，字符集不支持返回 415 `AGENT_REQUEST_CHARSET_UNSUPPORTED`；路径参数解码失败返回 400 `AGENT_REQUEST_PATH_INVALID`；用户配置写接口（`POST /api/agent/config/user/{configType}` 与 `POST /api/agent/notifications/config`）的请求体必须是 JSON 对象，其他顶层类型返回 400 `AGENT_CONFIG_DATA_INVALID`。错误状态限制在 400–599；携带业务状态的错误保留其公开 `code`、`message`、`details` 与 `retryable`，`retryable` 只来自错误本身，不按 5xx 推导；未知内部错误统一返回 500 `AGENT_INTERNAL_ERROR`，不泄露内部 message、details 或堆栈。错误响应与错误日志不回显请求查询串。日常流程的 Agent 入口是 `POST /api/agent/actions/run-daily-flow`；Web UI 另使用未在 manifest 中广告的 `/api/agent/schedules/{scheduleId}/execute`，两者共用 `run_daily_flow`，旧同步响应字段保持不变。Run 状态机与终态、同步与后台接受（202）响应的对应、执行身份、唯一状态来源、停止语义和断线/占用/刷新等边界的完整约定见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
@@ -169,6 +191,31 @@ Core 每轮执行最多启动一项专精训练。本次已经启动训练，或
 `operprogress` 动作的 `details` 逐条保留干员名、职业、培养结果与原因，以及该条的精英阶段、技能等级或专精目标；执行详情按干员展示这些条目，`deferredMastery` 列出没有回调的剩余专精目标，`deferredCount` 为其数量。`Completed` 在精英化与技能等级条目中表示目标已达成，在专精条目中只表示目标等级的专精训练已启动，训练完成仍需游戏内时间，展示时不能当作已完成。`switchtheme` 不产生逐条明细。
 
 培养会读取 Core 汇总，部分培养失败不会仅因 CLI 正常退出而报告成功；缺少完整有效回调时 `observed: false`，仅确认进程已结束，游戏结果仍未确认。事件粒度取决于实际 Core 与资源组合，不能仅凭静态契约确认设备侧可用。
+
+### 动态多任务与 variants
+
+`taskConfig` 仍支持旧的单任务对象；需要按数组顺序执行多个任务时，改为 `{tasks:[...]}`。每项与单任务同形，并可使用 maa-cli 上游的 `strategy` 与 `variants`：
+
+```bash
+curl -X POST http://localhost:3000/api/agent/actions/run-task \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: dynamic-tasks-01' \
+  -d '{"command":"run","args":["daily"],"taskConfig":{"tasks":[
+    {"name":"领取奖励","type":"Award","params":{"award":true}},
+    {"name":"基建换班","type":"Infrast","params":{"mode":10000},"strategy":"merge","variants":[
+      {"condition":{"type":"Time","start":"18:00:00","end":"04:00:00"},"params":{"plan_index":0}},
+      {"condition":{"type":"Weekday","weekdays":["Mon","Thu"]},"params":{"plan_index":1}},
+      {"params":{"plan_index":2}}
+    ]}
+  ]},"waitForCompletion":true}'
+```
+
+- `tasks` 为非空数组，数组顺序即执行顺序。每项必须提供 `name` 与 `type`，`params` 可省略；可选 `strategy` 为 `first`（默认）或 `merge`，`variants` 为上游变体数组。
+- `condition` 是上游 `variants` 项的字段，只能写在 `variants[i].condition`；任务对象或 `tasks` 容器顶层出现 `condition`、未知字段或非法 `strategy` 都会在创建 Run 前返回 400。条件本身由 maa-cli 在每个任务开始时求值，La Pluma Next 只校验结构并透传。
+- 每个任务使用独立临时任务文件执行，但整个数组共享同一执行租约。结果按索引归档到 `run.result.tasks[i]`，字段为 `index`（0 基）、`name`、`type`、`status`（`success`/`failed`/`stopped`/`pending`）、`message`、`stdout`、`stderr`；游戏任务项另带 `actions`。顶层 `run.result.actions` 按顺序汇总所有任务的游戏动作。
+- 部分失败不会吞掉其它任务结果：某个任务失败后仍继续执行后续任务；全部结束后 Run 为 `failed`，错误码 `AGENT_DYNAMIC_TASKS_FAILED`，`error.details.taskIndexes` 给出失败任务索引，`error.details.tasks` 保留完整的逐项结果（已成功、失败与未执行项）。单任务失败仍沿用原有错误码（如 `AGENT_GAME_TASK_FAILED`）与结果字段。
+- 停止以 Run 为目标并保持幂等：正在执行的任务收到设备停止并记为 `stopped`，后续任务不再启动并保持 `pending`；重复停止沿用 Run 层的 `stopping`/终态保护。`waitForCompletion=false` 时任务链在后台继续，202 只表示首个任务已启动，终态仍以 Run 为准。
+- 变体条件全部不匹配的任务不会产生设备动作，maa-cli 正常退出时该项按成功结算。`variants` 与 `strategy` 只作用于动态任务通路，不改变 `fight`、`copilot` 等语义化动作的参数语义。
 
 ## 养成材料筹备队列与任务流程
 

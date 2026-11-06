@@ -1,87 +1,37 @@
 // core 更新、渠道切换、CLI 更新与资源热更新都是显式命令：四条共用一条在途槽位，并发
-// 调用返回 ignored；成功后的跨域失效由 React 适配层发布，命令自己不清缓存；寿命不跟随
-// 页面，Activity 隐藏或重挂载不取消在途命令。
+// 调用返回 ignored；命令提交为服务端 Run 后按 runId 观察终态，停止映射为目标 run 的停止
+// 请求；成功后的跨域失效由 React 适配层发布，命令自己不清缓存；寿命不跟随页面，Activity
+// 隐藏或重挂载不取消在途命令。
 
 import {
   getErrorMessage,
-  isRecord,
   type ApiResponse,
 } from '@/shared/api'
-import type { ResourceScope } from '@/features/resource-invalidation'
 import {
   hotUpdateResources as defaultHotUpdateResources,
   updateMaaCli as defaultUpdateMaaCli,
   updateMaaCore as defaultUpdateMaaCore,
 } from '../api'
+import {
+  failedExecution,
+  initialUpdateState,
+  resolveCoreChannelSwitch,
+  shouldRetryUpdateResources,
+  shouldRetryUpdateResourcesFromDetails,
+  succeededExecution,
+  terminalExecution,
+  type SettingsUpdateState,
+  type UpdateCommandOutcome,
+  type UpdateExecution,
+  type UpdateOperation,
+} from './updateCommandPolicy'
+import {
+  createSettingsUpdateRunPort,
+  type SettingsUpdateRunPort,
+  type UpdateRunTerminal,
+} from './updateRunPort'
 
-export type UpdateOperation = 'core' | 'core-channel' | 'cli' | 'resources'
-
-/**
- * 组件/资源更新成功后受影响的作用域。
- *
- * core 更新与渠道切换在服务端同时同步资源，因此与“仅同步游戏资源”一样发布
- * 目录、材料、计划前提与总览；CLI 更新只改变版本，不发布任何资源失效。
- * 不在这里清空缓存，也不发布未受影响的 `depot`/`operbox` 等识别快照。
- */
-export const SETTINGS_UPDATE_RESOURCE_SCOPES = [
-  'catalog',
-  'materials',
-  'training-plan',
-  'dashboard-snapshot',
-] as const satisfies readonly ResourceScope[]
-
-export interface UpdateFeedback {
-  readonly type: 'success' | 'error'
-  readonly message: string
-  /** core/热更新部分失败后，页面显示“重试资源同步”入口。 */
-  readonly resourceRetry: boolean
-}
-
-export interface SettingsUpdateState {
-  readonly running: UpdateOperation | null
-  readonly feedback: UpdateFeedback | null
-}
-
-export type UpdateCommandStatus = 'succeeded' | 'failed' | 'ignored'
-
-export interface UpdateCommandOutcome {
-  readonly status: UpdateCommandStatus
-  readonly operation: UpdateOperation
-  /** 页内反馈；CLI 更新为 null（迁移前没有页内反馈）。 */
-  readonly feedback: UpdateFeedback | null
-  /** 完成后的全局状态提示；`ignored` 为 null。 */
-  readonly message: string | null
-  /** 只有失败显式指定 error，其余沿用全局状态的消息类型推断。 */
-  readonly messageType: 'error' | null
-  /** 成功更新了游戏资源，适配层需要发布 `catalog`/`materials` 等失效。 */
-  readonly resourcesChanged: boolean
-  /** 组件或资源版本可能变化，适配层需要重取 `settings/version`。 */
-  readonly versionChanged: boolean
-}
-
-export type CoreUpdateVersion = 'beta' | 'stable' | 'alpha'
-
-export interface CoreChannelSwitch {
-  readonly version: CoreUpdateVersion
-  readonly label: 'Beta' | '正式版' | 'Alpha'
-}
-
-export const coreChannelLabel = (version: CoreUpdateVersion): CoreChannelSwitch['label'] => (
-  version === 'beta' ? 'Beta' : version === 'alpha' ? 'Alpha' : '正式版'
-)
-
-/**
- * 根据当前 core 版本决定切换目标：beta/alpha 切回正式版，其余切到 Beta。
- * 版本读取失败（`null`）时沿用迁移前的默认目标 Beta。
- */
-export const resolveCoreChannelSwitch = (
-  currentCore: string | null | undefined,
-): CoreChannelSwitch => {
-  const isBeta = typeof currentCore === 'string'
-    && (currentCore.includes('beta') || currentCore.includes('alpha'))
-  const version: CoreUpdateVersion = isBeta ? 'stable' : 'beta'
-  return { version, label: coreChannelLabel(version) }
-}
+export * from './updateCommandPolicy'
 
 type UpdateRequest = (version?: string) => Promise<ApiResponse>
 type CliUpdateRequest = (channel?: string) => Promise<ApiResponse>
@@ -90,56 +40,24 @@ export interface SettingsUpdateOwnerOptions {
   readonly updateCore?: UpdateRequest
   readonly updateCli?: CliUpdateRequest
   readonly updateResources?: () => Promise<ApiResponse>
-}
-
-interface UpdateExecution {
-  readonly status: 'succeeded' | 'failed'
-  readonly feedback: UpdateFeedback | null
-  readonly message: string
-  readonly messageType: 'error' | null
-  readonly resourcesChanged: boolean
-  readonly versionChanged: boolean
-}
-
-const initialState = (): SettingsUpdateState => ({
-  running: null,
-  feedback: null,
-})
-
-/**
- * core 更新的失败详情可能来自当前信封的 `errorInfo.details`，也可能来自旧
- * 服务端/旧调用的 `error.details`；两种形状都读取，其余忽略。
- */
-export const readUpdateFailureDetails = (
-  result: ApiResponse,
-): Record<string, unknown> => {
-  const infoDetails = result.errorInfo?.details
-  if (isRecord(infoDetails)) return infoDetails
-
-  const legacyError = (result as { error?: unknown }).error
-  if (isRecord(legacyError) && isRecord(legacyError.details)) {
-    return legacyError.details
-  }
-  return {}
-}
-
-export const shouldRetryUpdateResources = (result: ApiResponse): boolean => {
-  const details = readUpdateFailureDetails(result)
-  return details.failedStep === 'resources' || details.coreUpdated === true
+  readonly runPort?: SettingsUpdateRunPort
 }
 
 export class SettingsUpdateOwner {
   private readonly updateCoreRequest: UpdateRequest
   private readonly updateCliRequest: NonNullable<SettingsUpdateOwnerOptions['updateCli']>
   private readonly updateResourcesRequest: NonNullable<SettingsUpdateOwnerOptions['updateResources']>
+  private readonly runPort: SettingsUpdateRunPort
 
-  private state: SettingsUpdateState = initialState()
+  private state: SettingsUpdateState = initialUpdateState()
   private readonly listeners = new Set<() => void>()
+  private activeRunId: string | null = null
 
   constructor(options: SettingsUpdateOwnerOptions = {}) {
     this.updateCoreRequest = options.updateCore ?? (version => defaultUpdateMaaCore(version))
     this.updateCliRequest = options.updateCli ?? (() => defaultUpdateMaaCli())
     this.updateResourcesRequest = options.updateResources ?? (() => defaultHotUpdateResources())
+    this.runPort = options.runPort ?? createSettingsUpdateRunPort()
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -153,28 +71,32 @@ export class SettingsUpdateOwner {
 
   /** 仅用于测试与明确的全局重置；正常页面生命周期不调用。 */
   reset(): void {
-    this.state = initialState()
+    this.activeRunId = null
+    this.state = initialUpdateState()
     this.notify()
   }
 
   /** 普通 core 更新：不传版本，服务端使用 `maa update` 并同步资源。 */
   async updateCore(): Promise<UpdateCommandOutcome> {
     return this.run('core', async () => {
-      const result = await this.updateCoreRequest()
-      if (!result.success) {
-        const message = getErrorMessage(result)
-        return this.failed(message, shouldRetryUpdateResources(result))
+      const { response, terminal } = await this.submitAndWait(
+        'update_core',
+        () => this.updateCoreRequest(),
+      )
+      if (!response.success) {
+        return failedExecution(getErrorMessage(response), shouldRetryUpdateResources(response))
       }
-
-      const message = result.message || 'MaaCore 和资源已更新'
-      return {
-        status: 'succeeded',
-        feedback: { type: 'success', message, resourceRetry: false },
-        message,
-        messageType: null,
-        resourcesChanged: true,
-        versionChanged: true,
+      if (terminal) {
+        const outcome = terminalExecution(terminal, {
+          resourceRetry: shouldRetryUpdateResourcesFromDetails,
+          showFeedback: true,
+        })
+        if (outcome) return outcome
       }
+      const message = terminal
+        ? 'MaaCore 和资源已更新'
+        : (response.message || 'MaaCore 和资源已更新')
+      return succeededExecution(message, true, true)
     })
   }
 
@@ -184,78 +106,120 @@ export class SettingsUpdateOwner {
   ): Promise<UpdateCommandOutcome> {
     const target = resolveCoreChannelSwitch(currentCore)
     return this.run('core-channel', async () => {
-      const result = await this.updateCoreRequest(target.version)
-      if (!result.success) {
-        const message = getErrorMessage(result)
-        return this.failed(message, shouldRetryUpdateResources(result))
+      const { response, terminal } = await this.submitAndWait(
+        'update_core',
+        () => this.updateCoreRequest(target.version),
+      )
+      if (!response.success) {
+        return failedExecution(getErrorMessage(response), shouldRetryUpdateResources(response))
       }
-
       const message = `已切换到 ${target.label} 渠道并同步最新资源`
-      return {
-        status: 'succeeded',
-        feedback: { type: 'success', message, resourceRetry: false },
-        message,
-        messageType: null,
-        resourcesChanged: true,
-        versionChanged: true,
+      if (terminal) {
+        const outcome = terminalExecution(terminal, {
+          resourceRetry: shouldRetryUpdateResourcesFromDetails,
+          showFeedback: true,
+        })
+        if (outcome) return outcome
       }
+      return succeededExecution(message, true, true)
     })
   }
 
   /** CLI 更新只改变版本，不影响游戏资源；channel 缺省时服务端使用持久化渠道。 */
   async updateCli(channel?: string): Promise<UpdateCommandOutcome> {
     return this.run('cli', async () => {
-      const result = await this.updateCliRequest(channel)
-      if (!result.success) {
-        return {
-          status: 'failed',
-          feedback: null,
-          message: `更新失败: ${getErrorMessage(result)}`,
-          messageType: 'error',
-          resourcesChanged: false,
-          versionChanged: false,
-        }
+      const { response, terminal } = await this.submitAndWait(
+        'update_cli',
+        () => this.updateCliRequest(channel),
+      )
+      if (!response.success) {
+        return failedExecution(
+          `更新失败: ${getErrorMessage(response)}`,
+          false,
+          false,
+        )
       }
-
-      return {
-        status: 'succeeded',
-        feedback: null,
-        message: 'MAA CLI 更新成功',
-        messageType: null,
-        resourcesChanged: false,
-        versionChanged: true,
+      if (terminal) {
+        const outcome = terminalExecution(terminal, {
+          resourceRetry: () => false,
+          showFeedback: false,
+        })
+        if (outcome) return outcome
       }
+      return succeededExecution('MAA CLI 更新成功', false, true)
     })
   }
 
   /** 仅同步游戏资源；任何失败都可以直接重试资源同步。 */
   async updateResources(): Promise<UpdateCommandOutcome> {
     return this.run('resources', async () => {
-      const result = await this.updateResourcesRequest()
-      if (!result.success) {
-        return this.failed(getErrorMessage(result), true)
+      const { response, terminal } = await this.submitAndWait(
+        'update_resources',
+        () => this.updateResourcesRequest(),
+      )
+      if (!response.success) {
+        return failedExecution(getErrorMessage(response), true)
       }
-
-      const message = result.message || '资源文件更新成功'
-      return {
-        status: 'succeeded',
-        feedback: { type: 'success', message, resourceRetry: false },
-        message,
-        messageType: null,
-        resourcesChanged: true,
-        versionChanged: true,
+      if (terminal) {
+        const outcome = terminalExecution(terminal, {
+          resourceRetry: () => true,
+          showFeedback: true,
+        })
+        if (outcome) return outcome
       }
+      const message = terminal ? '资源文件更新成功' : (response.message || '资源文件更新成功')
+      return succeededExecution(message, true, true)
     })
   }
 
-  private failed(message: string, resourceRetry: boolean): UpdateExecution {
-    return {
-      status: 'failed',
-      feedback: { type: 'error', message, resourceRetry },
-      message,
-      messageType: 'error',
-      resourcesChanged: false,
-      versionChanged: false,
+  /**
+   * 停止在途更新：只作用于本次命令提交的 run。成功只代表停止意图已记录，
+   * 命令仍要等到 run 终态才结束；失败时恢复可重试状态。
+   */
+  async cancel(): Promise<{ ok: boolean; message: string | null }> {
+    if (this.state.running === null) return { ok: false, message: null }
+    const runId = this.activeRunId
+    if (!runId) {
+      return { ok: false, message: '更新尚未获得执行身份，暂时无法停止' }
+    }
+
+    this.state = { ...this.state, canceling: true }
+    this.notify()
+    try {
+      const result = await this.runPort.cancel(runId)
+      if (result && !result.success) {
+        this.state = { ...this.state, canceling: false }
+        this.notify()
+        return { ok: false, message: getErrorMessage(result) || '停止更新失败' }
+      }
+      return { ok: true, message: null }
+    } catch (error) {
+      this.state = { ...this.state, canceling: false }
+      this.notify()
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : '停止更新失败',
+      }
+    }
+  }
+
+  /** 提交更新并等待终态；没有 runId 的旧同步响应直接作为最终结果。 */
+  private async submitAndWait(
+    operationId: string,
+    request: () => Promise<ApiResponse>,
+  ): Promise<{ response: ApiResponse; terminal: UpdateRunTerminal | null }> {
+    const response = await request()
+    if (!response.success) return { response, terminal: null }
+
+    const runId = this.runPort.adopt(response, operationId)
+    if (!runId) return { response, terminal: null }
+
+    this.activeRunId = runId
+    try {
+      return { response, terminal: await this.runPort.wait(runId) }
+    } finally {
+      this.activeRunId = null
+      this.runPort.release(runId)
     }
   }
 
@@ -279,6 +243,7 @@ export class SettingsUpdateOwner {
     this.state = {
       running: operation,
       feedback: operation === 'cli' ? this.state.feedback : null,
+      canceling: false,
     }
     this.notify()
 
@@ -300,7 +265,7 @@ export class SettingsUpdateOwner {
     }
 
     const feedback = operation === 'cli' ? this.state.feedback : execution.feedback
-    this.state = { running: null, feedback }
+    this.state = { running: null, feedback, canceling: false }
     this.notify()
 
     return {

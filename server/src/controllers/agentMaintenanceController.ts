@@ -1,16 +1,27 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { execMaaCommand, getMaaVersion } from '../services/maaExecutionService.ts';
-import type { MaaCommandOutput } from '../services/maaProcessService.ts';
-import { MAINTENANCE_EXEC_TIMEOUT_MS } from '../services/maaProcessService.ts';
-import type { MaaProcessPorts } from '../services/maaProcessService.ts';
+import { getMaaVersion } from '../services/maaExecutionService.ts';
+import type { MaaProcessLifecycle } from '../services/maaProcessService.ts';
 import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.ts';
 import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
 import { getCurrentActivity } from '../services/maaActivityService.ts';
 import type { MaaActivitySnapshot } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
-import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
-import { buildCliUpdaterPlan, runCliUpdater } from '../services/cliUpdaterService.ts';
+import { getMaaResourceInfo } from '../services/resourceUpdateService.ts';
+import { buildCliUpdaterPlan } from '../services/cliUpdaterService.ts';
+import {
+  CORE_UPDATE_TASK_NAME,
+  CLI_UPDATE_TASK_NAME,
+  RESOURCE_UPDATE_TASK_NAME,
+  runCliUpdate,
+  runCoreUpdate,
+  runResourceUpdate
+} from '../services/updateExecutionService.ts';
+import type {
+  CliUpdateRunResult,
+  CoreUpdateRunResult,
+  ResourceUpdateRunResult
+} from '../services/updateExecutionService.ts';
 import {
   isCliUpdateChannel,
   isCoreUpdateChannel,
@@ -22,8 +33,9 @@ import { parseDepotData, parseOperBoxData } from '../services/dataParserService.
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
 import { getActivityCompletion } from '../services/activityCompletionService.ts';
-import { withMaaExecutionLease } from '../services/executionCoordinatorService.ts';
 import { createOutboundHttpClient } from '../services/outboundRequestService.ts';
+import { executeTrackedAgentAction } from './agentExecutionController.ts';
+import type { ExecutionOutcome, TrackedExecutionLifecycle } from './agentExecutionController.ts';
 import {
   agentError,
   sendSuccess,
@@ -49,6 +61,7 @@ import {
   parseUpdateChannelBody,
   parseUpdateCliBody,
   parseUpdateCoreBody,
+  parseUpdateWaitForCompletion,
   projectCopilotSearchItem,
   projectParadoxCopilot,
   resolveMaintenanceConnection,
@@ -382,8 +395,119 @@ export async function openConfigDirectory(req: MaintenanceRequest, res: ApiRespo
   return sendSuccess(res, req, payload, '配置目录已打开');
 }
 
-export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+function toUpdateProcessLifecycle(lifecycle: TrackedExecutionLifecycle): MaaProcessLifecycle {
+  return {
+    onBeforeStart: () => lifecycle.onBeforeStart?.(),
+    onStarted: () => lifecycle.onStarted?.(),
+    ...(lifecycle.onSettled
+      ? {
+          onSettled: outcome => lifecycle.onSettled?.({
+            ok: outcome.ok,
+            stopped: outcome.stopped,
+            result: outcome.result,
+            error: outcome.error
+          })
+        }
+      : {})
+  };
+}
+
+interface StartTrackedUpdateOptions {
+  label: string;
+  acceptedResult: unknown;
+  lifecycle: TrackedExecutionLifecycle;
+  task: (lifecycle: MaaProcessLifecycle) => Promise<unknown>;
+}
+
+/**
+ * 后台更新：在取得租约并通过 pre-start 门禁后返回接受载荷，实际结果经 Run 的
+ * onSettled 收尾；门禁失败仍同步抛回调用方。更新子进程由 taskStatus 登记，
+ * 停止与关闭流程按同一路径终止。
+ */
+function startTrackedUpdate({
+  label,
+  acceptedResult,
+  lifecycle,
+  task
+}: StartTrackedUpdateOptions): Promise<unknown> {
+  if (typeof lifecycle.onSettled !== 'function') {
+    throw new Error('后台更新需要 onSettled 生命周期');
+  }
+
+  return new Promise((resolve, reject) => {
+    let started = false;
+    let settled = false;
+    const settle = (outcome: ExecutionOutcome): void => {
+      if (settled) return;
+      settled = true;
+      Promise.resolve(lifecycle.onSettled?.(outcome)).catch(error => {
+        logger.error(`${label}终态处理失败`, { error: thrownMessage(error) });
+      });
+    };
+    const updateLifecycle: MaaProcessLifecycle = {
+      onBeforeStart: async () => {
+        await lifecycle.onBeforeStart?.();
+        if (started) return;
+        started = true;
+        lifecycle.onStarted?.();
+        resolve(acceptedResult);
+      }
+    };
+
+    let running: Promise<unknown>;
+    try {
+      running = task(updateLifecycle);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    running.then(result => {
+      if (!started) {
+        reject(new Error(`${label}未能开始`));
+        return;
+      }
+      settle({ ok: true, result });
+    }, error => {
+      if (!started) {
+        reject(error);
+        return;
+      }
+      settle({ ok: false, error });
+    });
+  });
+}
+
+function coreUpdatePayload(
+  plan: MaintenanceUpdateCorePlan,
+  result: CoreUpdateRunResult
+): MaintenanceUpdateCorePayload {
+  return {
+    plan,
+    steps: {
+      core: { success: true, output: result.output },
+      resources: { success: true, output: '' }
+    },
+    runtime: { ...result.runtime, resource: result.resource }
+  };
+}
+
+function cliUpdatePayload(
+  plan: MaintenanceUpdateCliPlan,
+  result: CliUpdateRunResult
+): MaintenanceUpdateCliPayload {
+  return { output: result.output, plan };
+}
+
+function resourceUpdatePayload(
+  plan: MaintenanceHotUpdateResourcesPlan,
+  result: ResourceUpdateRunResult
+): MaintenanceHotUpdateResourcesPayload {
+  return { ...result, plan };
+}
+
+export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const { version, dryRun } = parseUpdateCoreBody(req.body);
+  const waitForCompletion = parseUpdateWaitForCompletion(req.body);
   const channels = await readUpdateChannels();
   const requestedChannel = isCoreUpdateChannel(version) ? version : null;
   const targetChannel = requestedChannel ?? (version === undefined ? channels.core : 'current');
@@ -397,52 +521,33 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
 
   if (dryRun) return sendDryRun(res, req, plan);
 
-  return withMaaExecutionLease({ source: 'core-update', taskName: '更新 MaaCore 与资源', command: 'update' }, async () => {
-    // Core 安装/更新是大包下载：走维护专用长超时，version 等短命令维持默认时限；
-    // 同时登记受管任务名，更新子进程写入 taskStatus，停止请求与关闭流程可识别并终止。
-    const maintenancePorts: MaaProcessPorts = {
-      execFileTimeoutMs: MAINTENANCE_EXEC_TIMEOUT_MS,
-      managedTaskName: '更新 MaaCore 与资源'
-    };
-    let coreResult: MaaCommandOutput;
-    try {
-      coreResult = requestedChannel
-        ? await execMaaCommand('install', [requestedChannel, '--force'], null, null, undefined, undefined, undefined, maintenancePorts)
-        : await execMaaCommand('update', [], null, null, undefined, undefined, undefined, maintenancePorts);
-      if (requestedChannel) {
-        // 切换渠道后持久化到 cli.toml，后续不带 version 的更新继续使用该渠道。
-        await saveUpdateChannel('core', requestedChannel).catch(error => {
-          logger.error('MaaCore 渠道持久化失败', { error: thrownMessage(error), version });
-        });
-      }
-    } catch (error) {
-      logger.error('更新 MaaCore 失败', { error: thrownMessage(error), version });
-      return sendError(res, req, agentError('AGENT_MAA_UPDATE_CORE_FAILED', `MaaCore 更新失败: ${thrownMessage(error)}`, {
-        statusCode: 500,
-        retryable: true,
-        details: { version, failedStep: 'core', coreUpdated: false }
-      }));
-    }
-
-    // maa-cli 的 install/update 自带资源同步；这里只刷新投影，不能再跑一次资源更新。
-    const [runtime, resource] = await Promise.all([
-      getMaaVersion(true),
-      getMaaResourceInfo().catch(resourceInfoFallback)
-    ]);
-    const payload: MaintenanceUpdateCorePayload = {
-      plan,
-      steps: {
-        core: { success: true, output: coreResult.stdout || coreResult.stderr || '' },
-        resources: { success: true, output: '' }
-      },
-      runtime: { ...runtime, resource }
-    };
-    return sendSuccess(res, req, payload, version ? `已切换到 ${String(version)} 渠道并同步最新资源` : 'MaaCore 和资源已更新');
+  return executeTrackedAgentAction(req, res, {
+    operationId: 'update_core',
+    input: { version: version ?? null, targetChannel, waitForCompletion },
+    waitForCompletion,
+    metadata: { taskName: CORE_UPDATE_TASK_NAME, taskType: 'maintenance', targetChannel },
+    execute: lifecycle => {
+      const run = async (updateLifecycle: MaaProcessLifecycle): Promise<MaintenanceUpdateCorePayload> => {
+        const result = await runCoreUpdate({ requestedChannel, version, lifecycle: updateLifecycle });
+        return coreUpdatePayload(plan, result);
+      };
+      if (waitForCompletion) return run(toUpdateProcessLifecycle(lifecycle));
+      return startTrackedUpdate({
+        label: 'MaaCore 更新',
+        acceptedResult: { accepted: true, plan, targetChannel },
+        lifecycle,
+        task: run
+      });
+    },
+    successMessage: version ? `已切换到 ${String(version)} 渠道并同步最新资源` : 'MaaCore 和资源已更新',
+    acceptedMessage: 'MaaCore 更新已接受',
+    stoppedMessage: 'MaaCore 更新已终止'
   });
 }
 
-export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const { channel, dryRun } = parseUpdateCliBody(req.body);
+  const waitForCompletion = parseUpdateWaitForCompletion(req.body);
   const channels = await readUpdateChannels();
   const explicitChannel = isCliUpdateChannel(channel) ? channel : null;
   if (channel !== undefined && explicitChannel === null) {
@@ -474,42 +579,63 @@ export async function updateCli(req: MaintenanceRequest, res: ApiResponseWriter)
       details: { channel: targetChannel, source: updater.source }
     }));
   }
-  return withMaaExecutionLease({ source: 'cli-update', taskName: '更新 MAA CLI', command: 'update-cli' }, async () => {
-    try {
-      const { stdout, stderr } = await runCliUpdater(updater);
-      if (explicitChannel) {
-        // 显式切换后持久化，后续无参更新从 cli.toml 读取同一渠道。
-        await saveUpdateChannel('cli', explicitChannel).catch(error => {
-          logger.error('MAA CLI 渠道持久化失败', { error: thrownMessage(error), channel });
+
+  return executeTrackedAgentAction(req, res, {
+    operationId: 'update_cli',
+    input: { channel: explicitChannel, targetChannel, waitForCompletion },
+    waitForCompletion,
+    metadata: { taskName: CLI_UPDATE_TASK_NAME, taskType: 'maintenance', targetChannel, source: updater.source },
+    execute: lifecycle => {
+      const run = async (updateLifecycle: MaaProcessLifecycle): Promise<MaintenanceUpdateCliPayload> => {
+        const result = await runCliUpdate({
+          updater,
+          channel: targetChannel,
+          explicitChannel,
+          lifecycle: updateLifecycle
         });
-      }
-      const payload: MaintenanceUpdateCliPayload = { output: stdout || stderr, plan };
-      return sendSuccess(res, req, payload, `MAA CLI 更新完成（${updater.channel} 渠道）`);
-    } catch (error) {
-      logger.error('更新 MAA CLI 失败', { error: thrownMessage(error), channel: targetChannel });
-      return sendError(res, req, agentError('AGENT_MAA_UPDATE_CLI_FAILED', `MAA CLI 更新失败: ${thrownMessage(error)}`, {
-        statusCode: 500,
-        retryable: true,
-        details: { channel: targetChannel, source: updater.source }
-      }));
-    }
+        return cliUpdatePayload(plan, result);
+      };
+      if (waitForCompletion) return run(toUpdateProcessLifecycle(lifecycle));
+      return startTrackedUpdate({
+        label: 'MAA CLI 更新',
+        acceptedResult: { accepted: true, plan, channel: targetChannel, source: updater.source },
+        lifecycle,
+        task: run
+      });
+    },
+    successMessage: `MAA CLI 更新完成（${updater.channel} 渠道）`,
+    acceptedMessage: 'MAA CLI 更新已接受',
+    stoppedMessage: 'MAA CLI 更新已终止'
   });
 }
 
-export async function hotUpdateResources(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+export async function hotUpdateResources(req: MaintenanceRequest, res: ApiResponseWriter): Promise<unknown> {
   const plan: MaintenanceHotUpdateResourcesPlan = { action: 'hot-update-resources', command: 'hot-update' };
   if (parseDryRunBody(req.body).dryRun) return sendDryRun(res, req, plan);
-  try {
-    const result = await updateMaaResources();
-    const payload: MaintenanceHotUpdateResourcesPayload = { ...result, plan };
-    return sendSuccess(res, req, payload, '资源文件更新成功');
-  } catch (error) {
-    return sendError(res, req, agentError('AGENT_MAA_RESOURCE_UPDATE_FAILED', `资源同步失败: ${thrownMessage(error)}`, {
-      statusCode: 500,
-      retryable: true,
-      details: { failedStep: 'resources' }
-    }));
-  }
+  const waitForCompletion = parseUpdateWaitForCompletion(req.body);
+
+  return executeTrackedAgentAction(req, res, {
+    operationId: 'update_resources',
+    input: { waitForCompletion },
+    waitForCompletion,
+    metadata: { taskName: RESOURCE_UPDATE_TASK_NAME, taskType: 'maintenance' },
+    execute: lifecycle => {
+      const run = async (updateLifecycle: MaaProcessLifecycle): Promise<MaintenanceHotUpdateResourcesPayload> => {
+        const result = await runResourceUpdate({ lifecycle: updateLifecycle });
+        return resourceUpdatePayload(plan, result);
+      };
+      if (waitForCompletion) return run(toUpdateProcessLifecycle(lifecycle));
+      return startTrackedUpdate({
+        label: '资源更新',
+        acceptedResult: { accepted: true, plan },
+        lifecycle,
+        task: run
+      });
+    },
+    successMessage: '资源文件更新成功',
+    acceptedMessage: '资源更新已接受',
+    stoppedMessage: '资源同步已终止'
+  });
 }
 
 export async function testConnection(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {

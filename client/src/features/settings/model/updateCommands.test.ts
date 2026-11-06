@@ -10,6 +10,7 @@ import {
   resolveCoreChannelSwitch,
   shouldRetryUpdateResources,
 } from './updateCommands'
+import type { SettingsUpdateRunPort, UpdateRunTerminal } from './updateRunPort'
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void
@@ -25,8 +26,16 @@ interface OwnerMocks {
   updateResources: ReturnType<typeof vi.fn<() => Promise<ApiResponse>>>
 }
 
+const createLegacyRunPort = (): SettingsUpdateRunPort => ({
+  adopt: () => null,
+  wait: vi.fn(),
+  release: vi.fn(),
+  cancel: vi.fn(),
+})
+
 const createOwner = (
   responses: Partial<Record<keyof OwnerMocks, Promise<ApiResponse>>> = {},
+  runPort: SettingsUpdateRunPort = createLegacyRunPort(),
 ): { owner: SettingsUpdateOwner; mocks: OwnerMocks } => {
   const mocks: OwnerMocks = {
     updateCore: vi.fn<(version?: string) => Promise<ApiResponse>>()
@@ -45,6 +54,7 @@ const createOwner = (
       updateCore: version => mocks.updateCore(version),
       updateCli: () => mocks.updateCli(),
       updateResources: () => mocks.updateResources(),
+      runPort,
     }),
     mocks,
   }
@@ -102,7 +112,7 @@ describe('core channel policy', () => {
 describe('SettingsUpdateOwner', () => {
   it('starts idle without feedback', () => {
     const { owner } = createOwner()
-    expect(owner.getState()).toEqual({ running: null, feedback: null })
+    expect(owner.getState()).toEqual({ running: null, feedback: null, canceling: false })
   })
 
   it('reports in-progress state and succeeds with resource and version changes', async () => {
@@ -127,6 +137,7 @@ describe('SettingsUpdateOwner', () => {
     expect(owner.getState()).toEqual({
       running: null,
       feedback: { type: 'success', message: 'MaaCore 和资源已更新', resourceRetry: false },
+      canceling: false,
     })
   })
 
@@ -336,6 +347,181 @@ describe('SettingsUpdateOwner', () => {
     expect(owner.getState().feedback).not.toBeNull()
 
     owner.reset()
-    expect(owner.getState()).toEqual({ running: null, feedback: null })
+    expect(owner.getState()).toEqual({ running: null, feedback: null, canceling: false })
+  })
+})
+
+describe('SettingsUpdateOwner run semantics', () => {
+  const terminal = (overrides: Partial<UpdateRunTerminal> = {}): UpdateRunTerminal => ({
+    state: 'succeeded',
+    message: null,
+    errorCode: null,
+    errorDetails: {},
+    ...overrides,
+  })
+
+  const createRunPort = (
+    wait: () => Promise<UpdateRunTerminal>,
+    overrides: Partial<SettingsUpdateRunPort> = {},
+  ): SettingsUpdateRunPort => ({
+    adopt: response => {
+      const data = response.data as { runId?: unknown } | undefined
+      return typeof data?.runId === 'string' ? data.runId : null
+    },
+    wait,
+    release: vi.fn(),
+    cancel: vi.fn(),
+    ...overrides,
+  })
+
+  const submitted = (runId = 'run-core'): Promise<ApiResponse> => Promise.resolve({
+    success: true,
+    message: '更新已接受',
+    data: { runId },
+  })
+
+  it('waits for the submitted run before reporting core update success', async () => {
+    const pendingTerminal = deferred<UpdateRunTerminal>()
+    const released: string[] = []
+    const adopted: string[] = []
+    const runPort = createRunPort(
+      () => pendingTerminal.promise,
+      {
+        adopt: response => {
+          adopted.push('update_core')
+          const data = response.data as { runId?: unknown } | undefined
+          return typeof data?.runId === 'string' ? data.runId : null
+        },
+        release: runId => { released.push(runId) },
+      },
+    )
+    const { owner } = createOwner({ updateCore: submitted('run-core') }, runPort)
+
+    const promise = owner.updateCore()
+    expect(owner.getState().running).toBe('core')
+    pendingTerminal.resolve(terminal())
+    const outcome = await promise
+
+    expect(adopted).toEqual(['update_core'])
+    expect(outcome).toMatchObject({
+      status: 'succeeded',
+      operation: 'core',
+      message: 'MaaCore 和资源已更新',
+      resourcesChanged: true,
+      versionChanged: true,
+    })
+    expect(released).toEqual(['run-core'])
+    expect(owner.getState()).toMatchObject({ running: null, canceling: false })
+  })
+
+  it('maps a failed run to the existing failure feedback and resource retry policy', async () => {
+    const runPort = createRunPort(() => Promise.resolve(terminal({
+      state: 'failed',
+      message: '资源同步失败: 下载超时',
+      errorCode: 'AGENT_MAA_RESOURCE_UPDATE_FAILED',
+      errorDetails: { failedStep: 'resources' },
+    })))
+    const { owner } = createOwner({ updateResources: submitted('run-resources') }, runPort)
+
+    const outcome = await owner.updateResources()
+
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      operation: 'resources',
+      message: '资源同步失败: 下载超时',
+      messageType: 'error',
+      resourcesChanged: false,
+      versionChanged: false,
+    })
+    expect(outcome.feedback).toEqual({
+      type: 'error',
+      message: '资源同步失败: 下载超时',
+      resourceRetry: true,
+    })
+  })
+
+  it('reports a stopped run as a canceled command without publishing invalidation', async () => {
+    const runPort = createRunPort(() => Promise.resolve(terminal({ state: 'stopped' })))
+    const { owner } = createOwner({ updateCore: submitted('run-stopped') }, runPort)
+
+    const outcome = await owner.updateCore()
+
+    expect(outcome).toMatchObject({
+      status: 'canceled',
+      message: '更新已取消',
+      resourcesChanged: false,
+      versionChanged: true,
+    })
+    expect(outcome.feedback).toBeNull()
+  })
+
+  it('treats an interrupted run as unknown rather than success', async () => {
+    const runPort = createRunPort(() => Promise.resolve(terminal({ state: 'interrupted' })))
+    const { owner } = createOwner({ updateResources: submitted('run-interrupted') }, runPort)
+
+    const outcome = await owner.updateResources()
+
+    expect(outcome.status).toBe('failed')
+    expect(outcome.message).toContain('无法确认更新结果')
+    expect(outcome.feedback).toEqual({
+      type: 'error',
+      message: outcome.message,
+      resourceRetry: true,
+    })
+  })
+
+  it('stops the tracked run and keeps the command pending until the terminal state', async () => {
+    const pendingTerminal = deferred<UpdateRunTerminal>()
+    const cancel = vi.fn(() => Promise.resolve({ success: true, data: {} } as ApiResponse))
+    const runPort = createRunPort(() => pendingTerminal.promise, { cancel })
+    const { owner } = createOwner({ updateCli: submitted('run-cli') }, runPort)
+
+    const promise = owner.updateCli()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const canceled = await owner.cancel()
+
+    expect(canceled).toEqual({ ok: true, message: null })
+    expect(cancel).toHaveBeenCalledWith('run-cli')
+    expect(owner.getState().canceling).toBe(true)
+
+    pendingTerminal.resolve(terminal({ state: 'stopped' }))
+    const outcome = await promise
+
+    expect(outcome.status).toBe('canceled')
+    expect(owner.getState()).toMatchObject({ running: null, canceling: false })
+  })
+
+  it('restores the cancelable state when the stop request is rejected', async () => {
+    const pendingTerminal = deferred<UpdateRunTerminal>()
+    const cancel = vi.fn(() => Promise.resolve({
+      success: false,
+      errorInfo: { code: 'AGENT_RUN_NOT_CURRENT', message: '目标 run 不是当前执行' },
+    } as ApiResponse))
+    const runPort = createRunPort(() => pendingTerminal.promise, { cancel })
+    const { owner } = createOwner({ updateCore: submitted('run-busy') }, runPort)
+
+    const promise = owner.updateCore()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    const canceled = await owner.cancel()
+
+    expect(canceled.ok).toBe(false)
+    expect(canceled.message).toContain('目标 run 不是当前执行')
+    expect(owner.getState().canceling).toBe(false)
+
+    pendingTerminal.resolve(terminal())
+    await promise
+  })
+
+  it('refuses to stop a legacy command without a run identity', async () => {
+    const pending = deferred<ApiResponse>()
+    const { owner } = createOwner({ updateCore: pending.promise })
+    const running = owner.updateCore()
+
+    const canceled = await owner.cancel()
+
+    expect(canceled.ok).toBe(false)
+    expect(canceled.message).toContain('尚未获得执行身份')
+    pending.resolve({ success: true })
+    await running
   })
 })

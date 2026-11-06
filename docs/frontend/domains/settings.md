@@ -362,7 +362,8 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 
 | 能力 | 唯一所有者 | 形态 | 不负责 |
 | --- | --- | --- | --- |
-| core 更新 / 渠道切换 / CLI 更新 / 资源热更新 | `features/settings/model/updateCommands.ts` 的 `SettingsUpdateOwner` | 显式 POST 命令；共用一条在途槽位；不进入 Query | 版本读取、跨域失效发布 |
+| core 更新 / 渠道切换 / CLI 更新 / 资源热更新 | `features/settings/model/updateCommands.ts` 的 `SettingsUpdateOwner` | 显式 POST 提交服务端 Run；共用一条在途槽位，按 `runId` 等待终态；不进入 Query | 版本读取、跨域失效发布 |
+| 更新 Run 的观察与停止 | `features/settings/model/updateRunPort.ts` | 采纳 `runId`、等待终态、解除身份、按目标停止；复用 `task-execution` 控制器 | 服务端 Run 身份与状态机 |
 | 更新后的版本同步 | `features/settings/hooks/useSettingsUpdates.ts` 调用 `useSettingsVersion().reload()` | 后者 `invalidateQueries` 同一 `settings/version` | 伪造版本快照 |
 | 更新后的跨域失效 | 同一 hook | 成功确认后推进物品图标 epoch，并按[失效端口](../../architecture/resource-ownership.md)发布（`cause: resource-update`） | 清空 Query 缓存、轮询 |
 | 自动更新策略草稿与完整提交 | `features/settings/model/autoUpdateConfig.ts` 的 `AutoUpdateConfigOwner` | 模块级草稿；保存 = 写 user config + 应用调度 | 定时任务本身的执行 |
@@ -370,6 +371,8 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 | 页面反馈、按钮 loading、反馈渲染 | `components/AutoUpdateConfigPanel.tsx`、`components/ComponentUpdatePanel.tsx` | 只渲染 owner 状态 | 再维护 update/auto-update 草稿 |
 
 四条更新命令与自动更新保存都是**写入**：没有 Query mutation、没有自动重试，也没有 AbortSignal。用户取消页面或 Activity 隐藏只停止观察，不会撤销已提交的写入。
+
+更新命令提交为服务端 Run：`waitForCompletion:false` 在取得执行权后返回 `runId`，命令在 Run 进入终态前保持 `running`；面板可用“停止更新”按该 `runId` 发送停止请求，但停止返回只代表意图已记录，命令仍等待终态。服务端返回没有 `runId` 的旧同步响应时，命令按原语义立即完成，不伪造执行身份。
 
 ### 2. 组件更新命令
 
@@ -387,8 +390,8 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 
 规则：
 
-- 任意一条命令运行期间再次发起（含同一命令）返回 `status: 'ignored'`，不发第二个请求；页面据此禁用全部更新按钮，只让实际运行的按钮显示 loading。
-- 开始运行时清空页内反馈（CLI 更新除外）；失败返回 `failed`，成功返回 `succeeded`。
+- 任意一条命令运行期间再次发起（含同一命令）返回 `status: 'ignored'`，不发第二个请求；页面据此禁用全部更新按钮，只让实际运行的按钮显示 loading，并显示“停止更新”。
+- 开始运行时清空页内反馈（CLI 更新除外）；成功返回 `succeeded`，失败返回 `failed`，被停止返回 `canceled`；Run 中断或记录失效按未知处理，不写成成功。
 - 命令失败不自动重发。core/资源热更新在部分失败时把 `resourceRetry` 置为 true，页面显示“重试资源同步”按钮；该按钮调用资源热更新，仍是用户显式动作。
 - 寿命不跟随页面：Activity 隐藏或页面重挂载不取消在途命令；完成后仍写 owner 状态并更新全局提示。
 
@@ -402,6 +405,8 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 | CLI 成功 | 不产生页内反馈（保留此前的更新反馈） | `MAA CLI 更新成功` | 否 |
 | CLI 失败 | 不产生页内反馈 | `更新失败: <原因>` | 否 |
 | 资源热更新失败（含内层失败、网络失败） | error | 服务端/本地文案 | 是 |
+| 更新被停止 | 无页内反馈 | `更新已取消` | 否；版本仍可能变化，成功后重取 |
+| Run 中断/记录失效 | error（CLI 除外） | `无法确认更新结果...` | 资源热更新为是 |
 | 网络异常 | error（CLI 除外） | `网络错误: <原因>` | 资源热更新为是 |
 
 渠道切换目标由 `resolveCoreChannelSwitch(currentCore)` 决定：版本字符串包含 `beta`/`alpha` 时切到正式版，否则切到 Beta；版本尚未读取时默认 Beta。成功文案使用 `Beta`/`正式版` 标签。
@@ -414,7 +419,7 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 2. **版本失效**：调用 `useSettingsVersion().reload()`，其内部 `queryClient.invalidateQueries({ queryKey: settingsKeys.query('version') })`。页面可见时立即重取；Activity 隐藏时 Query 没有观察者，失效标记保留，恢复显示后按 `refetchOnMount` 重新读取，不会被默认新鲜期挡住。
 3. **资源失效**：core 更新、渠道切换与资源热更新按[共享资源归属与失效端口](../../architecture/resource-ownership.md)发布，`cause: 'resource-update'`。CLI 更新只改变 CLI 版本，不发布资源失效，也不推进图标 epoch。
 
-完成提示（成功或失败）在命令 HTTP 返回后立即发出，资源失效与版本重取随后执行；按钮在命令返回时恢复可点，早于版本重取结束（迁移前的 loading 会覆盖到版本重取完成）。因此用户立即发起第二条命令时，其开始提示不会被第一条的成功提示覆盖。
+完成提示（成功、失败或取消）在 Run 进入终态后立即发出，资源失效与版本重取随后执行；按钮在命令结束（Run 终态）时恢复可点，早于版本重取结束。停止请求本身不产生完成提示，只切换停止按钮与全局提示。因此用户立即发起第二条命令时，其开始提示不会被第一条的成功提示覆盖。
 
 图标 epoch 由本客户端发起的手动更新推进；服务端定时自动更新或其他客户端触发的资源变化不会主动通知本标签页，需等待浏览器缓存过期或本客户端下一次手动更新。干员头像仍是各页面直接构造的独立 URL，不在该机制内。
 
@@ -461,17 +466,19 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 | 页面原职责 | 新归属 |
 | --- | --- |
 | `updating` / `hotUpdating` / `updateInFlightRef` | `SettingsUpdateOwner.running` |
+| 更新 Run 身份、终态等待与目标停止 | `model/updateRunPort.ts` + `SettingsUpdateOwner` |
+| 停止按钮与停止中文案 | `ComponentUpdatePanel` 订阅 `canceling` 并调用 `cancelUpdate()` |
 | `updateFeedback` 与资源重试条件 | `SettingsUpdateOwner.feedback` |
 | core/渠道/CLI/资源命令与开始/结束提示 | `useSettingsUpdates()` |
 | 更新成功后的版本重取 | `useSettingsUpdates()` 调用 `useSettingsVersion().reload()`（`invalidateQueries`） |
 | 自动更新 `autoUpdate`/`dirty`/`saving`/`feedback`、touched/revision、本地回退、保存 + 调度 | `AutoUpdateConfigOwner` + `useSettingsAutoUpdate()` |
 | 自动更新页内/全局提示 | owner 反馈；hook 转发到全局状态 |
 
-按钮语义保持不变：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。默认渲染结构、DOM、CSS 与文案未改变。
+按钮语义：core/资源按钮显示各自 loading，切换渠道按钮只禁用不 loading，CLI 按钮显示自己的 loading；全部更新按钮在任意命令运行期间禁用。命令运行期间额外渲染一个“停止更新”按钮（`canceling` 时显示停止中），其余默认渲染结构、DOM、CSS 与文案未改变。
 
 ### 6. 兼容与维护约束
 
-- 端点、请求体、响应体未改变；未修改服务端。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
+- 端点未改变；更新命令请求体新增 `waitForCompletion:false`，响应新增 `runId`/`run`/`pollUrl`/`stopUrl`，同时保留既有领域字段。update-core 仍在不传版本时使用 `maa update`，切渠道传 `beta`/`stable`；auto-update 仍先写 user config 再 POST `configure-auto-update`。
 - localStorage 键 `autoUpdateConfig` 的写入时机与内容不变（成功加载、每次编辑、保存成功）；新增 `laPlumaItemIconVersion`，只保存物品图标缓存 epoch，不保存业务配置。
 - 无 Query key 新增；版本继续复用 `settings/version`；物品图标仍不进入 Query。
 - 组件更新的图标缓存、版本同步与反馈时机见[成功后的版本与资源失效](#3-成功后的版本与资源失效)；自动更新草稿的读取、重挂载与保存裁决见[自动更新策略](#4-自动更新策略)。命令重试与生命周期以本专题第 2 节为准，Query 默认策略见[Query 缓存与键规范](../../architecture/query-cache.md)。
@@ -486,7 +493,7 @@ section 只控制渲染哪个面板：`ConnectionConfigPanel` 在所有 section 
 
 - connection 草稿裁决：初始读取与 refresh 不覆盖未保存编辑，保存期间编辑返回 `superseded`，重置推进 revision 且保存中忽略。
 - 设备命令：取消跟随页面/Activity 而不是 section，查找与测试 loading 互不影响，测试期间编辑标记 `test.superseded`，选择回填保留未知字段与最新编辑。
-- 更新互斥与失效：单槽位重复发起返回 `ignored`，core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新保存 = 写 user config + 应用调度，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
+- 更新互斥与失效：单槽位重复发起返回 `ignored`，命令等待 Run 终态后才完成，停止只作用于本次 `runId`；core/热更新发布资源失效并推进图标 epoch，CLI 只重取版本；自动更新保存 = 写 user config + 应用调度，跨 Activity 隐藏继续完成，迟到读取不覆盖编辑。
 - 目录缓存与订阅隔离：只读 section 头部只复用目录缓存不重取；设备/更新/版本状态与全局消息不重渲染连接表单。
 
 视觉基线只覆盖默认 connection 页面，resource/instance 只读态不在截图内。仓库内保留只读文案/入口、目录失败切换与 section 切换的行为回归；完整只读标记结构仍依赖代码审阅。

@@ -18,6 +18,16 @@ import { resolveBoundedInteger } from '../utils/numericQueryHelper.ts';
 const ACTIVE_RUN_STATES = new Set<AgentRunStatus>(['accepted', 'waiting', 'running', 'stopping']);
 
 /**
+ * 更新 Run 的进度标签：进程投影只来自 taskStatus（受管更新子进程），
+ * 未启动时显示固定标签，避免把“进程 idle”误读成更新完成。
+ */
+const UPDATE_PROGRESS_LABELS: Readonly<Record<string, string>> = {
+  update_core: 'MaaCore 更新',
+  update_cli: 'MAA CLI 更新',
+  update_resources: '资源同步'
+};
+
+/**
  * 快照里的进程/流程进度投影：只描述当前拥有或等待执行权的那次执行，
  * 不是 Run 状态，也不能替代作业集会话进度。
  */
@@ -161,6 +171,22 @@ export function enrichAgentRun(run: AgentRunDto | null): AgentRunSnapshotEntry |
         totalSteps: null,
         currentTask: null,
         message: run.state === 'waiting' ? '等待开始下一关' : '等待作业集状态'
+      }
+    };
+  }
+  const updateLabel = UPDATE_PROGRESS_LABELS[run.operationId];
+  if (updateLabel) {
+    return {
+      ...run,
+      progress: {
+        currentStep: null,
+        totalSteps: null,
+        currentTask: task.taskName || updateLabel,
+        message: run.state === 'accepted'
+          ? '等待执行权'
+          : task.stopRequested
+            ? '正在终止更新'
+            : task.isRunning ? `${updateLabel}进行中` : '更新执行中'
       }
     };
   }

@@ -12,6 +12,9 @@ import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.ts';
 import { updateJsonFile, writeJsonFile } from '../utils/fileHelper.ts';
+import { createLogger } from '../utils/logger.ts';
+
+const logger = createLogger('CopilotPlan');
 
 const dataDir = fileURLToPath(new URL('../../data/', import.meta.url));
 // 作业进度是共享 JSON 状态：读改写经进度存储按路径排队执行；
@@ -115,6 +118,7 @@ export function resetCopilotPlanCachesForTests(): void {
   installedTasksCache.clear();
   fileLoadPollMsOverride = null;
   pathPlatformOverride = null;
+  nativeDelegationOverride = null;
 }
 
 export type CopilotRaidMode = 'normal' | 'raid';
@@ -251,6 +255,31 @@ export interface CopilotExecutionSummary {
   taskResults: CopilotTaskResult[];
 }
 
+/**
+ * 原生委托未启用的原因。原生 Copilot 命令只表达整组统一参数，以下情形一旦
+ * 放行就会改变 MaaCore 实际收到的任务参数。
+ */
+export type CopilotDelegationReason =
+  | 'disabled'
+  | 'no-entries'
+  | 'single-entry'
+  | 'preset-formation'
+  | 'mixed-raid-mode'
+  | 'formation-disabled'
+  | 'loop-times'
+  | 'user-additional'
+  | 'duplicate-copilot'
+  | 'unsupported-options'
+  | 'stage-name-mismatch';
+
+/** 一次执行的委托报告；用于区分「原生失败已回退」与「整体失败」。 */
+export interface CopilotDelegationReport {
+  attempted: boolean;
+  reason?: CopilotDelegationReason;
+  fallback?: boolean;
+  nativeError?: string;
+}
+
 /** 一次作业集执行的返回数据；错误以数据返回，由调用方决定是否视为失败。 */
 export interface CopilotEntriesOutcome {
   success: boolean;
@@ -261,6 +290,7 @@ export interface CopilotEntriesOutcome {
   pending: CopilotPlanEntry[];
   loopTimes: number;
   summary: CopilotExecutionSummary;
+  delegation?: CopilotDelegationReport;
 }
 
 /** 执行生命周期钩子：调用方负责 Run 状态，本服务只在对应时机回调。 */
@@ -718,13 +748,15 @@ function observeCopilotFileLoads({
   executionItems,
   alreadyStartedKeys,
   onEntryStarted,
-  onEntrySettled
+  onEntrySettled,
+  resolveItemIndex
 }: {
   checkpoint: MaaLogCheckpoint | null;
   executionItems: readonly CopilotExecutionItem<CopilotPlanEntry>[];
   alreadyStartedKeys: readonly string[];
   onEntryStarted?: CopilotExecutionLifecycle['onEntryStarted'];
   onEntrySettled?: CopilotExecutionLifecycle['onEntrySettled'];
+  resolveItemIndex?: (file: string) => number;
 }): () => void {
   if (!onEntryStarted && !onEntrySettled) return () => {};
 
@@ -748,7 +780,9 @@ function observeCopilotFileLoads({
       for (const file of extractLoadedCopilotFiles(logText)) {
         if (!observing || processedFiles.has(file)) continue;
         processedFiles.add(file);
-        const itemIndex = findCopilotExecutionItemIndex(executionItems, file);
+        const itemIndex = resolveItemIndex
+          ? resolveItemIndex(file)
+          : findCopilotExecutionItemIndex(executionItems, file);
         if (itemIndex < 0) continue;
         for (const [key, lastIndex] of entryLastIndexes) {
           if (lastIndex >= itemIndex || settledKeys.has(key)) continue;
@@ -872,7 +906,8 @@ function buildCopilotEntryOutcome({
   results,
   loopTimes,
   stopped,
-  error
+  error,
+  delegation
 }: {
   entries: readonly CopilotPlanEntry[];
   statusByKey: ReadonlyMap<string, CopilotEntrySettlementState>;
@@ -881,6 +916,7 @@ function buildCopilotEntryOutcome({
   loopTimes: number;
   stopped: boolean;
   error: unknown;
+  delegation?: CopilotDelegationReport;
 }): CopilotEntriesOutcome {
   const taskResults: CopilotTaskResult[] = entries.map(entry => {
     const settled: CopilotEntrySettlementState = statusByKey.get(entry.key) || { status: 'pending' };
@@ -916,7 +952,8 @@ function buildCopilotEntryOutcome({
     completed: [...completed],
     pending: entries.filter(entry => !completed.has(entry.key)),
     loopTimes,
-    summary
+    summary,
+    ...(delegation ? { delegation } : {})
   };
 }
 
@@ -1000,6 +1037,229 @@ async function runCopilotGroup({
   }
 }
 
+let nativeDelegationOverride: boolean | null = null;
+
+/** 测试注入：强制开关原生委托；生产代码不调用。 */
+export function setCopilotNativeDelegationForTests(enabled: boolean | null): void {
+  nativeDelegationOverride = enabled;
+}
+
+/**
+ * 读取本地资源中每个关卡 id 的展示代号（`Arknights-Tile-Pos` 的 `code`）。
+ *
+ * 原生命令与 MaaCore 都按这份代号生成导航关卡名，现有流程则把计划里的
+ * `displayStage` 作为 `nav_name_override` 下发；只有两者相同才能保证导航到
+ * 同一关卡。这里只读本地资源，缺失返回空映射。
+ */
+async function loadNativeStageCodes(stageIds: readonly string[]): Promise<Map<string, string>> {
+  const codes = new Map<string, string>();
+  let resourceDir: string;
+  let catalog: StageCatalog;
+  try {
+    resourceDir = await getMaaResourceDir();
+    if (!resourceDir) return codes;
+    catalog = await loadStageCatalog(resourceDir);
+  } catch {
+    return codes;
+  }
+  const tileDir = join(resourceDir, 'Arknights-Tile-Pos');
+  await Promise.all([...new Set(stageIds)].map(async stageId => {
+    const filename = catalog.filenames.find(name =>
+      name.endsWith('.json') && (name.startsWith(`${stageId}-`) || name.startsWith(`${stageId}#`))
+    );
+    if (!filename) return;
+    try {
+      const metadata: unknown = JSON.parse(await readFile(join(tileDir, filename), 'utf8'));
+      const code = readOptionalStringField(metadata, 'code');
+      if (code) codes.set(stageId, code);
+    } catch {}
+  }));
+  return codes;
+}
+
+export interface CopilotNativeDelegationInput {
+  entries: readonly CopilotPlanEntry[];
+  options?: CopilotExecutionOptions;
+}
+
+export type CopilotNativeDelegationDecision =
+  | { eligible: true }
+  | { eligible: false; reason: CopilotDelegationReason };
+
+function hasRepresentableNumericOptions(options: CopilotExecutionOptions): boolean {
+  const formationIndex = Number(options.formationIndex || 0);
+  const supportUsage = Number(options.supportUsage || 0);
+  return Number.isInteger(formationIndex) && formationIndex >= 0
+    && Number.isInteger(supportUsage) && supportUsage >= 0;
+}
+
+/**
+ * 判定整组条目能否交给原生 `maa copilot` 执行。
+ *
+ * 原生命令按 uri 顺序生成一份 `copilot_list`：每条目一份计划文件、统一
+ * `--raid`、多条目时强制编队、列表模式忽略 `loop_times`，且没有
+ * `user_additional` 与 `nav_name_override` 入口。只有这些差异都不影响实际
+ * 下发给 MaaCore 的任务参数时才委托，否则回到现有流程。
+ */
+export async function evaluateCopilotNativeDelegation({
+  entries,
+  options = {}
+}: CopilotNativeDelegationInput): Promise<CopilotNativeDelegationDecision> {
+  if (nativeDelegationOverride === false) return { eligible: false, reason: 'disabled' };
+  if (entries.length === 0) return { eligible: false, reason: 'no-entries' };
+  if (entries.length < 2) return { eligible: false, reason: 'single-entry' };
+  if (entries.some(entry => entry.presetFormation)) {
+    return { eligible: false, reason: 'preset-formation' };
+  }
+  if (new Set(entries.map(entry => entry.mode)).size !== 1) {
+    return { eligible: false, reason: 'mixed-raid-mode' };
+  }
+  if (options.formationMode === 'off') return { eligible: false, reason: 'formation-disabled' };
+  if (normalizeCopilotLoopTimes(options.loopTimes) !== 1) {
+    return { eligible: false, reason: 'loop-times' };
+  }
+  if (normalizeUserAdditional(options.userAdditional).length > 0) {
+    return { eligible: false, reason: 'user-additional' };
+  }
+  if (!hasRepresentableNumericOptions(options)) {
+    return { eligible: false, reason: 'unsupported-options' };
+  }
+  const copilotIds = entries.map(entry => Number(entry.copilotId));
+  if (new Set(copilotIds).size !== copilotIds.length) {
+    return { eligible: false, reason: 'duplicate-copilot' };
+  }
+  const stageCodes = await loadNativeStageCodes(entries.map(entry => entry.stageId));
+  if (!entries.every(entry => stageCodes.get(entry.stageId) === entry.displayStage)) {
+    return { eligible: false, reason: 'stage-name-mismatch' };
+  }
+  return { eligible: true };
+}
+
+function buildNativeCopilotCommandArgs(
+  entries: readonly CopilotPlanEntry[],
+  options: CopilotExecutionOptions
+): string[] {
+  const args = [
+    ...entries.map(entry => `prts://${Number(entry.copilotId)}`),
+    '--raid',
+    entries[0]?.mode === 'raid' ? 'raid' : 'normal',
+    '--formation'
+  ];
+  if (options.ignoreRequirements !== false) args.push('--ignore-requirements');
+  if (options.useSanityPotion === true) args.push('--use-sanity-potion');
+  if (options.addTrust === true) args.push('--add-trust');
+  const formationIndex = Number(options.formationIndex || 0);
+  if (formationIndex > 0) args.push('--formation-index', String(formationIndex));
+  const supportUsage = Number(options.supportUsage || 0);
+  if (supportUsage > 0) args.push('--support-unit-usage', String(supportUsage));
+  const supportName = String(options.supportName || '');
+  if (supportName) args.push('--support-unit-name', supportName);
+  if (options.userResource === true) args.push('--user-resource');
+  args.push('--batch');
+  return args;
+}
+
+/**
+ * 原生命令把每个 copilot 下载到缓存目录的 `<id>.json`，日志里的
+ * `file_name` 因此按 copilot id 而不是计划文件路径映射回条目。
+ */
+function findNativeCopilotItemIndex(
+  executionItems: readonly { entry: CopilotPlanEntry }[],
+  file: string
+): number {
+  const name = String(file || '').replace(/\\/g, '/').split('/').pop() || '';
+  const match = name.match(/^(\d+)\.json$/i);
+  if (!match) return -1;
+  const copilotId = Number(match[1]);
+  return executionItems.findIndex(item => Number(item.entry.copilotId) === copilotId);
+}
+
+interface NativeCopilotGroupOutcome extends CopilotGroupOutcome {
+  observedLoads: number;
+  checkpointReady: boolean;
+}
+
+async function runNativeCopilotGroup({
+  group,
+  options,
+  name,
+  lifecycle
+}: {
+  group: CopilotExecutionGroup<CopilotPlanEntry>;
+  options: CopilotExecutionOptions;
+  name: string;
+  lifecycle: CopilotExecutionLifecycle;
+}): Promise<NativeCopilotGroupOutcome> {
+  const checkpoint = await createMaaLogCheckpoint();
+  const executionItems = group.entries.map(entry => ({
+    entry,
+    filename: `${Number(entry.copilotId)}.json`,
+    repeat: 1
+  }));
+  const resolveItemIndex = (file: string): number => findNativeCopilotItemIndex(executionItems, file);
+  try {
+    lifecycle.onEntryStarted?.(group.entries[0], [group.entries[0]]);
+    const stopObserving = observeCopilotFileLoads({
+      checkpoint,
+      executionItems,
+      alreadyStartedKeys: [group.entries[0].key],
+      onEntryStarted: lifecycle.onEntryStarted,
+      onEntrySettled: lifecycle.onEntrySettled,
+      resolveItemIndex
+    });
+    try {
+      await execMaaCommand(
+        'copilot',
+        buildNativeCopilotCommandArgs(group.entries, options),
+        `作业集 ${name}`,
+        'copilot',
+        true
+      );
+    } finally {
+      stopObserving();
+    }
+    return {
+      statuses: group.entries.map(entry => ({ entry, status: 'success' })),
+      error: null,
+      stopped: false,
+      observedLoads: 0,
+      checkpointReady: checkpoint !== null
+    };
+  } catch (error) {
+    const logText = await readMaaLogSince(checkpoint).catch(() => '');
+    const loadedFiles = extractLoadedCopilotFiles(logText);
+    const currentIndex = resolveItemIndex(loadedFiles.at(-1) || '');
+    const wasStopped = Boolean(readBooleanField(error, 'stopped')) || Boolean(await lifecycle.shouldStop?.());
+    const statuses = classifyCopilotEntryOutcomes({
+      entries: group.entries,
+      executionItems,
+      currentIndex,
+      stopped: wasStopped,
+      message: errorMessageOf(error) || '作业集执行失败'
+    });
+    return {
+      statuses,
+      error: wasStopped ? null : error,
+      stopped: wasStopped,
+      observedLoads: loadedFiles.length,
+      checkpointReady: checkpoint !== null
+    };
+  }
+}
+
+/**
+ * 计划文件加载发生在跳转关卡与开始战斗之前：原生失败时没有任何加载事件，说明
+ * 原生执行没有进入关卡，回退不会重复消耗理智或重复结算关卡（游戏启动、编队等
+ * 前置步骤可能已经执行）。检查点或日志不可读时无法确认，保守地不回退。
+ */
+function canFallbackToExistingFlow(outcome: NativeCopilotGroupOutcome): boolean {
+  return Boolean(outcome.error)
+    && !outcome.stopped
+    && outcome.checkpointReady
+    && outcome.observedLoads === 0
+    && outcome.statuses.every(settled => settled.status !== 'success');
+}
+
 /** 执行作业集条目的输入；调用方拥有 Run，本函数只取设备租约。 */
 export interface ExecuteCopilotEntriesInput {
   setId: string | number;
@@ -1034,6 +1294,7 @@ export async function executeCopilotEntries({
   const results: CopilotExecutionResult[] = [];
   let stopped = false;
   let failure: unknown = null;
+  let delegation: CopilotDelegationReport | undefined;
 
   if (normalizedEntries.length === 0) {
     return buildCopilotEntryOutcome({
@@ -1058,22 +1319,48 @@ export async function executeCopilotEntries({
     const planDir = join(configDir, 'copilot-plans', String(setId));
     await mkdir(planDir, { recursive: true });
 
-    for (const group of groupEntries(normalizedEntries)) {
+    const decision = await evaluateCopilotNativeDelegation({ entries: normalizedEntries, options });
+    if (!decision.eligible) logger.debug('作业集未启用原生委托', { setId, reason: decision.reason });
+
+    const runExistingGroup = (group: CopilotExecutionGroup<CopilotPlanEntry>) => runCopilotGroup({
+      group,
+      configDir,
+      planDir,
+      loopTimes,
+      options,
+      name,
+      taskPrefix,
+      lifecycle
+    });
+
+    const groups = groupEntries(normalizedEntries);
+    for (const [groupIndex, group] of groups.entries()) {
       if (await lifecycle.shouldStop?.()) {
         stopped = true;
         break;
       }
 
-      const groupOutcome = await runCopilotGroup({
-        group,
-        configDir,
-        planDir,
-        loopTimes,
-        options,
-        name,
-        taskPrefix,
-        lifecycle
-      });
+      let groupOutcome: CopilotGroupOutcome;
+      if (groupIndex === 0 && groups.length === 1 && decision.eligible) {
+        const nativeOutcome = await runNativeCopilotGroup({ group, options, name, lifecycle });
+        if (canFallbackToExistingFlow(nativeOutcome)) {
+          logger.warn('原生作业集执行失败，回退到现有流程', {
+            setId,
+            error: errorMessageOf(nativeOutcome.error)
+          });
+          delegation = {
+            attempted: true,
+            fallback: true,
+            nativeError: errorMessageOf(nativeOutcome.error) || '原生作业集执行失败'
+          };
+          groupOutcome = await runExistingGroup(group);
+        } else {
+          delegation = { attempted: true, fallback: false };
+          groupOutcome = nativeOutcome;
+        }
+      } else {
+        groupOutcome = await runExistingGroup(group);
+      }
       groupOutcome.statuses.forEach(settled => {
         statusByKey.set(settled.entry.key, { status: settled.status, error: settled.error });
         lifecycle.onEntrySettled?.(settled.entry, settled.status, settled.error);
@@ -1122,7 +1409,8 @@ export async function executeCopilotEntries({
     results,
     loopTimes,
     stopped,
-    error: failure
+    error: failure,
+    delegation
   });
 }
 

@@ -1,0 +1,176 @@
+// 更新命令的契约与纯策略：操作类型、跨域失效作用域、core 渠道目标与失败详情读取。
+// 命令状态机在 updateCommands.ts，二者分开是为了让模型文件保持单一职责。
+
+import {
+  isRecord,
+  type ApiResponse,
+} from '@/shared/api'
+import type { ResourceScope } from '@/features/resource-invalidation'
+import type { UpdateRunTerminal } from './updateRunPort'
+
+export type UpdateOperation = 'core' | 'core-channel' | 'cli' | 'resources'
+
+/**
+ * 组件/资源更新成功后受影响的作用域。
+ *
+ * core 更新与渠道切换在服务端同时同步资源，因此与“仅同步游戏资源”一样发布
+ * 目录、材料、计划前提与总览；CLI 更新只改变版本，不发布任何资源失效。
+ * 不在这里清空缓存，也不发布未受影响的 `depot`/`operbox` 等识别快照。
+ */
+export const SETTINGS_UPDATE_RESOURCE_SCOPES = [
+  'catalog',
+  'materials',
+  'training-plan',
+  'dashboard-snapshot',
+] as const satisfies readonly ResourceScope[]
+
+export interface UpdateFeedback {
+  readonly type: 'success' | 'error'
+  readonly message: string
+  /** core/热更新部分失败后，页面显示“重试资源同步”入口。 */
+  readonly resourceRetry: boolean
+}
+
+export interface SettingsUpdateState {
+  readonly running: UpdateOperation | null
+  readonly feedback: UpdateFeedback | null
+  /** 已提交停止请求，等待目标 run 进入终态。 */
+  readonly canceling: boolean
+}
+
+export type UpdateCommandStatus = 'succeeded' | 'failed' | 'canceled' | 'ignored'
+
+export interface UpdateCommandOutcome {
+  readonly status: UpdateCommandStatus
+  readonly operation: UpdateOperation
+  /** 页内反馈；CLI 更新为 null（迁移前没有页内反馈）。 */
+  readonly feedback: UpdateFeedback | null
+  /** 完成后的全局状态提示；`ignored` 为 null。 */
+  readonly message: string | null
+  /** 只有失败显式指定 error，其余沿用全局状态的消息类型推断。 */
+  readonly messageType: 'error' | null
+  /** 成功更新了游戏资源，适配层需要发布 `catalog`/`materials` 等失效。 */
+  readonly resourcesChanged: boolean
+  /** 组件或资源版本可能变化，适配层需要重取 `settings/version`。 */
+  readonly versionChanged: boolean
+}
+
+export type CoreUpdateVersion = 'beta' | 'stable' | 'alpha'
+
+export interface CoreChannelSwitch {
+  readonly version: CoreUpdateVersion
+  readonly label: 'Beta' | '正式版' | 'Alpha'
+}
+
+export const coreChannelLabel = (version: CoreUpdateVersion): CoreChannelSwitch['label'] => (
+  version === 'beta' ? 'Beta' : version === 'alpha' ? 'Alpha' : '正式版'
+)
+
+/**
+ * 根据当前 core 版本决定切换目标：beta/alpha 切回正式版，其余切到 Beta。
+ * 版本读取失败（`null`）时沿用迁移前的默认目标 Beta。
+ */
+export const resolveCoreChannelSwitch = (
+  currentCore: string | null | undefined,
+): CoreChannelSwitch => {
+  const isBeta = typeof currentCore === 'string'
+    && (currentCore.includes('beta') || currentCore.includes('alpha'))
+  const version: CoreUpdateVersion = isBeta ? 'stable' : 'beta'
+  return { version, label: coreChannelLabel(version) }
+}
+
+export const readUpdateFailureDetails = (
+  result: ApiResponse,
+): Record<string, unknown> => {
+  const infoDetails = result.errorInfo?.details
+  if (isRecord(infoDetails)) return infoDetails
+
+  const legacyError = (result as { error?: unknown }).error
+  if (isRecord(legacyError) && isRecord(legacyError.details)) {
+    return legacyError.details
+  }
+  return {}
+}
+
+export const shouldRetryUpdateResourcesFromDetails = (
+  details: Record<string, unknown>,
+): boolean => details.failedStep === 'resources' || details.coreUpdated === true
+
+export const shouldRetryUpdateResources = (result: ApiResponse): boolean => {
+  return shouldRetryUpdateResourcesFromDetails(readUpdateFailureDetails(result))
+}
+
+/** 命令执行结果；终态映射与反馈构造是纯函数，状态机只负责槽位与提交。 */
+export interface UpdateExecution {
+  readonly status: 'succeeded' | 'failed' | 'canceled'
+  readonly feedback: UpdateFeedback | null
+  readonly message: string
+  readonly messageType: 'error' | null
+  readonly resourcesChanged: boolean
+  readonly versionChanged: boolean
+}
+
+export interface TerminalFailurePolicy {
+  readonly resourceRetry: (details: Record<string, unknown>) => boolean
+  readonly showFeedback: boolean
+}
+
+export const initialUpdateState = (): SettingsUpdateState => ({
+  running: null,
+  feedback: null,
+  canceling: false,
+})
+
+export const succeededExecution = (
+  message: string,
+  resourcesChanged: boolean,
+  versionChanged: boolean,
+): UpdateExecution => ({
+  status: 'succeeded',
+  feedback: resourcesChanged
+    ? { type: 'success', message, resourceRetry: false }
+    : null,
+  message,
+  messageType: null,
+  resourcesChanged,
+  versionChanged,
+})
+
+export const failedExecution = (
+  message: string,
+  resourceRetry: boolean,
+  showFeedback = true,
+): UpdateExecution => ({
+  status: 'failed',
+  feedback: showFeedback ? { type: 'error', message, resourceRetry } : null,
+  message,
+  messageType: 'error',
+  resourcesChanged: false,
+  versionChanged: false,
+})
+
+export const canceledExecution = (): UpdateExecution => ({
+  status: 'canceled',
+  feedback: null,
+  message: '更新已取消',
+  messageType: null,
+  resourcesChanged: false,
+  versionChanged: true,
+})
+
+export function terminalExecution(
+  terminal: UpdateRunTerminal,
+  policy: TerminalFailurePolicy,
+): UpdateExecution | null {
+  if (terminal.state === 'succeeded') return null
+  if (terminal.state === 'stopped') return canceledExecution()
+
+  const message = terminal.state === 'interrupted' || terminal.state === 'unknown'
+    ? '无法确认更新结果（服务中断或记录已失效），请重新读取版本'
+    : (terminal.message || '更新失败')
+  return failedExecution(
+    message,
+    policy.resourceRetry(terminal.errorDetails),
+    policy.showFeedback,
+  )
+}
