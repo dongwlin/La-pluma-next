@@ -31,11 +31,17 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_MAA_LOG, args.join(' ') + '\\n');
 if (args[0] === 'version') {
+  if (process.env.FAKE_MAA_VERSION_FAIL === '1') {
+    process.stderr.write('version probe failed\\n');
+    process.exit(3);
+  }
   process.stdout.write('maa-cli v0.7.0\\nMaaCore v6.2.3\\n');
 } else if (args[0] === 'install' || args[0] === 'update') {
   const sleepMs = Number(process.env.FAKE_MAA_UPDATE_SLEEP_MS || '0');
   if (sleepMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, sleepMs);
   process.stdout.write('MaaCore v6.9.9\\n');
+} else if (args[0] === 'dir' && args[1] === 'config') {
+  process.stdout.write(process.env.FAKE_MAA_CONFIG_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_RESOURCE_DIR || '');
 } else if (args[0] === 'dir' && args[1] === 'hot-update') {
@@ -53,6 +59,7 @@ process.env.MAA_CLI_PATH = fakeCliPath;
 process.env.ADB_PATH = fakeAdbPath;
 process.env.FAKE_MAA_LOG = cliCallLog;
 process.env.FAKE_MAA_RESOURCE_DIR = resourceDir;
+process.env.FAKE_MAA_CONFIG_DIR = maaConfigDir;
 process.env.XDG_DATA_HOME = xdgDataHome;
 process.env.XDG_STATE_HOME = xdgStateHome;
 process.env.XDG_CONFIG_HOME = xdgConfigHome;
@@ -67,7 +74,7 @@ process.env.LA_PLUMA_MAA_MAINTENANCE_TIMEOUT_MS = '500';
 const { createLaPlumaApp } = await import('../../app.ts');
 const { loggerManager } = await import('../../utils/logger.ts');
 
-for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage']) {
+for (const loggerName of ['Api', 'MaaService', 'AgentRoutes', 'ConfigStorage', 'UpdateService']) {
   loggerManager.getLogger(loggerName).enableConsole = false;
 }
 
@@ -219,6 +226,64 @@ describe('update-core maintenance timeout', () => {
     }
   });
 
+  it('attributes a version refresh failure after a successful install to the runtime step', async () => {
+    process.env.FAKE_MAA_VERSION_FAIL = '1';
+    try {
+      const port = await listen(createLaPlumaApp({ env: {} }));
+      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+      const response = await postJson(`${baseUrl}/actions/update-core`, { version: 'beta' });
+      assert.equal(response.status, 500);
+      const body = await readError(response);
+      assert.equal(body.error.code, 'AGENT_MAA_UPDATE_CORE_FAILED');
+      assert.equal(body.error.retryable, true);
+      assert.match(body.message, /MaaCore 已更新/);
+      assert.match(body.message, /版本/);
+      const details = body.error.details as UpdateCoreErrorDetails;
+      assert.equal(details.failedStep, 'runtime');
+      assert.equal(details.coreUpdated, true);
+
+      const run = await readRun(baseUrl, String(details.runId));
+      assert.equal(run.state, 'failed');
+      assert.equal(run.error?.code, 'AGENT_MAA_UPDATE_CORE_FAILED');
+      assert.equal(run.error?.details?.failedStep, 'runtime');
+      assert.equal(run.error?.details?.coreUpdated, true);
+    } finally {
+      delete process.env.FAKE_MAA_VERSION_FAIL;
+    }
+  });
+
+  it('keeps a core update successful when the requested channel cannot be persisted', async () => {
+    const cliConfigPath = join(maaConfigDir, 'cli.toml');
+    await writeFile(cliConfigPath, '[core\nchannel = ', 'utf-8');
+    try {
+      const port = await listen(createLaPlumaApp({ env: {} }));
+      const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+
+      const response = await postJson(`${baseUrl}/actions/update-core`, { version: 'beta' });
+      assert.equal(response.status, 200);
+      const body = await readSuccess<{
+        channelPersisted?: unknown;
+        steps: { resources: { success: boolean } };
+        runId?: string;
+      }>(response);
+      assert.equal(body.data.channelPersisted, false);
+      assert.equal(body.data.steps.resources.success, true);
+      assert.doesNotMatch(body.message, /已切换/);
+      assert.match(body.message, /未能持久化/);
+
+      const run = await readRun(baseUrl, String(body.data.runId));
+      assert.equal(run.state, 'succeeded');
+      const result = run.result as { channelPersisted?: unknown } | undefined;
+      assert.equal(result?.channelPersisted, false);
+
+      // 持久化失败不写回：损坏的配置保持原样。
+      assert.equal(await readFile(cliConfigPath, 'utf-8'), '[core\nchannel = ');
+    } finally {
+      await rm(cliConfigPath, { force: true });
+    }
+  });
+
   it('relies on the native core update for resources instead of running a second update', async () => {
     process.env.FAKE_MAA_UPDATE_SLEEP_MS = '50';
     try {
@@ -229,10 +294,12 @@ describe('update-core maintenance timeout', () => {
       assert.equal(response.status, 200);
       const body = await readSuccess<{
         steps: { core: { success: boolean }; resources: { success: boolean } };
+        channelPersisted: boolean;
         runtime: { resource: { status: string } };
       }>(response);
       assert.equal(body.data.steps.core.success, true);
       assert.equal(body.data.steps.resources.success, true);
+      assert.equal(body.data.channelPersisted, true);
       assert.equal(body.data.runtime.resource.status, 'current', JSON.stringify(body.data.runtime.resource));
 
       const calls = await readFile(cliCallLog, 'utf-8');

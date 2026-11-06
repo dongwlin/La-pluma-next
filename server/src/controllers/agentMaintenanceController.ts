@@ -37,6 +37,7 @@ import {
   readUpdateChannels,
   saveUpdateChannel
 } from '../services/updateChannelService.ts';
+import type { CoreUpdateChannel } from '../services/updateChannelService.ts';
 import { parseDepotData, parseOperBoxData } from '../services/dataParserService.ts';
 import { loadParadoxOperators, resolveStageSearchKeyword } from '../services/copilotService.ts';
 import { buildCopilotPlan, resetCopilotPlanProgress } from '../services/copilotPlanService.ts';
@@ -543,8 +544,23 @@ function coreUpdatePayload(
       core: { success: true, output: result.output },
       resources: { success: result.resource.status !== 'unknown', output: '' }
     },
+    channelPersisted: result.channelPersisted,
     runtime: { ...result.runtime, resource: result.resource }
   };
+}
+
+/** 渠道持久化失败不改变更新成功结论，但成功文案不能声称已切换渠道。 */
+function coreUpdateSuccessMessage(result: unknown, requestedChannel: CoreUpdateChannel | null): string {
+  const channelPersisted = !(typeof result === 'object'
+    && result !== null
+    && 'channelPersisted' in result
+    && result.channelPersisted === false);
+  if (requestedChannel) {
+    return channelPersisted
+      ? `已切换到 ${requestedChannel} 渠道并同步最新资源`
+      : `MaaCore 已更新并同步最新资源，但 ${requestedChannel} 渠道配置未能持久化，后续更新可能仍使用原渠道`;
+  }
+  return channelPersisted ? 'MaaCore 和资源已更新' : 'MaaCore 和资源已更新，但渠道配置未能持久化';
 }
 
 function cliUpdatePayload(
@@ -602,7 +618,7 @@ export async function updateCore(req: MaintenanceRequest, res: ApiResponseWriter
         task: run
       });
     },
-    successMessage: version ? `已切换到 ${String(version)} 渠道并同步最新资源` : 'MaaCore 和资源已更新',
+    successMessage: result => coreUpdateSuccessMessage(result, requestedChannel),
     acceptedMessage: 'MaaCore 更新已接受',
     stoppedMessage: 'MaaCore 更新已终止'
   });

@@ -406,6 +406,7 @@ export interface MaintenanceUpdateCorePayload {
     core: { success: boolean; output: string };
     resources: { success: boolean; output: string };
   };
+  channelPersisted: boolean;
   runtime: MaintenanceVersionPayload;
 }
 

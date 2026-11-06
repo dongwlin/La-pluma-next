@@ -415,6 +415,7 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 | 结果 | 页内反馈 | 全局提示 | 资源重试入口 |
 | --- | --- | --- | --- |
 | core / 渠道切换成功 | success，`result.message` 或 `MaaCore 和资源已更新` | 同一文案 | 否 |
+| core / 渠道切换成功但渠道配置未持久化（`channelPersisted === false`） | success，文案明确“已更新，但渠道配置未能持久化” | 同一文案 | 否 |
 | core / 渠道切换失败，`errorInfo.details`（兼容旧 `error.details`）的 `failedStep === 'resources'` 或 `coreUpdated === true` | error | 服务端文案 | 是 |
 | core / 渠道切换失败，其它路径 | error | 服务端文案 | 否 |
 | CLI 成功 | 不产生页内反馈（保留此前的更新反馈） | `MAA CLI 更新成功` | 否 |
@@ -427,7 +428,9 @@ section 只控制渲染哪个面板：三个编辑面板在所有 section 下保
 
 渠道切换目标由 `resolveCoreChannelSwitch(currentCore)` 决定：版本字符串包含 `beta`/`alpha` 时切到正式版，否则切到 Beta；版本尚未读取时默认 Beta。成功文案使用 `Beta`/`正式版` 标签。
 
-资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 不再只兼容旧服务端与旧 Run 记录：core/渠道切换命令已成功、但资源状态无法确认时，服务端写入 `{ version, failedStep: 'resources', coreUpdated: true }`，页面据此显示“重试资源同步”按钮；core 命令本身失败仍写 `{ version, failedStep: 'core', coreUpdated: false }`，不提供该入口。独立的资源热更新失败同样提供该按钮。升级前写入的旧 Run 沿用同一判定。
+资源重试入口的判定条件 `failedStep === 'resources' || coreUpdated === true` 不再只兼容旧服务端与旧 Run 记录：core/渠道切换命令已成功、但资源状态无法确认时，服务端写入 `{ version, failedStep: 'resources', coreUpdated: true }`；core 命令成功后版本刷新失败写入 `{ version, failedStep: 'runtime', coreUpdated: true }`。两者都满足该判定，页面因此显示“重试资源同步”按钮。只有 core 命令本身失败才写 `{ version, failedStep: 'core', coreUpdated: false }`，不提供该入口；独立的资源热更新失败同样提供该按钮，升级前写入的旧 Run 沿用同一判定。
+
+成功载荷的 `steps` 由实测状态派生（`steps.core.success`、`steps.resources.success` 均为布尔值，不再固定为 `true`），`channelPersisted` 标记请求的渠道是否已写入 `cli.toml`。`channelPersisted === false` 时更新本身仍算成功，但文案必须说明“已更新，但渠道配置未能持久化”，不得声称已切换到目标渠道，后续不带版本的更新可能仍沿用原渠道。
 
 ### 3. 成功后的版本与资源失效
 

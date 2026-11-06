@@ -54,6 +54,7 @@ export interface CoreUpdateRunResult {
   output: string;
   runtime: MaaVersionInfo;
   resource: ResourceInfo;
+  channelPersisted: boolean;
 }
 
 export interface CliUpdateRunOptions {
@@ -127,6 +128,18 @@ function coreResourceFailure(error: unknown, version: unknown, runtime: MaaVersi
   });
 }
 
+/**
+ * Core 命令已成功、版本投影却读不到：归因到 runtime 步骤，不能标记成 core 未更新。
+ */
+function coreRuntimeFailure(error: unknown, version: unknown): unknown {
+  if (isExecutionControlError(error)) return error;
+  return agentError('AGENT_MAA_UPDATE_CORE_FAILED', `MaaCore 已更新，但版本读取失败: ${errorMessageOf(error)}`, {
+    statusCode: 500,
+    retryable: true,
+    details: { version, failedStep: 'runtime', coreUpdated: true }
+  });
+}
+
 /** 已按失败步骤归一化的更新错误：外层兜底不能再改写成 core 步骤失败。 */
 function isUpdateFailureError(error: unknown): boolean {
   const code = errorCodeOf(error);
@@ -152,8 +165,8 @@ function resourceUpdateFailure(error: unknown): unknown {
 }
 
 /**
- * 安装/更新 MaaCore 并刷新版本投影。渠道切换成功后持久化渠道；
- * 持久化失败只记录日志，不把已完成的更新标记为失败。
+ * 安装/更新 MaaCore 并刷新版本投影。渠道切换成功后持久化渠道；持久化失败不把
+ * 已完成的更新标记为失败，但经 `channelPersisted` 让调用方看见渠道未落盘。
  */
 export async function runCoreUpdate({
   requestedChannel,
@@ -175,15 +188,24 @@ export async function runCoreUpdate({
       const coreResult: MaaCommandOutput = requestedChannel
         ? await execMaaCommand('install', [requestedChannel, '--force'], null, null, true, false, lifecycle, ports)
         : await execMaaCommand('update', [], null, null, true, false, lifecycle, ports);
+      let channelPersisted = true;
       if (requestedChannel) {
         // 切换渠道后持久化到 cli.toml，后续不带 version 的更新继续使用该渠道。
-        await saveUpdateChannel('core', requestedChannel).catch(error => {
+        try {
+          await saveUpdateChannel('core', requestedChannel);
+        } catch (error) {
+          channelPersisted = false;
           logger.error('MaaCore 渠道持久化失败', { error: errorMessageOf(error), version });
-        });
+        }
       }
       // maa-cli 的 install/update 自带资源同步；这里只刷新投影，不能再跑一次资源更新。
       // 只有 core 命令成功后才读取投影：读到的对象就是成功载荷里的实测状态。
-      const runtime = await getMaaVersion(true);
+      let runtime: MaaVersionInfo;
+      try {
+        runtime = await getMaaVersion(true);
+      } catch (error) {
+        throw coreRuntimeFailure(error, version);
+      }
       let resource: ResourceInfo;
       try {
         resource = await getMaaResourceInfo();
@@ -196,7 +218,8 @@ export async function runCoreUpdate({
       return {
         output: coreResult.stdout || coreResult.stderr || '',
         runtime,
-        resource
+        resource,
+        channelPersisted
       };
     });
   } catch (error) {
