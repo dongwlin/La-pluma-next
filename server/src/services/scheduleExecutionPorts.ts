@@ -22,7 +22,8 @@ export function createScheduleExecutionPorts(
 ): ScheduleExecutionPorts {
   return {
     executeCommand: execMaaCommand,
-    executeDynamicTask: execDynamicTask,
+    executeDynamicTask: (taskId, taskConfig, taskName, taskType, waitForCompletion, clientType) =>
+      execDynamicTask(taskId, taskConfig, taskName, taskType, waitForCompletion, false, { clientType }),
     createLogCheckpoint: createMaaLogCheckpoint,
     readLogSince: readMaaLogSince,
     resolveConnection: async () => {

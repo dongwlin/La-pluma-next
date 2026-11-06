@@ -97,6 +97,8 @@ export interface MaaDynamicTaskRuntime {
   executeCommand?: MaaDynamicTaskExecutor;
   createNonce?: () => string;
   resolveClientType?: () => Promise<string>;
+  /** 覆盖连接 profile 的客户端类型；startup 动态任务沿用任务自身的客户端选择。 */
+  clientType?: string;
   lifecycle?: MaaProcessLifecycle;
   createLogCheckpoint?: () => Promise<MaaLogCheckpoint | null>;
   readLogSince?: (checkpoint: MaaLogCheckpoint | null) => Promise<string>;
@@ -434,7 +436,9 @@ export async function execDynamicTask(
 
   try {
     const configDir = await resolveConfigDir();
-    const clientType = (await resolveClientType()).trim() || DEFAULT_CLIENT_TYPE;
+    const taskClientTypeValue = configObj.params?.client_type;
+    const taskClientType = typeof taskClientTypeValue === 'string' ? taskClientTypeValue : undefined;
+    const clientType = String(runtime.clientType ?? taskClientType ?? await resolveClientType()).trim() || DEFAULT_CLIENT_TYPE;
     const tasksDir = join(configDir.trim(), 'tasks');
 
     await makeDirectory(tasksDir, { recursive: true });

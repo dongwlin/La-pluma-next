@@ -56,7 +56,7 @@ describe('scheduled task flow planning', () => {
       params: {
         stages: [{ stage: '1-7', times: 3 }, { stage: 'CE-6', times: '' }],
         medicine: 2,
-        expiringMedicine: 1,
+        medicineExpireDays: 1,
         stone: 0,
         series: 2,
         drops: '30011=10,30062=5',
@@ -70,7 +70,7 @@ describe('scheduled task flow planning', () => {
     }])
 
     assert.deepEqual(plannedResult(result).steps[0].args, [
-      '1-7:3,CE-6', '-m', '2', '--expiring-medicine', '1', '--stone', '0', '--series=2',
+      '1-7:3,CE-6', '-m', '2', '--medicine-expire-days', '1', '--stone', '0', '--series=2',
       '-D30011=10', '-D30062=5', '--client-type', 'Bilibili', '--dr-grandet',
       '--report-to-penguin', '--penguin-id', 'penguin-user',
       '--report-to-yituliu', '--yituliu-id', 'yituliu-user'
@@ -96,6 +96,154 @@ describe('scheduled task flow planning', () => {
     assert.deepEqual(steps[0].args, ['-a', '127.0.0.1:16384', '--account-name', '4567', 'Official'])
     assert.deepEqual(steps[1].preActions, [{ action: 'depot-recognition' }])
   })
+
+
+  it('keeps the legacy bottle-count option when only expiringMedicine is stored', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'fight-1',
+      commandId: 'fight',
+      name: '理智作战',
+      enabled: true,
+      params: { stage: '1-7', expiringMedicine: 3, series: '1' }
+    }])
+
+    assert.deepEqual(plannedResult(result).steps[0].args, [
+      '1-7', '--expiring-medicine', '3'
+    ])
+  })
+
+  it('keeps force_refresh and the new permit reserve in the Recruit task config', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'recruit-1',
+      commandId: 'recruit',
+      name: '自动公招',
+      enabled: true,
+      taskType: 'Recruit',
+      params: {
+        refresh: true,
+        force_refresh: true,
+        select: [4, 5, 6],
+        confirm: [3, 4],
+        times: '4',
+        extra_tags_mode: 1,
+        level3_recruitment_permit_reserve: 8,
+        preserve_tags: '支援机械'
+      }
+    }])
+
+    const step = plannedResult(result).steps[0]
+    assert.equal(step.command, 'run')
+    assert.deepEqual(step.taskConfig?.params, {
+      refresh: true,
+      force_refresh: true,
+      select: [4, 5, 6],
+      confirm: [3, 4],
+      times: 4,
+      extra_tags_mode: 1,
+      level3_recruitment_permit_reserve: 8,
+      preserve_tags: ['支援机械']
+    })
+  })
+
+  it('passes the sign-in switch to the Award task and new facilities to Infrast', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'award-1',
+      commandId: 'award',
+      name: '领取奖励',
+      enabled: true,
+      taskType: 'Award',
+      params: { award: true, signinevent: true }
+    }, {
+      id: 'infrast-1',
+      commandId: 'infrast',
+      name: '基建换班',
+      enabled: true,
+      taskType: 'Infrast',
+      params: { mode: 0, facility: ['Mfg', 'Recycle', 'AssistantChange'] }
+    }])
+
+    const steps = plannedResult(result).steps
+    const awardParams = steps[0].taskConfig?.params as Record<string, unknown>
+    const infrastParams = steps[1].taskConfig?.params as Record<string, unknown>
+    assert.equal(awardParams.signinevent, true)
+    assert.deepEqual(infrastParams.facility, ['Mfg', 'Recycle', 'AssistantChange'])
+  })
+
+  it('switches the startup step to a Core StartUp task when the launch switch is off', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'startup-1',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: {
+        clientType: 'Bilibili',
+        accountName: '4567',
+        start_game_enabled: false
+      }
+    }])
+
+    const step = plannedResult(result).steps[0]
+    assert.equal(step.command, 'run')
+    assert.equal(step.dynamicTask, true)
+    assert.deepEqual(step.taskConfig, {
+      name: '启动游戏',
+      type: 'StartUp',
+      params: {
+        start_game_enabled: false,
+        account_name: '4567',
+        client_type: 'Bilibili'
+      }
+    })
+  })
+
+  it('keeps the CLI startup command when the launch switch stays enabled', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'startup-1',
+      commandId: 'startup',
+      name: '启动游戏',
+      enabled: true,
+      params: { clientType: 'Official', accountName: '', start_game_enabled: true }
+    }])
+
+    const step = plannedResult(result).steps[0]
+    assert.equal(step.command, 'startup')
+    assert.equal(step.dynamicTask, false)
+    assert.deepEqual(step.args, ['Official'])
+  })
+
+  it('rejects out-of-range daily task parameters before execution', () => {
+    const invalidSeries = [{
+      id: 'fight-1',
+      commandId: 'fight',
+      enabled: true,
+      params: { stage: '1-7', series: 11 }
+    }]
+    const invalidMedicineDays = [{
+      id: 'fight-1',
+      commandId: 'fight',
+      enabled: true,
+      params: { stage: '1-7', medicineExpireDays: -1 }
+    }]
+    const invalidPermitReserve = [{
+      id: 'recruit-1',
+      commandId: 'recruit',
+      enabled: true,
+      taskType: 'Recruit',
+      params: { level3_recruitment_permit_reserve: -1 }
+    }]
+    const invalidFacility = [{
+      id: 'infrast-1',
+      commandId: 'infrast',
+      enabled: true,
+      taskType: 'Infrast',
+      params: { mode: 0, facility: ['UnknownRoom'] }
+    }]
+
+    assert.match(failureMessage(buildScheduledTaskFlowPlan(invalidSeries)), /连战|series/)
+    assert.match(failureMessage(buildScheduledTaskFlowPlan(invalidMedicineDays)), /medicine_expire_days/)
+    assert.match(failureMessage(buildScheduledTaskFlowPlan(invalidPermitReserve)), /level3_recruitment_permit_reserve/)
+    assert.match(failureMessage(buildScheduledTaskFlowPlan(invalidFacility)), /facility/)
+  });
 
   it('runs the scheduler validation during dry-run planning', () => {
     const invalidInfrast = [{
