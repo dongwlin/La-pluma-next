@@ -419,11 +419,7 @@ export function validateRoguelikeCommandArgs(command: string, args: readonly str
     if (normalizedTheme && !(CLI_RECLAMATION_THEMES as readonly string[]).includes(normalizedTheme)) {
       return `maa-cli 的生息演算只支持 ${CLI_RECLAMATION_THEMES.join('、')} 主题；「${normalizedTheme}」请改用 command=run 加 taskConfig 动态任务`;
     }
-    const mode = lastCommandValue(values, 'mode') ?? lastCommandValue(values, '-m');
-    if (mode !== undefined && lastCommandValue(values, '-m') === undefined && !values.has('mode')) {
-      return null;
-    }
-    const modeValue = mode;
+    const modeValue = lastCommandValue(values, 'mode') ?? lastCommandValue(values, '-m');
     if (modeValue !== undefined) {
       const parsed = isCommandInteger(modeValue);
       if (parsed === null || (parsed !== 0 && parsed !== 1)) {
