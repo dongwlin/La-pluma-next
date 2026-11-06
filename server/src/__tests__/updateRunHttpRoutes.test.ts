@@ -191,6 +191,16 @@ async function waitForRun(
   assert.fail(`run ${runId} did not reach expected state: ${JSON.stringify(last)}`);
 }
 
+async function waitForLogLine(path: string, pattern: RegExp, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const content = await readFile(path, 'utf-8').catch(() => '');
+    if (pattern.test(content)) return;
+    await new Promise(resolve => { setTimeout(resolve, 25); });
+  }
+  assert.fail(`${path} did not record ${pattern}`);
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -359,6 +369,66 @@ describe('tracked update runs', () => {
     assert.equal(next.status, 200);
     const nextBody = await readSuccess<UpdateSuccessPayload>(next);
     assert.equal(nextBody.data.state, 'succeeded');
+  });
+
+  it('rejects concurrent resource updates immediately instead of waiting for the first update', async () => {
+    await writeFile(cliCallLog, '', 'utf-8');
+    process.env.FAKE_HOT_UPDATE_SLEEP_MS = '20000';
+    const port = await listen();
+    const baseUrl = `http://127.0.0.1:${port}/api/agent`;
+    let firstRunId: string | null = null;
+
+    try {
+      const first = await postJson(`${baseUrl}/actions/hot-update-resources`, { waitForCompletion: false });
+      assert.equal(first.status, 202);
+      firstRunId = String((await readSuccess<UpdateSuccessPayload>(first)).data.runId);
+      await waitForRun(baseUrl, firstRunId, run => run.state === 'running');
+      await waitForLogLine(cliCallLog, /^hot-update$/m);
+
+      // 同步与后台两种模式都在首个更新进行中时立即被拒绝，不等待首个结束。
+      for (const body of [{}, { waitForCompletion: false }]) {
+        const conflict = await postJson(`${baseUrl}/actions/hot-update-resources`, body);
+        assert.equal(conflict.status, 409);
+        const conflictBody = await readError(conflict);
+        assert.equal(conflictBody.error.code, 'AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS');
+        assert.equal(conflictBody.error.retryable, true);
+        assert.match(conflictBody.message, /已有资源更新正在进行/);
+        const details = conflictBody.error.details as {
+          runId?: string;
+          activeRunId?: string;
+          activeRunState?: string;
+        };
+        assert.equal(details.activeRunId, firstRunId);
+        assert.equal(details.activeRunState, 'running');
+        assert.ok(details.runId && details.runId !== firstRunId);
+
+        const rejectedRun = await getRun(baseUrl, String(details.runId));
+        assert.equal(rejectedRun.operationId, 'update_resources');
+        assert.equal(rejectedRun.state, 'failed');
+        assert.equal(rejectedRun.error?.code, 'AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS');
+      }
+
+      // 冲突响应返回时首个更新仍在执行。
+      const stillRunning = await getRun(baseUrl, firstRunId);
+      assert.equal(stillRunning.state, 'running');
+    } finally {
+      delete process.env.FAKE_HOT_UPDATE_SLEEP_MS;
+      if (firstRunId) {
+        await postJson(`${baseUrl}/actions/stop`, { runId: firstRunId });
+        await waitForRun(baseUrl, firstRunId, run => run.state === 'stopped');
+      }
+    }
+
+    const calls = await readFile(cliCallLog, 'utf-8');
+    assert.equal(calls.match(/^hot-update$/gm)?.length, 1, '冲突请求不能启动第二次更新');
+
+    // 首个更新结束后，新的请求可以正常开始。
+    const next = await postJson(`${baseUrl}/actions/hot-update-resources`, {});
+    assert.equal(next.status, 200);
+    const nextBody = await readSuccess<UpdateSuccessPayload>(next);
+    assert.equal(nextBody.data.state, 'succeeded');
+    const callsAfterRetry = await readFile(cliCallLog, 'utf-8');
+    assert.equal(callsAfterRetry.match(/^hot-update$/gm)?.length, 2);
   });
 
   it('stops a background CLI update and records a stopped run', async () => {

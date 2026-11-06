@@ -19,7 +19,12 @@ import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
 import type { MaaCommandOutput, MaaProcessLifecycle, MaaProcessPorts } from './maaProcessService.ts';
 import { runCliUpdater } from './cliUpdaterService.ts';
 import type { CliUpdaterPlan } from './cliUpdaterService.ts';
-import { buildResourceInfoFallback, getMaaResourceInfo, updateMaaResources } from './resourceUpdateService.ts';
+import {
+  buildResourceInfoFallback,
+  getMaaResourceInfo,
+  RESOURCE_UPDATE_IN_PROGRESS_CODE,
+  updateMaaResources
+} from './resourceUpdateService.ts';
 import type { ResourceInfo } from './resourceUpdateService.ts';
 import { saveUpdateChannel } from './updateChannelService.ts';
 import type { CliUpdateChannel, CoreUpdateChannel } from './updateChannelService.ts';
@@ -89,7 +94,7 @@ function errorCodeOf(error: unknown): string | null {
 }
 
 /**
- * 停止、关闭与占用拒绝不是更新失败：保持原错误交给 Run 状态机与统一错误出口，
+ * 停止、关闭、占用与并发冲突不是更新失败：保持原错误交给 Run 状态机与统一错误出口，
  * 不能被归一化成可重试的更新失败或写成成功。
  */
 function isExecutionControlError(error: unknown): boolean {
@@ -98,7 +103,8 @@ function isExecutionControlError(error: unknown): boolean {
   return code === 'MAA_EXECUTION_BUSY'
     || code === 'MAA_EXECUTION_SHUTTING_DOWN'
     || code === 'AGENT_EXECUTION_SHUTTING_DOWN'
-    || code === 'AGENT_RUN_STOPPED_BEFORE_START';
+    || code === 'AGENT_RUN_STOPPED_BEFORE_START'
+    || code === RESOURCE_UPDATE_IN_PROGRESS_CODE;
 }
 
 function coreUpdateFailure(error: unknown, version: unknown): unknown {
