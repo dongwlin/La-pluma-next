@@ -6,9 +6,10 @@ import { normalizeBasePath, resolveAppPaths } from './config/runtimeConfig.ts';
 import type { RuntimeEnvSource } from './config/runtimeConfig.ts';
 import { resolveGameAssetPaths } from './config/gameAssetPaths.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
-import agentRoutes from './routes/agent.ts';
+import { createAgentRouter } from './routes/agent.ts';
 import { createGameAssetRouter } from './routes/gameAssets.ts';
 import { GAME_ASSET_ROUTE_PREFIX } from './services/gameAssetService.ts';
+import type { InfrastScheduleService } from './services/infrastScheduleService.ts';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
 import type { RuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
@@ -39,6 +40,7 @@ export interface CreateLaPlumaAppOptions {
   userConfigStorage?: UserConfigStorage;
   readiness?: Pick<RuntimeReadinessTracker, 'snapshot'>;
   loginRateLimit?: LoginRateLimitOptions;
+  infrastScheduleService?: InfrastScheduleService;
 }
 
 // 单实例限流窗口：认证失败与票据签发分别计数，均按来源地址隔离。
@@ -53,7 +55,8 @@ export function createLaPlumaApp({
   clientDistPath = resolveAppPaths({ env }).frontendDistDir,
   userConfigStorage,
   readiness = createRuntimeReadinessTracker(),
-  loginRateLimit = {}
+  loginRateLimit = {},
+  infrastScheduleService
 }: CreateLaPlumaAppOptions = {}): Express {
   if (typeof readiness?.snapshot !== 'function') {
     throw new TypeError('readiness 必须提供 snapshot()');
@@ -139,7 +142,7 @@ export function createLaPlumaApp({
   const api = express.Router();
   api.use(optionalApiAuth, express.json());
   api.use('/agent/config/user', createUserConfigRouter({ storage: userConfigStorage }));
-  api.use('/agent', agentRoutes);
+  api.use('/agent', createAgentRouter({ infrastScheduleService }));
   api.use('/operator-quotes', operatorQuotesRoutes);
   api.use((req, res) => {
     sendError(res, req, agentError('AGENT_ROUTE_NOT_FOUND', '接口不存在', { statusCode: 404 }));
