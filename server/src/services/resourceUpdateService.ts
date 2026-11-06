@@ -1,11 +1,14 @@
 /**
  * 资源信息读取与同步：读取可重复执行，CLI/JSON 均从 unknown 收窄、失败抛出且内部不重试；
- * 写操作持有设备变更租约，并发调用共享同一个进行中的 Promise（single-flight，不排队不重放），
+ * 写操作持有设备变更租约，同一时间只允许一次真实更新：已有更新进行中时，并发调用立即以
+ * `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS` 失败，不排队、不共享首个请求的结果；
  * 更新经 maa-cli 原生 `hot-update` 执行，资源源与凭据由 cli.toml 决定。
  */
 
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { agentError } from '../utils/apiHelper.ts';
+import type { AgentError } from '../utils/apiHelper.ts';
 import { withMaaExecutionLease } from './executionCoordinatorService.ts';
 import type { MaaExecutionLease, MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import { execMaaCommand } from './maaExecutionService.ts';
@@ -13,6 +16,21 @@ import { MAINTENANCE_EXEC_TIMEOUT_MS } from './maaProcessService.ts';
 import type { MaaProcessLifecycle } from './maaProcessService.ts';
 
 const STALE_RESOURCE_DAYS = 14;
+
+/** 并发资源更新的稳定错误码：第二个请求未开始就被拒绝，而不是等待首个结束。 */
+export const RESOURCE_UPDATE_IN_PROGRESS_CODE = 'AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS';
+
+/** 已有资源更新在进行：请求被拒绝但可重试，`details` 由 HTTP 层补齐正在进行的 run。 */
+export function createResourceUpdateInProgressError(
+  message = '已有资源更新正在进行，请等待当前更新完成',
+  details: Record<string, unknown> = {}
+): AgentError {
+  return agentError(RESOURCE_UPDATE_IN_PROGRESS_CODE, message, {
+    statusCode: 409,
+    retryable: true,
+    details
+  });
+}
 
 /** 资源新鲜度：`unknown` 表示无法读取版本时间，不能当成正常。 */
 export type ResourceStatus = 'current' | 'stale' | 'unknown';
@@ -165,6 +183,7 @@ async function runMaaHotUpdate(options: ResourceUpdateRunOptions = {}): Promise<
 
 /**
  * 创建资源服务实例；single-flight 状态保存在实例内，测试可创建隔离实例。
+ * 进行中的更新只对持有者可见：并发调用直接得到冲突错误，不会复用首个请求的 Promise。
  */
 export function createResourceUpdateService(ports: ResourceUpdateServicePorts = {}): ResourceUpdateService {
   const resolveResourceDirs = ports.resolveResourceDirs ?? readMaaResourceDirsFromCli;
@@ -207,7 +226,7 @@ export function createResourceUpdateService(ports: ResourceUpdateServicePorts = 
   }
 
   async function updateResources(options: ResourceUpdateRunOptions = {}): Promise<ResourceUpdateResult> {
-    if (activeUpdate) return activeUpdate;
+    if (activeUpdate) throw createResourceUpdateInProgressError();
 
     const run = runWithLease({
       source: 'resource-update',
@@ -238,7 +257,8 @@ export function getMaaResourceDirs(): Promise<string[]> {
 }
 
 /**
- * 同步 MAA 资源并返回更新后的信息。并发调用共享同一次更新；
+ * 同步 MAA 资源并返回更新后的信息。已有更新进行中时立即抛出
+ * `AGENT_MAA_RESOURCE_UPDATE_IN_PROGRESS`（409，可重试），不排队也不复用首个结果；
  * 失败原样抛出且不自动重试。
  */
 export function updateMaaResources(options: ResourceUpdateRunOptions = {}): Promise<ResourceUpdateResult> {
