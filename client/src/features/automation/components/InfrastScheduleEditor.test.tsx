@@ -247,6 +247,94 @@ describe('InfrastScheduleEditor', () => {
     expect(onSaved).toHaveBeenCalledWith({ filename: 'custom.json', planIndex: 0 })
   })
 
+  it('refuses to save when the filename no longer matches the loaded document', async () => {
+    mocks.readInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', document: userDocument },
+    })
+    await renderEditor({ filename: 'base.json' })
+
+    await setInputValue(inputByVisibleLabel('排班文件'), 'other.json')
+    await click(buttonByText('保存'))
+
+    expect(mocks.saveInfrastSchedule).not.toHaveBeenCalled()
+    const alert = document.querySelector('[role="alert"]')
+    expect(alert).not.toBeNull()
+    expect(alert?.textContent).toContain('文件名已改动')
+    expect(alert?.textContent).toContain('加载')
+    expect(alert?.textContent).toContain('新建排班')
+  })
+
+  it('saves the loaded document under its own filename once the name is restored', async () => {
+    mocks.readInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', document: userDocument },
+    })
+    mocks.saveInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', planCount: 1 },
+    })
+    const onSaved = vi.fn()
+    await renderEditor({ filename: 'base.json', onSaved })
+    await setInputValue(inputByLabel('制造站房间 1干员'), '克洛丝')
+
+    const nameInput = inputByVisibleLabel('排班文件')
+    await setInputValue(nameInput, 'other.json')
+    await click(buttonByText('保存'))
+    expect(mocks.saveInfrastSchedule).not.toHaveBeenCalled()
+
+    await setInputValue(nameInput, 'base.json')
+    await click(buttonByText('保存'))
+
+    const [savedName, savedDocument] = mocks.saveInfrastSchedule.mock.calls[0] as [string, InfrastScheduleDocument]
+    expect(savedName).toBe('base.json')
+    expect(savedDocument.plans[0]?.rooms.manufacture?.[0]).toEqual({ operators: ['克洛丝'], custom_room: 'a' })
+    expect(onSaved).toHaveBeenCalledWith({ filename: 'base.json', planIndex: 0 })
+  })
+
+  it('allows saving a new file after creating an empty schedule under a changed filename', async () => {
+    mocks.readInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'base.json', document: userDocument },
+    })
+    mocks.saveInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'custom.json', planCount: 1 },
+    })
+    await renderEditor({ filename: 'base.json' })
+
+    await setInputValue(inputByVisibleLabel('排班文件'), 'custom.json')
+    await click(buttonByText('新建排班'))
+    await click(buttonByText('保存'))
+
+    const expected: InfrastScheduleDocument = { plans: [{ name: '方案 1', rooms: {} }] }
+    expect(mocks.saveInfrastSchedule).toHaveBeenCalledWith('custom.json', expected)
+  })
+
+  it('saves under the second file after loading it explicitly', async () => {
+    const secondDocument: InfrastScheduleDocument = {
+      plans: [{ name: '晚班', rooms: { manufacture: [{ operators: ['德克萨斯'] }] } }],
+    }
+    mocks.readInfrastSchedule.mockImplementation(async (loadedName: string) => ({
+      success: true,
+      data: { name: loadedName, document: loadedName === 'second.json' ? secondDocument : userDocument },
+    }))
+    mocks.saveInfrastSchedule.mockResolvedValue({
+      success: true,
+      data: { name: 'second.json', planCount: 1 },
+    })
+    await renderEditor({ filename: 'base.json' })
+
+    await setInputValue(inputByVisibleLabel('排班文件'), 'second.json')
+    await click(buttonByText('加载'))
+    expect(inputByVisibleLabel('方案名称').value).toBe('晚班')
+
+    await click(buttonByText('保存'))
+    const [savedName, savedDocument] = mocks.saveInfrastSchedule.mock.calls[0] as [string, InfrastScheduleDocument]
+    expect(savedName).toBe('second.json')
+    expect(savedDocument.plans[0]?.name).toBe('晚班')
+  })
+
   it('shows a missing-file error and still allows creating the file', async () => {
     mocks.readInfrastSchedule.mockRejectedValue(new Error('排班文件不存在'))
     await renderEditor({ filename: 'missing.json' })

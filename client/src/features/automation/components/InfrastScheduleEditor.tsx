@@ -10,6 +10,7 @@ import {
   createEmptyInfrastScheduleDocument,
   normalizeInfrastPlanIndex,
   removeInfrastPlan,
+  resolveInfrastScheduleSaveRequest,
   updateInfrastDocumentMeta,
   updateInfrastPlanAt,
   updateInfrastPlanMeta,
@@ -17,7 +18,6 @@ import {
 } from '../model/infrastScheduleEditing'
 import {
   getInfrastPlanLabel,
-  validateInfrastScheduleDocument,
   type InfrastPlan,
   type InfrastScheduleDocument,
 } from '../model/infrastSchedule'
@@ -45,6 +45,7 @@ export default function InfrastScheduleEditor({
   const [name, setName] = useState(filename)
   const [loadName, setLoadName] = useState(filename.trim())
   const [document, setDocument] = useState<InfrastScheduleDocument | null>(null)
+  const [documentName, setDocumentName] = useState<string | null>(null)
   const [planIndex, setPlanIndex] = useState(initialPlanIndex)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -58,6 +59,7 @@ export default function InfrastScheduleEditor({
     if (!payload || appliedRef.current === payload.name) return
     appliedRef.current = payload.name
     setDocument(payload.document)
+    setDocumentName(payload.name)
     setName(payload.name)
     setPlanIndex(current => normalizeInfrastPlanIndex(current, payload.document.plans.length))
     setError(null)
@@ -66,6 +68,7 @@ export default function InfrastScheduleEditor({
   useEffect(() => {
     if (!scheduleQuery.isError || !loadName) return
     setDocument(null)
+    setDocumentName(null)
     setError(describeError(scheduleQuery.error))
   }, [scheduleQuery.isError, scheduleQuery.error, loadName])
 
@@ -92,6 +95,7 @@ export default function InfrastScheduleEditor({
     }
     appliedRef.current = null
     setDocument(createEmptyInfrastScheduleDocument())
+    setDocumentName(target)
     setPlanIndex(0)
     setError(null)
   }
@@ -105,33 +109,25 @@ export default function InfrastScheduleEditor({
 
   const save = async () => {
     if (!document) return
-    const target = name.trim()
-    if (!target) {
-      setError('请填写排班文件名')
-      return
-    }
-    if (!target.toLowerCase().endsWith('.json')) {
-      setError('排班文件名需要以 .json 结尾')
-      return
-    }
-    const documentMessage = validateInfrastScheduleDocument(document)
-    if (documentMessage) {
-      setError(documentMessage)
+    const request = resolveInfrastScheduleSaveRequest(name, documentName, document)
+    if (!request.ok) {
+      setError(request.message)
       return
     }
 
     setSaving(true)
     setError(null)
     try {
-      const result = await saveInfrastSchedule(target, document)
+      const result = await saveInfrastSchedule(request.target, document)
       if (!result.success) {
         setError(getErrorMessage(result))
         return
       }
       const savedName = isRecord(result.data) && typeof result.data.name === 'string'
         ? result.data.name
-        : target
+        : request.target
       appliedRef.current = savedName
+      setDocumentName(savedName)
       setName(savedName)
       setLoadName(savedName)
       queryClient.setQueryData(infrastScheduleQueryOptions(savedName).queryKey, { name: savedName, document })
