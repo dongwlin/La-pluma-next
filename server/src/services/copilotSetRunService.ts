@@ -11,6 +11,7 @@ import {
 import type { AgentRunDto, AgentRunStatus } from './agentRunService.ts';
 import { buildCopilotPlan, executeCopilotEntries } from './copilotPlanService.ts';
 import type {
+  CopilotDelegationReport,
   CopilotEntriesOutcome,
   CopilotEntryOutcomeStatus,
   CopilotExecutionEntry,
@@ -79,6 +80,8 @@ export interface CopilotSetSummary {
   durationMs: number;
   errors: CopilotSetSummaryError[];
   taskResults: CopilotSetTaskResult[];
+  /** 原生委托报告；只在本次执行尝试过原生路径时出现。 */
+  delegation?: CopilotDelegationReport;
 }
 
 /** 旧字段兼容投影：已结算条目平铺 `success`/`error`/`stopped`。 */
@@ -192,6 +195,7 @@ export interface CopilotSetSession {
   completed: Set<string>;
   alreadyCompletedCount: number;
   results: Map<string, CopilotSetEntryState>;
+  delegation: CopilotDelegationReport | null;
   stopRequested: boolean;
   attempting: boolean;
   phase: CopilotSetSessionPhase;
@@ -328,6 +332,7 @@ function createSession({
     completed: new Set(alreadyCompleted.map(entry => entry.key)),
     alreadyCompletedCount: alreadyCompleted.length,
     results: new Map(queue.map(entry => [entry.key, { status: 'pending' }])),
+    delegation: null,
     stopRequested: false,
     attempting: false,
     phase: 'starting',
@@ -357,6 +362,7 @@ function isStopping(runId: string): boolean {
 }
 
 function mergeOutcome(session: CopilotSetSession, outcome: CopilotEntriesOutcome): void {
+  if (outcome.delegation?.attempted) session.delegation = outcome.delegation;
   for (const key of outcome.completed) session.completed.add(key);
   for (const result of outcome.summary.taskResults) {
     session.results.set(result.key, { status: result.status, error: result.error });
@@ -430,7 +436,8 @@ function buildSummary(session: CopilotSetSession): CopilotSetSummary {
     errors: taskResults
       .filter(result => result.status === 'failed')
       .map(result => ({ key: result.key, stage: result.displayStage, error: result.error })),
-    taskResults
+    taskResults,
+    ...(session.delegation ? { delegation: session.delegation } : {})
   };
 }
 
