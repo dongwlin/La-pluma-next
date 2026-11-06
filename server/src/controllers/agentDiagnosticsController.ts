@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { preflightAgentTaskRequest } from '../services/agentActionService.ts';
 import { getMaaExecutionLeaseSnapshot } from '../services/executionCoordinatorService.ts';
 import type { MaaExecutionLeaseSnapshot } from '../services/executionCoordinatorService.ts';
-import { getMaaVersion } from '../services/maaExecutionService.ts';
+import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import { getTaskStatus } from '../services/maaProcessService.ts';
 import { getMaaResourceDirs, getMaaResourceInfo } from '../services/resourceUpdateService.ts';
 import type { ResourceInfo } from '../services/resourceUpdateService.ts';
@@ -19,10 +19,18 @@ import type {
 } from '../services/diagnosticsService.ts';
 import { sendSuccess } from '../utils/apiHelper.ts';
 import type { ApiResponseWriter } from '../utils/apiHelper.ts';
-import { getAdbSummary } from './deviceStatus.ts';
+import type { AdbSummary } from './deviceStatus.ts';
+import {
+  STATUS_PROBE_CACHE_TTL,
+  createProbeCache,
+  readAdbProbe,
+  readMaaVersionProbe,
+  resetStatusProbeCacheForTests
+} from './probeCache.ts';
 import { readErrorMessage } from './readDto.ts';
 import type { ReadRequest } from './readDto.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
+import type { AdbStatusFailure, MaaVersionFailure } from './statusDto.ts';
 
 const RESOURCE_INTEGRITY_ENTRIES = ['version.json', 'tasks', 'template'] as const;
 
@@ -59,31 +67,18 @@ function readPreflightFailure(command: unknown): ExecutionPreflightFailure | nul
   }
 }
 
-async function probeRuntime(): Promise<RuntimeProbe> {
-  try {
-    const version = await getMaaVersion(true);
-    return {
-      version: { cli: version.cli, core: version.core },
-      error: null
-    };
-  } catch (error) {
-    return { version: null, error: readErrorMessage(error) };
-  }
+/** `/status` 的版本探测投影为诊断载荷：失败信息保留在检查项里而不是抛出。 */
+function projectRuntimeProbe(version: MaaVersionInfo | MaaVersionFailure): RuntimeProbe {
+  if ('error' in version) return { version: null, error: version.error };
+  return { version: { cli: version.cli, core: version.core }, error: null };
 }
 
-async function probeConnection(adbPath: string, address: string): Promise<ConnectionProbe> {
-  try {
-    const summary = await getAdbSummary(adbPath, address);
-    return {
-      adbPath: summary.adbPath,
-      address: summary.address,
-      connected: summary.connected,
-      message: summary.message,
-      devices: summary.devices,
-      foreground: summary.foreground,
-      error: null
-    };
-  } catch (error) {
+function projectConnectionProbe(
+  adbPath: string,
+  address: string,
+  summary: AdbSummary | AdbStatusFailure
+): ConnectionProbe {
+  if ('error' in summary) {
     return {
       adbPath,
       address,
@@ -91,9 +86,18 @@ async function probeConnection(adbPath: string, address: string): Promise<Connec
       message: '',
       devices: '',
       foreground: null,
-      error: readErrorMessage(error)
+      error: summary.error
     };
   }
+  return {
+    adbPath: summary.adbPath,
+    address: summary.address,
+    connected: summary.connected,
+    message: summary.message,
+    devices: summary.devices,
+    foreground: summary.foreground,
+    error: null
+  };
 }
 
 async function inspectResourceDirectory(directory: string): Promise<ResourceDirectoryProbe> {
@@ -121,6 +125,13 @@ async function probeResource(): Promise<ResourceProbe> {
   return { info: info.info, error: info.error, directories };
 }
 
+const resourceProbes = createProbeCache<ResourceProbe>({ ttlMs: STATUS_PROBE_CACHE_TTL });
+
+/** 资源目录探测与 `/status` 探测共用同一短 TTL，突发诊断只启动一次 CLI。 */
+function readResourceProbe(): Promise<ResourceProbe> {
+  return resourceProbes.read('', probeResource);
+}
+
 async function probeExecution(command: unknown): Promise<ExecutionProbe> {
   const task = getTaskStatus();
   const lease = await getMaaExecutionLeaseSnapshot().catch((): MaaExecutionLeaseSnapshot => ({
@@ -145,14 +156,20 @@ async function probeExecution(command: unknown): Promise<ExecutionProbe> {
   };
 }
 
-/** `/diagnostics`：并行执行四项只读探测，失败信息折入检查项而不是抛错。 */
+/**
+ * `/diagnostics`：并行执行四项只读探测，失败信息折入检查项而不是抛错。
+ * MAA 版本、ADB 摘要与资源目录复用 `/status` 的短 TTL 单飞缓存，并发诊断
+ * 不会放大子进程；响应本身不缓存，避免把过期结论交给后续请求。
+ */
 export async function readDiagnostics(req: ReadRequest, res: ApiResponseWriter): Promise<void> {
   const connection = await resolveRequestConnection(req, { allowOverrides: true });
   const command = readCommandQuery(req.query);
   const [runtime, connectionProbe, resource, execution] = await Promise.all([
-    probeRuntime(),
-    probeConnection(connection.adbPath, connection.address),
-    probeResource(),
+    readMaaVersionProbe().then(projectRuntimeProbe),
+    readAdbProbe(connection.adbPath, connection.address).then(
+      summary => projectConnectionProbe(connection.adbPath, connection.address, summary)
+    ),
+    readResourceProbe(),
     probeExecution(command)
   ]);
   const probes: DiagnosticsProbes = {
@@ -162,4 +179,9 @@ export async function readDiagnostics(req: ReadRequest, res: ApiResponseWriter):
     execution
   };
   return sendSuccess(res, req, buildDiagnosticsReport(probes, new Date().toISOString()));
+}
+
+export function resetAgentDiagnosticsProbeCachesForTests(): void {
+  resetStatusProbeCacheForTests();
+  resourceProbes.reset();
 }

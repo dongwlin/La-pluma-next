@@ -23,14 +23,18 @@ import type { WebrtcSignalingGateway } from './services/webrtcSignalingGateway.t
 import type { UserConfigStorage } from './services/configStorageService.ts';
 import { agentError, apiErrorHandler, sendError } from './utils/apiHelper.ts';
 import { createOptionalApiAuth } from './utils/apiTokenAuth.ts';
-import { createLoginThrottle } from './utils/loginThrottle.ts';
+import { createLoginThrottle, resolveClientRateLimitKey } from './utils/loginThrottle.ts';
 import { requestIdMiddleware } from './utils/requestContext.ts';
 
-/** 认证失败与票据签发的限流窗口；测试可注入更小阈值与假时钟。 */
+/**
+ * 进程内限流窗口：认证失败、票据签发与匿名诊断分别计数，均按来源地址隔离；
+ * `windowMs` 与 `now` 由三者共用，测试可注入更小阈值与假时钟。
+ */
 export interface LoginRateLimitOptions {
   windowMs?: number;
   maxAuthFailures?: number;
   maxSignalingLogins?: number;
+  maxAnonymousDiagnostics?: number;
   now?: () => number;
 }
 
@@ -49,6 +53,9 @@ export interface CreateLaPlumaAppOptions {
 const AUTH_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_AUTH_FAILURES_PER_WINDOW = 10;
 const MAX_SIGNALING_LOGINS_PER_WINDOW = 30;
+// 无 token 的本地/LAN 模式没有鉴权边界，而 /diagnostics 会启动 MAA 版本、ADB 与
+// 资源目录等多项外部探测；按来源限流，避免任意页面通过并发请求放大探测开销。
+const MAX_ANONYMOUS_DIAGNOSTICS_PER_WINDOW = 30;
 
 export function createLaPlumaApp({
   env = process.env,
@@ -76,6 +83,11 @@ export function createLaPlumaApp({
   const signalingLoginThrottle = createLoginThrottle({
     windowMs: rateLimitWindowMs,
     maxAttempts: loginRateLimit.maxSignalingLogins ?? MAX_SIGNALING_LOGINS_PER_WINDOW,
+    now: loginRateLimit.now
+  });
+  const anonymousDiagnosticsThrottle = createLoginThrottle({
+    windowMs: rateLimitWindowMs,
+    maxAttempts: loginRateLimit.maxAnonymousDiagnostics ?? MAX_ANONYMOUS_DIAGNOSTICS_PER_WINDOW,
     now: loginRateLimit.now
   });
   const optionalApiAuth = createOptionalApiAuth({ token: apiToken, failureThrottle: authFailureThrottle });
@@ -159,6 +171,23 @@ export function createLaPlumaApp({
   // 探针、信令登录和前端资源不读取业务 JSON 请求体。
   const api = express.Router();
   api.use(optionalApiAuth, express.json());
+  // 令牌模式由 optionalApiAuth 承担边界；无令牌模式给诊断入口补一层每来源限流。
+  if (apiToken === '') {
+    api.use('/agent/diagnostics', (req: Request, res: Response, next: NextFunction): void => {
+      const decision = anonymousDiagnosticsThrottle.tryAcquire(resolveClientRateLimitKey(req));
+      if (decision.allowed) {
+        next();
+        return;
+      }
+      res.set('Retry-After', String(decision.retryAfterSeconds));
+      res.set('Cache-Control', 'no-store');
+      sendError(res, req, agentError('AGENT_RATE_LIMITED', '诊断请求过于频繁，请稍后重试', {
+        statusCode: 429,
+        retryable: true,
+        details: { retryAfterSeconds: decision.retryAfterSeconds }
+      }));
+    });
+  }
   api.use('/agent/config/user', createUserConfigRouter({ storage: userConfigStorage }));
   api.use('/agent', createAgentRouter({ infrastScheduleService }));
   api.use('/operator-quotes', operatorQuotesRoutes);

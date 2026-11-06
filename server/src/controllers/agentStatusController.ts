@@ -1,4 +1,3 @@
-import { getMaaVersion } from '../services/maaExecutionService.ts';
 import type { MaaVersionInfo } from '../services/maaExecutionService.ts';
 import { getRealtimeLogs, getTaskStatus } from '../services/maaProcessService.ts';
 import { getAgentRun } from '../services/agentRunService.ts';
@@ -8,10 +7,16 @@ import { agentError, sendSuccess, sendError } from '../utils/apiHelper.ts';
 import type { AgentError, ApiResponseWriter } from '../utils/apiHelper.ts';
 import { API_VERSION } from '../config/apiVersion.ts';
 import { resolveRequestConnection } from './requestConnection.ts';
-import { getAdbSummary, getAndroidDisplayState, getWebrtcSummary } from './deviceStatus.ts';
 import type { AdbSummary, AndroidDisplayState, WebrtcSummary } from './deviceStatus.ts';
-import { readErrorMessage, readNumericQuery } from './readDto.ts';
+import { readNumericQuery } from './readDto.ts';
 import type { ReadRequest } from './readDto.ts';
+import {
+  readAdbProbe,
+  readMaaVersionProbe,
+  readOrientationProbe,
+  readWebrtcProbe,
+  resetStatusProbeCacheForTests
+} from './probeCache.ts';
 import type {
   AdbStatusFailure,
   AgentStatusPayload,
@@ -20,9 +25,6 @@ import type {
   RunLookupRequest
 } from './statusDto.ts';
 
-/** 四项外部探测的短 TTL：轮询突发共享结果，设备变化最迟约 1.5 秒后重新探测。 */
-const STATUS_PROBE_CACHE_TTL = 1500;
-
 interface StatusProbes {
   version: MaaVersionInfo | MaaVersionFailure;
   adb: AdbSummary | AdbStatusFailure;
@@ -30,55 +32,26 @@ interface StatusProbes {
   orientation: AndroidDisplayState | OrientationStatusFailure;
 }
 
-interface CachedStatusProbes {
-  timestamp: number;
-  probes: StatusProbes;
-}
-
-const statusProbeCache = new Map<string, CachedStatusProbes>();
-const statusProbeRequests = new Map<string, Promise<StatusProbes>>();
-
-/** 响应会携带 adbPath；同一 address 下不同 ADB 路径不能共用探测结果。 */
-function statusProbeKey(adbPath: string, address: string): string {
-  return `${address}\u0000${adbPath}`;
-}
-
 /**
  * 合并 `/status` 的并发设备探测。
  *
  * `/status` 一次汇总会启动 MAA 版本、ADB、dumpsys、lsof/ps 等多个外部进程；
- * 前端轮询与多客户端同时请求会成倍放大。这里只缓存四项外部探测，任务状态与
- * 日志仍每次读取最新值。失败投影也进入短缓存，离线设备不会在每次轮询重复
- * 等待同一批超时。
+ * 前端轮询与多客户端同时请求会成倍放大。四项外部探测各自走短 TTL 单飞缓存，
+ * 任务状态与日志仍每次读取最新值。MAA 版本与 ADB 摘要同时供 `/diagnostics`
+ * 复用，两个入口不会分别启动同一批子进程。
  */
 async function readStatusProbes(adbPath: string, address: string): Promise<StatusProbes> {
-  const key = statusProbeKey(adbPath, address);
-  const cached = statusProbeCache.get(key);
-  if (cached && Date.now() - cached.timestamp < STATUS_PROBE_CACHE_TTL) return cached.probes;
-
-  const pending = statusProbeRequests.get(key);
-  if (pending) return pending;
-
-  let request: Promise<StatusProbes>;
-  request = Promise.all([
-    getMaaVersion(true).catch((error): MaaVersionFailure => ({ error: readErrorMessage(error) })),
-    getAdbSummary(adbPath, address).catch((error): AdbStatusFailure => ({ connected: false, error: readErrorMessage(error), adbPath, address })),
-    getWebrtcSummary(address, adbPath),
-    getAndroidDisplayState(adbPath, address).catch((error): OrientationStatusFailure => ({ error: readErrorMessage(error), adbPath, address }))
-  ]).then(([version, adb, webrtc, orientation]) => {
-    const probes: StatusProbes = { version, adb, webrtc, orientation };
-    statusProbeCache.set(key, { timestamp: Date.now(), probes });
-    return probes;
-  }).finally(() => {
-    if (statusProbeRequests.get(key) === request) statusProbeRequests.delete(key);
-  });
-  statusProbeRequests.set(key, request);
-  return request;
+  const [version, adb, webrtc, orientation] = await Promise.all([
+    readMaaVersionProbe(),
+    readAdbProbe(adbPath, address),
+    readWebrtcProbe(address, adbPath),
+    readOrientationProbe(adbPath, address)
+  ]);
+  return { version, adb, webrtc, orientation };
 }
 
 export function resetAgentStatusProbeCacheForTests(): void {
-  statusProbeCache.clear();
-  statusProbeRequests.clear();
+  resetStatusProbeCacheForTests();
 }
 
 export type AgentStatusBody = Omit<AgentStatusPayload, 'api'>;

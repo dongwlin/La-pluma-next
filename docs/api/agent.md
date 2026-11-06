@@ -42,6 +42,8 @@ curl 'http://localhost:3000/api/agent/diagnostics?command=roguelike'
 
 响应 `data` 的每个检查条目包含 `status`（`pass`/`warn`/`fail`/`unknown`）、可读 `summary`、证据 `details`、可选 `hint` 与定位信息 `locations`；整体 `status` 为 `fail` 优先的 `error`/`warn`/`ok`，`ok` 仅在全部检查通过时为 `true`，`conclusion` 给出结论摘要。除探测 ADB 连接外不产生副作用，不创建 Run。
 
+四项外部探测在进程内合并并短时缓存（约 1.5 秒），并发诊断请求只启动一次 MAA/ADB/资源目录探测；响应固定 `Cache-Control: no-store`，不把旧结论交给后续请求。未配置 `LA_PLUMA_TOKEN` 时，该入口按来源地址限流（默认每分钟 30 次），超出返回 429 `AGENT_RATE_LIMITED` 与 `Retry-After`；配置 token 后由鉴权承担访问边界。
+
 ## 推荐执行流程
 
 ```bash
