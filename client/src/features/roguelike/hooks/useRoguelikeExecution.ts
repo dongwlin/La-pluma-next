@@ -32,6 +32,8 @@ export interface RoguelikeExecution {
   isStopping: boolean
   /** 启动请求在途；按钮保持禁用，重复点击不会产生第二个提交。 */
   isSubmitting: boolean
+  /** 本页 owned 的 run（活动或终态），供结果面板读取结构化摘要。 */
+  trackedRun: AgentRun | null
   execute: (request: RoguelikeExecutionRequest) => Promise<void>
   stop: () => Promise<void>
 }
@@ -185,5 +187,5 @@ export function useRoguelikeExecution({
   const isStopping = isRunning
     && (trackedRun?.state === 'stopping' || stopRequestPending || stopAcknowledged)
 
-  return { isRunning, isStopping, isSubmitting, execute, stop }
+  return { isRunning, isStopping, isSubmitting, trackedRun, execute, stop }
 }

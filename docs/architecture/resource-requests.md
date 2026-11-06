@@ -116,7 +116,8 @@ const depot = unwrapApiResponse(result)
 | --- | --- | --- |
 | `getVersion(signal?)` | `GET /agent/version` | `cli`/`core`/`raw` 为字符串 |
 | `getConfigDir(signal?)` | `GET /agent/config-directory` | 非空字符串或含非空 `path` 的对象；返回类型 `string \| { path: string }` |
-| `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | 已知字段出现时为正确类型（`adb_path`/`address`/`config` 字符串，`auto_reconnect` 布尔）；缺失字段允许；保留未知字段 |
+| `getConfig(profileName?, signal?)` | `GET /agent/config/maa/:profileName` | `{ connection, instance_options }`：`connection` 为对象且已知字段出现时为正确类型（`adb_path`/`address`/`config`/`preset` 字符串，`auto_reconnect` 布尔），`instance_options` 出现时为对象；兼容旧版直接返回 connection 段的扁平载荷；缺失字段允许 |
+| `getResourceSource(signal?)` | `GET /agent/config/resource-source` | `{ autoUpdate, warnOnUpdateFailure, source, git, mirrorchyan }`：布尔开关、`source` 为 `git`/`mirrorchyan`、两个来源为对象 |
 | `discoverDevices(adbPath, signal?)` | `GET /agent/actions/discover-devices` | 对象（保留内层 `success=false` 的设备发现结果） |
 | `testConnection(adbPath?, address?, signal?)` | `POST /agent/actions/test-connection` | 命令；由调用方归一 `success`/`message`，不进入 Query |
 

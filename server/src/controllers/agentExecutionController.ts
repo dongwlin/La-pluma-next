@@ -49,6 +49,15 @@ import {
   sendError
 } from '../utils/apiHelper.ts';
 import type { MaybeApiRequest } from '../utils/apiHelper.ts';
+import { createMaaLogCheckpoint, readMaaLogSince } from '../services/maaLogFileService.ts';
+import type { MaaLogCheckpoint } from '../services/maaLogFileService.ts';
+import {
+  attachRoguelikeErrorSummary,
+  attachRoguelikeResultSummary,
+  buildRoguelikeResultSummary,
+  isRoguelikeCommand
+} from '../services/roguelikeResultService.ts';
+import type { RoguelikeResultSummary } from '../services/roguelikeResultService.ts';
 import { createLogger } from '../utils/logger.ts'
 import { withExecutionLogContext } from '../utils/logContext.ts'
 import { resolveRequestConnection } from './requestConnection.ts';
@@ -1508,6 +1517,67 @@ export async function runFight(
   });
 }
 
+interface RoguelikeResultCapture {
+  command: 'roguelike' | 'reclamation';
+  args: readonly string[];
+  checkpoint: MaaLogCheckpoint | null;
+}
+
+/**
+ * 肉鸽/生息演算的结果只从本次执行新增的 MaaCore 日志读取；检查点创建失败时
+ * 保留执行本身，只是不产出摘要，不能用整份历史日志冒充本次结果。
+ */
+async function openRoguelikeResultCapture(
+  command: string,
+  args: readonly string[]
+): Promise<RoguelikeResultCapture | null> {
+  if (!isRoguelikeCommand(command)) return null;
+  try {
+    return { command, args, checkpoint: await createMaaLogCheckpoint() };
+  } catch (error) {
+    logger.warn('创建肉鸽结果日志检查点失败', { error: errorMessageOf(error) });
+    return { command, args, checkpoint: null };
+  }
+}
+
+async function readRoguelikeResultSummary(
+  capture: RoguelikeResultCapture
+): Promise<RoguelikeResultSummary | null> {
+  if (!capture.checkpoint) return null;
+  try {
+    const logOutput = await readMaaLogSince(capture.checkpoint);
+    return buildRoguelikeResultSummary(logOutput, { command: capture.command, args: capture.args });
+  } catch (error) {
+    logger.warn('读取肉鸽任务结果失败', { error: errorMessageOf(error) });
+    return null;
+  }
+}
+
+async function enrichRoguelikeOutcome(
+  capture: RoguelikeResultCapture,
+  outcome: ExecutionOutcome
+): Promise<ExecutionOutcome> {
+  const summary = await readRoguelikeResultSummary(capture);
+  return {
+    ...outcome,
+    result: attachRoguelikeResultSummary(outcome.result, summary),
+    error: attachRoguelikeErrorSummary(outcome.error, summary)
+  };
+}
+
+function withRoguelikeCapture(
+  lifecycle: TrackedExecutionLifecycle,
+  capture: RoguelikeResultCapture
+): TrackedExecutionLifecycle {
+  if (!lifecycle.onSettled) return lifecycle;
+  return {
+    ...lifecycle,
+    onSettled: async outcome => {
+      await lifecycle.onSettled?.(await enrichRoguelikeOutcome(capture, outcome));
+    }
+  };
+}
+
 export async function runTask(
   req: ExecutionRequest,
   res: ExecutionResponseWriter
@@ -1522,17 +1592,42 @@ export async function runTask(
     input: { ...(isRecord(req.body) ? req.body : {}), waitForCompletion },
     waitForCompletion,
     metadata: { taskName: request.taskName, taskType: request.taskType },
-    execute: lifecycle => executePreflightAgentTask(
-      request,
-      {
-        execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
-          execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, lifecycle),
-        execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
-          execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle }),
-        execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
-          execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
+    execute: async lifecycle => {
+      const capture = await openRoguelikeResultCapture(request.command, request.args);
+      if (!capture) {
+        return executePreflightAgentTask(
+          request,
+          {
+            execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
+              execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, lifecycle),
+            execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
+              execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle }),
+            execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
+              execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
+          }
+        );
       }
-    ),
+
+      const capturedLifecycle = withRoguelikeCapture(lifecycle, capture);
+      try {
+        const result = await executePreflightAgentTask(
+          request,
+          {
+            execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
+              execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, capturedLifecycle),
+            execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
+              execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle: capturedLifecycle }),
+            execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
+              execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle: capturedLifecycle })
+          }
+        );
+        if (lifecycle.onSettled) return result;
+        return attachRoguelikeResultSummary(result, await readRoguelikeResultSummary(capture));
+      } catch (error) {
+        if (lifecycle.onSettled) throw error;
+        throw attachRoguelikeErrorSummary(error, await readRoguelikeResultSummary(capture));
+      }
+    },
     successMessage: '任务执行完成',
     acceptedMessage: '任务已接受'
   });

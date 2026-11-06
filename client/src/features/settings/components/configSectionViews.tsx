@@ -20,13 +20,13 @@ export const CONFIG_SECTION_VIEWS: Record<ConfigSectionId, ConfigSectionView> = 
   resource: {
     id: 'resource',
     name: '资源',
-    description: '资源来源与目录',
+    description: '来源、镜像与同步',
     icon: <PackageOpen aria-hidden="true" />,
   },
   instance: {
     id: 'instance',
     name: '实例',
-    description: '运行与触控选项',
+    description: '触控与运行选项',
     icon: <SlidersHorizontal aria-hidden="true" />,
   },
 }

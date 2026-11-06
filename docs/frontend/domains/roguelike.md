@@ -25,9 +25,11 @@
 | 两个任务的策略字段表 | `features/roguelike/model/roguelikeOptionTables.ts`、`reclamationOptionTables.ts` | CLI 参数名、Core 参数名、默认值、适用主题/模式与字段依赖 |
 | 字段表查询与下拉项解析 | `features/roguelike/model/roguelikeOptions.ts` | 只组装字段表与主题候选，不含 React 或执行状态 |
 | 任务目录、主题快捷项、可见性、默认值、命令拼接与草稿归一化 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
+| 执行结果面板、保留上一次终态摘要、诊断入口 | `features/roguelike/components/RoguelikeResultPanel.tsx` | 只消费本页 owned run 与 `task-execution` 类型；不创建执行状态 |
+| 结果摘要解析与展示投影 | `features/roguelike/model/runSummary.ts` | 防御式读取 `run.result.summary` / `run.error.details.summary`，非法载荷返回 null；纯函数 |
 | CLI/动态任务执行计划与 Core 参数构造 | `features/roguelike/model/roguelikeExecution.ts` | 纯模型；决定走 CLI 还是 `run` + taskConfig |
 | 执行前校验 | `features/roguelike/model/roguelikeValidation.ts` | 纯模型；返回面向用户的中文错误 |
-| 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图 |
+| 运行提交、观察、停止与终态提示 | `features/roguelike/hooks/useRoguelikeExecution.ts` + `task-execution` | 页面只订阅一份快照并发送意图；额外暴露 `trackedRun` 供结果面板读取 |
 
 维护约束：
 
@@ -43,13 +45,14 @@ RoguelikeTasks（页面壳：页头、预览布局）
    ├─ RoguelikeModePanel（受控分段控件 + 高亮测量）
    ├─ RoguelikeThemePanel（主题快捷项 + 自定义输入）
    ├─ RoguelikeSettingsPanel（高级字段 + 运行/停止按钮）
+   ├─ RoguelikeResultPanel（结果摘要 + 辅助诊断）
    └─ aside（DeviceMonitorPanel，共享实时会话）
 ```
 
 - **当前模式**是跨面板的局部交互状态：它决定主题与高级字段面板展示哪一份 `taskInputs`/`advancedParams`。它不进入配置 wire；`Activity` 隐藏/恢复保留，真正卸载或刷新后回到默认的 `roguelike`。
 - **配置草稿**只由工作区的一次 `useUserConfig(roguelikeConfigAdapter)` 读取。主题与高级字段编辑分别合并当前 `taskInputs`/`advancedParams` 后交给同一个通道；页面、面板都不直接调用 `saveUserConfig`/`loadUserConfig` 或写 `localStorage`。
 - **同步反馈**由工作区从通道的 `error`/`syncState` 派生：失败时显示页内 `role="alert"` 与“重新同步”，`syncState === 'saving'` 期间按钮显示“同步中”；只有手动 `retry()` 返回 true 才提示“肉鸽配置已同步”。
-- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isSubmitting` 与 `onExecute`/`onStop` 投影；停止确认、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。
+- **执行**只由工作区的一次 `useRoguelikeExecution` 订阅。设置面板拿到的是 `isRunning`/`isStopping`/`isSubmitting` 与 `onExecute`/`onStop` 投影；停止确认、终态提示和 run 身份仍由 hook/控制器持有，面板没有第二份状态机。结果面板另取同一次订阅返回的 `trackedRun`，不新建观察者。
 - 模式面板只保存 `useFluidTabIndicator` 的容器 ref、高亮矩形与键盘处理；这些测量状态不参与配置或执行。
 
 ### 3. 纯命令模型
@@ -109,19 +112,36 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 
 服务端对两条通路都做校验：动态任务参数由 `validateGameTaskParams('Roguelike'|'Reclamation', params)` 校验主题、模式组合、字段类型、常乐节点目标、黑流动物/奖励与重启锚点模式；CLI 参数由 `validateRoguelikeCommandArgs` 在创建 Run 之前预检，主题、模式或加号点击方式越界时返回 `AGENT_VALIDATION_TASK_ARGS_INVALID`，不再把只有 Core 支持的取值静默透传给 maa-cli 报错。
 
-### 5. Activity 与卸载
+### 5. 执行结果与辅助诊断
+
+结果面板只消费本页 owned 的 `trackedRun`，不新增执行订阅或第二份状态：
+
+| 内容 | 规则 |
+| --- | --- |
+| 摘要来源 | 成功读 `run.result.summary`，失败读 `run.error.details.summary`；`features/roguelike/model/runSummary.ts` 逐字段校验，缺失或非法返回 null，原始错误文本不进入摘要 |
+| 摘要素材 | 服务端从本次执行增量日志的结构化回调构建：结算、投资、战斗次数、事件与选项、通宝交换、里程碑、警告与任务链终态；生息演算没有专用回调，只表达任务链终态与主题 |
+| 状态投影 | `status` 只取 `success`/`failed`/`stopped`/`incomplete`；`incomplete` 不能展示为成功 |
+| 保留上一次结果 | 新 run 活动期间仍展示最近一次终态摘要（标注“上次执行结果”），不把活动 run 当成功；Activity 隐藏/恢复保留，真正卸载后重建 |
+| 无摘要 | 显示“本次执行没有可用的结构化结果”，不回退原始 stderr |
+| 辅助诊断 | 面板内 `RuntimeDiagnosticsPanel`（`runtime-status` 域）懒加载 `GET /agent/diagnostics`，传入当前任务 command；四项检查（运行环境、设备连接、资源完整性/版本、任务预检）输出可读结论、证据与定位信息 |
+| 诊断生命周期 | 请求由 `useRuntimeDiagnostics` 持有：单在途、可取消、卸载取消；失败保留旧报告，取消不显示为失败；不写入 Query、store 或持久化 |
+
+结果面板与诊断不改变执行身份、提交、停止或终态提示；页面仍只经控制器观察 run。
+
+### 6. Activity 与卸载
 
 - `Activity` 隐藏会清理工作区与模式面板的 Effects（执行 hook 的确认计时器、`useFluidTabIndicator` 的 ResizeObserver/resize 监听），但保留 React state：当前模式、已加载草稿和面板输入不变。恢复时不会重新读取服务端配置（通道的 hydrated 守卫），也不会重放执行提交。
 - 真正卸载/刷新会销毁 `activeMode` 与面板输入；配置草稿、pending 标记与在途提交仍属于应用级 `user-config` 通道，重新挂载后继续使用；运行身份由 `task-execution` 控制器持久化，页面重新订阅同一 run，不重新提交。
 - 页面隐藏或 Activity 隐藏不改变后台 Run 的所有权；停止仍按控制器持有的 `runId` 执行。
 
-### 6. 兼容与维护约束
+### 7. 兼容与维护约束
 
 - 配置 key、本地草稿、pending 与 wire 形状以[配置持久化协调器](../../architecture/config-persistence.md)为准；面板不另建持久化格式。
-- 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。
+- 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。结果摘要只是 Run 载荷的增量字段，客户端缺失时显示“无可用结果”，不从退出码或消息推断成功。
+- 辅助诊断端点只读，除 ADB 连接探测外无副作用、不创建 Run；诊断会话不进入 Query、`statusStore`、localStorage 或 URL。
 - 保持渲染结构、DOM/CSS 类名与表单 `id`/`name`；字段键沿用迁移后的 camelCase，新增字段按含义插入相应分组，不改动已有键与表单名。
 - 字段的默认值语义以命令模型为准：生息演算默认模式为 `1`，集成战略默认职业组为 `稳扎稳打`；两者都会写入 wire 与命令。
-- 面板只组合命令模型、配置适配器与执行控制器；不在页面恢复独立的配置或执行状态。
+- 面板只组合命令模型、配置适配器、执行控制器与只读诊断；不在页面恢复独立的配置、执行或诊断状态。
 
 ## 回归与关联
 
@@ -140,13 +160,15 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 - 旧草稿：没有新字段的 wire 与本地草稿仍可读，未知扩展字段与显式值原样往返。
 - 模式是局部状态：不进入配置 wire，跨模式草稿合并、空主题拒绝，Activity 隐藏保留而真正卸载回到 `roguelike`。
 - 执行接线：按当前模式提交，停止/超时/失败/断线恢复由控制器 runId 持有，不重新提交。
+- 结果摘要：成功读 `run.result.summary`、失败读 `run.error.details.summary`；字段缺失或类型不符解析为 null 并显示“无可用结果”，不把活动 run、原始 stderr 或退出码当作结算；新 run 活动期间保留上次终态摘要并标注，Activity 隐藏/恢复保留，真正卸载重建。
+- 辅助诊断：默认不发起请求；显式运行后单在途、可取消，取消不显示为失败，失败保留旧报告；当前任务 command 透传到诊断请求；每项检查保留可读 summary、证据与定位信息。
 
 ### 验证命令
 
 以下命令均在仓库根目录执行。
 
 ```sh
-pnpm --filter la-pluma-next-client exec vitest run src/features/roguelike src/pages/roguelike
+pnpm --filter la-pluma-next-client exec vitest run src/features/roguelike src/features/runtime-status src/pages/roguelike
 ```
 
 完整验证与视觉回归入口见[开发指南](../../development/README.md)。

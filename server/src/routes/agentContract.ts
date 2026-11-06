@@ -365,6 +365,27 @@ export const AGENT_OPERATIONS: readonly RegisteredAgentOperation[] = Object.free
     }
   }),
   operation({
+    id: 'get_diagnostics',
+    method: 'GET',
+    path: '/api/agent/diagnostics',
+    description: 'Run read-only environment diagnostics: MAA CLI/MaaCore version, ADB connection, MAA resource version and directory completeness, and optional task preflight. Returns pass/warn/fail checks plus a readable conclusion. Only ADB connection is attempted; no Run is created.',
+    tags: ['Diagnostics'],
+    safety: lowRiskWrite(['adb_connect'], { idempotent: true }),
+    query_schema: {
+      type: 'object',
+      properties: {
+        profileId: profileIdProperty,
+        adbPath: { type: 'string', ...runtimeDefault('adbPath') },
+        address: { type: 'string', ...runtimeDefault('adbAddress') },
+        command: {
+          type: 'string',
+          enum: [...AGENT_TASK_COMMANDS],
+          description: 'Optional maa-cli command to preflight. Invalid values make the execution check fail with the allowed command list.'
+        }
+      }
+    }
+  }),
+  operation({
     id: 'test_connection',
     method: 'POST',
     path: '/api/agent/actions/test-connection',
@@ -979,6 +1000,7 @@ export function buildOpenApiSpec(defaults: AgentRuntimeDefaults = {}): OpenApiDo
     tags: [
       { name: 'Discovery' },
       { name: 'Status' },
+      { name: 'Diagnostics' },
       { name: 'Connection' },
       { name: 'Activity' },
       { name: 'Execution' },

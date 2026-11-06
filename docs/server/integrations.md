@@ -10,7 +10,7 @@
 
 MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次：Docker 缺省 `/usr/local/bin/maa`，本地缺省 `maa`（`server/src/config/connectionDefaults.ts:18-23`、`server/src/config/runtimeConfig.ts:271-276`）。
 
-- 资源热更新经 `maa hot-update` 原生执行，仓库、分支、镜像与凭据来自 maa-cli 配置；服务不再 clone MaaResource 覆盖基础资源。`maa install`/`maa update` 本身已同步资源，Core 更新完成后不追加第二次资源更新。
+- 资源热更新经 `maa hot-update` 原生执行，仓库、分支、镜像与凭据来自 maa-cli 配置；服务不再 clone MaaResource 覆盖基础资源。`maa install`/`maa update` 本身已同步资源，Core 更新完成后不追加第二次资源更新。Web UI 的「配置 → 资源」通过维护路由读写同一段 `cli.toml` 配置（见下文 profile 与连接配置）。
 - `maaProcessService` 是唯一持有可写子进程状态 `taskStatus` 与实时日志缓冲的模块（`server/src/services/maaProcessService.ts:371-380`）。对外投影 `getTaskStatus` 只回答"是否有受管子进程、任务名与停止请求"，不能当作流程或 Run 终态（`server/src/services/maaProcessService.ts:383-393`）。
 - 命令按三种形态执行：
   - 带任务名且不等待完成时用 `spawn` 后台执行：非 Windows 加 `detached`，stdio 为 `ignore/pipe/pipe`，spawn 后立即返回"任务已在后台启动"（`server/src/services/maaProcessService.ts:800-813,856-862`）。
@@ -40,8 +40,9 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 - MAA 配置目录由 `maa dir config` 解析并按进程缓存：并发调用共享同一次查询，失败在 30 秒冷却期内复用同一错误，避免 CLI 故障期间反复 spawn（`server/src/services/maaConfigService.ts:46-65`）。
 - profile 名必须匹配 `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`；配置路径经 `resolve` 后校验未越出 `profiles/` 目录，拒绝路径穿越（`server/src/services/maaConfigService.ts:67-83`）。
-- 读取 profile 时返回 `connection` section，并把 `[behavior]` 的 `auto_reconnect` 并入返回视图；旧版误写在 `[connection].auto_reconnect` 的值只在 `[behavior].auto_reconnect` 缺失时兼容读取；文件不存在或读取失败时返回环境默认连接 `adb_path`/`address`/`config`（`server/src/services/maaConfigService.ts:105-122,174-188`）。
-- 保存配置走 `updateTextFile` 的读改写排队单元与文本原子替换：同一 profile 的读取、合并与写入串行完成，解析或写入失败时不写回、已有配置保持原样；`auto_reconnect` 写入 `[behavior]`，旧版 `[connection].auto_reconnect` 在保存时迁移过去，其余未知 connection 字段原样保留（`server/src/services/maaConfigService.ts:124-172,190-207`）。
+- 读取 profile 时返回 `{ connection, instance_options }`：`connection` 并入 `[behavior]` 的 `auto_reconnect`，旧版误写在 `[connection].auto_reconnect` 的值只在 `[behavior].auto_reconnect` 缺失时兼容读取；`preset` 与 `touch_mode` 的别名和大小写归一为 maa-cli 规范名（`PlayTools`→`PlayCover`、`maatouch`→`MaaTouch`）。文件不存在或读取失败时返回环境默认连接与空实例选项（`server/src/services/maaConfigService.ts`）。
+- 保存配置走 `updateTextFile` 的读改写排队单元与文本原子替换：同一 profile 的读取、合并与写入串行完成，解析或写入失败时不写回、已有配置保持原样；`connection` 与 `instance_options` 两个 section 各自合并，`auto_reconnect` 写入 `[behavior]`，旧版 `[connection].auto_reconnect` 在保存时迁移过去，其余未知字段原样保留。写入前校验受支持的 `preset` 与 `touch_mode`；非法值返回 400 `AGENT_CONFIG_PROFILE_INVALID` 且不落盘（`server/src/services/maaConfigService.ts`）。
+- 资源源配置由 `resourceSourceService` 读写 `cli.toml` 的 `[resource]`：`auto_update`、`warn_on_update_failure` 与 `[resource.source]`（`type = "git" | "mirrorchyan"`，Git 侧 `backend`/`url`/`branch`/`use_ssh_agent`/`ssh_key`/`passphrase`，MirrorChyan 侧 `cdk`/`check_interval`）。读取兼容旧版 `backend`/`[resource.remote]` 写法并在保存时迁移；HTTP 响应只返回凭据形态（`none`/`plain`/`env`/`command`/`prompt`），不回传明文，请求未提供凭据时保留已保存值（`server/src/services/resourceSourceService.ts`）。`cli.toml` 的读写统一经 `cliConfigService` 的按路径排队与文本原子替换，更新渠道（`updateChannelService`）与资源源不会互相覆盖。
 - `connectionService.resolveConnection` 是执行、预览、定时与维护入口共用的连接解析：profile 值按 `snake_case` 优先、`camelCase` 兼容，只有非空字符串生效，其余回落连接默认值；profile 名不合法抛 400 `AGENT_VALIDATION_PROFILE_ID_INVALID`（`server/src/services/connectionService.ts:73-96`）。
 - `resolveConnectionInput` 只在调用方声明 `allowOverrides` 时应用请求级显式覆盖；空白或缺失的覆盖值保留 profile 值（`server/src/services/connectionService.ts:102-117`）。
 
@@ -91,6 +92,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - mall 解析 `Mall` taskchain：好友访问、信用购物、信用作战三项严格 `false` 才整体跳过；购买计数只统计 `exec_times` 缺失或为 1 的 `CreditShop-Bought` 事件（`server/src/services/mallResultService.ts:40-139`）。
 - fight 基于任务总结、命令输出与错误文本：理智耗尽、关卡未开放、剿灭奖励已领完归为 `skipped`，其余错误为 `failed`；理智判定同时检查输出短语与 Summary 段（`server/src/services/fightResultService.ts:56-178`）。
 - 游戏任务解析 `OperProgress` 与 `SwitchTheme` taskchain：培养按 `OperProgressDetail` 与 `OperProgressSummary` 汇总成功、失败与跳过，并按配置计划反推没有回调的未执行专精目标为 `deferredMastery`（Core 每轮最多启动一项专精训练；训练室占用只对该目标发一条跳过回调，后续专精目标不再发回调）；主题按 `SwitchThemeByName*` 子任务与 `SwitchThemeNotFound`、`SwitchThemeSkipped` 判定；缺少有效回调时保持 `observed: false`（`server/src/services/gameTaskResultService.ts:79-301`）。
+- 肉鸽/生息演算的 `run_task` 在启动前创建 `asst.log` 检查点，执行结束后只读取本次新增日志并构建结果摘要（`server/src/services/roguelikeResultService.ts`）：`Roguelike` taskchain 的 `RoguelikeSettlement`（楼层、步数、得分、战斗/招募/收藏品等）、`RoguelikeInvestment*`、`RoguelikeEvent*`、`RoguelikeCombatEnd`、通宝替换与黑流策略回调都保留结构，`TaskChainCompleted`/`TaskChainError`/`TaskChainStopped` 决定 `success`/`failed`/`stopped`；没有观察到任务链终态时为 `incomplete`，不能当成成功。`Reclamation` 没有专用回调，摘要只表达任务链终态与主题。摘要成功时挂在 `run.result.summary`，失败时挂在 `run.error.details.summary`；日志检查点创建或读取失败只跳过摘要，不影响执行本身。
 
 ### 作业集逐项进度与文件加载事件
 
@@ -132,7 +134,11 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。
 
-委托结果写在 `CopilotEntriesOutcome.delegation` 并透传到作业集 `summary.delegation`：`attempted` 表示本次执行尝试过原生路径，`fallback` 为真表示原生失败后已回退，`nativeError` 保留原生失败信息。回退成功后整体仍是成功；回退后现有流程也失败时，`fallback` 与 `nativeError` 同时存在，以便和「整体失败」区分。未委托的原因只在调试日志中记录。
+原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。删除失败时按原生失败处理，日志检查点可用时回退到现有流程，不会带着可能过期的缓存执行。
+
+委托结果写在 `CopilotEntriesOutcome.delegation` 并透传到作业集 `summary.delegation`。`outcome` 显式给出最终走向：`native-succeeded`、`native-failed`、`native-stopped` 表示原生路径直接收尾；`fallback-succeeded`、`fallback-failed`、`fallback-stopped` 表示原生失败后已回退到现有流程，并按现有流程的结果收尾。`attempted` 恒为 `true`，`fallback` 为真表示发生过回退，`nativeError` 保留原生失败信息（仅回退时出现）；这些兼容字段保留给旧客户端，判断走向以 `outcome` 为准。回退成功后整体仍是成功；回退后现有流程也失败时 `outcome` 为 `fallback-failed`，与原生直接失败的 `native-failed` 区分。未委托的原因只在调试日志中记录。
+
+原生委托默认启用：满足上表全部条件时优先走 `maa copilot`；设置 `LA_PLUMA_COPILOT_NATIVE_DELEGATION` 为 `0`、`false`、`off`、`no` 或 `disabled`（大小写不敏感）可整体关闭并回到现有流程，未设置或为其它值时保持启用。该开关用于真实设备验证与线上排障；不满足条件的作业集仍按原有规则走现有流程。
 
 ## 通知发送与 Telegram Bot 轮询
 

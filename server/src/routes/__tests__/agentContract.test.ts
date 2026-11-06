@@ -17,6 +17,7 @@ import type {
   OpenApiParameter,
   OpenApiResponse
 } from '../agentContract.ts';
+import { AGENT_TASK_COMMANDS } from '../../services/agentActionService.ts';
 
 const defaults = {
   adbPath: '/custom/platform-tools/adb',
@@ -26,6 +27,7 @@ const defaults = {
 
 const expectedAdvertisedIds = [
   'get_status',
+  'get_diagnostics',
   'test_connection',
   'discover_devices',
   'start_game',
@@ -95,7 +97,7 @@ function getOpenApiOperation(
 
 describe('Agent API contract registry', () => {
   it('keeps operation ids and method/path pairs unique', () => {
-    assert.equal(AGENT_OPERATIONS.length, 20);
+    assert.equal(AGENT_OPERATIONS.length, 21);
     assert.equal(new Set(AGENT_OPERATIONS.map(item => item.id)).size, AGENT_OPERATIONS.length);
     assert.equal(
       new Set(AGENT_OPERATIONS.map(item => `${item.method} ${item.path}`)).size,
@@ -109,7 +111,7 @@ describe('Agent API contract registry', () => {
     assert.equal(manifest.version, API_VERSION);
     assert.deepEqual(manifest.defaults, defaults);
     assert.deepEqual(manifest.actions.map(item => item.id), expectedAdvertisedIds);
-    assert.equal(manifest.actions.length, 18);
+    assert.equal(manifest.actions.length, 19);
     assert.ok(!manifest.actions.some(item => item.id === 'get_manifest'));
     assert.ok(!manifest.actions.some(item => item.id === 'get_openapi'));
   });
@@ -159,6 +161,28 @@ describe('Agent API contract registry', () => {
     assert.equal(prop(action.query_schema, 'lines', 'recent_logs query').default, 80);
     assert.equal(prop(action.query_schema, 'lines', 'recent_logs query').minimum, 1);
     assert.equal(prop(action.query_schema, 'lines', 'recent_logs query').maximum, 500);
+  });
+
+  it('advertises read-only diagnostics that only connects ADB and never creates a run', () => {
+    const action = findAction(buildAgentManifest(defaults), 'get_diagnostics');
+    const command = prop(action.query_schema, 'command', 'get_diagnostics query');
+
+    assert.equal(action.method, 'GET');
+    assert.equal(action.path, '/api/agent/diagnostics');
+    assert.equal(action.safety.level, 'low-risk-write');
+    assert.equal(action.safety.readOnly, false);
+    assert.equal(action.safety.idempotent, true);
+    assert.deepEqual(action.safety.sideEffects, ['adb_connect']);
+    assert.equal(action.execution.producesRun, undefined);
+    assert.equal(action.execution.mode, 'request-response');
+    assert.deepEqual(Object.keys(props(action.query_schema, 'get_diagnostics query')), [
+      'profileId',
+      'adbPath',
+      'address',
+      'command'
+    ]);
+    assert.equal(command.type, 'string');
+    assert.deepEqual(command.enum, [...AGENT_TASK_COMMANDS]);
   });
 
   it('documents the runtime-compatible task command and dynamic task fields', () => {
@@ -399,6 +423,26 @@ describe('Agent OpenAPI generation', () => {
     assert.equal(lines.in, 'query');
     assert.equal(must(lines.schema, 'lines schema').default, 80);
     assert.equal(must(lines.schema, 'lines schema').maximum, 500);
+  });
+
+  it('publishes diagnostics as a GET query operation with its own declared tag', () => {
+    const spec = buildOpenApiSpec(defaults);
+    const operation = operationAt(spec, '/api/agent/diagnostics', 'get');
+    const command = parameterOf(operation.parameters, 'command', 'diagnostics');
+
+    assert.equal(operation.operationId, 'get_diagnostics');
+    assert.deepEqual(operation.tags, ['Diagnostics']);
+    assert.ok(spec.tags.some(tag => tag.name === 'Diagnostics'));
+    assert.equal(operation.requestBody, undefined);
+    assert.equal(command.in, 'query');
+    assert.equal(command.required, false);
+    assert.deepEqual(must(command.schema, 'diagnostics command schema').enum, [...AGENT_TASK_COMMANDS]);
+    assert.equal(operation['x-la-pluma-safety'].level, 'low-risk-write');
+    assert.equal(operation['x-la-pluma-execution'].producesRun, undefined);
+    assert.equal(
+      jsonSchemaOf(responseOf(operation, '200'), 'diagnostics 200').$ref,
+      '#/components/schemas/SuccessResponse'
+    );
   });
 
   it('turns the run id schema into a required OpenAPI path parameter', () => {
