@@ -98,6 +98,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 
 - commit message 使用英文并遵循 Conventional Commits，例如 `docs: document repository agent guidance`。
 - 每个 commit 只包含当前任务相关的改动，不混入无关重构。
+- 同时涉及多种自动化任务类型（Fight、Recruit、Award、Infrast、StartUp）时，按任务类型拆成独立 commit；跨类型的共享契约、配置或基础改动先单独提交，便于按类型回溯与回滚。
 - 分支推送后以追加 commit 完成修正，不 amend 或 rebase 已推送的提交。
 - 同步 `main` 默认先 `git fetch origin main`，再 `git merge origin/main`，随后普通 push。
 - branch 使用 `<type>/<kebab-case-description>`，`<type>` 取 `feat`、`fix`、`docs`、`refactor`、`test`、`ci`、`chore`，与本次主要改动类型一致。
