@@ -1,5 +1,5 @@
 import { DEFAULT_CLIENT_TYPE } from '../config/connectionDefaults.ts';
-import { validateGameTaskParams } from './gameTaskConfigService.ts';
+import { normalizeGameTaskParams, validateGameTaskParams } from './gameTaskConfigService.ts';
 
 // 流程计划与命令构建：只处理任务流程数据，不读取设备连接、用户配置或通知状态。
 // 公开入口保持 `unknown`，只校验到“对象数组”，字段级结构按调度任务契约在执行期读取，
@@ -188,13 +188,15 @@ export function buildScheduledTaskCommand(
   connectionDefaults: ScheduleConnectionDefaults = {}
 ): ScheduledTaskCommand {
   const validationType = resolveTaskValidationType(task);
+  const normalizedParams = normalizeGameTaskParams(validationType ?? '', task.params || {});
+  if (normalizedParams.error) throw new Error(normalizedParams.error);
   if (validationType) {
-    const validationMessage = validateGameTaskParams(validationType, task.params || {});
+    const validationMessage = validateGameTaskParams(validationType, normalizedParams.params);
     if (validationMessage) throw new Error(validationMessage);
   }
 
   if (task.taskType) {
-    const params: ScheduledTaskParams = { ...(task.params || {}) };
+    const params: ScheduledTaskParams = { ...normalizedParams.params };
     if (task.taskType === 'Recruit') {
       if (params.preserve_tags === undefined && params.skip_robot === true) {
         params.preserve_tags = ['支援机械'];
@@ -368,7 +370,12 @@ export function validateScheduledTaskFlow(taskFlow: unknown): ScheduledTaskFlowV
     if (entry.enabled === false) continue;
     const validationType = resolveTaskValidationType(entry);
     if (!validationType) continue;
-    const message = validateGameTaskParams(validationType, isRecordValue(entry.params) ? entry.params : {});
+    const normalizedParams = normalizeGameTaskParams(
+      validationType,
+      isRecordValue(entry.params) ? entry.params : {}
+    );
+    if (normalizedParams.error) return { success: false, message: normalizedParams.error };
+    const message = validateGameTaskParams(validationType, normalizedParams.params);
     if (message) return { success: false, message };
   }
 

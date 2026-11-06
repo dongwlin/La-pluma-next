@@ -6,6 +6,14 @@ import * as agentDiagnosticsController from '../controllers/agentDiagnosticsCont
 
 const router = express.Router();
 
-router.get('/diagnostics', asyncHandler<ReadRequest, ApiResponseWriter>(agentDiagnosticsController.readDiagnostics));
+// 诊断结论只代表探测时刻，响应不能被浏览器或中间代理缓存。
+router.get(
+  '/diagnostics',
+  (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  },
+  asyncHandler<ReadRequest, ApiResponseWriter>(agentDiagnosticsController.readDiagnostics)
+);
 
 export default router;
