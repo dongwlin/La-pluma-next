@@ -1,5 +1,5 @@
 // 设备命令的取消跟随页面/Activity 生命周期，而不是面板可见性：设备面板随 section
-// 显示/隐藏，若在它的 cleanup 中取消，切到只读 section 就会中断在途查找/测试。
+// 显示/隐藏，若在它的 cleanup 中取消，切到其它 section 就会中断在途查找/测试。
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import {

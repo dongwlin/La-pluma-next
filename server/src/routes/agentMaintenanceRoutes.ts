@@ -57,6 +57,10 @@ router.post('/actions/update-core', asyncHandler<MaintenanceRequest, ApiResponse
 
 router.get('/update-channels', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readChannels));
 
+router.get('/config/resource-source', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.readResourceSource));
+
+router.post('/config/resource-source', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.saveResourceSource));
+
 router.post('/actions/update-channel', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.saveChannel));
 
 router.post('/actions/update-cli', asyncHandler<MaintenanceRequest, ApiResponseWriter>(agentMaintenanceController.updateCli));

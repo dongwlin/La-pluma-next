@@ -46,8 +46,8 @@ export function resolveMaintenanceConnection(request: MaintenanceRequest): Promi
 
 /**
  * profile 保存体：Express 5 未解析或缺失请求体按旧实现的 `|| {}` 归一为空对象；
- * 返回 unknown 是因为顶层形状与 connection 合并规则仍由 maaConfigService 校验，
- * 这里不能先收窄成对象而改变非对象请求体的既有结果。
+ * 返回 unknown 是因为顶层形状与 connection/instance_options 的合并与字段校验
+ * 仍由 maaConfigService 承担，这里不能先收窄成对象而改变非对象请求体的既有结果。
  */
 export function parseMaaProfileBody(body: unknown): unknown {
   return body || {};

@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import TOML from '@iarna/toml';
-import { updateTextFile } from '../utils/fileHelper.ts';
-import { getMaaConfigDir } from './maaConfigService.ts';
+import {
+  isCliConfigRecord,
+  readCliConfigDocument,
+  updateCliConfigDocument
+} from './cliConfigService.ts';
+import type { CliConfigDocument } from './cliConfigService.ts';
 
 export const CORE_UPDATE_CHANNELS = ['stable', 'beta', 'alpha'] as const;
 export type CoreUpdateChannel = (typeof CORE_UPDATE_CHANNELS)[number];
@@ -21,9 +22,7 @@ export interface CliUpdateCapabilities {
   binary: boolean;
 }
 
-type ChannelDocument = Record<string, unknown>;
-
-const stringifyToml = TOML.stringify as (document: ChannelDocument) => string;
+type ChannelDocument = CliConfigDocument;
 
 const CORE_CHANNEL_LABELS: Record<CoreUpdateChannel, string> = {
   stable: 'Stable',
@@ -36,10 +35,6 @@ const CLI_CHANNEL_LABELS: Record<CliUpdateChannel, string> = {
   beta: 'Beta',
   nightly: 'Nightly'
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function isCoreUpdateChannel(value: unknown): value is CoreUpdateChannel {
   return typeof value === 'string' && (CORE_UPDATE_CHANNELS as readonly string[]).includes(value);
@@ -63,32 +58,16 @@ function normalizeCliChannel(value: unknown): CliUpdateChannel {
   return isCliUpdateChannel(normalized) ? normalized : 'stable';
 }
 
-async function resolveCliConfigPath(): Promise<string> {
-  const configDir = await getMaaConfigDir();
-  return resolve(configDir.trim(), 'cli.toml');
-}
-
-async function readChannelDocument(path: string): Promise<ChannelDocument> {
-  let content: string;
-  try {
-    content = await readFile(path, 'utf-8');
-  } catch {
-    return {};
-  }
-  const parsed: unknown = TOML.parse(content);
-  return isRecord(parsed) ? parsed : {};
-}
-
 function section(document: ChannelDocument, key: string): ChannelDocument {
   const value = document[key];
   if (value == null) return {};
-  if (!isRecord(value)) throw new TypeError(`cli.toml 的 [${key}] section 格式不合法`);
+  if (!isCliConfigRecord(value)) throw new TypeError(`cli.toml 的 [${key}] section 格式不合法`);
   return value;
 }
 
 export async function readUpdateChannels(): Promise<UpdateChannels> {
   try {
-    const document = await readChannelDocument(await resolveCliConfigPath());
+    const document = await readCliConfigDocument();
     return {
       core: normalizeCoreChannel(section(document, 'core').channel),
       cli: normalizeCliChannel(section(document, 'cli').channel)
@@ -100,7 +79,7 @@ export async function readUpdateChannels(): Promise<UpdateChannels> {
 
 export async function readCliUpdateCapabilities(): Promise<CliUpdateCapabilities> {
   try {
-    const document = await readChannelDocument(await resolveCliConfigPath());
+    const document = await readCliConfigDocument();
     const components = section(section(document, 'cli'), 'components');
     return { binary: components.binary !== false };
   } catch {
@@ -115,9 +94,7 @@ export async function saveUpdateChannel(scope: UpdateChannelScope, channel: unkn
   if (scope === 'cli' && !isCliUpdateChannel(channel)) {
     throw new TypeError('CLI 更新渠道不合法');
   }
-  const path = await resolveCliConfigPath();
-  await updateTextFile(path, current => {
-    const document = current === null ? {} : readChannelDocumentText(current);
+  await updateCliConfigDocument(document => {
     if (scope === 'core') {
       document.core = {
         ...section(document, 'core'),
@@ -128,13 +105,7 @@ export async function saveUpdateChannel(scope: UpdateChannelScope, channel: unkn
       cli.channel = CLI_CHANNEL_LABELS[channel as CliUpdateChannel];
       document.cli = cli;
     }
-    return stringifyToml(document);
+    return document;
   });
   return readUpdateChannels();
-}
-
-function readChannelDocumentText(content: string): ChannelDocument {
-  const parsed: unknown = TOML.parse(content);
-  if (!isRecord(parsed)) throw new TypeError('cli.toml 格式不合法');
-  return parsed;
 }

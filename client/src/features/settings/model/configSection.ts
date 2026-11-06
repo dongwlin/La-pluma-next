@@ -10,19 +10,8 @@ export const CONFIG_SECTION_EVENT = 'la-pluma-config-section'
 
 export const DEFAULT_CONFIG_SECTION: ConfigSectionId = 'connection'
 
-const CONFIG_SECTION_EDITABLE: Record<ConfigSectionId, boolean> = {
-  connection: true,
-  resource: false,
-  instance: false,
-}
-
 export const isConfigSectionId = (value: unknown): value is ConfigSectionId => (
   typeof value === 'string' && (CONFIG_SECTION_IDS as readonly string[]).includes(value)
-)
-
-/** 只有 connection section 提供可写表单与保存/重置；可收窄 section 分支。 */
-export const isEditableConfigSection = (section: ConfigSectionId): section is 'connection' => (
-  CONFIG_SECTION_EDITABLE[section]
 )
 
 const defaultStorage = (): Pick<Storage, 'getItem' | 'setItem'> | null => {

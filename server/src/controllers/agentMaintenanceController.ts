@@ -3,12 +3,13 @@ import { promisify } from 'util';
 import { getMaaVersion } from '../services/maaExecutionService.ts';
 import type { MaaProcessLifecycle } from '../services/maaProcessService.ts';
 import { testAdbConnection, discoverAdbDevices } from '../services/maaDeviceService.ts';
-import { getMaaConfigDir, getConfig, saveConfig } from '../services/maaConfigService.ts';
+import { getMaaConfigDir, getProfile, saveProfile as saveMaaProfile } from '../services/maaConfigService.ts';
 import { getCurrentActivity } from '../services/maaActivityService.ts';
 import type { MaaActivitySnapshot } from '../services/maaActivityService.ts';
 import { getScheduleExecutionStatus, getScheduleStatus, setupSchedule, stopSchedule, setupAutoUpdate, getAutoUpdateStatus } from '../services/schedulerService.ts';
-import { getMaaResourceInfo } from '../services/resourceUpdateService.ts';
-import { buildCliUpdaterPlan } from '../services/cliUpdaterService.ts';
+import { getMaaResourceInfo, updateMaaResources } from '../services/resourceUpdateService.ts';
+import { readResourceSourceConfig, saveResourceSourceConfig } from '../services/resourceSourceService.ts';
+import { buildCliUpdaterPlan, runCliUpdater } from '../services/cliUpdaterService.ts';
 import {
   CORE_UPDATE_TASK_NAME,
   CLI_UPDATE_TASK_NAME,
@@ -126,11 +127,11 @@ function sendRecognitionResult<T>(
 const outboundHttp = createOutboundHttpClient();
 
 export async function readProfile(req: MaintenanceProfileRequest, res: ApiResponseWriter): Promise<void> {
-  return sendSuccess(res, req, await getConfig(req.params.profileName));
+  return sendSuccess(res, req, await getProfile(req.params.profileName));
 }
 
 export async function saveProfile(req: MaintenanceProfileRequest, res: ApiResponseWriter): Promise<void> {
-  await saveConfig(req.params.profileName, parseMaaProfileBody(req.body));
+  await saveMaaProfile(req.params.profileName, parseMaaProfileBody(req.body));
   return sendSuccess(res, req, null, '配置保存成功');
 }
 
@@ -660,6 +661,14 @@ export async function readVersion(req: MaintenanceRequest, res: ApiResponseWrite
 
 export async function readChannels(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
   return sendSuccess(res, req, await readUpdateChannels());
+}
+
+export async function readResourceSource(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+  return sendSuccess(res, req, await readResourceSourceConfig());
+}
+
+export async function saveResourceSource(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
+  return sendSuccess(res, req, await saveResourceSourceConfig(req.body), '资源源配置已保存');
 }
 
 export async function saveChannel(req: MaintenanceRequest, res: ApiResponseWriter): Promise<void> {
