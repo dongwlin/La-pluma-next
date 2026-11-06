@@ -237,6 +237,7 @@ describe('copilot plan payload', () => {
       entries: [],
     })
 
+    expect(result).not.toBeNull()
     expect(result?.items[0]?.apCost).toBe(6)
     expect(result?.items[1]?.apCost).toBeUndefined()
     expect(result?.items[2]?.apCost).toBeUndefined()
