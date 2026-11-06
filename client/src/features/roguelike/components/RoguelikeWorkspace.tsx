@@ -128,11 +128,15 @@ export default function RoguelikeWorkspace() {
       <div className="roguelike-workspace-grid">
         <RoguelikeModePanel activeMode={activeMode} onModeChange={setActiveMode} />
 
-        <RoguelikeThemePanel
-          task={activeTask}
-          theme={activeTheme}
-          onThemeChange={handleThemeChange}
-        />
+        <div className="roguelike-main-column">
+          <RoguelikeThemePanel
+            task={activeTask}
+            theme={activeTheme}
+            onThemeChange={handleThemeChange}
+          />
+
+          <RoguelikeResultPanel run={trackedRun} command={activeTask.command} />
+        </div>
 
         <RoguelikeSettingsPanel
           task={activeTask}
@@ -149,8 +153,6 @@ export default function RoguelikeWorkspace() {
             onStop: () => void stop(),
           }}
         />
-
-        <RoguelikeResultPanel run={trackedRun} command={activeTask.command} />
 
         <aside className="roguelike-monitor-column" aria-label="设备画面">
           <DeviceMonitorPanel

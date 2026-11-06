@@ -76,7 +76,7 @@ const depot = unwrapApiResponse(result)
 
 ### Game data（`features/game-data/api/index.ts`）
 
-仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标不是端点：`getItemIconUrl` 只生成外部静态资源 URL，由浏览器缓存，不进入 Query；当前 URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。
+仓库、持有干员与干员目录是 training/statistics 共享的服务端读取，由 `features/game-data` 唯一持有。物品图标与干员头像不是端点：`getItemIconUrl` / `getOperatorAvatarUrl` 只生成同源 `/game-assets` URL，由浏览器缓存，不进入 Query；URL 带 `?v=<图标缓存 epoch>`，资源更新成功后推进 epoch 以避开旧图片缓存。图片由服务端从 MAA 资源的 `template/items/` 与 `template/avatar/` 读取，`LA_PLUMA_GAME_ASSET_DIR` 可指向按 `item/`、`avatar/` 布局准备的自定义目录。
 
 | 函数 | 端点 | 载荷校验 |
 | --- | --- | --- |

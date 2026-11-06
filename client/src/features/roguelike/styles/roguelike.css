@@ -17,9 +17,8 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "mode"
-      "theme"
+      "main"
       "settings"
-      "result"
       "monitor";
     align-items: start;
     gap: var(--app-space-section);
@@ -30,8 +29,12 @@
     min-width: 0;
   }
 
-  .roguelike-theme-panel {
-    grid-area: theme;
+  .roguelike-main-column {
+    display: grid;
+    grid-area: main;
+    min-width: 0;
+    align-content: start;
+    gap: var(--app-space-section);
   }
 
   .roguelike-settings-panel {
@@ -41,10 +44,6 @@
   .roguelike-monitor-column {
     grid-area: monitor;
     min-width: 0;
-  }
-
-  .roguelike-result-panel {
-    grid-area: result;
   }
 
   .roguelike-panel,
@@ -347,8 +346,7 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-template-areas:
         "mode mode"
-        "theme settings"
-        "result result"
+        "main settings"
         "monitor monitor";
     }
   }
@@ -358,11 +356,10 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
 
       /* Prevent the two-row preview from redistributing height into the mode row. */
-      grid-template-rows: calc(3.25rem + 0.5rem + 2px) auto auto;
+      grid-template-rows: calc(3.25rem + 0.5rem + 2px) auto;
       grid-template-areas:
         "mode mode monitor"
-        "theme settings monitor"
-        "result result result";
+        "main settings monitor";
     }
   }
 

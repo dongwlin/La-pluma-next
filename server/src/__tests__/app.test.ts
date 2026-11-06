@@ -13,6 +13,9 @@ const tempDirs: string[] = []
 async function productionApp(basePath = '/'): Promise<string> {
   const clientDistPath = await mkdtemp(join(tmpdir(), 'la-pluma-app-'))
   tempDirs.push(clientDistPath)
+  // 资源路由缺省读取本机 MAA 资源目录；注入空目录让 404 断言不依赖开发机安装。
+  const maaDataDir = await mkdtemp(join(tmpdir(), 'la-pluma-app-maa-'))
+  tempDirs.push(maaDataDir)
   await mkdir(join(clientDistPath, 'api', 'agent'), { recursive: true })
   await mkdir(join(clientDistPath, 'health'), { recursive: true })
   await writeFile(join(clientDistPath, 'index.html'), '<title>Application shell fixture</title>')
@@ -20,7 +23,7 @@ async function productionApp(basePath = '/'): Promise<string> {
   await writeFile(join(clientDistPath, 'api', 'missing'), 'static API shadow')
   await writeFile(join(clientDistPath, 'health', 'internal'), 'static probe shadow')
   const app = createLaPlumaApp({
-    env: { NODE_ENV: 'production', LA_PLUMA_BASE_PATH: basePath },
+    env: { NODE_ENV: 'production', LA_PLUMA_BASE_PATH: basePath, MAA_DATA_DIR: maaDataDir },
     clientDistPath
   })
   const server = createServer(app)
