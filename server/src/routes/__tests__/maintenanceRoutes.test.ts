@@ -608,7 +608,7 @@ describe('moved maintenance routes keep HTTP contracts', () => {
   });
 
   it('rejects invalid update channels before reading or writing persisted configuration', async () => {
-    const port = await listen(createLaPlumaApp({ env: {} }));
+    const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);
     const baseUrl = `http://127.0.0.1:${port}/api/agent`;
     const cliBefore = await callCliLog();
 
