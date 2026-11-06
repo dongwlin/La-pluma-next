@@ -224,7 +224,14 @@ function toConnectionView(profile: MaaProfileDocument): MaaProfileConnection {
   const connectionValues: Record<string, unknown> = { ...connection };
   const legacyAutoReconnect = connectionValues.auto_reconnect;
   delete connectionValues.auto_reconnect;
-  if (!isRecord(connectionSection)) delete connectionValues.behavior;
+  if (!isRecord(connectionSection)) {
+    // 无 `[connection]` 段时整份文档退化为连接视图；已知的其它 section 不能
+    // 混进 connection 快照，否则保存会把它们复制成 `[connection].<section>`。
+    delete connectionValues.behavior;
+    delete connectionValues.instance_options;
+    delete connectionValues.resource;
+    delete connectionValues.static_options;
+  }
 
   const behavior = isRecord(profile.behavior) ? profile.behavior : null;
   const autoReconnect = typeof behavior?.auto_reconnect === 'boolean'

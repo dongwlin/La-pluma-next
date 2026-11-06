@@ -353,6 +353,26 @@ custom_flag = "kept"
     assert.equal(await readProfile('daily'), original);
   });
 
+  it('keeps other sections out of the connection view when the profile has no connection table', async () => {
+    await writeProfile('options-only', `[instance_options]
+touch_mode = "MaaTouch"
+
+[resource]
+user_resource = true
+`);
+
+    const profile = await getProfile('options-only');
+    assert.deepEqual(profile.connection, {});
+    assert.deepEqual(profile.instance_options, { touch_mode: 'MaaTouch' });
+
+    await saveProfile('options-only', { connection: { address: '127.0.0.1:5555' } });
+
+    const parsed = TOML.parse(await readProfile('options-only'));
+    assert.deepEqual(parsed.connection, { address: '127.0.0.1:5555' });
+    assert.deepEqual(parsed.instance_options, { touch_mode: 'MaaTouch' });
+    assert.deepEqual(parsed.resource, { user_resource: true });
+  });
+
   it('migrates legacy connection and instance options into their sections', async () => {
     await writeProfile('legacy-options', `[connection]
 address = "127.0.0.1:5555"
