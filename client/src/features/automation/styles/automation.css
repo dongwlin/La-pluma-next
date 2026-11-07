@@ -1446,6 +1446,10 @@
     gap: 0.75rem;
   }
 
+  .automation-param-fields.has-wide-field-labels .automation-field-row {
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+  }
+
   .automation-field-label {
     min-width: 0;
     color: var(--app-text-muted);

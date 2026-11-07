@@ -19,6 +19,25 @@ export function AutomationFieldLabel({ htmlFor, label, hint }: AutomationFieldLa
   )
 }
 
+interface AutomationFieldLegendProps {
+  label: string
+  hintId: string
+  hint?: string
+}
+
+export function AutomationFieldLegend({ label, hintId, hint }: AutomationFieldLegendProps) {
+  if (!hint) return <legend className="automation-field-label mb-2 block">{label}</legend>
+
+  return (
+    <legend className="automation-field-label mb-2 block">
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <HintTooltip id={hintId} label={label} hint={hint} />
+      </span>
+    </legend>
+  )
+}
+
 interface AutomationCheckboxFieldProps {
   id: string
   label: string

@@ -3,6 +3,7 @@ import type { TaskParamField, TaskParamFieldType } from '../types'
 const TOOLTIP_HELPER_FIELD_TYPES: ReadonlySet<TaskParamFieldType> = new Set([
   'checkbox',
   'select',
+  'star-select',
   'text',
   'number',
   'multi-stages',

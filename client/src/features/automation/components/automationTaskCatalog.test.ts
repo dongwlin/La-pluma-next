@@ -157,6 +157,43 @@ describe('automation task parameter defaults and copy', () => {
     expect(launchSwitch?.helperPlacement).toBe('tooltip')
   })
 
+  it('moves the recruit helper texts into tooltips without touching the copy', () => {
+    const recruit = AVAILABLE_TASKS.find(task => task.id === 'recruit')
+    if (!recruit) throw new Error('missing recruit task')
+    const fieldOf = (key: string) => recruit.paramFields.find(field => field.key === key)
+
+    expect(fieldOf('force_refresh')).toMatchObject({
+      label: '无许可时仍刷新',
+      helper: '招聘许可耗尽后，仍会使用可用刷新次数',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('select')).toMatchObject({
+      label: '招募星级',
+      helper: '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('confirm')).toMatchObject({
+      label: '确认星级',
+      helper: '建议至少保留 5/6 星确认，避免高价值标签被跳过；不勾选任何星级时只计算标签，不会确认招募',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('times')).toMatchObject({
+      label: '招募次数',
+      helper: '设为 0 时只计算标签，不执行招募',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('preserve_tags')).toMatchObject({
+      label: '保留标签',
+      helper: '识别到任一标签时保留该公招槽位，多个标签用逗号分隔',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('level3_recruitment_permit_reserve')).toMatchObject({
+      label: '3 星保留招聘许可',
+      helper: '自动确认 3 星时保留的招聘许可数量；剩余许可小于等于该值时跳过 3 星招募，0 表示不保留',
+      helperPlacement: 'tooltip',
+    })
+  })
+
   it('keeps the default inline helper placement for every field that still needs one', () => {
     const tooltipHelpers = AVAILABLE_TASKS
       .flatMap(task => task.paramFields)
@@ -173,6 +210,12 @@ describe('automation task parameter defaults and copy', () => {
       'stone',
       'series',
       'mode',
+      'force_refresh',
+      'select',
+      'confirm',
+      'times',
+      'preserve_tags',
+      'level3_recruitment_permit_reserve',
       'only_buy_discount',
       'reserve_max_credit',
       'credit_fight',
