@@ -344,9 +344,17 @@ export function parseOperBoxFile(value: unknown): OperBoxFile | null {
   };
 }
 
+type RecognitionRunTerminal = 'completed' | 'failed' | 'stopped' | 'missing';
+
+interface RecognitionRun {
+  events: MaaCallbackEvent[];
+  terminal: RecognitionRunTerminal;
+}
+
 interface RecognitionPayload {
   details: Record<string, unknown>;
   complete: boolean;
+  terminal: RecognitionRunTerminal;
 }
 
 function parseUnscopedRecognitionEvents(
@@ -372,35 +380,46 @@ function parseUnscopedRecognitionEvents(
   return events;
 }
 
-function readRecognitionEvents(logContent: string, taskchain: string, what: string): MaaCallbackEvent[] {
+function readRecognitionRuns(logContent: string, taskchain: string, what: string): RecognitionRun[] {
   const events = parseMaaCallbackEvents(logContent, taskchain);
-  if (events.length > 0) return events;
+  if (events.length > 0) return splitRunSegments(events);
 
-  // 旧日志可能缺少回调前缀或 taskchain；逐行解析载荷仍比跨事件正则可靠。
-  return parseUnscopedRecognitionEvents(logContent, taskchain, what);
+  // 旧日志没有任务链回调可绑定：载荷里的 done 是该格式唯一可观察的完成信号。
+  return [{
+    events: parseUnscopedRecognitionEvents(logContent, taskchain, what),
+    terminal: 'completed'
+  }];
 }
 
-function splitRunSegments(events: readonly MaaCallbackEvent[]): MaaCallbackEvent[][] {
-  const segments: MaaCallbackEvent[][] = [];
+function splitRunSegments(events: readonly MaaCallbackEvent[]): RecognitionRun[] {
+  const segments: RecognitionRun[] = [];
   let current: MaaCallbackEvent[] = [];
+
+  const closeSegment = (terminal: RecognitionRunTerminal): void => {
+    segments.push({ events: current, terminal });
+    current = [];
+  };
 
   for (const event of events) {
     if (event.callback === 'AllTasksCompleted') continue;
 
     if (event.callback === 'TaskChainStart') {
-      if (current.length > 0) segments.push(current);
+      if (current.length > 0) closeSegment('missing');
       current = [event];
       continue;
     }
 
     current.push(event);
-    if (event.callback === 'TaskChainCompleted' || event.callback === 'TaskChainError') {
-      segments.push(current);
-      current = [];
+    if (event.callback === 'TaskChainCompleted') {
+      closeSegment('completed');
+    } else if (event.callback === 'TaskChainError') {
+      closeSegment('failed');
+    } else if (event.callback === 'TaskChainStopped') {
+      closeSegment('stopped');
     }
   }
 
-  if (current.length > 0) segments.push(current);
+  if (current.length > 0) segments.push({ events: current, terminal: 'missing' });
   return segments;
 }
 
@@ -409,19 +428,32 @@ function selectRecognitionPayload(
   taskchain: string,
   what: string
 ): RecognitionPayload | null {
-  const segments = splitRunSegments(readRecognitionEvents(logContent, taskchain, what));
-  const runEvents = segments[segments.length - 1] ?? [];
+  const runs = readRecognitionRuns(logContent, taskchain, what);
+  const run = runs[runs.length - 1];
+  if (!run) return null;
   let incomplete: RecognitionPayload | null = null;
 
-  for (let i = runEvents.length - 1; i >= 0; i -= 1) {
-    const event = runEvents[i];
+  for (let i = run.events.length - 1; i >= 0; i -= 1) {
+    const event = run.events[i];
     if (event.callback !== 'SubTaskExtraInfo' || event.what !== what) continue;
     const details = getCallbackDetails(event);
     if (!details) continue;
-    if (details.done === true) return { details, complete: true };
-    incomplete ??= { details, complete: false };
+    if (details.done === true) return { details, complete: true, terminal: run.terminal };
+    incomplete ??= { details, complete: false, terminal: run.terminal };
   }
   return incomplete;
+}
+
+function assertRecognitionSucceeded(payload: RecognitionPayload, label: string): void {
+  if (!payload.complete) {
+    logger.warn(`${label}识别未完成，保留已有缓存`);
+    throw new Error(`${label}识别未完成`);
+  }
+
+  if (payload.terminal !== 'completed') {
+    logger.warn(`${label}识别任务链未成功收尾，保留已有缓存`, { terminal: payload.terminal });
+    throw new Error(`${label}识别任务链未成功`);
+  }
 }
 
 function parseDepotPayloadCounts(details: Record<string, unknown>): Record<string, number> | null {
@@ -470,10 +502,7 @@ export async function parseDepotData(
       return null;
     }
 
-    if (!payload.complete) {
-      logger.warn('仓库识别未完成，保留已有缓存');
-      throw new Error('仓库识别未完成');
-    }
+    assertRecognitionSucceeded(payload, '仓库');
 
     const depotCounts = parseDepotPayloadCounts(payload.details);
 
@@ -527,10 +556,7 @@ export async function parseOperBoxData(
       return null;
     }
 
-    if (!payload.complete) {
-      logger.warn('干员识别未完成，保留已有缓存');
-      throw new Error('干员识别未完成');
-    }
+    assertRecognitionSucceeded(payload, '干员');
 
     const recognition = parseOperBoxRecognitionPayload(payload.details);
     if (!recognition || recognition.owned.length === 0) {
