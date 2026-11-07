@@ -113,6 +113,11 @@ const readTaskToml = () => {
     if (process.env.FAKE_NATIVE_TRUNCATE_LOG) {
       fs.writeFileSync(process.env.FAKE_MAA_LOG_FILE || '', '');
     }
+    if (process.env.FAKE_NATIVE_ROTATE_LOG) {
+      const logFile = process.env.FAKE_MAA_LOG_FILE || '';
+      fs.renameSync(logFile, logFile + '.1');
+      fs.writeFileSync(logFile, 'x'.repeat(Number(process.env.FAKE_NATIVE_ROTATE_SIZE || 4096)));
+    }
     const copilotCacheDir = path.join(process.env.MAA_CACHE_DIR || '', 'copilot');
     for (const uri of args.slice(1)) {
       const id = /^prts:\\/\\/(\\d+)$/.exec(uri)?.[1];
@@ -221,6 +226,8 @@ beforeEach(async () => {
   delete process.env.FAKE_RUN_EXIT_DELAY;
   delete process.env.FAKE_NATIVE_LOG_UNREADABLE;
   delete process.env.FAKE_NATIVE_TRUNCATE_LOG;
+  delete process.env.FAKE_NATIVE_ROTATE_LOG;
+  delete process.env.FAKE_NATIVE_ROTATE_SIZE;
   await writeFile(maaCallLog, '');
   await rm(maaAsstLog, { recursive: true, force: true });
   await writeFile(maaAsstLog, '');
@@ -668,6 +675,31 @@ describe('copilot native delegation execution', () => {
   test('does not fall back when the incremental log was truncated', async () => {
     setNativeDelegationEnabled(true);
     process.env.FAKE_NATIVE_TRUNCATE_LOG = '1';
+    process.env.FAKE_NATIVE_EXIT_CODE = '1';
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+    await writeFile(maaAsstLog, 'checkpoint-before-native');
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 1);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 0);
+    assert.deepEqual(outcome.delegation, {
+      attempted: true,
+      fallback: false,
+      outcome: 'native-failed'
+    });
+    assert.ok(outcome.error);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['failed', 'failed', 'failed']
+    );
+  });
+
+  test('does not fall back when the log rotated and the new file grew past the checkpoint', async () => {
+    setNativeDelegationEnabled(true);
+    process.env.FAKE_NATIVE_ROTATE_LOG = '1';
+    process.env.FAKE_NATIVE_ROTATE_SIZE = '4096';
     process.env.FAKE_NATIVE_EXIT_CODE = '1';
     process.env.FAKE_RUN_LOADS = runLoads(planFiles());
     await writeFile(maaAsstLog, 'checkpoint-before-native');

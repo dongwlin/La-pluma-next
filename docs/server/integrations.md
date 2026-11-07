@@ -69,7 +69,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `readLogFile` 先对日志目录与请求路径取 `realpath`，再按目录边界判定与扩展名检查：只允许日志目录内的 `.log` 文件，目录外符号链接与悬空目标都被拒绝（`server/src/services/maaLogFileService.ts:268-278,337-349`）。
 - 日志内容从文件尾部按 64 KB 分块读取，单次最多 2 MB；窗口起始于行中间时丢弃首行残片。`totalLines` 按 split 语义分块统计换行数；行数上限 `MAX_LOG_FILE_LINES` 5000（`server/src/services/maaLogFileService.ts:24,27,284-329,337-381`）。
 - `cleanupLogs` 按修改时间从新到旧累加，把超出保留上限的文件删除；上限限定 1–1024 MB（`server/src/services/maaLogFileService.ts:229-262`）。
-- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 当前字节数，失败返回 null 不抛错；`readMaaLogIncrement` 只读取检查点之后新增的字节（最多 `maxBytes`）并标明完整性：`ok` 为全部新增内容，`unreadable` 为检查点或文件不可读，`truncated` 为文件回绕、超出单次读取上限或短读导致的尾部部分内容；`readMaaLogSince` 是丢弃状态只取文本的便捷封装（`server/src/services/maaLogFileService.ts:144-204`）。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果；依赖「没读到某类回调」下结论或把统计当整次执行落盘的调用方只在 `ok` 时采信增量内容，截断时改用可核对的完整 CLI 摘要或任务内累计回调，无法确认的字段保持缺失。
+- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 的路径、当前字节数、文件身份与检查点边界前 256 字节的 SHA-256 摘要，失败返回 null 不抛错；`readMaaLogIncrement` 只读取检查点之后新增的字节（最多 `maxBytes`）并标明完整性：`ok` 为全部新增内容，`unreadable` 为检查点或文件不可读，`truncated` 为文件回绕变小、超出单次读取上限或短读导致的尾部部分内容，`rotated` 为检查点指向的日志已被替换或原地重写（dev/ino 或边界前内容摘要变化）且不再返回文本。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果；依赖「没读到某类回调」下结论或把统计当整次执行落盘的调用方只在 `ok` 时采信增量内容，截断或轮转时改用可核对的完整 CLI 摘要或任务内累计回调，无法确认的字段保持缺失（`server/src/services/maaLogFileService.ts:188-283`）。
 - 调试截图列表从 MAA 状态目录的 `debug/` 读取图片文件；响应只暴露文件名，不返回服务器绝对路径（`server/src/services/maaLogFileService.ts:386-424`）。
 
 ## 活动查询与本地任务缓存
@@ -179,7 +179,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - 子进程测试不启动真实 CLI：spawn/execFile/停止端口注入同形状的假子进程，覆盖 close/error、退出码、信号与 kill 升级（`server/src/services/maaProcessService.ts:90-101`、`server/src/services/__tests__/maaServicePorts.test.ts:44-55`）。
 - 需要真实进程行为的测试在临时目录写入可执行的假 CLI 脚本，并在模块导入前设置 `MAA_CLI_PATH` 等环境变量；导入时读取的环境变量必须在导入前设置（`server/src/services/__tests__/maaConfigDirCache.test.ts:7-32`）。
 - MAA 缓存、profile 目录与任务缓存目录用 `mkdtemp` 隔离，用例结束后删除（`server/src/services/__tests__/maaConfigDirCache.test.ts:9,43-45`、`server/src/services/__tests__/maaTaskCacheService.test.ts:10`）。
-- 外部依赖整体可注入：活动查询的 runtime（`server/src/services/maaActivityService.ts:94-108`）、日志检查点的 stat/open 端口（`server/src/services/maaLogFileService.ts:61-69`）、通知服务的出站客户端（`server/src/services/notificationService.ts:574-580`）与 Telegram Bot 的全部依赖（`server/src/services/telegramBotService.ts:218-232`），测试不触碰真实网络、设备或 MAA CLI。
+- 外部依赖整体可注入：活动查询的 runtime（`server/src/services/maaActivityService.ts:94-108`）、日志检查点的 stat/open 端口（`server/src/services/maaLogFileService.ts:72-82`）、通知服务的出站客户端（`server/src/services/notificationService.ts:574-580`）与 Telegram Bot 的全部依赖（`server/src/services/telegramBotService.ts:218-232`），测试不触碰真实网络、设备或 MAA CLI。
 - 测试入口、逐文件进程隔离与定向回归命令见[服务端架构与请求契约](README.md#测试入口)。
 
 ## 延伸阅读
