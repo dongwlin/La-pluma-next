@@ -1,8 +1,9 @@
-# La Pluma Next
-
 <div align="center">
+
+  # La Pluma Next
+
   <img src="client/public/logo-graphite.svg" alt="La Pluma Next Logo" width="120" />
-  <p><em>MAA CLI 的现代化 WebUI 与本地 Agent 控制台</em></p>
+  <p><em>一个基于 MAA CLI 的 WebUI</em></p>
   
   [![CI](https://github.com/dongwlin/La-pluma-next/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dongwlin/La-pluma-next/actions/workflows/ci.yml)
   [![GHCR](https://img.shields.io/badge/GHCR-la--pluma--next-2496ED?logo=github)](https://github.com/dongwlin/La-pluma-next/pkgs/container/la-pluma-next)
@@ -10,20 +11,14 @@
 
 ## 界面预览
 
-<table>
-  <tr>
-    <td width="76%" valign="top">
-      <img src="screenshots/automation-web-light.png" alt="日常任务桌面端（浅色）" width="100%" />
-    </td>
-    <td width="24%" valign="top">
-      <img src="screenshots/automation-mobile-light.png" alt="日常任务移动端（浅色）" width="100%" />
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="screenshots/automation-web-light.png" alt="日常任务桌面端（浅色）" width="75%" align="top" />
+  <img src="screenshots/automation-mobile-light.png" alt="日常任务移动端（浅色）" width="21.6%" align="top" />
+</p>
 
 ## 快速开始
 
-支持 Docker 与本地安装两种方式：Docker 适合直接部署，本地安装适合开发调试。
+支持 Docker 与源码运行两种方式：Docker 适合直接部署，源码运行适合开发调试。
 
 ### 方式 1: Docker 部署（推荐）
 
@@ -47,7 +42,7 @@ docker run -d \
 
 浏览器打开 [http://localhost:3055](http://localhost:3055)。环境变量、HTTPS/PWA、子路径、Docker Compose 与本地构建见 [部署指南](docs/guides/deployment.md)。
 
-### 方式 2: 本地安装
+### 方式 2: 源码运行
 
 先在本地准备好：
 
