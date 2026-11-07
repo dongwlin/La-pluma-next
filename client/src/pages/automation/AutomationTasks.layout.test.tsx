@@ -548,7 +548,8 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('启动游戏客户端')
 
     const taskDeleteButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="删除启动游戏"]')
-    expect(taskDeleteButtons).toHaveLength(2)
+    expect(taskDeleteButtons).toHaveLength(1)
+    expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
 
     const firstHourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')
     const firstMinuteInput = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')
@@ -763,6 +764,232 @@ describe('AutomationTasks layout surfaces', () => {
     await clickSequenceTask('理智作战')
     const inlineHelpers = Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent)
     expect(inlineHelpers).toContain('使用理智药数量')
+  })
+
+  it('offers task removal from the flow list only', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderPage()
+
+    const deleteButton = container.querySelector<HTMLButtonElement>('[aria-label="删除启动游戏"]')
+    expect(deleteButton).not.toBeNull()
+    expect(deleteButton?.closest('#automation-task-editor')).toBeNull()
+    expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
+
+    await act(async () => deleteButton?.click())
+    await flush()
+
+    expect(savedFlowIds()).toEqual(['fight-1', 'recruit-1'])
+    expect(container.querySelectorAll('[aria-controls="automation-task-editor"]')).toHaveLength(2)
+    expect(container.textContent).toContain('已删除“启动游戏”')
+
+    await act(async () => findButton('恢复')?.click())
+    await flush()
+
+    expect(savedFlowIds()).toEqual(['startup-1', 'fight-1', 'recruit-1'])
+    expect(container.querySelectorAll('[aria-controls="automation-task-editor"]')).toHaveLength(3)
+    expect(container.textContent).not.toContain('已删除“启动游戏”')
+    expect(container.querySelector('#automation-task-editor')?.textContent).toContain('启动游戏')
+    expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
+  })
+
+  it('moves the mall helper texts into label tooltips without leaving helper paragraphs', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'mall-1',
+            commandId: 'mall',
+            name: '信用收支',
+            description: '访问好友、收取信用',
+            taskType: 'Mall',
+            enabled: true,
+            params: {
+              visit_friends: true,
+              shopping: true,
+              buy_first: '',
+              blacklist: '',
+              force_shopping_if_credit_full: false,
+              only_buy_discount: false,
+              reserve_max_credit: false,
+              credit_fight: false,
+              formation_index: 0,
+            },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+    await clickSequenceTask('信用收支')
+
+    const savedFlow = () => JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{
+      id: string
+      params: Record<string, unknown>
+    }>
+    const checkboxOf = (key: string) => container.querySelector<HTMLInputElement>(`#automation-mall-1-${key}`)!
+
+    const hints: Array<[string, string]> = [
+      ['只买折扣商品', '仅影响优先购买之外的普通购物'],
+      ['保留 300 信用', '普通购物时信用低于 300 就停止购买'],
+      ['信用助战', '借助战完成一次 OF-1，以便次日获得更多信用'],
+    ]
+    for (const [label, copy] of hints) {
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}说明"]`)
+      expect(trigger).not.toBeNull()
+      const tooltip = document.getElementById(trigger!.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      expect(tooltip?.textContent).toBe(copy)
+      expect(tooltip?.hidden).toBe(true)
+
+      // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+      expect(container.textContent).not.toContain(copy)
+    }
+
+    const discountHint = container.querySelector<HTMLButtonElement>('button[aria-label="只买折扣商品说明"]')!
+    const discountTooltip = document.getElementById(discountHint.getAttribute('aria-describedby') ?? '')
+    await act(async () => discountHint.focus())
+    expect(discountTooltip?.hidden).toBe(false)
+    await act(async () => discountHint.blur())
+    expect(discountTooltip?.hidden).toBe(true)
+
+    // 本来就没有说明文案的开关不会出现孤立图标。
+    expect(container.querySelector('button[aria-label="信用溢出时无视黑名单说明"]')).toBeNull()
+
+    // 默认值与输入框 placeholder 不变。
+    expect(checkboxOf('visit_friends').checked).toBe(true)
+    expect(checkboxOf('shopping').checked).toBe(true)
+    expect(checkboxOf('only_buy_discount').checked).toBe(false)
+    expect(checkboxOf('reserve_max_credit').checked).toBe(false)
+    expect(checkboxOf('force_shopping_if_credit_full').checked).toBe(false)
+    expect(checkboxOf('credit_fight').checked).toBe(false)
+    expect(container.querySelector<HTMLInputElement>('#automation-mall-1-buy_first')?.placeholder)
+      .toBe('招聘许可,龙门币（逗号分隔）')
+    expect(container.querySelector<HTMLInputElement>('#automation-mall-1-blacklist')?.placeholder)
+      .toBe('家具零件,碳（逗号分隔）')
+
+    // 勾选与输入仍写入草稿；信用助战开启后出现助战编队。
+    await act(async () => checkboxOf('only_buy_discount').click())
+    await flush()
+    expect(checkboxOf('only_buy_discount').checked).toBe(true)
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.only_buy_discount).toBe(true)
+
+    const buyFirst = container.querySelector<HTMLInputElement>('#automation-mall-1-buy_first')!
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      inputValueSetter?.call(buyFirst, '招聘许可')
+      buyFirst.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.buy_first).toBe('招聘许可')
+
+    await act(async () => checkboxOf('credit_fight').click())
+    await flush()
+    expect(checkboxOf('credit_fight').checked).toBe(true)
+    expect(container.querySelector('#automation-mall-1-formation_index')).not.toBeNull()
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.credit_fight).toBe(true)
+
+    // 关掉自动购物后依赖字段仍按原逻辑隐藏。
+    await act(async () => checkboxOf('shopping').click())
+    await flush()
+    expect(checkboxOf('shopping').checked).toBe(false)
+    expect(container.querySelector('#automation-mall-1-only_buy_discount')).toBeNull()
+    expect(container.querySelector('#automation-mall-1-reserve_max_credit')).toBeNull()
+    expect(container.querySelector('#automation-mall-1-credit_fight')).not.toBeNull()
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.shopping).toBe(false)
+  })
+
+  it('moves the award helper texts into focusable tooltips', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'award-1',
+            commandId: 'award',
+            name: '领取奖励',
+            description: '领取每日/每周奖励',
+            taskType: 'Award',
+            enabled: true,
+            params: {
+              award: true,
+              mail: true,
+              recruit: false,
+              orundum: false,
+              mining: false,
+              specialaccess: false,
+              signinevent: true,
+            },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+
+    const tooltipFor = (label: string) => {
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}说明"]`)
+      expect(trigger).not.toBeNull()
+      const tooltip = document.getElementById(trigger?.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      return { trigger: trigger!, tooltip }
+    }
+
+    const recruit = tooltipFor('限定池免费单抽')
+    const anniversary = tooltipFor('周年赠送月卡')
+    const signIn = tooltipFor('限时签到活动奖励')
+
+    expect(recruit.tooltip?.textContent).toBe('活动期间领取限定池赠送的每日免费单抽；没有免费次数时不抽取')
+    expect(anniversary.tooltip?.textContent).toBe('领取周年活动赠送的月卡奖励')
+    expect(signIn.tooltip?.textContent).toBe('领取限时签到活动的每日奖励（仅支持常见横向版型）')
+    expect(recruit.tooltip?.hidden).toBe(true)
+    expect(anniversary.tooltip?.hidden).toBe(true)
+    expect(signIn.tooltip?.hidden).toBe(true)
+
+    await act(async () => recruit.trigger.focus())
+    expect(recruit.tooltip?.hidden).toBe(false)
+    await act(async () => recruit.trigger.blur())
+    expect(recruit.tooltip?.hidden).toBe(true)
+
+    // 常驻说明段落已删除：编辑器内不再有承载这段文字的段落。
+    const editor = container.querySelector('#automation-task-editor')
+    expect(editor?.textContent).not.toContain('活动期间领取限定池赠送的每日免费单抽')
+    expect(editor?.textContent).not.toContain('领取周年活动赠送的月卡奖励')
+    expect(editor?.textContent).not.toContain('领取限时签到活动的每日奖励')
+    expect(editor?.querySelectorAll('p')).toHaveLength(0)
+
+    // 领取开关的加载状态、键名与顺序保持原样。
+    const switchOf = (key: string) => container.querySelector<HTMLInputElement>(`#automation-award-1-${key}`)
+    expect(switchOf('award')?.checked).toBe(true)
+    expect(switchOf('mail')?.checked).toBe(true)
+    expect(switchOf('recruit')?.checked).toBe(false)
+    expect(switchOf('orundum')?.checked).toBe(false)
+    expect(switchOf('mining')?.checked).toBe(false)
+    expect(switchOf('specialaccess')?.checked).toBe(false)
+    expect(switchOf('signinevent')?.checked).toBe(true)
+
+    await act(async () => switchOf('recruit')?.click())
+    await flush()
+
+    const savedAward = (
+      JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{
+        id: string
+        params: Record<string, boolean>
+      }>
+    ).find(task => task.id === 'award-1')
+    expect(Object.keys(savedAward?.params ?? {})).toEqual([
+      'award',
+      'mail',
+      'recruit',
+      'orundum',
+      'mining',
+      'specialaccess',
+      'signinevent',
+    ])
+    expect(savedAward?.params.recruit).toBe(true)
+    expect(savedAward?.params.award).toBe(true)
+    expect(savedAward?.params.signinevent).toBe(true)
   })
 
   it('normalizes the recruitment duration when the field loses focus', async () => {
@@ -1062,6 +1289,81 @@ describe('AutomationTasks layout surfaces', () => {
     await clickSequenceTask('领取奖励')
     expect(container.querySelector('label[for="automation-award-1-signinevent"]')?.textContent)
       .toContain('限时签到活动奖励')
+  })
+
+  it('shows the infrast shift-mode hint in a label tooltip and drops the facility helper line', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'infrast-1',
+            commandId: 'infrast',
+            name: '基建换班',
+            description: '自动基建换班收菜',
+            taskType: 'Infrast',
+            enabled: true,
+            params: { mode: '0', facility: ['Mfg', 'Recycle', 'AssistantChange'] },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+    await clickSequenceTask('基建换班')
+
+    expect(container.querySelector('label[for="automation-infrast-1-mode"]')?.textContent).toBe('换班模式')
+    const modeSelect = container.querySelector<HTMLSelectElement>('#automation-infrast-1-mode')
+    expect(Array.from(modeSelect?.options ?? []).map(option => option.textContent)).toEqual([
+      '默认换班',
+      '自定义换班',
+      '一键轮换',
+    ])
+
+    const shiftModeHint = container.querySelector<HTMLButtonElement>('button[aria-label="换班模式说明"]')
+    expect(shiftModeHint).not.toBeNull()
+    const tooltip = document.getElementById(shiftModeHint!.getAttribute('aria-describedby') ?? '')
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent).toBe('一键轮换使用游戏内队列，并保留无人机、会客室等基础操作')
+    expect(tooltip?.hidden).toBe(true)
+
+    await act(async () => shiftModeHint!.focus())
+    expect(tooltip?.hidden).toBe(false)
+    await act(async () => shiftModeHint!.blur())
+    expect(tooltip?.hidden).toBe(true)
+
+    // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+    expect(container.textContent).not.toContain('一键轮换使用游戏内队列')
+    expect(container.textContent).not.toContain('选择要换班的设施')
+
+    const facilityLegend = Array.from(container.querySelectorAll('legend'))
+      .find(legend => legend.textContent === '设施选择')
+    expect(facilityLegend).toBeDefined()
+    const facilityFieldset = facilityLegend!.closest('fieldset')!
+    expect(facilityFieldset.querySelector('p')).toBeNull()
+
+    const facilityInputs = Array.from(facilityFieldset.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+    const facilityIds = facilityInputs.map(input => input.id.replace('automation-infrast-1-facility-', ''))
+    expect(facilityIds).toEqual([
+      'Mfg',
+      'Trade',
+      'Power',
+      'Control',
+      'Reception',
+      'Office',
+      'Recycle',
+      'Dorm',
+      'Processing',
+      'Training',
+      'AssistantChange',
+    ])
+    expect(facilityFieldset.textContent).toContain('副手换人')
+    expect(facilityInputs.filter(input => input.checked).map(input => input.id))
+      .toEqual([
+        'automation-infrast-1-facility-Mfg',
+        'automation-infrast-1-facility-Recycle',
+        'automation-infrast-1-facility-AssistantChange',
+      ])
   })
 
   it('closes the add-task picker when pressing outside its region', async () => {

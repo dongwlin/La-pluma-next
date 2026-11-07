@@ -300,6 +300,10 @@
     gap: var(--app-space-card);
   }
 
+  .roguelike-field-span-full {
+    grid-column: 1 / -1;
+  }
+
   .roguelike-core-operator-control {
     display: flex;
     min-width: 0;

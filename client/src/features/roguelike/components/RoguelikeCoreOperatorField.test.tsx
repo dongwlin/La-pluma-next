@@ -52,6 +52,14 @@ const operator = (id: string, name: string, rarity = 6) => ({
 
 const ownedOperator = (id: string, name: string, rarity = 6) => operator(id, name, rarity)
 
+const ownedOperatorAt = (
+  id: string,
+  name: string,
+  rarity: number,
+  elite: number,
+  level: number,
+) => ({ id, name, rarity, elite, level, potential: 1 })
+
 let client: ReturnType<typeof createQueryClient>
 let container: HTMLDivElement
 let root: Root
@@ -81,6 +89,10 @@ const buttonWithLabel = (label: string): HTMLButtonElement | null => document.qu
 )
 
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+
+const dialogChoiceNames = () => Array.from(
+  dialog()?.querySelectorAll<HTMLButtonElement>('button[aria-label^="选择"]') ?? [],
+).map(button => (button.getAttribute('aria-label') ?? '').replace(/^选择/, ''))
 
 function Harness({ initialValue = '' }: { initialValue?: string }) {
   const [value, setValue] = useState(initialValue)
@@ -167,6 +179,28 @@ describe('roguelike core operator field', () => {
     expect(dialog()?.textContent).not.toContain('维什戴尔')
     expect(dialog()?.textContent).not.toContain('已拥有')
     expect(dialog()?.textContent).not.toContain('已识别')
+  })
+
+  it('orders the shared picker by elite then level descending', async () => {
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        data: [
+          ownedOperatorAt('char_002_amiya', '阿米娅', 5, 1, 70),
+          ownedOperatorAt('char_010_chen', '陈', 6, 2, 90),
+          ownedOperatorAt('char_202_demkni', '塞雷娅', 6, 0, 60),
+        ],
+      },
+    })
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [operator('char_002_amiya', '阿米娅', 5), operator('char_010_chen', '陈'), operator('char_202_demkni', '塞雷娅')],
+    })
+
+    await renderField()
+    await click(buttonWithText('选择干员'), '选择干员')
+
+    expect(dialogChoiceNames()).toEqual(['陈', '阿米娅', '塞雷娅'])
   })
 
   it('falls back to the full catalog when no operator was recognized', async () => {

@@ -40,6 +40,7 @@ export const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     type: 'operator',
     param: '--core-char',
     coreParam: 'core_char',
+    span: 'full',
   },
   {
     key: 'startCount',

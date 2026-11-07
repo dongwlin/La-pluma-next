@@ -46,14 +46,27 @@ describe('automation award task catalog', () => {
     })
   })
 
-  it('explains what the limited-banner pull and the anniversary card actually claim', () => {
+  it('moves the three award helper texts into label tooltips without touching the copy', () => {
     if (!award) throw new Error('missing award task')
-    const helperOf = (key: string) =>
-      award.paramFields.find(field => field.key === key)?.helper ?? ''
+    const fieldOf = (key: string) => award.paramFields.find(field => field.key === key)
 
-    expect(helperOf('recruit')).toContain('限定池赠送的每日免费单抽')
-    expect(helperOf('specialaccess')).toContain('周年活动赠送的月卡奖励')
-    expect(helperOf('signinevent')).toContain('限时签到活动')
+    expect(fieldOf('recruit')).toMatchObject({
+      helper: '活动期间领取限定池赠送的每日免费单抽；没有免费次数时不抽取',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('specialaccess')).toMatchObject({
+      helper: '领取周年活动赠送的月卡奖励',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('signinevent')).toMatchObject({
+      helper: '领取限时签到活动的每日奖励（仅支持常见横向版型）',
+      helperPlacement: 'tooltip',
+    })
+
+    const tooltipHelpers = award.paramFields
+      .filter(field => field.helperPlacement === 'tooltip')
+      .map(field => field.key)
+    expect(tooltipHelpers).toEqual(['recruit', 'specialaccess', 'signinevent'])
 
     const labels = award.paramFields.map(field => field.label).join('')
     expect(labels).not.toContain('公招')
@@ -181,24 +194,66 @@ describe('automation task parameter defaults and copy', () => {
     })
   })
 
-  it('keeps the default inline helper placement for every other field', () => {
-    const fields = AVAILABLE_TASKS.flatMap(task => task.paramFields)
-    const tooltipHelpers = fields
+  it('keeps the default inline helper placement for every field that still needs one', () => {
+    const tooltipHelpers = AVAILABLE_TASKS
+      .flatMap(task => task.paramFields)
       .filter(field => field.helperPlacement === 'tooltip')
       .map(field => field.key)
 
     expect(tooltipHelpers).toEqual([
       'accountName',
       'start_game_enabled',
+      'mode',
       'force_refresh',
       'select',
       'confirm',
       'times',
       'preserve_tags',
       'level3_recruitment_permit_reserve',
+      'only_buy_discount',
+      'reserve_max_credit',
+      'credit_fight',
+      'recruit',
+      'specialaccess',
+      'signinevent',
     ])
-    expect(fields.find(field => field.key === 'medicineExpireDays')?.helperPlacement).toBeUndefined()
-    expect(fields.find(field => field.key === 'series')?.helperPlacement).toBeUndefined()
+  })
+})
+
+describe('automation infrast task catalog', () => {
+  const infrast = AVAILABLE_TASKS.find(task => task.id === 'infrast')
+
+  it('moves the shift mode hint beside the label and drops the facility helper line', () => {
+    if (!infrast) throw new Error('missing infrast task')
+    const mode = infrast.paramFields.find(field => field.key === 'mode')
+    const facility = infrast.paramFields.find(field => field.key === 'facility')
+
+    expect(mode?.helper).toBe('一键轮换使用游戏内队列，并保留无人机、会客室等基础操作')
+    expect(mode?.helperPlacement).toBe('tooltip')
+    expect(facility?.helper).toBeUndefined()
+    expect(facility?.helperPlacement).toBeUndefined()
+  })
+
+  it('keeps every facility option and the default selection untouched', () => {
+    if (!infrast) throw new Error('missing infrast task')
+
+    expect(infrast.defaultParams.facility).toEqual([
+      'Mfg',
+      'Trade',
+      'Power',
+      'Control',
+      'Reception',
+      'Office',
+      'Dorm',
+    ])
+    expect(infrast.paramFields.map(field => field.label)).toEqual([
+      '换班模式',
+      '设施选择',
+      '无人机用途',
+      '心情阈值',
+      '自动补货',
+      '自定义排班',
+    ])
   })
 })
 
@@ -229,5 +284,78 @@ describe('automation fight task catalog', () => {
     expect(series.visibleWhen).toBeUndefined()
     expect(series.hiddenWhen).toBeUndefined()
     expect(Object.keys(series)).not.toContain('disabled')
+  })
+})
+
+describe('automation mall task catalog', () => {
+  const mall = AVAILABLE_TASKS.find(task => task.id === 'mall')
+
+  it('moves the three shopping helper texts into tooltips without touching the copy', () => {
+    if (!mall) throw new Error('missing mall task')
+    const fieldOf = (key: string) => mall.paramFields.find(field => field.key === key)
+
+    expect(fieldOf('only_buy_discount')?.helper).toBe('仅影响优先购买之外的普通购物')
+    expect(fieldOf('reserve_max_credit')?.helper).toBe('普通购物时信用低于 300 就停止购买')
+    expect(fieldOf('credit_fight')?.helper).toBe('借助战完成一次 OF-1，以便次日获得更多信用')
+
+    expect(fieldOf('only_buy_discount')?.helperPlacement).toBe('tooltip')
+    expect(fieldOf('reserve_max_credit')?.helperPlacement).toBe('tooltip')
+    expect(fieldOf('credit_fight')?.helperPlacement).toBe('tooltip')
+
+    // 信用溢出开关本来就没有说明文案，不新增第四段提示。
+    expect(fieldOf('force_shopping_if_credit_full')?.helper).toBeUndefined()
+    expect(fieldOf('force_shopping_if_credit_full')?.helperPlacement).toBeUndefined()
+
+    const inlineHelpers = mall.paramFields
+      .filter(field => field.helper && field.helperPlacement !== 'tooltip')
+      .map(field => field.key)
+    expect(inlineHelpers).toEqual([])
+  })
+
+  it('keeps the mall switch order, labels, defaults and text placeholders untouched', () => {
+    if (!mall) throw new Error('missing mall task')
+    const fieldOf = (key: string) => mall.paramFields.find(field => field.key === key)
+
+    expect(mall.taskType).toBe('Mall')
+    expect(mall.paramFields.map(field => field.key)).toEqual([
+      'visit_friends',
+      'shopping',
+      'buy_first',
+      'blacklist',
+      'only_buy_discount',
+      'reserve_max_credit',
+      'force_shopping_if_credit_full',
+      'credit_fight',
+      'formation_index',
+    ])
+    expect(mall.paramFields.map(field => field.label)).toEqual([
+      '访问好友',
+      '自动购物',
+      '优先购买',
+      '黑名单',
+      '只买折扣商品',
+      '保留 300 信用',
+      '信用溢出时无视黑名单',
+      '信用助战',
+      '助战编队',
+    ])
+    expect(mall.defaultParams).toEqual({
+      visit_friends: true,
+      shopping: true,
+      buy_first: '',
+      blacklist: '',
+      force_shopping_if_credit_full: false,
+      only_buy_discount: false,
+      reserve_max_credit: false,
+      credit_fight: false,
+      formation_index: 0,
+    })
+    expect(fieldOf('buy_first')?.placeholder).toBe('招聘许可,龙门币（逗号分隔）')
+    expect(fieldOf('blacklist')?.placeholder).toBe('家具零件,碳（逗号分隔）')
+    expect(fieldOf('only_buy_discount')?.visibleWhen).toEqual({ key: 'shopping', value: true })
+    expect(fieldOf('reserve_max_credit')?.visibleWhen).toEqual({ key: 'shopping', value: true })
+    expect(fieldOf('force_shopping_if_credit_full')?.visibleWhen).toEqual({ key: 'shopping', value: true })
+    expect(fieldOf('credit_fight')?.visibleWhen).toBeUndefined()
+    expect(fieldOf('formation_index')?.visibleWhen).toEqual({ key: 'credit_fight', value: true })
   })
 })
