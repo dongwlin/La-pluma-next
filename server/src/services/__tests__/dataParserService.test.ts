@@ -242,7 +242,8 @@ describe('getDepotData / getOperBoxData', () => {
         { id: 'char_1001_amiya', name: '阿米娅', names: { en: 'Amiya' }, rarity: 5, owned: true },
         { id: 'char_2002_kalts', name: '凯尔希', rarity: 6, owned: false }
       ],
-      operTotal: 2
+      operTotal: 2,
+      recognition: { status: 'complete', total: 2, owned: 1 }
     }), 'utf-8');
 
     const operBox = await getOperBoxData(fixture.ports);
@@ -253,6 +254,44 @@ describe('getDepotData / getOperBoxData', () => {
       ['char_2002_kalts', false]
     ]);
     assert.deepEqual(operBox?.allOpers?.[0].names, { en: 'Amiya' });
+  });
+
+  it('keeps the persisted partial status of a snapshot that carries a catalog', async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.dataDir, 'operbox.json'), JSON.stringify({
+      timestamp: '2026-10-27T00:00:00.000Z',
+      operCount: 1,
+      data: [{ id: 'char_1001_amiya', name: '阿米娅', rarity: 5 }],
+      allOpers: [
+        { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, owned: true },
+        { id: 'char_2002_kalts', name: '凯尔希', rarity: 6, owned: false }
+      ],
+      operTotal: 2,
+      recognition: { status: 'partial', total: 2, owned: 1 }
+    }), 'utf-8');
+
+    const operBox = await getOperBoxData(fixture.ports);
+
+    assert.deepEqual(operBox?.recognition, { status: 'partial', total: 2, owned: 1 });
+    assert.equal(operBox?.allOpers?.length, 2);
+  });
+
+  it('reports a partial status for catalogs saved without a recognition signal', async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.dataDir, 'operbox.json'), JSON.stringify({
+      timestamp: '2026-10-27T00:00:00.000Z',
+      operCount: 1,
+      data: [{ id: 'char_1001_amiya', name: '阿米娅', rarity: 5 }],
+      allOpers: [
+        { id: 'char_1001_amiya', name: '阿米娅', rarity: 5, owned: true },
+        { id: 'char_2002_kalts', name: '凯尔希', rarity: 6, owned: false }
+      ],
+      operTotal: 2
+    }), 'utf-8');
+
+    const operBox = await getOperBoxData(fixture.ports);
+
+    assert.deepEqual(operBox?.recognition, { status: 'partial', total: 2, owned: 1 });
   });
 
   it('treats caches with an unexpected shape as missing instead of returning them', async () => {

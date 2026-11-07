@@ -57,7 +57,7 @@
 - 队列内容指纹 `queueRevision` 是条目列表的 SHA-256（`server/src/services/operatorTrainingStore.ts:211-217`）；养成计划应用必须校验它，并保留「队列已保存但流程/定时同步失败」的部分成功结果，不伪装成全成功。
 - 自动化任务配置读取时校验最小结构（对象、`taskFlow` 数组、任务 `params/stages` 形态），无效抛错；写回经 fileHelper 路径队列整体替换，不丢弃本领域未读取的字段（`server/src/services/operatorTrainingStore.ts:493-533`）。
 - 养成数据快照（材料库、合成配方、干员材料、OperBox、仓库）结构不符时按空表处理并告警，不抛错（`server/src/services/operatorTrainingStore.ts:288-300,335-366,441-481`）。
-- `operbox.json` 在 `data`（已识别拥有）之外可带 `allOpers`（识别目录，含 `owned` 标记与多语言名称）、`operTotal` 与 `recognition`；读取旧快照时按缺少识别目录的部分识别处理，`allOpers` 缺失不视为损坏（`server/src/services/operatorCatalogModel.ts`、`server/src/services/dataParserService.ts`）。
+- `operbox.json` 在 `data`（已识别拥有）之外可带 `allOpers`（识别目录，含 `owned` 标记与多语言名称）、`operTotal` 与 `recognition`；`recognition.status` 是写入时唯一的完整度信号，读取时不从目录存在与否反推，缺少该字段的快照一律按部分识别处理（`allOpers` 缺失不视为损坏），消费方据此区分已拥有、确认未拥有与未知（`server/src/services/operatorCatalogModel.ts`、`server/src/services/dataParserService.ts`、`server/src/services/operatorTrainingService.ts`）。
 - 仓库/干员识别缓存只接受当前任务链最后一条 `details.done=true` 的载荷；未完成、跨事件或上一轮运行的旧结果不写盘，保留上一份完整快照（`server/src/services/dataParserService.ts`）。
 
 ## 掉落记录

@@ -207,11 +207,12 @@ async function buildOperatorCatalog(): Promise<{
   const ownedIds = new Set(ownedOperators.map(operator => operator.id));
   const hasSnapshot = operBoxData !== null
     && (ownedOperators.length > 0 || recognizedCatalog.length > 0);
+  // 完整度取快照写入时的识别信号；目录存在不代表识别覆盖了全部干员。
   const coverage = resolveRecognitionCoverage(
     baseOperators.map(operator => operator.id),
     hasSnapshot
       ? {
-          status: recognizedCatalog.length > 0 ? 'complete' : 'partial',
+          status: operBoxData.recognition?.status ?? 'partial',
           catalog: recognizedCatalog,
           ownedIds
         }
