@@ -176,6 +176,19 @@ describe('recordDrops', () => {
     assert.equal(await readFile(todayPath, 'utf-8'), corrupted);
   });
 
+  it('stores the item id reported by the fight callback', async () => {
+    expectSuccess(await recordDrops({
+      stage: '1-7',
+      times: 1,
+      sanity: 6,
+      items: [{ itemId: '30012', name: '源岩', count: 2 }]
+    }));
+
+    const [today] = expectSuccess(await getRecentDrops(1));
+
+    assert.deepEqual(today.records[0].items, [{ itemId: '30012', name: '源岩', count: 2 }]);
+  });
+
   it('keeps the running summary when no sanity cost is confirmed', async () => {
     expectSuccess(await recordDrops({
       stage: '1-7',
@@ -345,6 +358,43 @@ describe('drop statistics material table', () => {
     const statistics = expectSuccess(await getDropStatistics(1, { materialsPath }));
 
     assert.equal(statistics.items['源岩'].iconId, 'MTL_SL_G1');
+  });
+
+  it('resolves item icons from the recorded item id without a material snapshot', async () => {
+    const date = dateDaysAgo(0);
+    await writeDay(date, {
+      date,
+      records: [{
+        timestamp: '2026-11-06T01:00:00.000Z',
+        stage: '1-7',
+        times: 1,
+        sanity: 6,
+        medicine: 0,
+        stone: 0,
+        items: [{ name: '源岩', count: 2 }],
+        source: 'fight',
+        mode: 'normal'
+      }, {
+        timestamp: '2026-11-07T01:00:00.000Z',
+        stage: '1-7',
+        times: 1,
+        sanity: 6,
+        medicine: 0,
+        stone: 0,
+        items: [{ itemId: '30012', name: '源岩', count: 2 }],
+        source: 'fight',
+        mode: 'normal'
+      }],
+      summary: { totalSanity: 12, totalMedicine: 0, totalStone: 0, totalBattles: 2, itemsSummary: { 源岩: 4 } }
+    });
+
+    const statistics = expectSuccess(await getDropStatistics(1, {
+      materialsPath: join(fixtureDir, 'missing-materials.json')
+    }));
+
+    assert.equal(statistics.items['源岩'].count, 4);
+    assert.equal(statistics.items['源岩'].id, '30012');
+    assert.equal(statistics.items['源岩'].iconId, null);
   });
 
   it('degrades to null icons without throwing when the material table is unreadable', async () => {
