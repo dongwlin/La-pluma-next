@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '@/shared/api'
 import { ConnectionConfigOwner } from './connectionConfig'
+import { DEFAULT_CONNECTION_CONFIG } from './configNormalization'
 import {
   DeviceConnectionOwner,
   type DeviceConnectionOwnerOptions,
@@ -27,9 +28,17 @@ const ok = <T,>(data: T, message?: string): ApiResponse<T> => ({ success: true, 
 type DiscoverRequest = NonNullable<DeviceConnectionOwnerOptions['discover']>
 type TestRequest = NonNullable<DeviceConnectionOwnerOptions['test']>
 
-const createConnection = () => new ConnectionConfigOwner({
-  write: vi.fn(async () => ({ success: true })),
-})
+const createConnection = () => {
+  const connection = new ConnectionConfigOwner({
+    write: vi.fn(async () => ({ success: true })),
+  })
+  // 设备查找与连接测试只在设置页完成首次读取后可用；草稿回填依赖已加载状态。
+  connection.adoptServer({
+    config: { ...DEFAULT_CONNECTION_CONFIG },
+    readToken: connection.beginRead(),
+  })
+  return connection
+}
 
 const createOwner = ({
   connection = createConnection(),

@@ -9,12 +9,15 @@ export interface DeviceConnectionPanelProps {
   readonly address: string
   /** 选择设备会更新 connection 草稿，先清掉连接表单的旧保存/读取反馈。 */
   readonly onSelectDeviceStart: () => void
+  /** 首次读取被采纳前不写入草稿，选择设备入口保持禁用。 */
+  readonly disabled?: boolean
 }
 
 export default function DeviceConnectionPanel({
   adbPath,
   address,
   onSelectDeviceStart,
+  disabled = false,
 }: DeviceConnectionPanelProps) {
   const {
     discovery: deviceDiscovery,
@@ -56,6 +59,7 @@ export default function DeviceConnectionPanel({
             size="sm"
             loading={discoveringDevices}
             loadingText="查找中"
+            disabled={disabled}
             onClick={() => void discoverDevices(adbPath)}
             className="flex-1 sm:flex-none"
             icon={<Search size={16} aria-hidden="true" />}
@@ -68,6 +72,7 @@ export default function DeviceConnectionPanel({
             size="sm"
             loading={testingConnection}
             loadingText="测试中"
+            disabled={disabled}
             onClick={() => void testConnection(adbPath, address)}
             className="flex-1 sm:flex-none"
             icon={<Cable size={16} aria-hidden="true" />}
@@ -98,7 +103,7 @@ export default function DeviceConnectionPanel({
               <button
                 key={`${device.source}-${device.address}`}
                 type="button"
-                disabled={!selectable || testingConnection}
+                disabled={disabled || !selectable || testingConnection}
                 onClick={() => void handleUseDiscoveredDevice(device)}
                 className="flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-(--app-accent-soft) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--app-accent) disabled:cursor-not-allowed disabled:opacity-50"
               >

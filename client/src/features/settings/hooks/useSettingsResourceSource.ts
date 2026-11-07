@@ -15,6 +15,8 @@ export interface UseSettingsResourceSourceResult extends ResourceSourceState {
   readonly update: (patch: Partial<ResourceSourceDraft>) => void
   readonly restoreDefaults: () => boolean
   readonly save: () => Promise<ResourceSourceSaveOutcome>
+  /** 初始读取失败后的显式重试入口。 */
+  readonly reload: () => void
 }
 
 const describeLoadError = (error: unknown): string => (
@@ -28,6 +30,7 @@ export function useSettingsResourceSource(
   const options = useMemo(() => resourceSourceQueryOptions(owner), [owner])
   // 面板常驻挂载但只有可见 section 需要读取；未启用时不发起请求。
   const query = useQuery({ ...options, enabled })
+  const { refetch } = query
   const queryClient = useQueryClient()
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 
@@ -50,6 +53,10 @@ export function useSettingsResourceSource(
     return outcome
   }, [options.queryKey, owner, queryClient])
 
+  const reload = useCallback(() => {
+    void refetch()
+  }, [refetch])
+
   const loadError = query.isError && !query.data && !state.loaded
     ? describeLoadError(query.error)
     : null
@@ -60,5 +67,6 @@ export function useSettingsResourceSource(
     update,
     restoreDefaults,
     save,
+    reload,
   }
 }

@@ -13,6 +13,10 @@ export interface ConfigEditorCardProps {
   readonly saving: boolean
   readonly saveDisabled?: boolean
   readonly saveBlockedReason?: string | null
+  /** 首次服务端快照被采纳前禁用编辑入口（重置），保存另有 saveDisabled。 */
+  readonly editingDisabled?: boolean
+  /** 读取失败时提供的显式重试入口。 */
+  readonly onRetryLoad?: () => void
   readonly onSave: () => void
   readonly onReset: () => void
   readonly children: ReactNode
@@ -25,6 +29,8 @@ export default function ConfigEditorCard({
   saving,
   saveDisabled = false,
   saveBlockedReason = null,
+  editingDisabled = false,
+  onRetryLoad,
   onSave,
   onReset,
   children,
@@ -43,7 +49,7 @@ export default function ConfigEditorCard({
           <div className="flex items-center gap-2">
             <Button
               onClick={onReset}
-              disabled={saving}
+              disabled={saving || editingDisabled}
               variant="outline"
               size="sm"
               icon={<RotateCcw size={16} aria-hidden="true" />}
@@ -85,7 +91,20 @@ export default function ConfigEditorCard({
               }`}
               role={feedback.type === 'error' ? 'alert' : 'status'}
             >
-              {feedback.message}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="min-w-0">{feedback.message}</p>
+                {onRetryLoad && (
+                  <Button
+                    type="button"
+                    onClick={onRetryLoad}
+                    disabled={saving}
+                    variant="outline"
+                    size="sm"
+                  >
+                    重新读取
+                  </Button>
+                )}
+              </div>
             </div>
           )}
           {children}

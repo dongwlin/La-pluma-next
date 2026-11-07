@@ -89,4 +89,29 @@ describe('ConfigEditorCard save gating', () => {
     const errorFeedback = container.querySelector('[role="alert"]')
     expect(errorFeedback?.textContent).toBe('连接配置读取失败: 网络错误')
   })
+
+  it('disables reset while the first server read is not adopted yet', async () => {
+    const onReset = vi.fn()
+    await renderCard({ editingDisabled: true, onReset })
+
+    const resetButton = findButton('重置')
+    expect(resetButton.disabled).toBe(true)
+
+    await act(async () => resetButton.click())
+    expect(onReset).not.toHaveBeenCalled()
+  })
+
+  it('offers an explicit retry entry after a failed read', async () => {
+    const onRetryLoad = vi.fn()
+    await renderCard({
+      feedback: { type: 'error', message: '连接配置读取失败: 配置不可读' },
+      onRetryLoad,
+    })
+
+    const retryButton = findButton('重新读取')
+    expect(retryButton.disabled).toBe(false)
+
+    await act(async () => retryButton.click())
+    expect(onRetryLoad).toHaveBeenCalledOnce()
+  })
 })

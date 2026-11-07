@@ -421,7 +421,7 @@ describe('ConfigManager layout surfaces', () => {
     expect(mocks.setMessage).toHaveBeenCalledWith('自动更新设置保存失败: 配置目录不可写', 'error')
   })
 
-  it('does not let the initial connection response replace an edited draft', async () => {
+  it('keeps the connection form read-only until a slow first response is adopted', async () => {
     const pendingConfig = deferred<{
       success: boolean
       data: { adb_path: string; address: string; config: string; auto_reconnect: boolean }
@@ -431,13 +431,14 @@ describe('ConfigManager layout surfaces', () => {
     await act(async () => root.render(page()))
     await flush()
 
-    const addressInput = Array.from(container.querySelectorAll<HTMLInputElement>('input'))
-      .find(input => input.value === '127.0.0.1:16384')!
-    await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(addressInput, '127.0.0.1:5555')
-      addressInput.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    const addressInput = addressInputWithValue('127.0.0.1:16384')!
+    expect(addressInput.disabled).toBe(true)
+    expect(buttonByText('保存')?.disabled).toBe(true)
+    expect(buttonByText('重置')?.disabled).toBe(true)
+
+    await setInputValue(addressInput, '127.0.0.1:5555')
+    await act(async () => buttonByText('保存')?.click())
+    expect(mocks.saveConfig).not.toHaveBeenCalled()
 
     await act(async () => pendingConfig.resolve({
       success: true,
@@ -445,7 +446,17 @@ describe('ConfigManager layout surfaces', () => {
     }))
     await flush()
 
-    expect(addressInput.value).toBe('127.0.0.1:5555')
+    expect(addressInput.value).toBe('10.0.0.2:5555')
+    expect(addressInput.disabled).toBe(false)
+    expect(buttonByText('保存')?.disabled).toBe(false)
+    expect(buttonByText('重置')?.disabled).toBe(false)
+
+    await act(async () => buttonByText('保存')?.click())
+    await flush()
+
+    expect(mocks.saveConfig).toHaveBeenCalledWith('default', {
+      connection: expect.objectContaining({ address: '10.0.0.2:5555' }),
+    })
   })
 
   it('serializes component updates behind one shared busy state', async () => {
@@ -818,8 +829,8 @@ describe('ConfigManager layout surfaces', () => {
     expect(container.textContent).toContain('实例选项保存成功')
   })
 
-  it('reports an initial connection read failure in place and globally', async () => {
-    mocks.getConfig.mockResolvedValue({ success: false, message: '配置不可读' })
+  it('reports an initial connection read failure and recovers through the retry entry', async () => {
+    mocks.getConfig.mockResolvedValueOnce({ success: false, message: '配置不可读' })
 
     await act(async () => root.render(page()))
     await flush()
@@ -828,10 +839,21 @@ describe('ConfigManager layout surfaces', () => {
     expect(alert?.textContent).toContain('连接配置读取失败: 配置不可读')
     expect(alert?.textContent).toContain('保存已禁用')
     expect(buttonByText('保存')?.disabled).toBe(true)
+    expect(addressInputWithValue('127.0.0.1:16384')?.disabled).toBe(true)
+    expect(buttonByText('重置')?.disabled).toBe(true)
     expect(mocks.setMessage).toHaveBeenCalledWith(
-      '连接配置读取失败: 配置不可读（保存已禁用，请刷新页面后重试）',
+      '连接配置读取失败: 配置不可读（保存已禁用，请重试读取）',
       'error',
     )
+
+    await act(async () => buttonByText('重新读取')?.click())
+    await flush()
+
+    expect(addressInputWithValue('127.0.0.1:16384')).toBeDefined()
+    expect(addressInputWithValue('127.0.0.1:16384')?.disabled).toBe(false)
+    expect(buttonByText('保存')?.disabled).toBe(false)
+    expect(buttonByText('重置')?.disabled).toBe(false)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
   })
 
   it('keeps a connection save running across section switches and reports later edits as unsaved', async () => {
