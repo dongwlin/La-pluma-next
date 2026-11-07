@@ -2,7 +2,13 @@ import { createScheduleTaskProgress } from './scheduleTaskProgress.ts';
 import type { ScheduleTaskProgress, ScheduleTaskProgressResult } from './scheduleTaskProgress.ts';
 import { buildScheduledTaskCommand, validateScheduledTaskFlow } from './scheduleFlowPlan.ts';
 import type { ScheduledTask, ScheduledTaskParams } from './scheduleFlowPlan.ts';
-import { buildFlowExecutionOutcome, getFightReportResults, parseFightStatistics, parseTaskSummary } from './scheduleFlowResult.ts';
+import {
+  buildFlowExecutionOutcome,
+  getFightReportResults,
+  parseFightStatistics,
+  parseTaskSummary,
+  reconcileTruncatedFightStatistics
+} from './scheduleFlowResult.ts';
 import type {
   FightReportResult,
   FlowExecutionSummary,
@@ -19,7 +25,7 @@ import { createFightExecutionAction, isFightSanityDepleted } from './fightResult
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction } from './gameTaskResultService.ts';
 import type { FightExecutionAction, FightStructuredStatistics } from './fightResultService.ts';
-import type { MaaLogCheckpoint } from './maaLogFileService.ts';
+import type { MaaLogCheckpoint, MaaLogIncrement } from './maaLogFileService.ts';
 import type { MaaExecutionLeaseRequest } from './executionCoordinatorService.ts';
 import type { DropRecordInput } from './dropRecordService.ts';
 import type { StageOpenState, TaskCompletionInfo } from './notificationService.ts';
@@ -93,7 +99,7 @@ export interface ScheduleExecutionPorts {
     clientType?: string
   ): Promise<ScheduleCommandOutput>;
   createLogCheckpoint(): Promise<MaaLogCheckpoint | null>;
-  readLogSince(checkpoint: MaaLogCheckpoint | null): Promise<string>;
+  readLogSince(checkpoint: MaaLogCheckpoint | null): Promise<MaaLogIncrement>;
   resolveConnection(): Promise<ScheduleConnection>;
   testConnection(adbPath: string, address: string): Promise<ScheduleAdbTestResult>;
   getGameClientState(adbPath: string, address: string, clientType: string): Promise<ScheduleGameClientState>;
@@ -230,6 +236,22 @@ function configuredStageOf(params: ScheduledTaskParams | undefined): string {
 function explicitClientTypeOf(value: unknown): string | undefined {
   const clientType = typeof value === 'string' ? value.trim() : '';
   return clientType || undefined;
+}
+
+/**
+ * 从检查点增量日志解析 fight 统计：增量被截断（只拿到尾部）时，逐批累加的
+ * 理智与每局增量掉落不再是整次执行的总量，统计层只保留累计证据，再用可核对的
+ * 完整 CLI 摘要修正局数与掉落；增量完整时维持既有解析结果。
+ */
+function parseFlowFightStatistics(
+  logIncrement: MaaLogIncrement,
+  summary: FlowTaskSummary | null,
+  fallbackStage: string
+): FightStructuredStatistics | null {
+  const logComplete = logIncrement.status === 'ok';
+  const statistics = parseFightStatistics(logIncrement.text, fallbackStage, { logComplete });
+  if (!statistics || logComplete) return statistics;
+  return reconcileTruncatedFightStatistics(statistics, summary);
 }
 
 /**
@@ -537,7 +559,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           const awardActions = parseAwardExecutionActions(
             task.name,
             task.params,
-            await readLogSince(logCheckpoint)
+            (await readLogSince(logCheckpoint)).text
           );
           actionResults.push(...awardActions);
           const failedAwardActions = awardActions.filter(action => action.status === 'failed');
@@ -790,7 +812,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           const recruitAction = parseRecruitExecutionAction(
             task.name,
             task.params,
-            await readLogSince(logCheckpoint)
+            (await readLogSince(logCheckpoint)).text
           );
           actionResults.push(recruitAction);
 
@@ -852,7 +874,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           const infrastAction = parseInfrastExecutionAction(
             task.name,
             task.params,
-            await readLogSince(logCheckpoint)
+            (await readLogSince(logCheckpoint)).text
           );
           actionResults.push(infrastAction);
 
@@ -915,7 +937,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           const mallAction = parseMallExecutionAction(
             task.name,
             task.params,
-            await readLogSince(logCheckpoint)
+            (await readLogSince(logCheckpoint)).text
           );
           actionResults.push(mallAction);
 
@@ -1109,8 +1131,9 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
                     ? parseTaskSummary(`${task.name} (${stage})`, result.stdout, logger)
                     : null;
                   if (summary) taskSummaries.push(summary);
-                  const fightStatistics = parseFightStatistics(
+                  const fightStatistics = parseFlowFightStatistics(
                     await readLogSince(logCheckpoint),
+                    summary,
                     stage
                   );
                   await recordFightDrops(
@@ -1241,8 +1264,9 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
           }
 
           if (command === 'fight') {
-            const fightStatistics = parseFightStatistics(
+            const fightStatistics = parseFlowFightStatistics(
               await readLogSince(fightLogCheckpoint),
+              parsedTaskSummary,
               fightStage
             );
             await recordFightDrops(

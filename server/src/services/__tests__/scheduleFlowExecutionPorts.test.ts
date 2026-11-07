@@ -67,7 +67,7 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
     },
     readLogSince: async () => {
       calls.reads += 1;
-      return 'log-1';
+      return { status: 'ok', text: 'log-1' };
     },
     resolveConnection: async () => ({ adbPath: 'adb', address: '127.0.0.1:5555' }),
     testConnection: async () => ({ success: true }),
@@ -428,7 +428,7 @@ describe('schedule flow boundaries', () => {
   });
 
   it('counts unconfirmed award results as failed instead of skipped', async () => {
-    const { ports, calls } = createPorts({ readLogSince: async () => '' });
+    const { ports, calls } = createPorts({ readLogSince: async () => ({ status: 'unreadable', text: '' }) });
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
 
     const result = completedResult(await executor.execute([
@@ -452,7 +452,10 @@ describe('schedule flow boundaries', () => {
         ...payload
       })}`;
     const { ports, calls } = createPorts({
-      readLogSince: async () => callback({ first: ['AwardBegin'], details: { task: 'ReceiveAward' } })
+      readLogSince: async () => ({
+        status: 'ok',
+        text: callback({ first: ['AwardBegin'], details: { task: 'ReceiveAward' } })
+      })
     });
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
 
@@ -865,6 +868,54 @@ describe('schedule flow boundaries', () => {
     assert.equal(statistics.sanity, undefined);
   });
 
+  it('keeps only cumulative evidence when the log increment is truncated', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 6, sanity_cost: 12, series: 2 }),
+      callback('SanityBeforeStage', { current_sanity: 30, max_sanity: 135 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        cur_times: 2,
+        drops: [{ itemName: '固源岩', quantity: 2 }],
+        stats: [
+          { itemName: '源岩', quantity: 10, addQuantity: 2 },
+          { itemName: '固源岩', quantity: 6, addQuantity: 2 }
+        ]
+      })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7', { logComplete: false });
+    assert.ok(statistics);
+    assert.equal(statistics.battles, 6);
+    assert.equal(statistics.sanity, undefined);
+    assert.equal(statistics.sanityBeforeStage, undefined);
+    assert.equal(statistics.maxSanity, undefined);
+    assert.deepEqual(statistics.drops, [{ name: '源岩', count: 10 }, { name: '固源岩', count: 6 }]);
+    assert.deepEqual(statistics.cumulativeDrops, [{ name: '源岩', count: 10 }, { name: '固源岩', count: 6 }]);
+    assert.deepEqual(statistics.observed, { stageDrops: true, fightTimes: true, sanityBeforeStage: true });
+  });
+
+  it('leaves drops empty rather than summing tail-only increments when cumulative stats are missing', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 1, sanity_cost: 6, series: 1 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        drops: [{ itemName: '固源岩', quantity: 2 }]
+      })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7', { logComplete: false });
+    assert.ok(statistics);
+    assert.equal(statistics.battles, 1);
+    assert.deepEqual(statistics.drops, []);
+    assert.equal(statistics.sanity, undefined);
+  });
+
   it('does not count batches that never fought toward the sanity total', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
@@ -898,16 +949,19 @@ describe('schedule flow boundaries', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
     const { ports, calls } = createPorts({
-      readLogSince: async () => [
-        callback('FightTimes', { times_finished: 1, sanity_cost: 21 }),
-        callback('SanityBeforeStage', { current_sanity: 50, max_sanity: 135 }),
-        callback('StageDrops', {
-          stage: { stageCode: 'CE-6' },
-          stars: 3,
-          drops: [],
-          stats: []
-        })
-      ].join('\n')
+      readLogSince: async () => ({
+        status: 'ok',
+        text: [
+          callback('FightTimes', { times_finished: 1, sanity_cost: 21 }),
+          callback('SanityBeforeStage', { current_sanity: 50, max_sanity: 135 }),
+          callback('StageDrops', {
+            stage: { stageCode: 'CE-6' },
+            stars: 3,
+            drops: [],
+            stats: []
+          })
+        ].join('\n')
+      })
     });
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
     await completedResult(await executor.execute([
@@ -932,7 +986,7 @@ describe('schedule flow boundaries', () => {
 
   it('falls back to the fight summary when structured callbacks are missing', async () => {
     const { ports, calls } = createPorts({
-      readLogSince: async () => 'no structured fight callbacks',
+      readLogSince: async () => ({ status: 'ok', text: 'no structured fight callbacks' }),
       executeCommand: async (command, args, taskName) => {
         calls.commands.push({ command, args, taskName });
         return { stdout: 'Fight 1-7 3 times, total drops: 龙门币 × 252', stderr: '' };
@@ -963,18 +1017,21 @@ describe('schedule flow boundaries', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
     const { ports, calls } = createPorts({
-      readLogSince: async () => [
-        callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
-        callback('SanityBeforeStage', { current_sanity: 90, max_sanity: 135 }),
-        callback('StageDrops', {
-          stage: { stageCode: '1-7' },
-          stars: 3,
-          cur_times: 6,
-          drops: [{ itemName: '源岩', quantity: 12 }],
-          stats: [{ itemName: '源岩', quantity: 12, addQuantity: 12 }]
-        }),
-        callback('FightTimes', { times_finished: 6, finished: true })
-      ].join('\n')
+      readLogSince: async () => ({
+        status: 'ok',
+        text: [
+          callback('FightTimes', { times_finished: 0, sanity_cost: 36, series: 6 }),
+          callback('SanityBeforeStage', { current_sanity: 90, max_sanity: 135 }),
+          callback('StageDrops', {
+            stage: { stageCode: '1-7' },
+            stars: 3,
+            cur_times: 6,
+            drops: [{ itemName: '源岩', quantity: 12 }],
+            stats: [{ itemName: '源岩', quantity: 12, addQuantity: 12 }]
+          }),
+          callback('FightTimes', { times_finished: 6, finished: true })
+        ].join('\n')
+      })
     });
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
     await completedResult(await executor.execute([
@@ -1000,16 +1057,19 @@ describe('schedule flow boundaries', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
     const { ports, calls } = createPorts({
-      readLogSince: async () => [
-        callback('FightTimes', { times_finished: 0 }),
-        callback('StageDrops', {
-          stage: { stageCode: '1-7' },
-          stars: 3,
-          drops: [{ itemName: '源岩', quantity: 2 }],
-          stats: [{ itemName: '源岩', quantity: 2, addQuantity: 2 }]
-        }),
-        callback('FightTimes', { times_finished: 1, finished: true })
-      ].join('\n')
+      readLogSince: async () => ({
+        status: 'ok',
+        text: [
+          callback('FightTimes', { times_finished: 0 }),
+          callback('StageDrops', {
+            stage: { stageCode: '1-7' },
+            stars: 3,
+            drops: [{ itemName: '源岩', quantity: 2 }],
+            stats: [{ itemName: '源岩', quantity: 2, addQuantity: 2 }]
+          }),
+          callback('FightTimes', { times_finished: 1, finished: true })
+        ].join('\n')
+      })
     });
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
     await completedResult(await executor.execute([
@@ -1031,7 +1091,7 @@ describe('schedule flow boundaries', () => {
   it('warns instead of silently skipping fight results without drop information', async () => {
     const warnings: Array<{ message: string; data?: unknown }> = [];
     const { ports, calls } = createPorts({
-      readLogSince: async () => '',
+      readLogSince: async () => ({ status: 'unreadable', text: '' }),
       executeCommand: async () => ({ stdout: '', stderr: '' })
     });
     const executor = createScheduleFlowExecutor({
@@ -1063,15 +1123,18 @@ describe('schedule flow boundaries', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
     const { ports, calls } = createPorts({
-      readLogSince: async () => [
-        callback('FightTimes', { times_finished: 1, sanity_cost: 21 }),
-        callback('StageDrops', {
-          stage: { stageCode: 'CE-6' },
-          stars: 3,
-          drops: [],
-          stats: []
-        })
-      ].join('\n'),
+      readLogSince: async () => ({
+        status: 'ok',
+        text: [
+          callback('FightTimes', { times_finished: 1, sanity_cost: 21 }),
+          callback('StageDrops', {
+            stage: { stageCode: 'CE-6' },
+            stars: 3,
+            drops: [],
+            stats: []
+          })
+        ].join('\n')
+      }),
       executeCommand: async () => ({ stdout: 'Fight 1-7 3 times, total drops: 龙门币 × 252', stderr: '' })
     });
     const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
@@ -1090,6 +1153,90 @@ describe('schedule flow boundaries', () => {
     assert.equal(calls.drops[0].times, 1);
     assert.equal(calls.drops[0].sanity, 21);
     assert.deepEqual(calls.drops[0].items, []);
+  });
+
+  it('prefers the complete CLI summary when the fight log increment is truncated', async () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const { ports, calls } = createPorts({
+      readLogSince: async () => ({
+        status: 'truncated',
+        text: [
+          callback('FightTimes', { times_finished: 6, sanity_cost: 12, series: 2 }),
+          callback('SanityBeforeStage', { current_sanity: 30, max_sanity: 135 }),
+          callback('StageDrops', {
+            stage: { stageCode: '1-7' },
+            stars: 3,
+            cur_times: 2,
+            drops: [{ itemName: '固源岩', quantity: 2 }],
+            stats: [{ itemName: '源岩', quantity: 10, addQuantity: 2 }]
+          })
+        ].join('\n')
+      }),
+      executeCommand: async () => ({
+        stdout: 'Fight 1-7 8 times, total drops: 源岩 × 16, 固源岩 × 6',
+        stderr: ''
+      })
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const result = completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stage: '1-7', times: 8 }
+      }
+    ], 'flow-truncated-log'));
+
+    assert.equal(calls.drops.length, 1);
+    assert.equal(calls.drops[0].stage, '1-7');
+    assert.equal(calls.drops[0].times, 8);
+    assert.equal(calls.drops[0].sanity, undefined);
+    assert.deepEqual(calls.drops[0].items, [{ name: '源岩', count: 16 }, { name: '固源岩', count: 6 }]);
+    assert.match(calls.drops[0].recordKey || '', /^flow-truncated-log:\d+:fight-1:1-7:0$/);
+
+    const fightAction = result.summary.actions.find(action => action.action === 'fight');
+    assert.ok(fightAction);
+    assert.equal(fightAction.times, 8);
+    assert.equal(fightAction.drops, '源岩 × 16, 固源岩 × 6');
+  });
+
+  it('applies the truncated-log summary preference to every stage in a multi-stage fight', async () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const { ports, calls } = createPorts({
+      readLogSince: async () => ({
+        status: 'truncated',
+        text: [
+          callback('FightTimes', { times_finished: 6, sanity_cost: 12, series: 2 }),
+          callback('SanityBeforeStage', { current_sanity: 30, max_sanity: 135 })
+        ].join('\n')
+      }),
+      executeCommand: async (_command, args) => ({
+        stdout: `Fight ${args[0]} 8 times, total drops: 源岩 × 16`,
+        stderr: ''
+      })
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    await completedResult(await executor.execute([
+      {
+        id: 'fight-1',
+        commandId: 'fight',
+        name: '理智作战',
+        enabled: true,
+        params: { stages: [{ stage: '1-7', times: 8 }, { stage: 'CE-6', times: 8 }] }
+      }
+    ], 'flow-truncated-multi'));
+
+    assert.equal(calls.drops.length, 2);
+    assert.deepEqual(calls.drops.map(drop => drop.stage), ['1-7', 'CE-6']);
+    assert.deepEqual(calls.drops.map(drop => drop.times), [8, 8]);
+    assert.deepEqual(calls.drops.map(drop => drop.sanity), [undefined, undefined]);
+    assert.deepEqual(calls.drops.map(drop => drop.items), [
+      [{ name: '源岩', count: 16 }],
+      [{ name: '源岩', count: 16 }]
+    ]);
   });
 
   it('keeps the selected series when a single stage also sets times', async () => {

@@ -302,11 +302,21 @@ function readDropItems(value: unknown): DropItem[] {
  * 按单场累计；消耗只在批次实际打完（出现下一批次计数推进或结算画面）后入账，
  * 选中但未开打的批次不计。`drops` 是每局增量，`stats` 是任务内累计；
  * 只累加增量事件，累计值单独返回用于核对，避免把同一批掉落重复入账。
+ *
+ * `logComplete: false` 表示增量日志被截断（只拿到尾部）：逐批累加的理智与
+ * 每局增量掉落不再是整次执行的总量，改用任务内累计的 `stats`，并在截断后
+ * 无法核对的字段（理智总量、开战前理智）保持缺失，不用尾部局部累加冒充。
  */
+export interface ParseFightStatisticsOptions {
+  logComplete?: boolean;
+}
+
 export function parseFightStatistics(
   logOutput: string | null | undefined,
-  fallbackStage = ''
+  fallbackStage = '',
+  options: ParseFightStatisticsOptions = {}
 ): FightStructuredStatistics | null {
+  const logComplete = options.logComplete !== false;
   const events = parseMaaCallbackEvents(logOutput, 'Fight');
   if (events.length === 0) return null;
 
@@ -382,20 +392,40 @@ export function parseFightStatistics(
   const resolvedStage = stage || fallbackStage.trim();
   if (!resolvedStage) return null;
 
-  const drops = [...incrementalDrops.entries()].map(([name, count]) => ({ name, count }));
+  const drops = logComplete
+    ? [...incrementalDrops.entries()].map(([name, count]) => ({ name, count }))
+    : cumulativeDrops;
   return {
     stage: resolvedStage,
     battles,
-    ...(sanityUnknown ? {} : { sanity: sanityTotal }),
+    ...((logComplete && !sanityUnknown) ? { sanity: sanityTotal } : {}),
     drops,
     cumulativeDrops,
-    ...(sanityBeforeStage === null ? {} : { sanityBeforeStage }),
-    ...(maxSanity === null ? {} : { maxSanity }),
+    ...(logComplete && sanityBeforeStage !== null ? { sanityBeforeStage } : {}),
+    ...(logComplete && maxSanity !== null ? { maxSanity } : {}),
     observed: {
       stageDrops: observedStageDrops,
       fightTimes: observedFightTimes,
       sanityBeforeStage: observedSanity
     }
+  };
+}
+
+/**
+ * 用完整 CLI 摘要修正截断日志解析出的统计：摘要覆盖整个执行且在命令结束时打印，
+ * 局数与掉落以它为准；摘要缺失时回退到尾部仍可核对的累计回调。统计层已省略的
+ * 不可确认字段（理智总量、开战前理智）保持缺失。
+ */
+export function reconcileTruncatedFightStatistics(
+  statistics: FightStructuredStatistics,
+  summary: FlowTaskSummary | null
+): FightStructuredStatistics {
+  const summaryTimes = readFiniteNumber(summary?.times);
+  const summaryDrops = summary && Array.isArray(summary.dropItems) ? summary.dropItems : [];
+  return {
+    ...statistics,
+    battles: summaryTimes !== null && summaryTimes > 0 ? summaryTimes : statistics.battles,
+    drops: summaryDrops.length > 0 ? summaryDrops : statistics.drops
   };
 }
 
