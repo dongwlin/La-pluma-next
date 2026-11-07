@@ -9,24 +9,24 @@ export const normalizeOperatorSearchTerm = (term: string): string =>
 /**
  * 按名称包含匹配；空搜索返回全部行。返回新数组，避免调用方误改查询快照。
  */
-export const filterOperatorRows = (
-  operators: readonly TrainingOperator[],
+export const filterOperatorRows = <T extends { name: string }>(
+  operators: readonly T[],
   searchTerm: string,
-): TrainingOperator[] => {
+): T[] => {
   const normalizedTerm = normalizeOperatorSearchTerm(searchTerm)
   if (!normalizedTerm) return [...operators]
   return operators.filter(operator => operator.name.toLowerCase().includes(normalizedTerm))
 }
 
-export interface VisibleOperatorRows {
-  rows: TrainingOperator[]
+export interface VisibleOperatorRows<T> {
+  rows: T[]
   hiddenCount: number
 }
 
-export const paginateOperatorRows = (
-  operators: readonly TrainingOperator[],
+export const paginateOperatorRows = <T>(
+  operators: readonly T[],
   limit: number,
-): VisibleOperatorRows => {
+): VisibleOperatorRows<T> => {
   const safeLimit = Math.max(0, Math.floor(limit))
   const rows = operators.slice(0, safeLimit)
   return {
