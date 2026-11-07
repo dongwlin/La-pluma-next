@@ -93,8 +93,8 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: '0', label: '默认换班' },
         { value: '10000', label: '自定义换班' },
         { value: '20000', label: '一键轮换' }
-      ], helper: '一键轮换使用游戏内队列，并保留无人机、会客室等基础操作' },
-      { key: 'facility', label: '设施选择', type: 'facility-select', helper: '选择要换班的设施' },
+      ], helper: '一键轮换使用游戏内队列，并保留无人机、会客室等基础操作', helperPlacement: 'tooltip' },
+      { key: 'facility', label: '设施选择', type: 'facility-select' },
       { key: 'drones', label: '无人机用途', type: 'select', options: [
         { value: '_NotUse', label: '不使用无人机' },
         { value: 'Money', label: '龙门币' },
