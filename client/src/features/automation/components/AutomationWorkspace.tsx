@@ -454,7 +454,6 @@ export default function AutomationWorkspace() {
                     <div className="automation-flow-card-header">
                       <div className="automation-flow-card-identity">
                         <span className="automation-flow-sequence">{String(index + 1).padStart(2, '0')}</span>
-                        <span className="automation-flow-task-icon">{task.icon}</span>
                         <span className="automation-flow-task-name">
                           <strong>{task.name}</strong>
                           <small>{isCurrentTask ? '正在执行' : task.taskType || task.commandId}</small>
