@@ -69,7 +69,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `readLogFile` 先对日志目录与请求路径取 `realpath`，再按目录边界判定与扩展名检查：只允许日志目录内的 `.log` 文件，目录外符号链接与悬空目标都被拒绝（`server/src/services/maaLogFileService.ts:268-278,337-349`）。
 - 日志内容从文件尾部按 64 KB 分块读取，单次最多 2 MB；窗口起始于行中间时丢弃首行残片。`totalLines` 按 split 语义分块统计换行数；行数上限 `MAX_LOG_FILE_LINES` 5000（`server/src/services/maaLogFileService.ts:24,27,284-329,337-381`）。
 - `cleanupLogs` 按修改时间从新到旧累加，把超出保留上限的文件删除；上限限定 1–1024 MB（`server/src/services/maaLogFileService.ts:229-262`）。
-- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 当前字节数，失败返回 null 不抛错；`readMaaLogSince` 只读取检查点之后新增的字节（最多 `maxBytes`），失败返回空串（`server/src/services/maaLogFileService.ts:160-207`）。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果。
+- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 当前字节数，失败返回 null 不抛错；`readMaaLogIncrement` 只读取检查点之后新增的字节（最多 `maxBytes`）并标明完整性：`ok` 为全部新增内容，`unreadable` 为检查点或文件不可读，`truncated` 为文件回绕、超出单次读取上限或短读导致的尾部部分内容；`readMaaLogSince` 是丢弃状态只取文本的便捷封装（`server/src/services/maaLogFileService.ts:144-204`）。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果；依赖「没读到某类回调」下结论或把统计当整次执行落盘的调用方只在 `ok` 时采信增量内容，截断时改用可核对的完整 CLI 摘要或任务内累计回调，无法确认的字段保持缺失。
 - 调试截图列表从 MAA 状态目录的 `debug/` 读取图片文件；响应只暴露文件名，不返回服务器绝对路径（`server/src/services/maaLogFileService.ts:386-424`）。
 
 ## 活动查询与本地任务缓存

@@ -1,6 +1,6 @@
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import { captureScreen, getGameClientState, testAdbConnection } from './maaDeviceService.ts';
-import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts';
+import { createMaaLogCheckpoint, readMaaLogIncrement } from './maaLogFileService.ts';
 import { isResourceCollectionOpen, replaceActivityCode } from './maaActivityService.ts';
 import { resolveConnection } from './connectionService.ts';
 import {
@@ -25,7 +25,7 @@ export function createScheduleExecutionPorts(
     executeDynamicTask: (taskId, taskConfig, taskName, taskType, waitForCompletion, clientType) =>
       execDynamicTask(taskId, taskConfig, taskName, taskType, waitForCompletion, false, { clientType }),
     createLogCheckpoint: createMaaLogCheckpoint,
-    readLogSince: readMaaLogSince,
+    readLogSince: readMaaLogIncrement,
     resolveConnection: async () => {
       const connection = await resolveConnection();
       return {

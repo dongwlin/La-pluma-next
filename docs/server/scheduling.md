@@ -7,7 +7,7 @@
 ## 模块分工
 
 - `server/src/services/scheduleFlowPlan.ts`：纯计划构建——校验任务流、把任务条目构建为 MAA 命令或动态任务配置；不读取设备连接、用户配置或通知状态（`server/src/services/scheduleFlowPlan.ts:3-4`）。
-- `server/src/services/scheduleFlowExecution.ts`：流程执行器——按步骤编排命令下发，持有停止信号与执行状态；设备命令、通知、掉落记录与养成回写全部经端口注入（`server/src/services/scheduleFlowExecution.ts:27-38`）。
+- `server/src/services/scheduleFlowExecution.ts`：流程执行器——按步骤编排命令下发，持有停止信号与执行状态；设备命令、通知、掉落记录与养成回写全部经端口注入（`server/src/services/scheduleFlowExecution.ts:33-44`）。
 - `server/src/services/scheduleFlowResult.ts`：纯结果聚合——从命令输出解析任务总结与掉落汇报结论，生成完成消息与汇总；不读取设备、存储或通知配置（`server/src/services/scheduleFlowResult.ts:11-12`）。
 - `server/src/services/scheduleTaskProgress.ts`：把每个任务的步骤结论投影为轮询快照条目（`server/src/services/scheduleTaskProgress.ts:1-4`）。
 - `server/src/services/scheduleTriggerService.ts`：cron 触发源注册表——注册、替换、停止 cron 计划与自动更新作业；触发回调只调用注入的执行入口，不持有流程状态（`server/src/services/scheduleTriggerService.ts:12-13`）。
@@ -34,27 +34,28 @@ Infrast 任务在 `mode=10000` 时读取 `filename` 指向的 Core 排班 JSON�
 
 ## 步骤编排
 
-执行器在进程内只创建一个实例，异步流程只有一个执行所有者，构造时逐个校验端口（`server/src/services/scheduleFlowExecution.ts:239-249`、`server/src/services/schedulerService.ts:50-52`）。`execute` 把整个流程包在 `withExecutionLease` 内，流程全程持有设备租约（`server/src/services/scheduleFlowExecution.ts:1360-1374`）。
+执行器在进程内只创建一个实例，异步流程只有一个执行所有者，构造时逐个校验端口（`server/src/services/scheduleFlowExecution.ts:261-271`、`server/src/services/schedulerService.ts:50-52`）。`execute` 把整个流程包在 `withExecutionLease` 内，流程全程持有设备租约（`server/src/services/scheduleFlowExecution.ts:1455-1474`）。
 
-编排只遍历启用的任务（`server/src/services/scheduleFlowExecution.ts:420`），按命令分支处理：
+编排只遍历启用的任务（`server/src/services/scheduleFlowExecution.ts:442`），按命令分支处理：
 
-- `award`：未启用任何领取项目记跳过；开启图片通知时在领取后截图（`server/src/services/scheduleFlowExecution.ts:489-537`）。
-- `startup`：先做连接检查，命令执行后最多重试 2 次，并以前台包名加截图双重确认游戏未闪退；关闭启动开关时经动态 StartUp 任务执行并沿用任务自身客户端类型（`server/src/services/scheduleFlowExecution.ts:645-760`、`server/src/services/scheduleExecutionPorts.ts:24-26`）。
-- `recruit`/`infrast`/`mall`：不满足各自条件时记跳过；命令前打日志检查点，之后只读检查点以来的新增日志解析步骤结论，旧任务日志不进入当前结果（`server/src/services/scheduleFlowExecution.ts:501,741-917`）。
-- `fight`：多关卡依次执行，每关先按客户端游戏日检查开放状态，理智耗尽后跳过剩余关卡；活动代号在下发前替换，次数是累计作战局数上限，与连战倍率同时下发（`server/src/services/scheduleFlowExecution.ts:938-1110`）。
+- `award`：未启用任何领取项目记跳过；开启图片通知时在领取后截图（`server/src/services/scheduleFlowExecution.ts:511-559`）。
+- `startup`：先做连接检查，命令执行后最多重试 2 次，并以前台包名加截图双重确认游戏未闪退；关闭启动开关时经动态 StartUp 任务执行并沿用任务自身客户端类型（`server/src/services/scheduleFlowExecution.ts:667-782`、`server/src/services/scheduleExecutionPorts.ts:24-26`）。
+- `recruit`/`infrast`/`mall`：不满足各自条件时记跳过；命令前打日志检查点，之后只读检查点以来的新增日志解析步骤结论，旧任务日志不进入当前结果（`server/src/services/scheduleFlowExecution.ts:523,763-939`）。
+- `fight`：多关卡依次执行，每关先按客户端游戏日检查开放状态，理智耗尽后跳过剩余关卡；活动代号在下发前替换，次数是累计作战局数上限，与连战倍率同时下发（`server/src/services/scheduleFlowExecution.ts:960-1132`）。
 
-步骤结论是 `success`/`failed`/`skipped` 的有穷联合；执行被终止时进度记 `stopped`，不把取消伪装成失败（`server/src/services/scheduleFlowExecution.ts:31-33`）。步间等待全部经 `waitForDelay`，可被停止信号中断；`stop()` 置停止标志、中止 abort controller 并取消当前延迟（`server/src/services/scheduleFlowExecution.ts:293-339`）。流程异常退出时在 `finally` 中复位执行状态，避免残留 `isRunning`（`server/src/services/scheduleFlowExecution.ts:1394-1431`）。
+步骤结论是 `success`/`failed`/`skipped` 的有穷联合；执行被终止时进度记 `stopped`，不把取消伪装成失败（`server/src/services/scheduleFlowExecution.ts:36-39`）。步间等待全部经 `waitForDelay`，可被停止信号中断；`stop()` 置停止标志、中止 abort controller 并取消当前延迟（`server/src/services/scheduleFlowExecution.ts:315-361`）。流程异常退出时在 `finally` 中复位执行状态，避免残留 `isRunning`（`server/src/services/scheduleFlowExecution.ts:1417-1454`）。
 
 ## 进度投影
 
-`ScheduleExecutionStatus` 是轮询投影：`isRunning`、`scheduleId`、`runId`、`currentStep`/`totalSteps`、`currentTask`、`message`、`lastResult` 与逐任务 `taskResults`（`server/src/services/scheduleFlowExecution.ts:136-150`），经 `getScheduleExecutionStatus()` 暴露给 `GET /api/agent/schedules/execution`（`server/src/services/schedulerService.ts:105-107`、`docs/architecture/execution-lifecycle.md:39`）。逐任务条目以 `taskId` 为身份，同名任务不互相覆盖；状态为 `pending`/`running`/`success`/`failed`/`skipped`/`stopped`，完成判定停止优先于失败（`server/src/services/scheduleTaskProgress.ts:7-14,56-63`）。日常流程 Run 只在自己持有 `schedule.runId` 时投影这些步骤，未获得执行权时显示等待（`docs/architecture/execution-lifecycle.md:47-48`）。
+`ScheduleExecutionStatus` 是轮询投影：`isRunning`、`scheduleId`、`runId`、`currentStep`/`totalSteps`、`currentTask`、`message`、`lastResult` 与逐任务 `taskResults`（`server/src/services/scheduleFlowExecution.ts:136-148`），经 `getScheduleExecutionStatus()` 暴露给 `GET /api/agent/schedules/execution`（`server/src/services/schedulerService.ts:105-107`、`docs/architecture/execution-lifecycle.md:39`）。逐任务条目以 `taskId` 为身份，同名任务不互相覆盖；状态为 `pending`/`running`/`success`/`failed`/`skipped`/`stopped`，完成判定停止优先于失败（`server/src/services/scheduleTaskProgress.ts:7-14,56-63`）。日常流程 Run 只在自己持有 `schedule.runId` 时投影这些步骤，未获得执行权时显示等待（`docs/architecture/execution-lifecycle.md:47-48`）。
 
 ## 结果聚合
 
 - 每步产出一条 `ScheduleStepAction`：领取、公招、基建、信用收支、作战来自各自的结果服务，启动/关闭/关闭前仓库识别由流程直接构造（`server/src/services/scheduleFlowResult.ts:64-91`）。
 - `parseTaskSummary` 从 stdout 解析关卡、次数、掉落、理智药/源石及公招、基建总结（`server/src/services/scheduleFlowResult.ts:195-283`）。
 - `getFightReportResults` 按任务开关解析企鹅物流与一图流汇报结论，存在未识别掉落时判定汇报失败（`server/src/services/scheduleFlowResult.ts:141-190`）。
-- `buildFlowExecutionOutcome` 生成完成消息，优先级固定：停止 > 掉落汇报失败 > 任务失败 > 正常完成（`server/src/services/scheduleFlowResult.ts:18,289-309`）。
+- `parseFightStatistics` 把 fight 的结构化回调折算为实际消耗与掉落；增量日志截断时（`logComplete: false`）只采信任务内累计的 `stats` 与 `times_finished`，逐批累加的理智与每局增量掉落不再入账，无法确认的理智字段保持缺失。截断时由 `reconcileTruncatedFightStatistics` 用完整 stdout 摘要修正局数与掉落（`server/src/services/scheduleFlowResult.ts:314-430`）。
+- `buildFlowExecutionOutcome` 生成完成消息，优先级固定：停止 > 掉落汇报失败 > 任务失败 > 正常完成（`server/src/services/scheduleFlowResult.ts:436-473`）。
 
 ## cron 触发源
 
@@ -71,11 +72,11 @@ Infrast 任务在 `mode=10000` 时读取 `filename` 指向的 Core 排班 JSON�
 
 ## 设备租约与 Run
 
-cron 触发在执行前经 `beginAgentRun` 创建 `run_daily_flow` Run，`onBeforeStart` 在取得租约后、第一步之前经 `startAgentRunForExecution` 复核身份；流程结束后按实际执行结果结算 Run 终态，不由触发时机推断（`server/src/services/schedulerService.ts:118-147,183-214`、`server/src/services/scheduleFlowExecution.ts:414-417`）。HTTP 入口由控制器创建 Run 并把 `runId` 传入 `executeScheduleNow`；不经 Run 包装的直接调用方（如 Telegram）`runId` 为 `null`，以 `external` 占用出现在快照中。租约被其他执行占用时流程返回 `busy:true` 与 `owner`，供 HTTP 映射 409（`server/src/services/scheduleFlowExecution.ts:1376-1387`）。Run 终态、幂等与停止矩阵见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
+cron 触发在执行前经 `beginAgentRun` 创建 `run_daily_flow` Run，`onBeforeStart` 在取得租约后、第一步之前经 `startAgentRunForExecution` 复核身份；流程结束后按实际执行结果结算 Run 终态，不由触发时机推断（`server/src/services/schedulerService.ts:118-147,183-214`、`server/src/services/scheduleFlowExecution.ts:436-439`）。HTTP 入口由控制器创建 Run 并把 `runId` 传入 `executeScheduleNow`；不经 Run 包装的直接调用方（如 Telegram）`runId` 为 `null`，以 `external` 占用出现在快照中。租约被其他执行占用时流程返回 `busy:true` 与 `owner`，供 HTTP 映射 409（`server/src/services/scheduleFlowExecution.ts:1463-1474`）。Run 终态、幂等与停止矩阵见[执行身份与生命周期契约](../architecture/execution-lifecycle.md)。
 
 ## 完成通知与掉落汇报时序
 
-执行期间：每关优先按结构化回调（`StageDrops`/`FightTimes`）写入掉落记录，结构化观测缺失或不完整时回退 stdout 任务总结（`stage`/`times`/`dropItems`/`medicine`/`stone`，理智按 `times * 20` 估算）；两者都无有效掉落信息时记录 `warn` 日志而不静默跳过。开启图片通知时在领取奖励后截图（`server/src/services/scheduleFlowExecution.ts:335-390,558-570,1102`）。流程持有租约期间只把完成载荷挂到结果对象上；`dispatchCompletion` 对每个结果只消费一次，在租约释放且 Run 结算落盘之后运行，先刷新智能养成关卡再发送完成通知，副作用错误显式返回、只记日志，不改写已结算的 Run 终态（`server/src/services/scheduleFlowExecution.ts:160-184,1391-1430`、`server/src/services/schedulerService.ts:157-173,216-221`）。cron 路径在 Run 结算后同步执行副作用；HTTP 手动路径把副作用放到 `setImmediate` 并先落盘 Run，避免通知占用租约或早于终态落库（`server/src/services/schedulerService.ts:286-301`）。
+执行期间：每关优先按结构化回调（`StageDrops`/`FightTimes`）写入掉落记录；增量日志只保留尾部（截断）时，统计只采信任务内累计的回调证据，并按完整 stdout 摘要修正局数与掉落，仍无法确认的理智字段保持缺失。结构化观测缺失或不完整时回退 stdout 任务总结（`stage`/`times`/`dropItems`/`medicine`/`stone`，理智按 `times * 20` 估算）；两者都无有效掉落信息时记录 `warn` 日志而不静默跳过。开启图片通知时在领取奖励后截图（`server/src/services/scheduleFlowExecution.ts:357-412,580-592,1124`）。流程持有租约期间只把完成载荷挂到结果对象上；`dispatchCompletion` 对每个结果只消费一次，在租约释放且 Run 结算落盘之后运行，先刷新智能养成关卡再发送完成通知，副作用错误显式返回、只记日志，不改写已结算的 Run 终态（`server/src/services/scheduleFlowExecution.ts:166-190,1414-1453`、`server/src/services/schedulerService.ts:157-173,216-221`）。cron 路径在 Run 结算后同步执行副作用；HTTP 手动路径把副作用放到 `setImmediate` 并先落盘 Run，避免通知占用租约或早于终态落库（`server/src/services/schedulerService.ts:286-301`）。
 
 ## 智能养成关卡回写
 
