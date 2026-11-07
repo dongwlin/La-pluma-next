@@ -656,6 +656,98 @@ describe('AutomationTasks layout surfaces', () => {
     expect(inlineHelpers).toContain('使用理智药数量')
   })
 
+  it('moves the award helper texts into focusable tooltips', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'award-1',
+            commandId: 'award',
+            name: '领取奖励',
+            description: '领取每日/每周奖励',
+            taskType: 'Award',
+            enabled: true,
+            params: {
+              award: true,
+              mail: true,
+              recruit: false,
+              orundum: false,
+              mining: false,
+              specialaccess: false,
+              signinevent: true,
+            },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+
+    const tooltipFor = (label: string) => {
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}说明"]`)
+      expect(trigger).not.toBeNull()
+      const tooltip = document.getElementById(trigger?.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      return { trigger: trigger!, tooltip }
+    }
+
+    const recruit = tooltipFor('限定池免费单抽')
+    const anniversary = tooltipFor('周年赠送月卡')
+    const signIn = tooltipFor('限时签到活动奖励')
+
+    expect(recruit.tooltip?.textContent).toBe('活动期间领取限定池赠送的每日免费单抽；没有免费次数时不抽取')
+    expect(anniversary.tooltip?.textContent).toBe('领取周年活动赠送的月卡奖励')
+    expect(signIn.tooltip?.textContent).toBe('领取限时签到活动的每日奖励（仅支持常见横向版型）')
+    expect(recruit.tooltip?.hidden).toBe(true)
+    expect(anniversary.tooltip?.hidden).toBe(true)
+    expect(signIn.tooltip?.hidden).toBe(true)
+
+    await act(async () => recruit.trigger.focus())
+    expect(recruit.tooltip?.hidden).toBe(false)
+    await act(async () => recruit.trigger.blur())
+    expect(recruit.tooltip?.hidden).toBe(true)
+
+    // 常驻说明段落已删除：编辑器内不再有承载这段文字的段落。
+    const editor = container.querySelector('#automation-task-editor')
+    expect(editor?.textContent).not.toContain('活动期间领取限定池赠送的每日免费单抽')
+    expect(editor?.textContent).not.toContain('领取周年活动赠送的月卡奖励')
+    expect(editor?.textContent).not.toContain('领取限时签到活动的每日奖励')
+    expect(editor?.querySelectorAll('p')).toHaveLength(0)
+
+    // 领取开关的加载状态、键名与顺序保持原样。
+    const switchOf = (key: string) => container.querySelector<HTMLInputElement>(`#automation-award-1-${key}`)
+    expect(switchOf('award')?.checked).toBe(true)
+    expect(switchOf('mail')?.checked).toBe(true)
+    expect(switchOf('recruit')?.checked).toBe(false)
+    expect(switchOf('orundum')?.checked).toBe(false)
+    expect(switchOf('mining')?.checked).toBe(false)
+    expect(switchOf('specialaccess')?.checked).toBe(false)
+    expect(switchOf('signinevent')?.checked).toBe(true)
+
+    await act(async () => switchOf('recruit')?.click())
+    await flush()
+
+    const savedAward = (
+      JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{
+        id: string
+        params: Record<string, boolean>
+      }>
+    ).find(task => task.id === 'award-1')
+    expect(Object.keys(savedAward?.params ?? {})).toEqual([
+      'award',
+      'mail',
+      'recruit',
+      'orundum',
+      'mining',
+      'specialaccess',
+      'signinevent',
+    ])
+    expect(savedAward?.params.recruit).toBe(true)
+    expect(savedAward?.params.award).toBe(true)
+    expect(savedAward?.params.signinevent).toBe(true)
+  })
+
   it('normalizes the recruitment duration when the field loses focus', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
