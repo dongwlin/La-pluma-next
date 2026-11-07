@@ -515,6 +515,7 @@ export default function AutomationWorkspace() {
                                 task={task}
                                 taskIndex={index}
                                 isRunning={isRunning}
+                                hint={helperTooltip}
                                 onUpdate={updateTaskParam}
                                 onSuccess={showSuccess}
                                 onError={showError}
@@ -766,7 +767,10 @@ export default function AutomationWorkspace() {
 
                         <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
                           <div className="flex items-center gap-2">
-                            <label htmlFor={`${task.id}-fight-client-type`} className="w-24 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">闪退重启:</label>
+                            <span className="flex w-24 shrink-0 items-center gap-1">
+                              <label htmlFor={`${task.id}-fight-client-type`} className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">闪退重启:</label>
+                              <HintTooltip id={`${task.id}-fight-client-type-hint`} label="闪退重启" hint="选择客户端后，游戏闪退时会自动重新启动。" />
+                            </span>
                             <div className="automation-select-control min-w-0 flex-1">
                               <select
                                 id={`${task.id}-fight-client-type`}
@@ -785,21 +789,20 @@ export default function AutomationWorkspace() {
                               <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
                             </div>
                           </div>
-                          <p className="text-xs text-gray-400 dark:text-gray-500">选择客户端后，游戏闪退时会自动重新启动。</p>
 
-                          <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(task.params.DrGrandet)}
-                              onChange={(e) => updateTaskParam(index, 'DrGrandet', e.target.checked)}
-                              disabled={isRunning || !task.enabled}
-                              className="custom-checkbox mt-0.5 cursor-pointer"
-                            />
-                            <span>
-                              <span className="block">葛朗台碎石模式</span>
-                              <span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">使用源石前等待自然恢复 1 点理智，尽量减少碎石浪费。</span>
-                            </span>
-                          </label>
+                          <div className="flex items-center gap-1">
+                            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(task.params.DrGrandet)}
+                                onChange={(e) => updateTaskParam(index, 'DrGrandet', e.target.checked)}
+                                disabled={isRunning || !task.enabled}
+                                className="custom-checkbox cursor-pointer"
+                              />
+                              <span>葛朗台碎石模式</span>
+                            </label>
+                            <HintTooltip id={`${task.id}-dr-grandet-hint`} label="葛朗台碎石模式" hint="使用源石前等待自然恢复 1 点理智，尽量减少碎石浪费。" />
+                          </div>
 
                           <section className="space-y-2 border-t border-(--app-border) pt-3">
                             <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">

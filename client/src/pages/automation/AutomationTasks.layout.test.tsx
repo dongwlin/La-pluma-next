@@ -760,10 +760,55 @@ describe('AutomationTasks layout surfaces', () => {
     // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
     expect(container.textContent).not.toContain('输入已登录账号的部分字符即可')
     expect(container.textContent).not.toContain('关闭后只连接设备并进入已有游戏的主界面')
+  })
 
+  it('moves every fight helper text into focusable tooltips', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderPage()
     await clickSequenceTask('理智作战')
-    const inlineHelpers = Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent)
-    expect(inlineHelpers).toContain('使用理智药数量')
+
+    const expectedHints: Array<[string, string]> = [
+      ['关卡计划说明', '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数'],
+      ['掉落目标说明', '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔'],
+      ['理智药说明', '使用理智药数量'],
+      ['临期药天数说明', '使用将在指定天数内过期的理智药；0 表示不使用临期药'],
+      ['源石说明', '使用源石数量'],
+      ['连战说明', '本任务所有关卡共用的连战倍率，范围 -1 至 10（旧资源只支持 -1 至 6）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整'],
+      ['闪退重启说明', '选择客户端后，游戏闪退时会自动重新启动。'],
+      ['葛朗台碎石模式说明', '使用源石前等待自然恢复 1 点理智，尽量减少碎石浪费。'],
+    ]
+
+    const tooltipFor = (trigger: HTMLButtonElement) => {
+      const tooltip = document.getElementById(trigger.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      return tooltip
+    }
+
+    for (const [accessibilityName, copy] of expectedHints) {
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${accessibilityName}"]`)
+      expect(trigger).not.toBeNull()
+      expect(tooltipFor(trigger!)?.textContent).toBe(copy)
+      expect(tooltipFor(trigger!)?.hidden).toBe(true)
+      expect(container.textContent).not.toContain(copy)
+
+      await act(async () => trigger!.focus())
+      expect(tooltipFor(trigger!)?.hidden).toBe(false)
+      await act(async () => trigger!.blur())
+      expect(tooltipFor(trigger!)?.hidden).toBe(true)
+    }
+
+    // 区块级提示挂在「关卡计划」标题行内、关卡数量徽标右侧。
+    const stageTitle = container.querySelector('.automation-stage-editor-title')
+    const stageHint = stageTitle?.querySelector<HTMLButtonElement>('button[aria-label="关卡计划说明"]')
+    expect(stageTitle?.textContent).toContain('关卡计划')
+    expect(stageTitle?.textContent).toContain('2 个关卡')
+    expect(stageHint?.previousElementSibling?.tagName).toBe('SPAN')
+    expect(stageHint?.previousElementSibling?.textContent).toBe('2 个关卡')
+
+    // 说明段落不再常驻页面。
+    const helperParagraphs = Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent)
+    for (const [, copy] of expectedHints) expect(helperParagraphs).not.toContain(copy)
   })
 
   it('offers task removal from the flow list only', async () => {
