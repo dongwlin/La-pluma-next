@@ -66,4 +66,40 @@ describe('common form controls', () => {
     expect(select?.getAttribute('aria-describedby')).toBe(hint?.id)
     expect(hint?.textContent).toBe('可随时切换')
   })
+
+  it('folds guidance into a focusable label tooltip when requested', async () => {
+    await act(async () => {
+      root.render(
+        <Select
+          id="billing-cycle"
+          label="计费周期"
+          value="month"
+          onChange={vi.fn()}
+          hint="可随时切换"
+          hintPlacement="tooltip"
+          options={[{ value: 'month', label: '按月' }]}
+        />,
+      )
+    })
+
+    const select = container.querySelector('select')
+    const label = container.querySelector('label')
+    const trigger = container.querySelector('button')
+    const tooltip = document.getElementById(select?.getAttribute('aria-describedby') ?? '')
+
+    expect(label?.htmlFor).toBe('billing-cycle')
+    expect(label?.textContent).toBe('计费周期')
+    expect(container.querySelector('p')).toBeNull()
+    expect(trigger?.getAttribute('aria-label')).toBe('计费周期说明')
+    expect(trigger?.getAttribute('aria-describedby')).toBe(tooltip?.id)
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent).toBe('可随时切换')
+    expect(tooltip?.hidden).toBe(true)
+
+    await act(async () => trigger?.focus())
+    expect(tooltip?.hidden).toBe(false)
+
+    await act(async () => trigger?.blur())
+    expect(tooltip?.hidden).toBe(true)
+  })
 })
