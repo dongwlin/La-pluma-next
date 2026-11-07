@@ -167,6 +167,9 @@ describe('automation task parameter defaults and copy', () => {
       'accountName',
       'start_game_enabled',
       'mode',
+      'only_buy_discount',
+      'reserve_max_credit',
+      'credit_fight',
       'recruit',
       'specialaccess',
       'signinevent',
@@ -238,5 +241,78 @@ describe('automation fight task catalog', () => {
     expect(series.visibleWhen).toBeUndefined()
     expect(series.hiddenWhen).toBeUndefined()
     expect(Object.keys(series)).not.toContain('disabled')
+  })
+})
+
+describe('automation mall task catalog', () => {
+  const mall = AVAILABLE_TASKS.find(task => task.id === 'mall')
+
+  it('moves the three shopping helper texts into tooltips without touching the copy', () => {
+    if (!mall) throw new Error('missing mall task')
+    const fieldOf = (key: string) => mall.paramFields.find(field => field.key === key)
+
+    expect(fieldOf('only_buy_discount')?.helper).toBe('仅影响优先购买之外的普通购物')
+    expect(fieldOf('reserve_max_credit')?.helper).toBe('普通购物时信用低于 300 就停止购买')
+    expect(fieldOf('credit_fight')?.helper).toBe('借助战完成一次 OF-1，以便次日获得更多信用')
+
+    expect(fieldOf('only_buy_discount')?.helperPlacement).toBe('tooltip')
+    expect(fieldOf('reserve_max_credit')?.helperPlacement).toBe('tooltip')
+    expect(fieldOf('credit_fight')?.helperPlacement).toBe('tooltip')
+
+    // 信用溢出开关本来就没有说明文案，不新增第四段提示。
+    expect(fieldOf('force_shopping_if_credit_full')?.helper).toBeUndefined()
+    expect(fieldOf('force_shopping_if_credit_full')?.helperPlacement).toBeUndefined()
+
+    const inlineHelpers = mall.paramFields
+      .filter(field => field.helper && field.helperPlacement !== 'tooltip')
+      .map(field => field.key)
+    expect(inlineHelpers).toEqual([])
+  })
+
+  it('keeps the mall switch order, labels, defaults and text placeholders untouched', () => {
+    if (!mall) throw new Error('missing mall task')
+    const fieldOf = (key: string) => mall.paramFields.find(field => field.key === key)
+
+    expect(mall.taskType).toBe('Mall')
+    expect(mall.paramFields.map(field => field.key)).toEqual([
+      'visit_friends',
+      'shopping',
+      'buy_first',
+      'blacklist',
+      'only_buy_discount',
+      'reserve_max_credit',
+      'force_shopping_if_credit_full',
+      'credit_fight',
+      'formation_index',
+    ])
+    expect(mall.paramFields.map(field => field.label)).toEqual([
+      '访问好友',
+      '自动购物',
+      '优先购买',
+      '黑名单',
+      '只买折扣商品',
+      '保留 300 信用',
+      '信用溢出时无视黑名单',
+      '信用助战',
+      '助战编队',
+    ])
+    expect(mall.defaultParams).toEqual({
+      visit_friends: true,
+      shopping: true,
+      buy_first: '',
+      blacklist: '',
+      force_shopping_if_credit_full: false,
+      only_buy_discount: false,
+      reserve_max_credit: false,
+      credit_fight: false,
+      formation_index: 0,
+    })
+    expect(fieldOf('buy_first')?.placeholder).toBe('招聘许可,龙门币（逗号分隔）')
+    expect(fieldOf('blacklist')?.placeholder).toBe('家具零件,碳（逗号分隔）')
+    expect(fieldOf('only_buy_discount')?.visibleWhen).toEqual({ key: 'shopping', value: true })
+    expect(fieldOf('reserve_max_credit')?.visibleWhen).toEqual({ key: 'shopping', value: true })
+    expect(fieldOf('force_shopping_if_credit_full')?.visibleWhen).toEqual({ key: 'shopping', value: true })
+    expect(fieldOf('credit_fight')?.visibleWhen).toBeUndefined()
+    expect(fieldOf('formation_index')?.visibleWhen).toEqual({ key: 'credit_fight', value: true })
   })
 })
