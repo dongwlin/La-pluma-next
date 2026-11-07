@@ -373,4 +373,35 @@ describe('GET /game-assets local icon and avatar routes', () => {
     assert.equal(manifest.status, 200);
     assert.equal(manifest.headers.get('access-control-allow-origin'), '*');
   });
+
+  it('keeps case variants of the asset namespace out of CORS', async () => {
+    const baseUrl = await listen();
+    const crossOrigin = 'http://console.example:5173';
+    const headers = { Origin: crossOrigin };
+
+    for (const path of [
+      '/GAME-ASSETS/item/30011.png',
+      '/Game-Assets/item/30011.png',
+      '/GAME-ASSETS/item/missing.png',
+      '/GAME-ASSETS/unknown',
+      '/GAME-ASSETS/'
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, { headers });
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin', path);
+      assert.equal(response.headers.get('access-control-allow-origin'), null, path);
+    }
+
+    const image = await fetch(`${baseUrl}/GAME-ASSETS/item/30011.png`, { headers });
+    assert.equal(image.status, 200);
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), ITEM_BYTES);
+
+    for (const path of ['/GAME-ASSETS/item/30011.png', '/GAME-ASSETS/item/missing.png']) {
+      const preflight = await fetch(`${baseUrl}${path}`, {
+        method: 'OPTIONS',
+        headers: { Origin: crossOrigin, 'Access-Control-Request-Method': 'GET' }
+      });
+      assert.equal(preflight.headers.get('access-control-allow-origin'), null, path);
+      assert.equal(preflight.headers.get('cross-origin-resource-policy'), 'same-origin', path);
+    }
+  });
 });
