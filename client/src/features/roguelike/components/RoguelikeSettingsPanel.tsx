@@ -62,6 +62,7 @@ export default function RoguelikeSettingsPanel({
                     onChange={(value: string) => onAdvancedChange(option.key, value)}
                     options={selectOptionsFor(option, theme, displayValue, task.id)}
                     hint={option.hint}
+                    hintPlacement={option.hintPlacement}
                   />
                 ) : (
                   <Input
@@ -76,6 +77,7 @@ export default function RoguelikeSettingsPanel({
                     onChange={(value: string) => onAdvancedChange(option.key, value)}
                     placeholder={option.placeholder}
                     hint={option.hint}
+                    hintPlacement={option.hintPlacement}
                   />
                 )}
               </div>

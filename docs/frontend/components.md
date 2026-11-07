@@ -166,7 +166,23 @@ import { Input, Select, Checkbox, Switch } from '@/shared/ui'
 />
 ```
 
-`Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
+`Input`、`Select` 均支持 `error` 和 `hint`，`Input` 额外支持前置 `icon`。`hint` 默认显示在控件下方；传 `hintPlacement="tooltip"` 时说明收敛为标签旁的 ⓘ 图标，悬停、聚焦或点击时以提示层显示同一段文字，控件仍通过 `aria-describedby` 关联这段说明。多行文本使用带 `app-input control-surface` 的原生 `textarea`。表单错误态使用 `error` prop，不要在页面里单独手写红色边框和错误文字。
+
+---
+
+### HintTooltip - 标签说明提示
+
+**文件位置**：`client/src/shared/ui/HintTooltip.tsx`
+
+**适用场景**：字段说明需要从控件下方的常驻段落收敛为标签旁的 ⓘ 提示。`Input`、`Select` 的 `hintPlacement="tooltip"` 已内置该组件；自定义标签行时直接复用。
+
+```tsx
+import { HintTooltip } from '@/shared/ui'
+
+<HintTooltip id="field-hint" label="难度" hint="不切换时沿用游戏内当前难度。" />
+```
+
+`id` 同时是提示层元素 id，调用方用它把控件与说明通过 `aria-describedby` 关联；`label` 组成图标按钮的可访问名称（`${label}说明`）。提示层渲染到 `document.body`，避免被面板圆角容器裁切。
 
 ---
 
