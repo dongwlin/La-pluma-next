@@ -72,6 +72,10 @@ export type ScheduleDepotParseResult =
   | { success: true; data: { itemCount: number } }
   | { success: false };
 
+export type ScheduleOperBoxParseResult =
+  | { success: true; data: { operCount: number } }
+  | { success: false };
+
 export interface ScheduleStageOpenState {
   isOpen: boolean;
   reason?: string | null;
@@ -110,6 +114,7 @@ export interface ScheduleExecutionPorts {
   sendCompletionNotification(info: TaskCompletionInfo): Promise<unknown>;
   recordDrops(input: DropRecordInput): Promise<unknown>;
   parseDepotData(): Promise<ScheduleDepotParseResult | null>;
+  parseOperBoxData(): Promise<ScheduleOperBoxParseResult | null>;
   refreshSmartTrainingStages(scheduleId: string): Promise<unknown>;
   withExecutionLease<T>(request: MaaExecutionLeaseRequest, run: () => Promise<T>): Promise<T>;
 }
@@ -211,6 +216,7 @@ const REQUIRED_PORTS: readonly (keyof ScheduleExecutionPorts)[] = [
   'sendCompletionNotification',
   'recordDrops',
   'parseDepotData',
+  'parseOperBoxData',
   'refreshSmartTrainingStages',
   'withExecutionLease'
 ];
@@ -282,6 +288,7 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
     sendCompletionNotification,
     recordDrops,
     parseDepotData,
+    parseOperBoxData,
     refreshSmartTrainingStages,
     withExecutionLease
   } = ports as ScheduleExecutionPorts;
@@ -684,6 +691,82 @@ export function createScheduleFlowExecutor(options: ScheduleFlowExecutorOptions 
             message: `关闭前仓库识别异常：${errorMessageOf(error)}`
           });
           // 即使识别失败也继续
+        }
+      }
+
+      if (commandId === 'closedown' && task.params?.recognizeOperBoxBeforeClose === true) {
+        try {
+          logger.info('关闭游戏前先识别干员', { scheduleId });
+
+          // 等待3秒确保游戏回到主界面
+          logger.debug('等待游戏回到主界面', { scheduleId, waitSeconds: 3 });
+          if (!(await waitForDelay(3000))) break;
+
+          updateStatus({
+            message: '正在识别干员...'
+          });
+
+          const operBoxTaskConfig = {
+            name: '干员识别',
+            type: 'OperBox',
+            params: {
+              enable: true
+            }
+          };
+
+          try {
+            await executeDynamicTask('OperBox_temp', JSON.stringify(operBoxTaskConfig), '干员识别', 'operbox', true);
+            logger.success('干员识别命令执行完成', { scheduleId });
+
+            logger.debug('开始解析干员数据', { scheduleId });
+            const parseResult = await parseOperBoxData();
+            if (parseResult?.success) {
+              const { operCount } = parseResult.data;
+              logger.success('干员数据已保存', {
+                scheduleId,
+                operCount
+              });
+              actionResults.push({
+                task: task.name,
+                action: 'operbox',
+                status: 'success',
+                message: `关闭前干员识别完成，共 ${operCount} 名干员`
+              });
+            } else {
+              logger.warn('干员数据解析失败', { scheduleId });
+              actionResults.push({
+                task: task.name,
+                action: 'operbox',
+                status: 'failed',
+                message: '关闭前干员识别完成，但数据解析失败'
+              });
+            }
+          } catch (operBoxError) {
+            logger.error('干员识别失败', {
+              scheduleId,
+              error: errorMessageOf(operBoxError)
+            });
+            actionResults.push({
+              task: task.name,
+              action: 'operbox',
+              status: 'failed',
+              message: `关闭前干员识别失败：${errorMessageOf(operBoxError)}`
+            });
+          }
+
+          logger.debug('等待后继续', { scheduleId, waitSeconds: 2 });
+          if (!(await waitForDelay(2000))) break;
+        } catch (error) {
+          logger.error('干员识别异常', {
+            scheduleId,
+            error: errorMessageOf(error)
+          });
+          actionResults.push({
+            task: task.name,
+            action: 'operbox',
+            status: 'failed',
+            message: `关闭前干员识别异常：${errorMessageOf(error)}`
+          });
         }
       }
 

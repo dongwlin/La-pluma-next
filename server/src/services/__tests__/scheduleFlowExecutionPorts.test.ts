@@ -84,6 +84,7 @@ function createPorts(overrides: Partial<ScheduleExecutionPorts> = {}) {
       calls.drops.push(payload);
     },
     parseDepotData: async () => ({ success: true, data: { itemCount: 0 } }),
+    parseOperBoxData: async () => ({ success: true, data: { operCount: 0 } }),
     refreshSmartTrainingStages: async scheduleId => {
       calls.refreshes.push(scheduleId);
     },
@@ -500,6 +501,178 @@ describe('schedule flow boundaries', () => {
     assert.ok(Date.now() - stoppedAt < 1_000, 'the 3s pre-depot delay must abort on stop');
     assert.equal(calls.dynamicTasks.length, 0, 'a stopped flow must not start depot recognition');
     assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command or the next task');
+  });
+
+  it('aborts the closedown pre-operbox delay when the flow is stopped', async () => {
+    const { ports, calls } = createPorts();
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeOperBoxBeforeClose: true } },
+      { id: 'award-1', commandId: 'award', name: '领取奖励', enabled: true, params: { award: true } }
+    ], 'flow-delay-closedown-operbox-first');
+
+    await waitForCondition(() => executor.getStatus().currentTask === '关闭游戏');
+    const stoppedAt = Date.now();
+    assert.equal(executor.stop(), true);
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.ok(Date.now() - stoppedAt < 1_000, 'the 3s pre-operbox delay must abort on stop');
+    assert.equal(calls.dynamicTasks.length, 0, 'a stopped flow must not start operator recognition');
+    assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command or the next task');
+  });
+
+  it('runs operator recognition before closing when the option is enabled', async () => {
+    const parsed = deferred<{ success: true; data: { operCount: number } }>();
+    let parseStarted = false;
+    const { ports, calls } = createPorts({
+      parseOperBoxData: async () => {
+        parseStarted = true;
+        return parsed.promise;
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeOperBoxBeforeClose: true } }
+    ], 'flow-closedown-operbox');
+
+    await waitForCondition(() => parseStarted);
+    assert.equal(calls.dynamicTasks.length, 1);
+    assert.equal(calls.dynamicTasks[0]?.taskId, 'OperBox_temp');
+    assert.equal(calls.dynamicTasks[0]?.taskName, '干员识别');
+    assert.deepEqual(JSON.parse(calls.dynamicTasks[0]!.taskConfig), {
+      name: '干员识别',
+      type: 'OperBox',
+      params: { enable: true }
+    });
+    assert.equal(calls.commands.length, 0, 'the closedown command must wait for operator recognition');
+
+    const stoppedAt = Date.now();
+    assert.equal(executor.stop(), true);
+    parsed.resolve({ success: true, data: { operCount: 42 } });
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.deepEqual(result.summary.actions, [{
+      task: '关闭游戏',
+      action: 'operbox',
+      status: 'success',
+      message: '关闭前干员识别完成，共 42 名干员'
+    }]);
+    assert.ok(Date.now() - stoppedAt < 1_000, 'the 2s post-operbox delay must abort on stop');
+    assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command');
+  });
+
+  it('does not run operator recognition when the closedown option is disabled', async () => {
+    const { ports, calls } = createPorts({
+      parseOperBoxData: async () => {
+        throw new Error('operator recognition must not run');
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeOperBoxBeforeClose: false } }
+    ], 'flow-closedown-operbox-disabled');
+
+    await waitForCondition(() => calls.commands.length === 1);
+    assert.equal(executor.stop(), true);
+
+    const result = completedResult(await execution);
+    assert.equal(calls.dynamicTasks.length, 0);
+    assert.deepEqual(result.summary.actions, [{
+      task: '关闭游戏',
+      action: 'closedown',
+      status: 'success',
+      message: '游戏客户端已关闭'
+    }]);
+  });
+
+  it('runs both recognitions in order when both closedown options are enabled', async () => {
+    const operBoxParsed = deferred<{ success: true; data: { operCount: number } }>();
+    let operBoxParseStarted = false;
+    const { ports, calls } = createPorts({
+      parseOperBoxData: async () => {
+        operBoxParseStarted = true;
+        return operBoxParsed.promise;
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      {
+        id: 'closedown-1',
+        commandId: 'closedown',
+        name: '关闭游戏',
+        enabled: true,
+        params: { recognizeDepotBeforeClose: true, recognizeOperBoxBeforeClose: true }
+      }
+    ], 'flow-closedown-both-recognitions');
+
+    await waitForCondition(() => operBoxParseStarted, { timeout: 15_000 });
+    assert.deepEqual(calls.dynamicTasks.map(task => task.taskName), ['仓库识别', '干员识别']);
+    assert.equal(calls.commands.length, 0, 'the closedown command must wait for both recognitions');
+
+    assert.equal(executor.stop(), true);
+    operBoxParsed.resolve({ success: true, data: { operCount: 12 } });
+
+    const result = completedResult(await execution);
+    assert.equal(result.stopped, true);
+    assert.deepEqual(result.summary.actions, [{
+      task: '关闭游戏',
+      action: 'depot',
+      status: 'success',
+      message: '关闭前仓库识别完成，共 0 项'
+    }, {
+      task: '关闭游戏',
+      action: 'operbox',
+      status: 'success',
+      message: '关闭前干员识别完成，共 12 名干员'
+    }]);
+    assert.equal(calls.commands.length, 0, 'a stopped flow must not run the closedown command');
+  });
+
+  it('reports a failed operator recognition but keeps the closedown task independent', async () => {
+    const { ports, calls } = createPorts({
+      parseOperBoxData: async () => ({ success: false })
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeOperBoxBeforeClose: true } }
+    ], 'flow-closedown-operbox-parse-failed');
+
+    await waitForCondition(() => calls.dynamicTasks.length === 1);
+    assert.equal(executor.stop(), true);
+
+    const result = completedResult(await execution);
+    assert.deepEqual(result.summary.actions, [{
+      task: '关闭游戏',
+      action: 'operbox',
+      status: 'failed',
+      message: '关闭前干员识别完成，但数据解析失败'
+    }]);
+  });
+
+  it('keeps the flow running when the operator recognition task throws', async () => {
+    const { ports, calls } = createPorts({
+      executeDynamicTask: async (taskId, taskConfig, taskName) => {
+        calls.dynamicTasks.push({ taskId, taskConfig, taskName });
+        throw new Error('OperBox 执行失败');
+      }
+    });
+    const executor = createScheduleFlowExecutor({ ports, logger: silentLogger });
+    const execution = executor.execute([
+      { id: 'closedown-1', commandId: 'closedown', name: '关闭游戏', enabled: true, params: { recognizeOperBoxBeforeClose: true } }
+    ], 'flow-closedown-operbox-task-failed');
+
+    await waitForCondition(() => calls.dynamicTasks.length === 1);
+    assert.equal(executor.stop(), true);
+
+    const result = completedResult(await execution);
+    assert.deepEqual(result.summary.actions, [{
+      task: '关闭游戏',
+      action: 'operbox',
+      status: 'failed',
+      message: '关闭前干员识别失败：OperBox 执行失败'
+    }]);
   });
 
   it('keeps the imported depot count when the flow is stopped during the post-depot delay', async () => {

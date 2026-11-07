@@ -56,7 +56,7 @@ export interface FlowSummaryLogger {
 
 export interface ScheduleBuiltinStepAction {
   task: string;
-  action: 'startup' | 'closedown' | 'depot';
+  action: 'startup' | 'closedown' | 'depot' | 'operbox';
   status: 'success' | 'failed';
   message: string;
 }
