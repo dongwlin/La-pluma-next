@@ -19,13 +19,20 @@ describe('resolveFieldHelperTooltip', () => {
   })
 
   it('falls back to the inline helper for layouts without a tooltip trigger', () => {
-    for (const type of ['multi-stages', 'star-select', 'facility-select', 'stage-with-times', 'theme-list'] as const) {
+    for (const type of [
+      'multi-stages',
+      'facility-select',
+      'stage-with-times',
+      'infrast-schedule',
+      'oper-progress-plans',
+      'theme-list',
+    ] as const) {
       expect(resolveFieldHelperTooltip(fieldWith({ type, helperPlacement: 'tooltip' }))).toBeUndefined()
     }
   })
 
-  it('supports the row and checkbox layouts that own a label or row end', () => {
-    for (const type of ['text', 'number', 'select', 'checkbox'] as const) {
+  it('supports the row, checkbox and fieldset legend layouts that own a hint trigger', () => {
+    for (const type of ['text', 'number', 'select', 'checkbox', 'star-select'] as const) {
       expect(resolveFieldHelperTooltip(fieldWith({ type, helperPlacement: 'tooltip' }))).toBeDefined()
     }
   })

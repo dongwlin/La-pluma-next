@@ -3,7 +3,11 @@
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AutomationCheckboxField, AutomationFieldLabel } from './AutomationFieldControls'
+import {
+  AutomationCheckboxField,
+  AutomationFieldLabel,
+  AutomationFieldLegend,
+} from './AutomationFieldControls'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -112,5 +116,41 @@ describe('AutomationCheckboxField', () => {
 
     await act(async () => trigger?.click())
     expect(onChange).not.toHaveBeenCalled()
+  })
+})
+
+describe('AutomationFieldLegend', () => {
+  it('renders the plain legend when no hint is configured', async () => {
+    await render(<AutomationFieldLegend label="招募星级" hintId="recruit-select-hint" />)
+
+    const legend = container.querySelector('legend')
+    expect(legend?.textContent).toBe('招募星级')
+    expect(container.querySelector('button')).toBeNull()
+    expect(container.querySelector('p')).toBeNull()
+  })
+
+  it('hangs the hint trigger next to the legend text and wires the tooltip', async () => {
+    const RECRUIT_STAR_HINT = '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合'
+    await render(
+      <AutomationFieldLegend label="招募星级" hintId="recruit-select-hint" hint={RECRUIT_STAR_HINT} />,
+    )
+
+    const legend = container.querySelector('legend')
+    expect(legend?.textContent).toBe('招募星级')
+    const trigger = hintTrigger('招募星级说明')
+    expect(trigger).not.toBeNull()
+    expect(trigger?.closest('legend')).not.toBeNull()
+
+    const tooltip = tooltipOf(trigger!)
+    expect(tooltip?.id).toBe('recruit-select-hint')
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent).toBe(RECRUIT_STAR_HINT)
+    expect(tooltip?.hidden).toBe(true)
+    expect(container.querySelector('p')).toBeNull()
+
+    await act(async () => trigger!.focus())
+    expect(tooltip?.hidden).toBe(false)
+    await act(async () => trigger!.blur())
+    expect(tooltip?.hidden).toBe(true)
   })
 })

@@ -12,10 +12,29 @@ export function AutomationFieldLabel({ htmlFor, label, hint }: AutomationFieldLa
   if (!hint) return labelElement
 
   return (
-    <span className="inline-flex min-w-max items-center gap-1">
+    <span className="-mr-1 inline-flex min-w-max items-center gap-1">
       {labelElement}
       <HintTooltip id={`${htmlFor}-hint`} label={label} hint={hint} />
     </span>
+  )
+}
+
+interface AutomationFieldLegendProps {
+  label: string
+  hintId: string
+  hint?: string
+}
+
+export function AutomationFieldLegend({ label, hintId, hint }: AutomationFieldLegendProps) {
+  if (!hint) return <legend className="automation-field-label mb-2 block">{label}</legend>
+
+  return (
+    <legend className="automation-field-label mb-2 block">
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <HintTooltip id={hintId} label={label} hint={hint} />
+      </span>
+    </legend>
   )
 }
 
@@ -46,7 +65,7 @@ export function AutomationCheckboxField({ id, label, checked, disabled, hint, on
   if (!hint) return control
 
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex items-center gap-1">
       {control}
       <HintTooltip id={`${id}-hint`} label={label} hint={hint} />
     </div>

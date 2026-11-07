@@ -1459,6 +1459,7 @@
 
   .automation-param-fields {
     display: grid;
+    grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);
     min-width: 0;
     gap: 0.75rem;
   }
@@ -1468,9 +1469,23 @@
     min-width: 0;
   }
 
+  .automation-param-field {
+    grid-column: 1 / -1;
+  }
+
+  .automation-param-field:has(> .automation-field-row) {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  .automation-param-field > .automation-field-helper {
+    grid-column: 1 / -1;
+  }
+
   .automation-field-row {
     display: grid;
-    grid-template-columns: 5rem minmax(0, 1fr);
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
     gap: 0.75rem;
   }
