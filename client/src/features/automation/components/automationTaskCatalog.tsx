@@ -47,11 +47,11 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       yituliu_id: ''
     },
     paramFields: [
-      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数' },
-      { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔' },
-      { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量' },
-      { key: 'medicineExpireDays', label: '临期药天数', type: 'number', placeholder: '0', helper: '使用将在指定天数内过期的理智药；0 表示不使用临期药' },
-      { key: 'stone', label: '源石', type: 'number', placeholder: '0', helper: '使用源石数量' },
+      { key: 'stages', label: '关卡', type: 'multi-stages', placeholder: '1-7 或 HD-7', timesPlaceholder: '次数', helper: '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数', helperPlacement: 'tooltip' },
+      { key: 'drops', label: '掉落目标', type: 'text', placeholder: '30011=10,30062=5', helper: '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔', helperPlacement: 'tooltip' },
+      { key: 'medicine', label: '理智药', type: 'number', placeholder: '0', helper: '使用理智药数量', helperPlacement: 'tooltip' },
+      { key: 'medicineExpireDays', label: '临期药天数', type: 'number', placeholder: '0', helper: '使用将在指定天数内过期的理智药；0 表示不使用临期药', helperPlacement: 'tooltip' },
+      { key: 'stone', label: '源石', type: 'number', placeholder: '0', helper: '使用源石数量', helperPlacement: 'tooltip' },
       { key: 'series', label: '连战', type: 'select', options: [
         { value: '-1', label: '禁用' },
         { value: '0', label: '自动' },
@@ -65,7 +65,7 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: '8', label: '8次' },
         { value: '9', label: '9次' },
         { value: '10', label: '10次' }
-      ], helper: '本任务所有关卡共用的连战倍率，范围 -1 至 10（旧资源只支持 -1 至 6）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整' },
+      ], helper: '本任务所有关卡共用的连战倍率，范围 -1 至 10（旧资源只支持 -1 至 6）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整', helperPlacement: 'tooltip' },
     ]
   },
   {

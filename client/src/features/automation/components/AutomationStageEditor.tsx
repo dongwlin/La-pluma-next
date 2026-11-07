@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CircleMinus, CirclePlus, GraduationCap, ListPlus, Minus, Pin, Plus, Trash2 } from 'lucide-react'
-import { Button, IconButton } from '@/shared/ui'
+import { Button, HintTooltip, IconButton } from '@/shared/ui'
 import { generateTrainingPlan } from '@/features/training'
 import { loadUserConfig } from '@/features/user-config'
 import type { StageConfig, TaskFlowItem, TaskParamField } from '../types'
@@ -25,6 +25,7 @@ interface AutomationStageEditorProps {
   task: TaskFlowItem
   taskIndex: number
   isRunning: boolean
+  hint?: string
   onUpdate: (taskIndex: number, key: string, value: Array<string | StageConfig>) => void
   onSuccess: (message: string) => void
   onError: (message: string) => void
@@ -54,6 +55,7 @@ export default function AutomationStageEditor({
   task,
   taskIndex,
   isRunning,
+  hint,
   onUpdate,
   onSuccess,
   onError,
@@ -146,6 +148,7 @@ export default function AutomationStageEditor({
         <div className="automation-stage-editor-title">
           <label htmlFor={`${fieldId}-0`}>{field.label}计划</label>
           <span>{validStageCount > 0 ? `${validStageCount} 个关卡` : '尚未配置'}</span>
+          {hint && <HintTooltip id={`${fieldId}-hint`} label={`${field.label}计划`} hint={hint} />}
         </div>
       </div>
 

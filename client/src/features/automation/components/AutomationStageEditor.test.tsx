@@ -57,9 +57,11 @@ const flush = async () => {
 function Host({
   initialStages,
   isRunning = false,
+  hint,
 }: {
   initialStages: Array<string | StageConfig>
   isRunning?: boolean
+  hint?: string
 }) {
   const [task, setTask] = useState(() => makeTask(initialStages))
 
@@ -70,6 +72,7 @@ function Host({
       task={task}
       taskIndex={0}
       isRunning={isRunning}
+      hint={hint}
       onUpdate={(taskIndex, key, value) => {
         onUpdate(taskIndex, key, value)
         setTask(current => ({ ...current, params: { ...current.params, [key]: value } }))
@@ -80,8 +83,8 @@ function Host({
   )
 }
 
-const renderEditor = async (initialStages: Array<string | StageConfig>, isRunning = false) => {
-  await act(async () => root.render(<Host initialStages={initialStages} isRunning={isRunning} />))
+const renderEditor = async (initialStages: Array<string | StageConfig>, isRunning = false, hint?: string) => {
+  await act(async () => root.render(<Host initialStages={initialStages} isRunning={isRunning} hint={hint} />))
   await flush()
 }
 
@@ -200,6 +203,31 @@ describe('AutomationStageEditor', () => {
     ])
   })
 
+  it('renders the stage hint as a focusable tooltip beside the block title badge', async () => {
+    const stageHint = '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数'
+    await renderEditor(['1-7', stage('CE-6', '2')], false, stageHint)
+
+    const title = container.querySelector('.automation-stage-editor-title')
+    const trigger = title?.querySelector<HTMLButtonElement>('button[aria-label="关卡计划说明"]')
+    expect(title?.textContent).toContain('关卡计划')
+    expect(title?.textContent).toContain('2 个关卡')
+    expect(trigger).not.toBeNull()
+    expect(trigger?.previousElementSibling?.tagName).toBe('SPAN')
+    expect(trigger?.previousElementSibling?.textContent).toBe('2 个关卡')
+
+    const tooltip = document.getElementById(trigger?.getAttribute('aria-describedby') ?? '')
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent).toBe(stageHint)
+    expect(tooltip?.hidden).toBe(true)
+    expect(container.querySelector('p')).toBeNull()
+
+    await act(async () => trigger?.focus())
+    expect(tooltip?.hidden).toBe(false)
+
+    await act(async () => trigger?.blur())
+    expect(tooltip?.hidden).toBe(true)
+  })
+
   it('disables stage editing controls while running', async () => {
     await renderEditor(['1-7'], true)
 
@@ -207,5 +235,6 @@ describe('AutomationStageEditor', () => {
     expect(stageInput?.disabled).toBe(true)
     expect(container.querySelector<HTMLButtonElement>('[aria-label="加入智能养成关卡"]')?.disabled).toBe(true)
     expect(container.querySelector<HTMLButtonElement>('[aria-label="删除关卡 1"]')).toBeNull()
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="关卡计划说明"]')).toBeNull()
   })
 })

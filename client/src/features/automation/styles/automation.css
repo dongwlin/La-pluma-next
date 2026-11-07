@@ -1805,6 +1805,10 @@
     white-space: nowrap;
   }
 
+  .automation-stage-editor-title button {
+    align-self: center;
+  }
+
   .automation-stage-list {
     min-width: 0;
     overflow: hidden;
@@ -2104,11 +2108,6 @@
     box-shadow: none;
   }
 
-  .automation-param-field.is-multi-stages .automation-field-helper {
-    margin-top: 0.625rem;
-    padding-left: 0;
-  }
-
   @container (min-width: 30rem) {
     .automation-stage-stepper {
       /* S3: 宽容器下恢复 flex；display 工具类可能先声明，故保留 important。 */
@@ -2149,10 +2148,6 @@
   }
 
   @media (max-width: 639px) {
-    .automation-param-field.is-multi-stages .automation-field-helper {
-      padding-left: 0;
-    }
-
     .automation-sequence-surface > .automation-flow-header {
       align-items: center;
       flex-direction: row;
