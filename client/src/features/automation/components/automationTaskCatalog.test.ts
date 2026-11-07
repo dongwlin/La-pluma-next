@@ -46,14 +46,27 @@ describe('automation award task catalog', () => {
     })
   })
 
-  it('explains what the limited-banner pull and the anniversary card actually claim', () => {
+  it('moves the three award helper texts into label tooltips without touching the copy', () => {
     if (!award) throw new Error('missing award task')
-    const helperOf = (key: string) =>
-      award.paramFields.find(field => field.key === key)?.helper ?? ''
+    const fieldOf = (key: string) => award.paramFields.find(field => field.key === key)
 
-    expect(helperOf('recruit')).toContain('限定池赠送的每日免费单抽')
-    expect(helperOf('specialaccess')).toContain('周年活动赠送的月卡奖励')
-    expect(helperOf('signinevent')).toContain('限时签到活动')
+    expect(fieldOf('recruit')).toMatchObject({
+      helper: '活动期间领取限定池赠送的每日免费单抽；没有免费次数时不抽取',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('specialaccess')).toMatchObject({
+      helper: '领取周年活动赠送的月卡奖励',
+      helperPlacement: 'tooltip',
+    })
+    expect(fieldOf('signinevent')).toMatchObject({
+      helper: '领取限时签到活动的每日奖励（仅支持常见横向版型）',
+      helperPlacement: 'tooltip',
+    })
+
+    const tooltipHelpers = award.paramFields
+      .filter(field => field.helperPlacement === 'tooltip')
+      .map(field => field.key)
+    expect(tooltipHelpers).toEqual(['recruit', 'specialaccess', 'signinevent'])
 
     const labels = award.paramFields.map(field => field.label).join('')
     expect(labels).not.toContain('公招')
@@ -163,6 +176,9 @@ describe('automation task parameter defaults and copy', () => {
       'only_buy_discount',
       'reserve_max_credit',
       'credit_fight',
+      'recruit',
+      'specialaccess',
+      'signinevent',
     ])
   })
 })

@@ -10,7 +10,6 @@ import {
   Minus,
   Plus,
   SlidersHorizontal,
-  Trash2,
 } from 'lucide-react'
 import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { Button, EmptyState, HintTooltip, SmoothPanel, Switch } from '@/shared/ui'
@@ -471,18 +470,6 @@ export default function AutomationWorkspace() {
                           disabled={isRunning}
                           label={`${task.name}启用状态`}
                         />
-                        {!isCurrentTask && (
-                          <button
-                            type="button"
-                            onClick={() => removeTaskFromFlow(index)}
-                            disabled={isRunning}
-                            className="automation-delete-task min-h-11 min-w-11"
-                            title="删除任务"
-                            aria-label={`删除${task.name}`}
-                          >
-                            <Trash2 size={16} strokeWidth={1.9} />
-                          </button>
-                        )}
                       </div>
                     </div>
 

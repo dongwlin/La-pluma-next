@@ -23,7 +23,7 @@
 | 核心干员单选字段 | `features/roguelike/components/RoguelikeCoreOperatorField.tsx` | 复用 `features/training` 的 `OperatorSelectModal`；字段值仍是单个中文干员名，只读目录用于回显头像 |
 | 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | 配置适配器维持 key、本地键和 wire 协议 |
 | 主题、模式、分队、职业组、难度与黑流树海枚举 | `features/roguelike/model/roguelikeOptionCatalog.ts` | 纯数据与候选项解析 |
-| 两个任务的策略字段表 | `features/roguelike/model/roguelikeOptionTables.ts`、`reclamationOptionTables.ts` | CLI 参数名、Core 参数名、默认值、适用主题/模式与字段依赖 |
+| 两个任务的策略字段表 | `features/roguelike/model/roguelikeOptionTables.ts`、`reclamationOptionTables.ts` | CLI 参数名、Core 参数名、默认值、适用主题/模式、字段依赖与栅格跨度 |
 | 字段表查询与下拉项解析 | `features/roguelike/model/roguelikeOptions.ts` | 只组装字段表与主题候选，不含 React 或执行状态 |
 | 任务目录、主题快捷项、可见性、默认值、命令拼接与草稿归一化 | `features/roguelike/model/roguelikeTasks.ts` | 纯模型，不访问 React、Query、配置通道或网络 |
 | 执行结果面板、保留上一次终态摘要、诊断入口 | `features/roguelike/components/RoguelikeResultPanel.tsx` | 只消费本页 owned run 与 `task-execution` 类型；不创建执行状态 |
@@ -65,7 +65,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 | `ROGUELIKE_TASKS` | 集成战略/生息演算的任务名、命令、图标、占位与描述 |
 | `ROGUELIKE_THEME_PRESETS` | 各模式的主题快捷项；只影响界面，不进入 wire |
 | `DEFAULT_RECLAMATION_MODE` | 生息演算默认模式 `'1'`，与 CLI 的 `-m` 缺省一致 |
-| `getRoguelikeAdvancedOptions(taskId)` | 策略字段表及其 CLI 参数名 `param` 与 Core 参数名 `coreParam`，含 `defaultValue`、`hint`、`themes`、`modes`、`requires` 与 `listChoices`；未知任务返回空表 |
+| `getRoguelikeAdvancedOptions(taskId)` | 策略字段表及其 CLI 参数名 `param` 与 Core 参数名 `coreParam`，含 `defaultValue`、`hint`、`themes`、`modes`、`requires`、`listChoices` 与栅格跨度 `span`；未知任务返回空表 |
 | `getRoguelikeOptionChoices(option, theme, taskId)` | 下拉项：模式、难度、分队与职业组按主题与任务返回候选，其余字段用静态 `options` |
 | `resolveRoguelikeAdvancedValue(option, advanced, theme, taskId)` | 字段显示值：显式值优先，其次默认值，select 最后回落到当前主题的首项；默认值不属于当前主题时同样回落到首项（重启锚点没有模式 `1`） |
 | `isRoguelikeOptionVisible(option, taskId, theme, advanced)` | 字段在当前主题、模式与依赖字段下是否生效；隐藏字段既不下发也不显示 |

@@ -39,11 +39,6 @@
     font-weight: 700;
   }
 
-  .automation-delete-task:focus-visible {
-    outline: 2px solid var(--app-accent);
-    outline-offset: 2px;
-  }
-
   @media (min-width: 1200px) {
     .automation-flow-card-header {
       align-items: flex-start;
@@ -149,30 +144,6 @@
     font-size: var(--app-font-meta);
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .automation-delete-task {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    width: 1.875rem;
-    height: 1.875rem;
-    border-radius: var(--app-radius-md);
-    color: var(--app-text-soft);
-    box-shadow: inset 0 0 0 1px var(--app-border);
-    transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-  }
-
-  .automation-delete-task:hover {
-    background: rgba(239, 68, 68, 0.09);
-    color: rgb(239, 68, 68);
-    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
-  }
-
-  .automation-delete-task:disabled {
-    cursor: not-allowed;
-    opacity: 0.35;
   }
 
   @media (max-width: 639px) {
@@ -2210,10 +2181,6 @@
     .automation-task-editor .automation-flow-card-controls {
       width: 100%;
     }
-
-    .automation-task-editor .automation-flow-card-controls {
-      justify-content: space-between;
-    }
   }
 
   /* Apple Liquid Glass: automation content stays on unified solid surfaces.
@@ -2361,7 +2328,6 @@
 
   [data-automation-tasks] :is(
     .automation-sequence-delete,
-    .automation-delete-task,
     .automation-schedule-remove
   ) {
     border-radius: 50%;
