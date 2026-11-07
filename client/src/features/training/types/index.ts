@@ -187,6 +187,9 @@ export interface OperatorPickerOption {
   level?: number
 }
 
+/** 选择器默认排序方向：精英阶段优先、同精英内按等级。 */
+export type OperatorSortDirection = 'asc' | 'desc'
+
 export interface TrainingFilters {
   rarity: string
   needsElite2: boolean
