@@ -9,7 +9,12 @@ import {
   normalizeDailyFlowRequest,
   preflightAgentTaskRequest
 } from '../services/agentActionService.ts';
-import type { AgentTaskConfig, NormalizedAgentTaskRequest } from '../services/agentActionService.ts';
+import type { AgentTaskConfig, AgentTaskDependencies, NormalizedAgentTaskRequest } from '../services/agentActionService.ts';
+import {
+  acquireMaaExecutionLease,
+  runWithMaaExecutionLeaseContext
+} from '../services/executionCoordinatorService.ts';
+import type { MaaExecutionLease, MaaExecutionLeaseRequest } from '../services/executionCoordinatorService.ts';
 import {
   continueManualCopilotSet,
   hasCopilotSetSession,
@@ -1524,8 +1529,27 @@ interface RoguelikeResultTarget {
   args: readonly string[];
 }
 
-interface RoguelikeResultCapture extends RoguelikeResultTarget {
+interface RoguelikeResultCapture {
+  target: RoguelikeResultTarget;
   checkpoint: MaaLogCheckpoint | null;
+  started: boolean;
+}
+
+/** 肉鸽执行编排的可注入端口；默认实现连到真实租约、检查点与日志读取。 */
+export interface RoguelikeTaskCapturePorts {
+  acquireLease?(request: MaaExecutionLeaseRequest): Promise<MaaExecutionLease>;
+  runWithLease?<T>(lease: MaaExecutionLease, callback: () => T): T;
+  createCheckpoint?(): Promise<MaaLogCheckpoint | null>;
+  readLogSince?(checkpoint: MaaLogCheckpoint | null): Promise<string>;
+}
+
+/** 一次肉鸽/生息演算执行：调用方提供 Run 生命周期、租约元数据与实际执行函数。 */
+export interface RoguelikeTaskCaptureRun {
+  target: RoguelikeResultTarget;
+  lease: MaaExecutionLeaseRequest;
+  waitForCompletion: boolean;
+  lifecycle: TrackedExecutionLifecycle;
+  execute(lifecycle: TrackedExecutionLifecycle): Promise<unknown>;
 }
 
 function resolveRoguelikeResultTarget(
@@ -1545,57 +1569,113 @@ function resolveRoguelikeResultTarget(
     : null;
 }
 
-/**
- * 肉鸽/生息演算的结果只从本次执行新增的 MaaCore 日志读取；检查点创建失败时
- * 保留执行本身，只是不产出摘要，不能用整份历史日志冒充本次结果。
- */
-async function openRoguelikeResultCapture(
-  target: RoguelikeResultTarget | null
-): Promise<RoguelikeResultCapture | null> {
-  if (!target) return null;
-  try {
-    return { ...target, checkpoint: await createMaaLogCheckpoint() };
-  } catch (error) {
-    logger.warn('创建肉鸽结果日志检查点失败', { error: errorMessageOf(error) });
-    return { ...target, checkpoint: null };
+/** 租约元数据与执行器自行申请时保持一致，运行状态与诊断仍能看到真实任务。 */
+function roguelikeTaskLeaseRequest(request: NormalizedAgentTaskRequest): MaaExecutionLeaseRequest {
+  if (request.taskConfig) {
+    return {
+      source: request.taskType || 'dynamic-task',
+      taskName: request.taskName || request.args[0]?.trim() || request.command,
+      command: 'run'
+    };
   }
-}
-
-async function readRoguelikeResultSummary(
-  capture: RoguelikeResultCapture
-): Promise<RoguelikeResultSummary | null> {
-  if (!capture.checkpoint) return null;
-  try {
-    const logOutput = await readMaaLogSince(capture.checkpoint);
-    return buildRoguelikeResultSummary(logOutput, { command: capture.command, args: capture.args });
-  } catch (error) {
-    logger.warn('读取肉鸽任务结果失败', { error: errorMessageOf(error) });
-    return null;
-  }
-}
-
-async function enrichRoguelikeOutcome(
-  capture: RoguelikeResultCapture,
-  outcome: ExecutionOutcome
-): Promise<ExecutionOutcome> {
-  const summary = await readRoguelikeResultSummary(capture);
   return {
-    ...outcome,
-    result: attachRoguelikeResultSummary(outcome.result, summary),
-    error: attachRoguelikeErrorSummary(outcome.error, summary)
+    source: request.taskType || 'maa-command',
+    taskName: request.taskName || request.command,
+    command: request.command
   };
 }
 
-function withRoguelikeCapture(
-  lifecycle: TrackedExecutionLifecycle,
-  capture: RoguelikeResultCapture
-): TrackedExecutionLifecycle {
-  if (!lifecycle.onSettled) return lifecycle;
-  return {
-    ...lifecycle,
-    onSettled: async outcome => {
-      await lifecycle.onSettled?.(await enrichRoguelikeOutcome(capture, outcome));
+/**
+ * 肉鸽/生息演算摘要只从本次执行新增的 MaaCore 日志读取。检查点在取得执行租约
+ * 之后创建，摘要在释放租约之前采集：被设备占用拒绝的请求不会读到其它 Run 的
+ * 日志，没有真正启动的执行直接跳过采集。检查点创建失败时保留执行本身，只是
+ * 不产出摘要，不能用整份历史日志冒充本次结果。
+ */
+export async function runRoguelikeTaskWithCapture(
+  { target, lease: leaseRequest, waitForCompletion, lifecycle, execute }: RoguelikeTaskCaptureRun,
+  ports: RoguelikeTaskCapturePorts = {}
+): Promise<unknown> {
+  const acquireLease = ports.acquireLease || acquireMaaExecutionLease;
+  const runWithLease = ports.runWithLease || runWithMaaExecutionLeaseContext;
+  const createCheckpoint = ports.createCheckpoint || createMaaLogCheckpoint;
+  const readLogSince = ports.readLogSince || readMaaLogSince;
+
+  const lease = await acquireLease(leaseRequest);
+  let released = false;
+  const releaseLease = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    await lease.release();
+  };
+
+  let capture: RoguelikeResultCapture;
+  try {
+    capture = { target, checkpoint: await createCheckpoint(), started: false };
+  } catch (error) {
+    logger.warn('创建肉鸽结果日志检查点失败', { error: errorMessageOf(error) });
+    capture = { target, checkpoint: null, started: false };
+  }
+
+  const readSummary = async (): Promise<RoguelikeResultSummary | null> => {
+    if (!capture.started || !capture.checkpoint) return null;
+    try {
+      return buildRoguelikeResultSummary(await readLogSince(capture.checkpoint), target);
+    } catch (error) {
+      logger.warn('读取肉鸽任务结果失败', { error: errorMessageOf(error) });
+      return null;
     }
+  };
+
+  const settleWithSummary = lifecycle.onSettled && !waitForCompletion
+    ? async (outcome: ExecutionOutcome): Promise<void> => {
+        const summary = await readSummary();
+        const enriched: ExecutionOutcome = {
+          ...outcome,
+          result: attachRoguelikeResultSummary(outcome.result, summary),
+          error: attachRoguelikeErrorSummary(outcome.error, summary)
+        };
+        try {
+          await lifecycle.onSettled?.(enriched);
+        } finally {
+          await releaseLease();
+        }
+      }
+    : null;
+
+  const capturedLifecycle: TrackedExecutionLifecycle = {
+    ...lifecycle,
+    onStarted: () => {
+      capture.started = true;
+      lifecycle.onStarted?.();
+    },
+    ...(settleWithSummary ? { onSettled: settleWithSummary } : {})
+  };
+
+  try {
+    return await runWithLease(lease, async () => {
+      try {
+        const result = await execute(capturedLifecycle);
+        if (!waitForCompletion) return result;
+        return attachRoguelikeResultSummary(result, await readSummary());
+      } catch (error) {
+        if (!waitForCompletion) throw error;
+        throw attachRoguelikeErrorSummary(error, await readSummary());
+      }
+    });
+  } finally {
+    // 后台执行把租约交给 settle 回调释放；同步完成与未启动的执行在此释放。
+    if (waitForCompletion || !capture.started || !settleWithSummary) await releaseLease();
+  }
+}
+
+function agentTaskDependencies(lifecycle: TrackedExecutionLifecycle): AgentTaskDependencies {
+  return {
+    execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
+      execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, lifecycle),
+    execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
+      execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle }),
+    execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
+      execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
   };
 }
 
@@ -1614,40 +1694,17 @@ export async function runTask(
     waitForCompletion,
     metadata: { taskName: request.taskName, taskType: request.taskType },
     execute: async lifecycle => {
-      const capture = await openRoguelikeResultCapture(resolveRoguelikeResultTarget(request));
-      if (!capture) {
-        return executePreflightAgentTask(
-          request,
-          {
-            execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
-              execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, lifecycle),
-            execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
-              execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle }),
-            execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
-              execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle })
-          }
-        );
+      const target = resolveRoguelikeResultTarget(request);
+      if (!target) {
+        return executePreflightAgentTask(request, agentTaskDependencies(lifecycle));
       }
-
-      const capturedLifecycle = withRoguelikeCapture(lifecycle, capture);
-      try {
-        const result = await executePreflightAgentTask(
-          request,
-          {
-            execMaaCommand: (execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent = false) =>
-              execMaaCommand(execCommand, execArgs, execTaskName, execTaskType, shouldWait, silent, capturedLifecycle),
-            execDynamicTask: (taskId, config: AgentTaskConfig, execTaskName, execTaskType, shouldWait, useUserResource) =>
-              execDynamicTask(taskId, config, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle: capturedLifecycle }),
-            execDynamicTasks: (taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource) =>
-              execDynamicTasks(taskId, configs, execTaskName, execTaskType, shouldWait, useUserResource, { lifecycle: capturedLifecycle })
-          }
-        );
-        if (lifecycle.onSettled) return result;
-        return attachRoguelikeResultSummary(result, await readRoguelikeResultSummary(capture));
-      } catch (error) {
-        if (lifecycle.onSettled) throw error;
-        throw attachRoguelikeErrorSummary(error, await readRoguelikeResultSummary(capture));
-      }
+      return runRoguelikeTaskWithCapture({
+        target,
+        lease: roguelikeTaskLeaseRequest(request),
+        waitForCompletion,
+        lifecycle,
+        execute: execLifecycle => executePreflightAgentTask(request, agentTaskDependencies(execLifecycle))
+      });
     },
     successMessage: '任务执行完成',
     acceptedMessage: '任务已接受'
