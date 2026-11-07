@@ -144,13 +144,50 @@ describe('automation task parameter defaults and copy', () => {
     expect(launchSwitch?.helperPlacement).toBe('tooltip')
   })
 
-  it('keeps the default inline helper placement for every other field', () => {
+  it('keeps the default inline helper placement for every field that still needs one', () => {
     const tooltipHelpers = AVAILABLE_TASKS
       .flatMap(task => task.paramFields)
       .filter(field => field.helperPlacement === 'tooltip')
       .map(field => field.key)
 
-    expect(tooltipHelpers).toEqual(['accountName', 'start_game_enabled'])
+    expect(tooltipHelpers).toEqual(['accountName', 'start_game_enabled', 'mode'])
+  })
+})
+
+describe('automation infrast task catalog', () => {
+  const infrast = AVAILABLE_TASKS.find(task => task.id === 'infrast')
+
+  it('moves the shift mode hint beside the label and drops the facility helper line', () => {
+    if (!infrast) throw new Error('missing infrast task')
+    const mode = infrast.paramFields.find(field => field.key === 'mode')
+    const facility = infrast.paramFields.find(field => field.key === 'facility')
+
+    expect(mode?.helper).toBe('一键轮换使用游戏内队列，并保留无人机、会客室等基础操作')
+    expect(mode?.helperPlacement).toBe('tooltip')
+    expect(facility?.helper).toBeUndefined()
+    expect(facility?.helperPlacement).toBeUndefined()
+  })
+
+  it('keeps every facility option and the default selection untouched', () => {
+    if (!infrast) throw new Error('missing infrast task')
+
+    expect(infrast.defaultParams.facility).toEqual([
+      'Mfg',
+      'Trade',
+      'Power',
+      'Control',
+      'Reception',
+      'Office',
+      'Dorm',
+    ])
+    expect(infrast.paramFields.map(field => field.label)).toEqual([
+      '换班模式',
+      '设施选择',
+      '无人机用途',
+      '心情阈值',
+      '自动补货',
+      '自定义排班',
+    ])
   })
 })
 
