@@ -548,7 +548,8 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('启动游戏客户端')
 
     const taskDeleteButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="删除启动游戏"]')
-    expect(taskDeleteButtons).toHaveLength(2)
+    expect(taskDeleteButtons).toHaveLength(1)
+    expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
 
     const firstHourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')
     const firstMinuteInput = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')
@@ -654,6 +655,33 @@ describe('AutomationTasks layout surfaces', () => {
     await clickSequenceTask('理智作战')
     const inlineHelpers = Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent)
     expect(inlineHelpers).toContain('使用理智药数量')
+  })
+
+  it('offers task removal from the flow list only', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderPage()
+
+    const deleteButton = container.querySelector<HTMLButtonElement>('[aria-label="删除启动游戏"]')
+    expect(deleteButton).not.toBeNull()
+    expect(deleteButton?.closest('#automation-task-editor')).toBeNull()
+    expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
+
+    await act(async () => deleteButton?.click())
+    await flush()
+
+    expect(savedFlowIds()).toEqual(['fight-1', 'recruit-1'])
+    expect(container.querySelectorAll('[aria-controls="automation-task-editor"]')).toHaveLength(2)
+    expect(container.textContent).toContain('已删除“启动游戏”')
+
+    await act(async () => findButton('恢复')?.click())
+    await flush()
+
+    expect(savedFlowIds()).toEqual(['startup-1', 'fight-1', 'recruit-1'])
+    expect(container.querySelectorAll('[aria-controls="automation-task-editor"]')).toHaveLength(3)
+    expect(container.textContent).not.toContain('已删除“启动游戏”')
+    expect(container.querySelector('#automation-task-editor')?.textContent).toContain('启动游戏')
+    expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
   })
 
   it('normalizes the recruitment duration when the field loses focus', async () => {
