@@ -241,8 +241,8 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: 'YoStarKR', label: '韩服' },
         { value: 'Txwy', label: '繁中服' }
       ]},
-      { key: 'recognizeDepotBeforeClose', label: '关闭前识别仓库', type: 'checkbox', helper: '启用后会先识别并保存仓库数据，再关闭游戏客户端' },
-      { key: 'recognizeOperBoxBeforeClose', label: '关闭前识别干员', type: 'checkbox', helper: '启用后会先识别并保存干员数据，再关闭游戏客户端' }
+      { key: 'recognizeDepotBeforeClose', label: '关闭前识别仓库', type: 'checkbox' },
+      { key: 'recognizeOperBoxBeforeClose', label: '关闭前识别干员', type: 'checkbox' }
     ]
   },
 ]

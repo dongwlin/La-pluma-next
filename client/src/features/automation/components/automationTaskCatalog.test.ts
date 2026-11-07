@@ -92,8 +92,19 @@ describe('automation closedown task catalog', () => {
     expect(closedown.paramFields.find(field => field.key === 'recognizeOperBoxBeforeClose')).toMatchObject({
       label: '关闭前识别干员',
       type: 'checkbox',
-      helper: '启用后会先识别并保存干员数据，再关闭游戏客户端',
     })
+  })
+
+  it('keeps the two recognition switches without a helper line', () => {
+    if (!closedown) throw new Error('missing closedown task')
+
+    const switches = closedown.paramFields.filter(field => field.type === 'checkbox')
+
+    expect(switches.map(field => [field.key, field.label])).toEqual([
+      ['recognizeDepotBeforeClose', '关闭前识别仓库'],
+      ['recognizeOperBoxBeforeClose', '关闭前识别干员'],
+    ])
+    expect(switches.every(field => field.helper === undefined)).toBe(true)
   })
 })
 
