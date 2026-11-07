@@ -12,6 +12,21 @@ export const OPER_PROGRESS_ROLES = [
   { value: 'Special', label: '特种' },
 ]
 
+/** 识别数据里的职业是大写枚举，Core 的 role 使用 CamelCase；未知职业交回自动识别。 */
+const OPER_PROGRESS_ROLE_BY_PROFESSION: Record<string, string> = {
+  PIONEER: 'Pioneer',
+  WARRIOR: 'Warrior',
+  TANK: 'Tank',
+  SNIPER: 'Sniper',
+  CASTER: 'Caster',
+  MEDIC: 'Medic',
+  SUPPORT: 'Support',
+  SPECIAL: 'Special',
+}
+
+export const resolveOperProgressRole = (profession?: string): string =>
+  OPER_PROGRESS_ROLE_BY_PROFESSION[(profession ?? '').trim().toUpperCase()] ?? 'Unknown'
+
 const isIntegerBetween = (value: unknown, min: number, max: number) => (
   typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
 )

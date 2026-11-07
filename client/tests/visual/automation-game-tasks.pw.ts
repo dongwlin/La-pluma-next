@@ -27,8 +27,17 @@ for (const theme of THEMES) {
       await page.getByRole('button', { name: '添加任务' }).click()
       await page.getByRole('menuitem', { name: '游戏内培养' }).click()
       await page.getByRole('button', { name: '添加培养计划' }).click()
-      await page.getByLabel('培养计划 1 职业', { exact: true }).selectOption('Warrior')
-      await page.getByLabel('培养计划 1 干员姓名', { exact: true }).fill('银灰')
+      await page.getByRole('button', { name: '选择干员' }).click()
+      const operatorDialog = page.getByRole('dialog')
+      await operatorDialog.waitFor({ state: 'visible' })
+      const chenChoice = page.getByRole('button', { name: '选择陈', exact: true })
+      await chenChoice.waitFor({ state: 'visible' })
+      await expect(page).toHaveScreenshot(`operator-select-modal-${theme}.png`, {
+        animations: 'disabled',
+        caret: 'hide',
+      })
+      await chenChoice.click()
+      await page.getByRole('button', { name: '确认选择', exact: true }).click()
       await page.getByLabel('培养计划 1 精英目标', { exact: true }).selectOption('2')
       await page.getByLabel('培养计划 1 技能等级', { exact: true }).selectOption('7')
       await page.getByLabel('培养计划 1 技能 3 专精', { exact: true }).selectOption('1')
