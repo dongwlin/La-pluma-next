@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Filter, Search, UserRoundSearch } from 'lucide-react'
-import { getOperatorAvatarUrl, useItemIconCacheVersion } from '@/features/game-data'
 import { Button, EmptyState, Input, Loading, Select } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import { useFluidTabIndicator } from '@/shared/hooks/useFluidTabIndicator'
@@ -18,6 +17,7 @@ import {
   type OperatorEmptyState as OperatorEmptyStateContent,
 } from '../model/operatorRows'
 import { describeRecognitionHint } from '../model/recognition'
+import OperatorPickerGrid, { type OperatorPickerGridItem } from './OperatorPickerGrid'
 import TrainingLoadError from './TrainingLoadError'
 import type { TrainingFilters, TrainingOperator } from '../types'
 
@@ -30,8 +30,6 @@ const TRAINING_STATUS_OPTIONS: Array<{
   { value: 'owned', label: '已拥有', desc: '已识别干员' },
   { value: 'all', label: '全部', desc: '含未拥有' },
 ]
-
-const EMPTY_LOADED_IMAGES: Record<string, boolean> = {}
 
 function OperatorEmptyState({ title, description }: OperatorEmptyStateContent) {
   return (
@@ -67,14 +65,12 @@ export default function OperatorPicker({
   onAdd,
 }: OperatorPickerProps) {
   const shouldReduceMotion = useReducedMotion()
-  const itemIconVersion = useItemIconCacheVersion()
   const [filters, setFilters] = useState<TrainingFilters>({
     rarity: '',
     status: 'trainable',
     needsElite2: true,
   })
   const [searchTerm, setSearchTerm] = useState('')
-  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>(EMPTY_LOADED_IMAGES)
   const [visibleOperatorLimit, setVisibleOperatorLimit] = useState(OPERATOR_RENDER_BATCH_SIZE)
   const {
     containerRef: statusTabsRef,
@@ -137,6 +133,33 @@ export default function OperatorPicker({
   const emptyState = !operatorsLoading && filteredOperators.length === 0
     ? resolveOperatorEmptyState(filters, searchTerm)
     : null
+
+  const gridItems: OperatorPickerGridItem[] = visibleOperators.map((operator) => {
+    const row = describeOperatorRow(operator, queueOperatorIds.has(operator.id))
+    return {
+      id: operator.id,
+      name: operator.name,
+      rarity: operator.rarity,
+      owned: row.isOwned,
+      elite: row.isOwned ? operator.currentElite : undefined,
+      level: row.isOwned ? operator.currentLevel : undefined,
+      scrim: !row.canAdd,
+      action: (
+        <Button
+          onClick={() => void onAdd(operator)}
+          aria-label={row.canAdd ? `添加${operator.name}` : undefined}
+          disabled={!row.canAdd || busy}
+          loading={pendingOperatorIds.has(operator.id)}
+          loadingText="添加中"
+          variant="secondary"
+          size="md"
+          fullWidth
+        >
+          {row.actionLabel}
+        </Button>
+      ),
+    }
+  })
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="添加干员" size="xl" footer={<div className="flex w-full items-center justify-between gap-3"><span className="text-sm text-secondary">已加入 {queueLength} 名干员</span><Button onClick={onClose} variant="secondary">完成选择</Button></div>}>
@@ -261,107 +284,13 @@ export default function OperatorPicker({
         ) : emptyState ? (
           <OperatorEmptyState {...emptyState} />
         ) : (
-          <div className="min-h-65">
-            <div className="training-operator-grid grid grid-cols-3 overflow-hidden rounded-xl surface-soft sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-5">
-              {visibleOperators.map((operator, idx) => {
-                const row = describeOperatorRow(operator, queueOperatorIds.has(operator.id));
-                const imageLoaded = loadedImages[operator.id] || false;
-
-                return (
-                  <div
-                    key={operator.id}
-                    className={`training-operator-item relative overflow-hidden p-2.5 ${!row.isOwned ? 'opacity-75' : ''}`}
-                  >
-                  <div className="relative mb-2.5 aspect-square w-full overflow-hidden rounded-xl surface-panel">
-                    {operator.id ? (
-                      <>
-                        {!imageLoaded && (
-                          <div className="app-skeleton absolute inset-0 surface-soft" />
-                        )}
-                        <img
-                          src={getOperatorAvatarUrl(operator.id, 'base', itemIconVersion)}
-                          alt={operator.name}
-                          loading={idx < 12 ? 'eager' : 'lazy'}
-                          decoding="async"
-                          className={`h-full w-full object-cover transition-opacity duration-200 ${
-                            imageLoaded ? 'opacity-100' : 'opacity-0'
-                          }`}
-                          onLoad={() => setLoadedImages(prev => prev[operator.id] ? prev : ({ ...prev, [operator.id]: true }))}
-                          onError={(e) => {
-                            // 如果加载失败，尝试带 _2 后缀的版本（用于异格干员）
-                            const target = e.target as HTMLImageElement;
-                            const currentSrc = target.src;
-                            if (!currentSrc.includes('_2.png') && !currentSrc.includes('_1.png')) {
-                              target.src = getOperatorAvatarUrl(operator.id, '2', itemIconVersion);
-                            } else if (currentSrc.includes('_2.png')) {
-                              target.src = getOperatorAvatarUrl(operator.id, '1', itemIconVersion);
-                            } else {
-                              target.style.display = 'none';
-                              setLoadedImages(prev => prev[operator.id] ? prev : ({ ...prev, [operator.id]: true }));
-                            }
-                          }}
-                        />
-                        {!row.canAdd && imageLoaded && (
-                          <div className={`absolute inset-0 ${row.isOwned ? 'bg-(--app-surface)/25' : 'bg-(--app-surface)/50'}`} />
-                        )}
-                      </>
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-tertiary">
-                        无头像
-                      </div>
-                    )}
-                    {operator.rarity !== undefined && operator.rarity > 0 && (
-                      <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold surface-panel brand-text">
-                        {operator.rarity}★
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 text-center">
-                    <div className="truncate text-sm font-semibold text-primary" title={operator.name}>
-                      {operator.name || '未知干员'}
-                    </div>
-                    <div className="flex min-h-5 flex-wrap items-center justify-center gap-1 text-xs">
-                      {row.isOwned && operator.currentElite !== undefined && (
-                        <span className="whitespace-nowrap rounded-full px-2 py-0.5 surface-panel text-secondary">
-                          精{operator.currentElite}{operator.currentLevel ? ` · ${operator.currentLevel} 级` : ''}
-                        </span>
-                      )}
-                    </div>
-
-                    <Button
-                      onClick={() => void onAdd(operator)}
-                      aria-label={row.canAdd ? `添加${operator.name}` : undefined}
-                      disabled={!row.canAdd || busy}
-                      loading={pendingOperatorIds.has(operator.id)}
-                      loadingText="添加中"
-                      variant='secondary'
-                      size="md"
-                      fullWidth
-                    >
-                      {row.actionLabel}
-                    </Button>
-                  </div>
-                  </div>
-                );
-              })}
-            </div>
-            {hiddenCount > 0 && (
-              <div className="flex flex-col items-center gap-2 py-3">
-                <Button
-                  onClick={() => setVisibleOperatorLimit(nextOperatorRenderLimit)}
-                  variant="secondary"
-                  size="md"
-                  className="min-w-36"
-                >
-                  继续显示 {Math.min(OPERATOR_RENDER_BATCH_SIZE, hiddenCount)} 个
-                </Button>
-                <div className="text-xs text-tertiary">
-                  已显示 {visibleOperators.length} / {filteredOperators.length}
-                </div>
-              </div>
-            )}
-          </div>
+          <OperatorPickerGrid
+            items={gridItems}
+            visibleCount={visibleOperators.length}
+            totalCount={filteredOperators.length}
+            hiddenCount={hiddenCount}
+            onShowMore={() => setVisibleOperatorLimit(nextOperatorRenderLimit)}
+          />
         )}
       </div>
     </Modal>

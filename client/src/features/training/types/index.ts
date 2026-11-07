@@ -177,6 +177,16 @@ export interface TrainingPlan {
   }
 }
 
+/** 干员选择器的统一行：只用于展示与身份写回，不携带任务参数。 */
+export interface OperatorPickerOption {
+  id: string
+  name: string
+  rarity: number
+  profession?: string
+  elite?: number
+  level?: number
+}
+
 export interface TrainingFilters {
   rarity: string
   needsElite2: boolean

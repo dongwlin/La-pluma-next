@@ -176,7 +176,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 | 养成队列 | `features/training/model/queries.ts` | `training/queue`，与养成页共享同一缓存身份 |
 | 今日掉落、今日开放关卡 | `features/statistics/model/queries.ts` | `statistics/today-drops`、`statistics/open-stages` |
 | 完整业务快照的读取与原子提交 | `features/dashboard/model/queries.ts`、`model/snapshotRefresher.ts` | 五路全部有效才提交；单路失败保留旧快照 |
-| 快照形状与归一 | `features/dashboard/model/snapshot.ts` | 纯函数，不发起请求、不读写 store |
+| 快照形状与归一 | `features/dashboard/model/snapshot.ts`、`features/dashboard/model/dropSummary.ts` | 纯函数，不发起请求、不读写 store；掉落摘要按关卡合并在 `dropSummary.ts` |
 | 展示投影与持久化缓存 | `features/dashboard/store/dashboardStore.ts` | `la-pluma-dashboard-cache` v1；只由完整快照持久化 |
 | 设备采样 | `features/device-mirror/model/queries.ts`、`hooks/useDeviceStatsSample.ts` | `device-mirror/device-stats`，5s 轮询，独立失败策略 |
 | 设备采样写入总览 | `features/dashboard/hooks/useDashboardDeviceStats.ts` | 每条成功样本交给 store 做语义校验与温度历史；同一 `dataUpdatedAt` 的缓存回放只追加一次 |
@@ -208,6 +208,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - activity 必须通过 `normalizeActivityPayload`：`status` 为 active/none/unavailable/stale，`clientType`、`available`、`message` 与可空代号/名称/来源/时间戳、`stages`、`failure`、可选 `completion` 均按 `/agent/activity` DTO 校验；旧 `isActive`/`tip`/`description` 不再参与投影。
 - schedule execution 必须是对象；`isRunning`/`running`/`executing` 归一为运行态，`lastResult`/`result`/`lastMessage` 走既有摘要格式化。
 - training queue 接受数组或 `{ queue }`；drops 接受数组或 `{ records }`；open-today 必须是 `{ open, closed }`，两组均为 `{ stage, name }` 数组（每组最多 100 项）。
+- 掉落摘要由 `model/dropSummary.ts` 的 `buildDropSummary` 按关卡合并当日逐条记录：同一关卡只保留一行，物品按 `itemId`（缺失时按名称）累加，行内按累加数量倒序、行间按该关卡最近一次掉落倒序，最多展示 3 个关卡；`dropSummary.count` 仍是当日逐条记录数，与可见行数口径不同。原始逐条记录与数据页掉落列表不受影响。
 - open-today 的 `gameDate`（`YYYY-MM-DD`）、`clientType` 与 `weekday` 描述服务端判定所用的游戏日：`weekday` 是客户端服务区时区下、每日 04:00 日界之后的星期，不是浏览器或宿主日历星期。展示只读 `open`/`closed`，新增字段缺失也不影响归一。
 - 资源收集全开放活动期间，服务端按该客户端服务区在 MAA 活动表（`StageActivityV2.json`）中的 `resourceCollection` 窗口把所有资源本投影为开放，`closed` 为空；活动表不可读或不在窗口内时回落周表。该投影与养成计划、执行跳过同源，前端不区分全开放与周表开放。
 - 任一载荷缺失、形状不符或 completion 越界时返回 `null`；协调器不会提交部分结果。
@@ -290,6 +291,7 @@ Dashboard（首屏门禁、页头、唯一刷新调度）
 - 活动卡 phase（loading/active/none/unavailable/stale）矩阵；`la-pluma-dashboard-cache` v1 的版本/形状/时钟偏差校验，失败刷新不覆盖成功缓存。
 - 设备采样：同一 `dataUpdatedAt` 的缓存回放不重复追加温度点，新时间戳逐次追加（最多 36 个），`null` 载荷与非法字段保旧。
 - 订阅隔离：采样投影返回 `null` 不推动兄弟区域重渲染，流程卡独占执行订阅与终态提示；预览入口不条件卸载、预览画面不导航。
+- 今日掉落摘要按关卡合并：同关卡累加、不同关卡分列、同物品按 `itemId` 合并；原始逐条记录接口与数据页列表语义不变。
 
 ### 验证命令
 

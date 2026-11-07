@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   OPER_PROGRESS_ROLES,
+  resolveOperProgressRole,
   updateOperProgressMastery,
   updateOperProgressTarget,
   validateFightMedicineExpireDays,
@@ -26,6 +27,16 @@ const task = (taskType: string, params: TaskFlowEntry['params'], enabled = true)
 describe('game task parameter validation', () => {
   it('accepts an omitted profession for Core name-based inference', () => {
     expect(validateOperProgressPlans([{ name: '阿米娅', elite: 2 }])).toBeNull()
+  })
+
+  it('maps game-data professions onto the Core role identifiers', () => {
+    for (const { value: role } of OPER_PROGRESS_ROLES) {
+      expect(resolveOperProgressRole(role.toUpperCase())).toBe(role)
+    }
+    expect(resolveOperProgressRole('CASTER')).toBe('Caster')
+    expect(resolveOperProgressRole('  warrior ')).toBe('Warrior')
+    expect(resolveOperProgressRole('未知')).toBe('Unknown')
+    expect(resolveOperProgressRole(undefined)).toBe('Unknown')
   })
 
   it('accepts each supported profession with combined explicit targets', () => {
