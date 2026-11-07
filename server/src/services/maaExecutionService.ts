@@ -29,6 +29,7 @@ import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskR
 import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
 import {
   normalizeGameTaskParams,
+  validateDynamicTaskClientType,
   validateGameTaskParams,
   validateGameTaskVariantParams,
   validateRoguelikeCommandArgs
@@ -569,6 +570,10 @@ export async function execDynamicTask(
     if (!clientType) {
       const profileClientType = String(await resolveClientType()).trim();
       clientType = profileClientType || DEFAULT_CLIENT_TYPE;
+    }
+    const clientTypeConflict = validateDynamicTaskClientType(configObj, clientType);
+    if (clientTypeConflict) {
+      throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', clientTypeConflict, { statusCode: 400 });
     }
     const tasksDir = join(configDir.trim(), 'tasks');
 

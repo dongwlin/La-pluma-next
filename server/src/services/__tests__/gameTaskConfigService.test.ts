@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeGameTaskParams,
+  validateDynamicTaskClientType,
   validateGameTaskParams,
   validateRoguelikeCommandArgs
 } from '../gameTaskConfigService.ts';
@@ -503,5 +504,55 @@ describe('normalizeGameTaskParams', () => {
 
     const canonical = normalizeGameTaskParams('Roguelike', { find_playTime_target: 2 });
     assert.deepEqual(canonical, { params: { find_playTime_target: 2 }, error: null });
+  });
+});
+
+describe('validateDynamicTaskClientType', () => {
+  it('ignores task types that do not carry a client type', () => {
+    assert.equal(validateDynamicTaskClientType({
+      type: 'Award',
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }, 'Official'), null);
+  });
+
+  it('rejects task and variant client types that the run-level type would override', () => {
+    assert.equal(
+      validateDynamicTaskClientType({
+        type: 'StartUp',
+        params: { client_type: 'Official' },
+        variants: [{ params: { client_type: 'Bilibili' } }]
+      }, 'Official'),
+      '动态任务 variants[0].params.client_type 为 Bilibili，与 Run 顶层客户端 Official 冲突；maa-cli 会用顶层 client_type 覆盖 StartUp/Fight/CloseDown 的任务参数'
+    );
+    assert.equal(
+      validateDynamicTaskClientType({ type: 'StartUp', params: { client_type: 'Official' } }, 'Bilibili'),
+      '动态任务 StartUp.params.client_type 为 Official，与 Run 顶层客户端 Bilibili 冲突；maa-cli 会用顶层 client_type 覆盖 StartUp/Fight/CloseDown 的任务参数'
+    );
+  });
+
+  it('rejects a variant-only client type while the run-level type is unknown', () => {
+    assert.equal(
+      validateDynamicTaskClientType({
+        type: 'StartUp',
+        params: { start_game_enabled: false },
+        variants: [{ params: { client_type: 'Bilibili' } }]
+      }),
+      '动态任务 variants[0].params.client_type 声明了 client_type，但任务未声明顶层 params.client_type；maa-cli 会用连接 profile 的客户端类型覆盖它，请把 client_type 统一写在任务 params.client_type'
+    );
+  });
+
+  it('rejects unknown client types and accepts matching ones', () => {
+    assert.equal(
+      validateDynamicTaskClientType({
+        type: 'Fight',
+        variants: [{ params: { client_type: 'NotAClient' } }]
+      }, 'Official'),
+      '动态任务 variants[0].params.client_type 必须是 Official/Bilibili/Txwy/YoStarEN/YoStarJP/YoStarKR 之一'
+    );
+    assert.equal(validateDynamicTaskClientType({
+      type: 'StartUp',
+      params: { client_type: 'Bilibili' },
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }, 'Bilibili'), null);
   });
 });

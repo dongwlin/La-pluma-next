@@ -319,6 +319,55 @@ export function validateGameTaskVariantParams(
   return null;
 }
 
+const CLIENT_TYPE_TASK_TYPES: ReadonlySet<string> = new Set(['StartUp', 'Fight', 'CloseDown']);
+
+export interface DynamicTaskClientTypeConfig {
+  type: string;
+  params?: Record<string, unknown>;
+  variants?: readonly GameTaskVariantParams[];
+}
+
+function readClientTypeValue(params: Record<string, unknown> | undefined): string | null {
+  const value = params?.client_type;
+  if (typeof value !== 'string') return null;
+  return value.trim() || null;
+}
+
+/**
+ * maa-cli 会把 Run 顶层 client_type 强制写回 StartUp/Fight/CloseDown 的任务参数；
+ * 任务或 variant 里的不同取值只会得到一条警告并被覆盖，因此这里提前拒绝。
+ */
+export function validateDynamicTaskClientType(
+  config: DynamicTaskClientTypeConfig,
+  topLevelClientType?: string
+): string | null {
+  if (!CLIENT_TYPE_TASK_TYPES.has(config.type)) return null;
+  const expected = typeof topLevelClientType === 'string' ? topLevelClientType.trim() : '';
+  const entries: Array<{ label: string; value: string }> = [];
+  const taskValue = readClientTypeValue(config.params);
+  if (taskValue) entries.push({ label: `${config.type}.params.client_type`, value: taskValue });
+  for (const [variantIndex, variant] of (config.variants ?? []).entries()) {
+    const value = readClientTypeValue(variant.params);
+    if (value) entries.push({ label: `variants[${variantIndex}].params.client_type`, value });
+  }
+
+  for (const entry of entries) {
+    if (!(GAME_TASK_LIMITS.StartUp.clientTypes as readonly string[]).includes(entry.value)) {
+      return `动态任务 ${entry.label} 必须是 ${GAME_TASK_LIMITS.StartUp.clientTypes.join('/')} 之一`;
+    }
+  }
+  if (entries.length === 0) return null;
+  if (!expected) {
+    return `动态任务 ${entries[0].label} 声明了 client_type，但任务未声明顶层 params.client_type；maa-cli 会用连接 profile 的客户端类型覆盖它，请把 client_type 统一写在任务 params.client_type`;
+  }
+  for (const entry of entries) {
+    if (entry.value !== expected) {
+      return `动态任务 ${entry.label} 为 ${entry.value}，与 Run 顶层客户端 ${expected} 冲突；maa-cli 会用顶层 client_type 覆盖 StartUp/Fight/CloseDown 的任务参数`;
+    }
+  }
+  return null;
+}
+
 const ROGUELIKE_THEMES = Object.freeze(['Phantom', 'Mizuki', 'Sami', 'Sarkaz', 'JieGarden', 'BlackFlow'] as const);
 const RECLAMATION_THEMES = Object.freeze(['Tales', 'RelaunchAnchor'] as const);
 const ROGUELIKE_COMMON_MODES: readonly number[] = Object.freeze([0, 1, 4, 6, 7]);

@@ -252,6 +252,67 @@ describe('dynamic task lifecycle', () => {
     assert.equal(decoded.client_type, 'YoStarJP')
   });
 
+  it('rejects a variant client type that the run-level client type would silently override', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'Official'
+    await assert.rejects(
+      execDynamicTask('startup-variant', {
+        name: '启动游戏',
+        type: 'StartUp',
+        params: { start_game_enabled: false },
+        variants: [{ params: { client_type: 'Bilibili' } }]
+      }, '启动游戏', 'automation', true, false, runtime),
+      error => {
+        assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID')
+        assert.equal(errorField(error, 'statusCode'), 400)
+        const message = String(errorField(error, 'message'))
+        assert.match(message, /variants\[0\]\.params\.client_type/)
+        assert.match(message, /Bilibili/)
+        assert.match(message, /Official/)
+        return true
+      }
+    )
+    assert.equal(events.some(event => event[0] === 'write' && String(event[1]).endsWith('task.toml')), false)
+    assert.equal(events.some(event => event[0] === 'execute'), false)
+  })
+
+  it('keeps a variant client type that matches the run-level client type', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.resolveClientType = async () => 'Bilibili'
+    await execDynamicTask('startup-variant', {
+      name: '启动游戏',
+      type: 'StartUp',
+      params: { start_game_enabled: false },
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }, '启动游戏', 'automation', true, false, runtime)
+    const decoded = parse(String(findTaskFileWrite(events)[2]))
+    assert.equal(decoded.client_type, 'Bilibili')
+    assert.deepEqual(decoded.tasks, [{
+      name: '启动游戏',
+      type: 'StartUp',
+      params: { start_game_enabled: false },
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }])
+  })
+
+  it('rejects a task client type that conflicts with an explicit runtime client type', async () => {
+    const { events, runtime } = createRuntime()
+    runtime.clientType = 'Bilibili'
+    await assert.rejects(
+      execDynamicTask('startup-conflict', {
+        name: '启动游戏',
+        type: 'StartUp',
+        params: { start_game_enabled: false, client_type: 'Official' }
+      }, '启动游戏', 'automation', true, false, runtime),
+      error => {
+        assert.equal(errorField(error, 'statusCode'), 400)
+        assert.match(String(errorField(error, 'message')), /StartUp\.params\.client_type/)
+        return true
+      }
+    )
+    assert.equal(events.some(event => event[0] === 'write' && String(event[1]).endsWith('task.toml')), false)
+  })
+
   it('reads only the execution checkpoint and rejects a partial operator failure despite CLI success', async () => {
     const { runtime } = createRuntime()
     const checkpoint = { logPath: '/virtual/asst.log', size: 120 }
