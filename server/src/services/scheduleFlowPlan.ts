@@ -116,6 +116,23 @@ export type ScheduledTaskFlowPlanResult =
 
 const commaSeparatedArrayKeys = new Set(['buy_first', 'blacklist', 'first_tags', 'preserve_tags']);
 
+/**
+ * 这些字段的空数组在 Core 侧有含义，不能按「空即省略」丢弃：Recruit 的
+ * `select`/`confirm` 缺键时 `RecruitTask::set_params` 直接失败，空 `confirm`
+ * 表示只计算标签不确认招募；Infrast 的 `facility` 缺键同样失败。
+ * `plans`/`themes` 沿用既有的保留行为。
+ */
+const emptyArrayParamKeys: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  Infrast: Object.freeze(['facility']),
+  OperProgress: Object.freeze(['plans']),
+  Recruit: Object.freeze(['confirm', 'select']),
+  SwitchTheme: Object.freeze(['themes'])
+});
+
+function keepsEmptyArray(taskType: string | undefined, key: string): boolean {
+  return taskType !== undefined && (emptyArrayParamKeys[taskType]?.includes(key) ?? false);
+}
+
 function isRecordValue(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -231,8 +248,7 @@ export function buildScheduledTaskCommand(
         if (typeof value === 'boolean') {
           taskConfigParams[key] = value;
         } else if (Array.isArray(value)) {
-          if (value.length > 0 || (task.taskType === 'OperProgress' && key === 'plans')
-            || (task.taskType === 'SwitchTheme' && key === 'themes')) {
+          if (value.length > 0 || keepsEmptyArray(task.taskType, key)) {
             taskConfigParams[key] = value;
           }
         } else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {

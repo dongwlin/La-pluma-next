@@ -169,6 +169,28 @@ describe('scheduled task flow planning', () => {
     assert.deepEqual(infrastParams.facility, ['Mfg', 'Recycle', 'AssistantChange'])
   })
 
+  it('keeps the emptied star selection and facility list Core requires to be present', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'recruit-1',
+      commandId: 'recruit',
+      name: '自动公招',
+      enabled: true,
+      taskType: 'Recruit',
+      params: { refresh: true, select: [], confirm: [] }
+    }, {
+      id: 'infrast-1',
+      commandId: 'infrast',
+      name: '基建换班',
+      enabled: true,
+      taskType: 'Infrast',
+      params: { mode: 0, facility: [] }
+    }])
+
+    const steps = plannedResult(result).steps
+    assert.deepEqual(steps[0].taskConfig?.params, { refresh: true, select: [], confirm: [] })
+    assert.deepEqual(steps[1].taskConfig?.params, { mode: 0, facility: [] })
+  })
+
   it('switches the startup step to a Core StartUp task when the launch switch is off', () => {
     const result = buildScheduledTaskFlowPlan([{
       id: 'startup-1',
