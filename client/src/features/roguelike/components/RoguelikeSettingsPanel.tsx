@@ -53,7 +53,10 @@ export default function RoguelikeSettingsPanel({
           {fieldOptions.map(option => {
             const displayValue = String(resolveRoguelikeAdvancedValue(option, advanced, theme, task.id) ?? '')
             return (
-              <div key={option.key}>
+              <div
+                key={option.key}
+                className={option.span === 'full' ? 'roguelike-field-span-full' : undefined}
+              >
                 {option.type === 'select' ? (
                   <Select
                     id={`roguelike-${task.id}-${option.key}`}
