@@ -619,6 +619,115 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('默认行为')
   })
 
+  it('moves every recruit helper into a label tooltip and keeps the card behaviours', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+    await renderPage()
+    await clickSequenceTask('自动公招')
+
+    const tooltipFor = (accessibilityName: string) => {
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${accessibilityName}"]`)
+      expect(trigger, accessibilityName).not.toBeNull()
+      const tooltip = document.getElementById(trigger!.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      return { trigger: trigger!, tooltip }
+    }
+
+    const hintCopies: Record<string, string> = {
+      '无许可时仍刷新说明': '招聘许可耗尽后，仍会使用可用刷新次数',
+      '招募星级说明': '支持 6 星自动公招；勾选 6 星后会保留高价值标签并自动选择对应组合',
+      '确认星级说明': '建议至少保留 5/6 星确认，避免高价值标签被跳过；不勾选任何星级时只计算标签，不会确认招募',
+      '招募次数说明': '设为 0 时只计算标签，不执行招募',
+      '保留标签说明': '识别到任一标签时保留该公招槽位，多个标签用逗号分隔',
+      '3 星保留招聘许可说明': '自动确认 3 星时保留的招聘许可数量；剩余许可小于等于该值时跳过 3 星招募，0 表示不保留',
+      '多选 Tag 策略说明': '默认行为只选能组成有效组合的 Tag；“选 3 个 Tags”会尽量凑满 3 个；“尽量多选高星 Tag 组合”优先保留高星组合，可能包含冲突标签。',
+      '三星首选说明': '仅在三星组合中优先选择，多个标签用逗号分隔。',
+      '招募时长说明': '可设置 60 至 540 分钟，按 10 分钟调整；五星和六星固定为 540 分钟。',
+    }
+
+    for (const [accessibilityName, copy] of Object.entries(hintCopies)) {
+      const { tooltip } = tooltipFor(accessibilityName)
+      expect(tooltip?.textContent).toBe(copy)
+      expect(tooltip?.hidden).toBe(true)
+    }
+
+    // 常驻说明段落已删除，文案只存在于默认收起的 tooltip 里。
+    for (const copy of Object.values(hintCopies)) {
+      expect(container.textContent).not.toContain(copy)
+    }
+
+    const timesHint = tooltipFor('招募次数说明')
+    await act(async () => timesHint.trigger.focus())
+    expect(timesHint.tooltip?.hidden).toBe(false)
+    await act(async () => timesHint.trigger.blur())
+    expect(timesHint.tooltip?.hidden).toBe(true)
+
+    const savedRecruitParams = () => {
+      const flow = JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{
+        id: string
+        params: Record<string, unknown>
+      }>
+      return flow.find(task => task.id === 'recruit-1')?.params ?? {}
+    }
+
+    const details = container.querySelector('details')!
+    const summary = details.querySelector('summary')!
+    expect(details.open).toBe(false)
+    await act(async () => summary.click())
+    await flush()
+    expect(details.open).toBe(true)
+
+    const extraTagsMode = container.querySelector<HTMLSelectElement>('#recruit-1-extra-tags-mode')!
+    await act(async () => {
+      extraTagsMode.value = '2'
+      extraTagsMode.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await flush()
+    expect(savedRecruitParams().extra_tags_mode).toBe(2)
+
+    const firstTags = container.querySelector<HTMLInputElement>('#recruit-1-first-tags')!
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      inputValueSetter?.call(firstTags, '近卫干员')
+      firstTags.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    expect(savedRecruitParams().first_tags).toBe('近卫干员')
+
+    await act(async () => summary.click())
+    expect(details.open).toBe(false)
+
+    const setTime = container.querySelector<HTMLInputElement>('#automation-recruit-1-set_time')!
+    await act(async () => setTime.click())
+    await flush()
+    expect(savedRecruitParams().set_time).toBe(false)
+
+    const sixStar = container.querySelector<HTMLInputElement>('#automation-recruit-1-select-6')!
+    await act(async () => sixStar.click())
+    await flush()
+    expect(savedRecruitParams().select).toEqual([4, 5])
+    await act(async () => sixStar.click())
+    await flush()
+    expect(savedRecruitParams().select).toEqual([4, 5, 6])
+
+    const threeStarConfirm = container.querySelector<HTMLInputElement>('#automation-recruit-1-confirm-3')!
+    await act(async () => threeStarConfirm.click())
+    await flush()
+    expect(savedRecruitParams().confirm).toEqual([4])
+
+    expect(container.querySelector<HTMLInputElement>('#automation-recruit-1-times')?.value).toBe('4')
+    const increaseTimes = container.querySelector<HTMLButtonElement>('button[aria-label="增加招募次数"]')
+    expect(increaseTimes).not.toBeNull()
+    await act(async () => increaseTimes?.click())
+    await flush()
+    expect(savedRecruitParams().times).toBe('5')
+
+    const increasePermitReserve = container.querySelector<HTMLButtonElement>('button[aria-label="增加3 星保留招聘许可"]')
+    expect(increasePermitReserve).not.toBeNull()
+    await act(async () => increasePermitReserve?.click())
+    await flush()
+    expect(savedRecruitParams().level3_recruitment_permit_reserve).toBe('1')
+  })
+
   it('moves the startup helper texts into focusable tooltips', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 

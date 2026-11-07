@@ -13,7 +13,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { DeviceMonitorPanel } from '@/features/device-mirror'
-import { Button, EmptyState, SmoothPanel, Switch } from '@/shared/ui'
+import { Button, EmptyState, HintTooltip, SmoothPanel, Switch } from '@/shared/ui'
 import { useAutomationAvailability, useStatusStore } from '@/features/runtime-status'
 import { useUserConfig } from '@/features/user-config'
 import { useResourceInvalidation, type ResourceInvalidation } from '@/features/resource-invalidation'
@@ -27,6 +27,7 @@ import AutomationSchedulePanel from './AutomationSchedulePanel'
 import {
   AutomationCheckboxField,
   AutomationFieldLabel,
+  AutomationFieldLegend,
 } from './AutomationFieldControls'
 import { AVAILABLE_TASKS } from './automationTaskCatalog'
 import { useAutomationExecution } from '../hooks/useAutomationExecution'
@@ -593,7 +594,7 @@ export default function AutomationWorkspace() {
                               </div>
                             ) : field.type === 'star-select' ? (
                               <fieldset>
-                                <legend className="automation-field-label mb-2 block">{field.label}</legend>
+                                <AutomationFieldLegend label={field.label} hintId={`${fieldId}-hint`} hint={helperTooltip} />
                                 <div className="flex items-center space-x-2 flex-wrap">
                                   {[3, 4, 5, 6].map(star => {
                                     const currentValue = Array.isArray(task.params[field.key]) ? task.params[field.key] : [];
@@ -974,7 +975,14 @@ export default function AutomationWorkspace() {
 
                         <div className="mt-3 space-y-3 border-t border-(--app-border) pt-3">
                           <div className="flex items-center gap-2">
-                            <label htmlFor={`${task.id}-extra-tags-mode`} className="w-24 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">多选 Tag 策略:</label>
+                            <span className="flex w-32 shrink-0 items-center gap-1">
+                              <label htmlFor={`${task.id}-extra-tags-mode`} className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">多选 Tag 策略:</label>
+                              <HintTooltip
+                                id={`${task.id}-extra-tags-mode-hint`}
+                                label="多选 Tag 策略"
+                                hint="默认行为只选能组成有效组合的 Tag；“选 3 个 Tags”会尽量凑满 3 个；“尽量多选高星 Tag 组合”优先保留高星组合，可能包含冲突标签。"
+                              />
+                            </span>
                             <div className="automation-select-control min-w-0 flex-1">
                               <select
                                 id={`${task.id}-extra-tags-mode`}
@@ -989,10 +997,16 @@ export default function AutomationWorkspace() {
                               <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
                             </div>
                           </div>
-                          <p className="text-xs text-gray-400 dark:text-gray-500">默认行为只选能组成有效组合的 Tag；“选 3 个 Tags”会尽量凑满 3 个；“尽量多选高星 Tag 组合”优先保留高星组合，可能包含冲突标签。</p>
 
                           <div className="flex items-center gap-2">
-                            <label htmlFor={`${task.id}-first-tags`} className="w-20 shrink-0 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">三星首选:</label>
+                            <span className="flex w-32 shrink-0 items-center gap-1">
+                              <label htmlFor={`${task.id}-first-tags`} className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">三星首选:</label>
+                              <HintTooltip
+                                id={`${task.id}-first-tags-hint`}
+                                label="三星首选"
+                                hint="仅在三星组合中优先选择，多个标签用逗号分隔。"
+                              />
+                            </span>
                             <input
                               id={`${task.id}-first-tags`}
                               type="text"
@@ -1003,10 +1017,18 @@ export default function AutomationWorkspace() {
                               className="automation-text-control min-w-0 flex-1"
                             />
                           </div>
-                          <p className="text-xs text-gray-400 dark:text-gray-500">仅在三星组合中优先选择，多个标签用逗号分隔。</p>
 
                           <fieldset>
-                            <legend className="mb-2 block text-sm text-gray-600 dark:text-gray-400">招募时长:</legend>
+                            <legend className="mb-2 block text-sm text-gray-600 dark:text-gray-400">
+                              <span className="inline-flex items-center gap-1">
+                                招募时长:
+                                <HintTooltip
+                                  id={`${task.id}-recruitment-time-hint`}
+                                  label="招募时长"
+                                  hint="可设置 60 至 540 分钟，按 10 分钟调整；五星和六星固定为 540 分钟。"
+                                />
+                              </span>
+                            </legend>
                             <div className="automation-recruitment-time-list">
                               {[3, 4].map(star => {
                                 const key = String(star)
@@ -1035,7 +1057,6 @@ export default function AutomationWorkspace() {
                                 )
                               })}
                             </div>
-                            <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">可设置 60 至 540 分钟，按 10 分钟调整；五星和六星固定为 540 分钟。</p>
                           </fieldset>
                         </div>
                       </details>
