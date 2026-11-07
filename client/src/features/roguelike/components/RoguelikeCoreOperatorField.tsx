@@ -88,6 +88,7 @@ export default function RoguelikeCoreOperatorField({
         title="选择核心干员"
         selectedOperatorId={operator?.id ?? null}
         selectedOperatorName={operatorName || null}
+        defaultSortDirection="desc"
       />
     </div>
   )
