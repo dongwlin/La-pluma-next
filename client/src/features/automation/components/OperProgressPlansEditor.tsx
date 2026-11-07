@@ -115,6 +115,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
         onClose={() => setPickerPlanIndex(null)}
         onConfirm={selectOperator}
         selectedOperatorName={pickerPlanIndex === null ? null : plans[pickerPlanIndex]?.name || null}
+        defaultSortDirection="asc"
       />
     </div>
   )
