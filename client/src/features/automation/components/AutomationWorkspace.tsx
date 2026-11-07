@@ -802,7 +802,7 @@ export default function AutomationWorkspace() {
                             </div>
                           </div>
 
-                          <div className="flex min-h-11 items-center justify-between gap-2">
+                          <div className="flex items-center gap-1">
                             <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                               <input
                                 type="checkbox"

@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   stopSchedule: vi.fn(),
   testConnection: vi.fn(),
   generateTrainingPlan: vi.fn(),
+  getAllOperators: vi.fn(),
+  getOperBoxData: vi.fn(),
   setMessage: vi.fn(),
 }))
 
@@ -55,6 +57,14 @@ vi.mock('@/features/automation/api', () => ({
   executeScheduleNow: mocks.executeScheduleNow,
   setupSchedule: mocks.setupSchedule,
   stopSchedule: mocks.stopSchedule,
+}))
+
+vi.mock('@/features/game-data/api', () => ({
+  getAllOperators: mocks.getAllOperators,
+  getDepotData: vi.fn(),
+  getItemIconUrl: (id: string | number) => `/items/${id}.png`,
+  getOperatorAvatarUrl: (id: string) => `/avatars/${id}.png`,
+  getOperBoxData: mocks.getOperBoxData,
 }))
 
 vi.mock('@/features/task-execution', async () => {
@@ -362,6 +372,8 @@ beforeEach(() => {
   mocks.stopSchedule.mockReset().mockResolvedValue({ success: true })
   mocks.testConnection.mockReset().mockResolvedValue({ success: true })
   mocks.generateTrainingPlan.mockReset().mockResolvedValue({ success: false })
+  mocks.getAllOperators.mockReset().mockResolvedValue({ success: true, data: [] })
+  mocks.getOperBoxData.mockReset().mockResolvedValue({ success: true, data: null })
   mocks.setMessage.mockReset()
   mocks.executeScheduleNow.mockReset().mockResolvedValue(ok({
     accepted: true,

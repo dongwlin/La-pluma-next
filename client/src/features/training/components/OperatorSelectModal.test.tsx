@@ -1,0 +1,309 @@
+// @vitest-environment jsdom
+
+import { act, type ReactNode } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createQueryClient } from '@/shared/query'
+import type { OperatorSortDirection } from '../types'
+import OperatorSelectModal from './OperatorSelectModal'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+const mocks = vi.hoisted(() => ({
+  getOperBoxData: vi.fn(),
+  getAllOperators: vi.fn(),
+}))
+
+vi.mock('framer-motion', async () => {
+  const React = await import('react')
+  type MotionTestProps = Record<string, unknown> & { children?: ReactNode }
+  const motionComponent = (tag: 'button' | 'div' | 'span') => React.forwardRef<HTMLElement, MotionTestProps>(
+    ({ children, initial: _initial, animate: _animate, exit: _exit, transition: _transition, ...props }, ref) =>
+      React.createElement(tag, { ...props, ref }, children as ReactNode),
+  )
+  return {
+    AnimatePresence: ({ children }: { children: ReactNode }) => children,
+    motion: {
+      button: motionComponent('button'),
+      div: motionComponent('div'),
+      span: motionComponent('span'),
+    },
+    useReducedMotion: () => true,
+  }
+})
+
+vi.mock('@/features/game-data/api', () => ({
+  getAllOperators: mocks.getAllOperators,
+  getDepotData: vi.fn(),
+  getOperBoxData: mocks.getOperBoxData,
+  getItemIconUrl: (id: string | number) => `/items/${id}.png`,
+  getOperatorAvatarUrl: (id: string) => `/avatars/${id}.png`,
+}))
+
+interface OwnedFixture {
+  id: string
+  name: string
+  rarity: number
+  profession?: string
+  elite?: number
+  level?: number
+}
+
+interface CatalogFixture {
+  id: string
+  name: string
+  rarity: number
+  profession?: string
+}
+
+const ownedOperator = (
+  id: string,
+  name: string,
+  rarity = 6,
+  cultivation: { elite?: number; level?: number; profession?: string } = {},
+): OwnedFixture => ({
+  id,
+  name,
+  rarity,
+  ...cultivation,
+})
+
+const catalogOperator = (id: string, name: string, rarity: number, profession?: string): CatalogFixture => ({
+  id,
+  name,
+  rarity,
+  ...(profession ? { profession } : {}),
+})
+
+const RECOGNIZED_OPERATORS: OwnedFixture[] = [
+  ownedOperator('char_002_amiya', '阿米娅', 5, { elite: 1, level: 70 }),
+  ownedOperator('char_180_amgoat', '艾雅法拉', 6, { elite: 1, level: 80 }),
+  ownedOperator('char_010_chen', '陈', 6, { elite: 2, level: 90 }),
+  ownedOperator('char_202_demkni', '塞雷娅', 6, { elite: 0, level: 60 }),
+]
+
+const OPERATOR_CATALOG: CatalogFixture[] = [
+  catalogOperator('char_002_amiya', '阿米娅', 5, 'CASTER'),
+  catalogOperator('char_180_amgoat', '艾雅法拉', 6, 'CASTER'),
+  catalogOperator('char_010_chen', '陈', 6, 'WARRIOR'),
+  catalogOperator('char_202_demkni', '塞雷娅', 6, 'TANK'),
+]
+
+let client: ReturnType<typeof createQueryClient>
+let container: HTMLDivElement
+let root: Root
+
+const flush = async () => {
+  await act(async () => {
+    for (let index = 0; index < 4; index += 1) {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+  })
+}
+
+const click = async (element: Element | null | undefined, label: string) => {
+  expect(element, `clickable ${label}`).toBeTruthy()
+  await act(async () => {
+    element!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+  await flush()
+}
+
+const typeSearch = async (value: string) => {
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="搜索干员名称"]')
+  expect(input).not.toBeNull()
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+  await act(async () => {
+    valueSetter?.call(input, value)
+    input!.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await flush()
+}
+
+const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+
+const professionChips = () => Array.from(
+  document.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="职业筛选"] button'),
+)
+
+const clickProfession = (label: string) => click(
+  professionChips().find(chip => chip.textContent?.trim() === label),
+  label,
+)
+
+/** 卡片唯一的可访问名是动作按钮：选择X / 已选择X，用它按渲染顺序取干员名。 */
+const visibleOperatorNames = () => Array.from(
+  dialog()?.querySelectorAll<HTMLButtonElement>('button[aria-label^="选择"], button[aria-label^="已选择"]') ?? [],
+).map(button => (button.getAttribute('aria-label') ?? '').replace(/^已?选择/, ''))
+
+async function renderModal(defaultSortDirection?: OperatorSortDirection) {
+  const onClose = vi.fn()
+  const onConfirm = vi.fn()
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <OperatorSelectModal
+          isOpen
+          onClose={onClose}
+          onConfirm={onConfirm}
+          title="选择干员"
+          defaultSortDirection={defaultSortDirection}
+        />
+      </QueryClientProvider>,
+    )
+  })
+  await flush()
+  return { onClose, onConfirm }
+}
+
+describe('shared operator select modal', () => {
+  beforeEach(() => {
+    mocks.getOperBoxData.mockReset().mockResolvedValue({ success: true, data: { data: [] } })
+    mocks.getAllOperators.mockReset().mockResolvedValue({ success: true, data: [] })
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    client = createQueryClient()
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    client.clear()
+    container.remove()
+    vi.restoreAllMocks()
+  })
+
+  it('offers 全部 plus every profession and defaults to 全部', async () => {
+    mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal('asc')
+
+    expect(professionChips().map(chip => chip.textContent?.trim())).toEqual([
+      '全部', '先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种',
+    ])
+    expect(professionChips()[0]?.getAttribute('aria-pressed')).toBe('true')
+    expect(visibleOperatorNames()).toHaveLength(4)
+  })
+
+  it('fills recognized rows with the catalog profession so the filter works on real snapshots', async () => {
+    mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal('desc')
+    await clickProfession('术师')
+
+    expect(visibleOperatorNames()).toEqual(['艾雅法拉', '阿米娅'])
+    expect(dialog()?.textContent).not.toContain('陈')
+    expect(dialog()?.textContent).not.toContain('塞雷娅')
+  })
+
+  it('combines profession filtering with search and the descending default', async () => {
+    mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal('desc')
+    expect(visibleOperatorNames()).toEqual(['陈', '艾雅法拉', '阿米娅', '塞雷娅'])
+
+    await clickProfession('术师')
+    expect(visibleOperatorNames()).toEqual(['艾雅法拉', '阿米娅'])
+
+    await typeSearch('阿米')
+    expect(visibleOperatorNames()).toEqual(['阿米娅'])
+
+    await clickProfession('全部')
+    expect(visibleOperatorNames()).toEqual(['阿米娅'])
+  })
+
+  it('sorts by elite then level ascending when the daily training caller asks for it', async () => {
+    mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal('asc')
+
+    expect(visibleOperatorNames()).toEqual(['塞雷娅', '阿米娅', '艾雅法拉', '陈'])
+  })
+
+  it('keeps the source order when no default direction is requested', async () => {
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        data: [
+          ownedOperator('char_202_demkni', '塞雷娅', 6, { elite: 0, level: 60 }),
+          ownedOperator('char_010_chen', '陈', 6, { elite: 2, level: 90 }),
+          ownedOperator('char_002_amiya', '阿米娅', 5, { elite: 1, level: 70 }),
+        ],
+      },
+    })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal()
+
+    expect(visibleOperatorNames()).toEqual(['塞雷娅', '陈', '阿米娅'])
+  })
+
+  it('falls back to rarity and name when the catalog has no cultivation fields', async () => {
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        catalogOperator('char_002_amiya', '阿米娅', 5, 'CASTER'),
+        catalogOperator('char_010_chen', '陈', 6, 'WARRIOR'),
+        catalogOperator('char_202_demkni', '塞雷娅', 4, 'TANK'),
+      ],
+    })
+
+    await renderModal('desc')
+
+    expect(visibleOperatorNames()).toEqual(['陈', '阿米娅', '塞雷娅'])
+  })
+
+  it('hides the profession filter when neither snapshot nor catalog carries a profession', async () => {
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: { data: [ownedOperator('char_002_amiya', '阿米娅', 5, { elite: 1, level: 70 })] },
+    })
+
+    await renderModal('desc')
+
+    expect(professionChips()).toEqual([])
+    expect(visibleOperatorNames()).toEqual(['阿米娅'])
+  })
+
+  it('keeps a real empty state when the profession filter matches nothing', async () => {
+    mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal('asc')
+    await clickProfession('医疗')
+
+    expect(visibleOperatorNames()).toEqual([])
+    expect(dialog()?.textContent).toContain('没有找到符合条件的干员')
+    expect(dialog()?.textContent).toContain('换个职业再试。')
+
+    await clickProfession('全部')
+    expect(visibleOperatorNames()).toHaveLength(4)
+  })
+
+  it('keeps the existing empty description for a search-only miss', async () => {
+    mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
+    mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
+
+    await renderModal('asc')
+    await typeSearch('不存在的干员')
+
+    expect(visibleOperatorNames()).toEqual([])
+    expect(dialog()?.textContent).toContain('没有找到符合条件的干员')
+    expect(dialog()?.textContent).toContain('换个名称再试。')
+  })
+})

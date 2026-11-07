@@ -62,6 +62,15 @@ const catalogOperator = (id: string, name: string, profession: string) => ({
   potential: 1,
 })
 
+const ownedOperatorAt = (
+  id: string,
+  name: string,
+  rarity: number,
+  elite: number,
+  level: number,
+  profession: string,
+) => ({ id, name, rarity, profession, elite, level, potential: 1 })
+
 let root: Root
 let container: HTMLDivElement
 let client: ReturnType<typeof createQueryClient>
@@ -117,6 +126,10 @@ const dialogButtons = () => [...(dialog()?.querySelectorAll<HTMLButtonElement>('
 const operatorChoiceCount = () => dialogButtons()
   .filter(node => node.getAttribute('aria-label')?.startsWith('选择') || node.getAttribute('aria-label')?.startsWith('已选择'))
   .length
+
+const operatorChoiceNames = () => dialogButtons()
+  .filter(node => node.getAttribute('aria-label')?.startsWith('选择'))
+  .map(node => (node.getAttribute('aria-label') ?? '').replace(/^选择/, ''))
 
 const selectOperator = async (name: string) => {
   await click(`选择${name}`)
@@ -225,6 +238,103 @@ describe('game task editors', () => {
 
     await setValue('培养计划 1 精英目标', '2')
     expect(onPlans).toHaveBeenLastCalledWith([{ role: 'Caster', name: '阿米娅', elite: 2 }])
+  })
+
+  it('orders the shared picker by elite then level ascending', async () => {
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 4,
+        data: [
+          ownedOperatorAt('char_202_demkni', '塞雷娅', 6, 0, 60, 'TANK'),
+          ownedOperatorAt('char_002_amiya', '阿米娅', 5, 1, 70, 'CASTER'),
+          ownedOperatorAt('char_180_amgoat', '艾雅法拉', 6, 1, 80, 'CASTER'),
+          ownedOperatorAt('char_010_chen', '陈', 6, 2, 90, 'WARRIOR'),
+        ],
+      },
+    })
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        catalogOperator('char_202_demkni', '塞雷娅', 'TANK'),
+        catalogOperator('char_002_amiya', '阿米娅', 'CASTER'),
+        catalogOperator('char_180_amgoat', '艾雅法拉', 'CASTER'),
+        catalogOperator('char_010_chen', '陈', 'WARRIOR'),
+      ],
+    })
+
+    await render(<Host />)
+    await click('添加培养计划')
+    await click('选择干员')
+
+    expect(operatorChoiceNames()).toEqual(['塞雷娅', '阿米娅', '艾雅法拉', '陈'])
+  })
+
+  it('shows the selected operator avatar resolved from the catalog', async () => {
+    mocks.getOperBoxData.mockResolvedValue({
+      success: true,
+      data: {
+        operCount: 1,
+        data: [ownedOperator('char_010_chen', '陈', 'WARRIOR')],
+      },
+    })
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [catalogOperator('char_010_chen', '陈', 'WARRIOR')],
+    })
+
+    await render(<Host />)
+    await click('添加培养计划')
+    await click('选择干员')
+    await selectOperator('陈')
+    await flush()
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/avatars/char_010_chen.png')
+  })
+
+  it('resolves repeated operator names with the stored profession', async () => {
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [
+        catalogOperator('char_002_amiya', '阿米娅', 'CASTER'),
+        catalogOperator('char_1001_amiya2', '阿米娅', 'WARRIOR'),
+      ],
+    })
+
+    await render(<Host initialPlans={[{ role: 'Warrior', name: '阿米娅' }]} />)
+    await flush()
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/avatars/char_1001_amiya2.png')
+  })
+
+  it('keeps the generic portrait when the catalog cannot resolve the saved name', async () => {
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [catalogOperator('char_010_chen', '陈', 'WARRIOR')],
+    })
+
+    await render(<Host initialPlans={[{ role: 'Caster', name: '未收录干员' }]} />)
+    await flush()
+
+    expect(container.textContent).toContain('未收录干员')
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('falls back to the generic portrait when the avatar image fails to load', async () => {
+    mocks.getAllOperators.mockResolvedValue({
+      success: true,
+      data: [catalogOperator('char_002_amiya', '阿米娅', 'CASTER')],
+    })
+
+    await render(<Host initialPlans={[{ role: 'Caster', name: '阿米娅' }]} />)
+    await flush()
+
+    const image = container.querySelector('img')
+    expect(image?.getAttribute('src')).toBe('/avatars/char_002_amiya.png')
+
+    await act(async () => image?.dispatchEvent(new Event('error', { bubbles: true })))
+
+    expect(container.querySelector('img')).toBeNull()
   })
 
   it('falls back to the whole catalog when no operator was recognized', async () => {
