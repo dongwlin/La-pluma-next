@@ -14,10 +14,16 @@ import {
   nextOperatorRenderLimit,
   paginateOperatorRows,
 } from '../model/operatorRows'
-import { toOperatorPickerOption } from '../model/operatorSelection'
+import {
+  OPERATOR_PROFESSION_FILTERS,
+  filterOperatorOptionsByProfession,
+  sortOperatorPickerOptions,
+  toOperatorPickerOption,
+  type OperatorProfessionFilter,
+} from '../model/operatorSelection'
 import OperatorPickerGrid, { type OperatorPickerGridItem } from './OperatorPickerGrid'
 import TrainingLoadError from './TrainingLoadError'
-import type { OperatorPickerOption } from '../types'
+import type { OperatorPickerOption, OperatorSortDirection } from '../types'
 
 export interface OperatorSelectModalProps {
   isOpen: boolean
@@ -26,10 +32,16 @@ export interface OperatorSelectModalProps {
   title?: string
   selectedOperatorId?: string | null
   selectedOperatorName?: string | null
+  /**
+   * 默认排序方向：先按精英阶段，再按等级。省略时保持数据源顺序，
+   * 与未引入排序能力前的行为一致。
+   */
+  defaultSortDirection?: OperatorSortDirection
 }
 
 const EMPTY_OPERATORS: readonly OperatorDetailed[] = []
 const LOAD_ERROR_MESSAGE = '干员列表加载失败，请稍后重试'
+const DEFAULT_PROFESSION_FILTER: OperatorProfessionFilter = 'all'
 
 function OperatorEmptyState({ title, description }: { title: string; description?: string }) {
   return (
@@ -46,6 +58,7 @@ function OperatorEmptyState({ title, description }: { title: string; description
 /**
  * 跨页面复用的单干员选择模态窗。没有识别数据时静默回退到全量目录，
  * 列表不得反显识别或拥有状态；选择结果只回传干员身份。
+ * 职业筛选读同 id 的目录条目补齐识别快照缺失的职业字段。
  */
 export default function OperatorSelectModal({
   isOpen,
@@ -54,41 +67,61 @@ export default function OperatorSelectModal({
   title = '选择干员',
   selectedOperatorId = null,
   selectedOperatorName = null,
+  defaultSortDirection,
 }: OperatorSelectModalProps) {
   const [searchTerm, setSearchTerm] = useState('')
+  const [professionFilter, setProfessionFilter] = useState<OperatorProfessionFilter>(DEFAULT_PROFESSION_FILTER)
   const [visibleLimit, setVisibleLimit] = useState(OPERATOR_RENDER_BATCH_SIZE)
   const [pendingSelection, setPendingSelection] = useState<OperatorPickerOption | null>(null)
 
   const operBoxQuery = useQuery({ ...operBoxQueryOptions(), enabled: isOpen })
   const ownedOperators = operBoxQuery.data?.data ?? EMPTY_OPERATORS
   const hasOwnedOperators = ownedOperators.length > 0
-  const catalogQuery = useQuery({
-    ...operatorCatalogQueryOptions(),
-    enabled: isOpen && operBoxQuery.isSuccess && !hasOwnedOperators,
-  })
+  const catalogQuery = useQuery({ ...operatorCatalogQueryOptions(), enabled: isOpen })
 
-  const options = useMemo(
-    () => (hasOwnedOperators ? ownedOperators : catalogQuery.data ?? EMPTY_OPERATORS)
-      .map(toOperatorPickerOption),
-    [hasOwnedOperators, ownedOperators, catalogQuery.data],
-  )
+  const options = useMemo(() => {
+    const source = hasOwnedOperators ? ownedOperators : catalogQuery.data ?? EMPTY_OPERATORS
+    const catalogById = hasOwnedOperators
+      ? new Map((catalogQuery.data ?? EMPTY_OPERATORS).map(operator => [operator.id, operator]))
+      : null
+    return source.map(operator => (
+      catalogById
+        ? toOperatorPickerOption(operator, catalogById.get(operator.id))
+        : toOperatorPickerOption(operator)
+    ))
+  }, [hasOwnedOperators, ownedOperators, catalogQuery.data])
   const initialSelection = useMemo(() => (
     (selectedOperatorId ? options.find(option => option.id === selectedOperatorId) : undefined)
     ?? (selectedOperatorName ? options.find(option => option.name === selectedOperatorName) : undefined)
     ?? null
   ), [options, selectedOperatorId, selectedOperatorName])
   const selectedOperator = pendingSelection ?? initialSelection
-  const catalogPending = operBoxQuery.isSuccess && !hasOwnedOperators && catalogQuery.isPending
-  const loading = operBoxQuery.isPending || catalogPending
   const catalogError = operBoxQuery.isSuccess && !hasOwnedOperators && catalogQuery.isError
+  const loading = operBoxQuery.isPending || catalogQuery.isPending
   const hasError = operBoxQuery.isError || catalogError
+  const professionFilterVisible = useMemo(
+    () => options.some(option => Boolean(option.profession)),
+    [options],
+  )
 
-  const filteredOperators = filterOperatorRows(options, searchTerm)
+  const filteredOperators = useMemo(() => {
+    const byProfession = filterOperatorOptionsByProfession(options, professionFilter)
+    const bySearchTerm = filterOperatorRows(byProfession, searchTerm)
+    return defaultSortDirection
+      ? sortOperatorPickerOptions(bySearchTerm, defaultSortDirection)
+      : bySearchTerm
+  }, [options, professionFilter, searchTerm, defaultSortDirection])
   const { rows: visibleOperators, hiddenCount } = paginateOperatorRows(filteredOperators, visibleLimit)
   const emptyState = !loading && !hasError && filteredOperators.length === 0
+  const hasActiveFilter = professionFilter !== DEFAULT_PROFESSION_FILTER || searchTerm.trim() !== ''
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
+    setVisibleLimit(OPERATOR_RENDER_BATCH_SIZE)
+  }
+
+  const handleProfessionFilterChange = (value: OperatorProfessionFilter) => {
+    setProfessionFilter(value)
     setVisibleLimit(OPERATOR_RENDER_BATCH_SIZE)
   }
 
@@ -108,6 +141,10 @@ export default function OperatorSelectModal({
     void operBoxQuery.refetch()
     if (catalogError) void catalogQuery.refetch()
   }
+
+  const emptyDescription = professionFilter !== DEFAULT_PROFESSION_FILTER
+    ? (searchTerm.trim() ? '换个名称或职业再试。' : '换个职业再试。')
+    : (searchTerm.trim() ? '换个名称再试。' : undefined)
 
   const gridItems: OperatorPickerGridItem[] = visibleOperators.map((operator) => {
     const isSelected = operator.id === selectedOperator?.id
@@ -151,14 +188,34 @@ export default function OperatorSelectModal({
       )}
     >
       <div className="space-y-4">
-        <Input
-          type="text"
-          aria-label="搜索干员名称"
-          placeholder="搜索干员"
-          value={searchTerm}
-          onChange={handleSearchChange}
-          icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
-        />
+        <div className="space-y-3">
+          <Input
+            type="text"
+            aria-label="搜索干员名称"
+            placeholder="搜索干员"
+            value={searchTerm}
+            onChange={handleSearchChange}
+            icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
+          />
+          {professionFilterVisible && (
+            <div role="group" aria-label="职业筛选" className="flex flex-wrap gap-2">
+              {OPERATOR_PROFESSION_FILTERS.map((option) => {
+                const isActive = professionFilter === option.value
+                return (
+                  <Button
+                    key={option.value}
+                    size="sm"
+                    variant={isActive ? 'primary' : 'secondary'}
+                    aria-pressed={isActive}
+                    onClick={() => handleProfessionFilterChange(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <div className="flex min-h-65 items-center justify-center">
@@ -172,8 +229,8 @@ export default function OperatorSelectModal({
           />
         ) : emptyState ? (
           <OperatorEmptyState
-            title={searchTerm.trim() ? '没有找到符合条件的干员' : '没有可选择的干员'}
-            description={searchTerm.trim() ? '换个名称再试。' : undefined}
+            title={hasActiveFilter ? '没有找到符合条件的干员' : '没有可选择的干员'}
+            description={hasActiveFilter ? emptyDescription : undefined}
           />
         ) : (
           <OperatorPickerGrid

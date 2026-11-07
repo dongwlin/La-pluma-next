@@ -165,10 +165,10 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
       { key: 'shopping', label: '自动购物', type: 'checkbox' },
       { key: 'buy_first', label: '优先购买', type: 'text', placeholder: '招聘许可,龙门币（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
       { key: 'blacklist', label: '黑名单', type: 'text', placeholder: '家具零件,碳（逗号分隔）', visibleWhen: { key: 'shopping', value: true } },
-      { key: 'only_buy_discount', label: '只买折扣商品', type: 'checkbox', helper: '仅影响优先购买之外的普通购物', visibleWhen: { key: 'shopping', value: true } },
-      { key: 'reserve_max_credit', label: '保留 300 信用', type: 'checkbox', helper: '普通购物时信用低于 300 就停止购买', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'only_buy_discount', label: '只买折扣商品', type: 'checkbox', helper: '仅影响优先购买之外的普通购物', helperPlacement: 'tooltip', visibleWhen: { key: 'shopping', value: true } },
+      { key: 'reserve_max_credit', label: '保留 300 信用', type: 'checkbox', helper: '普通购物时信用低于 300 就停止购买', helperPlacement: 'tooltip', visibleWhen: { key: 'shopping', value: true } },
       { key: 'force_shopping_if_credit_full', label: '信用溢出时无视黑名单', type: 'checkbox', visibleWhen: { key: 'shopping', value: true } },
-      { key: 'credit_fight', label: '信用助战', type: 'checkbox', helper: '借助战完成一次 OF-1，以便次日获得更多信用' },
+      { key: 'credit_fight', label: '信用助战', type: 'checkbox', helper: '借助战完成一次 OF-1，以便次日获得更多信用', helperPlacement: 'tooltip' },
       { key: 'formation_index', label: '助战编队', type: 'select', options: [
         { value: '0', label: '当前编队' },
         { value: '1', label: '编队 1' },
