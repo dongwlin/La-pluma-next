@@ -22,6 +22,7 @@ La Pluma Next 是面向《明日方舟》自动化的本地 Web 控制台：Reac
 | 启动前后端 | `pnpm dev`；单独启动 `pnpm dev:client` / `pnpm dev:server` |
 | 构建 | `pnpm build`：客户端类型检查、构建与 precache 校验；服务端语法检查 |
 | 测试 | `pnpm test`：客户端 Vitest + 服务端 `node:test` |
+| 客户端快速回归 | `pnpm --filter la-pluma-next-client exec vitest run --changed`：只跑受 git 改动影响的测试，用于改动后的快速回归（`--changed <git-ref>` 可指定比较基线；全量回归仍用 `pnpm test`） |
 | 主要质量检查 | `pnpm verify`：两个包的 guardrails、类型检查、测试与构建，客户端另含 ESLint 与样式预算 |
 | 样式预算 | `pnpm --filter la-pluma-next-client stylelint:ratchet` |
 | 视觉基线比对 / 更新 | `pnpm visual` / `pnpm visual:update`（需 Docker） |
