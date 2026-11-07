@@ -12,7 +12,8 @@ import type { MaaCallbackEvent } from './maaCallbackService.ts';
 import {
   describeOperBoxRecognition,
   parseOperBoxCatalog,
-  parseOperBoxRecognitionPayload
+  parseOperBoxRecognitionPayload,
+  readOperBoxRecognitionStatus
 } from './operatorCatalogModel.ts';
 import type {
   OperBoxCatalogOperator,
@@ -337,7 +338,8 @@ export function parseOperBoxFile(value: unknown): OperBoxFile | null {
     recognition: describeOperBoxRecognition({
       allOpers: allOpers && allOpers.length > 0 ? allOpers : null,
       operTotal,
-      operCount: value.operCount
+      operCount: value.operCount,
+      complete: readOperBoxRecognitionStatus(value.recognition) === 'complete'
     })
   };
 }
@@ -551,7 +553,8 @@ export async function parseOperBoxData(
       recognition: describeOperBoxRecognition({
         allOpers: allOpers.length > 0 ? allOpers : null,
         operTotal,
-        operCount: recognition.owned.length
+        operCount: recognition.owned.length,
+        complete: payload.complete
       })
     };
 

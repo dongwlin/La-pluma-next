@@ -208,7 +208,10 @@ export function buildOperatorRecognitionSummary(
   };
 }
 
-/** 单个快照的识别概要：只有带识别目录的快照才能确认未拥有状态。 */
+/**
+ * 单个快照的识别概要：只有上游报告完整结束且带识别目录的快照才能确认未拥有状态；
+ * 目录存在本身不是完整信号，漏扫的目录同样存在。
+ */
 export interface OperBoxRecognitionInfo {
   status: OperBoxRecognitionStatus;
   total: number;
@@ -219,11 +222,19 @@ export function describeOperBoxRecognition(input: {
   allOpers?: readonly OperatorCatalogEntry[] | null;
   operTotal?: number | null;
   operCount: number;
+  complete?: boolean;
 }): OperBoxRecognitionInfo {
   const catalogCount = input.allOpers?.length ?? 0;
   return {
-    status: catalogCount > 0 ? 'complete' : 'partial',
+    status: input.complete === true && catalogCount > 0 ? 'complete' : 'partial',
     total: input.operTotal ?? (catalogCount > 0 ? catalogCount : input.operCount),
     owned: input.operCount
   };
+}
+
+/** 读取快照持久化的识别状态；缺失或非法时为 null，调用方按部分识别处理。 */
+export function readOperBoxRecognitionStatus(value: unknown): OperBoxRecognitionStatus | null {
+  if (!isRecord(value)) return null;
+  const status = value.status;
+  return status === 'complete' || status === 'partial' ? status : null;
 }

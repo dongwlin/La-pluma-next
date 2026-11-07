@@ -1,4 +1,5 @@
-// 三条不变量：阿米娅三个形态共享持有状态，拥有任意一个即视为拥有全部；「未拥有」视图
+// 四条不变量：阿米娅三个形态共享持有状态，拥有任意一个即视为拥有全部；「未拥有」视图
+// 只收录识别快照确认未拥有的干员，快照未覆盖的干员拥有状态未知；「未拥有」视图
 // 不应用精英化/潜能筛选且等级固定 0；非「已拥有」视图按星级降序、同名按中文名排序，
 // 忽略等级/潜能排序。
 
@@ -49,11 +50,28 @@ export function buildOwnedOperatorIdSet(operBox: OperBoxData | null): Set<string
   return ownedIds
 }
 
+/**
+ * 由持有干员快照构建拥有状态已确认的 id 集合：已识别拥有的干员，以及完整识别目录
+ * 覆盖到的条目。部分识别与缺少完整信号的快照只确认已识别拥有的干员。
+ */
+export function buildKnownOperatorIdSet(operBox: OperBoxData | null): Set<string> {
+  const knownIds = buildOwnedOperatorIdSet(operBox)
+  if (operBox?.recognition?.status !== 'complete') return knownIds
+  for (const operator of operBox.allOpers ?? []) knownIds.add(operator.id)
+  return knownIds
+}
+
 /** 卡片上的「已拥有」判定：有等级或持有 id 集合包含该干员。 */
 export const isOwnedOperator = (
   operator: OperatorDetailed,
   ownedIds: ReadonlySet<string>,
 ): boolean => operator.level > 0 || ownedIds.has(operator.id)
+
+/** 卡片上的「未知」判定：没有持有记录，且识别快照没有覆盖该干员。 */
+export const isUnknownOperator = (
+  operator: OperatorDetailed,
+  knownIds: ReadonlySet<string>,
+): boolean => operator.level <= 0 && !knownIds.has(operator.id)
 
 export interface OperatorSelectionInput {
   catalog: readonly OperatorDetailed[]
@@ -69,11 +87,12 @@ const buildDataSource = ({
   const ownedOperators = operBox?.data ?? []
   const catalogById = new Map(catalog.map(operator => [operator.id, operator]))
   const ownedIds = buildOwnedOperatorIdSet(operBox)
+  const knownIds = buildKnownOperatorIdSet(operBox)
   const hasAmiya = hasAnyAmiyaForm(ownedIds)
 
   if (filters.ownership === 'unowned') {
     return catalog
-      .filter(operator => !ownedIds.has(operator.id))
+      .filter(operator => knownIds.has(operator.id) && !ownedIds.has(operator.id))
       .map(operator => ({ ...operator, level: 0, elite: 0, potential: 0 }))
   }
 
