@@ -656,6 +656,113 @@ describe('AutomationTasks layout surfaces', () => {
     expect(inlineHelpers).toContain('使用理智药数量')
   })
 
+  it('moves the mall helper texts into label tooltips without leaving helper paragraphs', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'mall-1',
+            commandId: 'mall',
+            name: '信用收支',
+            description: '访问好友、收取信用',
+            taskType: 'Mall',
+            enabled: true,
+            params: {
+              visit_friends: true,
+              shopping: true,
+              buy_first: '',
+              blacklist: '',
+              force_shopping_if_credit_full: false,
+              only_buy_discount: false,
+              reserve_max_credit: false,
+              credit_fight: false,
+              formation_index: 0,
+            },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+    await clickSequenceTask('信用收支')
+
+    const savedFlow = () => JSON.parse(localStorage.getItem('maa-task-flow') || '[]') as Array<{
+      id: string
+      params: Record<string, unknown>
+    }>
+    const checkboxOf = (key: string) => container.querySelector<HTMLInputElement>(`#automation-mall-1-${key}`)!
+
+    const hints: Array<[string, string]> = [
+      ['只买折扣商品', '仅影响优先购买之外的普通购物'],
+      ['保留 300 信用', '普通购物时信用低于 300 就停止购买'],
+      ['信用助战', '借助战完成一次 OF-1，以便次日获得更多信用'],
+    ]
+    for (const [label, copy] of hints) {
+      const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}说明"]`)
+      expect(trigger).not.toBeNull()
+      const tooltip = document.getElementById(trigger!.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      expect(tooltip?.textContent).toBe(copy)
+      expect(tooltip?.hidden).toBe(true)
+
+      // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+      expect(container.textContent).not.toContain(copy)
+    }
+
+    const discountHint = container.querySelector<HTMLButtonElement>('button[aria-label="只买折扣商品说明"]')!
+    const discountTooltip = document.getElementById(discountHint.getAttribute('aria-describedby') ?? '')
+    await act(async () => discountHint.focus())
+    expect(discountTooltip?.hidden).toBe(false)
+    await act(async () => discountHint.blur())
+    expect(discountTooltip?.hidden).toBe(true)
+
+    // 本来就没有说明文案的开关不会出现孤立图标。
+    expect(container.querySelector('button[aria-label="信用溢出时无视黑名单说明"]')).toBeNull()
+
+    // 默认值与输入框 placeholder 不变。
+    expect(checkboxOf('visit_friends').checked).toBe(true)
+    expect(checkboxOf('shopping').checked).toBe(true)
+    expect(checkboxOf('only_buy_discount').checked).toBe(false)
+    expect(checkboxOf('reserve_max_credit').checked).toBe(false)
+    expect(checkboxOf('force_shopping_if_credit_full').checked).toBe(false)
+    expect(checkboxOf('credit_fight').checked).toBe(false)
+    expect(container.querySelector<HTMLInputElement>('#automation-mall-1-buy_first')?.placeholder)
+      .toBe('招聘许可,龙门币（逗号分隔）')
+    expect(container.querySelector<HTMLInputElement>('#automation-mall-1-blacklist')?.placeholder)
+      .toBe('家具零件,碳（逗号分隔）')
+
+    // 勾选与输入仍写入草稿；信用助战开启后出现助战编队。
+    await act(async () => checkboxOf('only_buy_discount').click())
+    await flush()
+    expect(checkboxOf('only_buy_discount').checked).toBe(true)
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.only_buy_discount).toBe(true)
+
+    const buyFirst = container.querySelector<HTMLInputElement>('#automation-mall-1-buy_first')!
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      inputValueSetter?.call(buyFirst, '招聘许可')
+      buyFirst.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.buy_first).toBe('招聘许可')
+
+    await act(async () => checkboxOf('credit_fight').click())
+    await flush()
+    expect(checkboxOf('credit_fight').checked).toBe(true)
+    expect(container.querySelector('#automation-mall-1-formation_index')).not.toBeNull()
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.credit_fight).toBe(true)
+
+    // 关掉自动购物后依赖字段仍按原逻辑隐藏。
+    await act(async () => checkboxOf('shopping').click())
+    await flush()
+    expect(checkboxOf('shopping').checked).toBe(false)
+    expect(container.querySelector('#automation-mall-1-only_buy_discount')).toBeNull()
+    expect(container.querySelector('#automation-mall-1-reserve_max_credit')).toBeNull()
+    expect(container.querySelector('#automation-mall-1-credit_fight')).not.toBeNull()
+    expect(savedFlow().find(task => task.id === 'mall-1')?.params.shopping).toBe(false)
+  })
+
   it('normalizes the recruitment duration when the field loses focus', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
