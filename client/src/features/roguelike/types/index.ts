@@ -26,7 +26,7 @@ export interface RoguelikeOptionRequirement {
   oneOf?: readonly string[]
 }
 
-export type RoguelikeAdvancedOptionType = 'text' | 'number' | 'select' | 'checkbox' | 'list'
+export type RoguelikeAdvancedOptionType = 'text' | 'number' | 'select' | 'checkbox' | 'list' | 'operator'
 
 /** 字段写入 MaaCore 动态任务时的值类型；省略时按字段 type 推断。 */
 export type RoguelikeCoreValueType = 'string' | 'number' | 'boolean' | 'string-list' | 'reward-bitmask'
