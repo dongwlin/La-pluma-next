@@ -11,9 +11,9 @@ const OUTPUT_NAMES: Record<string, string> = {
   web: 'automation-web-light.png',
   mobile: 'automation-mobile-light.png',
 }
-// 与 operator-quotes 使用的外部头像 URL 一致；截图时用本地资产替代灰色占位图。
-const AMIYA_AVATAR_URL =
-  'https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/char_002_amiya.png'
+// 侧栏头像走同源 /game-assets 路由，共享 harness 会把它替换成 1×1 占位图；
+// README 截图针对阿米娅头像单独覆盖回仓库内的真实资产（180×180）。
+const AMIYA_AVATAR_ROUTE = '**/game-assets/avatar/char_002_amiya.png*'
 const AMIYA_AVATAR = readFileSync(path.resolve(__dirname, 'assets', 'amiya.png'))
 
 async function waitForImages(page: Page) {
@@ -33,8 +33,8 @@ test('README automation screenshot', async ({ page }, testInfo) => {
   recordBrowserErrors(page)
   await page.addInitScript(themeSeedScript('light'))
   const environment = await installDeterministicEnvironment(page, { fixtures: readmeApiFixtures })
-  // 侧栏身份固定为阿米娅，并用仓库内的头像资产替代视觉基线的灰色占位图。
-  await page.route(AMIYA_AVATAR_URL, route => route.fulfill({
+  // 侧栏身份固定为阿米娅，在共享 harness 的占位路由之后注册，头像由仓库内资产应答。
+  await page.route(AMIYA_AVATAR_ROUTE, route => route.fulfill({
     status: 200,
     contentType: 'image/png',
     body: AMIYA_AVATAR,
@@ -51,12 +51,23 @@ test('README automation screenshot', async ({ page }, testInfo) => {
   await expect(page.getByText('最近执行', { exact: true })).toHaveCount(0)
 
   if (testInfo.project.name === 'web') {
-    // 移动端不渲染侧栏身份，只在桌面截图校验阿米娅头像已真正解码。
+    // 移动端不渲染侧栏身份；桌面端校验头像仍是原始请求且按 180×180 解码，
+    // 防止共享 harness 的 1×1 占位图或 onError fallback 的 logo 图蒙混过关。
     const sidebarIdentity = page.getByLabel('阿米娅：今天也请多指教')
     await sidebarIdentity.waitFor({ state: 'visible' })
     await expect.poll(
-      () => sidebarIdentity.locator('img').evaluate(image => image.complete && image.naturalWidth > 0),
-    ).toBe(true)
+      () => sidebarIdentity.locator('img').evaluate(image => ({
+        src: image.currentSrc,
+        complete: image.complete,
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+      })),
+    ).toEqual({
+      src: expect.stringContaining('/game-assets/avatar/char_002_amiya.png'),
+      complete: true,
+      naturalWidth: 180,
+      naturalHeight: 180,
+    })
   }
 
   await page.evaluate(() => document.fonts.ready)
