@@ -22,8 +22,8 @@ export const AVAILABLE_TASKS: AutomationAvailableTask[] = [
         { value: 'YoStarKR', label: '韩服' },
         { value: 'Txwy', label: '繁中服' }
       ]},
-      { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"' },
-      { key: 'start_game_enabled', label: '启动游戏客户端', type: 'checkbox', helper: '关闭后只连接设备并进入已有游戏的主界面，不会启动游戏客户端' }
+      { key: 'accountName', label: '切换账号', type: 'text', placeholder: '留空则不切换', helper: '输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"', helperPlacement: 'tooltip' },
+      { key: 'start_game_enabled', label: '启动游戏客户端', type: 'checkbox', helper: '关闭后只连接设备并进入已有游戏的主界面，不会启动游戏客户端', helperPlacement: 'tooltip' }
     ]
   },
   {
