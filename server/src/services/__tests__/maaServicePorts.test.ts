@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { appendFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -531,7 +531,10 @@ describe('MAA log checkpoint ports', () => {
     await writeFile(logPath, 'first', 'utf-8');
 
     const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
-    assert.deepEqual(checkpoint, { logPath, size: 5 });
+    assert.equal(checkpoint?.logPath, logPath);
+    assert.equal(checkpoint?.size, 5);
+    assert.ok(checkpoint?.identity, '检查点应记录文件身份');
+    assert.equal(checkpoint?.anchor?.length, 5, '检查点应记录文件前缀摘要');
 
     await appendFile(logPath, 'second', 'utf-8');
     assert.equal(await readMaaLogSince(checkpoint), 'second');
@@ -602,6 +605,36 @@ describe('MAA log checkpoint ports', () => {
     );
 
     assert.deepEqual(increment, { status: 'truncated', text: 'del' });
+  });
+
+  it('marks a rotated log rotated instead of trusting a new file that grew past the old offset', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-rotated-');
+    const logPath = join(directory, 'asst.log');
+    await writeFile(logPath, 'old-session\n'.padEnd(2000, '.'), 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    // MaaCore renames asst.log to asst.bak.log and a fresh file grows past the old offset;
+    // the bytes after the old offset belong to a different session, not to this increment.
+    await rename(logPath, join(directory, 'asst.bak.log'));
+    await writeFile(logPath, 'new-session\n'.padEnd(4000, 'x'), 'utf-8');
+
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'rotated', text: '' });
+  });
+
+  it('marks an in-place rewrite that regrew past the checkpoint as rotated', async () => {
+    const directory = await createTemporaryDirectory('la-pluma-log-rewritten-');
+    const logPath = join(directory, 'asst.log');
+    await writeFile(logPath, 'old-session\n'.padEnd(2000, '.'), 'utf-8');
+
+    const checkpoint = await createMaaLogCheckpoint({ resolveLogDir: async () => directory });
+    assert.ok(checkpoint);
+
+    // Truncation keeps the inode, so only the content prefix reveals that the file restarted.
+    await writeFile(logPath, 'new-session\n'.padEnd(4000, 'y'), 'utf-8');
+
+    assert.deepEqual(await readMaaLogIncrement(checkpoint), { status: 'rotated', text: '' });
   });
 
   it('marks a missing checkpoint or unreadable log unreadable', async () => {

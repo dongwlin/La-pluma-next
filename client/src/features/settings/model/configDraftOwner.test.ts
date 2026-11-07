@@ -81,21 +81,43 @@ describe('config draft owner save prerequisites', () => {
     })
   })
 
-  it('keeps the draft unsavable when the first read never adopts a result', async () => {
+  it('ignores edits and resets until the first server read is adopted', () => {
     const write = vi.fn<WriteRequest>(async () => ({ success: true }))
     const owner = createOwner(write)
+    const readToken = owner.beginRead()
 
-    owner.beginRead()
-    owner.update({ address: '10.0.0.2:5555' })
-    const outcome = await owner.save()
-
-    expect(outcome).toMatchObject({ status: 'ignored', superseded: false })
-    expect(outcome.message).toBeTruthy()
-    expect(write).not.toHaveBeenCalled()
+    expect(owner.update({ address: '10.0.0.2:5555' })).toBe(false)
+    expect(owner.restoreDefaults()).toBe(false)
     expect(owner.getState()).toMatchObject({
-      draft: { ...DEFAULT_TEST_CONFIG, address: '10.0.0.2:5555' },
+      draft: DEFAULT_TEST_CONFIG,
+      revision: 0,
+      dirty: false,
       syncState: 'idle',
       loaded: false,
+    })
+
+    expect(owner.adoptServer({
+      config: { ...DEFAULT_TEST_CONFIG, address: '10.0.0.2:5555' },
+      readToken,
+    })).toBe(true)
+    expect(owner.getState()).toMatchObject({
+      draft: { ...DEFAULT_TEST_CONFIG, address: '10.0.0.2:5555' },
+      revision: 1,
+      dirty: false,
+      loaded: true,
+    })
+  })
+
+  it('accepts edits and resets after the first read is adopted', () => {
+    const owner = createOwner()
+    adoptServer(owner, { ...DEFAULT_TEST_CONFIG })
+
+    expect(owner.update({ address: '10.0.0.2:5555' })).toBe(true)
+    expect(owner.restoreDefaults()).toBe(true)
+    expect(owner.getState()).toMatchObject({
+      draft: DEFAULT_TEST_CONFIG,
+      dirty: false,
+      loaded: true,
     })
   })
 

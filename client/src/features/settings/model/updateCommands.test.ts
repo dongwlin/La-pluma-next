@@ -32,6 +32,8 @@ const createLegacyRunPort = (): SettingsUpdateRunPort => ({
   wait: vi.fn(),
   release: vi.fn(),
   cancel: vi.fn(),
+  tracked: () => null,
+  subscribe: () => () => undefined,
 })
 
 const createOwner = (
@@ -395,6 +397,8 @@ describe('SettingsUpdateOwner run semantics', () => {
     wait,
     release: vi.fn(),
     cancel: vi.fn(),
+    tracked: () => null,
+    subscribe: () => () => undefined,
     ...overrides,
   })
 

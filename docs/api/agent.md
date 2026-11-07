@@ -292,6 +292,7 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 - 部分失败不会吞掉其它任务结果：某个任务失败后仍继续执行后续任务；全部结束后 Run 为 `failed`，错误码 `AGENT_DYNAMIC_TASKS_FAILED`，`error.details.taskIndexes` 给出失败任务索引，`error.details.tasks` 保留逐项结果（已成功、失败与未执行项）。为限制持久化的错误体积，`error.details.tasks[i].stdout`/`stderr` 每项截断到 4096 字符，并在被截断时带 `stdoutTruncated`/`stderrTruncated: true`；完整输出保留在同一次 Run 的 `result.tasks[i]`（后台执行经终态结果返回）。单任务失败仍沿用原有错误码（如 `AGENT_GAME_TASK_FAILED`）与结果字段。
 - 停止以 Run 为目标并保持幂等：正在执行的任务收到设备停止并记为 `stopped`，后续任务不再启动并保持 `pending`；重复停止沿用 Run 层的 `stopping`/终态保护。`waitForCompletion=false` 时任务链在后台继续，202 只表示首个任务已启动，终态仍以 Run 为准。
 - 变体条件全部不匹配的任务不会产生设备动作，maa-cli 正常退出时该项按成功结算。`variants` 与 `strategy` 只作用于动态任务通路，不改变 `fight`、`copilot` 等语义化动作的参数语义。
+- `StartUp`、`Fight`、`CloseDown` 可以设置 `client_type`；maa-cli 会把 Run 顶层 `client_type`（任务 `params.client_type`，缺省取连接 profile）强制写回这三类任务，任务或 variant 里的不同取值只会得到警告并被覆盖。为避免静默覆盖，`params.client_type` 或 `variants[i].params.client_type` 与 Run 顶层值不一致时会在生成任务文件前返回 400 `AGENT_VALIDATION_TASK_CONFIG_INVALID`；只在 variant 里写 `client_type` 而任务 `params` 未声明时，预检无法确认连接 profile 的值，同样返回 400 并要求统一写在任务 `params.client_type`。取值必须是 `Official`/`Bilibili`/`Txwy`/`YoStarEN`/`YoStarJP`/`YoStarKR` 之一。
 ### 肉鸽与生息演算的高级参数
 
 `roguelike` 与 `reclamation` 的 CLI 参数只覆盖 maa-cli 0.7.8 支持的子集。MaaCore 新增的主题、模式与参数使用 `command=run` 加 `taskConfig` 动态任务下发，与 `OperProgress`/`SwitchTheme` 走同一通路：
@@ -310,8 +311,8 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 - `Roguelike.params.theme` 可为 `Phantom`、`Mizuki`、`Sami`、`Sarkaz`、`JieGarden` 或 `BlackFlow`；`mode` 必须属于主题：通用 `0`/`1`/`4`/`6`/`7`，萨米额外 `5`（刷坍缩范式），萨卡兹额外 `10001`（快速通过第一层），界园额外 `20001`（刷常乐节点），黑流树海为 `0`/`1`/`30001`（刷襁褓动物）/`30003`（刷开局并保留目标局）。
 - `mode=20001` 必填 `find_playTime_target`（`1` 令、`2` 黍、`3` 年）；`mode=30003` 必填 `blackflow_start_animals`（0 至 2 项，羽蛇最多一项）与 `blackflow_start_rewards`（0 至 4095 位掩码），启用 `blackflow_start_utopia` 时还需非空且不重复的 `blackflow_start_reward_priority`。
-- `Reclamation.params.theme` 可为 `Tales` 或 `RelaunchAnchor`；沙洲遗闻模式为 `0`/`1`，重启锚点为 `16`（RA-1）/`32`（RA-15）/`48`（RA-4）。`tools_to_craft` 必须是工具名数组，`increment_mode` 只能是 `0`/`1`，`num_craft_batches` 必须是正整数，`clear_store` 是布尔值。
-- CLI 通路在创建 Run 之前预检：主题、模式或加号点击方式超出 maa-cli 能力时返回 HTTP 400 `AGENT_VALIDATION_TASK_ARGS_INVALID`，并提示改用动态任务；动态任务参数非法返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。两条通路都不会把非法组合静默透传给 CLI/Core。
+- `Reclamation.params.theme` 可为 `Tales` 或 `RelaunchAnchor`；沙洲遗闻模式为 `0`/`1`，重启锚点为 `16`（RA-1）/`32`（RA-15）/`48`（RA-4）。沙洲遗闻模式 `1` 必须显式提供非空的 `tools_to_craft` 工具名数组：MaaCore 的 `ReclamationCraftTaskPlugin` 直接读取该键，省略会让 MaaCore 抛出未捕获异常并中止 CLI；预检会在创建 Run 前返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。`increment_mode` 只能是 `0`/`1`，`num_craft_batches` 必须是正整数（缺省由 Core 取 16），`clear_store` 是布尔值。
+- CLI 通路在创建 Run 之前预检：主题、模式或加号点击方式超出 maa-cli 能力时返回 HTTP 400 `AGENT_VALIDATION_TASK_ARGS_INVALID`，并提示改用动态任务；沙洲遗闻模式 `1`（显式或 `-m` 缺省时）缺少 `--tools-to-craft` 同样返回 `AGENT_VALIDATION_TASK_ARGS_INVALID`，避免 maa-cli 用默认的 16 批荧光棒静默接管。动态任务参数非法返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。两条通路都不会把非法组合静默透传给 CLI/Core。
 
 ## 养成材料筹备队列与任务流程
 

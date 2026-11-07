@@ -7,6 +7,7 @@ import {
   MaaExecutionBusyError,
   acquireMaaExecutionLease,
   getMaaExecutionLeaseSnapshot,
+  runWithMaaExecutionLeaseContext,
   withMaaExecutionLease
 } from '../executionCoordinatorService.ts';
 
@@ -39,6 +40,32 @@ test('execution lease supports nested use in the same async flow', async () => {
         assert.equal(metadata.taskName, 'workflow');
       });
     });
+  } finally {
+    delete process.env.LA_PLUMA_MAA_LOCK_FILE;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a caller-owned lease context keeps the lock across an accepted background start', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'la-pluma-lock-'));
+  const lockPath = join(dir, 'maa.lock');
+  process.env.LA_PLUMA_MAA_LOCK_FILE = lockPath;
+  try {
+    const lease = await acquireMaaExecutionLease({ taskName: 'background-owner' });
+    const reused = await runWithMaaExecutionLeaseContext(lease, () =>
+      withMaaExecutionLease({ taskName: 'nested' }, async nested => {
+        assert.equal(nested.lockPath, lockPath);
+        return 'done';
+      })
+    );
+    assert.equal(reused, 'done');
+    // 嵌套执行器释放的只是重入计数，调用方仍持有锁，直到显式释放。
+    assert.equal(JSON.parse(await readFile(lockPath, 'utf8')).taskName, 'background-owner');
+    await assert.rejects(acquireMaaExecutionLease({ taskName: 'other' }), MaaExecutionBusyError);
+
+    await lease.release();
+    const next = await acquireMaaExecutionLease({ taskName: 'after-release' });
+    await next.release();
   } finally {
     delete process.env.LA_PLUMA_MAA_LOCK_FILE;
     await rm(dir, { recursive: true, force: true });

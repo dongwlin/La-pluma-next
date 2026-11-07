@@ -308,7 +308,7 @@ const validFixtures: readonly ValidFixture[] = [
     expectRun: true
   },
   { operationId: 'fight', status: 200, body: { stages: ['1-7'], dryRun: true } },
-  { operationId: 'run_task', status: 200, body: { command: 'reclamation', args: ['Tales', '-m', '1'] }, expectRun: true },
+  { operationId: 'run_task', status: 200, body: { command: 'reclamation', args: ['Tales', '-m', '1', '-C', '荧光棒'] }, expectRun: true },
   { operationId: 'stop_task', status: 200, body: {} },
   { operationId: 'get_current_run', status: 200, query: { lines: 2 } },
   { operationId: 'get_run', status: 404, pathParams: { runId: missingRunId } },

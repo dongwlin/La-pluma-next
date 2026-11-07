@@ -157,8 +157,11 @@ export function migrateTaskParams<T extends Record<string, unknown>>(task: T): T
     params.start_game_enabled ??= true
   }
   if (commandId === 'fight') {
-    if (params.medicineExpireDays === undefined && params.expiringMedicine !== undefined) {
-      params.medicineExpireDays = params.expiringMedicine
+    if (params.medicineExpireDays === undefined) {
+      // 旧 `expiringMedicine` 按瓶数表达；Core 中任意正数都只对应“两天内过期”的
+      // 临期药窗口，沿用旧数字会把窗口放大成同数天数（旧 7 → 七天）。
+      const legacyBottleCount = Number(params.expiringMedicine)
+      params.medicineExpireDays = Number.isFinite(legacyBottleCount) && legacyBottleCount > 0 ? 2 : 0
     }
     delete params.expiringMedicine
     params.medicineExpireDays ??= 0

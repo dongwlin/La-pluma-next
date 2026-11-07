@@ -68,6 +68,7 @@ describe('connection config owner', () => {
 
   it('tracks edits and ignores content-equivalent updates', () => {
     const owner = createOwner()
+    adoptDefaultServer(owner)
 
     expect(owner.update({ address: '127.0.0.1:5555' })).toBe(true)
     expect(owner.getState()).toMatchObject({
@@ -100,6 +101,7 @@ describe('connection config owner', () => {
 
   it('drops a late read that started before a user edit', () => {
     const owner = createOwner()
+    adoptDefaultServer(owner)
     const token = owner.beginRead()
 
     owner.update({ address: '127.0.0.1:5555' })
@@ -112,6 +114,7 @@ describe('connection config owner', () => {
 
   it('does not adopt a read that was requested while a local draft was pending', () => {
     const owner = createOwner()
+    adoptDefaultServer(owner)
     owner.update({ address: '127.0.0.1:5555' })
     const token = owner.beginRead()
 
@@ -296,6 +299,7 @@ describe('connection config owner', () => {
 
   it('resets all owner state for a new session', () => {
     const owner = createOwner()
+    adoptDefaultServer(owner)
     owner.update({ address: '127.0.0.1:5555' })
 
     owner.reset()

@@ -36,7 +36,7 @@ export function useConfigDraftPanel<T extends Record<string, unknown>>({
 
   useEffect(() => {
     if (!loadError) return
-    const message = `${label}读取失败: ${loadError}（保存已禁用，请刷新页面后重试）`
+    const message = `${label}读取失败: ${loadError}（保存已禁用，请重试读取）`
     if (reportedLoadFailureRef.current === message) return
     reportedLoadFailureRef.current = message
     // 读取失败同步为页内反馈；ref 保证同一失败只提示一次，不是渲染循环。

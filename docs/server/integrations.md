@@ -35,7 +35,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 
 - `maaExecutionService` 维护固定的设备变更命令集合，`requiresMaaExecutionLease` 据此决定是否先取得 `executionCoordinatorService` 的执行租约（`server/src/services/maaExecutionService.ts:33-37,117-119`）。
 - `execMaaCommand` 在取得租约后先运行 `onBeforeStart` 门禁再 spawn；后台执行的租约在子进程实际退出（`onSettled`）后释放，HTTP 返回"已启动"响应不等于执行完成、也不释放租约（`server/src/services/maaExecutionService.ts:176-228`）。非设备变更命令直接进入子进程模块，不申请租约（`server/src/services/maaExecutionService.ts:186-188`）。
-- 动态任务 `execDynamicTask` 在 MAA 配置目录的 `tasks/` 下为每次执行创建独立临时目录后以 `run` 执行：目录名由固定前缀、净化为字母数字的任务名与随机 nonce 组成，目录内写 `task.toml` 与记录持有进程 PID/开始时间的 `owner.json`；顶层 `client_type` 取连接 profile 的客户端类型，供 maa-cli 加载对应服务区资源并设置 MaaCore 客户端类型；`[[tasks]]` 与 `[tasks.params]` 表由配置对象生成，字符串形式的数组参数会尝试 JSON 解析；命令行固定追加 `--batch`，任务文件中的输入参数按默认值处理，不会等待交互提示（`server/src/services/maaExecutionService.ts:361-490,564-597`）。
+- 动态任务 `execDynamicTask` 在 MAA 配置目录的 `tasks/` 下为每次执行创建独立临时目录后以 `run` 执行：目录名由固定前缀、净化为字母数字的任务名与随机 nonce 组成，目录内写 `task.toml` 与记录持有进程 PID/开始时间的 `owner.json`；顶层 `client_type` 依次取运行时显式覆盖、任务 `params.client_type` 与连接 profile（`server/src/services/maaExecutionService.ts`），供 maa-cli 加载对应服务区资源并设置 MaaCore 客户端类型；`StartUp`/`Fight`/`CloseDown` 的 variant 若声明了与顶层不同的 `client_type`，或任务未声明顶层 `client_type` 而只在 variant 里声明，会在写入任务文件前返回 400，避免 maa-cli 用顶层值静默覆盖；`[[tasks]]` 与 `[tasks.params]` 表由配置对象生成，字符串形式的数组参数会尝试 JSON 解析；命令行固定追加 `--batch`，任务文件中的输入参数按默认值处理，不会等待交互提示（`server/src/services/maaExecutionService.ts:479-760`）。
 - 动态任务目录与租约在失败和完成时都清理释放；进程启动时 `cleanupStaleDynamicTaskDirectories` 扫描同一 `tasks/` 根目录，只删除“持有 PID 已不存活且 `owner.json` 已超过 24 小时”的固定前缀目录，缺失或损坏的归属标记、仍存活的 PID、未过期目录与其他目录一律保留；`MAA_EXECUTION_BUSY` 与 `stopped` 错误原样抛出，其余错误重建字段后抛出（`server/src/services/maaExecutionService.ts:320-359`）。
 - `getMaaVersion` 执行 `maa version` 并解析输出中的 `maa-cli` 与 `MaaCore` 版本行（`server/src/services/maaExecutionService.ts:233-255`）。
 
@@ -69,7 +69,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - `readLogFile` 先对日志目录与请求路径取 `realpath`，再按目录边界判定与扩展名检查：只允许日志目录内的 `.log` 文件，目录外符号链接与悬空目标都被拒绝（`server/src/services/maaLogFileService.ts:268-278,337-349`）。
 - 日志内容从文件尾部按 64 KB 分块读取，单次最多 2 MB；窗口起始于行中间时丢弃首行残片。`totalLines` 按 split 语义分块统计换行数；行数上限 `MAX_LOG_FILE_LINES` 5000（`server/src/services/maaLogFileService.ts:24,27,284-329,337-381`）。
 - `cleanupLogs` 按修改时间从新到旧累加，把超出保留上限的文件删除；上限限定 1–1024 MB（`server/src/services/maaLogFileService.ts:229-262`）。
-- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 当前字节数，失败返回 null 不抛错；`readMaaLogIncrement` 只读取检查点之后新增的字节（最多 `maxBytes`）并标明完整性：`ok` 为全部新增内容，`unreadable` 为检查点或文件不可读，`truncated` 为文件回绕、超出单次读取上限或短读导致的尾部部分内容；`readMaaLogSince` 是丢弃状态只取文本的便捷封装（`server/src/services/maaLogFileService.ts:144-204`）。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果；依赖「没读到某类回调」下结论或把统计当整次执行落盘的调用方只在 `ok` 时采信增量内容，截断时改用可核对的完整 CLI 摘要或任务内累计回调，无法确认的字段保持缺失。
+- 执行前检查点 `createMaaLogCheckpoint` 记录 `asst.log` 的路径、当前字节数、文件身份与检查点边界前 256 字节的 SHA-256 摘要，失败返回 null 不抛错；`readMaaLogIncrement` 只读取检查点之后新增的字节（最多 `maxBytes`）并标明完整性：`ok` 为全部新增内容，`unreadable` 为检查点或文件不可读，`truncated` 为文件回绕变小、超出单次读取上限或短读导致的尾部部分内容，`rotated` 为检查点指向的日志已被替换或原地重写（dev/ino 或边界前内容摘要变化）且不再返回文本。调度中的回调结果读取依赖这对检查点与增量读取，不把旧任务日志算入当前结果；依赖「没读到某类回调」下结论或把统计当整次执行落盘的调用方只在 `ok` 时采信增量内容，截断或轮转时改用可核对的完整 CLI 摘要或任务内累计回调，无法确认的字段保持缺失（`server/src/services/maaLogFileService.ts:188-283`）。
 - 调试截图列表从 MAA 状态目录的 `debug/` 读取图片文件；响应只暴露文件名，不返回服务器绝对路径（`server/src/services/maaLogFileService.ts:386-424`）。
 
 ## 活动查询与本地任务缓存
@@ -95,7 +95,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - mall 解析 `Mall` taskchain：好友访问、信用购物、信用作战三项严格 `false` 才整体跳过；购买计数只统计 `exec_times` 缺失或为 1 的 `CreditShop-Bought` 事件（`server/src/services/mallResultService.ts:40-139`）。
 - fight 基于任务总结、命令输出与错误文本：理智耗尽、关卡未开放、剿灭奖励已领完归为 `skipped`，其余错误为 `failed`；理智判定同时检查输出短语与 Summary 段（`server/src/services/fightResultService.ts:56-178`）。
 - 游戏任务解析 `OperProgress` 与 `SwitchTheme` taskchain：培养按 `OperProgressDetail` 与 `OperProgressSummary` 汇总成功、失败与跳过，并按配置计划反推没有回调的未执行专精目标为 `deferredMastery`（Core 每轮最多启动一项专精训练；训练室占用只对该目标发一条跳过回调，后续专精目标不再发回调）；主题按 `SwitchThemeByName*` 子任务与 `SwitchThemeNotFound`、`SwitchThemeSkipped` 判定；缺少有效回调时保持 `observed: false`（`server/src/services/gameTaskResultService.ts:79-301`）。
-- 肉鸽/生息演算的 `run_task` 在启动前创建 `asst.log` 检查点，执行结束后只读取本次新增日志并构建结果摘要（`server/src/services/roguelikeResultService.ts`）：`Roguelike` taskchain 的 `RoguelikeSettlement`（楼层、步数、得分、战斗/招募/收藏品等）、`RoguelikeInvestment*`、`RoguelikeEvent*`、`RoguelikeCombatEnd`、通宝替换与黑流策略回调都保留结构，`TaskChainCompleted`/`TaskChainError`/`TaskChainStopped` 决定 `success`/`failed`/`stopped`；没有观察到任务链终态时为 `incomplete`，不能当成成功。`Reclamation` 没有专用回调，摘要只表达任务链终态与主题。`command=run` 且单个 `taskConfig.type` 为 `Roguelike`/`Reclamation` 的动态任务（CLI 无法表达的主题、模式、重启锚点等参数改走该通路）按同样规则建立检查点，摘要的 `command` 按任务类型映射为 `roguelike`/`reclamation`，`theme` 取 `taskConfig.params.theme`；批量 `taskConfigs` 不建立检查点。摘要成功时挂在 `run.result.summary`，失败时挂在 `run.error.details.summary`；日志检查点创建或读取失败只跳过摘要，不影响执行本身。
+- 肉鸽/生息演算的 `run_task` 先取得设备执行租约、再创建 `asst.log` 检查点，并在释放租约之前读取本次新增日志构建结果摘要（`server/src/controllers/agentExecutionController.ts`、`server/src/services/roguelikeResultService.ts`）：`Roguelike` taskchain 的 `RoguelikeSettlement`（楼层、步数、得分、战斗/招募/收藏品等）、`RoguelikeInvestment*`、`RoguelikeEvent*`、`RoguelikeCombatEnd`、通宝替换与黑流策略回调都保留结构，`TaskChainCompleted`/`TaskChainError`/`TaskChainStopped` 决定 `success`/`failed`/`stopped`；没有观察到任务链终态时为 `incomplete`，不能当成成功。`Reclamation` 没有专用回调，摘要只表达任务链终态与主题。`command=run` 且单个 `taskConfig.type` 为 `Roguelike`/`Reclamation` 的动态任务（CLI 无法表达的主题、模式、重启锚点等参数改走该通路）按同样规则建立检查点，摘要的 `command` 按任务类型映射为 `roguelike`/`reclamation`，`theme` 取 `taskConfig.params.theme`；批量 `taskConfigs` 不建立检查点。摘要成功时挂在 `run.result.summary`，失败时挂在 `run.error.details.summary`。同步执行在返回前采集摘要，后台执行在子进程退出后的收尾回调中采集；被设备占用拒绝或未真正启动（没有出现 spawn 生命周期）的执行不建立采集、不产出摘要；日志检查点创建或读取失败只跳过摘要，不影响执行本身。
 
 ### 作业集逐项进度与文件加载事件
 
@@ -134,8 +134,11 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 | 编队序号与助战参数为可表示的整数 | 0 值与缺省等价，非整数无法映射到命令行 |
 | copilot id 不重复 | 原生缓存文件按 `<id>.json` 命名，重复 id 无法区分条目 |
 | 每个条目的 `displayStage` 等于本地 `Arknights-Tile-Pos` 中该关卡的 `code` | 原生命令用这个代号作 `stage_name`，MaaCore 在缺省 `nav_name_override` 时同样按它导航；现有流程把 `displayStage` 作为 `nav_name_override` 下发 |
+| 本机 overlay 不改变用户已选择的参数 | 原生命令会叠加 `<config>/overlays/copilot.<ext>` 的任务默认值，用户未显式开启的布尔开关、为 0 的编号与空字符串都可能被 overlay 重新打开，命令行没有反向覆盖入口 |
 
-原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。
+overlay 与命令行参数的优先级依据 maa-cli 仓库源码：预设命令在 `crates/maa-cli/src/run/preset/mod.rs` 按 `json`、`yaml`、`yml`、`toml` 的顺序取第一个存在的 overlay 文件作为任务默认值；`crates/maa-cli/src/run/preset/copilot.rs` 随后把用户布尔开关与默认值取或（`use_sanity_potion`、`add_trust`、`ignore_requirements`、`formation`），数字与字符串参数只在用户显式给出时才覆盖，预设会重写的 `copilot_list`、`formation` 等键之外的内容（含 `filename`）原样保留。`maa run <task file>` 直接解析任务文件、不读取 overlay，这是现有流程不受影响的原因。委托资格读取同一份生效 overlay：overlay 里与用户选项冲突且 CLI 无法显式改回的值（关闭的开关被设为 `true`、用户为 0/空而 overlay 非 0/非空、未知参数）判为 `overlay-conflict`；YAML 格式无法在服务端解析、overlay 不可读或格式损坏时判为 `overlay-unreadable`，两者都沿现有动态执行路径。
+
+原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。日志被轮转（检查点文件身份或边界前内容摘要变化）时无法确认是否开战，同样不回退。
 
 原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。删除失败时按原生失败处理，日志检查点可用时回退到现有流程，不会带着可能过期的缓存执行。
 
@@ -179,7 +182,7 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 - 子进程测试不启动真实 CLI：spawn/execFile/停止端口注入同形状的假子进程，覆盖 close/error、退出码、信号与 kill 升级（`server/src/services/maaProcessService.ts:90-101`、`server/src/services/__tests__/maaServicePorts.test.ts:44-55`）。
 - 需要真实进程行为的测试在临时目录写入可执行的假 CLI 脚本，并在模块导入前设置 `MAA_CLI_PATH` 等环境变量；导入时读取的环境变量必须在导入前设置（`server/src/services/__tests__/maaConfigDirCache.test.ts:7-32`）。
 - MAA 缓存、profile 目录与任务缓存目录用 `mkdtemp` 隔离，用例结束后删除（`server/src/services/__tests__/maaConfigDirCache.test.ts:9,43-45`、`server/src/services/__tests__/maaTaskCacheService.test.ts:10`）。
-- 外部依赖整体可注入：活动查询的 runtime（`server/src/services/maaActivityService.ts:94-108`）、日志检查点的 stat/open 端口（`server/src/services/maaLogFileService.ts:61-69`）、通知服务的出站客户端（`server/src/services/notificationService.ts:574-580`）与 Telegram Bot 的全部依赖（`server/src/services/telegramBotService.ts:218-232`），测试不触碰真实网络、设备或 MAA CLI。
+- 外部依赖整体可注入：活动查询的 runtime（`server/src/services/maaActivityService.ts:94-108`）、日志检查点的 stat/open 端口（`server/src/services/maaLogFileService.ts:72-82`）、通知服务的出站客户端（`server/src/services/notificationService.ts:574-580`）与 Telegram Bot 的全部依赖（`server/src/services/telegramBotService.ts:218-232`），测试不触碰真实网络、设备或 MAA CLI。
 - 测试入口、逐文件进程隔离与定向回归命令见[服务端架构与请求契约](README.md#测试入口)。
 
 ## 延伸阅读

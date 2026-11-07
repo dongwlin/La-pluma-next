@@ -447,7 +447,9 @@ describe('moved maintenance routes keep HTTP contracts', () => {
     const maaStateLog = join(xdgStateHome, 'maa', 'debug', 'asst.log');
     await mkdir(dirname(maaStateLog), { recursive: true });
     await writeFile(maaStateLog, [
-      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}],"all_opers":[{"id":"char_1001_amiya","name":"阿米娅","name_en":"Amiya","rarity":5,"own":true},{"id":"char_2002_kalts","name":"凯尔希","rarity":6,"own":false}]},"subtask":"OperBoxRecognitionTask","taskchain":"OperBox","taskid":1,"uuid":"fixture","what":"OperBoxInfo"}'
+      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | TaskChainStart {"taskchain":"OperBox"}',
+      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::OperBoxRecognitionTask","details":{"done":true,"own_opers":[{"id":"char_1001_amiya","name":"阿米娅","rarity":5,"elite":2,"level":90,"potential":6,"own":true}],"all_opers":[{"id":"char_1001_amiya","name":"阿米娅","name_en":"Amiya","rarity":5,"own":true},{"id":"char_2002_kalts","name":"凯尔希","rarity":6,"own":false}]},"subtask":"OperBoxRecognitionTask","taskchain":"OperBox","taskid":1,"uuid":"fixture","what":"OperBoxInfo"}',
+      '[2026-10-30 10:00:00.000][INF][Px1][Tx1] Assistant::append_callback | TaskChainCompleted {"taskchain":"OperBox"}'
     ].join('\n'), 'utf-8');
 
     const port = await startHttpServer(createLaPlumaApp({ env: {} }), servers);

@@ -15,6 +15,8 @@ export interface UseSettingsInstanceOptionsResult extends InstanceOptionsState {
   readonly update: (patch: Partial<MaaInstanceOptions>) => void
   readonly restoreDefaults: () => boolean
   readonly save: () => Promise<InstanceOptionsSaveOutcome>
+  /** 初始读取失败后的显式重试入口。 */
+  readonly reload: () => void
 }
 
 const describeLoadError = (error: unknown): string => (
@@ -32,6 +34,7 @@ export function useSettingsInstanceOptions(
   )
   // 面板常驻挂载但只有可见 section 需要读取；未启用时不发起请求。
   const query = useQuery({ ...options, enabled })
+  const { refetch } = query
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 
   useEffect(() => {
@@ -46,6 +49,10 @@ export function useSettingsInstanceOptions(
 
   const save = useCallback(() => owner.save(), [owner])
 
+  const reload = useCallback(() => {
+    void refetch()
+  }, [refetch])
+
   const loadError = query.isError && !query.data && !state.loaded
     ? describeLoadError(query.error)
     : null
@@ -56,5 +63,6 @@ export function useSettingsInstanceOptions(
     update,
     restoreDefaults,
     save,
+    reload,
   }
 }
