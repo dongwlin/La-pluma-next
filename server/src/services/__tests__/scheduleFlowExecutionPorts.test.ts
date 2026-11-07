@@ -765,6 +765,32 @@ describe('schedule flow boundaries', () => {
     assert.deepEqual(statistics.observed, { stageDrops: true, fightTimes: true, sanityBeforeStage: true });
   });
 
+  it('keeps the item ids the core callback reports for drops', () => {
+    const callback = (what: string, details: Record<string, unknown>) =>
+      `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
+    const log = [
+      callback('FightTimes', { times_finished: 0, sanity_cost: 6, series: 1 }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        drops: [{ itemId: '30012', itemName: '固源岩', quantity: 2 }],
+        stats: [{ itemId: '30012', itemName: '固源岩', quantity: 2, addQuantity: 2 }]
+      }),
+      callback('StageDrops', {
+        stage: { stageCode: '1-7' },
+        stars: 3,
+        drops: [{ itemId: '30012', itemName: '固源岩', quantity: 1 }],
+        stats: [{ itemId: '30012', itemName: '固源岩', quantity: 3, addQuantity: 1 }]
+      }),
+      callback('FightTimes', { times_finished: 2, finished: true })
+    ].join('\n');
+
+    const statistics = parseFightStatistics(log, '1-7');
+    assert.ok(statistics);
+    assert.deepEqual(statistics.drops, [{ itemId: '30012', name: '固源岩', count: 3 }]);
+    assert.deepEqual(statistics.cumulativeDrops, [{ itemId: '30012', name: '固源岩', count: 3 }]);
+  });
+
   it('counts a six-run series batch as six battles with the batch sanity cost', () => {
     const callback = (what: string, details: Record<string, unknown>) =>
       `Assistant::append_callback | SubTaskExtraInfo ${JSON.stringify({ taskchain: 'Fight', what, details })}`;
