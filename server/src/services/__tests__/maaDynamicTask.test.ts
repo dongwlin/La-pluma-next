@@ -103,6 +103,58 @@ describe('dynamic task lifecycle', () => {
     assert.equal(events.some(event => event[0] === 'write' && String(event[1]).endsWith('task.toml')), false)
   })
 
+  it('rejects Tales mode 1 without crafting tools before writing the task file', async () => {
+    const { events, runtime } = createRuntime()
+    await assert.rejects(
+      execDynamicTask('reclamation', {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 1 }
+      }, '生息演算', 'automation', true, false, runtime),
+      error => {
+        assert.equal(errorField(error, 'statusCode'), 400)
+        assert.match(String(errorField(error, 'message')), /tools_to_craft/)
+        return true
+      }
+    )
+    assert.equal(events.some(event => event[0] === 'write' && String(event[1]).endsWith('task.toml')), false)
+    assert.equal(events.some(event => event[0] === 'execute'), false)
+  })
+
+  it('serializes the crafting configuration MaaCore requires for Tales mode 1', async () => {
+    const { events, runtime } = createRuntime()
+    const params = { theme: 'Tales', mode: 1, tools_to_craft: ['荧光棒'], num_craft_batches: 16 }
+    await execDynamicTask(
+      'reclamation',
+      { name: '生息演算', type: 'Reclamation', params },
+      '生息演算',
+      'automation',
+      true,
+      false,
+      runtime
+    )
+    const decoded = parse(String(findTaskFileWrite(events)[2]))
+    assert.deepEqual(decoded.tasks, [{ name: '生息演算', type: 'Reclamation', params }])
+  })
+
+  it('rejects a variant that empties the required crafting tools', async () => {
+    const { events, runtime } = createRuntime()
+    await assert.rejects(
+      execDynamicTask('reclamation-variant', {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 1, tools_to_craft: ['荧光棒'] },
+        variants: [{ params: { tools_to_craft: [] } }]
+      }, '生息演算', 'automation', true, false, runtime),
+      error => {
+        assert.equal(errorField(error, 'statusCode'), 400)
+        assert.match(String(errorField(error, 'message')), /tools_to_craft/)
+        return true
+      }
+    )
+    assert.equal(events.some(event => event[0] === 'write' && String(event[1]).endsWith('task.toml')), false)
+  })
+
   it('serializes nested operator targets and theme candidates as native TOML values', async () => {
     const plans = [{ role: 'Warrior', name: '陈', elite: 2, skill_level: 7, skill_mastery: [0, 3, 0] }]
     for (const config of [

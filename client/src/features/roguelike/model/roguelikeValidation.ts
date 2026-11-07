@@ -70,7 +70,17 @@ export function validateRoguelikeTaskInput(
   const advanced = advancedParams[taskId] ?? {}
   const invalidValue = findInvalidOptionValue(taskId, theme, advanced)
   if (invalidValue) return invalidValue
-  if (taskId !== 'roguelike') return null
+
+  if (taskId !== 'roguelike') {
+    if (resolveModeValue('reclamation', theme, advanced) !== '1') return null
+    if (!pickOptionValue('reclamation', theme, advanced, 'toolsToCraft')) {
+      return '请填写「制作工具名称」：留空时 maa-cli 会默认制作 16 批荧光棒'
+    }
+    if (!pickOptionValue('reclamation', theme, advanced, 'numBatches')) {
+      return '请填写「批次数」：留空时 maa-cli 会默认制作 16 批'
+    }
+    return null
+  }
 
   const mode = resolveModeValue('roguelike', theme, advanced)
   if (mode === '5' && listValue(advanced, 'expectedCollapsalParadigms').length === 0) {

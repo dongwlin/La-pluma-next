@@ -22,7 +22,7 @@ export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     coreType: 'string-list',
     placeholder: '荧光棒',
     modes: ['1'],
-    hint: '多个工具用逗号分隔；留空则不制造。仅在沙洲遗闻模式 1 生效。',
+    hint: '必填，不能留空：maa-cli 在省略 -C 时会默认制作 16 批荧光棒，避免误消耗资源。多个工具用逗号分隔；仅在沙洲遗闻模式 1 生效。',
   },
   {
     key: 'incrementMode',
@@ -48,6 +48,7 @@ export const RECLAMATION_OPTIONS: readonly RoguelikeAdvancedOption[] = [
     placeholder: '16',
     modes: ['1'],
     numberRange: { min: 1, max: MAA_CLI_I32_MAX },
+    hint: '必填，每批 99 个；maa-cli 在省略时默认 16 批。仅在沙洲遗闻模式 1 生效。',
   },
   {
     key: 'clearStore',

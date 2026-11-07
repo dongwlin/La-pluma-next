@@ -362,7 +362,7 @@ describe('validateGameTaskParams Reclamation', () => {
       'Reclamation.params.increment_mode 必须是 0 或 1'
     );
     assert.equal(
-      validateGameTaskParams('Reclamation', { mode: 1, num_craft_batches: 0 }),
+      validateGameTaskParams('Reclamation', { mode: 1, tools_to_craft: ['荧光棒'], num_craft_batches: 0 }),
       'Reclamation.params.num_craft_batches 必须是正整数'
     );
     assert.equal(
@@ -373,6 +373,18 @@ describe('validateGameTaskParams Reclamation', () => {
       validateGameTaskParams('Reclamation', { mode: 1, tools_to_craft: [''] }),
       'Reclamation.params.tools_to_craft 必须是非空工具名数组'
     );
+  });
+
+  it('requires tools_to_craft in Tales mode 1 before MaaCore receives the task', () => {
+    const required = 'Reclamation.params.tools_to_craft 在沙洲遗闻模式 1 下必填，例如 ["荧光棒"]；省略会让 MaaCore 中止';
+    assert.equal(validateGameTaskParams('Reclamation', { theme: 'Tales', mode: 1 }), required);
+    assert.equal(validateGameTaskParams('Reclamation', { mode: 1 }), required);
+    assert.equal(validateGameTaskParams('Reclamation', { theme: 'Tales', mode: 1, tools_to_craft: [] }), required);
+    assert.equal(validateGameTaskParams('Reclamation', {
+      theme: 'Tales',
+      mode: 1,
+      tools_to_craft: ['荧光棒']
+    }), null);
   });
 });
 
@@ -393,7 +405,8 @@ describe('validateRoguelikeCommandArgs', () => {
       ['roguelike', ['Phantom', '--mode=4', '--starts-count', '3']],
       ['roguelike', ['Sarkaz', '--mode', '1', '--start-with-seed', '2b3c4d,rogue_1,120']],
       ['reclamation', ['Tales', '-m', '1', '-C', '荧光棒', '--increment-mode', '1']],
-      ['reclamation', ['Tales']]
+      ['reclamation', ['Tales', '-C', '荧光棒']],
+      ['reclamation', ['Tales', '-m', '0']]
     ] as const) {
       assert.equal(validateRoguelikeCommandArgs(command, args), null, `${command} ${args.join(' ')}`);
     }
@@ -425,8 +438,29 @@ describe('validateRoguelikeCommandArgs', () => {
     assert.equal(validateRoguelikeCommandArgs('roguelike', ['Phantom', '--starts-count', '1.5']), '集成战略 --starts-count 必须是整数');
     assert.equal(validateRoguelikeCommandArgs('roguelike', ['Sami', '-F', '']), '集成战略 -F 不能为空白值');
     assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '2']), '生息演算 --mode 必须是 0 或 1');
-    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--increment-mode', '3']), '生息演算 --increment-mode 必须是 0 或 1');
-    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--num-craft-batches', '0']), '生息演算 --num-craft-batches 必须是正整数');
+    assert.equal(
+      validateRoguelikeCommandArgs('reclamation', ['Tales', '-C', '荧光棒', '--increment-mode', '3']),
+      '生息演算 --increment-mode 必须是 0 或 1'
+    );
+    assert.equal(
+      validateRoguelikeCommandArgs('reclamation', ['Tales', '-C', '荧光棒', '--num-craft-batches', '0']),
+      '生息演算 --num-craft-batches 必须是正整数'
+    );
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', 'abc']), '生息演算 --mode 必须是整数');
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '1', '-C', '']), '生息演算 -C 不能为空白工具名');
+  });
+
+  it('requires tools on the preset command only when the effective mode crafts', () => {
+    const required = '生息演算模式 1 必须显式指定 --tools-to-craft（省略时 maa-cli 会默认制作 16 批荧光棒）';
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales']), required);
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '1']), required);
+    assert.equal(
+      validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '1', '--num-craft-batches', '2']),
+      required
+    );
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '0']), null);
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '0', '-C', '荧光棒']), null);
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--tools-to-craft=发电机']), null);
   });
 });
 

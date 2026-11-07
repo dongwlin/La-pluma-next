@@ -919,7 +919,7 @@ describe('agent execution HTTP adapter', () => {
       },
       {
         command: 'reclamation',
-        args: ['Tales'],
+        args: ['Tales', '-C', '荧光棒'],
         callbacks: [
           'Assistant::append_callback | SubTaskStart {"taskchain":"Reclamation"}',
           'Assistant::append_callback | TaskChainCompleted {"taskchain":"Reclamation"}'

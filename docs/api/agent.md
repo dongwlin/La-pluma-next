@@ -310,8 +310,8 @@ curl -X POST http://localhost:3000/api/agent/actions/run-task \
 
 - `Roguelike.params.theme` 可为 `Phantom`、`Mizuki`、`Sami`、`Sarkaz`、`JieGarden` 或 `BlackFlow`；`mode` 必须属于主题：通用 `0`/`1`/`4`/`6`/`7`，萨米额外 `5`（刷坍缩范式），萨卡兹额外 `10001`（快速通过第一层），界园额外 `20001`（刷常乐节点），黑流树海为 `0`/`1`/`30001`（刷襁褓动物）/`30003`（刷开局并保留目标局）。
 - `mode=20001` 必填 `find_playTime_target`（`1` 令、`2` 黍、`3` 年）；`mode=30003` 必填 `blackflow_start_animals`（0 至 2 项，羽蛇最多一项）与 `blackflow_start_rewards`（0 至 4095 位掩码），启用 `blackflow_start_utopia` 时还需非空且不重复的 `blackflow_start_reward_priority`。
-- `Reclamation.params.theme` 可为 `Tales` 或 `RelaunchAnchor`；沙洲遗闻模式为 `0`/`1`，重启锚点为 `16`（RA-1）/`32`（RA-15）/`48`（RA-4）。`tools_to_craft` 必须是工具名数组，`increment_mode` 只能是 `0`/`1`，`num_craft_batches` 必须是正整数，`clear_store` 是布尔值。
-- CLI 通路在创建 Run 之前预检：主题、模式或加号点击方式超出 maa-cli 能力时返回 HTTP 400 `AGENT_VALIDATION_TASK_ARGS_INVALID`，并提示改用动态任务；动态任务参数非法返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。两条通路都不会把非法组合静默透传给 CLI/Core。
+- `Reclamation.params.theme` 可为 `Tales` 或 `RelaunchAnchor`；沙洲遗闻模式为 `0`/`1`，重启锚点为 `16`（RA-1）/`32`（RA-15）/`48`（RA-4）。沙洲遗闻模式 `1` 必须显式提供非空的 `tools_to_craft` 工具名数组：MaaCore 的 `ReclamationCraftTaskPlugin` 直接读取该键，省略会让 MaaCore 抛出未捕获异常并中止 CLI；预检会在创建 Run 前返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。`increment_mode` 只能是 `0`/`1`，`num_craft_batches` 必须是正整数（缺省由 Core 取 16），`clear_store` 是布尔值。
+- CLI 通路在创建 Run 之前预检：主题、模式或加号点击方式超出 maa-cli 能力时返回 HTTP 400 `AGENT_VALIDATION_TASK_ARGS_INVALID`，并提示改用动态任务；沙洲遗闻模式 `1`（显式或 `-m` 缺省时）缺少 `--tools-to-craft` 同样返回 `AGENT_VALIDATION_TASK_ARGS_INVALID`，避免 maa-cli 用默认的 16 批荧光棒静默接管。动态任务参数非法返回 `AGENT_VALIDATION_TASK_CONFIG_INVALID`。两条通路都不会把非法组合静默透传给 CLI/Core。
 
 ## 养成材料筹备队列与任务流程
 

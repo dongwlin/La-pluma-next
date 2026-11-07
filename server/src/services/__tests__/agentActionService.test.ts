@@ -228,7 +228,7 @@ describe('executeAgentTask', () => {
 
     await executeAgentTask({
       command: 'reclamation',
-      args: ['Tales', '-m', '1'],
+      args: ['Tales', '-m', '1', '-C', '荧光棒'],
       taskName: '生息演算',
       taskType: 'roguelike',
       waitForCompletion: false
@@ -236,7 +236,7 @@ describe('executeAgentTask', () => {
 
     assert.deepEqual(calls[0], {
       executor: 'command',
-      args: ['reclamation', ['Tales', '-m', '1'], '生息演算', 'roguelike', false]
+      args: ['reclamation', ['Tales', '-m', '1', '-C', '荧光棒'], '生息演算', 'roguelike', false]
     });
   });
 
@@ -335,6 +335,31 @@ describe('executeAgentTask', () => {
       error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
     );
   });
+
+  it('rejects a Reclamation mode 1 task without crafting tools before run creation', () => {
+    for (const taskConfig of [
+      {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 1 }
+      },
+      {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 1, tools_to_craft: ['荧光棒'] },
+        variants: [{ params: { tools_to_craft: [] } }]
+      }
+    ]) {
+      assert.throws(
+        () => preflightAgentTaskRequest({ command: 'run', args: ['reclamation'], taskConfig }),
+        error => {
+          assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID');
+          assert.match(String(errorField(error, 'message')), /tools_to_craft/);
+          return true;
+        }
+      );
+    }
+  })
 
   it('keeps Core-only task types off the maa-cli command allowlist', async () => {
     const { calls, dependencies } = createExecutors();
