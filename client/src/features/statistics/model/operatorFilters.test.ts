@@ -3,9 +3,11 @@ import type { OperBoxData, OperatorDetailed } from '@/features/game-data'
 import {
   AMIYA_FORM_IDS,
   DEFAULT_OPERATOR_FILTERS,
+  buildKnownOperatorIdSet,
   buildOwnedOperatorIdSet,
   hasActiveOperatorFilters,
   isOwnedOperator,
+  isUnknownOperator,
   selectOperators,
   type OperatorFilters,
 } from './operatorFilters'
@@ -40,10 +42,41 @@ const operBox = (data: OperatorDetailed[]): OperBoxData => ({
   timestamp: '2026-10-25T00:00:00.000Z',
 })
 
-const ownedBox = operBox([
-  operator('char_alpha', '阿尔法', { rarity: 6, level: 80, elite: 2, potential: 1 }),
-  operator('char_002_amiya', '阿米娅', { rarity: 5, profession: 'CASTER', level: 50, elite: 2, potential: 3 }),
-])
+/** 带识别目录的快照：`recognized` 决定快照覆盖面，其余条目拥有状态未知。 */
+const recognizedBox = (
+  data: OperatorDetailed[],
+  recognized: readonly OperatorDetailed[],
+  status: 'complete' | 'partial',
+): OperBoxData => ({
+  ...operBox(data),
+  allOpers: recognized.map(entry => ({
+    id: entry.id,
+    name: entry.name,
+    rarity: entry.rarity,
+    owned: data.some(operator => operator.id === entry.id),
+  })),
+  operTotal: recognized.length,
+  recognition: { status, total: recognized.length, owned: data.length },
+})
+
+/** 完整识别快照：识别目录覆盖整个目录，未列出的条目都是确认未拥有。 */
+const completeBox = (data: OperatorDetailed[]): OperBoxData =>
+  recognizedBox(data, catalog, 'complete')
+
+/** 识别中途失败后的快照：目录存在，但只有已识别的干员被确认。 */
+const partialBox = (data: OperatorDetailed[], coveredIds: readonly string[]): OperBoxData =>
+  recognizedBox(data, catalog.filter(entry => coveredIds.includes(entry.id)), 'partial')
+
+const ownedAlpha = operator('char_alpha', '阿尔法', { rarity: 6, level: 80, elite: 2, potential: 1 })
+const ownedAmiya = operator('char_002_amiya', '阿米娅', {
+  rarity: 5,
+  profession: 'CASTER',
+  level: 50,
+  elite: 2,
+  potential: 3,
+})
+
+const ownedBox = completeBox([ownedAlpha, ownedAmiya])
 
 const filters = (overrides: Partial<OperatorFilters> = {}): OperatorFilters => ({
   ...DEFAULT_OPERATOR_FILTERS,
@@ -235,13 +268,14 @@ describe('operator sorting', () => {
   })
 
   it('sorts non-owned views by rarity then Chinese name and ignores level sorting', () => {
+    const unownedCatalog = [
+      operator('char_low', '阿低', { rarity: 3 }),
+      operator('char_high_b', '乙高', { rarity: 5 }),
+      operator('char_high_a', '甲高', { rarity: 5 }),
+    ]
     const result = selectOperators({
-      catalog: [
-        operator('char_low', '阿低', { rarity: 3 }),
-        operator('char_high_b', '乙高', { rarity: 5 }),
-        operator('char_high_a', '甲高', { rarity: 5 }),
-      ],
-      operBox: null,
+      catalog: unownedCatalog,
+      operBox: recognizedBox([], unownedCatalog, 'complete'),
       filters: filters({ ownership: 'unowned', sortBy: 'level' }),
     })
 
@@ -258,6 +292,59 @@ describe('operator sorting', () => {
     selectOperators({ catalog: unsorted, operBox: null, filters: filters() })
 
     expect(ids(unsorted)).toEqual(before)
+  })
+})
+
+describe('operator recognition coverage', () => {
+  it('confirms the whole catalog only from a complete snapshot', () => {
+    const ownedOnly = ['char_002_amiya', 'char_1001_amiya2', 'char_1037_amiya3', 'char_alpha'].sort()
+    const complete = buildKnownOperatorIdSet(ownedBox)
+    const partial = buildKnownOperatorIdSet(partialBox([ownedAlpha, ownedAmiya], ['char_alpha', 'char_beta']))
+    const legacy = buildKnownOperatorIdSet(operBox([ownedAlpha, ownedAmiya]))
+
+    expect(catalog.every(entry => complete.has(entry.id))).toBe(true)
+    expect([...partial].sort()).toEqual(ownedOnly)
+    expect([...legacy].sort()).toEqual(ownedOnly)
+  })
+
+  it('labels operators outside the snapshot coverage as unknown instead of unowned', () => {
+    const knownIds = buildKnownOperatorIdSet(partialBox([ownedAlpha], ['char_alpha']))
+    const uncovered = catalog.find(entry => entry.id === 'char_beta')!
+
+    expect(isUnknownOperator(uncovered, knownIds)).toBe(true)
+    expect(isUnknownOperator(catalog.find(entry => entry.id === 'char_alpha')!, knownIds)).toBe(false)
+  })
+
+  it('keeps operators outside a partial snapshot out of the unowned view', () => {
+    const box = partialBox([ownedAlpha], ['char_alpha'])
+
+    const result = selectOperators({
+      catalog,
+      operBox: box,
+      filters: filters({ ownership: 'unowned' }),
+    })
+
+    expect(ids(result)).toEqual([])
+  })
+
+  it('treats every non-owned operator as unknown when the snapshot carries no signal', () => {
+    const result = selectOperators({
+      catalog,
+      operBox: operBox([ownedAlpha]),
+      filters: filters({ ownership: 'unowned' }),
+    })
+
+    expect(ids(result)).toEqual([])
+  })
+
+  it('confirms unowned entries listed by a complete snapshot', () => {
+    const result = selectOperators({
+      catalog,
+      operBox: ownedBox,
+      filters: filters({ ownership: 'unowned' }),
+    })
+
+    expect(ids(result)).toEqual(['char_beta', 'char_gamma'])
   })
 })
 

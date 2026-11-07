@@ -6,6 +6,7 @@ import {
   mergeOperatorCatalog,
   parseOperBoxCatalog,
   parseOperBoxRecognitionPayload,
+  readOperBoxRecognitionStatus,
   resolveRecognitionCoverage
 } from '../operatorCatalogModel.ts';
 
@@ -203,17 +204,32 @@ describe('operator recognition coverage', () => {
 });
 
 describe('operbox snapshot recognition info', () => {
-  it('reports a complete snapshot when the recognition catalog is present', () => {
+  it('reports a complete snapshot when the recognition reported completion', () => {
+    assert.deepEqual(
+      describeOperBoxRecognition({ allOpers: [amiya, kaltsit], operTotal: 2, operCount: 1, complete: true }),
+      { status: 'complete', total: 2, owned: 1 }
+    );
+  });
+
+  it('keeps a catalog snapshot partial when the recognition did not report completion', () => {
     assert.deepEqual(
       describeOperBoxRecognition({ allOpers: [amiya, kaltsit], operTotal: 2, operCount: 1 }),
-      { status: 'complete', total: 2, owned: 1 }
+      { status: 'partial', total: 2, owned: 1 }
     );
   });
 
   it('reports a partial snapshot for caches written without a catalog', () => {
     assert.deepEqual(
-      describeOperBoxRecognition({ allOpers: null, operTotal: null, operCount: 3 }),
+      describeOperBoxRecognition({ allOpers: null, operTotal: null, operCount: 3, complete: true }),
       { status: 'partial', total: 3, owned: 3 }
     );
+  });
+
+  it('reads the persisted recognition status instead of deriving it from the catalog', () => {
+    assert.equal(readOperBoxRecognitionStatus({ status: 'partial', total: 2, owned: 1 }), 'partial');
+    assert.equal(readOperBoxRecognitionStatus({ status: 'complete', total: 2, owned: 1 }), 'complete');
+    assert.equal(readOperBoxRecognitionStatus({ status: 'unknown', total: 2, owned: 1 }), null);
+    assert.equal(readOperBoxRecognitionStatus({}), null);
+    assert.equal(readOperBoxRecognitionStatus(null), null);
   });
 });
