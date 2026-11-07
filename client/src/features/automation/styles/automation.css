@@ -44,12 +44,6 @@
     outline-offset: 2px;
   }
 
-  .automation-flow-task-icon svg {
-    /* S3: 流程卡片任务图标固定 16px，需要压过 Icons 上的 w-3.5。 */
-    width: 1rem !important;
-    height: 1rem !important;
-  }
-
   @media (min-width: 1200px) {
     .automation-flow-card-header {
       align-items: flex-start;
@@ -131,18 +125,6 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.625rem;
     font-weight: 700;
-  }
-
-  .automation-flow-task-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    flex: 0 0 auto;
-    border-radius: var(--app-radius-md);
-    background: var(--app-accent-soft);
-    color: var(--app-accent);
   }
 
   .automation-flow-task-name {
@@ -2236,7 +2218,6 @@
 
     .automation-task-editor .automation-flow-card-controls {
       justify-content: space-between;
-      padding-left: 2.625rem;
     }
   }
 
