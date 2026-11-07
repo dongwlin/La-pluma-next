@@ -64,6 +64,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
     syncState,
     loadError,
     loaded,
+    reload,
   } = useSettingsResourceSource(undefined, isActive)
   const saving = syncState === 'saving'
   const {
@@ -111,6 +112,8 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
       saving={saving}
       saveDisabled={!loaded}
       saveBlockedReason={saveBlockedReason}
+      editingDisabled={!loaded}
+      onRetryLoad={loadError ? reload : undefined}
       onSave={handleSave}
       onReset={handleReset}
     >
@@ -121,6 +124,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
           update({ source: value as ResourceSourceType })
           setConfigFeedback(null)
         }}
+        disabled={!loaded}
         options={SOURCE_OPTIONS}
       />
 
@@ -132,6 +136,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             update({ git: { backend: value as GitBackend } })
             setConfigFeedback(null)
           }}
+          disabled={!loaded}
           options={BACKEND_OPTIONS}
         />
       )}
@@ -145,7 +150,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             onChange={(value: string) => {
               updateMirrorChyan({ cdk: value, clearCdk: false })
             }}
-            disabled={draft.mirrorchyan.clearCdk}
+            disabled={!loaded || draft.mirrorchyan.clearCdk}
             hint={describeCdk(draft.mirrorchyan.cdkKind)}
           />
           {draft.mirrorchyan.cdkKind !== 'none' && (
@@ -155,6 +160,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
               onChange={(checked: boolean) => {
                 updateMirrorChyan({ clearCdk: checked, cdk: checked ? '' : draft.mirrorchyan.cdk })
               }}
+              disabled={!loaded}
             />
           )}
           <Input
@@ -162,6 +168,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
             type="number"
             value={draft.mirrorchyan.checkInterval}
             onChange={handleCheckIntervalChange}
+            disabled={!loaded}
             hint="0 表示禁用缓存；默认 600 秒"
           />
         </>
@@ -180,6 +187,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
               update({ autoUpdate: checked })
               setConfigFeedback(null)
             }}
+            disabled={!loaded}
           />
         </div>
         <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
@@ -194,6 +202,7 @@ export default function ResourceSourcePanel({ isActive }: ResourceSourcePanelPro
               update({ warnOnUpdateFailure: checked })
               setConfigFeedback(null)
             }}
+            disabled={!loaded}
           />
         </div>
       </div>

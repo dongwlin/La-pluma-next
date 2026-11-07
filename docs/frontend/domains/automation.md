@@ -48,7 +48,7 @@
 
 | 任务 | 参数与迁移规则 |
 | --- | --- |
-| Fight | 临期药使用 `medicineExpireDays`（天数，0 禁用）；旧 `expiringMedicine`（瓶数）在迁移时复制到新键并删除旧键。`series` 下拉提供 -1~10，旧资源只接受 -1~6；`-1` 仍以 `--series=-1` 单 token 下发 |
+| Fight | 临期药使用 `medicineExpireDays`（天数，0 禁用）；旧 `expiringMedicine`（瓶数）在迁移时映射为「两天内过期」的固定窗口（旧 0 保持 0），再删除旧键；新字段已存在时优先沿用新字段。`series` 下拉提供 -1~10，旧资源只接受 -1~6；`-1` 仍以 `--series=-1` 单 token 下发 |
 | Recruit | 新增 `level3_recruitment_permit_reserve`（0 表示不保留）；`force_refresh` 仍有效且迁移只补默认值、不删除；招募次数 0 或不选确认星级表示只计算 Tags |
 | Award | 新增 `signinevent`（限时签到活动奖励） |
 | Infrast | 设施选择补充 `Recycle`（回收站）与 `AssistantChange`（副手换人），默认设施集合保持不变 |

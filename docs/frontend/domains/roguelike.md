@@ -82,7 +82,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 命令拼接规则：
 
 - 空字符串、未勾选的 checkbox、未设置的字段、当前主题/模式不适用的字段、不属于当前主题候选表的下拉值与没有 CLI 参数名的字段不写入命令；checkbox 为 true 时只追加参数名。
-- 非 checkbox 字段追加 `参数名 值`；`list` 字段按切分后的每一项重复参数名（`--expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏`）。
+- 非 checkbox 字段追加 `参数名 值`；取值为负整数时改用 `参数名=值` 单 token 下发（如难度「不切换」的 `--difficulty=-1`），避免 clap 把空格后的负数当成未知选项；`list` 字段按切分后的每一项重复参数名（`--expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏`）。
 - 数字字段只接受整数并限定在字段范围内：运行次数、投资次数与批次数为 `1–2147483647`；空值表示未设置，但沙洲遗闻模式 1 的批次数必填。小数、指数、负数或越界值不会写入命令，执行前校验会返回明确错误。
 - 声明 `defaultValue` 的字段在缺失或为空时解析为默认值并始终写入：生息演算 `-m` 因此始终出现，沙洲遗闻缺省为 `1`、重启锚点为 `16`；开局职业组缺省 `稳扎稳打`，避免空缺时 Core 按固定位置点选职业组、与核心干员的职业不匹配。
 - 未声明默认值的 select 不写命令：集成战略 `--mode` 继续省略，与 CLI 缺省 `0` 一致；界面显示由 `resolveRoguelikeAdvancedValue` 回落到当前主题的首项。

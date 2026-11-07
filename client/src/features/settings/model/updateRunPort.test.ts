@@ -4,9 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '@/shared/api'
 import { ExecutionController } from '@/features/task-execution'
 import type { AgentRun, RunSnapshot } from '@/features/task-execution'
-import { SettingsUpdateOwner } from './updateCommands'
+import { SettingsUpdateOwner, type UpdateCommandOutcome } from './updateCommands'
 import {
-  SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS,
   createSettingsUpdateRunPort,
   type UpdateRunTerminal,
 } from './updateRunPort'
@@ -113,9 +112,9 @@ describe('settings update run port', () => {
     expect(await settledWithin(pending)).toEqual(UNKNOWN_TERMINAL)
   })
 
-  it('settles as unknown once the wait timeout elapses without a confirmed terminal state', async () => {
+  it('keeps waiting while the server run is still active instead of settling on a local ceiling', async () => {
     vi.useFakeTimers()
-    const { controller, run } = createHarness()
+    const { controller, run, api } = createHarness()
     const port = createSettingsUpdateRunPort(controller)
     const runId = port.adopt(submission(run), 'update_core')
     if (!runId) throw new Error('expected an adopted run id')
@@ -123,11 +122,93 @@ describe('settings update run port', () => {
     const pending = port.wait(runId)
     let settled = false
     void pending.then(() => { settled = true })
-    await vi.advanceTimersByTimeAsync(SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS - 1)
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(settled).toBe(false)
 
-    await vi.advanceTimersByTimeAsync(1)
-    expect(await pending).toEqual(UNKNOWN_TERMINAL)
+    api.fetchRun.mockResolvedValue({
+      success: true,
+      data: { ...run, state: 'succeeded' },
+    } as ApiResponse<AgentRun>)
+    await controller.refresh('reconnect')
+
+    await expect(pending).resolves.toEqual({
+      state: 'succeeded',
+      message: null,
+      errorDetails: {},
+    })
+  })
+
+  it('keeps the running slot and stop entry for a long update and settles on the server terminal state', async () => {
+    vi.useFakeTimers()
+    const { controller, run, api } = createHarness()
+    const port = createSettingsUpdateRunPort(controller)
+    const owner = new SettingsUpdateOwner({
+      updateCore: () => Promise.resolve(submission(run)),
+      runPort: port,
+    })
+
+    const pending = owner.updateCore()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(owner.getState().running).toBe('core')
+    expect(controller.getState().trackedRunId).toBe(run.runId)
+
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(owner.getState().running).toBe('core')
+
+    await expect(owner.cancel()).resolves.toEqual({ ok: true, message: null })
+    expect(api.stopRun).toHaveBeenCalledWith(run.runId)
+
+    api.fetchRun.mockResolvedValue({
+      success: true,
+      data: { ...run, state: 'stopped' },
+    } as ApiResponse<AgentRun>)
+    await controller.refresh('reconnect')
+
+    const outcome = await pending
+    expect(outcome).toMatchObject({ status: 'canceled', operation: 'core' })
+    expect(owner.getState()).toMatchObject({ running: null, canceling: false })
+  })
+
+  it('recovers a tracked settings update after a refresh and keeps the stop entry', async () => {
+    const { controller, run, api } = createHarness()
+    const resourcesRun: AgentRun = { ...run, operationId: 'update_resources' }
+    const port = createSettingsUpdateRunPort(controller)
+    controller.adoptSubmission(submission(resourcesRun), 'update_resources', { scope: 'settings' })
+    expect(port.tracked()).toEqual({ runId: resourcesRun.runId, operationId: 'update_resources' })
+
+    const owner = new SettingsUpdateOwner({ runPort: port })
+    const outcomes: UpdateCommandOutcome[] = []
+    const stopObserving = owner.observeTrackedRun(outcome => outcomes.push(outcome))
+
+    expect(owner.getState().running).toBe('resources')
+    await expect(owner.cancel()).resolves.toEqual({ ok: true, message: null })
+
+    api.fetchRun.mockResolvedValue({
+      success: true,
+      data: { ...resourcesRun, state: 'succeeded' },
+    } as ApiResponse<AgentRun>)
+    await controller.refresh('reconnect')
+
+    await vi.waitFor(() => expect(outcomes).toHaveLength(1))
+    expect(outcomes[0]).toMatchObject({
+      status: 'succeeded',
+      operation: 'resources',
+      resourcesChanged: true,
+      versionChanged: true,
+    })
+    expect(owner.getState()).toMatchObject({ running: null, canceling: false })
+    stopObserving()
+  })
+
+  it('does not recover runs owned by other scopes or already terminal runs', async () => {
+    const { controller, run } = createHarness()
+    const port = createSettingsUpdateRunPort(controller)
+    controller.adoptSubmission(submission(run), 'update_core', { scope: 'automation' })
+    expect(port.tracked()).toBeNull()
+
+    controller.observeRun(null)
+    controller.adoptSubmission(submission({ ...run, state: 'succeeded' }), 'update_core', { scope: 'settings' })
+    expect(port.tracked()).toBeNull()
   })
 
   it('only releases or stops the run it adopted', async () => {

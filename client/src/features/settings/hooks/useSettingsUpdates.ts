@@ -2,7 +2,7 @@
 // dashboard-snapshot 失效（CLI 更新不发布）；重取 settings/version。完成提示在 HTTP
 // 返回后立即发出，版本重取在后台继续；失败只展示反馈，不自动重发。
 
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { invalidateItemIconCache } from '@/features/game-data'
 import { publishResourceInvalidation } from '@/features/resource-invalidation'
 import {
@@ -42,15 +42,7 @@ export function useSettingsUpdates(
 ): UseSettingsUpdatesResult {
   const state = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState)
 
-  const run = useCallback(async (
-    startMessage: string,
-    action: () => Promise<UpdateCommandOutcome>,
-  ): Promise<UpdateCommandOutcome> => {
-    // 已有一条命令在途时不再显示第二条开始提示；owner 会返回 ignored。
-    if (owner.getState().running === null) notify(startMessage)
-
-    const outcome = await action()
-
+  const finish = useCallback(async (outcome: UpdateCommandOutcome) => {
     if (outcome.message) {
       if (outcome.messageType) notify(outcome.message, outcome.messageType)
       else notify(outcome.message)
@@ -72,7 +64,23 @@ export function useSettingsUpdates(
     }
 
     return outcome
-  }, [notify, owner, reloadVersion])
+  }, [notify, reloadVersion])
+
+  const run = useCallback(async (
+    startMessage: string,
+    action: () => Promise<UpdateCommandOutcome>,
+  ): Promise<UpdateCommandOutcome> => {
+    // 已有一条命令在途时不再显示第二条开始提示；owner 会返回 ignored。
+    if (owner.getState().running === null) notify(startMessage)
+    return finish(await action())
+  }, [finish, notify, owner])
+
+  // 刷新后服务端更新可能仍在运行：恢复观察、占回命令槽位并保留停止入口。
+  useEffect(() => (
+    owner.observeTrackedRun(outcome => {
+      void finish(outcome)
+    })
+  ), [finish, owner])
 
   const updateCore = useCallback(() => (
     run('正在更新 MaaCore 并同步最新资源（大包下载最长可能需要约 15 分钟）...', () => owner.updateCore())

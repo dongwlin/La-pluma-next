@@ -41,6 +41,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
     syncState: connectionSyncState,
     loadError: connectionLoadError,
     loaded: connectionLoaded,
+    reload: reloadConnectionConfig,
   } = useSettingsConnectionConfig()
   const clearTestFeedback = useClearConnectionTestFeedback()
   const connectionSaving = connectionSyncState === 'saving'
@@ -85,6 +86,8 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
       saving={connectionSaving}
       saveDisabled={!connectionLoaded}
       saveBlockedReason={saveBlockedReason}
+      editingDisabled={!connectionLoaded}
+      onRetryLoad={connectionLoadError ? reloadConnectionConfig : undefined}
       onSave={handleSave}
       onReset={handleReset}
     >
@@ -95,6 +98,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           onChange={(value: string) => {
             updateConnectionConfig({ adb_path: value })
           }}
+          disabled={!connectionLoaded}
           hint="ADB 可执行文件的完整路径"
         />
         <Input
@@ -104,6 +108,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
             updateConnectionConfig({ address: value })
             clearTestFeedback()
           }}
+          disabled={!connectionLoaded}
           hint="模拟器地址，例如 127.0.0.1:16384"
         />
       </div>
@@ -112,6 +117,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
         adbPath={configData.adb_path}
         address={configData.address}
         onSelectDeviceStart={clearConfigFeedback}
+        disabled={!connectionLoaded}
       />
 
       <div className="grid min-w-0 gap-(--app-space-card) md:grid-cols-2 md:items-end">
@@ -121,6 +127,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           onChange={(value: string) => {
             updateConnectionConfig({ preset: value as MaaConnectionPreset })
           }}
+          disabled={!connectionLoaded}
           options={PRESET_OPTIONS}
           hint="预设提供默认 ADB 路径与平台配置；显式填写的值优先"
         />
@@ -130,6 +137,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           onChange={(value: string) => {
             updateConnectionConfig({ config: value })
           }}
+          disabled={!connectionLoaded}
           options={[
             { value: 'CompatMac', label: 'CompatMac (macOS)' },
             { value: 'CompatPOSIXShell', label: 'CompatPOSIXShell (Linux)' },
@@ -149,6 +157,7 @@ export default function ConnectionConfigPanel({ isActive }: ConnectionConfigPane
           onChange={(checked: boolean) => {
             updateConnectionConfig({ auto_reconnect: checked })
           }}
+          disabled={!connectionLoaded}
         />
       </div>
     </ConfigEditorCard>

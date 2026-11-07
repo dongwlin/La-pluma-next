@@ -38,6 +38,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
     syncState,
     loadError,
     loaded,
+    reload,
   } = useSettingsInstanceOptions(undefined, 'default', isActive)
   const saving = syncState === 'saving'
   const {
@@ -78,6 +79,8 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
       saving={saving}
       saveDisabled={!loaded}
       saveBlockedReason={saveBlockedReason}
+      editingDisabled={!loaded}
+      onRetryLoad={loadError ? reload : undefined}
       onSave={handleSave}
       onReset={handleReset}
     >
@@ -87,6 +90,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
         onChange={(value: string) => {
           updateInstanceOptions({ touch_mode: value as MaaTouchMode })
         }}
+        disabled={!loaded}
         options={TOUCH_MODE_OPTIONS}
         hint="ADB 兼容性最好；MaaTouch 触控更接近真实点击"
       />
@@ -103,6 +107,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
             onChange={(checked: boolean) => {
               updateInstanceOptions({ deployment_with_pause: checked })
             }}
+            disabled={!loaded}
           />
         </div>
         <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
@@ -116,6 +121,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
             onChange={(checked: boolean) => {
               updateInstanceOptions({ adb_lite_enabled: checked })
             }}
+            disabled={!loaded}
           />
         </div>
         <div className="config-reconnect-row flex min-h-14 items-center justify-between gap-3 py-1">
@@ -129,6 +135,7 @@ export default function InstanceOptionsPanel({ isActive }: InstanceOptionsPanelP
             onChange={(checked: boolean) => {
               updateInstanceOptions({ kill_adb_on_exit: checked })
             }}
+            disabled={!loaded}
           />
         </div>
       </div>

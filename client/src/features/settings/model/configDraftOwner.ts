@@ -194,8 +194,13 @@ export class ConfigDraftOwner<T extends Record<string, unknown>> {
     return changed
   }
 
-  /** 接受一次字段编辑；内容未变化时不推进 revision。 */
+  /**
+   * 接受一次字段编辑；内容未变化时不推进 revision。
+   * 首次服务端读取被采纳前忽略编辑：页面显示的默认值尚未与服务端值比对，
+   * 此时推进 revision 会让首次读取被丢弃，草稿将一直停留在未加载状态。
+   */
   update(patch: Partial<T>): boolean {
+    if (!this.state.loaded) return false
     const next = { ...this.state.draft, ...patch } as T
     if (this.equal(next, this.state.draft)) return false
 
@@ -213,9 +218,10 @@ export class ConfigDraftOwner<T extends Record<string, unknown>> {
 
   /**
    * 恢复页面原有默认值。只改草稿，不写服务端；即使内容没变也推进 revision，
-   * 使重置前发出的读取不能把服务端旧值带回来。保存进行中时忽略。
+   * 使重置前发出的读取不能把服务端旧值带回来。首次读取被采纳前与保存进行中时忽略。
    */
   restoreDefaults(): boolean {
+    if (!this.state.loaded) return false
     if (this.state.syncState === 'saving') return false
 
     const next = this.clone(this.createDefault())

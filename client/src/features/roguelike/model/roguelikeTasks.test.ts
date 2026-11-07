@@ -314,6 +314,28 @@ describe('buildRoguelikeCommandParams', () => {
     )).toBe('Sami --difficulty 6 --roles 稳扎稳打 --use-foldartal')
   })
 
+  it('joins a negative difficulty to the option name as one CLI token', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { difficulty: '-1' } },
+    )).toBe('Sarkaz --difficulty=-1 --roles 稳扎稳打')
+  })
+
+  it('keeps zero and positive difficulty as separate value tokens', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { difficulty: '0' } },
+    )).toBe('Sarkaz --difficulty 0 --roles 稳扎稳打')
+
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Sarkaz' },
+      { roguelike: { difficulty: '18' } },
+    )).toBe('Sarkaz --difficulty 18 --roles 稳扎稳打')
+  })
+
   it('passes the specified seed as an option value', () => {
     expect(buildRoguelikeCommandParams(
       'roguelike',

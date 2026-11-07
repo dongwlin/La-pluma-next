@@ -460,6 +460,81 @@ describe('automation config adapter', () => {
   })
 })
 
+describe('legacy fight expiring medicine migration', () => {
+  const legacyFightDraft = (params: Record<string, unknown>) => ({
+    taskFlow: [{
+      id: 'fight-1',
+      commandId: 'fight',
+      name: '理智作战',
+      description: '自动刷关卡消耗理智',
+      enabled: true,
+      params: {
+        stage: '1-7',
+        stages: [{ stage: '1-7', times: '3' }],
+        medicine: 0,
+        stone: 0,
+        series: '1',
+        drops: '',
+        clientType: '',
+        DrGrandet: false,
+        report_to_penguin: false,
+        penguin_id: '',
+        report_to_yituliu: false,
+        yituliu_id: '',
+        ...params,
+      },
+    }],
+  })
+
+  it('maps a legacy bottle count to the two-day expiry window on the wire', () => {
+    const decoded = automationConfigAdapter.decodeDraft(legacyFightDraft({ expiringMedicine: 7 }))
+
+    expect(decoded?.taskFlow[0]?.params).toMatchObject({ medicineExpireDays: 2 })
+    expect(decoded?.taskFlow[0]?.params).not.toHaveProperty('expiringMedicine')
+
+    const wire = automationConfigAdapter.encodeDraft(decoded!)
+    expect(wire.taskFlow[0]?.params).toMatchObject({ medicineExpireDays: 2 })
+    expect(wire.taskFlow[0]?.params).not.toHaveProperty('expiringMedicine')
+  })
+
+  it.each([
+    ['a numeric zero', 0],
+    ['a string zero', '0'],
+  ])('keeps a disabled legacy %s disabled', (_label, expiringMedicine) => {
+    const decoded = automationConfigAdapter.decodeDraft(legacyFightDraft({ expiringMedicine }))
+
+    expect(decoded?.taskFlow[0]?.params).toMatchObject({ medicineExpireDays: 0 })
+    expect(decoded?.taskFlow[0]?.params).not.toHaveProperty('expiringMedicine')
+  })
+
+  it('prefers the new expiry-day field when both keys are stored', () => {
+    const decoded = automationConfigAdapter.decodeDraft(legacyFightDraft({
+      medicineExpireDays: 3,
+      expiringMedicine: 7,
+    }))
+
+    expect(decoded?.taskFlow[0]?.params).toMatchObject({ medicineExpireDays: 3 })
+    expect(decoded?.taskFlow[0]?.params).not.toHaveProperty('expiringMedicine')
+  })
+
+  it('maps any enabled legacy bottle count string to the same window', () => {
+    const decoded = automationConfigAdapter.decodeDraft(legacyFightDraft({ expiringMedicine: '4' }))
+
+    expect(decoded?.taskFlow[0]?.params).toMatchObject({ medicineExpireDays: 2 })
+    expect(decoded?.taskFlow[0]?.params).not.toHaveProperty('expiringMedicine')
+  })
+
+  it('defaults a null expiry-day field to disabled and keeps the new field authoritative', () => {
+    const decoded = automationConfigAdapter.decodeDraft(legacyFightDraft({
+      medicineExpireDays: null,
+      expiringMedicine: 7,
+    }))
+
+    expect(decoded?.taskFlow[0]?.params).toMatchObject({ medicineExpireDays: 0 })
+    expect(decoded?.taskFlow[0]?.params).not.toHaveProperty('expiringMedicine')
+  })
+})
+
 describe('automation command model compatibility', () => {
   it('decodes a flow created by the command model with the existing migrations', () => {
     const { flow } = addTaskToFlow([], {
