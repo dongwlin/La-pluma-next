@@ -89,6 +89,16 @@ describe('roguelike task catalog', () => {
     expect(getRoguelikeAdvancedOptions('unknown')).toEqual([])
   })
 
+  it('collects only the difficulty and starting roles guidance into label tooltips', () => {
+    const tooltipOptions = getRoguelikeAdvancedOptions('roguelike')
+      .filter(entry => entry.hintPlacement === 'tooltip')
+    expect(tooltipOptions.map(entry => entry.key)).toEqual(['difficulty', 'roles'])
+    expect(tooltipOptions.map(entry => entry.hint)).toEqual([
+      '不切换时沿用游戏内当前难度；指定未解锁的难度会被降到已解锁上限。',
+      '决定开局能招募的职业；核心干员的职业必须在组合内，例如维什戴尔（狙击）需要稳扎稳打。',
+    ])
+  })
+
   it('names the roguelike mode options after their MaaCore behavior', () => {
     const mode = option('mode')
     expect(getRoguelikeOptionChoices(mode, 'Phantom')).toEqual([

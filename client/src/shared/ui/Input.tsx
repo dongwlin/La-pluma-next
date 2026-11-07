@@ -1,5 +1,6 @@
 import { useId, type InputHTMLAttributes, type SelectHTMLAttributes, type ReactNode, type ChangeEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
+import HintTooltip from './HintTooltip.tsx'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   label?: string
@@ -10,6 +11,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChan
   disabled?: boolean
   error?: string
   hint?: string
+  hintPlacement?: 'below' | 'tooltip'
   icon?: ReactNode
   className?: string
 }
@@ -22,6 +24,7 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onC
   disabled?: boolean
   error?: string
   hint?: string
+  hintPlacement?: 'below' | 'tooltip'
   className?: string
 }
 
@@ -43,6 +46,7 @@ export default function Input({
   disabled = false,
   error,
   hint,
+  hintPlacement = 'below',
   icon,
   className = '',
   'aria-describedby': ariaDescribedBy,
@@ -64,9 +68,13 @@ export default function Input({
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={inputId} className="mb-2 block text-sm font-medium text-secondary">
-          {label}
-        </label>
+        <FieldLabel
+          htmlFor={inputId}
+          label={label}
+          hint={error ? undefined : hint}
+          hintId={hintId}
+          hintPlacement={hintPlacement}
+        />
       )}
       
       <div className="relative">
@@ -97,7 +105,7 @@ export default function Input({
         </p>
       )}
       
-      {hint && !error && (
+      {hint && !error && hintPlacement !== 'tooltip' && (
         <p id={hintId} className="mt-2 text-xs text-tertiary">
           {hint}
         </p>
@@ -115,6 +123,7 @@ export function Select({
   disabled = false,
   error,
   hint,
+  hintPlacement = 'below',
   className = '',
   'aria-describedby': ariaDescribedBy,
   'aria-errormessage': ariaErrorMessage,
@@ -134,9 +143,13 @@ export function Select({
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={selectId} className="mb-2 block text-sm font-medium text-secondary">
-          {label}
-        </label>
+        <FieldLabel
+          htmlFor={selectId}
+          label={label}
+          hint={error ? undefined : hint}
+          hintId={hintId}
+          hintPlacement={hintPlacement}
+        />
       )}
       
       <div className="app-select-shell relative">
@@ -171,12 +184,39 @@ export function Select({
         </p>
       )}
       
-      {hint && !error && (
+      {hint && !error && hintPlacement !== 'tooltip' && (
         <p id={hintId} className="mt-2 text-xs text-tertiary">
           {hint}
         </p>
       )}
     </div>
+  )
+}
+
+interface FieldLabelProps {
+  htmlFor: string
+  label: string
+  hint?: string
+  hintId: string
+  hintPlacement: 'below' | 'tooltip'
+}
+
+function FieldLabel({ htmlFor, label, hint, hintId, hintPlacement }: FieldLabelProps) {
+  if (hintPlacement === 'tooltip' && hint) {
+    return (
+      <div className="mb-2 flex items-center gap-1">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-secondary">
+          {label}
+        </label>
+        <HintTooltip id={hintId} label={label} hint={hint} />
+      </div>
+    )
+  }
+
+  return (
+    <label htmlFor={htmlFor} className="mb-2 block text-sm font-medium text-secondary">
+      {label}
+    </label>
   )
 }
 

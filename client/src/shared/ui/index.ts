@@ -4,6 +4,7 @@ export { default as SmoothPanel } from './SmoothPanel.tsx'
 
 export { default as Button, IconButton } from './Button.tsx'
 export { default as Input, Select, Checkbox } from './Input.tsx'
+export { default as HintTooltip } from './HintTooltip.tsx'
 export { default as Switch } from './Switch.tsx'
 
 export { ConfirmDialog } from './Modal.tsx'

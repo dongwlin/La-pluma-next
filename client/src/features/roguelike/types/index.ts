@@ -54,6 +54,8 @@ export interface RoguelikeAdvancedOption {
    */
   defaultValue?: string
   hint?: string
+  /** hint 的呈现位置：默认显示在控件下方，tooltip 收敛为标签旁的 ⓘ 提示。 */
+  hintPlacement?: 'below' | 'tooltip'
   /** number 字段的闭区间；省略时按 CLI 的 i32 范围校验。 */
   numberRange?: { min: number; max: number }
   /** 仅在这些主题下显示与下发；省略表示所有主题。 */
