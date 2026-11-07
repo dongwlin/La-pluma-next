@@ -619,6 +619,43 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('默认行为')
   })
 
+  it('moves the startup helper texts into focusable tooltips', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderPage()
+
+    const accountHint = container.querySelector<HTMLButtonElement>('button[aria-label="切换账号说明"]')
+    const launchHint = container.querySelector<HTMLButtonElement>('button[aria-label="启动游戏客户端说明"]')
+    expect(accountHint).not.toBeNull()
+    expect(launchHint).not.toBeNull()
+
+    const tooltipFor = (trigger: HTMLButtonElement) => {
+      const tooltip = document.getElementById(trigger.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      return tooltip
+    }
+
+    expect(tooltipFor(accountHint!)?.textContent)
+      .toBe('输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"')
+    expect(tooltipFor(launchHint!)?.textContent)
+      .toBe('关闭后只连接设备并进入已有游戏的主界面，不会启动游戏客户端')
+    expect(tooltipFor(accountHint!)?.hidden).toBe(true)
+    expect(tooltipFor(launchHint!)?.hidden).toBe(true)
+
+    await act(async () => accountHint!.focus())
+    expect(tooltipFor(accountHint!)?.hidden).toBe(false)
+    await act(async () => accountHint!.blur())
+    expect(tooltipFor(accountHint!)?.hidden).toBe(true)
+
+    // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+    expect(container.textContent).not.toContain('输入已登录账号的部分字符即可')
+    expect(container.textContent).not.toContain('关闭后只连接设备并进入已有游戏的主界面')
+
+    await clickSequenceTask('理智作战')
+    const inlineHelpers = Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent)
+    expect(inlineHelpers).toContain('使用理智药数量')
+  })
+
   it('normalizes the recruitment duration when the field loses focus', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 
@@ -916,6 +953,81 @@ describe('AutomationTasks layout surfaces', () => {
     await clickSequenceTask('领取奖励')
     expect(container.querySelector('label[for="automation-award-1-signinevent"]')?.textContent)
       .toContain('限时签到活动奖励')
+  })
+
+  it('shows the infrast shift-mode hint in a label tooltip and drops the facility helper line', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'infrast-1',
+            commandId: 'infrast',
+            name: '基建换班',
+            description: '自动基建换班收菜',
+            taskType: 'Infrast',
+            enabled: true,
+            params: { mode: '0', facility: ['Mfg', 'Recycle', 'AssistantChange'] },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+    await clickSequenceTask('基建换班')
+
+    expect(container.querySelector('label[for="automation-infrast-1-mode"]')?.textContent).toBe('换班模式')
+    const modeSelect = container.querySelector<HTMLSelectElement>('#automation-infrast-1-mode')
+    expect(Array.from(modeSelect?.options ?? []).map(option => option.textContent)).toEqual([
+      '默认换班',
+      '自定义换班',
+      '一键轮换',
+    ])
+
+    const shiftModeHint = container.querySelector<HTMLButtonElement>('button[aria-label="换班模式说明"]')
+    expect(shiftModeHint).not.toBeNull()
+    const tooltip = document.getElementById(shiftModeHint!.getAttribute('aria-describedby') ?? '')
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent).toBe('一键轮换使用游戏内队列，并保留无人机、会客室等基础操作')
+    expect(tooltip?.hidden).toBe(true)
+
+    await act(async () => shiftModeHint!.focus())
+    expect(tooltip?.hidden).toBe(false)
+    await act(async () => shiftModeHint!.blur())
+    expect(tooltip?.hidden).toBe(true)
+
+    // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+    expect(container.textContent).not.toContain('一键轮换使用游戏内队列')
+    expect(container.textContent).not.toContain('选择要换班的设施')
+
+    const facilityLegend = Array.from(container.querySelectorAll('legend'))
+      .find(legend => legend.textContent === '设施选择')
+    expect(facilityLegend).toBeDefined()
+    const facilityFieldset = facilityLegend!.closest('fieldset')!
+    expect(facilityFieldset.querySelector('p')).toBeNull()
+
+    const facilityInputs = Array.from(facilityFieldset.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+    const facilityIds = facilityInputs.map(input => input.id.replace('automation-infrast-1-facility-', ''))
+    expect(facilityIds).toEqual([
+      'Mfg',
+      'Trade',
+      'Power',
+      'Control',
+      'Reception',
+      'Office',
+      'Recycle',
+      'Dorm',
+      'Processing',
+      'Training',
+      'AssistantChange',
+    ])
+    expect(facilityFieldset.textContent).toContain('副手换人')
+    expect(facilityInputs.filter(input => input.checked).map(input => input.id))
+      .toEqual([
+        'automation-infrast-1-facility-Mfg',
+        'automation-infrast-1-facility-Recycle',
+        'automation-infrast-1-facility-AssistantChange',
+      ])
   })
 
   it('closes the add-task picker when pressing outside its region', async () => {
