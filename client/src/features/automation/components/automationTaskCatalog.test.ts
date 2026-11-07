@@ -73,6 +73,30 @@ describe('automation game task catalog', () => {
   })
 })
 
+describe('automation closedown task catalog', () => {
+  const closedown = AVAILABLE_TASKS.find(task => task.id === 'closedown')
+
+  it('adds operator recognition next to the depot recognition switch', () => {
+    if (!closedown) throw new Error('missing closedown task')
+
+    expect(closedown.defaultParams).toEqual({
+      clientType: 'Official',
+      recognizeDepotBeforeClose: false,
+      recognizeOperBoxBeforeClose: false,
+    })
+    expect(closedown.paramFields.map(field => field.key)).toEqual([
+      'clientType',
+      'recognizeDepotBeforeClose',
+      'recognizeOperBoxBeforeClose',
+    ])
+    expect(closedown.paramFields.find(field => field.key === 'recognizeOperBoxBeforeClose')).toMatchObject({
+      label: '关闭前识别干员',
+      type: 'checkbox',
+      helper: '启用后会先识别并保存干员数据，再关闭游戏客户端',
+    })
+  })
+})
+
 describe('automation task parameter defaults and copy', () => {
   it('uses expiry days for the fight medicine and keeps the legacy key out of the catalog', () => {
     const fight = AVAILABLE_TASKS.find(task => task.id === 'fight')

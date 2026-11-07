@@ -97,6 +97,32 @@ describe('scheduled task flow planning', () => {
     assert.deepEqual(steps[1].preActions, [{ action: 'depot-recognition' }])
   })
 
+  it('lists operator recognition and combined recognition pre-actions for closedown', () => {
+    const closedown = (params: Record<string, unknown>) => ({
+      id: 'closedown-1',
+      commandId: 'closedown',
+      name: '关闭游戏',
+      enabled: true,
+      params
+    })
+
+    const operBoxOnly = plannedResult(buildScheduledTaskFlowPlan([
+      closedown({ recognizeOperBoxBeforeClose: true })
+    ]))
+    assert.deepEqual(operBoxOnly.steps[0].preActions, [{ action: 'operbox-recognition' }])
+
+    const both = plannedResult(buildScheduledTaskFlowPlan([
+      closedown({ recognizeDepotBeforeClose: true, recognizeOperBoxBeforeClose: true })
+    ]))
+    assert.deepEqual(both.steps[0].preActions, [
+      { action: 'depot-recognition' },
+      { action: 'operbox-recognition' }
+    ])
+
+    const neither = plannedResult(buildScheduledTaskFlowPlan([closedown({})]))
+    assert.equal(neither.steps[0].preActions, undefined)
+  })
+
 
   it('keeps the legacy bottle-count option when only expiringMedicine is stored', () => {
     const result = buildScheduledTaskFlowPlan([{

@@ -40,6 +40,7 @@ export interface ScheduledTaskParams {
   report_to_yituliu?: boolean;
   yituliu_id?: string;
   recognizeDepotBeforeClose?: boolean;
+  recognizeOperBoxBeforeClose?: boolean;
   mode?: string | number;
   filename?: string;
   plan_index?: number;
@@ -92,7 +93,7 @@ export interface ScheduledTaskCommand {
 }
 
 export interface ScheduledTaskPreAction {
-  action: 'depot-recognition';
+  action: 'depot-recognition' | 'operbox-recognition';
 }
 
 export interface ScheduledTaskPlanStep {
@@ -426,6 +427,13 @@ export function validateScheduledTaskFlow(taskFlow: unknown): ScheduledTaskFlowV
   return { success: true };
 }
 
+function buildClosedownPreActions(params: ScheduledTaskParams | undefined): ScheduledTaskPreAction[] {
+  const preActions: ScheduledTaskPreAction[] = [];
+  if (params?.recognizeDepotBeforeClose === true) preActions.push({ action: 'depot-recognition' });
+  if (params?.recognizeOperBoxBeforeClose === true) preActions.push({ action: 'operbox-recognition' });
+  return preActions;
+}
+
 export function buildScheduledTaskFlowPlan(
   taskFlow: unknown,
   connectionDefaults: ScheduleConnectionDefaults = {}
@@ -440,6 +448,7 @@ export function buildScheduledTaskFlowPlan(
       .map((task, index): ScheduledTaskPlanStep => {
         const { command, params, taskConfig } = buildScheduledTaskCommand(task, connectionDefaults);
         const args = params ? params.split(' ').filter(Boolean) : [];
+        const preActions = command === 'closedown' ? buildClosedownPreActions(task.params) : [];
         return {
           index: index + 1,
           id: task.id,
@@ -448,9 +457,7 @@ export function buildScheduledTaskFlowPlan(
           args,
           dynamicTask: Boolean(taskConfig),
           ...(taskConfig ? { taskConfig: JSON.parse(taskConfig) as Record<string, unknown> } : {}),
-          ...(command === 'closedown' && task.params?.recognizeDepotBeforeClose === true
-            ? { preActions: [{ action: 'depot-recognition' as const }] }
-            : {})
+          ...(preActions.length > 0 ? { preActions } : {})
         };
       });
 
