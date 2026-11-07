@@ -1,5 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Plus, Trash2, UserRound, UserRoundSearch, X } from 'lucide-react'
+import {
+  getOperatorAvatarUrl,
+  operatorCatalogQueryOptions,
+  useItemIconCacheVersion,
+  type OperatorDetailed,
+} from '@/features/game-data'
 import { OperatorSelectModal, type OperatorPickerOption } from '@/features/training'
 import { Button, IconButton, Select } from '@/shared/ui'
 import {
@@ -8,6 +15,7 @@ import {
   updateOperProgressMastery,
   updateOperProgressTarget,
 } from '../model/gameTaskParams'
+import { resolveOperProgressOperatorId } from '../model/operProgressOperator'
 import type { OperProgressPlan } from '../types'
 
 interface OperProgressPlansEditorProps {
@@ -35,8 +43,46 @@ const roleLabel = (role: string | undefined): string | null => {
   return OPER_PROGRESS_ROLES.find(option => option.value === role)?.label ?? null
 }
 
+const EMPTY_OPERATORS: readonly OperatorDetailed[] = []
+
+interface PlanOperatorAvatarProps {
+  operatorId: string | null
+}
+
+function PlanOperatorAvatar({ operatorId }: PlanOperatorAvatarProps) {
+  const itemIconVersion = useItemIconCacheVersion()
+  const [failedOperatorId, setFailedOperatorId] = useState<string | null>(null)
+  const imageSrc = operatorId && operatorId !== failedOperatorId
+    ? getOperatorAvatarUrl(operatorId, 'base', itemIconVersion)
+    : null
+
+  return (
+    <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl surface-soft text-tertiary" aria-hidden="true">
+      <UserRound size={20} strokeWidth={1.8} />
+      {imageSrc && (
+        <img
+          src={imageSrc}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={() => setFailedOperatorId(operatorId)}
+        />
+      )}
+    </span>
+  )
+}
+
 export default function OperProgressPlansEditor({ plans, disabled, onChange }: OperProgressPlansEditorProps) {
   const [pickerPlanIndex, setPickerPlanIndex] = useState<number | null>(null)
+  const catalogQuery = useQuery({
+    ...operatorCatalogQueryOptions(),
+    enabled: plans.some(plan => plan.name.trim() !== ''),
+  })
+  const planOperatorIds = useMemo(
+    () => plans.map(plan => resolveOperProgressOperatorId(catalogQuery.data ?? EMPTY_OPERATORS, plan)),
+    [catalogQuery.data, plans],
+  )
 
   const updatePlan = (index: number, plan: OperProgressPlan) => {
     onChange(plans.map((current, currentIndex) => currentIndex === index ? plan : current))
@@ -69,9 +115,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
           <fieldset key={index} disabled={disabled} className="min-w-0 space-y-3 border-t border-(--app-border) pt-3">
             <legend className="px-1 text-sm font-semibold text-primary">培养计划 {index + 1}</legend>
             <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl surface-soft text-tertiary" aria-hidden="true">
-                <UserRound size={20} strokeWidth={1.8} />
-              </span>
+              <PlanOperatorAvatar operatorId={planOperatorIds[index] ?? null} />
               <div className="min-w-0 flex-1">
                 <p className={`truncate text-sm font-semibold ${plan.name ? 'text-primary' : 'text-secondary'}`}>
                   {plan.name || '未选择干员'}
@@ -114,6 +158,7 @@ export default function OperProgressPlansEditor({ plans, disabled, onChange }: O
         isOpen={pickerPlanIndex !== null}
         onClose={() => setPickerPlanIndex(null)}
         onConfirm={selectOperator}
+        selectedOperatorId={pickerPlanIndex === null ? null : planOperatorIds[pickerPlanIndex] ?? null}
         selectedOperatorName={pickerPlanIndex === null ? null : plans[pickerPlanIndex]?.name || null}
         defaultSortDirection="asc"
       />
