@@ -75,7 +75,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 | 模块 | 导出 | 规则 |
 | --- | --- | --- |
-| `model/operatorFilters.ts` | `selectOperators`、`buildOwnedOperatorIdSet`、`hasActiveOperatorFilters` 等 | 阿米娅形态共享持有状态；未拥有视图忽略精英/潜能筛选；非已拥有视图按星级与中文名排序 |
+| `model/operatorFilters.ts` | `selectOperators`、`buildOwnedOperatorIdSet`、`buildKnownOperatorIdSet`、`isOwnedOperator`、`isUnknownOperator`、`hasActiveOperatorFilters` 等 | 阿米娅形态共享持有状态；未拥有视图只收录识别快照确认未拥有的干员，快照未覆盖的按未知展示且不计入未拥有；未拥有视图忽略精英/潜能筛选；非已拥有视图按星级与中文名排序 |
 | `model/operatorRecognition.ts` | `describeOperBoxRecognitionHint` | 完整识别不占位；旧快照缺少识别目录时提示未列出的干员拥有状态未确认 |
 | `model/depotSummary.ts` | `summarizeDepot`、`summarizeDepotTypes`、`getDepotTypeLabel` | 分类按库存件数降序，件数相同保留首次出现顺序；`itemCount` 用服务端快照值；空快照返回全零 |
 | `model/dropRecords.ts` | `sortDropItems`、`sortDropStages`、`DROP_ITEM_DISPLAY_LIMIT` | 材料按数量、关卡按战斗次数降序；并列保留服务端键顺序；最多展示 20 种材料 |
@@ -127,7 +127,7 @@ DataStatistics（页面壳：页头、全局状态指示）
 
 解析端点的成功判定：
 
-- `success=true` 且 `data` 是包含 `itemCount: number`、`items: array`（仓库）或 `operCount: number`、`data: array`（干员）的对象；干员快照的 `allOpers`（含 `owned` 标记与多语言名称）与 `recognition`（`complete`/`partial`）是附加字段，旧快照缺少识别目录时按 `partial` 提示；
+- `success=true` 且 `data` 是包含 `itemCount: number`、`items: array`（仓库）或 `operCount: number`、`data: array`（干员）的对象；干员快照的 `allOpers`（含 `owned` 标记与多语言名称）与 `recognition`（`complete`/`partial`）是附加字段，旧快照缺少识别目录时按 `partial` 提示；`recognition` 不是 `complete` 时，快照目录以外的干员按未知展示，不进入未拥有视图，卡片角标为“未知”而不是“未拥有”；
 - 未找到有效结果时，服务端返回 HTTP 422 和可重试的 `AGENT_RECOGNITION_NO_RESULT`，保留已有识别缓存。前端收到失败信封、旧服务端的 `data: null`、坏载荷或传输失败时，在超时前继续轮询解析端点；
 - 解析请求携带调用方 `AbortSignal`；取消只结束本地等待，不撤销服务端已完成的解析。
 

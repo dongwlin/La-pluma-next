@@ -487,6 +487,74 @@ describe('infrast schedule service', () => {
     assert.deepEqual((await service.list()).schedules.map(entry => entry.name), ['real.json']);
   });
 
+  it('refuses deep missing paths that would escape through a symlinked ancestor', {
+    skip: process.platform === 'win32' ? 'Windows 创建符号链接需要额外权限' : false
+  }, async () => {
+    const outsideDir = await makeTempDir('la-pluma-infrast-outside-');
+    await symlink(outsideDir, join(rootDir, 'linked-dir'));
+    const layers = Array.from({ length: 66 }, () => 'n');
+    const name = ['linked-dir', ...layers, 'plan.json'].join('/');
+
+    await expectServiceError(() => service.save(name, minimalScheduleDocument()), {
+      code: INFRASTRUCT_SCHEDULE_ERROR_CODES.invalid,
+      statusCode: 400
+    });
+
+    await assert.rejects(readFile(join(outsideDir, ...layers, 'plan.json'), 'utf-8'));
+  });
+
+  it('creates and reads schedules in deep missing directories inside the root', async () => {
+    const layers = Array.from({ length: 66 }, () => 'n');
+    const name = [...layers, 'plan.json'].join('/');
+
+    assert.deepEqual(await service.save(name, minimalScheduleDocument()), { name, planCount: 1 });
+    assert.deepEqual((await service.read(name)).document, minimalScheduleDocument());
+    assert.deepEqual(
+      JSON.parse(await readFile(join(rootDir, ...layers, 'plan.json'), 'utf-8')),
+      minimalScheduleDocument()
+    );
+  });
+
+  it('accepts symlinks that stay inside the root and still overwrites plain files', {
+    skip: process.platform === 'win32' ? 'Windows 创建符号链接需要额外权限' : false
+  }, async () => {
+    await mkdir(join(rootDir, 'real-dir'));
+    await symlink(join(rootDir, 'real-dir'), join(rootDir, 'linked-dir'));
+
+    assert.deepEqual(
+      await service.save('linked-dir/plan.json', minimalScheduleDocument()),
+      { name: 'linked-dir/plan.json', planCount: 1 }
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(join(rootDir, 'real-dir', 'plan.json'), 'utf-8')),
+      minimalScheduleDocument()
+    );
+
+    const overwrite = { plans: [{ name: '覆盖', rooms: {} }] };
+    assert.deepEqual(await service.save('plain.json', minimalScheduleDocument()), { name: 'plain.json', planCount: 1 });
+    assert.deepEqual(await service.save('plain.json', overwrite), { name: 'plain.json', planCount: 1 });
+    assert.deepEqual((await service.read('plain.json')).document, overwrite);
+  });
+
+  it('fails closed when no ancestor path can be resolved', async () => {
+    const unresolvedService = createInfrastScheduleService({
+      rootDir,
+      fileSystem: {
+        realpath: async () => {
+          throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
+        }
+      }
+    });
+
+    await expectServiceError(() => unresolvedService.save('blocked.json', minimalScheduleDocument()), {
+      code: INFRASTRUCT_SCHEDULE_ERROR_CODES.ioFailed,
+      statusCode: 500,
+      retryable: true
+    });
+
+    await assert.rejects(readFile(join(rootDir, 'blocked.json'), 'utf-8'));
+  });
+
   it('reports missing files and broken JSON distinctly', async () => {
     await expectServiceError(() => service.read('missing.json'), {
       code: INFRASTRUCT_SCHEDULE_ERROR_CODES.notFound,

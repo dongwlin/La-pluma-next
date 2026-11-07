@@ -1067,6 +1067,54 @@ describe('agent execution HTTP adapter', () => {
     assert.match(submittedTasks, /mode = 30003/);
   });
 
+  it('rejects a run while the device lease is held without reusing the holder summary', async () => {
+    process.env.FAKE_MAA_CALLBACK = [
+      'Assistant::append_callback | SubTaskStart {"taskchain":"Roguelike"}',
+      'Assistant::append_callback | SubTaskExtraInfo {"taskchain":"Roguelike","what":"RoguelikeSettlement","details":{"floor":4,"step":23,"score":128}}',
+      'Assistant::append_callback | TaskChainCompleted {"taskchain":"Roguelike"}'
+    ].join('\n');
+    process.env.FAKE_MAA_SLEEP_MS = '1500';
+    const port = await listen(createLaPlumaApp({
+      env: {},
+      signalingGateway: stubSignalingGateway()
+    }));
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const accepted = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+      command: 'roguelike',
+      args: ['Mizuki'],
+      waitForCompletion: false,
+      taskType: 'roguelike'
+    });
+    assert.equal(accepted.status, 202);
+    const holderRunId = (await readSuccess<TaskExecutorPayload>(accepted)).data.runId;
+
+    const rejected = await postJson(`${baseUrl}/api/agent/actions/run-task`, {
+      command: 'roguelike',
+      args: ['Sami'],
+      waitForCompletion: true,
+      taskType: 'roguelike'
+    });
+    assert.equal(rejected.status, 409);
+    const failure = await readError(rejected);
+    assert.equal(failure.error.code, 'MAA_EXECUTION_BUSY');
+    const details = typeof failure.error.details === 'object' && failure.error.details !== null
+      ? failure.error.details as Record<string, unknown>
+      : {};
+    assert.equal(details.summary, undefined);
+    const rejectedRun = typeof details.run === 'object' && details.run !== null
+      ? details.run as Record<string, unknown>
+      : {};
+    assert.equal(rejectedRun.state, 'failed');
+
+    const holder = await waitForRunState(baseUrl, holderRunId, ['succeeded']);
+    assert.equal(holder.result?.summary?.status, 'success');
+    assert.deepEqual(
+      (await callCliLog()).split('\n').filter(line => line.startsWith('roguelike ')),
+      ['roguelike Mizuki']
+    );
+  });
+
   it('keeps dynamic run submissions outside single Roguelike/Reclamation taskConfigs free of result summaries', async () => {
     const port = await listen(createLaPlumaApp({
       env: {},

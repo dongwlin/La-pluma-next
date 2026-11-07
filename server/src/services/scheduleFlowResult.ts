@@ -283,17 +283,26 @@ function readStageCode(details: Record<string, unknown>): string {
   return typeof id === 'string' ? id.trim() : '';
 }
 
+function readItemId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const itemId = value.trim();
+  return itemId === '' ? undefined : itemId;
+}
+
 function readDropItems(value: unknown): DropItem[] {
   if (!Array.isArray(value)) return [];
-  const items = new Map<string, number>();
+  const items = new Map<string, DropItem>();
   for (const rawItem of value) {
     if (!isRecordValue(rawItem)) continue;
     const name = rawItem.itemName;
     const quantity = readFiniteNumber(rawItem.quantity);
     if (typeof name !== 'string' || name.trim() === '' || quantity === null || quantity <= 0) continue;
-    items.set(name, (items.get(name) || 0) + quantity);
+    const previous = items.get(name);
+    const itemId = readItemId(rawItem.itemId) ?? previous?.itemId;
+    const count = (previous?.count || 0) + quantity;
+    items.set(name, itemId ? { name, count, itemId } : { name, count });
   }
-  return [...items.entries()].map(([name, count]) => ({ name, count }));
+  return [...items.values()];
 }
 
 /**
@@ -333,7 +342,7 @@ export function parseFightStatistics(
   let observedStageDrops = false;
   let observedFightTimes = false;
   let observedSanity = false;
-  const incrementalDrops = new Map<string, number>();
+  const incrementalDrops = new Map<string, DropItem>();
 
   const countPendingBatch = () => {
     if (pendingBatchCounted) return;
@@ -356,7 +365,10 @@ export function parseFightStatistics(
       stageDropBattles += curTimes !== null && curTimes >= 1 ? curTimes : 1;
       const drops = readDropItems(details.drops);
       for (const item of drops) {
-        incrementalDrops.set(item.name, (incrementalDrops.get(item.name) || 0) + item.count);
+        const previous = incrementalDrops.get(item.name);
+        const itemId = item.itemId ?? previous?.itemId;
+        const count = (previous?.count || 0) + item.count;
+        incrementalDrops.set(item.name, itemId ? { name: item.name, count, itemId } : { name: item.name, count });
       }
       const stats = readDropItems(details.stats);
       if (stats.length > 0) cumulativeDrops = stats;
@@ -392,9 +404,7 @@ export function parseFightStatistics(
   const resolvedStage = stage || fallbackStage.trim();
   if (!resolvedStage) return null;
 
-  const drops = logComplete
-    ? [...incrementalDrops.entries()].map(([name, count]) => ({ name, count }))
-    : cumulativeDrops;
+  const drops = logComplete ? [...incrementalDrops.values()] : cumulativeDrops;
   return {
     stage: resolvedStage,
     battles,

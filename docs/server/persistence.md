@@ -57,7 +57,7 @@
 - 队列内容指纹 `queueRevision` 是条目列表的 SHA-256（`server/src/services/operatorTrainingStore.ts:211-217`）；养成计划应用必须校验它，并保留「队列已保存但流程/定时同步失败」的部分成功结果，不伪装成全成功。
 - 自动化任务配置读取时校验最小结构（对象、`taskFlow` 数组、任务 `params/stages` 形态），无效抛错；写回经 fileHelper 路径队列整体替换，不丢弃本领域未读取的字段（`server/src/services/operatorTrainingStore.ts:493-533`）。
 - 养成数据快照（材料库、合成配方、干员材料、OperBox、仓库）结构不符时按空表处理并告警，不抛错（`server/src/services/operatorTrainingStore.ts:288-300,335-366,441-481`）。
-- `operbox.json` 在 `data`（已识别拥有）之外可带 `allOpers`（识别目录，含 `owned` 标记与多语言名称）、`operTotal` 与 `recognition`；读取旧快照时按缺少识别目录的部分识别处理，`allOpers` 缺失不视为损坏（`server/src/services/operatorCatalogModel.ts`、`server/src/services/dataParserService.ts`）。
+- `operbox.json` 在 `data`（已识别拥有）之外可带 `allOpers`（识别目录，含 `owned` 标记与多语言名称）、`operTotal` 与 `recognition`；`recognition.status` 是写入时唯一的完整度信号，读取时不从目录存在与否反推，缺少该字段的快照一律按部分识别处理（`allOpers` 缺失不视为损坏），消费方据此区分已拥有、确认未拥有与未知（`server/src/services/operatorCatalogModel.ts`、`server/src/services/dataParserService.ts`、`server/src/services/operatorTrainingService.ts`）。
 - 仓库/干员识别缓存只接受当前任务链最后一条 `details.done=true` 的载荷；未完成、跨事件或上一轮运行的旧结果不写盘，保留上一份完整快照（`server/src/services/dataParserService.ts`）。
 
 ## 掉落记录
@@ -82,7 +82,7 @@
 
 - MAA 日志目录由 `maa dir log` 解析并在进程内缓存，失败在 30 秒冷却期内复用同一错误（`server/src/services/maaLogFileService.ts:105-128`）。
 - 读取只允许日志目录内 `.log` 文件：两侧 realpath 后按目录边界判定，目录外符号链接被拒绝（`server/src/services/maaLogFileService.ts:268-278,345-349`）；内容从尾部按块读取，单次最多 2 MB，行数上限 5000（`server/src/services/maaLogFileService.ts:24-29,337-380`）。
-- 检查点记录 `asst.log` 当时的路径与字节数；执行后增量读取只取检查点之后的新增字节（上限默认 2 MB）。检查点是内存值，失败按空结果降级，不持久化（`server/src/services/maaLogFileService.ts:160-207`）。
+- 检查点记录 `asst.log` 当时的路径、字节数、文件身份（dev/ino）与检查点边界前 256 字节的 SHA-256 摘要；执行后增量读取只取检查点之后的新增字节（上限默认 2 MB），文件被替换或原地重写时按 `rotated` 处理、不再把新文件当成同一份日志。检查点是内存值，失败按空结果降级，不持久化（`server/src/services/maaLogFileService.ts:188-283`）。
 - 手动清理按修改时间从新到旧累加，累计超出保留上限（1-1024 MB）后删除较旧的 `.log` 文件；调试截图列表只读 MAA 状态目录 `debug/`（`server/src/services/maaLogFileService.ts:229-262,386-424`）。实时日志缓冲不在这里，属于 `maaProcessService` 的子进程投影（`server/src/services/maaLogFileService.ts:18`）。
 
 ## 单实例约束
