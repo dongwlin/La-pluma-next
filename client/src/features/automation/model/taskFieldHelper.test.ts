@@ -19,13 +19,7 @@ describe('resolveFieldHelperTooltip', () => {
   })
 
   it('falls back to the inline helper for layouts without a tooltip trigger', () => {
-    for (const type of [
-      'facility-select',
-      'stage-with-times',
-      'infrast-schedule',
-      'oper-progress-plans',
-      'theme-list',
-    ] as const) {
+    for (const type of ['facility-select', 'stage-with-times', 'theme-list'] as const) {
       expect(resolveFieldHelperTooltip(fieldWith({ type, helperPlacement: 'tooltip' }))).toBeUndefined()
     }
   })

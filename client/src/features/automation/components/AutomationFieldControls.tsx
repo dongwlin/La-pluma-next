@@ -11,9 +11,8 @@ export function AutomationFieldLabel({ htmlFor, label, hint }: AutomationFieldLa
 
   if (!hint) return labelElement
 
-  // 说明图标按钮自带左右内边距，收回 4px 才能让 5rem 标签列继续容纳短标签和图标。
   return (
-    <span className="-mr-1 inline-flex min-w-max items-center gap-1">
+    <span className="inline-flex min-w-max items-center gap-1">
       {labelElement}
       <HintTooltip id={`${htmlFor}-hint`} label={label} hint={hint} />
     </span>
