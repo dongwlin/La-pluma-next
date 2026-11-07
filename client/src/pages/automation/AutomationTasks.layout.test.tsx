@@ -983,6 +983,81 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('限时签到活动奖励')
   })
 
+  it('shows the infrast shift-mode hint in a label tooltip and drops the facility helper line', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: [
+          {
+            id: 'infrast-1',
+            commandId: 'infrast',
+            name: '基建换班',
+            description: '自动基建换班收菜',
+            taskType: 'Infrast',
+            enabled: true,
+            params: { mode: '0', facility: ['Mfg', 'Recycle', 'AssistantChange'] },
+          },
+        ],
+      },
+    })
+
+    await renderPage()
+    await clickSequenceTask('基建换班')
+
+    expect(container.querySelector('label[for="automation-infrast-1-mode"]')?.textContent).toBe('换班模式')
+    const modeSelect = container.querySelector<HTMLSelectElement>('#automation-infrast-1-mode')
+    expect(Array.from(modeSelect?.options ?? []).map(option => option.textContent)).toEqual([
+      '默认换班',
+      '自定义换班',
+      '一键轮换',
+    ])
+
+    const shiftModeHint = container.querySelector<HTMLButtonElement>('button[aria-label="换班模式说明"]')
+    expect(shiftModeHint).not.toBeNull()
+    const tooltip = document.getElementById(shiftModeHint!.getAttribute('aria-describedby') ?? '')
+    expect(tooltip?.getAttribute('role')).toBe('tooltip')
+    expect(tooltip?.textContent).toBe('一键轮换使用游戏内队列，并保留无人机、会客室等基础操作')
+    expect(tooltip?.hidden).toBe(true)
+
+    await act(async () => shiftModeHint!.focus())
+    expect(tooltip?.hidden).toBe(false)
+    await act(async () => shiftModeHint!.blur())
+    expect(tooltip?.hidden).toBe(true)
+
+    // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+    expect(container.textContent).not.toContain('一键轮换使用游戏内队列')
+    expect(container.textContent).not.toContain('选择要换班的设施')
+
+    const facilityLegend = Array.from(container.querySelectorAll('legend'))
+      .find(legend => legend.textContent === '设施选择')
+    expect(facilityLegend).toBeDefined()
+    const facilityFieldset = facilityLegend!.closest('fieldset')!
+    expect(facilityFieldset.querySelector('p')).toBeNull()
+
+    const facilityInputs = Array.from(facilityFieldset.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+    const facilityIds = facilityInputs.map(input => input.id.replace('automation-infrast-1-facility-', ''))
+    expect(facilityIds).toEqual([
+      'Mfg',
+      'Trade',
+      'Power',
+      'Control',
+      'Reception',
+      'Office',
+      'Recycle',
+      'Dorm',
+      'Processing',
+      'Training',
+      'AssistantChange',
+    ])
+    expect(facilityFieldset.textContent).toContain('副手换人')
+    expect(facilityInputs.filter(input => input.checked).map(input => input.id))
+      .toEqual([
+        'automation-infrast-1-facility-Mfg',
+        'automation-infrast-1-facility-Recycle',
+        'automation-infrast-1-facility-AssistantChange',
+      ])
+  })
+
   it('closes the add-task picker when pressing outside its region', async () => {
     await renderPage()
 
