@@ -182,13 +182,35 @@ describe('automation config adapter', () => {
       recruitment_time: { '3': 540, '4': 540 },
     })
     expect(decoded!.taskFlow[1]?.params).not.toHaveProperty('skip_robot')
-    expect(decoded!.taskFlow[2]?.params).toMatchObject({ clientType: 'Bilibili' })
+    expect(decoded!.taskFlow[2]?.params).toMatchObject({
+      clientType: 'Bilibili',
+      recognizeDepotBeforeClose: true,
+      recognizeOperBoxBeforeClose: false,
+    })
     expect(decoded!.schedule).toEqual({
       enabled: true,
       entries: [
         { time: '08:00', enabled: true },
         { time: '20:00', enabled: true },
       ],
+    })
+  })
+
+  it('keeps an explicitly enabled operator recognition on saved closedown tasks', () => {
+    const decoded = automationConfigAdapter.decodeDraft({
+      taskFlow: [{
+        id: 'closedown-1',
+        commandId: 'closedown',
+        name: '关闭游戏',
+        enabled: true,
+        params: { recognizeOperBoxBeforeClose: true },
+      }],
+    })
+
+    expect(decoded).not.toBeNull()
+    expect(decoded!.taskFlow[0]?.params).toMatchObject({
+      recognizeDepotBeforeClose: true,
+      recognizeOperBoxBeforeClose: true,
     })
   })
 

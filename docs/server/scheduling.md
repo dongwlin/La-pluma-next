@@ -51,7 +51,7 @@ Infrast 任务在 `mode=10000` 时读取 `filename` 指向的 Core 排班 JSON�
 
 ## 结果聚合
 
-- 每步产出一条 `ScheduleStepAction`：领取、公招、基建、信用收支、作战来自各自的结果服务，启动/关闭/关闭前仓库识别由流程直接构造（`server/src/services/scheduleFlowResult.ts:64-91`）。
+- 每步产出一条 `ScheduleStepAction`：领取、公招、基建、信用收支、作战来自各自的结果服务，启动/关闭/关闭前仓库与干员识别由流程直接构造（`server/src/services/scheduleFlowResult.ts:64-91`）。
 - `parseTaskSummary` 从 stdout 解析关卡、次数、掉落、理智药/源石及公招、基建总结（`server/src/services/scheduleFlowResult.ts:195-283`）。
 - `getFightReportResults` 按任务开关解析企鹅物流与一图流汇报结论，存在未识别掉落时判定汇报失败（`server/src/services/scheduleFlowResult.ts:141-190`）。
 - `parseFightStatistics` 把 fight 的结构化回调折算为实际消耗与掉落；增量日志截断时（`logComplete: false`）只采信任务内累计的 `stats` 与 `times_finished`，逐批累加的理智与每局增量掉落不再入账，无法确认的理智字段保持缺失。截断时由 `reconcileTruncatedFightStatistics` 用完整 stdout 摘要修正局数与掉落（`server/src/services/scheduleFlowResult.ts:314-430`）。

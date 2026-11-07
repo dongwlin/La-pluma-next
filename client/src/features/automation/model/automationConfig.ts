@@ -174,6 +174,7 @@ export function migrateTaskParams<T extends Record<string, unknown>>(task: T): T
     params.yituliu_id ??= ''
   } else if (commandId === 'closedown') {
     params.recognizeDepotBeforeClose ??= true
+    params.recognizeOperBoxBeforeClose ??= false
   } else if (commandId === 'recruit') {
     if (params.preserve_tags === undefined && params.skip_robot === true) {
       params.preserve_tags = '支援机械'

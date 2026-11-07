@@ -51,6 +51,10 @@ export function createScheduleExecutionPorts(
       const { parseDepotData } = await import('./dataParserService.ts');
       return parseDepotData();
     },
+    parseOperBoxData: async () => {
+      const { parseOperBoxData } = await import('./dataParserService.ts');
+      return parseOperBoxData();
+    },
     refreshSmartTrainingStages: updateSmartTrainingStages,
     withExecutionLease: withMaaExecutionLease,
     ...overrides

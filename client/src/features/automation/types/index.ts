@@ -55,6 +55,7 @@ export interface TaskParams {
   accountName?: string
   start_game_enabled?: boolean
   recognizeDepotBeforeClose?: boolean
+  recognizeOperBoxBeforeClose?: boolean
 
   stage?: string
   stages?: Array<string | StageConfig>
