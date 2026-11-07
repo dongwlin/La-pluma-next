@@ -695,8 +695,26 @@ describe('validateRoguelikeTaskInput', () => {
 
   it('accepts a configured theme and leaves unknown tasks to the caller', () => {
     expect(validateRoguelikeTaskInput('roguelike', { roguelike: 'Phantom' })).toBeNull()
-    expect(validateRoguelikeTaskInput('reclamation', { reclamation: 'Tales' })).toBeNull()
+    expect(validateRoguelikeTaskInput('reclamation', { reclamation: 'Tales' }, {
+      reclamation: { toolsToCraft: '荧光棒', numBatches: '16' },
+    })).toBeNull()
     expect(validateRoguelikeTaskInput('unknown', {})).toBeNull()
+  })
+
+  it('requires an explicit reclamation crafting configuration in mode 1', () => {
+    const inputs = { reclamation: 'Tales' }
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { numBatches: '16' },
+    })).toBe('请填写「制作工具名称」：留空时 maa-cli 会默认制作 16 批荧光棒')
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { toolsToCraft: '荧光棒' },
+    })).toBe('请填写「批次数」：留空时 maa-cli 会默认制作 16 批')
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { toolsToCraft: '荧光棒', numBatches: '16' },
+    })).toBeNull()
+    expect(validateRoguelikeTaskInput('reclamation', inputs, {
+      reclamation: { mode: '0' },
+    })).toBeNull()
   })
 })
 

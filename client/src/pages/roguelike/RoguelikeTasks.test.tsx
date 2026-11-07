@@ -258,6 +258,11 @@ const setControlValue = async (
   await flush()
 }
 
+const setReclamationCraftValues = async (tools = '荧光棒', batches = '16') => {
+  await setControlValue('input[name="maa-reclamation-toolsToCraft"]', tools)
+  await setControlValue('input[name="maa-reclamation-numBatches"]', batches)
+}
+
 const toggleSwitch = async (selector: string) => {
   const input = container.querySelector<HTMLInputElement>(selector)!
   await act(async () => {
@@ -550,18 +555,32 @@ describe('RoguelikeTasks execution', () => {
     await renderPage()
     await click(findModeButton('生息演算')!)
     await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+    await setReclamationCraftValues()
 
     await click(buttonByText('立即执行')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'reclamation',
-      'Tales -m 1',
+      'Tales -m 1 -C 荧光棒 --num-craft-batches 16',
       null,
       null,
       '生息演算',
       'roguelike',
       false,
       { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+  })
+
+  it('asks for the reclamation crafting configuration instead of letting blank values reach the CLI default', async () => {
+    await renderPage()
+    await click(findModeButton('生息演算')!)
+    await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith(
+      '请填写「制作工具名称」：留空时 maa-cli 会默认制作 16 批荧光棒',
     )
   })
 
@@ -573,11 +592,12 @@ describe('RoguelikeTasks execution', () => {
     expect(modeSelect?.value).toBe('1')
 
     await setControlValue('input[name="maa-reclamation-theme"]', 'Tales')
+    await setReclamationCraftValues()
     await click(buttonByText('立即执行')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenLastCalledWith(
       'reclamation',
-      'Tales -m 1',
+      'Tales -m 1 -C 荧光棒 --num-craft-batches 16',
       null,
       null,
       '生息演算',
@@ -627,11 +647,12 @@ describe('RoguelikeTasks execution', () => {
       .toBe('1')
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
 
+    await setReclamationCraftValues()
     await click(buttonByText('立即执行')!)
 
     expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
       'reclamation',
-      'Tales -m 1',
+      'Tales -m 1 -C 荧光棒 --num-craft-batches 16',
       null,
       null,
       '生息演算',

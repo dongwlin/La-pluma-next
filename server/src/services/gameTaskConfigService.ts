@@ -292,6 +292,82 @@ export function validateGameTaskParams(type: string, params: Record<string, unkn
   return null;
 }
 
+export interface GameTaskVariantParams {
+  params?: Record<string, unknown>;
+}
+
+export interface GameTaskVariantValidation {
+  variantIndex: number;
+  message: string;
+}
+
+/**
+ * variant.params 是顶层 params 的覆盖层：按 maa-cli 的合并语义先合并再校验，
+ * 才能覆盖「沙洲遗闻模式 1 必填 tools_to_craft」这类依赖其他字段的规则。
+ */
+export function validateGameTaskVariantParams(
+  type: string,
+  params: Record<string, unknown>,
+  variants: readonly GameTaskVariantParams[] | undefined
+): GameTaskVariantValidation | null {
+  if (!variants) return null;
+  for (const [variantIndex, variant] of variants.entries()) {
+    if (!variant.params) continue;
+    const message = validateGameTaskParams(type, { ...params, ...variant.params });
+    if (message) return { variantIndex, message: `variants[${variantIndex}].params：${message}` };
+  }
+  return null;
+}
+
+const CLIENT_TYPE_TASK_TYPES: ReadonlySet<string> = new Set(['StartUp', 'Fight', 'CloseDown']);
+
+export interface DynamicTaskClientTypeConfig {
+  type: string;
+  params?: Record<string, unknown>;
+  variants?: readonly GameTaskVariantParams[];
+}
+
+function readClientTypeValue(params: Record<string, unknown> | undefined): string | null {
+  const value = params?.client_type;
+  if (typeof value !== 'string') return null;
+  return value.trim() || null;
+}
+
+/**
+ * maa-cli 会把 Run 顶层 client_type 强制写回 StartUp/Fight/CloseDown 的任务参数；
+ * 任务或 variant 里的不同取值只会得到一条警告并被覆盖，因此这里提前拒绝。
+ */
+export function validateDynamicTaskClientType(
+  config: DynamicTaskClientTypeConfig,
+  topLevelClientType?: string
+): string | null {
+  if (!CLIENT_TYPE_TASK_TYPES.has(config.type)) return null;
+  const expected = typeof topLevelClientType === 'string' ? topLevelClientType.trim() : '';
+  const entries: Array<{ label: string; value: string }> = [];
+  const taskValue = readClientTypeValue(config.params);
+  if (taskValue) entries.push({ label: `${config.type}.params.client_type`, value: taskValue });
+  for (const [variantIndex, variant] of (config.variants ?? []).entries()) {
+    const value = readClientTypeValue(variant.params);
+    if (value) entries.push({ label: `variants[${variantIndex}].params.client_type`, value });
+  }
+
+  for (const entry of entries) {
+    if (!(GAME_TASK_LIMITS.StartUp.clientTypes as readonly string[]).includes(entry.value)) {
+      return `动态任务 ${entry.label} 必须是 ${GAME_TASK_LIMITS.StartUp.clientTypes.join('/')} 之一`;
+    }
+  }
+  if (entries.length === 0) return null;
+  if (!expected) {
+    return `动态任务 ${entries[0].label} 声明了 client_type，但任务未声明顶层 params.client_type；maa-cli 会用连接 profile 的客户端类型覆盖它，请把 client_type 统一写在任务 params.client_type`;
+  }
+  for (const entry of entries) {
+    if (entry.value !== expected) {
+      return `动态任务 ${entry.label} 为 ${entry.value}，与 Run 顶层客户端 ${expected} 冲突；maa-cli 会用顶层 client_type 覆盖 StartUp/Fight/CloseDown 的任务参数`;
+    }
+  }
+  return null;
+}
+
 const ROGUELIKE_THEMES = Object.freeze(['Phantom', 'Mizuki', 'Sami', 'Sarkaz', 'JieGarden', 'BlackFlow'] as const);
 const RECLAMATION_THEMES = Object.freeze(['Tales', 'RelaunchAnchor'] as const);
 const ROGUELIKE_COMMON_MODES: readonly number[] = Object.freeze([0, 1, 4, 6, 7]);
@@ -307,6 +383,18 @@ const RECLAMATION_MODES_BY_THEME: Readonly<Record<string, readonly number[]>> = 
   Tales: Object.freeze([0, 1]),
   RelaunchAnchor: Object.freeze([16, 32, 48])
 });
+
+function reclamationModesForTheme(theme: string): readonly number[] {
+  return RECLAMATION_MODES_BY_THEME[theme] ?? [];
+}
+
+/**
+ * 沙洲遗闻模式 1 由 MaaCore 的 ReclamationCraftTaskPlugin 处理，插件会直接读取
+ * `tools_to_craft`；缺键会抛出未捕获异常让整个 CLI 进程中止，空数组则静默不制造。
+ */
+function reclamationModeRequiresTools(theme: string, mode: number): boolean {
+  return theme === 'Tales' && mode === 1;
+}
 
 const ROGUELIKE_BOOLEAN_FIELDS = Object.freeze([
   'use_support', 'use_nonfriend_support', 'investment_enabled', 'investment_with_more_score',
@@ -545,13 +633,14 @@ function validateReclamationParams(params: Record<string, unknown>): string | nu
   if (params.mode !== undefined && !isIntegerValue(params.mode)) {
     return `${prefix}.params.mode 必须是整数`;
   }
-  const allowedModes = RECLAMATION_MODES_BY_THEME[theme] ?? [];
-  if (typeof params.mode !== 'number') {
+  const allowedModes = reclamationModesForTheme(theme);
+  const mode = isIntegerValue(params.mode) ? params.mode : null;
+  if (mode === null) {
     if (theme !== 'Tales') {
       return `${prefix}.params.mode 在 ${theme} 主题下必填，可选：${allowedModes.join('、')}`;
     }
-  } else if (!allowedModes.includes(params.mode)) {
-    return `${prefix}.params.mode ${params.mode} 不适用于 ${theme} 主题，可选：${allowedModes.join('、')}`;
+  } else if (!allowedModes.includes(mode)) {
+    return `${prefix}.params.mode ${mode} 不适用于 ${theme} 主题，可选：${allowedModes.join('、')}`;
   }
 
   if (params.clear_store !== undefined && typeof params.clear_store !== 'boolean') {
@@ -561,6 +650,10 @@ function validateReclamationParams(params: Record<string, unknown>): string | nu
     && (!isStringArrayValue(params.tools_to_craft)
       || params.tools_to_craft.some(tool => !tool.trim()))) {
     return `${prefix}.params.tools_to_craft 必须是非空工具名数组`;
+  }
+  if (mode !== null && reclamationModeRequiresTools(theme, mode)
+    && (!Array.isArray(params.tools_to_craft) || params.tools_to_craft.length === 0)) {
+    return `${prefix}.params.tools_to_craft 在沙洲遗闻模式 1 下必填，例如 ["荧光棒"]；省略会让 MaaCore 中止`;
   }
   if (params.increment_mode !== undefined
     && (!isIntegerValue(params.increment_mode) || (params.increment_mode !== 0 && params.increment_mode !== 1))) {
@@ -664,11 +757,28 @@ export function validateRoguelikeCommandArgs(command: string, args: readonly str
       return `maa-cli 的生息演算只支持 ${CLI_RECLAMATION_THEMES.join('、')} 主题；「${normalizedTheme}」请改用 command=run 加 taskConfig 动态任务`;
     }
     const modeValue = lastCommandValue(values, 'mode') ?? lastCommandValue(values, '-m');
+    let mode = 1;
     if (modeValue !== undefined) {
       const parsed = isCommandInteger(modeValue);
-      if (parsed === null || (parsed !== 0 && parsed !== 1)) {
-        return '生息演算 --mode 必须是 0 或 1';
-      }
+      if (parsed === null) return '生息演算 --mode 必须是整数';
+      mode = parsed;
+    }
+    const allowedModes = reclamationModesForTheme(normalizedTheme || 'Tales');
+    if (!allowedModes.includes(mode)) {
+      return `生息演算 --mode 必须是 ${allowedModes.join(' 或 ')}`;
+    }
+    const tools = [
+      ...(values.get('tools-to-craft') ?? []),
+      ...(values.get('-C') ?? [])
+    ].map(tool => tool.trim()).filter(Boolean);
+    for (const tool of values.get('tools-to-craft') ?? []) {
+      if (!tool.trim()) return '生息演算 --tools-to-craft 不能为空白工具名';
+    }
+    for (const tool of values.get('-C') ?? []) {
+      if (!tool.trim()) return '生息演算 -C 不能为空白工具名';
+    }
+    if (reclamationModeRequiresTools(normalizedTheme || 'Tales', mode) && tools.length === 0) {
+      return '生息演算模式 1 必须显式指定 --tools-to-craft（省略时 maa-cli 会默认制作 16 批荧光棒）';
     }
     const increment = lastCommandValue(values, 'increment-mode') ?? lastCommandValue(values, 'increase-mode');
     if (increment !== undefined) {

@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, stat } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import TOML from '@iarna/toml';
 import { execMaaCommand, execDynamicTask } from './maaExecutionService.ts';
 import type { MaaDynamicTaskConfig } from './maaExecutionService.ts';
 import { getCallbackDetails, getCallbackStringField, parseMaaCallbackEvents } from './maaCallbackService.ts';
@@ -267,7 +268,9 @@ export type CopilotDelegationReason =
   | 'duplicate-copilot'
   | 'unsupported-client-type'
   | 'unsupported-options'
-  | 'stage-name-mismatch';
+  | 'stage-name-mismatch'
+  | 'overlay-conflict'
+  | 'overlay-unreadable';
 
 /**
  * 原生委托的最终走向：`native-*` 表示没有回退，`fallback-*` 表示原生失败后
@@ -1166,6 +1169,102 @@ async function resolveNativeCopilotClientType(): Promise<string> {
 }
 
 /**
+ * maa-cli 把 `<config>/overlays/<task type>.<ext>` 作为预设命令的任务默认值，
+ * 按 json、yaml、yml、toml 的顺序取第一个存在的文件；`maa run <task file>`
+ * 不读取 overlay。原生 copilot 预设把用户布尔开关与 overlay 默认值取或、
+ * 数字与字符串参数只在用户显式给出时才覆盖，因此 overlay 里把用户关闭的
+ * 开关设成 true，或保留用户没有选择的值时，CLI 没有参数能改回现有流程下发的值。
+ */
+const NATIVE_COPILOT_OVERLAY_EXTENSIONS = ['json', 'yaml', 'yml', 'toml'] as const;
+
+const NATIVE_COPILOT_OVERLAY_CONTROLLED_KEYS: ReadonlySet<string> = new Set([
+  'copilot_list',
+  'formation',
+  'use_sanity_potion',
+  'add_trust',
+  'ignore_requirements',
+  'formation_index',
+  'support_unit_usage',
+  'support_unit_name',
+  'loop_times'
+]);
+
+const parseToml: (text: string) => Record<string, unknown> = TOML.parse;
+
+type CopilotOverlayRead =
+  | { state: 'missing' }
+  | { state: 'unreadable' }
+  | { state: 'loaded'; params: Record<string, unknown> };
+
+function isMissingFileError(error: unknown): boolean {
+  return isRecord(error) && error.code === 'ENOENT';
+}
+
+/**
+ * 读取本机对原生 copilot 任务生效的 overlay；YAML 不在服务端依赖里，无法核对
+ * 参数时按不可读处理，避免放行一个无法确认参数等价的委托。
+ */
+async function readNativeCopilotOverlay(): Promise<CopilotOverlayRead> {
+  let configDir: string;
+  try {
+    configDir = (await getMaaConfigDir()).trim();
+  } catch {
+    return { state: 'unreadable' };
+  }
+  for (const extension of NATIVE_COPILOT_OVERLAY_EXTENSIONS) {
+    let content: string;
+    try {
+      content = await readFile(join(configDir, 'overlays', `copilot.${extension}`), 'utf8');
+    } catch (error) {
+      if (isMissingFileError(error)) continue;
+      return { state: 'unreadable' };
+    }
+    if (extension === 'yaml' || extension === 'yml') return { state: 'unreadable' };
+    try {
+      const parsed: unknown = extension === 'json' ? JSON.parse(content) : parseToml(content);
+      return isRecord(parsed) ? { state: 'loaded', params: parsed } : { state: 'unreadable' };
+    } catch {
+      return { state: 'unreadable' };
+    }
+  }
+  return { state: 'missing' };
+}
+
+/** 现有流程显式下发的默认值；原生命令只在用户显式开启/大于 0/非空时才覆盖 overlay。 */
+function hasNativeCopilotOverlayConflict(
+  overlay: Record<string, unknown>,
+  options: CopilotExecutionOptions
+): boolean {
+  if (Object.keys(overlay).some(key => !NATIVE_COPILOT_OVERLAY_CONTROLLED_KEYS.has(key))) return true;
+
+  const booleanOptions: ReadonlyArray<readonly [string, boolean]> = [
+    ['use_sanity_potion', options.useSanityPotion === true],
+    ['add_trust', options.addTrust === true],
+    ['ignore_requirements', options.ignoreRequirements !== false]
+  ];
+  for (const [key, enabled] of booleanOptions) {
+    if (!enabled && overlay[key] === true) return true;
+  }
+
+  const numericOptions: ReadonlyArray<readonly [string, number]> = [
+    ['formation_index', Number(options.formationIndex || 0)],
+    ['support_unit_usage', Number(options.supportUsage || 0)]
+  ];
+  for (const [key, value] of numericOptions) {
+    if (value !== 0 || !Object.hasOwn(overlay, key)) continue;
+    const overlayValue = overlay[key];
+    if (!(typeof overlayValue === 'number' && overlayValue === 0)) return true;
+  }
+
+  const supportName = String(options.supportName || '');
+  if (supportName === '' && Object.hasOwn(overlay, 'support_unit_name')) {
+    const overlayValue = overlay.support_unit_name;
+    if (!(typeof overlayValue === 'string' && overlayValue === '')) return true;
+  }
+  return false;
+}
+
+/**
  * 判定整组条目能否交给原生 `maa copilot` 执行。
  *
  * 原生命令按 uri 顺序生成一份 `copilot_list`：每条目一份计划文件、统一
@@ -1205,6 +1304,11 @@ export async function evaluateCopilotNativeDelegation({
   const copilotIds = entries.map(entry => Number(entry.copilotId));
   if (new Set(copilotIds).size !== copilotIds.length) {
     return { eligible: false, reason: 'duplicate-copilot' };
+  }
+  const overlay = await readNativeCopilotOverlay();
+  if (overlay.state === 'unreadable') return { eligible: false, reason: 'overlay-unreadable' };
+  if (overlay.state === 'loaded' && hasNativeCopilotOverlayConflict(overlay.params, options)) {
+    return { eligible: false, reason: 'overlay-conflict' };
   }
   const stageCodes = await loadNativeStageCodes(entries.map(entry => entry.stageId));
   if (!entries.every(entry => stageCodes.get(entry.stageId) === entry.displayStage)) {

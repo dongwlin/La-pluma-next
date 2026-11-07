@@ -284,10 +284,18 @@ export async function withMaaExecutionLease<T>(
   if (active?.lease) return callback(active.lease);
 
   const lease = await acquireMaaExecutionLease(owner);
-  const store: ExecutionContextStore = { lease, depth: 1 };
   try {
-    return await executionContext.run(store, () => callback(lease));
+    return await runWithMaaExecutionLeaseContext(lease, () => callback(lease));
   } finally {
     await lease.release();
   }
+}
+
+/**
+ * 在已经取得的租约上下文中运行回调：嵌套执行器复用同一份租约，不再尝试加锁。
+ * 释放责任属于取得租约的调用方；后台执行需要跨 HTTP 返回继续持锁时使用，
+ * 使执行结束后的日志摘要仍在租约内采集。
+ */
+export function runWithMaaExecutionLeaseContext<T>(lease: MaaExecutionLease, callback: () => T): T {
+  return executionContext.run({ lease, depth: 1 }, callback);
 }

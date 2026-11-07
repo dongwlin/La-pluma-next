@@ -16,7 +16,11 @@ import {
   isRecord,
   normalizeTrainingSettings
 } from './operatorTrainingModel.ts';
-import { parseOperBoxCatalog } from './operatorCatalogModel.ts';
+import {
+  describeOperBoxRecognition,
+  parseOperBoxCatalog,
+  readOperBoxRecognitionStatus
+} from './operatorCatalogModel.ts';
 import type {
   DepotSnapshot,
   MaterialFormula,
@@ -623,6 +627,12 @@ export function parseOperBox(value: unknown): OperBoxData {
   if (typeof record.operTotal === 'number' && Number.isFinite(record.operTotal)) {
     data.operTotal = record.operTotal;
   }
+  data.recognition = describeOperBoxRecognition({
+    allOpers,
+    operTotal: data.operTotal ?? null,
+    operCount: (data.data ?? data.operators ?? []).length,
+    complete: readOperBoxRecognitionStatus(record.recognition) === 'complete'
+  });
   if (typeof record.timestamp === 'string') data.timestamp = record.timestamp;
   return data;
 }

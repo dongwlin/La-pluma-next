@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdir, stat, unlink, realpath, open } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createLogger } from '../utils/logger.ts';
@@ -22,12 +23,26 @@ export interface MaaLogFileEntry {
   modified: string;
 }
 
+/** 文件身份：同一个路径上的日志被替换或重命名后，dev/ino 会变化。 */
+export interface MaaLogFileIdentity {
+  dev: number;
+  ino: number;
+}
+
+/** 检查点边界之前若干字节的摘要，用于识别同 inode 的原地截断后重新增长。 */
+export interface MaaLogFileAnchor {
+  length: number;
+  sha256: string;
+}
+
 export interface MaaLogCheckpoint {
   logPath: string;
   size: number;
+  identity?: MaaLogFileIdentity;
+  anchor?: MaaLogFileAnchor;
 }
 
-export type MaaLogIncrementStatus = 'ok' | 'unreadable' | 'truncated';
+export type MaaLogIncrementStatus = 'ok' | 'unreadable' | 'truncated' | 'rotated';
 
 /** 增量日志读取结果；`text` 按原文返回，完整性由 `status` 标明。 */
 export interface MaaLogIncrement {
@@ -37,7 +52,12 @@ export interface MaaLogIncrement {
 
 export interface MaaLogFileStats {
   size: number;
+  dev?: number;
+  ino?: number;
 }
+
+/** 检查点保留的边界前摘要长度；取会话内容而不是固定日志头，又不随文件增长变大。 */
+const LOG_ANCHOR_BYTES = 256;
 
 export interface MaaLogFileHandle {
   read(
@@ -52,6 +72,7 @@ export interface MaaLogFileHandle {
 export interface MaaLogCheckpointPorts {
   resolveLogDir?(): Promise<string>;
   stat?(path: string): Promise<MaaLogFileStats>;
+  open?(path: string, flags: 'r'): Promise<MaaLogFileHandle>;
 }
 
 export interface MaaLogReadPorts {
@@ -141,15 +162,49 @@ async function collectMaaLogFiles(logDir: string): Promise<MaaLogFileEntry[]> {
   return files;
 }
 
+function readLogIdentity(stats: MaaLogFileStats): MaaLogFileIdentity | null {
+  const dev = Number(stats.dev);
+  const ino = Number(stats.ino);
+  if (!Number.isFinite(dev) || !Number.isFinite(ino) || ino <= 0) return null;
+  return { dev, ino };
+}
+
+function digestBytes(bytes: Buffer): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function readLogAnchor(
+  handle: MaaLogFileHandle,
+  size: number
+): Promise<MaaLogFileAnchor | null> {
+  const length = Math.min(Math.max(size, 0), LOG_ANCHOR_BYTES);
+  if (length === 0) return null;
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, size - length);
+  if (bytesRead !== length) return null;
+  return { length, sha256: digestBytes(buffer) };
+}
+
 export async function createMaaLogCheckpoint(
   ports: MaaLogCheckpointPorts = {}
 ): Promise<MaaLogCheckpoint | null> {
   const resolveLogDir = ports.resolveLogDir || getMaaLogDir;
   const statFile = ports.stat || stat;
+  const openFile = ports.open || open;
   try {
     const logPath = join(await resolveLogDir(), 'asst.log');
     const logStats = await statFile(logPath);
-    return { logPath, size: logStats.size };
+    const checkpoint: MaaLogCheckpoint = { logPath, size: logStats.size };
+    const identity = readLogIdentity(logStats);
+    if (identity) checkpoint.identity = identity;
+    const handle = await openFile(logPath, 'r');
+    try {
+      const anchor = await readLogAnchor(handle, logStats.size);
+      if (anchor) checkpoint.anchor = anchor;
+    } finally {
+      await handle.close();
+    }
+    return checkpoint;
   } catch (error) {
     logger.debug('无法创建 Maa 日志检查点', { error: error instanceof Error ? error.message : String(error) });
     return null;
@@ -157,10 +212,34 @@ export async function createMaaLogCheckpoint(
 }
 
 /**
+ * 校验文件仍是从检查点开始持续追加的同一份日志：身份不同说明文件被替换，
+ * 检查点边界前的内容摘要不同说明同一 inode 被截断后重新写入。两种情况下依赖
+ * 「检查点后新增内容」的结论都不成立。
+ */
+async function matchesCheckpointFile(
+  handle: MaaLogFileHandle,
+  checkpoint: MaaLogCheckpoint,
+  stats: MaaLogFileStats
+): Promise<boolean> {
+  if (checkpoint.identity) {
+    const identity = readLogIdentity(stats);
+    if (identity && (identity.dev !== checkpoint.identity.dev || identity.ino !== checkpoint.identity.ino)) {
+      return false;
+    }
+  }
+  const anchor = checkpoint.anchor;
+  if (!anchor) return true;
+  const buffer = Buffer.alloc(anchor.length);
+  const { bytesRead } = await handle.read(buffer, 0, anchor.length, checkpoint.size - anchor.length);
+  return bytesRead === anchor.length && digestBytes(buffer) === anchor.sha256;
+}
+
+/**
  * 读取检查点之后的增量日志并标明完整性：`ok` 表示拿到了全部新增字节，
  * `unreadable` 表示检查点或文件不可读，`truncated` 表示只拿到部分新增内容
- * （文件回绕变小、超出单次读取上限或单次读取不足）。依赖「没有读到某类回调」
- * 下结论的调用方只能接受 `ok`。
+ * （文件回绕变小、超出单次读取上限或单次读取不足），`rotated` 表示检查点
+ * 指向的日志已被替换或原地重写，新增字节不再属于同一份日志。依赖「没有读到
+ * 某类回调」下结论的调用方只能接受 `ok`。
  */
 export async function readMaaLogIncrement(
   checkpoint: MaaLogCheckpoint | null,
@@ -174,21 +253,25 @@ export async function readMaaLogIncrement(
   try {
     const logStats = await statFile(checkpoint.logPath);
     if (logStats.size < checkpoint.size) return { status: 'truncated', text: '' };
-    if (logStats.size === checkpoint.size) return { status: 'ok', text: '' };
 
-    const availableBytes = logStats.size - checkpoint.size;
-    const bytesToRead = Math.min(availableBytes, maxBytes);
-    const start = logStats.size - bytesToRead;
-    const buffer = Buffer.alloc(bytesToRead);
     const handle = await openFile(checkpoint.logPath, 'r');
-    let bytesRead = 0;
     try {
+      if (!(await matchesCheckpointFile(handle, checkpoint, logStats))) {
+        return { status: 'rotated', text: '' };
+      }
+      if (logStats.size === checkpoint.size) return { status: 'ok', text: '' };
+
+      const availableBytes = logStats.size - checkpoint.size;
+      const bytesToRead = Math.min(availableBytes, maxBytes);
+      const start = logStats.size - bytesToRead;
+      const buffer = Buffer.alloc(bytesToRead);
+      let bytesRead = 0;
       ({ bytesRead } = await handle.read(buffer, 0, bytesToRead, start));
+      const complete = bytesToRead === availableBytes && bytesRead === bytesToRead;
+      return { status: complete ? 'ok' : 'truncated', text: buffer.subarray(0, bytesRead).toString('utf-8') };
     } finally {
       await handle.close();
     }
-    const complete = bytesToRead === availableBytes && bytesRead === bytesToRead;
-    return { status: complete ? 'ok' : 'truncated', text: buffer.subarray(0, bytesRead).toString('utf-8') };
   } catch (error) {
     logger.debug('无法读取 Maa 增量日志', { error: error instanceof Error ? error.message : String(error) });
     return { status: 'unreadable', text: '' };

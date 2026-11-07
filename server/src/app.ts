@@ -7,7 +7,11 @@ import type { RuntimeEnvSource } from './config/runtimeConfig.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
 import { createAgentRouter } from './routes/agent.ts';
 import { createGameAssetRouter } from './routes/gameAssets.ts';
-import { createGameAssetDirsProvider, GAME_ASSET_ROUTE_PREFIX } from './services/gameAssetService.ts';
+import {
+  createGameAssetDirsProvider,
+  GAME_ASSET_ROUTE_PREFIX,
+  isGameAssetRequestPath
+} from './services/gameAssetService.ts';
 import type { InfrastScheduleService } from './services/infrastScheduleService.ts';
 import { createUserConfigRouter } from './routes/userConfig.ts';
 import { createRuntimeReadinessTracker } from './services/runtimeReadinessService.ts';
@@ -104,7 +108,7 @@ export function createLaPlumaApp({
     methods: ['GET', 'POST', 'PUT', 'DELETE']
   });
   app.use((req: Request, res: Response, next: NextFunction): void => {
-    if (req.path === GAME_ASSET_ROUTE_PREFIX || req.path.startsWith(`${GAME_ASSET_ROUTE_PREFIX}/`)) {
+    if (isGameAssetRequestPath(req.path)) {
       res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
       next();
       return;
@@ -193,11 +197,12 @@ export function createLaPlumaApp({
 
   if (env.NODE_ENV === 'production') {
     const staticMountPath = basePath === '/' ? '/' : basePath.slice(0, -1);
-    const reservedPaths = ['/api', '/health', '/readiness', GAME_ASSET_ROUTE_PREFIX, signalingPath];
+    const reservedPaths = ['/api', '/health', '/readiness', signalingPath];
     const frontend = express.Router();
     // 子路径内也保留服务命名空间；文件与 SPA fallback 共用此边界。
     frontend.use((req, _res, next) => {
-      if (reservedPaths.some(path => req.path === path || req.path.startsWith(`${path}/`))) {
+      if (isGameAssetRequestPath(req.path)
+        || reservedPaths.some(path => req.path === path || req.path.startsWith(`${path}/`))) {
         return next('router');
       }
       next();

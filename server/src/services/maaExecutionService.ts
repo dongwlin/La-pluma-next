@@ -27,7 +27,13 @@ import { createMaaLogCheckpoint, readMaaLogSince } from './maaLogFileService.ts'
 import type { MaaLogCheckpoint } from './maaLogFileService.ts';
 import { parseGameTaskExecutionAction, readOperProgressPlans } from './gameTaskResultService.ts';
 import type { GameTaskExecutionAction, GameTaskType } from './gameTaskResultService.ts';
-import { normalizeGameTaskParams, validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
+import {
+  normalizeGameTaskParams,
+  validateDynamicTaskClientType,
+  validateGameTaskParams,
+  validateGameTaskVariantParams,
+  validateRoguelikeCommandArgs
+} from './gameTaskConfigService.ts';
 import { agentError } from '../utils/apiHelper.ts';
 
 const logger = createLogger('MaaService');
@@ -494,6 +500,17 @@ export async function execDynamicTask(
   if (validationMessage) {
     throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { statusCode: 400 });
   }
+  const variantValidation = validateGameTaskVariantParams(
+    configObj.type,
+    configObj.params ?? {},
+    configObj.variants
+  );
+  if (variantValidation) {
+    throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', variantValidation.message, {
+      statusCode: 400,
+      details: { variantIndex: variantValidation.variantIndex }
+    });
+  }
   const gameTaskType: GameTaskType | null = configObj.type === 'OperProgress' || configObj.type === 'SwitchTheme'
     ? configObj.type
     : null;
@@ -553,6 +570,10 @@ export async function execDynamicTask(
     if (!clientType) {
       const profileClientType = String(await resolveClientType()).trim();
       clientType = profileClientType || DEFAULT_CLIENT_TYPE;
+    }
+    const clientTypeConflict = validateDynamicTaskClientType(configObj, clientType);
+    if (clientTypeConflict) {
+      throw agentError('AGENT_VALIDATION_TASK_CONFIG_INVALID', clientTypeConflict, { statusCode: 400 });
     }
     const tasksDir = join(configDir.trim(), 'tasks');
 

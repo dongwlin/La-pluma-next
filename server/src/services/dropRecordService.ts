@@ -19,6 +19,8 @@ const MATERIALS_PATH = APP_PATHS.materialsPath;
 export interface DropItem {
   name: string;
   count: number;
+  /** Core 回调上报的物品 id，图标按它直接取本地资源；缺失时按名称查材料表。 */
+  itemId?: string;
 }
 
 export interface DropRecordInput {
@@ -143,7 +145,8 @@ function parseDropItem(value: unknown): DropItem | null {
   if (!isRecord(value) || typeof value.name !== 'string') return null;
   const count = readNumber(value.count);
   if (count === null) return null;
-  return { name: value.name, count };
+  const itemId = readString(value.itemId).trim();
+  return itemId ? { name: value.name, count, itemId } : { name: value.name, count };
 }
 
 /**
@@ -552,17 +555,21 @@ function processRecordForStatistics(
       statistics.items[itemName] = {
         count: 0,
         stages: {},
-        id: materialsMap[itemName]?.id ?? null,
+        id: item.itemId ?? materialsMap[itemName]?.id ?? null,
         iconId: materialsMap[itemName]?.iconId ?? null,
         rarity: materialsMap[itemName]?.rarity ?? null
       };
     }
-    statistics.items[itemName].count += item.count;
-
-    if (!statistics.items[itemName].stages[stageName]) {
-      statistics.items[itemName].stages[stageName] = 0;
+    const statisticsItem = statistics.items[itemName];
+    if (statisticsItem.id === null && item.itemId) {
+      statisticsItem.id = item.itemId;
     }
-    statistics.items[itemName].stages[stageName] += item.count;
+    statisticsItem.count += item.count;
+
+    if (!statisticsItem.stages[stageName]) {
+      statisticsItem.stages[stageName] = 0;
+    }
+    statisticsItem.stages[stageName] += item.count;
 
     if (!statistics.stages[stageName].items[itemName]) {
       statistics.stages[stageName].items[itemName] = 0;
