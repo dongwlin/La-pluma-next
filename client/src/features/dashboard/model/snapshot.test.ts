@@ -130,6 +130,33 @@ describe('normalizeDashboardSnapshot', () => {
     })
   })
 
+  it('merges repeated stages of today drops into one accumulated row', () => {
+    const payloads = validPayloads()
+    payloads.todayDrops = [
+      {
+        stage: 'TL-9',
+        items: [
+          { itemId: '4001', name: '龙门币', count: 1008 },
+          { itemId: '4002', name: '失败的记录', count: 84 },
+          { itemId: '4003', name: '电极单元', count: 2 },
+        ],
+      },
+      {
+        stage: 'TL-9',
+        items: [
+          { itemId: '4001', name: '龙门币', count: 1512 },
+          { itemId: '4002', name: '失败的记录', count: 126 },
+          { itemId: '4003', name: '电极单元', count: 4 },
+        ],
+      },
+    ]
+
+    expect(normalizeDashboardSnapshot(payloads)?.dropSummary).toEqual({
+      count: 2,
+      recent: [{ stage: 'TL-9', items: '龙门币×2520、失败的记录×210、电极单元×6' }],
+    })
+  })
+
   it('maps a successful empty activity to none without inventing a code', () => {
     const payloads = validPayloads()
     payloads.activity = activityDto({
@@ -298,15 +325,15 @@ describe('normalizeDashboardSnapshot', () => {
   it('prefers drop name fields before the placeholder text', () => {
     const payloads = validPayloads()
     payloads.todayDrops = [
-      { stageName: '1-7', itemName: '固源岩' },
-      { stageName: '1-7', items: [{ name: '装置', count: 0 }] },
-      { stageName: '1-7', items: 'bad-shape' },
+      { stageName: 'ST-A', itemName: '固源岩' },
+      { stageName: 'ST-B', items: [{ name: '装置', count: 0 }] },
+      { stageName: 'ST-C', items: 'bad-shape' },
     ]
 
     expect(normalizeDashboardSnapshot(payloads)?.dropSummary.recent).toEqual([
-      { stage: '1-7', items: '已记录作战，暂无材料明细' },
-      { stage: '1-7', items: '装置×1' },
-      { stage: '1-7', items: '固源岩' },
+      { stage: 'ST-C', items: '已记录作战，暂无材料明细' },
+      { stage: 'ST-B', items: '装置×1' },
+      { stage: 'ST-A', items: '固源岩' },
     ])
   })
 })

@@ -7,6 +7,9 @@ import {
   type AutomationActivityEntry,
 } from '@/features/automation'
 import { formatExecutionSummary, getExecutionLastTask } from '@/shared/utils/executionSummary'
+import { buildDropSummary, type DropSummary } from './dropSummary'
+
+export type { DropSummary } from './dropSummary'
 
 export interface ActivitySummary {
   available: boolean
@@ -40,14 +43,6 @@ export interface TrainingSummary {
   topNames: string[]
 }
 
-export interface DropSummary {
-  count: number
-  recent: Array<{
-    stage: string
-    items: string
-  }>
-}
-
 export interface OpenStageSummary {
   open: Array<{ stage: string; name: string }>
   closed: Array<{ stage: string; name: string }>
@@ -71,8 +66,6 @@ export interface DashboardSnapshotPayloads {
 
 const MAX_STAGE_SUMMARIES = 100
 const MAX_TRAINING_NAMES = 3
-const MAX_RECENT_DROPS = 3
-const MAX_DROPS_PER_RECORD = 3
 
 const firstString = (...values: unknown[]) => values.find(
   (value): value is string => typeof value === 'string' && value.trim().length > 0,
@@ -89,22 +82,6 @@ const asStageSummaryArray = (value: unknown): Array<{ stage: string; name: strin
   }
   return value.map(item => ({ stage: item.stage as string, name: item.name as string }))
 }
-
-const formatDropItems = (value: unknown): string => {
-  if (!Array.isArray(value) || value.length === 0) return ''
-  return value
-    .slice(0, MAX_DROPS_PER_RECORD)
-    .map((drop: any) => `${drop?.name || drop?.itemName || '材料'}×${drop?.count || 1}`)
-    .join('、')
-}
-
-const normalizeDropRecord = (record: Record<string, unknown>) => ({
-  stage: firstString(record.stageName, record.stageCode, record.stage) || '未知关卡',
-  items: formatDropItems(record.drops)
-    || formatDropItems(record.items)
-    || firstString(record.itemName)
-    || '已记录作战，暂无材料明细',
-})
 
 /**
  * 五路载荷全部有效时返回完整快照；任一路缺失或格式不符返回 `null`。
@@ -191,10 +168,7 @@ export function normalizeDashboardSnapshot(
       .slice(0, MAX_TRAINING_NAMES),
   }
 
-  const dropSummary: DropSummary = {
-    count: drops.length,
-    recent: [...drops].reverse().slice(0, MAX_RECENT_DROPS).map(normalizeDropRecord),
-  }
+  const dropSummary: DropSummary = buildDropSummary(drops)
 
   return {
     activitySummary,
