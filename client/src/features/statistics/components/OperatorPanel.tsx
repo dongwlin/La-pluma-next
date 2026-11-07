@@ -12,9 +12,11 @@ import Icons from '@/shared/ui/Icons'
 import { Button, Card, EmptyState, Loading } from '@/shared/ui'
 import {
   DEFAULT_OPERATOR_FILTERS,
+  buildKnownOperatorIdSet,
   buildOwnedOperatorIdSet,
   hasActiveOperatorFilters,
   isOwnedOperator,
+  isUnknownOperator,
   selectOperators,
   type FilterElite,
   type FilterOwnership,
@@ -142,6 +144,11 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
 
   const ownedOperatorIds = useMemo(
     () => buildOwnedOperatorIdSet(operBoxData),
+    [operBoxData],
+  )
+
+  const knownOperatorIds = useMemo(
+    () => buildKnownOperatorIdSet(operBoxData),
     [operBoxData],
   )
 
@@ -419,6 +426,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                 <div className="data-statistics-item-grid grid grid-cols-2 overflow-hidden rounded-xl surface-soft sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                   {filteredOperators.map((oper) => {
                     const isOwned = isOwnedOperator(oper, ownedOperatorIds)
+                    const isUnknown = !isOwned && isUnknownOperator(oper, knownOperatorIds)
                     const imageLoaded = loadedImages[oper.id] || false
 
                     return (
@@ -432,7 +440,7 @@ export default function OperatorPanel({ isActive, command }: OperatorPanelProps)
                       >
                         {!isOwned && (
                           <div className="control-surface absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-semibold text-secondary">
-                            未拥有
+                            {isUnknown ? '未知' : '未拥有'}
                           </div>
                         )}
 
