@@ -281,6 +281,13 @@ export function normalizeRoguelikeAdvancedParams(
   return normalized ?? advancedParams
 }
 
+const NEGATIVE_INTEGER = /^-\d+$/
+
+/** clap 会把空格分隔的负数当成未知选项，数字取值出现负数时改用 `=` 连成单 token。 */
+function appendOptionValue(params: string, param: string, value: string): string {
+  return NEGATIVE_INTEGER.test(value) ? `${params} ${param}=${value}` : `${params} ${param} ${value}`
+}
+
 /**
  * 拼接执行参数：主题代号在前，字段按字段表顺序追加。
  * 空字符串、未勾选的 checkbox、未设置的字段、当前主题/模式不适用的字段、
@@ -309,13 +316,18 @@ export function buildRoguelikeCommandParams(
       if (getRoguelikeNumberError(option, value)) continue
       const numeric = String(value).trim()
       if (numeric === '') continue
-      params += ` ${option.param} ${numeric}`
+      params = appendOptionValue(params, option.param, numeric)
       continue
     }
 
     if (option.type === 'list') {
       if (getRoguelikeListError(option, value)) continue
       for (const item of splitRoguelikeListValue(value)) params += ` ${option.param} ${item}`
+      continue
+    }
+
+    if (option.type === 'select') {
+      params = appendOptionValue(params, option.param, String(value))
       continue
     }
 
