@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
 import { apiFixtures, ok } from './fixtures'
 import { installDeterministicEnvironment, waitForPageReady } from './harness'
@@ -101,6 +101,43 @@ test.describe('automation field hints', () => {
     await expect(page.getByText(ACCOUNT_HINT, { exact: true })).toHaveCount(1)
     await page.keyboard.press('Escape')
     await expect(page.getByText(LAUNCH_HINT, { exact: true })).toBeHidden()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('hangs the launch hint right after its label instead of the row end', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+
+    const measure = async (label: Locator, hint: Locator) => {
+      const labelBox = await label.boundingBox()
+      const hintBox = await hint.boundingBox()
+      expect(labelBox).not.toBeNull()
+      expect(hintBox).not.toBeNull()
+      return {
+        gap: hintBox!.x - (labelBox!.x + labelBox!.width),
+        centerOffset: hintBox!.y + hintBox!.height / 2 - (labelBox!.y + labelBox!.height / 2),
+      }
+    }
+
+    const account = await measure(
+      page.locator('label[for="automation-startup-visual-1-accountName"]'),
+      page.getByRole('button', { name: '切换账号说明', exact: true }),
+    )
+    const launch = await measure(
+      page.locator('label[for="automation-startup-visual-1-start_game_enabled"]'),
+      page.getByRole('button', { name: '启动游戏客户端说明', exact: true }),
+    )
+
+    // 标签到 ⓘ 按钮之间只留 inline 的小间距，而不是被推到行尾。
+    expect(Math.abs(launch.gap - 4)).toBeLessThanOrEqual(2)
+    expect(launch.gap).toBeGreaterThan(0)
+    // 与「切换账号」旁的 ⓘ 保持同样的间距与垂直居中。
+    expect(Math.abs(launch.gap - account.gap)).toBeLessThanOrEqual(1)
+    expect(Math.abs(launch.centerOffset)).toBeLessThanOrEqual(2)
+    expect(Math.abs(account.centerOffset)).toBeLessThanOrEqual(2)
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)
