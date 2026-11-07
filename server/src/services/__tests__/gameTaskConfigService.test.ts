@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeGameTaskParams,
+  validateDynamicTaskClientType,
   validateGameTaskParams,
   validateRoguelikeCommandArgs
 } from '../gameTaskConfigService.ts';
@@ -362,7 +363,7 @@ describe('validateGameTaskParams Reclamation', () => {
       'Reclamation.params.increment_mode 必须是 0 或 1'
     );
     assert.equal(
-      validateGameTaskParams('Reclamation', { mode: 1, num_craft_batches: 0 }),
+      validateGameTaskParams('Reclamation', { mode: 1, tools_to_craft: ['荧光棒'], num_craft_batches: 0 }),
       'Reclamation.params.num_craft_batches 必须是正整数'
     );
     assert.equal(
@@ -373,6 +374,18 @@ describe('validateGameTaskParams Reclamation', () => {
       validateGameTaskParams('Reclamation', { mode: 1, tools_to_craft: [''] }),
       'Reclamation.params.tools_to_craft 必须是非空工具名数组'
     );
+  });
+
+  it('requires tools_to_craft in Tales mode 1 before MaaCore receives the task', () => {
+    const required = 'Reclamation.params.tools_to_craft 在沙洲遗闻模式 1 下必填，例如 ["荧光棒"]；省略会让 MaaCore 中止';
+    assert.equal(validateGameTaskParams('Reclamation', { theme: 'Tales', mode: 1 }), required);
+    assert.equal(validateGameTaskParams('Reclamation', { mode: 1 }), required);
+    assert.equal(validateGameTaskParams('Reclamation', { theme: 'Tales', mode: 1, tools_to_craft: [] }), required);
+    assert.equal(validateGameTaskParams('Reclamation', {
+      theme: 'Tales',
+      mode: 1,
+      tools_to_craft: ['荧光棒']
+    }), null);
   });
 });
 
@@ -393,7 +406,8 @@ describe('validateRoguelikeCommandArgs', () => {
       ['roguelike', ['Phantom', '--mode=4', '--starts-count', '3']],
       ['roguelike', ['Sarkaz', '--mode', '1', '--start-with-seed', '2b3c4d,rogue_1,120']],
       ['reclamation', ['Tales', '-m', '1', '-C', '荧光棒', '--increment-mode', '1']],
-      ['reclamation', ['Tales']]
+      ['reclamation', ['Tales', '-C', '荧光棒']],
+      ['reclamation', ['Tales', '-m', '0']]
     ] as const) {
       assert.equal(validateRoguelikeCommandArgs(command, args), null, `${command} ${args.join(' ')}`);
     }
@@ -425,8 +439,29 @@ describe('validateRoguelikeCommandArgs', () => {
     assert.equal(validateRoguelikeCommandArgs('roguelike', ['Phantom', '--starts-count', '1.5']), '集成战略 --starts-count 必须是整数');
     assert.equal(validateRoguelikeCommandArgs('roguelike', ['Sami', '-F', '']), '集成战略 -F 不能为空白值');
     assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '2']), '生息演算 --mode 必须是 0 或 1');
-    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--increment-mode', '3']), '生息演算 --increment-mode 必须是 0 或 1');
-    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--num-craft-batches', '0']), '生息演算 --num-craft-batches 必须是正整数');
+    assert.equal(
+      validateRoguelikeCommandArgs('reclamation', ['Tales', '-C', '荧光棒', '--increment-mode', '3']),
+      '生息演算 --increment-mode 必须是 0 或 1'
+    );
+    assert.equal(
+      validateRoguelikeCommandArgs('reclamation', ['Tales', '-C', '荧光棒', '--num-craft-batches', '0']),
+      '生息演算 --num-craft-batches 必须是正整数'
+    );
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', 'abc']), '生息演算 --mode 必须是整数');
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '1', '-C', '']), '生息演算 -C 不能为空白工具名');
+  });
+
+  it('requires tools on the preset command only when the effective mode crafts', () => {
+    const required = '生息演算模式 1 必须显式指定 --tools-to-craft（省略时 maa-cli 会默认制作 16 批荧光棒）';
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales']), required);
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '1']), required);
+    assert.equal(
+      validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '1', '--num-craft-batches', '2']),
+      required
+    );
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '0']), null);
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '-m', '0', '-C', '荧光棒']), null);
+    assert.equal(validateRoguelikeCommandArgs('reclamation', ['Tales', '--tools-to-craft=发电机']), null);
   });
 });
 
@@ -469,5 +504,55 @@ describe('normalizeGameTaskParams', () => {
 
     const canonical = normalizeGameTaskParams('Roguelike', { find_playTime_target: 2 });
     assert.deepEqual(canonical, { params: { find_playTime_target: 2 }, error: null });
+  });
+});
+
+describe('validateDynamicTaskClientType', () => {
+  it('ignores task types that do not carry a client type', () => {
+    assert.equal(validateDynamicTaskClientType({
+      type: 'Award',
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }, 'Official'), null);
+  });
+
+  it('rejects task and variant client types that the run-level type would override', () => {
+    assert.equal(
+      validateDynamicTaskClientType({
+        type: 'StartUp',
+        params: { client_type: 'Official' },
+        variants: [{ params: { client_type: 'Bilibili' } }]
+      }, 'Official'),
+      '动态任务 variants[0].params.client_type 为 Bilibili，与 Run 顶层客户端 Official 冲突；maa-cli 会用顶层 client_type 覆盖 StartUp/Fight/CloseDown 的任务参数'
+    );
+    assert.equal(
+      validateDynamicTaskClientType({ type: 'StartUp', params: { client_type: 'Official' } }, 'Bilibili'),
+      '动态任务 StartUp.params.client_type 为 Official，与 Run 顶层客户端 Bilibili 冲突；maa-cli 会用顶层 client_type 覆盖 StartUp/Fight/CloseDown 的任务参数'
+    );
+  });
+
+  it('rejects a variant-only client type while the run-level type is unknown', () => {
+    assert.equal(
+      validateDynamicTaskClientType({
+        type: 'StartUp',
+        params: { start_game_enabled: false },
+        variants: [{ params: { client_type: 'Bilibili' } }]
+      }),
+      '动态任务 variants[0].params.client_type 声明了 client_type，但任务未声明顶层 params.client_type；maa-cli 会用连接 profile 的客户端类型覆盖它，请把 client_type 统一写在任务 params.client_type'
+    );
+  });
+
+  it('rejects unknown client types and accepts matching ones', () => {
+    assert.equal(
+      validateDynamicTaskClientType({
+        type: 'Fight',
+        variants: [{ params: { client_type: 'NotAClient' } }]
+      }, 'Official'),
+      '动态任务 variants[0].params.client_type 必须是 Official/Bilibili/Txwy/YoStarEN/YoStarJP/YoStarKR 之一'
+    );
+    assert.equal(validateDynamicTaskClientType({
+      type: 'StartUp',
+      params: { client_type: 'Bilibili' },
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }, 'Bilibili'), null);
   });
 });

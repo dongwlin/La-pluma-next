@@ -1,6 +1,12 @@
 import { agentError } from '../utils/apiHelper.ts';
 import type { AgentError } from '../utils/apiHelper.ts';
-import { normalizeGameTaskParams, validateGameTaskParams, validateRoguelikeCommandArgs } from './gameTaskConfigService.ts';
+import {
+  normalizeGameTaskParams,
+  validateDynamicTaskClientType,
+  validateGameTaskParams,
+  validateGameTaskVariantParams,
+  validateRoguelikeCommandArgs
+} from './gameTaskConfigService.ts';
 
 /** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
@@ -178,6 +184,12 @@ function normalizeVariantsParams(
   });
 }
 
+function readTaskClientType(params: Record<string, unknown>): string | undefined {
+  const value = params.client_type;
+  if (typeof value !== 'string') return undefined;
+  return value.trim() || undefined;
+}
+
 function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: string): AgentTaskConfig {
   if ('condition' in normalized) {
     throw invalidRequest(
@@ -248,6 +260,28 @@ function normalizeSingleTaskConfig(normalized: Record<string, unknown>, label: s
   const validationMessage = validateGameTaskParams(normalizedType, normalizedParams.params);
   if (validationMessage) {
     throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', validationMessage, { reason: 'game_task_params_invalid' });
+  }
+
+  const variantValidation = validateGameTaskVariantParams(normalizedType, normalizedParams.params, normalizedVariants);
+  if (variantValidation) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', variantValidation.message, {
+      reason: 'game_task_params_invalid',
+      variantIndex: variantValidation.variantIndex
+    });
+  }
+
+  const clientTypeConflict = validateDynamicTaskClientType(
+    {
+      type: normalizedType,
+      params: normalizedParams.params,
+      ...(normalizedVariants ? { variants: normalizedVariants } : {})
+    },
+    readTaskClientType(normalizedParams.params)
+  );
+  if (clientTypeConflict) {
+    throw invalidRequest('AGENT_VALIDATION_TASK_CONFIG_INVALID', clientTypeConflict, {
+      reason: 'client_type_conflict'
+    });
   }
 
   return {

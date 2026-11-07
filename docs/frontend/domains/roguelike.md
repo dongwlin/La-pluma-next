@@ -77,13 +77,13 @@ RoguelikeTasks（页面壳：页头、预览布局）
 | `requiresRoguelikeDynamicTask(taskId, taskInputs, advancedParams)` | 主题/模式不在 maa-cli 枚举内，或设置了只有 Core 参数名的字段时返回 true |
 | `buildRoguelikeDynamicTaskConfig(taskId, taskInputs, advancedParams)` | 把生效字段换成 Core 参数名并构造 `{ name, type, params }`；补齐 CLI 缺省与 Core 缺省不一致的字段 |
 | `buildRoguelikeExecutionPlan(taskId, taskInputs, advancedParams)` | 返回 `{ command, params, taskConfig }`：CLI 可行时保持原命令，否则换成 `run` + taskConfig |
-| `validateRoguelikeTaskInput(taskId, taskInputs, advancedParams)` | `roguelikeValidation.ts`：主题必须已知；生效下拉值必须属于当前主题候选表；数字与列表字段必须合法；刷坍缩范式要求期望范式、刷常乐节点要求目标节点、黑流树海刷开局要求合法动物与奖励；未知任务交给调用方 |
+| `validateRoguelikeTaskInput(taskId, taskInputs, advancedParams)` | `roguelikeValidation.ts`：主题必须已知；生效下拉值必须属于当前主题候选表；数字与列表字段必须合法；沙洲遗闻模式 1 要求显式填写制作工具与批次数；刷坍缩范式要求期望范式、刷常乐节点要求目标节点、黑流树海刷开局要求合法动物与奖励；未知任务交给调用方 |
 
 命令拼接规则：
 
 - 空字符串、未勾选的 checkbox、未设置的字段、当前主题/模式不适用的字段、不属于当前主题候选表的下拉值与没有 CLI 参数名的字段不写入命令；checkbox 为 true 时只追加参数名。
 - 非 checkbox 字段追加 `参数名 值`；`list` 字段按切分后的每一项重复参数名（`--expected-collapsal-paradigms 目空一些 --expected-collapsal-paradigms 图像损坏`）。
-- 数字字段只接受整数并限定在字段范围内：运行次数、投资次数与批次数为 `1–2147483647`；空值表示未设置。小数、指数、负数或越界值不会写入命令，执行前校验会返回明确错误。
+- 数字字段只接受整数并限定在字段范围内：运行次数、投资次数与批次数为 `1–2147483647`；空值表示未设置，但沙洲遗闻模式 1 的批次数必填。小数、指数、负数或越界值不会写入命令，执行前校验会返回明确错误。
 - 声明 `defaultValue` 的字段在缺失或为空时解析为默认值并始终写入：生息演算 `-m` 因此始终出现，沙洲遗闻缺省为 `1`、重启锚点为 `16`；开局职业组缺省 `稳扎稳打`，避免空缺时 Core 按固定位置点选职业组、与核心干员的职业不匹配。
 - 未声明默认值的 select 不写命令：集成战略 `--mode` 继续省略，与 CLI 缺省 `0` 一致；界面显示由 `resolveRoguelikeAdvancedValue` 回落到当前主题的首项。
 - 集成战略主题目录为傀影、水月、萨米、萨卡兹、界园与黑流树海；模式候选按主题收敛：通用 `0`（刷分）、`1`（刷源石锭）、`4`（刷开局）、`6`（刷月度小队）、`7`（刷深入调查）；萨米额外 `5`（刷坍缩范式）、萨卡兹额外 `10001`（快速通过第一层）、界园额外 `20001`（刷常乐节点）、黑流树海只有 `0`、`1`、`30001`（刷襁褓动物）与 `30003`（刷开局并保留目标局）。
@@ -91,9 +91,9 @@ RoguelikeTasks（页面壳：页头、预览布局）
 - 字段的适用条件由字段表声明：`themes` 限定主题（如密文板只对萨米、指路鳞只对水月、种子只对萨卡兹刷源石锭、黑流树海参数只对黑流树海），`modes` 限定模式（如凹直升只对刷开局、第五层前停止只对刷分、投资多刷分只对刷源石锭、常乐节点只对 `20001`、黑流动物与开局奖励只对 `30003`），`requires` 依赖另一字段（如非好友助战依赖使用助战、投资次数依赖未禁用投资；种子与凹开局密文板还通过 `oneOf` 限定分队）。
 - 种子开局是文本参数：命令追加 `--start-with-seed <种子>`（例如 `2b3c4d,rogue_1,120`），不是无值开关；仅在萨卡兹刷源石锭模式且分队为点刺成锭或后勤时显示与下发。
 - 凹开局密文板仅在萨米刷开局模式与生活至上分队下显示与下发；其他分队在开局奖励阶段不会获得密文板。
-- 生息演算的制作工具名称、加号点击方式与批次数仅在模式 1（制作工具刷繁荣度）显示与下发；`toolsToCraft` 是列表参数，多个工具重复 `-C`（`-C 荧光棒 -C 发电机`）。模式 0 只使用“任务完成后清空商店”开关，该字段没有 CLI 参数，只能走动态任务。
+- 生息演算的制作工具名称、加号点击方式与批次数仅在模式 1（制作工具刷繁荣度）显示与下发；`toolsToCraft` 是列表参数，多个工具重复 `-C`（`-C 荧光棒 -C 发电机`）。工具名称与批次数在模式 1 下由表单要求显式填写：maa-cli 在省略 `-C` 时会默认制作 16 批荧光棒，执行前校验要求用户确认；服务端 CLI 预检与动态任务预检都会拒绝缺少 `--tools-to-craft` 的模式 1 配置。模式 0 只使用“任务完成后清空商店”开关，该字段没有 CLI 参数，只能走动态任务。
 - 例：`taskInputs.roguelike = 'Sarkaz'`，高级值 `{ mode: '1', squad: '蓝图测绘分队', useSupport: true }` 生成
-  `Sarkaz --mode 1 --squad 蓝图测绘分队 --roles 稳扎稳打 --use-support`；`taskInputs.reclamation = 'Tales'` 配合空高级值生成 `Tales -m 1`；`taskInputs.reclamation = 'Tales'` 配合 `{ mode: '1', toolsToCraft: '荧光棒，发电机', incrementMode: '1' }` 生成 `Tales -m 1 -C 荧光棒 -C 发电机 --increment-mode 1`。
+  `Sarkaz --mode 1 --squad 蓝图测绘分队 --roles 稳扎稳打 --use-support`；`taskInputs.reclamation = 'Tales'` 配合 `{ mode: '1', toolsToCraft: '荧光棒，发电机', incrementMode: '1', numBatches: 16 }` 生成 `Tales -m 1 -C 荧光棒 -C 发电机 --increment-mode 1 --num-craft-batches 16`；模式 0 配合 `{ mode: '0' }` 生成 `Tales -m 0`。
 - 生息演算模式字段声明 `hint`，说明两个主题各自的模式、存档与起始界面要求；面板只原样透传，文案归模型维护。
 - 校验 trim 输入判断是否为空，不修改实际传给 CLI 的主题字符串。
 

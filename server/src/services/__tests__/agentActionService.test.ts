@@ -228,7 +228,7 @@ describe('executeAgentTask', () => {
 
     await executeAgentTask({
       command: 'reclamation',
-      args: ['Tales', '-m', '1'],
+      args: ['Tales', '-m', '1', '-C', '荧光棒'],
       taskName: '生息演算',
       taskType: 'roguelike',
       waitForCompletion: false
@@ -236,7 +236,7 @@ describe('executeAgentTask', () => {
 
     assert.deepEqual(calls[0], {
       executor: 'command',
-      args: ['reclamation', ['Tales', '-m', '1'], '生息演算', 'roguelike', false]
+      args: ['reclamation', ['Tales', '-m', '1', '-C', '荧光棒'], '生息演算', 'roguelike', false]
     });
   });
 
@@ -335,6 +335,96 @@ describe('executeAgentTask', () => {
       error => errorField(error, 'code') === 'AGENT_VALIDATION_TASK_CONFIG_INVALID'
     );
   });
+
+  it('rejects a Reclamation mode 1 task without crafting tools before run creation', () => {
+    for (const taskConfig of [
+      {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 1 }
+      },
+      {
+        name: '生息演算',
+        type: 'Reclamation',
+        params: { theme: 'Tales', mode: 1, tools_to_craft: ['荧光棒'] },
+        variants: [{ params: { tools_to_craft: [] } }]
+      }
+    ]) {
+      assert.throws(
+        () => preflightAgentTaskRequest({ command: 'run', args: ['reclamation'], taskConfig }),
+        error => {
+          assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID');
+          assert.match(String(errorField(error, 'message')), /tools_to_craft/);
+          return true;
+        }
+      );
+    }
+  })
+
+  it('rejects variant client types that the run-level client type would override', () => {
+    const conflicting = {
+      name: '启动游戏',
+      type: 'StartUp',
+      params: { start_game_enabled: false, client_type: 'Official' },
+      variants: [{ params: { client_type: 'Bilibili' } }]
+    }
+    assert.throws(
+      () => preflightAgentTaskRequest({ command: 'run', args: ['startup'], taskConfig: conflicting }),
+      error => {
+        assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID');
+        const message = String(errorField(error, 'message'));
+        assert.match(message, /variants\[0\]\.params\.client_type/);
+        assert.match(message, /Bilibili/);
+        return true;
+      }
+    )
+
+    const matching = {
+      ...conflicting,
+      params: { start_game_enabled: false, client_type: 'Bilibili' }
+    }
+    assert.doesNotThrow(
+      () => preflightAgentTaskRequest({ command: 'run', args: ['startup'], taskConfig: matching })
+    )
+
+    assert.throws(
+      () => preflightAgentTaskRequest({
+        command: 'run',
+        args: ['startup'],
+        taskConfig: {
+          name: '启动游戏',
+          type: 'StartUp',
+          params: { start_game_enabled: false },
+          variants: [{ params: { client_type: 'Bilibili' } }]
+        }
+      }),
+      error => {
+        assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID');
+        assert.match(String(errorField(error, 'message')), /顶层 params\.client_type/);
+        return true;
+      }
+    )
+  })
+
+  it('rejects unknown client types inside task variants during preflight', () => {
+    assert.throws(
+      () => preflightAgentTaskRequest({
+        command: 'run',
+        args: ['startup'],
+        taskConfig: {
+          name: '启动游戏',
+          type: 'StartUp',
+          params: { start_game_enabled: false },
+          variants: [{ params: { client_type: 'NotAClient' } }]
+        }
+      }),
+      error => {
+        assert.equal(errorField(error, 'code'), 'AGENT_VALIDATION_TASK_CONFIG_INVALID');
+        assert.match(String(errorField(error, 'message')), /client_type/);
+        return true;
+      }
+    )
+  })
 
   it('keeps Core-only task types off the maa-cli command allowlist', async () => {
     const { calls, dependencies } = createExecutors();
