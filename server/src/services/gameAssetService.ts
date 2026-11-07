@@ -9,6 +9,16 @@ import { getEffectiveResourceDirs, resolveEffectiveResourceFilePath } from './re
 
 export const GAME_ASSET_ROUTE_PREFIX = '/game-assets';
 
+/**
+ * 资源命名空间判定。Express 的挂载匹配默认忽略大小写，同源响应头与路由必须
+ * 使用同一规则，否则大小写变体会落回 CORS 分支而绕过同源边界。
+ */
+export function isGameAssetRequestPath(requestPath: string): boolean {
+  const normalized = requestPath.toLowerCase();
+  return normalized === GAME_ASSET_ROUTE_PREFIX
+    || normalized.startsWith(`${GAME_ASSET_ROUTE_PREFIX}/`);
+}
+
 export const GAME_ASSET_KINDS = ['item', 'avatar'] as const;
 export type GameAssetKind = (typeof GAME_ASSET_KINDS)[number];
 
