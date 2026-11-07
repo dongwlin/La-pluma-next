@@ -44,8 +44,6 @@ export const INFRASTRUCT_SCHEDULE_ERROR_CODES = {
 
 export const MAX_INFRASTRUCT_SCHEDULE_DIRECTORY_DEPTH = 4;
 
-const MAX_CANONICAL_SEGMENTS = 64;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -387,7 +385,9 @@ async function canonicalizePath(
   let currentPath = absolutePath;
   const missingSegments: string[] = [];
 
-  for (let depth = 0; depth < MAX_CANONICAL_SEGMENTS; depth += 1) {
+  // 缺失目录按最近的已存在祖先拼回真实路径；祖先链本身无法解析时不允许退回
+  // 字面路径，否则根外符号链接会在检查耗尽后漏过。
+  for (;;) {
     try {
       const resolvedPath = await fileSystem.realpath(currentPath);
       return missingSegments.length === 0
@@ -397,11 +397,12 @@ async function canonicalizePath(
       if (!isMissingPathError(error)) throw error;
     }
     const parentPath = dirname(currentPath);
-    if (parentPath === currentPath) break;
+    if (parentPath === currentPath) {
+      throw new Error(`无法解析路径的真实位置：${absolutePath}`);
+    }
     missingSegments.unshift(basename(currentPath));
     currentPath = parentPath;
   }
-  return absolutePath;
 }
 
 interface ResolvedSchedulePath {
