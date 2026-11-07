@@ -166,6 +166,12 @@ describe('automation task parameter defaults and copy', () => {
     expect(tooltipHelpers).toEqual([
       'accountName',
       'start_game_enabled',
+      'stages',
+      'drops',
+      'medicine',
+      'medicineExpireDays',
+      'stone',
+      'series',
       'mode',
       'only_buy_discount',
       'reserve_max_credit',
@@ -215,6 +221,22 @@ describe('automation infrast task catalog', () => {
 })
 
 describe('automation fight task catalog', () => {
+  it('moves every fight helper into a tooltip without touching the copy', () => {
+    for (const key of ['stages', 'drops', 'medicine', 'medicineExpireDays', 'stone', 'series']) {
+      expect(fightParamField(key).helperPlacement).toBe('tooltip')
+    }
+    expect(fightParamField('stages').helper)
+      .toBe('使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数')
+    expect(fightParamField('drops').helper)
+      .toBe('任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔')
+    expect(fightParamField('medicine').helper).toBe('使用理智药数量')
+    expect(fightParamField('medicineExpireDays').helper)
+      .toBe('使用将在指定天数内过期的理智药；0 表示不使用临期药')
+    expect(fightParamField('stone').helper).toBe('使用源石数量')
+    expect(fightParamField('series').helper)
+      .toBe('本任务所有关卡共用的连战倍率，范围 -1 至 10（旧资源只支持 -1 至 6）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整')
+  })
+
   it('explains that stage times and the series multiplier apply together', () => {
     const stages = fightParamField('stages')
     expect(stages.helper).toContain('累计作战局数上限')

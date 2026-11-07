@@ -5,6 +5,7 @@ const TOOLTIP_HELPER_FIELD_TYPES: ReadonlySet<TaskParamFieldType> = new Set([
   'select',
   'text',
   'number',
+  'multi-stages',
 ])
 
 export function resolveFieldHelperTooltip(field: TaskParamField): string | undefined {

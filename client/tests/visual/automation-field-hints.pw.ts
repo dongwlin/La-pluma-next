@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { expectNoBrowserErrors, recordBrowserErrors } from './browser-errors'
 import { apiFixtures, ok, type ApiFixture } from './fixtures'
 import { installDeterministicEnvironment, waitForPageReady } from './harness'
@@ -67,6 +67,22 @@ const mallTaskFixture: ApiFixture = {
     ],
     schedule: { enabled: false, entries: [] },
   }),
+}
+
+const FIGHT_HINTS: Array<[string, string]> = [
+  ['关卡计划说明', '使用 HD-数字代表当前活动关卡；置顶关卡会优先执行。次数为该关卡的累计作战局数上限（连战中的每一局都计 1），留空表示不限制局数'],
+  ['掉落目标说明', '任一物品达到目标数量后停止；格式为物品 ID=数量，多个目标用逗号分隔'],
+  ['理智药说明', '使用理智药数量'],
+  ['临期药天数说明', '使用将在指定天数内过期的理智药；0 表示不使用临期药'],
+  ['源石说明', '使用源石数量'],
+  ['连战说明', '本任务所有关卡共用的连战倍率，范围 -1 至 10（旧资源只支持 -1 至 6）；与各关卡次数同时生效：固定倍率时次数少于倍率不会开始任何一局（0 局）；指定倍率不能整除剩余次数时最后一轮连战不会开始，实际局数会少于次数；选“自动”会按剩余次数调整'],
+  ['闪退重启说明', '选择客户端后，游戏闪退时会自动重新启动。'],
+  ['葛朗台碎石模式说明', '使用源石前等待自然恢复 1 点理智，尽量减少碎石浪费。'],
+]
+
+const selectFightTask = async (page: Page) => {
+  await page.locator('[aria-controls="automation-task-editor"]').filter({ hasText: '理智作战' }).click()
+  await expect(page.getByRole('button', { name: '关卡计划说明', exact: true })).toBeVisible()
 }
 
 test.describe('automation field hints', () => {
@@ -282,6 +298,87 @@ test.describe('automation field hints', () => {
     await expect(page.getByRole('checkbox', { name: '回收站' })).toBeChecked()
     await expect(page.getByRole('checkbox', { name: '副手换人' })).toBeChecked()
     await expect(page.getByRole('checkbox', { name: '贸易站' })).not.toBeChecked()
+
+    environment.assertNoUnmatchedApi()
+    await expectNoBrowserErrors(page)
+  })
+
+  test('reveals the fight helper texts on hover and focus without persistent paragraphs', async ({ page }) => {
+    const environment = await installDeterministicEnvironment(page)
+    await page.goto('/app/automation')
+    await waitForPageReady(page, 'automation')
+    await selectFightTask(page)
+
+    // 区块级提示位于「关卡计划」标题行内、关卡数量徽标右侧。
+    const stageHint = page.getByRole('button', { name: '关卡计划说明', exact: true })
+    const stageTitle = page.locator('.automation-stage-editor-title')
+    await expect(stageTitle).toContainText('关卡计划')
+    await expect(stageTitle).toContainText('1 个关卡')
+    expect(await stageHint.evaluate((trigger) => {
+      const badge = trigger.previousElementSibling
+      return badge?.tagName === 'SPAN' && badge.textContent === '1 个关卡'
+    })).toBe(true)
+
+    // 字段级提示紧贴各自标签，与其它已改造卡片一致。
+    const labelHintGeometry = await page.evaluate(() => {
+      const label = document.querySelector('label[for="automation-fight-visual-2-medicineExpireDays"]')
+      const trigger = document.querySelector('button[aria-label="临期药天数说明"]')
+      if (!label || !trigger) return null
+      const labelBox = label.getBoundingClientRect()
+      const triggerBox = trigger.getBoundingClientRect()
+      return {
+        gap: triggerBox.left - labelBox.right,
+        centerOffset: triggerBox.top + triggerBox.height / 2 - (labelBox.top + labelBox.height / 2),
+      }
+    })
+    expect(labelHintGeometry).not.toBeNull()
+    expect(labelHintGeometry!.gap).toBeGreaterThanOrEqual(0)
+    expect(labelHintGeometry!.gap).toBeLessThanOrEqual(8)
+    expect(Math.abs(labelHintGeometry!.centerOffset)).toBeLessThanOrEqual(2)
+
+    for (const [name, copy] of FIGHT_HINTS.slice(0, 6)) {
+      const trigger = page.getByRole('button', { name, exact: true })
+      const tooltip = page.locator('[role="tooltip"]').filter({ hasText: copy })
+      await expect(trigger).toBeVisible()
+      await expect(tooltip).toHaveCount(1)
+      await expect(tooltip).toBeHidden()
+
+      await trigger.hover()
+      await expect(tooltip).toBeVisible()
+      await expect(tooltip).toHaveText(copy)
+
+      await page.mouse.move(4, 4)
+      await expect(tooltip).toBeHidden()
+
+      await trigger.focus()
+      await expect(trigger).toBeFocused()
+      await expect(tooltip).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(tooltip).toBeHidden()
+    }
+
+    // 高级设置里的两条常驻说明同样收进了图标提示。
+    await page.locator('details summary').filter({ hasText: '高级设置' }).first().click()
+
+    for (const [name, copy] of FIGHT_HINTS.slice(6)) {
+      const trigger = page.getByRole('button', { name, exact: true })
+      const tooltip = page.locator('[role="tooltip"]').filter({ hasText: copy })
+      await expect(trigger).toBeVisible()
+      await expect(tooltip).toHaveCount(1)
+      await expect(tooltip).toBeHidden()
+
+      await trigger.hover()
+      await expect(tooltip).toBeVisible()
+      await expect(tooltip).toHaveText(copy)
+
+      await page.keyboard.press('Escape')
+      await expect(tooltip).toBeHidden()
+    }
+
+    // 说明文字只存在于默认收起的 tooltip 里，页面上不再有常驻段落副本。
+    for (const [, copy] of FIGHT_HINTS) {
+      await expect(page.getByText(copy, { exact: true })).toHaveCount(1)
+    }
 
     environment.assertNoUnmatchedApi()
     await expectNoBrowserErrors(page)
