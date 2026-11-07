@@ -6,6 +6,7 @@ import {
   isRoguelikeOptionVisible,
   resolveRoguelikeAdvancedValue,
 } from '../model/roguelikeTasks'
+import RoguelikeCoreOperatorField from './RoguelikeCoreOperatorField'
 import type { RoguelikeAdvancedOption, RoguelikeAdvancedValues, RoguelikeTask } from '../types'
 
 interface RoguelikeExecutionControls {
@@ -63,6 +64,13 @@ export default function RoguelikeSettingsPanel({
                     options={selectOptionsFor(option, theme, displayValue, task.id)}
                     hint={option.hint}
                     hintPlacement={option.hintPlacement}
+                  />
+                ) : option.type === 'operator' ? (
+                  <RoguelikeCoreOperatorField
+                    id={`roguelike-${task.id}-${option.key}`}
+                    label={option.label}
+                    value={displayValue}
+                    onChange={(value: string) => onAdvancedChange(option.key, value)}
                   />
                 ) : (
                   <Input

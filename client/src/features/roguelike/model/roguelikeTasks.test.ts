@@ -301,6 +301,14 @@ describe('buildRoguelikeCommandParams', () => {
     )).toBe('Phantom --mode 1 --squad 指挥分队 --roles 稳扎稳打 --start-count 3 --use-support')
   })
 
+  it('writes the core operator as one unchanged Chinese name value', () => {
+    expect(buildRoguelikeCommandParams(
+      'roguelike',
+      { roguelike: 'Phantom' },
+      { roguelike: { coreChar: '维什戴尔' } },
+    )).toBe('Phantom --roles 稳扎稳打 --core-char 维什戴尔')
+  })
+
   it('omits empty values, unchecked checkboxes and fields the theme does not support', () => {
     expect(buildRoguelikeCommandParams(
       'roguelike',
@@ -795,6 +803,15 @@ describe('dynamic task execution plan', () => {
     expect(requiresRoguelikeDynamicTask('roguelike', { roguelike: 'Sami' }, {
       roguelike: { mode: '5', expectedCollapsalParadigms: '目空一些' },
     })).toBe(false)
+  })
+
+  it('carries the core operator name through the dynamic task as a string', () => {
+    const plan = buildRoguelikeExecutionPlan('roguelike', { roguelike: 'BlackFlow' }, {
+      roguelike: { coreChar: '维什戴尔' },
+    })
+
+    expect(plan.command).toBe('run')
+    expect(plan.taskConfig?.params).toMatchObject({ core_char: '维什戴尔' })
   })
 
   it('switches to a dynamic task for the black-flow theme', () => {

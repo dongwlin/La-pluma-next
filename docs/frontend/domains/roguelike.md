@@ -20,6 +20,7 @@
 | 模式分段控件的测量与键盘导航 | `features/roguelike/components/RoguelikeModePanel.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 主题快捷项与自定义代号 | `features/roguelike/components/RoguelikeThemePanel.tsx` | 从草稿派生值，编辑经回调交给工作区 |
 | 高级字段与运行/停止按钮 | `features/roguelike/components/RoguelikeSettingsPanel.tsx` | 只渲染当前生效的字段并调用注入的执行动作，不创建执行状态机 |
+| 核心干员单选字段 | `features/roguelike/components/RoguelikeCoreOperatorField.tsx` | 复用 `features/training` 的 `OperatorSelectModal`；字段值仍是单个中文干员名，只读目录用于回显头像 |
 | 配置 key、本地草稿、pending 与 300ms 提交 | `features/roguelike/model/roguelikeConfig.ts` + `features/user-config` | 配置适配器维持 key、本地键和 wire 协议 |
 | 主题、模式、分队、职业组、难度与黑流树海枚举 | `features/roguelike/model/roguelikeOptionCatalog.ts` | 纯数据与候选项解析 |
 | 两个任务的策略字段表 | `features/roguelike/model/roguelikeOptionTables.ts`、`reclamationOptionTables.ts` | CLI 参数名、Core 参数名、默认值、适用主题/模式与字段依赖 |
@@ -95,6 +96,7 @@ RoguelikeTasks（页面壳：页头、预览布局）
 - 例：`taskInputs.roguelike = 'Sarkaz'`，高级值 `{ mode: '1', squad: '蓝图测绘分队', useSupport: true }` 生成
   `Sarkaz --mode 1 --squad 蓝图测绘分队 --roles 稳扎稳打 --use-support`；`taskInputs.reclamation = 'Tales'` 配合 `{ mode: '1', toolsToCraft: '荧光棒，发电机', incrementMode: '1', numBatches: 16 }` 生成 `Tales -m 1 -C 荧光棒 -C 发电机 --increment-mode 1 --num-craft-batches 16`；模式 0 配合 `{ mode: '0' }` 生成 `Tales -m 0`。
 - 生息演算模式字段声明 `hint`，说明两个主题各自的模式、存档与起始界面要求；面板只原样透传，文案归模型维护。
+- 核心干员是单选字段而不是文本输入：点击后打开共享干员选择模态窗（有识别数据只列已拥有干员，无数据回退全量目录），选择结果只把干员中文名写回原字段；空值保持“未设置”，命令不写 `--core-char`，动态任务不写 `core_char`。字段不显示识别/拥有状态说明。旧草稿里的中文名按干员目录匹配回显头像与名字，匹配不到时原样显示并允许重新选择。
 - 校验 trim 输入判断是否为空，不修改实际传给 CLI 的主题字符串。
 
 面板只渲染 `isRoguelikeOptionVisible` 过滤后的字段：主题、模式与开关变化会同时改变字段集合、命令参数与“N 项”计数。草稿里保留的旧主题取值不删除，但下拉值必须属于当前主题的候选表：越界值在下拉项中标注“不适用于当前主题”，执行前校验会拒绝并提示重新选择，命令构造也不会写入；隐藏字段的残留值不参与校验与下发。
@@ -139,7 +141,7 @@ maa-cli 0.7.8 只认识部分主题、模式与参数；MaaCore 新增的黑流�
 - 配置 key、本地草稿、pending 与 wire 形状以[配置持久化协调器](../../architecture/config-persistence.md)为准；面板不另建持久化格式。
 - 服务端端点、执行提交参数与幂等键语义未变化；停止仍走控制器 `stopTrackedRun()`。结果摘要只是 Run 载荷的增量字段，客户端缺失时显示“无可用结果”，不从退出码或消息推断成功。
 - 辅助诊断端点只读，除 ADB 连接探测外无副作用、不创建 Run；诊断会话不进入 Query、`statusStore`、localStorage 或 URL。
-- 保持渲染结构、DOM/CSS 类名与表单 `id`/`name`；字段键沿用迁移后的 camelCase，新增字段按含义插入相应分组，不改动已有键与表单名。
+- 保持渲染结构、DOM/CSS 类名与字段 `id`；字段键沿用迁移后的 camelCase，新增字段按含义插入相应分组，不改动已有键。核心干员字段的控件从原生输入换成按钮触发器，但字段 `id`、配置键与 wire 值保持不变。
 - 字段的默认值语义以命令模型为准：生息演算默认模式为 `1`，集成战略默认职业组为 `稳扎稳打`；两者都会写入 wire 与命令。
 - 面板只组合命令模型、配置适配器、执行控制器与只读诊断；不在页面恢复独立的配置、执行或诊断状态。
 
