@@ -24,6 +24,10 @@ import OperProgressPlansEditor from './OperProgressPlansEditor'
 import ThemeListEditor from './ThemeListEditor'
 import AutomationTaskFlowPanel from './AutomationTaskFlowPanel'
 import AutomationSchedulePanel from './AutomationSchedulePanel'
+import {
+  AutomationCheckboxField,
+  AutomationFieldLabel,
+} from './AutomationFieldControls'
 import { AVAILABLE_TASKS } from './automationTaskCatalog'
 import { useAutomationExecution } from '../hooks/useAutomationExecution'
 import { useTaskFlowSorting } from '../hooks/useTaskFlowSorting'
@@ -52,6 +56,7 @@ import {
   RECRUITMENT_TIME_STEP,
   normalizeRecruitmentTime,
 } from '../model/taskParamRules'
+import { resolveFieldHelperTooltip } from '../model/taskFieldHelper'
 import {
   resolveFlowTaskExecutionState,
   selectFlowCurrentStep,
@@ -491,6 +496,7 @@ export default function AutomationWorkspace() {
                             return null
                           }
                           const fieldId = `automation-${task.id}-${field.key}`
+                          const helperTooltip = resolveFieldHelperTooltip(field)
                           return (
                           <div key={field.key} className={`automation-param-field is-${field.type}`}>
                             {field.type === 'oper-progress-plans' ? (
@@ -506,17 +512,14 @@ export default function AutomationWorkspace() {
                                 onChange={(key, value) => updateTaskParam(index, key, value)}
                               />
                             ) : field.type === 'checkbox' ? (
-                              <label htmlFor={fieldId} className="group flex min-h-11 cursor-pointer items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
-                                <input
-                                  id={fieldId}
-                                  type="checkbox"
-                                  checked={task.params[field.key] || false}
-                                  onChange={(e) => updateTaskParam(index, field.key, e.target.checked)}
-                                  disabled={isRunning || !task.enabled}
-                                  className="custom-checkbox cursor-pointer"
-                                />
-                                <span className="group-hover:text-(--app-accent) transition-colors">{field.label}</span>
-                              </label>
+                              <AutomationCheckboxField
+                                id={fieldId}
+                                label={field.label}
+                                checked={task.params[field.key] || false}
+                                disabled={isRunning || !task.enabled}
+                                hint={helperTooltip}
+                                onChange={(checked) => updateTaskParam(index, field.key, checked)}
+                              />
                             ) : field.type === 'multi-stages' ? (
                               <AutomationStageEditor
                                 field={field}
@@ -670,7 +673,7 @@ export default function AutomationWorkspace() {
                               </fieldset>
                             ) : field.type === 'select' ? (
                               <div className="automation-field-row">
-                                <label htmlFor={fieldId} className="automation-field-label">{field.label}</label>
+                                <AutomationFieldLabel htmlFor={fieldId} label={field.label} hint={helperTooltip} />
                                 <div className="automation-select-control">
                                   <select
                                     id={fieldId}
@@ -689,7 +692,7 @@ export default function AutomationWorkspace() {
                               </div>
                             ) : (
                               <div className="automation-field-row">
-                                <label htmlFor={fieldId} className="automation-field-label">{field.label}</label>
+                                <AutomationFieldLabel htmlFor={fieldId} label={field.label} hint={helperTooltip} />
                                 {field.type === 'number' ? (
                                   <div className="number-input-wrapper flex-1">
                                     <input
@@ -751,7 +754,7 @@ export default function AutomationWorkspace() {
                                 )}
                               </div>
                             )}
-                            {field.helper && (
+                            {field.helper && !helperTooltip && (
                               <p className="automation-field-helper">
                                 <Info size={13} strokeWidth={1.8} aria-hidden="true" />
                                 <span>{field.helper}</span>
