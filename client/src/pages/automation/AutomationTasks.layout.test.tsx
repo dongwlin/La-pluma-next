@@ -619,6 +619,43 @@ describe('AutomationTasks layout surfaces', () => {
       .toContain('默认行为')
   })
 
+  it('moves the startup helper texts into focusable tooltips', async () => {
+    mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
+
+    await renderPage()
+
+    const accountHint = container.querySelector<HTMLButtonElement>('button[aria-label="切换账号说明"]')
+    const launchHint = container.querySelector<HTMLButtonElement>('button[aria-label="启动游戏客户端说明"]')
+    expect(accountHint).not.toBeNull()
+    expect(launchHint).not.toBeNull()
+
+    const tooltipFor = (trigger: HTMLButtonElement) => {
+      const tooltip = document.getElementById(trigger.getAttribute('aria-describedby') ?? '')
+      expect(tooltip?.getAttribute('role')).toBe('tooltip')
+      return tooltip
+    }
+
+    expect(tooltipFor(accountHint!)?.textContent)
+      .toBe('输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"')
+    expect(tooltipFor(launchHint!)?.textContent)
+      .toBe('关闭后只连接设备并进入已有游戏的主界面，不会启动游戏客户端')
+    expect(tooltipFor(accountHint!)?.hidden).toBe(true)
+    expect(tooltipFor(launchHint!)?.hidden).toBe(true)
+
+    await act(async () => accountHint!.focus())
+    expect(tooltipFor(accountHint!)?.hidden).toBe(false)
+    await act(async () => accountHint!.blur())
+    expect(tooltipFor(accountHint!)?.hidden).toBe(true)
+
+    // 常驻说明段落已删除，说明文字只存在于默认收起的 tooltip 里。
+    expect(container.textContent).not.toContain('输入已登录账号的部分字符即可')
+    expect(container.textContent).not.toContain('关闭后只连接设备并进入已有游戏的主界面')
+
+    await clickSequenceTask('理智作战')
+    const inlineHelpers = Array.from(container.querySelectorAll('p')).map(paragraph => paragraph.textContent)
+    expect(inlineHelpers).toContain('使用理智药数量')
+  })
+
   it('normalizes the recruitment duration when the field loses focus', async () => {
     mocks.loadUserConfig.mockResolvedValue({ success: true, data: { taskFlow: taskFlowFixture } })
 

@@ -29,6 +29,7 @@ export interface TaskParamField {
   type: TaskParamFieldType
   placeholder?: string
   helper?: string
+  helperPlacement?: 'below' | 'tooltip'
   options?: Array<{ value: string; label: string }> | string[]
   step?: string
   min?: string

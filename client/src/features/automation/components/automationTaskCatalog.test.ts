@@ -132,6 +132,26 @@ describe('automation task parameter defaults and copy', () => {
     expect(launchSwitch?.label).toBe('启动游戏客户端')
     expect(launchSwitch?.helper).toContain('不会启动游戏客户端')
   })
+
+  it('moves the two startup helper texts into tooltips without touching the copy', () => {
+    const startup = AVAILABLE_TASKS.find(task => task.id === 'startup')
+    const accountName = startup?.paramFields.find(field => field.key === 'accountName')
+    const launchSwitch = startup?.paramFields.find(field => field.key === 'start_game_enabled')
+
+    expect(accountName?.helper).toBe('输入已登录账号的部分字符即可，如 "123****4567" 可输入 "4567"')
+    expect(launchSwitch?.helper).toBe('关闭后只连接设备并进入已有游戏的主界面，不会启动游戏客户端')
+    expect(accountName?.helperPlacement).toBe('tooltip')
+    expect(launchSwitch?.helperPlacement).toBe('tooltip')
+  })
+
+  it('keeps the default inline helper placement for every other field', () => {
+    const tooltipHelpers = AVAILABLE_TASKS
+      .flatMap(task => task.paramFields)
+      .filter(field => field.helperPlacement === 'tooltip')
+      .map(field => field.key)
+
+    expect(tooltipHelpers).toEqual(['accountName', 'start_game_enabled'])
+  })
 })
 
 describe('automation fight task catalog', () => {
