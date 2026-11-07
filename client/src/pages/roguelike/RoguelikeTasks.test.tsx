@@ -993,6 +993,67 @@ describe('RoguelikeTasks layout and config recovery', () => {
     expect(modeButtons[1]?.getAttribute('aria-pressed')).toBe('true')
   })
 
+  it('moves the difficulty and starting roles guidance into label tooltips', async () => {
+    await renderPage()
+    await setTheme('Mizuki')
+
+    const cases = [
+      {
+        key: 'difficulty',
+        label: '难度',
+        hint: '不切换时沿用游戏内当前难度；指定未解锁的难度会被降到已解锁上限。',
+      },
+      {
+        key: 'roles',
+        label: '开局职业组',
+        hint: '决定开局能招募的职业；核心干员的职业必须在组合内，例如维什戴尔（狙击）需要稳扎稳打。',
+      },
+    ]
+
+    for (const { key, label, hint } of cases) {
+      const select = container.querySelector<HTMLSelectElement>(`select[name="maa-roguelike-${key}"]`)!
+      const tooltip = document.getElementById(select.getAttribute('aria-describedby') ?? '')!
+      const labelElement = container.querySelector<HTMLLabelElement>(`label[for="${select.id}"]`)!
+      const trigger = labelElement.parentElement?.querySelector('button')
+
+      expect(tooltip.getAttribute('role')).toBe('tooltip')
+      expect(tooltip.textContent).toBe(hint)
+      expect(tooltip.hidden).toBe(true)
+      expect(trigger?.getAttribute('aria-label')).toBe(`${label}说明`)
+      expect(trigger?.getAttribute('aria-describedby')).toBe(tooltip.id)
+
+      await act(async () => {
+        trigger?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      })
+      await flush()
+      expect(tooltip.hidden).toBe(false)
+
+      await act(async () => {
+        trigger?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))
+      })
+      await flush()
+      expect(tooltip.hidden).toBe(true)
+
+      await act(async () => trigger?.focus())
+      await flush()
+      expect(tooltip.hidden).toBe(false)
+
+      await act(async () => trigger?.blur())
+      await flush()
+      expect(tooltip.hidden).toBe(true)
+
+      await act(async () => {
+        trigger?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+      await flush()
+      expect(tooltip.hidden).toBe(false)
+    }
+
+    const paragraphs = Array.from(container.querySelectorAll('p'))
+      .map(paragraph => paragraph.textContent)
+    for (const { hint } of cases) expect(paragraphs).not.toContain(hint)
+  })
+
   it('keeps mode selection and its configuration panel in sync', async () => {
     await renderPage()
 
