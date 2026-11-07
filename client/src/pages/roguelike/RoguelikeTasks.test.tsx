@@ -2,6 +2,7 @@
 
 import { Activity, act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '@/shared/api'
 import {
@@ -22,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   saveUserConfig: vi.fn(),
   getRealtimeLogs: vi.fn(),
   setMessage: vi.fn(),
+  getOperBoxData: vi.fn(),
+  getAllOperators: vi.fn(),
 }))
 
 vi.mock('framer-motion', async () => {
@@ -47,7 +50,25 @@ vi.mock('@/shared/api', () => ({
   fetchWithAuth: vi.fn(),
   parseJsonResponse: vi.fn(),
   getErrorMessage: (result: { message?: string; error?: string }) => result.message || result.error || '未知错误',
+  unwrapApiResponse: (response: { data?: unknown }) => response.data,
 }))
+
+vi.mock('@/features/game-data/api', () => ({
+  getAllOperators: mocks.getAllOperators,
+  getDepotData: vi.fn(),
+  getOperBoxData: mocks.getOperBoxData,
+  getItemIconUrl: (id: string | number) => `/items/${id}.png`,
+  getOperatorAvatarUrl: (id: string) => `/avatars/${id}.png`,
+}))
+
+// 页面只依赖干员选择模态窗；按公开面契约挑出这一项，避免把整个养成页工作区
+// 及其传输层拖进本用例。
+vi.mock('@/features/training', async () => {
+  const modal = await vi.importActual<typeof import('@/features/training/components/OperatorSelectModal')>(
+    '@/features/training/components/OperatorSelectModal',
+  )
+  return { OperatorSelectModal: modal.default }
+})
 
 vi.mock('@/features/task-execution', async () => {
   const actual = await vi.importActual<typeof import('@/features/task-execution')>('@/features/task-execution')
@@ -172,6 +193,24 @@ let controller: ExecutionController
 let releases: Array<() => void>
 let container: HTMLDivElement
 let root: Root
+let queryClient: QueryClient
+
+function TestApp() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RoguelikeTasks />
+    </QueryClientProvider>
+  )
+}
+
+const resetGameDataMocks = () => {
+  mocks.getOperBoxData.mockReset().mockResolvedValue({ success: true, data: { data: [] } })
+  mocks.getAllOperators.mockReset().mockResolvedValue({ success: true, data: [] })
+}
+
+const resetQueryClient = () => {
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+}
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void
@@ -185,6 +224,19 @@ const flush = async () => {
   await act(async () => {
     for (let index = 0; index < 6; index += 1) await Promise.resolve()
   })
+}
+
+const flushAsync = async () => {
+  await act(async () => {
+    for (let index = 0; index < 4; index += 1) await new Promise(resolve => setTimeout(resolve, 0))
+  })
+}
+
+const waitForConfigCommit = async () => {
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 350))
+  })
+  await flush()
 }
 
 const buttonByText = (text: string) => Array.from(document.querySelectorAll('button'))
@@ -227,7 +279,7 @@ const refreshController = async (reason: 'poll' | 'reconnect' = 'poll') => {
 }
 
 const renderPage = async () => {
-  await act(async () => root.render(<RoguelikeTasks />))
+  await act(async () => root.render(<TestApp />))
   await flush()
 }
 
@@ -295,6 +347,8 @@ describe('RoguelikeTasks execution', () => {
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.getRealtimeLogs.mockReset()
     mocks.setMessage.mockReset()
+    resetGameDataMocks()
+    resetQueryClient()
 
     api = createApi()
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot()))
@@ -314,6 +368,7 @@ describe('RoguelikeTasks execution', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount())
+    queryClient.clear()
     container.remove()
     for (const release of releases) release()
     vi.useRealTimers()
@@ -786,7 +841,7 @@ describe('RoguelikeTasks execution', () => {
     await act(async () => {
       root.render(
         <Activity mode="visible">
-          <RoguelikeTasks />
+          <TestApp />
         </Activity>,
       )
     })
@@ -804,7 +859,7 @@ describe('RoguelikeTasks execution', () => {
       await act(async () => {
         root.render(
           <Activity mode={mode}>
-            <RoguelikeTasks />
+            <TestApp />
           </Activity>,
         )
       })
@@ -939,6 +994,8 @@ describe('RoguelikeTasks layout and config recovery', () => {
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.getRealtimeLogs.mockReset()
     mocks.setMessage.mockReset()
+    resetGameDataMocks()
+    resetQueryClient()
 
     api = createApi()
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot()))
@@ -957,6 +1014,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount())
+    queryClient.clear()
     container.remove()
     for (const release of releases) release()
     vi.useRealTimers()
@@ -1119,7 +1177,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
       await act(async () => {
         root.render(
           <Activity mode={mode}>
-            <RoguelikeTasks />
+            <TestApp />
           </Activity>,
         )
       })
@@ -1137,7 +1195,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     await act(async () => root.unmount())
     root = createRoot(container)
-    await act(async () => root.render(<RoguelikeTasks />))
+    await act(async () => root.render(<TestApp />))
     await flush()
 
     expect(findModeButton('集成战略')?.getAttribute('aria-pressed')).toBe('true')
@@ -1165,7 +1223,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
     await act(async () => root.unmount())
     root = createRoot(container)
     mocks.loadUserConfig.mockClear()
-    await act(async () => root.render(<RoguelikeTasks />))
+    await act(async () => root.render(<TestApp />))
     await flush()
 
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
@@ -1259,7 +1317,7 @@ describe('RoguelikeTasks layout and config recovery', () => {
       await act(async () => {
         root.render(
           <Activity mode={mode}>
-            <RoguelikeTasks />
+            <TestApp />
           </Activity>,
         )
         await Promise.resolve()
@@ -1378,6 +1436,106 @@ describe('RoguelikeTasks layout and config recovery', () => {
 
     expect(mocks.executePredefinedTask).not.toHaveBeenCalled()
     expect(mocks.setMessage).toHaveBeenCalledWith(expect.stringContaining('未知主题「UnknownTheme」'))
+  })
+
+  it('selects a core operator from the shared picker, saves its name and clears back to automatic', async () => {
+    mocks.getOperBoxData.mockResolvedValue(ok({
+      data: [
+        { id: 'char_002_amiya', name: '阿米娅', rarity: 5, profession: 'CASTER', level: 70, elite: 1, potential: 6 },
+      ],
+    }))
+    mocks.getAllOperators.mockResolvedValue(ok([
+      { id: 'char_002_amiya', name: '阿米娅', rarity: 5, profession: 'CASTER', level: 70, elite: 1, potential: 6 },
+    ]))
+
+    await renderPage()
+    await setTheme('Phantom')
+    await waitForConfigCommit()
+
+    expect(container.textContent).toContain('未选择')
+    expect(container.textContent).not.toContain('填写单个干员中文名')
+    expect(container.textContent).not.toContain('留空由 MAA')
+    expect(container.querySelector('input[name="maa-roguelike-coreChar"]')).toBeNull()
+
+    await click(buttonByText('选择干员')!)
+    await flushAsync()
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    expect(dialog, 'operator picker dialog').not.toBeNull()
+    expect(dialog?.textContent).toContain('阿米娅')
+
+    const choose = dialog?.querySelector<HTMLButtonElement>('button[aria-label="选择阿米娅"]')
+    expect(choose).not.toBeNull()
+    await click(choose!)
+    await click(Array.from(dialog!.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === '确认选择')!)
+    await flushAsync()
+
+    expect(container.textContent).toContain('阿米娅')
+    expect(container.querySelector('img[src="/avatars/char_002_amiya.png"]')).not.toBeNull()
+
+    await waitForConfigCommit()
+
+    expect(mocks.saveUserConfig).toHaveBeenLastCalledWith('roguelike-tasks', {
+      taskInputs: { roguelike: 'Phantom' },
+      advancedParams: expect.objectContaining({
+        roguelike: { roles: '稳扎稳打', coreChar: '阿米娅' },
+      }),
+    })
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Phantom --roles 稳扎稳打 --core-char 阿米娅',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
+
+    await click(container.querySelector<HTMLElement>('button[aria-label="清除核心干员"]')!)
+
+    expect(container.textContent).toContain('未选择')
+    expect(container.querySelector('img[src="/avatars/char_002_amiya.png"]')).toBeNull()
+
+    await waitForConfigCommit()
+
+    expect(mocks.saveUserConfig).toHaveBeenLastCalledWith('roguelike-tasks', {
+      taskInputs: { roguelike: 'Phantom' },
+      advancedParams: expect.objectContaining({
+        roguelike: { roles: '稳扎稳打', coreChar: '' },
+      }),
+    })
+  })
+
+  it('restores a saved core operator name with its avatar and keeps it in the command', async () => {
+    mocks.loadUserConfig.mockResolvedValue(ok({
+      taskInputs: { roguelike: 'Phantom' },
+      advancedParams: { roguelike: { coreChar: '维什戴尔' } },
+    }))
+    mocks.getAllOperators.mockResolvedValue(ok([
+      { id: 'char_4135_wisdel', name: '维什戴尔', rarity: 6, profession: 'SNIPER', level: 90, elite: 2, potential: 1 },
+    ]))
+
+    await renderPage()
+    await flushAsync()
+
+    expect(container.textContent).toContain('维什戴尔')
+    expect(container.querySelector('img[src="/avatars/char_4135_wisdel.png"]')).not.toBeNull()
+    expect(container.textContent).not.toContain('填写单个干员中文名')
+
+    await click(buttonByText('立即执行')!)
+    expect(mocks.executePredefinedTask).toHaveBeenCalledWith(
+      'roguelike',
+      'Phantom --roles 稳扎稳打 --core-char 维什戴尔',
+      null,
+      null,
+      '集成战略',
+      'roguelike',
+      false,
+      { idempotencyKey: expect.stringMatching(/^run_task-/) },
+    )
   })
 
   it('associates every form control with a label', async () => {

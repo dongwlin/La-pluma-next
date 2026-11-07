@@ -37,11 +37,9 @@ export const ROGUELIKE_OPTIONS: readonly RoguelikeAdvancedOption[] = [
   {
     key: 'coreChar',
     label: '核心干员',
-    type: 'text',
+    type: 'operator',
     param: '--core-char',
     coreParam: 'core_char',
-    placeholder: '维什戴尔',
-    hint: '填写单个干员中文名；留空由 MAA 按练度自动选择。',
   },
   {
     key: 'startCount',
