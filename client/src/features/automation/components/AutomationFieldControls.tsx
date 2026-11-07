@@ -46,7 +46,7 @@ export function AutomationCheckboxField({ id, label, checked, disabled, hint, on
   if (!hint) return control
 
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex items-center gap-1">
       {control}
       <HintTooltip id={`${id}-hint`} label={label} hint={hint} />
     </div>
