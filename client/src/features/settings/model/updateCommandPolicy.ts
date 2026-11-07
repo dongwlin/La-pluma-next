@@ -8,7 +8,7 @@ import {
 import type { ResourceScope } from '@/features/resource-invalidation'
 import { CORE_UPDATE_CHANNEL_LABELS } from '../types'
 import type { CoreUpdateChannel } from '../types'
-import type { UpdateRunTerminal } from './updateRunPort'
+import type { SettingsUpdateRunOperationId, UpdateRunTerminal } from './updateRunPort'
 
 export type UpdateOperation = 'core' | 'core-channel' | 'cli' | 'resources'
 
@@ -172,4 +172,26 @@ export function terminalExecution(
     policy.resourceRetry(terminal.errorDetails),
     policy.showFeedback,
   )
+}
+
+/** 控制器持久化身份里的操作名映射到本域命令类型；刷新恢复时只认这三类。 */
+export const UPDATE_OPERATION_BY_RUN_OPERATION: Record<SettingsUpdateRunOperationId, UpdateOperation> = {
+  update_core: 'core',
+  update_cli: 'cli',
+  update_resources: 'resources',
+}
+
+export const TERMINAL_FAILURE_POLICIES: Record<UpdateOperation, TerminalFailurePolicy> = {
+  core: { resourceRetry: shouldRetryUpdateResourcesFromDetails, showFeedback: true },
+  'core-channel': { resourceRetry: shouldRetryUpdateResourcesFromDetails, showFeedback: true },
+  cli: { resourceRetry: () => false, showFeedback: false },
+  resources: { resourceRetry: () => true, showFeedback: true },
+}
+
+/** 恢复的 run 看不到提交响应，成功文案与失效范围按操作类型回填。 */
+export const RESUMED_SUCCESS_EXECUTIONS: Record<UpdateOperation, UpdateExecution> = {
+  core: succeededExecution('MaaCore 和资源已更新', true, true),
+  'core-channel': succeededExecution('MaaCore 和资源已更新', true, true),
+  cli: succeededExecution('MAA CLI 更新成功', false, true),
+  resources: succeededExecution('资源文件更新成功', true, true),
 }

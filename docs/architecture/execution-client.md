@@ -139,7 +139,7 @@ const result = await executionController.submitExecution('run_task', ({ idempote
   - 停止走 `stopTrackedRun()`，确认期间由快照推进，15s 未确认解锁重试；页面隐藏/卸载不发送停止，刷新后按持久化身份恢复观察且不重新提交。
   - 旧 `maa-task-flow-execution` 断点只关联已有 Run，绝不重提任务；接受期限、匹配与清理规则由[兼容文档](../frontend/compatibility.md#旧自动化断点的接受与恢复)维护。
   - 自动化页不再单独轮询 `schedules/execution`，也不写全局运行字段；它只接管本页发起的 run，不把 cron、Dashboard 或 Telegram 发起的流程显示成自己的执行。跨页全局展示由运行状态投影统一处理。
-- 设置页的组件更新命令同样提交服务端 Run（`update_core`/`update_cli`/`update_resources`）：`model/updateRunPort.ts` 通过 `adoptSubmission` 采纳 `runId` 并等待控制器观察到的终态；“停止更新”只停止该 `runId`，不退化成本地中止或旧式停止当前任务。命令所有者不在 React 树内，页面隐藏或 Activity 清理不会取消更新；旧同步响应没有 `runId` 时不伪造身份。
+- 设置页的组件更新命令同样提交服务端 Run（`update_core`/`update_cli`/`update_resources`）：`model/updateRunPort.ts` 通过 `adoptSubmission` 采纳 `runId` 并等待控制器观察到的终态；“停止更新”只停止该 `runId`，不退化成本地中止或旧式停止当前任务。等待没有前端本地时限，仍活动时保留 `running` 槽位与停止入口；刷新后 `observeTrackedRun` 按持久化身份恢复观察，终态只由服务端 Run 决定。命令所有者不在 React 树内，页面隐藏或 Activity 清理不会取消更新；旧同步响应没有 `runId` 时不伪造身份。
 - `features/task-execution` 不导入 `features/runtime-status`；连接健康与执行身份来自不同来源，不能互相替代。
 - Dashboard 已迁移到控制器，`scope: 'dashboard'`：
   - 日常入口提交一次 `run_daily_flow`（`POST /api/agent/schedules/dashboard-quick-start/execute`，`waitForCompletion=false`），幂等键由控制器 intent 生成；202 接受后不再等待请求返回，卡片按共享快照显示运行或等待。

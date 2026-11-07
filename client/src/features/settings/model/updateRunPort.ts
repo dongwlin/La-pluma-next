@@ -4,6 +4,7 @@
 
 import {
   executionController,
+  isActiveRunState,
   isTerminalRunState,
   type AgentRun,
   type ExecutionController,
@@ -23,15 +24,38 @@ export interface UpdateRunTerminal {
   readonly errorDetails: Record<string, unknown>
 }
 
+export type SettingsUpdateRunOperationId = 'update_core' | 'update_cli' | 'update_resources'
+
+export const SETTINGS_UPDATE_RUN_OPERATION_IDS: readonly SettingsUpdateRunOperationId[] = [
+  'update_core',
+  'update_cli',
+  'update_resources',
+]
+
+export function isSettingsUpdateRunOperationId(
+  value: string,
+): value is SettingsUpdateRunOperationId {
+  return (SETTINGS_UPDATE_RUN_OPERATION_IDS as readonly string[]).includes(value)
+}
+
+export interface SettingsUpdateRunIdentity {
+  readonly runId: string
+  readonly operationId: SettingsUpdateRunOperationId
+}
+
 export interface SettingsUpdateRunPort {
   /** 采纳响应中的 runId 并让全局控制器观察它；旧同步响应返回 null。 */
   adopt(response: ApiResponse, operationId: string): string | null
-  /** 等待目标 run 进入终态；身份丢失或无法确认时返回 unknown。 */
+  /** 等待目标 run 进入终态；只由服务端终态或身份失效结算，没有本地时限。 */
   wait(runId: string): Promise<UpdateRunTerminal>
   /** 服务端执行结束或失败后解除本域身份；只解除仍属于该 run 的身份。 */
   release(runId: string): void
   /** 拒绝未知状态时不退化为旧式“停止当前任务”。 */
   cancel(runId: string): Promise<ApiResponse<unknown> | null>
+  /** 本域仍持有且未到终态的 run；页面刷新后由控制器恢复。 */
+  tracked(): SettingsUpdateRunIdentity | null
+  /** 订阅控制器状态变化；恢复刷新后仍在运行的 run。 */
+  subscribe(listener: () => void): () => void
 }
 
 const SETTINGS_UPDATE_SCOPE = 'settings'
@@ -47,13 +71,6 @@ const UNKNOWN_TERMINAL: UpdateRunTerminal = {
   message: null,
   errorDetails: {},
 }
-
-/**
- * 等待上限：身份失效会立即结算；这个上限只兜底控制器长时间无法确认终态的场景
- * （例如页面从未恢复观察），避免命令槽位和“执行中”提示永久不结束。更新安装
- * 可能持续十几分钟，因此不能取更短的值。
- */
-export const SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS = 30 * 60_000
 
 function terminalOf(run: AgentRun): UpdateRunTerminal {
   if (!isTerminalRunState(run.state)) return UNKNOWN_TERMINAL
@@ -74,16 +91,10 @@ export function createSettingsUpdateRunPort(
 
     wait(runId) {
       return new Promise<UpdateRunTerminal>(resolve => {
-        let unsubscribe: () => void = () => undefined
-        let timer: ReturnType<typeof setTimeout> | null = null
         let settled = false
         const finish = (terminal: UpdateRunTerminal) => {
           if (settled) return
           settled = true
-          if (timer !== null) {
-            clearTimeout(timer)
-            timer = null
-          }
           unsubscribe()
           resolve(terminal)
         }
@@ -102,11 +113,8 @@ export function createSettingsUpdateRunPort(
           // trackedRunId 与最后一次快照；不在这里结算就会一直等下去。
           if (state.identity !== 'tracked') finish(UNKNOWN_TERMINAL)
         }
-        unsubscribe = controller.subscribe(read)
+        const unsubscribe = controller.subscribe(read)
         read()
-        if (!settled) {
-          timer = setTimeout(() => finish(UNKNOWN_TERMINAL), SETTINGS_UPDATE_RUN_WAIT_TIMEOUT_MS)
-        }
       })
     },
 
@@ -118,6 +126,19 @@ export function createSettingsUpdateRunPort(
     async cancel(runId) {
       if (controller.getState().trackedRunId !== runId) return null
       return controller.stopTrackedRun()
+    },
+
+    tracked() {
+      const state = controller.getState()
+      if (state.identity !== 'tracked' || state.trackedScope !== SETTINGS_UPDATE_SCOPE) return null
+      const run = state.trackedRun
+      if (!run || !isActiveRunState(run.state)) return null
+      if (!isSettingsUpdateRunOperationId(run.operationId)) return null
+      return { runId: run.runId, operationId: run.operationId }
+    },
+
+    subscribe(listener) {
+      return controller.subscribe(listener)
     },
   }
 }

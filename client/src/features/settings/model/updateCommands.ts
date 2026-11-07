@@ -17,9 +17,11 @@ import {
   initialUpdateState,
   resolveCoreChannelSwitch,
   shouldRetryUpdateResources,
-  shouldRetryUpdateResourcesFromDetails,
   succeededExecution,
   terminalExecution,
+  RESUMED_SUCCESS_EXECUTIONS,
+  TERMINAL_FAILURE_POLICIES,
+  UPDATE_OPERATION_BY_RUN_OPERATION,
   type SettingsUpdateState,
   type UpdateCommandOutcome,
   type UpdateExecution,
@@ -87,10 +89,7 @@ export class SettingsUpdateOwner {
         return failedExecution(getErrorMessage(response), shouldRetryUpdateResources(response))
       }
       if (terminal) {
-        const outcome = terminalExecution(terminal, {
-          resourceRetry: shouldRetryUpdateResourcesFromDetails,
-          showFeedback: true,
-        })
+        const outcome = terminalExecution(terminal, TERMINAL_FAILURE_POLICIES.core)
         if (outcome) return outcome
       }
       const message = terminal
@@ -115,10 +114,7 @@ export class SettingsUpdateOwner {
       }
       const message = `已切换到 ${target.label} 渠道并同步最新资源`
       if (terminal) {
-        const outcome = terminalExecution(terminal, {
-          resourceRetry: shouldRetryUpdateResourcesFromDetails,
-          showFeedback: true,
-        })
+        const outcome = terminalExecution(terminal, TERMINAL_FAILURE_POLICIES['core-channel'])
         if (outcome) return outcome
       }
       return succeededExecution(message, true, true)
@@ -140,10 +136,7 @@ export class SettingsUpdateOwner {
         )
       }
       if (terminal) {
-        const outcome = terminalExecution(terminal, {
-          resourceRetry: () => false,
-          showFeedback: false,
-        })
+        const outcome = terminalExecution(terminal, TERMINAL_FAILURE_POLICIES.cli)
         if (outcome) return outcome
       }
       return succeededExecution('MAA CLI 更新成功', false, true)
@@ -161,10 +154,7 @@ export class SettingsUpdateOwner {
         return failedExecution(getErrorMessage(response), true)
       }
       if (terminal) {
-        const outcome = terminalExecution(terminal, {
-          resourceRetry: () => true,
-          showFeedback: true,
-        })
+        const outcome = terminalExecution(terminal, TERMINAL_FAILURE_POLICIES.resources)
         if (outcome) return outcome
       }
       const message = terminal ? '资源文件更新成功' : (response.message || '资源文件更新成功')
@@ -200,6 +190,53 @@ export class SettingsUpdateOwner {
         ok: false,
         message: error instanceof Error ? error.message : '停止更新失败',
       }
+    }
+  }
+
+  /**
+   * 页面刷新后恢复对本域遗留 run 的观察。仍在运行的更新重新占用命令槽位并保留
+   * 停止入口；终态只由服务端 Run 决定。没有可恢复的 run 时返回 null。
+   */
+  async resumeTrackedRun(): Promise<UpdateCommandOutcome | null> {
+    if (this.state.running !== null) return null
+    const tracked = this.runPort.tracked()
+    if (!tracked) return null
+    const operation = UPDATE_OPERATION_BY_RUN_OPERATION[tracked.operationId]
+    return this.run(operation, () => this.followTrackedRun(operation, tracked.runId))
+  }
+
+  /**
+   * 挂载时恢复遗留 run，并在其完成后把结果交给适配层。返回取消订阅；
+   * 订阅只负责发现 run，已开始的等待不随页面隐藏而取消。
+   */
+  observeTrackedRun(onFinish: (outcome: UpdateCommandOutcome) => void): () => void {
+    let following = false
+    const check = () => {
+      if (following || this.state.running !== null) return
+      if (!this.runPort.tracked()) return
+      following = true
+      void this.resumeTrackedRun().then(outcome => {
+        following = false
+        if (outcome) onFinish(outcome)
+      })
+    }
+    const unsubscribe = this.runPort.subscribe(check)
+    check()
+    return unsubscribe
+  }
+
+  private async followTrackedRun(
+    operation: UpdateOperation,
+    runId: string,
+  ): Promise<UpdateExecution> {
+    this.activeRunId = runId
+    try {
+      const terminal = await this.runPort.wait(runId)
+      return terminalExecution(terminal, TERMINAL_FAILURE_POLICIES[operation])
+        ?? RESUMED_SUCCESS_EXECUTIONS[operation]
+    } finally {
+      this.activeRunId = null
+      this.runPort.release(runId)
     }
   }
 
