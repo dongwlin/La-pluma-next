@@ -75,7 +75,8 @@ describe('operator recognition completeness', () => {
         { id: 'char_gamma', name: '丙', rarity: 4, owned: false },
         { id: 'char_delta', name: '丁', names: { en: 'Delta' }, rarity: 6, owned: false }
       ],
-      operTotal: 4
+      operTotal: 4,
+      recognition: { status: 'complete', total: 4, owned: 1 }
     });
 
     const { operators, recognition } = await operatorTrainingService.getOperatorList();
@@ -98,6 +99,37 @@ describe('operator recognition completeness', () => {
     // 识别目录补充本地目录缺失的干员，名称与稀有度来自识别载荷。
     assert.equal(byId.char_delta.name, '丁');
     assert.equal(byId.char_delta.rarity, 6);
+  });
+
+  it('keeps catalog entries unknown when the scan behind the snapshot was partial', async () => {
+    await writeOperBox({
+      timestamp: '2026-11-06T00:00:00.000Z',
+      operCount: 1,
+      data: [ownedAlpha],
+      allOpers: [
+        { id: 'char_alpha', name: '甲', rarity: 6, owned: true },
+        { id: 'char_beta', name: '乙', rarity: 5, owned: false },
+        { id: 'char_gamma', name: '丙', rarity: 4, owned: false }
+      ],
+      operTotal: 3,
+      recognition: { status: 'partial', total: 3, owned: 1 }
+    });
+
+    const { operators, recognition } = await operatorTrainingService.getOperatorList();
+    const byId = Object.fromEntries(operators.map(operator => [operator.id, operator] as const));
+
+    assert.deepEqual(recognition, {
+      status: 'partial',
+      recognizedAt: '2026-11-06T00:00:00.000Z',
+      total: 3,
+      owned: 1,
+      unknown: 2,
+      missing: ['char_beta', 'char_gamma']
+    });
+    assert.equal(byId.char_alpha.ownership, 'owned');
+    assert.equal(byId.char_beta.ownership, 'unknown');
+    assert.equal(byId.char_beta.disabledReason, 'unrecognized');
+    assert.equal(byId.char_gamma.ownership, 'unknown');
   });
 
   it('keeps operators outside the recognized catalog unknown for legacy caches', async () => {
@@ -134,7 +166,8 @@ describe('operator recognition completeness', () => {
         { id: 'char_alpha', name: '甲', rarity: 6, owned: true },
         { id: 'char_beta', name: '乙', rarity: 5, owned: false }
       ],
-      operTotal: 2
+      operTotal: 2,
+      recognition: { status: 'complete', total: 2, owned: 1 }
     });
 
     const { operators, recognition } = await operatorTrainingService.getOperatorList();

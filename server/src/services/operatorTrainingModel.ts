@@ -3,7 +3,7 @@
  * 文件解析入口在这里声明领域类型，未知值先校验再进入计算。
  */
 
-import type { OperatorCatalogEntry } from './operatorCatalogModel.ts';
+import type { OperBoxRecognitionInfo, OperatorCatalogEntry } from './operatorCatalogModel.ts';
 
 /** 训练设置：已知字段有默认值，未知扩展字段原样保留。 */
 export interface TrainingSettings {
@@ -124,13 +124,15 @@ export interface OwnedOperator {
 
 /**
  * 持有干员快照：`data`/`operators` 是已识别拥有的干员，`allOpers` 是识别目录
- * （含拥有标记与多语言名称），缺目录的快照只能确认已识别拥有的干员。
+ * （含拥有标记与多语言名称），`recognition` 是写入时的识别完整度；缺目录或缺
+ * 完整信号时只能确认已识别拥有的干员。
  */
 export interface OperBoxData {
   data?: OwnedOperator[];
   operators?: OwnedOperator[];
   allOpers?: OperatorCatalogEntry[];
   operTotal?: number;
+  recognition?: OperBoxRecognitionInfo;
   timestamp?: string;
 }
 
