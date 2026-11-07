@@ -191,6 +191,35 @@ describe('scheduled task flow planning', () => {
     assert.deepEqual(steps[1].taskConfig?.params, { mode: 0, facility: [] })
   })
 
+  it('keeps a custom infrast schedule file name with a comma as a string', () => {
+    const result = buildScheduledTaskFlowPlan([{
+      id: 'infrast-1',
+      commandId: 'infrast',
+      name: '基建换班',
+      enabled: true,
+      taskType: 'Infrast',
+      params: { mode: 10000, facility: ['Mfg', 'Trade'], filename: '贸易,制造.json' }
+    }, {
+      id: 'mall-1',
+      commandId: 'mall',
+      name: '信用收支',
+      enabled: true,
+      taskType: 'Mall',
+      params: { visit_friends: true, shopping: true, buy_first: '招聘许可,龙门币', blacklist: '家具零件,碳' }
+    }])
+
+    const steps = plannedResult(result).steps
+    assert.deepEqual(steps[0].taskConfig?.params, {
+      mode: 10000,
+      facility: ['Mfg', 'Trade'],
+      filename: '贸易,制造.json',
+      plan_index: 0
+    })
+    const mallParams = steps[1].taskConfig?.params as Record<string, unknown>
+    assert.deepEqual(mallParams.buy_first, ['招聘许可', '龙门币'])
+    assert.deepEqual(mallParams.blacklist, ['家具零件', '碳'])
+  })
+
   it('switches the startup step to a Core StartUp task when the launch switch is off', () => {
     const result = buildScheduledTaskFlowPlan([{
       id: 'startup-1',

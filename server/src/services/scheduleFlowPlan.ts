@@ -114,6 +114,12 @@ export type ScheduledTaskFlowPlanResult =
   | { success: true; totalSteps: number; steps: ScheduledTaskPlanStep[] }
   | { success: false; message: string; details?: { index: number } };
 
+/**
+ * Core 里只有这些字段是「逗号分隔的数组字符串」；其余字符串按原值下发。
+ * 不能按「凡是逗号就 split」处理：Infrast 的 `filename` 是排班文件路径，
+ * 文件名本身可以带逗号（例如 `贸易,制造.json`），拆成数组后 maa-cli 在
+ * 解析任务配置时报 `filename must be a string`。
+ */
 const commaSeparatedArrayKeys = new Set(['buy_first', 'blacklist', 'first_tags', 'preserve_tags']);
 
 /**
@@ -253,7 +259,7 @@ export function buildScheduledTaskCommand(
           }
         } else if (typeof value === 'string' && value.trim().startsWith('[') && value.trim().endsWith(']')) {
           taskConfigParams[key] = value.trim();
-        } else if (typeof value === 'string' && (commaSeparatedArrayKeys.has(key) || (value.includes(',') && !value.includes('[')))) {
+        } else if (typeof value === 'string' && commaSeparatedArrayKeys.has(key)) {
           taskConfigParams[key] = value.split(',').map(v => v.trim()).filter(v => v);
         } else if (typeof value === 'number') {
           taskConfigParams[key] = value;
