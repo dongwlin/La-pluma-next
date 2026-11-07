@@ -235,6 +235,7 @@ beforeEach(async () => {
   await rm(progressPath, { force: true });
   await rm(planDir, { recursive: true, force: true });
   await rm(join(maaCacheDir, 'copilot'), { recursive: true, force: true });
+  await rm(join(maaConfigDir, 'overlays'), { recursive: true, force: true });
   await rm(dropRecordsDir, { recursive: true, force: true });
   await mkdir(dropRecordsDir, { recursive: true });
   await rm(join(fixtureDir, 'maa-execution.lock'), { force: true });
@@ -275,6 +276,12 @@ function queueOf(count = 3): CopilotPlanEntry[] {
 
 async function readMaaCalls(): Promise<string[]> {
   return (await readFile(maaCallLog, 'utf8')).split('\n').filter(Boolean);
+}
+
+async function writeCopilotOverlay(extension: string, content: string): Promise<void> {
+  const overlayDir = join(maaConfigDir, 'overlays');
+  await mkdir(overlayDir, { recursive: true });
+  await writeFile(join(overlayDir, `copilot.${extension}`), content);
 }
 
 async function readProgress(): Promise<Record<string, unknown>> {
@@ -445,6 +452,104 @@ describe('copilot native delegation conditions', () => {
     }
   });
 
+  test('keeps the existing flow when the local overlay conflicts with user options the CLI cannot override', async () => {
+    setNativeDelegationEnabled(true);
+
+    await writeCopilotOverlay('toml', 'use_sanity_potion = true\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-conflict'
+    });
+    // The native preset ORs the CLI switch with the overlay value, so only the
+    // explicit enable agrees with both flows.
+    assert.deepEqual(
+      await evaluateCopilotNativeDelegation({ entries: queueOf(2), options: { useSanityPotion: true } }),
+      { eligible: true }
+    );
+
+    await writeCopilotOverlay('toml', 'add_trust = true\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-conflict'
+    });
+    assert.deepEqual(
+      await evaluateCopilotNativeDelegation({ entries: queueOf(2), options: { addTrust: true } }),
+      { eligible: true }
+    );
+
+    await writeCopilotOverlay('toml', 'ignore_requirements = true\n');
+    assert.deepEqual(
+      await evaluateCopilotNativeDelegation({ entries: queueOf(2), options: { ignoreRequirements: false } }),
+      { eligible: false, reason: 'overlay-conflict' }
+    );
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+
+    await writeCopilotOverlay('toml', 'formation_index = 3\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-conflict'
+    });
+    assert.deepEqual(
+      await evaluateCopilotNativeDelegation({ entries: queueOf(2), options: { formationIndex: '3' } }),
+      { eligible: true }
+    );
+
+    await writeCopilotOverlay('toml', 'support_unit_usage = 2\nsupport_unit_name = "银灰"\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-conflict'
+    });
+    assert.deepEqual(
+      await evaluateCopilotNativeDelegation({
+        entries: queueOf(2),
+        options: { supportUsage: '2', supportName: '银灰' }
+      }),
+      { eligible: true }
+    );
+  });
+
+  test('keeps the existing flow when the overlay adds params the native command cannot clear', async () => {
+    setNativeDelegationEnabled(true);
+
+    await writeCopilotOverlay('toml', 'user_additional = [{ name = "银灰" }]\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-conflict'
+    });
+
+    await writeCopilotOverlay('toml', 'filename = "/tmp/other.json"\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-conflict'
+    });
+
+    // Keys the native list mode overwrites or removes keep both flows equivalent.
+    await writeCopilotOverlay('toml', 'formation = true\nloop_times = 2\ncopilot_list = []\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+  });
+
+  test('uses the first overlay file maa-cli would load and rejects ones it cannot read', async () => {
+    setNativeDelegationEnabled(true);
+
+    await writeCopilotOverlay('json', '{"formation": true}');
+    await writeCopilotOverlay('toml', 'use_sanity_potion = true\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), { eligible: true });
+
+    await rm(join(maaConfigDir, 'overlays'), { recursive: true, force: true });
+    await writeCopilotOverlay('yaml', 'use_sanity_potion: true\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-unreadable'
+    });
+
+    await rm(join(maaConfigDir, 'overlays'), { recursive: true, force: true });
+    await writeCopilotOverlay('toml', 'use_sanity_potion = [\n');
+    assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
+      eligible: false,
+      reason: 'overlay-unreadable'
+    });
+  });
+
   test('defaults to the existing flow while the switch is unset', async () => {
     delete process.env[NATIVE_DELEGATION_ENV];
     assert.deepEqual(await evaluateCopilotNativeDelegation({ entries: queueOf(2) }), {
@@ -543,6 +648,28 @@ describe('copilot native delegation execution', () => {
     assert.match(toml, /client_type = "YoStarEN"/);
     assert.equal(outcome.success, true);
     assert.equal(outcome.delegation, undefined);
+    assert.deepEqual(
+      outcome.summary.taskResults.map(result => result.status),
+      ['success', 'success', 'success']
+    );
+  });
+
+  test('keeps the existing flow and the user medicine choice when the overlay would enable it', async () => {
+    setNativeDelegationEnabled(true);
+    await writeCopilotOverlay('toml', 'use_sanity_potion = true\n');
+    process.env.FAKE_RUN_LOADS = runLoads(planFiles());
+
+    const outcome = await executeCopilotEntries({ setId: '42', name: '测试作业集', entries: queueOf() });
+
+    const calls = await readMaaCalls();
+    assert.equal(calls.filter(call => call.startsWith('copilot ')).length, 0);
+    assert.equal(calls.filter(call => call.startsWith('run ')).length, 1);
+    const tomlLine = calls.find(call => call.startsWith('toml '));
+    assert.ok(tomlLine);
+    const toml = JSON.parse(tomlLine.slice('toml '.length)) as string;
+    assert.match(toml, /use_sanity_potion = false/);
+    assert.equal(outcome.delegation, undefined);
+    assert.equal(outcome.success, true);
     assert.deepEqual(
       outcome.summary.taskResults.map(result => result.status),
       ['success', 'success', 'success']

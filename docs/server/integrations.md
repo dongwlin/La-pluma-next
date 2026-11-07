@@ -134,8 +134,11 @@ MAA CLI 可执行文件路径在模块导入时按 `MAA_CLI_PATH` 解析一次�
 | 编队序号与助战参数为可表示的整数 | 0 值与缺省等价，非整数无法映射到命令行 |
 | copilot id 不重复 | 原生缓存文件按 `<id>.json` 命名，重复 id 无法区分条目 |
 | 每个条目的 `displayStage` 等于本地 `Arknights-Tile-Pos` 中该关卡的 `code` | 原生命令用这个代号作 `stage_name`，MaaCore 在缺省 `nav_name_override` 时同样按它导航；现有流程把 `displayStage` 作为 `nav_name_override` 下发 |
+| 本机 overlay 不改变用户已选择的参数 | 原生命令会叠加 `<config>/overlays/copilot.<ext>` 的任务默认值，用户未显式开启的布尔开关、为 0 的编号与空字符串都可能被 overlay 重新打开，命令行没有反向覆盖入口 |
 
-原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。
+overlay 与命令行参数的优先级依据 maa-cli 仓库源码：预设命令在 `crates/maa-cli/src/run/preset/mod.rs` 按 `json`、`yaml`、`yml`、`toml` 的顺序取第一个存在的 overlay 文件作为任务默认值；`crates/maa-cli/src/run/preset/copilot.rs` 随后把用户布尔开关与默认值取或（`use_sanity_potion`、`add_trust`、`ignore_requirements`、`formation`），数字与字符串参数只在用户显式给出时才覆盖，预设会重写的 `copilot_list`、`formation` 等键之外的内容（含 `filename`）原样保留。`maa run <task file>` 直接解析任务文件、不读取 overlay，这是现有流程不受影响的原因。委托资格读取同一份生效 overlay：overlay 里与用户选项冲突且 CLI 无法显式改回的值（关闭的开关被设为 `true`、用户为 0/空而 overlay 非 0/非空、未知参数）判为 `overlay-conflict`；YAML 格式无法在服务端解析、overlay 不可读或格式损坏时判为 `overlay-unreadable`，两者都沿现有动态执行路径。
+
+原生失败时，只有在日志检查点可用且尚未出现任何 `CopilotListLoadTaskFileSuccess`——即没有跳转关卡、也没有开始战斗——才回退到现有流程；游戏启动、编队等前置步骤可能已经执行，但回退不会重复消耗理智或重复结算关卡。一旦观察到计划文件加载，就按原有规则结算失败，不再重跑。停止请求不算原生失败，按停止结算。日志被轮转（检查点文件身份或边界前内容摘要变化）时无法确认是否开战，同样不回退。
 
 原生命令把下载的作业文件写在 maa-cli 共享缓存 `<cache>/copilot/<id>.json`，缓存命中时不会校验远端内容；现有流程则每次执行都重新获取计划内容。原生委托在启动命令前删除本次条目的对应缓存文件（`invalidateCachedCopilotFiles`），让命令重新下载，保证原生路径与计划构建使用同一份作业内容；其它 copilot 缓存文件不受影响。删除失败时按原生失败处理，日志检查点可用时回退到现有流程，不会带着可能过期的缓存执行。
 
