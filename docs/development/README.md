@@ -73,6 +73,8 @@ pnpm visual --grep "dashboard"   # 透传 playwright 过滤参数，只跑部分
 
 视觉测试的浏览器与静态服务运行在同一 Docker 容器中，使用容器自己的网络，不占用宿主机 4300 端口；不同 worktree 可以同时运行。基线更新只选择实际受影响的用例，例如 `pnpm visual:update --grep dashboard`，更新后审核图片差异。同一 worktree 的构建产物和测试输出仍共用目录，不并发启动多个构建或同类浏览器检查。
 
+`operator-select-modal-*` 对弹层内输入框占位文本的 1px 栅格抖动保留 250 像素容差：它在分数像素纵坐标上偶发整体错位一行，与布局、字体和 DOM 状态无关。其余基线仍是「diff 非零即失败」。
+
 ### README 界面截图
 
 README 的「界面预览」由 `client/tests/screenshots/` 单独生成，只输出浅色主题；它复用视觉基线的固定 fixture、固定时间与 Playwright 镜像，不读取本机配置。
