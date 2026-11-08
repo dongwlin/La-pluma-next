@@ -238,6 +238,20 @@ import { ConfirmDialog, Loading } from '@/shared/ui'
 
 `ConfirmDialog.onConfirm` 可以返回 Promise：返回 `false` 或抛出错误时弹窗保持打开，并在弹窗内展示失败原因。
 
+`Modal` 的 `placement` 默认为 `center`（既有居中弹层）；传 `sheet` 时改为贴底 Sheet，最大高度 `85dvh`、顶部连续圆角并预留底部安全区，焦点陷阱、背景 `inert`、Esc、滚动锁与焦点归还保持与居中弹层一致。`dialogId` 可选，用于让触发元素的 `aria-controls` 指向对话框根节点。
+
+```tsx
+<Modal
+  isOpen={open}
+  onClose={close}
+  title="作业详情"
+  placement="sheet"
+  dialogId="combat-copilot-detail-panel"
+>
+  内容
+</Modal>
+```
+
 `ActivityIndicator` 是供 `Button` 和 `Loading` 内部复用的 iOS 活动指示器，页面不要直接调用或叠加第二个动态指示器。`DashboardSkeleton` 是控制台域专用骨架，位于 `features/dashboard/components/DashboardSkeleton.tsx`，不属于 `shared/ui` 的公共导出。
 
 ---

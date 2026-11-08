@@ -8,9 +8,11 @@ interface CombatSearchPanelProps {
   selectionStore: PanelStateStore<string>
   result: CopilotSearchResult | null
   searching: boolean
+  addingUri: string | null
   onSearch: (term: string) => void
   onCancel: () => void
   onSelectUri: (uri: string) => void
+  onAddToQueue: (uri: string) => void
 }
 
 export default function CombatSearchPanel({
@@ -18,9 +20,11 @@ export default function CombatSearchPanel({
   selectionStore,
   result,
   searching,
+  addingUri,
   onSearch,
   onCancel,
   onSelectUri,
+  onAddToQueue,
 }: CombatSearchPanelProps) {
   const [stage, setStage] = usePanelState(stageStore)
   const [selectedUri] = usePanelState(selectionStore)
@@ -67,26 +71,40 @@ export default function CombatSearchPanel({
         <div className="combat-copilot-search-results">
           {result.copilots.slice(0, 5).map((copilot) => {
             const isSelected = selectedUri === copilot.uri
+            const isAdding = addingUri === copilot.uri
             return (
-              <button
+              <div
                 key={copilot.id}
-                type="button"
-                onClick={() => onSelectUri(copilot.uri)}
                 className={`combat-copilot-search-result${isSelected ? ' is-active' : ''}`}
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="shrink-0 font-mono text-xs brand-text">{copilot.uri}</span>
-                  <span className="max-w-20 truncate text-xs text-secondary">{copilot.title}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  {isSelected && (
-                    <span className="rounded-md px-1.5 py-0.5 text-[11px] brand-chip">已选中</span>
-                  )}
-                  {recommendedUri === copilot.uri && (
-                    <span className="rounded-md px-1.5 py-0.5 text-[11px] brand-chip">推荐</span>
-                  )}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectUri(copilot.uri)}
+                  className="combat-copilot-search-result-main"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0 font-mono text-xs brand-text">{copilot.uri}</span>
+                    <span className="max-w-20 truncate text-xs text-secondary">{copilot.title}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {isSelected && (
+                      <span className="rounded-md px-1.5 py-0.5 text-[11px] brand-chip">已选中</span>
+                    )}
+                    {recommendedUri === copilot.uri && (
+                      <span className="rounded-md px-1.5 py-0.5 text-[11px] brand-chip">推荐</span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAddToQueue(copilot.uri)}
+                  disabled={isAdding}
+                  aria-label={`加入队列: ${copilot.title ?? copilot.uri}`}
+                  className="combat-copilot-search-result-add"
+                >
+                  {isAdding ? '加入中' : '加入队列'}
+                </button>
+              </div>
             )
           })}
         </div>

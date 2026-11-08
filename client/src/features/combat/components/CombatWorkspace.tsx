@@ -9,6 +9,7 @@ import { useUserConfig } from '@/features/user-config'
 import { resetCopilotSetProgress as resetCopilotSetProgressRequest, uploadCopilotFile } from '../api'
 import { useCombatExecution } from '../hooks/useCombatExecution'
 import { useCopilotPreview } from '../hooks/useCopilotPreview'
+import { useCopilotQueue } from '../hooks/useCopilotQueue'
 import { useCopilotSearch, useParadoxSearch } from '../hooks/useCopilotSearch'
 import {
   combatConfigAdapter,
@@ -27,19 +28,27 @@ import {
   restorableCopilotIndexes,
   selectedCopilotItemIndexes,
   serializeCopilotSelection,
-  toggleAllCopilotSelection,
-  toggleCopilotSelection,
 } from '../model/copilotSelection'
+import { INVALID_COPILOT_URI_MESSAGE, resolveCopilotPreviewTarget } from '../model/copilotPreview'
+import type { CopilotPreviewMode, CopilotPreviewOutcome } from '../model/copilotPreview'
+import {
+  buildCopilotQueueEntries,
+  buildCopilotQueueEntryFromFile,
+  checkedCopilotQueueEntries,
+  COPILOT_QUEUE_LIMIT,
+  copilotQueueEntryArgument,
+} from '../model/copilotQueue'
+import { collectCopilotItemErrors } from '../model/copilotDetail'
 import { deriveCopilotSetView } from '../model/copilotSetView'
 import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
-import type { CopilotPreviewMode } from '../model/copilotPreview'
-import { invalidateCopilotSetPlan } from '../model/queries'
+import { invalidateCopilotSetPlan, loadCopilotPreview as loadCopilotPreviewData } from '../model/queries'
 import { normalizeCopilotInput, parseCopilotUri, quoteCopilotPathForInput, splitCopilotInputToArgs } from '../utils/copilotUri'
 import type {
   CombatMode,
   CombatTask,
   CopilotSetExecutionMode,
+  CopilotSetInfo,
   CopilotSetItem,
   FormationMode,
 } from '../types'
@@ -52,6 +61,7 @@ import type {
   CombatCopilotConfig,
   CombatCopilotExecutionActions,
   CombatCopilotFileImportProjection,
+  CombatCopilotQueueProjection,
   CombatCopilotSearchProjection,
   CombatCopilotSelectionProjection,
   CombatExecutionActions,
@@ -60,6 +70,24 @@ import type {
 
 /** 协调器加载完成前的渲染默认值；与迁移前的初始 state 一致。 */
 const DEFAULT_COMBAT_CONFIG = createDefaultCombatDraft()
+
+function previewMatchesInput(
+  preview: CopilotSetInfo | null,
+  input: string,
+): preview is CopilotSetInfo {
+  if (!preview) return false
+  const parsed = parseCopilotUri(splitCopilotInputToArgs(input)[0] || '')
+  if (!parsed || parsed.id !== preview.id) return false
+  return preview.type === 'set' ? parsed.isSet || preview.autoAddS === true : !parsed.isSet
+}
+
+async function readCopilotFileText(file: File): Promise<string> {
+  try {
+    return await file.text()
+  } catch {
+    return ''
+  }
+}
 
 export default function CombatWorkspace() {
   const setStatusMessage = useStatusStore(state => state.setMessage)
@@ -104,8 +132,15 @@ export default function CombatWorkspace() {
   } = useParadoxSearch()
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
+  const [selectedCopilotSetId, setSelectedCopilotSetId] = useState<string | null>(null)
   const [isResettingProgress, setIsResettingProgress] = useState(false)
   const [isImportingCopilotFile, setIsImportingCopilotFile] = useState(false)
+  const [isAddingToQueue, setIsAddingToQueue] = useState(false)
+  const [addingQueueUri, setAddingQueueUri] = useState<string | null>(null)
+  const [submittedEntryIds, setSubmittedEntryIds] = useState<ReadonlySet<string>>(() => new Set())
+  const queueAddControllerRef = useRef<AbortController | null>(null)
+  const queue = useCopilotQueue()
+  const { syncSet: syncQueueSet } = queue
   const importingCopilotFileRef = useRef(false)
   const [resetProgressDialogOpen, setResetProgressDialogOpen] = useState(false)
   const reconciledRunRef = useRef<string | null>(null)
@@ -118,6 +153,8 @@ export default function CombatWorkspace() {
     copilotSearchSelection: createPanelStateStore(''),
     paradoxSearchName: createPanelStateStore(''),
   }))
+
+  useEffect(() => () => queueAddControllerRef.current?.abort(), [])
 
   const {
     isRunning,
@@ -156,6 +193,7 @@ export default function CombatWorkspace() {
   const applySelectedCopilotIndexes = useCallback((indexes: Set<number>, setId: string) => {
     const normalized = serializeCopilotSelection(indexes)
     setSelectedCopilotIndexes(new Set(normalized))
+    setSelectedCopilotSetId(setId)
     updateCombatConfig(current => ({
       ...current,
       copilotSetSelections: {
@@ -200,9 +238,22 @@ export default function CombatWorkspace() {
     }
   }
 
+  const activeSetPreview = preview?.type === 'set' ? preview : null
+  const queueSetIndexes = new Set<number>()
+  for (const entry of queue.entries) {
+    if (
+      activeSetPreview
+      && entry.setId === activeSetPreview.id
+      && entry.setItemIndex !== undefined
+      && queue.selected.has(entry.id)
+    ) {
+      queueSetIndexes.add(entry.setItemIndex)
+    }
+  }
+
   const setView = deriveCopilotSetView({
     preview,
-    selected: selectedCopilotIndexes,
+    selected: queueSetIndexes,
     setRun,
     dismissedRunId,
     raid: normalizeRaidValue(advancedParams.copilot?.raid),
@@ -210,10 +261,33 @@ export default function CombatWorkspace() {
     isAutoStopping,
   })
 
+  useEffect(() => {
+    if (!activeSetPreview) return
+    const copilots = activeSetPreview.copilots ?? []
+    const raid = normalizeRaidValue(advancedParams.copilot?.raid)
+    const checkedIndexes = selectedCopilotSetId === activeSetPreview.id
+      ? [...selectedCopilotIndexes].filter(index => index >= 0 && index < copilots.length)
+      : restorableCopilotIndexes(copilots, raid, copilotSetSelections[activeSetPreview.id])
+    syncQueueSet(activeSetPreview.id, buildCopilotQueueEntries(activeSetPreview), checkedIndexes)
+  }, [
+    activeSetPreview,
+    advancedParams.copilot?.raid,
+    copilotSetSelections,
+    selectedCopilotIndexes,
+    selectedCopilotSetId,
+    syncQueueSet,
+  ])
+
   const executionProgress = useMemo(
     () => deriveExecutionProgress(trackedRun, setRun),
     [trackedRun, setRun],
   )
+
+  const queueItemErrors = useMemo(() => {
+    const run = setView.activeSetRun
+    if (!run) return new Map<number, string>()
+    return collectCopilotItemErrors(run.failures, run.summaryErrors ?? [])
+  }, [setView.activeSetRun])
 
   // 终态后按服务端计划进度重建“待执行”选择。成功的条目会被计划标记为已完成，
   // 失败的条目保留待重试；同步失败只影响展示，不把 run 结果解释成完成。
@@ -333,6 +407,12 @@ export default function CombatWorkspace() {
         setStatusMessage(getErrorMessage(result), 'error')
         return
       }
+      const content = await readCopilotFileText(file)
+      queue.add([buildCopilotQueueEntryFromFile(
+        result.data.path,
+        result.data.name || file.name,
+        content,
+      )])
       handleInputChange('copilot', quoteCopilotPathForInput(result.data.path))
       setStatusMessage(`已导入本地作业: ${result.data.name || file.name}`, 'success')
     } catch (error) {
@@ -407,6 +487,179 @@ export default function CombatWorkspace() {
     setStatusMessage,
     taskInputs,
   ])
+
+  const resolveQueuePreview = async (
+    input: string,
+    mode = panelStores.copilotPreviewMode.get(),
+  ): Promise<{
+    preview: CopilotSetInfo | null
+    outcome: CopilotPreviewOutcome | null
+  }> => {
+    const target = resolveCopilotPreviewTarget(input, mode)
+    if (!target) {
+      return {
+        preview: null,
+        outcome: { status: 'invalid', message: INVALID_COPILOT_URI_MESSAGE },
+      }
+    }
+    queueAddControllerRef.current?.abort()
+    const controller = new AbortController()
+    queueAddControllerRef.current = controller
+    const outcome = await loadCopilotPreviewData(queryClient, {
+      target,
+      raid: normalizeRaidValue(advancedParams.copilot?.raid),
+    }, {
+      signal: controller.signal,
+      force: false,
+      track: () => {},
+    })
+    return {
+      preview: outcome.status === 'ready' ? outcome.preview : null,
+      outcome,
+    }
+  }
+
+  const reportQueueAdd = (preview: CopilotSetInfo) => {
+    if (preview.type === 'set') {
+      const raid = normalizeRaidValue(advancedParams.copilot?.raid)
+      const existingEntries = queue.entries.filter(entry => entry.setId === preview.id)
+      const checkedIndexes = existingEntries.length
+        ? existingEntries
+          .filter(entry => entry.setItemIndex !== undefined && queue.selected.has(entry.id))
+          .map(entry => entry.setItemIndex as number)
+        : restorableCopilotIndexes(
+          preview.copilots ?? [],
+          raid,
+          copilotSetSelections[preview.id],
+        )
+      syncQueueSet(preview.id, buildCopilotQueueEntries(preview), checkedIndexes)
+      setStatusMessage(`已同步作业集 ${preview.copilots?.length ?? 0} 个作业到队列`, 'success')
+      return
+    }
+    const wasFull = queue.entries.length >= COPILOT_QUEUE_LIMIT
+    const added = queue.add(buildCopilotQueueEntries(preview))
+    setStatusMessage(
+      added
+        ? `已加入 ${added} 个作业到队列`
+        : wasFull
+          ? `队列已满，最多 ${COPILOT_QUEUE_LIMIT} 个作业`
+          : '这些作业已在队列中',
+      added ? 'success' : 'warning',
+    )
+  }
+
+  const reportQueueAddFailure = (outcome: CopilotPreviewOutcome) => {
+    if (outcome.status === 'cancelled') return
+    if (outcome.status === 'failed') {
+      setStatusMessage(
+        outcome.kind === 'transport' || outcome.kind === 'unknown'
+          ? `网络错误: ${outcome.message}`
+          : outcome.message,
+        'error',
+      )
+      return
+    }
+    if (outcome.status === 'invalid' || outcome.status === 'empty') {
+      setStatusMessage(outcome.message)
+    }
+  }
+
+  const handleAddToQueue = async () => {
+    if (isAddingToQueue) return
+    const inputValue = taskInputs.copilot || ''
+    if (!inputValue.trim()) {
+      setStatusMessage('请输入作业链接')
+      return
+    }
+    if (previewMatchesInput(preview, inputValue)) {
+      reportQueueAdd(preview)
+      return
+    }
+
+    setIsAddingToQueue(true)
+    try {
+      const outcome = await requestCopilotPreview(inputValue)
+      if (outcome.status === 'ready') reportQueueAdd(outcome.preview)
+    } finally {
+      setIsAddingToQueue(false)
+    }
+  }
+
+  const handleAddSearchUriToQueue = async (uri: string) => {
+    if (isAddingToQueue) return
+
+    setIsAddingToQueue(true)
+    setAddingQueueUri(uri)
+    setStatusMessage('正在获取作业信息...')
+    try {
+      const { preview: loaded, outcome } = await resolveQueuePreview(uri, 'auto')
+      if (loaded) {
+        reportQueueAdd(loaded)
+        return
+      }
+      if (outcome) reportQueueAddFailure(outcome)
+    } finally {
+      setIsAddingToQueue(false)
+      setAddingQueueUri(null)
+    }
+  }
+
+  const handleExecuteQueue = async () => {
+    const entries = checkedCopilotQueueEntries(queue.entries, queue.selected)
+    if (!entries.length) {
+      setStatusMessage('请至少勾选一个作业')
+      return
+    }
+    if (!automationAvailable) {
+      setStatusMessage(unavailableMessage, 'error')
+      return
+    }
+    if (isRunning || isSubmitting) {
+      setStatusMessage('正在执行其他任务，请稍后再试', 'warning')
+      return
+    }
+
+    const setIndexes: number[] = []
+    let setBacked = activeSetPreview !== null
+    for (const entry of entries) {
+      if (
+        !activeSetPreview
+        || entry.setId !== activeSetPreview.id
+        || entry.setItemIndex === undefined
+      ) {
+        setBacked = false
+        break
+      }
+      setIndexes.push(entry.setItemIndex)
+    }
+    const ordered = setBacked && setIndexes.every(
+      (index, position) => position === 0 || index > setIndexes[position - 1]!,
+    )
+
+    setSubmittedEntryIds(new Set())
+    if (activeSetPreview && setBacked && ordered) {
+      await submitSet({
+        setId: activeSetPreview.id,
+        mode: toCopilotSetRunMode(copilotSetExecutionMode),
+        raid: normalizeRaidValue(advancedParams.copilot?.raid),
+        selectedIndexes: setIndexes,
+        options: buildCopilotSetExecutionOptions(
+          advancedParams.copilot,
+          normalizeFormationMode(autoFormation.copilot),
+        ),
+        taskName: copilotTask.name,
+      })
+      return
+    }
+
+    const args = buildCombatCommandArgs('copilot', {
+      input: entries.map(copilotQueueEntryArgument).join('\n'),
+      advanced: advancedParams.copilot,
+      formationMode: normalizeFormationMode(autoFormation.copilot),
+    })
+    const submitted = await submitTask({ command: 'copilot', args, taskName: '自动战斗作业' })
+    if (submitted) setSubmittedEntryIds(new Set(entries.map(entry => entry.id)))
+  }
 
   const applyCopilotUri = async (uri: string) => {
     const normalizedUri = normalizeCopilotInput(uri).trim()
@@ -495,22 +748,6 @@ export default function CombatWorkspace() {
     }))
   }
 
-  const toggleSelectedCopilot = (index: number) => {
-    if (!preview?.copilots) return
-    applySelectedCopilotIndexes(
-      toggleCopilotSelection(selectedCopilotIndexes, index),
-      preview.id,
-    )
-  }
-
-  const toggleAllCopilots = () => {
-    if (!preview?.copilots) return
-    applySelectedCopilotIndexes(
-      toggleAllCopilotSelection(selectedCopilotIndexes, preview.copilots.length),
-      preview.id,
-    )
-  }
-
   const copilotTask = getCombatTask('copilot')
   const specialTask = activeCombatMode === 'copilot' ? null : getCombatTask(activeCombatMode)
 
@@ -527,10 +764,7 @@ export default function CombatWorkspace() {
   }
 
   const copilotSelection: CombatCopilotSelectionProjection = {
-    selected: selectedCopilotIndexes,
     isResetting: isResettingProgress,
-    onToggle: toggleSelectedCopilot,
-    onToggleAll: toggleAllCopilots,
     onOpenReset: () => setResetProgressDialogOpen(true),
   }
 
@@ -544,9 +778,33 @@ export default function CombatWorkspace() {
     selectionStore: panelStores.copilotSearchSelection,
     result: copilotSearchResult,
     searching: isSearchingCopilot,
+    addingUri: addingQueueUri,
     onSearch: term => void handleSearchCopilot(term),
     onCancel: cancelCopilotSearch,
     onSelectUri: uri => void applyCopilotUri(uri),
+    onAddToQueue: uri => void handleAddSearchUriToQueue(uri),
+  }
+
+  const copilotQueue: CombatCopilotQueueProjection = {
+    entries: queue.entries,
+    selected: queue.selected,
+    setId: activeSetPreview?.id ?? null,
+    itemStatuses: setView.itemStatuses,
+    itemErrors: queueItemErrors,
+    submittedEntryIds,
+    isRunning,
+    isSubmitting,
+    isAdding: isAddingToQueue,
+    addingUri: addingQueueUri,
+    automationAvailable,
+    unavailableMessage,
+    onToggle: queue.toggle,
+    onRemove: queue.remove,
+    onMove: queue.move,
+    onClear: queue.clear,
+    onExecute: () => void handleExecuteQueue(),
+    onAddCurrent: () => void handleAddToQueue(),
+    onAddUri: uri => void handleAddSearchUriToQueue(uri),
   }
 
   const paradoxSearch: CombatParadoxSearchProjection = {
@@ -620,6 +878,7 @@ export default function CombatWorkspace() {
                 fileImport={copilotFileImport}
                 view={setView}
                 selection={copilotSelection}
+                queue={copilotQueue}
                 search={copilotSearch}
                 execution={copilotExecution}
               />

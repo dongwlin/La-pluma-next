@@ -75,6 +75,8 @@ export function buildSingleCopilotPreview(id: string, detail: CopilotDetail): Co
     name: detail.title,
     ...(detail.stage ? { stage: detail.stage } : {}),
     operators: detail.operators,
+    ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
+    ...(detail.groupNames?.length ? { groupNames: detail.groupNames } : {}),
   }
 }
 
@@ -113,6 +115,8 @@ export function buildCopilotSetItemFromDetail(id: number, detail: CopilotDetail)
     name: detail.title,
     ...(detail.stage ? { stage: detail.stage } : {}),
     operators: detail.operators,
+    ...(detail.operatorDetails?.length ? { operatorDetails: detail.operatorDetails } : {}),
+    ...(detail.groupNames?.length ? { groupNames: detail.groupNames } : {}),
     uri: `prts://${id}`,
   }
 }

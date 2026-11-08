@@ -21,11 +21,13 @@ interface CombatCopilotSourceBarProps {
   input: string
   isLoading: boolean
   hasPreview: boolean
+  isAddingToQueue?: boolean
   previewModeStore: PanelStateStore<CopilotPreviewMode>
   search: CombatCopilotSearchProjection
   fileImport?: CombatCopilotFileImportProjection
   onInputChange: (value: string) => void
   onPreview: () => void
+  onAddToQueue?: () => void
   onCancelPreview: () => void
   onClear: () => void
 }
@@ -34,11 +36,13 @@ export default function CombatCopilotSourceBar({
   input,
   isLoading,
   hasPreview,
+  isAddingToQueue = false,
   previewModeStore,
   search,
   fileImport,
   onInputChange,
   onPreview,
+  onAddToQueue,
   onCancelPreview,
   onClear,
 }: CombatCopilotSourceBarProps) {
@@ -61,8 +65,10 @@ export default function CombatCopilotSourceBar({
       <CombatCopilotInputPanel
         input={input}
         isLoading={isLoading}
+        isAddingToQueue={isAddingToQueue}
         onInputChange={onInputChange}
         onPreview={onPreview}
+        onAddToQueue={onAddToQueue}
       />
 
       <div className="combat-copilot-source-tools">

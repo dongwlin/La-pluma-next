@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ConfirmDialog } from './Modal'
+import { ConfirmDialog, Modal } from './Modal'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -122,5 +122,73 @@ describe('ConfirmDialog', () => {
 
     expect(onClose).not.toHaveBeenCalled()
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('清理失败，请稍后重试')
+  })
+})
+
+describe('Modal placement', () => {
+  beforeEach(() => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+    document.body.style.overflow = ''
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the centered placement and close behavior by default', async () => {
+    const onClose = vi.fn()
+    await act(async () => {
+      root.render(
+        <Modal isOpen onClose={onClose} title="默认弹层">
+          <p>正文</p>
+        </Modal>,
+      )
+    })
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    expect(dialog?.getAttribute('data-modal-placement')).toBe('center')
+    expect(dialog?.getAttribute('aria-modal')).toBe('true')
+    expect(document.body.style.overflow).toBe('hidden')
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('renders a bottom sheet with its own dialog id for aria-controls', async () => {
+    await act(async () => {
+      root.render(
+        <Modal
+          isOpen
+          onClose={vi.fn()}
+          title="作业详情"
+          placement="sheet"
+          dialogId="combat-copilot-detail-panel"
+        >
+          <p>Sheet 内容</p>
+        </Modal>,
+      )
+    })
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    expect(dialog?.id).toBe('combat-copilot-detail-panel')
+    expect(dialog?.getAttribute('data-modal-placement')).toBe('sheet')
+    expect(dialog?.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(dialog?.getAttribute('aria-labelledby') || '')?.textContent)
+      .toBe('作业详情')
+    expect(document.body.textContent).toContain('Sheet 内容')
   })
 })

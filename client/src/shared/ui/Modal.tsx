@@ -18,11 +18,13 @@ interface ModalProps {
   children: ReactNode
   footer?: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  placement?: 'center' | 'sheet'
   closeOnOverlay?: boolean
   showClose?: boolean
   dismissible?: boolean
   role?: 'dialog' | 'alertdialog'
   ariaLabel?: string
+  dialogId?: string
 }
 
 interface ConfirmDialogProps {
@@ -130,11 +132,13 @@ function ModalLayer({
   children,
   footer,
   size = 'md',
+  placement = 'center',
   closeOnOverlay = true,
   showClose = true,
   dismissible = true,
   role = 'dialog',
   ariaLabel,
+  dialogId,
 }: ModalLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -209,6 +213,32 @@ function ModalLayer({
     event.stopPropagation()
   }
 
+  const isSheet = placement === 'sheet'
+  const containerClassName = isSheet
+    ? 'pointer-events-none absolute inset-0 flex items-end justify-center'
+    : 'pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6'
+  const panelClassName = isSheet
+    ? 'surface-panel pointer-events-auto flex max-h-[85dvh] w-full max-w-none flex-col overflow-hidden rounded-t-[1.25rem]'
+    : `surface-panel pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl ${sizeStyles[size]}`
+  const motionProps = shouldReduceMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : isSheet
+      ? {
+          initial: { opacity: 0, y: 48 },
+          animate: { opacity: 1, y: 0 },
+          exit: { opacity: 0, y: 32 },
+        }
+      : {
+          initial: { opacity: 0, scale: 0.97, y: 12, backdropFilter: 'blur(0px) saturate(100%)' },
+          animate: { opacity: 1, scale: 1, y: 0, backdropFilter: 'blur(24px) saturate(165%)' },
+          exit: { opacity: 0, scale: 0.98, y: 8, backdropFilter: 'blur(0px) saturate(100%)' },
+        }
+  const transition = shouldReduceMotion
+    ? { duration: 0 }
+    : isSheet
+      ? { duration: 0.22, ease: 'easeOut' as const }
+      : { type: 'spring' as const, stiffness: 380, damping: 34, mass: 0.82 }
+
   return (
     <div
       ref={layerRef}
@@ -225,9 +255,11 @@ function ModalLayer({
         aria-hidden="true"
       />
 
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4 sm:p-6">
+      <div className={containerClassName}>
         <motion.div
           ref={dialogRef}
+          id={dialogId}
+          data-modal-placement={placement}
           role={role}
           aria-modal="true"
           aria-labelledby={title ? titleId : undefined}
@@ -235,19 +267,10 @@ function ModalLayer({
           aria-describedby={descriptionId}
           tabIndex={-1}
           onKeyDown={handleDialogKeyDown}
-          initial={shouldReduceMotion
-            ? { opacity: 0 }
-            : { opacity: 0, scale: 0.97, y: 12, backdropFilter: 'blur(0px) saturate(100%)' }}
-          animate={shouldReduceMotion
-            ? { opacity: 1 }
-            : { opacity: 1, scale: 1, y: 0, backdropFilter: 'blur(24px) saturate(165%)' }}
-          exit={shouldReduceMotion
-            ? { opacity: 0 }
-            : { opacity: 0, scale: 0.98, y: 8, backdropFilter: 'blur(0px) saturate(100%)' }}
-          transition={shouldReduceMotion
-            ? { duration: 0 }
-            : { type: 'spring', stiffness: 380, damping: 34, mass: 0.82 }}
-          className={`surface-panel pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl ${sizeStyles[size]}`}
+          {...motionProps}
+          transition={transition}
+          className={panelClassName}
+          style={isSheet ? { paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}
         >
           {(title || showClose) && (
             <div className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 shadow-[inset_0_-1px_0_var(--app-border)] sm:px-6">

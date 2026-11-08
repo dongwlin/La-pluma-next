@@ -1,6 +1,7 @@
 import { Card } from '@/shared/ui'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CombatTask } from '../types'
+import CombatCopilotQueuePanel from './CombatCopilotQueuePanel'
 import CombatCopilotSetPanel from './CombatCopilotSetPanel'
 import CombatCopilotSourceBar from './CombatCopilotSourceBar'
 import CombatSettingsPanel from './CombatSettingsPanel'
@@ -10,6 +11,7 @@ import type {
   CombatCopilotExecutionActions,
   CombatCopilotFileImportProjection,
   CombatCopilotPreviewProjection,
+  CombatCopilotQueueProjection,
   CombatCopilotSearchProjection,
   CombatCopilotSelectionProjection,
 } from './combatPanelTypes'
@@ -21,6 +23,7 @@ interface CombatCopilotTaskPanelProps {
   fileImport: CombatCopilotFileImportProjection
   view: CopilotSetView
   selection: CombatCopilotSelectionProjection
+  queue: CombatCopilotQueueProjection
   search: CombatCopilotSearchProjection
   execution: CombatCopilotExecutionActions
 }
@@ -32,9 +35,12 @@ export default function CombatCopilotTaskPanel({
   fileImport,
   view,
   selection,
+  queue,
   search,
   execution,
 }: CombatCopilotTaskPanelProps) {
+  const previewInfo = preview.info
+
   return (
     <Card
       smoothCorners
@@ -59,31 +65,34 @@ export default function CombatCopilotTaskPanel({
         input={config.input}
         isLoading={preview.loading}
         hasPreview={preview.info !== null}
+        isAddingToQueue={queue.isAdding}
         previewModeStore={preview.modeStore}
         search={search}
         fileImport={fileImport}
         onInputChange={config.onInputChange}
         onPreview={preview.onPreview}
+        onAddToQueue={queue.onAddCurrent}
         onCancelPreview={preview.onCancel}
         onClear={preview.onClear}
       />
 
       <div className="combat-copilot-body">
-        <CombatCopilotSetPanel
-          preview={preview.info}
-          view={view}
-          selected={selection.selected}
-          isRunning={execution.isRunning}
-          isResetting={selection.isResetting}
-          isContinuing={execution.isContinuing}
-          automationAvailable={execution.automationAvailable}
-          unavailableMessage={execution.unavailableMessage}
-          onToggle={selection.onToggle}
-          onToggleAll={selection.onToggleAll}
-          onOpenReset={selection.onOpenReset}
-          onStartNext={execution.onStartNext}
-          onCancelSet={execution.onCancelSet}
-        />
+        <div className="combat-copilot-queue-column">
+          <CombatCopilotQueuePanel queue={queue} />
+
+          {previewInfo !== null && (
+            <CombatCopilotSetPanel
+              preview={previewInfo}
+              view={view}
+              isRunning={execution.isRunning}
+              isResetting={selection.isResetting}
+              isContinuing={execution.isContinuing}
+              onOpenReset={selection.onOpenReset}
+              onStartNext={execution.onStartNext}
+              onCancelSet={execution.onCancelSet}
+            />
+          )}
+        </div>
 
         <div className="combat-copilot-params">
           <CombatSettingsPanel

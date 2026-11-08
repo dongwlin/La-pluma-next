@@ -17,6 +17,15 @@ export default function CombatCopilotQueueSummary({
   const nextIndex = view.resumeIndex
   const nextCopilot = nextIndex >= 0 ? preview.copilots?.[nextIndex] ?? null : null
   const waitingTotal = Math.max(preview.copilots?.length ?? 0, view.activeSetRun?.itemCount ?? 0)
+  const historyCompleted = view.historyCompletedIndexes.size
+  const runSuccess = [...view.runCompletedIndexes]
+    .filter(index => !view.historyCompletedIndexes.has(index))
+    .length
+  const activeRun = view.activeSetRun
+  const summaryErrors = activeRun?.summaryErrors ?? []
+  const failures = activeRun
+    ? summaryErrors.length > 0 ? summaryErrors : activeRun.failures
+    : []
 
   return (
     <div className="combat-copilot-summary">
@@ -32,7 +41,8 @@ export default function CombatCopilotQueueSummary({
         </div>
         <div className="combat-copilot-summary-chips">
           <span className="combat-copilot-chip is-pending">待 {pending}</span>
-          <span className="combat-copilot-chip">已通关 {completed}</span>
+          <span className="combat-copilot-chip">本次成功 {runSuccess}</span>
+          <span className="combat-copilot-chip">历史已通关 {historyCompleted}</span>
           <span className={`combat-copilot-chip${failed > 0 ? ' is-failed' : ''}`}>失败 {failed}</span>
           {stopped > 0 && <span className="combat-copilot-chip">已终止 {stopped}</span>}
           {skipped > 0 && <span className="combat-copilot-chip is-muted">跳过 {skipped}</span>}
@@ -45,6 +55,23 @@ export default function CombatCopilotQueueSummary({
           style={{ width: `${total > 0 ? (completed / total) * 100 : 0}%` }}
         />
       </div>
+
+      {failures.length > 0 && (
+        <div className="combat-copilot-failures">
+          <span className="combat-copilot-failures-label">失败原因</span>
+          <ul className="combat-copilot-failures-list">
+            {failures.map((failure, index) => (
+              <li key={`${failure.itemIndex ?? 'unknown'}-${index}`} className="combat-copilot-failure">
+                <span className="combat-copilot-failure-stage">
+                  {failure.stage
+                    ?? (failure.itemIndex !== null ? `第 ${failure.itemIndex + 1} 个作业` : '未知阶段')}
+                </span>
+                <p className="combat-copilot-failure-reason">{failure.error}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {nextCopilot ? (
         <div className="combat-copilot-resume">

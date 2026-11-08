@@ -8,6 +8,8 @@ import type {
   AdvancedValues,
 } from '../model/combatCommands'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
+import type { CopilotSetItemStatus } from '../model/copilotSetRun'
+import type { CopilotQueueEntry, CopilotQueueMoveDirection } from '../model/copilotQueue'
 import type { PanelStateStore } from '../model/panelState'
 import type {
   CopilotRaid,
@@ -63,11 +65,30 @@ export interface CombatCopilotFileImportProjection {
 }
 
 export interface CombatCopilotSelectionProjection {
-  selected: ReadonlySet<number>
   isResetting: boolean
-  onToggle: (index: number) => void
-  onToggleAll: () => void
   onOpenReset: () => void
+}
+
+export interface CombatCopilotQueueProjection {
+  entries: readonly CopilotQueueEntry[]
+  selected: ReadonlySet<string>
+  setId: string | null
+  itemStatuses: ReadonlyMap<number, CopilotSetItemStatus>
+  itemErrors: ReadonlyMap<number, string>
+  submittedEntryIds: ReadonlySet<string>
+  isRunning: boolean
+  isSubmitting: boolean
+  isAdding: boolean
+  addingUri: string | null
+  automationAvailable: boolean
+  unavailableMessage: string
+  onToggle: (id: string) => void
+  onRemove: (id: string) => void
+  onMove: (id: string, direction: CopilotQueueMoveDirection) => void
+  onClear: () => void
+  onExecute: () => void
+  onAddCurrent: () => void
+  onAddUri: (uri: string) => void
 }
 
 export interface CombatCopilotSearchProjection {
@@ -75,9 +96,11 @@ export interface CombatCopilotSearchProjection {
   selectionStore: PanelStateStore<string>
   result: CopilotSearchResult | null
   searching: boolean
+  addingUri: string | null
   onSearch: (term: string) => void
   onCancel: () => void
   onSelectUri: (uri: string) => void
+  onAddToQueue: (uri: string) => void
 }
 
 export interface CombatParadoxSearchProjection {

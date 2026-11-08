@@ -1,17 +1,22 @@
+import { ListPlus } from 'lucide-react'
 import { Button } from '@/shared/ui'
 
 interface CombatCopilotInputPanelProps {
   input: string
   isLoading: boolean
+  isAddingToQueue?: boolean
   onInputChange: (value: string) => void
   onPreview: () => void
+  onAddToQueue?: () => void
 }
 
 export default function CombatCopilotInputPanel({
   input,
   isLoading,
+  isAddingToQueue = false,
   onInputChange,
   onPreview,
+  onAddToQueue,
 }: CombatCopilotInputPanelProps) {
   return (
     <div className="combat-copilot-input">
@@ -49,6 +54,20 @@ export default function CombatCopilotInputPanel({
         >
           {!isLoading && '预览'}
         </Button>
+        {onAddToQueue && (
+          <Button
+            onClick={onAddToQueue}
+            disabled={isAddingToQueue || isLoading || !input.trim()}
+            loading={isAddingToQueue}
+            loadingText="加入中"
+            variant="secondary"
+            size="md"
+            className="shrink-0 px-3"
+            icon={!isAddingToQueue && <ListPlus size={15} aria-hidden="true" />}
+          >
+            {!isAddingToQueue && '加入队列'}
+          </Button>
+        )}
       </div>
       <p className="combat-copilot-hint">支持作业链接、上传 JSON 作业文件，或粘贴服务器可见路径。</p>
     </div>

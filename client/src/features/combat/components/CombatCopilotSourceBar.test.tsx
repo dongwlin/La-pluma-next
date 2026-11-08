@@ -38,9 +38,11 @@ const search = (overrides: Partial<CombatCopilotSearchProjection> = {}): CombatC
   selectionStore: createPanelStateStore(''),
   result: null,
   searching: false,
+  addingUri: null,
   onSearch: () => {},
   onCancel: () => {},
   onSelectUri: () => {},
+  onAddToQueue: () => {},
   ...overrides,
 })
 
@@ -48,11 +50,13 @@ interface SourceBarProps {
   input: string
   isLoading: boolean
   hasPreview: boolean
+  isAddingToQueue?: boolean
   previewModeStore: PanelStateStore<CopilotPreviewMode>
   search: CombatCopilotSearchProjection
   fileImport?: CombatCopilotFileImportProjection
   onInputChange: (value: string) => void
   onPreview: () => void
+  onAddToQueue?: () => void
   onCancelPreview: () => void
   onClear: () => void
 }
@@ -172,6 +176,38 @@ describe('CombatCopilotSourceBar', () => {
 
     expect(onSelectUri).toHaveBeenCalledWith('prts://1')
     expect(container.textContent).toContain('已选中')
+  })
+
+  it('adds the typed URI to the queue without replacing the preview action', async () => {
+    const onPreview = vi.fn()
+    const onAddToQueue = vi.fn()
+    await renderBar({ input: 'prts://1234', onPreview, onAddToQueue })
+
+    const add = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '加入队列')
+    expect(add).not.toBeUndefined()
+    expect(add?.disabled).toBe(false)
+
+    await click(add!)
+
+    expect(onAddToQueue).toHaveBeenCalledOnce()
+    expect(onPreview).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('预览')
+  })
+
+  it('disables the queue action for an empty input or while adding', async () => {
+    const onAddToQueue = vi.fn()
+    await renderBar({ input: '', onAddToQueue })
+
+    const emptyAdd = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '加入队列')
+    expect(emptyAdd?.disabled).toBe(true)
+
+    await renderBar({ input: 'prts://1234', isAddingToQueue: true, onAddToQueue })
+    const adding = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === '加入中')
+    expect(adding?.disabled).toBe(true)
+    expect(adding?.getAttribute('aria-busy')).toBe('true')
   })
 
   it('offers a labelled JSON file picker next to the import button', async () => {

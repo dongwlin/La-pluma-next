@@ -27,7 +27,7 @@ const basePreview: CopilotSetInfo = {
 
 type ItemStatus = NonNullable<RunTaskResult['status']>
 
-function entry(itemIndex: number, status: ItemStatus): RunTaskResult {
+function entry(itemIndex: number, status: ItemStatus, error?: string): RunTaskResult {
   return {
     key: `${itemIndex}:${101 + itemIndex}:normal`,
     itemIndex,
@@ -35,6 +35,7 @@ function entry(itemIndex: number, status: ItemStatus): RunTaskResult {
     displayStage: `MAIN-${itemIndex + 1}`,
     mode: 'normal',
     status,
+    ...(error ? { error } : {}),
   }
 }
 
@@ -133,7 +134,8 @@ describe('CombatCopilotQueueSummary', () => {
     await renderSummary(fixture)
 
     expect(container.textContent).toContain('待 3')
-    expect(container.textContent).toContain('已通关 1')
+    expect(container.textContent).toContain('本次成功 1')
+    expect(container.textContent).toContain('历史已通关 0')
     expect(container.textContent).toContain('失败 1')
     expect(container.textContent).toContain('已终止 1')
     expect(container.textContent).toContain('跳过 1')
@@ -158,6 +160,91 @@ describe('CombatCopilotQueueSummary', () => {
     expect(container.textContent).toContain('prts://102')
     expect(container.textContent).toContain('MAIN-2')
     expect(container.textContent).toContain('共 4 个作业（含历史通关）')
+  })
+
+  it('splits the current successes from historical clears', async () => {
+    const fixture = createView(
+      [[1, 'success']],
+      {
+        selected: new Set([1, 2, 3]),
+        copilots: [
+          { id: 101, name: '第一关', stage: 'MAIN-1', completedModes: ['normal'] },
+          { id: 102, name: '第二关', stage: 'MAIN-2' },
+          { id: 103, name: '第三关', stage: 'MAIN-3' },
+          { id: 104, name: '第四关', stage: 'MAIN-4' },
+        ],
+      },
+    )
+
+    await renderSummary(fixture)
+
+    expect(container.textContent).toContain('本次成功 1')
+    expect(container.textContent).toContain('历史已通关 1')
+  })
+
+  it('lists failure stages and full reasons from the current run', async () => {
+    const run: AgentRun = {
+      runId: 'run-1',
+      operationId: 'run_copilot_set',
+      state: 'running',
+      links: { self: '/agent/runs/run-1' },
+      progress: {
+        setId: basePreview.id,
+        phase: 'running',
+        taskResults: [entry(0, 'failed', '缺少干员：桃金娘\n请检查 box 后重试')],
+      },
+    }
+    const setRun = readCopilotSetRunProjection(run)
+    if (!setRun) throw new Error('run_copilot_set 投影不应为空')
+    const view = deriveCopilotSetView({
+      preview: basePreview,
+      selected: new Set([0]),
+      setRun,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    await renderSummary({ preview: basePreview, view })
+
+    expect(container.textContent).toContain('失败原因')
+    expect(container.textContent).toContain('MAIN-1')
+    expect(container.textContent).toContain('缺少干员：桃金娘')
+    expect(container.textContent).toContain('请检查 box 后重试')
+  })
+
+  it('prefers the terminal summary errors over an unknown task-result reason', async () => {
+    const run: AgentRun = {
+      runId: 'run-1',
+      operationId: 'run_copilot_set',
+      state: 'succeeded',
+      links: { self: '/agent/runs/run-1' },
+      result: {
+        summary: {
+          setId: basePreview.id,
+          mode: 'continuous',
+          taskResults: [entry(0, 'failed')],
+          errors: [{ key: '0:101:normal', stage: 'MAIN-1', error: '终态失败原因' }],
+        },
+      },
+    }
+    const setRun = readCopilotSetRunProjection(run)
+    if (!setRun) throw new Error('run_copilot_set 投影不应为空')
+    const view = deriveCopilotSetView({
+      preview: basePreview,
+      selected: new Set([0]),
+      setRun,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    await renderSummary({ preview: basePreview, view })
+
+    expect(container.textContent).toContain('终态失败原因')
+    expect(container.textContent).not.toContain('未知错误')
   })
 
   it('asks for a progress reset when every stage is complete', async () => {

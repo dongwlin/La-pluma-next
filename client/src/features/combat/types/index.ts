@@ -46,6 +46,15 @@ export interface AutoFormationConfig {
   [taskId: string]: boolean | FormationMode
 }
 
+export interface CopilotDetailOperator {
+  name: string
+  group?: string
+  elite?: number | null
+  level?: number | null
+  skillLevel?: number | null
+  module?: string | null
+}
+
 export interface CopilotSetItem {
   id: number
   name?: string
@@ -54,6 +63,8 @@ export interface CopilotSetItem {
   /** 关卡理智消耗；资源数据缺失时为 null，展示为“未知”。 */
   apCost?: number | null
   operators?: string
+  operatorDetails?: CopilotDetailOperator[]
+  groupNames?: string[]
   uri?: string
   presetFormation?: boolean
   supportsRaid?: boolean
@@ -66,6 +77,8 @@ export interface CopilotSetInfo {
   name: string
   stage?: string
   operators?: string
+  operatorDetails?: CopilotDetailOperator[]
+  groupNames?: string[]
   note?: string
   autoAddS?: boolean
   copilots?: CopilotSetItem[]

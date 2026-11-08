@@ -57,6 +57,28 @@ describe('preview builders', () => {
     })
   })
 
+  it('carries operator requirements and groups into a single preview', () => {
+    expect(buildSingleCopilotPreview('12', {
+      title: '低配 1-7',
+      stage: '1-7',
+      operators: '桃金娘、[击杀组]',
+      operatorDetails: [
+        { name: '桃金娘', elite: 2, level: 60, skillLevel: 10, module: 'χ' },
+      ],
+      groupNames: ['击杀组'],
+    })).toEqual({
+      type: 'single',
+      id: '12',
+      name: '低配 1-7',
+      stage: '1-7',
+      operators: '桃金娘、[击杀组]',
+      operatorDetails: [
+        { name: '桃金娘', elite: 2, level: 60, skillLevel: 10, module: 'χ' },
+      ],
+      groupNames: ['击杀组'],
+    })
+  })
+
   it('builds a set preview with the legacy name and note', () => {
     expect(buildCopilotSetPreview('48990', [
       { id: 101, stage: 'TEST-1', uri: 'prts://101' },
@@ -97,5 +119,19 @@ describe('preview builders', () => {
       uri: 'prts://101',
     })
     expect(buildFallbackCopilotSetItem(101)).toEqual({ id: 101, uri: 'prts://101' })
+  })
+
+  it('carries operator requirements and groups into fallback set items', () => {
+    expect(buildCopilotSetItemFromDetail(101, {
+      title: '测试作业',
+      stage: 'TEST-1',
+      operators: '临光、[阻挡组]',
+      operatorDetails: [{ name: '临光', elite: 2, level: 90, skillLevel: 7 }],
+      groupNames: ['阻挡组'],
+    })).toMatchObject({
+      id: 101,
+      operatorDetails: [{ name: '临光', elite: 2, level: 90, skillLevel: 7 }],
+      groupNames: ['阻挡组'],
+    })
   })
 })

@@ -50,6 +50,8 @@ export interface CopilotSetRunProjection {
   stoppedCount: number
   pendingCount: number
   failures: CopilotSetFailureSummary[]
+  /** 终态 `summary.errors` 的原始失败清单；未投影时缺省，不能回退成 `failures`。 */
+  summaryErrors?: CopilotSetFailureSummary[]
 }
 
 // 同一作业在突袭/普通模式下有多个条目时折叠成一条展示状态：执行中 > 失败 >
@@ -131,6 +133,25 @@ function readEntries(value: unknown): CopilotSetEntryProjection[] {
     .filter((entry): entry is CopilotSetEntryProjection => entry !== null)
 }
 
+function readSummaryErrors(value: unknown): CopilotSetFailureSummary[] {
+  if (!Array.isArray(value)) return []
+  const errors: CopilotSetFailureSummary[] = []
+  for (const raw of value) {
+    const entry = asRecord(raw)
+    if (!entry) continue
+    const key = asText(entry.key)
+    const keyIndex = key ? Number(key.split(':')[0]) : NaN
+    const itemIndex = asNumber(entry.itemIndex)
+      ?? (Number.isInteger(keyIndex) ? keyIndex : null)
+    errors.push({
+      itemIndex,
+      stage: asText(entry.stage),
+      error: asText(entry.error) ?? '未知错误',
+    })
+  }
+  return errors
+}
+
 function traceStatuses(entries: CopilotSetEntryProjection[], status: CopilotSetItemStatus): number {
   return entries.filter(entry => entry.status === status).length
 }
@@ -199,6 +220,7 @@ export function readCopilotSetRunProjection(run: AgentRun | null): CopilotSetRun
     stoppedCount: asCount(summary?.stoppedCount) ?? asCount(progress?.stoppedCount) ?? traceStatuses(entries, 'stopped'),
     pendingCount: asCount(summary?.pendingCount) ?? asCount(progress?.pendingCount) ?? traceStatuses(entries, 'pending'),
     failures,
+    summaryErrors: readSummaryErrors(summary?.errors),
   }
 }
 

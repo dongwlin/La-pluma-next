@@ -1,5 +1,6 @@
 import { isRecord } from '@/shared/api'
 import type {
+  CopilotDetailOperator,
   CopilotSearchItem,
   CopilotSearchResult,
   CopilotSetItem,
@@ -10,6 +11,8 @@ export interface CopilotDetail {
   readonly title: string
   readonly stage?: string
   readonly operators: string
+  readonly operatorDetails?: CopilotDetailOperator[]
+  readonly groupNames?: string[]
 }
 
 export interface CopilotInfoPayload {
@@ -49,6 +52,48 @@ const asId = (value: unknown): number | null => {
       ? Number(value)
       : NaN
   return Number.isInteger(numeric) && numeric > 0 ? numeric : null
+}
+
+const asModule = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim()) return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return null
+}
+
+function readOperatorDetails(value: unknown): CopilotDetailOperator[] {
+  if (!Array.isArray(value)) return []
+  const details: CopilotDetailOperator[] = []
+  for (const raw of value) {
+    if (!isRecord(raw)) continue
+    const name = asText(raw.name)
+    if (!name) continue
+    const requirements = isRecord(raw.requirements) ? raw.requirements : null
+    const group = asText(raw.group)
+    const elite = asNumber(requirements?.elite)
+    const level = asNumber(requirements?.level)
+    const skillLevel = asNumber(requirements?.skill_level)
+    const module = asModule(requirements?.module)
+    details.push({
+      name,
+      ...(group ? { group } : {}),
+      ...(elite !== null ? { elite } : {}),
+      ...(level !== null ? { level } : {}),
+      ...(skillLevel !== null ? { skillLevel } : {}),
+      ...(module !== null ? { module } : {}),
+    })
+  }
+  return details
+}
+
+function readGroupNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const names: string[] = []
+  for (const raw of value) {
+    if (!isRecord(raw)) continue
+    const name = asText(raw.name)
+    if (name && !names.includes(name)) names.push(name)
+  }
+  return names
 }
 
 /** 未知的理智消耗不折算成 0：资源缺少该关卡数据时展示为“未知”。 */
@@ -117,12 +162,16 @@ export function readCopilotInfoPayload(value: unknown): CopilotInfoPayload {
 
   const title = asText(isRecord(content.doc) ? content.doc.title : undefined) ?? '未命名作业'
   const stage = asText(content.stage_name)
+  const operatorDetails = readOperatorDetails(content.opers)
+  const groupNames = readGroupNames(content.groups)
   return {
     statusCode,
     detail: {
       title,
       ...(stage ? { stage } : {}),
       operators: extractCopilotOperators(content),
+      ...(operatorDetails.length ? { operatorDetails } : {}),
+      ...(groupNames.length ? { groupNames } : {}),
     },
   }
 }
@@ -168,6 +217,8 @@ function readPlanItem(
   const stage = asText(value.stage)
   const stageId = asText(value.stageId)
   const apCost = asNumber(value.apCost)
+  const operatorDetails = readOperatorDetails(value.operators)
+  const groupNames = readGroupNames(value.groups)
   const completedModes = readCompletedModes(entries, itemIndex)
   return {
     id,
@@ -175,6 +226,8 @@ function readPlanItem(
     ...(stage ? { stage } : {}),
     ...(stageId ? { stageId } : {}),
     ...(apCost !== null ? { apCost } : {}),
+    ...(operatorDetails.length ? { operatorDetails } : {}),
+    ...(groupNames.length ? { groupNames } : {}),
     presetFormation: value.presetFormation === true,
     supportsRaid: value.supportsRaid !== false,
     ...(completedModes.length ? { completedModes } : {}),

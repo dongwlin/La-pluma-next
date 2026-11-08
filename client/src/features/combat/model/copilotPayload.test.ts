@@ -111,8 +111,34 @@ describe('copilot detail payload', () => {
         title: '低配 1-7',
         stage: '1-7',
         operators: '桃金娘、阿米娅、[击杀组]',
+        operatorDetails: [{ name: '桃金娘' }, { name: '阿米娅' }],
+        groupNames: ['击杀组'],
       },
     })
+  })
+
+  it('keeps operator requirements and coerces numeric module ids', () => {
+    const result = readCopilotInfoPayload({
+      status_code: 200,
+      data: {
+        content: {
+          opers: [
+            { name: '桃金娘', requirements: { elite: 2, level: 60, skill_level: 10, module: 1 } },
+            { name: '临光', requirements: { elite: 0, level: 1 } },
+            { name: '' },
+            { requirements: { elite: 2 } },
+          ],
+          groups: [{ name: '击杀组' }, { name: '' }, null],
+        },
+      },
+    })
+
+    expect(result.detail?.operatorDetails).toEqual([
+      { name: '桃金娘', elite: 2, level: 60, skillLevel: 10, module: '1' },
+      { name: '临光', elite: 0, level: 1 },
+    ])
+    expect(result.detail?.groupNames).toEqual(['击杀组'])
+    expect(result.detail?.operators).toBe('桃金娘、临光、[击杀组]')
   })
 
   it('accepts an already parsed content object and falls back to the unnamed title', () => {
@@ -244,6 +270,30 @@ describe('copilot plan payload', () => {
     expect(formatCopilotApCost(result?.items[0]?.apCost)).toBe('6')
     expect(formatCopilotApCost(result?.items[1]?.apCost)).toBe('未知')
     expect(formatCopilotApCost(result?.items[2]?.apCost)).toBe('未知')
+  })
+
+  it('keeps operator requirements and groups instead of dropping them', () => {
+    const result = readCopilotPlanPayload({
+      items: [{
+        id: 201,
+        operators: [
+          { name: '桃金娘', requirements: { elite: 2, level: 60, skill_level: 10, module: 'χ' } },
+          { name: '临光', requirements: { elite: 0, level: 1 } },
+        ],
+        groups: [{ name: '击杀组', opers: ['桃金娘'] }],
+      }],
+      entries: [],
+    })
+
+    expect(result?.items[0]).toMatchObject({
+      id: 201,
+      operatorDetails: [
+        { name: '桃金娘', elite: 2, level: 60, skillLevel: 10, module: 'χ' },
+        { name: '临光', elite: 0, level: 1 },
+      ],
+      groupNames: ['击杀组'],
+    })
+    expect(result?.items[0]?.operators).toBeUndefined()
   })
 
   it('rejects incomplete plans so callers can fall back to the set list', () => {
