@@ -35,6 +35,9 @@ for (const theme of THEMES) {
       await expect(page).toHaveScreenshot(`operator-select-modal-${theme}.png`, {
         animations: 'disabled',
         caret: 'hide',
+        // 弹层在分数像素纵坐标上居中时，Chromium 会把 WQY Zen Hei 的输入框占位文本
+        // 整体栅格到相邻行（约 180 像素），与布局和字体选择无关；只放行这一抖动。
+        maxDiffPixels: 250,
       })
       await chenChoice.click()
       await page.getByRole('button', { name: '确认选择', exact: true }).click()
