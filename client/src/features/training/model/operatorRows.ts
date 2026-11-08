@@ -1,4 +1,5 @@
 import type { TrainingFilters, TrainingOperator } from '../types'
+import type { OperatorProfessionFilter } from './operatorSelection'
 
 /** 选择器一次渲染的干员行数；与迁移前的页面常量一致。 */
 export const OPERATOR_RENDER_BATCH_SIZE = 72
@@ -45,16 +46,17 @@ export interface OperatorEmptyState {
 }
 
 /**
- * 候选为空时的提示。搜索/稀有度优先于状态，与迁移前的页面分支顺序一致。
+ * 候选为空时的提示。搜索/职业/稀有度优先于状态，与迁移前的页面分支顺序一致。
  */
 export const resolveOperatorEmptyState = (
   filters: Pick<TrainingFilters, 'status' | 'rarity'>,
   searchTerm: string,
+  profession: OperatorProfessionFilter = 'all',
 ): OperatorEmptyState => {
-  if (normalizeOperatorSearchTerm(searchTerm) || filters.rarity) {
+  if (normalizeOperatorSearchTerm(searchTerm) || filters.rarity || profession !== 'all') {
     return {
       title: '没有找到符合条件的干员',
-      description: '换个名称、稀有度或状态筛选再试。',
+      description: '换个名称、职业、稀有度或状态筛选再试。',
     }
   }
 

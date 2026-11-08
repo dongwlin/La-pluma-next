@@ -102,14 +102,6 @@ const flush = async () => {
   })
 }
 
-const click = async (element: Element | null | undefined, label: string) => {
-  expect(element, `clickable ${label}`).toBeTruthy()
-  await act(async () => {
-    element!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-  })
-  await flush()
-}
-
 const typeSearch = async (value: string) => {
   const input = document.querySelector<HTMLInputElement>('input[aria-label="搜索干员名称"]')
   expect(input).not.toBeNull()
@@ -123,14 +115,23 @@ const typeSearch = async (value: string) => {
 
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
 
-const professionChips = () => Array.from(
-  document.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="职业筛选"] button'),
-)
+const professionSelect = () => document.querySelector<HTMLSelectElement>('select[aria-label="职业筛选"]')
 
-const clickProfession = (label: string) => click(
-  professionChips().find(chip => chip.textContent?.trim() === label),
-  label,
-)
+const professionOptionLabels = () => Array.from(professionSelect()?.options ?? [])
+  .map(option => option.textContent?.trim())
+
+const selectProfession = async (label: string) => {
+  const select = professionSelect()
+  expect(select, 'profession select').not.toBeNull()
+  const option = Array.from(select!.options).find(candidate => candidate.textContent?.trim() === label)
+  expect(option, `profession option ${label}`).toBeTruthy()
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+  await act(async () => {
+    valueSetter?.call(select, option!.value)
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await flush()
+}
 
 /** 卡片唯一的可访问名是动作按钮：选择X / 已选择X，用它按渲染顺序取干员名。 */
 const visibleOperatorNames = () => Array.from(
@@ -184,16 +185,17 @@ describe('shared operator select modal', () => {
     vi.restoreAllMocks()
   })
 
-  it('offers 全部 plus every profession and defaults to 全部', async () => {
+  it('offers 全部职业 plus every profession in a dropdown and defaults to 全部职业', async () => {
     mocks.getOperBoxData.mockResolvedValue({ success: true, data: { data: RECOGNIZED_OPERATORS } })
     mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
 
     await renderModal('asc')
 
-    expect(professionChips().map(chip => chip.textContent?.trim())).toEqual([
-      '全部', '先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种',
+    expect(professionOptionLabels()).toEqual([
+      '全部职业', '先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种',
     ])
-    expect(professionChips()[0]?.getAttribute('aria-pressed')).toBe('true')
+    expect(professionSelect()?.value).toBe('all')
+    expect(document.querySelector('[role="group"][aria-label="职业筛选"]')).toBeNull()
     expect(visibleOperatorNames()).toHaveLength(4)
   })
 
@@ -202,7 +204,7 @@ describe('shared operator select modal', () => {
     mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
 
     await renderModal('desc')
-    await clickProfession('术师')
+    await selectProfession('术师')
 
     expect(visibleOperatorNames()).toEqual(['艾雅法拉', '阿米娅'])
     expect(dialog()?.textContent).not.toContain('陈')
@@ -216,13 +218,13 @@ describe('shared operator select modal', () => {
     await renderModal('desc')
     expect(visibleOperatorNames()).toEqual(['陈', '艾雅法拉', '阿米娅', '塞雷娅'])
 
-    await clickProfession('术师')
+    await selectProfession('术师')
     expect(visibleOperatorNames()).toEqual(['艾雅法拉', '阿米娅'])
 
     await typeSearch('阿米')
     expect(visibleOperatorNames()).toEqual(['阿米娅'])
 
-    await clickProfession('全部')
+    await selectProfession('全部职业')
     expect(visibleOperatorNames()).toEqual(['阿米娅'])
   })
 
@@ -276,7 +278,7 @@ describe('shared operator select modal', () => {
 
     await renderModal('desc')
 
-    expect(professionChips()).toEqual([])
+    expect(professionSelect()).toBeNull()
     expect(visibleOperatorNames()).toEqual(['阿米娅'])
   })
 
@@ -285,13 +287,13 @@ describe('shared operator select modal', () => {
     mocks.getAllOperators.mockResolvedValue({ success: true, data: OPERATOR_CATALOG })
 
     await renderModal('asc')
-    await clickProfession('医疗')
+    await selectProfession('医疗')
 
     expect(visibleOperatorNames()).toEqual([])
     expect(dialog()?.textContent).toContain('没有找到符合条件的干员')
     expect(dialog()?.textContent).toContain('换个职业再试。')
 
-    await clickProfession('全部')
+    await selectProfession('全部职业')
     expect(visibleOperatorNames()).toHaveLength(4)
   })
 

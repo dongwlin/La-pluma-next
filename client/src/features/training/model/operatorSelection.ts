@@ -17,9 +17,9 @@ export interface OperatorProfessionFilterOption {
   label: string
 }
 
-/** 职业枚举与「数据统计」干员面板一致；「全部」保持默认。 */
+/** 职业枚举与「数据统计」干员面板一致；「全部职业」保持默认。 */
 export const OPERATOR_PROFESSION_FILTERS: readonly OperatorProfessionFilterOption[] = [
-  { value: 'all', label: '全部' },
+  { value: 'all', label: '全部职业' },
   { value: 'PIONEER', label: '先锋' },
   { value: 'WARRIOR', label: '近卫' },
   { value: 'TANK', label: '重装' },
@@ -49,13 +49,30 @@ export const toOperatorPickerOption = (
   }
 }
 
-/** 职业筛选；`all` 返回新数组，具体职业按目录枚举精确匹配，未知职业不出现在具名筛选中。 */
-export const filterOperatorOptionsByProfession = (
-  options: readonly OperatorPickerOption[],
+const PROFESSION_FILTER_BY_LABEL = new Map(
+  OPERATOR_PROFESSION_FILTERS
+    .filter(option => option.value !== 'all')
+    .map(option => [option.label, option.value] as const),
+)
+
+/** 干员目录给英文枚举，材料数据给中文职业名，两种表示都归一为筛选项。 */
+const normalizeOperatorProfession = (profession?: string): OperatorProfessionFilter | null => {
+  const value = profession?.trim()
+  if (!value) return null
+  const byEnum = OPERATOR_PROFESSION_FILTERS.find(
+    option => option.value !== 'all' && option.value === value.toUpperCase(),
+  )
+  if (byEnum) return byEnum.value
+  return PROFESSION_FILTER_BY_LABEL.get(value) ?? null
+}
+
+/** 职业筛选；`all` 返回新数组，具体职业归一后精确匹配，未知职业不出现在具名筛选中。 */
+export const filterOperatorOptionsByProfession = <T extends { profession?: string }>(
+  options: readonly T[],
   profession: OperatorProfessionFilter,
-): OperatorPickerOption[] => {
+): T[] => {
   if (profession === 'all') return [...options]
-  return options.filter(option => option.profession === profession)
+  return options.filter(option => normalizeOperatorProfession(option.profession) === profession)
 }
 
 const eliteOf = (operator: OperatorPickerOption): number => (

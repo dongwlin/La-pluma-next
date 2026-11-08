@@ -47,11 +47,11 @@ vi.mock('@/features/game-data/api', () => ({
   getOperatorAvatarUrl: (id: string) => `/avatars/${id}.png`,
 }))
 
-const operator = (id: string, name: string): TrainingOperator => ({
+const operator = (id: string, name: string, profession = 'SNIPER'): TrainingOperator => ({
   id,
   name,
   rarity: 6,
-  profession: 'SNIPER',
+  profession,
   currentElite: 1,
   currentLevel: 80,
   targetElite: 2,
@@ -88,6 +88,24 @@ const typeSearch = async (value: string) => {
   await act(async () => {
     valueSetter?.call(input, value)
     input!.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await flush()
+}
+
+const professionSelect = () => document.querySelector<HTMLSelectElement>('select[aria-label="职业"]')
+
+const professionOptionLabels = () => Array.from(professionSelect()?.options ?? [])
+  .map(option => option.textContent?.trim())
+
+const selectProfession = async (label: string) => {
+  const select = professionSelect()
+  expect(select).not.toBeNull()
+  const option = Array.from(select!.options).find(candidate => candidate.textContent?.trim() === label)
+  expect(option, `profession option ${label}`).toBeTruthy()
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+  await act(async () => {
+    valueSetter?.call(select, option!.value)
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
   })
   await flush()
 }
@@ -165,6 +183,41 @@ describe('training operator picker', () => {
 
     await typeSearch('   ')
     expect(renderedCards()).toBe(2)
+  })
+
+  it('filters rows by profession and explains an empty profession result', async () => {
+    mocks.getOperatorList.mockResolvedValue({
+      success: true,
+      data: {
+        operators: [
+          operator('char_amiya', '阿米娅', '术师'),
+          operator('char_exusiai', '能天使', '狙击'),
+          operator('char_chen', '陈', '近卫'),
+        ],
+      },
+    })
+
+    await act(async () => root.render(<QueryClientProvider client={client}><Harness /></QueryClientProvider>))
+    await flush()
+
+    expect(professionOptionLabels()).toEqual([
+      '全部职业', '先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种',
+    ])
+    expect(professionSelect()?.value).toBe('all')
+    expect(renderedCards()).toBe(3)
+
+    await selectProfession('术师')
+    expect(renderedCards()).toBe(1)
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('阿米娅')
+    expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain('能天使')
+
+    await selectProfession('医疗')
+    expect(renderedCards()).toBe(0)
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('没有找到符合条件的干员')
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('换个名称、职业、稀有度或状态筛选再试。')
+
+    await selectProfession('全部职业')
+    expect(renderedCards()).toBe(3)
   })
 
   it('renders one batch at a time and appends the next batch on demand', async () => {
