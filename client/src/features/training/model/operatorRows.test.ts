@@ -67,7 +67,7 @@ describe('training operator rows', () => {
     expect(nextOperatorRenderLimit(-5)).toBe(OPERATOR_RENDER_BATCH_SIZE)
   })
 
-  it('prefers a search or rarity hint over the status-specific empty state', () => {
+  it('prefers a search, profession or rarity hint over the status-specific empty state', () => {
     expect(resolveOperatorEmptyState({ status: 'trainable', rarity: '' }, '  ').title)
       .toBe('没有可养成干员')
     expect(resolveOperatorEmptyState({ status: 'owned', rarity: '' }, '').title)
@@ -77,7 +77,9 @@ describe('training operator rows', () => {
     expect(resolveOperatorEmptyState({ status: 'trainable', rarity: '' }, '阿米娅').title)
       .toBe('没有找到符合条件的干员')
     expect(resolveOperatorEmptyState({ status: 'trainable', rarity: '6' }, '').description)
-      .toBe('换个名称、稀有度或状态筛选再试。')
+      .toBe('换个名称、职业、稀有度或状态筛选再试。')
+    expect(resolveOperatorEmptyState({ status: 'trainable', rarity: '' }, '', 'MEDIC').title)
+      .toBe('没有找到符合条件的干员')
   })
 
   it('derives the card action without letting queue membership hide an unowned row', () => {

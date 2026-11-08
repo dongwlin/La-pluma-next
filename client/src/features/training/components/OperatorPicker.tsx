@@ -17,6 +17,11 @@ import {
   type OperatorEmptyState as OperatorEmptyStateContent,
 } from '../model/operatorRows'
 import { describeRecognitionHint } from '../model/recognition'
+import {
+  OPERATOR_PROFESSION_FILTERS,
+  filterOperatorOptionsByProfession,
+  type OperatorProfessionFilter,
+} from '../model/operatorSelection'
 import OperatorPickerGrid, { type OperatorPickerGridItem } from './OperatorPickerGrid'
 import TrainingLoadError from './TrainingLoadError'
 import type { TrainingFilters, TrainingOperator } from '../types'
@@ -71,6 +76,7 @@ export default function OperatorPicker({
     needsElite2: true,
   })
   const [searchTerm, setSearchTerm] = useState('')
+  const [professionFilter, setProfessionFilter] = useState<OperatorProfessionFilter>('all')
   const [visibleOperatorLimit, setVisibleOperatorLimit] = useState(OPERATOR_RENDER_BATCH_SIZE)
   const {
     containerRef: statusTabsRef,
@@ -123,16 +129,23 @@ export default function OperatorPicker({
     // 筛选/搜索变化时重置分页游标；这是对当前已渲染列表的同步复位。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleOperatorLimit(OPERATOR_RENDER_BATCH_SIZE)
-  }, [filters.status, filters.rarity, filters.needsElite2, searchTerm])
+  }, [filters.status, filters.rarity, filters.needsElite2, professionFilter, searchTerm])
 
-  const filteredOperators = filterOperatorRows(operators, searchTerm)
+  const professionRows = filterOperatorOptionsByProfession(operators, professionFilter)
+  const filteredOperators = filterOperatorRows(professionRows, searchTerm)
   const { rows: visibleOperators, hiddenCount } = paginateOperatorRows(
     filteredOperators,
     visibleOperatorLimit,
   )
   const emptyState = !operatorsLoading && filteredOperators.length === 0
-    ? resolveOperatorEmptyState(filters, searchTerm)
+    ? resolveOperatorEmptyState(filters, searchTerm, professionFilter)
     : null
+
+  const handleProfessionFilterChange = (value: string) => {
+    const option = OPERATOR_PROFESSION_FILTERS.find(candidate => candidate.value === value)
+    if (!option) return
+    setProfessionFilter(option.value)
+  }
 
   const gridItems: OperatorPickerGridItem[] = visibleOperators.map((operator) => {
     const row = describeOperatorRow(operator, queueOperatorIds.has(operator.id))
@@ -226,7 +239,7 @@ export default function OperatorPicker({
             </div>
           </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_9rem_auto]">
           <Input
             type="text"
             aria-label="搜索干员名称"
@@ -234,7 +247,14 @@ export default function OperatorPicker({
             value={searchTerm}
             onChange={setSearchTerm}
             icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
-            className="col-span-2 min-w-0 sm:col-span-1"
+            className="min-w-0"
+          />
+          <Select
+            aria-label="职业"
+            value={professionFilter}
+            onChange={handleProfessionFilterChange}
+            options={[...OPERATOR_PROFESSION_FILTERS]}
+            className="min-w-0"
           />
           <Select
             aria-label="稀有度"

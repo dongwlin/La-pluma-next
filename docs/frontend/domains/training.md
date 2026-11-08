@@ -23,7 +23,7 @@
 | 当前目标材料 | `features/training/components/TrainingMaterialsPanel.tsx` | 只从队列首位派生，不读取资源 |
 | 刷图计划展示与范围选择 | `features/training/components/TrainingPlanPanel.tsx` | 持有 `current`/`all` 这一局部状态；生成/应用/同步仍调用工作区回调 |
 | 自动化设置开关 | `features/training/components/TrainingSettingsPanel.tsx` | 只把开关变化组成完整设置交给设置所有者 |
-| 添加干员选择器 | `features/training/components/OperatorPicker.tsx` | 候选/计数 Query、状态筛选、稀有度、未精二、搜索、分批渲染与头像缓存 |
+| 添加干员选择器 | `features/training/components/OperatorPicker.tsx` | 候选/计数 Query、状态筛选、职业、稀有度、未精二、搜索、分批渲染与头像缓存 |
 | 材料表格与合成树 | `features/training/components/MaterialViews.tsx` | 纯展示；图标失败时隐藏图片保留占位 |
 | 撤销提示 | `features/training/components/UndoToast.tsx` | portal、8 秒自动关闭、悬停/焦点/pending 暂停 |
 | 干员行规则 | `features/training/model/operatorRows.ts` | 搜索匹配、分批、空态文案与卡片动作 |
@@ -83,7 +83,7 @@ OperatorTraining（页面壳）
 | 选择器开关 | 工作区 | 保留；恢复后仍打开 | 回到关闭 |
 | `operationError` | 工作区 | 保留 | 清空 |
 | 移除后的撤销快照 | 工作区 | 保留；提示重新计时 8 秒 | 清空 |
-| 状态筛选/稀有度/未精二 | `OperatorPicker` | 保留 | 回到默认（可养成、全部稀有度、未精二） |
+| 状态筛选/职业/稀有度/未精二 | `OperatorPicker` | 保留 | 回到默认（可养成、全部职业、全部稀有度、未精二） |
 | 搜索词、分批游标 | `OperatorPicker` | 保留 | 回到默认（空搜索、72 行） |
 | 头像加载缓存 | `OperatorPicker` | 保留 | 清空 |
 | 计划范围（`current`/`all`） | `TrainingPlanPanel` | 保留 | 回到 `current` |
@@ -101,13 +101,13 @@ OperatorTraining（页面壳）
 - 候选端点同一响应返回 `recognition`（`status`、`total`、`owned`、`unknown`、`missing`）。服务端按快照写入时的识别完整度计算覆盖范围：完整识别才把识别目录内的条目算作确认未拥有，部分识别只确认已识别拥有的干员，其余归入 `missing` 并作为 `unknown` 返回。非 `complete` 时选择器展示识别提示，未确认拥有状态的候选行显示“未识别”且不可加入队列；旧服务端缺少该字段时保持静默，不伪造完整识别。
 - `trainable`/`owned` 计数取候选端点行数，`owned` 为空时回退持有干员快照；`all` 取目录按稀有度过滤后的行数，不应用“未精二”。
 - 新 `all` 为 0 时不覆盖旧值；`mergeTrainingStatusCounts` 通过结构共享保持引用稳定，避免 `keepPreviousData` 占位反复通知。
-- 筛选切换由 key 隔离，旧 key 的迟到响应只写旧 key；Activity 隐藏/恢复按 Query 生命周期注销/恢复观察者。
+- 筛选切换由 key 隔离，旧 key 的迟到响应只写旧 key；职业筛选在客户端按候选行过滤，不新增 Query key。Activity 隐藏/恢复按 Query 生命周期注销/恢复观察者。
 
 ### 5. 纯模型
 
 | 模块 | 导出 | 规则 |
 | --- | --- | --- |
-| `model/operatorRows.ts` | `filterOperatorRows`、`paginateOperatorRows`、`nextOperatorRenderLimit`、`resolveOperatorEmptyState`、`describeOperatorRow` | 搜索去空白并忽略大小写；空搜索返回新数组；每次渲染 72 行；空态优先搜索/稀有度，再按状态；已入队优先于未识别/未拥有/缺数据文案 |
+| `model/operatorRows.ts` | `filterOperatorRows`、`paginateOperatorRows`、`nextOperatorRenderLimit`、`resolveOperatorEmptyState`、`describeOperatorRow` | 搜索去空白并忽略大小写；空搜索返回新数组；每次渲染 72 行；空态优先搜索/职业/稀有度，再按状态；已入队优先于未识别/未拥有/缺数据文案 |
 | `model/recognition.ts` | `describeRecognitionHint` | 完整识别不占位；`missing` 提示先完成识别；`partial` 按未确认数量提示；识别概要缺失（旧服务端）时静默 |
 | `model/materials.ts` | `getQueueMaterials`、`selectMissingMaterials`、`summarizeTargetMaterials` | 龙门币追加在普通材料之后并作为缺口计数；空队列返回固定标题与说明；进度保持服务端原值 |
 | `model/planDisplay.ts` | `getOpenStagePlan`、`selectTodayStages`、`getOpenStageCount`、`summarizeTodayPlan`、`getPlanFocusName` | `openStages` 优先（包括空数组），否则按 `isOpen !== false` 过滤；理智回查完整 `stages` 的 `sanityPerRun`；焦点顺序为计划焦点 → 计划首位 → 队列当前 → 未设置 |
@@ -120,7 +120,7 @@ OperatorTraining（页面壳）
 
 - `Modal` 继续负责 portal、背景 `inert`/滚动锁定、Tab 循环、Escape 关闭与触发器焦点归还；“添加干员”和“继续添加”仍是同一个开关入口。
 - 状态分段保留 `role="toolbar"`、`aria-pressed`、`tabIndex` 与方向键/Home/End 导航；高亮测量仍由 `useFluidTabIndicator` 持有。
-- 搜索框 `aria-label="搜索干员名称"`、稀有度 `select[aria-label="稀有度"]`、添加按钮的 `aria-label`/禁用/加载文案均保持。
+- 搜索框 `aria-label="搜索干员名称"`、职业 `select[aria-label="职业"]`、稀有度 `select[aria-label="稀有度"]`、添加按钮的 `aria-label`/禁用/加载文案均保持。
 - 分批按钮仍显示 `继续显示 N 个` 与 `已显示 X / Y`；搜索或筛选变化会把游标复位到 72。
 - 空态、列表失败与队列失败仍使用可重试的 `TrainingLoadError`，不把失败呈现为空列表。
 
