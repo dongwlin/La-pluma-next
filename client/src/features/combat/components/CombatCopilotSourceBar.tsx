@@ -1,10 +1,15 @@
+import { useRef, type ChangeEvent } from 'react'
+import { Upload } from 'lucide-react'
 import { Button } from '@/shared/ui'
 import { usePanelState } from '../hooks/usePanelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import type { PanelStateStore } from '../model/panelState'
 import CombatCopilotInputPanel from './CombatCopilotInputPanel'
 import CombatSearchPanel from './CombatSearchPanel'
-import type { CombatCopilotSearchProjection } from './combatPanelTypes'
+import type {
+  CombatCopilotFileImportProjection,
+  CombatCopilotSearchProjection,
+} from './combatPanelTypes'
 
 const PREVIEW_MODE_OPTIONS: ReadonlyArray<{ value: CopilotPreviewMode; label: string }> = [
   { value: 'auto', label: '自动' },
@@ -18,6 +23,7 @@ interface CombatCopilotSourceBarProps {
   hasPreview: boolean
   previewModeStore: PanelStateStore<CopilotPreviewMode>
   search: CombatCopilotSearchProjection
+  fileImport?: CombatCopilotFileImportProjection
   onInputChange: (value: string) => void
   onPreview: () => void
   onCancelPreview: () => void
@@ -30,16 +36,24 @@ export default function CombatCopilotSourceBar({
   hasPreview,
   previewModeStore,
   search,
+  fileImport,
   onInputChange,
   onPreview,
   onCancelPreview,
   onClear,
 }: CombatCopilotSourceBarProps) {
   const [previewMode, setPreviewMode] = usePanelState(previewModeStore)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handlePreviewModeChange = (mode: CopilotPreviewMode) => {
     onCancelPreview()
     setPreviewMode(mode)
+  }
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) fileImport?.onImport(file)
   }
 
   return (
@@ -73,6 +87,33 @@ export default function CombatCopilotSourceBar({
           </div>
 
           <div className="combat-copilot-source-actions">
+            {fileImport && (
+              <>
+                <label htmlFor="combat-copilot-file" className="sr-only">导入 JSON 作业文件</label>
+                <input
+                  id="combat-copilot-file"
+                  ref={fileInputRef}
+                  type="file"
+                  name="maa-copilot-file"
+                  accept=".json,application/json"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={fileImport.isImporting}
+                  loading={fileImport.isImporting}
+                  loadingText="导入中"
+                  variant="secondary"
+                  size="md"
+                  className="min-h-11"
+                  icon={<Upload size={15} aria-hidden="true" />}
+                >
+                  导入文件
+                </Button>
+              </>
+            )}
+
             <details className="combat-copilot-help">
               <summary className="combat-copilot-help-trigger">说明</summary>
               <div className="combat-copilot-help-body">

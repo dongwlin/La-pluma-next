@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeCopilotInput, normalizeCopilotUri, parseCopilotUri, splitCopilotInputToArgs } from './copilotUri'
+import {
+  normalizeCopilotInput,
+  normalizeCopilotUri,
+  parseCopilotUri,
+  quoteCopilotPathForInput,
+  splitCopilotInputToArgs,
+} from './copilotUri'
 
 describe('copilot URI handling', () => {
   it.each([
@@ -22,6 +28,14 @@ describe('copilot URI handling', () => {
       'prts://12', 'prts://s34', 'prts://s56', '/tmp/local copilot.json',
     ])
     expect(normalizeCopilotInput(' prts://12\n\nprts://s34 ')).toBe('prts://12 prts://s34')
+  })
+
+  it('quotes imported local paths only when they contain whitespace', () => {
+    expect(quoteCopilotPathForInput('/srv/copilot-imports/a.json')).toBe('/srv/copilot-imports/a.json')
+    expect(quoteCopilotPathForInput('/srv/copilot imports/a.json')).toBe('"/srv/copilot imports/a.json"')
+    expect(splitCopilotInputToArgs(quoteCopilotPathForInput('/srv/copilot imports/a.json'))).toEqual([
+      '/srv/copilot imports/a.json',
+    ])
   })
 
   it.each(['prts://1234s', 'prts://s', 'maa://1234s', 'maa://s', '/tmp/copilot.json', 'file:///tmp/copilot.json'])(

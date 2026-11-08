@@ -21,7 +21,7 @@
 | 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
 | 模式分段控件的测量与键盘导航 | `features/combat/components/CombatModeTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
-| 作业来源栏（输入、预览、识别方式、搜索、说明与清除预览） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览动作由工作区提供 |
+| 作业来源栏（输入、预览、识别方式、搜索、说明、清除预览与本地文件导入） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览/上传动作由工作区提供 |
 | 普通搜索与悖论搜索 | `components/CombatSearchPanel.tsx`、`components/CombatParadoxSearchPanel.tsx` | 搜索词与“已选中”高亮在面板侧；结果、取消与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业队列、续跑摘要、下一关、逐项结果与行内详情 | `components/CombatCopilotSetPanel.tsx`（内部 `CombatCopilotQueueSummary` / `QueueRow` / `QueueDetail`） | 只渲染 `CopilotSetView` 与已有预览字段；勾选/全选/重置/继续由工作区动作；详情不再单独占卡 |
@@ -33,7 +33,7 @@
 
 维护约束：
 
-- 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等端点、Query key、配置 key、本地存储键或 wire 形状。
+- 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等端点、Query key、配置 key、本地存储键或 wire 形状；新增的 `/api/copilot-files` 是 Web UI 专用上传入口，不进入 Agent manifest，也不改变执行参数。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
 - 不把搜索词、识别方式、选中索引写进配置或 localStorage；不新增跨页共享。
 - 作业输入与搜索的 `name`、状态文案、关键 `aria-*` 契约与配置 key 保持稳定；执行参数改为分段控件但字段语义不变；DOM/CSS 类名随布局调整。作业输入与搜索在前，队列卡居中，执行参数在后，窄容器按阅读顺序纵向排列。
@@ -63,6 +63,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 配置草稿、pending 与提交队列 | `user-config` 协调器 | 不重建 | 保留；不重新读取已 hydrate 的草稿 | 应用级通道继续持有 |
 | 预览对象、loading、请求代次 | `CopilotPreviewSession`（工作区实例） | 保留；卡片重建不取消当前预览 | `stop()` 取消在途读取、保留已显示预览；恢复不自动重放 | 新会话；预览清空 |
 | 搜索词、搜索选中项、识别方式、悖论搜索词 | 工作区创建的面板会话存储 | 保留（存储不随卡片卸载） | 保留 | 重置 |
+| 本地作业文件导入在途 | `CombatWorkspace` 本地状态 + ref | 保留 | 保留 | 重置 |
 | 搜索结果、loading、取消代次 | `useCopilotSearch`/`useParadoxSearch`（工作区实例） | 保留 | 清理取消在途搜索；恢复不自动重放 | 重置 |
 | 作业集待执行索引 | `CombatWorkspace` 本地状态 + `copilotSetSelections` 配置 | 保留 | 保留 | 重置；预览成功后按计划进度恢复 |
 | 本次作业集 Run 投影、停止/继续确认 | `useCombatExecution` + `task-execution` 控制器 | 保留 | 计时器停止/重建；运行身份不变 | 控制器按持久化身份恢复 |
@@ -114,6 +115,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 ### 5. 搜索、执行与页面路径
 
 - **搜索选择**：普通搜索结果点击后写入 `copilot.uri`、规范化并立即预览；`copilotSearchSelection` 驱动“已选中”高亮；修改主输入会清除非匹配的高亮。推荐 URI 仍只在本次显式搜索成功后自动应用。
+- **本地作业文件**：来源栏「导入文件」读取浏览器 JSON 后提交 `POST /api/copilot-files`，成功返回的服务端绝对路径写入 `copilot` 输入并清空旧预览；输入框仍可直接粘贴服务端可见路径。上传只负责把文件放入受管目录，执行仍走现有 `run_task`，本地路径不参与预览。
 - **三种作业集模式**：设置面板的 `app`/`manual`/`cli` 保持原选项与存储值；提交时 `app`/`cli` 映射为服务端 `continuous`，`manual` 保留逐关等待。取消/继续等待由 `useCombatExecution` 与服务端 Run 持有。
 - **停止**：卡片按钮只调用工作区的 `stop()`；控制器按本客户端持有的 `runId` 停止，停止确认超时逻辑未改。
 - **逐项结果**：作业集列表读取 `CopilotSetView.itemStatuses` 展示执行中/待重试/已终止/已跳过，读取 `runCompletedIndexes` 判定已完成，历史通关来自 `historyCompletedIndexes`；页头计数来自同一视图，主动终止单列。
@@ -128,7 +130,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 7. 兼容与视觉约束
 
-- 端点、Query key、配置 key、本地存储键、pending 标记与 wire 形状均未变化；旧本地草稿与服务端配置可直接读取。
+- 既有端点、Query key、配置 key、本地存储键、pending 标记与 wire 形状均未变化；新增的 `/api/copilot-files` 只服务来源栏上传，旧本地草稿与服务端配置可直接读取。
 - 服务端执行参数、作业集模式映射、幂等键与停止语义未变化。
 - 保持作业输入/搜索的 `name`、状态文案与关键 `aria-*` 契约；DOM/CSS 类名和默认态视觉随卡片布局调整，但交互与局部状态边界由下列回归测试覆盖。
 - 页面视觉回归入口见[开发指南](../../development/README.md)；面板行为与订阅隔离由下列回归测试覆盖。

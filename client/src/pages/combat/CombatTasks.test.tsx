@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   resetCopilotSetProgress: vi.fn(),
   searchCopilot: vi.fn(),
   searchParadoxCopilot: vi.fn(),
+  uploadCopilotFile: vi.fn(),
   getRealtimeLogs: vi.fn(),
   setMessage: vi.fn(),
 }))
@@ -95,6 +96,7 @@ vi.mock('@/features/combat/api', () => ({
   resetCopilotSetProgress: mocks.resetCopilotSetProgress,
   searchCopilot: mocks.searchCopilot,
   searchParadoxCopilot: mocks.searchParadoxCopilot,
+  uploadCopilotFile: mocks.uploadCopilotFile,
 }))
 
 vi.mock('@/features/runtime-status', () => ({
@@ -445,6 +447,16 @@ const previewSet = async (uri = 'prts://s48990') => {
   await flush()
 }
 
+const selectCopilotFile = async (file: File) => {
+  const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-file"]')
+  expect(input, '作业文件选择框').not.toBeNull()
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+  await act(async () => {
+    input!.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await flush()
+}
+
 describe('CombatTasks execution', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -473,6 +485,7 @@ describe('CombatTasks execution', () => {
     mocks.resetCopilotSetProgress.mockReset()
     mocks.searchCopilot.mockReset()
     mocks.searchParadoxCopilot.mockReset()
+    mocks.uploadCopilotFile.mockReset()
     mocks.getRealtimeLogs.mockReset()
     mocks.setMessage.mockReset()
     renderCounts.setPanel = 0
@@ -1084,6 +1097,67 @@ describe('CombatTasks execution', () => {
     expect(queue).not.toBeNull()
     expect(queue?.querySelectorAll('.app-empty-state')).toHaveLength(1)
     expect(queue?.querySelector('.app-empty-state')?.textContent).toContain('等待作业')
+  })
+
+  it('imports a local copilot file and writes the uploaded path into the input', async () => {
+    await renderComponent()
+    await previewSet()
+    expect(container.textContent).toContain('TEST-1')
+
+    mocks.uploadCopilotFile.mockResolvedValueOnce(ok({
+      path: '/data/copilot-files/job.json',
+    }))
+    await selectCopilotFile(new File(['{"stage_name":"1-7"}'], 'job.json', { type: 'application/json' }))
+
+    expect(mocks.uploadCopilotFile).toHaveBeenCalledOnce()
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('/data/copilot-files/job.json')
+    expect(mocks.setMessage).toHaveBeenCalledWith('已导入本地作业: job.json', 'success')
+    expect(container.textContent).not.toContain('TEST-1')
+    expect(container.querySelector('section[aria-label="作业队列"] .app-empty-state')).not.toBeNull()
+  })
+
+  it('keeps the original input when a file import fails', async () => {
+    await renderComponent()
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    await setInputValue(input, 'prts://1234')
+
+    mocks.uploadCopilotFile.mockResolvedValueOnce(failed('COPILOT_FILE_INVALID', '作业文件不是合法 JSON'))
+    await selectCopilotFile(new File(['not-json'], 'bad.json', { type: 'application/json' }))
+
+    expect(input.value).toBe('prts://1234')
+    expect(mocks.setMessage).toHaveBeenCalledWith('作业文件不是合法 JSON', 'error')
+
+    mocks.uploadCopilotFile.mockRejectedValueOnce(new Error('网络连接中断'))
+    await selectCopilotFile(new File(['{}'], 'retry.json', { type: 'application/json' }))
+
+    expect(input.value).toBe('prts://1234')
+    expect(mocks.setMessage).toHaveBeenLastCalledWith('网络连接中断', 'error')
+  })
+
+  it('submits only one file import while a request is in flight', async () => {
+    const pending = deferred<ApiResponse>()
+    mocks.uploadCopilotFile.mockReturnValueOnce(pending.promise)
+    await renderComponent()
+
+    const file = new File(['{}'], 'job.json', { type: 'application/json' })
+    await selectCopilotFile(file)
+    expect(buttonByText('导入中')?.disabled).toBe(true)
+
+    await selectCopilotFile(file)
+
+    expect(mocks.uploadCopilotFile).toHaveBeenCalledOnce()
+
+    await act(async () => pending.resolve(ok({
+      path: '/data/copilot-files/job.json',
+      name: 'job.json',
+    })))
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
+      .toBe('/data/copilot-files/job.json')
+    expect(mocks.setMessage).toHaveBeenCalledWith('已导入本地作业: job.json', 'success')
+    expect(buttonByText('导入文件')).toBeDefined()
   })
 
   it.each(['prts://s48990', 'PRTS://S48990'])(

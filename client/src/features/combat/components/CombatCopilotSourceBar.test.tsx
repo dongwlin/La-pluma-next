@@ -5,7 +5,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import { createPanelStateStore, type PanelStateStore } from '../model/panelState'
-import type { CombatCopilotSearchProjection } from './combatPanelTypes'
+import type {
+  CombatCopilotFileImportProjection,
+  CombatCopilotSearchProjection,
+} from './combatPanelTypes'
 import CombatCopilotSourceBar from './CombatCopilotSourceBar'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -20,6 +23,13 @@ const setInputValue = async (input: HTMLInputElement, value: string) => {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
     input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+const selectFile = async (input: HTMLInputElement, selected: File) => {
+  Object.defineProperty(input, 'files', { configurable: true, value: [selected] })
+  await act(async () => {
+    input.dispatchEvent(new Event('change', { bubbles: true }))
   })
 }
 
@@ -40,6 +50,7 @@ interface SourceBarProps {
   hasPreview: boolean
   previewModeStore: PanelStateStore<CopilotPreviewMode>
   search: CombatCopilotSearchProjection
+  fileImport?: CombatCopilotFileImportProjection
   onInputChange: (value: string) => void
   onPreview: () => void
   onCancelPreview: () => void
@@ -161,5 +172,44 @@ describe('CombatCopilotSourceBar', () => {
 
     expect(onSelectUri).toHaveBeenCalledWith('prts://1')
     expect(container.textContent).toContain('已选中')
+  })
+
+  it('offers a labelled JSON file picker next to the import button', async () => {
+    await renderBar({ fileImport: { isImporting: false, onImport: () => {} } })
+
+    const input = container.querySelector<HTMLInputElement>('input[type="file"][name="maa-copilot-file"]')
+    expect(input).not.toBeNull()
+    expect(input?.accept).toContain('.json')
+    expect(container.querySelector('label[for="combat-copilot-file"]')).not.toBeNull()
+    expect(Array.from(container.querySelectorAll('button')).map(button => button.textContent?.trim()))
+      .toContain('导入文件')
+  })
+
+  it('imports the chosen file and resets the file input', async () => {
+    const onImport = vi.fn()
+    await renderBar({ fileImport: { isImporting: false, onImport } })
+
+    const input = container.querySelector<HTMLInputElement>('input[name="maa-copilot-file"]')!
+    const chosen = new File(['{}'], 'job.json', { type: 'application/json' })
+    const resetValue = vi.fn()
+    Object.defineProperty(input, 'value', { configurable: true, get: () => '', set: resetValue })
+
+    await selectFile(input, chosen)
+
+    expect(onImport).toHaveBeenCalledOnce()
+    expect(onImport).toHaveBeenCalledWith(chosen)
+    expect(resetValue).toHaveBeenCalledWith('')
+  })
+
+  it('disables the import button and reports progress while a file is importing', async () => {
+    await renderBar({ fileImport: { isImporting: true, onImport: () => {} } })
+
+    const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(candidate => candidate.textContent?.includes('导入中'))
+    expect(button).not.toBeUndefined()
+    expect(button?.disabled).toBe(true)
+    expect(button?.getAttribute('aria-busy')).toBe('true')
+    expect(button?.getAttribute('aria-disabled')).toBe('true')
+    expect(container.textContent).not.toContain('导入文件')
   })
 })

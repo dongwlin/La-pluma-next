@@ -45,6 +45,10 @@ export function normalizeCopilotInput(input: string): string {
   return input.split(/\n+/).map(line => line.trim()).filter(Boolean).map(normalizeCopilotUri).join(' ')
 }
 
+export function quoteCopilotPathForInput(path: string): string {
+  return /\s/.test(path) ? `"${path}"` : path
+}
+
 export function splitCopilotInputToArgs(input: string): string[] {
   return (input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [])
     .map(arg => arg.replace(/^("|')|("|')$/g, ''))

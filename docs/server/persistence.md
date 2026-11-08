@@ -25,6 +25,7 @@
 | 养成数据快照 | `operatorTrainingStore`（脚本/识别产物） | `<trainingDataDir>/` 下 `materials.json`、`material-formulas.json`、`operator-materials.json`、`depot.json`、`operbox.json` | 结构不符回退空表 |
 | 掉落记录 | `dropRecordService` | `server/data/drop-records/<YYYY-MM-DD>.json`；`LA_PLUMA_DROP_RECORDS_DIR`（`server/src/config/runtimeConfig.ts:177`） | 写入遇损坏 fail-closed；读取历史跳过损坏日 |
 | 作业集/活动完成进度 | `copilotPlanService`、`activityCompletionService` | `server/data/copilot-progress.json`；`LA_PLUMA_COPILOT_PROGRESS_STORE`（`server/src/services/copilotPlanService.ts:25-28`）、`server/data/activity-copilot-progress.json`；`LA_PLUMA_ACTIVITY_COPILOT_PROGRESS_STORE`（`server/src/services/activityCompletionService.ts:5-10`） | 损坏抛错，不静默清零 |
+| 本地导入的作业文件 | `copilotFileService` | `server/data/copilot-imports/<uuid>.json`（权限 `0o600`） | 不恢复；每次上传新建文件，不自动清理 |
 | 干员台词 | `operatorQuotesService` | `server/data/operatorQuotes.json`；`LA_PLUMA_OPERATOR_QUOTES_STORE`（`server/src/services/operatorQuotesService.ts:87`） | 缺失用内置兜底文案；损坏读写报错，不用兜底覆盖 |
 | 执行租约 | `executionCoordinatorService` | `server/data/maa-execution.lock`；`LA_PLUMA_MAA_LOCK_FILE`（`server/src/services/executionCoordinatorService.ts:21,89-91`） | PID 存活即占用；不存活可回收；无法解析按 `unknown` |
 | MAA 日志与调试截图 | MAA CLI 产物；`maaLogFileService` 只读 | `maa dir log` 解析的日志目录；MAA 状态目录 `debug/` | 不恢复；检查点仅在内存 |
@@ -72,6 +73,12 @@
 
 - 两个进度文件都是「单文件多键」的共享状态：原子替换、路径排队与完整读改写由 fileHelper 承担（`server/src/services/copilotProgressStore.ts:1-50`）。copilot 进度仍会写入；activity 进度只读历史数据，供 `/api/agent/activity` 的 completion 展示。
 - 读取值显式为 `unknown`，由各领域服务在读取处收窄；损坏文件抛出可识别错误而不是静默清零（`server/src/services/copilotProgressStore.ts:42-48`）。
+
+## 本地导入的作业文件
+
+- `POST /api/copilot-files` 校验通过后把上传原文写入 `server/data/copilot-imports/`；文件名使用 `randomUUID()`，权限 `0o600`，目录按需创建（`server/src/services/copilotFileService.ts:98-119`）。
+- 展示文件名只存在于接口响应，不参与落盘路径；上传副本供 maa-cli 作为本地作业文件读取，不与 Run、配置或进度文件共享写入路径。
+- 该目录当前没有自动清理机制，属于运行数据：整目录备份会一并带走上传副本，部署方如需回收磁盘空间应在上传来源空闲时自行清理。
 
 ## 干员台词
 

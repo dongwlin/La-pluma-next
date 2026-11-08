@@ -16,7 +16,7 @@ export default function CombatCopilotInputPanel({
   return (
     <div className="combat-copilot-input">
       <div className="combat-copilot-input-row">
-        <label htmlFor="combat-copilot-uri" className="sr-only">作业链接或本地路径</label>
+        <label htmlFor="combat-copilot-uri" className="sr-only">作业链接或服务器文件路径</label>
         <input
           id="combat-copilot-uri"
           type="text"
@@ -26,7 +26,7 @@ export default function CombatCopilotInputPanel({
           autoCapitalize="none"
           spellCheck={false}
           inputMode="url"
-          placeholder="prts://1234、prts://s1234、作业站链接或本地路径"
+          placeholder="prts://1234、prts://s1234、作业站链接或服务器文件路径"
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           className="app-input app-native-control min-h-11 min-w-0 flex-1 font-mono control-surface"
@@ -50,7 +50,7 @@ export default function CombatCopilotInputPanel({
           {!isLoading && '预览'}
         </Button>
       </div>
-      <p className="combat-copilot-hint">支持作业链接、导入文件和本地作业。</p>
+      <p className="combat-copilot-hint">支持作业链接、上传 JSON 作业文件，或粘贴服务器可见路径。</p>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import {
   getCopilotSetPlan,
   searchCopilot,
   searchParadoxCopilot,
+  uploadCopilotFile,
 } from './index'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -119,5 +120,96 @@ describe('combat resource reads', () => {
       status: 404,
       kind: 'api',
     })
+  })
+})
+
+describe('copilot file uploads', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  const file = (content = '{"stage_name":"1-7"}', name = 'job.json') => {
+    const uploaded = new File([content], name, { type: 'application/json' })
+    Object.defineProperty(uploaded, 'text', {
+      configurable: true,
+      value: () => Promise.resolve(content),
+    })
+    return uploaded
+  }
+
+  it('posts the file name and text content as JSON and returns the stored path', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { path: '/data/copilot-files/job.json', name: 'job.json', bytes: 18 },
+    }))
+
+    const result = await uploadCopilotFile(file())
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/copilot-files')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(new Headers(fetchCall().init.headers).get('Content-Type')).toBe('application/json')
+    expect(JSON.parse(String(fetchCall().init.body))).toEqual({
+      name: 'job.json',
+      content: '{"stage_name":"1-7"}',
+    })
+    expect(result.success).toBe(true)
+    expect(result.data).toMatchObject({
+      path: '/data/copilot-files/job.json',
+      name: 'job.json',
+    })
+  })
+
+  it.each([
+    ['a missing path', { name: 'job.json' }],
+    ['an empty path', { path: '' }],
+    ['a blank path', { path: '   ' }],
+  ])('rejects %s as an invalid domain payload', async (_label, data) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data }))
+
+    const result = await uploadCopilotFile(file())
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      kind: 'contract',
+      message: '作业文件上传响应格式不正确',
+    })
+  })
+
+  it('keeps the server failure code and message for the caller', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: false,
+      message: '作业文件不是合法 JSON',
+      error: { code: 'COPILOT_FILE_INVALID', retryable: false },
+    }, 400))
+
+    const result = await uploadCopilotFile(file('not-json'))
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'COPILOT_FILE_INVALID',
+      message: '作业文件不是合法 JSON',
+      status: 400,
+      kind: 'api',
+    })
+  })
+
+  it('reports a readable error when the file cannot be read', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const unreadable = {
+      name: 'broken.json',
+      text: () => Promise.reject(new Error('读取失败')),
+    } as unknown as File
+
+    const result = await uploadCopilotFile(unreadable)
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'FILE_READ_FAILED',
+      kind: 'transport',
+      message: '读取失败',
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

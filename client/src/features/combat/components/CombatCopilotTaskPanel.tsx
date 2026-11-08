@@ -8,6 +8,7 @@ import CombatTaskHeading from './CombatTaskHeading'
 import type {
   CombatCopilotConfig,
   CombatCopilotExecutionActions,
+  CombatCopilotFileImportProjection,
   CombatCopilotPreviewProjection,
   CombatCopilotSearchProjection,
   CombatCopilotSelectionProjection,
@@ -17,6 +18,7 @@ interface CombatCopilotTaskPanelProps {
   task: CombatTask
   config: CombatCopilotConfig
   preview: CombatCopilotPreviewProjection
+  fileImport: CombatCopilotFileImportProjection
   view: CopilotSetView
   selection: CombatCopilotSelectionProjection
   search: CombatCopilotSearchProjection
@@ -27,6 +29,7 @@ export default function CombatCopilotTaskPanel({
   task,
   config,
   preview,
+  fileImport,
   view,
   selection,
   search,
@@ -58,6 +61,7 @@ export default function CombatCopilotTaskPanel({
         hasPreview={preview.info !== null}
         previewModeStore={preview.modeStore}
         search={search}
+        fileImport={fileImport}
         onInputChange={config.onInputChange}
         onPreview={preview.onPreview}
         onCancelPreview={preview.onCancel}

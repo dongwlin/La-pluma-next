@@ -57,6 +57,11 @@ export interface CombatCopilotPreviewProjection {
   onClear: () => void
 }
 
+export interface CombatCopilotFileImportProjection {
+  isImporting: boolean
+  onImport: (file: File) => void
+}
+
 export interface CombatCopilotSelectionProjection {
   selected: ReadonlySet<number>
   isResetting: boolean

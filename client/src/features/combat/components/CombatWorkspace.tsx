@@ -6,7 +6,7 @@ import { useAutomationAvailability, useStatusStore } from '@/features/runtime-st
 import { DeviceMonitorPanel } from '@/features/device-mirror'
 import { isTerminalRunState } from '@/features/task-execution'
 import { useUserConfig } from '@/features/user-config'
-import { resetCopilotSetProgress as resetCopilotSetProgressRequest } from '../api'
+import { resetCopilotSetProgress as resetCopilotSetProgressRequest, uploadCopilotFile } from '../api'
 import { useCombatExecution } from '../hooks/useCombatExecution'
 import { useCopilotPreview } from '../hooks/useCopilotPreview'
 import { useCopilotSearch, useParadoxSearch } from '../hooks/useCopilotSearch'
@@ -35,7 +35,7 @@ import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
 import { invalidateCopilotSetPlan } from '../model/queries'
-import { normalizeCopilotInput, parseCopilotUri, splitCopilotInputToArgs } from '../utils/copilotUri'
+import { normalizeCopilotInput, parseCopilotUri, quoteCopilotPathForInput, splitCopilotInputToArgs } from '../utils/copilotUri'
 import type {
   CombatMode,
   CombatTask,
@@ -51,6 +51,7 @@ import { getCombatTask } from './CombatTaskCatalog'
 import type {
   CombatCopilotConfig,
   CombatCopilotExecutionActions,
+  CombatCopilotFileImportProjection,
   CombatCopilotSearchProjection,
   CombatCopilotSelectionProjection,
   CombatExecutionActions,
@@ -104,6 +105,8 @@ export default function CombatWorkspace() {
   const [activeCombatMode, setActiveCombatMode] = useState<CombatMode>('copilot')
   const [selectedCopilotIndexes, setSelectedCopilotIndexes] = useState<Set<number>>(new Set())
   const [isResettingProgress, setIsResettingProgress] = useState(false)
+  const [isImportingCopilotFile, setIsImportingCopilotFile] = useState(false)
+  const importingCopilotFileRef = useRef(false)
   const [resetProgressDialogOpen, setResetProgressDialogOpen] = useState(false)
   const reconciledRunRef = useRef<string | null>(null)
   // 用户重置进度后，旧 run 的逐项结果不再属于当前预览。
@@ -320,6 +323,26 @@ export default function CombatWorkspace() {
     }
   }
 
+  const handleImportCopilotFile = async (file: File) => {
+    if (importingCopilotFileRef.current) return
+    importingCopilotFileRef.current = true
+    setIsImportingCopilotFile(true)
+    try {
+      const result = await uploadCopilotFile(file)
+      if (!result.success || !result.data?.path) {
+        setStatusMessage(getErrorMessage(result), 'error')
+        return
+      }
+      handleInputChange('copilot', quoteCopilotPathForInput(result.data.path))
+      setStatusMessage(`已导入本地作业: ${result.data.name || file.name}`, 'success')
+    } catch (error) {
+      setStatusMessage(getErrorMessage({ message: error instanceof Error ? error.message : undefined }), 'error')
+    } finally {
+      importingCopilotFileRef.current = false
+      setIsImportingCopilotFile(false)
+    }
+  }
+
   const handleAdvancedChange = (taskId: string, key: string, value: string | number | boolean) => {
     updateCombatConfig(current => ({
       ...current,
@@ -511,6 +534,11 @@ export default function CombatWorkspace() {
     onOpenReset: () => setResetProgressDialogOpen(true),
   }
 
+  const copilotFileImport: CombatCopilotFileImportProjection = {
+    isImporting: isImportingCopilotFile,
+    onImport: file => void handleImportCopilotFile(file),
+  }
+
   const copilotSearch: CombatCopilotSearchProjection = {
     stageStore: panelStores.copilotSearchStage,
     selectionStore: panelStores.copilotSearchSelection,
@@ -589,6 +617,7 @@ export default function CombatWorkspace() {
                   onCancel: cancelCopilotPreview,
                   onClear: clearCopilotPreview,
                 }}
+                fileImport={copilotFileImport}
                 view={setView}
                 selection={copilotSelection}
                 search={copilotSearch}

@@ -5,6 +5,7 @@ import type { Express, NextFunction, Request, Response } from 'express';
 import { normalizeBasePath, resolveAppPaths } from './config/runtimeConfig.ts';
 import type { RuntimeEnvSource } from './config/runtimeConfig.ts';
 import operatorQuotesRoutes from './routes/operatorQuotes.ts';
+import { createCopilotFilesRouter } from './routes/copilotFiles.ts';
 import { createAgentRouter } from './routes/agent.ts';
 import { createGameAssetRouter } from './routes/gameAssets.ts';
 import {
@@ -168,7 +169,9 @@ export function createLaPlumaApp({
   // API 独占自己的命名空间：鉴权先于 JSON 解析，稳定 404 与错误出口先于静态资源。
   // 探针、信令登录和前端资源不读取业务 JSON 请求体。
   const api = express.Router();
-  api.use(optionalApiAuth, express.json());
+  api.use(optionalApiAuth);
+  api.use('/copilot-files', express.json({ limit: '2mb' }), createCopilotFilesRouter());
+  api.use(express.json());
   // 令牌模式由 optionalApiAuth 承担边界；无令牌模式给诊断入口补一层每来源限流。
   if (apiToken === '') {
     api.use('/agent/diagnostics', (req: Request, res: Response, next: NextFunction): void => {

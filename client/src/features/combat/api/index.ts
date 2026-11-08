@@ -1,5 +1,7 @@
 import {
   API_BASE_URL,
+  ApiRequestError,
+  apiFailureResponse,
   fetchWithAuth,
   isRecord,
   parseJsonResponse,
@@ -15,6 +17,41 @@ const isCopilotProxyPayload = (payload: unknown): boolean => isRecord(payload)
 
 const isCopilotSetPlanPayload = (payload: unknown): boolean =>
   isRecord(payload) && Array.isArray(payload.items) && Array.isArray(payload.entries)
+
+export interface CopilotFileUploadPayload {
+  path: string
+  name?: string
+  bytes?: number
+}
+
+const isCopilotFileUploadPayload = (payload: unknown): payload is CopilotFileUploadPayload =>
+  isRecord(payload) && typeof payload.path === 'string' && payload.path.trim().length > 0
+
+export async function uploadCopilotFile(
+  file: File,
+): Promise<ApiResponse<CopilotFileUploadPayload>> {
+  let content: string
+  try {
+    content = await file.text()
+  } catch (error) {
+    const message = error instanceof Error && error.message
+      ? error.message
+      : '无法读取作业文件'
+    return apiFailureResponse(new ApiRequestError({
+      kind: 'transport',
+      code: 'FILE_READ_FAILED',
+      message,
+    }))
+  }
+
+  return readApiResponse<CopilotFileUploadPayload>(`${API_BASE_URL}/copilot-files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, content }),
+    validate: isCopilotFileUploadPayload,
+    invalidPayloadMessage: '作业文件上传响应格式不正确',
+  })
+}
 
 export async function searchCopilot(stageName: string, signal?: AbortSignal): Promise<ApiResponse> {
   return readApiResponse(`${API_BASE_URL}/agent/copilot/search?stage=${encodeURIComponent(stageName)}`, {
