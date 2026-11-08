@@ -1,10 +1,8 @@
 import { Card } from '@/shared/ui'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CombatTask } from '../types'
-import CombatCopilotInfoPanel from './CombatCopilotInfoPanel'
-import CombatCopilotInputPanel from './CombatCopilotInputPanel'
 import CombatCopilotSetPanel from './CombatCopilotSetPanel'
-import CombatSearchPanel from './CombatSearchPanel'
+import CombatCopilotSourceBar from './CombatCopilotSourceBar'
 import CombatSettingsPanel from './CombatSettingsPanel'
 import CombatTaskHeading from './CombatTaskHeading'
 import type {
@@ -47,26 +45,43 @@ export default function CombatCopilotTaskPanel({
         isRunning={execution.isRunning}
         isStopping={execution.isStopping}
         isSubmitting={execution.isSubmitting}
+        isWaitingForNext={execution.isWaitingForNext}
+        isContinuing={execution.isContinuing}
         onExecute={execution.onExecute}
         onStop={execution.onStop}
+        onStartNext={execution.onStartNext}
       />
 
-      <div className="combat-copilot-layout">
-        <div className="combat-copilot-source">
-          <div className="app-stack-card">
-            <CombatCopilotInputPanel
-              input={config.input}
-              isLoading={preview.loading}
-              previewModeStore={preview.modeStore}
-              onInputChange={config.onInputChange}
-              onPreview={preview.onPreview}
-              onCancelPreview={preview.onCancel}
-            />
-          </div>
-          <CombatSearchPanel {...search} />
-        </div>
+      <CombatCopilotSourceBar
+        input={config.input}
+        isLoading={preview.loading}
+        hasPreview={preview.info !== null}
+        previewModeStore={preview.modeStore}
+        search={search}
+        onInputChange={config.onInputChange}
+        onPreview={preview.onPreview}
+        onCancelPreview={preview.onCancel}
+        onClear={preview.onClear}
+      />
 
-        <div className="combat-copilot-settings">
+      <div className="combat-copilot-body">
+        <CombatCopilotSetPanel
+          preview={preview.info}
+          view={view}
+          selected={selection.selected}
+          isRunning={execution.isRunning}
+          isResetting={selection.isResetting}
+          isContinuing={execution.isContinuing}
+          automationAvailable={execution.automationAvailable}
+          unavailableMessage={execution.unavailableMessage}
+          onToggle={selection.onToggle}
+          onToggleAll={selection.onToggleAll}
+          onOpenReset={selection.onOpenReset}
+          onStartNext={execution.onStartNext}
+          onCancelSet={execution.onCancelSet}
+        />
+
+        <div className="combat-copilot-params">
           <CombatSettingsPanel
             task={task}
             formationMode={config.formationMode}
@@ -77,30 +92,6 @@ export default function CombatCopilotTaskPanel({
             onRaidChange={value => config.onAdvancedChange('raid', value)}
             onSetExecutionModeChange={config.onSetExecutionModeChange}
             onAdvancedChange={config.onAdvancedChange}
-          />
-        </div>
-
-        <div className="combat-copilot-results">
-          <CombatCopilotSetPanel
-            preview={preview.info}
-            view={view}
-            selected={selection.selected}
-            isRunning={execution.isRunning}
-            isResetting={selection.isResetting}
-            isContinuing={execution.isContinuing}
-            automationAvailable={execution.automationAvailable}
-            unavailableMessage={execution.unavailableMessage}
-            onToggle={selection.onToggle}
-            onToggleAll={selection.onToggleAll}
-            onOpenReset={selection.onOpenReset}
-            onStartNext={execution.onStartNext}
-            onCancelSet={execution.onCancelSet}
-          />
-          <CombatCopilotInfoPanel
-            preview={preview.info}
-            view={view}
-            isRunning={execution.isRunning}
-            onClear={preview.onClear}
           />
         </div>
       </div>

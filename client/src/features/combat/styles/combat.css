@@ -93,18 +93,6 @@
     padding: 0;
   }
 
-  .combat-copilot-source,
-  .combat-copilot-results {
-    display: grid;
-    min-width: 0;
-    align-content: start;
-    gap: var(--app-space-card);
-  }
-
-  .combat-copilot-results {
-    container-type: inline-size;
-  }
-
   .combat-workspace-section {
     min-width: 0;
     border-radius: var(--app-continuous-radius-compact);
@@ -114,6 +102,759 @@
 
   .combat-job-list-section {
     min-height: 18rem;
+  }
+
+  .combat-copilot-source-bar {
+    position: relative;
+    display: grid;
+    gap: var(--app-space-3);
+    padding: var(--app-space-panel);
+    border-bottom: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-surface-muted) 45%, transparent);
+  }
+
+  .combat-copilot-input {
+    display: grid;
+    min-width: 0;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-input-row,
+  .combat-copilot-search-row {
+    display: flex;
+    min-width: 0;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-hint {
+    margin: 0;
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .combat-copilot-source-tools {
+    display: grid;
+    min-width: 0;
+    gap: var(--app-space-3);
+  }
+
+  .combat-copilot-search {
+    display: grid;
+    min-width: 0;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-search-results {
+    display: grid;
+    max-height: 9rem;
+    gap: 0.375rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .combat-copilot-search-result {
+    display: flex;
+    min-width: 0;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--app-space-3);
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-md);
+    background: var(--app-surface-solid);
+    text-align: left;
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+
+  .combat-copilot-search-result:hover {
+    border-color: var(--app-accent);
+  }
+
+  .combat-copilot-search-result.is-active {
+    border-color: var(--app-accent);
+    background: var(--app-accent-soft);
+  }
+
+  .combat-copilot-source-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--app-space-2) var(--app-space-4);
+  }
+
+  .combat-copilot-mode {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-mode-label {
+    flex: none;
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .combat-copilot-mode-group {
+    display: flex;
+    overflow: hidden;
+    padding: 0.125rem;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-lg);
+    background: var(--app-surface-muted);
+  }
+
+  .combat-copilot-mode-button {
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+    border: 0;
+    border-radius: var(--app-radius-md);
+    background: transparent;
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .combat-copilot-mode-button:hover {
+    color: var(--app-text);
+  }
+
+  .combat-copilot-mode-button[aria-pressed='true'] {
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+  }
+
+  .combat-copilot-source-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem var(--app-space-2);
+  }
+
+  .combat-copilot-help-trigger {
+    display: inline-flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.5rem;
+    border-radius: var(--app-radius-md);
+    color: var(--app-accent-strong);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .combat-copilot-help-body {
+    position: absolute;
+    z-index: 20;
+    right: 0;
+    display: none;
+    width: min(18rem, calc(100vw - 3rem));
+    margin-top: var(--app-space-2);
+    padding: var(--app-space-3);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-md);
+    background: var(--app-surface-solid);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--app-text) 16%, transparent);
+  }
+
+  .combat-copilot-help[open] .combat-copilot-help-body {
+    display: block;
+  }
+
+  .combat-copilot-help-body p {
+    margin: 0;
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .combat-copilot-help-body p + p {
+    margin-top: 0.375rem;
+  }
+
+  .combat-copilot-code {
+    padding: 0 0.25rem;
+    border-radius: var(--app-radius-xs);
+    background: var(--app-surface-muted);
+    font-size: 0.6875rem;
+  }
+
+  .combat-copilot-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--app-space-3);
+    padding: var(--app-space-2);
+  }
+
+  .combat-copilot-panel {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-lg);
+    background: color-mix(in srgb, var(--app-surface-muted) 48%, transparent);
+  }
+
+  .combat-copilot-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--app-space-2) var(--app-space-3);
+    padding: var(--app-space-card);
+    border-bottom: 1px solid var(--app-border);
+  }
+
+  .combat-copilot-panel-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-panel-title h5 {
+    margin: 0;
+    color: var(--app-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .combat-copilot-kicker {
+    color: var(--app-text-soft);
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+
+  .combat-copilot-panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-text-action {
+    min-height: 2.75rem;
+    padding: 0 0.25rem;
+    border: 0;
+    background: transparent;
+    color: var(--app-text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .combat-copilot-text-action.is-accent {
+    color: var(--app-accent-strong);
+  }
+
+  .combat-copilot-text-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .combat-copilot-divider {
+    width: 1px;
+    height: 0.75rem;
+    background: var(--app-border);
+  }
+
+  .combat-copilot-queue-list {
+    display: flex;
+    max-height: 24rem;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .combat-copilot-row {
+    border-top: 1px solid var(--app-border);
+  }
+
+  .combat-copilot-row:first-child {
+    border-top: 0;
+  }
+
+  .combat-copilot-row-main {
+    display: flex;
+    min-height: 3.5rem;
+    align-items: center;
+    gap: var(--app-space-2);
+    padding: 0.25rem 0.625rem;
+  }
+
+  .combat-copilot-row:hover {
+    background: var(--app-surface-muted);
+  }
+
+  .combat-copilot-row.is-current {
+    background: var(--app-accent-soft);
+  }
+
+  .combat-copilot-row.is-success {
+    background: color-mix(in srgb, var(--app-success) 10%, transparent);
+  }
+
+  .combat-copilot-row.is-failed {
+    background: color-mix(in srgb, var(--app-danger) 9%, transparent);
+  }
+
+  .combat-copilot-row.is-stopped {
+    background: var(--app-surface-muted);
+  }
+
+  .combat-copilot-row.is-muted {
+    opacity: 0.72;
+  }
+
+  .combat-copilot-check {
+    display: inline-flex;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--app-radius-md);
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 160ms ease;
+  }
+
+  .combat-copilot-check:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .combat-copilot-check-box {
+    display: flex;
+    width: 1rem;
+    height: 1rem;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--app-border-strong);
+    border-radius: var(--app-radius-xs);
+    background: var(--app-surface-solid);
+    color: transparent;
+  }
+
+  .combat-copilot-check-box.is-selected {
+    border-color: var(--app-accent);
+    background: var(--app-accent);
+    color: #fff;
+  }
+
+  .combat-copilot-marker {
+    display: flex;
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--app-radius-pill);
+    background: var(--app-surface-muted);
+    color: var(--app-text-soft);
+    font-size: 0.6875rem;
+  }
+
+  .combat-copilot-row.is-current .combat-copilot-marker {
+    background: var(--app-accent);
+    color: #fff;
+  }
+
+  .combat-copilot-row.is-success .combat-copilot-marker {
+    background: var(--app-success);
+    color: #fff;
+  }
+
+  .combat-copilot-row.is-failed .combat-copilot-marker {
+    background: var(--app-danger);
+    color: #fff;
+  }
+
+  .combat-copilot-row-body {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 0.125rem;
+  }
+
+  .combat-copilot-row-name {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .combat-copilot-row-title {
+    overflow: hidden;
+    color: var(--app-text);
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .combat-copilot-row-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--app-space-2);
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-row-id {
+    display: none;
+    margin-left: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .combat-copilot-status {
+    display: inline-flex;
+    min-width: 4rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--app-radius-xs);
+    background: var(--app-surface-muted);
+    color: var(--app-text-muted);
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .combat-copilot-row.is-current .combat-copilot-status {
+    background: var(--app-accent);
+    color: #fff;
+  }
+
+  .combat-copilot-row.is-success .combat-copilot-status {
+    background: color-mix(in srgb, var(--app-success) 12%, transparent);
+    color: var(--app-success-text);
+  }
+
+  .combat-copilot-row.is-failed .combat-copilot-status {
+    background: color-mix(in srgb, var(--app-danger) 12%, transparent);
+    color: var(--app-danger);
+  }
+
+  .combat-copilot-expand {
+    display: inline-flex;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--app-radius-md);
+    background: transparent;
+    color: var(--app-text-soft);
+    cursor: pointer;
+  }
+
+  .combat-copilot-expand:hover {
+    background: var(--app-surface-muted);
+    color: var(--app-text);
+  }
+
+  .combat-copilot-expand-icon {
+    transition: transform 160ms ease;
+  }
+
+  .combat-copilot-expand-icon.is-expanded {
+    transform: rotate(180deg);
+  }
+
+  .combat-copilot-tag {
+    flex: none;
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--app-radius-xs);
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .combat-copilot-tag.is-complete {
+    background: color-mix(in srgb, var(--app-success) 12%, transparent);
+    color: var(--app-success-text);
+  }
+
+  .combat-copilot-row-name .combat-copilot-tag {
+    display: none;
+  }
+
+  .combat-copilot-summary {
+    display: grid;
+    gap: var(--app-space-3);
+    margin: var(--app-space-card);
+    padding: var(--app-space-3);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-md);
+    background: color-mix(in srgb, var(--app-surface-solid) 55%, transparent);
+  }
+
+  .combat-copilot-summary-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--app-space-3);
+  }
+
+  .combat-copilot-summary-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.125rem;
+  }
+
+  .combat-copilot-summary-label {
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .combat-copilot-summary-title {
+    color: var(--app-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .combat-copilot-summary-meta {
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-summary-note {
+    margin: 0;
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-summary-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .combat-copilot-chip {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-xs);
+    color: var(--app-text-muted);
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .combat-copilot-chip.is-pending {
+    border-color: transparent;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-strong);
+  }
+
+  .combat-copilot-chip.is-failed {
+    border-color: color-mix(in srgb, var(--app-danger) 30%, transparent);
+    background: color-mix(in srgb, var(--app-danger) 10%, transparent);
+    color: var(--app-danger);
+  }
+
+  .combat-copilot-chip.is-muted {
+    color: var(--app-text-soft);
+  }
+
+  .combat-copilot-progress {
+    overflow: hidden;
+    height: 0.375rem;
+    border-radius: var(--app-radius-pill);
+    background: var(--app-surface-muted);
+  }
+
+  .combat-copilot-progress-bar {
+    height: 100%;
+    border-radius: var(--app-radius-pill);
+    background: var(--app-accent);
+    transition: width 300ms ease;
+  }
+
+  .combat-copilot-resume {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--app-space-2);
+    padding-top: var(--app-space-2);
+    border-top: 1px solid var(--app-border);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-resume-label {
+    flex: none;
+    color: var(--app-text-soft);
+  }
+
+  .combat-copilot-resume-uri {
+    flex: none;
+    color: var(--app-accent-strong);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+  }
+
+  .combat-copilot-resume-name {
+    overflow: hidden;
+    color: var(--app-text-soft);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .combat-copilot-waiting {
+    display: grid;
+    gap: var(--app-space-2);
+    padding: var(--app-space-3);
+    border: 1px solid var(--app-accent);
+    border-radius: var(--app-radius-md);
+    background: var(--app-accent-soft);
+  }
+
+  .combat-copilot-waiting-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-waiting-index {
+    color: var(--app-accent-strong);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-waiting-uri {
+    margin-left: auto;
+    color: var(--app-accent-strong);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+  }
+
+  .combat-copilot-waiting-name {
+    margin: 0;
+    color: var(--app-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .combat-copilot-waiting-stage {
+    margin: 0;
+    color: var(--app-text-soft);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-waiting-hint {
+    margin: 0;
+    color: var(--app-accent-strong);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-single {
+    display: grid;
+    gap: var(--app-space-3);
+    padding: var(--app-space-card);
+  }
+
+  .combat-copilot-single-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-single-uri {
+    color: var(--app-accent-strong);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+  }
+
+  .combat-copilot-empty {
+    min-height: 14rem;
+    padding: var(--app-space-panel);
+  }
+
+  .combat-copilot-detail {
+    padding: var(--app-space-3) var(--app-space-4);
+    border-top: 1px dashed var(--app-border);
+    background: color-mix(in srgb, var(--app-surface-solid) 40%, transparent);
+  }
+
+  .combat-copilot-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--app-space-3) var(--app-space-4);
+    margin: 0;
+  }
+
+  .combat-copilot-detail-field {
+    display: grid;
+    min-width: 0;
+    gap: 0.125rem;
+  }
+
+  .combat-copilot-detail-wide {
+    grid-column: 1 / -1;
+  }
+
+  .combat-copilot-detail-label {
+    color: var(--app-text-soft);
+    font-size: 0.6875rem;
+  }
+
+  .combat-copilot-detail-value {
+    margin: 0;
+    color: var(--app-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-detail-link {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--app-space-2);
+  }
+
+  .combat-copilot-detail-link code {
+    color: var(--app-accent-strong);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+  }
+
+  .combat-copilot-params {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: var(--app-space-card);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-lg);
+    background: color-mix(in srgb, var(--app-surface-muted) 48%, transparent);
+  }
+
+  .combat-copilot-params > .combat-workspace-section {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .combat-advanced-disclosure {
@@ -127,15 +868,19 @@
     margin-left: var(--app-space-3);
   }
 
+  .combat-copilot-check:focus-visible,
+  .combat-copilot-expand:focus-visible,
+  .combat-copilot-mode-button:focus-visible,
+  .combat-copilot-text-action:focus-visible,
+  .combat-copilot-search-result:focus-visible,
+  .combat-copilot-help-trigger:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--app-accent) 62%, transparent);
+    outline-offset: 2px;
+  }
+
   @container (min-width: 40rem) {
     .combat-copilot-layout {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-
-    .combat-copilot-source {
-      grid-column: 1 / -1;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      align-items: start;
     }
 
     .combat-special-layout {
@@ -145,7 +890,36 @@
     .combat-special-layout > :first-child {
       align-self: stretch;
     }
+  }
 
+  @container (min-width: 40rem) {
+    .combat-copilot-row-id {
+      display: inline;
+    }
+
+    .combat-copilot-row-name .combat-copilot-tag {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .combat-copilot-detail-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container (min-width: 60rem) {
+    .combat-copilot-source-tools {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+    }
+
+    .combat-copilot-source-meta {
+      justify-content: flex-end;
+    }
+
+    .combat-copilot-body {
+      grid-template-columns: minmax(0, 1fr) minmax(16.25rem, 18.75rem);
+    }
   }
 
   @media (width >= 1360px) {
@@ -173,6 +947,27 @@
       gap: 0.375rem;
       padding: 0.375rem;
     }
+
+    .combat-copilot-source-bar {
+      padding: var(--app-space-3);
+    }
+
+    .combat-copilot-body {
+      gap: 0.375rem;
+      padding: 0.375rem;
+    }
+
+    .combat-copilot-row-main {
+      padding-inline: var(--app-space-2);
+    }
+  }
+
+  .combat-copilot-text-action:enabled:hover {
+    color: var(--app-accent-strong);
+  }
+
+  .combat-copilot-check:enabled:hover {
+    background: var(--app-accent-soft);
   }
 
   .combat-task-icon svg {

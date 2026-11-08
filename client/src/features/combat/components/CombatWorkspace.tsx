@@ -543,6 +543,7 @@ export default function CombatWorkspace() {
 
   const copilotExecution: CombatCopilotExecutionActions = {
     ...baseExecution,
+    isWaitingForNext: setView.waitingEntry !== null,
     onStartNext: () => void handleStartNextCopilot(),
     onCancelSet: handleCancelCopilotSet,
   }

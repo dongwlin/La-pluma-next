@@ -398,14 +398,34 @@ const setInputValue = async (input: HTMLInputElement | HTMLTextAreaElement, valu
   })
 }
 
-const selectValue = async (select: HTMLSelectElement, value: string) => {
+const selectNativeValue = async (select: HTMLSelectElement, value: string) => {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
     select.dispatchEvent(new Event('change', { bubbles: true }))
   })
 }
 
-const setModeSelect = () => container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')!
+const segmentedGroup = (label: string) => {
+  const group = container.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`)
+  expect(group, `${label} 分段控件`).not.toBeNull()
+  return group as HTMLElement
+}
+
+const segmentedButton = (label: string, option: string) => {
+  const button = Array.from(segmentedGroup(label).querySelectorAll<HTMLButtonElement>('button'))
+    .find(candidate => candidate.textContent?.trim() === option)
+  expect(button, `${label} 的「${option}」`).toBeDefined()
+  return button as HTMLButtonElement
+}
+
+const clickSegment = async (label: string, option: string) => {
+  await click(segmentedButton(label, option))
+}
+
+const pressedSegment = (label: string) => Array.from(
+  segmentedGroup(label).querySelectorAll<HTMLButtonElement>('button'),
+).filter(button => button.getAttribute('aria-pressed') === 'true')
+  .map(button => button.textContent?.trim())
 
 const mockSetPlan = () => mocks.getCopilotSetPlan.mockResolvedValue({
   success: true,
@@ -486,7 +506,7 @@ describe('CombatTasks execution', () => {
     mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
     await renderComponent()
     await previewSet()
-    expect(setModeSelect().value).toBe('cli')
+    expect(pressedSegment('作业集')).toEqual(['连续执行'])
 
     await click(buttonByText('立即执行')!)
 
@@ -519,6 +539,56 @@ describe('CombatTasks execution', () => {
     expect(buttonByText('终止执行')).toBeDefined()
   })
 
+  it('persists formation, raid and set mode chosen from the segmented settings', async () => {
+    await renderComponent()
+    await previewSet()
+
+    expect(pressedSegment('编队')).toEqual(['自动决定'])
+    expect(pressedSegment('模式')).toEqual(['普通模式'])
+    expect(pressedSegment('作业集')).toEqual(['连续执行'])
+
+    await clickSegment('编队', '保留当前编队')
+    await clickSegment('模式', '普通+突袭')
+    await clickSegment('作业集', '手动逐关')
+
+    expect(pressedSegment('编队')).toEqual(['保留当前编队'])
+    expect(pressedSegment('模式')).toEqual(['普通+突袭'])
+    expect(pressedSegment('作业集')).toEqual(['手动逐关'])
+    expect(JSON.parse(localStorage.getItem('combatAutoFormation') || '{}')).toMatchObject({ copilot: 'off' })
+    expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
+      copilot: { raid: 'both' },
+    })
+    expect(localStorage.getItem('combatCopilotSetExecutionMode')).toBe('manual')
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
+      '48990',
+      expect.objectContaining({
+        mode: 'manual',
+        raid: 'both',
+        selectedIndexes: [0, 1],
+        options: expect.objectContaining({ formationMode: 'off' }),
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('keeps the segmented setting groups accessible and 44px high', async () => {
+    await renderComponent()
+
+    for (const label of ['编队', '模式', '作业集']) {
+      const group = segmentedGroup(label)
+      const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button'))
+      expect(buttons).toHaveLength(3)
+      expect(buttons.filter(button => button.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
+      buttons.forEach(button => {
+        expect(button.className).toContain('min-h-11')
+        expect(button.disabled).toBe(false)
+      })
+    }
+  })
+
   it('keeps execution progress without a separate log observer or entry', async () => {
     useIdentity({ runId: 'run-9', operationId: 'run_task', scope: 'combat' })
     api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({
@@ -528,6 +598,7 @@ describe('CombatTasks execution', () => {
     await flush()
     await renderComponent()
 
+    expect(container.querySelectorAll('[aria-label="本次执行进度"]')).toHaveLength(1)
     expect(container.querySelector('[aria-label="本次执行进度"]')?.textContent).toContain('本次执行进度')
     expect(container.querySelector('[role="log"]')).toBeNull()
     expect(container.textContent).not.toContain('查看本次日志')
@@ -541,10 +612,10 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).not.toContain('查看本次日志')
   })
 
-  it('maps the legacy app execution mode to a continuous server run', async () => {
+  it('maps the app execution mode to a continuous server run', async () => {
     await renderComponent()
     await previewSet()
-    await selectValue(setModeSelect(), 'app')
+    await clickSegment('作业集', '顺序执行')
 
     await click(buttonByText('立即执行')!)
 
@@ -561,7 +632,7 @@ describe('CombatTasks execution', () => {
     mocks.executeCopilotSetPlan.mockReturnValueOnce(submission.promise)
     await renderComponent()
     await previewSet()
-    await selectValue(setModeSelect(), 'manual')
+    await clickSegment('作业集', '手动逐关')
 
     await click(buttonByText('立即执行')!)
     expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
@@ -589,13 +660,18 @@ describe('CombatTasks execution', () => {
     expect(container.textContent).toContain('下一关')
     expect(container.textContent).toContain('第 2 / 2 关')
     expect(buttonByText('开始下一关')).toBeDefined()
-    expect(buttonByText('终止执行')).toBeDefined()
+    expect(buttonByText('终止执行')?.disabled).toBe(false)
 
     await click(buttonByText('开始下一关')!)
 
     expect(mocks.continueCopilotSet).toHaveBeenCalledOnce()
     expect(mocks.continueCopilotSet).toHaveBeenCalledWith('run-set-2', { waitForCompletion: false })
     expect(mocks.executeCopilotSetPlan).toHaveBeenCalledOnce()
+
+    await click(buttonByText('终止执行')!)
+
+    expect(api.stopRun).toHaveBeenCalledOnce()
+    expect(api.stopRun).toHaveBeenCalledWith('run-set-2')
   })
 
   it('keeps the waiting set when the device is busy and allows retry', async () => {
@@ -839,7 +915,7 @@ describe('CombatTasks execution', () => {
 
     const strategySelect = Array.from(container.querySelectorAll<HTMLSelectElement>('select'))
       .find(select => Array.from(select.options).some(option => option.value === 'stop'))!
-    await selectValue(strategySelect, 'stop')
+    await selectNativeValue(strategySelect, 'stop')
 
     const waitingAfterFailure = setRun('run-set-manual', 'waiting', {
       progress: setProgress(
@@ -943,6 +1019,7 @@ describe('CombatTasks execution', () => {
     await previewSet()
 
     expect(buttonByText('开始下一关')).toBeUndefined()
+    expect(container.textContent).not.toContain('下一关')
     expect(buttonByText('终止执行')).toBeDefined()
     expect(container.textContent).not.toContain('执行中')
   })
@@ -996,6 +1073,17 @@ describe('CombatTasks execution', () => {
     await renderComponent()
     const link = container.querySelector<HTMLAnchorElement>('a[href="https://prts.plus/"]')
     expect(link?.textContent).toBe('prts.plus')
+  })
+
+  it('keeps both copilot source inputs and a single empty queue without a preview', async () => {
+    await renderComponent()
+
+    expect(container.querySelector('input[name="maa-copilot-uri"]')).not.toBeNull()
+    expect(container.querySelector('input[name="maa-copilot-stage-search"]')).not.toBeNull()
+    const queue = container.querySelector<HTMLElement>('section[aria-label="作业队列"]')
+    expect(queue).not.toBeNull()
+    expect(queue?.querySelectorAll('.app-empty-state')).toHaveLength(1)
+    expect(queue?.querySelector('.app-empty-state')?.textContent).toContain('等待作业')
   })
 
   it.each(['prts://s48990', 'PRTS://S48990'])(
@@ -1117,7 +1205,7 @@ describe('CombatTasks execution', () => {
 
     await renderComponent()
 
-    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
+    expect(pressedSegment('作业集')).toEqual(['连续执行'])
     expect(localStorage.getItem('combatCopilotSetExecutionMode')).toBe('cli')
     expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
       copilot: { raid: 'raid' },
@@ -1132,8 +1220,8 @@ describe('CombatTasks execution', () => {
 
     await renderComponent()
 
-    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
-    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')?.value).toBe('both')
+    expect(pressedSegment('作业集')).toEqual(['连续执行'])
+    expect(pressedSegment('模式')).toEqual(['普通+突袭'])
     expect(mocks.loadUserConfig).toHaveBeenCalledOnce()
     expect(localStorage.getItem('combatCopilotSetExecutionMode')).toBe('cli')
     expect(JSON.parse(localStorage.getItem('combatAdvancedParams') || '{}')).toMatchObject({
@@ -1159,9 +1247,9 @@ describe('CombatTasks execution', () => {
     expect(mocks.saveUserConfig).not.toHaveBeenCalled()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
       .toBe('prts://s48990')
-    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')?.value).toBe('both')
-    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-formation')?.value).toBe('off')
-    expect(container.querySelector<HTMLSelectElement>('#combat-copilot-set-mode')?.value).toBe('cli')
+    expect(pressedSegment('模式')).toEqual(['普通+突袭'])
+    expect(pressedSegment('编队')).toEqual(['保留当前编队'])
+    expect(pressedSegment('作业集')).toEqual(['连续执行'])
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('尚未同步到服务器')
 
     await previewSet('prts://s48990')
@@ -1422,7 +1510,7 @@ describe('CombatTasks execution', () => {
     await flush()
     expect(container.textContent).toContain('TEST-ONLY')
 
-    await selectValue(container.querySelector<HTMLSelectElement>('#combat-copilot-raid')!, 'raid')
+    await clickSegment('模式', '突袭模式')
     mocks.getCopilotSetPlan.mockRejectedValueOnce(new Error('plan unavailable'))
     mocks.getCopilotSet.mockRejectedValueOnce(new Error('set unavailable'))
     await click(buttonByText('预览')!)

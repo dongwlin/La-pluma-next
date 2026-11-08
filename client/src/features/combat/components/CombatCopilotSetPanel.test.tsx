@@ -74,7 +74,13 @@ const plannedView = (items: CopilotSetItem[]): CopilotSetView => deriveCopilotSe
 
 const noop = () => {}
 
-describe('CombatCopilotSetPanel 当前项自动定位', () => {
+const click = async (element: HTMLElement) => {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+}
+
+describe('CombatCopilotSetPanel', () => {
   let container: HTMLDivElement
   let root: Root
   let scrollIntoView: Mock
@@ -109,14 +115,15 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
   const renderPanel = async (
     view: CopilotSetView,
     selected: ReadonlySet<number> = new Set([0, 1, 2, 3]),
+    options: { isRunning?: boolean; preview?: CopilotSetInfo | null } = {},
   ) => {
     await act(async () => {
       root.render(
         <CombatCopilotSetPanel
-          preview={preview}
+          preview={options.preview === undefined ? preview : options.preview}
           view={view}
           selected={selected}
-          isRunning
+          isRunning={options.isRunning ?? true}
           isResetting={false}
           isContinuing={false}
           automationAvailable
@@ -344,5 +351,123 @@ describe('CombatCopilotSetPanel 当前项自动定位', () => {
     expect(container.querySelector('[data-copilot-item-index="1"]')?.textContent).toContain('待执行')
     expect(container.textContent).toContain('已通关 1')
     expect(container.textContent).toContain('待 0')
+  })
+
+  it('renders a single empty state for a preview without a set', async () => {
+    await renderPanel(plannedView([]), new Set(), { preview: null, isRunning: false })
+
+    const emptyStates = container.querySelectorAll('.app-empty-state')
+    expect(emptyStates).toHaveLength(1)
+    expect(emptyStates[0]?.textContent).toContain('等待作业')
+    expect(container.querySelector('[data-copilot-set-list]')).toBeNull()
+  })
+
+  it('uses the set note as the empty description when the set has no entries', async () => {
+    const emptySet: CopilotSetInfo = {
+      ...preview,
+      copilots: [],
+      note: '这套作业集暂时没有可用作业',
+    }
+    const view = deriveCopilotSetView({
+      preview: emptySet,
+      selected: new Set(),
+      setRun: null,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+
+    await renderPanel(view, new Set(), { preview: emptySet, isRunning: false })
+
+    expect(container.querySelectorAll('.app-empty-state')).toHaveLength(1)
+    expect(container.querySelector('.app-empty-state')?.textContent).toContain('这套作业集暂时没有可用作业')
+  })
+
+  it('expands a row into an addressable detail region with its fields', async () => {
+    const detailPreview: CopilotSetInfo = {
+      ...preview,
+      copilots: [
+        { id: 101, name: '第一关', stage: 'MAIN-1', apCost: 21, presetFormation: true },
+        { id: 102, name: '第二关' },
+      ],
+    }
+    const view = deriveCopilotSetView({
+      preview: detailPreview,
+      selected: new Set([0, 1]),
+      setRun: null,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+    await renderPanel(view, new Set([0, 1]), { isRunning: false, preview: detailPreview })
+
+    const expand = container.querySelector<HTMLButtonElement>(
+      '[data-copilot-item-index="0"] button[aria-expanded]',
+    )!
+    const detailId = expand.getAttribute('aria-controls') ?? ''
+    expect(detailId).not.toBe('')
+    expect(expand.getAttribute('aria-expanded')).toBe('false')
+    expect(document.getElementById(detailId)).toBeNull()
+
+    await click(expand)
+
+    expect(expand.getAttribute('aria-expanded')).toBe('true')
+    const detail = document.getElementById(detailId)
+    expect(detail).not.toBeNull()
+    expect(detail?.textContent).toContain('第一关')
+    expect(detail?.textContent).toContain('MAIN-1')
+    expect(detail?.textContent).toContain('理智')
+    expect(detail?.textContent).toContain('21')
+    expect(detail?.textContent).toContain('预设编队')
+    expect(detail?.textContent).toContain('prts://101')
+    expect(detail?.textContent).not.toContain('干员')
+
+    await click(expand)
+
+    expect(expand.getAttribute('aria-expanded')).toBe('false')
+    expect(document.getElementById(detailId)).toBeNull()
+  })
+
+  it('marks a missing stage and AP as unknown without inventing operators', async () => {
+    const sparsePreview: CopilotSetInfo = {
+      ...preview,
+      copilots: [{ id: 103, name: '第三关' }],
+    }
+    const view = deriveCopilotSetView({
+      preview: sparsePreview,
+      selected: new Set([0]),
+      setRun: null,
+      dismissedRunId: null,
+      raid: 'normal',
+      isWaitingForNext: false,
+      isAutoStopping: false,
+    })
+    await renderPanel(view, new Set([0]), { isRunning: false, preview: sparsePreview })
+
+    expect(container.querySelector('[data-copilot-item-index="0"]')?.textContent).not.toContain('理智')
+    const expand = container.querySelector<HTMLButtonElement>(
+      '[data-copilot-item-index="0"] button[aria-expanded]',
+    )!
+    await click(expand)
+
+    const detail = document.getElementById(expand.getAttribute('aria-controls') ?? '')
+    expect(detail?.textContent).toContain('未知')
+    expect(detail?.textContent).toContain('按执行设置自动编队')
+    expect(detail?.textContent).toContain('prts://103')
+    expect(detail?.textContent).not.toContain('干员')
+    expect(detail?.textContent).not.toContain('预设编队')
+  })
+
+  it('labels the row selection checkbox for assistive technology', async () => {
+    await renderPanel(deriveView([[0, 'pending']]), new Set([0]), { isRunning: false })
+
+    expect(
+      container.querySelector('[data-copilot-item-index="0"] button[aria-label]')?.getAttribute('aria-label'),
+    ).toBe('取消选择第 1 个作业')
+    expect(
+      container.querySelector('[data-copilot-item-index="1"] button[aria-label]')?.getAttribute('aria-label'),
+    ).toBe('选择第 2 个作业')
   })
 })

@@ -1,4 +1,4 @@
-import { Play, Square } from 'lucide-react'
+import { ChevronRight, Play, Square } from 'lucide-react'
 import { Button } from '@/shared/ui'
 import type { CombatTask } from '../types'
 
@@ -8,8 +8,11 @@ export interface CombatRunActionProps {
   isRunning: boolean
   isStopping: boolean
   isSubmitting: boolean
+  isWaitingForNext?: boolean
+  isContinuing?: boolean
   onExecute: () => void
   onStop: () => void
+  onStartNext?: () => void
   /** 迁移前两份卡片的按钮间距不同；保持原类名即可保持基线。 */
   buttonClassName: string
 }
@@ -20,10 +23,31 @@ export function CombatRunAction({
   isRunning,
   isStopping,
   isSubmitting,
+  isWaitingForNext = false,
+  isContinuing = false,
   onExecute,
   onStop,
+  onStartNext,
   buttonClassName,
 }: CombatRunActionProps) {
+  if (isWaitingForNext) {
+    return (
+      <Button
+        onClick={onStartNext}
+        disabled={!automationAvailable || isContinuing}
+        loading={isContinuing}
+        loadingText="正在开始"
+        title={!automationAvailable ? unavailableMessage : undefined}
+        variant="primary"
+        size="md"
+        icon={<ChevronRight size={16} aria-hidden="true" />}
+        className={buttonClassName}
+      >
+        开始下一关
+      </Button>
+    )
+  }
+
   return isRunning ? (
     <Button
       onClick={onStop}

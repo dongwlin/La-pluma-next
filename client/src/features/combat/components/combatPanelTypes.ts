@@ -31,6 +31,7 @@ export interface CombatExecutionActions {
 
 /** 作业集卡片额外暴露下一关与取消等待；服务端持有等待态。 */
 export interface CombatCopilotExecutionActions extends CombatExecutionActions {
+  isWaitingForNext: boolean
   onStartNext: () => void
   onCancelSet: () => void
 }

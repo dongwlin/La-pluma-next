@@ -1,9 +1,12 @@
-import { FileText } from 'lucide-react'
-import { Button, EmptyState } from '@/shared/ui'
+import { useState } from 'react'
+import { FileText, List } from 'lucide-react'
+import { EmptyState } from '@/shared/ui'
 import { useCopilotSetItemFollow } from '../hooks/useCopilotSetItemFollow'
-import { formatCopilotApCost } from '../model/copilotPayload'
 import type { CopilotSetView } from '../model/copilotSetView'
 import type { CopilotSetInfo } from '../types'
+import CombatCopilotQueueDetail from './CombatCopilotQueueDetail'
+import CombatCopilotQueueRow from './CombatCopilotQueueRow'
+import CombatCopilotQueueSummary from './CombatCopilotQueueSummary'
 
 interface CombatCopilotSetPanelProps {
   preview: CopilotSetInfo | null
@@ -27,270 +30,135 @@ export default function CombatCopilotSetPanel({
   selected,
   isRunning,
   isResetting,
-  isContinuing,
-  automationAvailable,
-  unavailableMessage,
   onToggle,
   onToggleAll,
   onOpenReset,
-  onStartNext,
   onCancelSet,
 }: CombatCopilotSetPanelProps) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const listRef = useCopilotSetItemFollow({
     currentIndex: view.currentIndex,
     hasList: preview?.type === 'set' && !!preview.copilots?.length,
   })
 
+  const isSetPreview = preview?.type === 'set' && !!preview.copilots?.length
+  const setPreview = isSetPreview ? preview : null
+  const allSelected = setPreview ? selected.size === setPreview.copilots?.length : false
+  const emptyDescription = preview?.type === 'set' && preview.note
+    ? preview.note
+    : '输入作业链接即可预览，本地作业可直接执行。'
+
   return (
-    <div className="combat-workspace-section combat-job-list-section flex flex-1 flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <h5 className="flex items-center space-x-2 text-sm font-semibold text-primary">
-          <svg className="w-4 h-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-          </svg>
-          <span>作业列表</span>
-        </h5>
-        {preview?.type === 'set' && preview.copilots && !isRunning && (
-          <div className="flex items-center gap-2">
+    <section className="combat-copilot-panel combat-copilot-queue" aria-label="作业队列">
+      <header className="combat-copilot-panel-head">
+        <div className="combat-copilot-panel-title">
+          <List size={16} className="brand-text" aria-hidden="true" />
+          <h5>作业队列</h5>
+          {setPreview && (
+            <span className="combat-copilot-kicker">作业集 · prts://s{setPreview.id}</span>
+          )}
+        </div>
+
+        {setPreview && !isRunning && (
+          <div className="combat-copilot-panel-actions">
             <button
+              type="button"
               onClick={onOpenReset}
               disabled={isResetting}
-              className="min-h-11 px-1 text-xs text-gray-500 transition-colors hover:text-(--app-accent) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400"
+              className="combat-copilot-text-action"
             >
               {isResetting ? '重置中...' : '重置进度'}
             </button>
-            <span className="h-3 w-px bg-gray-200 dark:bg-white/10" />
+            <span className="combat-copilot-divider" aria-hidden="true" />
             <button
+              type="button"
               onClick={onToggleAll}
-              className="min-h-11 px-1 text-xs brand-text transition-colors hover:underline"
+              className="combat-copilot-text-action is-accent"
             >
-              {selected.size === preview.copilots.length ? '清空待执行' : '全选待执行'}
+              {allSelected ? '清空待执行' : '全选待执行'}
             </button>
           </div>
         )}
-      </div>
+      </header>
 
-      {preview?.type === 'set' && preview.copilots && preview.copilots.length > 0 ? (
+      {setPreview && setPreview.copilots && setPreview.copilots.length > 0 ? (
         <>
-          {(() => {
-            const { total, completed, pending, failed, stopped, skipped } = view.progress
-            const nextIndex = view.resumeIndex
-            const nextCopilot = nextIndex >= 0 ? preview.copilots[nextIndex] ?? null : null
-            return (
-              <div className="mb-3 border-y border-(--app-border) py-3">
-                <div className="flex flex-col gap-3 @md:flex-row @md:items-start @md:justify-between">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-tertiary">历史续跑进度</div>
-                    <div className="mt-1 text-sm font-semibold text-primary">
-                      {nextCopilot ? `下次从第 ${nextIndex + 1} 关继续` : '没有待续跑的作业'}
-                    </div>
-                    <div className="mt-1 truncate text-xs text-tertiary">
-                      {view.attemptedCount > 0 ? `本次已执行 ${view.attemptedCount} 个` : `共 ${total} 个作业（含历史通关）`}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                    <span className="rounded-md px-2 py-1 text-[11px] brand-chip">待 {pending}</span>
-                    <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">已通关 {completed}</span>
-                    <span className={`rounded-md border px-2 py-1 text-[11px] ${failed > 0 ? 'border-rose-400/30 bg-rose-500/10 text-rose-500 dark:text-rose-300' : 'border-(--app-border) text-secondary'}`}>失败 {failed}</span>
-                    {stopped > 0 && (
-                      <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-secondary">已终止 {stopped}</span>
-                    )}
-                    {skipped > 0 && (
-                      <span className="rounded-md border border-(--app-border) px-2 py-1 text-[11px] text-tertiary">跳过 {skipped}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="h-1.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
-                    <div
-                      className="h-full bg-(--app-accent) transition-all duration-300"
-                      style={{ width: `${total > 0 ? (completed / total) * 100 : 0}%` }}
-                    />
-                  </div>
-                  {nextCopilot ? (
-                    <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-(--app-border) pt-2 text-xs">
-                      <span className="shrink-0 text-tertiary">续跑目标</span>
-                      <span className="font-mono brand-text">prts://{nextCopilot.id}</span>
-                      <span className="min-w-0 truncate text-secondary">{nextCopilot.stage || nextCopilot.name || `第 ${nextIndex + 1} 关`}</span>
-                    </div>
-                  ) : (
-                    <div className="mt-2 border-t border-(--app-border) pt-2 text-xs text-tertiary">
-                      需要重打时点击“重置进度”。
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })()}
-
-          {view.waitingEntry && (
-            <div className="mb-3 rounded-lg border border-(--app-accent) bg-(--app-accent-soft) p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <span className="px-2 py-0.5 brand-action text-xs font-medium rounded-sm">下一关</span>
-                  <span className="text-xs brand-text">第 {(view.waitingEntryIndex ?? 0) + 1} / {Math.max(preview.copilots.length, view.activeSetRun?.itemCount ?? 0)} 关</span>
-                </div>
-                <span className="font-mono text-xs brand-text">prts://{view.waitingCopilot?.id ?? view.waitingEntry.copilotId}</span>
-              </div>
-              <p className="text-sm font-medium text-primary">{view.waitingCopilot?.name || `作业 #${view.waitingEntry.copilotId ?? ''}`}</p>
-              {(view.waitingCopilot?.stage || view.waitingEntry.stage) && (
-                <p className="text-xs text-secondary">{view.waitingCopilot?.stage || view.waitingEntry.stage}</p>
-              )}
-
-              <div className="mt-3 pt-3 border-t border-(--app-border)">
-                <p className="text-xs brand-text mb-2">请在游戏中进入下一关界面后点击继续</p>
-                <div className="flex space-x-2">
-                  <Button
-                    onClick={onStartNext}
-                    disabled={!automationAvailable || isContinuing}
-                    loading={isContinuing}
-                    loadingText="正在开始"
-                    title={!automationAvailable ? unavailableMessage : undefined}
-                    variant="primary"
-                    size="md"
-                    fullWidth
-                  >
-                    开始下一关
-                  </Button>
-                  <Button onClick={onCancelSet} variant="secondary" size="md">取消</Button>
-                </div>
-              </div>
-            </div>
-          )}
-
+          <CombatCopilotQueueSummary
+            preview={setPreview}
+            view={view}
+            onCancelSet={onCancelSet}
+          />
           <div
             ref={listRef}
             data-copilot-set-list
-            className="flex-1 divide-y divide-(--app-border) overflow-hidden overflow-y-auto rounded-lg border border-(--app-border) bg-(--app-surface-solid)"
+            role="list"
+            aria-label="作业队列"
+            className="combat-copilot-queue-list"
           >
-            {preview.copilots.map((copilot, idx) => {
-              const runStatus = view.itemStatuses.get(idx)
-              // 完成语义按所选模式的覆盖情况判定，单个模式成功不等于作业完成。
+            {setPreview.copilots.map((copilot, index) => {
+              const runStatus = view.itemStatuses.get(index)
               const isFailed = runStatus === 'failed'
               const isStopped = runStatus === 'stopped'
-              const isSuccess = view.runCompletedIndexes.has(idx) && !isFailed && !isStopped
+              const isSuccess = view.runCompletedIndexes.has(index) && !isFailed && !isStopped
               const isCompleted = isSuccess || isFailed || isStopped
               const isSkipped = runStatus === 'skipped'
               const isCurrent = runStatus === 'running'
-              const isSelected = selected.has(idx)
-              // 历史通关只来自服务端持久化进度，取消选择不代表已通关。
               const isHistoryDone = !isCurrent
                 && !isSkipped
                 && !isCompleted
-                && view.historyCompletedIndexes.has(idx)
-              const statusLabel = isCurrent
-                ? '执行中'
-                : isSkipped
-                  ? '已跳过'
-                  : isFailed
-                    ? '待重试'
-                    : isStopped
-                      ? '已终止'
-                      : isSuccess
-                        ? '已完成'
-                        : isHistoryDone
-                          ? '历史已通关'
-                          : '待执行'
+                && view.historyCompletedIndexes.has(index)
+              const detailId = `combat-copilot-detail-${setPreview.id}-${index}`
+              const expanded = expandedIndex === index
 
               return (
-                <div
-                  key={`${copilot.id}-${idx}`}
-                  data-copilot-item-index={idx}
-                  className={`flex items-center justify-between gap-3 px-2.5 py-2 text-xs transition-colors ${
-                  isCurrent ? 'bg-(--app-accent-soft)' :
-                  isSuccess ? 'bg-emerald-500/10' :
-                  isFailed ? 'bg-rose-500/10' :
-                  isStopped ? 'bg-(--app-surface-muted)' :
-                  isSkipped || isHistoryDone ? 'bg-black/2.5 opacity-70 dark:bg-white/[0.035]' :
-                  'hover:bg-(--app-surface-muted)'
-                }`}>
-                  <div className="flex min-w-0 items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => onToggle(idx)}
-                      disabled={isRunning}
-                      aria-pressed={isSelected}
-                      aria-label={`${isSelected ? '取消选择' : '选择'}第 ${idx + 1} 个作业`}
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors ${isRunning ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-(--app-accent-soft)'}`}
-                    >
-                      <span className={`flex h-4 w-4 items-center justify-center rounded-sm border ${
-                          isSelected
-                            ? 'border-(--app-accent) bg-(--app-accent) text-white'
-                            : 'border-(--app-border-strong) bg-(--app-surface-solid)'
-                        }`}>
-                        {isSelected && (
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </span>
-                    </button>
-                    <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
-                      isCurrent ? 'bg-(--app-accent) text-white animate-pulse' :
-                      isSuccess ? 'bg-(--app-success) text-white' :
-                      isFailed ? 'bg-(--app-danger) text-white' :
-                      isStopped || isSkipped || isHistoryDone ? 'bg-black/10 text-tertiary dark:bg-white/10' :
-                      'bg-black/5 text-secondary dark:bg-white/10'
-                    }`}>
-                      {isSuccess ? '✓' : isFailed ? '✗' : isStopped || isSkipped ? '–' : isHistoryDone ? '✓' : idx + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-primary">{copilot.name || `作业 #${copilot.id}`}</span>
-                        {copilot.presetFormation && (
-                          <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] brand-chip">预设编队 · 仅普通</span>
-                        )}
-                        {copilot.completedModes?.map(mode => (
-                          <span key={mode} className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
-                            {mode === 'raid' ? '突袭已完成' : '普通已完成'}
-                          </span>
-                        ))}
-                      </div>
-                      {copilot.stage && (
-                        <div className="mt-0.5 truncate text-xs text-tertiary">
-                          {copilot.stage} · 理智 {formatCopilotApCost(copilot.apCost)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className={`min-w-[64px] rounded-md px-2 py-0.5 text-center text-[11px] ${
-                      isCurrent ? 'brand-action text-white' :
-                      isFailed ? 'bg-rose-500/10 text-rose-500 dark:text-rose-300' :
-                      isStopped ? 'bg-black/5 text-secondary dark:bg-white/10' :
-                      isSelected ? 'brand-chip' :
-                      'bg-black/5 text-secondary dark:bg-white/10'
-                    }`}>
-                      {statusLabel}
-                    </span>
-                    <span className="hidden font-mono text-tertiary 2xl:inline">prts://{copilot.id}</span>
-                  </div>
-                </div>
+                <CombatCopilotQueueRow
+                  key={`${copilot.id}-${index}`}
+                  copilot={copilot}
+                  index={index}
+                  selected={selected.has(index)}
+                  disabled={isRunning}
+                  expanded={expanded}
+                  detailId={detailId}
+                  isCurrent={isCurrent}
+                  isSuccess={isSuccess}
+                  isFailed={isFailed}
+                  isStopped={isStopped}
+                  isSkipped={isSkipped}
+                  isHistoryDone={isHistoryDone}
+                  onToggle={() => onToggle(index)}
+                  onToggleExpanded={() => setExpandedIndex(expanded ? null : index)}
+                />
               )
             })}
           </div>
         </>
       ) : preview?.type === 'single' ? (
-        <div className="flex-1 border-y border-(--app-border) py-3">
-          <div className="flex items-center space-x-2 mb-1">
-            <span className="rounded-md px-2 py-0.5 text-xs font-medium brand-chip">单个作业</span>
-            <span className="text-xs text-tertiary">ID: {preview.id}</span>
+        <div className="combat-copilot-single">
+          <div className="combat-copilot-single-head">
+            <span className="combat-copilot-tag">单个作业</span>
+            <span className="combat-copilot-single-uri">prts://{preview.id}</span>
           </div>
-          <p className="font-medium text-primary">{preview.name}</p>
-          <div className="mt-1 space-x-2 text-xs text-secondary">
-            {preview.stage && <span>关卡: {preview.stage}</span>}
-            {preview.operators && <span>干员: {preview.operators}</span>}
-          </div>
+          {preview.note && <p className="combat-copilot-summary-note">{preview.note}</p>}
+          <CombatCopilotQueueDetail
+            detailId={`combat-copilot-single-detail-${preview.id}`}
+            item={{
+              id: preview.id,
+              name: preview.name,
+              stage: preview.stage,
+              operators: preview.operators,
+              uri: `prts://${preview.id}`,
+            }}
+          />
         </div>
       ) : (
         <EmptyState
           compact
-          className="combat-job-empty flex-1"
+          className="combat-copilot-empty"
           icon={<FileText size={24} strokeWidth={1.7} />}
           title="等待作业"
-          description="输入作业链接即可预览，本地作业可直接执行。"
+          description={emptyDescription}
         />
       )}
-    </div>
+    </section>
   )
 }

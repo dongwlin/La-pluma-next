@@ -26,22 +26,16 @@ export default function CombatSearchPanel({
   const [selectedUri] = usePanelState(selectionStore)
 
   const handleStageChange = (value: string) => {
-    // 输入变化即放弃在途搜索；旧响应不会写入新的展示状态。
     onCancel()
     setStage(value)
   }
 
+  const recommendedUri = result?.recommended?.uri ?? result?.copilots?.[0]?.uri
+
   return (
-    <div className="combat-workspace-section">
-      <h5 className="mb-3 flex items-center space-x-2 text-sm font-semibold text-primary">
-        <svg className="w-4 h-4 brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        <span>快速搜索</span>
-      </h5>
-      <div className="flex space-x-2">
+    <div className="combat-copilot-search">
+      <div className="combat-copilot-search-row">
         <label htmlFor="combat-stage-search" className="sr-only">搜索关卡作业</label>
-        {/* v4 的 space-x 只给非末子元素加 end margin；补回 sr-only label 参与计数时的 v3 左间距 */}
         <input
           id="combat-stage-search"
           type="text"
@@ -54,7 +48,7 @@ export default function CombatSearchPanel({
             e.preventDefault()
             onSearch(stage)
           }}
-          className="app-input app-native-control min-h-11 min-w-0 flex-1 ml-2 control-surface"
+          className="app-input app-native-control min-h-11 min-w-0 flex-1 control-surface"
         />
         <Button
           onClick={() => onSearch(stage)}
@@ -62,39 +56,39 @@ export default function CombatSearchPanel({
           loading={searching}
           variant="secondary"
           size="md"
-          className="px-3"
+          className="shrink-0 px-3"
         >
           {!searching && '搜索'}
         </Button>
       </div>
-      <p className="mt-2 text-xs text-tertiary">支持关卡代号或关卡名，例如 1-7、CE-6。</p>
+      <p className="combat-copilot-hint">支持关卡代号或关卡名，例如 1-7、CE-6。</p>
 
-      {result && result.copilots && (
-        <div className="mt-3 max-h-32 space-y-1 overflow-y-auto">
-          {result.copilots.slice(0, 5).map((copilot, idx) => (
-            <button
-              key={copilot.id}
-              onClick={() => onSelectUri(copilot.uri)}
-              className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-1.5 text-left text-xs transition-all ${
-                selectedUri === copilot.uri
-                  ? 'brand-action-subtle border-(--app-accent)'
-                  : 'border-(--app-border) bg-(--app-surface) hover:border-(--app-accent)'
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <span className="font-mono brand-text">{copilot.uri}</span>
-                <span className="max-w-20 truncate text-secondary">{copilot.title}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {selectedUri === copilot.uri && (
-                  <span className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs brand-chip">已选中</span>
-                )}
-                {idx === 0 && (
-                  <span className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs brand-chip">推荐</span>
-                )}
-              </div>
-            </button>
-          ))}
+      {result && result.copilots && result.copilots.length > 0 && (
+        <div className="combat-copilot-search-results">
+          {result.copilots.slice(0, 5).map((copilot) => {
+            const isSelected = selectedUri === copilot.uri
+            return (
+              <button
+                key={copilot.id}
+                type="button"
+                onClick={() => onSelectUri(copilot.uri)}
+                className={`combat-copilot-search-result${isSelected ? ' is-active' : ''}`}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 font-mono text-xs brand-text">{copilot.uri}</span>
+                  <span className="max-w-20 truncate text-xs text-secondary">{copilot.title}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {isSelected && (
+                    <span className="rounded-md px-1.5 py-0.5 text-[11px] brand-chip">已选中</span>
+                  )}
+                  {recommendedUri === copilot.uri && (
+                    <span className="rounded-md px-1.5 py-0.5 text-[11px] brand-chip">推荐</span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

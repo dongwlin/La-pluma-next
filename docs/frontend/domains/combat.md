@@ -21,14 +21,13 @@
 | 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
 | 模式分段控件的测量与键盘导航 | `features/combat/components/CombatModeTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
-| 作业输入与识别方式 | `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；识别方式保存在面板会话存储 |
+| 作业来源栏（输入、预览、识别方式、搜索、说明与清除预览） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览动作由工作区提供 |
 | 普通搜索与悖论搜索 | `components/CombatSearchPanel.tsx`、`components/CombatParadoxSearchPanel.tsx` | 搜索词与“已选中”高亮在面板侧；结果、取消与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
-| 作业集预览、续跑进度、下一关与逐项结果 | `components/CombatCopilotSetPanel.tsx` | 只渲染 `CopilotSetView`；勾选/全选/重置/继续由工作区动作 |
-| 作业信息详情 | `components/CombatCopilotInfoPanel.tsx` | 只渲染当前预览与视图派生 |
+| 作业队列、续跑摘要、下一关、逐项结果与行内详情 | `components/CombatCopilotSetPanel.tsx`（内部 `CombatCopilotQueueSummary` / `QueueRow` / `QueueDetail`） | 只渲染 `CopilotSetView` 与已有预览字段；勾选/全选/重置/继续由工作区动作；详情不再单独占卡 |
 | 保全派驻 / 悖论模拟卡片 | `components/CombatSpecialTaskPanel.tsx` | 输入、URI 计数、高级字段、搜索与概览；不创建执行状态 |
 | 卡片头部与运行/停止按钮 | `components/CombatTaskHeading.tsx` | 共享两种卡片的标题与执行投影 |
-| 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、按模式判定完成、待执行求差、下一关与信息面板当前项 |
+| 作业集视图派生 | `model/copilotSetView.ts` | 纯模型：当前 Run 归属、按模式判定完成、待执行求差、续跑目标与下一关 |
 | 面板会话状态 | `model/panelState.ts` + `hooks/usePanelState.ts` | 工作区创建、面板订阅；页面卸载时销毁 |
 | 命令、URI 与载荷模型 | `model/combatCommands.ts`、`utils/copilotUri.ts`、`model/copilotPayload.ts` | 纯命令与载荷模型，不改变执行协议 |
 
@@ -37,7 +36,7 @@
 - 不改变 `/agent/copilot/*`、`/agent/copilot-sets/*` 等端点、Query key、配置 key、本地存储键或 wire 形状。
 - 不改变三种作业集执行方式的服务端映射：`app`/`cli` → `continuous`，`manual` → `manual`。
 - 不把搜索词、识别方式、选中索引写进配置或 localStorage；不新增跨页共享。
-- 表单 `id`/`name`、模式切换和执行动作保持稳定；作业输入与搜索在前，执行设置与预览结果在后，窄容器按阅读顺序纵向排列。
+- 作业输入与搜索的 `name`、状态文案、关键 `aria-*` 契约与配置 key 保持稳定；执行参数改为分段控件但字段语义不变；DOM/CSS 类名随布局调整。作业输入与搜索在前，队列卡居中，执行参数在后，窄容器按阅读顺序纵向排列。
 - 页面壳不包含业务状态机；工作区是唯一领域容器，面板只接收投影。
 
 ### 2. 组合与状态边界
@@ -48,10 +47,9 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
    ├─ CombatModeTabs（受控分段 + 高亮测量）
    ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
-   │  ├─ 输入区：CombatCopilotInputPanel + CombatSearchPanel
-   │  ├─ 设置区：CombatSettingsPanel → CombatAdvancedFields
-   │  ├─ CombatCopilotSetPanel（续跑进度 / 下一关 / 逐项结果）
-   │  └─ CombatCopilotInfoPanel（作业信息）
+   │  ├─ CombatCopilotSourceBar（CombatCopilotInputPanel + CombatSearchPanel + 识别方式/说明/清除预览）
+   │  ├─ CombatCopilotSetPanel（续跑摘要 / 下一关 / 逐项结果 / 行内详情）
+   │  └─ 参数区：CombatSettingsPanel → CombatAdvancedFields
    ├─ CombatSpecialTaskPanel（保全派驻 / 悖论模拟卡）
    │  ├─ CombatAdvancedFields
    │  ├─ CombatParadoxSearchPanel（悖论干员搜索）
@@ -73,7 +71,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 - **配置只有一个订阅。** 工作区调用一次 `useUserConfig(combatConfigAdapter)`，把草稿字段与更新回调传给卡片；面板不直接调用 `saveUserConfig`/`loadUserConfig` 或写 localStorage。
 - **预览/搜索/执行各只有一个实例。** 工作区调用一次 `useCopilotPreview`、两个搜索 hook 与一次 `useCombatExecution`；卡片拿到的都是投影与动作，不创建第二份状态机。
-- **选择是跨面板状态。** `selectedCopilotIndexes` 同时影响作业集列表、信息面板计数与提交请求，因此留在工作区；搜索词、搜索选中项和识别方式只影响单个面板，下沉到面板会话存储。
+- **选择是跨面板状态。** `selectedCopilotIndexes` 同时影响队列摘要、行选中状态与提交请求，因此留在工作区；搜索词、搜索选中项和识别方式只影响单个面板，下沉到面板会话存储。
 - **模式不持久化。** `activeCombatMode` 不进入配置、Query、localStorage 或 URL。
 
 ### 3. 局部状态与渲染隔离
@@ -82,7 +80,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 | store | 订阅方 | 工作区写入点 |
 | --- | --- | --- |
-| `copilotPreviewMode` | `CombatCopilotInputPanel` | 无；工作区在预览时读取当前值 |
+| `copilotPreviewMode` | `CombatCopilotSourceBar` | 无；工作区在预览时读取当前值 |
 | `copilotSearchStage` | `CombatSearchPanel` | 无 |
 | `copilotSearchSelection` | `CombatSearchPanel` | 输入变化或应用搜索 URI 时清空/设置为规范化 URI |
 | `paradoxSearchName` | `CombatParadoxSearchPanel` | 无 |
@@ -108,7 +106,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 失败/终止/已执行 | 失败、已终止与跳过分别计数，主动终止不计入失败；已执行按条目统计到作业，全部模式跳过或待执行的不计 |
 | 下一关 | 仅在 `isWaitingForNext` 且非 `isAutoStopping` 时展示；等待项与作业详情来自服务端投影 |
 | 续跑目标 | 等待项索引优先，否则第一个待执行索引，否则 `-1` |
-| 信息面板当前项 | 优先 Run 当前项，其次续跑目标，否则第一个作业；越界回退第一个作业 |
+| 续跑/当前项投影 | 优先 Run 当前项，其次续跑目标，否则第一个作业；越界回退第一个作业，供摘要与行内详情扩展 |
 | 完成计数 | `max(0, 选择数 - 待执行数)` |
 
 模型不访问 React、Query、配置通道或执行控制器，规则由 `copilotSetView.test.ts` 直接覆盖。
@@ -132,7 +130,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 - 端点、Query key、配置 key、本地存储键、pending 标记与 wire 形状均未变化；旧本地草稿与服务端配置可直接读取。
 - 服务端执行参数、作业集模式映射、幂等键与停止语义未变化。
-- 保持渲染结构、DOM/CSS 类名、表单 `id`/`name` 与默认态视觉；交互和局部状态边界由下列回归测试覆盖。
+- 保持作业输入/搜索的 `name`、状态文案与关键 `aria-*` 契约；DOM/CSS 类名和默认态视觉随卡片布局调整，但交互与局部状态边界由下列回归测试覆盖。
 - 页面视觉回归入口见[开发指南](../../development/README.md)；面板行为与订阅隔离由下列回归测试覆盖。
 
 ## 搜索与预览
