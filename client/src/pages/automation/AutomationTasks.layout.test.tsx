@@ -325,7 +325,7 @@ describe('AutomationTasks layout surfaces', () => {
 
     await renderPage()
 
-    expect(container.querySelector<HTMLInputElement>('[aria-label="定时执行"]')?.checked).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('[aria-label="启用定时执行"]')?.checked).toBe(true)
     expect(mocks.setupSchedule).not.toHaveBeenCalled()
     expect(mocks.stopSchedule).not.toHaveBeenCalled()
   })
@@ -333,7 +333,30 @@ describe('AutomationTasks layout surfaces', () => {
   it('states that schedule times follow the game service time zone', async () => {
     await renderPage()
 
-    expect(container.textContent).toContain('执行时间按游戏服务区时区，每日 04:00 刷新游戏日')
+    expect(container.textContent).toContain('游戏服务区时区 · 每日 04:00 刷新游戏日')
+  })
+
+  it('summarizes paused schedule times while the schedule is disabled', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: taskFlowFixture,
+        schedule: {
+          enabled: false,
+          entries: [
+            { time: '08:00', enabled: true },
+            { time: '14:00', enabled: false },
+          ],
+        },
+      },
+    })
+
+    await renderPage()
+
+    expect(container.querySelector<HTMLInputElement>('[aria-label="启用定时执行"]')?.checked).toBe(false)
+    expect(container.textContent).toContain('已暂停')
+    expect(container.textContent).toContain('08:00 / 14:00')
+    expect(container.querySelector('[aria-label="第 1 个执行时间"]')).toBeNull()
   })
 
   it('adds schedule times from the noon-first candidate list up to the row limit', async () => {
@@ -351,19 +374,112 @@ describe('AutomationTasks layout surfaces', () => {
     await renderPage()
 
     expect(container.querySelector('[aria-label="已设置 5 个执行时间"]')).not.toBeNull()
-    const addTimeButton = findButton('新增定时')
+    const addTimeButton = findButton('新增时间')
     expect(addTimeButton).toBeDefined()
 
     await act(async () => addTimeButton?.click())
     await flush()
 
     expect(container.querySelector('[aria-label="已设置 6 个执行时间"]')).not.toBeNull()
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-5')?.value).toBe('16')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-5')?.value).toBe('16:00')
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       times: ['08:00', '12:00', '13:00', '14:00', '15:00', '16:00'],
     })
-    expect(findButton('新增定时')).toBeUndefined()
+    expect(container.textContent).toContain('最多 6 个')
+    expect(findButton('新增时间')?.disabled).toBe(true)
+  })
+
+  it('masks typed digits into HH:MM and commits once four digits are entered', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: taskFlowFixture,
+        schedule: {
+          enabled: true,
+          entries: ['08:30', '12:45'].map(time => ({ time, enabled: true })),
+        },
+      },
+    })
+
+    await renderPage()
+
+    const timeInput = container.querySelector<HTMLInputElement>('#automation-schedule-time-0')!
+    expect(timeInput.getAttribute('type')).toBe('text')
+    expect(timeInput.getAttribute('placeholder')).toBe('HH:MM')
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const typeValue = async (value: string) => {
+      await act(async () => {
+        inputValueSetter?.call(timeInput, value)
+        timeInput.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await flush()
+    }
+
+    await typeValue('1')
+    expect(timeInput.value).toBe('1')
+    await typeValue('18')
+    expect(timeInput.value).toBe('18')
+    await typeValue('183')
+    expect(timeInput.value).toBe('18:3')
+    await typeValue('1830')
+    expect(timeInput.value).toBe('18:30')
+
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      times: ['18:30', '12:45'],
+    })
+  })
+
+  it('normalizes a short time draft on blur and rejects an invalid time', async () => {
+    mocks.loadUserConfig.mockResolvedValue({
+      success: true,
+      data: {
+        taskFlow: taskFlowFixture,
+        schedule: {
+          enabled: true,
+          entries: ['08:30', '12:45'].map(time => ({ time, enabled: true })),
+        },
+      },
+    })
+
+    await renderPage()
+
+    const timeInput = container.querySelector<HTMLInputElement>('#automation-schedule-time-0')!
+    const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+
+    timeInput.focus()
+    await act(async () => {
+      inputValueSetter?.call(timeInput, '9')
+      timeInput.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    expect(timeInput.value).toBe('9')
+
+    await act(async () => timeInput.blur())
+    await flush()
+
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('09:00')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      times: ['09:00', '12:45'],
+    })
+
+    timeInput.focus()
+    await act(async () => {
+      inputValueSetter?.call(timeInput, '99')
+      timeInput.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    await act(async () => timeInput.blur())
+    await flush()
+
+    expect(mocks.setMessage).toHaveBeenCalledWith('请输入 00:00–23:59 的时间', 'error')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('09:00')
+    expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
+      enabled: true,
+      times: ['09:00', '12:45'],
+    })
   })
 
   it('rejects a duplicate schedule time without writing the draft', async () => {
@@ -380,27 +496,20 @@ describe('AutomationTasks layout surfaces', () => {
 
     await renderPage()
 
-    const firstHour = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')!
-    const firstMinute = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')!
+    const firstTime = container.querySelector<HTMLInputElement>('#automation-schedule-time-0')!
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
 
     await act(async () => {
-      inputValueSetter?.call(firstHour, '12')
-      firstHour.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await flush()
-    await act(async () => {
-      inputValueSetter?.call(firstMinute, '45')
-      firstMinute.dispatchEvent(new Event('input', { bubbles: true }))
+      inputValueSetter?.call(firstTime, '12:45')
+      firstTime.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await flush()
 
     expect(mocks.setMessage).toHaveBeenCalledWith('该执行时间已经存在', 'error')
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('12')
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('30')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('08:30')
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
-      times: ['12:30', '12:45'],
+      times: ['08:30', '12:45'],
     })
   })
 
@@ -551,32 +660,24 @@ describe('AutomationTasks layout surfaces', () => {
     expect(taskDeleteButtons).toHaveLength(1)
     expect(container.querySelector('#automation-task-editor [aria-label="删除启动游戏"]')).toBeNull()
 
-    const firstHourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')
-    const firstMinuteInput = container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')
-    expect(firstHourInput?.value).toBe('8')
-    expect(firstMinuteInput?.value).toBe('30')
-    expect(container.querySelector<HTMLLabelElement>('label[for="automation-schedule-hour-0"]')?.textContent).toContain('第 1 个执行时间的小时')
-    expect(container.querySelector<HTMLLabelElement>('label[for="automation-schedule-minute-0"]')?.textContent).toContain('第 1 个执行时间的分钟')
-    expect(container.querySelector('[aria-label="第 1 个执行时间开启"]')).not.toBeNull()
+    const firstTimeInput = container.querySelector<HTMLInputElement>('#automation-schedule-time-0')
+    expect(firstTimeInput?.value).toBe('08:30')
+    expect(firstTimeInput?.getAttribute('aria-label')).toBe('第 1 个执行时间')
+    expect(container.querySelector('[aria-label="08:30 启用"]')).not.toBeNull()
 
-    const deleteTimeButton = container.querySelector<HTMLButtonElement>('[aria-label="删除第 1 个时间点"]')
+    const deleteTimeButton = container.querySelector<HTMLButtonElement>('[aria-label="删除 08:30"]')
     expect(deleteTimeButton).not.toBeNull()
-    const firstTimeGroup = container.querySelector('[aria-label="第 1 个执行时间"]')
-    expect(firstTimeGroup?.textContent).toContain('时')
-    expect(findButton('新增定时')).toBeDefined()
-    expect(container.querySelector('[aria-label="定时执行"]')).not.toBeNull()
+    expect(findButton('新增时间')).toBeDefined()
+    expect(container.querySelector('[aria-label="启用定时执行"]')).not.toBeNull()
 
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     await act(async () => {
-      inputValueSetter?.call(firstHourInput, '9')
-      firstHourInput?.dispatchEvent(new Event('input', { bubbles: true }))
-      inputValueSetter?.call(firstMinuteInput, '15')
-      firstMinuteInput?.dispatchEvent(new Event('input', { bubbles: true }))
+      inputValueSetter?.call(firstTimeInput, '09:15')
+      firstTimeInput?.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await flush()
 
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('9')
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('15')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('09:15')
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       times: ['09:15', '12:45'],
@@ -586,9 +687,8 @@ describe('AutomationTasks layout surfaces', () => {
     await flush()
 
     expect(container.querySelector('[aria-label="已设置 1 个执行时间"]')).not.toBeNull()
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-0')?.value).toBe('12')
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-minute-0')?.value).toBe('45')
-    expect(container.querySelector('[aria-label^="删除第 "]')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-0')?.value).toBe('12:45')
+    expect(container.querySelector('[aria-label="删除 12:45"]')).toBeNull()
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       times: ['12:45'],

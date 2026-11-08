@@ -23,8 +23,8 @@
 | 页头、全局状态指示与工作区组合 | `pages/automation/AutomationTasks.tsx` | 只调用 `PageHeader`、`FloatingStatusIndicator` 与 `AutomationWorkspace` |
 | 配置订阅、Run 订阅、选中项、撤销、连接测试、跨域失效、任务编辑 | `components/AutomationWorkspace.tsx` | 页面级领域容器；仍调用所属领域 hook，不直接调用 API/存储/轮询 |
 | 流程列表、页脚与摘要组合 | `components/AutomationTaskFlowPanel.tsx` | 接收只读 Run 投影、排序投影与配置回调；页脚仍是任务挑选菜单的点击区域 |
-| 定时编辑 | `components/AutomationSchedulePanel.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
-| 通知配置读取与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；测试通知仍是显式命令 |
+| 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定 `model/automationSchedule.ts`；结果经 `onChange` 交给唯一配置 owner |
+| 通知配置读取、草稿与保存 | `components/NotificationSettings.tsx` + `model/queries.ts` | 独立卡片；读取 `notificationConfigQueryOptions()`；保存成功后 `setQueryData` 回写同一 key；脏态、总开关依赖与测试反馈在卡内持有 |
 | 最近执行摘要 | `components/AutomationExecutionSummary.tsx` | 只接只读摘要与 run 身份；负责保留最后一份、展开/收起与失败自动展开 |
 | 拖拽/键盘排序的 React 接线 | `hooks/useTaskFlowSorting.ts` | 预览、pointer 生命周期、Escape、公告；规则仍来自 `model/taskFlowSort.ts` |
 | 活动 DTO 校验 | `model/activity.ts` | 纯函数：校验 `/agent/activity` 的 status/来源时间/failure/completion，不推断活动状态 |
@@ -70,7 +70,8 @@ AutomationTasks（页头 + 全局指示）
    ├─ automation-task-editor（任务配置；同一草稿与执行投影）
    └─ automation-support-column
       ├─ DeviceMonitorPanel（共享实时会话）
-      └─ AutomationSchedulePanel（定时编辑 + NotificationSettings）
+      ├─ AutomationScheduleCard（定时编辑；关闭时保留时间摘要）
+      └─ NotificationSettings（独立通知卡；显式保存）
 ```
 
 | 状态 | 所有者 | Activity 隐藏/恢复 | 真正卸载/刷新 |
@@ -81,6 +82,7 @@ AutomationTasks（页头 + 全局指示）
 | 拖拽预览、当前拖拽索引、公告 | `useTaskFlowSorting` | 清理 document 监听并丢弃进行中的预览 | 重置 |
 | 摘要保留与详情展开 | `AutomationExecutionSummary` | 保留；恢复时按当前摘要调整 | 重置 |
 | 通知配置 | `automation/notification-config` Query | 观察者注销，恢复后按新鲜度重取 | 缓存按 `gcTime` 回收 |
+| 通知草稿、脏态与测试反馈 | `NotificationSettings` | 保留 | 重置 |
 | 菜单开关、外部点击、Escape 回焦 | `AutomationTaskPicker` | 保留；Effect 清理后恢复时重新注册 | 关闭 |
 
 - **配置写入仍然单通道。** 流程、定时和任务编辑都调用工作区的
@@ -127,24 +129,24 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 ### 4. 定时编辑
 
-`AutomationSchedulePanel` 直接调用 `model/automationSchedule.ts`，把结果作为
+`AutomationScheduleCard` 直接调用 `model/automationSchedule.ts`，把结果作为
 `{ enabled?, entries? }` 交给工作区的 `updateSchedule`；后者合并 `enabled`、
 规范化 entries 并写入唯一配置草稿。规则如下：
 
 | 操作 | 模型行为 | 面板失败路径 |
 | --- | --- | --- |
 | 新增时间点 | 从 12:00 起找第一个空闲整点；24 个整点占满返回 `null` | “没有可添加的执行时间” |
-| 时/分编辑 | 取整并按 24/60 循环 | 非有限数值保留原时间部分 |
-| 重复时间 | 返回 `duplicate` 且不修改 | “该执行时间已经存在” |
+| 时间编辑 | 单个 `HH:MM` 文本字段（数字掩码，失焦归一化）经 `setScheduleTimeEntry` 校验格式、重复与索引 | 非法值提示“请输入 00:00–23:59 的时间”并回退；重复提示“该执行时间已经存在” |
 | 删除/启用 | 返回新数组；未知索引不产生可见变化 | 无 |
-| 上限 | `MAX_SCHEDULE_ENTRIES = 6` 时隐藏“新增定时” | 无 |
+| 上限 | `MAX_SCHEDULE_ENTRIES = 6` 时“新增时间”禁用并提示数量上限 | 无 |
+| 关闭态 | 不渲染编辑行，改为“已暂停 + 时间摘要” | 无 |
 
-执行期间开关、增删、步进与启用项全部禁用；禁用事实来自只读 Run 投影，
-不是面板自己的运行状态。
+执行期间开关、时间字段、增删与启用项全部禁用；禁用事实来自只读 Run 投影，
+不是面板自己的运行状态。卡片自动保存，不提供保存按钮。
 
 执行时间按连接 profile 的客户端服务区时区注册 cron（国服与繁中为
 `Asia/Shanghai`，其它服使用各自时区），非国服触发的绝对时刻会与浏览器本地时间
-不同；面板说明同时标注“每日 04:00 刷新游戏日”。`/agent/schedules` 的请求与
+不同；卡片底部同时标注“游戏服务区时区 · 每日 04:00 刷新游戏日”。`/agent/schedules` 的请求与
 响应形状不变，时区只进入注册日志与诊断投影。
 
 执行前的关卡开放检查与总览、养成计划共用同一游戏日判定；资源收集全开放活动
@@ -166,7 +168,18 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 
 ### 6. 通知配置读取与保存
 
-`NotificationSettings` 使用 `notificationConfigQueryOptions()` 读取 `automation/notification-config`（`['automation','notification-config']`），沿用全局默认 `staleTime` 并显式 `retry: false`。保存仍调用既有的 `saveNotificationConfig` 命令；成功后把本次提交快照通过 `setQueryData` 写回同一 key，不再用模块级永久缓存或第二份服务端副本。保存请求不绑定页面 `AbortSignal`，页面隐藏或卸载不会取消已经发出的保存；迟到响应按请求序号裁决。测试通知是独立命令，只中止自己的测试请求。
+`NotificationSettings` 是 `automation-support-column` 中的独立卡片，使用 `notificationConfigQueryOptions()` 读取 `automation/notification-config`（`['automation','notification-config']`），沿用全局默认 `staleTime` 并显式 `retry: false`。保存仍调用既有的 `saveNotificationConfig` 命令；成功后把本次提交快照通过 `setQueryData` 写回同一 key，不再用模块级永久缓存或第二份服务端副本。保存请求不绑定页面 `AbortSignal`，页面隐藏或卸载不会取消已经发出的保存；迟到响应按请求序号裁决。测试通知是独立命令，只中止自己的测试请求。
+
+卡内状态：
+
+| 状态 | 行为 |
+| --- | --- |
+| 加载中 | 只显示“读取通知配置…”，不渲染空配置，避免开关先显示为关闭再跳变 |
+| 加载失败 | 卡内错误 + 重新加载；不渲染渠道与 footer |
+| 总开关关闭 | 渠道开关、输入与测试禁用，并显示“先启用通知”等原因 |
+| 总开关开、无可用渠道/凭据 | 显示“未启用渠道，不会发送”或“凭据不完整，不会发送” |
+| 脏态 | 编辑后“保存”才可用；成功后回到“已保存”并再次禁用；保存失败保留草稿与脏态 |
+| 测试与保存 | 两个独立命令，互不禁用；测试结果落在按钮下方，保存结果落在 footer 上方，互不覆盖 |
 
 ### 7. Activity 与兼容约束
 
@@ -176,7 +189,7 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
   pending 队列与 Run 身份仍由应用级所有者持有。
 - 配置 key、本地存储键、wire 形状、调度与执行端点均未变化；旧草稿与服务端
   配置可直接读取。
-- 流程列表、页脚与摘要沿用既有 DOM/CSS 类名；页头只保留标题与启用计数。
+- 流程列表、页脚与摘要沿用既有 DOM/CSS 类名；侧栏两张卡共用 `automation-side-card` 卡壳。
 - 取消拖拽仍由 Escape/`pointercancel` 覆盖；`lostpointercapture` 不取消拖拽，
   也不改变默认态视觉。
 
@@ -217,11 +230,11 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 | 旧格式 | `scheduleEntriesFromTimes` 把旧 `times` 转成全启用 entries；`activeScheduleTimes` 只导出启用项，禁用行只保留在本地 `maa-schedule.entries` |
 | 默认值 | `createDefaultScheduleEntries` 每次返回新的 `08:00/14:00/20:00` 行，避免草稿共享可变对象 |
 | 新增 | `findNextScheduleTime` 从 12:00 起逐小时扫描，返回第一个未被占用的整点；`appendScheduleEntry` 追加启用行，24 个整点都占用时返回 `null` |
-| 编辑 | `updateScheduleTimeEntry` 对数值取整，并按 24/60 循环时/分；与其它行重复返回 `duplicate` 且不修改草稿；索引缺失返回 `missing`；非有限数值保留原时间部分 |
-| 上限 | `MAX_SCHEDULE_ENTRIES = 6`，定时面板据此隐藏“新增定时”按钮，模型本身不裁剪已有行 |
-| 旧页面文案 | `没有可添加的执行时间` 与 `该执行时间已经存在` 仍由面板根据模型结果展示，模型不保存 UI 文案 |
+| 编辑 | `setScheduleTimeEntry` 校验 `HH:mm` 格式、重复与索引；非法返回 `invalid`，重复返回 `duplicate` 且不修改草稿，索引缺失返回 `missing` |
+| 上限 | `MAX_SCHEDULE_ENTRIES = 6`，达到上限时“新增时间”按钮禁用并提示，模型本身不裁剪已有行 |
+| 旧页面文案 | `没有可添加的执行时间`、`该执行时间已经存在` 与 `请输入 00:00–23:59 的时间` 由面板根据模型结果展示，模型不保存 UI 文案 |
 
-编辑结果交给 `AutomationSchedulePanel` 的 `onChange`，由工作区的 `updateSchedule` 合并 `enabled`/`entries` 并调用 `normalizeScheduleEntries` 后写入唯一配置草稿。
+编辑结果交给 `AutomationScheduleCard` 的 `onChange`，由工作区的 `updateSchedule` 合并 `enabled`/`entries` 并调用 `normalizeScheduleEntries` 后写入唯一配置草稿。
 
 ### 3. 任务流程命令规则
 
@@ -283,7 +296,8 @@ browser releases pointer capture”用例固定；DOM/CSS 未变化。性能复�
 | --- | --- | --- |
 | 页面组合、配置订阅、执行订阅、选中项、撤销、连接测试 | `pages/automation/AutomationTasks.tsx` + `components/AutomationWorkspace.tsx` | 目前页面只组合工作区；流程/定时/摘要分别在独立面板 |
 | 流程列表、拖拽排序、页脚与执行摘要 | `components/AutomationTaskFlowPanel.tsx` + `hooks/useTaskFlowSorting.ts` | 只接只读 Run 投影；排序预览与编辑器共享 |
-| 定时编辑与通知 | `components/AutomationSchedulePanel.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
+| 定时编辑 | `components/AutomationScheduleCard.tsx` | 绑定定时纯模型，经工作区唯一配置 owner 写入 |
+| 通知卡 | `components/NotificationSettings.tsx` | 独立卡片；Query、草稿、脏态与测试反馈归卡内 |
 | 关卡列表编辑、次数步进、置顶、增删行 | `components/AutomationStageEditor.tsx` | 受控面板：参数经 `onUpdate(index, 'stages', value)` 写回工作区 |
 | 智能养成加入/移除与在途标记 | `components/AutomationStageEditor.tsx` + `model/stageEditing.ts` | 读取 `training-queue`、调用 `generateTrainingPlan({ mode: 'current' })`；合成规则在纯模型 |
 | 任务挑选菜单 | `components/AutomationTaskPicker.tsx` | 菜单开关、外部 pointerdown、Escape 回焦与运行态收起都在面板内 |

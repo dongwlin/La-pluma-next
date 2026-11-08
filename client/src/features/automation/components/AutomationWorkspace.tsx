@@ -22,7 +22,8 @@ import InfrastScheduleField from './InfrastScheduleField'
 import OperProgressPlansEditor from './OperProgressPlansEditor'
 import ThemeListEditor from './ThemeListEditor'
 import AutomationTaskFlowPanel from './AutomationTaskFlowPanel'
-import AutomationSchedulePanel from './AutomationSchedulePanel'
+import AutomationScheduleCard from './AutomationScheduleCard'
+import NotificationSettings from './NotificationSettings'
 import {
   AutomationCheckboxField,
   AutomationFieldLabel,
@@ -1113,13 +1114,15 @@ export default function AutomationWorkspace() {
             />
           </div>
 
-          <AutomationSchedulePanel
+          <AutomationScheduleCard
             enabled={scheduleEnabled}
             entries={scheduleEntries}
             disabled={isRunning}
             onChange={updateSchedule}
             onError={showError}
           />
+
+          <NotificationSettings />
         </div>
       </div>
     </>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell, Save, Send } from 'lucide-react'
 import type { ApiResponse } from '@/shared/api'
-import { Switch } from '@/shared/ui'
+import { Button, SmoothPanel, Switch } from '@/shared/ui'
 import { saveNotificationConfig, testNotificationChannel } from '../api'
 import {
   cloneNotificationConfig,
@@ -17,13 +17,20 @@ const getResponseMessage = (data: Partial<ApiResponse>, fallback: string) =>
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback
 
+interface Notice {
+  type: 'success' | 'error'
+  text: string
+}
+
 export default function NotificationSettings() {
   const queryClient = useQueryClient()
   const configQuery = useQuery(notificationConfigQueryOptions())
   const [config, setConfig] = useState<NotificationConfig>(() => cloneNotificationConfig())
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const [testNotice, setTestNotice] = useState<Notice | null>(null)
+  const [saveNotice, setSaveNotice] = useState<Notice | null>(null)
   const mountedRef = useRef(false)
   const activationRevisionRef = useRef(0)
   const draftRevisionRef = useRef(0)
@@ -44,27 +51,30 @@ export default function NotificationSettings() {
     return () => {
       if (activationRevisionRef.current === activationRevision) activationRevisionRef.current += 1
       mountedRef.current = false
-      // 仅中止可丢弃的“测试通知”；保存必须完成落盘并写回 Query 缓存。
       testAbortRef.current?.abort()
     }
   }, [])
 
-  // 服务端快照到达或重读成功时采用它；有未保存编辑时保留本地草稿。
   useEffect(() => {
     if (!configQuery.data) return
     if (draftRevisionRef.current !== committedRevisionRef.current) return
     setConfig(cloneNotificationConfig(configQuery.data))
+    setDirty(false)
   }, [configQuery.data])
 
   const refetchConfig = configQuery.refetch
   const loadConfig = useCallback(async (force = false) => {
-    if (force) setNotice(null)
+    if (force) {
+      setSaveNotice(null)
+      setTestNotice(null)
+    }
     await refetchConfig()
   }, [refetchConfig])
 
   const updateConfig = (updater: (current: NotificationConfig) => NotificationConfig) => {
     draftRevisionRef.current += 1
-    setNotice(null)
+    setSaveNotice(null)
+    setDirty(true)
     setConfig(updater)
   }
 
@@ -86,24 +96,25 @@ export default function NotificationSettings() {
     const revisionSnapshot = draftRevisionRef.current
     const requestId = ++saveRequestIdRef.current
     setSaving(true)
-    setNotice(null)
+    setSaveNotice(null)
 
     try {
-      // 不绑定 AbortSignal：页面隐藏或卸载不能取消保存，否则服务端可能已落盘
-      // 而本地缓存仍是旧值。用请求序号裁决迟到响应。
       const data = await saveNotificationConfig(configSnapshot)
       if (saveRequestIdRef.current !== requestId) return
 
       if (data.success) {
         queryClient.setQueryData(notificationConfigQueryOptions().queryKey, configSnapshot)
-        committedRevisionRef.current = revisionSnapshot
-        if (mountedRef.current) setNotice({ type: 'success', text: data.message || '通知配置已保存' })
+        if (revisionSnapshot === draftRevisionRef.current) {
+          committedRevisionRef.current = revisionSnapshot
+          setDirty(false)
+        }
+        if (mountedRef.current) setSaveNotice({ type: 'success', text: data.message || '通知配置已保存' })
       } else if (mountedRef.current) {
-        setNotice({ type: 'error', text: getResponseMessage(data, '通知配置保存失败') })
+        setSaveNotice({ type: 'error', text: getResponseMessage(data, '通知配置保存失败') })
       }
     } catch (error) {
       if (saveRequestIdRef.current === requestId && mountedRef.current) {
-        setNotice({ type: 'error', text: getErrorMessage(error, '通知配置保存失败') })
+        setSaveNotice({ type: 'error', text: getErrorMessage(error, '通知配置保存失败') })
       }
     } finally {
       if (saveRequestIdRef.current === requestId && mountedRef.current) setSaving(false)
@@ -116,18 +127,18 @@ export default function NotificationSettings() {
     testAbortRef.current?.abort()
     testAbortRef.current = controller
     setTesting(true)
-    setNotice(null)
+    setTestNotice(null)
 
     try {
       const data = await testNotificationChannel('telegram', telegramSnapshot, controller.signal)
       if (controller.signal.aborted || !mountedRef.current || testAbortRef.current !== controller) return
 
-      setNotice(data.success
+      setTestNotice(data.success
         ? { type: 'success', text: data.message || '测试通知已发送' }
         : { type: 'error', text: getResponseMessage(data, '测试通知失败') })
     } catch (error) {
       if (controller.signal.aborted || !mountedRef.current || testAbortRef.current !== controller) return
-      setNotice({ type: 'error', text: getErrorMessage(error, '测试通知失败') })
+      setTestNotice({ type: 'error', text: getErrorMessage(error, '测试通知失败') })
     } finally {
       if (testAbortRef.current === controller) {
         testAbortRef.current = null
@@ -137,93 +148,159 @@ export default function NotificationSettings() {
   }
 
   const telegram = config.channels.telegram
-  const canTest = telegram.enabled && Boolean(telegram.botToken && telegram.chatId)
+  const canSend = telegram.enabled && Boolean(telegram.botToken && telegram.chatId)
+  const canTest = config.enabled && canSend
+  const testBlockedReason = !config.enabled
+    ? '先启用通知'
+    : !telegram.enabled
+      ? '先启用 Telegram'
+      : !canSend
+        ? '填写 Bot Token 与 Chat ID 后可测试'
+        : null
 
   return (
-    <section className="automation-notification-panel">
-      <div className="automation-notification-heading">
-        <div>
-          <h4><Bell size={16} strokeWidth={1.8} aria-hidden="true" /><span>通知</span></h4>
-          <p>任务完成后发送结果</p>
+    <SmoothPanel className="automation-side-card">
+      <div className="automation-side-card-heading">
+        <div className="automation-side-card-heading-text">
+          <h3><Bell size={16} strokeWidth={1.8} aria-hidden="true" /><span>通知</span></h3>
+          <p>任务流程结束后发送结果</p>
         </div>
-        <Switch
-          checked={config.enabled}
-          onChange={(enabled) => updateConfig(current => ({ ...current, enabled }))}
-          disabled={loading || saving || Boolean(loadError)}
-          label="任务通知"
-          className="automation-section-switch"
-        />
-      </div>
-
-      {loadError && (
-        <div className="automation-notification-notice is-error flex min-h-11 flex-wrap items-center justify-between gap-2" role="alert">
-          <span>{loadError}</span>
-          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--app-accent)" onClick={() => void loadConfig(true)} disabled={loading || configQuery.isFetching}>
-            重新加载
-          </button>
-        </div>
-      )}
-
-      {notice && !loadError && (
-        <div className={`automation-notification-notice is-${notice.type}`} role={notice.type === 'error' ? 'alert' : 'status'}>{notice.text}</div>
-      )}
-
-      <div className="automation-notification-channel">
-        <div className="automation-notification-channel-heading">
-          <div>
-            <strong>Telegram</strong>
-            <small>机器人通知</small>
-          </div>
+        <div className="automation-side-card-heading-actions">
           <Switch
-            checked={telegram.enabled}
-            onChange={(enabled) => updateTelegram({ enabled })}
+            checked={config.enabled}
+            onChange={(enabled) => updateConfig(current => ({ ...current, enabled }))}
             disabled={loading || saving || Boolean(loadError)}
-            label="Telegram 通知"
-            className="automation-section-switch"
+            label="启用通知"
+            className="automation-card-switch"
           />
         </div>
-
-        {telegram.enabled && (
-          <div className="automation-notification-details">
-            <label className="automation-notification-field">
-              <span>Bot Token</span>
-              <input
-                type="text"
-                value={telegram.botToken}
-                onChange={(event) => updateTelegram({ botToken: event.target.value })}
-                placeholder="Telegram Bot Token"
-                disabled={loading || saving || Boolean(loadError)}
-                autoComplete="off"
-                className="app-native-control"
-              />
-            </label>
-
-            <label className="automation-notification-field">
-              <span>Chat ID</span>
-              <input
-                type="text"
-                value={telegram.chatId}
-                onChange={(event) => updateTelegram({ chatId: event.target.value })}
-                placeholder="Telegram Chat ID"
-                disabled={loading || saving || Boolean(loadError)}
-                autoComplete="off"
-                className="app-native-control"
-              />
-            </label>
-          </div>
-        )}
-
-        <div className="automation-notification-buttons">
-          <button type="button" onClick={testNotification} disabled={loading || saving || testing || Boolean(loadError) || !canTest} className="app-native-button">
-            <Send size={14} />
-            <span>{loading ? '加载中' : testing ? '发送中' : '测试'}</span>
-          </button>
-          <button type="button" onClick={saveConfig} disabled={loading || saving || testing || Boolean(loadError)} className="app-native-button app-native-button-primary is-primary">
-            <Save size={14} />
-            <span>{loading ? '加载中' : saving ? '保存中' : '保存'}</span>
-          </button>
-        </div>
       </div>
-    </section>
+
+      {loading ? (
+        <div className="automation-notification-loading" role="status">读取通知配置…</div>
+      ) : loadError ? (
+        <div className="automation-notification-notice is-error flex flex-wrap items-center justify-between gap-2" role="alert">
+          <span>{loadError}</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void loadConfig(true)}
+            disabled={loading || configQuery.isFetching}
+          >
+            重新加载
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className={`automation-notification-channel${config.enabled ? '' : ' is-parent-disabled'}`}>
+            <div className="automation-notification-channel-heading">
+              <div>
+                <strong>Telegram</strong>
+                <small>通过 Bot 发送到指定会话</small>
+              </div>
+              <Switch
+                checked={telegram.enabled}
+                onChange={(enabled) => updateTelegram({ enabled })}
+                disabled={!config.enabled || saving}
+                label="启用 Telegram"
+                className="automation-card-switch"
+              />
+            </div>
+
+            {telegram.enabled && (
+              <div className="automation-notification-details">
+                <label className="automation-notification-field">
+                  <span>Bot Token</span>
+                  <input
+                    type="text"
+                    value={telegram.botToken}
+                    onChange={(event) => updateTelegram({ botToken: event.target.value })}
+                    placeholder="Telegram Bot Token"
+                    disabled={!config.enabled || saving}
+                    autoComplete="off"
+                    className="app-native-control"
+                  />
+                </label>
+
+                <label className="automation-notification-field">
+                  <span>Chat ID</span>
+                  <input
+                    type="text"
+                    value={telegram.chatId}
+                    onChange={(event) => updateTelegram({ chatId: event.target.value })}
+                    placeholder="Telegram Chat ID"
+                    disabled={!config.enabled || saving}
+                    autoComplete="off"
+                    className="app-native-control"
+                  />
+                </label>
+              </div>
+            )}
+
+            {config.enabled && !canSend && (
+              <p className="automation-notification-hint" role="status">
+                {telegram.enabled ? '凭据不完整，不会发送' : '未启用渠道，不会发送'}
+              </p>
+            )}
+
+            <div className="automation-notification-actions">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Send size={14} />}
+                loading={testing}
+                loadingText="发送中"
+                onClick={() => void testNotification()}
+                disabled={loading || Boolean(loadError) || testing || !canTest}
+              >
+                发送测试消息
+              </Button>
+              {config.enabled && testBlockedReason && (
+                <small className="automation-notification-hint">{testBlockedReason}</small>
+              )}
+            </div>
+
+            {testNotice && (
+              <div
+                className={`automation-notification-notice is-${testNotice.type}`}
+                role={testNotice.type === 'error' ? 'alert' : 'status'}
+              >
+                {testNotice.text}
+              </div>
+            )}
+          </div>
+
+          {!config.enabled && (
+            <small className="automation-notification-hint">{testBlockedReason}</small>
+          )}
+
+          {saveNotice && (
+            <div
+              className={`automation-notification-notice is-${saveNotice.type}`}
+              role={saveNotice.type === 'error' ? 'alert' : 'status'}
+            >
+              {saveNotice.text}
+            </div>
+          )}
+
+          <div className="automation-side-card-footer">
+            <span className="automation-notification-status">
+              {saving ? '保存中…' : dirty ? '有未保存的更改' : '已保存'}
+            </span>
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<Save size={14} />}
+              loading={saving}
+              loadingText="保存中"
+              onClick={() => void saveConfig()}
+              disabled={!dirty || loading || saving}
+            >
+              保存
+            </Button>
+          </div>
+        </>
+      )}
+    </SmoothPanel>
   )
 }

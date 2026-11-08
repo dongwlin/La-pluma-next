@@ -192,29 +192,43 @@ function AutomationEditorSkeleton() {
 
 function AutomationScheduleSkeleton() {
   return (
-    <SmoothPanel className="automation-schedule-panel automation-schedule-skeleton" aria-hidden="true">
-      <PanelHeadingSkeleton className="automation-schedule-heading" />
-      <div className="automation-schedule-empty">
-        <Skeleton variant="text" className="h-4 w-28" />
-        <Skeleton variant="text" className="h-2.5 w-44 max-w-full" />
+    <SmoothPanel className="automation-side-card automation-schedule-skeleton" aria-hidden="true">
+      <PanelHeadingSkeleton className="automation-side-card-heading" />
+      <div className="automation-schedule-body">
+        {[0, 1].map(item => (
+          <div key={item} className="automation-schedule-time-row">
+            <Skeleton variant="rect" className="h-9 w-24 rounded-md" />
+            <Skeleton variant="rect" className="ml-auto h-7 w-12 rounded-full" />
+            <Skeleton variant="circle" className="h-11 w-11" />
+          </div>
+        ))}
+        <Skeleton variant="rect" className="h-10 w-full rounded-md" />
       </div>
-      <div className="automation-notification-panel">
-        <div className="automation-notification-heading">
+      <div className="automation-schedule-timezone">
+        <Skeleton variant="text" className="h-2.5 w-48 max-w-full" />
+      </div>
+    </SmoothPanel>
+  )
+}
+
+function AutomationNotificationSkeleton() {
+  return (
+    <SmoothPanel className="automation-side-card" aria-hidden="true">
+      <PanelHeadingSkeleton className="automation-side-card-heading" />
+      <div className="automation-notification-channel">
+        <div className="automation-notification-channel-heading">
           <div className="space-y-2">
-            <Skeleton variant="text" className="h-3.5 w-20" />
-            <Skeleton variant="text" className="h-2.5 w-32" />
+            <Skeleton variant="text" className="h-3.5 w-24" />
+            <Skeleton variant="text" className="h-2.5 w-36" />
           </div>
           <Skeleton variant="rect" className="h-7 w-12 rounded-full" />
         </div>
-        <div className="automation-notification-channel">
-          <div className="automation-notification-channel-heading">
-            <div className="space-y-2">
-              <Skeleton variant="text" className="h-3.5 w-24" />
-              <Skeleton variant="text" className="h-2.5 w-36" />
-            </div>
-            <Skeleton variant="rect" className="h-7 w-12 rounded-full" />
-          </div>
-        </div>
+        <Skeleton variant="rect" className="h-9 w-full rounded-md" />
+        <Skeleton variant="rect" className="h-9 w-full rounded-md" />
+      </div>
+      <div className="automation-side-card-footer">
+        <Skeleton variant="text" className="h-2.5 w-20" />
+        <Skeleton variant="rect" className="h-8 w-20 rounded-md" />
       </div>
     </SmoothPanel>
   )
@@ -227,7 +241,8 @@ function AutomationSkeleton() {
       <div className="automation-editor-column"><AutomationEditorSkeleton /></div>
       <div className="automation-support-column">
         <div className="automation-monitor-column"><MonitorSkeleton variant="automation" /></div>
-        <div className="automation-schedule-column"><AutomationScheduleSkeleton /></div>
+        <AutomationScheduleSkeleton />
+        <AutomationNotificationSkeleton />
       </div>
     </div>
   )
