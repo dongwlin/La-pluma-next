@@ -45,6 +45,21 @@ const loadedConfig: NotificationConfigFixture = {
   },
 }
 
+const configWith = (
+  enabled: boolean,
+  telegram: Partial<NotificationConfigFixture['channels']['telegram']>,
+): NotificationConfigFixture => ({
+  enabled,
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: 'server-token',
+      chatId: 'server-chat',
+      ...telegram,
+    },
+  },
+})
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void
   const promise = new Promise<T>(resolvePromise => {
@@ -90,6 +105,13 @@ const setInputValue = async (input: HTMLInputElement, value: string) => {
 const buttonByText = (text: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
   .find(button => button.textContent?.trim() === text)
 
+const tokenInput = () => container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')
+const testButton = () => buttonByText('发送测试消息')
+const saveButton = () => buttonByText('保存')
+
+const statusTexts = () => Array.from(container.querySelectorAll<HTMLElement>('[role="status"]'))
+  .map(node => node.textContent)
+
 describe('NotificationSettings Query lifecycle', () => {
   beforeEach(() => {
     mocks.getNotificationConfig.mockReset().mockResolvedValue({ success: true, data: loadedConfig })
@@ -116,25 +138,25 @@ describe('NotificationSettings Query lifecycle', () => {
     await renderMode('visible')
     expect(mocks.getNotificationConfig).toHaveBeenCalledOnce()
 
-    expect(container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')?.value).toBe('server-token')
+    expect(tokenInput()?.value).toBe('server-token')
   })
 
   it('does not replace an unsaved draft when Activity restores the loading effect', async () => {
     await renderMode('visible')
-    const tokenInput = container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')
-    expect(tokenInput?.value).toBe('server-token')
+    expect(tokenInput()?.value).toBe('server-token')
 
-    await setInputValue(tokenInput!, 'draft-token')
-    expect(tokenInput?.value).toBe('draft-token')
+    await setInputValue(tokenInput()!, 'draft-token')
+    expect(tokenInput()?.value).toBe('draft-token')
 
     await renderMode('hidden')
     await renderMode('visible')
 
     expect(mocks.getNotificationConfig).toHaveBeenCalledOnce()
-    expect(container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')?.value).toBe('draft-token')
+    expect(tokenInput()?.value).toBe('draft-token')
+    expect(saveButton()?.disabled).toBe(false)
   })
 
-  it('shows a retryable load error and blocks saving an empty fallback config', async () => {
+  it('shows a retryable load error without rendering an empty config form', async () => {
     mocks.getNotificationConfig
       .mockResolvedValueOnce({ success: false, message: '通知配置暂不可用' })
       .mockResolvedValueOnce({ success: true, data: loadedConfig })
@@ -143,7 +165,8 @@ describe('NotificationSettings Query lifecycle', () => {
 
     const alert = container.querySelector<HTMLElement>('[role="alert"]')
     expect(alert?.textContent).toContain('通知配置暂不可用')
-    expect(buttonByText('保存')?.disabled).toBe(true)
+    expect(tokenInput()).toBeNull()
+    expect(saveButton()).toBeUndefined()
     const retryButton = buttonByText('重新加载')
     expect(retryButton).toBeDefined()
 
@@ -152,8 +175,78 @@ describe('NotificationSettings Query lifecycle', () => {
 
     expect(mocks.getNotificationConfig).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
-    expect(container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')?.value).toBe('server-token')
-    expect(buttonByText('保存')?.disabled).toBe(false)
+    expect(tokenInput()?.value).toBe('server-token')
+    expect(saveButton()?.disabled).toBe(true)
+
+    await setInputValue(tokenInput()!, 'draft-token')
+    expect(saveButton()?.disabled).toBe(false)
+  })
+
+  it('disables saving until the draft changes and disables it again after a successful save', async () => {
+    mocks.saveNotificationConfig.mockResolvedValue({ success: true, message: '保存完成' })
+
+    await renderMode('visible')
+    expect(saveButton()?.disabled).toBe(true)
+    expect(container.textContent).toContain('已保存')
+
+    await setInputValue(tokenInput()!, 'draft-token')
+    expect(saveButton()?.disabled).toBe(false)
+    expect(container.textContent).toContain('有未保存的更改')
+
+    await act(async () => saveButton()?.click())
+    await flush()
+
+    expect(mocks.saveNotificationConfig).toHaveBeenCalledOnce()
+    expect(saveButton()?.disabled).toBe(true)
+    expect(container.textContent).toContain('保存完成')
+    expect(container.textContent).not.toContain('有未保存的更改')
+  })
+
+  it('disables the Telegram channel and test button when notifications are off', async () => {
+    mocks.getNotificationConfig.mockResolvedValue({
+      success: true,
+      data: configWith(false, {}),
+    })
+
+    await renderMode('visible')
+
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="启用通知"]')?.checked).toBe(false)
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="启用 Telegram"]')?.disabled).toBe(true)
+    expect(tokenInput()?.disabled).toBe(true)
+    expect(testButton()?.disabled).toBe(true)
+    expect(container.textContent).toContain('先启用通知')
+  })
+
+  it('disables testing and explains why when credentials are incomplete', async () => {
+    mocks.getNotificationConfig.mockResolvedValue({
+      success: true,
+      data: configWith(true, { botToken: '', chatId: '' }),
+    })
+
+    await renderMode('visible')
+
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="启用 Telegram"]')?.disabled).toBe(false)
+    expect(testButton()?.disabled).toBe(true)
+    expect(container.textContent).toContain('填写 Bot Token 与 Chat ID 后可测试')
+    expect(container.textContent).toContain('凭据不完整，不会发送')
+  })
+
+  it('keeps test and save feedback in separate notices', async () => {
+    mocks.testNotificationChannel.mockResolvedValue({ success: true, message: '测试消息已送达' })
+
+    await renderMode('visible')
+    await act(async () => testButton()?.click())
+    await flush()
+    expect(statusTexts()).toEqual(['测试消息已送达'])
+
+    await setInputValue(tokenInput()!, 'draft-token')
+    expect(container.textContent).toContain('测试消息已送达')
+    expect(container.textContent).not.toContain('通知配置已保存')
+
+    await act(async () => saveButton()?.click())
+    await flush()
+
+    expect(statusTexts()).toEqual(['测试消息已送达', '通知配置已保存'])
   })
 
   it('finishes a pending save after Activity cleanup and writes the Query cache', async () => {
@@ -161,7 +254,8 @@ describe('NotificationSettings Query lifecycle', () => {
     mocks.saveNotificationConfig.mockReturnValue(saveRequest.promise)
 
     await renderMode('visible')
-    await act(async () => buttonByText('保存')?.click())
+    await setInputValue(tokenInput()!, 'draft-token')
+    await act(async () => saveButton()?.click())
     expect(mocks.saveNotificationConfig).toHaveBeenCalledOnce()
     expect(mocks.saveNotificationConfig.mock.calls[0]?.[1]).toBeUndefined()
 
@@ -169,12 +263,21 @@ describe('NotificationSettings Query lifecycle', () => {
     await act(async () => saveRequest.resolve({ success: true, message: '已保存' }))
     await flush()
 
-    expect(queryClient.getQueryData(['automation', 'notification-config'])).toEqual(loadedConfig)
+    expect(queryClient.getQueryData(['automation', 'notification-config'])).toEqual({
+      enabled: true,
+      channels: {
+        telegram: {
+          enabled: true,
+          botToken: 'draft-token',
+          chatId: 'server-chat',
+        },
+      },
+    })
   })
 
   it('reuses cached notification config after a real remount', async () => {
     await renderMode('visible')
-    expect(container.querySelector<HTMLInputElement>('input[placeholder="Telegram Bot Token"]')?.value).toBe('server-token')
+    expect(tokenInput()?.value).toBe('server-token')
 
     await act(async () => root.unmount())
     root = createRoot(container)
@@ -188,7 +291,7 @@ describe('NotificationSettings Query lifecycle', () => {
     mocks.testNotificationChannel.mockReturnValue(testRequest.promise)
 
     await renderMode('visible')
-    await act(async () => buttonByText('测试')?.click())
+    await act(async () => testButton()?.click())
     const testCall = mocks.testNotificationChannel.mock.calls[0]
     const testSignal = testCall?.[2] as AbortSignal | undefined
     expect(testSignal?.aborted).toBe(false)
@@ -197,6 +300,46 @@ describe('NotificationSettings Query lifecycle', () => {
     expect(testSignal?.aborted).toBe(true)
 
     await act(async () => testRequest.resolve({ success: true, message: '已发送' }))
+    await flush()
+  })
+
+  it('renders only the loading state while the notification config is pending', async () => {
+    mocks.getNotificationConfig.mockReturnValue(new Promise(() => {}))
+
+    await renderMode('visible')
+
+    expect(container.textContent).toContain('读取通知配置…')
+    expect(tokenInput()).toBeNull()
+    expect(saveButton()).toBeUndefined()
+    expect(container.querySelector('.automation-side-card-footer')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="启用通知"]')?.disabled).toBe(true)
+  })
+
+  it('keeps saving available while a notification test is pending', async () => {
+    const testRequest = deferred<{ success: boolean; message: string }>()
+    mocks.testNotificationChannel.mockReturnValue(testRequest.promise)
+
+    await renderMode('visible')
+    await setInputValue(tokenInput()!, 'draft-token')
+    await act(async () => testButton()?.click())
+
+    expect(saveButton()?.disabled).toBe(false)
+
+    await act(async () => testRequest.resolve({ success: true, message: '已发送' }))
+    await flush()
+  })
+
+  it('keeps testing available while a save is pending', async () => {
+    const saveRequest = deferred<{ success: boolean; message: string }>()
+    mocks.saveNotificationConfig.mockReturnValue(saveRequest.promise)
+
+    await renderMode('visible')
+    await setInputValue(tokenInput()!, 'draft-token')
+    await act(async () => saveButton()?.click())
+
+    expect(testButton()?.disabled).toBe(false)
+
+    await act(async () => saveRequest.resolve({ success: true, message: '已保存' }))
     await flush()
   })
 })

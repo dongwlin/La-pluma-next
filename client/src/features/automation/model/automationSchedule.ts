@@ -3,13 +3,11 @@ export interface ScheduleTimeEntry {
   enabled: boolean
 }
 
-export type ScheduleTimePart = 'hour' | 'minute'
-
 export type ScheduleTimeUpdate =
   | { ok: true; entries: ScheduleTimeEntry[] }
-  | { ok: false; reason: 'missing' | 'duplicate' }
+  | { ok: false; reason: 'missing' | 'duplicate' | 'invalid' }
 
-/** 界面上的“新增定时”上限，与迁移前页面的按钮条件一致。 */
+/** 界面上的“新增时间”上限，与迁移前页面的按钮条件一致。 */
 export const MAX_SCHEDULE_ENTRIES = 6
 
 const DEFAULT_SCHEDULE_TIMES = ['08:00', '14:00', '20:00'] as const
@@ -99,41 +97,23 @@ export function setScheduleEntryEnabled(
   ))
 }
 
-const wrapTimePart = (value: number, modulo: number, fallback: number) => (
-  Number.isFinite(value)
-    ? ((Math.trunc(value) % modulo) + modulo) % modulo
-    : fallback
-)
-
-/**
- * 修改一行的时或分。
- *
- * - 数值按 24/60 循环（减到 0 以下回到上限，超过上限回到 0）；
- * - 与其它行时间相同时返回 `duplicate`，不改动任何条目；
- * - 索引不存在返回 `missing`，非有限数值保留原时间部分。
- */
-export function updateScheduleTimeEntry(
+/** 设置一行的时间；索引越界、格式非法或与其它行重复时返回失败原因。 */
+export function setScheduleTimeEntry(
   entries: readonly ScheduleTimeEntry[],
   index: number,
-  part: ScheduleTimePart,
-  rawValue: number,
+  time: string,
 ): ScheduleTimeUpdate {
-  const currentEntry = entries[index]
-  if (!currentEntry) return { ok: false, reason: 'missing' }
+  if (!entries[index]) return { ok: false, reason: 'missing' }
+  if (!scheduleTimePattern.test(time)) return { ok: false, reason: 'invalid' }
 
-  const parsed = parseScheduleTime(currentEntry.time)
-  const nextHour = wrapTimePart(part === 'hour' ? rawValue : parsed.hour, 24, parsed.hour)
-  const nextMinute = wrapTimePart(part === 'minute' ? rawValue : parsed.minute, 60, parsed.minute)
-  const nextTime = formatScheduleTime(nextHour, nextMinute)
-
-  if (entries.some((entry, itemIndex) => itemIndex !== index && entry.time === nextTime)) {
+  if (entries.some((entry, itemIndex) => itemIndex !== index && entry.time === time)) {
     return { ok: false, reason: 'duplicate' }
   }
 
   return {
     ok: true,
     entries: entries.map((entry, itemIndex) => (
-      itemIndex === index ? { ...entry, time: nextTime } : entry
+      itemIndex === index ? { ...entry, time } : entry
     )),
   }
 }

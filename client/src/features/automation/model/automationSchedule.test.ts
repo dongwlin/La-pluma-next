@@ -12,7 +12,7 @@ import {
   removeScheduleEntry,
   scheduleEntriesFromTimes,
   setScheduleEntryEnabled,
-  updateScheduleTimeEntry,
+  setScheduleTimeEntry,
 } from './automationSchedule'
 
 describe('automation schedule time parsing', () => {
@@ -122,20 +122,19 @@ describe('automation schedule time editing', () => {
     { time: '08:30', enabled: true },
     { time: '12:45', enabled: false },
   ]
-  const editedTime = (result: ReturnType<typeof updateScheduleTimeEntry>, index = 0) => (
-    result.ok ? result.entries[index]?.time : null
-  )
 
-  it('wraps hours and minutes around their bounds', () => {
-    expect(editedTime(updateScheduleTimeEntry(entries, 0, 'hour', 9))).toBe('09:30')
-    expect(editedTime(updateScheduleTimeEntry(entries, 0, 'hour', 24))).toBe('00:30')
-    expect(editedTime(updateScheduleTimeEntry(entries, 0, 'hour', -1))).toBe('23:30')
-    expect(editedTime(updateScheduleTimeEntry(entries, 0, 'minute', 60))).toBe('08:00')
-    expect(editedTime(updateScheduleTimeEntry(entries, 0, 'minute', -5))).toBe('08:55')
-    expect(updateScheduleTimeEntry(entries, 0, 'hour', 9)).toEqual({
+  it('sets a valid time on a single row without mutating the input', () => {
+    expect(setScheduleTimeEntry(entries, 0, '09:15')).toEqual({
       ok: true,
-      entries: [{ time: '09:30', enabled: true }, { time: '12:45', enabled: false }],
+      entries: [{ time: '09:15', enabled: true }, { time: '12:45', enabled: false }],
     })
+    expect(entries[0]).toEqual({ time: '08:30', enabled: true })
+  })
+
+  it('rejects times outside the HH:mm pattern', () => {
+    expect(setScheduleTimeEntry(entries, 0, '9:15')).toEqual({ ok: false, reason: 'invalid' })
+    expect(setScheduleTimeEntry(entries, 0, '24:00')).toEqual({ ok: false, reason: 'invalid' })
+    expect(setScheduleTimeEntry(entries, 0, '')).toEqual({ ok: false, reason: 'invalid' })
   })
 
   it('rejects a duplicate time without changing any row', () => {
@@ -143,7 +142,7 @@ describe('automation schedule time editing', () => {
       { time: '08:30', enabled: true },
       { time: '12:30', enabled: false },
     ]
-    const duplicate = updateScheduleTimeEntry(duplicateEntries, 1, 'hour', 8)
+    const duplicate = setScheduleTimeEntry(duplicateEntries, 1, '08:30')
 
     expect(duplicate).toEqual({ ok: false, reason: 'duplicate' })
     expect(duplicateEntries).toEqual([
@@ -152,12 +151,9 @@ describe('automation schedule time editing', () => {
     ])
   })
 
-  it('reports a missing row and falls back to the current part for non-finite input', () => {
-    expect(updateScheduleTimeEntry(entries, 5, 'hour', 9)).toEqual({ ok: false, reason: 'missing' })
-    expect(updateScheduleTimeEntry(entries, 0, 'hour', Number.NaN)).toEqual({
-      ok: true,
-      entries: [{ time: '08:30', enabled: true }, { time: '12:45', enabled: false }],
-    })
+  it('reports an out-of-bounds row', () => {
+    expect(setScheduleTimeEntry(entries, 5, '09:15')).toEqual({ ok: false, reason: 'missing' })
+    expect(setScheduleTimeEntry(entries, -1, '09:15')).toEqual({ ok: false, reason: 'missing' })
   })
 })
 

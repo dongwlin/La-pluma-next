@@ -13,10 +13,10 @@ test('配置已保存而定时注册失败时，跨页保留草稿并只在显�
   state.runState = 'succeeded'
   await installIntegrationScenario(page, state)
   await gotoScenario(page, 'automation')
-  await expect(page.getByRole('button', { name: '新增定时', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '新增时间', exact: true })).toBeEnabled()
 
   state.scheduleFailuresRemaining = 1
-  await page.getByRole('button', { name: '新增定时', exact: true }).click()
+  await page.getByRole('button', { name: '新增时间', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('定时注册暂未确认，请重试')
   expect(state.automationSaveCalls).toHaveLength(1)
   expect(state.scheduleCalls).toHaveLength(1)

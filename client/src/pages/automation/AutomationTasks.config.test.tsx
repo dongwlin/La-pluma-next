@@ -165,7 +165,7 @@ const click = async (element: HTMLElement) => {
   await settle()
 }
 
-const scheduleSwitch = () => container.querySelector<HTMLInputElement>('[aria-label="定时执行"]')!
+const scheduleSwitch = () => container.querySelector<HTMLInputElement>('[aria-label="启用定时执行"]')!
 const pendingDraft = () => localStorage.getItem('automationConfigSyncPending')
 
 const renderAutomation = async () => {
@@ -350,7 +350,7 @@ describe('AutomationTasks config persistence', () => {
     })
 
     await renderAutomation()
-    const entrySwitch = container.querySelector<HTMLInputElement>('[aria-label="第 1 个执行时间开启"]')!
+    const entrySwitch = container.querySelector<HTMLInputElement>('[aria-label="08:00 启用"]')!
     await click(entrySwitch)
     mocks.setupSchedule.mockClear()
     await click(entrySwitch)
@@ -385,17 +385,17 @@ describe('AutomationTasks config persistence', () => {
 
     await renderAutomation()
     expect(mocks.loadUserConfig).not.toHaveBeenCalled()
-    const hourInput = container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')
-    expect(hourInput?.value).toBe('14')
+    const timeInput = container.querySelector<HTMLInputElement>('#automation-schedule-time-1')
+    expect(timeInput?.value).toBe('14:00')
 
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     await act(async () => {
-      inputValueSetter?.call(hourInput, '15')
-      hourInput?.dispatchEvent(new Event('input', { bubbles: true }))
+      inputValueSetter?.call(timeInput, '15:00')
+      timeInput?.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await settleDebouncedDraft()
 
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('15')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-1')?.value).toBe('15:00')
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       entries: [
@@ -422,11 +422,11 @@ describe('AutomationTasks config persistence', () => {
     await renderAutomation()
     expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
 
-    await click(container.querySelector<HTMLButtonElement>('[aria-label="删除第 2 个时间点"]')!)
+    await click(container.querySelector<HTMLButtonElement>('[aria-label="删除 14:00"]')!)
     await settle()
 
     expect(container.querySelector('[aria-label="已设置 1 个执行时间"]')).not.toBeNull()
-    expect(container.querySelector('#automation-schedule-hour-1')).toBeNull()
+    expect(container.querySelector('#automation-schedule-time-1')).toBeNull()
     expect(JSON.parse(localStorage.getItem('maa-schedule') || '{}')).toMatchObject({
       enabled: true,
       entries: [{ time: '08:00', enabled: true }],
@@ -620,7 +620,7 @@ describe('AutomationTasks config persistence', () => {
 
     await renderAutomation()
     expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('14')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-1')?.value).toBe('14:00')
 
     await act(async () => {
       publishPlanApplied()
@@ -628,7 +628,7 @@ describe('AutomationTasks config persistence', () => {
     await settle()
 
     expect(container.querySelector('[aria-label="已设置 2 个执行时间"]')).not.toBeNull()
-    expect(container.querySelector<HTMLInputElement>('#automation-schedule-hour-1')?.value).toBe('14')
+    expect(container.querySelector<HTMLInputElement>('#automation-schedule-time-1')?.value).toBe('14:00')
   })
 
   it('applies a plan invalidation missed while the page is hidden after Activity resumes', async () => {
