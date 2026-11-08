@@ -58,7 +58,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` 同时启动前端 [http://localhost:5173](http://localhost:5173) 与后端 [http://localhost:3000](http://localhost:3000)；也可以分别使用 `pnpm dev:client` 或 `pnpm dev:server`。开发文档与常用检查见 [开发文档](docs/development/README.md)。
+`pnpm dev` 同时启动前端 [http://localhost:5173](http://localhost:5173) 与后端 [http://localhost:3000](http://localhost:3000)。
 
 ## 文档
 
