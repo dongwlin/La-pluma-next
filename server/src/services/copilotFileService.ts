@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { resolveAppPaths } from '../config/runtimeConfig.ts';
 import { ensureDir } from '../utils/fileHelper.ts';
 
@@ -26,6 +26,27 @@ export class CopilotFileInvalidError extends Error {
   }
 }
 
+export type CopilotManagedFileInvalidReason =
+  | CopilotFileInvalidReason
+  | 'filename_invalid'
+  | 'filename_not_absolute'
+  | 'filename_extension_invalid'
+  | 'filename_traversal'
+  | 'filename_outside_import_dir'
+  | 'file_missing'
+  | 'file_not_regular'
+  | 'file_too_large';
+
+export class CopilotManagedFileInvalidError extends Error {
+  readonly reason: CopilotManagedFileInvalidReason;
+
+  constructor(reason: CopilotManagedFileInvalidReason, message: string) {
+    super(message);
+    this.name = 'CopilotManagedFileInvalidError';
+    this.reason = reason;
+  }
+}
+
 export interface CopilotFileInput {
   name?: unknown;
   content?: unknown;
@@ -39,6 +60,17 @@ export interface CopilotFileResult {
 
 export interface CopilotFileSaveOptions {
   dataDir?: string;
+}
+
+export interface CopilotManagedFileReadOptions {
+  dataDir?: string;
+}
+
+export interface CopilotManagedFile {
+  path: string;
+  content: Record<string, unknown>;
+  stageName: string;
+  bytes: number;
 }
 
 const UNSAFE_NAME_CHARS = /[^\p{L}\p{N}._-]+/gu;
@@ -95,6 +127,96 @@ function requireStageName(payload: Record<string, unknown>): void {
   }
 }
 
+function resolveImportDir(dataDir?: string): string {
+  return join(dataDir ?? resolveAppPaths().appDataDir, COPILOT_FILE_IMPORT_DIR);
+}
+
+function isOutsideImportDir(importDir: string, target: string): boolean {
+  const relativePath = relative(importDir, target);
+  return !relativePath || relativePath.startsWith('..') || isAbsolute(relativePath);
+}
+
+export function validateManagedCopilotFileName(
+  raw: unknown,
+  options: CopilotManagedFileReadOptions = {}
+): string {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    throw new CopilotManagedFileInvalidError('filename_invalid', '作业文件路径必须是非空字符串');
+  }
+  const filename = raw.trim();
+  if (!isAbsolute(filename)) {
+    throw new CopilotManagedFileInvalidError('filename_not_absolute', '作业文件必须使用绝对路径');
+  }
+  if (filename.split(/[\\/]/).includes('..')) {
+    throw new CopilotManagedFileInvalidError('filename_traversal', '作业文件路径不能包含上级目录');
+  }
+  if (!filename.toLowerCase().endsWith(JSON_EXTENSION)) {
+    throw new CopilotManagedFileInvalidError('filename_extension_invalid', '作业文件必须是 .json 文件');
+  }
+  const importDir = resolveImportDir(options.dataDir);
+  if (isOutsideImportDir(importDir, resolve(filename))) {
+    throw new CopilotManagedFileInvalidError(
+      'filename_outside_import_dir',
+      `作业文件必须位于受管目录 ${COPILOT_FILE_IMPORT_DIR} 内`
+    );
+  }
+  return filename;
+}
+
+function parseManagedCopilotContent(text: string): {
+  content: Record<string, unknown>;
+  stageName: string;
+} {
+  try {
+    const content = parseCopilotJson(text);
+    requireStageName(content);
+    return { content, stageName: String(content.stage_name).trim() };
+  } catch (error) {
+    if (error instanceof CopilotFileInvalidError) {
+      throw new CopilotManagedFileInvalidError(error.reason, error.message);
+    }
+    throw error;
+  }
+}
+
+export async function readManagedCopilotFile(
+  raw: unknown,
+  options: CopilotManagedFileReadOptions = {}
+): Promise<CopilotManagedFile> {
+  const filename = validateManagedCopilotFileName(raw, options);
+  const importDir = resolveImportDir(options.dataDir);
+  let importRoot: string;
+  try {
+    importRoot = await realpath(importDir);
+  } catch {
+    throw new CopilotManagedFileInvalidError('file_missing', '作业文件不存在');
+  }
+  let resolvedPath: string;
+  try {
+    resolvedPath = await realpath(filename);
+  } catch {
+    throw new CopilotManagedFileInvalidError('file_missing', '作业文件不存在');
+  }
+  if (isOutsideImportDir(importRoot, resolvedPath)) {
+    throw new CopilotManagedFileInvalidError(
+      'filename_outside_import_dir',
+      `作业文件必须位于受管目录 ${COPILOT_FILE_IMPORT_DIR} 内`
+    );
+  }
+  const info = await stat(resolvedPath);
+  if (!info.isFile()) {
+    throw new CopilotManagedFileInvalidError('file_not_regular', '作业文件必须是普通文件');
+  }
+  if (info.size > COPILOT_FILE_MAX_BYTES) {
+    throw new CopilotManagedFileInvalidError(
+      'file_too_large',
+      `作业文件不能超过 ${COPILOT_FILE_MAX_BYTES} 字节`
+    );
+  }
+  const { content, stageName } = parseManagedCopilotContent(await readFile(resolvedPath, 'utf8'));
+  return { path: resolvedPath, content, stageName, bytes: info.size };
+}
+
 export async function saveCopilotFile(
   input: unknown,
   options: CopilotFileSaveOptions = {}
@@ -110,8 +232,7 @@ export async function saveCopilotFile(
   }
   requireStageName(parseCopilotJson(content));
   const name = sanitizeCopilotFileName(body.name);
-  const dataDir = options.dataDir ?? resolveAppPaths().appDataDir;
-  const importDir = join(dataDir, COPILOT_FILE_IMPORT_DIR);
+  const importDir = resolveImportDir(options.dataDir);
   await ensureDir(importDir);
   const filePath = join(importDir, `${randomUUID()}.json`);
   await writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });

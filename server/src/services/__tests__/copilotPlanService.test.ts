@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import test, { after, beforeEach } from 'node:test';
-import type { CopilotPlanEntry } from '../copilotPlanService.ts';
+import type { CopilotPlanEntry, CopilotQueuePlanEntry } from '../copilotPlanService.ts';
 
 // `maa dir resource` 的解析在导入时读取 MAA_CLI_PATH；先准备假 CLI，再加载被测模块。
 const fixtureDir = await mkdtemp(join(tmpdir(), 'la-pluma-copilot-plan-'));
@@ -34,7 +34,16 @@ if (args[0] === 'dir' && args[1] === 'resource') {
   process.stdout.write(process.env.FAKE_MAA_LOG_DIR || '');
 } else if (args[0] === 'run') {
   const steps = JSON.parse(process.env.FAKE_RUN_STEPS || '[]');
-  const exitCode = Number(process.env.FAKE_RUN_EXIT_CODE || 0);
+  const exitCodes = JSON.parse(process.env.FAKE_RUN_EXIT_CODES || '[]');
+  let exitCode = Number(process.env.FAKE_RUN_EXIT_CODE || 0);
+  if (exitCodes.length > 0) {
+    let index = 0;
+    if (process.env.FAKE_RUN_COUNTER_FILE) {
+      try { index = Number(fs.readFileSync(process.env.FAKE_RUN_COUNTER_FILE, 'utf8')) || 0; } catch {}
+      fs.writeFileSync(process.env.FAKE_RUN_COUNTER_FILE, String(index + 1));
+    }
+    exitCode = Number(exitCodes[index] ?? 0);
+  }
   const exitDelay = Number(process.env.FAKE_RUN_EXIT_DELAY || 0);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const appendLoad = (file) => fs.appendFileSync(process.env.FAKE_MAA_LOG_FILE || '', 'Assistant::append_callback | SubTaskExtraInfo ' + JSON.stringify({
@@ -68,12 +77,14 @@ process.env.LA_PLUMA_DROP_RECORDS_DIR = join(fixtureDir, 'drop-records');
 const {
   buildCopilotPlan,
   buildCopilotListEntry,
+  buildCopilotQueuePlan,
   buildCurrentMapStageTasks,
   buildCopilotRepeatFiles,
   buildCopilotTaskParams,
   classifyCopilotEntryOutcomes,
   ensurePresetFormationResource,
   executeCopilotEntries,
+  executeCopilotQueueEntries,
   extractLoadedCopilotFiles,
   getNavigationStage,
   isPresetFormationCopilot,
@@ -82,11 +93,14 @@ const {
   setCopilotFileLoadPollIntervalForTests,
   setCopilotPlanPathPlatformForTests
 } = await import('../copilotPlanService.ts');
+const { CopilotManagedFileInvalidError } = await import('../copilotFileService.ts');
 
 beforeEach(async () => {
   resetCopilotPlanCachesForTests();
   process.env.FAKE_MAA_RESOURCE_DIR = baseResourceDir;
   await writeFile(maaCallLog, '');
+  await rm(join(fixtureDir, 'copilot-progress.json'), { force: true });
+  await rm(join(fixtureDir, 'queue-run-counter'), { force: true });
   // 检查点读取 asst.log 的当前大小；缺失时观察与结算都没有增量可读。
   await writeFile(maaAsstLog, '', { flag: 'a' });
   await rm(join(fixtureDir, 'maa-execution.lock'), { force: true });
@@ -433,7 +447,13 @@ function windowsPlanFileOf(setId: string, entry: CopilotPlanEntry): string {
 }
 
 function clearRunEnvironment(): void {
-  for (const key of ['FAKE_RUN_STEPS', 'FAKE_RUN_EXIT_CODE', 'FAKE_RUN_EXIT_DELAY']) {
+  for (const key of [
+    'FAKE_RUN_STEPS',
+    'FAKE_RUN_EXIT_CODE',
+    'FAKE_RUN_EXIT_CODES',
+    'FAKE_RUN_EXIT_DELAY',
+    'FAKE_RUN_COUNTER_FILE'
+  ]) {
     delete process.env[key];
   }
 }
@@ -697,5 +717,385 @@ test('copilot group failure matches Windows plan paths before failing the rest',
   } finally {
     restoreFetch();
     clearRunEnvironment();
+  }
+});
+
+function stubQueueContent(stageNames: readonly string[]): {
+  restore: () => void;
+  requests: string[];
+} {
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = async (url: string | URL | Request) => {
+    const text = String(url);
+    requests.push(text);
+    if (text.includes('penguin-stats.io')) {
+      return new Response(JSON.stringify({ status_code: 200, data: [] }), { status: 200 });
+    }
+    const match = text.match(/copilot\/get\/(\d+)$/);
+    const index = match ? Number(match[1]) - 201 : 0;
+    const stageName = stageNames[index] || stageNames[0];
+    const data = {
+      content: JSON.stringify({
+        stage_name: stageName,
+        doc: { title: '1-7' },
+        opers: [{ name: 'A' }],
+        groups: []
+      })
+    };
+    return new Response(JSON.stringify({ status_code: 200, data }), { status: 200 });
+  };
+  return {
+    restore: () => {
+      globalThis.fetch = originalFetch;
+    },
+    requests
+  };
+}
+
+test('queue plan maps remote prts entries in request order', async () => {
+  const stub = stubQueueContent(['main_01-01', 'main_01-02']);
+  try {
+    const plan = await buildCopilotQueuePlan([
+      { clientId: 'queue-a', source: 'prts', copilotId: 201, mode: 'normal' },
+      { clientId: 'queue-b', source: 'prts', copilotId: 202, mode: 'raid' }
+    ]);
+    assert.deepEqual(plan.entries.map(entry => ({
+      key: entry.key,
+      clientId: entry.clientId,
+      itemIndex: entry.itemIndex,
+      copilotId: entry.copilotId,
+      source: entry.source,
+      stageId: entry.stageId,
+      stage: entry.displayStage,
+      apCost: entry.apCost,
+      mode: entry.mode
+    })), [
+      {
+        key: 'queue-a',
+        clientId: 'queue-a',
+        itemIndex: 0,
+        copilotId: 201,
+        source: 'prts',
+        stageId: 'main_01-01',
+        stage: '1-7',
+        apCost: null,
+        mode: 'normal'
+      },
+      {
+        key: 'queue-b',
+        clientId: 'queue-b',
+        itemIndex: 1,
+        copilotId: 202,
+        source: 'prts',
+        stageId: 'main_01-02',
+        stage: '1-7',
+        apCost: null,
+        mode: 'raid'
+      }
+    ]);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('queue plan reads managed local files without contacting the copilot site', async () => {
+  const dataDir = join(fixtureDir, 'queue-plan-data');
+  const importDir = join(dataDir, 'copilot-imports');
+  await mkdir(importDir, { recursive: true });
+  const localPath = join(importDir, 'local-a.json');
+  await writeFile(localPath, JSON.stringify({
+    stage_name: 'main_01-07',
+    doc: { title: '1-7' },
+    opers: [],
+    groups: []
+  }));
+  const stub = stubQueueContent([]);
+  try {
+    const plan = await buildCopilotQueuePlan([
+      { clientId: 'local-a', source: 'file', filename: localPath, mode: 'raid' }
+    ], { dataDir });
+    const entry = plan.entries[0];
+    assert.ok(entry);
+    assert.equal(entry.key, 'local-a');
+    assert.equal(entry.clientId, 'local-a');
+    assert.equal(entry.itemIndex, 0);
+    assert.equal(entry.source, 'file');
+    assert.equal(entry.copilotId, -1);
+    assert.equal(entry.stageId, 'main_01-07');
+    assert.equal(entry.displayStage, '1-7');
+    assert.equal(entry.apCost, null);
+    assert.equal(entry.mode, 'raid');
+    assert.equal(entry.content?.stage_name, 'main_01-07');
+    assert.equal(stub.requests.some(url => url.includes('/copilot/get/')), false);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('queue plan rejects local files outside the managed import directory', async () => {
+  const dataDir = join(fixtureDir, 'queue-invalid-data');
+  const importDir = join(dataDir, 'copilot-imports');
+  await mkdir(importDir, { recursive: true });
+  const belowImport = join(importDir, 'nested', 'deeper.json');
+  await mkdir(join(importDir, 'nested'), { recursive: true });
+  await writeFile(belowImport, JSON.stringify({ stage_name: 'main_01-07' }));
+
+  const outsidePath = join(dataDir, 'outside.json');
+  await writeFile(outsidePath, JSON.stringify({ stage_name: 'main_01-07' }));
+
+  const cases: ReadonlyArray<readonly [unknown, string]> = [
+    [undefined, 'filename_invalid'],
+    ['', 'filename_invalid'],
+    ['copilot-imports/a.json', 'filename_not_absolute'],
+    [join(importDir, 'stage.txt'), 'filename_extension_invalid'],
+    [`${importDir}${sep}..${sep}escape.json`, 'filename_traversal'],
+    [outsidePath, 'filename_outside_import_dir'],
+    [join(importDir, 'missing.json'), 'file_missing']
+  ];
+
+  for (const [filename, reason] of cases) {
+    await assert.rejects(
+      () => buildCopilotQueuePlan([
+        { clientId: 'local-a', source: 'file', filename: String(filename ?? ''), mode: 'normal' }
+      ], { dataDir }),
+      error => error instanceof CopilotManagedFileInvalidError && error.reason === reason,
+      `expected ${reason} for ${String(filename)}`
+    );
+  }
+
+  await writeFile(belowImport, '{not json');
+  await assert.rejects(
+    () => buildCopilotQueuePlan([
+      { clientId: 'local-a', source: 'file', filename: belowImport, mode: 'normal' }
+    ], { dataDir }),
+    error => error instanceof CopilotManagedFileInvalidError && error.reason === 'content_invalid_json'
+  );
+
+  await writeFile(belowImport, JSON.stringify({ doc: { title: '1-7' } }));
+  await assert.rejects(
+    () => buildCopilotQueuePlan([
+      { clientId: 'local-a', source: 'file', filename: belowImport, mode: 'normal' }
+    ], { dataDir }),
+    error => error instanceof CopilotManagedFileInvalidError && error.reason === 'stage_name_invalid'
+  );
+});
+
+test('queue plan rejects symlinks that escape the managed import directory', async t => {
+  const dataDir = join(fixtureDir, 'queue-symlink-data');
+  const importDir = join(dataDir, 'copilot-imports');
+  await mkdir(importDir, { recursive: true });
+  const targetPath = join(dataDir, 'outside-target.json');
+  await writeFile(targetPath, JSON.stringify({ stage_name: 'main_01-07' }));
+  const linkPath = join(importDir, 'escape.json');
+  try {
+    await symlink(targetPath, linkPath);
+  } catch {
+    t.skip('symlink is not supported on this platform');
+    return;
+  }
+
+  await assert.rejects(
+    () => buildCopilotQueuePlan([
+      { clientId: 'local-a', source: 'file', filename: linkPath, mode: 'normal' }
+    ], { dataDir }),
+    error => error instanceof CopilotManagedFileInvalidError
+      && error.reason === 'filename_outside_import_dir'
+  );
+});
+
+function queueEntriesFor(count = 2): CopilotQueuePlanEntry[] {
+  return Array.from({ length: count }, (_, itemIndex) => ({
+    key: `queue-${itemIndex}`,
+    clientId: `queue-${itemIndex}`,
+    source: 'prts' as const,
+    itemIndex,
+    copilotId: 100 + itemIndex,
+    stageId: `main_01-0${itemIndex + 1}`,
+    displayStage: `1-${itemIndex + 1}`,
+    apCost: 6,
+    mode: 'normal' as const,
+    presetFormation: false
+  }));
+}
+
+function queuePlanFileOf(queueId: string, entry: CopilotQueuePlanEntry): string {
+  return join(
+    maaConfigDir,
+    'copilot-plans',
+    `queue-${queueId}`,
+    `${entry.itemIndex}-${entry.copilotId}-${entry.mode}-1.json`
+  );
+}
+
+test('queue execution writes one plan file per entry and settles each success', async () => {
+  const queueId = 'run-success';
+  const entries = queueEntriesFor();
+  const restoreFetch = stubCopilotContent();
+
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId,
+      name: '成功作业队列',
+      entries,
+      options: {},
+      failurePolicy: 'stop'
+    });
+
+    assert.equal(outcome.stopped, false);
+    assert.equal(outcome.error, null);
+    assert.deepEqual(
+      outcome.statuses.map(settled => [settled.entry.clientId, settled.status]),
+      [['queue-0', 'success'], ['queue-1', 'success']]
+    );
+    assert.deepEqual(outcome.completed, ['queue-0', 'queue-1']);
+    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 2);
+
+    const firstPlan: unknown = JSON.parse(await readFile(queuePlanFileOf(queueId, entries[0]), 'utf8'));
+    assert.equal(readObject(firstPlan).stage_name, 'main_01-01');
+    const secondPlan: unknown = JSON.parse(await readFile(queuePlanFileOf(queueId, entries[1]), 'utf8'));
+    assert.equal(readObject(secondPlan).stage_name, 'main_01-02');
+    await assert.rejects(() => stat(join(fixtureDir, 'copilot-progress.json')));
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('queue execution with stop policy keeps later entries pending after the first failure', async () => {
+  const queueId = 'run-stop-policy';
+  const entries = queueEntriesFor();
+  process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0]);
+  process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  const restoreFetch = stubCopilotContent();
+
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId,
+      name: '失败即停队列',
+      entries,
+      options: {},
+      failurePolicy: 'stop'
+    });
+
+    assert.equal(outcome.stopped, false);
+    assert.equal(outcome.error, null);
+    assert.deepEqual(
+      outcome.statuses.map(settled => [settled.entry.clientId, settled.status]),
+      [['queue-0', 'failed'], ['queue-1', 'pending']]
+    );
+    assert.deepEqual(outcome.completed, []);
+    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 1);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('queue execution with continue policy records the failure and runs the next entry', async () => {
+  const queueId = 'run-continue-policy';
+  const entries = queueEntriesFor();
+  process.env.FAKE_RUN_EXIT_CODES = JSON.stringify([3, 0]);
+  process.env.FAKE_RUN_COUNTER_FILE = join(fixtureDir, 'queue-run-counter');
+  const restoreFetch = stubCopilotContent();
+
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId,
+      name: '失败继续队列',
+      entries,
+      options: {},
+      failurePolicy: 'continue'
+    });
+
+    assert.equal(outcome.stopped, false);
+    assert.equal(outcome.error, null);
+    assert.deepEqual(
+      outcome.statuses.map(settled => [settled.entry.clientId, settled.status]),
+      [['queue-0', 'failed'], ['queue-1', 'success']]
+    );
+    assert.deepEqual(outcome.completed, ['queue-1']);
+    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 2);
+  } finally {
+    restoreFetch();
+    clearRunEnvironment();
+  }
+});
+
+test('queue execution stops before the next entry when the lifecycle asks to stop', async () => {
+  const queueId = 'run-stopped';
+  const entries = queueEntriesFor();
+  let shouldStopChecks = 0;
+  const restoreFetch = stubCopilotContent();
+
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId,
+      name: '停止作业队列',
+      entries,
+      options: {},
+      lifecycle: {
+        shouldStop: () => {
+          shouldStopChecks += 1;
+          return shouldStopChecks > 1;
+        }
+      }
+    });
+
+    assert.equal(outcome.stopped, true);
+    assert.equal(outcome.error, null);
+    assert.deepEqual(
+      outcome.statuses.map(settled => [settled.entry.clientId, settled.status]),
+      [['queue-0', 'success'], ['queue-1', 'pending']]
+    );
+    assert.deepEqual(outcome.completed, ['queue-0']);
+    assert.equal((await readMaaCalls()).filter(line => line.startsWith('run ')).length, 1);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('queue execution writes managed local content into the queue plan directory', async () => {
+  const queueId = 'run-local';
+  const localContent = {
+    stage_name: 'main_01-07',
+    doc: { title: '1-7' },
+    opers: [],
+    groups: []
+  };
+  const entry: CopilotQueuePlanEntry = {
+    key: 'local-a',
+    clientId: 'local-a',
+    source: 'file',
+    itemIndex: 0,
+    copilotId: -1,
+    stageId: 'main_01-07',
+    displayStage: '1-7',
+    apCost: null,
+    mode: 'raid',
+    presetFormation: false,
+    content: localContent
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('本地条目不应访问作业站');
+  };
+
+  try {
+    const outcome = await executeCopilotQueueEntries({
+      queueId,
+      name: '本地作业队列',
+      entries: [entry],
+      options: {}
+    });
+
+    assert.equal(outcome.stopped, false);
+    assert.deepEqual(
+      outcome.statuses.map(settled => [settled.entry.clientId, settled.status]),
+      [['local-a', 'success']]
+    );
+    const written: unknown = JSON.parse(await readFile(queuePlanFileOf(queueId, entry), 'utf8'));
+    assert.deepEqual(readObject(written), localContent);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

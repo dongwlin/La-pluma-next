@@ -9,6 +9,7 @@ import {
   normalizeFormationMode,
   raidFromAdvanced,
   shouldAppendFormation,
+  toCopilotQueueFailurePolicy,
   toCopilotSetRunMode,
   validateCombatInput,
 } from './combatCommands'
@@ -167,6 +168,13 @@ describe('set execution model', () => {
     expect(toCopilotSetRunMode('app')).toBe('continuous')
     expect(toCopilotSetRunMode('cli')).toBe('continuous')
     expect(toCopilotSetRunMode('manual')).toBe('manual')
+  })
+
+  it('maps the execution strategy to the queue failure policy', () => {
+    expect(toCopilotQueueFailurePolicy('stop')).toBe('stop')
+    expect(toCopilotQueueFailurePolicy('continue')).toBe('continue')
+    expect(toCopilotQueueFailurePolicy(undefined)).toBe('continue')
+    expect(toCopilotQueueFailurePolicy(true)).toBe('continue')
   })
 })
 

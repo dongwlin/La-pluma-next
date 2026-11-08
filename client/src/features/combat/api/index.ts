@@ -158,3 +158,84 @@ export async function resetCopilotSetProgress(copilotId: string): Promise<ApiRes
   })
   return parseJsonResponse(response)
 }
+
+export type CopilotQueueRunMode = CopilotSetRunMode
+
+export type CopilotQueueFailurePolicy = 'stop' | 'continue'
+
+export type CopilotQueueEntryMode = 'normal' | 'raid'
+
+interface CopilotQueueRunEntryBase {
+  clientId: string
+  mode?: CopilotQueueEntryMode
+}
+
+export interface CopilotQueuePrtsEntry extends CopilotQueueRunEntryBase {
+  source: 'prts'
+  copilotId: number
+}
+
+export interface CopilotQueueFileEntry extends CopilotQueueRunEntryBase {
+  source: 'file'
+  filename: string
+}
+
+export type CopilotQueueRunEntry = CopilotQueuePrtsEntry | CopilotQueueFileEntry
+
+export interface CopilotQueueExecutePayload {
+  queueId?: string
+  name?: string
+  mode?: CopilotQueueRunMode
+  failurePolicy?: CopilotQueueFailurePolicy
+  entries: CopilotQueueRunEntry[]
+  options?: Record<string, unknown>
+  waitForCompletion?: boolean
+}
+
+const isCopilotQueueExecutePayload = (payload: unknown): boolean =>
+  isRecord(payload) && (typeof payload.runId === 'string' || payload.accepted === true)
+
+const isCopilotQueueContinuePayload = (payload: unknown): boolean =>
+  isRecord(payload) && typeof payload.runId === 'string'
+
+const isCopilotQueueSkipPayload = (payload: unknown): boolean =>
+  isRecord(payload) && (typeof payload.skippedClientId === 'string' || payload.finished === true)
+
+export async function executeCopilotQueue(
+  payload: CopilotQueueExecutePayload,
+  options: AgentRequestOptions = {},
+): Promise<ApiResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey
+
+  return readApiResponse(`${API_BASE_URL}/agent/copilot-queues/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    validate: isCopilotQueueExecutePayload,
+    invalidPayloadMessage: '作业队列执行响应格式不正确',
+  })
+}
+
+export async function continueCopilotQueue(
+  runId: string,
+  waitForCompletion = true,
+): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/actions/continue-copilot-queue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId, waitForCompletion }),
+    validate: isCopilotQueueContinuePayload,
+    invalidPayloadMessage: '继续作业队列响应格式不正确',
+  })
+}
+
+export async function skipCopilotQueueEntry(runId: string): Promise<ApiResponse> {
+  return readApiResponse(`${API_BASE_URL}/agent/actions/skip-copilot-queue-entry`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId }),
+    validate: isCopilotQueueSkipPayload,
+    invalidPayloadMessage: '跳过作业队列项响应格式不正确',
+  })
+}

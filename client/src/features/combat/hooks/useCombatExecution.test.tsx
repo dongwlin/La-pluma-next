@@ -10,6 +10,22 @@ import { COMBAT_EXECUTION_SCOPE, useCombatExecution, type CombatExecution } from
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+const apiMocks = vi.hoisted(() => ({
+  executeCopilotQueue: vi.fn(),
+  continueCopilotQueue: vi.fn(),
+  skipCopilotQueueEntry: vi.fn(),
+  executeCopilotSetPlan: vi.fn(),
+  continueCopilotSet: vi.fn(),
+}))
+
+vi.mock('../api', () => ({
+  executeCopilotQueue: apiMocks.executeCopilotQueue,
+  continueCopilotQueue: apiMocks.continueCopilotQueue,
+  skipCopilotQueueEntry: apiMocks.skipCopilotQueueEntry,
+  executeCopilotSetPlan: apiMocks.executeCopilotSetPlan,
+  continueCopilotSet: apiMocks.continueCopilotSet,
+}))
+
 const controllerState: { current: ExecutionControllerState | null } = { current: null }
 
 vi.mock('@/features/task-execution', async importOriginal => {
@@ -195,5 +211,188 @@ describe('useCombatExecution run projection', () => {
 
     expect(messages).toContainEqual({ message: '作业 2/4 执行失败: 作战失败，等待开始下一关' })
     expect(messages.some(({ message }) => message.includes('已跳过'))).toBe(false)
+  })
+})
+
+function queueRun(
+  state: AgentRun['state'],
+  progress: Record<string, unknown> | null = null,
+): AgentRun {
+  return {
+    runId: 'run-queue',
+    operationId: 'run_copilot_queue',
+    state,
+    ...(progress ? { progress } : {}),
+    links: { self: '/api/agent/runs/run-queue' },
+  } as unknown as AgentRun
+}
+
+function queueController(run: AgentRun | null): ExecutionController {
+  const state = combatState(run)
+  return {
+    getState: () => ({ ...state, submission: 'idle' as const }),
+    submitExecution: vi.fn(async (...args: unknown[]) => {
+      const request = args[1] as (context: { idempotencyKey: string }) => Promise<unknown>
+      return request({ idempotencyKey: 'run_copilot_queue-test' })
+    }),
+    refresh: vi.fn(async () => {}),
+    stopTrackedRun: vi.fn(),
+  } as unknown as ExecutionController
+}
+
+describe('useCombatExecution queue submissions', () => {
+  const flush = async () => {
+    await act(async () => {
+      for (let index = 0; index < 6; index += 1) await Promise.resolve()
+    })
+  }
+
+  const renderHarness = async (controller: ExecutionController, stopOnFailure = false) => {
+    await act(async () => {
+      root.render(<Harness controller={controller} stopOnFailure={stopOnFailure} />)
+    })
+    await flush()
+  }
+
+  beforeEach(() => {
+    messages.length = 0
+    rerender = null
+    latest = null
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    apiMocks.executeCopilotQueue.mockReset()
+    apiMocks.continueCopilotQueue.mockReset()
+    apiMocks.skipCopilotQueueEntry.mockReset()
+  })
+
+  afterEach(async () => {
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  it('submits a queue run through the execution controller with one idempotency key', async () => {
+    controllerState.current = combatState(null)
+    apiMocks.executeCopilotQueue.mockResolvedValue({
+      success: true,
+      data: { runId: 'run-queue', accepted: true },
+    })
+    const controller = queueController(null)
+    await renderHarness(controller)
+
+    let submitted = false
+    await act(async () => {
+      submitted = await latest!.submitQueue({
+        queueId: 'copilot-queue',
+        name: '作业队列',
+        mode: 'continuous',
+        failurePolicy: 'continue',
+        entries: [
+          { clientId: 'queue-a', source: 'prts', copilotId: 101 },
+          { clientId: 'queue-b', source: 'file', filename: '/data/copilot-imports/uuid.json' },
+        ],
+        options: { formationMode: 'auto' },
+        taskName: '自动战斗作业',
+      })
+    })
+
+    expect(submitted).toBe(true)
+    expect(controller.submitExecution).toHaveBeenCalledWith(
+      'run_copilot_queue',
+      expect.any(Function),
+      { scope: COMBAT_EXECUTION_SCOPE },
+    )
+    expect(apiMocks.executeCopilotQueue).toHaveBeenCalledWith({
+      queueId: 'copilot-queue',
+      name: '作业队列',
+      mode: 'continuous',
+      failurePolicy: 'continue',
+      entries: [
+        { clientId: 'queue-a', source: 'prts', copilotId: 101 },
+        { clientId: 'queue-b', source: 'file', filename: '/data/copilot-imports/uuid.json' },
+      ],
+      options: { formationMode: 'auto' },
+      waitForCompletion: false,
+    }, { idempotencyKey: 'run_copilot_queue-test' })
+    expect(messages).toContainEqual({ message: '正在连续执行作业队列' })
+  })
+
+  it('reads the waiting state from the queue run projection and continues it', async () => {
+    const waiting = queueRun('waiting', {
+      queueId: 'copilot-queue',
+      mode: 'manual',
+      phase: 'waiting_for_next',
+      nextEntry: { clientId: 'queue-b', itemIndex: 1, stage: 'QUEUE-2', mode: 'normal' },
+    })
+    controllerState.current = combatState(waiting)
+    apiMocks.continueCopilotQueue.mockResolvedValue({
+      success: true,
+      data: { runId: 'run-queue', accepted: true },
+    })
+    const controller = queueController(waiting)
+    await renderHarness(controller)
+
+    expect(latest?.queueRun?.isWaiting).toBe(true)
+    expect(latest?.queueRun?.nextEntry?.clientId).toBe('queue-b')
+
+    await act(async () => {
+      await latest!.continueQueue()
+    })
+
+    expect(apiMocks.continueCopilotQueue).toHaveBeenCalledWith('run-queue', false)
+    expect(controller.refresh).toHaveBeenCalledWith('manual')
+    expect(messages).toContainEqual({ message: '正在执行下一项...' })
+  })
+
+  it('skips the waiting queue entry and refreshes without a second submission', async () => {
+    const waiting = queueRun('waiting', {
+      queueId: 'copilot-queue',
+      mode: 'manual',
+      phase: 'waiting_for_next',
+      nextEntry: { clientId: 'queue-b', itemIndex: 1, stage: 'QUEUE-2', mode: 'normal' },
+    })
+    controllerState.current = combatState(waiting)
+    apiMocks.skipCopilotQueueEntry.mockResolvedValue({
+      success: true,
+      data: { skippedClientId: 'queue-b', waitingForNext: true },
+    })
+    const controller = queueController(waiting)
+    await renderHarness(controller)
+
+    await act(async () => {
+      await latest!.skipQueueEntry()
+    })
+
+    expect(apiMocks.skipCopilotQueueEntry).toHaveBeenCalledWith('run-queue')
+    expect(apiMocks.executeCopilotQueue).not.toHaveBeenCalled()
+    expect(controller.refresh).toHaveBeenCalledWith('manual')
+    expect(messages).toContainEqual({ message: '正在跳过当前项...' })
+    expect(messages).toContainEqual({ message: '已跳过当前项', type: 'success' })
+  })
+
+  it('keeps a busy device as a retryable continue warning', async () => {
+    const waiting = queueRun('waiting', {
+      queueId: 'copilot-queue',
+      mode: 'manual',
+      phase: 'waiting_for_next',
+    })
+    controllerState.current = combatState(waiting)
+    apiMocks.continueCopilotQueue.mockResolvedValue({
+      success: false,
+      message: '设备正被占用',
+      errorInfo: { code: 'MAA_EXECUTION_BUSY', message: '设备正被占用' },
+    })
+    const controller = queueController(waiting)
+    await renderHarness(controller)
+
+    await act(async () => {
+      await latest!.continueQueue()
+    })
+
+    expect(messages).toContainEqual({
+      message: '设备正被其他任务占用，请稍后重试',
+      type: 'warning',
+    })
+    expect(controller.refresh).toHaveBeenCalledWith('manual')
   })
 })

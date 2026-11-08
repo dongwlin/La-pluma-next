@@ -2,11 +2,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  continueCopilotQueue,
+  executeCopilotQueue,
   getCopilotInfo,
   getCopilotSet,
   getCopilotSetPlan,
   searchCopilot,
   searchParadoxCopilot,
+  skipCopilotQueueEntry,
   uploadCopilotFile,
 } from './index'
 
@@ -211,5 +214,143 @@ describe('copilot file uploads', () => {
       message: '读取失败',
     })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('copilot queue runs', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('posts the queue execute payload with its idempotency key', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { runId: 'run-queue', accepted: true, waitingForNext: false },
+    }))
+    const payload = {
+      queueId: 'copilot-queue',
+      name: '我的作业队列',
+      mode: 'manual' as const,
+      failurePolicy: 'stop' as const,
+      entries: [
+        { clientId: 'queue-a', source: 'prts' as const, copilotId: 1088231, mode: 'normal' as const },
+        { clientId: 'queue-b', source: 'file' as const, filename: '/data/copilot-imports/uuid.json' },
+      ],
+      options: { ignoreRequirements: true, loopTimes: 1 },
+      waitForCompletion: false,
+    }
+
+    const result = await executeCopilotQueue(payload, { idempotencyKey: 'run_copilot_queue-key' })
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/copilot-queues/execute')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(new Headers(fetchCall().init.headers).get('Idempotency-Key')).toBe('run_copilot_queue-key')
+    expect(JSON.parse(String(fetchCall().init.body))).toEqual(payload)
+    expect(result.success).toBe(true)
+    expect(result.data).toMatchObject({ runId: 'run-queue', accepted: true })
+  })
+
+  it('rejects a malformed queue execute response as a domain contract failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true, data: {} }))
+
+    const result = await executeCopilotQueue({
+      entries: [{ clientId: 'queue-a', source: 'prts', copilotId: 1 }],
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      kind: 'contract',
+      message: '作业队列执行响应格式不正确',
+    })
+  })
+
+  it('keeps the server validation code and reason for a rejected queue', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: false,
+      message: '作业队列条目不合法',
+      error: {
+        code: 'AGENT_VALIDATION_ENTRIES',
+        retryable: false,
+        details: { reason: 'clientId 重复' },
+      },
+    }, 400))
+
+    const result = await executeCopilotQueue({
+      entries: [{ clientId: 'queue-a', source: 'prts', copilotId: 1 }],
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'AGENT_VALIDATION_ENTRIES',
+      status: 400,
+      kind: 'api',
+      details: { reason: 'clientId 重复' },
+    })
+  })
+
+  it('continues a waiting queue with the requested completion mode', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { runId: 'run-queue', accepted: true, waitingForNext: true },
+    }))
+
+    const result = await continueCopilotQueue('run-queue', false)
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/actions/continue-copilot-queue')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(JSON.parse(String(fetchCall().init.body))).toEqual({
+      runId: 'run-queue',
+      waitForCompletion: false,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('keeps a busy execution code retryable for queue continues', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: false,
+      message: '设备正被占用',
+      error: { code: 'MAA_EXECUTION_BUSY', retryable: true },
+    }, 409))
+
+    const result = await continueCopilotQueue('run-queue')
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'MAA_EXECUTION_BUSY',
+      status: 409,
+      retryable: true,
+    })
+  })
+
+  it('skips the next queue entry by run id', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { skippedClientId: 'queue-a', waitingForNext: true, finished: false },
+    }))
+
+    const result = await skipCopilotQueueEntry('run-queue')
+
+    expect(fetchCall().input).toBe('http://localhost:3000/api/agent/actions/skip-copilot-queue-entry')
+    expect(fetchCall().init.method).toBe('POST')
+    expect(JSON.parse(String(fetchCall().init.body))).toEqual({ runId: 'run-queue' })
+    expect(result.success).toBe(true)
+    expect(result.data).toMatchObject({ skippedClientId: 'queue-a', waitingForNext: true })
+  })
+
+  it('rejects a skip response without the skipped entry identity', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      success: true,
+      data: { waitingForNext: true },
+    }))
+
+    const result = await skipCopilotQueueEntry('run-queue')
+
+    expect(result.success).toBe(false)
+    expect(result.errorInfo).toMatchObject({
+      code: 'INVALID_DOMAIN_PAYLOAD',
+      message: '跳过作业队列项响应格式不正确',
+    })
   })
 })

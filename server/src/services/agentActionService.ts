@@ -7,6 +7,7 @@ import {
   validateGameTaskVariantParams,
   validateRoguelikeCommandArgs
 } from './gameTaskConfigService.ts';
+import { CopilotManagedFileInvalidError, validateManagedCopilotFileName } from './copilotFileService.ts';
 
 /** 仅列 maa-cli 子命令；Core 任务类型（Award/Depot/OperBox/Infrast/Recruit/Mall）走 run + taskConfig 动态通路。 */
 export const AGENT_TASK_COMMANDS = Object.freeze([
@@ -512,6 +513,218 @@ export function normalizeCopilotSetExecutionRequest(input: unknown = {}): Normal
   }
 
   return { mode, raid, selectedIndexes: normalizedIndexes, options, waitForCompletion };
+}
+
+export const COPILOT_QUEUE_MODES = Object.freeze(['continuous', 'manual'] as const);
+
+export type CopilotQueueMode = (typeof COPILOT_QUEUE_MODES)[number];
+
+export const COPILOT_QUEUE_FAILURE_POLICIES = Object.freeze(['stop', 'continue'] as const);
+
+export type CopilotQueueFailurePolicy = (typeof COPILOT_QUEUE_FAILURE_POLICIES)[number];
+
+export type CopilotQueueSource = 'prts' | 'file';
+
+export type CopilotQueueEntryMode = 'normal' | 'raid';
+
+export interface NormalizedCopilotQueueEntry {
+  clientId: string;
+  source: CopilotQueueSource;
+  copilotId?: number;
+  filename?: string;
+  mode: CopilotQueueEntryMode;
+}
+
+export interface NormalizedCopilotQueueExecutionRequest {
+  queueId: string;
+  name: string;
+  mode: CopilotQueueMode;
+  failurePolicy: CopilotQueueFailurePolicy;
+  entries: NormalizedCopilotQueueEntry[];
+  options: Record<string, unknown>;
+  waitForCompletion: boolean;
+}
+
+const COPILOT_QUEUE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const COPILOT_QUEUE_CLIENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const COPILOT_QUEUE_MAX_ENTRIES = 50;
+const COPILOT_QUEUE_MAX_NAME_LENGTH = 128;
+const COPILOT_QUEUE_DEFAULT_ID = 'copilot-queue';
+const COPILOT_QUEUE_DEFAULT_NAME = '作业队列';
+
+function normalizeCopilotQueueId(value: unknown): string {
+  if (value === undefined || value === null || value === '') return COPILOT_QUEUE_DEFAULT_ID;
+  if (typeof value !== 'string' || !COPILOT_QUEUE_ID_PATTERN.test(value.trim())) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_COPILOT_QUEUE_ID_INVALID',
+      'queueId 只能包含字母、数字、点、下划线与连字符，且以字母或数字开头',
+      { reason: 'queue_id_invalid', queueId: value }
+    );
+  }
+  return value.trim();
+}
+
+function normalizeCopilotQueueName(value: unknown): string {
+  if (value === undefined || value === null) return COPILOT_QUEUE_DEFAULT_NAME;
+  if (typeof value !== 'string') {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_NAME_INVALID', 'name 必须是字符串', {
+      reason: 'name_not_string',
+      receivedType: receivedTypeOf(value)
+    });
+  }
+  const normalized = value.trim();
+  if (normalized.length > COPILOT_QUEUE_MAX_NAME_LENGTH) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_NAME_INVALID', `name 长度不能超过 ${COPILOT_QUEUE_MAX_NAME_LENGTH} 个字符`, {
+      reason: 'name_too_long',
+      maxLength: COPILOT_QUEUE_MAX_NAME_LENGTH
+    });
+  }
+  return normalized || COPILOT_QUEUE_DEFAULT_NAME;
+}
+
+function normalizeCopilotQueueMode(value: unknown): CopilotQueueMode {
+  if (value === undefined || value === null || value === '') return 'continuous';
+  if (value === 'continuous' || value === 'app' || value === 'cli') return 'continuous';
+  if (value === 'manual') return 'manual';
+  throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_MODE_INVALID', 'mode 必须是 continuous、app、cli 或 manual', {
+    mode: value,
+    allowed: ['continuous', 'app', 'cli', 'manual']
+  });
+}
+
+function normalizeCopilotQueueFailurePolicy(value: unknown): CopilotQueueFailurePolicy {
+  if (value === undefined || value === null || value === '') return 'stop';
+  if (value === 'stop' || value === 'continue') return value;
+  throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_FAILURE_POLICY_INVALID', 'failurePolicy 必须是 stop 或 continue', {
+    failurePolicy: value,
+    allowed: [...COPILOT_QUEUE_FAILURE_POLICIES]
+  });
+}
+
+function normalizeCopilotQueueEntry(value: unknown, index: number): NormalizedCopilotQueueEntry {
+  if (!isRecord(value)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_INVALID', 'entries 每项必须是对象', {
+      reason: 'entry_not_object',
+      index
+    });
+  }
+  const clientId = value.clientId;
+  if (typeof clientId !== 'string' || !COPILOT_QUEUE_CLIENT_ID_PATTERN.test(clientId)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_CLIENT_ID_INVALID', 'clientId 格式无效', {
+      reason: 'client_id_invalid',
+      index,
+      clientId
+    });
+  }
+  const source = value.source;
+  if (source !== 'prts' && source !== 'file') {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_SOURCE_INVALID', 'source 必须是 prts 或 file', {
+      reason: 'source_invalid',
+      index,
+      source
+    });
+  }
+  const mode = value.mode ?? 'normal';
+  if (mode !== 'normal' && mode !== 'raid') {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_ENTRY_MODE_INVALID', 'mode 必须是 normal 或 raid', {
+      reason: 'entry_mode_invalid',
+      index,
+      mode
+    });
+  }
+  if (source === 'prts') {
+    const copilotId = value.copilotId;
+    if (typeof copilotId !== 'number' || !Number.isInteger(copilotId) || copilotId <= 0) {
+      throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_COPILOT_ID_INVALID', 'copilotId 必须是正整数', {
+        reason: 'copilot_id_invalid',
+        index,
+        copilotId
+      });
+    }
+    return { clientId, source, copilotId, mode };
+  }
+  let filename: string;
+  try {
+    filename = validateManagedCopilotFileName(value.filename);
+  } catch (error) {
+    if (error instanceof CopilotManagedFileInvalidError) {
+      throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_FILENAME_INVALID', error.message, {
+        reason: error.reason,
+        index,
+        filename: value.filename
+      });
+    }
+    throw error;
+  }
+  return { clientId, source, filename, mode };
+}
+
+export function normalizeCopilotQueueExecutionRequest(
+  input: unknown = {}
+): NormalizedCopilotQueueExecutionRequest {
+  if (!isRecord(input)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_INPUT_INVALID', '请求体必须是对象', {
+      reason: 'body_not_object',
+      receivedType: receivedTypeOf(input)
+    });
+  }
+
+  const queueId = normalizeCopilotQueueId(input.queueId);
+  const name = normalizeCopilotQueueName(input.name);
+  const mode = normalizeCopilotQueueMode(input.mode);
+  const failurePolicy = normalizeCopilotQueueFailurePolicy(input.failurePolicy);
+
+  const entries = input.entries;
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > COPILOT_QUEUE_MAX_ENTRIES) {
+    throw invalidRequest(
+      'AGENT_VALIDATION_COPILOT_QUEUE_ENTRIES_INVALID',
+      `entries 必须是 1–${COPILOT_QUEUE_MAX_ENTRIES} 项的数组`,
+      {
+        reason: Array.isArray(entries) ? 'entries_length_invalid' : 'entries_not_array',
+        maxEntries: COPILOT_QUEUE_MAX_ENTRIES
+      }
+    );
+  }
+
+  const seen = new Set<string>();
+  const normalizedEntries: NormalizedCopilotQueueEntry[] = [];
+  for (const [index, entry] of entries.entries()) {
+    const normalized = normalizeCopilotQueueEntry(entry, index);
+    if (seen.has(normalized.clientId)) {
+      throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_CLIENT_ID_DUPLICATE', 'clientId 必须唯一', {
+        reason: 'duplicate_client_id',
+        clientId: normalized.clientId,
+        index
+      });
+    }
+    seen.add(normalized.clientId);
+    normalizedEntries.push(normalized);
+  }
+
+  const options = input.options ?? {};
+  if (!isRecord(options)) {
+    throw invalidRequest('AGENT_VALIDATION_COPILOT_QUEUE_OPTIONS_INVALID', 'options 必须是对象', {
+      reason: 'options_not_object',
+      receivedType: Array.isArray(options) ? 'array' : typeof options
+    });
+  }
+
+  const waitForCompletion = input.waitForCompletion ?? true;
+  if (typeof waitForCompletion !== 'boolean') {
+    throw invalidRequest('AGENT_VALIDATION_WAIT_FOR_COMPLETION_INVALID', 'waitForCompletion 必须是布尔值', {
+      receivedType: typeof waitForCompletion
+    });
+  }
+
+  return {
+    queueId,
+    name,
+    mode,
+    failurePolicy,
+    entries: normalizedEntries,
+    options,
+    waitForCompletion
+  };
 }
 
 export interface NormalizedAgentTaskRequest {

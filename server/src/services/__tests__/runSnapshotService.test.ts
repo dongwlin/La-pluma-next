@@ -12,6 +12,13 @@ import {
 } from '../agentRunService.ts'
 import { clearRealtimeLogs, getTaskStatus, setTaskStatus } from '../maaProcessService.ts'
 import { buildAgentRunSnapshot } from '../runSnapshotService.ts'
+import {
+  configureCopilotQueueRuntimeForTests,
+  resetCopilotQueueRunStateForTests,
+  startManualCopilotQueue
+} from '../copilotQueueRunService.ts'
+import type { CopilotQueueProgress } from '../copilotQueueRunService.ts'
+import type { CopilotQueuePlanEntry } from '../copilotPlanService.ts'
 import { loggerManager } from '../../utils/logger.ts'
 
 loggerManager.getLogger('MaaService').enableConsole = false
@@ -40,8 +47,13 @@ async function writeLease(owner: Record<string, unknown>): Promise<void> {
 describe('run snapshot', () => {
   beforeEach(async () => {
     resetAgentRunsForTests()
+    resetCopilotQueueRunStateForTests()
     await rm(lockFile, { force: true })
     if (getTaskStatus().isRunning) setTaskStatus(false)
+  })
+
+  afterEach(() => {
+    resetCopilotQueueRunStateForTests()
   })
 
   it('reports idle without runs, tasks or a lease', async () => {
@@ -167,6 +179,88 @@ describe('run snapshot', () => {
     assert.equal(waitingEntry.state, 'waiting')
     assert.equal(waitingEntry.progress.message, '等待开始下一关')
     assert.equal(withIntent.occupancy.state, 'pending')
+  })
+
+  it('reports a waiting copilot queue without a session as a pending intent', async () => {
+    const run = beginAgentRun({ operationId: 'run_copilot_queue' }).run
+    startAgentRun(run.runId)
+    markAgentRunWaiting(run.runId)
+
+    const snapshot = await buildAgentRunSnapshot()
+
+    assert.ok(snapshot.run)
+    assert.ok(snapshot.run.progress)
+    assert.equal(snapshot.run.state, 'waiting')
+    assert.equal(snapshot.run.progress.message, '等待开始下一项')
+    assert.equal(snapshot.occupancy.state, 'pending')
+    assert.equal(snapshot.occupancy.runState, 'waiting')
+  })
+
+  it('injects copilot queue progress while the queue waits for the next entry', async () => {
+    const entries: CopilotQueuePlanEntry[] = ['queue-a', 'queue-b'].map((clientId, itemIndex) => ({
+      key: clientId,
+      clientId,
+      source: 'prts',
+      itemIndex,
+      copilotId: 100 + itemIndex,
+      stageId: `main_01-0${itemIndex + 1}`,
+      displayStage: `1-${itemIndex + 1}`,
+      apCost: 6,
+      mode: 'normal',
+      presetFormation: false
+    }))
+    configureCopilotQueueRuntimeForTests({
+      buildCopilotQueuePlan: async () => ({ entries }),
+      executeCopilotQueueEntries: async ({ entries: attempted = [], lifecycle = {} }) => {
+        await lifecycle.onBeforeStart?.()
+        lifecycle.onStarted?.()
+        for (const entry of attempted) {
+          lifecycle.onEntryStarted?.(entry, [entry])
+          lifecycle.onEntrySettled?.(entry, 'success')
+        }
+        return {
+          stopped: false,
+          error: null,
+          completed: attempted.map(entry => entry.key),
+          loopTimes: 1,
+          statuses: attempted.map(entry => ({ entry, status: 'success' as const }))
+        }
+      }
+    })
+    const run = beginAgentRun({ operationId: 'run_copilot_queue' }).run
+
+    await startManualCopilotQueue({
+      runId: run.runId,
+      queueId: 'queue-snapshot',
+      name: '快照队列',
+      entries: [],
+      mode: 'manual',
+      failurePolicy: 'stop',
+      options: {},
+      lifecycle: {}
+    })
+
+    const snapshot = await buildAgentRunSnapshot()
+
+    assert.ok(snapshot.run)
+    const progress = snapshot.run.progress
+    assert.ok(progress && 'queueId' in progress)
+    const queueProgress = progress as CopilotQueueProgress
+    assert.equal(queueProgress.queueId, 'queue-snapshot')
+    assert.equal(queueProgress.phase, 'waiting_for_next')
+    assert.equal(queueProgress.message, '等待开始下一项')
+    assert.equal(queueProgress.nextEntry?.clientId, 'queue-b')
+    assert.equal(queueProgress.totalSteps, 2)
+    assert.equal(queueProgress.successCount, 1)
+    assert.equal(queueProgress.pendingCount, 1)
+    assert.equal(snapshot.occupancy.state, 'pending')
+
+    const newer = beginAgentRun({ operationId: 'run_task' }).run
+    const withIntent = await buildAgentRunSnapshot()
+    const queueEntry = withIntent.activeRuns.find(active => active.runId === run.runId)
+    assert.ok(queueEntry?.progress && 'queueId' in queueEntry.progress)
+    assert.equal(queueEntry.runId, run.runId)
+    assert.equal(withIntent.run?.runId, newer.runId)
   })
 
   it('keeps the latest terminal run without making it the current identity', async () => {

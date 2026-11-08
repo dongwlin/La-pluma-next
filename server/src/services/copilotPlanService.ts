@@ -14,6 +14,7 @@ import { resolveConnection } from './connectionService.ts';
 import { recordDrops } from './dropRecordService.ts';
 import { createOutboundHttpClient } from './outboundRequestService.ts';
 import { createCopilotProgressStore } from './copilotProgressStore.ts';
+import { readManagedCopilotFile } from './copilotFileService.ts';
 import {
   resolveEffectiveResourceFilePath,
   resetEffectiveResourceDirsCache
@@ -154,6 +155,7 @@ export interface CopilotExecutionEntry {
   presetFormation?: boolean;
   title?: string;
   uri?: string;
+  content?: CopilotContent;
 }
 
 export interface CopilotPlanEntry extends CopilotExecutionEntry {
@@ -164,6 +166,27 @@ export interface CopilotPlanEntry extends CopilotExecutionEntry {
   mode: CopilotRaidMode;
   presetFormation: boolean;
   completed?: boolean;
+}
+
+export type CopilotQueueSource = 'prts' | 'file';
+
+export type CopilotQueueFailurePolicy = 'stop' | 'continue';
+
+export interface CopilotQueueEntryInput {
+  clientId: string;
+  source: CopilotQueueSource;
+  copilotId?: number;
+  filename?: string;
+  mode: CopilotRaidMode;
+}
+
+export interface CopilotQueuePlanEntry extends CopilotPlanEntry {
+  clientId: string;
+  source: CopilotQueueSource;
+}
+
+export interface CopilotQueuePlan {
+  entries: CopilotQueuePlanEntry[];
 }
 
 /**
@@ -517,6 +540,32 @@ async function loadStageCodeMap(stageIds: readonly unknown[]): Promise<Map<strin
   }
 }
 
+function buildCopilotPlanItem(
+  content: CopilotContent,
+  {
+    id,
+    fallbackStage,
+    stageCodes
+  }: {
+    id: number;
+    fallbackStage: string;
+    stageCodes: ReadonlyMap<string, StageCode>;
+  }
+): CopilotPlanItem {
+  const stageId = typeof content.stage_name === 'string' ? content.stage_name : '';
+  const presetFormation = isPresetFormationCopilot(content);
+  return {
+    id,
+    stageId,
+    stage: stageCodes.get(stageId)?.code || getNavigationStage(content) || fallbackStage,
+    apCost: stageCodes.get(stageId)?.apCost ?? null,
+    presetFormation,
+    supportsRaid: !presetFormation,
+    operators: Array.isArray(content.opers) ? content.opers : [],
+    groups: Array.isArray(content.groups) ? content.groups : []
+  };
+}
+
 export async function buildCopilotPlan(setId: string | number, raid: unknown = 'normal'): Promise<CopilotPlan> {
   const setPayload = await fetchJson(`https://prts.maa.plus/set/get?id=${encodeURIComponent(String(setId))}`);
   const setRecord = isRecord(setPayload) ? setPayload : {};
@@ -527,19 +576,11 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
     copilotContents.push({ id, content: parseCopilotContent(data) });
   }
   const stageCodes = await loadStageCodeMap(copilotContents.map(item => item.content.stage_name));
-  const copilots: CopilotPlanItem[] = copilotContents.map(({ id, content }) => {
-    const stageId = typeof content.stage_name === 'string' ? content.stage_name : '';
-    return {
-      id: Number(id),
-      stageId,
-      stage: stageCodes.get(stageId)?.code || getNavigationStage(content) || `prts://${id}`,
-      apCost: stageCodes.get(stageId)?.apCost ?? null,
-      presetFormation: isPresetFormationCopilot(content),
-      supportsRaid: !isPresetFormationCopilot(content),
-      operators: Array.isArray(content.opers) ? content.opers : [],
-      groups: Array.isArray(content.groups) ? content.groups : []
-    };
-  });
+  const copilots: CopilotPlanItem[] = copilotContents.map(({ id, content }) => buildCopilotPlanItem(content, {
+    id: Number(id),
+    fallbackStage: `prts://${id}`,
+    stageCodes
+  }));
 
   const requestedModes: CopilotRaidMode[] = raid === 'both'
     ? ['normal', 'raid']
@@ -568,6 +609,54 @@ export async function buildCopilotPlan(setId: string | number, raid: unknown = '
     items: copilots,
     entries: entries.map(entry => ({ ...entry, completed: completed.has(entry.key) }))
   };
+}
+
+export interface BuildCopilotQueuePlanOptions {
+  dataDir?: string;
+}
+
+/**
+ * 队列计划：条目顺序即请求顺序，`key` 用调用方的 `clientId`，本地文件用稳定的
+ * 负数占位 id（不参与远端请求，也不与真实 copilot id 冲突），理智消耗保持未知。
+ */
+export async function buildCopilotQueuePlan(
+  entries: readonly CopilotQueueEntryInput[],
+  options: BuildCopilotQueuePlanOptions = {}
+): Promise<CopilotQueuePlan> {
+  const loaded: { entry: CopilotQueueEntryInput; content: CopilotContent }[] = [];
+  for (const entry of entries) {
+    if (entry.source === 'file') {
+      const file = await readManagedCopilotFile(entry.filename, { dataDir: options.dataDir });
+      loaded.push({ entry, content: file.content });
+    } else {
+      const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
+      loaded.push({ entry, content: parseCopilotContent(data) });
+    }
+  }
+  const stageCodes = await loadStageCodeMap(loaded.map(item => item.content.stage_name));
+  const planEntries: CopilotQueuePlanEntry[] = loaded.map(({ entry, content }, itemIndex) => {
+    const remote = entry.source === 'prts';
+    const copilotId = remote ? Number(entry.copilotId) : -(itemIndex + 1);
+    const item = buildCopilotPlanItem(content, {
+      id: copilotId,
+      fallbackStage: remote ? `prts://${copilotId}` : '',
+      stageCodes
+    });
+    return {
+      key: entry.clientId,
+      clientId: entry.clientId,
+      source: entry.source,
+      itemIndex,
+      copilotId,
+      stageId: item.stageId,
+      displayStage: item.stage || item.stageId,
+      apCost: remote ? item.apCost : null,
+      mode: entry.mode,
+      presetFormation: item.presetFormation,
+      content
+    };
+  });
+  return { entries: planEntries };
 }
 
 /** MAA 任务定义：字段原样透传，合并只覆盖入口任务与 `BattleStart.next`。 */
@@ -863,8 +952,8 @@ async function prepareCopilotList<TEntry extends CopilotExecutionEntry>(
   const list: CopilotListEntry[] = [];
   const executionItems: CopilotExecutionItem<TEntry>[] = [];
   for (const entry of entries) {
-    const data = await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`);
-    const content = parseCopilotContent(data);
+    const content = entry.content
+      ?? parseCopilotContent(await fetchJson(`https://prts.maa.plus/copilot/get/${entry.copilotId}`));
     for (const { repeat, filename } of buildCopilotRepeatFiles(entry, loopTimes, planDir)) {
       await writeJsonFile(filename, content);
       list.push(buildCopilotListEntry(entry, filename, executionItems.length));
@@ -984,6 +1073,7 @@ async function runCopilotGroup({
   options,
   name,
   taskPrefix,
+  taskLabel = `作业集 ${name}`,
   lifecycle
 }: {
   group: CopilotExecutionGroup<CopilotPlanEntry>;
@@ -993,6 +1083,7 @@ async function runCopilotGroup({
   options: CopilotExecutionOptions;
   name: string;
   taskPrefix: string;
+  taskLabel?: string;
   lifecycle: CopilotExecutionLifecycle;
 }): Promise<CopilotGroupOutcome> {
   const checkpoint = await createMaaLogCheckpoint();
@@ -1021,7 +1112,7 @@ async function runCopilotGroup({
         params: buildCopilotTaskParams(prepared.list, group.presetFormation === true, options)
       };
       if (group.presetFormation) await ensurePresetFormationResource(configDir);
-      await execDynamicTask(taskId, taskConfig, `作业集 ${name}`, 'copilot', true, group.presetFormation || options.userResource === true);
+      await execDynamicTask(taskId, taskConfig, taskLabel, 'copilot', true, group.presetFormation || options.userResource === true);
     } finally {
       // 观察在结算前停止：停止后未完成的日志读取不会再触发生命周期回调。
       stopObserving();
@@ -1613,6 +1704,107 @@ export async function executeCopilotEntries({
     error: failure,
     delegation
   });
+}
+
+export interface ExecuteCopilotQueueEntriesInput {
+  queueId: string;
+  name: string;
+  entries: readonly CopilotQueuePlanEntry[];
+  options?: CopilotExecutionOptions;
+  failurePolicy?: CopilotQueueFailurePolicy;
+  lifecycle?: CopilotExecutionLifecycle;
+}
+
+export interface CopilotQueueEntriesOutcome {
+  stopped: boolean;
+  error: unknown;
+  statuses: CopilotEntrySettlement<CopilotQueuePlanEntry>[];
+  completed: string[];
+  loopTimes: number;
+}
+
+/**
+ * 队列执行：一个租约内逐项下发单条目 Copilot 任务，条目状态由每项命令的退出
+ * 结果确定。`failurePolicy=stop` 首败即停，后续条目保持 `pending`；`continue`
+ * 记录失败后继续。队列不读写作业集进度，历史通关不参与执行。
+ */
+export async function executeCopilotQueueEntries({
+  queueId,
+  name,
+  entries,
+  options = {},
+  failurePolicy = 'stop',
+  lifecycle = {}
+}: ExecuteCopilotQueueEntriesInput): Promise<CopilotQueueEntriesOutcome> {
+  const loopTimes = normalizeCopilotLoopTimes(options.loopTimes);
+  const statuses = new Map<string, CopilotEntrySettlement<CopilotQueuePlanEntry>>(
+    entries.map(entry => [entry.key, { entry, status: 'pending' }])
+  );
+  const completed: string[] = [];
+  let stopped = false;
+  let failure: unknown = null;
+
+  if (entries.length === 0) {
+    return { stopped: false, error: null, statuses: [...statuses.values()], completed, loopTimes };
+  }
+
+  await withMaaExecutionLease({
+    source: 'copilot-queue',
+    taskName: name,
+    command: 'copilot-queue'
+  }, async () => {
+    await lifecycle.onBeforeStart?.();
+    lifecycle.onStarted?.();
+    const configDir = (await getMaaConfigDir()).trim();
+    const planDir = join(configDir, 'copilot-plans', `queue-${queueId}`);
+    await mkdir(planDir, { recursive: true });
+
+    for (const entry of entries) {
+      if (await lifecycle.shouldStop?.()) {
+        stopped = true;
+        break;
+      }
+      const outcome = await runCopilotGroup({
+        group: { presetFormation: entry.presetFormation, entries: [entry] },
+        configDir,
+        planDir,
+        loopTimes,
+        options,
+        name,
+        taskPrefix: `copilot_queue_${queueId}_${entry.itemIndex}`,
+        taskLabel: `作业队列 ${name}`,
+        lifecycle
+      });
+      const settled: CopilotEntrySettlement<CopilotQueuePlanEntry> = outcome.statuses[0]
+        ? { entry, status: outcome.statuses[0].status, error: outcome.statuses[0].error }
+        : { entry, status: 'pending' };
+      statuses.set(entry.key, settled);
+      lifecycle.onEntrySettled?.(entry, settled.status, settled.error);
+      if (settled.status === 'success') {
+        completed.push(entry.key);
+        try {
+          await recordCompletedCopilotEntries([entry], loopTimes);
+        } catch (error) {
+          failure = error;
+          break;
+        }
+        continue;
+      }
+      if (outcome.stopped) {
+        stopped = true;
+        break;
+      }
+      if (failurePolicy === 'stop') break;
+    }
+  });
+
+  return {
+    stopped,
+    error: stopped ? null : failure,
+    statuses: [...statuses.values()],
+    completed,
+    loopTimes
+  };
 }
 
 async function recordCompletedCopilotEntries(entries: readonly CopilotPlanEntry[], loopTimes: number): Promise<void> {

@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   executePredefinedTaskArgs: vi.fn(),
   executeCopilotSetPlan: vi.fn(),
   continueCopilotSet: vi.fn(),
+  executeCopilotQueue: vi.fn(),
+  continueCopilotQueue: vi.fn(),
+  skipCopilotQueueEntry: vi.fn(),
   loadUserConfig: vi.fn(),
   saveUserConfig: vi.fn(),
   getCopilotInfo: vi.fn(),
@@ -90,6 +93,9 @@ vi.mock('@/features/user-config', async () => {
 vi.mock('@/features/combat/api', () => ({
   executeCopilotSetPlan: mocks.executeCopilotSetPlan,
   continueCopilotSet: mocks.continueCopilotSet,
+  executeCopilotQueue: mocks.executeCopilotQueue,
+  continueCopilotQueue: mocks.continueCopilotQueue,
+  skipCopilotQueueEntry: mocks.skipCopilotQueueEntry,
   getCopilotInfo: mocks.getCopilotInfo,
   getCopilotSet: mocks.getCopilotSet,
   getCopilotSetPlan: mocks.getCopilotSetPlan,
@@ -272,6 +278,99 @@ function setRun(
 ): AgentRun {
   return activeRun(runId, state, {
     operationId: 'run_copilot_set',
+    ...(options.progress ? { progress: options.progress } : {}),
+    ...(options.result ? { result: options.result } : {}),
+    ...(options.error ? { error: options.error } : {}),
+  })
+}
+
+type QueueItemStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'stopped'
+
+function queueEntry(
+  clientId: string,
+  itemIndex: number,
+  status: QueueItemStatus,
+  overrides: Partial<RunTaskResult> = {},
+): RunTaskResult {
+  return {
+    clientId,
+    itemIndex,
+    stage: `QUEUE-${itemIndex + 1}`,
+    mode: 'normal',
+    status,
+    ...overrides,
+  }
+}
+
+function queueProgress(
+  taskResults: RunTaskResult[],
+  overrides: Partial<RunProgress> = {},
+): RunProgress {
+  const count = (status: QueueItemStatus) => taskResults.filter(entry => entry.status === status).length
+  return {
+    queueId: 'copilot-queue',
+    name: '作业队列',
+    mode: 'continuous',
+    failurePolicy: 'continue',
+    phase: 'running',
+    currentStep: taskResults.length - count('pending'),
+    totalSteps: taskResults.length,
+    currentClientId: taskResults.find(entry => entry.status === 'running')?.clientId ?? null,
+    currentTask: null,
+    nextEntry: null,
+    shouldStop: false,
+    successCount: count('success'),
+    failedCount: count('failed'),
+    skippedCount: count('skipped'),
+    stoppedCount: count('stopped'),
+    pendingCount: count('pending'),
+    message: '作业队列执行中',
+    taskResults,
+    ...overrides,
+  }
+}
+
+function queueResult(
+  taskResults: RunTaskResult[],
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const count = (status: QueueItemStatus) => taskResults.filter(entry => entry.status === status).length
+  return {
+    success: true,
+    finished: true,
+    mode: 'continuous',
+    queueId: 'copilot-queue',
+    name: '作业队列',
+    failurePolicy: 'continue',
+    message: '作业队列执行完成',
+    summary: {
+      queueId: 'copilot-queue',
+      name: '作业队列',
+      mode: 'continuous',
+      failurePolicy: 'continue',
+      totalEntries: taskResults.length,
+      successCount: count('success'),
+      failedCount: count('failed'),
+      skippedCount: count('skipped'),
+      stoppedCount: count('stopped'),
+      pendingCount: count('pending'),
+      durationMs: 5_000,
+      errors: taskResults
+        .filter(entry => entry.status === 'failed')
+        .map(entry => ({ clientId: entry.clientId, stage: entry.stage, error: entry.error })),
+      taskResults,
+    },
+    ...overrides,
+  }
+}
+
+function queueRun(
+  runId: string,
+  state: AgentRun['state'],
+  options: { progress?: RunProgress; result?: Record<string, unknown>; error?: AgentRun['error'] } = {},
+): AgentRun {
+  return activeRun(runId, state, {
+    operationId: 'run_copilot_queue',
     ...(options.progress ? { progress: options.progress } : {}),
     ...(options.result ? { result: options.result } : {}),
     ...(options.error ? { error: options.error } : {}),
@@ -484,6 +583,9 @@ describe('CombatTasks execution', () => {
     mocks.executePredefinedTaskArgs.mockReset().mockResolvedValue({ success: true })
     mocks.executeCopilotSetPlan.mockReset().mockResolvedValue({ success: true })
     mocks.continueCopilotSet.mockReset().mockResolvedValue({ success: true, data: { accepted: true } })
+    mocks.executeCopilotQueue.mockReset().mockResolvedValue({ success: true })
+    mocks.continueCopilotQueue.mockReset().mockResolvedValue({ success: true, data: { accepted: true } })
+    mocks.skipCopilotQueueEntry.mockReset().mockResolvedValue({ success: true, data: { skippedClientId: 'queue-a' } })
     mocks.loadUserConfig.mockReset().mockResolvedValue({ success: false })
     mocks.saveUserConfig.mockReset().mockResolvedValue({ success: true })
     mocks.getCopilotInfo.mockReset()
@@ -1103,7 +1205,7 @@ describe('CombatTasks execution', () => {
     expect(link?.textContent).toBe('prts.plus')
   })
 
-  it('submits checked queue entries as one ordered run_task', async () => {
+  it('submits checked queue entries from the header as one ordered queue run', async () => {
     seedCopilotQueue([
       { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
       { id: 'queue-b', source: 'file', uri: '/data/my job.json', title: '本地作业', fileName: 'my job.json', addedAt: 2 },
@@ -1111,33 +1213,61 @@ describe('CombatTasks execution', () => {
     ])
     await renderComponent()
 
-    const execute = buttonByText('执行队列')
-    expect(execute?.disabled).toBe(false)
-    await click(execute!)
+    expect(buttonByText('执行队列')).toBeUndefined()
+    await click(buttonByText('立即执行')!)
 
-    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledOnce()
-    const [command, args, operationParent, parentRunId, taskName, scope, waitForCompletion, meta] =
-      mocks.executePredefinedTaskArgs.mock.calls[0] as [
-        string,
-        string[],
-        null,
-        null,
-        string,
-        string,
-        boolean,
-        { idempotencyKey: string },
-      ]
-    expect(command).toBe('copilot')
-    expect(args.slice(0, 3)).toEqual(['prts://101', '/data/my job.json', 'prts://102'])
-    expect(operationParent).toBeNull()
-    expect(parentRunId).toBeNull()
-    expect(taskName).toBe('自动战斗作业')
-    expect(scope).toBe('combat')
-    expect(waitForCompletion).toBe(false)
-    expect(meta.idempotencyKey).toMatch(/^run_task-/)
+    expect(mocks.executeCopilotQueue).toHaveBeenCalledOnce()
+    expect(mocks.executeCopilotQueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queueId: 'copilot-queue',
+        name: '作业队列',
+        mode: 'continuous',
+        failurePolicy: 'continue',
+        waitForCompletion: false,
+        options: expect.objectContaining({ formationMode: 'auto' }),
+        entries: [
+          { clientId: 'queue-a', source: 'prts', copilotId: 101, mode: 'normal' },
+          { clientId: 'queue-b', source: 'file', filename: '/data/my job.json', mode: 'normal' },
+          { clientId: 'queue-c', source: 'prts', copilotId: 102, mode: 'normal' },
+        ],
+      }),
+      { idempotencyKey: expect.stringMatching(/^run_copilot_queue-/) },
+    )
+    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
   })
 
-  it('falls back to one run_task when the queue mixes set members with custom entries', async () => {
+  it('submits an unquoted original path for quoted local queue files', async () => {
+    seedCopilotQueue([
+      { id: 'local', source: 'file', uri: '"/data/my job.json"', title: '', fileName: 'my job.json', addedAt: 1 },
+    ])
+    await renderComponent()
+
+    await click(buttonByText('立即执行')!)
+
+    const [payload] = mocks.executeCopilotQueue.mock.calls[0] as [{ entries: unknown[] }]
+    expect(payload.entries).toEqual([
+      { clientId: 'local', source: 'file', filename: '/data/my job.json', mode: 'normal' },
+    ])
+  })
+
+  it('maps the stop execution strategy to the queue failure policy', async () => {
+    localStorage.setItem('combatAdvancedParams', JSON.stringify({
+      copilot: { executionStrategy: 'stop' },
+    }))
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+    ])
+    await renderComponent()
+
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executeCopilotQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ failurePolicy: 'stop' }),
+      expect.anything(),
+    )
+  })
+
+  it('falls back to a queue run when the queue mixes set members with custom entries', async () => {
     seedCopilotQueue([
       { id: 'custom', source: 'link', uri: 'prts://900', title: '自定义作业', addedAt: 1 },
     ])
@@ -1149,14 +1279,17 @@ describe('CombatTasks execution', () => {
 
     expect(container.textContent).toContain('自定义作业')
     expect(container.textContent).toContain('共 3 项')
-    await click(buttonByText('执行队列')!)
+    await click(buttonByText('立即执行')!)
 
-    const [, args] = mocks.executePredefinedTaskArgs.mock.calls[0] as [string, string[]]
-    expect(args.slice(0, 3)).toEqual(['prts://900', 'prts://101', 'prts://102'])
+    const [payload] = mocks.executeCopilotQueue.mock.calls[0] as [{
+      entries: Array<{ clientId: string; source: string; copilotId?: number }>
+    }]
+    expect(payload.entries.map(entry => entry.clientId)).toHaveLength(3)
+    expect(payload.entries.map(entry => entry.copilotId)).toEqual([900, 101, 102])
     expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
   })
 
-  it('falls back to one run_task when set members are reordered in the queue', async () => {
+  it('keeps the queue order when set members are reordered before a queue run', async () => {
     mockSetPlan()
     await renderComponent()
     await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://s48990')
@@ -1165,33 +1298,107 @@ describe('CombatTasks execution', () => {
 
     await click(buttonByAriaLabel('上移第 2 项 TEST-2')!)
     await flush()
-    await click(buttonByText('执行队列')!)
+    await click(buttonByText('立即执行')!)
 
-    const [, args] = mocks.executePredefinedTaskArgs.mock.calls[0] as [string, string[]]
-    expect(args.slice(0, 2)).toEqual(['prts://102', 'prts://101'])
+    const [payload] = mocks.executeCopilotQueue.mock.calls[0] as [{
+      entries: Array<{ copilotId?: number }>
+    }]
+    expect(payload.entries.map(entry => entry.copilotId)).toEqual([102, 101])
     expect(mocks.executeCopilotSetPlan).not.toHaveBeenCalled()
   })
 
-  it('keeps queue execution disabled for an unchecked or empty queue', async () => {
+  it('keeps the single-task path when the queue has no checked entries', async () => {
     seedCopilotQueue([
       { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
     ])
     await renderComponent()
 
-    expect(buttonByText('执行队列')?.disabled).toBe(false)
     await click(buttonByAriaLabel('取消选择队列第 1 项 链接作业')!)
     await flush()
+    await click(buttonByText('立即执行')!)
 
-    expect(buttonByText('执行队列')?.disabled).toBe(true)
-    await click(buttonByText('执行队列')!)
-    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+    expect(mocks.executeCopilotQueue).not.toHaveBeenCalled()
+    expect(mocks.setMessage).toHaveBeenCalledWith('请输入作业链接')
 
     await click(buttonByAriaLabel('删除第 1 项 链接作业')!)
     await flush()
 
     expect(container.textContent).toContain('队列为空')
-    expect(buttonByText('执行队列')?.disabled).toBe(true)
-    expect(mocks.executePredefinedTaskArgs).not.toHaveBeenCalled()
+    await setInputValue(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!, 'prts://101')
+    await click(buttonByText('立即执行')!)
+
+    expect(mocks.executeCopilotQueue).not.toHaveBeenCalled()
+    expect(mocks.executePredefinedTaskArgs).toHaveBeenCalledOnce()
+  })
+
+  it('shows queue run item states and continues or skips a waiting manual queue', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+      { id: 'queue-b', source: 'link', uri: 'prts://102', title: '第二个作业', addedAt: 2 },
+    ])
+    useIdentity({ runId: 'run-queue-waiting', operationId: 'run_copilot_queue', scope: 'combat' })
+    const waiting = queueRun('run-queue-waiting', 'waiting', {
+      progress: queueProgress(
+        [queueEntry('queue-a', 0, 'success'), queueEntry('queue-b', 1, 'pending')],
+        {
+          mode: 'manual',
+          phase: 'waiting_for_next',
+          nextEntry: { clientId: 'queue-b', itemIndex: 1, stage: 'QUEUE-2', mode: 'normal' },
+        },
+      ),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [waiting] })))
+    api.fetchRun.mockResolvedValue(ok(waiting))
+    startController()
+    await flush()
+    await renderComponent()
+
+    const rows = container.querySelectorAll('[role="listitem"]')
+    expect(rows[0]?.textContent).toContain('已完成')
+    expect(rows[1]?.textContent).toContain('待执行')
+
+    await click(buttonByText('跳过此项')!)
+    expect(mocks.skipCopilotQueueEntry).toHaveBeenCalledWith('run-queue-waiting')
+    expect(mocks.setMessage).toHaveBeenCalledWith('已跳过当前项', 'success')
+
+    await click(buttonByText('开始下一项')!)
+    expect(mocks.continueCopilotQueue).toHaveBeenCalledWith('run-queue-waiting', false)
+  })
+
+  it('retries only failed queue entries in their original order', async () => {
+    seedCopilotQueue([
+      { id: 'queue-a', source: 'link', uri: 'prts://101', title: '链接作业', addedAt: 1 },
+      { id: 'queue-b', source: 'link', uri: 'prts://102', title: '第二个作业', addedAt: 2 },
+      { id: 'queue-c', source: 'link', uri: 'prts://103', title: '第三个作业', addedAt: 3 },
+    ])
+    useIdentity({ runId: 'run-queue-done', operationId: 'run_copilot_queue', scope: 'combat' })
+    const done = queueRun('run-queue-done', 'succeeded', {
+      result: queueResult([
+        queueEntry('queue-a', 0, 'success'),
+        queueEntry('queue-b', 1, 'failed', { error: '作战失败' }),
+        queueEntry('queue-c', 2, 'failed', { error: '缺少干员' }),
+      ]),
+    })
+    api.fetchSnapshot.mockResolvedValue(ok(runSnapshot({ activeRuns: [], lastRun: done })))
+    api.fetchRun.mockResolvedValue(ok(done))
+    startController()
+    await flush()
+    await renderComponent()
+
+    expect(container.textContent).toContain('执行失败')
+    expect(container.textContent).toContain('作战失败')
+
+    await click(buttonByText('重试失败项')!)
+    await flush()
+
+    const [payload] = mocks.executeCopilotQueue.mock.calls[0] as [{ entries: unknown[] }]
+    expect(payload.entries).toEqual([
+      { clientId: 'queue-b', source: 'prts', copilotId: 102, mode: 'normal' },
+      { clientId: 'queue-c', source: 'prts', copilotId: 103, mode: 'normal' },
+    ])
+    expect(buttonByAriaLabel('选择队列第 1 项 链接作业')?.getAttribute('aria-pressed')).toBe('false')
+    expect(buttonByAriaLabel('取消选择队列第 2 项 第二个作业')?.getAttribute('aria-pressed')).toBe('true')
+    expect(buttonByAriaLabel('取消选择队列第 3 项 第三个作业')?.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('keeps both copilot source inputs and one empty queue without a preview', async () => {
@@ -1681,7 +1888,7 @@ describe('CombatTasks execution', () => {
     expect(storedQueue.entries).toHaveLength(3)
     expect(storedQueue.entries[0]).toMatchObject({ setId: '48990', setItemIndex: 0 })
 
-    await click(buttonByText('执行队列')!)
+    await click(buttonByText('立即执行')!)
 
     expect(mocks.executeCopilotSetPlan).toHaveBeenCalledWith(
       '48990',

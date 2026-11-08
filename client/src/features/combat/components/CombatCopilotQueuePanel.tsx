@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Check, ChevronDown, ChevronUp, ListChecks, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, ListChecks, RotateCcw, SkipForward, Trash2 } from 'lucide-react'
 import { Button, EmptyState, IconButton } from '@/shared/ui'
 import type { CopilotDetailTarget } from '../model/copilotDetail'
 import { formatCopilotApCost } from '../model/copilotPayload'
+import type { CopilotQueueItemStatus } from '../model/copilotQueueRun'
 import type { CopilotSetItemStatus } from '../model/copilotSetRun'
 import type { CopilotQueueEntry, CopilotQueueSource } from '../model/copilotQueue'
 import CombatCopilotDetailLayer from './CombatCopilotDetailLayer'
@@ -23,16 +24,48 @@ const STATUS_LABELS: Record<CopilotSetItemStatus, string> = {
   stopped: '已终止',
 }
 
-function describeStatus(
+const QUEUE_STATUS_LABELS: Record<CopilotQueueItemStatus, string> = {
+  pending: '待执行',
+  running: '执行中',
+  success: '已完成',
+  failed: '执行失败',
+  skipped: '已跳过',
+  stopped: '已终止',
+}
+
+interface QueueRowState {
+  label: string
+  error?: string
+}
+
+function firstLine(value: string): string {
+  const line = value.split(/\r?\n/).map(part => part.trim()).find(Boolean)
+  return line ?? value.trim()
+}
+
+function describeRowState(
   entry: CopilotQueueEntry,
   queue: CombatCopilotQueueProjection,
-): string {
+): QueueRowState {
+  const queueState = queue.queueRun?.statuses.get(entry.id)
+  if (queueState) {
+    return {
+      label: QUEUE_STATUS_LABELS[queueState.status],
+      ...(queueState.error ? { error: queueState.error } : {}),
+    }
+  }
   if (entry.setId && entry.setId === queue.setId && entry.setItemIndex !== undefined) {
     const status = queue.itemStatuses.get(entry.setItemIndex)
-    if (status) return STATUS_LABELS[status]
+    if (status) {
+      const error = queue.itemErrors.get(entry.setItemIndex)
+      return {
+        label: STATUS_LABELS[status],
+        ...(error ? { error } : {}),
+      }
+    }
   }
-  if (queue.isRunning && queue.submittedEntryIds.has(entry.id)) return '本次已提交'
-  return '待执行'
+  if (queue.isRunning && queue.submittedEntryIds.has(entry.id)) return { label: '本次已提交' }
+  return { label: '待执行' }
 }
 
 function describeSource(entry: CopilotQueueEntry): string {
@@ -64,9 +97,7 @@ function toDetailTarget(
   entry: CopilotQueueEntry,
   queue: CombatCopilotQueueProjection,
 ): CopilotDetailTarget {
-  const error = entry.setItemIndex === undefined
-    ? undefined
-    : queue.itemErrors.get(entry.setItemIndex)
+  const state = describeRowState(entry, queue)
   return {
     title: describeTitle(entry),
     stage: entry.stage,
@@ -79,8 +110,8 @@ function toDetailTarget(
     completedModes: entry.completedModes,
     operators: entry.operatorDetails ?? entry.operators?.map(name => ({ name })),
     groups: entry.groups,
-    statusLabel: describeStatus(entry, queue),
-    ...(error ? { error } : {}),
+    statusLabel: state.label,
+    ...(state.error ? { error: state.error } : {}),
   }
 }
 
@@ -93,10 +124,14 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
   const { entries, selected } = queue
   const checkedCount = entries.filter(entry => selected.has(entry.id)).length
   const locked = queue.isRunning || queue.isSubmitting
-  const canExecute = checkedCount > 0 && queue.automationAvailable && !locked
   const detailEntry = detailEntryId
     ? entries.find(entry => entry.id === detailEntryId) ?? null
     : null
+  const waitingForNext = queue.queueRun?.isWaiting === true
+  const failurePolicy = queue.queueRun?.failurePolicy ?? queue.failurePolicy
+  const failedEntries = queue.queueRun?.isTerminal
+    ? entries.filter(entry => queue.queueRun?.statuses.get(entry.id)?.status === 'failed')
+    : []
 
   return (
     <section
@@ -119,18 +154,6 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
           >
             清空
           </button>
-          <Button
-            onClick={queue.onExecute}
-            disabled={!canExecute}
-            loading={queue.isSubmitting}
-            loadingText="正在启动"
-            title={!queue.automationAvailable ? queue.unavailableMessage : undefined}
-            variant="primary"
-            size="md"
-            className="min-h-11 px-3"
-          >
-            执行队列
-          </Button>
         </div>
       </header>
 
@@ -148,13 +171,58 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
             已勾选 {checkedCount} / {entries.length} 项，
             {submitsAsSet(entries, selected, queue.setId)
               ? '按作业集顺序执行，可查看逐项状态。'
-              : '按队列顺序执行，失败即停。'}
+              : `按队列顺序执行，失败${failurePolicy === 'stop' ? '即停' : '后继续'}，可查看逐项状态。`}
           </p>
+          {(waitingForNext || failedEntries.length > 0) && (
+            <div className="combat-copilot-panel-actions px-3 pb-2">
+              {waitingForNext && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={queue.onContinueQueue}
+                    disabled={!queue.automationAvailable || queue.isContinuing}
+                    loading={queue.isContinuing}
+                    loadingText="正在开始"
+                    title={!queue.automationAvailable ? queue.unavailableMessage : undefined}
+                  >
+                    开始下一项
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={queue.onSkipEntry}
+                    disabled={!queue.automationAvailable || queue.isSkipping}
+                    loading={queue.isSkipping}
+                    loadingText="正在跳过"
+                    title={!queue.automationAvailable ? queue.unavailableMessage : undefined}
+                    icon={<SkipForward size={14} aria-hidden="true" />}
+                  >
+                    跳过此项
+                  </Button>
+                </>
+              )}
+              {failedEntries.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={queue.onRetryFailed}
+                  disabled={locked || !queue.automationAvailable}
+                  title={!queue.automationAvailable ? queue.unavailableMessage : undefined}
+                  icon={<RotateCcw size={14} aria-hidden="true" />}
+                >
+                  重试失败项
+                </Button>
+              )}
+            </div>
+          )}
           <div role="list" aria-label="作业队列" className="combat-copilot-mine-list">
             {entries.map((entry, index) => {
               const checked = selected.has(entry.id)
               const title = describeTitle(entry)
               const expanded = detailEntryId === entry.id
+              const state = describeRowState(entry, queue)
+              const errorLine = state.error ? firstLine(state.error) : null
 
               return (
                 <div
@@ -196,10 +264,11 @@ export default function CombatCopilotQueuePanel({ queue }: CombatCopilotQueuePan
                           {mode === 'raid' ? '突袭已完成' : '普通已完成'}
                         </span>
                       ))}
+                      {errorLine && <span className="form-error-text">{errorLine}</span>}
                     </span>
                   </button>
 
-                  <span className="combat-copilot-mine-status">{describeStatus(entry, queue)}</span>
+                  <span className="combat-copilot-mine-status">{state.label}</span>
 
                   <div className="combat-copilot-mine-actions">
                     <IconButton

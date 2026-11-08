@@ -1,4 +1,4 @@
-import type { CopilotSetRunMode } from '../api'
+import type { CopilotQueueFailurePolicy, CopilotSetRunMode } from '../api'
 import type {
   CombatAdvancedOption,
   CopilotRaid,
@@ -167,6 +167,10 @@ export function buildCopilotSetExecutionOptions(
 /** 页面的 app/cli 都对应服务端连续执行；manual 保留逐关等待。 */
 export function toCopilotSetRunMode(mode: CopilotSetExecutionMode): CopilotSetRunMode {
   return mode === 'manual' ? 'manual' : 'continuous'
+}
+
+export function toCopilotQueueFailurePolicy(value: unknown): CopilotQueueFailurePolicy {
+  return value === 'stop' ? 'stop' : 'continue'
 }
 
 /** 执行前校验；返回 null 表示可以提交。 */

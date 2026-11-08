@@ -8,8 +8,10 @@ import type {
   AdvancedValues,
 } from '../model/combatCommands'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
+import type { CopilotQueueRunProjection } from '../model/copilotQueueRun'
 import type { CopilotSetItemStatus } from '../model/copilotSetRun'
 import type { CopilotQueueEntry, CopilotQueueMoveDirection } from '../model/copilotQueue'
+import type { CopilotQueueFailurePolicy } from '../api'
 import type { PanelStateStore } from '../model/panelState'
 import type {
   CopilotRaid,
@@ -76,8 +78,12 @@ export interface CombatCopilotQueueProjection {
   itemStatuses: ReadonlyMap<number, CopilotSetItemStatus>
   itemErrors: ReadonlyMap<number, string>
   submittedEntryIds: ReadonlySet<string>
+  queueRun: CopilotQueueRunProjection | null
+  failurePolicy: CopilotQueueFailurePolicy
   isRunning: boolean
   isSubmitting: boolean
+  isContinuing: boolean
+  isSkipping: boolean
   isAdding: boolean
   addingUri: string | null
   automationAvailable: boolean
@@ -86,9 +92,11 @@ export interface CombatCopilotQueueProjection {
   onRemove: (id: string) => void
   onMove: (id: string, direction: CopilotQueueMoveDirection) => void
   onClear: () => void
-  onExecute: () => void
   onAddCurrent: () => void
   onAddUri: (uri: string) => void
+  onContinueQueue: () => void
+  onSkipEntry: () => void
+  onRetryFailed: () => void
 }
 
 export interface CombatCopilotSearchProjection {

@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CopilotDetailTarget } from '../model/copilotDetail'
 import type { CopilotQueueEntry } from '../model/copilotQueue'
+import type { CopilotQueueRunProjection } from '../model/copilotQueueRun'
 import type { CombatCopilotQueueProjection } from './combatPanelTypes'
 import CombatCopilotQueuePanel from './CombatCopilotQueuePanel'
 
@@ -35,8 +36,12 @@ const queue = (overrides: Partial<CombatCopilotQueueProjection> = {}): CombatCop
   itemStatuses: new Map(),
   itemErrors: new Map(),
   submittedEntryIds: new Set(),
+  queueRun: null,
+  failurePolicy: 'continue',
   isRunning: false,
   isSubmitting: false,
+  isContinuing: false,
+  isSkipping: false,
   isAdding: false,
   addingUri: null,
   automationAvailable: true,
@@ -45,9 +50,11 @@ const queue = (overrides: Partial<CombatCopilotQueueProjection> = {}): CombatCop
   onRemove: () => {},
   onMove: () => {},
   onClear: () => {},
-  onExecute: () => {},
   onAddCurrent: () => {},
   onAddUri: () => {},
+  onContinueQueue: () => {},
+  onSkipEntry: () => {},
+  onRetryFailed: () => {},
   ...overrides,
 })
 
@@ -56,6 +63,36 @@ const click = async (element: HTMLElement) => {
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
 }
+
+const runProjection = (
+  overrides: Partial<CopilotQueueRunProjection> = {},
+): CopilotQueueRunProjection => ({
+  runId: 'run-queue',
+  state: 'running',
+  isActive: true,
+  isTerminal: false,
+  queueId: 'copilot-queue',
+  name: '作业队列',
+  mode: 'continuous',
+  failurePolicy: 'continue',
+  phase: 'running',
+  isWaiting: false,
+  waitingForNext: false,
+  currentClientId: null,
+  currentItemIndex: null,
+  nextEntry: null,
+  taskResults: [],
+  statuses: new Map(),
+  totalCount: 0,
+  successCount: 0,
+  failedCount: 0,
+  skippedCount: 0,
+  stoppedCount: 0,
+  pendingCount: 0,
+  failures: [],
+  summaryErrors: [],
+  ...overrides,
+})
 
 const buttons = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
 
@@ -88,7 +125,7 @@ describe('CombatCopilotQueuePanel', () => {
     })
   }
 
-  it('shows the empty state and disables execution', async () => {
+  it('shows the empty state and disables clearing', async () => {
     await renderPanel({ entries: [], selected: new Set() })
 
     const panel = container.querySelector<HTMLElement>('section[aria-label="作业队列"]')
@@ -98,7 +135,7 @@ describe('CombatCopilotQueuePanel', () => {
     expect(container.textContent).toContain('队列为空')
     expect(container.textContent).toContain('输入作业集链接会自动展开到队列')
     expect(container.textContent).toContain('本地文件')
-    expect(buttonByText(container, '执行队列')?.disabled).toBe(true)
+    expect(buttonByText(container, '执行队列')).toBeUndefined()
     expect(buttonByText(container, '清空')?.disabled).toBe(true)
   })
 
@@ -123,7 +160,7 @@ describe('CombatCopilotQueuePanel', () => {
     expect(rows[2]?.textContent).toContain('local.json')
     expect(rows[2]?.textContent).toContain('本地')
     expect(container.textContent).toContain('已勾选 3 / 3 项')
-    expect(buttonByText(container, '执行队列')?.disabled).toBe(false)
+    expect(buttonByText(container, '执行队列')).toBeUndefined()
   })
 
   it('toggles rows and reports the checked count', async () => {
@@ -138,30 +175,6 @@ describe('CombatCopilotQueuePanel', () => {
     await click(buttonByLabel(container, '取消选择队列第 1 项 作业一')!)
 
     expect(onToggle).toHaveBeenCalledWith('a')
-  })
-
-  it('executes only when entries are checked and automation is available', async () => {
-    const onExecute = vi.fn()
-    await renderPanel({ selected: new Set(), onExecute })
-
-    expect(buttonByText(container, '执行队列')?.disabled).toBe(true)
-    await click(buttonByText(container, '执行队列')!)
-
-    expect(onExecute).not.toHaveBeenCalled()
-
-    await renderPanel({ onExecute })
-    await click(buttonByText(container, '执行队列')!)
-
-    expect(onExecute).toHaveBeenCalledOnce()
-
-    await renderPanel({ automationAvailable: false, unavailableMessage: '自动化不可用', onExecute })
-    const execute = buttonByText(container, '执行队列')
-    expect(execute?.disabled).toBe(true)
-    expect(execute?.title).toBe('自动化不可用')
-
-    await renderPanel({ isRunning: true, onExecute })
-    expect(buttonByText(container, '执行队列')?.disabled).toBe(true)
-    expect(buttonByText(container, '清空')?.disabled).toBe(true)
   })
 
   it('moves and removes rows, disabling impossible directions', async () => {
@@ -281,5 +294,141 @@ describe('CombatCopilotQueuePanel', () => {
 
     expect(rows()[0]?.textContent).toContain('已完成')
     expect(rows()[2]?.textContent).toContain('待执行')
+  })
+
+  it('prefers queue run statuses over the set projection and shows the first failure line', async () => {
+    const error = '缺少干员：桃金娘\n请检查 box 后重试'
+    await renderPanel({
+      entries: [entry({
+        id: 's0',
+        title: '关卡一',
+        source: 'set',
+        setId: '48990',
+        setItemIndex: 0,
+      })],
+      setId: '48990',
+      itemStatuses: new Map([[0, 'success']]),
+      queueRun: runProjection({
+        statuses: new Map([['s0', { status: 'failed', error }]]),
+        failedCount: 1,
+      }),
+    })
+
+    const row = container.querySelector('[role="listitem"]')
+    expect(row?.textContent).toContain('执行失败')
+    expect(row?.textContent).toContain('缺少干员：桃金娘')
+    expect(row?.textContent).not.toContain('请检查 box 后重试')
+    expect(row?.textContent).not.toContain('已完成')
+
+    await click(buttonByLabel(container, '查看队列第 1 项详情 关卡一')!)
+    expect(detailTargets[detailTargets.length - 1]).toMatchObject({
+      statusLabel: '执行失败',
+      error,
+    })
+  })
+
+  it('offers continue and skip actions while a manual queue waits for the next entry', async () => {
+    const onContinueQueue = vi.fn()
+    const onSkipEntry = vi.fn()
+    await renderPanel({
+      queueRun: runProjection({
+        state: 'waiting',
+        isWaiting: true,
+        waitingForNext: true,
+        mode: 'manual',
+        phase: 'waiting_for_next',
+      }),
+      onContinueQueue,
+      onSkipEntry,
+    })
+
+    expect(buttonByText(container, '开始下一项')?.disabled).toBe(false)
+    expect(buttonByText(container, '跳过此项')?.disabled).toBe(false)
+
+    await click(buttonByText(container, '开始下一项')!)
+    await click(buttonByText(container, '跳过此项')!)
+
+    expect(onContinueQueue).toHaveBeenCalledOnce()
+    expect(onSkipEntry).toHaveBeenCalledOnce()
+  })
+
+  it('disables continue and skip while their requests are in flight', async () => {
+    await renderPanel({
+      queueRun: runProjection({ state: 'waiting', isWaiting: true, mode: 'manual' }),
+      isContinuing: true,
+      isSkipping: true,
+    })
+
+    expect(buttonByText(container, '正在开始')).toBeDefined()
+    expect(buttonByText(container, '正在跳过')).toBeDefined()
+    expect(buttonByText(container, '正在开始')?.disabled).toBe(true)
+    expect(buttonByText(container, '正在跳过')?.disabled).toBe(true)
+  })
+
+  it('offers retrying failed entries only after a terminal queue run', async () => {
+    const onRetryFailed = vi.fn()
+    const entries = [
+      entry({ id: 'a', title: '关卡一' }),
+      entry({ id: 'b', title: '关卡二', uri: 'prts://102' }),
+    ]
+    await renderPanel({
+      entries,
+      selected: new Set(['a', 'b']),
+      queueRun: runProjection({
+        state: 'succeeded',
+        isActive: false,
+        isTerminal: true,
+        statuses: new Map([
+          ['a', { status: 'success' }],
+          ['b', { status: 'failed', error: '作战失败' }],
+        ]),
+        failedCount: 1,
+        successCount: 1,
+        totalCount: 2,
+      }),
+      onRetryFailed,
+    })
+
+    const rowText = () => container.querySelectorAll('[role="listitem"]')[1]?.textContent ?? ''
+    expect(rowText()).toContain('执行失败')
+    expect(rowText()).toContain('作战失败')
+    await click(buttonByText(container, '重试失败项')!)
+
+    expect(onRetryFailed).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the retry action hidden while the queue run is still active', async () => {
+    await renderPanel({
+      entries: [entry({ id: 'a' })],
+      queueRun: runProjection({
+        isTerminal: false,
+        statuses: new Map([['a', { status: 'failed', error: '作战失败' }]]),
+      }),
+    })
+
+    expect(buttonByText(container, '重试失败项')).toBeUndefined()
+  })
+
+  it('describes per-item state and the configured failure policy', async () => {
+    await renderPanel({ failurePolicy: 'stop' })
+    expect(container.textContent).toContain('按队列顺序执行')
+    expect(container.textContent).toContain('失败即停')
+    expect(container.textContent).toContain('可查看逐项状态')
+
+    await renderPanel({ failurePolicy: 'continue' })
+    expect(container.textContent).toContain('失败后继续')
+
+    await renderPanel({
+      failurePolicy: 'continue',
+      queueRun: runProjection({ failurePolicy: 'stop' }),
+    })
+    expect(container.textContent).toContain('失败即停')
+  })
+
+  it('locks selection and ordering while a submission is in flight', async () => {
+    await renderPanel({ isSubmitting: true })
+
+    expect(buttonByLabel(container, '取消选择队列第 1 项 作业一')?.disabled).toBe(true)
+    expect(buttonByLabel(container, '删除第 1 项 作业一')?.disabled).toBe(true)
   })
 })

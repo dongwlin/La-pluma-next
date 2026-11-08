@@ -21,6 +21,7 @@ import {
   buildCombatCommandArgs,
   buildCopilotSetExecutionOptions,
   normalizeFormationMode,
+  toCopilotQueueFailurePolicy,
   toCopilotSetRunMode,
   validateCombatInput,
 } from '../model/combatCommands'
@@ -36,8 +37,9 @@ import {
   buildCopilotQueueEntryFromFile,
   checkedCopilotQueueEntries,
   COPILOT_QUEUE_LIMIT,
-  copilotQueueEntryArgument,
+  type CopilotQueueEntry,
 } from '../model/copilotQueue'
+import { toCopilotQueueRunEntries } from '../model/copilotQueueRun'
 import { collectCopilotItemErrors } from '../model/copilotDetail'
 import { deriveCopilotSetView } from '../model/copilotSetView'
 import { deriveExecutionProgress } from '../model/executionProgress'
@@ -70,6 +72,9 @@ import type {
 
 /** 协调器加载完成前的渲染默认值；与迁移前的初始 state 一致。 */
 const DEFAULT_COMBAT_CONFIG = createDefaultCombatDraft()
+
+const COPILOT_QUEUE_RUN_ID = 'copilot-queue'
+const COPILOT_QUEUE_RUN_NAME = '作业队列'
 
 function previewMatchesInput(
   preview: CopilotSetInfo | null,
@@ -162,12 +167,17 @@ export default function CombatWorkspace() {
     isAutoStopping,
     isStopping,
     isContinuing,
+    isSkipping,
     isSubmitting,
     setRun,
+    queueRun,
     run: trackedRun,
     submitTask,
     submitSet,
+    submitQueue,
     continueSet,
+    continueQueue,
+    skipQueueEntry,
     stop,
   } = useCombatExecution({
     notify: setStatusMessage,
@@ -334,9 +344,58 @@ export default function CombatWorkspace() {
     await stop()
   }
 
+  const executeCheckedQueue = async (entries: readonly CopilotQueueEntry[]) => {
+    const setIndexes: number[] = []
+    let setBacked = activeSetPreview !== null
+    for (const entry of entries) {
+      if (
+        !activeSetPreview
+        || entry.setId !== activeSetPreview.id
+        || entry.setItemIndex === undefined
+      ) {
+        setBacked = false
+        break
+      }
+      setIndexes.push(entry.setItemIndex)
+    }
+    const ordered = setBacked && setIndexes.every(
+      (index, position) => position === 0 || index > setIndexes[position - 1]!,
+    )
+
+    setSubmittedEntryIds(new Set())
+    if (activeSetPreview && setBacked && ordered) {
+      await submitSet({
+        setId: activeSetPreview.id,
+        mode: toCopilotSetRunMode(copilotSetExecutionMode),
+        raid: normalizeRaidValue(advancedParams.copilot?.raid),
+        selectedIndexes: setIndexes,
+        options: buildCopilotSetExecutionOptions(
+          advancedParams.copilot,
+          normalizeFormationMode(autoFormation.copilot),
+        ),
+        taskName: copilotTask.name,
+      })
+      return
+    }
+
+    await executeQueueRun(entries)
+  }
+
   const handleExecute = async (task: CombatTask) => {
     if (!automationAvailable) {
       setStatusMessage(unavailableMessage, 'error')
+      return
+    }
+
+    const queueEntries = task.id === 'copilot'
+      ? checkedCopilotQueueEntries(queue.entries, queue.selected)
+      : []
+    if (queueEntries.length) {
+      if (isRunning || isSubmitting) {
+        setStatusMessage('正在执行其他任务，请稍后再试', 'warning')
+        return
+      }
+      await executeCheckedQueue(queueEntries)
       return
     }
 
@@ -604,10 +663,63 @@ export default function CombatWorkspace() {
     }
   }
 
-  const handleExecuteQueue = async () => {
-    const entries = checkedCopilotQueueEntries(queue.entries, queue.selected)
-    if (!entries.length) {
-      setStatusMessage('请至少勾选一个作业')
+  const executeQueueRun = async (entries: readonly CopilotQueueEntry[]) => {
+    const raid = normalizeRaidValue(advancedParams.copilot?.raid)
+    const entryMode = raid === 'raid' ? 'raid' : 'normal'
+    const runEntries = toCopilotQueueRunEntries(entries, entryMode)
+    if (!runEntries.length || runEntries.length !== entries.length) {
+      setStatusMessage('队列中存在无法解析的作业链接', 'error')
+      return false
+    }
+    if (raid === 'both') {
+      setStatusMessage('自定义队列暂不支持普通+突袭双模式，本次按普通模式执行', 'warning')
+    }
+
+    const submitted = await submitQueue({
+      queueId: COPILOT_QUEUE_RUN_ID,
+      name: COPILOT_QUEUE_RUN_NAME,
+      mode: toCopilotSetRunMode(copilotSetExecutionMode),
+      failurePolicy: toCopilotQueueFailurePolicy(advancedParams.copilot?.executionStrategy),
+      entries: runEntries,
+      options: buildCopilotSetExecutionOptions(
+        advancedParams.copilot,
+        normalizeFormationMode(autoFormation.copilot),
+      ),
+      taskName: copilotTask.name,
+    })
+    if (submitted) setSubmittedEntryIds(new Set(entries.map(entry => entry.id)))
+    return submitted
+  }
+
+  const selectQueueEntries = (ids: readonly string[]) => {
+    const target = new Set(ids)
+    for (const entry of queue.entries) {
+      if (target.has(entry.id) !== queue.selected.has(entry.id)) queue.toggle(entry.id)
+    }
+  }
+
+  const handleContinueQueue = async () => {
+    if (!automationAvailable) {
+      setStatusMessage(unavailableMessage, 'error')
+      return
+    }
+    await continueQueue()
+  }
+
+  const handleSkipQueueEntry = async () => {
+    if (!automationAvailable) {
+      setStatusMessage(unavailableMessage, 'error')
+      return
+    }
+    await skipQueueEntry()
+  }
+
+  const handleRetryFailedQueue = async () => {
+    const failedEntries = queueRun?.isTerminal
+      ? queue.entries.filter(entry => queueRun.statuses.get(entry.id)?.status === 'failed')
+      : []
+    if (!failedEntries.length) {
+      setStatusMessage('没有可重试的失败项', 'warning')
       return
     }
     if (!automationAvailable) {
@@ -618,47 +730,9 @@ export default function CombatWorkspace() {
       setStatusMessage('正在执行其他任务，请稍后再试', 'warning')
       return
     }
-
-    const setIndexes: number[] = []
-    let setBacked = activeSetPreview !== null
-    for (const entry of entries) {
-      if (
-        !activeSetPreview
-        || entry.setId !== activeSetPreview.id
-        || entry.setItemIndex === undefined
-      ) {
-        setBacked = false
-        break
-      }
-      setIndexes.push(entry.setItemIndex)
-    }
-    const ordered = setBacked && setIndexes.every(
-      (index, position) => position === 0 || index > setIndexes[position - 1]!,
-    )
-
+    selectQueueEntries(failedEntries.map(entry => entry.id))
     setSubmittedEntryIds(new Set())
-    if (activeSetPreview && setBacked && ordered) {
-      await submitSet({
-        setId: activeSetPreview.id,
-        mode: toCopilotSetRunMode(copilotSetExecutionMode),
-        raid: normalizeRaidValue(advancedParams.copilot?.raid),
-        selectedIndexes: setIndexes,
-        options: buildCopilotSetExecutionOptions(
-          advancedParams.copilot,
-          normalizeFormationMode(autoFormation.copilot),
-        ),
-        taskName: copilotTask.name,
-      })
-      return
-    }
-
-    const args = buildCombatCommandArgs('copilot', {
-      input: entries.map(copilotQueueEntryArgument).join('\n'),
-      advanced: advancedParams.copilot,
-      formationMode: normalizeFormationMode(autoFormation.copilot),
-    })
-    const submitted = await submitTask({ command: 'copilot', args, taskName: '自动战斗作业' })
-    if (submitted) setSubmittedEntryIds(new Set(entries.map(entry => entry.id)))
+    await executeQueueRun(failedEntries)
   }
 
   const applyCopilotUri = async (uri: string) => {
@@ -792,8 +866,12 @@ export default function CombatWorkspace() {
     itemStatuses: setView.itemStatuses,
     itemErrors: queueItemErrors,
     submittedEntryIds,
+    queueRun,
+    failurePolicy: toCopilotQueueFailurePolicy(advancedParams.copilot?.executionStrategy),
     isRunning,
     isSubmitting,
+    isContinuing,
+    isSkipping,
     isAdding: isAddingToQueue,
     addingUri: addingQueueUri,
     automationAvailable,
@@ -802,9 +880,11 @@ export default function CombatWorkspace() {
     onRemove: queue.remove,
     onMove: queue.move,
     onClear: queue.clear,
-    onExecute: () => void handleExecuteQueue(),
     onAddCurrent: () => void handleAddToQueue(),
     onAddUri: uri => void handleAddSearchUriToQueue(uri),
+    onContinueQueue: () => void handleContinueQueue(),
+    onSkipEntry: () => void handleSkipQueueEntry(),
+    onRetryFailed: () => void handleRetryFailedQueue(),
   }
 
   const paradoxSearch: CombatParadoxSearchProjection = {

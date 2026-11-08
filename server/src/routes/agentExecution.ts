@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/apiHelper.ts';
 import type {
+  ExecutionCopilotQueueRequest,
   ExecutionCopilotSetRequest,
   ExecutionRequest,
   ExecutionResponseWriter,
@@ -11,7 +12,10 @@ import * as agentExecutionController from '../controllers/agentExecutionControll
 const router = Router();
 
 router.post('/copilot-sets/:id/execute', asyncHandler<ExecutionCopilotSetRequest, ExecutionResponseWriter>(agentExecutionController.executeCopilotSet));
+router.post('/copilot-queues/execute', asyncHandler<ExecutionCopilotQueueRequest, ExecutionResponseWriter>(agentExecutionController.executeCopilotQueue));
 router.post('/actions/continue-copilot-set', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(agentExecutionController.continueCopilotSetAction));
+router.post('/actions/continue-copilot-queue', asyncHandler<ExecutionCopilotQueueRequest, ExecutionResponseWriter>(agentExecutionController.continueCopilotQueueAction));
+router.post('/actions/skip-copilot-queue-entry', asyncHandler<ExecutionCopilotQueueRequest, ExecutionResponseWriter>(agentExecutionController.skipCopilotQueueEntryAction));
 router.post('/schedules/:scheduleId/execute', asyncHandler<ExecutionScheduleRequest, ExecutionResponseWriter>(agentExecutionController.executeSchedule));
 router.post('/actions/start-game', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(agentExecutionController.startGame));
 router.post('/actions/run-daily-flow', asyncHandler<ExecutionRequest, ExecutionResponseWriter>(agentExecutionController.runDailyFlow));
