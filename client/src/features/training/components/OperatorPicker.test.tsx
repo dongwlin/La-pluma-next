@@ -190,9 +190,9 @@ describe('training operator picker', () => {
       success: true,
       data: {
         operators: [
-          operator('char_amiya', '阿米娅', 'CASTER'),
-          operator('char_exusiai', '能天使', 'SNIPER'),
-          operator('char_chen', '陈', 'WARRIOR'),
+          operator('char_amiya', '阿米娅', '术师'),
+          operator('char_exusiai', '能天使', '狙击'),
+          operator('char_chen', '陈', '近卫'),
         ],
       },
     })

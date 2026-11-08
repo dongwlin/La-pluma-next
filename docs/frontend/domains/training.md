@@ -101,7 +101,7 @@ OperatorTraining（页面壳）
 - 候选端点同一响应返回 `recognition`（`status`、`total`、`owned`、`unknown`、`missing`）。服务端按快照写入时的识别完整度计算覆盖范围：完整识别才把识别目录内的条目算作确认未拥有，部分识别只确认已识别拥有的干员，其余归入 `missing` 并作为 `unknown` 返回。非 `complete` 时选择器展示识别提示，未确认拥有状态的候选行显示“未识别”且不可加入队列；旧服务端缺少该字段时保持静默，不伪造完整识别。
 - `trainable`/`owned` 计数取候选端点行数，`owned` 为空时回退持有干员快照；`all` 取目录按稀有度过滤后的行数，不应用“未精二”。
 - 新 `all` 为 0 时不覆盖旧值；`mergeTrainingStatusCounts` 通过结构共享保持引用稳定，避免 `keepPreviousData` 占位反复通知。
-- 筛选切换由 key 隔离，旧 key 的迟到响应只写旧 key；职业筛选在客户端按候选行过滤，不新增 Query key。Activity 隐藏/恢复按 Query 生命周期注销/恢复观察者。
+- 筛选切换由 key 隔离，旧 key 的迟到响应只写旧 key；职业筛选在客户端按候选行过滤，不新增 Query key。候选行的 `profession` 在材料数据中为中文职业名、目录回退时为英文枚举，筛选统一归一后匹配。Activity 隐藏/恢复按 Query 生命周期注销/恢复观察者。
 
 ### 5. 纯模型
 

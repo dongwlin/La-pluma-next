@@ -65,6 +65,22 @@ describe('operator picker selection model', () => {
     ])
   })
 
+  it('matches the catalog enum and the localized profession names from material data', () => {
+    const options = [
+      option('char_a', '阿米娅', { profession: 'CASTER' }),
+      option('char_b', '陈', { profession: '近卫' }),
+      option('char_c', '塞雷娅', { profession: '重装' }),
+      option('char_d', '能天使', { profession: 'SNIPER' }),
+      option('char_e', '未知干员', { profession: '未知' }),
+    ]
+
+    expect(filterOperatorOptionsByProfession(options, 'WARRIOR').map(item => item.id)).toEqual(['char_b'])
+    expect(filterOperatorOptionsByProfession(options, 'TANK').map(item => item.id)).toEqual(['char_c'])
+    expect(filterOperatorOptionsByProfession(options, 'CASTER').map(item => item.id)).toEqual(['char_a'])
+    expect(filterOperatorOptionsByProfession(options, 'SNIPER').map(item => item.id)).toEqual(['char_d'])
+    expect(filterOperatorOptionsByProfession(options, 'MEDIC')).toEqual([])
+  })
+
   it('filters by profession and keeps every row for 全部职业', () => {
     const options = [
       option('char_a', '阿米娅', { profession: 'CASTER' }),
