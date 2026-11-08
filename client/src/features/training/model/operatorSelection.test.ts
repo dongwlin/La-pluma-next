@@ -59,13 +59,13 @@ describe('operator picker selection model', () => {
     expect(catalogOnly).toEqual({ id: 'char_010_chen', name: '陈', rarity: 6 })
   })
 
-  it('lists 全部 plus the eight catalog professions in a stable order', () => {
+  it('lists 全部职业 plus the eight catalog professions in a stable order', () => {
     expect(OPERATOR_PROFESSION_FILTERS.map(entry => entry.label)).toEqual([
-      '全部', '先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种',
+      '全部职业', '先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种',
     ])
   })
 
-  it('filters by profession and keeps every row for 全部', () => {
+  it('filters by profession and keeps every row for 全部职业', () => {
     const options = [
       option('char_a', '阿米娅', { profession: 'CASTER' }),
       option('char_b', '陈', { profession: 'WARRIOR' }),

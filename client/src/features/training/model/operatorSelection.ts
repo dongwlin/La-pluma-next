@@ -17,9 +17,9 @@ export interface OperatorProfessionFilterOption {
   label: string
 }
 
-/** 职业枚举与「数据统计」干员面板一致；「全部」保持默认。 */
+/** 职业枚举与「数据统计」干员面板一致；「全部职业」保持默认。 */
 export const OPERATOR_PROFESSION_FILTERS: readonly OperatorProfessionFilterOption[] = [
-  { value: 'all', label: '全部' },
+  { value: 'all', label: '全部职业' },
   { value: 'PIONEER', label: '先锋' },
   { value: 'WARRIOR', label: '近卫' },
   { value: 'TANK', label: '重装' },
@@ -50,10 +50,10 @@ export const toOperatorPickerOption = (
 }
 
 /** 职业筛选；`all` 返回新数组，具体职业按目录枚举精确匹配，未知职业不出现在具名筛选中。 */
-export const filterOperatorOptionsByProfession = (
-  options: readonly OperatorPickerOption[],
+export const filterOperatorOptionsByProfession = <T extends { profession?: string }>(
+  options: readonly T[],
   profession: OperatorProfessionFilter,
-): OperatorPickerOption[] => {
+): T[] => {
   if (profession === 'all') return [...options]
   return options.filter(option => option.profession === profession)
 }

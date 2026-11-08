@@ -6,7 +6,7 @@ import {
   operatorCatalogQueryOptions,
   type OperatorDetailed,
 } from '@/features/game-data'
-import { Button, EmptyState, Input, Loading } from '@/shared/ui'
+import { Button, EmptyState, Input, Loading, Select } from '@/shared/ui'
 import { Modal } from '@/shared/ui/Modal'
 import {
   OPERATOR_RENDER_BATCH_SIZE,
@@ -120,8 +120,10 @@ export default function OperatorSelectModal({
     setVisibleLimit(OPERATOR_RENDER_BATCH_SIZE)
   }
 
-  const handleProfessionFilterChange = (value: OperatorProfessionFilter) => {
-    setProfessionFilter(value)
+  const handleProfessionFilterChange = (value: string) => {
+    const option = OPERATOR_PROFESSION_FILTERS.find(candidate => candidate.value === value)
+    if (!option) return
+    setProfessionFilter(option.value)
     setVisibleLimit(OPERATOR_RENDER_BATCH_SIZE)
   }
 
@@ -188,7 +190,7 @@ export default function OperatorSelectModal({
       )}
     >
       <div className="space-y-4">
-        <div className="space-y-3">
+        <div className="flex items-center gap-2">
           <Input
             type="text"
             aria-label="搜索干员名称"
@@ -196,24 +198,16 @@ export default function OperatorSelectModal({
             value={searchTerm}
             onChange={handleSearchChange}
             icon={<Search size={17} strokeWidth={1.9} aria-hidden="true" />}
+            className="min-w-0 flex-1"
           />
           {professionFilterVisible && (
-            <div role="group" aria-label="职业筛选" className="flex flex-wrap gap-2">
-              {OPERATOR_PROFESSION_FILTERS.map((option) => {
-                const isActive = professionFilter === option.value
-                return (
-                  <Button
-                    key={option.value}
-                    size="sm"
-                    variant={isActive ? 'primary' : 'secondary'}
-                    aria-pressed={isActive}
-                    onClick={() => handleProfessionFilterChange(option.value)}
-                  >
-                    {option.label}
-                  </Button>
-                )
-              })}
-            </div>
+            <Select
+              aria-label="职业筛选"
+              value={professionFilter}
+              onChange={handleProfessionFilterChange}
+              options={[...OPERATOR_PROFESSION_FILTERS]}
+              className="w-36 shrink-0"
+            />
           )}
         </div>
 
