@@ -1,6 +1,9 @@
-import { ListPlus } from 'lucide-react'
-import { Button } from '@/shared/ui'
+import { useRef, type ChangeEvent, type ClipboardEvent } from 'react'
+import { ListPlus, Upload } from 'lucide-react'
+import { Button, IconButton } from '@/shared/ui'
+import ActivityIndicator from '@/shared/ui/ActivityIndicator'
 import type { CopilotPreviewMode } from '../model/copilotPreview'
+import type { CombatCopilotFileImportProjection } from './combatPanelTypes'
 
 const PREVIEW_MODE_OPTIONS: ReadonlyArray<{ value: CopilotPreviewMode; label: string }> = [
   { value: 'auto', label: '自动' },
@@ -13,6 +16,7 @@ interface CombatCopilotInputPanelProps {
   isLoading: boolean
   isAddingToQueue?: boolean
   previewMode: CopilotPreviewMode
+  fileImport?: CombatCopilotFileImportProjection
   onInputChange: (value: string) => void
   onPreviewModeChange: (mode: CopilotPreviewMode) => void
   onPreview: () => void
@@ -24,15 +28,42 @@ export default function CombatCopilotInputPanel({
   isLoading,
   isAddingToQueue = false,
   previewMode,
+  fileImport,
   onInputChange,
   onPreviewModeChange,
   onPreview,
   onAddToQueue,
 }: CombatCopilotInputPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) fileImport?.onImport(file)
+  }
+
+  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    if (!fileImport) return
+    const clipboard = event.clipboardData
+    const files = Array.from(clipboard.files)
+    if (files.length === 0) {
+      for (const item of Array.from(clipboard.items)) {
+        if (item.kind !== 'file') continue
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+    const file = files.find(candidate => candidate.type === 'application/json'
+      || candidate.name.toLowerCase().endsWith('.json'))
+    if (!file) return
+    event.preventDefault()
+    fileImport.onImport(file)
+  }
+
   return (
     <div className="combat-copilot-input">
       <div className="combat-copilot-input-row">
-        <label htmlFor="combat-copilot-uri" className="sr-only">作业链接或服务器文件路径</label>
+        <label htmlFor="combat-copilot-uri" className="sr-only">作业链接，或粘贴 JSON 作业文件</label>
         <label htmlFor="combat-copilot-preview-mode" className="sr-only">识别方式</label>
         <div className="combat-copilot-uri-field">
           <input
@@ -44,22 +75,50 @@ export default function CombatCopilotInputPanel({
             autoCapitalize="none"
             spellCheck={false}
             inputMode="url"
-            placeholder="prts://1234、prts://s1234、作业站链接或服务器文件路径"
+            placeholder="prts://1234、prts://s1234、作业站链接或粘贴 JSON 文件"
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
+            onPaste={handlePaste}
             className="combat-copilot-uri-input"
           />
-          <select
-            id="combat-copilot-preview-mode"
-            name="maa-copilot-preview-mode"
-            value={previewMode}
-            onChange={(e) => onPreviewModeChange(e.target.value as CopilotPreviewMode)}
-            className="combat-copilot-mode-select"
-          >
-            {PREVIEW_MODE_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+          <div className="combat-copilot-uri-trailing">
+            {fileImport && (
+              <>
+                <label htmlFor="combat-copilot-file" className="sr-only">导入 JSON 作业文件</label>
+                <input
+                  id="combat-copilot-file"
+                  ref={fileInputRef}
+                  type="file"
+                  name="maa-copilot-file"
+                  accept=".json,application/json"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                />
+                <IconButton
+                  icon={fileImport.isImporting
+                    ? <ActivityIndicator size="sm" />
+                    : <Upload size={16} aria-hidden="true" />}
+                  title="导入 JSON 作业文件"
+                  aria-label="导入 JSON 作业文件"
+                  aria-busy={fileImport.isImporting || undefined}
+                  disabled={fileImport.isImporting}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="combat-copilot-import-button"
+                />
+              </>
+            )}
+            <select
+              id="combat-copilot-preview-mode"
+              name="maa-copilot-preview-mode"
+              value={previewMode}
+              onChange={(e) => onPreviewModeChange(e.target.value as CopilotPreviewMode)}
+              className="combat-copilot-mode-select"
+            >
+              {PREVIEW_MODE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <Button
           onClick={onPreview}
@@ -94,7 +153,6 @@ export default function CombatCopilotInputPanel({
           </Button>
         )}
       </div>
-      <p className="combat-copilot-hint">支持作业链接、上传 JSON 作业文件，或粘贴服务器可见路径。</p>
     </div>
   )
 }

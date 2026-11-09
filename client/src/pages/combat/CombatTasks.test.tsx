@@ -1423,7 +1423,7 @@ describe('CombatTasks execution', () => {
     expect(container.querySelectorAll('section[aria-label="作业队列"]')).toHaveLength(1)
   })
 
-  it('imports a local copilot file and writes the uploaded path into the input', async () => {
+  it('imports a local copilot file without writing the uploaded path into the input', async () => {
     await renderComponent()
     await previewSet()
     expect(container.textContent).toContain('TEST-1')
@@ -1435,10 +1435,11 @@ describe('CombatTasks execution', () => {
 
     expect(mocks.uploadCopilotFile).toHaveBeenCalledOnce()
     expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
-      .toBe('/data/copilot-files/job.json')
+      .toBe('prts://s48990')
     expect(mocks.setMessage).toHaveBeenCalledWith('已导入本地作业: job.json', 'success')
-    expect(container.textContent).toContain('TEST-1')
-    expect(container.textContent).toContain('job.json')
+    const queue = container.querySelector<HTMLElement>('section[aria-label="作业队列"]')
+    expect(queue?.querySelectorAll('[role="listitem"]')).toHaveLength(3)
+    expect(queue?.textContent).toContain('job.json')
     expect(container.querySelector('section[aria-label="作业集摘要"]')).toBeNull()
   })
 
@@ -1467,7 +1468,7 @@ describe('CombatTasks execution', () => {
 
     const file = new File(['{}'], 'job.json', { type: 'application/json' })
     await selectCopilotFile(file)
-    expect(buttonByText('导入中')?.disabled).toBe(true)
+    expect(buttonByAriaLabel('导入 JSON 作业文件')?.disabled).toBe(true)
 
     await selectCopilotFile(file)
 
@@ -1479,10 +1480,9 @@ describe('CombatTasks execution', () => {
     })))
     await flush()
 
-    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value)
-      .toBe('/data/copilot-files/job.json')
+    expect(container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')?.value).toBe('')
     expect(mocks.setMessage).toHaveBeenCalledWith('已导入本地作业: job.json', 'success')
-    expect(buttonByText('导入文件')).toBeDefined()
+    expect(buttonByAriaLabel('导入 JSON 作业文件')?.disabled).toBe(false)
   })
 
   it.each(['prts://s48990', 'PRTS://S48990'])(

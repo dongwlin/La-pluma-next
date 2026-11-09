@@ -40,6 +40,21 @@ const selectFile = async (input: HTMLInputElement, selected: File) => {
   })
 }
 
+const pasteClipboard = async (
+  input: HTMLInputElement,
+  clipboardData: {
+    files: File[]
+    items: Array<{ kind: string; getAsFile: () => File | null }>
+  },
+) => {
+  const event = new Event('paste', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'clipboardData', { configurable: true, value: clipboardData })
+  await act(async () => {
+    input.dispatchEvent(event)
+  })
+  return event
+}
+
 const search = (overrides: Partial<CombatCopilotSearchProjection> = {}): CombatCopilotSearchProjection => ({
   stageStore: createPanelStateStore(''),
   selectionStore: createPanelStateStore(''),
@@ -145,7 +160,7 @@ describe('CombatCopilotSourceBar', () => {
     const mode = container.querySelector<HTMLSelectElement>('select[name="maa-copilot-preview-mode"]')
     expect(uri).not.toBeNull()
     expect(mode).not.toBeNull()
-    expect(mode!.parentElement).toBe(uri!.parentElement)
+    expect(uri!.parentElement?.contains(mode)).toBe(true)
     expect(mode!.getAttribute('id')).toBe('combat-copilot-preview-mode')
     expect(container.querySelector('label[for="combat-copilot-preview-mode"]')?.textContent)
       .toBe('识别方式')
@@ -222,15 +237,34 @@ describe('CombatCopilotSourceBar', () => {
     expect(adding?.getAttribute('aria-busy')).toBe('true')
   })
 
-  it('offers a labelled JSON file picker next to the import button', async () => {
+  it('describes the URI, paste and local file sources', async () => {
+    await renderBar()
+
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')
+    expect(uri?.placeholder).toBe('prts://1234、prts://s1234、作业站链接或粘贴 JSON 文件')
+    expect(container.querySelector('label[for="combat-copilot-uri"]')?.textContent)
+      .toBe('作业链接，或粘贴 JSON 作业文件')
+    expect(container.textContent).not.toContain('支持作业链接，或粘贴/导入本地 JSON 文件。')
+    expect(container.textContent).toContain('可直接粘贴或导入本地 JSON 文件')
+  })
+
+  it('offers a labelled JSON file picker through an icon inside the URI field', async () => {
     await renderBar({ fileImport: { isImporting: false, onImport: () => {} } })
 
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    const mode = container.querySelector<HTMLSelectElement>('select[name="maa-copilot-preview-mode"]')!
     const input = container.querySelector<HTMLInputElement>('input[type="file"][name="maa-copilot-file"]')
     expect(input).not.toBeNull()
     expect(input?.accept).toContain('.json')
     expect(container.querySelector('label[for="combat-copilot-file"]')).not.toBeNull()
-    expect(Array.from(container.querySelectorAll('button')).map(button => button.textContent?.trim()))
-      .toContain('导入文件')
+
+    const importButton = container.querySelector<HTMLButtonElement>('button[aria-label="导入 JSON 作业文件"]')
+    expect(importButton).not.toBeNull()
+    expect(importButton?.title).toBe('导入 JSON 作业文件')
+    expect(importButton?.textContent?.trim()).toBe('')
+    expect(uri.parentElement?.contains(importButton!)).toBe(true)
+    expect(importButton?.parentElement).toBe(mode.parentElement)
+    expect(container.textContent).not.toContain('导入文件')
   })
 
   it('imports the chosen file and resets the file input', async () => {
@@ -249,15 +283,57 @@ describe('CombatCopilotSourceBar', () => {
     expect(resetValue).toHaveBeenCalledWith('')
   })
 
-  it('disables the import button and reports progress while a file is importing', async () => {
+  it('disables the import icon and swaps it for progress while a file is importing', async () => {
     await renderBar({ fileImport: { isImporting: true, onImport: () => {} } })
 
-    const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-      .find(candidate => candidate.textContent?.includes('导入中'))
-    expect(button).not.toBeUndefined()
+    const button = container.querySelector<HTMLButtonElement>('button[aria-label="导入 JSON 作业文件"]')
+    expect(button).not.toBeNull()
     expect(button?.disabled).toBe(true)
     expect(button?.getAttribute('aria-busy')).toBe('true')
-    expect(button?.getAttribute('aria-disabled')).toBe('true')
+    expect(button?.querySelector('svg')).toBeNull()
     expect(container.textContent).not.toContain('导入文件')
+  })
+
+  it('imports a JSON file pasted from the clipboard and prevents the paste', async () => {
+    const onImport = vi.fn()
+    await renderBar({ fileImport: { isImporting: false, onImport } })
+
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    const file = new File(['{}'], 'job.json', { type: 'application/json' })
+    const event = await pasteClipboard(uri, { files: [file], items: [] })
+
+    expect(onImport).toHaveBeenCalledOnce()
+    expect(onImport).toHaveBeenCalledWith(file)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('imports a JSON file exposed through clipboard items', async () => {
+    const onImport = vi.fn()
+    await renderBar({ fileImport: { isImporting: false, onImport } })
+
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    const file = new File(['{}'], 'job.json', { type: 'application/json' })
+    const event = await pasteClipboard(uri, {
+      files: [],
+      items: [{ kind: 'file', getAsFile: () => file }],
+    })
+
+    expect(onImport).toHaveBeenCalledOnce()
+    expect(onImport).toHaveBeenCalledWith(file)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('leaves text pastes untouched', async () => {
+    const onImport = vi.fn()
+    await renderBar({ fileImport: { isImporting: false, onImport } })
+
+    const uri = container.querySelector<HTMLInputElement>('input[name="maa-copilot-uri"]')!
+    const event = await pasteClipboard(uri, {
+      files: [],
+      items: [{ kind: 'string', getAsFile: () => null }],
+    })
+
+    expect(onImport).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
   })
 })

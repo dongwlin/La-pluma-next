@@ -76,8 +76,8 @@
 
 ## 本地导入的作业文件
 
-- `POST /api/copilot-files` 校验通过后把上传原文写入 `server/data/copilot-imports/`；文件名使用 `randomUUID()`，权限 `0o600`，目录按需创建（`server/src/services/copilotFileService.ts:98-119`）。
-- 展示文件名只存在于接口响应，不参与落盘路径；上传副本供 maa-cli 作为本地作业文件读取，不与 Run、配置或进度文件共享写入路径。
+- `POST /api/copilot-files` 校验通过后把上传原文写入 `server/data/copilot-imports/`；文件名使用 `randomUUID()`，权限 `0o600`，目录按需创建（`server/src/services/copilotFileService.ts:220-240`）。
+- 展示文件名只存在于接口响应，不参与落盘路径；上传副本由服务端在队列执行前重新读取并写入队列计划目录，不供 maa-cli 直接读取，也不与 Run、配置或进度文件共享写入路径。
 - 该目录当前没有自动清理机制，属于运行数据：整目录备份会一并带走上传副本，部署方如需回收磁盘空间应在上传来源空闲时自行清理。
 
 ## 干员台词

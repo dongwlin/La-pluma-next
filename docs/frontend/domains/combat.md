@@ -21,7 +21,7 @@
 | 任务目录与模式展示项 | `features/combat/components/CombatTaskCatalog.tsx` | 名称、命令、图标、占位与描述；不读取配置/Query/执行状态 |
 | 模式分段控件的测量与键盘导航 | `features/combat/components/CombatModeTabs.tsx` | 受控组件；只持有 `useFluidTabIndicator` 的测量状态 |
 | 执行设置、编队/突袭/作业集模式与高级字段 | `components/CombatSettingsPanel.tsx`、`components/CombatAdvancedFields.tsx` | 受控表单；选项表来自 `model/combatCommands.ts` |
-| 作业来源栏（输入、预览、识别方式、搜索、说明、清除预览与本地文件导入） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览/上传动作由工作区提供 |
+| 作业来源栏（输入、预览、JSON 导入、识别方式、搜索、说明与清除预览） | `components/CombatCopilotSourceBar.tsx` + `components/CombatCopilotInputPanel.tsx` | 输入值来自配置草稿；JSON 导入按钮位于链接输入框内、识别方式下拉左侧，文件选择与从文件管理器复制后粘贴的 JSON 文件走同一上传通道；识别方式、搜索词与搜索选中项保存在面板会话存储；搜索/预览/上传/入队动作由工作区提供 |
 | 普通搜索与悖论搜索 | `components/CombatSearchPanel.tsx`、`components/CombatParadoxSearchPanel.tsx` | 搜索词与“已选中”高亮在面板侧；结果、取消与推荐接线由工作区提供 |
 | 本次执行的条目位置、当前关卡与已用时 | `components/CombatExecutionProgressPanel.tsx` | 只渲染 `deriveExecutionProgress`；不呈现运行状态、停止入口、逐项结果或计划计数 |
 | 作业队列（唯一列表：勾选、排序、删除、清空、等待续跑/跳过/重试入口） | `components/CombatCopilotQueuePanel.tsx` | 只渲染 `CombatCopilotQueueProjection`；行主体打开详情层；不持有第二份队列模型 |
@@ -53,7 +53,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
    ├─ CombatExecutionProgressPanel（本次执行条目位置 / 关卡 / 已用时）
    ├─ CombatCopilotTaskPanel（普通作业卡）
    │  ├─ CombatCopilotSourceBar（CombatSearchPanel + 说明/清除预览）
-   │  │  └─ CombatCopilotInputPanel（作业链接输入 + 识别方式下拉）
+   │  │  └─ CombatCopilotInputPanel（作业链接输入 + JSON 导入图标 + 识别方式下拉）
    │  ├─ CombatCopilotQueuePanel（唯一作业列表 + CombatCopilotDetailLayer 详情层）
    │  ├─ CombatCopilotSetPanel（仅预览非空时渲染：续跑摘要 / 下一关 / 失败原因）
    │  └─ 参数区：CombatSettingsPanel → CombatAdvancedFields
@@ -70,7 +70,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 配置草稿、pending 与提交队列 | `user-config` 协调器 | 不重建 | 保留；不重新读取已 hydrate 的草稿 | 应用级通道继续持有 |
 | 预览对象、loading、请求代次 | `CopilotPreviewSession`（工作区实例） | 保留；卡片重建不取消当前预览 | `stop()` 取消在途读取、保留已显示预览；恢复不自动重放 | 新会话；预览清空 |
 | 搜索词、搜索选中项、识别方式、悖论搜索词 | 工作区创建的面板会话存储 | 保留（存储不随卡片卸载） | 保留 | 重置 |
-| 本地作业文件导入在途 | `CombatWorkspace` 本地状态 + ref | 保留 | 保留 | 重置 |
+| 本地作业文件导入（选择文件或粘贴 JSON 文件）在途 | `CombatWorkspace` 本地状态 + ref | 保留 | 保留 | 重置 |
 | 搜索结果、loading、取消代次 | `useCopilotSearch`/`useParadoxSearch`（工作区实例） | 保留 | 清理取消在途搜索；恢复不自动重放 | 重置 |
 | 作业队列条目与勾选 | `useCopilotQueue`（工作区实例）+ `localStorage['la-pluma-copilot-queue-v1']` | 保留 | 保留；条目已持久化，勾选为会话状态 | 从本地存储恢复条目并全选 |
 | 详情层打开项 | `CombatCopilotQueuePanel` 局部状态（按队列条目 id） | 重置 | 保留 | 重置 |
@@ -133,7 +133,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 ### 5. 搜索、执行与页面路径
 
 - **搜索选择**：普通搜索结果点击后写入 `copilot.uri`、规范化并立即预览；`copilotSearchSelection` 驱动“已选中”高亮；修改主输入会清除非匹配的高亮。推荐 URI 仍只在本次显式搜索成功后自动应用。每个搜索结果另有「加入队列」动作，按 URI 读取预览后加入单个作业项。
-- **本地作业文件**：来源栏「导入文件」读取浏览器 JSON 后提交 `POST /api/copilot-files`，成功返回的服务端绝对路径写入 `copilot` 输入并清空旧预览；同时读取文件文本，把 `doc.title`、`stage_name`、`opers`、`groups` 解析成队列条目的标题、关卡与干员信息。队列 Run 提交 `source: 'file'` 与服务端路径，由服务端重新读取受管文件并写入队列计划目录；本地路径不参与 PRTS 预览。
+- **JSON 作业导入**：链接输入框内的 JSON 导入按钮读取本地 JSON 文件；从文件管理器复制 JSON 文件后在输入框粘贴，文件交给同一导入通道。两条路径都提交 `POST /api/copilot-files`，成功后清空旧预览，并把 `doc.title`、`stage_name`、`opers`、`groups` 解析成队列条目的标题、关卡与干员信息并加入队列；解析失败仍按导入文件名入队，上传接口拒绝非法 JSON 时提示错误且不加入队列。输入框只承载作业链接与 JSON 文件粘贴，不再接受服务端可见的文件路径。队列 Run 提交 `source: 'file'` 与服务端受管路径，由服务端重新读取受管文件并写入队列计划目录；受管路径不参与 PRTS 预览。
 - **三种作业集模式**：设置面板的 `app`/`manual`/`cli` 保持原选项与存储值；提交时 `app`/`cli` 映射为服务端 `continuous`，`manual` 保留逐关等待。取消/继续等待由 `useCombatExecution` 与服务端 Run 持有。
 - **队列执行**：只勾选当前预览作业集的成员，且其 `setItemIndex` 严格递增时，走作业集提交（`submitSet` → `run_copilot_set`）：连续模式一次提交整组，手动模式等待服务端 `nextEntry`；`selectedIndexes` 来自队列勾选。混合来源、重排后的集合成员或本地文件走 `submitQueue` → `run_copilot_queue`：客户端把队列条目按当前顺序映射为 `{ clientId, source, copilotId|filename, mode }`，服务端逐项执行并返回同一 Run 下的逐项状态。`executionStrategy` 映射为 `failurePolicy`：`stop` 首败停止，其他值按 `continue`。预设编队条目固定发 `normal`，`raid`/`both` 的队列路径限制见下。
 - **队列突袭限制**：队列 Run 每条目只有一个 `mode`；页面从全局突袭设置派生，选择 `both` 时按 `normal` 执行并提示，预设编队条目固定 `normal`。作业集路径继续按计划与 `supportsRaid` 决定条目模式。
@@ -151,7 +151,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 
 ### 7. 兼容与视觉约束
 
-- 既有端点、Query key、配置 key、既有本地存储键、pending 标记与 wire 形状均未变化；新增的 `la-pluma-copilot-queue-v1` 只保存本页作业队列，`/api/copilot-files` 只服务来源栏上传，`/agent/copilot-queues/*` 与队列 continue/skip 只服务 Web UI 队列 Run，旧本地草稿与服务端配置可直接读取。
+- 既有端点、Query key、配置 key、既有本地存储键、pending 标记与 wire 形状均未变化；新增的 `la-pluma-copilot-queue-v1` 只保存本页作业队列，`/api/copilot-files` 只服务来源栏的 JSON 导入（文件选择或粘贴 JSON 文件），`/agent/copilot-queues/*` 与队列 continue/skip 只服务 Web UI 队列 Run，旧本地草稿与服务端配置可直接读取。
 - 服务端执行参数、作业集模式映射、幂等键与停止语义未变化；队列 Run 使用 `run_copilot_queue` 独立操作名与 `copilot-queue` 任务类型，不改变 `run_copilot_set`。
 - 保持作业输入/搜索的 `name`、状态文案与关键 `aria-*` 契约；队列面板不再有独立「执行队列」按钮，执行入口回到作业卡头部；DOM/CSS 类名和默认态视觉随卡片布局调整，但交互与局部状态边界由下列回归测试覆盖。
 - 页面视觉回归入口见[开发指南](../../development/README.md)；面板行为与订阅隔离由下列回归测试覆盖。
@@ -269,7 +269,7 @@ CombatTasks（页面壳：PageHeader + FloatingStatusIndicator）
 | 作业集计划 | `items` 与 `entries` 必须同时存在；`completed` 条目按 `itemIndex` 折叠为 `completedModes`；`stage` 缺失时名称回退“作业 #id” |
 | 搜索结果 | 接受信封/原始载荷；缺 `uri` 的条目丢弃；`recommended` 只有带 `uri` 才自动填充；`views`/`hotScore` 缺失按 0 |
 | 作业队列存储 | `la-pluma-copilot-queue-v1` 只接受 `{ version: 1, entries: [...] }`；版本不符或 JSON 损坏返回空队列；逐项校验必填 `id`/`uri`/`source`，丢弃重复 URI，截断到 50 项 |
-| 本地作业文件元数据 | `doc.title`、`stage_name`、`opers[].name`、`groups[].name` 缺失或非字符串时按缺省处理；解析失败仍以文件名为标题入队，不影响上传路径执行 |
+| 本地作业元数据 | 文件选择或粘贴 JSON 文件的 `doc.title`、`stage_name`、`opers[].name`、`groups[].name` 缺失或非字符串时按缺省处理；解析失败仍以导入文件名为标题入队，不影响受管路径执行 |
 | 队列 Run 执行 | 请求体 `{ queueId?, name?, mode?, failurePolicy?, entries[], options?, waitForCompletion? }`；`entries` 为 1–50 项且 `clientId` 唯一；响应同作业集信封，新增 `queueId`/`summary`/`nextEntry`；客户端按 `clientId` 合并 `taskResults`，不按数组下标猜测状态 |
 | 队列 Run 继续/跳过 | 两者只接受 `operationId=run_copilot_queue` 且 `state=waiting` 的 Run；`MAA_EXECUTION_BUSY` 保持 waiting，`AGENT_COPILOT_QUEUE_SESSION_LOST` 需要重新提交，终态继续返回 `alreadyTerminal` |
 | 旧探测 | `prts://<id>` 的“自动”模式按单作业处理，不会猜测同 id 作业集；prts.plus 链接继续探测 |

@@ -45,7 +45,7 @@ import { deriveCopilotSetView } from '../model/copilotSetView'
 import { deriveExecutionProgress } from '../model/executionProgress'
 import { createPanelStateStore } from '../model/panelState'
 import { invalidateCopilotSetPlan, loadCopilotPreview as loadCopilotPreviewData } from '../model/queries'
-import { normalizeCopilotInput, parseCopilotUri, quoteCopilotPathForInput, splitCopilotInputToArgs } from '../utils/copilotUri'
+import { normalizeCopilotInput, parseCopilotUri, splitCopilotInputToArgs } from '../utils/copilotUri'
 import type {
   CombatMode,
   CombatTask,
@@ -472,7 +472,7 @@ export default function CombatWorkspace() {
         result.data.name || file.name,
         content,
       )])
-      handleInputChange('copilot', quoteCopilotPathForInput(result.data.path))
+      clearCopilotPreview()
       setStatusMessage(`已导入本地作业: ${result.data.name || file.name}`, 'success')
     } catch (error) {
       setStatusMessage(getErrorMessage({ message: error instanceof Error ? error.message : undefined }), 'error')
